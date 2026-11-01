@@ -73,7 +73,7 @@ Like Hammer++'s "3D Lighting Preview", but the numbers are the compiler's: the m
 
 ## Lightmap tools
 
-- **Lightmap grid** (`Alt+8`) draws the luxel grid of every face, colored by lightmap scale. Faces at or under the **Tiny lightmap scale** are drawn red.
+- **Lightmap grid** (`Alt+8`) draws the luxel grid of every lightmapped face like Hammer's 3D lightmap grid, no bake needed: one checker cell per luxel, as wide as the face's lightmap scale and aligned to its texture axes, displacements included. The color tells the scale: grey at 16 (the default), redder the finer the scale (8, 4 and less stand out), greener the coarser. Yellow lines mark where VBSP splits a face wider than 32 luxels. Once a bake exists, the grid is shaded by its lighting. Faces without a lightmap (nodraw, tool textures, sky, water, unlit materials) and props keep their texture.
 - **Select faces with a tiny lightmap scale** selects them, ready for the texture tool.
 - The **status bar** shows the lightmap budget ("N / 16 MB"). Click it to open the Lighting tab.
 

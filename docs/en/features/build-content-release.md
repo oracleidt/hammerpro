@@ -30,7 +30,7 @@ The release is built from the saved file: when the map has unsaved changes, the 
 | **Ship content from mounted games** | Content of games mounted through `mount.cfg` (CS:S, HL2 episodes...). Players without them see errors; redistributing it is your responsibility. | off |
 | **Build cubemaps and navigation in game** | Starts Garry's Mod, after a confirmation, to build the cubemaps and generate the navigation mesh, then closes it. | off |
 | **Open the output folder when done** | | off |
-| **BSP Protection Pro** | Ships a protected copy and keeps the full map for your server. See [BSP Protection Pro](bsp-protection.md). | off |
+| **Protect your BSP** | Ships a protected copy and keeps the full map for your server. See [Protect your BSP](bsp-protection.md). | off |
 | **Build** | Runs the release. **Cancel** stops it. | |
 | **Analyze** | Lists every file the map needs, without compiling or writing anything (fills the Report tab). | |
 
@@ -162,7 +162,7 @@ Every file the map needs with its size, origin, destination (**Pakfile**, **Addo
 
 ## Related pages
 
-- [BSP Protection Pro](bsp-protection.md)
+- [Protect your BSP](bsp-protection.md)
 - [Map assets](map-assets.md)
 - [Collect content for a release](../guides/collect-content-for-release.md)
 - [Cubemaps](../compiler/cubemaps.md)

@@ -4,7 +4,7 @@ use rayon::prelude::*;
 
 use crate::arena::{Range32, RangeAlloc};
 use crate::gpu::{
-    CLASS_SHIFT, DETAIL_BIT, EdgeVertex, GpuVertex, ObjState, SLOT_MASK, SOURCE_BIT, pack_blend, pack_normal_alpha,
+    CLASS_SHIFT, DETAIL_BIT, EdgeVertex, GpuVertex, ObjState, SLOT_MASK, SOURCE_BIT, pack_blend_vertex, pack_normal_alpha,
     pack_rgb8,
 };
 use crate::types::{BlendVertex, MaterialDesc, MaterialId, ObjectFlags, ObjectId, ObjectMesh, Vertex};
@@ -266,7 +266,7 @@ pub(crate) fn pack_triangles(
             uv: if v.uv[0].is_finite() && v.uv[1].is_finite() { v.uv } else { [0.0; 2] },
             nrm_alpha: pack_normal_alpha(v.normal, v.alpha),
             slot,
-            blend: blend.get(i).map_or(0, |b| pack_blend(b.weights, b.tint)),
+            blend: blend.get(i).map_or(0, pack_blend_vertex),
             cube: u32::from(cubemaps.get(i).copied().unwrap_or(crate::NO_CUBEMAP)),
         }
     }));

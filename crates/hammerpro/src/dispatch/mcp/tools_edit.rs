@@ -82,6 +82,25 @@ domain! { "editing";
     carve: Destructive, "Carve",
         "Carve (subtract) the carving solids from every solid they touch (Hammer's Carve). The carvers stay.",
         { "ids": target_ids(), "solid_ids": target_solid_ids() }, [];
+    extrude_face: Destructive, "Carve or extrude a face outline",
+        "Outline a shape on a brush face, then dig it into the brush or pull it out of the face (the extrude / carve \
+        tool, Shift+I). points are world positions, projected on the face plane: any outline that does not cross \
+        itself, concave too (it is split into convex pieces). carve replaces the brush by the convex brushes left \
+        around the hole: a recess of depth units, or an opening with through. extrude adds the prism on the face as \
+        new brushes of the same owner, or grows the brush itself when the result stays convex (an outline covering \
+        the whole face). The kept faces keep their textures and alignment; the new faces get the clicked face's \
+        texture (new_faces face), the current material (new_faces current) or material. One undo step. Answers the \
+        ids of the brushes made or changed (the brush keeps its id when it is carved or grown).",
+        {
+            "solid": integer("Solid id.", 1, i64::from(u32::MAX)),
+            "side": integer("Side index of the face in the solid (get_faces).", 0, 4095),
+            "points": { "type": "array", "items": vec3("Point [x, y, z] on the face."), "minItems": 3, "maxItems": 128, "description": "Outline points, in order around the shape." },
+            "mode": choice("carve (default): dig into the brush; extrude: pull out of the face.", &["carve", "extrude"]),
+            "depth": number("Depth in units (default 16).", 0.125, 16384.0),
+            "through": boolean("carve only: cut the whole thickness of the brush (default false)."),
+            "new_faces": choice("Texture of the new faces (default face).", &["face", "current"]),
+            "material": string("Material of the new faces (instead of new_faces)."),
+        }, ["solid", "side", "points"];
     hollow: Destructive, "Make hollow",
         "Turn solids into rooms with walls of a thickness (negative: walls outside). The walls of each solid are \
         grouped and selected.",
@@ -151,6 +170,26 @@ domain! { "editing";
             "depth": vec2("Depth range [low, high] along the view axis (z for top, x for front, y for side)."),
             "material": string("Material (default: the current material)."),
         }, ["view", "points", "depth"];
+    create_curve_brushes: Edit, "Curve brushes",
+        "Build a curved wall, rail or road from box brushes like the curve tool (Shift+U): a smooth spline \
+        through the points (in the view's axes: top x y, front y z, side x z) cut in equal lengths into \
+        subdivisions brushes, each one a convex 6 sided block of a thickness across the curve and a height along \
+        the view's depth axis, with mitred joints (no gap, no overlap). The points snap to the editor's grid \
+        unless snap is false. Without base and height the depth comes from the selection like the block tool \
+        (else the last created object, else 0 to 64). The brushes are one undo step and are selected. Refused \
+        when a bend is too tight for the thickness or a segment would be under 1 unit.",
+        {
+            "view": choice("2D view the curve is drawn in.", &["top", "front", "side"]),
+            "points": { "type": "array", "items": vec2("Point [a, b]."), "minItems": 2, "maxItems": 1024, "description": "Points the curve goes through, in order." },
+            "subdivisions": integer("Number of brushes along the curve (default 16).", 2, 4096),
+            "thickness": number("Width of the brushes across the curve, centered on it (default 16).", 1.0, 1024.0),
+            "height": number("Height of the brushes along the view's depth axis (default: from the selection, else 64).", 1.0, 16384.0),
+            "base": number("Start of the brushes along the view's depth axis (z for top, x for front, y for side).", -16384.0, 16384.0),
+            "snap": boolean("Snap the points to the editor's grid (default true)."),
+            "material": string("Material (default: the current material)."),
+            "tex_scale": number("Texture scale of the new faces (default: the editor's).", 0.01, 64.0),
+            "entity_class": string("Put every brush in one brush entity of this class (func_detail...) instead of the world."),
+        }, ["view", "points"];
     snap_brush_vertices: Edit, "Snap brush vertices",
         "Move every vertex of solids to the nearest grid point (default: the editor's grid), fixing off grid brushes \
         (solids that would become invalid are left as they are).",
@@ -183,7 +222,9 @@ domain! { "editing";
         { "faces": faces("Faces [{solid, side}].") }, ["faces"];
     tie_to_entity: Edit, "Tie to entity",
         "Tie solids to a new brush entity (Ctrl+T), or each world solid to its own entity (each: true), or to an \
-        existing brush entity (entity).",
+        existing brush entity (entity). A new entity whose FGD class has an origin key (func_tracktrain, \
+        func_tanktrain, func_rotating...) gets it at the center of its solids unless keyvalues give one, like \
+        Hammer: the game moves and turns the entity around that point.",
         {
             "ids": target_ids(), "solid_ids": target_solid_ids(),
             "entity_class": string("Class of the new entity (default func_detail)."),
@@ -274,6 +315,58 @@ domain! { "editing";
     list_used_materials: Read, "Used materials",
         "Materials used by the faces of the map with their face counts, most used first.",
         { "limit": limit(), "offset": offset() }, [];
+    random_rotate_objects: Edit, "Random Z rotation",
+        "Turn each point entity with an angles key (prop_static, prop_dynamic, prop_physics, lights...) by its own \
+        random yaw around Z, in one undo step, like Tools > Random Z rotation. Brushes, brush entities and \
+        entities without angles are skipped and counted. The options default to the selection.random_* settings.",
+        {
+            "ids": target_ids(), "solid_ids": target_solid_ids(),
+            "min_yaw": number("Smallest turn in degrees (default selection.random_yaw_min, 0).", -360.0, 360.0),
+            "max_yaw": number("Largest turn in degrees (default selection.random_yaw_max, 360).", -360.0, 720.0),
+            "snap": number("Turn in steps of this many degrees, 0 free (default selection.random_yaw_snap).", 0.0, 180.0),
+            "tilt": number("Random pitch and roll jitter up to this many degrees, 0 off (default: off unless selection.random_tilt).", 0.0, hp_editor::MAX_JITTER_DEG),
+            "seed": integer("Random seed (default: a new one each call).", 0, i64::from(u32::MAX)),
+        }, [];
+}
+
+fn random_rotate_objects(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
+    let objs = targets(state, a)?;
+    let seed = a
+        .opt_u64("seed", 0, u64::from(u32::MAX))?
+        .unwrap_or_else(|| hp_app::settings::SelectionSettings::random_seed() % (u64::from(u32::MAX) + 1));
+    let mut opts = state.settings.selection.random_rotate(seed);
+    if let Some(v) = a.opt_f64("min_yaw", -360.0, 360.0)? {
+        opts.min_yaw = v;
+    }
+    if let Some(v) = a.opt_f64("max_yaw", -360.0, 720.0)? {
+        opts.max_yaw = v;
+    }
+    if let Some(v) = a.opt_f64("snap", 0.0, 180.0)? {
+        opts.snap = v;
+    }
+    if let Some(v) = a.opt_f64("tilt", 0.0, hp_editor::MAX_JITTER_DEG)? {
+        opts.jitter = v;
+    }
+    opts.check().map_err(|e| e.to_string())?;
+    let r = edit(state, "random_rotate_objects", |doc| doc.random_rotate(&objs, &opts))?;
+    let scene = state.doc.scene();
+    let angles: Vec<Value> = objs
+        .iter()
+        .filter_map(|o| match *o {
+            ObjRef::Entity(id) => {
+                scene.entity(id).and_then(|n| n.entity.angles()).map(|a| json!({ "id": id, "angles": v3(a) }))
+            }
+            ObjRef::Solid(_) => None,
+        })
+        .take(200)
+        .collect();
+    Ok(ToolResult::json(json!({
+        "rotated": r.rotated,
+        "skipped": r.skipped,
+        "seed": seed,
+        "options": { "min_yaw": opts.min_yaw, "max_yaw": opts.max_yaw, "snap": opts.snap, "tilt": opts.jitter },
+        "angles": angles,
+    })))
 }
 
 fn objs_json(objs: &[ObjRef]) -> Value {
@@ -515,6 +608,55 @@ fn carve(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     Ok(ToolResult::json(json!({ "carved": n })))
 }
 
+fn extrude_face(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
+    let solid = solid_id(&state.doc, a, "solid")?;
+    let side = a.opt_u64("side", 0, 4095)?.ok_or("side is required")? as usize;
+    let sides = state.doc.scene().solid(solid).map_or(0, |n| n.solid.sides.len());
+    if side >= sides {
+        return Err(format!("solid {solid} has {sides} sides (0 to {})", sides.saturating_sub(1)));
+    }
+    let list =
+        a.get("points").and_then(Value::as_array).filter(|l| (3..=hp_geom::MAX_OUTLINE_POINTS).contains(&l.len()));
+    let list = list.ok_or_else(|| format!("points must be 3 to {} [x, y, z] points", hp_geom::MAX_OUTLINE_POINTS))?;
+    let mut points = Vec::with_capacity(list.len());
+    for v in list {
+        let c: Vec<f64> = v
+            .as_array()
+            .filter(|x| x.len() == 3)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_f64)
+            .filter(|f| f.is_finite() && f.abs() <= 131072.0)
+            .collect();
+        if c.len() != 3 {
+            return Err("points must contain [x, y, z] points with numbers from -131072 to 131072".to_owned());
+        }
+        points.push(DVec3::new(c[0], c[1], c[2]));
+    }
+    let mode = match a.opt_enum("mode", &["carve", "extrude"])?.as_deref() {
+        Some("extrude") => hp_geom::ExtrudeMode::Extrude,
+        _ => hp_geom::ExtrudeMode::Carve,
+    };
+    let depth = a.opt_f64("depth", hp_geom::MIN_EXTRUDE_DEPTH, 16384.0)?.unwrap_or(16.0);
+    let through = a.opt_bool("through")?.unwrap_or(false);
+    let material = match (a.opt_str("material", MAX_NAME)?, a.opt_enum("new_faces", &["face", "current"])?.as_deref()) {
+        (Some(m), _) => Some(material_name(m)?),
+        (None, Some("current")) => Some(opt_material(state, a, "material")?).filter(|m| !m.trim().is_empty()),
+        _ => None,
+    };
+    let params = hp_geom::FaceExtrudeParams { mode, depth, through, material };
+    let face = FaceRef::new(solid, side);
+    let ids = edit(state, "extrude_face", |doc| doc.extrude_face(face, &points, &params))?;
+    let bounds =
+        state.doc.scene().objects_bounds(&ids.iter().map(|id| ObjRef::Solid(*id)).collect::<Vec<_>>(), &|_| None);
+    Ok(ToolResult::json(json!({
+        "solid_ids": ids,
+        "mode": mode.id(),
+        "brushes": ids.len(),
+        "bounds": bounds_json(bounds),
+    })))
+}
+
 fn hollow(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let solids = target_solids(state, a, "solid_ids")?;
     let t = a.opt_f64("thickness", -1024.0, 1024.0)?.unwrap_or(16.0);
@@ -611,12 +753,20 @@ fn create_brush_from_points(state: &mut AppState, a: &Args<'_>) -> R<ToolResult>
         material: material.clone(),
         ..Default::default()
     };
+    let origin =
+        class.as_deref().is_some_and(|c| hp_app::runtime::helpers::brush_entity_needs_origin(state.assets.fgd(), c));
     let (solid, entity) = edit(state, "create_brush_from_points", |doc| {
         let ids = doc.create_primitive(&params, Owner::World)?;
         let id = *ids.first().ok_or(hp_editor::EditError::Nothing("no solid created"))?;
         doc.set_solid_vertices(id, &points)?;
         let entity = match &class {
-            Some(c) => Some(doc.tie_to_entity(&[ObjRef::Solid(id)], c, &[])?),
+            Some(c) => {
+                let e = doc.tie_to_entity(&[ObjRef::Solid(id)], c, &[])?;
+                if origin {
+                    doc.add_missing_origins(&[e])?;
+                }
+                Some(e)
+            }
             None => None,
         };
         let sel = entity.map_or(ObjRef::Solid(id), ObjRef::Entity);
@@ -759,6 +909,100 @@ fn create_polygon_brush(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
         Ok(id)
     })?;
     Ok(ToolResult::json(json!({ "solid_id": id, "material": material })))
+}
+
+fn create_curve_brushes(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
+    use hp_tools_create::curve;
+    let view = a.opt_enum("view", &["top", "front", "side"])?.ok_or("view is required")?;
+    let kind = match view.as_str() {
+        "top" => hp_app::ViewKind::Top,
+        "front" => hp_app::ViewKind::Front,
+        _ => hp_app::ViewKind::Side,
+    };
+    let list = a.get("points").and_then(Value::as_array).filter(|l| (2..=curve::MAX_CURVE_POINTS).contains(&l.len()));
+    let list = list.ok_or_else(|| format!("points must be 2 to {} [a, b] points", curve::MAX_CURVE_POINTS))?;
+    let snap = a.opt_bool("snap")?.unwrap_or(true);
+    let g = grid(state);
+    let mut points = Vec::with_capacity(list.len());
+    for p in list {
+        let ab: Vec<f64> = p
+            .as_array()
+            .filter(|x| x.len() == 2)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_f64)
+            .filter(|f| f.is_finite() && f.abs() <= 16384.0)
+            .collect();
+        if ab.len() != 2 {
+            return Err("points must contain [a, b] points with numbers from -16384 to 16384".to_owned());
+        }
+        let p = glam::DVec2::new(ab[0], ab[1]);
+        points.push(if snap { curve::snap_point(p, g) } else { p });
+    }
+    let segments = a.opt_u64("subdivisions", 2, 4096)?.map_or(16, |n| n as u32);
+    let thickness = a.opt_f64("thickness", 1.0, 1024.0)?.unwrap_or(16.0);
+    let d = match kind {
+        hp_app::ViewKind::Top => 2,
+        hp_app::ViewKind::Front => 0,
+        _ => 1,
+    };
+    let (auto_lo, auto_hi) = hp_tools_create::new_depth_range(state, state.runtime.brush.last_created, d);
+    let lo = a.opt_f64("base", -16384.0, 16384.0)?.unwrap_or(auto_lo);
+    let height = a.opt_f64("height", 1.0, 16384.0)?.unwrap_or(auto_hi - auto_lo);
+    let material = opt_material(state, a, "material")?;
+    let class = a.opt_str("entity_class", MAX_NAME)?.map(|c| c.trim().to_owned());
+    if let Some(c) = &class {
+        check_class(c)?;
+    }
+    let tex_scale = a.opt_f64("tex_scale", 0.01, 64.0)?.unwrap_or_else(|| {
+        let s = state.settings.edit.default_texture_scale;
+        if s.is_finite() && s.abs() > 1e-6 { s } else { hp_geom::DEFAULT_TEXTURE_SCALE }
+    });
+    let lightmap_scale = match state.settings.edit.default_lightmap_scale {
+        s if s > 0 => s,
+        _ => 16,
+    };
+    let layout = curve::layout(&points, segments, thickness).map_err(|e| e.to_string())?;
+    layout.check().map_err(|e| e.to_string())?;
+    let spec = curve::CurveSpec {
+        kind,
+        points: &points,
+        segments,
+        thickness,
+        depth: (lo, lo + height),
+        material: &material,
+        tex_scale,
+        lightmap_scale,
+    };
+    let (ids, entity) = edit(state, "create_curve_brushes", |doc| {
+        let mut next = doc.peek_next_side_id();
+        let solids = curve::build_brushes(&spec, &mut || {
+            let id = next;
+            next = next.saturating_add(1);
+            id
+        })
+        .map_err(|e| hp_editor::EditError::Invalid(e.to_string()))?;
+        match &class {
+            Some(class) => {
+                let id = doc.create_brush_entity(class, &[], solids)?;
+                doc.select(&[ObjRef::Entity(id)], SelectOp::Replace);
+                Ok((doc.scene().entity_solid_ids(id), Some(id)))
+            }
+            None => Ok((doc.create_solids(solids, Owner::World)?, None)),
+        }
+    })?;
+    let bounds = ids.iter().filter_map(|id| state.doc.scene().solid(*id).map(|n| n.bounds)).reduce(|a, b| a.union(&b));
+    state.runtime.brush.last_created = bounds;
+    Ok(ToolResult::json(json!({
+        "solid_ids": ids,
+        "entity_id": entity,
+        "count": ids.len(),
+        "length": layout.length,
+        "points": points.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>(),
+        "depth": [lo, lo + height],
+        "material": material,
+        "bounds": bounds_json(bounds),
+    })))
 }
 
 fn snap_brush_vertices(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
@@ -910,11 +1154,24 @@ fn tie_to_entity(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     }
     let class = a.opt_str("entity_class", MAX_NAME)?.map_or("func_detail", str::trim).to_owned();
     check_class(&class)?;
+    let origin = hp_app::runtime::helpers::brush_entity_needs_origin(state.assets.fgd(), &class);
     if a.opt_bool("each")?.unwrap_or(false) {
-        let ids = edit(state, "tie_to_entity", |doc| doc.tie_each_to_entity(&objs, &class, &kv))?;
+        let ids = edit(state, "tie_to_entity", |doc| {
+            let ids = doc.tie_each_to_entity(&objs, &class, &kv)?;
+            if origin {
+                doc.add_missing_origins(&ids)?;
+            }
+            Ok(ids)
+        })?;
         return Ok(ToolResult::json(json!({ "entity_ids": ids, "classname": class })));
     }
-    let id = edit(state, "tie_to_entity", |doc| doc.tie_to_entity(&objs, &class, &kv))?;
+    let id = edit(state, "tie_to_entity", |doc| {
+        let id = doc.tie_to_entity(&objs, &class, &kv)?;
+        if origin {
+            doc.add_missing_origins(&[id])?;
+        }
+        Ok(id)
+    })?;
     Ok(ToolResult::json(json!({ "entity_id": id, "classname": class })))
 }
 
@@ -1136,6 +1393,23 @@ mod tests {
     }
 
     #[test]
+    fn random_rotate_objects_turns_entities_with_angles() {
+        let mut state = hp_app::testing::test_state();
+        let r =
+            ok(&mut state, "random_rotate_objects", json!({ "ids": [4, 3], "min_yaw": 90, "max_yaw": 90, "seed": 5 }));
+        assert_eq!((r["rotated"].as_u64(), r["skipped"].as_u64()), (Some(1), Some(1)));
+        let a = state.doc.scene().entity(4).and_then(|n| n.entity.angles()).expect("angles");
+        assert_eq!(a.y, 180.0);
+        assert_eq!(state.doc.undo_label(), Some("MCP: random_rotate_objects"));
+        let r = ok(&mut state, "random_rotate_objects", json!({ "ids": [4], "snap": 90, "seed": 9 }));
+        assert_eq!(r["rotated"], 1);
+        let y = state.doc.scene().entity(4).and_then(|n| n.entity.angles()).expect("angles").y;
+        assert_eq!(y % 90.0, 0.0);
+        err(&mut state, "random_rotate_objects", json!({ "ids": [4], "min_yaw": 90, "max_yaw": 10 }));
+        err(&mut state, "random_rotate_objects", json!({ "ids": [4], "tilt": 90 }));
+    }
+
+    #[test]
     fn duplicate_transform_flip_resize() {
         let mut s = hp_app::testing::test_state();
         let n = solid_count(&s);
@@ -1214,6 +1488,58 @@ mod tests {
         assert_eq!(r["merged"], 2);
         err(&mut s, "merge_brushes", json!({ "solid_ids": [2, 3] }));
         ok(&mut s, "merge_brushes", json!({ "solid_ids": [2, 3], "convex_hull": true }));
+    }
+
+    #[test]
+    fn carve_and_extrude_a_face_outline() {
+        let mut s = hp_app::testing::test_state();
+        let window = json!([[-64, 256, 32], [64, 256, 32], [64, 256, 96], [-64, 256, 96]]);
+        let r = ok(&mut s, "extrude_face", json!({ "solid": 3, "side": 5, "points": window, "through": true }));
+        assert_eq!(r["brushes"], 4);
+        assert_eq!(r["mode"], "carve");
+        assert_eq!(r["solid_ids"][0], 3);
+        assert_eq!(s.doc.undo_label(), Some("MCP: extrude_face"));
+        let vol: f64 = r["solid_ids"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|id| s.doc.scene().solid(id.as_u64().unwrap() as u32).unwrap().geom.volume())
+            .sum();
+        assert!((vol - (512.0 * 16.0 * 128.0 - 128.0 * 16.0 * 64.0)).abs() < 1e-6);
+        assert!(s.doc.undo());
+        let l = json!([[-128, -128, 0], [128, -128, 0], [128, 0, 0], [0, 0, 0], [0, 128, 0], [-128, 128, 0]]);
+        let r = ok(
+            &mut s,
+            "extrude_face",
+            json!({ "solid": 2, "side": 0, "points": l, "mode": "extrude", "depth": 32, "material": "dev/dev_blendmeasure" }),
+        );
+        let ids = r["solid_ids"].as_array().unwrap();
+        assert!(ids.len() >= 2, "a concave outline makes several convex brushes");
+        for id in ids {
+            let n = s.doc.scene().solid(id.as_u64().unwrap() as u32).unwrap();
+            assert!(n.geom.valid);
+            assert!(n.solid.sides.iter().all(|side| side.material == "dev/dev_blendmeasure"));
+        }
+        assert_eq!(r["bounds"]["max"][2], 32.0);
+        let r = ok(
+            &mut s,
+            "extrude_face",
+            json!({ "solid": 2, "side": 1, "points": [[-256, -256, -16], [256, -256, -16], [256, 256, -16], [-256, 256, -16]], "mode": "extrude", "depth": 8 }),
+        );
+        assert_eq!(r["solid_ids"], json!([2]), "an outline covering the face grows the brush");
+        err(&mut s, "extrude_face", json!({ "solid": 3, "side": 99, "points": window }));
+        err(&mut s, "extrude_face", json!({ "solid": 3, "side": 5, "points": [[0, 256, 0], [1, 256, 0]] }));
+        err(
+            &mut s,
+            "extrude_face",
+            json!({ "solid": 3, "side": 5, "points": [[0, 256, 0], [64, 256, 64], [64, 256, 0], [0, 256, 64]] }),
+        );
+        err(
+            &mut s,
+            "extrude_face",
+            json!({ "solid": 3, "side": 5, "points": [[900, 256, 0], [964, 256, 0], [964, 256, 64]] }),
+        );
+        err(&mut s, "extrude_face", json!({ "solid": 3, "side": 5, "points": window, "depth": 0 }));
     }
 
     #[test]
@@ -1326,6 +1652,66 @@ mod tests {
     }
 
     #[test]
+    fn curve_brushes_follow_the_points() {
+        let mut s = hp_app::testing::test_state();
+        s.doc.clear_selection();
+        let before = s.doc.stats().solids;
+        let (undo, _) = s.doc.history_len();
+        let r = ok(
+            &mut s,
+            "create_curve_brushes",
+            json!({ "view": "top", "points": [[3, -2], [254, 130], [513, 0]], "subdivisions": 24, "thickness": 32, "height": 96, "base": 16, "material": "concrete/concretefloor001a" }),
+        );
+        assert_eq!(r["count"], 24);
+        assert_eq!(s.doc.stats().solids, before + 24);
+        assert_eq!(s.doc.history_len().0, undo + 1, "one undo step");
+        assert_eq!(r["depth"], json!([16.0, 112.0]));
+        let first = &r["points"][0];
+        assert!(first[0].as_f64().unwrap() % 8.0 == 0.0 && first[1].as_f64().unwrap() % 8.0 == 0.0, "{first}");
+        let ids: Vec<u32> = r["solid_ids"].as_array().unwrap().iter().map(|v| v.as_u64().unwrap() as u32).collect();
+        assert_eq!(s.doc.selected_solid_ids().len(), 24, "selected");
+        for id in &ids {
+            let n = s.doc.scene().solid(*id).unwrap();
+            assert!(n.geom.valid);
+            assert_eq!(n.geom.faces.len(), 6);
+            assert!(n.solid.sides.iter().all(|x| x.material == "concrete/concretefloor001a"));
+            assert!((n.bounds.min.z - 16.0).abs() < 1e-6 && (n.bounds.max.z - 112.0).abs() < 1e-6);
+        }
+        let r = ok(
+            &mut s,
+            "create_curve_brushes",
+            json!({ "view": "front", "points": [[0, 0], [128, 128]], "subdivisions": 2, "entity_class": "func_detail", "snap": false }),
+        );
+        assert_eq!(r["count"], 2);
+        assert!(r["entity_id"].as_u64().is_some());
+        let e = err(
+            &mut s,
+            "create_curve_brushes",
+            json!({ "view": "side", "points": [[0, 0], [512, 0]], "subdivisions": 4096 }),
+        );
+        assert!(e.contains("under 1"), "{e}");
+        let e = err(
+            &mut s,
+            "create_curve_brushes",
+            json!({ "view": "top", "points": [[0, 0], [256, 0], [0, 8]], "thickness": 64 }),
+        );
+        assert!(e.contains("fold"), "{e}");
+        let solids = s.doc.stats().solids;
+        err(&mut s, "create_curve_brushes", json!({ "view": "top", "points": [[0, 0], [256, 0]], "subdivisions": 1 }));
+        err(
+            &mut s,
+            "create_curve_brushes",
+            json!({ "view": "top", "points": [[0, 0], [256, 0]], "subdivisions": 4097 }),
+        );
+        err(&mut s, "create_curve_brushes", json!({ "view": "top", "points": [[0, 0], [256, 0]], "thickness": 0.5 }));
+        err(&mut s, "create_curve_brushes", json!({ "view": "top", "points": [[0, 0], [256, 0]], "thickness": 1025 }));
+        err(&mut s, "create_curve_brushes", json!({ "view": "top", "points": [[0, 0]] }));
+        err(&mut s, "create_curve_brushes", json!({ "view": "top", "points": [[0, 0], [1, 1]] }));
+        err(&mut s, "create_curve_brushes", json!({ "view": "3d", "points": [[0, 0], [256, 0]] }));
+        assert_eq!(s.doc.stats().solids, solids, "refused curves create nothing");
+    }
+
+    #[test]
     fn prop_to_brushes_needs_a_prop_and_its_model() {
         let mut s = hp_app::testing::test_state();
         let e = err(&mut s, "prop_to_brushes", json!({}));
@@ -1339,6 +1725,38 @@ mod tests {
         err(&mut s, "prop_to_brushes", json!({ "shape": "render", "keep_prop": true }));
         err(&mut s, "prop_to_brushes", json!({ "id": 2 }));
         assert!(s.doc.scene().entity(prop).is_some(), "nothing changed");
+    }
+
+    const TRAIN_FGD: &str = "@BaseClass = Origin [ origin(origin) : \"Origin\" ]\n\
+        @SolidClass base(Origin) = func_tracktrain : \"Train\" [ target(target_destination) : \"First stop\" ]\n\
+        @SolidClass base(Origin) = func_tanktrain : \"Tank\" []\n\
+        @SolidClass = func_wall : \"Wall\" []";
+
+    #[test]
+    fn trains_get_an_origin_at_their_center() {
+        let mut s = hp_app::testing::test_state_with_fgd(TRAIN_FGD);
+        let center = s.doc.scene().solid(3).expect("solid 3").bounds.center();
+        let r = ok(&mut s, "tie_to_entity", json!({ "solid_ids": [3], "entity_class": "func_tracktrain" }));
+        let id = r["entity_id"].as_u64().unwrap() as u32;
+        assert_eq!(s.doc.scene().entity(id).unwrap().entity.origin(), Some(center));
+        assert_eq!(s.doc.undo_label(), Some("MCP: tie_to_entity"), "one undo step");
+        let r = ok(&mut s, "tie_to_entity", json!({ "solid_ids": [2], "entity_class": "func_wall" }));
+        let wall = r["entity_id"].as_u64().unwrap() as u32;
+        assert!(s.doc.scene().entity(wall).unwrap().entity.get("origin").is_none(), "no origin key in the class");
+        ok(&mut s, "set_entity_class", json!({ "ids": [wall], "classname": "func_tanktrain" }));
+        assert!(s.doc.scene().entity(wall).unwrap().entity.origin().is_some());
+        let r = ok(
+            &mut s,
+            "tie_to_entity",
+            json!({ "solid_ids": [2], "entity_class": "func_tanktrain", "keyvalues": { "origin": "1 2 3" } }),
+        );
+        let given = r["entity_id"].as_u64().unwrap() as u32;
+        assert_eq!(s.doc.scene().entity(given).unwrap().entity.get("origin"), Some("1 2 3"), "a given origin wins");
+        ok(&mut s, "move_to_world", json!({ "ids": [given] }));
+        let r = ok(&mut s, "tie_to_entity", json!({ "solid_ids": [2], "entity_class": "func_wall" }));
+        let other = r["entity_id"].as_u64().unwrap() as u32;
+        ok(&mut s, "set_entity_keyvalues", json!({ "id": other, "set": { "classname": "func_tracktrain" } }));
+        assert!(s.doc.scene().entity(other).unwrap().entity.origin().is_some());
     }
 
     #[test]

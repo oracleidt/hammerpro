@@ -119,6 +119,7 @@ fn wall_vertices() -> Vec<CompiledVertex> {
         lm: [0.5, 0.5],
         lightmap: 0,
         cubemap: hp_render::NO_CUBEMAP,
+        blend: Default::default(),
     };
     vec![v(-100.0, -100.0), v(100.0, -100.0), v(100.0, 100.0), v(-100.0, 100.0)]
 }
@@ -452,7 +453,7 @@ fn four_way_material(r: &mut Renderer, bump: TexId, bump2: TexId, factors: [f32;
 
 fn blended_wall(weights: [f32; 4]) -> ObjectMesh {
     let mut mesh = wall_mesh();
-    mesh.batches[0].blend = vec![BlendVertex { weights, tint: [1.0; 3] }; 4];
+    mesh.batches[0].blend = vec![BlendVertex::painted(weights); 4];
     mesh
 }
 
@@ -482,7 +483,7 @@ fn four_way_blends_mix_their_normal_maps_like_their_textures() {
     let three2 = px(&shot(&mut r, RenderMode::Textured, on(), "four_texture3_bump2"), 100, 100)[0];
     assert!(three2.abs_diff(two) <= 2, "texture 3 with factor 1: {three2} vs {two}");
     four_way_material(&mut r, toward, away, defaults);
-    r.upsert_object(1, blended_wall([0.5, 0.5, 0.0, 0.0]));
+    r.upsert_object(1, blended_wall([0.8, 0.2, 0.0, 0.0]));
     let half = px(&shot(&mut r, RenderMode::Textured, on(), "four_half"), 100, 100)[0];
     assert!(half < one && half > two, "mixed: {two} < {half} < {one}");
     let off = px(&shot(&mut r, RenderMode::Textured, ViewOptions::default(), "four_off"), 100, 100)[0];
@@ -495,14 +496,10 @@ fn four_way_blends_mix_their_normal_maps_like_their_textures() {
     r.upsert_object(1, blended_wall([1.0, 0.0, 0.0, 0.0]));
     let gray = linear(128);
     let pack = hp_render::lightmap::pack_blend;
-    wall_lightmap(&mut r, &BUMPED_LIGHT, true, pack([1.0, 0.0, 0.0, 0.0], [1.0; 3]));
+    wall_lightmap(&mut r, &BUMPED_LIGHT, true, pack([1.0, 0.0, 0.0, 0.0]));
     let first = shot(&mut r, RenderMode::Textured, on(), "four_baked_texture1");
     close(px(&first, 100, 100)[0], srgb(gray), 4.0, "baked texture 1: $bumpmap");
-    wall_lightmap(&mut r, &BUMPED_LIGHT, true, pack([0.0, 1.0, 0.0, 0.0], [1.0; 3]));
+    wall_lightmap(&mut r, &BUMPED_LIGHT, true, pack([0.0, 1.0, 0.0, 0.0]));
     let second = shot(&mut r, RenderMode::Textured, on(), "four_baked_texture2");
     close(px(&second, 100, 100)[0], srgb(gray * 0.5), 4.0, "baked texture 2: $bumpmap2");
-    wall_lightmap(&mut r, &BUMPED_LIGHT, true, pack([0.0, 1.0, 0.0, 0.0], [1.0, 0.0, 0.0]));
-    let tinted = shot(&mut r, RenderMode::Textured, on(), "four_baked_tint");
-    let c = px(&tinted, 100, 100);
-    assert!(c[0] > 60 && c[1] < 10 && c[2] < 10, "red tint: {c:?}");
 }

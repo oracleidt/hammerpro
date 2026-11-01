@@ -252,8 +252,12 @@ impl SelectTool {
         let mut moved = DVec3::ZERO;
         if clone_delta.length_squared() > 1e-12 {
             let objs = state.doc.selected_objects();
-            let keep = state.settings.selection.clone_keeps_visgroups;
-            let r = state.doc.duplicate_transformed(&objs, DMat4::from_translation(clone_delta), DVec3::ZERO, keep);
+            let r = hp_app::runtime::helpers::duplicate_linking_paths(
+                state,
+                &objs,
+                DMat4::from_translation(clone_delta),
+                DVec3::ZERO,
+            );
             if r.is_ok() {
                 moved += clone_delta;
             }

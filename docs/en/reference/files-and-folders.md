@@ -47,7 +47,7 @@ Editor data that does not belong in the VMF is kept per map in `%LOCALAPPDATA%\H
 | `workflow` | The exact grid size (the VMF only stores a whole number for Hammer). |
 | `game` | The game of the map (see [Port a map to another game](../guides/port-to-another-game.md)). |
 | `compile` | The last successful compile of each build of the map, for smart recompiles. |
-| `content` | The Build and save as content options: addon title, tags, ignore list, description, output folder, Workshop id, last change note, last release summary, nav mesh and cubemap fingerprints, and the secret salt of the material randomizer of BSP Protection Pro. |
+| `content` | The Build and save as content options: addon title, tags, ignore list, description, output folder, Workshop id, last change note, last release summary, nav mesh and cubemap fingerprints, and the secret salt of the material randomizer of Protect your BSP. |
 | `health_ignored` | The problems you chose to ignore. |
 | `placement` | The counter of the `&i` prefab token. |
 | `startup_export` | The last export, for "Export again". |

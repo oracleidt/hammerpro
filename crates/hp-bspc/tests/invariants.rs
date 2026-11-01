@@ -405,3 +405,39 @@ fn a_world_without_brushes_compiles() {
         );
     }
 }
+
+#[test]
+fn trains_are_built_around_their_origin() {
+    let out = common::compile(&common::maps::trains().text());
+    let lumps = Lumps::from_bytes(&out.bsp);
+    let ents = lumps.entities();
+    let get = |e: &Vec<(String, String)>, k: &str| e.iter().find(|(key, _)| key == k).map(|(_, v)| v.clone());
+    let of = |class: &str| ents.iter().find(|e| get(e, "classname").as_deref() == Some(class)).expect(class).clone();
+    let models = lumps.models();
+    for (class, origin, half) in
+        [("func_tracktrain", "-256 -256 64", [64.0, 32.0, 32.0]), ("func_tanktrain", "256 256 64", [32.0, 16.0, 16.0])]
+    {
+        let e = of(class);
+        assert_eq!(get(&e, "origin").as_deref(), Some(origin), "{class}: {e:?}");
+        let model: usize = get(&e, "model").and_then(|m| m.trim_start_matches('*').parse().ok()).expect("model");
+        assert!(model > 0);
+        let m = &models[model];
+        for k in 0..3 {
+            assert!((m.mins[k] + half[k]).abs() < 1.5 && (m.maxs[k] - half[k]).abs() < 1.5, "{class} {m:?}");
+        }
+        assert_eq!(get(&e, "target").as_deref(), Some(if class == "func_tanktrain" { "t3" } else { "t1" }));
+    }
+    let track = of("path_track");
+    assert!(get(&track, "target").is_some() && get(&track, "origin").is_some());
+    let map = hp_vmf::parse(&common::maps::trains().text()).expect("map");
+    let again = hp_bspc::compile::entities_only(&map, &common::GameMats, &out.bsp).expect("entities only");
+    let train = Lumps::from_bytes(&again)
+        .entities()
+        .into_iter()
+        .find(|e| get(e, "classname").as_deref() == Some("func_tracktrain"));
+    assert_eq!(
+        train.and_then(|e| get(&e, "origin")).as_deref(),
+        Some("-256 -256 64"),
+        "the entity-only compile agrees"
+    );
+}

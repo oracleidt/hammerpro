@@ -17,7 +17,7 @@ Choose the mode in **View > 3D render mode**, with the render mode list of the t
 | **Lighting preview** | `Alt+5` | The Lit mode: the light entities light the map in real time, with shadows (see [Lighting preview](lighting-preview.md)). |
 | **Textured, unshaded** | `Alt+6` | Materials without the editor shading. |
 | **Smoothing groups** | `Alt+7` | Faces colored by smoothing group. |
-| **Lightmap grid** | `Alt+8` | The lightmap luxel grid, colored by lightmap scale; faces with a tiny scale are red. |
+| **Lightmap grid** | `Alt+8` | Hammer's 3D lightmap grid: the luxel grid of every lightmapped face (cells as wide as its lightmap scale, displacements included), grey at 16, red when finer, green when coarser; no bake needed. Faces without a lightmap keep their texture. |
 | **Baked lighting preview** | `Ctrl+F5` | The lighting the game will have, computed by the built-in compiler (see [Lighting preview](lighting-preview.md)). |
 
 **View > View type** also has **3D textured view** (`F5`) and **3D flat view** (`Shift+F5`). The mode is remembered between sessions (`view.render_mode`).
@@ -65,6 +65,10 @@ Directly in the **View** menu:
 | **Highlight invalid brushes** | Brushes that are not closed and convex are drawn in red in every view. | On |
 | **Show nodraw faces** | Shows or hides the nodraw faces in the 3D view. | Shown |
 | **Water preview** | Water drawn like in game: refraction, water fog, reflection of the scene and the sky, moving waves. Off: its tool texture. | On |
+| **Fog volume preview** | Each `fog_volume` is filled with the fog of its controller (see [Fog volumes](#fog-volumes)). | On |
+| **Fog volume texture** | The material of the `fog_volume` brushes is drawn in the 3D view, like Hammer. Off: only the fog shows. | On |
+| **Fish preview** | The fish of each `func_fish_pool` (see [Fish pools](#fish-pools)). | On |
+| **Swimming fish** | The fish swim slow circles. Off: they stay still. | On |
 | **Cubemap reflections** | Materials with `$envmap` reflect their cubemap (see [Lighting preview](lighting-preview.md)). | On |
 | **Use the previewed sky camera in game** | See [Sky cameras](sky-cameras.md). | |
 | **Show particles** / **Particles of the selection only** | See [Particles](particles.md). | On / Off |
@@ -75,6 +79,26 @@ Directly in the **View** menu:
 The View menu also has **3D skybox camera** (when the map has several sky cameras) and **Hidden tool textures** (nodraw, clips, triggers, hints and skips hidden in the 3D view).
 
 The toolbar repeats the most used switches: radius culling, displacement mesh, displacement walkability, nodraw, model collisions, helpers, models, tool textures, editor objects, 3D skybox, particles, simulate ropes, the render mode list and the player view.
+
+## Fog volumes
+
+A `fog_volume` changes the fog of the players whose eyes are inside it: the game then uses the `env_fog_controller` named by its **Fog Name** instead of the map fog. Like the game, the volume is the box around all its brushes, whatever their shape.
+
+With **Fog volume preview** on, the 3D view fills that box with the fog of the controller: its primary color (and the secondary one with **Fog Blend**, along **Primary Fog Direction** or the angles with **Use Angles for Fog Dir**), **Fog Start**, **Fog End** and **Fog Max Density**. The fog is as thick as the view crosses the box, as if you stood at its edge, so what is inside or behind the volume is fogged like from inside it. Editing the keys of the volume or of its controller updates the preview at once.
+
+- The controller needs **Fog Enable** set to Yes, like in game: with No, the volume clears the fog and the preview shows nothing.
+- **Fog Name** can end with `*` to take the first controller whose name starts that way.
+- The **Color Correction Name** (a `color_correction` lookup table) is not previewed.
+- In the [player view](player-view.md), the fog of the volume replaces the map fog while the eyes are inside it, even with **Fog preview** off; a volume with **Start Disabled** does nothing there, like in game.
+- **Fog volume texture** off hides the brush material in the 3D view (select the volume in a 2D view).
+
+## Fish pools
+
+A `func_fish_pool` spawns `fish_count` fish (default 10) of its **World model** (`models/Junkola.mdl` by default) that swim up to **Max Range** units (default 150, at most 255) from the entity. With **Fish preview** on, the 3D view draws them scattered within that range, always at the same places for the same pool. When the entity is in water, the fish stay in that water, at least 8 units under its surface, like the game keeps them under the water level. With **Swimming fish** on they swim slow circles around their place.
+
+- The pool itself shows as a box; select it to see a sphere and a circle of its **Max Range**.
+- The preview draws at most 256 fish per pool.
+- A model the game content does not have (Garry's Mod has no `models/Junkola.mdl`) shows each fish as a small box in the color of the entity.
 
 ## Background images
 
@@ -140,6 +164,8 @@ The images are stored in the map (`bgimages_plus` block of the VMF), so they tra
 **Where did my props go?** Check **Show models**, **Model distance** and **Show model collisions**.
 
 **The fog preview shows nothing.** Choose a controller in **View > Display options > Fog preview**: the map needs an `env_fog_controller`.
+
+**My fog_volume shows no fog.** Its **Fog Name** must be the name of an `env_fog_controller` with **Fog Enable** at Yes and a **Fog Max Density** above 0.
 
 ## Related pages
 

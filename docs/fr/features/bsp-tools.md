@@ -17,7 +17,7 @@ Ce qui revient :
 
 Les matériaux et modèles du pakfile de la map sont copiés dans un dossier de cache monté tant que la map est ouverte, pour que son propre contenu s'affiche (*Fichiers du contenu propre à la map, affichés tant qu'elle est ouverte*).
 
-Une map compilée ne rend pas tout : les instances sont fusionnées, les visgroups, groupes et objets cachés ont disparu, et les brushes hint, skip et origin ont été retirés par le compilateur. La console liste les brushes, displacements et occluders impossibles à reconstruire, les overlays qui ont perdu leurs faces, et les brushes sans faces (map protégée contre la décompilation, voir [BSP Protection Pro](bsp-protection.md)).
+Une map compilée ne rend pas tout : les instances sont fusionnées, les visgroups, groupes et objets cachés ont disparu, et les brushes hint, skip et origin ont été retirés par le compilateur. La console liste les brushes, displacements et occluders impossibles à reconstruire, les overlays qui ont perdu leurs faces, et les brushes sans faces (map protégée contre la décompilation, voir [Protect your BSP](bsp-protection.md)).
 
 ## Ouvrir une archive (inspecteur d'archives)
 
@@ -66,7 +66,7 @@ Sélectionnez une entrée pour la prévisualiser : fichiers texte (VMT, TXT, Lua
 
 ## Pages liées
 
-- [BSP Protection Pro](bsp-protection.md)
+- [Protect your BSP](bsp-protection.md)
 - [Construire et enregistrer en contenu](build-content-release.md)
 - [Compatibilité VMF](../getting-started/vmf-compatibility.md)
 - [Fichiers et dossiers](../reference/files-and-folders.md)

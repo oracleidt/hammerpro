@@ -15,8 +15,8 @@ The Selection tool picks objects in the 2D and 3D views and transforms them: Ham
 
 | Gesture | 2D views | 3D view |
 |---|---|---|
-| Click an object | Selects it (replaces the selection) | Selects the nearest object under the pointer |
-| Click the same spot again | Selects the next overlapping object (up to 64 are cycled) | Selects the next object behind |
+| Click an object | Selects it (replaces the selection) | Selects the nearest object you see under the pointer: models by their real shape (not their box), and what the view hides is skipped (hidden objects, tool textures hidden with the View menu, hidden displacements) |
+| Click the same spot again | Within 2 seconds, while the last pick is still the selection: the next overlapping object (up to 64 are cycled) | Same: the next object behind. Later, or after the selection changed, the click starts over with the nearest object |
 | `Ctrl+click` | Adds the object to the selection, or removes it when it is already selected | Same; `Ctrl+click` also picks through the gizmo |
 | Click on empty space | Clears the selection (a click inside the selection box switches the handle mode instead) | Clears the selection (not with `Ctrl`) |
 | Click an object that is already the whole selection | Switches the handle mode (Scale, Rotate, Skew, then Scale again), like Hammer | |
@@ -206,7 +206,9 @@ Page **Editing**: **Nudge with arrow keys** (on) and **Undo restores the selecti
 
 ## FAQ
 
-**Why does clicking my selection not select the object behind it?** A click on an object that is already the whole selection switches the handle mode. Click the same spot again within the cycle (or press `Page Down`) to reach the object behind.
+**Why does clicking my selection not select the object behind it?** A click on an object that is already the whole selection switches the handle mode. Click the same spot again within 2 seconds (or press `Page Down`) to reach the object behind.
+
+**I click a wall and something else gets selected.** A quick second click on the same spot digs to the object behind: wait 2 seconds, or click once. Brushes with a hidden tool texture (nodraw, clips, triggers, hints, see the View menu) and objects the 3D view does not draw are never picked there, but the 2D views still show and pick them.
 
 **My rotation jumps by 15 degrees.** That is the rotation step. Hold `Ctrl` (or `Alt`, depending on **Free rotation key**) for a free angle, or change the step on the **Selection** settings page.
 

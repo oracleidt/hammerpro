@@ -259,6 +259,7 @@ fn build_scene(r: &mut Renderer) {
         water: None,
         envmap: None,
         self_illum: None,
+        four_way: None,
     };
     r.set_material(MAT_BRICK, &mat(brick, 64.0, MaterialFlags::empty()));
     r.set_material(MAT_CHECK, &mat(check, 64.0, MaterialFlags::empty()));

@@ -25,7 +25,7 @@ mod tests_dedup;
 
 use hp_app::AppState;
 
-pub use settings_dialog::SettingsTab;
+pub use settings_dialog::{SettingsTab, discord_shown_status};
 pub use tr::{TABLES, TR};
 
 pub fn register_translations() {

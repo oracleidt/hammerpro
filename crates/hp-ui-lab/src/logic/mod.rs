@@ -285,14 +285,12 @@ impl LogicalView {
                 frame_selection = true;
             }
             frame_search = r.changed();
-            egui::ComboBox::from_id_salt("lab_logic_filter")
-                .selected_text(match self.filter {
-                    NodeFilter::NamedAndConnected => t!("lab.logic.filter_named"),
-                    NodeFilter::ConnectedOnly => t!("lab.logic.filter_connected"),
-                })
+            egui::ComboBox::from_id_salt(("lab_logic_filter", self.salt))
+                .selected_text(t!(self.filter.label_key()))
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut self.filter, NodeFilter::NamedAndConnected, t!("lab.logic.filter_named"));
-                    ui.selectable_value(&mut self.filter, NodeFilter::ConnectedOnly, t!("lab.logic.filter_connected"));
+                    for f in NodeFilter::ALL {
+                        ui.selectable_value(&mut self.filter, f, t!(f.label_key()));
+                    }
                 });
             if ui.button(t!("lab.logic.frame_all")).on_hover_text(t!("lab.logic.frame_all_tip")).clicked() {
                 self.frame_all = true;
@@ -337,7 +335,8 @@ impl LogicalView {
             self.frame(rect, &[]);
         }
         self.input(ui, rect, &response, state);
-        self.paint(ui, rect, state);
+        let icons = self.icon_textures(ui.ctx(), state);
+        self.paint(ui, rect, state, &icons);
         if let Some(e) = self.hovered_edge.and_then(|k| self.graph.edges.get(k)) {
             let text = edge_text(e, &self.graph);
             let problem = e.state.is_problem().then(|| {
@@ -607,7 +606,30 @@ impl LogicalView {
         }
     }
 
-    fn paint(&mut self, ui: &egui::Ui, rect: Rect, state: &AppState) {
+    fn icon_textures(&self, ctx: &egui::Context, state: &mut AppState) -> Vec<Option<egui::TextureId>> {
+        let mut seen: std::collections::HashMap<&str, Option<egui::TextureId>> = std::collections::HashMap::new();
+        self.graph
+            .nodes
+            .iter()
+            .map(|n| {
+                let name = n.icon.as_deref()?;
+                *seen.entry(name).or_insert_with(|| match state.assets.thumbnail(ctx, name) {
+                    hp_app::state::ThumbState::Ready { texture, .. } => Some(texture),
+                    _ => None,
+                })
+            })
+            .collect()
+    }
+
+    pub fn filter(&self) -> NodeFilter {
+        self.filter
+    }
+
+    pub fn set_filter(&mut self, filter: NodeFilter) {
+        self.filter = filter;
+    }
+
+    fn paint(&mut self, ui: &egui::Ui, rect: Rect, state: &AppState, icons: &[Option<egui::TextureId>]) {
         let painter = ui.painter_at(rect);
         let visuals = ui.visuals();
         painter.rect_filled(rect, CornerRadius::same(4), visuals.extreme_bg_color);
@@ -706,7 +728,18 @@ impl LogicalView {
             };
             painter.rect_stroke(r, radius, border, egui::StrokeKind::Inside);
             let tp = painter.with_clip_rect(r.shrink(2.0).intersect(rect));
-            let left = r.left() + 10.0 * self.zoom.max(0.6);
+            let mut left = r.left() + 10.0 * self.zoom.max(0.6);
+            if let Some(texture) = icons.get(i).copied().flatten() {
+                let side = (r.height() - 8.0 * self.zoom).max(4.0);
+                let icon = Rect::from_min_size(pos2(left, r.center().y - side * 0.5), vec2(side, side));
+                tp.image(
+                    texture,
+                    icon,
+                    Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+                    Color32::WHITE.gamma_multiply(alpha),
+                );
+                left = icon.right() + 6.0 * self.zoom.max(0.6);
+            }
             let (label, label_color) =
                 if n.name.is_empty() { (n.class.as_str(), weak) } else { (n.name.as_str(), text_color) };
             if self.zoom < 0.6 {

@@ -107,7 +107,7 @@ Any other MCP app: a stdio server with the command `hammerpro.exe` and the argum
 - **Local only**: the server listens on `127.0.0.1`, never on the network, and refuses any connection that is not from this computer.
 - **Secret token**: each time a server starts it makes a random 32 byte token. Every connection must send it first or is closed. The token is only written in the window's instance record, `%LOCALAPPDATA%\HammerPro\mcp\instances\<pid>.json`, in your own profile. The record is removed when the server stops or Hammer Pro closes; records of crashed windows are ignored and cleaned up.
 - **Limits**: messages up to 8 MB, 8 connections at a time per window, a timeout on every tool call.
-- **No programs, no arbitrary files**: the tools never run commands. Maps are opened and saved as `.vmf` only; saving over another existing file needs an explicit `overwrite`. The game is started only when the AI explicitly asks for it.
+- **No programs unless you ask, no arbitrary files**: the tools run no command of their own. Maps are opened and saved as `.vmf` only; saving over another existing file needs an explicit `overwrite`. The game is started only when the AI explicitly asks for it. Compiles use the compiler chosen for the game (Hammer Pro's own by default); creating or changing a compiler that runs other programs (`create_compiler`, `set_compiler` with steps) needs `confirm: true`. See [Choosing a compiler](../compiler/compilers.md).
 - **Confirmation**: `run_action` runs any menu command except a few that need `confirm: true`, which the AI passes only when you asked for exactly that: Exit, switching MCP off, installing MCP in other apps, publishing, starting or talking to the game, compiling with the game, editing an instance in another window, opening the web browser and the commands that show a file dialog.
 - **Settings**: `set_setting` never changes file paths, folders, programs, command lines, the game content folders or the MCP settings: you change those in the Settings window. Adding or removing an extra FGD file (`.fgd` only) needs `confirm: true`.
 - The UI automation tools (`ui_click`, `ui_key`, `ui_type`...) act inside the Hammer Pro window only.
@@ -141,7 +141,7 @@ Every change the AI makes is **one undo step** named "MCP:" followed by what was
 | Settings | Read and change settings and key bindings. |
 | UI automation | Screenshot of a window, description of the interface, mouse and keyboard input inside the window. |
 | Windows | List the Hammer Pro windows and choose one. |
-| Editing | Duplicate, array, transform, resize, flip, snap, align, clip, carve, hollow, merge, vertex editing, primitives, rooms, stairs, hint and nodraw, tie to entity, face textures (justify, fit, wrap), material replacement. |
+| Editing | Duplicate, array, transform, resize, flip, snap, align, clip, carve, face outlines carved or extruded, hollow, merge, vertex editing, primitives, rooms, stairs, hint and nodraw, tie to entity, face textures (justify, fit, wrap), material replacement. |
 | Groups and visibility | Select by class, name, material or box, groups, visgroups, hide and isolate, cordons. |
 | Grids | Grid modes, custom grids (create, edit, delete, attach). |
 | Displacements | Create, destroy, paint, sculpt strokes, noise, scale, alpha, flags, tags, subdivide, sew. |

@@ -97,7 +97,7 @@ The logical view shows the entities of the map and their outputs as a schematic.
 
 ### What is shown
 
-- Nodes: the entities that have a name or take part in a connection. A node shows the name (**(unnamed)** when there is none) and the class, with an accent color by class family (logic and filters, triggers, `func_`, lights and environment, props and NPCs, info and path entities, others).
+- Nodes: every entity of the map by default, like Hammer: point entities (`light`, `light_spot`, `light_environment`, `info_` entities, logic...) and brush entities, named or not. A node shows the editor icon of its class (the FGD `iconsprite()` or `sprite()` helper, the icon of the 2D and 3D views), the name (**(unnamed)** when there is none) and the class, with an accent color by class family (logic and filters, triggers, `func_`, lights and environment, props and NPCs, info and path entities, others). Entities hidden by a visgroup are drawn faded.
 - Edges: one per output, colored like the connection lines (green valid, red missing target with a cross and the name, yellow output or input unknown to the FGD). An output to its own entity loops above the node.
 - Hover an edge for `Output > target.Input (parameter) after N s (once)` and, for a problem, the reason.
 - Zoomed out, text and ports are left out and edges are straight, so large maps stay fluid.
@@ -107,7 +107,7 @@ The logical view shows the entities of the map and their outputs as a schematic.
 | Control | What it does |
 |---|---|
 | **Find an entity...** | Shows only the nodes whose name or class contains the text and frames them while you type. `Enter` frames the results. |
-| Filter | **Named and connected** (default) or **Connected only** (entities with an outgoing or incoming connection). |
+| Filter | **All entities** (default), **Named and connected** (entities with a name or a connection) or **Connected only** (entities with an outgoing or incoming connection). Each view keeps its own filter. |
 | **Frame all** | Shows every entity (`Home` with the mouse over the view). |
 | **Frame selection** | Frames the search results, else the selected entities. |
 | **Arrange** | Places every entity automatically and stores the positions in the map (one undo step, "Arrange logical view"). |
@@ -160,7 +160,7 @@ Dragging from an output port to another node opens **New output**:
 
 - The outputs tab title turns highlighted when an output has a problem: look for the red cells.
 - Use **Arrange** once on an imported map, then move the nodes you care about: the others follow the automatic layout.
-- Through MCP: `list_connections`, `add_connection`, `edit_connection`, `remove_connections`, `get_io_graph`, `list_targetnames`, `rename_targetname`, `check_entity`, and `get_views` (a quadrant of kind `logical`). See the [MCP tool reference](../../MCP.md).
+- Through MCP: `list_connections`, `add_connection`, `edit_connection`, `remove_connections`, `get_io_graph`, `list_targetnames`, `rename_targetname`, `check_entity`, `get_logical_graph` (the nodes, icons and edges of the logical view, with its filter), and `get_views` (a quadrant of kind `logical`). See the [MCP tool reference](../../MCP.md).
 
 ## FAQ
 

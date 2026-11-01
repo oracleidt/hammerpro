@@ -21,7 +21,7 @@ This guide makes a piece of terrain: turn brush faces into displacements, sculpt
 1. Choose the **Paint geometry** mode.
 2. Choose the effect: **Raise**, **Lower**, **Smooth** or **Raise to** (a target height above the face).
 3. In the **Brush** section, set **Radius** (world units), **Strength** (units per second at the brush center) and **Falloff** (**Constant**, **Linear**, **Smooth**).
-4. Choose the **Axis**: **Face normal**, **Surface normal**, **Brush center**, **View (camera)**, **X**, **Y**, **Z (up)** or **Custom** (Alt and a right click on a face in the 3D view takes its normal).
+4. Choose the **Axis**: **Face normal**, **Surface normal**, **Brush center**, **View (camera)**, **View (camera), horizontal** (toward the camera on X and Y only), **X**, **Y**, **Z (up)** or **Custom** (Alt and a right click on a face in the 3D view takes its normal).
 5. In the 3D view, hold the left button over the displacements and move: a brush circle follows the surface.
    - `Shift` inverts (lower instead of raise).
    - A right drag, or `Alt` and a horizontal drag, changes the radius.

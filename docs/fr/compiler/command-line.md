@@ -73,6 +73,7 @@ Géométrie et visibilité. Les valeurs par défaut sont celles de la ligne de c
 | `-wsaddons` | | Aussi les objets du Workshop abonnés. | désactivé |
 | `-nowsaddons` | | Ni addons en dossier ni objets du Workshop. | désactivé |
 | `-serveraddons` | | Aussi le contenu téléchargé depuis les serveurs. | désactivé |
+| `-mount_appid` | AppID[,AppID] | Monte aussi des jeux Steam installés par AppID (répétable, `-mount_appid 240,440`), trouvés par les bibliothèques Steam comme **Paramètres > Jeu > Jeux Steam par AppID**. | aucun |
 
 Acceptées par compatibilité, sans effet : `-novconfig`, `-allowdebug`, `-steam`, `-verboseentities`, `-tmpout`, `-tmpin`.
 
@@ -116,7 +117,7 @@ Sans contenu de jeu (Garry's Mod introuvable et pas de `-game`), les matériaux 
 | `-nodispshadows` | | Hammer Pro : aucune ombre de displacement. | désactivé |
 | `-ao` / `-noao` | | Hammer Pro : occlusion ambiante activée ou non. | activée, désactivée avec `-fast` |
 | `-aoradius` / `-aostrength` / `-aosamples` | nombre | Réglages de l'occlusion ambiante. | 96 / 0.75 / 32 (64 avec `-final`) |
-| `-noaddons`, `-wsaddons`, `-nowsaddons`, `-serveraddons` | | Contenu monté pour les modèles, comme `--bspc`. | addons et objets du Workshop montés |
+| `-noaddons`, `-wsaddons`, `-nowsaddons`, `-serveraddons`, `-mount_appid` | | Contenu monté pour les modèles, comme `--bspc`. | addons et objets du Workshop montés |
 | `-radius_override` | unités | Accepté et ignoré (une option de VVIS souvent passée à tous les outils). | |
 
 Toute autre option donne `Warning: option ... is not supported by this lighting compiler: ignored` ; les options connues de VRAD qui prennent une valeur (`-vproject`, `-aoscale`, `-aofacesamples`, `-aopropsamples`, `-ambientocclusion`, `-sunsamplesarealight`, `-leafambientsamplereduction`, `-maxdispsamplesize`, `-disppatchradius`, `-mpi_workercount`, `-dumptrace`) sautent aussi leur valeur.

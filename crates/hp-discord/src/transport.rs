@@ -23,6 +23,10 @@ impl SystemConnector {
     pub fn with_paths(paths: Vec<PathBuf>) -> Self {
         Self { paths }
     }
+
+    pub fn paths(&self) -> &[PathBuf] {
+        &self.paths
+    }
 }
 
 impl Connector for SystemConnector {

@@ -141,6 +141,7 @@ fn quad(y: f32, z0: f32) -> Vec<CompiledVertex> {
         lm: [0.5, 0.5],
         lightmap: 0,
         cubemap: hp_render::NO_CUBEMAP,
+        blend: Default::default(),
     };
     vec![v(-100.0, z0), v(100.0, z0), v(100.0, z0 + 200.0), v(-100.0, z0 + 200.0)]
 }

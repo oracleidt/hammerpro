@@ -49,6 +49,8 @@ Chaque matériau a un emplacement :
 
 La colonne de gauche liste les pages : **Texture de base**, **Transparence**, **Relief (bump)**, **Détail**, **Reflets**, **Phong**, **Lumière de contour**, **Auto-illumination**, **Éclairage et surface**, **Balancement (arbres)**, **Eau**, **Réfraction**, **Sprite**, **Options de compilation**, **Autres paramètres**. Les pages qui ont des paramètres définis affichent leur nombre en gras ; les pages sans rien pour ce shader sont masquées.
 
+Avec Lightmapped_4WayBlend, **Texture de base** liste aussi les paramètres du mélange à 4 textures : `$basetexture3`, `$basetexture4`, `$textureN_lumstart` et `$textureN_lumend`, `$textureN_blendstart` et `$textureN_blendend`, `$lumblendfactorN`, `$textureN_uvscale` et `$textureN_blendmode` ; **Relief (bump)** liste `$textureN_bumpblendfactor`. Les vues 3D les suivent (voir [Mélanges à 4 textures](displacement-tool.md#mélanges-à-4-textures-lightmapped_4wayblend)).
+
 Chaque ligne de paramètre montre sa clé (en gras si elle est définie), un contrôle, un bouton `✖` (**Retirer (retour à la valeur par défaut)**) quand elle est définie, et une ligne qui explique son rôle. Le contrôle dépend du paramètre :
 
 | Type de paramètre | Contrôle |

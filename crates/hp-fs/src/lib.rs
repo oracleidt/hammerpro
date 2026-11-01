@@ -1,3 +1,4 @@
+mod apps;
 mod assets;
 pub mod collect;
 mod custom;
@@ -20,6 +21,10 @@ mod texture;
 #[cfg(test)]
 mod test_util;
 
+pub use apps::{
+    MAX_APP_ID, SteamApp, find_steam_app, find_steam_app_in, installed_source_apps, installed_source_apps_in,
+    refresh_steam_apps, steam_app_name,
+};
 pub use assets::AssetEntry;
 pub use custom::{
     CustomDir, CustomLayout, CustomMode, IMAGE_EXTENSIONS, custom_layout, game_texture_size, is_auto_prefix,

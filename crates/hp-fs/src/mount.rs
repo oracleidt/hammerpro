@@ -20,6 +20,8 @@ pub struct MountOptions {
     pub mount_downloads: bool,
     pub extra_game_dirs: Vec<PathBuf>,
     pub custom_dirs: Vec<CustomDir>,
+    pub app_ids: Vec<u32>,
+    pub steam_libraries: Vec<PathBuf>,
 }
 
 impl Default for MountOptions {
@@ -31,6 +33,8 @@ impl Default for MountOptions {
             mount_downloads: false,
             extra_game_dirs: Vec::new(),
             custom_dirs: Vec::new(),
+            app_ids: Vec::new(),
+            steam_libraries: Vec::new(),
         }
     }
 }
@@ -479,6 +483,8 @@ pub(crate) fn plan_gmod(root: &Path, opts: &MountOptions) -> Result<(Vec<PlanIte
         let label = format!("Extra: {}", folder_name(path));
         items.extend(game_folder_items(path, SourceOrigin::Extra, &label, &mut warnings));
     }
+    let apps = crate::apps::app_items(opts, &mut warnings);
+    crate::apps::append_unique(&mut items, apps);
     if opts.mount_workshop
         && let Some(workshop) = detect_workshop_dir(root)
     {

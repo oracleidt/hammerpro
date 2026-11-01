@@ -226,6 +226,7 @@ pub fn validate(bytes: &[u8]) -> Vec<String> {
             err(format!("brush side {i}: bad plane or texture info"));
         }
     }
+    let mut multiblend_verts = 0usize;
     for i in 0..nd {
         let o = i * 176;
         let vs = i32_at(&dispinfo, o + 12).unwrap_or(-1);
@@ -246,6 +247,17 @@ pub fn validate(bytes: &[u8]) -> Vec<String> {
         if face >= nf || i16_at(&faces, face * 56 + 12) != Some(i as i16) {
             err(format!("displacement {i}: its face does not point back to it"));
         }
+        let tess = i32_at(&dispinfo, o + 24).unwrap_or(0);
+        if tess < 0 && tess & crate::disp::HAS_MULTIBLEND_BIT != 0 {
+            multiblend_verts += n * n;
+        }
+    }
+    let multiblend = bsp.lump(hp_bsp::lump::DISP_MULTIBLEND).map_or(0, |c| c.len());
+    if multiblend_verts > 0 && multiblend != multiblend_verts * crate::disp::MULTIBLEND_ENTRY_SIZE {
+        err(format!(
+            "displacement multiblend: {multiblend} bytes for {multiblend_verts} vertices of {} bytes",
+            crate::disp::MULTIBLEND_ENTRY_SIZE
+        ));
     }
     if nl > 0 && clusters == 0 && vis.len() >= 4 {}
     if let Ok(g) = bsp.game_lumps()

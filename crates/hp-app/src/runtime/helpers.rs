@@ -1,3 +1,4 @@
+pub mod fish;
 pub mod geometry;
 pub mod names;
 
@@ -8,6 +9,42 @@ use hp_editor::Document;
 use crate::settings::Settings;
 
 pub use names::NameIndex;
+
+pub fn path_clone_link(state: &crate::AppState, objs: &[hp_editor::ObjRef]) -> Option<(hp_editor::Id, &'static str)> {
+    let [hp_editor::ObjRef::Entity(id)] = objs else { return None };
+    let scene = state.doc.scene();
+    if scene.is_brush_entity(*id) {
+        return None;
+    }
+    let class = &scene.entity(*id)?.entity.classname;
+    let from_fgd = state.assets.fgd().and_then(|f| f.class(class)).and_then(|c| match c.kind {
+        hp_fgd::ClassKind::Move => Some("target"),
+        hp_fgd::ClassKind::KeyFrame => Some("NextKey"),
+        _ => None,
+    });
+    from_fgd.or_else(|| Document::known_path_next_key(class)).map(|key| (*id, key))
+}
+
+pub fn duplicate_linking_paths(
+    state: &mut crate::AppState,
+    objs: &[hp_editor::ObjRef],
+    m: glam::DMat4,
+    anchor: glam::DVec3,
+) -> hp_editor::EditResult<Vec<hp_editor::ObjRef>> {
+    let keep = state.settings.selection.clone_keeps_visgroups;
+    let link = path_clone_link(state, objs);
+    state.doc.transaction("Duplicate", |doc| {
+        let new = doc.duplicate_transformed(objs, m, anchor, keep)?;
+        if let (Some((src, key)), [hp_editor::ObjRef::Entity(copy)]) = (link, new.as_slice()) {
+            doc.link_cloned_path_node(src, *copy, key)?;
+        }
+        Ok(new)
+    })
+}
+
+pub fn brush_entity_needs_origin(fgd: Option<&hp_fgd::ResolvedFgd>, class: &str) -> bool {
+    fgd.and_then(|f| f.class(class.trim())).is_some_and(|c| c.is_solid() && c.property("origin").is_some())
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SceneDisplay {

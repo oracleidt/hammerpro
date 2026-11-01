@@ -30,7 +30,7 @@ La publication est construite à partir du fichier enregistré : si la map a des
 | **Inclure le contenu des jeux montés** | Contenu des jeux montés par `mount.cfg` (CS:S, épisodes de HL2...). Les joueurs qui ne les ont pas voient des erreurs ; le redistribuer est sous votre responsabilité. | désactivé |
 | **Construire les cubemaps et la navigation en jeu** | Lance Garry's Mod, après confirmation, pour construire les cubemaps et générer le maillage de navigation, puis le ferme. | désactivé |
 | **Ouvrir le dossier de sortie à la fin** | | désactivé |
-| **BSP Protection Pro** | Livre une copie protégée et garde la map complète pour votre serveur. Voir [BSP Protection Pro](bsp-protection.md). | désactivé |
+| **Protect your BSP** | Livre une copie protégée et garde la map complète pour votre serveur. Voir [Protect your BSP](bsp-protection.md). | désactivé |
 | **Construire** | Lance la publication. **Annuler** l'arrête. | |
 | **Analyser** | Liste tous les fichiers nécessaires à la map, sans compiler ni rien écrire (remplit l'onglet Rapport). | |
 
@@ -162,7 +162,7 @@ Chaque fichier nécessaire à la map avec sa taille, son origine, sa destination
 
 ## Pages liées
 
-- [BSP Protection Pro](bsp-protection.md)
+- [Protect your BSP](bsp-protection.md)
 - [Ressources de la map](map-assets.md)
 - [Collecter le contenu pour une publication](../guides/collect-content-for-release.md)
 - [Cubemaps](../compiler/cubemaps.md)

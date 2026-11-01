@@ -25,6 +25,7 @@ pub mod lump {
     pub const LIGHTING_HDR: usize = 53;
     pub const WORLDLIGHTS_HDR: usize = 54;
     pub const FACES_HDR: usize = 58;
+    pub const DISP_MULTIBLEND: usize = 63;
 }
 
 pub const LUMP_NAMES: [&str; LUMP_COUNT] = [

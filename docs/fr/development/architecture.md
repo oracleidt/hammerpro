@@ -18,7 +18,7 @@ Hammer Pro est découpé en petites crates spécialisées dans `crates/`, avec d
 | `hp-gma` | Lecteur d'archives d'addons Garry's Mod (GMA), anciens `.bin` en LZMA compris. |
 | `hp-fgd` | Lecture et résolution des fichiers de définitions d'entités FGD. |
 | `hp-mdl` | Chargement des modèles studio (`.mdl` + `.vvd` + `.vtx`), versions MDL 44 à 49. |
-| `hp-bsp` | Lecture et écriture robustes des fichiers BSP, versions 19 à 21 : lumps, pakfile, cubemaps, game lumps, BSP Protection Pro. |
+| `hp-bsp` | Lecture et écriture robustes des fichiers BSP, versions 19 à 21 : lumps, pakfile, cubemaps, game lumps, Protect your BSP. |
 | `hp-nav` | Lecture des nav meshes (`.nav`), versions 1 à 16. |
 | `hp-pcf` | Systèmes de particules des fichiers `.pcf` (DMX binaire) et petite simulation d'aperçu. |
 | `hp-meshio` | Lecture des modèles OBJ, glTF/GLB et FBX et compilation en fichiers de modèles du jeu. |

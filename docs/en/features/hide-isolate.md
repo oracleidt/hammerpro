@@ -60,6 +60,8 @@ The eye at the end of the tool palette isolates the selection:
 | `hide_triggers` | Triggers | Off |
 | `hide_hints` | Hints and skips | Off |
 
+A face hidden this way is not clicked either in the 3D view: clicks, face selection and placement go through it to what is drawn behind. The 2D views still show and pick these brushes. The same goes for brushes hidden by **Show displacements** or **Displacements only**.
+
 ## Tips
 
 - Cordons dim and lock everything outside a box without hiding it, which is often better for working on one room (see [Cordons](cordons.md)).

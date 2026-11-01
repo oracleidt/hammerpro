@@ -832,13 +832,27 @@ fn four_way_blend_mixes_textures_by_vertex_weights() {
         r.render_view(1, &view, &Overlay::default());
         save(r, 1, name)
     };
-    r.upsert_object(1, wall(BlendVertex { weights: [0.0, 0.0, 1.0, 0.0], tint: [1.0; 3] }));
+    r.upsert_object(1, wall(BlendVertex::painted([0.0, 0.0, 1.0, 0.0])));
     assert!(count_near(&shot(&mut r, "blend4_blue"), [0, 0, 255], 12) > 3000);
-    r.upsert_object(1, wall(BlendVertex { weights: [0.0, 1.0, 0.0, 1.0], tint: [1.0, 0.0, 0.0] }));
-    let img = shot(&mut r, "blend4_tinted");
-    assert!(count_near(&img, [188, 0, 0], 20) > 3000, "{:?}", pixel(&img, 32, 32));
+    r.upsert_object(1, wall(BlendVertex::painted([0.0, 1.0, 0.0, 1.0])));
+    let img = shot(&mut r, "blend4_top_layer");
+    assert!(count_near(&img, [255, 255, 255], 12) > 3000, "texture 4 lies over texture 2: {:?}", pixel(&img, 32, 32));
+    r.upsert_object(1, wall(BlendVertex::painted([0.6, 0.4, 0.0, 0.0])));
+    let soft = pixel(&shot(&mut r, "blend4_soft"), 32, 32);
+    assert!(soft[1] > soft[0], "the default ranges show most of texture 2: {soft:?}");
+    let sharp = FourWayDesc { blend: [[0.0, 1.0], [0.9, 1.0], [0.0, 1.0], [0.0, 1.0]], ..FourWayDesc::default() };
+    r.set_material(5, &MaterialDesc { four_way: Some(sharp), ..desc });
+    assert!(count_near(&shot(&mut r, "blend4_sharp"), [255, 0, 0], 12) > 3000, "below $texture2_blendstart");
+    r.set_material(5, &desc);
     r.upsert_object(1, box_mesh([0.0, -200.0, -200.0], [16.0, 200.0, 200.0], 5, [0, 0, 0]));
+    assert!(count_near(&shot(&mut r, "blend4_alpha"), [0, 255, 0], 12) > 3000, "unpainted: the alpha shows texture 2");
+    let mut clear = box_mesh([0.0, -200.0, -200.0], [16.0, 200.0, 200.0], 5, [0, 0, 0]);
+    for v in &mut clear.batches[0].vertices {
+        v.alpha = 0.0;
+    }
+    r.upsert_object(1, clear);
     assert!(count_near(&shot(&mut r, "blend4_none"), [255, 0, 0], 12) > 3000);
+    r.upsert_object(1, box_mesh([0.0, -200.0, -200.0], [16.0, 200.0, 200.0], 5, [0, 0, 0]));
     r.set_material(5, &MaterialDesc { texture3: None, texture4: None, ..desc });
     assert!(count_near(&shot(&mut r, "blend4_two_way"), [0, 255, 0], 12) > 3000);
 }

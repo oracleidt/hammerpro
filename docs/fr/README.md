@@ -2,7 +2,7 @@
 
 # Documentation de Hammer Pro
 
-Bienvenue dans la base de connaissances de Hammer Pro 1.0.0, l'éditeur de maps pour le moteur Source pensé d'abord pour Garry's Mod. Chaque fonctionnalité a sa propre page : ce que c'est, comment l'ouvrir, chaque option avec sa valeur par défaut, des astuces et une courte FAQ. Les pages renvoient les unes aux autres : commencez où vous voulez.
+Bienvenue dans la base de connaissances de Hammer Pro 1.0.1, l'éditeur de maps pour le moteur Source pensé d'abord pour Garry's Mod. Chaque fonctionnalité a sa propre page : ce que c'est, comment l'ouvrir, chaque option avec sa valeur par défaut, des astuces et une courte FAQ. Les pages renvoient les unes aux autres : commencez où vous voulez.
 
 Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.md), [Configuration du jeu](getting-started/game-setup.md) puis [Votre première map](getting-started/first-map.md), dans cet ordre.
 
@@ -26,7 +26,9 @@ Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.m
 | [Caméra et navigation](features/camera-navigation.md) | Voler avec la caméra 3D, dispositions de clavier, vue souris, outil caméra, défilement et zoom 2D, schémas de contrôle. |
 | [Outil bloc](features/block-tool.md) | Les brushes et chaque primitive avec ses options. |
 | [Outil polygone](features/polygon-tool.md) | Des brushes convexes à partir d'un contour cliqué point par point. |
+| [Outil courbe](features/curve-tool.md) | Murs et rambardes courbes : des brushes en boîte à joints en onglet le long d'un tracé dans une vue 2D. |
 | [Outil de découpe](features/clip-tool.md) | Couper des brushes avec un plan. |
+| [Outil extruder / creuser](features/extrude-tool.md) | Des contours cliqués sur une face, creusés dans le brush (renfoncement ou ouverture) ou extrudés hors de la face. |
 | [Outil vertex](features/vertex-tool.md) | Déplacer, fusionner, scinder et mettre à l'échelle des sommets. |
 | [Outil displacement](features/displacement-tool.md) | Créer, sculpter, peindre l'alpha, tags, couture, bruit. |
 | [Opérations sur les brushes](features/brush-operations.md) | Carve, creuser, fusionner, lier à une entité, func_detail, nodraw, brushes hint, verrouillage des textures. |
@@ -105,7 +107,7 @@ Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.m
 | [Lancement du jeu](features/game-launch.md) | Lancer et recharger la map en jeu, options de démarrage rapide, l'addon passerelle. |
 | [Ressources de la map](features/map-assets.md) | Chaque fichier utilisé par la map, sa provenance, sa collecte. |
 | [Construire et enregistrer en contenu](features/build-content-release.md) | Fenêtre de publication, liste de contrôle, addon, publication sur le Workshop. |
-| [BSP Protection Pro](features/bsp-protection.md) | Livrer une copie protégée de la map, verrou serveur. |
+| [Protect your BSP](features/bsp-protection.md) | Livrer une copie protégée de la map, verrou serveur. |
 
 ### L'application
 
@@ -127,6 +129,7 @@ Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.m
 | [Le compilateur intégré](compiler/overview.md) | Géométrie, visibilité et éclairage, et leurs différences avec VBSP, VVIS et VRAD. |
 | [Fenêtre Compiler et lancer](compiler/compile-window.md) | Préréglages, étapes, options, mode expert, compilation par lots, historique et statistiques. |
 | [Options de compilation](compiler/compile-options.md) | Chaque option de compilation avec son effet et sa valeur par défaut. |
+| [Choisir un compilateur](compiler/compilers.md) | vbsp, vvis et vrad de Valve ou vos propres programmes à la place du compilateur intégré, avec chaque option. |
 | [Ligne de commande du compilateur](compiler/command-line.md) | `hammerpro --bspc` et `hammerpro --rad`, chaque argument. |
 | [Clés worldspawn et lumières](compiler/worldspawn-keys.md) | Clés d'occlusion ambiante, `_lightsrad` et les autres clés lues par le compilateur. |
 | [Jeux cibles](compiler/target-games.md) | Jeux Source pris en charge et branches du moteur. |

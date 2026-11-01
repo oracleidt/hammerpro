@@ -6,6 +6,7 @@ mod brush;
 mod coverage;
 mod csg;
 mod disp;
+mod extrude;
 mod hull;
 mod pick;
 mod plane;
@@ -37,6 +38,10 @@ pub use disp::{
     add_noise, build_disp, compiled_disp_tags, create_disp, create_disp_with_axes, disp_paint, disp_tag_state,
     disp_tri_states, disp_walk, invert_alpha, ray_disp, scale_disp, slope_walk, update_disp_tags,
     vmf_tags_from_compiled,
+};
+pub use extrude::{
+    ExtrudeIssue, ExtrudeMode, FaceExtrudeParams, FaceExtrudeResult, FaceFrame, MAX_OUTLINE_POINTS, MIN_EXTRUDE_DEPTH,
+    convex_decompose, face_extrude, face_thickness, outline_is_simple, path_is_simple, signed_area,
 };
 pub use hull::{
     ConvexHull, FaceTopology, HullFace, VertexEdit, VertexEditOptions, convex_hull, is_convex, rebuild_from_points,

@@ -18,6 +18,17 @@ pub struct PickOptions<'a> {
     pub ignore_hidden: bool,
     pub max_distance: f64,
     pub filter: Option<&'a dyn Fn(ObjRef) -> bool>,
+    pub face_hidden: Option<&'a dyn Fn(&str) -> bool>,
+    pub entity_ray: Option<&'a EntityRayFn<'a>>,
+}
+
+pub type EntityRayFn<'a> = dyn Fn(&Entity, &Ray) -> EntityRay + 'a;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum EntityRay {
+    Bounds,
+    Miss,
+    Hit { t: f64, normal: DVec3 },
 }
 
 impl Default for PickOptions<'_> {
@@ -28,6 +39,8 @@ impl Default for PickOptions<'_> {
             ignore_hidden: true,
             max_distance: f64::INFINITY,
             filter: None,
+            face_hidden: None,
+            entity_ray: None,
         }
     }
 }
@@ -40,6 +53,8 @@ impl std::fmt::Debug for PickOptions<'_> {
             .field("ignore_hidden", &self.ignore_hidden)
             .field("max_distance", &self.max_distance)
             .field("filter", &self.filter.is_some())
+            .field("face_hidden", &self.face_hidden.is_some())
+            .field("entity_ray", &self.entity_ray.is_some())
             .finish()
     }
 }
@@ -260,11 +275,17 @@ impl PickCache {
     }
 }
 
-fn ray_node(ray: &Ray, n: &SolidNode) -> Option<(f64, Option<usize>, DVec3)> {
+fn ray_node(ray: &Ray, n: &SolidNode, face_hidden: Option<&dyn Fn(&str) -> bool>) -> Option<(f64, Option<usize>, DVec3)> {
+    let hidden = |side: usize| {
+        face_hidden.is_some_and(|f| n.solid.sides.get(side).is_some_and(|s| f(&s.material)))
+    };
     if n.disp.iter().any(Option::is_some) {
         let mut best: Option<(f64, Option<usize>, DVec3)> = None;
         for (side, mesh) in n.disp.iter().enumerate() {
             let Some(mesh) = mesh else { continue };
+            if hidden(side) {
+                continue;
+            }
             if mesh.aabb.expand(1e-6).ray_intersect(ray).is_none() {
                 continue;
             }
@@ -288,6 +309,9 @@ fn ray_node(ray: &Ray, n: &SolidNode) -> Option<(f64, Option<usize>, DVec3)> {
     }
     let (t, fi) = ray_solid(ray, &n.geom)?;
     let face = n.geom.faces.get(fi)?;
+    if hidden(face.side_index) {
+        return None;
+    }
     Some((t, Some(face.side_index), face.plane.normal))
 }
 
@@ -511,7 +535,7 @@ impl Document {
                 if !self.solid_pickable(id, opts) {
                     return if closest_only { best } else { max_t };
                 }
-                if let Some((t, face, normal)) = ray_node(ray, n)
+                if let Some((t, face, normal)) = ray_node(ray, n, opts.face_hidden)
                     && t <= best
                 {
                     let hit = Hit { obj: ObjRef::Solid(id), face, t, point: ray.at(t), normal: facing(normal) };
@@ -539,13 +563,21 @@ impl Document {
                     continue;
                 }
                 let Some(b) = point_entity_bounds(&node.entity, entity_bounds) else { continue };
-                if b.contains_point(ray.origin) {
+                let limit = if closest_only { best } else { max_t };
+                if rt.test(&b, limit).is_none() {
                     continue;
                 }
-                let limit = if closest_only { best } else { max_t };
-                if let Some(t) = rt.test(&b, limit) {
+                let found = match opts.entity_ray.map_or(EntityRay::Bounds, |f| f(&node.entity, ray)) {
+                    EntityRay::Miss => None,
+                    EntityRay::Hit { t, normal } => {
+                        (t.is_finite() && t >= 0.0 && t <= limit).then(|| (t, facing(normal)))
+                    }
+                    EntityRay::Bounds if b.contains_point(ray.origin) => None,
+                    EntityRay::Bounds => rt.test(&b, limit).map(|t| (t, box_normal(&b, ray.at(t)))),
+                };
+                if let Some((t, normal)) = found {
                     let point = ray.at(t);
-                    let hit = Hit { obj, face: None, t, point, normal: box_normal(&b, point) };
+                    let hit = Hit { obj, face: None, t, point, normal };
                     if closest_only {
                         best = t;
                         hits.clear();

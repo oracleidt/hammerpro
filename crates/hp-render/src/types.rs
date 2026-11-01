@@ -202,6 +202,28 @@ pub struct MaterialDesc {
     pub water: Option<WaterDesc>,
     pub envmap: Option<EnvmapDesc>,
     pub self_illum: Option<SelfIllumDesc>,
+    pub four_way: Option<FourWayDesc>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FourWayDesc {
+    pub lum: [[f32; 2]; 4],
+    pub blend: [[f32; 2]; 4],
+    pub lum_blend_factor: [f32; 4],
+    pub uv_scale: [[f32; 2]; 4],
+    pub modulate_2x: [bool; 4],
+}
+
+impl Default for FourWayDesc {
+    fn default() -> Self {
+        Self {
+            lum: [[0.0, 1.0]; 4],
+            blend: [[0.0, 1.0]; 4],
+            lum_blend_factor: [0.0; 4],
+            uv_scale: [[1.0, 1.0]; 4],
+            modulate_2x: [false; 4],
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -426,6 +448,7 @@ impl Default for MaterialDesc {
             water: None,
             envmap: None,
             self_illum: None,
+            four_way: None,
         }
     }
 }
@@ -453,12 +476,18 @@ pub struct MeshBatch {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BlendVertex {
     pub weights: [f32; 4],
-    pub tint: [f32; 3],
+    pub painted: bool,
+}
+
+impl BlendVertex {
+    pub fn painted(weights: [f32; 4]) -> Self {
+        Self { weights, painted: true }
+    }
 }
 
 impl Default for BlendVertex {
     fn default() -> Self {
-        Self { weights: [1.0, 0.0, 0.0, 0.0], tint: [1.0; 3] }
+        Self { weights: [1.0, 0.0, 0.0, 0.0], painted: false }
     }
 }
 
@@ -739,6 +768,20 @@ pub struct Fog {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FogVolume {
+    pub min: [f32; 3],
+    pub max: [f32; 3],
+    pub fog: Option<Fog>,
+    pub active: bool,
+}
+
+impl FogVolume {
+    pub fn contains(&self, p: [f32; 3]) -> bool {
+        (0..3).all(|i| p[i] >= self.min[i] && p[i] <= self.max[i])
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ViewOptions {
     pub grid_3d: Option<Grid3d>,
     pub models_2d: Models2d,
@@ -751,6 +794,8 @@ pub struct ViewOptions {
     pub sky_see_through: bool,
     pub water_preview: bool,
     pub show_fog: bool,
+    pub fog_volumes: bool,
+    pub fog_volume_inside: bool,
     pub occlusion_culling: bool,
     pub force_opaque: bool,
     pub walkable: bool,
@@ -787,6 +832,8 @@ impl Default for ViewOptions {
             sky_see_through: false,
             water_preview: false,
             show_fog: false,
+            fog_volumes: false,
+            fog_volume_inside: false,
             occlusion_culling: false,
             force_opaque: false,
             walkable: false,

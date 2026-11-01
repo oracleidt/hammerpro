@@ -85,6 +85,18 @@ impl SettingsPage for RenderPage {
                 check(ui, &mut r.cubemaps_auto, t!("shell.render.cubemaps_auto"), t!("shell.render.cubemaps_auto_tip"));
         });
         changed |= check(ui, &mut r.fog_preview, t!("shell.render.fog"), t!("shell.render.fog_tip"));
+        changed |=
+            check(ui, &mut r.fog_volume_preview, t!("shell.render.fog_volumes"), t!("shell.render.fog_volumes_tip"));
+        changed |= check(
+            ui,
+            &mut r.fog_volume_texture,
+            t!("shell.render.fog_volume_texture"),
+            t!("shell.render.fog_volume_texture_tip"),
+        );
+        changed |= check(ui, &mut r.fish_preview, t!("shell.render.fish"), t!("shell.render.fish_tip"));
+        ui.add_enabled_ui(r.fish_preview, |ui| {
+            changed |= check(ui, &mut r.fish_swim, t!("shell.render.fish_swim"), t!("shell.render.fish_swim_tip"));
+        });
         changed |= check(
             ui,
             &mut r.player_compiled_lighting,
@@ -322,6 +334,30 @@ pub(crate) const TR: TrTable = &[
         "shell.render.fog_tip",
         "Applies the fog of an env_fog_controller (choose it in View > Fog preview)",
         "Applique le brouillard d'un env_fog_controller (choisissez-le dans Affichage > Aperçu du brouillard)",
+    ),
+    ("shell.render.fog_volumes", "Fog volume preview", "Aperçu des fog_volume"),
+    (
+        "shell.render.fog_volumes_tip",
+        "Fills each fog_volume brush with the fog of the env_fog_controller its Fog Name points to (color, start,          end, max density, blend colors), as thick as the view crosses it. In the player view that fog replaces          the map fog while the eyes are inside the volume, like in game.",
+        "Remplit chaque brush fog_volume du brouillard de l'env_fog_controller que vise son Fog Name (couleur,          début, fin, densité max, couleurs mélangées), aussi épais que la vue le traverse. Dans la vue joueur ce          brouillard remplace celui de la carte tant que les yeux sont dans le volume, comme en jeu.",
+    ),
+    ("shell.render.fog_volume_texture", "Fog volume texture", "Texture des fog_volume"),
+    (
+        "shell.render.fog_volume_texture_tip",
+        "Draws the material of the fog_volume brushes (tools/toolstrigger...) in the 3D view, like Hammer. Off:          only the fog shows.",
+        "Dessine le matériau des brushes fog_volume (tools/toolstrigger...) dans la vue 3D, comme Hammer.          Désactivé : seul le brouillard apparaît.",
+    ),
+    ("shell.render.fish", "Fish preview", "Aperçu des poissons"),
+    (
+        "shell.render.fish_tip",
+        "Draws the fish of each func_fish_pool: its model fish_count times, scattered within max_range of the          entity and kept under the water surface.",
+        "Dessine les poissons de chaque func_fish_pool : son modèle fish_count fois, dispersé à moins de          max_range de l'entité et gardé sous la surface de l'eau.",
+    ),
+    ("shell.render.fish_swim", "Swimming fish", "Poissons qui nagent"),
+    (
+        "shell.render.fish_swim_tip",
+        "The fish swim slow circles around their place. Off: they stay still.",
+        "Les poissons nagent en cercles lents autour de leur place. Désactivé : ils restent immobiles.",
     ),
     ("shell.render.player_lighting", "Player view: compiled lighting", "Vue joueur : éclairage compilé"),
     (

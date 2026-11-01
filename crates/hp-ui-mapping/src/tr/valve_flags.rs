@@ -1,0 +1,467 @@
+use hp_app::i18n::TrTable;
+
+pub const TR: TrTable = &[
+    ("valveflags.group.quality", "Quality", "Qualité"),
+    ("valveflags.group.speed", "Speed", "Vitesse"),
+    ("valveflags.group.geometry", "Geometry", "Géométrie"),
+    ("valveflags.group.visibility", "Visibility", "Visibilité"),
+    ("valveflags.group.lightmaps", "Lightmaps", "Lightmaps"),
+    ("valveflags.group.static_props", "Props", "Props"),
+    ("valveflags.group.content", "Content and files", "Contenu et fichiers"),
+    ("valveflags.group.debug", "Debugging", "Débogage"),
+    (
+        "valveflags.group.other_branches",
+        "Other branches (CS:GO and newer tools)",
+        "Autres branches (CS:GO et outils plus récents)",
+    ),
+    (
+        "valveflags.managed.bsp_mode",
+        "Written by the Geometry mode of the compile window",
+        "Écrit par le mode Géométrie de la fenêtre de compilation",
+    ),
+    (
+        "valveflags.managed.vis_mode",
+        "Written by the Visibility mode of the compile window",
+        "Écrit par le mode Visibilité de la fenêtre de compilation",
+    ),
+    (
+        "valveflags.managed.rad_quality",
+        "Written by the Lighting mode of the compile window (Draft adds -fast, Final adds -final)",
+        "Écrit par le mode Éclairage de la fenêtre de compilation (Brouillon ajoute -fast, Final ajoute -final)",
+    ),
+    (
+        "valveflags.managed.lighting",
+        "Written by the Dynamic range of the compile window",
+        "Écrit par la Plage dynamique de la fenêtre de compilation",
+    ),
+    (
+        "valveflags.managed.threads",
+        "Written by the Threads setting of the compile window",
+        "Écrit par le réglage Threads de la fenêtre de compilation",
+    ),
+    (
+        "valveflags.vbsp_onlyents",
+        "Only import the entities of the VMF into the existing BSP: brushes, brush entities and the lighting stay as they are. Fast for changing entity keys.",
+        "N'importe que les entités du VMF dans le BSP existant : les brushes, les entités à brushes et l'éclairage restent tels quels. Rapide pour changer des clés d'entités.",
+    ),
+    (
+        "valveflags.vbsp_onlyprops",
+        "Only update the static props and detail props of the existing BSP.",
+        "Ne met à jour que les props statiques et les props de détail du BSP existant.",
+    ),
+    (
+        "valveflags.vbsp_threads",
+        "Number of threads (default: one per processor).",
+        "Nombre de threads (par défaut : un par processeur).",
+    ),
+    ("valveflags.vbsp_low", "Run as an idle priority process.", "Tourne avec une priorité basse."),
+    (
+        "valveflags.vbsp_nodetail",
+        "Remove all detail geometry (func_detail): what is left is what blocks visibility.",
+        "Retire toute la géométrie de détail (func_detail) : il reste ce qui bloque la visibilité.",
+    ),
+    (
+        "valveflags.vbsp_fulldetail",
+        "Treat all detail geometry as world geometry, so it cuts visibility too.",
+        "Traite toute la géométrie de détail comme du monde, elle découpe donc aussi la visibilité.",
+    ),
+    ("valveflags.vbsp_nowater", "Remove the water brushes.", "Retire les brushes d'eau."),
+    (
+        "valveflags.vbsp_noweld",
+        "Do not join the face vertices together.",
+        "Ne soude pas les sommets des faces entre eux.",
+    ),
+    (
+        "valveflags.vbsp_nocsg",
+        "Do not cut away the parts where brushes overlap.",
+        "Ne découpe pas les parties où les brushes se chevauchent.",
+    ),
+    (
+        "valveflags.vbsp_noshare",
+        "Write unique face edges instead of sharing them.",
+        "Écrit des arêtes propres à chaque face au lieu de les partager.",
+    ),
+    (
+        "valveflags.vbsp_notjunc",
+        "Do not fix the T-junctions (small cracks may show between faces).",
+        "Ne corrige pas les jonctions en T (de petites fentes peuvent apparaître entre les faces).",
+    ),
+    (
+        "valveflags.vbsp_allowdetailcracks",
+        "Do not fix the T-junctions on func_detail brushes.",
+        "Ne corrige pas les jonctions en T sur les brushes func_detail.",
+    ),
+    (
+        "valveflags.vbsp_noopt",
+        "Keep the outer shell of the map (the faces nobody can see from inside), which VBSP removes by default.",
+        "Garde la coque extérieure de la map (les faces que personne ne voit de l'intérieur), que VBSP retire par défaut.",
+    ),
+    (
+        "valveflags.vbsp_noprune",
+        "Do not prune neighbouring solid nodes of the tree.",
+        "N'élague pas les nœuds solides voisins de l'arbre.",
+    ),
+    (
+        "valveflags.vbsp_nomerge",
+        "Do not merge the chopped faces back together on the nodes.",
+        "Ne refusionne pas les faces découpées sur les nœuds.",
+    ),
+    (
+        "valveflags.vbsp_nomergewater",
+        "Do not merge the chopped water faces back together.",
+        "Ne refusionne pas les faces d'eau découpées.",
+    ),
+    (
+        "valveflags.vbsp_nosubdiv",
+        "Do not subdivide the faces for their lightmaps.",
+        "Ne subdivise pas les faces pour leurs lightmaps.",
+    ),
+    (
+        "valveflags.vbsp_snapaxial",
+        "Snap the axis aligned planes to whole coordinates.",
+        "Aligne les plans parallèles aux axes sur des coordonnées entières.",
+    ),
+    (
+        "valveflags.vbsp_micro",
+        "Warn about brushes smaller than this volume (default 1).",
+        "Avertit des brushes plus petits que ce volume (1 par défaut).",
+    ),
+    (
+        "valveflags.vbsp_block",
+        "Grid block where VBSP starts chopping the level (two numbers).",
+        "Bloc de la grille où VBSP commence à découper le niveau (deux nombres).",
+    ),
+    (
+        "valveflags.vbsp_blocks",
+        "Minimum and maximum grid blocks VBSP chops the level on (four numbers).",
+        "Blocs minimum et maximum de la grille sur lesquels VBSP découpe le niveau (quatre nombres).",
+    ),
+    (
+        "valveflags.vbsp_leaktest",
+        "Stop when the map leaks. The .lin leak file is written in any case.",
+        "S'arrête quand la map fuit. Le fichier de fuite .lin est écrit dans tous les cas.",
+    ),
+    (
+        "valveflags.vbsp_forceskyvis",
+        "Compute the visibility inside the 3D skybox too.",
+        "Calcule aussi la visibilité dans la skybox 3D.",
+    ),
+    (
+        "valveflags.vbsp_luxelscale",
+        "Scale every lightmap by this amount (default 1; 2 halves the lightmap density).",
+        "Multiplie l'échelle de chaque lightmap (1 par défaut ; 2 divise la densité par deux).",
+    ),
+    (
+        "valveflags.vbsp_minluxelscale",
+        "No lightmap scale goes below this value (default 1).",
+        "Aucune échelle de lightmap ne descend sous cette valeur (1 par défaut).",
+    ),
+    (
+        "valveflags.vbsp_lightifmissing",
+        "Give a lightmap to every surface, even those that do not need one.",
+        "Donne une lightmap à chaque surface, même celles qui n'en ont pas besoin.",
+    ),
+    (
+        "valveflags.vbsp_bumpall",
+        "Treat every surface as bump mapped (bumped lightmaps everywhere).",
+        "Traite chaque surface comme ayant du relief (lightmaps bumpées partout).",
+    ),
+    (
+        "valveflags.vbsp_allowdynamicpropsasstatic",
+        "Allow models without the static flag in their prop data on prop_static (Garry's Mod and Team Fortress 2 tools).",
+        "Autorise sur prop_static les modèles sans l'indicateur statique dans leurs données de prop (outils de Garry's Mod et de Team Fortress 2).",
+    ),
+    (
+        "valveflags.vbsp_virtualdispphysics",
+        "Use virtual collision models for displacements instead of precomputed ones.",
+        "Utilise des modèles de collision virtuels pour les déplacements au lieu de modèles précalculés.",
+    ),
+    (
+        "valveflags.vbsp_dumpstaticprops",
+        "Write the static props to staticprop*.txt files.",
+        "Écrit les props statiques dans des fichiers staticprop*.txt.",
+    ),
+    (
+        "valveflags.vbsp_embed",
+        "Pack the files of this folder into the BSP pakfile.",
+        "Intègre les fichiers de ce dossier au pakfile du BSP.",
+    ),
+    (
+        "valveflags.vbsp_keepstalezip",
+        "Keep the pakfile of the existing BSP and rebuild everything else.",
+        "Garde le pakfile du BSP existant et reconstruit tout le reste.",
+    ),
+    (
+        "valveflags.vbsp_replacematerials",
+        "Replace materials as listed in materialsub.txt of the maps content folder.",
+        "Remplace les matériaux comme indiqué dans materialsub.txt du dossier de contenu des maps.",
+    ),
+    ("valveflags.vbsp_verbose", "Print more details in the log.", "Écrit plus de détails dans le journal."),
+    (
+        "valveflags.vbsp_verboseentities",
+        "With -verbose, leave out the details of the brush entities.",
+        "Avec -verbose, laisse de côté les détails des entités à brushes.",
+    ),
+    (
+        "valveflags.vbsp_glview",
+        "Write .gl files of the geometry for Valve's glview viewer.",
+        "Écrit des fichiers .gl de la géométrie pour la visionneuse glview de Valve.",
+    ),
+    (
+        "valveflags.vbsp_dumpcollide",
+        "Write files with the collision data.",
+        "Écrit des fichiers avec les données de collision.",
+    ),
+    (
+        "valveflags.vbsp_novconfig",
+        "Never open the graphical game picker on a game folder error.",
+        "N'ouvre jamais le sélecteur de jeu graphique en cas d'erreur de dossier de jeu.",
+    ),
+    (
+        "valveflags.vbsp_fullminidumps",
+        "Write large crash dumps.",
+        "Écrit de gros fichiers de diagnostic en cas de plantage.",
+    ),
+    (
+        "valveflags.vbsp_staticpropcombine",
+        "Merge static props into combined models (VBSP of CS:GO and newer branches only; others refuse it).",
+        "Fusionne les props statiques en modèles combinés (VBSP de CS:GO et des branches plus récentes seulement ; les autres le refusent).",
+    ),
+    (
+        "valveflags.vbsp_keepsources",
+        "With -StaticPropCombine, keep the source files of the combined models (CS:GO and newer branches only).",
+        "Avec -StaticPropCombine, garde les fichiers sources des modèles combinés (CS:GO et branches plus récentes seulement).",
+    ),
+    (
+        "valveflags.vvis_fast",
+        "Only the first quick pass of the visibility: fast but coarse, more is drawn in game.",
+        "Seulement la première passe rapide de la visibilité : rapide mais grossière, le jeu dessine davantage.",
+    ),
+    (
+        "valveflags.vvis_radiusoverride",
+        "Force a visibility radius in units, whatever env_fog_controller says.",
+        "Impose un rayon de visibilité en unités, quoi que dise env_fog_controller.",
+    ),
+    (
+        "valveflags.vvis_threads",
+        "Number of threads (default: one per processor).",
+        "Nombre de threads (par défaut : un par processeur).",
+    ),
+    ("valveflags.vvis_low", "Run as an idle priority process.", "Tourne avec une priorité basse."),
+    (
+        "valveflags.vvis_mpi",
+        "Spread the work over other computers with VMPI (needs Valve's VMPI setup).",
+        "Répartit le travail sur d'autres ordinateurs avec VMPI (demande l'installation VMPI de Valve).",
+    ),
+    (
+        "valveflags.vvis_mpipw",
+        "VMPI password, to pick a given group of workers.",
+        "Mot de passe VMPI, pour choisir un groupe précis de machines.",
+    ),
+    (
+        "valveflags.vvis_nosort",
+        "Do not sort the portals (sorting only speeds things up).",
+        "Ne trie pas les portails (le tri ne sert qu'à accélérer).",
+    ),
+    (
+        "valveflags.vvis_tmpin",
+        "Read the portal file from \\tmp\\<map>.",
+        "Lit le fichier de portails dans \\tmp\\<map>.",
+    ),
+    ("valveflags.vvis_tmpout", "Write the results to \\tmp\\<map>.", "Écrit les résultats dans \\tmp\\<map>."),
+    (
+        "valveflags.vvis_trace",
+        "Write a line file that traces the visibility from one cluster to another (two cluster numbers).",
+        "Écrit un fichier de lignes qui suit la visibilité d'un cluster à un autre (deux numéros de cluster).",
+    ),
+    ("valveflags.vvis_verbose", "Print more details in the log.", "Écrit plus de détails dans le journal."),
+    (
+        "valveflags.vvis_novconfig",
+        "Never open the graphical game picker on a game folder error.",
+        "N'ouvre jamais le sélecteur de jeu graphique en cas d'erreur de dossier de jeu.",
+    ),
+    (
+        "valveflags.vvis_fullminidumps",
+        "Write large crash dumps.",
+        "Écrit de gros fichiers de diagnostic en cas de plantage.",
+    ),
+    (
+        "valveflags.vrad_fast",
+        "Quick and dirty lighting, for testing.",
+        "Éclairage rapide et approximatif, pour tester.",
+    ),
+    (
+        "valveflags.vrad_final",
+        "High quality: more rays for the sky and the bounced light (like -extrasky 16).",
+        "Haute qualité : plus de rayons pour le ciel et la lumière rebondie (comme -extrasky 16).",
+    ),
+    ("valveflags.vrad_ldr", "Light only the low dynamic range.", "N'éclaire que la plage dynamique basse (LDR)."),
+    ("valveflags.vrad_hdr", "Light only the high dynamic range.", "N'éclaire que la plage dynamique haute (HDR)."),
+    ("valveflags.vrad_both", "Light both dynamic ranges.", "Éclaire les deux plages dynamiques."),
+    (
+        "valveflags.vrad_extrasky",
+        "Trace this many times more rays for the sky light and the bounced light.",
+        "Trace ce nombre de fois plus de rayons pour la lumière du ciel et la lumière rebondie.",
+    ),
+    (
+        "valveflags.vrad_bounce",
+        "Most light bounces (default 100).",
+        "Nombre maximum de rebonds de la lumière (100 par défaut).",
+    ),
+    (
+        "valveflags.vrad_noextra",
+        "No supersampling: faster, with more jagged shadows.",
+        "Pas de suréchantillonnage : plus rapide, ombres plus crénelées.",
+    ),
+    (
+        "valveflags.vrad_fastambient",
+        "Lower quality ambient light per leaf, to save time.",
+        "Lumière ambiante par feuille de moindre qualité, pour gagner du temps.",
+    ),
+    (
+        "valveflags.vrad_softsun",
+        "Treat the sun as an area light this many degrees wide: soft shadows (0 to 5 recommended, default 0).",
+        "Traite le soleil comme une source étendue de cette largeur en degrés : ombres douces (0 à 5 conseillé, 0 par défaut).",
+    ),
+    (
+        "valveflags.vrad_threads",
+        "Number of threads (default: one per processor).",
+        "Nombre de threads (par défaut : un par processeur).",
+    ),
+    ("valveflags.vrad_low", "Run as an idle priority process.", "Tourne avec une priorité basse."),
+    (
+        "valveflags.vrad_mpi",
+        "Spread the work over other computers with VMPI (needs Valve's VMPI setup).",
+        "Répartit le travail sur d'autres ordinateurs avec VMPI (demande l'installation VMPI de Valve).",
+    ),
+    (
+        "valveflags.vrad_mpipw",
+        "VMPI password, to pick a given group of workers.",
+        "Mot de passe VMPI, pour choisir un groupe précis de machines.",
+    ),
+    (
+        "valveflags.vrad_smooth",
+        "Angle in degrees under which faces share smoothed lighting (default 45).",
+        "Angle en degrés en dessous duquel les faces partagent un éclairage lissé (45 par défaut).",
+    ),
+    (
+        "valveflags.vrad_luxeldensity",
+        "Scale the density of all luxels down by this amount (below 1, default 1).",
+        "Réduit la densité de tous les luxels de ce facteur (moins de 1, 1 par défaut).",
+    ),
+    (
+        "valveflags.vrad_chop",
+        "Smallest size of a bounce patch, in luxels, used on edges (default 4).",
+        "Taille la plus petite d'un patch de rebond, en luxels, sur les bords (4 par défaut).",
+    ),
+    (
+        "valveflags.vrad_maxchop",
+        "Largest size of a bounce patch, in luxels, used inside faces (default 4).",
+        "Taille la plus grande d'un patch de rebond, en luxels, à l'intérieur des faces (4 par défaut).",
+    ),
+    (
+        "valveflags.vrad_dispchop",
+        "Largest size of a bounce patch on displacements, in luxels (default 8).",
+        "Taille la plus grande d'un patch de rebond sur les déplacements, en luxels (8 par défaut).",
+    ),
+    (
+        "valveflags.vrad_maxdispsamplesize",
+        "Largest light sample size on displacements (default 512).",
+        "Taille maximale d'un échantillon de lumière sur les déplacements (512 par défaut).",
+    ),
+    (
+        "valveflags.vrad_largedispsampleradius",
+        "Gather the light of displacements over a wider area: removes splotches of bounced light on terrain, slower.",
+        "Rassemble la lumière des déplacements sur une zone plus large : enlève les taches de lumière rebondie sur le terrain, plus lent.",
+    ),
+    ("valveflags.vrad_centersamples", "Move the sample centers.", "Déplace les centres des échantillons."),
+    (
+        "valveflags.vrad_dlightmap",
+        "Put the direct light in a lightmap of its own, apart from the bounced light.",
+        "Met la lumière directe dans une lightmap à part, séparée de la lumière rebondie.",
+    ),
+    (
+        "valveflags.vrad_noskyboxrecurse",
+        "Do not cast shadows from the 3D skybox onto the world.",
+        "Ne projette pas d'ombres de la skybox 3D sur le monde.",
+    ),
+    (
+        "valveflags.vrad_staticproplighting",
+        "Bake the lighting of every static prop vertex (better looking props, slower).",
+        "Précalcule l'éclairage de chaque sommet des props statiques (props plus beaux, plus lent).",
+    ),
+    (
+        "valveflags.vrad_staticproppolys",
+        "Static props cast shadows from their exact polygons instead of their collision models.",
+        "Les props statiques projettent leurs ombres depuis leurs polygones exacts au lieu de leurs modèles de collision.",
+    ),
+    (
+        "valveflags.vrad_textureshadows",
+        "Let the alpha of model textures block light (for props listed in lights.rad).",
+        "Laisse l'alpha des textures des modèles bloquer la lumière (pour les props listés dans lights.rad).",
+    ),
+    (
+        "valveflags.vrad_nossprops",
+        "No static prop casts a shadow on itself.",
+        "Aucun prop statique ne projette d'ombre sur lui-même.",
+    ),
+    ("valveflags.vrad_nodetaillight", "Do not light the detail props.", "N'éclaire pas les props de détail."),
+    (
+        "valveflags.vrad_onlydetail",
+        "Only light the detail props and the ambient light of the leaves.",
+        "N'éclaire que les props de détail et la lumière ambiante des feuilles.",
+    ),
+    (
+        "valveflags.vrad_lights",
+        "A light file (.rad) to load in addition to lights.rad and the map's own file.",
+        "Un fichier de lumières (.rad) à charger en plus de lights.rad et du fichier propre à la map.",
+    ),
+    ("valveflags.vrad_verbose", "Print more details in the log.", "Écrit plus de détails dans le journal."),
+    ("valveflags.vrad_dump", "Write debugging .txt files.", "Écrit des fichiers .txt de débogage."),
+    (
+        "valveflags.vrad_dumpnormals",
+        "Write the normals to the debugging files.",
+        "Écrit les normales dans les fichiers de débogage.",
+    ),
+    (
+        "valveflags.vrad_dumptrace",
+        "Write the ray tracing scene to debugging files.",
+        "Écrit la scène de lancer de rayons dans des fichiers de débogage.",
+    ),
+    (
+        "valveflags.vrad_debugextra",
+        "Draw the supersampling into the lightmaps to show where it happens.",
+        "Dessine le suréchantillonnage dans les lightmaps pour montrer où il a lieu.",
+    ),
+    (
+        "valveflags.vrad_loghash",
+        "Log the sample hash table to samplehash.txt.",
+        "Écrit la table de hachage des échantillons dans samplehash.txt.",
+    ),
+    ("valveflags.vrad_rederror", "Show the errors in red.", "Affiche les erreurs en rouge."),
+    (
+        "valveflags.vrad_onlystaticprops",
+        "Only the direct lighting of the static props (debugging).",
+        "Seulement l'éclairage direct des props statiques (débogage).",
+    ),
+    (
+        "valveflags.vrad_staticpropnormals",
+        "Light the static props with their normals only, to check them (debugging).",
+        "Éclaire les props statiques avec leurs seules normales, pour les vérifier (débogage).",
+    ),
+    (
+        "valveflags.vrad_stoponexit",
+        "Wait for a key press at the end (the compile then never ends on its own).",
+        "Attend une touche à la fin (la compilation ne se termine alors jamais toute seule).",
+    ),
+    (
+        "valveflags.vrad_novconfig",
+        "Never open the graphical game picker on a game folder error.",
+        "N'ouvre jamais le sélecteur de jeu graphique en cas d'erreur de dossier de jeu.",
+    ),
+    (
+        "valveflags.vrad_fullminidumps",
+        "Write large crash dumps.",
+        "Écrit de gros fichiers de diagnostic en cas de plantage.",
+    ),
+];

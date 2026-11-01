@@ -527,6 +527,33 @@ fn shift_dragged_path_nodes_link_themselves() {
 }
 
 #[test]
+fn shift_arrow_clones_of_path_nodes_link_themselves_too() {
+    let mut state = state();
+    let mut tool = SelectTool::new();
+    let ctx = egui::Context::default();
+    let kv = |k: &str, val: &str| (k.to_owned(), val.to_owned());
+    let a = state
+        .doc
+        .create_point_entity("path_track", DVec3::new(-128.0, -200.0, 0.0), &[kv("targetname", "p1"), kv("target", "p2")])
+        .expect("a");
+    state.doc.create_point_entity("path_track", DVec3::new(128.0, -200.0, 0.0), &[kv("targetname", "p2")]).expect("b");
+    state.doc.set_selection(&[ObjRef::Entity(a)]);
+    state.ui.hovered_view = Some(1);
+    state.settings.selection.shift_arrow_clones = true;
+    assert!(key_frame(&ctx, &mut state, &mut tool, vec![key(Key::ArrowRight, Modifiers::SHIFT)]));
+    let [ObjRef::Entity(copy)] = state.doc.selected_objects()[..] else { panic!("one copy") };
+    assert_ne!(copy, a);
+    let get = |state: &AppState, id, k: &str| state.doc.scene().entity(id).and_then(|n| n.entity.get(k).map(str::to_owned));
+    assert_eq!(get(&state, copy, "targetname").as_deref(), Some("p3"));
+    assert_eq!(get(&state, copy, "target").as_deref(), Some("p2"));
+    assert_eq!(get(&state, a, "target").as_deref(), Some("p3"));
+    assert_eq!(state.doc.undo_label(), Some("Duplicate"));
+    assert!(state.doc.undo());
+    assert_eq!(get(&state, a, "target").as_deref(), Some("p2"));
+    assert!(state.doc.scene().entity(copy).is_none(), "one undo step");
+}
+
+#[test]
 fn arrows_only_nudge_in_the_view_under_the_pointer() {
     let mut state = state();
     let mut tool = SelectTool::new();
@@ -867,4 +894,99 @@ fn clicks_while_flying_select_at_the_crosshair() {
     let top = view2d(ViewKind::Top);
     assert_eq!(cam.click_while_flying(&mut state, &top, light, Modifiers::NONE), ToolFlow::Ignored);
     assert_eq!(sel.click_while_flying(&mut state, &top, light, Modifiers::NONE), ToolFlow::Ignored);
+}
+
+fn block(state: &mut AppState, min: DVec3, max: DVec3, material: &str) -> ObjRef {
+    let params = hp_geom::PrimitiveParams {
+        bounds: hp_geom::Aabb::new(min, max),
+        material: material.to_owned(),
+        ..hp_geom::PrimitiveParams::default()
+    };
+    let mut side_id = 9000u32;
+    let pieces = hp_geom::make_primitive(&params, &mut || {
+        side_id += 1;
+        side_id
+    })
+    .expect("block");
+    let ids = state.doc.create_solids(pieces, hp_editor::Owner::World).expect("create");
+    ObjRef::Solid(ids[0])
+}
+
+#[test]
+fn a_later_click_on_the_same_spot_keeps_the_front_object() {
+    let mut state = state();
+    let mut tool = SelectTool::new();
+    let v = view3d();
+    let light = scr(&v, DVec3::new(0.0, -8.0, 96.0));
+    click(&mut tool, &mut state, &v, light, Modifiers::NONE);
+    assert_eq!(state.doc.selected_objects(), vec![LIGHT]);
+    state.doc.clear_selection();
+    click(&mut tool, &mut state, &v, light, Modifiers::NONE);
+    assert_eq!(state.doc.selected_objects(), vec![LIGHT], "the selection changed: no cycling to the wall behind");
+    state.frame.time += 3.0;
+    click(&mut tool, &mut state, &v, light, Modifiers::NONE);
+    assert_eq!(state.doc.selected_objects(), vec![LIGHT], "the cycle ended: still the front object");
+    click(&mut tool, &mut state, &v, light, Modifiers::NONE);
+    assert_eq!(state.doc.selected_objects(), vec![WALL], "a quick second click still digs behind");
+    state.doc.select(&[FLOOR], hp_editor::SelectOp::Replace);
+    click(&mut tool, &mut state, &v, light, Modifiers::NONE);
+    assert_eq!(state.doc.selected_objects(), vec![LIGHT]);
+
+    let top = view2d(ViewKind::Top);
+    let at = scr(&top, DVec3::new(0.0, -8.0, 96.0));
+    click(&mut tool, &mut state, &top, at, Modifiers::NONE);
+    let first = state.doc.selected_objects();
+    state.doc.clear_selection();
+    click(&mut tool, &mut state, &top, at, Modifiers::NONE);
+    assert_eq!(state.doc.selected_objects(), first, "same rule in the 2D views");
+}
+
+#[test]
+fn hidden_tool_brushes_do_not_catch_clicks() {
+    let mut state = state();
+    let mut tool = SelectTool::new();
+    let v = view3d();
+    let clip = block(&mut state, DVec3::new(-64.0, -400.0, 0.0), DVec3::new(64.0, -384.0, 200.0), "tools/toolsplayerclip");
+    state.doc.clear_selection();
+    let light = scr(&v, DVec3::new(0.0, -8.0, 96.0));
+    click(&mut tool, &mut state, &v, light, Modifiers::NONE);
+    assert_eq!(state.doc.selected_objects(), vec![clip], "a shown clip brush is in front");
+    state.frame.time += 3.0;
+    state.settings.render.hide_clips = true;
+    click(&mut tool, &mut state, &v, light, Modifiers::NONE);
+    assert_eq!(state.doc.selected_objects(), vec![LIGHT], "hidden clips are not picked in 3D");
+    state.settings.render.hide_clips = false;
+    state.settings.view.show_tool_textures = false;
+    state.frame.time += 3.0;
+    click(&mut tool, &mut state, &v, light, Modifiers::NONE);
+    assert_eq!(state.doc.selected_objects(), vec![LIGHT], "tool textures off: same");
+    state.settings.view.show_tool_textures = true;
+    state.frame.time += 3.0;
+    click(&mut tool, &mut state, &v, light, Modifiers::NONE);
+    assert_eq!(state.doc.selected_objects(), vec![clip]);
+    let top = view2d(ViewKind::Top);
+    state.settings.render.hide_clips = true;
+    state.doc.clear_selection();
+    let edge = scr(&top, DVec3::new(-64.0, -392.0, 0.0));
+    click(&mut tool, &mut state, &top, edge, Modifiers::NONE);
+    assert_eq!(state.doc.selected_objects(), vec![clip], "the 2D views still draw and pick tool brushes");
+}
+
+#[test]
+fn hidden_displacements_and_disp_only_follow_the_view() {
+    let mut state = state();
+    let mut tool = SelectTool::new();
+    let v = view3d();
+    let light = scr(&v, DVec3::new(0.0, -8.0, 96.0));
+    state.settings.render.displacements_only = true;
+    click(&mut tool, &mut state, &v, light, Modifiers::NONE);
+    assert_eq!(state.doc.selected_objects(), vec![LIGHT], "entities stay pickable");
+    let wall = scr(&v, DVec3::new(-150.0, 256.0, 30.0));
+    state.frame.time += 3.0;
+    click(&mut tool, &mut state, &v, wall, Modifiers::NONE);
+    assert!(!state.doc.selected_objects().contains(&WALL), "brushes are hidden in the 3D view");
+    state.settings.render.displacements_only = false;
+    state.frame.time += 3.0;
+    click(&mut tool, &mut state, &v, wall, Modifiers::NONE);
+    assert_eq!(state.doc.selected_objects(), vec![WALL]);
 }

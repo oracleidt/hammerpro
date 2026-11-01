@@ -55,7 +55,23 @@ pub enum PaintAxis {
     Custom,
     SubdivNormal,
     View,
+    ViewFlat,
     BrushCenter,
+}
+
+pub fn flat_direction(v: DVec3) -> Option<DVec3> {
+    let h = DVec3::new(v.x, v.y, 0.0);
+    if !h.is_finite() || h.length_squared() < f64::MIN_POSITIVE {
+        return None;
+    }
+    h.try_normalize()
+}
+
+pub fn flat_toward_camera(cam: &hp_app::view::Camera3d) -> Option<DVec3> {
+    flat_direction(-cam.forward()).or_else(|| {
+        let (s, c) = cam.yaw_deg.to_radians().sin_cos();
+        flat_direction(DVec3::new(-c, -s, 0.0))
+    })
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -117,7 +133,11 @@ impl Default for BrushSettings {
 impl BrushSettings {
     pub fn axis_vector(&self) -> Option<DVec3> {
         match self.axis {
-            PaintAxis::FaceNormal | PaintAxis::SubdivNormal | PaintAxis::View | PaintAxis::BrushCenter => None,
+            PaintAxis::FaceNormal
+            | PaintAxis::SubdivNormal
+            | PaintAxis::View
+            | PaintAxis::ViewFlat
+            | PaintAxis::BrushCenter => None,
             PaintAxis::X => Some(DVec3::X),
             PaintAxis::Y => Some(DVec3::Y),
             PaintAxis::Z => Some(DVec3::Z),
@@ -126,9 +146,19 @@ impl BrushSettings {
     }
 
     pub fn resolved(&self, toward_eye: Option<DVec3>, center_normal: Option<DVec3>) -> BrushSettings {
+        self.resolved_view(toward_eye, toward_eye.and_then(flat_direction), center_normal)
+    }
+
+    pub fn resolved_view(
+        &self,
+        toward_eye: Option<DVec3>,
+        toward_eye_flat: Option<DVec3>,
+        center_normal: Option<DVec3>,
+    ) -> BrushSettings {
         let mut out = self.clone();
         let source = match out.axis {
             PaintAxis::View => Some(toward_eye),
+            PaintAxis::ViewFlat => Some(toward_eye_flat.or_else(|| toward_eye.and_then(flat_direction))),
             PaintAxis::BrushCenter => Some(center_normal),
             _ => None,
         };
@@ -364,7 +394,8 @@ fn paint_blend(disp: &mut DispInfo, mesh: &DispMesh, brush: &LocalBrush, channel
     if !amount.is_finite() || amount == 0.0 {
         return 0;
     }
-    let mut blend = MultiBlend::of(disp).filter(|b| b.len() == count).unwrap_or_else(|| MultiBlend::new(count));
+    let mut blend =
+        MultiBlend::of_or_alphas(disp).filter(|b| b.len() == count).unwrap_or_else(|| MultiBlend::new(count));
     let mut changed = 0;
     for k in 0..count {
         let Some(d) = brush_distance(mesh, brush, k) else { continue };

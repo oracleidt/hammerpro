@@ -2,7 +2,7 @@
 
 # Settings reference
 
-Every option of Hammer Pro 1.0.0 is stored in one TOML file, `settings.toml`, in `%APPDATA%\HammerPro` on Windows (the user configuration folder on other systems). This page lists every table and key of that file, its default value and what it does, with the place in the interface where you change it.
+Every option of Hammer Pro 1.0.1 is stored in one TOML file, `settings.toml`, in `%APPDATA%\HammerPro` on Windows (the user configuration folder on other systems). This page lists every table and key of that file, its default value and what it does, with the place in the interface where you change it.
 
 You normally never edit this file by hand: the [Settings window](../features/settings-dialog.md) (**Tools > Options...**, `Ctrl+,`) and the menus change it, and every change is saved at once. Editing it by hand is safe too:
 
@@ -115,6 +115,7 @@ Mostly on **Settings > Viewports**; the `show_*` toggles are also in the **View*
 | `mount_cfg` | `true` | Mount the games of `mount.cfg`. |
 | `mount_server_content` | `true` | Mount the content downloaded from servers (`garrysmod/download`, `garrysmod/cache/workshop`). |
 | `extra_game_dirs` | `[]` | More game folders to mount. |
+| `mount_app_ids` | `[]` | Steam games whose content is mounted, by AppID, in priority order (for example `[240, 440]`). Each is found in the Steam libraries and mounted from its `gameinfo.txt`. See [Game setup](../getting-started/game-setup.md#steam-games-by-appid). |
 | `custom_texture_dirs` | `[]` | Custom texture folders: tables with `path`, `prefix` (material name prefix when the folder is not inside a `materials` tree) and `enabled`. See [Custom texture folders](../features/custom-texture-folders.md). |
 | `extra_fgds` | `[]` | Extra FGD files loaded after the game FGD. |
 | `fgd_override` | none | Replaces the main FGD of the game. |
@@ -163,6 +164,8 @@ Mostly on **Settings > Viewports**; the `show_*` toggles are also in the **View*
 | `expert` | `false` | Expert mode: run the selected profile instead of the preset. |
 | `profiles` | `[]` | Expert profiles: `name` and `steps` (`enabled`, `action`, `program`, `args`, `continue_on_error`). |
 | `active_profile` | `0` | Index of the selected profile. |
+| `compilers` | `[]` | Your compilers and your changes to the detected ones: `id` (`user:N` or `detected:...`), `name`, `mode_flags`, `steps` (`kind`: `bsp`, `vis`, `rad`, `copy`, `game` or `custom`; `enabled`, `exe`, `options` (flag to value, `""` for a switch), `extra`, `args`, `workdir`, `continue_on_error`). See [Choosing a compiler](../compiler/compilers.md). MCP changes it with `create_compiler` and `set_compiler`. |
+| `compiler_by_game` | `{}` | The compiler of each game: game id to compiler id. A game that is not listed uses Hammer Pro's compiler. MCP changes it with `select_compiler`. |
 | `separate_window` | `true` | The Compile and run window is a window of its own. |
 | `window` | none | Last position of that window. |
 
@@ -203,6 +206,11 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `gizmo_local` | `false` | The gizmo of a single point entity follows its angles (`Ctrl+J`). |
 | `click_to_zoom` | `false` | The camera tool zooms 2D views on click (`Ctrl` + click zooms out). |
 | `stretch_handles` | `true` | Arrows on the faces of the selection in the 3D view stretch it. |
+| `random_yaw_min` | `0.0` | **Random Z rotation**: smallest turn, degrees (-360 to 360). |
+| `random_yaw_max` | `360.0` | **Random Z rotation**: largest turn, degrees (at most 360 above the smallest). |
+| `random_yaw_snap` | `0.0` | **Random Z rotation**: step of the turn, degrees (0: free, up to 180). |
+| `random_tilt` | `false` | **Random Z rotation** also tilts pitch and roll a little. |
+| `random_tilt_deg` | `3.0` | Largest pitch and roll tilt, degrees (0 to 45). |
 
 ## `[brush]`
 
@@ -266,7 +274,7 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 
 | Key | Default | What it does |
 | --- | --- | --- |
-| `helper_scope` | `"Selected"` | Helpers (radii, cones, lines to targets) of `Selected` entities or `All`. |
+| `helper_scope` | `"Selected"` | Helpers (radii, cones, lines to targets) of `Selected` entities or `All`. The path links of the `line()` and `cylinder()` helpers (`path_track`, `path_corner`) are drawn for every entity in both modes, like Hammer. |
 | `connections` | `"Selected"` | I/O lines: `Off`, `Selected`, `All`. |
 | `show_overlays` | `true` | Draw `info_overlay` on their faces. |
 | `show_editor_objects` | `true` | Entity icons and helper geometry. |
@@ -333,6 +341,10 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `sky_see_through` | `false` | Leave `toolsskybox` faces out so the sky shows through. |
 | `water_preview` | `true` | Water drawn like in game. |
 | `fog_preview` | `false` | Preview `env_fog_controller` fog. |
+| `fog_volume_preview` | `true` | Fill `fog_volume` brushes with the fog of their controller; the player view takes it inside them. |
+| `fog_volume_texture` | `true` | Draw the material of `fog_volume` brushes in the 3D view. |
+| `fish_preview` | `true` | Draw the fish of `func_fish_pool` entities. |
+| `fish_swim` | `true` | The previewed fish swim. |
 | `normal_maps` | `true` | Normal maps give surfaces their relief. |
 | `player_compiled_lighting` | `true` | The player view uses the lightmaps of the compiled map. |
 | `cubemaps` | `true` | `$envmap` materials reflect their cubemap. |
@@ -413,7 +425,7 @@ Launch popover of the compile window and **Settings > Game > Testing in game**. 
 
 ## `[content]`
 
-The **Build and save as content** window and the Map assets tab. See [Build and save as content](../features/build-content-release.md) and [BSP Protection Pro](../features/bsp-protection.md).
+The **Build and save as content** window and the Map assets tab. See [Build and save as content](../features/build-content-release.md) and [Protect your BSP](../features/bsp-protection.md).
 
 | Key | Default | What it does |
 | --- | --- | --- |
@@ -427,7 +439,7 @@ The **Build and save as content** window and the Map assets tab. See [Build and 
 | `game_session` | `false` | Build cubemaps and the nav mesh in game. |
 | `write_gma` | `true` | Write the `.gma`. |
 | `open_folder` | `false` | Open the output folder when done. |
-| `protect` | `false` | BSP Protection Pro. |
+| `protect` | `false` | Protect your BSP. |
 | `protect_watermark` | `""` | Watermark of the protected copy. |
 | `protect_strip_original_faces` | `true` | Empty the original faces lump. |
 | `protect_lock` | `false` | Server lock. |
@@ -491,11 +503,11 @@ The **Build and save as content** window and the Map assets tab. See [Build and 
 | Key | Default | What it does |
 | --- | --- | --- |
 | `mcp.start_with_app` | `false` | Switch the MCP server on when Hammer Pro starts. **Settings > MCP**. See [MCP server](mcp-server.md). |
-| `discord.enabled` | `true` | Show the activity on Discord (needs an application id). |
+| `discord.enabled` | `true` | Show the activity on Discord. |
 | `discord.show_map` | `true` | Show the map name. |
 | `discord.show_elapsed` | `true` | Show the time spent. |
 | `discord.show_tool` | `true` | Show the active tool. |
-| `discord.application_id` | `""` | Discord application id. |
+| `discord.application_id` | `""` | Your own Discord application id, 17 to 20 digits; empty: Hammer Pro's own application. |
 | `discord.project_url` | `""` | Link of the button (no button when empty). |
 
 See [Discord Rich Presence](../features/discord.md).

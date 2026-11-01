@@ -54,6 +54,7 @@ impl DisplacementTool {
             PaintAxis::FaceNormal => "normal",
             PaintAxis::SubdivNormal => "subdiv",
             PaintAxis::View => "view",
+            PaintAxis::ViewFlat => "view_flat",
             PaintAxis::BrushCenter => "center",
             PaintAxis::X => "x",
             PaintAxis::Y => "y",
@@ -112,8 +113,9 @@ impl DisplacementTool {
                 "axis",
                 axis,
                 "direction vertices move: normal (face normal), subdiv (surface normal), center (the surface normal \
-                 under the brush center), view (toward the 3D camera), x, y, z or custom (Alt and a right click on a \
-                 face in the 3D view sets it)",
+                 under the brush center), view (toward the 3D camera), view_flat (toward the 3D camera on X and Y \
+                 only: the camera direction flattened onto the ground, never up or down), x, y, z or custom (Alt \
+                 and a right click on a face in the 3D view sets it)",
             ),
             ToolOption::new("custom_axis", nums(&[c.x, c.y, c.z]), "direction of the custom axis: \"x y z\""),
             ToolOption::new("radius", num(b.radius), "brush radius in units (1 to 8192)"),
@@ -259,6 +261,7 @@ impl DisplacementTool {
                 "normal" => Some(PaintAxis::FaceNormal),
                 "subdiv" => Some(PaintAxis::SubdivNormal),
                 "view" => Some(PaintAxis::View),
+                "view_flat" | "view_horizontal" => Some(PaintAxis::ViewFlat),
                 "center" | "brush_center" => Some(PaintAxis::BrushCenter),
                 "x" => Some(PaintAxis::X),
                 "y" => Some(PaintAxis::Y),
@@ -454,8 +457,10 @@ impl DisplacementTool {
             ..Modifiers::default()
         };
         let saved_eye = self.toward_eye;
+        let saved_flat = self.toward_eye_flat;
         let saved_dt = state.frame.dt;
         self.toward_eye = s.forward.and_then(|f| (-f).try_normalize());
+        self.toward_eye_flat = s.forward.and_then(|f| super::paint::flat_direction(-f));
         state.frame.dt = if s.seconds_per_sample.is_finite() && s.seconds_per_sample > 0.0 {
             s.seconds_per_sample
         } else {
@@ -476,6 +481,7 @@ impl DisplacementTool {
         self.end_stroke(state);
         state.frame.dt = saved_dt;
         self.toward_eye = saved_eye;
+        self.toward_eye_flat = saved_flat;
         if out.vertices_changed == 0 {
             out.note = Some(
                 if limited {

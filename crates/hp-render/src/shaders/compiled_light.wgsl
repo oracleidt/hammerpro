@@ -29,6 +29,7 @@ struct ClOut {
     @location(7) @interpolate(flat) stride: f32,
     @location(8) @interpolate(flat) cube: u32,
     @location(9) normal: vec3<f32>,
+    @location(10) blend: vec4<f32>,
 };
 
 @vertex
@@ -47,6 +48,7 @@ fn vs_compiled(
     @location(11) m3: vec4<f32>,
     @location(12) cube: u32,
     @location(13) normal: vec3<f32>,
+    @location(14) blend: u32,
 ) -> ClOut {
     let st = object_state(slot);
     let m = mat4x4<f32>(m0, m1, m2, m3);
@@ -58,6 +60,7 @@ fn vs_compiled(
     out.uv = uv;
     out.lm = lm;
     out.alpha = alpha;
+    out.blend = unpack_blend_layers(blend);
     out.layer = layer;
     out.styles = styles;
     out.stride = stride;
@@ -142,9 +145,16 @@ fn cl_shade_env(albedo: vec3<f32>, light: vec3<f32>, env: vec3<f32>) -> vec3<f32
 fn fs_compiled(in: ClOut) -> @location(0) vec4<f32> {
     let uv = in.uv * material.inv_tex_size + material.scroll * view.sky.z;
     var albedo = textureSample(tex, samp, uv);
-    if material.has_tex2 != 0u && material.blend4 == 0u {
+    var cover = vec4<f32>(1.0, 0.0, 0.0, 0.0);
+    if material.has_tex2 != 0u {
         let b = textureSample(tex2, samp, uv);
-        albedo = vec4<f32>(mix(albedo.rgb, b.rgb, in.alpha), albedo.a);
+        if material.blend4 != 0u {
+            let fw = four_way_blend(uv, blend_layers(in.blend, in.alpha));
+            albedo = fw.color;
+            cover = fw.cover;
+        } else {
+            albedo = vec4<f32>(mix(albedo.rgb, b.rgb, in.alpha), albedo.a);
+        }
     }
     let detail = detail_sample(uv);
     if material.detail_mode != DETAIL_NONE {
@@ -153,7 +163,7 @@ fn fs_compiled(in: ClOut) -> @location(0) vec4<f32> {
     var bump = vec3<f32>(0.0, 0.0, 1.0);
     let bumped = bump_on();
     if bumped {
-        bump = bump_texel(in.uv * material.inv_tex_size, in.alpha, vec4<f32>(1.0, 0.0, 0.0, 0.0));
+        bump = bump_texel(in.uv * material.inv_tex_size, in.alpha, cover);
     }
     let nl = length(in.normal);
     let n = select(vec3<f32>(0.0, 0.0, 1.0), in.normal / nl, nl > 1e-5);

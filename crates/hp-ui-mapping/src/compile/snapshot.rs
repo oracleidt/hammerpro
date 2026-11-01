@@ -192,6 +192,7 @@ fn context_hash(
     staged: &[PathBuf],
     game_dir: &Path,
     content: &[String],
+    compiler: Option<&str>,
 ) -> u64 {
     let mut parts: Vec<String> = vec![
         "hammerpro-context-3".to_owned(),
@@ -209,6 +210,9 @@ fn context_hash(
     let mut staged: Vec<String> = staged.iter().map(|p| stamp_text(p)).collect();
     staged.sort_unstable();
     parts.extend(staged);
+    if let Some(c) = compiler {
+        parts.push(c.to_owned());
+    }
     incremental::context_hash(parts.iter().map(String::as_str))
 }
 
@@ -247,7 +251,7 @@ pub(crate) struct DryRun {
     pub estimate_ms: Option<u64>,
 }
 
-pub(crate) fn prepare_snapshot(input: SnapshotInput) -> SnapshotOutput {
+pub(crate) fn prepare_snapshot(mut input: SnapshotInput) -> SnapshotOutput {
     let mut messages: Vec<(LogSeverity, String)> = Vec::new();
     let fail = |messages: Vec<(LogSeverity, String)>, e: String| SnapshotOutput {
         result: Err(PrepError::Failed(e)),
@@ -284,6 +288,19 @@ pub(crate) fn prepare_snapshot(input: SnapshotInput) -> SnapshotOutput {
         let list: Vec<String> = missing.iter().map(|p| p.display().to_string()).collect();
         return fail(messages, tf!("compile.err_missing_files", list.join(", ")));
     }
+    let external = if input.background || input.release {
+        None
+    } else {
+        match super::compilers::choice(s, &tools) {
+            super::compilers::Choice::Builtin => None,
+            super::compilers::Choice::External(p) => Some(p),
+            super::compilers::Choice::Missing(id) => {
+                messages.push((LogSeverity::Warning, tf!("compilers.missing_choice", id)));
+                None
+            }
+        }
+    };
+    let signature = external.as_ref().map(super::compilers::signature);
 
     let t_fp = Instant::now();
     let fingerprint =
@@ -296,8 +313,9 @@ pub(crate) fn prepare_snapshot(input: SnapshotInput) -> SnapshotOutput {
         plan::stage_for_compilers(s, input.fs.as_ref(), &tools, &materials, &input.content_dir, &mut messages);
     let base = if input.release { preset_of(CompilePresetSetting::Final).modes() } else { effective_modes(s) };
     let content_args = plan::content_args(input.fs.as_ref());
-    let context = context_hash(s, base, &tools, &staged, &tools.game_dir, &content_args);
+    let context = context_hash(s, base, &tools, &staged, &tools.game_dir, &content_args, signature.as_deref());
     let smart = s.smart_recompile
+        && external.is_none()
         && !input.release
         && !input.background
         && matches!(s.preset, CompilePresetSetting::Draft | CompilePresetSetting::Normal)
@@ -360,6 +378,14 @@ pub(crate) fn prepare_snapshot(input: SnapshotInput) -> SnapshotOutput {
     }
     let mat_ms = t_mat.elapsed().as_millis();
 
+    if external.is_some()
+        && let Some(dir) = input.target.source.as_deref().and_then(Path::parent)
+    {
+        let n = super::compilers::point_instances_at_the_map_folder(&mut input.snapshot.map, dir);
+        if n > 0 {
+            messages.push((LogSeverity::Info, tf!("compilers.instances_fixed", n)));
+        }
+    }
     let t_write = Instant::now();
     if let Err(e) = input.snapshot.write(&input.target.build_dir, &input.target.name) {
         return fail(messages, tf!("compile.err_snapshot", input.target.build_dir.display(), e));
@@ -391,7 +417,9 @@ pub(crate) fn prepare_snapshot(input: SnapshotInput) -> SnapshotOutput {
         messages.push((LogSeverity::Warning, tf!(plural(n, "compile.hidden_lights_one", "compile.hidden_lights"), n)));
     }
 
-    if let Some(profile) = super::expert::active_profile(s).filter(|_| !input.background && !input.release) {
+    if let Some(profile) =
+        super::expert::active_profile(s).filter(|_| !input.background && !input.release && external.is_none())
+    {
         let plan = match super::expert::plan_of(profile, &input.target, &tools) {
             Ok(p) => p,
             Err(e) => return fail(messages, e),
@@ -468,7 +496,15 @@ pub(crate) fn prepare_snapshot(input: SnapshotInput) -> SnapshotOutput {
     if plan.enabled_steps().next().is_none() {
         return fail(messages, t!("compile.err_no_steps").to_owned());
     }
-    if let Some(dir) = &input.builds_dir
+    if let Some(profile) = &external {
+        plan = match super::compilers::external_plan(plan, profile, &settings, &tools, plan::effective_lighting(&settings)) {
+            Ok(p) => p,
+            Err(e) => return fail(messages, e),
+        };
+        messages.push((LogSeverity::Info, tf!("compilers.running", super::compilers::display_name(profile))));
+    }
+    if external.is_none()
+        && let Some(dir) = &input.builds_dir
         && let Some(key) = snapshot_input_key(&vmf, context, fingerprint.bake)
     {
         let map_key = hp_app::sidecar::map_key(input.target.source.as_deref());

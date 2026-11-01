@@ -451,6 +451,12 @@ pub const TR: TrTable = &[
         "Move the vertices toward the 3D camera (inverted: away from it), along the view direction of the stroke start (Hammer's Screen direction)",
         "Déplace les sommets vers la caméra 3D (inversé : en s'en éloignant), selon la direction de vue au début du trait (direction Écran de Hammer)",
     ),
+    ("disp.axis.view_flat", "View (camera), horizontal", "Vue (caméra) horizontale"),
+    (
+        "disp.axis.view_flat_tip",
+        "Move the vertices toward the 3D camera on X and Y only (inverted: away from it): the view direction of the stroke start, flattened onto the ground, so nothing goes up or down. Looking straight down, the bottom of the view gives the direction",
+        "Déplace les sommets vers la caméra 3D sur X et Y seulement (inversé : en s'en éloignant) : la direction de vue au début du trait, mise à plat sur le sol, donc rien ne monte ni ne descend. En regardant droit vers le bas, le bas de la vue donne la direction",
+    ),
     ("disp.line_of_sight", "Line of sight", "Ligne de vue"),
     (
         "disp.line_of_sight_tip",

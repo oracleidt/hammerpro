@@ -43,7 +43,11 @@ impl BrowseTarget {
 }
 
 pub(crate) fn smart_applies(s: &CompileSettings) -> bool {
-    s.smart_recompile && !s.expert && is_iteration_preset(s.preset) && effective_modes(s).bsp == BspMode::Full
+    s.smart_recompile
+        && !s.expert
+        && s.uses_builtin_compiler()
+        && is_iteration_preset(s.preset)
+        && effective_modes(s).bsp == BspMode::Full
 }
 
 #[derive(Clone, Debug)]
@@ -93,20 +97,35 @@ impl PreviewCache {
         else {
             return Vec::new();
         };
-        let built = match super::expert::active_profile(s) {
+        let external = match super::compilers::choice(s, &res.tools) {
+            super::compilers::Choice::External(p) => Some(p),
+            _ => None,
+        };
+        let expert = super::expert::active_profile(s).filter(|_| external.is_none());
+        let built = match expert {
             Some(profile) => super::expert::plan_of(profile, &target, &res.tools),
             None => {
                 let content_args = plan::content_args(state.assets.fs());
                 let extras = PlanExtras { content_args, ..PlanExtras::default() };
                 plan::build_plan_with(s, &res.tools, &target.vmf(), Vec::new(), None, extras)
                     .map_err(|e| super::notices::plan_error_text(&e))
+                    .and_then(|p| match &external {
+                        Some(profile) => super::compilers::external_plan(
+                            p,
+                            profile,
+                            s,
+                            &res.tools,
+                            plan::effective_lighting(s),
+                        ),
+                        None => Ok(p),
+                    })
             }
         };
         let p = match built {
             Ok(p) => p,
             Err(e) => return vec![PreviewLine { kind: StepKind::Custom, line: e, flags: Vec::new() }],
         };
-        if s.expert {
+        if expert.is_some() || external.is_some() {
             return p
                 .steps
                 .iter()
@@ -278,7 +297,8 @@ impl CompileDialog {
                 let before = state.settings.compile.clone();
                 ui.add_enabled_ui(!running, |ui| {
                     self.main_grid(ui, state, cordons);
-                    ui.add_enabled_ui(!state.settings.compile.expert, |ui| {
+                    let builtin_options = !state.settings.compile.expert && self.external_name.is_none();
+                    ui.add_enabled_ui(builtin_options, |ui| {
                         let s = &mut state.settings.compile;
                         super::options_ui::step_menu(ui, s, StepKind::Bsp, "hp_compile_opts");
                         super::options_ui::step_menu(ui, s, StepKind::Rad, "hp_compile_opts");
@@ -301,6 +321,28 @@ impl CompileDialog {
 
     fn main_grid(&mut self, ui: &mut Ui, state: &mut AppState, cordons: usize) {
         let lines = self.preview.lines.clone();
+        let (_, detected) = super::compilers_ui::detection(ui.ctx(), state);
+        let mut open_compilers = false;
+        egui::Grid::new("hp_compile_compiler_grid").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
+            ui.label(t!("compilers.label")).on_hover_text(t!("compilers.label_tip"));
+            ui.horizontal(|ui| {
+                super::compilers_ui::picker(ui, state, &detected, "dialog");
+                if ui.button(t!("compilers.edit")).clicked() {
+                    open_compilers = true;
+                }
+            });
+            ui.end_row();
+        });
+        if open_compilers {
+            self.tab = super::Tab::Compilers;
+            self.collapse_settings = true;
+        }
+        let active = super::compilers_ui::active_of(state, &detected);
+        self.external_name = (!active.is_builtin()).then(|| super::compilers::display_name(&active));
+        if let Some(name) = &self.external_name {
+            ui.label(RichText::new(tf!("compilers.external_note", name)).color(theme::warning()).small());
+        }
+        let external = self.external_name.is_some();
         let s = &mut state.settings.compile;
         normalize_steps(s);
         egui::Grid::new("hp_compile_grid").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
@@ -318,7 +360,7 @@ impl CompileDialog {
                 }
                 ui.separator();
                 ui.add_enabled(
-                    is_iteration_preset(s.preset),
+                    is_iteration_preset(s.preset) && !external,
                     egui::Checkbox::new(&mut s.smart_recompile, t!("compile.smart")),
                 )
                 .on_hover_text(t!("compile.smart_tip"));
@@ -422,7 +464,7 @@ impl CompileDialog {
                 })
             });
             ui.end_row();
-            if s.expert {
+            if s.expert && self.external_name.is_none() {
                 ui.label("");
                 ui.label(RichText::new(t!("compile.expert.active")).color(theme::warning()).small());
                 ui.end_row();

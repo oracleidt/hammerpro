@@ -135,7 +135,7 @@ fn speed(ui: &mut Ui, c: &mut CompileSettings, seal: &mut String) -> bool {
         seal_changed = ui
             .add(
                 egui::TextEdit::singleline(seal)
-                    .desired_width(240.0)
+                    .desired_width(ui.available_width().clamp(120.0, 240.0))
                     .hint_text(hp_app::settings::VisibilitySettings::default().cordon_material),
             )
             .changed();
@@ -180,7 +180,7 @@ fn after(ui: &mut Ui, c: &mut CompileSettings) {
             ui.end_row();
         }
         ui.label(t!("shell.compile.game_args"));
-        ui.add(egui::TextEdit::singleline(&mut c.game_args).desired_width(300.0).font(egui::TextStyle::Monospace));
+        ui.add(egui::TextEdit::singleline(&mut c.game_args).desired_width(ui.available_width().clamp(120.0, 300.0)).font(egui::TextStyle::Monospace));
         ui.end_row();
     });
     heading(ui, t!("shell.compile.extra_args"));
@@ -190,22 +190,38 @@ fn after(ui: &mut Ui, c: &mut CompileSettings) {
             (&mut c.extra_rad_args, "shell.compile.step_rad", "shell.compile.extra_rad_tip"),
         ] {
             ui.label(t!(name));
-            ui.add(egui::TextEdit::singleline(value).desired_width(300.0).font(egui::TextStyle::Monospace))
+            ui.add(egui::TextEdit::singleline(value).desired_width(ui.available_width().clamp(120.0, 300.0)).font(egui::TextStyle::Monospace))
                 .on_hover_text(t!(tip));
             ui.end_row();
         }
     });
-    if let Some(menus) = hp_app::extend::compile_options_ui() {
+    if hp_app::extend::compilers_ui().is_none()
+        && let Some(menus) = hp_app::extend::compile_options_ui()
+    {
         heading(ui, t!("shell.compile.options"));
         menus(ui, c);
     }
 }
 
 fn compiler(ui: &mut Ui, state: &mut AppState) {
+    let visible = ui.clip_rect().right() - ui.cursor().left();
+    ui.scope(|ui| {
+        if visible.is_finite() && visible > 200.0 && visible < ui.available_width() {
+            ui.set_max_width(visible);
+        }
+        compiler_section(ui, state);
+    });
+}
+
+fn compiler_section(ui: &mut Ui, state: &mut AppState) {
     heading(ui, t!("shell.compile.compiler"));
     ui.label(tf!("shell.compile.compiler_builtin", env!("CARGO_PKG_VERSION")));
-    ui.label(RichText::new(t!("shell.compile.compiler_tip")).small().weak());
+    ui.add(egui::Label::new(RichText::new(t!("shell.compile.compiler_tip")).small().weak()).wrap());
     ui.add_space(4.0);
+    if let Some(editor) = hp_app::extend::compilers_ui() {
+        editor(ui, state);
+        ui.add_space(4.0);
+    }
     let c = &mut state.settings.compile;
     let (out, _) = path_row(
         ui,
@@ -221,7 +237,8 @@ fn compiler(ui: &mut Ui, state: &mut AppState) {
     let c = &mut state.settings.compile;
     ui.horizontal(|ui| {
         ui.label(t!("shell.compile.maps_dir"));
-        optional_path_edit(ui, &mut c.maps_dir_override, t!("shell.compile.maps_dir_hint"), 300.0);
+        let width = (ui.available_width() - 90.0).clamp(120.0, 300.0);
+        optional_path_edit(ui, &mut c.maps_dir_override, t!("shell.compile.maps_dir_hint"), width);
         if ui.button(t!("common.browse")).clicked() {
             state.runtime.compile.browse_request = Some(CompileBrowse::MapsDir);
         }
@@ -361,13 +378,13 @@ pub(crate) const TR: TrTable = &[
     ("shell.compile.compiler", "Compiler", "Compilateur"),
     (
         "shell.compile.compiler_builtin",
-        "Hammer Pro {0} compiles the maps itself.",
-        "Hammer Pro {0} compile lui-même les maps.",
+        "Hammer Pro {0} has its own compiler, used by default.",
+        "Hammer Pro {0} a son propre compilateur, utilisé par défaut.",
     ),
     (
         "shell.compile.compiler_tip",
-        "The geometry, portals, leak test and visibility (hammerpro --bspc), the lighting (hammerpro --rad) and the packing all run in Hammer Pro: no other program is needed.",
-        "La géométrie, les portails, la recherche de fuites et la visibilité (hammerpro --bspc), l'éclairage (hammerpro --rad) et l'empaquetage tournent dans Hammer Pro : aucun autre programme n'est nécessaire.",
+        "The geometry, portals, leak test and visibility (hammerpro --bspc), the lighting (hammerpro --rad) and the packing all run in Hammer Pro: no other program is needed. For each game you can also choose the Valve tools found next to it (vbsp, vvis, vrad) or a compiler of your own, with its programs and arguments.",
+        "La géométrie, les portails, la recherche de fuites et la visibilité (hammerpro --bspc), l'éclairage (hammerpro --rad) et l'empaquetage tournent dans Hammer Pro : aucun autre programme n'est nécessaire. Pour chaque jeu, vous pouvez aussi choisir les outils de Valve trouvés à côté de lui (vbsp, vvis, vrad) ou un compilateur à vous, avec ses programmes et ses arguments.",
     ),
     ("shell.compile.game_exe", "Game", "Jeu"),
     ("shell.compile.game_exe_auto", "Detected automatically", "Détecté automatiquement"),

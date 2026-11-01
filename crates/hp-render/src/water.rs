@@ -575,9 +575,10 @@ impl DrawCtx<'_> {
     pub(crate) fn record_water(
         &self,
         enc: &mut wgpu::CommandEncoder,
-        frame: &WaterFrame,
+        frame: Option<&WaterFrame>,
         view_id: u32,
         lists: &[Vec<ChunkDraw>; crate::pipelines::MESH_PASSES],
+        keep: bool,
         n: &mut FrameCounter,
     ) {
         let r = self.r;
@@ -586,7 +587,8 @@ impl DrawCtx<'_> {
             Some(m) => (m, Some(&view.color_view)),
             None => (&view.color_view, None),
         };
-        let ready = r.water.as_ref().and_then(|state| {
+        let ready = frame.and(r.water.as_ref()).and_then(|state| {
+            let frame = frame?;
             let pipes = state.pipes[usize::from(view.samples > 1)].as_ref()?;
             let wv = state.views.get(&view_id)?;
             let first = frame.draws.first().map(|d| d.material);
@@ -609,9 +611,7 @@ impl DrawCtx<'_> {
         };
         let draw_surfaces = |pass: &mut wgpu::RenderPass<'_>, depth_only: bool, n: &mut FrameCounter| {
             let Some((state, pipes, ..)) = ready else { return };
-            if frame.draws.is_empty() {
-                return;
-            }
+            let Some(frame) = frame.filter(|f| !f.draws.is_empty()) else { return };
             pass.set_pipeline(if depth_only { &pipes.depth } else { &pipes.surface });
             pass.set_vertex_buffer(0, r.arenas[ArenaKind::MeshVerts as usize].buffer.slice(..));
             pass.set_index_buffer(r.arenas[ArenaKind::Indices as usize].buffer.slice(..), wgpu::IndexFormat::Uint32);
@@ -656,7 +656,7 @@ impl DrawCtx<'_> {
                 multiview_mask: None,
             });
             bind_common(&mut pass);
-            if frame.under {
+            if frame.is_some_and(|f| f.under) {
                 pass.set_pipeline(&pipes.under_fog);
                 pass.draw(0..3, 0..1);
                 n.add(1);
@@ -671,12 +671,15 @@ impl DrawCtx<'_> {
                 resolve_target: resolve,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Load,
-                    store: if resolve.is_some() { wgpu::StoreOp::Discard } else { wgpu::StoreOp::Store },
+                    store: if resolve.is_some() && !keep { wgpu::StoreOp::Discard } else { wgpu::StoreOp::Store },
                 },
             })],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                 view: &view.depth_view,
-                depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Discard }),
+                depth_ops: Some(wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: if keep { wgpu::StoreOp::Store } else { wgpu::StoreOp::Discard },
+                }),
                 stencil_ops: None,
             }),
             timestamp_writes: None,

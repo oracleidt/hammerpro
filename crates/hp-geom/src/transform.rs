@@ -225,6 +225,14 @@ fn transform_disp(d: &mut DispInfo, xf: &Xf, old_face_normal: Option<DVec3>) {
         transpose_grid(&mut d.offset_normals, n);
         transpose_grid(&mut d.alphas, n);
         transpose_tags(&mut d.triangle_tags, n.saturating_sub(1));
+        if let Some(mut blend) = hp_vmf::multiblend::MultiBlend::of(d) {
+            transpose_grid(&mut blend.weights, n);
+            transpose_grid(&mut blend.alphas, n);
+            for colors in &mut blend.colors {
+                transpose_grid(colors, n);
+            }
+            blend.write_to(d);
+        }
     }
 }
 
@@ -491,6 +499,10 @@ mod tests {
         let mut d = DispInfo::new_flat(2, DVec3::new(-32.0, 0.0, 72.0), DVec3::Z);
         d.distances[3] = 10.0;
         d.alphas[1] = 255.0;
+        let mut blend = hp_vmf::multiblend::MultiBlend::new(25);
+        blend.weights[1] = [0.0, 0.0, 1.0, 0.0];
+        blend.colors[3][1] = [0.5, 0.25, 1.0];
+        assert!(blend.write_to(&mut d));
         s.sides[0].disp = Some(Box::new(d));
         let m = DMat4::from_translation(DVec3::new(0.0, 0.0, 16.0)) * DMat4::from_scale(DVec3::new(1.0, 1.0, 2.0));
         transform_solid(&mut s, m, true, true).expect("transform");
@@ -503,6 +515,9 @@ mod tests {
         let d = s.sides[0].disp.as_ref().expect("disp");
         assert_eq!(d.distances[3 * 5], 20.0);
         assert_eq!(d.alphas[5], 255.0);
+        let blend = hp_vmf::multiblend::MultiBlend::of(d).expect("4-way rows kept");
+        assert_eq!((blend.weights[5], blend.colors[3][5]), ([0.0, 0.0, 1.0, 0.0], [0.5, 0.25, 1.0]), "follows the alpha");
+        assert_eq!(blend.weights[1], [1.0, 0.0, 0.0, 0.0]);
     }
 
     #[test]

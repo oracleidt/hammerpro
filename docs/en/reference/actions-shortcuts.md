@@ -2,7 +2,7 @@
 
 # Actions and keyboard shortcuts
 
-Every command of Hammer Pro 1.0.0 is an *action*: one entry shared by the menus, the toolbar, the keyboard shortcuts, the command palette (`Ctrl+P`), the `--script` files and the MCP server (`run_action`, `list_actions`). This page lists all 259 actions, menu by menu, in the order the menus show them.
+Every command of Hammer Pro 1.0.1 is an *action*: one entry shared by the menus, the toolbar, the keyboard shortcuts, the command palette (`Ctrl+P`), the `--script` files and the MCP server (`run_action`, `list_actions`). This page lists all 261 actions, menu by menu, in the order the menus show them.
 
 Columns:
 
@@ -172,6 +172,10 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Display options > Show nodraw faces | `toggle_nodraw` |  |  |  |
 | Display options > Show model collisions | `toggle_collision_only` |  |  |  |
 | Display options > Water preview | `toggle_water_preview` |  |  |  |
+| Display options > Fog volume preview | `toggle_fog_volumes` |  |  |  |
+| Display options > Fog volume texture | `toggle_fog_volume_texture` |  |  |  |
+| Display options > Fish preview | `toggle_fish_preview` |  |  |  |
+| Display options > Swimming fish | `toggle_fish_swim` |  |  |  |
 | Display options > Cubemap reflections | `toggle_cubemaps` |  |  |  |
 | Display options > Show visible clusters | `toggle_pvs` |  |  |  |
 | Display options > Show nav mesh | `toggle_nav_mesh` |  |  |  |
@@ -226,6 +230,8 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Move to ceiling | `move_to_ceiling` | `Alt+U` |  |  |
 | Snap each object to grid | `snap_to_grid_individually` | `Ctrl+Shift+B` |  |  |
 | Center origins | `center_origins` |  |  |  |
+| Random Z rotation | `random_rotate` |  |  |  |
+| Random Z rotation options... | `random_rotate_dialog` |  |  |  |
 | Movable pivot | `toggle_pivot` |  |  |  |
 | Move to floor, aligned to the surface | `move_to_floor_aligned` | `Ctrl+Alt+N` |  |  |
 | Move to ceiling, aligned to the surface | `move_to_ceiling_aligned` | `Ctrl+Alt+U` |  |  |
@@ -269,9 +275,11 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Decal tool | `tool_decal` | `Shift+D` |  |  |
 | Overlay tool | `tool_overlay` | `Shift+O` |  |  |
 | Clipping tool | `tool_clip` | `Shift+X` |  |  |
+| Extrude / carve tool | `tool_extrude` | `Shift+I` |  |  |
 | Vertex tool | `tool_vertex` | `Shift+V` |  |  |
 | Displacement tool | `tool_displacement` | `Shift+P` |  |  |
 | Polygon tool | `tool_polygon` | `Shift+N` |  |  |
+| Curve tool | `tool_curve` | `Shift+U` |  |  |
 | Cordon tool | `tool_cordon` |  |  |  |
 | Path tool | `tool_path` |  |  |  |
 | Sprinkle tool | `tool_sprinkle` |  |  |  |

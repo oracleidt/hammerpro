@@ -1,6 +1,7 @@
 mod brush;
 mod compile;
 mod content;
+mod discord;
 mod entities;
 mod health;
 pub mod helpers;
@@ -18,6 +19,7 @@ mod visibility;
 mod workflow;
 
 pub use brush::BrushRuntime;
+pub use discord::{DiscordRuntime, DiscordStatus};
 pub use compile::{CompileBadge, CompileBrowse, CompileProgress, CompileRuntime};
 pub use content::{
     AssetCollectRequest, AssetCollectSummary, CaptureState, CapturedImage, ChecklistRow, ContentRuntime,
@@ -63,4 +65,5 @@ pub struct Runtime {
     pub health: HealthRuntime,
     pub lab: LabRuntime,
     pub mcp: McpRuntime,
+    pub discord: DiscordRuntime,
 }

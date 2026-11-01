@@ -96,6 +96,7 @@ pub fn find_sky_room(doc: &Document, origin: DVec3) -> Option<SkyRoom> {
             ignore_hidden: false,
             max_distance: SKY_ROOM_REACH,
             filter: Some(filter),
+            ..PickOptions::default()
         };
         doc.pick_ray(&Ray::new(origin, dir), &opts, &no_bounds).and_then(|h| match h.obj {
             ObjRef::Solid(id) => doc.scene().solid(id).map(|n| n.bounds),

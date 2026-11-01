@@ -120,7 +120,11 @@ const MAX_PATH: usize = 4096;
 fn direction(brush: &BrushSettings, mesh: &DispMesh) -> DVec3 {
     match brush.axis {
         PaintAxis::X | PaintAxis::Y | PaintAxis::Z | PaintAxis::Custom => brush.axis_vector().unwrap_or(DVec3::Z),
-        PaintAxis::FaceNormal | PaintAxis::SubdivNormal | PaintAxis::View | PaintAxis::BrushCenter => mesh.face_normal,
+        PaintAxis::FaceNormal
+        | PaintAxis::SubdivNormal
+        | PaintAxis::View
+        | PaintAxis::ViewFlat
+        | PaintAxis::BrushCenter => mesh.face_normal,
     }
 }
 

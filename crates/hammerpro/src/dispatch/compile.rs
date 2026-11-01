@@ -49,6 +49,7 @@ impl Package for Compile {
 
     fn init(&self, _app: &mut HammerProApp) {
         hp_app::extend::set_compile_options_ui(hp_ui_mapping::compile_options_ui);
+        hp_app::extend::set_compilers_ui(hp_ui_mapping::compilers_settings_ui);
     }
 
     fn tick(&self, app: &mut HammerProApp, ctx: &egui::Context) {

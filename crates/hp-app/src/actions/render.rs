@@ -28,6 +28,10 @@ action_list! { render_actions {
     ToggleNodraw => "toggle_nodraw", View, ViewDisplay, None, Ready;
     ToggleCollisionOnly => "toggle_collision_only", View, ViewDisplay, None, Ready;
     ToggleWaterPreview => "toggle_water_preview", View, ViewDisplay, None, Ready;
+    ToggleFogVolumes => "toggle_fog_volumes", View, ViewDisplay, None, Ready;
+    ToggleFogVolumeTexture => "toggle_fog_volume_texture", View, ViewDisplay, None, Ready;
+    ToggleFishPreview => "toggle_fish_preview", View, ViewDisplay, None, Ready;
+    ToggleFishSwim => "toggle_fish_swim", View, ViewDisplay, None, Ready;
     ToggleCubemaps => "toggle_cubemaps", View, ViewDisplay, None, Ready;
     RebuildCubemaps => "rebuild_cubemaps", Map, MapLighting, None, Ready;
     WriteCubemaps => "write_cubemaps", Map, MapLighting, None, Ready;
@@ -61,6 +65,10 @@ pub(super) fn check(state: &AppState, action: Action) -> Option<Check> {
         Action::ToggleCollisionOnly => Check::Toggle(r.collision_only),
         Action::ToggleFogPreview => Check::Toggle(r.fog_preview),
         Action::ToggleWaterPreview => Check::Toggle(r.water_preview),
+        Action::ToggleFogVolumes => Check::Toggle(r.fog_volume_preview),
+        Action::ToggleFogVolumeTexture => Check::Toggle(r.fog_volume_texture),
+        Action::ToggleFishPreview => Check::Toggle(r.fish_preview),
+        Action::ToggleFishSwim => Check::Toggle(r.fish_swim),
         Action::ToggleAnimatedMaterials => Check::Toggle(r.animate_materials),
         Action::ToggleModelFade => Check::Toggle(r.model_fade),
         Action::ToggleOpaqueMaterials => Check::Toggle(r.force_opaque),
@@ -105,6 +113,10 @@ pub(super) const TR: TrTable = &[
     ("action.toggle_collision_only", "Show model collisions", "Afficher les collisions des modèles"),
     ("action.toggle_fog_preview", "Fog preview", "Aperçu du brouillard"),
     ("action.toggle_water_preview", "Water preview", "Aperçu de l'eau"),
+    ("action.toggle_fog_volumes", "Fog volume preview", "Aperçu des fog_volume"),
+    ("action.toggle_fog_volume_texture", "Fog volume texture", "Texture des fog_volume"),
+    ("action.toggle_fish_preview", "Fish preview", "Aperçu des poissons"),
+    ("action.toggle_fish_swim", "Swimming fish", "Poissons qui nagent"),
     ("action.toggle_animated_materials", "Animated materials", "Matériaux animés"),
     ("action.toggle_model_fade", "Model fade", "Fondu des modèles"),
     ("action.toggle_opaque_materials", "Opaque materials", "Matériaux opaques"),

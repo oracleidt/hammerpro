@@ -19,6 +19,7 @@ The **Target game** row at the top tells which game the open map is for (kept in
 
 | Option | What it does | Default |
 |---|---|---|
+| **Compiler** | The compiler of the game of the map: **Hammer Pro (built-in)**, the Valve tools found next to the game, or one of yours. **Edit compilers...** opens the **Compilers** tab. With another compiler, the window shows **Compiled by ...**: the preset, the modes and the dynamic range become its flags, and the option menus, the extra arguments and the smart recompile (which belong to Hammer Pro's compiler) are greyed out. See [Choosing a compiler](compilers.md). | Hammer Pro (built-in) |
 | **Preset** | **Draft**, **Normal**, **Final** or **Custom** (see below). | Normal |
 | **Smart recompile** | Runs only what the changes since the last compile need: entities only, lighting only, props only, or everything. Draft and Normal only. | on |
 | **Steps: Geometry** | **No**, **Normal**, **Only entities** (`-onlyents`) or **Only props** (`-onlyprops`). The partial modes update the BSP of the last compile in seconds and keep its visibility and lighting; without an earlier BSP a full compile runs instead. | Normal |
@@ -72,9 +73,13 @@ Two menus list every flag of the compiler, grouped (Quality, Speed, Geometry, Vi
 | **Game** | The game executable. Empty: detected. | detected |
 | **Maps folder** | Where the BSP is copied. Empty: `garrysmod/maps` of the game. | empty |
 
+## Compilers
+
+The **Compilers** tab lists the compilers on the left (Hammer Pro's, the detected Valve tools, yours) and shows the chosen one on the right: its steps (program, map arguments, extra arguments, working folder, every option of Valve's tool as a checkbox with its value) and the exact command lines. See [Choosing a compiler](compilers.md).
+
 ## Expert mode
 
-The **Expert** tab holds named compile profiles, like Hammer's Run Map Expert. Check **Use Expert mode** and the selected profile runs instead of the preset (the step lists are then greyed out).
+The **Expert** tab holds named compile profiles, like Hammer's Run Map Expert. Check **Use Expert mode** and the selected profile runs instead of the preset (the step lists are then greyed out). Expert profiles run with Hammer Pro's compiler only: while another compiler is chosen for the game, the tab says so and the profile is not used (a compiler of your own does the same with any program, see [Choosing a compiler](compilers.md)).
 
 - Buttons: **New**, **Duplicate**, **Rename**, **Delete**, **Import...** (Hammer's `CmdSeq.wc` or Hammer++'s `hammerplusplus_sequences.cfg`), **Add a step**.
 - Each step has a checkbox (enabled), an action, its arguments, **Keep going on failure**, and a **Program** for **Run a program**.
@@ -86,7 +91,7 @@ Fresh install profiles: **Default**, **Fast** (`-fastvis`, `-bounce 2 -noextra`)
 
 ### Tokens
 
-Tokens are replaced in the arguments and the program (case insensitive; unknown `$words` stay as written):
+Tokens are replaced in the arguments and the program (case insensitive; unknown `$words` stay as written). The arguments are split into words first, so a value with spaces (`C:\Program Files (x86)\...`) stays one argument:
 
 | Token | Value |
 |---|---|
@@ -97,7 +102,7 @@ Tokens are replaced in the arguments and the program (case insensitive; unknown 
 | `$gamedir` | The game folder (with `gameinfo.txt`) |
 | `$exedir` | The folder of the game executable |
 | `$bsp_exe`, `$vis_exe`, `$light_exe` | The Hammer Pro executable (all three) |
-| `$game_exe` | The game executable |
+| `$game_exe` (also `$gameexe`) | The game executable |
 | `$$` | A literal dollar sign |
 
 ## Log, Statistics, History
@@ -128,6 +133,7 @@ Tokens are replaced in the arguments and the program (case insensitive; unknown 
 
 ## Related pages
 - [Compiler overview](overview.md)
+- [Choosing a compiler](compilers.md)
 - [Compile options](compile-options.md)
 - [Launch the game](../features/game-launch.md)
 - [Cordons](../features/cordons.md)

@@ -524,6 +524,142 @@ pub fn custom_dirs_list(ui: &mut Ui, state: &mut AppState, jobs: &mut GameJobs) 
     });
 }
 
+pub fn parse_app_ids(text: &str) -> Result<Vec<u32>, String> {
+    let mut out = Vec::new();
+    for part in text.split([',', ';', ' ']).map(str::trim).filter(|p| !p.is_empty()) {
+        match part.parse::<u32>() {
+            Ok(id) if id > 0 && id <= hp_fs::MAX_APP_ID => out.push(id),
+            _ => return Err(part.to_owned()),
+        }
+    }
+    Ok(out)
+}
+
+pub fn add_app_ids(list: &mut Vec<u32>, ids: &[u32]) -> usize {
+    let mut added = 0;
+    for id in ids {
+        if *id > 0 && !list.contains(id) {
+            list.push(*id);
+            added += 1;
+        }
+    }
+    added
+}
+
+pub fn move_app_id(list: &mut [u32], index: usize, up: bool) -> bool {
+    let other = if up { index.checked_sub(1) } else { index.checked_add(1) };
+    match other.filter(|o| *o < list.len()) {
+        Some(o) if index < list.len() => {
+            list.swap(index, o);
+            true
+        }
+        _ => false,
+    }
+}
+
+pub fn app_mounts_section(ui: &mut Ui, state: &mut AppState) {
+    let ids = state.settings.game.mount_app_ids.clone();
+    let mut changed = false;
+    if ids.is_empty() {
+        ui.label(RichText::new(t!("shell.game.apps_empty")).small().color(ui.visuals().weak_text_color()));
+    } else {
+        let mut action: Option<(usize, i8)> = None;
+        egui::Grid::new("hp_shell_app_mounts").num_columns(4).striped(true).spacing([8.0, 2.0]).show(ui, |ui| {
+            for (i, id) in ids.iter().enumerate() {
+                ui.label(RichText::new(id.to_string()).monospace());
+                match hp_fs::find_steam_app(*id) {
+                    Some(app) => {
+                        let tip = app.game_dirs.iter().map(|d| d.display().to_string()).collect::<Vec<_>>().join("\n");
+                        let tip = if tip.is_empty() { tf!("shell.game.apps_no_game", app.root.display()) } else { tip };
+                        ui.label(&app.name).on_hover_text(tip);
+                    }
+                    None => {
+                        let name = hp_fs::steam_app_name(*id).unwrap_or_default();
+                        ui.label(
+                            RichText::new(tf!("shell.game.apps_missing", name).trim().to_owned())
+                                .color(ui.visuals().warn_fg_color),
+                        );
+                    }
+                }
+                ui.horizontal(|ui| {
+                    if ui
+                        .add_enabled(i > 0, egui::Button::new("⏶").small())
+                        .on_hover_text(t!("shell.game.apps_up"))
+                        .clicked()
+                    {
+                        action = Some((i, -1));
+                    }
+                    if ui
+                        .add_enabled(i + 1 < ids.len(), egui::Button::new("⏷").small())
+                        .on_hover_text(t!("shell.game.apps_down"))
+                        .clicked()
+                    {
+                        action = Some((i, 1));
+                    }
+                });
+                if ui.small_button("✖").on_hover_text(t!("common.remove")).clicked() {
+                    action = Some((i, 0));
+                }
+                ui.end_row();
+            }
+        });
+        let list = &mut state.settings.game.mount_app_ids;
+        match action {
+            Some((i, 0)) if i < list.len() => {
+                list.remove(i);
+                changed = true;
+            }
+            Some((i, d)) => changed |= move_app_id(list, i, d < 0),
+            None => {}
+        }
+    }
+    let input_id = ui.make_persistent_id("hp_shell_app_input");
+    let mut text: String = ui.data(|d| d.get_temp(input_id)).unwrap_or_default();
+    let mut error: Option<String> = None;
+    ui.horizontal(|ui| {
+        ui.label(t!("shell.game.apps_add"));
+        let edit = ui.add(egui::TextEdit::singleline(&mut text).desired_width(120.0).hint_text("240, 440"));
+        let enter = edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+        if ui.button(format!("➕ {}", t!("common.add"))).clicked() || enter {
+            match parse_app_ids(&text) {
+                Ok(ids) if !ids.is_empty() => {
+                    changed |= add_app_ids(&mut state.settings.game.mount_app_ids, &ids) > 0;
+                    text.clear();
+                }
+                Ok(_) => {}
+                Err(bad) => error = Some(tf!("shell.game.apps_bad", bad)),
+            }
+        }
+        ui.menu_button(t!("shell.game.apps_installed"), |ui| {
+            let apps = hp_fs::installed_source_apps();
+            if apps.is_empty() {
+                ui.label(t!("shell.game.apps_none_installed"));
+            }
+            egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
+                for app in apps {
+                    let have = state.settings.game.mount_app_ids.contains(&app.app_id);
+                    let label = format!("{}  {}", app.app_id, app.name);
+                    if ui.add_enabled(!have, egui::Button::new(label)).clicked() {
+                        changed |= add_app_ids(&mut state.settings.game.mount_app_ids, &[app.app_id]) > 0;
+                        ui.close();
+                    }
+                }
+            });
+        });
+        if ui.small_button("⟳").on_hover_text(t!("shell.game.apps_refresh")).clicked() {
+            hp_fs::refresh_steam_apps();
+        }
+    });
+    ui.data_mut(|d| d.insert_temp(input_id, text));
+    if let Some(e) = error {
+        ui.label(RichText::new(e).color(ui.visuals().warn_fg_color));
+    }
+    ui.label(RichText::new(t!("shell.game.apps_tip")).small().color(ui.visuals().weak_text_color()));
+    if changed {
+        state.settings_dirty = true;
+    }
+}
+
 pub fn path_list(ui: &mut Ui, id: &str, paths: &mut Vec<PathBuf>, empty_text: &str) -> (bool, bool) {
     let mut remove = None;
     if paths.is_empty() {
@@ -612,6 +748,25 @@ mod tests {
         assert_eq!(edited_prefix("custom/my_pack", "mypack", "mypack"), "custom/my_pack");
         assert_eq!(edited_prefix("custom/my_pack", "mypack", ""), "");
         assert_eq!(edited_prefix("art", "art", "art/x"), "art/x");
+    }
+
+    #[test]
+    fn app_id_list_edits() {
+        assert_eq!(parse_app_ids(" 240, 440;4000 "), Ok(vec![240, 440, 4000]));
+        assert_eq!(parse_app_ids(""), Ok(Vec::new()));
+        assert_eq!(parse_app_ids("240, tf2"), Err("tf2".to_owned()));
+        assert_eq!(parse_app_ids("0"), Err("0".to_owned()));
+        assert_eq!(parse_app_ids("999999999"), Err("999999999".to_owned()));
+        let mut list = vec![220];
+        assert_eq!(add_app_ids(&mut list, &[240, 220, 440, 240]), 2);
+        assert_eq!(list, [220, 240, 440]);
+        assert!(move_app_id(&mut list, 2, true));
+        assert_eq!(list, [220, 440, 240]);
+        assert!(move_app_id(&mut list, 0, false));
+        assert_eq!(list, [440, 220, 240]);
+        assert!(!move_app_id(&mut list, 0, true));
+        assert!(!move_app_id(&mut list, 2, false));
+        assert!(!move_app_id(&mut list, 7, true));
     }
 
     #[test]

@@ -37,7 +37,7 @@ end
 if SERVER then
 	util.AddNetworkString("hp_lock")
 
-	CreateConVar("hammerpro_key", "", FCVAR_ARCHIVE, "BSP Protection Pro server key")
+	CreateConVar("hammerpro_key", "", FCVAR_ARCHIVE, "Protect your BSP server key")
 
 	M.keys = read_map_keys()
 	M.authorized = (not M.keys.hammerpro_lock) or (M.keys.hammerpro_lock == "")
@@ -87,7 +87,7 @@ surface.CreateFont("HammerProLockBig", { font = "Trebuchet MS", size = 40, weigh
 hook.Add("HUDPaint", "hammerpro_lock", function()
 	if state.authorized then return end
 	local w, h = ScrW(), ScrH()
-	local tag = "Protected by " .. (state.author ~= "" and state.author or "BSP Protection Pro")
+	local tag = "Protected by " .. (state.author ~= "" and state.author or "Protect your BSP")
 
 	surface.SetFont("HammerProLock")
 	local tw = surface.GetTextSize(tag)

@@ -58,6 +58,8 @@ impl MountRequest {
                 mount_downloads: g.mount_downloads,
                 extra_game_dirs: g.extra_game_dirs.clone(),
                 custom_dirs,
+                app_ids: g.mount_app_ids.iter().copied().filter(|id| *id > 0).collect(),
+                steam_libraries: Vec::new(),
             },
             game: GameRef::of(settings),
         }
@@ -361,6 +363,9 @@ mod tests {
         assert_eq!(r.opts.custom_dirs[0].prefix, "custom/my_bricks");
         assert!(!r.opts.custom_dirs[0].enabled);
         assert_eq!(r.opts.custom_dirs[1].prefix, "custom/b");
+        assert!(r.opts.app_ids.is_empty());
+        s.game.mount_app_ids = vec![240, 0, 440];
+        assert_eq!(MountRequest::from_settings(&s).opts.app_ids, [240, 440]);
         s.game.gmod_root = Some(PathBuf::new());
         assert_eq!(MountRequest::from_settings(&s).root, None);
     }

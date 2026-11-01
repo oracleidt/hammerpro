@@ -8,6 +8,7 @@ pub mod grid;
 pub mod i18n;
 pub mod native_window;
 pub mod os;
+pub mod pick;
 pub mod runtime;
 pub mod settings;
 pub mod sidecar;

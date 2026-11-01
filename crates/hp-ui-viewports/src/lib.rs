@@ -1299,6 +1299,10 @@ impl Viewports {
             options.compiled_lighting = self.player_view == Some(i)
                 && self.player_world.is_some()
                 && state.settings.render.player_compiled_lighting;
+            if self.player_view == Some(i) {
+                options.fog_volume_inside = options.fog_volumes;
+                options.fog_volumes = false;
+            }
             gfx.renderer.set_view_options(i as u32, options);
             let key = ViewKey {
                 params,

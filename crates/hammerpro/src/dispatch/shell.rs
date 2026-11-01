@@ -106,9 +106,9 @@ impl Package for Shell {
                 if app.require_selection() {
                     let g = app.state.grid_size();
                     let objs = app.selected();
-                    let keep = app.state.settings.selection.clone_keeps_visgroups;
                     let m = DMat4::from_translation(DVec3::new(g, g, 0.0));
-                    let result = app.state.doc.duplicate_transformed(&objs, m, DVec3::ZERO, keep);
+                    let result =
+                        hp_app::runtime::helpers::duplicate_linking_paths(&mut app.state, &objs, m, DVec3::ZERO);
                     if let Some(new) = app.report(action, result) {
                         app.state.doc.select(&new, hp_editor::SelectOp::Replace);
                     }

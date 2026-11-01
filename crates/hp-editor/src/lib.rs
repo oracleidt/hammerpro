@@ -45,7 +45,8 @@ pub use history::{FACE_SELECTION_STEP, SELECTION_STEP, UndoLimits};
 pub use ids::{IdBuildHasher, IdHasher, IdMap, IdSet};
 pub use ops::{AlignMode, ClipKeep, EntityQuery, FaceEdit, ReplaceScope};
 pub use ops::{ConnPart, MAX_TEXT_LEN, TextField, TextMatch, TextQuery, find_ranges};
-pub use pick::{Hit, PickOptions, RectMode};
+pub use ops::{MAX_JITTER_DEG, RandomRotate, RandomRotateReport};
+pub use pick::{EntityRay, Hit, PickOptions, RectMode};
 pub use problems::{
     BrushClassFn, MaterialKind, MaterialKindFn, Problem, ProblemAssets, ProblemContext, Severity, TargetKeyFn,
     parent_name,

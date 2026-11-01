@@ -14,6 +14,7 @@ use super::tools::{Args, Domain, Outcome, R, args, v3};
 pub(crate) const DOMAIN: Domain = Domain { category: "views", specs: SPECS, run };
 
 const KINDS: &[&str] = &["3d", "top", "front", "side", "logical"];
+const LOGICAL_FILTERS: &[&str] = &["all", "named", "connected"];
 const VIEWS_2D: &[&str] = &["top", "front", "side", "all"];
 const MAXIMIZE: &[&str] = &["0", "1", "2", "3", "none"];
 const DISP_2D: &[&str] = &["global", "mesh", "selected_mesh", "outline"];
@@ -53,6 +54,27 @@ const SPECS: &[ToolSpec] = &[
         schema: empty,
     },
     ToolSpec {
+        name: "get_logical_graph",
+        title: "The 2D logical view graph",
+        description: "What the 2D logical view (and the logical view window) shows: one node per entity (id, \
+            class, name, the icon material from the FGD iconsprite or sprite helper, hidden when its visgroup is \
+            hidden, outputs, inputs, problems) and one edge per output and target (from, to or null when no entity \
+            has the name, output, target, input, parameter, delay, times, state: valid, missing_target, \
+            unknown_output or unknown_input). filter is the filter of the view: all (default, every entity, \
+            lights and info entities included, like Hammer), named (named or connected) or connected (with an \
+            outgoing or incoming output).",
+        kind: ToolKind::Read,
+        schema: || {
+            object(
+                json!({
+                    "filter": one_of("Default all.", LOGICAL_FILTERS),
+                    "limit": integer("Most nodes listed (default 2000).", 1, 100_000),
+                }),
+                &[],
+            )
+        },
+    },
+    ToolSpec {
         name: "set_view_layout",
         title: "Arrange the views",
         description: "Choose what each quadrant shows (quadrants: 4 of 3d, top, front, side, logical; top-left, \
@@ -86,8 +108,19 @@ const SPECS: &[ToolSpec] = &[
             light_dynamic, the sun with its shadows through the sky faces, props included; the point and spot lights nearest the camera cast shadows too, how many set by the setting render.light_shadows (0 to 16, 0: the sun only; disableshadows props cast none); lights inside an opaque \
             brush light nothing like in game; $selfillum glows by the base alpha, $selfillummask or the $envmapmask alpha of $selfillum_envmapmask_alpha, times $selfillumtint, also in baked and the player view), unshaded (textured without shading), smoothing_groups, baked \
             (the baked lighting preview, see bake_lighting; props lit by the bake like the game: ambient cubes, \
-            world lights, static prop vertex lighting) or lightmap_grid (luxel grid colored by lightmap scale). In the textured modes water surfaces are drawn like in game (refraction, water fog, reflection, moving waves) while the setting render.water_preview is on (set_setting, or run_action toggle_water_preview); off, they show their tool texture. \
-            The normal maps of the materials ($bumpmap, $bumpmap2 of WorldVertexTransition and of \
+            world lights, static prop vertex lighting) or lightmap_grid (Hammer's 3D lightmap grid, no bake needed: every lightmapped face shows its luxel grid, one checker cell per lightmapscale units along its texture axes, displacements included, grey at scale 16, redder when finer, greener when coarser, yellow lines where VBSP splits a face wider than 32 luxels, shaded by the baked lighting once a bake exists; faces without a lightmap (nodraw, tool textures, sky, water, unlit) and props keep their texture). In the textured modes water surfaces are drawn like in game (refraction, water fog, reflection, moving waves) while the setting render.water_preview is on (set_setting, or run_action toggle_water_preview); off, they show their tool texture. \
+            Every fog_volume is filled with the fog of the env_fog_controller its FogName names (fogcolor, fogcolor2 \
+            with fogblend along fogdir or the angles with use_angles, fogstart, fogend, fogmaxdensity; nothing when \
+            the controller has fogenable 0), the box around its brushes like the game, as thick as the view crosses \
+            it, while render.fog_volume_preview is on (run_action toggle_fog_volumes); in the player view that fog \
+            replaces the map fog while the eyes are inside an enabled volume. render.fog_volume_texture (run_action \
+            toggle_fog_volume_texture) draws or hides the brush material of the volumes in the 3D view. Every \
+            func_fish_pool shows fish_count copies of its model (models/Junkola.mdl by default) scattered within \
+            max_range (at most 255) of the entity, the same places each time, kept in the water around the entity \
+            8 units under its surface, while render.fish_preview is on (run_action toggle_fish_preview); they swim \
+            slow circles while render.fish_swim is on (run_action toggle_fish_swim); selected, the pool shows a sphere \
+            and a circle of its max_range. \
+            Lightmapped_4WayBlend displacements show their 4 textures in every textured mode (textured, lit,             baked, the player view) like the game: texture 2, 3 then 4 laid over texture 1 by the multiblend             rows of the displacement (or its vertex alpha for texture 2 when it has none), shaped by             $textureN_lumstart and lumend, $textureN_blendstart and blendend, $lumblendfactorN,             $textureN_uvscale and $textureN_blendmode.             The normal maps of the materials ($bumpmap, $bumpmap2 of WorldVertexTransition and of \
             Lightmapped_4WayBlend, mixed by the same blend weights as the base textures, its \
             $textureN_bumpblendfactor choosing the map of each texture; $ssbump) give the surfaces their relief \
             in textured (the editor shading), lit (the preview lights), baked (the bumped lightmaps of the \
@@ -172,6 +205,7 @@ const SPECS: &[ToolSpec] = &[
 fn run(state: &mut AppState, name: &str, v: &Value) -> Option<Outcome> {
     let result = match name {
         "get_views" => super::tools::no_args(v).map(|()| Outcome::Ui(UiOp::Views)),
+        "get_logical_graph" => logical_graph(state, v).map(Outcome::Done),
         "set_view_layout" => set_view_layout(state, v).map(Outcome::Done),
         "set_render_mode" => set_render_mode(v),
         "zoom_2d" => zoom_2d(state, v).map(Outcome::Done),
@@ -539,6 +573,67 @@ fn cams_json(state: &AppState, kinds: &[ViewKind]) -> Value {
     Value::Object(out)
 }
 
+fn logical_graph(state: &mut AppState, v: &Value) -> R<ToolResult> {
+    use hp_ui_lab::logic::graph::{EdgeState, Graph, NodeFilter};
+    let a = args(v, &["filter", "limit"])?;
+    let filter = match a.opt_str("filter", 32)? {
+        None => NodeFilter::All,
+        Some(f) => NodeFilter::from_name(f).ok_or("filter must be \"all\", \"named\" or \"connected\"")?,
+    };
+    let limit = a.opt_u64("limit", 1, 100_000)?.unwrap_or(2000) as usize;
+    let names = state.runtime.helpers.names(&state.doc);
+    let g = Graph::build(&state.doc, &names, state.assets.fgd(), filter);
+    drop(names);
+    let nodes: Vec<Value> = g
+        .nodes
+        .iter()
+        .take(limit)
+        .map(|n| {
+            json!({
+                "id": n.id,
+                "class": n.class,
+                "name": n.name,
+                "icon": n.icon,
+                "hidden": !state.doc.is_entity_visible(n.id),
+                "outputs": n.outputs,
+                "inputs": n.inputs,
+                "problems": n.problems,
+            })
+        })
+        .collect();
+    let edges: Vec<Value> = g
+        .edges
+        .iter()
+        .filter(|e| e.from < limit && e.to.is_none_or(|t| t < limit))
+        .map(|e| {
+            json!({
+                "from": g.nodes[e.from].id,
+                "to": e.to.map(|t| g.nodes[t].id),
+                "output": e.output,
+                "target": e.target,
+                "input": e.input,
+                "param": e.param,
+                "delay": e.delay,
+                "times": e.times,
+                "state": match e.state {
+                    EdgeState::Valid => "valid",
+                    EdgeState::MissingTarget => "missing_target",
+                    EdgeState::UnknownOutput => "unknown_output",
+                    EdgeState::UnknownInput => "unknown_input",
+                },
+            })
+        })
+        .collect();
+    Ok(ToolResult::json(json!({
+        "filter": filter.name(),
+        "total_nodes": g.nodes.len(),
+        "total_edges": g.edges.len(),
+        "problems": g.problem_count(),
+        "nodes": nodes,
+        "edges": edges,
+    })))
+}
+
 fn zoom_2d(state: &mut AppState, v: &Value) -> R<ToolResult> {
     let a = args(v, &["view", "zoom", "factor", "anchor"])?;
     let kinds = views_2d(&a)?;
@@ -610,6 +705,31 @@ mod tests {
             Outcome::Done(r) if r.is_error => r.first_text().to_owned(),
             other => panic!("{name} should fail: {other:?}"),
         }
+    }
+
+    #[test]
+    fn the_logical_graph_lists_every_entity() {
+        let mut s = hp_app::testing::test_state_with_fgd(
+            "@PointClass iconsprite(\"editor/light.vmt\") = light : \"\" [ input TurnOff(void) : \"\" ]\n\
+             @PointClass = info_player_start : \"\" []\n\
+             @SolidClass = trigger_multiple : \"\" [ output OnTrigger(void) : \"\" ]",
+        );
+        let r = ok(&mut s, "get_logical_graph", json!({}));
+        assert_eq!(r["filter"], "all");
+        assert_eq!(r["total_nodes"], 3, "{r}");
+        let nodes = r["nodes"].as_array().unwrap();
+        let light = nodes.iter().find(|n| n["class"] == "light").expect("light");
+        assert_eq!(light["icon"], "editor/light");
+        assert_eq!(light["inputs"], 1);
+        assert!(nodes.iter().any(|n| n["class"] == "info_player_start" && n["name"] == ""));
+        assert_eq!(r["edges"][0]["from"], 6);
+        assert_eq!(r["edges"][0]["to"], 5);
+        assert_eq!(r["edges"][0]["state"], "valid");
+        let r = ok(&mut s, "get_logical_graph", json!({ "filter": "named" }));
+        assert_eq!(r["total_nodes"], 2);
+        let r = ok(&mut s, "get_logical_graph", json!({ "filter": "connected", "limit": 1 }));
+        assert_eq!(r["nodes"].as_array().unwrap().len(), 1);
+        assert!(err(&mut s, "get_logical_graph", json!({ "filter": "lights" })).contains("filter"));
     }
 
     #[test]

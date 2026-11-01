@@ -45,6 +45,7 @@ Les déplacements utilisent les valeurs Source de Garry's Mod : 200 unités par 
 - `L` éclaire le monde compilé avec les lightmaps de la map compilée et les props comme le jeu (réglage **Vue joueur : éclairage compilé**, `render.player_compiled_lighting`, activé par défaut). Une map compilée sans éclairage est en plein éclairage, comme en jeu.
 - Les **styles de lumière** de la map compilée jouent comme en jeu (dix lettres de motif par seconde). Les lumières commutables nommées suivent leurs entrées et les touches `1` à `9`.
 - Les reflets utilisent les cubemaps construites en jeu quand la map compilée en a, sinon celles que dessine Hammer Pro.
+- Tant que les yeux sont dans un `fog_volume`, le brouillard de l'`env_fog_controller` nommé par son **Fog Name** remplace celui de la map, comme en jeu (la boîte autour de ses brushes, les volumes avec **Start Disabled** ignorés ; réglage **Aperçu des fog_volume**, voir [Volumes de brouillard](render-modes-display.md#volumes-de-brouillard)).
 
 ## Compteurs
 

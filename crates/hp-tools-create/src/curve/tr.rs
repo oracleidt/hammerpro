@@ -1,0 +1,82 @@
+use hp_app::i18n::TrTable;
+
+pub const CURVE_TR: TrTable = &[
+    ("curve.subdivisions", "Subdivisions", "Subdivisions"),
+    (
+        "curve.subdivisions_tip",
+        "Number of brushes along the curve (2 to 4096). The curve is smoothed through the points and cut in equal lengths.",
+        "Nombre de brushes le long de la courbe (2 à 4096). La courbe est lissée par les points et coupée en longueurs égales.",
+    ),
+    ("curve.halve_tip", "Half as many subdivisions", "Deux fois moins de subdivisions"),
+    ("curve.double_tip", "Twice as many subdivisions", "Deux fois plus de subdivisions"),
+    ("curve.thickness", "Thickness", "Épaisseur"),
+    (
+        "curve.thickness_tip",
+        "Width of the brushes across the curve, centered on it (1 to 1024 units)",
+        "Largeur des brushes en travers de la courbe, centrée sur elle (1 à 1024 unités)",
+    ),
+    ("curve.height", "Height", "Hauteur"),
+    (
+        "curve.height_tip",
+        "Height of the brushes along the depth of the view the curve is drawn in. It starts from the selection like the block tool; the handles in the other 2D views change it too.",
+        "Hauteur des brushes dans la profondeur de la vue où la courbe est dessinée. Elle part de la sélection comme l'outil bloc ; les poignées des autres vues 2D la changent aussi.",
+    ),
+    (
+        "curve.keep_active_tip",
+        "Keep the curve tool active after creating the brushes",
+        "Garder l'outil courbe actif après la création des brushes",
+    ),
+    ("curve.undo_point", "Remove point", "Retirer le point"),
+    ("curve.undo_point_tip", "Remove the last point ({0})", "Retirer le dernier point ({0})"),
+    ("curve.validate", "Validate", "Valider"),
+    (
+        "curve.validate_tip",
+        "Finish the stroke and choose the subdivisions and the thickness ({0} or double click)",
+        "Terminer le tracé et choisir les subdivisions et l'épaisseur ({0} ou double clic)",
+    ),
+    ("curve.create", "Create", "Créer"),
+    ("curve.create_tip", "Create the brushes ({0})", "Créer les brushes ({0})"),
+    ("curve.back", "Back", "Retour"),
+    ("curve.back_tip", "Go back to drawing the curve ({0})", "Revenir au tracé de la courbe ({0})"),
+    ("curve.window_title", "Curve", "Courbe"),
+    ("curve.count", "{0} point(s)", "{0} point(s)"),
+    ("curve.summary", "{0} brushes, length {1}", "{0} brushes, longueur {1}"),
+    ("curve.full", "Too many points", "Trop de points"),
+    ("curve.short_folded", "{0} folded segment(s)", "{0} segment(s) replié(s)"),
+    ("curve.short_short", "Segments under 1 unit", "Segments de moins d'une unité"),
+    ("curve.created", "Created {0} brushes along the curve ({1})", "{0} brushes créés le long de la courbe ({1})"),
+    ("curve.failed", "Could not create the brushes: {0}", "Impossible de créer les brushes : {0}"),
+    ("curve.err.points", "The curve needs at least 2 different points", "La courbe doit avoir au moins 2 points différents"),
+    (
+        "curve.err.short",
+        "Segments of {0} are too short: lower the subdivisions or draw a longer curve",
+        "Des segments de {0} sont trop courts : baissez les subdivisions ou tracez une courbe plus longue",
+    ),
+    (
+        "curve.err.folded",
+        "{0} segment(s) fold inside a tight bend (red): lower the thickness or the subdivisions, or open the bend",
+        "{0} segment(s) se replient dans un virage serré (en rouge) : baissez l'épaisseur ou les subdivisions, ou ouvrez le virage",
+    ),
+    ("curve.err.range", "The curve goes outside the map", "La courbe sort de la carte"),
+    ("curve.err.height", "The height must be {0} to {1} units", "La hauteur doit faire de {0} à {1} unités"),
+    (
+        "curve.hint_idle",
+        "Click points or drag a stroke in a 2D view to draw a curve",
+        "Cliquez des points ou faites glisser un tracé dans une vue 2D pour dessiner une courbe",
+    ),
+    (
+        "curve.hint_points",
+        "Add at least one more point. {0}: remove the last point, {1}: cancel",
+        "Ajoutez au moins un point de plus. {0} : retirer le dernier point, {1} : annuler",
+    ),
+    (
+        "curve.hint_ready",
+        "Click or drag to add points, drag a point to move it. {0}: validate, {1}: remove the last point, {2}: cancel",
+        "Cliquez ou glissez pour ajouter des points, glissez un point pour le déplacer. {0} : valider, {1} : retirer le dernier point, {2} : annuler",
+    ),
+    (
+        "curve.hint_adjust",
+        "Choose the subdivisions and the thickness, points can still be dragged. {0}: create the brushes, {1}: back to drawing",
+        "Choisissez les subdivisions et l'épaisseur, les points se déplacent encore. {0} : créer les brushes, {1} : revenir au tracé",
+    ),
+];

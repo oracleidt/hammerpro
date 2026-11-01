@@ -12,6 +12,7 @@ use crate::{CompileError, MapNameProblem, Result};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum StepKind {
     Bsp,
+    Vis,
     Rad,
     Pack,
     CopyToMaps,
@@ -100,12 +101,14 @@ pub struct Step {
     pub args: Vec<String>,
     pub continue_on_error: bool,
     pub action: StepAction,
+    #[serde(default)]
+    pub workdir: Option<PathBuf>,
 }
 
 impl Step {
     pub fn new(kind: StepKind, exe: impl Into<PathBuf>, args: Vec<String>) -> Step {
         let action = if kind == StepKind::LaunchGame { StepAction::Spawn } else { StepAction::Run };
-        Step { kind, enabled: true, exe: exe.into(), args, continue_on_error: false, action }
+        Step { kind, enabled: true, exe: exe.into(), args, continue_on_error: false, action, workdir: None }
     }
 
     pub fn command_line(&self) -> String {
@@ -120,6 +123,7 @@ impl Step {
             args: Vec::new(),
             continue_on_error: false,
             action: StepAction::Copy { from, to },
+            workdir: None,
         }
     }
 
@@ -131,6 +135,7 @@ impl Step {
             args: vec![bsp.to_string_lossy().into_owned()],
             continue_on_error: false,
             action,
+            workdir: None,
         }
     }
 }

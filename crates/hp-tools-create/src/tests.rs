@@ -9,12 +9,13 @@ use hp_render::Overlay;
 use crate::tests_support::{fgd_state, info_2d, info_3d, info_3d_looking_down, settle};
 use crate::{BlockTool, ClipTool, DecalTool, EntityTool, OverlayTool, Primitive, TR};
 
-const SOURCES: [(&str, &str); 9] = [
+const SOURCES: [(&str, &str); 10] = [
     ("block.rs", include_str!("block.rs")),
     ("clip.rs", include_str!("clip.rs")),
     ("common.rs", include_str!("common.rs")),
     ("decal.rs", include_str!("decal.rs")),
     ("entity.rs", include_str!("entity.rs")),
+    ("extrude.rs", include_str!("extrude.rs")),
     ("overlay_tool.rs", include_str!("overlay_tool.rs")),
     ("picker.rs", include_str!("picker.rs")),
     ("polygon.rs", include_str!("polygon.rs")),
@@ -89,8 +90,10 @@ fn tool_list() {
         vec![
             ToolId::Block,
             ToolId::Polygon,
+            ToolId::Curve,
             ToolId::Entity,
             ToolId::Clip,
+            ToolId::Extrude,
             ToolId::Decal,
             ToolId::Overlay,
             ToolId::Path

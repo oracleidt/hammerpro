@@ -2,7 +2,7 @@
 
 # Installation
 
-Hammer Pro 1.0.0 tient en un seul programme, `hammerpro.exe`, sans installateur. Il embarque son propre compilateur de maps : VBSP, VVIS et VRAD de Valve ne sont pas nécessaires.
+Hammer Pro 1.0.1 tient en un seul programme, `hammerpro.exe`, sans installateur. Il embarque son propre compilateur de maps : VBSP, VVIS et VRAD de Valve ne sont pas nécessaires.
 
 ## Configuration requise
 

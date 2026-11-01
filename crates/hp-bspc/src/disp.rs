@@ -15,6 +15,7 @@ pub struct DispFace {
     pub ids: (u32, u32),
     pub surfaceprop: String,
     pub surfaceprop2: Option<String>,
+    pub four_way: bool,
 }
 
 pub const ALPHA_PROP_DELTA: f64 = 382.5;
@@ -268,6 +269,35 @@ pub fn setup_allowed_verts(disps: &mut [DispFace]) {
 }
 
 pub const NO_SHADOW_BIT: i32 = 1 << 29;
+pub const HAS_MULTIBLEND_BIT: i32 = 1 << 30;
+pub const MULTIBLEND_ENTRY_SIZE: usize = 80;
+
+pub fn multiblend_data(d: &DispFace) -> Option<Vec<u8>> {
+    let n = d.info.row_len();
+    let count = n.checked_mul(n).filter(|_| d.info.power <= hp_vmf::MAX_DISP_POWER)?;
+    let blend = match hp_vmf::multiblend::MultiBlend::of(&d.info) {
+        Some(mb) => mb,
+        None if d.four_way => hp_vmf::multiblend::MultiBlend::from_alphas(&d.info)?,
+        None => return None,
+    };
+    let finite = |v: f64| if v.is_finite() { v as f32 } else { 0.0 };
+    let mut b = Buf::default();
+    for k in 0..count {
+        for v in blend.weights.get(k).copied().unwrap_or([1.0, 0.0, 0.0, 0.0]) {
+            b.f32(finite(v));
+        }
+        for v in blend.alphas.get(k).copied().unwrap_or([0.0; 4]) {
+            b.f32(finite(v));
+        }
+        for colors in &blend.colors {
+            for v in colors.get(k).copied().unwrap_or([1.0; 3]) {
+                b.f32(finite(v));
+            }
+        }
+    }
+    debug_assert_eq!(b.0.len(), count * MULTIBLEND_ENTRY_SIZE);
+    Some(b.0)
+}
 
 pub fn strip_no_shadow(lump: &[u8]) -> Option<Vec<u8>> {
     let mut out = lump.to_vec();
@@ -292,6 +322,7 @@ pub fn dispinfo_record(
     map_face: u16,
     samples_start: i32,
     neighbors: &vbsp::Neighbors,
+    multiblend: bool,
 ) -> Vec<u8> {
     let mut b = Buf::default();
     b.vec3(d.info.start_position + offset);
@@ -299,7 +330,8 @@ pub fn dispinfo_record(
     b.i32(tri_start);
     b.i32(d.info.power as i32);
     let no_shadow = if d.info.casts_shadows() { 0 } else { NO_SHADOW_BIT };
-    b.i32(d.info.flags | i32::MIN | no_shadow);
+    let multiblend = if multiblend { HAS_MULTIBLEND_BIT } else { 0 };
+    b.i32((d.info.flags & !HAS_MULTIBLEND_BIT) | i32::MIN | no_shadow | multiblend);
     let smooth = d
         .info
         .extra_props
@@ -359,6 +391,7 @@ mod tests {
             ids: (1, 1),
             surfaceprop: String::new(),
             surfaceprop2: None,
+            four_way: false,
         }
     }
 
@@ -425,6 +458,64 @@ mod tests {
         fn facts(&self, name: &str) -> crate::materials::MaterialFacts {
             crate::materials::facts_by_name(name)
         }
+    }
+
+    #[test]
+    fn multiblend_entries_follow_the_rows() {
+        let mut d = floor(Vec::new());
+        assert_eq!(multiblend_data(&d), None, "plain displacement");
+        d.info.alphas[3] = 255.0;
+        d.four_way = true;
+        let synth = multiblend_data(&d).expect("4-way material: from the alphas");
+        assert_eq!(synth.len(), 25 * MULTIBLEND_ENTRY_SIZE);
+        let at = |data: &[u8], k: usize, f: usize| {
+            let o = k * MULTIBLEND_ENTRY_SIZE + f * 4;
+            f32::from_le_bytes([data[o], data[o + 1], data[o + 2], data[o + 3]])
+        };
+        assert_eq!((0..4).map(|f| at(&synth, 3, f)).collect::<Vec<_>>(), [0.0, 1.0, 0.0, 0.0]);
+        assert_eq!((0..4).map(|f| at(&synth, 0, f)).collect::<Vec<_>>(), [1.0, 0.0, 0.0, 0.0]);
+        let mut mb = hp_vmf::multiblend::MultiBlend::new(25);
+        mb.weights[7] = [0.25, 0.5, 2.0, 0.0];
+        mb.alphas[7] = [0.1, 0.2, 0.3, 0.4];
+        mb.colors[2][7] = [0.5, 0.6, 0.7];
+        assert!(mb.write_to(&mut d.info));
+        d.four_way = false;
+        let data = multiblend_data(&d).expect("rows");
+        let entry: Vec<f32> = (0..20).map(|f| at(&data, 7, f)).collect();
+        assert_eq!(&entry[..8], &[0.25, 0.5, 2.0, 0.0, 0.1, 0.2, 0.3, 0.4], "copied like vbsp, not normalized");
+        assert_eq!(&entry[8..11], &[1.0; 3]);
+        assert_eq!(&entry[14..17], &[0.5, 0.6, 0.7]);
+        let n = vbsp::Neighbors::default();
+        let tess = |rec: &[u8]| i32::from_le_bytes([rec[24], rec[25], rec[26], rec[27]]);
+        assert_eq!(tess(&dispinfo_record(&d, DVec3::ZERO, 0, 0, 0, 0, &n, true)), i32::MIN | HAS_MULTIBLEND_BIT);
+        assert_eq!(tess(&dispinfo_record(&d, DVec3::ZERO, 0, 0, 0, 0, &n, false)), i32::MIN);
+    }
+
+    #[test]
+    fn multiblend_lump_matches_vbsp() {
+        let map = hp_vmf::parse(include_str!("disp/testdata/multiblend.vmf")).expect("vmf");
+        let out = crate::compile(&map, &Mats, &crate::props::NoModels, &crate::CompileOptions::default(), &mut |_| {})
+            .expect("compile");
+        assert!(crate::validate::validate(&out.bsp).is_empty());
+        let bsp = hp_bsp::Bsp::from_vec(out.bsp.clone()).expect("bsp");
+        let blend = bsp.lump(hp_bsp::lump::DISP_MULTIBLEND).expect("lump").into_owned();
+        let mut cut = hp_bsp::Bsp::from_vec(out.bsp).expect("bsp").edit();
+        cut.replace_lump(hp_bsp::lump::DISP_MULTIBLEND, blend[..80].to_vec()).expect("replace");
+        let problems = crate::validate::validate(&cut.to_vec().expect("bytes"));
+        assert!(problems.iter().any(|p| p.contains("multiblend")), "{problems:?}");
+        assert_eq!(blend, include_bytes!("disp/testdata/multiblend_vbsp.lump"), "Garry's Mod vbsp output");
+        let info = bsp.lump(crate::emit::lump::DISPINFO).expect("dispinfo").into_owned();
+        assert_eq!(i32::from_le_bytes([info[24], info[25], info[26], info[27]]), i32::MIN | HAS_MULTIBLEND_BIT);
+        let back = hp_decompile::decompile(&bsp, &hp_decompile::Options::default()).expect("decompile");
+        let disp = back.map.world.solids.iter().flat_map(|s| &s.sides).find_map(|s| s.disp.as_deref()).expect("disp");
+        let source = map.world.solids[0].sides[0].disp.as_deref().expect("source disp");
+        assert_eq!(hp_vmf::multiblend::MultiBlend::of(disp), hp_vmf::multiblend::MultiBlend::of(source), "decompiled");
+        let options = crate::CompileOptions { format: hp_bsp::Branch::Left4Dead2.format(), ..Default::default() };
+        let out = crate::compile(&map, &Mats, &crate::props::NoModels, &options, &mut |_| {}).expect("compile");
+        let bsp = hp_bsp::Bsp::from_vec(out.bsp).expect("bsp");
+        assert!(bsp.lump(hp_bsp::lump::DISP_MULTIBLEND).expect("lump").is_empty(), "no multiblend in that branch");
+        let info = bsp.lump(crate::emit::lump::DISPINFO).expect("dispinfo").into_owned();
+        assert_eq!(i32::from_le_bytes([info[24], info[25], info[26], info[27]]), i32::MIN);
     }
 
     #[test]

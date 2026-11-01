@@ -10,8 +10,33 @@ pub const MAX_TARGETS_PER_OUTPUT: usize = 64;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum NodeFilter {
     #[default]
+    All,
     NamedAndConnected,
     ConnectedOnly,
+}
+
+impl NodeFilter {
+    pub const ALL: [NodeFilter; 3] = [NodeFilter::All, NodeFilter::NamedAndConnected, NodeFilter::ConnectedOnly];
+
+    pub fn label_key(self) -> &'static str {
+        match self {
+            NodeFilter::All => "lab.logic.filter_all",
+            NodeFilter::NamedAndConnected => "lab.logic.filter_named",
+            NodeFilter::ConnectedOnly => "lab.logic.filter_connected",
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            NodeFilter::All => "all",
+            NodeFilter::NamedAndConnected => "named",
+            NodeFilter::ConnectedOnly => "connected",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<NodeFilter> {
+        NodeFilter::ALL.into_iter().find(|f| f.name().eq_ignore_ascii_case(name.trim()))
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -33,6 +58,7 @@ pub struct Node {
     pub id: Id,
     pub class: String,
     pub name: String,
+    pub icon: Option<String>,
     pub stored: Option<[f32; 2]>,
     pub outputs: u32,
     pub inputs: u32,
@@ -73,6 +99,25 @@ pub fn format_logical_pos(p: [f32; 2]) -> String {
     format!("[{} {}]", p[0].round() as i64, (-p[1]).round() as i64)
 }
 
+pub fn icon_material(fgd: Option<&ResolvedFgd>, e: &hp_vmf::Entity) -> Option<String> {
+    let class = fgd?.class(&e.classname)?;
+    let path = if class.has_helper("iconsprite") {
+        class.iconsprite().map(str::to_owned).or_else(|| e.get("model").map(str::to_owned))
+    } else if class.has_helper("sprite") {
+        class.sprite().map(str::to_owned).or_else(|| e.get("model").map(str::to_owned))
+    } else {
+        None
+    }?;
+    let key = path.trim().replace('\\', "/").to_ascii_lowercase();
+    if key.ends_with(".mdl") {
+        return None;
+    }
+    let key = key.strip_prefix("materials/").unwrap_or(&key);
+    let key = key.strip_suffix(".vmt").or_else(|| key.strip_suffix(".spr")).unwrap_or(key);
+    let key = key.trim_matches('/');
+    (!key.is_empty()).then(|| key.to_owned())
+}
+
 pub fn fingerprint(doc: &Document, with_positions: bool, fgd_generation: u64, filter: NodeFilter) -> u64 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     fgd_generation.hash(&mut h);
@@ -82,6 +127,7 @@ pub fn fingerprint(doc: &Document, with_positions: bool, fgd_generation: u64, fi
         id.hash(&mut h);
         e.classname.hash(&mut h);
         e.get("targetname").unwrap_or("").hash(&mut h);
+        e.get("model").unwrap_or("").hash(&mut h);
         e.connections.len().hash(&mut h);
         for c in &e.connections {
             c.output.hash(&mut h);
@@ -119,7 +165,8 @@ impl Graph {
         for (id, node) in scene.entities() {
             let e = &node.entity;
             let named = e.get("targetname").is_some_and(|n| !n.trim().is_empty());
-            let wanted = !e.connections.is_empty()
+            let wanted = filter == NodeFilter::All
+                || !e.connections.is_empty()
                 || targeted.contains(id)
                 || (filter == NodeFilter::NamedAndConnected && named);
             if !wanted {
@@ -130,6 +177,7 @@ impl Graph {
                 id: *id,
                 class: e.classname.clone(),
                 name: e.get("targetname").map(str::trim).unwrap_or("").to_owned(),
+                icon: icon_material(fgd, e),
                 stored: e.editor.logical_pos.as_deref().and_then(parse_logical_pos),
                 outputs: e.connections.len() as u32,
                 inputs: 0,
@@ -224,6 +272,52 @@ mod tests {
         assert_eq!(g.nodes[e.to.expect("target")].name, "main_light");
         assert_eq!(g.nodes[e.to.expect("target")].inputs, 1);
         assert_eq!(g.problem_count(), 0);
+    }
+
+    #[test]
+    fn unnamed_lights_and_point_entities_are_nodes_with_their_icons() {
+        let text = r#"world { "id" "1" "classname" "worldspawn" }
+entity { "id" "2" "classname" "light_environment" "origin" "0 0 0" }
+entity { "id" "3" "classname" "light" "origin" "0 0 64" }
+entity { "id" "4" "classname" "light_spot" "origin" "0 0 128" "angles" "-90 0 0" }
+entity { "id" "5" "classname" "info_target" "origin" "0 0 32" }
+entity { "id" "6" "classname" "env_sprite" "model" "sprites/glow01.spr" "origin" "8 0 0" }
+entity { "id" "7" "classname" "prop_static" "model" "models/props_c17/oildrum001.mdl" "origin" "16 0 0" }
+entity { "id" "8" "classname" "logic_relay" "targetname" "relay" "origin" "0 32 0" connections { "OnTrigger" "lamp,TurnOn,,0,-1" } }
+entity { "id" "9" "classname" "light" "targetname" "lamp" "origin" "0 64 0" }
+"#;
+        let doc = Document::from_map(hp_vmf::parse(text).expect("map"));
+        let fgd = hp_fgd::Fgd::parse(
+            r#"@PointClass iconsprite("editor/light_env.vmt") = light_environment : "" []
+@PointClass iconsprite("editor/light.vmt") = light : "" [ input TurnOn(void) : "" ]
+@PointClass iconsprite("materials/editor/light_spot.vmt") = light_spot : "" []
+@PointClass iconsprite("editor\info_target.vmt") = info_target : "" []
+@PointClass iconsprite() sprite() = env_sprite : "" []
+@PointClass studioprop() = prop_static : "" []
+@PointClass iconsprite("editor/logic_relay.vmt") = logic_relay : "" [ output OnTrigger(void) : "" ]"#,
+            None,
+        )
+        .resolve();
+        let names = NameIndex::build(&doc);
+        let g = Graph::build(&doc, &names, Some(&fgd), NodeFilter::All);
+        assert_eq!(g.nodes.len(), 8, "every entity is a node");
+        let icon = |id: Id| g.nodes[g.index[&id]].icon.as_deref();
+        assert_eq!(icon(2), Some("editor/light_env"));
+        assert_eq!(icon(3), Some("editor/light"));
+        assert_eq!(icon(4), Some("editor/light_spot"));
+        assert_eq!(icon(5), Some("editor/info_target"));
+        assert_eq!(icon(6), Some("sprites/glow01"));
+        assert_eq!(icon(7), None, "models have no icon");
+        assert_eq!(g.edges.len(), 1);
+        assert_eq!(g.edges[0].state, EdgeState::Valid);
+        assert_eq!(g.nodes[g.edges[0].to.expect("lamp")].id, 9);
+        let named = Graph::build(&doc, &names, Some(&fgd), NodeFilter::NamedAndConnected);
+        assert_eq!(named.nodes.len(), 2);
+        assert!(!named.index.contains_key(&2), "the named filter leaves unnamed lights out");
+        assert_eq!(NodeFilter::from_name("ALL"), Some(NodeFilter::All));
+        assert_eq!(NodeFilter::from_name("connected"), Some(NodeFilter::ConnectedOnly));
+        assert_eq!(NodeFilter::from_name("x"), None);
+        assert_eq!(NodeFilter::default(), NodeFilter::All);
     }
 
     #[test]

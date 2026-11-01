@@ -854,8 +854,8 @@ mod tests {
         for v in verts {
             let p = glam::DVec3::new(f64::from(v.pos[0]), f64::from(v.pos[1]), f64::from(v.pos[2]));
             let i = positions.iter().position(|q| q.distance(p) < 0.1).expect("editor vertex");
-            let t = i as f32 / 24.0;
-            let want = hp_render::lightmap::pack_blend([1.0 - t, t, 0.0, 0.0], [1.0; 3]);
+            let t = ((i as f64 / 24.0) * 1e6).round() as f32 / 1e6;
+            let want = hp_render::lightmap::pack_blend([1.0 - t, t, 0.0, 0.0]);
             assert_eq!(v.blend, want, "vertex {i} at {p}");
         }
     }

@@ -22,8 +22,8 @@ pub struct LightmapVertex {
     pub blend: u32,
 }
 
-pub fn pack_blend(weights: [f32; 4], tint: [f32; 3]) -> u32 {
-    crate::gpu::pack_blend(weights, tint)
+pub fn pack_blend(weights: [f32; 4]) -> u32 {
+    crate::gpu::pack_blend(weights)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1010,8 +1010,8 @@ mod tests {
         let r = LightmapRect { layer: 0, x: 0, y: 0, w: 3, h: 2, density: 1.0, bumped: true };
         assert_eq!(r.images(), 4);
         assert_eq!(LightmapRect { bumped: false, ..r }.images(), 1);
-        assert_eq!(pack_blend([1.0, 0.0, 0.0, 0.0], [1.0; 3]), 0);
-        assert_eq!(pack_blend([0.0, 1.0, 0.0, 0.0], [1.0; 3]), 31);
+        assert_eq!(pack_blend([1.0, 0.0, 0.0, 0.0]), crate::gpu::BLEND_PAINTED);
+        assert_eq!(pack_blend([0.0, 1.0, 0.0, 0.0]), 1023 | crate::gpu::BLEND_PAINTED);
     }
 
     #[test]

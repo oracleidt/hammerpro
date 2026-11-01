@@ -132,6 +132,8 @@ pub struct CompileSettings {
     pub active_profile: usize,
     pub separate_window: bool,
     pub window: Option<WindowPlacement>,
+    pub compilers: Vec<super::compilers::CompilerProfile>,
+    pub compiler_by_game: BTreeMap<String, String>,
     #[serde(skip)]
     pub target: Option<String>,
     #[serde(skip)]
@@ -189,7 +191,48 @@ impl Default for CompileSettings {
             active_profile: 0,
             separate_window: true,
             window: None,
+            compilers: Vec::new(),
+            compiler_by_game: BTreeMap::new(),
         }
+    }
+}
+
+impl CompileSettings {
+    pub fn game_key(&self) -> String {
+        self.target.as_deref().map(str::trim).filter(|t| !t.is_empty()).unwrap_or(hp_fs::GMOD_ID).to_ascii_lowercase()
+    }
+
+    pub fn active_compiler_id(&self) -> &str {
+        self.compiler_by_game
+            .get(&self.game_key())
+            .map(String::as_str)
+            .filter(|id| !super::compilers::is_builtin_id(id))
+            .unwrap_or(super::compilers::BUILTIN_COMPILER)
+    }
+
+    pub fn uses_builtin_compiler(&self) -> bool {
+        super::compilers::is_builtin_id(self.active_compiler_id())
+    }
+
+    pub fn set_active_compiler(&mut self, id: &str) {
+        let key = self.game_key();
+        if super::compilers::is_builtin_id(id) {
+            self.compiler_by_game.remove(&key);
+        } else {
+            self.compiler_by_game.insert(key, id.trim().to_owned());
+        }
+    }
+
+    pub fn remove_compiler(&mut self, id: &str) -> bool {
+        let before = self.compilers.len();
+        self.compilers.retain(|p| !p.id.eq_ignore_ascii_case(id));
+        self.compiler_by_game.retain(|_, v| !v.eq_ignore_ascii_case(id));
+        self.compilers.len() != before
+    }
+
+    pub fn reset_compilers(&mut self) {
+        self.compilers.clear();
+        self.compiler_by_game.clear();
     }
 }
 
@@ -260,6 +303,40 @@ preset = \"Draft\"
         assert_eq!(back.compile, s.compile);
         let part: CompileSettings = toml::from_str("[window]\nx = 5\ny = 6\n").expect("partial");
         assert_eq!(part.window.map(|w| (w.x, w.y, w.width)), Some((5, 6, 0)));
+    }
+
+    #[test]
+    fn compiler_profiles_and_choices_persist_per_game() {
+        use crate::settings::compilers::{CompilerProfile, CompilerStep, CompilerStepKind};
+        let old: crate::settings::Settings = toml::from_str("[compile]\npreset = \"Draft\"\n").expect("old file");
+        assert!(old.compile.compilers.is_empty() && old.compile.uses_builtin_compiler());
+        let mut s = crate::settings::Settings::default();
+        let mut p = CompilerProfile::blank("Tools with spaces");
+        p.id = "user:1".into();
+        p.steps[0].exe = r"C:\Program Files\Valve tools\vbsp.exe".into();
+        p.steps.push(CompilerStep::of_kind(CompilerStepKind::Game));
+        s.compile.compilers.push(p);
+        s.compile.set_active_compiler("user:1");
+        assert_eq!(s.compile.active_compiler_id(), "user:1");
+        s.compile.target = Some("cstrike".into());
+        assert!(s.compile.uses_builtin_compiler(), "another game keeps its own choice");
+        s.compile.set_active_compiler("detected:valve:bin");
+        s.compile.target = None;
+        let text = toml::to_string(&s).expect("write");
+        let mut back: crate::settings::Settings = toml::from_str(&text).expect("read");
+        assert_eq!(back.compile, s.compile);
+        assert_eq!(back.compile.active_compiler_id(), "user:1");
+        back.compile.target = Some("CStrike".into());
+        assert_eq!(back.compile.active_compiler_id(), "detected:valve:bin");
+        back.compile.set_active_compiler("builtin");
+        assert!(back.compile.uses_builtin_compiler() && !back.compile.compiler_by_game.contains_key("cstrike"));
+        back.compile.target = None;
+        assert!(back.compile.remove_compiler("USER:1"));
+        assert!(back.compile.compilers.is_empty() && back.compile.uses_builtin_compiler());
+        assert!(!back.compile.remove_compiler("user:1"));
+        back.compile.set_active_compiler("detected:valve:bin");
+        back.compile.reset_compilers();
+        assert!(back.compile.uses_builtin_compiler());
     }
 
     #[test]

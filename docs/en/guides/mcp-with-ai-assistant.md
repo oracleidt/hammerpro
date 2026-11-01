@@ -38,7 +38,7 @@ The assistant starts with `get_capabilities` and `get_map_info`, uses the tools 
 ## What the assistant may and may not do
 
 - It only reaches windows whose pill is **MCP on**, and only from this computer (local address, secret token).
-- It never runs programs and only opens or saves `.vmf` maps. Replacing another existing file needs an explicit overwrite.
+- It runs no program on its own and only opens or saves `.vmf` maps. Replacing another existing file needs an explicit overwrite. It can make or change a compiler that runs other programs only with a confirmation, when you asked for it.
 - Sensitive commands (exit, switching MCP off, installing MCP in other apps, publishing, starting the game, file dialogs...) need a confirmation that the assistant should pass only when you asked for exactly that.
 - It cannot change file paths, programs, command lines, game content folders or the MCP settings: you do that in the Settings window.
 
@@ -59,7 +59,7 @@ With several windows, the assistant uses the one with MCP on that you focused la
 
 **The app does not list the hammer-pro tools.** Restart the app or open a new session after installing. In the MCP window, click **Verify** on its line.
 
-**Can it compile and start the game?** It compiles with Hammer Pro's own compiler when you ask. It starts the game only when you explicitly ask for it, and never in automated runs.
+**Can it compile and start the game?** It compiles with the compiler chosen for the game (Hammer Pro's own by default) when you ask, and can choose or set up another one (Valve's tools, your own) when you ask. It starts the game only when you explicitly ask for it, and never in automated runs.
 
 ## Related pages
 

@@ -484,7 +484,7 @@ impl Worker {
     fn spawn_detached(&self, index: usize, step: &Step) -> Outcome {
         let mut cmd = Command::new(&step.exe);
         cmd.args(&step.args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
-        match step.exe.parent().filter(|p| p.is_dir()) {
+        match step.workdir.as_deref().or_else(|| step.exe.parent().filter(|p| p.is_dir())) {
             Some(dir) => cmd.current_dir(dir),
             None => cmd.current_dir(&self.workdir),
         };
@@ -506,7 +506,7 @@ impl Worker {
         self.step_stats.clear();
         let mut cmd = Command::new(&step.exe);
         cmd.args(&step.args)
-            .current_dir(&self.workdir)
+            .current_dir(step.workdir.as_deref().unwrap_or(&self.workdir))
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -924,6 +924,24 @@ mod tests {
     }
 
     #[test]
+    fn a_step_runs_in_its_own_working_directory() {
+        let dir = scratch("runner_step_workdir");
+        let other = dir.join("other folder");
+        std::fs::create_dir_all(&other).unwrap();
+        let mut plan = CompilePlan::new(dir.join("m.vmf"));
+        #[cfg(windows)]
+        let mut step = shell_step("cd");
+        #[cfg(not(windows))]
+        let mut step = shell_step("pwd");
+        step.workdir = Some(other.clone());
+        plan.steps.push(step);
+        let events = collect(start(plan, &dir));
+        assert_eq!(finished(&events), (true, false, false), "{:?}", notices(&events));
+        let logs = log_lines(&events);
+        assert!(logs.iter().any(|(_, l, _)| l.trim_end().ends_with("other folder")), "{logs:?}");
+    }
+
+    #[test]
     fn leak_detection_from_fake_vbsp() {
         let dir = scratch("runner_leak");
         let vmf = dir.join("leaky.vmf");
@@ -1193,6 +1211,7 @@ mod tests {
             args: vec![],
             continue_on_error: false,
             action,
+            workdir: None,
         };
         plan.steps.push(op(StepAction::Rename { from: a.clone(), to: b.clone() }));
         plan.steps.push(op(StepAction::Delete { path: b.clone() }));

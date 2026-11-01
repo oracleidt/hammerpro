@@ -70,6 +70,7 @@ impl RenderConfig {
             cubemaps: r.cubemaps,
             light_shadows: r.light_shadows.min(hp_render::MAX_SHADOWED_LIGHTS),
             show_fog: r.fog_preview,
+            fog_volumes: r.fog_volume_preview,
             occlusion_culling: r.occlusion_culling,
             force_opaque: r.force_opaque,
             walkable: r.walkable,

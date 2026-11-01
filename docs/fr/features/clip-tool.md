@@ -83,6 +83,7 @@ Ces deux réglages se trouvent aussi sur la page **Brushes** de la fenêtre Para
 
 - [Outil bloc](block-tool.md)
 - [Outil vertex](vertex-tool.md)
+- [Outil extruder / creuser](extrude-tool.md)
 - [Opérations sur les brushes](brush-operations.md)
 - [Outil de sélection](selection-tool.md)
 - [Grilles](grids.md)

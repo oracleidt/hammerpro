@@ -45,6 +45,7 @@ The movement uses the Source values of Garry's Mod: 200 units per second walking
 - `L` lights the compiled world with the lightmaps of the compiled map and the props like the game (setting **Player view: compiled lighting**, `render.player_compiled_lighting`, on by default). A map compiled without lighting is fullbright, like in game.
 - The **light styles** of the compiled map play like in game (ten pattern letters a second). Named switchable lights follow their inputs and the keys `1` to `9`.
 - Cubemap reflections use the cubemaps built in game when the compiled map has them, else the ones Hammer Pro draws.
+- While the eyes are inside a `fog_volume`, the fog of the `env_fog_controller` named by its **Fog Name** replaces the map fog, like in game (the box around its brushes, volumes with **Start Disabled** skipped; setting **Fog volume preview**, see [Fog volumes](render-modes-display.md#fog-volumes)).
 
 ## Counters
 

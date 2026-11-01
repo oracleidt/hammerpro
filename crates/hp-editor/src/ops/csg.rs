@@ -45,7 +45,7 @@ pub(crate) fn remap_side_list(value: &str, map: &IdMap<Vec<Id>>) -> Option<Strin
     changed.then(|| out.join(" "))
 }
 
-fn record_side_ids(original: &[Side], pieces: &[&ClipPiece], map: &mut IdMap<Vec<Id>>) {
+pub(super) fn record_side_ids(original: &[Side], pieces: &[&ClipPiece], map: &mut IdMap<Vec<Id>>) {
     for (j, src) in original.iter().enumerate() {
         let new: Vec<Id> = pieces
             .iter()
@@ -59,7 +59,7 @@ fn record_side_ids(original: &[Side], pieces: &[&ClipPiece], map: &mut IdMap<Vec
     }
 }
 
-fn derived_solid(template: &Solid, id: Id, sides: Vec<Side>) -> Solid {
+pub(super) fn derived_solid(template: &Solid, id: Id, sides: Vec<Side>) -> Solid {
     Solid {
         id,
         sides,

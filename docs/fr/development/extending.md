@@ -44,7 +44,7 @@ L'interface est en noir et blanc : chaque couleur de l'interface vient des jeton
 
 ## Remarque
 
-[docs/EXTENDING.md](../../EXTENDING.md) a été écrit pendant la construction des paquets : ses tableaux qualifient encore certaines actions de « Planned » (prévues). Dans la version 1.0.0, toutes les actions qui y sont listées sont disponibles (voir [Actions et raccourcis clavier](../reference/actions-shortcuts.md)).
+[docs/EXTENDING.md](../../EXTENDING.md) a été écrit pendant la construction des paquets : ses tableaux qualifient encore certaines actions de « Planned » (prévues). Dans la version 1.0.1, toutes les actions qui y sont listées sont disponibles (voir [Actions et raccourcis clavier](../reference/actions-shortcuts.md)).
 
 ## Pages liées
 

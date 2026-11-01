@@ -318,6 +318,7 @@ fn compiled_floor(r: &mut Renderer, cube: u16) {
         lm: [0.5, 0.5],
         lightmap: 0,
         cubemap: cube,
+        blend: Default::default(),
     };
     let verts = vec![v(-400.0, -400.0), v(400.0, -400.0), v(400.0, 400.0), v(-400.0, 400.0)];
     let vertices: Vec<Vertex> =
@@ -388,6 +389,7 @@ fn the_compiled_world_reflects_like_the_game() {
         lm: [0.5, 0.5],
         lightmap: 0,
         cubemap: id.raw(),
+        blend: Default::default(),
     };
     let verts = vec![v(-400.0, -400.0), v(400.0, -400.0), v(400.0, 400.0), v(-400.0, 400.0)];
     let block = CompiledBlock {

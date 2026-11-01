@@ -26,7 +26,7 @@ hammerpro --rad [lighting options] <map.bsp>
 | `--screenshot out.png` | Automated run: draws N frames (see `--frames`), saves a PNG of the whole window to the given file and closes. | off |
 | `--frames N` | Number of frames drawn before the `--screenshot` capture (at least 2). | `90` |
 | `--maximize-view N` | Starts with one view maximized. N is the view index: `0` 3D, `1` Top, `2` Front, `3` Side in the default layout. | none |
-| `--tool NAME` | Tool active at startup. Names (case ignored): `select`, `camera`, `entity`, `block`, `texture`, `decal`, `overlay`, `clip`, `vertex`, `path`, `polygon`, `sprinkle`, `displacement`, `cordon`. An unknown name is ignored. | `select` |
+| `--tool NAME` | Tool active at startup. Names (case ignored): `select`, `camera`, `entity`, `block`, `texture`, `decal`, `overlay`, `clip`, `vertex`, `path`, `polygon`, `curve`, `sprinkle`, `displacement`, `cordon`. An unknown name is ignored. | `select` |
 | `--script file.txt` | Automated run: plays the commands of a script file (mouse, keys, actions, screenshots, asserts). See [Script commands](script-commands.md). | off |
 | `--bench-open map.vmf` | Automated run: opens the map, waits until it is drawn and the game content has settled, prints the startup and open timings to stdout as `key=value` pairs and closes. | off |
 

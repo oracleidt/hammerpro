@@ -380,6 +380,8 @@ fn probe_options(o: &ViewOptions, sky: bool) -> ViewOptions {
         game_wireframe: 0,
         model_distance: PROBE_MODEL_DISTANCE,
         cubemaps: false,
+        fog_volumes: false,
+        fog_volume_inside: false,
         ..*o
     }
 }
@@ -1152,10 +1154,17 @@ mod tests {
         assert_eq!(probe_mode(RenderMode::Lit), RenderMode::Lit);
         assert_eq!(probe_mode(RenderMode::TexturedWire), RenderMode::Textured);
         let o = probe_options(
-            &ViewOptions { grid_3d: Some(Default::default()), cubemaps: true, ..Default::default() },
+            &ViewOptions {
+                grid_3d: Some(Default::default()),
+                cubemaps: true,
+                fog_volumes: true,
+                fog_volume_inside: true,
+                ..Default::default()
+            },
             true,
         );
         assert!(o.grid_3d.is_none() && !o.cubemaps && o.show_sky && !o.show_sky_3d);
+        assert!(!o.fog_volumes && !o.fog_volume_inside, "the fog volume preview stays out of reflections");
     }
 
     #[test]

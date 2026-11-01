@@ -2,7 +2,7 @@
 
 # Référence des paramètres
 
-Toutes les options de Hammer Pro 1.0.0 sont rangées dans un seul fichier TOML, `settings.toml`, dans `%APPDATA%\HammerPro` sous Windows (le dossier de configuration de l'utilisateur sur les autres systèmes). Cette page liste chaque table et chaque clé de ce fichier, sa valeur par défaut, son effet et l'endroit de l'interface où on la règle.
+Toutes les options de Hammer Pro 1.0.1 sont rangées dans un seul fichier TOML, `settings.toml`, dans `%APPDATA%\HammerPro` sous Windows (le dossier de configuration de l'utilisateur sur les autres systèmes). Cette page liste chaque table et chaque clé de ce fichier, sa valeur par défaut, son effet et l'endroit de l'interface où on la règle.
 
 En temps normal, vous n'ouvrez jamais ce fichier : la [fenêtre des paramètres](../features/settings-dialog.md) (**Outils > Options...**, `Ctrl+,`) et les menus le modifient, et chaque changement est enregistré tout de suite. Le modifier à la main reste sans danger :
 
@@ -115,6 +115,7 @@ Surtout sur **Paramètres > Vues** ; les clés `show_*` sont aussi dans le menu 
 | `mount_cfg` | `true` | Monte les jeux de `mount.cfg`. |
 | `mount_server_content` | `true` | Monte le contenu téléchargé depuis les serveurs (`garrysmod/download`, `garrysmod/cache/workshop`). |
 | `extra_game_dirs` | `[]` | Autres dossiers de jeu à monter. |
+| `mount_app_ids` | `[]` | Jeux Steam dont le contenu est monté, par AppID, par ordre de priorité (par exemple `[240, 440]`). Chacun est trouvé dans les bibliothèques Steam et monté d'après son `gameinfo.txt`. Voir [Configuration du jeu](../getting-started/game-setup.md#jeux-steam-par-appid). |
 | `custom_texture_dirs` | `[]` | Dossiers de textures personnalisés : tables avec `path`, `prefix` (préfixe des noms de matériaux quand le dossier n'est pas dans une arborescence `materials`) et `enabled`. Voir [Dossiers de textures personnalisés](../features/custom-texture-folders.md). |
 | `extra_fgds` | `[]` | Fichiers FGD supplémentaires, chargés après celui du jeu. |
 | `fgd_override` | absente | Remplace le FGD principal du jeu. |
@@ -162,6 +163,8 @@ Surtout sur **Paramètres > Vues** ; les clés `show_*` sont aussi dans le menu 
 | `static_prop_shadows` | `true` | Les props statiques projettent des ombres (désactivé : ajoute `-nostaticpropshadows`). |
 | `expert` | `false` | Mode expert : exécute le profil choisi au lieu du préréglage. |
 | `profiles` | `[]` | Profils experts : `name` et `steps` (`enabled`, `action`, `program`, `args`, `continue_on_error`). |
+| `compilers` | `[]` | Vos compilateurs et vos changements des compilateurs détectés : `id` (`user:N` ou `detected:...`), `name`, `mode_flags`, `steps` (`kind` : `bsp`, `vis`, `rad`, `copy`, `game` ou `custom` ; `enabled`, `exe`, `options` (option vers valeur, `""` pour une case à cocher), `extra`, `args`, `workdir`, `continue_on_error`). Voir [Choisir un compilateur](../compiler/compilers.md). MCP le change avec `create_compiler` et `set_compiler`. |
+| `compiler_by_game` | `{}` | Le compilateur de chaque jeu : id du jeu vers id du compilateur. Un jeu absent utilise le compilateur de Hammer Pro. MCP le change avec `select_compiler`. |
 | `active_profile` | `0` | Index du profil choisi. |
 | `separate_window` | `true` | La fenêtre Compiler et lancer est une fenêtre indépendante. |
 | `window` | absente | Dernière position de cette fenêtre. |
@@ -203,6 +206,11 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `gizmo_local` | `false` | Le gizmo d'une seule entité ponctuelle suit ses angles (`Ctrl+J`). |
 | `click_to_zoom` | `false` | L'outil caméra zoome les vues 2D au clic (`Ctrl` + clic dézoome). |
 | `stretch_handles` | `true` | Des flèches sur les faces de la sélection, dans la vue 3D, l'étirent. |
+| `random_yaw_min` | `0.0` | **Rotation Z aléatoire** : plus petite rotation, en degrés (-360 à 360). |
+| `random_yaw_max` | `360.0` | **Rotation Z aléatoire** : plus grande rotation, en degrés (au plus 360 au-dessus de la plus petite). |
+| `random_yaw_snap` | `0.0` | **Rotation Z aléatoire** : pas de la rotation, en degrés (0 : libre, jusqu'à 180). |
+| `random_tilt` | `false` | **Rotation Z aléatoire** incline aussi un peu le tangage et le roulis. |
+| `random_tilt_deg` | `3.0` | Inclinaison maximale du tangage et du roulis, en degrés (0 à 45). |
 
 ## `[brush]`
 
@@ -266,7 +274,7 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 
 | Clé | Défaut | Effet |
 | --- | --- | --- |
-| `helper_scope` | `"Selected"` | Aides (rayons, cônes, lignes vers les cibles) des entités sélectionnées (`Selected`) ou de toutes (`All`). |
+| `helper_scope` | `"Selected"` | Aides (rayons, cônes, lignes vers les cibles) des entités sélectionnées (`Selected`) ou de toutes (`All`). Les liens de chemin des aides `line()` et `cylinder()` (`path_track`, `path_corner`) sont dessinés pour toutes les entités dans les deux modes, comme dans Hammer. |
 | `connections` | `"Selected"` | Lignes d'entrées/sorties : `Off`, `Selected`, `All`. |
 | `show_overlays` | `true` | Dessine les `info_overlay` sur leurs faces. |
 | `show_editor_objects` | `true` | Icônes des entités et géométrie des aides. |
@@ -333,6 +341,10 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `sky_see_through` | `false` | Laisse de côté les faces `toolsskybox` pour voir le ciel au travers. |
 | `water_preview` | `true` | Eau dessinée comme en jeu. |
 | `fog_preview` | `false` | Aperçu du brouillard d'`env_fog_controller`. |
+| `fog_volume_preview` | `true` | Remplir les brushes `fog_volume` du brouillard de leur contrôleur ; la vue joueur le prend dedans. |
+| `fog_volume_texture` | `true` | Dessiner le matériau des brushes `fog_volume` dans la vue 3D. |
+| `fish_preview` | `true` | Dessiner les poissons des entités `func_fish_pool`. |
+| `fish_swim` | `true` | Les poissons de l'aperçu nagent. |
 | `normal_maps` | `true` | Les normal maps donnent leur relief aux surfaces. |
 | `player_compiled_lighting` | `true` | La vue joueur utilise les lightmaps de la map compilée. |
 | `cubemaps` | `true` | Les matériaux `$envmap` reflètent leur cubemap. |
@@ -413,7 +425,7 @@ Menu de lancement de la fenêtre de compilation et **Paramètres > Jeu > Tests e
 
 ## `[content]`
 
-La fenêtre **Construire et enregistrer en contenu** et l'onglet Ressources de la map. Voir [Construire et publier](../features/build-content-release.md) et [BSP Protection Pro](../features/bsp-protection.md).
+La fenêtre **Construire et enregistrer en contenu** et l'onglet Ressources de la map. Voir [Construire et publier](../features/build-content-release.md) et [Protect your BSP](../features/bsp-protection.md).
 
 | Clé | Défaut | Effet |
 | --- | --- | --- |
@@ -427,7 +439,7 @@ La fenêtre **Construire et enregistrer en contenu** et l'onglet Ressources de l
 | `game_session` | `false` | Construit les cubemaps et le nav mesh en jeu. |
 | `write_gma` | `true` | Écrit le `.gma`. |
 | `open_folder` | `false` | Ouvre le dossier de sortie à la fin. |
-| `protect` | `false` | BSP Protection Pro. |
+| `protect` | `false` | Protect your BSP. |
 | `protect_watermark` | `""` | Filigrane de la copie protégée. |
 | `protect_strip_original_faces` | `true` | Vide le lump des faces d'origine. |
 | `protect_lock` | `false` | Verrou serveur. |
@@ -491,11 +503,11 @@ La fenêtre **Construire et enregistrer en contenu** et l'onglet Ressources de l
 | Clé | Défaut | Effet |
 | --- | --- | --- |
 | `mcp.start_with_app` | `false` | Active le serveur MCP au démarrage de Hammer Pro. **Paramètres > MCP**. Voir [Serveur MCP](mcp-server.md). |
-| `discord.enabled` | `true` | Affiche l'activité sur Discord (nécessite un id d'application). |
+| `discord.enabled` | `true` | Affiche l'activité sur Discord. |
 | `discord.show_map` | `true` | Affiche le nom de la map. |
 | `discord.show_elapsed` | `true` | Affiche le temps passé. |
 | `discord.show_tool` | `true` | Affiche l'outil actif. |
-| `discord.application_id` | `""` | Id de l'application Discord. |
+| `discord.application_id` | `""` | L'id de votre propre application Discord, de 17 à 20 chiffres ; vide : l'application de Hammer Pro. |
 | `discord.project_url` | `""` | Lien du bouton (pas de bouton si vide). |
 
 Voir [Discord Rich Presence](../features/discord.md).

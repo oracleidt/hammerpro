@@ -1,20 +1,20 @@
-[Documentation](../README.md) > Features > BSP Protection Pro | [Français](../../fr/features/bsp-protection.md)
+[Documentation](../README.md) > Features > Protect your BSP | [Français](../../fr/features/bsp-protection.md)
 
-# BSP Protection Pro
+# Protect your BSP
 
-BSP Protection Pro ships a protected copy of your Garry's Mod map to players and keeps the full map for your server. The client needs only the geometry and the rendering to draw the map, while every bit of gameplay (entity logic, inputs and outputs, triggers) runs on the server. So the copy players download can drop all of that, carry a watermark, and be much harder to decompile into something usable.
+Protect your BSP ships a protected copy of your Garry's Mod map to players and keeps the full map for your server. The client needs only the geometry and the rendering to draw the map, while every bit of gameplay (entity logic, inputs and outputs, triggers) runs on the server. So the copy players download can drop all of that, carry a watermark, and be much harder to decompile into something usable.
 
 A map a client can draw is never fully theft proof: a decompiler can always recover some geometry. This makes a stolen copy far less useful and traceable, without breaking the map.
 
 ## Opening it
 
-The protection is part of the release build. Open **File > Build and save as content...**, tab **Build**, and tick **BSP Protection Pro** (below the release options). Its options appear indented under it. The next **Build** produces the protected release. See [Build and save as content](build-content-release.md) for the rest of the window.
+The protection is part of the release build. Open **File > Build and save as content...**, tab **Build**, and tick **Protect your BSP** (below the release options). Its options appear indented under it. The next **Build** produces the protected release. See [Build and save as content](build-content-release.md) for the rest of the window.
 
 ## Options
 
 | Option | What it does | Default |
 | --- | --- | --- |
-| **BSP Protection Pro** | Ship a protected copy of the map: gameplay logic, entity wiring and decompile data removed, watermarked. Keeps the full map for your server. Key `content.protect`. | off |
+| **Protect your BSP** | Ship a protected copy of the map: gameplay logic, entity wiring and decompile data removed, watermarked. Keeps the full map for your server. Key `content.protect`. | off |
 | **Watermark** | Text written into the protected map (your name or server), traceable in a stolen copy. Stored on the world entity as `hammerpro_protected`; control characters are removed and the text is cut at 120 characters. Key `content.protect_watermark`. | empty |
 | **Break decompilers (empty original faces)** | Empties the original faces lump: decompilers use it, the game does not. Leave on. Key `content.protect_strip_original_faces`. | on |
 | **Material randomizer (break decompilers like bsp_iidefeat)** | Renames the map's materials to garbage names in the shipped copy, patched so it renders the same, so a recovered map has unusable material names. Leave on. Key `content.protect_randomize`. | on |
@@ -33,7 +33,7 @@ Without a key, the lock does nothing and the window says *Set a key: you put the
 - **Material names** are scrambled (option above). Materials the engine recognizes by name (tool and sky textures, the cubemap patched materials under `maps/`) are never renamed.
 - **The navigation mesh** is kept for the server only: it maps out the whole map and the client never reads it.
 
-The build log reports *BSP Protection Pro: N logic entities removed, N connections stripped, size of decompile data emptied* and, with the randomizer, *Material randomizer: N materials renamed, patched to render the same.*
+The build log reports *Protect your BSP: N logic entities removed, N connections stripped, size of decompile data emptied* and, with the randomizer, *Material randomizer: N materials renamed, patched to render the same.*
 
 ## The server copy
 

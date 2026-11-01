@@ -35,6 +35,7 @@ pub struct CompiledVertex {
     pub lm: [f32; 2],
     pub lightmap: u32,
     pub cubemap: u16,
+    pub blend: crate::types::BlendVertex,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -97,9 +98,10 @@ struct VertexGpu {
     stride: f32,
     cube: u32,
     normal: [f32; 3],
+    blend: u32,
 }
 
-const VERTEX_ATTRS: [wgpu::VertexAttribute; 10] = [
+const VERTEX_ATTRS: [wgpu::VertexAttribute; 11] = [
     wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x3, offset: 0, shader_location: 0 },
     wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x2, offset: 12, shader_location: 1 },
     wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x2, offset: 20, shader_location: 2 },
@@ -110,6 +112,7 @@ const VERTEX_ATTRS: [wgpu::VertexAttribute; 10] = [
     wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32, offset: 44, shader_location: 7 },
     wgpu::VertexAttribute { format: wgpu::VertexFormat::Uint32, offset: 48, shader_location: 12 },
     wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x3, offset: 52, shader_location: 13 },
+    wgpu::VertexAttribute { format: wgpu::VertexFormat::Uint32, offset: 64, shader_location: 14 },
 ];
 
 const TRANSFORM_ATTRS: [wgpu::VertexAttribute; 4] = [
@@ -621,6 +624,7 @@ impl Renderer {
                             stride,
                             cube: u32::from(v.cubemap),
                             normal: if Vec3::from(v.normal).is_finite() { v.normal } else { [0.0, 0.0, 1.0] },
+                            blend: crate::gpu::pack_blend_vertex(&v.blend),
                         }
                     } else {
                         VertexGpu {
@@ -1294,7 +1298,7 @@ mod tests {
 
     #[test]
     fn layouts() {
-        assert_eq!(size_of::<VertexGpu>(), 64);
+        assert_eq!(size_of::<VertexGpu>(), 68);
         assert_eq!(std::mem::offset_of!(VertexGpu, styles), 40);
         assert_eq!(std::mem::offset_of!(VertexGpu, stride), 44);
         assert_eq!(size_of::<ParamsGpu>(), 16);

@@ -13,6 +13,11 @@ pub struct SelectionSettings {
     pub gizmo_local: bool,
     pub click_to_zoom: bool,
     pub stretch_handles: bool,
+    pub random_yaw_min: f64,
+    pub random_yaw_max: f64,
+    pub random_yaw_snap: f64,
+    pub random_tilt: bool,
+    pub random_tilt_deg: f64,
 }
 
 impl Default for SelectionSettings {
@@ -26,6 +31,11 @@ impl Default for SelectionSettings {
             gizmo_local: false,
             click_to_zoom: false,
             stretch_handles: true,
+            random_yaw_min: 0.0,
+            random_yaw_max: 360.0,
+            random_yaw_snap: 0.0,
+            random_tilt: false,
+            random_tilt_deg: 3.0,
         }
     }
 }
@@ -33,6 +43,27 @@ impl Default for SelectionSettings {
 impl SelectionSettings {
     pub fn rotation_step(&self) -> f64 {
         if self.rotation_snap_deg.is_finite() { self.rotation_snap_deg.clamp(1.0, 180.0) } else { 15.0 }
+    }
+
+    pub fn random_seed() -> u64 {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64);
+        now ^ COUNTER.fetch_add(0x9E37_79B9, Ordering::Relaxed).rotate_left(17) ^ u64::from(std::process::id())
+    }
+
+    pub fn random_rotate(&self, seed: u64) -> hp_editor::RandomRotate {
+        let num = |v: f64, d: f64| if v.is_finite() { v } else { d };
+        let min = num(self.random_yaw_min, 0.0).clamp(-360.0, 360.0);
+        let max = num(self.random_yaw_max, 360.0).clamp(min, (min + 360.0).min(720.0));
+        let tilt = num(self.random_tilt_deg, 3.0).clamp(0.0, hp_editor::MAX_JITTER_DEG);
+        hp_editor::RandomRotate {
+            min_yaw: min,
+            max_yaw: max,
+            snap: num(self.random_yaw_snap, 0.0).clamp(0.0, 180.0),
+            jitter: if self.random_tilt { tilt } else { 0.0 },
+            seed,
+        }
     }
 
     pub fn handle_points(&self) -> f32 {
@@ -59,5 +90,24 @@ mod tests {
             SelectionSettings { rotation_snap_deg: f64::NAN, handle_size: 1000.0, ..SelectionSettings::default() };
         assert_eq!(bad.rotation_step(), 15.0);
         assert_eq!(bad.handle_points(), 16.0);
+    }
+
+    #[test]
+    fn random_rotate_options() {
+        let s = SelectionSettings::default();
+        let r = s.random_rotate(9);
+        assert_eq!((r.min_yaw, r.max_yaw, r.snap, r.jitter, r.seed), (0.0, 360.0, 0.0, 0.0, 9));
+        assert!(r.check().is_ok());
+        let s = SelectionSettings {
+            random_yaw_min: 90.0,
+            random_yaw_max: 10.0,
+            random_yaw_snap: f64::NAN,
+            random_tilt: true,
+            random_tilt_deg: 500.0,
+            ..SelectionSettings::default()
+        };
+        let r = s.random_rotate(1);
+        assert_eq!((r.min_yaw, r.max_yaw, r.snap, r.jitter), (90.0, 90.0, 0.0, hp_editor::MAX_JITTER_DEG));
+        assert!(r.check().is_ok());
     }
 }

@@ -110,6 +110,7 @@ pub(crate) const DOMAINS: &[&Domain] = &[
     &super::tools_entities::DOMAIN,
     &super::tools_assets::DOMAIN,
     &super::tools_compile::DOMAIN,
+    &super::tools_compilers::DOMAIN,
     &super::tools_health::DOMAIN,
     &super::tools_content::DOMAIN,
     &super::tools_docs::DOMAIN,
@@ -119,6 +120,7 @@ pub(crate) const DOMAINS: &[&Domain] = &[
     &super::tools_sky::DOMAIN,
     &super::tools_fgd::DOMAIN,
     &super::tools_games::DOMAIN,
+    &super::tools_discord::DOMAIN,
     &super::tools_toolopts::DOMAIN,
     &super::tools_actions::DOMAIN,
     &super::tools_ui::DOMAIN,
@@ -761,6 +763,12 @@ fn set_entity_keyvalues(state: &mut AppState, v: &Value) -> R<ToolResult> {
     if remove.iter().any(|k| k.eq_ignore_ascii_case("classname")) {
         return Err("classname cannot be removed".to_owned());
     }
+    let origin = !is_world
+        && set.iter().any(|(k, v)| {
+            k.eq_ignore_ascii_case("classname")
+                && hp_app::runtime::helpers::brush_entity_needs_origin(state.assets.fgd(), v)
+        })
+        && !remove.iter().any(|k| k.eq_ignore_ascii_case("origin"));
     edit(state, "set_entity_keyvalues", |doc| {
         for (k, val) in &set {
             if is_world {
@@ -778,6 +786,9 @@ fn set_entity_keyvalues(state: &mut AppState, v: &Value) -> R<ToolResult> {
             } else {
                 doc.remove_entity_key(&[id], k)?;
             }
+        }
+        if origin {
+            doc.add_missing_origins(&[id])?;
         }
         Ok(())
     })?;

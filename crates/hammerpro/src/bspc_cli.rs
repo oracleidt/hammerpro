@@ -323,6 +323,24 @@ pub(crate) struct BspcArgs {
     pub(crate) notes: Vec<String>,
 }
 
+pub(crate) fn app_ids_arg(value: &str) -> Result<Vec<u32>, String> {
+    let ids: Vec<u32> = value
+        .split(',')
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(|v| {
+            v.parse::<u32>()
+                .ok()
+                .filter(|id| *id > 0 && *id <= hp_fs::MAX_APP_ID)
+                .ok_or_else(|| format!("\"{v}\" is not a Steam AppID (-mount_appid 240 or -mount_appid 240,440)"))
+        })
+        .collect::<Result<_, _>>()?;
+    if ids.is_empty() {
+        return Err("expected an AppID after -mount_appid".to_owned());
+    }
+    Ok(ids)
+}
+
 pub(crate) fn parse_bspc_args(args: &[String]) -> Result<BspcArgs, String> {
     let mut a = BspcArgs {
         opts: hp_bspc::CompileOptions::default(),
@@ -468,6 +486,10 @@ pub(crate) fn parse_bspc_args(args: &[String]) -> Result<BspcArgs, String> {
             }
             "-wsaddons" => a.mount.mount_workshop = true,
             "-serveraddons" => a.mount.mount_downloads = true,
+            "-mount_appid" => {
+                a.mount.app_ids.extend(app_ids_arg(&value(i, arg)?)?);
+                i += 1;
+            }
             _ if ACCEPTED.contains(&lower.as_str()) => {}
             _ if UNSUPPORTED.contains(&lower.as_str())
                 || UNSUPPORTED_WITH_VALUE.iter().any(|(n, _)| *n == lower)
@@ -906,6 +928,11 @@ pub(crate) fn parse_rad_args(args: &[String]) -> Result<RadArgs, String> {
             "-nowsaddons" => (r.mount.mount_addons, r.mount.mount_workshop) = (false, false),
             "-wsaddons" => r.mount.mount_workshop = true,
             "-serveraddons" => r.mount.mount_downloads = true,
+            "-mount_appid" => {
+                let Some(v) = args.get(i + 1) else { return Err(format!("expected an AppID after '{a}'")) };
+                r.mount.app_ids.extend(app_ids_arg(v)?);
+                i += 1;
+            }
             "-insert_search_path" => {
                 let Some(v) = args.get(i + 1) else { return Err(format!("expected a folder after '{a}'")) };
                 r.search_paths.push(PathBuf::from(v));
@@ -1365,6 +1392,13 @@ mod tests {
         assert!(a.opts.sky_vis);
         assert!(a.mount.mount_addons && !a.mount.mount_workshop && !a.mount.mount_downloads);
         assert!(parse_bspc_args(&args("-wsaddons map")).expect("parsed").mount.mount_workshop);
+        let a = parse_bspc_args(&args("-mount_appid 240 -mount_appid 440,220 map")).expect("parsed");
+        assert_eq!(a.mount.app_ids, [240, 440, 220]);
+        assert!(parse_bspc_args(&args("-mount_appid tf2 map")).is_err());
+        assert!(parse_bspc_args(&args("-mount_appid")).is_err());
+        let r = parse_rad_args(&args("-mount_appid 4000 map")).expect("parsed");
+        assert_eq!(r.mount.app_ids, [4000]);
+        assert!(parse_rad_args(&args("-mount_appid 0 map")).is_err());
         let a = parse_bspc_args(&args("-serveraddons map")).expect("parsed");
         assert!(a.mount.mount_downloads && a.notes.is_empty(), "{:?}", a.notes);
         assert!(parse_bspc_args(&args("-micro")).is_err());

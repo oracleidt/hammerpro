@@ -535,3 +535,81 @@ fn escape_closes_the_compile_dialog_with_the_pointer_over_a_view() {
     frame(&mut d, &mut state, Vec::new());
     assert!(frame(&mut d, &mut state, vec![escape()]), "closed: Escape goes to the tools");
 }
+
+fn log_text_positions(d: &mut CompileDialog, state: &mut AppState, frames: usize) -> Vec<Vec<(String, i32, i32)>> {
+    let ctx = egui::Context::default();
+    hp_app::theme::apply(&ctx, state.settings.ui.theme, state.settings.ui.ui_scale);
+    let mut out_frames = Vec::new();
+    for _ in 0..frames {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 960.0))),
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(input, |ui| d.show(ui.ctx(), state));
+        out.textures_delta.clear();
+        let mut texts = Vec::new();
+        for clipped in &out.shapes {
+            if let egui::Shape::Text(t) = &clipped.shape
+                && t.galley.text().starts_with("log line")
+            {
+                texts.push((t.galley.text().to_owned(), (t.pos.x * 4.0) as i32, (t.pos.y * 4.0) as i32));
+            }
+        }
+        out_frames.push(texts);
+    }
+    out_frames
+}
+
+#[test]
+fn the_idle_log_stays_still() {
+    let _lang = crate::lang_lock();
+    crate::register_translations();
+    let mut state = test_state();
+    state.ui.show_compile = true;
+    state.settings.compile.separate_window = false;
+    let mut d = CompileDialog::new();
+    d.begin_test_run(&plan());
+    d.collapse_settings = true;
+    let mut events =
+        vec![CompileEvent::StepStarted { index: 0, kind: StepKind::Bsp, command_line: "hammerpro --bspc".into() }];
+    for i in 0..400 {
+        let (line, severity, location) = if i % 7 == 0 {
+            (format!("log line {i} Brush {i}: WARNING, microbrush"), LogSeverity::Warning, None)
+        } else {
+            (format!("log line {i}"), LogSeverity::Info, None)
+        };
+        events.push(CompileEvent::Log { step: 0, line, severity, location });
+    }
+    events.push(CompileEvent::StepFinished { index: 0, success: true, exit_code: Some(0), duration_ms: 900 });
+    events.push(CompileEvent::Finished { success: true, cancelled: false, leaked: false, total_ms: 1000 });
+    feed(&mut d, &mut state, events);
+    let frames = log_text_positions(&mut d, &mut state, 40);
+    let last = frames.last().expect("frames");
+    assert!(!last.is_empty(), "the log is drawn");
+    let ctx = egui::Context::default();
+    hp_app::theme::apply(&ctx, state.settings.ui.theme, state.settings.ui.ui_scale);
+    let mut pitch = 0.0;
+    let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
+        pitch = d.log_view.row_height + ui.spacing().item_spacing.y;
+    });
+    let mut rows: Vec<(usize, i32)> = last
+        .iter()
+        .filter_map(|(t, _, y)| t.split_whitespace().nth(2).and_then(|n| n.parse().ok()).map(|n| (n, *y)))
+        .collect();
+    rows.sort_unstable();
+    assert!(rows.len() > 5, "{rows:?}");
+    for w in rows.windows(2) {
+        let step = (w[1].1 - w[0].1) as f32 / 4.0 / (w[1].0 - w[0].0) as f32;
+        assert!((step - pitch).abs() < 0.5, "rows are {step} apart, show_rows counts {pitch}: {rows:?}");
+    }
+    assert!(last.iter().any(|t| t.0.starts_with("log line 399")), "auto scroll shows the last line: {last:?}");
+    for (i, f) in frames.iter().enumerate().skip(20) {
+        assert_eq!(f, last, "frame {i} moved");
+    }
+    d.no_auto_scroll = true;
+    let frames = log_text_positions(&mut d, &mut state, 30);
+    let last = frames.last().expect("frames");
+    for (i, f) in frames.iter().enumerate().skip(10) {
+        assert_eq!(f, last, "frame {i} moved without auto scroll");
+    }
+}

@@ -35,7 +35,9 @@ domain! { "entities and io";
             "rename_to": string("New key name (renames instead of setting)."),
         }, ["key"];
     set_entity_class: Edit, "Change the class of entities",
-        "Change the class of entities (keyvalues stay).",
+        "Change the class of entities (keyvalues stay). A brush entity whose new FGD class has an origin key \
+        (func_tracktrain, func_tanktrain, func_rotating...) and has none gets it at the center of its solids, like \
+        Hammer.",
         { "ids": ids("Entity ids (default: the selected entities)."), "classname": string("New class.") }, ["classname"];
     set_spawnflags: Edit, "Spawnflags",
         "Switch spawnflags of entities on or off, by bit value or by their FGD name.",
@@ -342,7 +344,14 @@ fn set_keyvalue(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
 fn set_entity_class(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let ids = target_entities(state, a, "ids")?;
     let class = class_name(a, "classname")?;
-    let n = edit(state, "set_entity_class", |doc| doc.set_entity_class(&ids, &class))?;
+    let origin = hp_app::runtime::helpers::brush_entity_needs_origin(state.assets.fgd(), &class);
+    let n = edit(state, "set_entity_class", |doc| {
+        let n = doc.set_entity_class(&ids, &class)?;
+        if origin {
+            doc.add_missing_origins(&ids)?;
+        }
+        Ok(n)
+    })?;
     let mut out = json!({ "entities_changed": n, "classname": class });
     if state.assets.fgd().is_some_and(|f| f.class(&class).is_none()) {
         out["warning"] = json!(format!("the FGD has no class {class}"));

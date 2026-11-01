@@ -19,6 +19,7 @@ pub mod sandbox;
 pub mod stable_hash;
 pub mod stats;
 pub mod template;
+pub mod valve;
 mod tools;
 
 #[cfg(windows)]

@@ -25,6 +25,14 @@ struct Material {
     env_fresnel: vec4<f32>,
     env_ranges: vec4<f32>,
     self_illum: vec4<f32>,
+    fw_lum_start: vec4<f32>,
+    fw_lum_end: vec4<f32>,
+    fw_blend_start: vec4<f32>,
+    fw_blend_end: vec4<f32>,
+    fw_lum_factor: vec4<f32>,
+    fw_mod2x: vec4<f32>,
+    fw_uv12: vec4<f32>,
+    fw_uv34: vec4<f32>,
 };
 
 @group(1) @binding(0) var tex: texture_2d<f32>;
@@ -78,18 +86,73 @@ fn bump_on() -> bool {
         && (material.flags & M_UNLIT) == 0u;
 }
 
-fn unpack_blend_weights(p: u32) -> vec4<f32> {
-    let w2 = f32(p & 31u) / 31.0;
-    let w3 = f32((p >> 5u) & 31u) / 31.0;
-    let w4 = f32((p >> 10u) & 31u) / 31.0;
-    return vec4<f32>(max(1.0 - w2 - w3 - w4, 0.0), w2, w3, w4);
+const BLEND_PAINTED: u32 = 0x40000000u;
+
+fn unpack_blend_layers(p: u32) -> vec4<f32> {
+    let painted = select(0.0, 1.0, (p & BLEND_PAINTED) != 0u);
+    let l = vec3<f32>(f32(p & 1023u), f32((p >> 10u) & 1023u), f32((p >> 20u) & 1023u)) / 1023.0;
+    return vec4<f32>(l, painted);
 }
 
-fn unpack_blend_tint(p: u32) -> vec3<f32> {
-    let r = 1.0 - f32((p >> 16u) & 31u) / 31.0;
-    let g = 1.0 - f32((p >> 21u) & 63u) / 63.0;
-    let b = 1.0 - f32((p >> 27u) & 31u) / 31.0;
-    return vec3<f32>(r, g, b);
+fn blend_layers(packed: vec4<f32>, alpha: f32) -> vec3<f32> {
+    if packed.w > 0.5 {
+        return packed.xyz;
+    }
+    return vec3<f32>(clamp(alpha, 0.0, 1.0), 0.0, 0.0);
+}
+
+struct FourWay {
+    color: vec4<f32>,
+    cover: vec4<f32>,
+};
+
+fn fw_step(lo: f32, hi: f32, x: f32) -> f32 {
+    let span = hi - lo;
+    var t = select(0.0, 1.0, x >= lo);
+    if abs(span) > 1e-6 {
+        t = clamp((x - lo) / span, 0.0, 1.0);
+    }
+    return t * t * (3.0 - 2.0 * t);
+}
+
+fn fw_lum(c: vec3<f32>, k: i32) -> f32 {
+    let l = dot(c, vec3<f32>(0.299, 0.587, 0.114));
+    return fw_step(material.fw_lum_start[k], material.fw_lum_end[k], l);
+}
+
+fn fw_layer(color: vec4<f32>, layer: vec4<f32>, b: f32, k: i32) -> vec4<f32> {
+    if material.fw_mod2x[k] > 0.5 {
+        return vec4<f32>(mix(color.rgb, color.rgb * layer.rgb * 2.0, b), color.a);
+    }
+    return mix(color, layer, b);
+}
+
+fn four_way_blend(uv: vec2<f32>, v: vec3<f32>) -> FourWay {
+    let c1 = textureSample(tex, samp, uv * material.fw_uv12.xy);
+    let c2 = textureSample(tex2, samp, uv * material.fw_uv12.zw);
+    let c3 = textureSample(tex3, samp, uv * material.fw_uv34.xy);
+    let c4 = textureSample(tex4, samp, uv * material.fw_uv34.zw);
+    let l1 = fw_lum(c1.rgb, 0);
+    let l2 = fw_lum(c2.rgb, 1);
+    let l3 = fw_lum(c3.rgb, 2);
+    let l4 = fw_lum(c4.rgb, 3);
+    let f2 = mix(1.0 - l1, l2, material.fw_lum_factor.y);
+    let b2 = fw_step(material.fw_blend_start.y, material.fw_blend_end.y, v.x * f2 + v.x);
+    var color = fw_layer(c1, c2, b2, 1);
+    var lum = mix(l1, l2, b2);
+    let f3 = mix(1.0 - lum, l3, material.fw_lum_factor.z);
+    let b3 = fw_step(material.fw_blend_start.z, material.fw_blend_end.z, v.y * f3 + v.y);
+    color = fw_layer(color, c3, b3, 2);
+    lum = mix(lum, l3, b3);
+    let f4 = mix(1.0 - lum, l4, material.fw_lum_factor.w);
+    let b4 = fw_step(material.fw_blend_start.w, material.fw_blend_end.w, v.z * f4 + v.z);
+    color = fw_layer(color, c4, b4, 3);
+    var out: FourWay;
+    out.color = color;
+    let k4 = 1.0 - b4;
+    let k3 = 1.0 - b3;
+    out.cover = vec4<f32>((1.0 - b2) * k3 * k4, b2 * k3 * k4, b3 * k4, b4);
+    return out;
 }
 
 fn bump_mix(alpha: f32, weights: vec4<f32>) -> f32 {

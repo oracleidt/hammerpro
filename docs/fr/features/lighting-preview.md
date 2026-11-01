@@ -73,7 +73,7 @@ Section **Aperçu de l'éclairage** :
 
 ## Outils de lightmap
 
-- **Grille de lightmap** (`Alt+8`) dessine la grille des luxels de chaque face, colorée selon l'échelle de lightmap. Les faces à l'échelle **Très petite échelle de lightmap** ou moins sont en rouge.
+- **Grille de lightmap** (`Alt+8`) dessine la grille des luxels de chaque face avec lightmap comme la grille de lightmap 3D de Hammer, sans précalcul : un carreau par luxel, aussi large que l'échelle de lightmap de la face et aligné sur ses axes de texture, displacements compris. La couleur indique l'échelle : gris à 16 (la valeur par défaut), plus rouge quand l'échelle est plus fine (8, 4 et moins ressortent), plus vert quand elle est plus grossière. Des lignes jaunes marquent où VBSP découpe une face de plus de 32 luxels. Une fois un précalcul fait, la grille est ombrée par son éclairage. Les faces sans lightmap (nodraw, textures outils, ciel, eau, matériaux non éclairés) et les props gardent leur texture.
 - **Sélectionner les faces à petite échelle de lightmap** les sélectionne, prêtes pour l'outil texture.
 - La **barre d'état** affiche le budget des lightmaps (« N / 16 Mo »). Un clic ouvre l'onglet Éclairage.
 

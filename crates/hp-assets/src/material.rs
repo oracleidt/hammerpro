@@ -69,6 +69,7 @@ pub(crate) struct MatAnalysis {
     pub texture: Option<String>,
     pub texture2: Option<String>,
     pub blend4: bool,
+    pub four_way: Option<hp_vmt::FourWayBlend>,
     pub texture3: Option<String>,
     pub texture4: Option<String>,
     pub flags: MaterialFlags,
@@ -183,14 +184,7 @@ pub(crate) fn tool_flags(tool: Option<ToolKind>, show_tools: bool) -> MaterialFl
 }
 
 pub(crate) fn tool_group(kind: ToolKind) -> u8 {
-    use hp_app::runtime::render::{HIDE_CLIPS, HIDE_HINTS, HIDE_NODRAW, HIDE_TRIGGERS};
-    match kind {
-        ToolKind::Nodraw => HIDE_NODRAW,
-        ToolKind::Clip | ToolKind::PlayerClip | ToolKind::NpcClip => HIDE_CLIPS,
-        ToolKind::Trigger => HIDE_TRIGGERS,
-        ToolKind::Hint | ToolKind::Skip => HIDE_HINTS,
-        _ => 0,
-    }
+    hp_app::pick::tool_hide_group(kind)
 }
 
 fn tool_hidden(tool: Option<ToolKind>) -> bool {
@@ -300,6 +294,7 @@ pub(crate) fn analyze(name: &str, mat: &Material, texture_flags: &dyn Fn(&str) -
         texture,
         texture2,
         blend4,
+        four_way: mat.four_way_blend(),
         texture3,
         texture4,
         flags,
@@ -424,6 +419,7 @@ pub(crate) fn asset_desc(
                 water: None,
                 envmap: None,
                 self_illum: None,
+                four_way: None,
             }
         }
         AnaLook::Ready(a) => {
@@ -473,8 +469,19 @@ pub(crate) fn asset_desc(
                 water: a.water.as_ref().filter(|_| kind == MatKind::World).map(|w| crate::water::desc(w, tex)),
                 envmap,
                 self_illum,
+                four_way: a.four_way.map(four_way_desc),
             }
         }
+    }
+}
+
+fn four_way_desc(f: hp_vmt::FourWayBlend) -> hp_render::FourWayDesc {
+    hp_render::FourWayDesc {
+        lum: f.lum,
+        blend: f.blend,
+        lum_blend_factor: f.lum_blend_factor,
+        uv_scale: f.uv_scale,
+        modulate_2x: f.modulate_2x,
     }
 }
 
@@ -498,6 +505,7 @@ pub(crate) fn flat_desc(rgba: [u8; 4]) -> MaterialDesc {
         water: None,
         envmap: None,
         self_illum: None,
+        four_way: None,
     }
 }
 

@@ -326,6 +326,7 @@ pub(crate) struct LogView {
     applied: Option<(LogFilter, u64)>,
     pub rows: Vec<u32>,
     scanned: usize,
+    pub row_height: f32,
 }
 
 impl LogView {

@@ -110,9 +110,14 @@ fn solid_flags(doc: &Document, id: Id, d: &RenderDisplay, room: Option<&SkyRoom>
     if let Some(n) = doc.scene().solid(id) {
         let has_disp = n.disp.iter().any(Option::is_some);
         if let Owner::Entity(e) = n.owner
-            && doc.scene().entity(e).is_some_and(|en| !en.entity.classname.eq_ignore_ascii_case("func_detail"))
+            && let Some(en) = doc.scene().entity(e)
         {
-            f |= ObjectFlags::BRUSH_ENTITY;
+            if !en.entity.classname.eq_ignore_ascii_case("func_detail") {
+                f |= ObjectFlags::BRUSH_ENTITY;
+            }
+            if !d.fog_volume_texture && crate::fog_volumes::is_fog_volume(&en.entity.classname) {
+                f |= ObjectFlags::NO_3D;
+            }
         }
         if d.highlight_invalid && !n.geom.valid {
             f |= ObjectFlags::INVALID;
@@ -191,8 +196,13 @@ fn point_entity_flags(doc: &Document, id: Id, room: Option<&SkyRoom>) -> ObjectF
     if room.is_some_and(|r| r.entities.contains(&id)) {
         f |= ObjectFlags::SKY_3D;
     }
-    if doc.scene().entity(id).is_some_and(|n| crate::lights::casts_no_shadow(&n.entity)) {
-        f |= ObjectFlags::NO_SHADOW;
+    if let Some(n) = doc.scene().entity(id) {
+        if crate::lights::casts_no_shadow(&n.entity) {
+            f |= ObjectFlags::NO_SHADOW;
+        }
+        if hp_app::runtime::helpers::fish::is_fish_pool(&n.entity.classname) {
+            f |= ObjectFlags::NO_PROBE;
+        }
     }
     f
 }
@@ -357,6 +367,7 @@ impl AssetManager {
             Some(p) => (
                 p.smoothing_groups != display.smoothing_groups || p.visgroup_colors != display.visgroup_colors,
                 p.highlight_invalid != display.highlight_invalid
+                    || p.fog_volume_texture != display.fog_volume_texture
                     || p.displacements != display.displacements
                     || p.displacements_in_2d != display.displacements_in_2d
                     || p.displacements_only != display.displacements_only,
@@ -468,6 +479,8 @@ impl AssetManager {
             || !changes.entities_changed.is_empty()
             || !changes.entities_removed.is_empty();
         let (sky_solids, sky_entities) = self.sync_environment(doc, renderer, &display, map_changed);
+        let shown_changed = changes.visibility_changed || changes.visgroups_changed || changes.groups_changed;
+        self.sync_fog_volumes(doc, renderer, &display, map_changed || shown_changed);
         let room = self.scene.env.room.as_ref();
         for id in sky_solids {
             if doc.scene().solid(id).is_some() {

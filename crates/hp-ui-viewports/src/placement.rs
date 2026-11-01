@@ -146,7 +146,7 @@ pub fn pick_surface(state: &AppState, view: &ViewInfo, pos: egui::Pos2) -> Optio
     if !ray.origin.is_finite() || !ray.dir.is_finite() {
         return None;
     }
-    state.doc.pick_ray(&ray, &PickOptions::default(), &|e| state.assets.entity_bounds(e))
+    state.view_pick(&ray, &PickOptions::default())
 }
 
 pub fn point_2d(state: &AppState, view: &ViewInfo, pos: egui::Pos2, depth: f64) -> DVec3 {

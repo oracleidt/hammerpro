@@ -53,6 +53,10 @@ pub struct RenderSettings {
     pub sky_see_through: bool,
     pub water_preview: bool,
     pub fog_preview: bool,
+    pub fog_volume_preview: bool,
+    pub fog_volume_texture: bool,
+    pub fish_preview: bool,
+    pub fish_swim: bool,
     pub normal_maps: bool,
     pub player_compiled_lighting: bool,
     pub cubemaps: bool,
@@ -111,6 +115,10 @@ impl Default for RenderSettings {
             sky_see_through: false,
             water_preview: true,
             fog_preview: false,
+            fog_volume_preview: true,
+            fog_volume_texture: true,
+            fish_preview: true,
+            fish_swim: true,
             normal_maps: true,
             player_compiled_lighting: true,
             cubemaps: true,
@@ -176,6 +184,8 @@ mod tests {
         assert!(!s.disp_walkable);
         assert!(s.normal_maps, "normal maps are on by default");
         assert!(s.cubemaps && s.cubemaps_auto, "reflections are on by default");
+        assert!(s.fog_volume_preview && s.fog_volume_texture, "fog volumes are previewed by default");
+        assert!(s.fish_preview && s.fish_swim, "fish are previewed by default");
         let off: RenderSettings = toml::from_str(
             "normal_maps = false
 ",

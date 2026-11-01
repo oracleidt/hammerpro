@@ -5,8 +5,8 @@ use glam::DVec3;
 use hp_app::AppState;
 use hp_app::i18n::TrTable;
 use hp_app::runtime::helpers::geometry::{
-    ConnectionLink, HelperContext, HelperGeometry, HelperSphere, class_has_helpers, entity_helpers, entity_outputs,
-    incoming_outputs, rope_link,
+    ConnectionLink, HelperContext, HelperGeometry, HelperSphere, class_has_helpers, class_has_path_links,
+    entity_helpers, entity_outputs, incoming_outputs, path_links, rope_link,
 };
 use hp_app::settings::{ConnectionsMode, HelperScope};
 use hp_app::view::ViewInfo;
@@ -153,6 +153,9 @@ struct HelpersLayer {
     all_stamp: Option<Stamp>,
     all_version: u64,
     relevance: HashMap<String, bool>,
+    links: HelperGeometry,
+    links_stamp: Option<(u64, u64)>,
+    link_classes: HashMap<String, bool>,
     relevance_gen: u64,
     enabled: bool,
     scope_all: bool,
@@ -165,6 +168,15 @@ impl HelpersLayer {
         }
         let r = class_has_helpers(state.assets.fgd().and_then(|f| f.class(classname)), classname);
         self.relevance.insert(classname.to_owned(), r);
+        r
+    }
+
+    fn links_class(&mut self, state: &AppState, classname: &str) -> bool {
+        if let Some(r) = self.link_classes.get(classname) {
+            return *r;
+        }
+        let r = class_has_path_links(state.assets.fgd().and_then(|f| f.class(classname)), classname);
+        self.link_classes.insert(classname.to_owned(), r);
         r
     }
 }
@@ -187,6 +199,7 @@ impl OverlayLayer for HelpersLayer {
         let generation = state.assets.generation().wrapping_mul(2) | u64::from(state.settings.helpers.show_ropes);
         if generation != self.relevance_gen {
             self.relevance.clear();
+            self.link_classes.clear();
             self.relevance_gen = generation;
         }
         let stamp = Stamp { revision: doc.revision(), selection: selection_hash(doc), generation };
@@ -194,7 +207,13 @@ impl OverlayLayer for HelpersLayer {
         let needs_selected = self.selected_stamp != Some(stamp);
         let needs_all =
             self.scope_all && self.all_stamp.map(|s| (s.revision, s.generation)) != Some((stamp.revision, generation));
-        if !needs_selected && !needs_all {
+        let needs_links = !self.scope_all && self.links_stamp != Some((stamp.revision, generation));
+        if self.scope_all && self.links_stamp.is_some() {
+            self.links.clear();
+            self.links_stamp = None;
+            self.all_version = self.all_version.wrapping_add(1);
+        }
+        if !needs_selected && !needs_all && !needs_links {
             return;
         }
         let names = state.runtime.helpers.names(doc);
@@ -233,6 +252,20 @@ impl OverlayLayer for HelpersLayer {
             self.all_stamp = Some(stamp);
             self.all_version = self.all_version.wrapping_add(1);
         }
+        if needs_links {
+            self.links.clear();
+            let mut ids: Vec<Id> = Vec::new();
+            for (id, e) in visible_entities(doc) {
+                if self.links_class(state, &e.classname) {
+                    ids.push(id);
+                }
+            }
+            for id in ids {
+                path_links(&cx, id, &mut self.links);
+            }
+            self.links_stamp = Some((stamp.revision, generation));
+            self.all_version = self.all_version.wrapping_add(1);
+        }
     }
 
     fn add(&self, _state: &AppState, view: &ViewInfo, out: &mut Overlay) {
@@ -251,7 +284,8 @@ impl OverlayLayer for HelpersLayer {
     }
 
     fn retained_version(&self, _state: &AppState, view: &ViewInfo) -> Option<u64> {
-        if !self.scope_all || self.all.lines.is_empty() && self.all.spheres.is_empty() {
+        let all_empty = !self.scope_all || self.all.lines.is_empty() && self.all.spheres.is_empty();
+        if !self.enabled || all_empty && self.links.lines.is_empty() {
             return None;
         }
         let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -261,8 +295,13 @@ impl OverlayLayer for HelpersLayer {
     }
 
     fn retained(&self, _state: &AppState, view: &ViewInfo, out: &mut Overlay) {
+        if !self.enabled {
+            return;
+        }
         if self.scope_all {
             geometry_lines(view, &self.all, 0.85, &mut out.lines);
+        } else {
+            geometry_lines(view, &self.links, 0.85, &mut out.lines);
         }
     }
 
@@ -459,5 +498,36 @@ mod tests {
         let mut out = Overlay::default();
         helpers.add(&state, &view(ViewKind::Top), &mut out);
         assert!(out.is_empty());
+    }
+
+    #[test]
+    fn path_chains_are_drawn_without_a_selection_like_hammer() {
+        let mut state = hp_app::testing::test_state();
+        let kv = |name: &str, next: &str| {
+            vec![("targetname".to_owned(), name.to_owned()), ("target".to_owned(), next.to_owned())]
+        };
+        let a = state.doc.create_point_entity("path_track", DVec3::new(0.0, 0.0, 64.0), &kv("t1", "t2")).expect("t1");
+        state.doc.create_point_entity("path_track", DVec3::new(256.0, 0.0, 64.0), &kv("t2", "t1")).expect("t2");
+        state.doc.set_selection(&[]);
+        let mut helpers = HelpersLayer::default();
+        helpers.prepare(&state);
+        assert_eq!(helpers.links.lines.len(), 2, "one line per link of the loop");
+        assert!(helpers.selected.lines.is_empty());
+        let v = helpers.retained_version(&state, &view(ViewKind::Top));
+        assert!(v.is_some());
+        let mut out = Overlay::default();
+        helpers.retained(&state, &view(ViewKind::Top), &mut out);
+        assert_eq!(out.lines.len(), 2);
+        state.doc.edit_entity(a, |e| e.set("target", "nowhere")).expect("edit");
+        helpers.prepare(&state);
+        assert_eq!(helpers.links.lines.len(), 1);
+        assert_ne!(helpers.retained_version(&state, &view(ViewKind::Top)), v);
+        state.settings.helpers.helper_scope = HelperScope::All;
+        helpers.prepare(&state);
+        assert!(helpers.links.lines.is_empty(), "the every entity scope draws them already");
+        state.settings.helpers.helper_scope = HelperScope::Selected;
+        state.settings.view.show_helpers = false;
+        helpers.prepare(&state);
+        assert_eq!(helpers.retained_version(&state, &view(ViewKind::Top)), None, "helpers hidden");
     }
 }

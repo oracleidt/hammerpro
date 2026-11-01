@@ -155,6 +155,26 @@ pub fn origin_brush() -> Vmf {
     m
 }
 
+pub fn trains() -> Vmf {
+    let mut m = room_map(v(-512.0, -512.0, 0.0), v(512.0, 512.0, 256.0), v(0.0, 0.0, 8.0));
+    for (i, (x, y)) in [(-256.0, -256.0), (256.0, -256.0), (256.0, 256.0), (-256.0, 256.0)].into_iter().enumerate() {
+        let name = format!("t{}", i + 1);
+        let next = format!("t{}", (i + 1) % 4 + 1);
+        m.point("path_track", v(x, y, 32.0), &[("targetname", &name), ("target", &next)]);
+    }
+    m.brush_entity(
+        "func_tracktrain",
+        &[("targetname", "train"), ("target", "t1"), ("speed", "100"), ("startspeed", "200")],
+        vec![block(v(-320.0, -288.0, 32.0), v(-192.0, -224.0, 96.0), WALL)],
+    );
+    m.brush_entity(
+        "func_tanktrain",
+        &[("targetname", "tank"), ("target", "t3"), ("origin", "256 256 64")],
+        vec![block(v(224.0, 240.0, 48.0), v(288.0, 272.0, 80.0), WALL)],
+    );
+    m
+}
+
 pub fn displacement() -> Vmf {
     let mut m = room_map(v(-256.0, -256.0, 0.0), v(256.0, 256.0, 192.0), v(160.0, 160.0, 48.0));
     let mut patch = block(v(-192.0, -192.0, 0.0), v(64.0, 64.0, 16.0), WALL);

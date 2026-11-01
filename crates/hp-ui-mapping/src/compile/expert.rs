@@ -5,8 +5,8 @@ use egui::Ui;
 use hp_app::settings::{CompileProfile, CompileSettings, ProfileStep};
 use hp_app::{AppState, Severity, t, tf};
 use hp_compile::cmdseq::{self, Sequence, Special};
-use hp_compile::template::{TOKENS, Tokens, expand};
-use hp_compile::{BSPC_ARG, CompilePlan, RAD_ARG, Step, StepAction, StepKind, ToolPaths, split_args};
+use hp_compile::template::{TOKENS, Tokens, expand, expand_args};
+use hp_compile::{BSPC_ARG, CompilePlan, RAD_ARG, Step, StepAction, StepKind, ToolPaths};
 
 use super::snapshot::Target;
 
@@ -216,7 +216,7 @@ pub(crate) fn plan_of(profile: &CompileProfile, target: &Target, tools: &ToolPat
     }
     let mut plan = CompilePlan::new(target.vmf());
     for (i, s) in profile.steps.iter().enumerate() {
-        let args = split_args(&expand(&s.args, &tokens));
+        let args = expand_args(&s.args, &tokens);
         let n = i + 1;
         let file_args = |count: usize| -> Result<Vec<PathBuf>, String> {
             if args.len() != count {
@@ -315,6 +315,9 @@ impl ExpertView {
             s.profiles = default_profiles();
         }
         s.active_profile = s.active_profile.min(s.profiles.len().saturating_sub(1));
+        if !s.uses_builtin_compiler() {
+            ui.label(egui::RichText::new(t!("compile.expert.needs_builtin")).color(hp_app::theme::warning()).small());
+        }
         ui.add_enabled_ui(!running, |ui| {
             ui.horizontal(|ui| {
                 ui.checkbox(&mut s.expert, t!("compile.expert.use")).on_hover_text(t!("compile.expert.use_tip"));

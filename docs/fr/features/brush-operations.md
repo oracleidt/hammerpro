@@ -33,7 +33,7 @@ Quand une commande demande des brushes et qu'aucun n'est sélectionné, l'avis *
 - Seuls les brushes du monde visibles sont découpés : les brushes d'entités et les brushes masqués ne sont pas touchés.
 - Les brushes découpés sont divisés en plusieurs morceaux convexes avec de nouveaux ids de faces. Les listes de faces des overlays et des `env_cubemap` suivent : une face découpée en morceaux est remplacée par tous ses morceaux, une face entièrement creusée est retirée de la liste.
 
-Le carve crée beaucoup de petits brushes. Pour une simple ouverture, l'[outil de découpe](clip-tool.md) ou quelques blocs donnent souvent une géométrie plus propre.
+Le carve crée beaucoup de petits brushes. Pour une simple ouverture, l'[outil extruder / creuser](extrude-tool.md) (un contour cliqué sur une face, creusé dans ce seul brush, avec le moins de morceaux possible), l'[outil de découpe](clip-tool.md) ou quelques blocs donnent souvent une géométrie plus propre.
 
 ## Rendre creux
 
@@ -65,6 +65,7 @@ Le champ d'épaisseur a le focus clavier à l'ouverture : tapez la valeur puis `
 - Avec exactement une entité de brush dans la sélection plus d'autres brushes, ces brushes sont ajoutés à cette entité, qui garde sa classe et ses clés.
 - Avec une seule entité de brush sélectionnée, ses propriétés s'ouvrent.
 - Sinon, la sélection est liée à une nouvelle entité de brush de la classe **Entité de brush par défaut** (réglage `default_brush_entity`, `func_detail` par défaut, dans **Paramètres > Édition > Nouveaux objets**), avec les keyvalues par défaut de cette classe dans le FGD.
+- Quand la classe du FGD a une clé `origin` (`func_tracktrain`, `func_tanktrain`, `func_rotating`, `func_door_rotating`...), la nouvelle entité la reçoit au centre de ses brushes, comme dans Hammer. Le jeu déplace et tourne l'entité autour de ce point : un train le pose sur ses points `path_track` (relevé de sa clé `height`). **Outils > Centrer les origines** la remet au centre plus tard.
 
 Les brushes pris à d'autres entités de brush passent dans l'entité, et les entités de brush qui n'ont plus de brush sont supprimées. L'entité est sélectionnée et le panneau **Propriétés de l'entité** s'ouvre (voir [Propriétés des entités](entity-properties.md)).
 

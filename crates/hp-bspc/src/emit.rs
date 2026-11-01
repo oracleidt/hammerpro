@@ -335,6 +335,7 @@ pub struct Lumps {
     dispinfo: Vec<u8>,
     disp_verts: Vec<u8>,
     disp_tris: Vec<u8>,
+    disp_multiblend: Vec<u8>,
     disp_samples: Vec<u8>,
     disp_count: i32,
 }
@@ -874,6 +875,7 @@ impl Lumps {
             if let Some(id) = self.faceids.0.get_mut(fi * 2..fi * 2 + 2) {
                 id.copy_from_slice(&(d.ids.1 as u16).to_le_bytes());
             }
+            let multiblend = self.format.disp_multiblend_lump.and_then(|_| crate::disp::multiblend_data(d));
             let vert_start = (self.disp_verts.len() / 20) as i32;
             let tri_start = (self.disp_tris.len() / 2) as i32;
             let rec = crate::disp::dispinfo_record(
@@ -884,9 +886,13 @@ impl Lumps {
                 fi as u16,
                 samples_start,
                 &neighbors[di],
+                multiblend.is_some(),
             );
             self.dispinfo.extend_from_slice(&rec);
             self.disp_verts.extend_from_slice(&verts);
+            if let Some(blend) = multiblend {
+                self.disp_multiblend.extend_from_slice(&blend);
+            }
             for t in tags {
                 self.disp_tris.extend_from_slice(&t.to_le_bytes());
             }
@@ -1188,6 +1194,11 @@ impl Lumps {
         self.data.insert(lump::DISPINFO, (std::mem::take(&mut self.dispinfo), 0));
         self.data.insert(lump::DISP_VERTS, (std::mem::take(&mut self.disp_verts), 0));
         self.data.insert(lump::DISP_TRIS, (std::mem::take(&mut self.disp_tris), 0));
+        if let Some(at) = self.format.disp_multiblend_lump
+            && !self.disp_multiblend.is_empty()
+        {
+            self.data.insert(at, (std::mem::take(&mut self.disp_multiblend), 0));
+        }
         self.data.insert(lump::DISP_LIGHTMAP_SAMPLE_POSITIONS, (std::mem::take(&mut self.disp_samples), 0));
         use hp_bsp::limits as lim;
         let records = |l: usize, size: usize| self.data.get(&l).map_or(0, |(d, _)| d.len() / size);

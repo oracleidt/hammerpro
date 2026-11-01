@@ -12,11 +12,16 @@ pub struct MockAssets {
     models: Arc<Vec<hp_fs::AssetEntry>>,
     sounds: Arc<Vec<hp_fs::AssetEntry>>,
     fs: Option<hp_fs::GameFs>,
+    fgd: Option<hp_fgd::ResolvedFgd>,
 }
 
 impl MockAssets {
     pub fn with_fs(fs: hp_fs::GameFs) -> Self {
         Self { fs: Some(fs), ..Self::default() }
+    }
+
+    pub fn with_fgd(text: &str) -> Self {
+        Self { fgd: Some(hp_fgd::Fgd::parse(text, None).resolve()), ..Self::default() }
     }
 }
 
@@ -37,6 +42,7 @@ impl Default for MockAssets {
             ]),
             sounds: Arc::new(vec![entry("sound/ambient/wind/wind1.wav")]),
             fs: None,
+            fgd: None,
         }
     }
 }
@@ -49,7 +55,7 @@ impl AssetsApi for MockAssets {
         self.fs.as_ref()
     }
     fn fgd(&self) -> Option<&hp_fgd::ResolvedFgd> {
-        None
+        self.fgd.as_ref()
     }
     fn generation(&self) -> u64 {
         1
@@ -244,8 +250,16 @@ pub fn lang_lock() -> std::sync::MutexGuard<'static, ()> {
 }
 
 pub fn test_state() -> AppState {
+    test_state_with(MockAssets::default())
+}
+
+pub fn test_state_with_fgd(fgd: &str) -> AppState {
+    test_state_with(MockAssets::with_fgd(fgd))
+}
+
+fn test_state_with(assets: MockAssets) -> AppState {
     crate::register_translations();
-    let mut state = AppState::new(Settings::default(), Box::new(MockAssets::default()));
+    let mut state = AppState::new(Settings::default(), Box::new(assets));
     match hp_vmf::parse(TEST_VMF) {
         Ok(map) => state.doc = hp_editor::Document::from_map(map),
         Err(e) => panic!("TEST_VMF must parse: {e}"),

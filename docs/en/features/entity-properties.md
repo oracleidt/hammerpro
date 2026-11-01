@@ -18,7 +18,7 @@ The **Entity** tab of the right dock is Hammer's Object Properties: it edits the
 | Element | What it does |
 |---|---|
 | Kind icon | Point entity, brush entity, mixed selection or world. Its color is the class color of the FGD. |
-| Class button | The class of the selection (or "N classes"). Click it to pick another class from a searchable list (point classes for point entities, brush classes for brush entities). Changing the class adds the default keys of the new class that are missing and applies to every selected entity. |
+| Class button | The class of the selection (or "N classes"). Click it to pick another class from a searchable list (point classes for point entities, brush classes for brush entities). Changing the class adds the default keys of the new class that are missing and applies to every selected entity. A brush entity that becomes a class with an `origin` key (`func_tracktrain`, `func_tanktrain`, `func_rotating`...) and has none gets it at the center of its brushes, like Hammer. |
 | **?** | Opens the entity help of the class. |
 | **☰** (**More**) | Menu with **Copy keyvalues**, **Paste keyvalues** (with the name of the copied class and its key count), the **Paste the name (targetname) too** check box, **Find and replace in entities...**, **Set maximum distance...** and **Entity help**. |
 | **Entities selected: N** | Shown when several entities are edited. |

@@ -7,6 +7,7 @@ use crate::i18n::Lang;
 
 mod brush;
 mod compile;
+pub mod compilers;
 mod content;
 mod discord;
 mod entities;
@@ -28,6 +29,7 @@ mod visibility;
 mod workflow;
 
 pub use brush::BrushSettings;
+pub use compilers::{CompilerProfile, CompilerStep, CompilerStepKind};
 pub use compile::{
     BspModeSetting, CompilePresetSetting, CompileProfile, CompileSettings, FlagChoiceSetting, LightingSetting,
     PackPolicy, ProfileStep, RadModeSetting, VisModeSetting, WindowPlacement, background_precompile_default,

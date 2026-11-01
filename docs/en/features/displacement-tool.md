@@ -100,6 +100,7 @@ Section **Paint geometry** (mode **Paint geometry**):
 | **Surface normal** | The normal of the surface at each vertex (geometry painting only) |
 | **Brush center** | The surface normal under the brush center (Hammer's Brush Center) |
 | **View (camera)** | Toward the 3D camera, along the view direction at the start of the stroke (Hammer's Screen direction). Inverted: away from it |
+| **View (camera), horizontal** | Toward the 3D camera on X and Y only: the view direction at the start of the stroke, flattened onto the ground, so vertices never go up or down. Handy to push a cliff face or a wall back and forth from where you look. Looking straight down, the bottom of the view gives the direction. Inverted: away from the camera |
 | **X**, **Y**, **Z (up)** | A world axis |
 | **Custom** | A direction of your own: type X, Y, Z under the list, or `Alt` + right click a face in the 3D view to take its normal (Hammer's Selected direction). Default 0 0 1 |
 
@@ -120,6 +121,14 @@ Section **Paint alpha** (mode **Paint alpha**) paints the blend of blend materia
 | **Strength** (Smooth) | How fast the blend evens out (0 to 1) | 0.5 |
 
 The **Texture** row only shows when **Paint 4-way blends** is on in the settings (on by default, like Hammer++ for Garry's Mod).
+
+### 4-way blends (Lightmapped_4WayBlend)
+
+- **Where the blend is stored.** The 4 texture buttons write the `multiblend`, `alphablend` and `multiblend_color_0` to `multiblend_color_3` rows of the `dispinfo`, like Hammer++ and CS:GO Hammer. A map made in Hammer++ opens with its blends, and saving keeps the rows as they were read until you paint them.
+- **What you see.** The textured, lit and baked views and the player view draw the 4 textures like the game: texture 2, then 3, then 4 are laid over texture 1, each by its own value of the rows. The VMT parameters shape the edges: `$textureN_lumstart` and `$textureN_lumend` (luminance of each texture), `$lumblendfactorN`, `$textureN_blendstart` and `$textureN_blendend` (sharpness), `$textureN_uvscale` (the scale of each texture) and `$textureN_blendmode` (1: modulate 2x).
+- **No rows yet.** A displacement with a Lightmapped_4WayBlend material and no 4-way rows shows its vertex alpha as texture 2 (the **2-way** painting), and the first stroke on a texture button starts from that alpha. The compiler writes the same thing, so the game matches the editor. Valve's VBSP ignores the alpha of such a displacement (the game then shows texture 1 only).
+- **In the game.** The compiler writes the rows to the displacement multiblend lump of the BSP and flags each displacement that has them, byte for byte like Garry's Mod's VBSP, so the blends show in Garry's Mod and Source 2013 games.
+- **Moving and mirroring** a displacement keeps its 4-way rows in place, like its alpha. Changing the power or flattening starts over from texture 1.
 
 ## Sculpt
 
@@ -214,7 +223,7 @@ The same commands are in the **Tools** menu and work whatever the active tool: *
 
 ## Scripting and MCP
 
-Every option of the panel has a name for scripts (`tool_option KEY VALUE`, see [Script commands](../reference/script-commands.md)) and for the MCP tools `get_tool_options` and `set_tool_options`: `mode`, `effect`, `axis`, `custom_axis`, `radius`, `strength`, `smooth`, `target_height`, `falloff`, `spatial`, `line_of_sight`, `autosew`, `selected_only`, `continuous`, `alpha_effect`, `alpha_value`, `alpha_strength`, `blend_channel`, `sculpt`, `push_mode`, `sculpt_bounds`, `falloff_position`, `falloff_final`, `push_distance`, `push_percent`, `carve_depth`, `carve_profile`, `project_range`, `scale_factor`, `tag_kind`, `tag_value`, `mask_grid`, `mask_select`. Other MCP tools create, paint, sew, subdivide, tag and inspect displacements (`create_displacements`, `stroke_displacement`, `paint_displacement`, `sew_displacements`...), see the [MCP tool reference](../../MCP.md).
+Every option of the panel has a name for scripts (`tool_option KEY VALUE`, see [Script commands](../reference/script-commands.md)) and for the MCP tools `get_tool_options` and `set_tool_options`: `mode`, `effect`, `axis`, `custom_axis`, `radius`, `strength`, `smooth`, `target_height`, `falloff`, `spatial`, `line_of_sight`, `autosew`, `selected_only`, `continuous`, `alpha_effect`, `alpha_value`, `alpha_strength`, `blend_channel`, `sculpt`, `push_mode`, `sculpt_bounds`, `falloff_position`, `falloff_final`, `push_distance`, `push_percent`, `carve_depth`, `carve_profile`, `project_range`, `scale_factor`, `tag_kind`, `tag_value`, `mask_grid`, `mask_select`. `axis` takes `normal`, `subdiv`, `center`, `view`, `view_flat` (View (camera), horizontal), `x`, `y`, `z` or `custom`. Other MCP tools create, paint, sew, subdivide, tag and inspect displacements (`create_displacements`, `stroke_displacement`, `paint_displacement`, `sew_displacements`...); `get_displacement` returns the 4-way blend rows (`multiblend`) and `set_displacement_data` writes them (`multiblend_weights`, `alphablend`, `multiblend_colors`, `remove_multiblend`), see the [MCP tool reference](../../MCP.md).
 
 ## Tips
 
@@ -235,6 +244,8 @@ Every option of the panel has a name for scripts (`tool_option KEY VALUE`, see [
 **I painted the wrong place.** Press `Esc` during the stroke to cancel it, or `Ctrl+Z` after: each stroke is one undo step.
 
 **Why do my blend textures not change?** The material must be a blend material (WorldVertexTransition, or Lightmapped_4WayBlend for the 4 texture buttons).
+
+**My 4-way blend shows only its first texture in the game.** Recompile with Hammer Pro: the blend rows are written to the BSP (see 4-way blends above). A texture that stays hidden while painted can also come from `$textureN_blendstart` set close to 1 in the VMT: paint the texture to its full weight, or lower that value.
 
 ## Related pages
 

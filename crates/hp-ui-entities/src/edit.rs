@@ -394,6 +394,9 @@ fn change_class(doc: &mut Document, fgd: Option<&ResolvedFgd>, ids: &[Id], class
                 any |= doc.set_entity_key(&missing, key, value)? > 0;
             }
         }
+        if hp_app::runtime::helpers::brush_entity_needs_origin(fgd, class) {
+            any |= doc.add_missing_origins(ids)? > 0;
+        }
         Ok(any)
     })
 }
@@ -551,6 +554,30 @@ mod tests {
         assert_eq!(e.classname, "info_player_start");
         assert!(e.get("_light").is_none());
         assert!(apply(doc, Some(&fgd), Op::ChangeClass { ids: vec![4], class: "  ".into() }).is_err());
+    }
+
+    #[test]
+    fn a_brush_entity_that_becomes_a_train_gets_an_origin_at_its_center() {
+        let mut s = state();
+        let fgd = hp_fgd::Fgd::parse(
+            "@BaseClass = Origin [ origin(origin) : \"Origin\" ]\n\
+             @SolidClass base(Origin) = func_tracktrain : \"Train\" [ target(target_destination) : \"First stop\" ]",
+            None,
+        )
+        .resolve();
+        let doc = &mut s.doc;
+        let center = doc.scene().entity_solid_bounds(6).expect("trigger bounds").center();
+        assert!(doc.scene().entity(6).unwrap().entity.get("origin").is_none());
+        apply(doc, Some(&fgd), Op::ChangeClass { ids: vec![6], class: "func_tracktrain".into() }).unwrap();
+        let e = &doc.scene().entity(6).unwrap().entity;
+        assert_eq!(e.classname, "func_tracktrain");
+        assert_eq!(e.origin(), Some(center));
+        assert_eq!(doc.undo_label(), Some("Change class"));
+        assert_eq!(doc.history_len().0, 1, "one undo step with the origin");
+        assert!(doc.undo());
+        assert!(doc.scene().entity(6).unwrap().entity.get("origin").is_none());
+        apply(doc, Some(&fgd), Op::ChangeClass { ids: vec![4], class: "func_tracktrain".into() }).unwrap();
+        assert_eq!(doc.scene().entity(4).unwrap().entity.get("origin"), Some("0 -128 0"), "point entities keep theirs");
     }
 
     #[test]

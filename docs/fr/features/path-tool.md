@@ -30,7 +30,7 @@ Les points sont nommés à partir du nom de base : `path` donne `path_1`, `path_
 
 ## Modifier les chemins existants
 
-Quand l'outil est actif, toutes les chaînes de la map sont dessinées avec des flèches de direction. Les chaînes de la sélection et du chemin en cours sont mises en évidence avec le nom des points. Les branches (`altpath` de `path_track`) sont dessinées d'une autre couleur.
+Avec n'importe quel outil, les liens des entités de chemin dont la classe du FGD a une aide `line()` ou `cylinder()` (`path_track`, `path_corner`...) sont dessinés pour toutes les entités visibles dans les vues 2D et 3D, sélectionnées ou non, comme dans Hammer ; une aide `cylinder()` dessine aussi le cercle `radius` de chaque point sur ce point. Quand l'outil est actif, toutes les chaînes de la map sont dessinées avec des flèches de direction. Les chaînes de la sélection et du chemin en cours sont mises en évidence avec le nom des points. Les branches (`altpath` de `path_track`) sont dessinées d'une autre couleur.
 
 | Geste | Effet |
 | --- | --- |

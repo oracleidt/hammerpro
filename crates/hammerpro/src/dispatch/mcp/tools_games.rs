@@ -26,6 +26,116 @@ domain! { "games";
             "scope": choice("map: this map only (default); default: every map without a game of its own.", &["map", "default"]),
             "confirm": boolean("The user asked to change the default game (scope default)."),
         }, ["id"];
+    list_app_mounts: Read, "Steam games mounted by AppID",
+        "The Steam games whose content is mounted by AppID (Settings > Game > Steam games by AppID, setting \
+        game.mount_app_ids), in priority order, each with its name, install folder and Source game folders as \
+        found in the Steam libraries (libraryfolders.vdf, appmanifest_<AppID>.acf); and, with installed, every \
+        installed Steam game that has a Source game folder.",
+        { "installed": boolean("Also list the installed Source games of the Steam libraries.") }, [];
+    set_app_mounts: Editor, "Mount Steam games by AppID",
+        "Change the Steam games whose content is mounted (after the content of the map's game): add AppIDs at \
+        the end, remove some, or give the whole list in priority order. Saved in the settings \
+        (game.mount_app_ids); the content is mounted again for the browsers, the 3D view and the compile. \
+        Examples: 220 Half-Life 2, 240 Counter-Strike: Source, 300 Day of Defeat: Source, 380 and 420 the \
+        episodes, 400 Portal, 440 Team Fortress 2, 4000 Garry's Mod.",
+        {
+            "add": app_ids("AppIDs to add at the end (kept once)."),
+            "remove": app_ids("AppIDs to remove."),
+            "order": app_ids("The whole list, in priority order (replaces it; add and remove apply after)."),
+            "refresh": boolean("Search the Steam libraries again first (a game was installed or moved)."),
+        }, [];
+}
+
+fn app_ids(description: &str) -> Value {
+    json!({
+        "type": "array",
+        "items": { "type": "integer", "minimum": 1, "maximum": hp_fs::MAX_APP_ID },
+        "maxItems": 64,
+        "description": description,
+    })
+}
+
+fn ids_arg(a: &Args<'_>, key: &str) -> R<Option<Vec<u32>>> {
+    let Some(v) = a.get(key) else { return Ok(None) };
+    let list = v.as_array().ok_or_else(|| format!("{key} must be a list of AppIDs"))?;
+    if list.len() > 64 {
+        return Err(format!("{key} has more than 64 AppIDs"));
+    }
+    list.iter()
+        .map(|x| {
+            x.as_u64()
+                .filter(|n| *n > 0 && *n <= u64::from(hp_fs::MAX_APP_ID))
+                .map(|n| n as u32)
+                .ok_or_else(|| format!("{key}: {x} is not a Steam AppID"))
+        })
+        .collect::<R<Vec<u32>>>()
+        .map(Some)
+}
+
+fn app_json(id: u32) -> Value {
+    match hp_fs::find_steam_app(id) {
+        Some(app) => json!({
+            "app_id": id,
+            "name": app.name,
+            "installed": true,
+            "install_dir": app.root.display().to_string(),
+            "game_dirs": app.game_dirs.iter().map(|d| d.display().to_string()).collect::<Vec<_>>(),
+            "mountable": !app.game_dirs.is_empty(),
+        }),
+        None => json!({
+            "app_id": id,
+            "name": hp_fs::steam_app_name(id),
+            "installed": false,
+            "mountable": false,
+        }),
+    }
+}
+
+fn list_app_mounts(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
+    let mounted: Vec<Value> = state.settings.game.mount_app_ids.iter().map(|id| app_json(*id)).collect();
+    let mut out = json!({ "mounted": mounted });
+    if a.opt_bool("installed")?.unwrap_or(false) {
+        let installed: Vec<Value> = hp_fs::installed_source_apps()
+            .into_iter()
+            .map(|app| json!({ "app_id": app.app_id, "name": app.name, "install_dir": app.root.display().to_string() }))
+            .collect();
+        out["installed"] = Value::Array(installed);
+    }
+    Ok(ToolResult::json(out))
+}
+
+fn set_app_mounts(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
+    let order = ids_arg(a, "order")?;
+    let add = ids_arg(a, "add")?.unwrap_or_default();
+    let remove = ids_arg(a, "remove")?.unwrap_or_default();
+    if a.opt_bool("refresh")?.unwrap_or(false) {
+        hp_fs::refresh_steam_apps();
+    }
+    if order.is_none() && add.is_empty() && remove.is_empty() {
+        return Err("give add, remove or order".to_owned());
+    }
+    let before = state.settings.game.mount_app_ids.clone();
+    let mut list: Vec<u32> = Vec::new();
+    for id in order.unwrap_or_else(|| before.clone()).into_iter().chain(add) {
+        if !list.contains(&id) {
+            list.push(id);
+        }
+    }
+    list.retain(|id| !remove.contains(id));
+    let changed = list != before;
+    if changed {
+        state.settings.game.mount_app_ids = list.clone();
+        state.settings_dirty = true;
+    }
+    let apps: Vec<Value> = list.iter().map(|id| app_json(*id)).collect();
+    let missing: Vec<u32> =
+        apps.iter().filter(|v| v["mountable"] != true).filter_map(|v| v["app_id"].as_u64().map(|n| n as u32)).collect();
+    Ok(ToolResult::json(json!({
+        "changed": changed,
+        "mounted": apps,
+        "not_mountable": missing,
+        "note": if changed { "The content is mounting again (get_map_info game_content and list_asset_sources show it)." } else { "Nothing changed." },
+    })))
 }
 
 fn profile_json(p: &hp_fs::GameProfile) -> Value {
@@ -132,5 +242,29 @@ mod tests {
         ok(&mut s, "set_game", json!({ "id": "tf", "scope": "default", "confirm": true }));
         assert_eq!(s.settings.game.game, "tf");
         assert_eq!(ok(&mut s, "get_game", json!({}))["default"], "tf");
+    }
+
+    #[test]
+    fn app_mounts() {
+        let mut s = hp_app::testing::test_state();
+        let v = ok(&mut s, "list_app_mounts", json!({}));
+        assert_eq!(v["mounted"], json!([]));
+        assert!(v.get("installed").is_none());
+        let r = ok(&mut s, "set_app_mounts", json!({ "add": [240, 440, 240] }));
+        assert_eq!(r["changed"], true);
+        assert_eq!(s.settings.game.mount_app_ids, [240, 440]);
+        assert!(s.settings_dirty);
+        assert_eq!(r["mounted"][0]["app_id"], 240);
+        ok(&mut s, "set_app_mounts", json!({ "order": [440, 240], "add": [220], "remove": [240] }));
+        assert_eq!(s.settings.game.mount_app_ids, [440, 220]);
+        let r = ok(&mut s, "set_app_mounts", json!({ "add": [440] }));
+        assert_eq!(r["changed"], false);
+        let v = ok(&mut s, "list_app_mounts", json!({ "installed": true }));
+        assert_eq!(v["mounted"].as_array().map(Vec::len), Some(2));
+        assert!(v["installed"].is_array());
+        err(&mut s, "set_app_mounts", json!({}));
+        err(&mut s, "set_app_mounts", json!({ "add": [0] }));
+        err(&mut s, "set_app_mounts", json!({ "add": ["tf"] }));
+        assert_eq!(s.settings.game.mount_app_ids, [440, 220]);
     }
 }

@@ -5,8 +5,10 @@ mod block_preview;
 mod clip;
 mod common;
 mod cordon;
+pub mod curve;
 mod decal;
 mod entity;
+mod extrude;
 mod overlay_tool;
 pub mod path;
 mod picker;
@@ -26,8 +28,10 @@ mod tests_support;
 pub use block::{BlockOptions, BlockTool, CreateAs, DEFAULT_DEPTH, Primitive, new_depth_range};
 pub use clip::{ClipTool, clip_plane_2d, next_keep};
 pub use cordon::{CORDON_TR, CordonTool, target_cordon};
+pub use curve::{CURVE_TR, CurveTool};
 pub use decal::{DECAL_SURFACE_OFFSET, DecalTool, decal_basis, decal_origin};
 pub use entity::{EntityTool, align_to_normal, is_prop_class, rest_on_surface};
+pub use extrude::{ExtrudeOptions, ExtrudeTool, MAX_EXTRUDE_DEPTH};
 pub use overlay_tool::{OverlayTool, overlay_basis, overlay_keyvalues};
 pub use path::{PATH_TR, PathTool};
 pub use polygon::{MAX_POLYGON_POINTS, PointCheck, PolygonOptions, PolygonTool, check_point, is_convex_outline};
@@ -41,14 +45,17 @@ pub fn register_translations() {
     hp_app::i18n::register(SPRINKLE_TR);
     hp_app::i18n::register(PREFAB_TR);
     hp_app::i18n::register(PATH_TR);
+    hp_app::i18n::register(CURVE_TR);
 }
 
 pub fn tools() -> Vec<Box<dyn hp_app::Tool>> {
     vec![
         Box::new(BlockTool::new()),
         Box::new(PolygonTool::new()),
+        Box::new(CurveTool::new()),
         Box::new(EntityTool::new()),
         Box::new(ClipTool::new()),
+        Box::new(ExtrudeTool::new()),
         Box::new(DecalTool::new()),
         Box::new(OverlayTool::new()),
         Box::new(PathTool::new()),

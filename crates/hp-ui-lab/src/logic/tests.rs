@@ -12,7 +12,9 @@ fn the_window_draws_the_test_map() {
     let mut s = state();
     let mut view = LogicalView::default();
     hp_app::testing::run_ctx(&mut s, |ctx, st| view.show(ctx, st));
-    assert_eq!(view.graph().nodes.len(), 2);
+    assert_eq!(view.filter(), NodeFilter::All, "every entity by default, like Hammer");
+    assert_eq!(view.graph().nodes.len(), 3, "the unnamed info_player_start too");
+    assert!(view.graph().index.contains_key(&4));
     assert_eq!(view.graph().edges.len(), 1);
     let t = view.graph().index[&6];
     let l = view.graph().index[&5];
@@ -20,6 +22,20 @@ fn the_window_draws_the_test_map() {
     s.runtime.lab.logic_open = false;
     hp_app::testing::run_ctx(&mut s, |ctx, st| view.show(ctx, st));
     assert!(!s.doc.is_dirty());
+}
+
+#[test]
+fn the_filter_of_a_view_changes_its_nodes() {
+    let mut s = state();
+    let mut view = LogicalView::default();
+    view.set_filter(NodeFilter::NamedAndConnected);
+    view.refresh(&s);
+    assert_eq!(view.graph().nodes.len(), 2);
+    view.set_filter(NodeFilter::All);
+    view.refresh(&s);
+    assert_eq!(view.graph().nodes.len(), 3);
+    hp_app::testing::run_ctx(&mut s, |ctx, st| view.show(ctx, st));
+    assert_eq!(view.graph().nodes.len(), 3);
 }
 
 #[test]
@@ -116,7 +132,7 @@ fn french_texts_fit_the_window() {
     let mut view = LogicalView::default();
     hp_app::testing::run_ctx(&mut s, |ctx, st| view.show(ctx, st));
     hp_app::i18n::set_lang(hp_app::i18n::Lang::En);
-    assert_eq!(view.graph().nodes.len(), 2);
+    assert_eq!(view.graph().nodes.len(), 3);
 }
 
 #[test]

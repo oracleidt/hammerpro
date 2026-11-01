@@ -274,19 +274,7 @@ pub(crate) fn box_mesh(min: DVec3, max: DVec3, material: MaterialId, faces: bool
 
 fn multiblend_vertex(mb: &hp_vmf::multiblend::MultiBlend, i: usize) -> BlendVertex {
     let Some(w) = mb.weights.get(i) else { return BlendVertex::default() };
-    let w = w.map(|v| if v.is_finite() { v.max(0.0) } else { 0.0 });
-    let sum: f64 = w.iter().sum();
-    if sum <= 1e-9 || !sum.is_finite() {
-        return BlendVertex::default();
-    }
-    let mut tint = [0.0f64; 3];
-    for (k, colors) in mb.colors.iter().enumerate() {
-        let c = colors.get(i).copied().unwrap_or([1.0; 3]);
-        for (t, v) in tint.iter_mut().zip(c) {
-            *t += w[k] / sum * if v.is_finite() { v.clamp(0.0, 1.0) } else { 1.0 };
-        }
-    }
-    BlendVertex { weights: w.map(|v| (v / sum) as f32), tint: tint.map(|v| v as f32) }
+    BlendVertex::painted(w.map(|v| if v.is_finite() { v.clamp(0.0, 1.0) as f32 } else { 0.0 }))
 }
 
 #[cfg(test)]
@@ -413,10 +401,10 @@ mod tests {
         let mesh = solid_mesh(&node, &|_| 3, [0, 0, 0], false);
         let blend = &mesh.batches[0].blend;
         assert_eq!(blend.len(), 25);
-        assert_eq!(blend[0], BlendVertex::default());
-        assert_eq!(blend[3].weights, [0.0, 0.5, 0.0, 0.5]);
-        assert_eq!(blend[3].tint, [1.0, 0.5, 0.5], "red on half the weight");
-        assert_eq!(blend[4], BlendVertex::default(), "hostile weights fall back to texture 1");
+        assert_eq!(blend[0], BlendVertex::painted([1.0, 0.0, 0.0, 0.0]));
+        assert_eq!(blend[3], BlendVertex::painted([0.0, 1.0, 0.0, 1.0]), "raw amounts, like the engine reads them");
+        assert_eq!(blend[4], BlendVertex::painted([0.0, 0.0, 0.0, 0.0]), "hostile weights show texture 1");
+
     }
 
     #[test]

@@ -26,7 +26,7 @@ hammerpro --rad [options de l'éclairage] <map.bsp>
 | `--screenshot sortie.png` | Exécution automatisée : dessine N images (voir `--frames`), enregistre un PNG de toute la fenêtre dans le fichier donné puis se ferme. | désactivé |
 | `--frames N` | Nombre d'images dessinées avant la capture de `--screenshot` (au moins 2). | `90` |
 | `--maximize-view N` | Démarre avec une vue agrandie. N est l'index de la vue : `0` 3D, `1` Dessus, `2` Face, `3` Côté dans la disposition par défaut. | aucune |
-| `--tool NOM` | Outil actif au démarrage. Noms (majuscules ignorées) : `select`, `camera`, `entity`, `block`, `texture`, `decal`, `overlay`, `clip`, `vertex`, `path`, `polygon`, `sprinkle`, `displacement`, `cordon`. Un nom inconnu est ignoré. | `select` |
+| `--tool NOM` | Outil actif au démarrage. Noms (majuscules ignorées) : `select`, `camera`, `entity`, `block`, `texture`, `decal`, `overlay`, `clip`, `vertex`, `path`, `polygon`, `curve`, `sprinkle`, `displacement`, `cordon`. Un nom inconnu est ignoré. | `select` |
 | `--script fichier.txt` | Exécution automatisée : joue les commandes d'un fichier script (souris, touches, actions, captures, vérifications). Voir [Commandes de script](script-commands.md). | désactivé |
 | `--bench-open map.vmf` | Exécution automatisée : ouvre la map, attend qu'elle soit dessinée et que le contenu du jeu soit chargé, affiche sur stdout les temps de démarrage et d'ouverture sous forme de paires `clé=valeur` puis se ferme. | désactivé |
 

@@ -18,7 +18,7 @@ Hammer Pro is split into small, focused crates under `crates/`, with dependencie
 | `hp-gma` | Thread safe reader of Garry's Mod addon archives (GMA), legacy LZMA `.bin` included. |
 | `hp-fgd` | Parser and resolver of FGD entity definition files. |
 | `hp-mdl` | Loader of studio models (`.mdl` + `.vvd` + `.vtx`), MDL versions 44 to 49. |
-| `hp-bsp` | Hardened reader and writer of BSP files, versions 19 to 21: lumps, pakfile, cubemaps, game lumps, BSP Protection Pro. |
+| `hp-bsp` | Hardened reader and writer of BSP files, versions 19 to 21: lumps, pakfile, cubemaps, game lumps, Protect your BSP. |
 | `hp-nav` | Reader of navigation meshes (`.nav`), versions 1 to 16. |
 | `hp-pcf` | Particle systems of `.pcf` files (binary DMX) and a small preview simulation. |
 | `hp-meshio` | Reading OBJ, glTF/GLB and FBX models and compiling them into game model files. |

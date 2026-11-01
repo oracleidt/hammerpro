@@ -97,7 +97,7 @@ La vue logique montre les entités de la map et leurs sorties sous forme de sch�
 
 ### Ce qui est affiché
 
-- Les nœuds : les entités qui ont un nom ou participent à une connexion. Un nœud affiche le nom (**(sans nom)** s'il n'y en a pas) et la classe, avec une couleur selon la famille de classe (logique et filtres, triggers, `func_`, lumières et environnement, props et PNJ, info et chemins, autres).
+- Les nœuds : par défaut toutes les entités de la map, comme dans Hammer : entités ponctuelles (`light`, `light_spot`, `light_environment`, entités `info_`, logique...) et entités de brush, nommées ou non. Un nœud affiche l'icône d'éditeur de sa classe (l'aide `iconsprite()` ou `sprite()` du FGD, l'icône des vues 2D et 3D), le nom (**(sans nom)** s'il n'y en a pas) et la classe, avec une couleur selon la famille de classe (logique et filtres, triggers, `func_`, lumières et environnement, props et PNJ, info et chemins, autres). Les entités cachées par un visgroup sont dessinées estompées.
 - Les liens : un par sortie, colorés comme les lignes de connexion (vert valide, rouge cible introuvable avec une croix et le nom, jaune sortie ou entrée inconnue du FGD). Une sortie vers sa propre entité fait une boucle au-dessus du nœud.
 - Survolez un lien pour lire `Sortie > cible.Entrée (paramètre) après N s (une fois)` et, en cas de problème, la raison.
 - En dézoomant, le texte et les ports disparaissent et les liens deviennent droits : les grosses maps restent fluides.
@@ -107,7 +107,7 @@ La vue logique montre les entités de la map et leurs sorties sous forme de sch�
 | Contrôle | Rôle |
 |---|---|
 | **Chercher une entité...** | N'affiche que les nœuds dont le nom ou la classe contient le texte, et les cadre pendant la frappe. `Entrée` cadre les résultats. |
-| Filtre | **Nommées et connectées** (par défaut) ou **Connectées seulement** (entités avec une connexion sortante ou entrante). |
+| Filtre | **Toutes les entités** (par défaut), **Nommées et connectées** (entités avec un nom ou une connexion) ou **Connectées seulement** (entités avec une connexion sortante ou entrante). Chaque vue garde son filtre. |
 | **Tout cadrer** | Affiche toutes les entités (`Origine` avec la souris sur la vue). |
 | **Cadrer la sélection** | Cadre les résultats de la recherche, sinon les entités sélectionnées. |
 | **Organiser** | Place toutes les entités automatiquement et enregistre les positions dans la map (une étape d'annulation, « Organisation de la vue logique »). |
@@ -160,7 +160,7 @@ Glisser depuis un port de sortie vers un autre nœud ouvre **Nouvelle sortie** :
 
 - Le titre de l'onglet Sorties est mis en évidence quand une sortie pose problème : cherchez les cellules rouges.
 - Lancez **Organiser** une fois sur une map importée, puis déplacez les nœuds qui vous intéressent : les autres suivent la disposition automatique.
-- Par MCP : `list_connections`, `add_connection`, `edit_connection`, `remove_connections`, `get_io_graph`, `list_targetnames`, `rename_targetname`, `check_entity`, et `get_views` (un quart de type `logical`). Voir la [référence des outils MCP](../../MCP.md) (en anglais).
+- Par MCP : `list_connections`, `add_connection`, `edit_connection`, `remove_connections`, `get_io_graph`, `list_targetnames`, `rename_targetname`, `check_entity`, `get_logical_graph` (les nœuds, icônes et liens de la vue logique, avec son filtre), et `get_views` (un quart de type `logical`). Voir la [référence des outils MCP](../../MCP.md) (en anglais).
 
 ## FAQ
 

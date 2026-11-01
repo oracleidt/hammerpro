@@ -33,7 +33,7 @@ When a command needs brushes and none are selected, the notice **Select one or m
 - Only visible world brushes are cut: brushes of entities and hidden brushes are left alone.
 - The cut brushes are split into several convex pieces with new face ids. Overlays and `env_cubemap` face lists follow: a face cut into pieces is replaced by all of them, a face carved away entirely is removed from the list.
 
-Carve makes many small brushes. For simple openings, the [clipping tool](clip-tool.md) or several block brushes often give cleaner geometry.
+Carve makes many small brushes. For simple openings, the [extrude / carve tool](extrude-tool.md) (an outline clicked on one face, carved into that brush only, with as few pieces as possible), the [clipping tool](clip-tool.md) or several block brushes often give cleaner geometry.
 
 ## Make hollow
 
@@ -65,6 +65,7 @@ The thickness field has the keyboard focus when the window opens, so you can typ
 - With exactly one brush entity among the selection plus other brushes, those brushes are added to that entity, which keeps its class and keys.
 - With a single brush entity selected alone, its properties open.
 - Otherwise the selection is tied to a new brush entity of the **Default brush entity** class (setting `default_brush_entity`, default `func_detail`, in **Settings > Editing > New objects**), with the default keyvalues of that class from the FGD.
+- When the FGD class has an `origin` key (`func_tracktrain`, `func_tanktrain`, `func_rotating`, `func_door_rotating`...), the new entity gets it at the center of its brushes, like Hammer. The game moves and turns the entity around that point: a train puts it on its `path_track` nodes (raised by its `height` key). **Tools > Center origins** moves it back to the center later.
 
 Brushes taken from other brush entities move to the entity, and brush entities left without brushes are deleted. The entity is selected and the **Entity properties** panel opens (see [Entity properties](entity-properties.md)).
 

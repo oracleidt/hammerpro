@@ -382,6 +382,7 @@ impl ReleaseWindow {
             s.copy_to_maps = false;
             s.launch_game = false;
             s.expert = false;
+            s.set_active_compiler(hp_app::settings::compilers::BUILTIN_COMPILER);
             s.compile_cordon_only = false;
             s.progressive = false;
             s.smart_recompile = false;

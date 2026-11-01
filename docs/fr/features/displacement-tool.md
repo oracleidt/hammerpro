@@ -100,6 +100,7 @@ Section **Sculpter la géométrie** (mode **Sculpter**) :
 | **Normale de la surface** | La normale de la surface à chaque sommet (seulement pour sculpter la géométrie) |
 | **Centre du pinceau** | La normale de la surface sous le centre du pinceau (Brush Center de Hammer) |
 | **Vue (caméra)** | Vers la caméra 3D, selon la direction de vue au début du trait (direction Écran de Hammer). Inversé : en s'en éloignant |
+| **Vue (caméra) horizontale** | Vers la caméra 3D sur X et Y seulement : la direction de vue au début du trait, mise à plat sur le sol, donc les sommets ne montent ni ne descendent jamais. Pratique pour pousser une falaise ou un mur en avant ou en arrière depuis l'endroit où vous regardez. En regardant droit vers le bas, le bas de la vue donne la direction. Inversé : en s'éloignant de la caméra |
 | **X**, **Y**, **Z (haut)** | Un axe du monde |
 | **Personnalisé** | Une direction choisie : saisissez X, Y, Z sous la liste, ou faites `Alt` + clic droit sur une face dans la vue 3D pour prendre sa normale (direction Selected de Hammer). Par défaut 0 0 1 |
 
@@ -120,6 +121,14 @@ Section **Peindre l'alpha** (mode **Peindre l'alpha**) : peint le mélange des m
 | **Intensité** (Lisser) | Vitesse à laquelle le mélange s'égalise (0 à 1) | 0,5 |
 
 La rangée **Texture** n'apparaît que si **Peindre les mélanges à 4 textures** est activé dans les paramètres (activé par défaut, comme Hammer++ pour Garry's Mod).
+
+### Mélanges à 4 textures (Lightmapped_4WayBlend)
+
+- **Où le mélange est rangé.** Les 4 boutons de texture écrivent les rangées `multiblend`, `alphablend` et `multiblend_color_0` à `multiblend_color_3` du `dispinfo`, comme Hammer++ et le Hammer de CS:GO. Une map faite dans Hammer++ s'ouvre avec ses mélanges, et l'enregistrement garde les rangées telles qu'elles ont été lues tant que vous ne les peignez pas.
+- **Ce que vous voyez.** Les vues texturée, éclairée et précalculée et la vue joueur dessinent les 4 textures comme le jeu : la texture 2, puis la 3, puis la 4 se posent sur la texture 1, chacune selon sa propre valeur des rangées. Les paramètres du VMT dessinent les bords : `$textureN_lumstart` et `$textureN_lumend` (luminance de chaque texture), `$lumblendfactorN`, `$textureN_blendstart` et `$textureN_blendend` (netteté), `$textureN_uvscale` (l'échelle de chaque texture) et `$textureN_blendmode` (1 : modulation 2x).
+- **Pas encore de rangées.** Un displacement avec un matériau Lightmapped_4WayBlend et sans rangées à 4 textures montre son alpha de sommet comme texture 2 (la peinture **2 textures**), et le premier trait sur un bouton de texture part de cet alpha. Le compilateur écrit la même chose, donc le jeu montre ce que montre l'éditeur. Le VBSP de Valve ignore l'alpha d'un tel displacement (le jeu ne montre alors que la texture 1).
+- **Dans le jeu.** Le compilateur écrit les rangées dans le lump multiblend des displacements du BSP et marque chaque displacement qui en a, octet pour octet comme le VBSP de Garry's Mod : les mélanges s'affichent dans Garry's Mod et les jeux Source 2013.
+- **Déplacer et retourner** un displacement garde ses rangées à 4 textures à leur place, comme son alpha. Changer la puissance ou aplanir repart de la texture 1.
 
 ## Modeler
 
@@ -214,7 +223,7 @@ Les mêmes commandes sont dans le menu **Outils** et marchent quel que soit l'ou
 
 ## Scripts et MCP
 
-Chaque option du panneau a un nom pour les scripts (`tool_option CLÉ VALEUR`, voir [Commandes de script](../reference/script-commands.md)) et pour les outils MCP `get_tool_options` et `set_tool_options` : `mode`, `effect`, `axis`, `custom_axis`, `radius`, `strength`, `smooth`, `target_height`, `falloff`, `spatial`, `line_of_sight`, `autosew`, `selected_only`, `continuous`, `alpha_effect`, `alpha_value`, `alpha_strength`, `blend_channel`, `sculpt`, `push_mode`, `sculpt_bounds`, `falloff_position`, `falloff_final`, `push_distance`, `push_percent`, `carve_depth`, `carve_profile`, `project_range`, `scale_factor`, `tag_kind`, `tag_value`, `mask_grid`, `mask_select`. D'autres outils MCP créent, peignent, cousent, subdivisent, marquent et inspectent les displacements (`create_displacements`, `stroke_displacement`, `paint_displacement`, `sew_displacements`...), voir la [référence des outils MCP](../../MCP.md) (en anglais).
+Chaque option du panneau a un nom pour les scripts (`tool_option CLÉ VALEUR`, voir [Commandes de script](../reference/script-commands.md)) et pour les outils MCP `get_tool_options` et `set_tool_options` : `mode`, `effect`, `axis`, `custom_axis`, `radius`, `strength`, `smooth`, `target_height`, `falloff`, `spatial`, `line_of_sight`, `autosew`, `selected_only`, `continuous`, `alpha_effect`, `alpha_value`, `alpha_strength`, `blend_channel`, `sculpt`, `push_mode`, `sculpt_bounds`, `falloff_position`, `falloff_final`, `push_distance`, `push_percent`, `carve_depth`, `carve_profile`, `project_range`, `scale_factor`, `tag_kind`, `tag_value`, `mask_grid`, `mask_select`. `axis` prend `normal`, `subdiv`, `center`, `view`, `view_flat` (Vue (caméra) horizontale), `x`, `y`, `z` ou `custom`. D'autres outils MCP créent, peignent, cousent, subdivisent, marquent et inspectent les displacements (`create_displacements`, `stroke_displacement`, `paint_displacement`, `sew_displacements`...) ; `get_displacement` renvoie les rangées du mélange à 4 textures (`multiblend`) et `set_displacement_data` les écrit (`multiblend_weights`, `alphablend`, `multiblend_colors`, `remove_multiblend`), voir la [référence des outils MCP](../../MCP.md) (en anglais).
 
 ## Astuces
 
@@ -235,6 +244,8 @@ Chaque option du panneau a un nom pour les scripts (`tool_option CLÉ VALEUR`, v
 **J'ai peint au mauvais endroit.** Appuyez sur `Échap` pendant le trait pour l'annuler, ou sur `Ctrl+Z` ensuite : chaque trait est une étape d'annulation.
 
 **Pourquoi mes textures de mélange ne changent pas ?** Le matériau doit être un matériau de fusion (WorldVertexTransition, ou Lightmapped_4WayBlend pour les boutons des 4 textures).
+
+**Mon mélange à 4 textures ne montre que sa première texture dans le jeu.** Recompilez avec Hammer Pro : les rangées du mélange sont écrites dans le BSP (voir Mélanges à 4 textures plus haut). Une texture qui reste cachée alors qu'elle est peinte peut aussi venir d'un `$textureN_blendstart` proche de 1 dans le VMT : peignez la texture jusqu'à son poids plein, ou baissez cette valeur.
 
 ## Pages liées
 

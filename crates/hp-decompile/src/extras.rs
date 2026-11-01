@@ -75,6 +75,18 @@ pub(crate) fn displacement(l: &Lumps, index: usize, map_name: &str) -> Option<Di
     if d.min_tess < 0 {
         info.flags = d.min_tess & 0x0E;
     }
+    if let Some(blend) = d.multiblend_start.and_then(|s| l.dispmultiblend.get(s..s.checked_add(count)?)) {
+        let mut mb = hp_vmf::multiblend::MultiBlend::new(count);
+        let finite = |v: f32| if v.is_finite() { f64::from(v) } else { 0.0 };
+        for (k, e) in blend.iter().enumerate() {
+            mb.weights[k] = std::array::from_fn(|c| finite(e[c]));
+            mb.alphas[k] = std::array::from_fn(|c| finite(e[4 + c]));
+            for (ch, colors) in mb.colors.iter_mut().enumerate() {
+                colors[k] = std::array::from_fn(|c| finite(e[8 + ch * 3 + c]));
+            }
+        }
+        mb.write_to(&mut info);
+    }
     built.solid.sides[side].disp = Some(Box::new(info));
     Some(DispSolid { built, side, face: face_index })
 }

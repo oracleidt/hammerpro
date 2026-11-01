@@ -4,6 +4,7 @@ pub mod areaportals;
 pub mod autovis;
 pub mod compile;
 pub mod compile_stats;
+pub mod compilers;
 pub mod cordons;
 pub mod goto;
 pub mod inspector;
@@ -22,6 +23,7 @@ pub mod propper;
 pub mod release;
 pub mod target;
 pub mod transform;
+pub mod valve_flags;
 pub mod visgroups;
 
 pub const TABLES: &[(&str, TrTable)] = &[
@@ -30,6 +32,7 @@ pub const TABLES: &[(&str, TrTable)] = &[
     ("outliner", outliner::TR),
     ("compile", compile::TR),
     ("compilestats", compile_stats::TR),
+    ("compilers", compilers::TR),
     ("problems", problems::TR),
     ("transform", transform::TR),
     ("paste", paste::TR),
@@ -48,4 +51,5 @@ pub const TABLES: &[(&str, TrTable)] = &[
     ("launch", launch::TR),
     ("mapassets", mapassets::TR),
     ("target", target::TR),
+    ("valveflags", valve_flags::TR),
 ];

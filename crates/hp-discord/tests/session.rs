@@ -3,13 +3,14 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use hp_discord::frame::{self, Frame, Opcode};
-use hp_discord::{Activity, Conn, Connector, Options, Presence, Session, Wanted};
+use hp_discord::{Activity, Conn, Connector, Link, Options, Presence, Session, Wanted};
 use serde_json::Value;
 
 #[derive(Default)]
 struct Server {
     up: bool,
     refuse: bool,
+    reject_activity: bool,
     generation: u32,
     connects: usize,
     received: Vec<Frame>,
@@ -72,6 +73,15 @@ impl Conn for MockConn {
                     frame::encode(Opcode::Frame, "{\"cmd\":\"DISPATCH\",\"evt\":\"READY\",\"data\":{\"v\":1}}")
                 };
                 s.outbox.extend(answer);
+            } else if f.op == Opcode::Frame && f.payload.contains("SET_ACTIVITY") {
+                let nonce = serde_json::from_str::<Value>(&f.payload).unwrap()["nonce"].clone();
+                let answer = if s.reject_activity {
+                    serde_json::json!({ "cmd": "SET_ACTIVITY", "evt": "ERROR", "nonce": nonce,
+                        "data": { "code": 4000, "message": "child \"activity\" fails" } })
+                } else {
+                    serde_json::json!({ "cmd": "SET_ACTIVITY", "evt": null, "nonce": nonce, "data": {} })
+                };
+                s.outbox.extend(frame::encode(Opcode::Frame, &answer.to_string()));
             }
             s.received.push(f);
         }
@@ -172,12 +182,14 @@ fn quiet_retries_and_reconnects() {
     let t1 = t0 + Duration::from_secs(5);
     assert_eq!(s.step(t1), Some(t1 + Duration::from_secs(10)));
     assert!(!s.is_connected());
+    assert_eq!(s.link(), &Link::NotRunning);
     srv.lock().unwrap().restart();
     s.step(t1 + Duration::from_secs(9));
     assert!(!s.is_connected(), "waits for the retry time");
     let t2 = t1 + Duration::from_secs(10);
     s.step(t2);
     assert!(s.is_connected());
+    assert_eq!(s.link(), &Link::Connected);
     assert_eq!(srv.lock().unwrap().activities().len(), 1);
     srv.lock().unwrap().restart();
     s.step(t2 + Duration::from_secs(1));
@@ -198,6 +210,7 @@ fn refused_handshake_retries() {
     s.set(wanted(activity("a.vmf", "Block")));
     assert_eq!(s.step(t0), Some(t0 + Duration::from_secs(5)));
     assert!(!s.is_connected());
+    assert_eq!(s.link(), &Link::Refused("Invalid Client ID (4000)".into()));
     assert!(srv.lock().unwrap().activities().is_empty());
 }
 
@@ -211,6 +224,7 @@ fn off_clears_and_closes() {
     s.set(Wanted { client_id: ID.into(), activity: None });
     assert_eq!(s.step(t0 + Duration::from_secs(1)), None);
     assert!(!s.is_connected());
+    assert_eq!(s.link(), &Link::Idle);
     let srv_ = srv.lock().unwrap();
     let acts = srv_.activities();
     assert_eq!(acts.len(), 2);
@@ -259,9 +273,56 @@ fn background_thread() {
     p.set(Wanted::default());
     std::thread::sleep(Duration::from_millis(50));
     assert_eq!(srv.lock().unwrap().connects, 0);
+    assert_eq!(p.link(), Link::Idle);
     p.set(wanted(activity("a.vmf", "Block")));
     assert!(wait_for(&srv, |s| s.activities().len() == 1));
+    let end = Instant::now() + Duration::from_secs(5);
+    while p.link() != Link::Connected && Instant::now() < end {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(p.link(), Link::Connected);
     drop(p);
     assert!(wait_for(&srv, |s| s.received.last().is_some_and(|f| f.op == Opcode::Close)));
     assert!(srv.lock().unwrap().activities()[1].is_null());
+}
+
+#[test]
+fn background_thread_waits_for_discord() {
+    let srv = server(false);
+    let o = Options { retry_min: Duration::from_millis(30), retry_max: Duration::from_millis(60), ..opts() };
+    let mut p = Presence::new(Box::new(MockConnector(srv.clone())), o);
+    p.set(wanted(activity("a.vmf", "Block")));
+    let end = Instant::now() + Duration::from_secs(5);
+    while p.link() != Link::NotRunning && Instant::now() < end {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(p.link(), Link::NotRunning);
+    srv.lock().unwrap().restart();
+    assert!(wait_for(&srv, |s| s.activities().len() == 1), "connects once Discord starts");
+    let end = Instant::now() + Duration::from_secs(5);
+    while p.link() != Link::Connected && Instant::now() < end {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(p.link(), Link::Connected);
+    p.set(Wanted::default());
+    assert_eq!(p.link(), Link::Idle);
+}
+
+#[test]
+fn rejected_activity_shows_in_the_link() {
+    let srv = server(true);
+    srv.lock().unwrap().reject_activity = true;
+    let mut s = Session::new(Box::new(MockConnector(srv.clone())), opts());
+    let t0 = Instant::now();
+    s.set(wanted(activity("a.vmf", "Block")));
+    s.step(t0);
+    assert_eq!(s.link(), &Link::Connected);
+    s.step(t0 + Duration::from_secs(5));
+    assert!(s.is_connected());
+    assert_eq!(s.link(), &Link::Refused("child \"activity\" fails (4000)".into()));
+    srv.lock().unwrap().reject_activity = false;
+    s.set(wanted(activity("b.vmf", "Block")));
+    s.step(t0 + Duration::from_secs(6));
+    s.step(t0 + Duration::from_secs(11));
+    assert_eq!(s.link(), &Link::Connected);
 }

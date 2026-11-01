@@ -13,6 +13,7 @@ Tous les paramètres que comprend le compilateur de Hammer Pro, avec leur effet 
   value = "8"
   ```
 - **Arguments supplémentaires de la géométrie** et **Arguments supplémentaires de l'éclairage** (section Avancé) : du texte libre ajouté à la ligne de commande.
+- Ce sont les options du compilateur de Hammer Pro. Les options de vbsp, vvis et vrad de Valve, pour les compilateurs que vous choisissez à la place, sont listées dans [Choisir un compilateur](compilers.md).
 - Les profils du **mode expert**, et la [ligne de commande](command-line.md).
 - L'outil MCP `set_compile_options` (`bsp_options`, `rad_options`).
 

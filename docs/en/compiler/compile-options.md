@@ -14,6 +14,7 @@ Every flag the Hammer Pro compiler understands, with its effect and its default.
   ```
 - **Extra geometry arguments** and **Extra lighting arguments** (Advanced): free text added to the command line.
 - **Expert mode** profiles, and the [command line](command-line.md).
+- These are the flags of Hammer Pro's compiler. The options of Valve's vbsp, vvis and vrad, for the compilers you choose instead, are listed in [Choosing a compiler](compilers.md).
 - The MCP tool `set_compile_options` (`bsp_options`, `rad_options`).
 
 How they combine: the preset's flags come first; a flag of your extra arguments replaces the preset's; a choice of the options menu replaces both (forced off removes the flag everywhere). Flags are case insensitive. The step command lines look like this:

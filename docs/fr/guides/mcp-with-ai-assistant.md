@@ -38,7 +38,7 @@ L'assistant commence par `get_capabilities` et `get_map_info`, utilise les outil
 ## Ce que l'assistant peut faire ou non
 
 - Il n'atteint que les fenêtres dont la pastille est sur **MCP actif**, et seulement depuis cet ordinateur (adresse locale, jeton secret).
-- Il ne lance jamais de programme et n'ouvre ou n'enregistre que des maps `.vmf`. Écraser un autre fichier existant exige un écrasement explicite.
+- Il ne lance aucun programme de lui-même et n'ouvre ou n'enregistre que des maps `.vmf`. Écraser un autre fichier existant exige un écrasement explicite. Il ne peut créer ou changer un compilateur qui lance d'autres programmes qu'avec une confirmation, quand vous l'avez demandé.
 - Les commandes sensibles (quitter, désactiver MCP, installer MCP dans d'autres applications, publier, lancer le jeu, boîtes de dialogue de fichiers...) exigent une confirmation que l'assistant ne doit donner que si vous avez demandé exactement cela.
 - Il ne peut pas changer les chemins de fichiers, programmes, lignes de commande, dossiers de contenu du jeu ni les paramètres MCP : vous le faites dans la fenêtre Paramètres.
 
@@ -59,7 +59,7 @@ Avec plusieurs fenêtres, l'assistant utilise celle avec MCP actif qui a eu le f
 
 **L'application ne liste pas les outils hammer-pro.** Redémarrez l'application ou ouvrez une nouvelle session après l'installation. Dans la fenêtre MCP, cliquez sur **Vérifier** sur sa ligne.
 
-**Peut-il compiler et lancer le jeu ?** Il compile avec le compilateur de Hammer Pro quand vous le demandez. Il ne lance le jeu que si vous le demandez explicitement, et jamais lors des exécutions automatisées.
+**Peut-il compiler et lancer le jeu ?** Il compile avec le compilateur choisi pour le jeu (celui de Hammer Pro par défaut) quand vous le demandez, et peut en choisir ou en régler un autre (les outils de Valve, le vôtre) quand vous le demandez. Il ne lance le jeu que si vous le demandez explicitement, et jamais lors des exécutions automatisées.
 
 ## Pages liées
 

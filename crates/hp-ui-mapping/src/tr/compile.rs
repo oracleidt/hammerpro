@@ -1147,6 +1147,11 @@ pub const TR: TrTable = &[
         "Mode expert : le profil de l'onglet Expert est exécuté.",
     ),
     ("compile.expert.running", "Expert mode: running the profile {0}.", "Mode expert : exécution du profil {0}."),
+    (
+        "compile.expert.needs_builtin",
+        "Another compiler is chosen for this game: Expert profiles only run with Hammer Pro's compiler, so this tab is not used now.",
+        "Un autre compilateur est choisi pour ce jeu : les profils experts ne tournent qu'avec le compilateur de Hammer Pro, cet onglet ne sert donc pas pour l'instant.",
+    ),
     ("compile.expert.new", "New", "Nouveau"),
     ("compile.expert.new_name", "New profile", "Nouveau profil"),
     ("compile.expert.duplicate", "Duplicate", "Dupliquer"),

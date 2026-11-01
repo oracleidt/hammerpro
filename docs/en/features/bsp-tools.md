@@ -17,7 +17,7 @@ What comes back:
 
 The materials and models of the map's pakfile are copied to a cache folder that is mounted while the map is open, so its own content displays (*Files of the map's own content, shown while it is open*).
 
-A compiled map cannot give everything back: instances are merged, visgroups, groups and hidden objects are gone, and hint, skip and origin brushes were removed by the compiler. The console lists brushes, displacements and occluders that could not be rebuilt, overlays that lost their faces, and brushes without faces (a map protected against decompiling, see [BSP Protection Pro](bsp-protection.md)).
+A compiled map cannot give everything back: instances are merged, visgroups, groups and hidden objects are gone, and hint, skip and origin brushes were removed by the compiler. The console lists brushes, displacements and occluders that could not be rebuilt, overlays that lost their faces, and brushes without faces (a map protected against decompiling, see [Protect your BSP](bsp-protection.md)).
 
 ## Open an archive (pack inspector)
 
@@ -66,7 +66,7 @@ Select an entry to preview it: text files (VMT, TXT, Lua, RES, CFG, JSON, VMF, R
 
 ## Related pages
 
-- [BSP Protection Pro](bsp-protection.md)
+- [Protect your BSP](bsp-protection.md)
 - [Build and save as content](build-content-release.md)
 - [VMF compatibility](../getting-started/vmf-compatibility.md)
 - [Files and folders](../reference/files-and-folders.md)

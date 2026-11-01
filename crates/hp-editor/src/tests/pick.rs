@@ -273,3 +273,85 @@ fn bench_100k_load_and_pick() {
     );
     assert!(pick_time.as_secs_f64() / 1000.0 < 0.002, "average pick must stay under 2 ms");
 }
+
+#[test]
+fn the_nearest_visible_surface_wins() {
+    let mut doc = Document::new_empty();
+    let wall = doc
+        .create_solid(box_sides(DVec3::new(0.0, -128.0, 0.0), DVec3::new(16.0, 128.0, 128.0), "brick/wall"), Owner::World)
+        .expect("wall");
+    let behind = doc
+        .create_solid(box_sides(DVec3::new(200.0, -128.0, 0.0), DVec3::new(264.0, 128.0, 128.0), "brick/back"), Owner::World)
+        .expect("behind");
+    let clip = doc
+        .create_solid(
+            box_sides(DVec3::new(-64.0, -128.0, 0.0), DVec3::new(-48.0, 128.0, 128.0), "tools/toolsplayerclip"),
+            Owner::World,
+        )
+        .expect("clip");
+    let light = doc.create_point_entity("light", DVec3::new(100.0, 0.0, 64.0), &[]).expect("light");
+    let prop = doc.create_point_entity("prop_static", DVec3::new(-200.0, 0.0, 64.0), &[]).expect("prop");
+    doc.clear_selection();
+    let ray = Ray::new(DVec3::new(-500.0, 0.0, 64.0), DVec3::X);
+    let opts = PickOptions::default();
+    let order: Vec<ObjRef> = doc.pick_ray_all(&ray, &opts, &no_bounds).iter().map(|h| h.obj).collect();
+    assert_eq!(
+        order,
+        vec![ObjRef::Entity(prop), ObjRef::Solid(clip), ObjRef::Solid(wall), ObjRef::Entity(light), ObjRef::Solid(behind)]
+    );
+
+    let tools_hidden = |m: &str| m.starts_with("tools/");
+    let looks = PickOptions { face_hidden: Some(&tools_hidden), ..PickOptions::default() };
+    let no_prop = |o: ObjRef| o != ObjRef::Entity(prop);
+    let looks_no_prop = PickOptions { filter: Some(&no_prop), ..looks };
+    assert_eq!(doc.pick_ray(&ray, &looks_no_prop, &no_bounds).map(|h| h.obj), Some(ObjRef::Solid(wall)), "hidden clip");
+    assert_eq!(doc.pick_ray(&ray, &opts, &no_bounds).map(|h| h.obj), Some(ObjRef::Entity(prop)));
+
+    let thin = |e: &Entity, r: &Ray| {
+        if e.classname != "prop_static" {
+            return crate::EntityRay::Bounds;
+        }
+        let o = e.origin().unwrap_or_default();
+        let t = (o.x - r.origin.x) / r.dir.x;
+        let p = r.at(t);
+        if t >= 0.0 && (p.y - o.y).abs() < 1.0 { crate::EntityRay::Hit { t, normal: DVec3::X } } else { crate::EntityRay::Miss }
+    };
+    let models = PickOptions { entity_ray: Some(&thin), face_hidden: Some(&tools_hidden), ..PickOptions::default() };
+    let hit = doc.pick_ray(&ray, &models, &no_bounds).expect("model hit");
+    assert_eq!(hit.obj, ObjRef::Entity(prop));
+    assert!((hit.t - 300.0).abs() < 1e-9);
+    assert_eq!(hit.normal, DVec3::NEG_X, "normals face the camera");
+    let beside = Ray::new(DVec3::new(-500.0, 4.0, 64.0), DVec3::X);
+    assert_eq!(
+        doc.pick_ray(&beside, &models, &no_bounds).map(|h| h.obj),
+        Some(ObjRef::Solid(wall)),
+        "a model box is not the model: the gap shows the wall"
+    );
+    let inside = Ray::new(DVec3::new(-205.0, 0.0, 64.0), DVec3::X);
+    assert_eq!(doc.pick_ray(&inside, &models, &no_bounds).map(|h| h.obj), Some(ObjRef::Entity(prop)), "inside its box");
+    assert_eq!(doc.pick_ray(&inside, &opts, &no_bounds).map(|h| h.obj), Some(ObjRef::Solid(clip)));
+
+    let back = Ray::new(DVec3::new(-500.0, 0.0, 64.0), DVec3::NEG_X);
+    assert!(doc.pick_ray(&back, &opts, &no_bounds).is_none(), "nothing behind the camera");
+    doc.set_hidden(&[ObjRef::Solid(wall)], true);
+    assert_eq!(doc.pick_ray(&ray, &looks_no_prop, &no_bounds).map(|h| h.obj), Some(ObjRef::Entity(light)));
+}
+
+#[test]
+fn a_hidden_entry_face_shows_what_is_behind() {
+    let mut doc = Document::new_empty();
+    let mut sides = box_sides(DVec3::new(0.0, 0.0, 0.0), DVec3::new(128.0, 128.0, 16.0), "nature/dirt");
+    for s in &mut sides {
+        if s.plane[0].z == 16.0 && s.plane[1].z == 16.0 && s.plane[2].z == 16.0 {
+            s.material = "tools/toolsnodraw".to_owned();
+        }
+    }
+    let floor = doc.create_solid(sides, Owner::World).expect("floor");
+    let under = doc.create_solid(cube(DVec3::new(0.0, 0.0, -100.0), 64.0), Owner::World).expect("under");
+    let down = Ray::new(DVec3::new(32.0, 32.0, 500.0), DVec3::NEG_Z);
+    let opts = PickOptions::default();
+    assert_eq!(doc.pick_ray(&down, &opts, &no_bounds).map(|h| h.obj), Some(ObjRef::Solid(floor)));
+    let nodraw = |m: &str| m == "tools/toolsnodraw";
+    let looks = PickOptions { face_hidden: Some(&nodraw), ..PickOptions::default() };
+    assert_eq!(doc.pick_ray(&down, &looks, &no_bounds).map(|h| h.obj), Some(ObjRef::Solid(under)));
+}

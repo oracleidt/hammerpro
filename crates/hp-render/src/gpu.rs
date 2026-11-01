@@ -101,6 +101,14 @@ pub(crate) struct MaterialUniform {
     pub env_fresnel: [f32; 4],
     pub env_ranges: [f32; 4],
     pub self_illum: [f32; 4],
+    pub fw_lum_start: [f32; 4],
+    pub fw_lum_end: [f32; 4],
+    pub fw_blend_start: [f32; 4],
+    pub fw_blend_end: [f32; 4],
+    pub fw_lum_factor: [f32; 4],
+    pub fw_mod2x: [f32; 4],
+    pub fw_uv12: [f32; 4],
+    pub fw_uv34: [f32; 4],
 }
 
 #[repr(C)]
@@ -144,15 +152,15 @@ pub(crate) struct ViewUniform {
     pub sky_uv: [[f32; 4]; 6],
 }
 
-pub(crate) fn pack_blend(weights: [f32; 4], tint: [f32; 3]) -> u32 {
-    let w = weights.map(|v| if v.is_finite() { v.max(0.0) } else { 0.0 });
-    let sum: f32 = w.iter().sum();
-    let w = if sum > 1e-6 && sum.is_finite() { w.map(|v| v / sum) } else { [1.0, 0.0, 0.0, 0.0] };
-    let q = |v: f32, max: f32| (v.clamp(0.0, 1.0) * max).round() as u32;
-    let (w2, w3, w4) = (q(w[1], 31.0), q(w[2], 31.0), q(w[3], 31.0));
-    let t = tint.map(|v| if v.is_finite() { v.clamp(0.0, 1.0) } else { 1.0 });
-    let (r, g, b) = (31 - q(t[0], 31.0), 63 - q(t[1], 63.0), 31 - q(t[2], 31.0));
-    w2 | (w3 << 5) | (w4 << 10) | (r << 16) | (g << 21) | (b << 27)
+pub(crate) const BLEND_PAINTED: u32 = 1 << 30;
+
+pub(crate) fn pack_blend(weights: [f32; 4]) -> u32 {
+    let q = |v: f32| if v.is_finite() { (v.clamp(0.0, 1.0) * 1023.0).round() as u32 } else { 0 };
+    q(weights[1]) | (q(weights[2]) << 10) | (q(weights[3]) << 20) | BLEND_PAINTED
+}
+
+pub(crate) fn pack_blend_vertex(b: &crate::types::BlendVertex) -> u32 {
+    if b.painted { pack_blend(b.weights) } else { 0 }
 }
 
 pub(crate) fn pack_normal_alpha(n: [f32; 3], alpha: f32) -> u32 {
@@ -200,21 +208,20 @@ mod tests {
         assert_eq!(size_of::<SpriteGpu>(), 24);
         assert_eq!(size_of::<InstanceGpu>(), 124);
         assert_eq!(size_of::<ObjState>(), 16);
-        assert_eq!(size_of::<MaterialUniform>(), 240);
+        assert_eq!(size_of::<MaterialUniform>(), 368);
         assert_eq!(size_of::<LightGpu>(), 96);
         assert_eq!(size_of::<ViewUniform>(), 64 * 2 + 16 * 28);
     }
 
     #[test]
     fn blend_packing() {
-        assert_eq!(pack_blend([1.0, 0.0, 0.0, 0.0], [1.0; 3]), 0, "texture 1, white");
-        let p = pack_blend([0.0, 2.0, 0.0, 2.0], [1.0, 0.0, 0.0]);
-        assert_eq!((p & 31, (p >> 5) & 31, (p >> 10) & 31), (16, 0, 16), "normalized weights");
-        assert_eq!((p >> 16) & 31, 0, "full red");
-        assert_eq!((p >> 21) & 63, 63, "no green");
-        assert_eq!(p >> 27, 31, "no blue");
-        assert_eq!(pack_blend([f32::NAN, -1.0, f32::INFINITY, 0.0], [f32::NAN; 3]), 0);
-        assert_eq!(pack_blend([0.0; 4], [2.0, 2.0, 2.0]), 0);
+        assert_eq!(pack_blend([1.0, 0.0, 0.0, 0.0]), BLEND_PAINTED, "texture 1 only");
+        let p = pack_blend([0.0, 2.0, 0.5, 0.25]);
+        assert_eq!((p & 1023, (p >> 10) & 1023, (p >> 20) & 1023), (1023, 512, 256), "raw layer amounts, clamped");
+        assert_eq!(p & BLEND_PAINTED, BLEND_PAINTED);
+        assert_eq!(pack_blend([f32::NAN, -1.0, f32::INFINITY, f32::NAN]), BLEND_PAINTED);
+        assert_eq!(pack_blend_vertex(&crate::types::BlendVertex::default()), 0, "unpainted: the vertex alpha blends");
+        assert_eq!(pack_blend_vertex(&crate::types::BlendVertex::painted([0.0, 1.0, 0.0, 0.0])), 1023 | BLEND_PAINTED);
     }
 
     #[test]

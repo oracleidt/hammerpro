@@ -538,7 +538,7 @@ impl SelectTool {
         }
         self.hover.key = Some(key);
         let (o, d) = view.ray(pos);
-        let hit = state.doc.pick_ray(&Ray::new(o, d), &PickOptions::default(), &|e| state.entity_bounds(e));
+        let hit = state.view_pick(&Ray::new(o, d), &PickOptions::default());
         self.hover.objects = hit.map(|h| state.doc.resolve(h.obj, state.select_mode())).unwrap_or_default();
     }
 
@@ -855,8 +855,7 @@ impl SelectTool {
         d.mods = mods;
         let DragOp::Paint { remove, done } = &mut d.op else { return };
         let (o, dir) = view.ray(pos);
-        let Some(hit) = state.doc.pick_ray(&Ray::new(o, dir), &PickOptions::default(), &|e| state.entity_bounds(e))
-        else {
+        let Some(hit) = state.view_pick(&Ray::new(o, dir), &PickOptions::default()) else {
             return;
         };
         if !done.insert(hit.obj) {
@@ -1223,11 +1222,7 @@ impl SelectTool {
             }
             return;
         }
-        let repeat = self
-            .cycle
-            .as_ref()
-            .is_some_and(|c| c.view == view.index && (c.pos - pos).length() <= CYCLE_SLOP && c.candidates == cands);
-        let cycling = repeat && cands.len() > 1;
+        let cycling = cycle_continues(self.cycle.as_ref(), state, view, pos, &cands);
         let index = match (&self.cycle, cycling) {
             (Some(c), true) => (c.index + 1) % cands.len(),
             _ => 0,
@@ -1332,8 +1327,7 @@ impl SelectTool {
                 None => {
                     let (o, d) = view.ray(pos);
                     state
-                        .doc
-                        .pick_ray(&Ray::new(o, d), &PickOptions::default(), &|e| state.entity_bounds(e))
+                        .view_pick(&Ray::new(o, d), &PickOptions::default())
                         .map(|h| state.doc.resolve(h.obj, mode))
                         .unwrap_or_default()
                 }
@@ -1408,10 +1402,7 @@ pub(crate) fn click_select_3d(
         toggle_objects(state, &cands[0]);
         return Pick3d::Toggled;
     }
-    let repeat = cycle
-        .as_ref()
-        .is_some_and(|c| c.view == view.index && (c.pos - pos).length() <= CYCLE_SLOP && c.candidates == cands);
-    let cycling = repeat && cands.len() > 1;
+    let cycling = cycle_continues(cycle.as_ref(), state, view, pos, &cands);
     let index = match (cycle.as_ref(), cycling) {
         (Some(c), true) => (c.index + 1) % cands.len(),
         _ => 0,
@@ -1424,7 +1415,7 @@ pub(crate) fn click_select_3d(
 
 fn candidates_3d(state: &AppState, view: &ViewInfo, pos: Pos2) -> Vec<Vec<ObjRef>> {
     let (o, d) = view.ray(pos);
-    let hits = state.doc.pick_ray_all(&Ray::new(o, d), &PickOptions::default(), &|e| state.entity_bounds(e));
+    let hits = state.view_pick_all(&Ray::new(o, d), &PickOptions::default());
     let mode = state.select_mode();
     let mut cands: Vec<Vec<ObjRef>> = Vec::new();
     for h in hits {
@@ -1474,6 +1465,18 @@ fn snap_reference(state: &AppState, objs: &[ObjRef], bounds: &Aabb) -> DVec3 {
         }
     }
     single_point_entity_origin(state, objs).unwrap_or(bounds.min)
+}
+
+fn cycle_continues(cycle: Option<&ClickCycle>, state: &AppState, view: &ViewInfo, pos: Pos2, cands: &[Vec<ObjRef>]) -> bool {
+    let Some(c) = cycle else { return false };
+    if cands.len() < 2 || c.view != view.index || (c.pos - pos).length() > CYCLE_SLOP || c.candidates != cands {
+        return false;
+    }
+    if !(0.0..=CYCLE_SECONDS).contains(&(state.frame.time - c.time)) {
+        return false;
+    }
+    let sel = &state.doc.selection().objects;
+    c.candidates.get(c.index).is_some_and(|t| t.len() == sel.len() && t.iter().all(|o| sel.contains(o)))
 }
 
 fn exactly_selected(state: &AppState, target: &[ObjRef]) -> bool {

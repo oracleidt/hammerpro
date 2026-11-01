@@ -1,6 +1,6 @@
 use glam::DVec3;
 use hp_app::i18n::TrTable;
-use hp_app::{Action, Severity, ViewKind, t};
+use hp_app::{Action, Severity, ViewKind, t, tf};
 use hp_editor::{AlignMode, Id, ObjRef};
 
 use super::Package;
@@ -34,6 +34,8 @@ const HANDLED: &[Action] = &[
     Action::AlignCenterHorizontal,
     Action::AlignCenterVertical,
     Action::ToggleGizmoLocal,
+    Action::RandomRotate,
+    Action::RandomRotateDialog,
 ];
 
 impl Package for Selection {
@@ -56,6 +58,11 @@ impl Package for Selection {
                 }
             }
             Action::TransformDialog => app.state.ui.show_transform = true,
+            Action::RandomRotate => app.random_rotate(),
+            Action::RandomRotateDialog => {
+                app.state.ui.show_transform = true;
+                app.state.ui.transform_random = true;
+            }
             Action::FlipX => app.flip(0, action),
             Action::FlipY => app.flip(1, action),
             Action::FlipZ => app.flip(2, action),
@@ -92,6 +99,16 @@ impl Package for Selection {
 const TR: TrTable = &[
     ("selpkg.nothing_below", "There is no surface below the selection", "Aucune surface sous la sélection"),
     ("selpkg.nothing_above", "There is no surface above the selection", "Aucune surface au-dessus de la sélection"),
+    (
+        "selpkg.random_rotated",
+        "Random Z rotation: {0} turned, {1} skipped (brushes, brush entities or no angles key)",
+        "Rotation Z aléatoire : {0} tournés, {1} ignorés (brosses, entités de brosses ou sans clé angles)",
+    ),
+    (
+        "selpkg.random_none",
+        "Random Z rotation: nothing selected has an angles key ({0} skipped)",
+        "Rotation Z aléatoire : rien de sélectionné n'a de clé angles ({0} ignorés)",
+    ),
     (
         "selpkg.no_origin",
         "No selected brush entity has an origin to center",
@@ -171,6 +188,23 @@ impl HammerProApp {
         let assets = &state.assets;
         let result = state.doc.align_objects(&others, &reference, axis, mode, false, &|e| assets.entity_bounds(e));
         self.report(action, result);
+    }
+
+    pub(crate) fn random_rotate(&mut self) {
+        if !self.require_selection() {
+            return;
+        }
+        let objs = self.selected();
+        let opts = self.state.settings.selection.random_rotate(hp_app::settings::SelectionSettings::random_seed());
+        let result = self.state.doc.random_rotate(&objs, &opts);
+        if let Some(r) = self.report(Action::RandomRotate, result) {
+            let text = if r.rotated == 0 {
+                tf!("selpkg.random_none", r.skipped)
+            } else {
+                tf!("selpkg.random_rotated", r.rotated, r.skipped)
+            };
+            self.state.notify(Severity::Info, text);
+        }
     }
 
     fn drop_to_surface(&mut self, action: Action) {

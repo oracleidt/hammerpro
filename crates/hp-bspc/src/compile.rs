@@ -234,6 +234,25 @@ fn origin_brush_center(lo: DVec3, hi: DVec3) -> DVec3 {
     DVec3::new(f64::from(c.x.trunc()), f64::from(c.y.trunc()), f64::from(c.z.trunc()))
 }
 
+const PATH_TRAINS: [&str; 3] = ["func_tracktrain", "func_tanktrain", "func_train"];
+
+fn train_origin<'a>(ent: &hp_vmf::Entity, solids: impl Iterator<Item = &'a hp_vmf::Solid>) -> Option<DVec3> {
+    let class = ent.classname.trim();
+    if !PATH_TRAINS.iter().any(|c| c.eq_ignore_ascii_case(class)) || key(ent, "origin").and_then(parse_vec).is_some() {
+        return None;
+    }
+    let (mut lo, mut hi) = (DVec3::splat(f64::MAX), DVec3::splat(f64::MIN));
+    for solid in solids {
+        for s in &solid.sides {
+            for p in s.plane {
+                lo = lo.min(p);
+                hi = hi.max(p);
+            }
+        }
+    }
+    (lo.cmple(hi).all() && lo.is_finite() && hi.is_finite()).then(|| origin_brush_center(lo, hi))
+}
+
 fn detail_blockers(
     planes: &mut PlaneSet,
     brushes: &[MapBrush],
@@ -419,6 +438,14 @@ pub fn compile(
         }
         if let Some(o) = origin_brush.filter(|_| !world_coords) {
             origin = o;
+        } else if !world_coords && let Some(o) = train_origin(ent, list.iter().filter(|(_, o)| !o).map(|(s, _)| *s)) {
+            log(&format!(
+                "Warning: entity {ei} ({class}) has no origin key nor origin brush: its origin is the center of its \
+                 brushes ({} {} {}), where the train meets its path",
+                o.x, o.y, o.z
+            ));
+            origin = o;
+            origin_brush_of[ei] = Some(o);
         }
         if !world_coords {
             origins_of[ei] = Some(origin);
@@ -536,6 +563,7 @@ pub fn compile(
                             } else {
                                 facts.surfaceprop.to_ascii_lowercase()
                             },
+                            four_way: facts.shader.contains("lightmapped_4wayblend"),
                             surfaceprop2: facts.surfaceprop2.map(|s| s.to_ascii_lowercase()),
                         });
                     }
@@ -1919,6 +1947,12 @@ pub fn entities_only_for(
             }
             origins_of[ei] = Some(origin_brush_center(lo, hi));
             origin_brush_of[ei] = origins_of[ei];
+        }
+        if origin_brush_of[ei].is_none()
+            && let Some(o) = train_origin(ent, ent.solids.iter().filter(|s| !is_origin(s)))
+        {
+            origins_of[ei] = Some(o);
+            origin_brush_of[ei] = Some(o);
         }
         let mut planes = PlaneSet::new();
         let mut tex = TexInfos::new();

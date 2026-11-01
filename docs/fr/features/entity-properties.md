@@ -18,7 +18,7 @@ L'onglet **Entité** du panneau de droite, c'est l'Object Properties de Hammer :
 | Élément | Rôle |
 |---|---|
 | Icône du type | Entité ponctuelle, entité brush, sélection mixte ou monde. Sa couleur est celle de la classe dans le FGD. |
-| Bouton de classe | La classe de la sélection (ou « N classes »). Cliquez pour choisir une autre classe dans une liste avec recherche (classes ponctuelles pour les entités ponctuelles, classes brush pour les entités brush). Changer de classe ajoute les clés par défaut manquantes de la nouvelle classe, sur toutes les entités sélectionnées. |
+| Bouton de classe | La classe de la sélection (ou « N classes »). Cliquez pour choisir une autre classe dans une liste avec recherche (classes ponctuelles pour les entités ponctuelles, classes brush pour les entités brush). Changer de classe ajoute les clés par défaut manquantes de la nouvelle classe, sur toutes les entités sélectionnées. Une entité de brush qui prend une classe à clé `origin` (`func_tracktrain`, `func_tanktrain`, `func_rotating`...) sans en avoir reçoit celle du centre de ses brushes, comme dans Hammer. |
 | **?** | Ouvre l'aide de l'entité pour la classe. |
 | **☰** (**Plus**) | Menu avec **Copier les keyvalues**, **Coller les keyvalues** (avec la classe copiée et son nombre de clés), la case **Coller aussi le nom (targetname)**, **Rechercher et remplacer dans les entités...**, **Définir la distance maximale...** et **Aide de l'entité**. |
 | **Entités sélectionnées : N** | Affiché quand plusieurs entités sont modifiées. |

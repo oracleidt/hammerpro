@@ -33,6 +33,7 @@ mod viewport;
 mod visibility;
 mod workflow;
 
+pub use discord::shown_status as discord_shown_status;
 pub use editing::sync_edit_options;
 pub use keyboard::{
     apply_capture, apply_keymap_preset, key_search_id, preset_label_key, reset_all_bindings, set_binding,

@@ -4,6 +4,7 @@ mod decals;
 mod detail;
 mod entities;
 mod envmap;
+mod fog_volumes;
 mod import;
 mod jobs;
 mod lights;
@@ -15,6 +16,7 @@ mod models;
 mod mount;
 pub mod parallax;
 mod particles;
+mod pick;
 mod player;
 mod playworld;
 mod preview;
@@ -164,6 +166,7 @@ pub struct AssetManager {
     pub(crate) particles: particles::ParticleIndex,
     pub(crate) lods: lods::Lods,
     pub(crate) editor_cubes: cubemaps::EditorCubes,
+    pub(crate) pick_meshes: pick::PickMeshes,
 }
 
 impl AssetManager {
@@ -216,6 +219,7 @@ impl AssetManager {
             particles: particles::ParticleIndex::default(),
             lods: lods::Lods::default(),
             editor_cubes: cubemaps::EditorCubes::default(),
+            pick_meshes: pick::PickMeshes::default(),
         };
         m.start_mount(settings);
         m.start_fgd(settings);
@@ -469,6 +473,14 @@ impl hp_app::AssetsApi for AssetManager {
 
     fn entity_bounds(&self, entity: &hp_vmf::Entity) -> Option<hp_geom::Aabb> {
         self.entity_bounds_impl(entity)
+    }
+
+    fn entity_ray(&self, entity: &hp_vmf::Entity, ray: &hp_geom::Ray) -> hp_editor::EntityRay {
+        self.entity_ray_impl(entity, ray)
+    }
+
+    fn material_tool(&self, name: &str) -> Option<hp_vmt::ToolKind> {
+        self.material_tool_impl(name)
     }
 
     fn invalidate_material(&mut self, name: &str) {

@@ -42,6 +42,18 @@ pub fn compile_options_ui() -> Option<CompileOptionsUi> {
     COMPILE_OPTIONS_UI.get().copied()
 }
 
+pub type CompilersUi = fn(&mut egui::Ui, &mut AppState);
+
+static COMPILERS_UI: std::sync::OnceLock<CompilersUi> = std::sync::OnceLock::new();
+
+pub fn set_compilers_ui(ui: CompilersUi) {
+    let _ = COMPILERS_UI.set(ui);
+}
+
+pub fn compilers_ui() -> Option<CompilersUi> {
+    COMPILERS_UI.get().copied()
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StatusSide {
     Left,

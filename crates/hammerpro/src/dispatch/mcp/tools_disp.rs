@@ -21,7 +21,12 @@ domain! { "displacements";
         { "solid_ids": ids("Only the displacements of these solids."), "op": choice("How the selection changes (default replace).", &["replace", "add", "remove", "adjacent"]) }, [];
     get_displacement: Read, "Displacement data",
         "The data of one displacement face: power, row length, start position, elevation, flags, and per vertex \
-        world positions, distances and alphas (row by row).",
+        world positions, distances and alphas (row by row). multiblend holds the 4-way blend rows written by \
+        Hammer++ and CS:GO Hammer and painted with the blend channels (null when the face has none): weights \
+        (the amount of textures 1 to 4 per vertex; the engine lays texture 2, 3 then 4 over texture 1 by the \
+        second, third and fourth value), alphablend and colors (4 lists of RGB, read by the Multiblend shader \
+        only). A Lightmapped_4WayBlend displacement without multiblend shows its vertex alpha as texture 2, in \
+        the editor and in the compiled map.",
         { "face": faces("The face (one item)."), "positions": boolean("Include the world positions (default true).") }, ["face"];
     create_displacements: Edit, "Create displacements",
         "Turn quad faces into flat displacements of power 2, 3 or 4 (default 3).",
@@ -44,8 +49,8 @@ domain! { "displacements";
         }, ["mode", "centers", "radius", "amount"];
     stroke_displacement: Edit, "Brush stroke on displacements",
         "Paint a stroke through world points with the displacement tool's own brush, exactly like a drag in the 3D \
-        view: its mode (geometry, alpha, sculpt), effect, paint axis (normal, subdiv, z, custom, or view: toward \
-        the 3D camera as it is now), radius, intensity (strength), falloff, spatial, line of sight, live sewing \
+        view: its mode (geometry, alpha, sculpt), effect, paint axis (normal, subdiv, z, custom, view: toward \
+        the 3D camera as it is now, or view_flat: toward it on X and Y only, never up or down), radius, intensity (strength), falloff, spatial, line of sight, live sewing \
         (autosew), blend channel and sculpt settings, read and changed with get_tool_options and \
         set_tool_options (tool displacement). Like the tool, only the selected displacements change when some \
         are selected (faces limits it instead), their unselected neighbours are pinned. Each point is one brush \
@@ -94,12 +99,20 @@ domain! { "displacements";
         }, ["tag", "value"];
     set_displacement_data: Edit, "Set displacement data",
         "Set per vertex data of one displacement: distances along the normals (heights) and alphas, row by row \
-        ((2^power + 1) squared values each), and the elevation.",
+        ((2^power + 1) squared values each), the elevation, and the 4-way blend (multiblend) rows of \
+        Lightmapped_4WayBlend materials: multiblend_weights (4 numbers per vertex, the amounts of textures 1 to \
+        4), alphablend (4 per vertex) and multiblend_colors (4 lists of RGB per vertex). Missing multiblend lists \
+        keep their values (a face without multiblend starts from its alphas: texture 2 where painted). \
+        remove_multiblend drops the rows. Written to the VMF like Hammer++ and compiled to the multiblend lump.",
         {
             "face": faces("The face (one item)."),
             "distances": { "type": "array", "items": { "type": "number" }, "maxItems": 289, "description": "Heights per vertex." },
             "alphas": { "type": "array", "items": { "type": "number", "minimum": 0, "maximum": 255 }, "maxItems": 289, "description": "Alphas per vertex (0 to 255)." },
             "elevation": number("Elevation of the whole surface.", -16384.0, 16384.0),
+            "multiblend_weights": { "type": "array", "items": { "type": "array", "items": { "type": "number", "minimum": 0, "maximum": 1 }, "minItems": 4, "maxItems": 4 }, "maxItems": 289, "description": "Amounts of textures 1 to 4 per vertex (0 to 1)." },
+            "alphablend": { "type": "array", "items": { "type": "array", "items": { "type": "number", "minimum": 0, "maximum": 1 }, "minItems": 4, "maxItems": 4 }, "maxItems": 289, "description": "Alpha blend per vertex (4 numbers, 0 to 1)." },
+            "multiblend_colors": { "type": "array", "items": { "type": "array", "items": { "type": "array", "items": { "type": "number", "minimum": 0, "maximum": 4 }, "minItems": 3, "maxItems": 3 }, "maxItems": 289 }, "minItems": 4, "maxItems": 4, "description": "Color of textures 1 to 4 per vertex (4 lists of RGB)." },
+            "remove_multiblend": boolean("Drop the multiblend rows."),
         }, ["face"];
     subdivide_displacements: Edit, "Subdivide displacements",
         "Smooth the surface formed by displacements like a subdivision surface, then sew it (Hammer's Subdivide).",
@@ -221,6 +234,11 @@ fn get_displacement(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
         "removed_triangles": d.triangle_tags.iter().filter(|t| *t & hp_geom::DISP_TAG_FORCE_REMOVE_BIT != 0).count(),
         "distances": d.distances.iter().map(|x| round(*x)).collect::<Vec<_>>(),
         "alphas": d.alphas.iter().map(|x| round(*x)).collect::<Vec<_>>(),
+        "multiblend": hp_vmf::multiblend::MultiBlend::of(d).map(|mb| json!({
+            "weights": mb.weights.iter().map(|w| w.map(round)).collect::<Vec<_>>(),
+            "alphablend": mb.alphas.iter().map(|w| w.map(round)).collect::<Vec<_>>(),
+            "colors": mb.colors.iter().map(|c| c.iter().map(|v| v.map(round)).collect::<Vec<_>>()).collect::<Vec<_>>(),
+        })),
     });
     if with_positions && let Some(m) = node.disp_mesh(f.side) {
         out["positions"] = Value::Array(m.positions.iter().map(|p| v3(*p)).collect());
@@ -465,11 +483,43 @@ fn set_displacement_data(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
             .map(Some)
             .ok_or_else(|| format!("{key} must contain numbers from {lo} to {hi}"))
     };
+    let tuples = |v: &Value, key: &str, per: usize, hi: f64| -> R<Vec<Vec<f64>>> {
+        let list = v.as_array().filter(|l| l.len() == count);
+        let list = list.ok_or_else(|| format!("{key} must have {count} items (power {})", d.power))?;
+        list.iter()
+            .map(|t| {
+                t.as_array()
+                    .filter(|t| t.len() == per)?
+                    .iter()
+                    .map(|x| x.as_f64().filter(|x| x.is_finite() && (0.0..=hi).contains(x)))
+                    .collect::<Option<Vec<f64>>>()
+            })
+            .collect::<Option<Vec<Vec<f64>>>>()
+            .ok_or_else(|| format!("{key} must hold {per} numbers from 0 to {hi} per vertex"))
+    };
     let distances = numbers("distances", -16384.0, 16384.0)?;
     let alphas = numbers("alphas", 0.0, 255.0)?;
     let elevation = a.opt_f64("elevation", -16384.0, 16384.0)?;
-    if distances.is_none() && alphas.is_none() && elevation.is_none() {
-        return Err("give distances, alphas or elevation".to_owned());
+    let weights = a.get("multiblend_weights").map(|v| tuples(v, "multiblend_weights", 4, 1.0)).transpose()?;
+    let alphablend = a.get("alphablend").map(|v| tuples(v, "alphablend", 4, 1.0)).transpose()?;
+    let colors = match a.get("multiblend_colors") {
+        None => None,
+        Some(v) => {
+            let lists = v.as_array().filter(|l| l.len() == hp_vmf::multiblend::CHANNELS);
+            let lists = lists.ok_or("multiblend_colors must hold 4 lists, one per texture")?;
+            Some(lists.iter().map(|l| tuples(l, "multiblend_colors", 3, 4.0)).collect::<R<Vec<_>>>()?)
+        }
+    };
+    let remove = a.opt_bool("remove_multiblend")?.unwrap_or(false);
+    let blend_given = weights.is_some() || alphablend.is_some() || colors.is_some();
+    if remove && blend_given {
+        return Err("remove_multiblend cannot be combined with multiblend data".to_owned());
+    }
+    if distances.is_none() && alphas.is_none() && elevation.is_none() && !blend_given && !remove {
+        return Err("give distances, alphas, elevation, multiblend data or remove_multiblend".to_owned());
+    }
+    if remove && !hp_vmf::multiblend::remove_multiblend(&mut d) {
+        return Err("the displacement has no multiblend rows".to_owned());
     }
     if let Some(x) = distances {
         d.distances = x;
@@ -480,6 +530,25 @@ fn set_displacement_data(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     }
     if let Some(x) = alphas {
         d.alphas = x;
+    }
+    if blend_given {
+        let mut mb = hp_vmf::multiblend::MultiBlend::of_or_alphas(&d)
+            .filter(|m| m.len() == count)
+            .unwrap_or_else(|| hp_vmf::multiblend::MultiBlend::new(count));
+        for (slot, w) in mb.weights.iter_mut().zip(weights.iter().flatten()) {
+            *slot = std::array::from_fn(|k| w[k]);
+        }
+        for (slot, w) in mb.alphas.iter_mut().zip(alphablend.iter().flatten()) {
+            *slot = std::array::from_fn(|k| w[k]);
+        }
+        for (channel, list) in mb.colors.iter_mut().zip(colors.iter().flatten()) {
+            for (slot, c) in channel.iter_mut().zip(list) {
+                *slot = std::array::from_fn(|k| c[k]);
+            }
+        }
+        if !mb.write_to(&mut d) {
+            return Err("the displacement grid does not match its power".to_owned());
+        }
     }
     if let Some(e) = elevation {
         d.elevation = e;
@@ -535,6 +604,38 @@ mod tests {
     use serde_json::json;
 
     use super::super::semantic_tests::{err, ok};
+
+    #[test]
+    fn multiblend_rows_through_mcp() {
+        let mut s = hp_app::testing::test_state();
+        let top = json!([{ "solid": 2, "side": 0 }]);
+        ok(&mut s, "create_displacements", json!({ "faces": top, "power": 2 }));
+        assert_eq!(ok(&mut s, "get_displacement", json!({ "face": top }))["multiblend"], json!(null));
+        let mut alphas = vec![0.0; 25];
+        alphas[1] = 255.0;
+        let mut weights = vec![json!([1, 0, 0, 0]); 25];
+        weights[2] = json!([0, 0, 0.5, 0.5]);
+        ok(&mut s, "set_displacement_data", json!({ "face": top, "alphas": alphas }));
+        ok(&mut s, "set_displacement_data", json!({ "face": top, "multiblend_weights": weights }));
+        let d = ok(&mut s, "get_displacement", json!({ "face": top }));
+        assert_eq!(d["multiblend"]["weights"][2], json!([0.0, 0.0, 0.5, 0.5]));
+        assert_eq!(d["multiblend"]["colors"].as_array().map(Vec::len), Some(4));
+        let colors: Vec<_> = (0..4).map(|k| vec![json!([k, 1, 1]); 25]).collect();
+        ok(&mut s, "set_displacement_data", json!({ "face": top, "multiblend_colors": colors }));
+        let d = ok(&mut s, "get_displacement", json!({ "face": top }));
+        assert_eq!(d["multiblend"]["colors"][3][0], json!([3.0, 1.0, 1.0]));
+        assert_eq!(d["multiblend"]["weights"][2], json!([0.0, 0.0, 0.5, 0.5]), "kept");
+        assert!(s.doc.to_vmf_string().contains("multiblend_color_3"));
+        err(&mut s, "set_displacement_data", json!({ "face": top, "multiblend_weights": [[1, 0, 0, 0]] }));
+        err(&mut s, "set_displacement_data", json!({ "face": top, "multiblend_weights": vec![json!([2, 0, 0, 0]); 25] }));
+        err(&mut s, "set_displacement_data", json!({ "face": top, "remove_multiblend": true, "alphablend": vec![json!([0, 0, 0, 0]); 25] }));
+        ok(&mut s, "set_displacement_data", json!({ "face": top, "remove_multiblend": true }));
+        assert_eq!(ok(&mut s, "get_displacement", json!({ "face": top }))["multiblend"], json!(null));
+        err(&mut s, "set_displacement_data", json!({ "face": top, "remove_multiblend": true }));
+        ok(&mut s, "set_displacement_data", json!({ "face": top, "alphablend": vec![json!([0, 0, 0, 1]); 25] }));
+        let d = ok(&mut s, "get_displacement", json!({ "face": top }));
+        assert_eq!(d["multiblend"]["weights"][1], json!([0.0, 1.0, 0.0, 0.0]), "seeded from the alpha");
+    }
 
     #[test]
     fn displacement_tools() {
@@ -688,6 +789,39 @@ mod tests {
         assert!(!r.is_error);
         let back = positions(&s, 2, 0);
         assert!(before.iter().zip(&back).all(|(a, b)| a.distance(*b) < 1e-6));
+
+        let r = set_tool_options_on(&mut tools, &mut s, hp_app::ToolId::Displacement, &opts(&[("axis", "view_flat")]));
+        assert!(!r.is_error, "{}", r.first_text());
+        let listed = super::super::tools_toolopts::tool_options_json(
+            &tools,
+            hp_app::ToolId::Displacement,
+            Some(hp_app::ToolId::Displacement),
+        )
+        .to_string();
+        assert!(listed.contains("view_flat"), "{listed}");
+        for (yaw, pitch, flat) in
+            [(20.0f64, -30.0, None), (90.0, -90.0, Some(glam::DVec3::NEG_Y)), (0.0, -89.0, Some(glam::DVec3::NEG_X))]
+        {
+            s.cameras.cam3d.yaw_deg = yaw;
+            s.cameras.cam3d.pitch_deg = pitch;
+            let f = s.cameras.cam3d.forward();
+            let flat = flat.unwrap_or_else(|| glam::DVec3::new(-f.x, -f.y, 0.0).normalize());
+            let before = positions(&s, 2, 0);
+            let st = stroke(&s, vec![[-128.0, 0.0, 0.0]], json!({ "seconds_per_sample": 0.1 }));
+            let r = super::run_stroke(&mut tools, &mut s, &st);
+            assert!(!r.is_error, "{}", r.first_text());
+            let after = positions(&s, 2, 0);
+            let moved: Vec<glam::DVec3> =
+                before.iter().zip(&after).map(|(a, b)| *b - *a).filter(|d| d.length() > 1e-6).collect();
+            assert!(!moved.is_empty(), "pitch {pitch}");
+            for d in &moved {
+                assert!(d.z.abs() < 1e-6, "pitch {pitch}: {d} goes up or down");
+                assert!(d.normalize().dot(flat) > 0.999, "pitch {pitch}: {d} vs {flat}");
+            }
+            ok(&mut s, "undo", json!({}));
+        }
+        s.cameras.cam3d.yaw_deg = 20.0;
+        s.cameras.cam3d.pitch_deg = -30.0;
 
         set_tool_options_on(
             &mut tools,

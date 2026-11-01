@@ -93,7 +93,11 @@ impl Background {
 
     fn enabled(&mut self, state: &AppState) -> bool {
         let s = &state.settings.compile;
-        if !s.background_precompile || !s.low_priority || state.assets.status() != AssetStatus::Ready {
+        if !s.background_precompile
+            || !s.low_priority
+            || !s.uses_builtin_compiler()
+            || state.assets.status() != AssetStatus::Ready
+        {
             return false;
         }
         if self.power_checked.is_none_or(|t| t.elapsed() > POWER_CHECK) {

@@ -47,7 +47,7 @@ Les données d'éditeur qui n'ont pas leur place dans le VMF sont gardées par m
 | `workflow` | La taille exacte de la grille (le VMF ne stocke qu'un nombre entier pour Hammer). |
 | `game` | Le jeu de la map (voir [Porter une map vers un autre jeu](../guides/port-to-another-game.md)). |
 | `compile` | La dernière compilation réussie de chaque build de la map, pour les recompilations intelligentes. |
-| `content` | Les options de Construire et enregistrer en contenu : titre de l'addon, tags, liste d'exclusions, description, dossier de sortie, identifiant Workshop, dernière note de mise à jour, résumé de la dernière version, empreintes du nav mesh et des cubemaps, et le sel secret du randomiseur de matériaux de BSP Protection Pro. |
+| `content` | Les options de Construire et enregistrer en contenu : titre de l'addon, tags, liste d'exclusions, description, dossier de sortie, identifiant Workshop, dernière note de mise à jour, résumé de la dernière version, empreintes du nav mesh et des cubemaps, et le sel secret du randomiseur de matériaux de Protect your BSP. |
 | `health_ignored` | Les problèmes que vous avez choisi d'ignorer. |
 | `placement` | Le compteur du jeton de prefab `&i`. |
 | `startup_export` | Le dernier export, pour "Exporter à nouveau". |

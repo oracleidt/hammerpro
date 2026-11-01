@@ -30,7 +30,7 @@ Points are named from the base name: `path` gives `path_1`, `path_2`... Each poi
 
 ## Editing existing paths
 
-While the tool is active, every chain of the map is drawn with direction arrows. The chains of the selection and of the path being drawn are highlighted with the point names. Branch links (`altpath` of `path_track`) are drawn in another color.
+With any tool, the links of the path entities whose FGD class has a `line()` or `cylinder()` helper (`path_track`, `path_corner`...) are drawn for every visible entity in the 2D and 3D views, selected or not, like Hammer; a `cylinder()` helper also draws the `radius` circle of each node at that node. While the tool is active, every chain of the map is drawn with direction arrows. The chains of the selection and of the path being drawn are highlighted with the point names. Branch links (`altpath` of `path_track`) are drawn in another color.
 
 | Gesture | What it does |
 | --- | --- |

@@ -142,6 +142,20 @@ fn steam_url_of(p: &hp_fs::GameProfile) -> String {
     }
 }
 
+fn game_lighting(s: &CompileSettings, profile: Option<&hp_fs::GameProfile>) -> Lighting {
+    let lighting = lighting_of(s.lighting);
+    if profile.is_some_and(|p| p.lighting == hp_fs::LightingPasses::HdrOnly) && lighting == Lighting::Ldr {
+        return Lighting::Hdr;
+    }
+    lighting
+}
+
+pub(crate) fn effective_lighting(s: &CompileSettings) -> Lighting {
+    let target = s.target.as_deref().filter(|t| !t.eq_ignore_ascii_case(hp_fs::GMOD_ID));
+    let profile = target.and_then(|t| hp_fs::resolve_game(t, s.target_dir.as_deref()));
+    game_lighting(s, profile.as_ref())
+}
+
 pub(crate) fn plan_options(
     s: &CompileSettings,
     game_folder: &str,
@@ -151,10 +165,7 @@ pub(crate) fn plan_options(
     let target = s.target.clone().filter(|t| !t.eq_ignore_ascii_case(hp_fs::GMOD_ID));
     let profile = target.as_deref().and_then(|t| hp_fs::resolve_game(t, s.target_dir.as_deref()));
     let installed = profile.as_ref().is_none_or(|p| p.installed);
-    let mut lighting = lighting_of(s.lighting);
-    if profile.as_ref().is_some_and(|p| p.lighting == hp_fs::LightingPasses::HdrOnly) && lighting == Lighting::Ldr {
-        lighting = Lighting::Hdr;
-    }
+    let lighting = game_lighting(s, profile.as_ref());
     PlanOptions {
         lighting,
         threads: threads_of(s),
@@ -327,11 +338,31 @@ pub(crate) fn prepare(input: PrepInput) -> PrepOutput {
         }
     }
 
+    let external = match super::compilers::choice(s, &tools) {
+        super::compilers::Choice::Builtin => None,
+        super::compilers::Choice::External(p) => Some(p),
+        super::compilers::Choice::Missing(id) => {
+            messages.push((LogSeverity::Warning, tf!("compilers.missing_choice", id)));
+            None
+        }
+    };
     let extras = PlanExtras { content_args: content_args(input.fs.as_ref()), ..PlanExtras::default() };
     match build_plan_with(s, &tools, &input.vmf, pack_files, compile_game_dir, extras) {
-        Ok(plan) => {
+        Ok(mut plan) => {
             if plan.enabled_steps().next().is_none() {
                 return fail(messages, t!("compile.err_no_steps").to_owned());
+            }
+            if let Some(profile) = &external {
+                match super::compilers::fix_instances_in_file(&plan.vmf_path) {
+                    Ok(0) => {}
+                    Ok(n) => messages.push((LogSeverity::Info, tf!("compilers.instances_fixed", n))),
+                    Err(e) => return fail(messages, e),
+                }
+                plan = match super::compilers::external_plan(plan, profile, s, &tools, effective_lighting(s)) {
+                    Ok(p) => p,
+                    Err(e) => return fail(messages, e),
+                };
+                messages.push((LogSeverity::Info, tf!("compilers.running", super::compilers::display_name(profile))));
             }
             let workdir = work_dir(&plan.vmf_path);
             PrepOutput { result: Ok((plan, workdir)), messages }
@@ -606,6 +637,37 @@ mod tests {
         )
         .expect("mount");
         assert!(content_args(Some(&plain)).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_compile_mounts_the_steam_games_added_by_app_id() {
+        let dir = crate::test_scratch("content_app_ids");
+        let root = dir.join("GarrysMod");
+        std::fs::create_dir_all(root.join("garrysmod")).expect("gmod");
+        let steamapps = dir.join("lib/steamapps");
+        let css = steamapps.join("common/Counter-Strike Source/cstrike");
+        std::fs::create_dir_all(css.join("materials")).expect("css");
+        std::fs::write(
+            css.join("gameinfo.txt"),
+            "\"GameInfo\" { game \"CSS\" FileSystem { SteamAppId 240 SearchPaths { game |gameinfo_path|. } } }",
+        )
+        .expect("gameinfo");
+        std::fs::write(
+            steamapps.join("appmanifest_240.acf"),
+            "\"AppState\" { \"appid\" \"240\" \"installdir\" \"Counter-Strike Source\" }",
+        )
+        .expect("manifest");
+        let opts = hp_fs::MountOptions {
+            mount_workshop: false,
+            app_ids: vec![240],
+            steam_libraries: vec![dir.join("lib")],
+            ..hp_fs::MountOptions::default()
+        };
+        let fs = hp_fs::GameFs::for_gmod(&root, &opts).expect("mount");
+        let args = content_args(Some(&fs));
+        let pos = args.iter().position(|a| a == "-insert_search_path").expect("search path");
+        assert_eq!(Path::new(&args[pos + 1]), css.as_path(), "{args:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

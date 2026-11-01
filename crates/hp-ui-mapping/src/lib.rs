@@ -18,7 +18,9 @@ pub mod propper;
 pub mod release;
 
 pub use compile::{
-    CompileDialog, compile_content_args, compile_options_ui, effective_step_flags, viewport_id as compile_viewport_id,
+    CompileDialog, compile_content_args, compile_options_ui, compiler_commands, compiler_list, compiler_name,
+    compiler_problems, compiler_tools, compilers_settings_ui, effective_step_flags, valve_flag_text, valve_group_text,
+    valve_managed_text, viewport_id as compile_viewport_id,
 };
 pub use dialogs::{MapDialogs, go_to_leak_start};
 pub use outliner::Outliner;

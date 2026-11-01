@@ -10,7 +10,6 @@ use hp_render::{Environment, Fog, ModelId, Renderer, Sky3d, SkyView, TexId};
 use crate::AssetManager;
 use crate::material::MatKind;
 use crate::producer::DerivedProducer;
-use crate::util::parse_floats;
 
 pub(crate) fn producers() -> Vec<Box<dyn DerivedProducer>> {
     Vec::new()
@@ -37,6 +36,7 @@ pub(crate) struct EnvState {
     pub chosen_camera: Option<Id>,
     pub hdr_sky: HdrSkyState,
     pub compiled_sky: Vec<u32>,
+    pub fog_volumes_on: Option<bool>,
 }
 
 #[derive(Default)]
@@ -140,37 +140,18 @@ pub(crate) fn find_shown_room(doc: &Document, chosen: Option<Id>) -> Option<SkyR
     })
 }
 
-fn color_key(e: &hp_vmf::Entity, key: &str, fallback: [f32; 3]) -> [f32; 3] {
-    match e.get(key).map(parse_floats::<3>) {
-        Some((c, 3)) => c.map(|v| (v / 255.0).clamp(0.0, 1.0) as f32),
-        _ => fallback,
-    }
-}
-
 pub(crate) fn fog_of(doc: &Document, id: Id) -> Option<Fog> {
+    use crate::fog_volumes::is_fog_controller;
     let scene = doc.scene();
-    let is_fog = |e: &hp_vmf::Entity| e.classname.eq_ignore_ascii_case("env_fog_controller");
-    let chosen = scene.entity(id).filter(|n| is_fog(&n.entity)).map(|n| &n.entity).or_else(|| {
-        scene.entities().iter().filter(|(_, n)| is_fog(&n.entity)).min_by_key(|(id, _)| **id).map(|(_, n)| &n.entity)
+    let chosen = scene.entity(id).filter(|n| is_fog_controller(&n.entity.classname)).map(|n| &n.entity).or_else(|| {
+        scene
+            .entities()
+            .iter()
+            .filter(|(_, n)| is_fog_controller(&n.entity.classname))
+            .min_by_key(|(id, _)| **id)
+            .map(|(_, n)| &n.entity)
     })?;
-    let num = |key: &str, fallback: f32| {
-        chosen.get(key).and_then(|s| s.trim().parse::<f32>().ok()).filter(|v| v.is_finite()).unwrap_or(fallback)
-    };
-    let color = color_key(chosen, "fogcolor", [1.0; 3]);
-    let dir = match chosen.get("fogdir").map(parse_floats::<3>) {
-        Some((d, 3)) => d.map(|v| v as f32),
-        _ => [1.0, 0.0, 0.0],
-    };
-    let start = num("fogstart", 0.0).max(0.0);
-    Some(Fog {
-        color,
-        color2: color_key(chosen, "fogcolor2", color),
-        dir,
-        blend: num("fogblend", 0.0) != 0.0,
-        start,
-        end: num("fogend", 4096.0).max(start + 1.0),
-        max_density: num("fogmaxdensity", 1.0).clamp(0.0, 1.0),
-    })
+    Some(crate::fog_volumes::controller_fog(chosen))
 }
 
 impl AssetManager {

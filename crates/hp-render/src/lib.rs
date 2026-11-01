@@ -6,6 +6,7 @@ mod compiled_light;
 mod cubemaps;
 mod detail_sprites;
 mod extra_passes;
+mod fog_volume;
 mod gamewire;
 mod gpu;
 pub mod hooks;
@@ -258,6 +259,8 @@ pub struct Renderer {
     bg_pipes: Option<bgimages::BgPipelines>,
     bg_images: Vec<bgimages::BgImageGpu>,
     water: Option<water::WaterState>,
+    fog_volumes: Vec<FogVolume>,
+    fog_volume_gpu: Option<fog_volume::FogVolumeState>,
     game_outlines: Option<gamewire::OutlineCache>,
     detail: detail_sprites::DetailSprites,
     particles: particles::Particles,
@@ -353,7 +356,27 @@ fn material_uniform(desc: Option<&MaterialDesc>, env_cube: u32) -> MaterialUnifo
         }),
         bump_layers: d.bump.and_then(|b| b.blend4).map_or(0, pack_bump_layers),
         self_illum: self_illum_uniform(d.self_illum.as_ref()),
-        ..env_uniform(d, env_cube)
+        ..four_way_uniform(d.four_way.as_ref(), env_uniform(d, env_cube))
+    }
+}
+
+fn four_way_uniform(f: Option<&FourWayDesc>, base: MaterialUniform) -> MaterialUniform {
+    let f = f.copied().unwrap_or_default();
+    let unit = |v: f32, default: f32| if v.is_finite() { v.clamp(-4.0, 4.0) } else { default };
+    let scale = |v: f32| if v.is_finite() && v.abs() > 1e-4 { v.clamp(-1e4, 1e4) } else { 1.0 };
+    let uv = |a: usize, b: usize| {
+        [scale(f.uv_scale[a][0]), scale(f.uv_scale[a][1]), scale(f.uv_scale[b][0]), scale(f.uv_scale[b][1])]
+    };
+    MaterialUniform {
+        fw_lum_start: f.lum.map(|r| unit(r[0], 0.0)),
+        fw_lum_end: f.lum.map(|r| unit(r[1], 1.0)),
+        fw_blend_start: f.blend.map(|r| unit(r[0], 0.0)),
+        fw_blend_end: f.blend.map(|r| unit(r[1], 1.0)),
+        fw_lum_factor: f.lum_blend_factor.map(|v| unit(v, 0.0)),
+        fw_mod2x: f.modulate_2x.map(|m| if m { 1.0 } else { 0.0 }),
+        fw_uv12: uv(0, 1),
+        fw_uv34: uv(2, 3),
+        ..base
     }
 }
 
@@ -781,6 +804,8 @@ impl Renderer {
             bg_pipes: None,
             bg_images: Vec::new(),
             water: None,
+            fog_volumes: Vec::new(),
+            fog_volume_gpu: None,
             game_outlines: None,
             detail: detail_sprites::DetailSprites::default(),
             particles: particles::Particles::default(),
@@ -1763,7 +1788,16 @@ impl Renderer {
             None => ([0; 4], [1.0, 2.0, 0.0, 0.0]),
         };
         let lit = params.mode == RenderMode::Lit && !cam.is_ortho;
-        let mut o = options_uniform(cam, opts, &self.environment, sky_pass);
+        let mut env = self.environment;
+        let mut fog_opts = *opts;
+        if opts.fog_volume_inside
+            && !cam.is_ortho
+            && let Some(v) = fog_volume::inside_volume(&self.fog_volumes, cam.eye.to_array())
+        {
+            env.fog = v.fog;
+            fog_opts.show_fog = true;
+        }
+        let mut o = options_uniform(cam, &fog_opts, &env, sky_pass);
         if !cam.is_ortho
             && params.mode == RenderMode::Flat
             && self.lightmap_display() == lightmap::LightmapDisplay::Grid
@@ -1949,6 +1983,7 @@ impl Renderer {
         let layout = self.upload_overlay(view_id, overlay);
         self.ensure_view_bind_group(view_id);
         let water_frame = self.prepare_water(view_id, &cam, &params, &opts);
+        let fog_frame = self.prepare_fog_volumes(view_id, &cam, &params, &opts);
         if sky_cam.is_some() {
             self.ensure_sky_pass(view_id);
         }
@@ -2081,7 +2116,7 @@ impl Renderer {
                 sky_drawn = true;
             }
             let two_phase = occ_args.is_some();
-            let split = water_frame.is_some() && !cam.is_ortho;
+            let split = (water_frame.is_some() || fog_frame.is_some()) && !cam.is_ortho;
             {
                 let (resolve_now, color_store, depth_store) = if two_phase {
                     (None, wgpu::StoreOp::Store, wgpu::StoreOp::Store)
@@ -2160,8 +2195,11 @@ impl Renderer {
                     ctx.record_3d_rest(&mut pass, &lists, Some((&cands[..], args)), &mut counter);
                 }
             }
-            if let Some(frame) = water_frame.as_ref().filter(|_| split) {
-                ctx.record_water(&mut enc, frame, view_id, &lists, &mut counter);
+            if split {
+                ctx.record_water(&mut enc, water_frame.as_ref(), view_id, &lists, fog_frame.is_some(), &mut counter);
+            }
+            if let Some(frame) = fog_frame.as_ref().filter(|_| split) {
+                ctx.record_fog_volumes(&mut enc, frame, view_id, &mut counter);
             }
             for h in hooks.iter_mut() {
                 h.finish(&hook_cx, &mut enc);
@@ -2353,6 +2391,7 @@ impl Renderer {
         self.views.remove(&view_id);
         self.retained.remove(&view_id);
         self.forget_water_view(view_id);
+        self.forget_fog_volume_view(view_id);
     }
 
     pub fn snapshot_view(&self, view_id: u32) -> Option<(wgpu::Texture, wgpu::TextureView)> {
@@ -3588,6 +3627,28 @@ mod tests {
         );
         assert_eq!(plain.bump_flags, BUMP_ON);
         assert_eq!(plain.bump_layers, 0);
+    }
+
+    #[test]
+    fn four_way_blend_parameters_reach_the_uniform() {
+        let f = FourWayDesc {
+            lum: [[0.1, 0.5], [f32::NAN, 0.2], [0.0, 1.0], [9.0, 0.0]],
+            blend: [[0.0, 1.0], [0.8, 0.9], [0.75, 1.0], [0.9, f32::INFINITY]],
+            lum_blend_factor: [0.0, 0.5, 0.7, 1.0],
+            uv_scale: [[1.0, 1.0], [2.0, 3.0], [0.0, f32::NAN], [0.5, 0.5]],
+            modulate_2x: [false, true, false, false],
+        };
+        let u = material_uniform(Some(&MaterialDesc { four_way: Some(f), ..Default::default() }), u32::MAX);
+        assert_eq!(u.fw_lum_start, [0.1, 0.0, 0.0, 4.0]);
+        assert_eq!(u.fw_lum_end, [0.5, 0.2, 1.0, 0.0]);
+        assert_eq!(u.fw_blend_start, [0.0, 0.8, 0.75, 0.9]);
+        assert_eq!(u.fw_blend_end, [1.0, 0.9, 1.0, 1.0]);
+        assert_eq!(u.fw_lum_factor, [0.0, 0.5, 0.7, 1.0]);
+        assert_eq!(u.fw_mod2x, [0.0, 1.0, 0.0, 0.0]);
+        assert_eq!(u.fw_uv12, [1.0, 1.0, 2.0, 3.0]);
+        assert_eq!(u.fw_uv34, [1.0, 1.0, 0.5, 0.5]);
+        let plain = material_uniform(Some(&MaterialDesc::default()), u32::MAX);
+        assert_eq!((plain.fw_lum_end, plain.fw_uv12), ([1.0; 4], [1.0; 4]), "defaults when the shader has none");
     }
 
     #[test]

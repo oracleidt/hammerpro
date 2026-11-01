@@ -229,6 +229,7 @@ fn read_world(bsp: &hp_bsp::Bsp, vis: Option<&BspVis>, leaf_version: u32) -> Opt
     let (string_table, string_data) = (lump(world::lump::TEXDATA_STRING_TABLE), lump(world::lump::TEXDATA_STRING_DATA));
     let (models, leafs, leaf_faces) = (lump(lump::MODELS), lump(lump::LEAFS), lump(lump::LEAF_FACES));
     let (dispinfo, disp_verts) = (lump(lump::DISPINFO), lump(world::lump::DISP_VERTS));
+    let disp_multiblend = lump(world::lump::DISP_MULTIBLEND);
     let (ldr, hdr) = (lump(world_light::lump::LIGHTING), lump(world_light::lump::LIGHTING_HDR));
     let hdr_faces = lump(world_light::lump::FACES_HDR);
     let (mode, lighting, light_faces) = if !hdr.is_empty() && hdr_faces.len() == faces.len() {
@@ -283,6 +284,7 @@ fn read_world(bsp: &hp_bsp::Bsp, vis: Option<&BspVis>, leaf_version: u32) -> Opt
         leaf_faces: &leaf_faces,
         dispinfo: &dispinfo,
         disp_verts: &disp_verts,
+        disp_multiblend: &disp_multiblend,
         lighting: &lighting,
         light_faces: &light_faces,
         light_mode: mode,

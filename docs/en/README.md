@@ -2,7 +2,7 @@
 
 # Hammer Pro documentation
 
-Welcome to the knowledge base of Hammer Pro 1.0.0, the level editor for Source engine maps built for Garry's Mod first. Every feature has its own page: what it is, how to open it, every option with its default, tips and a short FAQ. Pages link to each other, so start anywhere.
+Welcome to the knowledge base of Hammer Pro 1.0.1, the level editor for Source engine maps built for Garry's Mod first. Every feature has its own page: what it is, how to open it, every option with its default, tips and a short FAQ. Pages link to each other, so start anywhere.
 
 New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game setup](getting-started/game-setup.md) and [Your first map](getting-started/first-map.md), in that order.
 
@@ -26,7 +26,9 @@ New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game s
 | [Camera and navigation](features/camera-navigation.md) | Flying the 3D camera, keyboard layouts, mouselook, camera tool, 2D pan and zoom, control schemes. |
 | [Block tool](features/block-tool.md) | Brushes and every primitive with its options. |
 | [Polygon tool](features/polygon-tool.md) | Convex brushes from an outline clicked point by point. |
+| [Curve tool](features/curve-tool.md) | Curved walls and rails: box brushes with mitred joints along a stroke drawn in a 2D view. |
 | [Clip tool](features/clip-tool.md) | Cutting brushes with a plane. |
+| [Extrude / carve tool](features/extrude-tool.md) | Outlines clicked on a face, carved into the brush (recess or opening) or extruded out of it. |
 | [Vertex tool](features/vertex-tool.md) | Moving, merging, splitting and scaling vertices. |
 | [Displacement tool](features/displacement-tool.md) | Creating, sculpting, painting alpha, tags, sewing, noise. |
 | [Brush operations](features/brush-operations.md) | Carve, hollow, merge, tie to entity, func_detail, nodraw, hint brushes, texture lock. |
@@ -105,7 +107,7 @@ New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game s
 | [Game launch](features/game-launch.md) | Running and reloading the map in game, fast start options, the bridge addon. |
 | [Map assets](features/map-assets.md) | Every file the map uses, where it comes from, collecting it. |
 | [Build and save as content](features/build-content-release.md) | Release window, checklist, addon, Workshop publishing. |
-| [BSP Protection Pro](features/bsp-protection.md) | Shipping a protected copy of the map, server lock. |
+| [Protect your BSP](features/bsp-protection.md) | Shipping a protected copy of the map, server lock. |
 
 ### The application
 
@@ -127,6 +129,7 @@ New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game s
 | [The built in compiler](compiler/overview.md) | Geometry, visibility and lighting, and how they differ from VBSP, VVIS and VRAD. |
 | [Compile and run window](compiler/compile-window.md) | Presets, steps, options, expert mode, batch compile, history and statistics. |
 | [Compile options](compiler/compile-options.md) | Every compile flag with its effect and default. |
+| [Choosing a compiler](compiler/compilers.md) | Valve's vbsp, vvis and vrad or your own programs instead of the built in compiler, with every option. |
 | [Compiler command line](compiler/command-line.md) | `hammerpro --bspc` and `hammerpro --rad`, every argument. |
 | [Worldspawn and light keys](compiler/worldspawn-keys.md) | Ambient occlusion keys, `_lightsrad` and the other keys the compiler reads. |
 | [Target games](compiler/target-games.md) | Supported Source games and engine branches. |

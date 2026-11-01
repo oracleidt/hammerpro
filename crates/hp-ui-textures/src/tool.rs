@@ -22,7 +22,7 @@ pub fn pick_face(state: &AppState, view: &ViewInfo, pos: egui::Pos2) -> Option<F
     let (origin, dir) = view.ray(pos);
     let ray = Ray::new(origin, dir);
     let opts = PickOptions { include_entities: false, ..PickOptions::default() };
-    let hit = state.doc.pick_ray(&ray, &opts, &|e| state.assets.entity_bounds(e))?;
+    let hit = state.view_pick(&ray, &opts)?;
     match (hit.obj, hit.face) {
         (ObjRef::Solid(id), Some(side)) => Some(FaceRef::new(id, side)),
         _ => None,

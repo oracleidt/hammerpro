@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use hp_app::runtime::DiscordStatus;
 use hp_app::{AppState, t};
-use hp_discord::{Presence, Privacy, Status, Texts, Wanted};
+use hp_discord::{Link, Presence, Privacy, Status, Texts, Wanted};
 
 const REFRESH: Duration = Duration::from_millis(500);
 const MAX_MAPS: usize = 64;
@@ -18,8 +19,9 @@ impl DiscordPresence {
         Self { presence: active.then(Presence::discord), last_check: None, opened: HashMap::new() }
     }
 
-    pub fn tick(&mut self, state: &AppState) {
+    pub fn tick(&mut self, state: &mut AppState) {
         let Some(presence) = self.presence.as_mut() else {
+            state.runtime.discord.status = DiscordStatus::Off;
             return;
         };
         if self.last_check.is_some_and(|t| t.elapsed() < REFRESH) {
@@ -27,10 +29,27 @@ impl DiscordPresence {
         }
         self.last_check = Some(Instant::now());
         let s = &state.settings.discord;
-        let Some(id) = hp_discord::application_id(&s.application_id).filter(|_| s.enabled) else {
-            presence.set(Wanted::default());
-            return;
+        let rt = &mut state.runtime.discord;
+        rt.builtin_id = s.application_id.trim().is_empty() && !hp_discord::DEFAULT_APPLICATION_ID.is_empty();
+        let id = hp_discord::application_id(&s.application_id);
+        rt.application_id = id.unwrap_or_default().to_owned();
+        let blocked = if !s.enabled {
+            Some(DiscordStatus::Disabled)
+        } else if id.is_none() && s.application_id.trim().is_empty() {
+            Some(DiscordStatus::NoApplicationId)
+        } else if id.is_none() {
+            Some(DiscordStatus::BadApplicationId)
+        } else {
+            None
         };
+        if let Some(status) = blocked {
+            presence.set(Wanted::default());
+            rt.status = status;
+            rt.activity_details = None;
+            rt.activity_state = None;
+            return;
+        }
+        let id = id.unwrap_or_default().to_owned();
         let doc = &state.doc;
         let map = (doc.path().is_some() || doc.manifest().is_some() || doc.is_dirty())
             .then(|| crate::files::map_display_name(state));
@@ -62,6 +81,19 @@ impl DiscordPresence {
             button: t!("shell.discord.activity_button"),
         };
         let activity = hp_discord::build_activity(&status, privacy, &texts);
-        presence.set(Wanted { client_id: id.to_owned(), activity: Some(activity) });
+        let rt = &mut state.runtime.discord;
+        rt.activity_details = Some(activity.details.clone());
+        rt.activity_state = Some(activity.state.clone());
+        presence.set(Wanted { client_id: id, activity: Some(activity) });
+        rt.status = status_of(presence.link());
+    }
+}
+
+pub fn status_of(link: Link) -> DiscordStatus {
+    match link {
+        Link::Idle | Link::Connecting => DiscordStatus::Connecting,
+        Link::NotRunning => DiscordStatus::NotRunning,
+        Link::Connected => DiscordStatus::Connected,
+        Link::Refused(why) => DiscordStatus::Refused(why),
     }
 }

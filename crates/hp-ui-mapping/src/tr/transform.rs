@@ -30,4 +30,36 @@ pub const TR: TrTable = &[
     ("transform.failed", "Transform failed: {0}", "La transformation a échoué : {0}"),
     ("transform.err_invalid", "Invalid values", "Valeurs invalides"),
     ("transform.err_zero_scale", "Scale factors cannot be zero", "Les facteurs d'échelle ne peuvent pas être nuls"),
+    ("transform.random", "Random Z", "Z aléatoire"),
+    (
+        "transform.random_tip",
+        "Turn each selected prop or point entity with an angles key by its own random yaw",
+        "Tourne chaque prop ou entité ponctuelle sélectionnée ayant une clé angles d'un lacet aléatoire qui lui est propre",
+    ),
+    ("transform.random_range", "Yaw range", "Plage de lacet"),
+    ("transform.random_to", "to", "à"),
+    ("transform.random_snap", "Snap step", "Pas d'arrondi"),
+    ("transform.random_free", "Free", "Libre"),
+    ("transform.random_snap_tip", "0: any angle", "0 : n'importe quel angle"),
+    ("transform.random_tilt", "Pitch and roll jitter", "Variation de tangage et roulis"),
+    (
+        "transform.random_tilt_tip",
+        "Also tilt each object a little, up to this many degrees",
+        "Incline aussi un peu chaque objet, jusqu'à ce nombre de degrés",
+    ),
+    (
+        "transform.random_note",
+        "Each object turns around its own origin, in one undo step. Brushes, brush entities and entities without an angles key are skipped.",
+        "Chaque objet tourne autour de sa propre origine, en une seule étape d'annulation. Les brosses, les entités de brosses et les entités sans clé angles sont ignorées.",
+    ),
+    (
+        "transform.random_done",
+        "{0} turned, {1} skipped (brushes, brush entities or no angles key)",
+        "{0} tournés, {1} ignorés (brosses, entités de brosses ou sans clé angles)",
+    ),
+    (
+        "transform.random_none",
+        "Nothing selected has an angles key ({0} skipped)",
+        "Rien de sélectionné n'a de clé angles ({0} ignorés)",
+    ),
 ];

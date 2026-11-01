@@ -91,6 +91,7 @@ pub(crate) fn run(
         args,
         continue_on_error: false,
         action: StepAction::Run,
+        workdir: None,
     });
     let handle = hp_compile::start(plan, &workdir);
     let mut output = String::new();

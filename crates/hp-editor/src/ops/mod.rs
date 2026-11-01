@@ -2,6 +2,7 @@ mod create;
 mod csg;
 mod disp;
 mod entity;
+mod extrude;
 mod group;
 mod material;
 mod transform;
@@ -10,12 +11,14 @@ mod find_replace;
 mod instance;
 mod origins;
 mod path_nodes;
+mod random_rotate;
 mod visgroup;
 
 pub use csg::ClipKeep;
 pub use entity::EntityQuery;
 pub use find_replace::{ConnPart, MAX_TEXT_LEN, TextField, TextMatch, TextQuery, find_ranges};
 pub use material::{FaceEdit, ReplaceScope};
+pub use random_rotate::{MAX_JITTER_DEG, RandomRotate, RandomRotateReport};
 pub use transform::AlignMode;
 
 pub(crate) use create::Fragment;

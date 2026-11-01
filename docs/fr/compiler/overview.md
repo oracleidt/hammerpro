@@ -2,7 +2,7 @@
 
 # Le compilateur intégré
 
-Hammer Pro compile lui-même les maps. La géométrie, les portails, la recherche de fuites et la visibilité sont construits par `hammerpro --bspc`, l'éclairage par `hammerpro --rad`, et l'empaquetage du contenu personnalisé, la copie vers le jeu et le lancement tournent dans l'éditeur. Pas besoin de VBSP, VVIS, VRAD ni bspzip, et aucun chemin de compilateur à régler.
+Hammer Pro compile lui-même les maps. La géométrie, les portails, la recherche de fuites et la visibilité sont construits par `hammerpro --bspc`, l'éclairage par `hammerpro --rad`, et l'empaquetage du contenu personnalisé, la copie vers le jeu et le lancement tournent dans l'éditeur. Pas besoin de VBSP, VVIS, VRAD ni bspzip, et aucun chemin de compilateur à régler. C'est le compilateur par défaut ; les outils de Valve trouvés à côté du jeu, ou vos propres programmes, peuvent être choisis à la place pour chaque jeu (voir [Choisir un compilateur](compilers.md)).
 
 ## Les étapes
 
@@ -51,6 +51,8 @@ Ce que le code et ses commentaires indiquent :
 - **Des ajouts.** L'occlusion ambiante (`-ao`, active par défaut en Normal et Final), `-nostaticpropshadows`, `-nodispshadows`, `-wsaddons`, `-serveraddons`, `-blocksize`, `-propdebug` (VBSP n'a pas de rapport sur les props), des statistiques et des conseils d'optimisation en fin de journal, et une vérification de chaque BSP écrit (chaque index dans son lump, chaque compte sous les limites du moteur) : une map qui passe se charge.
 - **Le contenu de l'éditeur.** La compilation monte les mêmes sources de contenu que l'éditeur (objets du Workshop, téléchargements des serveurs), donc un matériau visible dans l'éditeur n'est jamais compilé comme manquant.
 - **D'autres jeux.** Un seul compilateur écrit les formats BSP de plusieurs branches de Source (`-target`), voir [Jeux cibles](target-games.md).
+- **Les trains sans origine.** Un `func_tracktrain`, `func_tanktrain` ou `func_train` sans clé `origin` ni brush d'origine reçoit le centre de ses brushes comme origine, avec un avertissement dans le journal (`has no origin key nor origin brush`). VBSP laisse un tel train à l'origine du monde, et le jeu le dessine alors loin de son chemin. Les maps enregistrées par Hammer ont toujours la clé.
+- **Mélanges à 4 textures.** Les rangées de mélange à 4 textures des displacements (`multiblend`, `alphablend`, `multiblend_color_N` de Hammer++) vont dans le lump multiblend des displacements (63) avec le drapeau multiblend de chaque displacement, octet pour octet comme le VBSP de Garry's Mod, pour les cibles Garry's Mod, Source 2013 et CS:GO. Un displacement Lightmapped_4WayBlend sans rangées reçoit des rangées tirées de son alpha de sommet (texture 2 là où il est peint), comme l'éditeur le montre ; VBSP n'en écrit aucune. Le décompilateur relit le lump dans les rangées.
 - **Non écrits.** Le lump des positions d'échantillons de lightmap des displacements (seul VRAD le lit) et les lightmaps par texel des props avec `generatelightmaps`.
 
 ## Par rapport à Hammer++
@@ -61,6 +63,8 @@ Hammer Pro lit ce que Hammer++ ajoute pour ses compilations : la clé worldspawn
 
 **Faut-il installer le Source SDK ou Hammer ?** Non. Seulement le jeu (pour son contenu et pour jouer la map).
 
+**Puis-je encore compiler avec VBSP, VVIS et VRAD ?** Oui : choisissez **Valve (bin)** ou **Valve (bin/win64)** dans la ligne **Compilateur** de la fenêtre de compilation, ou créez un compilateur à vous. Voir [Choisir un compilateur](compilers.md).
+
 **Le BSP est-il identique octet pour octet à celui de VBSP ?** Non, et ce n'est pas le but. Le but est une map correcte qui rend bien en jeu ; les formats, les limites et les formules suivent les outils de Valve.
 
 **Peut-on lancer le compilateur hors de l'éditeur ?** Oui, `hammerpro --bspc` et `hammerpro --rad` marchent depuis un terminal ou un script. Voir [Ligne de commande](command-line.md).
@@ -69,6 +73,7 @@ Hammer Pro lit ce que Hammer++ ajoute pour ses compilations : la clé worldspawn
 
 ## Pages liées
 - [Fenêtre Compiler et lancer](compile-window.md)
+- [Choisir un compilateur](compilers.md)
 - [Options de compilation](compile-options.md)
 - [Ligne de commande](command-line.md)
 - [Clés worldspawn et lumières](worldspawn-keys.md)

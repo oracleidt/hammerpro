@@ -275,6 +275,13 @@ pub trait AssetsApi {
         size_px: [u32; 2],
     ) -> Option<egui::TextureId>;
     fn entity_bounds(&self, entity: &hp_vmf::Entity) -> Option<hp_geom::Aabb>;
+    fn entity_ray(&self, entity: &hp_vmf::Entity, ray: &hp_geom::Ray) -> hp_editor::EntityRay {
+        let _ = (entity, ray);
+        hp_editor::EntityRay::Bounds
+    }
+    fn material_tool(&self, name: &str) -> Option<hp_vmt::ToolKind> {
+        crate::pick::guess_tool(name)
+    }
     fn invalidate_material(&mut self, name: &str);
     fn import_images(&mut self, files: &[PathBuf], opts: &ImportOptions) -> Vec<Result<String, String>>;
     fn image_converter(&self) -> Option<ImageConverter> {
@@ -434,6 +441,7 @@ pub struct UiState {
     pub show_entity_report: bool,
     pub show_map_info: bool,
     pub show_transform: bool,
+    pub transform_random: bool,
     pub show_paste_special: bool,
     pub show_goto: bool,
     pub show_material_editor: bool,

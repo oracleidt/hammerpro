@@ -59,6 +59,7 @@ struct StrokeState {
     painted: Vec<FaceRef>,
     sculpt: sculpt::SculptStroke,
     toward_eye: Option<DVec3>,
+    toward_eye_flat: Option<DVec3>,
     neighbours: HashMap<FaceRef, Vec<FaceRef>>,
     told: bool,
     last_spot: Option<(Pos2, [u64; 5])>,
@@ -142,6 +143,7 @@ pub struct DisplacementTool {
     disp_count: Cell<Option<(DocKey, usize)>>,
     last_warning: Option<(String, u64)>,
     pub(crate) toward_eye: Option<DVec3>,
+    pub(crate) toward_eye_flat: Option<DVec3>,
     pub mask_grid: bool,
     pub mask_select: bool,
     loaded: bool,
@@ -161,6 +163,7 @@ impl Default for DisplacementTool {
             disp_count: Cell::new(None),
             last_warning: None,
             toward_eye: None,
+            toward_eye_flat: None,
             mask_grid: false,
             mask_select: false,
             loaded: false,
@@ -536,6 +539,7 @@ impl DisplacementTool {
             painted: Vec::new(),
             sculpt: sculpt::SculptStroke::default(),
             toward_eye: None,
+            toward_eye_flat: None,
             neighbours: HashMap::new(),
             told: false,
             last_spot: None,
@@ -608,17 +612,17 @@ impl DisplacementTool {
     ) -> usize {
         self.brush.sanitize();
         let invert = self.inverts(mods);
-        let current = self.toward_eye;
-        let toward_eye = match self.stroke.as_mut() {
+        let current = (self.toward_eye, self.toward_eye_flat);
+        let (toward_eye, toward_eye_flat) = match self.stroke.as_mut() {
             Some(s) => {
-                if s.toward_eye.is_none() {
-                    s.toward_eye = current;
+                if s.toward_eye.is_none() && s.toward_eye_flat.is_none() {
+                    (s.toward_eye, s.toward_eye_flat) = current;
                 }
-                s.toward_eye
+                (s.toward_eye, s.toward_eye_flat)
             }
             None => current,
         };
-        let brush = self.brush.resolved(toward_eye, center_normal(&state.doc, face, center));
+        let brush = self.brush.resolved_view(toward_eye, toward_eye_flat, center_normal(&state.doc, face, center));
         let sample = match self.interaction {
             Interaction::Sculpt if mods.shift => {
                 let mut smooth = brush.clone();
@@ -846,7 +850,7 @@ impl DisplacementTool {
             s.last_frame = Some(frame);
             s.last_spot = Some(spot);
         }
-        self.toward_eye = Some(-view.cam3d.forward());
+        self.look_from(&view.cam3d);
         self.paint_on(state, hit.face, hit.point, mods, Some(view.cam3d.pos));
         state.hover_world = Some(hit.point);
     }
@@ -866,7 +870,7 @@ impl DisplacementTool {
     }
 
     fn update_cursor(&mut self, state: &mut AppState, view: &ViewInfo, pos: Pos2, mods: Modifiers) {
-        self.toward_eye = Some(-view.cam3d.forward());
+        self.look_from(&view.cam3d);
         let key = (pos, DocKey::of(&state.doc), self.cursor_inputs(view));
         let selected = selected_disp_faces(&state.doc);
         let blocked = |faces: &[FaceRef]| {
@@ -892,7 +896,7 @@ impl DisplacementTool {
             Some(hit) => {
                 let normal = self
                     .brush
-                    .resolved(self.toward_eye, center_normal(&state.doc, hit.face, hit.point))
+                    .resolved_view(self.toward_eye, self.toward_eye_flat, center_normal(&state.doc, hit.face, hit.point))
                     .axis_vector()
                     .unwrap_or(hit.face_normal);
                 let (ring, faces) = if self.interaction == Interaction::Select {
@@ -939,11 +943,15 @@ impl DisplacementTool {
         state.doc.select_faces(&faces, op);
     }
 
+    pub(crate) fn look_from(&mut self, cam: &hp_app::view::Camera3d) {
+        self.toward_eye = Some(-cam.forward());
+        self.toward_eye_flat = paint::flat_toward_camera(cam);
+    }
+
     pub(crate) fn axis_from_face(&mut self, state: &mut AppState, view: &ViewInfo, pos: Pos2) -> Option<DVec3> {
         let (o, d) = view.ray(pos);
-        let bounds = |e: &hp_vmf::Entity| state.assets.entity_bounds(e);
         let opts = hp_editor::PickOptions { include_entities: false, ..Default::default() };
-        let hit = state.doc.pick_ray(&Ray::new(o, d), &opts, &bounds)?;
+        let hit = state.view_pick(&Ray::new(o, d), &opts)?;
         let (ObjRef::Solid(id), Some(side)) = (hit.obj, hit.face) else { return None };
         let face = FaceRef::new(id, side);
         let normal = center_normal(&state.doc, face, hit.point)
@@ -1385,13 +1393,14 @@ impl DisplacementTool {
                 PaintAxis::Custom => t!("disp.axis.custom"),
                 PaintAxis::SubdivNormal => t!("disp.axis.subdiv"),
                 PaintAxis::View => t!("disp.axis.view"),
+                PaintAxis::ViewFlat => t!("disp.axis.view_flat"),
                 PaintAxis::BrushCenter => t!("disp.axis.center"),
             };
-            use PaintAxis::{BrushCenter, Custom, FaceNormal, SubdivNormal, View, X, Y, Z};
+            use PaintAxis::{BrushCenter, Custom, FaceNormal, SubdivNormal, View, ViewFlat, X, Y, Z};
             let axes: &[PaintAxis] = if surface {
-                &[FaceNormal, SubdivNormal, BrushCenter, View, X, Y, Z, Custom]
+                &[FaceNormal, SubdivNormal, BrushCenter, View, ViewFlat, X, Y, Z, Custom]
             } else {
-                &[FaceNormal, BrushCenter, View, X, Y, Z, Custom]
+                &[FaceNormal, BrushCenter, View, ViewFlat, X, Y, Z, Custom]
             };
             if !surface && self.brush.axis == PaintAxis::SubdivNormal {
                 self.brush.axis = PaintAxis::FaceNormal;
@@ -1404,6 +1413,9 @@ impl DisplacementTool {
                         match a {
                             PaintAxis::View => {
                                 r.on_hover_text(t!("disp.axis.view_tip"));
+                            }
+                            PaintAxis::ViewFlat => {
+                                r.on_hover_text(t!("disp.axis.view_flat_tip"));
                             }
                             PaintAxis::BrushCenter => {
                                 r.on_hover_text(t!("disp.axis.center_tip"));
@@ -2115,9 +2127,8 @@ fn pick_faces(state: &AppState, view: &ViewInfo, pos: Pos2) -> Vec<FaceRef> {
         }
     } else {
         let (o, d) = view.ray(pos);
-        let bounds = |e: &hp_vmf::Entity| state.assets.entity_bounds(e);
         let opts = hp_editor::PickOptions { include_entities: false, ..Default::default() };
-        match state.doc.pick_ray(&Ray::new(o, d), &opts, &bounds) {
+        match state.view_pick(&Ray::new(o, d), &opts) {
             Some(hp_editor::Hit { obj: ObjRef::Solid(id), face: Some(side), .. }) => vec![FaceRef::new(id, side)],
             _ => Vec::new(),
         }

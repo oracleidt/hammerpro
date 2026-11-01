@@ -1,6 +1,6 @@
 use egui::Modifiers;
 use hp_app::{Action, AppState, Severity, ToolFlow, ToolMenuEntry, ViewInfo, t, tf};
-use hp_editor::{Document, Id, ObjRef};
+use hp_editor::{Id, ObjRef};
 
 use super::SelectTool;
 
@@ -36,18 +36,7 @@ pub(super) fn context_command(state: &mut AppState, id: u32) {
 }
 
 pub(super) fn path_link(state: &AppState, objs: &[ObjRef]) -> Option<(Id, &'static str)> {
-    let [ObjRef::Entity(id)] = objs else { return None };
-    let scene = state.doc.scene();
-    if scene.is_brush_entity(*id) {
-        return None;
-    }
-    let class = &scene.entity(*id)?.entity.classname;
-    let from_fgd = state.assets.fgd().and_then(|f| f.class(class)).and_then(|c| match c.kind {
-        hp_fgd::ClassKind::Move => Some("target"),
-        hp_fgd::ClassKind::KeyFrame => Some("NextKey"),
-        _ => None,
-    });
-    from_fgd.or_else(|| Document::known_path_next_key(class)).map(|key| (*id, key))
+    hp_app::runtime::helpers::path_clone_link(state, objs)
 }
 
 fn scale_key(state: &AppState, class: &str) -> Result<Option<&'static str>, ()> {

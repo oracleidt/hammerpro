@@ -1,5 +1,7 @@
 mod background;
 mod batch;
+mod compilers;
+mod compilers_ui;
 mod devaddon;
 mod expert;
 mod history_ui;
@@ -34,6 +36,10 @@ use hp_editor::compile_export::{CompileExport, VisibilityExport};
 use hp_editor::{FaceRef, Id, ObjRef, SelectOp};
 
 pub(crate) use notices::notice_text;
+pub use compilers_ui::{
+    compiler_commands, compiler_list, compiler_name, compiler_problems, compiler_tools,
+    settings_page_ui as compilers_settings_ui, valve_flag_text, valve_group_text, valve_managed_text,
+};
 pub use options_ui::{compile_options_ui, effective_step_flags};
 pub use plan::content_args as compile_content_args;
 pub(crate) use plan::{PrepInput, prepare};
@@ -92,6 +98,7 @@ const EVENTS_PER_FRAME: usize = 20_000;
 pub(crate) fn step_name(kind: StepKind) -> &'static str {
     match kind {
         StepKind::Bsp => t!("compile.step.bsp"),
+        StepKind::Vis => t!("compile.visibility"),
         StepKind::Rad => t!("compile.step.rad"),
         StepKind::Pack => t!("compile.step.pack"),
         StepKind::CopyToMaps => t!("compile.step.copy"),
@@ -328,6 +335,7 @@ enum Tab {
     Stats,
     History,
     Expert,
+    Compilers,
 }
 
 #[derive(Default)]
@@ -353,6 +361,7 @@ pub struct CompileDialog {
     progressive: progressive::Progressive,
     ctx: Option<egui::Context>,
     expert: expert::ExpertView,
+    external_name: Option<String>,
     stats: stats_ui::StatsView,
     native: native_window::NativeWindow,
     os_builder: Option<egui::ViewportBuilder>,
@@ -884,6 +893,7 @@ impl CompileDialog {
         if summary.success
             && same_map
             && !cur.release
+            && s.uses_builtin_compiler()
             && s.progressive
             && s.copy_to_maps
             && quick
@@ -1006,6 +1016,7 @@ impl CompileDialog {
                 ui.selectable_value(&mut self.tab, Tab::Stats, t!("compilestats.tab"));
                 ui.selectable_value(&mut self.tab, Tab::History, t!("compile.tab_history"));
                 ui.selectable_value(&mut self.tab, Tab::Expert, t!("compile.tab_expert"));
+                ui.selectable_value(&mut self.tab, Tab::Compilers, t!("compilers.tab"));
             });
             let running = self.is_running() || self.pending.is_some();
             match self.tab {
@@ -1018,6 +1029,11 @@ impl CompileDialog {
                     }
                 }
                 Tab::Expert => self.expert.ui(ui, state, running),
+                Tab::Compilers => {
+                    egui::ScrollArea::vertical().id_salt("hp_compile_compilers_scroll").show(ui, |ui| {
+                        compilers_ui::editor_ui(ui, state, running);
+                    });
+                }
                 Tab::Log if self.run.is_some() => {
                     self.steps_ui(ui);
                     self.summary_ui(ui, state);
@@ -1231,7 +1247,8 @@ impl CompileDialog {
             ui.ctx().copy_text(run.log_text());
         }
 
-        let row_h = ui.text_style_height(&egui::TextStyle::Monospace).max(16.0);
+        let row_h = log_row_height(ui);
+        self.log_view.row_height = row_h;
         let mut goto: Option<LogLocation> = None;
         let mut problems: Vec<&run::LogLine> =
             run.log.iter().filter(|l| matches!(l.severity, LogSeverity::Error | LogSeverity::Warning)).collect();
@@ -1296,51 +1313,18 @@ impl CompileDialog {
                 .stick_to_bottom(!self.no_auto_scroll)
                 .show_rows(ui, row_h, rows.len(), |ui, range| {
                     ui.set_min_width(widest + 16.0);
+                    let avail = ui.available_width();
+                    let width = if avail.is_finite() { avail.max(widest + 16.0) } else { widest + 16.0 };
                     for i in range {
+                        let (rect, _) = ui.allocate_exact_size(egui::vec2(width, row_h), Sense::hover());
                         let Some(line) = rows.get(i).and_then(|&k| run.log.get(k as usize)) else { continue };
-                        ui.horizontal(|ui| {
-                            ui.set_height(row_h);
-                            if let Some(k) = line.knowledge {
-                                let tip = notices::knowledge_text(k);
-                                let label = notices::fix_label(k.fix);
-                                let button = ui
-                                    .add(egui::Button::new(RichText::new(format!("? {label}")).small()).small())
-                                    .on_hover_text(tip);
-                                if button.clicked() {
-                                    fix = Some((k.fix, line.location.clone()));
-                                }
-                            }
-                            if let Some(loc) = line.location.as_ref().filter(|_| same_map)
-                                && ui
-                                    .add(egui::Button::new(RichText::new(t!("compile.goto")).small()).small())
-                                    .on_hover_text(tf!("compile.problem_goto", location_text(loc)))
-                                    .clicked()
-                            {
-                                goto = Some(loc.clone());
-                            }
-                            let mut text = RichText::new(&line.text).monospace().color(log_color(line.severity));
-                            let clickable = line.location.is_some() && same_map;
-                            if clickable {
-                                text = text.underline();
-                            }
-                            let mut label = egui::Label::new(text).extend();
-                            if clickable {
-                                label = label.sense(Sense::click());
-                            }
-                            let resp = ui.add(label);
-                            if let Some(loc) = &line.location {
-                                if !same_map {
-                                    resp.on_hover_text(&other_map_tip);
-                                    return;
-                                }
-                                let resp = resp
-                                    .on_hover_cursor(egui::CursorIcon::PointingHand)
-                                    .on_hover_text(location_text(loc));
-                                if resp.clicked() {
-                                    goto = Some(loc.clone());
-                                }
-                            }
-                        });
+                        let mut row = ui.new_child(
+                            egui::UiBuilder::new()
+                                .id_salt(("hp_compile_log_row", i))
+                                .max_rect(rect)
+                                .layout(egui::Layout::left_to_right(egui::Align::Center)),
+                        );
+                        log_row(&mut row, line, same_map, &other_map_tip, &mut goto, &mut fix);
                     }
                 });
         });
@@ -1456,6 +1440,55 @@ impl CompileDialog {
             }
         }
         t!("status.ready").to_owned()
+    }
+}
+
+pub(crate) fn log_row_height(ui: &Ui) -> f32 {
+    ui.text_style_height(&egui::TextStyle::Monospace).max(ui.spacing().interact_size.y).max(16.0)
+}
+
+fn log_row(
+    ui: &mut Ui,
+    line: &run::LogLine,
+    same_map: bool,
+    other_map_tip: &str,
+    goto: &mut Option<LogLocation>,
+    fix: &mut Option<(Fix, Option<LogLocation>)>,
+) {
+    if let Some(k) = line.knowledge {
+        let tip = notices::knowledge_text(k);
+        let label = notices::fix_label(k.fix);
+        let button = ui.add(egui::Button::new(RichText::new(format!("? {label}")).small()).small()).on_hover_text(tip);
+        if button.clicked() {
+            *fix = Some((k.fix, line.location.clone()));
+        }
+    }
+    if let Some(loc) = line.location.as_ref().filter(|_| same_map)
+        && ui
+            .add(egui::Button::new(RichText::new(t!("compile.goto")).small()).small())
+            .on_hover_text(tf!("compile.problem_goto", location_text(loc)))
+            .clicked()
+    {
+        *goto = Some(loc.clone());
+    }
+    let mut text = RichText::new(&line.text).monospace().color(log_color(line.severity));
+    let clickable = line.location.is_some() && same_map;
+    if clickable {
+        text = text.underline();
+    }
+    let mut label = egui::Label::new(text).extend();
+    if clickable {
+        label = label.sense(Sense::click());
+    }
+    let resp = ui.add(label);
+    let Some(loc) = &line.location else { return };
+    if !same_map {
+        resp.on_hover_text(other_map_tip);
+        return;
+    }
+    let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(location_text(loc));
+    if resp.clicked() {
+        *goto = Some(loc.clone());
     }
 }
 

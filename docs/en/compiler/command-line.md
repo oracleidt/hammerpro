@@ -73,6 +73,7 @@ Geometry and visibility. Defaults are those of the command line alone; the edito
 | `-wsaddons` | | Also the subscribed Workshop items. | off |
 | `-nowsaddons` | | Neither folder addons nor Workshop items. | off |
 | `-serveraddons` | | Also the content downloaded from servers. | off |
+| `-mount_appid` | AppID[,AppID] | Also mounts installed Steam games by AppID (repeatable, `-mount_appid 240,440`), found through the Steam libraries like **Settings > Game > Steam games by AppID**. | none |
 
 Accepted for compatibility, no effect: `-novconfig`, `-allowdebug`, `-steam`, `-verboseentities`, `-tmpout`, `-tmpin`.
 
@@ -116,7 +117,7 @@ Lighting. With no range option, `--rad` computes LDR only.
 | `-nodispshadows` | | Hammer Pro: no displacement shadow. | off |
 | `-ao` / `-noao` | | Hammer Pro: ambient occlusion on or off. | on, off with `-fast` |
 | `-aoradius` / `-aostrength` / `-aosamples` | number | Ambient occlusion settings. | 96 / 0.75 / 32 (64 with `-final`) |
-| `-noaddons`, `-wsaddons`, `-nowsaddons`, `-serveraddons` | | Content mounted for the models, like `--bspc`. | addons and Workshop items mounted |
+| `-noaddons`, `-wsaddons`, `-nowsaddons`, `-serveraddons`, `-mount_appid` | | Content mounted for the models, like `--bspc`. | addons and Workshop items mounted |
 | `-radius_override` | units | Accepted and skipped (a VVIS option often passed to every tool). | |
 
 Every other option gets `Warning: option ... is not supported by this lighting compiler: ignored`; the known VRAD options that take a value (`-vproject`, `-aoscale`, `-aofacesamples`, `-aopropsamples`, `-ambientocclusion`, `-sunsamplesarealight`, `-leafambientsamplereduction`, `-maxdispsamplesize`, `-disppatchradius`, `-mpi_workercount`, `-dumptrace`) skip their value too.

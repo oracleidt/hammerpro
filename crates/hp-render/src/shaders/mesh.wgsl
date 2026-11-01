@@ -17,7 +17,6 @@ struct VsOut {
     @location(5) alpha: f32,
     @location(6) fade: f32,
     @location(7) blend: vec4<f32>,
-    @location(8) blend_tint: vec3<f32>,
     @location(9) baked: vec4<f32>,
     @location(10) @interpolate(flat) light_rec: u32,
     @location(11) static_light: vec4<f32>,
@@ -55,8 +54,7 @@ fn vs_chunk(
     let st = object_state(slot);
     let tint = unpack_srgba(st.tint);
     var out: VsOut;
-    out.blend = unpack_blend_weights(blend);
-    out.blend_tint = unpack_blend_tint(blend);
+    out.blend = unpack_blend_layers(blend);
     out.world = pos;
     out.normal = unpack_normal(nrm_alpha);
     out.uv = uv;
@@ -454,14 +452,13 @@ fn grid_coverage(world: vec3<f32>, n: vec3<f32>) -> vec2<f32> {
 fn fs_mesh(in: VsOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
     let uv = in.uv * material.inv_tex_size + material.scroll * view.sky.z;
     var albedo = textureSample(tex, samp, uv);
+    var cover = vec4<f32>(1.0, 0.0, 0.0, 0.0);
     if material.has_tex2 != 0u {
         let b = textureSample(tex2, samp, uv);
         if material.blend4 != 0u {
-            let c = textureSample(tex3, samp, uv);
-            let d = textureSample(tex4, samp, uv);
-            let w = in.blend;
-            let mixed = albedo * w.x + b * w.y + c * w.z + d * w.w;
-            albedo = vec4<f32>(mixed.rgb * in.blend_tint, mixed.a);
+            let fw = four_way_blend(uv, blend_layers(in.blend, in.alpha));
+            albedo = fw.color;
+            cover = fw.cover;
         } else {
             albedo = vec4<f32>(mix(albedo.rgb, b.rgb, in.alpha), albedo.a);
         }
@@ -489,7 +486,7 @@ fn fs_mesh(in: VsOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f
     let bumped = shaded && bump_on();
     if bumped {
         let base_uv = in.uv * material.inv_tex_size;
-        let texel = bump_texel(base_uv, in.alpha, in.blend);
+        let texel = bump_texel(base_uv, in.alpha, cover);
         var frame = uv_frame(n, in.world, base_uv);
         let tl = length(in.tangent.xyz);
         if abs(in.tangent.w) > 0.5 && tl > 1e-5 {
@@ -544,8 +541,8 @@ fn fs_mesh(in: VsOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f
         }
         rgb = select(albedo.rgb * baked, albedo.rgb * bitcast<f32>(view.misc.z), unlit);
         rgb = mix(rgb, albedo.rgb * glow_tint * bitcast<f32>(view.misc.z), glow);
-    } else if mode == MODE_FLAT && (view.opts.x & OPT_NEUTRAL_FLAT) != 0u && in.state.z == 0u {
-        rgb = vec3<f32>(0.16, 0.16, 0.18) * editor_shade(n);
+    } else if mode == MODE_FLAT && (view.opts.x & OPT_NEUTRAL_FLAT) != 0u {
+        rgb = select(albedo.rgb * textured_shade(n), albedo.rgb, unlit);
     } else if mode == MODE_FLAT {
         rgb = unpack_srgba(in.state.y).rgb * editor_shade(n);
     } else if mode == MODE_LIT {

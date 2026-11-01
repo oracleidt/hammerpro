@@ -55,6 +55,9 @@ pub(crate) fn model_path<'a>(e: &'a Entity, class: Option<&ResolvedClass>) -> Op
     if let Some(fixed) = class.and_then(ResolvedClass::studio).and_then(|s| s.model).filter(|m| is_model_path(m)) {
         return Some(std::borrow::Cow::Owned(fixed));
     }
+    if hp_app::runtime::helpers::fish::is_fish_pool(&e.classname) {
+        return None;
+    }
     e.get("model").filter(|m| is_model_path(m)).map(std::borrow::Cow::Borrowed)
 }
 

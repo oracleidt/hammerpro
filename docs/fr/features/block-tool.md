@@ -14,7 +14,7 @@ L'outil bloc crée des brushes à partir de primitives (bloc, coin, cylindre, po
 1. Glissez dans une vue 2D (dessus, face ou côté) pour tracer l'emprise de la boîte. Les deux coins s'alignent sur la grille (maintenez `Alt` pour tracer sans magnétisme).
 2. La profondeur de la boîte (le long de l'axe de la vue) vient, comme dans Hammer :
    - de l'encombrement de la sélection sur cet axe, si elle a une épaisseur,
-   - sinon de la profondeur du dernier objet créé par l'outil bloc ou l'outil polygone,
+   - sinon de la profondeur du dernier objet créé par l'outil bloc, polygone ou courbe,
    - sinon de 64 unités au-dessus d'une sélection plate (ou à partir de 0).
 3. La boîte reste **en attente** : elle affiche sa largeur et sa hauteur le long de ses bords, et 8 poignées de redimensionnement (coins et milieux des bords) dans chaque vue 2D.
    - Glissez une poignée pour redimensionner la boîte (les bords déplacés s'alignent sur la grille).
@@ -110,6 +110,7 @@ La fenêtre Paramètres s'ouvre avec **Outils > Options...** (`Ctrl+,`).
 ## Pages liées
 
 - [Outil polygone](polygon-tool.md)
+- [Outil courbe](curve-tool.md)
 - [Outil de sélection](selection-tool.md)
 - [Opérations sur les brushes](brush-operations.md)
 - [Outil vertex](vertex-tool.md)

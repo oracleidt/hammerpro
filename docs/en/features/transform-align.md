@@ -2,7 +2,7 @@
 
 # Transform and align
 
-Commands that move, rotate, scale, mirror, line up or drop the selected objects by exact rules instead of dragging handles: the Transform dialog, Align, Flip, Snap to grid, Move to floor/ceiling, Center origins, the movable pivot, physics placement and arrays (Paste special).
+Commands that move, rotate, scale, mirror, line up or drop the selected objects by exact rules instead of dragging handles: the Transform dialog, Align, Flip, Snap to grid, Move to floor/ceiling, Center origins, Random Z rotation, the movable pivot, physics placement and arrays (Paste special).
 
 Every command below works on the current selection and is one undo step. Most of them are in the **Tools** menu (Align and Flip have their own submenus **Tools > Align** and **Tools > Flip**). To drag objects with the mouse, see the [Selection tool](selection-tool.md).
 
@@ -18,6 +18,8 @@ Every command below works on the current selection and is one undo step. Most of
 | **Move to floor, aligned to the surface** | Tools | `Ctrl+Alt+N` |
 | **Move to ceiling, aligned to the surface** | Tools | `Ctrl+Alt+U` |
 | **Center origins** | Tools | none |
+| **Random Z rotation** | Tools, and the right click menu of the views | none |
+| **Random Z rotation options...** | Tools (opens the Transform window in **Random Z** mode) | none |
 | **Movable pivot** | Tools | none |
 | **Physics placement (drop and settle)** | Tools | none |
 | **Flip X**, **Flip Y**, **Flip Z** | Tools > Flip | none |
@@ -37,7 +39,7 @@ Commands without a shortcut can get one in **Settings > Keyboard** (see [Keyboar
 
 | Field | What it does | Default |
 |---|---|---|
-| **Move** / **Rotate** / **Scale** | Mode buttons at the top. | **Move** |
+| **Move** / **Rotate** / **Scale** / **Random Z** | Mode buttons at the top. **Random Z** is described in [Random Z rotation](#random-z-rotation). | **Move** |
 | **Offset** (Move) | X, Y, Z distance in units added to the selection. | 0 0 0 |
 | **Angles (degrees)** (Rotate) | Rotation around X, Y and Z, applied Z first, then Y, then X (the same order as Paste special). | 0 0 0 |
 | **Factors** (Scale) | Scale factor on X, Y and Z (drag step 0.01). A factor of 0 is refused (**Scale factors cannot be zero**). Negative factors mirror. | 1 1 1 |
@@ -103,6 +105,22 @@ The axes are those of the 2D view under the pointer (or the last one used). From
 
 **Tools > Center origins** sets the `origin` key of the selected brush entities (`func_door_rotating`, `func_rotating`...) to the center of their brushes. Only brush entities that have an `origin` key change; selecting one of their brushes is enough. If none changed, the notice **No selected brush entity has an origin to center** shows.
 
+## Random Z rotation
+
+**Tools > Random Z rotation** turns every selected point entity that has an `angles` key (`prop_static`, `prop_dynamic`, `prop_physics`, lights, any point entity with angles) around Z by its own random amount, around its own origin. It is one undo step (**Random rotation**). Brushes, brush entities and entities without an `angles` key are skipped; the notice says how many turned and how many were skipped, for example **Random Z rotation: 12 turned, 3 skipped (brushes, brush entities or no angles key)**.
+
+The options are in the **Random Z** mode of the Transform window (**Tools > Random Z rotation options...**), kept in the settings:
+
+| Field | What it does | Default |
+|---|---|---|
+| **Yaw range** | The turn added to each object's yaw is picked between these two values, in degrees. | 0 to 360 |
+| **Snap step** | **Free**, **15°**, **45°**, **90°** or any step up to 180: the turn is a multiple of the step (with 0 to 360 and 90, each object faces one of four directions). | Free |
+| **Pitch and roll jitter** | Also tilts pitch and roll by a random amount up to this many degrees (0 to 45). | off, 3° |
+| **Reset** | Puts these options back to their defaults. | |
+| **Apply** | Turns the selection (also `Enter`); the window says how many turned. | |
+
+The options are the `random_yaw_min`, `random_yaw_max`, `random_yaw_snap`, `random_tilt` and `random_tilt_deg` keys of the `[selection]` table (see [Settings reference](../reference/settings.md)).
+
 ## Movable pivot
 
 **Tools > Movable pivot** shows a pivot cross at the center of the selection (at the origin of a single point entity), or hides it when it is shown.
@@ -124,7 +142,7 @@ Both are also in **Settings > Editing > Behavior** and are saved in the `[edit]`
 
 ## MCP
 
-The same operations exist for AI assistants: `transform_objects`, `move_objects`, `rotate_objects`, `resize_objects`, `snap_objects_to_grid`, `drop_to_surface`, `flip_objects`, `align_objects`, `center_entity_origins`, `array_duplicate` and `run_action` (for example `physics_placement` or `toggle_pivot`). See the [MCP tool reference](../../MCP.md).
+The same operations exist for AI assistants: `transform_objects`, `move_objects`, `rotate_objects`, `resize_objects`, `snap_objects_to_grid`, `drop_to_surface`, `flip_objects`, `align_objects`, `center_entity_origins`, `random_rotate_objects` (Random Z rotation, with its range, snap, tilt and seed), `array_duplicate` and `run_action` (for example `physics_placement` or `toggle_pivot`). See the [MCP tool reference](../../MCP.md).
 
 ## Tips
 
@@ -132,6 +150,7 @@ The same operations exist for AI assistants: `transform_objects`, `move_objects`
 - Align uses the last selected object as reference: Ctrl+click the reference last.
 - **Move to floor** on a group of props moves the whole group as one, so a table with its objects stays assembled.
 - **Snap each object to grid** fixes many off-grid props at once without moving them all by the same amount.
+- After placing a row of identical rocks, crates or trees, **Random Z rotation** makes them look less copied; set **Snap step** to 90° for crates that should stay square to the walls.
 
 ## FAQ
 

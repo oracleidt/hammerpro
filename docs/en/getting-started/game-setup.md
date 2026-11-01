@@ -52,7 +52,7 @@ A map can also have its own game, different from this default: the **Target game
 
 Workshop and downloaded content open after the rest, in the background: the status bar shows "Workshop N / M" until they are ready.
 
-Priority order, highest first: custom texture folders, addons, `garrysmod.vpk`, loose `garrysmod` files, the other VPKs of `gameinfo.txt`, gamemode `content` folders, loose `sourceengine` files, `mount.cfg` games, extra game folders, Workshop items, downloaded content. A file found in a higher source hides the same file below.
+Priority order, highest first: custom texture folders, addons, `garrysmod.vpk`, loose `garrysmod` files, the other VPKs of `gameinfo.txt`, gamemode `content` folders, loose `sourceengine` files, `mount.cfg` games, extra game folders, Steam games by AppID (in their list order), Workshop items, downloaded content. A file found in a higher source hides the same file below.
 
 ### Custom texture folders
 
@@ -61,6 +61,19 @@ Add any folder of VTF/VMT files or plain images (PNG, JPG, TGA, BMP) with **Add 
 ### Extra game folders
 
 Mod folders (with a `gameinfo.txt` or loose content) to mount too. Add with **Add**, remove with the cross.
+
+### Steam games by AppID
+
+Mount the content of other installed Steam games by their AppID, for any target game (Garry's Mod or not): for example 220 Half-Life 2, 240 Counter-Strike: Source, 300 Day of Defeat: Source, 380 Half-Life 2: Episode One, 420 Half-Life 2: Episode Two, 400 Portal, 440 Team Fortress 2, 4000 Garry's Mod.
+
+| Control | What it does |
+|---|---|
+| **AppID** field and **Add** | Adds one AppID or several (`240, 440`), also with `Enter`. A value that is not a number is refused with a message. |
+| **Installed games** | Lists the Source games installed in your Steam libraries, with their AppIDs: click one to add it. |
+| Search again (circular arrow) | Searches the Steam libraries again after installing or moving a game. |
+| List rows | The AppID and the game name (hover: its game folders). *Not installed* in orange when Steam has no such game on this computer. Up and down arrows change the priority; the cross removes the game. |
+
+Hammer Pro finds each game through Steam: the Steam folder (registry `SteamPath`, else the default install folder), every library of `steamapps/libraryfolders.vdf`, then `steamapps/appmanifest_<AppID>.acf` and its `installdir`. It then mounts what the game's `gameinfo.txt` lists (its VPKs and folders, the base games it builds on), after the content of the map's own game. The asset browsers, the 3D view and the compile (the editor passes the game folders to the compiler with `-insert_search_path`) all use it. Saved as `mount_app_ids` in the `[game]` table of `settings.toml`. With Garry's Mod, `garrysmod/cfg/mount.cfg` still works too (**Use mount.cfg games**). AI assistants use the MCP tools `list_app_mounts` and `set_app_mounts`; the compiler command line takes `-mount_appid 240,440` (see [Compiler command line](../compiler/command-line.md)).
 
 ### Entity definitions (FGD)
 

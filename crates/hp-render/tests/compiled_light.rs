@@ -99,6 +99,7 @@ fn face(x0: f32, x1: f32, z0: f32, z1: f32, y: f32, lightmap: u32, lm: [f32; 2])
         lm: [s, 0.5],
         lightmap,
         cubemap: hp_render::NO_CUBEMAP,
+        blend: Default::default(),
     };
     vec![v(x0, z0, lm[0]), v(x1, z0, lm[1]), v(x1, z1, lm[1]), v(x0, z1, lm[0])]
 }

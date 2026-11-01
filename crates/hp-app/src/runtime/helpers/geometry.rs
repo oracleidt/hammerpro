@@ -336,7 +336,7 @@ const DRAWN_HELPERS: [&str; 14] = [
     "worldtext",
 ];
 
-const VISUALIZED: [&str; 19] = [
+const VISUALIZED: [&str; 20] = [
     "func_door",
     "func_button",
     "func_movelinear",
@@ -356,6 +356,7 @@ const VISUALIZED: [&str; 19] = [
     "trigger_catapult",
     "point_spotlight",
     "env_beam",
+    "func_fish_pool",
 ];
 
 pub fn class_has_helpers(class: Option<&ResolvedClass>, classname: &str) -> bool {
@@ -484,6 +485,46 @@ pub fn entity_helpers(cx: &HelperContext<'_>, id: Id, out: &mut HelperGeometry) 
     visualizers(cx, e, id, origin, &mut linked, out);
 }
 
+pub fn class_has_path_links(class: Option<&ResolvedClass>, classname: &str) -> bool {
+    match class {
+        Some(c) => c.has_helper("line") || c.has_helper("cylinder"),
+        None => hp_editor::Document::known_path_next_key(classname) == Some("target"),
+    }
+}
+
+pub fn path_links(cx: &HelperContext<'_>, id: Id, out: &mut HelperGeometry) {
+    let Some(node) = cx.doc.scene().entity(id) else { return };
+    let e = &node.entity;
+    let Some(origin) = entity_anchor(cx.doc, id) else { return };
+    let mut linked: HashSet<Id> = HashSet::new();
+    let mut found: Vec<Id> = Vec::new();
+    match cx.class_of(e) {
+        Some(class) => {
+            for h in &class.helpers {
+                let mut buf = [0u8; 48];
+                let name = lower_buf(&h.name, &mut buf);
+                if name == "line" || name == "cylinder" {
+                    link_helper(cx, e, id, origin, h, name, &mut linked, &mut found, out);
+                }
+            }
+        }
+        None => {
+            if hp_editor::Document::known_path_next_key(&e.classname) != Some("target") {
+                return;
+            }
+            let Some(value) = e.get("target").map(str::trim).filter(|v| !v.is_empty()) else { return };
+            cx.names.resolve_name(value, &mut found);
+            for target in found.iter().take(MAX_LINKS_PER_KEY) {
+                if *target != id
+                    && let Some(b) = entity_anchor(cx.doc, *target)
+                {
+                    out.line(origin, b, TARGET_COLOR);
+                }
+            }
+        }
+    }
+}
+
 fn is_rope_class(classname: &str) -> bool {
     let c = classname.trim();
     c.eq_ignore_ascii_case("move_rope") || c.eq_ignore_ascii_case("keyframe_rope")
@@ -543,7 +584,10 @@ fn link_helper(
         (Some(_), Some(_)) => ends(end_key, end_value, found).unwrap_or_default(),
         _ => vec![(id, origin)],
     };
-    let radius = |k: Option<&str>| k.and_then(|k| key_num(e, k)).filter(|r| *r > 0.0).map(|r| r.min(MAX_EXTENT));
+    let radius = |k: Option<&str>, of: Id| {
+        let ent = if of == id { Some(e) } else { cx.doc.scene().entity(of).map(|n| &n.entity) };
+        k.zip(ent).and_then(|(k, ent)| key_num(ent, k)).filter(|r| *r > 0.0).map(|r| r.min(MAX_EXTENT))
+    };
     for (sid, a) in &starts {
         for (eid, b) in &finish {
             if sid == eid {
@@ -554,10 +598,10 @@ fn link_helper(
             out.line(*b, *a, color);
             if cylinder {
                 let axis = *b - *a;
-                if let Some(r) = radius(start_radius) {
+                if let Some(r) = radius(start_radius, *sid) {
                     out.circle(*a, axis, r, 16, color);
                 }
-                if let Some(r) = radius(end_radius) {
+                if let Some(r) = radius(end_radius, *eid) {
                     out.circle(*b, axis, r, 16, color);
                 }
             }
@@ -736,6 +780,14 @@ fn visualizers(
             }
         }
         "editor_text" | "point_worldtext" => text_helper(e, origin, out),
+        "func_fish_pool" => {
+            let r = super::fish::fish_range(e);
+            if r > 0.0 {
+                let c = entity_color(e, cx.class_of(e));
+                out.spheres.push(HelperSphere { center: origin, radius: r, color: c });
+                out.circle(origin, DVec3::Z, r, 48, c);
+            }
+        }
         _ => {}
     }
 }
@@ -921,8 +973,8 @@ mod tests {
         let mut state = crate::testing::test_state();
         type Ent<'a> = (Id, &'a str, &'a [(&'a str, &'a str)]);
         let ents: [Ent<'_>; 9] = [
-            (100, "path_track", &[("targetname", "p1"), ("target", "p2"), ("origin", "0 0 0")]),
-            (101, "path_track", &[("targetname", "p2"), ("target", "p1"), ("origin", "128 0 0")]),
+            (100, "path_track", &[("targetname", "p1"), ("target", "p2"), ("origin", "0 0 0"), ("radius", "24")]),
+            (101, "path_track", &[("targetname", "p2"), ("target", "p1"), ("origin", "128 0 0"), ("radius", "32")]),
             (
                 102,
                 "test_handles",
@@ -1001,6 +1053,21 @@ mod tests {
     }
 
     #[test]
+    fn fish_pools_show_their_range() {
+        let (mut state, fgd) = setup();
+        let keys = [("max_range".to_owned(), "300".to_owned())];
+        let id = state.doc.create_point_entity("func_fish_pool", DVec3::new(0.0, 0.0, -32.0), &keys).expect("pool");
+        assert!(class_has_helpers(None, "func_fish_pool"));
+        let g = helpers_of(&state, &fgd, id);
+        assert_eq!(g.spheres.len(), 1);
+        assert_eq!((g.spheres[0].center, g.spheres[0].radius), (DVec3::new(0.0, 0.0, -32.0), 255.0));
+        assert_eq!(g.lines.len(), 48, "the circle of the range");
+        assert!(g.lines.iter().all(|l| (l.a.z + 32.0).abs() < 1e-9));
+        state.doc.edit_entity(id, |e| e.set("max_range", "0")).expect("edit");
+        assert!(helpers_of(&state, &fgd, id).is_empty());
+    }
+
+    #[test]
     fn cones_frusta_and_text() {
         let (state, fgd) = setup();
         let g = helpers_of(&state, &fgd, 104);
@@ -1029,10 +1096,51 @@ mod tests {
         assert!(to_p2.iter().all(|l| l.color == [255, 0, 255]), "{to_p2:?}");
         let g = helpers_of(&state, &fgd, 108);
         assert!(g.lines.len() > 30, "line plus two circles");
+        let ring = |center: DVec3| -> Vec<f64> {
+            g.lines
+                .iter()
+                .filter(|l| (l.a.x - center.x).abs() < 1e-6 && (l.b.x - center.x).abs() < 1e-6)
+                .map(|l| (l.a - center).length())
+                .collect()
+        };
+        let at_p1 = ring(DVec3::ZERO);
+        let at_p2 = ring(DVec3::new(128.0, 0.0, 0.0));
+        assert_eq!((at_p1.len(), at_p2.len()), (16, 16));
+        assert!(at_p1.iter().all(|r| (r - 24.0).abs() < 1e-6), "the radius at p1 is the one of p1: {at_p1:?}");
+        assert!(at_p2.iter().all(|r| (r - 32.0).abs() < 1e-6), "the radius at p2 is the one of p2: {at_p2:?}");
         let g = helpers_of(&state, &fgd, 107);
         let last = g.lines.iter().map(|l| l.b).find(|b| (b.x - 128.0).abs() < 1e-6);
         assert!(last.is_some_and(|b| b.z.abs() < 1e-6), "the arc lands on the target: {last:?}");
         assert!(g.lines.iter().any(|l| l.a.z > 1.0), "it goes up first");
+    }
+
+    #[test]
+    fn path_links_are_the_chain_lines_only() {
+        let (state, fgd) = setup();
+        let names = NameIndex::build(&state.doc);
+        let cx = HelperContext { doc: &state.doc, fgd: Some(&fgd), names: &names };
+        assert!(class_has_path_links(fgd.class("path_track"), "path_track"));
+        assert!(class_has_path_links(fgd.class("test_cylinder"), "test_cylinder"));
+        assert!(!class_has_path_links(fgd.class("light"), "light"));
+        assert!(class_has_path_links(None, "path_corner"), "known chains without an FGD");
+        assert!(!class_has_path_links(None, "keyframe_rope"), "ropes are drawn by the rope preview");
+        let mut g = HelperGeometry::default();
+        path_links(&cx, 100, &mut g);
+        assert_eq!(g.lines.len(), 1);
+        assert_eq!(
+            (g.lines[0].a, g.lines[0].b),
+            (DVec3::ZERO, DVec3::new(128.0, 0.0, 0.0)),
+            "from the node to its next"
+        );
+        assert!(g.spheres.is_empty() && g.handles.is_empty());
+        let mut g = HelperGeometry::default();
+        path_links(&cx, 104, &mut g);
+        assert!(g.is_empty(), "no chain on a light_spot");
+        let cx = HelperContext { doc: &state.doc, fgd: None, names: &names };
+        let mut g = HelperGeometry::default();
+        path_links(&cx, 101, &mut g);
+        assert_eq!(g.lines.len(), 1, "path_track links without an FGD");
+        assert_eq!(g.lines[0].color, TARGET_COLOR);
     }
 
     #[test]

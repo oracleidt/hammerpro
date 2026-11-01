@@ -15,8 +15,8 @@ L'outil de sélection sert à prendre des objets dans les vues 2D et 3D et à le
 
 | Geste | Vues 2D | Vue 3D |
 |---|---|---|
-| Clic sur un objet | Le sélectionne (remplace la sélection) | Sélectionne l'objet le plus proche sous le pointeur |
-| Nouveau clic au même endroit | Sélectionne l'objet superposé suivant (jusqu'à 64 en boucle) | Sélectionne l'objet suivant, derrière |
+| Clic sur un objet | Le sélectionne (remplace la sélection) | Sélectionne l'objet le plus proche que vous voyez sous le pointeur : les modèles par leur vraie forme (pas leur boîte), et ce que la vue cache est ignoré (objets cachés, textures d'outils cachées par le menu Affichage, déplacements cachés) |
+| Nouveau clic au même endroit | Dans les 2 secondes, tant que le dernier choix est encore la sélection : l'objet superposé suivant (jusqu'à 64 en boucle) | Pareil : l'objet suivant, derrière. Plus tard, ou si la sélection a changé, le clic repart de l'objet le plus proche |
 | `Ctrl+clic` | Ajoute l'objet à la sélection, ou le retire s'il y est déjà | Pareil ; `Ctrl+clic` traverse aussi le gizmo |
 | Clic dans le vide | Vide la sélection (un clic à l'intérieur du cadre de sélection change plutôt le mode des poignées) | Vide la sélection (pas avec `Ctrl`) |
 | Clic sur un objet qui forme déjà toute la sélection | Change le mode des poignées (Échelle, Rotation, Inclinaison, puis Échelle), comme dans Hammer | |
@@ -206,7 +206,9 @@ Page **Édition** : **Décaler avec les flèches** (activé) et **Annuler restau
 
 ## FAQ
 
-**Pourquoi un clic sur ma sélection ne prend pas l'objet derrière ?** Un clic sur un objet qui forme déjà toute la sélection change le mode des poignées. Recliquez au même endroit dans le cycle (ou appuyez sur `Page suiv.`) pour atteindre l'objet derrière.
+**Pourquoi un clic sur ma sélection ne prend pas l'objet derrière ?** Un clic sur un objet qui forme déjà toute la sélection change le mode des poignées. Recliquez au même endroit dans les 2 secondes (ou appuyez sur `Page suiv.`) pour atteindre l'objet derrière.
+
+**Je clique sur un mur et autre chose est sélectionné.** Un second clic rapide au même endroit descend vers l'objet derrière : attendez 2 secondes, ou cliquez une seule fois. Les brushes à texture d'outil cachée (nodraw, clips, triggers, hints, voir le menu Affichage) et les objets que la vue 3D ne dessine pas n'y sont jamais choisis, mais les vues 2D les montrent et les sélectionnent toujours.
 
 **Ma rotation saute de 15 degrés en 15 degrés.** C'est le pas de rotation. Maintenez `Ctrl` (ou `Alt`, selon **Touche de rotation libre**) pour un angle libre, ou changez le pas dans la page **Sélection** des paramètres.
 

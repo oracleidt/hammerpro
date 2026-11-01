@@ -83,6 +83,7 @@ The two settings are also on the **Brushes** page of the Settings window (**Show
 
 - [Block tool](block-tool.md)
 - [Vertex tool](vertex-tool.md)
+- [Extrude / carve tool](extrude-tool.md)
 - [Brush operations](brush-operations.md)
 - [Selection tool](selection-tool.md)
 - [Grids](grids.md)

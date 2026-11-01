@@ -15,6 +15,8 @@ action_list! { selection_actions {
     ToggleGizmoLocal => "toggle_gizmo_local", Edit, Hidden, sc(CTRL, Key::J), Ready;
     MoveToFloorAligned => "move_to_floor_aligned", Tools, ToolsBrush, sc(CTRL_ALT, Key::N), Ready;
     MoveToCeilingAligned => "move_to_ceiling_aligned", Tools, ToolsBrush, sc(CTRL_ALT, Key::U), Ready;
+    RandomRotate => "random_rotate", Tools, ToolsBrush, None, Ready;
+    RandomRotateDialog => "random_rotate_dialog", Tools, ToolsBrush, None, Ready;
 }}
 
 pub(super) const REPEATS: &[Action] = &[];
@@ -27,6 +29,8 @@ pub(super) fn enabled(state: &AppState, action: Action) -> Option<bool> {
         | Action::MoveToFloorAligned
         | Action::MoveToCeilingAligned
         | Action::SnapToGridIndividually
+        | Action::RandomRotate
+        | Action::RandomRotateDialog
         | Action::FlipHorizontal
         | Action::FlipVertical => Some(objects),
         Action::AlignCenterHorizontal | Action::AlignCenterVertical => Some(state.doc.selection().objects.len() >= 2),
@@ -58,6 +62,7 @@ pub(super) fn icon(action: Action) -> Option<&'static str> {
         Action::FlipVertical => "↕",
         Action::AlignCenterHorizontal | Action::AlignCenterVertical => "⊟",
         Action::ToggleGizmoLocal => "⟲",
+        Action::RandomRotate | Action::RandomRotateDialog => "🎲",
         _ => return None,
     })
 }
@@ -79,9 +84,13 @@ pub(super) const TR: TrTable = &[
     ("action.align_center_horizontal", "Align centers horizontally", "Centrer horizontalement"),
     ("action.align_center_vertical", "Align centers vertically", "Centrer verticalement"),
     ("action.toggle_gizmo_local", "Gizmo in local space", "Gizmo en repère local"),
+    ("action.random_rotate", "Random Z rotation", "Rotation Z aléatoire"),
+    ("action.random_rotate_dialog", "Random Z rotation options...", "Options de rotation Z aléatoire..."),
+    ("shell.undo.random_rotation", "Random rotation", "Rotation aléatoire"),
     ("shell.undo.move_to_floor", "Move to floor", "Poser au sol"),
     ("shell.undo.move_to_ceiling", "Move to ceiling", "Coller au plafond"),
     ("shell.undo.center_origins", "Center origins", "Centrer les origines"),
+    ("shell.undo.add_origins", "Add origins", "Ajouter les origines"),
     ("shell.undo.scale_models", "Scale models", "Mettre les modèles à l'échelle"),
     ("shell.undo.stretch", "Stretch", "Étirement"),
 ];

@@ -17,6 +17,10 @@ pub struct RenderDisplay {
     pub sky: bool,
     pub sky_3d: bool,
     pub fog: Option<Id>,
+    pub fog_volumes: bool,
+    pub fog_volume_texture: bool,
+    pub fish: bool,
+    pub fish_swim: bool,
     pub sky_camera: Option<Id>,
     pub lods: bool,
     pub collision: bool,
@@ -46,6 +50,10 @@ impl Default for RenderDisplay {
             sky: true,
             sky_3d: true,
             fog: None,
+            fog_volumes: true,
+            fog_volume_texture: true,
+            fish: true,
+            fish_swim: true,
             sky_camera: None,
             lods: false,
             collision: false,
@@ -73,6 +81,10 @@ impl RenderDisplay {
             sky: r.sky_preview,
             sky_3d: r.skybox_3d,
             fog: r.fog_preview.then_some(rt.fog_controller.unwrap_or(0)),
+            fog_volumes: r.fog_volume_preview,
+            fog_volume_texture: r.fog_volume_texture,
+            fish: r.fish_preview,
+            fish_swim: r.fish_swim,
             sky_camera: rt.sky_camera,
             lods: r.lod_distances.iter().any(|d| d.is_finite() && *d > 0.0),
             collision: r.collision_models,
@@ -138,6 +150,11 @@ mod tests {
         assert!(d.cubemaps && d.cubemaps_auto);
         s.render.cubemaps = false;
         assert!(!RenderDisplay::from_settings(&s, &rt).cubemaps);
+        assert!(d.fog_volumes && d.fog_volume_texture && d.fish && d.fish_swim);
+        s.render.fog_volume_texture = false;
+        s.render.fish_swim = false;
+        let off = RenderDisplay::from_settings(&s, &rt);
+        assert!(!off.fog_volume_texture && !off.fish_swim && off.fog_volumes && off.fish);
         publish_render_display(d);
         assert_eq!(render_display(), d);
         let other = std::thread::spawn(render_display).join().expect("thread");

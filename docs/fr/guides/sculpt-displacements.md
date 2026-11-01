@@ -21,7 +21,7 @@ Ce guide crée un morceau de terrain : transformer des faces de brush en displac
 1. Choisissez le mode **Sculpter**.
 2. Choisissez l'effet : **Élever**, **Abaisser**, **Lisser** ou **Élever à** (une hauteur cible au-dessus de la face).
 3. Dans la section **Pinceau**, réglez **Rayon** (unités du monde), **Intensité** (unités par seconde au centre du pinceau) et **Atténuation** (**Constante**, **Linéaire**, **Douce**).
-4. Choisissez l'**Axe** : **Normale de la face**, **Normale de la surface**, **Centre du pinceau**, **Vue (caméra)**, **X**, **Y**, **Z (haut)** ou **Personnalisé** (Alt et un clic droit sur une face dans la vue 3D prend sa normale).
+4. Choisissez l'**Axe** : **Normale de la face**, **Normale de la surface**, **Centre du pinceau**, **Vue (caméra)**, **Vue (caméra) horizontale** (vers la caméra sur X et Y seulement), **X**, **Y**, **Z (haut)** ou **Personnalisé** (Alt et un clic droit sur une face dans la vue 3D prend sa normale).
 5. Dans la vue 3D, maintenez le bouton gauche sur les displacements et déplacez la souris : un cercle de pinceau suit la surface.
    - `Maj` inverse (abaisser au lieu d'élever).
    - Un glisser avec le clic droit, ou `Alt` et un glissement horizontal, change le rayon.

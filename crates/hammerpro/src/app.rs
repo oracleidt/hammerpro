@@ -591,6 +591,7 @@ impl HammerProApp {
                 self.sync_count += 1;
             }
         }
+        crate::dispatch::lighting::scene_synced(self);
 
         egui::CentralPanel::no_frame().show(ui, |ui| {
             self.central_size = ui.available_size();
@@ -808,7 +809,7 @@ impl HammerProApp {
         }
 
         self.autosaver.tick(&mut self.state, &self.tabs);
-        self.discord.tick(&self.state);
+        self.discord.tick(&mut self.state);
 
         if self.state.settings_dirty && self.settings_saved_at.elapsed().as_secs_f32() > 2.0 {
             self.save_settings();

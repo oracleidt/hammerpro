@@ -11,6 +11,7 @@ pub mod lump {
     pub const EDGES: usize = 12;
     pub const SURFEDGES: usize = 13;
     pub const DISP_VERTS: usize = 33;
+    pub const DISP_MULTIBLEND: usize = 63;
     pub const TEXDATA_STRING_TABLE: usize = 44;
     pub const TEXDATA_STRING_DATA: usize = 43;
     pub const FACES_HDR: usize = 58;
@@ -33,6 +34,7 @@ pub struct WorldLumps<'a> {
     pub leaf_faces: &'a [u8],
     pub dispinfo: &'a [u8],
     pub disp_verts: &'a [u8],
+    pub disp_multiblend: &'a [u8],
     pub lighting: &'a [u8],
     pub light_faces: &'a [u8],
     pub light_mode: LightMode,
@@ -88,6 +90,7 @@ pub struct WorldVertex {
     pub uv: [f32; 2],
     pub alpha: f32,
     pub lm: [f32; 2],
+    pub multiblend: Option<[f32; 4]>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -512,7 +515,13 @@ impl BspWorld {
         } else {
             self.vertices.extend(poly.iter().map(|p| {
                 let c = lm_proj.uv(*p);
-                WorldVertex { pos: *p, uv: proj.uv(*p), alpha: 0.0, lm: [c[0] - mins[0] + 0.5, c[1] - mins[1] + 0.5] }
+                WorldVertex {
+                    pos: *p,
+                    uv: proj.uv(*p),
+                    alpha: 0.0,
+                    lm: [c[0] - mins[0] + 0.5, c[1] - mins[1] + 0.5],
+                    multiblend: None,
+                }
             }));
             WorldFace {
                 material,
@@ -656,6 +665,25 @@ impl BspWorld {
     }
 }
 
+const MULTIBLEND_SIZE: usize = 80;
+const DISP_HAS_MULTIBLEND: i32 = 0x4000_0000;
+
+fn multiblend_start(l: &WorldLumps<'_>, index: usize) -> Option<usize> {
+    if l.disp_multiblend.is_empty() {
+        return None;
+    }
+    let flagged = |k: usize| {
+        let tess = i32_at(l.dispinfo, k * DISPINFO_SIZE + 24)?;
+        let power = i32_at(l.dispinfo, k * DISPINFO_SIZE + 20)?;
+        (tess < 0 && tess & DISP_HAS_MULTIBLEND != 0 && (1..=MAX_POWER).contains(&power))
+            .then(|| ((1usize << power) + 1).pow(2))
+    };
+    flagged(index)?;
+    let start: usize = (0..index).filter_map(flagged).sum();
+    let end = (start + flagged(index)?) * MULTIBLEND_SIZE;
+    (end <= l.disp_multiblend.len()).then_some(start)
+}
+
 fn build_disp(
     l: &WorldLumps<'_>,
     index: usize,
@@ -672,6 +700,7 @@ fn build_disp(
         return None;
     }
     let n = (1usize << power) + 1;
+    let blend = multiblend_start(l, index).map(|s| s * MULTIBLEND_SIZE);
     let closest = (0..4).min_by(|a, b| {
         let da = sub(poly[*a], start);
         let db = sub(poly[*b], start);
@@ -696,7 +725,12 @@ fn build_disp(
             let pos = [base[0] + dir[0] * dist, base[1] + dir[1] * dist, base[2] + dir[2] * dist];
             let uvp = [uv_left[0] + (uv_right[0] - uv_left[0]) * tj, uv_left[1] + (uv_right[1] - uv_left[1]) * tj];
             let lm = [tj * lm_size[0] + 0.5, ti * lm_size[1] + 0.5];
-            out.push(WorldVertex { pos, uv: uvp, alpha: (alpha / 255.0).clamp(0.0, 1.0), lm });
+            let multiblend = blend.and_then(|s| {
+                let at = s + (i * n + j) * MULTIBLEND_SIZE;
+                let w: [f32; 4] = std::array::from_fn(|k| f32_at(l.disp_multiblend, at + k * 4).unwrap_or(f32::NAN));
+                w.iter().all(|v| v.is_finite()).then_some(w)
+            });
+            out.push(WorldVertex { pos, uv: uvp, alpha: (alpha / 255.0).clamp(0.0, 1.0), lm, multiblend });
         }
     }
     Some(((n * n) as u32, power as u8))
@@ -856,6 +890,7 @@ mod tests {
             leaf_faces: &b[11],
             dispinfo: &[],
             disp_verts: &[],
+            disp_multiblend: &[],
             lighting: &[],
             light_faces: &[],
             light_mode: LightMode::Fullbright,
@@ -980,6 +1015,37 @@ mod tests {
         assert_eq!((v[2].pos, v[2].lm), ([0.0, 64.0, 0.0], [8.5, 0.5]));
         assert_eq!((v[8].pos, v[8].lm), ([64.0, 64.0, 0.0], [8.5, 4.5]));
         assert_eq!(v[4].lm, [4.5, 2.5]);
+    }
+
+    #[test]
+    fn displacement_multiblend_is_read_per_vertex() {
+        let mut b = lit_quad();
+        b[4][12..14].copy_from_slice(&1i16.to_le_bytes());
+        let mut dispinfo = vec![0u8; DISPINFO_SIZE * 2];
+        for k in 0..2 {
+            dispinfo[k * DISPINFO_SIZE + 20..k * DISPINFO_SIZE + 24].copy_from_slice(&1i32.to_le_bytes());
+        }
+        let tess = i32::MIN | DISP_HAS_MULTIBLEND;
+        dispinfo[DISPINFO_SIZE + 24..DISPINFO_SIZE + 28].copy_from_slice(&tess.to_le_bytes());
+        let disp_verts = vec![0u8; DISP_VERT_SIZE * 18];
+        let mut blend = Vec::new();
+        for k in 0..9 {
+            let mut e = [0.0f32; 20];
+            e[k % 4] = 1.0;
+            put_f32(&mut blend, &e);
+        }
+        let l = WorldLumps { dispinfo: &dispinfo, disp_verts: &disp_verts, disp_multiblend: &blend, ..lumps_of(&b) };
+        let w = BspWorld::from_lumps(&l, None);
+        let v = w.face_vertices(&w.faces[0]);
+        assert_eq!(v[0].multiblend, Some([1.0, 0.0, 0.0, 0.0]));
+        assert_eq!(v[3].multiblend, Some([0.0, 0.0, 0.0, 1.0]));
+        let short = WorldLumps { disp_multiblend: &blend[..80 * 8], ..l };
+        let w = BspWorld::from_lumps(&short, None);
+        assert!(w.face_vertices(&w.faces[0]).iter().all(|v| v.multiblend.is_none()), "a short lump is ignored");
+        let mut plain = dispinfo.clone();
+        plain[DISPINFO_SIZE + 24..DISPINFO_SIZE + 28].copy_from_slice(&i32::MIN.to_le_bytes());
+        let w = BspWorld::from_lumps(&WorldLumps { dispinfo: &plain, ..l }, None);
+        assert!(w.face_vertices(&w.faces[0]).iter().all(|v| v.multiblend.is_none()), "no flag, no blend");
     }
 
     #[test]

@@ -10,6 +10,7 @@ pub(crate) enum TransformMode {
     Move,
     Rotate,
     Scale,
+    Random,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -31,6 +32,7 @@ pub(crate) fn transform_matrix(mode: TransformMode, v: DVec3, pivot: DVec3) -> R
     match mode {
         TransformMode::Move => Ok(DMat4::from_translation(v)),
         TransformMode::Rotate => Ok(around(DMat4::from_quat(rotation_quat(v)))),
+        TransformMode::Random => Ok(DMat4::IDENTITY),
         TransformMode::Scale => {
             if v.x.abs() < 1e-6 || v.y.abs() < 1e-6 || v.z.abs() < 1e-6 {
                 return Err("transform.err_zero_scale");
@@ -47,6 +49,7 @@ pub(crate) struct TransformDialog {
     pub(crate) scale: DVec3,
     pub(crate) pivot: Pivot,
     pub(crate) error: Option<String>,
+    pub(crate) info: Option<String>,
 }
 
 impl Default for TransformDialog {
@@ -58,6 +61,7 @@ impl Default for TransformDialog {
             scale: DVec3::ONE,
             pivot: Pivot::SelectionCenter,
             error: None,
+            info: None,
         }
     }
 }
@@ -66,16 +70,41 @@ impl TransformDialog {
     fn values(&self) -> DVec3 {
         match self.mode {
             TransformMode::Move => self.offset,
-            TransformMode::Rotate => self.angles,
+            TransformMode::Rotate | TransformMode::Random => self.angles,
             TransformMode::Scale => self.scale,
+        }
+    }
+
+    fn apply_random(&mut self, state: &mut AppState, objs: &[hp_editor::ObjRef]) -> bool {
+        let seed = hp_app::settings::SelectionSettings::random_seed();
+        let opts = state.settings.selection.random_rotate(seed);
+        match state.doc.random_rotate(objs, &opts) {
+            Ok(r) => {
+                self.error = None;
+                let text = if r.rotated == 0 {
+                    tf!("transform.random_none", r.skipped)
+                } else {
+                    tf!("transform.random_done", r.rotated, r.skipped)
+                };
+                self.info = Some(text);
+                r.rotated > 0
+            }
+            Err(e) => {
+                self.error = Some(tf!("transform.failed", e));
+                false
+            }
         }
     }
 
     pub(crate) fn apply(&mut self, state: &mut AppState) -> bool {
         let objs = state.doc.selected_objects();
+        self.info = None;
         if objs.is_empty() {
             self.error = Some(t!("transform.no_selection").to_owned());
             return false;
+        }
+        if self.mode == TransformMode::Random {
+            return self.apply_random(state, &objs);
         }
         let center = |state: &AppState| {
             let assets = &state.assets;
@@ -97,7 +126,7 @@ impl TransformDialog {
         let result = match self.mode {
             TransformMode::Move => state.doc.translate(&objs, v),
             TransformMode::Rotate => state.doc.rotate(&objs, pivot, rotation_quat(v)),
-            TransformMode::Scale => state.doc.transform(&objs, m),
+            TransformMode::Scale | TransformMode::Random => state.doc.transform(&objs, m),
         };
         match result {
             Ok(()) => {
@@ -114,7 +143,14 @@ impl TransformDialog {
     pub(crate) fn show(&mut self, ctx: &egui::Context, state: &mut AppState) {
         if !state.ui.show_transform {
             self.error = None;
+            self.info = None;
+            state.ui.transform_random = false;
             return;
+        }
+        if std::mem::take(&mut state.ui.transform_random) {
+            self.mode = TransformMode::Random;
+            self.error = None;
+            self.info = None;
         }
         let mut open = true;
         let response = hp_app::chrome::Window::new(icon_title("⟲", t!("transform.title")))
@@ -143,24 +179,33 @@ impl TransformDialog {
                 (TransformMode::Move, "transform.move"),
                 (TransformMode::Rotate, "transform.rotate"),
                 (TransformMode::Scale, "transform.scale"),
+                (TransformMode::Random, "transform.random"),
             ] {
-                if ui.add(egui::Button::selectable(self.mode == m, t!(key))).clicked() {
+                let button = ui.add(egui::Button::selectable(self.mode == m, t!(key)));
+                let button =
+                    if m == TransformMode::Random { button.on_hover_text(t!("transform.random_tip")) } else { button };
+                if button.clicked() {
                     self.mode = m;
                     self.error = None;
+                    self.info = None;
                 }
             }
         });
         ui.add_space(4.0);
+        if self.mode == TransformMode::Random {
+            self.random_ui(ui, state);
+            return;
+        }
         let (label, speed) = match self.mode {
             TransformMode::Move => (t!("transform.offset"), 1.0),
-            TransformMode::Rotate => (t!("transform.angles"), 1.0),
+            TransformMode::Rotate | TransformMode::Random => (t!("transform.angles"), 1.0),
             TransformMode::Scale => (t!("transform.factors"), 0.01),
         };
         egui::Grid::new("hp_transform_grid").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
             ui.label(label);
             let v = match self.mode {
                 TransformMode::Move => &mut self.offset,
-                TransformMode::Rotate => &mut self.angles,
+                TransformMode::Rotate | TransformMode::Random => &mut self.angles,
                 TransformMode::Scale => &mut self.scale,
             };
             hp_app::widgets::vec3_edit(ui, v, speed);
@@ -199,15 +244,92 @@ impl TransformDialog {
         if ui.small_button(t!("common.reset")).clicked() {
             match self.mode {
                 TransformMode::Move => self.offset = DVec3::ZERO,
-                TransformMode::Rotate => self.angles = DVec3::ZERO,
+                TransformMode::Rotate | TransformMode::Random => self.angles = DVec3::ZERO,
                 TransformMode::Scale => self.scale = DVec3::ONE,
             }
         }
+        self.footer(ui, state);
+    }
+
+    fn random_ui(&mut self, ui: &mut Ui, state: &mut AppState) {
+        let s = &mut state.settings.selection;
+        let mut changed = false;
+        egui::Grid::new("hp_transform_random").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
+            ui.label(t!("transform.random_range"));
+            ui.horizontal(|ui| {
+                changed |= ui
+                    .add(egui::DragValue::new(&mut s.random_yaw_min).range(-360.0..=360.0).speed(1.0).suffix("\u{b0}"))
+                    .changed();
+                ui.label(t!("transform.random_to"));
+                let lo = s.random_yaw_min;
+                changed |= ui
+                    .add(
+                        egui::DragValue::new(&mut s.random_yaw_max)
+                            .range(lo..=(lo + 360.0))
+                            .speed(1.0)
+                            .suffix("\u{b0}"),
+                    )
+                    .changed();
+            });
+            ui.end_row();
+            ui.label(t!("transform.random_snap"));
+            ui.horizontal(|ui| {
+                for (step, text) in
+                    [(0.0, t!("transform.random_free")), (15.0, "15\u{b0}"), (45.0, "45\u{b0}"), (90.0, "90\u{b0}")]
+                {
+                    if ui.add(egui::Button::selectable(s.random_yaw_snap == step, text)).clicked() {
+                        s.random_yaw_snap = step;
+                        changed = true;
+                    }
+                }
+                changed |= ui
+                    .add(egui::DragValue::new(&mut s.random_yaw_snap).range(0.0..=180.0).speed(0.5).suffix("\u{b0}"))
+                    .on_hover_text(t!("transform.random_snap_tip"))
+                    .changed();
+            });
+            ui.end_row();
+            ui.label(t!("transform.random_tilt"));
+            ui.horizontal(|ui| {
+                changed |= ui.checkbox(&mut s.random_tilt, "").on_hover_text(t!("transform.random_tilt_tip")).changed();
+                ui.add_enabled_ui(s.random_tilt, |ui| {
+                    changed |= ui
+                        .add(
+                            egui::DragValue::new(&mut s.random_tilt_deg)
+                                .range(0.0..=hp_editor::MAX_JITTER_DEG)
+                                .speed(0.25)
+                                .prefix("\u{b1} ")
+                                .suffix("\u{b0}"),
+                        )
+                        .changed();
+                });
+            });
+            ui.end_row();
+        });
+        if ui.small_button(t!("common.reset")).clicked() {
+            let d = hp_app::settings::SelectionSettings::default();
+            s.random_yaw_min = d.random_yaw_min;
+            s.random_yaw_max = d.random_yaw_max;
+            s.random_yaw_snap = d.random_yaw_snap;
+            s.random_tilt = d.random_tilt;
+            s.random_tilt_deg = d.random_tilt_deg;
+            changed = true;
+        }
+        ui.label(RichText::new(t!("transform.random_note")).small().weak());
+        if changed {
+            state.settings_dirty = true;
+        }
+        self.footer(ui, state);
+    }
+
+    fn footer(&mut self, ui: &mut Ui, state: &mut AppState) {
         let n = state.doc.selection().objects.len();
         ui.add_space(4.0);
         ui.label(RichText::new(tf!(plural(n, "transform.selection_info_one", "transform.selection_info"), n)).weak());
         if let Some(e) = &self.error {
             ui.label(RichText::new(e).color(theme::error()));
+        }
+        if let Some(i) = &self.info {
+            ui.label(RichText::new(i).color(theme::success()));
         }
         ui.separator();
         ui.horizontal(|ui| {
@@ -296,5 +418,33 @@ mod tests {
         assert!((after - rotated).length() < 1e-6, "{after:?}");
         state.pivot = None;
         assert!(d.apply(&mut state));
+    }
+
+    #[test]
+    fn random_mode_turns_entities_with_angles() {
+        crate::register_translations();
+        let mut state = hp_app::testing::test_state();
+        state.doc.set_selection(&[ObjRef::Entity(5), ObjRef::Solid(3)]);
+        let had = state.doc.scene().entity(5).is_some_and(|n| n.entity.get("angles").is_some());
+        let mut d = TransformDialog { mode: TransformMode::Random, ..TransformDialog::default() };
+        state.settings.selection.random_yaw_min = 90.0;
+        state.settings.selection.random_yaw_max = 90.0;
+        let before = state.doc.scene().entity(5).and_then(|n| n.entity.angles());
+        let turned = d.apply(&mut state);
+        assert_eq!(turned, had);
+        assert!(d.info.is_some(), "the dialog says how many turned");
+        if had {
+            let after = state.doc.scene().entity(5).and_then(|n| n.entity.angles()).expect("angles");
+            let before = before.expect("angles");
+            assert!(((after.y - before.y).rem_euclid(360.0) - 90.0).abs() < 1e-6, "{before:?} {after:?}");
+            assert_eq!(state.doc.undo_label(), Some("Random rotation"));
+        }
+        state.ui.show_transform = true;
+        state.ui.transform_random = true;
+        let mut d = TransformDialog::default();
+        let ctx = egui::Context::default();
+        let _ = ctx.run_ui(egui::RawInput::default(), |root| d.show(&root.ctx().clone(), &mut state));
+        assert_eq!(d.mode, TransformMode::Random);
+        assert!(!state.ui.transform_random);
     }
 }

@@ -30,6 +30,7 @@ pub struct GameSettings {
     #[serde(rename = "mount_server_content")]
     pub mount_downloads: bool,
     pub extra_game_dirs: Vec<PathBuf>,
+    pub mount_app_ids: Vec<u32>,
     pub custom_texture_dirs: Vec<CustomDirSetting>,
     pub extra_fgds: Vec<PathBuf>,
     pub fgd_override: Option<PathBuf>,
@@ -48,6 +49,7 @@ impl Default for GameSettings {
             mount_cfg: true,
             mount_downloads: true,
             extra_game_dirs: Vec::new(),
+            mount_app_ids: Vec::new(),
             custom_texture_dirs: Vec::new(),
             extra_fgds: Vec::new(),
             fgd_override: None,

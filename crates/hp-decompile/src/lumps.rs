@@ -19,7 +19,10 @@ pub(crate) mod idx {
     pub const DISP_VERTS: usize = 33;
     pub const CLIPPORTALVERTS: usize = 41;
     pub const DISP_TRIS: usize = 48;
+    pub const DISP_MULTIBLEND: usize = 63;
 }
+
+pub(crate) const DISP_HAS_MULTIBLEND: i32 = 0x4000_0000;
 
 pub(crate) mod contents {
     pub const AREAPORTAL: i32 = 0x8000;
@@ -121,6 +124,7 @@ pub(crate) struct DispInfo {
     pub min_tess: i32,
     pub map_face: u16,
     pub allowed_verts: [u32; 10],
+    pub multiblend_start: Option<usize>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -175,6 +179,7 @@ pub(crate) struct Lumps {
     pub dispinfo: Vec<DispInfo>,
     pub dispverts: Vec<DispVert>,
     pub disptris: Vec<u16>,
+    pub dispmultiblend: Vec<[f32; 20]>,
     pub overlays: Vec<Overlay>,
     pub areaportals: Vec<AreaPortal>,
     pub clipportalverts: Vec<DVec3>,
@@ -280,8 +285,29 @@ impl Lumps {
                 min_tess: i32_at(b, 24),
                 map_face: u16_at(b, 36),
                 allowed_verts,
+                multiblend_start: None,
             }
         });
+        let mut next = 0usize;
+        for d in &mut l.dispinfo {
+            if d.min_tess < 0 && d.min_tess & DISP_HAS_MULTIBLEND != 0 && (2..=4).contains(&d.power) {
+                let row = (1usize << d.power) + 1;
+                d.multiblend_start = Some(next);
+                next += row * row;
+            }
+        }
+        if next > 0 {
+            let blend = lump_bytes(bsp, idx::DISP_MULTIBLEND, false, warnings)?;
+            l.dispmultiblend = records(&blend, 80, |b| std::array::from_fn(|k| f32_at(b, k * 4)));
+            if l.dispmultiblend.len() < next {
+                warnings.push(format!(
+                    "the displacement multiblend lump holds {} vertices, {} are needed: 4-way blends were dropped",
+                    l.dispmultiblend.len(),
+                    next
+                ));
+                l.dispmultiblend.clear();
+            }
+        }
         let dispverts = lump_bytes(bsp, idx::DISP_VERTS, false, warnings)?;
         l.dispverts = records(&dispverts, 20, |b| DispVert {
             vector: vec_at(b, 0),

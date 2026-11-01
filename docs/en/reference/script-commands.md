@@ -64,7 +64,7 @@
 | Command | What it does |
 |---|---|
 | `action ID` | Runs an action by its id, like its menu entry or shortcut (`compile_now`, `toggle_grid`...). The ids are listed in [Actions and shortcuts](actions-shortcuts.md). An unknown id prints `unknown action`. |
-| `tool NAME` | Switches tool: `select`, `camera`, `entity`, `block`, `texture`, `decal`, `overlay`, `clip`, `vertex`, `path`, `polygon`, `sprinkle`, `displacement`, `cordon`. |
+| `tool NAME` | Switches tool: `select`, `camera`, `entity`, `block`, `texture`, `decal`, `overlay`, `clip`, `extrude`, `vertex`, `path`, `polygon`, `curve`, `sprinkle`, `displacement`, `cordon`. |
 | `tool_option KEY VALUE` | Sets an option of the active tool (see Tool options below). The value is one word: use commas inside lists (`custom_axis 0,0,1`). An unknown key or a bad value prints `tool ... has no option ...`. |
 | `open PATH` | Opens a map and waits until it is loaded (up to 120 seconds). A map that is already open gets its tab shown. |
 | `save PATH` | Saves the map to PATH, without a dialog. |
@@ -137,6 +137,17 @@
 | `create_as` | `world`, or a brush entity class (`func_detail`, `trigger_multiple`...). |
 | `keep_active` | on/off: stay in the block tool after creating. |
 
+### Curve tool (`tool curve`)
+
+| Key | Values |
+|---|---|
+| `subdivisions` | Number of brushes along the curve, 2 to 4096. |
+| `thickness` | Width of the brushes across the curve, 1 to 1024 units. |
+| `height` | Height along the view depth, 1 to 16384 units (also changes the curve being drawn), or `auto`: from the selection like the block tool. |
+| `tex_scale` | Texture scale of the new faces, 0.01 to 64. |
+| `create_as` | `world`, or a brush entity class (`func_detail`...) holding every brush. |
+| `keep_active` | on/off: stay in the curve tool after creating. |
+
 ### Path tool (`tool path`)
 
 | Key | Values |
@@ -146,6 +157,15 @@
 | `loop` | on/off (also yes/no): ending a path links its last point to the first. |
 | `relink` | on/off: Delete in this tool links the neighbours of removed points. |
 | `offset` | Height above the surface of points placed in the 3D view, -1024 to 1024. |
+
+### Extrude / carve tool (`tool extrude`)
+
+| Key | Values |
+|---|---|
+| `mode` | `carve` (dig the outline into the brush) or `extrude` (pull it out of the face). |
+| `depth` | Depth in units, 0.125 to 16384. |
+| `through` | on/off: carve the whole thickness of the brush. |
+| `new_faces` | `face` (the clicked face's texture) or `current` (the current material) on the new faces. |
 
 ### Texture tool and UV editor (`tool texture`)
 

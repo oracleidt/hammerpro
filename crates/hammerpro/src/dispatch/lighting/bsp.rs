@@ -66,24 +66,7 @@ pub(crate) struct SideRef {
 
 fn disp_blend(disp: &hp_vmf::DispInfo) -> Option<Arc<[u32]>> {
     let mb = hp_vmf::multiblend::MultiBlend::of(disp)?;
-    let packed: Vec<u32> = (0..mb.len())
-        .map(|i| {
-            let Some(w) = mb.weights.get(i) else { return 0 };
-            let w = w.map(|v| if v.is_finite() { v.max(0.0) } else { 0.0 });
-            let sum: f64 = w.iter().sum();
-            if sum <= 1e-9 || !sum.is_finite() {
-                return 0;
-            }
-            let mut tint = [0.0f64; 3];
-            for (k, colors) in mb.colors.iter().enumerate() {
-                let c = colors.get(i).copied().unwrap_or([1.0; 3]);
-                for (t, v) in tint.iter_mut().zip(c) {
-                    *t += w[k] / sum * if v.is_finite() { v.clamp(0.0, 1.0) } else { 1.0 };
-                }
-            }
-            pack_blend(w.map(|v| (v / sum) as f32), tint.map(|v| v as f32))
-        })
-        .collect();
+    let packed: Vec<u32> = mb.weights.iter().map(|w| pack_blend(w.map(|v| v as f32))).collect();
     Some(packed.into())
 }
 

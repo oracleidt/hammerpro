@@ -82,12 +82,18 @@ impl Branch {
             detail_props_version: 4,
             worldlights_version: 0,
             overlay_system_levels: false,
+            disp_multiblend_lump: None,
             limits: LimitSet::Sdk,
             max_lightmap_dim: 32,
         };
         match self {
-            Branch::GarrysMod => BspFormat { limits: LimitSet::Gmod, max_lightmap_dim: 125, ..base },
-            Branch::Source2013 => base,
+            Branch::GarrysMod => BspFormat {
+                limits: LimitSet::Gmod,
+                max_lightmap_dim: 125,
+                disp_multiblend_lump: Some(crate::header::lump::DISP_MULTIBLEND),
+                ..base
+            },
+            Branch::Source2013 => BspFormat { disp_multiblend_lump: Some(crate::header::lump::DISP_MULTIBLEND), ..base },
             Branch::Source2007 => BspFormat { static_props: StaticPropFormat::V6, ..base },
             Branch::BlackMesa => BspFormat { static_props: StaticPropFormat::V11BlackMesa, ..base },
             Branch::TheShip => BspFormat { static_props: StaticPropFormat::V5Ship, ..base },
@@ -108,6 +114,7 @@ impl Branch {
                 static_props: StaticPropFormat::V11Csgo,
                 worldlights_version: 1,
                 overlay_system_levels: true,
+                disp_multiblend_lump: Some(crate::header::lump::DISP_MULTIBLEND),
                 ..base
             },
             Branch::Insurgency => BspFormat {
@@ -130,6 +137,7 @@ pub struct BspFormat {
     pub detail_props_version: u16,
     pub worldlights_version: u32,
     pub overlay_system_levels: bool,
+    pub disp_multiblend_lump: Option<usize>,
     pub limits: LimitSet,
     pub max_lightmap_dim: u32,
 }
@@ -215,6 +223,9 @@ mod tests {
         assert_eq!(Branch::Insurgency.format().static_props.size(), 76);
         assert_eq!(Branch::BlackMesa.format().static_props, StaticPropFormat::V11BlackMesa);
         assert!(!Branch::BlackMesa.format().overlay_system_levels, "lump 61 is the multiblend of Black Mesa");
+        let multiblend: Vec<Branch> =
+            Branch::ALL.into_iter().filter(|b| b.format().disp_multiblend_lump == Some(63)).collect();
+        assert_eq!(multiblend, [Branch::GarrysMod, Branch::Source2013, Branch::Csgo]);
         assert_eq!(Branch::Left4Dead.format().static_props.size(), 68);
         for b in Branch::ALL {
             assert_eq!(b.format().detail_props_version, 4);

@@ -40,6 +40,10 @@ pub(crate) const RANGES: &[(&str, f64, f64)] = &[
     ("render.light_shadows", 0.0, hp_render::MAX_SHADOWED_LIGHTS as f64),
     ("render.unfocused_fps", 0.0, 1000.0),
     ("selection.rotation_snap_deg", 1.0, 90.0),
+    ("selection.random_yaw_min", -360.0, 360.0),
+    ("selection.random_yaw_max", -360.0, 720.0),
+    ("selection.random_yaw_snap", 0.0, 180.0),
+    ("selection.random_tilt_deg", 0.0, hp_editor::MAX_JITTER_DEG),
     ("grid.per_view.perspective.size", hp_app::settings::GRID_MIN, hp_app::settings::GRID_MAX),
     ("grid.per_view.top.size", hp_app::settings::GRID_MIN, hp_app::settings::GRID_MAX),
     ("grid.per_view.front.size", hp_app::settings::GRID_MIN, hp_app::settings::GRID_MAX),
@@ -88,6 +92,12 @@ pub(crate) fn read_only(path: &str) -> Option<&'static str> {
         return Some(
             "change it with set_compile_options (launch_game, launch_via_steam, maps_dir_override, bsp_options, \
              rad_options), checked there",
+        );
+    }
+    const COMPILERS_TOOL: &[&str] = &["compile.compilers", "compile.compiler_by_game"];
+    if COMPILERS_TOOL.iter().any(|p| path == *p || path.starts_with(&format!("{p}."))) {
+        return Some(
+            "change it with create_compiler, set_compiler, delete_compiler, select_compiler and reset_compilers (programs need confirm there)",
         );
     }
     if READ_ONLY.iter().any(|p| path == *p || path.starts_with(&format!("{p}."))) {
@@ -565,6 +575,9 @@ mod tests {
             "mcp.start_with_app",
             "keybindings",
             "compile.launch_game",
+            "compile.compilers",
+            "compile.compilers.0.steps",
+            "compile.compiler_by_game",
         ] {
             assert!(read_only(p).is_some(), "{p}");
         }

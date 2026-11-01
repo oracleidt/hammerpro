@@ -64,7 +64,7 @@
 | Commande | Effet |
 |---|---|
 | `action ID` | Lance une action par son identifiant, comme son entrée de menu ou son raccourci (`compile_now`, `toggle_grid`...). Les identifiants sont listés dans [Actions et raccourcis](actions-shortcuts.md). Un identifiant inconnu affiche `unknown action`. |
-| `tool NOM` | Change d'outil : `select`, `camera`, `entity`, `block`, `texture`, `decal`, `overlay`, `clip`, `vertex`, `path`, `polygon`, `sprinkle`, `displacement`, `cordon`. |
+| `tool NOM` | Change d'outil : `select`, `camera`, `entity`, `block`, `texture`, `decal`, `overlay`, `clip`, `extrude`, `vertex`, `path`, `polygon`, `curve`, `sprinkle`, `displacement`, `cordon`. |
 | `tool_option CLÉ VALEUR` | Règle une option de l'outil actif (voir Options des outils plus bas). La valeur est un seul mot : utilisez des virgules dans les listes (`custom_axis 0,0,1`). Une clé inconnue ou une mauvaise valeur affiche `tool ... has no option ...`. |
 | `open CHEMIN` | Ouvre une map et attend son chargement (jusqu'à 120 secondes). Si la map est déjà ouverte, son onglet est affiché. |
 | `save CHEMIN` | Enregistre la map dans CHEMIN, sans boîte de dialogue. |
@@ -137,6 +137,17 @@
 | `create_as` | `world`, ou une classe d'entité brush (`func_detail`, `trigger_multiple`...). |
 | `keep_active` | on/off : rester dans l'outil bloc après la création. |
 
+### Outil courbe (`tool curve`)
+
+| Clé | Valeurs |
+|---|---|
+| `subdivisions` | Nombre de brushes le long de la courbe, 2 à 4096. |
+| `thickness` | Largeur des brushes en travers de la courbe, 1 à 1024 unités. |
+| `height` | Hauteur dans la profondeur de la vue, 1 à 16384 unités (change aussi la courbe en cours), ou `auto` : selon la sélection comme l'outil bloc. |
+| `tex_scale` | Échelle de texture des nouvelles faces, 0,01 à 64. |
+| `create_as` | `world`, ou une classe d'entité brush (`func_detail`...) qui contient tous les brushes. |
+| `keep_active` | on/off : rester dans l'outil courbe après la création. |
+
 ### Outil chemin (`tool path`)
 
 | Clé | Valeurs |
@@ -146,6 +157,15 @@
 | `loop` | on/off (aussi yes/no) : terminer un chemin relie son dernier point au premier. |
 | `relink` | on/off : Suppr dans cet outil relie les voisins des points supprimés. |
 | `offset` | Hauteur au-dessus de la surface des points placés dans la vue 3D, -1024 à 1024. |
+
+### Outil extruder / creuser (`tool extrude`)
+
+| Clé | Valeurs |
+|---|---|
+| `mode` | `carve` (creuser le contour dans le brush) ou `extrude` (le sortir de la face). |
+| `depth` | Profondeur en unités, 0,125 à 16384. |
+| `through` | on/off : creuser toute l'épaisseur du brush. |
+| `new_faces` | `face` (la texture de la face cliquée) ou `current` (le matériau actuel) sur les nouvelles faces. |
 
 ### Outil texture et éditeur d'UV (`tool texture`)
 

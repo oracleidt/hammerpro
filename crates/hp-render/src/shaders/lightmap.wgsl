@@ -37,7 +37,6 @@ struct LmOut {
     @location(4) @interpolate(flat) face: u32,
     @location(5) @interpolate(flat) state: vec2<u32>,
     @location(6) blend: vec4<f32>,
-    @location(7) blend_tint: vec3<f32>,
 };
 
 fn lm_face(i: u32) -> LmFace {
@@ -66,8 +65,7 @@ fn vs_lm(
     out.alpha = alpha;
     out.face = face;
     out.state = vec2<u32>(st.flags, st.tint);
-    out.blend = unpack_blend_weights(blend);
-    out.blend_tint = unpack_blend_tint(blend);
+    out.blend = unpack_blend_layers(blend);
     let needs_light = lm.mode == 1u && (f.flags & LM_BAKED) == 0u;
     if (f.flags & LM_VALID) == 0u || needs_light || hidden_in_view(st.flags) || tint.a < 0.999 {
         out.clip = COLLAPSED;
@@ -133,14 +131,13 @@ fn finish(rgb_in: vec3<f32>, in: LmOut) -> vec4<f32> {
 fn fs_baked(in: LmOut) -> @location(0) vec4<f32> {
     let uv = in.uv * material.inv_tex_size;
     var albedo = textureSample(tex, samp, uv);
+    var cover = vec4<f32>(1.0, 0.0, 0.0, 0.0);
     if material.has_tex2 != 0u {
         let b = textureSample(tex2, samp, uv);
         if material.blend4 != 0u {
-            let c = textureSample(tex3, samp, uv);
-            let d = textureSample(tex4, samp, uv);
-            let w = in.blend;
-            let mixed = albedo * w.x + b * w.y + c * w.z + d * w.w;
-            albedo = vec4<f32>(mixed.rgb * in.blend_tint, mixed.a);
+            let fw = four_way_blend(uv, blend_layers(in.blend, in.alpha));
+            albedo = fw.color;
+            cover = fw.cover;
         } else {
             albedo = vec4<f32>(mix(albedo.rgb, b.rgb, in.alpha), albedo.a);
         }
@@ -152,7 +149,7 @@ fn fs_baked(in: LmOut) -> @location(0) vec4<f32> {
     var bump = vec3<f32>(0.0, 0.0, 1.0);
     let bumped = bump_on();
     if bumped {
-        bump = bump_texel(uv, in.alpha, in.blend);
+        bump = bump_texel(uv, in.alpha, cover);
     }
     var env_raw = vec3<f32>(0.0);
     if env_on() {
@@ -191,6 +188,12 @@ fn fs_baked(in: LmOut) -> @location(0) vec4<f32> {
     return finish(rgb, in);
 }
 
+fn luxel_checker(p: vec2<f32>, fw: vec2<f32>) -> f32 {
+    let w = min(fw, vec2<f32>(4.0));
+    let i = 2.0 * (abs(fract((p - 0.5 * w) * 0.5) - vec2<f32>(0.5)) - abs(fract((p + 0.5 * w) * 0.5) - vec2<f32>(0.5))) / w;
+    return 0.5 - 0.5 * i.x * i.y;
+}
+
 @fragment
 fn fs_grid(in: LmOut) -> @location(0) vec4<f32> {
     let fw = max(fwidth(in.lm), vec2<f32>(1e-5));
@@ -217,8 +220,9 @@ fn fs_grid(in: LmOut) -> @location(0) vec4<f32> {
         base = base * (0.3 + 0.7 * lum);
     }
     let shade = 0.78 + abs(n.x) * 0.06 + abs(n.y) * 0.12 + abs(n.z) * 0.2;
+    base = base * (1.0 - 0.14 * luxel_checker(in.lm, fw));
     let d = abs(fract(in.lm - vec2<f32>(0.5)) - vec2<f32>(0.5)) / fw;
-    let line = 1.0 - clamp(min(d.x, d.y), 0.0, 1.0);
+    let line = 1.0 - clamp(min(d.x, d.y) - 0.25, 0.0, 1.0);
     let dense = clamp((max(fw.x, fw.y) - 0.15) * 4.0, 0.0, 1.0);
     var rgb = mix(base * shade, base * shade * 0.35, line * 0.8 * (1.0 - dense));
     if (f.flags & LM_WIDE) != 0u {
@@ -227,7 +231,7 @@ fn fs_grid(in: LmOut) -> @location(0) vec4<f32> {
         var d32 = abs(q - k) * 32.0 / fw;
         d32 = select(vec2<f32>(1e6), d32, k >= vec2<f32>(1.0));
         let l32 = 1.0 - clamp(min(d32.x, d32.y) - 0.5, 0.0, 1.0);
-        rgb = mix(rgb, vec3<f32>(1.0, 0.8, 0.1), l32);
+        rgb = mix(rgb, vec3<f32>(1.0, 0.8, 0.1), l32 * 0.5);
     }
     return finish(rgb, in);
 }

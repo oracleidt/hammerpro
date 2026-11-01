@@ -1,6 +1,7 @@
 mod bake;
 mod bsp;
 pub(crate) mod child;
+mod grid;
 
 use std::collections::{HashMap, HashSet};
 
@@ -38,6 +39,7 @@ pub(crate) struct State {
     last_change: f64,
     cc_applied: Option<ColorCorrectionPlus>,
     cc_job: Option<(ColorCorrectionPlus, crossbeam_channel::Receiver<Option<Vec<u8>>>)>,
+    grid: grid::EditorGrid,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -118,11 +120,15 @@ fn display_of(mode: RenderModeSetting) -> LightmapDisplay {
 const NO_LIGHTMAP: u32 = 0x2 | 0x4 | 0x40 | 0x80 | 0x100 | 0x200 | 0x400;
 
 fn budget_kind(state: &mut AppState, raw: &str) -> LightmapKind {
+    material_kind(state.assets.as_mut(), raw)
+}
+
+fn material_kind(assets: &mut dyn hp_app::state::AssetsApi, raw: &str) -> LightmapKind {
     let name = hp_light::rad::normalize_material(raw);
     if hp_bspc::materials::facts_by_name(&name).surf & NO_LIGHTMAP != 0 {
         return LightmapKind::None;
     }
-    let Some(info) = state.assets.material_info(&name) else { return LightmapKind::Flat };
+    let Some(info) = assets.material_info(&name) else { return LightmapKind::Flat };
     let shader = info.shader.to_ascii_lowercase();
     let unlit = shader.contains("unlitgeneric") || shader.contains("unlittwotexture");
     if info.tool.is_some() || info.is_water || unlit { LightmapKind::None } else { LightmapKind::Flat }
@@ -501,6 +507,31 @@ fn read_lut(fs: Option<&hp_fs::GameFs>, map_dir: Option<&std::path::Path>, name:
     std::fs::read(&path).ok().filter(size_ok)
 }
 
+pub(crate) fn scene_synced(app: &mut HammerProApp) {
+    let bake_shown = app.pkg.lighting.preview.as_ref().is_some_and(|p| p.has_bake || p.upload.is_some());
+    let AppState { gfx, doc, assets, .. } = &mut app.state;
+    let Some(gfx) = gfx.as_mut() else { return };
+    let r = &mut gfx.renderer;
+    let editor_grid = &mut app.pkg.lighting.grid;
+    if r.lightmap_display() != LightmapDisplay::Grid || bake_shown {
+        editor_grid.clear(r);
+        return;
+    }
+    editor_grid.content_changed(r, assets.generation());
+    editor_grid.note_changes(r.take_lightmap_changes());
+    let mut known: HashMap<String, Option<hp_render::MaterialId>> = HashMap::new();
+    let mut lit = |name: &str| {
+        if let Some(m) = known.get(name) {
+            return *m;
+        }
+        let lit = material_kind(assets.as_mut(), name) != LightmapKind::None;
+        let m = lit.then(|| assets.render_material_id(name));
+        known.insert(name.to_owned(), m);
+        m
+    };
+    editor_grid.sync(r, doc.scene().solids(), &mut lit);
+}
+
 const HANDLED: &[Action] = &[
     Action::RenderBaked,
     Action::RenderLightmapGrid,
@@ -728,7 +759,7 @@ impl Package for Lighting {
         if let Some(gfx) = app.state.gfx.as_mut() {
             gfx.renderer.set_lightmap_display(display, options.brightness_scale);
             gfx.renderer.set_lightmap_tracking(active);
-            gfx.renderer.take_lightmap_changes();
+            app.pkg.lighting.grid.note_changes(gfx.renderer.take_lightmap_changes());
         }
         if active {
             Self::preview(app, ctx);
@@ -740,6 +771,11 @@ impl Package for Lighting {
                 p.stop(&mut app.state);
             }
             p.poll(&mut app.state);
+            if p.upload.is_some()
+                && let Some(gfx) = app.state.gfx.as_mut()
+            {
+                app.pkg.lighting.grid.clear(&mut gfx.renderer);
+            }
             p.upload(&mut app.state);
             if p.running.is_some() || p.upload.is_some() {
                 ctx.request_repaint_after(std::time::Duration::from_millis(100));
@@ -754,6 +790,7 @@ impl Package for Lighting {
         if let Some(gfx) = app.state.gfx.as_mut() {
             gfx.renderer.clear_lightmaps();
         }
+        app.pkg.lighting.grid.forget();
         app.state.assets.set_baked_prop_lighting(None, None);
         if let Some(p) = app.pkg.lighting.preview.as_mut() {
             p.worker.stop();

@@ -255,6 +255,12 @@ impl AssetManager {
                     let cube = cube_of(face.material);
                     batch.cubemaps.resize(base as usize, NO_CUBEMAP);
                     batch.cubemaps.resize(batch.vertices.len(), cube);
+                    if verts.iter().any(|v| v.multiblend.is_some()) {
+                        batch.blend.resize(base as usize, hp_render::BlendVertex::default());
+                        batch.blend.extend(verts.iter().map(|v| {
+                            v.multiblend.map_or_else(hp_render::BlendVertex::default, hp_render::BlendVertex::painted)
+                        }));
+                    }
                     batch.indices.extend(tris.iter().map(|t| base + t));
                     let lit_batch = match lit.iter().position(|b| b.material == material) {
                         Some(b) => &mut lit[b],
@@ -881,7 +887,8 @@ fn disp_object(i: usize) -> u32 {
 }
 
 fn compiled_vertex(v: &WorldVertex, normal: [f32; 3], light: u32, cubemap: u16) -> CompiledVertex {
-    CompiledVertex { pos: v.pos, normal, uv: v.uv, alpha: v.alpha, lm: v.lm, lightmap: light, cubemap }
+    let blend = v.multiblend.map_or_else(hp_render::BlendVertex::default, hp_render::BlendVertex::painted);
+    CompiledVertex { pos: v.pos, normal, uv: v.uv, alpha: v.alpha, lm: v.lm, lightmap: light, cubemap, blend }
 }
 
 const MAX_WORLD_CUBE: u32 = 256;
@@ -1076,6 +1083,7 @@ mod tests {
                     uv: [0.0; 2],
                     alpha: 0.0,
                     lm: [0.0; 2],
+                    multiblend: None,
                 });
             }
         }

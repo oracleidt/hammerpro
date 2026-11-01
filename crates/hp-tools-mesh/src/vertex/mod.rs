@@ -311,7 +311,7 @@ impl VertexTool {
         }
         let (o, d) = view.ray(pos);
         let opts = PickOptions { include_entities: false, ..PickOptions::default() };
-        match state.doc.pick_ray(&Ray::new(o, d), &opts, &bounds)?.obj {
+        match state.view_pick(&Ray::new(o, d), &opts)?.obj {
             ObjRef::Solid(id) => Some(id),
             ObjRef::Entity(_) => None,
         }

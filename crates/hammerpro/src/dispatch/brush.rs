@@ -56,7 +56,14 @@ impl Package for Brush {
                     let objs = app.selected();
                     let class = app.state.settings.edit.default_brush_entity.clone();
                     let kv = app.brush_entity_defaults(&class);
-                    let result = app.state.doc.tie_each_to_entity(&objs, &class, &kv);
+                    let origin = app.brush_entity_needs_origin(&class);
+                    let result = app.state.doc.transaction("Tie each to entity", |doc| {
+                        let ids = doc.tie_each_to_entity(&objs, &class, &kv)?;
+                        if origin {
+                            doc.add_missing_origins(&ids)?;
+                        }
+                        Ok::<_, hp_editor::EditError>(ids)
+                    });
                     if app.report(action, result).is_some() {
                         app.show_panel(RightTab::Entity);
                     }
@@ -143,6 +150,10 @@ impl HammerProApp {
         self.state.assets.fgd().and_then(|f| f.class(class)).map(|c| c.default_keyvalues()).unwrap_or_default()
     }
 
+    fn brush_entity_needs_origin(&self, class: &str) -> bool {
+        hp_app::runtime::helpers::brush_entity_needs_origin(self.state.assets.fgd(), class)
+    }
+
     fn tie_to_entity(&mut self) {
         if !self.require_selection() {
             return;
@@ -161,7 +172,14 @@ impl HammerProApp {
         }
         let class = self.state.settings.edit.default_brush_entity.clone();
         let kv = self.brush_entity_defaults(&class);
-        let result = self.state.doc.tie_to_entity(&objs, &class, &kv);
+        let origin = self.brush_entity_needs_origin(&class);
+        let result = self.state.doc.transaction("Tie to entity", |doc| {
+            let id = doc.tie_to_entity(&objs, &class, &kv)?;
+            if origin {
+                doc.add_missing_origins(&[id])?;
+            }
+            Ok::<_, hp_editor::EditError>(id)
+        });
         if self.report(Action::TieToEntity, result).is_some() {
             self.show_panel(RightTab::Entity);
         }

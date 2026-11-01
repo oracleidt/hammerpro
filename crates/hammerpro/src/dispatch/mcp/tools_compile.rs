@@ -21,14 +21,15 @@ domain! { "compile and play";
         lighting steps (bsp_options, rad_options: the flags forced on or off in the options menu of the compile \
         settings, the flags of the extra arguments, the flags the preset adds and the resulting command_flags), \
         cordon compile, smart pipeline, packing, cubemaps, threads, copy to the maps folder and its folder, \
-        starting the game, expert mode and its profiles. Maps are compiled by Hammer Pro itself (see \
-        get_compilers); set_compile_options changes them.",
+        starting the game, expert mode and its profiles, and the compiler chosen for the game (compiler: \
+        Hammer Pro's own by default, see list_compilers). set_compile_options changes them.",
         {}, [];
     compile_with_options: Editor, "Compile with options",
         "Compile the saved map with options for this compile only (the settings are put back): preset, steps, \
         modes (entities only, fast vis, final rad...), lighting, cordon only, smart pipeline, hidden objects, \
-        threads, or an expert profile. Never starts the game (compile_map does with launch_game). Poll \
-        get_compile_status and get_compile_log.",
+        threads, an expert profile, or another compiler (compiler: an id or name of list_compilers, builtin for \
+        Hammer Pro's own). Never starts the game (compile_map does with launch_game). Poll get_compile_status \
+        and get_compile_log.",
         {
             "preset": choice("Preset.", &["draft", "normal", "final", "custom"]),
             "run_bsp": boolean("Build the geometry."),
@@ -58,6 +59,7 @@ domain! { "compile and play";
                 off), aoradius (units), aostrength (0 to 1), aosamples (rays); it is on by default for normal and \
                 final and the map's _ao keys decide when neither ao nor noao is set."),
             "copy_to_maps": boolean("Copy the BSP to the game's maps folder after this compile."),
+            "compiler": string("Compiler for this compile only: an id or name of list_compilers (builtin: Hammer Pro's own)."),
         }, [];
     set_compile_options: Editor, "Change the compile settings",
         "Change the saved compile settings (the compile window and the toolbar use them): preset, steps, modes, \
@@ -156,11 +158,12 @@ domain! { "compile and play";
         "The past compiles of the map: date, preset, step times, total time, success, leak, portal counts.",
         { "limit": limit() }, [];
     get_compilers: Read, "Compiler",
-        "The compiler: Hammer Pro itself, the only one (geometry, portals, leak test and visibility with \
+        "Hammer Pro's own compiler, the default one (geometry, portals, leak test and visibility with \
         hammerpro --bspc, lighting with hammerpro --rad, packing built in): version, executable, the flags of \
         each step with what they do, and the content arguments the editor adds to both steps so they mount the \
-        content it shows (content_args: -wsaddons, -serveraddons, -insert_search_path). There is no compiler to \
-        choose.",
+        content it shows (content_args: -wsaddons, -serveraddons, -insert_search_path). Also the compiler chosen \
+        for the game (active_compiler): other compilers (Valve tools found next to the game, the user's own \
+        profiles) are listed by list_compilers and chosen with select_compiler.",
         {}, [];
     check_leaks: Editor, "Check for leaks",
         "Run the instant leak check (no compile): the result comes in the background, read it with get_leak.",
@@ -439,6 +442,7 @@ fn compile_options_json(state: &AppState) -> Value {
         "progressive_preset": preset_name(s.progressive_preset),
         "history": s.history,
         "expert": s.expert,
+        "compiler": s.active_compiler_id(),
         "profiles": s.profiles.iter().enumerate().map(|(i, p)| json!({
             "index": i,
             "name": p.name,
@@ -550,6 +554,9 @@ fn apply_options(state: &AppState, s: &mut CompileSettings, a: &Args<'_>, like_w
 fn options_settings(state: &AppState, a: &Args<'_>) -> R<CompileSettings> {
     let mut s = state.settings.compile.clone();
     apply_options(state, &mut s, a, false)?;
+    if let Some(c) = a.opt_str("compiler", 128)? {
+        s.set_active_compiler(&super::tools_compilers::compiler_arg(state, c)?);
+    }
     if a.opt_bool("cordon_only")? == Some(true) && !state.doc.cordons_in_use() {
         return Err("cordon_only needs an active cordon (add_cordon)".to_owned());
     }
@@ -664,6 +671,7 @@ fn compile_with_options(state: &mut AppState, a: &Args<'_>) -> R<Outcome> {
             "preset": preset_name(wanted.preset),
             "steps": { "bsp": wanted.run_bsp, "vis": wanted.run_vis, "rad": wanted.run_rad },
             "expert_profile": wanted.expert.then(|| wanted.profiles.get(wanted.active_profile).map(|p| p.name.clone())).flatten(),
+            "compiler": wanted.active_compiler_id(),
             "note": "Poll get_compile_status until running is false, then read get_compile_log.",
         }))
     }))))
@@ -967,7 +975,8 @@ fn get_compilers(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
         "compiler": "Hammer Pro",
         "version": env!("CARGO_PKG_VERSION"),
         "executable": exe,
-        "choice": false,
+        "choice": true,
+        "active_compiler": state.settings.compile.active_compiler_id(),
         "steps": [
             {
                 "step": "bsp",
@@ -1225,7 +1234,8 @@ mod tests {
         err(&mut s, "launch_game", json!({ "confirm": false }));
         let c = ok(&mut s, "get_compilers", json!({}));
         assert_eq!(c["compiler"], "Hammer Pro");
-        assert_eq!(c["choice"], false);
+        assert_eq!(c["choice"], true);
+        assert_eq!(c["active_compiler"], "builtin");
         assert!(c["steps"][0]["flags"].as_array().is_some_and(|f| f.iter().any(|f| f["flag"] == "-vis")));
         let h = ok(&mut s, "get_compile_history", json!({}));
         assert!(h["total"].is_number());

@@ -60,6 +60,8 @@ L'œil au bout de la palette d'outils isole la sélection :
 | `hide_triggers` | Triggers | Désactivé |
 | `hide_hints` | Hints et skips | Désactivé |
 
+Une face cachée ainsi n'est pas cliquée non plus dans la vue 3D : les clics, la sélection de faces et le placement passent au travers vers ce qui est dessiné derrière. Les vues 2D montrent et sélectionnent toujours ces brushes. Il en va de même pour les brushes cachés par **Afficher les displacements** ou **Displacements seuls**.
+
 ## Astuces
 
 - Les cordons estompent et verrouillent tout ce qui est hors d'une boîte sans le masquer, souvent mieux pour travailler sur une pièce (voir [Cordons](cordons.md)).

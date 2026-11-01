@@ -2,6 +2,7 @@ mod alpha;
 mod edit;
 mod error;
 mod fallback;
+mod four_way;
 mod info;
 mod material;
 mod patch;
@@ -18,6 +19,7 @@ pub use edit::{
 };
 pub use error::VmtError;
 pub use fallback::DEFAULT_DX_LEVEL;
+pub use four_way::{FOUR_WAY_LAYERS, FourWayBlend, parse_vec2};
 pub use hp_kv::Block;
 pub use info::{CompileFlags, DEFAULT_ALPHA_TEST_REFERENCE, ShaderKind, ToolKind, shader_base_name};
 pub use material::{Material, parse, parse_bytes};

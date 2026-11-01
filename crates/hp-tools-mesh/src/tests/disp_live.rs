@@ -109,6 +109,57 @@ fn view_axis_is_fixed_for_the_stroke() {
     assert!(moved_along(&before, &mesh(&state, face), second) > 0);
 }
 
+#[test]
+fn horizontal_view_axis_keeps_only_x_and_y() {
+    use crate::disp::paint::{flat_direction, flat_toward_camera};
+    let s = BrushSettings { axis: PaintAxis::ViewFlat, ..BrushSettings::default() };
+    assert_eq!(s.axis_vector(), None, "unresolved");
+    let r = s.resolved(Some(DVec3::new(-3.0, 4.0, 10.0)), None);
+    assert_eq!(r.axis, PaintAxis::Custom);
+    let v = r.axis_vector().expect("axis");
+    assert!((v - DVec3::new(-0.6, 0.8, 0.0)).length() < 1e-12, "{v}");
+    assert_eq!(s.resolved(Some(DVec3::Z), None).axis, PaintAxis::FaceNormal, "no horizontal part and no camera");
+    let r = s.resolved_view(Some(DVec3::Z), Some(DVec3::new(0.0, -1.0, 0.0)), None);
+    assert_eq!(r.axis_vector(), Some(DVec3::NEG_Y), "the camera fallback wins");
+    assert_eq!(flat_direction(DVec3::new(0.0, 0.0, -1.0)), None);
+
+    let cam = |yaw: f64, pitch: f64| hp_app::view::Camera3d { yaw_deg: yaw, pitch_deg: pitch, ..Default::default() };
+    let d = flat_toward_camera(&cam(0.0, -30.0)).expect("flat");
+    assert!((d - DVec3::NEG_X).length() < 1e-9, "{d}");
+    let d = flat_toward_camera(&cam(90.0, -90.0)).expect("straight down");
+    assert!((d - DVec3::NEG_Y).length() < 1e-6, "the bottom of the view: {d}");
+    let d = flat_toward_camera(&cam(90.0, -89.0)).expect("nearly down");
+    assert!((d - DVec3::NEG_Y).length() < 1e-6, "same as straight down: {d}");
+    let up = cam(90.0, 90.0);
+    let d = flat_toward_camera(&up).expect("straight up");
+    assert!(d.z == 0.0 && (d.length() - 1.0).abs() < 1e-9);
+
+    let view = oblique_view();
+    let flat = DVec3::new(-1.0, 0.0, 0.0);
+    for (interaction, invert) in [(Interaction::Geometry, false), (Interaction::Geometry, true), (Interaction::Sculpt, false)] {
+        let (mut state, mut tool, face) = floor_with_disp(3);
+        state.doc.clear_face_selection();
+        tool.interaction = interaction;
+        tool.brush.axis = PaintAxis::ViewFlat;
+        tool.brush.radius = 96.0;
+        state.frame.dt = 0.1;
+        let before = mesh(&state, face);
+        let c = view.rect.center();
+        let mods = if invert { Modifiers { shift: true, ..Modifiers::default() } } else { Modifiers::NONE };
+        let press = PointerFrame { pos: Some(c), pressed: true, down: true, mods, ..PointerFrame::default() };
+        tool.handle_pointer(&mut state, &view, press);
+        for i in 1..=4 {
+            state.frame.index += 1;
+            state.frame.time += 0.05;
+            let at = c + vec2(i as f32 * 3.0, 0.0);
+            tool.handle_pointer(&mut state, &view, PointerFrame { pos: Some(at), pressed: false, ..press });
+        }
+        tool.handle_pointer(&mut state, &view, PointerFrame { pos: Some(c), pressed: false, down: false, ..press });
+        let dir = if invert { -flat } else { flat };
+        assert!(moved_along(&before, &mesh(&state, face), dir) > 0, "{interaction:?} invert {invert}");
+    }
+}
+
 pub(super) fn max_crack(state: &AppState, faces: &[FaceRef]) -> f64 {
     let meshes: Vec<hp_geom::DispMesh> = faces.iter().map(|f| mesh(state, *f)).collect();
     let mut worst = 0.0f64;

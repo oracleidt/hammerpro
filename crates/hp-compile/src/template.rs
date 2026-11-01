@@ -12,8 +12,19 @@ pub struct Tokens {
     pub game_exe: String,
 }
 
-pub const TOKENS: &[&str] =
-    &["$light_exe", "$game_exe", "$bsp_exe", "$vis_exe", "$gamedir", "$bspdir", "$exedir", "$path", "$file", "$ext"];
+pub const TOKENS: &[&str] = &[
+    "$light_exe",
+    "$game_exe",
+    "$gameexe",
+    "$bsp_exe",
+    "$vis_exe",
+    "$gamedir",
+    "$bspdir",
+    "$exedir",
+    "$path",
+    "$file",
+    "$ext",
+];
 
 impl Tokens {
     fn value(&self, token: &str) -> &str {
@@ -27,7 +38,7 @@ impl Tokens {
             "$bsp_exe" => &self.bsp_exe,
             "$vis_exe" => &self.vis_exe,
             "$light_exe" => &self.light_exe,
-            "$game_exe" => &self.game_exe,
+            "$game_exe" | "$gameexe" => &self.game_exe,
             _ => "",
         }
     }
@@ -60,6 +71,10 @@ pub fn expand(text: &str, tokens: &Tokens) -> String {
     out
 }
 
+pub fn expand_args(text: &str, tokens: &Tokens) -> Vec<String> {
+    crate::plan::split_args(text).iter().map(|a| expand(a, tokens)).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -89,5 +104,29 @@ mod tests {
         assert_eq!(expand("", &t), "");
         assert_eq!(expand("é$fileé", &t), "égm_xé");
         assert_eq!(expand("$é$éééé", &t), "$é$éééé");
+        assert_eq!(expand("$GameExe -x", &t), "gmod.exe -x");
+    }
+
+    #[test]
+    fn values_with_spaces_stay_one_argument() {
+        let t = Tokens {
+            file: "gm_x".into(),
+            path: r"C:\My Maps\.hammerpro_build".into(),
+            gamedir: r"C:\Program Files (x86)\Steam\steamapps\common\GarrysMod\garrysmod".into(),
+            ..Tokens::default()
+        };
+        assert_eq!(
+            expand_args(r"-game $gamedir $path\$file", &t),
+            [
+                "-game".to_owned(),
+                r"C:\Program Files (x86)\Steam\steamapps\common\GarrysMod\garrysmod".to_owned(),
+                r"C:\My Maps\.hammerpro_build\gm_x".to_owned(),
+            ]
+        );
+        assert_eq!(expand_args(r#"-x "$path\$file.bsp" -y"#, &t), ["-x", r"C:\My Maps\.hammerpro_build\gm_x.bsp", "-y"]);
+        assert_eq!(expand_args(r#""a b" c"#, &t), ["a b", "c"]);
+        assert!(expand_args("   ", &t).is_empty());
+        let line: Vec<String> = expand_args(r"-game $gamedir", &t).iter().map(|a| crate::quote_arg(a)).collect();
+        assert_eq!(line[1], r#""C:\Program Files (x86)\Steam\steamapps\common\GarrysMod\garrysmod""#);
     }
 }

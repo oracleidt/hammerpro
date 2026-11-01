@@ -19,6 +19,7 @@ La ligne **Jeu cible** en haut indique pour quel jeu est la map ouverte (retenu 
 
 | Option | Effet | Par défaut |
 |---|---|---|
+| **Compilateur** | Le compilateur du jeu de la map : **Hammer Pro (intégré)**, les outils de Valve trouvés à côté du jeu, ou l'un des vôtres. **Modifier les compilateurs...** ouvre l'onglet **Compilateurs**. Avec un autre compilateur, la fenêtre affiche **Compilé par ...** : le préréglage, les modes et la plage dynamique deviennent ses options, et les menus d'options, les arguments supplémentaires et la recompilation intelligente (qui appartiennent au compilateur de Hammer Pro) sont grisés. Voir [Choisir un compilateur](compilers.md). | Hammer Pro (intégré) |
 | **Préréglage** | **Brouillon**, **Normal**, **Final** ou **Personnalisé** (voir plus bas). | Normal |
 | **Recompilation intelligente** | N'exécute que ce que demandent les changements depuis la dernière compilation : entités seules, éclairage seul, props seuls ou tout. Brouillon et Normal seulement. | activée |
 | **Étapes : Géométrie** | **Non**, **Normal**, **Entités seules** (`-onlyents`) ou **Props seuls** (`-onlyprops`). Les modes partiels mettent à jour le BSP de la dernière compilation en quelques secondes et gardent sa visibilité et son éclairage ; sans BSP précédent, une compilation complète a lieu à la place. | Normal |
@@ -72,9 +73,13 @@ Deux menus listent tous les paramètres du compilateur, par groupe (Qualité, Vi
 | **Jeu** | L'exécutable du jeu. Vide : détecté. | détecté |
 | **Dossier des maps** | Où le BSP est copié. Vide : `garrysmod/maps` du jeu. | vide |
 
+## Compilateurs
+
+L'onglet **Compilateurs** liste les compilateurs à gauche (celui de Hammer Pro, les outils de Valve détectés, les vôtres) et montre celui choisi à droite : ses étapes (programme, arguments de la map, arguments supplémentaires, dossier de travail, chaque option de l'outil de Valve en case à cocher avec sa valeur) et les lignes de commande exactes. Voir [Choisir un compilateur](compilers.md).
+
 ## Mode expert
 
-L'onglet **Expert** contient des profils de compilation nommés, comme le Run Map Expert de Hammer. Cochez **Utiliser le mode expert** et le profil choisi est exécuté à la place du préréglage (les listes d'étapes sont alors grisées).
+L'onglet **Expert** contient des profils de compilation nommés, comme le Run Map Expert de Hammer. Cochez **Utiliser le mode expert** et le profil choisi est exécuté à la place du préréglage (les listes d'étapes sont alors grisées). Les profils experts ne tournent qu'avec le compilateur de Hammer Pro : quand un autre compilateur est choisi pour le jeu, l'onglet le signale et le profil ne sert pas (un compilateur à vous fait la même chose avec n'importe quel programme, voir [Choisir un compilateur](compilers.md)).
 
 - Boutons : **Nouveau**, **Dupliquer**, **Renommer**, **Supprimer**, **Importer...** (le `CmdSeq.wc` de Hammer ou le `hammerplusplus_sequences.cfg` de Hammer++), **Ajouter une étape**.
 - Chaque étape a une case (active), une action, ses arguments, **Continuer en cas d'échec**, et un **Programme** pour **Lancer un programme**.
@@ -86,7 +91,7 @@ Profils d'une installation neuve : **Default**, **Fast** (`-fastvis`, `-bounce 2
 
 ### Jetons
 
-Les jetons sont remplacés dans les arguments et le programme (sans tenir compte de la casse ; un `$mot` inconnu reste tel quel) :
+Les jetons sont remplacés dans les arguments et le programme (sans tenir compte de la casse ; un `$mot` inconnu reste tel quel). Les arguments sont d'abord découpés en mots, donc une valeur avec des espaces (`C:\Program Files (x86)\...`) reste un seul argument :
 
 | Jeton | Valeur |
 |---|---|
@@ -97,7 +102,7 @@ Les jetons sont remplacés dans les arguments et le programme (sans tenir compte
 | `$gamedir` | Le dossier du jeu (avec `gameinfo.txt`) |
 | `$exedir` | Le dossier de l'exécutable du jeu |
 | `$bsp_exe`, `$vis_exe`, `$light_exe` | L'exécutable de Hammer Pro (les trois) |
-| `$game_exe` | L'exécutable du jeu |
+| `$game_exe` (aussi `$gameexe`) | L'exécutable du jeu |
 | `$$` | Un signe dollar |
 
 ## Journal, Statistiques, Historique
@@ -128,6 +133,7 @@ Les jetons sont remplacés dans les arguments et le programme (sans tenir compte
 
 ## Pages liées
 - [Vue d'ensemble du compilateur](overview.md)
+- [Choisir un compilateur](compilers.md)
 - [Options de compilation](compile-options.md)
 - [Lancer le jeu](../features/game-launch.md)
 - [Cordons](../features/cordons.md)

@@ -4,8 +4,8 @@ use hp_app::{AppState, t};
 
 use crate::common::heading;
 use crate::game_ui::{
-    GameJobs, custom_dirs_list, default_is_gmod, game_section, gmod_root_section, mount_toggles, path_list, path_row,
-    request,
+    GameJobs, app_mounts_section, custom_dirs_list, default_is_gmod, game_section, gmod_root_section, mount_toggles,
+    path_list, path_row, request,
 };
 use crate::jobs::PickTarget;
 
@@ -45,6 +45,9 @@ pub(super) fn page(ui: &mut Ui, state: &mut AppState, jobs: &mut GameJobs) {
     if add {
         jobs.pick(&ctx, request(PickTarget::ExtraGameDir, state.settings.game.gmod_root.clone()));
     }
+
+    heading(ui, t!("shell.game.apps"));
+    app_mounts_section(ui, state);
 
     heading(ui, t!("shell.game.fgds"));
     let (out, label) = path_row(
@@ -291,6 +294,34 @@ pub(crate) const TR: TrTable = &[
         "Le dossier se trouve dans un dossier materials : les noms de matériaux dépendent de son emplacement et le préfixe n'est pas utilisé.",
     ),
     ("shell.game.extra_dirs", "Extra game folders", "Dossiers de jeu supplémentaires"),
+    ("shell.game.apps", "Steam games by AppID", "Jeux Steam par AppID"),
+    (
+        "shell.game.apps_empty",
+        "No game added: add the AppID of an installed Steam game to use its content (240 Counter-Strike: Source, 440 Team Fortress 2, 220 Half-Life 2...).",
+        "Aucun jeu ajouté : ajoutez l'AppID d'un jeu Steam installé pour utiliser son contenu (240 Counter-Strike: Source, 440 Team Fortress 2, 220 Half-Life 2...).",
+    ),
+    ("shell.game.apps_add", "AppID", "AppID"),
+    ("shell.game.apps_installed", "Installed games", "Jeux installés"),
+    (
+        "shell.game.apps_none_installed",
+        "No Source game found in the Steam libraries",
+        "Aucun jeu Source trouvé dans les bibliothèques Steam",
+    ),
+    (
+        "shell.game.apps_refresh",
+        "Search the Steam libraries again",
+        "Rechercher à nouveau dans les bibliothèques Steam",
+    ),
+    ("shell.game.apps_up", "Higher priority", "Priorité plus haute"),
+    ("shell.game.apps_down", "Lower priority", "Priorité plus basse"),
+    ("shell.game.apps_missing", "Not installed {0}", "Non installé {0}"),
+    ("shell.game.apps_no_game", "No Source game folder in {0}", "Aucun dossier de jeu Source dans {0}"),
+    ("shell.game.apps_bad", "\"{0}\" is not a Steam AppID (a number)", "« {0} » n'est pas un AppID Steam (un nombre)"),
+    (
+        "shell.game.apps_tip",
+        "Hammer Pro finds each game in your Steam libraries (libraryfolders.vdf and appmanifest_<AppID>.acf) and mounts what its gameinfo.txt lists, after the content of the map's game, in this order. The browsers, the 3D view and the compile use it.",
+        "Hammer Pro trouve chaque jeu dans vos bibliothèques Steam (libraryfolders.vdf et appmanifest_<AppID>.acf) et monte ce que liste son gameinfo.txt, après le contenu du jeu de la map, dans cet ordre. Les navigateurs, la vue 3D et la compilation l'utilisent.",
+    ),
     (
         "shell.game.extra_dirs_empty",
         "None. Add mod folders (with a gameinfo.txt or loose content) to mount them too.",

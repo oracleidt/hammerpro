@@ -3,6 +3,7 @@ use hp_app::i18n::TrTable;
 pub const TR: TrTable = &[
     ("lab.logic.title", "Logical view", "Vue logique"),
     ("lab.logic.search", "Find an entity...", "Chercher une entité..."),
+    ("lab.logic.filter_all", "All entities", "Toutes les entités"),
     ("lab.logic.filter_named", "Named and connected", "Nommées et connectées"),
     ("lab.logic.filter_connected", "Connected only", "Connectées seulement"),
     ("lab.logic.frame_all", "Frame all", "Tout cadrer"),

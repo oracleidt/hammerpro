@@ -2,7 +2,7 @@
 
 # Actions et raccourcis clavier
 
-Chaque commande de Hammer Pro 1.0.0 est une *action* : une seule entrée partagée par les menus, la barre d'outils, les raccourcis clavier, la palette de commandes (`Ctrl+P`), les fichiers `--script` et le serveur MCP (`run_action`, `list_actions`). Cette page liste les 259 actions, menu par menu, dans l'ordre où les menus les affichent.
+Chaque commande de Hammer Pro 1.0.1 est une *action* : une seule entrée partagée par les menus, la barre d'outils, les raccourcis clavier, la palette de commandes (`Ctrl+P`), les fichiers `--script` et le serveur MCP (`run_action`, `list_actions`). Cette page liste les 261 actions, menu par menu, dans l'ordre où les menus les affichent.
 
 Colonnes :
 
@@ -172,6 +172,10 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Options d'affichage > Afficher le nodraw | `toggle_nodraw` |  |  |  |
 | Options d'affichage > Afficher les collisions des modèles | `toggle_collision_only` |  |  |  |
 | Options d'affichage > Aperçu de l'eau | `toggle_water_preview` |  |  |  |
+| Options d'affichage > Aperçu des fog_volume | `toggle_fog_volumes` |  |  |  |
+| Options d'affichage > Texture des fog_volume | `toggle_fog_volume_texture` |  |  |  |
+| Options d'affichage > Aperçu des poissons | `toggle_fish_preview` |  |  |  |
+| Options d'affichage > Poissons qui nagent | `toggle_fish_swim` |  |  |  |
 | Options d'affichage > Reflets des cubemaps | `toggle_cubemaps` |  |  |  |
 | Options d'affichage > Afficher les clusters visibles | `toggle_pvs` |  |  |  |
 | Options d'affichage > Afficher le nav mesh | `toggle_nav_mesh` |  |  |  |
@@ -226,6 +230,8 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Coller au plafond | `move_to_ceiling` | `Alt+U` |  |  |
 | Aligner chaque objet sur la grille | `snap_to_grid_individually` | `Ctrl+Maj+B` |  |  |
 | Centrer les origines | `center_origins` |  |  |  |
+| Rotation Z aléatoire | `random_rotate` |  |  |  |
+| Options de rotation Z aléatoire... | `random_rotate_dialog` |  |  |  |
 | Pivot déplaçable | `toggle_pivot` |  |  |  |
 | Poser au sol, aligné sur la surface | `move_to_floor_aligned` | `Ctrl+Alt+N` |  |  |
 | Coller au plafond, aligné sur la surface | `move_to_ceiling_aligned` | `Ctrl+Alt+U` |  |  |
@@ -269,9 +275,11 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Outil décal | `tool_decal` | `Maj+D` |  |  |
 | Outil overlay | `tool_overlay` | `Maj+O` |  |  |
 | Outil de découpe | `tool_clip` | `Maj+X` |  |  |
+| Outil extruder / creuser | `tool_extrude` | `Maj+I` |  |  |
 | Outil vertex | `tool_vertex` | `Maj+V` |  |  |
 | Outil displacement | `tool_displacement` | `Maj+P` |  |  |
 | Outil polygone | `tool_polygon` | `Maj+N` |  |  |
+| Outil courbe | `tool_curve` | `Maj+U` |  |  |
 | Outil cordon | `tool_cordon` |  |  |  |
 | Outil chemin | `tool_path` |  |  |  |
 | Outil sprinkle | `tool_sprinkle` |  |  |  |

@@ -54,6 +54,20 @@ impl MultiBlend {
         Some(out)
     }
 
+    pub fn from_alphas(disp: &DispInfo) -> Option<Self> {
+        let n = grid_size(disp)?;
+        let mut out = Self::new(n * n);
+        for (w, a) in out.weights.iter_mut().zip(&disp.alphas) {
+            let t = if a.is_finite() { (a / 255.0).clamp(0.0, 1.0) } else { 0.0 };
+            *w = [1.0 - t, t, 0.0, 0.0];
+        }
+        Some(out)
+    }
+
+    pub fn of_or_alphas(disp: &DispInfo) -> Option<Self> {
+        Self::of(disp).or_else(|| Self::from_alphas(disp))
+    }
+
     pub fn write_to(&self, disp: &mut DispInfo) -> bool {
         let Some(n) = grid_size(disp) else { return false };
         let count = n * n;
@@ -234,6 +248,74 @@ mod tests {
         assert_eq!(d.extra_blocks.len(), 1);
         assert!(!remove_multiblend(&mut d));
         assert!(!mb.write_to(&mut DispInfo { power: 3, ..disp() }), "wrong size");
+    }
+
+    #[test]
+    fn the_vertex_alpha_seeds_texture_2() {
+        let mut d = disp();
+        d.alphas[0] = 255.0;
+        d.alphas[1] = 127.5;
+        d.alphas[2] = f64::NAN;
+        let mb = MultiBlend::of_or_alphas(&d).expect("from alphas");
+        assert_eq!((mb.weights[0], mb.weights[1], mb.weights[2]), ([0.0, 1.0, 0.0, 0.0], [0.5, 0.5, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0]));
+        let mut painted = MultiBlend::new(25);
+        painted.paint(0, 3, 1.0);
+        painted.write_to(&mut d);
+        assert_eq!(MultiBlend::of_or_alphas(&d).expect("rows").weights[0], [0.0, 0.0, 0.0, 1.0], "rows win");
+        assert!(MultiBlend::from_alphas(&DispInfo { power: 40, ..disp() }).is_none());
+    }
+
+    #[test]
+    fn hammer_plus_plus_rows_survive_load_and_save_untouched() {
+        let rows = |name: &str, per: usize| {
+            let mut s = format!("				{name}
+				{{
+");
+            for r in 0..5 {
+                let vals: Vec<String> = (0..5 * per).map(|k| format!("{}", ((r * 7 + k) % 9) as f64 / 8.0)).collect();
+                s += &format!("					\"row{r}\" \"{}\"
+", vals.join(" "));
+            }
+            s + "				}
+"
+        };
+        let mut blocks = rows("multiblend", 4) + &rows("alphablend", 4);
+        for k in 0..4 {
+            blocks += &rows(&format!("multiblend_color_{k}"), 3);
+        }
+        let text = format!(
+            "world
+{{
+	\"id\" \"1\"
+	\"classname\" \"worldspawn\"
+	solid
+	{{
+		\"id\" \"2\"
+		side
+		{{
+			\"id\" \"1\"
+			\"plane\" \"(0 128 64) (128 128 64) (128 0 64)\"
+			dispinfo
+			{{
+				\"power\" \"2\"
+				\"startposition\" \"[0 0 64]\"
+{blocks}			}}
+		}}
+	}}
+}}
+"
+        );
+        let map = crate::parse(&text).expect("map");
+        let out = crate::write(&map);
+        for line in text.lines().filter(|l| l.contains("\"row")) {
+            assert!(out.contains(line.trim()), "kept: {line}");
+        }
+        let d = map.world.solids[0].sides[0].disp.as_ref().expect("disp");
+        let mb = MultiBlend::of(d).expect("4-way rows");
+        assert_eq!(mb.weights[1], [0.5, 0.625, 0.75, 0.875]);
+        assert_eq!(mb.colors[3][24], [0.5, 0.625, 0.75]);
+        let again = crate::write(&crate::parse(&out).expect("reparse"));
+        assert_eq!(again, out, "stable");
     }
 
     #[test]

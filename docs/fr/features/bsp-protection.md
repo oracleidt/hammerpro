@@ -1,20 +1,20 @@
-[Documentation](../README.md) > Fonctionnalités > BSP Protection Pro | [English](../../en/features/bsp-protection.md)
+[Documentation](../README.md) > Fonctionnalités > Protect your BSP | [English](../../en/features/bsp-protection.md)
 
-# BSP Protection Pro
+# Protect your BSP
 
-BSP Protection Pro livre aux joueurs une copie protégée de votre map Garry's Mod et garde la map complète pour votre serveur. Le client n'a besoin que de la géométrie et du rendu pour afficher la map, alors que tout le gameplay (logique des entités, entrées et sorties, triggers) tourne sur le serveur. La copie téléchargée par les joueurs peut donc perdre tout ça, porter un filigrane, et devenir bien plus dure à décompiler en quelque chose d'exploitable.
+Protect your BSP livre aux joueurs une copie protégée de votre map Garry's Mod et garde la map complète pour votre serveur. Le client n'a besoin que de la géométrie et du rendu pour afficher la map, alors que tout le gameplay (logique des entités, entrées et sorties, triggers) tourne sur le serveur. La copie téléchargée par les joueurs peut donc perdre tout ça, porter un filigrane, et devenir bien plus dure à décompiler en quelque chose d'exploitable.
 
 Une map que le client affiche n'est jamais totalement inviolable : un décompilateur récupère toujours une partie de la géométrie. La protection rend une copie volée beaucoup moins utile et traçable, sans casser la map.
 
 ## Où la trouver
 
-La protection fait partie de la construction de la publication. Ouvrez **Fichier > Construire et enregistrer en contenu...**, onglet **Construction**, et cochez **BSP Protection Pro** (sous les options de publication). Ses options s'affichent en retrait dessous. La prochaine **Construire** produit la publication protégée. Voir [Construire et enregistrer en contenu](build-content-release.md) pour le reste de la fenêtre.
+La protection fait partie de la construction de la publication. Ouvrez **Fichier > Construire et enregistrer en contenu...**, onglet **Construction**, et cochez **Protect your BSP** (sous les options de publication). Ses options s'affichent en retrait dessous. La prochaine **Construire** produit la publication protégée. Voir [Construire et enregistrer en contenu](build-content-release.md) pour le reste de la fenêtre.
 
 ## Options
 
 | Option | Effet | Défaut |
 | --- | --- | --- |
-| **BSP Protection Pro** | Livrer une copie protégée de la map : logique de jeu, câblage des entités et données de décompilation retirés, filigranée. Garde la map complète pour votre serveur. Clé `content.protect`. | désactivé |
+| **Protect your BSP** | Livrer une copie protégée de la map : logique de jeu, câblage des entités et données de décompilation retirés, filigranée. Garde la map complète pour votre serveur. Clé `content.protect`. | désactivé |
 | **Filigrane** | Texte écrit dans la map protégée (votre nom ou serveur), traçable dans une copie volée. Stocké sur l'entité du monde sous `hammerpro_protected` ; les caractères de contrôle sont retirés et le texte est coupé à 120 caractères. Clé `content.protect_watermark`. | vide |
 | **Casser les décompilateurs (vider les faces d'origine)** | Vide le lump des faces d'origine : les décompilateurs l'utilisent, pas le jeu. Laissez activé. Clé `content.protect_strip_original_faces`. | activé |
 | **Randomiseur de matériaux (casse les décompilateurs comme bsp_iidefeat)** | Renomme les matériaux de la map en noms poubelle dans la copie livrée (redirigés pour rendre pareil), pour qu'une map récupérée ait des matériaux inexploitables. Laissez activé. Clé `content.protect_randomize`. | activé |
@@ -33,7 +33,7 @@ Sans clé, le verrou ne fait rien et la fenêtre indique *Mettez une clé : vous
 - **Les noms de matériaux** sont brouillés (option ci-dessus). Les matériaux que le moteur reconnaît par leur nom (textures d'outil et de ciel, matériaux patchés des cubemaps sous `maps/`) ne sont jamais renommés.
 - **Le maillage de navigation** est gardé pour le serveur seulement : il décrit toute la map et le client ne le lit jamais.
 
-Le journal de construction indique *BSP Protection Pro : N entités logiques retirées, N connexions supprimées, taille de données de décompilation vidées* et, avec le randomiseur, *Randomiseur de matériaux : N matériaux renommés, redirigés pour rendre pareil.*
+Le journal de construction indique *Protect your BSP : N entités logiques retirées, N connexions supprimées, taille de données de décompilation vidées* et, avec le randomiseur, *Randomiseur de matériaux : N matériaux renommés, redirigés pour rendre pareil.*
 
 ## La copie du serveur
 

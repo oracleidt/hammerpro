@@ -52,7 +52,7 @@ Une map peut aussi avoir son propre jeu, différent de ce jeu par défaut : le *
 
 Le contenu du Workshop et le contenu téléchargé s'ouvrent après le reste, en arrière-plan : la barre d'état affiche « Workshop N / M » jusqu'à ce qu'ils soient prêts.
 
-Ordre de priorité, du plus fort au plus faible : dossiers de textures personnalisés, addons, `garrysmod.vpk`, fichiers libres de `garrysmod`, autres VPK de `gameinfo.txt`, dossiers `content` des gamemodes, fichiers libres de `sourceengine`, jeux de `mount.cfg`, dossiers de jeu supplémentaires, éléments du Workshop, contenu téléchargé. Un fichier présent dans une source plus haute masque le même fichier plus bas.
+Ordre de priorité, du plus fort au plus faible : dossiers de textures personnalisés, addons, `garrysmod.vpk`, fichiers libres de `garrysmod`, autres VPK de `gameinfo.txt`, dossiers `content` des gamemodes, fichiers libres de `sourceengine`, jeux de `mount.cfg`, dossiers de jeu supplémentaires, jeux Steam par AppID (dans l'ordre de leur liste), éléments du Workshop, contenu téléchargé. Un fichier présent dans une source plus haute masque le même fichier plus bas.
 
 ### Dossiers de textures personnalisés
 
@@ -61,6 +61,19 @@ Ajoutez n'importe quel dossier de fichiers VTF/VMT ou d'images (PNG, JPG, TGA, B
 ### Dossiers de jeu supplémentaires
 
 Des dossiers de mod (avec un `gameinfo.txt` ou du contenu libre) à monter aussi. Ajout avec **Ajouter**, suppression avec la croix.
+
+### Jeux Steam par AppID
+
+Montez le contenu d'autres jeux Steam installés par leur AppID, quel que soit le jeu cible (Garry's Mod ou non) : par exemple 220 Half-Life 2, 240 Counter-Strike: Source, 300 Day of Defeat: Source, 380 Half-Life 2: Episode One, 420 Half-Life 2: Episode Two, 400 Portal, 440 Team Fortress 2, 4000 Garry's Mod.
+
+| Contrôle | Effet |
+|---|---|
+| Champ **AppID** et **Ajouter** | Ajoute un AppID ou plusieurs (`240, 440`), aussi avec `Entrée`. Une valeur qui n'est pas un nombre est refusée avec un message. |
+| **Jeux installés** | Liste les jeux Source installés dans vos bibliothèques Steam, avec leurs AppID : cliquez sur l'un d'eux pour l'ajouter. |
+| Rechercher à nouveau (flèche circulaire) | Relance la recherche dans les bibliothèques Steam après l'installation ou le déplacement d'un jeu. |
+| Lignes de la liste | L'AppID et le nom du jeu (au survol : ses dossiers de jeu). *Non installé* en orange quand Steam n'a pas ce jeu sur cet ordinateur. Les flèches haut et bas changent la priorité ; la croix retire le jeu. |
+
+Hammer Pro trouve chaque jeu par Steam : le dossier de Steam (registre `SteamPath`, sinon le dossier d'installation par défaut), chaque bibliothèque de `steamapps/libraryfolders.vdf`, puis `steamapps/appmanifest_<AppID>.acf` et son `installdir`. Il monte ensuite ce que liste le `gameinfo.txt` du jeu (ses VPK et dossiers, les jeux de base dont il dépend), après le contenu du jeu de la map. Les navigateurs de ressources, la vue 3D et la compilation (l'éditeur passe les dossiers de jeu au compilateur avec `-insert_search_path`) l'utilisent tous. Enregistré dans `mount_app_ids` de la table `[game]` de `settings.toml`. Avec Garry's Mod, `garrysmod/cfg/mount.cfg` fonctionne toujours aussi (**Utiliser les jeux de mount.cfg**). Les assistants IA utilisent les outils MCP `list_app_mounts` et `set_app_mounts` ; la ligne de commande du compilateur accepte `-mount_appid 240,440` (voir [Ligne de commande du compilateur](../compiler/command-line.md)).
 
 ### Définitions d'entités (FGD)
 

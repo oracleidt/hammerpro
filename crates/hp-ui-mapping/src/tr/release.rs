@@ -14,8 +14,8 @@ pub const TR: TrTable = &[
     ),
     (
         "release.protected",
-        "BSP Protection Pro: {0} logic entities removed, {1} connections stripped, {2} of decompile data emptied.",
-        "BSP Protection Pro : {0} entités logiques retirées, {1} connexions supprimées, {2} de données de décompilation vidées.",
+        "Protect your BSP: {0} logic entities removed, {1} connections stripped, {2} of decompile data emptied.",
+        "Protect your BSP : {0} entités logiques retirées, {1} connexions supprimées, {2} de données de décompilation vidées.",
     ),
     (
         "release.protect_server",
@@ -101,7 +101,7 @@ pub const TR: TrTable = &[
         "Lance Garry's Mod (après confirmation) pour construire les cubemaps et générer le maillage de navigation, puis le ferme.",
     ),
     ("release.opt_open_folder", "Open the output folder when done", "Ouvrir le dossier de sortie à la fin"),
-    ("release.opt_protect", "BSP Protection Pro", "BSP Protection Pro"),
+    ("release.opt_protect", "Protect your BSP", "Protect your BSP"),
     (
         "release.opt_protect_tip",
         "Ship a protected copy of the map: gameplay logic, entity wiring and decompile data removed, watermarked. Keeps the full map for your server.",

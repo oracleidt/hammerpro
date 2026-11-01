@@ -203,7 +203,7 @@ fn tool_entries_come_first_in_the_context_menu() {
         ToolMenuEntry { label: "Create object".to_owned(), id: 7, enabled: true },
         ToolMenuEntry { label: "Create as cylinder".to_owned(), id: 8, enabled: false },
     ];
-    let p = h.rect(1).center();
+    let p = h.rect(1).center_top() + vec2(0.0, 60.0);
     h.click(p, PointerButton::Secondary);
     h.frame(vec![]);
     let Some(menu) = h.vp.menu else { panic!("the menu is open") };

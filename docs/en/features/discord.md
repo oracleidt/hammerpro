@@ -16,7 +16,7 @@ Like Hammer++, Hammer Pro can show what you are mapping in your Discord profile:
 | **Show the map name** | Shows *Editing gm_city.vmf*; off, *Editing a map*. Key `show_map`. | on |
 | **Show the elapsed time** | Shows the time spent on the map. Key `show_elapsed`. | on |
 | **Show the active tool** | Shows the tool you use. Off: the target game is shown instead (and *Compiling...* during a compile). Key `show_tool`. | on |
-| **Discord application ID** | ID of the Discord application that shows the activity (section **Discord application**). Key `application_id`. | empty |
+| **Discord application ID** | Optional: the ID of your own Discord application, to replace Hammer Pro's (section **Discord application**). Empty: Hammer Pro's own application is used. Key `application_id`. | empty (Hammer Pro's application) |
 | **"Get Hammer Pro" button link** | Optional web page (`https://...`) shown as a **Get Hammer Pro** button under the activity; empty: no button. Key `project_url`. | empty |
 
 ## What Discord shows
@@ -29,16 +29,26 @@ Like Hammer++, Hammer Pro can show what you are mapping in your Discord profile:
 | Large image | The Hammer Pro logo (image key `hammerpro`), with "Hammer Pro" and the version. |
 | Small image | The icon of the game of the map, with its name. |
 
-## Setting up the application ID
+## The application
 
-Discord needs an application to show a presence. Hammer Pro 1.0.0 has no built-in application ID: until you set one, nothing is shown (*No application ID: nothing is shown on Discord yet.*).
+Hammer Pro comes with its own Discord application, named "Hammer Pro", with the logo under the image key `hammerpro`: there is nothing to set up. The **Discord application ID** field is empty and shows *Hammer Pro (built in)*.
 
-1. On the Discord Developer Portal, create an application named "Hammer Pro".
-2. Under **Rich Presence > Art Assets**, upload the Hammer Pro logo with the key `hammerpro`.
-3. Optional: upload game icons with these keys: `gmod`, `hl2` (Half-Life 2, episodes, Lost Coast, SDK 2013 singleplayer), `hls` (Half-Life: Source), `hl2dm`, `tf2`, `css`, `dods`, `portal`, `portal2`, `l4d`, `l4d2`, `csgo`. Other games use their own game id as key.
-4. Copy the **Application ID** (General Information page) into **Discord application ID**.
+To show the activity under another name or with other pictures, create your own application on the Discord Developer Portal, upload your images under **Rich Presence > Art Assets** (key `hammerpro` for the large image; game icons with the keys `gmod`, `hl2`, `hls`, `hl2dm`, `tf2`, `css`, `dods`, `portal`, `portal2`, `l4d`, `l4d2`, `csgo`, other games use their own game id), and paste its **Application ID** (General Information page) in the field. The ID is a number of 17 to 20 digits; anything else is refused with a message. Empty the field to go back to Hammer Pro's application.
 
-The ID is a number of 17 to 20 digits; anything else is refused with a message.
+## Status
+
+The line **Status:** under the options says what the presence is doing, and updates within a second:
+
+| Status | Meaning |
+| --- | --- |
+| *Connected: your activity is shown on Discord* | Hammer Pro talks to the Discord app and the activity is sent. |
+| *Connecting to Discord...* | First connection, or an option just changed. |
+| *Discord not running (retrying in the background)* | No Discord desktop app answered on this computer. Hammer Pro tries again after 5 seconds, then less often (every 20 seconds at most): start Discord and the activity shows up by itself. |
+| *Discord refused the connection (reason)* | Discord answered but refused the application, for example *Invalid Client ID (4000)* with a wrong custom ID. |
+| *Presence turned off* | **Show activity on Discord** is off. |
+| *Invalid application ID: presence disabled* | The field holds something that is not an application ID. |
+| *No application ID: presence disabled* | No ID to use (only in builds without the built in application). |
+| *Off in automated runs* | `--script`, tests: the presence never starts. |
 
 ## Requirements
 
@@ -51,11 +61,17 @@ The Discord desktop app must run on the same computer, with **Share your detecte
 
 ## FAQ
 
-**Nothing shows on Discord.** Check that an application ID is set, the Discord desktop app runs, and activity sharing is on. See [Discord presence not showing](../troubleshooting/discord-presence.md).
+**Nothing shows on Discord.** Look at the **Status:** line in **Settings > Discord**, check that the Discord desktop app runs and that activity sharing is on. See [Discord presence not showing](../troubleshooting/discord-presence.md).
 
 **Does the presence slow down the editor?** No, it runs on its own thread and updates are throttled.
 
 **Does it work with the Discord web app?** No, the presence needs the desktop app on the same computer.
+
+**Do I need to create a Discord application?** No, Hammer Pro has its own. A custom ID is only for showing another name or other pictures.
+
+## MCP
+
+AI assistants read the state with `get_discord_status` (status, its text, the application ID in use, the details and state lines sent) and change the options with `set_setting` on the `discord.*` keys. See the [MCP tool reference](../../MCP.md).
 
 ## Related pages
 

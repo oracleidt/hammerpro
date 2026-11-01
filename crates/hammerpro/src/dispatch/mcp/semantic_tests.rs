@@ -78,6 +78,7 @@ const SEMANTIC: &[&Domain] = &[
     &super::tools_entities::DOMAIN,
     &super::tools_assets::DOMAIN,
     &super::tools_compile::DOMAIN,
+    &super::tools_compilers::DOMAIN,
     &super::tools_health::DOMAIN,
     &super::tools_content::DOMAIN,
     &super::tools_docs::DOMAIN,

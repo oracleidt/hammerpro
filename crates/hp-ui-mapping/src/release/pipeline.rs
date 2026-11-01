@@ -643,6 +643,7 @@ fn game_session(ctx: &Ctx<'_>, tools: &hp_compile::ToolPaths, staged: &Path) -> 
             args: session::args(*pass, &input.map, &game_folder),
             continue_on_error: false,
             action: StepAction::Run,
+            workdir: None,
         });
         let original = if *pass == Pass::Nav { Some(set_session_entities(staged, true)?) } else { None };
         let mut tail = session::LogTail::new(&log_path);
@@ -870,7 +871,7 @@ fn protect_readme(map: &str, lock: bool, lang: hp_app::i18n::Lang) -> String {
             ""
         };
         return format!(
-            "BSP Protection Pro : fichiers pour TON serveur\n\
+            "Protect your BSP : fichiers pour TON serveur\n\
              ==============================================\n\n\
              Les joueurs téléchargent la copie PROTÉGÉE de {map} (dans l'addon ou le\n\
              GMA) : sans logique de jeu, avec filigrane, difficile à décompiler.\n\
@@ -896,7 +897,7 @@ fn protect_readme(map: &str, lock: bool, lang: hp_app::i18n::Lang) -> String {
         ""
     };
     format!(
-        "BSP Protection Pro: files for YOUR server\n\
+        "Protect your BSP: files for YOUR server\n\
          =========================================\n\n\
          Players download the PROTECTED copy of {map} (in the addon or the GMA):\n\
          no gameplay logic, watermarked, hard to decompile. This folder holds the\n\

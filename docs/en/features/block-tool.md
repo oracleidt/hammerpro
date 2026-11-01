@@ -14,7 +14,7 @@ The block tool creates brushes from primitives (block, wedge, cylinder, spike, s
 1. Drag in a 2D view (Top, Front or Side) to draw the footprint of the box. The two corners snap to the grid (hold `Alt` to draw without snapping).
 2. The depth of the box (along the axis the view looks at) is taken, like in Hammer, from:
    - the bounds of the current selection on that axis, if it has a thickness,
-   - else the depth of the last object created by the block or polygon tool,
+   - else the depth of the last object created by the block, polygon or curve tool,
    - else 64 units on top of a flat selection (or from 0).
 3. The box stays **pending**: it shows its width and height next to its edges, and 8 resize handles (corners and edge middles) in every 2D view.
    - Drag a handle to resize the box (the moved edges snap to the grid).
@@ -110,6 +110,7 @@ The Settings window opens with **Tools > Options...** (`Ctrl+,`).
 ## Related pages
 
 - [Polygon tool](polygon-tool.md)
+- [Curve tool](curve-tool.md)
 - [Selection tool](selection-tool.md)
 - [Brush operations](brush-operations.md)
 - [Vertex tool](vertex-tool.md)

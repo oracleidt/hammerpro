@@ -2,7 +2,7 @@
 
 # The built in compiler
 
-Hammer Pro compiles maps itself. The geometry, portals, leak test and visibility are built by `hammerpro --bspc`, the lighting by `hammerpro --rad`, and the packing of custom content, the copy to the game and the launch run inside the editor. You do not need VBSP, VVIS, VRAD or bspzip, and there is no compiler path to set.
+Hammer Pro compiles maps itself. The geometry, portals, leak test and visibility are built by `hammerpro --bspc`, the lighting by `hammerpro --rad`, and the packing of custom content, the copy to the game and the launch run inside the editor. You do not need VBSP, VVIS, VRAD or bspzip, and there is no compiler path to set. It is the default compiler; Valve's tools found next to the game, or programs of your own, can be chosen instead for each game (see [Choosing a compiler](compilers.md)).
 
 ## The stages
 
@@ -51,6 +51,8 @@ What the code and its comments state:
 - **Additions.** Ambient occlusion (`-ao`, on by default for Normal and Final), `-nostaticpropshadows`, `-nodispshadows`, `-wsaddons`, `-serveraddons`, `-blocksize`, `-propdebug` (VBSP has no prop report), statistics and optimization hints at the end of the log, and a check of every written BSP (every index inside its lump, every count within the engine limits): a map that passes loads.
 - **Content like the editor.** The compile mounts the same content sources the editor shows (Workshop items, server downloads), so a material visible in the editor is never compiled as missing.
 - **Other games.** One compiler writes the BSP formats of several Source branches (`-target`), see [Target games](target-games.md).
+- **Trains without an origin.** A `func_tracktrain`, `func_tanktrain` or `func_train` with no `origin` key and no origin brush gets the center of its brushes as origin, with a warning in the log (`has no origin key nor origin brush`). VBSP leaves such a train at the world origin, and the game then draws it far from its path. Maps saved by Hammer always have the key.
+- **4-way blends.** The 4-way blend rows of displacements (Hammer++ `multiblend`, `alphablend`, `multiblend_color_N`) go to the displacement multiblend lump (63) with the multiblend flag of each displacement, byte for byte like Garry's Mod's VBSP, for Garry's Mod, Source 2013 and CS:GO targets. A Lightmapped_4WayBlend displacement without rows gets rows made from its vertex alpha (texture 2 where painted), as the editor shows it; VBSP writes none for it. The decompiler reads the lump back into the rows.
 - **Not written.** The displacement lightmap sample positions lump (only VRAD reads it) and the per texel lightmaps of props with `generatelightmaps`.
 
 ## Compared to Hammer++
@@ -61,6 +63,8 @@ Hammer Pro reads what Hammer++ adds for its compiles: the worldspawn key `_light
 
 **Do I need the Source SDK or Hammer installed?** No. Only the game (for its content and to play the map).
 
+**Can I still compile with VBSP, VVIS and VRAD?** Yes: pick **Valve (bin)** or **Valve (bin/win64)** in the **Compiler** row of the compile window, or make a compiler of your own. See [Choosing a compiler](compilers.md).
+
 **Is the BSP byte for byte the one VBSP would write?** No, and it does not try to be. The goal is a correct map that looks right in game; the formats, limits and formulas follow Valve's tools.
 
 **Can I run the compiler outside the editor?** Yes, `hammerpro --bspc` and `hammerpro --rad` work from a terminal or a script. See [Command line](command-line.md).
@@ -69,6 +73,7 @@ Hammer Pro reads what Hammer++ adds for its compiles: the worldspawn key `_light
 
 ## Related pages
 - [Compile and run window](compile-window.md)
+- [Choosing a compiler](compilers.md)
 - [Compile options](compile-options.md)
 - [Command line](command-line.md)
 - [Worldspawn and light keys](worldspawn-keys.md)

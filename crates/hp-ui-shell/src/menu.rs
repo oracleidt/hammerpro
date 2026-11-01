@@ -69,6 +69,8 @@ fn hammer_order(group: MenuGroup) -> &'static [Action] {
             A::SnapToGrid,
             A::SnapToGridIndividually,
             A::CenterOrigins,
+            A::RandomRotate,
+            A::RandomRotateDialog,
         ],
         MenuGroup::ToolsPlacement => &[A::CreatePrefab],
         MenuGroup::ToolsSwitch => &TOOLS_MENU_ORDER,
@@ -76,7 +78,7 @@ fn hammer_order(group: MenuGroup) -> &'static [Action] {
     }
 }
 
-const TOOLS_MENU_ORDER: [Action; 15] = [
+const TOOLS_MENU_ORDER: [Action; 17] = [
     Action::ToolSelect,
     Action::ToolCamera,
     Action::ToolEntity,
@@ -86,9 +88,11 @@ const TOOLS_MENU_ORDER: [Action; 15] = [
     Action::ToolDecal,
     Action::ToolOverlay,
     Action::ToolClip,
+    Action::ToolExtrude,
     Action::ToolVertex,
     Action::ToolPath,
     Action::ToolPolygon,
+    Action::ToolCurve,
     Action::ToolSprinkle,
     Action::ToolDisplacement,
     Action::ToolCordon,

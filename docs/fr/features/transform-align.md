@@ -2,7 +2,7 @@
 
 # Transformer et aligner
 
-Les commandes qui déplacent, pivotent, mettent à l'échelle, retournent, alignent ou posent les objets sélectionnés selon des règles précises, sans glisser de poignées : la fenêtre Transformer, l'alignement, le retournement, l'alignement sur la grille, poser au sol / coller au plafond, centrer les origines, le pivot déplaçable, le placement physique et les copies en série (Collage spécial).
+Les commandes qui déplacent, pivotent, mettent à l'échelle, retournent, alignent ou posent les objets sélectionnés selon des règles précises, sans glisser de poignées : la fenêtre Transformer, l'alignement, le retournement, l'alignement sur la grille, poser au sol / coller au plafond, centrer les origines, la rotation Z aléatoire, le pivot déplaçable, le placement physique et les copies en série (Collage spécial).
 
 Chaque commande ci-dessous agit sur la sélection actuelle et compte pour une seule étape d'annulation. La plupart se trouvent dans le menu **Outils** (l'alignement et le retournement ont leurs sous-menus **Outils > Aligner** et **Outils > Retourner**). Pour déplacer les objets à la souris, voyez l'[outil de sélection](selection-tool.md).
 
@@ -18,6 +18,8 @@ Chaque commande ci-dessous agit sur la sélection actuelle et compte pour une se
 | **Poser au sol, aligné sur la surface** | Outils | `Ctrl+Alt+N` |
 | **Coller au plafond, aligné sur la surface** | Outils | `Ctrl+Alt+U` |
 | **Centrer les origines** | Outils | aucun |
+| **Rotation Z aléatoire** | Outils, et le menu du clic droit des vues | aucun |
+| **Options de rotation Z aléatoire...** | Outils (ouvre la fenêtre Transformer en mode **Z aléatoire**) | aucun |
 | **Pivot déplaçable** | Outils | aucun |
 | **Placement physique (chute et pose)** | Outils | aucun |
 | **Retourner X**, **Retourner Y**, **Retourner Z** | Outils > Retourner | aucun |
@@ -37,7 +39,7 @@ Les commandes sans raccourci peuvent en recevoir un dans **Paramètres > Clavier
 
 | Champ | Effet | Par défaut |
 |---|---|---|
-| **Déplacer** / **Pivoter** / **Mettre à l'échelle** | Boutons de mode en haut de la fenêtre. | **Déplacer** |
+| **Déplacer** / **Pivoter** / **Mettre à l'échelle** / **Z aléatoire** | Boutons de mode en haut de la fenêtre. **Z aléatoire** est décrit dans [Rotation Z aléatoire](#rotation-z-aléatoire). | **Déplacer** |
 | **Décalage** (Déplacer) | Distance X, Y, Z en unités ajoutée à la sélection. | 0 0 0 |
 | **Angles (degrés)** (Pivoter) | Rotation autour de X, Y et Z, appliquée d'abord sur Z, puis Y, puis X (le même ordre que le Collage spécial). | 0 0 0 |
 | **Facteurs** (Mettre à l'échelle) | Facteur d'échelle sur X, Y et Z (pas de glissement 0,01). Un facteur nul est refusé (**Les facteurs d'échelle ne peuvent pas être nuls**). Un facteur négatif fait un miroir. | 1 1 1 |
@@ -103,6 +105,22 @@ Les axes sont ceux de la vue 2D sous le pointeur (ou de la dernière utilisée).
 
 **Outils > Centrer les origines** place la clé `origin` des entités de brush sélectionnées (`func_door_rotating`, `func_rotating`...) au centre de leurs brushes. Seules les entités de brush qui ont une clé `origin` changent ; sélectionner un de leurs brushes suffit. Si aucune n'a changé, l'avis **Aucune entité de brosses sélectionnée n'a d'origine à centrer** s'affiche.
 
+## Rotation Z aléatoire
+
+**Outils > Rotation Z aléatoire** tourne chaque entité ponctuelle sélectionnée qui a une clé `angles` (`prop_static`, `prop_dynamic`, `prop_physics`, lumières, toute entité ponctuelle avec des angles) autour de Z d'une quantité aléatoire qui lui est propre, autour de sa propre origine. C'est une seule étape d'annulation (**Rotation aléatoire**). Les brushes, les entités de brush et les entités sans clé `angles` sont ignorés ; l'avis indique combien ont tourné et combien ont été ignorés, par exemple **Rotation Z aléatoire : 12 tournés, 3 ignorés (brosses, entités de brosses ou sans clé angles)**.
+
+Les options sont dans le mode **Z aléatoire** de la fenêtre Transformer (**Outils > Options de rotation Z aléatoire...**), gardées dans les paramètres :
+
+| Champ | Effet | Par défaut |
+|---|---|---|
+| **Plage de lacet** | La rotation ajoutée au lacet de chaque objet est tirée entre ces deux valeurs, en degrés. | 0 à 360 |
+| **Pas d'arrondi** | **Libre**, **15°**, **45°**, **90°** ou tout pas jusqu'à 180 : la rotation est un multiple du pas (avec 0 à 360 et 90, chaque objet regarde dans l'une des quatre directions). | Libre |
+| **Variation de tangage et roulis** | Incline aussi le tangage et le roulis d'une quantité aléatoire jusqu'à ce nombre de degrés (0 à 45). | désactivé, 3° |
+| **Réinitialiser** | Remet ces options à leurs valeurs par défaut. | |
+| **Appliquer** | Tourne la sélection (aussi `Entrée`) ; la fenêtre indique combien ont tourné. | |
+
+Les options sont les clés `random_yaw_min`, `random_yaw_max`, `random_yaw_snap`, `random_tilt` et `random_tilt_deg` de la table `[selection]` (voir la [référence des paramètres](../reference/settings.md)).
+
 ## Pivot déplaçable
 
 **Outils > Pivot déplaçable** affiche une croix de pivot au centre de la sélection (à l'origine d'une entité ponctuelle seule), ou la masque si elle est déjà affichée.
@@ -124,7 +142,7 @@ Les deux se trouvent aussi dans **Paramètres > Édition > Comportement** et son
 
 ## MCP
 
-Les mêmes opérations existent pour les assistants IA : `transform_objects`, `move_objects`, `rotate_objects`, `resize_objects`, `snap_objects_to_grid`, `drop_to_surface`, `flip_objects`, `align_objects`, `center_entity_origins`, `array_duplicate` et `run_action` (par exemple `physics_placement` ou `toggle_pivot`). Voir la [référence des outils MCP](../../MCP.md) (en anglais).
+Les mêmes opérations existent pour les assistants IA : `transform_objects`, `move_objects`, `rotate_objects`, `resize_objects`, `snap_objects_to_grid`, `drop_to_surface`, `flip_objects`, `align_objects`, `center_entity_origins`, `random_rotate_objects` (rotation Z aléatoire, avec sa plage, son pas, son inclinaison et sa graine), `array_duplicate` et `run_action` (par exemple `physics_placement` ou `toggle_pivot`). Voir la [référence des outils MCP](../../MCP.md) (en anglais).
 
 ## Astuces
 
@@ -132,6 +150,7 @@ Les mêmes opérations existent pour les assistants IA : `transform_objects`, `m
 - L'alignement prend le dernier objet sélectionné comme référence : faites Ctrl+clic sur la référence en dernier.
 - **Poser au sol** sur un groupe de props le déplace d'un bloc : une table et les objets posés dessus restent assemblés.
 - **Aligner chaque objet sur la grille** remet d'un coup beaucoup de props hors grille en place, sans tous les décaler de la même distance.
+- Après avoir placé une rangée de rochers, de caisses ou d'arbres identiques, la **Rotation Z aléatoire** leur donne un air moins copié ; réglez le **Pas d'arrondi** sur 90° pour des caisses qui doivent rester d'équerre avec les murs.
 
 ## FAQ
 

@@ -32,12 +32,12 @@ domain! { "content and release";
         folder with the BSP and every custom material, model, sound and particle the map uses, and the GMA. The \
         map is saved first. It runs on its own threads: follow it with get_release_status. With analyze_only, \
         only the dependencies are resolved (nothing is written). A build writes files: set confirm to true. \
-        With protect, BSP Protection Pro ships a protected copy of the map (gameplay logic and entity wiring \
+        With protect, Protect your BSP ships a protected copy of the map (gameplay logic and entity wiring \
         stripped, watermarked) and keeps the full one for the server.",
         {
             "analyze_only": boolean("Only resolve the dependencies (default false)."),
             "confirm": boolean("Required for a build (it compiles and writes the content folder and the GMA)."),
-            "protect": boolean("Protect the shipped map with BSP Protection Pro (default: the content setting)."),
+            "protect": boolean("Protect the shipped map with Protect your BSP (default: the content setting)."),
             "watermark": string("Watermark for the protected map (author, server), when protect is on."),
             "game_session": boolean("Build the cubemaps and the navigation mesh in Garry's Mod during the build \
                 (starts the game; saved as the content setting). Only when the user asked; refused in automated runs."),

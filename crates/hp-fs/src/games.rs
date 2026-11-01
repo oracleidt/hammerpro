@@ -775,6 +775,7 @@ pub fn game_catalogue() -> Vec<GameProfile> {
 
 pub fn refresh_games() {
     *CATALOGUE.lock() = None;
+    crate::apps::refresh_steam_apps();
 }
 
 static CATALOGUE: parking_lot::Mutex<Option<Vec<GameProfile>>> = parking_lot::Mutex::new(None);
@@ -1013,6 +1014,9 @@ pub(crate) fn plan_game(
         for item in game_folder_items(path, SourceOrigin::Extra, &label, &mut warnings) {
             push(item, &mut items);
         }
+    }
+    for item in crate::apps::app_items(opts, &mut warnings) {
+        push(item, &mut items);
     }
     Ok((items, warnings))
 }

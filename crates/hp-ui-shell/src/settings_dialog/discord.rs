@@ -1,6 +1,7 @@
 use egui::RichText;
 use hp_app::extend::{SettingsPage, page_order};
 use hp_app::i18n::TrTable;
+use hp_app::runtime::DiscordStatus;
 use hp_app::settings::DiscordSettings;
 use hp_app::{AppState, t};
 
@@ -52,11 +53,14 @@ impl SettingsPage for DiscordPage {
         egui::Grid::new("hp_shell_discord").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
             ui.label(t!("shell.discord.app_id"));
             changed |= ui
-                .add(
-                    egui::TextEdit::singleline(&mut s.application_id)
-                        .desired_width(220.0)
-                        .hint_text("1234567890123456789"),
-                )
+                .add(egui::TextEdit::singleline(&mut s.application_id).desired_width(220.0).hint_text(
+                    if hp_discord::DEFAULT_APPLICATION_ID.is_empty() {
+                        "1234567890123456789"
+                    } else {
+                        t!("shell.discord.app_id_hint")
+                    },
+                ))
+                .on_hover_text(t!("shell.discord.app_id_tip"))
                 .changed();
             ui.end_row();
             ui.label(t!("shell.discord.project_url"));
@@ -72,6 +76,9 @@ impl SettingsPage for DiscordPage {
             ui.label(RichText::new(t!(key)).color(ui.visuals().warn_fg_color));
             ui.hyperlink_to(PORTAL_URL, PORTAL_URL);
         }
+        let shown = shown_status(&state.runtime.discord.status, s.enabled, &s.application_id);
+        ui.add_space(6.0);
+        status_line(ui, &shown);
         ui.add_space(4.0);
         ui.label(RichText::new(t!("shell.discord.note")).small().weak());
         if changed {
@@ -87,6 +94,40 @@ impl SettingsPage for DiscordPage {
             ..DiscordSettings::default()
         };
     }
+}
+
+pub fn shown_status(status: &DiscordStatus, enabled: bool, application_id: &str) -> DiscordStatus {
+    match status {
+        DiscordStatus::Off => DiscordStatus::Off,
+        _ if !enabled => DiscordStatus::Disabled,
+        _ if hp_discord::application_id(application_id).is_none() => {
+            if application_id.trim().is_empty() {
+                DiscordStatus::NoApplicationId
+            } else {
+                DiscordStatus::BadApplicationId
+            }
+        }
+        DiscordStatus::Disabled | DiscordStatus::NoApplicationId | DiscordStatus::BadApplicationId => {
+            DiscordStatus::Connecting
+        }
+        other => other.clone(),
+    }
+}
+
+fn status_line(ui: &mut egui::Ui, status: &DiscordStatus) {
+    let color = match *status {
+        DiscordStatus::Connected => ui.visuals().text_color(),
+        DiscordStatus::Connecting | DiscordStatus::Disabled | DiscordStatus::Off => ui.visuals().weak_text_color(),
+        _ => ui.visuals().warn_fg_color,
+    };
+    ui.horizontal_wrapped(|ui| {
+        ui.label(RichText::new(t!("shell.discord.status")).strong());
+        let mut text = t!(status.label_key()).to_owned();
+        if let Some(why) = status.detail() {
+            text = format!("{text} ({why})");
+        }
+        ui.label(RichText::new(text).color(color));
+    });
 }
 
 pub(crate) const TR: TrTable = &[
@@ -108,6 +149,33 @@ pub(crate) const TR: TrTable = &[
     ),
     ("shell.discord.application", "Discord application", "Application Discord"),
     ("shell.discord.app_id", "Discord application ID", "ID de l'application Discord"),
+    ("shell.discord.app_id_hint", "Hammer Pro (built in)", "Hammer Pro (intégré)"),
+    (
+        "shell.discord.app_id_tip",
+        "Empty: Hammer Pro's own Discord application is used. Paste the ID of your own application only to replace it.",
+        "Vide : l'application Discord de Hammer Pro est utilisée. Collez l'ID de votre propre application seulement pour la remplacer.",
+    ),
+    ("shell.discord.status", "Status:", "État :"),
+    ("shell.discord.status_off", "Off in automated runs", "Désactivé pendant les exécutions automatisées"),
+    ("shell.discord.status_disabled", "Presence turned off", "Statut désactivé"),
+    ("shell.discord.status_no_id", "No application ID: presence disabled", "Aucun ID d'application : statut désactivé"),
+    (
+        "shell.discord.status_bad_id",
+        "Invalid application ID: presence disabled",
+        "ID d'application invalide : statut désactivé",
+    ),
+    ("shell.discord.status_connecting", "Connecting to Discord...", "Connexion à Discord..."),
+    (
+        "shell.discord.status_not_running",
+        "Discord not running (retrying in the background)",
+        "Discord n'est pas lancé (nouvel essai en arrière-plan)",
+    ),
+    (
+        "shell.discord.status_connected",
+        "Connected: your activity is shown on Discord",
+        "Connecté : votre activité est affichée sur Discord",
+    ),
+    ("shell.discord.status_refused", "Discord refused the connection", "Discord a refusé la connexion"),
     ("shell.discord.project_url", "\"Get Hammer Pro\" button link", "Lien du bouton « Obtenir Hammer Pro »"),
     (
         "shell.discord.project_url_tip",
@@ -116,8 +184,8 @@ pub(crate) const TR: TrTable = &[
     ),
     (
         "shell.discord.no_id",
-        "No application ID: nothing is shown on Discord yet. On the Discord Developer Portal, create an application named \"Hammer Pro\", upload the logo under Rich Presence > Art Assets with the key \"hammerpro\", then copy its Application ID (General Information page) into the field above.",
-        "Aucun ID d'application : rien n'est encore affiché sur Discord. Sur le Discord Developer Portal, créez une application nommée « Hammer Pro », envoyez le logo dans Rich Presence > Art Assets avec la clé « hammerpro », puis copiez son Application ID (page General Information) dans le champ ci-dessus.",
+        "No application ID: nothing is shown on Discord. Paste the Application ID of a Discord application (General Information page of the Discord Developer Portal) into the field above.",
+        "Aucun ID d'application : rien n'est affiché sur Discord. Collez l'Application ID d'une application Discord (page General Information du Discord Developer Portal) dans le champ ci-dessus.",
     ),
     (
         "shell.discord.bad_id",
@@ -135,3 +203,24 @@ pub(crate) const TR: TrTable = &[
     ("shell.discord.activity_compiling", "Compiling...", "Compilation..."),
     ("shell.discord.activity_button", "Get Hammer Pro", "Obtenir Hammer Pro"),
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shown_status_follows_the_fields_at_once() {
+        let id = "1234567890123456789";
+        assert_eq!(shown_status(&DiscordStatus::Connected, false, id), DiscordStatus::Disabled);
+        assert_eq!(shown_status(&DiscordStatus::Connected, true, "abc"), DiscordStatus::BadApplicationId);
+        assert_eq!(shown_status(&DiscordStatus::Disabled, true, id), DiscordStatus::Connecting);
+        assert_eq!(shown_status(&DiscordStatus::NotRunning, true, id), DiscordStatus::NotRunning);
+        assert_eq!(shown_status(&DiscordStatus::Off, true, id), DiscordStatus::Off);
+        let empty = shown_status(&DiscordStatus::Connected, true, "");
+        if hp_discord::DEFAULT_APPLICATION_ID.is_empty() {
+            assert_eq!(empty, DiscordStatus::NoApplicationId);
+        } else {
+            assert_eq!(empty, DiscordStatus::Connected);
+        }
+    }
+}
