@@ -8,6 +8,7 @@ use hp_app::i18n::TrTable;
 use hp_app::runtime::helpers::geometry::entity_color;
 use hp_app::tf;
 use hp_app::view::ViewInfo;
+use hp_editor::display_color::chosen;
 use hp_editor::{Id, ObjRef, PickOptions};
 use hp_geom::Ray;
 
@@ -45,7 +46,7 @@ struct TextEntry {
 
 #[derive(Default)]
 struct LabelsLayer {
-    stamp: Option<(u64, u64)>,
+    stamp: Option<(u64, u64, bool)>,
     names: Vec<NameEntry>,
     texts: Vec<TextEntry>,
     show_names: bool,
@@ -88,7 +89,8 @@ impl LabelsLayer {
             let e = &node.entity;
             let Some(pos) = e.origin().filter(|p| p.is_finite()) else { continue };
             let class = fgd.and_then(|f| f.class(&e.classname));
-            let color = entity_color(e, class);
+            let chosen = state.settings.render.object_colors_2d.then(|| chosen(e.editor.color)).flatten();
+            let color = chosen.unwrap_or_else(|| entity_color(e, class));
             self.names.push(NameEntry { id: *id, pos, color });
             let worldtext = match self.worldtext.get(e.classname.as_str()) {
                 Some(w) => *w,
@@ -230,7 +232,7 @@ impl OverlayLayer for LabelsLayer {
             return;
         }
         let generation = state.assets.generation();
-        let stamp = (state.doc.revision(), generation);
+        let stamp = (state.doc.revision(), generation, state.settings.render.object_colors_2d);
         if self.stamp.is_some_and(|s| s.1 != generation) {
             self.worldtext.clear();
         }

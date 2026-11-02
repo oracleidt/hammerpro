@@ -95,7 +95,8 @@ pub const WORLDLIGHTS: MapLimit = limit("worldlights", "MAX_MAP_WORLDLIGHTS", 8_
 pub const ENTITIES: MapLimit = limit("entities", "MAX_MAP_ENTITIES", 8_192, 65_535, 0);
 pub const ENTSTRING: MapLimit = limit("entdata", "MAX_MAP_ENTSTRING", 384 * 1_024, 0x40_0000, 0);
 pub const VISIBILITY: MapLimit = limit("visdata", "MAX_MAP_VISIBILITY", 0x100_0000, 0x100_0000, 0);
-pub const LIGHTING: MapLimit = limit("lightdata", "MAX_MAP_LIGHTING", 0x100_0000, 0, 0);
+pub const LUMP_MAX_BYTES: u64 = i32::MAX as u64;
+pub const LIGHTING: MapLimit = limit("lightdata", "dface_t lightofs", LUMP_MAX_BYTES, LUMP_MAX_BYTES, 0);
 pub const STATIC_PROPS: MapLimit = limit("static props", "MAX_STATIC_PROPS", 65_535, 16_384, 0);
 pub const SWITCHED_LIGHTS: MapLimit = limit("switched lights", "MAX_SWITCHED_LIGHTS", 32, 96, 0);
 pub const PRIMITIVES: MapLimit = limit("primitives", "MAX_MAP_PRIMITIVES", 32_768, 32_768, 10);
@@ -197,6 +198,14 @@ mod tests {
         assert_eq!(VERTEXES.max_bytes(), 65_536 * 12);
         for l in ALL {
             assert!(l.gmod >= l.sdk || l.gmod == 0 || *l == STATIC_PROPS, "{}", l.name);
+        }
+    }
+
+    #[test]
+    fn lightmaps_are_only_bounded_by_the_face_offset() {
+        for set in [LimitSet::Gmod, LimitSet::Sdk] {
+            assert_eq!(LIGHTING.max_in(set), i32::MAX as u64);
+            assert!(LIGHTING.max_in(set) > 81_214_012, "Valve compiled maps load with 81 MB of lightmaps");
         }
     }
 }

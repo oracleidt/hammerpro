@@ -296,6 +296,7 @@ pub struct EntityDialogs {
     find_replace: crate::find_replace::FindReplace,
     help: crate::help::HelpWindow,
     color: crate::color::ColorWindow,
+    display_color: crate::display_color::DisplayColorWindow,
     max_distance: crate::max_distance::MaxDistanceWindow,
     soundscapes: crate::soundscapes::SoundscapeEditor,
     sounds: crate::sound_browser::SoundBrowser,
@@ -392,6 +393,7 @@ impl EntityDialogs {
         self.find_replace.show(ctx, state, self.text_focus_before);
         self.help.show(ctx, state, fgd, self.text_focus_before);
         self.color.show(ctx, state, fgd);
+        self.display_color.show(ctx, state);
         self.max_distance.show(ctx, state, fgd, self.text_focus_before);
         self.soundscapes.show(ctx, state);
         if state.runtime.entities.sound_window {

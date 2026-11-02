@@ -854,10 +854,9 @@ fn set_max_distance(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     for id in &ids {
         if let Some(n) = state.doc.scene().entity(*id) {
             let class = n.entity.classname.to_ascii_lowercase();
-            for key in ["fademaxdist"] {
-                let has = hp_ui_entities::max_distance::fgd_has_key(state.assets.fgd(), &class, key);
-                known.insert((class.clone(), key.to_owned()), has);
-            }
+            let key = "fademaxdist";
+            let has = hp_ui_entities::max_distance::fgd_has_key(state.assets.fgd(), &class, key);
+            known.insert((class.clone(), key.to_owned()), has);
         }
     }
     let has_key = |c: &str, k: &str| known.get(&(c.to_ascii_lowercase(), k.to_ascii_lowercase())).copied().flatten();

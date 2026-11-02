@@ -781,6 +781,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn transforms_and_snapping() {
         let mut e = Entity { classname: "prop_static".to_owned(), ..Entity::default() };
         e.set("origin", "100 0 -8");

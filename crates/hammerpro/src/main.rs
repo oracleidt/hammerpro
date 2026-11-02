@@ -1,6 +1,44 @@
 #![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
 #![recursion_limit = "256"]
 
+#[cfg(not(test))]
+#[allow(unused_macros)]
+macro_rules! println {
+    () => {{
+        let _ = ::std::io::Write::write_all(&mut ::std::io::stdout(), b"\n");
+    }};
+    ($($arg:tt)*) => {{
+        let _ = ::std::io::Write::write_fmt(&mut ::std::io::stdout(), format_args!("{}\n", format_args!($($arg)*)));
+    }};
+}
+
+#[cfg(not(test))]
+#[allow(unused_macros)]
+macro_rules! print {
+    ($($arg:tt)*) => {{
+        let _ = ::std::io::Write::write_fmt(&mut ::std::io::stdout(), format_args!($($arg)*));
+    }};
+}
+
+#[cfg(not(test))]
+#[allow(unused_macros)]
+macro_rules! eprintln {
+    () => {{
+        let _ = ::std::io::Write::write_all(&mut ::std::io::stderr(), b"\n");
+    }};
+    ($($arg:tt)*) => {{
+        let _ = ::std::io::Write::write_fmt(&mut ::std::io::stderr(), format_args!("{}\n", format_args!($($arg)*)));
+    }};
+}
+
+#[cfg(not(test))]
+#[allow(unused_macros)]
+macro_rules! eprint {
+    ($($arg:tt)*) => {{
+        let _ = ::std::io::Write::write_fmt(&mut ::std::io::stderr(), format_args!($($arg)*));
+    }};
+}
+
 mod app;
 mod autosave;
 mod bspc_cli;
@@ -15,16 +53,22 @@ mod gpu_guard;
 mod icon;
 mod keyboard;
 mod logger;
+mod native_crash;
 mod opening;
 mod prompts;
+mod restart;
 mod script;
 mod tabs;
 #[cfg(test)]
 mod tests_undo_move;
 mod timing;
+mod vram;
 
 use std::path::PathBuf;
 use std::sync::Arc;
+
+#[global_allocator]
+static ALLOCATOR: native_crash::GuardedAlloc = native_crash::GuardedAlloc;
 
 #[derive(Clone, Debug, Default)]
 pub struct Cli {
@@ -38,6 +82,7 @@ pub struct Cli {
     pub width: f32,
     pub height: f32,
     pub bench_open: Option<PathBuf>,
+    pub restore: Option<PathBuf>,
 }
 
 impl Cli {
@@ -61,6 +106,7 @@ fn parse_cli() -> Cli {
             "--screenshot" => cli.screenshot = args.next().map(PathBuf::from),
             "--script" => cli.script = args.next().map(PathBuf::from),
             "--bench-open" => cli.bench_open = args.next().map(PathBuf::from),
+            restart::RESTORE_ARG => cli.restore = args.next().map(PathBuf::from),
             "--frames" => cli.frames = args.next().and_then(|v| v.parse().ok()).unwrap_or(90),
             "--maximize-view" => cli.maximize_view = args.next().and_then(|v| v.parse().ok()),
             "--size" => {
@@ -93,6 +139,7 @@ fn wgpu_options(transparent: bool) -> egui_wgpu::WgpuConfiguration {
         required_features: adapter.features()
             & (wgpu::Features::TEXTURE_COMPRESSION_BC | wgpu::Features::POLYGON_MODE_LINE),
         required_limits: adapter.limits(),
+        memory_hints: wgpu::MemoryHints::MemoryUsage,
         ..Default::default()
     });
     egui_wgpu::WgpuConfiguration { wgpu_setup: egui_wgpu::WgpuSetup::CreateNew(setup), ..Default::default() }

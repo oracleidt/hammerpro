@@ -17,6 +17,7 @@ pub struct ParkedScene {
     instance_groups: Vec<Group>,
     instance_refs: Vec<ObjectId>,
     instance_bounds: Option<(Vec3, Vec3)>,
+    instance_boxes: Vec<(Vec3, Vec3)>,
     instance_list: Vec<ModelInstance>,
     translucent_instances: bool,
     sprites: GrowBuffer,
@@ -26,6 +27,8 @@ pub struct ParkedScene {
     lights_buf: GrowBuffer,
     lights_cpu: Vec<LightGpu>,
     dir_lights: u32,
+    lights_left_out: u32,
+    sun: crate::SunParams,
     ambient: [f32; 3],
 }
 
@@ -79,6 +82,7 @@ impl Renderer {
             instance_groups,
             instance_refs,
             instance_bounds,
+            instance_boxes,
             instance_list,
             translucent_instances,
             sprites,
@@ -88,6 +92,8 @@ impl Renderer {
             lights_buf,
             lights_cpu,
             dir_lights,
+            lights_left_out,
+            sun,
             ambient,
         } = incoming;
         self.game_outlines = None;
@@ -101,6 +107,7 @@ impl Renderer {
             instance_groups: std::mem::replace(&mut self.instance_groups, instance_groups),
             instance_refs: std::mem::replace(&mut self.instance_refs, instance_refs),
             instance_bounds: std::mem::replace(&mut self.instance_bounds, instance_bounds),
+            instance_boxes: std::mem::replace(&mut self.instance_boxes, instance_boxes),
             instance_list: std::mem::replace(&mut self.instance_list, instance_list),
             translucent_instances: std::mem::replace(&mut self.translucent_instances, translucent_instances),
             sprites: std::mem::replace(&mut self.sprites, sprites),
@@ -110,6 +117,8 @@ impl Renderer {
             lights_buf: std::mem::replace(&mut self.lights_buf, lights_buf),
             lights_cpu: std::mem::replace(&mut self.lights_cpu, lights_cpu),
             dir_lights: std::mem::replace(&mut self.dir_lights, dir_lights),
+            lights_left_out: std::mem::replace(&mut self.lights_left_out, lights_left_out),
+            sun: std::mem::replace(&mut self.sun, sun),
             ambient: std::mem::replace(&mut self.ambient, ambient),
         };
         self.sync_materials();
@@ -142,6 +151,7 @@ impl Renderer {
             instance_groups: Vec::new(),
             instance_refs: Vec::new(),
             instance_bounds: None,
+            instance_boxes: Vec::new(),
             instance_list: Vec::new(),
             translucent_instances: false,
             sprites: GrowBuffer::new(d, "hp-render sprites", vb, 1 << 12),
@@ -151,6 +161,8 @@ impl Renderer {
             lights_buf: GrowBuffer::new(d, "hp-render lights", storage, size_of::<LightGpu>() as u64),
             lights_cpu: Vec::new(),
             dir_lights: 0,
+            lights_left_out: 0,
+            sun: crate::SunParams::default(),
             ambient: [0.0; 3],
         }
     }

@@ -61,6 +61,8 @@ const HANDLED: &[Action] = &[
     Action::ToggleDispWalkable,
     Action::ToggleNodraw,
     Action::ToggleCubemaps,
+    Action::ToggleObjectColors2d,
+    Action::ToggleObjectColors3d,
     Action::RebuildCubemaps,
     Action::WriteCubemaps,
 ];
@@ -119,6 +121,8 @@ impl Package for Render {
             Action::ToggleDispWalkable => r.disp_walkable = !r.disp_walkable,
             Action::ToggleNodraw => r.hide_nodraw = !r.hide_nodraw,
             Action::ToggleCubemaps => r.cubemaps = !r.cubemaps,
+            Action::ToggleObjectColors2d => r.object_colors_2d = !r.object_colors_2d,
+            Action::ToggleObjectColors3d => r.object_colors_3d = !r.object_colors_3d,
             Action::RebuildCubemaps => {
                 if let Some(gfx) = state.gfx.as_mut() {
                     gfx.renderer.rebake_cubemaps();
@@ -249,24 +253,28 @@ fn fog_menu(ui: &mut egui::Ui, state: &mut AppState) {
             state.settings.render.fog_preview = false;
             state.settings_dirty = true;
         }
-        let controllers: Vec<(hp_editor::Id, String)> = state
+        let mut controllers: Vec<(hp_editor::Id, String)> = state
             .doc
             .scene()
             .entities()
             .iter()
-            .filter(|(_, n)| n.entity.classname.eq_ignore_ascii_case("env_fog_controller"))
+            .filter(|(_, n)| hp_app::runtime::fog::is_fog_controller(&n.entity.classname))
             .map(|(id, n)| {
                 let name = n.entity.get("targetname").map(str::trim).filter(|s| !s.is_empty());
-                (*id, name.map_or_else(|| tf!("render.fog_unnamed", id), str::to_owned))
+                let name = name.map_or_else(|| tf!("render.fog_unnamed", id), str::to_owned);
+                let label =
+                    if hp_app::runtime::fog::fog_enabled(&n.entity) { name } else { tf!("render.fog_disabled", name) };
+                (*id, label)
             })
             .collect();
         if controllers.is_empty() {
             ui.add_enabled(false, egui::Button::new(t!("render.fog_none")));
             return;
         }
-        let first = controllers.iter().map(|(id, _)| *id).min();
+        controllers.sort_by_key(|(id, _)| *id);
+        let shown = hp_app::runtime::fog::global_controller(&state.doc, chosen).map(|(id, _)| id);
         for (id, label) in controllers {
-            let checked = on && chosen.or(first) == Some(id);
+            let checked = on && shown == Some(id);
             if menu_entry(ui, &label, None, true, Check::Radio(checked)).clicked() {
                 state.settings.render.fog_preview = true;
                 state.runtime.render.fog_controller = Some(id);
@@ -409,6 +417,7 @@ const TR: TrTable = &[
     ("render.fog_off", "Off", "Désactivé"),
     ("render.fog_none", "No env_fog_controller in the map", "Aucun env_fog_controller dans la carte"),
     ("render.fog_unnamed", "Controller #{0}", "Contrôleur n°{0}"),
+    ("render.fog_disabled", "{0} (Fog Enable: No)", "{0} (Fog Enable : No)"),
     ("render.tools_menu", "Hidden tool textures", "Textures outils masquées"),
     ("render.hide_nodraw", "Nodraw", "Nodraw"),
     ("render.hide_clips", "Clips", "Clips"),

@@ -69,7 +69,7 @@ pub(crate) struct ObjState {
     pub flags: u32,
     pub color: u32,
     pub tint: u32,
-    pub pad: u32,
+    pub classic: u32,
 }
 
 #[repr(C)]
@@ -150,6 +150,9 @@ pub(crate) struct ViewUniform {
     pub sky3d: [f32; 4],
     pub proj: [f32; 4],
     pub sky_uv: [[f32; 4]; 6],
+    pub sky_vis_a: [f32; 4],
+    pub sky_vis_b: [f32; 4],
+    pub sun_soft: [f32; 4],
 }
 
 pub(crate) const BLEND_PAINTED: u32 = 1 << 30;
@@ -210,7 +213,7 @@ mod tests {
         assert_eq!(size_of::<ObjState>(), 16);
         assert_eq!(size_of::<MaterialUniform>(), 368);
         assert_eq!(size_of::<LightGpu>(), 96);
-        assert_eq!(size_of::<ViewUniform>(), 64 * 2 + 16 * 28);
+        assert_eq!(size_of::<ViewUniform>(), 64 * 2 + 16 * 31);
     }
 
     #[test]

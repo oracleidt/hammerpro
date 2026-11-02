@@ -432,7 +432,7 @@ impl Renderer {
             });
             pass.set_bind_group(0, bg, &[]);
             let planes: [Vec4; 6] = frustum_planes(m);
-            let (d, t) = self.draw_shadow_casters(&mut pass, pipelines, &planes);
+            let (d, t) = self.draw_shadow_casters(&mut pass, pipelines, &planes, None);
             draws += d;
             tris += t;
             done.push(layer);

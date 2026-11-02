@@ -285,12 +285,21 @@ pub(crate) struct SurfaceHit {
 }
 
 pub(crate) fn pick_surface(state: &AppState, view: &ViewInfo, pos: Pos2) -> Option<SurfaceHit> {
+    pick_surface_with(state, view, pos, None)
+}
+
+pub(crate) fn pick_surface_with(
+    state: &AppState,
+    view: &ViewInfo,
+    pos: Pos2,
+    filter: Option<&dyn Fn(ObjRef) -> bool>,
+) -> Option<SurfaceHit> {
     let (origin, dir) = view.ray(pos);
     if !origin.is_finite() || !dir.is_finite() {
         return None;
     }
     let ray = Ray::new(origin, dir);
-    let opts = PickOptions { include_entities: false, ..PickOptions::default() };
+    let opts = PickOptions { include_entities: false, filter, ..PickOptions::default() };
     let hit = state.doc.pick_ray(&ray, &opts, &|e| state.entity_bounds(e))?;
     let ObjRef::Solid(solid) = hit.obj else { return None };
     let side_index = hit.face?;

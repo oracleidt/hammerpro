@@ -2,7 +2,7 @@
 
 # Référence des paramètres
 
-Toutes les options de Hammer Pro 1.0.1 sont rangées dans un seul fichier TOML, `settings.toml`, dans `%APPDATA%\HammerPro` sous Windows (le dossier de configuration de l'utilisateur sur les autres systèmes). Cette page liste chaque table et chaque clé de ce fichier, sa valeur par défaut, son effet et l'endroit de l'interface où on la règle.
+Toutes les options de Hammer Pro 1.0.2 sont rangées dans un seul fichier TOML, `settings.toml`, dans `%APPDATA%\HammerPro` sous Windows (le dossier de configuration de l'utilisateur sur les autres systèmes). Cette page liste chaque table et chaque clé de ce fichier, sa valeur par défaut, son effet et l'endroit de l'interface où on la règle.
 
 En temps normal, vous n'ouvrez jamais ce fichier : la [fenêtre des paramètres](../features/settings-dialog.md) (**Outils > Options...**, `Ctrl+,`) et les menus le modifient, et chaque changement est enregistré tout de suite. Le modifier à la main reste sans danger :
 
@@ -73,6 +73,7 @@ Surtout sur **Paramètres > Vues** ; les clés `show_*` sont aussi dans le menu 
 | `autosave_keep` | `10` | Copies de sauvegarde automatique conservées par map. |
 | `arrow_key_nudge` | `true` | Les flèches décalent la sélection dans les vues 2D. |
 | `paste_offset` | `true` | Les objets collés sont décalés pour ne pas recouvrir les originaux. |
+| `new_brush_color` | aucune | Couleur d'affichage `[r, g, b]` donnée aux nouveaux brushes ; aucune : la couleur par défaut aléatoire de Hammer. |
 | `undo_restores_selection` | `true` | Les changements de sélection sont des étapes d'annulation : `Ctrl+Z` rétablit la sélection précédente (faces comprises). Ils ne marquent jamais la map comme modifiée. |
 
 ## `[ui]` : interface
@@ -334,14 +335,16 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `icons_in_2d` | `true` | Icônes des entités dans les vues 2D. |
 | `icons_in_2d_px` | `16.0` | Leur taille en pixels. |
 | `use_visgroup_colors` | `false` | Les couleurs filaires 2D viennent des visgroups. |
+| `object_colors_2d` | `true` | Les vues 2D dessinent les objets dans leur couleur d'affichage (voir [Couleurs d'affichage](../features/display-colors.md)) ; désactivé : l'aspect classique. |
+| `object_colors_3d` | `false` | La vue 3D utilise aussi les couleurs d'affichage en mode filaire et plat. |
 | `highlight_invalid` | `true` | Brushes invalides en rouge. |
 | `render_effects` | `true` | Aperçu de render amount, mode, couleur, groupes de corps, animation et échelle. |
 | `sky_preview` | `true` | Skybox 2D derrière la vue 3D. |
 | `skybox_3d` | `true` | Skybox 3D autour de `sky_camera` (`Alt+V`). |
 | `sky_see_through` | `false` | Laisse de côté les faces `toolsskybox` pour voir le ciel au travers. |
 | `water_preview` | `true` | Eau dessinée comme en jeu. |
-| `fog_preview` | `false` | Aperçu du brouillard d'`env_fog_controller`. |
-| `fog_volume_preview` | `true` | Remplir les brushes `fog_volume` du brouillard de leur contrôleur ; la vue joueur le prend dedans. |
+| `fog_preview` | `true` | Aperçu du brouillard d'un `env_fog_controller` (Fog Enable, couleurs, mélange, début, fin, densité max, farz) dans les vues 3D et la vue joueur. |
+| `fog_volume_preview` | `true` | Entourer et remplir les brushes `fog_volume` de leur brouillard (celui du contrôleur, ou un aspect par défaut avec une étiquette d'avertissement) ; la vue joueur prend le brouillard du contrôleur dedans. |
 | `fog_volume_texture` | `true` | Dessiner le matériau des brushes `fog_volume` dans la vue 3D. |
 | `fish_preview` | `true` | Dessiner les poissons des entités `func_fish_pool`. |
 | `fish_swim` | `true` | Les poissons de l'aperçu nagent. |
@@ -350,6 +353,9 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `cubemaps` | `true` | Les matériaux `$envmap` reflètent leur cubemap. |
 | `cubemaps_auto` | `true` | Les cubemaps sont redessinées après les modifications de la map. |
 | `light_shadows` | `4` | Lumières ponctuelles et spots avec ombres en mode éclairé, de 0 à 16. |
+| `light_preview_hdr` | `true` | Le mode éclairé prend les valeurs de lumière HDR (`_lightHDR`, `_lightscaleHDR`, `_ambientHDR`, `_AmbientScaleHDR`). |
+| `sky_occlusion` | `true` | En mode éclairé, la lumière du ciel `_ambient` n'atteint que ce qui voit le ciel. |
+| `prop_shadows` | `"Auto"` | Ce avec quoi les `prop_static` projettent leurs ombres en mode éclairé : `Auto` suit la compilation (triangles du modèle avec `-StaticPropPolys`, modèle de collision sinon, aucune avec `-nostaticpropshadows`), `Mesh` les triangles du modèle, `Collision` le modèle de collision. |
 | `animate_materials` | `true` | Matériaux animés et sprites en mouvement. |
 | `model_fade` | `false` | Les props disparaissent progressivement entre leurs distances de fondu. |
 | `force_opaque` | `false` | Matériaux translucides dessinés opaques. |
@@ -372,6 +378,8 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `max_fps` | `0` | Limite d'images par seconde (0 : aucune). |
 | `unfocused_fps` | `30` | Images par seconde quand la fenêtre n'a pas le focus (0 : sans limite). |
 | `vsync` | `true` | Attend le rafraîchissement de l'écran (après un redémarrage). |
+| `vram_budget_mb` | `0` | Mémoire graphique que Hammer Pro peut utiliser, en Mo (0 : automatique, 90 % de ce que le système donne au programme). Au-delà de 85 %, les maps des autres onglets sont retirées de la carte graphique, au-delà du budget les textures sont affichées en plus basse résolution. Voir [Mémoire insuffisante](../troubleshooting/out-of-memory.md). |
+| `keep_background_maps_on_gpu` | `true` | Garde les maps des autres onglets sur la carte graphique tant qu'il y a de la place, pour un changement d'onglet instantané. |
 
 ## `[lighting]`
 

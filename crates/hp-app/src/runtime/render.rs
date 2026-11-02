@@ -2,7 +2,7 @@ use std::cell::Cell;
 
 use hp_editor::Id;
 
-use crate::settings::{RenderModeSetting, Settings};
+use crate::settings::{PropShadowSetting, RenderModeSetting, Settings, StaticPropShadows};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct RenderDisplay {
@@ -10,6 +10,7 @@ pub struct RenderDisplay {
     pub render_effects: bool,
     pub highlight_invalid: bool,
     pub visgroup_colors: bool,
+    pub object_colors_3d: bool,
     pub displacements: bool,
     pub displacements_in_2d: bool,
     pub displacements_only: bool,
@@ -29,6 +30,9 @@ pub struct RenderDisplay {
     pub normal_maps: bool,
     pub cubemaps: bool,
     pub cubemaps_auto: bool,
+    pub light_hdr: bool,
+    pub sky_occlusion: bool,
+    pub prop_shadows: StaticPropShadows,
 }
 
 pub const HIDE_NODRAW: u8 = 1;
@@ -43,6 +47,7 @@ impl Default for RenderDisplay {
             render_effects: true,
             highlight_invalid: true,
             visgroup_colors: false,
+            object_colors_3d: false,
             displacements: true,
             displacements_in_2d: true,
             displacements_only: false,
@@ -62,6 +67,9 @@ impl Default for RenderDisplay {
             normal_maps: true,
             cubemaps: true,
             cubemaps_auto: true,
+            light_hdr: true,
+            sky_occlusion: true,
+            prop_shadows: StaticPropShadows::Collision,
         }
     }
 }
@@ -74,6 +82,7 @@ impl RenderDisplay {
             render_effects: r.render_effects,
             highlight_invalid: r.highlight_invalid,
             visgroup_colors: r.use_visgroup_colors,
+            object_colors_3d: r.object_colors_3d,
             displacements: r.show_displacements,
             displacements_in_2d: r.displacements_in_2d,
             displacements_only: r.displacements_only,
@@ -101,7 +110,18 @@ impl RenderDisplay {
             normal_maps: r.normal_maps,
             cubemaps: r.cubemaps,
             cubemaps_auto: r.cubemaps_auto,
+            light_hdr: r.light_preview_hdr,
+            sky_occlusion: r.sky_occlusion,
+            prop_shadows: prop_shadows(s),
         }
+    }
+}
+
+pub fn prop_shadows(s: &Settings) -> StaticPropShadows {
+    match s.render.prop_shadows {
+        PropShadowSetting::Auto => s.compile.static_prop_shadows(),
+        PropShadowSetting::Mesh => StaticPropShadows::Mesh,
+        PropShadowSetting::Collision => StaticPropShadows::Collision,
     }
 }
 
@@ -155,6 +175,17 @@ mod tests {
         s.render.fish_swim = false;
         let off = RenderDisplay::from_settings(&s, &rt);
         assert!(!off.fog_volume_texture && !off.fish_swim && off.fog_volumes && off.fish);
+        assert_eq!(d.prop_shadows, StaticPropShadows::Collision);
+        s.compile.extra_rad_args = "-StaticPropPolys".into();
+        assert_eq!(RenderDisplay::from_settings(&s, &rt).prop_shadows, StaticPropShadows::Mesh);
+        s.render.prop_shadows = PropShadowSetting::Collision;
+        assert_eq!(RenderDisplay::from_settings(&s, &rt).prop_shadows, StaticPropShadows::Collision);
+        s.compile.static_prop_shadows = false;
+        assert_eq!(RenderDisplay::from_settings(&s, &rt).prop_shadows, StaticPropShadows::Collision);
+        s.render.prop_shadows = PropShadowSetting::Auto;
+        assert_eq!(RenderDisplay::from_settings(&s, &rt).prop_shadows, StaticPropShadows::None);
+        s.render.prop_shadows = PropShadowSetting::Mesh;
+        assert_eq!(RenderDisplay::from_settings(&s, &rt).prop_shadows, StaticPropShadows::Mesh);
         publish_render_display(d);
         assert_eq!(render_display(), d);
         let other = std::thread::spawn(render_display).join().expect("thread");

@@ -92,6 +92,19 @@ pub(crate) fn prepare<'a>(up: &'a TextureUpload, supports_bc: bool, max_dim: u32
     }
 }
 
+pub(crate) fn limit_size(p: &mut Prepared<'_>, limit: u32) {
+    let (bw, bh) = p.format.block_dimensions();
+    while (p.width > limit || p.height > limit) && p.levels.len() > 1 {
+        let (w, h) = (mip_dim(p.width, 1), mip_dim(p.height, 1));
+        if !w.is_multiple_of(bw) || !h.is_multiple_of(bh) {
+            break;
+        }
+        p.levels.remove(0);
+        p.width = w;
+        p.height = h;
+    }
+}
+
 fn srgb_to_linear_lut() -> &'static [f32; 256] {
     static LUT: OnceLock<[f32; 256]> = OnceLock::new();
     LUT.get_or_init(|| core::array::from_fn(|i| crate::gpu::srgb_to_linear(i as f32 / 255.0)))
@@ -302,6 +315,31 @@ mod tests {
         assert_eq!(TexFormat::Bc3Srgb.to_linear(), TexFormat::Bc3Linear);
         assert!(!TexFormat::Rgba8Srgb.is_linear() && TexFormat::Rgba8Srgb.to_linear().is_linear());
         assert_eq!(builtin_flat_normal().levels[0], vec![128, 128, 255, 255]);
+    }
+
+    #[test]
+    fn big_textures_drop_their_top_mips_under_a_limit() {
+        let up =
+            TextureUpload { width: 64, height: 32, format: TexFormat::Rgba8Srgb, levels: vec![vec![200; 64 * 32 * 4]] };
+        let mut p = prepare(&up, true, 8192).unwrap();
+        let full = p.levels.len();
+        limit_size(&mut p, 16);
+        assert_eq!((p.width, p.height), (16, 8));
+        assert_eq!(p.levels.len(), full - 2);
+        assert_eq!(p.levels[0].len(), 16 * 8 * 4);
+        let mut p = prepare(&up, true, 8192).unwrap();
+        limit_size(&mut p, 4096);
+        assert_eq!((p.width, p.levels.len()), (64, full), "no change under the limit");
+        let block = vec![0u8; 8];
+        let up = TextureUpload {
+            width: 8,
+            height: 8,
+            format: TexFormat::Bc1Srgb,
+            levels: vec![block.repeat(4), block.clone(), block],
+        };
+        let mut p = prepare(&up, true, 8192).unwrap();
+        limit_size(&mut p, 1);
+        assert_eq!((p.width, p.height, p.levels.len()), (4, 4, 2), "block textures keep whole blocks");
     }
 
     #[test]

@@ -46,7 +46,7 @@ Pick the mode with the three buttons of the options bar, or press `Shift+V` (sel
 | `Alt`+arrow or `Shift`+arrow | Nudge by one unit |
 | `Page Up` / `Page Down` | Nudge along the depth axis (toward the viewer in 2D views, up and down in the 3D view) |
 | `Ctrl+A` | Selects every vertex of the edited solids (the binding of **Select all**) |
-| `Ctrl+B` | Snaps the selected vertices to the grid (the binding of **Snap selection to grid**) |
+| `Ctrl+B` | Snaps the selected vertices to the grid (the binding of **Snap selection to grid**). With the cursor on a brush edge in the 3D view it bevels that edge instead (see [Bevel tool](bevel-tool.md)) |
 | `Ctrl+F` | **Split face** |
 | `Alt+E` | **Scale vertices...** (press again to apply) |
 | `Esc` | Cancels the current drag or scale; otherwise deselects the vertices; otherwise removes pending face splits |

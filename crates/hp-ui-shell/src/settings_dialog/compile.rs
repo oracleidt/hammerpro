@@ -180,7 +180,11 @@ fn after(ui: &mut Ui, c: &mut CompileSettings) {
             ui.end_row();
         }
         ui.label(t!("shell.compile.game_args"));
-        ui.add(egui::TextEdit::singleline(&mut c.game_args).desired_width(ui.available_width().clamp(120.0, 300.0)).font(egui::TextStyle::Monospace));
+        ui.add(
+            egui::TextEdit::singleline(&mut c.game_args)
+                .desired_width(ui.available_width().clamp(120.0, 300.0))
+                .font(egui::TextStyle::Monospace),
+        );
         ui.end_row();
     });
     heading(ui, t!("shell.compile.extra_args"));
@@ -190,8 +194,12 @@ fn after(ui: &mut Ui, c: &mut CompileSettings) {
             (&mut c.extra_rad_args, "shell.compile.step_rad", "shell.compile.extra_rad_tip"),
         ] {
             ui.label(t!(name));
-            ui.add(egui::TextEdit::singleline(value).desired_width(ui.available_width().clamp(120.0, 300.0)).font(egui::TextStyle::Monospace))
-                .on_hover_text(t!(tip));
+            ui.add(
+                egui::TextEdit::singleline(value)
+                    .desired_width(ui.available_width().clamp(120.0, 300.0))
+                    .font(egui::TextStyle::Monospace),
+            )
+            .on_hover_text(t!(tip));
             ui.end_row();
         }
     });

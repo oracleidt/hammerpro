@@ -70,7 +70,7 @@ These work from any tool, on the selected path points:
 
 ## Tips
 
-- To build a train track: choose `path_track`, turn **Loop** on for a closed circuit, click the points in the top view, then set the `target` of the `func_tracktrain` to `path_1`.
+- To build a train track: choose `path_track`, turn **Loop** on for a closed circuit, click the points in the top view, then set the `target` of the `func_tracktrain` to `path_1`. Press `F6` to ride it in the [player view](player-view.md#trains): it follows the track like in game (press `T` to start it when its **Initial Speed** is `0`).
 - Undoing removes the last points from the path being drawn, so you can keep drawing after an undo.
 - Everything is also available to AI assistants through MCP: `list_paths`, `create_path`, `insert_path_point`, `remove_path_points`, and `get_tool_options` / `set_tool_options` with the tool `path` (options `class`, `base_name`, `loop`, `relink`, `offset`). See the [MCP tool reference](../../MCP.md).
 

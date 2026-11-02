@@ -422,8 +422,8 @@ fn trains_are_built_around_their_origin() {
         let model: usize = get(&e, "model").and_then(|m| m.trim_start_matches('*').parse().ok()).expect("model");
         assert!(model > 0);
         let m = &models[model];
-        for k in 0..3 {
-            assert!((m.mins[k] + half[k]).abs() < 1.5 && (m.maxs[k] - half[k]).abs() < 1.5, "{class} {m:?}");
+        for (k, h) in half.iter().enumerate() {
+            assert!((m.mins[k] + h).abs() < 1.5 && (m.maxs[k] - h).abs() < 1.5, "{class} {m:?}");
         }
         assert_eq!(get(&e, "target").as_deref(), Some(if class == "func_tanktrain" { "t3" } else { "t1" }));
     }

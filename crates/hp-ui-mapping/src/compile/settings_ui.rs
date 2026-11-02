@@ -59,7 +59,7 @@ pub(crate) struct PreviewLine {
 
 #[derive(Default)]
 pub(crate) struct PreviewCache {
-    key: Option<(CompileSettings, u64, Option<PathBuf>, bool, hp_app::i18n::Lang, Option<u64>)>,
+    key: Option<PreviewKey>,
     pub lines: Vec<PreviewLine>,
     auto_key: Option<AutoKey>,
     auto_since: Option<Instant>,
@@ -69,6 +69,7 @@ pub(crate) struct PreviewCache {
 }
 
 type AutoKey = (ContentKey, CompileSettings, u64);
+type PreviewKey = (CompileSettings, u64, Option<PathBuf>, bool, hp_app::i18n::Lang, Option<u64>);
 
 pub(crate) fn flag_text(step: StepKind, flag: &str) -> Option<String> {
     let info = flag_info(step, flag)?;
@@ -110,13 +111,9 @@ impl PreviewCache {
                 plan::build_plan_with(s, &res.tools, &target.vmf(), Vec::new(), None, extras)
                     .map_err(|e| super::notices::plan_error_text(&e))
                     .and_then(|p| match &external {
-                        Some(profile) => super::compilers::external_plan(
-                            p,
-                            profile,
-                            s,
-                            &res.tools,
-                            plan::effective_lighting(s),
-                        ),
+                        Some(profile) => {
+                            super::compilers::external_plan(p, profile, s, &res.tools, plan::effective_lighting(s))
+                        }
                         None => Ok(p),
                     })
             }

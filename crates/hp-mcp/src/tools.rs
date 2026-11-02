@@ -357,7 +357,8 @@ pub const EDITOR_TOOLS: &[ToolSpec] = &[
     ToolSpec {
         name: "get_compile_status",
         title: "Compile status",
-        description: "Whether a compile runs, its step and progress, and the result of the last compile.",
+        description: "Whether a compile runs, its step and progress (while the lighting runs, the step names its \
+            stage, the stage percent and the time left), and the result of the last compile.",
         kind: ToolKind::Read,
         schema: empty,
     },

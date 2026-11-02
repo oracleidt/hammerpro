@@ -229,7 +229,6 @@ pub struct EntityView {
     pub names: Vec<String>,
     pub inputs: Vec<InputRow>,
     pub comments: Agg,
-    pub color: Option<[u8; 3]>,
 }
 
 impl EntityView {
@@ -248,7 +247,6 @@ impl EntityView {
             names: Vec::new(),
             inputs: Vec::new(),
             comments: Agg::Absent,
-            color: None,
         }
     }
 
@@ -360,8 +358,6 @@ impl EntityView {
         }
 
         view.comments = Agg::of(entities.iter().map(|e| e.editor.comments.as_deref()));
-        let first_color = entities[0].editor.color;
-        view.color = entities.iter().all(|e| e.editor.color == first_color).then_some(first_color);
 
         if view.target.is_world() {
             return view;
@@ -723,7 +719,6 @@ mod tests {
         assert!(origin.agg.is_mixed());
         let angles = view.props.iter().find(|r| r.key == "angles").unwrap();
         assert!(angles.agg.is_mixed(), "only the player start has angles");
-        assert_eq!(view.color, None);
         doc.set_entity_key(&[light, start], "targetname", "shared").unwrap();
         let names = MapNames::build(doc);
         let view = EntityView::build(doc, Target::Entities(vec![light, start]), Some(&fgd), &names);

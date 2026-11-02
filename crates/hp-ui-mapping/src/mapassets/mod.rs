@@ -18,6 +18,8 @@ pub use model::{AssetTree, Entry, Filter, Group, Item, Show, Totals, is_base};
 pub use work::ResolveInput;
 use work::{CollectInput, check_output, map_name};
 
+type Resolved = Result<(DependencyGraph, Vec<String>), String>;
+
 pub const TAB: &str = "map_assets";
 
 const SETTLE: Duration = Duration::from_millis(800);
@@ -91,7 +93,7 @@ pub struct MapAssetsPanel {
     error: Option<String>,
     cache: Arc<DepsCache>,
     cache_for: Option<Option<PathBuf>>,
-    resolve: Option<Running<Result<(DependencyGraph, Vec<String>), String>>>,
+    resolve: Option<Running<Resolved>>,
     resolving_key: Option<BuildKey>,
     built_for: Option<BuildKey>,
     seen_revision: Option<u64>,
@@ -192,10 +194,13 @@ impl MapAssetsPanel {
         if visible || self.request.is_some() {
             self.keep_up_to_date(state);
         }
-        if self.request.is_some() && self.resolve.is_none() && self.collect.is_none() && self.changed_at.is_none() {
-            if let Some(req) = self.request.take() {
-                self.start_request(state, &req);
-            }
+        if self.request.is_some()
+            && self.resolve.is_none()
+            && self.collect.is_none()
+            && self.changed_at.is_none()
+            && let Some(req) = self.request.take()
+        {
+            self.start_request(state, &req);
         }
         if let Some(c) = &self.collect {
             state.runtime.content.map_assets.progress = Some((c.done.load(Ordering::Relaxed), c.total));

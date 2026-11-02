@@ -105,22 +105,41 @@ const SPECS: &[ToolSpec] = &[
         title: "3D render mode",
         description: "How the 3D view draws the map: textured (with the editor's shading), flat, wireframe, \
             textured_wire, lit (lighting preview: the light entities with VRAD's falloff and spot cones, \
-            light_dynamic, the sun with its shadows through the sky faces, props included; the point and spot lights nearest the camera cast shadows too, how many set by the setting render.light_shadows (0 to 16, 0: the sun only; disableshadows props cast none); lights inside an opaque \
+            light_dynamic, the sun of the first light_environment (angles or pitch key, target, SunSpreadAngle soft \
+            shadows) lighting only what sees a sky face toward it like VRAD, each point shadowed only by what lies \
+            between it and the sky it reaches, skies stacked one above the other included (the 3D skybox, what lies beyond the sky \
+            and brush entities without vrad_brush_cast_shadows cast no shadow, editor helpers neither), its _ambient \
+            sky light only where the sky is seen (setting render.sky_occlusion), HDR or LDR light values (setting \
+            render.light_preview_hdr), every light of big maps kept (get_lighting_status realtime tells how many and \
+            how many crowded spots keep only their strongest lights), props included (prop_static shadows follow \
+            the compile like VRAD: the model triangles with -StaticPropPolys, the collision model otherwise, none \
+            with -nostaticpropshadows; setting render.prop_shadows: Auto, Mesh or Collision); the point and spot lights nearest the camera cast shadows too, how many set by the setting render.light_shadows (0 to 16, 0: the sun only; disableshadows props cast none); lights inside an opaque \
             brush light nothing like in game; $selfillum glows by the base alpha, $selfillummask or the $envmapmask alpha of $selfillum_envmapmask_alpha, times $selfillumtint, also in baked and the player view), unshaded (textured without shading), smoothing_groups, baked \
             (the baked lighting preview, see bake_lighting; props lit by the bake like the game: ambient cubes, \
             world lights, static prop vertex lighting) or lightmap_grid (Hammer's 3D lightmap grid, no bake needed: every lightmapped face shows its luxel grid, one checker cell per lightmapscale units along its texture axes, displacements included, grey at scale 16, redder when finer, greener when coarser, yellow lines where VBSP splits a face wider than 32 luxels, shaded by the baked lighting once a bake exists; faces without a lightmap (nodraw, tool textures, sky, water, unlit) and props keep their texture). In the textured modes water surfaces are drawn like in game (refraction, water fog, reflection, moving waves) while the setting render.water_preview is on (set_setting, or run_action toggle_water_preview); off, they show their tool texture. \
-            Every fog_volume is filled with the fog of the env_fog_controller its FogName names (fogcolor, fogcolor2 \
-            with fogblend along fogdir or the angles with use_angles, fogstart, fogend, fogmaxdensity; nothing when \
-            the controller has fogenable 0), the box around its brushes like the game, as thick as the view crosses \
-            it, while render.fog_volume_preview is on (run_action toggle_fog_volumes); in the player view that fog \
-            replaces the map fog while the eyes are inside an enabled volume. render.fog_volume_texture (run_action \
+            The map fog of an env_fog_controller (fogenable, fogcolor, fogcolor2 with fogblend, fogstart, fogend, \
+            fogmaxdensity, farz) covers the 3D views and the player view while render.fog_preview is on (the \
+            default; run_action toggle_fog_preview, preview_fog chooses the controller). Every fog_volume is \
+            outlined and filled with its fog, the box around its brushes like the game, as thick as the view \
+            crosses it, with a label naming its controller and its problems, while render.fog_volume_preview is on \
+            (run_action toggle_fog_volumes): the fog of the env_fog_controller its FogName names (fogcolor, \
+            fogcolor2 with fogblend along fogdir or the angles with use_angles, fogstart, fogend, fogmaxdensity), \
+            or a light blue default look when it names nothing or a controller with fogenable 0 (list_fog tells \
+            which). In the player view the controller fog replaces the map fog while the eyes are inside an \
+            enabled volume (none with fogenable 0). render.fog_volume_texture (run_action \
             toggle_fog_volume_texture) draws or hides the brush material of the volumes in the 3D view. Every \
-            func_fish_pool shows fish_count copies of its model (models/Junkola.mdl by default) scattered within \
+            func_fish_pool shows fish_count copies of its model (models/Junkola.mdl by default; a model the game \
+            content lacks is previewed with models/props/de_inferno/goldfish.mdl) scattered within \
             max_range (at most 255) of the entity, the same places each time, kept in the water around the entity \
             8 units under its surface, while render.fish_preview is on (run_action toggle_fish_preview); they swim \
             slow circles while render.fish_swim is on (run_action toggle_fish_swim); selected, the pool shows a sphere \
             and a circle of its max_range. \
-            Lightmapped_4WayBlend displacements show their 4 textures in every textured mode (textured, lit,             baked, the player view) like the game: texture 2, 3 then 4 laid over texture 1 by the multiblend             rows of the displacement (or its vertex alpha for texture 2 when it has none), shaped by             $textureN_lumstart and lumend, $textureN_blendstart and blendend, $lumblendfactorN,             $textureN_uvscale and $textureN_blendmode.             The normal maps of the materials ($bumpmap, $bumpmap2 of WorldVertexTransition and of \
+            Lightmapped_4WayBlend displacements show their 4 textures in every textured mode (textured, lit, \
+            baked, the player view) like the game: texture 2, 3 then 4 laid over texture 1 by the multiblend \
+            rows of the displacement (or its vertex alpha for texture 2 when it has none), shaped by \
+            $textureN_lumstart and lumend, $textureN_blendstart and blendend, $lumblendfactorN, \
+            $textureN_uvscale and $textureN_blendmode. \
+            The normal maps of the materials ($bumpmap, $bumpmap2 of WorldVertexTransition and of \
             Lightmapped_4WayBlend, mixed by the same blend weights as the base textures, its \
             $textureN_bumpblendfactor choosing the map of each texture; $ssbump) give the surfaces their relief \
             in textured (the editor shading), lit (the preview lights), baked (the bumped lightmaps of the \
@@ -141,16 +160,45 @@ const SPECS: &[ToolSpec] = &[
             map changes while render.cubemaps_auto is on, or with run_action rebuild_cubemaps. In the player view \
             the cubemaps built in game are used when the compiled map has them (see player_view); \
             run_action write_cubemaps (from the player view) writes the drawn ones into the compiled map like \
-            buildcubemaps.",
+            buildcubemaps. Asking for the mode the view already has changes nothing (changed false).",
         kind: ToolKind::Editor,
         schema: || object(json!({ "mode": one_of("Render mode.", MODE_NAMES) }), &["mode"]),
     },
     ToolSpec {
         name: "player_view",
         title: "The player view and its mat_wireframe",
-        description: "Start or leave the player view (walk the map like in game, F6) and choose its wireframe,             Garry's Mod's mat_wireframe (X in the view): 0 off; 1 the triangles of the world surfaces in pink             seen through everything; 2 the same in green on the visible surfaces only; 3 the outlines of the             world polygons in pink seen through everything. In 1 to 3 the props are drawn only as the triangles             of the LOD the game picks (cyan, seen through), detail sprites as green lines, displacements are not             drawn, the world keeps its textures, like in game. Without arguments it only reports. The answer             gives the state and, with a compiled map, what the game draws through the area portals from the             camera: the area of the eye, the areas drawn, the area portals open and looked through (closed             doors hide what is behind them, an open one shows only what is seen through its opening).             compiled_lighting turns on or off (L in the view, setting render.player_compiled_lighting) the             lighting of the game: the compiled world drawn with the lightmaps of the compiled map (HDR when it             has them, else LDR, fullbright when it was compiled without VRAD) and the props lit by their baked             vertex lighting (static props) or the ambient cube and world lights at their lighting origin; the             answer tells whether the compiled lightmaps are used and which range (lighting), and where the \
+        description: "Start or leave the player view (walk the map like in game, F6) and choose its wireframe, \
+            Garry's Mod's mat_wireframe (X in the view): 0 off; 1 the triangles of the world surfaces in pink \
+            seen through everything; 2 the same in green on the visible surfaces only; 3 the outlines of the \
+            world polygons in pink seen through everything. In 1 to 3 the props are drawn only as the triangles \
+            of the LOD the game picks (cyan, seen through), detail sprites as green lines, displacements are not \
+            drawn, the world keeps its textures, like in game. Without arguments it only reports. The answer \
+            gives the state and, with a compiled map, what the game draws through the area portals from the \
+            camera: the area of the eye, the areas drawn, the area portals open and looked through (closed \
+            doors hide what is behind them, an open one shows only what is seen through its opening). \
+            compiled_lighting turns on or off (L in the view, setting render.player_compiled_lighting) the \
+            lighting of the game: the compiled world drawn with the lightmaps of the compiled map (HDR when it \
+            has them, else LDR, fullbright when it was compiled without VRAD) and the props lit by their baked \
+            vertex lighting (static props) or the ambient cube and world lights at their lighting origin; the \
+            answer tells whether the compiled lightmaps are used and which range (lighting), and where the \
             reflections come from (cubemaps: the samples of the map, how many reflect the cubemap built in game \
-            and how many the one the editor draws there because the map holds VBSP's placeholders only). Light styles play like the engine (ten pattern letters a second: the built-in styles 1 to 12 such as             1 flicker or 10 fluorescent flicker, the patterns of named lights, style 63 dark): the lightmaps with             styles, the styled world lights on the models and the detail props follow them; light_styles reports             the time, every style the lights use with its string and value now, and the named (switchable)             lights with their state. light (a named light) with on (true or false; missing: toggle) switches it             in the preview at the next frame of the player view, like the inputs TurnOn, TurnOff and Toggle             (the keys 1 to 9 in the view do the same, the I/O simulation too); the map does not change.",
+            and how many the one the editor draws there because the map holds VBSP's placeholders only). Light styles play like the engine (ten pattern letters a second: the built-in styles 1 to 12 such as \
+            1 flicker or 10 fluorescent flicker, the patterns of named lights, style 63 dark): the lightmaps with \
+            styles, the styled world lights on the models and the detail props follow them; light_styles reports \
+            the time, every style the lights use with its string and value now, and the named (switchable) \
+            lights with their state. light (a named light) with on (true or false; missing: toggle) switches it \
+            in the preview at the next frame of the player view, like the inputs TurnOn, TurnOff and Toggle \
+            (the keys 1 to 9 in the view do the same, the I/O simulation too); the map does not change. \
+            Trains move like in game: func_tracktrain and func_tanktrain follow their path_track chain from \
+            their target (speed is the initial speed, startspeed the max speed, height above the track, wheels \
+            for turning, orientationtype, velocitytype, bank, the No Pitch, No User Control, Passable and Fixed \
+            Orientation spawnflags, path_track speed for trains without user control, disabled tracks, altpath \
+            branches, loops, dead ends), func_train goes from path_corner to path_corner waiting their wait; \
+            the player rides them, their parented entities move with them, their I/O inputs (StartForward, \
+            SetSpeed, Toggle, EnablePath...) and outputs (OnPass, OnStart) run in the I/O simulation. train (a \
+            train targetname, or * for every train) with start (true or false; missing: toggle) starts or stops \
+            trains in the running player view (T in the view does it for all, E on a train for one); trains \
+            reports each train (moving, speed, position, angles, the path node it passed and the next one).",
         kind: ToolKind::Editor,
         schema: || {
             object(
@@ -160,6 +208,8 @@ const SPECS: &[ToolSpec] = &[
                     "compiled_lighting": boolean("Light the player view like the game with the compiled lightmaps (true, the default) or keep the editor shading (false)."),
                     "light": string("A named (switchable) light of the compiled map to switch in the preview (its targetname)."),
                     "on": boolean("With light: turn it on (true) or off (false); missing: toggle."),
+                    "train": string("A train of the map to start or stop in the player view (its targetname), or * for every train."),
+                    "start": boolean("With train: start it (true) or stop it (false); missing: toggle."),
                 }),
                 &[],
             )
@@ -207,7 +257,7 @@ fn run(state: &mut AppState, name: &str, v: &Value) -> Option<Outcome> {
         "get_views" => super::tools::no_args(v).map(|()| Outcome::Ui(UiOp::Views)),
         "get_logical_graph" => logical_graph(state, v).map(Outcome::Done),
         "set_view_layout" => set_view_layout(state, v).map(Outcome::Done),
-        "set_render_mode" => set_render_mode(v),
+        "set_render_mode" => set_render_mode(state, v),
         "zoom_2d" => zoom_2d(state, v).map(Outcome::Done),
         "player_view" => player_view(state, v).map(Outcome::Done),
         "pan_2d" => pan_2d(state, v).map(Outcome::Done),
@@ -407,10 +457,13 @@ fn set_view_layout(state: &mut AppState, v: &Value) -> R<ToolResult> {
     })))
 }
 
-fn set_render_mode(v: &Value) -> R<Outcome> {
+fn set_render_mode(state: &AppState, v: &Value) -> R<Outcome> {
     let a = args(v, &["mode"])?;
     let mode = a.opt_enum("mode", MODE_NAMES)?.ok_or("mode is required")?;
-    let (_, action, _) = MODES.iter().find(|(n, _, _)| *n == mode).ok_or("mode is required")?;
+    let (_, action, setting) = MODES.iter().find(|(n, _, _)| *n == mode).ok_or("mode is required")?;
+    if state.settings.view.render_mode == *setting {
+        return Ok(Outcome::Done(ToolResult::json(json!({ "mode": mode, "changed": false }))));
+    }
     Ok(Outcome::Ui(UiOp::RunAction(*action)))
 }
 
@@ -422,7 +475,7 @@ const WIREFRAME_LEVELS: [&str; 4] = [
 ];
 
 fn player_view(state: &mut AppState, v: &Value) -> R<ToolResult> {
-    let a = args(v, &["active", "wireframe", "compiled_lighting", "light", "on"])?;
+    let a = args(v, &["active", "wireframe", "compiled_lighting", "light", "on", "train", "start"])?;
     let on = a.opt_bool("on")?;
     match a.opt_str("light", 256)?.map(str::trim) {
         Some(name) => {
@@ -440,6 +493,27 @@ fn player_view(state: &mut AppState, v: &Value) -> R<ToolResult> {
             state.runtime.lab.player.light_requests.push((name, on));
         }
         None if on.is_some() => return Err("on needs light".into()),
+        None => {}
+    }
+    let start = a.opt_bool("start")?;
+    match a.opt_str("train", 256)?.map(str::trim) {
+        Some(name) => {
+            let names = map_trains(state);
+            let all = name == "*" || name.is_empty();
+            if names.is_empty() {
+                return Err("the map has no func_tracktrain, func_tanktrain or func_train".to_owned());
+            }
+            if !all && !names.iter().any(|n| n.eq_ignore_ascii_case(name)) {
+                return Err(format!("no train named {name:?}; the named trains are: {}", names.join(", ")));
+            }
+            let p = &state.runtime.lab.player;
+            if !p.active && !p.start_request && a.opt_bool("active")? != Some(true) {
+                return Err("the trains move in the player view only: start it with active true".to_owned());
+            }
+            let name = if all { None } else { Some(name.to_owned()) };
+            state.runtime.lab.player.train_requests.push((name, start));
+        }
+        None if start.is_some() => return Err("start needs train".into()),
         None => {}
     }
     if let Some(on) = a.opt_bool("compiled_lighting")? {
@@ -501,6 +575,26 @@ fn player_view(state: &mut AppState, v: &Value) -> R<ToolResult> {
         "resolution": cube_stats.map(|s| s.resolution),
     });
     let light_styles = rt.world.as_ref().map(|w| light_styles_json(&w.light.styles, p));
+    let trains: Vec<Value> = p
+        .trains
+        .iter()
+        .map(|t| {
+            json!({
+                "id": t.id,
+                "name": t.name,
+                "class": t.class,
+                "on_its_path": t.active,
+                "moving": t.moving,
+                "speed": t.speed,
+                "max_speed": t.max_speed,
+                "origin": [t.origin.x, t.origin.y, t.origin.z],
+                "angles": [t.angles.x, t.angles.y, t.angles.z],
+                "passed": t.node,
+                "next": t.next,
+                "user_control": t.user_control,
+            })
+        })
+        .collect();
     let out = json!({
         "active": p.active || p.start_request,
         "wireframe": level,
@@ -509,9 +603,35 @@ fn player_view(state: &mut AppState, v: &Value) -> R<ToolResult> {
         "lighting": lighting,
         "cubemaps": cubemaps,
         "light_styles": light_styles,
+        "trains": trains,
         "area_portals": areas,
     });
     Ok(ToolResult::json(out))
+}
+
+fn map_trains(state: &AppState) -> Vec<String> {
+    let mut names: Vec<String> = state
+        .doc
+        .scene()
+        .entities()
+        .values()
+        .filter(|n| hp_ui_viewports::trains::train_kind(&n.entity.classname).is_some())
+        .filter_map(|n| n.entity.get("targetname").map(|t| t.trim().to_owned()))
+        .filter(|t| !t.is_empty())
+        .collect();
+    if names.is_empty()
+        && state
+            .doc
+            .scene()
+            .entities()
+            .values()
+            .any(|n| hp_ui_viewports::trains::train_kind(&n.entity.classname).is_some())
+    {
+        names.push("*".to_owned());
+    }
+    names.sort();
+    names.dedup();
+    names
 }
 
 fn light_styles_json(table: &hp_editor::limits::world_light::StyleTable, p: &hp_app::runtime::PlayerState) -> Value {
@@ -751,6 +871,43 @@ mod tests {
     }
 
     #[test]
+    fn player_view_trains() {
+        let mut state = hp_app::testing::test_state();
+        assert!(err(&mut state, "player_view", json!({ "train": "*" })).contains("no func_tracktrain"));
+        let mut cart = hp_vmf::Entity { id: 5, classname: "func_tracktrain".into(), ..Default::default() };
+        cart.set("targetname", "Cart");
+        let lift = hp_vmf::Entity { id: 6, classname: "func_train".into(), ..Default::default() };
+        let map = hp_vmf::Map { entities: vec![cart, lift], ..Default::default() };
+        state.doc = hp_editor::Document::from_map(map);
+        assert!(err(&mut state, "player_view", json!({ "train": "cart" })).contains("player view"));
+        assert!(err(&mut state, "player_view", json!({ "train": "bus", "active": true })).contains("Cart"));
+        assert!(err(&mut state, "player_view", json!({ "start": true })).contains("train"));
+        ok(&mut state, "player_view", json!({ "train": "cart", "start": true, "active": true }));
+        ok(&mut state, "player_view", json!({ "train": "*" }));
+        assert_eq!(state.runtime.lab.player.train_requests, [(Some("cart".to_owned()), Some(true)), (None, None)]);
+        state.runtime.lab.player.trains = vec![hp_app::runtime::TrainReport {
+            id: 5,
+            name: "Cart".into(),
+            class: "func_tracktrain".into(),
+            active: true,
+            moving: true,
+            speed: 150.0,
+            max_speed: 300.0,
+            node: "p1".into(),
+            next: "p2".into(),
+            user_control: true,
+            ..Default::default()
+        }];
+        let r = ok(&mut state, "player_view", json!({}));
+        let t = &r["trains"][0];
+        assert_eq!(
+            (t["name"].clone(), t["moving"].clone(), t["speed"].clone()),
+            (json!("Cart"), json!(true), json!(150.0))
+        );
+        assert_eq!((t["passed"].clone(), t["next"].clone()), (json!("p1"), json!("p2")));
+    }
+
+    #[test]
     fn player_view_compiled_lighting() {
         use hp_editor::limits::world::BspWorld;
         let mut state = hp_app::testing::test_state();
@@ -891,12 +1048,19 @@ mod tests {
         let mut state = hp_app::testing::test_state();
         for (name, action, mode) in MODES {
             assert!(MODE_NAMES.contains(name));
+            state.settings.view.render_mode =
+                if *mode == RenderModeSetting::Flat { RenderModeSetting::Textured } else { RenderModeSetting::Flat };
             assert!(matches!(
                 call(&mut state, "set_render_mode", json!({ "mode": name })),
                 Outcome::Ui(UiOp::RunAction(a)) if a == *action
             ));
             state.settings.view.render_mode = *mode;
             assert_eq!(views_json(&state, [None; 4], [None; 4])["render_mode"], *name);
+            assert_eq!(
+                ok(&mut state, "set_render_mode", json!({ "mode": name }))["changed"],
+                false,
+                "{name}: no toggle back"
+            );
         }
         for m in [RenderModeSetting::Baked, RenderModeSetting::LightmapGrid, RenderModeSetting::Unshaded] {
             assert!(MODES.iter().any(|(_, _, x)| *x == m), "{m:?}");

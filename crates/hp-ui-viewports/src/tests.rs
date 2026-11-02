@@ -220,10 +220,14 @@ fn hover_routes_to_tool_and_sets_world_position() {
     assert_eq!(h.tool.keys, 0, "the binary calls key_input after the UI pass, never the viewports");
     assert!(h.tool.cursors.get() > 0);
     assert_eq!(h.cursor_icon(), Some(CursorIcon::Crosshair));
+    let (view, pos) = h.vp.hovered_view(&h.state, &h.ctx).expect("the hovered view and pointer");
+    assert_eq!((view.index, view.kind, view.rect), (1, h.vp.view_rects()[1].expect("view").0, h.rect(1)));
+    assert_eq!(pos, c);
     h.move_to(Pos2::new(1599.0, 899.0));
     h.frame(vec![]);
     assert_eq!(h.state.ui.hovered_view, None);
     assert_eq!(h.state.hover_world, None);
+    assert!(h.vp.hovered_view(&h.state, &h.ctx).is_none());
 }
 
 #[test]

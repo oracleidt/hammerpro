@@ -141,8 +141,8 @@ Chaque modification faite par l'IA est **une étape d'annulation** nommée "MCP 
 | Settings | Lire et changer les paramètres et les raccourcis clavier. |
 | Ui automation | Capture d'une fenêtre, description de l'interface, souris et clavier dans la fenêtre. |
 | Windows | Lister les fenêtres Hammer Pro et en choisir une. |
-| Editing | Dupliquer, copies en série, transformer, redimensionner, retourner, aligner sur la grille, aligner, découper, carve, contours de face creusés ou extrudés, creuser, fusionner, édition de sommets, primitives, pièces, escaliers, hint et nodraw, lier à une entité, textures des faces (justifier, ajuster, envelopper), remplacement de matériaux. |
-| Groups and visibility | Sélection par classe, nom, matériau ou boîte, groupes, visgroups, masquer et isoler, cordons. |
+| Editing | Dupliquer, copies en série, transformer, redimensionner, retourner, aligner sur la grille, aligner, découper, carve, contours de face creusés ou extrudés, biseaux d'arêtes (arrondis, chanfreins, gorges, remplissages de coins intérieurs), creuser, fusionner, édition de sommets, primitives, pièces, escaliers, hint et nodraw, lier à une entité, textures des faces (justifier, ajuster, envelopper), remplacement de matériaux. |
+| Groups and visibility | Sélection par classe, nom, matériau ou boîte, groupes, visgroups, masquer et isoler, cordons, couleurs d'affichage. |
 | Grids | Modes de grille, grilles personnalisées (créer, modifier, supprimer, attacher). |
 | Displacements | Créer, détruire, peindre, traits de sculpture, bruit, échelle, alpha, drapeaux, tags, subdiviser, coudre. |
 | Instances and prefabs | func_instance, paramètres d'instance, fusion, prefabs, sprinkle, lancers de rayons. |

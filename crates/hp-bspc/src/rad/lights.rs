@@ -323,11 +323,6 @@ fn set_falloff(l: &mut Light, e: &hp_bsp::Entity) {
     }
     let r = key_f(e, "_distance");
     l.radius = if r > 0.0 { r.min(1.0e6) } else { 0.0 };
-    if l.radius > 0.0 {
-        let r = l.radius;
-        let (start, end) = l.fade;
-        l.fade = if end > start { (start.min(0.75 * r), end.min(r)) } else { (0.75 * r, r) };
-    }
 }
 
 fn pass_value(e: &hp_bsp::Entity, ldr_key: &str, hdr_key: &str, hdr: bool) -> Option<Vec3A> {
@@ -628,11 +623,16 @@ mod tests {
         ]);
         let l = &parse(std::slice::from_ref(&point), &[false], &map).list[0];
         assert_eq!(l.radius, 256.0);
-        assert_eq!(l.fade, (192.0, 256.0));
-        assert!(l.falloff(Vec3A::Z, 150.0) > 0.0);
-        assert!(l.falloff(Vec3A::Z, 200.0) > 0.0);
-        assert_eq!(l.falloff(Vec3A::Z, 257.0), 0.0);
-        assert!(l.reach <= 256.0);
+        assert_eq!(l.fade, (0.0, -1.0), "VRAD bakes past _distance: only the engine reads it");
+        let free = &parse(
+            &[ent(&[("classname", "light"), ("_light", "255 255 255 255"), ("_quadratic_attn", "1")])],
+            &[false],
+            &map,
+        )
+        .list[0];
+        assert_eq!(l.falloff(Vec3A::Z, 400.0), free.falloff(Vec3A::Z, 400.0));
+        assert!(l.falloff(Vec3A::Z, 400.0) > 0.0);
+        assert_eq!(l.reach, free.reach);
         let curve = ent(&[
             ("classname", "light_spot"),
             ("_light", "255 255 255 255"),
@@ -643,8 +643,8 @@ mod tests {
         ]);
         let s = &parse(std::slice::from_ref(&curve), &[false], &map).list[0];
         assert_eq!(s.radius, 300.0);
-        assert_eq!(s.falloff(Vec3A::Z, 301.0), 0.0);
-        assert!(s.falloff(Vec3A::Z, 200.0) > 0.0);
+        assert!(s.falloff(Vec3A::Z, 350.0) > 0.0);
+        assert!(s.falloff(Vec3A::Z, 200.0) > s.falloff(Vec3A::Z, 350.0));
         let unlimited = ent(&[("classname", "light"), ("_light", "255 255 255 255"), ("_distance", "-5")]);
         let u = &parse(std::slice::from_ref(&unlimited), &[false], &map).list[0];
         assert_eq!((u.radius, u.fade), (0.0, (0.0, -1.0)));

@@ -39,7 +39,7 @@ How to make compiles fast while you iterate, and what costs time in a release bu
 | Full visibility (`-vis`) on big open maps | Turn small and decorative brushes into `func_detail` (the statistics name them), add hint brushes and areaportals, use `-radius_override` or a fog `farz` for outdoor maps. `-fulldetail` makes it slower. |
 | `-final` (more sky and indirect rays) | Needed for release quality; `-extrasky` adds more rays still. |
 | Both dynamic ranges | Final always computes LDR and HDR (two passes). |
-| `-StaticPropLighting` | Every vertex of every static prop is lit; slow on big maps. **Light static props (per vertex)** off skips it. `-staticpropsamplescale` lowers its rays. |
+| `-StaticPropLighting` | Every vertex of every static prop is lit (sky and bounced light once per small group of vertices); the longest stage on maps with thousands of detailed props. **Light static props (per vertex)** off skips it. `-staticpropsamplescale` lowers its rays. |
 | Ambient occlusion | `-aosamples` (default 32, 64 with `-final`) sets its rays; `-noao` or `_ao 0` turns it off. |
 | `-StaticPropPolys`, `-textureshadows` | Finer prop shadows, slower. |
 | Lightmap resolution | Raise the lightmap scale of big or unseen faces (16 or more); the statistics list the faces and materials with the most luxels. `-luxeldensity` below 1 makes all lightmaps coarser. |

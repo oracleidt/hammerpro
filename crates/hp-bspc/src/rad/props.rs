@@ -9,7 +9,7 @@ use glam::Vec3A;
 use hp_light::bvh::{Blocker, Bvh, Hit, Triangle};
 use rayon::prelude::*;
 
-use super::bake::{Ctx, FaceLight, MAX_TRACE, SurfHit};
+use super::bake::{Ctx, FaceLight, MAX_TRACE, Part, SurfHit};
 use super::lights::Kind;
 use super::output::{encode, finish};
 use super::surface::SKY_BIT;
@@ -72,6 +72,8 @@ const FAST_SAMPLES: usize = 162 / 4;
 const VHV_VERSION: u32 = 2;
 const VERTEX_COLOR: u32 = 0x4;
 const DIST_EPSILON: f32 = 0.031_25;
+const SOFT_CELL: f32 = 8.0;
+const NORMAL_BINS: f32 = 2.0;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct PropOptions {
@@ -279,11 +281,7 @@ impl Occluders {
         let key = blocker_key(dir * 1024.0, 2);
         let near = self.hint_distance(shadow, CLASS_WORLD | CLASS_PROP, from, dir, skip, key);
         let bound = near.map_or(MAX_TRACE, |t| f32::from_bits(t.to_bits() + 1));
-        let sky = match shadow.closest_in(CLASS_SKY, from, dir, bound, |_| true) {
-            Some(h) => h.t,
-            None if near.is_some() => return 0.0,
-            None => MAX_TRACE,
-        };
+        let Some(sky) = shadow.closest_in(CLASS_SKY, from, dir, bound, |_| true).map(|h| h.t) else { return 0.0 };
         if self.opaque_hit(shadow, CLASS_WORLD | CLASS_PROP, from, dir, sky, skip, key) {
             return 0.0;
         }
@@ -504,6 +502,40 @@ impl StaticProps {
     }
 }
 
+pub(crate) fn hull_center(mdl: &[u8]) -> Option<glam::DVec3> {
+    let s = model::studio_header(mdl)?;
+    let c = (Vec3A::from_array(s.hull_min) + Vec3A::from_array(s.hull_max)) * 0.5;
+    c.is_finite().then(|| c.as_dvec3())
+}
+
+pub(crate) struct MapPak<'a> {
+    pub pak: Option<hp_bsp::PakArchive<'a>>,
+    pub inner: &'a dyn ModelSource,
+}
+
+impl MapPak<'_> {
+    fn packed(&self, path: &str) -> Option<Vec<u8>> {
+        self.pak.as_ref()?.read_name(path).ok().flatten().map(|d| d.into_owned())
+    }
+}
+
+impl ModelSource for MapPak<'_> {
+    fn bounds(&self, path: &str) -> Option<(glam::DVec3, glam::DVec3)> {
+        self.inner.bounds(path)
+    }
+
+    fn hull_center(&self, path: &str) -> Option<glam::DVec3> {
+        match self.packed(path) {
+            Some(mdl) => hull_center(&mdl),
+            None => self.inner.hull_center(path),
+        }
+    }
+
+    fn read_file(&self, path: &str) -> Option<Vec<u8>> {
+        self.packed(path).or_else(|| self.inner.read_file(path))
+    }
+}
+
 fn vertex_bytes(v: Vec3A) -> [u8; 4] {
     let c = encode(v);
     let scale = 2f32.powi(i32::from(c[3] as i8)) / 255.0;
@@ -568,12 +600,16 @@ fn direct_at(
     pos: Vec3A,
     normal: Vec3A,
     skip: u32,
-    ignore_normals: bool,
+    (ignore_normals, part): (bool, Part),
     out: &mut [Vec3A],
 ) {
     let cluster = ctx.map.cluster_at(pos.as_dvec3());
     for &li in cand {
         let Some(l) = ctx.lights.list.get(li) else { continue };
+        let ambient = l.kind == Kind::SkyAmbient;
+        if (part == Part::Direct && ambient) || (part == Part::Ambient && !ambient) {
+            continue;
+        }
         if !row_sees(ctx.light_rows.get(li).and_then(Option::as_ref), cluster) {
             continue;
         }
@@ -760,28 +796,69 @@ fn light_prop(
             let mut first: HashMap<[u32; 6], usize> = HashMap::with_capacity(verts.len());
             let unique: Vec<usize> = verts.iter().enumerate().map(|(i, v)| *first.entry(key(v)).or_insert(i)).collect();
             let firsts: Vec<usize> = (0..verts.len()).filter(|&i| unique[i] == i).collect();
-            let lit_one = |&i: &usize| -> Option<Vec<Vec3A>> {
+            let solid: Vec<bool> = firsts.par_iter().with_min_len(64).map(|&i| in_solid(verts[i].0)).collect();
+            let mut cells: HashMap<[i32; 6], usize> = HashMap::new();
+            let mut reps: Vec<usize> = Vec::new();
+            let group: Vec<usize> = firsts
+                .iter()
+                .zip(&solid)
+                .map(|(&i, &bad)| {
+                    if bad {
+                        return usize::MAX;
+                    }
+                    let (p, n) = verts[i];
+                    let c = (p / SOFT_CELL).floor();
+                    let q = (n * NORMAL_BINS).round();
+                    let key = [c.x, c.y, c.z, q.x, q.y, q.z].map(|v| v as i32);
+                    *cells.entry(key).or_insert_with(|| {
+                        reps.push(i);
+                        reps.len() - 1
+                    })
+                })
+                .collect();
+            let soft: Vec<(Vec<Vec3A>, Vec<Vec3A>)> = if opts.show_normals {
+                Vec::new()
+            } else {
+                reps.par_iter()
+                    .with_min_len(8)
+                    .map(|&i| {
+                        let (pos, normal) = verts[i];
+                        let mut sky = vec![Vec3A::ZERO; np];
+                        direct_at(ctx, opts, &near, pos, normal, skip, (ignore, Part::Ambient), &mut sky);
+                        let mut ind = vec![Vec3A::ZERO; np];
+                        if bounces {
+                            indirect_at(ctx, light, opts, pos, normal, ignore, opts.fast, &mut ind);
+                        }
+                        (sky, ind)
+                    })
+                    .collect()
+            };
+            ctx.work.add(firsts.len() as u64);
+            let lit_one = |(&i, &g): (&usize, &usize)| -> Option<Vec<Vec3A>> {
                 let (pos, normal) = verts[i];
-                if in_solid(pos) {
+                if g == usize::MAX {
                     return None;
                 }
                 let mut c = vec![Vec3A::ZERO; np];
                 if opts.show_normals {
                     c.fill((normal + Vec3A::ONE) * 50.0);
                 } else {
-                    direct_at(ctx, opts, &near, pos, normal, skip, ignore, &mut c);
-                    if bounces {
-                        let mut ind = vec![Vec3A::ZERO; np];
-                        indirect_at(ctx, light, opts, pos, normal, ignore, opts.fast, &mut ind);
-                        let k = ctx.ao.as_ref().map_or(1.0, |ao| ao.vertex(ctx, pos, normal, pi as u32));
-                        for (o, v) in c.iter_mut().zip(ind) {
-                            *o += v * k;
-                        }
+                    direct_at(ctx, opts, &near, pos, normal, skip, (ignore, Part::Direct), &mut c);
+                    let (sky, ind) = &soft[g];
+                    let k = if bounces {
+                        ctx.ao.as_ref().map_or(1.0, |ao| ao.vertex(ctx, pos, normal, pi as u32))
+                    } else {
+                        1.0
+                    };
+                    for ((o, s), v) in c.iter_mut().zip(sky).zip(ind) {
+                        *o += *s + *v * k;
                     }
                 }
                 Some(c)
             };
-            let done: Vec<Option<Vec<Vec3A>>> = firsts.par_iter().with_min_len(32).map(lit_one).collect();
+            let done: Vec<Option<Vec<Vec3A>>> =
+                firsts.par_iter().zip(&group).with_min_len(32).map(lit_one).inspect(|_| ctx.work.add(1)).collect();
+            ctx.work.add(2 * (verts.len() - firsts.len()) as u64);
             let mut slot = vec![0usize; verts.len()];
             for (k, &i) in firsts.iter().enumerate() {
                 slot[i] = k;
@@ -832,7 +909,7 @@ fn light_prop(
                         best,
                         *bnormal,
                         NO_PROP,
-                        false,
+                        (false, Part::All),
                         &mut c,
                     );
                     indirect_at(ctx, light, opts, best, *bnormal, false, true, &mut c);
@@ -862,8 +939,22 @@ fn light_prop(
                 }
             }
         }
+    } else {
+        ctx.work.add(2 * model_vertices(studio));
     }
     Some(files.iter().map(|f| vhv_file(studio.checksum, f)).collect())
+}
+
+fn model_vertices(s: &model::Studio) -> u64 {
+    s.models.iter().flat_map(|m| &m.meshes).map(|m| m.vertices.len() as u64).sum()
+}
+
+fn prop_vertices(sp: &StaticProps, pi: usize) -> u64 {
+    sp.props
+        .get(pi)
+        .and_then(|p| sp.dicts.get(p.model))
+        .and_then(|d| d.studio.as_ref())
+        .map_or(1, |s| 2 * model_vertices(s).max(1))
 }
 
 pub(crate) fn light(
@@ -874,8 +965,18 @@ pub(crate) fn light(
     bounces: bool,
     passes: &[bool],
 ) -> (Vec<(String, Vec<u8>)>, usize, usize) {
-    let per_prop: Vec<Option<Vec<Vec<u8>>>> =
-        (0..sp.props.len()).into_par_iter().map(|i| light_prop(ctx, light, sp, i, opts, bounces)).collect();
+    let weights: Vec<u64> = (0..sp.props.len()).map(|i| prop_vertices(sp, i)).collect();
+    ctx.work.begin(super::progress::Stage::StaticProps, weights.iter().sum());
+    let per_prop: Vec<Option<Vec<Vec<u8>>>> = (0..sp.props.len())
+        .into_par_iter()
+        .map(|i| {
+            let r = light_prop(ctx, light, sp, i, opts, bounces);
+            if r.is_none() {
+                ctx.work.add(weights[i]);
+            }
+            r
+        })
+        .collect();
     let mut out = Vec::new();
     for (p, &hdr) in passes.iter().enumerate() {
         for (i, files) in per_prop.iter().enumerate() {
@@ -889,7 +990,7 @@ pub(crate) fn light(
     let vertices = lit
         .iter()
         .filter_map(|&i| sp.dicts.get(sp.props[i].model).and_then(|d| d.studio.as_ref()))
-        .map(|s| s.models.iter().flat_map(|m| &m.meshes).map(|m| m.vertices.len()).sum::<usize>())
+        .map(|s| model_vertices(s) as usize)
         .sum();
     (out, lit.len(), vertices)
 }
@@ -920,6 +1021,30 @@ pub(crate) fn map_flags(old: &[u8], lighting: bool, passes: &[bool]) -> Vec<u8> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sky_only_through_sky_faces() {
+        let quad = |z: f32, payload: u32| {
+            let (a, b, c, d) = (
+                Vec3A::new(-100.0, -100.0, z),
+                Vec3A::new(100.0, -100.0, z),
+                Vec3A::new(100.0, 100.0, z),
+                Vec3A::new(-100.0, 100.0, z),
+            );
+            [Triangle { p: [a, b, c], payload }, Triangle { p: [a, c, d], payload }]
+        };
+        let sky_only: Vec<Triangle> = quad(500.0, SKY_BIT).to_vec();
+        let bvh = Bvh::with_groups(&sky_only, shadow_class, SHADOW_GROUPS);
+        let occ = Occluders::default();
+        assert_eq!(occ.sky_visible(&bvh, Vec3A::ZERO, Vec3A::Z, NO_PROP), 1.0, "the sky face is seen");
+        assert_eq!(occ.sky_visible(&bvh, Vec3A::ZERO, Vec3A::X, NO_PROP), 0.0, "a ray that escapes sees no sky");
+        assert_eq!(occ.sky_visible(&bvh, Vec3A::ZERO, Vec3A::NEG_Z, NO_PROP), 0.0);
+        let mut roofed = sky_only.clone();
+        roofed.extend(quad(200.0, 0));
+        let bvh = Bvh::with_groups(&roofed, shadow_class, SHADOW_GROUPS);
+        assert_eq!(occ.sky_visible(&bvh, Vec3A::ZERO, Vec3A::Z, NO_PROP), 0.0, "a roof under the sky blocks it");
+        assert_eq!(occ.sky_visible(&bvh, Vec3A::new(0.0, 0.0, 300.0), Vec3A::Z, NO_PROP), 1.0);
+    }
 
     #[test]
     fn halton_sphere_like_vrad() {

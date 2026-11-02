@@ -6,6 +6,7 @@ action_list! { brush_actions {
     ToolPolygon => "tool_polygon", Tools, ToolsSwitch, sc(SHIFT, Key::N), Ready;
     ToolCurve => "tool_curve", Tools, ToolsSwitch, sc(SHIFT, Key::U), Ready;
     ToolExtrude => "tool_extrude", Tools, ToolsSwitch, sc(SHIFT, Key::I), Ready;
+    ToolBevel => "tool_bevel", Tools, ToolsSwitch, sc(SHIFT, Key::J), Ready;
     MergeBrushes => "merge_brushes", Tools, ToolsBrush, sc(CTRL_SHIFT, Key::M), Ready;
     MakeHintBrush => "make_hint_brush", Tools, Hidden, None, Ready;
     NodrawHiddenFaces => "nodraw_hidden_faces", Tools, ToolsBrush, None, Ready;
@@ -42,6 +43,9 @@ pub(super) const TR: TrTable = &[
     ("tool.polygon", "Polygon", "Polygone"),
     ("action.tool_extrude", "Extrude / carve tool", "Outil extruder / creuser"),
     ("tool.extrude", "Extrude / carve", "Extruder / creuser"),
+    ("action.tool_bevel", "Bevel tool", "Outil biseau"),
+    ("tool.bevel", "Bevel", "Biseau"),
+    ("shell.undo.bevel_edges", "Bevel edges", "Biseautage d'arêtes"),
     ("action.tool_curve", "Curve tool", "Outil courbe"),
     ("tool.curve", "Curve", "Courbe"),
     ("shell.undo.tie_each_to_entity", "Tie each to entity", "Liaison de chaque brush à une entité"),

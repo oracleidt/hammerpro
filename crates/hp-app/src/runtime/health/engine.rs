@@ -291,7 +291,7 @@ impl Engine {
         let flag = Arc::clone(&cancel);
         let spawned = std::thread::Builder::new().name("hp-health".into()).spawn(move || {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                run_job(&snap, &know, profile, leak, &flag, &tx);
+                hp_editor::background::run(|| run_job(&snap, &know, profile, leak, &flag, &tx));
             }));
             if result.is_err() {
                 log::error!("the map health checks failed (panic in a check)");

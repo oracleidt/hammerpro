@@ -33,14 +33,13 @@ impl PaletteGroup {
 pub fn tool_group(tool: ToolId) -> PaletteGroup {
     match tool {
         ToolId::Select | ToolId::Camera => PaletteGroup::Navigate,
-        ToolId::Entity | ToolId::Block | ToolId::Polygon | ToolId::Curve | ToolId::Sprinkle => {
-            PaletteGroup::Create
-        },
+        ToolId::Entity | ToolId::Block | ToolId::Polygon | ToolId::Curve | ToolId::Sprinkle => PaletteGroup::Create,
         ToolId::Texture
         | ToolId::Decal
         | ToolId::Overlay
         | ToolId::Clip
         | ToolId::Extrude
+        | ToolId::Bevel
         | ToolId::Vertex
         | ToolId::Displacement => PaletteGroup::Edit,
         ToolId::Path | ToolId::Cordon => PaletteGroup::Special,
@@ -311,6 +310,7 @@ mod tests {
                 T(ToolId::Overlay),
                 T(ToolId::Clip),
                 T(ToolId::Extrude),
+                T(ToolId::Bevel),
                 T(ToolId::Vertex),
                 T(ToolId::Displacement),
                 S,

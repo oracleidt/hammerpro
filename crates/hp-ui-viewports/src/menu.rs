@@ -27,6 +27,7 @@ pub const ENTRIES: &[MenuEntry] = &[
     MenuEntry::Action(Action::TieToEntity),
     MenuEntry::Action(Action::MoveToWorld),
     MenuEntry::Action(Action::HideSelected),
+    MenuEntry::Action(Action::SetDisplayColor),
     MenuEntry::Separator,
     MenuEntry::Action(Action::Carve),
     MenuEntry::Action(Action::MakeHollow),

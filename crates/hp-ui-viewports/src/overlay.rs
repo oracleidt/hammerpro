@@ -39,10 +39,10 @@ pub fn thick_line_on_top(out: &mut Overlay, view: &ViewInfo, a: DVec3, b: DVec3,
         return;
     }
     let (right, up) = screen_axes(view);
-    let px = pixel_world_size(view, (a + b) * 0.5);
+    let (pa, pb) = (pixel_world_size(view, a), pixel_world_size(view, b));
     out.lines_on_top.push(OverlayLine { a: f(a), b: f(b), color });
-    for o in [right * px, -right * px, up * px, -up * px] {
-        out.lines_on_top.push(OverlayLine { a: f(a + o), b: f(b + o), color });
+    for o in [right, -right, up, -up] {
+        out.lines_on_top.push(OverlayLine { a: f(a + o * pa), b: f(b + o * pb), color });
     }
 }
 
@@ -313,6 +313,21 @@ mod tests {
         let near = pixel_world_size(&v, DVec3::new(100.0, 0.0, 128.0));
         let far = pixel_world_size(&v, DVec3::new(1000.0, 0.0, 128.0));
         assert!((far / near - 10.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn thick_lines_stay_one_pixel_wide_along_receding_edges() {
+        let v = view(ViewKind::Perspective);
+        let (a, b) = (DVec3::new(20.0, -40.0, 100.0), DVec3::new(2000.0, -40.0, 100.0));
+        let mut o = Overlay::default();
+        thick_line_on_top(&mut o, &v, a, b, DROP_COLOR);
+        let screen =
+            |p: [f32; 3]| v.world_to_screen(DVec3::new(p[0].into(), p[1].into(), p[2].into())).expect("screen");
+        let (sa, sb) = (screen(o.lines_on_top[0].a), screen(o.lines_on_top[0].b));
+        for l in &o.lines_on_top[1..] {
+            let (da, db) = (screen(l.a).distance(sa), screen(l.b).distance(sb));
+            assert!((da - 1.0).abs() < 0.05 && (db - 1.0).abs() < 0.05, "offsets {da} {db} px");
+        }
     }
 
     #[test]

@@ -47,7 +47,6 @@ impl Thumbs {
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn ready_count(&self) -> usize {
         self.ready
     }

@@ -8,6 +8,7 @@ mod detail;
 mod disp;
 mod lights;
 mod output;
+pub mod progress;
 mod props;
 mod sky;
 mod surface;
@@ -126,7 +127,8 @@ fn light_bsp_with_report(
     };
     let runner = Runner { pool: pool.as_ref() };
     report.limits = opts.limits;
-    run_with(bsp, opts, &runner, models, log, report)
+    let work = progress::Work::new();
+    progress::watch(&work, log, |log| run_with(bsp, opts, &runner, models, log, report, &work))
 }
 
 struct Runner<'a> {
@@ -157,8 +159,11 @@ fn run_with(
     models: &dyn crate::props::ModelSource,
     log: &mut dyn FnMut(&str),
     report: &mut crate::stats::RadReport,
+    work: &progress::Work,
 ) -> Result<Vec<u8>, String> {
+    use progress::Stage;
     let start = Instant::now();
+    work.begin(Stage::Scene, 8);
     let mut src = hp_bsp::Bsp::from_vec(bytes.to_vec()).map_err(|e| format!("not a BSP file: {e}"))?;
     if opts.luxel_density > 0.0 && opts.luxel_density < 1.0 {
         let scaled = output::rescale_luxels(src, opts.luxel_density)?;
@@ -169,6 +174,9 @@ fn run_with(
         return Err(format!("BSP version {} is not supported", src.version()));
     }
     let map = data::MapData::read(&src)?;
+    let with_pak = props::MapPak { pak: src.pakfile().ok().filter(|p| !p.is_empty()), inner: models };
+    let models: &dyn crate::props::ModelSource = &with_pak;
+    work.add(1);
     let mut entities = map.entities.clone();
     let styled = lights::assign_styles(&mut entities, hp_bsp::limits::SWITCHED_LIGHTS.max_usize_in(opts.limits));
     let worldlights_version = src.lump_info(15).map_or(0, |l| l.version);
@@ -195,6 +203,7 @@ fn run_with(
     stage(report, "texture lights", t);
     report.texture_light_faces = emission.faces;
     lights.list.extend(std::mem::take(&mut emission.lights));
+    work.add(1);
     let mut params = bake::Params::of(opts.quality);
     if opts.no_extra {
         params.supersample_passes = 0;
@@ -210,6 +219,7 @@ fn run_with(
     let all = runner.par(|| surface::lit_faces(&map, opts.smooth_angle));
     let faces: Vec<surface::LitFace> = all.iter().flatten().cloned().collect();
     let lit_index = bake::lit_index(map.faces.len(), &faces);
+    work.add(1);
     let rules_table = tables.first();
     let no_shadow = |m: &str| rules_table.is_some_and(|t| t.casts_no_shadow(m));
     let forced = |m: &str| rules_table.is_some_and(|t| t.texture_shadow_forced(m));
@@ -221,11 +231,13 @@ fn run_with(
     } else {
         (props::StaticProps::default(), Vec::new())
     };
+    work.add(1);
     let (prop_tris, occluders) = if shadows {
         runner.par(|| static_props.occluders(opts.props.polys, &rules, models, &mut prop_lines))
     } else {
         (Vec::new(), props::Occluders::default())
     };
+    work.add(1);
     for l in &prop_lines {
         log(l);
     }
@@ -241,8 +253,11 @@ fn run_with(
         log(&format!("{no_shadow_disps} displacement(s) cast no shadow (their cast shadows option is off)"));
     }
     let (shadow, _) = runner.par(|| surface::shadow_scene(&map, &all, prop_tris, !opts.no_disp_shadows));
+    work.add(1);
     let (surf, surf_info) = runner.par(|| surface::surface_scene(&map, &all, &lit_index));
+    work.add(1);
     let blockers = runner.par(|| surface::blocker_scene(&map));
+    work.add(1);
     drop(all);
     let sky_clusters = surface::sky_clusters(&map);
     let luxels: usize = faces.iter().map(|f| f.luxels()).sum();
@@ -268,6 +283,25 @@ fn run_with(
     let (cameras, camera_areas) =
         if opts.no_skybox_recurse { (Vec::new(), Vec::new()) } else { bake::sky_cameras(&map) };
     let ao = ao::resolve_and_log(opts, map.entities.first(), log);
+    let detail_objects = detail::count(&src);
+    let prop_lighting = opts.props.lighting && static_props.len() > 0;
+    let mut plan = vec![Stage::Scene, Stage::Direct];
+    if ao.is_some() {
+        plan.push(Stage::Occlusion);
+    }
+    if opts.bounces > 0 {
+        plan.extend([Stage::BounceRays, Stage::Bounces]);
+    }
+    plan.push(Stage::LeafAmbient);
+    if detail_objects > 0 {
+        plan.push(Stage::DetailProps);
+    }
+    if prop_lighting {
+        plan.push(Stage::StaticProps);
+    }
+    plan.push(Stage::Write);
+    work.plan(&plan);
+    log(&format!("Lighting stages: {}", plan[1..].iter().map(|s| s.name()).collect::<Vec<_>>().join(", ")));
     let ctx = bake::Ctx {
         map: &map,
         faces: &faces,
@@ -285,14 +319,26 @@ fn run_with(
         props: &occluders,
         blockers: &blockers,
         ao,
+        work,
     };
     let t = Instant::now();
-    let mut light: Vec<bake::FaceLight> = runner.par(|| faces.par_iter().map(|f| ctx.direct(f)).collect());
+    work.begin(Stage::Direct, luxels as u64);
+    let mut light: Vec<bake::FaceLight> = runner.par(|| {
+        faces
+            .par_iter()
+            .map(|f| {
+                let l = ctx.direct(f);
+                work.add(f.luxels() as u64);
+                l
+            })
+            .collect()
+    });
     runner.par(|| disp::radial(&ctx, &mut light));
     log(&format!("direct light in {} ms", ms(t)));
     stage(report, "direct light", t);
     let occlusion = ctx.ao.as_ref().map(|a| {
         let t = Instant::now();
+        work.begin(Stage::Occlusion, luxels as u64);
         let factors = runner.par(|| a.faces(&ctx, &light));
         let (mean, min) = ao::summary(&factors);
         log(&format!(
@@ -334,6 +380,7 @@ fn run_with(
     runner.par(|| bake::stitch(&faces, &mut light));
 
     let t = Instant::now();
+    work.begin(Stage::LeafAmbient, map.leafs.len() as u64);
     let per_face: Vec<(Vec<Vec<glam::Vec3A>>, Vec<glam::Vec3A>)> = runner.par(|| {
         faces
             .par_iter()
@@ -386,10 +433,9 @@ fn run_with(
     );
 
     let t = Instant::now();
+    work.begin(Stage::Write, 1);
     let layout = output::layout(&faces, &light);
-    if layout.size > 0x100_0000 {
-        log(&format!("warning: {} bytes of lightmaps, over the engine limit of 16 MB", layout.size));
-    }
+    lightmap_room(layout.size as u64, hp_bsp::limits::LIGHTING.max_in(opts.limits))?;
     let faces_lump = output::patch_faces(&map.faces_raw, &layout);
     let leaf_flags = {
         let raw = src.lump(lump::LEAFS).map(|c| c.into_owned()).unwrap_or_default();
@@ -480,9 +526,21 @@ fn run_with(
         edit.replace_lump_with_version(lump::DISPINFO, d, version).map_err(fail)?;
     }
     let out = edit.to_vec().map_err(fail)?;
+    work.finish();
     stage(report, "write", t);
     log(&format!("lighting: {} bytes per pass, done in {} ms", layout.size, ms(start)));
     Ok(out)
+}
+
+fn lightmap_room(size: u64, most: u64) -> Result<(), String> {
+    if size <= most {
+        return Ok(());
+    }
+    Err(format!(
+        "{} bytes of lightmaps per pass: a face can only point {most} bytes into the lightmaps, the game cannot load \
+             this map; raise the lightmap scale of large faces",
+        size
+    ))
 }
 
 const LEAF_FLAGS_SKY: u16 = 0x01;
@@ -523,25 +581,41 @@ fn leaf_sky_flags(raw: &[u8], size: usize, map: &data::MapData, sees_sky: &dyn F
         }
         map.vis.row(from).is_none_or(|r| r.get(to as usize >> 3).is_none_or(|b| b & (1 << (to & 7)) != 0))
     };
-    let (mut bits3d, mut bits2d) = (vec![false; n], vec![false; n]);
-    for i in 0..n {
-        let leaf = &map.leafs[i];
-        if flags_of(get(&out, i)) & LEAF_FLAGS_SKY != 0 || leaf.contents & contents::SOLID as i32 != 0 {
-            continue;
-        }
-        for k in 0..n {
-            let f = flags_of(get(&out, k));
-            if k == i || f & (LEAF_FLAGS_SKY | LEAF_FLAGS_SKY2D) == 0 || !sees(leaf.cluster, map.leafs[k].cluster) {
+    let sky_leafs: Vec<(usize, u16, i32)> = (0..n)
+        .map(|k| (k, flags_of(get(&out, k)), map.leafs[k].cluster))
+        .filter(|(_, f, _)| f & (LEAF_FLAGS_SKY | LEAF_FLAGS_SKY2D) != 0)
+        .collect();
+    let scan = |i: usize, cluster: i32| {
+        let (mut sky3d, mut sky2d) = (false, false);
+        for &(k, f, c) in &sky_leafs {
+            if k == i || !sees(cluster, c) {
                 continue;
             }
             if f & LEAF_FLAGS_SKY2D != 0 {
-                bits2d[i] = true;
+                sky2d = true;
             }
             if f & LEAF_FLAGS_SKY != 0 {
-                bits3d[i] = true;
+                sky3d = true;
                 break;
             }
         }
+        (sky3d, sky2d)
+    };
+    let mut by_cluster: std::collections::HashMap<i32, (bool, bool)> = std::collections::HashMap::new();
+    let (mut bits3d, mut bits2d) = (vec![false; n], vec![false; n]);
+    for i in 0..n {
+        let leaf = &map.leafs[i];
+        let own = flags_of(get(&out, i));
+        if own & LEAF_FLAGS_SKY != 0 || leaf.contents & contents::SOLID as i32 != 0 {
+            continue;
+        }
+        let (sky3d, sky2d) = if own & LEAF_FLAGS_SKY2D != 0 {
+            scan(i, leaf.cluster)
+        } else {
+            *by_cluster.entry(leaf.cluster).or_insert_with(|| scan(usize::MAX, leaf.cluster))
+        };
+        bits3d[i] = sky3d;
+        bits2d[i] = sky2d;
     }
     for i in 0..n {
         let leaf = &map.leafs[i];

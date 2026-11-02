@@ -117,12 +117,31 @@ impl GrowBuffer {
             return Grow::TooLarge;
         }
         let new_size = self.size.saturating_mul(2).max(needed).min(max).next_multiple_of(wgpu::COPY_BUFFER_ALIGNMENT);
-        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some(self.label),
-            size: new_size,
-            usage: self.usage,
-            mapped_at_creation: false,
-        });
+        let make = |size: u64| {
+            crate::memory::guarded(device, || {
+                device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some(self.label),
+                    size,
+                    usage: self.usage,
+                    mapped_at_creation: false,
+                })
+            })
+        };
+        let (mut buffer, mut oom) = make(new_size);
+        let mut new_size = new_size;
+        if oom && new_size > needed {
+            let exact = needed.next_multiple_of(wgpu::COPY_BUFFER_ALIGNMENT);
+            (buffer, oom) = make(exact);
+            new_size = exact;
+        }
+        if oom {
+            log::warn!(
+                "hp-render: {} cannot grow to {} MB: the graphics card is out of memory",
+                self.label,
+                needed >> 20
+            );
+            return Grow::TooLarge;
+        }
         if keep {
             let mut enc =
                 device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("hp-render grow copy") });

@@ -33,7 +33,7 @@ Les outils et le moteur de Garry's Mod ont relevé beaucoup de limites de Valve.
 | Entités | 8192 | 65535 |
 | Texte des entités | 384 Ko | 4 Mo |
 | Données de visibilité | 16 Mo | 16 Mo |
-| Données de lightmap (par passe) | 16 Mo | sans limite |
+| Données de lightmap (par passe) | 2 Go | 2 Go |
 | Props statiques | 65535 | 16384 (le moteur garde les 16384 premiers) |
 | Lumières commutables (nommées) | 32 | 96 |
 | Primitives, indices des primitives | 32768, 65536 | 32768, 65536 |
@@ -103,11 +103,11 @@ Les messages du compilateur sont en anglais, comme ceux de Valve.
 
 L'onglet **Statistiques** (aussi le bouton **Statistiques : N conseils** du journal) lit les statistiques que le compilateur écrit à la fin de chaque étape. Chaque élément qui a une place dans la map (une brush, une face, un cluster, une zone, un prop) a un bouton **Aller à**.
 
-- **Conseils d'optimisation** : limites à 75 % ou plus (au-delà de 90 % ce sont des avertissements, au-delà de 100 % le jeu peut refuser la map), une map compilée sans visibilité, des clusters qui voient 50 % de la map ou plus, une visibilité moyenne faible, une grande map sans areaportals, de petites brushes structurelles qui pourraient être des `func_detail` (la plus petite est nommée), des props statiques sans distance de disparition, des displacements de puissance 4, des lightmaps qui prennent une bonne part des 16 Mo, des échelles de lightmap très fines, des styles commutables presque tous utilisés.
+- **Conseils d'optimisation** : limites à 75 % ou plus (au-delà de 90 % ce sont des avertissements, au-delà de 100 % le jeu peut refuser la map), une map compilée sans visibilité (critique quand elle a de l'eau : le jeu dessine alors l'eau en noir, sans réfraction, donc compilez au moins avec la visibilité rapide), des clusters qui voient 50 % de la map ou plus, une visibilité moyenne faible, une grande map sans areaportals, de petites brushes structurelles qui pourraient être des `func_detail` (la plus petite est nommée), des props statiques sans distance de disparition, des displacements de puissance 4, des lightmaps qui prennent 90 % ou plus des 2 Go qu'une face peut adresser, des échelles de lightmap très fines, des styles commutables presque tous utilisés.
 - **Limites du moteur** : le tableau de vbspinfo de Valve (utilisé, maximum, octets, remplissage), les plus pleines d'abord.
 - **Géométrie** : taille de la map, brushes (structurelles, de détail, d'eau, outils, dans des entités de brushes), entités par classe, faces par matériau, displacements par puissance, zones, les petites brushes structurelles et les props sans distance de disparition.
 - **Visibilité** : mode (rapide, complète, non calculée, ou sautée parce que la map fuit), clusters, portails, feuilles, clusters visibles en moyenne et au plus, le rayon de visibilité, les clusters qui voient le plus.
-- **Éclairage** : octets de lightmap de chaque passe sur les 16 Mo, luxels, lumières par type, styles commutables, textures lumineuses, props statiques et de détail éclairés, échantillons d'ambiance, rebonds, les faces et matériaux avec le plus de luxels avec leur échelle de lightmap.
+- **Éclairage** : octets de lightmap de chaque passe sur les 2 Go qu'une face peut adresser, luxels, lumières par type, styles commutables, textures lumineuses, props statiques et de détail éclairés, échantillons d'ambiance, rebonds, les faces et matériaux avec le plus de luxels avec leur échelle de lightmap.
 - **Durée des phases** et **Durée des étapes**.
 
 Sans compilation Hammer Pro dans le journal, l'onglet le signale. L'outil MCP `get_compile_stats` donne les mêmes données.
@@ -118,7 +118,7 @@ Sans compilation Hammer Pro dans le journal, l'onglet le signale. L'outil MCP `g
 
 **Où est le journal d'une ancienne compilation ?** `<map>.log` dans le dossier `.hammerpro_build` à côté de votre map garde chaque lancement ; l'onglet Historique garde les durées.
 
-**Quelle différence entre la limite de 16 Mo de lightmaps et Garry's Mod ?** Valve définit 16 Mo par passe, les outils et le moteur de Garry's Mod ne l'imposent pas ; les statistiques montrent quand même vos lightmaps par rapport à 16 Mo comme repère.
+**Y a-t-il une limite de 16 Mo de lightmaps ?** Non. `MAX_MAP_LIGHTING` (16 Mo) est encore dans `bspfile.h` de Valve, mais ni les outils du Source SDK 2013 ni le VRAD de Garry's Mod ne le vérifient (leur tableau de tailles affiche les lightdata sans maximum), et le moteur charge davantage : des maps de Garry's Mod compilées par Valve se chargent avec 60 à 80 Mo de lightmaps par passe. La vraie limite, pour chaque jeu cible, est le décalage de lightmap d'une face (`lightofs` dans `dface_t`), un nombre signé sur 32 bits : au-delà de 2 Go par passe les faces ne peuvent plus désigner leurs lightmaps et le jeu ne peut pas charger la map. L'éclairage de Hammer Pro s'arrête alors avec une erreur ; les conseils préviennent dès 90 %. Les grandes lightmaps coûtent quand même de la mémoire et du temps de chargement, gardez donc des échelles grossières là où les ombres sont douces.
 
 ## Pages liées
 - [Vérifier les problèmes](../features/check-problems.md)

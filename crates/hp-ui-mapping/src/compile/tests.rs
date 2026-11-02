@@ -613,3 +613,23 @@ fn the_idle_log_stays_still() {
         assert_eq!(f, last, "frame {i} moved without auto scroll");
     }
 }
+
+#[test]
+fn lighting_progress_in_the_bar() {
+    let _lang = crate::lang_lock();
+    crate::register_translations();
+    let line = "Lighting 41%: direct lighting 60% (stage 2 of 7), 27 s elapsed, about 1 min 05 s left";
+    assert_eq!(phase_text(line), "Direct lighting 60% (2/7), about 1 min 05 s left");
+    assert_eq!(phase_text("BuildFacelights"), "BuildFacelights");
+    let early = "Lighting 0%: static props 1% (stage 6 of 7), 1 s elapsed, estimating the time left";
+    assert_eq!(phase_text(early), "Static props 1% (6/7), estimating the time left");
+    hp_app::i18n::set_lang(hp_app::i18n::Lang::Fr);
+    assert_eq!(phase_text(line), "Éclairage direct 60 % (2/7), encore environ 1 min 05 s");
+    hp_app::i18n::set_lang(hp_app::i18n::Lang::En);
+    let mut run = RunState::preparing("gm_test");
+    run.set_plan(&plan());
+    run.apply(CompileEvent::StepStarted { index: 1, kind: StepKind::Rad, command_line: String::new() });
+    run.apply(CompileEvent::Progress { step: 1, fraction: 0.41, phase: Some(line.to_owned()) });
+    let s = run.steps.iter().find(|s| s.index == 1).expect("step");
+    assert_eq!((s.fraction, s.phase.as_deref()), (0.41, Some(line)));
+}

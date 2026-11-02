@@ -137,6 +137,10 @@ impl AssetManager {
         self.evict_model_thumbs();
     }
 
+    pub(crate) fn model_thumbs_ready(&self) -> usize {
+        self.model_thumbs.map.values().filter(|e| matches!(e, Entry::Ready { .. })).count()
+    }
+
     pub(crate) fn model_thumbs_busy(&self) -> bool {
         !self.model_thumbs.jobs.is_empty()
     }

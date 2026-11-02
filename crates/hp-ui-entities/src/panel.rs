@@ -213,7 +213,11 @@ impl EntityPanel {
                     .resizable(false)
                     .show_separator_line(true)
                     .frame(egui::Frame::NONE.inner_margin(egui::Margin::symmetric(0, 4)))
-                    .show(ui, |ui| editor_info_ui(ui, smart, view, &mut ops));
+                    .show(ui, |ui| {
+                        let objs = cx.doc.selected_objects();
+                        crate::display_color::section(ui, cx.doc, cx.settings, cx.settings_dirty, &objs, &mut ops);
+                        editor_info_ui(ui, smart, view);
+                    });
             }
             match *tab {
                 EntityTab::Properties => {
@@ -431,6 +435,10 @@ fn header(ui: &mut Ui, cx: &mut Cx, view: &EntityView, move_shortcut: Option<&st
         }
         Some(_) => {}
     }
+    for n in fog_hints(cx, view) {
+        let color = if n.warning { theme::warning() } else { ui.visuals().weak_text_color() };
+        ui.add(egui::Label::new(RichText::new(n.text).color(color).small()).wrap());
+    }
     if !view.description.trim().is_empty() {
         egui::CollapsingHeader::new(RichText::new(t!("entities.description")).small())
             .id_salt("hp_ui_entities.description")
@@ -439,6 +447,34 @@ fn header(ui: &mut Ui, cx: &mut Cx, view: &EntityView, move_shortcut: Option<&st
                 ui.label(RichText::new(view.description.trim()).small());
             });
     }
+}
+
+pub(crate) fn fog_hints(cx: &Cx, view: &EntityView) -> Vec<hp_app::runtime::fog::Note> {
+    use hp_app::runtime::fog;
+    let ([id], Some(class)) = (view.target.ids(), view.single_class()) else { return Vec::new() };
+    if fog::is_fog_volume(class) {
+        fog::resolve_volume(cx.doc, *id).map(|v| fog::volume_notes(&v)).unwrap_or_default()
+    } else if fog::is_fog_controller(class) {
+        fog::controller_notes(cx.doc, *id, cx.runtime.render.fog_controller, cx.settings.render.fog_preview)
+    } else if hp_app::runtime::helpers::fish::is_fish_pool(class) {
+        fish_hints(cx, *id)
+    } else {
+        Vec::new()
+    }
+}
+
+fn fish_hints(cx: &Cx, id: hp_editor::Id) -> Vec<hp_app::runtime::fog::Note> {
+    use hp_app::runtime::helpers::fish;
+    let Some(pool) = cx.doc.scene().entity(id).and_then(|n| fish::fish_pool(&n.entity)) else { return Vec::new() };
+    let models = cx.assets.models();
+    let has = |m: &str| models.iter().any(|e| e.name.eq_ignore_ascii_case(m.trim()));
+    if models.is_empty() || has(&pool.model) || !has(fish::FALLBACK_MODEL) {
+        return Vec::new();
+    }
+    vec![hp_app::runtime::fog::Note {
+        warning: true,
+        text: tf!("fish.missing_model", pool.model, fish::FALLBACK_MODEL),
+    }]
 }
 
 const MAX_LISTED_CLASSES: usize = 4;
@@ -468,22 +504,12 @@ fn kind_label(kind: EditKind) -> &'static str {
     }
 }
 
-fn editor_info_ui(ui: &mut Ui, smart: &mut SmartEdit, view: &EntityView, ops: &mut Vec<Op>) {
+fn editor_info_ui(ui: &mut Ui, smart: &mut SmartEdit, view: &EntityView) {
     let ids = view.target.ids();
     egui::CollapsingHeader::new(t!("entities.editor_section"))
         .id_salt("hp_ui_entities.editor_section")
         .default_open(false)
         .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.label(t!("entities.editor_color"));
-                let mut c = view.color.unwrap_or([128, 128, 128]);
-                if ui.color_edit_button_srgb(&mut c).on_hover_text(t!("entities.editor_color_tip")).changed() {
-                    ops.push(Op::Color { ids: ids.to_vec(), rgb: c });
-                }
-                if view.color.is_none() {
-                    ui.label(RichText::new(t!("common.multiple_values")).weak());
-                }
-            });
             ui.label(t!("entities.comments"));
             let id = egui::Id::unique("hp_ui_entities.comments");
             let hint =
@@ -546,6 +572,9 @@ fn world_brushes_ui(
             }
         }
     });
+    ui.add_space(8.0);
+    let selected = cx.doc.selected_objects();
+    crate::display_color::section(ui, cx.doc, cx.settings, cx.settings_dirty, &selected, ops);
 }
 
 pub(crate) fn tie_classes(fgd: Option<&ResolvedFgd>) -> Vec<&str> {

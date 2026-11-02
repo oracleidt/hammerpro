@@ -1,3 +1,4 @@
+mod bevel;
 mod create;
 mod csg;
 mod disp;
@@ -14,6 +15,7 @@ mod path_nodes;
 mod random_rotate;
 mod visgroup;
 
+pub use bevel::{BevelOutcome, EdgeRef};
 pub use csg::ClipKeep;
 pub use entity::EntityQuery;
 pub use find_replace::{ConnPart, MAX_TEXT_LEN, TextField, TextMatch, TextQuery, find_ranges};

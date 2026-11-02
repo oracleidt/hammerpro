@@ -566,9 +566,9 @@ impl Lumps {
         {
             (mins, size) =
                 crate::faces::lightmap_extents(verts.iter().map(|&v| self.vertexes[v as usize].as_vec3()), &t.lightmap);
-            for axis in 0..2 {
+            for (axis, &extent) in size.iter().enumerate() {
                 let max_extent = hp_bsp::limits::LIGHTMAP_EXTENT.max_in(self.format.limits) as i32;
-                if disp < 0 && size[axis] > max_extent {
+                if disp < 0 && extent > max_extent {
                     let (bi, _) = f.source;
                     let id = brushes.get(bi).map_or(0, |b| b.id);
                     let mut center = glam::Vec3::ZERO;
@@ -582,7 +582,7 @@ impl Lumps {
                         "Bad surface extents - surface is too big to have a lightmap
 	material {name} around point ({:.1} {:.1} {:.1})
 	(dimension: {axis}, {}>{}) (brush {id})",
-                        center.x, center.y, center.z, size[axis], max_extent
+                        center.x, center.y, center.z, extent, max_extent
                     ));
                 }
             }

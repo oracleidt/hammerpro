@@ -169,6 +169,9 @@ impl HammerProApp {
             self.switch_tool(tool);
             return;
         }
+        if action == Action::SnapToGrid && self.bevel_shortcut(ctx) {
+            return;
+        }
         if self.active_tool_action(action) {
             return;
         }

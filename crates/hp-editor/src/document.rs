@@ -22,11 +22,12 @@ pub struct EditOptions {
     pub texture_lock: bool,
     pub texture_scale_lock: bool,
     pub fallback_texture_size: (u32, u32),
+    pub new_brush_color: Option<[u8; 3]>,
 }
 
 impl Default for EditOptions {
     fn default() -> Self {
-        Self { texture_lock: true, texture_scale_lock: false, fallback_texture_size: (512, 512) }
+        Self { texture_lock: true, texture_scale_lock: false, fallback_texture_size: (512, 512), new_brush_color: None }
     }
 }
 

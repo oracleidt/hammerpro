@@ -4,6 +4,8 @@ use crate::{LogLocation, Severity};
 
 const COMPILE_BANNER: &str = "Hammer Pro map compiler (";
 pub const HINTS_HEADER: &str = "---- Optimization hints ----";
+const LIGHTMAP_MAX_BYTES: u64 = hp_bsp::limits::LIGHTING.sdk;
+const LIGHTMAP_HINT_PERCENT: f64 = 90.0;
 
 pub fn is_section_header(line: &str) -> bool {
     let t = line.trim();
@@ -63,7 +65,7 @@ pub fn valve_name(row: &str) -> Option<&'static str> {
         "entdata" => "MAX_MAP_ENTSTRING",
         "static props" => "MAX_STATIC_PROPS",
         "ldr worldlights" | "hdr worldlights" => "MAX_MAP_WORLDLIGHTS",
-        "ldr lightdata" | "hdr lightdata" => "MAX_MAP_LIGHTING",
+        "ldr lightdata" | "hdr lightdata" => "dface_t lightofs",
         "ldr leaf ambient" | "hdr leaf ambient" => "MAX_MAP_LEAFS",
         _ => return None,
     })
@@ -651,6 +653,7 @@ pub enum HintKind {
     WideView { cluster: u32, percent: f64, faces: u64 },
     WeakVis { average_percent: f64 },
     NoVis { clusters: u64 },
+    NoVisWater { water: u64 },
     NoAreaportals { clusters: u64 },
     SmallBrushes { count: u64, brush_id: u32 },
     FadelessProps { count: u64, model: String, of_model: u64 },
@@ -681,6 +684,7 @@ impl Hint {
             HintKind::WideView { .. } => "compilestats.hint.wide_view",
             HintKind::WeakVis { .. } => "compilestats.hint.weak_vis",
             HintKind::NoVis { .. } => "compilestats.hint.no_vis",
+            HintKind::NoVisWater { .. } => "compilestats.hint.no_vis_water",
             HintKind::NoAreaportals { .. } => "compilestats.hint.no_areaportals",
             HintKind::SmallBrushes { .. } => "compilestats.hint.small_brushes",
             HintKind::FadelessProps { .. } => "compilestats.hint.fadeless_props",
@@ -701,6 +705,7 @@ impl Hint {
                 vec![cluster.to_string(), format!("{percent:.0}"), faces.to_string()]
             }
             HintKind::WeakVis { average_percent } => vec![format!("{average_percent:.0}")],
+            HintKind::NoVisWater { water } => vec![water.to_string()],
             HintKind::NoVis { clusters } | HintKind::NoAreaportals { clusters } => vec![clusters.to_string()],
             HintKind::SmallBrushes { count, brush_id } => vec![count.to_string(), brush_id.to_string()],
             HintKind::FadelessProps { count, model, of_model } => {
@@ -746,6 +751,10 @@ pub const HINT_TEXTS: &[(&str, &str)] = &[
         "The visibility was not computed: the {0} clusters all draw everything. Compile with the visibility to judge the frame rate.",
     ),
     (
+        "compilestats.hint.no_vis_water",
+        "Water brushes: {0}, and no visibility: in game the water draws black (no refraction). Compile with the visibility, fast is enough.",
+    ),
+    (
         "compilestats.hint.no_areaportals",
         "{0} clusters and no areaportal: func_areaportal in the doorways close off whole rooms.",
     ),
@@ -763,11 +772,11 @@ pub const HINT_TEXTS: &[(&str, &str)] = &[
     ),
     (
         "compilestats.hint.lightmap_estimate",
-        "The lightmaps will take about {0}% of the 16 MB of the engine: raise the lightmap scale of large faces.",
+        "The lightmaps will take about {0}% of the 2 GB a face can address in the lightmaps (past it the game cannot load the map): raise the lightmap scale of large faces.",
     ),
     (
         "compilestats.hint.lightmap_bytes",
-        "The {0} lightmaps take {1}% of the 16 MB of the engine: raise the lightmap scale of large faces.",
+        "The {0} lightmaps take {1}% of the 2 GB a face can address in the lightmaps (past it the game cannot load the map): raise the lightmap scale of large faces.",
     ),
     (
         "compilestats.hint.fine_lightmap",
@@ -783,7 +792,7 @@ pub fn hints(st: &CompileStats) -> Vec<Hint> {
     let mut out = Vec::new();
     let at = |p: Option<[f64; 3]>| p.map(|p| LogLocation { position: Some(p), ..LogLocation::default() });
     for r in &st.limits {
-        if r.percent >= 75.0 {
+        if r.percent >= 75.0 && !r.name.to_ascii_lowercase().ends_with("lightdata") {
             let level = if r.percent > 100.0 {
                 HintLevel::Critical
             } else if r.percent >= 90.0 {
@@ -803,6 +812,10 @@ pub fn hints(st: &CompileStats) -> Vec<Hint> {
         }
     }
     if let Some(v) = &st.vis {
+        let water = st.geometry.as_ref().map_or(0, |g| g.brushes.water);
+        if v.mode == "off" && water > 0 {
+            out.push(Hint { kind: HintKind::NoVisWater { water }, level: HintLevel::Critical, location: None });
+        }
         if v.mode == "off" && v.clusters >= 2 {
             out.push(Hint { kind: HintKind::NoVis { clusters: v.clusters }, level: HintLevel::Tip, location: None });
         }
@@ -863,10 +876,9 @@ pub fn hints(st: &CompileStats) -> Vec<Hint> {
         }
         if st.lighting.is_none()
             && let Some(b) = g.estimated_lightmap_bytes
-            && g.max_lightmap_bytes > 0
         {
-            let percent = b as f64 * 100.0 / g.max_lightmap_bytes as f64;
-            if percent >= 75.0 {
+            let percent = b as f64 * 100.0 / LIGHTMAP_MAX_BYTES as f64;
+            if percent >= LIGHTMAP_HINT_PERCENT {
                 let level = if percent > 100.0 { HintLevel::Critical } else { HintLevel::Important };
                 out.push(Hint { kind: HintKind::LightmapEstimate { percent }, level, location: None });
             }
@@ -874,8 +886,8 @@ pub fn hints(st: &CompileStats) -> Vec<Hint> {
     }
     if let Some(l) = &st.lighting {
         for p in &l.passes {
-            let percent = if p.max_bytes > 0 { p.bytes as f64 * 100.0 / p.max_bytes as f64 } else { 0.0 };
-            if percent >= 75.0 {
+            let percent = p.bytes as f64 * 100.0 / LIGHTMAP_MAX_BYTES as f64;
+            if percent >= LIGHTMAP_HINT_PERCENT {
                 let level = if percent > 100.0 { HintLevel::Critical } else { HintLevel::Important };
                 out.push(Hint {
                     kind: HintKind::LightmapBytes { pass: p.pass.clone(), percent },
@@ -907,7 +919,7 @@ pub fn hints(st: &CompileStats) -> Vec<Hint> {
             });
         }
     }
-    out.sort_by(|a, b| b.level.cmp(&a.level));
+    out.sort_by_key(|h| std::cmp::Reverse(h.level));
     out
 }
 
@@ -1142,13 +1154,14 @@ Materials with the most luxels (top 1 of 3):
             "compilestats.hint.small_brushes",
             "compilestats.hint.fadeless_props",
             "compilestats.hint.power4",
-            "compilestats.hint.lightmap_bytes",
             "compilestats.hint.fine_lightmap",
             "compilestats.hint.switchable_styles",
         ] {
             assert!(kinds.contains(&k), "{k} in {kinds:?}");
         }
         assert!(!kinds.contains(&"compilestats.hint.lightmap_estimate"));
+        assert!(!kinds.contains(&"compilestats.hint.lightmap_bytes"), "13 MB of lightmaps load fine");
+        assert!(!h.iter().any(|x| matches!(&x.kind, HintKind::NearLimit { name, .. } if name.contains("lightdata"))));
         assert!(h.windows(2).all(|w| w[0].level >= w[1].level));
         let wide = h.iter().find(|x| matches!(x.kind, HintKind::WideView { .. })).unwrap();
         assert_eq!(wide.location.as_ref().and_then(|l| l.position), Some([10.0, 20.0, 30.0]));
@@ -1176,13 +1189,30 @@ Materials with the most luxels (top 1 of 3):
 
     #[test]
     fn only_geometry_gives_the_estimate_and_no_vis() {
-        let text = "---- Geometry details ----\nLightmaps (estimate): 1 luxels, 20000000 bytes per pass of 16777216 (119.2%)\n\
+        let text = "---- Geometry details ----\nLightmaps (estimate): 1 luxels, 2200000000 bytes per pass of 2147483647 (102.4%)\n\
                     ---- Visibility statistics ----\nClusters: 50, portals: 90, leaves: 200 (100 empty)\nVis mode: off\n";
         let h = hints(&parse_text(text));
         assert_eq!(h[0].key(), "compilestats.hint.lightmap_estimate");
         assert_eq!(h[0].level, HintLevel::Critical);
         assert!(h.iter().any(|x| x.key() == "compilestats.hint.no_vis"));
+        assert!(!h.iter().any(|x| x.key() == "compilestats.hint.no_vis_water"), "no water");
+        let wet = text.replace(
+            "---- Geometry details ----\n",
+            "---- Geometry details ----\nBrushes: 40 total, 30 structural, 5 detail, 2 water, 2 tool, 2 in brush entities\n",
+        );
+        let h = hints(&parse_text(&wet));
+        let w = h.iter().find(|x| x.key() == "compilestats.hint.no_vis_water").expect("water hint");
+        assert_eq!(w.level, HintLevel::Critical);
+        assert!(w.english().starts_with("Water brushes: 2, and no visibility"), "{}", w.english());
         assert!(parse_text("nothing here\n").is_empty());
+        let old = "---- Geometry details ----\nLightmaps (estimate): 1 luxels, 20000000 bytes per pass of 16777216 (119.2%)\n";
+        assert!(hints(&parse_text(old)).is_empty(), "20 MB of lightmaps are no problem for the game");
+        let big = "---- Lighting statistics ----\nLightmap bytes: HDR 81214012 of 2147483647 (3.8%)\n\
+                   Lightmap bytes: LDR 2000000000 of 2147483647 (93.1%)\n";
+        let h = hints(&parse_text(big));
+        assert_eq!(h.len(), 1, "{h:?}");
+        assert_eq!((h[0].key(), h[0].level), ("compilestats.hint.lightmap_bytes", HintLevel::Important));
+        assert!(h[0].english().starts_with("The LDR lightmaps take 93% of the 2 GB"), "{}", h[0].english());
     }
 
     #[test]

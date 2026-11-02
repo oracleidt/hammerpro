@@ -534,7 +534,11 @@ fn shift_arrow_clones_of_path_nodes_link_themselves_too() {
     let kv = |k: &str, val: &str| (k.to_owned(), val.to_owned());
     let a = state
         .doc
-        .create_point_entity("path_track", DVec3::new(-128.0, -200.0, 0.0), &[kv("targetname", "p1"), kv("target", "p2")])
+        .create_point_entity(
+            "path_track",
+            DVec3::new(-128.0, -200.0, 0.0),
+            &[kv("targetname", "p1"), kv("target", "p2")],
+        )
         .expect("a");
     state.doc.create_point_entity("path_track", DVec3::new(128.0, -200.0, 0.0), &[kv("targetname", "p2")]).expect("b");
     state.doc.set_selection(&[ObjRef::Entity(a)]);
@@ -543,7 +547,8 @@ fn shift_arrow_clones_of_path_nodes_link_themselves_too() {
     assert!(key_frame(&ctx, &mut state, &mut tool, vec![key(Key::ArrowRight, Modifiers::SHIFT)]));
     let [ObjRef::Entity(copy)] = state.doc.selected_objects()[..] else { panic!("one copy") };
     assert_ne!(copy, a);
-    let get = |state: &AppState, id, k: &str| state.doc.scene().entity(id).and_then(|n| n.entity.get(k).map(str::to_owned));
+    let get =
+        |state: &AppState, id, k: &str| state.doc.scene().entity(id).and_then(|n| n.entity.get(k).map(str::to_owned));
     assert_eq!(get(&state, copy, "targetname").as_deref(), Some("p3"));
     assert_eq!(get(&state, copy, "target").as_deref(), Some("p2"));
     assert_eq!(get(&state, a, "target").as_deref(), Some("p3"));
@@ -946,7 +951,8 @@ fn hidden_tool_brushes_do_not_catch_clicks() {
     let mut state = state();
     let mut tool = SelectTool::new();
     let v = view3d();
-    let clip = block(&mut state, DVec3::new(-64.0, -400.0, 0.0), DVec3::new(64.0, -384.0, 200.0), "tools/toolsplayerclip");
+    let clip =
+        block(&mut state, DVec3::new(-64.0, -400.0, 0.0), DVec3::new(64.0, -384.0, 200.0), "tools/toolsplayerclip");
     state.doc.clear_selection();
     let light = scr(&v, DVec3::new(0.0, -8.0, 96.0));
     click(&mut tool, &mut state, &v, light, Modifiers::NONE);

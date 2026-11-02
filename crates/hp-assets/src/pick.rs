@@ -70,7 +70,9 @@ impl TriBvh {
     pub(crate) fn build(mut tris: Vec<Tri>) -> Self {
         tris.retain(|t| {
             let p = &t.p;
-            p.iter().all(|v| v.is_finite()) && t.n.is_finite() && (p[1] - p[0]).cross(p[2] - p[0]).length_squared() > 1e-12
+            p.iter().all(|v| v.is_finite())
+                && t.n.is_finite()
+                && (p[1] - p[0]).cross(p[2] - p[0]).length_squared() > 1e-12
         });
         tris.truncate(MAX_TRIANGLES);
         if tris.is_empty() {

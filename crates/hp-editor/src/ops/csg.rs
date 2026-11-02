@@ -96,6 +96,9 @@ impl Document {
         let mut side_ids: IdMap<Vec<Id>> = id_map(0);
         for id in solids {
             let Some(n) = self.scene.solids.get(id) else { continue };
+            if !hp_geom::plane_splits(&n.geom, &plane) {
+                continue;
+            }
             let original = &n.solid.sides;
             let Ok((front, back)) = clip_solid_traced(original, &plane, &mut gen_side) else { continue };
             let (Some(mut front), Some(mut back)) = (front, back) else { continue };

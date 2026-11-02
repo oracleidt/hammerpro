@@ -192,6 +192,7 @@ fn with_ctx(bsp: &[u8], quality: RadQuality, f: impl FnOnce(&bake::Ctx<'_>)) {
         props: &occ,
         ao: None,
         blockers: &blockers,
+        work: &super::progress::Work::new(),
     };
     f(&ctx);
 }
@@ -220,7 +221,7 @@ fn sky_light_apart_adds_up() {
                     &mut acc[i * stride..(i + 1) * stride],
                 );
             }
-            let sky = sky::face(ctx, &lights, 1, nn, &samples, &mut acc);
+            let sky = sky::face(ctx, &lights, (1, nn, samples.len()), &samples, &mut acc);
             assert_eq!(sky.len(), acc.len());
             for (i, sp) in samples.iter().enumerate() {
                 let mut all = vec![glam::Vec3A::ZERO; stride];

@@ -34,7 +34,8 @@ If you closed a map with **Don't save**, its autosaves up to then are not offere
 ## Emergency saves
 
 - When an error stops a frame of the editor, the modified maps are saved next to the autosaves before the crash report is written, and the report records where.
-- When the graphics device is lost (a driver reset, a GPU removed), the modified maps are saved next to the autosaves and Hammer Pro asks you to restart: *The graphics device was lost. Your modified maps were saved next to the autosaves: restart Hammer Pro.*
+- When the graphics device is lost (a driver reset, a GPU removed), the modified maps of every tab are saved next to the autosaves and Hammer Pro offers to restart: **Yes** starts it again with all your tabs, the modified maps opened from their saved changes. See [Graphics device lost](../troubleshooting/graphics-device-lost.md).
+- When the computer runs out of memory, Hammer Pro uses a small reserve to go on, saves the modified maps at once and asks you to free memory. See [Out of memory](../troubleshooting/out-of-memory.md).
 - A graphics error that would only spoil one frame is shown in the console (*Graphics error (one frame was skipped)*) and Hammer Pro keeps running; more of them go to the log file.
 
 ## Crash reports
@@ -50,7 +51,7 @@ On the next start, a window **Hammer Pro closed unexpectedly** shows it once:
 | **Copy the report** | Copies its text to the clipboard, to paste it in a message. |
 | **Open the saved changes** | Opens the emergency save, when there is one (*Your unsaved changes were saved to ...*). |
 
-Crashes that leave no chance to write anything (a crash of the graphics driver, an allocation failure, a stack overflow, the process killed) are caught too: each run leaves a marker that a normal close removes, and the next start turns a marker left by a dead process into a report with the end of the previous run's log.
+A crash outside Rust code (an access violation in the graphics driver, a stack overflow) or an allocation that cannot be served writes a report too, with the module where it happened and the last lines of the log; when it happens in a background thread, the modified maps are saved first. Crashes that leave no chance to write anything (the process killed) are caught too: each run leaves a marker that a normal close removes, and the next start turns a marker left by a dead process into a report with the end of the previous run's log.
 
 Errors in background threads do not close Hammer Pro: they are logged, and the first few of a run also get a report file (not offered at the next start) whose path is in the log.
 

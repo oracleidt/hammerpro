@@ -8,6 +8,18 @@ use crate::{CLIP_EPS, GeomError, PLANE_EPS, Plane, SolidGeom, WELD_EPS, build_so
 
 type SplitResult = (Option<Vec<Side>>, Option<Vec<Side>>);
 
+pub const MIN_CLIP_PIECE: f64 = 0.25;
+
+pub fn plane_splits(geom: &SolidGeom, plane: &Plane) -> bool {
+    let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
+    for v in geom.vertices() {
+        let d = plane.distance(v);
+        lo = lo.min(d);
+        hi = hi.max(d);
+    }
+    geom.valid && hi >= MIN_CLIP_PIECE && -lo >= MIN_CLIP_PIECE
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClipPiece {
     pub sides: Vec<Side>,
@@ -350,6 +362,18 @@ mod tests {
         ids.sort_unstable();
         ids.dedup();
         ids.len() == n
+    }
+
+    #[test]
+    fn plane_splits_ignores_slivers() {
+        let geom = build_solid(&hammer_box(DVec3::ZERO, DVec3::new(128.0, 64.0, 32.0)));
+        let at = |x: f64| Plane::new(DVec3::X, x).expect("plane");
+        assert!(plane_splits(&geom, &at(64.0)));
+        assert!(plane_splits(&geom, &at(MIN_CLIP_PIECE)));
+        assert!(!plane_splits(&geom, &at(0.1)));
+        assert!(!plane_splits(&geom, &at(127.9)));
+        assert!(!plane_splits(&geom, &at(-10.0)));
+        assert!(!plane_splits(&SolidGeom::default(), &at(64.0)));
     }
 
     #[test]

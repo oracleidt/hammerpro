@@ -1,7 +1,9 @@
 use ahash::AHashMap;
 use hp_app::state::SceneOptions;
 use hp_editor::{Changes, Document, Id};
-use hp_render::{ModelInstance, ObjectFlags, ObjectMesh, PreviewLight, Renderer, SpriteInstance};
+use hp_render::{ModelInstance, ObjectFlags, ObjectMesh, Renderer, SpriteInstance};
+
+use crate::lights::SceneLight;
 
 use crate::AssetManager;
 
@@ -37,7 +39,7 @@ pub(crate) struct DerivedBuild {
     pub remove: Vec<u64>,
     pub sprites: Option<Vec<SpriteInstance>>,
     pub models: Option<Vec<ModelInstance>>,
-    pub lights: Option<Vec<PreviewLight>>,
+    pub lights: Option<Vec<SceneLight>>,
 }
 
 pub(crate) trait DerivedProducer {
@@ -64,7 +66,7 @@ struct Slot {
     objects: AHashMap<u64, u32>,
     sprites: Vec<SpriteInstance>,
     models: Vec<ModelInstance>,
-    lights: Vec<PreviewLight>,
+    lights: Vec<SceneLight>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -135,6 +137,10 @@ impl Derived {
         self.info.get(&rid).map(|info| object_flags(doc, info))
     }
 
+    pub(crate) fn owner_of(&self, rid: u32) -> Option<Id> {
+        self.info.get(&rid).and_then(|i| i.owner)
+    }
+
     pub(crate) fn owned(&self, owner: Id) -> &[u32] {
         self.by_owner.get(&owner).map_or(&[], Vec::as_slice)
     }
@@ -165,7 +171,7 @@ impl Derived {
         self.slots.iter().flat_map(|s| &s.models)
     }
 
-    pub(crate) fn lights(&self) -> impl Iterator<Item = &PreviewLight> {
+    pub(crate) fn lights(&self) -> impl Iterator<Item = &SceneLight> {
         self.slots.iter().flat_map(|s| &s.lights)
     }
 

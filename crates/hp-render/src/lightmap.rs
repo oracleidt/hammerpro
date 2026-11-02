@@ -195,6 +195,7 @@ const VERTEX_ATTRS: [wgpu::VertexAttribute; 6] = [
 ];
 
 const ATLAS_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rg11b10Ufloat;
+const UPLOAD_CHUNK: u64 = 32 << 20;
 
 impl Lightmaps {
     fn bind_layout(&self, device: &wgpu::Device) -> &wgpu::BindGroupLayout {
@@ -558,16 +559,23 @@ impl Renderer {
             Some((_, old)) => layers.max(old * 2).min(limits.max_texture_array_layers),
             None => layers,
         };
-        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("hp-render lightmap atlas"),
-            size: wgpu::Extent3d { width: size, height: size, depth_or_array_layers: layers },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: ATLAS_FORMAT,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[],
+        let (texture, oom) = crate::memory::guarded(&self.device, || {
+            self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("hp-render lightmap atlas"),
+                size: wgpu::Extent3d { width: size, height: size, depth_or_array_layers: layers },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: ATLAS_FORMAT,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::COPY_DST
+                    | wgpu::TextureUsages::COPY_SRC,
+                view_formats: &[],
+            })
         });
+        if oom {
+            return false;
+        }
         if let Some((old, old_layers)) = keep {
             let mut enc = self
                 .device
@@ -613,7 +621,6 @@ impl Renderer {
         let Some(atlas) = &self.lightmap.atlas else { return };
         let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
         let mut ok: Vec<(u32, LightmapRect, &[u32], u64, u32)> = Vec::with_capacity(writes.len());
-        let mut total = 0u64;
         for &(face, rect, texels) in writes {
             let images = rect.images();
             let across = rect.w.checked_mul(images);
@@ -627,57 +634,81 @@ impl Renderer {
                 continue;
             }
             let row = (rect.w * 4).next_multiple_of(align);
-            ok.push((face, rect, texels, total, row));
-            total += u64::from(row) * u64::from(rect.h) * u64::from(images);
+            let bytes = u64::from(row) * u64::from(rect.h) * u64::from(images);
+            if bytes <= self.max_buffer {
+                ok.push((face, rect, texels, bytes, row));
+            }
         }
-        if ok.is_empty() || total > self.max_buffer {
-            return;
-        }
-        let staging = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("hp-render lightmap upload"),
-            size: total.max(4),
-            usage: wgpu::BufferUsages::COPY_SRC,
-            mapped_at_creation: true,
-        });
-        {
-            let Ok(mut view) = staging.slice(..).get_mapped_range_mut() else { return };
-            for (_, rect, texels, offset, row) in &ok {
-                for y in 0..(rect.h * rect.images()) as usize {
-                    let src = texels.get(y * rect.w as usize..(y + 1) * rect.w as usize).unwrap_or(&[]);
-                    let at = *offset as usize + y * *row as usize;
-                    let bytes: &[u8] = bytemuck::cast_slice(src);
-                    if !bytes.is_empty() && at + bytes.len() <= view.len() {
-                        view.slice(at..at + bytes.len()).copy_from_slice(bytes);
+        let chunk_limit = UPLOAD_CHUNK.min(self.max_buffer);
+        let mut done = 0usize;
+        while done < ok.len() {
+            let mut end = done;
+            let mut total = 0u64;
+            while end < ok.len() && (end == done || total + ok[end].3 <= chunk_limit) {
+                total += ok[end].3;
+                end += 1;
+            }
+            let chunk = &ok[done..end];
+            let (staging, oom) = crate::memory::guarded(&self.device, || {
+                self.device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("hp-render lightmap upload"),
+                    size: total.max(4),
+                    usage: wgpu::BufferUsages::COPY_SRC,
+                    mapped_at_creation: true,
+                })
+            });
+            if oom {
+                break;
+            }
+            let mut offsets = Vec::with_capacity(chunk.len());
+            {
+                let Ok(mut view) = staging.slice(..).get_mapped_range_mut() else { break };
+                let mut offset = 0u64;
+                for (_, rect, texels, bytes, row) in chunk {
+                    offsets.push(offset);
+                    for y in 0..(rect.h * rect.images()) as usize {
+                        let src = texels.get(y * rect.w as usize..(y + 1) * rect.w as usize).unwrap_or(&[]);
+                        let at = offset as usize + y * *row as usize;
+                        let bytes: &[u8] = bytemuck::cast_slice(src);
+                        if !bytes.is_empty() && at + bytes.len() <= view.len() {
+                            view.slice(at..at + bytes.len()).copy_from_slice(bytes);
+                        }
                     }
+                    offset += bytes;
                 }
             }
-        }
-        staging.unmap();
-        let mut enc = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("hp-render lightmap upload") });
-        for (_, rect, _, offset, row) in &ok {
-            for k in 0..rect.images() {
-                enc.copy_buffer_to_texture(
-                    wgpu::TexelCopyBufferInfo {
-                        buffer: &staging,
-                        layout: wgpu::TexelCopyBufferLayout {
-                            offset: *offset + u64::from(k) * u64::from(*row) * u64::from(rect.h),
-                            bytes_per_row: Some(*row),
-                            rows_per_image: Some(rect.h),
+            staging.unmap();
+            let mut enc = self
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("hp-render lightmap upload") });
+            for ((_, rect, _, _, row), offset) in chunk.iter().zip(&offsets) {
+                for k in 0..rect.images() {
+                    enc.copy_buffer_to_texture(
+                        wgpu::TexelCopyBufferInfo {
+                            buffer: &staging,
+                            layout: wgpu::TexelCopyBufferLayout {
+                                offset: *offset + u64::from(k) * u64::from(*row) * u64::from(rect.h),
+                                bytes_per_row: Some(*row),
+                                rows_per_image: Some(rect.h),
+                            },
                         },
-                    },
-                    wgpu::TexelCopyTextureInfo {
-                        texture: &atlas.texture,
-                        mip_level: 0,
-                        origin: wgpu::Origin3d { x: rect.x + k * rect.w, y: rect.y, z: rect.layer },
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    wgpu::Extent3d { width: rect.w, height: rect.h, depth_or_array_layers: 1 },
-                );
+                        wgpu::TexelCopyTextureInfo {
+                            texture: &atlas.texture,
+                            mip_level: 0,
+                            origin: wgpu::Origin3d { x: rect.x + k * rect.w, y: rect.y, z: rect.layer },
+                            aspect: wgpu::TextureAspect::All,
+                        },
+                        wgpu::Extent3d { width: rect.w, height: rect.h, depth_or_array_layers: 1 },
+                    );
+                }
             }
+            self.queue.submit([enc.finish()]);
+            done = end;
         }
-        self.queue.submit([enc.finish()]);
+        ok.truncate(done);
+        if ok.is_empty() {
+            return;
+        }
         for (face, rect, ..) in ok {
             if let Some(f) = self.lightmap.faces.get_mut(face as usize) {
                 f.gpu.origin = [rect.x as f32, rect.y as f32];

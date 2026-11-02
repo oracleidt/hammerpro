@@ -418,6 +418,10 @@ mod model_fuzz_tmp {
     #[test]
     fn every_model_loads_without_panic() {
         let root = std::path::Path::new(r"D:\SteamLibrary\steamapps\common\GarrysMod");
+        if !root.join("garrysmod").is_dir() {
+            eprintln!("no Garry's Mod install: test skipped");
+            return;
+        }
         let fs = hp_fs::GameFs::for_gmod(root, &hp_fs::MountOptions::default()).expect("mount");
         let models = fs.models();
         let prev = std::panic::take_hook();

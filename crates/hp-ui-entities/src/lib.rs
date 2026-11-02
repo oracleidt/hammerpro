@@ -3,6 +3,7 @@ mod catalog;
 mod color;
 mod cx;
 mod dialogs;
+mod display_color;
 mod edit;
 mod find_replace;
 mod help;

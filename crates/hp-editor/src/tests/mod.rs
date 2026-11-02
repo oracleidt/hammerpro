@@ -2,6 +2,7 @@
 
 mod changes;
 mod clipboard;
+mod display_color;
 mod fixes;
 mod ops;
 mod pick;

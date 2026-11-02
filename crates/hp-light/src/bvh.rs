@@ -883,7 +883,7 @@ mod tests {
                 assert_eq!((w.0, w.2, w.3, w.4), (g.t, g.u, g.v, g.front));
             }
             assert_eq!(want.is_some(), b.occluded(o, d, 2000.0, |_| true));
-            let keep = |p: u32| p % 3 != 0;
+            let keep = |p: u32| !p.is_multiple_of(3);
             let want = brute(&tris, o, d, 2000.0, keep);
             assert_eq!(want.map(|w| w.1), b.closest(o, d, 2000.0, keep).map(|g| g.payload));
             assert_eq!(want.is_some(), b.occluded(o, d, 2000.0, keep));
@@ -904,7 +904,7 @@ mod tests {
     fn classes() {
         let mut seed = 777u32;
         let tris = soup(2000, &mut seed);
-        let class = |p: u32| if p % 7 == 0 { 0 } else { 1u8 << (p % 3) };
+        let class = |p: u32| if p.is_multiple_of(7) { 0 } else { 1u8 << (p % 3) };
         let one = Bvh::with_classes(&tris, class);
         let grouped = Bvh::with_groups(&tris, class, &[2, 1 | 8]);
         assert_eq!(grouped.trees.len(), 3);
@@ -954,7 +954,7 @@ mod tests {
             let o = Vec3A::new(rnd(), rnd(), rnd()) * 600.0;
             let d = Vec3A::new(rnd(), rnd(), rnd()).normalize_or(Vec3A::X);
             for mask in [1u8, 2, 5, ALL_CLASSES] {
-                let keep = |p: u32| p % 5 != 0;
+                let keep = |p: u32| !p.is_multiple_of(5);
                 let want = b.occluded_in(mask, o, d, 900.0, keep);
                 let before = hint;
                 if let Some(t) = b.hint_distance(before, mask, o, d, 900.0, keep) {

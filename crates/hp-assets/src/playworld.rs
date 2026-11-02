@@ -17,16 +17,19 @@ const WORLD_OBJECT_BASE: u32 = u32::MAX - (1 << 21);
 const MAX_GROUPS: usize = (1 << 20) - 64;
 const WIRE_COLOR: [u8; 3] = [235, 235, 235];
 
+type CachedLighting = (ModelId, [[f32; 4]; 4], Option<[f32; 3]>, ModelLighting);
+type WantedWorld = (Arc<BspWorld>, Option<Arc<Vec<bool>>>);
+
 #[derive(Default)]
 pub(crate) struct PlayWorld {
-    wanted: Option<(Arc<BspWorld>, Option<Arc<Vec<bool>>>)>,
+    wanted: Option<WantedWorld>,
     uploaded: Option<(Arc<BspWorld>, Vec<u8>)>,
     applied: Option<Option<Arc<Vec<bool>>>>,
     detail_models: Vec<DetailModel>,
     detail_fade: [f32; 2],
     detail_models_pending: bool,
     static_props: HashMap<(String, [i32; 3]), usize>,
-    model_lights: HashMap<u32, (ModelId, [[f32; 4]; 4], ModelLighting)>,
+    model_lights: HashMap<u32, CachedLighting>,
     model_lights_sent: Vec<ModelLighting>,
     model_lights_source: usize,
     baked: Option<(Arc<world_light::PropLighting>, Arc<StaticPropIndex>)>,
@@ -674,7 +677,12 @@ impl AssetManager {
 }
 
 impl AssetManager {
-    pub(crate) fn play_model_lighting(&mut self, renderer: &mut Renderer, list: &[ModelInstance]) {
+    pub(crate) fn play_model_lighting(
+        &mut self,
+        renderer: &mut Renderer,
+        list: &[ModelInstance],
+        origins: &ahash::AHashMap<u32, [f32; 3]>,
+    ) {
         let world = self.play_world.uploaded.as_ref().map(|(w, _)| Arc::clone(w));
         let world = world.filter(|w| w.light.mode != LightMode::Fullbright);
         let baked = if world.is_none() { self.play_world.baked.clone() } else { None };
@@ -701,27 +709,28 @@ impl AssetManager {
             if !(entity || inst.object == crate::player::PLAYER_OBJECT) || !seen.insert(inst.object) {
                 continue;
             }
+            let at = origins.get(&inst.object).copied();
             let fresh = self
                 .play_world
                 .model_lights
                 .get(&inst.object)
-                .is_some_and(|(m, t, _)| *m == inst.model && *t == inst.transform);
+                .is_some_and(|(m, t, o, _)| *m == inst.model && *t == inst.transform && *o == at);
             if fresh {
                 continue;
             }
             let lighting = match (&world, &world_index, &baked) {
-                (Some(w), Some(index), _) => self.instance_lighting(Some(w), &w.light.props, index, inst),
+                (Some(w), Some(index), _) => self.instance_lighting(Some(w), &w.light.props, index, inst, at),
                 (None, _, Some(_)) if !in_region(self.play_world.baked_region, &inst.transform) => continue,
-                (None, _, Some((props, index))) => self.instance_lighting(None, props, index, inst),
+                (None, _, Some((props, index))) => self.instance_lighting(None, props, index, inst, at),
                 _ => continue,
             };
-            self.play_world.model_lights.insert(inst.object, (inst.model, inst.transform, lighting));
+            self.play_world.model_lights.insert(inst.object, (inst.model, inst.transform, at, lighting));
         }
         if let Some(index) = world_index {
             self.play_world.static_props = index;
         }
         self.play_world.model_lights.retain(|o, _| seen.contains(o));
-        let mut out: Vec<ModelLighting> = self.play_world.model_lights.values().map(|(_, _, l)| l.clone()).collect();
+        let mut out: Vec<ModelLighting> = self.play_world.model_lights.values().map(|(_, _, _, l)| l.clone()).collect();
         out.sort_by_key(|l| l.object);
         if out != self.play_world.model_lights_sent {
             renderer.set_model_lighting(&out);
@@ -735,6 +744,7 @@ impl AssetManager {
         props: &world_light::PropLighting,
         index: &StaticPropIndex,
         inst: &ModelInstance,
+        lighting_origin: Option<[f32; 3]>,
     ) -> ModelLighting {
         if world.is_some() && inst.object == rope_object() {
             let colors = self.play_world.ropes.as_ref().map(|r| r.colors.clone()).unwrap_or_default();
@@ -770,7 +780,11 @@ impl AssetManager {
         } else {
             data.as_ref().map_or(glam::Vec3::ZERO, |d| ((d.info.bounds_min + d.info.bounds_max) * 0.5).as_vec3())
         };
-        let lighting_origin = prop.map_or_else(|| m.transform_point3(center).to_array(), |p| p.lighting_origin);
+        let lighting_origin = match (prop, lighting_origin) {
+            (Some(p), _) => p.lighting_origin,
+            (None, Some(o)) => o,
+            (None, None) => m.transform_point3(center).to_array(),
+        };
         let lit = props.model_lighting(lighting_origin);
         let colors = prop.and_then(|p| p.colors.as_ref()).and_then(|colors| {
             let data = data.as_ref()?;

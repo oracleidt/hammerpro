@@ -1,6 +1,5 @@
 use glam::DVec3;
 use hp_fgd::{ResolvedClass, ResolvedFgd};
-use hp_render::PreviewLight;
 use hp_vmf::Entity;
 
 use crate::lights::parse_light;
@@ -31,6 +30,7 @@ pub(crate) struct EntityDesc {
     pub angles: DVec3,
     pub scale: f64,
     pub color: [u8; 3],
+    pub classic: [u8; 3],
     pub bounds: (DVec3, DVec3),
     pub model: Option<(String, u32)>,
     pub body: u32,
@@ -42,8 +42,7 @@ pub(crate) struct EntityDesc {
     pub sprite_additive: bool,
     pub sprite_size: f32,
     pub sprite_color: [f32; 4],
-    pub light: Option<PreviewLight>,
-    pub ambient: Option<[f32; 3]>,
+    pub light: Option<crate::lights::SceneLight>,
     pub decal: Option<String>,
 }
 
@@ -165,7 +164,7 @@ pub(crate) fn entity_desc(e: &Entity, fgd: Option<&ResolvedFgd>) -> EntityDesc {
     } else {
         16.0
     };
-    let (light, ambient, light_rgb) = parse_light(e);
+    let (light, light_rgb) = parse_light(e);
     let sprite_color = match light_rgb {
         Some(rgb) => {
             let m = rgb[0].max(rgb[1]).max(rgb[2]);
@@ -187,7 +186,8 @@ pub(crate) fn entity_desc(e: &Entity, fgd: Option<&ResolvedFgd>) -> EntityDesc {
         origin,
         angles,
         scale: model_scale(e),
-        color: point_color(e, class),
+        color: hp_editor::display_color::chosen(e.editor.color).unwrap_or_else(|| point_color(e, class)),
+        classic: point_color(e, class),
         bounds,
         model,
         body,
@@ -200,7 +200,6 @@ pub(crate) fn entity_desc(e: &Entity, fgd: Option<&ResolvedFgd>) -> EntityDesc {
         sprite_size,
         sprite_color,
         light,
-        ambient,
         decal,
     }
 }
@@ -365,5 +364,21 @@ mod tests {
         assert_eq!(brush_entity_color(&t, class_of(Some(&f), &t)), [220, 30, 220]);
         t.editor.color = [1, 2, 3];
         assert_eq!(brush_entity_color(&t, class_of(Some(&f), &t)), [1, 2, 3]);
+    }
+
+    #[test]
+    fn point_entities_show_their_chosen_color() {
+        let f = fgd();
+        let mut light = ent("light", &[("origin", "0 0 0")]);
+        for unset in [[0, 180, 255], [220, 30, 220]] {
+            light.editor.color = unset;
+            let d = entity_desc(&light, Some(&f));
+            assert_eq!((d.color, d.classic), ([255, 255, 0], [255, 255, 0]), "game data color by default");
+        }
+        light.editor.color = [40, 165, 225];
+        let d = entity_desc(&light, Some(&f));
+        assert_eq!((d.color, d.classic), ([40, 165, 225], [255, 255, 0]));
+        let d = entity_desc(&light, None);
+        assert_eq!((d.color, d.classic), ([40, 165, 225], [40, 165, 225]));
     }
 }

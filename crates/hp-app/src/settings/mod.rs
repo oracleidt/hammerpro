@@ -29,11 +29,12 @@ mod visibility;
 mod workflow;
 
 pub use brush::BrushSettings;
-pub use compilers::{CompilerProfile, CompilerStep, CompilerStepKind};
 pub use compile::{
     BspModeSetting, CompilePresetSetting, CompileProfile, CompileSettings, FlagChoiceSetting, LightingSetting,
-    PackPolicy, ProfileStep, RadModeSetting, VisModeSetting, WindowPlacement, background_precompile_default,
+    PackPolicy, ProfileStep, RadModeSetting, StaticPropShadows, VisModeSetting, WindowPlacement,
+    background_precompile_default,
 };
+pub use compilers::{CompilerProfile, CompilerStep, CompilerStepKind};
 pub use content::{ContentSettings, ReleaseMode};
 pub use discord::DiscordSettings;
 pub use entities::{BrowserSettings, EntitiesSettings, PathToolSettings};
@@ -49,7 +50,10 @@ pub use lighting::{LightingQuality, LightingSettings};
 pub use mcp::McpSettings;
 pub use mesh::MeshSettings;
 pub use placement::{PlacementSettings, SprinkleMode, SprinkleSettings};
-pub use render::{Disp2dSetting, Disp2dViewSetting, Models2dSetting, RenderSettings};
+pub use render::{
+    Disp2dSetting, Disp2dViewSetting, MAX_VRAM_BUDGET_MB, MIN_VRAM_BUDGET_MB, Models2dSetting, PropShadowSetting,
+    RenderSettings,
+};
 pub use selection::SelectionSettings;
 pub use shell::{
     EditSettings, KeyboardLayout, RenderModeSetting, SelectModeSetting, ThemeChoice, UiSettings, ViewSettings,

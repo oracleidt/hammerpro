@@ -58,7 +58,7 @@ fn vs_chunk(
     out.world = pos;
     out.normal = unpack_normal(nrm_alpha);
     out.uv = uv;
-    out.state = vec3<u32>(st.flags, st.color, 0u);
+    out.state = vec3<u32>(st.flags, state_color(st), 0u);
     out.tint = tint;
     out.alpha = unpack_alpha(nrm_alpha);
     out.fade = 1.0;
@@ -108,7 +108,7 @@ fn vs_model(
     out.tangent = vec4<f32>((m * vec4<f32>(tangent.xyz, 0.0)).xyz, select(1.0, -1.0, tangent.w < 0.0));
     out.uv = uv;
     out.cube = cube & 0xffffu;
-    out.state = vec3<u32>(st.flags, st.color, 1u);
+    out.state = vec3<u32>(st.flags, state_color(st), 1u);
     let origin = m3.xyz;
     let detail = detail_fade(origin, fade);
     out.tint = vec4<f32>(srgb_to_linear(tint.rgb), tint.a * detail);
@@ -298,7 +298,38 @@ fn editor_relief(v: vec3<f32>) -> vec3<f32> {
     return select(v, s * (l / sl), sl > 1e-6);
 }
 
-fn sun_visibility(world: vec3<f32>, n: vec3<f32>) -> f32 {
+const SUN_TAPS: u32 = 12u;
+const SUN_DISK: array<vec2<f32>, 12> = array<vec2<f32>, 12>(
+    vec2<f32>(-0.326, -0.406), vec2<f32>(-0.840, -0.074), vec2<f32>(-0.696, 0.457), vec2<f32>(-0.203, 0.621),
+    vec2<f32>(0.962, -0.195), vec2<f32>(0.473, -0.480), vec2<f32>(0.519, 0.767), vec2<f32>(0.185, -0.893),
+    vec2<f32>(0.507, 0.064), vec2<f32>(0.896, 0.412), vec2<f32>(-0.322, -0.933), vec2<f32>(-0.792, -0.598)
+);
+const MAX_PENUMBRA_TEXELS: f32 = 12.0;
+
+fn shadow_depth_at(uv: vec2<f32>, layer: u32) -> f32 {
+    let dims = vec2<f32>(textureDimensions(shadow_map));
+    let t = vec2<i32>(clamp(uv * dims, vec2<f32>(0.0), dims - 1.0));
+    return textureLoad(shadow_map, t, layer, 0);
+}
+
+fn layer_count(v: f32) -> u32 {
+    return clamp(u32(v + 0.5), 1u, 8u);
+}
+
+fn sky_layer_of(m: texture_depth_2d_array, uv: vec2<f32>, layers: u32, depth: f32) -> i32 {
+    for (var k = 0u; k < layers; k++) {
+        let c = cut_depth_at(m, uv, k);
+        if c <= 0.0 {
+            return select(-1, 0, k == 0u);
+        }
+        if c <= depth {
+            return i32(k);
+        }
+    }
+    return -1;
+}
+
+fn sun_visibility(world: vec3<f32>, n: vec3<f32>, frag: vec2<f32>, sky3d: bool) -> f32 {
     if view.shadow.x < 0.5 {
         return 1.0;
     }
@@ -307,15 +338,119 @@ fn sun_visibility(world: vec3<f32>, n: vec3<f32>) -> f32 {
     if any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0)) || p.z > 1.0 || p.z < 0.0 {
         return 1.0;
     }
+    let found = sky_layer_of(sun_cut_map, uv, layer_count(view.sun_soft.w), p.z + view.shadow.y);
+    if found < 0 && !sky3d {
+        return 0.0;
+    }
+    let layer = u32(max(found, 0));
     let d = p.z - view.shadow.y;
+    let spread = view.sun_soft.x;
+    let texel_world = max(view.sun_soft.z, 1e-3);
+    let a = fract(sin(dot(floor(frag), vec2<f32>(12.9898, 78.233))) * 43758.547) * 6.2831853;
+    let rot = mat2x2<f32>(cos(a), sin(a), -sin(a), cos(a));
+    var disk = SUN_DISK;
+    var radius = 1.0;
+    if spread > 0.0 {
+        let search = clamp(2048.0 * spread / texel_world, 1.0, MAX_PENUMBRA_TEXELS);
+        var blockers = 0.0;
+        var depth_sum = 0.0;
+        for (var i = 0u; i < SUN_TAPS; i++) {
+            let o = rot * disk[i] * (search * view.shadow.z);
+            let z = shadow_depth_at(uv + o, layer);
+            if z < d {
+                blockers += 1.0;
+                depth_sum += z;
+            }
+        }
+        if blockers < 0.5 {
+            return 1.0;
+        }
+        let gap = max(d - depth_sum / blockers, 0.0) * view.sun_soft.y;
+        radius = clamp(gap * spread / texel_world, 1.0, MAX_PENUMBRA_TEXELS);
+    }
     var sum = 0.0;
-    for (var y = -1; y <= 1; y++) {
-        for (var x = -1; x <= 1; x++) {
-            let o = vec2<f32>(f32(x), f32(y)) * view.shadow.z;
-            sum += textureSampleCompareLevel(shadow_map, shadow_samp, uv + o, d);
+    for (var i = 0u; i < SUN_TAPS; i++) {
+        let o = rot * disk[i] * (radius * view.shadow.z);
+        sum += textureSampleCompareLevel(shadow_map, shadow_samp, uv + o, layer, d);
+    }
+    return sum / f32(SUN_TAPS);
+}
+
+const SKY_STEPS: array<f32, 4> = array<f32, 4>(24.0, 72.0, 168.0, 400.0);
+const SKY_TAN: array<f32, 3> = array<f32, 3>(0.198912, 0.668179, 1.496606);
+const SKY_COS: array<f32, 3> = array<f32, 3>(0.980785, 0.831470, 0.555570);
+const SKY_SIN: array<f32, 3> = array<f32, 3>(0.195090, 0.555570, 0.831470);
+const SKY_AREA: array<f32, 3> = array<f32, 3>(0.300558, 0.254797, 0.170253);
+const SKY_ZENITH_AREA: f32 = 0.478285;
+const SKY_OPEN_FLOOR: f32 = 3.212309;
+
+fn sky_uv(xy: vec2<f32>) -> vec2<f32> {
+    return vec2<f32>((xy.x - view.sky_vis_a.x) * view.sky_vis_a.z, 1.0 - (xy.y - view.sky_vis_a.y) * view.sky_vis_a.z);
+}
+
+fn sky_layer(xy: vec2<f32>, z: f32) -> i32 {
+    let uv = sky_uv(xy);
+    if any(uv < vec2<f32>(0.0)) || any(uv >= vec2<f32>(1.0)) {
+        return 0;
+    }
+    let depth = (view.sky_vis_b.x - z) / max(view.sky_vis_b.y, 1.0);
+    return sky_layer_of(sky_cut_map, uv, layer_count(view.sky_vis_b.w), depth);
+}
+
+fn sky_height(xy: vec2<f32>, layer: u32) -> f32 {
+    let uv = sky_uv(xy);
+    if any(uv < vec2<f32>(0.0)) || any(uv >= vec2<f32>(1.0)) {
+        return -1.0e9;
+    }
+    let dims = vec2<f32>(textureDimensions(sky_map));
+    let d = textureLoad(sky_map, vec2<i32>(min(uv * dims, dims - 1.0)), layer, 0);
+    if d >= 1.0 {
+        return -1.0e9;
+    }
+    return view.sky_vis_b.x - d * view.sky_vis_b.y;
+}
+
+fn sky_visibility(world: vec3<f32>, n: vec3<f32>, sky3d: bool) -> f32 {
+    let texel = max(view.sky_vis_b.z, 1.0);
+    let z = world.z + max(texel * 1.5, 2.0);
+    let found = sky_layer(world.xy, world.z - texel);
+    if found < 0 && !sky3d {
+        return 0.0;
+    }
+    let layer = u32(max(found, 0));
+    let base = world.xy + n.xy * (texel * 2.0);
+    var steps = SKY_STEPS;
+    var tans = SKY_TAN;
+    var coss = SKY_COS;
+    var sins = SKY_SIN;
+    var areas = SKY_AREA;
+    var sum = 0.0;
+    for (var a = 0u; a < 8u; a++) {
+        let ang = f32(a) * 0.7853982;
+        let dir = vec2<f32>(cos(ang), sin(ang));
+        var horizon = -1.0e9;
+        for (var s = 0u; s < 4u; s++) {
+            let r = steps[s];
+            horizon = max(horizon, (sky_height(base + dir * r, layer) - z) / r);
+        }
+        for (var k = 0u; k < 3u; k++) {
+            if tans[k] > horizon {
+                sum += areas[k] * max(dot(n, vec3<f32>(dir * coss[k], sins[k])), 0.0);
+            }
         }
     }
-    return sum / 9.0;
+    if sky_height(base, layer) <= z {
+        sum += SKY_ZENITH_AREA * max(n.z, 0.0);
+    }
+    return sum / SKY_OPEN_FLOOR;
+}
+
+fn ambient_term(world: vec3<f32>, ln: vec3<f32>, sky3d: bool) -> f32 {
+    let len = length(ln);
+    if view.sky_vis_a.w < 0.5 || len < 1e-5 {
+        return min(len, 1.0);
+    }
+    return sky_visibility(world, ln / len, sky3d) * min(len, 1.0);
 }
 
 fn local_visibility(l: Light, world: vec3<f32>, n: vec3<f32>) -> f32 {
@@ -364,15 +499,16 @@ fn local_visibility(l: Light, world: vec3<f32>, n: vec3<f32>) -> f32 {
     return sum / 9.0;
 }
 
-fn lighting(world: vec3<f32>, n: vec3<f32>, ln: vec3<f32>, frag: vec2<f32>) -> vec3<f32> {
-    var sum = view.ambient.rgb * min(length(ln), 1.0);
+fn lighting(world: vec3<f32>, n: vec3<f32>, ln: vec3<f32>, frag: vec2<f32>, flags: u32) -> vec3<f32> {
+    let sky3d = (flags & F_SKY_3D) != 0u;
+    var sum = view.ambient.rgb * ambient_term(world, ln, sky3d);
     let n_dir = min(view.misc.y, arrayLength(&lights));
     for (var i = 0u; i < n_dir; i++) {
         let l = lights[i];
         let ndl = max(dot(ln, -l.dir.xyz), 0.0);
         var vis = 1.0;
         if i == 0u && ndl > 0.0 {
-            vis = sun_visibility(world, n);
+            vis = sun_visibility(world, n, frag, sky3d);
         }
         sum += l.color.rgb * (ndl * vis);
     }
@@ -547,7 +683,7 @@ fn fs_mesh(in: VsOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f
         rgb = unpack_srgba(in.state.y).rgb * editor_shade(n);
     } else if mode == MODE_LIT {
         if !unlit {
-            lit_by = lighting(in.world, n, bn, in.clip.xy);
+            lit_by = lighting(in.world, n, bn, in.clip.xy, in.state.x);
         }
         rgb = select(albedo.rgb * lit_by, albedo.rgb, unlit);
         rgb = mix(rgb, albedo.rgb * glow_tint, glow);
@@ -703,11 +839,51 @@ fn fs_mask(in: VsOut) -> @location(0) vec4<f32> {
     return vec4<f32>(1.0);
 }
 
+fn cut_depth_at(m: texture_depth_2d_array, uv: vec2<f32>, layer: u32) -> f32 {
+    let dims = vec2<f32>(textureDimensions(m));
+    return textureLoad(m, vec2<i32>(clamp(uv * dims, vec2<f32>(0.0), dims - 1.0)), layer, 0);
+}
+
+fn beyond_sky(in: VsOut) -> bool {
+    if (view.opts.x & OPT_SKY_CUT) == 0u {
+        return false;
+    }
+    let layer = u32(max(view.sun_soft.y, 0.0) + 0.5);
+    let cut = cut_depth_at(sun_cut_map, in.clip.xy * view.viewport.zw, layer);
+    return cut > 0.0 && in.clip.z < cut + view.sun_soft.x;
+}
+
+@fragment
+fn fs_shadow_cut(in: VsOut) {
+    if beyond_sky(in) {
+        discard;
+    }
+}
+
+@fragment
+fn fs_sky_cut(in: VsOut) {
+    if dot(in.normal, view.forward.xyz) <= 0.0 {
+        discard;
+    }
+}
+
+@fragment
+fn fs_sky_peel(in: VsOut) {
+    if dot(in.normal, view.forward.xyz) <= 0.0 {
+        discard;
+    }
+    let below = u32(max(view.sun_soft.y - 0.5, 0.0));
+    let prev = cut_depth_at(sun_cut_map, in.clip.xy * view.viewport.zw, below);
+    if prev <= 0.0 || in.clip.z >= prev - view.sun_soft.x {
+        discard;
+    }
+}
+
 @fragment
 fn fs_shadow_alpha(in: VsOut) {
     let t = textureSample(tex, samp, in.uv * material.inv_tex_size).a;
     let a = material_texture_alpha(t) * material.tint.a;
-    if alpha_tested_out(true, a) {
+    if alpha_tested_out(true, a) || beyond_sky(in) {
         discard;
     }
 }

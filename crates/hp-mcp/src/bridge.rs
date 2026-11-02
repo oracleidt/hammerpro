@@ -42,7 +42,7 @@ pub fn run_stdio_with(options: BridgeOptions) -> i32 {
     match run(stdin.lock(), stdout.lock(), options) {
         Ok(()) => 0,
         Err(e) => {
-            eprintln!("hammer-pro mcp bridge: {e}");
+            let _ = writeln!(io::stderr(), "hammer-pro mcp bridge: {e}");
             1
         }
     }
@@ -160,7 +160,7 @@ impl BridgeHost {
         if self.link.is_none() {
             let record = self.choose()?;
             let link = Link::open(record, version, &self.options)?;
-            eprintln!("hammer-pro mcp bridge: connected to process {}", link.record.pid);
+            let _ = writeln!(io::stderr(), "hammer-pro mcp bridge: connected to process {}", link.record.pid);
             self.link = Some(link);
         }
         self.link.as_mut().ok_or_else(|| crate::NO_INSTANCE_TEXT.to_owned())

@@ -53,7 +53,7 @@ pub enum Op {
     SetFlag { ids: Vec<Id>, key: String, bit: u32, on: bool },
     ChangeClass { ids: Vec<Id>, class: String },
     Comments { ids: Vec<Id>, text: String },
-    Color { ids: Vec<Id>, rgb: [u8; 3] },
+    DisplayColor { objs: Vec<ObjRef>, change: hp_editor::display_color::DisplayColor, merge: bool },
     ConnAdd { ids: Vec<Id>, conn: Connection },
     ConnEdit { rows: Vec<Vec<(Id, usize)>>, field: ConnField, merge: bool },
     ConnDelete { rows: Vec<Vec<(Id, usize)>> },
@@ -86,7 +86,7 @@ impl Op {
             Op::ReplaceAllUses { key, new, .. } => q(key) || q(new),
             Op::RemoveKey { .. }
             | Op::SetFlag { .. }
-            | Op::Color { .. }
+            | Op::DisplayColor { .. }
             | Op::ConnDelete { .. }
             | Op::MoveToWorld { .. }
             | Op::Visgroup { .. } => false,
@@ -190,17 +190,7 @@ pub fn apply(doc: &mut Document, fgd: Option<&ResolvedFgd>, op: Op) -> EditResul
             Ok(any)
         })
         .map(changed),
-        Op::Color { ids, rgb } => {
-            let tag = Target::Entities(ids.clone()).merge_tag("editor color");
-            in_tx(doc, LABEL_ENTITY, Some(tag), |doc| {
-                let mut any = false;
-                for id in &ids {
-                    any |= doc.edit_entity(*id, |e| e.editor.color = rgb)?;
-                }
-                Ok(any)
-            })
-            .map(changed)
-        }
+        Op::DisplayColor { objs, change, merge } => doc.set_display_color(&objs, change, merge).map(|n| changed(n > 0)),
         Op::ConnAdd { ids, conn } => Ok(changed(doc.add_connection(&ids, &conn)? > 0)),
         Op::ConnEdit { rows, field, merge } => {
             let tag = merge.then(|| format!("hp-ent:conn:{rows:?}"));
@@ -437,6 +427,7 @@ fn delete_connections(doc: &mut Document, rows: &[Vec<(Id, usize)>]) -> EditResu
 mod tests {
     use super::*;
     use crate::test_fgd::test_fgd;
+    use hp_editor::display_color::DisplayColor;
 
     fn state() -> hp_app::AppState {
         hp_app::testing::test_state()
@@ -616,9 +607,13 @@ mod tests {
         assert_eq!(doc.scene().entity(5).unwrap().entity.editor.comments.as_deref(), Some("hello"));
         apply(doc, None, Op::Comments { ids: vec![5], text: " ".into() }).unwrap();
         assert_eq!(doc.scene().entity(5).unwrap().entity.editor.comments, None);
-        apply(doc, None, Op::Color { ids: vec![5], rgb: [1, 2, 3] }).unwrap();
-        apply(doc, None, Op::Color { ids: vec![5], rgb: [4, 5, 6] }).unwrap();
+        let objs = vec![ObjRef::Entity(5)];
+        let set = |rgb| Op::DisplayColor { objs: objs.clone(), change: DisplayColor::Set(rgb), merge: true };
+        let steps = doc.history_len().0;
+        apply(doc, None, set([1, 2, 3])).unwrap();
+        apply(doc, None, set([4, 5, 6])).unwrap();
         assert_eq!(doc.scene().entity(5).unwrap().entity.editor.color, [4, 5, 6]);
+        assert_eq!(doc.history_len().0, steps + 1, "a live color drag is one undo step");
         let before = doc.history_len().0;
         let r = apply(doc, Some(&fgd), Op::Tie { objs: vec![ObjRef::Solid(2)], class: "func_brush".into() }).unwrap();
         let Applied::Created(id) = r else { panic!("expected a new entity") };

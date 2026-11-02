@@ -135,8 +135,8 @@ pub const TR: TrTable = &[
     ("lighting.budget_gauge", "{0} of {1} ({2}%)", "{0} sur {1} ({2} %)"),
     (
         "lighting.budget_tip",
-        "Estimated size of the lightmaps in the BSP against the engine limit of 16 MB (VBSP also removes hidden faces)",
-        "Taille estimée des lightmaps dans le BSP face à la limite du moteur de 16 Mo (VBSP retire aussi les faces cachées)",
+        "Estimated size of the lightmaps in the BSP against the 2 GB a face can address in them, the only limit the game has (VBSP also removes hidden faces)",
+        "Taille estimée des lightmaps dans le BSP face aux 2 Go qu'une face peut y adresser, la seule limite du jeu (VBSP retire aussi les faces cachées)",
     ),
     (
         "lighting.stats",

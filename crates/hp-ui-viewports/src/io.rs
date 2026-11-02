@@ -38,6 +38,8 @@ pub struct IoSim {
     start_open: Vec<Id>,
     touching: HashSet<Id>,
     light_inputs: Vec<(String, LightCmd)>,
+    train_inputs: Vec<(Id, String, String)>,
+    moved: HashMap<Id, glam::DMat4>,
 }
 
 fn flag(e: &Entity, bit: i64) -> bool {
@@ -73,6 +75,16 @@ fn is_door(class: &str) -> bool {
 
 fn toggles_visibility(class: &str) -> bool {
     matches!(class, "func_brush" | "func_wall_toggle" | "func_illusionary" | "func_lod")
+}
+
+pub(crate) fn moved_bounds(b: hp_geom::Aabb, m: &glam::DMat4) -> hp_geom::Aabb {
+    let mut out = hp_geom::Aabb::EMPTY;
+    for k in 0..8 {
+        let pick = |bit: usize, lo: f64, hi: f64| if k & bit == 0 { lo } else { hi };
+        let corner = DVec3::new(pick(1, b.min.x, b.max.x), pick(2, b.min.y, b.max.y), pick(4, b.min.z, b.max.z));
+        out.extend(m.transform_point3(corner));
+    }
+    out
 }
 
 fn names(e: &Entity, target: &str) -> bool {
@@ -139,6 +151,13 @@ impl IoSim {
 
     pub fn log(&self) -> impl Iterator<Item = &String> {
         self.log.iter()
+    }
+
+    pub fn note_no_control(&mut self, state: &AppState, id: Id) {
+        if let Some(n) = state.doc.scene().entity(id) {
+            let line = tf!("viewport.io.train_no_control", label(&n.entity));
+            self.note(line);
+        }
     }
 
     fn note(&mut self, line: String) {
@@ -275,10 +294,10 @@ impl IoSim {
             if !c.starts_with("trigger_") || self.disabled.contains(&e.id) || self.hidden.contains(&e.id) {
                 continue;
             }
+            let moved = self.moved.get(&e.id);
             let touches = scene.solids().values().any(|s| {
-                s.owner == hp_editor::Owner::Entity(e.id)
-                    && s.bounds.min.cmple(hull.max).all()
-                    && s.bounds.max.cmpge(hull.min).all()
+                let b = moved.map_or(s.bounds, |m| moved_bounds(s.bounds, m));
+                s.owner == hp_editor::Owner::Entity(e.id) && b.min.cmple(hull.max).all() && b.max.cmpge(hull.min).all()
             });
             if touches {
                 now.push((e.id, c));
@@ -351,6 +370,15 @@ impl IoSim {
         std::mem::take(&mut self.light_inputs)
     }
 
+    pub fn take_train_inputs(&mut self) -> Vec<(Id, String, String)> {
+        std::mem::take(&mut self.train_inputs)
+    }
+
+    pub fn set_moved(&mut self, moved: &[(Id, glam::DMat4)]) {
+        self.moved.clear();
+        self.moved.extend(moved.iter().copied());
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn apply(
         &mut self,
@@ -365,6 +393,9 @@ impl IoSim {
         let c = class(e);
         let input = input.to_ascii_lowercase();
         match input.as_str() {
+            x if crate::trains::accepts(&c, x) => {
+                self.train_inputs.push((id, input.clone(), param.to_owned()));
+            }
             "kill" | "killhierarchy" | "break" => {
                 self.hidden.insert(id);
                 self.disabled.insert(id);
@@ -490,7 +521,15 @@ impl IoSim {
             }
             "teleport" if c == "point_teleport" => {
                 if let Some(o) = e.origin().filter(|o| o.is_finite()) {
-                    self.teleport = Some((o, e.angles().map(|a| a.y)));
+                    let yaw = e.angles().map(|a| a.y);
+                    self.teleport = Some(match self.moved.get(&id) {
+                        Some(m) => {
+                            let (sy, cy) = yaw.unwrap_or(0.0).to_radians().sin_cos();
+                            let f = m.transform_vector3(DVec3::new(cy, sy, 0.0));
+                            (m.transform_point3(o), Some(f.y.atan2(f.x).to_degrees()))
+                        }
+                        None => (o, yaw),
+                    });
                 }
             }
             _ => return false,

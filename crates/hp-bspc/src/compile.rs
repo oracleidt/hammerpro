@@ -336,7 +336,7 @@ pub fn compile(
         let now = std::time::Instant::now();
         let secs = (now - last_stage).as_secs_f64();
         if timing {
-            eprintln!("[time] {name}: {secs:.3} s");
+            let _ = std::io::Write::write_fmt(&mut std::io::stderr(), format_args!("[time] {name}: {secs:.3} s\n"));
         }
         stages.push((name.to_owned(), secs));
         last_stage = now;

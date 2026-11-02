@@ -33,6 +33,8 @@ action_list! { render_actions {
     ToggleFishPreview => "toggle_fish_preview", View, ViewDisplay, None, Ready;
     ToggleFishSwim => "toggle_fish_swim", View, ViewDisplay, None, Ready;
     ToggleCubemaps => "toggle_cubemaps", View, ViewDisplay, None, Ready;
+    ToggleObjectColors2d => "toggle_object_colors_2d", View, ViewDisplay, None, Ready;
+    ToggleObjectColors3d => "toggle_object_colors_3d", View, ViewDisplay, None, Ready;
     RebuildCubemaps => "rebuild_cubemaps", Map, MapLighting, None, Ready;
     WriteCubemaps => "write_cubemaps", Map, MapLighting, None, Ready;
 }}
@@ -80,6 +82,8 @@ pub(super) fn check(state: &AppState, action: Action) -> Option<Check> {
         Action::ToggleDispWalkable => Check::Toggle(r.disp_walkable),
         Action::ToggleNodraw => Check::Toggle(!r.hide_nodraw),
         Action::ToggleCubemaps => Check::Toggle(r.cubemaps),
+        Action::ToggleObjectColors2d => Check::Toggle(r.object_colors_2d),
+        Action::ToggleObjectColors3d => Check::Toggle(r.object_colors_3d),
         _ => return None,
     })
 }
@@ -98,6 +102,12 @@ pub(super) fn icon(action: Action) -> Option<&'static str> {
 
 pub(super) const TR: TrTable = &[
     ("action.toggle_cubemaps", "Cubemap reflections", "Reflets des cubemaps"),
+    ("action.toggle_object_colors_2d", "Object colors in 2D", "Couleurs des objets en 2D"),
+    (
+        "action.toggle_object_colors_3d",
+        "Object colors in 3D wireframe and flat",
+        "Couleurs des objets en 3D filaire et plat",
+    ),
     ("action.rebuild_cubemaps", "Rebuild cubemaps", "Reconstruire les cubemaps"),
     ("action.write_cubemaps", "Write cubemaps into the compiled map", "Écrire les cubemaps dans la map compilée"),
     ("action.toggle_nodraw", "Show nodraw faces", "Afficher le nodraw"),

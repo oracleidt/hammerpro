@@ -9,6 +9,7 @@ use super::surface::SurfTri;
 
 const MAX_SAMPLES: usize = 16;
 const SCREEN_DIRS: usize = 40;
+const TRY_BUDGET: u32 = 8000;
 const BOX: [Vec3A; 6] = [Vec3A::X, Vec3A::NEG_X, Vec3A::Y, Vec3A::NEG_Y, Vec3A::Z, Vec3A::NEG_Z];
 
 #[derive(Clone, Debug)]
@@ -220,10 +221,16 @@ pub(crate) fn leaf_ambient(ctx: &Ctx<'_>, colors: &FaceColors) -> Vec<(Vec<u8>, 
             let x = ((size.x / 32.0) as usize).max(1);
             let count = (x * x * x).clamp(1, 128).min(ctx.params.leaf_samples.max(1));
             let screening = count > 1 && dirs.len() > 2 * screen.len();
+            let mut budget = TRY_BUDGET;
+            let mut used_center = false;
             for i in 0..count {
                 let mut pos = None;
                 let mut covered = false;
                 for tries in 0..1000u32 {
+                    if budget == 0 {
+                        break;
+                    }
+                    budget -= 1;
                     let r = |c: u32| f64::from(unit(hash(li as u32, i as u32 * 4 + c, tries)));
                     let p = lo + size * DVec3::new(r(0), r(1), r(2));
                     if planes.iter().all(|(n, d)| p.dot(*n) - d >= 0.031_25) {
@@ -238,12 +245,14 @@ pub(crate) fn leaf_ambient(ctx: &Ctx<'_>, colors: &FaceColors) -> Vec<(Vec<u8>, 
                 let pos = match pos {
                     Some(p) => p,
                     None if !covered
+                        && !used_center
                         && !ctx.in_brush((lo + hi) * 0.5)
                         && !buried(ctx, ((lo + hi) * 0.5).as_vec3a()) =>
                     {
+                        used_center = true;
                         (lo + hi) * 0.5
                     }
-                    None if i == 0 => break,
+                    None if i == 0 || budget == 0 || used_center => break,
                     None => continue,
                 };
                 let set = if screening { &screen } else { &dirs };
@@ -272,6 +281,7 @@ pub(crate) fn leaf_ambient(ctx: &Ctx<'_>, colors: &FaceColors) -> Vec<(Vec<u8>, 
             }
             per_pass
         })
+        .inspect(|_| ctx.work.add(1))
         .collect();
     for p in 0..passes {
         let mut cap = MAX_SAMPLES;

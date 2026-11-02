@@ -14,6 +14,7 @@ fn main() {
 
     let manifest = std::env::var_os("CARGO_MANIFEST_DIR").map(PathBuf::from).unwrap_or_default();
     embed_icon(&manifest);
+    main_stack();
     let git = manifest.join("..").join("..").join(".git");
     if let Some(dir) = git_dir(&git) {
         let head = dir.join("HEAD");
@@ -83,6 +84,17 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
     let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
     let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
     (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
+const MAIN_STACK: u64 = 8 << 20;
+
+fn main_stack() {
+    let target = std::env::var("TARGET").unwrap_or_default();
+    if target.contains("windows") && target.contains("msvc") {
+        println!("cargo:rustc-link-arg-bins=/STACK:{MAIN_STACK}");
+    } else if target.contains("windows") {
+        println!("cargo:rustc-link-arg-bins=-Wl,--stack,{MAIN_STACK}");
+    }
 }
 
 fn embed_icon(manifest: &Path) {

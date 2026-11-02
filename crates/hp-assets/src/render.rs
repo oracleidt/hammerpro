@@ -141,17 +141,7 @@ pub(crate) fn find_shown_room(doc: &Document, chosen: Option<Id>) -> Option<SkyR
 }
 
 pub(crate) fn fog_of(doc: &Document, id: Id) -> Option<Fog> {
-    use crate::fog_volumes::is_fog_controller;
-    let scene = doc.scene();
-    let chosen = scene.entity(id).filter(|n| is_fog_controller(&n.entity.classname)).map(|n| &n.entity).or_else(|| {
-        scene
-            .entities()
-            .iter()
-            .filter(|(_, n)| is_fog_controller(&n.entity.classname))
-            .min_by_key(|(id, _)| **id)
-            .map(|(_, n)| &n.entity)
-    })?;
-    Some(crate::fog_volumes::controller_fog(chosen))
+    hp_app::runtime::fog::global_fog(doc, Some(id))
 }
 
 impl AssetManager {
@@ -572,6 +562,7 @@ mod tests {
             4,
             "env_fog_controller",
             &[
+                ("fogenable", "1"),
                 ("fogcolor", "255 0 0"),
                 ("fogstart", "100"),
                 ("fogend", "50"),
@@ -613,6 +604,9 @@ mod tests {
         assert!(f.blend);
         assert!(fog_of(&doc, 4).is_some() && fog_of(&doc, 999).is_some(), "unknown ids fall back to the first");
         assert!(fog_of(&Document::from_map(Map::new_empty()), 0).is_none());
+        let mut off = map();
+        off.edit_entity(4, |e| e.set("fogenable", "0")).expect("edit");
+        assert!(fog_of(&off, 4).is_none(), "Fog Enable No: no fog");
     }
 
     #[test]

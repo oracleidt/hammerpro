@@ -31,6 +31,7 @@ pub fn register_translations() {
     i18n::register(strings::TR);
     i18n::register(games::TR);
     i18n::register(chrome::TR);
+    i18n::register(runtime::fog::TR);
     for table in actions::TABLES {
         i18n::register(table);
     }

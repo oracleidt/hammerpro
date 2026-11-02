@@ -111,6 +111,7 @@ pub struct EditSettings {
     pub arrow_key_nudge: bool,
     pub paste_offset: bool,
     pub undo_restores_selection: bool,
+    pub new_brush_color: Option<[u8; 3]>,
 }
 
 impl Default for EditSettings {
@@ -133,6 +134,7 @@ impl Default for EditSettings {
             arrow_key_nudge: true,
             paste_offset: true,
             undo_restores_selection: true,
+            new_brush_color: None,
         }
     }
 }

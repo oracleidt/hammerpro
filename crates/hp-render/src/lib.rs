@@ -13,6 +13,7 @@ pub mod hooks;
 pub mod lightmap;
 mod lights;
 mod local_shadow;
+pub mod memory;
 mod occlusion;
 mod opaque;
 mod outline;
@@ -24,6 +25,7 @@ mod pipelines;
 mod scene;
 mod shadow;
 mod sky;
+mod sky_layers;
 mod sprite_layers;
 mod static_lines;
 mod tangents;
@@ -39,6 +41,7 @@ pub use cubemaps::{
     DEFAULT_PROBE_SIZE, MAX_RESOLUTION as MAX_CUBEMAP_RESOLUTION, MEMORY_BUDGET as CUBEMAP_MEMORY_BUDGET,
 };
 pub use hooks::{HookContext, PassHook};
+pub use lights::MAX_PER_CLUSTER;
 pub use local_shadow::MAX_SHADOWED_LIGHTS;
 pub use park::ParkedScene;
 pub use particles::{ParticleBlend, ParticleInstance, ParticleOrient};
@@ -89,10 +92,17 @@ struct ModelGpu {
     edges: Option<(wgpu::Buffer, u32)>,
     collision: Option<(wgpu::Buffer, u32)>,
     collision_hull: Option<(wgpu::Buffer, u32)>,
+    shadow_hull: Option<HullGpu>,
     no_collision: bool,
     aabb_min: Vec3,
     aabb_max: Vec3,
     bytes: u64,
+}
+
+struct HullGpu {
+    verts: wgpu::Buffer,
+    tans: wgpu::Buffer,
+    count: u32,
 }
 
 #[derive(Clone, Copy)]
@@ -100,6 +110,7 @@ struct Group {
     key: u32,
     start: u32,
     count: u32,
+    hull: u32,
 }
 
 struct RetainedGpu {
@@ -219,6 +230,11 @@ pub struct Renderer {
     lights_buf: GrowBuffer,
     lights_cpu: Vec<LightGpu>,
     dir_lights: u32,
+    lights_left_out: u32,
+    crowded_clusters: u32,
+    crowded_logged: u64,
+    sun: SunParams,
+    sky_map: Option<shadow::SkyMapGpu>,
     ambient: [f32; 3],
     lights_gen: u64,
     views: HashMap<u32, ViewState>,
@@ -229,12 +245,16 @@ pub struct Renderer {
     retained: HashMap<u32, RetainedGpu>,
     retained_uploads: u64,
     shadow: Option<shadow::ShadowGpu>,
-    shadow_dummy: wgpu::TextureView,
+    shadow_dummy_array: wgpu::TextureView,
+    sky_layers: [shadow::SkyAnalysis; 2],
+    sky_signature: (u64, u64),
     shadow_sampler: wgpu::Sampler,
     dummy_storage: wgpu::Buffer,
     light_styles: wgpu::Buffer,
     shadow_epoch: u64,
     instance_bounds: Option<(Vec3, Vec3)>,
+    instance_boxes: Vec<(Vec3, Vec3)>,
+    instances_dirty: bool,
     content_gen: u64,
     game_hidden: ahash::AHashSet<ObjectId>,
     compiled_objects: ahash::AHashSet<ObjectId>,
@@ -267,6 +287,8 @@ pub struct Renderer {
     cubes: cubemaps::Cubes,
     probing: bool,
     local_shadows: local_shadow::LocalShadows,
+    texture_limit: u32,
+    upload_failed: bool,
 }
 
 fn classify(desc: Option<&MaterialDesc>) -> Option<(MeshPass, bool)> {
@@ -544,6 +566,11 @@ const OPT_CUBEMAPS: u32 = 32768;
 const OPT_PROBE: u32 = 65536;
 pub(crate) const OPT_SHADOW_PASS: u32 = 1 << 17;
 const OPT_MODEL_LIGHT: u32 = 1 << 18;
+pub(crate) const OPT_SUN_PASS: u32 = 1 << 19;
+pub(crate) const OPT_SKY_CUT: u32 = 1 << 20;
+pub(crate) const OPT_SKY_FACES: u32 = 1 << 21;
+const OPT_CLASSIC_COLORS: u32 = 1 << 24;
+const OPT_LIGHT_BACKGROUND: u32 = 1 << 25;
 const VERTEX_DOT_PX: u32 = 3;
 
 struct OptionsUniform {
@@ -555,18 +582,28 @@ struct OptionsUniform {
     sky: [f32; 4],
     sky3d: [f32; 4],
     sky_uv: [[f32; 4]; 6],
+    far_z: f32,
 }
 
 fn finite_or(v: f32, fallback: f32) -> f32 {
     if v.is_finite() { v } else { fallback }
 }
 
+fn light_background(bg: [f32; 3]) -> bool {
+    let [r, g, b] = bg.map(|c| if c.is_finite() { c.clamp(0.0, 1.0) } else { 0.0 });
+    0.2126 * r + 0.7152 * g + 0.0722 * b > 0.5
+}
+
 fn options_uniform(cam: &Camera, o: &ViewOptions, env: &Environment, sky_pass: bool) -> OptionsUniform {
     let mut bits = 0u32;
     let mut grid3d = [0.0f32; 4];
     let (mut fog_a, mut fog_b, mut fog_c) = ([0.0f32; 4], [0.0f32; 4], [1.0f32, 0.0, 0.0, 1.0]);
+    let mut far_z = 0.0f32;
     if o.walk_marks {
         bits |= OPT_WALK_MARKS;
+    }
+    if o.classic_colors {
+        bits |= OPT_CLASSIC_COLORS;
     }
     if cam.is_ortho {
         match o.detail_2d {
@@ -624,6 +661,7 @@ fn options_uniform(cam: &Camera, o: &ViewOptions, env: &Environment, sky_pass: b
             fog_a = [r, g, b, finite_or(f.max_density, 1.0).clamp(0.0, 1.0)];
             fog_b = [r2, g2, b2, start];
             fog_c = [dir.x, dir.y, dir.z, end];
+            far_z = finite_or(f.far_z, 0.0).max(0.0);
         }
     }
     let sprite_px = finite_or(o.sprites_2d_px, 0.0).clamp(0.0, 256.0) as u32;
@@ -653,6 +691,7 @@ fn options_uniform(cam: &Camera, o: &ViewOptions, env: &Environment, sky_pass: b
         sky: [yaw.cos(), yaw.sin(), finite_or(o.time, 0.0), model_distance],
         sky3d,
         sky_uv,
+        far_z,
     }
 }
 
@@ -717,7 +756,10 @@ impl Renderer {
                 usage: wgpu::TextureUsages::TEXTURE_BINDING,
                 view_formats: &[],
             })
-            .create_view(&wgpu::TextureViewDescriptor::default());
+            .create_view(&wgpu::TextureViewDescriptor {
+                dimension: Some(wgpu::TextureViewDimension::D2Array),
+                ..Default::default()
+            });
         let shadow_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("hp-render shadow sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
@@ -764,6 +806,11 @@ impl Renderer {
             lights_buf: GrowBuffer::new(&device, "hp-render lights", storage, size_of::<LightGpu>() as u64),
             lights_cpu: Vec::new(),
             dir_lights: 0,
+            lights_left_out: 0,
+            crowded_clusters: 0,
+            crowded_logged: 0,
+            sun: SunParams::default(),
+            sky_map: None,
             ambient: [0.0; 3],
             lights_gen: 1,
             views: HashMap::new(),
@@ -774,12 +821,16 @@ impl Renderer {
             retained: HashMap::new(),
             retained_uploads: 0,
             shadow: None,
-            shadow_dummy,
+            shadow_dummy_array: shadow_dummy,
+            sky_layers: [None, None],
+            sky_signature: (0, 0),
             shadow_sampler,
             dummy_storage,
             light_styles,
             shadow_epoch: 1,
             instance_bounds: None,
+            instance_boxes: Vec::new(),
+            instances_dirty: false,
             content_gen: 1,
             game_hidden: ahash::AHashSet::default(),
             compiled_objects: ahash::AHashSet::default(),
@@ -812,6 +863,8 @@ impl Renderer {
             cubes: cubemaps::Cubes::new(&device),
             probing: false,
             local_shadows: local_shadow::LocalShadows::new(&device),
+            texture_limit: limits.max_texture_dimension_2d,
+            upload_failed: false,
             device,
             queue,
         };
@@ -896,13 +949,49 @@ impl Renderer {
     }
 
     pub fn try_create_texture(&mut self, up: &TextureUpload) -> Result<TexId, RenderError> {
-        let p = textures::prepare(up, self.supports_bc, self.max_tex_dim)?;
-        let entry = textures::upload(&self.device, &self.queue, &p, "hp-render texture");
+        let mut p = textures::prepare(up, self.supports_bc, self.max_tex_dim)?;
+        textures::limit_size(&mut p, self.texture_limit);
+        let (entry, oom) =
+            memory::guarded(&self.device, || textures::upload(&self.device, &self.queue, &p, "hp-render texture"));
+        if oom {
+            return Err(RenderError::OutOfMemory);
+        }
         self.content_gen += 1;
         let id = self.next_tex;
         self.next_tex = self.next_tex.checked_add(1).filter(|v| *v != TexId::FLAT_NORMAL.0).unwrap_or(3);
         self.textures.insert(id, entry);
         Ok(TexId(id))
+    }
+
+    pub fn set_texture_limit(&mut self, size: u32) {
+        self.texture_limit = size.clamp(64, self.max_tex_dim);
+    }
+
+    pub fn texture_limit(&self) -> u32 {
+        self.texture_limit
+    }
+
+    pub fn max_texture_size(&self) -> u32 {
+        self.max_tex_dim
+    }
+
+    pub fn take_upload_failed(&mut self) -> bool {
+        std::mem::take(&mut self.upload_failed)
+    }
+
+    pub fn memory(&self) -> MemoryReport {
+        let geometry = self.arenas.iter().map(|a| a.size).sum::<u64>()
+            + self.states.size
+            + self.instances.size
+            + self.sprites.size
+            + self.lights_buf.size;
+        let textures = self.textures.values().map(|t| t.bytes).sum::<u64>();
+        let models = self.models.values().map(|m| m.bytes).sum::<u64>();
+        let lightmaps = self.lightmap_stats().bytes;
+        let compiled = self.compiled_lighting().map_or(0, |c| c.bytes);
+        let total = self.stats().approx_gpu_bytes;
+        let other = total.saturating_sub(geometry + textures + models);
+        MemoryReport { geometry, textures, models, lightmaps, compiled, other, total: total + lightmaps + compiled }
     }
 
     pub fn texture_view(&self, id: TexId) -> Option<&wgpu::TextureView> {
@@ -1120,6 +1209,9 @@ impl Renderer {
             if (old.0 ^ flags.0) & seen.0 != 0 && !flags.contains(ObjectFlags::COMPILED_LIGHT) {
                 self.cubes.epoch += 1;
             }
+            if (old.0 ^ flags.0) & ObjectFlags::HULL_SHADOW.0 != 0 && !self.instance_list.is_empty() {
+                self.instances_dirty = true;
+            }
         }
         self.scene.set_flags(id, flags);
     }
@@ -1147,6 +1239,17 @@ impl Renderer {
         self.scene.set_wire_color(id, rgb);
     }
 
+    pub fn set_object_wire_colors(&mut self, id: ObjectId, rgb: [u8; 3], classic: [u8; 3]) {
+        self.content_gen += 1;
+        self.scene.set_wire_color(id, rgb);
+        self.scene.set_classic_color(id, (classic != rgb).then_some(classic));
+    }
+
+    pub fn object_wire_colors(&self, id: ObjectId) -> Option<(u32, u32)> {
+        let color = self.scene.wire_color(id)?;
+        Some((color, self.scene.classic_color(id).unwrap_or(0)))
+    }
+
     pub fn flush(&mut self) {
         self.flush_with(true);
     }
@@ -1160,6 +1263,9 @@ impl Renderer {
     }
 
     fn flush_with(&mut self, parallel: bool) {
+        if std::mem::take(&mut self.instances_dirty) {
+            self.pack_instances();
+        }
         let out = self.scene.flush(parallel);
         if !out.writes.is_empty() || !out.state_ranges.is_empty() {
             self.shadow_epoch += 1;
@@ -1167,7 +1273,9 @@ impl Renderer {
         self.sync_materials();
         for ((buf, alloc), elem) in self.arenas.iter_mut().zip(&self.scene.arenas).zip(ARENA_ELEM) {
             let need = u64::from(alloc.end()) * elem;
-            let _ = buf.ensure(&self.device, &self.queue, need, self.max_buffer, true);
+            if buf.ensure(&self.device, &self.queue, need, self.max_buffer, true) == Grow::TooLarge {
+                self.upload_failed = true;
+            }
         }
         for w in &out.writes {
             let buf = &self.arenas[w.arena as usize];
@@ -1180,7 +1288,10 @@ impl Renderer {
         let need = u64::from(out.states_len) * state_size;
         match self.states.ensure(&self.device, &self.queue, need, self.max_storage, true) {
             Grow::Grown => self.scene_gen += 1,
-            Grow::TooLarge => log::error!("hp-render: too many objects for the object state buffer"),
+            Grow::TooLarge => {
+                self.upload_failed = true;
+                log::error!("hp-render: the object state buffer cannot grow")
+            }
             Grow::Fits => {}
         }
         for &(s, e) in &out.state_ranges {
@@ -1211,8 +1322,10 @@ impl Renderer {
         if let Some(old) = self.models.remove(&id.0) {
             model.bytes += old.collision.as_ref().map_or(0, |(b, _)| b.size());
             model.bytes += old.collision_hull.as_ref().map_or(0, |(b, _)| b.size());
+            model.bytes += old.shadow_hull.as_ref().map_or(0, |h| h.verts.size() + h.tans.size());
             model.collision = old.collision;
             model.collision_hull = old.collision_hull;
+            model.shadow_hull = old.shadow_hull;
             model.no_collision = old.no_collision;
         }
         self.models.insert(id.0, model);
@@ -1304,13 +1417,20 @@ impl Renderer {
         if indices.is_empty() {
             indices.extend_from_slice(&[0, 0, 0]);
         }
+        let failed = std::cell::Cell::new(false);
         let make = |label: &str, data: &[u8], usage: wgpu::BufferUsages| {
-            let buf = self.device.create_buffer(&wgpu::BufferDescriptor {
+            let size = (data.len() as u64).next_multiple_of(wgpu::COPY_BUFFER_ALIGNMENT);
+            let desc = |size: u64| wgpu::BufferDescriptor {
                 label: Some(label),
-                size: (data.len() as u64).next_multiple_of(wgpu::COPY_BUFFER_ALIGNMENT),
+                size,
                 usage: usage | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
-            });
+            };
+            let (buf, oom) = memory::guarded(&self.device, || self.device.create_buffer(&desc(size)));
+            if oom {
+                failed.set(true);
+                return self.device.create_buffer(&desc(16));
+            }
             self.queue.write_buffer(&buf, 0, data);
             buf
         };
@@ -1321,19 +1441,27 @@ impl Renderer {
         let edata: &[u8] = bytemuck::cast_slice(&edge_list);
         let edges = (!edge_list.is_empty())
             .then(|| (make("hp-render model edges", edata, wgpu::BufferUsages::INDEX), edge_list.len() as u32));
+        let vbuf = make("hp-render model vertices", vdata, wgpu::BufferUsages::VERTEX);
+        let tbuf = make("hp-render model tangents", tdata, wgpu::BufferUsages::VERTEX);
+        let ibuf = make("hp-render model indices", idata, wgpu::BufferUsages::INDEX);
+        let failed = failed.get();
+        if failed {
+            self.upload_failed = true;
+        }
         ModelGpu {
-            vbuf: make("hp-render model vertices", vdata, wgpu::BufferUsages::VERTEX),
-            tbuf: make("hp-render model tangents", tdata, wgpu::BufferUsages::VERTEX),
-            ibuf: make("hp-render model indices", idata, wgpu::BufferUsages::INDEX),
-            parts: out_parts,
-            lod_parts,
-            edges,
+            vbuf,
+            tbuf,
+            ibuf,
+            parts: if failed { Vec::new() } else { out_parts },
+            lod_parts: if failed { Vec::new() } else { lod_parts },
+            edges: if failed { None } else { edges },
             collision: None,
             collision_hull: None,
+            shadow_hull: None,
             no_collision: false,
             aabb_min,
             aabb_max,
-            bytes: (vdata.len() + tdata.len() + idata.len() + edata.len()) as u64,
+            bytes: if failed { 0 } else { (vdata.len() + tdata.len() + idata.len() + edata.len()) as u64 },
         }
     }
 
@@ -1395,6 +1523,56 @@ impl Renderer {
         m.no_collision = false;
     }
 
+    pub fn set_model_shadow_hull(&mut self, model: ModelId, triangles: &[[[f32; 3]; 3]]) {
+        let limit = (self.max_buffer / (3 * size_of::<gpu::GpuVertex>() as u64)) as usize;
+        let Some(m) = self.models.get_mut(&model.0) else { return };
+        if let Some(old) = m.shadow_hull.take() {
+            m.bytes = m.bytes.saturating_sub(old.verts.size() + old.tans.size());
+        }
+        self.shadow_epoch += 1;
+        self.content_gen += 1;
+        let verts: Vec<gpu::GpuVertex> = triangles
+            .iter()
+            .take(limit)
+            .filter(|t| t.iter().flatten().all(|v| v.is_finite()))
+            .flat_map(|t| {
+                t.map(|pos| gpu::GpuVertex {
+                    pos,
+                    nrm_alpha: gpu::pack_normal_alpha([0.0; 3], 1.0),
+                    ..Default::default()
+                })
+            })
+            .collect();
+        if verts.is_empty() {
+            return;
+        }
+        let data: &[u8] = bytemuck::cast_slice(&verts);
+        let tans = vec![0u32; verts.len()];
+        let tdata: &[u8] = bytemuck::cast_slice(&tans);
+        let make = |label: &str, bytes: &[u8]| {
+            let buf = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(label),
+                size: (bytes.len() as u64).next_multiple_of(wgpu::COPY_BUFFER_ALIGNMENT),
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            self.queue.write_buffer(&buf, 0, bytes);
+            buf
+        };
+        let hull = HullGpu {
+            verts: make("hp-render model shadow hull", data),
+            tans: make("hp-render model shadow hull tangents", tdata),
+            count: verts.len() as u32,
+        };
+        let Some(m) = self.models.get_mut(&model.0) else { return };
+        m.bytes += hull.verts.size() + hull.tans.size();
+        m.shadow_hull = Some(hull);
+    }
+
+    pub fn has_model_shadow_hull(&self, model: ModelId) -> bool {
+        self.models.get(&model.0).is_some_and(|m| m.shadow_hull.is_some())
+    }
+
     pub fn set_model_no_collision(&mut self, model: ModelId) {
         if let Some(m) = self.models.get_mut(&model.0) {
             self.content_gen += 1;
@@ -1449,8 +1627,14 @@ impl Renderer {
     fn pack_instances(&mut self) {
         let list = std::mem::take(&mut self.instance_list);
         let instances = &list[..];
+        let hulls: Vec<bool> = instances
+            .iter()
+            .map(|m| self.scene.flags(m.object).is_some_and(|f| f.contains(ObjectFlags::HULL_SHADOW)))
+            .collect();
+        let hull = |i: usize| hulls.get(i).copied().unwrap_or(false);
         let mut order: Vec<usize> = (0..instances.len()).collect();
-        order.sort_by_key(|&i| instances.get(i).map_or(0, |m| m.model.0));
+        order.sort_by_key(|&i| (instances.get(i).map_or(0, |m| m.model.0), hull(i)));
+        let mut boxes = Vec::with_capacity(instances.len());
         let mut gpu_data = Vec::with_capacity(instances.len());
         let mut refs = Vec::with_capacity(instances.len());
         self.translucent_instances = false;
@@ -1469,6 +1653,7 @@ impl Renderer {
                 .map_or((Vec3::splat(-UNKNOWN_MODEL_HALF), Vec3::splat(UNKNOWN_MODEL_HALF)), |md| {
                     (md.aabb_min, md.aabb_max)
                 });
+            let (mut ilo, mut ihi) = (Vec3::INFINITY, Vec3::NEG_INFINITY);
             for c in 0..8 {
                 let corner = Vec3::new(
                     if c & 1 != 0 { bmax.x } else { bmin.x },
@@ -1476,9 +1661,12 @@ impl Renderer {
                     if c & 4 != 0 { bmax.z } else { bmin.z },
                 );
                 let w = m.transform_point3(corner);
-                lo = lo.min(w);
-                hi = hi.max(w);
+                ilo = ilo.min(w);
+                ihi = ihi.max(w);
             }
+            lo = lo.min(ilo);
+            hi = hi.max(ihi);
+            boxes.push((ilo, ihi));
             let cols = m.to_cols_array_2d();
             let tint = if inst.tint.iter().all(|c| c.is_finite()) { inst.tint } else { [1.0; 4] };
             let detail = inst.fade.iter().all(|f| f.is_finite()) && inst.fade[0] <= 0.0 && inst.fade[1] < 0.0;
@@ -1499,9 +1687,13 @@ impl Renderer {
                 cube: u32::from(self.cubes.model_cubemap(&cube_points, m.w_axis.truncate())),
             });
             let n = gpu_data.len() as u32;
+            let h = u32::from(hull(i));
             match groups.last_mut() {
-                Some(g) if g.key == inst.model.0 => g.count += 1,
-                _ => groups.push(Group { key: inst.model.0, start: n - 1, count: 1 }),
+                Some(g) if g.key == inst.model.0 => {
+                    g.count += 1;
+                    g.hull += h;
+                }
+                _ => groups.push(Group { key: inst.model.0, start: n - 1, count: 1, hull: h }),
             }
         }
         for id in std::mem::replace(&mut self.instance_refs, refs) {
@@ -1514,6 +1706,7 @@ impl Renderer {
         }
         self.instance_count = gpu_data.len() as u32;
         self.instance_groups = groups;
+        self.instance_boxes = boxes;
         self.instance_bounds = lo.cmple(hi).all().then_some((lo, hi));
         self.shadow_epoch += 1;
         self.content_gen += 1;
@@ -1559,7 +1752,7 @@ impl Renderer {
             let n = data.len() as u32;
             match groups.last_mut() {
                 Some(g) if g.key == mat => g.count += 1,
-                _ => groups.push(Group { key: mat, start: n - 1, count: 1 }),
+                _ => groups.push(Group { key: mat, start: n - 1, count: 1, hull: 0 }),
             }
         }
         (data, refs, groups)
@@ -1570,7 +1763,15 @@ impl Renderer {
     }
 
     pub fn set_lights(&mut self, lights: &[PreviewLight], ambient: [f32; 3]) {
-        let (packed, n_dir) = lights::pack_lights(lights);
+        let lights::Packed { lights: packed, n_dir, left_out } = lights::pack_lights(lights);
+        if left_out > 0 {
+            log::warn!(
+                "hp-render: {left_out} preview lights left out (at most {} lights and {} suns)",
+                lights::MAX_LIGHTS - lights::MAX_DIRECTIONAL,
+                lights::MAX_DIRECTIONAL
+            );
+        }
+        self.lights_left_out = left_out;
         let bytes: &[u8] = bytemuck::cast_slice(&packed);
         if self.lights_buf.ensure(&self.device, &self.queue, bytes.len() as u64, self.max_storage, false) == Grow::Grown
         {
@@ -1585,6 +1786,30 @@ impl Renderer {
         self.lights_gen += 1;
         self.cubes.epoch += 1;
         self.content_gen += 1;
+    }
+
+    pub fn set_sun(&mut self, sun: SunParams) {
+        let sun = SunParams { spread_deg: finite_or(sun.spread_deg, 0.0).clamp(0.0, 90.0), ..sun };
+        if self.sun != sun {
+            self.sun = sun;
+            self.lights_gen += 1;
+            self.cubes.epoch += 1;
+            self.content_gen += 1;
+        }
+    }
+
+    pub fn light_stats(&self) -> LightStats {
+        LightStats {
+            lights: self.lights_cpu.len() as u32,
+            directional: self.dir_lights,
+            left_out: self.lights_left_out,
+            crowded_clusters: self.crowded_clusters,
+            sky_occlusion: self.sun.sky_ambient,
+            sky_layers: [
+                self.sky_layer_info(shadow::Layers::Sun).map_or(0, |l| l.layers()),
+                self.sky_layer_info(shadow::Layers::Sky).map_or(0, |l| l.layers()),
+            ],
+        }
     }
 
     fn ensure_pipelines(&mut self, samples: u32) -> usize {
@@ -1697,7 +1922,17 @@ impl Renderer {
         if view.cluster_key == Some(key) {
             return grid;
         }
-        let (table, list) = lights::build_clusters(cam, &grid, &self.lights_cpu, self.dir_lights);
+        let lights::Clusters { table, list, crowded } =
+            lights::build_clusters(cam, &grid, &self.lights_cpu, self.dir_lights);
+        if crowded > 0 && self.crowded_logged != self.lights_gen {
+            self.crowded_logged = self.lights_gen;
+            log::info!(
+                "hp-render: {crowded} light clusters reach more than {} lights: the weakest there are left out",
+                lights::MAX_PER_CLUSTER
+            );
+        }
+        self.crowded_clusters = crowded;
+        let Some(view) = self.views.get_mut(&id) else { return grid };
         let tbytes: &[u8] = bytemuck::cast_slice(&table);
         let lbytes: &[u8] = bytemuck::cast_slice(&list);
         let g1 = view.clusters.ensure(&self.device, &self.queue, tbytes.len() as u64, self.max_storage, false);
@@ -1746,7 +1981,7 @@ impl Renderer {
                 wgpu::BindGroupEntry {
                     binding: 7,
                     resource: wgpu::BindingResource::TextureView(
-                        self.shadow.as_ref().map_or(&self.shadow_dummy, |s| &s.view),
+                        self.shadow.as_ref().map_or(&self.shadow_dummy_array, |s| &s.view),
                     ),
                 },
                 wgpu::BindGroupEntry { binding: 8, resource: wgpu::BindingResource::Sampler(&self.shadow_sampler) },
@@ -1764,6 +1999,24 @@ impl Renderer {
                 wgpu::BindGroupEntry {
                     binding: 14,
                     resource: wgpu::BindingResource::TextureView(self.local_shadows.view()),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 15,
+                    resource: wgpu::BindingResource::TextureView(
+                        self.sky_map.as_ref().map_or(&self.shadow_dummy_array, |s| &s.view),
+                    ),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 16,
+                    resource: wgpu::BindingResource::TextureView(
+                        self.shadow.as_ref().map_or(&self.shadow_dummy_array, |s| &s.cut),
+                    ),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 17,
+                    resource: wgpu::BindingResource::TextureView(
+                        self.sky_map.as_ref().map_or(&self.shadow_dummy_array, |s| &s.cut),
+                    ),
                 },
             ],
         })
@@ -1803,6 +2056,9 @@ impl Renderer {
             && self.lightmap_display() == lightmap::LightmapDisplay::Grid
         {
             o.opts[0] |= OPT_NEUTRAL_FLAT;
+        }
+        if cam.is_ortho && light_background(params.background) {
+            o.opts[0] |= OPT_LIGHT_BACKGROUND;
         }
         if self.probing {
             o.opts[0] |= OPT_PROBE;
@@ -1859,7 +2115,10 @@ impl Renderer {
             sky: o.sky,
             sky3d: o.sky3d,
             sky_uv: o.sky_uv,
-            proj: [cam.tan_half_fov * cam.width / cam.height, cam.tan_half_fov, 0.0, 0.0],
+            proj: [cam.tan_half_fov * cam.width / cam.height, cam.tan_half_fov, o.far_z, 0.0],
+            sky_vis_a: [0.0; 4],
+            sky_vis_b: [0.0; 4],
+            sun_soft: [0.0; 4],
         }
     }
 
@@ -1944,13 +2203,22 @@ impl Renderer {
         }
         let grid = lit.then(|| self.update_clusters(view_id, &cam));
         let shadow = if lit { self.prepare_shadow(&cam) } else { None };
+        let sky_map = if lit && self.sun.sky_ambient { self.prepare_sky_map(&cam) } else { None };
         let local_layers = if lit {
             self.prepare_local_shadows(view_id, &cam, opts.light_shadows)
         } else {
             self.local_shadows.release(view_id);
             Vec::new()
         };
-        let uniform = self.view_uniform(&cam, &params, &opts, grid, shadow.as_ref().map(|s| &s.0), false);
+        let mut uniform = self.view_uniform(&cam, &params, &opts, grid, shadow.as_ref().map(|s| &s.0), false);
+        if let Some((fit, _)) = &shadow {
+            uniform.sun_soft = fit.soft_params(self.sun.spread_deg);
+            uniform.sun_soft[3] = self.layer_count(shadow::Layers::Sun) as f32;
+        }
+        if let Some((fit, _)) = &sky_map {
+            (uniform.sky_vis_a, uniform.sky_vis_b) = fit.params();
+            uniform.sky_vis_b[3] = self.layer_count(shadow::Layers::Sky) as f32;
+        }
         let shaded_3d = !cam.is_ortho && params.mode != RenderMode::Wireframe;
         let env = self.environment;
         let sky_cam = match env.sky_3d {
@@ -2014,6 +2282,11 @@ impl Renderer {
         let mut counter = FrameCounter::default();
         if let Some((fit, true)) = &shadow {
             let (draws, tris) = self.record_shadow(&mut enc, fit);
+            counter.draws += draws;
+            counter.triangles += tris;
+        }
+        if let Some((fit, true)) = &sky_map {
+            let (draws, tris) = self.record_sky_map(&mut enc, fit);
             counter.draws += draws;
             counter.triangles += tris;
         }
@@ -2523,11 +2796,17 @@ impl Renderer {
             + self.textures.values().map(|t| t.bytes).sum::<u64>()
             + self.models.values().map(|m| m.bytes).sum::<u64>()
             + self.mat_gpu.len() as u64 * size_of::<MaterialUniform>() as u64;
-        if self.shadow.is_some() {
-            bytes += u64::from(shadow::SHADOW_SIZE) * u64::from(shadow::SHADOW_SIZE) * 4;
+        if let Some(t) = &self.shadow {
+            bytes += shadow::Layers::Sun.bytes(t.layers);
+        }
+        if let Some(t) = &self.sky_map {
+            bytes += shadow::Layers::Sky.bytes(t.layers);
         }
         bytes += self.local_shadows.bytes();
         s.shadowed_lights = self.local_shadows.ready_count() as u32;
+        s.preview_lights = self.lights_cpu.len() as u32;
+        s.lights_left_out = self.lights_left_out;
+        s.crowded_clusters = self.crowded_clusters;
         for v in self.views.values() {
             s.draw_calls += v.draws;
             s.triangles += v.triangles;
@@ -3508,6 +3787,14 @@ impl DrawCtx<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn light_backgrounds_are_detected() {
+        assert!(!light_background([20.0 / 255.0, 20.0 / 255.0, 22.0 / 255.0]));
+        assert!(light_background([236.0 / 255.0, 236.0 / 255.0, 232.0 / 255.0]));
+        assert!(!light_background([0.2, 0.3, 1.0]));
+        assert!(!light_background([f32::NAN, 0.0, 0.0]));
+    }
 
     #[test]
     fn renderer_is_send_and_sync() {

@@ -104,8 +104,8 @@ pub(crate) const TR: TrTable = &[
     ("shell.lighting.budget", "{0} / {1} MB", "{0} / {1} Mo"),
     (
         "shell.lighting.budget_tip",
-        "Lightmaps: {0}% of the engine limit, {1} faces (estimate). Click to open the Lighting tab, right click for more.",
-        "Lightmaps : {0} % de la limite du moteur, {1} faces (estimation). Cliquez pour ouvrir l'onglet Éclairage, clic droit pour plus d'options.",
+        "Lightmaps: {0}% of the 2 GB the game can address, {1} faces (estimate). Click to open the Lighting tab, right click for more.",
+        "Lightmaps : {0} % des 2 Go que le jeu peut adresser, {1} faces (estimation). Cliquez pour ouvrir l'onglet Éclairage, clic droit pour plus d'options.",
     ),
     (
         "shell.lighting.tiny_tip",

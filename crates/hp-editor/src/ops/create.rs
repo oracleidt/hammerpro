@@ -104,7 +104,9 @@ impl Document {
     fn new_solid(&mut self, sides: Vec<Side>) -> Solid {
         let mut solid = Solid { sides, ..Solid::default() };
         self.assign_fresh_ids(&mut solid);
-        solid.editor = EditorInfo { color: solid_color(solid.id), ..EditorInfo::default() };
+        let color =
+            self.options.new_brush_color.map_or_else(|| solid_color(solid.id), crate::display_color::custom_color);
+        solid.editor = EditorInfo { color, ..EditorInfo::default() };
         solid
     }
 

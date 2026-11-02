@@ -135,8 +135,8 @@ pub const TR: TrTable = &[
     ),
     (
         "viewport.player.keys",
-        "X wireframe - C camera - V noclip - M model - N nodraw - B compiled world - L lighting - wheel distance - E use - H hide - Esc quit",
-        "X filaire - C caméra - V noclip - M modèle - N nodraw - B monde compilé - L éclairage - molette distance - E utiliser - H masquer - Échap quitter",
+        "X wireframe - C camera - V noclip - M model - N nodraw - B compiled world - L lighting - wheel distance - E use - T trains - H hide - Esc quit",
+        "X filaire - C caméra - V noclip - M modèle - N nodraw - B monde compilé - L éclairage - molette distance - E utiliser - T trains - H masquer - Échap quitter",
     ),
     (
         "viewport.player.light_on",
@@ -213,6 +213,16 @@ pub const TR: TrTable = &[
         "viewport.player.style_keys",
         "1 to 9: turn a named light on or off",
         "1 à 9 : allumer ou éteindre une lumière nommée",
+    ),
+    (
+        "viewport.player.trains",
+        "Trains: {0} moving of {1} - T: start or stop them all, E on a train: start or stop it",
+        "Trains : {0} en marche sur {1} - T : les démarrer ou les arrêter tous, E sur un train : le démarrer ou l'arrêter",
+    ),
+    (
+        "viewport.io.train_no_control",
+        "{0}: no user control (spawnflag 2), use T or its inputs",
+        "{0} : pas de contrôle par le joueur (spawnflag 2), utilisez T ou ses entrées",
     ),
     ("viewport.io.no_target", "-> {0}.{1}: no entity of that name", "-> {0}.{1} : aucune entité de ce nom"),
     ("viewport.io.not_simulated", "(not simulated)", "(non simulé)"),

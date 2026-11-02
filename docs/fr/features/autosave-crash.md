@@ -34,7 +34,8 @@ Si vous avez fermé une map avec **Ne pas enregistrer**, ses sauvegardes jusque-
 ## Sauvegardes d'urgence
 
 - Quand une erreur interrompt une image de l'éditeur, les maps modifiées sont sauvegardées à côté des sauvegardes automatiques avant l'écriture du rapport de plantage, qui indique où.
-- Quand le périphérique graphique est perdu (réinitialisation du pilote, GPU retiré), les maps modifiées sont sauvegardées à côté des sauvegardes automatiques et Hammer Pro vous demande de redémarrer : *Le périphérique graphique a été perdu. Vos maps modifiées ont été sauvegardées avec les sauvegardes automatiques : redémarrez Hammer Pro.*
+- Quand le périphérique graphique est perdu (réinitialisation du pilote, GPU retiré), les maps modifiées de tous les onglets sont sauvegardées à côté des sauvegardes automatiques et Hammer Pro propose de redémarrer : **Oui** le relance avec tous vos onglets, les maps modifiées ouvertes depuis leurs modifications sauvegardées. Voir [Périphérique graphique perdu](../troubleshooting/graphics-device-lost.md).
+- Quand l'ordinateur n'a plus de mémoire, Hammer Pro utilise une petite réserve pour continuer, sauvegarde tout de suite les maps modifiées et vous demande de libérer de la mémoire. Voir [Mémoire insuffisante](../troubleshooting/out-of-memory.md).
 - Une erreur graphique qui ne gâche qu'une image s'affiche dans la console (*Erreur graphique (une image a été sautée)*) et Hammer Pro continue ; les suivantes vont dans le fichier journal.
 
 ## Rapports de plantage
@@ -50,7 +51,7 @@ Au démarrage suivant, une fenêtre **Hammer Pro s'est fermé de façon inattend
 | **Copier le rapport** | Copie son texte dans le presse-papiers, pour le coller dans un message. |
 | **Ouvrir les modifications sauvegardées** | Ouvre la sauvegarde d'urgence s'il y en a une (*Vos modifications non enregistrées ont été sauvegardées dans ...*). |
 
-Les plantages qui ne laissent pas le temps d'écrire quoi que ce soit (plantage du pilote graphique, échec d'allocation, dépassement de pile, processus tué) sont aussi repérés : chaque session laisse un marqueur qu'une fermeture normale efface, et le démarrage suivant transforme le marqueur d'un processus mort en rapport avec la fin du journal de la session précédente.
+Un plantage hors du code Rust (violation d'accès dans le pilote graphique, dépassement de pile) ou une allocation impossible écrit aussi un rapport, avec le module où il a eu lieu et les dernières lignes du journal ; quand il a lieu dans une tâche de fond, les maps modifiées sont d'abord sauvegardées. Les plantages qui ne laissent pas le temps d'écrire quoi que ce soit (processus tué) sont aussi repérés : chaque session laisse un marqueur qu'une fermeture normale efface, et le démarrage suivant transforme le marqueur d'un processus mort en rapport avec la fin du journal de la session précédente.
 
 Les erreurs des threads de fond ne ferment pas Hammer Pro : elles sont journalisées, et les premières d'une session ont aussi un fichier de rapport (pas proposé au démarrage suivant) dont le chemin est dans le journal.
 

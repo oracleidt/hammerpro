@@ -94,7 +94,7 @@ impl Worker {
                 }
                 let id = job.id;
                 let ctx = Ctx { id, wanted: &w, out: &out, wake: &*wake, start: Instant::now(), faces: 0, game: None };
-                let outcome = match catch_unwind(AssertUnwindSafe(|| run(job, &ctx))) {
+                let outcome = match catch_unwind(AssertUnwindSafe(|| hp_editor::background::run(|| run(job, &ctx)))) {
                     Ok(o) => o,
                     Err(_) if ctx.cancelled() => Outcome::Cancelled,
                     Err(_) => Outcome::Failed("the compiler stopped on an error".to_owned()),

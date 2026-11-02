@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use egui::{Align2, CursorIcon, Key, Pos2, Ui, Vec2};
+use egui::{Align2, CursorIcon, Key, Modifiers, Pos2, Ui, Vec2};
 use glam::{DVec2, DVec3};
 use hp_app::actions::{Action, key_label, shortcut_label};
 use hp_app::state::AppState;
@@ -13,9 +13,11 @@ use hp_geom::{
 };
 use hp_render::Overlay;
 
+use crate::clip3d::{MAGNET_PX, magnet, snap_targets};
 use crate::common::{
     COLOR_FRONT, COLOR_PENDING, COLOR_REMOVED, HANDLE_TOLERANCE, Mouse, Ov, Snap, active_material, clean_vec,
-    consume_plain_key, consume_tabs, dominant_axis, fmt_len, fresh, material_chip, paint_label, pick_surface, rgba,
+    consume_plain_key, consume_tabs, dominant_axis, fmt_len, fresh, material_chip, paint_label, pick_surface_with,
+    rgba,
 };
 
 pub const MAX_EXTRUDE_DEPTH: f64 = 16384.0;
@@ -87,7 +89,7 @@ struct Hover {
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Drag {
     Point { view: usize, index: usize },
-    Depth { view: usize },
+    Depth { view: usize, start: Pos2, from: f64 },
     Swallow,
 }
 
@@ -128,17 +130,76 @@ fn target_of(state: &AppState, face: FaceRef) -> Option<Target> {
 
 fn pick_face(state: &AppState, view: &ViewInfo, pos: Pos2) -> Option<FaceRef> {
     let selected = state.doc.selected_solid_ids();
-    if view.is_2d() && !selected.is_empty() {
-        let (origin, dir) = view.ray(pos);
+    if !selected.is_empty() {
         let only = |o: ObjRef| matches!(o, ObjRef::Solid(id) if selected.contains(&id));
-        let opts = PickOptions { include_entities: false, filter: Some(&only), ..PickOptions::default() };
-        if let Some(hit) = state.doc.pick_ray(&Ray::new(origin, dir), &opts, &|e| state.entity_bounds(e))
-            && let (ObjRef::Solid(solid), Some(side)) = (hit.obj, hit.face)
-        {
-            return Some(FaceRef::new(solid, side));
+        if view.is_2d() {
+            let (origin, dir) = view.ray(pos);
+            let opts = PickOptions { include_entities: false, filter: Some(&only), ..PickOptions::default() };
+            if let Some(hit) = state.doc.pick_ray(&Ray::new(origin, dir), &opts, &|e| state.entity_bounds(e))
+                && let (ObjRef::Solid(solid), Some(side)) = (hit.obj, hit.face)
+            {
+                return Some(FaceRef::new(solid, side));
+            }
+        } else if let Some(h) = pick_surface_with(state, view, pos, Some(&only)) {
+            return Some(FaceRef::new(h.solid, h.side_index));
         }
     }
-    pick_surface(state, view, pos).map(|h| FaceRef::new(h.solid, h.side_index))
+    pick_surface_with(state, view, pos, None).map(|h| FaceRef::new(h.solid, h.side_index))
+}
+
+fn convex_contains(poly: &[DVec2], p: DVec2) -> bool {
+    let n = poly.len();
+    if n < 3 {
+        return false;
+    }
+    let area: f64 = (0..n).map(|i| poly[i].perp_dot(poly[(i + 1) % n])).sum();
+    let sign = area.signum();
+    (0..n).all(|i| {
+        let (a, b) = (poly[i], poly[(i + 1) % n]);
+        (b - a).perp_dot(p - a) * sign >= -1e-6 * (b - a).length()
+    })
+}
+
+fn closest_on_boundary(poly: &[DVec2], p: DVec2) -> Option<DVec2> {
+    let n = poly.len();
+    (0..n)
+        .map(|i| {
+            let (a, b) = (poly[i], poly[(i + 1) % n]);
+            let d = b - a;
+            let t =
+                if d.length_squared() > 1e-12 { ((p - a).dot(d) / d.length_squared()).clamp(0.0, 1.0) } else { 0.0 };
+            a + d * t
+        })
+        .min_by(|x, y| x.distance_squared(p).total_cmp(&y.distance_squared(p)))
+}
+
+fn pixel_size(view: &ViewInfo, at: DVec3) -> f64 {
+    if view.is_2d() {
+        return 1.0 / view.cam2d.zoom.max(1e-6);
+    }
+    let h = f64::from(view.rect.height().max(1.0));
+    let half = (view.cam3d.fov_y_deg.to_radians() * 0.5).tan().max(1e-3);
+    let depth = (at - view.cam3d.pos).dot(view.cam3d.forward()).max(view.cam3d.near.max(0.01));
+    2.0 * half * depth / h
+}
+
+fn depth_delta(view: &ViewInfo, start: Pos2, pos: Pos2, center: DVec3, normal: DVec3) -> Option<f64> {
+    let units = pixel_size(view, center);
+    let k = units * 40.0;
+    let (sc, sn) = (view.world_to_screen(center)?, view.world_to_screen(center + normal * k)?);
+    let along = sn - sc;
+    let moved = pos - start;
+    if !(moved.x.is_finite() && moved.y.is_finite()) {
+        return None;
+    }
+    let delta = if along.length() > 12.0 {
+        f64::from(moved.dot(along.normalized())) * k / f64::from(along.length())
+    } else {
+        let eye = if view.is_2d() { center + view.kind.toward_viewer() } else { view.cam3d.pos };
+        let facing = if normal.dot(eye - center) >= 0.0 { 1.0 } else { -1.0 };
+        -f64::from(moved.y) * units * facing
+    };
+    delta.is_finite().then_some(delta)
 }
 
 fn issue_text(e: &GeomError) -> String {
@@ -156,17 +217,6 @@ fn issue_text(e: &GeomError) -> String {
         None => return e.to_string(),
     };
     t!(key).to_owned()
-}
-
-fn signed_depth(o: DVec3, d: DVec3, c: DVec3, n: DVec3) -> Option<f64> {
-    let b = n.dot(d);
-    let denom = d.length_squared() - b * b;
-    if denom < 1e-6 {
-        return None;
-    }
-    let w = c - o;
-    let t = (b * d.dot(w) - d.length_squared() * n.dot(w)) / denom;
-    t.is_finite().then_some(t)
 }
 
 fn hash_f64s(values: impl IntoIterator<Item = f64>) -> u64 {
@@ -333,7 +383,14 @@ impl ExtrudeTool {
         }
     }
 
-    fn point_from(view: &ViewInfo, pos: Pos2, snap: &Snap, plane: &Plane) -> Option<DVec3> {
+    fn point_from(
+        view: &ViewInfo,
+        pos: Pos2,
+        snap: &Snap,
+        plane: &Plane,
+        face: &[DVec3],
+        mods: Modifiers,
+    ) -> Option<DVec3> {
         let (o, d) = if view.is_2d() {
             let p = snap.v2(view.screen_to_2d(pos));
             let toward = view.kind.toward_viewer();
@@ -350,7 +407,25 @@ impl ExtrudeTool {
             return None;
         }
         let hit = o + d * t;
-        let p = if view.is_2d() { hit } else { snap.on_plane(hit, plane.normal) };
+        if view.is_2d() {
+            let p = clean_vec(plane.project(hit));
+            return p.is_finite().then_some(p);
+        }
+        if !mods.alt
+            && let Some((m, _)) = magnet(view, pos, &snap_targets(face), MAGNET_PX)
+        {
+            let p = clean_vec(plane.project(m));
+            return p.is_finite().then_some(p);
+        }
+        let mut p = plane.project(snap.on_plane(hit, plane.normal));
+        let frame = FaceFrame::new(plane);
+        let poly: Vec<DVec2> = face.iter().map(|v| frame.to_2d(*v)).collect();
+        if convex_contains(&poly, frame.to_2d(hit))
+            && !convex_contains(&poly, frame.to_2d(p))
+            && let Some(edge) = closest_on_boundary(&poly, frame.to_2d(p))
+        {
+            p = frame.to_3d(edge, 0.0);
+        }
         let p = clean_vec(plane.project(p));
         p.is_finite().then_some(p)
     }
@@ -366,13 +441,18 @@ impl ExtrudeTool {
             .map(|(i, _)| i)
     }
 
-    fn depth_from(&self, view: &ViewInfo, pos: Pos2, snap: &Snap) -> Option<f64> {
+    fn signed(&self) -> f64 {
+        match self.options.mode {
+            ExtrudeMode::Extrude => self.options.depth,
+            ExtrudeMode::Carve => -self.options.depth,
+        }
+    }
+
+    fn depth_from(&self, view: &ViewInfo, start: Pos2, pos: Pos2, from: f64, snap: &Snap) -> Option<f64> {
         let o = self.outline.as_ref()?;
-        let (origin, dir) = view.ray(pos);
         let n = o.target.plane.normal;
-        let t = signed_depth(origin, dir, o.center(), n)?;
-        let axis = dominant_axis(n);
-        Some(snap.len(t, axis))
+        let delta = depth_delta(view, start, pos, o.center(), n)?;
+        Some(snap.len(from + delta, dominant_axis(n)))
     }
 
     pub(crate) fn handle_mouse(&mut self, state: &mut AppState, view: &ViewInfo, m: &Mouse) -> ToolFlow {
@@ -380,7 +460,7 @@ impl ExtrudeTool {
         let Some(pos) = m.pos else { return ToolFlow::Ignored };
         let snap = Snap::new(state, view, m.modifiers);
         if m.hovering() {
-            self.hover = Some(self.hover_at(state, view, pos, &snap));
+            self.hover = Some(self.hover_at(state, view, pos, &snap, m.modifiers));
             return ToolFlow::Ignored;
         }
         let origin = m.origin().unwrap_or(pos);
@@ -392,14 +472,16 @@ impl ExtrudeTool {
                     self.drag = Some(Drag::Point { view: view.index, index });
                 }
             } else if self.is_closed() {
-                self.drag = Some(Drag::Depth { view: view.index });
+                self.drag = Some(Drag::Depth { view: view.index, start: origin, from: self.signed() });
             }
         }
         if m.dragging || m.drag_stopped {
             match self.drag {
-                Some(Drag::Point { view: vi, index }) if vi == view.index => self.move_point(view, pos, &snap, index),
-                Some(Drag::Depth { view: vi }) if vi == view.index => {
-                    if let Some(d) = self.depth_from(view, pos, &snap) {
+                Some(Drag::Point { view: vi, index }) if vi == view.index => {
+                    self.move_point(view, pos, &snap, index, m.modifiers);
+                }
+                Some(Drag::Depth { view: vi, start, from }) if vi == view.index => {
+                    if let Some(d) = self.depth_from(view, start, pos, from, &snap) {
                         self.set_depth(d);
                     }
                 }
@@ -407,7 +489,7 @@ impl ExtrudeTool {
             }
         }
         if m.activated() && self.drag.is_none() {
-            self.click(state, view, origin, &snap, m.double_clicked);
+            self.click(state, view, origin, &snap, m.double_clicked, m.modifiers);
             if m.drag_started {
                 self.drag = Some(Drag::Swallow);
             }
@@ -418,7 +500,7 @@ impl ExtrudeTool {
         ToolFlow::Handled
     }
 
-    fn click(&mut self, state: &mut AppState, view: &ViewInfo, pos: Pos2, snap: &Snap, double: bool) {
+    fn click(&mut self, state: &mut AppState, view: &ViewInfo, pos: Pos2, snap: &Snap, double: bool, mods: Modifiers) {
         if self.is_closed() {
             return;
         }
@@ -444,8 +526,10 @@ impl ExtrudeTool {
                 return;
             }
         }
-        let Some(plane) = self.outline.as_ref().map(|o| o.target.plane) else { return };
-        let Some(p) = Self::point_from(view, pos, snap, &plane) else {
+        let Some((plane, face)) = self.outline.as_ref().map(|o| (o.target.plane, o.target.polygon.clone())) else {
+            return;
+        };
+        let Some(p) = Self::point_from(view, pos, snap, &plane, &face, mods) else {
             state.notify(Severity::Info, t!("create.extrude.edge_on"));
             return;
         };
@@ -455,9 +539,9 @@ impl ExtrudeTool {
         }
     }
 
-    fn move_point(&mut self, view: &ViewInfo, pos: Pos2, snap: &Snap, index: usize) {
+    fn move_point(&mut self, view: &ViewInfo, pos: Pos2, snap: &Snap, index: usize, mods: Modifiers) {
         let Some(o) = self.outline.as_ref() else { return };
-        let Some(p) = Self::point_from(view, pos, snap, &o.target.plane) else { return };
+        let Some(p) = Self::point_from(view, pos, snap, &o.target.plane, &o.target.polygon, mods) else { return };
         let mut moved = o.points.clone();
         let Some(slot) = moved.get_mut(index) else { return };
         *slot = p;
@@ -468,11 +552,11 @@ impl ExtrudeTool {
         }
     }
 
-    fn hover_at(&self, state: &AppState, view: &ViewInfo, pos: Pos2, snap: &Snap) -> Hover {
+    fn hover_at(&self, state: &AppState, view: &ViewInfo, pos: Pos2, snap: &Snap, mods: Modifiers) -> Hover {
         let frame = state.frame.index;
         match &self.outline {
             Some(o) => {
-                let point = Self::point_from(view, pos, snap, &o.target.plane);
+                let point = Self::point_from(view, pos, snap, &o.target.plane, &o.target.polygon, mods);
                 let check = match point {
                     _ if o.closed => PointCheck::Full,
                     Some(p) => self.check(o, p),
@@ -482,7 +566,7 @@ impl ExtrudeTool {
             }
             None => {
                 let face = pick_face(state, view, pos).and_then(|f| target_of(state, f));
-                let point = face.as_ref().and_then(|t| Self::point_from(view, pos, snap, &t.plane));
+                let point = face.as_ref().and_then(|t| Self::point_from(view, pos, snap, &t.plane, &t.polygon, mods));
                 let check = if point.is_some() { PointCheck::Ok } else { PointCheck::OffFace };
                 Hover { view: view.index, point, check, face, frame }
             }
@@ -986,9 +1070,9 @@ mod tests {
         tool.handle_mouse(&mut state, &top, &Mouse::drag(from, out));
         tool.handle_mouse(&mut state, &top, &Mouse::drag_end(from, out));
         assert_eq!(tool.options.mode, ExtrudeMode::Extrude);
-        assert_eq!(tool.options.depth, 32.0, "snapped depth");
+        assert_eq!(tool.options.depth, 16.0, "16 deep inward plus 34 outward, snapped to the grid");
         assert_eq!(tool.points().len(), 4, "a depth drag adds no point");
-        let inside = top.world_to_screen(DVec3::new(0.0, 264.0, 0.0)).expect("in");
+        let inside = top.world_to_screen(DVec3::new(0.0, 280.0, 0.0)).expect("in");
         tool.handle_mouse(&mut state, &top, &Mouse::drag_start(from, from));
         tool.handle_mouse(&mut state, &top, &Mouse::drag_end(from, inside));
         assert_eq!(tool.options.mode, ExtrudeMode::Carve);
@@ -1055,6 +1139,86 @@ mod tests {
         let mut out = ctx.run_ui(input, |ui| handled = tool.key_input(&mut state, ui.ctx()));
         out.textures_delta.clear();
         assert!(handled && tool.face().is_none(), "Escape cancels");
+    }
+
+    fn add_box(state: &mut AppState, min: DVec3, max: DVec3) -> u32 {
+        let pts: Vec<DVec3> = (0..8)
+            .map(|i| {
+                DVec3::new(
+                    if i & 1 == 0 { min.x } else { max.x },
+                    if i & 2 == 0 { min.y } else { max.y },
+                    if i & 4 == 0 { min.z } else { max.z },
+                )
+            })
+            .collect();
+        let mut next = 70_000u32;
+        let mut ids = || {
+            next += 1;
+            next
+        };
+        let sides = hp_geom::hull_solid(&pts, "DEV/DEV_MEASUREGENERIC01B", 0.25, 16, &mut ids).expect("box");
+        state.doc.create_solid(sides, hp_editor::Owner::World).expect("solid")
+    }
+
+    #[test]
+    fn depth_drags_are_relative_and_work_facing_the_face() {
+        let mut state = settle();
+        let mut tool = ExtrudeTool::new();
+        let view = wall_view();
+        for p in window_points() {
+            click(&mut tool, &mut state, &view, p);
+        }
+        let first = view.world_to_screen(DVec3::new(-64.0, 256.0, 32.0)).expect("first");
+        tool.handle_mouse(&mut state, &view, &Mouse::double_click(first));
+        assert!(tool.is_closed());
+        let far = Pos2::new(700.0, 80.0);
+        tool.handle_mouse(&mut state, &view, &Mouse::drag_start(far, far));
+        tool.handle_mouse(&mut state, &view, &Mouse::drag(far, far));
+        assert_eq!((tool.options.mode, tool.options.depth), (ExtrudeMode::Carve, 16.0), "no jump when the drag starts");
+        let up = far - Vec2::new(0.0, 60.0);
+        tool.handle_mouse(&mut state, &view, &Mouse::drag(far, up));
+        tool.handle_mouse(&mut state, &view, &Mouse::drag_end(far, up));
+        assert_eq!(tool.options.mode, ExtrudeMode::Extrude, "dragging up pulls the face toward the camera");
+        assert!(tool.options.depth > 0.0 && tool.options.depth < 512.0, "{}", tool.options.depth);
+        let depth = tool.options.depth;
+        let down = far + Vec2::new(0.0, 600.0);
+        tool.handle_mouse(&mut state, &view, &Mouse::drag_start(far, far));
+        tool.handle_mouse(&mut state, &view, &Mouse::drag_end(far, down));
+        assert_eq!(tool.options.mode, ExtrudeMode::Carve);
+        assert!(tool.options.depth > depth, "a long drag down digs deeper: {}", tool.options.depth);
+    }
+
+    #[test]
+    fn the_3d_view_prefers_the_selected_brush_behind_another() {
+        let mut state = settle();
+        state.doc.set_selection(&[ObjRef::Solid(3)]);
+        let mut tool = ExtrudeTool::new();
+        let view = info_3d(DVec3::new(96.0, -200.0, 32.0), 90.0, 0.0);
+        click(&mut tool, &mut state, &view, DVec3::new(96.0, 0.0, 32.0));
+        assert_eq!(tool.face().map(|f| f.solid), Some(3), "the selected wall, not the trigger in front");
+        assert!((tool.points()[0].y - 256.0).abs() < 1e-9);
+        tool.clear();
+        state.doc.clear_selection();
+        click(&mut tool, &mut state, &view, DVec3::new(96.0, 0.0, 32.0));
+        assert_eq!(tool.face().map(|f| f.solid), Some(7), "nothing selected: the closest face");
+    }
+
+    #[test]
+    fn points_snap_to_corners_and_stay_on_the_face_near_off_grid_edges() {
+        let mut state = settle();
+        let id = add_box(&mut state, DVec3::new(3.0, -100.0, 5.0), DVec3::new(203.0, -84.0, 205.0));
+        let view = info_3d(DVec3::new(103.0, -500.0, 105.0), 90.0, 0.0);
+        let mut tool = ExtrudeTool::new();
+        click(&mut tool, &mut state, &view, DVec3::new(7.0, -100.0, 60.0));
+        assert_eq!(tool.face().map(|f| f.solid), Some(id));
+        assert_eq!(tool.points(), [DVec3::new(3.0, -100.0, 64.0)], "grid snap kept on the face edge");
+        click(&mut tool, &mut state, &view, DVec3::new(202.0, -100.0, 204.0));
+        assert_eq!(tool.points()[1], DVec3::new(203.0, -100.0, 205.0), "snapped to the corner");
+        let alt = Modifiers { alt: true, ..Modifiers::NONE };
+        let s = view.world_to_screen(DVec3::new(120.3, -100.0, 30.7)).expect("screen");
+        tool.handle_mouse(&mut state, &view, &Mouse::click(s).with_modifiers(alt));
+        let free = tool.points()[2];
+        assert!((free - DVec3::new(120.3, -100.0, 30.7)).length() < 0.6, "no snapping with Alt: {free:?}");
     }
 
     #[test]

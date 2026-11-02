@@ -295,7 +295,10 @@ impl std::fmt::Display for BuildError {
     }
 }
 
-pub fn build_brushes(spec: &CurveSpec<'_>, next_side_id: &mut dyn FnMut() -> u32) -> Result<Vec<Vec<Side>>, BuildError> {
+pub fn build_brushes(
+    spec: &CurveSpec<'_>,
+    next_side_id: &mut dyn FnMut() -> u32,
+) -> Result<Vec<Vec<Side>>, BuildError> {
     if !spec.kind.is_2d() {
         return Err(BuildError::Curve(CurveError::TooFewPoints));
     }

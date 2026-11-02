@@ -118,6 +118,7 @@ pub(crate) const DOMAINS: &[&Domain] = &[
     &super::tools_overlays::DOMAIN,
     &super::tools_paths::DOMAIN,
     &super::tools_sky::DOMAIN,
+    &super::tools_fog::DOMAIN,
     &super::tools_fgd::DOMAIN,
     &super::tools_games::DOMAIN,
     &super::tools_discord::DOMAIN,
@@ -126,6 +127,7 @@ pub(crate) const DOMAINS: &[&Domain] = &[
     &super::tools_ui::DOMAIN,
     &super::tools_settings::DOMAIN,
     &super::tools_views::DOMAIN,
+    &super::tools_gpu::DOMAIN,
     &super::tools_help::DOMAIN,
 ];
 

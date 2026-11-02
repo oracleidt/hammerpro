@@ -84,7 +84,7 @@ A second list, **From the entity definitions (FGD)**, shows the `@AutoVisGroup` 
 
 ## Visgroup colors
 
-Each new visgroup gets a pleasant color. With **Tools > Options... > Rendering > Visgroup colors** on (`render.use_visgroup_colors`, off by default), brushes are drawn in the 2D views in the color of their visgroup.
+Each new visgroup gets a pleasant color. With **Tools > Options... > Rendering > Visgroup colors** on (`render.use_visgroup_colors`, off by default), brushes are drawn in the 2D views in the color of their visgroup. A display color chosen for an object comes first (see [Display colors](display-colors.md)).
 
 ## Options
 

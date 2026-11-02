@@ -13,6 +13,8 @@ pub mod placement;
 pub mod player;
 pub mod render_cache;
 mod tr;
+pub mod trains;
+pub mod warp;
 pub mod workflow;
 
 use std::path::PathBuf;
@@ -45,7 +47,6 @@ use crate::render_cache::{RenderCache, ViewKey};
 pub use tr::TR;
 
 pub const CLICK_TRAVEL: f32 = 4.0;
-const WARP_DISTANCE: f32 = 24.0;
 
 const LIGHT_KEYS: [egui::Key; player::LISTED_LIGHTS] = [
     egui::Key::Num1,
@@ -191,11 +192,13 @@ pub struct Viewports {
     velocity: DVec3,
     gesture: Option<Gesture>,
     mouselook: Option<Mouselook>,
+    warp: warp::CursorWarp,
     player_view: Option<usize>,
     player_props: player::PropBodies,
     player_doors: player::Doors,
     player_game_version: Option<u64>,
     player_io: Option<io::IoSim>,
+    player_trains: Option<trains::Trains>,
     player_lights: player::PlayerLights,
     player_io_hidden: std::collections::HashSet<hp_vmf::Id>,
     player_world: Option<(std::sync::Arc<hp_editor::limits::world::BspWorld>, bool)>,
@@ -245,11 +248,13 @@ impl Viewports {
             velocity: DVec3::ZERO,
             gesture: None,
             mouselook: None,
+            warp: warp::CursorWarp::default(),
             player_view: None,
             player_props: player::PropBodies::default(),
             player_doors: player::Doors::default(),
             player_game_version: None,
             player_io: None,
+            player_trains: None,
             player_lights: player::PlayerLights::default(),
             player_io_hidden: std::collections::HashSet::new(),
             player_world: None,
@@ -300,6 +305,14 @@ impl Viewports {
 
     pub fn logical_rects(&self) -> [Option<Rect>; 4] {
         self.logical_rects
+    }
+
+    pub fn hovered_view(&self, state: &AppState, ctx: &egui::Context) -> Option<(ViewInfo, Pos2)> {
+        let index = state.ui.hovered_view?;
+        let (kind, rect) = self.rects.get(index).copied().flatten()?;
+        let pos = ctx.input(|i| i.pointer.hover_pos()).filter(|p| rect.contains(*p))?;
+        let cfg = RenderConfig::from_state(state);
+        Some((view_info(index, kind, rect, &state.cameras, &cfg, ctx.pixels_per_point()), pos))
     }
 
     pub fn set_logical_content(&mut self, content: Box<dyn LogicalContent>) {
@@ -500,6 +513,9 @@ impl Viewports {
             self.player_flow_key = None;
             self.player_game_version = None;
             self.player_io = None;
+            self.player_trains = None;
+            state.runtime.lab.player.trains.clear();
+            state.runtime.lab.player.train_requests.clear();
             self.player_lights = player::PlayerLights::default();
             state.assets.set_light_styles(&[]);
             state.runtime.lab.player.light_styles = Default::default();
@@ -515,7 +531,7 @@ impl Viewports {
             self.keys.clear();
             return None;
         }
-        let (noclip, third, wire, next_model, hide, use_key, tools, world_key) = ctx.input_mut(|i| {
+        let (noclip, third, wire, next_model, hide, use_key, tools, world_key, train_key) = ctx.input_mut(|i| {
             (
                 i.consume_key(egui::Modifiers::NONE, egui::Key::V),
                 i.consume_key(egui::Modifiers::NONE, egui::Key::C),
@@ -525,6 +541,7 @@ impl Viewports {
                 i.consume_key(egui::Modifiers::NONE, egui::Key::E),
                 i.consume_key(egui::Modifiers::NONE, egui::Key::N),
                 i.consume_key(egui::Modifiers::NONE, egui::Key::B),
+                i.consume_key(egui::Modifiers::NONE, egui::Key::T),
             )
         });
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::L)) {
@@ -565,15 +582,28 @@ impl Viewports {
         let mut p = state.runtime.lab.player.clone();
         let cam = state.cameras.cam3d;
         let sim = self.player_io.get_or_insert_with(|| io::IoSim::new(state));
+        let trains = self.player_trains.get_or_insert_with(|| trains::Trains::new(state));
+        for (name, start) in std::mem::take(&mut p.train_requests) {
+            trains.request(name.as_deref(), start);
+        }
+        if train_key && !trains.is_empty() {
+            trains.toggle_all();
+        }
         if use_key {
             let look = state.cameras.cam3d.forward();
-            if let Some(id) = self.player_doors.use_pick(state, &self.player_props, player::eye(&p), look) {
+            if let Some(id) = self.player_doors.use_pick(state, &self.player_props, trains, player::eye(&p), look) {
+                if trains.use_entity(id) == Some(false) {
+                    sim.note_no_control(state, id);
+                }
                 sim.use_entity(state, &mut self.player_doors, id, p.feet);
             }
         }
-        let transforms = self.player_doors.animate(dt);
+        let mut transforms = self.player_doors.animate(dt);
         let height = if p.crouched { player::CROUCH_HEIGHT } else { player::HEIGHT };
         sim.step(state, &mut self.player_doors, p.feet, height, dt);
+        for (id, input, param) in sim.take_train_inputs() {
+            trains.input(id, &input, &param);
+        }
         if let Some((to, yaw)) = sim.teleport.take() {
             p.feet = to;
             p.velocity = DVec3::ZERO;
@@ -582,6 +612,23 @@ impl Viewports {
             }
         }
         let world = state.runtime.health.world.clone().filter(|_| !state.runtime.lab.player.editor_world);
+        trains.set_world(world.as_ref());
+        let riding = if p.on_ground && !p.noclip {
+            trains.standing_on(p.feet, Some(sim.hidden()), Some(&self.player_props))
+        } else {
+            None
+        };
+        trains.step(dt, sim.hidden());
+        if !p.noclip {
+            trains.move_player(riding, &mut p.feet, &mut state.cameras.cam3d.yaw_deg, height, Some(sim.hidden()));
+        }
+        for (id, output) in trains.take_fired() {
+            sim.fire(state, id, output);
+        }
+        let moved = trains.transforms();
+        sim.set_moved(&moved);
+        transforms.extend(moved);
+        p.trains = trains.report();
         if world.as_ref().map(std::sync::Arc::as_ptr)
             != self.player_world.as_ref().map(|(w, _)| std::sync::Arc::as_ptr(w))
         {
@@ -653,6 +700,14 @@ impl Viewports {
             self.player_game_version = Some(version);
             self.player_clusters.update(state);
             self.player_game_hidden = player::game_hidden(state, &self.player_clusters);
+            let scene = state.doc.scene();
+            self.player_game_hidden.retain(|o| match *o {
+                hp_editor::ObjRef::Solid(s) => match scene.solid(s).map(|n| n.owner) {
+                    Some(hp_editor::Owner::Entity(e)) => !trains.carries(e),
+                    _ => true,
+                },
+                hp_editor::ObjRef::Entity(e) => !trains.carries(e),
+            });
             state.assets.set_game_hidden(&self.player_game_hidden);
         }
         let io_changed = sim.hidden() != &self.player_io_hidden;
@@ -683,26 +738,27 @@ impl Viewports {
             }
             state.assets.set_play_hidden(&objs);
         }
-        self.player_props.update(state, p.feet, &self.player_doors, &self.player_io_hidden);
+        self.player_props.update(state, p.feet, &self.player_doors, trains, &self.player_io_hidden);
         let c = player::DocCollider {
             state,
             props: Some(&self.player_props),
             except: None,
             doors: Some(&self.player_doors),
             hidden: Some(&self.player_io_hidden),
+            trains: Some(&*trains),
         };
         let pushes = player::step(&mut p, m, cam.yaw_deg, cam.pitch_deg, dt, &c);
-        if let Some(yaw) = player::teleport(state, &mut p) {
+        if let Some(yaw) = player::teleport(state, &mut p, Some(&*trains)) {
             state.cameras.cam3d.yaw_deg = yaw;
         }
-        state.cameras.cam3d.pos = player::camera_position(state, &p);
+        state.cameras.cam3d.pos = player::camera_position(state, &p, Some(&*trains));
         let pose = player::model_pose(&mut p, cam.yaw_deg, dt);
         let third = p.third_person;
         p.light_styles = light_report;
         state.runtime.lab.player = p;
         state.assets.set_player_model(third.then_some(pose));
         if !pushes.is_empty() {
-            player::push_props(state, &self.player_props, &pushes);
+            player::push_props(state, &self.player_props, Some(&*trains), &pushes);
         }
         ctx.request_repaint();
         Some(v)
@@ -773,10 +829,7 @@ impl Viewports {
             let Some(s) = slot_of(v) else { return Some(v) };
             look(&mut state.cameras.cam3d, input.look_delta());
             ctx.set_cursor_icon(CursorIcon::None);
-            if let Some(p) = input.pointer
-                && input.motion.is_some()
-                && p.distance(s.rect.center()) > WARP_DISTANCE
-            {
+            if self.warp.request(input.focused, input.pointer, input.motion.is_some(), s.rect.center()) {
                 ctx.send_viewport_cmd(egui::ViewportCommand::CursorPosition(s.rect.center()));
             }
             return Some(v);
@@ -796,10 +849,7 @@ impl Viewports {
             } else {
                 look(&mut state.cameras.cam3d, input.look_delta());
                 ctx.set_cursor_icon(CursorIcon::None);
-                if let Some(p) = input.pointer
-                    && input.motion.is_some()
-                    && p.distance(ml.anchor) > WARP_DISTANCE
-                {
+                if self.warp.request(input.focused, input.pointer, input.motion.is_some(), ml.anchor) {
                     ctx.send_viewport_cmd(egui::ViewportCommand::CursorPosition(ml.anchor));
                 }
                 if input.pressed[PRIMARY]
@@ -827,7 +877,8 @@ impl Viewports {
                 state.ui.focused_view = Some(s.index);
                 input::consume_z(ctx, self.keys.layout, false);
                 self.keys.clear();
-                if input.motion.is_some() {
+                self.warp.reset();
+                if self.warp.request(input.focused, input.pointer, input.motion.is_some(), s.rect.center()) {
                     ctx.send_viewport_cmd(egui::ViewportCommand::CursorPosition(s.rect.center()));
                 }
             }
@@ -885,10 +936,7 @@ impl Viewports {
                         }
                         if looking {
                             ctx.set_cursor_icon(CursorIcon::None);
-                            if let Some(p) = input.pointer
-                                && input.motion.is_some()
-                                && p.distance(press) > WARP_DISTANCE
-                            {
+                            if self.warp.request(input.focused, input.pointer, input.motion.is_some(), press) {
                                 ctx.send_viewport_cmd(egui::ViewportCommand::CursorPosition(press));
                             }
                         }
@@ -2193,3 +2241,5 @@ mod tests_integration;
 mod tests_logical;
 #[cfg(test)]
 mod tests_workflow;
+#[cfg(test)]
+mod trains_tests;

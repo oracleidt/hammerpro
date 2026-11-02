@@ -46,7 +46,7 @@ Choisissez le mode avec les trois boutons de la barre d'options, ou appuyez sur 
 | `Alt`+flèche ou `Maj`+flèche | Décalage d'une unité |
 | `Page préc.` / `Page suiv.` | Décalage selon l'axe de profondeur (vers vous dans les vues 2D, vers le haut ou le bas dans la vue 3D) |
 | `Ctrl+A` | Sélectionne tous les sommets des solides édités (le raccourci de **Tout sélectionner**) |
-| `Ctrl+B` | Aligne les sommets sélectionnés sur la grille (le raccourci de **Aligner la sélection sur la grille**) |
+| `Ctrl+B` | Aligne les sommets sélectionnés sur la grille (le raccourci de **Aligner la sélection sur la grille**). Avec le curseur sur une arête de brush dans la vue 3D, il biseaute cette arête à la place (voir [Outil biseau](bevel-tool.md)) |
 | `Ctrl+F` | **Scinder la face** |
 | `Alt+E` | **Mettre les sommets à l'échelle...** (appuyez de nouveau pour appliquer) |
 | `Échap` | Annule le glissement ou la mise à l'échelle en cours ; sinon désélectionne les sommets ; sinon retire les scissions en attente |

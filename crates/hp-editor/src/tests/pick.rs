@@ -278,10 +278,16 @@ fn bench_100k_load_and_pick() {
 fn the_nearest_visible_surface_wins() {
     let mut doc = Document::new_empty();
     let wall = doc
-        .create_solid(box_sides(DVec3::new(0.0, -128.0, 0.0), DVec3::new(16.0, 128.0, 128.0), "brick/wall"), Owner::World)
+        .create_solid(
+            box_sides(DVec3::new(0.0, -128.0, 0.0), DVec3::new(16.0, 128.0, 128.0), "brick/wall"),
+            Owner::World,
+        )
         .expect("wall");
     let behind = doc
-        .create_solid(box_sides(DVec3::new(200.0, -128.0, 0.0), DVec3::new(264.0, 128.0, 128.0), "brick/back"), Owner::World)
+        .create_solid(
+            box_sides(DVec3::new(200.0, -128.0, 0.0), DVec3::new(264.0, 128.0, 128.0), "brick/back"),
+            Owner::World,
+        )
         .expect("behind");
     let clip = doc
         .create_solid(
@@ -297,7 +303,13 @@ fn the_nearest_visible_surface_wins() {
     let order: Vec<ObjRef> = doc.pick_ray_all(&ray, &opts, &no_bounds).iter().map(|h| h.obj).collect();
     assert_eq!(
         order,
-        vec![ObjRef::Entity(prop), ObjRef::Solid(clip), ObjRef::Solid(wall), ObjRef::Entity(light), ObjRef::Solid(behind)]
+        vec![
+            ObjRef::Entity(prop),
+            ObjRef::Solid(clip),
+            ObjRef::Solid(wall),
+            ObjRef::Entity(light),
+            ObjRef::Solid(behind)
+        ]
     );
 
     let tools_hidden = |m: &str| m.starts_with("tools/");
@@ -314,7 +326,11 @@ fn the_nearest_visible_surface_wins() {
         let o = e.origin().unwrap_or_default();
         let t = (o.x - r.origin.x) / r.dir.x;
         let p = r.at(t);
-        if t >= 0.0 && (p.y - o.y).abs() < 1.0 { crate::EntityRay::Hit { t, normal: DVec3::X } } else { crate::EntityRay::Miss }
+        if t >= 0.0 && (p.y - o.y).abs() < 1.0 {
+            crate::EntityRay::Hit { t, normal: DVec3::X }
+        } else {
+            crate::EntityRay::Miss
+        }
     };
     let models = PickOptions { entity_ray: Some(&thin), face_hidden: Some(&tools_hidden), ..PickOptions::default() };
     let hit = doc.pick_ray(&ray, &models, &no_bounds).expect("model hit");

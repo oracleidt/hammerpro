@@ -2,7 +2,7 @@
 
 # Actions et raccourcis clavier
 
-Chaque commande de Hammer Pro 1.0.1 est une *action* : une seule entrée partagée par les menus, la barre d'outils, les raccourcis clavier, la palette de commandes (`Ctrl+P`), les fichiers `--script` et le serveur MCP (`run_action`, `list_actions`). Cette page liste les 261 actions, menu par menu, dans l'ordre où les menus les affichent.
+Chaque commande de Hammer Pro 1.0.2 est une *action* : une seule entrée partagée par les menus, la barre d'outils, les raccourcis clavier, la palette de commandes (`Ctrl+P`), les fichiers `--script` et le serveur MCP (`run_action`, `list_actions`). Cette page liste les 268 actions, menu par menu, dans l'ordre où les menus les affichent.
 
 Colonnes :
 
@@ -14,6 +14,8 @@ Colonnes :
 Avec le jeu Hammer Pro, deux touches de Hammer marchent aussi en raccourcis supplémentaires, car elles n'entrent en conflit avec rien : `Maj+Q` (**Effacer la sélection**) et `Maj+R` (**Afficher la grille**). Les raccourcis que vous modifiez vous-même passent toujours avant le jeu choisi. Voir [Raccourcis clavier](../features/keyboard-shortcuts.md) pour changer un raccourci, les conflits et la fenêtre de référence `F1`.
 
 Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, les gestes de la souris, les touches d'un outil actif, celles de la vue joueur) sont décrites sur les pages des outils : [Caméra et navigation](../features/camera-navigation.md), [Outil de sélection](../features/selection-tool.md), [Vue joueur](../features/player-view.md).
+
+`Ctrl+B` (`snap_to_grid`) lance aussi l'[outil biseau](../features/bevel-tool.md) sur l'arête de brush sous le curseur dans la vue 3D, avec les outils Sélection, Vertex et Biseau.
 
 
 ## Menu Fichier
@@ -73,6 +75,9 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Mode de sélection > Ignorer les groupes | `toggle_ignore_groups` | `Ctrl+W` |  |  |
 | Propriétés | `properties` | `Alt+Entrée` |  |  |
 | Modifier la couleur... | `edit_color` | `C` |  |  |
+| Définir la couleur d'affichage... | `set_display_color` |  |  |  |
+| Couleurs d'affichage aléatoires | `random_display_colors` |  |  |  |
+| Couleurs d'affichage par défaut | `reset_display_colors` |  |  |  |
 | Définir la distance maximale... | `set_max_distance` |  |  |  |
 
 ## Menu Map
@@ -177,6 +182,8 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Options d'affichage > Aperçu des poissons | `toggle_fish_preview` |  |  |  |
 | Options d'affichage > Poissons qui nagent | `toggle_fish_swim` |  |  |  |
 | Options d'affichage > Reflets des cubemaps | `toggle_cubemaps` |  |  |  |
+| Options d'affichage > Couleurs des objets en 2D | `toggle_object_colors_2d` |  |  |  |
+| Options d'affichage > Couleurs des objets en 3D filaire et plat | `toggle_object_colors_3d` |  |  |  |
 | Options d'affichage > Afficher les clusters visibles | `toggle_pvs` |  |  |  |
 | Options d'affichage > Afficher le nav mesh | `toggle_nav_mesh` |  |  |  |
 | Options d'affichage > Afficher les particules | `toggle_particles` |  |  |  |
@@ -276,6 +283,7 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Outil overlay | `tool_overlay` | `Maj+O` |  |  |
 | Outil de découpe | `tool_clip` | `Maj+X` |  |  |
 | Outil extruder / creuser | `tool_extrude` | `Maj+I` |  |  |
+| Outil biseau | `tool_bevel` | `Maj+J` |  |  |
 | Outil vertex | `tool_vertex` | `Maj+V` |  |  |
 | Outil displacement | `tool_displacement` | `Maj+P` |  |  |
 | Outil polygone | `tool_polygon` | `Maj+N` |  |  |
@@ -322,6 +330,24 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 |---|---|---|---|---|
 | Gizmo en repère local | `toggle_gizmo_local` | `Ctrl+J` |  |  |
 | Créer un brush hint | `make_hint_brush` |  |  |  |
+
+## Touches dans l'outil de découpe
+
+Quand l'outil de découpe est actif, ces touches vont d'abord à l'outil (elles l'emportent sur les raccourcis de la carte qui utilisent la même touche) :
+
+| Touche | Rôle |
+|---|---|
+| `Maj+X` (à nouveau), `Tab`, `Maj+Tab` | Alterner les morceaux conservés : les deux, l'avant, l'arrière. |
+| `Entrée` | Découper. |
+| `Échap` | Effacer les points de découpe. |
+| `C` | Mode trois points dans les vues 2D. |
+| `X` | Alterner l'axe de la coupe `Maj` + clic dans la vue 3D : Auto, X, Y, Z. |
+| `O` | Afficher ou masquer les mesures. |
+| `Maj` + clic (3D) | Plan d'axe passant par le point cliqué. |
+| `Ctrl` + clic (3D) | Plan de la face cliquée. |
+| `Alt` (maintenu) | Sans magnétisme. |
+
+Voir [Outil de découpe](../features/clip-tool.md).
 
 ## Pages liées
 

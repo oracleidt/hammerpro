@@ -94,14 +94,22 @@ impl KeywordIndex {
         let (tx, rx) = std::sync::mpsc::channel();
         let repaint = ctx.clone();
         let spawned = std::thread::Builder::new().name("hp-keyword-index".into()).spawn(move || {
-            let quick = fs.material_keywords_quick();
+            let quick = hp_editor::background::run(|| fs.material_keywords_quick());
             let complete = quick.is_complete();
             if tx.send(quick).is_err() {
                 return;
             }
             repaint.request_repaint();
             if !complete {
-                let _ = tx.send(fs.material_keywords());
+                let start = std::time::Instant::now();
+                let full = hp_editor::background::run(|| fs.material_keywords());
+                log::info!(
+                    "material keywords: {} materials read in {:.1} s, {} with keywords",
+                    full.scanned(),
+                    start.elapsed().as_secs_f64(),
+                    full.len()
+                );
+                let _ = tx.send(full);
                 repaint.request_repaint();
             }
         });

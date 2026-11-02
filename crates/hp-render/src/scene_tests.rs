@@ -441,3 +441,27 @@ fn random_edit_stress_matches_model() {
         }
     }
 }
+
+#[test]
+fn classic_colors_live_in_the_object_state() {
+    let mut s = scene();
+    s.upsert(1, cube([0.0; 3], 64.0, [10, 11]));
+    s.set_classic_color(1, Some([255, 255, 255]));
+    let slot = s.objects[&1].slot as usize;
+    assert_eq!(s.states[slot].color, pack_rgb8([255, 0, 0]));
+    assert_eq!(s.states[slot].classic, pack_rgb8([255, 255, 255]));
+    s.set_flags(1, ObjectFlags::SELECTED);
+    s.set_wire_color(1, [0, 0, 255]);
+    s.set_tint(1, 0x80ff_ffff);
+    assert_eq!(s.states[slot].classic, pack_rgb8([255, 255, 255]), "other writes keep the classic color");
+    assert_eq!(s.wire_color(1), Some(pack_rgb8([0, 0, 255])));
+    assert_eq!(s.classic_color(1), Some(pack_rgb8([255, 255, 255])));
+    s.set_classic_color(1, None);
+    assert_eq!(s.states[slot].classic, 0);
+    s.set_classic_color(1, Some([1, 2, 3]));
+    s.flush(true);
+    s.remove(1);
+    s.flush(true);
+    assert!(!s.objects.contains_key(&1));
+    assert_eq!(s.states[slot].classic, 0, "a freed slot forgets it");
+}

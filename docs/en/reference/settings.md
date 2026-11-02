@@ -2,7 +2,7 @@
 
 # Settings reference
 
-Every option of Hammer Pro 1.0.1 is stored in one TOML file, `settings.toml`, in `%APPDATA%\HammerPro` on Windows (the user configuration folder on other systems). This page lists every table and key of that file, its default value and what it does, with the place in the interface where you change it.
+Every option of Hammer Pro 1.0.2 is stored in one TOML file, `settings.toml`, in `%APPDATA%\HammerPro` on Windows (the user configuration folder on other systems). This page lists every table and key of that file, its default value and what it does, with the place in the interface where you change it.
 
 You normally never edit this file by hand: the [Settings window](../features/settings-dialog.md) (**Tools > Options...**, `Ctrl+,`) and the menus change it, and every change is saved at once. Editing it by hand is safe too:
 
@@ -73,6 +73,7 @@ Mostly on **Settings > Viewports**; the `show_*` toggles are also in the **View*
 | `autosave_keep` | `10` | Autosave copies kept per map. |
 | `arrow_key_nudge` | `true` | The arrow keys nudge the selection in 2D views. |
 | `paste_offset` | `true` | Pasted objects are offset so they do not sit on the originals. |
+| `new_brush_color` | none | Display color `[r, g, b]` given to new brushes; none: Hammer's random default color. |
 | `undo_restores_selection` | `true` | Selection changes are undo steps: `Ctrl+Z` brings back the previous selection (faces included). They never mark the map as modified. |
 
 ## `[ui]`: interface
@@ -334,14 +335,16 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `icons_in_2d` | `true` | Entity icons in 2D views. |
 | `icons_in_2d_px` | `16.0` | Their size in pixels. |
 | `use_visgroup_colors` | `false` | 2D wire colors come from visgroups. |
+| `object_colors_2d` | `true` | 2D views draw objects in their display color (see [Display colors](../features/display-colors.md)); off: the classic look. |
+| `object_colors_3d` | `false` | The 3D view uses the display colors too in wireframe and flat mode. |
 | `highlight_invalid` | `true` | Invalid brushes drawn in red. |
 | `render_effects` | `true` | Preview render amount, mode, color, body groups, animation and scale. |
 | `sky_preview` | `true` | 2D skybox behind the 3D view. |
 | `skybox_3d` | `true` | 3D skybox around `sky_camera` (`Alt+V`). |
 | `sky_see_through` | `false` | Leave `toolsskybox` faces out so the sky shows through. |
 | `water_preview` | `true` | Water drawn like in game. |
-| `fog_preview` | `false` | Preview `env_fog_controller` fog. |
-| `fog_volume_preview` | `true` | Fill `fog_volume` brushes with the fog of their controller; the player view takes it inside them. |
+| `fog_preview` | `true` | Preview the fog of an `env_fog_controller` (Fog Enable, colors, blend, start, end, max density, farz) in the 3D views and the player view. |
+| `fog_volume_preview` | `true` | Outline and fill `fog_volume` brushes with their fog (the controller's, or a default look with a warning label); the player view takes the controller fog inside them. |
 | `fog_volume_texture` | `true` | Draw the material of `fog_volume` brushes in the 3D view. |
 | `fish_preview` | `true` | Draw the fish of `func_fish_pool` entities. |
 | `fish_swim` | `true` | The previewed fish swim. |
@@ -350,6 +353,9 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `cubemaps` | `true` | `$envmap` materials reflect their cubemap. |
 | `cubemaps_auto` | `true` | Cubemaps are drawn again after map changes. |
 | `light_shadows` | `4` | Point and spot lights with shadows in the Lit mode, 0 to 16. |
+| `light_preview_hdr` | `true` | The Lit mode uses the HDR light values (`_lightHDR`, `_lightscaleHDR`, `_ambientHDR`, `_AmbientScaleHDR`). |
+| `sky_occlusion` | `true` | In the Lit mode the `_ambient` sky light only reaches what sees the sky. |
+| `prop_shadows` | `"Auto"` | What `prop_static` entities cast shadows with in the Lit mode: `Auto` follows the compile (model triangles with `-StaticPropPolys`, collision model otherwise, none with `-nostaticpropshadows`), `Mesh` the model triangles, `Collision` the collision model. |
 | `animate_materials` | `true` | Animated materials and sprites play. |
 | `model_fade` | `false` | Props fade between their fade distances. |
 | `force_opaque` | `false` | Translucent materials drawn opaque. |
@@ -372,6 +378,8 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `max_fps` | `0` | Frame rate cap (0: none). |
 | `unfocused_fps` | `30` | Frame rate when the window is not focused (0: no cap). |
 | `vsync` | `true` | Wait for the display refresh (after a restart). |
+| `vram_budget_mb` | `0` | Graphics memory Hammer Pro may use, in MB (0: automatic, 90% of what the system gives the program). Above 85% the maps of other tabs are freed from the graphics card, above the budget textures are shown at a lower resolution. See [Out of memory](../troubleshooting/out-of-memory.md). |
+| `keep_background_maps_on_gpu` | `true` | Keep the maps of other tabs on the graphics card while there is room, for instant tab switches. |
 
 ## `[lighting]`
 

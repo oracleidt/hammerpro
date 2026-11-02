@@ -8,7 +8,6 @@ use hp_editor::FaceRef;
 use hp_geom::{DispMesh, SolidGeom};
 use hp_render::{Overlay, OverlayLine, OverlayTri};
 
-pub(crate) const LIFT: f64 = 0.15;
 const QUANT: f64 = 256.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -124,34 +123,26 @@ fn build_3d(state: &AppState, faces: &[FaceRef], style: MaskStyle) -> MaskGeom {
         for shape in shapes {
             if let Some(fill) = fill {
                 match shape {
-                    FaceShape::Polygon { vertices, normal } => {
-                        let lift = *normal * LIFT;
-                        let a = f32x3(vertices[0] + lift);
+                    FaceShape::Polygon { vertices, .. } => {
+                        let a = f32x3(vertices[0]);
                         out.tris.extend(
                             vertices
                                 .windows(2)
                                 .skip(1)
-                                .map(|w| OverlayTri { p: [a, f32x3(w[0] + lift), f32x3(w[1] + lift)], color: fill }),
+                                .map(|w| OverlayTri { p: [a, f32x3(w[0]), f32x3(w[1])], color: fill }),
                         );
                     }
-                    FaceShape::Disp { mesh, normal } => {
-                        let lifted = |i: u32| {
-                            let i = i as usize;
-                            let n = mesh.normals.get(i).copied().unwrap_or(*normal);
-                            mesh.positions.get(i).map(|q| f32x3(*q + n * LIFT))
-                        };
+                    FaceShape::Disp { mesh, .. } => {
+                        let lifted = |i: u32| mesh.positions.get(i as usize).map(|q| f32x3(*q));
                         out.tris.extend(mesh.indices.chunks_exact(3).filter_map(|tri| {
                             Some(OverlayTri { p: [lifted(tri[0])?, lifted(tri[1])?, lifted(tri[2])?], color: fill })
                         }));
                     }
                 }
             }
-            if let FaceShape::Disp { mesh, normal } = shape {
+            if let FaceShape::Disp { mesh, .. } = shape {
                 let grid = [style.line[0], style.line[1], style.line[2], style.line[3] * 0.5];
-                let lifted = |i: usize| {
-                    let n = mesh.normals.get(i).copied().unwrap_or(*normal);
-                    mesh.positions.get(i).map(|q| f32x3(*q + n * LIFT))
-                };
+                let lifted = |i: usize| mesh.positions.get(i).map(|q| f32x3(*q));
                 let mut seen: ahash::AHashSet<(u32, u32)> = ahash::AHashSet::new();
                 for tri in mesh.indices.chunks_exact(3) {
                     for (a, b) in [(tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])] {
@@ -171,9 +162,10 @@ fn build_3d(state: &AppState, faces: &[FaceRef], style: MaskStyle) -> MaskGeom {
                 }
             });
         }
-        out.lines.extend(edges.iter().map(|(_, a, b, n)| {
-            let lift = n.try_normalize().unwrap_or(DVec3::ZERO) * LIFT;
-            OverlayLine { a: f32x3(*a + lift), b: f32x3(*b + lift), color: style.line }
+        out.lines.extend(edges.iter().map(|(_, a, b, _)| OverlayLine {
+            a: f32x3(*a),
+            b: f32x3(*b),
+            color: style.line,
         }));
     });
     out
@@ -325,9 +317,8 @@ impl MaskCache {
 
 pub(crate) fn face_outline(state: &AppState, face: FaceRef, color: [f32; 4], on_top: bool, out: &mut Overlay) {
     for_each_shape(state, &[face], |shape| {
-        outline(&shape, |a, b, n| {
-            let lift = n * LIFT;
-            let l = OverlayLine { a: f32x3(a + lift), b: f32x3(b + lift), color };
+        outline(&shape, |a, b, _| {
+            let l = OverlayLine { a: f32x3(a), b: f32x3(b), color };
             if on_top { out.lines_on_top.push(l) } else { out.lines.push(l) }
         });
     });

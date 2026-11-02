@@ -245,11 +245,18 @@ pub(crate) struct Exposure {
     pipeline: OnceLock<(wgpu::ComputePipeline, wgpu::BindGroupLayout)>,
     bins: OnceLock<(wgpu::Buffer, wgpu::Buffer)>,
     pending: std::sync::atomic::AtomicBool,
+    inflight: Option<(std::sync::Arc<std::sync::atomic::AtomicU8>, wgpu::SubmissionIndex)>,
 }
 
 impl Default for Exposure {
     fn default() -> Self {
-        Self { scale: 1.0, pipeline: OnceLock::new(), bins: OnceLock::new(), pending: Default::default() }
+        Self {
+            scale: 1.0,
+            pipeline: OnceLock::new(),
+            bins: OnceLock::new(),
+            pending: Default::default(),
+            inflight: None,
+        }
     }
 }
 
@@ -345,6 +352,10 @@ const TARGET: f32 = 0.7;
 const EXPOSURE_MIN: f32 = 0.5;
 const EXPOSURE_MAX: f32 = 2.0;
 const EXPOSURE_TIME: f32 = 1.0;
+const EXPOSURE_WAIT: std::time::Duration = std::time::Duration::from_millis(50);
+const MAP_WAITING: u8 = 0;
+const MAP_OK: u8 = 1;
+const MAP_FAILED: u8 = 2;
 
 pub(crate) fn exposure_target(bins: &[u32], current: f32) -> f32 {
     let total: u64 = bins.iter().map(|b| u64::from(*b)).sum();
@@ -378,6 +389,7 @@ const SHADER: &str = concat!(
 
 const ATLAS_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 const TEXEL_BYTES: u32 = 8;
+const UPLOAD_BAND_BYTES: usize = 32 << 20;
 const MAX_PAGE: u32 = 4096;
 const PAD: u32 = 1;
 
@@ -549,26 +561,50 @@ impl Renderer {
                 }
             }
         }
-        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("hp-render compiled lightmaps"),
-            size: wgpu::Extent3d { width: page, height: page, depth_or_array_layers: layers },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: ATLAS_FORMAT,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
+        let (texture, oom) = crate::memory::guarded(&self.device, || {
+            self.device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("hp-render compiled lightmaps"),
+                size: wgpu::Extent3d { width: page, height: page, depth_or_array_layers: layers },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: ATLAS_FORMAT,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            })
         });
-        self.queue.write_texture(
-            texture.as_image_copy(),
-            bytemuck::cast_slice(&data),
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(page * TEXEL_BYTES),
-                rows_per_image: Some(page),
-            },
-            wgpu::Extent3d { width: page, height: page, depth_or_array_layers: layers },
-        );
+        if oom {
+            return CompiledLightStats { lightmaps: 0, dropped: stats.lightmaps + stats.dropped, ..stats };
+        }
+        let row_bytes = page as usize * TEXEL_BYTES as usize;
+        let band = ((UPLOAD_BAND_BYTES / row_bytes.max(1)).max(1) as u32).min(page);
+        let all: &[u8] = bytemuck::cast_slice(&data);
+        for layer in 0..layers {
+            let mut y = 0;
+            while y < page {
+                let rows = band.min(page - y);
+                let start = (layer as usize * page as usize + y as usize) * row_bytes;
+                let Some(chunk) = all.get(start..start + rows as usize * row_bytes) else { break };
+                self.queue.write_texture(
+                    wgpu::TexelCopyTextureInfo {
+                        texture: &texture,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d { x: 0, y, z: layer },
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    chunk,
+                    wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(page * TEXEL_BYTES),
+                        rows_per_image: Some(rows),
+                    },
+                    wgpu::Extent3d { width: page, height: rows, depth_or_array_layers: 1 },
+                );
+                self.queue.submit([]);
+                y += rows;
+            }
+        }
+        drop(data);
         let atlas_bytes = u64::from(page) * u64::from(page) * u64::from(layers) * u64::from(TEXEL_BYTES);
         let inv = 1.0 / page as f32;
         let style_of: Vec<(u32, f32, u32)> = lightmaps
@@ -800,25 +836,41 @@ impl Renderer {
     }
 
     fn read_histogram(&mut self) -> Option<Vec<u32>> {
-        let ex = &self.compiled.exposure;
-        if !ex.pending.swap(false, std::sync::atomic::Ordering::Relaxed) {
+        if self.compiled.exposure.inflight.is_none() {
+            let ex = &self.compiled.exposure;
+            if !ex.pending.swap(false, std::sync::atomic::Ordering::Relaxed) {
+                return None;
+            }
+            let (bins, readback) = ex.bins.get()?;
+            let mut enc = self
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("hp-render exposure") });
+            enc.copy_buffer_to_buffer(bins, 0, readback, 0, (BINS * 4) as u64);
+            let index = self.queue.submit([enc.finish()]);
+            let state = std::sync::Arc::new(std::sync::atomic::AtomicU8::new(MAP_WAITING));
+            let done = state.clone();
+            readback.slice(..).map_async(wgpu::MapMode::Read, move |r| {
+                done.store(if r.is_ok() { MAP_OK } else { MAP_FAILED }, std::sync::atomic::Ordering::Release);
+            });
+            self.compiled.exposure.inflight = Some((state, index));
+        }
+        let (state, index) = self.compiled.exposure.inflight.as_ref()?;
+        let _ = self
+            .device
+            .poll(wgpu::PollType::Wait { submission_index: Some(index.clone()), timeout: Some(EXPOSURE_WAIT) });
+        let mapped = match state.load(std::sync::atomic::Ordering::Acquire) {
+            MAP_WAITING => return None,
+            s => s == MAP_OK,
+        };
+        self.compiled.exposure.inflight = None;
+        if !mapped {
             return None;
         }
-        let (bins, readback) = ex.bins.get()?;
-        let mut enc =
-            self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("hp-render exposure") });
-        enc.copy_buffer_to_buffer(bins, 0, readback, 0, (BINS * 4) as u64);
-        self.queue.submit([enc.finish()]);
-        let slice = readback.slice(..);
-        let (tx, rx) = std::sync::mpsc::channel();
-        slice.map_async(wgpu::MapMode::Read, move |r| {
-            let _ = tx.send(r.is_ok());
-        });
-        let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
-        if !rx.recv().unwrap_or(false) {
-            return None;
-        }
-        let out = slice.get_mapped_range().ok().map(|data| bytemuck::cast_slice::<u8, u32>(&data).to_vec());
+        let (_, readback) = self.compiled.exposure.bins.get()?;
+        let out = match readback.slice(..).get_mapped_range() {
+            Ok(data) => Some(bytemuck::cast_slice::<u8, u32>(&data).to_vec()),
+            Err(_) => return None,
+        };
         readback.unmap();
         out
     }

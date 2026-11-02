@@ -1467,7 +1467,13 @@ fn snap_reference(state: &AppState, objs: &[ObjRef], bounds: &Aabb) -> DVec3 {
     single_point_entity_origin(state, objs).unwrap_or(bounds.min)
 }
 
-fn cycle_continues(cycle: Option<&ClickCycle>, state: &AppState, view: &ViewInfo, pos: Pos2, cands: &[Vec<ObjRef>]) -> bool {
+fn cycle_continues(
+    cycle: Option<&ClickCycle>,
+    state: &AppState,
+    view: &ViewInfo,
+    pos: Pos2,
+    cands: &[Vec<ObjRef>],
+) -> bool {
     let Some(c) = cycle else { return false };
     if cands.len() < 2 || c.view != view.index || (c.pos - pos).length() > CYCLE_SLOP || c.candidates != cands {
         return false;

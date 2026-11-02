@@ -497,7 +497,13 @@ pub(crate) fn prepare_snapshot(mut input: SnapshotInput) -> SnapshotOutput {
         return fail(messages, t!("compile.err_no_steps").to_owned());
     }
     if let Some(profile) = &external {
-        plan = match super::compilers::external_plan(plan, profile, &settings, &tools, plan::effective_lighting(&settings)) {
+        plan = match super::compilers::external_plan(
+            plan,
+            profile,
+            &settings,
+            &tools,
+            plan::effective_lighting(&settings),
+        ) {
             Ok(p) => p,
             Err(e) => return fail(messages, e),
         };

@@ -93,7 +93,9 @@ impl Branch {
                 disp_multiblend_lump: Some(crate::header::lump::DISP_MULTIBLEND),
                 ..base
             },
-            Branch::Source2013 => BspFormat { disp_multiblend_lump: Some(crate::header::lump::DISP_MULTIBLEND), ..base },
+            Branch::Source2013 => {
+                BspFormat { disp_multiblend_lump: Some(crate::header::lump::DISP_MULTIBLEND), ..base }
+            }
             Branch::Source2007 => BspFormat { static_props: StaticPropFormat::V6, ..base },
             Branch::BlackMesa => BspFormat { static_props: StaticPropFormat::V11BlackMesa, ..base },
             Branch::TheShip => BspFormat { static_props: StaticPropFormat::V5Ship, ..base },

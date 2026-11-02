@@ -10,7 +10,9 @@ Hammer Pro protects your work in several ways:
 
 - **Emergency save.** When the editor catches a crash of its frame, it writes an emergency save of the modified map next to the autosaves (`%LOCALAPPDATA%\HammerPro\autosave\`) and records it in the crash report.
 - **Crash report.** A crash of the main thread writes a report (message, location, thread, backtrace and the last lines of the log) to `%APPDATA%\HammerPro\crash\`.
-- **Runs that end without a word.** A crash of the graphics driver, an allocation failure, a stack overflow or a killed process cannot write anything at that moment. Each run leaves a marker in the crash folder that a normal close removes; on the next start, a marker left by a dead process becomes a report with the end of the previous run's log.
+- **Native crashes.** A crash outside Rust code (an access violation in the graphics driver, a stack overflow) writes a report too, with the exception, the module it happened in (for example `nvoglv64.dll+0x1234`) and the last lines of the log. When it happens in a background thread, Hammer Pro first saves the modified maps (it waits up to 10 seconds for that).
+- **Out of memory.** Hammer Pro keeps a reserve of memory: when the computer runs out, the reserve is given back, the modified maps are saved and a message asks you to free memory. An allocation that still fails writes a report ("memory allocation of N bytes failed"). See [Out of memory](out-of-memory.md).
+- **Runs that end without a word.** A killed process, or a crash so deep that even the report cannot be written, leaves nothing at that moment. Each run leaves a marker in the crash folder that a normal close removes; on the next start, a marker left by a dead process becomes a report with the end of the previous run's log.
 
 On the next start, the window **Hammer Pro closed unexpectedly** shows the **Report file:** path and these buttons:
 
@@ -35,13 +37,15 @@ Independently of crashes, Hammer Pro saves modified maps in the background every
 | `%LOCALAPPDATA%\HammerPro\logs\hammerpro.log` | The current run, written line by line (it survives an abort). |
 | `%LOCALAPPDATA%\HammerPro\logs\hammerpro.old.log` | The previous run. |
 
-The log holds the English diagnostics of the libraries (mount timings, file counts, the graphics adapter chosen) as well as every warning and error. Warnings and errors also appear in the **console** panel (`` ` ``), translated.
+The log holds the English diagnostics of the libraries (mount timings, file counts, the graphics adapter chosen, the graphics memory budget) as well as every warning and error. Warnings and errors also appear in the **console** panel (`` ` ``), translated.
+
+A message repeated in a burst is written 5 times per 10 seconds at most; the next one written says how many similar messages were hidden. Writing to the log never stops Hammer Pro, even when its output is closed.
 
 ## Graphics problems
 
 ### Graphics errors and lost device
 
-A graphics error of one frame (validation, out of memory, often a driver problem) no longer closes the editor: the frame is skipped and the console shows "Graphics error (one frame was skipped): ..." once (further ones are counted, details in the log file). When the graphics device is lost (driver reset, GPU removed), Hammer Pro saves the modified maps next to the autosaves and asks you to restart.
+A graphics error of one frame (validation, often a driver problem) no longer closes the editor: the frame is skipped and the console shows "Graphics error (one frame was skipped): ..." once (further ones are counted, details in the log file). An out of memory error makes Hammer Pro free graphics memory at once, see [Out of memory](out-of-memory.md). When the graphics device is lost (driver reset, GPU removed), Hammer Pro writes a report, saves the modified maps next to the autosaves and offers to restart with all your tabs opened again, see [Graphics device lost](graphics-device-lost.md).
 
 ### Choosing the graphics API
 
@@ -78,6 +82,8 @@ If Hammer Pro misbehaves after a settings change, close it and rename `%APPDATA%
 
 ## Related pages
 
+- [Out of memory](out-of-memory.md)
+- [Graphics device lost](graphics-device-lost.md)
 - [Autosave and crash recovery](../features/autosave-crash.md)
 - [Window frames](../features/window-frames.md)
 - [Reporting bugs](reporting-bugs.md)

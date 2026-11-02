@@ -260,6 +260,35 @@ pub fn action_button(ui: &mut Ui, label: &str, shortcut: Option<&egui::KeyboardS
     ui.add_enabled(enabled, b).clicked()
 }
 
+pub fn model_lod_ui(ui: &mut Ui, lod: &mut crate::settings::ModelLodSettings) -> bool {
+    use crate::settings::ModelLodSettings as L;
+    let mut changed =
+        ui.checkbox(&mut lod.enabled, t!("lab.lod.enabled")).on_hover_text(t!("lab.lod.enabled_tip")).changed();
+    ui.add_enabled_ui(lod.enabled, |ui| {
+        ui.horizontal(|ui| {
+            ui.label(t!("lab.lod.levels"));
+            changed |= ui
+                .add(egui::DragValue::new(&mut lod.levels).range(L::MIN_LEVELS..=L::MAX_LEVELS))
+                .on_hover_text(t!("lab.lod.levels_tip"))
+                .changed();
+            ui.label(t!("lab.lod.reduction"));
+            let mut percent = (lod.reduction * 100.0).round();
+            if ui
+                .add(egui::DragValue::new(&mut percent).range(20.0..=90.0).suffix(" %"))
+                .on_hover_text(t!("lab.lod.reduction_tip"))
+                .changed()
+            {
+                lod.reduction = percent / 100.0;
+                changed = true;
+            }
+        });
+    });
+    if changed {
+        *lod = lod.clamped();
+    }
+    changed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -364,33 +393,4 @@ mod tests {
             vec3_edit(ui, &mut v, 1.0);
         });
     }
-}
-
-pub fn model_lod_ui(ui: &mut Ui, lod: &mut crate::settings::ModelLodSettings) -> bool {
-    use crate::settings::ModelLodSettings as L;
-    let mut changed =
-        ui.checkbox(&mut lod.enabled, t!("lab.lod.enabled")).on_hover_text(t!("lab.lod.enabled_tip")).changed();
-    ui.add_enabled_ui(lod.enabled, |ui| {
-        ui.horizontal(|ui| {
-            ui.label(t!("lab.lod.levels"));
-            changed |= ui
-                .add(egui::DragValue::new(&mut lod.levels).range(L::MIN_LEVELS..=L::MAX_LEVELS))
-                .on_hover_text(t!("lab.lod.levels_tip"))
-                .changed();
-            ui.label(t!("lab.lod.reduction"));
-            let mut percent = (lod.reduction * 100.0).round();
-            if ui
-                .add(egui::DragValue::new(&mut percent).range(20.0..=90.0).suffix(" %"))
-                .on_hover_text(t!("lab.lod.reduction_tip"))
-                .changed()
-            {
-                lod.reduction = percent / 100.0;
-                changed = true;
-            }
-        });
-    });
-    if changed {
-        *lod = lod.clamped();
-    }
-    changed
 }

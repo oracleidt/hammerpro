@@ -126,7 +126,7 @@ pub fn unexpected_end_text(previous_log: Option<&str>) -> String {
             let lines: Vec<&str> = log.lines().collect();
             for line in &lines[lines.len().saturating_sub(LOG_TAIL)..] {
                 out.push_str(line);
-                out.push_str("\n");
+                out.push('\n');
             }
         }
         None => out.push_str("(no log file)\n"),
@@ -184,6 +184,12 @@ pub fn write_device_lost_report(dir: &Path, reason: &str) -> std::io::Result<Pat
     Ok(path)
 }
 
+pub fn remember_report(path: &Path) {
+    if let Ok(mut last) = LAST_REPORT.lock() {
+        *last = Some(path.to_path_buf());
+    }
+}
+
 pub fn last_report() -> Option<PathBuf> {
     LAST_REPORT.lock().ok().and_then(|r| r.clone())
 }
@@ -200,8 +206,14 @@ fn panic_message(info: &std::panic::PanicHookInfo<'_>) -> String {
 }
 
 pub fn install_hook() {
+    crate::native_crash::install(Settings::crash_dir());
+    install_hook_in(Settings::crash_dir());
+}
+
+pub fn install_hook_in(dir: PathBuf) {
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
+        use std::io::Write as _;
         previous(info);
         if IN_HOOK.with(|h| h.replace(true)) {
             return;
@@ -212,20 +224,22 @@ pub fn install_hook() {
         let location = info.location().map(|l| l.to_string()).unwrap_or_default();
         if name == "main" {
             let backtrace = std::backtrace::Backtrace::force_capture().to_string();
-            let text = report_text(&message, &location, &name, &backtrace, &crate::logger::recent_lines());
-            match write_report(&Settings::crash_dir(), &text) {
+            let text = report_text(&message, &location, &name, &backtrace, &crate::logger::recent_lines_in_hook());
+            match write_report(&dir, &text) {
                 Ok(path) => {
-                    eprintln!("crash report written to {}", path.display());
+                    let _ = writeln!(std::io::stderr(), "crash report written to {}", path.display());
                     if let Ok(mut last) = LAST_REPORT.lock() {
                         *last = Some(path);
                     }
                 }
-                Err(e) => eprintln!("cannot write the crash report: {e}"),
+                Err(e) => {
+                    let _ = writeln!(std::io::stderr(), "cannot write the crash report: {e}");
+                }
             }
         } else if WORKER_REPORTS.fetch_add(1, Ordering::Relaxed) < MAX_WORKER_REPORTS {
             let backtrace = std::backtrace::Backtrace::force_capture().to_string();
-            let text = report_text(&message, &location, &name, &backtrace, &crate::logger::recent_lines());
-            match write_worker_report(&Settings::crash_dir(), &text) {
+            let text = report_text(&message, &location, &name, &backtrace, &crate::logger::recent_lines_in_hook());
+            match write_worker_report(&dir, &text) {
                 Ok(path) => {
                     log::error!("panic in thread {name} at {location}: {message} (report: {})", path.display())
                 }
@@ -310,6 +324,59 @@ mod tests {
         let text = read_report(&report).unwrap();
         assert!(text.contains("the graphics device was lost: Unknown: driver reset"), "{text}");
         assert_eq!(take_pending(&dir).map(|p| p.report), Some(report));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    const HOOK_CHILD_DIR: &str = "HP_CRASH_HOOK_CHILD_DIR";
+
+    #[test]
+    #[ignore = "run in a child process by panics_in_any_thread_leave_reports_even_with_stderr_closed"]
+    fn panic_hook_child() {
+        let Some(dir) = std::env::var_os(HOOK_CHILD_DIR) else { return };
+        install_hook_in(PathBuf::from(dir));
+        let spawn = |name: &str, message: &'static str| {
+            std::thread::Builder::new().name(name.to_owned()).spawn(move || panic!("{message}")).unwrap()
+        };
+        assert!(spawn("hp-worker-test", "worker boom").join().is_err());
+        assert!(spawn("main", "main boom").join().is_err());
+        let _ = std::panic::take_hook();
+    }
+
+    #[test]
+    fn panics_in_any_thread_leave_reports_even_with_stderr_closed() {
+        let dir = std::env::temp_dir().join(format!("hammerpro_crash_hook_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (reader, writer) = std::io::pipe().unwrap();
+        drop(reader);
+        let out = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "crash::tests::panic_hook_child", "--ignored", "--nocapture", "--test-threads", "1"])
+            .env(HOOK_CHILD_DIR, &dir)
+            .stdin(std::process::Stdio::null())
+            .stderr(writer)
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            out.status.success(),
+            "the hook must not abort the process: {:?}
+{stdout}",
+            out.status
+        );
+        assert!(stdout.contains("1 passed"), "{stdout}");
+        let reports: Vec<String> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|e| e.path())
+            .filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("crash-")))
+            .filter_map(|p| read_report(&p))
+            .collect();
+        assert!(
+            reports.iter().any(|r| r.contains("thread: hp-worker-test") && r.contains("message: worker boom")),
+            "{reports:?}"
+        );
+        assert!(reports.iter().any(|r| r.contains("thread: main") && r.contains("message: main boom")), "{reports:?}");
+        let pending = take_pending(&dir).expect("a main thread panic is offered at the next start");
+        assert!(read_report(&pending.report).is_some_and(|r| r.contains("main boom")));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

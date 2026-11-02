@@ -39,7 +39,7 @@ Comment garder des compilations rapides pendant que vous itérez, et ce qui pren
 | Visibilité complète (`-vis`) sur les grandes maps ouvertes | Passez les petites brushes et les décors en `func_detail` (les statistiques les nomment), ajoutez des brushes hint et des areaportals, utilisez `-radius_override` ou un `farz` de brouillard en extérieur. `-fulldetail` la ralentit. |
 | `-final` (plus de rayons du ciel et indirects) | Nécessaire pour la qualité finale ; `-extrasky` ajoute encore des rayons. |
 | Les deux plages dynamiques | Final calcule toujours LDR et HDR (deux passes). |
-| `-StaticPropLighting` | Chaque sommet de chaque prop statique est éclairé ; lent sur les grandes maps. Décocher **Éclairer les props statiques (par sommet)** l'évite. `-staticpropsamplescale` réduit ses rayons. |
+| `-StaticPropLighting` | Chaque sommet de chaque prop statique est éclairé (ciel et lumière rebondie une fois par petit groupe de sommets) ; l'étape la plus longue sur les maps avec des milliers de props détaillés. Décocher **Éclairer les props statiques (par sommet)** l'évite. `-staticpropsamplescale` réduit ses rayons. |
 | Occlusion ambiante | `-aosamples` (32 par défaut, 64 avec `-final`) règle ses rayons ; `-noao` ou `_ao 0` la désactive. |
 | `-StaticPropPolys`, `-textureshadows` | Ombres de props plus fines, plus lentes. |
 | Résolution des lightmaps | Augmentez l'échelle de lightmap des grandes faces ou de celles qu'on ne voit pas (16 ou plus) ; les statistiques listent les faces et matériaux avec le plus de luxels. `-luxeldensity` sous 1 rend toutes les lightmaps plus grossières. |

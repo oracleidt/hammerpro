@@ -107,7 +107,7 @@ Tokens are replaced in the arguments and the program (case insensitive; unknown 
 
 ## Log, Statistics, History
 
-- **Log**: the live log of every step with progress bars and step status (Waiting, Running, Done, Failed, Skipped, The map leaks). Click a step to show only its log. Filters **Show information lines**, **Show warnings**, **Show errors**, **Search the log**, **Auto-scroll**, **Copy the whole log**. Errors and warnings with a place are clickable (brush, face, entity, position) and known problems have an explanation and a button (**Help**, **Go to**, **Leak path**, **Check**). See [Limits and logs](limits-and-logs.md).
+- **Log**: the live log of every step with progress bars (the lighting step shows its stage, the stage percentage and the time left) and step status (Waiting, Running, Done, Failed, Skipped, The map leaks). Click a step to show only its log. Filters **Show information lines**, **Show warnings**, **Show errors**, **Search the log**, **Auto-scroll**, **Copy the whole log**. Errors and warnings with a place are clickable (brush, face, entity, position) and known problems have an explanation and a button (**Help**, **Go to**, **Leak path**, **Check**). See [Limits and logs](limits-and-logs.md).
 - **Statistics**: limits, brushes, visibility, lighting, stage times and optimization hints read from the log, each item with a **Go to** button. See [Limits and logs](limits-and-logs.md).
 - **History**: the time of every step of the past compiles of the map (When, Preset, each step, Total, Clusters, portals) with sparklines. A step much slower than usual gets a warning in the log.
 

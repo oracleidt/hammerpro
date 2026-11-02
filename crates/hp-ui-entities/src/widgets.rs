@@ -160,20 +160,14 @@ impl TextBuffers {
             }
         }
         let escape = escape_pressed(ui.ctx());
-        if resp.lost_focus() && self.is_editing(id) {
-            if let Some(a) = self.active.take()
-                && !escape
-                && a.text != a.original
-            {
-                self.pending.push((a.action, a.text));
-            }
-        } else if self.is_editing(id) && !resp.has_focus() && !ui.memory(|m| m.has_focus(id)) {
-            if let Some(a) = self.active.take()
-                && !escape
-                && a.text != a.original
-            {
-                self.pending.push((a.action, a.text));
-            }
+        let left = (resp.lost_focus() && self.is_editing(id))
+            || (self.is_editing(id) && !resp.has_focus() && !ui.memory(|m| m.has_focus(id)));
+        if left
+            && let Some(a) = self.active.take()
+            && !escape
+            && a.text != a.original
+        {
+            self.pending.push((a.action, a.text));
         }
         resp
     }

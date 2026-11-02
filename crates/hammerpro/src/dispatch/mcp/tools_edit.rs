@@ -69,12 +69,16 @@ domain! { "editing";
             "align": boolean("Turn objects to the surface normal (default false)."),
         }, [];
     clip_brushes: Destructive, "Clip brushes",
-        "Cut solids with a plane through three points (clockwise seen from the front side gives the outward \
-        normal like VMF planes) or a normal and a distance. Keep the front, the back or both pieces.",
+        "Cut solids with a plane (the clip tool, Shift+X, in 2D or 3D) through three points (clockwise seen from \
+        the front side gives the outward normal like VMF planes), a point and a normal, or a normal and a \
+        distance. The front is the side the normal points to. Keep the front, the back or both pieces. Brush \
+        entity solids keep their entity, textures are kept, a cut that would leave a piece thinner than 0.25 unit \
+        leaves the solid alone, and the whole clip is one undo step. Answers the ids of the resulting solids.",
         {
             "ids": target_ids(), "solid_ids": target_solid_ids(),
             "points": { "type": "array", "items": vec3("Point."), "minItems": 3, "maxItems": 3, "description": "Three points of the plane." },
-            "normal": vec3("Plane normal (with distance)."),
+            "point": vec3("A point of the plane (with normal)."),
+            "normal": vec3("Plane normal (with point or distance)."),
             "distance": number("Plane distance from the origin along the normal.", -262144.0, 262144.0),
             "keep": choice("Pieces kept (default both).", &["front", "back", "both"]),
             "cap_material": string("Material of the cut faces (default: the closest face's)."),
@@ -101,6 +105,33 @@ domain! { "editing";
             "new_faces": choice("Texture of the new faces (default face).", &["face", "current"]),
             "material": string("Material of the new faces (instead of new_faces)."),
         }, ["solid", "side", "points"];
+    get_brush_edges: Read, "Brush edges",
+        "The edges of a solid as numbered [a, b] point pairs (the edge indices bevel_edges takes), with their length.",
+        { "solid": integer("Solid id.", 1, i64::from(u32::MAX)) }, ["solid"];
+    bevel_edges: Destructive, "Bevel edges",
+        "Round or chamfer brush edges (the bevel tool, Shift+J, or Ctrl+B on an edge in the 3D view). Each edge is \
+        an index from get_brush_edges or two points [[x, y, z], [x, y, z]] at its ends, on solid; several edges \
+        (up to 64, on one or several solids as {solid, edge} or {solid, a, b} objects) get the same radius. The \
+        outward bevel cuts the edge with segments planes and keeps one convex brush (segments 1: a flat \
+        chamfer). inverse makes it concave: it carves a cove into the edge (the brush is split into convex \
+        pieces), or, when the edge meets another brush at an inner corner (a doorway top, a wall on a floor), it \
+        fills that corner with a concave round made of new brushes in the same owner (two corners of a doorway \
+        make an arch). The radius is limited to what the faces around the edge allow and segments shorter than \
+        half a unit are merged; the answer gives the radius and segments used. The kept faces keep their textures \
+        and alignment; the rounded faces get the texture of a face next to the edge wrapped around the whole round \
+        (new_faces face), the current material (new_faces current) or material. One undo step, the result is \
+        selected. dry_run answers the radius, segments, largest radius and kinds without changing the map.",
+        {
+            "solid": integer("Solid id of the edges given as indices or points.", 1, i64::from(u32::MAX)),
+            "edge": { "description": "One edge: an index from get_brush_edges or [[x, y, z], [x, y, z]]." },
+            "edges": { "type": "array", "maxItems": 64, "description": "Edges: indices, [[x, y, z], [x, y, z]] pairs, or {solid, edge} / {solid, a, b} objects." },
+            "radius": number("Radius in units (default 16).", 0.25, 16384.0),
+            "segments": integer("Faces of the rounding, 1 (chamfer) to 32 (default 4).", 1, 32),
+            "inverse": boolean("Concave bevel: cove or inner corner fill (default false)."),
+            "new_faces": choice("Texture of the rounded faces (default face).", &["face", "current"]),
+            "material": string("Material of the rounded faces (instead of new_faces)."),
+            "dry_run": boolean("Only answer what the bevel would do (default false)."),
+        }, [];
     hollow: Destructive, "Make hollow",
         "Turn solids into rooms with walls of a thickness (negative: walls outside). The walls of each solid are \
         grouped and selected.",
@@ -586,11 +617,15 @@ fn clip_brushes(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
             hp_geom::Plane::from_points(pts[0], pts[1], pts[2]).ok_or("the three points are on one line")?
         }
         (None, Some(n)) => {
-            let d = a.opt_f64("distance", -262144.0, 262144.0)?.ok_or("distance is required with normal")?;
             let n = n.try_normalize().ok_or("normal must not be zero")?;
-            hp_geom::Plane::new(n, d).ok_or("invalid plane")?
+            match (a.opt_vec3("point")?, a.opt_f64("distance", -262144.0, 262144.0)?) {
+                (Some(_), Some(_)) => return Err("give point or distance with normal, not both".to_owned()),
+                (Some(p), None) => hp_geom::Plane::from_normal_point(n, p).ok_or("invalid plane")?,
+                (None, Some(d)) => hp_geom::Plane::new(n, d).ok_or("invalid plane")?,
+                (None, None) => return Err("give point or distance with normal".to_owned()),
+            }
         }
-        _ => return Err("give points, or normal and distance".to_owned()),
+        _ => return Err("give points, a point and a normal, or a normal and a distance".to_owned()),
     };
     let keep = match a.opt_enum("keep", &["front", "back", "both"])?.as_deref() {
         Some("front") => ClipKeep::Front,
@@ -653,6 +688,135 @@ fn extrude_face(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
         "solid_ids": ids,
         "mode": mode.id(),
         "brushes": ids.len(),
+        "bounds": bounds_json(bounds),
+    })))
+}
+
+fn get_brush_edges(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
+    let id = solid_id(&state.doc, a, "solid")?;
+    let n = state.doc.scene().solid(id).filter(|n| n.geom.valid).ok_or("the solid has no valid geometry")?;
+    let edges: Vec<Value> = n
+        .geom
+        .edges()
+        .iter()
+        .enumerate()
+        .map(|(i, [p, q])| json!({ "index": i, "a": v3(*p), "b": v3(*q), "length": p.distance(*q) }))
+        .collect();
+    Ok(ToolResult::json(json!({ "solid": id, "edges": edges })))
+}
+
+const MAX_BEVEL_EDGES: usize = 64;
+
+fn edge_pair(v: &Value) -> Option<[DVec3; 2]> {
+    let list = v.as_array().filter(|l| l.len() == 2)?;
+    let point = |p: &Value| -> Option<DVec3> {
+        let c: Vec<f64> = p.as_array().filter(|c| c.len() == 3)?.iter().filter_map(Value::as_f64).collect();
+        (c.len() == 3 && c.iter().all(|x| super::tools::coord_ok(*x))).then(|| DVec3::new(c[0], c[1], c[2]))
+    };
+    Some([point(&list[0])?, point(&list[1])?])
+}
+
+fn indexed_edge(state: &AppState, solid: u32, v: &Value) -> R<hp_editor::EdgeRef> {
+    let n = state.doc.scene().solid(solid).ok_or_else(|| format!("no solid has the id {solid}"))?;
+    let edges = if n.geom.valid { n.geom.edges() } else { Vec::new() };
+    let i = v.as_u64().map(|i| i as usize).filter(|i| *i < edges.len());
+    let i = i.ok_or_else(|| format!("solid {solid} has {} edges (0 to {})", edges.len(), edges.len().max(1) - 1))?;
+    Ok(hp_editor::EdgeRef::new(solid, edges[i][0], edges[i][1]))
+}
+
+fn bevel_edge_item(state: &AppState, solid: Option<u32>, v: &Value) -> R<hp_editor::EdgeRef> {
+    let bad = "each edge is an index, [[x, y, z], [x, y, z]], {solid, edge} or {solid, a, b}";
+    let need = || solid.ok_or_else(|| "give solid for edges given as indices or points".to_owned());
+    match v {
+        Value::Number(_) => indexed_edge(state, need()?, v),
+        Value::Array(_) => {
+            let [p, q] = edge_pair(v).ok_or(bad)?;
+            Ok(hp_editor::EdgeRef::new(need()?, p, q))
+        }
+        Value::Object(o) => {
+            let solid = match o.get("solid") {
+                Some(s) => {
+                    let id = s.as_u64().and_then(|x| u32::try_from(x).ok()).ok_or("solid must be a solid id")?;
+                    if state.doc.scene().solid(id).is_none() {
+                        return Err(format!("no solid has the id {id}"));
+                    }
+                    id
+                }
+                None => need()?,
+            };
+            match (o.get("edge"), o.get("a"), o.get("b")) {
+                (Some(e), None, None) => indexed_edge(state, solid, e),
+                (None, Some(p), Some(q)) => {
+                    let [p, q] = edge_pair(&json!([p, q])).ok_or(bad)?;
+                    Ok(hp_editor::EdgeRef::new(solid, p, q))
+                }
+                _ => Err(bad.to_owned()),
+            }
+        }
+        _ => Err(bad.to_owned()),
+    }
+}
+
+fn bevel_edges(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
+    let solid = if a.get("solid").is_some() { Some(solid_id(&state.doc, a, "solid")?) } else { None };
+    let mut items: Vec<&Value> = a.get("edge").into_iter().collect();
+    if let Some(list) = a.get("edges") {
+        items.extend(list.as_array().ok_or("edges must be an array")?);
+    }
+    if items.is_empty() {
+        return Err("give edge or edges".to_owned());
+    }
+    if items.len() > MAX_BEVEL_EDGES {
+        return Err(format!("at most {MAX_BEVEL_EDGES} edges per call"));
+    }
+    let mut edges: Vec<hp_editor::EdgeRef> = Vec::with_capacity(items.len());
+    for v in items {
+        let e = bevel_edge_item(state, solid, v)?;
+        if !edges.iter().any(|x| x.same_edge(&e)) {
+            edges.push(e);
+        }
+    }
+    let radius = a.opt_f64("radius", hp_geom::MIN_BEVEL_RADIUS, hp_geom::MAX_BEVEL_RADIUS)?.unwrap_or(16.0);
+    let segments = a.opt_u64("segments", 1, u64::from(hp_geom::MAX_BEVEL_SEGMENTS))?.unwrap_or(4) as u32;
+    let inverse = a.opt_bool("inverse")?.unwrap_or(false);
+    let material = match (a.opt_str("material", MAX_NAME)?, a.opt_enum("new_faces", &["face", "current"])?.as_deref()) {
+        (Some(m), _) => Some(material_name(m)?),
+        (None, Some("current")) => Some(opt_material(state, a, "material")?).filter(|m| !m.trim().is_empty()),
+        _ => None,
+    };
+    let params = hp_geom::BevelParams { radius, segments, inverse, material };
+    let largest = state.doc.bevel_limit(&edges, inverse).map_err(|e| e.to_string())?;
+    if a.opt_bool("dry_run")?.unwrap_or(false) {
+        let mut next = 1u32;
+        let list = state
+            .doc
+            .bevel_preview(&edges, &params, &mut || {
+                next = next.wrapping_add(1);
+                next
+            })
+            .map_err(|e| e.to_string())?;
+        let kinds: Vec<&str> = list.iter().flat_map(|(_, r)| r.kinds.iter().map(|k| k.id())).collect();
+        let brushes: usize =
+            list.iter().map(|(_, r)| r.added.len() + if r.changes_brush() { r.pieces.len() } else { 1 }).sum();
+        return Ok(ToolResult::json(json!({
+            "dry_run": true,
+            "radius": list.iter().map(|(_, r)| r.radius).fold(f64::INFINITY, f64::min),
+            "segments": list.iter().map(|(_, r)| r.segments).min().unwrap_or(1),
+            "max_radius": largest,
+            "kinds": kinds,
+            "brushes": brushes,
+        })));
+    }
+    let out = edit(state, "bevel_edges", |doc| doc.bevel_edges(&edges, &params))?;
+    let bounds =
+        state.doc.scene().objects_bounds(&out.ids.iter().map(|id| ObjRef::Solid(*id)).collect::<Vec<_>>(), &|_| None);
+    Ok(ToolResult::json(json!({
+        "solid_ids": out.ids,
+        "radius": out.radius,
+        "segments": out.segments,
+        "max_radius": largest,
+        "kinds": out.kinds.iter().map(|k| k.id()).collect::<Vec<_>>(),
+        "brushes": out.ids.len(),
         "bounds": bounds_json(bounds),
     })))
 }
@@ -1470,6 +1634,26 @@ mod tests {
         assert_eq!(r["solid_ids"].as_array().unwrap().len(), 2);
         err(&mut s, "clip_brushes", json!({ "solid_ids": [2] }));
         err(&mut s, "clip_brushes", json!({ "solid_ids": [3], "points": [[0, 0, 0], [1, 0, 0], [2, 0, 0]] }));
+        let r = ok(
+            &mut s,
+            "clip_brushes",
+            json!({ "solid_ids": [3], "point": [0, 0, 64], "normal": [0, 0, 2], "keep": "back", "cap_material": "tools/toolsnodraw" }),
+        );
+        assert_eq!(r["solid_ids"].as_array().unwrap().len(), 1);
+        let wall = s.doc.scene().solid(3).unwrap();
+        assert_eq!((wall.bounds.min.z, wall.bounds.max.z), (0.0, 64.0));
+        assert_eq!(wall.solid.sides.iter().filter(|x| x.material.eq_ignore_ascii_case("tools/toolsnodraw")).count(), 1);
+        err(
+            &mut s,
+            "clip_brushes",
+            json!({ "solid_ids": [3], "point": [0, 0, 32], "normal": [0, 0, 1], "distance": 32 }),
+        );
+        err(&mut s, "clip_brushes", json!({ "solid_ids": [3], "normal": [0, 0, 1] }));
+        let r = ok(&mut s, "clip_brushes", json!({ "solid_ids": [3], "point": [0, 0, 63.9], "normal": [0, 0, 1] }));
+        assert!(r["solid_ids"].as_array().unwrap().is_empty(), "no sliver");
+        let r = ok(&mut s, "clip_brushes", json!({ "solid_ids": [7], "point": [96, 0, 0], "normal": [1, 0, 0] }));
+        assert_eq!(r["solid_ids"].as_array().unwrap().len(), 2);
+        assert!(s.doc.scene().solids().values().filter(|n| n.owner == hp_editor::Owner::Entity(6)).count() == 2);
         let mut s = hp_app::testing::test_state();
         let b = ok(&mut s, "create_primitive", json!({ "min": [-32, -32, -64], "max": [32, 32, 64] }));
         let carver = b["solid_ids"][0].as_u64().unwrap();
@@ -1488,6 +1672,62 @@ mod tests {
         assert_eq!(r["merged"], 2);
         err(&mut s, "merge_brushes", json!({ "solid_ids": [2, 3] }));
         ok(&mut s, "merge_brushes", json!({ "solid_ids": [2, 3], "convex_hull": true }));
+    }
+
+    #[test]
+    fn bevel_round_cove_and_fill() {
+        let mut s = hp_app::testing::test_state();
+        let edges = ok(&mut s, "get_brush_edges", json!({ "solid": 3 }));
+        let list = edges["edges"].as_array().unwrap();
+        assert_eq!(list.len(), 12);
+        let top = list
+            .iter()
+            .position(|e| e["a"][1] == 256.0 && e["b"][1] == 256.0 && e["a"][2] == 128.0 && e["b"][2] == 128.0)
+            .unwrap();
+        let dry = ok(&mut s, "bevel_edges", json!({ "solid": 3, "edge": top, "radius": 100, "dry_run": true }));
+        assert_eq!(dry["max_radius"], 16.0);
+        assert_eq!(dry["radius"], 16.0);
+        assert_eq!(dry["kinds"], json!(["round"]));
+        assert!(s.doc.undo_label().is_none_or(|l| l != "MCP: bevel_edges"), "a dry run changes nothing");
+        let r = ok(&mut s, "bevel_edges", json!({ "solid": 3, "edge": top, "radius": 8, "segments": 6 }));
+        assert_eq!(r["solid_ids"], json!([3]));
+        assert_eq!((r["radius"].as_f64(), r["segments"].as_u64()), (Some(8.0), Some(6)));
+        assert_eq!(s.doc.undo_label(), Some("MCP: bevel_edges"));
+        assert_eq!(s.doc.scene().solid(3).unwrap().solid.sides.len(), 12);
+        assert!(s.doc.undo());
+        let corner = json!([[-256, 256, 0], [256, 256, 0]]);
+        let r = ok(
+            &mut s,
+            "bevel_edges",
+            json!({ "solid": 3, "edges": [corner], "radius": 32, "segments": 4, "inverse": true, "material": "dev/dev_blendmeasure" }),
+        );
+        assert_eq!(r["kinds"], json!(["fill"]), "the wall stands on the floor");
+        let ids = r["solid_ids"].as_array().unwrap();
+        assert!(ids.len() >= 2);
+        let curved = ids
+            .iter()
+            .flat_map(|id| s.doc.scene().solid(id.as_u64().unwrap() as u32).unwrap().solid.sides.clone())
+            .filter(|side| side.material == "dev/dev_blendmeasure")
+            .count();
+        assert_eq!(curved, 4);
+        assert!(s.doc.undo());
+        let r = ok(
+            &mut s,
+            "bevel_edges",
+            json!({ "edges": [{ "solid": 3, "a": [-256, 272, 128], "b": [256, 272, 128] }, { "solid": 2, "edge": 0 }], "radius": 4, "inverse": true }),
+        );
+        assert!(r["kinds"].as_array().unwrap().len() == 2);
+        for id in r["solid_ids"].as_array().unwrap() {
+            assert!(s.doc.scene().solid(id.as_u64().unwrap() as u32).unwrap().geom.valid);
+        }
+        err(&mut s, "bevel_edges", json!({ "solid": 3 }));
+        err(&mut s, "bevel_edges", json!({ "edge": 0 }));
+        err(&mut s, "bevel_edges", json!({ "solid": 3, "edge": 99 }));
+        err(&mut s, "bevel_edges", json!({ "solid": 3, "edge": [[0, 0, 0], [1, 1, 1]] }));
+        err(&mut s, "bevel_edges", json!({ "solid": 3, "edge": top, "radius": 0 }));
+        err(&mut s, "bevel_edges", json!({ "solid": 3, "edge": top, "segments": 40 }));
+        err(&mut s, "bevel_edges", json!({ "solid": 3, "edge": "top" }));
+        err(&mut s, "get_brush_edges", json!({ "solid": 999 }));
     }
 
     #[test]

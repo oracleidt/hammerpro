@@ -27,6 +27,8 @@ The **Entity** tab of the right dock is Hammer's Object Properties: it edits the
 
 Warnings appear under the header when no FGD is loaded (**No game data (FGD) loaded: properties are shown as plain text**) or when a class is not defined in the FGD (its keys are then shown as plain text).
 
+For a `fog_volume`, the header says which fog it gets and what is wrong, in orange: **No Fog Name**, **No env_fog_controller named "x"**, **The fog of "x" is disabled (Fog Enable: No): in game this volume clears the fog**, **Preview: default fog look**, **Start Disabled**, and the state of **PostProcessName** and **Color Correction Name** (found, missing, or an entity of another class). For an `env_fog_controller`, it says when **Fog Enable** is No, whether the 3D view previews this fog and how many `fog_volume` use it. See [Fog volumes](render-modes-display.md#fog-volumes).
+
 ### Only world brushes selected
 
 The panel shows **World brushes selected: N** and offers to give them a class: pick a brush entity class (by default `func_detail`, or the default brush entity of the settings) and click **Tie to entity** (`Ctrl+T`). The **Quick tie:** buttons create `func_detail`, `func_brush`, `func_illusionary`, `trigger_multiple` or `trigger_once` in one click (only the classes your FGD has). See [Brush operations](brush-operations.md).
@@ -45,7 +47,7 @@ The panel shows **World brushes selected: N** and offers to give them a class: p
 
 The **Outputs** and **Inputs** tabs are described in [I/O and logical view](io-logical-view.md).
 
-At the bottom of the entity tabs, the collapsed **Editor (color, comments)** section holds **Color in 2D views** (the wireframe color of the entity in the 2D views) and **Comments** (notes saved in the map).
+At the bottom of the entity tabs, the **Display color** section sets the color of the selection in the 2D views (see [Display colors](display-colors.md)), and the collapsed **Editor comments** section holds **Comments** (notes saved in the map). A selection of world brushes shows the **Display color** section under **Tie to entity**.
 
 ## Properties tab (SmartEdit)
 

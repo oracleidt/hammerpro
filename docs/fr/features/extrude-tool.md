@@ -11,8 +11,8 @@ L'outil extruder / creuser découpe des formes plus facilement que l'outil de d�
 
 ## Tracer le contour
 
-1. Cliquez sur une face de brush, dans la vue 3D ou dans une vue 2D qui regarde la face (la vue de dessus pour un sol, la vue de face ou de côté pour un mur). La face sous la souris est entourée avant le clic. Ce clic pose le premier point et choisit la face ; les points suivants restent sur le plan de cette face.
-2. Cliquez les points suivants autour de la forme. Les points s'alignent sur la grille dans le plan de la face (maintenez `Alt` pour les poser sans magnétisme). La longueur de l'arête en cours s'affiche près du curseur.
+1. Cliquez sur une face de brush, dans la vue 3D ou dans une vue 2D qui regarde la face (la vue de dessus pour un sol, la vue de face ou de côté pour un mur). La face sous la souris est entourée avant le clic. Quand des brushes sont sélectionnés, leurs faces l'emportent sur les autres brushes, même quand un autre brush (un trigger, un pilier) est devant : sélectionnez d'abord le brush à creuser. Ce clic pose le premier point et choisit la face ; les points suivants restent sur le plan de cette face.
+2. Cliquez les points suivants autour de la forme. Dans la vue 3D, les points s'alignent sur un coin ou sur le milieu d'une arête de la face quand la souris en est à environ 10 pixels, sinon sur la grille dans le plan de la face. Près d'une arête qui n'est pas sur la grille, le point reste sur l'arête au lieu de sauter hors de la face. Maintenez `Alt` pour poser les points sans aucun magnétisme. La longueur de l'arête en cours s'affiche près du curseur.
 3. Un point qui ferait se croiser le contour est refusé : le repère devient rouge avec **Le contour se croise**. Un point déjà présent est ignoré. Un contour compte au plus 128 points.
 4. Fermez le contour en cliquant de nouveau sur son premier point, ou en double-cliquant. Vous pouvez aussi appuyer sur `Entrée` dès 3 points : le contour est fermé et appliqué tout de suite avec la profondeur actuelle.
 
@@ -22,7 +22,7 @@ Une vue 2D qui regarde la face par la tranche (un mur vu de dessus) ne peut pas 
 
 ## Régler la profondeur
 
-- Une fois le contour fermé, glissez n'importe où dans une vue (3D ou 2D) : vers l'intérieur du brush pour creuser, vers l'extérieur pour extruder. La profondeur suit la souris le long de la normale de la face et s'aligne sur la grille. En 2D, les vues qui montrent la face par la tranche sont les plus pratiques.
+- Une fois le contour fermé, glissez n'importe où dans une vue (3D ou 2D). Le glissement modifie la profondeur à partir de sa valeur actuelle : appuyer sur la souris ne fait jamais sauter la profondeur. Déplacez la souris dans le sens où la normale de la face pointe à l'écran pour tirer la face (extruder), dans l'autre sens pour l'enfoncer (creuser) ; l'étiquette près du contour montre le résultat. Quand vous regardez la face de face, glissez vers le haut pour la tirer vers vous et vers le bas pour l'enfoncer. La profondeur s'aligne sur la grille. En 2D, les vues qui montrent la face par la tranche sont les plus pratiques.
 - Ou tapez la valeur dans le champ **Profondeur** de la barre d'options.
 - **Traversant** (creuser seulement) coupe toute l'épaisseur du brush : une ouverture au lieu d'un renfoncement. La barre d'options affiche l'épaisseur du brush.
 - Glissez un point d'un contour fermé pour le déplacer (un déplacement qui ferait se croiser le contour est refusé).
@@ -70,6 +70,8 @@ Textures :
 L'outil MCP `extrude_face` fait la même chose depuis une application d'IA : `solid`, `side` (l'indice de la face dans le solide, donné par `get_faces`), les `points` du contour en positions du monde sur la face, `mode` (`carve` ou `extrude`), `depth`, `through`, et la texture des nouvelles faces (`new_faces` : `face` ou `current`, ou un `material`). `get_tool_options` et `set_tool_options` lisent et changent les options de l'outil lui-même (outil `extrude` : `mode`, `depth`, `through`, `new_faces`). Voir la [référence des outils MCP](../../MCP.md).
 
 ## FAQ
+
+**Le contour commence sur le mauvais brush.** Sélectionnez le brush à creuser : ses faces l'emportent sur les brushes placés devant.
 
 **Pourquoi mon point est-il refusé ?** Il ferait se croiser le contour, ou c'est le même point qu'un autre.
 

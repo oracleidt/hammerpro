@@ -11,8 +11,8 @@ The extrude / carve tool is an easier way to cut shapes than the clip tool: you 
 
 ## Drawing the outline
 
-1. Click a face of a brush, in the 3D view or in a 2D view that looks at the face (the Top view for floors, the Front or Side view for walls). The face under the mouse is outlined before you click. That click places the first point and picks the face; the next points stay on the plane of that face.
-2. Click the next points around the shape. Points snap to the grid on the face plane (hold `Alt` to place them without snapping). The length of the edge being drawn is shown next to the cursor.
+1. Click a face of a brush, in the 3D view or in a 2D view that looks at the face (the Top view for floors, the Front or Side view for walls). The face under the mouse is outlined before you click. When brushes are selected, their faces win over other brushes, even when another brush (a trigger, a pillar) is in front: select the brush to carve first. That click places the first point and picks the face; the next points stay on the plane of that face.
+2. Click the next points around the shape. In the 3D view, points snap to a corner or to the middle of an edge of the face when the mouse is within about 10 pixels of it, otherwise to the grid on the face plane. Near an edge that is not on the grid, a point is kept on the edge instead of jumping off the face. Hold `Alt` to place points without any snapping. The length of the edge being drawn is shown next to the cursor.
 3. A point that would make the outline cross itself is refused: the marker turns red with **The outline crosses itself**. A point already in the outline is ignored. An outline holds at most 128 points.
 4. Close the outline by clicking its first point again, or by double clicking. You can also press `Enter` as soon as there are 3 points: the outline is closed and applied at once with the current depth.
 
@@ -22,7 +22,7 @@ A 2D view that looks along the face (a wall seen from above) cannot place points
 
 ## Setting the depth
 
-- Once the outline is closed, drag anywhere in a view (3D or 2D): toward the inside of the brush carves, toward the outside extrudes. The depth follows the mouse along the face normal and snaps to the grid. In a 2D view, the views that show the face edge on are the easiest.
+- Once the outline is closed, drag anywhere in a view (3D or 2D). The drag changes the depth from its current value, so pressing the mouse never makes the depth jump. Move the mouse the way the face normal points on screen to pull the face out (extrude), the other way to push it in (carve); the label next to the outline shows the result. When you look straight at the face, drag up to pull it toward you and down to push it away. The depth snaps to the grid. In a 2D view, the views that show the face edge on are the easiest.
 - Or type the value in the **Depth** field of the options bar.
 - **Through** (carve only) cuts the whole thickness of the brush: an opening instead of a recess. The options bar shows the thickness of the brush.
 - Drag a point of a closed outline to move it (a move that would make the outline cross itself is refused).
@@ -72,6 +72,8 @@ The MCP tool `extrude_face` does the same from an AI app: `solid`, `side` (the s
 ## FAQ
 
 **Why is my point refused?** It would make the outline cross itself, or it is the same point as another one.
+
+**The outline starts on the wrong brush.** Select the brush you want to carve: its faces win over the brushes in front of it.
 
 **Why does nothing happen when I click in a 2D view?** The view looks along the face. Click the face in the 3D view or in a 2D view that faces it.
 

@@ -27,6 +27,22 @@ pub enum Disp2dViewSetting {
     Own(Disp2dSetting),
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum PropShadowSetting {
+    #[default]
+    Auto,
+    Mesh,
+    Collision,
+}
+
+impl PropShadowSetting {
+    pub const ALL: [PropShadowSetting; 3] =
+        [PropShadowSetting::Auto, PropShadowSetting::Mesh, PropShadowSetting::Collision];
+}
+
+pub const MIN_VRAM_BUDGET_MB: u32 = 256;
+pub const MAX_VRAM_BUDGET_MB: u32 = 262_144;
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RenderSettings {
@@ -46,6 +62,8 @@ pub struct RenderSettings {
     pub icons_in_2d: bool,
     pub icons_in_2d_px: f32,
     pub use_visgroup_colors: bool,
+    pub object_colors_2d: bool,
+    pub object_colors_3d: bool,
     pub highlight_invalid: bool,
     pub render_effects: bool,
     pub sky_preview: bool,
@@ -62,6 +80,9 @@ pub struct RenderSettings {
     pub cubemaps: bool,
     pub cubemaps_auto: bool,
     pub light_shadows: u32,
+    pub light_preview_hdr: bool,
+    pub sky_occlusion: bool,
+    pub prop_shadows: PropShadowSetting,
     pub animate_materials: bool,
     pub model_fade: bool,
     pub force_opaque: bool,
@@ -87,6 +108,8 @@ pub struct RenderSettings {
     pub max_fps: u32,
     pub unfocused_fps: u32,
     pub vsync: bool,
+    pub vram_budget_mb: u32,
+    pub keep_background_maps_on_gpu: bool,
 }
 
 impl Default for RenderSettings {
@@ -108,13 +131,15 @@ impl Default for RenderSettings {
             icons_in_2d: true,
             icons_in_2d_px: 16.0,
             use_visgroup_colors: false,
+            object_colors_2d: true,
+            object_colors_3d: false,
             highlight_invalid: true,
             render_effects: true,
             sky_preview: true,
             skybox_3d: true,
             sky_see_through: false,
             water_preview: true,
-            fog_preview: false,
+            fog_preview: true,
             fog_volume_preview: true,
             fog_volume_texture: true,
             fish_preview: true,
@@ -124,6 +149,9 @@ impl Default for RenderSettings {
             cubemaps: true,
             cubemaps_auto: true,
             light_shadows: 4,
+            light_preview_hdr: true,
+            sky_occlusion: true,
+            prop_shadows: PropShadowSetting::Auto,
             animate_materials: true,
             model_fade: false,
             force_opaque: false,
@@ -149,6 +177,8 @@ impl Default for RenderSettings {
             max_fps: 0,
             unfocused_fps: 30,
             vsync: true,
+            vram_budget_mb: 0,
+            keep_background_maps_on_gpu: true,
         }
     }
 }
@@ -159,6 +189,11 @@ impl RenderSettings {
             Some(Disp2dViewSetting::Own(m)) => *m,
             _ => self.displacements_2d,
         }
+    }
+
+    pub fn vram_budget(&self) -> Option<u64> {
+        (self.vram_budget_mb > 0)
+            .then(|| u64::from(self.vram_budget_mb.clamp(MIN_VRAM_BUDGET_MB, MAX_VRAM_BUDGET_MB)) << 20)
     }
 
     pub fn near(&self) -> f32 {
@@ -184,7 +219,7 @@ mod tests {
         assert!(!s.disp_walkable);
         assert!(s.normal_maps, "normal maps are on by default");
         assert!(s.cubemaps && s.cubemaps_auto, "reflections are on by default");
-        assert!(s.fog_volume_preview && s.fog_volume_texture, "fog volumes are previewed by default");
+        assert!(s.fog_preview && s.fog_volume_preview && s.fog_volume_texture, "fog is previewed by default");
         assert!(s.fish_preview && s.fish_swim, "fish are previewed by default");
         let off: RenderSettings = toml::from_str(
             "normal_maps = false
@@ -192,6 +227,9 @@ mod tests {
         )
         .expect("parse");
         assert!(!off.normal_maps);
+        assert_eq!(s.prop_shadows, PropShadowSetting::Auto);
+        let mesh: RenderSettings = toml::from_str("prop_shadows = \"Collision\"").expect("parse");
+        assert_eq!(mesh.prop_shadows, PropShadowSetting::Collision);
     }
 
     #[test]

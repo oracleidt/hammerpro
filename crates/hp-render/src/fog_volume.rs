@@ -29,7 +29,7 @@ fn finite(v: f32, fallback: f32) -> f32 {
 }
 
 pub(crate) fn volume_uniform(v: &FogVolume, depth: [f32; 2]) -> Option<FogVolumeUniform> {
-    let f = v.fog?;
+    let f = v.preview;
     if !v.min.iter().chain(&v.max).all(|c| c.is_finite()) || (0..3).any(|i| v.max[i] <= v.min[i]) {
         return None;
     }
@@ -70,7 +70,6 @@ pub(crate) fn draw_order(volumes: &[FogVolume], eye: Vec3, visible: impl Fn(Vec3
     let mut order: Vec<(f32, usize)> = volumes
         .iter()
         .enumerate()
-        .filter(|(_, v)| v.fog.is_some())
         .filter(|(_, v)| visible(Vec3::from(v.min), Vec3::from(v.max)))
         .map(|(i, v)| (box_distance(eye, Vec3::from(v.min), Vec3::from(v.max)), i))
         .collect();
@@ -324,11 +323,12 @@ mod tests {
             start: 10.0,
             end: 5.0,
             max_density: 3.0,
+            far_z: 0.0,
         }
     }
 
     fn vol(min: [f32; 3], max: [f32; 3], active: bool) -> FogVolume {
-        FogVolume { min, max, fog: Some(fog()), active }
+        FogVolume { min, max, fog: Some(fog()), preview: fog(), active }
     }
 
     #[test]
@@ -353,21 +353,16 @@ mod tests {
         assert!(u.fog_a[1] < 0.5, "colors are linear");
         assert!(volume_uniform(&vol([0.0; 3], [0.0, 64.0, 64.0], true), [0.1, 2.0]).is_none(), "flat box");
         let off = FogVolume { fog: None, ..vol([0.0; 3], [64.0; 3], true) };
-        assert!(volume_uniform(&off, [0.1, 2.0]).is_none(), "fog disabled by its controller");
+        assert!(volume_uniform(&off, [0.1, 2.0]).is_some(), "the preview stays when the game fog is off");
         let mut thin = vol([0.0; 3], [64.0; 3], true);
-        if let Some(f) = thin.fog.as_mut() {
-            f.max_density = 0.0;
-        }
+        thin.preview.max_density = 0.0;
         assert!(volume_uniform(&thin, [0.1, 2.0]).is_none());
     }
 
     #[test]
     fn eye_inside_picks_the_first_active_volume() {
-        let list = [
-            vol([0.0; 3], [100.0; 3], false),
-            vol([50.0; 3], [200.0; 3], true),
-            vol([0.0; 3], [300.0; 3], true),
-        ];
+        let list =
+            [vol([0.0; 3], [100.0; 3], false), vol([50.0; 3], [200.0; 3], true), vol([0.0; 3], [300.0; 3], true)];
         assert!(inside_volume(&list, [10.0; 3]).is_some_and(|v| v.max == [300.0; 3]), "disabled ones are skipped");
         assert!(inside_volume(&list, [60.0; 3]).is_some_and(|v| v.max == [200.0; 3]));
         assert!(inside_volume(&list, [-1.0; 3]).is_none());
@@ -382,8 +377,8 @@ mod tests {
             vol([-5000.0; 3], [-4990.0; 3], true),
         ];
         let order = draw_order(&list, Vec3::splat(-1.0), |_, _| true);
-        assert_eq!(order, vec![3, 1, 0]);
+        assert_eq!(order, vec![3, 1, 2, 0]);
         let culled = draw_order(&list, Vec3::splat(-1.0), |min, _| min.x >= 0.0);
-        assert_eq!(culled, vec![1, 0]);
+        assert_eq!(culled, vec![1, 2, 0]);
     }
 }

@@ -264,10 +264,10 @@ pub(crate) fn crash_modal(ctx: &egui::Context, crash: &crate::crash::PendingCras
             if crash.emergency_save.is_some() {
                 open_save = ui.button(t!("app.crash_open_save")).clicked();
             }
-            if ui.button(t!("app.crash_open_folder")).on_hover_text(t!("app.crash_open_folder_tip")).clicked() {
-                if hp_app::os::reveal(&crash.report).is_err() {
-                    crate::app::open_folder(&Settings::crash_dir());
-                }
+            if ui.button(t!("app.crash_open_folder")).on_hover_text(t!("app.crash_open_folder_tip")).clicked()
+                && hp_app::os::reveal(&crash.report).is_err()
+            {
+                crate::app::open_folder(&Settings::crash_dir());
             }
             if ui.button(t!("app.crash_copy")).on_hover_text(t!("app.crash_copy_tip")).clicked() {
                 let text = crate::crash::read_report(&crash.report);

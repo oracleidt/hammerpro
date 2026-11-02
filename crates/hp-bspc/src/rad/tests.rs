@@ -884,7 +884,7 @@ fn displacements_without_shadows() {
 }
 
 #[test]
-fn maximum_distance_cuts_the_light() {
+fn maximum_distance_is_for_the_engine_only() {
     let opts = RadOptions { bounces: 0, ..quick() };
     let lit = |extra: &str| {
         let bsp = compile_vmf(&room("DEV/DEV_MEASUREGENERIC01B", &light_entity(500, "40 20 128", extra)));
@@ -892,10 +892,13 @@ fn maximum_distance_cuts_the_light() {
     };
     let floor = |bsp: &[u8], x: f64| luxel_at(bsp, DVec3::new(x, 20.0, 0.0), DVec3::Z, false).expect("floor luxel").x;
     let (free, cut) = (lit(""), lit("\t\"_distance\" \"256\"\n"));
-    let (near, far) = (floor(&cut, 194.0), floor(&cut, 419.0));
-    assert!(floor(&free, 419.0) > 1.0, "without a maximum distance the far floor is lit: {}", floor(&free, 419.0));
-    assert!(near > floor(&free, 194.0) * 0.5, "200 units: {near} (without: {})", floor(&free, 194.0));
-    assert_eq!(far, 0.0, "400 units: {far}");
+    assert!(floor(&free, 419.0) > 1.0, "the far floor is lit: {}", floor(&free, 419.0));
+    for x in [194.0, 419.0] {
+        assert_eq!(floor(&cut, x), floor(&free, x), "{x} units: VRAD lights past _distance");
+    }
+    let src = hp_bsp::Bsp::from_vec(cut).unwrap();
+    let wl = src.lump(15).unwrap().into_owned();
+    assert_eq!(super::data::f32_at(&wl, 60), 256.0, "the world light keeps the radius for the engine");
 }
 
 #[test]
@@ -934,4 +937,123 @@ fn no_physics_displacements_have_no_collision_mesh() {
     let (none, tess) = sizes(hp_geom::DISP_FLAG_NO_PHYSICS | hp_geom::DISP_FLAG_NO_RAY);
     assert_eq!(none, vec![0xFFFF], "no physics: no collision mesh");
     assert_eq!(tess, i32::MIN | hp_geom::DISP_FLAG_NO_PHYSICS | hp_geom::DISP_FLAG_NO_RAY, "the flags reach the game");
+}
+
+fn sun_yard(sun_keys: &[(&str, &str)]) -> Vec<u8> {
+    let mut id = 1;
+    let (w, sky) = ("DEV/DEV_MEASUREGENERIC01B", "TOOLS/TOOLSSKYBOX");
+    let b = |id: &mut u32, lo: [f64; 3], hi: [f64; 3], m: &str| {
+        block(id, DVec3::from_array(lo), DVec3::from_array(hi), m, m)
+    };
+    let mut s = String::new();
+    s += &b(&mut id, [-528.0, -528.0, -16.0], [528.0, 528.0, 0.0], w);
+    s += &b(&mut id, [-528.0, -528.0, 512.0], [528.0, 528.0, 528.0], sky);
+    s += &b(&mut id, [-528.0, -528.0, 0.0], [-512.0, 528.0, 512.0], sky);
+    s += &b(&mut id, [512.0, -528.0, 0.0], [528.0, 528.0, 512.0], sky);
+    s += &b(&mut id, [-512.0, -528.0, 0.0], [512.0, -512.0, 512.0], sky);
+    s += &b(&mut id, [-512.0, 512.0, 0.0], [512.0, 528.0, 512.0], sky);
+    s += &b(&mut id, [-16.0, -16.0, 0.0], [16.0, 16.0, 128.0], w);
+    let keys: String = sun_keys.iter().map(|(k, v)| format!("\t\"{k}\" \"{v}\"\n")).collect();
+    let text = format!(
+        "versioninfo\n{{\n\t\"editorversion\" \"400\"\n}}\nworld\n{{\n\t\"id\" \"1\"\n\t\"classname\" \"worldspawn\"\n\t\"skyname\" \"sky_day01_01\"\n{s}}}\n\
+         entity\n{{\n\t\"id\" \"600\"\n\t\"classname\" \"light_environment\"\n\t\"origin\" \"200 200 200\"\n\t\"_light\" \"255 255 255 300\"\n\t\"_ambient\" \"0 0 0 0\"\n{keys}}}\n\
+         entity\n{{\n\t\"id\" \"601\"\n\t\"classname\" \"info_player_start\"\n\t\"origin\" \"256 256 16\"\n}}\n"
+    );
+    let bsp = compile_vmf(&text);
+    light_bsp(&bsp, &RadOptions { bounces: 0, ..quick() }, &mut |_| {}).expect("light")
+}
+
+#[test]
+fn sun_direction_from_angles_and_pitch() {
+    let floor = |bsp: &[u8], x: f64, y: f64| luxel_at(bsp, DVec3::new(x, y, 0.0), DVec3::Z, false).expect("floor").x;
+    let yaw0 = sun_yard(&[("angles", "-45 0 0")]);
+    let (behind, before) = (floor(&yaw0, 80.0, 0.0), floor(&yaw0, -80.0, 0.0));
+    assert!(behind < before * 0.2, "the shadow falls along +x: {behind} vs {before}");
+    assert!(floor(&yaw0, 0.0, 80.0) > before * 0.8, "no shadow along +y");
+    let pitch_key = sun_yard(&[("angles", "-10 90 0"), ("pitch", "-45")]);
+    assert!(floor(&pitch_key, 0.0, 80.0) < floor(&pitch_key, 0.0, -80.0) * 0.2, "yaw 90 casts along +y");
+    let long = sun_yard(&[("angles", "-10 90 0")]);
+    let at = |bsp: &[u8]| floor(bsp, 0.0, 300.0);
+    assert!(at(&long) < at(&pitch_key) * 0.2, "a low sun casts far: {} vs {}", at(&long), at(&pitch_key));
+    let zero = sun_yard(&[("angles", "-10 90 0"), ("pitch", "0")]);
+    assert!((at(&zero) - at(&long)).abs() <= at(&long).max(1.0) * 0.05, "pitch 0 keeps the pitch of angles");
+    let lit = before;
+    let expected = 300.0 * (45f32.to_radians()).sin();
+    assert!((lit - expected).abs() < expected * 0.1, "cosine of the sun on the floor: {lit} vs {expected}");
+}
+
+#[test]
+fn degenerate_lights_finish() {
+    let ent = |pairs: &[(&str, &str)]| hp_bsp::Entity {
+        pairs: pairs.iter().map(|(k, v)| ((*k).to_owned(), (*v).to_owned())).collect(),
+    };
+    let base = compile_vmf(&room("DEV/BUMP_FLOOR", &light_entity(500, "64 128 128", "")));
+    let src = hp_bsp::Bsp::from_vec(base).unwrap();
+    let mut ents = src.entities().unwrap();
+    ents.extend([
+        ent(&[("classname", "light"), ("origin", "1e30 0 0"), ("_light", "inf inf inf 1e30")]),
+        ent(&[
+            ("classname", "light"),
+            ("origin", "64 128 128"),
+            ("_light", "255 255 255 200"),
+            ("_quadratic_attn", "-5"),
+            ("_fifty_percent_distance", "0.0001"),
+            ("_zero_percent_distance", "1e-9"),
+        ]),
+        ent(&[("classname", "light"), ("origin", "nan nan nan"), ("_light", "255 255 255 200")]),
+        ent(&[
+            ("classname", "light"),
+            ("origin", "250 128 100"),
+            ("_light", "1e38 1e38 1e38 1e38"),
+            ("_distance", "1e30"),
+        ]),
+        ent(&[
+            ("classname", "light_spot"),
+            ("origin", "300 100 100"),
+            ("_light", "255 255 255 200"),
+            ("_cone", "nan"),
+            ("_inner_cone", "-1e9"),
+            ("_exponent", "1e30"),
+            ("pitch", "nan"),
+        ]),
+        ent(&[
+            ("classname", "light_environment"),
+            ("origin", "64 64 64"),
+            ("_light", "255 255 255 1e9"),
+            ("angles", "1e9 inf 0"),
+            ("pitch", "nan"),
+            ("SunSpreadAngle", "1e9"),
+        ]),
+    ]);
+    let mut edit = src.edit();
+    edit.set_entities(&ents).unwrap();
+    let bsp = edit.to_vec().unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let out = light_bsp(&bsp, &RadOptions { bounces: 3, ..quick() }, &mut |_| {});
+        let _ = tx.send(out.map(|o| check_lighting(&o)));
+    });
+    let out = rx.recv_timeout(std::time::Duration::from_secs(120)).expect("the lighting of degenerate lights hangs");
+    let problems = out.expect("light");
+    assert!(problems.is_empty(), "{problems:?}");
+}
+
+#[test]
+fn lighting_reports_its_stages() {
+    let bsp = compile_vmf(&room("DEV/DEV_MEASUREGENERIC01B", &light_entity(500, "64 128 128", "")));
+    let mut lines = Vec::new();
+    light_bsp(&bsp, &quick(), &mut |l| lines.push(l.to_owned())).expect("light");
+    let plan = lines.iter().find(|l| l.starts_with("Lighting stages: ")).expect("the stage plan");
+    assert_eq!(plan, "Lighting stages: direct lighting, bounce rays, bounced light, leaf ambient, writing");
+    let done = lines.iter().position(|l| l.starts_with("lighting: ")).expect("done line");
+    assert!(lines[done..].iter().all(|l| !l.starts_with("Lighting ")), "no progress line after the end");
+}
+
+#[test]
+fn lightmaps_only_fail_past_the_face_offset() {
+    let most = hp_bsp::limits::LIGHTING.max();
+    assert!(lightmap_room(81_214_012, most).is_ok(), "Valve's kasty: 81 MB of lightmaps load in Garry's Mod");
+    assert!(lightmap_room(most, most).is_ok());
+    let e = lightmap_room(most + 1, most).unwrap_err();
+    assert!(e.contains("cannot load"), "{e}");
 }

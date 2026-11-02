@@ -58,6 +58,10 @@ pub fn rgbe_to_linear(c: [u8; 4]) -> [f32; 3] {
     [f32::from(c[0]) * s, f32::from(c[1]) * s, f32::from(c[2]) * s]
 }
 
+pub fn rgbe_to_ambient(c: [u8; 4]) -> [f32; 3] {
+    rgbe_to_linear(c).map(|v| v * 255.0)
+}
+
 pub fn ldr_lightmap(linear: [f32; 3]) -> [f32; 3] {
     linear.map(|v| {
         let v = if v.is_finite() { v } else { 0.0 };
@@ -472,7 +476,7 @@ fn cube_at(d: &[u8], o: usize) -> Option<[[f32; 3]; 6]> {
     let mut cube = [[0.0; 3]; 6];
     for (k, c) in cube.iter_mut().enumerate() {
         let b = d.get(o + k * 4..o + k * 4 + 4)?;
-        *c = rgbe_to_linear([b[0], b[1], b[2], b[3]]);
+        *c = rgbe_to_ambient([b[0], b[1], b[2], b[3]]);
     }
     Some(cube)
 }
@@ -987,6 +991,7 @@ mod tests {
         assert!((c[0] - 128.0 / 255.0).abs() < 1e-6 && (c[1] - 64.0 / 255.0).abs() < 1e-6 && c[2] == 0.0);
         let d = rgbe_to_linear([200, 100, 50, (-3i8) as u8]);
         assert!((d[0] - 200.0 / 255.0 / 8.0).abs() < 1e-6);
+        assert_eq!(rgbe_to_ambient([128, 64, 0, (-7i8) as u8]), [1.0, 0.5, 0.0], "ambient cubes keep the 255 factor");
         let e = rgbe_to_linear([255, 255, 255, 2]);
         assert!((e[0] - 4.0).abs() < 1e-6);
     }
@@ -1038,9 +1043,9 @@ mod tests {
         leafs[32..36].copy_from_slice(&1i32.to_le_bytes());
         let index = [2u16.to_le_bytes(), 0u16.to_le_bytes(), 0u16.to_le_bytes(), 0u16.to_le_bytes()].concat();
         let mut ambient = Vec::new();
-        for (value, pos) in [(255u8, [0u8, 0, 0]), (0, [255, 255, 255])] {
+        for (value, pos) in [(128u8, [0u8, 0, 0]), (0, [255, 255, 255])] {
             for _ in 0..6 {
-                ambient.extend_from_slice(&[value, value, value, 0]);
+                ambient.extend_from_slice(&[value, value, value, (-7i8) as u8]);
             }
             ambient.extend_from_slice(&pos);
             ambient.push(0);

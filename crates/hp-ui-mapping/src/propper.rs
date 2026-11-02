@@ -358,10 +358,12 @@ pub fn prop_source(state: &AppState, prop: Id) -> Result<PropSource, String> {
     read_prop_source(fs, &entity)
 }
 
+type LoadedSource = ((Id, String, u64), Result<PropSource, String>);
+
 #[derive(Default)]
 struct UnpropDialog {
     was_open: bool,
-    source: Option<((Id, String, u64), Result<PropSource, String>)>,
+    source: Option<LoadedSource>,
     error: Option<String>,
 }
 
@@ -521,7 +523,7 @@ mod tests {
         let solid = hp_mdl::CollisionSolid {
             vertices: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [5.0, 5.0, 5.0]],
             triangles: vec![[0, 1, 2], [0, 3, 1], [0, 2, 3], [1, 3, 2], [4, 2, 1]],
-            ledges: vec![0..4],
+            ledges: std::iter::once(0..4).collect(),
         };
         let model = hp_mdl::CollisionModel { solids: vec![solid] };
         let mut e = Entity { classname: "prop_static".to_owned(), ..Entity::default() };

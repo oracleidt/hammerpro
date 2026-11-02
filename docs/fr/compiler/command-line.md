@@ -124,6 +124,14 @@ Toute autre option donne `Warning: option ... is not supported by this lighting 
 
 Les fichiers de lumières de texture sont lus dans cet ordre : `lights.rad` du jeu (le dossier du jeu, puis les dossiers de l'installation de Garry's Mod, ses dossiers `bin` en dernier), le fichier de `-lights`, le fichier désigné par la clé worldspawn `_lightsrad`, puis `<map>.rad` à côté de la map.
 
+Pendant l'éclairage, `--rad` annonce ses étapes (`Lighting stages: direct lighting, ambient occlusion, bounce rays, bounced light, leaf ambient, static props, writing`), puis rend compte de chaque étape qui dure plus d'une seconde :
+
+```
+Lighting 41%: direct lighting 60% (stage 2 of 7), 27 s elapsed, about 17 s left
+```
+
+Le premier pourcentage est celui de tout l'éclairage, le second celui de l'étape. Une ligne arrive tous les 5 % et au moins toutes les 30 secondes. Une étape qui n'a pas avancé depuis une minute écrit `Warning: the lighting stage "..." has not advanced for ...` avec ce qui rend cette étape lente, et une étape qui dure plus de dix minutes écrit `Warning: the lighting stage "..." has run for ...`. L'éditeur lit ces lignes pour sa barre de progression. Les problèmes trouvés par la vérification finale qui étaient déjà dans le BSP avant l'éclairage (une map compilée par d'autres outils) sont des avertissements ; seuls les nouveaux empêchent l'écriture.
+
 ## Exemples
 
 Un test rapide d'une map Garry's Mod :

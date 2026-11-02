@@ -105,14 +105,13 @@ impl GameFs {
             let dest = safe_join(out, &node.vpath).ok_or_else(|| FsError::InvalidPath(node.vpath.clone()))?;
             let content = self.node_content(node)?;
             let present = dest.is_file();
-            if present {
-                if let Content::Disk(src) = &content
-                    && let (Ok(a), Ok(b)) = (std::fs::canonicalize(src), std::fs::canonicalize(&dest))
-                    && a == b
-                {
-                    let len = std::fs::metadata(&dest).map(|m| m.len()).unwrap_or(0);
-                    return Ok((CollectOutcome::Same, len));
-                }
+            if present
+                && let Content::Disk(src) = &content
+                && let (Ok(a), Ok(b)) = (std::fs::canonicalize(src), std::fs::canonicalize(&dest))
+                && a == b
+            {
+                let len = std::fs::metadata(&dest).map(|m| m.len()).unwrap_or(0);
+                return Ok((CollectOutcome::Same, len));
             }
             let bytes = match content {
                 Content::Disk(src) => std::fs::read(&src).map_err(|e| FsError::io(&src, e))?,

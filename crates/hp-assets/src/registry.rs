@@ -180,7 +180,8 @@ pub(crate) fn spawn_task(
     std::thread::Builder::new()
         .name(name.to_owned())
         .spawn(move || {
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).unwrap_or_else(|_| on_panic());
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| hp_editor::background::run(f)))
+                .unwrap_or_else(|_| on_panic());
             shared.send(result);
         })
         .map_err(|e| log::error!("cannot start thread {name}: {e}"))
@@ -218,7 +219,7 @@ impl AssetManager {
         }
     }
 
-    pub(crate) fn collect_garbage(&mut self, renderer: &mut Renderer) {
+    pub(crate) fn collect_garbage(&mut self, renderer: &mut Renderer) -> (usize, usize) {
         let epoch = self.gc_epoch();
         let in_use = |mats: &Materials, id: &MaterialId| {
             mats.records.get((*id as usize).wrapping_sub(1)).is_some_and(|r| r.epoch >= epoch)
@@ -255,12 +256,11 @@ impl AssetManager {
             }
             false
         });
-        if freed > 0 || before != self.models.render.len() {
-            log::debug!(
-                "released {freed} textures and {} models not used by the map",
-                before - self.models.render.len()
-            );
+        let models = before - self.models.render.len();
+        if freed > 0 || models > 0 {
+            log::debug!("released {freed} textures and {models} models not used by the map");
         }
+        (freed, models)
     }
 
     pub(crate) fn asset_material(&mut self, name: &str, kind: MatKind) -> MaterialId {

@@ -53,7 +53,7 @@ Directly in the **View** menu:
 | **3D skybox** (`Alt+V`) | The room around the `sky_camera`, at its scale, around the map (see [Sky cameras](sky-cameras.md)). | On |
 | **Collision models** | Collision hulls drawn over the props (also in the model browser preview). | Off |
 | **Show model collisions** | The 3D view shows the collision models instead of the models (a model without one shows its box in orange). | Off |
-| **Fog preview** | Submenu: **Off**, or the fog of one `env_fog_controller` of the map. | Off |
+| **Fog preview** | Submenu: **Off**, or the fog of one `env_fog_controller` of the map (by default the one the game uses: the last **Master** one, else the first; a controller with **Fog Enable** at No is marked). Also a toolbar button. See [Map fog](#map-fog). | On |
 | **Animated materials** | Animated materials and sprites play. | On |
 | **Model fade** | Props fade between their fade distances, like in game. | Off |
 | **Opaque materials** | Translucent materials drawn opaque. | Off |
@@ -65,7 +65,7 @@ Directly in the **View** menu:
 | **Highlight invalid brushes** | Brushes that are not closed and convex are drawn in red in every view. | On |
 | **Show nodraw faces** | Shows or hides the nodraw faces in the 3D view. | Shown |
 | **Water preview** | Water drawn like in game: refraction, water fog, reflection of the scene and the sky, moving waves. Off: its tool texture. | On |
-| **Fog volume preview** | Each `fog_volume` is filled with the fog of its controller (see [Fog volumes](#fog-volumes)). | On |
+| **Fog volume preview** | Each `fog_volume` is outlined and filled with its fog, with a label of its links and problems (see [Fog volumes](#fog-volumes)). Also a toolbar button. | On |
 | **Fog volume texture** | The material of the `fog_volume` brushes is drawn in the 3D view, like Hammer. Off: only the fog shows. | On |
 | **Fish preview** | The fish of each `func_fish_pool` (see [Fish pools](#fish-pools)). | On |
 | **Swimming fish** | The fish swim slow circles. Off: they stay still. | On |
@@ -80,17 +80,38 @@ The View menu also has **3D skybox camera** (when the map has several sky camera
 
 The toolbar repeats the most used switches: radius culling, displacement mesh, displacement walkability, nodraw, model collisions, helpers, models, tool textures, editor objects, 3D skybox, particles, simulate ropes, the render mode list and the player view.
 
+## Map fog
+
+**Fog preview** (on by default, toolbar button, **View > Fog preview**) draws the fog of an `env_fog_controller` in the 3D views and the [player view](player-view.md), like the map fog in game: **Primary Fog Color** (and **Secondary Fog Color** with **Fog Blend**, along **Primary Fog Direction** or the angles with **Use Angles for Fog Dir**), **Fog Start**, **Fog End**, **Fog Max Density** and **Far Z Clip Plane** (past it only the fog color is drawn, the sky too). Editing a key updates the view at once.
+
+- The submenu lists the controllers of the map; without a choice the game's choice is used: the last one with the **Master** flag, else the first one.
+- A controller with **Fog Enable** at No gives no fog, like in game, and the 3D view shows a warning at its bottom left.
+- Selecting a controller shows in the entity properties whether it is the one previewed and how many `fog_volume` use it.
+
 ## Fog volumes
 
-A `fog_volume` changes the fog of the players whose eyes are inside it: the game then uses the `env_fog_controller` named by its **Fog Name** instead of the map fog. Like the game, the volume is the box around all its brushes, whatever their shape.
+A `fog_volume` changes the fog of the players whose eyes are inside it: the game then uses the `env_fog_controller` named by its **Fog Name** instead of the map fog, and the `postprocess_controller` and `color_correction` named by **PostProcessName** and **Color Correction Name**. Like the game, the volume is the box around all its brushes, whatever their shape.
 
-With **Fog volume preview** on, the 3D view fills that box with the fog of the controller: its primary color (and the secondary one with **Fog Blend**, along **Primary Fog Direction** or the angles with **Use Angles for Fog Dir**), **Fog Start**, **Fog End** and **Fog Max Density**. The fog is as thick as the view crosses the box, as if you stood at its edge, so what is inside or behind the volume is fogged like from inside it. Editing the keys of the volume or of its controller updates the preview at once.
+With **Fog volume preview** on (the default), every `fog_volume` is visible in the 3D view as soon as you place it:
 
-- The controller needs **Fog Enable** set to Yes, like in game: with No, the volume clears the fog and the preview shows nothing.
+- its brushes keep their material (`tools/toolsfog` or another, see **Fog volume texture**) and the box is outlined in the color of its fog;
+- the box is filled with its fog, as thick as the view crosses it, so what is inside or behind the volume is fogged like from inside it;
+- a label above the box names the volume and its controller (`fog_volume > cave_fog`) and lists in orange what is wrong. Select the volume to see every detail and lines to the controller, post process and color correction entities.
+
+The fog drawn in the box:
+
+| Fog Name | Fog in the 3D view | In game, eyes inside |
+| --- | --- | --- |
+| Names a controller with **Fog Enable** at Yes | That controller's fog: colors, blend, start, end, max density | That fog replaces the map fog |
+| Names a controller with **Fog Enable** at No | The default look (light blue) and the warning *has its fog disabled: clears the fog in game* | No fog |
+| Names nothing, or no **Fog Name** | The default look and *No controller "name"* or *No Fog Name* | The map fog stays |
+
 - **Fog Name** can end with `*` to take the first controller whose name starts that way.
-- The **Color Correction Name** (a `color_correction` lookup table) is not previewed.
-- In the [player view](player-view.md), the fog of the volume replaces the map fog while the eyes are inside it, even with **Fog preview** off; a volume with **Start Disabled** does nothing there, like in game.
-- **Fog volume texture** off hides the brush material in the 3D view (select the volume in a 2D view).
+- **PostProcessName** and **Color Correction Name** are checked: a missing entity or one of another class is listed in orange; the effects themselves are not previewed.
+- Editing the keys of the volume or of its controllers updates the preview and the label at once.
+- In the [player view](player-view.md), the fog of the controller replaces the map fog while the eyes are inside the volume, even with **Fog preview** off; a controller with **Fog Enable** at No clears it; a volume with **Start Disabled** does nothing there, like in game. The labels and outlines are hidden there.
+- **Fog volume texture** off hides the brush material in the 3D view (the outline and the fog stay).
+- MCP: `list_fog` reports every volume with its resolved fog, `preview_fog` chooses the previewed controller.
 
 ## Fish pools
 
@@ -98,7 +119,7 @@ A `func_fish_pool` spawns `fish_count` fish (default 10) of its **World model** 
 
 - The pool itself shows as a box; select it to see a sphere and a circle of its **Max Range**.
 - The preview draws at most 256 fish per pool.
-- A model the game content does not have (Garry's Mod has no `models/Junkola.mdl`) shows each fish as a small box in the color of the entity.
+- A model the game content does not have (Garry's Mod has no `models/Junkola.mdl`) is previewed with the goldfish of the game content, `models/props/de_inferno/goldfish.mdl`, so the pool shows fish out of the box. In game such a pool shows no fish at all, so the entity properties of the pool warn about it: set that model on the pool to get the same fish in game. When even that model is missing, each fish is a small box in the color of the entity.
 
 ## Background images
 
@@ -150,6 +171,8 @@ The images are stored in the map (`bgimages_plus` block of the VMF), so they tra
 | **Entity icons** / **Icon size** | Entity icons in the 2D views (8 to 48 px). | On, 16 px |
 | **3D camera** | Shows the 3D camera in the 2D views. | On |
 | **Visgroup colors** | Brushes drawn in the color of their visgroup. | Off |
+| **Use object colors in 2D** (`object_colors_2d`) | Brushes and entities drawn in their display color (see [Display colors](display-colors.md)); off: the classic look. | On |
+| **Object colors in 3D wireframe and flat** (`object_colors_3d`) | The 3D view uses the display colors in wireframe and flat mode. | Off |
 
 ## Tips
 
@@ -163,9 +186,9 @@ The images are stored in the map (`bgimages_plus` block of the VMF), so they tra
 
 **Where did my props go?** Check **Show models**, **Model distance** and **Show model collisions**.
 
-**The fog preview shows nothing.** Choose a controller in **View > Display options > Fog preview**: the map needs an `env_fog_controller`.
+**The fog preview shows nothing.** The map needs an `env_fog_controller` with **Fog Enable** at Yes (a new one has No, like in Hammer); the 3D view says so at the bottom left. Choose another controller in **View > Fog preview**.
 
-**My fog_volume shows no fog.** Its **Fog Name** must be the name of an `env_fog_controller` with **Fog Enable** at Yes and a **Fog Max Density** above 0.
+**My fog_volume shows the default blue look.** Its **Fog Name** does not name an `env_fog_controller` with **Fog Enable** at Yes: the label above the volume and the entity properties say which. In game such a volume changes nothing (no controller) or clears the fog (controller with its fog disabled).
 
 ## Related pages
 

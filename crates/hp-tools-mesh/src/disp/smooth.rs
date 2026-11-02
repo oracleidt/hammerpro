@@ -371,10 +371,10 @@ pub(crate) fn smooth_values(parts: &mut [SmoothPart<'_>], brush: &LocalBrush, am
             Some(b) => {
                 b.weights.clone_from(v);
                 b.normalize();
-                if !b.write_to(part.disp) {
-                    if let Some(c) = changed.get_mut(pi) {
-                        *c = 0;
-                    }
+                if !b.write_to(part.disp)
+                    && let Some(c) = changed.get_mut(pi)
+                {
+                    *c = 0;
                 }
             }
             None => {

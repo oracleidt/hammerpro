@@ -534,3 +534,175 @@ fn cube_parts(s: f32) -> Vec<ModelPart> {
     }
     vec![ModelPart { material: PROP, vertices, indices, tangents: Vec::new() }]
 }
+
+fn sky_brush(min: [f32; 3], max: [f32; 3], back: MaterialId) -> ObjectMesh {
+    let mut m = box_mesh(min, max, back);
+    m.batches[1].material = SKY;
+    m
+}
+
+fn down_sun(intensity: f32) -> PreviewLight {
+    PreviewLight {
+        kind: LightKind::Directional { dir: [0.0, 0.0, -1.0] },
+        pos: [0.0; 3],
+        color: [1.0; 3],
+        intensity,
+        range: 0.0,
+        falloff: None,
+    }
+}
+
+fn looking_down(eye: [f32; 3]) -> ViewParams {
+    ViewParams {
+        kind: ViewKind::Perspective {
+            eye,
+            forward: [0.0, 0.0001, -1.0],
+            up: [0.0, 1.0, 0.0],
+            fov_y_deg: 90.0,
+            near: 4.0,
+            far: 20000.0,
+        },
+        size: [256, 256],
+        ..front_view()
+    }
+}
+
+fn screen(v: &ViewParams, p: [f32; 3]) -> (u32, u32) {
+    let s = v.world_to_screen(p).expect("visible");
+    (s[0] as u32, s[1] as u32)
+}
+
+#[test]
+fn a_sealed_room_above_the_sky_does_not_shadow_the_map_below() {
+    let (device, queue) = gpu_or_skip!();
+    let mut r = Renderer::new(&device, &queue);
+    mat(&mut r, WORLD, [200, 200, 200, 255], MaterialFlags::empty());
+    mat(&mut r, SKY, [120, 160, 255, 255], MaterialFlags::SKY);
+    r.upsert_object(1, box_mesh([-1024.0, -1024.0, -16.0], [1024.0, 1024.0, 0.0], WORLD));
+    r.upsert_object(2, sky_brush([-1024.0, -1024.0, 1000.0], [1024.0, 1024.0, 1016.0], WORLD));
+    r.upsert_object(3, box_mesh([-400.0, -400.0, 1500.0], [400.0, 400.0, 1516.0], WORLD));
+    r.upsert_object(4, sky_brush([-400.0, -400.0, 2000.0], [400.0, 400.0, 2016.0], WORLD));
+    r.upsert_object(5, box_mesh([120.0, -50.0, 300.0], [220.0, 50.0, 332.0], WORLD));
+    r.upsert_object(6, box_mesh([100.0, -50.0, 1700.0], [200.0, 50.0, 1732.0], WORLD));
+    r.set_object_flags(2, ObjectFlags::NO_SHADOW);
+    r.set_object_flags(4, ObjectFlags::NO_SHADOW);
+    r.set_lights(&[down_sun(0.8)], [0.05; 3]);
+    let below = looking_down([0.0, 0.0, 900.0]);
+    let img = shot(&mut r, 7, &below, "stacked_sky_below");
+    let open_at = screen(&below, [-600.0, 0.0, 0.0]);
+    let under_at = screen(&below, [-150.0, 0.0, 0.0]);
+    let shaded_at = screen(&below, [170.0, 0.0, 0.0]);
+    let open = px(&img, open_at.0, open_at.1);
+    let under_room = px(&img, under_at.0, under_at.1);
+    let shaded = px(&img, shaded_at.0, shaded_at.1);
+    assert!(open[0] > 150, "the open floor is in the sun: {open:?}");
+    assert!(
+        (i32::from(under_room[0]) - i32::from(open[0])).abs() <= 6,
+        "the room above the sky casts nothing: {under_room:?} vs {open:?}"
+    );
+    assert!(i32::from(open[0]) > i32::from(shaded[0]) + 80, "what lies under the sky still casts: {shaded:?}");
+    let inside = looking_down([0.0, 0.0, 1900.0]);
+    let img = shot(&mut r, 8, &inside, "stacked_sky_room");
+    let room_open_at = screen(&inside, [-150.0, 0.0, 1516.0]);
+    let room_shaded_at = screen(&inside, [150.0, 0.0, 1516.0]);
+    let room_open = px(&img, room_open_at.0, room_open_at.1);
+    let room_shaded = px(&img, room_shaded_at.0, room_shaded_at.1);
+    assert!(room_open[0] > 150, "the room under its own sky is in the sun: {room_open:?}");
+    assert!(i32::from(room_open[0]) > i32::from(room_shaded[0]) + 80, "the room keeps its shadows: {room_shaded:?}");
+    r.upsert_object(7, box_mesh([-700.0, -100.0, 500.0], [-500.0, 100.0, 532.0], WORLD));
+    r.set_object_flags(7, ObjectFlags::SKY_3D);
+    r.upsert_object(8, sky_brush([-700.0, -100.0, 700.0], [-500.0, 100.0, 716.0], WORLD));
+    r.set_object_flags(8, ObjectFlags::SKY_3D | ObjectFlags::NO_SHADOW);
+    let img = shot(&mut r, 7, &below, "stacked_sky_room_3d");
+    let sky_room = px(&img, open_at.0, open_at.1);
+    assert!((i32::from(sky_room[0]) - i32::from(open[0])).abs() <= 6, "the 3D skybox room casts nothing: {sky_room:?}");
+    r.remove_object(7);
+    r.remove_object(8);
+    r.upsert_object(4, box_mesh([-400.0, -400.0, 2000.0], [400.0, 400.0, 2016.0], WORLD));
+    let img = shot(&mut r, 7, &below, "stacked_sky_roofed");
+    let roofed = px(&img, under_at.0, under_at.1);
+    assert!(
+        (i32::from(roofed[0]) - i32::from(under_room[0])).abs() <= 6,
+        "with one sky left the map below is unchanged: {roofed:?}"
+    );
+    let img = shot(&mut r, 8, &inside, "stacked_sky_room_roofed");
+    let dark = px(&img, room_open_at.0, room_open_at.1);
+    assert!(i32::from(room_open[0]) > i32::from(dark[0]) + 80, "a room without sky gets no sun: {dark:?}");
+}
+
+#[test]
+fn sky_light_under_a_room_above_the_sky_is_open_sky() {
+    let (device, queue) = gpu_or_skip!();
+    let mut r = Renderer::new(&device, &queue);
+    mat(&mut r, WORLD, [200, 200, 200, 255], MaterialFlags::empty());
+    mat(&mut r, SKY, [120, 160, 255, 255], MaterialFlags::SKY);
+    r.upsert_object(1, box_mesh([-2048.0, -2048.0, -16.0], [2048.0, 2048.0, 0.0], WORLD));
+    r.upsert_object(2, sky_brush([-2048.0, -2048.0, 1000.0], [2048.0, 2048.0, 1016.0], WORLD));
+    r.upsert_object(3, box_mesh([-600.0, -600.0, 1500.0], [600.0, 600.0, 1516.0], WORLD));
+    r.upsert_object(4, sky_brush([-600.0, -600.0, 2000.0], [600.0, 600.0, 2016.0], WORLD));
+    r.set_lights(&[down_sun(0.0)], [0.5; 3]);
+    r.set_sun(SunParams { spread_deg: 0.0, sky_ambient: true });
+    let below = looking_down([0.0, 0.0, 900.0]);
+    let img = shot(&mut r, 9, &below, "stacked_sky_ambient");
+    let under_at = screen(&below, [0.0, 0.0, 0.0]);
+    let open_at = screen(&below, [-800.0, 0.0, 0.0]);
+    let (under, open) = (px(&img, under_at.0, under_at.1), px(&img, open_at.0, open_at.1));
+    assert!(open[0] > 100, "the open floor sees the sky: {open:?}");
+    assert!((i32::from(under[0]) - i32::from(open[0])).abs() <= 8, "under the room: {under:?} vs {open:?}");
+    r.upsert_object(4, box_mesh([-600.0, -600.0, 2000.0], [600.0, 600.0, 2016.0], WORLD));
+    let img = shot(&mut r, 9, &below, "stacked_sky_ambient_one_sky");
+    let again = px(&img, under_at.0, under_at.1);
+    assert!((i32::from(again[0]) - i32::from(under[0])).abs() <= 8, "{again:?} vs {under:?}");
+}
+
+#[test]
+fn hull_shadow_flag_casts_the_shadow_hull() {
+    let (device, queue) = gpu_or_skip!();
+    let mut r = Renderer::new(&device, &queue);
+    mat(&mut r, PROP, [200, 200, 200, 255], MaterialFlags::empty());
+    mat(&mut r, WORLD, [200, 200, 200, 255], MaterialFlags::empty());
+    r.upsert_object(1, box_mesh([-1024.0, -1024.0, -16.0], [1024.0, 1024.0, 0.0], WORLD));
+    let cube = r.create_model(&cube_parts(64.0));
+    let place = |x: f32, object: ObjectId| ModelInstance {
+        model: cube,
+        transform: [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [x, 0.0, 96.0, 1.0]],
+        object,
+        tint: [1.0; 4],
+        fade: [0.0; 2],
+    };
+    r.set_model_instances(&[place(0.0, MODEL_OBJ), place(-300.0, MODEL_OBJ + 1)]);
+    let slanted = PreviewLight {
+        kind: LightKind::Directional { dir: [std::f32::consts::FRAC_1_SQRT_2, 0.0, -std::f32::consts::FRAC_1_SQRT_2] },
+        ..down_sun(0.8)
+    };
+    r.set_lights(&[slanted], [0.05; 3]);
+    let view = looking_down([0.0, 0.0, 900.0]);
+    let under = screen(&view, [96.0, 0.0, 0.0]);
+    let aside = screen(&view, [96.0, 120.0, 0.0]);
+    let lit_at = screen(&view, [96.0, -150.0, 0.0]);
+    let other = screen(&view, [-204.0, 0.0, 0.0]);
+    let img = shot(&mut r, 10, &view, "hull_mesh");
+    let mesh_under = px(&img, under.0, under.1)[0];
+    let lit = px(&img, lit_at.0, lit_at.1)[0];
+    assert!((i32::from(px(&img, aside.0, aside.1)[0]) - i32::from(lit)).abs() <= 6, "nothing casts there yet");
+    assert!(i32::from(lit) > i32::from(mesh_under) + 80, "the mesh casts: {mesh_under} vs {lit}");
+    r.set_object_flags(MODEL_OBJ, ObjectFlags::HULL_SHADOW);
+    let img = shot(&mut r, 10, &view, "hull_missing");
+    assert!(i32::from(lit) > i32::from(px(&img, under.0, under.1)[0]) + 80, "without a hull the mesh still casts");
+    let p = |x: f32, y: f32| [x, y, 0.0];
+    let hull: Vec<[[f32; 3]; 3]> =
+        vec![[p(-20.0, 100.0), p(20.0, 100.0), p(20.0, 140.0)], [p(-20.0, 100.0), p(20.0, 140.0), p(-20.0, 140.0)]];
+    r.set_model_shadow_hull(cube, &hull);
+    assert!(r.has_model_shadow_hull(cube));
+    let img = shot(&mut r, 10, &view, "hull_shadow");
+    let (u, a, o) = (px(&img, under.0, under.1)[0], px(&img, aside.0, aside.1)[0], px(&img, other.0, other.1)[0]);
+    assert!(i32::from(u) > i32::from(mesh_under) + 80, "the mesh no longer casts: {u}");
+    assert!(i32::from(lit) > i32::from(a) + 80, "the hull casts where it lies: {a}");
+    assert!(i32::from(lit) > i32::from(o) + 80, "the other prop keeps its mesh shadow: {o}");
+    r.set_object_flags(MODEL_OBJ, ObjectFlags::HULL_SHADOW | ObjectFlags::NO_SHADOW);
+    let img = shot(&mut r, 10, &view, "hull_no_shadow");
+    assert!(i32::from(px(&img, aside.0, aside.1)[0]) + 6 >= i32::from(lit), "NO_SHADOW wins");
+    r.set_object_flags(MODEL_OBJ, ObjectFlags::empty());
+    let img = shot(&mut r, 10, &view, "hull_back_to_mesh");
+    assert!(i32::from(lit) > i32::from(px(&img, under.0, under.1)[0]) + 80, "the mesh casts again");
+}

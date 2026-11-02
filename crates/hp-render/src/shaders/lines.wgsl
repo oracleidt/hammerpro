@@ -50,8 +50,26 @@ fn filtered(flags: u32) -> bool {
     return false;
 }
 
+const ON_LIGHT_LUMA: f32 = 0.11;
+const ON_LIGHT_CHROMA: f32 = 1.35;
+const LUMA: vec3<f32> = vec3<f32>(0.2126, 0.7152, 0.0722);
+
+fn readable(rgb: vec3<f32>) -> vec3<f32> {
+    if (view.opts.x & OPT_LIGHT_BACKGROUND) == 0u {
+        return rgb;
+    }
+    let luma = dot(rgb, LUMA);
+    var c = rgb;
+    if luma > ON_LIGHT_LUMA {
+        c = rgb * (ON_LIGHT_LUMA / luma);
+    }
+    let grey = vec3<f32>(dot(c, LUMA));
+    return clamp(mix(grey, c, ON_LIGHT_CHROMA), vec3<f32>(0.0), vec3<f32>(1.0));
+}
+
 fn edge_color(st: ObjState) -> vec4<f32> {
-    var c = unpack_srgba(st.color);
+    var c = unpack_srgba(state_color(st));
+    c = vec4<f32>(readable(c.rgb), c.a);
     if (st.flags & F_INSTANCE) != 0u {
         c = vec4<f32>(mix(c.rgb, INSTANCE_RGB, 0.5), c.a);
     }
@@ -65,7 +83,8 @@ fn edge_color(st: ObjState) -> vec4<f32> {
         c = vec4<f32>(INVALID_RGB, 1.0);
     }
     if (st.flags & F_HOVERED) != 0u {
-        c = vec4<f32>(mix(c.rgb, vec3<f32>(1.0), 0.45), c.a);
+        let light = (view.opts.x & OPT_LIGHT_BACKGROUND) != 0u;
+        c = vec4<f32>(mix(c.rgb, select(vec3<f32>(1.0), vec3<f32>(0.0), light), 0.45), c.a);
     }
     return c;
 }

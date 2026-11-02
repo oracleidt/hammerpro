@@ -79,10 +79,8 @@ fn read_mtl(text: &str, dir: &Path, materials: &mut Vec<Material>) {
                     materials[i].color[3] = (1.0 - t).clamp(0.0, 1.0);
                 }
             }
-            "map_d" => {
-                if materials[i].alpha == Alpha::Auto {
-                    materials[i].alpha = Alpha::Mask;
-                }
+            "map_d" if materials[i].alpha == Alpha::Auto => {
+                materials[i].alpha = Alpha::Mask;
             }
             _ => {}
         }

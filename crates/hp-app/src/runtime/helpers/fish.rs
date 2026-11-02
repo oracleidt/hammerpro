@@ -2,6 +2,7 @@ use glam::DVec3;
 use hp_vmf::Entity;
 
 pub const DEFAULT_MODEL: &str = "models/Junkola.mdl";
+pub const FALLBACK_MODEL: &str = "models/props/de_inferno/goldfish.mdl";
 pub const DEFAULT_COUNT: u32 = 10;
 pub const DEFAULT_RANGE: f64 = 150.0;
 pub const MAX_RANGE: f64 = 255.0;

@@ -235,6 +235,20 @@ impl HammerProApp {
 }
 
 impl HammerProApp {
+    pub(crate) fn bevel_shortcut(&mut self, ctx: &egui::Context) -> bool {
+        if !matches!(self.state.tool, ToolId::Select | ToolId::Vertex) || !self.has_tool(ToolId::Bevel) {
+            return false;
+        }
+        let Some((view, pos)) = self.viewports.hovered_view(&self.state, ctx) else { return false };
+        if view.is_2d() || hp_tools_create::bevel::edge_at(&self.state, &view, pos, false).is_none() {
+            return false;
+        }
+        self.state.runtime.brush.bevel_start = Some((view, pos));
+        self.switch_tool(ToolId::Bevel);
+        self.state.runtime.brush.bevel_start = None;
+        true
+    }
+
     fn start_nodraw_scan(&mut self) {
         if self.pkg.brush.nodraw_scan.is_some() {
             return;
@@ -243,7 +257,7 @@ impl HammerProApp {
         let (ids, solids) = self.state.doc.hidden_face_scan();
         let (tx, rx) = std::sync::mpsc::channel();
         let spawned = std::thread::Builder::new().name("hp-nodraw-scan".to_owned()).spawn(move || {
-            let found = hp_geom::hidden_faces(&solids);
+            let found = hp_editor::background::run(|| hp_geom::hidden_faces(&solids));
             let _ = tx.send((solids, found));
         });
         match spawned {

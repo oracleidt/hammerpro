@@ -627,8 +627,16 @@ mod tests {
         assert_eq!(d["multiblend"]["weights"][2], json!([0.0, 0.0, 0.5, 0.5]), "kept");
         assert!(s.doc.to_vmf_string().contains("multiblend_color_3"));
         err(&mut s, "set_displacement_data", json!({ "face": top, "multiblend_weights": [[1, 0, 0, 0]] }));
-        err(&mut s, "set_displacement_data", json!({ "face": top, "multiblend_weights": vec![json!([2, 0, 0, 0]); 25] }));
-        err(&mut s, "set_displacement_data", json!({ "face": top, "remove_multiblend": true, "alphablend": vec![json!([0, 0, 0, 0]); 25] }));
+        err(
+            &mut s,
+            "set_displacement_data",
+            json!({ "face": top, "multiblend_weights": vec![json!([2, 0, 0, 0]); 25] }),
+        );
+        err(
+            &mut s,
+            "set_displacement_data",
+            json!({ "face": top, "remove_multiblend": true, "alphablend": vec![json!([0, 0, 0, 0]); 25] }),
+        );
         ok(&mut s, "set_displacement_data", json!({ "face": top, "remove_multiblend": true }));
         assert_eq!(ok(&mut s, "get_displacement", json!({ "face": top }))["multiblend"], json!(null));
         err(&mut s, "set_displacement_data", json!({ "face": top, "remove_multiblend": true }));

@@ -67,6 +67,10 @@ cargo build --release -p hammerpro
 
 The executable is then in `E:\builds\hammerpro\release\`. Profiles keep separate folders (`debug`, `release`, `fast`), so switching between them does not rebuild everything.
 
+## Patched dependency
+
+`vendor/wgpu-hal` is wgpu-hal 30.0.1 with one change, used through `[patch.crates-io]` in the workspace `Cargo.toml`: on Windows with Vulkan, the wait for a swapchain image to come back from the screen lasts up to 30 seconds instead of one, because a longer wait was treated as a lost device (a busy graphics card, another program or a long frame closed the editor). When wgpu is upgraded, check whether the new version still turns that timeout into a lost device; if not, remove the folder and the patch.
+
 ## Linux
 
 The workspace builds on Linux too (CI runs the checks on Windows and Linux). The window supports both Wayland and X11. Paths follow the usual folders: settings in `~/.config/HammerPro`, logs and autosaves in `~/.local/share/HammerPro`, caches in `~/.cache/HammerPro`.

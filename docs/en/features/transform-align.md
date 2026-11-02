@@ -53,7 +53,7 @@ The line under the fields counts the selected objects. Errors (nothing selected,
 
 ## Snap to grid
 
-- **Snap selection to grid** (`Ctrl+B`): moves the selection as a whole so the minimum corner of its bounds lands on the nearest point of the current grid.
+- **Snap selection to grid** (`Ctrl+B`): moves the selection as a whole so the minimum corner of its bounds lands on the nearest point of the current grid. In the Selection, Vertex and Bevel tools, `Ctrl+B` with the cursor on a brush edge in the 3D view bevels that edge instead (see [Bevel tool](bevel-tool.md)).
 - **Snap each object to grid** (`Ctrl+Shift+B`): does the same for every selected object on its own.
 
 The grid size is the current grid size (see [Grids](grids.md)).

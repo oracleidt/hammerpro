@@ -51,6 +51,9 @@ const HANDLED: &[Action] = &[
     Action::PasteKeyvalues,
     Action::FindReplaceText,
     Action::EditColor,
+    Action::SetDisplayColor,
+    Action::RandomDisplayColors,
+    Action::ResetDisplayColors,
     Action::ShowSoundBrowser,
     Action::ShowParticleBrowser,
     Action::EntityHelp,
@@ -84,6 +87,18 @@ impl Package for Entities {
             }
             Action::FindReplaceText => app.state.runtime.entities.show_find_replace = true,
             Action::EditColor => app.state.runtime.entities.edit_color = true,
+            Action::SetDisplayColor => app.state.runtime.entities.display_color_window = true,
+            Action::RandomDisplayColors | Action::ResetDisplayColors => {
+                let change = if action == Action::RandomDisplayColors {
+                    hp_editor::display_color::DisplayColor::Random
+                } else {
+                    hp_editor::display_color::DisplayColor::Reset
+                };
+                let objs = app.state.doc.selected_objects();
+                if let Err(e) = app.state.doc.set_display_color(&objs, change, false) {
+                    app.state.notify(Severity::Warning, e.to_string());
+                }
+            }
             Action::SetMaxDistance => app.state.runtime.entities.set_max_distance = true,
             Action::EditSoundscapes => app.state.runtime.entities.show_soundscapes = true,
             Action::PathInsertPoint => {

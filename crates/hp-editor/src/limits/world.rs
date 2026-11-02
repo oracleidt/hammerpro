@@ -53,6 +53,8 @@ pub struct BrushEntity {
 pub struct EntityModel {
     pub id: u32,
     pub faces: std::ops::Range<u32>,
+    pub origin: [f32; 3],
+    pub angles: [f32; 3],
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -353,9 +355,9 @@ impl BspWorld {
                 groups.len() - 1
             });
             let group = &mut groups[g];
-            for k in 0..3 {
-                group.min[k] = group.min[k].min(origin[k] - radius);
-                group.max[k] = group.max[k].max(origin[k] + radius);
+            for (k, o) in origin.iter().enumerate() {
+                group.min[k] = group.min[k].min(o - radius);
+                group.max[k] = group.max[k].max(o + radius);
             }
             g as u32
         };
@@ -436,7 +438,12 @@ impl BspWorld {
             }
             let end = world.entity_faces.len() as u32;
             if end > start {
-                world.entity_models.push(EntityModel { id: e.id, faces: start..end });
+                world.entity_models.push(EntityModel {
+                    id: e.id,
+                    faces: start..end,
+                    origin: e.origin,
+                    angles: e.angles,
+                });
             }
         }
         world.group(l, &kept, vis);
@@ -1059,7 +1066,10 @@ mod tests {
         let l = WorldLumps { lighting: &b[12], light_mode: LightMode::Hdr, brush_entities: &ents, ..lumps_of(&b) };
         let w = BspWorld::from_lumps(&l, None);
         assert!(w.faces.is_empty(), "nothing in the world");
-        assert_eq!(w.entity_models, [EntityModel { id: 42, faces: 0..1 }]);
+        assert_eq!(
+            w.entity_models,
+            [EntityModel { id: 42, faces: 0..1, origin: [100.0, 0.0, 10.0], angles: [0.0, 90.0, 0.0] }]
+        );
         let face = w.entity_faces[0];
         assert_eq!(face.light, 0, "lit like the world");
         let v = w.face_vertices(&face);

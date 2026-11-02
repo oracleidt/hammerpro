@@ -181,6 +181,7 @@ bitflags_u32! {
         COMPILED_LIGHT = 1 << 15;
         NO_PROBE = 1 << 16;
         NO_SHADOW = 1 << 17;
+        HULL_SHADOW = 1 << 18;
     }
 }
 
@@ -647,6 +648,22 @@ pub struct PreviewLight {
     pub falloff: Option<LightFalloff>,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct SunParams {
+    pub spread_deg: f32,
+    pub sky_ambient: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LightStats {
+    pub lights: u32,
+    pub directional: u32,
+    pub left_out: u32,
+    pub crowded_clusters: u32,
+    pub sky_occlusion: bool,
+    pub sky_layers: [u32; 2],
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum OrthoAxis {
     Top,
@@ -765,6 +782,7 @@ pub struct Fog {
     pub start: f32,
     pub end: f32,
     pub max_density: f32,
+    pub far_z: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -772,6 +790,7 @@ pub struct FogVolume {
     pub min: [f32; 3],
     pub max: [f32; 3],
     pub fog: Option<Fog>,
+    pub preview: Fog,
     pub active: bool,
 }
 
@@ -816,6 +835,7 @@ pub struct ViewOptions {
     pub normal_maps: bool,
     pub cubemaps: bool,
     pub light_shadows: u32,
+    pub classic_colors: bool,
 }
 
 impl Default for ViewOptions {
@@ -854,6 +874,7 @@ impl Default for ViewOptions {
             normal_maps: false,
             cubemaps: false,
             light_shadows: 0,
+            classic_colors: false,
         }
     }
 }
@@ -950,6 +971,20 @@ pub struct RenderStats {
     pub static_lines: u64,
     pub content_generation: u64,
     pub shadowed_lights: u32,
+    pub preview_lights: u32,
+    pub lights_left_out: u32,
+    pub crowded_clusters: u32,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MemoryReport {
+    pub geometry: u64,
+    pub textures: u64,
+    pub models: u64,
+    pub lightmaps: u64,
+    pub compiled: u64,
+    pub other: u64,
+    pub total: u64,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -960,4 +995,6 @@ pub enum RenderError {
     UnknownView(u32),
     #[error("GPU readback failed: {0}")]
     Readback(String),
+    #[error("the graphics card is out of memory")]
+    OutOfMemory,
 }

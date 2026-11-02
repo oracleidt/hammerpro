@@ -53,7 +53,7 @@ Directement dans le menu **Affichage** :
 | **Skybox 3D** (`Alt+V`) | La pièce autour de la `sky_camera`, à son échelle, autour de la map (voir [Caméras de skybox](sky-cameras.md)). | Activé |
 | **Modèles de collision** | Les enveloppes de collision dessinées sur les props (aussi dans l'aperçu du navigateur de modèles). | Désactivé |
 | **Afficher les collisions des modèles** | La vue 3D montre les modèles de collision à la place des modèles (un modèle sans collision montre sa boîte en orange). | Désactivé |
-| **Aperçu du brouillard** | Sous-menu : **Désactivé**, ou le brouillard d'un `env_fog_controller` de la map. | Désactivé |
+| **Aperçu du brouillard** | Sous-menu : **Désactivé**, ou le brouillard d'un `env_fog_controller` de la map (par défaut celui du jeu : le dernier marqué **Master**, sinon le premier ; un contrôleur avec **Fog Enable** à No est signalé). Aussi un bouton de la barre d'outils. Voir [Brouillard de la map](#brouillard-de-la-map). | Activé |
 | **Matériaux animés** | Les matériaux animés et les sprites s'animent. | Activé |
 | **Fondu des modèles** | Les props disparaissent entre leurs distances de fondu, comme en jeu. | Désactivé |
 | **Matériaux opaques** | Les matériaux translucides sont dessinés opaques. | Désactivé |
@@ -65,7 +65,7 @@ Directement dans le menu **Affichage** :
 | **Surligner les brushes invalides** | Les brushes qui ne sont pas fermés et convexes sont dessinés en rouge dans toutes les vues. | Activé |
 | **Afficher le nodraw** | Affiche ou masque les faces nodraw dans la vue 3D. | Affiché |
 | **Aperçu de l'eau** | L'eau dessinée comme en jeu : réfraction, brouillard de l'eau, reflet de la scène et du ciel, vagues animées. Désactivé : sa texture d'outil. | Activé |
-| **Aperçu des fog_volume** | Chaque `fog_volume` est rempli du brouillard de son contrôleur (voir [Volumes de brouillard](#volumes-de-brouillard)). | Activé |
+| **Aperçu des fog_volume** | Chaque `fog_volume` est entouré et rempli de son brouillard, avec une étiquette de ses liens et problèmes (voir [Volumes de brouillard](#volumes-de-brouillard)). Aussi un bouton de la barre d'outils. | Activé |
 | **Texture des fog_volume** | Le matériau des brushes `fog_volume` est dessiné dans la vue 3D, comme Hammer. Désactivé : seul le brouillard apparaît. | Activé |
 | **Aperçu des poissons** | Les poissons de chaque `func_fish_pool` (voir [Bancs de poissons](#bancs-de-poissons)). | Activé |
 | **Poissons qui nagent** | Les poissons nagent en cercles lents. Désactivé : ils restent immobiles. | Activé |
@@ -80,17 +80,38 @@ Le menu Affichage contient aussi **Caméra de la skybox 3D** (quand la map a plu
 
 La barre d'outils reprend les interrupteurs les plus utilisés : limite circulaire, maillage des displacements, praticabilité des displacements, nodraw, collisions des modèles, aides, modèles, textures outils, objets d'éditeur, skybox 3D, particules, simulation des cordes, la liste des modes de rendu et la vue joueur.
 
+## Brouillard de la map
+
+**Aperçu du brouillard** (activé par défaut, bouton de la barre d'outils, **Affichage > Aperçu du brouillard**) dessine le brouillard d'un `env_fog_controller` dans les vues 3D et la [vue joueur](player-view.md), comme le brouillard de la map en jeu : **Primary Fog Color** (et **Secondary Fog Color** avec **Fog Blend**, selon **Primary Fog Direction** ou les angles avec **Use Angles for Fog Dir**), **Fog Start**, **Fog End**, **Fog Max Density** et **Far Z Clip Plane** (au-delà seule la couleur du brouillard est dessinée, le ciel aussi). Modifier une clé met la vue à jour tout de suite.
+
+- Le sous-menu liste les contrôleurs de la map ; sans choix, celui du jeu est utilisé : le dernier avec l'indicateur **Master**, sinon le premier.
+- Un contrôleur avec **Fog Enable** à No ne donne pas de brouillard, comme en jeu, et la vue 3D affiche un avertissement en bas à gauche.
+- Sélectionner un contrôleur indique dans les propriétés de l'entité s'il est celui de l'aperçu et combien de `fog_volume` l'utilisent.
+
 ## Volumes de brouillard
 
-Un `fog_volume` change le brouillard des joueurs dont les yeux sont dedans : le jeu utilise alors l'`env_fog_controller` nommé par son **Fog Name** au lieu du brouillard de la map. Comme en jeu, le volume est la boîte autour de tous ses brushes, quelle que soit leur forme.
+Un `fog_volume` change le brouillard des joueurs dont les yeux sont dedans : le jeu utilise alors l'`env_fog_controller` nommé par son **Fog Name** au lieu du brouillard de la map, ainsi que le `postprocess_controller` et le `color_correction` nommés par **PostProcessName** et **Color Correction Name**. Comme en jeu, le volume est la boîte autour de tous ses brushes, quelle que soit leur forme.
 
-Avec **Aperçu des fog_volume** activé, la vue 3D remplit cette boîte du brouillard du contrôleur : sa couleur principale (et la secondaire avec **Fog Blend**, selon **Primary Fog Direction** ou les angles avec **Use Angles for Fog Dir**), **Fog Start**, **Fog End** et **Fog Max Density**. Le brouillard est aussi épais que la vue traverse la boîte, comme si vous vous teniez à son bord : ce qui est dans le volume ou derrière lui est embrumé comme vu de l'intérieur. Modifier les clés du volume ou de son contrôleur met l'aperçu à jour tout de suite.
+Avec **Aperçu des fog_volume** activé (par défaut), chaque `fog_volume` est visible dans la vue 3D dès que vous le placez :
 
-- Le contrôleur doit avoir **Fog Enable** à Yes, comme en jeu : avec No, le volume enlève le brouillard et l'aperçu ne montre rien.
+- ses brushes gardent leur matériau (`tools/toolsfog` ou un autre, voir **Texture des fog_volume**) et la boîte est entourée de la couleur de son brouillard ;
+- la boîte est remplie de son brouillard, aussi épais que la vue la traverse : ce qui est dans le volume ou derrière lui est embrumé comme vu de l'intérieur ;
+- une étiquette au-dessus de la boîte nomme le volume et son contrôleur (`fog_volume > cave_fog`) et liste en orange ce qui ne va pas. Sélectionnez le volume pour voir tous les détails et des lignes vers le contrôleur, le post-traitement et la correction colorimétrique.
+
+Le brouillard dessiné dans la boîte :
+
+| Fog Name | Brouillard dans la vue 3D | En jeu, yeux dedans |
+| --- | --- | --- |
+| Nomme un contrôleur avec **Fog Enable** à Yes | Le brouillard de ce contrôleur : couleurs, mélange, début, fin, densité max | Ce brouillard remplace celui de la map |
+| Nomme un contrôleur avec **Fog Enable** à No | L'aspect par défaut (bleu clair) et l'avertissement *a son brouillard désactivé : l'enlève en jeu* | Pas de brouillard |
+| Ne nomme rien, ou pas de **Fog Name** | L'aspect par défaut et *Aucun contrôleur "nom"* ou *Pas de Fog Name* | Le brouillard de la map reste |
+
 - **Fog Name** peut finir par `*` pour prendre le premier contrôleur dont le nom commence ainsi.
-- Le **Color Correction Name** (une table `color_correction`) n'est pas prévisualisé.
-- Dans la [vue joueur](player-view.md), le brouillard du volume remplace celui de la map tant que les yeux sont dedans, même avec **Aperçu du brouillard** désactivé ; un volume avec **Start Disabled** n'y fait rien, comme en jeu.
-- **Texture des fog_volume** désactivé cache le matériau du brush dans la vue 3D (sélectionnez le volume dans une vue 2D).
+- **PostProcessName** et **Color Correction Name** sont vérifiés : une entité absente ou d'une autre classe est listée en orange ; les effets eux-mêmes ne sont pas prévisualisés.
+- Modifier les clés du volume ou de ses contrôleurs met l'aperçu et l'étiquette à jour tout de suite.
+- Dans la [vue joueur](player-view.md), le brouillard du contrôleur remplace celui de la map tant que les yeux sont dans le volume, même avec **Aperçu du brouillard** désactivé ; un contrôleur avec **Fog Enable** à No l'enlève ; un volume avec **Start Disabled** n'y fait rien, comme en jeu. Les étiquettes et contours y sont cachés.
+- **Texture des fog_volume** désactivé cache le matériau des brushes dans la vue 3D (le contour et le brouillard restent).
+- MCP : `list_fog` donne chaque volume avec son brouillard résolu, `preview_fog` choisit le contrôleur de l'aperçu.
 
 ## Bancs de poissons
 
@@ -98,7 +119,7 @@ Un `func_fish_pool` fait apparaître `fish_count` poissons (10 par défaut) de s
 
 - Le banc lui-même apparaît comme une boîte ; sélectionnez-le pour voir une sphère et un cercle de sa **Max Range**.
 - L'aperçu dessine au plus 256 poissons par banc.
-- Un modèle absent du contenu du jeu (Garry's Mod n'a pas `models/Junkola.mdl`) montre chaque poisson comme une petite boîte de la couleur de l'entité.
+- Un modèle absent du contenu du jeu (Garry's Mod n'a pas `models/Junkola.mdl`) est prévisualisé avec le poisson rouge du contenu du jeu, `models/props/de_inferno/goldfish.mdl`, pour que le banc montre des poissons dès sa pose. En jeu un tel banc ne montre aucun poisson, aussi les propriétés de l'entité le signalent : mettez ce modèle sur le banc pour avoir les mêmes poissons en jeu. Si même ce modèle manque, chaque poisson est une petite boîte de la couleur de l'entité.
 
 ## Images de fond
 
@@ -150,6 +171,8 @@ Les images sont enregistrées dans la map (bloc `bgimages_plus` du VMF) et voyag
 | **Icônes des entités** / **Taille des icônes** | Icônes des entités dans les vues 2D (8 à 48 px). | Activé, 16 px |
 | **Caméra 3D** | Montre la caméra 3D dans les vues 2D. | Activé |
 | **Couleurs des groupes de visibilité** | Brushes dessinés de la couleur de leur visgroup. | Désactivé |
+| **Couleurs des objets en 2D** (`object_colors_2d`) | Brushes et entités dessinés dans leur couleur d'affichage (voir [Couleurs d'affichage](display-colors.md)) ; désactivé : l'aspect classique. | Activé |
+| **Couleurs des objets en 3D filaire et plat** (`object_colors_3d`) | La vue 3D utilise les couleurs d'affichage en mode filaire et plat. | Désactivé |
 
 ## Astuces
 
@@ -163,9 +186,9 @@ Les images sont enregistrées dans la map (bloc `bgimages_plus` du VMF) et voyag
 
 **Où sont passés mes props ?** Vérifiez **Afficher les modèles**, **Distance des modèles** et **Afficher les collisions des modèles**.
 
-**L'aperçu du brouillard ne montre rien.** Choisissez un contrôleur dans **Affichage > Options d'affichage > Aperçu du brouillard** : la map doit avoir un `env_fog_controller`.
+**L'aperçu du brouillard ne montre rien.** La map doit avoir un `env_fog_controller` avec **Fog Enable** à Yes (un nouveau a No, comme dans Hammer) ; la vue 3D le signale en bas à gauche. Choisissez un autre contrôleur dans **Affichage > Aperçu du brouillard**.
 
-**Mon fog_volume ne montre aucun brouillard.** Son **Fog Name** doit être le nom d'un `env_fog_controller` avec **Fog Enable** à Yes et une **Fog Max Density** au-dessus de 0.
+**Mon fog_volume montre l'aspect bleu par défaut.** Son **Fog Name** ne nomme pas un `env_fog_controller` avec **Fog Enable** à Yes : l'étiquette au-dessus du volume et les propriétés de l'entité disent lequel. En jeu un tel volume ne change rien (pas de contrôleur) ou enlève le brouillard (contrôleur au brouillard désactivé).
 
 ## Pages liées
 

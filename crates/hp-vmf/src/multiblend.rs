@@ -257,7 +257,10 @@ mod tests {
         d.alphas[1] = 127.5;
         d.alphas[2] = f64::NAN;
         let mb = MultiBlend::of_or_alphas(&d).expect("from alphas");
-        assert_eq!((mb.weights[0], mb.weights[1], mb.weights[2]), ([0.0, 1.0, 0.0, 0.0], [0.5, 0.5, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0]));
+        assert_eq!(
+            (mb.weights[0], mb.weights[1], mb.weights[2]),
+            ([0.0, 1.0, 0.0, 0.0], [0.5, 0.5, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0])
+        );
         let mut painted = MultiBlend::new(25);
         painted.paint(0, 3, 1.0);
         painted.write_to(&mut d);
@@ -268,13 +271,18 @@ mod tests {
     #[test]
     fn hammer_plus_plus_rows_survive_load_and_save_untouched() {
         let rows = |name: &str, per: usize| {
-            let mut s = format!("				{name}
+            let mut s = format!(
+                "				{name}
 				{{
-");
+"
+            );
             for r in 0..5 {
                 let vals: Vec<String> = (0..5 * per).map(|k| format!("{}", ((r * 7 + k) % 9) as f64 / 8.0)).collect();
-                s += &format!("					\"row{r}\" \"{}\"
-", vals.join(" "));
+                s += &format!(
+                    "					\"row{r}\" \"{}\"
+",
+                    vals.join(" ")
+                );
             }
             s + "				}
 "

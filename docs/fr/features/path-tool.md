@@ -70,7 +70,7 @@ Elles marchent depuis n'importe quel outil, sur les points de chemin sélectionn
 
 ## Astuces
 
-- Pour un circuit de train : choisissez `path_track`, cochez **Boucle** pour un circuit fermé, cliquez les points dans la vue de dessus, puis mettez `path_1` dans le `target` du `func_tracktrain`.
+- Pour un circuit de train : choisissez `path_track`, cochez **Boucle** pour un circuit fermé, cliquez les points dans la vue de dessus, puis mettez `path_1` dans le `target` du `func_tracktrain`. Appuyez sur `F6` pour monter dessus dans la [vue joueur](player-view.md#trains) : il suit la voie comme en jeu (appuyez sur `T` pour le démarrer quand sa **Initial Speed** vaut `0`).
 - Annuler retire les derniers points du chemin en cours, vous pouvez donc continuer à tracer après une annulation.
 - Tout est aussi accessible aux assistants IA par MCP : `list_paths`, `create_path`, `insert_path_point`, `remove_path_points`, et `get_tool_options` / `set_tool_options` avec l'outil `path` (options `class`, `base_name`, `loop`, `relink`, `offset`). Voir la [référence des outils MCP](../../MCP.md) (en anglais).
 

@@ -141,8 +141,8 @@ Every change the AI makes is **one undo step** named "MCP:" followed by what was
 | Settings | Read and change settings and key bindings. |
 | UI automation | Screenshot of a window, description of the interface, mouse and keyboard input inside the window. |
 | Windows | List the Hammer Pro windows and choose one. |
-| Editing | Duplicate, array, transform, resize, flip, snap, align, clip, carve, face outlines carved or extruded, hollow, merge, vertex editing, primitives, rooms, stairs, hint and nodraw, tie to entity, face textures (justify, fit, wrap), material replacement. |
-| Groups and visibility | Select by class, name, material or box, groups, visgroups, hide and isolate, cordons. |
+| Editing | Duplicate, array, transform, resize, flip, snap, align, clip, carve, face outlines carved or extruded, edge bevels (rounds, chamfers, coves, inner corner fills), hollow, merge, vertex editing, primitives, rooms, stairs, hint and nodraw, tie to entity, face textures (justify, fit, wrap), material replacement. |
+| Groups and visibility | Select by class, name, material or box, groups, visgroups, hide and isolate, cordons, display colors. |
 | Grids | Grid modes, custom grids (create, edit, delete, attach). |
 | Displacements | Create, destroy, paint, sculpt strokes, noise, scale, alpha, flags, tags, subdivide, sew. |
 | Instances and prefabs | func_instance, instance parameters, collapse, prefabs, sprinkle, ray tests. |

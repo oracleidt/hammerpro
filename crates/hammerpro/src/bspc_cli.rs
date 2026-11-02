@@ -1109,9 +1109,14 @@ pub fn run_rad(args: &[String]) -> i32 {
             return 1;
         }
     };
-    let problems = hp_bspc::validate::validate(&lit);
-    if !problems.is_empty() {
-        for p in &problems {
+    let before = hp_bspc::validate::validate(&data);
+    let (old, new): (Vec<String>, Vec<String>) =
+        hp_bspc::validate::validate(&lit).into_iter().partition(|p| before.contains(p));
+    for p in &old {
+        say(&format!("Warning: {p} (already in the map before the lighting)"));
+    }
+    if !new.is_empty() {
+        for p in &new {
             say(&format!("Error! {p}"));
         }
         return 1;

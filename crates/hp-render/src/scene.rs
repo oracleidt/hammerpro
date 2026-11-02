@@ -4,12 +4,14 @@ use rayon::prelude::*;
 
 use crate::arena::{Range32, RangeAlloc};
 use crate::gpu::{
-    CLASS_SHIFT, DETAIL_BIT, EdgeVertex, GpuVertex, ObjState, SLOT_MASK, SOURCE_BIT, pack_blend_vertex, pack_normal_alpha,
-    pack_rgb8,
+    CLASS_SHIFT, DETAIL_BIT, EdgeVertex, GpuVertex, ObjState, SLOT_MASK, SOURCE_BIT, pack_blend_vertex,
+    pack_normal_alpha, pack_rgb8,
 };
 use crate::types::{BlendVertex, MaterialDesc, MaterialId, ObjectFlags, ObjectId, ObjectMesh, Vertex};
 
 pub(crate) const NULL_SLOT: u32 = 0;
+const SKY_SKIPPED: ObjectFlags =
+    ObjectFlags(ObjectFlags::HIDDEN.0 | ObjectFlags::NO_3D.0 | ObjectFlags::SKY_3D.0 | ObjectFlags::BRUSH_ENTITY.0);
 pub(crate) const DEAD_SLOT: u32 = 1;
 const FIRST_SLOT: u32 = 2;
 
@@ -342,8 +344,8 @@ fn pack_mesh(mesh: ObjectMesh, slot: u32) -> Packed {
 impl Scene {
     pub fn new(arena_limits: [u32; 3]) -> Self {
         let mut states = vec![ObjState::default(); FIRST_SLOT as usize];
-        states[NULL_SLOT as usize] = ObjState { flags: 0, color: WHITE, tint: WHITE, pad: 0 };
-        states[DEAD_SLOT as usize] = ObjState { flags: ObjectFlags::HIDDEN.0, color: WHITE, tint: WHITE, pad: 0 };
+        states[NULL_SLOT as usize] = ObjState { flags: 0, color: WHITE, tint: WHITE, classic: 0 };
+        states[DEAD_SLOT as usize] = ObjState { flags: ObjectFlags::HIDDEN.0, color: WHITE, tint: WHITE, classic: 0 };
         Self {
             objects: HashMap::new(),
             free_slots: Vec::new(),
@@ -403,7 +405,14 @@ impl Scene {
 
     fn write_state(&mut self, slot: u32, flags: u32, color: u32, tint: u32) {
         if let Some(s) = self.states.get_mut(slot as usize) {
-            *s = ObjState { flags, color, tint, pad: 0 };
+            *s = ObjState { flags, color, tint, classic: s.classic };
+        }
+        self.mark_state(slot);
+    }
+
+    fn clear_state(&mut self, slot: u32) {
+        if let Some(s) = self.states.get_mut(slot as usize) {
+            *s = ObjState { flags: 0, color: WHITE, tint: WHITE, classic: 0 };
         }
         self.mark_state(slot);
     }
@@ -411,7 +420,7 @@ impl Scene {
     fn entry_mut(&mut self, id: ObjectId) -> &mut ObjEntry {
         let new_slot = if self.objects.contains_key(&id) { None } else { Some(self.alloc_slot()) };
         if let Some(slot) = new_slot {
-            self.write_state(slot, 0, WHITE, WHITE);
+            self.clear_state(slot);
         }
         self.objects.entry(id).or_insert_with(|| ObjEntry {
             slot: new_slot.unwrap_or(NULL_SLOT),
@@ -438,7 +447,7 @@ impl Scene {
             self.translucent.remove(&id);
             self.translucent_gen += 1;
         }
-        self.write_state(slot, 0, WHITE, WHITE);
+        self.clear_state(slot);
         self.free_slots.push(slot);
     }
 
@@ -489,7 +498,7 @@ impl Scene {
                 self.count_flags(id, old, 0);
                 let Some(e) = self.objects.get(&id) else { continue };
                 let slot = e.slot;
-                self.write_state(slot, 0, WHITE, WHITE);
+                self.clear_state(slot);
             }
             self.maybe_free(id);
         }
@@ -601,8 +610,93 @@ impl Scene {
         self.write_state(slot, flags, color, tint);
     }
 
+    pub fn set_classic_color(&mut self, id: ObjectId, rgb: Option<[u8; 3]>) {
+        let classic = rgb.map_or(0, pack_rgb8);
+        let e = self.entry_mut(id);
+        e.keep |= e.stored.is_some() || e.in_pending || e.ext_refs == 0;
+        let slot = e.slot;
+        match self.states.get_mut(slot as usize) {
+            Some(s) if s.classic != classic => s.classic = classic,
+            _ => return,
+        }
+        self.mark_state(slot);
+    }
+
+    pub fn wire_color(&self, id: ObjectId) -> Option<u32> {
+        self.objects.get(&id).map(|e| e.color)
+    }
+
+    pub fn classic_color(&self, id: ObjectId) -> Option<u32> {
+        let e = self.objects.get(&id)?;
+        self.states.get(e.slot as usize).map(|s| s.classic)
+    }
+
     pub fn flags(&self, id: ObjectId) -> Option<ObjectFlags> {
         self.objects.get(&id).map(|e| ObjectFlags(e.flags))
+    }
+
+    pub(crate) fn sky_signature(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = ahash::AHasher::default();
+        for m in &self.materials {
+            if !m.desc.as_ref().is_some_and(|d| d.flags.contains(crate::types::MaterialFlags::SKY)) {
+                continue;
+            }
+            for &c in &m.chunks {
+                let Some(Some(ch)) = self.chunks.get(c as usize) else { continue };
+                (c, ch.used_i).hash(&mut h);
+                for id in ch.members.keys() {
+                    let Some(e) = self.objects.get(id) else { continue };
+                    (id, e.flags & SKY_SKIPPED.0).hash(&mut h);
+                    if let Some(s) = e.stored.as_ref() {
+                        for v in s.aabb_min.to_array().iter().chain(&s.aabb_max.to_array()) {
+                            v.to_bits().hash(&mut h);
+                        }
+                        if let Some(b) = s.batch(ch.key.material) {
+                            (b.verts.len(), b.indices.len()).hash(&mut h);
+                            for v in &b.verts {
+                                (v.pos.map(f32::to_bits), v.nrm_alpha).hash(&mut h);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        h.finish()
+    }
+
+    pub(crate) fn sky_triangles(&self, travel: Vec3, out: &mut Vec<[Vec3; 3]>) {
+        let skipped = SKY_SKIPPED;
+        for m in &self.materials {
+            if !m.desc.as_ref().is_some_and(|d| d.flags.contains(crate::types::MaterialFlags::SKY)) {
+                continue;
+            }
+            for &c in &m.chunks {
+                let Some(Some(ch)) = self.chunks.get(c as usize) else { continue };
+                if ch.used_i == 0 {
+                    continue;
+                }
+                for id in ch.members.keys() {
+                    let Some(e) = self.objects.get(id) else { continue };
+                    if ObjectFlags(e.flags).intersects(skipped) {
+                        continue;
+                    }
+                    let Some(b) = e.stored.as_ref().and_then(|s| s.batch(ch.key.material)) else { continue };
+                    for t in b.indices.chunks_exact(3) {
+                        let v = |i: u32| b.verts.get(i as usize);
+                        let (Some(a), Some(bv), Some(c)) = (v(t[0]), v(t[1]), v(t[2])) else { continue };
+                        let n = [a, bv, c].iter().fold(Vec3::ZERO, |s, x| {
+                            let p = x.nrm_alpha;
+                            let f = |shift: u32| f32::from(((p >> shift) & 255) as u8 as i8) / 127.0;
+                            s + Vec3::new(f(0), f(8), f(16))
+                        });
+                        if crate::sky_layers::facing(n, travel) {
+                            out.push([Vec3::from(a.pos), Vec3::from(bv.pos), Vec3::from(c.pos)]);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     pub fn acquire_ref(&mut self, id: ObjectId) -> u32 {

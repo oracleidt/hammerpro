@@ -2,7 +2,7 @@
 
 # Actions and keyboard shortcuts
 
-Every command of Hammer Pro 1.0.1 is an *action*: one entry shared by the menus, the toolbar, the keyboard shortcuts, the command palette (`Ctrl+P`), the `--script` files and the MCP server (`run_action`, `list_actions`). This page lists all 261 actions, menu by menu, in the order the menus show them.
+Every command of Hammer Pro 1.0.2 is an *action*: one entry shared by the menus, the toolbar, the keyboard shortcuts, the command palette (`Ctrl+P`), the `--script` files and the MCP server (`run_action`, `list_actions`). This page lists all 268 actions, menu by menu, in the order the menus show them.
 
 Columns:
 
@@ -14,6 +14,8 @@ Columns:
 With the Hammer Pro set, two Hammer keys also work as extra shortcuts because they collide with nothing: `Shift+Q` (**Clear selection**) and `Shift+R` (**Show grid**). Shortcuts you change yourself always win over the chosen set. See [Keyboard shortcuts](../features/keyboard-shortcuts.md) for rebinding, conflicts and the `F1` reference window.
 
 Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, the keys of a tool while it is active, the keys of the player view) are described on the tool pages: [Camera and navigation](../features/camera-navigation.md), [Selection tool](../features/selection-tool.md), [Player view](../features/player-view.md).
+
+`Ctrl+B` (`snap_to_grid`) also starts the [bevel tool](../features/bevel-tool.md) on the brush edge under the cursor in the 3D view, with the Selection, Vertex and Bevel tools.
 
 
 ## File menu
@@ -73,6 +75,9 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Selection mode > Ignore groups | `toggle_ignore_groups` | `Ctrl+W` |  |  |
 | Properties | `properties` | `Alt+Enter` |  |  |
 | Edit color... | `edit_color` | `C` |  |  |
+| Set display color... | `set_display_color` |  |  |  |
+| Random display colors | `random_display_colors` |  |  |  |
+| Reset display colors | `reset_display_colors` |  |  |  |
 | Set maximum distance... | `set_max_distance` |  |  |  |
 
 ## Map menu
@@ -177,6 +182,8 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Display options > Fish preview | `toggle_fish_preview` |  |  |  |
 | Display options > Swimming fish | `toggle_fish_swim` |  |  |  |
 | Display options > Cubemap reflections | `toggle_cubemaps` |  |  |  |
+| Display options > Object colors in 2D | `toggle_object_colors_2d` |  |  |  |
+| Display options > Object colors in 3D wireframe and flat | `toggle_object_colors_3d` |  |  |  |
 | Display options > Show visible clusters | `toggle_pvs` |  |  |  |
 | Display options > Show nav mesh | `toggle_nav_mesh` |  |  |  |
 | Display options > Show particles | `toggle_particles` |  |  |  |
@@ -276,6 +283,7 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Overlay tool | `tool_overlay` | `Shift+O` |  |  |
 | Clipping tool | `tool_clip` | `Shift+X` |  |  |
 | Extrude / carve tool | `tool_extrude` | `Shift+I` |  |  |
+| Bevel tool | `tool_bevel` | `Shift+J` |  |  |
 | Vertex tool | `tool_vertex` | `Shift+V` |  |  |
 | Displacement tool | `tool_displacement` | `Shift+P` |  |  |
 | Polygon tool | `tool_polygon` | `Shift+N` |  |  |
@@ -322,6 +330,24 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 |---|---|---|---|---|
 | Gizmo in local space | `toggle_gizmo_local` | `Ctrl+J` |  |  |
 | Make hint brush | `make_hint_brush` |  |  |  |
+
+## Keys inside the clipping tool
+
+While the clipping tool is active, these keys go to the tool first (they win over the map shortcuts with the same key):
+
+| Key | What it does |
+|---|---|
+| `Shift+X` (again), `Tab`, `Shift+Tab` | Cycle the pieces kept: both, front, back. |
+| `Enter` | Clip. |
+| `Escape` | Clear the clip points. |
+| `C` | Three point mode in the 2D views. |
+| `X` | Cycle the axis of the `Shift` + click cut in the 3D view: Auto, X, Y, Z. |
+| `O` | Show or hide the measurements. |
+| `Shift` + click (3D) | Axis plane through the clicked point. |
+| `Ctrl` + click (3D) | Plane of the clicked face. |
+| `Alt` (held) | No snapping. |
+
+See [Clip tool](../features/clip-tool.md).
 
 ## Related pages
 

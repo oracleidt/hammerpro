@@ -81,6 +81,7 @@ impl RenderConfig {
             collision_only: r.collision_only,
             selection_outline: r.selection_outline,
             game_wireframe: state.game_wireframe(),
+            classic_colors: !r.object_colors_3d,
             ..ViewOptions::default()
         };
         let options_2d = ViewOptions {
@@ -106,6 +107,7 @@ impl RenderConfig {
             detail_2d: detail_2d(r.displacements_2d),
             walk_marks: r.disp_walkable,
             source_brush_2d: r.disp_source_2d,
+            classic_colors: !r.object_colors_2d,
             ..ViewOptions::default()
         };
         Self {
@@ -382,6 +384,18 @@ mod tests {
         assert!(p2.grid.is_some());
         assert!(matches!(p2.kind, hp_render::ViewKind::Ortho { axis: OrthoAxis::Side, .. }));
         assert_eq!(p2.background, rgb_f32(state.settings.view.background_2d));
+    }
+
+    #[test]
+    fn object_colors_per_view_kind() {
+        let mut state = hp_app::testing::test_state();
+        let cfg = RenderConfig::from_state(&state);
+        assert!(!cfg.options_2d.classic_colors, "2D views use object colors by default");
+        assert!(cfg.options_3d.classic_colors, "3D keeps the classic colors by default");
+        state.settings.render.object_colors_2d = false;
+        state.settings.render.object_colors_3d = true;
+        let cfg = RenderConfig::from_state(&state);
+        assert!(cfg.options_2d.classic_colors && !cfg.options_3d.classic_colors);
     }
 
     #[test]

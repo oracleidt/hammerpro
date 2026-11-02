@@ -5,6 +5,8 @@ use hp_editor::prop_export::{DispFace, PropGeometry, PropTri};
 use hp_fs::GameFs;
 use rayon::prelude::*;
 
+type BakedRow = (i64, Vec<([u8; 4], [u8; 4])>);
+
 pub const MAX_ATLAS: u32 = 4096;
 const MIN_CELL: f64 = 16.0;
 const PAD: u32 = 4;
@@ -305,7 +307,7 @@ pub fn bake_blends(fs: &GameFs, geo: &mut PropGeometry, folder: &str, surface_pr
         let (x0, y0) = (i64::from(cell.at.0), i64::from(cell.at.1));
         let (cw, ch) = (f64::from(cell.size.0), f64::from(cell.size.1));
         let pad = i64::from(PAD);
-        let rows: Vec<(i64, Vec<([u8; 4], [u8; 4])>)> = ((y0 - pad)..(y0 + i64::from(cell.size.1) + pad))
+        let rows: Vec<BakedRow> = ((y0 - pad)..(y0 + i64::from(cell.size.1) + pad))
             .into_par_iter()
             .map(|py| {
                 let t = ((py - y0) as f64 + 0.5) / ch;

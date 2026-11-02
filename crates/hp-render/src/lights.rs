@@ -4,11 +4,11 @@ use crate::camera::Camera;
 use crate::gpu::LightGpu;
 use crate::types::{LightFalloff, LightKind, PreviewLight};
 
-pub(crate) const MAX_LIGHTS: usize = 1024;
+pub(crate) const MAX_LIGHTS: usize = 1 << 16;
 pub(crate) const MAX_DIRECTIONAL: usize = 8;
 pub(crate) const TILE_PX: u32 = 64;
 pub(crate) const SLICES: u32 = 16;
-const MAX_PER_CLUSTER: u32 = 128;
+pub const MAX_PER_CLUSTER: u32 = 128;
 const MAX_REFS: usize = 1 << 21;
 const CLUSTER_FAR: f32 = 32768.0;
 
@@ -46,10 +46,23 @@ fn finite3(v: [f32; 3], fallback: [f32; 3]) -> [f32; 3] {
     if v.iter().all(|c| c.is_finite()) { v } else { fallback }
 }
 
-pub(crate) fn pack_lights(lights: &[PreviewLight]) -> (Vec<LightGpu>, u32) {
+pub(crate) struct Packed {
+    pub lights: Vec<LightGpu>,
+    pub n_dir: u32,
+    pub left_out: u32,
+}
+
+pub(crate) fn pack_lights(lights: &[PreviewLight]) -> Packed {
     let mut dir = Vec::new();
     let mut local = Vec::new();
-    for l in lights.iter().take(MAX_LIGHTS) {
+    let mut left_out = 0u32;
+    for l in lights {
+        let directional = matches!(l.kind, LightKind::Directional { .. });
+        let full = if directional { dir.len() >= MAX_DIRECTIONAL } else { local.len() + MAX_DIRECTIONAL >= MAX_LIGHTS };
+        if full {
+            left_out += 1;
+            continue;
+        }
         let intensity = if l.intensity.is_finite() { l.intensity.max(0.0) } else { 0.0 };
         let c = finite3(l.color, [0.0; 3]);
         let color = [c[0].max(0.0) * intensity, c[1].max(0.0) * intensity, c[2].max(0.0) * intensity];
@@ -82,23 +95,38 @@ pub(crate) fn pack_lights(lights: &[PreviewLight]) -> (Vec<LightGpu>, u32) {
                 });
             }
             LightKind::Directional { dir: d } => {
-                if dir.len() < MAX_DIRECTIONAL {
-                    let d = Vec3::from(finite3(d, [0.0, 0.0, -1.0])).normalize_or(Vec3::NEG_Z);
-                    dir.push(LightGpu {
-                        pos_range: [0.0; 4],
-                        color: [color[0], color[1], color[2], KIND_DIRECTIONAL],
-                        dir: [d.x, d.y, d.z, 0.0],
-                        cone: [0.0; 4],
-                        atten: DEFAULT_ATTEN,
-                        extra: [0.0; 4],
-                    });
-                }
+                let d = Vec3::from(finite3(d, [0.0, 0.0, -1.0])).normalize_or(Vec3::NEG_Z);
+                dir.push(LightGpu {
+                    pos_range: [0.0; 4],
+                    color: [color[0], color[1], color[2], KIND_DIRECTIONAL],
+                    dir: [d.x, d.y, d.z, 0.0],
+                    cone: [0.0; 4],
+                    atten: DEFAULT_ATTEN,
+                    extra: [0.0; 4],
+                });
             }
         }
     }
     let n_dir = dir.len() as u32;
     dir.extend(local);
-    (dir, n_dir)
+    Packed { lights: dir, n_dir, left_out }
+}
+
+fn luminance(c: [f32; 4]) -> f32 {
+    c[0] * 0.3 + c[1] * 0.59 + c[2] * 0.11
+}
+
+pub(crate) fn light_score(l: &LightGpu, at: Vec3) -> f32 {
+    let pos = Vec3::new(l.pos_range[0], l.pos_range[1], l.pos_range[2]);
+    let d = pos.distance(at).max(1.0);
+    let [c, lin, q, cap] = l.atten;
+    let dc = d.min(cap.max(1.0));
+    let denom = c + dc * (lin + dc * q);
+    let falloff = if denom > 1e-12 { 1.0 / denom } else { 1.0 };
+    let x = d / l.pos_range[3].max(1e-3);
+    let window = (1.0 - x * x * x * x).clamp(0.0, 1.0);
+    let s = luminance(l.color) * falloff * window * window;
+    if s.is_finite() { s.max(0.0) } else { 0.0 }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -131,14 +159,26 @@ impl ClusterGrid {
         }
         ((depth / self.near).ln() * self.scale).max(0.0).min((self.slices - 1) as f32) as u32
     }
+
+    fn center(&self, cam: &Camera, x: u32, y: u32, s: u32) -> Vec3 {
+        let depth = if self.scale > 0.0 { self.near * ((s as f32 + 0.5) / self.scale).exp() } else { self.near };
+        let px = ((x as f32 + 0.5) * TILE_PX as f32).min(cam.width);
+        let py = ((y as f32 + 0.5) * TILE_PX as f32).min(cam.height);
+        let nx = px / cam.width.max(1.0) * 2.0 - 1.0;
+        let ny = 1.0 - py / cam.height.max(1.0) * 2.0;
+        let aspect = cam.width / cam.height.max(1.0);
+        let (tx, ty) = (cam.tan_half_fov * aspect, cam.tan_half_fov);
+        cam.eye + cam.forward * depth + cam.right * (nx * tx * depth) + cam.up * (ny * ty * depth)
+    }
 }
 
-pub(crate) fn build_clusters(
-    cam: &Camera,
-    grid: &ClusterGrid,
-    lights: &[LightGpu],
-    first_local: u32,
-) -> (Vec<[u32; 2]>, Vec<u32>) {
+pub(crate) struct Clusters {
+    pub table: Vec<[u32; 2]>,
+    pub list: Vec<u32>,
+    pub crowded: u32,
+}
+
+pub(crate) fn build_clusters(cam: &Camera, grid: &ClusterGrid, lights: &[LightGpu], first_local: u32) -> Clusters {
     let n = grid.count();
     let mut counts = vec![0u32; n];
     let aspect = cam.width / cam.height;
@@ -184,7 +224,6 @@ pub(crate) fn build_clusters(
             for y in *y0..=*y1 {
                 for x in *x0..=*x1 {
                     if let Some(c) = counts.get_mut(idx(x, y, s))
-                        && *c < MAX_PER_CLUSTER
                         && total < MAX_REFS
                     {
                         *c += 1;
@@ -217,7 +256,26 @@ pub(crate) fn build_clusters(
             }
         }
     }
-    (table, list)
+    let mut crowded = 0u32;
+    let plane = grid.tiles_x * grid.tiles_y;
+    for (ci, t) in table.iter_mut().enumerate() {
+        if t[1] <= MAX_PER_CLUSTER {
+            continue;
+        }
+        crowded += 1;
+        let ci = ci as u32;
+        let (s, rest) = (ci / plane, ci % plane);
+        let center = grid.center(cam, rest % grid.tiles_x, rest / grid.tiles_x, s);
+        let Some(slice) = list.get_mut(t[0] as usize..(t[0] + t[1]) as usize) else { continue };
+        let mut scored: Vec<(f32, u32)> =
+            slice.iter().map(|&i| (lights.get(i as usize).map_or(0.0, |l| light_score(l, center)), i)).collect();
+        scored.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
+        for (slot, (_, i)) in slice.iter_mut().zip(scored) {
+            *slot = i;
+        }
+        t[1] = MAX_PER_CLUSTER;
+    }
+    Clusters { table, list, crowded }
 }
 
 #[cfg(test)]
@@ -263,20 +321,50 @@ mod tests {
                 falloff: None,
             });
         }
-        let (packed, n_dir) = pack_lights(&lights);
-        assert_eq!(n_dir as usize, MAX_DIRECTIONAL);
-        assert_eq!(packed.len(), MAX_DIRECTIONAL + 1);
-        assert_eq!(packed[MAX_DIRECTIONAL].color[3], KIND_POINT);
+        let p = pack_lights(&lights);
+        assert_eq!(p.n_dir as usize, MAX_DIRECTIONAL);
+        assert_eq!(p.lights.len(), MAX_DIRECTIONAL + 1);
+        assert_eq!(p.lights[MAX_DIRECTIONAL].color[3], KIND_POINT);
+        assert_eq!(p.left_out, 20 - MAX_DIRECTIONAL as u32);
         let many: Vec<PreviewLight> = (0..5000).map(|_| point([0.0; 3], 1.0)).collect();
-        assert_eq!(pack_lights(&many).0.len(), MAX_LIGHTS);
+        let p = pack_lights(&many);
+        assert_eq!((p.lights.len(), p.left_out), (5000, 0), "big maps keep every light");
+        let too_many: Vec<PreviewLight> = (0..MAX_LIGHTS + 10).map(|_| point([0.0; 3], 1.0)).collect();
+        let p = pack_lights(&too_many);
+        assert_eq!(p.lights.len() + p.left_out as usize, MAX_LIGHTS + 10, "lights left out are counted");
+        let mut sun_last = many.clone();
+        sun_last.push(PreviewLight { kind: LightKind::Directional { dir: [0.0, 0.0, -1.0] }, ..point([0.0; 3], 1.0) });
+        assert_eq!(pack_lights(&sun_last).n_dir, 1, "the sun is kept whatever its place in the list");
+    }
+
+    #[test]
+    fn crowded_clusters_keep_the_strongest_lights() {
+        let cam = cam();
+        let grid = ClusterGrid::new(&cam);
+        let mut lights: Vec<PreviewLight> = (0..MAX_PER_CLUSTER as usize + 40)
+            .map(|i| PreviewLight { intensity: 0.01, ..point([500.0, (i as f32) * 0.01, 0.0], 400.0) })
+            .collect();
+        lights.push(PreviewLight { intensity: 50.0, ..point([500.0, 0.0, 0.0], 400.0) });
+        let p = pack_lights(&lights);
+        let c = build_clusters(&cam, &grid, &p.lights, p.n_dir);
+        assert!(c.crowded > 0, "the clusters around the lights are crowded");
+        assert!(c.table.iter().all(|t| t[1] <= MAX_PER_CLUSTER));
+        let strong = (lights.len() - 1) as u32;
+        let s = grid.slice(500.0);
+        let center = ((s * grid.tiles_y + grid.tiles_y / 2) * grid.tiles_x + grid.tiles_x / 2) as usize;
+        let t = c.table[center];
+        assert_eq!(t[1], MAX_PER_CLUSTER);
+        assert!(c.list[t[0] as usize..(t[0] + t[1]) as usize].contains(&strong), "the brightest light is kept");
+        let few = pack_lights(&lights[..10]);
+        assert_eq!(build_clusters(&cam, &grid, &few.lights, few.n_dir).crowded, 0);
     }
 
     #[test]
     fn light_in_front_is_assigned_to_center_clusters() {
         let cam = cam();
         let grid = ClusterGrid::new(&cam);
-        let (lights, n_dir) = pack_lights(&[point([500.0, 0.0, 0.0], 50.0), point([-500.0, 0.0, 0.0], 50.0)]);
-        let (table, list) = build_clusters(&cam, &grid, &lights, n_dir);
+        let p = pack_lights(&[point([500.0, 0.0, 0.0], 50.0), point([-500.0, 0.0, 0.0], 50.0)]);
+        let Clusters { table, list, .. } = build_clusters(&cam, &grid, &p.lights, p.n_dir);
         assert_eq!(table.len(), grid.count());
         assert!(!list.is_empty());
         assert!(list.iter().all(|&i| i == 0));
@@ -290,8 +378,8 @@ mod tests {
     fn light_around_camera_covers_screen() {
         let cam = cam();
         let grid = ClusterGrid::new(&cam);
-        let (lights, n_dir) = pack_lights(&[point([0.0; 3], 200.0)]);
-        let (table, _) = build_clusters(&cam, &grid, &lights, n_dir);
+        let p = pack_lights(&[point([0.0; 3], 200.0)]);
+        let table = build_clusters(&cam, &grid, &p.lights, p.n_dir).table;
         assert_eq!(table[0][1], 1);
         assert_eq!(table[(grid.tiles_x * grid.tiles_y - 1) as usize][1], 1);
     }
@@ -308,9 +396,9 @@ mod tests {
             range: f32::NAN,
             falloff: None,
         }];
-        let (packed, n_dir) = pack_lights(&lights);
-        assert!(packed.iter().all(|l| l.pos_range.iter().all(|v| v.is_finite())));
-        let _ = build_clusters(&cam, &grid, &packed, n_dir);
+        let p = pack_lights(&lights);
+        assert!(p.lights.iter().all(|l| l.pos_range.iter().all(|v| v.is_finite())));
+        let _ = build_clusters(&cam, &grid, &p.lights, p.n_dir);
     }
 
     #[test]
@@ -326,11 +414,11 @@ mod tests {
         };
         let mut l = point([0.0; 3], 1000.0);
         l.falloff = Some(f);
-        let (packed, _) = pack_lights(&[l]);
+        let packed = pack_lights(&[l]).lights;
         assert_eq!(packed[0].atten, [0.0, 1.0, 0.5, 4000.0]);
         assert_eq!((packed[0].dir[3], packed[0].cone[2], packed[0].cone[3]), (900.0, 100.0, 600.0));
         assert_eq!(packed[0].extra, [2.0, 1.0, 0.0, 0.0]);
-        let (packed, _) = pack_lights(&[point([0.0; 3], 10.0)]);
+        let packed = pack_lights(&[point([0.0; 3], 10.0)]).lights;
         assert_eq!(packed[0].atten, DEFAULT_ATTEN);
         let hostile = LightFalloff {
             constant: f32::NAN,

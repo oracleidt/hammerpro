@@ -147,6 +147,8 @@ pub(crate) struct Cubes {
 
 const INFO_VECTORS: u64 = 5;
 
+pub type CubemapPixels = (u32, [Vec<[f32; 4]>; 6]);
+
 fn info_buffer(device: &wgpu::Device, capacity: u32) -> wgpu::Buffer {
     device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("hp-render cubemap slots"),
@@ -567,8 +569,7 @@ impl Renderer {
         self.check_bake_key(&source);
         let start = Instant::now();
         if self.cubes.next_face.is_none_or(|t| start >= t) {
-            loop {
-                let Some(cur) = self.next_cube_face() else { break };
+            while let Some(cur) = self.next_cube_face() {
                 let face = Instant::now();
                 self.draw_probe_face(cur, &source);
                 let took = face.elapsed();
@@ -1055,7 +1056,7 @@ impl Renderer {
         self.finish_staging(slot, 1.0);
     }
 
-    pub fn read_cubemap(&self, id: CubemapId) -> Result<(u32, [Vec<[f32; 4]>; 6]), RenderError> {
+    pub fn read_cubemap(&self, id: CubemapId) -> Result<CubemapPixels, RenderError> {
         let slot = self.cubes.slots.get(usize::from(id.0)).filter(|s| s.ready);
         let Some(slot) = slot else { return Err(RenderError::Readback(format!("cubemap {} is not ready", id.0))) };
         let gpu = &self.cubes.gpu;

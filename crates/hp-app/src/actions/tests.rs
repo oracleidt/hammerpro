@@ -338,6 +338,7 @@ fn tools_follow_the_hammer_order_and_keys() {
             T::Overlay,
             T::Clip,
             T::Extrude,
+            T::Bevel,
             T::Vertex,
             T::Path,
             T::Polygon,
@@ -412,4 +413,18 @@ fn tables_are_clean() {
             assert!(seen.insert(*k), "key {k} is in two tables");
         }
     }
+}
+
+#[test]
+fn take_action_consumes_only_that_action() {
+    let keys = KeyBindings::default();
+    let ctrl = egui::Modifiers { ctrl: true, command: true, ..egui::Modifiers::NONE };
+    let press = |key, modifiers, repeat| egui::Event::Key { key, physical_key: None, pressed: true, repeat, modifiers };
+    let mut events = vec![press(egui::Key::A, ctrl, false), press(egui::Key::B, ctrl, false)];
+    assert!(keys.take_action(&mut events, Action::SnapToGrid));
+    assert_eq!(events.len(), 1, "only Ctrl+B was taken");
+    assert!(!keys.take_action(&mut events, Action::SnapToGrid));
+    let mut repeated = vec![press(egui::Key::B, ctrl, true)];
+    assert!(!keys.take_action(&mut repeated, Action::SnapToGrid), "a held key does not start it again");
+    assert_eq!(keys.take_triggered(&mut events), vec![Action::SelectAll]);
 }

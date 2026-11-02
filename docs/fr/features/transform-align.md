@@ -53,7 +53,7 @@ La ligne sous les champs compte les objets sélectionnés. Les erreurs (rien de 
 
 ## Aligner sur la grille
 
-- **Aligner la sélection sur la grille** (`Ctrl+B`) : déplace la sélection d'un bloc pour que le coin minimum de sa boîte englobante tombe sur le point le plus proche de la grille actuelle.
+- **Aligner la sélection sur la grille** (`Ctrl+B`) : déplace la sélection d'un bloc pour que le coin minimum de sa boîte englobante tombe sur le point le plus proche de la grille actuelle. Dans les outils Sélection, Vertex et Biseau, `Ctrl+B` avec le curseur sur une arête de brush dans la vue 3D biseaute cette arête à la place (voir [Outil biseau](bevel-tool.md)).
 - **Aligner chaque objet sur la grille** (`Ctrl+Maj+B`) : fait la même chose pour chaque objet sélectionné, séparément.
 
 La taille utilisée est la taille de grille actuelle (voir [Grilles](grids.md)).

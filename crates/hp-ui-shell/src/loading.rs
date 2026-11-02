@@ -608,7 +608,7 @@ mod tests {
             let t = f64::from(i) / 240.0;
             let (start, sweep) = arc_at(t);
             assert!((0.0..TAU).contains(&start), "{t}: {start}");
-            assert!(sweep >= ARC_MIN * TAU - 1e-9 && sweep <= (ARC_MIN + ARC_GROW) * TAU + 1e-9, "{t}: {sweep}");
+            assert!((ARC_MIN * TAU - 1e-9..=(ARC_MIN + ARC_GROW) * TAU + 1e-9).contains(&sweep), "{t}: {sweep}");
             if let Some((s0, w0)) = last {
                 let ds = (start - s0).rem_euclid(TAU);
                 assert!(ds < 0.15, "the arc start never jumps ({t}: {ds})");

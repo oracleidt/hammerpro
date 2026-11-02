@@ -37,7 +37,8 @@ impl HiddenFaces {
         HiddenFaces {
             all_tools: !state.scene_options().show_tool_textures,
             groups: display.hidden_tools,
-            sky_holes: r.sky_see_through && (r.sky_preview || (r.skybox_3d && state.runtime.render.sky_camera.is_some())),
+            sky_holes: r.sky_see_through
+                && (r.sky_preview || (r.skybox_3d && state.runtime.render.sky_camera.is_some())),
         }
     }
 

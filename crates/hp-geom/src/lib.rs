@@ -2,6 +2,7 @@
 
 mod aabb;
 mod angles;
+mod bevel;
 mod brush;
 mod coverage;
 mod csg;
@@ -22,14 +23,19 @@ pub use angles::{
     align_angles_to_normal, align_to_normal, angle_matrix, angles_to_quat, angles_to_vectors, clean_angles,
     matrix_angles, quat_to_angles, transform_angles, transform_angles_mat,
 };
+pub use bevel::{
+    BEVEL_SMOOTHING_GROUP, BevelIssue, BevelKind, BevelParams, BevelResult, MAX_BEVEL_RADIUS, MAX_BEVEL_SEGMENTS,
+    MIN_BEVEL_CHORD, MIN_BEVEL_RADIUS, bevel_kinds, bevel_limit, bevel_opening, bevel_segments, bevel_solid,
+    brush_edges,
+};
 pub use brush::{
     BASE_POLYGON_HALF_SIZE, FaceGeom, SolidGeom, base_polygon, build_solid, build_solid_from_planes, build_solids,
     clip_polygon, triangulate_fan, triangulate_fan_into, validate_solid,
 };
 pub use coverage::{CoverageSolid, HiddenFace, hidden_faces};
 pub use csg::{
-    ClipPiece, carve, carve_traced, clip_solid, clip_solid_traced, hollow, hollow_traced, merge_convex, merge_exact,
-    offset_side, union_volume,
+    ClipPiece, MIN_CLIP_PIECE, carve, carve_traced, clip_solid, clip_solid_traced, hollow, hollow_traced, merge_convex,
+    merge_exact, offset_side, plane_splits, union_volume,
 };
 pub use disp::{
     DISP_FLAG_NO_HULL, DISP_FLAG_NO_PHYSICS, DISP_FLAG_NO_RAY, DISP_TAG_BUILDABLE, DISP_TAG_FORCE_BUILDABLE_BIT,

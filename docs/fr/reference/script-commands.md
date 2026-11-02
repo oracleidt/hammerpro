@@ -64,7 +64,7 @@
 | Commande | Effet |
 |---|---|
 | `action ID` | Lance une action par son identifiant, comme son entrée de menu ou son raccourci (`compile_now`, `toggle_grid`...). Les identifiants sont listés dans [Actions et raccourcis](actions-shortcuts.md). Un identifiant inconnu affiche `unknown action`. |
-| `tool NOM` | Change d'outil : `select`, `camera`, `entity`, `block`, `texture`, `decal`, `overlay`, `clip`, `extrude`, `vertex`, `path`, `polygon`, `curve`, `sprinkle`, `displacement`, `cordon`. |
+| `tool NOM` | Change d'outil : `select`, `camera`, `entity`, `block`, `texture`, `decal`, `overlay`, `clip`, `extrude`, `bevel`, `vertex`, `path`, `polygon`, `curve`, `sprinkle`, `displacement`, `cordon`. |
 | `tool_option CLÉ VALEUR` | Règle une option de l'outil actif (voir Options des outils plus bas). La valeur est un seul mot : utilisez des virgules dans les listes (`custom_axis 0,0,1`). Une clé inconnue ou une mauvaise valeur affiche `tool ... has no option ...`. |
 | `open CHEMIN` | Ouvre une map et attend son chargement (jusqu'à 120 secondes). Si la map est déjà ouverte, son onglet est affiché. |
 | `save CHEMIN` | Enregistre la map dans CHEMIN, sans boîte de dialogue. |
@@ -96,6 +96,7 @@
 | `screenshot_window NOM CHEMIN` | Enregistre une capture d'une fenêtre de dialogue affichée dans sa propre fenêtre : `compile`, `uv_editor` ou `portals` (comme l'outil MCP `screenshot_window`). |
 | `log TEXTE` | Affiche `script: TEXTE` sur stderr. |
 | `stats` | Affiche la fréquence d'images, le temps par image, la pire image, le nombre de solides, faces, entités et objets sélectionnés, l'état des ressources, et les statistiques du rendu, des particules et des cubemaps. Dans la vue joueur, affiche aussi les styles de lumière. |
+| `vram` | Affiche l'utilisation de la mémoire graphique : utilisation et budget en Mo, d'où vient l'utilisation (`driver` pour le pilote ou `estimate` pour une estimation), la pression (`normal`, `high`, `critical`), la répartition estimée (géométrie, textures, modèles, lightmaps, monde compilé, autre, maps gardées pour les onglets en arrière-plan), la limite de taille des textures, les erreurs de mémoire insuffisante vues et le nombre de libérations de mémoire. |
 | `history` | Affiche les étapes d'annulation et de rétablissement, si une modification est encore ouverte, et les limites de la sélection. |
 | `assert_selected N` | Arrête l'exécution avec le code 3 si le nombre d'objets sélectionnés n'est pas exactement N. |
 | `assert_tabs N` | Arrête l'exécution avec le code 3 si le nombre de maps ouvertes n'est pas exactement N. |
@@ -166,6 +167,17 @@
 | `depth` | Profondeur en unités, 0,125 à 16384. |
 | `through` | on/off : creuser toute l'épaisseur du brush. |
 | `new_faces` | `face` (la texture de la face cliquée) ou `current` (le matériau actuel) sur les nouvelles faces. |
+
+### Outil biseau (`tool bevel`)
+
+| Clé | Valeurs |
+|---|---|
+| `radius` | Rayon de l'arrondi en unités, 0,25 à 16384 (limité par les faces pendant le biseau). |
+| `segments` | Faces de l'arrondi, 1 (chanfrein plat) à 32. |
+| `inverse` | on/off : biseau concave (une gorge, ou un arrondi qui remplit un coin intérieur). |
+| `new_faces` | `face` (les textures autour de l'arête, enroulées) ou `current` (le matériau courant) sur les faces arrondies. |
+
+Pour biseauter depuis un script, pointez l'arête et envoyez sa touche : `move @v0:0.5,0.4` puis `key Ctrl+B`, `scroll @v0:0.5,0.4 2` pour 2 segments de plus, `key B` pour le biseau inversé, `key Enter` pour appliquer.
 
 ### Outil texture et éditeur d'UV (`tool texture`)
 

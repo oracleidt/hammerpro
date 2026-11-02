@@ -29,6 +29,7 @@ hammerpro --rad [lighting options] <map.bsp>
 | `--tool NAME` | Tool active at startup. Names (case ignored): `select`, `camera`, `entity`, `block`, `texture`, `decal`, `overlay`, `clip`, `vertex`, `path`, `polygon`, `curve`, `sprinkle`, `displacement`, `cordon`. An unknown name is ignored. | `select` |
 | `--script file.txt` | Automated run: plays the commands of a script file (mouse, keys, actions, screenshots, asserts). See [Script commands](script-commands.md). | off |
 | `--bench-open map.vmf` | Automated run: opens the map, waits until it is drawn and the game content has settled, prints the startup and open timings to stdout as `key=value` pairs and closes. | off |
+| `--restore-session list.txt` | Opens the maps of a list written by Hammer Pro when it restarts after a graphics device loss (one tab per map, modified maps from their saved changes), then deletes the list. See [Graphics device lost](../troubleshooting/graphics-device-lost.md). | off |
 
 An unknown argument starting with `--` prints `unknown argument: ...` on stderr and is ignored.
 

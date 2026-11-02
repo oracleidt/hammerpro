@@ -1,7 +1,9 @@
 use hp_app::extend::{SettingsPage, page_order};
 use hp_app::i18n::TrTable;
-use hp_app::settings::{Disp2dSetting, Disp2dViewSetting, Models2dSetting, RenderSettings};
-use hp_app::{AppState, t};
+use hp_app::settings::{
+    Disp2dSetting, Disp2dViewSetting, Models2dSetting, PropShadowSetting, RenderSettings, StaticPropShadows,
+};
+use hp_app::{AppState, t, tf};
 
 use crate::common::heading;
 
@@ -34,6 +36,7 @@ impl SettingsPage for RenderPage {
 
     fn ui(&mut self, ui: &mut egui::Ui, state: &mut AppState) {
         let mut changed = false;
+        let compiled = state.settings.compile.static_prop_shadows();
         let r = &mut state.settings.render;
         heading(ui, t!("shell.render.view_3d"));
         egui::Grid::new("hp_shell_render_3d").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
@@ -79,6 +82,27 @@ impl SettingsPage for RenderPage {
         );
         changed |= check(ui, &mut r.water_preview, t!("shell.render.water"), t!("shell.render.water_tip"));
         changed |= check(ui, &mut r.normal_maps, t!("shell.render.normal_maps"), t!("shell.render.normal_maps_tip"));
+        changed |= check(
+            ui,
+            &mut r.light_preview_hdr,
+            t!("shell.render.light_preview_hdr"),
+            t!("shell.render.light_preview_hdr_tip"),
+        );
+        changed |=
+            check(ui, &mut r.sky_occlusion, t!("shell.render.sky_occlusion"), t!("shell.render.sky_occlusion_tip"));
+        ui.horizontal(|ui| {
+            ui.label(t!("shell.render.prop_shadows")).on_hover_text(t!("shell.render.prop_shadows_tip"));
+            egui::ComboBox::from_id_salt("hp_shell_render_prop_shadows")
+                .selected_text(prop_shadows_label(r.prop_shadows, compiled))
+                .show_ui(ui, |ui| {
+                    for m in PropShadowSetting::ALL {
+                        changed |= ui
+                            .selectable_value(&mut r.prop_shadows, m, prop_shadows_label(m, compiled))
+                            .on_hover_text(t!("shell.render.prop_shadows_tip"))
+                            .changed();
+                    }
+                });
+        });
         changed |= check(ui, &mut r.cubemaps, t!("shell.render.cubemaps"), t!("shell.render.cubemaps_tip"));
         ui.add_enabled_ui(r.cubemaps, |ui| {
             changed |=
@@ -147,6 +171,18 @@ impl SettingsPage for RenderPage {
             t!("shell.render.visgroup_colors"),
             t!("shell.render.visgroup_colors_tip"),
         );
+        changed |= check(
+            ui,
+            &mut r.object_colors_2d,
+            t!("shell.render.object_colors_2d"),
+            t!("shell.render.object_colors_2d_tip"),
+        );
+        changed |= check(
+            ui,
+            &mut r.object_colors_3d,
+            t!("shell.render.object_colors_3d"),
+            t!("shell.render.object_colors_3d_tip"),
+        );
 
         heading(ui, t!("shell.render.tools"));
         ui.horizontal_wrapped(|ui| {
@@ -202,6 +238,42 @@ impl SettingsPage for RenderPage {
             ui.end_row();
         });
         changed |= check(ui, &mut r.vsync, t!("shell.render.vsync"), t!("shell.render.vsync_tip"));
+
+        heading(ui, t!("shell.render.vram"));
+        egui::Grid::new("hp_shell_render_vram").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
+            ui.label(t!("shell.render.vram_budget"));
+            changed |= ui
+                .add(
+                    egui::DragValue::new(&mut r.vram_budget_mb)
+                        .range(0..=hp_app::settings::MAX_VRAM_BUDGET_MB)
+                        .speed(16.0)
+                        .suffix(" MB")
+                        .custom_formatter(|v, _| {
+                            if v < 0.5 { t!("shell.render.vram_auto").to_owned() } else { format!("{v:.0} MB") }
+                        }),
+                )
+                .on_hover_text(t!("shell.render.vram_budget_tip"))
+                .changed();
+            ui.end_row();
+        });
+        changed |= check(
+            ui,
+            &mut r.keep_background_maps_on_gpu,
+            t!("shell.render.vram_keep_tabs"),
+            t!("shell.render.vram_keep_tabs_tip"),
+        );
+        let g = &state.runtime.gpu;
+        if g.budget > 0 {
+            let source = if g.source == hp_app::runtime::VramSource::Driver {
+                t!("shell.render.vram_driver")
+            } else {
+                t!("shell.render.vram_estimate")
+            };
+            ui.label(egui::RichText::new(tf!("shell.render.vram_now", g.usage >> 20, g.budget >> 20, source)).weak());
+        }
+        if ui.button(t!("shell.render.vram_free")).on_hover_text(t!("shell.render.vram_free_tip")).clicked() {
+            state.runtime.gpu.release_request = Some(false);
+        }
         if changed {
             state.settings_dirty = true;
         }
@@ -218,6 +290,19 @@ fn disp_2d_label(m: Disp2dSetting) -> &'static str {
         Disp2dSetting::Mesh => t!("shell.render.disps_mesh"),
         Disp2dSetting::SelectedMesh => t!("shell.render.disps_selected"),
         Disp2dSetting::Outline => t!("shell.render.disps_outline"),
+    }
+}
+
+fn prop_shadows_label(m: PropShadowSetting, compiled: StaticPropShadows) -> String {
+    let shape = |s: StaticPropShadows| match s {
+        StaticPropShadows::None => t!("shell.render.prop_shadows_none"),
+        StaticPropShadows::Collision => t!("shell.render.prop_shadows_collision"),
+        StaticPropShadows::Mesh => t!("shell.render.prop_shadows_mesh"),
+    };
+    match m {
+        PropShadowSetting::Auto => tf!("shell.render.prop_shadows_auto", shape(compiled)),
+        PropShadowSetting::Mesh => shape(StaticPropShadows::Mesh).to_owned(),
+        PropShadowSetting::Collision => shape(StaticPropShadows::Collision).to_owned(),
     }
 }
 
@@ -259,6 +344,37 @@ pub(crate) const TR: TrTable = &[
     ),
     ("shell.render.radius_culling", "Radius culling", "Limite de distance circulaire"),
     ("shell.render.light_shadows", "Shadowed lights", "Lumières avec ombres"),
+    ("shell.render.light_preview_hdr", "HDR light values", "Valeurs de lumière HDR"),
+    (
+        "shell.render.light_preview_hdr_tip",
+        "Lit mode: the lights use their HDR values (_lightHDR, _lightscaleHDR, _ambientHDR, _AmbientScaleHDR) like \
+         the game on a map compiled with HDR. Off: the LDR values (_light, _ambient).",
+        "Mode éclairé : les lumières prennent leurs valeurs HDR (_lightHDR, _lightscaleHDR, _ambientHDR, \
+         _AmbientScaleHDR) comme le jeu sur une map compilée en HDR. Désactivé : les valeurs LDR (_light, _ambient).",
+    ),
+    ("shell.render.sky_occlusion", "Sky light only under the sky", "Lumière du ciel seulement sous le ciel"),
+    ("shell.render.prop_shadows", "Static prop shadows", "Ombres des props statiques"),
+    (
+        "shell.render.prop_shadows_tip",
+        "Lit mode: what the prop_static entities cast shadows with. Auto follows the compile: the triangles they draw \
+         when the lighting step runs with -StaticPropPolys, their collision model otherwise (like VRAD), none with \
+         -nostaticpropshadows. Props with disableshadows 1 never cast.",
+        "Mode éclairé : ce avec quoi les prop_static projettent leurs ombres. Auto suit la compilation : les \
+         triangles qu'ils dessinent quand l'étape d'éclairage tourne avec -StaticPropPolys, leur modèle de collision \
+         sinon (comme VRAD), aucune avec -nostaticpropshadows. Les props avec disableshadows 1 n'en projettent jamais.",
+    ),
+    ("shell.render.prop_shadows_auto", "Auto ({0})", "Auto ({0})"),
+    ("shell.render.prop_shadows_mesh", "Model triangles", "Triangles du modèle"),
+    ("shell.render.prop_shadows_collision", "Collision model", "Modèle de collision"),
+    ("shell.render.prop_shadows_none", "None", "Aucune"),
+    (
+        "shell.render.sky_occlusion_tip",
+        "Lit mode: the ambient light of the light_environment (_ambient) only reaches what sees the sky, like VRAD: \
+         interiors and covered places get none, walls get half of it. Off: the whole map gets it.",
+        "Mode éclairé : la lumière ambiante du light_environment (_ambient) n'atteint que ce qui voit le ciel, comme \
+         VRAD : les intérieurs et les endroits couverts n'en reçoivent pas, les murs en reçoivent la moitié. \
+         Désactivé : toute la map la reçoit.",
+    ),
     (
         "shell.render.light_shadows_tip",
         "Lit mode: how many point and spot lights near the camera cast shadows (0: only the sun)",
@@ -299,8 +415,12 @@ pub(crate) const TR: TrTable = &[
     ("shell.render.normal_maps", "Relief (normal maps)", "Relief (normal maps)"),
     (
         "shell.render.normal_maps_tip",
-        "The normal maps of the materials ($bumpmap, $ssbump) give the surfaces their relief in the 3D view:          editor shading, lighting preview, baked lighting and player view with their bumped lightmaps, props and model browser. Off: flat          surfaces and less video memory.",
-        "Les normal maps des matériaux ($bumpmap, $ssbump) donnent leur relief aux surfaces dans la vue 3D :          ombrage de l'éditeur, aperçu de l'éclairage, éclairage précalculé et vue joueur avec leurs lightmaps bumpées, props et navigateur de modèles.          Désactivé : surfaces plates et moins de mémoire vidéo.",
+        "The normal maps of the materials ($bumpmap, $ssbump) give the surfaces their relief in the 3D view: \
+         editor shading, lighting preview, baked lighting and player view with their bumped lightmaps, props and model browser. Off: flat \
+         surfaces and less video memory.",
+        "Les normal maps des matériaux ($bumpmap, $ssbump) donnent leur relief aux surfaces dans la vue 3D : \
+         ombrage de l'éditeur, aperçu de l'éclairage, éclairage précalculé et vue joueur avec leurs lightmaps bumpées, props et navigateur de modèles. \
+         Désactivé : surfaces plates et moins de mémoire vidéo.",
     ),
     ("shell.render.cubemaps", "Cubemap reflections", "Reflets des cubemaps"),
     (
@@ -332,26 +452,41 @@ pub(crate) const TR: TrTable = &[
     ("shell.render.fog", "Fog preview", "Aperçu du brouillard"),
     (
         "shell.render.fog_tip",
-        "Applies the fog of an env_fog_controller (choose it in View > Fog preview)",
-        "Applique le brouillard d'un env_fog_controller (choisissez-le dans Affichage > Aperçu du brouillard)",
+        "Applies the fog of an env_fog_controller to the 3D views and the player view, live from its keys \
+         (colors, blend, start, end, max density, Fog Enable, Far Z Clip). Choose the controller in View > Fog \
+         preview; one with Fog Enable at No gives no fog, like in game.",
+        "Applique le brouillard d'un env_fog_controller aux vues 3D et à la vue joueur, en direct depuis ses \
+         clés (couleurs, mélange, début, fin, densité max, Fog Enable, Far Z Clip). Choisissez le contrôleur dans \
+         Affichage > Aperçu du brouillard ; avec Fog Enable à No il n'y a pas de brouillard, comme en jeu.",
     ),
     ("shell.render.fog_volumes", "Fog volume preview", "Aperçu des fog_volume"),
     (
         "shell.render.fog_volumes_tip",
-        "Fills each fog_volume brush with the fog of the env_fog_controller its Fog Name points to (color, start,          end, max density, blend colors), as thick as the view crosses it. In the player view that fog replaces          the map fog while the eyes are inside the volume, like in game.",
-        "Remplit chaque brush fog_volume du brouillard de l'env_fog_controller que vise son Fog Name (couleur,          début, fin, densité max, couleurs mélangées), aussi épais que la vue le traverse. Dans la vue joueur ce          brouillard remplace celui de la carte tant que les yeux sont dans le volume, comme en jeu.",
+        "Fills each fog_volume with its fog: the one of the env_fog_controller its Fog Name points to, or a \
+         default fog look with a warning label when that controller is missing or has its fog disabled. The \
+         label above the volume also shows its Post Process and Color Correction links. In the player view \
+         the fog of the controller replaces the map fog while the eyes are inside the volume, like in game.",
+        "Remplit chaque fog_volume de son brouillard : celui de l'env_fog_controller que vise son Fog Name, \
+         ou un brouillard par défaut avec une étiquette d'avertissement quand ce contrôleur manque ou a son \
+         brouillard désactivé. L'étiquette au-dessus du volume montre aussi ses liens Post Process et Color \
+         Correction. Dans la vue joueur le brouillard du contrôleur remplace celui de la carte tant que les \
+         yeux sont dans le volume, comme en jeu.",
     ),
     ("shell.render.fog_volume_texture", "Fog volume texture", "Texture des fog_volume"),
     (
         "shell.render.fog_volume_texture_tip",
-        "Draws the material of the fog_volume brushes (tools/toolstrigger...) in the 3D view, like Hammer. Off:          only the fog shows.",
-        "Dessine le matériau des brushes fog_volume (tools/toolstrigger...) dans la vue 3D, comme Hammer.          Désactivé : seul le brouillard apparaît.",
+        "Draws the material of the fog_volume brushes (tools/toolsfog, tools/toolstrigger...) in the 3D view, \
+         like Hammer. Off: only the fog shows.",
+        "Dessine le matériau des brushes fog_volume (tools/toolsfog, tools/toolstrigger...) dans la vue 3D, \
+         comme Hammer. Désactivé : seul le brouillard apparaît.",
     ),
     ("shell.render.fish", "Fish preview", "Aperçu des poissons"),
     (
         "shell.render.fish_tip",
-        "Draws the fish of each func_fish_pool: its model fish_count times, scattered within max_range of the          entity and kept under the water surface.",
-        "Dessine les poissons de chaque func_fish_pool : son modèle fish_count fois, dispersé à moins de          max_range de l'entité et gardé sous la surface de l'eau.",
+        "Draws the fish of each func_fish_pool: its model fish_count times, scattered within max_range of the \
+         entity and kept under the water surface.",
+        "Dessine les poissons de chaque func_fish_pool : son modèle fish_count fois, dispersé à moins de \
+         max_range de l'entité et gardé sous la surface de l'eau.",
     ),
     ("shell.render.fish_swim", "Swimming fish", "Poissons qui nagent"),
     (
@@ -456,6 +591,22 @@ pub(crate) const TR: TrTable = &[
         "Brushes are drawn in the color of their visgroup",
         "Les brushes sont dessinés de la couleur de leur groupe de visibilité",
     ),
+    ("shell.render.object_colors_2d", "Use object colors in 2D", "Couleurs des objets en 2D"),
+    (
+        "shell.render.object_colors_2d_tip",
+        "Draw brushes and entities in the display color chosen for them; off: the classic look",
+        "Dessine les brushes et entités dans la couleur d'affichage choisie ; désactivé : l'aspect classique",
+    ),
+    (
+        "shell.render.object_colors_3d",
+        "Object colors in 3D wireframe and flat",
+        "Couleurs des objets en 3D filaire et plat",
+    ),
+    (
+        "shell.render.object_colors_3d_tip",
+        "The 3D view in wireframe or flat mode also uses the display colors",
+        "La vue 3D en mode filaire ou plat utilise aussi les couleurs d'affichage",
+    ),
     ("shell.render.tools", "Tool textures hidden in 3D", "Textures outils masquées en 3D"),
     ("shell.render.hide_nodraw", "Nodraw", "Nodraw"),
     ("shell.render.hide_clips", "Clips", "Clips"),
@@ -527,5 +678,32 @@ pub(crate) const TR: TrTable = &[
         "shell.render.vsync_tip",
         "Waits for the screen refresh (applies after a restart)",
         "Attend le rafraîchissement de l'écran (s'applique après un redémarrage)",
+    ),
+    ("shell.render.vram", "Graphics memory", "Mémoire graphique"),
+    ("shell.render.vram_budget", "Graphics memory budget", "Budget de mémoire graphique"),
+    ("shell.render.vram_auto", "Automatic", "Automatique"),
+    (
+        "shell.render.vram_budget_tip",
+        "How much graphics card memory Hammer Pro may use. Automatic: 90% of what Windows gives the program (or 3 GB, 1.5 GB on integrated graphics, when the driver does not tell). Above 85% the maps open in other tabs are freed from the graphics card; above the budget textures are shown at a lower resolution until memory is free again.",
+        "Quantité de mémoire de la carte graphique que Hammer Pro peut utiliser. Automatique : 90 % de ce que Windows donne au programme (ou 3 Go, 1,5 Go sur une puce graphique intégrée, quand le pilote ne le dit pas). Au-delà de 85 %, les maps ouvertes dans les autres onglets sont retirées de la carte graphique ; au-delà du budget, les textures sont affichées en plus basse résolution jusqu'à ce que la mémoire se libère.",
+    ),
+    (
+        "shell.render.vram_keep_tabs",
+        "Keep other tabs on the graphics card",
+        "Garder les autres onglets sur la carte graphique",
+    ),
+    (
+        "shell.render.vram_keep_tabs_tip",
+        "Switching tabs is instant, but each open map uses graphics memory. Off: a map is loaded again on the graphics card when you show its tab.",
+        "Le changement d'onglet est instantané, mais chaque map ouverte utilise de la mémoire graphique. Désactivé : une map est rechargée sur la carte graphique quand vous affichez son onglet.",
+    ),
+    ("shell.render.vram_now", "In use: {0} MB of {1} MB ({2})", "Utilisée : {0} Mo sur {1} Mo ({2})"),
+    ("shell.render.vram_driver", "measured by the driver", "mesurée par le pilote"),
+    ("shell.render.vram_estimate", "estimated", "estimée"),
+    ("shell.render.vram_free", "Free graphics memory now", "Libérer la mémoire graphique maintenant"),
+    (
+        "shell.render.vram_free_tip",
+        "Frees the maps of other tabs, the textures and models no open map uses, and the thumbnails",
+        "Libère les maps des autres onglets, les textures et modèles qu'aucune map ouverte n'utilise, et les miniatures",
     ),
 ];

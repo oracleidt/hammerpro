@@ -16,6 +16,9 @@ rayon.workspace = true
 ahash.workspace = true
 texpresso.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Win32_Graphics_Dxgi"] }
+
 [dev-dependencies]
 pollster.workspace = true
 image.workspace = true

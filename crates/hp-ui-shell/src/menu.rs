@@ -78,7 +78,7 @@ fn hammer_order(group: MenuGroup) -> &'static [Action] {
     }
 }
 
-const TOOLS_MENU_ORDER: [Action; 17] = [
+const TOOLS_MENU_ORDER: [Action; 18] = [
     Action::ToolSelect,
     Action::ToolCamera,
     Action::ToolEntity,
@@ -89,6 +89,7 @@ const TOOLS_MENU_ORDER: [Action; 17] = [
     Action::ToolOverlay,
     Action::ToolClip,
     Action::ToolExtrude,
+    Action::ToolBevel,
     Action::ToolVertex,
     Action::ToolPath,
     Action::ToolPolygon,

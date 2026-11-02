@@ -348,7 +348,7 @@ impl<'a> View<'a> {
         };
         let data = |name, l: usize| LimitRow {
             name,
-            valve: "MAX_MAP_LIGHTING",
+            valve: "dface_t lightofs",
             used: None,
             max: 0,
             bytes: self.len(l),
@@ -998,7 +998,7 @@ mod tests {
         let fade = lines.iter().position(|l| l.starts_with("Static props without fade distance")).unwrap();
         assert_eq!(lines[fade], "Static props without fade distance (top 1 of 2 props):");
         assert_eq!(lines[fade + 1], "#1  2 props  models/a.mdl  at (100 100 0)");
-        assert!(line(&lines, "Lightmaps (estimate): ").contains("bytes per pass of 16777216"));
+        assert!(line(&lines, "Lightmaps (estimate): ").contains("bytes per pass of 2147483647"));
         assert!(line(&lines, "Materials by faces").starts_with("Materials by faces (top 1 of 1)"));
         assert!(lines.iter().any(|l| l.starts_with("#1  ") && l.ends_with("100.0%  dev/dev_measuregeneric01b")));
         assert!(lines.iter().any(|l| l == "Stage times (geometry):"));
@@ -1047,7 +1047,9 @@ mod tests {
         let lines = lighting_lines(&file, &report);
         assert_eq!(lines[0], LIGHTING_HEADER);
         let bytes = file.lump(lump::LIGHTING).unwrap().len();
-        assert!(line(&lines, "Lightmap bytes: LDR ").starts_with(&format!("Lightmap bytes: LDR {bytes} of 16777216")));
+        assert!(
+            line(&lines, "Lightmap bytes: LDR ").starts_with(&format!("Lightmap bytes: LDR {bytes} of 2147483647"))
+        );
         assert!(line(&lines, "Lights: ").starts_with("Lights: 1 total, 1 point"), "{}", line(&lines, "Lights: "));
         assert!(line(&lines, "LDR lightdata ").contains("[variable]"));
         let top = lines.iter().position(|l| l.starts_with("Faces with the most luxels")).unwrap();

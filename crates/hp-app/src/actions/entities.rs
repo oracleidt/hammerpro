@@ -7,6 +7,9 @@ action_list! { entities_actions {
     PasteKeyvalues => "paste_keyvalues", Edit, EditClipboard, None, Ready;
     FindReplaceText => "find_replace_text", Edit, EditFind, sc(CTRL_ALT, Key::R), Ready;
     EditColor => "edit_color", Edit, EditProperties, sc(NONE, Key::C), Ready;
+    SetDisplayColor => "set_display_color", Edit, EditProperties, None, Ready;
+    RandomDisplayColors => "random_display_colors", Edit, EditProperties, None, Ready;
+    ResetDisplayColors => "reset_display_colors", Edit, EditProperties, None, Ready;
     EditSoundscapes => "edit_soundscapes", Map, MapInfo, None, Ready;
     ShowSoundBrowser => "show_sound_browser", View, ViewPanels, None, Ready;
     ShowParticleBrowser => "show_particle_browser", View, ViewPanels, None, Ready;
@@ -34,6 +37,9 @@ pub(super) fn enabled(state: &AppState, action: Action) -> Option<bool> {
         }
         Action::PasteKeyvalues => Some(state.runtime.entities.clipboard.is_some() && entity_selected(state)),
         Action::PathInsertPoint | Action::PathRemovePoint => Some(entity_selected(state)),
+        Action::SetDisplayColor | Action::RandomDisplayColors | Action::ResetDisplayColors => {
+            Some(!state.doc.selection().objects.is_empty())
+        }
         _ => None,
     }
 }
@@ -51,7 +57,8 @@ pub(super) fn check(state: &AppState, action: Action) -> Option<Check> {
 pub(super) fn icon(action: Action) -> Option<&'static str> {
     Some(match action {
         Action::FindReplaceText => "🔍",
-        Action::EditColor => "🎨",
+        Action::EditColor | Action::SetDisplayColor => "🎨",
+        Action::RandomDisplayColors => "🎲",
         Action::EntityHelp => "ℹ",
         Action::CopyKeyvalues => "🗐",
         Action::PasteKeyvalues => "📋",
@@ -66,6 +73,10 @@ pub(super) const TR: TrTable = &[
     ("action.paste_keyvalues", "Paste keyvalues", "Coller les keyvalues"),
     ("action.find_replace_text", "Find and replace in entities...", "Rechercher et remplacer dans les entités..."),
     ("action.edit_color", "Edit color...", "Modifier la couleur..."),
+    ("action.set_display_color", "Set display color...", "Définir la couleur d'affichage..."),
+    ("action.random_display_colors", "Random display colors", "Couleurs d'affichage aléatoires"),
+    ("action.reset_display_colors", "Reset display colors", "Couleurs d'affichage par défaut"),
+    ("shell.undo.set_display_color", "Set display color", "Définir la couleur d'affichage"),
     ("action.edit_soundscapes", "Soundscapes...", "Soundscapes..."),
     ("action.show_sound_browser", "Sound browser", "Navigateur de sons"),
     ("action.show_particle_browser", "Particle browser", "Navigateur de particules"),

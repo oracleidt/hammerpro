@@ -610,7 +610,7 @@ fn spawn<T: Send + 'static>(name: &str, f: impl FnOnce() -> T + Send + 'static) 
     std::thread::Builder::new()
         .name(name.to_owned())
         .spawn(move || {
-            let _ = tx.send(f());
+            let _ = tx.send(hp_editor::background::run(f));
         })
         .ok()?;
     Some(rx)

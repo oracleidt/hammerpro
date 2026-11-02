@@ -1,5 +1,43 @@
 #![deny(unsafe_code)]
 
+#[cfg(not(test))]
+#[allow(unused_macros)]
+macro_rules! println {
+    () => {{
+        let _ = ::std::io::Write::write_all(&mut ::std::io::stdout(), b"\n");
+    }};
+    ($($arg:tt)*) => {{
+        let _ = ::std::io::Write::write_fmt(&mut ::std::io::stdout(), format_args!("{}\n", format_args!($($arg)*)));
+    }};
+}
+
+#[cfg(not(test))]
+#[allow(unused_macros)]
+macro_rules! print {
+    ($($arg:tt)*) => {{
+        let _ = ::std::io::Write::write_fmt(&mut ::std::io::stdout(), format_args!($($arg)*));
+    }};
+}
+
+#[cfg(not(test))]
+#[allow(unused_macros)]
+macro_rules! eprintln {
+    () => {{
+        let _ = ::std::io::Write::write_all(&mut ::std::io::stderr(), b"\n");
+    }};
+    ($($arg:tt)*) => {{
+        let _ = ::std::io::Write::write_fmt(&mut ::std::io::stderr(), format_args!("{}\n", format_args!($($arg)*)));
+    }};
+}
+
+#[cfg(not(test))]
+#[allow(unused_macros)]
+macro_rules! eprint {
+    ($($arg:tt)*) => {{
+        let _ = ::std::io::Write::write_fmt(&mut ::std::io::stderr(), format_args!($($arg)*));
+    }};
+}
+
 pub mod areas;
 pub mod brush;
 pub mod brushbsp;

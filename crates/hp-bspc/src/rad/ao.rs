@@ -151,7 +151,16 @@ impl Ao {
     }
 
     pub(crate) fn faces(&self, ctx: &Ctx<'_>, light: &[FaceLight]) -> Factors {
-        let all: Vec<Vec<f32>> = ctx.faces.par_iter().zip(light).map(|(f, l)| self.face(ctx, f, l)).collect();
+        let all: Vec<Vec<f32>> = ctx
+            .faces
+            .par_iter()
+            .zip(light)
+            .map(|(f, l)| {
+                let k = self.face(ctx, f, l);
+                ctx.work.add(f.luxels() as u64);
+                k
+            })
+            .collect();
         let mut out = Factors { flat: Vec::with_capacity(all.len()), disp: Vec::with_capacity(all.len()) };
         for (f, k) in ctx.faces.iter().zip(all) {
             if f.disp.is_some() {

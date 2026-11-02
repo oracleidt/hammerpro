@@ -1,8 +1,10 @@
 #![forbid(unsafe_code)]
 
+pub mod bevel;
 mod block;
 mod block_preview;
 mod clip;
+mod clip3d;
 mod common;
 mod cordon;
 pub mod curve;
@@ -21,12 +23,16 @@ mod sprinkle;
 pub mod sprinkle_def;
 
 #[cfg(test)]
+mod fuzz3d;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod tests_support;
 
+pub use bevel::{BEVEL_TR, BevelOptions, BevelTool};
 pub use block::{BlockOptions, BlockTool, CreateAs, DEFAULT_DEPTH, Primitive, new_depth_range};
 pub use clip::{ClipTool, clip_plane_2d, next_keep};
+pub use clip3d::{CutAxis, SnapKind, auto_axis, axis_plane, face_cut_plane};
 pub use cordon::{CORDON_TR, CordonTool, target_cordon};
 pub use curve::{CURVE_TR, CurveTool};
 pub use decal::{DECAL_SURFACE_OFFSET, DecalTool, decal_basis, decal_origin};
@@ -46,6 +52,7 @@ pub fn register_translations() {
     hp_app::i18n::register(PREFAB_TR);
     hp_app::i18n::register(PATH_TR);
     hp_app::i18n::register(CURVE_TR);
+    hp_app::i18n::register(BEVEL_TR);
 }
 
 pub fn tools() -> Vec<Box<dyn hp_app::Tool>> {
@@ -56,6 +63,7 @@ pub fn tools() -> Vec<Box<dyn hp_app::Tool>> {
         Box::new(EntityTool::new()),
         Box::new(ClipTool::new()),
         Box::new(ExtrudeTool::new()),
+        Box::new(BevelTool::new()),
         Box::new(DecalTool::new()),
         Box::new(OverlayTool::new()),
         Box::new(PathTool::new()),

@@ -19,7 +19,7 @@ Les textures lumineuses (matériaux qui émettent de la lumière, listés dans `
 
 ## Étape 2 : aperçu en temps réel (mode éclairé)
 
-Appuyez sur `Alt+5` (**Affichage > Mode de rendu 3D > Aperçu de l'éclairage**). La vue 3D dessine les entités de lumière avec la même atténuation et les mêmes cônes que le compilateur, les `light_dynamic`, et le soleil avec ses ombres à travers les faces de ciel, props compris. Les lumières ponctuelles et spots les plus proches de la caméra projettent aussi des ombres : leur nombre est le paramètre `render.light_shadows` (0 à 16, 0 pour le soleil seul). L'aperçu suit vos déplacements de lumières, mais n'a pas de lumière rebondie.
+Appuyez sur `Alt+5` (**Affichage > Mode de rendu 3D > Aperçu de l'éclairage**). La vue 3D dessine les entités de lumière avec la même atténuation et les mêmes cônes que le compilateur, les `light_dynamic`, et le soleil de la première `light_environment` avec ses ombres douces, qui n'éclaire que ce qui voit le ciel comme VRAD, props compris. Sa lumière du ciel `_ambient` n'atteint que ce qui voit le ciel (paramètre `render.sky_occlusion`), et les valeurs de lumière HDR sont utilisées comme le jeu sur une map HDR (paramètre `render.light_preview_hdr`). Les lumières ponctuelles et spots les plus proches de la caméra projettent aussi des ombres : leur nombre est le paramètre `render.light_shadows` (0 à 16, 0 pour le soleil seul). L'aperçu suit vos déplacements de lumières, mais n'a pas de lumière rebondie : les pièces éclairées seulement par la lumière rebondie paraissent plus sombres qu'en jeu.
 
 ## Étape 3 : aperçu précalculé
 
@@ -31,7 +31,7 @@ Pour le vrai rendu de la map compilée (lumière rebondie, lightmaps, props écl
    - **Qualité** : **Brouillon** (mêmes niveaux de lumière, ombres plus bruitées), **Normal**, **Finale** (la plus lente).
    - **Lumière rebondie** : la lumière renvoyée par les surfaces (précalculs plus lents).
    - **Mises à jour dynamiques** avec un **Délai de mise à jour** : relance le précalcul tout seul quand vous arrêtez de modifier.
-   - **Budget des lightmaps** : la taille estimée des lightmaps face à la limite du moteur de 16 Mo, avec les faces les plus coûteuses.
+   - **Budget des lightmaps** : la taille estimée des lightmaps face aux 2 Go qu'une face peut y adresser, avec les faces les plus coûteuses.
 4. L'aperçu suit la plage dynamique des réglages de compilation (LDR ou HDR).
 
 Les fils de calcul et le budget de luxels de l'aperçu se règlent dans la page **Éclairage** des paramètres. Détails : [Aperçu de l'éclairage](../features/lighting-preview.md).

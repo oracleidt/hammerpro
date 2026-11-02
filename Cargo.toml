@@ -1,10 +1,11 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
+exclude = ["vendor/*"]
 default-members = ["crates/hammerpro"]
 
 [workspace.package]
-version = "1.0.1"
+version = "1.0.2"
 edition = "2024"
 license = "MIT"
 authors = ["HammerPro contributors"]
@@ -73,3 +74,6 @@ inherits = "release"
 lto = false
 codegen-units = 16
 incremental = true
+
+[patch.crates-io]
+wgpu-hal = { path = "vendor/wgpu-hal" }

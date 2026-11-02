@@ -514,10 +514,12 @@ impl ModelBrowser {
         } else if self.rows.is_empty() {
             ui.label(RichText::new(t!("entities.no_models")).weak());
         }
-        if list_hovered && !ui.ctx().text_edit_focused() && self.keyboard_nav(ui) {
-            if let Some(path) = self.selected.clone() {
-                self.activate(ui.ctx(), state, &path, pick.as_ref());
-            }
+        if list_hovered
+            && !ui.ctx().text_edit_focused()
+            && self.keyboard_nav(ui)
+            && let Some(path) = self.selected.clone()
+        {
+            self.activate(ui.ctx(), state, &path, pick.as_ref());
         }
         ui.separator();
 

@@ -130,8 +130,12 @@ domain! { "compile and play";
         "The steps and log of the last compile (running or finished): last lines, only warnings and errors, or \
         lines containing a text; counts, leak pointfile and result. Lines reporting a known problem (leak, \
         microbrush, too many planes, missing material... the Valve messages) carry its code, explanation, fix and \
-        the brush, side, entity or position they name; problems sums them up. With from_file, the <map>.log the \
-        compiler writes next to the map is read instead (compiles of other windows or of the command line too).",
+        the brush, side, entity or position they name; problems sums them up. While Hammer Pro's lighting runs, \
+        its step carries light: the stage (scene, direct lighting, ambient occlusion, bounce rays, bounced light, \
+        leaf ambient, detail props, static props, writing), stage_percent, stage_index of stage_count, \
+        overall_percent, elapsed_s and left_s (estimated seconds left, null while estimating); the log shows these \
+        progress lines and a warning when a stage stops advancing. With from_file, the <map>.log the compiler \
+        writes next to the map is read instead (compiles of other windows or of the command line too).",
         {
             "tail": integer("Last lines returned (default 200).", 1, 5000),
             "problems_only": boolean("Only warnings and errors."),
@@ -147,8 +151,8 @@ domain! { "compile and play";
         displacements, the areas, the small structural brushes that could be func_detail, the static props \
         without fade distance, the visibility (clusters, portals, visible clusters per cluster, radius, pass \
         times, the clusters that see the most with their place), the lighting (lightmap bytes per pass of the \
-        16 MB, luxels, lights by type, switchable styles, props, bounces, ambient samples, the faces and \
-        materials with the most luxels with lightmap scale and place), the time of each stage, and \
+        2 GB a face can address, luxels, lights by type, switchable styles, props, bounces, ambient samples, the \
+        faces and materials with the most luxels with lightmap scale and place), the time of each stage, and \
         optimization hints in plain words with the brush, side or place they are about. With from_file, \
         <map>.log next to the map is read (its last compile).",
         {
@@ -192,8 +196,14 @@ domain! { "compile and play";
         }, [];
     get_lighting_status: Read, "Lighting preview status",
         "The lighting bake: quality, progress, last result (time, faces, luxels, density), preview statistics (with \
-        what lights the props: the world lights, the static props and those with baked vertex lighting) and the \
-        lightmap budget.",
+        what lights the props: the world lights, the static props and those with baked vertex lighting), the \
+        lightmap budget, and while the lit mode is on the realtime preview: lights drawn, suns, lights left out, \
+        crowded spots keeping only their strongest lights, HDR or LDR values, sky light occlusion, sky_layers (how \
+        many skies lie one above the other toward the sun and straight up: each point is shadowed only by what lies \
+        between it and the sky it reaches, like VRAD), prop_shadows (what static props cast shadows with: mesh, \
+        collision or none, from the setting render.prop_shadows: auto follows the compile options, \
+        -StaticPropPolys for mesh), and the sun (direction it shines along, color, _ambient sky color, \
+        SunSpreadAngle, its light_environment).",
         {}, [];
     launch_game: Editor, "Start the game",
         "Start Garry's Mod on the compiled map, or reload it in the running game (reload: true). Only when the user \
@@ -841,6 +851,11 @@ fn get_compile_log(state: &mut AppState, a: &Args<'_>) -> R<Outcome> {
             "running": v.running,
             "steps": v.steps.iter().map(|s| json!({
                 "step": s.kind, "status": s.status, "fraction": s.fraction, "phase": s.phase,
+                "light": s.phase.as_deref().and_then(hp_compile::parse_light_progress).map(|p| json!({
+                    "stage": p.stage, "stage_percent": (p.stage_fraction * 100.0).round(),
+                    "stage_index": p.index, "stage_count": p.count, "overall_percent": (p.overall * 100.0).round(),
+                    "elapsed_s": p.elapsed_s, "left_s": p.left_s,
+                })),
                 "duration_ms": s.duration_ms, "exit_code": s.exit_code,
             })).collect::<Vec<_>>(),
             "warnings": v.warnings,
@@ -1129,6 +1144,14 @@ fn quality_name(q: LightingQuality) -> &'static str {
     }
 }
 
+fn prop_shadows_name(p: hp_app::settings::StaticPropShadows) -> &'static str {
+    match p {
+        hp_app::settings::StaticPropShadows::None => "none",
+        hp_app::settings::StaticPropShadows::Collision => "collision",
+        hp_app::settings::StaticPropShadows::Mesh => "mesh",
+    }
+}
+
 fn get_lighting_status(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
     let l = &state.runtime.lighting;
     let lower = |v: String| v.to_ascii_lowercase();
@@ -1154,6 +1177,18 @@ fn get_lighting_status(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
                 "vertex_lit_props": l.stats.vertex_lit_props,
             },
         },
+        "realtime": state.assets.light_preview().map(|r| json!({
+            "lights": r.lights, "suns": r.directional, "left_out": r.left_out,
+            "crowded_clusters": r.crowded_clusters, "max_lights_per_cluster": r.max_per_cluster,
+            "hdr_values": r.hdr, "sky_occlusion": r.sky_occlusion,
+            "sky_layers": { "sun": r.sky_layers[0], "sky_light": r.sky_layers[1] },
+            "prop_shadows": prop_shadows_name(hp_app::runtime::render::prop_shadows(&state.settings)),
+            "prop_shadows_setting": lower(format!("{:?}", state.settings.render.prop_shadows)),
+            "sun": r.sun.map(|s| json!({
+                "direction": s.direction, "color": s.color, "ambient": s.ambient,
+                "spread_deg": s.spread_deg, "entity_origin": s.origin,
+            })),
+        })),
         "budget": l.budget.as_ref().map(|b| json!({
             "faces": b.faces, "luxels": b.luxels, "bytes": b.bytes, "limit": b.limit,
             "tiny_faces": b.tiny_faces, "wide_faces": b.wide_faces, "oversized_displacements": b.oversized_displacements,

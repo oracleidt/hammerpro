@@ -922,7 +922,7 @@ mod tests {
             assert!(close(frame.snap_point(*c + DVec3::new(0.4, -0.3, 0.2)), *c), "{c} {spec:?}");
         }
         let yaw = (spec.angles[1] - 30.0).rem_euclid(90.0);
-        assert!(yaw < 1e-6 || yaw > 90.0 - 1e-6, "{spec:?}");
+        assert!(!(1e-6..=90.0 - 1e-6).contains(&yaw), "{spec:?}");
         let face = hp_editor::FaceRef { solid: id, side: 0 };
         state.doc.select_faces(&[face], hp_editor::SelectOp::Replace);
         let spec = state.grid_from_face("Face").unwrap();

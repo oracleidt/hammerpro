@@ -119,7 +119,7 @@ pub(crate) fn build_parts(model: &Model) -> Result<Vec<Part>, StudioError> {
             }
             let t = &model.triangles[ti];
             let mut corner = [0u16; 3];
-            for k in 0..3 {
+            for (k, slot) in corner.iter_mut().enumerate() {
                 let n = if t.normal[k].is_finite() && t.normal[k] != DVec3::ZERO {
                     t.normal[k].normalize()
                 } else {
@@ -130,7 +130,7 @@ pub(crate) fn build_parts(model: &Model) -> Result<Vec<Part>, StudioError> {
                     mesh.verts.push(Vertex { pos: t.pos[k], normal: n, uv, tangent: [1.0, 0.0, 0.0, 1.0] });
                     (mesh.verts.len() - 1) as u16
                 });
-                corner[k] = id;
+                *slot = id;
             }
             if corner[0] != corner[1] && corner[1] != corner[2] && corner[0] != corner[2] {
                 mesh.tris.push(corner);

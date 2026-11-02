@@ -1,14 +1,20 @@
+use std::ops::Range;
+
 use glam::{DVec3, Mat4, Vec3, Vec4};
 
 use crate::camera::{Camera, aabb_inside, frustum_planes, mat_from_rows};
 use crate::gpu::ViewUniform;
 use crate::pipelines::{DEPTH_FORMAT, MeshPass, ShadowPipelines};
 use crate::scene::ArenaKind;
-use crate::{MaterialFlags, Renderer, classify};
+use crate::{MaterialFlags, Renderer, classify, sky_layers};
 
 pub(crate) const SHADOW_SIZE: u32 = 4096;
 pub(crate) const SHADOW_DISTANCE: f32 = 8192.0;
 const SIZE_STEP: f32 = 512.0;
+pub(crate) const SKY_MAP_SIZE: u32 = 2048;
+const SKY_MAP_SPAN: f32 = 16384.0;
+const SKY_MAP_MIN: f32 = 1024.0;
+pub(crate) const MAX_COORD: f32 = 65536.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct ShadowFit {
@@ -21,6 +27,66 @@ impl ShadowFit {
     pub fn params(&self) -> [f32; 4] {
         [1.0, 2.0 / self.depth_range.max(1.0), 1.0 / SHADOW_SIZE as f32, self.texel_world * 1.5]
     }
+
+    pub fn soft_params(&self, spread_deg: f32) -> [f32; 4] {
+        let spread = if spread_deg.is_finite() { spread_deg.clamp(0.0, 45.0).to_radians().tan() } else { 0.0 };
+        [spread, self.depth_range.max(1.0), self.texel_world.max(1e-3), 0.0]
+    }
+}
+
+pub(crate) fn clamp_bounds(lo: Vec3, hi: Vec3) -> (Vec3, Vec3) {
+    let m = Vec3::splat(MAX_COORD);
+    (lo.clamp(-m, m), hi.clamp(-m, m))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct SkyFit {
+    pub view_proj: Mat4,
+    pub origin: [f32; 2],
+    pub size: f32,
+    pub z_top: f32,
+    pub range: f32,
+}
+
+impl SkyFit {
+    pub fn params(&self) -> ([f32; 4], [f32; 4]) {
+        (
+            [self.origin[0], self.origin[1], 1.0 / self.size, 1.0],
+            [self.z_top, self.range, self.size / SKY_MAP_SIZE as f32, 0.0],
+        )
+    }
+}
+
+pub(crate) fn sky_fit(eye: Vec3, scene_min: Vec3, scene_max: Vec3) -> Option<SkyFit> {
+    if !(scene_min.is_finite() && scene_max.is_finite() && scene_min.cmple(scene_max).all() && eye.is_finite()) {
+        return None;
+    }
+    let (lo, hi) = clamp_bounds(scene_min, scene_max);
+    let extent = (hi.x - lo.x).max(hi.y - lo.y);
+    let size = ((extent + 64.0) / SKY_MAP_MIN).ceil().max(1.0) * SKY_MAP_MIN;
+    let size = size.min(SKY_MAP_SPAN);
+    let step = size / 8.0;
+    let axis = |e: f32, a: f32, b: f32| {
+        if b - a <= size { (a + b) * 0.5 } else { ((e / step).round() * step).clamp(a + size * 0.5, b - size * 0.5) }
+    };
+    let (cx, cy) = (axis(eye.x, lo.x, hi.x), axis(eye.y, lo.y, hi.y));
+    let z_top = hi.z + 16.0;
+    let range = (hi.z - lo.z) + 32.0;
+    let k = 2.0 / size;
+    let rows = [
+        [f64::from(k), 0.0, 0.0, f64::from(-cx * k)],
+        [0.0, f64::from(k), 0.0, f64::from(-cy * k)],
+        [0.0, 0.0, f64::from(-1.0 / range), f64::from(z_top / range)],
+        [0.0, 0.0, 0.0, 1.0],
+    ];
+    let view_proj = mat_from_rows(rows);
+    view_proj.is_finite().then_some(SkyFit {
+        view_proj,
+        origin: [cx - size * 0.5, cy - size * 0.5],
+        size,
+        z_top,
+        range,
+    })
 }
 
 pub(crate) fn fit(cam: &Camera, dir: Vec3, scene_min: Vec3, scene_max: Vec3) -> Option<ShadowFit> {
@@ -93,18 +159,122 @@ fn casts_no_shadow(desc: Option<&crate::MaterialDesc>) -> bool {
     desc.is_some_and(|d| d.flags.intersects(MaterialFlags::SKY | MaterialFlags::NODRAW_IN_3D))
 }
 
+pub(crate) const SUN_CUT_SIZE: u32 = 2048;
+pub(crate) const SKY_CUT_SIZE: u32 = 1024;
+const CUT_EPSILON: f32 = 0.5;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Layers {
+    Sun,
+    Sky,
+}
+
+impl Layers {
+    fn index(self) -> usize {
+        match self {
+            Layers::Sun => 0,
+            Layers::Sky => 1,
+        }
+    }
+
+    fn sizes(self) -> (u32, u32) {
+        match self {
+            Layers::Sun => (SHADOW_SIZE, SUN_CUT_SIZE),
+            Layers::Sky => (SKY_MAP_SIZE, SKY_CUT_SIZE),
+        }
+    }
+
+    pub(crate) fn bytes(self, layers: u32) -> u64 {
+        let (size, cut) = self.sizes();
+        (u64::from(size).pow(2) + u64::from(cut).pow(2)) * 4 * u64::from(layers.max(1))
+    }
+}
+
+pub(crate) type SkyAnalysis = Option<(([u32; 3], u64), sky_layers::SkyLayers)>;
+
 pub(crate) struct ShadowGpu {
     pub view: wgpu::TextureView,
-    uniform: wgpu::Buffer,
-    bind_group: Option<(u64, wgpu::BindGroup)>,
+    pub cut: wgpu::TextureView,
+    occ_layers: Vec<wgpu::TextureView>,
+    cut_layers: Vec<wgpu::TextureView>,
+    cut_below: Vec<wgpu::TextureView>,
+    uniforms: Vec<wgpu::Buffer>,
+    cut_uniforms: Vec<wgpu::Buffer>,
+    bind_groups: Option<(u64, Vec<wgpu::BindGroup>)>,
+    cut_bind_groups: Option<(u64, Vec<wgpu::BindGroup>)>,
     pipelines: ShadowPipelines,
-    key: Option<([f32; 16], u64)>,
+    key: Option<([f32; 16], u64, u32)>,
+    size: u32,
+    cut_size: u32,
+    pub layers: u32,
+}
+
+pub(crate) type SkyMapGpu = ShadowGpu;
+
+fn layered_depth(device: &wgpu::Device, size: u32, layers: u32, label: &str) -> wgpu::Texture {
+    device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(label),
+        size: wgpu::Extent3d { width: size, height: size, depth_or_array_layers: layers.max(1) },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: DEPTH_FORMAT,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+        view_formats: &[],
+    })
+}
+
+fn array_view(t: &wgpu::Texture, first: u32, count: u32) -> wgpu::TextureView {
+    t.create_view(&wgpu::TextureViewDescriptor {
+        dimension: Some(wgpu::TextureViewDimension::D2Array),
+        base_array_layer: first,
+        array_layer_count: Some(count.max(1)),
+        ..Default::default()
+    })
+}
+
+fn layer_view(t: &wgpu::Texture, layer: u32) -> wgpu::TextureView {
+    t.create_view(&wgpu::TextureViewDescriptor {
+        dimension: Some(wgpu::TextureViewDimension::D2),
+        base_array_layer: layer,
+        array_layer_count: Some(1),
+        ..Default::default()
+    })
+}
+
+fn depth_pass<'a>(
+    enc: &'a mut wgpu::CommandEncoder,
+    view: &'a wgpu::TextureView,
+    clear: f32,
+    label: &str,
+) -> wgpu::RenderPass<'a> {
+    enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+        label: Some(label),
+        color_attachments: &[],
+        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+            view,
+            depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(clear), store: wgpu::StoreOp::Store }),
+            stencil_ops: None,
+        }),
+        timestamp_writes: None,
+        occlusion_query_set: None,
+        multiview_mask: None,
+    })
+}
+
+pub(crate) struct CasterCull<'a> {
+    pub basis: &'a sky_layers::Basis,
+    pub region: &'a sky_layers::LayerRegion,
+}
+
+impl CasterCull<'_> {
+    fn keeps(&self, lo: Vec3, hi: Vec3) -> bool {
+        self.region.keeps(self.basis, lo, hi)
+    }
 }
 
 impl Renderer {
-    pub(crate) fn prepare_shadow(&mut self, cam: &Camera) -> Option<(ShadowFit, bool)> {
-        let sun = self.lights_cpu.first().filter(|_| self.dir_lights > 0)?;
-        let dir = Vec3::new(sun.dir[0], sun.dir[1], sun.dir[2]);
+    fn scene_bounds(&self) -> (Vec3, Vec3) {
         let (mut lo, mut hi) = self.instance_bounds.unwrap_or((Vec3::INFINITY, Vec3::NEG_INFINITY));
         for ch in self.scene.chunks.iter().flatten() {
             if !ch.is_edge() && ch.used_i > 0 {
@@ -112,57 +282,222 @@ impl Renderer {
                 hi = hi.max(ch.aabb_max);
             }
         }
-        let fit = fit(cam, dir, lo, hi)?;
-        if self.shadow.is_none() {
-            let texture = self.device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("hp-render shadow map"),
-                size: wgpu::Extent3d { width: SHADOW_SIZE, height: SHADOW_SIZE, depth_or_array_layers: 1 },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: DEPTH_FORMAT,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-                view_formats: &[],
-            });
-            let uniform = self.device.create_buffer(&wgpu::BufferDescriptor {
+        if lo.cmple(hi).all() { clamp_bounds(lo, hi) } else { (lo, hi) }
+    }
+
+    fn layers_mut(&mut self, which: Layers) -> &mut Option<ShadowGpu> {
+        match which {
+            Layers::Sun => &mut self.shadow,
+            Layers::Sky => &mut self.sky_map,
+        }
+    }
+
+    fn layers(&self, which: Layers) -> Option<&ShadowGpu> {
+        match which {
+            Layers::Sun => self.shadow.as_ref(),
+            Layers::Sky => self.sky_map.as_ref(),
+        }
+    }
+
+    pub(crate) fn sky_layer_info(&self, which: Layers) -> Option<&sky_layers::SkyLayers> {
+        self.sky_layers[which.index()].as_ref().map(|(_, l)| l)
+    }
+
+    fn analyze_sky(&mut self, which: Layers, travel: Vec3) -> u32 {
+        if self.sky_signature.0 != self.shadow_epoch {
+            self.sky_signature = (self.shadow_epoch, self.scene.sky_signature());
+        }
+        let key = (travel.to_array().map(f32::to_bits), self.sky_signature.1);
+        let slot = which.index();
+        if self.sky_layers[slot].as_ref().is_none_or(|(k, _)| *k != key) {
+            let mut tris = Vec::new();
+            self.scene.sky_triangles(travel, &mut tris);
+            let found = sky_layers::analyze(&sky_layers::Basis::of(travel), &tris);
+            self.sky_layers[slot] = Some((key, found));
+        }
+        self.sky_layers[slot].as_ref().map_or(1, |(_, l)| l.layers())
+    }
+
+    fn create_layers(&self, which: Layers, layers: u32) -> ShadowGpu {
+        let (size, cut_size) = which.sizes();
+        let label = match which {
+            Layers::Sun => "hp-render shadow map",
+            Layers::Sky => "hp-render sky visibility map",
+        };
+        let occ = layered_depth(&self.device, size, layers, label);
+        let cut = layered_depth(&self.device, cut_size, layers, "hp-render sky cut map");
+        let uniform = || {
+            self.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("hp-render shadow uniform"),
                 size: size_of::<ViewUniform>() as u64,
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
-            });
-            self.shadow = Some(ShadowGpu {
-                view: texture.create_view(&wgpu::TextureViewDescriptor::default()),
-                uniform,
-                bind_group: None,
-                pipelines: ShadowPipelines::new(&self.device, &self.shared),
-                key: None,
-            });
+            })
+        };
+        ShadowGpu {
+            view: array_view(&occ, 0, layers),
+            cut: array_view(&cut, 0, layers),
+            occ_layers: (0..layers).map(|k| layer_view(&occ, k)).collect(),
+            cut_layers: (0..layers).map(|k| layer_view(&cut, k)).collect(),
+            cut_below: (1..layers).map(|k| array_view(&cut, 0, k)).collect(),
+            uniforms: (0..layers).map(|_| uniform()).collect(),
+            cut_uniforms: (0..layers).map(|_| uniform()).collect(),
+            bind_groups: None,
+            cut_bind_groups: None,
+            pipelines: ShadowPipelines::new(&self.device, &self.shared),
+            key: None,
+            size,
+            cut_size,
+            layers,
+        }
+    }
+
+    fn prepare_layers(&mut self, which: Layers, view_proj: Mat4, travel: Vec3, depth_range: f32) -> Option<bool> {
+        let layers = self.analyze_sky(which, travel);
+        if self.layers(which).is_none_or(|t| t.layers != layers) {
+            let target = self.create_layers(which, layers);
+            *self.layers_mut(which) = Some(target);
             self.scene_gen += 1;
         }
-        let key = (fit.view_proj.to_cols_array(), self.shadow_epoch);
+        let key = (view_proj.to_cols_array(), self.shadow_epoch, layers);
         let scene_gen = self.scene_gen;
-        let shadow = self.shadow.as_mut()?;
-        let dirty = shadow.key != Some(key);
+        let queue = self.queue.clone();
+        let target = self.layers_mut(which).as_mut()?;
+        let dirty = target.key != Some(key);
         if dirty {
-            let u = ViewUniform {
-                view_proj: fit.view_proj.to_cols_array_2d(),
-                eye: [0.0; 4],
-                viewport: [1.0; 4],
-                opts: [crate::OPT_SHADOW_PASS, 0, 0, 0],
-                ..Default::default()
-            };
-            self.queue.write_buffer(&shadow.uniform, 0, bytemuck::bytes_of(&u));
-            shadow.key = Some(key);
+            let size = target.size as f32;
+            let cut_size = target.cut_size as f32;
+            let range = depth_range.max(1.0);
+            for k in 0..target.layers {
+                let base = ViewUniform {
+                    view_proj: view_proj.to_cols_array_2d(),
+                    eye: [0.0; 4],
+                    forward: [travel.x, travel.y, travel.z, 0.0],
+                    viewport: [cut_size, cut_size, 1.0 / cut_size, 1.0 / cut_size],
+                    opts: [crate::OPT_SUN_PASS | crate::OPT_SKY_FACES, 0, 0, 0],
+                    sun_soft: [sky_layers::LAYER_GAP / range, k as f32, 0.0, 0.0],
+                    ..Default::default()
+                };
+                let occluders = ViewUniform {
+                    viewport: [size, size, 1.0 / size, 1.0 / size],
+                    opts: [crate::OPT_SHADOW_PASS | crate::OPT_SUN_PASS | crate::OPT_SKY_CUT, 0, 0, 0],
+                    sun_soft: [CUT_EPSILON / range, k as f32, 0.0, 0.0],
+                    ..base
+                };
+                if let (Some(c), Some(o)) = (target.cut_uniforms.get(k as usize), target.uniforms.get(k as usize)) {
+                    queue.write_buffer(c, 0, bytemuck::bytes_of(&base));
+                    queue.write_buffer(o, 0, bytemuck::bytes_of(&occluders));
+                }
+            }
+            target.key = Some(key);
         }
-        if shadow.bind_group.as_ref().is_none_or(|(g, _)| *g != scene_gen) {
-            let shadow = self.shadow.as_ref()?;
-            let bg = self.shadow_pass_bind_group(&shadow.uniform, "hp-render shadow pass");
-            self.shadow.as_mut()?.bind_group = Some((scene_gen, bg));
+        let stale = target.bind_groups.as_ref().is_none_or(|(g, _)| *g != scene_gen)
+            || target.cut_bind_groups.as_ref().is_none_or(|(g, _)| *g != scene_gen);
+        if stale {
+            let t = self.layers(which)?;
+            let bgs: Vec<wgpu::BindGroup> = t
+                .uniforms
+                .iter()
+                .map(|u| self.shadow_pass_bind_group_with(u, "hp-render shadow pass", Some(&t.cut)))
+                .collect();
+            let cut_bgs: Vec<wgpu::BindGroup> = t
+                .cut_uniforms
+                .iter()
+                .enumerate()
+                .map(|(k, u)| {
+                    let below = k.checked_sub(1).and_then(|i| t.cut_below.get(i));
+                    self.shadow_pass_bind_group_with(u, "hp-render sky cut pass", below)
+                })
+                .collect();
+            let t = self.layers_mut(which).as_mut()?;
+            t.bind_groups = Some((scene_gen, bgs));
+            t.cut_bind_groups = Some((scene_gen, cut_bgs));
         }
+        Some(dirty)
+    }
+
+    pub(crate) fn prepare_shadow(&mut self, cam: &Camera) -> Option<(ShadowFit, bool)> {
+        let sun = self.lights_cpu.first().filter(|_| self.dir_lights > 0)?;
+        let dir = Vec3::new(sun.dir[0], sun.dir[1], sun.dir[2]).normalize_or(Vec3::NEG_Z);
+        let (lo, hi) = self.scene_bounds();
+        let fit = fit(cam, dir, lo, hi)?;
+        let dirty = self.prepare_layers(Layers::Sun, fit.view_proj, dir, fit.depth_range)?;
         Some((fit, dirty))
     }
 
+    pub(crate) fn prepare_sky_map(&mut self, cam: &Camera) -> Option<(SkyFit, bool)> {
+        let (lo, hi) = self.scene_bounds();
+        let fit = sky_fit(cam.eye, lo, hi)?;
+        let dirty = self.prepare_layers(Layers::Sky, fit.view_proj, Vec3::NEG_Z, fit.range)?;
+        Some((fit, dirty))
+    }
+
+    pub(crate) fn layer_count(&self, which: Layers) -> u32 {
+        self.layers(which).map_or(1, |t| t.layers)
+    }
+
+    fn record_layers(
+        &self,
+        enc: &mut wgpu::CommandEncoder,
+        which: Layers,
+        view_proj: &Mat4,
+        travel: Vec3,
+    ) -> (u32, u64) {
+        let Some(t) = self.layers(which) else { return (0, 0) };
+        let (Some((_, bind_groups)), Some((_, cut_groups))) = (t.bind_groups.as_ref(), t.cut_bind_groups.as_ref())
+        else {
+            return (0, 0);
+        };
+        let planes: [Vec4; 6] = frustum_planes(view_proj);
+        let (mut draws, mut tris) = (0u32, 0u64);
+        for (k, (target, group)) in t.cut_layers.iter().zip(cut_groups).enumerate() {
+            let mut pass = depth_pass(enc, target, 0.0, "hp-render sky cut pass");
+            pass.set_bind_group(0, group, &[]);
+            let pipeline = if k == 0 { &t.pipelines.sky_cut } else { &t.pipelines.sky_peel };
+            let (d, n) = self.draw_sky_cut(&mut pass, pipeline, &planes);
+            draws += d;
+            tris += n;
+        }
+        let basis = sky_layers::Basis::of(travel);
+        let info = self.sky_layer_info(which);
+        for (k, (target, group)) in t.occ_layers.iter().zip(bind_groups).enumerate() {
+            let mut pass = depth_pass(enc, target, 1.0, "hp-render shadow pass");
+            pass.set_bind_group(0, group, &[]);
+            let cull = match (k, info.and_then(|l| l.region(k as u32))) {
+                (0, _) => None,
+                (_, Some(region)) => Some(CasterCull { basis: &basis, region }),
+                (_, None) => continue,
+            };
+            let (d, n) = self.draw_shadow_casters(&mut pass, &t.pipelines, &planes, cull.as_ref());
+            draws += d;
+            tris += n;
+        }
+        (draws, tris)
+    }
+
+    pub(crate) fn record_sky_map(&self, enc: &mut wgpu::CommandEncoder, fit: &SkyFit) -> (u32, u64) {
+        self.record_layers(enc, Layers::Sky, &fit.view_proj, Vec3::NEG_Z)
+    }
+
+    pub(crate) fn record_shadow(&self, enc: &mut wgpu::CommandEncoder, fit: &ShadowFit) -> (u32, u64) {
+        let dir = self
+            .lights_cpu
+            .first()
+            .map_or(Vec3::NEG_Z, |s| Vec3::new(s.dir[0], s.dir[1], s.dir[2]).normalize_or(Vec3::NEG_Z));
+        self.record_layers(enc, Layers::Sun, &fit.view_proj, dir)
+    }
+
     pub(crate) fn shadow_pass_bind_group(&self, uniform: &wgpu::Buffer, label: &str) -> wgpu::BindGroup {
+        self.shadow_pass_bind_group_with(uniform, label, None)
+    }
+
+    fn shadow_pass_bind_group_with(
+        &self,
+        uniform: &wgpu::Buffer,
+        label: &str,
+        cut: Option<&wgpu::TextureView>,
+    ) -> wgpu::BindGroup {
+        let dummy = &self.shadow_dummy_array;
         self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some(label),
             layout: &self.shared.view_bgl,
@@ -174,7 +509,7 @@ impl Renderer {
                 wgpu::BindGroupEntry { binding: 4, resource: self.lights_buf.buffer.as_entire_binding() },
                 wgpu::BindGroupEntry { binding: 5, resource: self.dummy_storage.as_entire_binding() },
                 wgpu::BindGroupEntry { binding: 6, resource: self.dummy_storage.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 7, resource: wgpu::BindingResource::TextureView(&self.shadow_dummy) },
+                wgpu::BindGroupEntry { binding: 7, resource: wgpu::BindingResource::TextureView(dummy) },
                 wgpu::BindGroupEntry { binding: 8, resource: wgpu::BindingResource::Sampler(&self.shadow_sampler) },
                 wgpu::BindGroupEntry { binding: 9, resource: self.dummy_storage.as_entire_binding() },
                 wgpu::BindGroupEntry { binding: 10, resource: self.dummy_storage.as_entire_binding() },
@@ -185,28 +520,48 @@ impl Renderer {
                     binding: 14,
                     resource: wgpu::BindingResource::TextureView(&self.local_shadows.dummy),
                 },
+                wgpu::BindGroupEntry { binding: 15, resource: wgpu::BindingResource::TextureView(dummy) },
+                wgpu::BindGroupEntry {
+                    binding: 16,
+                    resource: wgpu::BindingResource::TextureView(cut.unwrap_or(dummy)),
+                },
+                wgpu::BindGroupEntry { binding: 17, resource: wgpu::BindingResource::TextureView(dummy) },
             ],
         })
     }
 
-    pub(crate) fn record_shadow(&self, enc: &mut wgpu::CommandEncoder, fit: &ShadowFit) -> (u32, u64) {
-        let Some(shadow) = self.shadow.as_ref() else { return (0, 0) };
-        let Some((_, bind_group)) = shadow.bind_group.as_ref() else { return (0, 0) };
-        let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("hp-render shadow pass"),
-            color_attachments: &[],
-            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: &shadow.view,
-                depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(1.0), store: wgpu::StoreOp::Store }),
-                stencil_ops: None,
-            }),
-            timestamp_writes: None,
-            occlusion_query_set: None,
-            multiview_mask: None,
-        });
-        pass.set_bind_group(0, bind_group, &[]);
-        let planes: [Vec4; 6] = frustum_planes(&fit.view_proj);
-        self.draw_shadow_casters(&mut pass, &shadow.pipelines, &planes)
+    fn draw_sky_cut(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        pipeline: &wgpu::RenderPipeline,
+        planes: &[Vec4; 6],
+    ) -> (u32, u64) {
+        let (mut draws, mut tris) = (0u32, 0u64);
+        let mut set = false;
+        for m in &self.scene.materials {
+            if !m.desc.as_ref().is_some_and(|d| d.flags.contains(MaterialFlags::SKY)) {
+                continue;
+            }
+            for &c in &m.chunks {
+                let Some(Some(ch)) = self.scene.chunks.get(c as usize) else { continue };
+                if ch.used_i == 0 || ch.idx.len == 0 || !aabb_inside(planes, ch.aabb_min, ch.aabb_max) {
+                    continue;
+                }
+                if !set {
+                    pass.set_pipeline(pipeline);
+                    pass.set_vertex_buffer(0, self.arenas[ArenaKind::MeshVerts as usize].buffer.slice(..));
+                    pass.set_index_buffer(
+                        self.arenas[ArenaKind::Indices as usize].buffer.slice(..),
+                        wgpu::IndexFormat::Uint32,
+                    );
+                    set = true;
+                }
+                pass.draw_indexed(ch.idx.offset..ch.idx.offset + ch.used_i, 0, 0..1);
+                draws += 1;
+                tris += u64::from(ch.used_i / 3);
+            }
+        }
+        (draws, tris)
     }
 
     pub(crate) fn draw_shadow_casters(
@@ -214,6 +569,7 @@ impl Renderer {
         pass: &mut wgpu::RenderPass<'_>,
         pipelines: &ShadowPipelines,
         planes: &[Vec4; 6],
+        cull: Option<&CasterCull<'_>>,
     ) -> (u32, u64) {
         let (mut draws, mut tris) = (0u32, 0u64);
         pass.set_vertex_buffer(0, self.arenas[ArenaKind::MeshVerts as usize].buffer.slice(..));
@@ -234,6 +590,9 @@ impl Renderer {
                 if ch.used_i == 0 || ch.idx.len == 0 || !aabb_inside(planes, ch.aabb_min, ch.aabb_max) {
                     continue;
                 }
+                if cull.is_some_and(|k| !k.keeps(ch.aabb_min, ch.aabb_max)) {
+                    continue;
+                }
                 if current != Some(alpha) {
                     pass.set_pipeline(if alpha { &pipelines.chunk_alpha } else { &pipelines.chunk });
                     current = Some(alpha);
@@ -250,11 +609,34 @@ impl Renderer {
                 tris += u64::from(ch.used_i / 3);
             }
         }
-        if self.instance_count > 0 {
-            let mut current: Option<bool> = None;
-            pass.set_vertex_buffer(1, self.instances.buffer.slice(..));
-            for g in &self.instance_groups {
-                let Some(model) = self.models.get(&g.key) else { continue };
+        if self.instance_count == 0 {
+            return (draws, tris);
+        }
+        pass.set_vertex_buffer(1, self.instances.buffer.slice(..));
+        let mut runs: Vec<Range<u32>> = Vec::new();
+        let mut current: Option<u8> = None;
+        for g in &self.instance_groups {
+            let Some(model) = self.models.get(&g.key) else { continue };
+            let hull = model.shadow_hull.as_ref().filter(|_| g.hull > 0);
+            let mesh_count = if hull.is_some() { g.count - g.hull.min(g.count) } else { g.count };
+            let culled = |range: Range<u32>, runs: &mut Vec<Range<u32>>| {
+                runs.clear();
+                match cull {
+                    None => runs.push(range),
+                    Some(k) => {
+                        for i in range {
+                            let keep = self.instance_boxes.get(i as usize).is_some_and(|(lo, hi)| k.keeps(*lo, *hi));
+                            match runs.last_mut() {
+                                Some(r) if keep && r.end == i => r.end = i + 1,
+                                _ if keep => runs.push(i..i + 1),
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            };
+            culled(g.start..g.start + mesh_count, &mut runs);
+            if !runs.is_empty() {
                 let mut bound = false;
                 for part in &model.parts {
                     let desc = self.scene.materials.get(part.material as usize).and_then(|m| m.desc);
@@ -270,9 +652,10 @@ impl Renderer {
                         let Some(mat) = self.mat_gpu.get(part.material as usize) else { continue };
                         pass.set_bind_group(1, &mat.bind_group, &[]);
                     }
-                    if current != Some(alpha) {
+                    let kind = u8::from(alpha);
+                    if current != Some(kind) {
                         pass.set_pipeline(if alpha { &pipelines.model_alpha } else { &pipelines.model });
-                        current = Some(alpha);
+                        current = Some(kind);
                     }
                     if !bound {
                         pass.set_vertex_buffer(0, model.vbuf.slice(..));
@@ -280,10 +663,28 @@ impl Renderer {
                         pass.set_index_buffer(model.ibuf.slice(..), wgpu::IndexFormat::Uint32);
                         bound = true;
                     }
-                    pass.draw_indexed(part.first..part.first + part.count, 0, g.start..g.start + g.count);
-                    draws += 1;
-                    tris += u64::from(part.count / 3) * u64::from(g.count);
+                    for r in &runs {
+                        pass.draw_indexed(part.first..part.first + part.count, 0, r.clone());
+                        draws += 1;
+                        tris += u64::from(part.count / 3) * u64::from(r.end - r.start);
+                    }
                 }
+            }
+            let Some(h) = hull else { continue };
+            culled(g.start + mesh_count..g.start + g.count, &mut runs);
+            if runs.is_empty() {
+                continue;
+            }
+            if current != Some(0) {
+                pass.set_pipeline(&pipelines.model);
+                current = Some(0);
+            }
+            pass.set_vertex_buffer(0, h.verts.slice(..));
+            pass.set_vertex_buffer(2, h.tans.slice(..));
+            for r in &runs {
+                pass.draw(0..h.count, r.clone());
+                draws += 1;
+                tris += u64::from(h.count / 3) * u64::from(r.end - r.start);
             }
         }
         (draws, tris)

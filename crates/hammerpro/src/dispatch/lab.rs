@@ -826,7 +826,7 @@ fn start_nav_gen(app: &mut HammerProApp, ctx: &egui::Context) {
     let repaint = ctx.clone();
     let spawned = std::thread::Builder::new().name("hp-nav-gen".into()).spawn(move || {
         let start = Instant::now();
-        let (mesh, report) = hp_nav::generate(&input);
+        let (mesh, report) = hp_editor::background::run(|| hp_nav::generate(&input));
         let areas = mesh.areas.len();
         let answer = if areas == 0 {
             Err(t!("lab.navgen.nothing").to_owned())

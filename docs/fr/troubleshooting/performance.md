@@ -32,6 +32,7 @@ Page **Paramètres > Rendu**, groupe **Images par seconde** :
 | **Relief (normal maps)** | Paramètres > Rendu | Désactivé : surfaces plates et moins de mémoire vidéo. | Activé |
 | **Reflets des cubemaps** et **Redessiner les cubemaps après les modifications** | Paramètres > Rendu | Les matériaux avec `$envmap` reflètent des cubemaps dessinées par l'éditeur. Sans le redessin automatique, elles restent telles quelles jusqu'à **Map > Éclairage > Reconstruire les cubemaps**. | Activé, Activé |
 | **Lumières avec ombres** | Paramètres > Rendu | En mode Aperçu de l'éclairage, nombre de lumières ponctuelles et de spots proches de la caméra qui projettent des ombres (0 : le soleil seulement, 16 au maximum). | 4 |
+| **Lumière du ciel seulement sous le ciel** | Paramètres > Rendu | En mode Aperçu de l'éclairage, la lumière du ciel est vérifiée avec une carte des hauteurs de la map autour de la caméra. Désactivé : un peu moins de travail pour les cartes graphiques lentes. | Activé |
 | **Aperçu de l'eau** | Paramètres > Rendu | Réfraction, reflets et vagues de l'eau. Désactivé : la texture d'outil. | Activé |
 | **Fondu des modèles**, **Effets de rendu**, **Matériaux animés** | Affichage > Options d'affichage (les deux premiers aussi dans Paramètres > Rendu) | Coûts modestes ; à couper quand chaque image compte. | Désactivé, Activé, Activé |
 

@@ -32,6 +32,7 @@ Page **Settings > Rendering**, group **Frame rate**:
 | **Relief (normal maps)** | Settings > Rendering | Off: flat surfaces and less video memory. | On |
 | **Cubemap reflections** and **Redraw the cubemaps after edits** | Settings > Rendering | Materials with `$envmap` reflect cubemaps drawn by the editor. Turning off the automatic redraw keeps them until **Map > Lighting > Rebuild cubemaps**. | On, On |
 | **Shadowed lights** | Settings > Rendering | In the Lit render mode, how many point and spot lights near the camera cast shadows (0: only the sun, 16 at most). | 4 |
+| **Sky light only under the sky** | Settings > Rendering | In the Lit render mode, the sky light is checked against a height map of the map around the camera. Off saves a little on slow graphics cards. | On |
 | **Water preview** | Settings > Rendering | Refraction, reflection and waves of water. Off: the tool texture. | On |
 | **Model fade**, **Render effects**, **Animated materials** | View > Display options (the first two also in Settings > Rendering) | Small costs; turn off when every frame counts. | Off, On, On |
 

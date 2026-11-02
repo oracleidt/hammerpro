@@ -206,6 +206,28 @@ pub struct SceneOptions {
     pub lighting_preview: bool,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct SunReport {
+    pub direction: Option<[f32; 3]>,
+    pub color: [f32; 3],
+    pub ambient: [f32; 3],
+    pub spread_deg: f32,
+    pub origin: [f32; 3],
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct LightPreviewReport {
+    pub lights: u32,
+    pub directional: u32,
+    pub left_out: u32,
+    pub crowded_clusters: u32,
+    pub max_per_cluster: u32,
+    pub sky_occlusion: bool,
+    pub sky_layers: [u32; 2],
+    pub hdr: bool,
+    pub sun: Option<SunReport>,
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct FgdReport {
     pub files: Vec<std::path::PathBuf>,
@@ -255,6 +277,9 @@ pub trait AssetsApi {
     ) {
     }
     fn set_light_styles(&mut self, _values: &[f32]) {}
+    fn light_preview(&self) -> Option<LightPreviewReport> {
+        None
+    }
     fn play_cubemap_sources(&self) -> Option<(usize, usize)> {
         None
     }
@@ -304,6 +329,20 @@ pub trait AssetsApi {
         let _ = (doc, gfx);
     }
     fn parked_scenes(&self) -> usize {
+        0
+    }
+    fn parked_gpu_bytes(&self) -> u64 {
+        0
+    }
+    fn set_parked_gpu_limit(&mut self, bytes: u64) {
+        let _ = bytes;
+    }
+    fn release_gpu_memory(&mut self, gfx: &mut Gfx, what: crate::runtime::GpuRelease) -> crate::runtime::GpuReleased {
+        let _ = (gfx, what);
+        crate::runtime::GpuReleased::default()
+    }
+    fn apply_texture_limit(&mut self, gfx: &mut Gfx, size: u32) -> usize {
+        let _ = (gfx, size);
         0
     }
     fn sprite_material_id(&mut self, name: &str, additive: bool) -> hp_render::MaterialId {
@@ -572,6 +611,7 @@ impl AppState {
 
     pub fn apply_selection_undo_setting(&mut self) {
         self.doc.set_record_selection(self.settings.edit.undo_restores_selection);
+        self.doc.options_mut().new_brush_color = self.settings.edit.new_brush_color;
     }
 
     pub fn notify(&mut self, severity: Severity, text: impl Into<String>) {

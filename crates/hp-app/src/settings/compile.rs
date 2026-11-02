@@ -51,6 +51,18 @@ pub enum PackPolicy {
     Always,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum StaticPropShadows {
+    None,
+    #[default]
+    Collision,
+    Mesh,
+}
+
+fn is_flag(token: &str, name: &str) -> bool {
+    token.trim().trim_start_matches('-').eq_ignore_ascii_case(name)
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct FlagChoiceSetting {
@@ -234,11 +246,73 @@ impl CompileSettings {
         self.compilers.clear();
         self.compiler_by_game.clear();
     }
+
+    pub fn static_prop_shadows(&self) -> StaticPropShadows {
+        const POLYS: &str = "StaticPropPolys";
+        const NONE: &str = "nostaticpropshadows";
+        let shape = |polys: bool| if polys { StaticPropShadows::Mesh } else { StaticPropShadows::Collision };
+        if self.uses_builtin_compiler() {
+            let extra: Vec<&str> = self.extra_rad_args.split_whitespace().collect();
+            if !self.static_prop_shadows || extra.iter().any(|t| is_flag(t, NONE)) {
+                return StaticPropShadows::None;
+            }
+            let chosen = self.rad_flag_choices.iter().find(|(k, _)| is_flag(k, POLYS)).map(|(_, c)| c.on);
+            return shape(chosen.unwrap_or_else(|| extra.iter().any(|t| is_flag(t, POLYS))));
+        }
+        let id = self.active_compiler_id();
+        let Some(profile) = self.compilers.iter().find(|p| p.id.eq_ignore_ascii_case(id)) else {
+            return StaticPropShadows::Collision;
+        };
+        let polys = profile.steps.iter().filter(|st| st.enabled && st.kind == super::CompilerStepKind::Rad).any(|st| {
+            st.options.keys().any(|k| is_flag(k, POLYS))
+                || st.args.split_whitespace().chain(st.extra.split_whitespace()).any(|t| is_flag(t, POLYS))
+        });
+        shape(polys)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn static_prop_shadows_follow_the_compile() {
+        let mut s = CompileSettings::default();
+        assert_eq!(s.static_prop_shadows(), StaticPropShadows::Collision, "plain settings: collision models");
+        s.extra_rad_args = "-bounce 2 -staticproppolys".into();
+        assert_eq!(s.static_prop_shadows(), StaticPropShadows::Mesh);
+        s.rad_flag_choices.insert("-StaticPropPolys".into(), FlagChoiceSetting { on: false, value: String::new() });
+        assert_eq!(s.static_prop_shadows(), StaticPropShadows::Collision, "a choice turned off wins over the extra");
+        s.extra_rad_args.clear();
+        s.rad_flag_choices.insert("-StaticPropPolys".into(), FlagChoiceSetting { on: true, value: String::new() });
+        assert_eq!(s.static_prop_shadows(), StaticPropShadows::Mesh);
+        s.static_prop_shadows = false;
+        assert_eq!(s.static_prop_shadows(), StaticPropShadows::None);
+        s.static_prop_shadows = true;
+        s.extra_rad_args = "-NoStaticPropShadows".into();
+        assert_eq!(s.static_prop_shadows(), StaticPropShadows::None);
+        s.extra_rad_args.clear();
+        let mut vrad = super::super::CompilerProfile::blank("VRAD");
+        vrad.id = "user:1".into();
+        s.compilers.push(vrad.clone());
+        s.set_active_compiler("user:1");
+        assert_eq!(s.static_prop_shadows(), StaticPropShadows::Collision, "Valve's VRAD without the flag");
+        if let Some(st) = s.compilers[0].steps.iter_mut().find(|st| st.kind == super::super::CompilerStepKind::Rad) {
+            st.options.insert("StaticPropPolys".into(), String::new());
+        }
+        assert_eq!(s.static_prop_shadows(), StaticPropShadows::Mesh);
+        if let Some(st) = s.compilers[0].steps.iter_mut().find(|st| st.kind == super::super::CompilerStepKind::Rad) {
+            st.options.clear();
+            st.extra = "-final -StaticPropPolys".into();
+        }
+        assert_eq!(s.static_prop_shadows(), StaticPropShadows::Mesh);
+        if let Some(st) = s.compilers[0].steps.iter_mut().find(|st| st.kind == super::super::CompilerStepKind::Rad) {
+            st.enabled = false;
+        }
+        assert_eq!(s.static_prop_shadows(), StaticPropShadows::Collision);
+        s.set_active_compiler("detected:vrad");
+        assert_eq!(s.static_prop_shadows(), StaticPropShadows::Collision, "an unedited detected compiler");
+    }
 
     #[test]
     fn old_files_load() {

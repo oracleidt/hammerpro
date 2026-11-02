@@ -1,17 +1,20 @@
 use std::cell::RefCell;
 
-use egui::{Align2, CursorIcon, Key, Pos2, Stroke, Ui, Vec2};
+use egui::{Align2, CursorIcon, Key, Modifiers, Pos2, Stroke, Ui, Vec2};
 use glam::{DVec2, DVec3};
 use hp_app::actions::{Action, key_label, shortcut_label};
 use hp_app::state::AppState;
+use hp_app::tool::ToolOption;
 use hp_app::{Severity, Tool, ToolFlow, ToolId, ViewInfo, ViewInput, ViewKind, t, tf};
 use hp_editor::{ClipKeep, Id};
 use hp_geom::{Aabb, Plane};
 use hp_render::Overlay;
 
+use crate::clip3d::{CutAxis, Pick3d, SnapKind, axis_plane, face_cut_plane, facing, keep_side, pick_3d};
 use crate::common::{
-    COLOR_BACK, COLOR_FRONT, COLOR_PENDING, COLOR_REMOVED, Mouse, Ov, Snap, active_material, consume_plain_key,
-    consume_tabs, fmt_len, fmt_num, fresh, paint_handle, paint_label, pick_surface, plane_box_polygon, rgba, round_to,
+    COLOR_BACK, COLOR_FRONT, COLOR_GHOST, COLOR_PENDING, COLOR_REMOVED, Mouse, Ov, Snap, active_material,
+    consume_plain_key, consume_tabs, fmt_len, fmt_num, fresh, paint_handle, paint_label, plane_box_polygon, rgba,
+    round_to,
 };
 
 const HANDLE_PICK: f32 = 8.0;
@@ -54,15 +57,72 @@ fn keep_key(keep: ClipKeep) -> &'static str {
     }
 }
 
+fn keep_id(keep: ClipKeep) -> &'static str {
+    match keep {
+        ClipKeep::Front => "front",
+        ClipKeep::Back => "back",
+        ClipKeep::Both => "both",
+    }
+}
+
+fn axis_key(axis: CutAxis) -> &'static str {
+    match axis {
+        CutAxis::Auto => "create.clip.axis_auto",
+        CutAxis::X => "create.clip.axis_x",
+        CutAxis::Y => "create.clip.axis_y",
+        CutAxis::Z => "create.clip.axis_z",
+    }
+}
+
 fn fmt_angle(deg: f64) -> String {
     fmt_num(round_to(deg, 0.1))
+}
+
+fn points_plane(points: &[DVec3], face: Option<DVec3>) -> Option<Option<Plane>> {
+    match points {
+        [a, b] => Some(face.and_then(|n| face_cut_plane(*a, *b, n))),
+        [a, b, c] => Plane::from_points(*a, *b, *c).filter(|p| !along_face(p, face)).map(Some),
+        _ => Some(None),
+    }
+}
+
+fn along_face(plane: &Plane, face: Option<DVec3>) -> bool {
+    face.is_some_and(|n| plane.normal.dot(n).abs() > 1.0 - 1e-9)
+}
+
+fn toward(normal: DVec3, eye: DVec3, at: DVec3) -> DVec3 {
+    if normal.dot(eye - at) < 0.0 { -normal } else { normal }
+}
+
+fn consume_letter(ctx: &egui::Context, key: Key) -> bool {
+    ctx.input_mut(|i| {
+        if i.modifiers.any() {
+            return false;
+        }
+        let found = i.events.iter().position(
+            |e| matches!(e, egui::Event::Key { key: k, pressed: true, modifiers: m, .. } if *k == key && !m.any()),
+        );
+        found.map(|at| i.events.remove(at)).is_some()
+    })
+}
+
+fn ctrl_held(m: Modifiers) -> bool {
+    m.ctrl || m.command
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct AxisSource {
+    face_normal: DVec3,
+    eye: DVec3,
+    forward: DVec3,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 enum ClipDef {
     None,
     Line { kind: ViewKind, a: DVec2, b: DVec2, depth: f64, c: Option<DVec3> },
-    Points { points: Vec<DVec3>, plane: Option<Plane> },
+    Points { points: Vec<DVec3>, face: Option<DVec3>, plane: Option<Plane> },
+    Fixed { anchor: DVec3, plane: Plane, axis: Option<AxisSource> },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -96,10 +156,11 @@ struct Preview {
 pub struct ClipTool {
     pub keep: ClipKeep,
     pub three_point: bool,
+    pub axis: CutAxis,
     def: ClipDef,
     drag: Option<Drag>,
     hover_handle: Option<(usize, Target, u64)>,
-    hover_3d: Option<(DVec3, u64)>,
+    hover_3d: Option<(Pick3d, Modifiers, u64)>,
     last_focus: Option<egui::Id>,
     preview: RefCell<Preview>,
 }
@@ -115,6 +176,7 @@ impl ClipTool {
         Self {
             keep: ClipKeep::Both,
             three_point: false,
+            axis: CutAxis::Auto,
             def: ClipDef::None,
             drag: None,
             hover_handle: None,
@@ -136,6 +198,13 @@ impl ClipTool {
         }
     }
 
+    pub fn set_plane(&mut self, anchor: DVec3, plane: Plane) -> bool {
+        let Some(plane) = Plane::new(plane.normal, plane.dist).filter(|_| anchor.is_finite()) else { return false };
+        let anchor = plane.project(anchor);
+        self.def = ClipDef::Fixed { anchor, plane, axis: None };
+        true
+    }
+
     pub fn plane(&self) -> Option<Plane> {
         match &self.def {
             ClipDef::None => None,
@@ -144,11 +213,21 @@ impl ClipTool {
                 _ => clip_plane_2d(*kind, *a, *b),
             },
             ClipDef::Points { plane, .. } => *plane,
+            ClipDef::Fixed { plane, .. } => Some(*plane),
         }
     }
 
     pub fn cycle_mode(&mut self, backwards: bool) {
         self.keep = next_keep(self.keep, backwards);
+    }
+
+    pub fn set_axis(&mut self, axis: CutAxis) {
+        self.axis = axis;
+        if let ClipDef::Fixed { anchor, plane, axis: Some(src) } = &mut self.def
+            && let Some(next) = axis_plane(axis.resolve(src.face_normal, src.forward), *anchor)
+        {
+            *plane = facing(next, src.eye);
+        }
     }
 
     fn tab_input(&mut self, ctx: &egui::Context) -> bool {
@@ -204,6 +283,9 @@ impl ClipTool {
             Ok(pieces) => {
                 let cut = if self.keep == ClipKeep::Both { pieces.len() / 2 } else { pieces.len() };
                 state.log(Severity::Info, tf!("create.clip.done", cut));
+                if matches!(self.def, ClipDef::Points { .. } | ClipDef::Fixed { .. }) {
+                    self.clear();
+                }
                 true
             }
             Err(e) => {
@@ -220,6 +302,14 @@ impl ClipTool {
         }
     }
 
+    fn world_points(&self) -> Vec<DVec3> {
+        match &self.def {
+            ClipDef::Points { points, .. } => points.clone(),
+            ClipDef::Fixed { anchor, .. } => vec![*anchor],
+            _ => Vec::new(),
+        }
+    }
+
     fn handle_world(&self, view: &ViewInfo, target: Target) -> Option<DVec3> {
         match (&self.def, target) {
             (ClipDef::Line { kind, a, depth, .. }, Target::A) if *kind == view.kind => Some(kind.from_2d(*a, *depth)),
@@ -229,7 +319,7 @@ impl ClipTool {
             {
                 Some(*c)
             }
-            (ClipDef::Points { points, .. }, Target::Point(i)) => points.get(i).copied(),
+            (ClipDef::Points { .. } | ClipDef::Fixed { .. }, Target::Point(i)) => self.world_points().get(i).copied(),
             _ => None,
         }
     }
@@ -244,6 +334,7 @@ impl ClipTool {
             ClipDef::None => Vec::new(),
             ClipDef::Line { .. } => vec![Target::C, Target::B, Target::A],
             ClipDef::Points { points, .. } => (0..points.len()).rev().map(Target::Point).collect(),
+            ClipDef::Fixed { .. } => vec![Target::Point(0)],
         }
     }
 
@@ -268,19 +359,32 @@ impl ClipTool {
         }
     }
 
-    fn move_point(&mut self, index: usize, p: DVec3) {
-        let ClipDef::Points { points, plane } = &mut self.def else { return };
-        let mut moved = points.clone();
-        let Some(slot) = moved.get_mut(index) else { return };
-        *slot = p;
-        if let [a, b, c] = moved[..] {
-            let Some(mut next) = Plane::from_points(a, b, c) else { return };
-            if plane.is_some_and(|old| old.normal.dot(next.normal) < 0.0) {
-                next = next.flip();
-            }
-            *plane = Some(next);
+    fn move_point(&mut self, index: usize, p: DVec3, face_normal: Option<DVec3>) {
+        if !p.is_finite() {
+            return;
         }
-        *points = moved;
+        match &mut self.def {
+            ClipDef::Points { points, face, plane } => {
+                let mut moved = points.clone();
+                let Some(slot) = moved.get_mut(index) else { return };
+                *slot = p;
+                let next_face = if index == 0 { face_normal.or(*face) } else { *face };
+                let Some(next) = points_plane(&moved, next_face) else { return };
+                if plane.is_some() && next.is_none() {
+                    return;
+                }
+                *plane = next.map(|n| keep_side(n, *plane));
+                *points = moved;
+                *face = next_face;
+            }
+            ClipDef::Fixed { anchor, plane, .. } if index == 0 => {
+                if let Some(next) = Plane::from_normal_point(plane.normal, p) {
+                    *plane = next;
+                    *anchor = p;
+                }
+            }
+            _ => {}
+        }
     }
 
     fn new_line_depth(state: &AppState, kind: ViewKind) -> f64 {
@@ -295,8 +399,12 @@ impl ClipTool {
 
     pub(crate) fn handle_mouse(&mut self, state: &mut AppState, view: &ViewInfo, m: &Mouse) -> ToolFlow {
         let Some(pos) = m.pos else { return ToolFlow::Ignored };
-        let snap = Snap::for_selection(state, view, m.modifiers);
-        if view.is_2d() { self.mouse_2d(state, view, m, pos, &snap) } else { self.mouse_3d(state, view, m, pos, &snap) }
+        if view.is_2d() {
+            let snap = Snap::for_selection(state, view, m.modifiers);
+            self.mouse_2d(state, view, m, pos, &snap)
+        } else {
+            self.mouse_3d(state, view, m, pos)
+        }
     }
 
     fn mouse_2d(&mut self, state: &AppState, view: &ViewInfo, m: &Mouse, pos: Pos2, snap: &Snap) -> ToolFlow {
@@ -306,7 +414,7 @@ impl ClipTool {
         }
         let origin = m.origin().unwrap_or(pos);
         let at_origin = snap.v2(view.screen_to_2d(origin));
-        let ctrl = m.modifiers.ctrl || m.modifiers.command;
+        let ctrl = ctrl_held(m.modifiers);
         let shift = m.modifiers.shift;
         let line_elsewhere = matches!(&self.def, ClipDef::Line { kind, .. } if *kind != view.kind);
         let third = self.three_point && line_elsewhere && !shift;
@@ -358,12 +466,12 @@ impl ClipTool {
                 }
                 Target::C => self.set_c_2d(view, p),
                 Target::Point(i) => {
-                    if let (Some((r, u, _)), ClipDef::Points { points, .. }) = (view.kind.axes_2d(), &self.def)
-                        && let Some(mut q) = points.get(i).copied()
+                    if let Some((r, u, _)) = view.kind.axes_2d()
+                        && let Some(mut q) = self.world_points().get(i).copied()
                     {
                         q[r] = p.x;
                         q[u] = p.y;
-                        self.move_point(i, q);
+                        self.move_point(i, q, None);
                     }
                 }
             }
@@ -380,20 +488,28 @@ impl ClipTool {
         ToolFlow::Handled
     }
 
-    fn mouse_3d(&mut self, state: &mut AppState, view: &ViewInfo, m: &Mouse, pos: Pos2, snap: &Snap) -> ToolFlow {
-        let point = pick_surface(state, view, pos).map(|h| snap.on_plane(h.point, h.normal));
+    fn drag_fallback(view: &ViewInfo, pos: Pos2, old: DVec3) -> Option<DVec3> {
+        let (o, dir) = view.ray(pos);
+        let n = view.cam3d.forward();
+        let denom = dir.dot(n);
+        let t = (old - o).dot(n) / denom;
+        (denom.abs() > 1e-9 && t > 0.0 && t.is_finite()).then(|| o + dir * t)
+    }
+
+    fn mouse_3d(&mut self, state: &mut AppState, view: &ViewInfo, m: &Mouse, pos: Pos2) -> ToolFlow {
+        let pick = pick_3d(state, view, pos, m.modifiers);
         if m.hovering() {
-            self.hover_3d = point.map(|p| (p, state.frame.index));
+            self.hover_3d = pick.map(|p| (p, m.modifiers, state.frame.index));
             self.hover_handle = self.handle_at(view, pos).map(|t| (view.index, t, state.frame.index));
             return ToolFlow::Ignored;
         }
         let origin = m.origin().unwrap_or(pos);
+        let plain = !m.modifiers.shift && !ctrl_held(m.modifiers);
         if m.drag_started
-            && !m.modifiers.shift
+            && plain
             && let Some(Target::Point(i)) = self.handle_at(view, origin)
         {
-            self.drag =
-                Some(Drag { view: view.index, target: Target::Point(i), from: DVec2::ZERO, start: Default::default() });
+            self.drag = Some(Self::point_drag(view, i));
             return ToolFlow::Handled;
         }
         if let Some(d) = self.drag
@@ -401,20 +517,14 @@ impl ClipTool {
             && let Target::Point(i) = d.target
         {
             if m.dragging || m.drag_stopped {
-                let old = match &self.def {
-                    ClipDef::Points { points, .. } => points.get(i).copied(),
-                    _ => None,
-                };
-                let target = point.or_else(|| {
-                    let old = old?;
-                    let (o, dir) = view.ray(pos);
-                    let n = view.cam3d.forward();
-                    let denom = dir.dot(n);
-                    let t = (old - o).dot(n) / denom;
-                    (denom.abs() > 1e-9 && t > 0.0 && t.is_finite()).then(|| o + dir * t)
+                let eye = view.cam3d.pos;
+                let target = pick.map(|h| h.point).or_else(|| {
+                    let old = self.world_points().get(i).copied()?;
+                    Self::drag_fallback(view, pos, old)
                 });
-                if let Some(p) = target.filter(|p| p.is_finite()) {
-                    self.move_point(i, p);
+                if let Some(p) = target {
+                    let face = pick.map(|h| toward(h.face_plane.normal, eye, h.point));
+                    self.move_point(i, p, face);
                 }
                 self.hover_handle = Some((view.index, d.target, state.frame.index));
             }
@@ -423,29 +533,89 @@ impl ClipTool {
             }
             return ToolFlow::Handled;
         }
-        if m.activated()
-            && let Some(p) = point
-        {
-            let mut points = match std::mem::replace(&mut self.def, ClipDef::None) {
-                ClipDef::Points { points, plane: None } => points,
-                _ => Vec::new(),
-            };
-            if !points.iter().any(|q| q.distance(p) < 1e-6) {
-                points.push(p);
+        if m.activated() {
+            let at = if m.drag_started { pick_3d(state, view, origin, m.modifiers) } else { pick };
+            if let Some(hit) = at
+                && let Some(index) = self.place(state, view, &hit, m.modifiers)
+                && m.drag_started
+            {
+                self.drag = Some(Self::point_drag(view, index));
             }
-            let mut plane = None;
-            if let [a, b, c] = points[..] {
-                match Plane::from_points(a, b, c) {
-                    Some(pl) => plane = Some(if pl.distance(view.cam3d.pos) < 0.0 { pl.flip() } else { pl }),
-                    None => {
-                        state.notify(Severity::Warning, t!("create.clip.collinear"));
-                        points.clear();
-                    }
-                }
-            }
-            self.def = if points.is_empty() { ClipDef::None } else { ClipDef::Points { points, plane } };
         }
         if m.any_button() { ToolFlow::Handled } else { ToolFlow::Ignored }
+    }
+
+    fn point_drag(view: &ViewInfo, i: usize) -> Drag {
+        Drag { view: view.index, target: Target::Point(i), from: DVec2::ZERO, start: Default::default() }
+    }
+
+    fn axis_source(view: &ViewInfo, hit: &Pick3d) -> AxisSource {
+        AxisSource { face_normal: hit.face_plane.normal, eye: view.cam3d.pos, forward: view.cam3d.forward() }
+    }
+
+    fn axis_candidate(&self, src: &AxisSource, at: DVec3) -> Option<Plane> {
+        axis_plane(self.axis.resolve(src.face_normal, src.forward), at).map(|p| facing(p, src.eye))
+    }
+
+    fn place(&mut self, state: &mut AppState, view: &ViewInfo, hit: &Pick3d, mods: Modifiers) -> Option<usize> {
+        let eye = view.cam3d.pos;
+        let p = hit.point;
+        if ctrl_held(mods) {
+            self.def = ClipDef::Fixed { anchor: p, plane: hit.face_plane, axis: None };
+            return Some(0);
+        }
+        if mods.shift {
+            let src = Self::axis_source(view, hit);
+            let plane = self.axis_candidate(&src, p)?;
+            self.def = ClipDef::Fixed { anchor: p, plane, axis: Some(src) };
+            return Some(0);
+        }
+        let (mut points, face, old) = match std::mem::replace(&mut self.def, ClipDef::None) {
+            ClipDef::Points { points, face, plane } if points.len() < 3 => (points, face, plane),
+            _ => (Vec::new(), None, None),
+        };
+        if points.iter().any(|q| q.distance(p) < 1e-6) {
+            self.def = ClipDef::Points { points, face, plane: old };
+            return None;
+        }
+        let face = if points.is_empty() { Some(toward(hit.face_plane.normal, eye, p)) } else { face };
+        points.push(p);
+        let (plane, index) = match points_plane(&points, face) {
+            Some(next) => {
+                let oriented =
+                    |n: Plane| if old.is_some() || points.len() < 3 { keep_side(n, old) } else { facing(n, eye) };
+                (next.map(oriented), Some(points.len() - 1))
+            }
+            None => {
+                let same = match points[..] {
+                    [a, b, c] => Plane::from_points(a, b, c).is_some_and(|p| along_face(&p, face)),
+                    _ => false,
+                };
+                let key = if same { "create.clip.same_face" } else { "create.clip.collinear" };
+                state.notify(Severity::Warning, t!(key));
+                points.pop();
+                (old, None)
+            }
+        };
+        self.def = if points.is_empty() { ClipDef::None } else { ClipDef::Points { points, face, plane } };
+        index
+    }
+
+    fn hover_candidate(&self, view: &ViewInfo, hit: &Pick3d, mods: Modifiers) -> Option<Plane> {
+        if ctrl_held(mods) {
+            return Some(hit.face_plane);
+        }
+        if mods.shift {
+            return self.axis_candidate(&Self::axis_source(view, hit), hit.point);
+        }
+        match &self.def {
+            ClipDef::Points { points, face, .. } => match points[..] {
+                [a] => face.and_then(|n| face_cut_plane(a, hit.point, n)),
+                [a, b] => Plane::from_points(a, b, hit.point),
+                _ => None,
+            },
+            _ => None,
+        }
     }
 
     fn refresh_preview(&self, state: &AppState) {
@@ -474,13 +644,7 @@ impl ClipTool {
         for id in state.doc.selected_solid_ids() {
             let Some(node) = state.doc.scene().solid(id) else { continue };
             selection_bounds = selection_bounds.union(&node.bounds);
-            let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
-            for c in node.bounds.corners() {
-                let d = plane.distance(c);
-                lo = lo.min(d);
-                hi = hi.max(d);
-            }
-            if hi <= hp_geom::PLANE_EPS || lo >= -hp_geom::PLANE_EPS {
+            if !hp_geom::plane_splits(&node.geom, &plane) {
                 continue;
             }
             let Ok((Some(front), Some(back))) = hp_geom::clip_solid(&node.solid.sides, &plane, &mut gen_id) else {
@@ -530,14 +694,27 @@ impl ClipTool {
                     b.extend(*c);
                 }
             }
-            ClipDef::Points { points, .. } => {
-                for p in points {
-                    b.extend(*p);
+            ClipDef::Points { .. } | ClipDef::Fixed { .. } => {
+                for p in self.world_points() {
+                    b.extend(p);
                 }
             }
             ClipDef::None => {}
         }
         if b.is_empty() { b } else { b.expand(64.0) }
+    }
+
+    fn hover_region(state: &AppState, around: &[DVec3]) -> Aabb {
+        let mut b = Aabb::EMPTY;
+        for id in state.doc.selected_solid_ids() {
+            if let Some(n) = state.doc.scene().solid(id) {
+                b = b.union(&n.bounds);
+            }
+        }
+        for p in around {
+            b.extend(*p);
+        }
+        b.expand(16.0)
     }
 
     fn colors(&self) -> ([f32; 4], [f32; 4]) {
@@ -554,6 +731,17 @@ impl ClipTool {
             let b = egui::Button::selectable(self.keep == keep, t!(keep_key(keep)));
             if ui.add(b).on_hover_text(&tip).clicked() {
                 self.keep = keep;
+            }
+        }
+    }
+
+    fn axis_ui(&mut self, ui: &mut Ui) {
+        let tip = tf!("create.clip.axis_tip", key_label(Key::X));
+        ui.label(t!("create.clip.axis")).on_hover_text(&tip);
+        for axis in CutAxis::ALL {
+            let b = egui::Button::selectable(self.axis == axis, t!(axis_key(axis)));
+            if ui.add(b).on_hover_text(&tip).clicked() {
+                self.set_axis(axis);
             }
         }
     }
@@ -587,10 +775,7 @@ impl ClipTool {
             );
             let mid = pa + d * 0.5;
             let n = egui::vec2(-dir.y, dir.x);
-            let (front, _) = self.colors();
-            let c =
-                egui::Color32::from_rgb((front[0] * 255.0) as u8, (front[1] * 255.0) as u8, (front[2] * 255.0) as u8);
-            painter.arrow(mid, n * 14.0, Stroke::new(1.5, c));
+            painter.arrow(mid, n * 14.0, Stroke::new(1.5, self.front_color32()));
             if state.settings.brush.clip_measurements {
                 let delta = *b - *a;
                 let angle = delta.y.atan2(delta.x).to_degrees();
@@ -603,6 +788,11 @@ impl ClipTool {
         let is = |t: Target| active == Some(t) || active == Some(Target::Both) && matches!(t, Target::A | Target::B);
         paint_handle(painter, pa, is(Target::A));
         paint_handle(painter, pb, is(Target::B));
+    }
+
+    fn front_color32(&self) -> egui::Color32 {
+        let (front, _) = self.colors();
+        egui::Color32::from_rgb((front[0] * 255.0) as u8, (front[1] * 255.0) as u8, (front[2] * 255.0) as u8)
     }
 
     fn paint_third(&self, state: &AppState, view: &ViewInfo, painter: &egui::Painter) {
@@ -618,15 +808,46 @@ impl ClipTool {
         }
     }
 
+    fn paint_trace(&self, view: &ViewInfo, painter: &egui::Painter) {
+        let (Some(plane), Some((r, u, d))) = (self.plane(), view.kind.axes_2d()) else { return };
+        if plane.normal[d].abs() > 1e-6 {
+            return;
+        }
+        let Some(&anchor) = self.world_points().first() else { return };
+        let on = plane.project(anchor);
+        let base = DVec2::new(on[r], on[u]);
+        let dir = DVec2::new(-plane.normal[u], plane.normal[r]);
+        let Some(dir) = dir.try_normalize() else { return };
+        let reach = 2.0 * f64::from(view.rect.size().length()) / view.cam2d.zoom.max(1e-6);
+        let (Some(pa), Some(pb), Some(pc)) = (
+            view.world_to_screen(view.kind.from_2d(base - dir * reach, 0.0)),
+            view.world_to_screen(view.kind.from_2d(base + dir * reach, 0.0)),
+            view.world_to_screen(on),
+        ) else {
+            return;
+        };
+        let stroke = Stroke::new(1.0, COLOR_PENDING.gamma_multiply(0.6));
+        painter.extend(egui::Shape::dashed_line(&[pa, pb], stroke, 8.0, 5.0));
+        if view.rect.contains(pc)
+            && let Some(tip) = view.world_to_screen(on + plane.normal)
+            && (tip - pc).length() > 1e-3
+        {
+            painter.arrow(pc, (tip - pc).normalized() * 14.0, Stroke::new(1.5, self.front_color32()));
+        }
+    }
+
     fn paint_points(&self, state: &AppState, view: &ViewInfo, painter: &egui::Painter) {
-        let ClipDef::Points { points, .. } = &self.def else { return };
+        let points = self.world_points();
+        if view.is_2d() {
+            self.paint_trace(view, painter);
+        }
         let active = self.active_handle(state, view);
         for i in 0..points.len() {
             if let Some(p) = self.handle_pos(view, Target::Point(i)) {
                 paint_handle(painter, p, active == Some(Target::Point(i)));
             }
         }
-        if view.is_2d() || !state.settings.brush.clip_measurements {
+        if view.is_2d() || !state.settings.brush.clip_measurements || !matches!(self.def, ClipDef::Points { .. }) {
             return;
         }
         for (i, p) in points.iter().enumerate() {
@@ -640,6 +861,54 @@ impl ClipTool {
                 paint_label(painter, s, Align2::CENTER_CENTER, &fmt_len(p.distance(*q)), COLOR_PENDING);
             }
         }
+    }
+
+    fn overlay_hover(&self, state: &AppState, view: &ViewInfo, ov: &mut Ov<'_>) {
+        if view.is_2d() || self.drag.is_some() {
+            return;
+        }
+        let Some((h, mods, _)) = self.hover_3d.filter(|(_, _, f)| fresh(state, *f)) else { return };
+        let (color, size) = match h.kind {
+            SnapKind::Vertex => (rgba(egui::Color32::WHITE, 1.0), 10.0),
+            SnapKind::Midpoint => (rgba(COLOR_GHOST, 1.0), 9.0),
+            SnapKind::Grid => (rgba(COLOR_PENDING, 0.9), 7.0),
+            SnapKind::Free => (rgba(COLOR_PENDING, 0.6), 6.0),
+        };
+        let modal = ctrl_held(mods) || mods.shift;
+        let adding = matches!(&self.def, ClipDef::Points { points, .. } if points.len() < 3);
+        if modal || adding || matches!(self.def, ClipDef::None | ClipDef::Line { .. } | ClipDef::Fixed { .. }) {
+            ov.point(h.point, color, size);
+        }
+        if let ClipDef::Points { points, .. } = &self.def
+            && !modal
+            && points.len() < 3
+            && let Some(last) = points.last()
+        {
+            ov.line(*last, h.point, rgba(COLOR_PENDING, 0.6));
+        }
+        let Some(candidate) = self.hover_candidate(view, &h, mods) else { return };
+        let mut around = self.world_points();
+        if modal {
+            around.clear();
+        }
+        around.push(h.point);
+        let poly = plane_box_polygon(&candidate, &Self::hover_region(state, &around));
+        if modal {
+            ov.polygon_fill(&poly, rgba(COLOR_PENDING, 0.08));
+        }
+        ov.polygon_outline(&poly, rgba(COLOR_PENDING, 0.5), true);
+    }
+
+    fn overlay_normal(&self, ov: &mut Ov<'_>, plane: &Plane) {
+        let points = self.world_points();
+        if points.is_empty() {
+            return;
+        }
+        let center = points.iter().copied().sum::<DVec3>() / points.len() as f64;
+        let base = plane.project(center);
+        let (front, _) = self.colors();
+        ov.xray_line(base, base + plane.normal * 24.0, front);
+        ov.point(base + plane.normal * 24.0, front, 6.0);
     }
 }
 
@@ -681,11 +950,15 @@ impl Tool for ClipTool {
         if self.def != ClipDef::None && consume_plain_key(ctx, Key::Escape) {
             return self.clear();
         }
-        if consume_plain_key(ctx, Key::C) {
+        if consume_letter(ctx, Key::C) {
             self.three_point = !self.three_point;
             return true;
         }
-        if consume_plain_key(ctx, Key::O) {
+        if consume_letter(ctx, Key::X) {
+            self.set_axis(self.axis.next());
+            return true;
+        }
+        if consume_letter(ctx, Key::O) {
             Self::toggle_measurements(state);
             return true;
         }
@@ -704,7 +977,7 @@ impl Tool for ClipTool {
         }
         if !view.is_2d() {
             for (tris, color) in [(&pv.front_tris, front), (&pv.back_tris, back)] {
-                let fill = [color[0], color[1], color[2], 0.12];
+                let fill = [color[0], color[1], color[2], if color[3] < 1.0 { 0.4 } else { 0.22 }];
                 for t in tris {
                     ov.tri(t[0], t[1], t[2], fill);
                 }
@@ -713,6 +986,7 @@ impl Tool for ClipTool {
                 let poly = plane_box_polygon(&plane, &self.plane_region(&pv));
                 ov.polygon_fill(&poly, rgba(COLOR_PENDING, 0.16));
                 ov.polygon_outline(&poly, rgba(COLOR_PENDING, 0.9), true);
+                self.overlay_normal(&mut ov, &plane);
             }
         }
         if let ClipDef::Line { kind, c, .. } = &self.def
@@ -732,38 +1006,16 @@ impl Tool for ClipTool {
                 ov.point(*c, color, 8.0);
             }
         }
-        if let ClipDef::Points { points, plane } = &self.def {
+        if matches!(self.def, ClipDef::Points { .. } | ClipDef::Fixed { .. }) {
+            let points = self.world_points();
             for (i, p) in points.iter().enumerate() {
                 ov.point(*p, rgba(COLOR_PENDING, 1.0), 8.0);
                 if let Some(q) = points.get(i + 1) {
-                    ov.line(*p, *q, rgba(COLOR_PENDING, 1.0));
-                }
-            }
-            if plane.is_none()
-                && !view.is_2d()
-                && self.drag.is_none()
-                && let Some((h, frame)) = self.hover_3d
-                && fresh(state, frame)
-            {
-                if let Some(last) = points.last() {
-                    ov.line(*last, h, rgba(COLOR_PENDING, 0.6));
-                }
-                if let [a, b] = points[..]
-                    && let Some(pl) = Plane::from_points(a, b, h)
-                {
-                    let poly = plane_box_polygon(&pl, &Aabb::from_points([a, b, h]).expand(64.0));
-                    ov.polygon_outline(&poly, rgba(COLOR_PENDING, 0.5), true);
+                    ov.xray_line(*p, *q, rgba(COLOR_PENDING, 1.0));
                 }
             }
         }
-        if !view.is_2d()
-            && self.drag.is_none()
-            && matches!(self.def, ClipDef::None | ClipDef::Points { plane: None, .. })
-            && let Some((h, frame)) = self.hover_3d
-            && fresh(state, frame)
-        {
-            ov.point(h, rgba(COLOR_PENDING, 0.8), 6.0);
-        }
+        self.overlay_hover(state, view, &mut ov);
     }
 
     fn paint(&self, state: &AppState, view: &ViewInfo, painter: &egui::Painter) {
@@ -771,7 +1023,7 @@ impl Tool for ClipTool {
         match &self.def {
             ClipDef::Line { kind, .. } if *kind == view.kind => self.paint_line(state, view, &painter),
             ClipDef::Line { .. } => self.paint_third(state, view, &painter),
-            ClipDef::Points { .. } => self.paint_points(state, view, &painter),
+            ClipDef::Points { .. } | ClipDef::Fixed { .. } => self.paint_points(state, view, &painter),
             ClipDef::None => {}
         }
     }
@@ -800,6 +1052,9 @@ impl Tool for ClipTool {
             {
                 self.three_point = !self.three_point;
             }
+            ui.separator();
+            self.axis_ui(ui);
+            ui.separator();
             let mut measure = state.settings.brush.clip_measurements;
             if ui
                 .checkbox(&mut measure, t!("create.clip.measurements"))
@@ -837,18 +1092,25 @@ impl Tool for ClipTool {
     fn status_hint(&self, state: &AppState) -> Option<String> {
         let escape = key_label(Key::Escape);
         let c = key_label(Key::C);
+        let ready = || (t!(keep_key(self.keep)), key_label(Key::Enter), Self::mode_keys(state), escape.clone());
         Some(match &self.def {
-            ClipDef::Points { points, plane: None } => {
+            ClipDef::Points { points, plane: None, .. } if points.len() == 1 => tf!("create.clip.hint_second", escape),
+            ClipDef::Points { points, plane: None, .. } => {
                 tf!("create.clip.hint_points", 3usize.saturating_sub(points.len()), escape)
             }
+            ClipDef::Points { points, .. } if points.len() == 2 => {
+                let (k, e, m, x) = ready();
+                tf!("create.clip.hint_ready_3d", k, e, m, x)
+            }
+            ClipDef::Points { .. } | ClipDef::Fixed { .. } => {
+                let (k, e, m, x) = ready();
+                tf!("create.clip.hint_fixed", k, e, m, x)
+            }
             ClipDef::Line { c: None, .. } if self.three_point => tf!("create.clip.hint_third", c, escape),
-            _ if self.plane().is_some() => tf!(
-                "create.clip.hint_ready",
-                t!(keep_key(self.keep)),
-                key_label(Key::Enter),
-                Self::mode_keys(state),
-                escape
-            ),
+            _ if self.plane().is_some() => {
+                let (k, e, m, x) = ready();
+                tf!("create.clip.hint_ready", k, e, m, x)
+            }
             _ => tf!("create.clip.hint_idle", Self::mode_keys(state), c),
         })
     }
@@ -856,13 +1118,48 @@ impl Tool for ClipTool {
     fn cancel(&mut self, _state: &mut AppState) -> bool {
         self.clear()
     }
+
+    fn set_option(&mut self, _state: &mut AppState, key: &str, value: &str) -> bool {
+        let flag = match value.trim().to_ascii_lowercase().as_str() {
+            "on" | "true" | "1" => Some(true),
+            "off" | "false" | "0" => Some(false),
+            _ => None,
+        };
+        match key {
+            "keep" => {
+                let keep = [ClipKeep::Front, ClipKeep::Back, ClipKeep::Both]
+                    .into_iter()
+                    .find(|k| keep_id(*k).eq_ignore_ascii_case(value.trim()));
+                keep.map(|k| self.keep = k).is_some()
+            }
+            "three_point" => flag.map(|v| self.three_point = v).is_some(),
+            "axis" => CutAxis::from_id(value).map(|a| self.set_axis(a)).is_some(),
+            _ => false,
+        }
+    }
+
+    fn option_values(&self) -> Vec<ToolOption> {
+        vec![
+            ToolOption::new("keep", keep_id(self.keep), "pieces kept: front, back or both (Shift+X or Tab cycles)"),
+            ToolOption::new(
+                "three_point",
+                if self.three_point { "on" } else { "off" },
+                "on: after the 2D line, a click in another 2D view tilts the plane (C)",
+            ),
+            ToolOption::new(
+                "axis",
+                self.axis.id(),
+                "world axis of the Shift+click cut in the 3D view: auto (the axis most along the view, not the \
+                 clicked face's), x, y or z (X cycles)",
+            ),
+        ]
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::tests_support::{info_2d, info_3d, settle};
-    use egui::Modifiers;
     use hp_editor::ObjRef;
 
     #[test]
@@ -1054,11 +1351,12 @@ mod tests {
         let at = |p: DVec3| view.world_to_screen(p).expect("screen");
         tool.handle_mouse(&mut state, &view, &Mouse::click(at(DVec3::new(-64.0, 256.0, 32.0))));
         tool.handle_mouse(&mut state, &view, &Mouse::click(at(DVec3::new(64.0, 256.0, 96.0))));
-        assert!(tool.plane().is_none());
+        let square = tool.plane().expect("two points on a face give a plane");
+        assert!(square.normal.y.abs() < 1e-12, "square to the wall: {square:?}");
         assert!(tool.status_hint(&state).is_some());
         tool.handle_mouse(&mut state, &view, &Mouse::click(at(DVec3::new(0.0, 128.0, 0.0))));
         let plane = tool.plane().expect("plane");
-        assert!(plane.distance(view.cam3d.pos) > 0.0, "front faces the camera");
+        assert!(plane.normal.dot(square.normal) > 0.0, "the third point keeps the front side");
         assert_eq!(tool.crossing_count(&state), 1);
         let from = at(DVec3::new(0.0, 128.0, 0.0));
         let to = at(DVec3::new(0.0, 160.0, 0.0));
@@ -1128,5 +1426,358 @@ mod tests {
         });
         assert_eq!(fmt_angle(45.04), "45");
         assert_eq!(fmt_angle(-26.56), "-26.6");
+    }
+
+    fn floor_view() -> ViewInfo {
+        info_3d(DVec3::new(0.0, -400.0, 300.0), 90.0, -40.0)
+    }
+
+    fn click_3d(tool: &mut ClipTool, state: &mut AppState, view: &ViewInfo, p: DVec3, mods: Modifiers) {
+        let s = view.world_to_screen(p).expect("screen");
+        tool.handle_mouse(state, view, &Mouse::hover(s).with_modifiers(mods));
+        tool.handle_mouse(state, view, &Mouse::click(s).with_modifiers(mods));
+    }
+
+    fn volumes(state: &AppState, ids: &[Id]) -> Vec<f64> {
+        let mut v: Vec<f64> =
+            ids.iter().filter_map(|id| state.doc.scene().solid(*id)).map(|n| n.geom.volume()).collect();
+        v.sort_by(f64::total_cmp);
+        v
+    }
+
+    fn all_valid(state: &AppState) -> bool {
+        state.doc.scene().solids().values().all(|n| n.geom.valid && n.geom.faces.len() >= 4)
+    }
+
+    #[test]
+    fn two_points_on_a_face_cut_square_to_it() {
+        let mut state = settle();
+        state.doc.set_selection(&[ObjRef::Solid(2)]);
+        let mut tool = ClipTool::new();
+        let view = floor_view();
+        click_3d(&mut tool, &mut state, &view, DVec3::new(30.0, -100.0, 0.0), Modifiers::NONE);
+        assert!(tool.plane().is_none());
+        assert!(tool.status_hint(&state).is_some_and(|h| !h.is_empty()));
+        click_3d(&mut tool, &mut state, &view, DVec3::new(34.0, 100.0, 0.0), Modifiers::NONE);
+        let plane = tool.plane().expect("plane");
+        assert!((plane.normal.abs() - DVec3::X).length() < 1e-12, "grid snapped, square to the floor: {plane:?}");
+        assert!((plane.normal.x * 32.0 - plane.dist).abs() < 1e-9);
+        assert!(plane.normal.x > 0.0, "front on the right of the line seen from the camera");
+        assert_eq!(tool.crossing_count(&state), 1);
+        let (undo, _) = state.doc.history_len();
+        let before: Vec<String> =
+            state.doc.scene().solid(2).expect("floor").solid.sides.iter().map(|s| s.material.clone()).collect();
+        assert!(tool.apply(&mut state));
+        assert_eq!(state.doc.history_len().0, undo + 1, "one undo step");
+        assert_eq!(tool.def, ClipDef::None, "the 3D points are cleared after the cut");
+        let ids = state.doc.selected_solid_ids();
+        assert_eq!(ids.len(), 2);
+        let v = volumes(&state, &ids);
+        assert!((v[0] - 224.0 * 512.0 * 16.0).abs() < 1e-6 && (v[1] - 288.0 * 512.0 * 16.0).abs() < 1e-6, "{v:?}");
+        for id in &ids {
+            let n = state.doc.scene().solid(*id).expect("piece");
+            assert!(n.solid.sides.iter().all(|s| before.contains(&s.material)), "textures kept");
+        }
+        assert!(all_valid(&state));
+        assert!(state.doc.undo());
+        assert_eq!(state.doc.scene().solid(2).map(|n| n.geom.volume()), Some(512.0 * 512.0 * 16.0));
+    }
+
+    #[test]
+    fn keep_modes_in_3d() {
+        for (keep, xs) in [(ClipKeep::Front, (32.0, 256.0)), (ClipKeep::Back, (-256.0, 32.0))] {
+            let mut state = settle();
+            state.doc.set_selection(&[ObjRef::Solid(2)]);
+            let mut tool = ClipTool::new();
+            tool.keep = keep;
+            let view = floor_view();
+            click_3d(&mut tool, &mut state, &view, DVec3::new(32.0, -100.0, 0.0), Modifiers::NONE);
+            click_3d(&mut tool, &mut state, &view, DVec3::new(32.0, 100.0, 0.0), Modifiers::NONE);
+            assert!(tool.apply(&mut state));
+            assert_eq!(state.doc.selected_solid_ids(), vec![2]);
+            let b = state.doc.scene().solid(2).expect("floor").bounds;
+            assert_eq!((b.min.x, b.max.x), xs, "{keep:?}");
+        }
+    }
+
+    #[test]
+    fn a_third_point_on_the_same_face_is_refused() {
+        let mut state = settle();
+        state.doc.set_selection(&[ObjRef::Solid(2)]);
+        let mut tool = ClipTool::new();
+        let view = floor_view();
+        click_3d(&mut tool, &mut state, &view, DVec3::new(32.0, -100.0, 0.0), Modifiers::NONE);
+        click_3d(&mut tool, &mut state, &view, DVec3::new(32.0, 100.0, 0.0), Modifiers::NONE);
+        let square = tool.plane().expect("plane");
+        click_3d(&mut tool, &mut state, &view, DVec3::new(-96.0, 32.0, 0.0), Modifiers::NONE);
+        assert_eq!(tool.plane(), Some(square), "the floor plane itself would cut nothing");
+        assert_eq!(tool.world_points().len(), 2);
+        assert!(state.console.lines().any(|l| l.text.contains("same face")));
+        assert_eq!(tool.crossing_count(&state), 1);
+    }
+
+    #[test]
+    fn a_third_point_tilts_and_aligned_points_are_refused() {
+        let mut state = settle();
+        state.doc.set_selection(&[ObjRef::Solid(3)]);
+        let mut tool = ClipTool::new();
+        let view = info_3d(DVec3::new(-100.0, 0.0, 64.0), 80.0, 0.0);
+        click_3d(&mut tool, &mut state, &view, DVec3::new(-64.0, 256.0, 32.0), Modifiers::NONE);
+        click_3d(&mut tool, &mut state, &view, DVec3::new(-64.0, 256.0, 96.0), Modifiers::NONE);
+        let square = tool.plane().expect("plane");
+        click_3d(&mut tool, &mut state, &view, DVec3::new(-64.0, 256.0, 64.0), Modifiers::NONE);
+        assert_eq!(tool.plane(), Some(square), "an aligned third point is refused");
+        assert!(state.console.lines().any(|l| l.text.contains("aligned")));
+        assert_eq!(tool.world_points().len(), 2);
+        let view_side = info_3d(DVec3::new(-500.0, 200.0, 64.0), 10.0, 0.0);
+        click_3d(&mut tool, &mut state, &view_side, DVec3::new(-256.0, 264.0, 64.0), Modifiers::NONE);
+        let tilted = tool.plane().expect("plane");
+        assert_eq!(tool.world_points().len(), 3);
+        for p in tool.world_points() {
+            assert!(tilted.distance(p).abs() < 1e-9);
+        }
+        assert!(tilted.normal.dot(square.normal) > 0.0, "same front side");
+        assert!(!tilted.approx_eq(&square, 1e-6, 1e-3));
+        assert!(tool.apply(&mut state));
+        assert!(all_valid(&state));
+        click_3d(&mut tool, &mut state, &view, DVec3::new(32.0, 256.0, 32.0), Modifiers::NONE);
+        assert_eq!(tool.world_points().len(), 1, "a click after the cut starts a new set");
+    }
+
+    #[test]
+    fn shift_click_cuts_along_an_axis_and_x_changes_it() {
+        let mut state = settle();
+        state.doc.set_selection(&[ObjRef::Solid(3)]);
+        let mut tool = ClipTool::new();
+        let view = info_3d(DVec3::new(10.0, 0.0, 70.0), 90.0, -2.0);
+        let shift = Modifiers { shift: true, ..Modifiers::NONE };
+        click_3d(&mut tool, &mut state, &view, DVec3::new(-30.0, 256.0, 62.0), shift);
+        let plane = tool.plane().expect("plane");
+        assert!(
+            (plane.normal.abs() - DVec3::Z).length() < 1e-12,
+            "auto: a horizontal cut on a wall seen from the front"
+        );
+        assert!(plane.distance(DVec3::new(0.0, 0.0, 64.0)).abs() < 1e-9, "through the snapped point");
+        assert!(plane.distance(view.cam3d.pos) > 0.0, "front faces the camera");
+        assert!(tool.status_hint(&state).is_some_and(|h| !h.is_empty()));
+        tool.set_axis(CutAxis::X);
+        let px = tool.plane().expect("plane");
+        assert!((px.normal.abs() - DVec3::X).length() < 1e-12);
+        assert!(px.distance(DVec3::new(-32.0, 0.0, 0.0)).abs() < 1e-9);
+        tool.set_axis(CutAxis::Z);
+        assert_eq!(tool.crossing_count(&state), 1);
+        assert!(tool.apply(&mut state));
+        let v = volumes(&state, &state.doc.selected_solid_ids());
+        assert_eq!(v.len(), 2);
+        assert!((v[0] - v[1]).abs() < 1e-6, "cut in the middle of the wall");
+        assert!(all_valid(&state));
+    }
+
+    #[test]
+    fn ctrl_click_uses_a_face_plane_on_several_brushes_and_keeps_owners() {
+        let mut state = settle();
+        state.doc.set_selection(&[ObjRef::Solid(3), ObjRef::Solid(7), ObjRef::Solid(2)]);
+        let mut tool = ClipTool::new();
+        let view = info_3d(DVec3::new(96.0, -300.0, 200.0), 90.0, -30.0);
+        let ctrl = Modifiers { ctrl: true, ..Modifiers::NONE };
+        click_3d(&mut tool, &mut state, &view, DVec3::new(96.0, 32.0, 64.0), ctrl);
+        let plane = tool.plane().expect("plane");
+        assert!((plane.normal - DVec3::Z).length() < 1e-12 && (plane.dist - 64.0).abs() < 1e-12, "{plane:?}");
+        assert_eq!(tool.crossing_count(&state), 1, "only the wall crosses the trigger top");
+        assert!(tool.apply(&mut state));
+        let wall: Vec<Id> = state.doc.selected_solid_ids().into_iter().filter(|id| *id != 2 && *id != 7).collect();
+        assert_eq!(volumes(&state, &wall).len(), 2);
+        let shift = Modifiers { shift: true, ..Modifiers::NONE };
+        tool.axis = CutAxis::X;
+        let (undo, _) = state.doc.history_len();
+        click_3d(&mut tool, &mut state, &view, DVec3::new(96.0, 0.0, 32.0), shift);
+        let plane = tool.plane().expect("plane");
+        assert!((plane.normal.abs() - DVec3::X).length() < 1e-12 && (plane.dist.abs() - 96.0).abs() < 1e-9);
+        assert_eq!(tool.crossing_count(&state), 4, "floor, both wall pieces and the trigger");
+        assert!(tool.apply(&mut state));
+        assert_eq!(state.doc.history_len().0, undo + 1);
+        let owned: Vec<f64> = state
+            .doc
+            .scene()
+            .solids()
+            .values()
+            .filter(|n| n.owner == hp_editor::Owner::Entity(6))
+            .map(|n| n.geom.volume())
+            .collect();
+        assert_eq!(owned.len(), 2, "both trigger pieces stay in the brush entity");
+        assert!(owned.iter().all(|v| (v - 32.0 * 64.0 * 64.0).abs() < 1e-6));
+        assert!(all_valid(&state));
+        assert_eq!(state.doc.selected_solid_ids().len(), 8);
+    }
+
+    #[test]
+    fn dragging_3d_points_in_3d_and_2d() {
+        let mut state = settle();
+        state.doc.set_selection(&[ObjRef::Solid(2)]);
+        let mut tool = ClipTool::new();
+        let view = floor_view();
+        let a = view.world_to_screen(DVec3::new(0.0, -100.0, 0.0)).expect("a");
+        let a2 = view.world_to_screen(DVec3::new(0.0, -90.0, 0.0)).expect("a2");
+        tool.handle_mouse(&mut state, &view, &Mouse::drag_start(a, a2));
+        tool.handle_mouse(&mut state, &view, &Mouse::drag(a, a2));
+        tool.handle_mouse(&mut state, &view, &Mouse::drag_end(a, a2));
+        assert_eq!(tool.world_points(), vec![DVec3::new(0.0, -96.0, 0.0)], "press, drag and release places a point");
+        click_3d(&mut tool, &mut state, &view, DVec3::new(0.0, 100.0, 0.0), Modifiers::NONE);
+        let p0 = view.world_to_screen(DVec3::new(0.0, -96.0, 0.0)).expect("p0");
+        let to = view.world_to_screen(DVec3::new(64.0, -96.0, 0.0)).expect("to");
+        tool.handle_mouse(&mut state, &view, &Mouse::hover(p0));
+        assert_eq!(tool.cursor(&state, &view, p0), Some(CursorIcon::Grab));
+        tool.handle_mouse(&mut state, &view, &Mouse::drag_start(p0, p0));
+        tool.handle_mouse(&mut state, &view, &Mouse::drag(p0, to));
+        tool.handle_mouse(&mut state, &view, &Mouse::drag_end(p0, to));
+        let plane = tool.plane().expect("plane");
+        assert!(plane.distance(DVec3::new(64.0, -96.0, 0.0)).abs() < 1e-6);
+        assert!(plane.normal.z.abs() < 1e-12, "still square to the floor");
+        let top = info_2d(ViewKind::Top, 1.0);
+        let h = top.world_to_screen(DVec3::new(0.0, 96.0, 0.0)).expect("h");
+        let end = top.world_to_screen(DVec3::new(64.0, 96.0, 0.0)).expect("end");
+        tool.handle_mouse(&mut state, &top, &Mouse::hover(h));
+        assert_eq!(tool.cursor(&state, &top, h), Some(CursorIcon::Grab), "3D points have handles in 2D");
+        tool.handle_mouse(&mut state, &top, &Mouse::drag_start(h, h));
+        tool.handle_mouse(&mut state, &top, &Mouse::drag_end(h, end));
+        let moved = tool.plane().expect("plane");
+        assert!((moved.normal.abs() - DVec3::X).length() < 1e-12 && moved.normal.dot(plane.normal) > 0.0, "{moved:?}");
+        assert!((moved.dist.abs() - 64.0).abs() < 1e-9);
+        assert!(moved.distance(DVec3::new(64.0, 96.0, 0.0)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn fixed_plane_moves_with_its_point_in_2d() {
+        let mut state = settle();
+        state.doc.set_selection(&[ObjRef::Solid(2)]);
+        let mut tool = ClipTool::new();
+        assert!(tool.set_plane(DVec3::new(0.0, 0.0, 0.0), Plane::new(DVec3::X, 0.0).expect("plane")));
+        assert!(!tool.set_plane(DVec3::NAN, Plane::new(DVec3::X, 0.0).expect("plane")));
+        let top = info_2d(ViewKind::Top, 1.0);
+        let h = top.world_to_screen(DVec3::ZERO).expect("h");
+        let end = top.world_to_screen(DVec3::new(48.0, 20.0, 0.0)).expect("end");
+        tool.handle_mouse(&mut state, &top, &Mouse::drag_start(h, h));
+        tool.handle_mouse(&mut state, &top, &Mouse::drag_end(h, end));
+        let p = tool.plane().expect("plane");
+        assert_eq!((p.normal, p.dist), (DVec3::X, 48.0));
+        assert_eq!(tool.crossing_count(&state), 1);
+    }
+
+    #[test]
+    fn slivers_are_not_cut() {
+        let mut state = settle();
+        state.doc.set_selection(&[ObjRef::Solid(2)]);
+        let mut tool = ClipTool::new();
+        assert!(tool.set_plane(DVec3::new(255.9, 0.0, 0.0), Plane::new(DVec3::X, 255.9).expect("plane")));
+        assert_eq!(tool.crossing_count(&state), 0);
+        assert!(!tool.apply(&mut state));
+        let tilt = Plane::from_points(
+            DVec3::new(255.8, -300.0, 0.0),
+            DVec3::new(256.0, 300.0, 0.0),
+            DVec3::new(255.8, -300.0, -16.0),
+        )
+        .expect("plane");
+        assert!(tool.set_plane(DVec3::new(256.0, 0.0, 0.0), tilt));
+        assert_eq!(tool.crossing_count(&state), 0);
+        assert!(tool.set_plane(DVec3::new(250.0, 0.0, 0.0), Plane::new(DVec3::X, 250.0).expect("plane")));
+        assert_eq!(tool.crossing_count(&state), 1);
+    }
+
+    #[test]
+    fn options_and_drawing_in_every_view() {
+        let mut state = settle();
+        state.doc.set_selection(&[ObjRef::Solid(2)]);
+        let mut tool = ClipTool::new();
+        assert!(tool.set_option(&mut state, "keep", "front"));
+        assert!(tool.set_option(&mut state, "axis", "Y"));
+        assert!(tool.set_option(&mut state, "three_point", "on"));
+        assert!(!tool.set_option(&mut state, "keep", "middle"));
+        assert!(!tool.set_option(&mut state, "axis", "w"));
+        assert!(!tool.set_option(&mut state, "nope", "1"));
+        assert_eq!((tool.keep, tool.axis, tool.three_point), (ClipKeep::Front, CutAxis::Y, true));
+        let values = tool.option_values();
+        assert_eq!(values.iter().map(|o| o.key).collect::<Vec<_>>(), vec!["keep", "three_point", "axis"]);
+        assert_eq!(values[0].value, "front");
+        let view = floor_view();
+        let views = [view, info_2d(ViewKind::Top, 0.5), info_2d(ViewKind::Front, 0.5), info_2d(ViewKind::Side, 0.5)];
+        let hover = view.world_to_screen(DVec3::new(64.0, 64.0, 0.0)).expect("hover");
+        let shift = Modifiers { shift: true, ..Modifiers::NONE };
+        let ctrl = Modifiers { ctrl: true, ..Modifiers::NONE };
+        for mods in [Modifiers::NONE, shift, ctrl] {
+            tool.handle_mouse(&mut state, &view, &Mouse::hover(hover).with_modifiers(mods));
+            let mut out = Overlay::default();
+            tool.overlay(&state, &view, &mut out);
+            assert!(!out.points.is_empty(), "the snapped point under the mouse");
+            if mods != Modifiers::NONE {
+                assert!(!out.lines_on_top.is_empty() || !out.lines.is_empty(), "the candidate plane is outlined");
+            }
+        }
+        click_3d(&mut tool, &mut state, &view, DVec3::new(0.0, -100.0, 0.0), Modifiers::NONE);
+        tool.handle_mouse(&mut state, &view, &Mouse::hover(hover));
+        click_3d(&mut tool, &mut state, &view, DVec3::new(0.0, 100.0, 0.0), Modifiers::NONE);
+        tool.handle_mouse(&mut state, &view, &Mouse::hover(hover));
+        for v in &views {
+            let mut out = Overlay::default();
+            tool.overlay(&state, v, &mut out);
+            assert!(!out.lines.is_empty() || !out.lines_on_top.is_empty());
+            let _ = tool.cursor(&state, v, v.rect.center());
+        }
+        assert!(tool.status_hint(&state).is_some_and(|h| !h.is_empty()));
+        hp_app::testing::run_ui(&mut state, |ui, state| {
+            tool.options_ui(ui, state);
+            for v in &views {
+                tool.paint(state, v, ui.painter());
+            }
+        });
+        click_3d(&mut tool, &mut state, &view, DVec3::new(0.0, -100.0, 0.0), shift);
+        assert!(tool.status_hint(&state).is_some_and(|h| !h.is_empty()));
+        hp_app::testing::run_ui(&mut state, |ui, state| {
+            for v in &views {
+                tool.paint(state, v, ui.painter());
+            }
+        });
+    }
+
+    #[test]
+    fn letter_keys_leave_shifted_shortcuts_alone() {
+        let mut state = settle();
+        let mut tool = ClipTool::new();
+        let press =
+            |key, modifiers| egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers };
+        let ctx = egui::Context::default();
+        let mut run = |events: Vec<egui::Event>| {
+            let mut handled = false;
+            let mut left = 0;
+            let input = egui::RawInput { events, ..Default::default() };
+            let mut out = ctx.run_ui(input, |ui| {
+                handled = tool.key_input(&mut state, ui.ctx());
+                left = ui.ctx().input(|i| i.events.len());
+            });
+            out.textures_delta.clear();
+            (handled, left)
+        };
+        assert_eq!(run(vec![press(Key::X, Modifiers::SHIFT)]), (false, 1), "Shift+X stays a shortcut");
+        assert_eq!(run(vec![press(Key::C, Modifiers::SHIFT)]), (false, 1));
+        assert_eq!(run(vec![press(Key::X, Modifiers::NONE)]), (true, 0));
+        assert_eq!(tool.axis, CutAxis::X);
+        assert!(!tool.three_point);
+    }
+
+    #[test]
+    fn every_new_clip_string_is_translated() {
+        let keys = [
+            "create.clip.axis",
+            "create.clip.axis_tip",
+            "create.clip.hint_second",
+            "create.clip.hint_ready_3d",
+            "create.clip.hint_fixed",
+        ];
+        for k in keys {
+            let row = crate::TR.iter().find(|(key, _, _)| *key == k).expect(k);
+            assert!(!row.1.is_empty() && !row.2.is_empty() && row.1 != row.2, "{k}");
+        }
+        for k in ["create.clip.axis_auto", "create.clip.axis_x", "create.clip.axis_y", "create.clip.axis_z"] {
+            assert!(crate::TR.iter().any(|(key, _, _)| *key == k), "{k}");
+        }
     }
 }

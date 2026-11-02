@@ -180,6 +180,11 @@ pub const TR: TrTable = &[
         "La visibilité n'a pas été calculée : les {0} clusters dessinent tout. Compilez avec la visibilité pour juger des images par seconde.",
     ),
     (
+        "compilestats.hint.no_vis_water",
+        "Water brushes: {0}, and no visibility: in game the water draws black (no refraction). Compile with the visibility, fast is enough.",
+        "Brosses d'eau : {0}, et pas de visibilité : en jeu l'eau est noire (sans réfraction). Compilez avec la visibilité, la rapide suffit.",
+    ),
+    (
         "compilestats.hint.no_areaportals",
         "{0} clusters and no areaportal: func_areaportal in the doorways close off whole rooms.",
         "{0} clusters et aucun areaportal : des func_areaportal dans les portes ferment des pièces entières.",
@@ -201,13 +206,13 @@ pub const TR: TrTable = &[
     ),
     (
         "compilestats.hint.lightmap_estimate",
-        "The lightmaps will take about {0}% of the 16 MB of the engine: raise the lightmap scale of large faces.",
-        "Les lightmaps prendront environ {0} % des 16 Mo du moteur : augmentez l'échelle de lightmap des grandes faces.",
+        "The lightmaps will take about {0}% of the 2 GB a face can address in the lightmaps (past it the game cannot load the map): raise the lightmap scale of large faces.",
+        "Les lightmaps prendront environ {0} % des 2 Go qu'une face peut adresser dans les lightmaps (au-delà le jeu ne peut pas charger la map) : augmentez l'échelle de lightmap des grandes faces.",
     ),
     (
         "compilestats.hint.lightmap_bytes",
-        "The {0} lightmaps take {1}% of the 16 MB of the engine: raise the lightmap scale of large faces.",
-        "Les lightmaps {0} prennent {1} % des 16 Mo du moteur : augmentez l'échelle de lightmap des grandes faces.",
+        "The {0} lightmaps take {1}% of the 2 GB a face can address in the lightmaps (past it the game cannot load the map): raise the lightmap scale of large faces.",
+        "Les lightmaps {0} prennent {1} % des 2 Go qu'une face peut adresser dans les lightmaps (au-delà le jeu ne peut pas charger la map) : augmentez l'échelle de lightmap des grandes faces.",
     ),
     (
         "compilestats.hint.fine_lightmap",

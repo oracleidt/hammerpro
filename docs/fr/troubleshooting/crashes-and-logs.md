@@ -10,7 +10,9 @@ Hammer Pro protège votre travail de plusieurs façons :
 
 - **Sauvegarde d'urgence.** Quand l'éditeur intercepte un plantage de son image, il écrit une sauvegarde d'urgence de la map modifiée à côté des sauvegardes automatiques (`%LOCALAPPDATA%\HammerPro\autosave\`) et la note dans le rapport de plantage.
 - **Rapport de plantage.** Un plantage du fil principal écrit un rapport (message, emplacement, fil, pile d'appels et dernières lignes du journal) dans `%APPDATA%\HammerPro\crash\`.
-- **Arrêts sans un mot.** Un plantage du pilote graphique, un manque de mémoire, un débordement de pile ou un processus tué ne peuvent rien écrire sur le moment. Chaque lancement laisse un marqueur dans le dossier des plantages qu'une fermeture normale supprime ; au lancement suivant, un marqueur laissé par un processus mort devient un rapport avec la fin du journal du lancement précédent.
+- **Plantages natifs.** Un plantage hors du code Rust (une violation d'accès dans le pilote graphique, un débordement de pile) écrit aussi un rapport, avec l'exception, le module où elle a eu lieu (par exemple `nvoglv64.dll+0x1234`) et les dernières lignes du journal. Quand il a lieu dans une tâche de fond, Hammer Pro sauvegarde d'abord les maps modifiées (il attend jusqu'à 10 secondes pour cela).
+- **Mémoire insuffisante.** Hammer Pro garde une réserve de mémoire : quand l'ordinateur n'en a plus, la réserve est rendue, les maps modifiées sont sauvegardées et un message vous demande de libérer de la mémoire. Une allocation qui échoue malgré tout écrit un rapport (« memory allocation of N bytes failed »). Voir [Mémoire insuffisante](out-of-memory.md).
+- **Arrêts sans un mot.** Un processus tué, ou un plantage si profond que même le rapport ne peut pas être écrit, ne laisse rien sur le moment. Chaque lancement laisse un marqueur dans le dossier des plantages qu'une fermeture normale supprime ; au lancement suivant, un marqueur laissé par un processus mort devient un rapport avec la fin du journal du lancement précédent.
 
 Au lancement suivant, la fenêtre **Hammer Pro s'est fermé de façon inattendue** affiche le chemin du **Fichier du rapport :** et ces boutons :
 
@@ -35,13 +37,15 @@ Indépendamment des plantages, Hammer Pro enregistre en arrière-plan les maps m
 | `%LOCALAPPDATA%\HammerPro\logs\hammerpro.log` | Le lancement en cours, écrit ligne par ligne (il survit à un arrêt brutal). |
 | `%LOCALAPPDATA%\HammerPro\logs\hammerpro.old.log` | Le lancement précédent. |
 
-Le journal contient les diagnostics en anglais des bibliothèques (durées de montage, nombres de fichiers, carte graphique choisie) ainsi que chaque avertissement et chaque erreur. Les avertissements et erreurs apparaissent aussi, traduits, dans le panneau **console** (`` ` ``).
+Le journal contient les diagnostics en anglais des bibliothèques (durées de montage, nombres de fichiers, carte graphique choisie, budget de mémoire graphique) ainsi que chaque avertissement et chaque erreur. Les avertissements et erreurs apparaissent aussi, traduits, dans le panneau **console** (`` ` ``).
+
+Un message répété en rafale est écrit au plus 5 fois toutes les 10 secondes ; le suivant indique combien de messages semblables ont été masqués. Écrire dans le journal n'arrête jamais Hammer Pro, même quand sa sortie est fermée.
 
 ## Problèmes graphiques
 
 ### Erreurs graphiques et périphérique perdu
 
-Une erreur graphique sur une image (validation, mémoire insuffisante, souvent un problème de pilote) ne ferme plus l'éditeur : l'image est sautée et la console affiche une fois « Erreur graphique (une image a été sautée) : ... » (les suivantes sont comptées, le détail est dans le journal). Quand le périphérique graphique est perdu (réinitialisation du pilote, GPU retiré), Hammer Pro enregistre les maps modifiées à côté des sauvegardes automatiques et vous demande de redémarrer.
+Une erreur graphique sur une image (validation, souvent un problème de pilote) ne ferme plus l'éditeur : l'image est sautée et la console affiche une fois « Erreur graphique (une image a été sautée) : ... » (les suivantes sont comptées, le détail est dans le journal). Une erreur de mémoire insuffisante fait libérer tout de suite de la mémoire graphique, voir [Mémoire insuffisante](out-of-memory.md). Quand le périphérique graphique est perdu (réinitialisation du pilote, GPU retiré), Hammer Pro écrit un rapport, enregistre les maps modifiées à côté des sauvegardes automatiques et propose de redémarrer en rouvrant tous vos onglets, voir [Périphérique graphique perdu](graphics-device-lost.md).
 
 ### Choisir l'API graphique
 
@@ -78,6 +82,8 @@ Si Hammer Pro se comporte mal après un changement de réglage, fermez-le et ren
 
 ## Pages liées
 
+- [Mémoire insuffisante](out-of-memory.md)
+- [Périphérique graphique perdu](graphics-device-lost.md)
 - [Sauvegarde automatique et récupération](../features/autosave-crash.md)
 - [Cadres de fenêtre](../features/window-frames.md)
 - [Signaler un bug](reporting-bugs.md)

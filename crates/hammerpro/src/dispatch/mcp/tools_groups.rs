@@ -1,4 +1,5 @@
 use hp_app::AppState;
+use hp_editor::display_color::{DisplayColor, DisplayColorState};
 use hp_editor::{FaceRef, RectMode, SelectOp};
 use hp_mcp::protocol::ToolResult;
 use serde_json::{Value, json};
@@ -141,6 +142,73 @@ domain! { "groups and visibility";
     set_cordons_enabled: Edit, "Cordoning on or off",
         "Switch cordoning on or off for the whole map (views and compiles).",
         { "enabled": boolean("On.") }, ["enabled"];
+    get_display_color: Read, "Display colors",
+        "The display color of objects (default: the selection) in the 2D views: color [r, g, b] when one was \
+        chosen, null for the default look (white world brushes, entities in their game data color), the common \
+        state (none, default, custom or mixed) and the render.object_colors_2d and render.object_colors_3d \
+        settings.",
+        { "ids": target_ids(), "solid_ids": target_solid_ids() }, [];
+    set_display_color: Edit, "Set the display color",
+        "Give objects (default: the selection; a selected group colors every member) a display color for the 2D \
+        views: color [r, g, b], random: true (each brush and entity its own color) or reset: true (default look). \
+        Saved in the map as the editor color, which Hammer and Hammer++ show too. One undo step. Toggle the colors \
+        with set_setting render.object_colors_2d and render.object_colors_3d; edit.new_brush_color ([r, g, b] or \
+        null) colors new brushes.",
+        {
+            "ids": target_ids(), "solid_ids": target_solid_ids(),
+            "color": color(),
+            "random": boolean("A different color for each object."),
+            "reset": boolean("Back to the default look."),
+        }, [];
+}
+
+fn get_display_color(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
+    let objs = targets(state, a)?;
+    let doc = &state.doc;
+    let list: Vec<Value> = objs
+        .iter()
+        .take(MAX_SETS)
+        .map(|o| {
+            let mut v = obj_json(*o);
+            v["color"] = json!(doc.display_color_of(*o).flatten());
+            v
+        })
+        .collect();
+    let r = &state.settings.render;
+    Ok(ToolResult::json(json!({
+        "state": display_state_json(doc.display_color_state(&objs)),
+        "objects": list,
+        "object_colors_2d": r.object_colors_2d,
+        "object_colors_3d": r.object_colors_3d,
+    })))
+}
+
+fn display_state_json(s: DisplayColorState) -> Value {
+    match s {
+        DisplayColorState::Empty => json!("none"),
+        DisplayColorState::Default => json!("default"),
+        DisplayColorState::Custom(c) => json!({ "custom": c }),
+        DisplayColorState::Mixed => json!("mixed"),
+    }
+}
+
+fn set_display_color(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
+    let objs = targets(state, a)?;
+    let color = opt_color(a)?;
+    let random = a.opt_bool("random")?.unwrap_or(false);
+    let reset = a.opt_bool("reset")?.unwrap_or(false);
+    let change = match (color, random, reset) {
+        (Some(c), false, false) => DisplayColor::Set(c),
+        (None, true, false) => DisplayColor::Random,
+        (None, false, true) => DisplayColor::Reset,
+        _ => return Err("give exactly one of color, random: true or reset: true".to_owned()),
+    };
+    let changed = edit(state, "set_display_color", |doc| doc.set_display_color(&objs, change, false))?;
+    Ok(ToolResult::json(json!({
+        "changed": changed,
+        "objects": objs.len(),
+        "state": display_state_json(state.doc.display_color_state(&objs)),
+    })))
 }
 
 fn op() -> Value {
@@ -702,6 +770,39 @@ mod tests {
         let f = ok(&mut s, "frame_objects", json!({ "solid_ids": [3] }));
         assert!(f["camera_3d"]["position"].is_array());
         assert!(s.doc.undo_label().is_none());
+    }
+
+    #[test]
+    fn display_colors() {
+        let mut s = hp_app::testing::test_state();
+        err(&mut s, "get_display_color", json!({}));
+        let r = ok(&mut s, "get_display_color", json!({ "ids": [2, 3, 5] }));
+        assert_eq!(r["state"], "default");
+        assert_eq!(r["objects"][0]["color"], json!(null));
+        assert_eq!(r["object_colors_2d"], true);
+        assert_eq!(r["object_colors_3d"], false);
+        s.doc.set_selection(&[ObjRef::Solid(2), ObjRef::Entity(6)]);
+        let r = ok(&mut s, "set_display_color", json!({ "color": [240, 140, 40] }));
+        assert_eq!(r["changed"], 3);
+        assert_eq!(r["state"]["custom"], json!([240, 140, 40]));
+        assert_eq!(s.doc.undo_label(), Some("MCP: set_display_color"));
+        assert_eq!(s.doc.scene().solid(7).unwrap().solid.editor.color, [240, 140, 40]);
+        let r = ok(&mut s, "get_display_color", json!({ "ids": [2, 3] }));
+        assert_eq!(r["state"], "mixed");
+        assert_eq!(r["objects"][0]["color"], json!([240, 140, 40]));
+        ok(&mut s, "set_display_color", json!({ "ids": [2, 3], "random": true }));
+        let r = ok(&mut s, "get_display_color", json!({ "ids": [2, 3] }));
+        assert_ne!(r["objects"][0]["color"], r["objects"][1]["color"]);
+        assert!(r["objects"][1]["color"].is_array());
+        ok(&mut s, "set_display_color", json!({ "ids": [2, 3, 6], "reset": true }));
+        assert_eq!(ok(&mut s, "get_display_color", json!({ "ids": [2, 3, 6] }))["state"], "default");
+        err(&mut s, "set_display_color", json!({ "color": [1, 2, 3], "random": true }));
+        err(&mut s, "set_display_color", json!({}));
+        err(&mut s, "set_display_color", json!({ "color": [1, 2, 300] }));
+        err(&mut s, "set_display_color", json!({ "ids": [999], "reset": true }));
+        let steps = s.doc.history_len().0;
+        assert!(s.doc.undo());
+        assert_eq!(s.doc.history_len().0, steps - 1);
     }
 
     #[test]

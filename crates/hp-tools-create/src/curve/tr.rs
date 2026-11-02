@@ -46,7 +46,11 @@ pub const CURVE_TR: TrTable = &[
     ("curve.short_short", "Segments under 1 unit", "Segments de moins d'une unité"),
     ("curve.created", "Created {0} brushes along the curve ({1})", "{0} brushes créés le long de la courbe ({1})"),
     ("curve.failed", "Could not create the brushes: {0}", "Impossible de créer les brushes : {0}"),
-    ("curve.err.points", "The curve needs at least 2 different points", "La courbe doit avoir au moins 2 points différents"),
+    (
+        "curve.err.points",
+        "The curve needs at least 2 different points",
+        "La courbe doit avoir au moins 2 points différents",
+    ),
     (
         "curve.err.short",
         "Segments of {0} are too short: lower the subdivisions or draw a longer curve",

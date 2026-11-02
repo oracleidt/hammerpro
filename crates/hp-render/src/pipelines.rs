@@ -58,6 +58,19 @@ fn sampler_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
     }
 }
 
+fn depth_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Depth,
+            view_dimension: wgpu::TextureViewDimension::D2Array,
+            multisampled: false,
+        },
+        count: None,
+    }
+}
+
 fn texture_entry(binding: u32) -> wgpu::BindGroupLayoutEntry {
     wgpu::BindGroupLayoutEntry {
         binding,
@@ -93,16 +106,7 @@ impl Shared {
                 storage_entry(4, wgpu::ShaderStages::FRAGMENT),
                 storage_entry(5, wgpu::ShaderStages::FRAGMENT),
                 storage_entry(6, wgpu::ShaderStages::FRAGMENT),
-                wgpu::BindGroupLayoutEntry {
-                    binding: 7,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Depth,
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
+                depth_entry(7),
                 wgpu::BindGroupLayoutEntry {
                     binding: 8,
                     visibility: wgpu::ShaderStages::FRAGMENT,
@@ -142,6 +146,9 @@ impl Shared {
                     },
                     count: None,
                 },
+                depth_entry(15),
+                depth_entry(16),
+                depth_entry(17),
             ],
         });
         let material_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -921,14 +928,17 @@ pub(crate) struct ShadowPipelines {
     pub chunk_alpha: wgpu::RenderPipeline,
     pub model: wgpu::RenderPipeline,
     pub model_alpha: wgpu::RenderPipeline,
+    pub sky_cut: wgpu::RenderPipeline,
+    pub sky_peel: wgpu::RenderPipeline,
 }
 
 impl ShadowPipelines {
     pub fn new(device: &wgpu::Device, shared: &Shared) -> Self {
         let chunk_vb = [Some(vertex_layout(size_of::<GpuVertex>(), wgpu::VertexStepMode::Vertex, &CHUNK_ATTRS))];
         let model_vb = model_mesh_buffers();
-        let build = |vs: &str, alpha: bool, buffers: &[Option<wgpu::VertexBufferLayout<'_>>]| {
+        let build = |vs: &str, fs: &str, alpha: bool, buffers: &[Option<wgpu::VertexBufferLayout<'_>>]| {
             let constants: &[(&str, f64)] = &[("ALPHA_TEST", 0.0), ("BLEND_MODE", 0.0)];
+            let sky_faces = fs == "fs_sky_cut" || fs == "fs_sky_peel";
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some("hp-render shadow"),
                 layout: Some(if alpha { &shared.layout_material } else { &shared.layout_view }),
@@ -953,14 +963,22 @@ impl ShadowPipelines {
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: DEPTH_FORMAT,
                     depth_write_enabled: Some(true),
-                    depth_compare: Some(wgpu::CompareFunction::LessEqual),
+                    depth_compare: Some(if sky_faces {
+                        wgpu::CompareFunction::GreaterEqual
+                    } else {
+                        wgpu::CompareFunction::LessEqual
+                    }),
                     stencil: wgpu::StencilState::default(),
-                    bias: wgpu::DepthBiasState { constant: 0, slope_scale: 1.5, clamp: 0.0 },
+                    bias: if sky_faces {
+                        wgpu::DepthBiasState::default()
+                    } else {
+                        wgpu::DepthBiasState { constant: 0, slope_scale: 1.5, clamp: 0.0 }
+                    },
                 }),
                 multisample: wgpu::MultisampleState::default(),
-                fragment: alpha.then_some(wgpu::FragmentState {
+                fragment: Some(wgpu::FragmentState {
                     module: &shared.mesh,
-                    entry_point: Some("fs_shadow_alpha"),
+                    entry_point: Some(fs),
                     compilation_options: wgpu::PipelineCompilationOptions {
                         constants,
                         zero_initialize_workgroup_memory: false,
@@ -972,10 +990,12 @@ impl ShadowPipelines {
             })
         };
         Self {
-            chunk: build("vs_chunk", false, &chunk_vb),
-            chunk_alpha: build("vs_chunk", true, &chunk_vb),
-            model: build("vs_model", false, &model_vb),
-            model_alpha: build("vs_model", true, &model_vb),
+            chunk: build("vs_chunk", "fs_shadow_cut", false, &chunk_vb),
+            chunk_alpha: build("vs_chunk", "fs_shadow_alpha", true, &chunk_vb),
+            model: build("vs_model", "fs_shadow_cut", false, &model_vb),
+            model_alpha: build("vs_model", "fs_shadow_alpha", true, &model_vb),
+            sky_cut: build("vs_chunk", "fs_sky_cut", false, &chunk_vb),
+            sky_peel: build("vs_chunk", "fs_sky_peel", false, &chunk_vb),
         }
     }
 }

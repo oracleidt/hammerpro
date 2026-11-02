@@ -36,6 +36,7 @@ pub enum Command {
     Save(PathBuf),
     CustomFolder { path: PathBuf, prefix: Option<String> },
     Stats,
+    Vram,
     History,
     Camera { pos: glam::DVec3, yaw: f64, pitch: f64 },
     Player { eye: glam::DVec3, yaw: f64, pitch: f64 },
@@ -196,6 +197,7 @@ pub fn parse(text: &str) -> Result<Vec<Command>, String> {
                 Command::CustomFolder { path: PathBuf::from(path), prefix }
             }
             "stats" => Command::Stats,
+            "vram" => Command::Vram,
             "history" => Command::History,
             "camera" => {
                 let n: Vec<f64> = rest.iter().filter_map(|v| v.parse().ok()).collect();

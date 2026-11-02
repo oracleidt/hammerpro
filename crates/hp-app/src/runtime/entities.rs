@@ -46,6 +46,7 @@ pub struct EntitiesRuntime {
     pub show_find_replace: bool,
     pub help_class: Option<String>,
     pub edit_color: bool,
+    pub display_color_window: bool,
     pub show_soundscapes: bool,
     pub sound_window: bool,
     pub particle_window: bool,

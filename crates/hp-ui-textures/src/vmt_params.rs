@@ -151,8 +151,7 @@ const DETAIL_MODES: &[(&str, &str, &str)] = &[
     ("11", "SSBump albedo", "Albedo SSBump"),
 ];
 
-const FOUR_WAY_MODES: &[(&str, &str, &str)] =
-    &[("0", "Normal", "Normal"), ("1", "Modulate 2x", "Moduler 2x")];
+const FOUR_WAY_MODES: &[(&str, &str, &str)] = &[("0", "Normal", "Normal"), ("1", "Modulate 2x", "Moduler 2x")];
 
 const SWAY_MODES: &[(&str, &str, &str)] =
     &[("0", "Off", "Désactivé"), ("1", "Classic", "Classique"), ("2", "Radial (bushes)", "Radial (buissons)")];
@@ -1335,11 +1334,21 @@ mod tests {
         assert!(params_of(Category::Phong, family_of("LightmappedGeneric"), false).next().is_none());
         assert!(params_of(Category::Phong, family_of("VertexLitGeneric"), false).next().is_some());
         assert_eq!(family_of("SDK_LightmappedGeneric_DX9"), fam::LM);
-        let four: Vec<&str> = params_of(Category::Base, family_of("Lightmapped_4WayBlend"), false).map(|p| p.key).collect();
-        for key in ["$basetexture", "$basetexture4", "$texture1_lumstart", "$texture4_blendend", "$lumblendfactor3", "$texture2_uvscale"] {
+        let four: Vec<&str> =
+            params_of(Category::Base, family_of("Lightmapped_4WayBlend"), false).map(|p| p.key).collect();
+        for key in [
+            "$basetexture",
+            "$basetexture4",
+            "$texture1_lumstart",
+            "$texture4_blendend",
+            "$lumblendfactor3",
+            "$texture2_uvscale",
+        ] {
             assert!(four.contains(&key), "{key}");
         }
-        assert!(params_of(Category::Base, family_of("LightmappedGeneric"), false).all(|p| p.key != "$texture2_blendstart"));
+        assert!(
+            params_of(Category::Base, family_of("LightmappedGeneric"), false).all(|p| p.key != "$texture2_blendstart")
+        );
         assert_eq!(find("$BaseTexture").map(|p| p.key), Some("$basetexture"));
     }
 

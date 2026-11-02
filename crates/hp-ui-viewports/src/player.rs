@@ -181,6 +181,7 @@ pub struct DocCollider<'a> {
     pub except: Option<hp_vmf::Id>,
     pub doors: Option<&'a Doors>,
     pub hidden: Option<&'a std::collections::HashSet<hp_vmf::Id>>,
+    pub trains: Option<&'a crate::trains::Trains>,
 }
 
 const PROP_RANGE: f64 = 1024.0;
@@ -206,6 +207,7 @@ impl PropBodies {
         state: &mut AppState,
         center: DVec3,
         doors: &Doors,
+        trains: &crate::trains::Trains,
         hidden: &std::collections::HashSet<hp_vmf::Id>,
     ) {
         let mut wanted: Vec<(hp_vmf::Id, BodyKey, bool)> = Vec::new();
@@ -215,7 +217,8 @@ impl PropBodies {
                 continue;
             }
             let Some(origin) = n.entity.origin().filter(|o| o.is_finite()) else { continue };
-            if origin.distance(center) > PROP_RANGE {
+            let moved = trains.child_transform(n.entity.id).unwrap_or_else(|| doors.transform(n.entity.id));
+            if moved.transform_point3(origin).distance(center) > PROP_RANGE {
                 continue;
             }
             let model = n.entity.get("model").unwrap_or_default().trim().replace('\\', "/").to_ascii_lowercase();
@@ -226,11 +229,7 @@ impl PropBodies {
                 .and_then(|s| s.trim().parse::<f64>().ok())
                 .filter(|s| s.is_finite() && *s > 0.0)
                 .unwrap_or(1.0);
-            wanted.push((
-                n.entity.id,
-                (model, origin, angles, scale, doors.transform(n.entity.id)),
-                kind == PropKind::Pushable,
-            ));
+            wanted.push((n.entity.id, (model, origin, angles, scale, moved), kind == PropKind::Pushable));
         }
         self.map.retain(|id, _| wanted.iter().any(|(w, _, _)| w == id));
         for (id, key, pushable) in wanted {
@@ -265,7 +264,12 @@ impl PropBodies {
         }
     }
 
-    fn trace(&self, ray: &hp_geom::Ray, max: f64, except: Option<hp_vmf::Id>) -> Option<(f64, hp_vmf::Id, bool)> {
+    pub(crate) fn trace(
+        &self,
+        ray: &hp_geom::Ray,
+        max: f64,
+        except: Option<hp_vmf::Id>,
+    ) -> Option<(f64, hp_vmf::Id, bool)> {
         let mut best: Option<(f64, hp_vmf::Id, bool)> = None;
         for (id, b) in &self.map {
             if Some(*id) == except || b.tris.is_empty() {
@@ -306,7 +310,7 @@ fn prop_kind(e: &hp_vmf::Entity) -> PropKind {
     if class.starts_with("prop_physics") && flags & 8 == 0 { PropKind::Pushable } else { PropKind::Solid }
 }
 
-fn non_solid_class(class: &str) -> bool {
+pub(crate) fn non_solid_class(class: &str) -> bool {
     let c = class.to_ascii_lowercase();
     c.starts_with("trigger_")
         || c.starts_with("func_areaportal")
@@ -327,7 +331,7 @@ fn non_solid_class(class: &str) -> bool {
         )
 }
 
-fn non_solid_material(m: &str) -> bool {
+pub(crate) fn non_solid_material(m: &str) -> bool {
     let m = m.to_ascii_lowercase().replace('\\', "/");
     matches!(
         m.as_str(),
@@ -339,6 +343,7 @@ fn non_solid_material(m: &str) -> bool {
             | "tools/toolsoccluder"
             | "tools/toolsinvisibleladder"
             | "tools/toolsskybox2d"
+            | "tools/toolsorigin"
     )
 }
 
@@ -357,6 +362,7 @@ impl Collider for DocCollider<'_> {
                     hp_editor::Owner::Entity(e) => {
                         scene.entity(e).is_none_or(|en| !non_solid_class(&en.entity.classname))
                             && self.doors.is_none_or(|d| !d.moved(e))
+                            && self.trains.is_none_or(|t| !t.owns(e))
                             && self.hidden.is_none_or(|h| !h.contains(&e))
                     }
                 };
@@ -377,6 +383,8 @@ impl Collider for DocCollider<'_> {
             .filter(|t| t.is_finite() && *t <= max);
         let door = self.doors.and_then(|d| d.trace(&ray, brush.unwrap_or(max)));
         let brush = door.or(brush);
+        let train = self.trains.and_then(|t| t.trace(&ray, brush.unwrap_or(max), self.hidden));
+        let brush = train.map(|(t, _)| t).or(brush);
         let prop = self.props.and_then(|p| p.trace(&ray, brush.unwrap_or(max), self.except));
         match (brush, prop) {
             (_, Some((t, id, pushable))) => Some((t, pushable.then_some(id))),
@@ -667,14 +675,23 @@ impl Doors {
         best
     }
 
-    pub fn use_pick(&self, state: &AppState, props: &PropBodies, eye: DVec3, look: DVec3) -> Option<hp_vmf::Id> {
+    pub fn use_pick(
+        &self,
+        state: &AppState,
+        props: &PropBodies,
+        trains: &crate::trains::Trains,
+        eye: DVec3,
+        look: DVec3,
+    ) -> Option<hp_vmf::Id> {
         let scene = state.doc.scene();
         let ray = hp_geom::Ray::new(eye, look);
         let mut best: Option<(f64, Option<hp_vmf::Id>)> = None;
         let solid = |o: ObjRef| match o {
             ObjRef::Solid(id) => scene.solid(id).is_some_and(|n| match n.owner {
                 hp_editor::Owner::Entity(e) => {
-                    !self.moved(e) && scene.entity(e).is_none_or(|en| !non_solid_class(&en.entity.classname))
+                    !self.moved(e)
+                        && !trains.owns(e)
+                        && scene.entity(e).is_none_or(|en| !non_solid_class(&en.entity.classname))
                 }
                 hp_editor::Owner::World => true,
             }),
@@ -704,6 +721,9 @@ impl Doors {
                     best = Some((h, Some(*id)));
                 }
             }
+        }
+        if let Some((h, id)) = trains.use_trace(&ray, best.map_or(USE_DISTANCE, |(b, _)| b), None) {
+            best = Some((h, Some(id)));
         }
         if let Some((h, id, _)) = props.trace(&ray, USE_DISTANCE, None)
             && best.is_none_or(|(b, _)| h < b)
@@ -795,13 +815,14 @@ impl Doors {
                     d.close_in = d.wait;
                 }
             }
-            if d.open >= 1.0 && d.target >= 1.0 {
-                if let Some(t) = d.close_in.as_mut() {
-                    *t -= dt;
-                    if *t <= 0.0 {
-                        d.close_in = None;
-                        d.target = 0.0;
-                    }
+            if d.open >= 1.0
+                && d.target >= 1.0
+                && let Some(t) = d.close_in.as_mut()
+            {
+                *t -= dt;
+                if *t <= 0.0 {
+                    d.close_in = None;
+                    d.target = 0.0;
                 }
             }
             if d.open != before || d.moved.len() != d.tris.len() {
@@ -816,7 +837,7 @@ impl Doors {
     }
 }
 
-pub fn teleport(state: &AppState, p: &mut PlayerState) -> Option<f64> {
+pub fn teleport(state: &AppState, p: &mut PlayerState, trains: Option<&crate::trains::Trains>) -> Option<f64> {
     let scene = state.doc.scene();
     let height = if p.crouched { CROUCH_HEIGHT } else { HEIGHT };
     let hull = hp_geom::Aabb::new(
@@ -829,10 +850,10 @@ pub fn teleport(state: &AppState, p: &mut PlayerState) -> Option<f64> {
         if !e.classname.eq_ignore_ascii_case("trigger_teleport") || e.get("StartDisabled").map(str::trim) == Some("1") {
             continue;
         }
+        let moved = trains.and_then(|t| t.child_transform(e.id));
         let touches = scene.solids().values().any(|s| {
-            s.owner == hp_editor::Owner::Entity(e.id)
-                && s.bounds.min.cmple(hull.max).all()
-                && s.bounds.max.cmpge(hull.min).all()
+            let b = moved.map_or(s.bounds, |m| crate::io::moved_bounds(s.bounds, &m));
+            s.owner == hp_editor::Owner::Entity(e.id) && b.min.cmple(hull.max).all() && b.max.cmpge(hull.min).all()
         });
         if touches {
             inside = Some(e.get("target").unwrap_or_default().trim().to_owned());
@@ -851,13 +872,17 @@ pub fn teleport(state: &AppState, p: &mut PlayerState) -> Option<f64> {
         .values()
         .find(|n| n.entity.get("targetname").is_some_and(|t| t.trim().eq_ignore_ascii_case(&target)))?;
     let origin = dest.entity.origin().filter(|o| o.is_finite())?;
-    p.feet = origin;
+    let yaw = dest.entity.angles().map_or(0.0, |a| a.y);
+    let moved = trains.and_then(|t| t.child_transform(dest.entity.id));
+    p.feet = moved.map_or(origin, |m| m.transform_point3(origin));
     p.velocity = DVec3::ZERO;
     p.in_teleport = true;
-    Some(dest.entity.angles().map_or(0.0, |a| a.y))
+    let (sy, cy) = yaw.to_radians().sin_cos();
+    let turned = moved.map_or(DVec3::new(cy, sy, 0.0), |m| m.transform_vector3(DVec3::new(cy, sy, 0.0)));
+    Some(if moved.is_some() { turned.y.atan2(turned.x).to_degrees() } else { yaw })
 }
 
-pub fn push_props(state: &mut AppState, props: &PropBodies, pushes: &[Push]) {
+pub fn push_props(state: &mut AppState, props: &PropBodies, trains: Option<&crate::trains::Trains>, pushes: &[Push]) {
     let mut moves: Vec<(hp_vmf::Id, DVec3)> = Vec::new();
     for &(id, delta) in pushes {
         let len = delta.length();
@@ -867,7 +892,7 @@ pub fn push_props(state: &mut AppState, props: &PropBodies, pushes: &[Push]) {
         }
         let Some(node) = state.doc.scene().entity(id) else { continue };
         let Some(b) = state.entity_bounds(&node.entity) else { continue };
-        let c = DocCollider { state, props: Some(props), except: Some(id), doors: None, hidden: None };
+        let c = DocCollider { state, props: Some(props), except: Some(id), doors: None, hidden: None, trains };
         let half = (b.size() * 0.5).dot(dir.abs());
         let center = b.center();
         let mut free = len;
@@ -983,12 +1008,12 @@ pub fn start_position(state: &AppState) -> (DVec3, f64) {
         }
     }
     let cam = state.cameras.cam3d;
-    let c = DocCollider { state, props: None, except: None, doors: None, hidden: None };
+    let c = DocCollider { state, props: None, except: None, doors: None, hidden: None, trains: None };
     let below = c.trace(cam.pos, -DVec3::Z, 4096.0).map_or(cam.pos - DVec3::Z * EYE, |d| cam.pos - DVec3::Z * d);
     (below + DVec3::Z, cam.yaw_deg)
 }
 
-pub fn camera_position(state: &AppState, p: &PlayerState) -> DVec3 {
+pub fn camera_position(state: &AppState, p: &PlayerState, trains: Option<&crate::trains::Trains>) -> DVec3 {
     let e = eye(p);
     if !p.third_person {
         return e;
@@ -996,7 +1021,7 @@ pub fn camera_position(state: &AppState, p: &PlayerState) -> DVec3 {
     let distance = if p.camera_distance > 0.0 { p.camera_distance } else { DEFAULT_CAMERA_DISTANCE };
     let pivot = e + DVec3::Z * 8.0;
     let back = -state.cameras.cam3d.forward();
-    let c = DocCollider { state, props: None, except: None, doors: None, hidden: None };
+    let c = DocCollider { state, props: None, except: None, doors: None, hidden: None, trains };
     let d = c.trace(pivot, back, distance).map_or(distance, |d| (d - 8.0).max(0.0));
     pivot + back * d
 }
@@ -1254,6 +1279,11 @@ pub fn counter_lines(
             lines.push(t!("viewport.player.bsp_editor").to_owned());
         }
         None => lines.push(t!("viewport.player.bsp_none").to_owned()),
+    }
+    if !p.trains.is_empty() {
+        let active = p.trains.iter().filter(|t| t.active).count();
+        let moving = p.trains.iter().filter(|t| t.moving).count();
+        lines.push(tf!("viewport.player.trains", moving, active));
     }
     if !io_log.is_empty() {
         lines.push(t!("viewport.player.io_title").to_owned());

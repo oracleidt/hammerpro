@@ -64,7 +64,7 @@ See [Command line](../reference/command-line.md).
 
 ## FAQ
 
-**Can I translate Hammer Pro into another language?** Only English and French exist in 1.0.1. Every text lives in translation tables in the source; see [Extending Hammer Pro](../development/extending.md).
+**Can I translate Hammer Pro into another language?** Only English and French exist in 1.0.2. Every text lives in translation tables in the source; see [Extending Hammer Pro](../development/extending.md).
 
 **The interface is too big after I changed the scale.** Click **1x** next to the slider, or edit `ui_scale` in settings.toml.
 

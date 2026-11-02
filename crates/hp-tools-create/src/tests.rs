@@ -94,6 +94,7 @@ fn tool_list() {
             ToolId::Entity,
             ToolId::Clip,
             ToolId::Extrude,
+            ToolId::Bevel,
             ToolId::Decal,
             ToolId::Overlay,
             ToolId::Path

@@ -19,9 +19,7 @@ fn v(x: f64, y: f64) -> DVec2 {
 }
 
 fn arc(radius: f64, degrees: f64, n: usize) -> Vec<DVec2> {
-    (0..=n)
-        .map(|k| DVec2::from_angle((degrees * k as f64 / n as f64).to_radians()) * radius)
-        .collect()
+    (0..=n).map(|k| DVec2::from_angle((degrees * k as f64 / n as f64).to_radians()) * radius).collect()
 }
 
 fn spec<'a>(points: &'a [DVec2], segments: u32, thickness: f64) -> CurveSpec<'a> {

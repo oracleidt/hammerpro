@@ -1,5 +1,5 @@
 use std::collections::{HashSet, VecDeque};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -88,6 +88,8 @@ pub struct HammerProApp {
     reported_assets: Option<AssetStatus>,
     reported_fgd_classes: usize,
     emergency_saved: bool,
+    emergency_saves: Vec<(TabId, PathBuf)>,
+    low_memory_at: Option<Instant>,
     initial_open: Option<PathBuf>,
     first_frame: bool,
     script: Option<std::collections::VecDeque<Step>>,
@@ -111,6 +113,7 @@ pub struct HammerProApp {
     pub(crate) tab_bar_action: Option<TabAction>,
     pub(crate) unsaved_asked: Option<(PendingOp, TabId)>,
     dropped_maps: Vec<PathBuf>,
+    vram: crate::vram::VramMonitor,
 }
 
 fn register_all_translations() {
@@ -126,6 +129,7 @@ fn register_all_translations() {
     hp_ui_mapping::register_translations();
     hp_app::i18n::register(TR);
     hp_app::i18n::register(crate::tabs::TR);
+    hp_app::i18n::register(crate::vram::TR);
     crate::dispatch::register_translations();
 }
 
@@ -212,9 +216,11 @@ impl HammerProApp {
             state.sidecar = Sidecar::open(Some(&Sidecar::default_dir()), None);
         }
         files::apply_doc_options(&mut state);
+        let mut vram = crate::vram::VramMonitor::default();
         if let Some(rs) = cc.wgpu_render_state.as_ref() {
             crate::gpu_guard::install(&rs.device);
             state.gfx = Some(Gfx::new(rs));
+            vram = crate::vram::VramMonitor::new(&rs.adapter.get_info());
         }
         state.ui.show_first_run = first_run && !automated;
         if let Some(tool) = cli.tool {
@@ -246,6 +252,7 @@ impl HammerProApp {
         };
 
         let native_frames_at_start = state.settings.ui.native_frames;
+        let cli_restore = cli.restore.clone();
         let mut app = Self {
             state,
             tools,
@@ -289,6 +296,8 @@ impl HammerProApp {
             reported_assets: None,
             reported_fgd_classes: 0,
             emergency_saved: false,
+            emergency_saves: Vec::new(),
+            low_memory_at: None,
             initial_open: cli.open,
             first_frame: true,
             script: cli.script.as_ref().map(|path| match std::fs::read_to_string(path) {
@@ -324,9 +333,13 @@ impl HammerProApp {
             tab_bar_action: None,
             unsaved_asked: None,
             dropped_maps: Vec::new(),
+            vram,
         };
         if let Some(bench) = &app.bench {
             app.initial_open = Some(bench.map().to_path_buf());
+        }
+        if let Some(list) = cli_restore {
+            app.restore_session(&list);
         }
         crate::dispatch::init(&mut app);
         app.startup.mark("app");
@@ -444,12 +457,20 @@ impl HammerProApp {
         {
             crate::gpu_guard::install(&rs.device);
             self.state.gfx = Some(Gfx::new(rs));
+            self.vram = crate::vram::VramMonitor::new(&rs.adapter.get_info());
         }
 
         while let Ok((severity, text)) = self.log_rx.try_recv() {
             self.state.console.push(severity, text);
         }
         self.report_gpu_errors();
+        let now = self.state.frame.time;
+        self.vram.tick(&mut self.state, now);
+        if self.state.runtime.gpu.pressure >= hp_app::runtime::VramPressure::High
+            && crate::dispatch::lighting::release_hidden(self)
+        {
+            log::info!("graphics memory: the lighting preview, not shown, was freed");
+        }
 
         let AppState { assets, gfx, .. } = &mut self.state;
         assets.begin_frame(ctx, gfx.as_mut());
@@ -860,13 +881,80 @@ impl HammerProApp {
         }
         self.emergency_save();
         self.save_settings();
-        let _ = rfd::MessageDialog::new()
+        let session = self.restart_session();
+        let restart = rfd::MessageDialog::new()
             .set_level(rfd::MessageLevel::Error)
             .set_title(t!("app.gpu_lost_title"))
-            .set_description(tf!("app.gpu_lost", reason))
-            .set_buttons(rfd::MessageButtons::Ok)
-            .show();
+            .set_description(tf!("app.gpu_lost_restart", reason))
+            .set_buttons(rfd::MessageButtons::YesNo)
+            .show()
+            == rfd::MessageDialogResult::Yes;
+        if restart {
+            crate::restart::relaunch(&session);
+        }
         std::process::exit(4);
+    }
+
+    fn watch_native_failures(&mut self) {
+        if crate::native_crash::emergency_wanted() {
+            self.emergency_save();
+            crate::native_crash::emergency_done();
+        }
+        if crate::native_crash::take_low_memory() {
+            self.state.notify(Severity::Error, t!("app.low_memory"));
+            self.emergency_saved = false;
+            self.emergency_save();
+            self.emergency_saved = false;
+            self.low_memory_at = Some(Instant::now());
+        }
+        if self.low_memory_at.is_some_and(|t| t.elapsed() > std::time::Duration::from_secs(30)) {
+            crate::native_crash::take_reserve();
+            if crate::native_crash::has_reserve() {
+                self.low_memory_at = None;
+            }
+        }
+    }
+
+    fn restore_session(&mut self, list: &Path) {
+        let entries = crate::restart::take(list);
+        if entries.is_empty() {
+            return;
+        }
+        if let Some(c) = self.crash_prompt.as_mut() {
+            c.emergency_save = None;
+            c.original = None;
+        }
+        self.initial_open = None;
+        for (i, e) in entries.into_iter().enumerate() {
+            let target = if i == 0 { OpenTarget::Replace(self.tabs.active_id()) } else { OpenTarget::NewTab };
+            let (path, kind) = match e {
+                crate::restart::Entry::Map(p) => (p, files::OpenKind::Map),
+                crate::restart::Entry::Recovered { save, original } => (save, files::OpenKind::Recovered { original }),
+            };
+            self.open_queue.push_back((path, kind, target));
+        }
+        self.state.notify(Severity::Info, t!("app.restored_session"));
+    }
+
+    pub(crate) fn restart_session(&self) -> Vec<crate::restart::Entry> {
+        let mut out = Vec::new();
+        for id in self.tabs.ids() {
+            let Some(doc) = self.tabs.doc(&self.state, id) else { continue };
+            let saved = self.emergency_saves.iter().find(|(t, _)| *t == id).map(|(_, p)| p.clone());
+            let entry = match (saved, doc.path()) {
+                (Some(save), original) => {
+                    crate::restart::Entry::Recovered { save, original: original.map(Path::to_path_buf) }
+                }
+                (None, Some(path)) => crate::restart::Entry::Map(path.to_path_buf()),
+                (None, None) => continue,
+            };
+            if id == self.tabs.active_id() {
+                out.insert(0, entry);
+            } else {
+                out.push(entry);
+            }
+        }
+        out
     }
 
     fn emergency_save(&mut self) {
@@ -876,6 +964,7 @@ impl HammerProApp {
         self.emergency_saved = true;
         let dir = Settings::autosave_dir();
         let settings = &self.state.settings;
+        let mut saves = Vec::new();
         if self.state.doc.is_dirty() {
             let (doc, cameras) = (&self.state.doc, &self.state.cameras);
             let saved = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -887,21 +976,26 @@ impl HammerProApp {
                     if let Some(report) = crash::last_report() {
                         crash::add_emergency_save(&Settings::crash_dir(), &report, &path, self.state.doc.path());
                     }
+                    saves.push((self.tabs.active_id(), path));
                 }
                 Ok(Err(e)) => eprintln!("emergency save failed: {e}"),
                 Err(_) => eprintln!("emergency save failed"),
             }
         }
-        for (_, parked) in self.tabs.parked().filter(|(_, p)| p.doc.is_dirty()) {
+        for (id, parked) in self.tabs.parked().filter(|(_, p)| p.doc.is_dirty()) {
             let saved = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 autosave::save_doc_now(&parked.doc, &parked.cameras, settings, &dir)
             }));
             match saved {
-                Ok(Ok(path)) => eprintln!("emergency save written to {}", path.display()),
+                Ok(Ok(path)) => {
+                    eprintln!("emergency save written to {}", path.display());
+                    saves.push((id, path));
+                }
                 Ok(Err(e)) => eprintln!("emergency save failed: {e}"),
                 Err(_) => eprintln!("emergency save failed"),
             }
         }
+        self.emergency_saves = saves;
     }
 
     fn screenshot_tick(&mut self, ctx: &egui::Context) {
@@ -1092,6 +1186,29 @@ impl HammerProApp {
                 });
                 self.state.assets.remount(&self.state.settings);
             }
+            Command::Vram => {
+                let g = &self.state.runtime.gpu;
+                let e = &g.estimate;
+                eprintln!(
+                    "script: vram usage_mb={} budget_mb={} source={} pressure={} estimate_mb={} geometry={} textures={} models={} lightmaps={} compiled={} other={} background={} background_maps={} texture_limit={} oom={} releases={}",
+                    g.usage >> 20,
+                    g.budget >> 20,
+                    g.source.id(),
+                    g.pressure.id(),
+                    e.total() >> 20,
+                    e.geometry >> 20,
+                    e.textures >> 20,
+                    e.models >> 20,
+                    e.lightmaps >> 20,
+                    e.compiled >> 20,
+                    e.other >> 20,
+                    e.background_maps >> 20,
+                    g.background_maps,
+                    g.texture_limit,
+                    g.out_of_memory_events,
+                    g.releases
+                );
+            }
             Command::Stats => {
                 let s = self.state.doc.stats();
                 eprintln!(
@@ -1213,6 +1330,7 @@ impl HammerProApp {
 
 impl eframe::App for HammerProApp {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        self.watch_native_failures();
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.frame(ui, frame)));
         hp_app::native_window::upload_textures(ui.ctx());
         if let Err(payload) = result {
@@ -1401,6 +1519,25 @@ pub const TR: hp_app::i18n::TrTable = &[
         "Le périphérique graphique a été perdu ({0}), en général une réinitialisation du pilote graphique. Hammer Pro ne peut plus dessiner et se ferme : vos maps modifiées ont été sauvegardées, relancez-le pour les ouvrir.",
     ),
     ("app.gpu_lost_title", "Graphics device lost", "Périphérique graphique perdu"),
+    (
+        "app.gpu_lost_restart",
+        "The graphics device was lost ({0}), usually a reset of the graphics driver or a graphics card out of memory. Hammer Pro cannot draw any more and must close. Your modified maps were saved and a crash report was written.
+
+Restart Hammer Pro now? It opens your maps again, with the saved changes.",
+        "Le périphérique graphique a été perdu ({0}), en général une réinitialisation du pilote graphique ou une carte graphique sans mémoire libre. Hammer Pro ne peut plus dessiner et doit se fermer. Vos maps modifiées ont été sauvegardées et un rapport de plantage a été écrit.
+
+Relancer Hammer Pro maintenant ? Il rouvre vos maps, avec les modifications sauvegardées.",
+    ),
+    (
+        "app.low_memory",
+        "The computer is out of memory: your modified maps were saved to the autosave folder. Close other programs or some tabs before going on.",
+        "L'ordinateur n'a plus de mémoire libre : vos maps modifiées ont été sauvegardées dans le dossier des sauvegardes automatiques. Fermez d'autres programmes ou des onglets avant de continuer.",
+    ),
+    (
+        "app.restored_session",
+        "Hammer Pro restarted after a graphics device loss: your maps are opened again.",
+        "Hammer Pro a redémarré après la perte du périphérique graphique : vos maps sont rouvertes.",
+    ),
     ("app.compile_exit_title", "A compile is running", "Une compilation est en cours"),
     (
         "app.compile_exit_body",

@@ -31,6 +31,9 @@ fn summary(text: &str) -> String {
 }
 
 pub fn record_error(text: &str) {
+    if hp_render::memory::is_out_of_memory_text(text) {
+        hp_render::memory::note_out_of_memory();
+    }
     let s = summary(text);
     let first = with_pending(|p| {
         p.count += 1;

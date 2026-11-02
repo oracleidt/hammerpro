@@ -123,7 +123,10 @@ mod tests {
                 r"C:\My Maps\.hammerpro_build\gm_x".to_owned(),
             ]
         );
-        assert_eq!(expand_args(r#"-x "$path\$file.bsp" -y"#, &t), ["-x", r"C:\My Maps\.hammerpro_build\gm_x.bsp", "-y"]);
+        assert_eq!(
+            expand_args(r#"-x "$path\$file.bsp" -y"#, &t),
+            ["-x", r"C:\My Maps\.hammerpro_build\gm_x.bsp", "-y"]
+        );
         assert_eq!(expand_args(r#""a b" c"#, &t), ["a b", "c"]);
         assert!(expand_args("   ", &t).is_empty());
         let line: Vec<String> = expand_args(r"-game $gamedir", &t).iter().map(|a| crate::quote_arg(a)).collect();

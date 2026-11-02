@@ -2,7 +2,7 @@
 
 # Hammer Pro documentation
 
-Welcome to the knowledge base of Hammer Pro 1.0.1, the level editor for Source engine maps built for Garry's Mod first. Every feature has its own page: what it is, how to open it, every option with its default, tips and a short FAQ. Pages link to each other, so start anywhere.
+Welcome to the knowledge base of Hammer Pro 1.0.2, the level editor for Source engine maps built for Garry's Mod first. Every feature has its own page: what it is, how to open it, every option with its default, tips and a short FAQ. Pages link to each other, so start anywhere.
 
 New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game setup](getting-started/game-setup.md) and [Your first map](getting-started/first-map.md), in that order.
 
@@ -29,6 +29,7 @@ New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game s
 | [Curve tool](features/curve-tool.md) | Curved walls and rails: box brushes with mitred joints along a stroke drawn in a 2D view. |
 | [Clip tool](features/clip-tool.md) | Cutting brushes with a plane. |
 | [Extrude / carve tool](features/extrude-tool.md) | Outlines clicked on a face, carved into the brush (recess or opening) or extruded out of it. |
+| [Bevel tool](features/bevel-tool.md) | Round or chamfer brush edges in the 3D view (`Ctrl+B`, mouse for the size, wheel for the segments), or bevel them inward: a cove, or a concave round filling an inner corner (arches). |
 | [Vertex tool](features/vertex-tool.md) | Moving, merging, splitting and scaling vertices. |
 | [Displacement tool](features/displacement-tool.md) | Creating, sculpting, painting alpha, tags, sewing, noise. |
 | [Brush operations](features/brush-operations.md) | Carve, hollow, merge, tie to entity, func_detail, nodraw, hint brushes, texture lock. |
@@ -87,6 +88,7 @@ New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game s
 | --- | --- |
 | [Groups](features/groups.md) | Grouping and selection modes. |
 | [Visgroups](features/visgroups.md) | User visgroups and auto visgroups. |
+| [Display colors](features/display-colors.md) | A color per brush or entity in the 2D views, saved in the map. |
 | [Hide and isolate](features/hide-isolate.md) | Hiding objects, isolating the selection. |
 | [Cordons](features/cordons.md) | Cordon tool, cordon list, compiling a part of the map. |
 | [Outliner](features/outliner.md) | The map as a tree. |
@@ -169,6 +171,8 @@ New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game s
 | [FAQ](troubleshooting/faq.md) | The questions everyone asks. |
 | [Common errors](troubleshooting/common-errors.md) | Leaks, missing textures, limits, failed compiles. |
 | [Crashes and logs](troubleshooting/crashes-and-logs.md) | Crash reports, log file, GPU problems, native frames. |
+| [Out of memory](troubleshooting/out-of-memory.md) | Graphics memory budget, many big maps open, computer memory. |
+| [Graphics device lost](troubleshooting/graphics-device-lost.md) | Driver resets, what is saved, restarting with your tabs. |
 | [Editor performance](troubleshooting/performance.md) | Keeping the editor smooth on huge maps. |
 | [Discord presence not showing](troubleshooting/discord-presence.md) | Fixing Rich Presence. |
 | [Reporting bugs](troubleshooting/reporting-bugs.md) | What to send so a bug can be fixed. |

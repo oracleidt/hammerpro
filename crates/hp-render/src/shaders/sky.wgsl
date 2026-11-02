@@ -29,6 +29,9 @@ fn face_uv(i: u32, s: f32, t: f32) -> vec2<f32> {
 fn fs_sky(in: SkyOut) -> @location(0) vec4<f32> {
     let w = view.forward.xyz + view.right.xyz * (in.ndc.x * view.proj.x) + view.up.xyz * (in.ndc.y * view.proj.y);
     let d0 = normalize(w);
+    if (view.opts.x & OPT_FOG) != 0u && view.proj.z > 0.0 {
+        return vec4<f32>(fog_color(view.eye.xyz + d0 * view.proj.z), 1.0);
+    }
     let c = view.sky.x;
     let s = view.sky.y;
     let d = vec3<f32>(c * d0.x + s * d0.y, -s * d0.x + c * d0.y, d0.z);

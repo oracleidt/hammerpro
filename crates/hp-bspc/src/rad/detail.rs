@@ -190,6 +190,15 @@ struct ObjectLight {
     styles: Vec<(u8, Vec3A)>,
 }
 
+pub(crate) fn count(src: &hp_bsp::Bsp) -> usize {
+    let Ok(games) = src.game_lumps() else { return 0 };
+    let Some(g) = games.get(detail_props::DPRP) else { return 0 };
+    if g.version != detail_props::DPRP_VERSION {
+        return 0;
+    }
+    g.data().ok().and_then(|d| DetailLump::parse(&d).ok()).map_or(0, |l| l.objects.len())
+}
+
 pub(crate) fn light(
     src: &hp_bsp::Bsp,
     ctx: &Ctx<'_>,
@@ -251,26 +260,48 @@ pub(crate) fn light(
         })
         .collect();
     let tan_theta = 7.275f32.to_radians().tan();
-    let lit: Vec<Vec<ObjectLight>> = lump
+    ctx.work.begin(super::progress::Stage::DetailProps, lump.objects.len() as u64);
+    let placed: Vec<Option<(Vec3A, Vec3A, i32)>> = lump
         .objects
+        .par_iter()
+        .map(|o| {
+            let (forward, right, up) = angle_vectors(o.angles);
+            let offset = match o.kind {
+                kind::MODEL => model_centers.get(usize::from(o.dict)).copied().unwrap_or(Vec3A::ZERO),
+                kind::SPRITE => sprite_centers.get(usize::from(o.dict)).copied().unwrap_or(Vec3A::ZERO) * o.scale,
+                _ => Vec3A::ZERO,
+            };
+            let center = Vec3A::from(o.origin) + forward * offset.x - right * offset.y + up * offset.z;
+            (center.is_finite() && up.is_finite()).then(|| (center, up, ctx.map.cluster_at(center.as_dvec3())))
+        })
+        .collect();
+    let mut clusters: Vec<i32> = placed.iter().flatten().map(|p| p.2).collect();
+    clusters.sort_unstable();
+    clusters.dedup();
+    let seen_by: std::collections::HashMap<i32, Vec<(usize, usize)>> = clusters
+        .par_iter()
+        .map(|&c| {
+            let list = cand
+                .iter()
+                .copied()
+                .filter(|&(li, _)| super::bake::row_sees(ctx.light_rows.get(li).and_then(Option::as_ref), c))
+                .collect();
+            (c, list)
+        })
+        .collect();
+    let lit: Vec<Vec<ObjectLight>> = placed
         .par_iter()
         .map_init(
             || (vec![Vec3A::ZERO; np * STYLES], vec![Vec3A::ZERO; np * STYLES]),
-            |(direct, ambient), o| {
-                let (forward, right, up) = angle_vectors(o.angles);
-                let offset = match o.kind {
-                    kind::MODEL => model_centers.get(usize::from(o.dict)).copied().unwrap_or(Vec3A::ZERO),
-                    kind::SPRITE => sprite_centers.get(usize::from(o.dict)).copied().unwrap_or(Vec3A::ZERO) * o.scale,
-                    _ => Vec3A::ZERO,
-                };
-                let center = Vec3A::from(o.origin) + forward * offset.x - right * offset.y + up * offset.z;
-                if !center.is_finite() || !up.is_finite() {
+            |(direct, ambient), placed| {
+                let Some((center, up, cluster)) = *placed else {
                     return vec![ObjectLight { base: Vec3A::new(2.0, 0.0, 0.0), styles: Vec::new() }; np];
-                }
-                let sample = Sample { pos: center, normals: [up; 4], cluster: ctx.map.cluster_at(center.as_dvec3()) };
+                };
+                let sample = Sample { pos: center, normals: [up; 4], cluster };
                 direct.fill(Vec3A::ZERO);
                 ambient.fill(Vec3A::ZERO);
-                ctx.gather(&cand, STYLES, 1, &sample, Part::Direct, direct);
+                let near = seen_by.get(&cluster).map_or(&cand[..], Vec::as_slice);
+                ctx.gather(near, STYLES, 1, &sample, Part::Direct, direct);
                 for d in &ANORMS {
                     match ctx.trace_surface(center, Vec3A::from_array(*d)) {
                         SurfHit::Sky => {
@@ -319,6 +350,7 @@ pub(crate) fn light(
                     .collect()
             },
         )
+        .inspect(|_| ctx.work.add(1))
         .collect();
     for (p, &hdr) in passes.iter().enumerate() {
         let mut records: Vec<([u8; 4], u8)> = Vec::new();

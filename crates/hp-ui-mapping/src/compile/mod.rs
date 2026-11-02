@@ -35,11 +35,11 @@ use hp_compile::{CompileEvent, CompileHandle, LogLocation, Severity as LogSeveri
 use hp_editor::compile_export::{CompileExport, VisibilityExport};
 use hp_editor::{FaceRef, Id, ObjRef, SelectOp};
 
-pub(crate) use notices::notice_text;
 pub use compilers_ui::{
     compiler_commands, compiler_list, compiler_name, compiler_problems, compiler_tools,
     settings_page_ui as compilers_settings_ui, valve_flag_text, valve_group_text, valve_managed_text,
 };
+pub(crate) use notices::notice_text;
 pub use options_ui::{compile_options_ui, effective_step_flags};
 pub use plan::content_args as compile_content_args;
 pub(crate) use plan::{PrepInput, prepare};
@@ -94,6 +94,30 @@ const MODEL_WAIT: Duration = Duration::from_secs(10);
 const ASSET_WAIT: Duration = Duration::from_secs(120);
 const SAVE_WAIT: Duration = Duration::from_secs(600);
 const EVENTS_PER_FRAME: usize = 20_000;
+
+pub(crate) fn light_stage_name(stage: &str) -> String {
+    match stage {
+        "scene" => t!("compile.light_stage.scene").to_owned(),
+        "direct lighting" => t!("compile.light_stage.direct").to_owned(),
+        "ambient occlusion" => t!("compile.light_stage.occlusion").to_owned(),
+        "bounce rays" => t!("compile.light_stage.bounce_rays").to_owned(),
+        "bounced light" => t!("compile.light_stage.bounces").to_owned(),
+        "leaf ambient" => t!("compile.light_stage.leaf_ambient").to_owned(),
+        "detail props" => t!("compile.light_stage.detail_props").to_owned(),
+        "static props" => t!("compile.light_stage.static_props").to_owned(),
+        "writing" => t!("compile.light_stage.write").to_owned(),
+        other => other.to_owned(),
+    }
+}
+
+pub(crate) fn phase_text(phase: &str) -> String {
+    let Some(p) = hp_compile::parse_light_progress(phase) else { return phase.to_owned() };
+    let left = match p.left_s {
+        Some(s) => tf!("compile.light_left", fmt_duration_ms(s.saturating_mul(1000))),
+        None => t!("compile.light_estimating").to_owned(),
+    };
+    tf!("compile.light_phase", light_stage_name(&p.stage), (p.stage_fraction * 100.0).floor(), p.index, p.count, left)
+}
 
 pub(crate) fn step_name(kind: StepKind) -> &'static str {
     match kind {
@@ -559,7 +583,10 @@ impl CompileDialog {
             let run = self.run.as_ref();
             let step = run
                 .and_then(|r| r.steps.iter().find(|s| s.status == StepStatus::Running))
-                .map(|s| step_name(s.kind).to_owned())
+                .map(|s| match s.phase.as_deref().filter(|p| hp_compile::parse_light_progress(p).is_some()) {
+                    Some(p) => format!("{}: {}", step_name(s.kind), phase_text(p)),
+                    None => step_name(s.kind).to_owned(),
+                })
                 .unwrap_or_else(|| self.status_text());
             Some(CompileProgress {
                 step,
@@ -1101,7 +1128,7 @@ impl CompileDialog {
                     }
                 });
                 let text = match (&step.phase, step.status) {
-                    (Some(p), StepStatus::Running) => format!("{p}  {:.0}%", step.fraction * 100.0),
+                    (Some(p), StepStatus::Running) => format!("{}  {:.0}%", phase_text(p), step.fraction * 100.0),
                     (_, StepStatus::Running) => format!("{:.0}%", step.fraction * 100.0),
                     (_, StepStatus::Failed) if step.kind == StepKind::Bsp && run.leak_file.is_some() => {
                         t!("compile.status.leaked").to_owned()

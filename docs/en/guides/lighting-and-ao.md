@@ -19,7 +19,7 @@ Texture lights (materials that emit light, listed in `lights.rad`) also light th
 
 ## Step 2: real time preview (Lit mode)
 
-Press `Alt+5` (**View > 3D render mode > Lighting preview**). The 3D view draws the light entities with the same falloff and spot cones as the compiler, `light_dynamic`, and the sun with its shadows through the sky faces, props included. The point and spot lights nearest the camera cast shadows too: how many is the setting `render.light_shadows` (0 to 16, 0 for the sun only). It updates as you move lights, but it has no bounced light.
+Press `Alt+5` (**View > 3D render mode > Lighting preview**). The 3D view draws the light entities with the same falloff and spot cones as the compiler, `light_dynamic`, and the sun of the first `light_environment` with its soft shadows, lighting only what sees the sky like VRAD, props included. Its `_ambient` sky light only reaches what sees the sky (setting `render.sky_occlusion`), and the HDR light values are used like the game on an HDR map (setting `render.light_preview_hdr`). The point and spot lights nearest the camera cast shadows too: how many is the setting `render.light_shadows` (0 to 16, 0 for the sun only). It updates as you move lights, but it has no bounced light, so rooms lit only by bounced light look darker than in game.
 
 ## Step 3: baked preview
 
@@ -31,7 +31,7 @@ For the real look of the compiled map (bounced light, lightmaps, props lit like 
    - **Quality**: **Draft** (same light levels, noisier shadows), **Normal**, **Final** (slowest).
    - **Bounced light**: light reflected by surfaces (slower bakes).
    - **Dynamic updates** with an **Update delay**: bakes again by itself once your edits stop.
-   - **Lightmap budget**: the estimated size of the lightmaps against the engine limit of 16 MB, with the most expensive faces.
+   - **Lightmap budget**: the estimated size of the lightmaps against the 2 GB a face can address in them, with the most expensive faces.
 4. The preview follows the dynamic range of the compile settings (LDR or HDR).
 
 The baking threads and the luxel budget of the preview are on the **Lighting** page of the settings. Details: [Lighting preview](../features/lighting-preview.md).

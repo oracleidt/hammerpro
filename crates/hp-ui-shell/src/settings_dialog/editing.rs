@@ -71,6 +71,18 @@ pub(super) fn page(ui: &mut Ui, state: &mut AppState) {
             )
             .changed();
         ui.end_row();
+        ui.label(t!("shell.edit.new_brush_color")).on_hover_text(t!("shell.edit.new_brush_color_tip"));
+        ui.horizontal(|ui| {
+            let mut custom = e.new_brush_color.is_some();
+            if ui.checkbox(&mut custom, t!("shell.edit.new_brush_color_custom")).changed() {
+                e.new_brush_color = custom.then_some(hp_editor::display_color::PALETTE[5]);
+                changed = true;
+            }
+            if let Some(c) = e.new_brush_color.as_mut() {
+                changed |= ui.color_edit_button_srgb(c).changed();
+            }
+        });
+        ui.end_row();
     });
     heading(ui, t!("shell.edit.behavior"));
     egui::Grid::new("hp_shell_edit_behavior").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
@@ -127,6 +139,7 @@ pub(super) fn reset(state: &mut AppState) {
     e.arrow_key_nudge = d.arrow_key_nudge;
     e.paste_offset = d.paste_offset;
     e.undo_restores_selection = d.undo_restores_selection;
+    e.new_brush_color = d.new_brush_color;
     sync_edit_options(state);
 }
 
@@ -150,6 +163,13 @@ pub(crate) const TR: TrTable = &[
     ("shell.edit.lightmap_scale", "Default lightmap scale", "Échelle de lightmap par défaut"),
     ("shell.edit.point_entity", "Default point entity", "Entité ponctuelle par défaut"),
     ("shell.edit.brush_entity", "Default brush entity", "Entité de brush par défaut"),
+    ("shell.edit.new_brush_color", "Color of new brushes", "Couleur des nouveaux brushes"),
+    (
+        "shell.edit.new_brush_color_tip",
+        "Display color given to the brushes you create; off: the default look",
+        "Couleur d'affichage donnée aux brushes créés ; désactivé : l'aspect par défaut",
+    ),
+    ("shell.edit.new_brush_color_custom", "Custom", "Personnalisée"),
     ("shell.edit.behavior", "Behavior", "Comportement"),
     ("shell.edit.undo_levels", "Undo levels", "Niveaux d'annulation"),
     ("shell.edit.arrow_nudge", "Nudge with arrow keys", "Décaler avec les flèches"),

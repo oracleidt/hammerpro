@@ -84,7 +84,7 @@ Une deuxième liste, **Depuis les définitions d'entités (FGD)**, montre les gr
 
 ## Couleurs des visgroups
 
-Chaque nouveau visgroup reçoit une couleur agréable. Avec **Outils > Options... > Rendu > Couleurs des groupes de visibilité** activé (`render.use_visgroup_colors`, désactivé par défaut), les brushes sont dessinés dans les vues 2D de la couleur de leur visgroup.
+Chaque nouveau visgroup reçoit une couleur agréable. Avec **Outils > Options... > Rendu > Couleurs des groupes de visibilité** activé (`render.use_visgroup_colors`, désactivé par défaut), les brushes sont dessinés dans les vues 2D de la couleur de leur visgroup. Une couleur d'affichage choisie pour un objet passe avant (voir [Couleurs d'affichage](display-colors.md)).
 
 ## Options
 

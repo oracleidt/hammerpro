@@ -259,7 +259,6 @@ pub fn validate(bytes: &[u8]) -> Vec<String> {
             crate::disp::MULTIBLEND_ENTRY_SIZE
         ));
     }
-    if nl > 0 && clusters == 0 && vis.len() >= 4 {}
     if let Ok(g) = bsp.game_lumps()
         && let Some(sp) = g.get(u32::from_be_bytes(*b"sprp"))
         && let Ok(d) = sp.data()

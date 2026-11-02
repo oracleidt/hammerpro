@@ -5,10 +5,12 @@ use std::time::{Duration, Instant};
 use ahash::{AHashMap, AHashSet};
 use hp_app::runtime::helpers::scene_display;
 use hp_app::runtime::render::{RenderDisplay, render_display};
-use hp_app::state::SceneOptions;
+use hp_app::settings::StaticPropShadows;
+use hp_app::state::{LightPreviewReport, SceneOptions, SunReport};
 use hp_editor::{Changes, Document, Id, ObjRef, Owner, SolidNode};
 use hp_render::{
-    MaterialId, ModelId, ModelInstance, ModelPart, ObjectFlags, ObjectMesh, PreviewLight, Renderer, SpriteInstance,
+    LightStats, MaterialId, ModelId, ModelInstance, ModelPart, ObjectFlags, ObjectMesh, PreviewLight, Renderer,
+    SpriteInstance, SunParams,
 };
 use rayon::prelude::*;
 
@@ -32,8 +34,7 @@ const PREP_SLICE: usize = 2_048;
 const UPLOAD_BUDGET: Duration = Duration::from_millis(6);
 const NO_TINT: [f32; 4] = [1.0; 4];
 const CUBEMAP_BUDGET: Duration = Duration::from_millis(3);
-const MAX_PARKED: usize = 8;
-const MAX_PARKED_BYTES: u64 = 3 << 30;
+pub(crate) const MAX_PARKED: usize = 8;
 
 pub(crate) struct EntState {
     pub desc: EntityDesc,
@@ -70,12 +71,31 @@ pub(crate) struct SceneSync {
     pub prep: Option<UploadPrep>,
     pub env: EnvState,
     pub collision: CollisionState,
+    pub shadow_hulls: crate::shadow_hulls::ShadowHulls,
     pub no_progressive: bool,
     pub revision: Option<u64>,
     pub epoch_floor: u64,
     pub cube_assign: Option<Arc<crate::cubemaps::CubeAssign>>,
     pub buried_lights: AHashSet<Id>,
     pub buried_pending: bool,
+    pub light_targets: AHashSet<String>,
+    pub lighting_origin_names: AHashSet<String>,
+    pub light_mode: Option<(bool, bool)>,
+    pub light_report: LightPreviewReport,
+}
+
+fn light_report(stats: LightStats, hdr: bool, sun: Option<SunReport>) -> LightPreviewReport {
+    LightPreviewReport {
+        lights: stats.lights,
+        directional: stats.directional,
+        left_out: stats.left_out,
+        crowded_clusters: stats.crowded_clusters,
+        max_per_cluster: hp_render::MAX_PER_CLUSTER,
+        sky_occlusion: stats.sky_occlusion,
+        sky_layers: stats.sky_layers,
+        hdr,
+        sun,
+    }
 }
 
 #[derive(Default)]
@@ -91,6 +111,16 @@ pub(crate) struct ParkedSync {
     sync: SceneSync,
     render: hp_render::ParkedScene,
     generation: u64,
+}
+
+impl ParkedSync {
+    pub(crate) fn render_bytes(&self) -> u64 {
+        self.render.gpu_bytes()
+    }
+
+    pub(crate) fn drop_in_background(self) {
+        self.render.drop_in_background();
+    }
 }
 
 fn solid_flags(doc: &Document, id: Id, d: &RenderDisplay, room: Option<&SkyRoom>) -> ObjectFlags {
@@ -109,11 +139,17 @@ fn solid_flags(doc: &Document, id: Id, d: &RenderDisplay, room: Option<&SkyRoom>
     }
     if let Some(n) = doc.scene().solid(id) {
         let has_disp = n.disp.iter().any(Option::is_some);
+        if n.solid.sides.iter().any(|side| crate::lights::is_sky_material(&side.material)) {
+            f |= ObjectFlags::NO_SHADOW;
+        }
         if let Owner::Entity(e) = n.owner
             && let Some(en) = doc.scene().entity(e)
         {
             if !en.entity.classname.eq_ignore_ascii_case("func_detail") {
                 f |= ObjectFlags::BRUSH_ENTITY;
+            }
+            if crate::lights::brush_casts_no_shadow(&en.entity) {
+                f |= ObjectFlags::NO_SHADOW;
             }
             if !d.fog_volume_texture && crate::fog_volumes::is_fog_volume(&en.entity.classname) {
                 f |= ObjectFlags::NO_3D;
@@ -191,14 +227,21 @@ pub(crate) fn entity_flags(doc: &Document, id: Id) -> ObjectFlags {
     f
 }
 
-fn point_entity_flags(doc: &Document, id: Id, room: Option<&SkyRoom>) -> ObjectFlags {
+fn point_entity_flags(doc: &Document, id: Id, room: Option<&SkyRoom>, props: StaticPropShadows) -> ObjectFlags {
     let mut f = entity_flags(doc, id);
     if room.is_some_and(|r| r.entities.contains(&id)) {
         f |= ObjectFlags::SKY_3D;
     }
     if let Some(n) = doc.scene().entity(id) {
-        if crate::lights::casts_no_shadow(&n.entity) {
+        if crate::lights::casts_no_shadow(&n.entity) || !crate::lights::casts_game_shadow(&n.entity) {
             f |= ObjectFlags::NO_SHADOW;
+        }
+        if n.entity.classname.eq_ignore_ascii_case("prop_static") {
+            match props {
+                StaticPropShadows::None => f |= ObjectFlags::NO_SHADOW,
+                StaticPropShadows::Collision => f |= ObjectFlags::HULL_SHADOW,
+                StaticPropShadows::Mesh => {}
+            }
         }
         if hp_app::runtime::helpers::fish::is_fish_pool(&n.entity.classname) {
             f |= ObjectFlags::NO_PROBE;
@@ -218,7 +261,7 @@ fn flags_of(
         return flags;
     }
     match object_entity(rid) {
-        Some(id) => doc.scene().entity(id).is_some().then(|| point_entity_flags(doc, id, room)),
+        Some(id) => doc.scene().entity(id).is_some().then(|| point_entity_flags(doc, id, room, d.prop_shadows)),
         None => doc.scene().solid(rid).is_some().then(|| solid_flags(doc, rid, d, room)),
     }
 }
@@ -270,6 +313,10 @@ fn solid_look(
     (wire, tint)
 }
 
+fn object_color(doc: &Document, node: &SolidNode, classic: [u8; 3]) -> [u8; 3] {
+    hp_editor::display_color::solid_chosen_color(doc.scene(), node).unwrap_or(classic)
+}
+
 pub(crate) fn smoothing_color(bits: u32) -> [u8; 4] {
     if bits == 0 {
         return [150, 150, 150, 255];
@@ -306,6 +353,8 @@ fn spatial_key(n: &SolidNode) -> [i32; 9] {
 struct BuiltSolid {
     id: Id,
     mesh: ObjectMesh,
+    wire: [u8; 3],
+    classic: [u8; 3],
     flags: ObjectFlags,
     tint: [f32; 4],
 }
@@ -367,6 +416,7 @@ impl AssetManager {
             Some(p) => (
                 p.smoothing_groups != display.smoothing_groups || p.visgroup_colors != display.visgroup_colors,
                 p.highlight_invalid != display.highlight_invalid
+                    || p.prop_shadows != display.prop_shadows
                     || p.fog_volume_texture != display.fog_volume_texture
                     || p.displacements != display.displacements
                     || p.displacements_in_2d != display.displacements_in_2d
@@ -374,7 +424,9 @@ impl AssetManager {
             ),
             None => (false, false),
         };
-        if prev_display.is_some_and(|p| p.render_effects != display.render_effects) {
+        if prev_display.is_some_and(|p| {
+            p.render_effects != display.render_effects || p.object_colors_3d != display.object_colors_3d
+        }) {
             self.scene.force_entities = true;
         }
         if prev_display.is_some_and(|p| p.hidden_tools != display.hidden_tools) {
@@ -471,6 +523,15 @@ impl AssetManager {
                 self.rebuild_solids(doc, renderer, &ids, &display);
             }
             self.scene.instances_dirty = true;
+            let derived = &self.scene.derived;
+            let ents = &self.scene.ents;
+            let owned = |id: &Id| !derived.owned(*id).is_empty();
+            if moved.iter().any(|id| ents.get(id).is_some_and(|s| s.sprite.is_some()) || owned(id)) {
+                self.scene.sprites_dirty = true;
+            }
+            if moved.iter().any(|id| ents.get(id).is_some_and(|s| s.desc.light.is_some())) {
+                self.scene.lights_dirty = true;
+            }
         }
         let map_changed = full
             || changes.world_changed
@@ -489,7 +550,7 @@ impl AssetManager {
         }
         for id in sky_entities {
             if self.scene.ents.contains_key(&id) {
-                renderer.set_object_flags(entity_object(id), point_entity_flags(doc, id, room));
+                renderer.set_object_flags(entity_object(id), point_entity_flags(doc, id, room, display.prop_shadows));
             }
         }
         self.advance_upload(doc, renderer, &display);
@@ -509,13 +570,14 @@ impl AssetManager {
             let owners: Vec<Id> = changes.entities_changed.iter().copied().collect();
             self.scene.derived.refresh_owner_flags(doc, renderer, &owners);
         }
-        self.rebuild_instances(renderer);
+        self.rebuild_instances(doc, renderer);
         self.rebuild_sprites(renderer);
         if opts.lighting_preview && (map_changed || self.scene.buried_pending || self.scene.lights_dirty) {
             self.update_buried_lights(doc);
         }
-        self.rebuild_lights(renderer, opts);
+        self.rebuild_lights(doc, renderer, opts, &display);
         self.sync_collision(renderer, &display);
+        self.sync_shadow_hulls(renderer, &display);
         self.mats.apply_dirty(renderer);
         self.scene.revision = Some(doc.revision());
         renderer.set_cubemap_auto(display.cubemaps_auto);
@@ -584,12 +646,7 @@ impl AssetManager {
         let render = renderer.park_scene();
         self.parked.retain(|p| p.revision != revision);
         self.parked.push(ParkedSync { revision, sync, render, generation: self.generation });
-        let mut bytes: u64 = self.parked.iter().map(|p| p.render.gpu_bytes()).sum();
-        while self.parked.len() > MAX_PARKED || (bytes > MAX_PARKED_BYTES && self.parked.len() > 1) {
-            let old = self.parked.remove(0);
-            bytes = bytes.saturating_sub(old.render.gpu_bytes());
-            old.render.drop_in_background();
-        }
+        self.enforce_parked_limit();
     }
 
     fn restore_scene(&mut self, doc: &Document, renderer: &mut Renderer) -> bool {
@@ -847,16 +904,17 @@ impl AssetManager {
                 Owner::World => None,
                 Owner::Entity(e) => Some(e),
             };
-            let (wire, tint) = match looks.get(&owner) {
+            let (classic, tint) = match looks.get(&owner) {
                 Some(l) => *l,
                 None => solid_look(doc, n, fgd.as_deref(), display),
             };
+            let wire = object_color(doc, n, classic);
             let flags = solid_flags(doc, *id, display, room);
             let mut mesh = solid_mesh_seams(n, &material_of, wire, display.disp_walkable, seams.as_ref(), Some(&cubes));
             if let Some(m) = owner.and_then(|e| play.get(&e)) {
                 transform_mesh(&mut mesh, m);
             }
-            BuiltSolid { id: *id, mesh, flags, tint }
+            BuiltSolid { id: *id, mesh, wire, classic, flags, tint }
         };
         if parallel && nodes.len() >= PARALLEL_SOLIDS {
             nodes.par_iter().map(build).collect()
@@ -868,6 +926,7 @@ impl AssetManager {
     fn upload_solids(&mut self, renderer: &mut Renderer, built: Vec<BuiltSolid>) {
         for b in built {
             renderer.upsert_object(b.id, b.mesh);
+            renderer.set_object_wire_colors(b.id, b.wire, b.classic);
             renderer.set_object_flags(b.id, b.flags);
             renderer.set_object_tint(b.id, b.tint);
             if b.flags.contains(ObjectFlags::SELECTED) {
@@ -888,14 +947,17 @@ impl AssetManager {
 
     fn refresh_wire_colors(&mut self, doc: &Document, renderer: &mut Renderer, display: &RenderDisplay) {
         let fgd = self.fgd.clone();
-        let looks: Vec<(Id, [u8; 3])> = doc
+        let looks: Vec<(Id, [u8; 3], [u8; 3])> = doc
             .scene()
             .solids()
             .par_iter()
-            .map(|(id, n)| (*id, solid_look(doc, n, fgd.as_deref(), display).0))
+            .map(|(id, n)| {
+                let classic = solid_look(doc, n, fgd.as_deref(), display).0;
+                (*id, object_color(doc, n, classic), classic)
+            })
             .collect();
-        for (id, wire) in looks {
-            renderer.set_object_wire_color(id, wire);
+        for (id, wire, classic) in looks {
+            renderer.set_object_wire_colors(id, wire, classic);
         }
     }
 
@@ -903,7 +965,7 @@ impl AssetManager {
         if let Some(old) = self.scene.ents.remove(&id) {
             self.scene.instances_dirty |= old.model.is_some();
             self.scene.sprites_dirty |= old.sprite.is_some();
-            self.scene.lights_dirty |= old.desc.light.is_some() || old.desc.ambient.is_some();
+            self.scene.lights_dirty |= old.desc.light.is_some() || !self.scene.light_targets.is_empty();
         }
         let obj = entity_object(id);
         renderer.remove_object(obj);
@@ -924,14 +986,18 @@ impl AssetManager {
             return;
         };
         let fgd = self.fgd.clone();
+        if let Some(name) = node.entity.get("targetname") {
+            self.scene.lights_dirty |= self.scene.light_targets.contains(name);
+            self.scene.instances_dirty |= self.scene.lighting_origin_names.contains(name);
+        }
         if scene.is_brush_entity(id) {
             if self.scene.ents.contains_key(&id) {
                 self.remove_entity(renderer, id);
             }
             for sid in scene.entity_solid_ids(id) {
                 if let Some(n) = scene.solid(sid) {
-                    let (wire, tint) = solid_look(doc, n, fgd.as_deref(), display);
-                    renderer.set_object_wire_color(sid, wire);
+                    let (classic, tint) = solid_look(doc, n, fgd.as_deref(), display);
+                    renderer.set_object_wire_colors(sid, object_color(doc, n, classic), classic);
                     renderer.set_object_tint(sid, tint);
                 }
             }
@@ -943,7 +1009,7 @@ impl AssetManager {
             desc.body = 0;
             desc.anim = None;
         }
-        let flags = point_entity_flags(doc, id, self.scene.env.room.as_ref());
+        let flags = point_entity_flags(doc, id, self.scene.env.room.as_ref(), display.prop_shadows);
         self.realize_entity(renderer, id, desc, flags, opts);
     }
 
@@ -973,23 +1039,23 @@ impl AssetManager {
         if model.is_some() || game_look {
             renderer.remove_object(obj);
         } else {
-            let [r, g, b] = desc.color;
+            let fill = if self.scene.display.is_some_and(|d| d.object_colors_3d) { desc.color } else { desc.classic };
+            let [r, g, b] = fill;
             let mat = self.flat_material([r, g, b, BOX_ALPHA]);
             let (min, max) = (desc.origin + desc.bounds.0, desc.origin + desc.bounds.1);
             renderer.upsert_object(obj, box_mesh(min, max, mat, sprite.is_none(), desc.color));
         }
-        renderer.set_object_wire_color(obj, desc.color);
+        renderer.set_object_wire_colors(obj, desc.color, desc.classic);
         renderer.set_object_flags(obj, flags);
         if flags.contains(ObjectFlags::SELECTED) {
             self.scene.selected.insert(obj);
         } else {
             self.scene.selected.remove(&obj);
         }
-        let lit = desc.light.is_some() || desc.ambient.is_some();
+        let lit = desc.light.is_some();
         let old = self.scene.ents.insert(id, EntState { desc, model, sprite });
-        let (old_model, old_sprite, old_lit) = old.map_or((false, false, false), |o| {
-            (o.model.is_some(), o.sprite.is_some(), o.desc.light.is_some() || o.desc.ambient.is_some())
-        });
+        let (old_model, old_sprite, old_lit) =
+            old.map_or((false, false, false), |o| (o.model.is_some(), o.sprite.is_some(), o.desc.light.is_some()));
         self.scene.instances_dirty |= old_model || model.is_some();
         self.scene.sprites_dirty |= old_sprite || sprite.is_some();
         self.scene.lights_dirty |= old_lit || lit;
@@ -1131,7 +1197,7 @@ impl AssetManager {
                 if !display.render_effects {
                     desc.tint[3] = 1.0;
                 }
-                let flags = point_entity_flags(doc, id, self.scene.env.room.as_ref());
+                let flags = point_entity_flags(doc, id, self.scene.env.room.as_ref(), display.prop_shadows);
                 self.realize_entity(renderer, id, desc, flags, opts);
             }
         }
@@ -1168,18 +1234,33 @@ impl AssetManager {
         }
         let ents: Vec<Id> = self.scene.ents.keys().copied().collect();
         for id in ents {
-            renderer.set_object_flags(entity_object(id), point_entity_flags(doc, id, room));
+            renderer.set_object_flags(entity_object(id), point_entity_flags(doc, id, room, display.prop_shadows));
         }
         self.scene.derived.refresh_all_flags(doc, renderer);
         self.scene.selected = self.selected_render_objects(doc);
         self.scene.lights_dirty = true;
     }
 
-    fn rebuild_instances(&mut self, renderer: &mut Renderer) {
+    fn rebuild_instances(&mut self, doc: &Document, renderer: &mut Renderer) {
         if !self.scene.instances_dirty {
             return;
         }
         self.scene.instances_dirty = false;
+        let mut names: Option<AHashMap<String, glam::DVec3>> = None;
+        let mut origins: AHashMap<u32, [f32; 3]> = AHashMap::new();
+        let mut wanted: AHashSet<String> = AHashSet::new();
+        for (id, s) in &self.scene.ents {
+            if s.model.is_none() {
+                continue;
+            }
+            let Some(e) = doc.scene().entity(*id).map(|n| &n.entity) else { continue };
+            let Some(name) = e.get("lightingorigin").map(str::trim).filter(|n| !n.is_empty()) else { continue };
+            wanted.insert(name.to_owned());
+            if let Some(o) = names.get_or_insert_with(|| target_origins(doc)).get(name) {
+                origins.insert(entity_object(*id), o.as_vec3().to_array());
+            }
+        }
+        self.scene.lighting_origin_names = wanted;
         let player = self.player_instance(renderer);
         let details = self.play_detail_instances(renderer);
         let list: Vec<ModelInstance> = self
@@ -1203,11 +1284,17 @@ impl AssetManager {
                     fade: s.desc.fade,
                 })
             })
-            .chain(self.scene.derived.models().copied())
+            .chain(self.scene.derived.models().map(|m| {
+                let mut m = *m;
+                if let Some(t) = self.scene.derived.owner_of(m.object).and_then(|o| self.play_transforms.get(&o)) {
+                    m.transform = (t.as_mat4() * glam::Mat4::from_cols_array_2d(&m.transform)).to_cols_array_2d();
+                }
+                m
+            }))
             .chain(player)
             .chain(details)
             .collect();
-        self.play_model_lighting(renderer, &list);
+        self.play_model_lighting(renderer, &list, &origins);
         renderer.set_model_instances(&list);
     }
 
@@ -1221,51 +1308,161 @@ impl AssetManager {
             .ents
             .iter()
             .filter_map(|(id, s)| {
+                let pos = self.play_transforms.get(id).map_or(s.desc.origin, |m| m.transform_point3(s.desc.origin));
                 Some(SpriteInstance {
-                    pos: s.desc.origin.as_vec3().to_array(),
+                    pos: pos.as_vec3().to_array(),
                     size: s.desc.sprite_size,
                     material: s.sprite?,
                     color: s.desc.sprite_color,
                     object: entity_object(*id),
                 })
             })
-            .chain(self.scene.derived.sprites().copied())
+            .chain(self.scene.derived.sprites().map(|sp| {
+                let mut sp = *sp;
+                if let Some(t) = self.scene.derived.owner_of(sp.object).and_then(|o| self.play_transforms.get(&o)) {
+                    sp.pos = t.as_mat4().transform_point3(glam::Vec3::from(sp.pos)).to_array();
+                }
+                sp
+            }))
             .collect();
         renderer.set_sprites(&list);
     }
 
-    fn rebuild_lights(&mut self, renderer: &mut Renderer, opts: &SceneOptions) {
+    fn rebuild_lights(&mut self, doc: &Document, renderer: &mut Renderer, opts: &SceneOptions, d: &RenderDisplay) {
+        let mode = (d.light_hdr, d.sky_occlusion);
+        if self.scene.light_mode != Some(mode) {
+            self.scene.light_mode = Some(mode);
+            self.scene.lights_dirty = true;
+        }
         if !self.scene.lights_dirty {
+            let r = &self.scene.light_report;
+            self.scene.light_report = light_report(renderer.light_stats(), r.hdr, r.sun);
             return;
         }
         self.scene.lights_dirty = false;
+        let hdr = d.light_hdr;
         if !opts.lighting_preview {
             renderer.set_lights(&[], [0.0; 3]);
+            renderer.set_sun(SunParams::default());
+            self.scene.light_targets.clear();
+            self.scene.light_report = light_report(renderer.light_stats(), hdr, None);
             return;
         }
-        let mut lights: Vec<PreviewLight> = Vec::new();
-        let mut ambient: Option<[f32; 3]> = None;
-        for (id, s) in &self.scene.ents {
-            let hidden = renderer.object_flags(entity_object(*id)).is_some_and(|f| f.contains(ObjectFlags::HIDDEN));
+        let mut ids: Vec<Id> =
+            self.scene.ents.iter().filter(|(_, s)| s.desc.light.is_some()).map(|(id, _)| *id).collect();
+        ids.sort_unstable();
+        let mut names: Option<AHashMap<String, glam::DVec3>> = None;
+        let mut targets: AHashSet<String> = AHashSet::new();
+        let mut lights: Vec<PreviewLight> = Vec::with_capacity(ids.len());
+        let mut sun: Option<(u8, crate::lights::SceneLight)> = None;
+        for id in ids {
+            let hidden = renderer.object_flags(entity_object(id)).is_some_and(|f| f.contains(ObjectFlags::HIDDEN));
+            let Some(mut light) = self.scene.ents.get(&id).and_then(|s| s.desc.light) else { continue };
             if hidden {
                 continue;
             }
-            if let Some(l) = s.desc.light.filter(|_| !self.scene.buried_lights.contains(id)) {
-                lights.push(l);
+            let node = doc.scene().entity(id);
+            if let Some(e) = node.map(|n| &n.entity)
+                && let Some(t) = crate::lights::target_name(e)
+            {
+                targets.insert(t.to_owned());
+                let names = names.get_or_insert_with(|| target_origins(doc));
+                if let (Some(to), Some(from)) = (names.get(t), e.origin())
+                    && let Some(dir) = crate::lights::aimed_direction(from, *to)
+                {
+                    light = light.aimed(dir);
+                }
             }
-            if ambient.is_none() {
-                ambient = s.desc.ambient;
+            if light.sun.is_some() {
+                let rank =
+                    u8::from(!node.is_some_and(|n| n.entity.classname.eq_ignore_ascii_case("light_environment")));
+                if sun.is_none_or(|(r, _)| rank < r) {
+                    sun = Some((rank, light));
+                }
+                continue;
             }
+            if self.scene.buried_lights.contains(&id) {
+                continue;
+            }
+            if let Some(m) = self.play_transforms.get(&id) {
+                light = light.moved(m);
+            }
+            lights.extend(light.pick(hdr));
         }
-        lights.extend(self.scene.derived.lights().copied());
-        lights.sort_by_key(|l| !matches!(l.kind, hp_render::LightKind::Directional { .. }));
+        for light in self.scene.derived.lights() {
+            if light.sun.is_some() {
+                if sun.is_none() {
+                    sun = Some((2, *light));
+                }
+                continue;
+            }
+            lights.extend(light.pick(hdr));
+        }
+        let sun = sun.map(|(_, s)| s);
+        let ambient = sun.and_then(|s| s.ambient(hdr));
+        let sun_light = sun.and_then(|s| s.pick(hdr)).filter(|l| l.intensity > 0.0 && l.color.iter().any(|c| *c > 0.0));
+        if let Some(l) = sun_light {
+            lights.insert(0, l);
+        }
+        let spread = sun.and_then(|s| s.sun).map_or(0.0, |s| s.spread_deg);
         renderer.set_lights(&lights, ambient.unwrap_or(DEFAULT_AMBIENT));
+        renderer.set_sun(SunParams { spread_deg: spread, sky_ambient: d.sky_occlusion && ambient.is_some() });
+        self.scene.light_targets = targets;
+        let report = sun.map(|s| SunReport {
+            direction: sun_light.and_then(|l| match l.kind {
+                hp_render::LightKind::Directional { dir } => Some(dir),
+                _ => None,
+            }),
+            color: sun_light.map_or([0.0; 3], |l| l.color.map(|c| c * l.intensity)),
+            ambient: ambient.unwrap_or([0.0; 3]),
+            spread_deg: spread,
+            origin: s.pos().unwrap_or([0.0; 3]),
+        });
+        self.scene.light_report = light_report(renderer.light_stats(), hdr, report);
     }
+}
+
+fn target_origins(doc: &Document) -> AHashMap<String, glam::DVec3> {
+    let mut nodes: Vec<(&Id, &hp_vmf::Entity)> = doc.scene().entities().iter().map(|(id, n)| (id, &n.entity)).collect();
+    nodes.sort_unstable_by_key(|(id, _)| **id);
+    let mut out = AHashMap::new();
+    for (_, e) in nodes {
+        if let (Some(name), Some(origin)) = (e.get("targetname"), e.origin().filter(|o| o.is_finite())) {
+            out.entry(name.to_owned()).or_insert(origin);
+        }
+    }
+    out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn solids_get_an_object_color_and_a_classic_color() {
+        use hp_editor::display_color::DisplayColor;
+        let mut s = hp_app::testing::test_state();
+        let doc = &mut s.doc;
+        let look = |doc: &Document, id: Id, d: &RenderDisplay| {
+            let n = doc.scene().solid(id).unwrap();
+            let classic = solid_look(doc, n, None, d).0;
+            (object_color(doc, n, classic), classic)
+        };
+        let plain = RenderDisplay::default();
+        assert_eq!(look(doc, 2, &plain), (WORLD_COLOR, WORLD_COLOR));
+        assert_eq!(look(doc, 7, &plain), ([220, 30, 220], [220, 30, 220]));
+        doc.set_display_color(&[ObjRef::Solid(2)], DisplayColor::Set([40, 165, 225]), false).unwrap();
+        assert_eq!(look(doc, 2, &plain), ([40, 165, 225], WORLD_COLOR));
+        doc.set_display_color(&[ObjRef::Entity(6)], DisplayColor::Set([50, 180, 80]), false).unwrap();
+        assert_eq!(look(doc, 7, &plain).0, [50, 180, 80]);
+        let vg = doc.create_visgroup("walls", None, &[ObjRef::Solid(2), ObjRef::Solid(3)]).unwrap();
+        doc.set_visgroup_color(vg, [200, 200, 0]).unwrap();
+        let vis = RenderDisplay { visgroup_colors: true, ..RenderDisplay::default() };
+        assert_eq!(look(doc, 3, &vis), ([200, 200, 0], [200, 200, 0]));
+        assert_eq!(look(doc, 2, &vis), ([40, 165, 225], [200, 200, 0]), "a chosen color beats the visgroup");
+        doc.set_display_color(&[ObjRef::Solid(2)], DisplayColor::Reset, false).unwrap();
+        assert_eq!(look(doc, 2, &plain), (WORLD_COLOR, WORLD_COLOR));
+    }
 
     #[test]
     fn smoothing_colors_are_distinct_and_opaque() {

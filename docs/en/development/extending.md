@@ -44,7 +44,7 @@ The interface is black and white: every UI color comes from the `hp_app::theme` 
 
 ## Note
 
-[docs/EXTENDING.md](../../EXTENDING.md) was written while the packages were being built: its tables still call some actions "Planned". In 1.0.1 every action listed there is shipped (see [Actions and keyboard shortcuts](../reference/actions-shortcuts.md)).
+[docs/EXTENDING.md](../../EXTENDING.md) was written while the packages were being built: its tables still call some actions "Planned". In 1.0.2 every action listed there is shipped (see [Actions and keyboard shortcuts](../reference/actions-shortcuts.md)).
 
 ## Related pages
 

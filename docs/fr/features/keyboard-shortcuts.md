@@ -77,6 +77,10 @@ Le jeu **Hammer++** ajoute :
 
 Le jeu ne touche pas aux raccourcis que vous avez changés vous-même : ils restent prioritaires quel que soit le jeu. Les contrôles de la caméra (souris et touches de vol) se choisissent à part, avec **Contrôles de la caméra** dans **Paramètres > Vues** (voir [Caméra et navigation](camera-navigation.md)). L'assistant du premier démarrage règle les deux selon l'éditeur dont vous venez (rouvrez-le avec **Aide > Assistant de configuration...**).
 
+### Ctrl+B : alignement sur la grille et biseau
+
+`Ctrl+B` est **Aligner la sélection sur la grille** dans tous les jeux. Il sert aussi au biseau : dans l'[outil biseau](bevel-tool.md), et dans les outils Sélection et Vertex quand le curseur est sur une arête de brush dans la vue 3D, il commence le biseau de cette arête. Partout ailleurs il aligne sur la grille comme avant. Changer la touche de **Aligner la sélection sur la grille** déplace les deux.
+
 ## Où sont stockés les raccourcis
 
 Dans settings.toml :

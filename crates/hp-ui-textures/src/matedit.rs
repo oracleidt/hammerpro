@@ -820,18 +820,18 @@ impl MaterialEditor {
                     });
                 }
             });
-            if self.copy_archived {
-                if let Some((dir, layout)) = self.dest_layout(state) {
-                    let mut shown = 0;
-                    for t in &self.targets {
-                        if let TargetState::Loaded(l) = &t.state
-                            && matches!(l.location, VmtLocation::Archive(_))
-                        {
-                            let (_, new_name) = crate::folders::vmt_target(&dir, &layout, &l.name);
-                            if new_name != l.name && shown < 5 {
-                                ui.colored_label(theme::warning(), tf!("tex.me.renamed", l.name, new_name));
-                                shown += 1;
-                            }
+            if self.copy_archived
+                && let Some((dir, layout)) = self.dest_layout(state)
+            {
+                let mut shown = 0;
+                for t in &self.targets {
+                    if let TargetState::Loaded(l) = &t.state
+                        && matches!(l.location, VmtLocation::Archive(_))
+                    {
+                        let (_, new_name) = crate::folders::vmt_target(&dir, &layout, &l.name);
+                        if new_name != l.name && shown < 5 {
+                            ui.colored_label(theme::warning(), tf!("tex.me.renamed", l.name, new_name));
+                            shown += 1;
                         }
                     }
                 }

@@ -15,6 +15,7 @@ const TOOL_NAMES: &[&str] = &[
     "overlay",
     "clip",
     "extrude",
+    "bevel",
     "vertex",
     "path",
     "polygon",
@@ -33,9 +34,11 @@ domain! { "tool options";
         rotate, scale; gizmo_local; stretch_handles: the arrows on the faces of the selected brushes in the 3D \
         view that stretch the selection along an axis, saved with the settings), the block tool (primitive, sides, arch wall, arc, start, rise, torus, reorient, the shape preview window, texture scale, \
         create as, keep active), the curve tool (subdivisions 2 to 4096, thickness 1 to 1024, height or auto, \
-        tex_scale, create_as, keep_active), the path tool (class, base_name, loop, relink, offset; saved with the settings), the extrude / carve \
-        tool (mode: carve, extrude; depth; through; new_faces: face, current) \
-        and the displacement tool's brush (mode: select, geometry, alpha, sculpt, tag; \
+        tex_scale, create_as, keep_active), the clip tool (keep: front, back, both; three_point; axis of the \
+        Shift+click cut in the 3D view: auto, x, y, z; the cut face material follows the \
+        brush.clip_current_material setting), the path tool (class, base_name, loop, relink, offset; saved with the settings), the extrude / carve \
+        tool (mode: carve, extrude; depth; through; new_faces: face, current), the bevel tool (radius, segments, \
+        inverse, new_faces: face, current) and the displacement tool's brush (mode: select, geometry, alpha, sculpt, tag; \
         effect; axis: normal, subdiv, center, view, view_flat (toward the camera on X and Y only), x, y, z, \
         custom; radius, strength (intensity), smooth, \
         target height, falloff, spatial, line of sight, autosew (live sewing), selected only, continuous, alpha \
@@ -112,7 +115,7 @@ pub(crate) fn set_tool_options_on(
     let known = tool.option_values();
     if known.is_empty() {
         return ToolResult::error(format!(
-            "set_tool_options: the {} tool has no options to set (the selection, block, curve, extrude, path and displacement tools have)",
+            "set_tool_options: the {} tool has no options to set (the selection, block, curve, clip, extrude, bevel, path and displacement tools have)",
             tool_name(id)
         ));
     }
@@ -259,7 +262,9 @@ mod tests {
         assert_eq!(value(&now, "curve", "subdivisions"), "300");
         assert_eq!(value(&now, "curve", "thickness"), "24");
         assert_eq!(value(&now, "curve", "height"), "96");
-        assert!(set_tool_options_on(&mut tools, &mut state, ToolId::Curve, &opts(&[("subdivisions", "4097")])).is_error);
+        assert!(
+            set_tool_options_on(&mut tools, &mut state, ToolId::Curve, &opts(&[("subdivisions", "4097")])).is_error
+        );
         assert!(set_tool_options_on(&mut tools, &mut state, ToolId::Curve, &opts(&[("thickness", "0")])).is_error);
         for t in &mut tools {
             for o in t.option_values() {

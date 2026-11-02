@@ -64,7 +64,7 @@
 | Command | What it does |
 |---|---|
 | `action ID` | Runs an action by its id, like its menu entry or shortcut (`compile_now`, `toggle_grid`...). The ids are listed in [Actions and shortcuts](actions-shortcuts.md). An unknown id prints `unknown action`. |
-| `tool NAME` | Switches tool: `select`, `camera`, `entity`, `block`, `texture`, `decal`, `overlay`, `clip`, `extrude`, `vertex`, `path`, `polygon`, `curve`, `sprinkle`, `displacement`, `cordon`. |
+| `tool NAME` | Switches tool: `select`, `camera`, `entity`, `block`, `texture`, `decal`, `overlay`, `clip`, `extrude`, `bevel`, `vertex`, `path`, `polygon`, `curve`, `sprinkle`, `displacement`, `cordon`. |
 | `tool_option KEY VALUE` | Sets an option of the active tool (see Tool options below). The value is one word: use commas inside lists (`custom_axis 0,0,1`). An unknown key or a bad value prints `tool ... has no option ...`. |
 | `open PATH` | Opens a map and waits until it is loaded (up to 120 seconds). A map that is already open gets its tab shown. |
 | `save PATH` | Saves the map to PATH, without a dialog. |
@@ -96,6 +96,7 @@
 | `screenshot_window NAME PATH` | Saves a screenshot of a dialog shown in a window of its own: `compile`, `uv_editor` or `portals` (like the MCP tool `screenshot_window`). |
 | `log TEXT` | Prints `script: TEXT` on stderr. |
 | `stats` | Prints the frame rate, frame time, worst frame, numbers of solids, faces, entities and selected objects, the asset status, and renderer, particle and cubemap statistics. In the player view it also prints the light styles. |
+| `vram` | Prints the graphics memory use: usage and budget in MB, where the usage comes from (`driver` or `estimate`), the pressure (`normal`, `high`, `critical`), the estimated split (geometry, textures, models, lightmaps, compiled world, other, maps parked in background tabs), the texture size limit, the out of memory errors seen and how many times memory was freed. |
 | `history` | Prints the undo and redo steps, whether an edit is still open, and the bounds of the selection. |
 | `assert_selected N` | Stops the run with exit code 3 unless exactly N objects are selected. |
 | `assert_tabs N` | Stops the run with exit code 3 unless exactly N maps are open. |
@@ -166,6 +167,17 @@
 | `depth` | Depth in units, 0.125 to 16384. |
 | `through` | on/off: carve the whole thickness of the brush. |
 | `new_faces` | `face` (the clicked face's texture) or `current` (the current material) on the new faces. |
+
+### Bevel tool (`tool bevel`)
+
+| Key | Values |
+|---|---|
+| `radius` | Radius of the round in units, 0.25 to 16384 (limited by the faces while bevelling). |
+| `segments` | Faces of the round, 1 (flat chamfer) to 32. |
+| `inverse` | on/off: concave bevel (a cove, or a round filling an inner corner). |
+| `new_faces` | `face` (the textures around the edge, wrapped) or `current` (the current material) on the rounded faces. |
+
+To bevel from a script, point at the edge and send its key: `move @v0:0.5,0.4` then `key Ctrl+B`, `scroll @v0:0.5,0.4 2` for 2 more segments, `key B` for the inverse bevel, `key Enter` to apply.
 
 ### Texture tool and UV editor (`tool texture`)
 

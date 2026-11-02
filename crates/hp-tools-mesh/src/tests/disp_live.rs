@@ -136,7 +136,9 @@ fn horizontal_view_axis_keeps_only_x_and_y() {
 
     let view = oblique_view();
     let flat = DVec3::new(-1.0, 0.0, 0.0);
-    for (interaction, invert) in [(Interaction::Geometry, false), (Interaction::Geometry, true), (Interaction::Sculpt, false)] {
+    for (interaction, invert) in
+        [(Interaction::Geometry, false), (Interaction::Geometry, true), (Interaction::Sculpt, false)]
+    {
         let (mut state, mut tool, face) = floor_with_disp(3);
         state.doc.clear_face_selection();
         tool.interaction = interaction;

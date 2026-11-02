@@ -27,6 +27,8 @@ L'onglet **Entité** du panneau de droite, c'est l'Object Properties de Hammer :
 
 Des avertissements apparaissent sous l'en-tête quand aucun FGD n'est chargé (**Aucune donnée de jeu (FGD) chargée : les propriétés sont affichées en texte brut**) ou quand une classe n'est pas définie dans le FGD (ses clés sont alors en texte brut).
 
+Pour un `fog_volume`, l'en-tête indique quel brouillard il reçoit et ce qui ne va pas, en orange : **Pas de Fog Name**, **Aucun env_fog_controller nommé "x"**, **Le brouillard de "x" est désactivé (Fog Enable : No) : en jeu ce volume enlève le brouillard**, **Aperçu : brouillard par défaut**, **Start Disabled**, et l'état de **PostProcessName** et **Color Correction Name** (trouvé, absent, ou une entité d'une autre classe). Pour un `env_fog_controller`, il signale quand **Fog Enable** vaut No, si la vue 3D affiche ce brouillard et combien de `fog_volume` l'utilisent. Voir [Volumes de brouillard](render-modes-display.md#volumes-de-brouillard).
+
 ### Uniquement des brushes du monde
 
 Le panneau affiche **Brushes du monde sélectionnés : N** et propose de leur donner une classe : choisissez une classe d'entité brush (`func_detail` par défaut, ou l'entité brush par défaut des paramètres) puis cliquez **Lier à une entité** (`Ctrl+T`). Les boutons **Liaison rapide :** créent un `func_detail`, `func_brush`, `func_illusionary`, `trigger_multiple` ou `trigger_once` en un clic (seulement les classes présentes dans votre FGD). Voir [Opérations sur les brushes](brush-operations.md).
@@ -45,7 +47,7 @@ Le panneau affiche **Brushes du monde sélectionnés : N** et propose de leur do
 
 Les onglets **Sorties** et **Entrées** sont décrits dans [I/O et vue logique](io-logical-view.md).
 
-En bas des onglets d'entité, la section repliée **Éditeur (couleur, commentaires)** contient **Couleur dans les vues 2D** (la couleur filaire de l'entité dans les vues 2D) et **Commentaires** (notes enregistrées dans la map).
+En bas des onglets d'entité, la section **Couleur d'affichage** règle la couleur de la sélection dans les vues 2D (voir [Couleurs d'affichage](display-colors.md)), et la section repliée **Commentaires de l'éditeur** contient **Commentaires** (notes enregistrées dans la map). Une sélection de brushes du monde montre la section **Couleur d'affichage** sous **Lier à une entité**.
 
 ## Onglet Propriétés (SmartEdit)
 

@@ -556,14 +556,17 @@ impl CurveTool {
                     ui.end_row();
                     ui.label(t!("curve.thickness")).on_hover_text(t!("curve.thickness_tip"));
                     let mut th = self.options.thickness;
-                    ui.add(egui::DragValue::new(&mut th).speed(0.5).range(MIN_THICKNESS..=MAX_THICKNESS).max_decimals(2));
+                    ui.add(
+                        egui::DragValue::new(&mut th).speed(0.5).range(MIN_THICKNESS..=MAX_THICKNESS).max_decimals(2),
+                    );
                     self.set_thickness(th);
                     ui.end_row();
                     if let Some((lo, hi)) = self.depth() {
                         ui.label(t!("curve.height")).on_hover_text(t!("curve.height_tip"));
                         let mut h = hi - lo;
-                        let resp = ui
-                            .add(egui::DragValue::new(&mut h).speed(0.5).range(MIN_HEIGHT..=MAX_HEIGHT).max_decimals(2));
+                        let resp = ui.add(
+                            egui::DragValue::new(&mut h).speed(0.5).range(MIN_HEIGHT..=MAX_HEIGHT).max_decimals(2),
+                        );
                         if resp.changed() {
                             self.set_height(h);
                         }
@@ -582,7 +585,10 @@ impl CurveTool {
                     {
                         create = true;
                     }
-                    if ui.button(t!("curve.back")).on_hover_text(tf!("curve.back_tip", key_label(Key::Escape))).clicked()
+                    if ui
+                        .button(t!("curve.back"))
+                        .on_hover_text(tf!("curve.back_tip", key_label(Key::Escape)))
+                        .clicked()
                     {
                         back = true;
                     }
@@ -775,7 +781,8 @@ impl Tool for CurveTool {
             ui.separator();
             material_chip(ui, state);
             ui.separator();
-            if hp_app::widgets::icon_toggle(ui, "📌", self.options.keep_active, t!("curve.keep_active_tip")).clicked() {
+            if hp_app::widgets::icon_toggle(ui, "📌", self.options.keep_active, t!("curve.keep_active_tip")).clicked()
+            {
                 self.options.keep_active = !self.options.keep_active;
             }
             let count = self.points().len();
@@ -936,8 +943,16 @@ impl Tool for CurveTool {
             s.trim_end_matches('0').trim_end_matches('.').to_owned()
         };
         vec![
-            ToolOption::new("subdivisions", o.subdivisions.to_string(), "number of brushes along the curve (2 to 4096)"),
-            ToolOption::new("thickness", num(o.thickness), "width of the brushes across the curve in units (1 to 1024)"),
+            ToolOption::new(
+                "subdivisions",
+                o.subdivisions.to_string(),
+                "number of brushes along the curve (2 to 4096)",
+            ),
+            ToolOption::new(
+                "thickness",
+                num(o.thickness),
+                "width of the brushes across the curve in units (1 to 1024)",
+            ),
             ToolOption::new(
                 "height",
                 o.height.map_or_else(|| "auto".to_owned(), num),
@@ -952,7 +967,11 @@ impl Tool for CurveTool {
                 },
                 "world, or a brush entity class (func_detail...) holding every brush",
             ),
-            ToolOption::new("keep_active", if o.keep_active { "on" } else { "off" }, "on: stay in the curve tool after creating"),
+            ToolOption::new(
+                "keep_active",
+                if o.keep_active { "on" } else { "off" },
+                "on: stay in the curve tool after creating",
+            ),
         ]
     }
 }

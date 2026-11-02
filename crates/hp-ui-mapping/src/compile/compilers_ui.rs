@@ -1186,15 +1186,29 @@ mod tests {
         match f.value {
             ValveValue::Switch => if fr { "case à cocher" } else { "switch" }.to_owned(),
             ValveValue::Int { min, max } => {
-                if fr { format!("entier de {min} à {max}") } else { format!("integer {min} to {max}") }
+                if fr {
+                    format!("entier de {min} à {max}")
+                } else {
+                    format!("integer {min} to {max}")
+                }
             }
             ValveValue::Float { min, max } => {
-                if fr { format!("nombre de {min} à {max}") } else { format!("number {min} to {max}") }
+                if fr {
+                    format!("nombre de {min} à {max}")
+                } else {
+                    format!("number {min} to {max}")
+                }
             }
             ValveValue::Text => if fr { "texte" } else { "text" }.to_owned(),
             ValveValue::File => if fr { "fichier" } else { "file" }.to_owned(),
             ValveValue::Folder => if fr { "dossier" } else { "folder" }.to_owned(),
-            ValveValue::Numbers(n) => if fr { format!("{n} nombres") } else { format!("{n} numbers") },
+            ValveValue::Numbers(n) => {
+                if fr {
+                    format!("{n} nombres")
+                } else {
+                    format!("{n} numbers")
+                }
+            }
         }
     }
 
@@ -1216,8 +1230,7 @@ mod tests {
                 out.push_str("| Option | Group | Value | Default | What it does |\n|---|---|---|---|---|\n");
             }
             for f in hp_compile::valve::valve_flags(tool) {
-                let mut what =
-                    valve_flag_text(f, lang).replace('|', "\\|").replace('<', "&lt;").replace('>', "&gt;");
+                let mut what = valve_flag_text(f, lang).replace('|', "\\|").replace('<', "&lt;").replace('>', "&gt;");
                 if let Some(m) = f.managed {
                     what.push_str(&format!(" *{}.*", valve_managed_text(m, lang)));
                 }

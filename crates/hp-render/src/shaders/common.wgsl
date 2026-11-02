@@ -24,13 +24,16 @@ struct View {
     sky3d: vec4<f32>,
     proj: vec4<f32>,
     sky_uv: array<vec4<f32>, 6>,
+    sky_vis_a: vec4<f32>,
+    sky_vis_b: vec4<f32>,
+    sun_soft: vec4<f32>,
 };
 
 struct ObjState {
     flags: u32,
     color: u32,
     tint: u32,
-    pad: u32,
+    classic: u32,
 };
 
 struct Light {
@@ -82,7 +85,7 @@ fn light_falloff(l: Light, dist: f32) -> f32 {
 @group(0) @binding(4) var<storage, read> lights: array<Light>;
 @group(0) @binding(5) var<storage, read> clusters: array<vec2<u32>>;
 @group(0) @binding(6) var<storage, read> light_indices: array<u32>;
-@group(0) @binding(7) var shadow_map: texture_depth_2d;
+@group(0) @binding(7) var shadow_map: texture_depth_2d_array;
 @group(0) @binding(8) var shadow_samp: sampler_comparison;
 @group(0) @binding(9) var<storage, read> model_lights: array<vec4<f32>>;
 @group(0) @binding(10) var<storage, read> model_colors: array<u32>;
@@ -92,6 +95,9 @@ fn light_falloff(l: Light, dist: f32) -> f32 {
 @group(0) @binding(13) var<storage, read> cube_info: array<vec4<f32>>;
 
 @group(0) @binding(14) var local_shadow_maps: texture_depth_2d_array;
+@group(0) @binding(15) var sky_map: texture_depth_2d_array;
+@group(0) @binding(16) var sun_cut_map: texture_depth_2d_array;
+@group(0) @binding(17) var sky_cut_map: texture_depth_2d_array;
 
 fn light_style(s: u32) -> f32 {
     let i = min(s, 127u);
@@ -136,6 +142,11 @@ const OPT_CUBEMAPS: u32 = 32768u;
 const OPT_PROBE: u32 = 65536u;
 const OPT_SHADOW_PASS: u32 = 131072u;
 const OPT_MODEL_LIGHT: u32 = 262144u;
+const OPT_SUN_PASS: u32 = 524288u;
+const OPT_SKY_CUT: u32 = 1048576u;
+const OPT_SKY_FACES: u32 = 2097152u;
+const OPT_CLASSIC_COLORS: u32 = 16777216u;
+const OPT_LIGHT_BACKGROUND: u32 = 33554432u;
 
 const EDGE_DETAIL_BIT: u32 = 0x80000000u;
 const EDGE_SOURCE_BIT: u32 = 0x40000000u;
@@ -166,6 +177,13 @@ fn unpack_srgba(c: u32) -> vec4<f32> {
     return vec4<f32>(srgb_to_linear(v.rgb), v.a);
 }
 
+fn state_color(st: ObjState) -> u32 {
+    if (view.opts.x & OPT_CLASSIC_COLORS) != 0u && st.classic != 0u {
+        return st.classic;
+    }
+    return st.color;
+}
+
 fn object_state(slot: u32) -> ObjState {
     if slot >= arrayLength(&objects) {
         return ObjState(0u, 0xffffffffu, 0xffffffffu, 0u);
@@ -182,7 +200,10 @@ fn hidden_in_view(flags: u32) -> bool {
     let probing = (view.opts.x & OPT_PROBE) != 0u;
     let probe = probing && (flags & F_COMPILED_LIGHT) != 0u;
     let shadow_pass = (view.opts.x & OPT_SHADOW_PASS) != 0u;
-    let hidden = select(F_HIDDEN, 0u, probe) | select(0u, F_NO_PROBE, probing) | select(0u, F_NO_SHADOW, shadow_pass);
+    let sun_pass = (view.opts.x & OPT_SUN_PASS) != 0u;
+    let sky_faces = (view.opts.x & OPT_SKY_FACES) != 0u;
+    let hidden = select(F_HIDDEN, 0u, probe) | select(0u, F_NO_PROBE, probing) | select(0u, F_NO_SHADOW | F_ROPE, shadow_pass)
+        | select(0u, F_SKY_3D, sun_pass) | select(0u, F_BRUSH_ENTITY, sky_faces);
     if (flags & (hidden | mask)) != 0u {
         return true;
     }
@@ -197,6 +218,9 @@ fn fog_amount(world: vec3<f32>) -> f32 {
         return 0.0;
     }
     let d = distance(world, view.eye.xyz);
+    if view.proj.z > 0.0 && d > view.proj.z {
+        return 1.0;
+    }
     let start = view.fog_b.w;
     let end = max(view.fog_c.w, start + 1.0);
     return clamp((d - start) / (end - start), 0.0, 1.0) * view.fog_a.w;

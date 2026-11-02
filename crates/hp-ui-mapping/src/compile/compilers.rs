@@ -251,8 +251,7 @@ pub(crate) fn profile_steps(profile: &CompilerProfile, cx: &Context<'_>) -> Resu
                 if paths.len() == 2 {
                     let to = paths.remove(1);
                     let from = paths.remove(0);
-                    let kind =
-                        if to.starts_with(&cx.tools.maps_dir) { StepKind::CopyToMaps } else { StepKind::Custom };
+                    let kind = if to.starts_with(&cx.tools.maps_dir) { StepKind::CopyToMaps } else { StepKind::Custom };
                     Step::copy(kind, from, to)
                 } else {
                     Step::copy(StepKind::Custom, PathBuf::new(), PathBuf::new())

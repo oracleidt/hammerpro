@@ -275,10 +275,12 @@ impl PickCache {
     }
 }
 
-fn ray_node(ray: &Ray, n: &SolidNode, face_hidden: Option<&dyn Fn(&str) -> bool>) -> Option<(f64, Option<usize>, DVec3)> {
-    let hidden = |side: usize| {
-        face_hidden.is_some_and(|f| n.solid.sides.get(side).is_some_and(|s| f(&s.material)))
-    };
+fn ray_node(
+    ray: &Ray,
+    n: &SolidNode,
+    face_hidden: Option<&dyn Fn(&str) -> bool>,
+) -> Option<(f64, Option<usize>, DVec3)> {
+    let hidden = |side: usize| face_hidden.is_some_and(|f| n.solid.sides.get(side).is_some_and(|s| f(&s.material)));
     if n.disp.iter().any(Option::is_some) {
         let mut best: Option<(f64, Option<usize>, DVec3)> = None;
         for (side, mesh) in n.disp.iter().enumerate() {

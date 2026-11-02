@@ -467,7 +467,7 @@ fn new_side(id: u32, plane: [DVec3; 3], template: &Side) -> Side {
     }
 }
 
-fn dress(side: &mut Side, face: &Side, face_normal: DVec3, material: &str) {
+pub(crate) fn dress(side: &mut Side, face: &Side, face_normal: DVec3, material: &str) {
     let Some(p) = Plane::from_side(side) else { return };
     material.clone_into(&mut side.material);
     side.lightmap_scale = face.lightmap_scale;
@@ -486,7 +486,7 @@ fn dress(side: &mut Side, face: &Side, face_normal: DVec3, material: &str) {
     }
 }
 
-fn prism(
+pub(crate) fn prism(
     ring: &[DVec3],
     normal: DVec3,
     lo: f64,
@@ -1099,5 +1099,66 @@ mod tests {
         check_pieces(&all);
         let total: f64 = all.iter().map(|p| volume(p)).sum();
         assert!((total - (g.volume() + 64.0 * 64.0 * 16.0)).abs() < 1e-3, "{total}");
+    }
+
+    fn random_brush(rng: &mut Rng) -> Vec<Side> {
+        let mut next = id_counter(1);
+        loop {
+            let scale = [0.5, 8.0, 64.0, 512.0, 8000.0][(rng.next_u64() % 5) as usize];
+            let c = rng.point(256.0);
+            let pts: Vec<DVec3> = (0..(4 + rng.next_u64() % 10)).map(|_| c + rng.point(scale)).collect();
+            if let Ok(sides) = crate::hull_solid(&pts, "TEST/X", 0.25, 16, &mut next)
+                && build_solid(&sides).valid
+            {
+                return sides;
+            }
+        }
+    }
+
+    #[test]
+    fn random_outlines_never_panic_and_give_valid_pieces() {
+        let mut rng = Rng(0x5EED_1234_ABCD_0001);
+        let mut made = 0;
+        for _ in 0..1500 {
+            let sides = random_brush(&mut rng);
+            let g = build_solid(&sides);
+            let face = &g.faces[(rng.next_u64() as usize) % g.faces.len()];
+            let center = face.center();
+            let span = face.vertices.iter().map(|v| v.distance(center)).fold(0.0f64, f64::max).max(0.01);
+            let n = 1 + (rng.next_u64() % 9) as usize;
+            let mut outline: Vec<DVec3> = (0..n)
+                .map(|_| match rng.next_u64() % 6 {
+                    0 => face.vertices[(rng.next_u64() as usize) % face.vertices.len()],
+                    1 => center + rng.point(span * 3.0),
+                    2 => center,
+                    _ => center + rng.point(span * 0.8),
+                })
+                .collect();
+            if rng.next_u64().is_multiple_of(20) {
+                outline.push(DVec3::NAN);
+            }
+            if rng.next_u64().is_multiple_of(10) {
+                let p = outline[0];
+                outline.push(p);
+            }
+            let params = FaceExtrudeParams {
+                mode: if rng.next_u64().is_multiple_of(2) { ExtrudeMode::Carve } else { ExtrudeMode::Extrude },
+                depth: [0.0, 0.1, 0.125, 1.0, 16.0, 500.0, 1e6, f64::NAN][(rng.next_u64() % 8) as usize],
+                through: rng.next_u64().is_multiple_of(3),
+                material: None,
+            };
+            let mut next = id_counter(10_000);
+            if let Ok(r) = face_extrude(&sides, face.side_index, &outline, &params, &mut next) {
+                made += 1;
+                for p in r.pieces.iter().map(|p| &p.sides).chain(&r.added) {
+                    let pg = validate_solid(p).expect("valid piece");
+                    let verts: Vec<DVec3> = pg.vertices().collect();
+                    for f in &pg.faces {
+                        assert!(verts.iter().all(|v| f.plane.distance(*v) <= 1e-3), "convex piece");
+                    }
+                }
+            }
+        }
+        assert!(made > 100, "{made}");
     }
 }

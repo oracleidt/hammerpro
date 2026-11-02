@@ -719,6 +719,47 @@ impl Lighting {
     }
 }
 
+pub(crate) fn release_hidden(app: &mut HammerProApp) -> bool {
+    if display_of(app.state.settings.view.render_mode) != LightmapDisplay::Off {
+        return false;
+    }
+    let shown = app.state.gfx.as_ref().is_some_and(|g| g.renderer.lightmap_stats().bytes > 0);
+    if shown {
+        forget(app);
+    }
+    shown
+}
+
+fn forget(app: &mut HammerProApp) {
+    if let Some(gfx) = app.state.gfx.as_mut() {
+        gfx.renderer.clear_lightmaps();
+    }
+    app.pkg.lighting.grid.forget();
+    app.state.assets.set_baked_prop_lighting(None, None);
+    if let Some(p) = app.pkg.lighting.preview.as_mut() {
+        p.worker.stop();
+        p.running = None;
+        p.upload = None;
+        p.shown_serial = None;
+        p.shown_faces = 0;
+        p.shown_blocks = 0;
+        p.has_bake = false;
+        p.last_scope = None;
+        p.lights_revision = 0;
+    }
+    let rt = &mut app.state.runtime.lighting;
+    rt.progress = None;
+    rt.last = None;
+    rt.has_bake = false;
+    rt.stale = false;
+    rt.no_lights = false;
+    rt.stats = PreviewStats::default();
+    rt.budget = None;
+    app.pkg.lighting.budget_revision = 0;
+    app.pkg.lighting.cc_applied = None;
+    app.pkg.lighting.cc_job = None;
+}
+
 impl Package for Lighting {
     fn handled(&self) -> &'static [Action] {
         HANDLED
@@ -787,33 +828,7 @@ impl Package for Lighting {
     }
 
     fn map_loaded(&self, app: &mut HammerProApp) {
-        if let Some(gfx) = app.state.gfx.as_mut() {
-            gfx.renderer.clear_lightmaps();
-        }
-        app.pkg.lighting.grid.forget();
-        app.state.assets.set_baked_prop_lighting(None, None);
-        if let Some(p) = app.pkg.lighting.preview.as_mut() {
-            p.worker.stop();
-            p.running = None;
-            p.upload = None;
-            p.shown_serial = None;
-            p.shown_faces = 0;
-            p.shown_blocks = 0;
-            p.has_bake = false;
-            p.last_scope = None;
-            p.lights_revision = 0;
-        }
-        let rt = &mut app.state.runtime.lighting;
-        rt.progress = None;
-        rt.last = None;
-        rt.has_bake = false;
-        rt.stale = false;
-        rt.no_lights = false;
-        rt.stats = PreviewStats::default();
-        rt.budget = None;
-        app.pkg.lighting.budget_revision = 0;
-        app.pkg.lighting.cc_applied = None;
-        app.pkg.lighting.cc_job = None;
+        forget(app);
     }
 
     fn init(&self, app: &mut HammerProApp) {

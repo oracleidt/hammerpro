@@ -33,7 +33,7 @@ Garry's Mod's own tools and engine raised many of Valve's limits. Hammer Pro kee
 | Entities | 8192 | 65535 |
 | Entity text | 384 KB | 4 MB |
 | Visibility data | 16 MB | 16 MB |
-| Lightmap data (per pass) | 16 MB | no limit |
+| Lightmap data (per pass) | 2 GB | 2 GB |
 | Static props | 65535 | 16384 (the engine keeps the first 16384) |
 | Switchable (named) lights | 32 | 96 |
 | Primitives, primitive indices | 32768, 65536 | 32768, 65536 |
@@ -101,11 +101,11 @@ The compiler prints VBSP's wording on purpose, so the same rules work on logs of
 
 The **Statistics** tab (also the **Statistics: N hints** button of the log) reads the statistics the compiler prints at the end of each step. Every item with a place in the map (a brush, a face, a cluster, an area, a prop) has a **Go to** button.
 
-- **Optimization hints**: limits at 75% or more (over 90% they read as warnings, over 100% the game may refuse the map), a map compiled without visibility, clusters that see 50% of the map or more, a weak average visibility, a big map without areaportals, small structural brushes that could be `func_detail` (the smallest named), static props without fade distance, power 4 displacements, lightmaps taking much of the 16 MB, very fine lightmap scales, switchable styles nearly used up.
+- **Optimization hints**: limits at 75% or more (over 90% they read as warnings, over 100% the game may refuse the map), a map compiled without visibility (critical when it has water: the game then draws the water black, without refraction, so compile with at least the fast visibility), clusters that see 50% of the map or more, a weak average visibility, a big map without areaportals, small structural brushes that could be `func_detail` (the smallest named), static props without fade distance, power 4 displacements, lightmaps taking 90% or more of the 2 GB a face can address, very fine lightmap scales, switchable styles nearly used up.
 - **Engine limits**: Valve's vbspinfo table (used, maximum, bytes, fullness), the fullest first.
 - **Geometry**: map size, brushes (structural, detail, water, tool, in brush entities), entities by class, faces by material, displacements by power, areas, the small structural brushes and the props without fade distance.
 - **Visibility**: mode (fast, full, not computed, or skipped because the map leaks), clusters, portals, leaves, visible clusters on average and at most, the vis radius, the clusters that see the most.
-- **Lighting**: lightmap bytes of each pass against the 16 MB, luxels, lights by type, switchable styles, texture lights, static and detail props lit, leaf ambient samples, bounces, the faces and materials with the most luxels with their lightmap scale.
+- **Lighting**: lightmap bytes of each pass against the 2 GB a face can address, luxels, lights by type, switchable styles, texture lights, static and detail props lit, leaf ambient samples, bounces, the faces and materials with the most luxels with their lightmap scale.
 - **Stage times** and **Step times**.
 
 With no Hammer Pro compile in the log, the tab says so. The MCP tool `get_compile_stats` gives the same data.
@@ -116,7 +116,7 @@ With no Hammer Pro compile in the log, the tab says so. The MCP tool `get_compil
 
 **Where is the log of an older compile?** `<map>.log` in the `.hammerpro_build` folder next to your map keeps every run; the History tab keeps the times.
 
-**What is the difference between the 16 MB lightmap limit and Garry's Mod?** Valve defines 16 MB per pass, Garry's Mod's tools and engine do not enforce it; the statistics still show your lightmaps against 16 MB as a guide.
+**Is there a 16 MB lightmap limit?** No. `MAX_MAP_LIGHTING` (16 MB) is still in Valve's `bspfile.h`, but neither the Source SDK 2013 tools nor Garry's Mod's VRAD check it (their size table prints the lightdata with no maximum), and the engine loads more: Valve compiled Garry's Mod maps load with 60 to 80 MB of lightmaps per pass. The real limit, for every target game, is the lightmap offset of a face (`lightofs` in `dface_t`), a signed 32 bit number: past 2 GB per pass the faces cannot point to their lightmaps and the game cannot load the map. Hammer Pro's lighting stops with an error there; the hints warn from 90% of it. Large lightmaps still cost memory and loading time, so keep coarse scales where shadows are soft.
 
 ## Related pages
 - [Check for problems](../features/check-problems.md)

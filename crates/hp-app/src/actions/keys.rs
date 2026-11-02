@@ -208,6 +208,25 @@ impl KeyBindings {
         out
     }
 
+    pub fn take_action(&self, events: &mut Vec<egui::Event>, action: Action) -> bool {
+        let found = events.iter().position(|event| match event {
+            egui::Event::Key { key, physical_key, pressed: true, repeat: false, modifiers }
+                if !is_modifier_key(*key) =>
+            {
+                shortcut_candidates(*key, *physical_key, *modifiers).iter().find_map(|c| self.action_for(c))
+                    == Some(action)
+            }
+            _ => false,
+        });
+        match found {
+            Some(i) => {
+                events.remove(i);
+                true
+            }
+            None => false,
+        }
+    }
+
     pub fn poll(&self, ctx: &egui::Context, text_focus: bool) -> Vec<Action> {
         if text_focus {
             return Vec::new();

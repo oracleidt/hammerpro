@@ -2,7 +2,7 @@
 
 # Documentation de Hammer Pro
 
-Bienvenue dans la base de connaissances de Hammer Pro 1.0.1, l'éditeur de maps pour le moteur Source pensé d'abord pour Garry's Mod. Chaque fonctionnalité a sa propre page : ce que c'est, comment l'ouvrir, chaque option avec sa valeur par défaut, des astuces et une courte FAQ. Les pages renvoient les unes aux autres : commencez où vous voulez.
+Bienvenue dans la base de connaissances de Hammer Pro 1.0.2, l'éditeur de maps pour le moteur Source pensé d'abord pour Garry's Mod. Chaque fonctionnalité a sa propre page : ce que c'est, comment l'ouvrir, chaque option avec sa valeur par défaut, des astuces et une courte FAQ. Les pages renvoient les unes aux autres : commencez où vous voulez.
 
 Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.md), [Configuration du jeu](getting-started/game-setup.md) puis [Votre première map](getting-started/first-map.md), dans cet ordre.
 
@@ -29,6 +29,7 @@ Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.m
 | [Outil courbe](features/curve-tool.md) | Murs et rambardes courbes : des brushes en boîte à joints en onglet le long d'un tracé dans une vue 2D. |
 | [Outil de découpe](features/clip-tool.md) | Couper des brushes avec un plan. |
 | [Outil extruder / creuser](features/extrude-tool.md) | Des contours cliqués sur une face, creusés dans le brush (renfoncement ou ouverture) ou extrudés hors de la face. |
+| [Outil biseau](features/bevel-tool.md) | Arrondir ou chanfreiner les arêtes des brushes dans la vue 3D (`Ctrl+B`, souris pour la taille, molette pour les segments), ou les biseauter vers l'intérieur : une gorge, ou un arrondi concave qui remplit un coin intérieur (arches). |
 | [Outil vertex](features/vertex-tool.md) | Déplacer, fusionner, scinder et mettre à l'échelle des sommets. |
 | [Outil displacement](features/displacement-tool.md) | Créer, sculpter, peindre l'alpha, tags, couture, bruit. |
 | [Opérations sur les brushes](features/brush-operations.md) | Carve, creuser, fusionner, lier à une entité, func_detail, nodraw, brushes hint, verrouillage des textures. |
@@ -87,6 +88,7 @@ Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.m
 | --- | --- |
 | [Groupes](features/groups.md) | Grouper et modes de sélection. |
 | [Visgroups](features/visgroups.md) | Visgroups personnels et visgroups automatiques. |
+| [Couleurs d'affichage](features/display-colors.md) | Une couleur par brush ou entité dans les vues 2D, enregistrée dans la map. |
 | [Masquer et isoler](features/hide-isolate.md) | Masquer des objets, isoler la sélection. |
 | [Cordons](features/cordons.md) | Outil cordon, liste des cordons, compiler une partie de la map. |
 | [Arborescence](features/outliner.md) | La map sous forme d'arbre. |
@@ -169,6 +171,8 @@ Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.m
 | [FAQ](troubleshooting/faq.md) | Les questions que tout le monde se pose. |
 | [Erreurs courantes](troubleshooting/common-errors.md) | Fuites, textures manquantes, limites, compilations ratées. |
 | [Plantages et journaux](troubleshooting/crashes-and-logs.md) | Rapports de plantage, fichier journal, problèmes de carte graphique, cadres natifs. |
+| [Mémoire insuffisante](troubleshooting/out-of-memory.md) | Budget de mémoire graphique, nombreuses grandes maps ouvertes, mémoire de l'ordinateur. |
+| [Périphérique graphique perdu](troubleshooting/graphics-device-lost.md) | Réinitialisations du pilote, ce qui est sauvegardé, redémarrage avec vos onglets. |
 | [Performances de l'éditeur](troubleshooting/performance.md) | Garder l'éditeur fluide sur les très grandes maps. |
 | [Le statut Discord ne s'affiche pas](troubleshooting/discord-presence.md) | Réparer le Rich Presence. |
 | [Signaler un bug](troubleshooting/reporting-bugs.md) | Ce qu'il faut envoyer pour qu'un bug soit corrigé. |

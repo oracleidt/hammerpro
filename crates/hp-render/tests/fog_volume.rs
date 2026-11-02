@@ -111,10 +111,11 @@ const MAGENTA: Fog = Fog {
     start: 0.0,
     end: 256.0,
     max_density: 1.0,
+    far_z: 0.0,
 };
 
 fn volume(active: bool, fog: Option<Fog>) -> FogVolume {
-    FogVolume { min: [-128.0, -128.0, 0.0], max: [128.0, 128.0, 256.0], fog, active }
+    FogVolume { min: [-128.0, -128.0, 0.0], max: [128.0, 128.0, 256.0], fog, preview: MAGENTA, active }
 }
 
 fn fogged(c: [i32; 3]) -> bool {
@@ -145,7 +146,12 @@ fn the_volume_fogs_what_is_seen_through_it() {
         assert!(grey(pixel(&on, 300, 60)), "beside the volume: {:?}", pixel(&on, 300, 60));
         r.set_fog_volumes(&[volume(true, None)]);
         r.render_view(1, &p, &Overlay::default());
-        assert!(grey(pixel(&grab(&r, 1, &format!("disabled_{msaa}")), 160, 120)), "a controller with fog off");
+        let disabled = pixel(&grab(&r, 1, &format!("disabled_{msaa}")), 160, 120);
+        assert!(fogged(disabled), "a controller with fog off keeps the preview: {disabled:?}");
+        let clear = FogVolume { preview: Fog { max_density: 0.0, ..MAGENTA }, ..volume(true, None) };
+        r.set_fog_volumes(&[clear]);
+        r.render_view(1, &p, &Overlay::default());
+        assert!(grey(pixel(&grab(&r, 1, &format!("clear_{msaa}")), 160, 120)), "a preview without density");
         let wire = ViewParams { mode: RenderMode::Wireframe, ..p };
         r.set_fog_volumes(&[volume(true, Some(MAGENTA))]);
         r.render_view(1, &wire, &Overlay::default());

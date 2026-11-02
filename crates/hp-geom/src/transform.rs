@@ -516,7 +516,11 @@ mod tests {
         assert_eq!(d.distances[3 * 5], 20.0);
         assert_eq!(d.alphas[5], 255.0);
         let blend = hp_vmf::multiblend::MultiBlend::of(d).expect("4-way rows kept");
-        assert_eq!((blend.weights[5], blend.colors[3][5]), ([0.0, 0.0, 1.0, 0.0], [0.5, 0.25, 1.0]), "follows the alpha");
+        assert_eq!(
+            (blend.weights[5], blend.colors[3][5]),
+            ([0.0, 0.0, 1.0, 0.0], [0.5, 0.25, 1.0]),
+            "follows the alpha"
+        );
         assert_eq!(blend.weights[1], [1.0, 0.0, 0.0, 0.0]);
     }
 

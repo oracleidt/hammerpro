@@ -52,7 +52,8 @@ pub(crate) fn pool_ids(doc: &Document) -> Vec<Id> {
 
 impl FishProducer {
     fn swims(&self) -> bool {
-        self.shown.is_some_and(|s| s.0 && s.1) && self.schools.iter().any(|s| s.fish.iter().any(|f| f.swim_radius > 0.0))
+        self.shown.is_some_and(|s| s.0 && s.1)
+            && self.schools.iter().any(|s| s.fish.iter().any(|f| f.swim_radius > 0.0))
     }
 
     fn water_boxes(cx: &mut ProducerCx<'_>, pools: &[(Id, FishPool)]) -> Option<Vec<WaterBox>> {
@@ -182,9 +183,13 @@ impl DerivedProducer for FishProducer {
         let t = if swim { self.start.get_or_insert(now).elapsed().as_secs_f64() } else { 0.0 };
         self.last = Some(now);
         let mut models = Vec::new();
+        let fallback = model_key(rt::FALLBACK_MODEL);
         for school in &mut self.schools {
             let Some(model) = cx.assets.render_model(cx.renderer, &school.model, 0) else {
                 if matches!(cx.assets.models.map.get(&school.model), None | Some(ModelEntry::Loading)) {
+                    self.waiting = true;
+                } else if school.model != fallback {
+                    school.model = fallback.clone();
                     self.waiting = true;
                 } else if school.placeholders.is_empty() {
                     let [r, g, b] = school.color;
@@ -192,7 +197,12 @@ impl DerivedProducer for FishProducer {
                     for (i, f) in school.fish.iter().enumerate() {
                         let key = placeholder_key(school.id, i);
                         let mesh = box_mesh(f.pos - PLACEHOLDER, f.pos + PLACEHOLDER, mat, true, school.color);
-                        out.upsert.push(DerivedObject { key, mesh, owner: Some(school.id), flags: ObjectFlags::NO_PROBE });
+                        out.upsert.push(DerivedObject {
+                            key,
+                            mesh,
+                            owner: Some(school.id),
+                            flags: ObjectFlags::NO_PROBE,
+                        });
                         school.placeholders.push(key);
                     }
                 }

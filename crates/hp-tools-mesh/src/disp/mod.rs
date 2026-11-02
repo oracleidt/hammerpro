@@ -896,7 +896,11 @@ impl DisplacementTool {
             Some(hit) => {
                 let normal = self
                     .brush
-                    .resolved_view(self.toward_eye, self.toward_eye_flat, center_normal(&state.doc, hit.face, hit.point))
+                    .resolved_view(
+                        self.toward_eye,
+                        self.toward_eye_flat,
+                        center_normal(&state.doc, hit.face, hit.point),
+                    )
                     .axis_vector()
                     .unwrap_or(hit.face_normal);
                 let (ring, faces) = if self.interaction == Interaction::Select {

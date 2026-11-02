@@ -12,6 +12,7 @@ pub enum ToolId {
     Overlay,
     Clip,
     Extrude,
+    Bevel,
     Vertex,
     Path,
     Polygon,
@@ -22,7 +23,7 @@ pub enum ToolId {
 }
 
 impl ToolId {
-    pub const ALL: [ToolId; 16] = [
+    pub const ALL: [ToolId; 17] = [
         ToolId::Select,
         ToolId::Camera,
         ToolId::Entity,
@@ -32,6 +33,7 @@ impl ToolId {
         ToolId::Overlay,
         ToolId::Clip,
         ToolId::Extrude,
+        ToolId::Bevel,
         ToolId::Vertex,
         ToolId::Path,
         ToolId::Polygon,
@@ -52,6 +54,7 @@ impl ToolId {
             ToolId::Overlay => "tool.overlay",
             ToolId::Clip => "tool.clip",
             ToolId::Extrude => "tool.extrude",
+            ToolId::Bevel => "tool.bevel",
             ToolId::Vertex => "tool.vertex",
             ToolId::Path => "tool.path",
             ToolId::Displacement => "tool.displacement",
@@ -78,6 +81,7 @@ impl ToolId {
             ToolId::Overlay => Action::ToolOverlay,
             ToolId::Clip => Action::ToolClip,
             ToolId::Extrude => Action::ToolExtrude,
+            ToolId::Bevel => Action::ToolBevel,
             ToolId::Vertex => Action::ToolVertex,
             ToolId::Path => Action::ToolPath,
             ToolId::Displacement => Action::ToolDisplacement,
@@ -99,6 +103,7 @@ impl ToolId {
             ToolId::Overlay => "🗺",
             ToolId::Clip => "✂",
             ToolId::Extrude => "⛏",
+            ToolId::Bevel => "◔",
             ToolId::Vertex => "⬟",
             ToolId::Path => "〰",
             ToolId::Displacement => "🗻",

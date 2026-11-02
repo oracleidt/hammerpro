@@ -29,6 +29,8 @@ const SUPERSAMPLE_ORDER: [(usize, usize); 25] = {
 };
 const PROBES: usize = 5;
 const BOUNCE_TAIL: f32 = 0.25;
+const SUN_PROBES: usize = 6;
+const SUN_STRIDE: usize = 7;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Params {
@@ -158,6 +160,7 @@ pub(crate) struct Ctx<'a> {
     pub props: &'a super::props::Occluders,
     pub ao: Option<super::ao::Ao>,
     pub blockers: &'a Bvh,
+    pub work: &'a super::progress::Work,
 }
 
 pub(crate) fn sky_cameras(map: &MapData) -> (Vec<(Vec3A, f32)>, Vec<bool>) {
@@ -184,7 +187,7 @@ pub(crate) fn sky_cameras(map: &MapData) -> (Vec<(Vec3A, f32)>, Vec<bool>) {
     (cams, areas)
 }
 
-fn row_sees(row: Option<&Vec<u8>>, cluster: i32) -> bool {
+pub(crate) fn row_sees(row: Option<&Vec<u8>>, cluster: i32) -> bool {
     match row {
         Some(r) if cluster >= 0 => r.get(cluster as usize >> 3).is_none_or(|b| b & (1 << (cluster & 7)) != 0),
         _ => true,
@@ -461,13 +464,18 @@ impl Ctx<'_> {
                     let count = if self.lights.sun_extent > 0.0 { self.sun_dirs.len().max(1) } else { 1 };
                     let (first, step) = if sun.0 < count { (sun.0, sun.1.max(1)) } else { (0, 1) };
                     let (mut seen, mut traced) = (0.0f32, 0u32);
-                    for k in (first..count).step_by(step) {
+                    let all = step == 1 && first == 0 && count > SUN_PROBES && count % SUN_STRIDE != 0;
+                    for (j, k) in (first..count).step_by(step).enumerate() {
+                        let k = if all { j * SUN_STRIDE % count } else { k };
                         let mut dir = -l.normal;
                         if k > 0 {
                             dir = (dir + self.sun_dirs[k] * self.lights.sun_extent).normalize_or(dir);
                         }
                         seen += self.sees_sky(sp.pos, dir);
                         traced += 1;
+                        if all && traced as usize == SUN_PROBES && (seen == 0.0 || seen == traced as f32) {
+                            break;
+                        }
                     }
                     let see = seen / traced.max(1) as f32;
                     if see <= 0.0 {
@@ -590,7 +598,7 @@ impl Ctx<'_> {
         let sky = if sky_lights.is_empty() {
             Vec::new()
         } else {
-            super::sky::face(self, &sky_lights, slots, nn, &samples, &mut acc)
+            super::sky::face(self, &sky_lights, (slots, nn, f.w), &samples, &mut acc)
         };
         if f.disp.is_none() && self.params.supersample_passes > 0 && !cand.is_empty() {
             let moved: Vec<bool> =
@@ -880,6 +888,7 @@ struct Gather {
     ys: Vec<usize>,
     normals: Vec<[Vec3A; 4]>,
     hits: Vec<(u32, u16, u16)>,
+    luxels: usize,
 }
 
 fn axis_points(n: usize, step: usize) -> Vec<usize> {
@@ -939,7 +948,7 @@ impl Ctx<'_> {
                 }
             }
         }
-        Gather { step: step.max(1), gw, gh, xs, ys, normals, hits }
+        Gather { step: step.max(1), gw, gh, xs, ys, normals, hits, luxels: f.luxels() }
     }
 
     pub fn bounce(
@@ -959,8 +968,12 @@ impl Ctx<'_> {
             step *= 2;
         }
         let clock = std::time::Instant::now();
-        let grids: Vec<Gather> =
-            (0..self.faces.len()).into_par_iter().map(|i| self.gather_grid(i, step, rays)).collect();
+        self.work.begin(super::progress::Stage::BounceRays, total as u64);
+        let grids: Vec<Gather> = (0..self.faces.len())
+            .into_par_iter()
+            .map(|i| self.gather_grid(i, step, rays))
+            .inspect(|g| self.work.add(g.luxels as u64))
+            .collect();
         let points: usize = grids.iter().map(|g| g.gw * g.gh).sum();
         let gather_time = clock.elapsed().as_secs_f64();
         log(&format!("bounce: {points} gather points, {rays} rays each, traced in {} ms", clock.elapsed().as_millis()));
@@ -979,7 +992,9 @@ impl Ctx<'_> {
         let mut total: Vec<Vec<Vec3A>> =
             grids.iter().zip(&normals).map(|(g, nn)| vec![Vec3A::ZERO; passes * nn * g.gw * g.gh]).collect();
         let mut last_added = 0.0f32;
+        self.work.begin(super::progress::Stage::Bounces, u64::from(bounces.min(1000)));
         for b in 0..bounces {
+            self.work.add(1);
             let recv: Vec<Vec<Vec3A>> = (0..self.faces.len())
                 .into_par_iter()
                 .map(|fi| {

@@ -404,7 +404,6 @@ mod tests {
         assert_eq!(blend[0], BlendVertex::painted([1.0, 0.0, 0.0, 0.0]));
         assert_eq!(blend[3], BlendVertex::painted([0.0, 1.0, 0.0, 1.0]), "raw amounts, like the engine reads them");
         assert_eq!(blend[4], BlendVertex::painted([0.0, 0.0, 0.0, 0.0]), "hostile weights show texture 1");
-
     }
 
     #[test]

@@ -3,6 +3,8 @@ mod compile;
 mod content;
 mod discord;
 mod entities;
+pub mod fog;
+mod gpu;
 mod health;
 pub mod helpers;
 pub mod instances;
@@ -19,17 +21,18 @@ mod visibility;
 mod workflow;
 
 pub use brush::BrushRuntime;
-pub use discord::{DiscordRuntime, DiscordStatus};
 pub use compile::{CompileBadge, CompileBrowse, CompileProgress, CompileRuntime};
 pub use content::{
     AssetCollectRequest, AssetCollectSummary, CaptureState, CapturedImage, ChecklistRow, ContentRuntime,
     MapAssetsRuntime, ReleaseReport,
 };
+pub use discord::{DiscordRuntime, DiscordStatus};
 pub use entities::{AssetKind, AssetPick, EntitiesRuntime, KeyvalueClip};
+pub use gpu::{GpuRelease, GpuReleased, GpuRuntime, VramBreakdown, VramPressure, VramSource};
 pub use health::{HealthRuntime, LeakResult};
 pub use helpers::HelpersRuntime;
 pub use instances::InstancesRuntime;
-pub use lab::{DEFAULT_CAMERA_DISTANCE, DEFAULT_PLAYER_MODEL, LabRuntime, LightStyleReport, PlayerState};
+pub use lab::{DEFAULT_CAMERA_DISTANCE, DEFAULT_PLAYER_MODEL, LabRuntime, LightStyleReport, PlayerState, TrainReport};
 pub use launch::{ContentUse, GameState, LaunchRuntime, MapLoadReport, content_use};
 pub use lighting::{
     BakeKind, BakePhase, BakeProgress, BakeSummary, BudgetEntry, BudgetSummary, LightingRuntime, PreviewStats,
@@ -66,4 +69,5 @@ pub struct Runtime {
     pub lab: LabRuntime,
     pub mcp: McpRuntime,
     pub discord: DiscordRuntime,
+    pub gpu: GpuRuntime,
 }

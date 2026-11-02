@@ -124,6 +124,14 @@ Every other option gets `Warning: option ... is not supported by this lighting c
 
 Texture light files are read in this order: `lights.rad` of the game (the game folder, then the folders of the Garry's Mod install, its `bin` folders last), the `-lights` file, the file named by the worldspawn key `_lightsrad`, then `<map>.rad` next to the map.
 
+While it lights, `--rad` lists its stages (`Lighting stages: direct lighting, ambient occlusion, bounce rays, bounced light, leaf ambient, static props, writing`), then reports each stage that runs longer than a second:
+
+```
+Lighting 41%: direct lighting 60% (stage 2 of 7), 27 s elapsed, about 17 s left
+```
+
+The first percentage is the whole lighting, the second the stage. A line comes every 5% and at least every 30 seconds. A stage that has not advanced for a minute prints `Warning: the lighting stage "..." has not advanced for ...` with what makes that stage slow, and one that runs past ten minutes prints `Warning: the lighting stage "..." has run for ...`. The editor reads these lines for its progress bar. Problems found by the final check that were already in the BSP before the lighting (a map compiled by other tools) are warnings; only new ones stop the write.
+
 ## Examples
 
 A quick test of a Garry's Mod map:

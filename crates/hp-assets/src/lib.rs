@@ -5,6 +5,7 @@ mod detail;
 mod entities;
 mod envmap;
 mod fog_volumes;
+mod gpu_memory;
 mod import;
 mod jobs;
 mod lights;
@@ -24,6 +25,7 @@ mod producer;
 mod queue;
 mod registry;
 mod scene;
+mod shadow_hulls;
 mod texture;
 mod thumb_cache;
 mod thumbs;
@@ -167,6 +169,7 @@ pub struct AssetManager {
     pub(crate) lods: lods::Lods,
     pub(crate) editor_cubes: cubemaps::EditorCubes,
     pub(crate) pick_meshes: pick::PickMeshes,
+    pub(crate) parked_limit: u64,
 }
 
 impl AssetManager {
@@ -220,6 +223,7 @@ impl AssetManager {
             lods: lods::Lods::default(),
             editor_cubes: cubemaps::EditorCubes::default(),
             pick_meshes: pick::PickMeshes::default(),
+            parked_limit: gpu_memory::DEFAULT_PARKED_LIMIT,
         };
         m.start_mount(settings);
         m.start_fgd(settings);
@@ -402,6 +406,10 @@ impl hp_app::AssetsApi for AssetManager {
         self.set_light_styles_impl(values);
     }
 
+    fn light_preview(&self) -> Option<hp_app::state::LightPreviewReport> {
+        self.scene.opts.is_some_and(|o| o.lighting_preview).then_some(self.scene.light_report)
+    }
+
     fn play_cubemap_sources(&self) -> Option<(usize, usize)> {
         self.play_world_shown().then(|| self.play_cubemap_sources()).flatten()
     }
@@ -509,6 +517,22 @@ impl hp_app::AssetsApi for AssetManager {
 
     fn parked_scenes(&self) -> usize {
         self.parked.len()
+    }
+
+    fn parked_gpu_bytes(&self) -> u64 {
+        self.parked_gpu_bytes_impl()
+    }
+
+    fn set_parked_gpu_limit(&mut self, bytes: u64) {
+        self.set_parked_limit_impl(bytes);
+    }
+
+    fn release_gpu_memory(&mut self, gfx: &mut Gfx, what: hp_app::runtime::GpuRelease) -> hp_app::runtime::GpuReleased {
+        self.release_gpu_memory_impl(&mut gfx.renderer, what)
+    }
+
+    fn apply_texture_limit(&mut self, gfx: &mut Gfx, size: u32) -> usize {
+        self.apply_texture_limit(&mut gfx.renderer, size)
     }
 
     fn sprite_material_id(&mut self, name: &str, additive: bool) -> hp_render::MaterialId {

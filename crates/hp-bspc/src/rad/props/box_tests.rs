@@ -284,3 +284,54 @@ fn box_prop_shadow_only_with_shadows_on() {
     assert!(pak_file(&lit, "sp_0.vhv").is_some() && map_flags(&lit) & 3 == 3);
     assert!(!m.reads.lock().unwrap().iter().any(|p| p.ends_with(".phy")));
 }
+
+#[test]
+fn box_prop_from_the_map_pakfile() {
+    let (mdl, vvd, vtx) = box_files();
+    let bsp = room_with_box("");
+    let mut pak = hp_bsp::PakWriter::new();
+    pak.add("models/test/box.mdl", mdl).unwrap();
+    pak.add("models/test/box.vvd", vvd).unwrap();
+    pak.add("models/test/box.dx90.vtx", vtx).unwrap();
+    let mut edit = hp_bsp::Bsp::from_vec(bsp.clone()).unwrap().edit();
+    edit.set_pakfile(pak.finish_vbsp().unwrap()).unwrap();
+    let packed = edit.to_vec().unwrap();
+    let mut lines = Vec::new();
+    let lit = light_bsp_with(&packed, &opts(true), &crate::props::NoModels, &mut |l| lines.push(l.to_owned()))
+        .expect("light");
+    assert!(!lines.iter().any(|l| l.contains("Unable to load")), "{lines:?}");
+    assert!(pak_file(&lit, "sp_0.vhv").is_some() && pak_file(&lit, "sp_hdr_0.vhv").is_some());
+    assert!(pak_file(&lit, "models/test/box.mdl").is_some(), "the packed model stays");
+    let bare = light_bsp_with(&bsp, &opts(false), &crate::props::NoModels, &mut |_| {}).expect("light");
+    let floor = |b: &[u8]| luxel_at(b, DVec3::new(158.0, 128.0, 0.0), DVec3::Z, false).expect("floor").x;
+    assert!(floor(&lit) < floor(&bare) * 0.5, "the packed prop casts its shadow");
+}
+
+struct Slow {
+    inner: BoxModel,
+}
+
+impl crate::props::ModelSource for Slow {
+    fn bounds(&self, path: &str) -> Option<(DVec3, DVec3)> {
+        self.inner.bounds(path)
+    }
+
+    fn read_file(&self, path: &str) -> Option<Vec<u8>> {
+        std::thread::sleep(std::time::Duration::from_millis(400));
+        self.inner.read_file(path)
+    }
+}
+
+#[test]
+fn slow_stages_print_progress() {
+    let bsp = room_with_box("");
+    let models = Slow { inner: BoxModel { files: box_files() } };
+    let mut lines = Vec::new();
+    light_bsp_with(&bsp, &opts(true), &models, &mut |l| lines.push(l.to_owned())).expect("light");
+    let progress: Vec<&String> = lines.iter().filter(|l| l.starts_with("Lighting ") && l.contains("(stage ")).collect();
+    assert!(!progress.is_empty(), "{lines:?}");
+    let first = progress[0];
+    assert!(first.contains(": scene ") && first.contains("(stage 1 of ") && first.contains(" elapsed, "), "{first}");
+    let plan = lines.iter().find(|l| l.starts_with("Lighting stages: ")).expect("plan");
+    assert!(plan.ends_with("leaf ambient, static props, writing"), "{plan}");
+}

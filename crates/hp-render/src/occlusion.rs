@@ -123,6 +123,66 @@ impl OcclusionPipelines {
     }
 }
 
+pub(crate) struct StatsReadback {
+    buffer: wgpu::Buffer,
+    state: Arc<AtomicU32>,
+    mapping: bool,
+}
+
+impl StatsReadback {
+    pub fn new(device: &wgpu::Device) -> Self {
+        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("hp-render cull stats read"),
+            size: 16,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        Self { buffer, state: Arc::new(AtomicU32::new(READ_IDLE)), mapping: false }
+    }
+
+    pub fn copy_from(&self, enc: &mut wgpu::CommandEncoder, source: &wgpu::Buffer) {
+        if !self.mapping {
+            enc.copy_buffer_to_buffer(source, 0, &self.buffer, 0, 16);
+        }
+    }
+
+    pub fn after_submit(&mut self) {
+        if self.mapping {
+            return;
+        }
+        self.mapping = true;
+        let state = self.state.clone();
+        let buffer = self.buffer.clone();
+        self.buffer.slice(..).map_async(wgpu::MapMode::Read, move |r| {
+            let value = match r {
+                Ok(()) => match buffer.slice(..).get_mapped_range() {
+                    Ok(m) => {
+                        let value = m.get(..4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]));
+                        drop(m);
+                        buffer.unmap();
+                        value
+                    }
+                    Err(_) => None,
+                },
+                Err(_) => None,
+            };
+            state.store(value.unwrap_or(0).min(READ_IDLE - 1), Ordering::Release);
+        });
+    }
+
+    pub fn poll(&mut self) -> Option<u32> {
+        if !self.mapping {
+            return None;
+        }
+        let v = self.state.swap(READ_IDLE, Ordering::AcqRel);
+        if v == READ_IDLE {
+            return None;
+        }
+        self.mapping = false;
+        Some(v)
+    }
+}
+
 pub(crate) struct OcclusionView {
     target_generation: u64,
     hiz_size: [u32; 2],
@@ -136,9 +196,7 @@ pub(crate) struct OcclusionView {
     visible: GrowBuffer,
     pub args: GrowBuffer,
     stats: wgpu::Buffer,
-    stats_read: wgpu::Buffer,
-    read_state: Arc<AtomicU32>,
-    mapping: bool,
+    stats_read: StatsReadback,
     pub occluded: u32,
     cull_bind: Option<((u64, u64, u64), wgpu::BindGroup)>,
     buffer_gen: u64,
@@ -206,12 +264,7 @@ impl OcclusionView {
             usage: storage | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let stats_read = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("hp-render cull stats read"),
-            size: 16,
-            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let stats_read = StatsReadback::new(device);
         Self {
             target_generation,
             hiz_size,
@@ -231,8 +284,6 @@ impl OcclusionView {
             args: GrowBuffer::new(device, "hp-render cull args", storage | wgpu::BufferUsages::INDIRECT, 1 << 12),
             stats,
             stats_read,
-            read_state: Arc::new(AtomicU32::new(READ_IDLE)),
-            mapping: false,
             occluded: 0,
             cull_bind: None,
             buffer_gen: 1,
@@ -348,41 +399,16 @@ impl OcclusionView {
             pass.set_bind_group(0, &bind, &[]);
             pass.dispatch_workgroups(count.div_ceil(GROUP), 1, 1);
         }
-        if !self.mapping {
-            enc.copy_buffer_to_buffer(&self.stats, 0, &self.stats_read, 0, 16);
-        }
+        self.stats_read.copy_from(enc, &self.stats);
     }
 
     pub fn after_submit(&mut self) {
-        if self.mapping {
-            return;
-        }
-        self.mapping = true;
-        let state = self.read_state.clone();
-        let buffer = self.stats_read.clone();
-        self.stats_read.slice(..).map_async(wgpu::MapMode::Read, move |r| {
-            let value = match r {
-                Ok(()) => buffer
-                    .slice(..)
-                    .get_mapped_range()
-                    .ok()
-                    .and_then(|m| m.get(..4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))),
-                Err(_) => None,
-            };
-            state.store(value.unwrap_or(0).min(READ_IDLE - 1), Ordering::Release);
-        });
+        self.stats_read.after_submit();
     }
 
     fn poll_stats(&mut self) {
-        if !self.mapping {
-            return;
-        }
-        let v = self.read_state.load(Ordering::Acquire);
-        if v != READ_IDLE {
+        if let Some(v) = self.stats_read.poll() {
             self.occluded = v;
-            self.read_state.store(READ_IDLE, Ordering::Release);
-            self.stats_read.unmap();
-            self.mapping = false;
         }
     }
 }
@@ -394,6 +420,92 @@ pub(crate) const fn supported() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn gpu() -> Option<(wgpu::Device, wgpu::Queue)> {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())).ok()?;
+        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).ok()
+    }
+
+    fn errors(device: &wgpu::Device) -> Arc<std::sync::Mutex<Vec<String>>> {
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = seen.clone();
+        device.on_uncaptured_error(Arc::new(move |e: wgpu::Error| {
+            if let Ok(mut v) = sink.lock() {
+                v.push(e.to_string());
+            }
+        }));
+        seen
+    }
+
+    fn source(device: &wgpu::Device, queue: &wgpu::Queue, value: u32) -> wgpu::Buffer {
+        let b = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("stats source"),
+            size: 16,
+            usage: wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        queue.write_buffer(&b, 0, bytemuck::cast_slice(&[value, 0, 0, 0]));
+        b
+    }
+
+    fn round(device: &wgpu::Device, queue: &wgpu::Queue, r: &mut StatsReadback, src: &wgpu::Buffer) {
+        let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        r.copy_from(&mut enc, src);
+        queue.submit([enc.finish()]);
+        r.after_submit();
+    }
+
+    fn wait(device: &wgpu::Device) {
+        let _ = device.poll(wgpu::PollType::wait_indefinitely());
+    }
+
+    #[test]
+    fn stats_are_read_back_and_owners_can_go_away_any_time() {
+        let _serial = crate::memory::gpu_test_lock();
+        let Some((device, queue)) = gpu() else { return };
+        let seen = errors(&device);
+        let src = source(&device, &queue, 42);
+        let mut r = StatsReadback::new(&device);
+        round(&device, &queue, &mut r, &src);
+        wait(&device);
+        assert_eq!(r.poll(), Some(42));
+        assert_eq!(r.poll(), None, "read once");
+        queue.write_buffer(&src, 0, bytemuck::cast_slice(&[7u32, 0, 0, 0]));
+        round(&device, &queue, &mut r, &src);
+        wait(&device);
+        assert_eq!(r.poll(), Some(7), "the buffer is mapped again after a read");
+        for _ in 0..8 {
+            let mut gone = StatsReadback::new(&device);
+            round(&device, &queue, &mut gone, &src);
+            drop(gone);
+        }
+        let mut late = StatsReadback::new(&device);
+        round(&device, &queue, &mut late, &src);
+        wait(&device);
+        drop(late);
+        wait(&device);
+        let seen = seen.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        assert!(seen.is_empty(), "{seen:?}");
+    }
+
+    #[test]
+    fn a_lost_device_does_not_unmap_destroyed_stats() {
+        let _serial = crate::memory::gpu_test_lock();
+        let Some((device, queue)) = gpu() else { return };
+        let seen = errors(&device);
+        let src = source(&device, &queue, 3);
+        let mut r = StatsReadback::new(&device);
+        round(&device, &queue, &mut r, &src);
+        device.destroy();
+        wait(&device);
+        assert!(r.poll().is_some(), "a failed map still ends");
+        assert!(r.poll().is_none());
+        drop(r);
+        wait(&device);
+        let seen = seen.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        assert!(!seen.iter().any(|e| e.contains("unmap")), "{seen:?}");
+    }
 
     #[test]
     fn layouts_match_the_shader() {

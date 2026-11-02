@@ -1007,9 +1007,9 @@ mod tests {
         let out = retained(&tool, &state, &view);
         assert_eq!(out.triangles.len(), 12);
         assert_eq!(out.lines.len(), 12);
-        let top_z = state.doc.scene().solid(2).map(|n| n.bounds.max.z).unwrap_or_default() + crate::mask::LIFT;
-        let on_top = |t: &&hp_render::OverlayTri| t.p.iter().all(|p| (f64::from(p[2]) - top_z).abs() < 1e-3);
-        assert_eq!(out.triangles.iter().filter(on_top).count(), 2, "the top face is lifted above the box");
+        let top_z = state.doc.scene().solid(2).map(|n| n.bounds.max.z).unwrap_or_default();
+        let on_top = |t: &&hp_render::OverlayTri| t.p.iter().all(|p| (f64::from(p[2]) - top_z).abs() < 1e-6);
+        assert_eq!(out.triangles.iter().filter(on_top).count(), 2, "the top face highlight lies exactly on the face");
         let out = retained(&tool, &state, &top);
         assert_eq!(out.lines_on_top.len(), 4);
     }

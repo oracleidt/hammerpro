@@ -77,6 +77,10 @@ The **Hammer++** set adds:
 
 The set does not touch the shortcuts you changed yourself: they stay on top of any set. The camera controls (mouse and fly keys) are chosen separately, with **Camera controls** in **Settings > Viewports** (see [Camera and navigation](camera-navigation.md)). The first run wizard sets both from the editor you come from (reopen it with **Help > Setup assistant...**).
 
+### Ctrl+B: snap to grid and bevel
+
+`Ctrl+B` is **Snap selection to grid** in every set. It also bevels: in the [bevel tool](bevel-tool.md), and in the Selection and Vertex tools when the cursor is on a brush edge in the 3D view, it starts bevelling that edge. Anywhere else it snaps to the grid as before. Rebinding **Snap selection to grid** moves both.
+
 ## Where shortcuts are stored
 
 In settings.toml:

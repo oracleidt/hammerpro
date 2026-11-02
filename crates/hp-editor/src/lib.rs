@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub mod background;
 mod changes;
 mod clipboard;
 mod document;
@@ -20,6 +21,7 @@ pub mod compile_export;
 pub mod deps_roots;
 pub mod describe;
 pub mod diff;
+pub mod display_color;
 pub mod edicts;
 pub mod fingerprint;
 pub mod gallery;
@@ -43,7 +45,7 @@ pub use glob::{glob_match, glob_replace};
 pub use grids::{GRIDS_BLOCK, MAX_GRID_NAME, OBJECT_GRID_KEY, clean_grid_name, editor_grid};
 pub use history::{FACE_SELECTION_STEP, SELECTION_STEP, UndoLimits};
 pub use ids::{IdBuildHasher, IdHasher, IdMap, IdSet};
-pub use ops::{AlignMode, ClipKeep, EntityQuery, FaceEdit, ReplaceScope};
+pub use ops::{AlignMode, BevelOutcome, ClipKeep, EdgeRef, EntityQuery, FaceEdit, ReplaceScope};
 pub use ops::{ConnPart, MAX_TEXT_LEN, TextField, TextMatch, TextQuery, find_ranges};
 pub use ops::{MAX_JITTER_DEG, RandomRotate, RandomRotateReport};
 pub use pick::{EntityRay, Hit, PickOptions, RectMode};

@@ -24,13 +24,20 @@ Hammer Pro shows lighting in the editor in two ways: the **Lit** mode, real-time
 
 The `light`, `light_spot`, `light_environment` and `light_dynamic` entities light the 3D view in real time, with their colors, brightness and falloff. It updates as you move a light.
 
-- **Sun shadows**: the first `light_environment` casts shadows over what the camera sees, up to 8192 units away.
+- **The sun**: the first `light_environment` of the map (like VRAD, the others are ignored) shines along its **angles**, or along its **pitch** key when that key is not 0, the same way as the compiler: a negative pitch points down, so `pitch -90` shines straight down and a pitch past -90 turns the sun around. A `target` key aims it at the entity of that name, like VRAD. The sun lights only what sees a sky face toward it, like VRAD: what lies beyond the sky (the 3D skybox room, the backs of the sky brushes, rooms sealed outside the playable area) casts no shadow on the map, and places with no sky above them get no sun. Each point is shadowed only by what lies between it and the sky it reaches toward the sun, so skies stacked one above the other work like in game: a sealed room with its own sky ceiling floating above a skyboxed area does not shadow that area. `get_lighting_status` (MCP) tells how many skies lie one above the other (`sky_layers`).
+- **Sun shadows**: over what the camera sees, up to 8192 units away. **SunSpreadAngle** softens them like the compiler: the farther the shadow is from what casts it, the softer it gets. Brush entities cast no shadow unless `vrad_brush_cast_shadows` is 1 (like VRAD), props with `disableshadows` 1 neither, and the editor helpers (player starts, nodes, boxes of point entities) never do.
+- **Static prop shadows**: `prop_static` entities cast shadows like the compile will. **Tools > Options... > Rendering > Static prop shadows** (`render.prop_shadows`): **Auto** (default) follows the compile options of the chosen compiler: the triangles the model draws when the lighting step runs with `-StaticPropPolys`, its collision model otherwise (plain VRAD settings, and the Hammer Pro compiler unless you add the flag), none with `-nostaticpropshadows` (or the compile window's **Static prop shadows** unchecked). **Model triangles** and **Collision model** force one. A model without a collision model casts the convex hull of each of its meshes, like the compiler. Other props (`prop_dynamic`, `prop_physics`) cast with their triangles, like their shadows in game.
+- **Sky light**: the `_ambient` color of the `light_environment` lights only what sees the sky, like VRAD: a floor in the open gets all of it, a wall half of it, interiors and covered places none. **Tools > Options... > Rendering > Sky light only under the sky** (`render.sky_occlusion`, on). Off, the whole map gets it.
+- **HDR light values**: with **Tools > Options... > Rendering > HDR light values** (`render.light_preview_hdr`, on) the lights use `_lightHDR` (or `_light` when it is `-1 -1 -1`) times `_lightscaleHDR`, and the sky `_ambientHDR` times `_AmbientScaleHDR`, like the game on a map compiled with HDR. Off: `_light` and `_ambient`. A light value can be `r g b`, `r g b brightness`, one gray value, or the eight numbers `r g b i` of LDR then HDR.
+- **Light entities**: spot cones are clamped to 90 degrees like VRAD (180 and 180 make a point light), `_fifty_percent_distance`, `_zero_percent_distance`, `_hardfalloff`, `_distance` and the `_constant_attn`, `_linear_attn`, `_quadratic_attn` terms follow the compiler, named lights with **Initially dark** stay off, and a light inside an opaque brush lights nothing.
+- **Big maps**: every light is drawn, even thousands. Where more than 128 lights reach the same spot of the view, only the 128 strongest there light it. `get_lighting_status` (MCP) tells how many lights are drawn and how many spots are crowded.
 - **Light shadows**: the point and spot lights nearest the camera cast shadows too. **Tools > Options... > Rendering > Shadowed lights** (`render.light_shadows`) sets how many: 0 to 16, 4 by default, 0 for the sun only. Shadow maps are drawn again only when a light or the scene changes.
+- Props are lit by the same lights, sun and sky light as the brushes, per pixel.
 - With **Relief (normal maps)** on (default), the normal maps of the materials give the surfaces their relief.
 
 ## Baked lighting preview (Ctrl+F5)
 
-Like Hammer++'s "3D Lighting Preview", but the numbers are the compiler's: the map is compiled in memory by the Hammer Pro compiler (the geometry step) and lit by its lighting step (VRAD's) in a separate process. The compiled faces are drawn with their lightmaps (the four bumped lightmaps of bump mapped faces, for the relief of the normal maps), and props are lit by the ambient cubes, world lights and static prop vertex lighting of the lit map. The static props follow the compile settings for prop shadows and prop lighting.
+Like Hammer++'s "3D Lighting Preview", but the numbers are the compiler's: the map is compiled in memory by the Hammer Pro compiler (the geometry step) and lit by its lighting step (VRAD's) in a separate process. The compiled faces are drawn with their lightmaps (the four bumped lightmaps of bump mapped faces, for the relief of the normal maps), and props are lit by the ambient cubes, world lights and static prop vertex lighting of the lit map. The static props follow the compile settings for prop shadows and prop lighting. A prop is lit at its lighting origin like in game: the `lightingorigin` entity when the key names one, else the center of the model.
 
 - When the preview is turned on and nothing is baked yet, a full bake starts (setting **Bake when the preview is turned on**).
 - An edited solid hides its baked faces until the next bake. With **Dynamic updates** on, the map is baked again once edits stop for the **Update delay**.
@@ -69,13 +76,13 @@ Like Hammer++'s "3D Lighting Preview", but the numbers are the compiler's: the m
 
 **Color correction**: lookups (`.raw`) applied to the baked preview with a weight each (0 to 1), saved in the map like Hammer++. **From the map** uses the files and maximum weights of the `color_correction` entities; **Clear** removes them.
 
-**Lightmap budget**: a gauge of the estimated size of the lightmaps in the BSP against the engine limit of 16 MB, with the number of faces and luxels, the faces with a tiny lightmap scale (**Select** selects them), the faces VBSP splits (wider than 32 luxels), displacements too large for VBSP, and **Most expensive faces** (face, scale, luxels, size; click a face to select it).
+**Lightmap budget**: a gauge of the estimated size of the lightmaps in the BSP against the 2 GB a face can address in them (the only limit of the game, see [Limits and logs](../compiler/limits-and-logs.md)), with the number of faces and luxels, the faces with a tiny lightmap scale (**Select** selects them), the faces VBSP splits (wider than 32 luxels), displacements too large for VBSP, and **Most expensive faces** (face, scale, luxels, size; click a face to select it).
 
 ## Lightmap tools
 
 - **Lightmap grid** (`Alt+8`) draws the luxel grid of every lightmapped face like Hammer's 3D lightmap grid, no bake needed: one checker cell per luxel, as wide as the face's lightmap scale and aligned to its texture axes, displacements included. The color tells the scale: grey at 16 (the default), redder the finer the scale (8, 4 and less stand out), greener the coarser. Yellow lines mark where VBSP splits a face wider than 32 luxels. Once a bake exists, the grid is shaded by its lighting. Faces without a lightmap (nodraw, tool textures, sky, water, unlit materials) and props keep their texture.
 - **Select faces with a tiny lightmap scale** selects them, ready for the texture tool.
-- The **status bar** shows the lightmap budget ("N / 16 MB"). Click it to open the Lighting tab.
+- The **status bar** shows the lightmap budget ("N / 2048 MB"). Click it to open the Lighting tab.
 
 ## Cubemaps in the views
 
@@ -99,7 +106,7 @@ With **Cubemap reflections** on (default), materials with `$envmap` reflect thei
 | **Light styles** (`budget_styles`) | Lightmaps per face counted by the budget: 1 without switchable lights, up to 4. | 1 |
 | Quality (`quality`) | Set in the Lighting tab: `Draft`, `Normal`, `Final`. | Draft |
 
-Rendering options used here: **Shadowed lights** (`render.light_shadows`, 4), **Relief (normal maps)** (`render.normal_maps`, on), **Cubemap reflections** (`render.cubemaps`, on), **Redraw the cubemaps after edits** (`render.cubemaps_auto`, on).
+Rendering options used here: **Shadowed lights** (`render.light_shadows`, 4), **HDR light values** (`render.light_preview_hdr`, on), **Sky light only under the sky** (`render.sky_occlusion`, on), **Static prop shadows** (`render.prop_shadows`, Auto), **Relief (normal maps)** (`render.normal_maps`, on), **Cubemap reflections** (`render.cubemaps`, on), **Redraw the cubemaps after edits** (`render.cubemaps_auto`, on).
 
 ## Tips
 

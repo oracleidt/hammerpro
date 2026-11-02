@@ -47,6 +47,24 @@ pub struct PlayerState {
     pub in_teleport: bool,
     pub light_requests: Vec<(String, Option<bool>)>,
     pub light_styles: LightStyleReport,
+    pub train_requests: Vec<(Option<String>, Option<bool>)>,
+    pub trains: Vec<TrainReport>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct TrainReport {
+    pub id: u32,
+    pub name: String,
+    pub class: String,
+    pub active: bool,
+    pub moving: bool,
+    pub speed: f64,
+    pub max_speed: f64,
+    pub origin: glam::DVec3,
+    pub angles: glam::DVec3,
+    pub node: String,
+    pub next: String,
+    pub user_control: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -81,6 +99,8 @@ impl Default for PlayerState {
             in_teleport: false,
             light_requests: Vec::new(),
             light_styles: LightStyleReport::default(),
+            train_requests: Vec::new(),
+            trains: Vec::new(),
         }
     }
 }

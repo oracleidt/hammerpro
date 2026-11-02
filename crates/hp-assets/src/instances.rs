@@ -10,7 +10,7 @@ use hp_editor::instances::{
     ExpandOptions, Expansion, InstanceSpec, LoadRequest, Loaded, expand, is_hidden_object, is_instance,
 };
 use hp_geom::Aabb;
-use hp_render::{MarkTri, MaterialId, MeshBatch, ModelInstance, ObjectFlags, ObjectMesh, PreviewLight};
+use hp_render::{MarkTri, MaterialId, MeshBatch, ModelInstance, ObjectFlags, ObjectMesh};
 
 use crate::AssetManager;
 use crate::entities::{BOX_ALPHA, WORLD_COLOR, brush_entity_color, entity_desc, entity_object};
@@ -161,7 +161,7 @@ struct Shown {
     keys: Vec<u64>,
     signature: u64,
     models: Vec<ModelInstance>,
-    lights: Vec<PreviewLight>,
+    lights: Vec<crate::lights::SceneLight>,
     waiting: Vec<String>,
 }
 

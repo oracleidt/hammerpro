@@ -1069,11 +1069,11 @@ impl Tool for VertexTool {
                 self.apply_scale(state);
                 handled = true;
             }
-        } else if !self.cache.get_mut().solids.is_empty() {
-            if ctx.input_mut(|i| !i.modifiers.shift && i.consume_shortcut(&SELECT_ALL)) {
-                self.cache.get_mut().select_all();
-                handled = true;
-            }
+        } else if !self.cache.get_mut().solids.is_empty()
+            && ctx.input_mut(|i| !i.modifiers.shift && i.consume_shortcut(&SELECT_ALL))
+        {
+            self.cache.get_mut().select_all();
+            handled = true;
         }
         if self.has_pending() && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
             self.cancel(state);

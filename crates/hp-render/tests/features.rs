@@ -295,6 +295,7 @@ fn grid_3d_unshaded_walkable_and_fog() {
             start: 0.0,
             end: 600.0,
             max_density: 1.0,
+            far_z: 0.0,
         }),
         ..Default::default()
     });
@@ -303,6 +304,24 @@ fn grid_3d_unshaded_walkable_and_fog() {
     let fog = save(&r, 1, "fog");
     let far = pixel(&fog, 160, 60);
     assert!(far[0] > 200 && far[2] > 200 && far[1] < 60, "fogged far floor: {far:?}");
+    let thin = Fog {
+        color: [1.0, 0.0, 1.0],
+        color2: [1.0, 0.0, 1.0],
+        dir: [1.0, 0.0, 0.0],
+        blend: false,
+        start: 0.0,
+        end: 600.0,
+        max_density: 0.1,
+        far_z: 0.0,
+    };
+    r.set_environment(Environment { fog: Some(thin), ..Default::default() });
+    r.render_view(1, &p, &Overlay::default());
+    let c = pixel(&save(&r, 1, "fog_thin"), 160, 60);
+    assert!(c[1] > 60, "a thin fog keeps the floor: {c:?}");
+    r.set_environment(Environment { fog: Some(Fog { far_z: 1.0, ..thin }), ..Default::default() });
+    r.render_view(1, &p, &Overlay::default());
+    let c = pixel(&save(&r, 1, "fog_farz"), 160, 60);
+    assert!(c[0] > 200 && c[2] > 200 && c[1] < 60, "past farz only the fog color: {c:?}");
 
     r.set_environment(Environment::default());
     r.upsert_object(

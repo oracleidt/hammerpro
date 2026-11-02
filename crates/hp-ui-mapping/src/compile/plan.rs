@@ -121,7 +121,7 @@ pub fn content_args(fs: Option<&hp_fs::GameFs>) -> Vec<String> {
     for s in &sources {
         if s.origin == hp_fs::SourceOrigin::Extra
             && matches!(s.kind, hp_fs::SourceKind::Dir)
-            && !folders.iter().any(|f| *f == s.path.as_path())
+            && !folders.contains(&s.path.as_path())
         {
             folders.push(&s.path);
         }
