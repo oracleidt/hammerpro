@@ -106,6 +106,7 @@ fn box_mesh(min: [f32; 3], max: [f32; 3], top: MaterialId, rest: MaterialId) -> 
 fn persp(eye: [f32; 3], target: [f32; 3], msaa: bool) -> ViewParams {
     let f = [target[0] - eye[0], target[1] - eye[1], target[2] - eye[2]];
     ViewParams {
+        game_pixel_grid: false,
         size: [256, 192],
         kind: ViewKind::Perspective { eye, forward: f, up: [0.0, 0.0, 1.0], fov_y_deg: 70.0, near: 1.0, far: 30000.0 },
         mode: RenderMode::Textured,
@@ -226,7 +227,7 @@ fn water_refracts_fogs_and_reflects() {
     let deep = pixel(&on, 216, 120);
     assert!(dist(shallow, as3(BED_RGB)) < dist(deep, as3(BED_RGB)), "shallow {shallow:?} deep {deep:?}");
     assert!(dist(deep, as3(FOG_RGB)) < dist(shallow, as3(FOG_RGB)), "shallow {shallow:?} deep {deep:?}");
-    assert!(dist(deep, as3(FOG_RGB)) < 120, "deep water shows its fog {deep:?}");
+    assert!(dist(deep, as3(FOG_RGB)) < 30, "deep water shows its fog and nothing of the bed {deep:?}");
     assert!(r.view_shows_animation(1), "the normal map scrolls");
 
     let grazing = persp([0.0, -400.0, 24.0], [0.0, 600.0, 40.0], false);

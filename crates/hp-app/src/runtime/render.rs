@@ -31,7 +31,9 @@ pub struct RenderDisplay {
     pub cubemaps: bool,
     pub cubemaps_auto: bool,
     pub light_hdr: bool,
+    pub projected_textures: bool,
     pub sky_occlusion: bool,
+    pub sun_glow: bool,
     pub prop_shadows: StaticPropShadows,
 }
 
@@ -68,7 +70,9 @@ impl Default for RenderDisplay {
             cubemaps: true,
             cubemaps_auto: true,
             light_hdr: true,
+            projected_textures: true,
             sky_occlusion: true,
+            sun_glow: true,
             prop_shadows: StaticPropShadows::Collision,
         }
     }
@@ -111,7 +115,9 @@ impl RenderDisplay {
             cubemaps: r.cubemaps,
             cubemaps_auto: r.cubemaps_auto,
             light_hdr: r.light_preview_hdr,
+            projected_textures: r.projected_textures,
             sky_occlusion: r.sky_occlusion,
+            sun_glow: r.sun_glow,
             prop_shadows: prop_shadows(s),
         }
     }

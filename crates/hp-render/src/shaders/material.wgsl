@@ -33,7 +33,12 @@ struct Material {
     fw_mod2x: vec4<f32>,
     fw_uv12: vec4<f32>,
     fw_uv34: vec4<f32>,
+    base_uv: vec4<f32>,
 };
+
+fn base_uv_of(uv: vec2<f32>) -> vec2<f32> {
+    return uv * material.base_uv.xy + material.base_uv.zw;
+}
 
 @group(1) @binding(0) var tex: texture_2d<f32>;
 @group(1) @binding(1) var tex2: texture_2d<f32>;
@@ -80,6 +85,13 @@ const B_FOUR: u32 = 8u;
 const BUMP_BASIS_0: vec3<f32> = vec3<f32>(0.81649661, 0.0, 0.57735026);
 const BUMP_BASIS_1: vec3<f32> = vec3<f32>(-0.40824834, 0.70710677, 0.57735026);
 const BUMP_BASIS_2: vec3<f32> = vec3<f32>(-0.40824822, -0.70710683, 0.57735026);
+
+fn material_tint() -> vec4<f32> {
+    if (view.opts.x & OPT_HDR_TINT) != 0u {
+        return vec4<f32>(linear_to_srgb(material.tint.rgb), material.tint.a);
+    }
+    return material.tint;
+}
 
 fn bump_on() -> bool {
     return (material.bump_flags & B_ON) != 0u && (view.opts.x & OPT_NORMAL_MAPS) != 0u

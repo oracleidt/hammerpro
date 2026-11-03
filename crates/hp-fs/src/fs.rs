@@ -6,7 +6,7 @@ use parking_lot::{Mutex, RwLock};
 
 use crate::assets::AssetCaches;
 use crate::custom::{CustomDir, CustomLayout};
-use crate::detect::is_gmod_root;
+use crate::detect::{is_gmod_root, path_key};
 use crate::error::FsError;
 use crate::material::MaterialCache;
 use crate::mount::{
@@ -323,7 +323,15 @@ impl GameFs {
         true
     }
 
+    fn mounted_ids(&self, path: &Path, wanted: impl Fn(&SourceData) -> bool) -> Vec<u32> {
+        let key = path_key(path);
+        self.snapshot().iter().filter(|s| wanted(&s.data) && path_key(&s.path) == key).map(|s| s.id).collect()
+    }
+
     pub fn add_custom_dir(&self, dir: CustomDir) -> Result<u32, FsError> {
+        if let Some(id) = self.mounted_ids(&dir.path, |d| matches!(d, SourceData::Custom(_))).first() {
+            return Ok(*id);
+        }
         let opened = open_item(PlanItem::custom(&dir))?;
         Ok(self.insert(vec![opened], Insert::AfterCustom).first().copied().unwrap_or_default())
     }
@@ -335,13 +343,27 @@ impl GameFs {
         let mut warnings = Vec::new();
         let label = format!("Extra: {}", folder_name(path));
         let items = game_folder_items(path, SourceOrigin::Extra, &label, &mut warnings);
-        let (opened, open_warnings) = open_all(items);
+        let mut ids = Vec::new();
+        let mut fresh = Vec::new();
+        for item in items {
+            let same = self.mounted_ids(&item.path, |d| matches!(d, SourceData::Dir(_) | SourceData::Vpk(_)));
+            if same.is_empty() {
+                fresh.push(item);
+            } else {
+                ids.extend(same);
+            }
+        }
+        let (opened, open_warnings) = open_all(fresh);
         warnings.extend(open_warnings);
         self.inner.warnings.lock().extend(warnings);
-        Ok(self.insert(opened, Insert::Bottom))
+        ids.extend(self.insert(opened, Insert::Bottom));
+        Ok(ids)
     }
 
     pub fn add_vpk(&self, path: &Path) -> Result<u32, FsError> {
+        if let Some(id) = self.mounted_ids(path, |d| matches!(d, SourceData::Vpk(_))).first() {
+            return Ok(*id);
+        }
         let item = PlanItem {
             kind: PlanKind::Vpk,
             path: path.to_path_buf(),
@@ -354,6 +376,9 @@ impl GameFs {
     }
 
     pub fn add_gma(&self, path: &Path) -> Result<u32, FsError> {
+        if let Some(id) = self.mounted_ids(path, |d| matches!(d, SourceData::Gma(_))).first() {
+            return Ok(*id);
+        }
         let item = PlanItem {
             kind: PlanKind::Gma { label_prefix: "Addon" },
             path: path.to_path_buf(),

@@ -246,6 +246,7 @@ impl AssetManager {
             show_sprites: false,
             show_models: true,
             msaa: true,
+            game_pixel_grid: false,
         };
         p.renderer.render_view(THUMB_VIEW, &params, &Overlay::default());
         let snapshot = p.renderer.snapshot_view(THUMB_VIEW);

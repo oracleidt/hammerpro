@@ -66,7 +66,8 @@ impl Camera {
                 let far = finite_or(far, 65536.0).max(near * 1.01).min(1e8);
                 let tan_half = (fov * 0.5).tan();
                 let aspect = width / height;
-                let view_proj = perspective_view_proj(eye, right, up, fwd, tan_half, aspect, near, far);
+                let grid = if params.game_pixel_grid { [1.0 / width, -1.0 / height] } else { [0.0, 0.0] };
+                let view_proj = perspective_view_proj(eye, right, up, fwd, tan_half, aspect, near, far, grid);
                 let planes = frustum_planes(&view_proj);
                 Camera {
                     view_proj,
@@ -156,6 +157,37 @@ impl Camera {
         let depth = (self.eye + self.forward * ORTHO_EYE_DISTANCE).dot(self.forward);
         self.right * r + self.up * u + self.forward * depth
     }
+
+    pub fn clipped_by(&self, plane: Vec4) -> Camera {
+        if self.is_ortho || !plane.is_finite() || plane.dot(self.eye.extend(1.0)) >= 0.0 {
+            return *self;
+        }
+        let aspect = self.width / self.height;
+        let (tx, ty) = (self.tan_half_fov * aspect, self.tan_half_fov);
+        let mut scale = f32::INFINITY;
+        for depth in [self.near, self.far] {
+            for sx in [-1.0f32, 1.0] {
+                for sy in [-1.0f32, 1.0] {
+                    let corner = self.eye + (self.forward + self.right * (sx * tx) + self.up * (sy * ty)) * depth;
+                    let height = plane.dot(corner.extend(1.0));
+                    if height > 1e-3 {
+                        scale = scale.min(depth / height);
+                    }
+                }
+            }
+        }
+        if !scale.is_finite() {
+            return *self;
+        }
+        let m = self.view_proj;
+        let z = m.row(3) - plane * scale;
+        let view_proj = Mat4::from_cols(m.row(0), m.row(1), z, m.row(3)).transpose();
+        let mut out = *self;
+        out.view_proj = view_proj;
+        out.planes = frustum_planes(&view_proj);
+        out.plane_count = 6;
+        out
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -168,6 +200,7 @@ pub(crate) fn perspective_view_proj(
     aspect: f32,
     near: f32,
     far: f32,
+    grid: [f32; 2],
 ) -> Mat4 {
     let (e, r, u, f) = (eye.as_dvec3(), right.as_dvec3(), up.as_dvec3(), fwd.as_dvec3());
     let (n, fa) = (f64::from(near), f64::from(far));
@@ -175,9 +208,16 @@ pub(crate) fn perspective_view_proj(
     let sx = sy / f64::from(aspect);
     let a = n / (fa - n);
     let b = n * fa / (fa - n);
+    let (gx, gy) = (f64::from(grid[0]), f64::from(grid[1]));
     let row = |v: DVec3, w: f64| [v.x, v.y, v.z, w];
-    let rows =
-        [row(r * sx, -r.dot(e) * sx), row(u * sy, -u.dot(e) * sy), row(-f * a, a * f.dot(e) + b), row(f, -f.dot(e))];
+    let depth = row(f, -f.dot(e));
+    let mut x = row(r * sx, -r.dot(e) * sx);
+    let mut y = row(u * sy, -u.dot(e) * sy);
+    for i in 0..4 {
+        x[i] += depth[i] * gx;
+        y[i] += depth[i] * gy;
+    }
+    let rows = [x, y, row(-f * a, a * f.dot(e) + b), depth];
     mat_from_rows(rows)
 }
 
@@ -264,6 +304,7 @@ mod tests {
             show_sprites: true,
             show_models: true,
             msaa: false,
+            game_pixel_grid: false,
         }
     }
 
@@ -291,6 +332,32 @@ mod tests {
         let x = s.world_to_screen([10.0, 0.0, 0.0]).unwrap_or_default();
         let z = s.world_to_screen([0.0, 0.0, 10.0]).unwrap_or_default();
         assert!(x[0] > c[0] && z[1] < c[1]);
+    }
+
+    #[test]
+    fn the_game_pixel_grid_moves_the_view_by_half_a_pixel_like_the_engine() {
+        let kind = ViewKind::Perspective {
+            eye: [0.0, 0.0, 0.0],
+            forward: [1.0, 0.0, 0.0],
+            up: [0.0, 0.0, 1.0],
+            fov_y_deg: 90.0,
+            near: 1.0,
+            far: 1000.0,
+        };
+        let plain = Camera::new(&params(kind));
+        let grid = Camera::new(&ViewParams { game_pixel_grid: true, ..params(kind) });
+        let p = Vec3::new(100.0, 13.0, 7.0);
+        let a = plain.world_to_screen(p).expect("on screen");
+        let b = grid.world_to_screen(p).expect("on screen");
+        assert!((b[0] - a[0] - 0.5).abs() < 1e-3, "{a:?} {b:?}");
+        assert!((b[1] - a[1] - 0.5).abs() < 1e-3, "{a:?} {b:?}");
+        let ortho = Camera::new(&ViewParams {
+            game_pixel_grid: true,
+            ..params(ViewKind::Ortho { axis: OrthoAxis::Top, center: [0.0; 3], pixels_per_unit: 1.0 })
+        });
+        let o = Camera::new(&params(ViewKind::Ortho { axis: OrthoAxis::Top, center: [0.0; 3], pixels_per_unit: 1.0 }));
+        let q = Vec3::new(3.0, 4.0, 0.0);
+        assert_eq!(ortho.world_to_screen(q), o.world_to_screen(q));
     }
 
     #[test]

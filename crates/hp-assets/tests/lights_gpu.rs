@@ -135,7 +135,13 @@ fn lighting_preview_lights_follow_the_game() {
     ent(21, "prop_static", &[("origin", "-300 100 0"), ("model", "models/props/crate.mdl")]);
     ent(22, "info_player_start", &[("origin", "-300 200 0")]);
     let mut doc = Document::from_map(map);
-    let lit = SceneOptions { show_models: true, show_helpers: true, show_tool_textures: true, lighting_preview: true };
+    let lit = SceneOptions {
+        show_models: true,
+        show_helpers: true,
+        show_tool_textures: true,
+        lighting_preview: true,
+        model_lods: false,
+    };
     assert!(settle(&mut am, &mut doc, &mut gfx, &lit));
     assert_eq!(gfx.renderer.light_count(), 4);
     let flags = |gfx: &Gfx, id: u32| gfx.renderer.object_flags(id | 0x8000_0000).expect("entity object");
@@ -163,6 +169,19 @@ fn lighting_preview_lights_follow_the_game() {
     let plain = SceneOptions { lighting_preview: false, ..lit };
     assert!(settle(&mut am, &mut doc, &mut gfx, &plain));
     assert_eq!(gfx.renderer.light_count(), 0);
+    let hidden: ahash::AHashSet<u32> = [10u32, 11, 12, 13, 14].iter().map(|id| id | 0x8000_0000).collect();
+    gfx.renderer.set_play_hidden(hidden);
+    assert!(flags(&gfx, 10).contains(ObjectFlags::HIDDEN), "the player view hides the objects outside its PVS");
+    assert!(settle(&mut am, &mut doc, &mut gfx, &lit));
+    assert_eq!(gfx.renderer.light_count(), 4, "lights outside the PVS of the player view still light the map");
+    gfx.renderer.set_play_hidden(ahash::AHashSet::new());
+    doc.set_selection(&[ObjRef::Entity(10)]);
+    assert_eq!(doc.hide_selection(), 1);
+    assert!(settle(&mut am, &mut doc, &mut gfx, &lit));
+    assert_eq!(gfx.renderer.light_count(), 3, "a light hidden by the user is off");
+    doc.unhide_all();
+    assert!(settle(&mut am, &mut doc, &mut gfx, &lit));
+    assert_eq!(gfx.renderer.light_count(), 4);
 }
 
 #[test]
@@ -215,7 +234,13 @@ fn big_maps_keep_every_light_and_the_first_sun() {
     ent(5001, "info_target", &[("origin", "0 0 100"), ("targetname", "sun_target")]);
     ent(6000, "light_environment", &[("origin", "0 0 500"), ("pitch", "-30"), ("_light", "0 255 0 200")]);
     let mut doc = Document::from_map(map);
-    let lit = SceneOptions { show_models: true, show_helpers: true, show_tool_textures: true, lighting_preview: true };
+    let lit = SceneOptions {
+        show_models: true,
+        show_helpers: true,
+        show_tool_textures: true,
+        lighting_preview: true,
+        model_lods: false,
+    };
     assert!(settle(&mut am, &mut doc, &mut gfx, &lit));
     let r = am.light_preview().expect("the lit mode reports its lights");
     assert_eq!(r.lights, 3001, "3000 lights and one sun, none dropped");

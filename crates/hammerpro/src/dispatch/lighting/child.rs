@@ -5,6 +5,8 @@ use hp_bspc::rad::{RadOptions, RadQuality};
 
 use super::bsp::{self, FlatLightmaps};
 
+const PREVIEW_SUN_SAMPLES: usize = 16;
+
 pub(crate) const LIGHT_ARG: &str = "--light-preview";
 
 const MAGIC: &[u8; 4] = b"HPLP";
@@ -37,7 +39,11 @@ pub(crate) fn options(
     let mut opts = RadOptions { hdr, ldr: !hdr, bounces, quality, threads, ..RadOptions::default() };
     opts.props.shadows = prop_shadows;
     opts.ao.by_default = true;
+    opts.ao.in_draft = true;
+    opts.min_sun_samples = PREVIEW_SUN_SAMPLES;
+    opts.normal_sampling = true;
     opts.props.lighting = prop_lighting;
+    opts.probes = Some(hp_bspc::rad::ProbeOptions::default());
     opts
 }
 
@@ -213,6 +219,9 @@ mod tests {
                 assert_eq!((o.props.shadows, o.props.lighting), (shadows, lighting));
                 assert!(o.hdr && !o.ldr);
                 assert_eq!((o.bounces, o.threads, o.quality), (4, Some(2), RadQuality::Final));
+                assert!(o.ao.by_default && o.ao.in_draft, "the preview keeps the ambient occlusion of a compile");
+                assert_eq!(o.min_sun_samples, 16, "the sun penumbra of a Normal compile at every quality");
+                assert!(o.normal_sampling, "the preview samples the sky and the bounce like a Normal compile");
             }
         }
     }

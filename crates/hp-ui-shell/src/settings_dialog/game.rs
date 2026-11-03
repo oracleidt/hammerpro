@@ -29,6 +29,8 @@ pub(super) fn page(ui: &mut Ui, state: &mut AppState, jobs: &mut GameJobs) {
         }
     }
 
+    scan_section(ui, state);
+
     heading(ui, t!("shell.game.custom_dirs"));
     custom_dirs_list(ui, state, jobs);
 
@@ -231,6 +233,33 @@ pub(crate) const TR: TrTable = &[
         "Ce dossier ne ressemble pas à une installation de Garry's Mod (garrysmod/gameinfo.txt est absent).",
     ),
     ("shell.game.content", "Content", "Contenu"),
+    ("shell.scan.title", "Content scan", "Analyse du contenu"),
+    ("shell.scan.use_index", "Keep a content index on disk", "Garder un index du contenu sur le disque"),
+    (
+        "shell.scan.use_index_tip",
+        "Saves the list of the files of the game, custom and mounted folders. At the next launches only the folders whose modification date changed are scanned again, even after a restart of the computer.",
+        "Enregistre la liste des fichiers des dossiers du jeu, personnalisés et montés. Aux lancements suivants, seuls les dossiers dont la date de modification a changé sont analysés à nouveau, même après un redémarrage de l'ordinateur.",
+    ),
+    ("shell.scan.mode", "Folder scan", "Analyse des dossiers"),
+    (
+        "shell.scan.mode_tip",
+        "Auto scans one folder at a time on a hard disk (no head thrashing) and in parallel on SSD and NVMe, drive by drive. Applied at the next content load.",
+        "Auto analyse un dossier à la fois sur un disque dur (sans aller-retours de la tête) et en parallèle sur SSD et NVMe, disque par disque. Appliqué au prochain chargement du contenu.",
+    ),
+    ("shell.scan.mode_auto", "Auto (by drive type)", "Auto (selon le type de disque)"),
+    ("shell.scan.mode_parallel", "Always in parallel", "Toujours en parallèle"),
+    ("shell.scan.mode_sequential", "Always one at a time", "Toujours un à la fois"),
+    ("shell.scan.rebuild", "Rebuild index", "Reconstruire l'index"),
+    (
+        "shell.scan.rebuild_tip",
+        "Deletes the saved index and loads the game content again with a full scan of every folder.",
+        "Supprime l'index enregistré et recharge le contenu du jeu avec une analyse complète de chaque dossier.",
+    ),
+    (
+        "shell.scan.summary",
+        "Index: {0} saved folder trees, {1} folders reused and {2} scanned again, last scan {3} ms, hard disks seen: {4}",
+        "Index : {0} arborescences enregistrées, {1} dossiers réutilisés et {2} réanalysés, dernière analyse {3} ms, disques durs détectés : {4}",
+    ),
     ("shell.game.mount_addons", "Mount addons", "Monter les addons"),
     (
         "shell.game.mount_addons_tip",
@@ -371,3 +400,44 @@ pub(crate) const TR: TrTable = &[
         "Quand la map se charge en jeu, placer le joueur à l'emplacement de la caméra 3D de l'éditeur (noclip)",
     ),
 ];
+
+fn scan_section(ui: &mut Ui, state: &mut AppState) {
+    heading(ui, t!("shell.scan.title"));
+    if ui
+        .checkbox(&mut state.settings.scan.use_index, t!("shell.scan.use_index"))
+        .on_hover_text(t!("shell.scan.use_index_tip"))
+        .changed()
+    {
+        state.settings_dirty = true;
+    }
+    ui.horizontal(|ui| {
+        ui.label(t!("shell.scan.mode"));
+        let current = state.settings.scan.mode;
+        egui::ComboBox::from_id_salt("hp_shell_scan_mode").selected_text(t!(current.label_key())).show_ui(ui, |ui| {
+            for mode in hp_app::settings::ScanModeSetting::ALL {
+                if ui.selectable_label(current == mode, t!(mode.label_key())).clicked() && current != mode {
+                    state.settings.scan.mode = mode;
+                    state.settings_dirty = true;
+                }
+            }
+        });
+    })
+    .response
+    .on_hover_text(t!("shell.scan.mode_tip"));
+    ui.horizontal(|ui| {
+        if ui.button(t!("shell.scan.rebuild")).on_hover_text(t!("shell.scan.rebuild_tip")).clicked() {
+            state.request(hp_app::Action::RebuildContentIndex);
+        }
+        let stats = hp_fs::scan_stats();
+        let drives: Vec<&str> = stats.volumes.iter().filter(|(_, p)| *p == Some(true)).map(|_| "HDD").collect();
+        let line = hp_app::tf!(
+            "shell.scan.summary",
+            stats.index_entries,
+            stats.dirs_reused,
+            stats.dirs_rescanned,
+            stats.last_walk_ms,
+            drives.len()
+        );
+        ui.label(RichText::new(line).small().weak());
+    });
+}

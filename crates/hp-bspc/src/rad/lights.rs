@@ -375,12 +375,10 @@ pub(crate) fn parse(entities: &[hp_bsp::Entity], passes: &[bool], map: &MapData)
     let mut sky_found = false;
     for e in entities {
         let class = e.classname();
-        if !class.get(..5).is_some_and(|p| p.eq_ignore_ascii_case("light"))
-            || class.eq_ignore_ascii_case("light_dynamic")
-        {
+        if !class.starts_with("light") || class == "light_dynamic" {
             continue;
         }
-        if class.eq_ignore_ascii_case("light_spot") {
+        if class == "light_spot" {
             let mut l = generic(e, entities, passes, Kind::Point);
             let mut inner = key_f(e, "_inner_cone");
             if inner == 0.0 {
@@ -403,7 +401,7 @@ pub(crate) fn parse(entities: &[hp_bsp::Entity], passes: &[bool], map: &MapData)
             }
             set_falloff(&mut l, e);
             list.push(l);
-        } else if class.eq_ignore_ascii_case("light_environment") {
+        } else if class == "light_environment" {
             if let Some(a) = e.get("SunSpreadAngle") {
                 let deg = a.trim().parse::<f32>().ok().filter(|v| v.is_finite()).unwrap_or(0.0);
                 out.sun_extent = deg.to_radians().sin().max(0.0);
@@ -435,7 +433,7 @@ pub(crate) fn parse(entities: &[hp_bsp::Entity], passes: &[bool], map: &MapData)
             };
             list.push(sun);
             list.push(ambient);
-        } else if class.eq_ignore_ascii_case("light") {
+        } else if class == "light" {
             let mut l = generic(e, entities, passes, Kind::Point);
             set_falloff(&mut l, e);
             list.push(l);
@@ -586,6 +584,27 @@ mod tests {
         assert!(point.reach > 1000.0 && point.reach.is_finite());
         let wl = worldlights(&lights, 0);
         assert_eq!(wl.len(), 2 * WORLDLIGHT_SIZE);
+    }
+
+    #[test]
+    fn only_the_exact_light_classes_light_the_map() {
+        let map = MapData::default();
+        let named = |class: &str| ent(&[("classname", class), ("_light", "255 255 255 200"), ("pitch", "-90")]);
+        for class in [
+            "light_directional",
+            "light_glspot",
+            "light_foo",
+            "LIGHT",
+            "Light_Spot",
+            "LIGHT_ENVIRONMENT",
+            "light_dynamic",
+        ] {
+            let lights = parse(&[named(class)], &[false], &map);
+            assert!(lights.list.is_empty(), "{class}");
+        }
+        for (class, count) in [("light", 1), ("light_spot", 1), ("light_environment", 2)] {
+            assert_eq!(parse(&[named(class)], &[false], &map).list.len(), count, "{class}");
+        }
     }
 
     #[test]

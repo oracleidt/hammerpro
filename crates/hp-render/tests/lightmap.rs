@@ -70,6 +70,7 @@ fn floor_lm(face: u32) -> Vec<LightmapVertex> {
 
 fn params(mode: RenderMode) -> ViewParams {
     ViewParams {
+        game_pixel_grid: false,
         size: [128, 128],
         kind: ViewKind::Perspective {
             eye: [0.0, 0.0, 400.0],

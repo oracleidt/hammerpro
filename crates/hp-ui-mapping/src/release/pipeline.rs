@@ -809,6 +809,16 @@ fn protect_map(ctx: &Ctx<'_>, out_bsp: &Path, out_nav: &Path, summary: &mut Rele
         randomize_materials: s.protect_randomize,
         salt: input.protect_salt.clone(),
         lock,
+        layout: hp_bsp::LayoutOptions {
+            shuffle_lumps: s.protect_shuffle_lumps,
+            junk_gaps: s.protect_junk_gaps,
+            decoys: s.protect_decoys,
+            scramble_header: s.protect_scramble_header,
+            shuffle_game_lumps: s.protect_shuffle_game_lumps,
+            random_pak: s.protect_random_pak,
+        },
+        reorder: hp_bsp::ReorderOptions { tables: s.protect_reorder_tables, world: s.protect_reorder_world },
+        layout_seed: s.protect_layout_seed.trim().to_owned(),
         ..Default::default()
     };
     let (protected, report) = hp_bsp::protect(&full, &opts).map_err(|e| tf!("release.err_protect", e))?;
@@ -837,6 +847,18 @@ fn protect_map(ctx: &Ctx<'_>, out_bsp: &Path, out_nav: &Path, summary: &mut Rele
     );
     if report.materials_randomized > 0 {
         ctx.log(LogSeverity::Info, tf!("release.protect_randomized", report.materials_randomized));
+    }
+    if !report.layout_seed.is_empty() {
+        ctx.log(
+            LogSeverity::Info,
+            tf!(
+                "release.protect_layout",
+                report.reordered.len(),
+                report.decoy_blocks,
+                fmt_bytes((report.decoy_bytes + report.gap_bytes) as u64),
+                report.layout_seed
+            ),
+        );
     }
     if out_nav.is_file() {
         let kept = server_maps.join(format!("{}.nav", input.map));

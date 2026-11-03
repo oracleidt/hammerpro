@@ -15,6 +15,7 @@ hp-fs.workspace = true
 hp-render.workspace = true
 hp-editor.workspace = true
 hp-kv.workspace = true
+hp-sniffer = { path = "../hp-sniffer" }
 egui.workspace = true
 egui-wgpu.workspace = true
 wgpu.workspace = true

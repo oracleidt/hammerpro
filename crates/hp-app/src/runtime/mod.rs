@@ -17,6 +17,7 @@ mod placement;
 pub mod render;
 mod selection;
 mod startup;
+pub mod update;
 mod visibility;
 mod workflow;
 
@@ -32,10 +33,13 @@ pub use gpu::{GpuRelease, GpuReleased, GpuRuntime, VramBreakdown, VramPressure, 
 pub use health::{HealthRuntime, LeakResult};
 pub use helpers::HelpersRuntime;
 pub use instances::InstancesRuntime;
-pub use lab::{DEFAULT_CAMERA_DISTANCE, DEFAULT_PLAYER_MODEL, LabRuntime, LightStyleReport, PlayerState, TrainReport};
+pub use lab::{
+    DEFAULT_CAMERA_DISTANCE, DEFAULT_PLAYER_MODEL, LabRuntime, LightStyleReport, PlayerPlace, PlayerState, TrainReport,
+};
 pub use launch::{ContentUse, GameState, LaunchRuntime, MapLoadReport, content_use};
 pub use lighting::{
-    BakeKind, BakePhase, BakeProgress, BakeSummary, BudgetEntry, BudgetSummary, LightingRuntime, PreviewStats,
+    BakeKind, BakePhase, BakeProgress, BakeSummary, BudgetEntry, BudgetSummary, IndirectPhase, IndirectStatus,
+    LightingRuntime, PreviewStats,
 };
 pub use mcp::{McpClientRow, McpRuntime};
 pub use mesh::MeshRuntime;
@@ -45,6 +49,7 @@ pub use placement::{
 pub use render::RenderRuntime;
 pub use selection::SelectionRuntime;
 pub use startup::{OpeningStatus, StartupRuntime};
+pub use update::{UpdateFailure, UpdateInfo, UpdateRuntime, UpdateStatus};
 pub use visibility::VisibilityRuntime;
 pub use workflow::{MAX_DROPPED, MapTabInfo, TabRequest, WorkflowMapMemory, WorkflowRuntime};
 
@@ -69,5 +74,7 @@ pub struct Runtime {
     pub lab: LabRuntime,
     pub mcp: McpRuntime,
     pub discord: DiscordRuntime,
+    pub update: UpdateRuntime,
     pub gpu: GpuRuntime,
+    pub storage: crate::storage::StorageRuntime,
 }

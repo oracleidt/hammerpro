@@ -4,6 +4,7 @@ use crate::state::AppState;
 
 action_list! { lab_actions {
     OpenBsp => "open_bsp", File, FileImport, None, Ready;
+    OpenBspSniffer => "bsp_sniffer", File, FileImport, None, Ready;
     CompareMaps => "compare_maps", Map, MapInfo, None, Ready;
     EntityGallery => "entity_gallery", Map, MapInfo, None, Ready;
     ShowLogicalView => "show_logical_view", View, ViewType, None, Ready;
@@ -50,6 +51,7 @@ pub(super) fn check(state: &AppState, action: Action) -> Option<Check> {
     match action {
         Action::ShowLogicalView => Some(Check::Toggle(state.runtime.lab.logic_open)),
         Action::PropperOptions => Some(Check::Toggle(state.runtime.lab.propper_options_open)),
+        Action::OpenBspSniffer => Some(Check::Toggle(state.runtime.lab.sniffer.open)),
         Action::ToggleNavMesh => Some(Check::Toggle(state.settings.lab.show_nav_mesh)),
         Action::ToggleParticles => Some(Check::Toggle(state.settings.lab.show_particles)),
         Action::ToggleParticlesSelected => Some(Check::Toggle(state.settings.lab.particles_selected_only)),
@@ -70,7 +72,8 @@ pub(super) fn icon(action: Action) -> Option<&'static str> {
 }
 
 pub(super) const TR: TrTable = &[
-    ("action.open_bsp", "Open compiled map (BSP)...", "Ouvrir une map compilée (BSP)..."),
+    ("action.open_bsp", "BSP Decompiler...", "Décompilateur de BSP..."),
+    ("action.bsp_sniffer", "BSP Sniffer...", "BSP Sniffer..."),
     ("action.import_model", "Import a model (FBX, OBJ, glTF)...", "Importer un modèle (FBX, OBJ, glTF)..."),
     ("action.compare_maps", "Compare with another map...", "Comparer avec une autre map..."),
     ("action.entity_gallery", "Insert entity gallery", "Insérer la galerie d'entités"),

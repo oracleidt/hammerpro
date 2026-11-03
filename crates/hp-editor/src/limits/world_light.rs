@@ -318,7 +318,11 @@ pub fn face_light_image(
         let at = start.checked_add(k.checked_mul(per_style)?)?;
         let data = lighting.get(at..at.checked_add(per_style)?)?;
         kept.push(style);
+        let first = texels.len();
         texels.extend(data.chunks_exact(RGBE).map(|c| rgbe_to_linear([c[0], c[1], c[2], c[3]])));
+        if bumped {
+            normalize_bumped(&mut texels[first..], n);
+        }
     }
     if kept.is_empty() {
         return None;
@@ -333,6 +337,32 @@ pub fn face_light_image(
     }
     Some(LightImage { width: w, height: h, styles: kept, texels, bumped })
 }
+
+pub fn normalize_bumped(images: &mut [[f32; 3]], n: usize) {
+    if images.len() < n * 4 {
+        return;
+    }
+    let (flat, bumps) = images.split_at_mut(n);
+    let (b1, rest) = bumps.split_at_mut(n);
+    let (b2, b3) = rest.split_at_mut(n);
+    for j in 0..n {
+        for c in 0..3 {
+            let avg = (b1[j][c] + b2[j][c] + b3[j][c]) / 3.0;
+            if avg > BUMP_AVERAGE_FLOOR {
+                let scale = flat[j][c] / avg;
+                b1[j][c] *= scale;
+                b2[j][c] *= scale;
+                b3[j][c] *= scale;
+            } else {
+                b1[j][c] = flat[j][c];
+                b2[j][c] = flat[j][c];
+                b3[j][c] = flat[j][c];
+            }
+        }
+    }
+}
+
+const BUMP_AVERAGE_FLOOR: f32 = 1.0e-6;
 
 pub fn to_mode(texels: &mut [[f32; 3]], mode: LightMode) {
     match mode {
@@ -393,12 +423,18 @@ pub struct ModelLighting {
     pub styled: Vec<LocalLight>,
 }
 
+pub const STATIC_PROP_USE_LIGHTING_ORIGIN: u32 = 0x2;
+
+pub fn prop_lighting_origin(flags: u32, lighting_origin: [f32; 3]) -> Option<[f32; 3]> {
+    (flags & STATIC_PROP_USE_LIGHTING_ORIGIN != 0).then_some(lighting_origin)
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct StaticPropLight {
     pub model: String,
     pub origin: [f32; 3],
     pub angles: [f32; 3],
-    pub lighting_origin: [f32; 3],
+    pub lighting_origin: Option<[f32; 3]>,
     pub colors: Option<Arc<Vec<[u8; 4]>>>,
 }
 
@@ -768,7 +804,8 @@ impl PropLighting {
         let mut found: Vec<(f32, LocalLight)> = Vec::new();
         let mut styled: Vec<(f32, LocalLight)> = Vec::new();
         for wl in &self.lights {
-            if let (Some(row), Ok(c)) = (&row, usize::try_from(wl.cluster))
+            let sky_light = matches!(wl.kind, EmitKind::Sky | EmitKind::SkyAmbient);
+            if let (false, Some(row), Ok(c)) = (sky_light, &row, usize::try_from(wl.cluster))
                 && !row.get(c).copied().unwrap_or(true)
             {
                 continue;
@@ -1027,7 +1064,7 @@ mod tests {
         assert!(face_lightmap(&lighting, -1, [0, 255, 255, 255], 2, 1, false, &scales).is_none());
     }
 
-    fn tree() -> PropLighting {
+    fn tree_lumps() -> (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>) {
         let mut planes = Vec::new();
         for v in [1.0f32, 0.0, 0.0, 0.0] {
             planes.extend_from_slice(&v.to_le_bytes());
@@ -1041,6 +1078,11 @@ mod tests {
             leafs[8 + k * 2..10 + k * 2].copy_from_slice(&v.to_le_bytes());
         }
         leafs[32..36].copy_from_slice(&1i32.to_le_bytes());
+        (planes, nodes, leafs, vec![0u8; 48])
+    }
+
+    fn tree() -> PropLighting {
+        let (planes, nodes, leafs, models) = tree_lumps();
         let index = [2u16.to_le_bytes(), 0u16.to_le_bytes(), 0u16.to_le_bytes(), 0u16.to_le_bytes()].concat();
         let mut ambient = Vec::new();
         for (value, pos) in [(128u8, [0u8, 0, 0]), (0, [255, 255, 255])] {
@@ -1050,7 +1092,6 @@ mod tests {
             ambient.extend_from_slice(&pos);
             ambient.push(0);
         }
-        let models = vec![0u8; 48];
         let l = PropLumps {
             planes: &planes,
             nodes: &nodes,
@@ -1268,17 +1309,34 @@ mod tests {
         assert!(img.bumped);
         assert_eq!(img.styles, [0, 10]);
         let reds: Vec<f32> = img.texels.iter().map(|t| t[0]).collect();
-        let want: Vec<f32> = [128u8, 10, 20, 30, 64, 1, 2, 3].iter().map(|&v| f32::from(v) / 255.0).collect();
+        let want: Vec<f32> = [128u8, 64, 128, 192, 64, 32, 64, 96].iter().map(|&v| f32::from(v) / 255.0).collect();
         for (a, b) in reds.iter().zip(&want) {
             assert!((a - b).abs() < 1e-3, "{reds:?}");
         }
         let one = face_light_image(&lighting, 4, [0, 255, 255, 255], 1, 1, true, LightMode::Ldr).unwrap();
         assert!(one.bumped && one.styles.is_empty());
         assert_eq!(one.texels.len(), 4);
-        assert_eq!(one.texels[1], ldr_lightmap(rgbe_to_linear(texel(10))));
+        assert_eq!(one.texels[1], ldr_lightmap(rgbe_to_linear(texel(64))));
         let full = face_light_image(&lighting, 4, [0, 255, 255, 255], 1, 1, true, LightMode::Fullbright).unwrap();
         assert!(!full.bumped && full.texels == [[1.0; 3]]);
         assert!(face_light_image(&lighting[..12], 4, [0, 255, 255, 255], 1, 1, true, LightMode::Hdr).is_none());
+    }
+
+    #[test]
+    fn bumped_lightmaps_average_to_the_flat_one_per_channel() {
+        let mut images = vec![[0.25, 0.5, 1.0], [1.0, 0.0, 0.5], [0.0, 0.0, 0.5], [0.0, 0.3, 0.5]];
+        normalize_bumped(&mut images, 1);
+        assert_eq!(images[0], [0.25, 0.5, 1.0]);
+        let avg = |c: usize| (images[1][c] + images[2][c] + images[3][c]) / 3.0;
+        assert!((avg(0) - 0.25).abs() < 1e-6 && (avg(1) - 0.5).abs() < 1e-6 && (avg(2) - 1.0).abs() < 1e-6);
+        assert!((images[1][0] - 0.75).abs() < 1e-6 && images[2][0] == 0.0, "the ratios between the three stay");
+        assert!((images[3][1] - 1.5).abs() < 1e-6 && images[1][1] == 0.0);
+        let mut dark = vec![[0.5; 3], [0.0; 3], [0.0; 3], [0.0; 3]];
+        normalize_bumped(&mut dark, 1);
+        assert_eq!(dark[1], [0.5; 3], "no direction at all keeps the flat light");
+        let mut short = vec![[1.0; 3]; 3];
+        normalize_bumped(&mut short, 1);
+        assert_eq!(short, vec![[1.0; 3]; 3]);
     }
 
     #[test]
@@ -1303,6 +1361,46 @@ mod tests {
         p.lights.drain(1..5);
         let m = p.model_lighting([50.0, 50.0, 10.0]);
         assert_eq!(m.lights.iter().map(|l| l.style).collect::<Vec<_>>(), [0, 32]);
+    }
+
+    #[test]
+    fn the_lighting_origin_is_only_read_when_the_prop_asks_for_it() {
+        assert_eq!(prop_lighting_origin(0x88, [1.0, 2.0, 3.0]), None, "ignore normals plus no self shadowing");
+        assert_eq!(prop_lighting_origin(0x8a, [1.0, 2.0, 3.0]), Some([1.0, 2.0, 3.0]));
+        assert_eq!(prop_lighting_origin(0, [0.0; 3]), None, "an unset field is not the world origin");
+    }
+
+    #[test]
+    fn the_sun_reaches_a_prop_the_vis_row_does_not_cover() {
+        let mut p = tree();
+        p.set_sky_faces(vec![([-10.0, -200.0, -200.0], [10.0, 200.0, 200.0])]);
+        let mut vis = Vec::new();
+        vis.extend_from_slice(&2i32.to_le_bytes());
+        for o in [20i32, 20, 21, 21] {
+            vis.extend_from_slice(&o.to_le_bytes());
+        }
+        vis.push(0b0000_0001);
+        vis.push(0b0000_0011);
+        let (planes, nodes, leafs, models) = tree_lumps();
+        let bsp = super::super::portals::BspVis::from_lumps(&planes, &nodes, &leafs, 1, &models, &vis)
+            .expect("synthetic vis");
+        assert_eq!(bsp.cluster_at(glam::DVec3::new(50.0, 50.0, 10.0)), Some(0));
+        p.set_visibility(Some(std::sync::Arc::new(bsp)));
+        let far = |kind: EmitKind| WorldLightSource {
+            origin: [50.0, 50.0, 80.0],
+            intensity: [10.0; 3],
+            normal: [1.0, 0.0, 0.0],
+            cluster: 1,
+            kind,
+            style: 33,
+            quadratic: 1.0,
+            ..WorldLightSource::default()
+        };
+        p.lights = vec![far(EmitKind::Sky), far(EmitKind::Point)];
+        let m = p.model_lighting([50.0, 50.0, 10.0]);
+        assert_eq!(m.styled.len(), 1, "the sky light is not culled by the cluster of its lump entry");
+        assert_eq!(m.styled[0].kind, EmitKind::Sky);
+        assert_eq!(m.styled[0].style, 33);
     }
 
     #[test]

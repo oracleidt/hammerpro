@@ -36,7 +36,8 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Exporter en OBJ... | `export_obj` |  |  |  |
 | Importer les props depuis le jeu | `import_from_game` |  |  |  |
 | Ouvrir une archive... | `open_archive` |  |  |  |
-| Ouvrir une map compilée (BSP)... | `open_bsp` |  |  |  |
+| Décompilateur de BSP... | `open_bsp` |  |  |  |
+| BSP Sniffer... | `bsp_sniffer` |  |  |  |
 | Importer un modèle (FBX, OBJ, glTF)... | `import_model` |  |  |  |
 | Compiler et lancer... | `run_map` | `Ctrl+F9` | `F9` | `F9` |
 | Compiler maintenant | `compile_now` | `F9` | `Ctrl+F9` | `Ctrl+F9` |
@@ -298,6 +299,7 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Ajouter du bruit aux displacements... | `disp_noise` |  |  |  |
 | Verrouillage UV (outil sommets) | `toggle_uv_lock` |  |  |  |
 | Recharger le contenu depuis le disque | `reload_content` |  |  |  |
+| Reconstruire l'index du contenu | `rebuild_content_index` |  |  |  |
 | Serveur MCP | `toggle_mcp_server` |  |  |  |
 | Installer MCP dans Claude, Codex et Gemini | `mcp_install` |  |  |  |
 | MCP... | `mcp_panel` |  |  |  |
@@ -321,6 +323,7 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Raccourcis clavier | `keyboard_shortcuts` | `F1` |  |  |
 | Documentation | `open_docs` |  |  |  |
 | Signaler un problème | `report_issue` |  |  |  |
+| Rechercher des mises à jour... | `check_for_updates` |  |  |  |
 | Aide de l'entité | `entity_help` |  |  |  |
 | À propos de Hammer Pro | `about` |  |  |  |
 

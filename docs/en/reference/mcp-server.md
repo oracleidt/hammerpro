@@ -2,7 +2,7 @@
 
 # MCP server
 
-Hammer Pro has an MCP server built in. MCP (Model Context Protocol) is how AI apps such as Claude Code, Claude Desktop, Codex and Gemini CLI use tools: with it, an AI assistant can read the map open in Hammer Pro, edit it, check it, compile it and take screenshots of the views to check its own work. This page covers setup and security. The complete list of the 262 tools with their arguments is the [MCP tool reference](../../MCP.md).
+Hammer Pro has an MCP server built in. MCP (Model Context Protocol) is how AI apps such as Claude Code, Claude Desktop, Codex and Gemini CLI use tools: with it, an AI assistant can read the map open in Hammer Pro, edit it, check it, compile it and take screenshots of the views to check its own work. This page covers setup and security. The complete list of the tools with their arguments is the [MCP tool reference](../../MCP.md).
 
 ## How it works
 
@@ -149,7 +149,8 @@ Every change the AI makes is **one undo step** named "MCP:" followed by what was
 | Entities and IO | Entity classes, keyvalues, spawnflags, outputs, I/O graph, find and replace text, entity report, targetnames. |
 | Compile and play | Every compile option, compile log and statistics, history, leaks, pointfiles, portals, baked lighting preview, launching the game. |
 | Content and release | Dependency report, Build and save as content, checklist, Workshop publishing, map assets collection, unused files. |
-| Documents | Tabs of open maps, new map, recent maps, import and export, BSP decompile, nav mesh, map properties. |
+| Documents | Tabs of open maps, new map, recent maps, import and export, BSP Decompiler, nav mesh, map properties. |
+| BSP Sniffer | Start, cancel and follow a [BSP Sniffer](../features/bsp-sniffer.md) run (status, log, report) and read or change every setting. Needs the setting `authorized`, which only the user should turn on. |
 | History and clipboard | Undo history, several undo or redo steps, copy, cut, paste, paste special. |
 | Overlays and decals | List and create overlays and decals. |
 | Paths | Path entity chains. |

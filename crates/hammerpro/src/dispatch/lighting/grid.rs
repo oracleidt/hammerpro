@@ -419,6 +419,7 @@ mod tests {
 
     fn row(r: &mut Renderer) -> Vec<[f32; 3]> {
         let params = hp_render::ViewParams {
+            game_pixel_grid: false,
             size: [128, 128],
             kind: hp_render::ViewKind::Perspective {
                 eye: [0.0, 0.0, 150.0],

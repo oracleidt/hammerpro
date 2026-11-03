@@ -93,10 +93,11 @@ impl Renderer {
         mode: crate::RenderMode,
         ortho: bool,
     ) -> Option<&wgpu::BindGroup> {
-        let hdr = !ortho
-            && opts.compiled_lighting
+        let compiled = opts.compiled_lighting
             && crate::compiled_light::textured_mode(mode)
             && self.compiled.mode() == Some(CompiledLightMode::Hdr);
+        let baked = self.lightmap_display() == crate::lightmap::LightmapDisplay::Baked && !self.lightmap_ldr();
+        let hdr = !ortho && (compiled || baked);
         self.hdr_sky.as_ref().filter(|_| hdr).map(|s| &s.bind)
     }
 
@@ -152,7 +153,7 @@ pub(crate) fn sky_camera(cam: &Camera, sky: &Sky3d) -> Option<Camera> {
 
 #[allow(clippy::too_many_arguments)]
 fn perspective(eye: Vec3, right: Vec3, up: Vec3, fwd: Vec3, tan_half: f32, aspect: f32, near: f32, far: f32) -> Mat4 {
-    crate::camera::perspective_view_proj(eye, right, up, fwd, tan_half, aspect, near, far)
+    crate::camera::perspective_view_proj(eye, right, up, fwd, tan_half, aspect, near, far, [0.0, 0.0])
 }
 
 #[cfg(test)]
@@ -162,6 +163,7 @@ mod tests {
 
     fn cam() -> Camera {
         Camera::new(&ViewParams {
+            game_pixel_grid: false,
             size: [200, 100],
             kind: ViewKind::Perspective {
                 eye: [1600.0, -320.0, 64.0],

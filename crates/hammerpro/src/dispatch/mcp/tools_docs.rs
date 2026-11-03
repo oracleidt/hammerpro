@@ -41,9 +41,10 @@ domain! { "documents";
         "Write the visible brush and displacement geometry with texture coordinates to an OBJ (and MTL) file in the \
         map folder, for 3D tools.",
         { "file": string("OBJ file, relative to the map folder."), "overwrite": boolean("Replace existing files (default false).") }, ["file"];
-    decompile_bsp: Editor, "Decompile a BSP",
-        "Decompile a compiled map (.bsp in the map folder) into a new map tab (brushes, entities, displacements, \
-        overlays), on a worker thread; list_tabs shows it when done.",
+    decompile_bsp: Editor, "BSP Decompiler",
+        "BSP Decompiler: decompile a compiled map (.bsp in the map folder) into a new map tab (brushes, entities, \
+        displacements, overlays), on a worker thread; list_tabs shows it when done. To recover the map of a Garry's \
+        Mod server you join, use the BSP Sniffer tools (sniffer_start).",
         { "file": string("BSP file, relative to the map folder.") }, ["file"];
     nav_mesh: Editor, "Navigation mesh",
         "The navigation mesh shown with the map (file, areas, isolated areas), or load a .nav file of the map folder.",

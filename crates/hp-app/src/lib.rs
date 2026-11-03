@@ -14,6 +14,7 @@ pub mod settings;
 pub mod sidecar;
 pub mod source_filter;
 pub mod state;
+pub mod storage;
 pub mod strings;
 pub mod testing;
 pub mod theme;
@@ -32,6 +33,8 @@ pub fn register_translations() {
     i18n::register(games::TR);
     i18n::register(chrome::TR);
     i18n::register(runtime::fog::TR);
+    i18n::register(runtime::update::TR);
+    i18n::register(storage::TR);
     for table in actions::TABLES {
         i18n::register(table);
     }

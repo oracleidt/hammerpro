@@ -1,7 +1,8 @@
 use crate::gamewire::{MODEL_CYAN, WORLD_GREEN, WORLD_PINK};
 use crate::gpu::{ColorVertex, EdgeVertex, GpuVertex, InstanceGpu, PointInstance, SpriteGpu};
 
-pub(crate) const COLOR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
+pub(crate) const COLOR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
+pub(crate) const LDR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 pub(crate) const DISPLAY_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 pub(crate) const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
@@ -18,6 +19,7 @@ pub(crate) const LINES_WGSL: &str = shader_source!("lines.wgsl");
 pub(crate) const SPRITE_WGSL: &str = shader_source!("material.wgsl", "parallax.wgsl", "sprite.wgsl");
 pub(crate) const GRID_WGSL: &str = shader_source!("grid.wgsl");
 pub(crate) const SKY_WGSL: &str = shader_source!("sky.wgsl");
+pub(crate) const SUN_GLOW_WGSL: &str = shader_source!("material.wgsl", "parallax.wgsl", "sun_glow.wgsl");
 pub(crate) const DETAIL_WGSL: &str = shader_source!("material.wgsl", "parallax.wgsl", "detail.wgsl");
 
 pub(crate) struct Shared {
@@ -149,6 +151,19 @@ impl Shared {
                 depth_entry(15),
                 depth_entry(16),
                 depth_entry(17),
+                storage_entry(18, wgpu::ShaderStages::FRAGMENT),
+                storage_entry(19, wgpu::ShaderStages::FRAGMENT),
+                depth_entry(21),
+                wgpu::BindGroupLayoutEntry {
+                    binding: 20,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
             ],
         });
         let material_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -310,10 +325,11 @@ pub(crate) const MODEL_ATTRS: [wgpu::VertexAttribute; 5] = [
     wgpu::VertexAttribute { format: wgpu::VertexFormat::Uint32, offset: 28, shader_location: 13 },
 ];
 
-pub(crate) const MODEL_MESH_ATTRS: [wgpu::VertexAttribute; 3] = [
+pub(crate) const MODEL_MESH_ATTRS: [wgpu::VertexAttribute; 4] = [
     wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x3, offset: 0, shader_location: 0 },
     wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x2, offset: 12, shader_location: 1 },
     wgpu::VertexAttribute { format: wgpu::VertexFormat::Uint32, offset: 20, shader_location: 2 },
+    wgpu::VertexAttribute { format: wgpu::VertexFormat::Uint32x2, offset: 24, shader_location: 13 },
 ];
 
 pub(crate) const INSTANCE_ATTRS: [wgpu::VertexAttribute; 10] = [

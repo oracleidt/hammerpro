@@ -461,6 +461,7 @@ impl HammerProApp {
     }
 
     pub(crate) fn cancel_closing(&mut self) {
+        self.update.disarm();
         self.close_queue.clear();
         self.close_keep = None;
         self.exit_answered.clear();

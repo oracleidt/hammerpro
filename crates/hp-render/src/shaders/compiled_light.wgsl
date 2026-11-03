@@ -144,7 +144,7 @@ fn cl_shade_env(albedo: vec3<f32>, light: vec3<f32>, env: vec3<f32>) -> vec3<f32
 @fragment
 fn fs_compiled(in: ClOut) -> @location(0) vec4<f32> {
     let uv = in.uv * material.inv_tex_size + material.scroll * view.sky.z;
-    var albedo = textureSample(tex, samp, uv);
+    var albedo = textureSample(tex, samp, base_uv_of(uv));
     var cover = vec4<f32>(1.0, 0.0, 0.0, 0.0);
     if material.has_tex2 != 0u {
         let b = textureSample(tex2, samp, uv);
@@ -181,7 +181,7 @@ fn fs_compiled(in: ClOut) -> @location(0) vec4<f32> {
     }
     let glow = self_illum_mask(albedo.a, in.uv * material.inv_tex_size);
     albedo.a = material_texture_alpha(albedo.a);
-    albedo = albedo * material.tint * unpack_srgba(in.state.y);
+    albedo = albedo * material_tint() * unpack_srgba(in.state.y);
     if alpha_tested_out(ALPHA_TEST, albedo.a) {
         discard;
     }
@@ -191,6 +191,12 @@ fn fs_compiled(in: ClOut) -> @location(0) vec4<f32> {
         light = cl_light_bumped(in, bump, detail.rgb);
     } else {
         light = cl_light(in);
+    }
+    let projected = projector_light(in.world, en);
+    if cl.mode == 1u {
+        light += pow(projected, vec3<f32>(1.0 / 2.2));
+    } else {
+        light += projected;
     }
     let env = env_raw * mix(vec3<f32>(1.0), clamp(light, vec3<f32>(0.0), vec3<f32>(1.0)), material.env_sat.w);
     var rgb = cl_shade_env(albedo.rgb, select(light, vec3<f32>(1.0), unlit), env);

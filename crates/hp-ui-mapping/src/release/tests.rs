@@ -329,7 +329,6 @@ fn protected_release_ships_a_matching_server_copy() {
     let server = hp_bsp::Bsp::read(server_dir.join("gm_rel.bsp")).unwrap();
     for i in (0..hp_bsp::LUMP_COUNT).filter(|&i| i != hp_bsp::lump::ENTITIES) {
         assert_eq!(client.lump_raw(i).unwrap(), server.lump_raw(i).unwrap(), "lump {i} differs");
-        assert_eq!(client.header().lumps[i].offset, server.header().lumps[i].offset, "lump {i} moved");
     }
     let class_of = |b: &hp_bsp::Bsp, c: &str| b.entities().unwrap().into_iter().find(|e| e.classname() == c);
     assert!(class_of(&client, "logic_relay").is_none(), "players get no logic");

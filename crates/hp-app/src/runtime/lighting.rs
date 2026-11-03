@@ -77,6 +77,42 @@ impl BudgetSummary {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum IndirectPhase {
+    #[default]
+    Off,
+    NoLights,
+    Waiting,
+    Baking,
+    Ready,
+    Stale,
+    Failed,
+}
+
+impl IndirectPhase {
+    pub fn name(self) -> &'static str {
+        match self {
+            IndirectPhase::Off => "off",
+            IndirectPhase::NoLights => "no_lights",
+            IndirectPhase::Waiting => "waiting",
+            IndirectPhase::Baking => "baking",
+            IndirectPhase::Ready => "ready",
+            IndirectPhase::Stale => "stale",
+            IndirectPhase::Failed => "failed",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct IndirectStatus {
+    pub phase: IndirectPhase,
+    pub cells: u32,
+    pub valid_cells: u32,
+    pub spacing: f32,
+    pub gpu_bytes: u64,
+    pub seconds: f32,
+}
+
 #[derive(Debug, Default)]
 pub struct LightingRuntime {
     pub progress: Option<BakeProgress>,
@@ -87,4 +123,5 @@ pub struct LightingRuntime {
     pub budget: Option<BudgetSummary>,
     pub budget_wanted: bool,
     pub no_lights: bool,
+    pub indirect: IndirectStatus,
 }

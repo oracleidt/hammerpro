@@ -57,6 +57,7 @@ fn inside_box(r: &mut Renderer, material: MaterialId) {
 
 fn params(msaa: bool) -> ViewParams {
     ViewParams {
+        game_pixel_grid: false,
         size: [SIZE, SIZE],
         kind: ViewKind::Perspective {
             eye: [0.0, 0.0, 0.0],

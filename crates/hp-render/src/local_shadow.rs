@@ -7,8 +7,14 @@ use crate::lights::{KIND_POINT, KIND_SPOT};
 use crate::pipelines::{DEPTH_FORMAT, ShadowPipelines};
 
 pub(crate) const LOCAL_SHADOW_SIZE: u32 = 512;
-pub const MAX_SHADOWED_LIGHTS: u32 = 16;
+pub(crate) const LOCAL_SHADOW_SIZE_MANY: u32 = 256;
+pub(crate) const SHADOW_SIZE_LIGHTS: usize = 8;
+pub const MAX_SHADOWED_LIGHTS: u32 = 64;
 pub(crate) const LAYERS_PER_FRAME: usize = 6;
+
+pub(crate) fn shadow_size(count: usize) -> u32 {
+    if count <= SHADOW_SIZE_LIGHTS { LOCAL_SHADOW_SIZE } else { LOCAL_SHADOW_SIZE_MANY }
+}
 const MAX_SPOT_DEG: f32 = 75.0;
 const OWNER_TIMEOUT: u32 = 8;
 const NEAR: f32 = 2.0;
@@ -59,6 +65,7 @@ pub(crate) struct LocalShadows {
     lights_gen: u64,
     written: Vec<bool>,
     dirty: bool,
+    size: u32,
 }
 
 impl LocalShadows {
@@ -89,6 +96,7 @@ impl LocalShadows {
             lights_gen: 0,
             written: Vec::new(),
             dirty: false,
+            size: LOCAL_SHADOW_SIZE,
         }
     }
 
@@ -97,7 +105,7 @@ impl LocalShadows {
     }
 
     pub fn bytes(&self) -> u64 {
-        self.texture.as_ref().map_or(0, |t| t.1.len() as u64 * u64::from(LOCAL_SHADOW_SIZE).pow(2) * 4)
+        self.texture.as_ref().map_or(0, |t| t.1.len() as u64 * u64::from(self.size).pow(2) * 4)
     }
 
     pub fn ready_count(&self) -> usize {
@@ -111,14 +119,14 @@ impl LocalShadows {
     }
 }
 
-fn light_maps(l: &LightGpu) -> Option<(Vec<Mat4>, f32)> {
+fn light_maps(l: &LightGpu, size: u32) -> Option<(Vec<Mat4>, f32)> {
     let kind = l.color[3];
     if kind != KIND_POINT && kind != KIND_SPOT {
         return None;
     }
     let pos = Vec3::new(l.pos_range[0], l.pos_range[1], l.pos_range[2]);
     let far = l.pos_range[3].max(NEAR * 4.0);
-    let size = LOCAL_SHADOW_SIZE as f32;
+    let size = size as f32;
     let outer = l.cone[1].clamp(-1.0, 1.0).acos().to_degrees();
     if kind == KIND_SPOT && outer <= MAX_SPOT_DEG {
         let dir = Vec3::new(l.dir[0], l.dir[1], l.dir[2]).normalize_or(Vec3::NEG_Z);
@@ -140,7 +148,7 @@ fn light_maps(l: &LightGpu) -> Option<(Vec<Mat4>, f32)> {
     Some((mats, 2.0 * tan / size))
 }
 
-fn map_proj(eye: Vec3, fwd: Vec3, up_hint: Vec3, tan_half: f32, far: f32) -> Mat4 {
+pub(crate) fn map_proj(eye: Vec3, fwd: Vec3, up_hint: Vec3, tan_half: f32, far: f32) -> Mat4 {
     let (e, f) = (eye.as_dvec3(), fwd.as_dvec3());
     let r = f.cross(up_hint.as_dvec3()).normalize();
     let u = r.cross(f);
@@ -239,6 +247,7 @@ impl Renderer {
         }
         if owner {
             if ls.slots.len() != count {
+                ls.size = shadow_size(count);
                 ls.slots = vec![None; count];
                 ls.texture = None;
                 ls.layers.clear();
@@ -259,7 +268,7 @@ impl Renderer {
                 }
                 let Some(free) = ls.slots.iter_mut().find(|s| s.is_none()) else { break };
                 let l = &self.lights_cpu[i];
-                let Some((mats, texel)) = light_maps(l) else { continue };
+                let Some((mats, texel)) = light_maps(l, ls.size) else { continue };
                 let drawn = vec![None; mats.len()];
                 *free = Some(Slot { key: LightKey::of(l), index: i, mats, texel, drawn });
             }
@@ -269,11 +278,7 @@ impl Renderer {
             let layers = (count * 6) as u32;
             let texture = self.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("hp-render local shadow maps"),
-                size: wgpu::Extent3d {
-                    width: LOCAL_SHADOW_SIZE,
-                    height: LOCAL_SHADOW_SIZE,
-                    depth_or_array_layers: layers,
-                },
+                size: wgpu::Extent3d { width: ls.size, height: ls.size, depth_or_array_layers: layers },
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
@@ -336,6 +341,11 @@ impl Renderer {
         let mut out = self.lights_cpu.clone();
         let mut records: Vec<LightGpu> = Vec::new();
         for (k, slot) in ls.slots.iter().enumerate() {
+            if let Some(s) = slot.as_ref().filter(|_| !ready[k])
+                && let Some(light) = out.get_mut(s.index)
+            {
+                light.color = [0.0, 0.0, 0.0, light.color[3]];
+            }
             let Some(s) = slot.as_ref().filter(|_| ready[k]) else { continue };
             let Some(light) = out.get_mut(s.index) else { continue };
             let first = self.lights_cpu.len() + records.len();
@@ -455,6 +465,7 @@ mod tests {
 
     fn cam() -> Camera {
         Camera::new(&ViewParams {
+            game_pixel_grid: false,
             size: [640, 480],
             kind: ViewKind::Perspective {
                 eye: [0.0; 3],
@@ -507,7 +518,7 @@ mod tests {
     #[test]
     fn maps_cover_the_light() {
         let point = light([0.0, 0.0, 100.0], 800.0, KIND_POINT, 1.0);
-        let (mats, texel) = light_maps(&point).expect("point maps");
+        let (mats, texel) = light_maps(&point, LOCAL_SHADOW_SIZE).expect("point maps");
         assert_eq!(mats.len(), 6);
         assert!(texel > 0.0 && texel < 0.01);
         for (f, d) in [Vec3::X, Vec3::NEG_X, Vec3::Y, Vec3::NEG_Y, Vec3::Z, Vec3::NEG_Z].iter().enumerate() {
@@ -516,13 +527,18 @@ mod tests {
             assert!(n.x.abs() < 1e-3 && n.y.abs() < 1e-3 && (0.0..1.0).contains(&n.z), "face {f}: {n:?}");
         }
         let spot = LightGpu { dir: [0.0, 0.0, -1.0, 0.0], ..light([0.0, 0.0, 100.0], 800.0, KIND_SPOT, 1.0) };
-        let (mats, _) = light_maps(&spot).expect("spot map");
+        let (mats, _) = light_maps(&spot, LOCAL_SHADOW_SIZE).expect("spot map");
         assert_eq!(mats.len(), 1);
         let p = mats[0] * Vec4::new(0.0, 0.0, 0.0, 1.0);
         assert!((p.x / p.w).abs() < 1e-3 && (p.y / p.w).abs() < 1e-3);
         let wide = LightGpu { cone: [0.5, 0.0, 0.0, 0.0], ..spot };
-        assert_eq!(light_maps(&wide).map(|m| m.0.len()), Some(6));
+        assert_eq!(light_maps(&wide, LOCAL_SHADOW_SIZE).map(|m| m.0.len()), Some(6));
         let sun = light([0.0; 3], 1.0, crate::lights::KIND_DIRECTIONAL, 1.0);
-        assert!(light_maps(&sun).is_none());
+        assert!(light_maps(&sun, LOCAL_SHADOW_SIZE).is_none());
+        let (_, fine) = light_maps(&point, LOCAL_SHADOW_SIZE).expect("point maps");
+        let (_, coarse) = light_maps(&point, LOCAL_SHADOW_SIZE_MANY).expect("point maps");
+        assert!(coarse > fine * 1.9, "{coarse} {fine}");
+        assert_eq!(shadow_size(SHADOW_SIZE_LIGHTS), LOCAL_SHADOW_SIZE);
+        assert_eq!(shadow_size(SHADOW_SIZE_LIGHTS + 1), LOCAL_SHADOW_SIZE_MANY);
     }
 }

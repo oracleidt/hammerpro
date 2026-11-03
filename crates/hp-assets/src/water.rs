@@ -92,6 +92,9 @@ pub(crate) fn analyze_water(mat: &Material) -> Option<WaterAnalysis> {
         bottom: None,
         envmap,
         above_water: mat.get_bool("$abovewater").unwrap_or(true),
+        reflect_entities: mat.flag("$reflectentities"),
+        reflect_skybox_only: mat.flag("$reflectskyboxonly"),
+        reflect_3d_sky: mat.get_bool("$reflect3dskybox").unwrap_or(true),
     };
     Some(WaterAnalysis {
         desc,

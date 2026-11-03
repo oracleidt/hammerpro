@@ -61,7 +61,7 @@ pub(crate) fn displacement(l: &Lumps, index: usize, map_name: &str) -> Option<Di
         let len = v.vector.length();
         if len.is_finite() && len > 1e-6 && v.dist.is_finite() {
             info.normals[k] = v.vector / len;
-            info.distances[k] = v.dist;
+            info.distances[k] = v.dist * len;
         } else {
             info.normals[k] = n;
             info.distances[k] = 0.0;

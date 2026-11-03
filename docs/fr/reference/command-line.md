@@ -41,6 +41,7 @@ Un argument inconnu commençant par `--` affiche `unknown argument: ...` sur std
 | `--bspc [options] <map>` | Le compilateur de maps de Hammer Pro (géométrie, portails, test de fuite et visibilité), avec les arguments de VBSP (`-game`, `-leaktest`...). Il écrit `<map>.bsp` à côté de la map, `<map>.lin` quand la map fuit, `<map>.prt` pour une map étanche, et un `<map>.log`. |
 | `--rad [options] <map>` | L'éclairage de Hammer Pro, avec les arguments de VRAD (`-ldr`, `-hdr`, `-both`, `-final`, `-fast`, `-bounce N`...) plus les options propres à Hammer Pro (occlusion ambiante `-ao`, `-aoradius`...). Il éclaire `<map>.bsp` sur place. |
 | `--light-preview ...` | Interne : l'éclairage de l'aperçu précalculé, lancé par l'éditeur lui-même. Vous n'avez jamais besoin de le lancer. |
+| `--apply-update <zip> <programme> <pid>` | Interne : l'assistant de mise à jour que l'éditeur lance depuis une copie de lui-même quand vous cliquez sur **Mettre à jour**. Il n'a pas de fenêtre : il attend la fin du processus `<pid>`, extrait `hammerpro.exe` de `<zip>`, remplace `<programme>` (en gardant `<programme>.old`, avec retour en arrière en cas d'échec) et le lance. Voir [Mises à jour](../features/updates.md). |
 
 Toutes les options de `--bspc` et `--rad`, avec leur effet et leur valeur par défaut, sont décrites dans [Ligne de commande du compilateur](../compiler/command-line.md).
 
@@ -50,7 +51,7 @@ Toutes les options de `--bspc` et `--rad`, avec leur effet et leur valeur par d�
 
 - Elle part des **paramètres par défaut** et n'écrit jamais `settings.toml`. L'assistant de premier lancement n'apparaît pas.
 - La sauvegarde automatique est coupée, la map compilée n'est pas copiée dans le dossier `maps` du jeu et le jeu n'est jamais lancé (compilation avec lancement, session de jeu, publication : refusés avec le message "skipped: automated runs never write into the game folder or start the game").
-- Pas de fichier log, pas de rapport de plantage, pas de proposition de récupération et pas de présence Discord. Le cache des miniatures et les fichiers annexes de chaque map restent en mémoire.
+- Pas de fichier log, pas de rapport de plantage, pas de proposition de récupération et pas de présence Discord et pas de recherche de mise à jour (sauf si `HP_UPDATE_API_URL` est définie). Le cache des miniatures et les fichiers annexes de chaque map restent en mémoire.
 - Les cadres de fenêtre natifs ne sont pas utilisés (le cadre de Hammer Pro est dessiné).
 
 Codes de sortie : `0` fin normale, `2` le fichier script est illisible ou une ligne ne peut pas être lue (l'erreur indique la ligne), `3` une commande `assert_selected` ou `assert_tabs` a échoué.
@@ -61,6 +62,8 @@ Codes de sortie : `0` fin normale, `2` le fichier script est illisible ou une li
 |---|---|
 | `WGPU_BACKEND` | Force l'API graphique, par exemple `dx12`, `vulkan` ou `gl`. Pratique quand celle par défaut pose problème avec votre carte graphique. |
 | `HAMMERPRO_INSTANCE` | Pour `--mcp` : l'identifiant de processus de la fenêtre Hammer Pro que le pont doit utiliser. |
+| `HP_UPDATE_API_URL` | Remplace l'adresse GitHub des versions pour la recherche de mise à jour (tests). Voir [Mises à jour](../features/updates.md). |
+| `HP_UPDATE_CURRENT_VERSION` | Fait comme si une autre version était installée (tests de la mise à jour). |
 | `HAMMERPRO_MCP_DIR` | Déplace les fiches d'instance MCP (tests et vérifications automatisées). |
 
 ## Exemples

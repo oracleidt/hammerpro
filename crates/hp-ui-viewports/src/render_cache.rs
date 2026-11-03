@@ -89,6 +89,7 @@ mod tests {
 
     fn params() -> ViewParams {
         ViewParams {
+            game_pixel_grid: false,
             size: [100, 80],
             kind: ViewKind::Perspective {
                 eye: [0.0; 3],

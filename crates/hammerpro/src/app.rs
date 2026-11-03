@@ -63,6 +63,7 @@ pub struct HammerProApp {
     log_rx: Receiver<(Severity, String)>,
     autosaver: Autosaver,
     discord: crate::discord::DiscordPresence,
+    pub(crate) update: crate::update::UpdateController,
     pub(crate) pending: Option<PendingOp>,
     pub(crate) allow_close: bool,
     pub(crate) hollow_prompt: Option<crate::prompts::HollowPrompt>,
@@ -271,6 +272,7 @@ impl HammerProApp {
             log_rx,
             autosaver: Autosaver::new(),
             discord: crate::discord::DiscordPresence::new(!automated),
+            update: crate::update::UpdateController::new(automated),
             pending: None,
             allow_close: false,
             hollow_prompt: None,
@@ -702,6 +704,7 @@ impl HammerProApp {
         self.compile_exit_dialog(ctx);
         self.recover_dialog(ctx);
         self.crash_dialog(ctx);
+        self.update.dialog(ctx, &mut self.state);
         self.shell.toasts(ctx, &mut self.state);
     }
 
@@ -831,6 +834,10 @@ impl HammerProApp {
 
         self.autosaver.tick(&mut self.state, &self.tabs);
         self.discord.tick(&mut self.state);
+        self.update.tick(&mut self.state, ctx);
+        if std::mem::take(&mut self.state.runtime.update.restart_requested) {
+            self.begin_update_restart(ctx);
+        }
 
         if self.state.settings_dirty && self.settings_saved_at.elapsed().as_secs_f32() > 2.0 {
             self.save_settings();
@@ -841,6 +848,17 @@ impl HammerProApp {
         }
 
         self.screenshot_tick(ctx);
+    }
+
+    pub(crate) fn begin_update_restart(&mut self, ctx: &egui::Context) {
+        if self.compile.is_running() {
+            self.state.notify(Severity::Warning, t!("update.busy_compile"));
+            return;
+        }
+        if self.update.arm() {
+            self.state.notify(Severity::Info, t!("update.restarting"));
+            self.guard_unsaved(ctx, PendingOp::Exit);
+        }
     }
 
     pub(crate) fn save_settings(&mut self) {
@@ -1352,6 +1370,7 @@ impl eframe::App for HammerProApp {
         }
         self.save_settings();
         files::flush_sidecar(&mut self.state);
+        self.update.spawn_on_exit();
         for (_, parked) in self.tabs.parked_mut() {
             if let Err(e) = parked.sidecar.flush() {
                 log::warn!("cannot write the sidecar of {}: {e}", files::doc_display_name(&parked.doc));

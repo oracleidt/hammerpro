@@ -65,6 +65,7 @@ Directement dans le menu **Affichage** :
 | **Surligner les brushes invalides** | Les brushes qui ne sont pas fermés et convexes sont dessinés en rouge dans toutes les vues. | Activé |
 | **Afficher le nodraw** | Affiche ou masque les faces nodraw dans la vue 3D. | Affiché |
 | **Aperçu de l'eau** | L'eau dessinée comme en jeu : réfraction, brouillard de l'eau, reflet de la scène et du ciel, vagues animées. Désactivé : sa texture d'outil. | Activé |
+| **Détail de l'eau** | Comme l'option Détail de l'eau du jeu (`render.water_detail`) : **Reflets complets** dessine l'eau coûteuse à toute distance, qui reflète le monde, les props, les entités de brushes, le ciel et la skybox 3D dessinés une seconde fois en miroir ; **Reflet du monde** garde l'eau coûteuse près de la caméra et ne reflète props et entités de brushes que pour les matériaux avec `$reflectentities` ; **Reflets simples** dessine l'eau bon marché. | Reflets complets |
 | **Aperçu des fog_volume** | Chaque `fog_volume` est entouré et rempli de son brouillard, avec une étiquette de ses liens et problèmes (voir [Volumes de brouillard](#volumes-de-brouillard)). Aussi un bouton de la barre d'outils. | Activé |
 | **Texture des fog_volume** | Le matériau des brushes `fog_volume` est dessiné dans la vue 3D, comme Hammer. Désactivé : seul le brouillard apparaît. | Activé |
 | **Aperçu des poissons** | Les poissons de chaque `func_fish_pool` (voir [Bancs de poissons](#bancs-de-poissons)). | Activé |

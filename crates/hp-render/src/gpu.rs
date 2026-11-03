@@ -109,6 +109,7 @@ pub(crate) struct MaterialUniform {
     pub fw_mod2x: [f32; 4],
     pub fw_uv12: [f32; 4],
     pub fw_uv34: [f32; 4],
+    pub base_uv: [f32; 4],
 }
 
 #[repr(C)]
@@ -153,6 +154,9 @@ pub(crate) struct ViewUniform {
     pub sky_vis_a: [f32; 4],
     pub sky_vis_b: [f32; 4],
     pub sun_soft: [f32; 4],
+    pub sky_paint: [[f32; 4]; 6],
+    pub indirect_a: [f32; 4],
+    pub indirect_b: [f32; 4],
 }
 
 pub(crate) const BLEND_PAINTED: u32 = 1 << 30;
@@ -193,6 +197,11 @@ pub(crate) fn srgb_to_linear(c: f32) -> f32 {
     if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
 }
 
+pub(crate) fn gamma_to_linear(c: f32) -> f32 {
+    let c = if c.is_finite() { c.max(0.0) } else { 0.0 };
+    if c >= 0.95 { 1.0 } else { c.powf(2.2) }
+}
+
 pub(crate) fn srgba_to_linear(c: [f32; 4]) -> [f32; 4] {
     let a = if c[3].is_finite() { c[3].clamp(0.0, 1.0) } else { 1.0 };
     [srgb_to_linear(c[0]), srgb_to_linear(c[1]), srgb_to_linear(c[2]), a]
@@ -211,9 +220,9 @@ mod tests {
         assert_eq!(size_of::<SpriteGpu>(), 24);
         assert_eq!(size_of::<InstanceGpu>(), 124);
         assert_eq!(size_of::<ObjState>(), 16);
-        assert_eq!(size_of::<MaterialUniform>(), 368);
+        assert_eq!(size_of::<MaterialUniform>(), 384);
         assert_eq!(size_of::<LightGpu>(), 96);
-        assert_eq!(size_of::<ViewUniform>(), 64 * 2 + 16 * 31);
+        assert_eq!(size_of::<ViewUniform>(), 64 * 2 + 16 * 39);
     }
 
     #[test]
@@ -239,5 +248,8 @@ mod tests {
         assert_eq!(pack_rgba([1.0, 0.0, 0.5, 1.0]), 0xff80_00ff);
         assert_eq!(pack_rgb8([1, 2, 3]), 0xff03_0201);
         assert!((srgb_to_linear(0.5) - 0.214).abs() < 1e-3);
+        assert!((gamma_to_linear(0.5) - 0.5f32.powf(2.2)).abs() < 1e-6);
+        assert_eq!(gamma_to_linear(0.96), 1.0);
+        assert_eq!(gamma_to_linear(-1.0), 0.0);
     }
 }

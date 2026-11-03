@@ -49,7 +49,13 @@ fn gfx() -> Option<Gfx> {
 }
 
 fn opts() -> SceneOptions {
-    SceneOptions { show_models: true, show_helpers: true, show_tool_textures: true, lighting_preview: false }
+    SceneOptions {
+        show_models: true,
+        show_helpers: true,
+        show_tool_textures: true,
+        lighting_preview: false,
+        model_lods: false,
+    }
 }
 
 fn settle(am: &mut AssetManager, doc: &mut Document, gfx: &mut Gfx, o: &SceneOptions, timeout: Duration) -> bool {
@@ -96,6 +102,7 @@ fn distinct_colors(px: &[u8]) -> usize {
 fn persp(eye: DVec3, target: DVec3, size: [u32; 2], mode: RenderMode) -> ViewParams {
     let forward = (target - eye).normalize_or(DVec3::X);
     ViewParams {
+        game_pixel_grid: false,
         size,
         kind: ViewKind::Perspective {
             eye: eye.as_vec3().to_array(),
@@ -117,6 +124,7 @@ fn persp(eye: DVec3, target: DVec3, size: [u32; 2], mode: RenderMode) -> ViewPar
 
 fn top(center: DVec3, ppu: f32, size: [u32; 2]) -> ViewParams {
     ViewParams {
+        game_pixel_grid: false,
         size,
         kind: ViewKind::Ortho { axis: OrthoAxis::Top, center: center.as_vec3().to_array(), pixels_per_unit: ppu },
         mode: RenderMode::Wireframe,

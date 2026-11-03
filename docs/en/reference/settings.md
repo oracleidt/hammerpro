@@ -343,6 +343,7 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `skybox_3d` | `true` | 3D skybox around `sky_camera` (`Alt+V`). |
 | `sky_see_through` | `false` | Leave `toolsskybox` faces out so the sky shows through. |
 | `water_preview` | `true` | Water drawn like in game. |
+| `water_detail` | `"ReflectAll"` | Like the Water Detail video option of the game: `ReflectAll` (r_waterforceexpensive and r_waterforcereflectentities: expensive water at every distance reflecting the world, props, brush entities, the sky and the 3D skybox drawn again mirrored about its surface), `ReflectWorld` (expensive near the camera, cheap past `$cheapwaterenddistance`, props and brush entities only with `$reflectentities`; `$reflectskyboxonly` and `$reflect3dskybox 0` are honored), `Simple` (cheap water everywhere). |
 | `fog_preview` | `true` | Preview the fog of an `env_fog_controller` (Fog Enable, colors, blend, start, end, max density, farz) in the 3D views and the player view. |
 | `fog_volume_preview` | `true` | Outline and fill `fog_volume` brushes with their fog (the controller's, or a default look with a warning label); the player view takes the controller fog inside them. |
 | `fog_volume_texture` | `true` | Draw the material of `fog_volume` brushes in the 3D view. |
@@ -352,9 +353,20 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `player_compiled_lighting` | `true` | The player view uses the lightmaps of the compiled map. |
 | `cubemaps` | `true` | `$envmap` materials reflect their cubemap. |
 | `cubemaps_auto` | `true` | Cubemaps are drawn again after map changes. |
-| `light_shadows` | `4` | Point and spot lights with shadows in the Lit mode, 0 to 16. |
+| `light_shadows` | `16` | Point and spot lights with shadows in the Lit mode, 0 to 64 (the brightest in view first). |
+| `lit_indirect` | `true` | The Lit mode gets its sky light and the light bounced by the other surfaces from a background bake of the map with the compiler. |
+| `model_lods` | `true` | Every prop is drawn at the level of detail the game picks for it, from the switch distances of its model and the size it takes on the screen. Off: the finest level of every model is always drawn. |
+| `game_pixel_grid` | `true` | The 3D views sample their pixels on the same grid as the game (Direct3D 9), half a pixel from the grid Vulkan and Direct3D 12 use, so a screenshot of the preview lines up with a screenshot of the game. |
+| `sun_glow` | `true` | The sun sprite and the glow of the `env_sun` entity are drawn in the 3D views like the game (direction, `size`, `overlaysize`, `rendercolor`, `overlaycolor`, `material`, `overlaymaterial`, `HDRColorScale`, the fade over the 40 degrees around the middle of the view and the fade behind what hides the sun). |
 | `light_preview_hdr` | `true` | The Lit mode uses the HDR light values (`_lightHDR`, `_lightscaleHDR`, `_ambientHDR`, `_AmbientScaleHDR`). |
+| `projected_textures` | `true` | The `env_projectedtexture` entities (the first 16) project their texture and light in the Lit mode, the baked preview and the player view. |
 | `sky_occlusion` | `true` | In the Lit mode the `_ambient` sky light only reaches what sees the sky. |
+| `tone_mapping` | `"Auto"` | How the lit views (Lit mode, baked preview, the player view with its compiled HDR lighting) turn light into pixels like the game: `Auto` adapts the exposure to the picture like the engine does (`mat_autoexposure_min`, `mat_autoexposure_max`, `mat_tonemap_percent_target`), `Fixed` uses `exposure`, `Off` shows the light as it is. **Tools > Options... > Rendering > HDR tone mapping**. |
+| `exposure` | `1.0` | The exposure scale of the `Fixed` mode, 0.05 to 16 (`mat_force_tonemap_scale`). |
+| `exposure_min` | `0.5` | The auto exposure never goes under this, 0.05 to 16 (`mat_autoexposure_min`). |
+| `exposure_max` | `2.0` | The auto exposure never goes over this, 0.05 to 16 (`mat_autoexposure_max`). |
+| `bloom` | `1.0` | Strength of the glow around bright surfaces, 0 to 8 (`mat_bloom_scalefactor_scalar`); 0 turns it off. |
+| `map_tonemap` | `true` | The `env_tonemap_controller` of the map sets the exposure range and the bloom scale (`SetAutoExposureMin`, `SetAutoExposureMax`, `SetBloomScale` from its `logic_auto`), like in game. |
 | `prop_shadows` | `"Auto"` | What `prop_static` entities cast shadows with in the Lit mode: `Auto` follows the compile (model triangles with `-StaticPropPolys`, collision model otherwise, none with `-nostaticpropshadows`), `Mesh` the model triangles, `Collision` the collision model. |
 | `animate_materials` | `true` | Animated materials and sprites play. |
 | `model_fade` | `false` | Props fade between their fade distances. |
@@ -454,6 +466,15 @@ The **Build and save as content** window and the Map assets tab. See [Build and 
 | `protect_lock_key` | `""` | Secret key of the server lock (only its hash goes in the map). |
 | `protect_lock_block` | `false` | Block play on an unauthorized server. |
 | `protect_randomize` | `true` | Material randomizer. |
+| `protect_shuffle_lumps` | `true` | Random physical order of the lumps. |
+| `protect_junk_gaps` | `true` | Random junk gaps between the lumps. |
+| `protect_decoys` | `true` | Unreferenced decoy blocks. |
+| `protect_scramble_header` | `true` | Random header fields the game ignores. |
+| `protect_shuffle_game_lumps` | `true` | Shuffled game lump directory. |
+| `protect_random_pak` | `true` | Pakfile at a random position. |
+| `protect_reorder_tables` | `true` | Permute planes, vertexes, edges, texinfo and texdata. |
+| `protect_reorder_world` | `true` | Permute brushes, faces and leaf lists. |
+| `protect_layout_seed` | `""` | Seed of the structure scrambler (empty: random at each compile). |
 | `show_map_assets` | `false` | Map assets tab. |
 | `collect_folder` | `""` | Last output folder of **Collect**. |
 
@@ -493,6 +514,33 @@ The **Build and save as content** window and the Map assets tab. See [Build and 
 | `model_lod.levels` | `4` | Levels below the full model, 3 to 6. |
 | `model_lod.reduction` | `0.5` | Part of triangles kept per level, 0.2 to 0.9. |
 
+## `[sniffer]`
+
+The [BSP Sniffer](../features/bsp-sniffer.md) panel (File > BSP Sniffer...). Only the keys that differ from the default are written.
+
+| Key | Default | What it does |
+| --- | --- | --- |
+| `address` | `""` | Server as `ip:port`. |
+| `authorized` | `false` | You confirm you may test the server (needed to start). |
+| `consent_seen` | `false` | The warning dialog was accepted. |
+| `output_dir` | `""` | Output folder (empty: the `sniffer` cache folder). |
+| `file_name_template` | `"{map}_sniffed"` | File name; tokens `{map}` `{ip}` `{port}` `{date}` `{time}` `{datetime}`. |
+| `gmod_dir` | `""` | Garry's Mod folder (empty: automatic). |
+| `launch_options` | windowed, 800 x 450, low settings, muted | Added to the Steam launch. |
+| `insecure` | `"auto"` | `auto`, `always` or `never` for `-insecure`. |
+| `attach_running` | `false` | Use a game that already runs. |
+| `process_timeout_secs` | `180` | Wait for the game process. |
+| `load_timeout_secs` | `900` | Wait for the map. |
+| `settle_secs` | `6` | The map must stay identical this long. |
+| `poll_secs` | `3` | Polling interval. |
+| `save_models`, `save_materials`, `save_sounds`, `save_other` | `true` | What content to save. |
+| `only_non_stock` | `true` | Skip files of the base game. |
+| `keep_bsp` | `true` | Keep the recovered BSP. |
+| `kill_game` | `true` | Close the game that was started. |
+| `auto_disconnect` | `true` | Disconnect when the game stays open. |
+| `open_when_done` | `true` | Open the VMF when done. |
+| `decompile.*` | `true` | `brushes`, `displacements`, `entities`, `brush_entities`, `static_props`, `overlays`, `cubemaps`, `areaportals`, `occluders`, `group_details`. |
+
 ## `[grid]`
 
 **Map > Grids**, the toolbar grid menu and the grid manager. See [Grids](../features/grids.md).
@@ -519,6 +567,24 @@ The **Build and save as content** window and the Map assets tab. See [Build and 
 | `discord.project_url` | `""` | Link of the button (no button when empty). |
 
 See [Discord Rich Presence](../features/discord.md).
+
+## `[scan]`
+
+| Key | Default | What it does |
+| --- | --- | --- |
+| `scan.use_index` | `true` | Keep the saved content index (`content_index.bin` in the cache folder) so that launches only scan the folders that changed. **Settings > Game > Content scan**. |
+| `scan.mode` | `"auto"` | `"auto"` (one folder at a time on a hard disk, parallel on SSD and NVMe, per volume), `"parallel"` or `"sequential"`. Applied at the next content load. |
+
+See [Content index and scan](../features/content-index.md).
+
+## `[update]`
+
+| Key | Default | What it does |
+| --- | --- | --- |
+| `update.check_on_startup` | `true` | Look for a newer release in the background when Hammer Pro starts. **Settings > Updates**. |
+| `update.skipped_version` | `""` | Tag of the release the user chose not to be asked about (**Don't show this again**), for example `"v1.0.3"`. Empty: none. |
+
+See [Updates](../features/updates.md).
 
 ## Related pages
 

@@ -2,7 +2,7 @@ use ahash::{HashMap, HashMapExt};
 use bytemuck::{Pod, Zeroable};
 
 use crate::camera::Camera;
-use crate::gpu::{GpuVertex, srgb_to_linear};
+use crate::gpu::{GpuVertex, gamma_to_linear, srgb_to_linear};
 use crate::pipelines::{self, Blend, CHUNK_ATTRS, COLOR_FORMAT, Desc, Shared};
 use crate::scene::ArenaKind;
 use crate::{
@@ -49,6 +49,8 @@ struct WaterViewUniform {
     background: [f32; 4],
     under_fog: [f32; 4],
     under_range: [f32; 4],
+    reflect_vp: [[f32; 4]; 4],
+    reflect: [f32; 4],
 }
 
 fn finite(v: f32, fallback: f32) -> f32 {
@@ -56,7 +58,7 @@ fn finite(v: f32, fallback: f32) -> f32 {
 }
 
 fn linear_rgb(c: [f32; 3]) -> [f32; 3] {
-    c.map(|v| srgb_to_linear(finite(v, 1.0).clamp(0.0, 16.0)))
+    c.map(|v| gamma_to_linear(finite(v, 1.0).clamp(0.0, 16.0)))
 }
 
 fn rgbw(c: [f32; 3], w: f32) -> [f32; 4] {
@@ -151,6 +153,20 @@ pub(crate) fn animates(w: &WaterDesc) -> bool {
             || (w.frames[2] > 1 && finite(w.frame_rate, 0.0) > 0.0))
 }
 
+const COMPILED_WATER_DEPTH: f32 = 1024.0;
+
+pub(crate) fn surface_bounds(mesh: &crate::scene::StoredMesh, material: u32) -> Option<(glam::Vec3, glam::Vec3)> {
+    let batch = mesh.batches.iter().find(|b| b.material == material)?;
+    let mut lo = glam::Vec3::splat(f32::INFINITY);
+    let mut hi = glam::Vec3::splat(f32::NEG_INFINITY);
+    for v in &batch.verts {
+        let p = glam::Vec3::from(v.pos);
+        lo = lo.min(p);
+        hi = hi.max(p);
+    }
+    lo.cmple(hi).all().then_some((lo, hi))
+}
+
 pub(crate) fn applies(params: &ViewParams, opts: &ViewOptions, is_ortho: bool) -> bool {
     !is_ortho
         && opts.water_preview
@@ -181,6 +197,7 @@ struct WaterMatGpu {
 struct WaterViewGpu {
     generation: u64,
     copy: wgpu::Texture,
+    copy_view: wgpu::TextureView,
     uniform: wgpu::Buffer,
     bind: wgpu::BindGroup,
 }
@@ -195,6 +212,7 @@ pub(crate) struct WaterState {
     mats: HashMap<u32, WaterMatGpu>,
     views: HashMap<u32, WaterViewGpu>,
     blank_sky: wgpu::BindGroup,
+    blank: wgpu::TextureView,
 }
 
 fn uniform_entry(binding: u32, visibility: wgpu::ShaderStages) -> wgpu::BindGroupLayoutEntry {
@@ -246,6 +264,7 @@ impl WaterState {
                         },
                         count: None,
                     },
+                    texture_entry(3),
                 ],
             })
         });
@@ -291,6 +310,7 @@ impl WaterState {
             mats: HashMap::new(),
             views: HashMap::new(),
             blank_sky,
+            blank: white.clone(),
         }
     }
 
@@ -348,6 +368,27 @@ impl WaterState {
     }
 }
 
+fn water_view_bind(
+    device: &wgpu::Device,
+    water: &WaterState,
+    samples: u32,
+    uniform: &wgpu::Buffer,
+    copy: &wgpu::TextureView,
+    depth: &wgpu::TextureView,
+    reflection: &wgpu::TextureView,
+) -> wgpu::BindGroup {
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("hp-render water view"),
+        layout: &water.view_bgl[usize::from(samples > 1)],
+        entries: &[
+            wgpu::BindGroupEntry { binding: 0, resource: uniform.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(copy) },
+            wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(depth) },
+            wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(reflection) },
+        ],
+    })
+}
+
 pub(crate) fn water_source(multisampled: bool) -> String {
     if multisampled {
         WATER_WGSL.replace("var scene_depth: texture_depth_2d;", "var scene_depth: texture_depth_multisampled_2d;")
@@ -364,7 +405,7 @@ impl Renderer {
         params: &ViewParams,
         opts: &ViewOptions,
     ) -> Option<WaterFrame> {
-        if !applies(params, opts, cam.is_ortho) {
+        if self.reflecting.is_some() || !applies(params, opts, cam.is_ortho) {
             return None;
         }
         let mut draws = Vec::new();
@@ -388,12 +429,19 @@ impl Renderer {
                         let e = cam.eye;
                         let compiled =
                             self.scene.flags(*id).is_some_and(|f| f.contains(crate::ObjectFlags::COMPILED_LIGHT));
-                        let over = !compiled
-                            || (e.x >= ch.aabb_min.x
-                                && e.x <= ch.aabb_max.x
-                                && e.y >= ch.aabb_min.y
-                                && e.y <= ch.aabb_max.y);
-                        if over && e.cmpge(mesh.aabb_min).all() && e.cmple(mesh.aabb_max).all() && e.z < ch.aabb_max.z {
+                        let inside = if compiled {
+                            surface_bounds(mesh, mi as u32).is_some_and(|(lo, hi)| {
+                                e.x >= lo.x
+                                    && e.x <= hi.x
+                                    && e.y >= lo.y
+                                    && e.y <= hi.y
+                                    && e.z < hi.z
+                                    && e.z > hi.z - COMPILED_WATER_DEPTH
+                            })
+                        } else {
+                            e.cmpge(mesh.aabb_min).all() && e.cmple(mesh.aabb_max).all() && e.z < ch.aabb_max.z
+                        };
+                        if inside {
                             under = Some((w, mi as u32));
                             break;
                         }
@@ -466,16 +514,35 @@ impl Renderer {
                 mapped_at_creation: false,
             });
             let copy_view = copy.create_view(&wgpu::TextureViewDescriptor::default());
-            let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("hp-render water view"),
-                layout: &water.view_bgl[usize::from(view.samples > 1)],
-                entries: &[
-                    wgpu::BindGroupEntry { binding: 0, resource: uniform.as_entire_binding() },
-                    wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&copy_view) },
-                    wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&view.depth_view) },
-                ],
-            });
-            water.views.insert(view_id, WaterViewGpu { generation: gen_now, copy, uniform, bind });
+            let bind = water_view_bind(
+                &self.device,
+                water,
+                view.samples,
+                &uniform,
+                &copy_view,
+                &view.depth_view,
+                &water.blank,
+            );
+            water.views.insert(view_id, WaterViewGpu { generation: gen_now, copy, copy_view, uniform, bind });
+        }
+        let reflect = self.water_reflect.clone();
+        let fresh_bind = match (water.views.get(&view_id), self.views.get(&view_id)) {
+            (Some(v), Some(view)) => {
+                let target = reflect.as_ref().map_or(&water.blank, |(_, t)| t);
+                Some(water_view_bind(
+                    &self.device,
+                    water,
+                    view.samples,
+                    &v.uniform,
+                    &v.copy_view,
+                    &view.depth_view,
+                    target,
+                ))
+            }
+            _ => None,
+        };
+        if let (Some(bind), Some(v)) = (fresh_bind, water.views.get_mut(&view_id)) {
+            v.bind = bind;
         }
         let (n, f) = (f64::from(cam.near.max(1e-3)), f64::from(cam.far.max(cam.near + 1.0)));
         let a = (n / (f - n)) as f32;
@@ -493,6 +560,8 @@ impl Renderer {
             background: [bg[0], bg[1], bg[2], 1.0],
             under_fog,
             under_range,
+            reflect_vp: reflect.as_ref().map_or(glam::Mat4::IDENTITY, |(m, _)| *m).to_cols_array_2d(),
+            reflect: [if reflect.is_some() { 1.0 } else { 0.0 }, 0.0, 0.0, 0.0],
         };
         if let Some(v) = water.views.get(&view_id) {
             self.queue.write_buffer(&v.uniform, 0, bytemuck::bytes_of(&u));
@@ -620,7 +689,11 @@ impl DrawCtx<'_> {
             for d in &frame.draws {
                 if !depth_only {
                     let Some(m) = state.mats.get(&d.material) else { continue };
-                    let far = m.far.as_ref().filter(|(_, end)| box_distance(eye, d.aabb_min, d.aabb_max) > *end);
+                    let far = m.far.as_ref().filter(|(_, end)| match self.opts.water_detail {
+                        crate::types::WaterDetail::ReflectAll => false,
+                        crate::types::WaterDetail::Simple => true,
+                        crate::types::WaterDetail::ReflectWorld => box_distance(eye, d.aabb_min, d.aabb_max) > *end,
+                    });
                     if mat != (d.material, far.is_some()) {
                         pass.set_bind_group(1, far.map_or(&m.bind, |(b, _)| b), &[]);
                         n.material();
@@ -705,7 +778,7 @@ mod tests {
             assert!(src.contains("struct View"));
         }
         assert_eq!(size_of::<WaterMatUniform>(), 192);
-        assert_eq!(size_of::<WaterViewUniform>(), 64);
+        assert_eq!(size_of::<WaterViewUniform>(), 144);
     }
 
     #[test]
@@ -748,6 +821,10 @@ mod tests {
         assert!((u.fog[3] - 1.0 / 1024.0).abs() < 1e-9);
         assert_eq!(u.ranges[1], 1024.0);
         assert!(u.fog[1] > u.fog[0], "linear fog color keeps its hue");
+        for (i, c) in [7.0f32, 58.0, 66.0].into_iter().enumerate() {
+            let want = (c / 255.0).powf(2.2);
+            assert!((u.fog[i] - want).abs() < 1e-6, "the engine converts $fogcolor with pow 2.2: {} {want}", u.fog[i]);
+        }
         assert!(animates(&w));
         assert!(!animates(&WaterDesc { normal_map: Some(TexId::WHITE), ..Default::default() }));
         let bad = WaterDesc {

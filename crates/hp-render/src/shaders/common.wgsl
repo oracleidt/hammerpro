@@ -27,6 +27,9 @@ struct View {
     sky_vis_a: vec4<f32>,
     sky_vis_b: vec4<f32>,
     sun_soft: vec4<f32>,
+    sky_paint: array<vec4<f32>, 6>,
+    indirect_a: vec4<f32>,
+    indirect_b: vec4<f32>,
 };
 
 struct ObjState {
@@ -52,18 +55,18 @@ fn spot_cone(l: Light, s: f32) -> f32 {
     if s <= l.cone.y {
         return 0.0;
     }
-    if s >= l.cone.x {
-        return 1.0;
+    var m = 1.0;
+    if s < l.cone.x {
+        m = clamp((s - l.cone.y) / max(l.cone.x - l.cone.y, 1e-6), 0.0, 1.0);
+        if l.extra.x != 0.0 && l.extra.x != 1.0 {
+            m = pow(m, l.extra.x);
+        }
     }
-    var m = clamp((s - l.cone.y) / max(l.cone.x - l.cone.y, 1e-6), 0.0, 1.0);
-    if l.extra.x != 0.0 && l.extra.x != 1.0 {
-        m = pow(m, l.extra.x);
-    }
-    return m;
+    return m * s;
 }
 
-fn light_falloff(l: Light, dist: f32) -> f32 {
-    if l.dir.w > 0.0 && dist > l.dir.w {
+fn light_falloff(l: Light, dist: f32, model: bool) -> f32 {
+    if model && l.dir.w > 0.0 && dist > l.dir.w {
         return 0.0;
     }
     let d = min(max(dist, 1.0), max(l.atten.w, 1.0));
@@ -73,7 +76,11 @@ fn light_falloff(l: Light, dist: f32) -> f32 {
         f = 1.0 / denom;
     }
     if l.cone.w > l.cone.z {
-        f *= clamp((l.cone.w - dist) / (l.cone.w - l.cone.z), 0.0, 1.0);
+        if dist > l.cone.w {
+            return 0.0;
+        }
+        let t = 1.0 - clamp((max(dist, 1.0) - l.cone.z) / (l.cone.w - l.cone.z), 0.0, 1.0);
+        f *= t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
     }
     return f;
 }
@@ -91,6 +98,60 @@ fn light_falloff(l: Light, dist: f32) -> f32 {
 @group(0) @binding(10) var<storage, read> model_colors: array<u32>;
 @group(0) @binding(11) var<uniform> light_styles: array<vec4<f32>, 32>;
 
+struct Projector {
+    pos_near: vec4<f32>,
+    fwd_far: vec4<f32>,
+    right_tan: vec4<f32>,
+    up_layer: vec4<f32>,
+    color_const: vec4<f32>,
+    lin_quad: vec4<f32>,
+    shadow_vp: mat4x4<f32>,
+};
+
+@group(0) @binding(19) var<storage, read> projectors: array<Projector, 16>;
+@group(0) @binding(20) var proj_tex: texture_2d_array<f32>;
+@group(0) @binding(21) var proj_shadow: texture_depth_2d_array;
+
+fn projector_light(world: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
+    var sum = vec3<f32>(0.0);
+    for (var i = 0u; i < 16u; i++) {
+        let p = projectors[i];
+        if p.lin_quad.z < 0.5 {
+            continue;
+        }
+        let d = world - p.pos_near.xyz;
+        let z = dot(d, p.fwd_far.xyz);
+        if z <= p.pos_near.w || z >= p.fwd_far.w {
+            continue;
+        }
+        let inv = 1.0 / (z * p.right_tan.w);
+        let sx = dot(d, p.right_tan.xyz) * inv;
+        let sy = dot(d, p.up_layer.xyz) * inv;
+        if abs(sx) >= 1.0 || abs(sy) >= 1.0 {
+            continue;
+        }
+        var tex = vec3<f32>(1.0);
+        if p.up_layer.w >= 0.0 {
+            tex = textureSampleLevel(proj_tex, samp_clamp, vec2<f32>(sx * 0.5 + 0.5, 0.5 - sy * 0.5), i32(p.up_layer.w), 0.0).rgb;
+        }
+        let dist = max(length(d), 1.0);
+        let ndl = max(dot(n, -d / dist), 0.0);
+        var vis = 1.0;
+        if p.lin_quad.w >= 0.0 {
+            let c = p.shadow_vp * vec4<f32>(world + n * 1.5, 1.0);
+            let q = c.xyz / max(c.w, 1e-6);
+            let suv = vec2<f32>(q.x * 0.5 + 0.5, 0.5 - q.y * 0.5);
+            if suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0 {
+                vis = textureSampleCompareLevel(proj_shadow, shadow_samp, suv, i32(p.lin_quad.w), q.z - 0.0004);
+            }
+        }
+        let att = clamp((p.fwd_far.w - dist) / (0.4 * p.fwd_far.w), 0.0, 1.0)
+            * clamp(p.color_const.w + (p.lin_quad.x + p.lin_quad.y / dist) / dist, 0.0, 1.0);
+        sum += p.color_const.rgb * tex * (ndl * att * vis);
+    }
+    return sum;
+}
+
 @group(0) @binding(12) var cube_maps: texture_cube_array<f32>;
 @group(0) @binding(13) var<storage, read> cube_info: array<vec4<f32>>;
 
@@ -98,6 +159,7 @@ fn light_falloff(l: Light, dist: f32) -> f32 {
 @group(0) @binding(15) var sky_map: texture_depth_2d_array;
 @group(0) @binding(16) var sun_cut_map: texture_depth_2d_array;
 @group(0) @binding(17) var sky_cut_map: texture_depth_2d_array;
+@group(0) @binding(18) var<storage, read> indirect_buf: array<vec4<u32>>;
 
 fn light_style(s: u32) -> f32 {
     let i = min(s, 127u);
@@ -145,8 +207,13 @@ const OPT_MODEL_LIGHT: u32 = 262144u;
 const OPT_SUN_PASS: u32 = 524288u;
 const OPT_SKY_CUT: u32 = 1048576u;
 const OPT_SKY_FACES: u32 = 2097152u;
+const OPT_REFLECT_WORLD: u32 = 4194304u;
+const OPT_REFLECT_SKY: u32 = 8388608u;
 const OPT_CLASSIC_COLORS: u32 = 16777216u;
 const OPT_LIGHT_BACKGROUND: u32 = 33554432u;
+const OPT_SKY_PAINT: u32 = 67108864u;
+const OPT_HDR_TINT: u32 = 134217728u;
+const OPT_MODEL_LODS: u32 = 268435456u;
 
 const EDGE_DETAIL_BIT: u32 = 0x80000000u;
 const EDGE_SOURCE_BIT: u32 = 0x40000000u;
@@ -203,8 +270,11 @@ fn hidden_in_view(flags: u32) -> bool {
     let sun_pass = (view.opts.x & OPT_SUN_PASS) != 0u;
     let sky_faces = (view.opts.x & OPT_SKY_FACES) != 0u;
     let hidden = select(F_HIDDEN, 0u, probe) | select(0u, F_NO_PROBE, probing) | select(0u, F_NO_SHADOW | F_ROPE, shadow_pass)
-        | select(0u, F_SKY_3D, sun_pass) | select(0u, F_BRUSH_ENTITY, sky_faces);
+        | select(0u, F_SKY_3D, sun_pass) | select(0u, F_BRUSH_ENTITY, sky_faces || (view.opts.x & OPT_REFLECT_WORLD) != 0u);
     if (flags & (hidden | mask)) != 0u {
+        return true;
+    }
+    if (view.opts.x & OPT_REFLECT_SKY) != 0u && (flags & F_SKY_3D) == 0u {
         return true;
     }
     if (view.opts.x & OPT_GAME_WIRE) != 0u && (flags & F_DISPLACEMENT) != 0u {
@@ -217,13 +287,14 @@ fn fog_amount(world: vec3<f32>) -> f32 {
     if (view.opts.x & OPT_FOG) == 0u || is_ortho() {
         return 0.0;
     }
-    let d = distance(world, view.eye.xyz);
-    if view.proj.z > 0.0 && d > view.proj.z {
+    let depth = dot(world - view.eye.xyz, view.forward.xyz);
+    if view.proj.z > 0.0 && depth > view.proj.z {
         return 1.0;
     }
     let start = view.fog_b.w;
     let end = max(view.fog_c.w, start + 1.0);
-    return clamp((d - start) / (end - start), 0.0, 1.0) * view.fog_a.w;
+    let ramp = clamp((depth - start) / (end - start), 0.0, view.fog_a.w);
+    return ramp * ramp;
 }
 
 fn fog_color(world: vec3<f32>) -> vec3<f32> {

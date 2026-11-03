@@ -19,6 +19,8 @@ hp-nav = { path = "../hp-nav" }
 hp-decompile = { path = "../hp-decompile" }
 hp-pcf = { path = "../hp-pcf" }
 hp-fs.workspace = true
+hp-sniffer = { path = "../hp-sniffer" }
+rfd.workspace = true
 egui.workspace = true
 glam.workspace = true
 crossbeam-channel.workspace = true

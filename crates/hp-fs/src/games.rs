@@ -1018,6 +1018,7 @@ pub(crate) fn plan_game(
     for item in crate::apps::app_items(opts, &mut warnings) {
         push(item, &mut items);
     }
+    let items = crate::mount::dedupe_items(items);
     Ok((items, warnings))
 }
 

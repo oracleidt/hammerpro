@@ -28,12 +28,14 @@ Automated runs (`--script`, `--screenshot`, `--bench-open`) write none of the pe
 | `pack\` | Cache of the files packed into compiled maps (converted images, extracted files). |
 | `compile_content\` | Generated game folder that makes your custom materials (custom texture folders, plain images) visible to the compiler. |
 | `builds\` | Stage cache of the compiler: an identical geometry or lighting step is restored instead of run again. |
+| `content_index.bin` | The saved index of the game, custom and mounted folders, so launches only scan what changed (see [Content index and scan](../features/content-index.md)). |
 | `compile_history\<map key>.jsonl` | Timing history of the compiles of each map (History tab of the compile window). |
 | `progressive\`, `spec\` | Builds of the progressive compile (play now) and of the background precompile. |
 | `untitled\` | Compile folder of maps that were never saved. |
 | `release\<map>\` | Working files of **Build and save as content**. |
 | `propsrc\` | Source files of the models made by Propper. |
-| `decompiled\` | Content copied out of compiled maps opened with **Open compiled map (BSP)...**. |
+| `decompiled\` | Content copied out of compiled maps opened with **BSP Decompiler...**. |
+| `sniffer\` | Default output folder of the [BSP Sniffer](../features/bsp-sniffer.md) (VMF, BSP, content and report of each run; setting `sniffer.output_dir`). |
 
 Everything in this folder except `autosave\` and `logs\` is a cache: you can delete it while Hammer Pro is closed, it is rebuilt when needed (the sidecar files only hold conveniences, see below).
 
@@ -86,6 +88,14 @@ When you run `hammerpro --bspc` yourself, the `.bsp`, `.log`, `.lin` and `.prt` 
 | `garrysmod\addons\hammerpro_bridge\` | The HammerPro bridge addon, a small Lua file installed only on request (never packed into a map). It places the player at the camera once the map loads, fires inputs and sends back the props you placed in game for **Import props from the game**. |
 | `garrysmod\data\hammerpro\` | Files the editor and the game exchange through the bridge: `cmd.json` (written by the editor), `ack.json` and `props.json` (written by the game). |
 | `garrysmod\console.log` | Written by the game when the `-condebug` fast start option is on; Hammer Pro reads it for the map load report. |
+
+## Files of the update
+
+| Path | What it is |
+|---|---|
+| `hammerpro.exe.old` | Next to the program: the version replaced by the last update, kept as a backup (see [Updates](../features/updates.md)). |
+| `%TEMP%\HammerPro-update-<process>-<tag>\` | The downloaded release archive. Removed at a later start. |
+| `%TEMP%\HammerPro-updater-<process>\` | The copy of the program that installs the update, and its `update.log`. Removed at a later start. |
 
 ## Related pages
 

@@ -37,6 +37,7 @@ pub(crate) struct EnvState {
     pub hdr_sky: HdrSkyState,
     pub compiled_sky: Vec<u32>,
     pub fog_volumes_on: Option<bool>,
+    pub scan: Option<crate::env_scan::EnvScan>,
 }
 
 #[derive(Default)]
@@ -264,26 +265,78 @@ impl AssetManager {
             changed_solids.extend(old_s.symmetric_difference(&new_s).copied());
             changed_entities.extend(old_e.symmetric_difference(&new_e).copied());
         }
+        if map_changed || self.scene.env.scan.is_none() {
+            self.scene.env.scan = Some(crate::env_scan::scan(doc));
+        }
+        let scan = self.scene.env.scan.clone().unwrap_or_default();
         let skyname = doc.scene().world().get("skyname").map(str::to_owned);
-        let sky = match (display.sky, skyname) {
+        let painted = skyname.as_deref().is_some_and(crate::env_scan::is_painted);
+        let star_key = scan
+            .sky_paint
+            .as_ref()
+            .filter(|s| display.sky && painted && s.paint.draw_stars)
+            .map(|s| crate::util::material_key(&s.star_texture))
+            .filter(|k| !k.is_empty());
+        let star_texture = star_key.and_then(|key| {
+            if self.mats.textures.request(&key) {
+                self.queue_texture(&key, crate::texture::TexTarget::Main);
+            }
+            match self.mats.textures.look(&key) {
+                crate::material::TexLook::Ready(id, _) => Some(id),
+                _ => None,
+            }
+        });
+        let sky_paint = (display.sky && painted).then(|| {
+            let paint = scan.sky_paint.as_ref().map_or(hp_render::SkyPaint::BLACK, |s| s.paint);
+            hp_render::SkyPaint { star_texture, ..paint }
+        });
+        let sky = match (display.sky && !painted, skyname) {
             (true, Some(name)) => self.sky_faces(renderer, &name),
             _ => None,
         };
         let sky_3d =
             self.scene.env.room.as_ref().map(|r| Sky3d { origin: r.origin.as_vec3().to_array(), scale: r.scale });
         let fog = display.fog.and_then(|id| fog_of(doc, id));
-        let hdr =
-            sky.is_some() && renderer.compiled_lighting().is_some_and(|s| s.mode == hp_render::CompiledLightMode::Hdr);
-        let hdr_key = self.scene.env.sky.as_ref().map(|s| s.0.clone()).filter(|_| hdr);
-        self.sync_hdr_sky(renderer, hdr_key);
-        renderer.set_environment(Environment { sky, sky_3d, fog });
+        self.sync_hdr_sky(renderer, None);
+        renderer.set_environment(Environment { sky, sky_paint, sky_3d, fog });
+        renderer.set_tone_env(scan.tone);
+        self.sync_sun_glow(renderer, scan.sun_glow.as_ref(), display);
         let room = self.scene.env.room.as_ref().map(|r| r.bounds);
+        self.sync_sky_props(renderer);
         let objects = self.compiled_sky_objects(room);
         if objects != self.scene.env.compiled_sky {
             renderer.set_compiled_sky(&objects);
             self.scene.env.compiled_sky = objects;
         }
         (changed_solids, changed_entities)
+    }
+}
+
+impl AssetManager {
+    fn sync_sun_glow(
+        &mut self,
+        renderer: &mut Renderer,
+        spec: Option<&crate::env_scan::SunGlowSpec>,
+        display: &RenderDisplay,
+    ) {
+        let glow = spec.filter(|s| s.on && display.sun_glow).map(|s| {
+            let core = hp_render::SunGlowSprite {
+                material: self
+                    .asset_material(&crate::util::material_key(&s.material), crate::material::MatKind::Sprite),
+                size: s.size,
+                color: s.color,
+                modulate: false,
+            };
+            let overlay = hp_render::SunGlowSprite {
+                material: self
+                    .asset_material(&crate::util::material_key(&s.overlay_material), crate::material::MatKind::Sprite),
+                size: s.overlay_size,
+                color: s.overlay_color,
+                modulate: true,
+            };
+            hp_render::SunGlow { direction: s.direction, core, overlay, hdr_scale: s.hdr_scale }
+        });
+        renderer.set_sun_glow(glow);
     }
 }
 

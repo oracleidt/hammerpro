@@ -41,6 +41,7 @@ An unknown argument starting with `--` prints `unknown argument: ...` on stderr 
 | `--bspc [options] <map>` | The Hammer Pro map compiler (geometry, portals, leak test and visibility), with the arguments of VBSP (`-game`, `-leaktest`...). It writes `<map>.bsp` next to the map, `<map>.lin` when the map leaks, `<map>.prt` for a sealed map, and a `<map>.log`. |
 | `--rad [options] <map>` | The Hammer Pro lighting, with the arguments of VRAD (`-ldr`, `-hdr`, `-both`, `-final`, `-fast`, `-bounce N`...) plus Hammer Pro's own options (ambient occlusion `-ao`, `-aoradius`...). It lights `<map>.bsp` in place. |
 | `--light-preview ...` | Internal: the lighting of the baked lighting preview, started by the editor itself. You never need to run it. |
+| `--apply-update <zip> <program> <pid>` | Internal: the update helper that the editor starts from a copy of itself when you click **Update**. It has no window: it waits for the process `<pid>` to end, extracts `hammerpro.exe` from `<zip>`, replaces `<program>` (keeping `<program>.old`, rolling back on failure) and starts it. See [Updates](../features/updates.md). |
 
 Every flag of `--bspc` and `--rad`, with its effect and default, is documented in [Compiler command line](../compiler/command-line.md).
 
@@ -50,7 +51,7 @@ Every flag of `--bspc` and `--rad`, with its effect and default, is documented i
 
 - It starts from the **default settings** and never writes `settings.toml`. The first run wizard is not shown.
 - Autosave is off, the compiled map is not copied to the game's `maps` folder and the game is never started (compile, launch, game session, publishing: refused with a "skipped: automated runs never write into the game folder or start the game" message).
-- No log file, no crash report, no crash recovery prompt and no Discord presence. The thumbnail cache and the per-map sidecar files stay in memory.
+- No log file, no crash report, no crash recovery prompt, no Discord presence and no update check (unless `HP_UPDATE_API_URL` is set). The thumbnail cache and the per-map sidecar files stay in memory.
 - Native window frames are not used (Hammer Pro's own frame is drawn).
 
 Exit codes: `0` normal end, `2` the script file cannot be read or a line cannot be parsed (the error names the line), `3` an `assert_selected` or `assert_tabs` command failed.
@@ -62,6 +63,8 @@ Exit codes: `0` normal end, `2` the script file cannot be read or a line cannot 
 | `WGPU_BACKEND` | Forces the graphics API, for example `dx12`, `vulkan` or `gl`. Useful when the default one fails on your GPU. |
 | `HAMMERPRO_INSTANCE` | For `--mcp`: the process id of the Hammer Pro window the bridge must use. |
 | `HAMMERPRO_MCP_DIR` | Moves the MCP instance records (tests and automated checks). |
+| `HP_UPDATE_API_URL` | Replaces the GitHub release address of the update check (tests). See [Updates](../features/updates.md). |
+| `HP_UPDATE_CURRENT_VERSION` | Pretends another version is installed (tests of the update). |
 
 ## Examples
 

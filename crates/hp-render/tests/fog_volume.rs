@@ -91,6 +91,7 @@ fn floor(r: &mut Renderer) {
 fn persp(eye: [f32; 3], target: [f32; 3], msaa: bool) -> ViewParams {
     let f = [target[0] - eye[0], target[1] - eye[1], target[2] - eye[2]];
     ViewParams {
+        game_pixel_grid: false,
         size: [320, 240],
         kind: ViewKind::Perspective { eye, forward: f, up: [0.0, 0.0, 1.0], fov_y_deg: 70.0, near: 1.0, far: 30000.0 },
         mode: RenderMode::Textured,

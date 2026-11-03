@@ -25,12 +25,49 @@ fn face_uv(i: u32, s: f32, t: f32) -> vec2<f32> {
     return clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0));
 }
 
+fn sky_paint_color(d: vec3<f32>) -> vec3<f32> {
+    let a = view.sky_paint[0];
+    let b = view.sky_paint[1];
+    let s = view.sky_paint[2];
+    let sc = view.sky_paint[3];
+    let dk = view.sky_paint[4];
+    let z = clamp(d.z, 0.0, 1.0);
+    var c = mix(b.xyz, a.xyz, pow(z, a.w));
+    if s.w > 0.0 {
+        c += sc.xyz * pow(clamp(dot(d, s.xyz), 0.0, 1.0), s.w);
+    }
+    let st = view.sky_paint[5];
+    let sz = max(d.z, 1e-3);
+    let suv = d.xy / sz * st.x + vec2<f32>(st.z * view.sky.z, 0.0);
+    let gx = dpdx(suv);
+    let gy = dpdy(suv);
+    if st.w > 0.0 && d.z > 0.0 {
+        let t = textureSampleGrad(sky_rt, samp, suv, gx, gy).rgb;
+        let raw = select(1.055 * pow(t, vec3<f32>(1.0 / 2.4)) - 0.055, t * 12.92, t <= vec3<f32>(0.0031308));
+        c += raw * (pow(sz, st.y) * st.w);
+    }
+    if dk.w > 0.0 {
+        let hxy = length(d.xy);
+        var dn = 0.0;
+        if hxy > 1e-4 {
+            dn = dot(d.xy, s.xy) / hxy;
+        }
+        let h = max(pow(1.0 - z, 4.5) * (0.582 + 0.381 * dn), 1e-6);
+        let w = dk.w * pow(h, sc.w);
+        c += (dk.xyz * 2.0 - c) * w;
+    }
+    return c * b.w;
+}
+
 @fragment
 fn fs_sky(in: SkyOut) -> @location(0) vec4<f32> {
     let w = view.forward.xyz + view.right.xyz * (in.ndc.x * view.proj.x) + view.up.xyz * (in.ndc.y * view.proj.y);
     let d0 = normalize(w);
     if (view.opts.x & OPT_FOG) != 0u && view.proj.z > 0.0 {
         return vec4<f32>(fog_color(view.eye.xyz + d0 * view.proj.z), 1.0);
+    }
+    if (view.opts.x & OPT_SKY_PAINT) != 0u {
+        return vec4<f32>(sky_paint_color(d0) * bitcast<f32>(view.misc.z), 1.0);
     }
     let c = view.sky.x;
     let s = view.sky.y;

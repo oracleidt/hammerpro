@@ -24,6 +24,7 @@ use glam::Vec3A;
 
 use crate::emit::lump;
 use crate::materials::{contents, surf};
+pub use ambient::ProbeOptions;
 pub use ao::AoOptions;
 pub use output::check_lighting;
 pub use props::PropOptions;
@@ -55,6 +56,9 @@ pub struct RadOptions {
     pub luxel_density: f32,
     pub no_disp_shadows: bool,
     pub ao: AoOptions,
+    pub min_sun_samples: usize,
+    pub normal_sampling: bool,
+    pub probes: Option<ProbeOptions>,
     pub limits: hp_bsp::limits::LimitSet,
 }
 
@@ -77,6 +81,9 @@ impl Default for RadOptions {
             luxel_density: 1.0,
             no_disp_shadows: false,
             ao: AoOptions::default(),
+            min_sun_samples: 0,
+            normal_sampling: false,
+            probes: None,
             limits: hp_bsp::limits::LimitSet::Gmod,
         }
     }
@@ -213,6 +220,10 @@ fn run_with(
     }
     if opts.fast_ambient {
         params.leaf_samples = 1;
+    }
+    params.sun_samples = params.sun_samples.max(opts.min_sun_samples);
+    if opts.normal_sampling {
+        params = params.at_least(&bake::Params::of(RadQuality::Normal));
     }
 
     let t = Instant::now();
@@ -403,6 +414,10 @@ fn run_with(
     let (luxels, average) = per_face.into_iter().unzip();
     let colors = ambient::FaceColors { luxels, average };
     let ambient = runner.par(|| ambient::leaf_ambient(&ctx, &colors));
+    let probes = opts.probes.as_ref().and_then(|po| runner.par(|| ambient::probe_volume(&ctx, &colors, po)));
+    if let Some(v) = &probes {
+        log(&format!("light probes: {} cells of {} units", v.cell_count(), v.spacing));
+    }
     let samples: usize = ambient.first().map_or(0, |a| a.1.len() / 28);
     log(&format!("leaf ambient: {samples} samples in {} ms", ms(t)));
     stage(report, "leaf ambient", t);
@@ -517,6 +532,9 @@ fn run_with(
     }
     if let Some((games, _)) = detail {
         edit.set_game_lumps(games);
+    }
+    if let Some(v) = &probes {
+        edit.replace_lump_with_version(hp_light::probes::LUMP, v.encode(), 0).map_err(fail)?;
     }
     edit.replace_lump_with_version(lump::MAP_FLAGS, map_flags, 0).map_err(fail)?;
     if let Some(pak) = pak {

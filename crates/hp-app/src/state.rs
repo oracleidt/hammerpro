@@ -43,6 +43,16 @@ pub struct MaterialInfo {
 
 pub type CollisionTriangles = Arc<Vec<[[f32; 3]; 3]>>;
 
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ProjectorOverride {
+    pub id: hp_vmf::Id,
+    pub on: Option<bool>,
+    pub fov: Option<f64>,
+    pub shadows: Option<bool>,
+    pub texture: Option<String>,
+    pub light_world: Option<bool>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct PlayerModelPose {
     pub model: String,
@@ -204,6 +214,7 @@ pub struct SceneOptions {
     pub show_helpers: bool,
     pub show_tool_textures: bool,
     pub lighting_preview: bool,
+    pub model_lods: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -277,6 +288,7 @@ pub trait AssetsApi {
     ) {
     }
     fn set_light_styles(&mut self, _values: &[f32]) {}
+    fn set_projector_overrides(&mut self, _overrides: &[ProjectorOverride]) {}
     fn light_preview(&self) -> Option<LightPreviewReport> {
         None
     }
@@ -680,6 +692,7 @@ impl AppState {
                 self.settings.view.render_mode,
                 RenderModeSetting::Lit | RenderModeSetting::Baked
             ),
+            model_lods: self.settings.render.model_lods,
         }
     }
 

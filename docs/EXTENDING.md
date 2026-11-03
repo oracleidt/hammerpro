@@ -1202,6 +1202,20 @@ workspace before adding a prefix. `hp-ui-shell` keys start with `shell.`
 (tested); its tests also check every `"shell.` key literal of its sources
 (subfolders included) has a row.
 
+## Storage rows
+
+Settings > Storage and the MCP tools `get_storage_usage` and `delete_storage`
+list everything Hammer Pro writes on disk from one table, `TABLE` in
+`crates/hp-app/src/storage/locations.rs`. A feature that writes a new cache,
+output or temporary folder adds a `Spec` there (id, two translation keys,
+risk, the `Part`s: a root among config, cache, autosave, logs, crash or temp,
+a relative folder and a filter) and the two `storage.row.<id>` strings in
+`storage/mod.rs`. Anything left under the cache folder shows up as "Other
+cached data" until it has its row. Deletion goes through `AppDirs::guard`
+(the item must resolve inside the folder of its root, links are removed and
+never followed), so nothing outside Hammer Pro's own folders can be deleted,
+and `in_use` names the files that are kept while the application uses them.
+
 ## MCP tools
 
 AI apps edit the map through the tools of the MCP server

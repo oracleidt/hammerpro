@@ -85,12 +85,14 @@ const EXAMPLES: &[(&str, &str)] = &[
     ("wait_frames", r#"{"frames":5}"#),
     ("get_capabilities", r#"{"category":"ui automation"}"#),
     ("use_instance", r#"{"pid":1234}"#),
+    ("delete_storage", r#"{"ids":["thumbnails"],"confirm":false}"#),
 ];
 
 const ORDER: &[&str] = &[
     "help",
     "map",
     "files",
+    "bsp sniffer",
     "brushes and objects",
     "entities",
     "selection",

@@ -15,7 +15,6 @@ pub const DEFAULT_PROBE_SIZE: u32 = 128;
 const MIN_RESOLUTION: u32 = 16;
 pub const MEMORY_BUDGET: u64 = 160 << 20;
 pub(crate) const PROBE_VIEW: u32 = 0xffff_fc00;
-pub(crate) const HDR_RANGE: f32 = 4.0;
 const SETTLE: Duration = Duration::from_millis(750);
 const FRAME_SHARE: f32 = 0.3;
 const PROBE_CULL_RADIUS: f32 = 16_384.0;
@@ -940,23 +939,16 @@ impl Renderer {
             show_sprites: false,
             show_models: source.params.show_models && !sky,
             msaa: false,
+            game_pixel_grid: false,
         };
         let options = probe_options(&source.options, sky);
         self.view_options.insert(PROBE_VIEW, options);
-        let hdr = options.compiled_lighting
-            && crate::compiled_light::textured_mode(params.mode)
-            && self.compiled.mode() == Some(crate::CompiledLightMode::Hdr);
-        let scale = if hdr { HDR_RANGE } else { 1.0 };
-        let saved = self.compiled.exposure.scale;
-        if hdr {
-            self.compiled.exposure.scale = 1.0 / HDR_RANGE;
-        }
+        let scale = 1.0;
         self.probing = true;
         let content = self.content_gen;
         self.render_view(PROBE_VIEW, &params, &Overlay::default());
         self.content_gen = content;
         self.probing = false;
-        self.compiled.exposure.scale = saved;
         self.cubes.faces_rendered += 1;
         self.ensure_staging();
         self.ensure_blit();

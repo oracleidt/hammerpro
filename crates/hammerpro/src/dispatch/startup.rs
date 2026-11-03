@@ -22,7 +22,8 @@ pub(crate) struct State {
     export: Option<Export>,
 }
 
-const HANDLED: &[Action] = &[Action::ReloadContent, Action::ExportCopy, Action::ExportAgain, Action::ExportObj];
+const HANDLED: &[Action] =
+    &[Action::ReloadContent, Action::RebuildContentIndex, Action::ExportCopy, Action::ExportAgain, Action::ExportObj];
 
 impl Package for Startup {
     fn handled(&self) -> &'static [Action] {
@@ -35,6 +36,12 @@ impl Package for Startup {
                 let state = &mut app.state;
                 state.assets.remount(&state.settings);
                 state.notify(Severity::Info, t!("startup.reloading"));
+            }
+            Action::RebuildContentIndex => {
+                let state = &mut app.state;
+                hp_fs::clear_index();
+                state.assets.remount(&state.settings);
+                state.notify(Severity::Info, t!("startup.rebuilding_index"));
             }
             Action::ExportCopy => app.export_with_dialog(ExportKind::Vmf),
             Action::ExportObj => app.export_with_dialog(ExportKind::Obj),
@@ -152,6 +159,11 @@ pub(crate) const TR: TrTable = &[
         "startup.reloading",
         "Reloading the game content and entity definitions...",
         "Rechargement du contenu du jeu et des définitions d'entités...",
+    ),
+    (
+        "startup.rebuilding_index",
+        "Rebuilding the content index: the game folders are scanned again...",
+        "Reconstruction de l'index du contenu : les dossiers du jeu sont analysés à nouveau...",
     ),
     ("startup.exported", "{0} exported", "{0} exporté"),
     ("startup.exported_obj", "{0} exported: {1} faces", "{0} exporté : {1} faces"),

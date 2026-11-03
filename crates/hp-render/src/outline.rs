@@ -1,5 +1,5 @@
 use crate::gpu::GpuVertex;
-use crate::pipelines::{CHUNK_ATTRS, COLOR_FORMAT, Shared, model_mesh_buffers, vertex_layout};
+use crate::pipelines::{CHUNK_ATTRS, LDR_FORMAT, Shared, model_mesh_buffers, vertex_layout};
 
 const OUTLINE_WGSL: &str = concat!(include_str!("shaders/common.wgsl"), "\n", include_str!("shaders/outline.wgsl"));
 const MASK_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
@@ -95,7 +95,7 @@ impl OutlinePipelines {
                 entry_point: Some("fs_outline"),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: COLOR_FORMAT,
+                    format: LDR_FORMAT,
                     blend: None,
                     write_mask: wgpu::ColorWrites::ALL,
                 })],

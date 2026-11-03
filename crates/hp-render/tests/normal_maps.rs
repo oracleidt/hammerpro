@@ -64,6 +64,7 @@ fn close(got: u8, want: f32, tol: f32, what: &str) {
 
 fn view(mode: RenderMode) -> ViewParams {
     ViewParams {
+        game_pixel_grid: false,
         size: [SIZE, SIZE],
         kind: ViewKind::Perspective {
             eye: [0.0, 0.0, 0.0],
@@ -247,7 +248,7 @@ fn bumped_lightmaps_combine_like_the_game() {
     let mut r = Renderer::new(&device, &queue);
     r.upsert_object(1, wall_mesh());
     r.set_object_flags(1, ObjectFlags::COMPILED_LIGHT);
-    r.set_compiled_bloom(false);
+    r.set_tone_settings(ToneSettings { bloom: 0.0, ..ToneSettings::default() });
     let verts = wall_vertices();
     let blocks = vec![CompiledBlock {
         object: 1,
@@ -344,7 +345,7 @@ fn models_use_their_tangents() {
     for x in [50, 150] {
         assert!(px(&a, x, 100)[0].abs_diff(px(&b, x, 100)[0]) <= 2, "given and computed tangents agree");
     }
-    r.set_compiled_bloom(false);
+    r.set_tone_settings(ToneSettings { bloom: 0.0, ..ToneSettings::default() });
     r.set_compiled_lighting(CompiledLightMode::Hdr, &[], &[]);
     let mut ambient = [[0.0f32; 3]; 6];
     ambient[0] = [1.0; 3];
@@ -428,6 +429,50 @@ fn baked_preview_has_the_relief_of_its_bumped_lightmaps() {
     let unbumped = shot(&mut r, RenderMode::Textured, on(), "baked_unbumped");
     for x in [40, 160] {
         close(px(&unbumped, x, 100)[0], srgb(gray * 0.25), 2.0, "no bumped lightmaps");
+    }
+}
+
+#[test]
+fn baked_preview_shades_like_the_compiled_lighting() {
+    let Some((device, queue)) = gpu() else {
+        eprintln!("no GPU adapter available: test skipped");
+        return;
+    };
+    let b0 = encode([0.816_496_6, 0.0, 0.577_350_3]);
+    let b1 = encode([-0.408_248_3, std::f32::consts::FRAC_1_SQRT_2, 0.577_350_3]);
+    let texels: Vec<[f32; 3]> = BUMPED_LIGHT.iter().map(|v| [*v; 3]).collect();
+    for ldr in [false, true] {
+        let mut c = Renderer::new(&device, &queue);
+        c.upsert_object(1, wall_mesh());
+        c.set_object_flags(1, ObjectFlags::COMPILED_LIGHT);
+        c.set_tone_settings(ToneSettings { bloom: 0.0, ..ToneSettings::default() });
+        let halves = normal_map(&mut c, b0, b1);
+        wall_material(&mut c, Some(BumpDesc::new(halves)));
+        let blocks = vec![CompiledBlock {
+            object: 1,
+            batches: vec![CompiledBatch { material: WALL, vertices: wall_vertices(), indices: vec![0, 1, 2, 0, 2, 3] }],
+        }];
+        let maps = [CompiledLightmap { width: 1, height: 1, texels: &texels, styles: &[], bumped: true }];
+        let mode = if ldr { CompiledLightMode::Ldr } else { CompiledLightMode::Hdr };
+        c.set_compiled_lighting(mode, &maps, &blocks);
+        let compiled_options = ViewOptions { compiled_lighting: true, normal_maps: true, ..ViewOptions::default() };
+        let compiled = shot(&mut c, RenderMode::Textured, compiled_options, "parity_compiled");
+
+        let mut b = Renderer::new(&device, &queue);
+        b.set_tone_settings(ToneSettings { bloom: 0.0, ..ToneSettings::default() });
+        let halves = normal_map(&mut b, b0, b1);
+        wall_material(&mut b, Some(BumpDesc::new(halves)));
+        b.upsert_object(1, wall_mesh());
+        wall_lightmap(&mut b, &BUMPED_LIGHT, true, 0);
+        b.set_lightmap_ldr(ldr);
+        assert_eq!(b.lightmap_ldr(), ldr);
+        let baked = shot(&mut b, RenderMode::Textured, on(), "parity_baked");
+        for x in [40, 160] {
+            let (want, got) = (px(&compiled, x, 100), px(&baked, x, 100));
+            for k in 0..3 {
+                assert!(want[k].abs_diff(got[k]) <= 2, "ldr {ldr} at {x}: compiled {want:?} baked {got:?}");
+            }
+        }
     }
 }
 

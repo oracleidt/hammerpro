@@ -43,6 +43,40 @@ domain! { "content and release";
                 (starts the game; saved as the content setting). Only when the user asked; refused in automated runs."),
             "keep_cubemaps": boolean("Keep the cubemaps built in game when a compile replaces the map (saved)."),
         }, [];
+    get_protect_options: Read, "Protect your BSP options",
+        "Every option of Protect your BSP as saved in the content settings: protect, watermark, the decompile \
+        breakers (strip_original_faces, randomize_materials), the server lock, and the structure scrambler (shuffle_lumps, \
+        junk_gaps, decoys, scramble_header, shuffle_game_lumps, random_pak, reorder_tables, reorder_world, layout_seed).",
+        {}, [];
+    set_protect_options: Editor, "Change Protect your BSP options",
+        "Change options of Protect your BSP (saved in the content settings, used by the next start_release). The \
+        structure scrambler makes the shipped BSP hard to parse: shuffle_lumps puts the lump blocks in a random \
+        physical order, junk_gaps fills random gaps between them with random bytes, decoys adds unreferenced blocks \
+        (random data and stale altered copies of lumps), scramble_header randomizes the map revision, the version of \
+        lumps the game ignores and the unused directory entries, shuffle_game_lumps shuffles the game lump directory, \
+        random_pak puts the pakfile anywhere, reorder_tables permutes planes, vertexes, edges, texinfo and texdata and \
+        renumbers every reference, reorder_world permutes brushes, faces and the leaf lists the same way. The map \
+        loads and plays the same. layout_seed fixes the randomness (empty: new at each compile). preset strongest \
+        turns every scrambler option on, none turns them off; individual keys apply after it.",
+        {
+            "preset": choice("Set every structure scrambler option at once.", &["strongest", "none"]),
+            "protect": boolean("Protect your BSP on or off."),
+            "watermark": string("Watermark text (author, server)."),
+            "strip_original_faces": boolean("Empty the original faces lump."),
+            "randomize_materials": boolean("Material randomizer."),
+            "lock": boolean("Server lock."),
+            "lock_key": string("Secret key of the server lock (only its hash goes in the map)."),
+            "lock_block": boolean("Block play on an unauthorized server."),
+            "shuffle_lumps": boolean("Random physical order of the lump blocks."),
+            "junk_gaps": boolean("Random junk gaps between the lumps."),
+            "decoys": boolean("Unreferenced decoy blocks."),
+            "scramble_header": boolean("Randomize the header fields the game ignores."),
+            "shuffle_game_lumps": boolean("Shuffle the game lump directory."),
+            "random_pak": boolean("Pakfile at a random position."),
+            "reorder_tables": boolean("Permute planes, vertexes, edges, texinfo and texdata."),
+            "reorder_world": boolean("Permute brushes, faces and the leaf lists."),
+            "layout_seed": string("Seed of the structure scrambler (empty: random at each compile)."),
+        }, [];
     get_release_checklist: Read, "Release checklist",
         "The release checklist of the map (saved, compiled, leaks, lighting, cubemaps, navigation mesh, missing \
         content, thumbnail, addon.json, GMA...): each row with ok, warning, failed or unknown and a detail. The \
@@ -99,6 +133,20 @@ domain! { "content and release";
     cancel_collect_map_assets: Editor, "Cancel the collect",
         "Stop the running collect of the Map assets tab (the files copied so far stay, the report says it was \
         cancelled).",
+        {}, [];
+    get_content_index: Read, "Content index and scan",
+        "State of the persistent content index (the saved list of the files of the game folders, custom folders \
+        and mounts, validated by folder modification times at launch instead of scanning everything again) and of \
+        the scan: whether it is on, the index file, its size and entries, how many folders were checked, reused \
+        or scanned again, the duration of the last folder scan, the scan mode (auto, parallel, sequential) and the \
+        type of each drive seen (rotational drives are scanned one folder at a time in auto mode). Change it with \
+        set_setting: scan.use_index (true or false) and scan.mode (\"auto\", \"parallel\", \"sequential\"), \
+        applied at the next mount.",
+        {}, [];
+    rebuild_content_index: Editor, "Rebuild the content index",
+        "Delete the saved content index and mount the game content again with a full scan of every folder, like \
+        the Rebuild index button of Settings > Game (and the rebuild_content_index action). Use it when files \
+        changed in a way the index missed. The mount runs on its own threads: follow it with get_content_index.",
         {}, [];
     find_unused_assets: Read, "Unused files of a content folder",
         "The files under materials, models, sound and particles of a content folder (an addon, a garrysmod \
@@ -469,6 +517,104 @@ fn start_release(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     })))
 }
 
+fn protect_json(state: &AppState) -> Value {
+    let c = &state.settings.content;
+    json!({
+        "protect": c.protect,
+        "watermark": c.protect_watermark,
+        "strip_original_faces": c.protect_strip_original_faces,
+        "randomize_materials": c.protect_randomize,
+        "lock": c.protect_lock,
+        "lock_key_set": !c.protect_lock_key.trim().is_empty(),
+        "lock_block": c.protect_lock_block,
+        "shuffle_lumps": c.protect_shuffle_lumps,
+        "junk_gaps": c.protect_junk_gaps,
+        "decoys": c.protect_decoys,
+        "scramble_header": c.protect_scramble_header,
+        "shuffle_game_lumps": c.protect_shuffle_game_lumps,
+        "random_pak": c.protect_random_pak,
+        "reorder_tables": c.protect_reorder_tables,
+        "reorder_world": c.protect_reorder_world,
+        "layout_seed": c.protect_layout_seed,
+    })
+}
+
+fn get_protect_options(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
+    Ok(ToolResult::json(protect_json(state)))
+}
+
+fn set_protect_options(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
+    let keys = [
+        "preset",
+        "protect",
+        "watermark",
+        "strip_original_faces",
+        "randomize_materials",
+        "lock",
+        "lock_key",
+        "lock_block",
+        "shuffle_lumps",
+        "junk_gaps",
+        "decoys",
+        "scramble_header",
+        "shuffle_game_lumps",
+        "random_pak",
+        "reorder_tables",
+        "reorder_world",
+        "layout_seed",
+    ];
+    if !keys.iter().any(|k| a.get(k).is_some()) {
+        return Err("give at least one option to change".to_owned());
+    }
+    let mut next = state.settings.content.clone();
+    if let Some(preset) = a.opt_str("preset", 16)? {
+        let on = match preset {
+            "strongest" => true,
+            "none" => false,
+            other => return Err(format!("preset must be strongest or none, not {other}")),
+        };
+        next.protect_shuffle_lumps = on;
+        next.protect_junk_gaps = on;
+        next.protect_decoys = on;
+        next.protect_scramble_header = on;
+        next.protect_shuffle_game_lumps = on;
+        next.protect_random_pak = on;
+        next.protect_reorder_tables = on;
+        next.protect_reorder_world = on;
+    }
+    let flag = |key: &str, slot: &mut bool| -> R<()> {
+        if let Some(v) = a.opt_bool(key)? {
+            *slot = v;
+        }
+        Ok(())
+    };
+    flag("protect", &mut next.protect)?;
+    flag("strip_original_faces", &mut next.protect_strip_original_faces)?;
+    flag("randomize_materials", &mut next.protect_randomize)?;
+    flag("lock", &mut next.protect_lock)?;
+    flag("lock_block", &mut next.protect_lock_block)?;
+    flag("shuffle_lumps", &mut next.protect_shuffle_lumps)?;
+    flag("junk_gaps", &mut next.protect_junk_gaps)?;
+    flag("decoys", &mut next.protect_decoys)?;
+    flag("scramble_header", &mut next.protect_scramble_header)?;
+    flag("shuffle_game_lumps", &mut next.protect_shuffle_game_lumps)?;
+    flag("random_pak", &mut next.protect_random_pak)?;
+    flag("reorder_tables", &mut next.protect_reorder_tables)?;
+    flag("reorder_world", &mut next.protect_reorder_world)?;
+    if let Some(mark) = a.opt_str("watermark", MAX_NAME)? {
+        next.protect_watermark = mark.chars().filter(|c| !c.is_control()).take(120).collect();
+    }
+    if let Some(key) = a.opt_str("lock_key", MAX_NAME)? {
+        next.protect_lock_key = key.to_owned();
+    }
+    if let Some(seed) = a.opt_str("layout_seed", MAX_NAME)? {
+        next.protect_layout_seed = seed.chars().filter(|c| !c.is_control()).take(120).collect();
+    }
+    state.settings.content = next;
+    state.settings_dirty = true;
+    Ok(ToolResult::json(protect_json(state)))
+}
+
 fn get_release_checklist(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     if state.doc.path().is_none() {
         return Err("save the map first (save_map with a name)".to_owned());
@@ -507,6 +653,47 @@ fn open_release_window(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     state.runtime.content.release_open = true;
     state.runtime.content.release_tab = Some(tab);
     Ok(ToolResult::json(release_json(state)))
+}
+
+fn content_index_json(state: &AppState) -> Value {
+    let stats = hp_fs::scan_stats();
+    let drives: Vec<Value> = stats
+        .volumes
+        .iter()
+        .map(|(volume, penalty)| {
+            let kind = match penalty {
+                Some(true) => "rotational",
+                Some(false) => "solid state",
+                None => "unknown (treated as solid state)",
+            };
+            json!({ "volume": volume, "type": kind })
+        })
+        .collect();
+    json!({
+        "use_index": state.settings.scan.use_index,
+        "mode": state.settings.scan.mode.to_fs().as_str(),
+        "index_file": state.settings.scan.use_index.then(hp_app::settings::ScanSettings::index_file),
+        "index_state": stats.index_state,
+        "index_entries": stats.index_entries,
+        "index_bytes": stats.index_bytes,
+        "folders_checked": stats.dirs_checked,
+        "folders_reused": stats.dirs_reused,
+        "folders_scanned": stats.dirs_rescanned,
+        "folder_scans": stats.walks,
+        "last_folder_scan_ms": stats.last_walk_ms,
+        "drives": drives,
+        "mounting": state.assets.status() == hp_app::state::AssetStatus::Mounting,
+    })
+}
+
+fn get_content_index(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
+    Ok(ToolResult::json(content_index_json(state)))
+}
+
+fn rebuild_content_index(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
+    hp_fs::clear_index();
+    state.assets.remount(&state.settings);
+    Ok(ToolResult::json(json!({ "rebuilding": true, "note": "Follow it with get_content_index." })))
 }
 
 fn get_release_status(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
@@ -564,6 +751,20 @@ mod tests {
     use super::super::semantic_tests::{err, ok};
 
     #[test]
+    fn content_index_tools() {
+        let mut s = hp_app::testing::test_state();
+        let v = ok(&mut s, "get_content_index", json!({}));
+        assert_eq!(v["use_index"], true);
+        assert_eq!(v["mode"], "auto");
+        assert!(v["drives"].is_array());
+        assert!(v["folders_checked"].is_number());
+        s.settings.scan.use_index = false;
+        let v = ok(&mut s, "get_content_index", json!({}));
+        assert!(v["index_file"].is_null());
+        assert_eq!(ok(&mut s, "rebuild_content_index", json!({}))["rebuilding"], true);
+    }
+
+    #[test]
     fn release_controls() {
         let mut s = hp_app::testing::test_state();
         err(&mut s, "get_dependency_report", json!({}));
@@ -583,6 +784,22 @@ mod tests {
         ok(&mut s, "inspect_archive", json!({ "file": "m.gma" }));
         assert!(s.runtime.content.inspector_request.is_some());
         err(&mut s, "publish_workshop", json!({ "confirm": false }));
+        err(&mut s, "set_protect_options", json!({}));
+        err(&mut s, "set_protect_options", json!({ "preset": "weak" }));
+        err(&mut s, "set_protect_options", json!({ "decoys": "yes" }));
+        let p = ok(&mut s, "set_protect_options", json!({ "preset": "none", "decoys": true, "layout_seed": "abc" }));
+        assert_eq!(
+            (p["decoys"].clone(), p["shuffle_lumps"].clone(), p["layout_seed"].clone()),
+            (json!(true), json!(false), json!("abc"))
+        );
+        assert!(s.settings.content.protect_decoys && !s.settings.content.protect_reorder_world);
+        let p =
+            ok(&mut s, "set_protect_options", json!({ "preset": "strongest", "random_pak": false, "lock_key": "k" }));
+        assert_eq!(
+            (p["reorder_world"].clone(), p["random_pak"].clone(), p["lock_key_set"].clone()),
+            (json!(true), json!(false), json!(true))
+        );
+        assert_eq!(ok(&mut s, "get_protect_options", json!({}))["shuffle_game_lumps"], json!(true));
         err(&mut s, "start_release", json!({}));
         err(&mut s, "start_release", json!({ "analyze_only": true, "game_session": true }));
         assert_eq!(s.runtime.content.start_requested, None);

@@ -22,9 +22,11 @@ mod mcp;
 mod mesh;
 mod placement;
 mod render;
+mod scan;
 mod selection;
 mod shell;
 mod startup;
+mod update;
 mod visibility;
 mod workflow;
 
@@ -43,6 +45,10 @@ pub use grid::{
 };
 pub use health::HealthSettings;
 pub use helpers::{ConnectionsMode, HelperScope, HelpersSettings};
+pub use hp_sniffer::{
+    DecompileSettings as SnifferDecompileSettings, GeometrySource as SnifferGeometry,
+    InsecureMode as SnifferInsecureMode, SnifferSettings,
+};
 pub use instances::{InstanceDisplay, InstancesSettings};
 pub use lab::{LabSettings, ModelLodSettings, UnpropShape};
 pub use launch::{LaunchSettings, LaunchTiming};
@@ -52,13 +58,15 @@ pub use mesh::MeshSettings;
 pub use placement::{PlacementSettings, SprinkleMode, SprinkleSettings};
 pub use render::{
     Disp2dSetting, Disp2dViewSetting, MAX_VRAM_BUDGET_MB, MIN_VRAM_BUDGET_MB, Models2dSetting, PropShadowSetting,
-    RenderSettings,
+    RenderSettings, ToneModeSetting, WaterDetailSetting,
 };
+pub use scan::{ScanModeSetting, ScanSettings};
 pub use selection::SelectionSettings;
 pub use shell::{
     EditSettings, KeyboardLayout, RenderModeSetting, SelectModeSetting, ThemeChoice, UiSettings, ViewSettings,
 };
 pub use startup::{CustomDirSetting, GameSettings, MapGame, StartupSettings, profile_of};
+pub use update::UpdateSettings;
 pub use visibility::VisibilitySettings;
 pub use workflow::{
     CtrlWheel, DisplayUnits, FLY_RESPONSE_MAX, GRID_MAX, GRID_MIN, GRID_STEP_MAX, GRID_STEP_MIN, MAX_LAYOUT_NAME,
@@ -136,6 +144,12 @@ pub struct Settings {
     pub grid: GridSettings,
     #[serde(skip_serializing_if = "is_default")]
     pub discord: DiscordSettings,
+    #[serde(skip_serializing_if = "is_default")]
+    pub scan: ScanSettings,
+    #[serde(skip_serializing_if = "is_default")]
+    pub update: UpdateSettings,
+    #[serde(skip_serializing_if = "is_default")]
+    pub sniffer: SnifferSettings,
 }
 
 impl Default for Settings {
@@ -170,6 +184,9 @@ impl Default for Settings {
             mcp: McpSettings::default(),
             grid: GridSettings::default(),
             discord: DiscordSettings::default(),
+            scan: ScanSettings::default(),
+            update: UpdateSettings::default(),
+            sniffer: SnifferSettings::default(),
         }
     }
 }

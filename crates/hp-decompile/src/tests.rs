@@ -200,6 +200,64 @@ fn a_small_map_comes_back() {
 }
 
 #[test]
+fn toggles_leave_parts_out() {
+    let bsp = Bsp::from_vec(sample_map()).expect("bsp");
+    let run = |t: Toggles| {
+        decompile(&bsp, &Options { map_name: "gm_sample".to_owned(), toggles: t, ..Options::default() })
+            .expect("decompiles")
+    };
+    let all = run(Toggles::default());
+    assert_eq!(all.report.world_solids, 1);
+    let no_brushes = run(Toggles { brushes: false, ..Toggles::default() });
+    assert_eq!(no_brushes.report.world_solids, 0);
+    assert_eq!(no_brushes.report.detail_solids, 0);
+    assert_eq!(no_brushes.report.failed_brushes, 0);
+    assert_eq!(no_brushes.report.entity_solids, 1, "brush entities are a separate switch");
+    let no_brush_entities = run(Toggles { brush_entities: false, ..Toggles::default() });
+    assert_eq!(no_brush_entities.report.entity_solids, 0);
+    assert_eq!(no_brush_entities.report.world_solids, 1);
+    let no_entities = run(Toggles { entities: false, ..Toggles::default() });
+    assert!(no_entities.map.entities.iter().all(|e| e.classname == "func_detail"));
+    assert_eq!(no_entities.report.world_solids, 1);
+    let flat = run(Toggles { group_details: false, ..Toggles::default() });
+    assert_eq!(flat.report.detail_entities, 0);
+    assert_eq!(flat.map.world.solids.len(), 4);
+}
+
+#[test]
+fn entities_alone_make_a_map() {
+    let text = "{
+\"classname\" \"worldspawn\"
+\"skyname\" \"sky_day01_01\"
+\"mapversion\" \"3\"
+}
+{
+\"classname\" \"logic_relay\"
+\"targetname\" \"r\"
+\"OnTrigger\" \"x,Kill,,0,-1\"
+\"hammerid\" \"40\"
+}
+{
+\"classname\" \"func_door\"
+\"model\" \"*5\"
+}
+";
+    let out = entities_only(text, &Options::default());
+    assert_eq!(out.map.world.get("skyname"), Some("sky_day01_01"));
+    assert!(out.map.world.get("mapversion").is_none());
+    assert_eq!(out.map.entities.len(), 2);
+    assert_eq!(out.map.entities[0].id, 40);
+    assert_eq!(out.map.entities[0].connections.len(), 1);
+    assert_eq!(out.report.empty_brush_entities, 1);
+    assert!(!out.report.warnings.is_empty());
+    let none = entities_only(
+        text,
+        &Options { toggles: Toggles { entities: false, ..Toggles::default() }, ..Options::default() },
+    );
+    assert!(none.map.entities.is_empty());
+}
+
+#[test]
 fn hostile_maps_do_not_panic() {
     let full = sample_map();
     let opts = Options::default();

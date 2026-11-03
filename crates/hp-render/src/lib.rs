@@ -1,7 +1,6 @@
 mod arena;
 mod bgimages;
 mod camera;
-mod compiled_bloom;
 mod compiled_light;
 mod cubemaps;
 mod detail_sprites;
@@ -9,7 +8,9 @@ mod extra_passes;
 mod fog_volume;
 mod gamewire;
 mod gpu;
+pub mod hdr;
 pub mod hooks;
+mod indirect;
 pub mod lightmap;
 mod lights;
 mod local_shadow;
@@ -22,12 +23,15 @@ pub mod parallax;
 mod park;
 mod particles;
 mod pipelines;
+mod projector;
+mod reflection;
 mod scene;
 mod shadow;
 mod sky;
 mod sky_layers;
 mod sprite_layers;
 mod static_lines;
+mod sun_glow;
 mod tangents;
 mod textures;
 pub mod types;
@@ -40,11 +44,14 @@ pub use compiled_light::{
 pub use cubemaps::{
     DEFAULT_PROBE_SIZE, MAX_RESOLUTION as MAX_CUBEMAP_RESOLUTION, MEMORY_BUDGET as CUBEMAP_MEMORY_BUDGET,
 };
+pub use hdr::{ToneEnv, ToneMode, ToneSettings};
 pub use hooks::{HookContext, PassHook};
+pub use indirect::IndirectVolume;
 pub use lights::MAX_PER_CLUSTER;
 pub use local_shadow::MAX_SHADOWED_LIGHTS;
 pub use park::ParkedScene;
 pub use particles::{ParticleBlend, ParticleInstance, ParticleOrient};
+pub use projector::{MAX_PROJECTORS, PROJECTOR_TEXTURE_SIZE, Projector, ProjectorImage};
 pub use sky::HdrSkyFace;
 pub use sprite_layers::SPRITE_LAYER_PARTICLES;
 pub use tangents::compute_tangents;
@@ -61,7 +68,7 @@ use gpu::{
 };
 use lights::ClusterGrid;
 use overlay::{Chunk, OverlayLayout};
-use pipelines::{COLOR_FORMAT, DEPTH_FORMAT, DISPLAY_FORMAT, MESH_PASSES, MeshPass, PipelineSet, Shared};
+use pipelines::{COLOR_FORMAT, DEPTH_FORMAT, DISPLAY_FORMAT, LDR_FORMAT, MESH_PASSES, MeshPass, PipelineSet, Shared};
 use scene::{ARENA_ELEM, ArenaKind, NULL_SLOT, Scene};
 use textures::TexEntry;
 
@@ -132,6 +139,8 @@ struct ViewState {
     samples: u32,
     color: wgpu::Texture,
     color_view: wgpu::TextureView,
+    display: wgpu::Texture,
+    display_srgb: wgpu::TextureView,
     display_view: wgpu::TextureView,
     msaa_view: Option<wgpu::TextureView>,
     depth_view: wgpu::TextureView,
@@ -264,6 +273,7 @@ pub struct Renderer {
     static_lines: std::collections::BTreeMap<u32, static_lines::StaticLayer>,
     sky_bind: Option<([Option<TexId>; 6], wgpu::BindGroup)>,
     hdr_sky: Option<sky::HdrSky>,
+    tone: hdr::Tone,
     compiled_sky: compiled_light::sky3d::CompiledSky,
     hooks: Vec<Box<dyn PassHook>>,
     opaque: opaque::OpaquePass,
@@ -281,12 +291,18 @@ pub struct Renderer {
     water: Option<water::WaterState>,
     fog_volumes: Vec<FogVolume>,
     fog_volume_gpu: Option<fog_volume::FogVolumeState>,
+    sun_glow: Option<SunGlow>,
+    sun_glow_gpu: Option<sun_glow::SunGlowState>,
     game_outlines: Option<gamewire::OutlineCache>,
     detail: detail_sprites::DetailSprites,
     particles: particles::Particles,
     cubes: cubemaps::Cubes,
     probing: bool,
+    reflecting: Option<reflection::Reflecting>,
+    water_reflect: Option<(Mat4, wgpu::TextureView)>,
     local_shadows: local_shadow::LocalShadows,
+    indirect: indirect::Indirect,
+    projectors: projector::Projectors,
     texture_limit: u32,
     upload_failed: bool,
 }
@@ -341,6 +357,7 @@ fn material_uniform(desc: Option<&MaterialDesc>, env_cube: u32) -> MaterialUnifo
             bump_flags: 0,
             bump_layers: 0,
             self_illum: [1.0, 1.0, 1.0, 0.0],
+            base_uv: [1.0, 1.0, 0.0, 0.0],
             ..MaterialUniform::default()
         };
     };
@@ -378,6 +395,11 @@ fn material_uniform(desc: Option<&MaterialDesc>, env_cube: u32) -> MaterialUnifo
         }),
         bump_layers: d.bump.and_then(|b| b.blend4).map_or(0, pack_bump_layers),
         self_illum: self_illum_uniform(d.self_illum.as_ref()),
+        base_uv: {
+            let scale = |v: f32| if v.is_finite() && v.abs() > 1e-4 { v.clamp(-1e4, 1e4) } else { 1.0 };
+            let offset = |v: f32| if v.is_finite() { v.clamp(-1e4, 1e4) } else { 0.0 };
+            [scale(d.base_uv[0]), scale(d.base_uv[1]), offset(d.base_uv[2]), offset(d.base_uv[3])]
+        },
         ..four_way_uniform(d.four_way.as_ref(), env_uniform(d, env_cube))
     }
 }
@@ -569,8 +591,13 @@ const OPT_MODEL_LIGHT: u32 = 1 << 18;
 pub(crate) const OPT_SUN_PASS: u32 = 1 << 19;
 pub(crate) const OPT_SKY_CUT: u32 = 1 << 20;
 pub(crate) const OPT_SKY_FACES: u32 = 1 << 21;
+const OPT_REFLECT_WORLD: u32 = 1 << 22;
+const OPT_REFLECT_SKY: u32 = 1 << 23;
 const OPT_CLASSIC_COLORS: u32 = 1 << 24;
 const OPT_LIGHT_BACKGROUND: u32 = 1 << 25;
+const OPT_SKY_PAINT: u32 = 1 << 26;
+const OPT_HDR_TINT: u32 = 1 << 27;
+const OPT_MODEL_LODS: u32 = 1 << 28;
 const VERTEX_DOT_PX: u32 = 3;
 
 struct OptionsUniform {
@@ -582,7 +609,42 @@ struct OptionsUniform {
     sky: [f32; 4],
     sky3d: [f32; 4],
     sky_uv: [[f32; 4]; 6],
+    sky_paint: [[f32; 4]; 6],
     far_z: f32,
+}
+
+fn sky_paint_uniform(p: &SkyPaint, ldr: bool) -> [[f32; 4]; 6] {
+    let c3 = |c: [f32; 3]| c.map(|v| finite_or(v, 0.0).clamp(0.0, 64.0));
+    let (top, bottom, sun_color, dusk_color) = (c3(p.top), c3(p.bottom), c3(p.sun_color), c3(p.dusk_color));
+    let hdr = if ldr { 1.0 } else { finite_or(p.hdr_scale, 0.66).clamp(0.0, 64.0) };
+    let dir = Vec3::from(p.sun_dir).normalize_or(Vec3::X);
+    let dir = if dir.is_finite() { dir } else { Vec3::X };
+    let sun_size = finite_or(p.sun_size, 0.0);
+    let sun_exp = if sun_size > 0.0 { (20.0 / sun_size).clamp(0.0, 4096.0) } else { 0.0 };
+    let dusk_exp = 2.0 - finite_or(p.dusk_scale, 1.0).clamp(0.0, 16.0);
+    let dusk_w = 0.5 * finite_or(p.dusk_intensity, 0.0).clamp(0.0, 64.0);
+    [
+        [top[0], top[1], top[2], finite_or(p.fade_bias, 1.0).clamp(0.001, 1024.0)],
+        [bottom[0], bottom[1], bottom[2], hdr],
+        [dir.x, dir.y, dir.z, sun_exp],
+        [sun_color[0], sun_color[1], sun_color[2], dusk_exp],
+        [dusk_color[0], dusk_color[1], dusk_color[2], dusk_w],
+        star_uniform(p),
+    ]
+}
+
+const STAR_GAIN: f32 = 1.29;
+const STAR_LAYER_GAIN: f32 = 1.5;
+
+fn star_uniform(p: &SkyPaint) -> [f32; 4] {
+    if !p.draw_stars || p.star_texture.is_none() {
+        return [0.0; 4];
+    }
+    let scale = finite_or(p.star_scale, 0.5).clamp(0.01, 1024.0);
+    let fade = finite_or(p.star_fade, 1.0).clamp(0.01, 1024.0);
+    let layers = p.star_layers.clamp(1, 3);
+    let gain = STAR_GAIN * STAR_LAYER_GAIN.powi(layers as i32 - 1);
+    [1.0 / scale, 1.0 / fade, finite_or(p.star_speed, 0.0).clamp(-64.0, 64.0), gain]
 }
 
 fn finite_or(v: f32, fallback: f32) -> f32 {
@@ -594,7 +656,7 @@ fn light_background(bg: [f32; 3]) -> bool {
     0.2126 * r + 0.7152 * g + 0.0722 * b > 0.5
 }
 
-fn options_uniform(cam: &Camera, o: &ViewOptions, env: &Environment, sky_pass: bool) -> OptionsUniform {
+fn options_uniform(cam: &Camera, o: &ViewOptions, env: &Environment, sky_pass: bool, ldr_sky: bool) -> OptionsUniform {
     let mut bits = 0u32;
     let mut grid3d = [0.0f32; 4];
     let (mut fog_a, mut fog_b, mut fog_c) = ([0.0f32; 4], [0.0f32; 4], [1.0f32, 0.0, 0.0, 1.0]);
@@ -604,6 +666,9 @@ fn options_uniform(cam: &Camera, o: &ViewOptions, env: &Environment, sky_pass: b
     }
     if o.classic_colors {
         bits |= OPT_CLASSIC_COLORS;
+    }
+    if o.model_lods && !cam.is_ortho {
+        bits |= OPT_MODEL_LODS;
     }
     if cam.is_ortho {
         match o.detail_2d {
@@ -673,6 +738,11 @@ fn options_uniform(cam: &Camera, o: &ViewOptions, env: &Environment, sky_pass: b
         }
         _ => [0.0, 0.0, 0.0, 1.0],
     };
+    let paint = env.sky_paint.filter(|_| o.show_sky && !cam.is_ortho);
+    if paint.is_some() {
+        bits |= OPT_SKY_PAINT;
+    }
+    let sky_paint = paint.map_or([[0.0; 4]; 6], |p| sky_paint_uniform(&p, ldr_sky));
     let sky_uv = env.sky.map_or([SkyView::IDENTITY_UV; 6], |s| {
         s.uv.map(|t| {
             if t.iter().all(|v| v.is_finite()) && t[0].abs() > 1e-4 && t[1].abs() > 1e-4 {
@@ -691,6 +761,7 @@ fn options_uniform(cam: &Camera, o: &ViewOptions, env: &Environment, sky_pass: b
         sky: [yaw.cos(), yaw.sin(), finite_or(o.time, 0.0), model_distance],
         sky3d,
         sky_uv,
+        sky_paint,
         far_z,
     }
 }
@@ -741,7 +812,7 @@ impl Renderer {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: COLOR_FORMAT,
+            format: LDR_FORMAT,
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
@@ -840,6 +911,7 @@ impl Renderer {
             static_lines: std::collections::BTreeMap::new(),
             sky_bind: None,
             hdr_sky: None,
+            tone: hdr::Tone::default(),
             compiled_sky: Default::default(),
             hooks: Vec::new(),
             opaque: opaque::OpaquePass::new(&device),
@@ -857,12 +929,18 @@ impl Renderer {
             water: None,
             fog_volumes: Vec::new(),
             fog_volume_gpu: None,
+            sun_glow: None,
+            sun_glow_gpu: None,
             game_outlines: None,
             detail: detail_sprites::DetailSprites::default(),
             particles: particles::Particles::default(),
             cubes: cubemaps::Cubes::new(&device),
             probing: false,
+            reflecting: None,
+            water_reflect: None,
             local_shadows: local_shadow::LocalShadows::new(&device),
+            indirect: indirect::Indirect::new(),
+            projectors: projector::Projectors::new(&device, &queue),
             texture_limit: limits.max_texture_dimension_2d,
             upload_failed: false,
             device,
@@ -1838,13 +1916,19 @@ impl Renderer {
             })
         };
         let att = wgpu::TextureUsages::RENDER_ATTACHMENT;
-        let color = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("hp-render view color"),
+        let color = tex(
+            "hp-render view color",
+            COLOR_FORMAT,
+            1,
+            att | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
+        );
+        let display = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("hp-render view display"),
             size: extent,
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: COLOR_FORMAT,
+            format: LDR_FORMAT,
             usage: att | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[DISPLAY_FORMAT],
         });
@@ -1852,12 +1936,13 @@ impl Renderer {
         let depth = tex("hp-render view depth", DEPTH_FORMAT, samples, att | wgpu::TextureUsages::TEXTURE_BINDING);
         let px = u64::from(size[0]) * u64::from(size[1]);
         let target_bytes =
-            px * 4 + px * 4 * u64::from(samples) + if samples > 1 { px * 4 * u64::from(samples) } else { 0 };
+            px * 12 + px * 4 * u64::from(samples) + if samples > 1 { px * 8 * u64::from(samples) } else { 0 };
         let generation = self.next_generation;
         self.next_generation += 1;
         let color_view = color.create_view(&wgpu::TextureViewDescriptor::default());
+        let display_srgb = display.create_view(&wgpu::TextureViewDescriptor::default());
         let display_view =
-            color.create_view(&wgpu::TextureViewDescriptor { format: Some(DISPLAY_FORMAT), ..Default::default() });
+            display.create_view(&wgpu::TextureViewDescriptor { format: Some(DISPLAY_FORMAT), ..Default::default() });
         let msaa_view = msaa.map(|t| t.create_view(&wgpu::TextureViewDescriptor::default()));
         let depth_view = depth.create_view(&wgpu::TextureViewDescriptor::default());
         if let Some(v) = self.views.get_mut(&id) {
@@ -1865,6 +1950,8 @@ impl Renderer {
             v.samples = samples;
             v.color = color;
             v.color_view = color_view;
+            v.display = display;
+            v.display_srgb = display_srgb;
             v.display_view = display_view;
             v.msaa_view = msaa_view;
             v.depth_view = depth_view;
@@ -1885,6 +1972,8 @@ impl Renderer {
             samples,
             color,
             color_view,
+            display,
+            display_srgb,
             display_view,
             msaa_view,
             depth_view,
@@ -2018,6 +2107,18 @@ impl Renderer {
                         self.sky_map.as_ref().map_or(&self.shadow_dummy_array, |s| &s.cut),
                     ),
                 },
+                wgpu::BindGroupEntry { binding: 18, resource: self.indirect_buffer().as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 19, resource: self.projectors.buffer.as_entire_binding() },
+                wgpu::BindGroupEntry {
+                    binding: 20,
+                    resource: wgpu::BindingResource::TextureView(&self.projectors.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 21,
+                    resource: wgpu::BindingResource::TextureView(
+                        self.projector_shadow_view().unwrap_or(&self.shadow_dummy_array),
+                    ),
+                },
             ],
         })
     }
@@ -2031,6 +2132,7 @@ impl Renderer {
         grid: Option<ClusterGrid>,
         shadow: Option<&shadow::ShadowFit>,
         sky_pass: bool,
+        tone: f32,
     ) -> ViewUniform {
         let (grid_a, grid_b) = match (cam.is_ortho, params.grid.as_ref()) {
             (true, Some(g)) => grid_uniform_min(g, cam.ppu, opts.grid_min_px),
@@ -2050,7 +2152,11 @@ impl Renderer {
             env.fog = v.fog;
             fog_opts.show_fog = true;
         }
-        let mut o = options_uniform(cam, &fog_opts, &env, sky_pass);
+        let ldr_sky = opts.compiled_lighting && self.compiled.mode() == Some(CompiledLightMode::Ldr);
+        let mut o = options_uniform(cam, &fog_opts, &env, sky_pass, ldr_sky);
+        if self.hdr_lit(opts, params.mode, cam.is_ortho) {
+            o.opts[0] |= OPT_HDR_TINT;
+        }
         if !cam.is_ortho
             && params.mode == RenderMode::Flat
             && self.lightmap_display() == lightmap::LightmapDisplay::Grid
@@ -2062,6 +2168,14 @@ impl Renderer {
         }
         if self.probing {
             o.opts[0] |= OPT_PROBE;
+        }
+        if let Some(r) = &self.reflecting {
+            if r.world_only {
+                o.opts[0] |= OPT_REFLECT_WORLD;
+            }
+            if r.sky_only {
+                o.opts[0] |= OPT_REFLECT_SKY;
+            }
         }
         if !cam.is_ortho && opts.compiled_lighting && compiled_light::textured_mode(params.mode) {
             match self.compiled.mode() {
@@ -2096,14 +2210,16 @@ impl Renderer {
                 mode_code(params.mode),
                 if lit { self.dir_lights } else { 0 },
                 if o.opts[0] & OPT_COMPILED_LIGHT != 0 {
-                    self.compiled.exposure.scale
+                    tone
                 } else if model_light {
-                    self.lightmap_exposure()
+                    self.lightmap_exposure() * tone
+                } else if lit {
+                    tone
                 } else {
                     1.0
                 }
                 .to_bits(),
-                0,
+                tone.to_bits(),
             ],
             shadow_vp: shadow.map_or(Mat4::IDENTITY, |s| s.view_proj).to_cols_array_2d(),
             shadow: shadow.map_or([0.0; 4], shadow::ShadowFit::params),
@@ -2119,6 +2235,9 @@ impl Renderer {
             sky_vis_a: [0.0; 4],
             sky_vis_b: [0.0; 4],
             sun_soft: [0.0; 4],
+            sky_paint: o.sky_paint,
+            indirect_a: [0.0; 4],
+            indirect_b: [1.0, 1.0, 1.0, 0.0],
         }
     }
 
@@ -2193,24 +2312,41 @@ impl Renderer {
         let mut params = *params;
         params.size = [params.size[0].clamp(1, self.max_tex_dim), params.size[1].clamp(1, self.max_tex_dim)];
         let opts = self.view_options(view_id);
-        let cam = Camera::new(&params);
+        let reflecting = self.reflecting;
+        let mut cam = Camera::new(&params);
+        if let Some(r) = &reflecting {
+            cam = cam.clipped_by(r.plane);
+        }
         let samples = if params.msaa { 4 } else { 1 };
         let pi = self.ensure_pipelines(samples);
         self.ensure_view(view_id, params.size, samples);
+        let chain = !self.probing && reflecting.is_none() && self.tone_chain(&opts, params.mode, cam.is_ortho);
+        self.prepare_tone(view_id, params.size, params.mode, chain);
+        let tone = reflecting.map_or_else(|| self.tone_scale_for(view_id, chain), |r| r.tone);
         let lit = params.mode == RenderMode::Lit && !cam.is_ortho;
-        if !cam.is_ortho && opts.cubemaps {
+        if !cam.is_ortho && opts.cubemaps && reflecting.is_none() {
             self.cubes.note_view(view_id, &params, &opts);
         }
+        self.water_reflect = None;
+        let reflect = if reflecting.is_none() && !self.probing && water::applies(&params, &opts, cam.is_ortho) {
+            self.render_reflection(&params, &opts, &cam, tone)
+        } else {
+            None
+        };
+        self.water_reflect = reflect;
+        let fit_cam = reflecting.map_or(cam, |r| r.main_cam);
         let grid = lit.then(|| self.update_clusters(view_id, &cam));
-        let shadow = if lit { self.prepare_shadow(&cam) } else { None };
-        let sky_map = if lit && self.sun.sky_ambient { self.prepare_sky_map(&cam) } else { None };
-        let local_layers = if lit {
+        let shadow = if lit { self.prepare_shadow(&fit_cam) } else { None };
+        let sky_map = if lit && self.sun.sky_ambient { self.prepare_sky_map(&fit_cam) } else { None };
+        let local_layers = if reflecting.is_some() {
+            Vec::new()
+        } else if lit {
             self.prepare_local_shadows(view_id, &cam, opts.light_shadows)
         } else {
             self.local_shadows.release(view_id);
             Vec::new()
         };
-        let mut uniform = self.view_uniform(&cam, &params, &opts, grid, shadow.as_ref().map(|s| &s.0), false);
+        let mut uniform = self.view_uniform(&cam, &params, &opts, grid, shadow.as_ref().map(|s| &s.0), false, tone);
         if let Some((fit, _)) = &shadow {
             uniform.sun_soft = fit.soft_params(self.sun.spread_deg);
             uniform.sun_soft[3] = self.layer_count(shadow::Layers::Sun) as f32;
@@ -2219,6 +2355,7 @@ impl Renderer {
             (uniform.sky_vis_a, uniform.sky_vis_b) = fit.params();
             uniform.sky_vis_b[3] = self.layer_count(shadow::Layers::Sky) as f32;
         }
+        (uniform.indirect_a, uniform.indirect_b) = self.indirect_uniform(lit && opts.indirect_light);
         let shaded_3d = !cam.is_ortho && params.mode != RenderMode::Wireframe;
         let env = self.environment;
         let sky_cam = match env.sky_3d {
@@ -2231,7 +2368,7 @@ impl Renderer {
             }
             _ => None,
         };
-        let sky_uniform = sky_cam.as_ref().map(|sc| self.view_uniform(sc, &params, &opts, None, None, true));
+        let sky_uniform = sky_cam.as_ref().map(|sc| self.view_uniform(sc, &params, &opts, None, None, true, tone));
         let game_wire = if cam.is_ortho { 0 } else { opts.game_wireframe.min(3) };
         if !cam.is_ortho {
             self.ensure_detail_pipes(samples);
@@ -2244,7 +2381,10 @@ impl Renderer {
                 cache.prepare(&self.device, &self.queue, &self.scene, c, self.max_buffer);
             }
         }
-        let sky_bg = env.sky.filter(|_| opts.show_sky && shaded_3d);
+        let sky_bg = match env.sky_paint.filter(|_| opts.show_sky && shaded_3d) {
+            Some(p) => Some(SkyView::new([Some(p.star_texture.unwrap_or(TexId::WHITE)); 6], 0.0)),
+            None => env.sky.filter(|_| opts.show_sky && shaded_3d),
+        };
         if let Some(sky) = sky_bg {
             self.ensure_sky_bind(sky.faces);
         }
@@ -2252,6 +2392,7 @@ impl Renderer {
         self.ensure_view_bind_group(view_id);
         let water_frame = self.prepare_water(view_id, &cam, &params, &opts);
         let fog_frame = self.prepare_fog_volumes(view_id, &cam, &params, &opts);
+        let sun_frame = self.prepare_sun_glow(view_id, &cam, &params, &opts);
         if sky_cam.is_some() {
             self.ensure_sky_pass(view_id);
         }
@@ -2292,6 +2433,11 @@ impl Renderer {
         }
         if !local_layers.is_empty() {
             let (draws, tris) = self.record_local_shadows(&mut enc, &local_layers);
+            counter.draws += draws;
+            counter.triangles += tris;
+        }
+        if self.projectors.has_shadow_maps() {
+            let (draws, tris) = self.record_projector_shadows(&mut enc);
             counter.draws += draws;
             counter.triangles += tris;
         }
@@ -2341,7 +2487,7 @@ impl Renderer {
                 hooks: &hooks,
                 hook_cx: &hook_cx,
                 bind_group,
-                sky_holes: opts.sky_see_through && (sky_bg.is_some() || sky_cam.is_some()),
+                sky_holes: (opts.sky_see_through || self.baked_view(&cam)) && (sky_bg.is_some() || sky_cam.is_some()),
                 water: water_frame.as_ref(),
             };
             let depth = || {
@@ -2474,16 +2620,30 @@ impl Renderer {
             if let Some(frame) = fog_frame.as_ref().filter(|_| split) {
                 ctx.record_fog_volumes(&mut enc, frame, view_id, &mut counter);
             }
+            if let Some(frame) = sun_frame.as_ref() {
+                ctx.record_sun_glow(&mut enc, frame, view_id, &mut counter);
+            }
             for h in hooks.iter_mut() {
                 h.finish(&hook_cx, &mut enc);
             }
-            if outline_on {
-                self.record_outline(&mut enc, view, &cam, &params, bind_group, &mut counter);
-            }
         }
         self.hooks = hooks;
-        if let Some(view) = self.views.get(&view_id) {
-            self.opaque.record(&mut enc, &view.color_view);
+        let present = self.views.get(&view_id).map(|v| (v.color.clone(), v.color_view.clone(), v.display_srgb.clone()));
+        if let Some((color, color_view, display)) = present {
+            let inputs = hdr::FrameInputs {
+                color: &color,
+                color_view: &color_view,
+                display: &display,
+                size: params.size,
+                chain,
+            };
+            self.record_present(&mut enc, view_id, &inputs);
+        }
+        if outline_on
+            && let Some(view) = self.views.get(&view_id)
+            && let Some(bind_group) = view.bind_group.as_ref()
+        {
+            self.record_outline(&mut enc, view, &cam, &params, bind_group, &mut counter);
         }
         self.queue.submit([enc.finish()]);
         if let Some(o) = occ.as_mut() {
@@ -2575,7 +2735,7 @@ impl Renderer {
         let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("hp-render outline"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &view.color_view,
+                view: &view.display_srgb,
                 depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
@@ -2665,6 +2825,8 @@ impl Renderer {
         self.retained.remove(&view_id);
         self.forget_water_view(view_id);
         self.forget_fog_volume_view(view_id);
+        self.forget_sun_glow_view(view_id);
+        self.forget_tone_view(view_id);
     }
 
     pub fn snapshot_view(&self, view_id: u32) -> Option<(wgpu::Texture, wgpu::TextureView)> {
@@ -2677,13 +2839,13 @@ impl Renderer {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: COLOR_FORMAT,
+            format: LDR_FORMAT,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[DISPLAY_FORMAT],
         });
         let mut enc =
             self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("hp-render snapshot") });
-        enc.copy_texture_to_texture(view.color.as_image_copy(), tex.as_image_copy(), extent);
+        enc.copy_texture_to_texture(view.display.as_image_copy(), tex.as_image_copy(), extent);
         self.queue.submit([enc.finish()]);
         let display =
             tex.create_view(&wgpu::TextureViewDescriptor { format: Some(DISPLAY_FORMAT), ..Default::default() });
@@ -2705,7 +2867,7 @@ impl Renderer {
             self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("hp-render readback") });
         enc.copy_texture_to_buffer(
             wgpu::TexelCopyTextureInfo {
-                texture: &view.color,
+                texture: &view.display,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
@@ -3265,7 +3427,7 @@ impl DrawCtx<'_> {
             let Some((pass, two_sided)) = classify_with(m.desc.as_ref(), self.opts.force_opaque, self.sky_holes) else {
                 continue;
             };
-            if self.water.is_some() && m.desc.is_some_and(|d| d.water.is_some()) {
+            if (self.water.is_some() || self.r.reflecting.is_some()) && m.desc.is_some_and(|d| d.water.is_some()) {
                 continue;
             }
             if self.editor_only(m.desc.as_ref()) {
@@ -3311,7 +3473,7 @@ impl DrawCtx<'_> {
                 continue;
             }
             let desc = scene.materials.get(ch.key.material as usize).and_then(|m| m.desc);
-            if self.water.is_some() && desc.is_some_and(|d| d.water.is_some()) {
+            if (self.water.is_some() || self.r.reflecting.is_some()) && desc.is_some_and(|d| d.water.is_some()) {
                 continue;
             }
             if self.editor_only(desc.as_ref()) {
@@ -3516,7 +3678,7 @@ impl DrawCtx<'_> {
         for g in &r.instance_groups {
             let Some(model) = r.models.get(&g.key) else { continue };
             let mut bound_model = false;
-            for part in &model.parts {
+            for part in model.parts.iter().chain(&model.lod_parts) {
                 let desc = r.scene.materials.get(part.material as usize).and_then(|m| m.desc);
                 let Some((p, two)) = classify_with(desc.as_ref(), self.opts.force_opaque, false) else { continue };
                 if !wanted.contains(&p) {
@@ -3546,7 +3708,9 @@ impl DrawCtx<'_> {
                     n.material();
                 }
                 pass.draw_indexed(part.first..part.first + part.count, 0, g.start..g.start + g.count);
-                n.model(u64::from(part.count / 3) * u64::from(g.count), g.count);
+                if part.lod == 0 {
+                    n.model(u64::from(part.count / 3) * u64::from(g.count), g.count);
+                }
             }
         }
     }
@@ -3787,6 +3951,26 @@ impl DrawCtx<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_star_layer_follows_the_sky_paint_keys() {
+        let off = SkyPaint { draw_stars: false, star_texture: Some(TexId::WHITE), ..SkyPaint::BLACK };
+        assert_eq!(star_uniform(&off), [0.0; 4]);
+        let one = SkyPaint {
+            draw_stars: true,
+            star_texture: Some(TexId::WHITE),
+            star_scale: 2.0,
+            star_fade: 0.5,
+            star_speed: 0.03,
+            ..SkyPaint::BLACK
+        };
+        let u = star_uniform(&one);
+        assert_eq!((u[0], u[1], u[2]), (0.5, 2.0, 0.03));
+        assert!((u[3] - STAR_GAIN).abs() < 1e-6);
+        let three = star_uniform(&SkyPaint { star_layers: 3, ..one });
+        assert!((three[3] - STAR_GAIN * 2.25).abs() < 1e-5, "each layer adds half again like the game");
+        assert_eq!(star_uniform(&SkyPaint { star_texture: None, ..one }), [0.0; 4]);
+    }
 
     #[test]
     fn light_backgrounds_are_detected() {

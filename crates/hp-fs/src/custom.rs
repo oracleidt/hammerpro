@@ -5,7 +5,7 @@ use std::sync::OnceLock;
 
 use ahash::{AHashMap, AHashSet};
 
-use crate::dirindex::{ASSET_DIRS, walk_files};
+use crate::dirindex::{ASSET_DIRS, PROFILE_GAME, PROFILE_MATERIALS, walk_files};
 use crate::error::FsError;
 use crate::path::{
     extension, is_safe_component, join_virtual, normalize_path, normalize_prefix, strip_extension, under_prefix,
@@ -124,7 +124,7 @@ fn fold_accent(c: char) -> Option<&'static str> {
 }
 
 pub fn custom_layout(dir: &CustomDir) -> CustomLayout {
-    layout_with(dir, || walk_files(&dir.path, None, &is_material_file).unwrap_or_default())
+    layout_with(dir, || walk_files(&dir.path, None, &is_material_file, Some(PROFILE_MATERIALS)).unwrap_or_default())
 }
 
 pub fn is_auto_prefix(dir: &CustomDir) -> bool {
@@ -344,13 +344,13 @@ impl CustomIndex {
         }
         let mut files: AHashMap<Box<str>, Entry> = AHashMap::new();
         let layout = if has_materials_subdir(&dir.path) {
-            for rel in walk_files(&dir.path, Some(ASSET_DIRS), &|_| true)? {
+            for rel in walk_files(&dir.path, Some(ASSET_DIRS), &|_| true, Some(PROFILE_GAME))? {
                 let key: Box<str> = normalize_path(&rel).into();
                 files.entry(key).or_insert_with(|| Entry::File(rel.into_boxed_str()));
             }
             CustomLayout { mode: CustomMode::GameFolder, prefix: String::new() }
         } else {
-            let listed = walk_files(&dir.path, None, &is_material_file)?;
+            let listed = walk_files(&dir.path, None, &is_material_file, Some(PROFILE_MATERIALS))?;
             let layout = layout_with(dir, || listed.clone());
             let base = if layout.prefix.is_empty() {
                 "materials".to_owned()

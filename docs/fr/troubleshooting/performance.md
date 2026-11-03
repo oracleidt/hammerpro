@@ -34,6 +34,7 @@ Page **Paramètres > Rendu**, groupe **Images par seconde** :
 | **Lumières avec ombres** | Paramètres > Rendu | En mode Aperçu de l'éclairage, nombre de lumières ponctuelles et de spots proches de la caméra qui projettent des ombres (0 : le soleil seulement, 16 au maximum). | 4 |
 | **Lumière du ciel seulement sous le ciel** | Paramètres > Rendu | En mode Aperçu de l'éclairage, la lumière du ciel est vérifiée avec une carte des hauteurs de la map autour de la caméra. Désactivé : un peu moins de travail pour les cartes graphiques lentes. | Activé |
 | **Aperçu de l'eau** | Paramètres > Rendu | Réfraction, reflets et vagues de l'eau. Désactivé : la texture d'outil. | Activé |
+| **Détail de l'eau** | Paramètres > Rendu | Reflets complets et Reflet du monde dessinent la scène une seconde fois (1024 pixels de large au plus) pour le miroir de l'eau coûteuse ; Reflets simples est le moins coûteux. | Reflets complets |
 | **Fondu des modèles**, **Effets de rendu**, **Matériaux animés** | Affichage > Options d'affichage (les deux premiers aussi dans Paramètres > Rendu) | Coûts modestes ; à couper quand chaque image compte. | Désactivé, Activé, Activé |
 
 Le mode de rendu compte aussi : **Couleurs unies** (`Alt+2`) et **Filaire** (`Alt+3`) sont les moins coûteux ; **Aperçu de l'éclairage** (`Alt+5`) et **Aperçu de l'éclairage précalculé** (`Ctrl+F5`) les plus coûteux. Voir [Modes de rendu et affichage](../features/render-modes-display.md) et [Aperçu de l'éclairage](../features/lighting-preview.md).

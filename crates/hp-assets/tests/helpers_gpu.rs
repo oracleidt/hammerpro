@@ -47,7 +47,13 @@ fn gfx() -> Option<Gfx> {
 }
 
 fn opts() -> SceneOptions {
-    SceneOptions { show_models: true, show_helpers: true, show_tool_textures: true, lighting_preview: false }
+    SceneOptions {
+        show_models: true,
+        show_helpers: true,
+        show_tool_textures: true,
+        lighting_preview: false,
+        model_lods: false,
+    }
 }
 
 fn settle(am: &mut AssetManager, doc: &mut Document, gfx: &mut Gfx, o: &SceneOptions) -> bool {
@@ -84,6 +90,7 @@ fn save(gfx: &Gfx, view: u32, name: &str) {
 fn view(eye: DVec3, target: DVec3) -> ViewParams {
     let forward = (target - eye).normalize_or(DVec3::X);
     ViewParams {
+        game_pixel_grid: false,
         size: [640, 400],
         kind: ViewKind::Perspective {
             eye: eye.as_vec3().to_array(),
@@ -190,6 +197,7 @@ fn overlays_and_ropes_follow_the_document() {
     gfx.renderer.render_view(1, &view(DVec3::new(-300.0, -420.0, 260.0), DVec3::ZERO), &Overlay::default());
     save(gfx, 1, "helpers_overlay_rope_3d");
     let top = ViewParams {
+        game_pixel_grid: false,
         size: [640, 400],
         kind: ViewKind::Ortho { axis: OrthoAxis::Top, center: [0.0, 0.0, 0.0], pixels_per_unit: 0.9 },
         mode: RenderMode::Wireframe,

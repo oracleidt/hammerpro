@@ -1,4 +1,4 @@
-use crate::pipelines::COLOR_FORMAT;
+use crate::pipelines::LDR_FORMAT;
 
 const SHADER: &str = r"
 @vertex
@@ -42,7 +42,7 @@ impl OpaquePass {
                 entry_point: Some("fs_main"),
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
-                    format: COLOR_FORMAT,
+                    format: LDR_FORMAT,
                     blend: None,
                     write_mask: wgpu::ColorWrites::ALPHA,
                 })],

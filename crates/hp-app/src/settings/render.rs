@@ -40,6 +40,47 @@ impl PropShadowSetting {
         [PropShadowSetting::Auto, PropShadowSetting::Mesh, PropShadowSetting::Collision];
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ToneModeSetting {
+    #[default]
+    Auto,
+    Fixed,
+    Off,
+}
+
+impl ToneModeSetting {
+    pub const ALL: [ToneModeSetting; 3] = [ToneModeSetting::Auto, ToneModeSetting::Fixed, ToneModeSetting::Off];
+
+    pub fn mode(self) -> hp_render::ToneMode {
+        match self {
+            ToneModeSetting::Auto => hp_render::ToneMode::Auto,
+            ToneModeSetting::Fixed => hp_render::ToneMode::Fixed,
+            ToneModeSetting::Off => hp_render::ToneMode::Off,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum WaterDetailSetting {
+    Simple,
+    ReflectWorld,
+    #[default]
+    ReflectAll,
+}
+
+impl WaterDetailSetting {
+    pub const ALL: [WaterDetailSetting; 3] =
+        [WaterDetailSetting::Simple, WaterDetailSetting::ReflectWorld, WaterDetailSetting::ReflectAll];
+
+    pub fn detail(self) -> hp_render::WaterDetail {
+        match self {
+            WaterDetailSetting::Simple => hp_render::WaterDetail::Simple,
+            WaterDetailSetting::ReflectWorld => hp_render::WaterDetail::ReflectWorld,
+            WaterDetailSetting::ReflectAll => hp_render::WaterDetail::ReflectAll,
+        }
+    }
+}
+
 pub const MIN_VRAM_BUDGET_MB: u32 = 256;
 pub const MAX_VRAM_BUDGET_MB: u32 = 262_144;
 
@@ -70,6 +111,7 @@ pub struct RenderSettings {
     pub skybox_3d: bool,
     pub sky_see_through: bool,
     pub water_preview: bool,
+    pub water_detail: WaterDetailSetting,
     pub fog_preview: bool,
     pub fog_volume_preview: bool,
     pub fog_volume_texture: bool,
@@ -81,6 +123,17 @@ pub struct RenderSettings {
     pub cubemaps_auto: bool,
     pub light_shadows: u32,
     pub light_preview_hdr: bool,
+    pub projected_textures: bool,
+    pub lit_indirect: bool,
+    pub model_lods: bool,
+    pub game_pixel_grid: bool,
+    pub sun_glow: bool,
+    pub tone_mapping: ToneModeSetting,
+    pub exposure: f32,
+    pub exposure_min: f32,
+    pub exposure_max: f32,
+    pub bloom: f32,
+    pub map_tonemap: bool,
     pub sky_occlusion: bool,
     pub prop_shadows: PropShadowSetting,
     pub animate_materials: bool,
@@ -139,6 +192,7 @@ impl Default for RenderSettings {
             skybox_3d: true,
             sky_see_through: false,
             water_preview: true,
+            water_detail: WaterDetailSetting::ReflectAll,
             fog_preview: true,
             fog_volume_preview: true,
             fog_volume_texture: true,
@@ -148,8 +202,19 @@ impl Default for RenderSettings {
             player_compiled_lighting: true,
             cubemaps: true,
             cubemaps_auto: true,
-            light_shadows: 4,
+            light_shadows: 16,
             light_preview_hdr: true,
+            projected_textures: true,
+            lit_indirect: true,
+            model_lods: true,
+            game_pixel_grid: true,
+            sun_glow: true,
+            tone_mapping: ToneModeSetting::Auto,
+            exposure: 1.0,
+            exposure_min: 0.5,
+            exposure_max: 2.0,
+            bloom: 1.0,
+            map_tonemap: true,
             sky_occlusion: true,
             prop_shadows: PropShadowSetting::Auto,
             animate_materials: true,
@@ -184,6 +249,17 @@ impl Default for RenderSettings {
 }
 
 impl RenderSettings {
+    pub fn tone(&self) -> hp_render::ToneSettings {
+        hp_render::ToneSettings {
+            mode: self.tone_mapping.mode(),
+            exposure: self.exposure,
+            exposure_min: self.exposure_min,
+            exposure_max: self.exposure_max,
+            bloom: self.bloom,
+            map_overrides: self.map_tonemap,
+        }
+    }
+
     pub fn displacements_2d_of(&self, index: usize) -> Disp2dSetting {
         match self.displacements_2d_views.get(index) {
             Some(Disp2dViewSetting::Own(m)) => *m,

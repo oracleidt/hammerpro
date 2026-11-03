@@ -246,3 +246,71 @@ fn keyword_index_of_the_whole_game() {
     assert!(again.elapsed().as_millis() < 50);
     assert!(elapsed.as_secs() < 30, "{elapsed:?}");
 }
+
+#[test]
+fn scan_timing_report() {
+    let Some(root) = gmod_dir() else { return };
+    let index = std::env::var_os("HP_SCAN_INDEX").map(PathBuf::from);
+    let mode = std::env::var("HP_SCAN_MODE").ok().and_then(|m| hp_fs::ScanMode::parse(&m)).unwrap_or_default();
+    hp_fs::configure_scan(hp_fs::ScanConfig { index_file: index, mode });
+    let runs = std::env::var("HP_SCAN_RUNS").ok().and_then(|v| v.parse::<usize>().ok()).unwrap_or(3);
+    for run in 0..runs {
+        let start = Instant::now();
+        let fs = GameFs::for_gmod(&root, &MountOptions::default()).expect("mount");
+        let elapsed = start.elapsed();
+        let stats = hp_fs::scan_stats();
+        eprintln!(
+            "  index {} ({} entries, {} bytes): dirs checked {}, reused {}, rescanned {}, mode {:?}, drives {:?}",
+            stats.index_state,
+            stats.index_entries,
+            stats.index_bytes,
+            stats.dirs_checked,
+            stats.dirs_reused,
+            stats.dirs_rescanned,
+            stats.mode,
+            stats.volumes
+        );
+        let sources = fs.sources();
+        let files: usize = sources.iter().map(|s| s.file_count).sum();
+        let mut vpk = std::time::Duration::ZERO;
+        let mut vpk_files = 0usize;
+        for s in &sources {
+            if let SourceKind::Vpk(_) = s.kind {
+                let t = Instant::now();
+                let _ = hp_vpk::VpkArchive::open(&s.path);
+                vpk += t.elapsed();
+                vpk_files += s.file_count;
+            }
+        }
+        eprintln!(
+            "scan run {run}: {} sources, {files} files, mount {:.0} ms (vpk reopen alone {:.0} ms for {vpk_files} entries)",
+            sources.len(),
+            elapsed.as_secs_f64() * 1000.0,
+            vpk.as_secs_f64() * 1000.0
+        );
+    }
+}
+
+#[test]
+fn scan_tree_timing() {
+    let Some(tree) = std::env::var_os("HP_SCAN_TREE").map(PathBuf::from) else { return };
+    let mode = std::env::var("HP_SCAN_MODE").ok().and_then(|m| hp_fs::ScanMode::parse(&m)).unwrap_or_default();
+    let index = std::env::var_os("HP_SCAN_INDEX").map(PathBuf::from);
+    hp_fs::configure_scan(hp_fs::ScanConfig { index_file: index, mode });
+    let fs = GameFs::empty();
+    for pass in 0..2 {
+        let start = Instant::now();
+        let id = fs.add_custom_dir(CustomDir::with_prefix(&tree, "bench")).expect("scan");
+        let elapsed = start.elapsed();
+        let files = fs.sources().iter().find(|s| s.id == id).map_or(0, |s| s.file_count);
+        let stats = hp_fs::scan_stats();
+        eprintln!(
+            "tree pass {pass} mode {mode:?}: {files} material files, {:.0} ms, folders checked {} reused {} scanned {}",
+            elapsed.as_secs_f64() * 1000.0,
+            stats.dirs_checked,
+            stats.dirs_reused,
+            stats.dirs_rescanned
+        );
+        fs.remove_source(id);
+    }
+}

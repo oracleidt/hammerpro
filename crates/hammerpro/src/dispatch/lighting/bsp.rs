@@ -562,10 +562,16 @@ pub(crate) fn flat_lightmaps(bsp: &hp_bsp::Bsp, hdr: bool) -> Result<FlatLightma
             }
             let base = ofs + k * normals * lux * 4;
             let Some(data) = lighting.get(base..base + normals * lux * 4) else { break };
-            for (acc, c) in sum.iter_mut().zip(data.chunks_exact(4)) {
-                let s = 2f32.powi(i32::from(c[3] as i8)) / 255.0;
+            let mut image: Vec<[f32; 3]> = data
+                .chunks_exact(4)
+                .map(|c| hp_editor::limits::world_light::rgbe_to_linear([c[0], c[1], c[2], c[3]]))
+                .collect();
+            if normals == 4 {
+                hp_editor::limits::world_light::normalize_bumped(&mut image, lux);
+            }
+            for (acc, c) in sum.iter_mut().zip(&image) {
                 for ch in 0..3 {
-                    acc[ch] += f32::from(c[ch]) * s;
+                    acc[ch] += c[ch];
                 }
             }
         }
@@ -573,7 +579,8 @@ pub(crate) fn flat_lightmaps(bsp: &hp_bsp::Bsp, hdr: bool) -> Result<FlatLightma
             break;
         }
         *slot = out.texels.len() as u32 | if normals == 4 { FlatLightmaps::BUMPED } else { 0 };
-        out.texels.extend(sum.into_iter().map(hp_light::pack::pack_rg11b10));
+        let shown = |c: [f32; 3]| if hdr { c } else { hp_editor::limits::world_light::ldr_lightmap(c) };
+        out.texels.extend(sum.into_iter().map(|c| hp_light::pack::pack_rg11b10(shown(c))));
     }
     Ok(out)
 }

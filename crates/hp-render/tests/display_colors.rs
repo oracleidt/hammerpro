@@ -47,6 +47,7 @@ fn square(min: [f32; 2], max: [f32; 2], wire: [u8; 3]) -> ObjectMesh {
 
 fn top(background: [f32; 3], grid: bool) -> ViewParams {
     ViewParams {
+        game_pixel_grid: false,
         size: [101, 101],
         kind: ViewKind::Ortho { axis: OrthoAxis::Top, center: [0.5, 0.5, 0.0], pixels_per_unit: 1.0 },
         mode: RenderMode::Wireframe,

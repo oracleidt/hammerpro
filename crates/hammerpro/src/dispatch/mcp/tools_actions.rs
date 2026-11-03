@@ -22,6 +22,7 @@ pub(crate) const NEEDS_CONFIRM: &[(&str, &str)] = &[
     ("compile_now", "runs the compiler and may start the game (use compile_map)"),
     ("batch_compile", "runs the compiler on several maps"),
     ("edit_instance", "may start another Hammer Pro window"),
+    ("install_update", "downloads an update, closes Hammer Pro and replaces the program (use apply_update)"),
     ("open_docs", "opens the web browser"),
     ("report_issue", "opens the web browser"),
     ("open_map", "shows a file dialog the user must answer (use the open_map tool)"),
@@ -226,6 +227,7 @@ mod tests {
         "run_map",
         "use_sky_camera_in_game",
         "import_model",
+        "bsp_sniffer",
     ];
 
     #[test]

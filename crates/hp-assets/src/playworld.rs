@@ -42,6 +42,8 @@ pub(crate) struct PlayWorld {
     owned_cubes: Vec<CubemapId>,
     pub(crate) cube_sources: Option<(usize, usize)>,
     drawn_cubes: Vec<([i32; 3], Option<CubemapId>)>,
+    sky_bounds: Option<(glam::DVec3, glam::DVec3)>,
+    sky_groups: Vec<bool>,
 }
 
 struct PlayRopes {
@@ -166,6 +168,7 @@ impl AssetManager {
             if let Some((world, _)) = self.play_world.wanted.clone() {
                 let objects = self.upload_world(doc, renderer, &world);
                 self.play_world.uploaded = Some((world, objects));
+                self.play_world.sky_bounds = None;
                 self.play_world.styles_sent = None;
             }
         }
@@ -177,9 +180,9 @@ impl AssetManager {
         let before = self.play_world.applied.clone();
         let mut changed: Vec<Option<bool>> = vec![None; objects.len()];
         for (i, o) in objects.iter().enumerate().take(world.groups.len()) {
-            let hidden = !group_drawn(i, visible.as_deref());
+            let hidden = !self.group_visible(i, visible.as_deref());
             if let Some(b) = &before
-                && group_drawn(i, b.as_deref()) != hidden
+                && self.group_visible(i, b.as_deref()) != hidden
             {
                 continue;
             }
@@ -201,7 +204,7 @@ impl AssetManager {
         }
         for (k, p) in world.static_props.iter().take(MAX_STATIC_PROPS).enumerate() {
             if let Some(&Some(hidden)) = changed.get(p.group as usize) {
-                renderer.set_object_flags(static_prop_object(k), object_flags(false, hidden));
+                renderer.set_object_flags(static_prop_object(k), self.static_prop_flags(p, hidden));
             }
         }
         self.play_world.applied = Some(visible);
@@ -434,8 +437,8 @@ impl AssetManager {
             renderer.destroy_model(m);
         }
         renderer.set_object_flags(rope_object(), object_flags(false, false));
-        for k in 0..world.static_props.len().min(MAX_STATIC_PROPS) {
-            renderer.set_object_flags(static_prop_object(k), object_flags(false, false));
+        for (k, p) in world.static_props.iter().take(MAX_STATIC_PROPS).enumerate() {
+            renderer.set_object_flags(static_prop_object(k), self.static_prop_flags(p, false));
         }
         self.scene.instances_dirty = true;
         for (i, o) in objects.iter().enumerate() {
@@ -555,6 +558,39 @@ fn detail_model_index(object: u32) -> Option<usize> {
 }
 
 impl AssetManager {
+    fn group_visible(&self, i: usize, visible: Option<&Vec<bool>>) -> bool {
+        group_drawn(i, visible) || self.play_world.sky_groups.get(i).copied().unwrap_or(false)
+    }
+
+    fn static_prop_flags(&self, p: &hp_editor::limits::world::StaticPropPlacement, hidden: bool) -> ObjectFlags {
+        let in_room = self.scene.env.room.as_ref().is_some_and(|r| sky3d::in_room(p.origin, p.origin, r.bounds));
+        let mut flags = object_flags(false, hidden && !in_room);
+        if in_room {
+            flags |= ObjectFlags::SKY_3D;
+        }
+        flags
+    }
+
+    pub(crate) fn sync_sky_props(&mut self, renderer: &mut Renderer) {
+        let bounds = self.scene.env.room.as_ref().map(|r| r.bounds);
+        if bounds == self.play_world.sky_bounds {
+            return;
+        }
+        self.play_world.sky_bounds = bounds;
+        let Some(world) = self.play_world.uploaded.as_ref().map(|(w, _)| Arc::clone(w)) else {
+            self.play_world.sky_groups.clear();
+            return;
+        };
+        self.play_world.sky_groups =
+            world.groups.iter().map(|g| bounds.is_some_and(|room| sky3d::in_room(g.min, g.max, room))).collect();
+        let visible = self.play_world.applied.clone().flatten();
+        for (k, p) in world.static_props.iter().take(MAX_STATIC_PROPS).enumerate() {
+            let hidden = !self.group_visible(p.group as usize, visible.as_deref());
+            renderer.set_object_flags(static_prop_object(k), self.static_prop_flags(p, hidden));
+        }
+        self.play_world.applied = None;
+    }
+
     pub(crate) fn play_detail_instances(&mut self, renderer: &mut Renderer) -> Vec<hp_render::ModelInstance> {
         let list = std::mem::take(&mut self.play_world.detail_models);
         let mut out = Vec::with_capacity(list.len());
@@ -780,9 +816,8 @@ impl AssetManager {
         } else {
             data.as_ref().map_or(glam::Vec3::ZERO, |d| ((d.info.bounds_min + d.info.bounds_max) * 0.5).as_vec3())
         };
-        let lighting_origin = match (prop, lighting_origin) {
-            (Some(p), _) => p.lighting_origin,
-            (None, Some(o)) => o,
+        let lighting_origin = match (prop.and_then(|p| p.lighting_origin), lighting_origin) {
+            (Some(o), _) | (None, Some(o)) => o,
             (None, None) => m.transform_point3(center).to_array(),
         };
         let lit = props.model_lighting(lighting_origin);
@@ -795,6 +830,20 @@ impl AssetManager {
                 }
                 for &i in &part.color_index {
                     out.push(*colors.get(i as usize)?);
+                }
+            }
+            if let Some(key) = path.as_deref()
+                && let Some((_, lods)) = self.lods.data.get(key)
+            {
+                for parts in &lods.lods {
+                    for part in parts.iter().filter(|p| p.choice == 0) {
+                        if part.color_index.len() != part.vertices.len() {
+                            return None;
+                        }
+                        for &i in &part.color_index {
+                            out.push(*colors.get(i as usize)?);
+                        }
+                    }
                 }
             }
             (!out.is_empty()).then_some(out)

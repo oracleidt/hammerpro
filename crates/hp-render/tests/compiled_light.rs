@@ -65,6 +65,7 @@ fn close(got: u8, want: f32, tol: f32, what: &str) {
 
 fn view(mode: RenderMode) -> ViewParams {
     ViewParams {
+        game_pixel_grid: false,
         size: [SIZE, SIZE],
         kind: ViewKind::Perspective {
             eye: [0.0, 0.0, 0.0],
@@ -165,7 +166,7 @@ fn compiled_world_is_lit_by_its_lightmaps_like_the_game() {
     };
     let editor = render(&mut r, RenderMode::Textured, true, "editor");
 
-    r.set_compiled_bloom(false);
+    r.set_tone_settings(ToneSettings { bloom: 0.0, ..ToneSettings::default() });
     let stats = r.set_compiled_lighting(CompiledLightMode::Hdr, &maps, &blocks);
     assert_eq!((stats.lightmaps, stats.dropped, stats.blocks), (3, 0, 2));
     let hdr = render(&mut r, RenderMode::Textured, true, "hdr");
@@ -183,18 +184,18 @@ fn compiled_world_is_lit_by_its_lightmaps_like_the_game() {
     let want = srgb(behind + (1.0 - behind) * (128.0 / 255.0));
     close(g, want, 4.0, "glass");
 
-    assert_eq!(r.compiled_exposure(), 1.0);
-    let e = r.step_compiled_exposure(1, 0.5);
+    assert_eq!(r.tone_scale(1), 1.0);
+    let e = r.step_tone(1, 0.5);
     assert!(e > 1.03 && e <= 2.0, "{e}");
     let exposed = render(&mut r, RenderMode::Textured, true, "hdr_exposed");
     close(px(&exposed, 20, 60)[0], srgb(gray * 0.5 * e), 2.0, "HDR half exposed");
-    r.set_compiled_bloom(true);
+    r.set_tone_settings(ToneSettings::default());
     let bloom = render(&mut r, RenderMode::Textured, true, "hdr_bloom");
     assert!(px(&bloom, 20, 180)[0] > px(&exposed, 20, 180)[0], "on the glass");
     assert!(px(&bloom, 20, 100)[0] >= px(&exposed, 20, 100)[0], "everywhere a little");
-    r.set_compiled_bloom(false);
+    r.set_tone_settings(ToneSettings { bloom: 0.0, ..ToneSettings::default() });
     r.set_view_options(1, ViewOptions::default());
-    assert_eq!(r.step_compiled_exposure(1, 0.5), 1.0);
+    assert_eq!(r.step_tone(1, 0.5), 1.0);
 
     r.set_compiled_lighting(CompiledLightMode::Ldr, &maps, &blocks);
     let ldr = render(&mut r, RenderMode::Textured, true, "ldr");
@@ -224,6 +225,47 @@ fn compiled_world_is_lit_by_its_lightmaps_like_the_game() {
 }
 
 #[test]
+fn material_color_tints_multiply_the_texture_directly_in_hdr_like_the_game() {
+    let Some((device, queue)) = gpu() else {
+        eprintln!("no GPU adapter available: test skipped");
+        return;
+    };
+    let mut r = Renderer::new(&device, &queue);
+    let up = TextureUpload {
+        width: 4,
+        height: 4,
+        format: TexFormat::Rgba8Srgb,
+        levels: vec![[128u8, 128, 128, 255].repeat(16)],
+    };
+    let t = r.create_texture(&up);
+    r.set_material(
+        WORLD,
+        &MaterialDesc { texture: Some(t), tex_size: [4.0, 4.0], tint: [0.5, 0.5, 0.5, 1.0], ..Default::default() },
+    );
+    let quad = face(-100.0, 100.0, -100.0, 100.0, 100.0, 0, [0.5, 0.5]);
+    r.upsert_object(1, mesh(&quad, WORLD));
+    r.set_object_flags(1, ObjectFlags::COMPILED_LIGHT);
+    let blocks = vec![CompiledBlock {
+        object: 1,
+        batches: vec![CompiledBatch { material: WORLD, vertices: quad.clone(), indices: vec![0, 1, 2, 0, 2, 3] }],
+    }];
+    let one = [[1.0f32; 3]];
+    let maps = [CompiledLightmap { width: 1, height: 1, texels: &one, styles: &[], bumped: false }];
+    r.set_tone_settings(ToneSettings { mode: ToneMode::Fixed, bloom: 0.0, ..ToneSettings::default() });
+    r.set_compiled_lighting(CompiledLightMode::Hdr, &maps, &blocks);
+    r.set_view_options(1, ViewOptions { compiled_lighting: true, ..ViewOptions::default() });
+    let mut params = view(RenderMode::Textured);
+    params.msaa = true;
+    r.render_view(1, &params, &Overlay::default());
+    let hdr = save(&r, "tint_hdr");
+    close(px(&hdr, 100, 100)[0], srgb(linear(128) * 0.5), 2.0, "HDR tint is a plain multiplier");
+    r.set_compiled_lighting(CompiledLightMode::Ldr, &maps, &blocks);
+    r.render_view(1, &view(RenderMode::Textured), &Overlay::default());
+    let ldr = save(&r, "tint_ldr");
+    close(px(&ldr, 100, 100)[0], srgb(linear(128) * linear(128)), 2.0, "LDR tint is read as a color value");
+}
+
+#[test]
 fn compiled_world_faces_glow_with_selfillum() {
     let Some((device, queue)) = gpu() else {
         eprintln!("no GPU adapter available: test skipped");
@@ -240,7 +282,7 @@ fn compiled_world_faces_glow_with_selfillum() {
     }];
     let quarter = [[0.25f32; 3]];
     let maps = [CompiledLightmap { width: 1, height: 1, texels: &quarter, styles: &[], bumped: false }];
-    r.set_compiled_bloom(false);
+    r.set_tone_settings(ToneSettings { bloom: 0.0, ..ToneSettings::default() });
     r.set_compiled_lighting(CompiledLightMode::Hdr, &maps, &blocks);
     r.set_view_options(1, ViewOptions { compiled_lighting: true, ..ViewOptions::default() });
     let render = |r: &mut Renderer, name: &str| {
@@ -301,7 +343,7 @@ fn models_take_their_compiled_lighting() {
         tangents: Vec::new(),
     }]);
     r.set_model_instances(&[ModelInstance { model, object: 50, ..Default::default() }]);
-    r.set_compiled_bloom(false);
+    r.set_tone_settings(ToneSettings { bloom: 0.0, ..ToneSettings::default() });
     r.set_compiled_lighting(CompiledLightMode::Hdr, &[], &[]);
     r.set_view_options(1, ViewOptions { compiled_lighting: true, ..ViewOptions::default() });
     let shot = |r: &mut Renderer, name: &str| {
@@ -377,7 +419,7 @@ fn light_styles_scale_their_lightmaps_and_lights() {
         CompiledLightmap { width: 1, height: 1, texels: &half, styles: &[], bumped: false },
         CompiledLightmap { width: 2, height: 1, texels: &styled, styles: &[0, 10], bumped: false },
     ];
-    r.set_compiled_bloom(false);
+    r.set_tone_settings(ToneSettings { bloom: 0.0, ..ToneSettings::default() });
     let stats = r.set_compiled_lighting(CompiledLightMode::Hdr, &maps, &blocks);
     assert_eq!((stats.lightmaps, stats.animated), (2, 1));
     r.set_view_options(1, ViewOptions { compiled_lighting: true, ..ViewOptions::default() });
@@ -504,7 +546,7 @@ fn brush_entities_blend_their_compiled_faces_back_to_front() {
         CompiledLightmap { width: 1, height: 1, texels: &quarter, styles: &[], bumped: false },
         CompiledLightmap { width: 1, height: 1, texels: &bright, styles: &[], bumped: false },
     ];
-    r.set_compiled_bloom(false);
+    r.set_tone_settings(ToneSettings { bloom: 0.0, ..ToneSettings::default() });
     r.set_compiled_lighting(CompiledLightMode::Hdr, &maps, &blocks);
     r.set_view_options(1, ViewOptions { compiled_lighting: true, ..ViewOptions::default() });
     let shot = |r: &mut Renderer, name: &str| {
@@ -558,7 +600,7 @@ fn detail_models_fade_and_take_their_color_like_the_client() {
         tint: [0.5, 0.5, 0.5, 1.0],
         fade: ModelInstance::detail_fade(1200.0, 400.0),
     };
-    r.set_compiled_bloom(false);
+    r.set_tone_settings(ToneSettings { bloom: 0.0, ..ToneSettings::default() });
     r.set_compiled_lighting(CompiledLightMode::Hdr, &[], &[]);
     r.set_view_options(1, ViewOptions { compiled_lighting: true, ..ViewOptions::default() });
     let mut ambient = [[0.0f32; 3]; 6];

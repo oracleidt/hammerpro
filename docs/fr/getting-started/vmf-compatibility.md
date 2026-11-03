@@ -66,7 +66,7 @@ Les exports sont écrits par une tâche de fond, de façon atomique.
 
 **À quoi sert le fichier `.vmx` à côté de ma map ?** C'est la version précédente de la map, copiée à chaque enregistrement comme le fait Hammer. Ouvrez-le avec **Fichier > Ouvrir une map...** pour revenir en arrière.
 
-**Hammer Pro peut-il ouvrir un `.bsp` compilé ?** Oui, avec **Fichier > Ouvrir une map compilée (BSP)...**, qui le décompile en une nouvelle map (voir [Outils BSP](../features/bsp-tools.md)).
+**Hammer Pro peut-il ouvrir un `.bsp` compilé ?** Oui, avec **Fichier > Décompilateur de BSP...**, qui le décompile en une nouvelle map (voir [Outils BSP](../features/bsp-tools.md)).
 
 ## Pages liées
 

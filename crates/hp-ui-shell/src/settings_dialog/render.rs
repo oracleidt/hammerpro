@@ -2,6 +2,7 @@ use hp_app::extend::{SettingsPage, page_order};
 use hp_app::i18n::TrTable;
 use hp_app::settings::{
     Disp2dSetting, Disp2dViewSetting, Models2dSetting, PropShadowSetting, RenderSettings, StaticPropShadows,
+    ToneModeSetting, WaterDetailSetting,
 };
 use hp_app::{AppState, t, tf};
 
@@ -81,6 +82,19 @@ impl SettingsPage for RenderPage {
             t!("shell.render.sky_see_through_tip"),
         );
         changed |= check(ui, &mut r.water_preview, t!("shell.render.water"), t!("shell.render.water_tip"));
+        ui.horizontal(|ui| {
+            ui.label(t!("shell.render.water_detail")).on_hover_text(t!("shell.render.water_detail_tip"));
+            egui::ComboBox::from_id_salt("hp_shell_render_water_detail")
+                .selected_text(water_detail_label(r.water_detail))
+                .show_ui(ui, |ui| {
+                    for m in WaterDetailSetting::ALL {
+                        changed |= ui
+                            .selectable_value(&mut r.water_detail, m, water_detail_label(m))
+                            .on_hover_text(t!("shell.render.water_detail_tip"))
+                            .changed();
+                    }
+                });
+        });
         changed |= check(ui, &mut r.normal_maps, t!("shell.render.normal_maps"), t!("shell.render.normal_maps_tip"));
         changed |= check(
             ui,
@@ -88,8 +102,75 @@ impl SettingsPage for RenderPage {
             t!("shell.render.light_preview_hdr"),
             t!("shell.render.light_preview_hdr_tip"),
         );
+        changed |= check(
+            ui,
+            &mut r.projected_textures,
+            t!("shell.render.projected_textures"),
+            t!("shell.render.projected_textures_tip"),
+        );
         changed |=
             check(ui, &mut r.sky_occlusion, t!("shell.render.sky_occlusion"), t!("shell.render.sky_occlusion_tip"));
+        changed |= check(ui, &mut r.lit_indirect, t!("shell.render.lit_indirect"), t!("shell.render.lit_indirect_tip"));
+        changed |= check(ui, &mut r.model_lods, t!("shell.render.model_lods"), t!("shell.render.model_lods_tip"));
+        changed |= check(ui, &mut r.sun_glow, t!("shell.render.sun_glow"), t!("shell.render.sun_glow_tip"));
+        changed |= check(
+            ui,
+            &mut r.game_pixel_grid,
+            t!("shell.render.game_pixel_grid"),
+            t!("shell.render.game_pixel_grid_tip"),
+        );
+        ui.horizontal(|ui| {
+            ui.label(t!("shell.render.tone_mapping")).on_hover_text(t!("shell.render.tone_mapping_tip"));
+            egui::ComboBox::from_id_salt("hp_shell_render_tone_mapping")
+                .selected_text(tone_label(r.tone_mapping))
+                .show_ui(ui, |ui| {
+                    for m in ToneModeSetting::ALL {
+                        changed |= ui
+                            .selectable_value(&mut r.tone_mapping, m, tone_label(m))
+                            .on_hover_text(t!("shell.render.tone_mapping_tip"))
+                            .changed();
+                    }
+                });
+        });
+        egui::Grid::new("hp_shell_render_tone").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
+            ui.label(t!("shell.render.exposure"));
+            changed |= ui
+                .add_enabled(
+                    r.tone_mapping == ToneModeSetting::Fixed,
+                    egui::DragValue::new(&mut r.exposure).range(0.05..=16.0).speed(0.02).fixed_decimals(2),
+                )
+                .on_hover_text(t!("shell.render.exposure_tip"))
+                .changed();
+            ui.end_row();
+            ui.label(t!("shell.render.exposure_min"));
+            changed |= ui
+                .add_enabled(
+                    r.tone_mapping == ToneModeSetting::Auto,
+                    egui::DragValue::new(&mut r.exposure_min).range(0.05..=16.0).speed(0.02).fixed_decimals(2),
+                )
+                .on_hover_text(t!("shell.render.exposure_min_tip"))
+                .changed();
+            ui.end_row();
+            ui.label(t!("shell.render.exposure_max"));
+            changed |= ui
+                .add_enabled(
+                    r.tone_mapping == ToneModeSetting::Auto,
+                    egui::DragValue::new(&mut r.exposure_max).range(0.05..=16.0).speed(0.02).fixed_decimals(2),
+                )
+                .on_hover_text(t!("shell.render.exposure_max_tip"))
+                .changed();
+            ui.end_row();
+            ui.label(t!("shell.render.bloom"));
+            changed |= ui
+                .add_enabled(
+                    r.tone_mapping != ToneModeSetting::Off,
+                    egui::DragValue::new(&mut r.bloom).range(0.0..=8.0).speed(0.02).fixed_decimals(2),
+                )
+                .on_hover_text(t!("shell.render.bloom_tip"))
+                .changed();
+            ui.end_row();
+        });
+        changed |= check(ui, &mut r.map_tonemap, t!("shell.render.map_tonemap"), t!("shell.render.map_tonemap_tip"));
         ui.horizontal(|ui| {
             ui.label(t!("shell.render.prop_shadows")).on_hover_text(t!("shell.render.prop_shadows_tip"));
             egui::ComboBox::from_id_salt("hp_shell_render_prop_shadows")
@@ -293,6 +374,22 @@ fn disp_2d_label(m: Disp2dSetting) -> &'static str {
     }
 }
 
+fn water_detail_label(m: WaterDetailSetting) -> &'static str {
+    match m {
+        WaterDetailSetting::Simple => t!("shell.render.water_simple"),
+        WaterDetailSetting::ReflectWorld => t!("shell.render.water_reflect_world"),
+        WaterDetailSetting::ReflectAll => t!("shell.render.water_reflect_all"),
+    }
+}
+
+fn tone_label(m: ToneModeSetting) -> &'static str {
+    match m {
+        ToneModeSetting::Auto => t!("shell.render.tone_auto"),
+        ToneModeSetting::Fixed => t!("shell.render.tone_fixed"),
+        ToneModeSetting::Off => t!("shell.render.tone_off"),
+    }
+}
+
 fn prop_shadows_label(m: PropShadowSetting, compiled: StaticPropShadows) -> String {
     let shape = |s: StaticPropShadows| match s {
         StaticPropShadows::None => t!("shell.render.prop_shadows_none"),
@@ -345,6 +442,12 @@ pub(crate) const TR: TrTable = &[
     ("shell.render.radius_culling", "Radius culling", "Limite de distance circulaire"),
     ("shell.render.light_shadows", "Shadowed lights", "Lumières avec ombres"),
     ("shell.render.light_preview_hdr", "HDR light values", "Valeurs de lumière HDR"),
+    ("shell.render.projected_textures", "Projected textures", "Textures projetées"),
+    (
+        "shell.render.projected_textures_tip",
+        "The env_projectedtexture entities (the first sixteen) light the Lit mode, the baked preview and the player view with their texture, FOV, near and far Z, color and strength, like the game",
+        "Les entités env_projectedtexture (les seize premières) éclairent le mode éclairé, l'aperçu précalculé et la vue joueur avec leur texture, FOV, Z proche et lointain, couleur et intensité, comme le jeu",
+    ),
     (
         "shell.render.light_preview_hdr_tip",
         "Lit mode: the lights use their HDR values (_lightHDR, _lightscaleHDR, _ambientHDR, _AmbientScaleHDR) like \
@@ -353,6 +456,69 @@ pub(crate) const TR: TrTable = &[
          _AmbientScaleHDR) comme le jeu sur une map compilée en HDR. Désactivé : les valeurs LDR (_light, _ambient).",
     ),
     ("shell.render.sky_occlusion", "Sky light only under the sky", "Lumière du ciel seulement sous le ciel"),
+    ("shell.render.lit_indirect", "Bounced light in Lit mode", "Lumière rebondie en mode éclairé"),
+    (
+        "shell.render.lit_indirect_tip",
+        "Lit mode: a background bake of the map with the compiler gives the surfaces its sky light and the light          bounced by the other surfaces (the ambient part of the lightmaps, like the game); the lights and the sun          stay real time. It runs again a moment after you edit the map. Off: only the real time lights and an          approximate sky light, no bounce.",
+        "Mode éclairé : une cuisson de la map en arrière-plan avec le compilateur donne aux surfaces leur lumière du          ciel et la lumière rebondie par les autres surfaces (la part ambiante des lightmaps, comme le jeu) ; les          lumières et le soleil restent en temps réel. Elle repart un instant après une modification de la map.          Désactivé : seulement les lumières en temps réel et une lumière du ciel approchée, sans rebond.",
+    ),
+    ("shell.render.model_lods", "Model levels of detail", "Niveaux de détail des modèles"),
+    (
+        "shell.render.model_lods_tip",
+        "Draws every prop at the level of detail the game picks for it, from the switch distances of its model and          the size it takes on the screen. Off: the finest level of every model is always drawn, like Hammer.",
+        "Dessine chaque prop au niveau de détail que le jeu choisit pour lui, d'après les distances de bascule de          son modèle et la taille qu'il occupe à l'écran. Désactivé : le niveau le plus fin de chaque modèle est          toujours dessiné, comme Hammer.",
+    ),
+    ("shell.render.game_pixel_grid", "Game pixel grid", "Grille de pixels du jeu"),
+    (
+        "shell.render.game_pixel_grid_tip",
+        "The 3D views sample their pixels on the same grid as the game (Direct3D 9), half a pixel from the grid          Vulkan and Direct3D 12 use, so a screenshot of the preview lines up with a screenshot of the game.          Off: the mathematically centered grid of the graphics API.",
+        "Les vues 3D échantillonnent leurs pixels sur la même grille que le jeu (Direct3D 9), à un demi pixel de          la grille de Vulkan et de Direct3D 12, pour qu’une capture de l’aperçu se superpose à une capture du jeu.          Désactivé : la grille centrée mathématiquement de l’API graphique.",
+    ),
+    ("shell.render.sun_glow", "env_sun glow", "Halo de l’env_sun"),
+    (
+        "shell.render.sun_glow_tip",
+        "Draws the sun sprite and its glow of the env_sun entity in the 3D views like the game: its direction,          size and overlaysize, rendercolor and overlaycolor, material and overlaymaterial, HDRColorScale, the          fade over the 40 degrees around the middle of the view and the fade behind what hides the sun.",
+        "Dessine le sprite du soleil et son halo de l’entité env_sun dans les vues 3D comme le jeu : sa direction,          ses size et overlaysize, ses rendercolor et overlaycolor, ses material et overlaymaterial, son          HDRColorScale, le fondu sur les 40 degrés autour du centre de la vue et le fondu derrière ce qui cache          le soleil.",
+    ),
+    ("shell.render.tone_mapping", "HDR tone mapping", "Tone mapping HDR"),
+    (
+        "shell.render.tone_mapping_tip",
+        "How the lit views (Lit mode, baked preview and the player view with its compiled lighting) turn the light          into pixels, like the game: Auto adapts the exposure to the picture like the engine (mat_autoexposure_min          and max, 60% of the brightest pixels), Fixed keeps the exposure below (mat_force_tonemap_scale), Off          shows the light as it is, without exposure or bloom.",
+        "Comment les vues éclairées (mode éclairé, aperçu précalculé et vue joueur avec son éclairage compilé)          transforment la lumière en pixels, comme le jeu : Auto adapte l'exposition à l'image comme le moteur          (mat_autoexposure_min et max, 60 % des pixels les plus clairs), Fixe garde l'exposition ci-dessous          (mat_force_tonemap_scale), Aucun montre la lumière telle quelle, sans exposition ni bloom.",
+    ),
+    ("shell.render.tone_auto", "Auto exposure", "Exposition automatique"),
+    ("shell.render.tone_fixed", "Fixed exposure", "Exposition fixe"),
+    ("shell.render.tone_off", "Off", "Aucun"),
+    ("shell.render.exposure", "Exposure", "Exposition"),
+    (
+        "shell.render.exposure_tip",
+        "Fixed exposure: the scale the light is multiplied by (1 is the light of the lightmaps as it is)",
+        "Exposition fixe : le facteur par lequel la lumière est multipliée (1 : la lumière des lightmaps telle quelle)",
+    ),
+    ("shell.render.exposure_min", "Lowest auto exposure", "Exposition auto minimale"),
+    (
+        "shell.render.exposure_min_tip",
+        "The auto exposure never goes under this (mat_autoexposure_min, 0.5 in the game)",
+        "L'exposition automatique ne descend jamais sous cette valeur (mat_autoexposure_min, 0,5 dans le jeu)",
+    ),
+    ("shell.render.exposure_max", "Highest auto exposure", "Exposition auto maximale"),
+    (
+        "shell.render.exposure_max_tip",
+        "The auto exposure never goes over this (mat_autoexposure_max, 2 in the game)",
+        "L'exposition automatique ne dépasse jamais cette valeur (mat_autoexposure_max, 2 dans le jeu)",
+    ),
+    ("shell.render.bloom", "Bloom", "Bloom"),
+    (
+        "shell.render.bloom_tip",
+        "Strength of the glow around bright surfaces (mat_bloom_scalefactor_scalar, 1 in the game; 0 turns it off).          It is multiplied by the bloom scale of the map's env_tonemap_controller when the option below is on.",
+        "Intensité de la lueur autour des surfaces claires (mat_bloom_scalefactor_scalar, 1 dans le jeu ; 0 la          désactive). Elle est multipliée par l'échelle de bloom de l'env_tonemap_controller de la map quand l'option          ci-dessous est activée.",
+    ),
+    ("shell.render.map_tonemap", "Follow the map's tone controller", "Suivre le contrôleur de tonemap de la map"),
+    (
+        "shell.render.map_tonemap_tip",
+        "The env_tonemap_controller of the map (SetAutoExposureMin, SetAutoExposureMax, SetBloomScale from its          logic_auto) sets the exposure range and the bloom, like in game",
+        "L'env_tonemap_controller de la map (SetAutoExposureMin, SetAutoExposureMax, SetBloomScale depuis son          logic_auto) règle la plage d'exposition et le bloom, comme en jeu",
+    ),
     ("shell.render.prop_shadows", "Static prop shadows", "Ombres des props statiques"),
     (
         "shell.render.prop_shadows_tip",
@@ -377,8 +543,8 @@ pub(crate) const TR: TrTable = &[
     ),
     (
         "shell.render.light_shadows_tip",
-        "Lit mode: how many point and spot lights near the camera cast shadows (0: only the sun)",
-        "Mode éclairé : nombre de lumières ponctuelles et spots proches de la caméra qui projettent des ombres (0 : le soleil seulement)",
+        "Lit mode: how many point and spot lights in view cast shadows (0: only the sun, at most 64, the brightest first;          beyond 8 the shadow maps are coarser). A light without a shadow map lights through walls.",
+        "Mode éclairé : nombre de lumières ponctuelles et spots en vue qui projettent des ombres (0 : le soleil          seulement, 64 au plus, les plus brillantes d'abord ; au-delà de 8 les cartes d'ombre sont plus grossières).          Une lumière sans carte d'ombre éclaire à travers les murs.",
     ),
     ("shell.render.occlusion", "Skip hidden geometry", "Ignorer la géométrie cachée"),
     (
@@ -412,6 +578,15 @@ pub(crate) const TR: TrTable = &[
         "Dessine l'eau comme en jeu : réfraction de ce qui est dessous, brouillard de l'eau, reflet de la scène et \
          du ciel, vagues animées. Désactivé : l'eau montre sa texture d'outil.",
     ),
+    ("shell.render.water_detail", "Water detail", "Détail de l'eau"),
+    (
+        "shell.render.water_detail_tip",
+        "Like the Water Detail video option of the game. Reflect all detail (r_waterforceexpensive and          r_waterforcereflectentities): expensive water at every distance, reflecting the world, the props and the          brush entities, the sky and the 3D skybox drawn again mirrored about its surface. Reflect world detail:          expensive water near the camera (cheap past $cheapwaterenddistance), props and brush entities only with          $reflectentities. Simple reflections: cheap water everywhere.",
+        "Comme l'option vidéo Détail de l'eau du jeu. Reflets complets (r_waterforceexpensive et          r_waterforcereflectentities) : eau coûteuse à toute distance, qui reflète le monde, les props et les          entités de brushes, le ciel et la skybox 3D dessinés une seconde fois en miroir par rapport à sa surface.          Reflet du monde : eau coûteuse près de la caméra (bon marché au-delà de $cheapwaterenddistance), props et          entités de brushes seulement avec $reflectentities. Reflets simples : eau bon marché partout.",
+    ),
+    ("shell.render.water_simple", "Simple reflections", "Reflets simples"),
+    ("shell.render.water_reflect_world", "Reflect world", "Reflet du monde"),
+    ("shell.render.water_reflect_all", "Reflect all", "Reflets complets"),
     ("shell.render.normal_maps", "Relief (normal maps)", "Relief (normal maps)"),
     (
         "shell.render.normal_maps_tip",

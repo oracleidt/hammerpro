@@ -30,6 +30,7 @@ pub(crate) struct Job {
     pub layer_size: u32,
     pub max_layers: u32,
     pub coarsen: f64,
+    pub lit: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -60,6 +61,8 @@ pub(crate) struct Baked {
     pub coarsen: f64,
     pub warnings: Vec<String>,
     pub props: Option<Arc<hp_editor::limits::world_light::PropLighting>>,
+    pub indirect: Option<Arc<hp_render::IndirectVolume>>,
+    pub hdr: bool,
 }
 
 pub(crate) enum Outcome {
@@ -194,6 +197,7 @@ fn run(job: Job, ctx: &Ctx<'_>) -> Outcome {
         layer_size,
         max_layers,
         coarsen: factor,
+        lit: indirect_only,
         ..
     } = job;
     let mut map = map;
@@ -283,9 +287,11 @@ fn run(job: Job, ctx: &Ctx<'_>) -> Outcome {
     };
     ctx.progress(BakePhase::Finishing, 0.95);
     let child::LitResult { flat, bsp: lit_bsp } = lit;
-    let props = model_lighting(lit_bsp);
-    let mut baked = assemble(&mut geo, flat, layer_size, max_layers);
+    let (props, indirect) = model_lighting(lit_bsp);
+    let mut baked = if indirect_only { Baked::default() } else { assemble(&mut geo, flat, layer_size, max_layers) };
     baked.props = props;
+    baked.indirect = indirect;
+    baked.hdr = hdr;
     baked.luxels = luxels;
     baked.triangles = triangles;
     baked.unbound = geo.unbound;
@@ -328,10 +334,23 @@ fn line_phase(line: &str, triangles: &mut usize) -> Option<(BakePhase, f32)> {
     }
 }
 
-fn model_lighting(bytes: Vec<u8>) -> Option<Arc<hp_editor::limits::world_light::PropLighting>> {
-    let bsp = hp_bsp::Bsp::from_vec(bytes).map_err(|e| log::warn!("lighting preview: the lit map: {e}")).ok()?;
-    let props = crate::dispatch::health::portals::bake_prop_lighting(&bsp)?;
-    props.has_data().then(|| Arc::new(props))
+type ModelLight = (Option<Arc<hp_editor::limits::world_light::PropLighting>>, Option<Arc<hp_render::IndirectVolume>>);
+
+fn model_lighting(bytes: Vec<u8>) -> ModelLight {
+    let Some(bsp) = hp_bsp::Bsp::from_vec(bytes).map_err(|e| log::warn!("lighting preview: the lit map: {e}")).ok()
+    else {
+        return (None, None);
+    };
+    let props = crate::dispatch::health::portals::bake_prop_lighting(&bsp)
+        .filter(hp_editor::limits::world_light::PropLighting::has_data)
+        .map(Arc::new);
+    (props, indirect_volume(&bsp))
+}
+
+fn indirect_volume(bsp: &hp_bsp::Bsp) -> Option<Arc<hp_render::IndirectVolume>> {
+    let lump = bsp.lump(hp_light::probes::LUMP).ok().filter(|l| !l.is_empty())?;
+    let v = hp_light::probes::ProbeVolume::decode(&lump)?;
+    hp_render::IndirectVolume::new(v.origin, v.spacing, &v.coords, &v.cubes).map(Arc::new)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -622,6 +641,7 @@ mod tests {
             layer_size: 256,
             max_layers: 4,
             coarsen: 1.0,
+            lit: false,
         };
         let wanted = AtomicU64::new(7);
         let (out, rx) = crossbeam_channel::unbounded();
@@ -655,6 +675,32 @@ mod tests {
             .filter_map(|m| if let Msg::Progress { phase, .. } = m { Some(phase) } else { None })
             .collect();
         assert!(phases.contains(&BakePhase::Compiling) && phases.contains(&BakePhase::Direct), "{phases:?}");
+        let volume = baked.indirect.as_ref().expect("the light probes of the bake");
+        assert!(volume.cells() > 20 && volume.spacing >= 32.0, "{} cells of {}", volume.cells(), volume.spacing);
+
+        let wanted = AtomicU64::new(9);
+        let ctx = Ctx { id: 9, wanted: &wanted, out: &out, wake: &wake, start: Instant::now(), faces: 0, game: None };
+        let map = hp_vmf::parse(&text).expect("parse");
+        let lit_job = Job {
+            id: 9,
+            map,
+            solids: HashMap::new(),
+            fs: None,
+            hdr: true,
+            quality: RadQuality::Draft,
+            bounces: 2,
+            prop_shadows: true,
+            prop_lighting: true,
+            threads: (2, 2),
+            layer_size: 256,
+            max_layers: 4,
+            coarsen: 1.0,
+            lit: true,
+        };
+        let Outcome::Baked(lit) = run(lit_job, &ctx) else { panic!("the Lit mode bake failed") };
+        assert!(lit.faces.is_empty() && lit.texels.is_empty() && lit.blocks.is_empty(), "no atlas for the Lit mode");
+        let own = lit.indirect.as_ref().expect("the light probes");
+        assert_eq!(own.cells(), volume.cells(), "the same probes as the full bake");
 
         let wanted = AtomicU64::new(0);
         let ctx = Ctx { id: 8, wanted: &wanted, out: &out, wake: &wake, start: Instant::now(), faces: 0, game: None };
@@ -673,6 +719,7 @@ mod tests {
             layer_size: 256,
             max_layers: 1,
             coarsen: 1.0,
+            lit: false,
         };
         let r = catch_unwind(AssertUnwindSafe(|| run(job, &ctx)));
         assert!(matches!(r, Err(_) | Ok(Outcome::Cancelled)));
@@ -721,6 +768,7 @@ mod tests {
                 layer_size: 512,
                 max_layers: 4,
                 coarsen: 1.0,
+                lit: false,
             };
             let wanted = AtomicU64::new(3);
             let (out, _rx) = crossbeam_channel::unbounded();
@@ -817,6 +865,7 @@ mod tests {
             layer_size: 512,
             max_layers: 4,
             coarsen: 1.0,
+            lit: false,
         };
         let wanted = AtomicU64::new(9);
         let (out, _rx) = crossbeam_channel::unbounded();
@@ -841,6 +890,12 @@ mod tests {
                 texels[k * per..(k + 1) * per].iter().map(|t| hp_light::pack::unpack_rg11b10(*t)[0]).sum::<f32>()
             };
             assert!((1..4).all(|k| lum(k) > 0.0), "lit along every bump direction");
+            let average = (lum(1) + lum(2) + lum(3)) / 3.0;
+            assert!(
+                (average - lum(0)).abs() <= 0.03 * lum(0),
+                "bump lightmaps scaled to the flat one like the compiled view: {average} vs {}",
+                lum(0)
+            );
         }
         assert!(of(4).all(|f| f.images == 1), "plain walls keep one lightmap");
         let face = baked.faces.iter().position(|f| f.solid == 8 && f.flags & face_flags::DISP != 0).expect("disp face");

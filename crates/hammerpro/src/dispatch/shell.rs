@@ -62,6 +62,8 @@ const HANDLED: &[Action] = &[
     Action::About,
     Action::OpenDocs,
     Action::ReportIssue,
+    Action::CheckForUpdates,
+    Action::InstallUpdate,
 ];
 
 impl Package for Shell {
@@ -207,6 +209,12 @@ impl Package for Shell {
             Action::About => app.state.ui.show_about = true,
             Action::OpenDocs => ctx.open_url(egui::OpenUrl::new_tab(docs_url(hp_app::i18n::lang()))),
             Action::ReportIssue => ctx.open_url(egui::OpenUrl::new_tab(ISSUES_URL)),
+            Action::CheckForUpdates => {
+                if !app.state.runtime.update.status.is_busy() {
+                    app.state.runtime.update.check_requested = Some(true);
+                }
+            }
+            Action::InstallUpdate => app.state.runtime.update.install_requested = true,
             _ => return false,
         }
         true

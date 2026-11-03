@@ -53,7 +53,13 @@ fn serial() -> std::sync::MutexGuard<'static, ()> {
 }
 
 fn opts() -> SceneOptions {
-    SceneOptions { show_models: true, show_helpers: true, show_tool_textures: true, lighting_preview: false }
+    SceneOptions {
+        show_models: true,
+        show_helpers: true,
+        show_tool_textures: true,
+        lighting_preview: false,
+        model_lods: false,
+    }
 }
 
 fn settle(am: &mut AssetManager, doc: &mut Document, gfx: &mut Gfx) {
@@ -75,6 +81,7 @@ fn settle(am: &mut AssetManager, doc: &mut Document, gfx: &mut Gfx) {
 
 fn down() -> ViewParams {
     ViewParams {
+        game_pixel_grid: false,
         size: [320, 240],
         kind: ViewKind::Perspective {
             eye: [0.0, -400.0, 120.0],

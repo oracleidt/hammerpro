@@ -34,10 +34,42 @@ pub enum DecompileError {
     Empty,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Toggles {
+    pub brushes: bool,
+    pub displacements: bool,
+    pub entities: bool,
+    pub brush_entities: bool,
+    pub static_props: bool,
+    pub overlays: bool,
+    pub cubemaps: bool,
+    pub areaportals: bool,
+    pub occluders: bool,
+    pub group_details: bool,
+}
+
+impl Default for Toggles {
+    fn default() -> Self {
+        Self {
+            brushes: true,
+            displacements: true,
+            entities: true,
+            brush_entities: true,
+            static_props: true,
+            overlays: true,
+            cubemaps: true,
+            areaportals: true,
+            occluders: true,
+            group_details: true,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Options {
     pub map_name: String,
     pub known_outputs: Option<HashSet<String>>,
+    pub toggles: Toggles,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -117,15 +149,21 @@ pub fn decompile(bsp: &Bsp, options: &Options) -> Result<Decompiled, DecompileEr
         }
     }
 
+    let toggles = options.toggles;
     let built: Vec<Option<BuiltSolid>> = (0..l.brushes.len())
         .into_par_iter()
         .map(|b| {
+            if !(toggles.brushes || toggles.brush_entities && owner[b].is_some_and(|m| m > 0)) {
+                return None;
+            }
             let offset = owner[b].and_then(|m| model_offsets.get(&m)).copied().unwrap_or_default();
             solids::build_brush(&l, b, offset, map_name)
         })
         .collect();
-    let disps: Vec<Option<extras::DispSolid>> =
-        (0..l.dispinfo.len()).into_par_iter().map(|i| extras::displacement(&l, i, map_name)).collect();
+    let disps: Vec<Option<extras::DispSolid>> = (0..l.dispinfo.len())
+        .into_par_iter()
+        .map(|i| if toggles.displacements { extras::displacement(&l, i, map_name) } else { None })
+        .collect();
 
     let max_hammer_id = source_entities
         .iter()
@@ -142,6 +180,9 @@ pub fn decompile(bsp: &Bsp, options: &Options) -> Result<Decompiled, DecompileEr
     let mut model_solids: HashMap<usize, Vec<hp_vmf::Solid>> = HashMap::new();
     for (b, built) in built.into_iter().enumerate() {
         let Some(mut built) = built else {
+            if !(toggles.brushes || toggles.brush_entities && owner[b].is_some_and(|m| m > 0)) {
+                continue;
+            }
             if l.brushes[b].numsides <= 0 {
                 report.empty_brushes += 1;
             } else {
@@ -166,7 +207,9 @@ pub fn decompile(bsp: &Bsp, options: &Options) -> Result<Decompiled, DecompileEr
     }
     for d in disps {
         let Some(mut d) = d else {
-            report.failed_displacements += 1;
+            if toggles.displacements {
+                report.failed_displacements += 1;
+            }
             continue;
         };
         d.built.assign_ids(&mut ids);
@@ -196,10 +239,18 @@ pub fn decompile(bsp: &Bsp, options: &Options) -> Result<Decompiled, DecompileEr
             world.connections = converted.connections;
             continue;
         }
+        if !toggles.entities {
+            if let Some(m) = brush_model(src) {
+                model_solids.remove(&m);
+            }
+            continue;
+        }
         let fallback = ids.object();
         let mut e = entities::convert(src, fallback, &mut used_ids, options.known_outputs.as_ref());
         if let Some(m) = brush_model(src) {
-            if let Some(solids) = model_solids.remove(&m) {
+            if !toggles.brush_entities {
+                model_solids.remove(&m);
+            } else if let Some(solids) = model_solids.remove(&m) {
                 report.entity_solids += solids.len();
                 e.solids = solids;
             } else if !e.classname.eq_ignore_ascii_case("func_areaportal") {
@@ -219,7 +270,8 @@ pub fn decompile(bsp: &Bsp, options: &Options) -> Result<Decompiled, DecompileEr
         entities.push(e);
     }
 
-    let mut free_portals: Vec<Option<hp_vmf::Solid>> = portals.into_iter().map(Some).collect();
+    let mut free_portals: Vec<Option<hp_vmf::Solid>> =
+        if toggles.areaportals { portals.into_iter().map(Some).collect() } else { Vec::new() };
     for &ei in &portal_entities {
         let Some(key) = entities[ei].get("portalnumber").and_then(|v| v.trim().parse::<u16>().ok()) else { continue };
         let Some(center) = extras::portal_center(&l, key) else { continue };
@@ -245,14 +297,20 @@ pub fn decompile(bsp: &Bsp, options: &Options) -> Result<Decompiled, DecompileEr
     }
 
     for (ei, n) in occluder_entities {
+        if !toggles.occluders {
+            break;
+        }
         if let Some(mut built) = extras::occluder(&l, n, map_name) {
             built.assign_ids(&mut ids);
             entities[ei].solids.push(built.solid);
             report.occluders += 1;
         }
     }
-    report.failed_occluders =
-        entities.iter().filter(|e| e.solids.is_empty() && e.classname.eq_ignore_ascii_case("func_occluder")).count();
+    report.failed_occluders = if toggles.occluders {
+        entities.iter().filter(|e| e.solids.is_empty() && e.classname.eq_ignore_ascii_case("func_occluder")).count()
+    } else {
+        0
+    };
 
     let bounds: Vec<(DVec3, DVec3)> = detail
         .iter()
@@ -261,7 +319,14 @@ pub fn decompile(bsp: &Bsp, options: &Options) -> Result<Decompiled, DecompileEr
             (g.aabb.min, g.aabb.max)
         })
         .collect();
-    let groups = extras::touching_groups(&bounds);
+    let groups = if toggles.group_details {
+        extras::touching_groups(&bounds)
+    } else {
+        for s in detail.drain(..) {
+            world_solids.push(s);
+        }
+        Vec::new()
+    };
     let mut detail: Vec<Option<hp_vmf::Solid>> = detail.into_iter().map(Some).collect();
     for group in groups {
         let mut e = Entity { id: ids.object(), classname: "func_detail".to_owned(), ..Entity::default() };
@@ -271,19 +336,22 @@ pub fn decompile(bsp: &Bsp, options: &Options) -> Result<Decompiled, DecompileEr
         entities.push(e);
     }
 
-    for mut e in extras::static_props(bsp, &mut report.warnings) {
+    let props = if toggles.static_props { extras::static_props(bsp, &mut report.warnings) } else { Vec::new() };
+    for mut e in props {
         e.id = ids.object();
         report.static_props += 1;
         entities.push(e);
     }
-    let (overlays, lost) = extras::overlays(&l, &sides, &model_offsets, map_name);
+    let (overlays, lost) =
+        if toggles.overlays { extras::overlays(&l, &sides, &model_offsets, map_name) } else { (Vec::new(), 0) };
     report.overlays = overlays.len();
     report.overlays_without_sides = lost;
     for mut e in overlays {
         e.id = ids.object();
         entities.push(e);
     }
-    for mut e in extras::cubemaps(bsp) {
+    let cubemaps = if toggles.cubemaps { extras::cubemaps(bsp) } else { Vec::new() };
+    for mut e in cubemaps {
         e.id = ids.object();
         report.cubemaps += 1;
         entities.push(e);
@@ -301,6 +369,45 @@ pub fn decompile(bsp: &Bsp, options: &Options) -> Result<Decompiled, DecompileEr
     map.world = world;
     map.entities = entities;
     Ok(Decompiled { map, report })
+}
+
+pub fn entities_only(text: &str, options: &Options) -> Decompiled {
+    let source = hp_bsp::parse_entities(text);
+    let mut report = Report { entities: source.len(), ..Report::default() };
+    let max_hammer_id =
+        source.iter().filter_map(|e| e.get("hammerid").and_then(|v| v.trim().parse::<Id>().ok())).max().unwrap_or(1);
+    let mut next = max_hammer_id.saturating_add(1).max(2);
+    let mut used_ids: HashSet<Id> = HashSet::from([1]);
+    let mut world = Entity { id: 1, classname: "worldspawn".to_owned(), ..Entity::default() };
+    let mut entities = Vec::with_capacity(source.len());
+    for src in &source {
+        if src.classname().eq_ignore_ascii_case("worldspawn") {
+            let converted = entities::convert(src, 1, &mut HashSet::new(), options.known_outputs.as_ref());
+            world.props = converted
+                .props
+                .into_iter()
+                .filter(|(k, _)| !["world_mins", "world_maxs", "mapversion"].iter().any(|x| k.eq_ignore_ascii_case(x)))
+                .collect();
+            world.connections = converted.connections;
+            continue;
+        }
+        if !options.toggles.entities {
+            continue;
+        }
+        let e = entities::convert(src, next, &mut used_ids, options.known_outputs.as_ref());
+        if e.id == next {
+            next += 1;
+        }
+        if brush_model(src).is_some() {
+            report.empty_brush_entities += 1;
+        }
+        entities.push(e);
+    }
+    report.warnings.push("only the entities were recovered: the map geometry was not available".to_owned());
+    let mut map = Map::new_empty();
+    map.world = world;
+    map.entities = entities;
+    Decompiled { map, report }
 }
 
 #[cfg(test)]

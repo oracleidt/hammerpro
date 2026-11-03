@@ -84,6 +84,7 @@ fn vs_model(
     @location(0) pos: vec3<f32>,
     @location(1) uv: vec2<f32>,
     @location(2) nrm_alpha: u32,
+    @location(13) lod_range: vec2<u32>,
     @location(3) cube: u32,
     @location(4) m0: vec4<f32>,
     @location(5) m1: vec4<f32>,
@@ -116,7 +117,14 @@ fn vs_model(
     let far = view.sky.w > 0.0 && !is_ortho() && distance(origin, view.eye.xyz) > view.sky.w;
     out.fade = model_fade(origin, fade);
     let unselected = SELECTED_ONLY && (st.flags & F_SELECTED) == 0u;
-    if hidden_in_view(st.flags) || !tint_kept(out.tint.a) || far || out.fade <= 0.0 || detail <= 0.0 || unselected {
+    let lo = bitcast<f32>(lod_range.x);
+    let hi = bitcast<f32>(lod_range.y);
+    let ranked = hi > lo;
+    let lods_on = (view.opts.x & OPT_MODEL_LODS) != 0u && (view.opts.x & OPT_SHADOW_PASS) == 0u;
+    let metric = lod_metric(origin);
+    let lod_skip = ranked && select(lo >= 0.0, metric < lo || metric >= hi, lods_on);
+    if hidden_in_view(st.flags) || !tint_kept(out.tint.a) || far || out.fade <= 0.0 || detail <= 0.0 || unselected
+        || lod_skip {
         out.clip = COLLAPSED;
     } else {
         out.clip = view.view_proj * world;
@@ -304,7 +312,8 @@ const SUN_DISK: array<vec2<f32>, 12> = array<vec2<f32>, 12>(
     vec2<f32>(0.962, -0.195), vec2<f32>(0.473, -0.480), vec2<f32>(0.519, 0.767), vec2<f32>(0.185, -0.893),
     vec2<f32>(0.507, 0.064), vec2<f32>(0.896, 0.412), vec2<f32>(-0.322, -0.933), vec2<f32>(-0.792, -0.598)
 );
-const MAX_PENUMBRA_TEXELS: f32 = 12.0;
+const MAX_PENUMBRA_TEXELS: f32 = 24.0;
+const MAX_FILTER_TEXELS: f32 = 48.0;
 
 fn shadow_depth_at(uv: vec2<f32>, layer: u32) -> f32 {
     let dims = vec2<f32>(textureDimensions(shadow_map));
@@ -366,23 +375,28 @@ fn sun_visibility(world: vec3<f32>, n: vec3<f32>, frag: vec2<f32>, sky3d: bool) 
             return 1.0;
         }
         let gap = max(d - depth_sum / blockers, 0.0) * view.sun_soft.y;
-        radius = clamp(gap * spread / texel_world, 1.0, MAX_PENUMBRA_TEXELS);
+        radius = clamp(gap * spread / texel_world, 1.0, MAX_FILTER_TEXELS);
     }
+    let rot2 = mat2x2<f32>(cos(a + 1.0472), sin(a + 1.0472), -sin(a + 1.0472), cos(a + 1.0472));
     var sum = 0.0;
     for (var i = 0u; i < SUN_TAPS; i++) {
         let o = rot * disk[i] * (radius * view.shadow.z);
         sum += textureSampleCompareLevel(shadow_map, shadow_samp, uv + o, layer, d);
+        let o2 = rot2 * disk[i] * (radius * 0.55 * view.shadow.z);
+        sum += textureSampleCompareLevel(shadow_map, shadow_samp, uv + o2, layer, d);
     }
-    return sum / f32(SUN_TAPS);
+    return sum / f32(SUN_TAPS * 2u);
 }
 
-const SKY_STEPS: array<f32, 4> = array<f32, 4>(24.0, 72.0, 168.0, 400.0);
-const SKY_TAN: array<f32, 3> = array<f32, 3>(0.198912, 0.668179, 1.496606);
-const SKY_COS: array<f32, 3> = array<f32, 3>(0.980785, 0.831470, 0.555570);
-const SKY_SIN: array<f32, 3> = array<f32, 3>(0.195090, 0.555570, 0.831470);
-const SKY_AREA: array<f32, 3> = array<f32, 3>(0.300558, 0.254797, 0.170253);
-const SKY_ZENITH_AREA: f32 = 0.478285;
-const SKY_OPEN_FLOOR: f32 = 3.212309;
+const SKY_LEVELS: f32 = 7.0;
+const SKY_MARCH_STEPS: u32 = 28u;
+const SKY_MARCH_FAR: f32 = 1100.0;
+const SKY_AZIMUTHS: u32 = 12u;
+const SKY_BAND: f32 = 0.2617994;
+const SKY_COS: array<f32, 6> = array<f32, 6>(0.991445, 0.923880, 0.793353, 0.608761, 0.382683, 0.130526);
+const SKY_SIN: array<f32, 6> = array<f32, 6>(0.130526, 0.382683, 0.608761, 0.793353, 0.923880, 0.991445);
+const SKY_AREA: array<f32, 6> = array<f32, 6>(0.135517, 0.126282, 0.108441, 0.083209, 0.052308, 0.017841);
+const SKY_OPEN_FLOOR: f32 = 3.168701;
 
 fn sky_uv(xy: vec2<f32>) -> vec2<f32> {
     return vec2<f32>((xy.x - view.sky_vis_a.x) * view.sky_vis_a.z, 1.0 - (xy.y - view.sky_vis_a.y) * view.sky_vis_a.z);
@@ -410,6 +424,36 @@ fn sky_height(xy: vec2<f32>, layer: u32) -> f32 {
     return view.sky_vis_b.x - d * view.sky_vis_b.y;
 }
 
+fn sky_height_lod(xy: vec2<f32>, layer: u32, level: u32) -> f32 {
+    let uv = sky_uv(xy);
+    if any(uv < vec2<f32>(0.0)) || any(uv >= vec2<f32>(1.0)) {
+        return -1.0e9;
+    }
+    let dims = vec2<f32>(textureDimensions(sky_map, level));
+    let d = textureLoad(sky_map, vec2<i32>(min(uv * dims, dims - 1.0)), layer, level);
+    if d >= 1.0 {
+        return -1.0e9;
+    }
+    return view.sky_vis_b.x - d * view.sky_vis_b.y;
+}
+
+fn sky_horizon(xy: vec2<f32>, dir: vec2<f32>, z: f32, layer: u32) -> f32 {
+    let texel = max(view.sky_vis_b.z, 1.0);
+    var horizon = -1.0e9;
+    var r = 10.0;
+    for (var i = 0u; i < SKY_MARCH_STEPS; i++) {
+        let level = clamp(round(log2(max(0.2 * r / texel, 1.0))), 0.0, SKY_LEVELS);
+        let size = texel * exp2(level);
+        let h = sky_height_lod(xy + dir * r, layer, u32(level));
+        horizon = max(horizon, (h - z) / r);
+        r += size;
+        if r > SKY_MARCH_FAR {
+            break;
+        }
+    }
+    return horizon;
+}
+
 fn sky_visibility(world: vec3<f32>, n: vec3<f32>, sky3d: bool) -> f32 {
     let texel = max(view.sky_vis_b.z, 1.0);
     let z = world.z + max(texel * 1.5, 2.0);
@@ -419,28 +463,21 @@ fn sky_visibility(world: vec3<f32>, n: vec3<f32>, sky3d: bool) -> f32 {
     }
     let layer = u32(max(found, 0));
     let base = world.xy + n.xy * (texel * 2.0);
-    var steps = SKY_STEPS;
-    var tans = SKY_TAN;
     var coss = SKY_COS;
     var sins = SKY_SIN;
     var areas = SKY_AREA;
     var sum = 0.0;
-    for (var a = 0u; a < 8u; a++) {
-        let ang = f32(a) * 0.7853982;
+    for (var a = 0u; a < SKY_AZIMUTHS; a++) {
+        let ang = f32(a) * 6.2831853 / f32(SKY_AZIMUTHS);
         let dir = vec2<f32>(cos(ang), sin(ang));
-        var horizon = -1.0e9;
-        for (var s = 0u; s < 4u; s++) {
-            let r = steps[s];
-            horizon = max(horizon, (sky_height(base + dir * r, layer) - z) / r);
+        if dot(n.xy, dir) <= 0.0 && n.z <= 0.0 {
+            continue;
         }
-        for (var k = 0u; k < 3u; k++) {
-            if tans[k] > horizon {
-                sum += areas[k] * max(dot(n, vec3<f32>(dir * coss[k], sins[k])), 0.0);
-            }
+        let horizon = atan(sky_horizon(base, dir, z, layer));
+        for (var k = 0u; k < 6u; k++) {
+            let open = clamp((f32(k + 1u) * SKY_BAND - horizon) / SKY_BAND, 0.0, 1.0);
+            sum += areas[k] * open * max(dot(n, vec3<f32>(dir * coss[k], sins[k])), 0.0);
         }
-    }
-    if sky_height(base, layer) <= z {
-        sum += SKY_ZENITH_AREA * max(n.z, 0.0);
     }
     return sum / SKY_OPEN_FLOOR;
 }
@@ -499,9 +536,101 @@ fn local_visibility(l: Light, world: vec3<f32>, n: vec3<f32>) -> f32 {
     return sum / 9.0;
 }
 
-fn lighting(world: vec3<f32>, n: vec3<f32>, ln: vec3<f32>, frag: vec2<f32>, flags: u32) -> vec3<f32> {
+const INDIRECT_PROBES: u32 = 16u;
+
+fn indirect_cell(c: vec3<i32>) -> i32 {
+    let k0 = u32(c.x + 32768) & 0xffffu | ((u32(c.y + 32768) & 0xffffu) << 16u);
+    let k1 = u32(c.z + 32768) & 0xffffu;
+    let mask = bitcast<u32>(view.indirect_b.x);
+    var h = (k0 * 0x9E3779B1u) ^ (k1 * 0x85EBCA77u);
+    h = h ^ (h >> 15u);
+    for (var i = 0u; i < INDIRECT_PROBES; i++) {
+        let e = indirect_buf[(h + i) & mask];
+        if e.w == 0u {
+            return -1;
+        }
+        if e.x == k0 && e.y == k1 {
+            return i32(e.z);
+        }
+    }
+    return -1;
+}
+
+fn indirect_color(cell: u32, faces: vec3<u32>, sq: vec3<f32>) -> vec3<f32> {
+    let base = bitcast<u32>(view.indirect_b.y) + cell * 3u;
+    var halves: array<f32, 24>;
+    for (var k = 0u; k < 3u; k++) {
+        let v = indirect_buf[base + k];
+        let a = unpack2x16float(v.x);
+        let b = unpack2x16float(v.y);
+        let c = unpack2x16float(v.z);
+        let d = unpack2x16float(v.w);
+        halves[k * 8u] = a.x;
+        halves[k * 8u + 1u] = a.y;
+        halves[k * 8u + 2u] = b.x;
+        halves[k * 8u + 3u] = b.y;
+        halves[k * 8u + 4u] = c.x;
+        halves[k * 8u + 5u] = c.y;
+        halves[k * 8u + 6u] = d.x;
+        halves[k * 8u + 7u] = d.y;
+    }
+    let fx = faces.x * 3u;
+    let fy = faces.y * 3u;
+    let fz = faces.z * 3u;
+    return sq.x * vec3<f32>(halves[fx], halves[fx + 1u], halves[fx + 2u])
+        + sq.y * vec3<f32>(halves[fy], halves[fy + 1u], halves[fy + 2u])
+        + sq.z * vec3<f32>(halves[fz], halves[fz + 1u], halves[fz + 2u]);
+}
+
+fn indirect_light(world: vec3<f32>, ln: vec3<f32>) -> vec4<f32> {
+    let len = length(ln);
+    if len < 1e-5 {
+        return vec4<f32>(0.0);
+    }
+    let n = ln / len;
+    let at = world + n * (0.5 / view.indirect_a.w);
+    let g = (at - view.indirect_a.xyz) * view.indirect_a.w - vec3<f32>(0.5);
+    let base = vec3<i32>(floor(g));
+    let frac = g - floor(g);
+    let faces = vec3<u32>(select(0u, 1u, n.x < 0.0), select(2u, 3u, n.y < 0.0), select(4u, 5u, n.z < 0.0));
+    let sq = n * n;
+    var sum = vec3<f32>(0.0);
+    var weight = 0.0;
+    for (var corner = 0u; corner < 8u; corner++) {
+        let off = vec3<i32>(i32(corner & 1u), i32((corner >> 1u) & 1u), i32((corner >> 2u) & 1u));
+        let w3 = select(1.0 - frac, frac, vec3<bool>(off.x == 1, off.y == 1, off.z == 1));
+        let w = w3.x * w3.y * w3.z;
+        if w <= 0.0 {
+            continue;
+        }
+        let cell = indirect_cell(base + off);
+        if cell < 0 {
+            continue;
+        }
+        sum += w * indirect_color(u32(cell), faces, sq);
+        weight += w;
+    }
+    return vec4<f32>(sum / max(weight, 1e-4) * min(len, 1.0), weight);
+}
+
+fn lighting(world: vec3<f32>, n: vec3<f32>, ln: vec3<f32>, frag: vec2<f32>, flags: u32, model: bool) -> vec3<f32> {
+    return lighting_world(world, n, ln, frag, flags, model) + projector_light(world, ln);
+}
+
+fn lighting_world(world: vec3<f32>, n: vec3<f32>, ln: vec3<f32>, frag: vec2<f32>, flags: u32, model: bool) -> vec3<f32> {
     let sky3d = (flags & F_SKY_3D) != 0u;
-    var sum = view.ambient.rgb * ambient_term(world, ln, sky3d);
+    var sum = vec3<f32>(0.0);
+    var cover = 0.0;
+    var indirect = vec3<f32>(0.0);
+    if view.indirect_b.w > 0.5 {
+        let ind = indirect_light(world, ln);
+        indirect = ind.rgb;
+        cover = smoothstep(0.02, 0.5, ind.a);
+    }
+    if cover < 0.999 {
+        sum = view.ambient.rgb * ambient_term(world, ln, sky3d);
+    }
+    sum = mix(sum, indirect, cover);
     let n_dir = min(view.misc.y, arrayLength(&lights));
     for (var i = 0u; i < n_dir; i++) {
         let l = lights[i];
@@ -549,8 +678,12 @@ fn lighting(world: vec3<f32>, n: vec3<f32>, ln: vec3<f32>, frag: vec2<f32>, flag
         let ndl = max(dot(ln, to_light), 0.0);
         let x = dist / max(l.pos_range.w, 1e-3);
         let x2 = x * x;
-        let win = clamp(1.0 - x2 * x2, 0.0, 1.0);
-        var att = light_falloff(l, dist) * win * win;
+        var win = 1.0;
+        if l.cone.w <= l.cone.z {
+            win = clamp(1.0 - x2 * x2, 0.0, 1.0);
+            win *= win;
+        }
+        var att = light_falloff(l, dist, model) * win;
         if l.color.w > 0.5 && l.color.w < 1.5 {
             att *= spot_cone(l, dot(-to_light, l.dir.xyz));
         }
@@ -587,7 +720,7 @@ fn grid_coverage(world: vec3<f32>, n: vec3<f32>) -> vec2<f32> {
 @fragment
 fn fs_mesh(in: VsOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
     let uv = in.uv * material.inv_tex_size + material.scroll * view.sky.z;
-    var albedo = textureSample(tex, samp, uv);
+    var albedo = textureSample(tex, samp, base_uv_of(uv));
     var cover = vec4<f32>(1.0, 0.0, 0.0, 0.0);
     if material.has_tex2 != 0u {
         let b = textureSample(tex2, samp, uv);
@@ -660,7 +793,7 @@ fn fs_mesh(in: VsOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f
         return modulate_output(albedo, material.tint * in.tint);
     }
     albedo.a = material_texture_alpha(albedo.a);
-    albedo = albedo * material.tint * in.tint;
+    albedo = albedo * material_tint() * in.tint;
     if alpha_tested_out(ALPHA_TEST, albedo.a) {
         discard;
     }
@@ -683,7 +816,7 @@ fn fs_mesh(in: VsOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f
         rgb = unpack_srgba(in.state.y).rgb * editor_shade(n);
     } else if mode == MODE_LIT {
         if !unlit {
-            lit_by = lighting(in.world, n, bn, in.clip.xy, in.state.x);
+            lit_by = lighting(in.world, n, bn, in.clip.xy, in.state.x, in.state.z != 0u);
         }
         rgb = select(albedo.rgb * lit_by, albedo.rgb, unlit);
         rgb = mix(rgb, albedo.rgb * glow_tint, glow);
@@ -698,6 +831,9 @@ fn fs_mesh(in: VsOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f
     }
     if mode != MODE_FLAT && material.detail_mode != DETAIL_NONE {
         rgb = detail_post_lighting(rgb, detail);
+    }
+    if mode == MODE_LIT && in.baked.w <= 0.5 {
+        rgb *= bitcast<f32>(view.misc.w);
     }
     let flags = in.state.x;
     let is_model = in.state.z != 0u;

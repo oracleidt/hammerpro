@@ -46,12 +46,19 @@ fn gfx() -> Option<Gfx> {
 }
 
 fn opts() -> SceneOptions {
-    SceneOptions { show_models: true, show_helpers: true, show_tool_textures: true, lighting_preview: false }
+    SceneOptions {
+        show_models: true,
+        show_helpers: true,
+        show_tool_textures: true,
+        lighting_preview: false,
+        model_lods: false,
+    }
 }
 
 fn persp(eye: DVec3, target: DVec3) -> ViewParams {
     let forward = (target - eye).normalize_or(DVec3::X);
     ViewParams {
+        game_pixel_grid: false,
         size: [480, 300],
         kind: ViewKind::Perspective {
             eye: eye.as_vec3().to_array(),

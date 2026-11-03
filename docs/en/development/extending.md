@@ -25,6 +25,7 @@ Work in your own files. When a host file belongs to another package, plug in thr
 | Editor extension | Extra VMF blocks (Hammer++ `*_plus` blocks are kept this way). | `crates/hp-editor` |
 | Compile and launch | Steps of the compile pipeline, launch arguments. | `crates/hp-compile`, `crates/hp-ui-mapping/src/compile/` |
 | Translations | Every UI text as `(key, English, French)` rows of a `TR` table. | each crate |
+| Storage rows | Every cache, output or temporary folder Hammer Pro writes, listed and cleaned by Settings > Storage and MCP. | `crates/hp-app/src/storage/locations.rs` (`TABLE`) |
 | MCP tools | Semantic tools of the MCP server. Every action and setting is already reachable through `run_action` and `set_setting`. | `crates/hammerpro/src/dispatch/mcp/tools_<area>.rs` |
 
 ## Translations

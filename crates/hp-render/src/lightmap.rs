@@ -102,6 +102,8 @@ struct FaceGpu {
     pad: u32,
 }
 
+const LDR_BIT: u32 = 0x100;
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Pod, Zeroable)]
 struct ParamsGpu {
@@ -155,6 +157,7 @@ pub(crate) struct Lightmaps {
     pub(crate) color: post::ColorLut,
     display: LightmapDisplay,
     exposure: f32,
+    ldr: bool,
     tracking: bool,
     counter: u64,
     generations: HashMap<ObjectId, u64>,
@@ -320,6 +323,22 @@ impl Renderer {
         self.ensure_lightmap_resources();
     }
 
+    pub fn set_lightmap_ldr(&mut self, ldr: bool) {
+        if self.lightmap.ldr != ldr {
+            self.lightmap.ldr = ldr;
+            self.write_lightmap_params();
+            self.content_gen += 1;
+        }
+    }
+
+    pub fn lightmap_ldr(&self) -> bool {
+        self.lightmap.ldr
+    }
+
+    pub(crate) fn baked_view(&self, cam: &crate::camera::Camera) -> bool {
+        !cam.is_ortho && self.lightmap.display == LightmapDisplay::Baked && !self.lightmap.blocks.is_empty()
+    }
+
     pub fn lightmap_display(&self) -> LightmapDisplay {
         self.lightmap.display
     }
@@ -355,7 +374,7 @@ impl Renderer {
                 LightmapDisplay::Off => 0,
                 LightmapDisplay::Baked => 1,
                 LightmapDisplay::Grid => 2,
-            },
+            } | if lm.ldr { LDR_BIT } else { 0 },
         };
         if let Some(b) = &lm.params_buf {
             self.queue.write_buffer(b, 0, bytemuck::bytes_of(&lm.params));

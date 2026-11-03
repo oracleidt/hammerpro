@@ -2,7 +2,7 @@
 
 # Serveur MCP
 
-Hammer Pro intègre un serveur MCP. MCP (Model Context Protocol) est la façon dont les applications d'IA comme Claude Code, Claude Desktop, Codex et Gemini CLI utilisent des outils : grâce à lui, un assistant IA peut lire la map ouverte dans Hammer Pro, la modifier, la vérifier, la compiler et faire des captures des vues pour contrôler son propre travail. Cette page couvre l'installation et la sécurité. La liste complète des 262 outils avec leurs arguments est la [référence des outils MCP](../../MCP.md), disponible en anglais uniquement.
+Hammer Pro intègre un serveur MCP. MCP (Model Context Protocol) est la façon dont les applications d'IA comme Claude Code, Claude Desktop, Codex et Gemini CLI utilisent des outils : grâce à lui, un assistant IA peut lire la map ouverte dans Hammer Pro, la modifier, la vérifier, la compiler et faire des captures des vues pour contrôler son propre travail. Cette page couvre l'installation et la sécurité. La liste complète des outils avec leurs arguments est la [référence des outils MCP](../../MCP.md), disponible en anglais uniquement.
 
 ## Fonctionnement
 
@@ -149,7 +149,8 @@ Chaque modification faite par l'IA est **une étape d'annulation** nommée "MCP 
 | Entities and io | Classes d'entités, keyvalues, spawnflags, sorties, graphe d'I/O, rechercher et remplacer du texte, rapport d'entités, targetnames. |
 | Compile and play | Toutes les options de compilation, log et statistiques de compilation, historique, fuites, pointfiles, portails, aperçu de l'éclairage précalculé, lancement du jeu. |
 | Content and release | Rapport de dépendances, Construire et enregistrer en contenu, checklist, publication sur le Workshop, collecte des ressources de la map, fichiers inutilisés. |
-| Documents | Onglets des maps ouvertes, nouvelle map, maps récentes, import et export, décompilation de BSP, nav mesh, propriétés de la map. |
+| Documents | Onglets des maps ouvertes, nouvelle map, maps récentes, import et export, Décompilateur de BSP, nav mesh, propriétés de la map. |
+| BSP Sniffer | Lancer, annuler et suivre une opération du [BSP Sniffer](../features/bsp-sniffer.md) (statut, journal, rapport) et lire ou changer chaque réglage. Demande le réglage `authorized`, que seul l'utilisateur doit activer. |
 | History and clipboard | Historique d'annulation, plusieurs étapes d'annulation ou de rétablissement, copier, couper, coller, collage spécial. |
 | Overlays and decals | Lister et créer des overlays et des décals. |
 | Paths | Chaînes d'entités de chemin. |

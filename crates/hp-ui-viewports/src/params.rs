@@ -25,6 +25,7 @@ pub struct RenderConfig {
     pub show_sprites: bool,
     pub show_models: bool,
     pub msaa: bool,
+    pub game_pixel_grid: bool,
     pub near: f64,
     pub options_3d: ViewOptions,
     pub options_2d: ViewOptions,
@@ -66,9 +67,13 @@ impl RenderConfig {
             show_sky_3d: r.skybox_3d,
             sky_see_through: r.sky_see_through,
             water_preview: r.water_preview,
+            water_detail: r.water_detail.detail(),
             normal_maps: r.normal_maps,
             cubemaps: r.cubemaps,
             light_shadows: r.light_shadows.min(hp_render::MAX_SHADOWED_LIGHTS),
+            indirect_light: r.lit_indirect,
+            model_lods: r.model_lods,
+            sun_glow: r.sun_glow,
             show_fog: r.fog_preview,
             fog_volumes: r.fog_volume_preview,
             occlusion_culling: r.occlusion_culling,
@@ -128,6 +133,7 @@ impl RenderConfig {
             show_sprites: v.show_helpers,
             show_models: v.show_models,
             msaa: v.msaa,
+            game_pixel_grid: r.game_pixel_grid,
             near: f64::from(r.near()),
             options_3d,
             options_2d,
@@ -234,6 +240,7 @@ pub fn view_params(view: &ViewInfo, cfg: &RenderConfig) -> ViewParams {
         show_sprites: cfg.show_sprites,
         show_models: cfg.show_models,
         msaa: cfg.msaa,
+        game_pixel_grid: cfg.game_pixel_grid && !is_2d,
     }
 }
 
@@ -297,8 +304,22 @@ mod tests {
     }
 
     #[test]
+    fn the_game_pixel_grid_offsets_the_drawn_view_by_half_a_pixel() {
+        let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(800.0, 600.0));
+        let view = view_info(0, ViewKind::Perspective, rect, &cameras(), &cfg(), 1.0);
+        let on = view_params(&view, &cfg());
+        let off = view_params(&view, &RenderConfig { game_pixel_grid: false, ..cfg() });
+        assert!(on.game_pixel_grid && !off.game_pixel_grid);
+        assert!(max_error(&view, &off) < 0.01, "without it the picking rays and the drawn image agree");
+        let err = max_error(&view, &on);
+        assert!((err - 0.5).abs() < 0.01, "with it the drawn image moves half a pixel: {err}");
+        let flat = view_info(0, ViewKind::Top, rect, &cameras(), &cfg(), 1.0);
+        assert!(!view_params(&flat, &cfg()).game_pixel_grid, "the 2D views keep the plain grid");
+    }
+
+    #[test]
     fn view_info_and_render_agree_3d() {
-        let cfg = cfg();
+        let cfg = RenderConfig { game_pixel_grid: false, ..cfg() };
         for ppp in [1.0f32, 1.5] {
             for rect in rects() {
                 let rect = pixel_align(rect, ppp, false);

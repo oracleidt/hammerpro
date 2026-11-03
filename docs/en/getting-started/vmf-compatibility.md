@@ -66,7 +66,7 @@ Exports are written on a worker thread, atomically.
 
 **What is the `.vmx` file next to my map?** The previous version of the map, copied at each save like Hammer does. Open it with **File > Open map...** to go back.
 
-**Can Hammer Pro open a compiled `.bsp`?** Yes, with **File > Open compiled map (BSP)...**, which decompiles it into a new map (see [BSP tools](../features/bsp-tools.md)).
+**Can Hammer Pro open a compiled `.bsp`?** Yes, with **File > BSP Decompiler...**, which decompiles it into a new map (see [BSP tools](../features/bsp-tools.md)).
 
 ## Related pages
 

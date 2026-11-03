@@ -7,7 +7,10 @@ use std::collections::{HashMap, HashSet};
 
 use glam::DVec3;
 use hp_app::i18n::TrTable;
-use hp_app::runtime::{BakeKind, BakePhase, BakeProgress, BakeSummary, BudgetEntry, BudgetSummary, PreviewStats};
+use hp_app::runtime::{
+    BakeKind, BakePhase, BakeProgress, BakeSummary, BudgetEntry, BudgetSummary, IndirectPhase, IndirectStatus,
+    PreviewStats,
+};
 use hp_app::settings::{LightingQuality, LightingSetting, RenderModeSetting};
 use hp_app::state::RightTab;
 use hp_app::{Action, AppState, Severity, ToolId, t, tf};
@@ -53,6 +56,7 @@ struct Running {
     kind: BakeKind,
     serial: u64,
     scope: Scope,
+    lit: bool,
 }
 
 struct Upload {
@@ -61,6 +65,7 @@ struct Upload {
     serial: u64,
     scope: Scope,
     written: usize,
+    lit: bool,
 }
 
 struct Preview {
@@ -79,6 +84,8 @@ struct Preview {
     no_lights: bool,
     atlas_warned: bool,
     triangles: usize,
+    indirect_serial: Option<u64>,
+    indirect_failed: Option<u64>,
 }
 
 fn rad_quality(q: LightingQuality) -> hp_bspc::rad::RadQuality {
@@ -192,6 +199,8 @@ impl Preview {
             no_lights: false,
             atlas_warned: false,
             triangles: 0,
+            indirect_serial: None,
+            indirect_failed: None,
         })
     }
 
@@ -205,7 +214,7 @@ impl Preview {
         self.no_lights = set.lights.is_empty() && set.sky.sun.is_none() && set.sky.ambient.max_element() <= 0.0;
     }
 
-    fn bake(&mut self, state: &mut AppState, scope: Scope, kind: BakeKind) {
+    fn bake(&mut self, state: &mut AppState, scope: Scope, kind: BakeKind, lit: bool) {
         let t = std::time::Instant::now();
         let export = hp_editor::compile_export::CompileExport::default();
         let snap = match &scope {
@@ -248,7 +257,7 @@ impl Preview {
             map: snap.map,
             solids,
             fs: state.assets.fs().cloned(),
-            hdr: uses_hdr(state.settings.compile.lighting),
+            hdr: if lit { state.settings.render.light_preview_hdr } else { uses_hdr(state.settings.compile.lighting) },
             quality: rad_quality(s.quality),
             bounces: bounces(options.bounced),
             prop_shadows: state.settings.compile.static_prop_shadows,
@@ -257,9 +266,14 @@ impl Preview {
             layer_size,
             max_layers,
             coarsen: factor,
+            lit,
         });
-        log::info!("lighting preview: bake {id} ({kind:?}) started, map copied in {} ms", t.elapsed().as_millis());
-        self.running = Some(Running { id, kind, serial, scope: scope.clone() });
+        log::info!(
+            "lighting preview: bake {id} ({kind:?}{}) started, map copied in {} ms",
+            if lit { ", for the Lit mode" } else { "" },
+            t.elapsed().as_millis()
+        );
+        self.running = Some(Running { id, kind, serial, scope: scope.clone(), lit });
         self.last_scope = Some(scope);
         state.runtime.lighting.stale = false;
         state.runtime.lighting.progress =
@@ -270,8 +284,10 @@ impl Preview {
         if let Some(r) = self.running.take() {
             self.worker.stop();
             state.runtime.lighting.progress = None;
-            state.runtime.lighting.last =
-                Some(BakeSummary { kind: r.kind, cancelled: true, density: 1.0, ..Default::default() });
+            if !r.lit {
+                state.runtime.lighting.last =
+                    Some(BakeSummary { kind: r.kind, cancelled: true, density: 1.0, ..Default::default() });
+            }
         }
     }
 
@@ -315,18 +331,34 @@ impl Preview {
                                 );
                             }
                             self.triangles = baked.triangles;
-                            self.upload =
-                                Some(Upload { baked, kind: r.kind, serial: r.serial, scope: r.scope, written: 0 });
+                            self.upload = Some(Upload {
+                                baked,
+                                kind: r.kind,
+                                serial: r.serial,
+                                scope: r.scope,
+                                written: 0,
+                                lit: r.lit,
+                            });
                         }
                         bake::Outcome::Cancelled => {
                             state.runtime.lighting.progress = None;
-                            state.runtime.lighting.last =
-                                Some(BakeSummary { kind: r.kind, cancelled: true, density: 1.0, ..Default::default() });
+                            if !r.lit {
+                                state.runtime.lighting.last = Some(BakeSummary {
+                                    kind: r.kind,
+                                    cancelled: true,
+                                    density: 1.0,
+                                    ..Default::default()
+                                });
+                            }
                         }
                         bake::Outcome::Failed(e) => {
                             log::error!("lighting preview: {e}");
                             state.runtime.lighting.progress = None;
-                            state.notify(Severity::Error, tf!("app.lighting.failed", e));
+                            if r.lit {
+                                self.indirect_failed = Some(r.serial);
+                            } else {
+                                state.notify(Severity::Error, tf!("app.lighting.failed", e));
+                            }
                         }
                     }
                 }
@@ -334,13 +366,35 @@ impl Preview {
         }
     }
 
+    fn upload_indirect(&mut self, state: &mut AppState, up: Upload) {
+        let Some(gfx) = state.gfx.as_mut() else { return };
+        let b = up.baked;
+        gfx.renderer.set_indirect_volume(b.indirect.clone());
+        let rt = &mut state.runtime.lighting;
+        rt.progress = self.running.as_ref().and(rt.progress);
+        self.indirect_serial = b.indirect.as_ref().map(|_| up.serial);
+        self.triangles = b.triangles;
+        log::info!(
+            "lighting preview: {} indirect light cells ({} in the air) in {:.2} s",
+            b.indirect.as_ref().map_or(0, |v| v.cells()),
+            b.indirect.as_ref().map_or(0, |v| v.valid_cells()),
+            b.seconds
+        );
+        rt.indirect.seconds = b.seconds;
+    }
+
     fn upload(&mut self, state: &mut AppState) {
         let Some(mut up) = self.upload.take() else { return };
+        if up.lit {
+            self.upload_indirect(state, up);
+            return;
+        }
         let AppState { gfx, assets, runtime, .. } = state;
         let Some(gfx) = gfx.as_mut() else { return };
         let r = &mut gfx.renderer;
         let b = &up.baked;
         if up.written == 0 {
+            r.set_lightmap_ldr(!b.hdr);
             let old: Vec<u32> = (0..self.shown_faces).collect();
             r.remove_lightmap_faces(&old);
             for id in 0..self.shown_blocks {
@@ -421,6 +475,8 @@ impl Preview {
             }
         };
         assets.set_baked_prop_lighting(b.props.clone(), region);
+        r.set_indirect_volume(b.indirect.clone());
+        self.indirect_serial = b.indirect.as_ref().map(|_| up.serial);
         rt.progress = self.running.as_ref().and(rt.progress);
         rt.has_bake = true;
         let density = (1.0 / b.coarsen.max(1.0)) as f32;
@@ -485,7 +541,63 @@ impl Preview {
         }
         let scope = self.last_scope.clone().unwrap_or(Scope::All);
         let kind = self.running.as_ref().map_or(BakeKind::Update, |r| r.kind);
-        self.bake(state, scope, kind);
+        self.bake(state, scope, kind, false);
+    }
+
+    fn note_indirect(&self, state: &mut AppState) {
+        let volume = state.gfx.as_ref().and_then(|g| g.renderer.indirect_volume().cloned());
+        let current = self.indirect_serial == Some(state.doc.content_serial());
+        let on = state.settings.render.lit_indirect;
+        let waiting = self.running.as_ref().is_some_and(|r| r.lit) || self.upload.as_ref().is_some_and(|u| u.lit);
+        let phase = if !on {
+            IndirectPhase::Off
+        } else if self.no_lights {
+            IndirectPhase::NoLights
+        } else if waiting {
+            IndirectPhase::Baking
+        } else if self.indirect_failed == Some(state.doc.content_serial()) {
+            IndirectPhase::Failed
+        } else if volume.is_none() {
+            IndirectPhase::Waiting
+        } else if current {
+            IndirectPhase::Ready
+        } else {
+            IndirectPhase::Stale
+        };
+        let seconds = state.runtime.lighting.indirect.seconds;
+        state.runtime.lighting.indirect = IndirectStatus {
+            phase,
+            cells: volume.as_ref().map_or(0, |v| v.cells()),
+            valid_cells: volume.as_ref().map_or(0, |v| v.valid_cells()),
+            spacing: volume.as_ref().map_or(0.0, |v| v.spacing),
+            gpu_bytes: volume.as_ref().map_or(0, |v| v.gpu_bytes()),
+            seconds,
+        };
+    }
+
+    fn schedule_lit(&mut self, state: &mut AppState, now: f64, shown: bool) {
+        let serial = state.doc.content_serial();
+        if serial != self.seen_serial {
+            self.seen_serial = serial;
+            self.changed_at = now;
+        }
+        if self.running.is_some()
+            || self.upload.is_some()
+            || self.no_lights
+            || self.indirect_serial == Some(serial)
+            || self.indirect_failed == Some(serial)
+        {
+            return;
+        }
+        let options = state.doc.light_plus();
+        if shown && !options.incremental {
+            return;
+        }
+        let delay = if shown { f64::from(options.incremental_delay).max(MIN_UPDATE_DELAY) } else { MIN_UPDATE_DELAY };
+        if now - self.changed_at < delay {
+            return;
+        }
+        self.bake(state, Scope::All, BakeKind::Update, true);
     }
 }
 
@@ -595,7 +707,7 @@ impl Lighting {
         } else {
             (Scope::All, BakeKind::Full)
         };
-        p.bake(&mut app.state, scope, kind);
+        p.bake(&mut app.state, scope, kind, false);
         app.pkg.lighting.preview = Some(p);
     }
 
@@ -770,7 +882,12 @@ impl Package for Lighting {
             Action::RenderBaked => {
                 let was_baked = app.state.settings.view.render_mode == RenderModeSetting::Baked;
                 Self::toggle_mode(app, RenderModeSetting::Baked);
-                let has_bake = app.pkg.lighting.preview.as_ref().is_some_and(|p| p.has_bake || p.running.is_some());
+                let has_bake = app
+                    .pkg
+                    .lighting
+                    .preview
+                    .as_ref()
+                    .is_some_and(|p| p.has_bake || p.running.as_ref().is_some_and(|r| !r.lit));
                 if !was_baked && app.state.settings.lighting.auto_bake && !has_bake {
                     Self::start_bake(app, ctx, false);
                 }
@@ -802,12 +919,16 @@ impl Package for Lighting {
             gfx.renderer.set_lightmap_tracking(active);
             app.pkg.lighting.grid.note_changes(gfx.renderer.take_lightmap_changes());
         }
-        if active {
+        let lit_wanted = mode == RenderModeSetting::Lit && app.state.settings.render.lit_indirect;
+        if active || lit_wanted {
             Self::preview(app, ctx);
         }
         if let Some(mut p) = app.pkg.lighting.preview.take() {
             if active {
                 p.schedule(&mut app.state, now);
+            } else if lit_wanted {
+                let shown = app.state.gfx.as_ref().is_some_and(|g| g.renderer.indirect_volume().is_some());
+                p.schedule_lit(&mut app.state, now, shown);
             } else {
                 p.stop(&mut app.state);
             }
@@ -821,6 +942,7 @@ impl Package for Lighting {
             if p.running.is_some() || p.upload.is_some() {
                 ctx.request_repaint_after(std::time::Duration::from_millis(100));
             }
+            p.note_indirect(&mut app.state);
             app.pkg.lighting.preview = Some(p);
         }
         Self::budget(app, now);
@@ -829,6 +951,13 @@ impl Package for Lighting {
 
     fn map_loaded(&self, app: &mut HammerProApp) {
         forget(app);
+        if let Some(gfx) = app.state.gfx.as_mut() {
+            gfx.renderer.set_indirect_volume(None);
+        }
+        if let Some(p) = app.pkg.lighting.preview.as_mut() {
+            p.indirect_serial = None;
+        }
+        app.state.runtime.lighting.indirect = IndirectStatus::default();
     }
 
     fn init(&self, app: &mut HammerProApp) {

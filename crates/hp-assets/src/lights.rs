@@ -97,11 +97,7 @@ pub(crate) fn light_direction(e: &Entity) -> DVec3 {
     let pitch = key_f(e, "pitch").filter(|p| *p != 0.0).unwrap_or(angles.x);
     let (sp, cp) = pitch.to_radians().sin_cos();
     out = DVec3::new(out.x * cp, out.y * cp, sp);
-    match out.try_normalize() {
-        Some(d) => d,
-        None if angle == -1.0 => DVec3::Z,
-        None => DVec3::NEG_Z,
-    }
+    out.try_normalize().unwrap_or(DVec3::ZERO)
 }
 
 pub(crate) fn target_name(e: &Entity) -> Option<&str> {
@@ -373,13 +369,13 @@ fn dynamic_light(e: &Entity) -> (Option<PreviewLight>, Option<[f32; 3]>) {
 }
 
 pub(crate) fn is_sun_class(class: &str) -> bool {
-    class.eq_ignore_ascii_case("light_environment") || class.eq_ignore_ascii_case("light_directional")
+    class == "light_environment"
 }
 
 pub(crate) fn parse_light(e: &Entity) -> (Option<SceneLight>, Option<[f32; 3]>) {
-    let class = e.classname.to_ascii_lowercase();
-    match class.as_str() {
-        "light" | "light_spot" | "light_environment" | "light_directional" => {}
+    let class = e.classname.as_str();
+    match class {
+        "light" | "light_spot" | "light_environment" => {}
         "light_dynamic" => {
             let (light, srgb) = dynamic_light(e);
             return (light.map(SceneLight::same), srgb);
@@ -391,12 +387,14 @@ pub(crate) fn parse_light(e: &Entity) -> (Option<SceneLight>, Option<[f32; 3]>) 
     let ldr = light_value(e, "_light", "_lightHDR", "_lightscaleHDR", false);
     let hdr = light_value(e, "_light", "_lightHDR", "_lightscaleHDR", true);
     let srgb = ldr.or(hdr).map(|v| v.srgb());
-    if is_sun_class(&class) {
+    let aimless = dir == DVec3::ZERO;
+    if is_sun_class(class) {
         let sun = SunDesc {
             ambient: sky_ambient(e, ldr, false),
             ambient_hdr: sky_ambient(e, hdr, true),
             spread_deg: key_f(e, "SunSpreadAngle").unwrap_or(0.0).clamp(0.0, 90.0) as f32,
         };
+        let (ldr, hdr) = if aimless { (None, None) } else { (ldr, hdr) };
         let light = SceneLight {
             ldr: Some(sun_light(ldr, origin, dir)),
             hdr: Some(sun_light(hdr, origin, dir)),
@@ -405,6 +403,9 @@ pub(crate) fn parse_light(e: &Entity) -> (Option<SceneLight>, Option<[f32; 3]>) 
         return (Some(light), srgb);
     }
     let spot = class == "light_spot";
+    if spot && aimless {
+        return (None, srgb);
+    }
     let ldr = ldr.and_then(|v| local_light(e, v, spot, origin, dir));
     let hdr = hdr.and_then(|v| local_light(e, v, spot, origin, dir));
     let light = (ldr.is_some() || hdr.is_some()).then_some(SceneLight { ldr, hdr, sun: None });
@@ -809,6 +810,10 @@ mod tests {
         assert!(parse_light(&ent("light", &[("_light", "0 0 0 200")])).0.is_none());
         assert!(parse_light(&ent("light", &[("_light", "255 255 255 0")])).0.is_none());
         assert!(parse_light(&ent("info_target", &[("_light", "255 255 255 200")])).0.is_none());
+        for class in ["light_directional", "light_glspot", "light_foo", "LIGHT", "Light_Spot", "LIGHT_ENVIRONMENT"] {
+            let (l, _) = parse_light(&ent(class, &[("_light", "255 255 255 200"), ("pitch", "-90")]));
+            assert!(l.is_none(), "VRAD only lights the exact classes light, light_spot and light_environment: {class}");
+        }
         let far = ent("light", &[("origin", "1e30 0 0"), ("_light", "255 255 255 200")]);
         assert!(parse_light(&far).0.is_some_and(|l| l.ldr.is_some_and(|l| l.pos.iter().all(|v| v.is_finite()))));
         let nan = ent("light", &[("origin", "nan 0 0"), ("angles", "nan nan 0"), ("_light", "255 255 255 200")]);
@@ -850,9 +855,17 @@ mod tests {
         let p = ldr(parse_light(&point).0);
         assert_eq!((p.kind, p.falloff.map(|f| f.exponent)), (LightKind::Point, Some(0.0)));
         let down = ent("light_spot", &[("angle", "-2"), ("_light", "1 1 1")]);
-        assert_eq!(light_direction(&down), DVec3::NEG_Z);
-        let up = ent("light_spot", &[("angle", "-1"), ("_light", "1 1 1")]);
-        assert_eq!(light_direction(&up), DVec3::Z);
+        assert_eq!(light_direction(&down), DVec3::ZERO, "VRAD overwrites the vertical with the pitch, 0 by default");
+        assert!(parse_light(&down).0.is_none(), "a spot that points nowhere lights nothing");
+        let down_pitched = ent("light_spot", &[("angle", "-2"), ("pitch", "-90"), ("_light", "1 1 1")]);
+        assert!((light_direction(&down_pitched) - DVec3::NEG_Z).length() < 1e-9);
+        let up = ent("light_spot", &[("angle", "-1"), ("pitch", "90"), ("_light", "1 1 1")]);
+        assert!((light_direction(&up) - DVec3::Z).length() < 1e-9);
+        let blind_sun =
+            ent("light_environment", &[("angle", "-2"), ("_light", "255 255 255 200"), ("_ambient", "50 50 50 100")]);
+        let blind = parse_light(&blind_sun).0.expect("the sky still lights");
+        assert_eq!(ldr(Some(blind)).intensity, 0.0);
+        assert!(blind.sun.is_some_and(|s| s.ambient[0] > 0.0));
         let up_tilted = ent("light_spot", &[("angle", "-1"), ("pitch", "-90")]);
         assert!((light_direction(&up_tilted) - DVec3::NEG_Z).length() < 1e-9, "VRAD applies the pitch after angle -1");
     }

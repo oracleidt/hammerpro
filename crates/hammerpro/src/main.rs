@@ -62,6 +62,7 @@ mod tabs;
 #[cfg(test)]
 mod tests_undo_move;
 mod timing;
+mod update;
 mod vram;
 
 use std::path::PathBuf;
@@ -207,6 +208,10 @@ fn main() -> eframe::Result<()> {
     if std::env::args().nth(1).as_deref() == Some(dispatch::lighting::child::LIGHT_ARG) {
         let args: Vec<String> = std::env::args().skip(2).collect();
         std::process::exit(dispatch::lighting::child::run(&args));
+    }
+    if std::env::args().nth(1).as_deref() == Some(hp_update::APPLY_ARG) {
+        let args: Vec<String> = std::env::args().skip(2).collect();
+        std::process::exit(update::run_helper(&args));
     }
     timing::init_process_start();
     let cli = parse_cli();

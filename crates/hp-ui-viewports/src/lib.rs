@@ -489,6 +489,29 @@ impl Viewports {
                 None => state.notify(Severity::Warning, t!("viewport.player.no_3d_view")),
             }
         }
+        if let Some(place) = state.runtime.lab.player.place_request.take()
+            && self.player_view.is_some()
+        {
+            let p = &mut state.runtime.lab.player;
+            if let Some(feet) = place.feet {
+                p.feet = feet;
+            } else if let Some(eye) = place.eye {
+                p.feet = eye - DVec3::new(0.0, 0.0, player::EYE);
+            }
+            if place.feet.is_some() || place.eye.is_some() {
+                p.velocity = DVec3::ZERO;
+                p.on_ground = false;
+            }
+            if let Some(noclip) = place.noclip {
+                p.noclip = noclip;
+            }
+            if let Some(yaw) = place.yaw {
+                state.cameras.cam3d.yaw_deg = yaw;
+            }
+            if let Some(pitch) = place.pitch {
+                state.cameras.cam3d.pitch_deg = pitch.clamp(-89.0, 89.0);
+            }
+        }
         let v = self.player_view?;
         if dt > 0.2 {
             log::info!("player view: a frame took {:.0} ms", dt * 1000.0);
@@ -518,6 +541,7 @@ impl Viewports {
             state.runtime.lab.player.train_requests.clear();
             self.player_lights = player::PlayerLights::default();
             state.assets.set_light_styles(&[]);
+            state.assets.set_projector_overrides(&[]);
             state.runtime.lab.player.light_styles = Default::default();
             state.runtime.lab.player.light_requests.clear();
             self.player_io_hidden.clear();
@@ -682,6 +706,7 @@ impl Viewports {
                 hp_app::runtime::LightStyleReport::default()
             }
         };
+        state.assets.set_projector_overrides(&sim.projector_overrides());
         state.assets.set_play_world(world.clone(), self.player_groups.clone());
         state.runtime.health.play_portal_states =
             sim.portals.iter().map(|(name, open)| (name.clone(), *open)).collect();
@@ -1351,6 +1376,7 @@ impl Viewports {
                 options.fog_volume_inside = options.fog_volumes;
                 options.fog_volumes = false;
             }
+            gfx.renderer.set_tone_settings(state.settings.render.tone());
             gfx.renderer.set_view_options(i as u32, options);
             let key = ViewKey {
                 params,
@@ -1362,8 +1388,8 @@ impl Viewports {
                 gfx.renderer.render_view(i as u32, &params, &self.overlay);
                 self.render_cache.rendered(i, key);
                 state.runtime.render.views_rendered += 1;
-                if options.compiled_lighting {
-                    gfx.renderer.step_compiled_exposure(i as u32, state.frame.dt);
+                if !view.is_2d() {
+                    gfx.renderer.step_tone(i as u32, state.frame.dt);
                 }
             } else {
                 self.render_cache.reused();

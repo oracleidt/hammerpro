@@ -111,6 +111,7 @@ fn box_mesh(min: [f32; 3], max: [f32; 3], material: MaterialId, wire: [u8; 3]) -
 fn persp(eye: [f32; 3], target: [f32; 3], size: [u32; 2], mode: RenderMode) -> ViewParams {
     let f = [target[0] - eye[0], target[1] - eye[1], target[2] - eye[2]];
     ViewParams {
+        game_pixel_grid: false,
         size,
         kind: ViewKind::Perspective { eye, forward: f, up: [0.0, 0.0, 1.0], fov_y_deg: 70.0, near: 1.0, far: 30000.0 },
         mode,
@@ -125,6 +126,7 @@ fn persp(eye: [f32; 3], target: [f32; 3], size: [u32; 2], mode: RenderMode) -> V
 
 fn top(center: [f32; 3], ppu: f32, size: [u32; 2]) -> ViewParams {
     ViewParams {
+        game_pixel_grid: false,
         size,
         kind: ViewKind::Ortho { axis: OrthoAxis::Top, center, pixels_per_unit: ppu },
         mode: RenderMode::Wireframe,
@@ -391,6 +393,7 @@ fn sky_background_and_3d_skybox() {
     r.set_object_flags(2, ObjectFlags::SKY_3D);
     r.set_environment(Environment {
         sky: Some(SkyView::new(faces, 0.0)),
+        sky_paint: None,
         sky_3d: Some(Sky3d { origin: [10_000.0, 0.0, 0.0], scale: 16.0 }),
         fog: None,
     });

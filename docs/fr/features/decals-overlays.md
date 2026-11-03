@@ -61,7 +61,7 @@ Un nouvel overlay reçoit les clés qu'écrit Hammer pour que le compilateur le 
 
 ## Affichage dans les vues
 
-- Les décals (`infodecal` et toute classe avec l'aide FGD `decal()`) sont projetés sur les faces de brush sous leur origine, comme les décals statiques en jeu. Ils sont redessinés quand l'entité ou un brush en dessous change.
+- Les décals (`infodecal` et toute classe avec l'aide FGD `decal()`) sont projetés sur les faces de brush sous leur origine, comme les décals statiques en jeu. Ils sont redessinés quand l'entité ou un brush en dessous change. En vue joueur, un `infodecal` nommé reste caché jusqu'à ce qu'une entrée `Activate` l'atteigne, comme en jeu (un décal sans nom est appliqué au chargement de la map).
 - Les overlays (`info_overlay`, `info_overlay_transition` et toute classe avec l'aide FGD `overlay()` ou `overlay_transition()`) sont dessinés avec leur matériau, projetés sur chaque face de leur liste `sides` (displacements compris) et découpés par elles. Les vues 2D montrent le contour découpé. Un overlay est sélectionné et masqué avec son entité.
 - **Affichage > Options d'affichage > Afficher les overlays** active ou coupe les overlays (activé par défaut, pas de raccourci par défaut). Le même interrupteur se trouve dans **Paramètres > Aides > Overlays et cordes**, enregistré sous `show_overlays` dans la table `[helpers]` de `settings.toml`.
 

@@ -8,7 +8,7 @@
 
 Hammer Pro opens and saves standard `.vmf` files, so you can use it side by side with Hammer and Hammer++. It is written in Rust, renders with the GPU through wgpu, stays smooth on huge maps and compiles maps with its own built in compiler: no VBSP, VVIS or VRAD needed.
 
-Version **1.0.2**.
+Version **1.0.3**.
 
 ## Highlights
 
@@ -26,7 +26,7 @@ Every feature has its own page in the [documentation](docs/en/README.md).
 - **Ship it.** [Map assets](docs/en/features/map-assets.md) lists and collects every file the map uses, [Build and save as content](docs/en/features/build-content-release.md) makes a ready to share addon with a release checklist and Workshop publishing, [Protect your BSP](docs/en/features/bsp-protection.md) ships a protected copy of the map.
 - **Gameplay helpers.** [Navigation mesh generation](docs/en/features/nav-mesh.md), [several 3D skyboxes and a skybox switch entity](docs/en/features/sky-cameras.md), [soundscapes](docs/en/features/soundscapes.md), [particle preview](docs/en/features/particles.md), [game launch and reload](docs/en/features/game-launch.md).
 - **AI assistants.** A built in [MCP server](docs/en/reference/mcp-server.md) lets Claude, Codex or Gemini read and edit the open map, check it, compile it and take screenshots, every edit being one undo step.
-- **Your editor.** Black and white interface (dark or light), [English and French](docs/en/features/themes-languages.md), [Hammer and Hammer++ shortcut sets](docs/en/features/keyboard-shortcuts.md), [Discord Rich Presence](docs/en/features/discord.md).
+- **Your editor.** Black and white interface (dark or light), [English and French](docs/en/features/themes-languages.md), [Hammer and Hammer++ shortcut sets](docs/en/features/keyboard-shortcuts.md), [Discord Rich Presence](docs/en/features/discord.md), [automatic updates](docs/en/features/updates.md).
 
 ## Requirements
 

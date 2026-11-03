@@ -94,12 +94,38 @@ fn steam_roots() -> Vec<PathBuf> {
     roots
 }
 
+fn lexical_clean(path: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut out = PathBuf::new();
+    for c in path.components() {
+        match c {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !out.pop() {
+                    out.push("..");
+                }
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
 pub(crate) fn path_key(path: &Path) -> String {
-    let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| {
+        let absolute = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            std::env::current_dir().map_or_else(|_| path.to_path_buf(), |cwd| cwd.join(path))
+        };
+        lexical_clean(&absolute)
+    });
     let mut key = canonical.to_string_lossy().replace('\\', "/");
     if cfg!(windows) {
         key.make_ascii_lowercase();
-        if let Some(stripped) = key.strip_prefix("//?/") {
+        if let Some(stripped) = key.strip_prefix("//?/unc/") {
+            key = format!("//{stripped}");
+        } else if let Some(stripped) = key.strip_prefix("//?/") {
             key = stripped.to_owned();
         }
     }

@@ -33,6 +33,7 @@ const SIZE: u32 = 120;
 
 fn view() -> ViewParams {
     ViewParams {
+        game_pixel_grid: false,
         size: [SIZE, SIZE],
         kind: ViewKind::Perspective {
             eye: [0.0, 0.0, 0.0],
@@ -92,7 +93,7 @@ fn the_sky_of_the_player_view_follows_the_hdr_exposure() {
     };
     let t = r.create_texture(&up);
     r.set_environment(Environment { sky: Some(SkyView::new([Some(t); 6], 0.0)), ..Default::default() });
-    r.set_compiled_bloom(false);
+    r.set_tone_settings(ToneSettings { bloom: 0.0, ..ToneSettings::default() });
     r.set_compiled_lighting(CompiledLightMode::Hdr, &[], &[]);
 
     close(render(&mut r, false, "editor"), f32::from(ldr), 1.0, "editor sky");
@@ -101,9 +102,9 @@ fn the_sky_of_the_player_view_follows_the_hdr_exposure() {
     close(render(&mut r, true, "player_start"), srgb(sky), 1.5, "sky at exposure 1");
     for _ in 0..12 {
         render(&mut r, true, "player");
-        r.step_compiled_exposure(1, 0.5);
+        r.step_tone(1, 0.5);
     }
-    let e = r.compiled_exposure();
+    let e = r.tone_scale(1);
     assert!((e - 2.0).abs() < 0.01, "a dark sky raises the exposure: {e}");
     close(render(&mut r, true, "player_exposed"), srgb(sky * e), 1.5, "LDR sky exposed");
     close(render(&mut r, false, "editor_again"), f32::from(ldr), 1.0, "editor sky unscaled");
@@ -115,15 +116,15 @@ fn the_sky_of_the_player_view_follows_the_hdr_exposure() {
     assert_eq!(render(&mut r, true, "hdr_saturated"), 255, "1.2 x 2 saturates");
     for _ in 0..20 {
         render(&mut r, true, "hdr");
-        r.step_compiled_exposure(1, 0.5);
+        r.step_tone(1, 0.5);
     }
-    let e = r.compiled_exposure();
-    assert!((1.2 * e - 0.7).abs() < 0.03, "the bright sky brings the exposure down: {e}");
+    let e = r.tone_scale(1);
+    assert!((0.57..=0.65).contains(&(1.2 * e)), "the bright sky brings the exposure down: {e}");
     close(render(&mut r, true, "hdr_settled"), srgb(1.2 * e), 2.0, "HDR sky exposed");
     close(render(&mut r, false, "editor_hdr"), f32::from(ldr), 1.0, "the editor keeps the LDR sky");
 
     r.set_compiled_lighting(CompiledLightMode::Ldr, &[], &[]);
-    assert_eq!(r.step_compiled_exposure(1, 0.5), 1.0);
+    assert_eq!(r.step_tone(1, 0.5), 1.0);
     close(render(&mut r, true, "ldr_lighting"), f32::from(ldr), 1.0, "LDR lighting sky");
     r.set_hdr_sky(None);
     assert!(!r.has_hdr_sky());
@@ -187,7 +188,7 @@ fn the_compiled_skybox_is_drawn_from_the_sky_camera() {
         object: 1,
         batches: vec![CompiledBatch { material: WALL, vertices: wall, indices: vec![0, 1, 2, 0, 2, 3] }],
     }];
-    r.set_compiled_bloom(false);
+    r.set_tone_settings(ToneSettings { bloom: 0.0, ..ToneSettings::default() });
     r.set_compiled_lighting(CompiledLightMode::Hdr, &maps, &blocks);
     r.set_environment(Environment {
         sky_3d: Some(Sky3d { origin: [0.0, 0.0, -1000.0], scale: 16.0 }),

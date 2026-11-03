@@ -412,6 +412,7 @@ fn read_prop_lighting(
                 .and_then(|d| world_light::read_vhv(&d))
                 .map(std::sync::Arc::new)
         };
+        let lighting_origin = world_light::prop_lighting_origin(prop_flags, lighting_origin);
         p.static_props.push(StaticPropLight { model, origin, angles, lighting_origin, colors });
     }
     p

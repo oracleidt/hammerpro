@@ -11,6 +11,7 @@ pub(crate) struct MountRequest {
     pub root: Option<PathBuf>,
     pub opts: MountOptions,
     pub game: Option<GameRef>,
+    pub scan: hp_fs::ScanConfig,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -62,6 +63,7 @@ impl MountRequest {
                 steam_libraries: Vec::new(),
             },
             game: GameRef::of(settings),
+            scan: settings.scan.to_config(),
         }
     }
 }
@@ -104,6 +106,7 @@ pub(crate) fn mount_hammerpp(fs: &GameFs, root: &Path) {
 }
 
 pub(crate) fn run_mount(req: &MountRequest, progress: &hp_fs::MountProgress) -> MountOutcome {
+    hp_fs::configure_scan(req.scan.clone());
     if let Some(profile) = req.game.as_ref().and_then(GameRef::profile).filter(|p| p.installed) {
         return run_game_mount(&profile, &req.opts, progress);
     }
@@ -461,7 +464,7 @@ mod tests {
         std::fs::write(hpp.join("models/editor/spot.mdl"), b"hpp copy").unwrap();
         std::fs::write(hpp.join("materials/models/editor/spot_sheet_color.vmt"), "VertexLitGeneric { }").unwrap();
         let opts = MountOptions { mount_workshop: false, ..MountOptions::default() };
-        let req = MountRequest { root: Some(dir.clone()), opts, game: None };
+        let req = MountRequest { root: Some(dir.clone()), opts, game: None, scan: hp_fs::ScanConfig::default() };
         let MountOutcome::Mounted(data) = run_mount(&req, &hp_fs::MountProgress::new()) else { panic!("mount failed") };
         assert_eq!(data.fs.read("models/editor/spot_color.mdl").as_deref(), Some(&b"hpp"[..]));
         assert_eq!(data.fs.read("models/editor/spot.mdl").as_deref(), Some(&b"game"[..]), "the game keeps priority");

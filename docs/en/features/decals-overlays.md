@@ -61,7 +61,7 @@ A new overlay gets the keys Hammer writes so the compiler builds it: `material`,
 
 ## Display in the views
 
-- Decals (`infodecal` and any class with the FGD `decal()` helper) are projected on the brush faces under their origin, like static decals in game. They are drawn again when the entity or a brush under it changes.
+- Decals (`infodecal` and any class with the FGD `decal()` helper) are projected on the brush faces under their origin, like static decals in game. They are drawn again when the entity or a brush under it changes. In the player view a named `infodecal` stays hidden until an `Activate` input reaches it, like in game (an unnamed one is applied when the map loads).
 - Overlays (`info_overlay`, `info_overlay_transition` and any class with the FGD `overlay()` or `overlay_transition()` helper) are drawn with their material, projected on every face of their `sides` list (displacements included) and clipped to them. The 2D views show the clipped outline. An overlay is selected and hidden together with its entity.
 - **View > Display options > Show overlays** turns the overlays on or off (on by default, no default shortcut). The same switch is in **Settings > Helpers > Overlays and ropes**, saved as `show_overlays` in the `[helpers]` table of `settings.toml`.
 

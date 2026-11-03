@@ -18,6 +18,15 @@ La protection fait partie de la construction de la publication. Ouvrez **Fichier
 | **Filigrane** | Texte écrit dans la map protégée (votre nom ou serveur), traçable dans une copie volée. Stocké sur l'entité du monde sous `hammerpro_protected` ; les caractères de contrôle sont retirés et le texte est coupé à 120 caractères. Clé `content.protect_watermark`. | vide |
 | **Casser les décompilateurs (vider les faces d'origine)** | Vide le lump des faces d'origine : les décompilateurs l'utilisent, pas le jeu. Laissez activé. Clé `content.protect_strip_original_faces`. | activé |
 | **Randomiseur de matériaux (casse les décompilateurs comme bsp_iidefeat)** | Renomme les matériaux de la map en noms poubelle dans la copie livrée (redirigés pour rendre pareil), pour qu'une map récupérée ait des matériaux inexploitables. Laissez activé. Clé `content.protect_randomize`. | activé |
+| **Mélanger l'ordre des lumps dans le fichier** | Chaque lump garde son identifiant mais prend une place aléatoire dans le fichier, différente à chaque compilation. Clé `content.protect_shuffle_lumps`. | activé |
+| **Trous de bourrage aléatoires entre les lumps** | Trous de taille aléatoire remplis d'octets aléatoires (alignés sur 4 octets) entre les lumps. Clé `content.protect_junk_gaps`. | activé |
+| **Blocs de données leurres** | Blocs vers lesquels aucune entrée de lump ne pointe : données aléatoires et copies périmées, légèrement altérées, de vrais lumps. Clé `content.protect_decoys`. | activé |
+| **Brouiller les champs d'en-tête ignorés par le jeu** | Révision de map aléatoire, versions aléatoires des lumps dont le jeu ignore la version, décalage, version et marqueur aléatoires des entrées de répertoire inutilisées. Clé `content.protect_scramble_header`. | activé |
+| **Mélanger le répertoire des game lumps** | Props statiques, props de détail et autres game lumps dans un ordre aléatoire. Clé `content.protect_shuffle_game_lumps`. | activé |
+| **Pakfile à une position aléatoire** | L'archive de contenu intégrée n'est plus toujours le dernier lump. Clé `content.protect_random_pak`. | activé |
+| **Réordonner plans, sommets, arêtes et tables de textures** | Permute plans, sommets, arêtes, texinfo et texdata et renumérote chaque référence. Clé `content.protect_reorder_tables`. | activé |
+| **Réordonner brushes, faces et listes de feuilles** | Permute les brushes avec leurs côtés, les faces à l'intérieur de chaque noeud et les listes de faces et de brushes de chaque feuille, en renumérotant chaque référence. Clé `content.protect_reorder_world`. | activé |
+| **Graine de structure** | Un texte qui fixe le brouillage : la même graine sur la même map donne le même fichier. Vide, chaque compilation donne une structure nouvelle. Clé `content.protect_layout_seed`. | vide |
 | **Verrou serveur** | La map ne joue normalement que sur un serveur qui met `hammerpro_key` à votre clé. Ailleurs, le garde livré affiche un filigrane (et bloque si demandé). Une dissuasion, pas inviolable. Clé `content.protect_lock`. | désactivé |
 | **Clé serveur** | Votre clé secrète pour le verrou (champ masqué). La clé elle-même n'est jamais écrite dans la map, seulement son empreinte. Clé `content.protect_lock_key`. | vide |
 | **Bloquer le jeu sur un serveur non autorisé (pas juste un filigrane)** | Fige le joueur local et affiche un avis quand la clé serveur est absente ou fausse. Clé `content.protect_lock_block`. | désactivé |
@@ -34,6 +43,18 @@ Sans clé, le verrou ne fait rien et la fenêtre indique *Mettez une clé : vous
 - **Le maillage de navigation** est gardé pour le serveur seulement : il décrit toute la map et le client ne le lit jamais.
 
 Le journal de construction indique *Protect your BSP : N entités logiques retirées, N connexions supprimées, taille de données de décompilation vidées* et, avec le randomiseur, *Randomiseur de matériaux : N matériaux renommés, redirigés pour rendre pareil.*
+
+## Le brouilleur de structure
+
+En plus de retirer des données, la protection peut brouiller la façon dont le fichier est construit : un outil qui lit le BSP par position ou en devinant les frontières des lumps trouve une structure différente à chaque compilation. Chaque point ci-dessous est une option à part (sous **Brouilleur de structure** dans la fenêtre) et toutes sont activées par défaut. Le jeu lit les lumps par le répertoire de l'en-tête et par des références renumérotées, la map se charge et se joue donc pareil.
+
+- **Ordre des lumps, trous et leurres.** Les blocs de lumps sont écrits dans un ordre physique aléatoire, avec des trous d'octets aléatoires entre eux (toujours alignés sur 4 octets, comme le moteur l'exige) et des blocs leurres vers lesquels aucune entrée du répertoire ne pointe : données aléatoires et copies périmées de vrais lumps (plans, faces, entités...) dont quelques octets sont altérés. Les leurres ajoutent au plus environ un huitième de la taille du fichier.
+- **En-tête.** La révision de la map, la version des lumps dont le jeu ignore la version (plans, sommets, noeuds, texinfo, arêtes, brushes, pakfile et similaires), ainsi que le décalage, la version et le marqueur des entrées de répertoire inutilisées sont aléatoires. Les versions que le jeu lit (feuilles, éclairage, occlusion, overlays, game lumps, lumps HDR) et les marqueurs de compression des lumps utilisés ne sont jamais touchés.
+- **Game lumps et pakfile.** Le répertoire des game lumps est mélangé et le pakfile peut se trouver n'importe où dans le fichier au lieu de la fin.
+- **Ordre à l'intérieur des lumps.** Plans (par paires, pour qu'un plan et son opposé restent ensemble), sommets, arêtes, texinfo et texdata sont permutés et chaque référence vers eux est renumérotée (noeuds, faces, côtés de brush, portails de zone, occluders, overlays, displacements, données d'eau). Les brushes sont permutés avec leurs côtés, les faces sont permutées dans la plage de chaque noeud, et les listes de faces et de brushes de chaque feuille sont mélangées. Avant chaque changement, les références sont vérifiées : si l'une ne peut pas être renumérotée avec certitude (valeur hors limites, plages qui se chevauchent, taille de lump inconnue), cette permutation est ignorée et les données restent telles quelles. Le journal compte les permutations faites.
+- **Graine.** Une graine vide donne une structure nouvelle à chaque compilation. Un texte dans **Graine de structure** rend le résultat répétable : même map, mêmes options et même graine donnent les mêmes octets.
+
+Le journal indique *Brouilleur de structure : N tables réordonnées, N blocs leurres, taille de leurres et de bourrage, graine ...*. La copie du serveur garde le même contenu de lumps que la copie protégée (le jeu les compare), les joueurs se connectent donc normalement ; elle n'est pas brouillée elle-même puisqu'elle n'est jamais livrée. Les leurres grossissent le fichier de quelques mégaoctets au plus sur les grandes maps : désactivez **Blocs de données leurres** si la taille compte plus pour vous.
 
 ## La copie du serveur
 
@@ -61,9 +82,16 @@ hammerpro_key "votre-cle-secrete"
 
 Sur un serveur sans la bonne clé, le garde affiche le filigrane, et avec **Bloquer le jeu sur un serveur non autorisé** il fige aussi le joueur et affiche un avis. L'empreinte cache la clé à un simple coup d'œil dans la map ; ce n'est pas de la cryptographie, prenez donc une clé longue que personne ne peut deviner.
 
+## Ce que la protection ne cache pas
+
+Le jeu doit charger et afficher la map, donc tout ce qu'il affiche est dans la mémoire du jeu du joueur, quel que soit l'aspect du fichier. Le [BSP Sniffer](bsp-sniffer.md) lit cette mémoire et reconstruit les brosses, les displacements (avec les alphas, quand le fichier protégé est aussi disponible), les props statiques, les overlays, les cubemaps, les area portals, le pakfile et les entités qui restent, et il restaure les noms de matériaux brouillés des matériaux du jeu depuis les matériaux patch du pakfile. Testé sur une map avec toutes les options, le VMF récupéré a tous les solides, tous les displacements et props, tous les overlays et les noms de matériaux du jeu. Ce qui reste perdu : les entités logiques et les connexions retirées, les clés d'éditeur, les noms des matériaux personnalisés (remplacés par un hash avec un sel aléatoire) et les axes de texture d'une poignée de côtés que seules les faces originales contenaient.
+
+La protection empêche donc de copier la logique (elle n'est pas chez le client) et rend une copie volée traçable, mais elle ne rend pas la géométrie et le contenu à l'épreuve du vol. Gardez sur le serveur ce qui doit rester secret.
+
 ## Astuces
 
 - Laissez **Casser les décompilateurs** et **Randomiseur de matériaux** activés : ils ne coûtent rien en jeu.
+- Laissez les options du **Brouilleur de structure** activées et testez une fois la copie livrée en jeu : elles ne coûtent rien à l'exécution.
 - Mettez votre nom ou votre communauté dans **Filigrane** : c'est la preuve qu'une copie volée est la vôtre.
 - Testez la copie livrée sur un serveur local et la copie serveur sur votre serveur dédié avant de publier.
 
@@ -75,7 +103,9 @@ Sur un serveur sans la bonne clé, le garde affiche le filigrane, et avec **Bloq
 
 **J'ai perdu ma clé serveur.** Mettez une nouvelle clé, reconstruisez, et mettez la nouvelle clé dans `server.cfg`. Les joueurs ont besoin de la nouvelle publication.
 
-**Que se passe-t-il si quelqu'un ouvre le BSP protégé dans Hammer Pro ?** **Fichier > Ouvrir une map compilée (BSP)...** signale des brushes sans faces (*elle a été protégée contre la décompilation*) ; la logique et le câblage ont disparu.
+**Quelqu'un peut-il reconstruire ma map avec le BSP Sniffer ?** La géométrie et le contenu que le client affiche, oui (voir plus haut) ; la logique, le câblage et les noms d'origine de vos matériaux personnalisés, non.
+
+**Que se passe-t-il si quelqu'un ouvre le BSP protégé dans Hammer Pro ?** **Fichier > Décompilateur de BSP...** signale des brushes sans faces (*elle a été protégée contre la décompilation*) ; la logique et le câblage ont disparu.
 
 ## Pages liées
 

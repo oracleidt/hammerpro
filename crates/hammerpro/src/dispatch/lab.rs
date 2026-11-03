@@ -59,11 +59,13 @@ pub(crate) struct State {
     compare_pick: Option<Receiver<Option<PathBuf>>>,
     compare_job: Option<hp_ui_lab::compare::CompareJob>,
     compare: hp_ui_lab::compare::CompareWindow,
+    sniffer: hp_ui_lab::sniffer::SnifferWindow,
     pub(crate) model_import: hp_ui_entities::model_import::ModelImportDialog,
 }
 
 const HANDLED: &[Action] = &[
     Action::OpenBsp,
+    Action::OpenBspSniffer,
     Action::ShowLogicalView,
     Action::ToggleNavMesh,
     Action::LoadNavMesh,
@@ -203,6 +205,10 @@ impl Package for Lab {
                     app.pkg.lab.nav_pick = Some(pick_file(app, t!("lab.nav.files").to_owned(), &["nav"], ctx));
                 }
             }
+            Action::OpenBspSniffer => {
+                let rt = &mut app.state.runtime.lab.sniffer;
+                rt.open = !rt.open;
+            }
             Action::OpenBsp => {
                 if app.pkg.lab.bsp_pick.is_none() {
                     app.pkg.lab.bsp_pick = Some(pick_file(app, t!("lab.bsp.files").to_owned(), &["bsp"], ctx));
@@ -214,6 +220,7 @@ impl Package for Lab {
     }
 
     fn init(&self, app: &mut HammerProApp) {
+        hp_app::i18n::register(hp_ui_lab::SNIFFER_TR);
         let old = content_cache(app).join("decompiled");
         if old.is_dir() {
             let _ = std::thread::Builder::new().name("hp-lab-clean".into()).spawn(move || {
@@ -259,6 +266,16 @@ impl Package for Lab {
         }
         if let Some(path) = app.state.runtime.lab.open_bsp.take() {
             start_bsp(app, ctx, path);
+        }
+        hp_ui_lab::sniffer::pump(&mut app.state, ctx);
+        if let Some(dir) = app.state.runtime.lab.sniffer.open_content.take()
+            && let Some(fs) = app.state.assets.fs()
+            && let Err(e) = fs.add_game_dir(&dir)
+        {
+            log::warn!("cannot mount {}: {e}", dir.display());
+        }
+        if let Some(path) = app.state.runtime.lab.sniffer.open_vmf.take() {
+            app.request_open(ctx, path);
         }
         poll_nav_gen(app);
         poll_prop_job(app, ctx);
@@ -313,6 +330,7 @@ impl Package for Lab {
     fn dialogs(&self, app: &mut HammerProApp, ctx: &egui::Context) {
         app.pkg.lab.logic.show(ctx, &mut app.state);
         app.pkg.lab.compare.show(ctx, &mut app.state);
+        app.pkg.lab.sniffer.show(ctx, &mut app.state);
         app.pkg.lab.model_import.show(ctx, &mut app.state);
         if let Some(imported) = app.pkg.lab.model_import.take_imported()
             && imported.place

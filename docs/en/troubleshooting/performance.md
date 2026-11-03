@@ -34,6 +34,7 @@ Page **Settings > Rendering**, group **Frame rate**:
 | **Shadowed lights** | Settings > Rendering | In the Lit render mode, how many point and spot lights near the camera cast shadows (0: only the sun, 16 at most). | 4 |
 | **Sky light only under the sky** | Settings > Rendering | In the Lit render mode, the sky light is checked against a height map of the map around the camera. Off saves a little on slow graphics cards. | On |
 | **Water preview** | Settings > Rendering | Refraction, reflection and waves of water. Off: the tool texture. | On |
+| **Water detail** | Settings > Rendering | Reflect all and Reflect world draw the scene a second time (at most 1024 pixels wide) for the mirror of expensive water; Simple reflections is the cheapest. | Reflect all |
 | **Model fade**, **Render effects**, **Animated materials** | View > Display options (the first two also in Settings > Rendering) | Small costs; turn off when every frame counts. | Off, On, On |
 
 The render mode matters too: **Flat shaded** (`Alt+2`) and **Wireframe** (`Alt+3`) are the cheapest; **Lighting preview** (`Alt+5`) and **Baked lighting preview** (`Ctrl+F5`) the most expensive. See [Render modes and display options](../features/render-modes-display.md) and [Lighting preview](../features/lighting-preview.md).

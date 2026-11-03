@@ -65,6 +65,7 @@ Directly in the **View** menu:
 | **Highlight invalid brushes** | Brushes that are not closed and convex are drawn in red in every view. | On |
 | **Show nodraw faces** | Shows or hides the nodraw faces in the 3D view. | Shown |
 | **Water preview** | Water drawn like in game: refraction, water fog, reflection of the scene and the sky, moving waves. Off: its tool texture. | On |
+| **Water detail** | Like the game's Water Detail option (`render.water_detail`): **Reflect all** draws expensive water at every distance, reflecting the world, props, brush entities, the sky and the 3D skybox drawn again mirrored about its surface; **Reflect world** keeps the expensive water near the camera and reflects props and brush entities only for materials with `$reflectentities`; **Simple reflections** draws cheap water. | Reflect all |
 | **Fog volume preview** | Each `fog_volume` is outlined and filled with its fog, with a label of its links and problems (see [Fog volumes](#fog-volumes)). Also a toolbar button. | On |
 | **Fog volume texture** | The material of the `fog_volume` brushes is drawn in the 3D view, like Hammer. Off: only the fog shows. | On |
 | **Fish preview** | The fish of each `func_fish_pool` (see [Fish pools](#fish-pools)). | On |

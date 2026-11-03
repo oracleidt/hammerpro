@@ -48,6 +48,7 @@ const SIZE: u32 = 200;
 const PROP: MaterialId = 1;
 const WORLD: MaterialId = 2;
 const SKY: MaterialId = 3;
+const WALLS: MaterialId = 9;
 const MODEL_OBJ: ObjectId = 50;
 
 fn shot(r: &mut Renderer, view: u32, p: &ViewParams, name: &str) -> Img {
@@ -86,6 +87,7 @@ fn mat(r: &mut Renderer, id: MaterialId, rgba: [u8; 4], flags: MaterialFlags) {
 
 fn front_view() -> ViewParams {
     ViewParams {
+        game_pixel_grid: false,
         size: [SIZE, SIZE],
         kind: ViewKind::Perspective {
             eye: [0.0, 0.0, 0.0],
@@ -197,7 +199,7 @@ fn props_take_point_and_spot_lights_with_vrad_falloff() {
         } else {
             ((s - co) / (ci - co)).powi(2)
         };
-        let want = albedo * 10000.0 / (d * d) * s * cone;
+        let want = albedo * 10000.0 / (d * d) * s * cone * s;
         close(px(&img, x, 100)[0], srgb(want), 3.0, &format!("spot at pixel {x}"));
     }
     r.set_lights(&[PreviewLight { falloff: None, intensity: 1.0, ..spot }], [0.0; 3]);
@@ -653,6 +655,158 @@ fn sky_light_under_a_room_above_the_sky_is_open_sky() {
     let img = shot(&mut r, 9, &below, "stacked_sky_ambient_one_sky");
     let again = px(&img, under_at.0, under_at.1);
     assert!((i32::from(again[0]) - i32::from(under[0])).abs() <= 8, "{again:?} vs {under:?}");
+}
+
+fn yard_sky_fraction(half: f32, h: f32) -> f32 {
+    let n = 400;
+    let step = 2.0 * half / n as f32;
+    let mut sum = 0.0f64;
+    for i in 0..n {
+        for j in 0..n {
+            let x = -half + (i as f32 + 0.5) * step;
+            let y = -half + (j as f32 + 0.5) * step;
+            let r2 = f64::from(x * x + y * y + h * h);
+            sum += f64::from(step * step) / (r2 * r2);
+        }
+    }
+    (f64::from(h * h) / std::f64::consts::PI * sum) as f32
+}
+
+fn yard_wall_sky_fraction(half: f32, height: f32, z: f32) -> f32 {
+    let (nt, np) = (360, 720);
+    let mut sum = 0.0f64;
+    for i in 0..nt {
+        let theta = (i as f32 + 0.5) / nt as f32 * std::f32::consts::FRAC_PI_2;
+        for j in 0..np {
+            let phi = (j as f32 + 0.5) / np as f32 * std::f32::consts::TAU;
+            let d = [theta.cos() * 0.0 + theta.sin() * phi.cos(), theta.sin() * phi.sin(), theta.cos()];
+            let n_dot = d[0];
+            if n_dot <= 0.0 || d[2] <= 0.0 {
+                continue;
+            }
+            let t = (height - z) / d[2];
+            let (x, y) = (-half + d[0] * t, d[1] * t);
+            if x.abs() < half && y.abs() < half {
+                sum += f64::from(
+                    n_dot
+                        * theta.sin()
+                        * (std::f32::consts::FRAC_PI_2 / nt as f32)
+                        * (std::f32::consts::TAU / np as f32),
+                );
+            }
+        }
+    }
+    (sum / std::f64::consts::PI) as f32
+}
+
+fn yard(r: &mut Renderer, half: f32, thick: f32, height: f32) {
+    mat(r, WORLD, [200, 200, 200, 255], MaterialFlags::empty());
+    mat(r, SKY, [120, 160, 255, 255], MaterialFlags::SKY);
+    r.upsert_object(1, box_mesh([-4096.0, -4096.0, -16.0], [4096.0, 4096.0, 0.0], WORLD));
+    r.upsert_object(2, sky_brush([-4096.0, -4096.0, 3000.0], [4096.0, 4096.0, 3016.0], WORLD));
+    r.set_object_flags(2, ObjectFlags::NO_SHADOW);
+    let o = half + thick;
+    mat(r, WALLS, [200, 200, 200, 255], MaterialFlags::empty());
+    r.upsert_object(3, box_mesh([-o, -o, 0.0], [-half, o, height], WALLS));
+    r.upsert_object(4, box_mesh([half, -o, 0.0], [o, o, height], WALLS));
+    r.upsert_object(5, box_mesh([-half, -o, 0.0], [half, -half, height], WALLS));
+    r.upsert_object(6, box_mesh([-half, half, 0.0], [half, o, height], WALLS));
+    r.set_lights(&[down_sun(0.0)], [0.5; 3]);
+    r.set_sun(SunParams { spread_deg: 0.0, sky_ambient: true });
+}
+
+#[test]
+fn sky_light_is_shadowed_by_the_thin_walls_around_a_yard() {
+    let (device, queue) = gpu_or_skip!();
+    let mut r = Renderer::new(&device, &queue);
+    yard(&mut r, 256.0, 32.0, 256.0);
+    let view = looking_down([0.0, 0.0, 1400.0]);
+    let img = shot(&mut r, 11, &view, "yard_sky");
+    let (c, o) = (screen(&view, [0.0, 0.0, 0.0]), screen(&view, [-1200.0, 0.0, 0.0]));
+    let centre = linear(px(&img, c.0, c.1)[0]);
+    let open = linear(px(&img, o.0, o.1)[0]);
+    let want = yard_sky_fraction(256.0, 252.0);
+    let got = centre / open;
+    eprintln!("YARD got {got:.3} want {want:.3}");
+    assert!((got - want).abs() < 0.12, "the yard floor sees {got:.3} of the sky, {want:.3} expected");
+    assert!(got < 0.7, "the thin walls shade the floor: {got:.3}");
+    let side = ViewParams {
+        kind: ViewKind::Perspective {
+            eye: [200.0, 0.0, 120.0],
+            forward: [-1.0, 0.0001, 0.0],
+            up: [0.0, 0.0, 1.0],
+            fov_y_deg: 90.0,
+            near: 4.0,
+            far: 20000.0,
+        },
+        size: [256, 256],
+        ..front_view()
+    };
+    let img = shot(&mut r, 12, &side, "yard_sky_wall");
+    let w = screen(&side, [-256.0, 0.0, 100.0]);
+    let wall = linear(px(&img, w.0, w.1)[0]) / open;
+    let want_wall = yard_wall_sky_fraction(256.0, 256.0, 106.0);
+    eprintln!("YARD wall got {wall:.3} want {want_wall:.3}");
+    assert!((wall - want_wall).abs() < 0.08, "the wall sees {wall:.3} of the sky, {want_wall:.3} expected");
+    mat(&mut r, WALLS, [200, 200, 200, 255], MaterialFlags::NODRAW_IN_3D | MaterialFlags::LIGHT_BLOCKER);
+    let img = shot(&mut r, 11, &view, "yard_sky_hidden_walls");
+    let hidden = linear(px(&img, c.0, c.1)[0]) / linear(px(&img, o.0, o.1)[0]);
+    assert!((hidden - got).abs() < 0.05, "hidden nodraw walls still shade: {hidden:.3} vs {got:.3}");
+    mat(&mut r, WALLS, [200, 200, 200, 255], MaterialFlags::NODRAW_IN_3D);
+    let img = shot(&mut r, 11, &view, "yard_sky_hidden_clip");
+    let clip = linear(px(&img, c.0, c.1)[0]) / linear(px(&img, o.0, o.1)[0]);
+    assert!(clip > 0.9, "hidden clip brushes shade nothing: {clip:.3}");
+}
+
+#[test]
+fn an_indirect_light_volume_lights_the_surfaces_it_covers() {
+    let (device, queue) = gpu_or_skip!();
+    let mut r = Renderer::new(&device, &queue);
+    mat(&mut r, WORLD, [255, 255, 255, 255], MaterialFlags::empty());
+    r.upsert_object(1, box_mesh([-1024.0, -1024.0, -16.0], [1024.0, 1024.0, 0.0], WORLD));
+    r.set_lights(&[], [0.0; 3]);
+    let on = ViewOptions { indirect_light: true, ..ViewOptions::default() };
+    r.set_view_options(13, on);
+    let view = looking_down([0.0, 0.0, 900.0]);
+    let img = shot(&mut r, 13, &view, "indirect_none");
+    let (c, hole, outside) =
+        (screen(&view, [-100.0, -100.0, 0.0]), screen(&view, [200.0, 200.0, 0.0]), screen(&view, [600.0, 0.0, 0.0]));
+    assert!(px(&img, c.0, c.1)[0] < 4, "no volume, no ambient: black");
+    let mut coords = Vec::new();
+    let mut cubes = Vec::new();
+    for y in 0..4 {
+        for x in 0..4 {
+            if (x, y) == (3, 3) {
+                continue;
+            }
+            let mut cube = [[0.0f32; 3]; 6];
+            cube[4] = [0.5, 0.25, 0.1];
+            cube[5] = [0.0, 0.0, 1.0];
+            coords.push([x - 2, y - 2, 0]);
+            cubes.push(cube);
+        }
+    }
+    let volume = IndirectVolume::new([0.0, 0.0, 0.0], 128.0, &coords, &cubes).expect("volume");
+    r.set_indirect_volume(Some(std::sync::Arc::new(volume)));
+    assert_eq!(r.indirect_volume().map(|v| v.cells()), Some(15));
+    let img = shot(&mut r, 13, &view, "indirect_on");
+    let lit = px(&img, c.0, c.1);
+    close(lit[0], srgb(0.5), 6.0, "the +z face of the cells lights the floor");
+    close(lit[1], srgb(0.25), 6.0, "green");
+    close(lit[2], srgb(0.1), 6.0, "blue");
+    assert!(
+        px(&img, hole.0, hole.1)[0] < 4,
+        "a cell without a probe falls back to the plain ambient: {:?}",
+        px(&img, hole.0, hole.1)
+    );
+    assert!(px(&img, outside.0, outside.1)[0] < 4, "nothing outside the volume");
+    r.set_view_options(13, ViewOptions { indirect_light: false, ..ViewOptions::default() });
+    let img = shot(&mut r, 13, &view, "indirect_off");
+    assert!(px(&img, c.0, c.1)[0] < 4, "the view option turns it off");
+    r.set_view_options(13, on);
+    r.set_indirect_volume(None);
+    let img = shot(&mut r, 13, &view, "indirect_removed");
+    assert!(px(&img, c.0, c.1)[0] < 4);
 }
 
 #[test]

@@ -7,14 +7,21 @@ mod facts;
 pub mod format;
 pub mod gamelump;
 mod header;
+pub mod layout;
 pub mod limits;
 pub mod lzma;
 pub mod nav;
 pub mod pak;
 pub mod protect;
 pub mod rename;
+pub mod reorder;
+mod rng;
 pub mod staticprops;
 
+#[cfg(test)]
+mod layout_tests;
+#[cfg(test)]
+mod protect_tests;
 #[cfg(test)]
 mod tests;
 
@@ -28,8 +35,11 @@ pub use gamelump::{GameLump, GameLumps};
 pub use header::{
     HEADER_LEN, Header, IDENT, LUMP_COUNT, LUMP_NAMES, LumpInfo, LumpLayout, MAX_VERSION, MIN_VERSION, lump, lump_name,
 };
+pub use layout::{LayoutOptions, LayoutReport, relayout};
 pub use pak::{PakArchive, PakCompression, PakEntry, PakOptions, PakWriter, normalize_entry_name};
 pub use protect::{LOCK_LUA, LOCK_LUA_PATH, Lock, ProtectOptions, ProtectReport, lock_hash, protect, server_copy};
+pub use reorder::{ReorderOptions, ReorderReport};
+pub use rng::Rng;
 
 pub fn synthetic_bsp(version: i32, lumps: &[(usize, Vec<u8>)]) -> Vec<u8> {
     let mut header =

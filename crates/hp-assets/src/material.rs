@@ -167,9 +167,16 @@ fn tool_is_overlay(kind: ToolKind) -> bool {
     !matches!(kind, ToolKind::Skybox | ToolKind::Skybox2d | ToolKind::Nodraw | ToolKind::Other)
 }
 
+pub(crate) fn blocks_light(kind: ToolKind) -> bool {
+    matches!(kind, ToolKind::Nodraw | ToolKind::BlockLight | ToolKind::Other)
+}
+
 pub(crate) fn tool_flags(tool: Option<ToolKind>, show_tools: bool) -> MaterialFlags {
     let mut flags = MaterialFlags::empty();
     if let Some(kind) = tool {
+        if blocks_light(kind) {
+            flags |= MaterialFlags::LIGHT_BLOCKER;
+        }
         if tool_is_overlay(kind) {
             flags |= MaterialFlags::TOOL;
         }
@@ -412,6 +419,7 @@ pub(crate) fn asset_desc(
                 bump: None,
                 texture2: None,
                 scroll: [0.0; 2],
+                base_uv: [1.0, 1.0, 0.0, 0.0],
                 texture3: None,
                 texture4: None,
                 alpha_ref: hp_vmt::DEFAULT_ALPHA_TEST_REFERENCE,
@@ -446,6 +454,9 @@ pub(crate) fn asset_desc(
             if a.tool.is_some() && (!show_tools || tool_hidden(a.tool)) {
                 flags |= MaterialFlags::NODRAW_IN_3D;
             }
+            if a.tool.is_some_and(blocks_light) {
+                flags |= MaterialFlags::LIGHT_BLOCKER;
+            }
             let sprite = matches!(kind, MatKind::Sprite | MatKind::SpriteAdditive);
             let detail = a.detail.as_ref().filter(|_| !sprite).and_then(|d| match tex(&d.texture) {
                 TexLook::Ready(id, _) => Some(d.desc(id)),
@@ -464,6 +475,7 @@ pub(crate) fn asset_desc(
                 texture3,
                 texture4,
                 scroll: a.scroll,
+                base_uv: a.uv,
                 alpha_ref: a.alpha_ref,
                 detail,
                 water: a.water.as_ref().filter(|_| kind == MatKind::World).map(|w| crate::water::desc(w, tex)),
@@ -498,6 +510,7 @@ pub(crate) fn flat_desc(rgba: [u8; 4]) -> MaterialDesc {
         bump: None,
         texture2: None,
         scroll: [0.0; 2],
+        base_uv: [1.0, 1.0, 0.0, 0.0],
         texture3: None,
         texture4: None,
         alpha_ref: hp_vmt::DEFAULT_ALPHA_TEST_REFERENCE,
@@ -823,8 +836,16 @@ mod tests {
         assert_eq!(d.tex_size, [256.0, 128.0]);
         assert!(!d.flags.contains(MaterialFlags::TOOL));
         assert!(!d.flags.contains(MaterialFlags::NODRAW_IN_3D));
+        assert!(d.flags.contains(MaterialFlags::LIGHT_BLOCKER), "nodraw brushes still stop the light");
         let hidden = asset_desc(MatKind::World, "tools/toolsnodraw", AnaLook::Ready(&a), &ready, false);
-        assert!(hidden.flags.contains(MaterialFlags::NODRAW_IN_3D));
+        assert!(hidden.flags.contains(MaterialFlags::NODRAW_IN_3D | MaterialFlags::LIGHT_BLOCKER));
+        let clip = analyze(
+            "tools/toolsclip",
+            &mat(r#"LightmappedGeneric { "$basetexture" "tools/toolsclip" "%compileclip" 1 }"#),
+        );
+        let clip_desc = asset_desc(MatKind::World, "tools/toolsclip", AnaLook::Ready(&clip), &ready, true);
+        assert!(!clip_desc.flags.contains(MaterialFlags::LIGHT_BLOCKER), "clip brushes let the light through");
+        assert!(tool_flags(guess_tool("tools/toolsblocklight"), true).contains(MaterialFlags::LIGHT_BLOCKER));
         let model = asset_desc(MatKind::Model, "tools/toolsnodraw", AnaLook::Ready(&a), &ready, true);
         assert_eq!(model.tex_size, [1.0, 1.0]);
 
@@ -867,6 +888,17 @@ mod tests {
         assert!(missing.missing);
         assert_eq!(missing.tool, Some(ToolKind::Clip));
         assert_eq!(missing.decal_scale, None);
+    }
+
+    #[test]
+    fn the_base_texture_transform_reaches_the_render_description() {
+        let src = r#"LightmappedGeneric { "$basetexture" "x" "$basetexturetransform" "center .5 .5 scale 1.25 1.25 rotate 0 translate 0 0" }"#;
+        let a = super::analyze("x", &mat(src), &|_| 0);
+        let ready = |_: &str| TexLook::Ready(TexId::WHITE, [8, 8]);
+        let d = asset_desc(MatKind::World, "x", AnaLook::Ready(&a), &ready, true);
+        assert_eq!(d.base_uv, [1.25, 1.25, -0.125, -0.125], "scaled about the center like the engine");
+        let plain = super::analyze("x", &mat(r#"LightmappedGeneric { "$basetexture" "x" }"#), &|_| 0);
+        assert_eq!(asset_desc(MatKind::World, "x", AnaLook::Ready(&plain), &ready, true).base_uv, [1.0, 1.0, 0.0, 0.0]);
     }
 
     #[test]

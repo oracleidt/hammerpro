@@ -119,7 +119,8 @@ const SPECS: &[ToolSpec] = &[
         description: "Read Hammer Pro's settings: all of them, a table (\"view\", \"edit\", \"ui\", \"render\"...) or \
             one setting by dotted path (\"view.fov_deg\", \"ui.theme\"). Lists the paths MCP cannot change. \
             The \"discord\" table is Discord Rich Presence (enabled, show_map, show_elapsed, show_tool, \
-            application_id).",
+            application_id). The \"update\" table is the auto update (check_on_startup, skipped_version; \
+            see get_update_status).",
         kind: ToolKind::Read,
         schema: || object(json!({ "path": string("Dotted path; empty: everything.") }), &[]),
     },
@@ -197,7 +198,7 @@ pub(crate) fn settings_json(s: &Settings) -> Value {
         }
         tables!(
             selection, brush, workflow, instances, visibility, helpers, mesh, entities, render, lighting, placement,
-            startup, launch, content, health, lab, mcp, grid, discord,
+            startup, launch, content, health, lab, mcp, grid, discord, scan, update, sniffer,
         );
     }
     v
@@ -637,6 +638,53 @@ mod tests {
         assert!(!s.enabled && !s.show_map && s.show_tool);
         assert_eq!(s.application_id, "1234567890123456789");
         assert!(read_only("discord.project_url").is_some());
+    }
+
+    #[test]
+    fn lit_mode_settings_are_reachable() {
+        let _lang = hp_app::testing::lang_lock();
+        let mut state = hp_app::testing::test_state();
+        let v = ok(&mut state, "get_settings", json!({ "path": "render" }));
+        assert_eq!(v["value"]["lit_indirect"], true, "the bounced light of the Lit mode is on by default");
+        assert_eq!(v["value"]["light_shadows"], 16);
+        set(&mut state, "render.lit_indirect", json!(false));
+        set(&mut state, "render.light_shadows", json!(64));
+        assert!(!state.settings.render.lit_indirect);
+        assert_eq!(state.settings.render.light_shadows, 64);
+        assert!(read_only("render.lit_indirect").is_none() && read_only("render.light_shadows").is_none());
+    }
+
+    #[test]
+    fn scan_settings_are_reachable() {
+        let _lang = hp_app::testing::lang_lock();
+        let mut state = hp_app::testing::test_state();
+        let v = ok(&mut state, "get_settings", json!({ "path": "scan" }));
+        assert_eq!(v["value"]["use_index"], true);
+        assert_eq!(v["value"]["mode"], "auto");
+        set(&mut state, "scan.mode", json!("sequential"));
+        set(&mut state, "scan.use_index", json!(false));
+        assert_eq!(state.settings.scan.mode, hp_app::settings::ScanModeSetting::Sequential);
+        assert!(!state.settings.scan.use_index);
+        assert!(state.settings.scan.to_config().index_file.is_none());
+        assert_eq!(state.settings.scan.to_config().mode, hp_fs::ScanMode::Sequential);
+        assert!(read_only("scan.mode").is_none() && read_only("scan.use_index").is_none());
+    }
+
+    #[test]
+    fn update_settings_are_reachable() {
+        let _lang = hp_app::testing::lang_lock();
+        let mut state = hp_app::testing::test_state();
+        let v = ok(&mut state, "get_settings", json!({ "path": "update" }));
+        assert_eq!(v["value"]["check_on_startup"], true);
+        assert_eq!(v["value"]["skipped_version"], "");
+        set(&mut state, "update.check_on_startup", json!(false));
+        set(&mut state, "update.skipped_version", json!("v1.0.3"));
+        assert!(!state.settings.update.check_on_startup);
+        assert_eq!(state.settings.update.skipped_version, "v1.0.3");
+        let v = ok(&mut state, "get_settings", json!({ "path": "update.skipped_version" }));
+        assert_eq!(v["value"], "v1.0.3");
+        assert!(read_only("update.check_on_startup").is_none());
+        assert!(read_only("update.skipped_version").is_none());
     }
 
     #[test]

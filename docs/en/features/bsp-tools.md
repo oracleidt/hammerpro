@@ -4,9 +4,9 @@
 
 Tools to work with compiled maps and archives: decompile a BSP back into an editable map, look inside a BSP pakfile, a GMA or a VPK (and edit a BSP's pakfile and entities), export the map geometry as OBJ for 3D tools, and compare two maps.
 
-## Open a compiled map (decompile)
+## BSP Decompiler
 
-**File > Open compiled map (BSP)...** asks for a `.bsp` and rebuilds an editable map from it, in the spirit of BSPSource. The work runs in the background (*Decompiling map...*) and the result opens in a new tab (*map decompiled in N ms (brushes: N, entities: N). Save it as a VMF to keep it.*).
+**File > BSP Decompiler...** asks for a `.bsp` and rebuilds an editable map from it, in the spirit of BSPSource. The work runs in the background (*Decompiling map...*) and the result opens in a new tab (*map decompiled in N ms (brushes: N, entities: N). Save it as a VMF to keep it.*).
 
 What comes back:
 
@@ -18,6 +18,8 @@ What comes back:
 The materials and models of the map's pakfile are copied to a cache folder that is mounted while the map is open, so its own content displays (*Files of the map's own content, shown while it is open*).
 
 A compiled map cannot give everything back: instances are merged, visgroups, groups and hidden objects are gone, and hint, skip and origin brushes were removed by the compiler. The console lists brushes, displacements and occluders that could not be rebuilt, overlays that lost their faces, and brushes without faces (a map protected against decompiling, see [Protect your BSP](bsp-protection.md)).
+
+The BSP Decompiler works on a `.bsp` file you already have. To recover a map from a Garry's Mod server you join, see the [BSP Sniffer](bsp-sniffer.md).
 
 ## Open an archive (pack inspector)
 
@@ -66,6 +68,7 @@ Select an entry to preview it: text files (VMT, TXT, Lua, RES, CFG, JSON, VMF, R
 
 ## Related pages
 
+- [BSP Sniffer](bsp-sniffer.md)
 - [Protect your BSP](bsp-protection.md)
 - [Build and save as content](build-content-release.md)
 - [VMF compatibility](../getting-started/vmf-compatibility.md)

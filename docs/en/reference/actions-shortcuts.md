@@ -36,7 +36,8 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Export OBJ... | `export_obj` |  |  |  |
 | Import props from the game | `import_from_game` |  |  |  |
 | Open archive... | `open_archive` |  |  |  |
-| Open compiled map (BSP)... | `open_bsp` |  |  |  |
+| BSP Decompiler... | `open_bsp` |  |  |  |
+| BSP Sniffer... | `bsp_sniffer` |  |  |  |
 | Import a model (FBX, OBJ, glTF)... | `import_model` |  |  |  |
 | Compile and run... | `run_map` | `Ctrl+F9` | `F9` | `F9` |
 | Compile now | `compile_now` | `F9` | `Ctrl+F9` | `Ctrl+F9` |
@@ -298,6 +299,7 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Add noise to displacements... | `disp_noise` |  |  |  |
 | UV lock (vertex tool) | `toggle_uv_lock` |  |  |  |
 | Reload content from disk | `reload_content` |  |  |  |
+| Rebuild the content index | `rebuild_content_index` |  |  |  |
 | MCP server | `toggle_mcp_server` |  |  |  |
 | Install MCP in Claude, Codex and Gemini | `mcp_install` |  |  |  |
 | MCP... | `mcp_panel` |  |  |  |
@@ -321,6 +323,7 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Keyboard shortcuts | `keyboard_shortcuts` | `F1` |  |  |
 | Documentation | `open_docs` |  |  |  |
 | Report an issue | `report_issue` |  |  |  |
+| Check for updates... | `check_for_updates` |  |  |  |
 | Entity help | `entity_help` |  |  |  |
 | About Hammer Pro | `about` |  |  |  |
 

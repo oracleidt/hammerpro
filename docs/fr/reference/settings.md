@@ -343,6 +343,7 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `skybox_3d` | `true` | Skybox 3D autour de `sky_camera` (`Alt+V`). |
 | `sky_see_through` | `false` | Laisse de côté les faces `toolsskybox` pour voir le ciel au travers. |
 | `water_preview` | `true` | Eau dessinée comme en jeu. |
+| `water_detail` | `"ReflectAll"` | Comme l'option vidéo Détail de l'eau du jeu : `ReflectAll` (r_waterforceexpensive et r_waterforcereflectentities : eau coûteuse à toute distance qui reflète le monde, les props, les entités de brushes, le ciel et la skybox 3D dessinés une seconde fois en miroir par rapport à sa surface), `ReflectWorld` (coûteuse près de la caméra, bon marché au-delà de `$cheapwaterenddistance`, props et entités de brushes seulement avec `$reflectentities` ; `$reflectskyboxonly` et `$reflect3dskybox 0` sont respectés), `Simple` (eau bon marché partout). |
 | `fog_preview` | `true` | Aperçu du brouillard d'un `env_fog_controller` (Fog Enable, couleurs, mélange, début, fin, densité max, farz) dans les vues 3D et la vue joueur. |
 | `fog_volume_preview` | `true` | Entourer et remplir les brushes `fog_volume` de leur brouillard (celui du contrôleur, ou un aspect par défaut avec une étiquette d'avertissement) ; la vue joueur prend le brouillard du contrôleur dedans. |
 | `fog_volume_texture` | `true` | Dessiner le matériau des brushes `fog_volume` dans la vue 3D. |
@@ -352,9 +353,20 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `player_compiled_lighting` | `true` | La vue joueur utilise les lightmaps de la map compilée. |
 | `cubemaps` | `true` | Les matériaux `$envmap` reflètent leur cubemap. |
 | `cubemaps_auto` | `true` | Les cubemaps sont redessinées après les modifications de la map. |
-| `light_shadows` | `4` | Lumières ponctuelles et spots avec ombres en mode éclairé, de 0 à 16. |
+| `light_shadows` | `16` | Lumières ponctuelles et spots avec ombres en mode éclairé, de 0 à 64 (les plus brillantes en vue d'abord). |
+| `lit_indirect` | `true` | Le mode éclairé reçoit sa lumière du ciel et la lumière rebondie par les autres surfaces d'une cuisson de la map en arrière-plan avec le compilateur. |
+| `model_lods` | `true` | Chaque prop est dessiné au niveau de détail que le jeu choisit pour lui, d’après les distances de bascule de son modèle et la taille qu’il occupe à l’écran. Désactivé : le niveau le plus fin de chaque modèle est toujours dessiné. |
+| `game_pixel_grid` | `true` | Les vues 3D échantillonnent leurs pixels sur la même grille que le jeu (Direct3D 9), à un demi pixel de la grille de Vulkan et de Direct3D 12, pour qu’une capture de l’aperçu se superpose à une capture du jeu. |
+| `sun_glow` | `true` | Le sprite du soleil et le halo de l’entité `env_sun` sont dessinés dans les vues 3D comme le jeu (direction, `size`, `overlaysize`, `rendercolor`, `overlaycolor`, `material`, `overlaymaterial`, `HDRColorScale`, le fondu sur les 40 degrés autour du centre de la vue et le fondu derrière ce qui cache le soleil). |
 | `light_preview_hdr` | `true` | Le mode éclairé prend les valeurs de lumière HDR (`_lightHDR`, `_lightscaleHDR`, `_ambientHDR`, `_AmbientScaleHDR`). |
+| `projected_textures` | `true` | Les entités `env_projectedtexture` (les 16 premières) projettent leur texture et leur lumière en mode éclairé, en aperçu précalculé et en vue joueur. |
 | `sky_occlusion` | `true` | En mode éclairé, la lumière du ciel `_ambient` n'atteint que ce qui voit le ciel. |
+| `tone_mapping` | `"Auto"` | Comment les vues éclairées (mode éclairé, aperçu précalculé, vue joueur avec son éclairage HDR compilé) transforment la lumière en pixels comme le jeu : `Auto` adapte l'exposition à l'image comme le moteur (`mat_autoexposure_min`, `mat_autoexposure_max`, `mat_tonemap_percent_target`), `Fixed` utilise `exposure`, `Off` montre la lumière telle quelle. **Outils > Options... > Rendu > Tone mapping HDR**. |
+| `exposure` | `1.0` | Le facteur d'exposition du mode `Fixed`, de 0,05 à 16 (`mat_force_tonemap_scale`). |
+| `exposure_min` | `0.5` | L'exposition automatique ne descend jamais sous cette valeur, de 0,05 à 16 (`mat_autoexposure_min`). |
+| `exposure_max` | `2.0` | L'exposition automatique ne dépasse jamais cette valeur, de 0,05 à 16 (`mat_autoexposure_max`). |
+| `bloom` | `1.0` | Intensité de la lueur autour des surfaces claires, de 0 à 8 (`mat_bloom_scalefactor_scalar`) ; 0 la désactive. |
+| `map_tonemap` | `true` | L'`env_tonemap_controller` de la map règle la plage d'exposition et l'échelle du bloom (`SetAutoExposureMin`, `SetAutoExposureMax`, `SetBloomScale` depuis son `logic_auto`), comme en jeu. |
 | `prop_shadows` | `"Auto"` | Ce avec quoi les `prop_static` projettent leurs ombres en mode éclairé : `Auto` suit la compilation (triangles du modèle avec `-StaticPropPolys`, modèle de collision sinon, aucune avec `-nostaticpropshadows`), `Mesh` les triangles du modèle, `Collision` le modèle de collision. |
 | `animate_materials` | `true` | Matériaux animés et sprites en mouvement. |
 | `model_fade` | `false` | Les props disparaissent progressivement entre leurs distances de fondu. |
@@ -454,6 +466,15 @@ La fenêtre **Construire et enregistrer en contenu** et l'onglet Ressources de l
 | `protect_lock_key` | `""` | Clé secrète du verrou serveur (seule son empreinte va dans la map). |
 | `protect_lock_block` | `false` | Bloque le jeu sur un serveur non autorisé. |
 | `protect_randomize` | `true` | Brouillage des matériaux. |
+| `protect_shuffle_lumps` | `true` | Ordre physique aléatoire des lumps. |
+| `protect_junk_gaps` | `true` | Trous de bourrage aléatoires entre les lumps. |
+| `protect_decoys` | `true` | Blocs leurres non référencés. |
+| `protect_scramble_header` | `true` | Champs d'en-tête ignorés par le jeu rendus aléatoires. |
+| `protect_shuffle_game_lumps` | `true` | Répertoire des game lumps mélangé. |
+| `protect_random_pak` | `true` | Pakfile à une position aléatoire. |
+| `protect_reorder_tables` | `true` | Permute plans, sommets, arêtes, texinfo et texdata. |
+| `protect_reorder_world` | `true` | Permute brushes, faces et listes de feuilles. |
+| `protect_layout_seed` | `""` | Graine du brouilleur de structure (vide : aléatoire à chaque compilation). |
 | `show_map_assets` | `false` | Onglet Ressources de la map. |
 | `collect_folder` | `""` | Dernier dossier de sortie de **Collecter**. |
 
@@ -493,6 +514,33 @@ La fenêtre **Construire et enregistrer en contenu** et l'onglet Ressources de l
 | `model_lod.levels` | `4` | Niveaux sous le modèle complet, de 3 à 6. |
 | `model_lod.reduction` | `0.5` | Part des triangles gardée à chaque niveau, de 0,2 à 0,9. |
 
+## `[sniffer]`
+
+Le panneau du [BSP Sniffer](../features/bsp-sniffer.md) (Fichier > BSP Sniffer...). Seules les clés qui diffèrent du défaut sont écrites.
+
+| Clé | Défaut | Effet |
+| --- | --- | --- |
+| `address` | `""` | Serveur sous la forme `ip:port`. |
+| `authorized` | `false` | Vous confirmez avoir le droit de tester le serveur (nécessaire pour démarrer). |
+| `consent_seen` | `false` | L'avertissement a été accepté. |
+| `output_dir` | `""` | Dossier de sortie (vide : le dossier de cache `sniffer`). |
+| `file_name_template` | `"{map}_sniffed"` | Nom du fichier ; jetons `{map}` `{ip}` `{port}` `{date}` `{time}` `{datetime}`. |
+| `gmod_dir` | `""` | Dossier de Garry's Mod (vide : automatique). |
+| `launch_options` | fenêtré, 800 x 450, réglages bas, muet | Ajoutées au lancement Steam. |
+| `insecure` | `"auto"` | `auto`, `always` ou `never` pour `-insecure`. |
+| `attach_running` | `false` | Utiliser un jeu déjà lancé. |
+| `process_timeout_secs` | `180` | Attente du processus du jeu. |
+| `load_timeout_secs` | `900` | Attente de la map. |
+| `settle_secs` | `6` | La map doit rester identique ce temps. |
+| `poll_secs` | `3` | Intervalle de lecture. |
+| `save_models`, `save_materials`, `save_sounds`, `save_other` | `true` | Quel contenu enregistrer. |
+| `only_non_stock` | `true` | Ignorer les fichiers du jeu de base. |
+| `keep_bsp` | `true` | Garder le BSP récupéré. |
+| `kill_game` | `true` | Fermer le jeu lancé. |
+| `auto_disconnect` | `true` | Se déconnecter si le jeu reste ouvert. |
+| `open_when_done` | `true` | Ouvrir le VMF à la fin. |
+| `decompile.*` | `true` | `brushes`, `displacements`, `entities`, `brush_entities`, `static_props`, `overlays`, `cubemaps`, `areaportals`, `occluders`, `group_details`. |
+
 ## `[grid]`
 
 **Map > Grilles**, le menu de grille de la barre d'outils et le gestionnaire de grilles. Voir [Grilles](../features/grids.md).
@@ -519,6 +567,24 @@ La fenêtre **Construire et enregistrer en contenu** et l'onglet Ressources de l
 | `discord.project_url` | `""` | Lien du bouton (pas de bouton si vide). |
 
 Voir [Discord Rich Presence](../features/discord.md).
+
+## `[scan]`
+
+| Clé | Défaut | Effet |
+| --- | --- | --- |
+| `scan.use_index` | `true` | Garde l'index du contenu enregistré (`content_index.bin` dans le dossier de cache) pour que les lancements n'analysent que les dossiers modifiés. **Paramètres > Jeu > Analyse du contenu**. |
+| `scan.mode` | `"auto"` | `"auto"` (un dossier à la fois sur disque dur, en parallèle sur SSD et NVMe, par volume), `"parallel"` ou `"sequential"`. Appliqué au prochain chargement du contenu. |
+
+Voir [Index et analyse du contenu](../features/content-index.md).
+
+## `[update]`
+
+| Clé | Défaut | Effet |
+| --- | --- | --- |
+| `update.check_on_startup` | `true` | Cherche une version plus récente en arrière-plan au démarrage de Hammer Pro. **Paramètres > Mises à jour**. |
+| `update.skipped_version` | `""` | Tag de la version dont l'utilisateur ne veut plus entendre parler (**Ne plus afficher**), par exemple `"v1.0.3"`. Vide : aucune. |
+
+Voir [Mises à jour](../features/updates.md).
 
 ## Pages liées
 

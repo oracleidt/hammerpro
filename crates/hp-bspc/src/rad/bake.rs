@@ -31,6 +31,8 @@ const PROBES: usize = 5;
 const BOUNCE_TAIL: f32 = 0.25;
 const SUN_PROBES: usize = 6;
 const SUN_STRIDE: usize = 7;
+const MAX_STYLES: usize = 4;
+const MAX_CANDIDATE_STYLES: usize = 16;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Params {
@@ -44,6 +46,18 @@ pub(crate) struct Params {
 }
 
 impl Params {
+    pub fn at_least(self, floor: &Params) -> Params {
+        Params {
+            sky_dirs: self.sky_dirs.max(floor.sky_dirs),
+            sun_samples: self.sun_samples.max(floor.sun_samples),
+            supersample_passes: self.supersample_passes,
+            bounce_step: self.bounce_step.min(floor.bounce_step),
+            bounce_rays: self.bounce_rays.max(floor.bounce_rays),
+            leaf_samples: self.leaf_samples,
+            leaf_dirs: self.leaf_dirs,
+        }
+    }
+
     pub fn of(q: RadQuality) -> Params {
         match q {
             RadQuality::Draft => Params {
@@ -332,7 +346,7 @@ impl Ctx<'_> {
         Sample { pos: pos.as_vec3a(), normals, cluster: self.map.cluster_at(pos) }
     }
 
-    fn candidates(&self, f: &LitFace) -> (Vec<(usize, usize)>, Vec<u8>) {
+    fn candidates(&self, f: &LitFace, clusters: &[i32]) -> (Vec<(usize, usize)>, Vec<u8>) {
         let (lo, hi) = (f.bounds.0.as_vec3a(), f.bounds.1.as_vec3a());
         let d = f.poly.first().map_or(0.0, |p| p.dot(f.normal));
         let mut styles = vec![0u8];
@@ -356,9 +370,13 @@ impl Ctx<'_> {
                 }
                 Kind::Sun | Kind::SkyAmbient => {}
             }
+            let row = self.light_rows.get(i).and_then(Option::as_ref);
+            if !clusters.is_empty() && !clusters.iter().any(|c| row_sees(row, *c)) {
+                continue;
+            }
             let slot = match styles.iter().position(|s| *s == l.style) {
                 Some(k) => k,
-                None if styles.len() < 4 => {
+                None if styles.len() < MAX_CANDIDATE_STYLES => {
                     styles.push(l.style);
                     styles.len() - 1
                 }
@@ -538,12 +556,8 @@ impl Ctx<'_> {
     }
 
     pub fn direct(&self, f: &LitFace) -> FaceLight {
-        let (cand, styles) = self.candidates(f);
-        let slots = styles.len();
         let nn = if f.bump { 4 } else { 1 };
         let lux = f.luxels();
-        let stride = self.passes * slots * nn;
-        let mut acc = vec![Vec3A::ZERO; stride * lux];
         let mut pieces: Vec<Vec<DVec2>> = Vec::new();
         let mut centers: Vec<DVec2> = Vec::with_capacity(lux);
         let mut dark = vec![false; lux];
@@ -583,17 +597,23 @@ impl Ctx<'_> {
                 }
             }
         }
+        let samples: Vec<Option<Sample>> =
+            (0..lux).map(|i| if dark[i] { None } else { Some(self.sample(f, centers[i].x, centers[i].y)) }).collect();
+        let mut clusters: Vec<i32> = samples.iter().flatten().map(|sp| sp.cluster).collect();
+        clusters.extend(f.poly.iter().map(|v| self.map.cluster_at(*v + f.normal)));
+        clusters.sort_unstable();
+        clusters.dedup();
+        clusters.retain(|c| *c >= 0);
+        let (cand, styles) = self.candidates(f, &clusters);
+        let slots = styles.len();
+        let stride = self.passes * slots * nn;
+        let mut acc = vec![Vec3A::ZERO; stride * lux];
         let sky_lights = super::sky::lights_of(self, &cand);
         let part = if sky_lights.is_empty() { Part::All } else { Part::Direct };
-        let mut samples: Vec<Option<Sample>> = Vec::with_capacity(lux);
-        for i in 0..lux {
-            if dark[i] {
-                samples.push(None);
-                continue;
+        for (i, sp) in samples.iter().enumerate() {
+            if let Some(sp) = sp {
+                self.gather(&cand, slots, nn, sp, part, &mut acc[i * stride..(i + 1) * stride]);
             }
-            let sp = self.sample(f, centers[i].x, centers[i].y);
-            self.gather(&cand, slots, nn, &sp, part, &mut acc[i * stride..(i + 1) * stride]);
-            samples.push(Some(sp));
         }
         let sky = if sky_lights.is_empty() {
             Vec::new()
@@ -613,6 +633,7 @@ impl Ctx<'_> {
                             .any(|p| (0..nn).any(|n| acc[i * stride + (p * slots + slot) * nn + n].max_element() > 0.0))
                     })
             })
+            .take(MAX_STYLES)
             .collect();
         let kept = keep.len();
         let mut values = vec![Vec3A::ZERO; self.passes * kept * nn * lux];

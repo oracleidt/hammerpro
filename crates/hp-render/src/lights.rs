@@ -285,6 +285,7 @@ mod tests {
 
     fn cam() -> Camera {
         Camera::new(&ViewParams {
+            game_pixel_grid: false,
             size: [640, 480],
             kind: ViewKind::Perspective {
                 eye: [0.0; 3],

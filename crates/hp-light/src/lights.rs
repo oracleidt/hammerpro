@@ -76,20 +76,18 @@ pub struct Light {
 
 impl Light {
     pub fn falloff(&self, dist: f32) -> f32 {
-        if self.cutoff > 0.0 && dist > self.cutoff {
+        let (start, end) = self.fade;
+        let hard = end > start;
+        if hard && dist > end {
             return 0.0;
         }
-        let d = dist.max(1.0).min(self.cap);
-        let denom = self.constant + d * (self.linear + d * self.quadratic);
+        let d = dist.max(1.0);
+        let e = d.min(self.cap);
+        let denom = self.constant + e * (self.linear + e * self.quadratic);
         let mut f = if denom > 1e-12 { 1.0 / denom } else { 1.0 };
-        let (start, end) = self.fade;
-        if end > start {
-            if dist >= end {
-                return 0.0;
-            }
-            if dist > start {
-                f *= (end - dist) / (end - start);
-            }
+        if hard {
+            let t = 1.0 - ((d - start) / (end - start)).clamp(0.0, 1.0);
+            f *= t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
         }
         f
     }
@@ -158,9 +156,6 @@ impl Light {
             }
         } else {
             reach = 0.0;
-        }
-        if self.cutoff > 0.0 {
-            reach = reach.min(self.cutoff);
         }
         let (start, end) = self.fade;
         if end > start {
@@ -236,7 +231,7 @@ fn set_falloff(l: &mut Light, e: &Entity) {
             }
         }
     } else {
-        let clamp = |v: f64| if v < 1e-6 { 0.0 } else { v as f32 };
+        let clamp = |v: f64| if v < 0.001 { 0.0 } else { v as f32 };
         l.constant = clamp(key_f(e, "_constant_attn").unwrap_or(0.0));
         l.linear = clamp(key_f(e, "_linear_attn").unwrap_or(0.0));
         l.quadratic = clamp(key_f(e, "_quadratic_attn").unwrap_or(0.0));
@@ -250,11 +245,6 @@ fn set_falloff(l: &mut Light, e: &Entity) {
     }
     let r = key_f(e, "_distance").unwrap_or(0.0) as f32;
     l.cutoff = if r.is_finite() && r > 0.0 { r.min(1.0e6) } else { 0.0 };
-    if l.cutoff > 0.0 {
-        let r = l.cutoff;
-        let (start, end) = l.fade;
-        l.fade = if end > start { (start.min(0.75 * r), end.min(r)) } else { (0.75 * r, r) };
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -287,7 +277,7 @@ fn light_value(e: &Entity, ldr: &str, hdr: &str) -> Option<Vec3> {
 }
 
 pub fn parse_light(e: &Entity, radius_scale: f32) -> Option<Light> {
-    let class = e.classname.to_ascii_lowercase();
+    let class = e.classname.as_str();
     if class != "light" && class != "light_spot" {
         return None;
     }
@@ -336,7 +326,7 @@ pub fn parse_light(e: &Entity, radius_scale: f32) -> Option<Light> {
 }
 
 pub fn parse_environment(e: &Entity) -> Option<Sky> {
-    if !e.classname.eq_ignore_ascii_case("light_environment") {
+    if e.classname != "light_environment" {
         return None;
     }
     let sun = light_value(e, "_light", "_lightHDR").filter(|i| i.max_element() > 0.0).map(|i| Sun {
@@ -430,15 +420,27 @@ mod tests {
         let l = parse_light(&e, 1.0).unwrap();
         assert_eq!((l.constant, l.linear, l.quadratic), (1.0, 0.0, 0.0));
         assert!((l.falloff(200.0) - 1.0).abs() < 1e-6);
-        assert_eq!(l.falloff(301.0), 0.0);
-        assert_eq!(l.reach, 300.0);
-        assert_eq!(l.fade, (225.0, 300.0));
-        assert!(l.falloff(280.0) > 0.0 && l.falloff(280.0) < 0.5);
+        assert_eq!(l.cutoff, 300.0);
+        assert_eq!(l.falloff(301.0), 1.0, "VRAD lights past _distance, only the engine cuts it");
+        assert_eq!(l.fade, (0.0, -1.0));
+        assert!(l.reach > 300.0);
         let curve =
             ent("light", &[("_light", "255 255 255 255"), ("_fifty_percent_distance", "200"), ("_distance", "250")]);
         let c = parse_light(&curve, 1.0).unwrap();
-        assert_eq!((c.cutoff, c.falloff(251.0)), (250.0, 0.0));
-        assert!(c.falloff(150.0) > 0.0);
+        assert_eq!(c.cutoff, 250.0);
+        assert!(c.falloff(251.0) > 0.0 && c.falloff(150.0) > 0.0);
+        let tiny = ent(
+            "light",
+            &[
+                ("_light", "255 255 255 255"),
+                ("_constant_attn", "1"),
+                ("_linear_attn", "0.01"),
+                ("_quadratic_attn", "0.0001"),
+            ],
+        );
+        let t = parse_light(&tiny, 1.0).unwrap();
+        assert_eq!((t.constant, t.linear, t.quadratic), (1.0, 0.01, 0.0), "terms under 0.001 read as 0 like VRAD");
+        assert!((t.intensity.x - 510.0).abs() < 1e-3, "{}", t.intensity.x);
         let dark = ent("light", &[("_light", "255 255 255 255"), ("targetname", "a"), ("spawnflags", "1")]);
         assert!(parse_light(&dark, 1.0).is_none());
         assert!(parse_light(&ent("info_target", &[("_light", "1 1 1 1")]), 1.0).is_none());
@@ -464,8 +466,13 @@ mod tests {
         let mut hard = e.clone();
         hard.set("_hardfalloff", "1");
         let h = parse_light(&hard, 1.0).unwrap();
-        assert_eq!(h.falloff(400.0), 0.0);
+        assert_eq!(h.falloff(401.0), 0.0);
         assert!(h.reach <= 400.0);
+        let (start, end) = h.fade;
+        assert_eq!((start, end), (0.75 * 400.0 + 0.25 * 200.0, 400.0));
+        let mid = h.falloff(0.5 * (start + end));
+        let plain = h.constant + 0.5 * (start + end) * (h.linear + 0.5 * (start + end) * h.quadratic);
+        assert!((mid * plain - 0.5).abs() < 1e-3, "the fade is VRAD's quintic curve: {}", mid * plain);
     }
 
     #[test]

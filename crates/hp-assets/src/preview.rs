@@ -416,6 +416,7 @@ impl AssetManager {
                 show_sprites: false,
                 show_models: true,
                 msaa: true,
+                game_pixel_grid: false,
             };
             let overlay = p.model.as_ref().map(|m| helpers_overlay(&m.data, camera)).unwrap_or_default();
             p.renderer.render_view(VIEW, &params, &overlay);

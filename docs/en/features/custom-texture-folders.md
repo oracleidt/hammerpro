@@ -117,6 +117,7 @@ See [Compile window](../compiler/compile-window.md).
 - [Compile window](../compiler/compile-window.md)
 - [Map assets](map-assets.md)
 - [Settings reference](../reference/settings.md)
+- [Content index and scan](content-index.md)
 - [MCP tool reference](../../MCP.md) (`import_images`, `list_asset_sources`)
 
 ---

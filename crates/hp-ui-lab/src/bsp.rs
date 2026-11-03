@@ -22,7 +22,7 @@ pub fn run(path: &Path, cache: Option<&Path>, known_outputs: Option<HashSet<Stri
     let start = Instant::now();
     let bsp = hp_bsp::Bsp::open(path).map_err(|e| e.to_string())?;
     let map_name = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-    let options = hp_decompile::Options { map_name, known_outputs };
+    let options = hp_decompile::Options { map_name, known_outputs, ..hp_decompile::Options::default() };
     let out = hp_decompile::decompile(&bsp, &options).map_err(|e| e.to_string())?;
     let mut doc = Document::from_map(out.map);
     doc.mark_dirty();

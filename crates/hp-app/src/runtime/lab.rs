@@ -12,6 +12,24 @@ pub struct LabRuntime {
     pub unprop_open: bool,
     pub propper_options_open: bool,
     pub particles: ParticleReport,
+    pub sniffer: SnifferRuntime,
+}
+
+#[derive(Debug, Default)]
+pub struct SnifferRuntime {
+    pub open: bool,
+    pub consent_open: bool,
+    pub handle: Option<std::sync::Arc<hp_sniffer::session::SnifferHandle>>,
+    pub log: Vec<hp_sniffer::session::LogLine>,
+    pub log_cursor: usize,
+    pub open_vmf: Option<PathBuf>,
+    pub open_content: Option<PathBuf>,
+    pub opened: Option<PathBuf>,
+    pub outcome: Option<std::sync::Arc<hp_sniffer::session::Outcome>>,
+    pub error: Option<String>,
+    pub show_settings: bool,
+    pub show_log: bool,
+    pub follow_log: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -46,9 +64,19 @@ pub struct PlayerState {
     pub air_time: f64,
     pub in_teleport: bool,
     pub light_requests: Vec<(String, Option<bool>)>,
+    pub place_request: Option<PlayerPlace>,
     pub light_styles: LightStyleReport,
     pub train_requests: Vec<(Option<String>, Option<bool>)>,
     pub trains: Vec<TrainReport>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct PlayerPlace {
+    pub feet: Option<glam::DVec3>,
+    pub eye: Option<glam::DVec3>,
+    pub yaw: Option<f64>,
+    pub pitch: Option<f64>,
+    pub noclip: Option<bool>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -98,6 +126,7 @@ impl Default for PlayerState {
             air_time: 0.0,
             in_teleport: false,
             light_requests: Vec::new(),
+            place_request: None,
             light_styles: LightStyleReport::default(),
             train_requests: Vec::new(),
             trains: Vec::new(),

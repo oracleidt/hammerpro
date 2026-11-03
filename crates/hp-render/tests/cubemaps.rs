@@ -120,6 +120,7 @@ fn mirror(r: &mut Renderer, envmap: EnvmapDesc) {
 
 fn down() -> ViewParams {
     ViewParams {
+        game_pixel_grid: false,
         size: [SIZE, SIZE],
         kind: ViewKind::Perspective {
             eye: [0.0, 0.0, 0.0],
@@ -361,7 +362,7 @@ fn the_compiled_world_reflects_like_the_game() {
     let id = r.create_cubemap_image(&CubemapImage { size: 4, faces: refs, origin: None }).expect("image");
     mirror(&mut r, EnvmapDesc::default());
     compiled_floor(&mut r, id.raw());
-    r.set_compiled_bloom(false);
+    r.set_tone_settings(ToneSettings { bloom: 0.0, ..ToneSettings::default() });
     let shot_compiled = |r: &mut Renderer, cubemaps: bool, name: &str| {
         r.set_view_options(1, ViewOptions { cubemaps, compiled_lighting: true, ..ViewOptions::default() });
         r.render_view(1, &down(), &Overlay::default());
@@ -369,7 +370,7 @@ fn the_compiled_world_reflects_like_the_game() {
     };
     shot_compiled(&mut r, true, "compiled_first");
     bake(&mut r);
-    let exposure = r.compiled_exposure();
+    let exposure = r.tone_scale(1);
     let hdr = shot_compiled(&mut r, true, "compiled_hdr");
     let c = px(&hdr, SIZE / 2, SIZE / 2)[0];
     let want = {

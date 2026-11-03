@@ -1057,3 +1057,126 @@ fn lightmaps_only_fail_past_the_face_offset() {
     let e = lightmap_room(most + 1, most).unwrap_err();
     assert!(e.contains("cannot load"), "{e}");
 }
+
+fn sealed_rooms(lights: &[(&str, &str)]) -> String {
+    let w = "DEV/DEV_MEASUREGENERIC01B";
+    let mut id = 1;
+    let mut solids = String::new();
+    let t = 16.0;
+    let mut ents = String::new();
+    for (k, (name, extra)) in lights.iter().enumerate() {
+        let x = 600.0 * k as f64;
+        let (lo, hi) = (DVec3::new(x, 0.0, 0.0), DVec3::new(x + 256.0, 256.0, 256.0));
+        solids += &block(&mut id, DVec3::new(lo.x - t, lo.y - t, lo.z - t), DVec3::new(hi.x + t, hi.y + t, lo.z), w, w);
+        solids += &block(&mut id, DVec3::new(lo.x - t, lo.y - t, hi.z), DVec3::new(hi.x + t, hi.y + t, hi.z + t), w, w);
+        solids += &block(&mut id, DVec3::new(lo.x - t, lo.y - t, lo.z), DVec3::new(lo.x, hi.y + t, hi.z), w, w);
+        solids += &block(&mut id, DVec3::new(hi.x, lo.y - t, lo.z), DVec3::new(hi.x + t, hi.y + t, hi.z), w, w);
+        solids += &block(&mut id, DVec3::new(lo.x, lo.y - t, lo.z), DVec3::new(hi.x, lo.y, hi.z), w, w);
+        solids += &block(&mut id, DVec3::new(lo.x, hi.y, lo.z), DVec3::new(hi.x, hi.y + t, hi.z), w, w);
+        let target = if name.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "	\"targetname\" \"{name}\"
+"
+            )
+        };
+        ents += &format!(
+            "entity
+{{
+	\"id\" \"{}\"
+	\"classname\" \"light\"
+	\"origin\" \"{} 128 200\"
+	\"_light\" \"255 255 255 200\"
+{target}{extra}}}
+",
+            500 + k,
+            x + 128.0
+        );
+    }
+    format!(
+        "versioninfo
+{{
+	\"editorversion\" \"400\"
+	\"mapversion\" \"1\"
+}}
+world
+{{
+	\"id\" \"1\"
+	\"mapversion\" \"1\"
+	\"classname\" \"worldspawn\"
+	\"skyname\" \"sky_day01_01\"
+{solids}}}
+{ents}         entity
+{{
+	\"id\" \"9000\"
+	\"classname\" \"info_player_start\"
+	\"origin\" \"32 32 16\"
+}}
+"
+    )
+}
+
+#[test]
+fn lights_of_other_rooms_take_no_style_slot() {
+    let rooms: Vec<(String, &str)> = (0..6).map(|k| (format!("lamp{k}"), "")).collect();
+    let spec: Vec<(&str, &str)> = rooms.iter().map(|(n, e)| (n.as_str(), *e)).collect();
+    let bsp = compile_vmf(&sealed_rooms(&spec));
+    let out = light_bsp(&bsp, &quick(), &mut |_| {}).expect("light");
+    let src = hp_bsp::Bsp::from_vec(out).unwrap();
+    let map = MapData::read(&src).unwrap();
+    let styles_of = |name: &str| {
+        let e = map.entities.iter().find(|e| e.get("targetname") == Some(name)).expect("lamp");
+        e.get("style").and_then(|s| s.parse::<u8>().ok()).expect("style")
+    };
+    let faces = src.lump(lump::FACES).unwrap().into_owned();
+    let mut checked = 0;
+    for (i, f) in lit_faces(&map, 45.0).into_iter().enumerate() {
+        let Some(f) = f else { continue };
+        let c = f.poly.iter().copied().sum::<DVec3>() / f.poly.len() as f64;
+        let room = (c.x / 600.0).round().max(0.0) as usize;
+        let inside =
+            c.x >= 600.0 * room as f64 - 1.0 && c.x <= 600.0 * room as f64 + 257.0 && c.y > -1.0 && c.y < 257.0;
+        if room >= rooms.len() || !inside || c.z < -1.0 || c.z > 257.0 {
+            continue;
+        }
+        let styles: Vec<u8> = faces[i * 56 + 16..i * 56 + 20].iter().copied().take_while(|s| *s != 255).collect();
+        let own = styles_of(&format!("lamp{room}"));
+        assert_eq!(styles, vec![0, own], "face {i} of room {room} at {c:?}");
+        checked += 1;
+    }
+    assert!(checked >= 30, "{checked} faces checked");
+}
+
+#[test]
+fn light_probes_hold_the_ambient_light_near_the_surfaces() {
+    let bsp = compile_vmf(&room("DEV/DEV_MEASUREGENERIC01B", &light_entity(500, "64 128 128", "")));
+    let opts = RadOptions {
+        probes: Some(ProbeOptions { spacing: 32.0, max_cells: 100_000 }),
+        hdr: true,
+        ldr: false,
+        ..quick()
+    };
+    let out = light_bsp(&bsp, &opts, &mut |_| {}).expect("light");
+    let src = hp_bsp::Bsp::from_vec(out).unwrap();
+    let bytes = src.lump(hp_light::probes::LUMP).expect("the probe lump").into_owned();
+    let v = hp_light::probes::ProbeVolume::decode(&bytes).expect("a probe volume");
+    assert_eq!(v.spacing, 32.0);
+    assert!(v.cell_count() > 300 && v.cell_count() < 5000, "{} cells", v.cell_count());
+    let index = v.index();
+    let at = |p: [f32; 3]| v.sample_with(&index, p, [0.0, 0.0, 1.0]).expect("a probe near the point");
+    let near = at([100.0, 40.0, 100.0]);
+    let far = at([480.0, 230.0, 100.0]);
+    assert!(near[0] > 0.0 && far[0] > 0.0, "bounced light reaches everywhere: {near:?} {far:?}");
+    assert!(near[0] > far[0] * 1.2, "the probes near the light are brighter: {near:?} vs {far:?}");
+    assert!(!index.contains_key(&v.cell_of([256.0, 128.0, 64.0])), "no probe inside the pillar");
+    assert!(!index.contains_key(&v.cell_of([-200.0, 0.0, 64.0])), "no probe outside the room");
+    assert!(index.contains_key(&v.cell_of([100.0, 40.0, 16.0])), "probes lie above the floor");
+    let coarse = RadOptions { probes: Some(ProbeOptions { spacing: 0.0, max_cells: 100 }), ..opts.clone() };
+    let out = light_bsp(&bsp, &coarse, &mut |_| {}).expect("light");
+    let bytes = hp_bsp::Bsp::from_vec(out).unwrap().lump(hp_light::probes::LUMP).expect("lump").into_owned();
+    let auto = hp_light::probes::ProbeVolume::decode(&bytes).expect("a probe volume");
+    assert!(auto.spacing > 32.0, "a small budget picks coarser cells: {}", auto.spacing);
+    let none = light_bsp(&bsp, &RadOptions { probes: None, ..opts }, &mut |_| {}).expect("light");
+    assert!(hp_bsp::Bsp::from_vec(none).unwrap().lump(hp_light::probes::LUMP).map_or(true, |l| l.is_empty()));
+}

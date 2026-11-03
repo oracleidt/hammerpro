@@ -16,6 +16,7 @@ const INTERPOLATE: f32 = 0.02;
 pub struct AoOptions {
     pub enabled: Option<bool>,
     pub by_default: bool,
+    pub in_draft: bool,
     pub radius: Option<f32>,
     pub strength: Option<f32>,
     pub samples: Option<u32>,
@@ -45,7 +46,7 @@ impl AoOptions {
         let enabled = self
             .enabled
             .or_else(|| key_f32(world, "_ao").map(|v| v != 0.0))
-            .unwrap_or(self.by_default && quality != RadQuality::Draft);
+            .unwrap_or(self.by_default && (self.in_draft || quality != RadQuality::Draft));
         if !enabled {
             return None;
         }
@@ -404,6 +405,8 @@ mod tests {
         assert!(AoOptions::default().resolve(RadQuality::Final, None).is_none());
         let none = AoOptions { by_default: true, ..AoOptions::default() };
         assert!(none.resolve(RadQuality::Draft, None).is_none());
+        let preview = AoOptions { in_draft: true, ..none.clone() };
+        assert_eq!(preview.resolve(RadQuality::Draft, None).map(|a| a.samples()), Some(16));
         let n = none.resolve(RadQuality::Normal, None).expect("on");
         assert_eq!((n.radius, n.strength, n.samples()), (DEFAULT_RADIUS, DEFAULT_STRENGTH, 32));
         assert_eq!(none.resolve(RadQuality::Final, None).map(|a| a.samples()), Some(64));
@@ -417,6 +420,7 @@ mod tests {
             strength: Some(2.0),
             samples: Some(1),
             by_default: true,
+            in_draft: false,
         };
         let a = cli.resolve(RadQuality::Draft, Some(&world(&[("_ao", "0"), ("_aoradius", "500")]))).expect("on");
         assert_eq!((a.radius, a.strength, a.samples()), (32.0, 1.0, SAMPLES_RANGE.0 as usize));

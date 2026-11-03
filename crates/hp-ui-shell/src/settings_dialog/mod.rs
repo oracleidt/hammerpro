@@ -29,6 +29,8 @@ mod placement;
 mod render;
 mod selection;
 mod startup;
+mod storage;
+mod update;
 mod viewport;
 mod visibility;
 mod workflow;
@@ -135,6 +137,8 @@ fn package_pages() -> Vec<Box<dyn SettingsPage>> {
     pages.extend(lab::pages());
     pages.extend(mcp::pages());
     pages.extend(discord::pages());
+    pages.extend(storage::pages());
+    pages.extend(update::pages());
     pages
 }
 

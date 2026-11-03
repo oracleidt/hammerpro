@@ -156,6 +156,52 @@ impl ReleaseWindow {
                         .checkbox(&mut s.protect_randomize, t!("release.opt_protect_randomize"))
                         .on_hover_text(t!("release.opt_protect_randomize_tip"))
                         .changed();
+                    ui.label(RichText::new(t!("release.protect_layout_title")).strong());
+                    ui.indent("hp_protect_layout", |ui| {
+                        changed |= ui
+                            .checkbox(&mut s.protect_shuffle_lumps, t!("release.opt_protect_shuffle"))
+                            .on_hover_text(t!("release.opt_protect_shuffle_tip"))
+                            .changed();
+                        changed |= ui
+                            .checkbox(&mut s.protect_junk_gaps, t!("release.opt_protect_gaps"))
+                            .on_hover_text(t!("release.opt_protect_gaps_tip"))
+                            .changed();
+                        changed |= ui
+                            .checkbox(&mut s.protect_decoys, t!("release.opt_protect_decoys"))
+                            .on_hover_text(t!("release.opt_protect_decoys_tip"))
+                            .changed();
+                        changed |= ui
+                            .checkbox(&mut s.protect_scramble_header, t!("release.opt_protect_header"))
+                            .on_hover_text(t!("release.opt_protect_header_tip"))
+                            .changed();
+                        changed |= ui
+                            .checkbox(&mut s.protect_shuffle_game_lumps, t!("release.opt_protect_gamelumps"))
+                            .on_hover_text(t!("release.opt_protect_gamelumps_tip"))
+                            .changed();
+                        changed |= ui
+                            .checkbox(&mut s.protect_random_pak, t!("release.opt_protect_pak"))
+                            .on_hover_text(t!("release.opt_protect_pak_tip"))
+                            .changed();
+                        changed |= ui
+                            .checkbox(&mut s.protect_reorder_tables, t!("release.opt_protect_tables"))
+                            .on_hover_text(t!("release.opt_protect_tables_tip"))
+                            .changed();
+                        changed |= ui
+                            .checkbox(&mut s.protect_reorder_world, t!("release.opt_protect_world"))
+                            .on_hover_text(t!("release.opt_protect_world_tip"))
+                            .changed();
+                        ui.horizontal(|ui| {
+                            ui.label(t!("release.protect_seed"));
+                            changed |= ui
+                                .add(
+                                    egui::TextEdit::singleline(&mut s.protect_layout_seed)
+                                        .hint_text(t!("release.protect_seed_hint"))
+                                        .desired_width(220.0),
+                                )
+                                .on_hover_text(t!("release.protect_seed_tip"))
+                                .changed();
+                        });
+                    });
                     changed |= ui
                         .checkbox(&mut s.protect_lock, t!("release.opt_protect_lock"))
                         .on_hover_text(t!("release.opt_protect_lock_tip"))

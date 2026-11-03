@@ -3,6 +3,7 @@ mod cubemaps;
 mod decals;
 mod detail;
 mod entities;
+mod env_scan;
 mod envmap;
 mod fog_volumes;
 mod gpu_memory;
@@ -22,6 +23,7 @@ mod player;
 mod playworld;
 mod preview;
 mod producer;
+mod projectors;
 mod queue;
 mod registry;
 mod scene;
@@ -406,6 +408,13 @@ impl hp_app::AssetsApi for AssetManager {
         self.set_light_styles_impl(values);
     }
 
+    fn set_projector_overrides(&mut self, overrides: &[hp_app::state::ProjectorOverride]) {
+        if self.scene.projector_overrides != overrides {
+            self.scene.projector_overrides = overrides.to_vec();
+            self.scene.lights_dirty = true;
+        }
+    }
+
     fn light_preview(&self) -> Option<hp_app::state::LightPreviewReport> {
         self.scene.opts.is_some_and(|o| o.lighting_preview).then_some(self.scene.light_report)
     }
@@ -424,10 +433,11 @@ impl hp_app::AssetsApi for AssetManager {
     fn set_play_hidden(&mut self, objs: &[hp_editor::ObjRef]) {
         let ids: AHashSet<u32> = objs
             .iter()
-            .map(|o| match o {
-                hp_editor::ObjRef::Solid(id) => *id,
-                hp_editor::ObjRef::Entity(id) => entities::entity_object(*id),
+            .flat_map(|o| match o {
+                hp_editor::ObjRef::Solid(id) => [Some(*id), None],
+                hp_editor::ObjRef::Entity(id) => [Some(entities::entity_object(*id)), entities::decal_object(*id)],
             })
+            .flatten()
             .collect();
         if ids != self.play_hidden {
             self.play_hidden = ids;

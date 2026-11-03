@@ -78,6 +78,7 @@ fn project(eye: [f32; 3], p: [f32; 3]) -> (u32, u32) {
 
 fn view(eye: [f32; 3]) -> ViewParams {
     ViewParams {
+        game_pixel_grid: false,
         size: [SIZE, SIZE],
         kind: ViewKind::Perspective {
             eye,

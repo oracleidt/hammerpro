@@ -12,6 +12,7 @@ pub(crate) const SHADOW_SIZE: u32 = 4096;
 pub(crate) const SHADOW_DISTANCE: f32 = 8192.0;
 const SIZE_STEP: f32 = 512.0;
 pub(crate) const SKY_MAP_SIZE: u32 = 2048;
+pub(crate) const SKY_MIPS: u32 = 8;
 const SKY_MAP_SPAN: f32 = 16384.0;
 const SKY_MAP_MIN: f32 = 1024.0;
 pub(crate) const MAX_COORD: f32 = 65536.0;
@@ -156,7 +157,21 @@ pub(crate) fn fit(cam: &Camera, dir: Vec3, scene_min: Vec3, scene_max: Vec3) -> 
 }
 
 fn casts_no_shadow(desc: Option<&crate::MaterialDesc>) -> bool {
-    desc.is_some_and(|d| d.flags.intersects(MaterialFlags::SKY | MaterialFlags::NODRAW_IN_3D))
+    desc.is_some_and(|d| {
+        d.flags.contains(MaterialFlags::SKY)
+            || (d.flags.contains(MaterialFlags::NODRAW_IN_3D) && !d.flags.contains(MaterialFlags::LIGHT_BLOCKER))
+    })
+}
+
+fn caster_alpha(desc: Option<&crate::MaterialDesc>) -> Option<bool> {
+    if desc.is_some_and(|d| d.flags.contains(MaterialFlags::LIGHT_BLOCKER | MaterialFlags::NODRAW_IN_3D)) {
+        return Some(false);
+    }
+    match classify(desc) {
+        Some((MeshPass::Opaque, _)) => Some(false),
+        Some((MeshPass::AlphaTest, _)) => Some(true),
+        _ => None,
+    }
 }
 
 pub(crate) const SUN_CUT_SIZE: u32 = 2048;
@@ -184,9 +199,17 @@ impl Layers {
         }
     }
 
+    fn mips(self) -> u32 {
+        match self {
+            Layers::Sun => 1,
+            Layers::Sky => SKY_MIPS,
+        }
+    }
+
     pub(crate) fn bytes(self, layers: u32) -> u64 {
         let (size, cut) = self.sizes();
-        (u64::from(size).pow(2) + u64::from(cut).pow(2)) * 4 * u64::from(layers.max(1))
+        let occ = u64::from(size).pow(2) * if self.mips() > 1 { 4 } else { 3 } / 3;
+        (occ + u64::from(cut).pow(2)) * 4 * u64::from(layers.max(1))
     }
 }
 
@@ -207,15 +230,98 @@ pub(crate) struct ShadowGpu {
     size: u32,
     cut_size: u32,
     pub layers: u32,
+    mips: Option<SkyMips>,
 }
 
 pub(crate) type SkyMapGpu = ShadowGpu;
 
-fn layered_depth(device: &wgpu::Device, size: u32, layers: u32, label: &str) -> wgpu::Texture {
+struct SkyMips {
+    pipeline: wgpu::RenderPipeline,
+    targets: Vec<wgpu::TextureView>,
+    groups: Vec<wgpu::BindGroup>,
+}
+
+fn sky_mips(device: &wgpu::Device, texture: &wgpu::Texture, layers: u32) -> SkyMips {
+    let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("hp-render sky mips"),
+        entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Depth,
+                view_dimension: wgpu::TextureViewDimension::D2,
+                multisampled: false,
+            },
+            count: None,
+        }],
+    });
+    let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("hp-render sky mips"),
+        bind_group_layouts: &[Some(&bgl)],
+        immediate_size: 0,
+    });
+    let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("hp-render sky mips"),
+        source: wgpu::ShaderSource::Wgsl(include_str!("shaders/sky_mip.wgsl").into()),
+    });
+    let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("hp-render sky mips"),
+        layout: Some(&layout),
+        vertex: wgpu::VertexState {
+            module: &module,
+            entry_point: Some("vs_full"),
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+            buffers: &[],
+        },
+        primitive: wgpu::PrimitiveState::default(),
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: DEPTH_FORMAT,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(wgpu::CompareFunction::Always),
+            stencil: wgpu::StencilState::default(),
+            bias: wgpu::DepthBiasState::default(),
+        }),
+        multisample: wgpu::MultisampleState::default(),
+        fragment: Some(wgpu::FragmentState {
+            module: &module,
+            entry_point: Some("fs_min"),
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+            targets: &[],
+        }),
+        multiview_mask: None,
+        cache: None,
+    });
+    let one = |mip: u32, layer: u32| {
+        texture.create_view(&wgpu::TextureViewDescriptor {
+            dimension: Some(wgpu::TextureViewDimension::D2),
+            base_mip_level: mip,
+            mip_level_count: Some(1),
+            base_array_layer: layer,
+            array_layer_count: Some(1),
+            ..Default::default()
+        })
+    };
+    let mut targets = Vec::new();
+    let mut groups = Vec::new();
+    for m in 1..SKY_MIPS {
+        for k in 0..layers.max(1) {
+            targets.push(one(m, k));
+            let src = one(m - 1, k);
+            groups.push(device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("hp-render sky mips"),
+                layout: &bgl,
+                entries: &[wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&src) }],
+            }));
+        }
+    }
+    SkyMips { pipeline, targets, groups }
+}
+
+fn layered_depth(device: &wgpu::Device, size: u32, layers: u32, mips: u32, label: &str) -> wgpu::Texture {
     device.create_texture(&wgpu::TextureDescriptor {
         label: Some(label),
         size: wgpu::Extent3d { width: size, height: size, depth_or_array_layers: layers.max(1) },
-        mip_level_count: 1,
+        mip_level_count: mips,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
         format: DEPTH_FORMAT,
@@ -236,6 +342,8 @@ fn array_view(t: &wgpu::Texture, first: u32, count: u32) -> wgpu::TextureView {
 fn layer_view(t: &wgpu::Texture, layer: u32) -> wgpu::TextureView {
     t.create_view(&wgpu::TextureViewDescriptor {
         dimension: Some(wgpu::TextureViewDimension::D2),
+        base_mip_level: 0,
+        mip_level_count: Some(1),
         base_array_layer: layer,
         array_layer_count: Some(1),
         ..Default::default()
@@ -324,8 +432,8 @@ impl Renderer {
             Layers::Sun => "hp-render shadow map",
             Layers::Sky => "hp-render sky visibility map",
         };
-        let occ = layered_depth(&self.device, size, layers, label);
-        let cut = layered_depth(&self.device, cut_size, layers, "hp-render sky cut map");
+        let occ = layered_depth(&self.device, size, layers, which.mips(), label);
+        let cut = layered_depth(&self.device, cut_size, layers, 1, "hp-render sky cut map");
         let uniform = || {
             self.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("hp-render shadow uniform"),
@@ -349,6 +457,7 @@ impl Renderer {
             size,
             cut_size,
             layers,
+            mips: (which == Layers::Sky).then(|| sky_mips(&self.device, &occ, layers)),
         }
     }
 
@@ -472,6 +581,14 @@ impl Renderer {
             draws += d;
             tris += n;
         }
+        if let Some(mips) = &t.mips {
+            for (target, group) in mips.targets.iter().zip(&mips.groups) {
+                let mut pass = depth_pass(enc, target, 1.0, "hp-render sky mips");
+                pass.set_pipeline(&mips.pipeline);
+                pass.set_bind_group(0, group, &[]);
+                pass.draw(0..3, 0..1);
+            }
+        }
         (draws, tris)
     }
 
@@ -526,6 +643,16 @@ impl Renderer {
                     resource: wgpu::BindingResource::TextureView(cut.unwrap_or(dummy)),
                 },
                 wgpu::BindGroupEntry { binding: 17, resource: wgpu::BindingResource::TextureView(dummy) },
+                wgpu::BindGroupEntry { binding: 18, resource: self.dummy_storage.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 19, resource: self.projectors.buffer.as_entire_binding() },
+                wgpu::BindGroupEntry {
+                    binding: 20,
+                    resource: wgpu::BindingResource::TextureView(&self.projectors.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 21,
+                    resource: wgpu::BindingResource::TextureView(&self.shadow_dummy_array),
+                },
             ],
         })
     }
@@ -579,11 +706,7 @@ impl Renderer {
             if casts_no_shadow(m.desc.as_ref()) {
                 continue;
             }
-            let alpha = match classify(m.desc.as_ref()) {
-                Some((MeshPass::Opaque, _)) => false,
-                Some((MeshPass::AlphaTest, _)) => true,
-                _ => continue,
-            };
+            let Some(alpha) = caster_alpha(m.desc.as_ref()) else { continue };
             let mut bound = false;
             for &c in &m.chunks {
                 let Some(Some(ch)) = self.scene.chunks.get(c as usize) else { continue };
@@ -698,6 +821,7 @@ mod tests {
 
     fn cam(eye: [f32; 3], forward: [f32; 3]) -> Camera {
         Camera::new(&ViewParams {
+            game_pixel_grid: false,
             size: [800, 600],
             kind: ViewKind::Perspective { eye, forward, up: [0.0, 0.0, 1.0], fov_y_deg: 70.0, near: 4.0, far: 30000.0 },
             mode: RenderMode::Lit,

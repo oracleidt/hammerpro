@@ -269,6 +269,18 @@ impl Lumps {
             contents: i32_at(b, 8),
         });
         let sides = lump_bytes(bsp, idx::BRUSHSIDES, true, warnings)?;
+        let side_total = i32::try_from(sides.len() / 8).unwrap_or(i32::MAX);
+        let firsts: Vec<i32> = l.brushes.iter().map(|b| b.firstside).collect();
+        for (k, b) in l.brushes.iter_mut().enumerate() {
+            if b.numsides == 0 && b.firstside >= 0 {
+                let end = firsts.get(k + 1).copied().unwrap_or(side_total);
+                let n = end - b.firstside;
+                if (4..=64).contains(&n) {
+                    b.numsides = n;
+                    warnings.push(format!("brush {k} stored no side count: {n} sides taken from the next brush"));
+                }
+            }
+        }
         l.brushsides =
             records(&sides, 8, |b| BrushSide { planenum: u16_at(b, 0), texinfo: i16_at(b, 2), bevel: b[6] != 0 });
         let dispinfo = lump_bytes(bsp, idx::DISPINFO, false, warnings)?;

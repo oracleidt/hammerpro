@@ -236,145 +236,6 @@ pub(crate) struct CompiledLight {
     pipelines: [OnceLock<Pipelines>; 2],
     stats: CompiledLightStats,
     style_values: Vec<f32>,
-    pub(crate) exposure: Exposure,
-    no_bloom: bool,
-}
-
-pub(crate) struct Exposure {
-    pub(crate) scale: f32,
-    pipeline: OnceLock<(wgpu::ComputePipeline, wgpu::BindGroupLayout)>,
-    bins: OnceLock<(wgpu::Buffer, wgpu::Buffer)>,
-    pending: std::sync::atomic::AtomicBool,
-    inflight: Option<(std::sync::Arc<std::sync::atomic::AtomicU8>, wgpu::SubmissionIndex)>,
-}
-
-impl Default for Exposure {
-    fn default() -> Self {
-        Self {
-            scale: 1.0,
-            pipeline: OnceLock::new(),
-            bins: OnceLock::new(),
-            pending: Default::default(),
-            inflight: None,
-        }
-    }
-}
-
-impl Exposure {
-    pub(crate) fn record(&self, device: &wgpu::Device, enc: &mut wgpu::CommandEncoder, frame: &wgpu::Texture) {
-        let (pipeline, layout) = self.pipeline.get_or_init(|| {
-            let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("hp-render exposure"),
-                source: wgpu::ShaderSource::Wgsl(include_str!("shaders/exposure.wgsl").into()),
-            });
-            let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("hp-render exposure"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::COMPUTE,
-                        ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Storage { read_only: false },
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    },
-                ],
-            });
-            let pl = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("hp-render exposure"),
-                bind_group_layouts: &[Some(&layout)],
-                immediate_size: 0,
-            });
-            let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("hp-render exposure"),
-                layout: Some(&pl),
-                module: &module,
-                entry_point: Some("histogram"),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                cache: None,
-            });
-            (pipeline, layout)
-        });
-        let (bins, _) = self.bins.get_or_init(|| {
-            let make = |label, usage| {
-                device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some(label),
-                    size: (BINS * 4) as u64,
-                    usage,
-                    mapped_at_creation: false,
-                })
-            };
-            (
-                make(
-                    "hp-render exposure bins",
-                    wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
-                ),
-                make("hp-render exposure readback", wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST),
-            )
-        });
-        let view = frame.create_view(&wgpu::TextureViewDescriptor::default());
-        let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("hp-render exposure"),
-            layout,
-            entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) },
-                wgpu::BindGroupEntry { binding: 1, resource: bins.as_entire_binding() },
-            ],
-        });
-        enc.clear_buffer(bins, 0, None);
-        let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor {
-            label: Some("hp-render exposure"),
-            timestamp_writes: None,
-        });
-        pass.set_pipeline(pipeline);
-        pass.set_bind_group(0, &bg, &[]);
-        let size = frame.size();
-        pass.dispatch_workgroups(size.width.div_ceil(32), size.height.div_ceil(32), 1);
-        self.pending.store(true, std::sync::atomic::Ordering::Relaxed);
-    }
-}
-
-const BINS: usize = 256;
-const BRIGHT_PIXELS: f32 = 0.02;
-const TARGET: f32 = 0.7;
-const EXPOSURE_MIN: f32 = 0.5;
-const EXPOSURE_MAX: f32 = 2.0;
-const EXPOSURE_TIME: f32 = 1.0;
-const EXPOSURE_WAIT: std::time::Duration = std::time::Duration::from_millis(50);
-const MAP_WAITING: u8 = 0;
-const MAP_OK: u8 = 1;
-const MAP_FAILED: u8 = 2;
-
-pub(crate) fn exposure_target(bins: &[u32], current: f32) -> f32 {
-    let total: u64 = bins.iter().map(|b| u64::from(*b)).sum();
-    if total == 0 {
-        return current;
-    }
-    let want = (total as f64 * f64::from(BRIGHT_PIXELS)).max(1.0);
-    let mut above = 0.0f64;
-    let mut lum = 1.0f32;
-    for (i, &b) in bins.iter().enumerate().rev() {
-        let b = f64::from(b);
-        if above + b >= want {
-            let frac = ((want - above) / b.max(1.0)) as f32;
-            lum = (i as f32 + 1.0 - frac) / bins.len() as f32;
-            break;
-        }
-        above += b;
-    }
-    (current * TARGET / lum.max(1e-3)).clamp(EXPOSURE_MIN, EXPOSURE_MAX)
 }
 
 const SHADER: &str = concat!(
@@ -802,79 +663,6 @@ impl Renderer {
         }
     }
 
-    pub fn step_compiled_exposure(&mut self, view_id: u32, dt: f32) -> f32 {
-        let hdr = self.compiled.present && self.compiled.mode == CompiledLightMode::Hdr;
-        if !(hdr && self.view_options(view_id).compiled_lighting) {
-            if self.compiled.exposure.scale != 1.0 {
-                self.compiled.exposure.scale = 1.0;
-                self.content_gen += 1;
-            }
-            return 1.0;
-        }
-        let Some(bins) = self.read_histogram() else { return self.compiled.exposure.scale };
-        let current = self.compiled.exposure.scale;
-        let target = exposure_target(&bins, current);
-        let dt = if dt.is_finite() { dt.clamp(0.0, 0.5) } else { 0.0 };
-        let k = 1.0 - (-dt * 3.0 / EXPOSURE_TIME).exp();
-        let next = (current * (target / current).powf(k)).clamp(EXPOSURE_MIN, EXPOSURE_MAX);
-        self.compiled.exposure.scale = next;
-        if (target / next).ln().abs() > 0.01 {
-            self.content_gen += 1;
-        }
-        next
-    }
-
-    pub fn set_compiled_bloom(&mut self, on: bool) {
-        if self.compiled.no_bloom == on {
-            self.compiled.no_bloom = !on;
-            self.content_gen += 1;
-        }
-    }
-
-    pub fn compiled_exposure(&self) -> f32 {
-        self.compiled.exposure.scale
-    }
-
-    fn read_histogram(&mut self) -> Option<Vec<u32>> {
-        if self.compiled.exposure.inflight.is_none() {
-            let ex = &self.compiled.exposure;
-            if !ex.pending.swap(false, std::sync::atomic::Ordering::Relaxed) {
-                return None;
-            }
-            let (bins, readback) = ex.bins.get()?;
-            let mut enc = self
-                .device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("hp-render exposure") });
-            enc.copy_buffer_to_buffer(bins, 0, readback, 0, (BINS * 4) as u64);
-            let index = self.queue.submit([enc.finish()]);
-            let state = std::sync::Arc::new(std::sync::atomic::AtomicU8::new(MAP_WAITING));
-            let done = state.clone();
-            readback.slice(..).map_async(wgpu::MapMode::Read, move |r| {
-                done.store(if r.is_ok() { MAP_OK } else { MAP_FAILED }, std::sync::atomic::Ordering::Release);
-            });
-            self.compiled.exposure.inflight = Some((state, index));
-        }
-        let (state, index) = self.compiled.exposure.inflight.as_ref()?;
-        let _ = self
-            .device
-            .poll(wgpu::PollType::Wait { submission_index: Some(index.clone()), timeout: Some(EXPOSURE_WAIT) });
-        let mapped = match state.load(std::sync::atomic::Ordering::Acquire) {
-            MAP_WAITING => return None,
-            s => s == MAP_OK,
-        };
-        self.compiled.exposure.inflight = None;
-        if !mapped {
-            return None;
-        }
-        let (_, readback) = self.compiled.exposure.bins.get()?;
-        let out = match readback.slice(..).get_mapped_range() {
-            Ok(data) => Some(bytemuck::cast_slice::<u8, u32>(&data).to_vec()),
-            Err(_) => return None,
-        };
-        readback.unmap();
-        out
-    }
-
     pub fn set_compiled_transform(&mut self, object: ObjectId, transform: Option<[[f32; 4]; 4]>) {
         let m = transform.filter(|m| m.iter().flatten().all(|v| v.is_finite())).unwrap_or(IDENTITY);
         let cl = &mut self.compiled;
@@ -1183,9 +971,7 @@ fn shader_and_layout<'a>(r: &'a Renderer, device: &wgpu::Device) -> (&'a wgpu::S
 pub(crate) mod sky3d;
 
 #[derive(Default)]
-pub(crate) struct CompiledLightPass {
-    bloom: crate::compiled_bloom::Bloom,
-}
+pub(crate) struct CompiledLightPass;
 
 impl CompiledLightPass {
     fn draw(cx: &HookContext<'_>, pass: &mut wgpu::RenderPass<'_>, translucent: bool) {
@@ -1331,17 +1117,6 @@ impl PassHook for CompiledLightPass {
     fn draw_translucent(&self, cx: &HookContext<'_>, pass: &mut wgpu::RenderPass<'_>) {
         Self::draw(cx, pass, true);
     }
-
-    fn finish(&mut self, cx: &HookContext<'_>, encoder: &mut wgpu::CommandEncoder) {
-        let cl = &cx.renderer.compiled;
-        if !drawn_in(cx) || cl.mode != CompiledLightMode::Hdr || cx.renderer.probing {
-            return;
-        }
-        cl.exposure.record(cx.device(), encoder, cx.color_texture);
-        if !cl.no_bloom {
-            self.bloom.draw(cx, encoder);
-        }
-    }
 }
 
 #[cfg(test)]
@@ -1416,26 +1191,5 @@ mod tests {
         assert_eq!(page_size(&[(4, 4); 100], 8192), 128);
         assert_eq!(page_size(&[(600, 10)], 8192), 1024);
         assert_eq!(page_size(&[(100, 100); 10000], 2048), 2048);
-    }
-
-    #[test]
-    fn exposure_brings_the_bright_pixels_to_the_target() {
-        let mut bins = vec![0u32; BINS];
-        bins[(0.4 * BINS as f32) as usize] = 1000;
-        let t = exposure_target(&bins, 1.0);
-        assert!((t - 1.75).abs() < 0.02, "{t}");
-        let mut dark = vec![0u32; BINS];
-        dark[10] = 1000;
-        assert_eq!(exposure_target(&dark, 1.0), EXPOSURE_MAX);
-        let mut white = vec![0u32; BINS];
-        white[BINS - 1] = 1000;
-        assert!((exposure_target(&white, 1.0) - 0.7).abs() < 0.01);
-        assert_eq!(exposure_target(&white, 0.7), EXPOSURE_MIN);
-        let mut mixed = vec![0u32; BINS];
-        mixed[50] = 980;
-        mixed[200] = 20;
-        let m = exposure_target(&mixed, 1.0);
-        assert!(m > 0.85 && m < 0.95, "{m}");
-        assert_eq!(exposure_target(&[0; BINS], 1.3), 1.3);
     }
 }

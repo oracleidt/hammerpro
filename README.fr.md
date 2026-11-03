@@ -8,7 +8,7 @@
 
 Hammer Pro ouvre et enregistre des fichiers `.vmf` standard : vous pouvez l'utiliser en parallèle de Hammer et de Hammer++. Il est écrit en Rust, dessine avec la carte graphique grâce à wgpu, reste fluide sur les très grandes maps et compile les maps avec son propre compilateur intégré : ni VBSP, ni VVIS, ni VRAD.
 
-Version **1.0.2**.
+Version **1.0.3**.
 
 ## Points forts
 
@@ -26,7 +26,7 @@ Chaque fonctionnalité a sa propre page dans la [documentation](docs/fr/README.m
 - **Publier.** [Ressources de la map](docs/fr/features/map-assets.md) liste et rassemble chaque fichier utilisé par la map, [Construire et enregistrer en contenu](docs/fr/features/build-content-release.md) prépare un addon prêt à partager avec une liste de contrôle et la publication sur le Workshop, [Protect your BSP](docs/fr/features/bsp-protection.md) livre une copie protégée de la map.
 - **Aides au gameplay.** [Génération du nav mesh](docs/fr/features/nav-mesh.md), [plusieurs skybox 3D et une entité pour en changer](docs/fr/features/sky-cameras.md), [soundscapes](docs/fr/features/soundscapes.md), [aperçu des particules](docs/fr/features/particles.md), [lancement et rechargement en jeu](docs/fr/features/game-launch.md).
 - **Assistants IA.** Un [serveur MCP](docs/fr/reference/mcp-server.md) intégré permet à Claude, Codex ou Gemini de lire et modifier la map ouverte, de la vérifier, de la compiler et de faire des captures d'écran, chaque modification formant une seule étape d'annulation.
-- **Votre éditeur.** Interface noir et blanc (sombre ou claire), [anglais et français](docs/fr/features/themes-languages.md), [jeux de raccourcis de Hammer et Hammer++](docs/fr/features/keyboard-shortcuts.md), [statut Discord](docs/fr/features/discord.md).
+- **Votre éditeur.** Interface noir et blanc (sombre ou claire), [anglais et français](docs/fr/features/themes-languages.md), [jeux de raccourcis de Hammer et Hammer++](docs/fr/features/keyboard-shortcuts.md), [statut Discord](docs/fr/features/discord.md), [mises à jour automatiques](docs/fr/features/updates.md).
 
 ## Configuration requise
 

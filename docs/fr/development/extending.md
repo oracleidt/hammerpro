@@ -25,6 +25,7 @@ Travaillez dans vos propres fichiers. Quand un fichier hôte appartient à un au
 | Extension de l'éditeur | Blocs VMF supplémentaires (les blocs Hammer++ `*_plus` sont conservés ainsi). | `crates/hp-editor` |
 | Compilation et lancement | Étapes de la chaîne de compilation, arguments de lancement. | `crates/hp-compile`, `crates/hp-ui-mapping/src/compile/` |
 | Traductions | Chaque texte de l'interface sous forme de lignes `(clé, anglais, français)` d'une table `TR`. | chaque crate |
+| Lignes de stockage | Chaque dossier de cache, de sortie ou temporaire écrit par Hammer Pro, listé et nettoyé par Paramètres > Stockage et MCP. | `crates/hp-app/src/storage/locations.rs` (`TABLE`) |
 | Outils MCP | Outils sémantiques du serveur MCP. Chaque action et chaque paramètre sont déjà accessibles par `run_action` et `set_setting`. | `crates/hammerpro/src/dispatch/mcp/tools_<domaine>.rs` |
 
 ## Traductions

@@ -1,4 +1,7 @@
 use crate::header::lump;
+use crate::layout::{LayoutOptions, relayout};
+use crate::reorder::{ReorderOptions, reorder};
+use crate::rng::{Rng, entropy};
 use crate::{Bsp, Entity, Result};
 
 pub const LOGIC_CLASSES: &[&str] = &[
@@ -37,6 +40,11 @@ pub struct ProtectReport {
     pub original_faces_bytes: usize,
     pub materials_randomized: usize,
     pub custom_assets_renamed: usize,
+    pub layout_seed: String,
+    pub decoy_blocks: usize,
+    pub decoy_bytes: usize,
+    pub gap_bytes: usize,
+    pub reordered: Vec<String>,
 }
 
 pub const LOCK_LUA_PATH: &str = "lua/autorun/hammerpro_lock.lua";
@@ -67,6 +75,20 @@ pub struct ProtectOptions {
     pub lock: Option<Lock>,
     pub randomize_materials: bool,
     pub salt: String,
+    pub layout: LayoutOptions,
+    pub reorder: ReorderOptions,
+    pub layout_seed: String,
+}
+
+impl ProtectOptions {
+    pub fn strongest() -> Self {
+        Self {
+            randomize_materials: true,
+            layout: LayoutOptions::strongest(),
+            reorder: ReorderOptions { tables: true, world: true },
+            ..Self::default()
+        }
+    }
 }
 
 impl Default for ProtectOptions {
@@ -80,6 +102,9 @@ impl Default for ProtectOptions {
             lock: None,
             randomize_materials: false,
             salt: String::new(),
+            layout: LayoutOptions::default(),
+            reorder: ReorderOptions::default(),
+            layout_seed: String::new(),
         }
     }
 }
@@ -321,6 +346,22 @@ pub fn protect(full: &Bsp, opts: &ProtectOptions) -> Result<(Vec<u8>, ProtectRep
     let mut edit = Bsp::from_vec(full.bytes().to_vec())?.edit();
     edit.entities_last(true);
     edit.set_entities(&entities)?;
+    let seed = if opts.layout_seed.trim().is_empty() {
+        format!("{:016x}", entropy())
+    } else {
+        opts.layout_seed.trim().to_owned()
+    };
+    let mut rng = Rng::from_text(&seed);
+    if opts.reorder.tables || opts.reorder.world || opts.layout.any() {
+        report.layout_seed = seed.clone();
+    }
+    if opts.reorder.tables || opts.reorder.world {
+        let (changed, rep) = reorder(full, opts.reorder, &mut rng)?;
+        for (index, data) in changed {
+            edit.replace_lump(index, data)?;
+        }
+        report.reordered = rep.applied.iter().map(|s| (*s).to_owned()).collect();
+    }
     if opts.strip_original_faces {
         if let Ok(raw) = full.lump_raw(lump::ORIGINAL_FACES) {
             report.original_faces_bytes = raw.len();
@@ -339,7 +380,15 @@ pub fn protect(full: &Bsp, opts: &ProtectOptions) -> Result<(Vec<u8>, ProtectRep
         report.materials_randomized = r.patches.len() + r.renamed_custom;
         report.custom_assets_renamed = r.renamed_custom;
     }
-    Ok((edit.to_vec()?, report))
+    let bytes = edit.to_vec()?;
+    if !opts.layout.any() {
+        return Ok((bytes, report));
+    }
+    let (bytes, layout) = relayout(&bytes, &opts.layout, &mut rng)?;
+    report.decoy_blocks = layout.decoy_blocks;
+    report.decoy_bytes = layout.decoy_bytes;
+    report.gap_bytes = layout.gap_bytes;
+    Ok((bytes, report))
 }
 
 #[cfg(test)]
@@ -405,6 +454,9 @@ mod tests {
             lock: None,
             randomize_materials: false,
             salt: String::new(),
+            layout: LayoutOptions::default(),
+            reorder: ReorderOptions::default(),
+            layout_seed: String::new(),
         };
         let (bytes, r) = protect(&bsp, &keep).unwrap();
         assert_eq!((r.entities_removed, r.connections_stripped, r.original_faces_bytes), (0, 0, 0));

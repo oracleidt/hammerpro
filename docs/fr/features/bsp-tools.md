@@ -4,9 +4,9 @@
 
 Des outils pour travailler avec les maps compilées et les archives : décompiler un BSP en map éditable, regarder dans le pakfile d'un BSP, un GMA ou un VPK (et modifier le pakfile et les entités d'un BSP), exporter la géométrie de la map en OBJ pour les logiciels 3D, et comparer deux maps.
 
-## Ouvrir une map compilée (décompiler)
+## Décompilateur de BSP
 
-**Fichier > Ouvrir une map compilée (BSP)...** demande un `.bsp` et reconstruit une map éditable, dans l'esprit de BSPSource. Le travail tourne en arrière-plan (*Décompilation de map...*) et le résultat s'ouvre dans un nouvel onglet (*map décompilée en N ms (brushes : N, entités : N). Enregistrez-la en VMF pour la garder.*).
+**Fichier > Décompilateur de BSP...** demande un `.bsp` et reconstruit une map éditable, dans l'esprit de BSPSource. Le travail tourne en arrière-plan (*Décompilation de map...*) et le résultat s'ouvre dans un nouvel onglet (*map décompilée en N ms (brushes : N, entités : N). Enregistrez-la en VMF pour la garder.*).
 
 Ce qui revient :
 
@@ -18,6 +18,8 @@ Ce qui revient :
 Les matériaux et modèles du pakfile de la map sont copiés dans un dossier de cache monté tant que la map est ouverte, pour que son propre contenu s'affiche (*Fichiers du contenu propre à la map, affichés tant qu'elle est ouverte*).
 
 Une map compilée ne rend pas tout : les instances sont fusionnées, les visgroups, groupes et objets cachés ont disparu, et les brushes hint, skip et origin ont été retirés par le compilateur. La console liste les brushes, displacements et occluders impossibles à reconstruire, les overlays qui ont perdu leurs faces, et les brushes sans faces (map protégée contre la décompilation, voir [Protect your BSP](bsp-protection.md)).
+
+Le Décompilateur de BSP travaille sur un fichier `.bsp` que vous avez déjà. Pour récupérer une map depuis un serveur Garry's Mod que vous rejoignez, voir le [BSP Sniffer](bsp-sniffer.md).
 
 ## Ouvrir une archive (inspecteur d'archives)
 
@@ -66,6 +68,7 @@ Sélectionnez une entrée pour la prévisualiser : fichiers texte (VMT, TXT, Lua
 
 ## Pages liées
 
+- [BSP Sniffer](bsp-sniffer.md)
 - [Protect your BSP](bsp-protection.md)
 - [Construire et enregistrer en contenu](build-content-release.md)
 - [Compatibilité VMF](../getting-started/vmf-compatibility.md)

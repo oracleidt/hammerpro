@@ -44,6 +44,7 @@ Hammer Pro is split into small, focused crates under `crates/`, with dependencie
 | `hp-assets` | Asset system: mounting game content and FGDs in the background, streaming materials, models and sprites, scene sync of the renderer. |
 | `hp-mcp` | The MCP server of a window, the `--mcp` stdio bridge and the AI app installer (see [MCP.md](../../MCP.md)). |
 | `hp-discord` | Discord Rich Presence over the local Discord IPC protocol. |
+| `hp-update` | Auto update: GitHub release check, download (WinHTTP), zip reader, and the helper that replaces the program (see [Updates](../features/updates.md)). |
 
 ### User interface and tools
 
@@ -75,7 +76,7 @@ hp-light, hp-compile           lighting helpers, compile pipeline
 hp-fs, hp-geom                 game filesystem, brush geometry
 hp-vmf, hp-vmt                 formats built on hp-kv
 hp-kv, hp-bsp, hp-vpk, hp-gma, hp-vtf, hp-mdl, hp-fgd, hp-nav, hp-pcf, hp-meshio
-hp-discord, hp-mcp             standalone (no internal dependency)
+hp-discord, hp-mcp, hp-update   standalone (no internal dependency)
 ```
 
 Some concrete edges:

@@ -158,6 +158,7 @@ bitflags_u32! {
         MODULATE_2X = 1 << 10;
         DECAL_MODULATE = 1 << 11;
         SELF_ILLUM = 1 << 12;
+        LIGHT_BLOCKER = 1 << 13;
     }
 }
 
@@ -198,6 +199,7 @@ pub struct MaterialDesc {
     pub texture3: Option<TexId>,
     pub texture4: Option<TexId>,
     pub scroll: [f32; 2],
+    pub base_uv: [f32; 4],
     pub alpha_ref: f32,
     pub detail: Option<DetailDesc>,
     pub water: Option<WaterDesc>,
@@ -322,6 +324,14 @@ impl Default for EnvmapDesc {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum WaterDetail {
+    Simple,
+    ReflectWorld,
+    #[default]
+    ReflectAll,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BumpDesc {
     pub texture: TexId,
@@ -364,6 +374,9 @@ pub struct WaterDesc {
     pub bottom: Option<WaterBottom>,
     pub envmap: bool,
     pub above_water: bool,
+    pub reflect_entities: bool,
+    pub reflect_skybox_only: bool,
+    pub reflect_3d_sky: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -401,6 +414,9 @@ impl Default for WaterDesc {
             bottom: None,
             envmap: false,
             above_water: true,
+            reflect_entities: false,
+            reflect_skybox_only: false,
+            reflect_3d_sky: true,
         }
     }
 }
@@ -444,6 +460,7 @@ impl Default for MaterialDesc {
             texture3: None,
             texture4: None,
             scroll: [0.0; 2],
+            base_uv: [1.0, 1.0, 0.0, 0.0],
             alpha_ref: 0.5,
             detail: None,
             water: None,
@@ -612,6 +629,22 @@ impl Default for ModelInstance {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SunGlowSprite {
+    pub material: MaterialId,
+    pub size: f32,
+    pub color: [f32; 3],
+    pub modulate: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SunGlow {
+    pub direction: [f32; 3],
+    pub core: SunGlowSprite,
+    pub overlay: SunGlowSprite,
+    pub hdr_scale: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SpriteInstance {
     pub pos: [f32; 3],
     pub size: f32,
@@ -728,6 +761,7 @@ pub struct ViewParams {
     pub show_sprites: bool,
     pub show_models: bool,
     pub msaa: bool,
+    pub game_pixel_grid: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -764,6 +798,61 @@ impl SkyView {
 
     pub fn new(faces: [Option<TexId>; 6], yaw_deg: f32) -> Self {
         Self { faces, uv: [Self::IDENTITY_UV; 6], yaw_deg }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SkyPaint {
+    pub top: [f32; 3],
+    pub bottom: [f32; 3],
+    pub fade_bias: f32,
+    pub hdr_scale: f32,
+    pub sun_size: f32,
+    pub sun_color: [f32; 3],
+    pub sun_dir: [f32; 3],
+    pub dusk_scale: f32,
+    pub dusk_intensity: f32,
+    pub dusk_color: [f32; 3],
+    pub star_texture: Option<TexId>,
+    pub draw_stars: bool,
+    pub star_layers: u32,
+    pub star_scale: f32,
+    pub star_fade: f32,
+    pub star_speed: f32,
+}
+
+impl SkyPaint {
+    pub const BLACK: SkyPaint = SkyPaint {
+        top: [0.0; 3],
+        bottom: [0.0; 3],
+        fade_bias: 1.0,
+        hdr_scale: 1.0,
+        sun_size: 0.0,
+        sun_color: [0.0; 3],
+        sun_dir: [0.4, 0.0, 0.01],
+        dusk_scale: 1.0,
+        dusk_intensity: 0.0,
+        dusk_color: [1.0, 0.2, 0.0],
+        star_texture: None,
+        draw_stars: false,
+        star_layers: 1,
+        star_scale: 0.5,
+        star_fade: 1.0,
+        star_speed: 0.01,
+    };
+}
+
+impl Default for SkyPaint {
+    fn default() -> Self {
+        SkyPaint {
+            top: [0.2, 0.5, 1.0],
+            bottom: [0.8, 1.0, 1.0],
+            hdr_scale: 0.66,
+            sun_size: 2.0,
+            sun_color: [0.2, 0.1, 0.0],
+            dusk_intensity: 1.0,
+            ..SkyPaint::BLACK
+        }
     }
 }
 
@@ -812,6 +901,7 @@ pub struct ViewOptions {
     pub show_sky_3d: bool,
     pub sky_see_through: bool,
     pub water_preview: bool,
+    pub water_detail: WaterDetail,
     pub show_fog: bool,
     pub fog_volumes: bool,
     pub fog_volume_inside: bool,
@@ -835,7 +925,10 @@ pub struct ViewOptions {
     pub normal_maps: bool,
     pub cubemaps: bool,
     pub light_shadows: u32,
+    pub indirect_light: bool,
     pub classic_colors: bool,
+    pub model_lods: bool,
+    pub sun_glow: bool,
 }
 
 impl Default for ViewOptions {
@@ -851,6 +944,7 @@ impl Default for ViewOptions {
             show_sky_3d: false,
             sky_see_through: false,
             water_preview: false,
+            water_detail: WaterDetail::ReflectAll,
             show_fog: false,
             fog_volumes: false,
             fog_volume_inside: false,
@@ -874,7 +968,10 @@ impl Default for ViewOptions {
             normal_maps: false,
             cubemaps: false,
             light_shadows: 0,
+            indirect_light: false,
             classic_colors: false,
+            model_lods: true,
+            sun_glow: true,
         }
     }
 }
@@ -882,6 +979,7 @@ impl Default for ViewOptions {
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Environment {
     pub sky: Option<SkyView>,
+    pub sky_paint: Option<SkyPaint>,
     pub sky_3d: Option<Sky3d>,
     pub fog: Option<Fog>,
 }

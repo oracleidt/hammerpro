@@ -126,6 +126,177 @@ fn fraction(v: f64, lo: f64, hi: f64) -> u8 {
     ((v - lo) / (hi - lo) * 255.0).clamp(0.0, 255.0).round() as u8
 }
 
+struct Sampler<'a> {
+    ctx: &'a Ctx<'a>,
+    colors: &'a FaceColors,
+    sky: Vec<Vec3A>,
+    tan_theta: f32,
+}
+
+impl<'a> Sampler<'a> {
+    fn new(ctx: &'a Ctx<'a>, colors: &'a FaceColors) -> Self {
+        let sky = (0..ctx.passes)
+            .map(|p| {
+                ctx.lights
+                    .list
+                    .iter()
+                    .find(|l| l.kind == Kind::SkyAmbient)
+                    .and_then(|l| l.intensity.get(p))
+                    .copied()
+                    .unwrap_or(Vec3A::ZERO)
+                    / 255.0
+            })
+            .collect();
+        Self { ctx, colors, sky, tan_theta: 7.275f32.to_radians().tan() }
+    }
+
+    fn radiance(&self, from: Vec3A, set: &[Vec3A]) -> Vec<Vec3A> {
+        let passes = self.ctx.passes;
+        let mut rad = vec![Vec3A::ZERO; passes * set.len()];
+        for (k, d) in set.iter().enumerate() {
+            match self.ctx.trace_surface(from, *d) {
+                SurfHit::Sky => {
+                    for p in 0..passes {
+                        rad[p * set.len() + k] = self.sky[p];
+                    }
+                }
+                SurfHit::Face(fi, s, t, dist) => {
+                    let Some(f) = self.ctx.faces.get(fi as usize) else { continue };
+                    let scale_avg = ((dist * self.tan_theta - 20.0) / 20.0).clamp(0.0, 1.0);
+                    let (x, y) = ((s.round() as usize).min(f.w - 1), (t.round() as usize).min(f.h - 1));
+                    for p in 0..passes {
+                        let avg = self.colors.average[fi as usize][p];
+                        let point = self.colors.luxels[fi as usize][p].get(y * f.w + x).copied().unwrap_or(avg);
+                        rad[p * set.len() + k] = (avg * scale_avg + point * (1.0 - scale_avg)) / 255.0 * f.reflectivity;
+                    }
+                }
+                SurfHit::None => {}
+            }
+        }
+        rad
+    }
+
+    fn cube(&self, rad: &[Vec3A], pass: usize, set: &[Vec3A]) -> [Vec3A; 6] {
+        let mut cube = [Vec3A::ZERO; 6];
+        for (j, b) in BOX.iter().enumerate() {
+            let mut t = 0.0f32;
+            for (k, d) in set.iter().enumerate() {
+                let c = d.dot(*b);
+                if c > 0.0 {
+                    t += c;
+                    cube[j] += rad[pass * set.len() + k] * c;
+                }
+            }
+            if t > 0.0 {
+                cube[j] /= t;
+            }
+        }
+        cube
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ProbeOptions {
+    pub spacing: f32,
+    pub max_cells: usize,
+}
+
+impl Default for ProbeOptions {
+    fn default() -> Self {
+        Self { spacing: 0.0, max_cells: 250_000 }
+    }
+}
+
+const PROBE_SPACINGS: [f32; 8] = [32.0, 48.0, 64.0, 96.0, 128.0, 192.0, 256.0, 512.0];
+const PROBE_SHELL: f64 = 3.0;
+
+fn luxel_length(f: &super::surface::LitFace) -> f64 {
+    f.frame.map_or(16.0, |(_, a, _)| a.length()).max(1.0)
+}
+
+fn probe_spacing(ctx: &Ctx<'_>, opts: &ProbeOptions) -> f32 {
+    if opts.spacing > 0.0 && opts.spacing.is_finite() {
+        return opts.spacing.max(8.0);
+    }
+    let area: f64 = ctx.faces.iter().map(|f| f.luxels() as f64 * luxel_length(f).powi(2)).sum();
+    PROBE_SPACINGS
+        .iter()
+        .copied()
+        .find(|s| area / f64::from(*s).powi(2) * PROBE_SHELL <= opts.max_cells as f64)
+        .unwrap_or(PROBE_SPACINGS[PROBE_SPACINGS.len() - 1])
+}
+
+fn marked_cells(ctx: &Ctx<'_>, spacing: f32) -> Vec<[i32; 3]> {
+    let s = f64::from(spacing);
+    let per_face: Vec<Vec<[i32; 3]>> = ctx
+        .faces
+        .par_iter()
+        .map(|f| {
+            let stride = ((0.5 * s / luxel_length(f)).ceil() as usize).max(1);
+            let mut cells: Vec<[i32; 3]> = Vec::new();
+            for t in (0..f.h).step_by(stride) {
+                for x in (0..f.w).step_by(stride) {
+                    let sp = ctx.sample(f, x as f64, t as f64);
+                    let q = sp.pos.as_dvec3() + sp.normals[0].as_dvec3() * (0.5 * s);
+                    let base = (q / s - DVec3::splat(0.5)).floor();
+                    for corner in 0..8i32 {
+                        cells.push([
+                            base.x as i32 + (corner & 1),
+                            base.y as i32 + ((corner >> 1) & 1),
+                            base.z as i32 + ((corner >> 2) & 1),
+                        ]);
+                    }
+                }
+            }
+            cells.sort_unstable();
+            cells.dedup();
+            cells
+        })
+        .collect();
+    let mut all: Vec<[i32; 3]> = per_face.into_iter().flatten().collect();
+    all.par_sort_unstable();
+    all.dedup();
+    all
+}
+
+pub(crate) fn probe_volume(
+    ctx: &Ctx<'_>,
+    colors: &FaceColors,
+    opts: &ProbeOptions,
+) -> Option<hp_light::probes::ProbeVolume> {
+    let map = ctx.map;
+    let pass = ctx.passes.checked_sub(1)?;
+    let spacing = probe_spacing(ctx, opts);
+    let s = f64::from(spacing);
+    let cells = marked_cells(ctx, spacing);
+    if cells.is_empty() || cells.len() > hp_light::probes::MAX_CELLS {
+        return None;
+    }
+    let sampler = Sampler::new(ctx, colors);
+    let dirs: Vec<Vec3A> = super::detail::ANORMS.iter().map(|n| Vec3A::from_array(*n)).collect();
+    let probes: Vec<Option<[[f32; 3]; 6]>> = cells
+        .par_iter()
+        .map(|c| {
+            let p = DVec3::new(f64::from(c[0]) + 0.5, f64::from(c[1]) + 0.5, f64::from(c[2]) + 0.5) * s;
+            if map.cluster_at(p) < 0 || ctx.in_brush(p) || buried(ctx, p.as_vec3a()) {
+                return None;
+            }
+            let rad = sampler.radiance(p.as_vec3a(), &dirs);
+            let cube = sampler.cube(&rad, pass, &dirs);
+            Some(cube.map(|c| [c.x.max(0.0), c.y.max(0.0), c.z.max(0.0)]))
+        })
+        .collect();
+    let (mut coords, mut cubes) = (Vec::new(), Vec::new());
+    for (c, p) in cells.iter().zip(probes) {
+        if let Some(cube) = p {
+            coords.push(*c);
+            cubes.push(cube);
+        }
+    }
+    let volume = hp_light::probes::ProbeVolume { origin: [0.0; 3], spacing, coords, cubes };
+    volume.is_consistent().then_some(volume)
+}
+
 pub(crate) fn leaf_ambient(ctx: &Ctx<'_>, colors: &FaceColors) -> Vec<(Vec<u8>, Vec<u8>)> {
     let map = ctx.map;
     let passes = ctx.passes;
@@ -147,61 +318,16 @@ pub(crate) fn leaf_ambient(ctx: &Ctx<'_>, colors: &FaceColors) -> Vec<(Vec<u8>, 
     } else {
         sphere_dirs(ctx.params.leaf_dirs)
     };
-    let sky: Vec<Vec3A> = (0..passes)
-        .map(|p| {
-            ctx.lights
-                .list
-                .iter()
-                .find(|l| l.kind == Kind::SkyAmbient)
-                .and_then(|l| l.intensity.get(p))
-                .copied()
-                .unwrap_or(Vec3A::ZERO)
-                / 255.0
-        })
-        .collect();
-    let tan_theta = 7.275f32.to_radians().tan();
+    let sampler = Sampler::new(ctx, colors);
     let in_cube: Vec<Vec<&Light>> =
         (0..passes).map(|p| ctx.lights.list.iter().filter(|l| l.in_ambient_cube(p)).collect()).collect();
     let screen = sphere_dirs(SCREEN_DIRS);
     let cubes_at = |pos: DVec3, set: &[Vec3A]| -> Vec<[Vec3A; 6]> {
         let from = pos.as_vec3a();
-        let mut rad = vec![Vec3A::ZERO; passes * set.len()];
-        for (k, d) in set.iter().enumerate() {
-            match ctx.trace_surface(from, *d) {
-                SurfHit::Sky => {
-                    for p in 0..passes {
-                        rad[p * set.len() + k] = sky[p];
-                    }
-                }
-                SurfHit::Face(fi, s, t, dist) => {
-                    let Some(f) = ctx.faces.get(fi as usize) else { continue };
-                    let scale_avg = ((dist * tan_theta - 20.0) / 20.0).clamp(0.0, 1.0);
-                    let (x, y) = ((s.round() as usize).min(f.w - 1), (t.round() as usize).min(f.h - 1));
-                    for p in 0..passes {
-                        let avg = colors.average[fi as usize][p];
-                        let point = colors.luxels[fi as usize][p].get(y * f.w + x).copied().unwrap_or(avg);
-                        rad[p * set.len() + k] = (avg * scale_avg + point * (1.0 - scale_avg)) / 255.0 * f.reflectivity;
-                    }
-                }
-                SurfHit::None => {}
-            }
-        }
+        let rad = sampler.radiance(from, set);
         (0..passes)
             .map(|p| {
-                let mut cube = [Vec3A::ZERO; 6];
-                for (j, b) in BOX.iter().enumerate() {
-                    let mut t = 0.0f32;
-                    for (k, d) in set.iter().enumerate() {
-                        let c = d.dot(*b);
-                        if c > 0.0 {
-                            t += c;
-                            cube[j] += rad[p * set.len() + k] * c;
-                        }
-                    }
-                    if t > 0.0 {
-                        cube[j] /= t;
-                    }
-                }
+                let mut cube = sampler.cube(&rad, p, set);
                 add_emit_surface(ctx, from, p, &in_cube[p], &mut cube);
                 cube
             })

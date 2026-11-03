@@ -28,12 +28,14 @@ Les exécutions automatisées (`--script`, `--screenshot`, `--bench-open`) n'éc
 | `pack\` | Cache des fichiers intégrés aux maps compilées (images converties, fichiers extraits). |
 | `compile_content\` | Dossier de jeu généré qui rend vos matériaux personnalisés (dossiers de textures personnalisés, images simples) visibles du compilateur. |
 | `builds\` | Cache d'étapes du compilateur : une étape de géométrie ou d'éclairage identique est restaurée au lieu d'être relancée. |
+| `content_index.bin` | L'index enregistré des dossiers du jeu, personnalisés et montés, pour que les lancements n'analysent que ce qui a changé (voir [Index et analyse du contenu](../features/content-index.md)). |
 | `compile_history\<clé de la map>.jsonl` | Historique des temps de compilation de chaque map (onglet Historique de la fenêtre de compilation). |
 | `progressive\`, `spec\` | Builds de la compilation progressive (jouer tout de suite) et de la précompilation en arrière-plan. |
 | `untitled\` | Dossier de compilation des maps jamais enregistrées. |
 | `release\<map>\` | Fichiers de travail de **Construire et enregistrer en contenu**. |
 | `propsrc\` | Fichiers sources des modèles créés par Propper. |
-| `decompiled\` | Contenu extrait des maps compilées ouvertes avec **Ouvrir une map compilée (BSP)...**. |
+| `decompiled\` | Contenu extrait des maps compilées ouvertes avec **Décompilateur de BSP...**. |
+| `sniffer\` | Dossier de sortie par défaut du [BSP Sniffer](../features/bsp-sniffer.md) (VMF, BSP, contenu et rapport de chaque opération ; réglage `sniffer.output_dir`). |
 
 Tout ce dossier, sauf `autosave\` et `logs\`, est un cache : vous pouvez le supprimer pendant que Hammer Pro est fermé, il se reconstruit au besoin (les fichiers annexes ne contiennent que des commodités, voir plus bas).
 
@@ -86,6 +88,14 @@ Quand vous lancez vous-même `hammerpro --bspc`, les fichiers `.bsp`, `.log`, `.
 | `garrysmod\addons\hammerpro_bridge\` | L'addon pont HammerPro, un petit fichier Lua installé seulement à la demande (jamais intégré à une map). Il place le joueur à la caméra quand la map se charge, déclenche des inputs et renvoie les props que vous avez placés en jeu pour **Importer les props depuis le jeu**. |
 | `garrysmod\data\hammerpro\` | Fichiers échangés entre l'éditeur et le jeu via le pont : `cmd.json` (écrit par l'éditeur), `ack.json` et `props.json` (écrits par le jeu). |
 | `garrysmod\console.log` | Écrit par le jeu quand l'option de démarrage rapide `-condebug` est active ; Hammer Pro le lit pour le rapport de chargement de la map. |
+
+## Fichiers de la mise à jour
+
+| Chemin | Ce que c'est |
+|---|---|
+| `hammerpro.exe.old` | À côté du programme : la version remplacée par la dernière mise à jour, gardée comme sauvegarde (voir [Mises à jour](../features/updates.md)). |
+| `%TEMP%\HammerPro-update-<processus>-<tag>\` | L'archive de la version téléchargée. Supprimée à un démarrage ultérieur. |
+| `%TEMP%\HammerPro-updater-<processus>\` | La copie du programme qui installe la mise à jour, et son `update.log`. Supprimée à un démarrage ultérieur. |
 
 ## Pages liées
 

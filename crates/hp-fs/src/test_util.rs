@@ -11,7 +11,8 @@ impl TempDir {
     pub(crate) fn new(name: &str) -> Self {
         static COUNTER: AtomicU32 = AtomicU32::new(0);
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/hp-fs/scratch");
+        let base = std::env::var_os("HP_FS_SCRATCH")
+            .map_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/hp-fs/scratch"), PathBuf::from);
         let path = base.join(format!("{name}-{}-{n}", std::process::id()));
         let _ = fs::remove_dir_all(&path);
         fs::create_dir_all(&path).unwrap();

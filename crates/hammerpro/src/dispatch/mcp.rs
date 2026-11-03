@@ -44,8 +44,11 @@ mod tools_overlays;
 mod tools_paths;
 mod tools_settings;
 mod tools_sky;
+mod tools_sniffer;
+mod tools_storage;
 mod tools_toolopts;
 mod tools_ui;
+mod tools_update;
 mod tools_views;
 mod window;
 

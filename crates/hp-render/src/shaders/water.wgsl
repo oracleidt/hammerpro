@@ -18,6 +18,8 @@ struct WaterView {
     background: vec4<f32>,
     under_fog: vec4<f32>,
     under_range: vec4<f32>,
+    reflect_vp: mat4x4<f32>,
+    reflect: vec4<f32>,
 };
 
 @group(1) @binding(0) var<uniform> water: WaterMat;
@@ -27,6 +29,7 @@ struct WaterView {
 @group(2) @binding(0) var<uniform> wview: WaterView;
 @group(2) @binding(1) var scene_color: texture_2d<f32>;
 @group(2) @binding(2) var scene_depth: texture_depth_2d;
+@group(2) @binding(3) var reflect_tex: texture_2d<f32>;
 
 @group(3) @binding(0) var sky_rt: texture_2d<f32>;
 @group(3) @binding(1) var sky_lf: texture_2d<f32>;
@@ -270,6 +273,23 @@ fn water_fog_of(path: f32, start: f32, inv_range: f32) -> f32 {
     return clamp((path - start) * inv_range, 0.0, 1.0);
 }
 
+fn eye_dir_at(uv: vec2<f32>) -> vec3<f32> {
+    let ndc = vec2<f32>(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
+    return view.forward.xyz + view.right.xyz * (ndc.x * view.proj.x) + view.up.xyz * (ndc.y * view.proj.y);
+}
+
+fn water_fog_alpha(uv: vec2<f32>, depth: f32, water_z: f32, inv_range: f32) -> f32 {
+    let d = min(depth, 1.0e6);
+    let zp = view.eye.z + eye_dir_at(uv).z * d;
+    let from_water = water_z - zp;
+    var from_eye = view.eye.z - zp;
+    if abs(from_eye) < 1.0e-4 {
+        from_eye = 1.0e-4;
+    }
+    let f = clamp(from_water / from_eye, 0.0, 1.0);
+    return clamp(f * d * inv_range, 0.0, 1.0);
+}
+
 fn editor_states(rgb_in: vec3<f32>, flags: u32) -> vec3<f32> {
     var rgb = rgb_in;
     if (flags & F_INSTANCE) != 0u {
@@ -350,7 +370,6 @@ fn fs_water(in: WaterOut, @builtin(front_facing) front: bool) -> @location(0) ve
 
     let uv0 = in.clip.xy * view.viewport.zw;
     let dw = max(dot(in.world - eye, view.forward.xyz), 1.0e-3);
-    let ray_k = length(to_eye) / dw;
     let off = n.xy * n.w;
 
     var rgb: vec3<f32>;
@@ -370,11 +389,11 @@ fn fs_water(in: WaterOut, @builtin(front_facing) front: bool) -> @location(0) ve
             uv_r = uv0;
         }
         let refr = scene_rgb(uv_r) * tint;
-        let depth_fog = water_fog_of(dw * ray_k, start, fog.w);
+        let depth_fog = water_fog_of(dw, start, fog.w);
         rgb = mix(refr, fog.rgb, depth_fog);
     } else {
-        let path0 = (linear_depth(raw_depth(uv0)) - dw) * ray_k;
-        let fog0 = water_fog_of(path0, water.ranges.x, water.fog.w);
+        let water_z = in.world.z;
+        let fog0 = water_fog_alpha(uv0, linear_depth(raw_depth(uv0)), water_z, water.fog.w);
         let has_base = (flags & W_BASE) != 0u;
         var scale = fog0;
         if has_base {
@@ -382,13 +401,11 @@ fn fs_water(in: WaterOut, @builtin(front_facing) front: bool) -> @location(0) ve
         }
         var uv_r = uv0 + off * (water.refract.w * scale);
         let dr = linear_depth(raw_depth(uv_r));
-        var path = (dr - dw) * ray_k;
         if dr < dw {
             uv_r = uv0;
-            path = path0;
         }
-        let fog = water_fog_of(path, water.ranges.x, water.fog.w);
-        var refr = scene_rgb(uv_r) * water.refract.rgb;
+        let fog = water_fog_alpha(uv_r, linear_depth(raw_depth(uv_r)), water_z, water.fog.w);
+        var refr = mix(scene_rgb(uv_r), water.fog.rgb, fog) * water.refract.rgb;
         refr = mix(refr, water.fog.rgb, clamp(fog - 0.05, 0.0, 1.0));
         let eye_t = normalize(vec3<f32>(dot(to_eye, tan_s), dot(to_eye, tan_t), dot(to_eye, ng)));
         var fresnel = pow(1.0 - clamp(dot(eye_t, n.xyz), 0.0, 1.0), 5.0);
@@ -402,8 +419,14 @@ fn fs_water(in: WaterOut, @builtin(front_facing) front: bool) -> @location(0) ve
             let r = reflect(-normalize(to_eye), ng);
             let roff = vec2<f32>(off.x, -off.y) * (water.reflect.w * scale);
             let rp = normalize(r + (tan_s * off.x + tan_t * off.y) * (water.reflect.w * scale));
-            let hit = trace_reflection(in.world, r, roff);
-            refl = mix(infinity_color(rp, roff), hit.rgb, hit.w) * water.reflect.rgb;
+            if wview.reflect.x > 0.5 {
+                let rc = wview.reflect_vp * vec4<f32>(in.world, 1.0);
+                let ruv = clamp(screen_of(rc) + roff, vec2<f32>(0.0), vec2<f32>(1.0));
+                refl = textureSampleLevel(reflect_tex, samp_clamp, ruv, 0.0).rgb * water.reflect.rgb;
+            } else {
+                let hit = trace_reflection(in.world, r, roff);
+                refl = mix(infinity_color(rp, roff), hit.rgb, hit.w) * water.reflect.rgb;
+            }
         }
         let want_refract = (flags & W_REFRACT) != 0u;
         if want_refract && want_reflect {

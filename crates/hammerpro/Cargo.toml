@@ -25,10 +25,12 @@ hp-ui-entities = { path = "../hp-ui-entities" }
 hp-ui-mapping = { path = "../hp-ui-mapping" }
 hp-light = { path = "../hp-light" }
 hp-ui-lab = { path = "../hp-ui-lab" }
+hp-sniffer = { path = "../hp-sniffer" }
 hp-decompile = { path = "../hp-decompile" }
 hp-mcp = { path = "../hp-mcp" }
 hp-pcf = { path = "../hp-pcf" }
 hp-discord = { path = "../hp-discord" }
+hp-update = { path = "../hp-update" }
 hp-editor.workspace = true
 hp-vmf.workspace = true
 hp-kv.workspace = true

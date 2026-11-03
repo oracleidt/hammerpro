@@ -252,6 +252,7 @@ fn build_scene(r: &mut Renderer) {
         bump: None,
         texture2: None,
         scroll: [0.0; 2],
+        base_uv: [1.0, 1.0, 0.0, 0.0],
         texture3: None,
         texture4: None,
         alpha_ref: 0.5,
@@ -363,6 +364,7 @@ fn build_scene(r: &mut Renderer) {
 
 fn params(kind: ViewKind, mode: RenderMode, msaa: bool) -> ViewParams {
     ViewParams {
+        game_pixel_grid: false,
         size: [640, 400],
         kind,
         mode,

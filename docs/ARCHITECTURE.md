@@ -34,6 +34,7 @@ hp-render    wgpu renderer: 3D and 2D views, batching, overlays
 hp-editor    Document, selection, undo/redo, editing operations, picking
 hp-light     Lighting helpers: VRAD light parsing, .rad files, ray hierarchy, preview atlas
 hp-mcp       MCP server of a window, `--mcp` stdio bridge, AI app installer (see MCP.md)
+hp-update    Auto update: GitHub release check, download, zip reader, program replacement helper
 hp-app       Shared state, settings, actions, i18n, theme, the extension points of the packages
 hp-assets    Asset streaming (materials, models, sprites) and the scene sync of the renderer
 hp-ui-*      User interface: shell, viewports, textures, entities, mapping, lab

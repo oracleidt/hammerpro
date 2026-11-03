@@ -27,6 +27,7 @@ const LM_BAKED: u32 = 2u;
 const LM_DISP: u32 = 4u;
 const LM_WIDE: u32 = 8u;
 const LM_BUMPED: u32 = 16u;
+const LM_LDR: u32 = 0x100u;
 
 struct LmOut {
     @builtin(position) clip: vec4<f32>,
@@ -66,7 +67,7 @@ fn vs_lm(
     out.face = face;
     out.state = vec2<u32>(st.flags, st.tint);
     out.blend = unpack_blend_layers(blend);
-    let needs_light = lm.mode == 1u && (f.flags & LM_BAKED) == 0u;
+    let needs_light = (lm.mode & 0xffu) == 1u && (f.flags & LM_BAKED) == 0u;
     if (f.flags & LM_VALID) == 0u || needs_light || hidden_in_view(st.flags) || tint.a < 0.999 {
         out.clip = COLLAPSED;
     } else {
@@ -129,8 +130,9 @@ fn finish(rgb_in: vec3<f32>, in: LmOut) -> vec4<f32> {
 
 @fragment
 fn fs_baked(in: LmOut) -> @location(0) vec4<f32> {
-    let uv = in.uv * material.inv_tex_size;
-    var albedo = textureSample(tex, samp, uv);
+    let tuv = in.uv * material.inv_tex_size;
+    let uv = tuv + material.scroll * view.sky.z;
+    var albedo = textureSample(tex, samp, base_uv_of(uv));
     var cover = vec4<f32>(1.0, 0.0, 0.0, 0.0);
     if material.has_tex2 != 0u {
         let b = textureSample(tex2, samp, uv);
@@ -149,7 +151,7 @@ fn fs_baked(in: LmOut) -> @location(0) vec4<f32> {
     var bump = vec3<f32>(0.0, 0.0, 1.0);
     let bumped = bump_on();
     if bumped {
-        bump = bump_texel(uv, in.alpha, cover);
+        bump = bump_texel(tuv, in.alpha, cover);
     }
     var env_raw = vec3<f32>(0.0);
     if env_on() {
@@ -157,16 +159,17 @@ fn fs_baked(in: LmOut) -> @location(0) vec4<f32> {
         n = select(n, -n, dot(n, view.eye.xyz - in.world) < 0.0);
         var en = n;
         if bumped {
-            let frame = uv_frame(n, in.world, uv);
+            let frame = uv_frame(n, in.world, tuv);
             let bv = bump_to_world(bump_vector(bump), frame, n);
             let bl = length(bv);
             en = select(n, bv / bl, bl > 1e-5);
         }
-        env_raw = env_reflection(in.world, en, lm_face(in.face).cube, uv, albedo.a, in.alpha, vec3<f32>(1.0), false);
+        env_raw = env_reflection(in.world, en, lm_face(in.face).cube, tuv, albedo.a, in.alpha, vec3<f32>(1.0),
+            (lm.mode & LM_LDR) != 0u);
     }
-    let glow = self_illum_mask(albedo.a, uv);
+    let glow = self_illum_mask(albedo.a, tuv);
     albedo.a = material_texture_alpha(albedo.a);
-    albedo = albedo * material.tint * unpack_srgba(in.state.y);
+    albedo = albedo * material_tint() * unpack_srgba(in.state.y);
     if alpha_tested_out(ALPHA_TEST, albedo.a) {
         discard;
     }
@@ -177,11 +180,26 @@ fn fs_baked(in: LmOut) -> @location(0) vec4<f32> {
     } else {
         light = baked_light(f, in.lm);
     }
-    light *= lm.exposure;
+    let ldr = (lm.mode & LM_LDR) != 0u;
+    let scale = select(lm.exposure * bitcast<f32>(view.misc.w), lm.exposure, ldr);
+    var pn = normalize(cross(dpdy(in.world), dpdx(in.world)) + vec3<f32>(0.0, 0.0, 1e-9));
+    pn = select(pn, -pn, dot(pn, view.eye.xyz - in.world) < 0.0);
+    let projected = projector_light(in.world, pn);
+    if ldr {
+        light += pow(projected, vec3<f32>(1.0 / 2.2));
+    } else {
+        light += projected;
+    }
     let unlit = (material.flags & M_UNLIT) != 0u;
-    var rgb = select(albedo.rgb * light, albedo.rgb, unlit);
-    rgb = mix(rgb, albedo.rgb * material.self_illum.rgb * lm.exposure, glow);
-    rgb += env_raw * mix(vec3<f32>(1.0), clamp(light, vec3<f32>(0.0), vec3<f32>(1.0)), material.env_sat.w);
+    let env = env_raw * mix(vec3<f32>(1.0), clamp(light, vec3<f32>(0.0), vec3<f32>(1.0)), material.env_sat.w);
+    let lit = select(light, vec3<f32>(1.0), unlit);
+    var rgb: vec3<f32>;
+    if ldr {
+        rgb = srgb_to_linear(min(linear_to_srgb(albedo.rgb) * lit + env, vec3<f32>(1.0))) * scale;
+    } else {
+        rgb = (albedo.rgb * lit + env) * scale;
+    }
+    rgb = mix(rgb, albedo.rgb * material.self_illum.rgb * scale, glow);
     if material.detail_mode != DETAIL_NONE {
         rgb = detail_post_lighting(rgb, detail);
     }

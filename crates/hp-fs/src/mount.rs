@@ -217,30 +217,43 @@ pub(crate) fn open_all(items: Vec<PlanItem>) -> (Vec<Opened>, Vec<String>) {
     open_all_with(items, None)
 }
 
+type OpenResult = (String, Duration, Result<Opened, FsError>);
+
 pub(crate) fn open_all_with(items: Vec<PlanItem>, progress: Option<&MountProgress>) -> (Vec<Opened>, Vec<String>) {
     if let Some(p) = progress {
         p.begin_opening(items.len());
     }
     let slow = progress.and(slow_mount());
-    let results: Vec<(String, Duration, Result<Opened, FsError>)> = items
-        .into_par_iter()
-        .enumerate()
-        .map(|(i, item)| {
-            let what = format!("{} ({})", item.label, item.path.display());
-            if let Some(p) = progress {
-                p.started(&progress_label(&item));
-            }
-            if let Some(step) = slow {
-                std::thread::sleep(step * (i as u32 + 1));
-            }
-            let start = Instant::now();
-            let result = open_item(item);
-            if let Some(p) = progress {
-                p.finished_one();
-            }
-            (what, start.elapsed(), result)
-        })
-        .collect();
+    let run = |(i, item): (usize, PlanItem)| -> (usize, OpenResult) {
+        let what = format!("{} ({})", item.label, item.path.display());
+        if let Some(p) = progress {
+            p.started(&progress_label(&item));
+        }
+        if let Some(step) = slow {
+            std::thread::sleep(step * (i as u32 + 1));
+        }
+        let start = Instant::now();
+        let result = open_item(item);
+        if let Some(p) = progress {
+            p.finished_one();
+        }
+        (i, (what, start.elapsed(), result))
+    };
+    type NumberedItems = Vec<(usize, PlanItem)>;
+    let (sequential, parallel): (NumberedItems, NumberedItems) =
+        items.into_iter().enumerate().partition(|(_, item)| !crate::scan::parallel_for(&item.path));
+    let mut done: Vec<(usize, OpenResult)> = if sequential.is_empty() {
+        parallel.into_par_iter().map(run).collect()
+    } else {
+        log::info!("{} sources are on a rotational drive and open one at a time", sequential.len());
+        let (a, b) = rayon::join(
+            || parallel.into_par_iter().map(&run).collect::<Vec<_>>(),
+            || sequential.into_iter().map(&run).collect::<Vec<_>>(),
+        );
+        a.into_iter().chain(b).collect()
+    };
+    done.sort_by_key(|(i, _)| *i);
+    let results: Vec<OpenResult> = done.into_iter().map(|(_, r)| r).collect();
     log_slowest(&results);
     let mut opened = Vec::with_capacity(results.len());
     let mut warnings = Vec::new();
@@ -253,7 +266,47 @@ pub(crate) fn open_all_with(items: Vec<PlanItem>, progress: Option<&MountProgres
             }
         }
     }
+    crate::scan::flush_index();
     (opened, warnings)
+}
+
+fn dedupe_class(kind: &PlanKind) -> u8 {
+    match kind {
+        PlanKind::GameDir | PlanKind::Custom(_) => 0,
+        PlanKind::Vpk => 1,
+        PlanKind::Gma { .. } => 2,
+    }
+}
+
+fn is_game_folder(path: &Path) -> bool {
+    std::fs::read_dir(path).is_ok_and(|read| {
+        read.flatten().any(|entry| {
+            entry.file_name().to_str().is_some_and(|n| n.eq_ignore_ascii_case("materials"))
+                && std::fs::metadata(entry.path()).is_ok_and(|m| m.is_dir())
+        })
+    })
+}
+
+pub(crate) fn dedupe_items(items: Vec<PlanItem>) -> Vec<PlanItem> {
+    let mut first: std::collections::HashMap<(u8, String), usize> = std::collections::HashMap::new();
+    let mut out: Vec<PlanItem> = Vec::with_capacity(items.len());
+    for item in items {
+        let key = (dedupe_class(&item.kind), path_key(&item.path));
+        let Some(&at) = first.get(&key) else {
+            first.insert(key, out.len());
+            out.push(item);
+            continue;
+        };
+        let Some(kept) = out.get_mut(at) else { continue };
+        let mixed = matches!(kept.kind, PlanKind::Custom(_)) != matches!(item.kind, PlanKind::Custom(_));
+        if mixed && !is_game_folder(&item.path) {
+            out.push(item);
+            continue;
+        }
+        log::info!("{} ({}) is already mounted as {}: skipped", item.label, item.path.display(), kept.label);
+        kept.enabled |= item.enabled;
+    }
+    out
 }
 
 fn slow_mount() -> Option<Duration> {
@@ -501,6 +554,7 @@ pub(crate) fn plan_gmod(root: &Path, opts: &MountOptions) -> Result<(Vec<PlanIte
             }
         }
     }
+    let items = crate::mount::dedupe_items(items);
     Ok((items, warnings))
 }
 

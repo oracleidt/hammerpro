@@ -2,7 +2,7 @@
 
 # Hammer Pro documentation
 
-Welcome to the knowledge base of Hammer Pro 1.0.2, the level editor for Source engine maps built for Garry's Mod first. Every feature has its own page: what it is, how to open it, every option with its default, tips and a short FAQ. Pages link to each other, so start anywhere.
+Welcome to the knowledge base of Hammer Pro 1.0.3, the level editor for Source engine maps built for Garry's Mod first. Every feature has its own page: what it is, how to open it, every option with its default, tips and a short FAQ. Pages link to each other, so start anywhere.
 
 New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game setup](getting-started/game-setup.md) and [Your first map](getting-started/first-map.md), in that order.
 
@@ -61,6 +61,7 @@ New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game s
 | [Texture tool](features/texture-tool.md) | Face Edit: apply, scale, shift, rotate, justify, align, lightmap scale. |
 | [Find and replace textures](features/find-replace-textures.md) | Replacing materials in the selection or the whole map. |
 | [Custom texture folders](features/custom-texture-folders.md) | Your own folders, plain images as materials, image import. |
+| [Content index and scan](features/content-index.md) | The saved index of the game files, hard disk and SSD scanning, duplicate folders. |
 | [UV editor](features/uv-editor.md) | Face, edge and vertex modes, layers, its own window. |
 | [Material editor](features/material-editor.md) | Editing VMT files, one at a time or in batch. |
 
@@ -100,7 +101,8 @@ New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game s
 | --- | --- |
 | [Check for problems](features/check-problems.md) | Problems and fixes, live checks, limits, map information, func_detail suggestions. |
 | [Leaks and pointfiles](features/leaks-pointfiles.md) | Leak checks, leak path, portal files, visibility, areaportals. |
-| [BSP tools](features/bsp-tools.md) | Opening compiled maps, archives (BSP, GMA, VPK), OBJ export, comparing maps. |
+| [BSP tools](features/bsp-tools.md) | The BSP Decompiler, archives (BSP, GMA, VPK), OBJ export, comparing maps. |
+| [BSP Sniffer](features/bsp-sniffer.md) | Joining a Garry's Mod server and recovering the map as the game loaded it, as a VMF, a BSP and its content (Garry's Mod only, authorized use only). |
 
 ### Testing and releasing
 
@@ -123,6 +125,8 @@ New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game s
 | [Window frames and separate windows](features/window-frames.md) | Hammer Pro frames, native frames, windows on other screens. |
 | [Autosave and crash recovery](features/autosave-crash.md) | Autosaves, emergency saves, crash reports. |
 | [Discord Rich Presence](features/discord.md) | What your Discord profile shows while you map. |
+| [Updates](features/updates.md) | The startup check for a newer release, the update window and the automatic install. |
+| [Storage](features/storage.md) | Disk space used by Hammer Pro, what uses the most, and cleaning caches and temporary files safely. |
 
 ## Compiler
 

@@ -196,14 +196,16 @@ domain! { "compile and play";
         }, [];
     get_lighting_status: Read, "Lighting preview status",
         "The lighting bake: quality, progress, last result (time, faces, luxels, density), preview statistics (with \
-        what lights the props: the world lights, the static props and those with baked vertex lighting), the \
+        what lights the props: the world lights, the static props and those with baked vertex lighting), tone \
+        (the HDR tone mapping of the focused 3D view: mode, the exposure scale now, its range, the bloom amount, \
+        what the env_tonemap_controller of the map sets and the luminance histogram the auto exposure reads), the \
         lightmap budget, and while the lit mode is on the realtime preview: lights drawn, suns, lights left out, \
-        crowded spots keeping only their strongest lights, HDR or LDR values, sky light occlusion, sky_layers (how \
+        crowded spots keeping only their strongest lights, HDR or LDR values, sky light occlusion, projectors (the env_projectedtexture entities drawn, setting render.projected_textures), sky_layers (how \
         many skies lie one above the other toward the sun and straight up: each point is shadowed only by what lies \
         between it and the sky it reaches, like VRAD), prop_shadows (what static props cast shadows with: mesh, \
         collision or none, from the setting render.prop_shadows: auto follows the compile options, \
         -StaticPropPolys for mesh), and the sun (direction it shines along, color, _ambient sky color, \
-        SunSpreadAngle, its light_environment).",
+        SunSpreadAngle, its light_environment) and indirect (the background bake that gives the Lit mode its sky light and bounced light: the setting render.lit_indirect, state off, no_lights, waiting, baking, ready, stale or failed, the probe cells, their spacing, the GPU bytes and the bake time).",
         {}, [];
     launch_game: Editor, "Start the game",
         "Start Garry's Mod on the compiled map, or reload it in the running game (reload: true). Only when the user \
@@ -1181,14 +1183,36 @@ fn get_lighting_status(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
             "lights": r.lights, "suns": r.directional, "left_out": r.left_out,
             "crowded_clusters": r.crowded_clusters, "max_lights_per_cluster": r.max_per_cluster,
             "hdr_values": r.hdr, "sky_occlusion": r.sky_occlusion,
+            "projectors": state.gfx.as_ref().map_or(0, |g| g.renderer.projector_count()),
             "sky_layers": { "sun": r.sky_layers[0], "sky_light": r.sky_layers[1] },
             "prop_shadows": prop_shadows_name(hp_app::runtime::render::prop_shadows(&state.settings)),
             "prop_shadows_setting": lower(format!("{:?}", state.settings.render.prop_shadows)),
+            "indirect": {
+                "setting": state.settings.render.lit_indirect, "state": l.indirect.phase.name(),
+                "cells": l.indirect.cells, "cells_in_the_air": l.indirect.valid_cells, "spacing": l.indirect.spacing,
+                "gpu_bytes": l.indirect.gpu_bytes, "bake_seconds": l.indirect.seconds,
+            },
             "sun": r.sun.map(|s| json!({
                 "direction": s.direction, "color": s.color, "ambient": s.ambient,
                 "spread_deg": s.spread_deg, "entity_origin": s.origin,
             })),
         })),
+        "tone": state.gfx.as_ref().map(|g| {
+            let r = &g.renderer;
+            let view = state.ui.focused_view.unwrap_or(0) as u32;
+            let (settings, env) = (r.tone_settings(), r.tone_env());
+            let (min, max) = settings.range(&env);
+            json!({
+                "mode": lower(format!("{:?}", settings.mode)),
+                "scale": r.tone_scale(view),
+                "exposure_range": [min, max],
+                "bloom_amount": r.tone_bloom(),
+                "map_controller": {
+                    "exposure_min": env.exposure_min, "exposure_max": env.exposure_max, "bloom_scale": env.bloom_scale,
+                },
+                "histogram": r.tone_histogram(view),
+            })
+        }),
         "budget": l.budget.as_ref().map(|b| json!({
             "faces": b.faces, "luxels": b.luxels, "bytes": b.bytes, "limit": b.limit,
             "tiny_faces": b.tiny_faces, "wide_faces": b.wide_faces, "oversized_displacements": b.oversized_displacements,

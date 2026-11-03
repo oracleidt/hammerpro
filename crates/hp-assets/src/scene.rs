@@ -60,6 +60,7 @@ pub(crate) struct SceneSync {
     pub instances_dirty: bool,
     pub sprites_dirty: bool,
     pub lights_dirty: bool,
+    pub projector_overrides: Vec<hp_app::state::ProjectorOverride>,
     pub force_entities: bool,
     pub initialized: bool,
     pub display: Option<RenderDisplay>,
@@ -562,6 +563,7 @@ impl AssetManager {
             }
         }
         self.realize_loaded_models(doc, renderer, opts, &display);
+        self.lods.on |= opts.model_lods;
         self.request_model_lods();
         self.apply_model_lods(renderer);
         if !full {
@@ -1329,6 +1331,7 @@ impl AssetManager {
     }
 
     fn rebuild_lights(&mut self, doc: &Document, renderer: &mut Renderer, opts: &SceneOptions, d: &RenderDisplay) {
+        renderer.set_lit_hdr(d.light_hdr);
         let mode = (d.light_hdr, d.sky_occlusion);
         if self.scene.light_mode != Some(mode) {
             self.scene.light_mode = Some(mode);
@@ -1340,6 +1343,13 @@ impl AssetManager {
             return;
         }
         self.scene.lights_dirty = false;
+        let projected = if d.projected_textures {
+            let targets = target_origins(doc);
+            crate::projectors::collect(doc, self.fs.as_ref(), &targets, &self.scene.projector_overrides)
+        } else {
+            Vec::new()
+        };
+        renderer.set_projectors(&projected);
         let hdr = d.light_hdr;
         if !opts.lighting_preview {
             renderer.set_lights(&[], [0.0; 3]);
@@ -1356,9 +1366,8 @@ impl AssetManager {
         let mut lights: Vec<PreviewLight> = Vec::with_capacity(ids.len());
         let mut sun: Option<(u8, crate::lights::SceneLight)> = None;
         for id in ids {
-            let hidden = renderer.object_flags(entity_object(id)).is_some_and(|f| f.contains(ObjectFlags::HIDDEN));
             let Some(mut light) = self.scene.ents.get(&id).and_then(|s| s.desc.light) else { continue };
-            if hidden {
+            if !doc.is_entity_visible(id) {
                 continue;
             }
             let node = doc.scene().entity(id);
@@ -1405,7 +1414,8 @@ impl AssetManager {
             lights.insert(0, l);
         }
         let spread = sun.and_then(|s| s.sun).map_or(0.0, |s| s.spread_deg);
-        renderer.set_lights(&lights, ambient.unwrap_or(DEFAULT_AMBIENT));
+        let none = if lights.is_empty() { DEFAULT_AMBIENT } else { [0.0; 3] };
+        renderer.set_lights(&lights, ambient.unwrap_or(none));
         renderer.set_sun(SunParams { spread_deg: spread, sky_ambient: d.sky_occlusion && ambient.is_some() });
         self.scene.light_targets = targets;
         let report = sun.map(|s| SunReport {

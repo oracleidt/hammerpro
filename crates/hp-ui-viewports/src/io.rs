@@ -40,6 +40,7 @@ pub struct IoSim {
     light_inputs: Vec<(String, LightCmd)>,
     train_inputs: Vec<(Id, String, String)>,
     moved: HashMap<Id, glam::DMat4>,
+    projectors: HashMap<Id, hp_app::state::ProjectorOverride>,
 }
 
 fn flag(e: &Entity, bit: i64) -> bool {
@@ -136,6 +137,9 @@ impl IoSim {
             }
             if c == "logic_auto" {
                 autos.push(e.id);
+            }
+            if c == "infodecal" && e.get("targetname").is_some_and(|n| !n.trim().is_empty()) {
+                sim.hidden.insert(e.id);
             }
         }
         for id in autos {
@@ -370,6 +374,12 @@ impl IoSim {
         std::mem::take(&mut self.light_inputs)
     }
 
+    pub fn projector_overrides(&self) -> Vec<hp_app::state::ProjectorOverride> {
+        let mut out: Vec<hp_app::state::ProjectorOverride> = self.projectors.values().cloned().collect();
+        out.sort_by_key(|o| o.id);
+        out
+    }
+
     pub fn take_train_inputs(&mut self) -> Vec<(Id, String, String)> {
         std::mem::take(&mut self.train_inputs)
     }
@@ -395,6 +405,26 @@ impl IoSim {
         match input.as_str() {
             x if crate::trains::accepts(&c, x) => {
                 self.train_inputs.push((id, input.clone(), param.to_owned()));
+            }
+            "activate" if c == "infodecal" => {
+                self.hidden.remove(&id);
+            }
+            "turnon" | "turnoff" | "fov" | "enableshadows" | "spotlighttexture" | "lightworld"
+                if c == "env_projectedtexture" =>
+            {
+                let o = self
+                    .projectors
+                    .entry(id)
+                    .or_insert_with(|| hp_app::state::ProjectorOverride { id, ..Default::default() });
+                let truth = |p: &str| p.trim().parse::<f64>().map_or(!p.trim().is_empty(), |v| v != 0.0);
+                match input.as_str() {
+                    "turnon" => o.on = Some(true),
+                    "turnoff" => o.on = Some(false),
+                    "fov" => o.fov = param.trim().parse::<f64>().ok().filter(|v| v.is_finite()).or(o.fov),
+                    "enableshadows" => o.shadows = Some(truth(param)),
+                    "lightworld" => o.light_world = Some(truth(param)),
+                    _ => o.texture = Some(param.trim().to_owned()).filter(|t| !t.is_empty()).or(o.texture.take()),
+                }
             }
             "kill" | "killhierarchy" | "break" => {
                 self.hidden.insert(id);
@@ -590,5 +620,68 @@ mod tests {
         assert_eq!(got, want.map(|c| ("lamp".to_owned(), c)), "the light inputs, not the sprite's");
         assert!(sim.take_light_inputs().is_empty(), "taken once");
         assert!(sim.hidden.contains(&4), "the sprite is hidden as before");
+    }
+
+    #[test]
+    fn named_decals_wait_for_their_activate_input() {
+        let mut state = hp_app::testing::test_state();
+        let mut named = Entity { id: 2, classname: "infodecal".into(), ..Default::default() };
+        named.set("targetname", "tag");
+        let plain = Entity { id: 4, classname: "infodecal".into(), ..Default::default() };
+        let mut relay = Entity { id: 3, classname: "logic_relay".into(), ..Default::default() };
+        relay.connections = vec![hp_vmf::Connection {
+            output: "OnTrigger".into(),
+            target: "tag".into(),
+            input: "Activate".into(),
+            param: String::new(),
+            delay: 0.0,
+            times: -1,
+            separator: ',',
+        }];
+        let map = hp_vmf::Map { entities: vec![named, plain, relay], ..Default::default() };
+        state.doc = hp_editor::Document::from_map(map);
+        let mut sim = IoSim::new(&state);
+        assert!(sim.hidden.contains(&2) && !sim.hidden.contains(&4), "a named decal waits, like in game");
+        let mut doors = Doors::default();
+        sim.fire(&state, 3, "OnTrigger");
+        sim.step(&state, &mut doors, DVec3::ZERO, 72.0, 0.0);
+        assert!(!sim.hidden.contains(&2), "Activate applies it");
+    }
+
+    #[test]
+    fn projected_texture_inputs_drive_the_preview() {
+        let mut state = hp_app::testing::test_state();
+        let mut torch = Entity { id: 2, classname: "env_projectedtexture".into(), ..Default::default() };
+        torch.set("targetname", "torch");
+        let mut relay = Entity { id: 3, classname: "logic_relay".into(), ..Default::default() };
+        relay.set("targetname", "relay");
+        let c = |input: &str, param: &str| hp_vmf::Connection {
+            output: "OnTrigger".into(),
+            target: "torch".into(),
+            input: input.into(),
+            param: param.into(),
+            delay: 0.0,
+            times: -1,
+            separator: ',',
+        };
+        relay.connections = vec![
+            c("TurnOn", ""),
+            c("FOV", "70"),
+            c("EnableShadows", "0"),
+            c("SpotlightTexture", "effects/flashlight002"),
+            c("TurnOff", ""),
+        ];
+        let map = hp_vmf::Map { entities: vec![torch, relay], ..Default::default() };
+        state.doc = hp_editor::Document::from_map(map);
+        let mut sim = IoSim::default();
+        let mut doors = Doors::default();
+        sim.fire(&state, 3, "OnTrigger");
+        sim.step(&state, &mut doors, DVec3::ZERO, 72.0, 0.0);
+        let got = sim.projector_overrides();
+        assert_eq!(got.len(), 1);
+        let o = &got[0];
+        assert_eq!((o.id, o.on, o.fov, o.shadows), (2, Some(false), Some(70.0), Some(false)));
+        assert_eq!(o.texture.as_deref(), Some("effects/flashlight002"));
+        assert!(!sim.hidden.contains(&2), "TurnOff does not hide the entity, it switches the light");
     }
 }

@@ -111,12 +111,12 @@ const SPECS: &[ToolSpec] = &[
             and brush entities without vrad_brush_cast_shadows cast no shadow, editor helpers neither), its _ambient \
             sky light only where the sky is seen (setting render.sky_occlusion), HDR or LDR light values (setting \
             render.light_preview_hdr), every light of big maps kept (get_lighting_status realtime tells how many and \
-            how many crowded spots keep only their strongest lights), props included (prop_static shadows follow \
+            how many crowded spots keep only their strongest lights), env_projectedtexture entities (setting \n            render.projected_textures: texture, lightfov, nearz, farz, lightcolor, lightstrength and target, the first 16; \n            get_lighting_status realtime projectors counts them), props included (prop_static shadows follow \
             the compile like VRAD: the model triangles with -StaticPropPolys, the collision model otherwise, none \
-            with -nostaticpropshadows; setting render.prop_shadows: Auto, Mesh or Collision); the point and spot lights nearest the camera cast shadows too, how many set by the setting render.light_shadows (0 to 16, 0: the sun only; disableshadows props cast none); lights inside an opaque \
+            with -nostaticpropshadows; setting render.prop_shadows: Auto, Mesh or Collision); the point and spot lights in view cast shadows too (the brightest first, so a light never shines through walls), how many set by the setting render.light_shadows (0 to 64, 16 by default, 0: the sun only; disableshadows props cast none); the sky light and the light bounced by the other surfaces come from a background bake of the map with the compiler while the setting render.lit_indirect is on (the default; get_lighting_status realtime.indirect tells its state), like the game's lightmaps, the lights and the sun staying real time; lights inside an opaque \
             brush light nothing like in game; $selfillum glows by the base alpha, $selfillummask or the $envmapmask alpha of $selfillum_envmapmask_alpha, times $selfillumtint, also in baked and the player view), unshaded (textured without shading), smoothing_groups, baked \
             (the baked lighting preview, see bake_lighting; props lit by the bake like the game: ambient cubes, \
-            world lights, static prop vertex lighting) or lightmap_grid (Hammer's 3D lightmap grid, no bake needed: every lightmapped face shows its luxel grid, one checker cell per lightmapscale units along its texture axes, displacements included, grey at scale 16, redder when finer, greener when coarser, yellow lines where VBSP splits a face wider than 32 luxels, shaded by the baked lighting once a bake exists; faces without a lightmap (nodraw, tool textures, sky, water, unlit) and props keep their texture). In the textured modes water surfaces are drawn like in game (refraction, water fog, reflection, moving waves) while the setting render.water_preview is on (set_setting, or run_action toggle_water_preview); off, they show their tool texture. \
+            world lights, static prop vertex lighting) or lightmap_grid (Hammer's 3D lightmap grid, no bake needed: every lightmapped face shows its luxel grid, one checker cell per lightmapscale units along its texture axes, displacements included, grey at scale 16, redder when finer, greener when coarser, yellow lines where VBSP splits a face wider than 32 luxels, shaded by the baked lighting once a bake exists; faces without a lightmap (nodraw, tool textures, sky, water, unlit) and props keep their texture). In the textured modes water surfaces are drawn like in game (refraction, water fog, reflection, moving waves) while the setting render.water_preview is on (set_setting, or run_action toggle_water_preview); off, they show their tool texture. Expensive water reflects the scene drawn again mirrored about its surface like the game; render.water_detail follows the Water Detail option of the game: ReflectAll (default, expensive at every distance, reflects the world, props, brush entities, the sky and the 3D skybox), ReflectWorld (expensive near the camera, props and brush entities only with $reflectentities) or Simple (cheap water). \
             The map fog of an env_fog_controller (fogenable, fogcolor, fogcolor2 with fogblend, fogstart, fogend, \
             fogmaxdensity, farz) covers the 3D views and the player view while render.fog_preview is on (the \
             default; run_action toggle_fog_preview, preview_fog chooses the controller). Every fog_volume is \
@@ -146,7 +146,7 @@ const SPECS: &[ToolSpec] = &[
             preview bake, like the game), the player view (the compiled bumped lightmaps like the game), on the \
             props and in the model browser (preview and thumbnails) while the setting render.normal_maps is on \
             (the default; set_setting); off, surfaces are flat and no normal map is loaded. \
-            The materials with $envmap reflect their cubemap (like the SDK 2013 shaders: along the bumped normal, \
+            Every prop is drawn at the level of detail the game picks for it, from the switch distances of \n            its model and the size it takes on the screen (setting render.model_lods, on by default; off, \n            the finest level is always drawn). The env_sun entity draws its sun sprite and its glow like the \n            game (direction, size, overlaysize, rendercolor, overlaycolor, material, overlaymaterial, \n            HDRColorScale, the fade over the 40 degrees around the middle of the view and the fade behind \n            what hides the sun) while the setting render.sun_glow is on (the default). The 3D views sample \n            their pixels on the game's pixel grid (setting render.game_pixel_grid, on by default: half a \n            pixel from the grid Vulkan and Direct3D 12 use, so a screenshot of the preview lines up with a \n            screenshot of the game). \n            The materials with $envmap reflect their cubemap (like the SDK 2013 shaders: along the bumped normal, \
             times $envmapmask or the base or normal map alpha, $envmaptint, $envmapcontrast, $envmapsaturation, \
             $fresnelreflection, $envmapfresnel with $phongfresnelranges on phong props, $envmaplightscale) in \
             textured, lit and baked and in the player view while the setting render.cubemaps is on (the default; \
@@ -188,7 +188,7 @@ const SPECS: &[ToolSpec] = &[
             the time, every style the lights use with its string and value now, and the named (switchable) \
             lights with their state. light (a named light) with on (true or false; missing: toggle) switches it \
             in the preview at the next frame of the player view, like the inputs TurnOn, TurnOff and Toggle \
-            (the keys 1 to 9 in the view do the same, the I/O simulation too); the map does not change. \
+            (the keys 1 to 9 in the view do the same, the I/O simulation too); the map does not change. The I/O simulation also plays the env_projectedtexture inputs TurnOn, TurnOff, FOV, EnableShadows, SpotlightTexture and LightWorld on the projected light of the preview, and a named infodecal appears when an Activate input reaches it. \
             Trains move like in game: func_tracktrain and func_tanktrain follow their path_track chain from \
             their target (speed is the initial speed, startspeed the max speed, height above the track, wheels \
             for turning, orientationtype, velocitytype, bank, the No Pitch, No User Control, Passable and Fixed \
@@ -210,6 +210,11 @@ const SPECS: &[ToolSpec] = &[
                     "on": boolean("With light: turn it on (true) or off (false); missing: toggle."),
                     "train": string("A train of the map to start or stop in the player view (its targetname), or * for every train."),
                     "start": boolean("With train: start it (true) or stop it (false); missing: toggle."),
+                    "eye": vec3("Place the eyes of the player at this point [x, y, z] (standing: the feet go 64 units lower)."),
+                    "feet": vec3("Place the feet of the player at this point [x, y, z]."),
+                    "yaw": number("Look direction in degrees (0 faces +X, 90 faces +Y).", -360.0, 360.0),
+                    "pitch": number("Look up (positive) or down (negative) in degrees.", -89.0, 89.0),
+                    "noclip": boolean("Fly through walls (true) or walk and fall (false); placing the eyes at a given point needs noclip so the player does not fall."),
                 }),
                 &[],
             )
@@ -475,7 +480,23 @@ const WIREFRAME_LEVELS: [&str; 4] = [
 ];
 
 fn player_view(state: &mut AppState, v: &Value) -> R<ToolResult> {
-    let a = args(v, &["active", "wireframe", "compiled_lighting", "light", "on", "train", "start"])?;
+    let a = args(
+        v,
+        &[
+            "active",
+            "wireframe",
+            "compiled_lighting",
+            "light",
+            "on",
+            "train",
+            "start",
+            "eye",
+            "feet",
+            "yaw",
+            "pitch",
+            "noclip",
+        ],
+    )?;
     let on = a.opt_bool("on")?;
     match a.opt_str("light", 256)?.map(str::trim) {
         Some(name) => {
@@ -516,6 +537,20 @@ fn player_view(state: &mut AppState, v: &Value) -> R<ToolResult> {
         None if start.is_some() => return Err("start needs train".into()),
         None => {}
     }
+    let place = hp_app::runtime::PlayerPlace {
+        feet: a.opt_vec3("feet")?,
+        eye: a.opt_vec3("eye")?,
+        yaw: a.opt_f64("yaw", -360.0, 360.0)?,
+        pitch: a.opt_f64("pitch", -89.0, 89.0)?,
+        noclip: a.opt_bool("noclip")?,
+    };
+    if place != hp_app::runtime::PlayerPlace::default() {
+        let p = &state.runtime.lab.player;
+        if !p.active && !p.start_request && a.opt_bool("active")? != Some(true) {
+            return Err("placing the player needs the player view: start it with active true".to_owned());
+        }
+        state.runtime.lab.player.place_request = Some(place);
+    }
     if let Some(on) = a.opt_bool("compiled_lighting")? {
         state.settings.render.player_compiled_lighting = on;
         state.settings_dirty = true;
@@ -548,6 +583,7 @@ fn player_view(state: &mut AppState, v: &Value) -> R<ToolResult> {
         })
     });
     let level = usize::from(p.wireframe.min(3));
+    let eye = p.feet + glam::DVec3::new(0.0, 0.0, hp_ui_viewports::player::EYE);
     let compiled_world = rt.world.is_some() && !p.editor_world;
     let setting = state.settings.render.player_compiled_lighting;
     let stats = state.gfx.as_ref().and_then(|g| g.renderer.compiled_lighting());
@@ -597,6 +633,10 @@ fn player_view(state: &mut AppState, v: &Value) -> R<ToolResult> {
         .collect();
     let out = json!({
         "active": p.active || p.start_request,
+        "eye": [eye.x, eye.y, eye.z],
+        "yaw": state.cameras.cam3d.yaw_deg,
+        "pitch": state.cameras.cam3d.pitch_deg,
+        "noclip": p.noclip,
         "wireframe": level,
         "wireframe_draws": WIREFRAME_LEVELS[level],
         "compiled_world": compiled_world,

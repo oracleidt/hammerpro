@@ -122,12 +122,15 @@ pub(crate) const DOMAINS: &[&Domain] = &[
     &super::tools_fgd::DOMAIN,
     &super::tools_games::DOMAIN,
     &super::tools_discord::DOMAIN,
+    &super::tools_update::DOMAIN,
     &super::tools_toolopts::DOMAIN,
     &super::tools_actions::DOMAIN,
     &super::tools_ui::DOMAIN,
     &super::tools_settings::DOMAIN,
     &super::tools_views::DOMAIN,
     &super::tools_gpu::DOMAIN,
+    &super::tools_storage::DOMAIN,
+    &super::tools_sniffer::DOMAIN,
     &super::tools_help::DOMAIN,
 ];
 
@@ -1161,7 +1164,18 @@ fn screenshot_view(state: &mut AppState, v: &Value) -> R<ToolResult> {
     let gfx = gfx.as_mut().ok_or("the 3D renderer is not ready yet")?;
     assets.sync_scene(doc, gfx, &opts);
     let params = view_params(&view, &cfg);
-    gfx.renderer.set_view_options(SCREENSHOT_VIEW, view_options(&view, &cfg));
+    let mut options = view_options(&view, &cfg);
+    if kind == ViewKind::Perspective && state.runtime.lab.player.active {
+        options.compiled_lighting =
+            state.settings.render.player_compiled_lighting && state.runtime.health.world.is_some();
+        options.fog_volume_inside = options.fog_volumes;
+        options.fog_volumes = false;
+        if let Some(from) = state.ui.focused_view {
+            gfx.renderer.inherit_tone(from as u32, SCREENSHOT_VIEW);
+        }
+    }
+    gfx.renderer.set_tone_settings(state.settings.render.tone());
+    gfx.renderer.set_view_options(SCREENSHOT_VIEW, options);
     gfx.renderer.render_view(SCREENSHOT_VIEW, &params, &hp_render::Overlay::default());
     let pixels = gfx.renderer.read_view_rgba8(SCREENSHOT_VIEW);
     gfx.renderer.remove_view(SCREENSHOT_VIEW);

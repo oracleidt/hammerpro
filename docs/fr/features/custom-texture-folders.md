@@ -117,6 +117,7 @@ Voir [Fenêtre de compilation](../compiler/compile-window.md).
 - [Fenêtre de compilation](../compiler/compile-window.md)
 - [Ressources de la map](map-assets.md)
 - [Référence des paramètres](../reference/settings.md)
+- [Index et analyse du contenu](content-index.md)
 - [Référence des outils MCP](../../MCP.md) (en anglais : `import_images`, `list_asset_sources`)
 
 ---
