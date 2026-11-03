@@ -473,7 +473,7 @@ The **Build and save as content** window and the Map assets tab. See [Build and 
 | `protect_shuffle_game_lumps` | `true` | Shuffled game lump directory. |
 | `protect_random_pak` | `true` | Pakfile at a random position. |
 | `protect_reorder_tables` | `true` | Permute planes, vertexes, edges, texinfo and texdata. |
-| `protect_reorder_world` | `true` | Permute brushes, faces and leaf lists. |
+| `protect_reorder_world` | `true` | Permute brushes and faces (the leaf lists stay in order). |
 | `protect_layout_seed` | `""` | Seed of the structure scrambler (empty: random at each compile). |
 | `show_map_assets` | `false` | Map assets tab. |
 | `collect_folder` | `""` | Last output folder of **Collect**. |
@@ -528,6 +528,9 @@ The [BSP Sniffer](../features/bsp-sniffer.md) panel (File > BSP Sniffer...). Onl
 | `gmod_dir` | `""` | Garry's Mod folder (empty: automatic). |
 | `launch_options` | windowed, 800 x 450, low settings, muted | Added to the Steam launch. |
 | `insecure` | `"auto"` | `auto`, `always` or `never` for `-insecure`. |
+| `game_bits` | `"auto"` | `auto`, `64` or `32`: which game of the install is started and read. |
+| `use_map_file` | `false` | Also read the map file of the client to cross check the memory and fill in what it lacks. Off: no map file is opened. |
+| `read_ldr_lighting` | `true` | Read the other lighting set with a second map load in LDR. |
 | `attach_running` | `false` | Use a game that already runs. |
 | `process_timeout_secs` | `180` | Wait for the game process. |
 | `load_timeout_secs` | `900` | Wait for the map. |
@@ -582,6 +585,7 @@ See [Content index and scan](../features/content-index.md).
 | Key | Default | What it does |
 | --- | --- | --- |
 | `update.check_on_startup` | `true` | Look for a newer release in the background when Hammer Pro starts. **Settings > Updates**. |
+| `update.show_dialog` | `true` | Show the update window when a newer release is found. Turning it back on also clears `update.skipped_version`. **Settings > Updates**. |
 | `update.skipped_version` | `""` | Tag of the release the user chose not to be asked about (**Don't show this again**), for example `"v1.0.3"`. Empty: none. |
 
 See [Updates](../features/updates.md).

@@ -632,6 +632,54 @@ fn a_sealed_room_above_the_sky_does_not_shadow_the_map_below() {
     assert!(i32::from(room_open[0]) > i32::from(dark[0]) + 80, "a room without sky gets no sun: {dark:?}");
 }
 
+fn sky_shell(r: &mut Renderer, first: u32, half: f32, low: f32, high: f32, t: f32) {
+    let boxes = [
+        ([-half - t, -half - t, high], [half + t, half + t, high + t]),
+        ([-half - t, -half - t, low - t], [half + t, half + t, low]),
+        ([-half - t, -half - t, low], [-half, half + t, high]),
+        ([half, -half - t, low], [half + t, half + t, high]),
+        ([-half, -half - t, low], [half, -half, high]),
+        ([-half, half, low], [half, half + t, high]),
+    ];
+    for (k, (min, max)) in boxes.into_iter().enumerate() {
+        let id = first + k as u32;
+        r.upsert_object(id, box_mesh(min, max, SKY));
+        r.set_object_flags(id, ObjectFlags::NO_SHADOW);
+    }
+}
+
+fn slanted_sun(intensity: f32) -> PreviewLight {
+    let d = glam::Vec3::new(0.45, -0.3, -0.84).normalize().to_array();
+    PreviewLight { kind: LightKind::Directional { dir: d }, ..down_sun(intensity) }
+}
+
+#[test]
+fn a_map_sealed_in_sky_on_every_side_gets_the_sun() {
+    let (device, queue) = gpu_or_skip!();
+    let mut r = Renderer::new(&device, &queue);
+    mat(&mut r, WORLD, [200, 200, 200, 255], MaterialFlags::empty());
+    mat(&mut r, SKY, [120, 160, 255, 255], MaterialFlags::SKY);
+    r.upsert_object(1, box_mesh([-1500.0, -1500.0, -64.0], [1500.0, 1500.0, 0.0], WORLD));
+    r.upsert_object(2, box_mesh([-100.0, -100.0, 0.0], [100.0, 100.0, 400.0], WORLD));
+    sky_shell(&mut r, 10, 2048.0, -512.0, 2048.0, 64.0);
+    r.set_lights(&[slanted_sun(0.8)], [0.05; 3]);
+    let v = looking_down([0.0, 0.0, 1500.0]);
+    let img = shot(&mut r, 7, &v, "sealed_sky_sun");
+    let open_at = screen(&v, [-700.0, 500.0, 0.0]);
+    let open = px(&img, open_at.0, open_at.1);
+    assert!(open[0] > 150, "the ground of a map sealed in sky is in the sun: {open:?}");
+    let shade_at = screen(&v, [200.0, -140.0, 0.0]);
+    let shade = px(&img, shade_at.0, shade_at.1);
+    assert!(i32::from(open[0]) > i32::from(shade[0]) + 80, "the pillar still casts a shadow: {shade:?}");
+    sky_shell(&mut r, 20, 2048.0, -4000.0, -1500.0, 64.0);
+    sky_shell(&mut r, 30, 2048.0, -7000.0, -5000.0, 64.0);
+    let img = shot(&mut r, 7, &v, "sealed_sky_sun_stacked");
+    let stacked = px(&img, open_at.0, open_at.1);
+    assert!(stacked[0] > 150, "more sky shells below the map do not put it in the dark: {stacked:?}");
+    let stacked_shade = px(&img, shade_at.0, shade_at.1);
+    assert!(i32::from(stacked[0]) > i32::from(stacked_shade[0]) + 80, "the pillar still casts: {stacked_shade:?}");
+}
+
 #[test]
 fn sky_light_under_a_room_above_the_sky_is_open_sky() {
     let (device, queue) = gpu_or_skip!();

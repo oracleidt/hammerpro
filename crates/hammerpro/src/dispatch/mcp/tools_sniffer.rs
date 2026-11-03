@@ -8,23 +8,7 @@ use super::tools::{Args, R};
 
 domain! { "bsp sniffer";
     sniffer_start: Editor, "Start the BSP Sniffer",
-        "Start a BSP Sniffer run (Garry's Mod only): launches Garry's Mod through Steam, joins the server, waits for \
-        the map to load and the engine to finish building it, reads the map as the game loaded it from the game memory \
-        (brushes, materials, texture axes, displacements, static props, overlays, cubemaps, area portals and \
-        entities), merges it with the map file that the client has (the game cache, maps, download, addons, workshop \
-        archives, read through its lump directory, so a protected, shuffled or padded file works) field by field after \
-        a consistency check against the memory, rebuilds a BSP, decompiles it to a VMF and saves the content. The \
-        memory is the main source and the matching map file fills in what the memory does not keep (displacement \
-        alphas, prop fade distances and flags, cubemap sizes, overlay order, hidden side texture axes, the pakfile); a \
-        file that does not match is ignored. The result lists the source of each category (memory, map file, game \
-        content, absent). Runs in the background: poll sniffer_status and read sniffer_log. Needs the setting \
-        authorized = true (the user confirms they may test the server; set it with sniffer_set_settings only when \
-        the user said so). Takes the game lock rule of the machine: only one run at a time. Protected maps (Protect \
-        your BSP: logic removed, material names scrambled, original faces emptied, watermark, server lock, lumps \
-        shuffled) are recovered the same way: the scrambled material names are restored from the patch files of the \
-        pakfile of the protected map file, and guessed from the loaded materials when no map file is found; the \
-        report says how many of each. The address can also be map:<name> to start a map of this computer in a local \
-        Garry's Mod (listen server), or map: alone with attach_running to read the map the running game has loaded.",
+        "Start a BSP Sniffer run (Garry's Mod only): launches Garry's Mod through Steam, joins the server, waits for the map to load and the engine to finish building it, and rebuilds the whole map from the game memory alone (entities, brushes, materials, planes, nodes, leaves, faces, texture axes and data, visibility, lightmaps, ambient lighting, world lights, physics collision, displacements and their lightmap samples, vertex normals, primitives, area portals, cubemaps and their sizes, static props with their fade distances and flags (five of the eight flag bits come from the memory; ignore normals, no shadow and no self shadowing exist only for the compiler and need the map file), overlays with their render order, occluders, displacement vertex alphas (blend painting) and allowed vertices, and the other structures the engine keeps; the engine world structure is found from its planes by signature and every lump of the result is listed with its fidelity), writes the BSP, decompiles it to a VMF and saves the content. No map file is read by default: the setting use_map_file (default off) lets a map file of the client (the game cache, maps, download, addons, workshop archives, read through its lump directory, so a protected, shuffled or padded file works) cross check the memory and complete what the memory does not keep, field by field after a consistency check. The game loads one lighting set only: read_ldr_lighting (default on) switches the game to LDR a second time to read the other one. The result lists the source of each category (memory, map file, game content, absent). The content step rebuilds, for the models the game loaded and that are not on this computer, the .mdl, the .vvd (found in the model cache), the .dx90.vtx (rebuilt from the hardware mesh groups of the model cache) and the .phy (rebuilt from the collision data and packed key values of the model cache), and the .vmt text of the loaded materials not on this computer (key values when the engine kept them, else the material variables and the decoded proxies; Lua proxies read from the Lua state); textures exist in video memory only, they are listed in textures_in_video_memory.txt with the measured residency in texture_residency.txt; the pakfile directory the game holds (names, sizes, CRC32) is listed in pakfile_listing.txt and every recovered file is checked against it. Runs in the background: poll sniffer_status and read sniffer_log. Needs the setting authorized = true (the user confirms they may test the server; set it with sniffer_set_settings only when the user said so). Takes the game lock rule of the machine: only one run at a time. Protected maps (Protect your BSP: logic removed, material names scrambled, original faces emptied, watermark, server lock, lumps shuffled) are recovered the same way, because the engine loads the lumps it needs whatever their order or padding: the scrambled material names are restored from the loaded materials; the report says how many of each. Entities: the entity lump the client holds is merged with the networked entities of the client (class name, origin, angles, model, spawn flags, render fields, skin, body, scale and parent names), so entities that a protector removed from the shipped file but that the server still sends to the client (weapons, items, npcs, props, brush entities) come back, and brush models that no entity uses become brush entities; what the server never sends (logic, nodes, paths, the inputs and outputs and hammer ids of removed entities) cannot be recovered, and sniffer_result gives the lower bound of how many entities are missing. The address can also be map:<name> to start a map of this computer in a local Garry's Mod (listen server), or map: alone with attach_running to read the map the running game has loaded.",
         { "address": string("Server as ip:port, or map:<name> to start a map of this computer in a local Garry's Mod (a listen server, the client memory is the same as a real join), or map: alone together with attach_running to read the map the running game has loaded; saved in the settings. Default: the saved address.") }, [];
     sniffer_cancel: Editor, "Cancel the BSP Sniffer",
         "Stop the running BSP Sniffer; the game it started is closed when kill_game is on.",
@@ -42,11 +26,13 @@ domain! { "bsp sniffer";
         }, [];
     sniffer_result: Read, "BSP Sniffer report",
         "The full report of the last finished run: the source of the geometry, what was decoded from the game memory \
-        (faces, texture axes, displacements, static props, overlays, cubemaps, area portals), the number of map file \
+        (faces, texture axes, displacements with their vertex alphas and allowed vertices, static props with fade distances and flags, overlays with render order and fade distances, cubemaps with sizes, area portals, occluders, the .mdl, .vvd, .dx90.vtx and .phy files of the loaded models, the material key values), the number of map file \
         reads, the cross check against the map file, the lumps confirmed byte for \
         byte, the counts of the recovered BSP and of the VMF (brushes, sides, nodraw, displacements, props, \
         entities), the lumps copied from the map file as they are with their bytes and the refused ones, the \
-        content saved and the timings. As text and as JSON.",
+        content saved, what the client knew about entities (client_entities: networked entities read, matched to the \
+        entity lump, added, parent names restored, and the lower bound of what can never be recovered) and the \
+        timings. As text and as JSON.",
         {}, [];
     sniffer_get_settings: Read, "BSP Sniffer settings",
         "Every BSP Sniffer setting with its value and the list of accepted keys.",
@@ -54,7 +40,7 @@ domain! { "bsp sniffer";
     sniffer_set_settings: Editor, "Change BSP Sniffer settings",
         "Change BSP Sniffer settings (saved). Keys: address, authorized, output_dir, file_name_template ({map} {ip} \
         {port} {date} {time} {datetime}), gmod_dir (empty: automatic), launch_options, insecure (auto, always, \
-        never), attach_running, process_timeout_secs, load_timeout_secs, settle_secs, poll_secs, save_models, \
+        never), game_bits (auto, 64, 32), use_map_file (false: no map file is read), read_ldr_lighting, attach_running, process_timeout_secs, load_timeout_secs, settle_secs, poll_secs, save_models, \
         save_materials, save_sounds, save_other, keep_bsp, only_non_stock, kill_game, auto_disconnect, \
         open_when_done and decompile.brushes, decompile.displacements, decompile.entities, \
         decompile.brush_entities, decompile.static_props, decompile.overlays, decompile.cubemaps, \
@@ -116,12 +102,28 @@ fn outcome_json(o: &hp_sniffer::session::Outcome) -> Value {
         "protected_map": {
             "detected": r.unprotect.protected(),
             "scrambled_material_names": r.unprotect.garbage_names,
-            "restored_from_patch_files": r.unprotect.restored_from_patch,
             "guessed_from_loaded_materials": r.unprotect.guessed,
-            "custom_materials_kept_scrambled": r.unprotect.kept_custom,
             "unresolved": r.unprotect.unresolved,
             "watermark": r.unprotect.watermark,
             "lock_hash": r.unprotect.lock_hash,
+        },
+        "client_entities": {
+            "read": r.client.attempted && r.client.error.is_none(),
+            "error": r.client.error,
+            "reads": r.client.observations,
+            "networked": r.client.networked,
+            "created_by_the_map": r.client.map_created,
+            "without_class_name": r.client.unnamed,
+            "matched_to_the_entity_lump": r.client.matched,
+            "added": r.client.added,
+            "added_classes": r.client.added_classes.iter().map(|(c, n)| json!({ "classname": c, "count": n })).collect::<Vec<_>>(),
+            "parent_names_restored": r.client.parents_restored,
+            "entities_in_the_lump": r.client.lump_entities,
+            "original_lump_at_least": r.client.original_at_least,
+            "unrecoverable_at_least": r.client.unrecoverable_at_least,
+            "map_creation_id_of_the_world": r.client.id_base,
+            "orphan_brush_models_made_into_entities": r.decompile.orphan_models,
+            "notes": r.client.notes,
         },
         "memory": {
             "render_data_found": r.memory.render_found,
@@ -135,6 +137,7 @@ fn outcome_json(o: &hp_sniffer::session::Outcome) -> Value {
             "cubemaps": r.memory.cubemaps,
             "area_portals": r.memory.area_portals,
             "area_portal_vertexes": r.memory.area_portal_verts,
+            "occluders": r.memory.occluders,
         },
         "filled_from_file": {
             "file_used": r.merge.file_used,
@@ -203,6 +206,22 @@ fn outcome_json(o: &hp_sniffer::session::Outcome) -> Value {
             "stock_skipped": r.assets.stock_skipped + r.assets.pak_skipped_stock,
             "missing": r.assets.missing.len(),
             "models_recovered_from_memory": r.assets.memory_models,
+            "vertex_files_rebuilt_from_memory": r.assets.memory_vvds,
+            "vertex_files_not_whole": r.assets.memory_vvd_partial,
+            "vertex_files_not_found": r.assets.memory_vvd_failed,
+            "strip_files_rebuilt_from_memory": r.assets.memory_vtxs,
+            "strip_files_not_whole": r.assets.memory_vtx_partial,
+            "strip_files_failed": r.assets.memory_vtx_failed,
+            "physics_files_rebuilt_from_memory": r.assets.memory_phys,
+            "pakfile_directory_files": r.assets.pak_listed,
+            "pakfile_directory_identical": r.assets.pak_listed_identical,
+            "pakfile_directory_different": r.assets.pak_listed_differs,
+            "textures_loaded": r.assets.textures_loaded,
+            "textures_in_video_memory_only": r.assets.textures_video_only,
+            "textures_with_file_whole_resident": r.assets.textures_resident_whole,
+            "textures_with_file_partly_resident": r.assets.textures_resident_partial,
+            "materials_loaded": r.assets.memory_materials_loaded,
+            "materials_rebuilt_from_memory": r.assets.memory_materials,
             "bytes": r.assets.pak_bytes + r.assets.content_bytes,
         },
         "timings": r.timings.iter().map(|(k, v)| json!({ "step": k, "seconds": v })).collect::<Vec<_>>(),

@@ -11,7 +11,7 @@ fn main() {
     let mut buf = vec![0u8; 16 << 20];
     let mut pos = 0u64;
     for r in p.regions() {
-        if r.image {
+        if r.image && !r.writable && r.size > 0x1000 {
             continue;
         }
         let mut off = 0u64;

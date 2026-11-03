@@ -119,7 +119,7 @@ const SPECS: &[ToolSpec] = &[
         description: "Read Hammer Pro's settings: all of them, a table (\"view\", \"edit\", \"ui\", \"render\"...) or \
             one setting by dotted path (\"view.fov_deg\", \"ui.theme\"). Lists the paths MCP cannot change. \
             The \"discord\" table is Discord Rich Presence (enabled, show_map, show_elapsed, show_tool, \
-            application_id). The \"update\" table is the auto update (check_on_startup, skipped_version; \
+            application_id). The \"update\" table is the auto update (check_on_startup, show_dialog, skipped_version; \
             see get_update_status).",
         kind: ToolKind::Read,
         schema: || object(json!({ "path": string("Dotted path; empty: everything.") }), &[]),
@@ -676,14 +676,18 @@ mod tests {
         let mut state = hp_app::testing::test_state();
         let v = ok(&mut state, "get_settings", json!({ "path": "update" }));
         assert_eq!(v["value"]["check_on_startup"], true);
+        assert_eq!(v["value"]["show_dialog"], true);
         assert_eq!(v["value"]["skipped_version"], "");
         set(&mut state, "update.check_on_startup", json!(false));
+        set(&mut state, "update.show_dialog", json!(false));
         set(&mut state, "update.skipped_version", json!("v1.0.3"));
         assert!(!state.settings.update.check_on_startup);
+        assert!(!state.settings.update.show_dialog);
         assert_eq!(state.settings.update.skipped_version, "v1.0.3");
         let v = ok(&mut state, "get_settings", json!({ "path": "update.skipped_version" }));
         assert_eq!(v["value"], "v1.0.3");
         assert!(read_only("update.check_on_startup").is_none());
+        assert!(read_only("update.show_dialog").is_none());
         assert!(read_only("update.skipped_version").is_none());
     }
 

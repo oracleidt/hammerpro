@@ -55,7 +55,7 @@ domain! { "content and release";
         (random data and stale altered copies of lumps), scramble_header randomizes the map revision, the version of \
         lumps the game ignores and the unused directory entries, shuffle_game_lumps shuffles the game lump directory, \
         random_pak puts the pakfile anywhere, reorder_tables permutes planes, vertexes, edges, texinfo and texdata and \
-        renumbers every reference, reorder_world permutes brushes, faces and the leaf lists the same way. The map \
+        renumbers every reference, reorder_world permutes brushes and faces the same way (the face and brush lists of the leaves are kept in order: shuffling them crashed the game). The map \
         loads and plays the same. layout_seed fixes the randomness (empty: new at each compile). preset strongest \
         turns every scrambler option on, none turns them off; individual keys apply after it.",
         {
@@ -74,7 +74,7 @@ domain! { "content and release";
             "shuffle_game_lumps": boolean("Shuffle the game lump directory."),
             "random_pak": boolean("Pakfile at a random position."),
             "reorder_tables": boolean("Permute planes, vertexes, edges, texinfo and texdata."),
-            "reorder_world": boolean("Permute brushes, faces and the leaf lists."),
+            "reorder_world": boolean("Permute brushes and faces (the leaf lists stay in order)."),
             "layout_seed": string("Seed of the structure scrambler (empty: random at each compile)."),
         }, [];
     get_release_checklist: Read, "Release checklist",

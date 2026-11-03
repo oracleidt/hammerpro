@@ -430,6 +430,7 @@ fn memory_report(world: &crate::memmap::MemoryWorld) -> MemoryRecovery {
         m.area_portals = ap.count();
         m.area_portal_verts = ap.verts.len();
     }
+    m.occluders = x.occlusion.as_ref().map_or(0, |o| o.occluders.len());
     m
 }
 
@@ -496,8 +497,7 @@ fn settle_extras<S: MemSource + ?Sized>(
         let mut reacquire = false;
         loop {
             check(cancel)?;
-            crate::engine::refresh_displacement_pointers(src, render.faces_addr, &mut faces);
-            let found = crate::engine::read_displacements(src, &faces).len();
+            let found = world.displacements_now(src, &mut faces);
             if found >= expected {
                 break;
             }
@@ -528,7 +528,7 @@ fn settle_extras<S: MemSource + ?Sized>(
                 break;
             }
             check(cancel)?;
-            let fresh = crate::engine::find_extras(src, opts, &render, &world.cm.plane_bytes, map);
+            let Some(fresh) = world.extras_now(src, opts, map) else { return Ok(()) };
             let sig = extras_signature(&fresh);
             say(
                 Level::Info,
@@ -621,10 +621,11 @@ pub fn capture_from<S: MemSource + ?Sized>(
         memory_entities: hit.entities,
         memory_entity_bytes: hit.text.len(),
         memory_entity_address: Some(hit.addr),
-        map_file_mode: input.settings.map_file.id().to_owned(),
+        map_file_mode: input.settings.map_file_mode().id().to_owned(),
         ..SniffReport::default()
     };
     let opts = ScanOptions::default();
+    let mut client_capture = Some(crate::clientents::ClientCapture::start(src, input.map_hint.as_deref()));
     let map_name = input
         .map_hint
         .clone()
@@ -706,6 +707,33 @@ pub fn capture_from<S: MemSource + ?Sized>(
     {
         settle_extras(src, &opts, world, &map_name, (poll, input.rescan_limit), shared, cancel)?;
     }
+    if let Some(world) = full.as_mut()
+        && world.hub.is_some()
+    {
+        world.refresh_hub(src, true);
+    }
+    let merged_hit;
+    let hit = match client_capture.take() {
+        Some(c) => {
+            let m = c.finish(src, &hit.text);
+            let r = &m.report;
+            if let Some(e) = &r.error {
+                say(Level::Warn, format!("client entities: {e}"));
+            } else {
+                say(
+                    Level::Info,
+                    format!(
+                        "client entities: {} networked, {} map created, {} matched to the entity lump, {} added, {} parent names restored",
+                        r.networked, r.map_created, r.matched, r.added, r.parents_restored
+                    ),
+                );
+            }
+            report.client = m.report;
+            merged_hit = EntityHit { text: m.text, ..hit.clone() };
+            &merged_hit
+        }
+        None => hit,
+    };
     let mut file_bsp: Option<hp_bsp::Bsp> = None;
     if let Some((ev, bsp)) = usable {
         report.source = format!("{} ({})", ev.candidate.path.display(), ev.candidate.origin);
@@ -789,6 +817,7 @@ pub fn capture_from<S: MemSource + ?Sized>(
     };
     if use_memory {
         let world = full.as_mut().expect("checked above");
+        crate::merge::note_memory(world, &mut report.merge);
         if let Some(f) = &file_bsp {
             report.merge = crate::merge::merge(world, f);
             let m = &report.merge;
@@ -820,6 +849,10 @@ pub fn capture_from<S: MemSource + ?Sized>(
             );
         }
         crate::memmap::resolve_material_ranks(world);
+        report.hub = match &world.hub {
+            Some(h) => h.report(),
+            None => crate::hubdata::HubReport::default(),
+        };
         let mut mem_bsp = crate::memmap::build_bsp(world, &hit.text)?;
         if let Some(f) = &file_bsp {
             let (filled, pass) = crate::passthrough::apply(&mem_bsp, f);
@@ -856,7 +889,7 @@ pub fn capture_from<S: MemSource + ?Sized>(
         report.memory_only = file_bsp.is_none();
         report.geometry = "game memory".to_owned();
         report.notes.push(
-            "the game memory is the main source: brushes and materials from the collision data, faces and texture axes from the render data, displacements, static props, overlays, cubemaps and area portals from the engine structures. Not kept by the engine, taken from a matching and consistent map file when one is allowed and left out otherwise: displacement vertex alphas, static prop fade distances and flags, cubemap sizes, overlay render order, the texture axes of hidden sides and the contents of the pakfile".to_owned(),
+            "the game memory is the main source: brushes and materials from the collision data, faces and texture axes from the render data, displacements with their vertex alphas and allowed vertices, static props with their fade distances, overlays with their render order, cubemaps with their sizes, occluders and area portals from the engine structures. Taken from a matching and consistent map file when one is allowed, and left out otherwise: 4 of the 8 static prop flag bits the engine does not mirror one for one, the texture axes of hidden sides and the contents of the pakfile beyond the .mdl of a model".to_owned(),
         );
         if file_bsp.is_none() {
             report.source = "game memory (collision data, render data and entities)".to_owned();
@@ -924,13 +957,10 @@ pub fn produce(
     };
     let Captured { bsp, pak_bsp, entity_text, mut report, .. } = cap;
     let mut bsp = bsp;
-    let mut skip_pak: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let skip_pak: std::collections::HashSet<String> = std::collections::HashSet::new();
     if let Some(b) = bsp.as_ref() {
         let mut un = std::mem::take(&mut report.unprotect);
-        let pak_src = pak_bsp.as_ref().or(Some(b));
-        let (patches, _, _) = pak_src.map(crate::unprotect::patch_map).unwrap_or_default();
-        let need: Vec<(String, [f32; 3])> =
-            un.signatures.iter().filter(|s| !patches.contains_key(&s.0)).cloned().collect();
+        let need: Vec<(String, [f32; 3])> = un.signatures.clone();
         let mut guess = std::collections::HashMap::new();
         if !need.is_empty()
             && let Some(inst) = install
@@ -955,10 +985,18 @@ pub fn produce(
             un.guess_ambiguous = gr.ambiguous;
             guess = g;
         }
-        let (fixed, mut un, files) = crate::unprotect::restore_materials(b, pak_src, &guess, un);
-        skip_pak = files;
+        let (fixed, mut un) = crate::unprotect::restore_materials(b, &guess, un);
         if let Some(nb) = fixed {
             bsp = Some(nb);
+        }
+        if let (Some(cur), Some(inst)) = (bsp.as_ref(), install)
+            && let Ok(fs) = assets::mount_for(&inst.root)
+        {
+            let r = crate::reflfix::apply(cur, &fs);
+            if let Some(nb) = r.bsp {
+                say(Level::Info, format!("reflectivity overrides read from the material files of the game content: {}", r.overridden));
+                bsp = Some(nb);
+            }
         }
         if let Some(b) = bsp.as_ref()
             && let Ok(mut ents) = b.entities()
@@ -1077,29 +1115,74 @@ pub fn produce(
                 say(
                     Level::Info,
                     format!(
-                        "models recovered from the game memory: {} of {} missing ({} bytes, the .mdl file only)",
-                        ar.memory_models, ar.memory_models_wanted, ar.memory_model_bytes
+                        "models recovered from the game memory: {} of {} missing ({} bytes of .mdl), vertex files rebuilt {} ({} bytes, {} not whole, {} not found)",
+                        ar.memory_models,
+                        ar.memory_models_wanted,
+                        ar.memory_model_bytes,
+                        ar.memory_vvds,
+                        ar.memory_vvd_bytes,
+                        ar.memory_vvd_partial,
+                        ar.memory_vvd_failed
+                    ),
+                );
+                say(
+                    Level::Info,
+                    format!(
+                        "strip files rebuilt {} ({} bytes, {} not whole, {} failed), physics files rebuilt {} ({} bytes)",
+                        ar.memory_vtxs, ar.memory_vtx_bytes, ar.memory_vtx_partial, ar.memory_vtx_failed, ar.memory_phys, ar.memory_phy_bytes
                     ),
                 );
             }
         }
-        if ar.total_files() > 0 || ar.memory_models > 0 {
+        if let (Some(mem), Some(fs)) = (memory, &stock_fs)
+            && settings.save_materials
+        {
+            assets::recover_materials_from_memory(mem, &ScanOptions::default(), fs, &dest, &mut ar);
+            say(
+                Level::Info,
+                format!(
+                    "materials rebuilt from the key values the game holds: {} not on this computer, of {} loaded ({} bytes)",
+                    ar.memory_materials, ar.memory_materials_loaded, ar.memory_material_bytes
+                ),
+            );
+        }
+        if let (Some(mem), Some(fs)) = (memory, &stock_fs)
+            && settings.save_materials
+        {
+            assets::list_video_only_textures(mem, &ScanOptions::default(), fs, &dest, &mut ar);
+            say(
+                Level::Info,
+                format!(
+                    "textures: {} loaded by the engine, {} not on this computer and held by the video card only ({} bytes), listed in textures_in_video_memory.txt",
+                    ar.textures_loaded, ar.textures_video_only, ar.textures_video_only_bytes
+                ),
+            );
+            assets::list_pak_directory(mem, &ScanOptions::default(), &dest, &mut ar);
+            if ar.pak_listed > 0 {
+                say(
+                    Level::Info,
+                    format!(
+                        "pakfile directory held by the game: {} files, {} identical to what was recovered, {} recovered but different, listed in pakfile_listing.txt",
+                        ar.pak_listed, ar.pak_listed_identical, ar.pak_listed_differs
+                    ),
+                );
+            }
+        }
+        if ar.total_files() > 0 || ar.memory_models > 0 || ar.memory_materials > 0 || ar.textures_video_only > 0 {
             content_dir = Some(dest);
         }
         if report.geometry == "game memory" {
             report.sources =
                 crate::merge::source_rows(&report.merge, settings.file_allowed(), ar.content_files, ar.memory_models);
+            let hub_rows = report.hub.source_rows();
+            report.sources.extend(hub_rows);
             let u = &report.unprotect;
             if u.garbage_names > 0 {
                 let detail = format!(
-                    "{} scrambled: {} from the pakfile patch files, {} guessed from the loaded materials, {} custom kept scrambled, {} unresolved",
-                    u.garbage_names, u.restored_from_patch, u.guessed, u.kept_custom, u.unresolved
+                    "{} scrambled: {} guessed from the loaded materials, {} unresolved",
+                    u.garbage_names, u.guessed, u.unresolved
                 );
-                let source = if u.restored_from_patch > 0 && u.guessed > 0 {
-                    "map file and memory"
-                } else if u.restored_from_patch > 0 {
-                    "map file"
-                } else if u.guessed > 0 {
+                let source = if u.guessed > 0 {
                     "memory and game content"
                 } else {
                     "absent"
@@ -1138,7 +1221,7 @@ fn run(shared: &Shared, cancel: &AtomicBool, settings: &SnifferSettings) -> Run<
     settings.validate()?;
     let access = FileAccess::new(settings.file_allowed());
     let (host, port) = settings.parsed_address()?;
-    let install = launch::detect_install(&settings.gmod_dir)?;
+    let install = launch::detect_install_bits(&settings.gmod_dir, settings.game_bits)?;
     shared.say(
         Level::Info,
         format!(
@@ -1428,7 +1511,7 @@ fn run(shared: &Shared, cancel: &AtomicBool, settings: &SnifferSettings) -> Run<
     cap.report.launched_by_us = guard.launched;
     lap(&mut timings, "capture and verify", &mut t);
     let map_name = map_seen.clone().unwrap_or_else(|| "sniffed".to_owned());
-    let (report, produced) = produce(
+    let (mut report, produced) = produce(
         cap,
         &map_name,
         Some(&install),
@@ -1441,6 +1524,23 @@ fn run(shared: &Shared, cancel: &AtomicBool, settings: &SnifferSettings) -> Run<
         &mut timings,
         Some(&proc),
     )?;
+    if settings.read_ldr_lighting && guard.launched {
+        shared.phase(Phase::Finishing, 0.93, "reading the second lighting set from the game");
+        let connect = local.is_none().then(|| format!("{host}:{port}"));
+        crate::ldrpass::after_produce(
+            &proc,
+            &install,
+            &mut tail,
+            settings,
+            local.as_deref(),
+            connect.as_deref(),
+            &mut report,
+            produced.bsp_path.as_deref(),
+            &produced.report_path,
+            cancel,
+            &|t| shared.say(Level::Info, t),
+        );
+    }
     drop(proc);
 
     shared.phase(Phase::Finishing, 0.97, "closing the session");
@@ -1871,7 +1971,7 @@ mod tests {
         props: usize,
     ) -> crate::engine::MemoryExtras {
         let disp: Vec<crate::engine::MemDisp> = (0..displacements)
-            .map(|i| crate::engine::MemDisp { face: i, start: [0.0; 3], power: 2, positions: Vec::new(), file: None })
+            .map(|i| crate::engine::MemDisp { face: i, start: [0.0; 3], power: 2, positions: Vec::new(), file: None, ..Default::default() })
             .collect();
         let overlays: Vec<crate::engine::MemOverlay> = (0..overlays)
             .map(|i| crate::engine::MemOverlay {
@@ -1886,6 +1986,7 @@ mod tests {
                 basis_v: [0.0, 1.0, 0.0],
                 normal: [0.0, 0.0, 1.0],
                 render_order: 0,
+                fade: crate::engine::OVERLAY_FADE_DEFAULT,
                 from_file: false,
             })
             .collect();
@@ -1901,6 +2002,7 @@ mod tests {
                 first_leaf: 0,
                 leaf_count: 1,
                 file: None,
+                ..Default::default()
             })
             .collect();
         crate::engine::MemoryExtras {

@@ -36,6 +36,31 @@ impl InsecureMode {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum GameBits {
+    #[default]
+    Auto,
+    Bits64,
+    Bits32,
+}
+
+impl GameBits {
+    pub const ALL: [GameBits; 3] = [GameBits::Auto, GameBits::Bits64, GameBits::Bits32];
+
+    pub fn id(self) -> &'static str {
+        match self {
+            GameBits::Auto => "auto",
+            GameBits::Bits64 => "64",
+            GameBits::Bits32 => "32",
+        }
+    }
+
+    pub fn from_id(id: &str) -> Option<GameBits> {
+        GameBits::ALL.into_iter().find(|m| m.id().eq_ignore_ascii_case(id.trim()))
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum GeometrySource {
     #[default]
     Auto,
@@ -190,10 +215,13 @@ pub struct SnifferSettings {
     pub gmod_dir: String,
     pub launch_options: String,
     pub insecure: InsecureMode,
+    pub game_bits: GameBits,
     #[serde(skip)]
     pub geometry: GeometrySource,
     #[serde(skip)]
     pub map_file: MapFileMode,
+    pub use_map_file: bool,
+    pub read_ldr_lighting: bool,
     pub attach_running: bool,
     pub process_timeout_secs: u32,
     pub load_timeout_secs: u32,
@@ -222,8 +250,11 @@ impl Default for SnifferSettings {
             gmod_dir: String::new(),
             launch_options: DEFAULT_LAUNCH_OPTIONS.to_owned(),
             insecure: InsecureMode::Auto,
+            game_bits: GameBits::Auto,
             geometry: GeometrySource::Auto,
-            map_file: MapFileMode::Compare,
+            map_file: MapFileMode::Never,
+            use_map_file: false,
+            read_ldr_lighting: true,
             attach_running: false,
             process_timeout_secs: 180,
             load_timeout_secs: 900,
@@ -251,6 +282,9 @@ pub const SETTING_KEYS: &[(&str, &str)] = &[
     ("gmod_dir", "text"),
     ("launch_options", "text"),
     ("insecure", "auto|always|never"),
+    ("game_bits", "auto|64|32"),
+    ("use_map_file", "bool"),
+    ("read_ldr_lighting", "bool"),
     ("attach_running", "bool"),
     ("process_timeout_secs", "number"),
     ("load_timeout_secs", "number"),
@@ -270,6 +304,7 @@ pub const SETTING_KEYS: &[(&str, &str)] = &[
 
 impl SnifferSettings {
     pub fn clamped(mut self) -> Self {
+        self.map_file = if self.use_map_file { MapFileMode::Compare } else { MapFileMode::Never };
         self.process_timeout_secs = self.process_timeout_secs.clamp(10, 3600);
         self.load_timeout_secs = self.load_timeout_secs.clamp(30, 7200);
         self.settle_secs = self.settle_secs.clamp(0, 300);
@@ -293,6 +328,9 @@ impl SnifferSettings {
             "gmod_dir" => V::Text(self.gmod_dir.clone()),
             "launch_options" => V::Text(self.launch_options.clone()),
             "insecure" => V::Text(self.insecure.id().to_owned()),
+            "game_bits" => V::Text(self.game_bits.id().to_owned()),
+            "use_map_file" => V::Bool(self.use_map_file),
+            "read_ldr_lighting" => V::Bool(self.read_ldr_lighting),
             "attach_running" => V::Bool(self.attach_running),
             "process_timeout_secs" => V::Number(f64::from(self.process_timeout_secs)),
             "load_timeout_secs" => V::Number(f64::from(self.load_timeout_secs)),
@@ -348,6 +386,15 @@ impl SnifferSettings {
                 self.insecure =
                     InsecureMode::from_id(&t).ok_or_else(|| "insecure must be auto, always or never".to_owned())?;
             }
+            "use_map_file" => {
+                self.use_map_file = bool_of(value)?;
+                self.map_file = if self.use_map_file { MapFileMode::Compare } else { MapFileMode::Never };
+            }
+            "read_ldr_lighting" => self.read_ldr_lighting = bool_of(value)?,
+            "game_bits" => {
+                let t = text_of(value)?;
+                self.game_bits = GameBits::from_id(&t).ok_or_else(|| "game_bits must be auto, 64 or 32".to_owned())?;
+            }
             "attach_running" => self.attach_running = bool_of(value)?,
             "process_timeout_secs" => self.process_timeout_secs = num_of(value)?,
             "load_timeout_secs" => self.load_timeout_secs = num_of(value)?,
@@ -383,6 +430,7 @@ impl SnifferSettings {
             "map_file" => {
                 self.map_file =
                     MapFileMode::from_id(&text).ok_or_else(|| "map_file must be compare or never".to_owned())?;
+                self.use_map_file = self.map_file == MapFileMode::Compare;
                 Ok(())
             }
             _ => self.set(key, value),
@@ -399,7 +447,11 @@ impl SnifferSettings {
     }
 
     pub fn file_allowed(&self) -> bool {
-        self.map_file == MapFileMode::Compare
+        self.use_map_file
+    }
+
+    pub fn map_file_mode(&self) -> MapFileMode {
+        if self.use_map_file { MapFileMode::Compare } else { MapFileMode::Never }
     }
 
     pub fn parsed_address(&self) -> Result<(String, u16), String> {
@@ -624,5 +676,28 @@ mod tests {
                 assert!(SnifferSettings::default().get(key).is_some(), "{key}");
             }
         }
+    }
+
+    #[test]
+    fn the_map_file_is_off_by_default_and_the_new_settings_are_reachable() {
+        let mut s = SnifferSettings::default();
+        assert!(!s.use_map_file && !s.file_allowed());
+        assert_eq!(s.map_file_mode(), MapFileMode::Never);
+        assert!(s.read_ldr_lighting);
+        assert_eq!(s.game_bits, GameBits::Auto);
+        assert_eq!(s.get("use_map_file"), Some(SettingValue::Bool(false)));
+        assert!(s.set("use_map_file", &SettingValue::Text("yes".into())).is_ok());
+        assert!(s.file_allowed());
+        assert_eq!(s.map_file_mode(), MapFileMode::Compare);
+        assert!(s.set("read_ldr_lighting", &SettingValue::Bool(false)).is_ok());
+        assert!(s.set("game_bits", &SettingValue::Text("32".into())).is_ok());
+        assert_eq!(s.get("game_bits"), Some(SettingValue::Text("32".to_owned())));
+        assert!(s.set("game_bits", &SettingValue::Text("16".into())).is_err());
+        let text = toml::to_string(&s).expect("toml");
+        let back: SnifferSettings = toml::from_str(&text).expect("back");
+        assert!(back.file_allowed() && !back.read_ldr_lighting && back.game_bits == GameBits::Bits32);
+        assert_eq!(back.map_file_mode(), MapFileMode::Compare, "the mode follows the saved switch, not a hidden field");
+        let old: SnifferSettings = toml::from_str("address = \"x:1\"").expect("old file");
+        assert!(!old.file_allowed(), "settings saved before the switch existed do not read map files");
     }
 }

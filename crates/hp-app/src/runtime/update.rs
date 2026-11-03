@@ -162,6 +162,16 @@ pub const TR: TrTable = &[
         "Hammer Pro cherche une version plus récente sur GitHub en arrière-plan et propose de l'installer. Rien n'est téléchargé avant que vous cliquiez sur Mettre à jour.",
     ),
     ("update.check_on_startup", "Check for updates on startup", "Rechercher les mises à jour au démarrage"),
+    (
+        "update.show_dialog",
+        "Show the update window when a new version is out",
+        "Afficher la fenêtre de mise à jour quand une nouvelle version sort",
+    ),
+    (
+        "update.show_dialog_hint",
+        "Turn this back on to undo Don't show this again, whichever version you hid.",
+        "Réactivez cette option pour annuler Ne plus afficher, quelle que soit la version masquée.",
+    ),
     ("update.check_now", "Check for updates now", "Rechercher maintenant"),
     ("update.show_update", "Show the update", "Afficher la mise à jour"),
     ("update.current_version", "Installed version: {0}", "Version installée : {0}"),

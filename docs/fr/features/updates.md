@@ -40,6 +40,7 @@ Le programme est remplacé **au même endroit** que celui que vous avez lancé :
 | Option | Effet | Défaut |
 | --- | --- | --- |
 | **Rechercher les mises à jour au démarrage** | Désactive ou active la recherche en arrière-plan au démarrage. Clé `update.check_on_startup`. | activé |
+| **Afficher la fenêtre de mise à jour quand une nouvelle version sort** | L'interrupteur principal de la fenêtre. Réactivez-le pour annuler **Ne plus afficher**, quelle que soit la version masquée : il efface aussi la version ignorée. Clé `update.show_dialog`. | activé |
 | **Rechercher maintenant** | Cherche tout de suite et ouvre la fenêtre si une version plus récente existe (ou vous dit que vous êtes à jour). | |
 | **Afficher la mise à jour** | Rouvre la fenêtre de la mise à jour trouvée. | |
 | Ligne d'état | *Hammer Pro est à jour (dernière version : 1.0.2)*, *La version 1.0.3 est disponible.*, ou la raison de l'échec de la dernière recherche. | |
@@ -72,7 +73,7 @@ Sans `HP_UPDATE_API_URL`, les téléchargements ne sont acceptés que depuis `gi
 
 ## MCP
 
-Les assistants IA lisent l'état avec `get_update_status` (version installée, état, version la plus récente avec ses notes, progression, erreurs, préférences), demandent une recherche avec `check_for_updates`, installent avec `apply_update` (demande `confirm: true`, une mise à jour trouvée et aucune compilation en cours ; il ferme Hammer Pro, donc seulement à la demande de l'utilisateur), et changent `update.check_on_startup` et `update.skipped_version` avec `set_setting`. L'action `install_update` de `run_action` demande aussi `confirm`. Voir la [référence des outils MCP](../../MCP.md).
+Les assistants IA lisent l'état avec `get_update_status` (version installée, état, version la plus récente avec ses notes, progression, erreurs, préférences), demandent une recherche avec `check_for_updates`, installent avec `apply_update` (demande `confirm: true`, une mise à jour trouvée et aucune compilation en cours ; il ferme Hammer Pro, donc seulement à la demande de l'utilisateur), et changent `update.check_on_startup`, `update.show_dialog` et `update.skipped_version` avec `set_setting`. L'action `install_update` de `run_action` demande aussi `confirm`. Voir la [référence des outils MCP](../../MCP.md).
 
 ## Pages liées
 

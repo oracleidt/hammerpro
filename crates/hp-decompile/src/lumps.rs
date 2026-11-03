@@ -96,6 +96,7 @@ pub(crate) struct Leaf {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Model {
+    pub origin: DVec3,
     pub headnode: i32,
     pub firstface: i32,
     pub numfaces: i32,
@@ -258,6 +259,7 @@ impl Lumps {
         l.leafbrushes = records(&leafbrushes, 2, |b| u16_at(b, 0));
         let models = lump_bytes(bsp, lump::MODELS, false, warnings)?;
         l.models = records(&models, 48, |b| Model {
+            origin: vec_at(b, 24),
             headnode: i32_at(b, 36),
             firstface: i32_at(b, 40),
             numfaces: i32_at(b, 44),

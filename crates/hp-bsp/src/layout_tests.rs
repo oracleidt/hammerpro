@@ -91,6 +91,12 @@ fn world_lumps(seed: u64) -> Vec<(usize, Vec<u8>)> {
         }
     }
     let faceids: Vec<u8> = (0..nf * 2).map(|i| i as u8).collect();
+    let mut nrng = Rng::from_u64(seed ^ 0x77);
+    let vertnormals = f32s(&mut nrng, 20 * 3);
+    let mut vertnormal_indices = Vec::new();
+    for _ in 0..nf * 3 {
+        push16(&mut vertnormal_indices, nrng.below(20) as i64);
+    }
     let mut nodes = Vec::new();
     for n in 0..nn {
         push32(&mut nodes, rng.below(np) as i64);
@@ -197,6 +203,8 @@ fn world_lumps(seed: u64) -> Vec<(usize, Vec<u8>)> {
         (lump::FACES, faces),
         (lump::LEAFS, leafs),
         (11, faceids),
+        (30, vertnormals),
+        (31, vertnormal_indices),
         (12, edges),
         (13, surf),
         (lump::MODELS, models),
@@ -294,8 +302,27 @@ impl View {
         out
     }
 
+    fn normals(&self, f: usize) -> Vec<u8> {
+        let faces = self.l(lump::FACES);
+        let indices = self.l(31);
+        let normals = self.l(30);
+        let start: usize = (0..f).map(|k| u16_at(&faces, k * 56 + 8) as usize).sum();
+        let count = u16_at(&faces, f * 56 + 8) as usize;
+        let mut out = Vec::new();
+        for k in 0..count {
+            let at = (start + k) * 2;
+            if at + 2 > indices.len() {
+                break;
+            }
+            let i = u16_at(&indices, at) as usize;
+            out.extend_from_slice(&normals[i * 12..i * 12 + 12]);
+        }
+        out
+    }
+
     fn face_all(&self, f: usize) -> Vec<u8> {
         let mut out = self.face(lump::FACES, f);
+        out.extend(self.normals(f));
         if !self.l(lump::FACES_HDR).is_empty() {
             out.extend(self.face(lump::FACES_HDR, f));
         }
@@ -417,7 +444,7 @@ fn reordering_keeps_every_resolved_structure() {
         let (after_bsp, rep) = apply_reorder(&before.bsp, seed * 31);
         assert_eq!(
             rep.applied,
-            vec!["planes", "texinfo", "texdata", "vertexes", "edges", "brushes", "faces", "leaf_lists"],
+            vec!["planes", "texinfo", "texdata", "vertexes", "edges", "brushes", "faces"],
             "skipped: {:?}",
             rep.skipped
         );
@@ -632,7 +659,7 @@ fn protect_with_every_option_keeps_the_map_and_reports_it() {
     assert_eq!(ra.layout_seed, "fixed seed");
     assert_eq!(ra, rb);
     assert!(ra.decoy_blocks >= 4 && ra.gap_bytes > 0);
-    assert_eq!(ra.reordered.len(), 8, "{:?}", ra.reordered);
+    assert_eq!(ra.reordered.len(), 7, "{:?}", ra.reordered);
     let before = View { bsp: world_bsp(15) };
     let after = View { bsp: Bsp::from_vec(a.clone()).unwrap() };
     let (bd, ad) = (before.digest(), after.digest());
@@ -663,7 +690,7 @@ fn real_map_reorder_and_layout_keep_the_resolved_world() {
         opts.layout_seed = format!("real{seed}");
         opts.randomize_materials = false;
         let (bytes, rep) = protect(&bsp, &opts).unwrap();
-        assert_eq!(rep.reordered.len(), 8, "{:?}", rep.reordered);
+        assert_eq!(rep.reordered.len(), 7, "{:?}", rep.reordered);
         let after = View { bsp: Bsp::from_vec(bytes).unwrap() }.core_digest();
         assert_eq!(before.len(), after.len());
         for (i, (b, a)) in before.iter().zip(after.iter()).enumerate() {

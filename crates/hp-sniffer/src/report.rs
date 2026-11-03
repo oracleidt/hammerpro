@@ -164,6 +164,7 @@ pub struct MemoryRecovery {
     pub cubemaps: usize,
     pub area_portals: usize,
     pub area_portal_verts: usize,
+    pub occluders: usize,
     pub faces_address: u64,
     pub texinfo_address: u64,
 }
@@ -171,7 +172,9 @@ pub struct MemoryRecovery {
 #[derive(Clone, Debug, Default)]
 pub struct SniffReport {
     pub passthrough: crate::passthrough::Passthrough,
+    pub hub: crate::hubdata::HubReport,
     pub unprotect: crate::unprotect::UnprotectReport,
+    pub client: crate::clientents::ClientRecovery,
     pub map: String,
     pub server_name: String,
     pub address: String,
@@ -232,8 +235,8 @@ impl SniffReport {
         if self.unprotect.protected() {
             let u = &self.unprotect;
             line(format!(
-                "protected map (Hammer Pro protector): {} scrambled material names, {} restored from the patch files of the pakfile, {} guessed from the loaded materials ({} ambiguous), {} kept as scrambled custom materials, {} unresolved",
-                u.garbage_names, u.restored_from_patch, u.guessed, u.guess_ambiguous, u.kept_custom, u.unresolved
+                "protected map (Hammer Pro protector): {} scrambled material names, {} guessed from the loaded materials ({} ambiguous), {} unresolved (renamed custom materials cannot be named)",
+                u.garbage_names, u.guessed, u.guess_ambiguous, u.unresolved
             ));
             if let Some(w) = &u.watermark {
                 line(format!("watermark found in the map: {w}"));
@@ -242,12 +245,42 @@ impl SniffReport {
                 line(format!("server lock hash found in the map: {h}"));
             }
         }
+        if self.client.attempted {
+            let c = &self.client;
+            match &c.error {
+                Some(e) => line(format!("client entities: not read ({e})")),
+                None => {
+                    line(format!(
+                        "client entities (networked entities of the client): {} read in {} reads, {} created by the map, {} without a class name, {} matched to the entity lump, {} added, {} parent names restored",
+                        c.networked, c.observations, c.map_created, c.unnamed, c.matched, c.added, c.parents_restored
+                    ));
+                    if !c.added_classes.is_empty() {
+                        let list: Vec<String> = c.added_classes.iter().map(|(n, k)| format!("{n} {k}")).collect();
+                        line(format!("entities added from the client: {}", list.join(", ")));
+                    }
+                    if c.original_at_least > 0 {
+                        line(format!(
+                            "the map creation ids show the original entity lump had at least {} entities: the file and the client give {}, at least {} (logic, nodes, paths and the other entities the server never sends) cannot be recovered",
+                            c.original_at_least,
+                            c.lump_entities + c.added,
+                            c.unrecoverable_at_least
+                        ));
+                    }
+                    for n in &c.notes {
+                        line(format!("client entities note: {n}"));
+                    }
+                }
+            }
+        }
         if !self.passthrough.names().is_empty() {
             line(format!(
                 "lumps taken from the map file as they are ({} bytes), because the structures they index are identical: {}",
                 self.passthrough.bytes(),
                 self.passthrough.names().join(", ")
             ));
+        }
+        for l in self.hub.render() {
+            line(l);
         }
         line(format!("geometry source: {}", self.source));
         line(format!("geometry rebuilt from: {}", self.geometry));
@@ -407,6 +440,12 @@ impl SniffReport {
             d.areaportals,
             d.occluders
         ));
+        if d.orphan_models > 0 {
+            line(format!(
+                "brush models no entity uses (their entity was removed): {} made into brush entities by the decompiler",
+                d.orphan_models
+            ));
+        }
         let a = &self.assets;
         line(format!(
             "assets: pakfile {} files ({} bytes, {} stock skipped), game content {} files ({} bytes, {} stock skipped, {} failed, {} missing)",
@@ -421,8 +460,42 @@ impl SniffReport {
         ));
         if a.memory_models_wanted > 0 || a.memory_models > 0 {
             line(format!(
-                "  models recovered from the game memory (the .mdl file only): {} of {} wanted, {} bytes",
-                a.memory_models, a.memory_models_wanted, a.memory_model_bytes
+                "  models recovered from the game memory: {} of {} wanted, {} bytes of .mdl; vertex files (.vvd) rebuilt {} ({} bytes, {} with vertices the engine dropped, {} not found)",
+                a.memory_models,
+                a.memory_models_wanted,
+                a.memory_model_bytes,
+                a.memory_vvds,
+                a.memory_vvd_bytes,
+                a.memory_vvd_partial,
+                a.memory_vvd_failed
+            ));
+            line(format!(
+                "  strip files (.dx90.vtx) rebuilt {} ({} bytes, {} not whole, {} failed); physics files (.phy) rebuilt {} ({} bytes)",
+                a.memory_vtxs, a.memory_vtx_bytes, a.memory_vtx_partial, a.memory_vtx_failed, a.memory_phys, a.memory_phy_bytes
+            ));
+        }
+        if a.textures_loaded > 0 {
+            line(format!(
+                "  textures: {} loaded by the engine, {} not on this computer and kept by the video card only ({} bytes)",
+                a.textures_loaded, a.textures_video_only, a.textures_video_only_bytes
+            ));
+            if a.textures_with_file > 0 {
+                line(format!(
+                    "  texture copies in the process memory: of {} textures with a file on this computer {} have the whole file resident, {} partly, the others live in video memory only; {} whole texture files ({} bytes) are resident in all",
+                    a.textures_with_file, a.textures_resident_whole, a.textures_resident_partial, a.vtf_blobs_resident, a.vtf_blobs_resident_bytes
+                ));
+            }
+        }
+        if a.pak_listed > 0 {
+            line(format!(
+                "  pakfile directory held by the game: {} files, {} identical to the recovered file (size and checksum), {} recovered but different, the others not recovered",
+                a.pak_listed, a.pak_listed_identical, a.pak_listed_differs
+            ));
+        }
+        if a.memory_materials_loaded > 0 {
+            line(format!(
+                "  materials rebuilt from the key values in the game memory: {} not on this computer, of {} loaded ({} bytes)",
+                a.memory_materials, a.memory_materials_loaded, a.memory_material_bytes
             ));
         }
         for (k, n) in &a.by_class {

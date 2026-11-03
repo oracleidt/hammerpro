@@ -92,6 +92,7 @@ pub struct Report {
     pub failed_occluders: usize,
     pub areaportals: usize,
     pub entities: usize,
+    pub orphan_models: usize,
     pub empty_brush_entities: usize,
     pub renamed_materials: usize,
     pub warnings: Vec<String>,
@@ -128,7 +129,7 @@ pub fn decompile(bsp: &Bsp, options: &Options) -> Result<Decompiled, DecompileEr
         return Err(DecompileError::Empty);
     }
     let map_name = options.map_name.as_str();
-    let source_entities = bsp.entities().unwrap_or_else(|e| {
+    let mut source_entities = bsp.entities().unwrap_or_else(|e| {
         report.warnings.push(format!("the entity lump could not be read: {e}"));
         Vec::new()
     });
@@ -147,6 +148,12 @@ pub fn decompile(bsp: &Bsp, options: &Options) -> Result<Decompiled, DecompileEr
         {
             model_offsets.entry(m).or_insert_with(|| origin_of(e));
         }
+    }
+
+    for (m, entity, origin) in solids::orphan_models(&l, &model_offsets) {
+        model_offsets.insert(m, origin);
+        source_entities.push(entity);
+        report.orphan_models += 1;
     }
 
     let toggles = options.toggles;

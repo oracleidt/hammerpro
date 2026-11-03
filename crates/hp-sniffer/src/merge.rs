@@ -26,6 +26,13 @@ pub struct MergeStats {
     pub texinfo: usize,
     pub texinfo_from_file: usize,
     pub pak_files: usize,
+    pub disp_alpha_mem: usize,
+    pub disp_allowed_mem: usize,
+    pub prop_fade_mem: usize,
+    pub prop_flags_mem: usize,
+    pub cube_sizes_mem: usize,
+    pub overlay_order_mem: usize,
+    pub occluders_mem: usize,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -151,6 +158,7 @@ fn merge_props(world: &mut MemoryWorld, file: &Bsp, stats: &mut MergeStats) {
             first_leaf: rec.first_leaf,
             leaf_count: rec.leaf_count,
             file: Some(rec.clone()),
+            ..Default::default()
         });
         stats.props_added_from_file += 1;
     }
@@ -158,6 +166,9 @@ fn merge_props(world: &mut MemoryWorld, file: &Bsp, stats: &mut MergeStats) {
 
 fn merge_cubemaps(world: &mut MemoryWorld, file: &Bsp, stats: &mut MergeStats) {
     stats.cubemaps = world.extras.cubemaps.len();
+    if world.extras.cubemap_file.is_some() {
+        return;
+    }
     let raw = lump(file, 42);
     let entries: Vec<[i32; 4]> =
         raw.chunks_exact(16).map(|c| [i32_at(c, 0), i32_at(c, 4), i32_at(c, 8), i32_at(c, 12)]).collect();
@@ -192,7 +203,6 @@ fn merge_overlays(world: &mut MemoryWorld, file: &Bsp, stats: &mut MergeStats) {
         let Some(rec) = raw.get(o.id as usize * 352..o.id as usize * 352 + 352) else { continue };
         let same_origin = (0..3).all(|k| (f32_at(rec, 328 + k * 4) - o.origin[k]).abs() < 0.01);
         if i32_at(rec, 0) == o.id && i16_at(rec, 4) as i32 == o.texinfo && same_origin {
-            o.render_order = u16_at(rec, 6) >> 14;
             o.from_file = true;
             stats.overlays_from_file += 1;
         }
@@ -364,8 +374,24 @@ fn merge_texinfo_names(world: &mut MemoryWorld, file: &Bsp, stats: &mut MergeSta
     }
 }
 
+pub fn note_memory(world: &MemoryWorld, stats: &mut MergeStats) {
+    let x = &world.extras;
+    stats.displacements = x.displacements.len();
+    stats.disp_alpha_mem = x.displacements.iter().filter(|d| d.alphas.is_some()).count();
+    stats.disp_allowed_mem = x.displacements.iter().filter(|d| d.allowed.is_some()).count();
+    stats.props = x.props.len();
+    stats.prop_fade_mem = x.fades_set;
+    stats.prop_flags_mem = x.props.iter().filter(|p| p.index.is_some()).count();
+    stats.cubemaps = x.cubemaps.len();
+    stats.cube_sizes_mem = x.cubemap_file.as_ref().map_or(0, Vec::len);
+    stats.overlays = x.overlays.len();
+    stats.overlay_order_mem = x.overlays.len();
+    stats.occluders_mem = x.occlusion.as_ref().map_or(0, |o| o.occluders.len());
+}
+
 pub fn merge(world: &mut MemoryWorld, file: &Bsp) -> MergeStats {
     let mut stats = MergeStats { file_used: true, ..MergeStats::default() };
+    note_memory(world, &mut stats);
     align_leafs(world, file, &mut stats);
     merge_texinfo_names(world, file, &mut stats);
     merge_displacements(world, file, &mut stats);
@@ -412,6 +438,17 @@ pub fn source_rows(stats: &MergeStats, file_allowed: bool, game_files: usize, me
             ("absent", format!("0 of {total}"))
         }
     };
+    let pick_mem = |mem: usize, from_file: usize, total: usize| -> (&'static str, String) {
+        if total > 0 && mem >= total {
+            ("memory", format!("{mem} of {total}"))
+        } else if mem > 0 && file && from_file > 0 {
+            ("memory and map file", format!("{mem} of {total} from the memory, the rest from the file"))
+        } else if mem > 0 {
+            ("memory", format!("{mem} of {total}"))
+        } else {
+            pick(from_file, total)
+        }
+    };
     let mut out = vec![
         row("entities", "memory", String::new()),
         row("brushes, planes and materials", "memory", String::new()),
@@ -420,12 +457,15 @@ pub fn source_rows(stats: &MergeStats, file_allowed: bool, game_files: usize, me
     let (s, d) = if file {
         ("memory and map file", format!("{} of {} sides from the file", stats.sides_from_file, stats.sides))
     } else {
-        ("memory", "sides no face covers use world aligned axes".to_owned())
+        ("memory", "sides no face covers take the texture info of the same material that fits their plane (approximate)".to_owned())
     };
     out.push(row("texture axes of hidden sides", s, d));
     out.push(row("displacement geometry", "memory", String::new()));
-    let (s, d) = pick(stats.displacements_from_file, stats.displacements);
-    out.push(row("displacement alphas, tags and allowed vertices", s, d));
+    let (s, d) = pick_mem(stats.disp_alpha_mem, stats.displacements_from_file, stats.displacements);
+    out.push(row("displacement vertex alphas", s, d));
+    let (s, d) = pick_mem(stats.disp_allowed_mem, stats.displacements_from_file, stats.displacements);
+    out.push(row("displacement allowed vertices", s, d));
+    out.push(row("displacement triangle tags", "memory", "computed from the slopes of the recovered geometry".to_owned()));
     if stats.props_added_from_file > 0 {
         out.push(row(
             "static props placement",
@@ -435,14 +475,25 @@ pub fn source_rows(stats: &MergeStats, file_allowed: bool, game_files: usize, me
     } else {
         out.push(row("static props placement", "memory", String::new()));
     }
-    let (s, d) = pick(stats.props_from_file, stats.props);
-    out.push(row("static props fade distances and flags", s, d));
+    let (s, d) = pick_mem(stats.prop_flags_mem, stats.props_from_file, stats.props);
+    out.push(row("static props flags", s, d));
+    let (s, d) = if stats.prop_fade_mem > 0 {
+        ("memory", format!("{} fade records", stats.prop_fade_mem))
+    } else {
+        pick(stats.props_from_file, stats.props)
+    };
+    out.push(row("static props fade distances", s, d));
     out.push(row("overlays", "memory", String::new()));
-    let (s, d) = pick(stats.overlays_from_file, stats.overlays);
+    let (s, d) = pick_mem(stats.overlay_order_mem, stats.overlays_from_file, stats.overlays);
     out.push(row("overlay render order", s, d));
     out.push(row("cubemaps", "memory", String::new()));
-    let (s, d) = pick(stats.cubemaps_from_file, stats.cubemaps);
+    let (s, d) = pick_mem(stats.cube_sizes_mem, stats.cubemaps_from_file, stats.cubemaps);
     out.push(row("cubemap sizes", s, d));
+    if stats.occluders_mem > 0 {
+        out.push(row("occluders", "memory", format!("{} occluders", stats.occluders_mem)));
+    } else {
+        out.push(row("occluders", "memory", "none in the engine".to_owned()));
+    }
     out.push(row("area portals", "memory", String::new()));
     let pak = if stats.pak_files > 0 {
         row("pakfile", "map file", format!("{} files", stats.pak_files))

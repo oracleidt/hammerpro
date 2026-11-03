@@ -52,6 +52,8 @@ pub struct MemoryCm {
     pub models: Vec<CModel>,
     pub nodes_addr: u64,
     pub nodes: Vec<CNode>,
+    pub vis: Option<(u64, usize)>,
+    pub structured: bool,
 }
 
 fn u16_at(d: &[u8], at: usize) -> u16 {
@@ -246,7 +248,25 @@ pub fn read_models<S: MemSource + ?Sized>(src: &S, addr: u64, count: usize) -> V
         .collect()
 }
 
+pub fn find_full_struct<S: MemSource + ?Sized>(src: &S, opts: &ScanOptions) -> Option<MemoryCm> {
+    let ents: Vec<(u64, usize)> = crate::scan::find_entity_lumps(src, &ScanOptions { writable_only: true, min_region: 1 << 16, ..*opts })
+        .into_iter()
+        .map(|h| (h.addr, h.text.len()))
+        .collect();
+    let cs = crate::cmstruct::find_by_entities(src, &ents, &[8, 4]).or_else(|| {
+        let g = find_cm_geometry(src, opts)?;
+        crate::cmstruct::find_by_planes(src, g.planes_addr, g.planes, &[8, 4])
+    })?;
+    let p = crate::hubdec::profile_for(cs.ptr)?;
+    let mut mc = crate::cmstruct::read_memory_cm(src, &cs, p.cm_model_stride)?;
+    attach_surfaces(src, &mut mc.cm, Some(mc.leafs_addr), opts);
+    Some(mc)
+}
+
 pub fn find_full<S: MemSource + ?Sized>(src: &S, opts: &ScanOptions) -> Option<MemoryCm> {
+    if let Some(m) = find_full_struct(src, opts) {
+        return Some(m);
+    }
     let mut cm = find_cm_geometry(src, opts)?;
     if cm.planes == 0 || cm.sides.is_empty() && cm.boxes.is_empty() {
         return None;
@@ -265,7 +285,7 @@ pub fn find_full<S: MemSource + ?Sized>(src: &S, opts: &ScanOptions) -> Option<M
     if models.is_empty() {
         return None;
     }
-    Some(MemoryCm { cm, plane_bytes, leafs_addr, leafs, leafbrushes, models_addr, models, nodes_addr, nodes })
+    Some(MemoryCm { cm, plane_bytes, leafs_addr, leafs, leafbrushes, models_addr, models, nodes_addr, nodes, vis: None, structured: false })
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -273,19 +293,132 @@ pub struct MemoryWorld {
     pub cm: MemoryCm,
     pub render: Option<RenderWorld>,
     pub extras: MemoryExtras,
+    pub hub: Option<crate::hubdata::HubData>,
+}
+
+impl MemoryWorld {
+    pub fn narrow(&self) -> bool {
+        self.hub.as_ref().is_some_and(|h| h.ptr != 8)
+    }
+
+    pub fn displacements_now<S: MemSource + ?Sized>(&self, src: &S, faces: &mut [crate::world::RenderFace]) -> usize {
+        match &self.hub {
+            Some(h) if h.ptr != 8 => {
+                let Some(p) = crate::hubdec::profile_for(h.ptr) else { return 0 };
+                crate::hubdisp::refresh_faces(src, h.base, h.ptr, faces);
+                crate::hubdisp::read_displacements(src, faces, &p).len()
+            }
+            _ => {
+                if let Some(r) = &self.render {
+                    crate::engine::refresh_displacement_pointers(src, r.faces_addr, faces);
+                }
+                crate::engine::read_displacements(src, faces).len()
+            }
+        }
+    }
+
+    pub fn extras_now<S: MemSource + ?Sized>(&self, src: &S, opts: &ScanOptions, map: &str) -> Option<MemoryExtras> {
+        let r = self.render.as_ref()?;
+        match &self.hub {
+            Some(h) if h.ptr != 8 => {
+                let mut faces = r.faces.clone();
+                let p = crate::hubdec::profile_for(h.ptr)?;
+                crate::hubdisp::refresh_faces(src, h.base, h.ptr, &mut faces);
+                Some(narrow_extras(src, opts, r, &faces, &p, &self.cm.plane_bytes, map))
+            }
+            _ => Some(find_extras(src, opts, r, &self.cm.plane_bytes, map)),
+        }
+    }
+
+    pub fn refresh_hub<S: MemSource + ?Sized>(&mut self, src: &S, hdr: bool) -> bool {
+        match crate::hubdata::capture(src, &self.cm, &[8, 4], hdr) {
+            Some((_, data)) => {
+                self.hub = Some(data);
+                true
+            }
+            None => false,
+        }
+    }
 }
 
 impl From<MemoryCm> for MemoryWorld {
     fn from(cm: MemoryCm) -> MemoryWorld {
-        MemoryWorld { cm, render: None, extras: MemoryExtras::default() }
+        MemoryWorld { cm, render: None, extras: MemoryExtras::default(), hub: None }
     }
 }
 
 pub fn find_all<S: MemSource + ?Sized>(src: &S, opts: &ScanOptions, map: &str) -> Option<MemoryWorld> {
-    let cm = find_full(src, opts)?;
-    let render = find_render_world(src, opts, cm.cm.planes_addr, &cm.plane_bytes);
+    find_all_mode(src, opts, map, true)
+}
+
+pub fn find_all_mode<S: MemSource + ?Sized>(src: &S, opts: &ScanOptions, map: &str, hdr: bool) -> Option<MemoryWorld> {
+    let mut cm = find_full(src, opts)?;
+    let captured = crate::hubdata::capture(src, &cm, &[8, 4], hdr);
+    let hub_occlusion = captured.as_ref().and_then(|(h, _)| {
+        use crate::hub::Field;
+        crate::occlusion::read_arrays(
+            src,
+            (h.addr(Field::Occluders), h.array(Field::Occluders).count),
+            (h.addr(Field::OccluderPolys), h.array(Field::OccluderPolys).count),
+            (h.addr(Field::OccluderIndices), h.array(Field::OccluderIndices).count),
+        )
+    });
+    let (render, hub) = match captured {
+        Some((hub, data)) => {
+            let p = crate::hubdec::profile_for(hub.ptr).unwrap_or(crate::hubdec::X64);
+            let texinfo = crate::hubdata::read_texinfo(src, &hub, &p).unwrap_or_default();
+            let mut r = data.render_world(&hub, &p, texinfo);
+            r.material_ids = crate::world::read_material_ids(src, &r.texinfo);
+            if data.cm_leaf_drop > 0 {
+                cm.leafs.drain(..data.cm_leaf_drop);
+                cm.leafs_addr += (data.cm_leaf_drop * LEAF_RECORD) as u64;
+            }
+            if !data.names.is_empty() && cm.cm.surface_names.len() != data.names.len() {
+                cm.cm.surface_names = data.names.clone();
+            }
+            let leafs_n = hub.count(crate::hub::Field::Leafs);
+            if leafs_n > 0 && cm.leafs.len() > leafs_n {
+                cm.leafs.truncate(leafs_n);
+            }
+            let ok = !r.faces.is_empty() && !r.texinfo.is_empty() && !r.vertexes.is_empty();
+            let mut data = data;
+            if !cm.structured {
+                data.problems.push(
+                    "the collision world was found by scanning for its brush table, its structure was not recognised".to_owned(),
+                );
+            }
+            (ok.then_some(r), Some(data))
+        }
+        None => (find_render_world(src, opts, cm.cm.planes_addr, &cm.plane_bytes), None),
+    };
+    let wide = hub.as_ref().is_none_or(|h| h.ptr == 8);
     let extras = match &render {
-        Some(r) => find_extras(src, opts, r, &cm.plane_bytes, map),
+        Some(r) if !wide => {
+            let mut x = MemoryExtras::default();
+            if let Some(h) = &hub
+                && let Some(p) = crate::hubdec::profile_for(h.ptr)
+            {
+                x = narrow_extras(src, opts, r, &r.faces, &p, &cm.plane_bytes, map);
+            }
+            x.occlusion = hub_occlusion.clone();
+            x
+        }
+        Some(r) => {
+            let mut x = find_extras(src, opts, r, &cm.plane_bytes, map);
+            if hub.is_some() {
+                let found = std::mem::take(&mut x.displacements);
+                x.displacements = crate::engine::read_displacements(src, &r.faces);
+                for (d, f) in x.displacements.iter_mut().zip(found) {
+                    if d.face == f.face {
+                        d.alphas = f.alphas;
+                    }
+                }
+            }
+            if hub_occlusion.is_some() {
+                x.occlusion = hub_occlusion.clone();
+            }
+            x
+        }
         None => MemoryExtras {
             area_portals: crate::engine::find_area_portals(src, opts, &cm.plane_bytes),
             props: crate::engine::find_static_props(src, opts).0,
@@ -293,7 +426,39 @@ pub fn find_all<S: MemSource + ?Sized>(src: &S, opts: &ScanOptions, map: &str) -
             ..MemoryExtras::default()
         },
     };
-    Some(MemoryWorld { cm, render, extras })
+    Some(MemoryWorld { cm, render, extras, hub })
+}
+
+pub fn narrow_extras<S: MemSource + ?Sized>(
+    src: &S,
+    opts: &ScanOptions,
+    r: &crate::world::RenderWorld,
+    faces: &[crate::world::RenderFace],
+    p: &crate::hubdec::Profile,
+    plane_bytes: &[u8],
+    map: &str,
+) -> MemoryExtras {
+    let mut x = MemoryExtras { displacements: crate::hubdisp::read_displacements(src, faces, p), ..MemoryExtras::default() };
+    let alpha_found = {
+        let targets: Vec<&[[f32; 3]]> = x.displacements.iter().map(|d| d.positions.as_slice()).collect();
+        crate::vbuf::find_vertex_alphas(src, opts, &targets)
+    };
+    for (d, found) in x.displacements.iter_mut().zip(alpha_found) {
+        d.alphas = found.map(|f| f.alphas);
+    }
+    let (overlays, overlays_expected) =
+        crate::engine::find_overlays(src, opts, r.faces_addr, r.faces.len(), r.texinfo.len());
+    x.overlays = overlays;
+    x.overlays_expected = overlays_expected;
+    let (mut props, props_expected) = crate::engine::find_static_props(src, opts);
+    let fade_runs = crate::fade::find_fade_runs(src, opts);
+    x.fades_set = crate::engine::attach_fades(&mut props, &fade_runs);
+    x.props = props;
+    x.props_expected = props_expected;
+    x.cubemaps = crate::engine::find_cubemaps(src, opts, map);
+    x.cubemap_file = crate::cubemap::find_cubemap_samples(src, opts, &x.cubemaps);
+    x.area_portals = crate::engine::find_area_portals(src, opts, plane_bytes);
+    x
 }
 
 pub fn texinfo_class(normal: [f32; 3]) -> usize {
@@ -388,9 +553,6 @@ impl<'a> FaceIndex<'a> {
     fn new(render: &'a RenderWorld, plane_bytes: &[u8], ranks: Vec<i32>) -> FaceIndex<'a> {
         let mut by_plane: HashMap<([i32; 3], i32), Vec<usize>> = HashMap::new();
         for (i, f) in render.faces.iter().enumerate() {
-            if f.disp != 0 {
-                continue;
-            }
             let at = f.plane as usize * 20;
             let Some(p) = plane_bytes.get(at..at + 16) else { continue };
             let (mut n, mut d) = ([f32_at(p, 0), f32_at(p, 4), f32_at(p, 8)], f32_at(p, 12));
@@ -594,13 +756,23 @@ pub fn material_ranks(world: &MemoryWorld, render: &RenderWorld, names: &[String
     if render.texinfo_ranks.len() == render.texinfo.len() && !render.texinfo.is_empty() {
         return render.texinfo_ranks.clone();
     }
-    let voted = vote_material_names(world, render);
+    let (voted, texinfo_votes) = vote_material_names(world, render);
     let mut ranks = refine_ranks(&render.texinfo, &render.material_ids, names, &voted);
     if render.texinfo_file_ranks.len() == ranks.len() {
         for (r, f) in ranks.iter_mut().zip(&render.texinfo_file_ranks) {
             if *f >= 0 && (*f as usize) < names.len() {
                 *r = *f;
             }
+        }
+    }
+    let shared = shared_materials(&render.texinfo, &texinfo_votes);
+    for (t, idx) in &texinfo_votes {
+        if let Some(info) = render.texinfo.get(*t)
+            && shared.contains(&info.material)
+            && let Some(r) = ranks.get_mut(*t)
+            && *idx < names.len()
+        {
+            *r = *idx as i32;
         }
     }
     tool_fixups(&render.texinfo, &mut ranks, names);
@@ -654,11 +826,29 @@ pub fn resolve_material_ranks(world: &mut MemoryWorld) {
     }
 }
 
-fn vote_material_names(world: &MemoryWorld, render: &RenderWorld) -> HashMap<u64, usize> {
+const SHARED_SURFACES: usize = 5;
+const SHARED_SUPPORT: usize = 3;
+
+pub fn shared_materials(texinfo: &[crate::world::RenderTexInfo], votes: &HashMap<usize, usize>) -> std::collections::HashSet<u64> {
+    let mut support: HashMap<u64, HashMap<usize, usize>> = HashMap::new();
+    for (t, surface) in votes {
+        if let Some(info) = texinfo.get(*t) {
+            *support.entry(info.material).or_default().entry(*surface).or_default() += 1;
+        }
+    }
+    support
+        .into_iter()
+        .filter(|(_, per)| per.values().filter(|n| **n >= SHARED_SUPPORT).count() >= SHARED_SURFACES)
+        .map(|(m, _)| m)
+        .collect()
+}
+
+fn vote_material_names(world: &MemoryWorld, render: &RenderWorld) -> (HashMap<u64, usize>, HashMap<usize, usize>) {
     let mc = &world.cm;
     let cm = &mc.cm;
     let index = FaceIndex::new(render, &mc.plane_bytes, Vec::new());
     let mut votes: HashMap<u64, HashMap<usize, u32>> = HashMap::new();
+    let mut texinfo_votes: HashMap<usize, HashMap<usize, u32>> = HashMap::new();
     let mut axial_seen = 0usize;
     for b in &cm.brushes {
         let mut list: Vec<([f32; 3], f32, usize)> = Vec::new();
@@ -685,15 +875,19 @@ fn vote_material_names(world: &MemoryWorld, render: &RenderWorld) -> HashMap<u64
                 && let Some(info) = render.texinfo.get(usize::from(t))
             {
                 *votes.entry(info.material).or_default().entry(*surface).or_default() += 1;
+                *texinfo_votes.entry(usize::from(t)).or_default().entry(*surface).or_default() += 1;
             }
         }
     }
-    votes
+    let pick = |v: HashMap<usize, u32>| v.into_iter().max_by_key(|(idx, c)| (*c, std::cmp::Reverse(*idx))).map(|(idx, _)| idx);
+    let by_material = votes
         .into_iter()
         .filter_map(|(ptr, v)| {
             v.into_iter().max_by_key(|(idx, c)| (*c, std::cmp::Reverse(*idx))).map(|(idx, _)| (ptr, idx))
         })
-        .collect()
+        .collect();
+    let by_texinfo = texinfo_votes.into_iter().filter_map(|(t, v)| pick(v).map(|idx| (t, idx))).collect();
+    (by_material, by_texinfo)
 }
 
 fn refine_ranks(
@@ -779,6 +973,42 @@ fn with_surface(texinfo: &mut Vec<u8>, cache: &mut HashMap<(u16, usize), i16>, f
     i
 }
 
+fn unit(v: &[f32]) -> Option<[f32; 3]> {
+    let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+    (len > 1.0e-6).then(|| [v[0] / len, v[1] / len, v[2] / len])
+}
+
+pub fn hidden_texinfo(
+    render: Option<&RenderWorld>,
+    ranks: &[i32],
+    uses: &[u32],
+    surface: usize,
+    normal: [f32; 3],
+) -> Option<i16> {
+    let render = render?;
+    let mut cands: Vec<usize> = (0..render.texinfo.len()).filter(|&t| ranks.get(t).copied() == Some(surface as i32)).collect();
+    if cands.is_empty() {
+        return None;
+    }
+    if cands.len() > 1 {
+        let flat: Vec<usize> = cands
+            .iter()
+            .copied()
+            .filter(|&t| {
+                let v = &render.texinfo[t].vecs;
+                let (Some(u), Some(w)) = (unit(&v[0..3]), unit(&v[4..7])) else { return false };
+                let dot = |a: [f32; 3]| (a[0] * normal[0] + a[1] * normal[1] + a[2] * normal[2]).abs();
+                dot(u) < 0.02 && dot(w) < 0.02
+            })
+            .collect();
+        if !flat.is_empty() {
+            cands = flat;
+        }
+    }
+    let best = cands.iter().copied().max_by_key(|&t| (uses.get(t).copied().unwrap_or(0), std::cmp::Reverse(t)))?;
+    i16::try_from(best).ok()
+}
+
 pub fn build_bsp(world: &MemoryWorld, entity_text: &str) -> Result<Bsp, String> {
     let mc = &world.cm;
     let cm = &mc.cm;
@@ -803,6 +1033,14 @@ pub fn build_bsp(world: &MemoryWorld, entity_text: &str) -> Result<Bsp, String> 
             }
             texinfo.extend_from_slice(&t.flags.to_le_bytes());
             texinfo.extend_from_slice(&(*rank).max(0).to_le_bytes());
+        }
+    }
+    let mut texinfo_use: Vec<u32> = vec![0; texinfo_ranks.len()];
+    if let Some(r) = &world.render {
+        for f in &r.faces {
+            if let Some(c) = texinfo_use.get_mut(usize::from(f.texinfo)) {
+                *c += 1;
+            }
         }
     }
     let mut combined: HashMap<(u16, usize), i16> = HashMap::new();
@@ -885,7 +1123,8 @@ pub fn build_bsp(world: &MemoryWorld, entity_text: &str) -> Result<Bsp, String> 
                     };
                     if agrees { t as i16 } else { with_surface(&mut texinfo, &mut combined, t, *surface) }
                 }
-                None => texinfo_for(&mut texinfo, *surface, texinfo_class(planes.normal(*plane))),
+                None => hidden_texinfo(world.render.as_ref(), &texinfo_ranks, &texinfo_use, *surface, planes.normal(*plane))
+                    .unwrap_or_else(|| texinfo_for(&mut texinfo, *surface, texinfo_class(planes.normal(*plane)))),
             };
             sides.extend_from_slice(&(*plane as u16).to_le_bytes());
             sides.extend_from_slice(&ti.to_le_bytes());
@@ -942,19 +1181,26 @@ pub fn build_bsp(world: &MemoryWorld, entity_text: &str) -> Result<Bsp, String> 
         leafbrushes.extend_from_slice(&v.to_le_bytes());
     }
     let mut models = Vec::with_capacity(mc.models.len() * 48);
-    for m in &mc.models {
-        for v in m.mins.iter().chain(&m.maxs).chain(&m.origin) {
+    for (mi, m) in mc.models.iter().enumerate() {
+        for v in m.mins.iter().map(|v| v + 1.0).chain(m.maxs.iter().map(|v| v - 1.0)).chain(m.origin.iter().copied()) {
             models.extend_from_slice(&v.to_le_bytes());
         }
         models.extend_from_slice(&m.headnode.to_le_bytes());
-        models.extend_from_slice(&0i32.to_le_bytes());
-        models.extend_from_slice(&0i32.to_le_bytes());
+        let (first, count) = world
+            .hub
+            .as_ref()
+            .and_then(|h| h.model_faces.get(mi).copied())
+            .unwrap_or((0, 0));
+        models.extend_from_slice(&first.to_le_bytes());
+        models.extend_from_slice(&count.to_le_bytes());
     }
     let mut ents = entity_text.as_bytes().to_vec();
     ents.push(0);
     let mut extra: Vec<(usize, Vec<u8>)> = Vec::new();
+    let mut face_disp: HashMap<usize, i16> = HashMap::new();
     if let Some(r) = &world.render {
         let disp = displacement_lumps(r, &mc.plane_bytes, &world.extras.displacements);
+        face_disp = disp.face_disp.clone();
         let (faces, edges, surfedges, vertexes) = render_lumps(r, &disp);
         extra.push((lump::FACES, faces));
         extra.push((3, vertexes));
@@ -967,6 +1213,7 @@ pub fn build_bsp(world: &MemoryWorld, entity_text: &str) -> Result<Bsp, String> 
         }
         if !world.extras.overlays.is_empty() {
             extra.push((lump::OVERLAYS, overlay_lump(&world.extras.overlays)));
+            extra.push((60, crate::engine::overlay_fades_lump(&world.extras.overlays)));
         }
     }
     if let Some(ap) = &world.extras.area_portals {
@@ -977,6 +1224,14 @@ pub fn build_bsp(world: &MemoryWorld, entity_text: &str) -> Result<Bsp, String> 
         extra.push((42, crate::engine::cubemap_file_lump(c)));
     } else if !world.extras.cubemaps.is_empty() {
         extra.push((42, cubemap_lump(&world.extras.cubemaps)));
+    }
+    let mut hub_versions: Vec<(usize, u16)> = Vec::new();
+    if let Some(o) = &world.extras.occlusion {
+        extra.push((crate::occlusion::LUMP_INDEX, crate::occlusion::occlusion_lump(o)));
+        hub_versions.push((crate::occlusion::LUMP_INDEX, crate::occlusion::OCCLUSION_VERSION));
+    }
+    if let Some(h) = &world.hub {
+        apply_hub(h, world, &face_disp, &mut extra, &mut hub_versions);
     }
     let mut lumps: Vec<(usize, Vec<u8>)> = vec![
         (lump::ENTITIES, ents),
@@ -992,14 +1247,20 @@ pub fn build_bsp(world: &MemoryWorld, entity_text: &str) -> Result<Bsp, String> 
         (lump::TEXDATA_STRING_DATA, string_data),
         (lump::TEXDATA_STRING_TABLE, string_table),
     ];
+    lumps.retain(|(i, _)| !extra.iter().any(|(j, _)| j == i));
     lumps.extend(extra);
     let data = hp_bsp::synthetic_bsp(20, &lumps);
     let bsp = Bsp::from_vec(data).map_err(|e| e.to_string())?;
     let mut edit = bsp.edit();
-    if !world.extras.props.is_empty() {
-        let (bytes, version) = static_prop_lump(&world.extras.props);
+    if !world.extras.props.is_empty() || world.hub.is_some() {
         let mut game = hp_bsp::GameLumps::default();
-        game.set(hp_bsp::gamelump::id::STATIC_PROPS, version, bytes).map_err(|e| e.to_string())?;
+        if !world.extras.props.is_empty() {
+            let (bytes, version) = static_prop_lump(&world.extras.props);
+            game.set(hp_bsp::gamelump::id::STATIC_PROPS, version, bytes).map_err(|e| e.to_string())?;
+        }
+        if world.hub.is_some() {
+            game.set(hp_bsp::gamelump::id::DETAIL_PROPS, 4, vec![0u8; 12]).map_err(|e| e.to_string())?;
+        }
         edit.set_game_lumps(game);
     }
     if let Some(zip) = &world.extras.pakfile {
@@ -1007,8 +1268,71 @@ pub fn build_bsp(world: &MemoryWorld, entity_text: &str) -> Result<Bsp, String> 
     }
     let leafs_now = edit.source().lump(lump::LEAFS).map_err(|e| e.to_string())?.into_owned();
     edit.replace_lump_with_version(lump::LEAFS, leafs_now, 1).map_err(|e| e.to_string())?;
+    for (index, version) in hub_versions {
+        if version == 0 {
+            continue;
+        }
+        let now = edit.source().lump(index).map_err(|e| e.to_string())?.into_owned();
+        edit.replace_lump_with_version(index, now, u32::from(version)).map_err(|e| e.to_string())?;
+    }
     let bytes = edit.to_vec().map_err(|e| e.to_string())?;
     Bsp::from_vec(bytes).map_err(|e| e.to_string())
+}
+
+fn apply_hub(
+    h: &crate::hubdata::HubData,
+    world: &MemoryWorld,
+    face_disp: &HashMap<usize, i16>,
+    extra: &mut Vec<(usize, Vec<u8>)>,
+    versions: &mut Vec<(usize, u16)>,
+) {
+    let mut put = |extra: &mut Vec<(usize, Vec<u8>)>, index: usize, bytes: Vec<u8>, version: u16| {
+        extra.retain(|(i, _)| *i != index);
+        extra.push((index, bytes));
+        versions.push((index, version));
+    };
+    let face_slots = [lump::FACES, 58];
+    let have_face_piece = face_slots.iter().any(|i| h.piece(*i).is_some());
+    for piece in &h.pieces {
+        if face_slots.contains(&piece.index) {
+            let mut bytes = piece.bytes.clone();
+            for (i, rec) in bytes.chunks_exact_mut(56).enumerate() {
+                let d = face_disp.get(&i).copied().unwrap_or(-1);
+                rec[12..14].copy_from_slice(&d.to_le_bytes());
+            }
+            put(extra, piece.index, bytes.clone(), piece.version);
+            if piece.index == 58 && h.piece(lump::FACES).is_none() {
+                put(extra, lump::FACES, bytes, piece.version);
+            }
+            continue;
+        }
+        put(extra, piece.index, piece.bytes.clone(), piece.version);
+    }
+    if !h.disp_extras.is_empty()
+        && let Some((_, bytes)) = extra.iter_mut().find(|(i, _)| *i == 26)
+    {
+        crate::hubdec::patch_dispinfo(bytes, &h.disp_extras);
+    }
+    if have_face_piece && !h.vertindices.is_empty() {
+        let (edges, surfedges) = crate::hubdata::edge_lumps(&h.vertindices, &h.faces);
+        put(extra, 12, edges, 0);
+        put(extra, 13, surfedges, 0);
+    }
+    if let (Some(r), Some(t)) = (&world.render, h.texdata_count()) {
+        let ranks = material_ranks(world, r, &if world.cm.cm.surface_names.is_empty() {
+            vec![String::from("TOOLS/TOOLSNODRAW")]
+        } else {
+            world.cm.cm.surface_names.clone()
+        });
+        let mut infos: Vec<Option<crate::hubdata::MaterialInfo>> = vec![None; t];
+        for (ti, tex) in r.texinfo.iter().enumerate() {
+            let rank = ranks.get(ti).copied().unwrap_or(-1);
+            if rank >= 0 && (rank as usize) < t && infos[rank as usize].is_none() {
+                infos[rank as usize] = h.materials.get(&tex.material).copied();
+            }
+        }
+        put(extra, lump::TEXDATA, crate::hubdata::texdata_lump(t, &infos), 0);
+    }
 }
 
 #[cfg(test)]
@@ -1239,6 +1563,7 @@ pub(crate) mod tests {
                 power: 2,
                 positions,
                 file: None,
+                ..Default::default()
             }],
             overlays: vec![crate::engine::MemOverlay {
                 id: 0,
@@ -1252,6 +1577,7 @@ pub(crate) mod tests {
                 basis_v: [0.0, -1.0, 0.0],
                 normal: [0.0, 0.0, 1.0],
                 render_order: 0,
+                fade: crate::engine::OVERLAY_FADE_DEFAULT,
                 from_file: false,
             }],
             overlays_expected: 1,
@@ -1266,6 +1592,7 @@ pub(crate) mod tests {
                 first_leaf: 0,
                 leaf_count: 1,
                 file: None,
+                ..Default::default()
             }],
             props_expected: 1,
             cubemaps: vec![[64, 64, 32]],
@@ -1278,7 +1605,7 @@ pub(crate) mod tests {
     fn the_render_structures_become_lumps_a_decompiler_understands() {
         let render = render_for_sample();
         let extras = extras_for_sample(&render);
-        let world = MemoryWorld { cm: sample(), render: Some(render), extras };
+        let world = MemoryWorld { cm: sample(), render: Some(render), extras, hub: None };
         let ents = "{\n\"classname\" \"worldspawn\"\n}\n";
         let bsp = build_bsp(&world, ents).expect("bsp");
         assert_eq!(bsp.lump(7).expect("faces").len(), 2 * 56);
@@ -1326,7 +1653,7 @@ pub(crate) mod tests {
     fn a_displacement_vector_that_is_not_a_unit_vector_keeps_its_real_distance() {
         let render = render_for_sample();
         let extras = extras_for_sample(&render);
-        let world = MemoryWorld { cm: sample(), render: Some(render), extras };
+        let world = MemoryWorld { cm: sample(), render: Some(render), extras, hub: None };
         let bsp = build_bsp(
             &world,
             "{
@@ -1362,7 +1689,7 @@ pub(crate) mod tests {
         let mut render = render_for_sample();
         render.faces[0].disp = 0;
         render.faces[0].has_disp = false;
-        let world = MemoryWorld { cm: sample(), render: Some(render), extras: MemoryExtras::default() };
+        let world = MemoryWorld { cm: sample(), render: Some(render), extras: MemoryExtras::default(), hub: None };
         let bsp = build_bsp(&world, "{\n\"classname\" \"worldspawn\"\n}\n").expect("bsp");
         assert!(bsp.lump(26).map(|l| l.is_empty()).unwrap_or(true));
         let texinfo = bsp.lump(6).expect("texinfo").into_owned();
@@ -1433,12 +1760,13 @@ pub(crate) mod tests {
     fn memory_world_for_merge() -> MemoryWorld {
         let render = render_for_sample();
         let extras = extras_for_sample(&render);
-        MemoryWorld { cm: sample(), render: Some(render), extras }
+        MemoryWorld { cm: sample(), render: Some(render), extras, hub: None }
     }
 
     #[test]
     fn a_consistent_file_fills_in_what_the_memory_does_not_keep() {
         let mut world = memory_world_for_merge();
+        world.extras.overlays[0].render_order = 2;
         let file = consistent_file(&world);
         let stats = crate::merge::merge(&mut world, &file);
         assert!(stats.file_used);
@@ -1478,8 +1806,9 @@ pub(crate) mod tests {
         assert_eq!(disp.alphas[12], 77.0);
         let rows = crate::merge::source_rows(&stats, true, 0, 0);
         let find = |c: &str| rows.iter().find(|r| r.category == c).expect("row").source.clone();
-        assert_eq!(find("displacement alphas, tags and allowed vertices"), "map file");
-        assert_eq!(find("static props fade distances and flags"), "map file");
+        assert_eq!(find("displacement vertex alphas"), "map file");
+        assert_eq!(find("static props fade distances"), "map file");
+        assert_eq!(find("static props flags"), "map file");
         assert_eq!(find("pakfile"), "map file");
         assert_eq!(find("entities"), "memory");
     }
@@ -1568,8 +1897,8 @@ pub(crate) mod tests {
         let stats = crate::merge::MergeStats::default();
         let rows = crate::merge::source_rows(&stats, false, 12, 3);
         let find = |c: &str| rows.iter().find(|r| r.category == c).expect("row").clone();
-        assert_eq!(find("displacement alphas, tags and allowed vertices").source, "absent");
-        assert_eq!(find("static props fade distances and flags").source, "absent");
+        assert_eq!(find("displacement vertex alphas").source, "absent");
+        assert_eq!(find("static props fade distances").source, "absent");
         assert_eq!(find("overlay render order").source, "absent");
         assert_eq!(find("pakfile").source, "absent");
         assert!(find("pakfile").detail.contains("forbidden"));
@@ -1736,7 +2065,7 @@ pub(crate) mod tests {
         assert_eq!(r.vertexes.len(), 320);
         assert!(r.faces.iter().all(|f| !f.has_disp && f.disp == 0));
         let bsp = build_bsp(
-            &MemoryWorld { cm: world.cm, render: Some(r), extras: world.extras },
+            &MemoryWorld { cm: world.cm, render: Some(r), extras: world.extras, hub: None },
             "{
 }
 ",
@@ -1782,5 +2111,69 @@ pub(crate) mod tests {
         assert_eq!(texdata_ranks(&texinfo, &ids, &names), vec![-1, 1, 2, 3, 3]);
         let plain = texdata_ranks(&texinfo, &std::collections::HashMap::new(), &names);
         assert_eq!(plain, vec![0, 1, 2, 3, 3], "without ids the order of the pointers is used");
+    }
+
+    fn texinfo_with_axes(u: [f32; 3], v: [f32; 3], material: u64) -> crate::world::RenderTexInfo {
+        let mut vecs = [0f32; 16];
+        vecs[0..3].copy_from_slice(&u);
+        vecs[4..7].copy_from_slice(&v);
+        crate::world::RenderTexInfo { vecs, flags: 0, material }
+    }
+
+    #[test]
+    fn a_hidden_side_takes_the_flat_texture_info_of_its_material() {
+        let mut render = render_for_sample();
+        render.texinfo = vec![
+            texinfo_with_axes([1.0, 0.0, 0.0], [0.0, 1.0, 0.0], 0x10),
+            texinfo_with_axes([1.0, 0.0, 0.0], [0.0, 0.0, 1.0], 0x10),
+            texinfo_with_axes([0.0, 1.0, 0.0], [1.0, 0.0, 0.0], 0x10),
+            texinfo_with_axes([1.0, 0.0, 0.0], [0.0, 1.0, 0.0], 0x20),
+        ];
+        let ranks = vec![0, 0, 0, 1];
+        let uses = vec![5, 9, 7, 1];
+        let up = [0.0, 0.0, 1.0];
+        assert_eq!(hidden_texinfo(Some(&render), &ranks, &uses, 0, up), Some(2), "flat axes win, then the most used");
+        assert_eq!(hidden_texinfo(Some(&render), &ranks, &uses, 1, up), Some(3));
+        assert_eq!(hidden_texinfo(Some(&render), &ranks, &uses, 7, up), None, "a material without texture info");
+        assert_eq!(hidden_texinfo(None, &ranks, &uses, 0, up), None);
+        let wall = [1.0, 0.0, 0.0];
+        assert_eq!(hidden_texinfo(Some(&render), &ranks, &uses, 0, wall), Some(1), "axes that lie in the wall plane");
+    }
+
+    #[test]
+    fn a_material_that_stands_for_many_textures_is_found_from_the_votes() {
+        let texinfo: Vec<crate::world::RenderTexInfo> =
+            (0..40).map(|i| texinfo_with_axes([1.0, 0.0, 0.0], [0.0, 1.0, 0.0], if i < 30 { 0x10 } else { 0x20 + i as u64 })).collect();
+        let votes: HashMap<usize, usize> = (0..40).map(|i| (i, i % 6)).collect();
+        let shared = shared_materials(&texinfo, &votes);
+        assert!(shared.contains(&0x10), "thirty texture infos vote for six surfaces");
+        assert_eq!(shared.len(), 1, "the single use materials are left alone");
+        let few: HashMap<usize, usize> = (0..30).map(|i| (i, i % 2)).collect();
+        assert!(shared_materials(&texinfo, &few).is_empty());
+    }
+
+    #[test]
+    fn the_engine_structures_override_the_rebuilt_lumps() {
+        let mut world = memory_world_for_merge();
+        let mut hub = crate::hubdata::HubData::default();
+        hub.push(5, vec![7u8; 64], 0, crate::hubdata::Fidelity::Exact, "nodes");
+        hub.push(58, vec![0u8; 56 * 2], 1, crate::hubdata::Fidelity::Equivalent, "faces");
+        hub.push(53, vec![9u8; 32], 1, crate::hubdata::Fidelity::Exact, "lighting");
+        hub.model_faces = vec![(4, 9)];
+        world.hub = Some(hub);
+        let bsp = build_bsp(&world, "{
+\"classname\" \"worldspawn\"
+}
+").expect("bsp");
+        assert_eq!(bsp.lump(5).expect("nodes").into_owned(), vec![7u8; 64]);
+        assert_eq!(bsp.lump(53).expect("lighting").into_owned(), vec![9u8; 32]);
+        assert_eq!(bsp.lump(58).expect("faces").len(), 112);
+        assert_eq!(bsp.lump(7).expect("faces copy").len(), 112, "the faces of a high dynamic range reading also fill the plain slot");
+        assert_eq!(bsp.header().lumps[53].version, 1);
+        let models = bsp.lump(14).expect("models").into_owned();
+        assert_eq!(i32::from_le_bytes([models[40], models[41], models[42], models[43]]), 4);
+        assert_eq!(i32::from_le_bytes([models[44], models[45], models[46], models[47]]), 9);
+        let game = bsp.game_lumps().expect("game lumps");
+        assert!(game.get(hp_bsp::gamelump::id::DETAIL_PROPS).is_some());
     }
 }

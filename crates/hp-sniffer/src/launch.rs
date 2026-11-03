@@ -13,6 +13,7 @@ pub struct GmodInstall {
     pub game_dir: PathBuf,
     pub exe: PathBuf,
     pub is_64bit: bool,
+    pub direct: bool,
 }
 
 impl GmodInstall {
@@ -39,16 +40,34 @@ pub fn install_at(path: &Path) -> Option<GmodInstall> {
         }
         let x64 = root.join("bin").join("win64").join("gmod.exe");
         if x64.is_file() {
-            return Some(GmodInstall { root, game_dir, exe: x64, is_64bit: true });
+            return Some(GmodInstall { root, game_dir, exe: x64, is_64bit: true, direct: false });
         }
         for name in ["hl2.exe", "gmod.exe"] {
             let exe = root.join(name);
             if exe.is_file() {
-                return Some(GmodInstall { root, game_dir, exe, is_64bit: false });
+                return Some(GmodInstall { root, game_dir, exe, is_64bit: false, direct: false });
             }
         }
     }
     None
+}
+
+pub fn with_bits(install: GmodInstall, bits: crate::settings::GameBits) -> Result<GmodInstall, String> {
+    use crate::settings::GameBits;
+    let narrow = install.root.join("bin").join("gmod.exe");
+    let wide = install.root.join("bin").join("win64").join("gmod.exe");
+    match bits {
+        GameBits::Auto => Ok(install),
+        GameBits::Bits64 if wide.is_file() => Ok(GmodInstall { exe: wide, is_64bit: true, direct: false, ..install }),
+        GameBits::Bits64 => Err(format!("there is no 64 bit game in {}", install.root.display())),
+        GameBits::Bits32 if !install.is_64bit => Ok(install),
+        GameBits::Bits32 if narrow.is_file() => Ok(GmodInstall { exe: narrow, is_64bit: false, direct: true, ..install }),
+        GameBits::Bits32 => Err(format!("there is no 32 bit game in {}", install.root.display())),
+    }
+}
+
+pub fn detect_install_bits(override_dir: &str, bits: crate::settings::GameBits) -> Result<GmodInstall, String> {
+    with_bits(detect_install(override_dir)?, bits)
 }
 
 pub fn detect_install(override_dir: &str) -> Result<GmodInstall, String> {
@@ -88,6 +107,9 @@ pub fn split_args(text: &str) -> Vec<String> {
     out
 }
 
+pub const HDR_LEVEL: &str = "2";
+pub const ROOT_LOD: &str = "0";
+
 pub fn build_args(s: &SnifferSettings, host: &str, port: u16, server_vac: Option<bool>) -> Vec<String> {
     let mut args: Vec<String> = Vec::new();
     let user = split_args(&s.launch_options);
@@ -105,8 +127,16 @@ pub fn build_args(s: &SnifferSettings, host: &str, port: u16, server_vac: Option
         if lower == "-insecure" || lower == "-applaunch" || lower == "-hijack" {
             continue;
         }
+        if lower == "+mat_hdr_level" || lower == "+r_rootlod" {
+            skip_next = i + 1 < user.len();
+            continue;
+        }
         args.push(a.clone());
     }
+    args.push("+mat_hdr_level".to_owned());
+    args.push(HDR_LEVEL.to_owned());
+    args.push("+r_rootlod".to_owned());
+    args.push(ROOT_LOD.to_owned());
     if !args.iter().any(|a| a.eq_ignore_ascii_case("-condebug")) {
         args.push("-condebug".to_owned());
     }
@@ -186,6 +216,13 @@ pub fn percent_encode(s: &str) -> String {
 }
 
 pub fn launch_game(install: &GmodInstall, args: &[String]) -> Result<String, String> {
+    if install.direct {
+        let mut cmd = Command::new(&install.exe);
+        cmd.current_dir(&install.root).args(["-game", "garrysmod"]).args(args);
+        hide_window(&mut cmd);
+        cmd.spawn().map_err(|e| format!("cannot start {}: {e}", install.exe.display()))?;
+        return Ok(format!("{} -game garrysmod {}", install.exe.display(), args.join(" ")));
+    }
     if let Some(steam) = steam_exe(install) {
         let mut cmd = Command::new(&steam);
         cmd.arg("-applaunch").arg(GMOD_APP_ID.to_string()).args(args);
@@ -503,6 +540,30 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[test]
+    fn the_bit_width_of_the_game_can_be_chosen_when_both_are_installed() {
+        use crate::settings::GameBits;
+        let dir = std::env::temp_dir().join(format!("hp_sniffer_bits_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let root = dir.join("GarrysMod");
+        std::fs::create_dir_all(root.join("garrysmod")).expect("dir");
+        std::fs::create_dir_all(root.join("bin").join("win64")).expect("dir");
+        std::fs::write(root.join("gmod.exe"), b"selector").expect("write");
+        let only32 = detect_install_bits(&root.display().to_string(), GameBits::Bits32).expect("32 bit selector");
+        assert!(!only32.is_64bit && !only32.direct, "a 32 bit only install is launched through Steam");
+        assert!(detect_install_bits(&root.display().to_string(), GameBits::Bits64).is_err(), "no 64 bit game yet");
+        std::fs::write(root.join("bin").join("win64").join("gmod.exe"), b"x64").expect("write");
+        std::fs::write(root.join("bin").join("gmod.exe"), b"x86").expect("write");
+        let auto = detect_install_bits(&root.display().to_string(), GameBits::Auto).expect("auto");
+        assert!(auto.is_64bit && !auto.direct);
+        let wide = detect_install_bits(&root.display().to_string(), GameBits::Bits64).expect("64");
+        assert!(wide.is_64bit && wide.exe.ends_with("win64/gmod.exe") || wide.exe.ends_with("win64\\gmod.exe"));
+        let narrow = detect_install_bits(&root.display().to_string(), GameBits::Bits32).expect("32");
+        assert!(!narrow.is_64bit && narrow.direct, "the 32 bit game of a two bit install is started directly");
+        assert_eq!(narrow.exe, root.join("bin").join("gmod.exe"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[cfg(windows)]
     #[test]
     fn only_the_given_process_is_closed() {
@@ -535,5 +596,25 @@ mod tests {
         assert!(!confirms_disconnect("Le joueur Bob a rejoint la partie"));
         assert!(!confirms_disconnect("Connected to 1.2.3.4:27015"));
         assert!(!confirms_disconnect("Map: gm_flatgrass"));
+    }
+
+    #[test]
+    fn the_first_reading_is_always_high_dynamic_range() {
+        let s = SnifferSettings { launch_options: "-windowed +mat_hdr_level 0 +volume 0".to_owned(), ..SnifferSettings::default() };
+        let args = build_args(&s, "1.2.3.4", 27015, Some(false));
+        let at: Vec<usize> = args.iter().enumerate().filter(|(_, a)| a.as_str() == "+mat_hdr_level").map(|(i, _)| i).collect();
+        assert_eq!(at.len(), 1, "{args:?}");
+        assert_eq!(args[at[0] + 1], HDR_LEVEL);
+        assert!(args.contains(&"+volume".to_owned()), "the other options stay");
+        assert!(build_local_args(&s, "gm_construct").windows(2).any(|w| w[0] == "+mat_hdr_level" && w[1] == HDR_LEVEL));
+    }
+
+    #[test]
+    fn the_models_are_always_loaded_with_every_detail_level() {
+        let s = SnifferSettings { launch_options: "-windowed +r_rootlod 2 +volume 0".to_owned(), ..SnifferSettings::default() };
+        let args = build_args(&s, "h", 1, Some(false));
+        let at: Vec<usize> = args.iter().enumerate().filter(|(_, a)| a.as_str() == "+r_rootlod").map(|(i, _)| i).collect();
+        assert_eq!(at.len(), 1);
+        assert_eq!(args[at[0] + 1], "0");
     }
 }

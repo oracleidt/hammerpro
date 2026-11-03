@@ -80,6 +80,31 @@ pub struct AssetReport {
     pub memory_models: usize,
     pub memory_model_bytes: u64,
     pub memory_models_wanted: usize,
+    pub memory_vvds: usize,
+    pub memory_vvd_bytes: u64,
+    pub memory_vvd_partial: usize,
+    pub memory_vvd_missing_vertices: usize,
+    pub memory_vvd_failed: usize,
+    pub memory_vtxs: usize,
+    pub memory_vtx_bytes: u64,
+    pub memory_vtx_partial: usize,
+    pub memory_vtx_failed: usize,
+    pub memory_phys: usize,
+    pub memory_phy_bytes: u64,
+    pub memory_materials: usize,
+    pub memory_material_bytes: u64,
+    pub memory_materials_loaded: usize,
+    pub textures_loaded: usize,
+    pub textures_video_only: usize,
+    pub textures_video_only_bytes: u64,
+    pub pak_listed: usize,
+    pub pak_listed_identical: usize,
+    pub pak_listed_differs: usize,
+    pub textures_with_file: usize,
+    pub textures_resident_whole: usize,
+    pub textures_resident_partial: usize,
+    pub vtf_blobs_resident: usize,
+    pub vtf_blobs_resident_bytes: u64,
 }
 
 impl AssetReport {
@@ -247,6 +272,7 @@ pub fn normalize_model_name(name: &str) -> String {
     n.strip_prefix("models/").map(str::to_owned).unwrap_or(n)
 }
 
+const CRLF: &str = "\r\n";
 const MDL_MIN_LEN: i32 = 200;
 const MDL_MAX_LEN: i32 = 128 << 20;
 
@@ -274,6 +300,42 @@ pub fn mdl_header(head: &[u8]) -> Option<(String, usize)> {
     Some((normalize_model_name(&name), len as usize))
 }
 
+pub fn base_name(name: &str) -> &str {
+    name.rsplit('/').next().unwrap_or(name)
+}
+
+pub fn resolve_model_names(
+    headers: &[(u64, String, usize)],
+    wanted: &std::collections::HashSet<String>,
+) -> BTreeMap<String, (u64, usize)> {
+    let mut out: BTreeMap<String, (u64, usize)> = BTreeMap::new();
+    for (addr, name, len) in headers {
+        if wanted.contains(name) && !out.contains_key(name) {
+            out.insert(name.clone(), (*addr, *len));
+        }
+    }
+    let mut claimed: std::collections::HashSet<&str> = wanted.iter().map(String::as_str).collect();
+    claimed.retain(|w| out.contains_key(*w));
+    let mut taken: std::collections::HashSet<(String, usize)> = std::collections::HashSet::new();
+    let mut ordered: Vec<&String> = wanted.iter().collect();
+    ordered.sort();
+    for w in ordered {
+        if out.contains_key(w) {
+            continue;
+        }
+        let mut found: Vec<&(u64, String, usize)> = headers
+            .iter()
+            .filter(|(_, n, _)| base_name(n) == base_name(w) && !claimed.contains(n.as_str()) && !wanted.contains(n))
+            .collect();
+        found.sort_by_key(|h| (h.2, h.0));
+        found.dedup_by_key(|h| (h.1.clone(), h.2));
+        if found.len() == 1 && taken.insert((found[0].1.clone(), found[0].2)) {
+            out.insert(w.clone(), (found[0].0, found[0].2));
+        }
+    }
+    out
+}
+
 pub fn find_loaded_models<S: MemSource + ?Sized>(
     src: &S,
     opts: &ScanOptions,
@@ -281,16 +343,14 @@ pub fn find_loaded_models<S: MemSource + ?Sized>(
 ) -> BTreeMap<String, Vec<u8>> {
     let finder = memchr::memmem::Finder::new(b"IDST").into_owned();
     let opts = ScanOptions { overlap: 96, ..*opts };
-    let hits: Vec<(u64, String, usize)> = par_chunks(src, &opts, |base, data, own| {
+    let mut headers: Vec<(u64, String, usize)> = par_chunks(src, &opts, |base, data, own| {
         let mut out = Vec::new();
         for at in finder.find_iter(data) {
             if at >= own {
                 break;
             }
             let Some(head) = data.get(at..at + 80) else { continue };
-            if let Some((name, len)) = mdl_header(head)
-                && wanted.contains(&name)
-            {
+            if let Some((name, len)) = mdl_header(head) {
                 out.push((base + at as u64, name, len));
             }
         }
@@ -299,14 +359,35 @@ pub fn find_loaded_models<S: MemSource + ?Sized>(
     .into_iter()
     .flatten()
     .collect();
-    let mut found: BTreeMap<String, Vec<u8>> = BTreeMap::new();
-    for (addr, name, len) in hits {
-        if found.contains_key(&name) {
-            continue;
+    headers.sort();
+    let mut chosen = resolve_model_names(&headers, wanted);
+    if wanted.iter().any(|w| !chosen.contains_key(w)) {
+        let entries = crate::studiomem::find_cache(src, &opts).map(|c| crate::studiomem::entries(src, c)).unwrap_or_default();
+        let unresolved: Vec<&String> = wanted.iter().filter(|w| !chosen.contains_key(*w)).collect();
+        for want in unresolved {
+            let full = format!("models/{want}");
+            let Some(entry) = entries.iter().find(|e| e.name == full) else { continue };
+            let Some(hw) = crate::studiomem::read_hardware(src, entry.data) else { continue };
+            let mut picks: Vec<(i32, u64, usize)> = Vec::new();
+            for (addr, _, len) in headers.iter().filter(|(_, n, _)| base_name(n) == base_name(want)) {
+                let bytes = src.read_vec(*addr, *len);
+                if bytes.len() == *len && crate::studiomem::consistent(&bytes, &hw) {
+                    let sum = i32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]);
+                    if !picks.iter().any(|p| p.0 == sum) {
+                        picks.push((sum, *addr, *len));
+                    }
+                }
+            }
+            if picks.len() == 1 {
+                chosen.insert(want.clone(), (picks[0].1, picks[0].2));
+            }
         }
+    }
+    let mut found: BTreeMap<String, Vec<u8>> = BTreeMap::new();
+    for (want, (addr, len)) in chosen {
         let bytes = src.read_vec(addr, len);
-        if bytes.len() == len && mdl_header(&bytes).is_some_and(|(n, l)| n == name && l == len) {
-            found.insert(name, bytes);
+        if bytes.len() == len && mdl_header(&bytes).is_some_and(|(_, l)| l == len) {
+            found.insert(want, bytes);
         }
     }
     found
@@ -326,6 +407,9 @@ pub fn recover_models_from_memory<S: MemSource + ?Sized>(
         return;
     }
     let found = find_loaded_models(src, opts, &wanted);
+    let mut recovered_vvd: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let blocks: std::cell::OnceCell<std::collections::BTreeMap<i32, crate::modelmem::RebuiltVvd>> = std::cell::OnceCell::new();
+    let studio: std::cell::OnceCell<Vec<crate::studiomem::StudioEntry>> = std::cell::OnceCell::new();
     for m in missing {
         if !m.to_ascii_lowercase().ends_with(".mdl") {
             continue;
@@ -342,11 +426,255 @@ pub fn recover_models_from_memory<S: MemSource + ?Sized>(
             report.memory_models += 1;
             report.memory_model_bytes += bytes.len() as u64;
             *report.by_class.entry(AssetClass::Model.label().to_owned()).or_default() += 1;
+            let vvd = recover_vvd(src, opts, &blocks, bytes, &path, &vpath, report, &mut recovered_vvd);
+            let entries = studio.get_or_init(|| crate::studiomem::find_cache(src, opts).map(|c| crate::studiomem::entries(src, c)).unwrap_or_default());
+            recover_studio(src, entries, bytes, &path, &vpath, vvd.as_deref(), report, &mut recovered_vvd);
         }
     }
     report
         .missing
         .retain(|m| !(m.to_ascii_lowercase().ends_with(".mdl") && found.contains_key(&normalize_model_name(m))));
+    report.missing.retain(|m| !recovered_vvd.contains(&m.to_ascii_lowercase().replace(char::from(92u8), "/")));
+}
+
+pub fn recover_materials_from_memory<S: MemSource + ?Sized>(
+    src: &S,
+    opts: &ScanOptions,
+    fs: &GameFs,
+    dest: &Path,
+    report: &mut AssetReport,
+) {
+    let found = crate::matmem::find_materials(src, opts);
+    report.memory_materials_loaded = found.len();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for m in found {
+        let Some(text) = m.vmt else { continue };
+        let name = m.name.trim().replace(char::from(92u8), "/").to_ascii_lowercase();
+        let vpath = format!("materials/{}.vmt", name.trim_start_matches('/'));
+        if !seen.insert(vpath.clone()) || fs.exists(&vpath) {
+            continue;
+        }
+        let Some(path) = hp_decompile::pak::safe_join(dest, &vpath) else { continue };
+        if let Some(dir) = path.parent()
+            && std::fs::create_dir_all(dir).is_err()
+        {
+            continue;
+        }
+        if std::fs::write(&path, text.as_bytes()).is_ok() {
+            report.memory_materials += 1;
+            report.memory_material_bytes += text.len() as u64;
+            *report.by_class.entry(AssetClass::Material.label().to_owned()).or_default() += 1;
+        }
+    }
+}
+
+const RESIDENCY_MAX_BYTES: usize = 768 << 20;
+
+fn residency<S: MemSource + ?Sized>(
+    src: &S,
+    opts: &ScanOptions,
+    fs: &GameFs,
+    found: &[crate::matmem::MemTexture],
+    blobs: &[crate::texmem::VtfBlob],
+    dest: &Path,
+    report: &mut AssetReport,
+) {
+    let mut files: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut total = 0usize;
+    for t in found {
+        let name = t.name.trim().replace(char::from(92u8), "/").to_ascii_lowercase();
+        if !seen.insert(name.clone()) {
+            continue;
+        }
+        let Some(data) = fs.read(&format!("materials/{}.vtf", name.trim_start_matches('/'))) else { continue };
+        total += data.len();
+        if total > RESIDENCY_MAX_BYTES {
+            break;
+        }
+        files.push((name, data));
+    }
+    report.vtf_blobs_resident = blobs.len();
+    report.vtf_blobs_resident_bytes = blobs.iter().map(|b| b.bytes.len() as u64).sum();
+    let cov = crate::texmem::coverage(src, opts, &files, blobs);
+    report.textures_with_file = cov.len();
+    let mut lines: Vec<String> = Vec::new();
+    for c in &cov {
+        if c.whole {
+            report.textures_resident_whole += 1;
+        } else if c.found > 0 {
+            report.textures_resident_partial += 1;
+        }
+        lines.push(format!(
+            "materials/{}.vtf	{} of {} sampled windows resident ({:.1} percent)	{}",
+            c.name,
+            c.found,
+            c.windows,
+            c.fraction() * 100.0,
+            if c.whole { "whole file resident" } else if c.found > 0 { "partly resident" } else { "video memory only" }
+        ));
+    }
+    if lines.is_empty() {
+        return;
+    }
+    lines.sort();
+    let _ = std::fs::create_dir_all(dest);
+    let _ = std::fs::write(dest.join("texture_residency.txt"), lines.join(CRLF) + CRLF);
+}
+
+pub fn list_video_only_textures<S: MemSource + ?Sized>(
+    src: &S,
+    opts: &ScanOptions,
+    fs: &GameFs,
+    dest: &Path,
+    report: &mut AssetReport,
+) {
+    let found = crate::matmem::find_textures(src, opts);
+    report.textures_loaded = found.len();
+    let blobs = crate::texmem::find_blobs(src, opts);
+    let mut lines: Vec<String> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for t in found.iter() {
+        let name = t.name.trim().replace(char::from(92u8), "/").to_ascii_lowercase();
+        let vpath = format!("materials/{}.vtf", name.trim_start_matches('/'));
+        if t.width == 0 || t.height == 0 || !seen.insert(vpath.clone()) || fs.exists(&vpath) {
+            continue;
+        }
+        report.textures_video_only += 1;
+        report.textures_video_only_bytes += t.bytes;
+        let same = blobs
+            .iter()
+            .filter(|b| b.width == t.width && b.height == t.height && b.frames == t.frames && b.format == t.format && (b.faces == 6) == t.cube)
+            .count();
+        lines.push(format!(
+            "{vpath}\t{}x{}\tformat {}\tflags {:#x}\tframes {}\t{}\t{} bytes\tresident whole files of the same size and format: {same}",
+            t.width,
+            t.height,
+            t.format,
+            t.flags,
+            t.frames,
+            if t.cube { "cubemap" } else { "texture" },
+            t.bytes
+        ));
+    }
+    residency(src, opts, fs, &found, &blobs, dest, report);
+    if lines.is_empty() {
+        return;
+    }
+    lines.sort();
+    let _ = std::fs::create_dir_all(dest);
+    let text = lines.join(CRLF) + CRLF;
+    let _ = std::fs::write(dest.join("textures_in_video_memory.txt"), text);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn recover_vvd<S: MemSource + ?Sized>(
+    src: &S,
+    opts: &ScanOptions,
+    blocks: &std::cell::OnceCell<std::collections::BTreeMap<i32, crate::modelmem::RebuiltVvd>>,
+    mdl: &[u8],
+    mdl_path: &Path,
+    vpath: &str,
+    report: &mut AssetReport,
+    recovered: &mut std::collections::HashSet<String>,
+) -> Option<Vec<u8>> {
+    let checksum = crate::modelmem::mdl_checksum(mdl)?;
+    let by_pointer = crate::modelmem::vertex_pointers_wide(mdl, src.pointer_width())
+        .and_then(|ptrs| crate::modelmem::rebuild_vvd(src, ptrs, checksum))
+        .filter(|v| v.missing_vertices == 0);
+    let vvd = match by_pointer {
+        Some(v) => v,
+        None => {
+            let map = blocks.get_or_init(|| crate::modelmem::find_vvd_blocks(src, opts));
+            match map.get(&checksum) {
+                Some(v) => v.clone(),
+                None => {
+                    report.memory_vvd_failed += 1;
+                    return None;
+                }
+            }
+        }
+    };
+    if vvd.missing_vertices > 0 {
+        report.memory_vvd_partial += 1;
+        report.memory_vvd_missing_vertices += vvd.missing_vertices;
+    }
+    let out = mdl_path.with_extension("vvd");
+    if std::fs::write(&out, &vvd.bytes).is_ok() {
+        report.memory_vvds += 1;
+        report.memory_vvd_bytes += vvd.bytes.len() as u64;
+        *report.by_class.entry(AssetClass::Model.label().to_owned()).or_default() += 1;
+        let lower = vpath.to_ascii_lowercase().replace(char::from(92u8), "/");
+        recovered.insert(format!("{}vvd", &lower[..lower.len() - 3]));
+        return Some(vvd.bytes);
+    }
+    None
+}
+
+#[allow(clippy::too_many_arguments)]
+fn recover_studio<S: MemSource + ?Sized>(
+    src: &S,
+    entries: &[crate::studiomem::StudioEntry],
+    mdl: &[u8],
+    mdl_path: &Path,
+    vpath: &str,
+    vvd: Option<&[u8]>,
+    report: &mut AssetReport,
+    recovered: &mut std::collections::HashSet<String>,
+) {
+    let full = crate::studiomem::normalize_name(vpath);
+    let Some(entry) = entries.iter().find(|e| e.name == full) else { return };
+    let stem = &full[..full.len() - 3];
+    if let Some(hw) = crate::studiomem::read_hardware(src, entry.data) {
+        match crate::studiomem::rebuild_vtx(mdl, &hw, vvd) {
+            Some(vtx) => {
+                let out = mdl_path.with_extension("dx90.vtx");
+                if std::fs::write(&out, &vtx.bytes).is_ok() {
+                    report.memory_vtxs += 1;
+                    report.memory_vtx_bytes += vtx.bytes.len() as u64;
+                    if vtx.stats.missing_lods > 0 || vtx.stats.unknown_vertices > 0 || vtx.stats.unresolved_bones > 0 {
+                        report.memory_vtx_partial += 1;
+                    }
+                    *report.by_class.entry(AssetClass::Model.label().to_owned()).or_default() += 1;
+                    recovered.insert(format!("{stem}dx90.vtx"));
+                    for variant in ["dx80.vtx", "sw.vtx"] {
+                        let wanted = format!("{stem}{variant}");
+                        let listed = report.missing.iter().any(|m| m.to_ascii_lowercase().replace(char::from(92u8), "/") == wanted);
+                        if listed && std::fs::write(mdl_path.with_extension(variant), &vtx.bytes).is_ok() {
+                            report.memory_vtx_bytes += vtx.bytes.len() as u64;
+                            recovered.insert(wanted);
+                        }
+                    }
+                }
+            }
+            None => report.memory_vtx_failed += 1,
+        }
+    }
+    let checksum = crate::modelmem::mdl_checksum(mdl).unwrap_or(0);
+    if let Some(vc) = crate::phymem::parse_vcollide(src, entry.data + crate::studiomem::DATA_VCOLLIDE_AT) {
+        let mut text = vc.text;
+        crate::phymem::restore_name_case(&mut text, &crate::phymem::case_table(mdl));
+        let phy = crate::phymem::rebuild_phy(&vc.solids, &text, checksum);
+        if std::fs::write(mdl_path.with_extension("phy"), &phy).is_ok() {
+            report.memory_phys += 1;
+            report.memory_phy_bytes += phy.len() as u64;
+            *report.by_class.entry(AssetClass::Model.label().to_owned()).or_default() += 1;
+            recovered.insert(format!("{stem}phy"));
+        }
+    }
+}
+
+pub fn list_pak_directory<S: MemSource + ?Sized>(src: &S, opts: &ScanOptions, dest: &Path, report: &mut AssetReport) {
+    let entries = crate::pakdir::find_directory(src, opts);
+    if entries.is_empty() {
+        return;
+    }
+    let rows = crate::pakdir::compare_in(&entries, dest);
+    report.pak_listed = rows.len();
+    report.pak_listed_identical = rows.iter().filter(|r| r.1 == crate::pakdir::Status::Identical).count();
+    report.pak_listed_differs = rows.iter().filter(|r| r.1 == crate::pakdir::Status::Differs).count();
+    let _ = std::fs::create_dir_all(dest);
+    let _ = std::fs::write(dest.join("pakfile_listing.txt"), crate::pakdir::listing_text(&rows));
 }
 
 pub fn content_dir_for(out: &Path, stem: &str) -> PathBuf {
@@ -451,5 +779,24 @@ entity
         assert!(roots.iter().any(|r| r.kind == RootKind::Model && r.name == "models/custom/box.mdl"));
         assert!(roots.iter().any(|r| r.kind == RootKind::Sound && r.name == "ambient/hum.wav"));
         assert!(roots.iter().any(|r| r.kind == RootKind::Skybox));
+    }
+
+    #[test]
+    fn a_model_whose_header_name_differs_is_matched_by_its_file_name() {
+        let headers = vec![
+            (0x1000u64, "anthon/door_new.mdl".to_owned(), 7980usize),
+            (0x2000, "props_c17/oildrum001.mdl".to_owned(), 5000),
+            (0x3000, "props_c17/oildrum001.mdl".to_owned(), 5000),
+        ];
+        let wanted: std::collections::HashSet<String> =
+            ["hpcustom/door_new.mdl".to_owned(), "props_c17/oildrum001.mdl".to_owned(), "x/none.mdl".to_owned()]
+                .into_iter()
+                .collect();
+        let got = resolve_model_names(&headers, &wanted);
+        assert_eq!(got["hpcustom/door_new.mdl"], (0x1000, 7980));
+        assert_eq!(got["props_c17/oildrum001.mdl"], (0x2000, 5000));
+        assert!(!got.contains_key("x/none.mdl"));
+        let twice: std::collections::HashSet<String> = ["a/door_new.mdl".to_owned(), "b/door_new.mdl".to_owned()].into_iter().collect();
+        assert_eq!(resolve_model_names(&headers, &twice).len(), 1, "one header serves one wanted name");
     }
 }

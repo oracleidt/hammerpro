@@ -116,7 +116,7 @@ fn edge(a: Vec2, b: Vec2, p: Vec2) -> f32 {
     (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x)
 }
 
-pub(crate) fn analyze(basis: &Basis, tris: &[[Vec3; 3]]) -> SkyLayers {
+pub(crate) fn analyze(basis: &Basis, tris: &[[Vec3; 3]], from_sun: bool) -> SkyLayers {
     let proj: Vec<[Vec3; 3]> = tris
         .iter()
         .map(|t| t.map(|p| basis.project(p)))
@@ -204,10 +204,13 @@ pub(crate) fn analyze(basis: &Basis, tris: &[[Vec3; 3]]) -> SkyLayers {
                     regions.resize(i + 1, empty);
                 }
                 regions[i].rect.union(here);
-                let start = starts[(clusters - 1 - k) as usize];
-                let next = starts[(clusters - k) as usize];
+                let (start, below) = if from_sun {
+                    (starts[k as usize], starts.get(k as usize + 1).map_or(f32::INFINITY, |next| next + LAYER_GAP))
+                } else {
+                    (starts[(clusters - 1 - k) as usize], starts[(clusters - k) as usize] + LAYER_GAP)
+                };
                 regions[i].depth = regions[i].depth.min(start - LAYER_GAP);
-                regions[i].below = regions[i].below.max(next + LAYER_GAP);
+                regions[i].below = regions[i].below.max(below);
             }
         }
     }
@@ -228,11 +231,11 @@ mod tests {
     fn one_sky_is_one_layer() {
         let b = Basis::of(Vec3::NEG_Z);
         let tris = quad([-4096.0, -4096.0], [4096.0, 4096.0], 2048.0);
-        let l = analyze(&b, &tris);
+        let l = analyze(&b, &tris, false);
         assert_eq!((l.count, l.layers()), (1, 1));
         assert!(l.regions.is_empty());
         assert!(l.region(1).is_none());
-        let none = analyze(&b, &[]);
+        let none = analyze(&b, &[], true);
         assert_eq!((none.count, none.layers()), (0, 1));
     }
 
@@ -242,34 +245,36 @@ mod tests {
         let mut tris: Vec<[Vec3; 3]> = quad([-4096.0, -4096.0], [4096.0, 4096.0], 2048.0).to_vec();
         tris.extend(quad([-256.0, -256.0], [256.0, 256.0], 3000.0));
         tris.extend(quad([-4096.0, -4096.0], [4096.0, 4096.0], 2040.0));
-        let l = analyze(&b, &tris);
-        assert_eq!(l.count, 2, "faces closer than the gap are one layer");
-        let region = l.region(1).expect("region");
-        let r = region.rect;
-        let inside = b.project(Vec3::new(0.0, 0.0, 2048.0)).truncate();
-        assert!(r.lo.cmple(inside).all() && inside.cmple(r.hi).all(), "{r:?}");
-        let far = b.project(Vec3::new(3500.0, 3500.0, 2048.0)).truncate();
-        assert!(!(r.lo.cmple(far).all() && far.cmple(r.hi).all()), "{r:?} {far:?}");
-        let wide = (r.hi - r.lo).max_element();
-        assert!(wide < 2.0 * REGION_MARGIN + 1024.0 + 256.0, "{wide}");
         let under = Vec3::new(875.0, 575.0, 0.0);
         let room = Vec3::new(130.0, 80.0, 2500.0);
-        assert!(region.keeps(&b, room, room + Vec3::splat(50.0)), "what lies under the sky of the room is drawn");
         let above = Vec3::new(-175.0, -125.0, 3450.0);
-        assert!(!region.keeps(&b, above, above + Vec3::splat(50.0)), "what lies above the sky of the room is skipped");
-        assert!(!region.keeps(&b, under - Vec3::Z * 3000.0, under), "what lies under the lower sky is skipped");
         let aside = Vec3::new(3500.0, 3500.0, 0.0);
-        assert!(!region.keeps(&b, aside, aside + Vec3::splat(50.0)), "what lies far from the room is skipped");
+        for from_sun in [false, true] {
+            let l = analyze(&b, &tris, from_sun);
+            assert_eq!(l.count, 2, "faces closer than the gap are one layer");
+            let region = l.region(1).expect("region");
+            let r = region.rect;
+            let inside = b.project(Vec3::new(0.0, 0.0, 2048.0)).truncate();
+            assert!(r.lo.cmple(inside).all() && inside.cmple(r.hi).all(), "{r:?}");
+            let far = b.project(Vec3::new(3500.0, 3500.0, 2048.0)).truncate();
+            assert!(!(r.lo.cmple(far).all() && far.cmple(r.hi).all()), "{r:?} {far:?}");
+            let wide = (r.hi - r.lo).max_element();
+            assert!(wide < 2.0 * REGION_MARGIN + 1024.0 + 256.0, "{wide}");
+            assert_eq!(region.keeps(&b, room, room + Vec3::splat(50.0)), !from_sun, "the room under its own sky");
+            assert!(!region.keeps(&b, above, above + Vec3::splat(50.0)), "what lies above both skies is skipped");
+            assert_eq!(region.keeps(&b, under - Vec3::Z * 3000.0, under), from_sun, "the map under the lower sky");
+            assert!(!region.keeps(&b, aside, aside + Vec3::splat(50.0)), "what lies far from the room is skipped");
+        }
     }
 
     #[test]
     fn hostile_input_is_ignored() {
         let b = Basis::of(Vec3::NAN);
         let bad = [[Vec3::NAN, Vec3::ZERO, Vec3::X], [Vec3::ZERO, Vec3::X, Vec3::X * 2.0]];
-        assert_eq!(analyze(&b, &bad).count, 0);
+        assert_eq!(analyze(&b, &bad, true).count, 0);
         let huge: Vec<[Vec3; 3]> =
             (0..200).flat_map(|i| quad([-30000.0, -30000.0], [30000.0, 30000.0], i as f32 * 100.0)).collect();
-        let l = analyze(&b, &huge);
+        let l = analyze(&b, &huge, true);
         assert_eq!(l.layers(), MAX_SKY_LAYERS);
         assert!(facing(Vec3::NEG_Z, Vec3::NEG_Z) && !facing(Vec3::Z, Vec3::NEG_Z));
         let r = Rect { lo: Vec2::ZERO, hi: Vec2::ONE };

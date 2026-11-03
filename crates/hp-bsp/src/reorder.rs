@@ -10,7 +10,6 @@ const VERTEXES: usize = 3;
 const NODES: usize = 5;
 const TEXINFO: usize = 6;
 const OCCLUSION: usize = 9;
-const LEAFS: usize = lump::LEAFS;
 const FACEIDS: usize = 11;
 const EDGES: usize = 12;
 const SURFEDGES: usize = 13;
@@ -22,6 +21,7 @@ const BRUSHSIDES: usize = 19;
 const AREAPORTALS: usize = 21;
 const DISPINFO: usize = 26;
 const LEAFWATERDATA: usize = 36;
+const VERTNORMALINDICES: usize = 31;
 const FACE_MACRO: usize = 47;
 const WATEROVERLAYS: usize = 50;
 const FACES_HDR: usize = lump::FACES_HDR;
@@ -396,57 +396,6 @@ fn brushes(w: &mut Work<'_>, rng: &mut Rng) -> Result<bool> {
     Ok(true)
 }
 
-fn leaf_stride(version: u32, len: usize) -> Option<usize> {
-    let stride = if version == 0 { 56 } else { 32 };
-    len.is_multiple_of(stride).then_some(stride)
-}
-
-fn shuffle_ranges(list: &mut [u8], ranges: &[(usize, usize)], rng: &mut Rng) -> bool {
-    let n = list.len() / 2;
-    let mut spans: Vec<(usize, usize)> = ranges.iter().copied().filter(|&(_, c)| c > 1).collect();
-    spans.sort();
-    spans.dedup();
-    let mut end = 0usize;
-    for &(first, num) in &spans {
-        if first < end || first + num > n {
-            return false;
-        }
-        end = first + num;
-    }
-    for &(first, num) in &spans {
-        let mut vals: Vec<[u8; 2]> = (first..first + num).map(|i| [list[i * 2], list[i * 2 + 1]]).collect();
-        rng.shuffle(&mut vals);
-        for (k, v) in vals.into_iter().enumerate() {
-            list[(first + k) * 2..(first + k) * 2 + 2].copy_from_slice(&v);
-        }
-    }
-    true
-}
-
-fn leaf_lists(w: &mut Work<'_>, rng: &mut Rng) -> Result<bool> {
-    let leafs = w.get(LEAFS)?;
-    let version = w.bsp.header().lumps[LEAFS].version;
-    let Some(stride) = leaf_stride(version, leafs.len()) else { return Ok(false) };
-    let lf = w.get(LEAFFACES)?;
-    let lb = w.get(LEAFBRUSHES)?;
-    let n = leafs.len() / stride;
-    let face_ranges: Vec<(usize, usize)> =
-        (0..n).map(|i| (u16_at(&leafs, i * stride + 20) as usize, u16_at(&leafs, i * stride + 22) as usize)).collect();
-    let brush_ranges: Vec<(usize, usize)> =
-        (0..n).map(|i| (u16_at(&leafs, i * stride + 24) as usize, u16_at(&leafs, i * stride + 26) as usize)).collect();
-    if lf.len() % 2 != 0 || lb.len() % 2 != 0 {
-        return Ok(false);
-    }
-    let mut nlf = lf.clone();
-    let mut nlb = lb.clone();
-    if !shuffle_ranges(&mut nlf, &face_ranges, rng) || !shuffle_ranges(&mut nlb, &brush_ranges, rng) {
-        return Ok(false);
-    }
-    w.set(LEAFFACES, nlf);
-    w.set(LEAFBRUSHES, nlb);
-    Ok(true)
-}
-
 fn faces(w: &mut Work<'_>, rng: &mut Rng) -> Result<bool> {
     let data = w.get(lump::FACES)?;
     let Some(n) = count(&data, FACE_LEN) else { return Ok(false) };
@@ -455,6 +404,7 @@ fn faces(w: &mut Work<'_>, rng: &mut Rng) -> Result<bool> {
     let hdr = w.get(FACES_HDR)?;
     let ids = w.get(FACEIDS)?;
     let macro_info = w.get(FACE_MACRO)?;
+    let normal_indices = w.get(VERTNORMALINDICES)?;
     let mut leaf_faces = w.get(LEAFFACES)?;
     let mut overlays = w.get(lump::OVERLAYS)?;
     let mut disps = w.get(DISPINFO)?;
@@ -469,6 +419,16 @@ fn faces(w: &mut Work<'_>, rng: &mut Rng) -> Result<bool> {
         || !(ids.is_empty() || ids.len() == n * 2)
         || !(macro_info.is_empty() || macro_info.len() == n * 2)
     {
+        return Ok(false);
+    }
+    let mut edge_counts: Vec<usize> = Vec::with_capacity(n);
+    for f in 0..n {
+        let Ok(c) = usize::try_from(i16::from_le_bytes([data[f * FACE_LEN + 8], data[f * FACE_LEN + 9]])) else {
+            return Ok(false);
+        };
+        edge_counts.push(c);
+    }
+    if !(normal_indices.is_empty() || normal_indices.len() == edge_counts.iter().sum::<usize>() * 2) {
         return Ok(false);
     }
     let mut spans: Vec<(usize, usize)> = Vec::new();
@@ -530,6 +490,19 @@ fn faces(w: &mut Work<'_>, rng: &mut Rng) -> Result<bool> {
     if !macro_info.is_empty() {
         w.set(FACE_MACRO, permute_records(&macro_info, 2, &new_to_old));
     }
+    if !normal_indices.is_empty() {
+        let mut starts = Vec::with_capacity(n);
+        let mut at = 0usize;
+        for &c in &edge_counts {
+            starts.push(at);
+            at += c * 2;
+        }
+        let mut moved = Vec::with_capacity(normal_indices.len());
+        for &old in &new_to_old {
+            moved.extend_from_slice(&normal_indices[starts[old]..starts[old] + edge_counts[old] * 2]);
+        }
+        w.set(VERTNORMALINDICES, moved);
+    }
     w.set(LEAFFACES, leaf_faces);
     w.set(lump::OVERLAYS, overlays);
     w.set(DISPINFO, disps);
@@ -556,7 +529,6 @@ pub fn reorder(bsp: &Bsp, opts: ReorderOptions, rng: &mut Rng) -> Result<(Reorde
     if opts.world {
         run("brushes", brushes, &mut w);
         run("faces", faces, &mut w);
-        run("leaf_lists", leaf_lists, &mut w);
     }
     let mut out: Vec<(usize, Vec<u8>)> = Vec::new();
     for (i, data) in w.cur {

@@ -32,6 +32,34 @@ fn main() {
             }
             "custommat" => custom_mat = Some(v.to_owned()),
             "custommodel" => custom_model = Some(v.to_owned()),
+            "strongest" => {
+                let st = ProtectOptions::strongest();
+                opts.layout = st.layout;
+                opts.reorder = st.reorder;
+            }
+            "seed" => opts.layout_seed = v.to_owned(),
+            "layout" => {
+                for part in v.split(',') {
+                    match part {
+                        "lumps" => opts.layout.shuffle_lumps = true,
+                        "gaps" => opts.layout.junk_gaps = true,
+                        "decoys" => opts.layout.decoys = true,
+                        "header" => opts.layout.scramble_header = true,
+                        "gamelumps" => opts.layout.shuffle_game_lumps = true,
+                        "pak" => opts.layout.random_pak = true,
+                        _ => panic!("unknown layout option {part}"),
+                    }
+                }
+            }
+            "reorder" => {
+                for part in v.split(',') {
+                    match part {
+                        "tables" => opts.reorder.tables = true,
+                        "world" => opts.reorder.world = true,
+                        _ => panic!("unknown reorder option {part}"),
+                    }
+                }
+            }
             "noprotect" => off = true,
             _ => panic!("unknown {k}"),
         }

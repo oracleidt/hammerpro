@@ -132,13 +132,13 @@ impl UpdateController {
             }
             CheckResult::Available(release) => {
                 let info = info_of(&release);
-                let skipped = state.settings.update.skips(&release.tag);
+                let announces = state.settings.update.announces(&release.tag);
                 let rt = &mut state.runtime.update;
                 rt.status = UpdateStatus::Available;
                 rt.latest_seen = info.version.clone();
                 rt.dont_show_again = false;
                 rt.latest = Some(info);
-                if manual || !skipped {
+                if manual || announces {
                     rt.dialog_open = true;
                 }
                 self.release = Some(release);

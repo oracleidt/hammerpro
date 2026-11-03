@@ -40,6 +40,7 @@ The program is replaced **at the same place** as the one you ran, so a copy inst
 | Option | What it does | Default |
 | --- | --- | --- |
 | **Check for updates on startup** | Turns the background check at startup off or on. Key `update.check_on_startup`. | on |
+| **Show the update window when a new version is out** | The master switch of the window. Turn it back on to undo **Don't show this again**, whichever version you hid: it clears the skipped version too. Key `update.show_dialog`. | on |
 | **Check for updates now** | Checks at once and opens the window when a newer release exists (or tells you that you are up to date). | |
 | **Show the update** | Reopens the window of the update found. | |
 | Status line | *Hammer Pro is up to date (latest release: 1.0.2)*, *Version 1.0.3 is available.*, or the reason the last check failed. | |
@@ -72,7 +73,7 @@ Without `HP_UPDATE_API_URL`, downloads are only accepted from `github.com` (HTTP
 
 ## MCP
 
-AI assistants read the state with `get_update_status` (installed version, status, the newest release with its notes, progress, errors, preferences), ask for a check with `check_for_updates`, install with `apply_update` (needs `confirm: true`, an update found, and no compile running; it closes Hammer Pro, so only on the user's request), and change `update.check_on_startup` and `update.skipped_version` with `set_setting`. The action `install_update` of `run_action` needs `confirm` too. See the [MCP tool reference](../../MCP.md).
+AI assistants read the state with `get_update_status` (installed version, status, the newest release with its notes, progress, errors, preferences), ask for a check with `check_for_updates`, install with `apply_update` (needs `confirm: true`, an update found, and no compile running; it closes Hammer Pro, so only on the user's request), and change `update.check_on_startup`, `update.show_dialog` and `update.skipped_version` with `set_setting`. The action `install_update` of `run_action` needs `confirm` too. See the [MCP tool reference](../../MCP.md).
 
 ## Related pages
 

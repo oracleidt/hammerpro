@@ -338,6 +338,21 @@ fn sky_layer_of(m: texture_depth_2d_array, uv: vec2<f32>, layers: u32, depth: f3
     return -1;
 }
 
+fn sun_layer_of(uv: vec2<f32>, layers: u32, depth: f32) -> i32 {
+    var found = -1;
+    for (var k = 0u; k < layers; k++) {
+        let c = cut_depth_at(sun_cut_map, uv, k);
+        if c <= 0.0 {
+            return select(found, 0, k == 0u);
+        }
+        if 1.0 - c > depth {
+            return found;
+        }
+        found = i32(k);
+    }
+    return found;
+}
+
 fn sun_visibility(world: vec3<f32>, n: vec3<f32>, frag: vec2<f32>, sky3d: bool) -> f32 {
     if view.shadow.x < 0.5 {
         return 1.0;
@@ -347,7 +362,7 @@ fn sun_visibility(world: vec3<f32>, n: vec3<f32>, frag: vec2<f32>, sky3d: bool) 
     if any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0)) || p.z > 1.0 || p.z < 0.0 {
         return 1.0;
     }
-    let found = sky_layer_of(sun_cut_map, uv, layer_count(view.sun_soft.w), p.z + view.shadow.y);
+    let found = sun_layer_of(uv, layer_count(view.sun_soft.w), p.z + view.shadow.y);
     if found < 0 && !sky3d {
         return 0.0;
     }
@@ -984,9 +999,23 @@ fn beyond_sky(in: VsOut) -> bool {
     if (view.opts.x & OPT_SKY_CUT) == 0u {
         return false;
     }
-    let layer = u32(max(view.sun_soft.y, 0.0) + 0.5);
-    let cut = cut_depth_at(sun_cut_map, in.clip.xy * view.viewport.zw, layer);
-    return cut > 0.0 && in.clip.z < cut + view.sun_soft.x;
+    let uv = in.clip.xy * view.viewport.zw;
+    var k = i32(max(view.sun_soft.y, 0.0) + 0.5);
+    if view.sun_soft.z < 0.5 {
+        let cut = cut_depth_at(sun_cut_map, uv, u32(k));
+        return cut > 0.0 && in.clip.z < cut + view.sun_soft.x;
+    }
+    loop {
+        if k < 0 {
+            return false;
+        }
+        let cut = cut_depth_at(sun_cut_map, uv, u32(k));
+        if cut > 0.0 {
+            return in.clip.z < 1.0 - cut + view.sun_soft.x;
+        }
+        k -= 1;
+    }
+    return false;
 }
 
 @fragment

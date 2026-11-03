@@ -11,8 +11,9 @@ domain! { "updates";
         "The state of the auto update: installed version, status (idle, checking, up_to_date, available, \
         downloading, ready, failed), the newest release found (version, tag, title, release notes, page, \
         archive name and size), the download progress, the last error, and the preferences \
-        update.check_on_startup (check in the background at startup) and update.skipped_version (the version \
-        the user chose not to be asked about). The preferences are changed with set_setting on the update.* keys.",
+        update.check_on_startup (check in the background at startup), update.show_dialog (show the update \
+        window at all) and update.skipped_version (the version the user chose not to be asked about). The \
+        preferences are changed with set_setting on the update.* keys.",
         {}, [];
     check_for_updates: Editor, "Check for updates",
         "Ask GitHub, in the background, whether a newer Hammer Pro release exists (same as Help > Check for \
@@ -54,6 +55,7 @@ fn info_json(state: &AppState) -> serde_json::Value {
         "dialog_open": rt.dialog_open,
         "can_install": rt.can_install(),
         "check_on_startup": state.settings.update.check_on_startup,
+        "show_dialog": state.settings.update.show_dialog,
         "skipped_version": state.settings.update.skipped_version,
         "update_address_overridden": rt.api_overridden,
     })
@@ -139,6 +141,7 @@ mod tests {
         let v = ok(&mut s, "get_update_status", json!({}));
         assert_eq!(v["status"], "idle");
         assert_eq!(v["check_on_startup"], true);
+        assert_eq!(v["show_dialog"], true);
         assert_eq!(v["skipped_version"], "");
         assert_eq!(v["can_install"], false);
         assert_eq!(v["current_version"], hp_update::current_version().to_string());

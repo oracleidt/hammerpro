@@ -12,6 +12,14 @@ pub trait MemSource: Sync {
     fn regions(&self) -> Vec<Region>;
     fn read(&self, addr: u64, buf: &mut [u8]) -> usize;
 
+    fn module_base(&self, _name: &str) -> Option<u64> {
+        None
+    }
+
+    fn pointer_width(&self) -> usize {
+        8
+    }
+
     fn read_vec(&self, addr: u64, len: usize) -> Vec<u8> {
         let mut v = vec![0u8; len];
         let n = self.read(addr, &mut v);
@@ -23,6 +31,7 @@ pub trait MemSource: Sync {
 #[derive(Default)]
 pub struct VecMem {
     pub blocks: Vec<(u64, Vec<u8>)>,
+    pub modules: Vec<(String, u64)>,
 }
 
 impl VecMem {
@@ -32,6 +41,10 @@ impl VecMem {
 }
 
 impl MemSource for VecMem {
+    fn module_base(&self, name: &str) -> Option<u64> {
+        self.modules.iter().find(|(n, _)| n.eq_ignore_ascii_case(name)).map(|(_, b)| *b)
+    }
+
     fn regions(&self) -> Vec<Region> {
         self.blocks
             .iter()
@@ -285,6 +298,36 @@ mod win {
             out
         }
 
+        fn pointer_width(&self) -> usize {
+            if super::process_is_64bit(self.pid) == Some(false) { 4 } else { 8 }
+        }
+
+        fn module_base(&self, name: &str) -> Option<u64> {
+            use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+                MODULEENTRY32W, Module32FirstW, Module32NextW, TH32CS_SNAPMODULE, TH32CS_SNAPMODULE32,
+            };
+            unsafe {
+                let snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, self.pid);
+                if snap == INVALID_HANDLE_VALUE {
+                    return None;
+                }
+                let mut e: MODULEENTRY32W = std::mem::zeroed();
+                e.dwSize = std::mem::size_of::<MODULEENTRY32W>() as u32;
+                let mut found = None;
+                let mut ok = Module32FirstW(snap, &mut e) != 0;
+                while ok {
+                    let len = e.szModule.iter().position(|c| *c == 0).unwrap_or(e.szModule.len());
+                    if String::from_utf16_lossy(&e.szModule[..len]).eq_ignore_ascii_case(name) {
+                        found = Some(e.modBaseAddr as u64);
+                        break;
+                    }
+                    ok = Module32NextW(snap, &mut e) != 0;
+                }
+                CloseHandle(snap);
+                found
+            }
+        }
+
         fn read(&self, addr: u64, buf: &mut [u8]) -> usize {
             let mut got = 0usize;
             unsafe {
@@ -322,9 +365,9 @@ mod live_tests {
         for i in 0..40 {
             text.push_str(&format!("{{\n\"classname\" \"info_target\"\n\"targetname\" \"live{i}\"\n}}\n"));
         }
-        let mut block = vec![0u8; 4096];
+        let mut block = vec![0u8; 1 << 20];
         block.extend_from_slice(text.as_bytes());
-        block.extend_from_slice(&[0u8; 4096]);
+        block.extend_from_slice(&vec![0u8; 1 << 20]);
         let block = std::hint::black_box(block);
         let p = GameProcess::open(std::process::id()).expect("own process");
         let opts = ScanOptions { writable_only: true, min_region: 1 << 12, ..ScanOptions::default() };

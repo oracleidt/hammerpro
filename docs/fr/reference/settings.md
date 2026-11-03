@@ -473,7 +473,7 @@ La fenêtre **Construire et enregistrer en contenu** et l'onglet Ressources de l
 | `protect_shuffle_game_lumps` | `true` | Répertoire des game lumps mélangé. |
 | `protect_random_pak` | `true` | Pakfile à une position aléatoire. |
 | `protect_reorder_tables` | `true` | Permute plans, sommets, arêtes, texinfo et texdata. |
-| `protect_reorder_world` | `true` | Permute brushes, faces et listes de feuilles. |
+| `protect_reorder_world` | `true` | Permute brushes et faces (les listes des feuilles restent dans l'ordre). |
 | `protect_layout_seed` | `""` | Graine du brouilleur de structure (vide : aléatoire à chaque compilation). |
 | `show_map_assets` | `false` | Onglet Ressources de la map. |
 | `collect_folder` | `""` | Dernier dossier de sortie de **Collecter**. |
@@ -528,6 +528,9 @@ Le panneau du [BSP Sniffer](../features/bsp-sniffer.md) (Fichier > BSP Sniffer..
 | `gmod_dir` | `""` | Dossier de Garry's Mod (vide : automatique). |
 | `launch_options` | fenêtré, 800 x 450, réglages bas, muet | Ajoutées au lancement Steam. |
 | `insecure` | `"auto"` | `auto`, `always` ou `never` pour `-insecure`. |
+| `game_bits` | `"auto"` | `auto`, `64` ou `32` : quel jeu de l'installation est lancé et lu. |
+| `use_map_file` | `false` | Lire aussi le fichier de map du client pour recouper la mémoire et compléter ce qui lui manque. Désactivé : aucun fichier de map n'est ouvert. |
+| `read_ldr_lighting` | `true` | Lire l'autre jeu d'éclairage avec un second chargement de la map en LDR. |
 | `attach_running` | `false` | Utiliser un jeu déjà lancé. |
 | `process_timeout_secs` | `180` | Attente du processus du jeu. |
 | `load_timeout_secs` | `900` | Attente de la map. |
@@ -582,6 +585,7 @@ Voir [Index et analyse du contenu](../features/content-index.md).
 | Clé | Défaut | Effet |
 | --- | --- | --- |
 | `update.check_on_startup` | `true` | Cherche une version plus récente en arrière-plan au démarrage de Hammer Pro. **Paramètres > Mises à jour**. |
+| `update.show_dialog` | `true` | Affiche la fenêtre de mise à jour quand une version plus récente est trouvée. La réactiver efface aussi `update.skipped_version`. **Paramètres > Mises à jour**. |
 | `update.skipped_version` | `""` | Tag de la version dont l'utilisateur ne veut plus entendre parler (**Ne plus afficher**), par exemple `"v1.0.3"`. Vide : aucune. |
 
 Voir [Mises à jour](../features/updates.md).

@@ -317,3 +317,25 @@ fn real_maps() {
         }
     }
 }
+
+#[test]
+fn a_brush_model_that_no_entity_uses_becomes_a_brush_entity_and_not_world_geometry() {
+    let mut b = BspBuilder::default();
+    let dev = b.texture("DEV/DEV_MEASUREGENERIC01");
+    let trig = b.texture("TOOLS/TOOLSTRIGGER");
+    let floor = b.cube([-256.0, -256.0, -16.0], [256.0, 256.0, 0.0], 1, dev, false);
+    let zone = b.cube([-8.0, -8.0, 0.0], [8.0, 8.0, 64.0], 1, trig, false);
+    let wall = b.cube([100.0, -8.0, 0.0], [116.0, 8.0, 64.0], 1, dev, false);
+    b.model(&[floor]);
+    b.model(&[zone]);
+    b.model(&[wall]);
+    b.entities = "{\n\"classname\" \"worldspawn\"\n}\n".to_owned();
+    let bsp = Bsp::from_vec(b.build()).expect("bsp");
+    let out = decompile(&bsp, &Options { map_name: "m".to_owned(), ..Options::default() }).expect("decompiles");
+    assert_eq!(out.report.orphan_models, 2);
+    assert_eq!(out.report.world_solids, 1);
+    let classes: Vec<&str> = out.map.entities.iter().map(|e| e.classname.as_str()).collect();
+    assert!(classes.contains(&"trigger_multiple"), "{classes:?}");
+    assert!(classes.contains(&"func_brush"), "{classes:?}");
+    assert_eq!(out.map.entities.iter().map(|e| e.solids.len()).sum::<usize>(), 2);
+}

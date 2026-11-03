@@ -162,9 +162,7 @@ pub fn summary_lines(o: &Outcome) -> Vec<String> {
         out.push(tf!(
             "sniffer.sum.protected",
             u.garbage_names,
-            u.restored_from_patch,
             u.guessed,
-            u.kept_custom,
             u.unresolved
         ));
     }
@@ -524,8 +522,29 @@ impl SnifferWindow {
                             .on_hover_text(t!("sniffer.insecure_tip"));
                         dirty |= before != s.insecure;
                         ui.end_row();
+                        ui.label(t!("sniffer.game_bits"));
+                        let before = s.game_bits;
+                        egui::ComboBox::from_id_salt("sniffer_game_bits")
+                            .selected_text(game_bits_label(s.game_bits))
+                            .show_ui(ui, |ui| {
+                                for m in hp_sniffer::GameBits::ALL {
+                                    ui.selectable_value(&mut s.game_bits, m, game_bits_label(m));
+                                }
+                            })
+                            .response
+                            .on_hover_text(t!("sniffer.game_bits_tip"));
+                        dirty |= before != s.game_bits;
+                        ui.end_row();
                     });
                     dirty |= ui.checkbox(&mut s.attach_running, t!("sniffer.attach_running")).changed();
+                    dirty |= ui
+                        .checkbox(&mut s.use_map_file, t!("sniffer.use_map_file"))
+                        .on_hover_text(t!("sniffer.use_map_file_tip"))
+                        .changed();
+                    dirty |= ui
+                        .checkbox(&mut s.read_ldr_lighting, t!("sniffer.read_ldr_lighting"))
+                        .on_hover_text(t!("sniffer.read_ldr_lighting_tip"))
+                        .changed();
                     egui::Grid::new("sniffer_timeouts").num_columns(2).show(ui, |ui| {
                         for (label, value, min, max) in [
                             (t!("sniffer.process_timeout"), &mut s.process_timeout_secs, 10, 3600),
@@ -615,6 +634,14 @@ impl SnifferWindow {
         if header.header_response.clicked() {
             state.runtime.lab.sniffer.show_log = !open;
         }
+    }
+}
+
+fn game_bits_label(m: hp_sniffer::GameBits) -> &'static str {
+    match m {
+        hp_sniffer::GameBits::Auto => t!("sniffer.game_bits.auto"),
+        hp_sniffer::GameBits::Bits64 => t!("sniffer.game_bits.64"),
+        hp_sniffer::GameBits::Bits32 => t!("sniffer.game_bits.32"),
     }
 }
 

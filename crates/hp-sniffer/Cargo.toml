@@ -13,6 +13,7 @@ serde.workspace = true
 toml.workspace = true
 thiserror.workspace = true
 memchr.workspace = true
+crc32fast = "1.5"
 log.workspace = true
 ahash.workspace = true
 rayon.workspace = true
@@ -23,6 +24,7 @@ hp-fs.workspace = true
 hp-editor.workspace = true
 hp-vpk.workspace = true
 hp-vmf.workspace = true
+hp-vtf.workspace = true
 hp-geom.workspace = true
 glam.workspace = true
 

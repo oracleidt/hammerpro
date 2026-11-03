@@ -12,10 +12,7 @@ pub struct UnprotectReport {
     pub guess_ambiguous: usize,
     pub garbage_names: usize,
     pub restored: usize,
-    pub restored_from_patch: usize,
-    pub kept_custom: usize,
     pub unresolved: usize,
-    pub patch_files: usize,
     pub watermark: Option<String>,
     pub lock_hash: Option<String>,
 }
@@ -34,60 +31,13 @@ pub fn is_garbage_name(name: &str) -> bool {
     }
 }
 
-pub fn patch_target(text: &str) -> Option<String> {
-    let lower = text.to_ascii_lowercase();
-    let head = lower.trim_start();
-    if !head.starts_with("\"patch\"") && !head.starts_with("patch") {
-        return None;
-    }
-    let mut quotes = text.match_indices('"').map(|(i, _)| i).collect::<Vec<_>>().into_iter();
-    let mut tokens: Vec<&str> = Vec::new();
-    while let (Some(a), Some(b)) = (quotes.next(), quotes.next()) {
-        tokens.push(&text[a + 1..b]);
-    }
-    let at = tokens.iter().position(|t| t.eq_ignore_ascii_case("include"))?;
-    let value = tokens.get(at + 1)?.trim().replace('\\', "/");
-    let lowered = value.to_ascii_lowercase();
-    let stripped = lowered.strip_prefix("materials/").unwrap_or(&lowered);
-    let stripped = stripped.strip_suffix(".vmt").unwrap_or(stripped);
-    if stripped.is_empty() { None } else { Some(stripped.to_owned()) }
-}
-
-pub fn patch_map(pak_source: &Bsp) -> (HashMap<String, String>, HashSet<String>, HashSet<String>) {
-    let mut map = HashMap::new();
-    let mut files = HashSet::new();
-    let mut custom: HashSet<String> = HashSet::new();
-    let Ok(pak) = pak_source.pakfile() else { return (map, files, custom) };
-    for e in pak.entries() {
-        let key = e.key.replace('\\', "/");
-        let Some(rest) = key.strip_prefix("materials/") else { continue };
-        let Some(name) = rest.strip_suffix(".vmt") else { continue };
-        if !is_garbage_name(name) {
-            continue;
-        }
-        let Ok(Some(data)) = pak.read_name(&e.name) else { continue };
-        let text = String::from_utf8_lossy(&data).into_owned();
-        match patch_target(&text) {
-            Some(orig) => {
-                map.insert(name.to_owned(), orig);
-                files.insert(key.clone());
-            }
-            None => {
-                custom.insert(name.to_owned());
-            }
-        }
-    }
-    (map, files, custom)
-}
-
 pub fn restore_materials(
     bsp: &Bsp,
-    pak_source: Option<&Bsp>,
     guess: &HashMap<String, String>,
     mut report: UnprotectReport,
-) -> (Option<Bsp>, UnprotectReport, HashSet<String>) {
+) -> (Option<Bsp>, UnprotectReport) {
     let (Ok(data), Ok(table)) = (bsp.lump(lump::TEXDATA_STRING_DATA), bsp.lump(lump::TEXDATA_STRING_TABLE)) else {
-        return (None, report, HashSet::new());
+        return (None, report);
     };
     let name_at = |ofs: usize| -> String {
         let rest = data.get(ofs..).unwrap_or(&[]);
@@ -100,16 +50,11 @@ pub fn restore_materials(
         names.iter().filter(|n| is_garbage_name(n)).map(|n| n.to_ascii_lowercase()).collect();
     report.garbage_names = garbage.len();
     if garbage.is_empty() {
-        return (None, report, HashSet::new());
+        return (None, report);
     }
-    let (map, files, custom) = match pak_source {
-        Some(p) => patch_map(p),
-        None => (HashMap::new(), HashSet::new(), HashSet::new()),
-    };
-    report.patch_files = files.len();
-    let mut map = map;
+    let mut map: HashMap<String, String> = HashMap::new();
     for (k, v) in guess {
-        if !map.contains_key(k) && !custom.contains(k) {
+        if garbage.contains(k) {
             map.insert(k.clone(), v.clone());
             report.guessed += 1;
         }
@@ -136,24 +81,21 @@ pub fn restore_materials(
         new_table.extend_from_slice(&at.to_le_bytes());
     }
     report.restored = restored.len();
-    report.restored_from_patch = restored.iter().filter(|r| files.contains(&format!("materials/{r}.vmt"))).count();
-    let left: Vec<&String> = garbage.iter().filter(|g| !restored.contains(*g)).collect();
-    report.kept_custom = left.iter().filter(|g| custom.contains(**g)).count();
-    report.unresolved = left.len() - report.kept_custom;
+    report.unresolved = garbage.iter().filter(|g| !restored.contains(*g)).count();
     if restored.is_empty() {
-        return (None, report, files);
+        return (None, report);
     }
     let mut edit = match Bsp::from_vec(bsp.bytes().to_vec()) {
         Ok(b) => b.edit(),
-        Err(_) => return (None, report, HashSet::new()),
+        Err(_) => return (None, report),
     };
     if edit.replace_lump(lump::TEXDATA_STRING_DATA, new_data).is_err()
         || edit.replace_lump(lump::TEXDATA_STRING_TABLE, new_table).is_err()
     {
-        return (None, report, HashSet::new());
+        return (None, report);
     }
     let out = edit.to_vec().ok().and_then(|v| Bsp::from_vec(v).ok());
-    (out, report, files)
+    (out, report)
 }
 
 pub fn strip_markers(entities: &mut [hp_bsp::Entity], report: &mut UnprotectReport) {
@@ -180,14 +122,6 @@ mod tests {
         assert!(!is_garbage_name("hp/ccff4ee"));
         assert!(!is_garbage_name("hp/ccff4eeg"));
         assert!(!is_garbage_name("concrete/floor"));
-    }
-
-    #[test]
-    fn a_patch_vmt_names_its_original() {
-        let t = "\"patch\"\n{\n\t\"include\" \"materials/concrete/concretefloor028a.vmt\"\n}\n";
-        assert_eq!(patch_target(t).as_deref(), Some("concrete/concretefloor028a"));
-        assert_eq!(patch_target("\"LightmappedGeneric\"\n{\n}\n"), None);
-        assert_eq!(patch_target("\"patch\"\n{\n\t\"include\" \"materials\\a\\b.vmt\"\n}\n").as_deref(), Some("a/b"));
     }
 
     fn strings(names: &[&str]) -> (Vec<u8>, Vec<u8>) {
@@ -249,30 +183,7 @@ mod tests {
     }
 
     #[test]
-    fn a_protected_map_gets_its_stock_names_back_from_the_patch_files() {
-        let options = hp_bsp::ProtectOptions {
-            randomize_materials: true,
-            salt: "s".into(),
-            watermark: "me".into(),
-            ..Default::default()
-        };
-        let protected = protected_sample(&options);
-        let scrambled = texture_names(&protected);
-        assert!(is_garbage_name(&scrambled[0]) && is_garbage_name(&scrambled[1]) && is_garbage_name(&scrambled[3]));
-        assert_eq!(scrambled[2], "tools/toolsnodraw");
-        let (fixed, report, files) =
-            restore_materials(&protected, Some(&protected), &HashMap::new(), UnprotectReport::default());
-        let fixed = fixed.expect("restored");
-        let names = texture_names(&fixed);
-        assert_eq!(&names[..3], ["concrete/floor01", "brick/wall02", "tools/toolsnodraw"]);
-        assert!(is_garbage_name(&names[3]), "a renamed custom material keeps its scrambled name");
-        assert_eq!((report.garbage_names, report.restored, report.kept_custom, report.unresolved), (3, 2, 1, 0));
-        assert_eq!(files.len(), 2);
-        assert!(files.iter().all(|f| f.starts_with("materials/hp/")));
-    }
-
-    #[test]
-    fn a_guess_fills_in_when_there_is_no_pakfile_and_markers_are_reported() {
+    fn guessed_names_fill_in_from_memory_and_markers_are_reported() {
         let options = hp_bsp::ProtectOptions {
             randomize_materials: true,
             salt: "s".into(),
@@ -284,7 +195,7 @@ mod tests {
         let scrambled = texture_names(&protected);
         let mut guess = HashMap::new();
         guess.insert(scrambled[0].to_ascii_lowercase(), "concrete/floor01".to_owned());
-        let (fixed, report, _) = restore_materials(&protected, None, &guess, UnprotectReport::default());
+        let (fixed, report) = restore_materials(&protected, &guess, UnprotectReport::default());
         let names = texture_names(&fixed.expect("restored"));
         assert_eq!(names[0], "concrete/floor01");
         assert_eq!(names[1], scrambled[1]);

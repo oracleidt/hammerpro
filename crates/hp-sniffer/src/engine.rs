@@ -12,6 +12,7 @@ use crate::world::{FACE_RECORD, RenderFace, RenderWorld};
 pub const DISP_POWER_AT: usize = 0x20c;
 pub const DISP_START_AT: usize = 0x210;
 pub const DISP_VERTS_AT: usize = 0x98;
+pub const DISP_ALLOWED_AT: usize = 0x198;
 pub const DISP_OBJECT_BYTES: usize = 0x220;
 pub const RENDER_VERT_BYTES: usize = 64;
 
@@ -23,6 +24,12 @@ pub const PROP_ALPHA_AT: usize = 0x4c;
 pub const PROP_SOLID_AT: usize = 0x4d;
 pub const PROP_SKIN_AT: usize = 0x4e;
 pub const PROP_FADES_AT: usize = 0x4f;
+pub const PROP_INDEX_AT: usize = 0x54;
+pub const PROP_MINS_AT: usize = 0x60;
+pub const PROP_MAXS_AT: usize = 0x6c;
+pub const PROP_LIGHTING_AT: usize = 0xf4;
+const LIGHTING_ORIGIN_TOLERANCE: f32 = 0.5;
+const PROP_USE_LIGHTING_ORIGIN: u32 = 2;
 pub const PROP_LEAF_AT: usize = 0x50;
 pub const PROP_LEAF_COUNT_AT: usize = 0x52;
 pub const PROP_VTABLE_AT: usize = 0x10;
@@ -35,13 +42,112 @@ const OVERLAY_UV_AT: usize = 0x30;
 const OVERLAY_POINTS_AT: usize = 0x40;
 const OVERLAY_ORIGIN_AT: usize = 0x70;
 const OVERLAY_BASIS_AT: usize = 0x7c;
+const OVERLAY_FADE_AT: usize = 0xa8;
+pub const OVERLAY_FADE_DEFAULT: [f32; 2] = [-1.0, 0.0];
 pub const OVERLAY_RECORD_BYTES: usize = 352;
 const MAX_OVERLAY_FACES: usize = 64;
 const OVERLAY_MIN_RUN: usize = 2;
+const OVERLAY_TEXINFO_MASK: u32 = 0xffff;
+const OVERLAY_ORDER_SHIFT: u32 = 16;
+const OVERLAY_ORDER_MASK: u32 = 3;
 
 pub const DISP_MIN_TESS: i32 = i32::MIN;
 pub const CUBEMAP_DEFAULT_SIZE: i32 = 6;
 pub const DEFAULT_PROP_FLAGS: u32 = 0x100;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Layout {
+    pub ptr: usize,
+    pub face_record: usize,
+    pub model_name_at: usize,
+    pub prop_stride: usize,
+    pub prop_vtable_at: usize,
+    pub prop_origin_at: usize,
+    pub prop_angles_at: usize,
+    pub prop_model_at: usize,
+    pub prop_alpha_at: usize,
+    pub prop_solid_at: usize,
+    pub prop_skin_at: usize,
+    pub prop_fades_at: usize,
+    pub prop_index_at: usize,
+    pub prop_leaf_at: usize,
+    pub prop_leaf_count_at: usize,
+    pub prop_mins_at: usize,
+    pub prop_maxs_at: usize,
+    pub prop_lighting_at: usize,
+    pub overlay_stride: usize,
+    pub overlay_faces_at: usize,
+    pub overlay_count_at: usize,
+    pub overlay_uv_at: usize,
+    pub overlay_points_at: usize,
+    pub overlay_origin_at: usize,
+    pub overlay_basis_at: usize,
+    pub overlay_fade_at: usize,
+}
+
+pub const LAYOUT_X64: Layout = Layout {
+    ptr: 8,
+    face_record: FACE_RECORD,
+    model_name_at: 8,
+    prop_stride: PROP_STRIDE,
+    prop_vtable_at: PROP_VTABLE_AT,
+    prop_origin_at: PROP_ORIGIN_AT,
+    prop_angles_at: PROP_ANGLES_AT,
+    prop_model_at: PROP_MODEL_AT,
+    prop_alpha_at: PROP_ALPHA_AT,
+    prop_solid_at: PROP_SOLID_AT,
+    prop_skin_at: PROP_SKIN_AT,
+    prop_fades_at: PROP_FADES_AT,
+    prop_index_at: PROP_INDEX_AT,
+    prop_leaf_at: PROP_LEAF_AT,
+    prop_leaf_count_at: PROP_LEAF_COUNT_AT,
+    prop_mins_at: PROP_MINS_AT,
+    prop_maxs_at: PROP_MAXS_AT,
+    prop_lighting_at: PROP_LIGHTING_AT,
+    overlay_stride: OVERLAY_STRIDE,
+    overlay_faces_at: OVERLAY_FACES_AT,
+    overlay_count_at: OVERLAY_FACE_COUNT_AT,
+    overlay_uv_at: OVERLAY_UV_AT,
+    overlay_points_at: OVERLAY_POINTS_AT,
+    overlay_origin_at: OVERLAY_ORIGIN_AT,
+    overlay_basis_at: OVERLAY_BASIS_AT,
+    overlay_fade_at: OVERLAY_FADE_AT,
+};
+
+pub const LAYOUT_X86: Layout = Layout {
+    ptr: 4,
+    face_record: 32,
+    model_name_at: 4,
+    prop_stride: 0xec,
+    prop_vtable_at: 0x0c,
+    prop_origin_at: 0x18,
+    prop_angles_at: 0x24,
+    prop_model_at: 0x30,
+    prop_alpha_at: 0x38,
+    prop_solid_at: 0x39,
+    prop_skin_at: 0x3a,
+    prop_fades_at: 0x3b,
+    prop_index_at: 0x40,
+    prop_leaf_at: 0x3c,
+    prop_leaf_count_at: 0x3e,
+    prop_mins_at: 0x4c,
+    prop_maxs_at: 0x58,
+    prop_lighting_at: 0xe0,
+    overlay_stride: 0xa0,
+    overlay_faces_at: 0x0c,
+    overlay_count_at: 0x18,
+    overlay_uv_at: 0x20,
+    overlay_points_at: 0x30,
+    overlay_origin_at: 0x60,
+    overlay_basis_at: 0x6c,
+    overlay_fade_at: 0x94,
+};
+
+pub const LAYOUTS: [Layout; 2] = [LAYOUT_X64, LAYOUT_X86];
+
+fn ptr_at(d: &[u8], at: usize, width: usize) -> u64 {
+    if width == 8 { u64_at(d, at) } else { u64::from(u32::from_le_bytes([d[at], d[at + 1], d[at + 2], d[at + 3]])) }
+}
 
 fn u16_at(d: &[u8], at: usize) -> u16 {
     u16::from_le_bytes([d[at], d[at + 1]])
@@ -91,13 +197,15 @@ pub struct FileDisp {
     pub tags: Vec<u16>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct MemDisp {
     pub face: usize,
     pub start: [f32; 3],
     pub power: u32,
     pub positions: Vec<[f32; 3]>,
     pub file: Option<FileDisp>,
+    pub alphas: Option<Vec<u8>>,
+    pub allowed: Option<[u32; 10]>,
 }
 
 pub fn parse_displacement<S: MemSource + ?Sized>(src: &S, face: usize, object: u64) -> Option<MemDisp> {
@@ -126,7 +234,17 @@ pub fn parse_displacement<S: MemSource + ?Sized>(src: &S, face: usize, object: u
     if !positions.iter().all(|p| finite_vec(*p, 1.0e6)) {
         return None;
     }
-    Some(MemDisp { face, start, power: power as u32, positions, file: None })
+    let mut allowed = [0u32; 10];
+    for (k, slot) in allowed.iter_mut().enumerate() {
+        *slot = u32::from_le_bytes([
+            head[DISP_ALLOWED_AT + k * 4],
+            head[DISP_ALLOWED_AT + k * 4 + 1],
+            head[DISP_ALLOWED_AT + k * 4 + 2],
+            head[DISP_ALLOWED_AT + k * 4 + 3],
+        ]);
+    }
+    let allowed = allowed.iter().any(|&w| w != 0).then_some(allowed);
+    Some(MemDisp { face, start, power: power as u32, positions, allowed, ..MemDisp::default() })
 }
 
 pub fn refresh_displacement_pointers<S: MemSource + ?Sized>(src: &S, faces_addr: u64, faces: &mut [RenderFace]) {
@@ -222,8 +340,12 @@ pub fn displacement_lumps(world: &RenderWorld, plane_bytes: &[u8], disps: &[MemD
         let mut tags =
             hp_geom::build_disp(&ccw, &info).map(|mesh| hp_geom::compiled_disp_tags(&info, &mesh)).unwrap_or_default();
         let mut min_tess = DISP_MIN_TESS;
-        let mut allowed = [u32::MAX; 10];
-        let mut dist_alpha: Vec<f32> = vec![0.0; vecs.len()];
+        let mut allowed = d.allowed.unwrap_or([u32::MAX; 10]);
+        let mut dist_alpha: Vec<f32> = match &d.alphas {
+            Some(a) if a.len() == vecs.len() => a.iter().map(|&b| f32::from(b)).collect(),
+            _ => vec![0.0; vecs.len()],
+        };
+        let memory_alpha = d.alphas.as_ref().filter(|a| a.len() == vecs.len());
         let mut vec_out: Vec<[f32; 3]> = vecs.iter().map(|v| [v.x as f32, v.y as f32, v.z as f32]).collect();
         let mut dist_out: Vec<f32> = dists.iter().map(|v| *v as f32).collect();
         if let Some(f) = &d.file {
@@ -235,12 +357,17 @@ pub fn displacement_lumps(world: &RenderWorld, plane_bytes: &[u8], disps: &[MemD
                 });
             if consistent {
                 min_tess = f.min_tess;
-                allowed = f.allowed;
+                if d.allowed.is_none() {
+                    allowed = f.allowed;
+                }
                 tags = f.tags.clone();
                 for (k, fv) in f.verts.iter().enumerate() {
                     vec_out[k] = [fv[0], fv[1], fv[2]];
                     dist_out[k] = fv[3];
-                    dist_alpha[k] = fv[4];
+                    let refines = memory_alpha.is_none_or(|a| (f32::from(a[k]) - fv[4]).abs() <= 0.5001);
+                    if refines {
+                        dist_alpha[k] = fv[4];
+                    }
                 }
             } else {
                 out.file_rejected += 1;
@@ -276,7 +403,7 @@ pub fn displacement_lumps(world: &RenderWorld, plane_bytes: &[u8], disps: &[MemD
     out
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct MemOverlay {
     pub id: i32,
     pub texinfo: i32,
@@ -289,55 +416,59 @@ pub struct MemOverlay {
     pub basis_v: [f32; 3],
     pub normal: [f32; 3],
     pub render_order: u16,
+    pub fade: [f32; 2],
     pub from_file: bool,
 }
 
-fn face_of_pointer(ptr: u64, faces_addr: u64, faces: usize) -> Option<i32> {
+fn face_of_pointer(ptr: u64, faces_addr: u64, faces: usize, record: usize) -> Option<i32> {
     let rel = ptr.checked_sub(faces_addr)?;
-    let rem = rel % FACE_RECORD as u64;
+    let rem = rel % record as u64;
     if rem != 4 {
         return None;
     }
-    let i = rel / FACE_RECORD as u64;
+    let i = rel / record as u64;
     (i < faces as u64).then_some(i as i32)
 }
 
-pub fn parse_overlay<S: MemSource + ?Sized>(
+pub fn parse_overlay_with<S: MemSource + ?Sized>(
     src: &S,
     rec: &[u8],
     faces_addr: u64,
     faces: usize,
     texinfos: usize,
+    l: &Layout,
 ) -> Option<MemOverlay> {
-    if rec.len() < OVERLAY_STRIDE {
+    if rec.len() < l.overlay_stride {
         return None;
     }
     let id = i32_at(rec, 0);
-    let texinfo = i32_at(rec, 4);
+    let packed = i32_at(rec, 4) as u32;
+    let texinfo = (packed & OVERLAY_TEXINFO_MASK) as i32;
+    let render_order = ((packed >> OVERLAY_ORDER_SHIFT) & OVERLAY_ORDER_MASK) as u16;
     if !(0..1_000_000).contains(&id) || !(0..texinfos as i32).contains(&texinfo) {
         return None;
     }
-    let ptr = u64_at(rec, OVERLAY_FACES_AT);
-    let count = i32_at(rec, OVERLAY_FACE_COUNT_AT);
+    let ptr = ptr_at(rec, l.overlay_faces_at, l.ptr);
+    let count = i32_at(rec, l.overlay_count_at);
     if !(0..=MAX_OVERLAY_FACES as i32).contains(&count) || (count > 0 && !user_pointer(ptr)) {
         return None;
     }
-    let u = [f32_at(rec, OVERLAY_UV_AT), f32_at(rec, OVERLAY_UV_AT + 4)];
-    let v = [f32_at(rec, OVERLAY_UV_AT + 8), f32_at(rec, OVERLAY_UV_AT + 12)];
+    let u = [f32_at(rec, l.overlay_uv_at), f32_at(rec, l.overlay_uv_at + 4)];
+    let v = [f32_at(rec, l.overlay_uv_at + 8), f32_at(rec, l.overlay_uv_at + 12)];
     if !u.iter().chain(&v).all(|c| c.is_finite() && c.abs() < 1.0e6) {
         return None;
     }
     let mut points = [[0f32; 3]; 4];
     for (k, p) in points.iter_mut().enumerate() {
-        *p = vec3_at(rec, OVERLAY_POINTS_AT + k * 12);
+        *p = vec3_at(rec, l.overlay_points_at + k * 12);
         if !finite_vec(*p, 1.0e6) {
             return None;
         }
     }
-    let origin = vec3_at(rec, OVERLAY_ORIGIN_AT);
-    let basis_u = vec3_at(rec, OVERLAY_BASIS_AT);
-    let basis_v = vec3_at(rec, OVERLAY_BASIS_AT + 12);
-    let normal = vec3_at(rec, OVERLAY_BASIS_AT + 24);
+    let origin = vec3_at(rec, l.overlay_origin_at);
+    let basis_u = vec3_at(rec, l.overlay_basis_at);
+    let basis_v = vec3_at(rec, l.overlay_basis_at + 12);
+    let normal = vec3_at(rec, l.overlay_basis_at + 24);
     if !finite_vec(origin, 1.0e6) || !finite_vec(basis_u, 1.5) || !finite_vec(basis_v, 1.5) || !finite_vec(normal, 1.5)
     {
         return None;
@@ -346,12 +477,12 @@ pub fn parse_overlay<S: MemSource + ?Sized>(
     if (len(normal) - 1.0).abs() > 0.01 || (len(basis_u) - 1.0).abs() > 0.01 {
         return None;
     }
-    let raw = if count == 0 { Vec::new() } else { src.read_vec(ptr, count as usize * 8) };
-    if raw.len() != count as usize * 8 {
+    let raw = if count == 0 { Vec::new() } else { src.read_vec(ptr, count as usize * l.ptr) };
+    if raw.len() != count as usize * l.ptr {
         return None;
     }
     let faces: Option<Vec<i32>> =
-        raw.chunks_exact(8).map(|c| face_of_pointer(u64_at(c, 0), faces_addr, faces)).collect();
+        raw.chunks_exact(l.ptr).map(|c| face_of_pointer(ptr_at(c, 0, l.ptr), faces_addr, faces, l.face_record)).collect();
     Some(MemOverlay {
         id,
         texinfo,
@@ -363,9 +494,20 @@ pub fn parse_overlay<S: MemSource + ?Sized>(
         basis_u,
         basis_v,
         normal,
-        render_order: 0,
+        render_order,
+        fade: overlay_fade(rec, l),
         from_file: false,
     })
+}
+
+pub fn parse_overlay<S: MemSource + ?Sized>(
+    src: &S,
+    rec: &[u8],
+    faces_addr: u64,
+    faces: usize,
+    texinfos: usize,
+) -> Option<MemOverlay> {
+    parse_overlay_with(src, rec, faces_addr, faces, texinfos, &LAYOUT_X64)
 }
 
 pub fn find_overlays<S: MemSource + ?Sized>(
@@ -375,26 +517,41 @@ pub fn find_overlays<S: MemSource + ?Sized>(
     faces: usize,
     texinfos: usize,
 ) -> (Vec<MemOverlay>, usize) {
-    let opts = ScanOptions { overlap: OVERLAY_STRIDE * 4, writable_only: true, ..*opts };
+    LAYOUTS
+        .iter()
+        .map(|l| find_overlays_with(src, opts, faces_addr, faces, texinfos, l))
+        .max_by_key(|f| (f.0.iter().map(|o| o.faces.len()).sum::<usize>(), f.0.len()))
+        .unwrap_or_default()
+}
+
+fn find_overlays_with<S: MemSource + ?Sized>(
+    src: &S,
+    opts: &ScanOptions,
+    faces_addr: u64,
+    faces: usize,
+    texinfos: usize,
+    l: &Layout,
+) -> (Vec<MemOverlay>, usize) {
+    let opts = ScanOptions { overlap: l.overlay_stride * 4, writable_only: true, ..*opts };
     let mut starts: Vec<(u64, i32)> = par_chunks(src, &opts, |base, data, own| {
         let mut out = Vec::new();
         let limit = own.min(data.len());
         let mut j = 0usize;
-        while j + OVERLAY_STRIDE <= data.len() && j < limit {
+        while j + l.overlay_stride <= data.len() && j < limit {
             let id = i32_at(data, j);
-            let texinfo = i32_at(data, j + 4);
-            let count = i32_at(data, j + OVERLAY_FACE_COUNT_AT);
+            let texinfo = (i32_at(data, j + 4) as u32 & OVERLAY_TEXINFO_MASK) as i32;
+            let count = i32_at(data, j + l.overlay_count_at);
             if (0..4096).contains(&id)
                 && (0..texinfos as i32).contains(&texinfo)
                 && (0..=MAX_OVERLAY_FACES as i32).contains(&count)
-                && (count == 0 || user_pointer(u64_at(data, j + OVERLAY_FACES_AT)))
-                && finite_vec(vec3_at(data, j + OVERLAY_ORIGIN_AT), 1.0e6)
-                && finite_vec(vec3_at(data, j + OVERLAY_BASIS_AT + 24), 1.5)
-                && (vec3_at(data, j + OVERLAY_BASIS_AT + 24).iter().map(|c| c * c).sum::<f32>() - 1.0).abs() < 0.01
+                && (count == 0 || user_pointer(ptr_at(data, j + l.overlay_faces_at, l.ptr)))
+                && finite_vec(vec3_at(data, j + l.overlay_origin_at), 1.0e6)
+                && finite_vec(vec3_at(data, j + l.overlay_basis_at + 24), 1.5)
+                && (vec3_at(data, j + l.overlay_basis_at + 24).iter().map(|c| c * c).sum::<f32>() - 1.0).abs() < 0.01
             {
                 out.push((base + j as u64, id));
             }
-            j += 8;
+            j += l.ptr;
         }
         out
     })
@@ -407,17 +564,17 @@ pub fn find_overlays<S: MemSource + ?Sized>(
     let mut runs: Vec<Vec<(u64, i32)>> = Vec::new();
     for &(addr, id) in &starts {
         let is_head =
-            addr.checked_sub(OVERLAY_STRIDE as u64).and_then(|p| ids.get(&p)).is_none_or(|&pid| pid + 1 != id);
+            addr.checked_sub(l.overlay_stride as u64).and_then(|p| ids.get(&p)).is_none_or(|&pid| pid + 1 != id);
         if !is_head {
             continue;
         }
         let mut run = vec![(addr, id)];
-        while let Some(&next) = ids.get(&(run.last().expect("not empty").0 + OVERLAY_STRIDE as u64)) {
+        while let Some(&next) = ids.get(&(run.last().expect("not empty").0 + l.overlay_stride as u64)) {
             let last = run.last().expect("not empty");
             if next != last.1 + 1 {
                 break;
             }
-            let at = last.0 + OVERLAY_STRIDE as u64;
+            let at = last.0 + l.overlay_stride as u64;
             run.push((at, next));
         }
         runs.push(run);
@@ -430,8 +587,8 @@ pub fn find_overlays<S: MemSource + ?Sized>(
         .map(|run| {
             run.par_iter()
                 .filter_map(|&(a, _)| {
-                    let rec = src.read_vec(a, OVERLAY_STRIDE);
-                    parse_overlay(src, &rec, faces_addr, faces, texinfos)
+                    let rec = src.read_vec(a, l.overlay_stride);
+                    parse_overlay_with(src, &rec, faces_addr, faces, texinfos, l)
                 })
                 .collect()
         })
@@ -448,8 +605,8 @@ pub fn find_overlays<S: MemSource + ?Sized>(
     let singles: Vec<MemOverlay> = starts
         .par_iter()
         .filter_map(|&(a, _)| {
-            let rec = src.read_vec(a, OVERLAY_STRIDE);
-            parse_overlay(src, &rec, faces_addr, faces, texinfos).filter(|o| !o.faces.is_empty())
+            let rec = src.read_vec(a, l.overlay_stride);
+            parse_overlay_with(src, &rec, faces_addr, faces, texinfos, l).filter(|o| !o.faces.is_empty())
         })
         .collect();
     for o in singles {
@@ -460,6 +617,15 @@ pub fn find_overlays<S: MemSource + ?Sized>(
     }
     let expected = by_id.keys().next_back().map_or(0, |&m| m as usize + 1);
     (by_id.into_values().collect(), expected)
+}
+
+fn overlay_fade(rec: &[u8], l: &Layout) -> [f32; 2] {
+    let f = [f32_at(rec, l.overlay_fade_at), f32_at(rec, l.overlay_fade_at + 4)];
+    if f.iter().all(|v| v.is_finite() && v.abs() < 1.0e12) { f } else { OVERLAY_FADE_DEFAULT }
+}
+
+pub fn overlay_fades_lump(overlays: &[MemOverlay]) -> Vec<u8> {
+    overlays.iter().flat_map(|o| o.fade.into_iter().flat_map(f32::to_le_bytes)).collect()
 }
 
 pub fn overlay_lump(overlays: &[MemOverlay]) -> Vec<u8> {
@@ -492,7 +658,7 @@ pub fn overlay_lump(overlays: &[MemOverlay]) -> Vec<u8> {
     out
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct MemProp {
     pub origin: [f32; 3],
     pub angles: [f32; 3],
@@ -504,72 +670,117 @@ pub struct MemProp {
     pub first_leaf: u16,
     pub leaf_count: u16,
     pub file: Option<StaticPropRecord>,
+    pub index: Option<u16>,
+    pub flags: u8,
+    pub fade: Option<(f32, f32)>,
+    pub lighting: Option<[f32; 3]>,
+    pub bounds: Option<([f32; 3], [f32; 3])>,
 }
 
-fn prop_plausible(rec: &[u8]) -> bool {
-    if rec.len() < PROP_STRIDE {
+pub fn angle_matrix(angles: [f32; 3]) -> [[f32; 3]; 3] {
+    let (sp, cp) = angles[0].to_radians().sin_cos();
+    let (sy, cy) = angles[1].to_radians().sin_cos();
+    let (sr, cr) = angles[2].to_radians().sin_cos();
+    [
+        [cp * cy, sp * sr * cy - cr * sy, sp * cr * cy + sr * sy],
+        [cp * sy, sp * sr * sy + cr * cy, sp * cr * sy - sr * cy],
+        [-sp, sr * cp, cr * cp],
+    ]
+}
+
+impl MemProp {
+    pub fn default_lighting_origin(&self) -> [f32; 3] {
+        let Some((mins, maxs)) = self.bounds else { return self.origin };
+        let m = angle_matrix(self.angles);
+        let c = [(mins[0] + maxs[0]) * 0.5, (mins[1] + maxs[1]) * 0.5, (mins[2] + maxs[2]) * 0.5];
+        let mut out = self.origin;
+        for (i, slot) in out.iter_mut().enumerate() {
+            *slot += m[i][0] * c[0] + m[i][1] * c[1] + m[i][2] * c[2];
+        }
+        out
+    }
+
+    pub fn explicit_lighting_origin(&self) -> Option<[f32; 3]> {
+        let lo = self.lighting?;
+        let want = self.default_lighting_origin();
+        (0..3).any(|k| (lo[k] - want[k]).abs() > LIGHTING_ORIGIN_TOLERANCE).then_some(lo)
+    }
+}
+
+fn prop_plausible(rec: &[u8], l: &Layout) -> bool {
+    if rec.len() < l.prop_stride {
         return false;
     }
-    finite_vec(vec3_at(rec, PROP_ORIGIN_AT), 65_536.0)
-        && finite_vec(vec3_at(rec, PROP_ANGLES_AT), 3600.0)
-        && user_pointer(u64_at(rec, PROP_MODEL_AT))
-        && user_pointer(u64_at(rec, PROP_VTABLE_AT))
-        && rec[PROP_SOLID_AT] <= 8
-        && rec[PROP_FADES_AT] <= 1
-        && u16_at(rec, PROP_LEAF_COUNT_AT) <= 4096
+    finite_vec(vec3_at(rec, l.prop_origin_at), 65_536.0)
+        && finite_vec(vec3_at(rec, l.prop_angles_at), 3600.0)
+        && user_pointer(ptr_at(rec, l.prop_model_at, l.ptr))
+        && user_pointer(ptr_at(rec, l.prop_vtable_at, l.ptr))
+        && rec[l.prop_solid_at] <= 8
+        && u16_at(rec, l.prop_leaf_count_at) <= 4096
 }
 
 fn prop_model_name<S: MemSource + ?Sized>(
     src: &S,
     model_ptr: u64,
+    l: &Layout,
     cache: &mut HashMap<u64, Option<String>>,
 ) -> Option<String> {
     if let Some(v) = cache.get(&model_ptr) {
         return v.clone();
     }
     let name = src
-        .read_vec(model_ptr + 8, 8)
-        .get(..8)
-        .map(|b| u64_at(b, 0))
+        .read_vec(model_ptr + l.model_name_at as u64, l.ptr)
+        .get(..l.ptr)
+        .map(|b| ptr_at(b, 0, l.ptr))
         .and_then(|p| read_cstring(src, p, 260))
         .filter(|n| n.to_ascii_lowercase().ends_with(".mdl"));
     cache.insert(model_ptr, name.clone());
     name
 }
 
-pub fn parse_prop(rec: &[u8], model: String) -> MemProp {
+pub fn parse_prop(rec: &[u8], model: String, l: &Layout) -> MemProp {
     MemProp {
-        origin: vec3_at(rec, PROP_ORIGIN_AT),
-        angles: vec3_at(rec, PROP_ANGLES_AT),
+        origin: vec3_at(rec, l.prop_origin_at),
+        angles: vec3_at(rec, l.prop_angles_at),
         model,
-        alpha: rec[PROP_ALPHA_AT],
-        solid: rec[PROP_SOLID_AT],
-        skin: rec[PROP_SKIN_AT],
-        fades: rec[PROP_FADES_AT] != 0,
-        first_leaf: u16_at(rec, PROP_LEAF_AT),
-        leaf_count: u16_at(rec, PROP_LEAF_COUNT_AT),
+        alpha: rec[l.prop_alpha_at],
+        solid: rec[l.prop_solid_at],
+        skin: rec[l.prop_skin_at],
+        fades: rec[l.prop_fades_at] & 1 != 0,
+        first_leaf: u16_at(rec, l.prop_leaf_at),
+        leaf_count: u16_at(rec, l.prop_leaf_count_at),
         file: None,
+        index: Some(u16_at(rec, l.prop_index_at)),
+        flags: rec[l.prop_fades_at],
+        fade: None,
+        lighting: Some(vec3_at(rec, l.prop_lighting_at)).filter(|v| finite_vec(*v, 1.0e6)),
+        bounds: Some((vec3_at(rec, l.prop_mins_at), vec3_at(rec, l.prop_maxs_at)))
+            .filter(|(a, b)| finite_vec(*a, 1.0e5) && finite_vec(*b, 1.0e5)),
     }
 }
 
-fn same_vtable(a: &[u8], b: &[u8]) -> bool {
-    u64_at(a, PROP_VTABLE_AT) == u64_at(b, PROP_VTABLE_AT)
+fn same_vtable(a: &[u8], b: &[u8], l: &Layout) -> bool {
+    ptr_at(a, l.prop_vtable_at, l.ptr) == ptr_at(b, l.prop_vtable_at, l.ptr)
 }
 
 pub fn find_static_props<S: MemSource + ?Sized>(src: &S, opts: &ScanOptions) -> (Vec<MemProp>, usize) {
-    let opts = ScanOptions { overlap: PROP_STRIDE * (PROP_MIN_RUN + 1), writable_only: true, ..*opts };
+    LAYOUTS.iter().map(|l| find_static_props_with(src, opts, l)).max_by_key(|f| f.0.len()).unwrap_or_default()
+}
+
+fn find_static_props_with<S: MemSource + ?Sized>(src: &S, opts: &ScanOptions, l: &Layout) -> (Vec<MemProp>, usize) {
+    let opts = ScanOptions { overlap: l.prop_stride * (PROP_MIN_RUN + 1), writable_only: true, ..*opts };
     let mut candidates: Vec<u64> = par_chunks(src, &opts, |base, data, own| {
         let mut out = Vec::new();
         let limit = own.min(data.len());
-        let need = PROP_STRIDE * PROP_MIN_RUN;
+        let need = l.prop_stride * PROP_MIN_RUN;
         let mut j = 0usize;
         while j + need <= data.len() && j < limit {
-            let first = &data[j..j + PROP_STRIDE];
-            if prop_plausible(first) {
+            let first = &data[j..j + l.prop_stride];
+            if prop_plausible(first, l) {
                 let mut ok = true;
                 for k in 1..PROP_MIN_RUN {
-                    let next = &data[j + k * PROP_STRIDE..j + (k + 1) * PROP_STRIDE];
-                    if !prop_plausible(next) || !same_vtable(first, next) {
+                    let next = &data[j + k * l.prop_stride..j + (k + 1) * l.prop_stride];
+                    if !prop_plausible(next, l) || !same_vtable(first, next, l) {
                         ok = false;
                         break;
                     }
@@ -580,7 +791,7 @@ pub fn find_static_props<S: MemSource + ?Sized>(src: &S, opts: &ScanOptions) -> 
                     continue;
                 }
             }
-            j += 8;
+            j += l.ptr;
         }
         out
     })
@@ -594,15 +805,15 @@ pub fn find_static_props<S: MemSource + ?Sized>(src: &S, opts: &ScanOptions) -> 
         if covered.iter().any(|&(lo, hi)| hit >= lo && hit < hi) {
             continue;
         }
-        let reference = src.read_vec(hit, PROP_STRIDE);
-        if reference.len() < PROP_STRIDE {
+        let reference = src.read_vec(hit, l.prop_stride);
+        if reference.len() < l.prop_stride {
             continue;
         }
         let mut start = hit;
-        while start >= PROP_STRIDE as u64 {
-            let rec = src.read_vec(start - PROP_STRIDE as u64, PROP_STRIDE);
-            if rec.len() == PROP_STRIDE && prop_plausible(&rec) && same_vtable(&rec, &reference) {
-                start -= PROP_STRIDE as u64;
+        while start >= l.prop_stride as u64 {
+            let rec = src.read_vec(start - l.prop_stride as u64, l.prop_stride);
+            if rec.len() == l.prop_stride && prop_plausible(&rec, l) && same_vtable(&rec, &reference, l) {
+                start -= l.prop_stride as u64;
             } else {
                 break;
             }
@@ -610,10 +821,10 @@ pub fn find_static_props<S: MemSource + ?Sized>(src: &S, opts: &ScanOptions) -> 
         let mut records: Vec<Vec<u8>> = Vec::new();
         let mut at = start;
         loop {
-            let rec = src.read_vec(at, PROP_STRIDE);
-            if rec.len() == PROP_STRIDE && prop_plausible(&rec) && same_vtable(&rec, &reference) {
+            let rec = src.read_vec(at, l.prop_stride);
+            if rec.len() == l.prop_stride && prop_plausible(&rec, l) && same_vtable(&rec, &reference, l) {
                 records.push(rec);
-                at += PROP_STRIDE as u64;
+                at += l.prop_stride as u64;
             } else {
                 break;
             }
@@ -621,26 +832,26 @@ pub fn find_static_props<S: MemSource + ?Sized>(src: &S, opts: &ScanOptions) -> 
         covered.push((start, at));
         let mut cache: HashMap<u64, Option<String>> = HashMap::new();
         let names: Vec<Option<String>> =
-            records.iter().map(|r| prop_model_name(src, u64_at(r, PROP_MODEL_AT), &mut cache)).collect();
+            records.iter().map(|r| prop_model_name(src, ptr_at(r, l.prop_model_at, l.ptr), l, &mut cache)).collect();
         let named = names.iter().filter(|n| n.is_some()).count();
         if named * 10 < records.len() * 9 || named < PROP_MIN_RUN {
             continue;
         }
-        let vtable = u64_at(&reference, PROP_VTABLE_AT);
-        let props: Vec<MemProp> = records.iter().zip(names).filter_map(|(r, n)| n.map(|n| parse_prop(r, n))).collect();
+        let vtable = ptr_at(&reference, l.prop_vtable_at, l.ptr);
+        let props: Vec<MemProp> = records.iter().zip(names).filter_map(|(r, n)| n.map(|n| parse_prop(r, n, l))).collect();
         runs.push((vtable, props, records.len()));
     }
     let Some(lead) = runs.iter().max_by_key(|r| r.1.len()).map(|r| r.0) else { return (Vec::new(), 0) };
-    let singles_opts = ScanOptions { overlap: PROP_STRIDE, ..opts };
+    let singles_opts = ScanOptions { overlap: l.prop_stride, ..opts };
     let singles: Vec<u64> = par_chunks(src, &singles_opts, |base, data, own| {
         let mut out = Vec::new();
         let limit = own.min(data.len());
         let mut j = 0usize;
-        while j + PROP_STRIDE <= data.len() && j < limit {
-            if u64_at(data, j + PROP_VTABLE_AT) == lead && prop_plausible(&data[j..j + PROP_STRIDE]) {
+        while j + l.prop_stride <= data.len() && j < limit {
+            if ptr_at(data, j + l.prop_vtable_at, l.ptr) == lead && prop_plausible(&data[j..j + l.prop_stride], l) {
                 out.push(base + j as u64);
             }
-            j += 8;
+            j += l.ptr;
         }
         out
     })
@@ -653,12 +864,12 @@ pub fn find_static_props<S: MemSource + ?Sized>(src: &S, opts: &ScanOptions) -> 
         if covered.iter().any(|&(lo, hi)| at >= lo && at < hi) {
             continue;
         }
-        let rec = src.read_vec(at, PROP_STRIDE);
-        if rec.len() != PROP_STRIDE {
+        let rec = src.read_vec(at, l.prop_stride);
+        if rec.len() != l.prop_stride {
             continue;
         }
-        if let Some(name) = prop_model_name(src, u64_at(&rec, PROP_MODEL_AT), &mut cache) {
-            loose.push(parse_prop(&rec, name));
+        if let Some(name) = prop_model_name(src, ptr_at(&rec, l.prop_model_at, l.ptr), l, &mut cache) {
+            loose.push(parse_prop(&rec, name, l));
         }
     }
     if !loose.is_empty() {
@@ -688,7 +899,34 @@ pub fn find_static_props<S: MemSource + ?Sized>(src: &S, opts: &ScanOptions) -> 
             }
         }
     }
+    if best.iter().all(|p| p.index.is_some()) {
+        best.sort_by_key(|p| p.index);
+    }
     (best, best_total)
+}
+
+pub fn attach_fades(props: &mut [MemProp], runs: &[(u64, Vec<crate::fade::FadeEntry>)]) -> usize {
+    let by_index: HashMap<u16, usize> =
+        props.iter().enumerate().filter_map(|(i, p)| p.index.map(|x| (x, i))).collect();
+    let score = |list: &Vec<crate::fade::FadeEntry>| {
+        list.iter()
+            .filter(|e| {
+                u16::try_from(e.index).ok().and_then(|k| by_index.get(&k)).is_some_and(|&i| props[i].flags & 1 != 0)
+            })
+            .count()
+    };
+    let Some((_, best)) = runs.iter().max_by_key(|(addr, l)| (score(l), l.len(), *addr)) else { return 0 };
+    let matched = score(best);
+    if matched == 0 || matched * 10 < best.len() * 9 {
+        return 0;
+    }
+    let mut set = 0;
+    for e in best {
+        let Some(&i) = u16::try_from(e.index).ok().and_then(|k| by_index.get(&k)) else { continue };
+        props[i].fade = Some((e.min(), e.max()));
+        set += 1;
+    }
+    set
 }
 
 pub fn static_prop_lump(props: &[MemProp]) -> (Vec<u8>, u16) {
@@ -708,7 +946,7 @@ pub fn static_prop_lump(props: &[MemProp]) -> (Vec<u8>, u16) {
             first_leaf: p.first_leaf,
             leaf_count: p.leaf_count,
             solid: p.solid,
-            flags: DEFAULT_PROP_FLAGS | u32::from(p.fades),
+            flags: DEFAULT_PROP_FLAGS | u32::from(p.flags) | u32::from(p.fades && p.flags == 0),
             skin: i32::from(p.skin),
             lighting_origin: p.origin,
             ..StaticPropRecord::default()
@@ -717,6 +955,14 @@ pub fn static_prop_lump(props: &[MemProp]) -> (Vec<u8>, u16) {
         if let Some(f) = &p.file {
             r = f.clone();
             r.prop_type = id;
+        }
+        if let Some((mn, mx)) = p.fade {
+            r.fade_min = mn;
+            r.fade_max = mx;
+        }
+        if let Some(lo) = p.explicit_lighting_origin() {
+            r.lighting_origin = lo;
+            r.flags |= PROP_USE_LIGHTING_ORIGIN;
         }
         records.push(r);
     }
@@ -813,6 +1059,8 @@ pub struct MemoryExtras {
     pub cubemap_file: Option<Vec<[i32; 4]>>,
     pub side_texinfo: Option<SideTexinfo>,
     pub pakfile: Option<Vec<u8>>,
+    pub occlusion: Option<crate::occlusion::MemOcclusion>,
+    pub fades_set: usize,
 }
 
 pub fn find_extras<S: MemSource + ?Sized>(
@@ -824,17 +1072,37 @@ pub fn find_extras<S: MemSource + ?Sized>(
 ) -> MemoryExtras {
     let (overlays, overlays_expected) =
         find_overlays(src, opts, world.faces_addr, world.faces.len(), world.texinfo.len());
-    let (props, props_expected) = find_static_props(src, opts);
+    let (mut props, props_expected) = find_static_props(src, opts);
+    let fade_runs = crate::fade::find_fade_runs(src, opts);
+    let fades_set = attach_fades(&mut props, &fade_runs);
     let mut faces = world.faces.clone();
     refresh_displacement_pointers(src, world.faces_addr, &mut faces);
+    let mut displacements = read_displacements(src, &faces);
+    let alpha_found = {
+        let targets: Vec<&[[f32; 3]]> = displacements.iter().map(|d| d.positions.as_slice()).collect();
+        crate::vbuf::find_vertex_alphas(src, opts, &targets)
+    };
+    for (d, found) in displacements.iter_mut().zip(alpha_found) {
+        d.alphas = found.map(|f| f.alphas);
+    }
+    let cubemaps = find_cubemaps(src, opts, map);
+    let samples = crate::cubemap::find_cubemap_samples(src, opts, &cubemaps);
+    let occlusion = crate::occlusion::find_occlusion(
+        src,
+        opts,
+        &crate::occlusion::WorldRefs { plane_bytes, vertexes: &world.vertexes },
+    );
     MemoryExtras {
         area_portals: find_area_portals(src, opts, plane_bytes),
-        displacements: read_displacements(src, &faces),
+        displacements,
         overlays,
         overlays_expected,
         props,
         props_expected,
-        cubemaps: find_cubemaps(src, opts, map),
+        cubemaps,
+        cubemap_file: samples,
+        occlusion,
+        fades_set,
         ..MemoryExtras::default()
     }
 }
@@ -1216,6 +1484,7 @@ pub(crate) mod tests {
             basis_v: [0.0, 0.0, 1.0],
             normal: [0.0, 0.0, 1.0],
             render_order: 0,
+            fade: OVERLAY_FADE_DEFAULT,
             from_file: false,
         };
         let lump = overlay_lump(std::slice::from_ref(&o));
@@ -1547,5 +1816,220 @@ pub(crate) mod tests {
         assert_eq!(std::fs::read(dest.join("models/props_junk/gnome.mdl")).expect("file"), gnome);
         assert_eq!(report.missing, vec!["materials/x.vmt".to_owned()]);
         let _ = std::fs::remove_dir_all(&dest);
+    }
+
+    #[test]
+    fn overlays_with_a_render_order_are_found_and_keep_it() {
+        let faces_addr = 0x7000_0000u64;
+        let face_ptr = |i: u64| faces_addr + i * FACE_RECORD as u64 + 4;
+        let mut table = Vec::new();
+        for k in 0..4i32 {
+            let packed = (10 + k) | ((k % 4) << 16);
+            table.extend(overlay_record(k, packed, 0x8000_0000 + 64 * k as u64, 1, [k as f32 * 64.0, 0.0, 8.0]));
+        }
+        let mut mem = VecMem::default();
+        mem.add(0x4000_0000, table);
+        for k in 0..4u64 {
+            mem.add(0x8000_0000 + 64 * k, face_ptr(k).to_le_bytes().to_vec());
+        }
+        let (found, expected) = find_overlays(&mem, &ScanOptions::default(), faces_addr, 100, 4000);
+        assert_eq!((found.len(), expected), (4, 4));
+        assert_eq!(found.iter().map(|o| (o.texinfo, o.render_order)).collect::<Vec<_>>(), [(10, 0), (11, 1), (12, 2), (13, 3)]);
+        let lump = overlay_lump(&found);
+        assert_eq!(u16_at(&lump[3 * OVERLAY_RECORD_BYTES..], 6) >> 14, 3);
+        assert_eq!(u16_at(&lump[2 * OVERLAY_RECORD_BYTES..], 6) & 0x3fff, 1);
+    }
+
+    #[test]
+    fn prop_flags_index_and_lighting_origin_come_from_the_object() {
+        let mut r = prop_record(0x7ffe_0000_1000, [100.0, 200.0, 300.0], [0.0, 90.0, 0.0], 0x6000_0000, 0, 6, false);
+        r[PROP_FADES_AT] = 0x01 | 0x04 | 0x20 | 0x40;
+        r[PROP_INDEX_AT..PROP_INDEX_AT + 2].copy_from_slice(&9u16.to_le_bytes());
+        put_f32s(&mut r, PROP_MINS_AT, &[-10.0, -20.0, 0.0]);
+        put_f32s(&mut r, PROP_MAXS_AT, &[10.0, 20.0, 30.0]);
+        let center = {
+            let p = parse_prop(&r, "models/a.mdl".to_owned(), &LAYOUT_X64);
+            p.default_lighting_origin()
+        };
+        assert!((center[0] - 100.0).abs() < 1e-3 && (center[1] - 200.0).abs() < 1e-3 && (center[2] - 315.0).abs() < 1e-3);
+        put_f32s(&mut r, PROP_LIGHTING_AT, &center);
+        let plain = parse_prop(&r, "models/a.mdl".to_owned(), &LAYOUT_X64);
+        assert_eq!((plain.index, plain.flags), (Some(9), 0x65));
+        assert!(plain.explicit_lighting_origin().is_none(), "the default lighting origin is not an explicit one");
+        let (bytes, version) = static_prop_lump(std::slice::from_ref(&plain));
+        let (lump, _) = StaticPropLump::parse(&bytes, version, None).expect("lump");
+        assert_eq!(lump.props[0].flags & 0xff, 0x65);
+        assert_eq!(lump.props[0].lighting_origin, [100.0, 200.0, 300.0]);
+        put_f32s(&mut r, PROP_LIGHTING_AT, &[5.0, 6.0, 7.0]);
+        let used = parse_prop(&r, "models/a.mdl".to_owned(), &LAYOUT_X64);
+        assert_eq!(used.explicit_lighting_origin(), Some([5.0, 6.0, 7.0]));
+        let (bytes, version) = static_prop_lump(std::slice::from_ref(&used));
+        let (lump, _) = StaticPropLump::parse(&bytes, version, None).expect("lump");
+        assert_eq!(lump.props[0].flags & 0xff, 0x67);
+        assert_eq!(lump.props[0].lighting_origin, [5.0, 6.0, 7.0]);
+    }
+
+    #[test]
+    fn fade_records_are_attached_to_the_props_by_index() {
+        let mk = |index: u16, flags: u8| MemProp {
+            model: "models/a.mdl".to_owned(),
+            index: Some(index),
+            flags,
+            fades: flags & 1 != 0,
+            ..MemProp::default()
+        };
+        let mut props = vec![mk(0, 1), mk(1, 0), mk(2, 1), mk(3, 1)];
+        let entry = |index: u32, mn: f32, mx: f32| crate::fade::FadeEntry { index, min_sq: mn * mn, max_sq: mx * mx, squared: true };
+        let runs = vec![
+            (0x1000u64, vec![entry(0, 5.0, 6.0)]),
+            (0x2000u64, vec![entry(0, 300.0, 400.0), entry(2, 450.0, 1250.0), entry(3, 0.0, 3500.0)]),
+        ];
+        assert_eq!(attach_fades(&mut props, &runs), 3);
+        assert_eq!(props[0].fade, Some((300.0, 400.0)));
+        assert_eq!(props[1].fade, None);
+        assert_eq!(props[2].fade, Some((450.0, 1250.0)));
+        assert_eq!(props[3].fade, Some((0.0, 3500.0)));
+        let (bytes, version) = static_prop_lump(&props);
+        let (lump, _) = StaticPropLump::parse(&bytes, version, None).expect("lump");
+        assert_eq!((lump.props[2].fade_min, lump.props[2].fade_max), (450.0, 1250.0));
+        let stale = vec![(0x3000u64, vec![entry(1, 10.0, 20.0)])];
+        let mut again = vec![mk(0, 1), mk(1, 0)];
+        assert_eq!(attach_fades(&mut again, &stale), 0, "a table for props that do not fade is not used");
+    }
+
+    #[test]
+    fn displacement_alphas_and_allowed_vertices_come_from_memory() {
+        let world = quad_world();
+        let start = [0.0, 0.0, 64.0];
+        let positions = flat_positions(&world, 2, start);
+        let mut mem = VecMem::default();
+        let mut object = disp_object(2, start, 0x5100_0000);
+        for k in 0..10 {
+            let w: u32 = if k == 0 { 0xffff_fff0 } else { u32::MAX };
+            object[DISP_ALLOWED_AT + k * 4..DISP_ALLOWED_AT + k * 4 + 4].copy_from_slice(&w.to_le_bytes());
+        }
+        mem.add(0x5000_0000, object);
+        mem.add(0x5100_0000, render_verts(&positions));
+        let mut d = parse_displacement(&mem, 0, 0x5000_0000).expect("displacement");
+        assert_eq!(d.allowed.expect("allowed")[0], 0xffff_fff0);
+        d.alphas = Some((0..25).map(|k| (k * 10) as u8).collect());
+        let lumps = displacement_lumps(&world, &plane_bytes_z(64.0), &[d]);
+        assert_eq!(u32::from_le_bytes([lumps.dispinfo[136], lumps.dispinfo[137], lumps.dispinfo[138], lumps.dispinfo[139]]), 0xffff_fff0);
+        assert_eq!(f32_at(&lumps.dispverts, 7 * 20 + 16), 70.0);
+        assert_eq!(f32_at(&lumps.dispverts, 24 * 20 + 16), 240.0);
+        let zero = parse_displacement(&mem_without_allowed(), 0, 0x5000_0000).expect("displacement");
+        assert!(zero.allowed.is_none(), "an all zero bit set is not an allowed vertex set");
+    }
+
+    fn mem_without_allowed() -> VecMem {
+        let world = quad_world();
+        let start = [0.0, 0.0, 64.0];
+        let positions = flat_positions(&world, 2, start);
+        let mut mem = VecMem::default();
+        mem.add(0x5000_0000, disp_object(2, start, 0x5100_0000));
+        mem.add(0x5100_0000, render_verts(&positions));
+        mem
+    }
+}
+
+#[cfg(test)]
+mod overlay_fade_tests {
+    use super::*;
+
+    #[test]
+    fn the_fade_distances_of_an_overlay_record_are_read_and_written_as_the_fade_lump() {
+        let mut rec = vec![0u8; OVERLAY_STRIDE];
+        rec[OVERLAY_FADE_AT..OVERLAY_FADE_AT + 4].copy_from_slice(&40000.0f32.to_le_bytes());
+        rec[OVERLAY_FADE_AT + 4..OVERLAY_FADE_AT + 8].copy_from_slice(&640000.0f32.to_le_bytes());
+        assert_eq!(overlay_fade(&rec, &LAYOUT_X64), [40000.0, 640000.0]);
+        rec[OVERLAY_FADE_AT..OVERLAY_FADE_AT + 4].copy_from_slice(&f32::NAN.to_le_bytes());
+        assert_eq!(overlay_fade(&rec, &LAYOUT_X64), OVERLAY_FADE_DEFAULT);
+        let a = MemOverlay { fade: [40000.0, 640000.0], ..Default::default() };
+        let b = MemOverlay { fade: OVERLAY_FADE_DEFAULT, ..Default::default() };
+        let lump = overlay_fades_lump(&[a, b]);
+        assert_eq!(lump.len(), 16);
+        assert_eq!(f32::from_le_bytes([lump[0], lump[1], lump[2], lump[3]]), 40000.0);
+        assert_eq!(f32::from_le_bytes([lump[8], lump[9], lump[10], lump[11]]), -1.0);
+    }
+}
+
+#[cfg(test)]
+mod narrow_layout_tests {
+    use super::*;
+    use crate::procmem::VecMem;
+
+    fn put_f32(rec: &mut [u8], at: usize, v: &[f32]) {
+        for (k, f) in v.iter().enumerate() {
+            rec[at + k * 4..at + k * 4 + 4].copy_from_slice(&f.to_le_bytes());
+        }
+    }
+
+    fn narrow_prop(l: &Layout, k: usize, model: u32) -> Vec<u8> {
+        let mut rec = vec![0u8; l.prop_stride];
+        rec[l.prop_vtable_at..l.prop_vtable_at + 4].copy_from_slice(&0x6ee0_9014u32.to_le_bytes());
+        put_f32(&mut rec, l.prop_origin_at, &[k as f32 * 64.0, 8.0, 16.0]);
+        put_f32(&mut rec, l.prop_angles_at, &[0.0, 90.0, 0.0]);
+        rec[l.prop_model_at..l.prop_model_at + 4].copy_from_slice(&model.to_le_bytes());
+        rec[l.prop_alpha_at] = 255;
+        rec[l.prop_solid_at] = 6;
+        rec[l.prop_skin_at] = 2;
+        rec[l.prop_leaf_count_at..l.prop_leaf_count_at + 2].copy_from_slice(&1u16.to_le_bytes());
+        rec[l.prop_index_at..l.prop_index_at + 2].copy_from_slice(&(k as u16).to_le_bytes());
+        put_f32(&mut rec, l.prop_lighting_at, &[1.0, 2.0, 3.0]);
+        rec
+    }
+
+    #[test]
+    fn static_props_are_found_in_the_four_byte_pointer_layout() {
+        let l = LAYOUT_X86;
+        let mut mem = VecMem::default();
+        let mut model = vec![0u8; 64];
+        model[l.model_name_at..l.model_name_at + 4].copy_from_slice(&0x0800_2000u32.to_le_bytes());
+        mem.add(0x0900_0000, model);
+        mem.add(0x0800_2000, b"models/props_c17/test.mdl\0".to_vec());
+        let mut run = Vec::new();
+        for k in 0..5 {
+            run.extend(narrow_prop(&l, k, 0x0900_0000));
+        }
+        mem.add(0x0a00_0000, run);
+        let (props, total) = find_static_props(&mem, &ScanOptions::default());
+        assert_eq!(props.len(), 5);
+        assert_eq!(total, 5);
+        assert_eq!(props[3].model, "models/props_c17/test.mdl");
+        assert_eq!(props[3].origin, [192.0, 8.0, 16.0]);
+        assert_eq!((props[3].solid, props[3].skin, props[3].alpha), (6, 2, 255));
+        assert_eq!(props[3].lighting, Some([1.0, 2.0, 3.0]));
+    }
+
+    #[test]
+    fn overlays_are_found_in_the_four_byte_pointer_layout_with_their_faces() {
+        let l = LAYOUT_X86;
+        let faces_addr = 0x0b00_0000u64;
+        let mut mem = VecMem::default();
+        let mut table = Vec::new();
+        for k in 0..3usize {
+            let mut rec = vec![0u8; l.overlay_stride];
+            rec[0..4].copy_from_slice(&(k as i32).to_le_bytes());
+            rec[4..8].copy_from_slice(&(10u32 + k as u32).to_le_bytes());
+            let faces_ptr = 0x0c00_0000u32 + k as u32 * 64;
+            rec[l.overlay_faces_at..l.overlay_faces_at + 4].copy_from_slice(&faces_ptr.to_le_bytes());
+            rec[l.overlay_count_at..l.overlay_count_at + 4].copy_from_slice(&2i32.to_le_bytes());
+            put_f32(&mut rec, l.overlay_origin_at, &[k as f32, 2.0, 3.0]);
+            put_f32(&mut rec, l.overlay_basis_at, &[1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]);
+            put_f32(&mut rec, l.overlay_fade_at, &[40000.0, 640000.0]);
+            table.extend(rec);
+            let mut ptrs = Vec::new();
+            for f in [3u32, 4] {
+                ptrs.extend((faces_addr as u32 + f * l.face_record as u32 + 4).to_le_bytes());
+            }
+            mem.add(u64::from(faces_ptr), ptrs);
+        }
+        mem.add(0x0d00_0000, table);
+        let (found, expected) = find_overlays(&mem, &ScanOptions::default(), faces_addr, 100, 4000);
+        assert_eq!(expected, 3);
+        assert_eq!(found.len(), 3);
+        assert_eq!(found[2].faces, vec![3, 4]);
+        assert_eq!(found[1].texinfo, 11);
+        assert_eq!(found[1].fade, [40000.0, 640000.0]);
     }
 }

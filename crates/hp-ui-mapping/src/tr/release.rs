@@ -192,13 +192,13 @@ pub const TR: TrTable = &[
     ),
     (
         "release.opt_protect_world",
-        "Reorder brushes, faces and leaf lists",
-        "Réordonner brushes, faces et listes de feuilles",
+        "Reorder brushes and faces",
+        "Réordonner brushes et faces",
     ),
     (
         "release.opt_protect_world_tip",
-        "Permutes brushes with their sides, faces inside each node, and the face and brush lists of every leaf, renumbering every reference. Skipped safely when a reference cannot be renumbered.",
-        "Permute les brushes avec leurs côtés, les faces à l'intérieur de chaque noeud et les listes de faces et de brushes de chaque feuille, en renumérotant chaque référence. Ignoré sans risque si une référence ne peut pas être renumérotée.",
+        "Permutes brushes with their sides and faces inside each node, renumbering every reference. Skipped safely when a reference cannot be renumbered.",
+        "Permute les brushes avec leurs côtés et les faces à l'intérieur de chaque noeud, en renumérotant chaque référence. Ignoré sans risque si une référence ne peut pas être renumérotée.",
     ),
     ("release.protect_seed", "Layout seed", "Graine de structure"),
     ("release.protect_seed_hint", "empty: random at each compile", "vide : aléatoire à chaque compilation"),

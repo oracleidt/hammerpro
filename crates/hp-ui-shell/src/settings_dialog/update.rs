@@ -36,6 +36,17 @@ impl SettingsPage for UpdatePage {
         if ui.checkbox(&mut state.settings.update.check_on_startup, t!("update.check_on_startup")).changed() {
             state.settings_dirty = true;
         }
+        let mut show = state.settings.update.show_dialog;
+        let reply = ui.checkbox(&mut show, t!("update.show_dialog"));
+        reply.on_hover_text(t!("update.show_dialog_hint"));
+        if show != state.settings.update.show_dialog {
+            if show {
+                state.settings.update.announce_everything();
+            } else {
+                state.settings.update.show_dialog = false;
+            }
+            state.settings_dirty = true;
+        }
         ui.add_space(6.0);
         let busy = state.runtime.update.status.is_busy();
         ui.horizontal(|ui| {

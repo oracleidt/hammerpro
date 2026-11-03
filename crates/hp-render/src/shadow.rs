@@ -156,6 +156,10 @@ pub(crate) fn fit(cam: &Camera, dir: Vec3, scene_min: Vec3, scene_max: Vec3) -> 
     view_proj.is_finite().then_some(ShadowFit { view_proj, texel_world: texel as f32, depth_range: range as f32 })
 }
 
+pub(crate) fn reversed_depth(view_proj: Mat4) -> Mat4 {
+    Mat4::from_cols(Vec4::X, Vec4::Y, Vec4::new(0.0, 0.0, -1.0, 0.0), Vec4::new(0.0, 0.0, 1.0, 1.0)) * view_proj
+}
+
 fn casts_no_shadow(desc: Option<&crate::MaterialDesc>) -> bool {
     desc.is_some_and(|d| {
         d.flags.contains(MaterialFlags::SKY)
@@ -190,6 +194,10 @@ impl Layers {
             Layers::Sun => 0,
             Layers::Sky => 1,
         }
+    }
+
+    fn from_sun(self) -> bool {
+        self == Layers::Sun
     }
 
     fn sizes(self) -> (u32, u32) {
@@ -420,7 +428,7 @@ impl Renderer {
         if self.sky_layers[slot].as_ref().is_none_or(|(k, _)| *k != key) {
             let mut tris = Vec::new();
             self.scene.sky_triangles(travel, &mut tris);
-            let found = sky_layers::analyze(&sky_layers::Basis::of(travel), &tris);
+            let found = sky_layers::analyze(&sky_layers::Basis::of(travel), &tris, which.from_sun());
             self.sky_layers[slot] = Some((key, found));
         }
         self.sky_layers[slot].as_ref().map_or(1, |(_, l)| l.layers())
@@ -477,9 +485,11 @@ impl Renderer {
             let size = target.size as f32;
             let cut_size = target.cut_size as f32;
             let range = depth_range.max(1.0);
+            let from_sun = which.from_sun();
+            let cut_proj = if from_sun { reversed_depth(view_proj) } else { view_proj };
             for k in 0..target.layers {
                 let base = ViewUniform {
-                    view_proj: view_proj.to_cols_array_2d(),
+                    view_proj: cut_proj.to_cols_array_2d(),
                     eye: [0.0; 4],
                     forward: [travel.x, travel.y, travel.z, 0.0],
                     viewport: [cut_size, cut_size, 1.0 / cut_size, 1.0 / cut_size],
@@ -488,9 +498,10 @@ impl Renderer {
                     ..Default::default()
                 };
                 let occluders = ViewUniform {
+                    view_proj: view_proj.to_cols_array_2d(),
                     viewport: [size, size, 1.0 / size, 1.0 / size],
                     opts: [crate::OPT_SHADOW_PASS | crate::OPT_SUN_PASS | crate::OPT_SKY_CUT, 0, 0, 0],
-                    sun_soft: [CUT_EPSILON / range, k as f32, 0.0, 0.0],
+                    sun_soft: [CUT_EPSILON / range, k as f32, if from_sun { 1.0 } else { 0.0 }, 0.0],
                     ..base
                 };
                 if let (Some(c), Some(o)) = (target.cut_uniforms.get(k as usize), target.uniforms.get(k as usize)) {

@@ -41,6 +41,58 @@ pub(crate) fn model_brushes(l: &Lumps, model: usize) -> Vec<usize> {
     out
 }
 
+pub(crate) fn orphan_class(l: &Lumps, brushes: &[usize]) -> &'static str {
+    let mut trigger = false;
+    let mut all_tool = true;
+    let mut any = false;
+    for &b in brushes {
+        let Some(brush) = l.brushes.get(b) else { continue };
+        let first = usize::try_from(brush.firstside).unwrap_or(0);
+        for side in l.brushsides.iter().skip(first).take(usize::try_from(brush.numsides).unwrap_or(0)) {
+            let name = usize::try_from(side.texinfo)
+                .ok()
+                .and_then(|t| l.texinfo.get(t))
+                .and_then(|t| usize::try_from(t.texdata).ok())
+                .and_then(|d| l.texdata_names.get(d))
+                .map(|n| n.to_ascii_lowercase())
+                .unwrap_or_default();
+            any = true;
+            if name == "tools/toolstrigger" {
+                trigger = true;
+            }
+            if !name.starts_with("tools/") {
+                all_tool = false;
+            }
+        }
+    }
+    if any && trigger && all_tool { "trigger_multiple" } else { "func_brush" }
+}
+
+pub(crate) fn orphan_models(
+    l: &Lumps,
+    claimed: &std::collections::HashMap<usize, DVec3>,
+) -> Vec<(usize, hp_bsp::Entity, DVec3)> {
+    let mut out = Vec::new();
+    for m in 1..l.models.len() {
+        if claimed.contains_key(&m) {
+            continue;
+        }
+        let brushes = model_brushes(l, m);
+        if brushes.is_empty() {
+            continue;
+        }
+        let origin = l.models[m].origin;
+        let mut e = hp_bsp::Entity::default();
+        e.pairs.push(("classname".to_owned(), orphan_class(l, &brushes).to_owned()));
+        e.pairs.push(("model".to_owned(), format!("*{m}")));
+        if origin != DVec3::ZERO {
+            e.pairs.push(("origin".to_owned(), format!("{} {} {}", origin.x, origin.y, origin.z)));
+        }
+        out.push((m, e, origin));
+    }
+    out
+}
+
 pub(crate) struct IdGen {
     pub next_object: Id,
     pub next_side: Id,
