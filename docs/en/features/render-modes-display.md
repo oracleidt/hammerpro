@@ -40,7 +40,7 @@ Directly in the **View** menu:
 | Entry | What it does | Default |
 | --- | --- | --- |
 | **3D view information** (`O`) | Frame rate, camera position and angles in the 3D view. | Off |
-| **Bounding boxes** (`I`) | Bounding boxes of the visible objects. | Off |
+| **Bounding boxes** (`I`) | Bounding boxes of the visible objects. With faces selected and the mouse over the 3D view, `I` starts the [interactive inset](extrude-tool.md) instead. | Off |
 | **Show overlays** | Overlays drawn on their faces (see [Decals and overlays](decals-overlays.md)). | On |
 | **Show connections** | Input/output lines: off, selected, all (each use goes to the next). See [I/O and logical view](io-logical-view.md). | Selected |
 | **Show editor objects** | Entity icons and helper geometry that only exist in the editor. | On |

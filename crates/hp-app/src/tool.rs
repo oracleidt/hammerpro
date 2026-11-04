@@ -233,6 +233,10 @@ pub trait Tool {
         false
     }
 
+    fn face_selection(&self, _state: &crate::state::AppState) -> Vec<hp_editor::FaceRef> {
+        Vec::new()
+    }
+
     fn set_option(&mut self, _state: &mut crate::state::AppState, _key: &str, _value: &str) -> bool {
         false
     }

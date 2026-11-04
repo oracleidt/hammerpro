@@ -84,7 +84,7 @@ impl DisplacementTool {
     }
 
     pub(super) fn blend_ui(&mut self, ui: &mut Ui, state: &AppState, actions: &mut Vec<PanelAction>) {
-        section(ui, t!("disp.blend"));
+        section(ui, t!("disp.height_blend"));
         ui.label(RichText::new(t!("disp.blend_hint")).weak());
         let any = !super::commands::targets(&state.doc).is_empty();
         ui.horizontal_wrapped(|ui| {

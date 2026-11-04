@@ -428,7 +428,7 @@ pub fn convex_decompose(points: &[DVec2]) -> Option<Vec<Vec<usize>>> {
     Some(pieces.into_iter().map(|p| drop_straight(points, p)).collect())
 }
 
-fn oriented(points: [DVec3; 3], normal: DVec3) -> [DVec3; 3] {
+pub(crate) fn oriented(points: [DVec3; 3], normal: DVec3) -> [DVec3; 3] {
     match Plane::from_points(points[0], points[1], points[2]) {
         Some(p) if p.normal.dot(normal) < 0.0 => [points[2], points[1], points[0]],
         _ => points,
@@ -450,7 +450,7 @@ fn cap_points(ring: &[DVec3], normal: DVec3) -> Option<[DVec3; 3]> {
     (area > 1e-12).then(|| oriented([a, ring[i], ring[j]], normal))
 }
 
-fn new_side(id: u32, plane: [DVec3; 3], template: &Side) -> Side {
+pub(crate) fn new_side(id: u32, plane: [DVec3; 3], template: &Side) -> Side {
     Side {
         id,
         plane: plane.map(clean_vec),

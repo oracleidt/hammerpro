@@ -1,4 +1,5 @@
 use glam::Vec3;
+use rayon::prelude::*;
 
 use crate::camera::Camera;
 use crate::gpu::LightGpu;
@@ -256,25 +257,39 @@ pub(crate) fn build_clusters(cam: &Camera, grid: &ClusterGrid, lights: &[LightGp
             }
         }
     }
-    let mut crowded = 0u32;
     let plane = grid.tiles_x * grid.tiles_y;
+    let mut jobs: Vec<(u32, &mut [u32], &mut [u32; 2])> = Vec::new();
+    let mut rest: &mut [u32] = &mut list;
+    let mut used = 0u32;
     for (ci, t) in table.iter_mut().enumerate() {
-        if t[1] <= MAX_PER_CLUSTER {
-            continue;
+        let skip = (t[0] - used) as usize;
+        let (_, tail) = std::mem::take(&mut rest).split_at_mut(skip.min(rest.len()));
+        let take = (t[1] as usize).min(tail.len());
+        let (slice, tail) = tail.split_at_mut(take);
+        rest = tail;
+        used = t[0] + take as u32;
+        if t[1] > MAX_PER_CLUSTER {
+            jobs.push((ci as u32, slice, t));
         }
-        crowded += 1;
-        let ci = ci as u32;
+    }
+    let crowded = jobs.len() as u32;
+    jobs.into_par_iter().for_each(|(ci, slice, t)| {
         let (s, rest) = (ci / plane, ci % plane);
         let center = grid.center(cam, rest % grid.tiles_x, rest / grid.tiles_x, s);
-        let Some(slice) = list.get_mut(t[0] as usize..(t[0] + t[1]) as usize) else { continue };
         let mut scored: Vec<(f32, u32)> =
             slice.iter().map(|&i| (lights.get(i as usize).map_or(0.0, |l| light_score(l, center)), i)).collect();
-        scored.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
+        let keep = MAX_PER_CLUSTER as usize;
+        let order = |a: &(f32, u32), b: &(f32, u32)| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1));
+        if scored.len() > keep {
+            scored.select_nth_unstable_by(keep - 1, order);
+            scored.truncate(keep);
+        }
+        scored.sort_unstable_by(order);
         for (slot, (_, i)) in slice.iter_mut().zip(scored) {
             *slot = i;
         }
         t[1] = MAX_PER_CLUSTER;
-    }
+    });
     Clusters { table, list, crowded }
 }
 

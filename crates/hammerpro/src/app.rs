@@ -362,6 +362,14 @@ impl HammerProApp {
         self.tools[i].action(&mut self.state, action)
     }
 
+    pub(crate) fn active_face_selection(&self) -> Vec<hp_editor::FaceRef> {
+        let faces = self.state.doc.selected_faces();
+        if !faces.is_empty() {
+            return faces;
+        }
+        self.tools[tool_index(self.state.tool)].face_selection(&self.state)
+    }
+
     pub(crate) fn has_tool(&self, id: ToolId) -> bool {
         self.tools_available.contains(&id)
     }
@@ -412,6 +420,7 @@ impl HammerProApp {
             self.tools[i].reactivate(&mut self.state);
             return;
         }
+        self.pkg.brush.drop_inset_modal();
         let old = tool_index(self.state.tool);
         let new = tool_index(id);
         self.unrecorded_selection(|app| {
@@ -539,7 +548,14 @@ impl HammerProApp {
     fn route_keys(&mut self, ctx: &egui::Context) {
         let capture = self.app_capture();
         let i = tool_index(self.state.tool);
-        let routed = self.keys.after_ui(ctx, &mut self.state, self.tools[i].as_mut(), capture);
+        let routed = match self.pkg.brush.inset_modal.as_mut() {
+            Some(modal) => {
+                let mut tool = hp_tools_create::WithInset { modal, inner: self.tools[i].as_mut() };
+                self.keys.after_ui(ctx, &mut self.state, &mut tool, capture)
+            }
+            None => self.keys.after_ui(ctx, &mut self.state, self.tools[i].as_mut(), capture),
+        };
+        self.pkg.brush.settle_inset_modal();
         self.paste_event_text = routed.paste_text;
         for action in routed.actions {
             self.state.request(action);
@@ -590,7 +606,10 @@ impl HammerProApp {
 
         let tool_hint = {
             let i = tool_index(self.state.tool);
-            self.tools[i].status_hint(&self.state)
+            match self.pkg.brush.inset_modal.as_ref().filter(|m| m.is_active()) {
+                Some(m) => Some(m.hint(&self.state)),
+                None => self.tools[i].status_hint(&self.state),
+            }
         };
         let compile_hint = self.compile.is_running().then(|| t!("menu.compiling").to_owned());
         let pick_hint = self.viewports.pick_hint(&self.state);
@@ -636,7 +655,13 @@ impl HammerProApp {
             self.central_size = ui.available_size();
             let i = tool_index(self.state.tool);
             let (state, tools) = (&mut self.state, &mut self.tools);
-            self.viewports.ui(ui, state, tools[i].as_mut());
+            match self.pkg.brush.inset_modal.as_mut() {
+                Some(modal) => {
+                    let mut tool = hp_tools_create::WithInset { modal, inner: tools[i].as_mut() };
+                    self.viewports.ui(ui, state, &mut tool);
+                }
+                None => self.viewports.ui(ui, state, tools[i].as_mut()),
+            }
             self.shell.loading_overlay(ui, &mut self.state);
         });
     }

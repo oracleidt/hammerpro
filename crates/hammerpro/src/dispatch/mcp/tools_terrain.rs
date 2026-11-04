@@ -393,6 +393,9 @@ fn generate_terrain(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let mut opts = gen_options(a)?;
     let replace = a.opt_bool("replace_selected")?.unwrap_or(false);
     opts.replace = replace;
+    if !replace && ["faces", "ids", "solid_ids"].iter().any(|k| a.get(k).is_some()) {
+        super::tools_disp::disp_targets(state, a, false)?;
+    }
     match a.opt_enum("preview", &["show", "hide"])?.as_deref() {
         Some("hide") => {
             state.runtime.mesh.terrain_preview = None;

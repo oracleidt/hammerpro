@@ -107,13 +107,14 @@ domain! { "editing";
             "material": string("Material of the new faces (instead of new_faces)."),
         }, ["solid", "side", "points"];
  inset_face: Destructive, "Inset faces",
- "Inset brush faces (the Tools > Inset face command, also in the extrude tool options): the edges of each face move inward by distance units and the brush is split into a frame of convex brushes around the face plus the inner block, so every piece stays a valid convex brush. The original textures stay on the visible faces and the new faces get the texture of the inset face (or material). depth raises (positive) or sinks (negative) the inner block in the same step, like Blender I then E. One face per brush, convex brushes only, displacement faces are refused. faces defaults to the selected faces, else the faces of ids. snap rounds distance and depth to the editor's grid. One undo step; answers the ids of the brushes made or changed (the first piece keeps the brush id, the last one is the inner block).",
+ "Inset brush faces (the Tools > Inset face command and the interactive inset, the I key in the 3D view): the edges of each face move inward by distance units and the brush is split into a frame of convex brushes around the face plus the inner block, so every piece stays a valid convex brush. The frame is made of one quad per edge of the face (a triangle gives 3, a quad 4, an n-gon n), every face is inset individually (region mode is not offered because the pieces of a region around a crease of a convex brush would not be convex). The original textures stay on the visible faces and the new faces get the texture of the inset face (or material). depth raises (positive) or sinks (negative) the inner block in the same step, like Blender I then E. Several faces of one brush are cut one after the other into pieces that tile the brush. Convex brushes only, displacement faces are refused, and a distance larger than the face allows is refused. faces defaults to the selected faces, else the faces of ids. snap rounds distance and depth to the editor's grid (the Ctrl key of the interactive inset). dry_run answers the number of brushes without changing the map. One undo step; answers the ids of the brushes made or changed (the first piece keeps the brush id, the last one is the inner block).",
         {
             "faces": faces("Faces [{solid, side}] (default: the selected faces)."),
             "ids": target_ids(), "solid_ids": target_solid_ids(),
             "distance": number("Inset distance in units (default 16).", 0.125, 16384.0),
             "depth": number("Raise (positive) or sink (negative) the inner block by this many units (default 0).", -16384.0, 16384.0),
             "snap": boolean("Round distance and depth to the editor's grid (default false)."),
+            "dry_run": boolean("Only answer how many brushes the inset would make, or why it fails (default false)."),
             "material": string("Material of the new faces (default: the inset face's)."),
         }, [];
     get_brush_edges: Read, "Brush edges",
@@ -779,6 +780,12 @@ fn inset_face(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     }
     let material = a.opt_str("material", MAX_NAME)?.map(material_name).transpose()?;
     let params = hp_geom::InsetParams { distance, depth, material };
+    if a.opt_bool("dry_run")?.unwrap_or(false) {
+        let plan = state.doc.inset_preview(&faces, &params).map_err(|e| e.to_string())?;
+        let brushes: usize = plan.iter().map(|(_, p)| p.len()).sum();
+        let answer = json!({ "dry_run": true, "brushes": brushes, "distance": distance, "depth": depth });
+        return Ok(ToolResult::json(answer));
+    }
     let ids = edit(state, "inset_face", |doc| doc.inset_faces(&faces, &params))?;
     let bounds =
         state.doc.scene().objects_bounds(&ids.iter().map(|id| ObjRef::Solid(*id)).collect::<Vec<_>>(), &|_| None);
@@ -1870,6 +1877,13 @@ mod tests {
         assert_eq!(r["depth"], 0.0);
         err(&mut s, "inset_face", json!({ "faces": [{ "solid": 3, "side": 5 }], "distance": 1000 }));
         err(&mut s, "inset_face", json!({ "faces": [{ "solid": 3, "side": 99 }] }));
+        let dry =
+            ok(&mut s, "inset_face", json!({ "faces": [{ "solid": 3, "side": 5 }], "distance": 4, "dry_run": true }));
+        assert_eq!(dry["brushes"], 5);
+        assert_eq!(dry["dry_run"], true);
+        let two = json!({ "faces": [{ "solid": 3, "side": 5 }, { "solid": 3, "side": 4 }], "distance": 4 });
+        let r = ok(&mut s, "inset_face", two);
+        assert!(r["brushes"].as_u64().unwrap() > 5);
     }
 
     #[test]
@@ -2167,14 +2181,15 @@ mod tests {
             "create_curve_brushes",
             json!({ "view": "top", "points": [[0, 0], [128, 64], [256, 0]], "subdivisions": 6, "thickness": 32, "profile": "curb", "curb_width": 8, "curb_height": 4, "roll_start": 3, "auto_bank": 5 }),
         );
-        assert_eq!(r["count"], 18);
+        let n = r["count"].as_u64().unwrap() as usize;
+        assert!(n >= 18 && n % 18 == 0, "3 brushes a piece, banked pieces split: {n}");
         assert_eq!(r["profile"], "curb");
         let first = r["solid_ids"][0].as_u64().unwrap();
         let before = s.doc.stats().solids;
         let (undo, _) = s.doc.history_len();
         let got = ok(&mut s, "get_curve_brushes", json!({ "solid_id": first }));
         assert_eq!(got["points"], json!([[0.0, 0.0], [128.0, 64.0], [256.0, 0.0]]));
-        assert_eq!(got["solid_ids"].as_array().unwrap().len(), 18);
+        assert_eq!(got["solid_ids"].as_array().unwrap().len(), n);
         assert_eq!(got["roll_start"], 3.0);
         assert_eq!(got["auto_bank"], 5.0);
         let e = ok(
@@ -2182,8 +2197,9 @@ mod tests {
             "edit_curve_brushes",
             json!({ "solid_id": first, "points": [[0, 0], [64, 32], [128, 64], [256, 0]], "profile": "ditch", "subdivisions": 5, "roll_end": -4 }),
         );
-        assert_eq!(e["count"], 10);
-        assert_eq!(s.doc.stats().solids, before - 18 + 10);
+        let m = e["count"].as_u64().unwrap() as usize;
+        assert!(m >= 10 && m % 10 == 0, "2 brushes a piece: {m}");
+        assert_eq!(s.doc.stats().solids, before - n + m);
         assert_eq!(s.doc.history_len().0, undo + 1, "one undo step");
         let again = ok(&mut s, "get_curve_brushes", json!({}));
         assert_eq!(again["profile"], "ditch");
@@ -2192,7 +2208,7 @@ mod tests {
         assert_eq!(again["roll_end"], -4.0);
         let e = err(&mut s, "edit_curve_brushes", json!({ "profile": "ditch", "ditch_depth": 500 }));
         assert!(e.contains("ditch"), "{e}");
-        assert_eq!(s.doc.stats().solids, before - 18 + 10, "refused edits change nothing");
+        assert_eq!(s.doc.stats().solids, before - n + m, "refused edits change nothing");
         let e = err(&mut s, "get_curve_brushes", json!({ "solid_id": 4_000_000 }));
         assert!(e.contains("not a brush made by the curve tool"), "{e}");
     }

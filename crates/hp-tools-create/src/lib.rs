@@ -12,6 +12,7 @@ pub mod curve;
 mod decal;
 mod entity;
 mod extrude;
+mod inset_modal;
 mod overlay_tool;
 pub mod path;
 mod picker;
@@ -41,6 +42,9 @@ pub use curve::{CURVE_TR, CurveTool};
 pub use decal::{DECAL_SURFACE_OFFSET, DecalTool, decal_basis, decal_origin};
 pub use entity::{EntityTool, align_to_normal, is_prop_class, rest_on_surface};
 pub use extrude::{ExtrudeOptions, ExtrudeTool, MAX_EXTRUDE_DEPTH};
+pub use inset_modal::{
+    INSET_MODAL_TR, InsetModal, InsetTarget, WithInset, error_text as inset_error_text, issue_key as inset_issue_key,
+};
 pub use overlay_tool::{OverlayTool, overlay_basis, overlay_keyvalues};
 pub use path::{PATH_TR, PathTool};
 pub use polygon::{MAX_POLYGON_POINTS, PointCheck, PolygonOptions, PolygonTool, check_point, is_convex_outline};
@@ -58,6 +62,7 @@ pub fn register_translations() {
     hp_app::i18n::register(CURVE_TR);
     hp_app::i18n::register(ROAD_TR);
     hp_app::i18n::register(BEVEL_TR);
+    hp_app::i18n::register(INSET_MODAL_TR);
 }
 
 pub fn tools() -> Vec<Box<dyn hp_app::Tool>> {

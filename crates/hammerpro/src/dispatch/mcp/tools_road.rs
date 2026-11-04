@@ -157,14 +157,15 @@ fn lightmap_scale(state: &AppState) -> i32 {
 }
 
 fn point_list(state: &AppState, a: &Args<'_>, base: Option<&RoadMeta>) -> R<Option<Vec<RoadPoint>>> {
+    let snap = a.opt_bool("snap")?.unwrap_or(true);
+    let base_height = a.opt_f64("base_height", -COORD, COORD)?;
     let Some(value) = a.get("points") else { return Ok(None) };
     let list = value.as_array().filter(|l| (2..=MAX_POINTS).contains(&l.len()));
     let list = list.ok_or_else(|| format!("points must be 2 to {MAX_POINTS} [x, y] or [x, y, z] points"))?;
-    let snap = a.opt_bool("snap")?.unwrap_or(true);
     let g = grid(state);
     let follow = a.opt_bool("follow_terrain")?.or(base.map(|b| b.follow_terrain)).unwrap_or(false);
     let lift = a.opt_f64("lift", -256.0, 256.0)?.or(base.map(|b| b.lift)).unwrap_or(1.0);
-    let mut z_prev = a.opt_f64("base_height", -COORD, COORD)?.unwrap_or(0.0);
+    let mut z_prev = base_height.unwrap_or(0.0);
     let skip = if follow { apply::road_piece_ids(&state.doc) } else { std::collections::HashSet::new() };
     let mut out = Vec::with_capacity(list.len());
     for p in list {

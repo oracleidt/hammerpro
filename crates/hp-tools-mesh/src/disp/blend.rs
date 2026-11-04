@@ -367,7 +367,7 @@ pub fn preview(doc: &Document, sets: &[Vec<FaceRef>], opts: &BlendOptions) -> Ve
 }
 
 pub const TR: hp_app::i18n::TrTable = &[
-    ("disp.blend", "Height blending", "Fusion des hauteurs"),
+    ("disp.height_blend", "Height blending", "Fusion des hauteurs"),
     (
         "disp.blend_hint",
         "Blends the heights of the selected displacements or groups (set A and set B, or one set per group) across a transition zone",

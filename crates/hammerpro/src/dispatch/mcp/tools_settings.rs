@@ -201,7 +201,7 @@ pub(crate) fn settings_json(s: &Settings) -> Value {
         }
         tables!(
             selection, brush, workflow, instances, visibility, helpers, mesh, entities, render, lighting, placement,
-            startup, launch, content, health, lab, mcp, grid, discord, scan, update, sniffer,
+            startup, launch, content, health, lab, mcp, grid, discord, scan, update, sniffer, blender,
         );
     }
     v

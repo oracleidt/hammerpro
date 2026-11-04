@@ -2,7 +2,7 @@
 
 # Actions et raccourcis clavier
 
-Chaque commande de Hammer Pro 1.0.7 est une *action* : une seule entrée partagée par les menus, la barre d'outils, les raccourcis clavier, la palette de commandes (`Ctrl+P`), les fichiers `--script` et le serveur MCP (`run_action`, `list_actions`). Cette page liste les 319 actions, menu par menu, dans l'ordre où les menus les affichent.
+Chaque commande de Hammer Pro 1.0.8 est une *action* : une seule entrée partagée par les menus, la barre d'outils, les raccourcis clavier, la palette de commandes (`Ctrl+P`), les fichiers `--script` et le serveur MCP (`run_action`, `list_actions`). Cette page liste les 319 actions, menu par menu, dans l'ordre où les menus les affichent.
 
 Colonnes :
 
@@ -255,6 +255,7 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Intersection de brushes | `intersect_brushes` | `Ctrl+Maj+K` |  |  |
 | Union de brushes | `union_brushes` |  |  |  |
 | Décaler la face... | `inset_face` |  |  |  |
+| Décalage interactif (I) | `inset_interactive` |  |  |  |
 | Nodraw sur les faces cachées... | `nodraw_hidden_faces` |  |  |  |
 | Lier chacun à sa propre entité | `tie_each_to_entity` | `Ctrl+Maj+T` |  |  |
 | Convertir en func_detail | `convert_to_detail` |  |  |  |

@@ -353,6 +353,25 @@ fn sun_layer_of(uv: vec2<f32>, layers: u32, depth: f32) -> i32 {
     return found;
 }
 
+fn sun_receiver_slope(n: vec3<f32>) -> vec2<f32> {
+    let m = view.shadow_vp;
+    let a = select(vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(0.0, 1.0, 0.0), abs(n.x) > 0.9);
+    let t1 = normalize(cross(n, a));
+    let t2 = cross(n, t1);
+    let p1 = (m * vec4<f32>(t1, 0.0)).xyz;
+    let p2 = (m * vec4<f32>(t2, 0.0)).xyz;
+    let u1 = vec2<f32>(p1.x * 0.5, -p1.y * 0.5);
+    let u2 = vec2<f32>(p2.x * 0.5, -p2.y * 0.5);
+    let det = u1.x * u2.y - u1.y * u2.x;
+    if abs(det) < 1e-12 {
+        return vec2<f32>(0.0);
+    }
+    let g = vec2<f32>(p1.z * u2.y - p2.z * u1.y, u1.x * p2.z - u2.x * p1.z) / det;
+    let cap = view.shadow.y * 8.0 / max(view.shadow.z, 1e-6);
+    let len = length(g);
+    return select(g, g * (cap / len), len > cap);
+}
+
 fn sun_visibility(world: vec3<f32>, n: vec3<f32>, frag: vec2<f32>, sky3d: bool) -> f32 {
     if view.shadow.x < 0.5 {
         return 1.0;
@@ -368,6 +387,7 @@ fn sun_visibility(world: vec3<f32>, n: vec3<f32>, frag: vec2<f32>, sky3d: bool) 
     }
     let layer = u32(max(found, 0));
     let d = p.z - view.shadow.y;
+    let slope = sun_receiver_slope(n);
     let spread = view.sun_soft.x;
     let texel_world = max(view.sun_soft.z, 1e-3);
     let a = fract(sin(dot(floor(frag), vec2<f32>(12.9898, 78.233))) * 43758.547) * 6.2831853;
@@ -381,37 +401,38 @@ fn sun_visibility(world: vec3<f32>, n: vec3<f32>, frag: vec2<f32>, sky3d: bool) 
         for (var i = 0u; i < SUN_TAPS; i++) {
             let o = rot * disk[i] * (search * view.shadow.z);
             let z = shadow_depth_at(uv + o, layer);
-            if z < d {
+            let dt = d + dot(slope, o);
+            if z < dt {
                 blockers += 1.0;
-                depth_sum += z;
+                depth_sum += dt - z;
             }
         }
         if blockers < 0.5 {
             return 1.0;
         }
-        let gap = max(d - depth_sum / blockers, 0.0) * view.sun_soft.y;
+        let gap = max(depth_sum / blockers, 0.0) * view.sun_soft.y;
         radius = clamp(gap * spread / texel_world, 1.0, MAX_FILTER_TEXELS);
     }
     let rot2 = mat2x2<f32>(cos(a + 1.0472), sin(a + 1.0472), -sin(a + 1.0472), cos(a + 1.0472));
     var sum = 0.0;
     for (var i = 0u; i < SUN_TAPS; i++) {
         let o = rot * disk[i] * (radius * view.shadow.z);
-        sum += textureSampleCompareLevel(shadow_map, shadow_samp, uv + o, layer, d);
+        sum += textureSampleCompareLevel(shadow_map, shadow_samp, uv + o, layer, d + dot(slope, o));
         let o2 = rot2 * disk[i] * (radius * 0.55 * view.shadow.z);
-        sum += textureSampleCompareLevel(shadow_map, shadow_samp, uv + o2, layer, d);
+        sum += textureSampleCompareLevel(shadow_map, shadow_samp, uv + o2, layer, d + dot(slope, o2));
     }
     return sum / f32(SUN_TAPS * 2u);
 }
 
 const SKY_LEVELS: f32 = 7.0;
-const SKY_MARCH_STEPS: u32 = 28u;
+const SKY_MARCH_STEPS: u32 = 18u;
 const SKY_MARCH_FAR: f32 = 1100.0;
-const SKY_AZIMUTHS: u32 = 12u;
+const SKY_AZIMUTHS: u32 = 8u;
 const SKY_BAND: f32 = 0.2617994;
 const SKY_COS: array<f32, 6> = array<f32, 6>(0.991445, 0.923880, 0.793353, 0.608761, 0.382683, 0.130526);
 const SKY_SIN: array<f32, 6> = array<f32, 6>(0.130526, 0.382683, 0.608761, 0.793353, 0.923880, 0.991445);
 const SKY_AREA: array<f32, 6> = array<f32, 6>(0.135517, 0.126282, 0.108441, 0.083209, 0.052308, 0.017841);
-const SKY_OPEN_FLOOR: f32 = 3.168701;
+const SKY_OPEN_FLOOR: f32 = 2.112467;
 
 fn sky_uv(xy: vec2<f32>) -> vec2<f32> {
     return vec2<f32>((xy.x - view.sky_vis_a.x) * view.sky_vis_a.z, 1.0 - (xy.y - view.sky_vis_a.y) * view.sky_vis_a.z);
@@ -461,7 +482,7 @@ fn sky_horizon(xy: vec2<f32>, dir: vec2<f32>, z: f32, layer: u32) -> f32 {
         let size = texel * exp2(level);
         let h = sky_height_lod(xy + dir * r, layer, u32(level));
         horizon = max(horizon, (h - z) / r);
-        r += size;
+        r += size * 1.6;
         if r > SKY_MARCH_FAR {
             break;
         }

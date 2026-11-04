@@ -2579,7 +2579,7 @@ impl Renderer {
                 sky_drawn = true;
             }
             let two_phase = occ_args.is_some();
-            let split = (water_frame.is_some() || fog_frame.is_some()) && !cam.is_ortho;
+            let split = (water_frame.is_some() || fog_frame.is_some() || sun_frame.is_some()) && !cam.is_ortho;
             {
                 let (resolve_now, color_store, depth_store) = if two_phase {
                     (None, wgpu::StoreOp::Store, wgpu::StoreOp::Store)
@@ -2659,7 +2659,8 @@ impl Renderer {
                 }
             }
             if split {
-                ctx.record_water(&mut enc, water_frame.as_ref(), view_id, &lists, fog_frame.is_some(), &mut counter);
+                let keep = fog_frame.is_some() || sun_frame.is_some();
+                ctx.record_water(&mut enc, water_frame.as_ref(), view_id, &lists, keep, &mut counter);
             }
             if let Some(frame) = fog_frame.as_ref().filter(|_| split) {
                 ctx.record_fog_volumes(&mut enc, frame, view_id, &mut counter);

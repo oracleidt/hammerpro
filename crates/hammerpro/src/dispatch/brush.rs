@@ -17,6 +17,19 @@ pub(crate) struct State {
     nodraw_scan: Option<NodrawScan>,
     nodraw_prompt: Option<NodrawPrompt>,
     pub(super) inset: super::inset::InsetPrompt,
+    pub(crate) inset_modal: Option<hp_tools_create::InsetModal>,
+}
+
+impl State {
+    pub(crate) fn drop_inset_modal(&mut self) {
+        self.inset_modal = None;
+    }
+
+    pub(crate) fn settle_inset_modal(&mut self) {
+        if self.inset_modal.as_ref().is_some_and(|m| !m.is_active()) {
+            self.inset_modal = None;
+        }
+    }
 }
 
 struct NodrawScan {
@@ -45,6 +58,7 @@ const HANDLED: &[Action] = &[
     Action::MakeHintBrush,
     Action::NodrawHiddenFaces,
     Action::InsetFace,
+    Action::InsetInteractive,
 ];
 
 const DETAIL_CLASS: &str = "func_detail";
@@ -144,6 +158,7 @@ impl Package for Brush {
             }
             Action::NodrawHiddenFaces => app.start_nodraw_scan(),
             Action::InsetFace => app.start_inset(),
+            Action::InsetInteractive => app.start_inset_modal(),
             _ => return false,
         }
         true
@@ -475,8 +490,8 @@ const TR: TrTable = &[
     ("inset.snap", "Snap to grid", "Aligner sur la grille"),
     (
         "inset.hint",
-        "The brush is split into a frame and an inner block, all convex. One face per brush.",
-        "Le brush est découpé en un cadre et un bloc intérieur, tous convexes. Une face par brush.",
+        "The brush is split into a frame of quads and an inner block, all convex. Live version: press I in the 3D view (Tools > Interactive inset).",
+        "Le brush est découpé en un cadre de quadrilatères et un bloc intérieur, tous convexes. En direct : touche I dans la vue 3D (Outils > Décalage interactif).",
     ),
     ("inset.done", "{0} brush(es) after the inset", "{0} brush(es) après le décalage"),
     ("inset.err_face", "The side is not a face of the brush", "Le côté n'est pas une face du brush"),
@@ -523,6 +538,6 @@ mod tests {
     #[test]
     fn table_is_clean() {
         assert!(hp_app::i18n::lint_table(TR).is_empty(), "{:#?}", hp_app::i18n::lint_table(TR));
-        assert!(TR.iter().all(|(k, _, _)| k.starts_with("brush.")));
+        assert!(TR.iter().all(|(k, _, _)| k.starts_with("brush.") || k.starts_with("inset.")));
     }
 }

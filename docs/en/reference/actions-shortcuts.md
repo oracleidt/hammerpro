@@ -2,7 +2,7 @@
 
 # Actions and keyboard shortcuts
 
-Every command of Hammer Pro 1.0.7 is an *action*: one entry shared by the menus, the toolbar, the keyboard shortcuts, the command palette (`Ctrl+P`), the `--script` files and the MCP server (`run_action`, `list_actions`). This page lists all 319 actions, menu by menu, in the order the menus show them.
+Every command of Hammer Pro 1.0.8 is an *action*: one entry shared by the menus, the toolbar, the keyboard shortcuts, the command palette (`Ctrl+P`), the `--script` files and the MCP server (`run_action`, `list_actions`). This page lists all 319 actions, menu by menu, in the order the menus show them.
 
 Columns:
 
@@ -255,6 +255,7 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Intersect brushes | `intersect_brushes` | `Ctrl+Shift+K` |  |  |
 | Union of brushes | `union_brushes` |  |  |  |
 | Inset face... | `inset_face` |  |  |  |
+| Interactive inset (I) | `inset_interactive` |  |  |  |
 | Nodraw on hidden faces... | `nodraw_hidden_faces` |  |  |  |
 | Tie each to its own entity | `tie_each_to_entity` | `Ctrl+Shift+T` |  |  |
 | Convert to func_detail | `convert_to_detail` |  |  |  |

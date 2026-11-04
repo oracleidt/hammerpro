@@ -292,6 +292,11 @@ pub const TR: TrTable = &[
         "Inset the selected faces: a frame of convex brushes around a smaller inner block, optionally raised or sunk",
         "Décaler les faces sélectionnées : un cadre de brushes convexes autour d'un bloc intérieur plus petit, surélevé ou enfoncé au choix",
     ),
+    (
+        "create.extrude.inset_live_tip",
+        "Inset the selected faces live: move the mouse to set the thickness, E for the depth, type a number for an exact value (also the I key in the 3D view)",
+        "Décaler les faces sélectionnées en direct : bougez la souris pour l'épaisseur, E pour la profondeur, tapez un nombre pour une valeur exacte (aussi la touche I dans la vue 3D)",
+    ),
     ("create.extrude.apply_tip", "Carve or extrude the outline ({0})", "Creuser ou extruder le contour ({0})"),
     ("create.extrude.count", "{0} point(s)", "{0} point(s)"),
     ("create.extrude.brushes", "Result: {0} brush(es)", "Résultat : {0} brush(es)"),

@@ -1,4 +1,4 @@
-use hp_geom::{ClipPiece, InsetParams, face_inset};
+use hp_geom::{ClipPiece, InsetParams, faces_inset};
 use hp_vmf::{Side, Solid};
 
 use super::csg::{derived_solid, record_side_ids};
@@ -18,31 +18,42 @@ struct Job {
 }
 
 impl Document {
-    pub fn inset_faces(&mut self, faces: &[FaceRef], params: &InsetParams) -> EditResult<Vec<Id>> {
+    fn plan_inset(&self, faces: &[FaceRef], params: &InsetParams) -> EditResult<(Vec<Job>, u32)> {
         if faces.is_empty() {
             return Err(EditError::Nothing("no face to inset"));
         }
+        let mut order: Vec<Id> = Vec::with_capacity(faces.len());
         let mut seen = id_set(faces.len());
         for f in faces {
-            if !seen.insert(f.solid) {
-                return Err(EditError::Invalid(format!("brush {} has more than one face to inset", f.solid)));
+            if seen.insert(f.solid) {
+                order.push(f.solid);
             }
         }
         let mut next = self.next_side_id;
-        let mut jobs = Vec::with_capacity(faces.len());
-        for f in faces {
-            let n = self.scene.solids.get(&f.solid).ok_or(EditError::NotFound(ObjRef::Solid(f.solid)))?;
-            if f.side >= n.solid.sides.len() {
-                return Err(EditError::Invalid(format!("solid {} has no side {}", f.solid, f.side)));
+        let mut jobs = Vec::with_capacity(order.len());
+        for solid in order {
+            let n = self.scene.solids.get(&solid).ok_or(EditError::NotFound(ObjRef::Solid(solid)))?;
+            let sides: Vec<usize> = faces.iter().filter(|f| f.solid == solid).map(|f| f.side).collect();
+            if let Some(side) = sides.iter().find(|s| **s >= n.solid.sides.len()) {
+                return Err(EditError::Invalid(format!("solid {solid} has no side {side}")));
             }
             let original = n.solid.sides.clone();
-            let pieces = face_inset(&original, f.side, params, &mut || {
+            let pieces = faces_inset(&original, &sides, params, &mut || {
                 let id = next;
                 next = next.saturating_add(1);
                 id
             })?;
-            jobs.push(Job { solid: f.solid, owner: n.owner, original, pieces });
+            jobs.push(Job { solid, owner: n.owner, original, pieces });
         }
+        Ok((jobs, next))
+    }
+
+    pub fn inset_preview(&self, faces: &[FaceRef], params: &InsetParams) -> EditResult<Vec<(Id, Vec<ClipPiece>)>> {
+        Ok(self.plan_inset(faces, params)?.0.into_iter().map(|j| (j.solid, j.pieces)).collect())
+    }
+
+    pub fn inset_faces(&mut self, faces: &[FaceRef], params: &InsetParams) -> EditResult<Vec<Id>> {
+        let (jobs, next) = self.plan_inset(faces, params)?;
         self.next_side_id = next;
         self.tx(UNDO_INSET_FACE, |doc| {
             let mut ids = Vec::new();
@@ -137,7 +148,7 @@ mod tests {
         assert!(doc.inset_faces(&[], &params).is_err());
         assert!(doc.inset_faces(&[FaceRef::new(b, 99)], &params).is_err());
         assert!(doc.inset_faces(&[FaceRef::new(9999, 0)], &params).is_err());
-        assert!(doc.inset_faces(&[face, FaceRef::new(b, 0)], &params).is_err());
+        assert!(doc.inset_faces(&[face, FaceRef::new(b, 99)], &params).is_err());
         assert!(doc.inset_faces(&[face], &InsetParams { distance: 64.0, ..Default::default() }).is_err());
         assert_eq!(vmf(&doc), before);
     }
@@ -155,5 +166,39 @@ mod tests {
         assert_eq!(ids.len(), 10);
         let volume: f64 = ids.iter().map(|id| doc.scene().solid(*id).expect("piece").geom.volume()).sum();
         assert!((volume - (2.0 * 128.0 * 128.0 * 64.0 + 2.0 * 96.0 * 96.0 * 8.0)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn two_faces_of_one_brush_are_one_undo_step_and_keep_the_volume() {
+        let mut doc = Document::new_empty();
+        let b = doc
+            .create_solid(box_sides(DVec3::ZERO, DVec3::new(128.0, 128.0, 64.0), "BRICK/WALL"), Owner::World)
+            .expect("box");
+        doc.clear_history();
+        let t = top(&doc, b);
+        let n = doc.scene().solid(b).expect("solid");
+        let front = n.solid.sides.iter().position(|s| Plane::from_side(s).is_some_and(|p| p.normal == DVec3::NEG_Y));
+        let faces = [t, FaceRef::new(b, front.expect("front"))];
+        let params = InsetParams { distance: 12.0, ..Default::default() };
+        let ids = check_undo_redo(&mut doc, |d| d.inset_faces(&faces, &params).expect("inset"));
+        assert_eq!(doc.history_len().0, 1);
+        assert!(ids.len() > 5);
+        let volume: f64 = ids.iter().map(|id| doc.scene().solid(*id).expect("piece").geom.volume()).sum();
+        assert!((volume - 128.0 * 128.0 * 64.0).abs() < 1e-6);
+        assert!(ids.iter().all(|id| doc.scene().solid(*id).expect("piece").geom.valid));
+    }
+
+    #[test]
+    fn the_preview_changes_nothing() {
+        let mut doc = Document::new_empty();
+        let b = doc
+            .create_solid(box_sides(DVec3::ZERO, DVec3::new(128.0, 128.0, 64.0), "BRICK/WALL"), Owner::World)
+            .expect("box");
+        let before = vmf(&doc);
+        let params = InsetParams { distance: 16.0, ..Default::default() };
+        let plan = doc.inset_preview(&[top(&doc, b)], &params).expect("preview");
+        assert_eq!(plan.len(), 1);
+        assert_eq!(plan[0].1.len(), 5);
+        assert_eq!(vmf(&doc), before);
     }
 }

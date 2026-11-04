@@ -1599,6 +1599,22 @@ impl Tool for VertexTool {
         ))
     }
 
+    fn face_selection(&self, state: &AppState) -> Vec<hp_editor::FaceRef> {
+        let Ok(mut cache) = self.cache.try_borrow_mut() else { return Vec::new() };
+        cache.refresh(&state.doc);
+        let mut out = Vec::new();
+        for s in
+            cache.solids.iter().filter(|s| !s.split && s.selected_count() > 0 && s.selected_count() < s.points.len())
+        {
+            for (face, side) in s.faces.iter().zip(&s.face_sides) {
+                if face.len() >= 3 && face.iter().all(|i| s.selected.get(*i).copied().unwrap_or(false)) {
+                    out.push(hp_editor::FaceRef::new(s.id, *side));
+                }
+            }
+        }
+        out
+    }
+
     fn cancel(&mut self, state: &mut AppState) -> bool {
         if self.drag.take().is_some() {
             self.end_live(state, false);
@@ -1792,5 +1808,26 @@ mod tests {
         assert_eq!(VertexMode::Edges.pickable(), Pickable { vertices: false, edges: true });
         assert_eq!(VertexMode::Vertices.pickable(), Pickable { vertices: true, edges: false });
         assert_eq!(VertexTool::new().mode, VertexMode::Both);
+    }
+
+    #[test]
+    fn faces_whose_corners_are_all_selected_are_the_face_selection() {
+        let mut state = hp_app::testing::test_state();
+        state.doc.select(&[ObjRef::Solid(3)], SelectOp::Replace);
+        let mut tool = VertexTool::new();
+        tool.activate(&mut state);
+        assert!(tool.face_selection(&state).is_empty());
+        let top = {
+            let cache = tool.cache.get_mut();
+            let s = &mut cache.solids[0];
+            let max = s.points.iter().map(|p| p.z).fold(f64::MIN, f64::max);
+            for (i, p) in s.points.iter().enumerate() {
+                s.selected[i] = (p.z - max).abs() < 1e-6;
+            }
+            s.face_sides[s.faces.iter().position(|f| f.iter().all(|i| s.selected[*i])).expect("top face")]
+        };
+        assert_eq!(tool.face_selection(&state), vec![hp_editor::FaceRef::new(3, top)]);
+        tool.select_all_vertices(&state);
+        assert!(tool.face_selection(&state).is_empty(), "a whole selected brush is not a face selection");
     }
 }

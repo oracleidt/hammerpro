@@ -904,6 +904,13 @@ impl Tool for ExtrudeTool {
             {
                 state.request(Action::InsetFace);
             }
+            if ui
+                .add_enabled(has_faces, egui::Button::new(Action::InsetInteractive.label()))
+                .on_hover_text(t!("create.extrude.inset_live_tip"))
+                .clicked()
+            {
+                state.request(Action::InsetInteractive);
+            }
             if count > 0 {
                 ui.separator();
                 ui.label(tf!("create.extrude.count", count));

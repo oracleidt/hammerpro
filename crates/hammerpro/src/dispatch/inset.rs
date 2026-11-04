@@ -1,6 +1,6 @@
 use hp_app::{Action, Severity, t, tf};
 use hp_editor::EditError;
-use hp_geom::{InsetIssue, InsetParams, MAX_INSET, MIN_INSET};
+use hp_geom::{InsetParams, MAX_INSET, MIN_INSET};
 
 use super::edit_error_text;
 use crate::app::HammerProApp;
@@ -25,23 +25,9 @@ pub(crate) fn snapped(grid: f64, distance: f64, depth: f64) -> (f64, f64) {
     (((distance / grid).round() * grid).max(grid), (depth / grid).round() * grid)
 }
 
-fn issue_key(issue: InsetIssue) -> &'static str {
-    match issue {
-        InsetIssue::NotAFace => "inset.err_face",
-        InsetIssue::Displacement => "inset.err_disp",
-        InsetIssue::BadDistance => "inset.err_distance",
-        InsetIssue::TooLarge => "inset.err_large",
-        InsetIssue::TooDeep => "inset.err_deep",
-        InsetIssue::PastLimits => "inset.err_limits",
-    }
-}
-
 fn error_text(e: &EditError) -> String {
     match e {
-        EditError::Geom(g) => match InsetIssue::of(g) {
-            Some(issue) => hp_app::i18n::tr(issue_key(issue)).to_owned(),
-            None => g.to_string(),
-        },
+        EditError::Geom(_) => hp_tools_create::inset_error_text(e),
         other => edit_error_text(other),
     }
 }
@@ -57,6 +43,37 @@ impl HammerProApp {
             p.snap = self.state.snap_enabled();
         }
         p.open = true;
+    }
+
+    pub(crate) fn start_inset_modal(&mut self) {
+        if self.pkg.brush.inset_modal.as_ref().is_some_and(|m| m.is_active()) {
+            return;
+        }
+        let faces = self.active_face_selection();
+        if faces.is_empty() {
+            self.state.notify(Severity::Info, t!("inset.need_face"));
+            return;
+        }
+        match hp_tools_create::InsetModal::start(&self.state, &faces) {
+            Some(modal) => self.pkg.brush.inset_modal = Some(modal),
+            None => self.state.notify(Severity::Warning, t!("inset.err_face")),
+        }
+    }
+
+    pub(crate) fn inset_shortcut(&mut self, ctx: &egui::Context) -> bool {
+        use hp_app::ToolId;
+        if !matches!(self.state.tool, ToolId::Select | ToolId::Texture | ToolId::Extrude | ToolId::Vertex) {
+            return false;
+        }
+        if self.pkg.brush.inset_modal.as_ref().is_some_and(|m| m.is_active()) {
+            return false;
+        }
+        let Some((view, _)) = self.viewports.hovered_view(&self.state, ctx) else { return false };
+        if view.is_2d() || self.active_face_selection().is_empty() {
+            return false;
+        }
+        self.start_inset_modal();
+        self.pkg.brush.inset_modal.is_some()
     }
 
     pub(crate) fn apply_inset(&mut self, distance: f64, depth: f64, snap: bool) {

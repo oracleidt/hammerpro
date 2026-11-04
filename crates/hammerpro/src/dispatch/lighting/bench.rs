@@ -265,9 +265,14 @@ fn bake_and_baked_view() {
         eprintln!("no GPU: skipped");
         return;
     };
-    let mut settings = hp_app::settings::Settings::default();
-    settings.game.gmod_root =
-        Some(std::env::var_os("HP_BENCH_GMOD").map_or_else(|| PathBuf::from(GMOD), PathBuf::from));
+    let mut settings = match std::env::var_os("HP_BENCH_SETTINGS") {
+        Some(p) => hp_app::settings::Settings::load_or_default(std::path::Path::new(&p)),
+        None => hp_app::settings::Settings::default(),
+    };
+    if settings.game.gmod_root.is_none() || std::env::var_os("HP_BENCH_GMOD").is_some() {
+        settings.game.gmod_root =
+            Some(std::env::var_os("HP_BENCH_GMOD").map_or_else(|| PathBuf::from(GMOD), PathBuf::from));
+    }
     let mut am = AssetManager::new(&settings);
     assert!(am.wait_until_mounted(Duration::from_secs(120)), "Garry's Mod mounted");
     let o = SceneOptions {
@@ -292,7 +297,13 @@ fn bake_and_baked_view() {
         })
         .unwrap_or(c);
     let over = c + Vec3::new(0.0, -0.55 * size.y, 0.45 * size.z);
-    let near = center + Vec3::new(-300.0, -300.0, 200.0);
+    let near = std::env::var("HP_BENCH_NEAR")
+        .ok()
+        .and_then(|v| {
+            let n: Vec<f32> = v.split(',').filter_map(|x| x.trim().parse().ok()).collect();
+            (n.len() == 3).then(|| Vec3::new(n[0], n[1], n[2]))
+        })
+        .unwrap_or(center + Vec3::new(-300.0, -300.0, 200.0));
     eprintln!("BENCH map {lo} to {hi}, bake center {center}");
     let t = Instant::now();
     settle(&mut am, &mut doc, &mut gfx, &o, over, c);
@@ -300,6 +311,7 @@ fn bake_and_baked_view() {
     frames(&mut gfx, "lit (no bake)", over, c, RenderMode::Lit);
     frames(&mut gfx, "textured", over, c, RenderMode::Textured);
     frames(&mut gfx, "lit near (no bake)", near, center, RenderMode::Lit);
+    save(&gfx, "lit_near");
 
     let fs = am.fs().cloned();
     let radius: f64 = std::env::var("HP_BENCH_RADIUS").ok().and_then(|v| v.parse().ok()).unwrap_or(0.0);

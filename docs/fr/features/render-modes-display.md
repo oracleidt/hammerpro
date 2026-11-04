@@ -40,7 +40,7 @@ Directement dans le menu **Affichage** :
 | Entrée | Effet | Défaut |
 | --- | --- | --- |
 | **Informations de la vue 3D** (`O`) | Images par seconde, position et angles de la caméra dans la vue 3D. | Désactivé |
-| **Boîtes englobantes** (`I`) | Boîtes englobantes des objets visibles. | Désactivé |
+| **Boîtes englobantes** (`I`) | Boîtes englobantes des objets visibles. Avec des faces sélectionnées et la souris sur la vue 3D, `I` lance à la place le [décalage interactif](extrude-tool.md). | Désactivé |
 | **Afficher les overlays** | Les overlays dessinés sur leurs faces (voir [Décals et overlays](decals-overlays.md)). | Activé |
 | **Afficher les connexions** | Lignes des entrées/sorties : aucune, sélection, toutes (chaque clic passe à la suivante). Voir [E/S et vue logique](io-logical-view.md). | Sélection |
 | **Afficher les objets d'éditeur** | Icônes d'entités et aides qui n'existent que dans l'éditeur. | Activé |

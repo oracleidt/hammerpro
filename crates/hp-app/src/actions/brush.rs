@@ -18,6 +18,7 @@ action_list! { brush_actions {
     ToolRoad => "tool_road", Tools, ToolsSwitch, None, Ready;
     RoadEdit => "road_edit", Tools, ToolsBrush, None, Ready;
     InsetFace => "inset_face", Tools, ToolsBrush, None, Ready;
+    InsetInteractive => "inset_interactive", Tools, ToolsBrush, None, Ready;
     RoadSidewalk => "road_sidewalk", Tools, ToolsBrush, None, Ready;
     RoadCurb => "road_curb", Tools, ToolsBrush, None, Ready;
     RoadTerrain => "road_terrain", Tools, ToolsBrush, None, Ready;
@@ -57,6 +58,7 @@ pub(super) const TR: TrTable = &[
     ("action.nodraw_hidden_faces", "Nodraw on hidden faces...", "Nodraw sur les faces cachées..."),
     ("action.tie_each_to_entity", "Tie each to its own entity", "Lier chacun à sa propre entité"),
     ("action.inset_face", "Inset face...", "Décaler la face..."),
+    ("action.inset_interactive", "Interactive inset (I)", "Décalage interactif (I)"),
     ("action.convert_to_detail", "Convert to func_detail", "Convertir en func_detail"),
     ("action.road_sidewalk", "Sidewalk generator...", "Générateur de trottoirs..."),
     ("action.road_curb", "Curb and gutter generator...", "Générateur de bordures et caniveaux..."),
