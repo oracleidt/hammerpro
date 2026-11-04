@@ -292,3 +292,31 @@ fn options_overlay_paint_and_errors() {
     out.textures_delta.clear();
     assert!(ctx.fonts_mut(|f| f.has_glyphs(&font, ToolId::Bevel.icon())), "the tool icon has a glyph");
 }
+
+#[test]
+fn alt_click_picks_the_whole_edge_loop_and_ctrl_alt_the_ring() {
+    let mut state = settle();
+    let mut tool = BevelTool::new();
+    let view = wall_view();
+    let at = hover(&mut tool, &mut state, &view, DVec3::new(10.0, 256.0, 129.0));
+    let alt = Modifiers::ALT;
+    tool.handle_mouse(&mut state, &view, &Mouse::hover(at).with_modifiers(alt), false);
+    let mut out = Overlay::default();
+    tool.overlay(&state, &view, &mut out);
+    let hovering = out.lines_on_top.len() + out.lines.len();
+    tool.handle_mouse(&mut state, &view, &Mouse::click(at).with_modifiers(alt), false);
+    let loop_len = tool.picked().len();
+    assert!(loop_len >= 3, "a loop of the wall: {loop_len} edges");
+    assert!(tool.picked().iter().any(|e| e.same_edge(&top_edge())), "the loop holds the clicked edge");
+    assert!(hovering > 0, "the loop is drawn before the click");
+    tool.handle_mouse(&mut state, &view, &Mouse::click(at), false);
+    assert_eq!(tool.picked().len(), 1, "a plain click picks one edge again");
+    let ctrl_alt = Modifiers { alt: true, ..CTRL };
+    tool.handle_mouse(&mut state, &view, &Mouse::click(at).with_modifiers(ctrl_alt), false);
+    assert!(tool.picked().len() >= 2, "the ring: {} edges", tool.picked().len());
+    let shift_alt = Modifiers { alt: true, shift: true, ..Modifiers::default() };
+    let before = tool.picked().len();
+    tool.handle_mouse(&mut state, &view, &Mouse::click(at).with_modifiers(shift_alt), false);
+    assert!(tool.picked().len() >= before, "Shift adds to the picked edges");
+    assert!(tool.start_picked_or_hovered(&mut state), "the picked loop can be bevelled");
+}

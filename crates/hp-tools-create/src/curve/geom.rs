@@ -3,6 +3,8 @@ use hp_app::ViewKind;
 use hp_geom::{GeomError, hull_solid};
 use hp_vmf::Side;
 
+use super::section::{MAX_TOTAL_WIDTH, PieceInput, Section, SectionError, pieces};
+
 pub const MIN_SUBDIVISIONS: u32 = 2;
 pub const MAX_SUBDIVISIONS: u32 = 4096;
 pub const MIN_THICKNESS: f64 = 1.0;
@@ -17,6 +19,7 @@ const MITER_LIMIT_COS: f64 = 0.125;
 const SAMPLES_PER_SEGMENT: usize = 8;
 const MIN_SAMPLES_PER_SPAN: usize = 8;
 const MAX_DENSE_SAMPLES: usize = 262_144;
+const NEAREST_SAMPLES: usize = 24;
 
 pub fn clamp_subdivisions(n: i64) -> u32 {
     n.clamp(i64::from(MIN_SUBDIVISIONS), i64::from(MAX_SUBDIVISIONS)) as u32
@@ -52,7 +55,7 @@ fn knot(a: DVec2, b: DVec2) -> f64 {
     a.distance(b).sqrt().max(1e-9)
 }
 
-fn catmull_rom(p: [DVec2; 4], u: f64) -> DVec2 {
+pub(crate) fn catmull_rom(p: [DVec2; 4], u: f64) -> DVec2 {
     let t0 = 0.0;
     let t1 = t0 + knot(p[0], p[1]);
     let t2 = t1 + knot(p[1], p[2]);
@@ -100,14 +103,54 @@ pub fn dense_spline(points: &[DVec2], segments: u32) -> Vec<DVec2> {
     out
 }
 
+pub fn nearest_on_spline(points: &[DVec2], target: DVec2) -> Option<(usize, DVec2, f64)> {
+    let pts = clean_points(points);
+    let n = pts.len();
+    if n < 2 || !target.is_finite() {
+        return None;
+    }
+    let at = |i: isize| -> DVec2 {
+        if i < 0 {
+            pts[0] * 2.0 - pts[1]
+        } else if i as usize >= n {
+            pts[n - 1] * 2.0 - pts[n - 2]
+        } else {
+            pts[i as usize]
+        }
+    };
+    let mut best: Option<(usize, DVec2, f64)> = None;
+    for s in 0..n - 1 {
+        let i = s as isize;
+        let quad = [at(i - 1), at(i), at(i + 1), at(i + 2)];
+        let mut prev = pts[s];
+        for k in 1..=NEAREST_SAMPLES {
+            let q =
+                if k == NEAREST_SAMPLES { pts[s + 1] } else { catmull_rom(quad, k as f64 / NEAREST_SAMPLES as f64) };
+            let d = q - prev;
+            let len2 = d.length_squared();
+            let f = if len2 > 1e-18 { ((target - prev).dot(d) / len2).clamp(0.0, 1.0) } else { 0.0 };
+            let on = prev + d * f;
+            let dist = on.distance(target);
+            if best.is_none_or(|b| dist < b.2) {
+                best = Some((s + 1, on, dist));
+            }
+            prev = q;
+        }
+    }
+    best
+}
+
 pub fn polyline_length(points: &[DVec2]) -> f64 {
     points.windows(2).map(|w| w[0].distance(w[1])).sum()
 }
 
 pub fn resample(points: &[DVec2], segments: u32) -> Vec<DVec2> {
-    let dense = dense_spline(points, segments);
+    resample_dense(&dense_spline(points, segments), segments)
+}
+
+pub fn resample_dense(dense: &[DVec2], segments: u32) -> Vec<DVec2> {
     if dense.len() < 2 || segments == 0 {
-        return dense;
+        return dense.to_vec();
     }
     let mut cumulative = Vec::with_capacity(dense.len());
     let mut total = 0.0;
@@ -182,8 +225,15 @@ pub fn layout(points: &[DVec2], segments: u32, thickness: f64) -> Result<CurveLa
         return Err(CurveError::TooFewPoints);
     }
     let segments = segments.clamp(MIN_SUBDIVISIONS, MAX_SUBDIVISIONS);
-    let half = clamp_thickness(thickness) * 0.5;
-    let centers = resample(&pts, segments);
+    layout_centers(resample(&pts, segments), thickness)
+}
+
+pub fn layout_centers(centers: Vec<DVec2>, thickness: f64) -> Result<CurveLayout, CurveError> {
+    if centers.len() < 2 {
+        return Err(CurveError::TooFewPoints);
+    }
+    let half =
+        (if thickness.is_finite() { thickness.clamp(MIN_THICKNESS, MAX_TOTAL_WIDTH) } else { MIN_THICKNESS }) * 0.5;
     let length = polyline_length(&centers);
     let n = centers.len() - 1;
     let shortest = centers.windows(2).map(|w| w[0].distance(w[1])).fold(f64::INFINITY, f64::min);
@@ -276,12 +326,14 @@ pub struct CurveSpec<'a> {
     pub material: &'a str,
     pub tex_scale: f64,
     pub lightmap_scale: i32,
+    pub section: Section,
 }
 
 #[derive(Debug)]
 pub enum BuildError {
     Curve(CurveError),
     Height,
+    Section(SectionError),
     Geom(GeomError),
 }
 
@@ -290,6 +342,7 @@ impl std::fmt::Display for BuildError {
         match self {
             BuildError::Curve(e) => e.fmt(f),
             BuildError::Height => write!(f, "the height must be {MIN_HEIGHT} to {MAX_HEIGHT} units"),
+            BuildError::Section(e) => e.fmt(f),
             BuildError::Geom(e) => e.fmt(f),
         }
     }
@@ -307,14 +360,25 @@ pub fn build_brushes(
     if !(h.is_finite() && (MIN_HEIGHT..=MAX_HEIGHT).contains(&h)) || lo.abs().max(hi.abs()) > MAX_COORD {
         return Err(BuildError::Height);
     }
-    let layout = layout(spec.points, spec.segments, spec.thickness).map_err(BuildError::Curve)?;
+    spec.section.check(h).map_err(BuildError::Section)?;
+    let thickness = clamp_thickness(spec.thickness);
+    let width = spec.section.total_width(thickness);
+    let layout = layout(spec.points, spec.segments, width).map_err(BuildError::Curve)?;
     layout.check().map_err(BuildError::Curve)?;
-    layout
-        .quads
-        .iter()
-        .map(|q| {
-            let corners = quad_corners(spec.kind, q, (lo, hi));
-            hull_solid(&corners, spec.material, spec.tex_scale, spec.lightmap_scale, next_side_id)
+    let list = pieces(&PieceInput {
+        kind: spec.kind,
+        centers: &layout.centers,
+        quads: &layout.quads,
+        depth: (lo, hi),
+        thickness,
+        section: &spec.section,
+    });
+    if list.iter().flat_map(|p| p.corners).any(|c| !c.is_finite() || c.abs().max_element() > MAX_COORD) {
+        return Err(BuildError::Curve(CurveError::OutOfRange));
+    }
+    list.iter()
+        .map(|p| {
+            hull_solid(&p.corners, spec.material, spec.tex_scale, spec.lightmap_scale, next_side_id)
                 .map_err(BuildError::Geom)
         })
         .collect()

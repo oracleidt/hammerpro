@@ -57,6 +57,10 @@ const CORE: &[(&str, &str)] = &[
 
 const EXAMPLES: &[(&str, &str)] = &[
     ("create_brush", r#"{"min":[0,0,0],"max":[512,512,16],"material":"dev/dev_measuregeneric01b"}"#),
+    (
+        "create_road",
+        r#"{"points":[[0,0],[512,0],[1024,256,32]],"lanes":2,"center_line":"dashed","edge_line":"solid","follow_terrain":false}"#,
+    ),
     ("create_entity", r#"{"classname":"light","origin":[0,0,128],"keyvalues":{"_light":"255 255 255 400"}}"#),
     ("list_entities", r#"{"classname":"prop_*","limit":20}"#),
     ("set_camera", r#"{"position":[-512,-512,256],"look_at":[0,0,0]}"#),

@@ -1,10 +1,13 @@
 mod bevel;
+mod boolean;
 mod create;
 mod csg;
 mod disp;
+mod edge_loops;
 mod entity;
 mod extrude;
 mod group;
+mod inset;
 mod material;
 mod transform;
 
@@ -17,6 +20,7 @@ mod visgroup;
 
 pub use bevel::{BevelOutcome, EdgeRef};
 pub use csg::ClipKeep;
+pub use edge_loops::{LoopScope, MAX_LOOP_SOLIDS, RunKind};
 pub use entity::EntityQuery;
 pub use find_replace::{ConnPart, MAX_TEXT_LEN, TextField, TextMatch, TextQuery, find_ranges};
 pub use material::{FaceEdit, ReplaceScope};

@@ -6,7 +6,8 @@ use std::path::Path;
 use glam::{DMat4, DVec2, DVec3};
 
 use crate::{
-    Alpha, Material, Model, Result, Triangle, UpAxis, base64, find_file, invalid, push_polygon, smooth_normals,
+    Alpha, Material, MeshObject, Model, NormalKind, Result, TextureSource, Triangle, UpAxis, base64, find_file,
+    invalid, push_polygon, smooth_normals,
 };
 
 const MAX_ARRAY: usize = 200_000_000;
@@ -579,6 +580,53 @@ impl<'a> Layer<'a> {
     }
 }
 
+fn texture_source(tex: &Node, video: Option<&Node>, dir: &Path) -> Option<TextureSource> {
+    let names: Vec<&str> = [tex.text("RelativeFilename"), tex.text("FileName")]
+        .into_iter()
+        .chain([video.and_then(|v| v.text("RelativeFilename")), video.and_then(|v| v.text("Filename"))])
+        .flatten()
+        .collect();
+    if let Some(path) = names.iter().find_map(|n| find_file(dir, n)) {
+        return Some(TextureSource { path: Some(path), embedded: None });
+    }
+    let Some(Prop::Bytes(data)) = video.and_then(|v| v.child("Content")).and_then(|c| c.props.first()) else {
+        return None;
+    };
+    if data.is_empty() {
+        return None;
+    }
+    let ext = names
+        .iter()
+        .find_map(|n| Path::new(&n.replace('\\', "/")).extension().map(|e| e.to_string_lossy().to_lowercase()))
+        .unwrap_or_else(|| "png".to_owned());
+    Some(TextureSource { path: None, embedded: Some((data.clone(), ext)) })
+}
+
+fn texture_uv(tex: &Node) -> ([f64; 2], [f64; 2]) {
+    let pair = |key: &str, default: f64| {
+        tex.p70_vec(key).filter(|v| v.x.is_finite() && v.y.is_finite()).map_or([default; 2], |v| [v.x, v.y])
+    };
+    let scale = pair("Scaling", 1.0);
+    if scale.iter().any(|s| s.abs() < 1e-9) { ([1.0; 2], [0.0; 2]) } else { (scale, pair("Translation", 0.0)) }
+}
+
+fn read_material_extras(o: &Node, m: &mut Material) {
+    let e = &mut m.extras;
+    let color = |a: &str, b: &str| o.p70_vec(a).or_else(|| o.p70_vec(b));
+    if let Some(c) = color("EmissiveColor", "Emissive") {
+        let factor = o.p70_float("EmissiveFactor").unwrap_or(1.0);
+        let c = [c.x * factor, c.y * factor, c.z * factor];
+        if c.iter().any(|v| *v > 0.01) {
+            e.emissive = Some(c);
+        }
+    }
+    if let Some(c) = color("SpecularColor", "Specular") {
+        let factor = o.p70_float("SpecularFactor").unwrap_or(1.0);
+        e.specular = Some(((c.x + c.y + c.z) / 3.0 * factor).clamp(0.0, 1.0));
+    }
+    e.shininess = o.p70_float("ShininessExponent").or_else(|| o.p70_float("Shininess"));
+}
+
 fn is_color_slot(prop: &str) -> bool {
     let p = prop.to_ascii_lowercase();
     p.is_empty() || p.contains("diffuse") || p.contains("base") || p.contains("albedo")
@@ -617,6 +665,7 @@ pub(crate) fn read(bytes: &[u8], dir: &Path) -> Result<Model> {
                     m.color[3] = a;
                     m.alpha = Alpha::Blend;
                 }
+                read_material_extras(o, &mut m);
                 materials_by_id.insert(oid, materials.len());
                 materials.push(m);
             }
@@ -633,6 +682,7 @@ pub(crate) fn read(bytes: &[u8], dir: &Path) -> Result<Model> {
     let mut geometry_model: HashMap<i64, i64> = HashMap::new();
     let mut model_materials: HashMap<i64, Vec<usize>> = HashMap::new();
     let mut material_textures: Vec<(usize, i64)> = Vec::new();
+    let mut other_textures: Vec<(usize, i64, String)> = Vec::new();
     let mut texture_video: HashMap<i64, i64> = HashMap::new();
     if let Some(conns) = root.child("Connections") {
         for c in conns.children_named("C") {
@@ -651,8 +701,11 @@ pub(crate) fn read(bytes: &[u8], dir: &Path) -> Result<Model> {
             } else if textures.contains_key(&child)
                 && let Some(&mi) = materials_by_id.get(&parent)
             {
-                if is_color_slot(c.props.get(3).and_then(Prop::str).unwrap_or("")) {
+                let slot = c.props.get(3).and_then(Prop::str).unwrap_or("");
+                if is_color_slot(slot) {
                     material_textures.push((mi, child));
+                } else {
+                    other_textures.push((mi, child, slot.to_ascii_lowercase()));
                 }
             } else if videos.contains_key(&child) && textures.contains_key(&parent) {
                 texture_video.insert(parent, child);
@@ -684,6 +737,36 @@ pub(crate) fn read(bytes: &[u8], dir: &Path) -> Result<Model> {
         }
         if m.texture.is_some() || m.embedded.is_some() {
             m.color[..3].copy_from_slice(&[1.0; 3]);
+            let (scale, offset) = texture_uv(tex);
+            m.extras.set_flipped_v_transform(scale, offset);
+        }
+    }
+    for (mi, tid, slot) in other_textures {
+        let tex = textures[&tid];
+        let video = texture_video.get(&tid).and_then(|v| videos.get(v));
+        let src = texture_source(tex, video.copied(), dir);
+        let e = &mut materials[mi].extras;
+        match slot.as_str() {
+            s if s.contains("normal") || s.contains("bump") => {
+                let kind = if s.contains("normal") { NormalKind::DirectX } else { NormalKind::Bump };
+                match src {
+                    Some(src) if e.normal.is_none() => e.normal = Some((src, kind)),
+                    Some(_) => {}
+                    None => e.ignore("normal_missing"),
+                }
+            }
+            s if s.contains("emissive") => match src {
+                Some(src) => {
+                    e.emissive_texture = Some(src);
+                    e.emissive.get_or_insert([1.0; 3]);
+                }
+                None => e.ignore("emissive_missing"),
+            },
+            s if s.contains("specular") || s.contains("shininess") || s.contains("reflection") => {
+                e.ignore("specular_texture");
+            }
+            s if s.contains("displacement") => e.ignore("height_texture"),
+            _ => {}
         }
     }
     let world = |model: i64| {
@@ -707,7 +790,9 @@ pub(crate) fn read(bytes: &[u8], dir: &Path) -> Result<Model> {
     let mut triangles: Vec<Triangle> = Vec::new();
     let mut gids: Vec<&i64> = geometries.keys().collect();
     gids.sort_unstable();
+    let mut objects: Vec<MeshObject> = Vec::new();
     for gid in gids {
+        let first = triangles.len();
         let g = geometries[gid];
         let (Some(verts), Some(poly)) = (g.array_f("Vertices"), g.array_i("PolygonVertexIndex")) else { continue };
         let model = geometry_model.get(gid).copied();
@@ -768,9 +853,16 @@ pub(crate) fn read(bytes: &[u8], dir: &Path) -> Result<Model> {
             let material = usize::try_from(local).ok().and_then(|i| mats.get(i)).copied().unwrap_or(default_material);
             push_polygon(&mut triangles, &corners, material, &xf);
         }
+        if triangles.len() > first {
+            let raw =
+                model.and_then(|m| models.get(&m)).and_then(|n| n.props.get(1)).and_then(Prop::str).unwrap_or_default();
+            let name = raw.split('\0').next().unwrap_or(raw);
+            let name = name.strip_prefix("Model::").unwrap_or(name);
+            objects.push(MeshObject { name: name.to_owned(), extras: None, first, count: triangles.len() - first });
+        }
     }
     let unit_cm = if unit_cm.is_finite() && unit_cm > 0.0 { unit_cm } else { 1.0 };
-    Ok(Model { triangles, materials, up: UpAxis::Y, meters_per_unit: unit_cm / 100.0 })
+    Ok(Model { triangles, materials, up: UpAxis::Y, meters_per_unit: unit_cm / 100.0, objects })
 }
 
 #[cfg(test)]

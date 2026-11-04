@@ -14,6 +14,8 @@ All of them are in the **Tools** menu (except **Make hint brush**, only in the [
 | **Make hollow** | `Ctrl+H` | one or more brushes |
 | **Merge brushes** | `Ctrl+Shift+M` | at least two brushes |
 | **Merge into convex solid** | none | at least two brushes |
+| **Intersect brushes** | `Ctrl+Shift+K` | at least two brushes |
+| **Union of brushes** | none | at least two brushes |
 | **Tie to entity** | `Ctrl+T` | a selection |
 | **Tie each to its own entity** | `Ctrl+Shift+T` | a selection with world brushes |
 | **Move to world** | `Ctrl+Shift+W` | brushes of brush entities |
@@ -57,6 +59,23 @@ The thickness field has the keyboard focus when the window opens, so you can typ
 ## Merge into convex solid
 
 **Tools > Merge into convex solid** wraps the selected brushes in their convex hull, even when that adds volume. The result replaces the first brush (same id, owner and editor data) and the others are deleted.
+
+## Intersect brushes
+
+**Tools > Intersect brushes** (`Ctrl+Shift+K`) keeps only the volume shared by all the selected brushes. The result is one convex brush that replaces the first selected brush (same id, owner and editor data); the others are deleted.
+
+- Faces that survive keep their texture. The new cut faces take the texture of the face that cut them, like Carve.
+- If the brushes do not overlap (touching is not enough), nothing changes and the warning **The brushes do not overlap: there is no shared volume to keep** shows.
+- The brushes must all be world brushes or all belong to the same entity, else the warning **The brushes must all be world brushes or belong to the same entity** shows.
+
+## Union of brushes
+
+**Tools > Union of brushes** joins the selected brushes into the fewest convex brushes that cover exactly their union, without adding any volume (unlike **Merge into convex solid**).
+
+1. Overlapping brushes are cut so that they no longer overlap, and the parts hidden inside another brush are removed.
+2. Touching neighbors are merged back into one brush whenever their union is convex.
+
+So two overlapping boxes in line become one box, while an L shape stays two brushes that touch without overlapping. Each brush keeps its id when it still has a piece; brushes entirely inside others are deleted. The new pieces keep the owner and editor data of the brush they come from and are selected when it was. When nothing can be joined, the warning **Nothing to join** shows. The same owner rule as **Merge brushes** applies. One undo step.
 
 ## Tie to entity
 
@@ -112,7 +131,7 @@ Both are in the **Tools** menu, in **Settings > Editing > Behavior**, and the Tr
 
 ## MCP
 
-For AI assistants: `carve`, `hollow`, `merge_brushes` (`convex_hull` true for Merge into convex solid), `tie_to_entity`, `move_to_world`, `make_hint_brushes`, `find_hidden_faces`, `apply_nodraw` and `run_action` for the other commands. See the [MCP tool reference](../../MCP.md).
+For AI assistants: `carve`, `hollow`, `merge_brushes` (`convex_hull` true for Merge into convex solid), `intersect_brushes`, `union_brushes`, `tie_to_entity`, `move_to_world`, `make_hint_brushes`, `find_hidden_faces`, `apply_nodraw` and `run_action` for the other commands. See the [MCP tool reference](../../MCP.md).
 
 ## Tips
 
@@ -126,6 +145,8 @@ For AI assistants: `carve`, `hollow`, `merge_brushes` (`convex_hull` true for Me
 **Carve did nothing on my func_detail.** Carve only cuts world brushes. Use **Move to world** first, carve, then tie the pieces again.
 
 **Merge brushes says the shape is not convex.** Merged brushes must form a convex brush. Use **Merge into convex solid** if adding volume is fine, or keep them as separate brushes.
+
+**Union of brushes leaves several brushes.** The result is made of convex brushes only, so a non convex union (an L, a T) needs at least two. They no longer overlap or share internal faces.
 
 **Make hollow fails.** The brush is too thin for the wall thickness. Lower the thickness or make the brush bigger.
 

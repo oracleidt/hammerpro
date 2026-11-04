@@ -20,10 +20,16 @@ use crate::vertex::model::{
 };
 use crate::{AlphaEffect, GeoEffect, Interaction, PaintAxis, VertexTool};
 
+mod disp_blend_slope;
+mod disp_brushes;
+mod disp_erode;
 mod disp_feedback;
 mod disp_live;
 mod disp_options;
+mod edge_loops;
 mod edit_tools;
+mod roadblend;
+mod weld;
 
 const FLOOR: u32 = 2;
 const WALL: u32 = 3;
@@ -124,29 +130,40 @@ fn translation_table_is_clean() {
 #[test]
 fn translation_keys_match_sources() {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-    let files = [
-        "lib.rs",
-        "common.rs",
-        "vertex/mod.rs",
-        "vertex/model.rs",
-        "disp/mod.rs",
-        "disp/paint.rs",
-        "disp/commands.rs",
-        "disp/sculpt.rs",
-        "disp/tags.rs",
-        "disp/highlight.rs",
-        "disp/script.rs",
-    ];
-    let mut text = String::new();
-    for f in files {
-        text.push_str(&std::fs::read_to_string(dir.join(f)).expect("source file"));
+    fn sources(dir: &std::path::Path, out: &mut String) {
+        let mut entries: Vec<_> = std::fs::read_dir(dir).expect("source dir").flatten().map(|e| e.path()).collect();
+        entries.sort();
+        for p in entries {
+            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_owned();
+            if p.is_dir() {
+                if name != "tests" {
+                    sources(&p, out);
+                }
+            } else if name.ends_with(".rs") && name != "tr.rs" && name != "tests.rs" {
+                out.push_str(&std::fs::read_to_string(&p).expect("source file"));
+            }
+        }
     }
-    let ours: std::collections::HashSet<&str> = crate::TR.iter().map(|e| e.0).collect();
+    let mut text = String::new();
+    sources(&dir, &mut text);
+    let tables: [hp_app::i18n::TrTable; 7] = [
+        crate::TR,
+        crate::disp::erode::TR,
+        crate::terrain::tr::TR,
+        crate::vertex::loops::TR,
+        crate::disp::loops::TR,
+        crate::disp::blend::TR,
+        crate::disp::slope_ui::TR,
+    ];
+    let ours: std::collections::HashSet<&str> = tables.iter().flat_map(|t| t.iter().map(|e| e.0)).collect();
     let core: std::collections::HashSet<&str> = hp_app::strings::TR.iter().map(|e| e.0).collect();
     for prefix in ["\"vertex.", "\"disp.", "\"mesh."] {
         for (pos, _) in text.match_indices(prefix) {
             let rest = &text[pos + 1..];
             let key = &rest[..rest.find('"').expect("closing quote")];
+            if key.ends_with('.') {
+                continue;
+            }
             assert!(ours.contains(key), "missing translation {key}");
         }
     }
@@ -732,6 +749,27 @@ fn create_and_destroy_through_the_panel_functions() {
     assert_eq!(state.doc.disp_faces().len(), 1);
 }
 
+#[test]
+fn power_change_keeps_the_shape_in_one_undo_step() {
+    let (mut state, mut tool, face) = floor_with_disp(3);
+    state
+        .doc
+        .edit_solid(face.solid, |s| {
+            if let Some(d) = s.sides.get_mut(face.side).and_then(|s| s.disp.as_mut()) {
+                d.distances.iter_mut().for_each(|v| *v = 9.0);
+            }
+        })
+        .expect("sculpt");
+    let steps = undo_steps(&state);
+    assert_eq!(tool.set_power_with(&mut state, 4, true), 1);
+    assert_eq!(undo_steps(&state), steps + 1);
+    let d = state.doc.face_side(face).and_then(|s| s.disp.clone()).expect("disp");
+    assert_eq!(d.power, 4);
+    assert!(d.distances.iter().all(|v| (*v - 9.0).abs() < 1e-9));
+    assert_eq!(tool.set_power_with(&mut state, 3, false), 1);
+    let d = state.doc.face_side(face).and_then(|s| s.disp.clone()).expect("disp");
+    assert!(d.distances.iter().all(|v| *v == 0.0));
+}
 #[test]
 fn brush_stroke_is_one_undo_step() {
     let (mut state, mut tool, face) = floor_with_disp(3);

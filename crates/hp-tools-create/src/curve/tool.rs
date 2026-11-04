@@ -3,14 +3,20 @@ use glam::{DVec2, DVec3};
 use hp_app::actions::key_label;
 use hp_app::state::AppState;
 use hp_app::{Severity, Tool, ToolFlow, ToolId, ViewInfo, ViewInput, ViewKind, t, tf};
-use hp_editor::{EditError, Owner};
+use hp_editor::CurveRecord;
 use hp_geom::Aabb;
 use hp_render::Overlay;
 
+use super::apply::{ApplyError, Target, create_curve, material_of, read_curve, replace_curve};
 use super::geom::{
-    BuildError, CurveError, CurveLayout, CurveSpec, MAX_CURVE_POINTS, MAX_HEIGHT, MAX_SUBDIVISIONS, MAX_THICKNESS,
-    MIN_HEIGHT, MIN_SUBDIVISIONS, MIN_THICKNESS, build_brushes, clamp_height, clamp_subdivisions, clamp_thickness,
-    clean_points, layout, quad_corners,
+    BuildError, CurveError, CurveLayout, MAX_CURVE_POINTS, MAX_HEIGHT, MAX_SUBDIVISIONS, MAX_THICKNESS, MIN_HEIGHT,
+    MIN_SUBDIVISIONS, MIN_THICKNESS, clamp_height, clamp_subdivisions, clamp_thickness, clean_points, layout,
+    nearest_on_spline,
+};
+use super::meta::CurveMeta;
+use super::section::{
+    MAX_AUTO_GAIN, MAX_AUTO_LIMIT, MAX_CURB_HEIGHT, MAX_CURB_WIDTH, MAX_DITCH_DEPTH, MAX_ROLL, Piece, PieceInput,
+    Profile, Section, pieces,
 };
 use crate::block::{CreateAs, create_as_ui, new_depth_range};
 use crate::common::{
@@ -32,6 +38,7 @@ pub struct CurveOptions {
     pub tex_scale: f64,
     pub create_as: CreateAs,
     pub keep_active: bool,
+    pub section: Section,
 }
 
 impl Default for CurveOptions {
@@ -43,6 +50,7 @@ impl Default for CurveOptions {
             tex_scale: hp_geom::DEFAULT_TEXTURE_SCALE,
             create_as: CreateAs::World,
             keep_active: true,
+            section: Section::default(),
         }
     }
 }
@@ -82,8 +90,15 @@ enum Drag {
     Swallow,
 }
 
+struct Editing {
+    record: CurveRecord,
+    material: String,
+    saved: Box<CurveOptions>,
+}
+
 pub struct CurveTool {
     pub options: CurveOptions,
+    editing: Option<Editing>,
     stroke: Option<Stroke>,
     phase: CurvePhase,
     hover: Option<Hover>,
@@ -107,6 +122,7 @@ pub(crate) fn error_text(e: &BuildError) -> String {
         BuildError::Curve(CurveError::Folded(list)) => tf!("curve.err.folded", list.len()),
         BuildError::Curve(CurveError::OutOfRange) => t!("curve.err.range").to_owned(),
         BuildError::Height => tf!("curve.err.height", MIN_HEIGHT, MAX_HEIGHT),
+        BuildError::Section(_) => t!("curve.err.ditch").to_owned(),
         BuildError::Geom(g) => tf!("curve.failed", g),
     }
 }
@@ -115,6 +131,7 @@ impl CurveTool {
     pub fn new() -> Self {
         Self {
             options: CurveOptions::default(),
+            editing: None,
             stroke: None,
             phase: CurvePhase::Drawing,
             hover: None,
@@ -152,13 +169,89 @@ impl CurveTool {
 
     pub fn layout(&self) -> Option<Result<CurveLayout, CurveError>> {
         let s = self.stroke.as_ref()?;
-        Some(layout(&s.points, self.options.subdivisions, self.options.thickness))
+        Some(layout(&s.points, self.options.subdivisions, self.total_width()))
+    }
+
+    fn total_width(&self) -> f64 {
+        self.options.section.total_width(clamp_thickness(self.options.thickness))
+    }
+
+    fn pieces(&self) -> Vec<Piece> {
+        let (Some(s), Some(Ok(l))) = (self.stroke.as_ref(), self.layout()) else { return Vec::new() };
+        pieces(&PieceInput {
+            kind: s.kind,
+            centers: &l.centers,
+            quads: &l.quads,
+            depth: s.depth,
+            thickness: clamp_thickness(self.options.thickness),
+            section: &self.options.section,
+        })
     }
 
     fn valid_layout(&self) -> Result<CurveLayout, BuildError> {
         let l = self.layout().unwrap_or(Err(CurveError::TooFewPoints)).map_err(BuildError::Curve)?;
         l.check().map_err(BuildError::Curve)?;
+        if let Some(s) = &self.stroke {
+            self.options.section.check(s.depth.1 - s.depth.0).map_err(BuildError::Section)?;
+        }
         Ok(l)
+    }
+
+    pub fn is_editing(&self) -> bool {
+        self.editing.is_some()
+    }
+
+    fn take_request(&mut self, state: &mut AppState) {
+        let Some(piece) = state.runtime.brush.curve_edit.take() else { return };
+        self.ensure_init(state);
+        let Some((record, meta)) = read_curve(&state.doc, piece) else {
+            state.notify(Severity::Warning, t!("curve.edit_missing").to_owned());
+            return;
+        };
+        self.finish_edit();
+        let material = material_of(&state.doc, &record).unwrap_or_else(|| active_material(state));
+        let saved = Box::new(self.options.clone());
+        self.options.subdivisions = meta.segments;
+        self.options.thickness = meta.thickness;
+        self.options.tex_scale = meta.tex_scale;
+        self.options.section = meta.section;
+        self.options.height = None;
+        self.stroke = Some(Stroke { kind: meta.kind, points: meta.points, depth: meta.depth });
+        self.phase = CurvePhase::Adjusting;
+        self.drag = None;
+        self.hover = None;
+        self.editing = Some(Editing { record, material, saved });
+    }
+
+    fn finish_edit(&mut self) {
+        if let Some(e) = self.editing.take() {
+            self.options = *e.saved;
+        }
+    }
+
+    pub fn remove_point_at(&mut self, index: usize) -> bool {
+        let floor = if self.editing.is_some() { 2 } else { 1 };
+        let Some(s) = self.stroke.as_mut() else { return false };
+        if index >= s.points.len() || s.points.len() <= floor {
+            return false;
+        }
+        s.points.remove(index);
+        self.drag = None;
+        true
+    }
+
+    pub fn insert_point_near(&mut self, p: DVec2) -> bool {
+        let Some(s) = self.stroke.as_mut() else { return false };
+        if s.points.len() >= MAX_CURVE_POINTS
+            || !p.is_finite()
+            || s.points.iter().any(|q| q.distance_squared(p) < 1e-12)
+        {
+            return false;
+        }
+        let Some((index, _, _)) = nearest_on_spline(&s.points, p) else { return false };
+        s.points.insert(index.min(s.points.len()), p);
+        self.drag = None;
+        true
     }
 
     fn ensure_init(&mut self, state: &AppState) {
@@ -216,7 +309,11 @@ impl CurveTool {
     }
 
     pub fn remove_last_point(&mut self) -> bool {
+        let floor = if self.editing.is_some() { 2 } else { 0 };
         let Some(s) = self.stroke.as_mut() else { return false };
+        if s.points.len() <= floor {
+            return false;
+        }
         s.points.pop();
         if s.points.is_empty() {
             self.stroke = None;
@@ -251,58 +348,73 @@ impl CurveTool {
         was
     }
 
+    fn meta(&self) -> Option<CurveMeta> {
+        let s = self.stroke.as_ref()?;
+        Some(CurveMeta {
+            kind: s.kind,
+            points: clean_points(&s.points),
+            depth: s.depth,
+            segments: self.options.subdivisions,
+            thickness: clamp_thickness(self.options.thickness),
+            tex_scale: self.options.tex_scale,
+            section: self.options.section.clamped(),
+        })
+    }
+
     pub fn create(&mut self, state: &mut AppState) -> Option<usize> {
         self.ensure_init(state);
-        let s = self.stroke.clone()?;
-        let material = active_material(state);
+        let meta = self.meta()?;
         let lightmap = match state.settings.edit.default_lightmap_scale {
             v if v > 0 => v,
             _ => 16,
         };
-        let spec = CurveSpec {
-            kind: s.kind,
-            points: &s.points,
-            segments: self.options.subdivisions,
-            thickness: self.options.thickness,
-            depth: s.depth,
-            material: &material,
-            tex_scale: self.options.tex_scale,
-            lightmap_scale: lightmap,
-        };
-        let mut next = state.doc.peek_next_side_id();
-        let solids = match build_brushes(&spec, &mut || {
-            let id = next;
-            next = next.saturating_add(1);
-            id
-        }) {
-            Ok(solids) => solids,
-            Err(e) => {
-                state.notify(Severity::Warning, error_text(&e));
-                return None;
-            }
-        };
         let bounds = self.preview_bounds().unwrap_or_default();
-        let count = solids.len();
-        let result: Result<usize, EditError> = match &self.options.create_as {
-            CreateAs::World => state.doc.create_solids(solids, Owner::World).map(|ids| ids.len()),
-            CreateAs::Entity(class) => {
-                let kv = fgd_defaults(state, class);
-                state.doc.create_brush_entity(class, &kv, solids).map(|_| count)
+        let result = match &self.editing {
+            Some(e) => replace_curve(&mut state.doc, &e.record, &meta, &e.material, lightmap),
+            None => {
+                let material = active_material(state);
+                match &self.options.create_as {
+                    CreateAs::World => create_curve(&mut state.doc, &meta, &material, lightmap, Target::World),
+                    CreateAs::Entity(class) => {
+                        let kv = fgd_defaults(state, class);
+                        create_curve(
+                            &mut state.doc,
+                            &meta,
+                            &material,
+                            lightmap,
+                            Target::NewEntity { class, keyvalues: &kv },
+                        )
+                    }
+                }
             }
         };
         match result {
-            Ok(n) => {
-                state.log(Severity::Info, tf!("curve.created", n, fmt_size(&bounds)));
+            Ok(created) => {
+                let n = created.ids.len();
+                let edited = self.editing.is_some();
+                state.log(
+                    Severity::Info,
+                    if edited {
+                        tf!("curve.edited", n, fmt_size(&bounds))
+                    } else {
+                        tf!("curve.created", n, fmt_size(&bounds))
+                    },
+                );
                 self.last_bounds = Some(bounds);
                 state.runtime.brush.last_created = Some(bounds);
+                self.finish_edit();
                 self.stroke = None;
                 self.phase = CurvePhase::Drawing;
                 self.hover = None;
                 self.drag = None;
-                if !self.options.keep_active {
+                if edited || !self.options.keep_active {
                     state.set_tool(ToolId::Select);
                 }
                 Some(n)
+            }
+            Err(ApplyError::Build(e)) => {
+                state.notify(Severity::Warning, error_text(&e));
+                None
             }
             Err(e) => {
                 state.notify(Severity::Error, tf!("curve.failed", e));
@@ -313,9 +425,11 @@ impl CurveTool {
 
     fn preview_bounds(&self) -> Option<Aabb> {
         let s = self.stroke.as_ref()?;
-        let pts: Vec<DVec3> = match self.layout() {
-            Some(Ok(l)) => l.quads.iter().flat_map(|q| quad_corners(s.kind, q, s.depth)).collect(),
-            _ => s.points.iter().flat_map(|p| [s.kind.from_2d(*p, s.depth.0), s.kind.from_2d(*p, s.depth.1)]).collect(),
+        let list = self.pieces();
+        let pts: Vec<DVec3> = if list.is_empty() {
+            s.points.iter().flat_map(|p| [s.kind.from_2d(*p, s.depth.0), s.kind.from_2d(*p, s.depth.1)]).collect()
+        } else {
+            list.iter().flat_map(|p| p.corners).collect()
         };
         (!pts.is_empty()).then(|| Aabb::from_points(pts))
     }
@@ -464,6 +578,12 @@ impl CurveTool {
                         self.create(state);
                     }
                 }
+            } else if m.modifiers.command
+                && let Some(index) = self.point_at(view, origin)
+            {
+                self.remove_point_at(index);
+            } else if m.modifiers.shift && self.stroke.is_some() {
+                self.insert_point_near(snap.v2(view.screen_to_2d(origin)));
             } else if adding {
                 self.add_point(state, view.kind, snap.v2(view.screen_to_2d(origin)));
             }
@@ -507,10 +627,83 @@ impl CurveTool {
         }
     }
 
+    fn section_problem(&self) -> Option<(String, bool)> {
+        let s = self.stroke.as_ref()?;
+        let e = self.options.section.check(s.depth.1 - s.depth.0).err()?;
+        Some((error_text(&BuildError::Section(e)), false))
+    }
+
+    fn piece_count(&self, l: &CurveLayout) -> usize {
+        let built = self.pieces().len();
+        if built > 0 { built } else { l.quads.len() * self.options.section.strip_count() }
+    }
+
+    fn section_ui(&mut self, ui: &mut Ui, grid: bool) {
+        let row = |ui: &mut Ui, label: &str, tip: &str, add: &mut dyn FnMut(&mut Ui)| {
+            ui.label(label).on_hover_text(tip);
+            add(ui);
+            if grid {
+                ui.end_row();
+            }
+        };
+        let number = |ui: &mut Ui, v: &mut f64, range: std::ops::RangeInclusive<f64>, tip: &str| {
+            ui.add(egui::DragValue::new(v).speed(0.25).range(range).max_decimals(2)).on_hover_text(tip);
+        };
+        let sec = &mut self.options.section;
+        row(ui, t!("curve.profile"), t!("curve.profile_tip"), &mut |ui| {
+            let name = |p: Profile| match p {
+                Profile::Flat => t!("curve.profile.flat"),
+                Profile::Curb => t!("curve.profile.curb"),
+                Profile::Ditch => t!("curve.profile.ditch"),
+            };
+            egui::ComboBox::from_id_salt(("hp_curve_profile", grid))
+                .selected_text(name(sec.profile))
+                .show_ui(ui, |ui| {
+                    for p in Profile::ALL {
+                        ui.selectable_value(&mut sec.profile, p, name(p));
+                    }
+                })
+                .response
+                .on_hover_text(t!("curve.profile_tip"));
+        });
+        match sec.profile {
+            Profile::Flat => {}
+            Profile::Curb => {
+                row(ui, t!("curve.curb_width"), t!("curve.curb_width_tip"), &mut |ui| {
+                    number(ui, &mut sec.curb_width, 1.0..=MAX_CURB_WIDTH, t!("curve.curb_width_tip"));
+                });
+                row(ui, t!("curve.curb_height"), t!("curve.curb_height_tip"), &mut |ui| {
+                    number(ui, &mut sec.curb_height, 0.0..=MAX_CURB_HEIGHT, t!("curve.curb_height_tip"));
+                });
+            }
+            Profile::Ditch => {
+                row(ui, t!("curve.ditch_depth"), t!("curve.ditch_depth_tip"), &mut |ui| {
+                    number(ui, &mut sec.ditch_depth, 0.0..=MAX_DITCH_DEPTH, t!("curve.ditch_depth_tip"));
+                });
+            }
+        }
+        row(ui, t!("curve.roll_start"), t!("curve.roll_start_tip"), &mut |ui| {
+            number(ui, &mut sec.roll_start, -MAX_ROLL..=MAX_ROLL, t!("curve.roll_start_tip"));
+        });
+        row(ui, t!("curve.roll_end"), t!("curve.roll_end_tip"), &mut |ui| {
+            number(ui, &mut sec.roll_end, -MAX_ROLL..=MAX_ROLL, t!("curve.roll_end_tip"));
+        });
+        row(ui, t!("curve.auto_bank"), t!("curve.auto_bank_tip"), &mut |ui| {
+            number(ui, &mut sec.auto_gain, 0.0..=MAX_AUTO_GAIN, t!("curve.auto_bank_tip"));
+        });
+        row(ui, t!("curve.auto_limit"), t!("curve.auto_limit_tip"), &mut |ui| {
+            number(ui, &mut sec.auto_limit, 0.0..=MAX_AUTO_LIMIT, t!("curve.auto_limit_tip"));
+        });
+        *sec = sec.clamped();
+    }
+
     fn summary(&self) -> Option<(String, bool)> {
         let l = self.layout()?;
+        if let Some(problem) = self.section_problem() {
+            return Some(problem);
+        }
         Some(match l {
-            Ok(l) if l.folded.is_empty() => (tf!("curve.summary", l.quads.len(), fmt_len(l.length)), true),
+            Ok(l) if l.folded.is_empty() => (tf!("curve.summary", self.piece_count(&l), fmt_len(l.length)), true),
             Ok(l) => (error_text(&BuildError::Curve(CurveError::Folded(l.folded))), false),
             Err(e) => (error_text(&BuildError::Curve(e)), false),
         })
@@ -518,8 +711,11 @@ impl CurveTool {
 
     fn short_summary(&self) -> Option<(String, bool)> {
         let l = self.layout()?;
+        if let Some(problem) = self.section_problem() {
+            return Some(problem);
+        }
         Some(match l {
-            Ok(l) if l.folded.is_empty() => (tf!("curve.summary", l.quads.len(), fmt_len(l.length)), true),
+            Ok(l) if l.folded.is_empty() => (tf!("curve.summary", self.piece_count(&l), fmt_len(l.length)), true),
             Ok(l) => (tf!("curve.short_folded", l.folded.len()), false),
             Err(CurveError::TooShort { .. }) => (t!("curve.short_short").to_owned(), false),
             Err(e) => (error_text(&BuildError::Curve(e)), false),
@@ -533,7 +729,8 @@ impl CurveTool {
         let mut open = true;
         let mut create = false;
         let mut back = false;
-        hp_app::chrome::Window::new(t!("curve.window_title"))
+        let title = if self.editing.is_some() { t!("curve.window_edit") } else { t!("curve.window_title") };
+        hp_app::chrome::Window::new(title)
             .id(egui::Id::unique("hp_curve_adjust"))
             .open(&mut open)
             .collapsible(false)
@@ -573,13 +770,17 @@ impl CurveTool {
                         ui.end_row();
                     }
                 });
+                egui::Grid::new("hp_curve_section_grid").num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {
+                    self.section_ui(ui, true);
+                });
                 if let Some((text, ok)) = self.summary() {
                     let color = if ok { ui.visuals().weak_text_color() } else { hp_app::theme::VIEW_ERROR };
                     ui.add(egui::Label::new(egui::RichText::new(text).color(color)).wrap());
                 }
                 ui.horizontal(|ui| {
+                    let apply = if self.editing.is_some() { t!("curve.apply") } else { t!("curve.create") };
                     if ui
-                        .add_enabled(self.valid_layout().is_ok(), egui::Button::new(t!("curve.create")))
+                        .add_enabled(self.valid_layout().is_ok(), egui::Button::new(apply))
                         .on_hover_text(tf!("curve.create_tip", key_label(Key::Enter)))
                         .clicked()
                     {
@@ -609,6 +810,7 @@ impl Tool for CurveTool {
 
     fn activate(&mut self, state: &mut AppState) {
         self.ensure_init(state);
+        self.take_request(state);
     }
 
     fn deactivate(&mut self, state: &mut AppState) {
@@ -616,6 +818,7 @@ impl Tool for CurveTool {
     }
 
     fn view_input(&mut self, state: &mut AppState, input: &ViewInput<'_>) -> ToolFlow {
+        self.take_request(state);
         if input.navigating {
             return ToolFlow::Ignored;
         }
@@ -689,18 +892,18 @@ impl Tool for CurveTool {
             }
             return;
         }
-        let Some(l) = &layout else {
+        if layout.is_none() {
             for p in &s.points {
                 ov.xray_line(s.kind.from_2d(*p, s.depth.0), s.kind.from_2d(*p, s.depth.1), line);
             }
             return;
-        };
+        }
         let fill = rgba(COLOR_PENDING, 0.10);
-        for (i, q) in l.quads.iter().enumerate() {
-            let c = quad_corners(s.kind, q, s.depth);
-            ov.hull_edges(&c, if folded(i) { bad } else { line }, true);
+        for piece in self.pieces() {
+            let c = piece.corners;
+            ov.hull_edges(&c, if folded(piece.quad) { bad } else { line }, true);
             if !view.is_2d() {
-                ov.hull_faces(&c, if folded(i) { rgba(COLOR_REMOVED, 0.25) } else { fill });
+                ov.hull_faces(&c, if folded(piece.quad) { rgba(COLOR_REMOVED, 0.25) } else { fill });
             }
         }
     }
@@ -768,8 +971,14 @@ impl Tool for CurveTool {
 
     fn options_ui(&mut self, ui: &mut Ui, state: &mut AppState) {
         self.ensure_init(state);
+        self.take_request(state);
         ui.horizontal_wrapped(|ui| {
+            if self.editing.is_some() {
+                ui.label(egui::RichText::new(t!("curve.editing")).strong());
+            }
             self.sizes_ui(ui);
+            ui.separator();
+            self.section_ui(ui, false);
             ui.separator();
             let scale =
                 egui::DragValue::new(&mut self.options.tex_scale).speed(0.01).range(0.01..=64.0).max_decimals(3);
@@ -777,10 +986,12 @@ impl Tool for CurveTool {
             ui.label(t!("create.block.tex_scale")).on_hover_text(tip);
             ui.add(scale).on_hover_text(tip);
             ui.separator();
-            create_as_ui(ui, state, &mut self.picker, &mut self.options.create_as, "curve_create_as");
-            ui.separator();
-            material_chip(ui, state);
-            ui.separator();
+            if self.editing.is_none() {
+                create_as_ui(ui, state, &mut self.picker, &mut self.options.create_as, "curve_create_as");
+                ui.separator();
+                material_chip(ui, state);
+                ui.separator();
+            }
             if hp_app::widgets::icon_toggle(ui, "📌", self.options.keep_active, t!("curve.keep_active_tip")).clicked()
             {
                 self.options.keep_active = !self.options.keep_active;
@@ -804,8 +1015,9 @@ impl Tool for CurveTool {
                     }
                 }
                 CurvePhase::Adjusting => {
+                    let apply = if self.editing.is_some() { t!("curve.apply") } else { t!("curve.create") };
                     if ui
-                        .add_enabled(self.valid_layout().is_ok(), egui::Button::new(t!("curve.create")))
+                        .add_enabled(self.valid_layout().is_ok(), egui::Button::new(apply))
                         .on_hover_text(tf!("curve.create_tip", key_label(Key::Enter)))
                         .clicked()
                     {
@@ -856,8 +1068,10 @@ impl Tool for CurveTool {
         let enter = key_label(Key::Enter);
         let back = key_label(Key::Backspace);
         let escape = key_label(Key::Escape);
+        let ctrl = if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" };
         Some(match (&self.stroke, self.phase) {
             (None, _) => t!("curve.hint_idle").to_owned(),
+            (Some(_), _) if self.editing.is_some() => tf!("curve.hint_edit", enter, escape, ctrl),
             (Some(_), CurvePhase::Adjusting) => tf!("curve.hint_adjust", enter, escape),
             (Some(_), CurvePhase::Drawing) if self.is_ready() => tf!("curve.hint_ready", enter, back, escape),
             (Some(_), CurvePhase::Drawing) => tf!("curve.hint_points", back, escape),
@@ -866,6 +1080,7 @@ impl Tool for CurveTool {
 
     fn cancel(&mut self, _state: &mut AppState) -> bool {
         let had = self.stroke.is_some() || self.drag.is_some();
+        self.finish_edit();
         self.stroke = None;
         self.phase = CurvePhase::Drawing;
         self.drag = None;
@@ -883,6 +1098,7 @@ impl Tool for CurveTool {
             _ => None,
         };
         let num = v.parse::<f64>().ok().filter(|x| x.is_finite());
+        let ranged = |n: Option<f64>, lo: f64, hi: f64| n.filter(|x| (lo..=hi).contains(x));
         match key {
             "subdivisions" => match num.filter(|n| n.fract() == 0.0) {
                 Some(n) if (f64::from(MIN_SUBDIVISIONS)..=f64::from(MAX_SUBDIVISIONS)).contains(&n) => {
@@ -920,6 +1136,16 @@ impl Tool for CurveTool {
                 None => false,
             },
             "keep_active" => flag.map(|b| self.options.keep_active = b).is_some(),
+            "profile" => Profile::parse(v).map(|p| self.options.section.profile = p).is_some(),
+            "curb_width" => ranged(num, 1.0, MAX_CURB_WIDTH).map(|x| self.options.section.curb_width = x).is_some(),
+            "curb_height" => ranged(num, 0.0, MAX_CURB_HEIGHT).map(|x| self.options.section.curb_height = x).is_some(),
+            "ditch_depth" => ranged(num, 0.0, MAX_DITCH_DEPTH).map(|x| self.options.section.ditch_depth = x).is_some(),
+            "roll_start" => ranged(num, -MAX_ROLL, MAX_ROLL).map(|x| self.options.section.roll_start = x).is_some(),
+            "roll_end" => ranged(num, -MAX_ROLL, MAX_ROLL).map(|x| self.options.section.roll_end = x).is_some(),
+            "auto_bank" => ranged(num, 0.0, MAX_AUTO_GAIN).map(|x| self.options.section.auto_gain = x).is_some(),
+            "auto_bank_limit" => {
+                ranged(num, 0.0, MAX_AUTO_LIMIT).map(|x| self.options.section.auto_limit = x).is_some()
+            }
             "create_as" => {
                 if v.eq_ignore_ascii_case("world") {
                     self.options.create_as = CreateAs::World;
@@ -971,6 +1197,46 @@ impl Tool for CurveTool {
                 "keep_active",
                 if o.keep_active { "on" } else { "off" },
                 "on: stay in the curve tool after creating",
+            ),
+            ToolOption::new(
+                "profile",
+                o.section.profile.name(),
+                "cross section: flat, curb (raised kerb on both sides) or ditch (V shaped channel)",
+            ),
+            ToolOption::new(
+                "curb_width",
+                num(o.section.curb_width),
+                "profile curb: width of each kerb in units (1 to 256)",
+            ),
+            ToolOption::new(
+                "curb_height",
+                num(o.section.curb_height),
+                "profile curb: height of the kerbs above the road in units (0 to 256)",
+            ),
+            ToolOption::new(
+                "ditch_depth",
+                num(o.section.ditch_depth),
+                "profile ditch: depth of the V in units (0 to 512)",
+            ),
+            ToolOption::new(
+                "roll_start",
+                num(o.section.roll_start),
+                "banking: roll angle in degrees at the start of the curve (-60 to 60, positive raises the left side)",
+            ),
+            ToolOption::new(
+                "roll_end",
+                num(o.section.roll_end),
+                "banking: roll angle in degrees at the end of the curve, interpolated along the curve (-60 to 60)",
+            ),
+            ToolOption::new(
+                "auto_bank",
+                num(o.section.auto_gain),
+                "automatic banking: degrees of roll for a bend of radius 1000 units, proportional to the curvature (0 to 90, 0 is off)",
+            ),
+            ToolOption::new(
+                "auto_bank_limit",
+                num(o.section.auto_limit),
+                "automatic banking: largest roll in degrees it may add (0 to 45)",
             ),
         ]
     }

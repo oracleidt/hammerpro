@@ -520,3 +520,42 @@ fn edit_closures() {
     assert!(doc.edit_solid(id, |s| s.sides.truncate(2)).is_err());
     assert_eq!(vmf(&doc), before);
 }
+
+fn volume_of(doc: &Document, ids: &[crate::Id]) -> f64 {
+    ids.iter().map(|id| doc.scene().solid(*id).expect("solid").geom.volume()).sum()
+}
+
+#[test]
+fn intersect_keeps_the_shared_volume_in_the_first_id() {
+    let mut doc = Document::new_empty();
+    let a = doc.create_solid(cube(DVec3::ZERO, 64.0), Owner::World).expect("a");
+    let b = doc.create_solid(cube(DVec3::splat(32.0), 64.0), Owner::World).expect("b");
+    let r = check_undo_redo(&mut doc, |d| d.intersect_solids(&[a, b]).expect("intersect"));
+    assert_eq!(r, a);
+    assert!(doc.scene().solid(b).is_none());
+    assert!((volume_of(&doc, &[a]) - 32.0f64.powi(3)).abs() < 1e-6);
+    let c = doc.create_solid(cube(DVec3::splat(500.0), 16.0), Owner::World).expect("c");
+    assert!(doc.intersect_solids(&[a, c]).is_err());
+    assert!(doc.intersect_solids(&[a]).is_err());
+}
+
+#[test]
+fn union_joins_overlapping_boxes_and_keeps_l_shapes_disjoint() {
+    let mut doc = Document::new_empty();
+    let a = doc.create_solid(cube(DVec3::ZERO, 64.0), Owner::World).expect("a");
+    let b = doc.create_solid(cube(DVec3::new(32.0, 0.0, 0.0), 64.0), Owner::World).expect("b");
+    let r = check_undo_redo(&mut doc, |d| d.union_solids(&[a, b]).expect("union"));
+    assert_eq!(r, vec![a]);
+    assert!(doc.scene().solid(b).is_none());
+    assert!((volume_of(&doc, &[a]) - 96.0 * 64.0 * 64.0).abs() < 1e-6);
+
+    let mut doc = Document::new_empty();
+    let a = doc.create_solid(cube(DVec3::ZERO, 64.0), Owner::World).expect("a");
+    let b = doc.create_solid(cube(DVec3::new(32.0, 32.0, 0.0), 64.0), Owner::World).expect("b");
+    let expected = 64.0f64.powi(3) * 2.0 - 32.0 * 32.0 * 64.0;
+    let r = check_undo_redo(&mut doc, |d| d.union_solids(&[a, b]).expect("union"));
+    assert!(r.len() >= 2);
+    assert!((volume_of(&doc, &r) - expected).abs() < 1e-6);
+    assert!(r.contains(&a) && r.contains(&b));
+    assert!(doc.union_solids(&r).is_err());
+}

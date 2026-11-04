@@ -527,16 +527,37 @@ pub enum WalkClass {
     Buildable = 0,
     Walkable = 1,
     Steep = 2,
+    Lime = 3,
+    Yellow = 4,
+    Orange = 5,
+    Ember = 6,
+    Overhang = 7,
 }
 
 impl WalkClass {
     pub const ALL: [WalkClass; 3] = [WalkClass::Buildable, WalkClass::Walkable, WalkClass::Steep];
+
+    pub const GRADIENT: [WalkClass; 8] = [
+        WalkClass::Buildable,
+        WalkClass::Lime,
+        WalkClass::Yellow,
+        WalkClass::Walkable,
+        WalkClass::Orange,
+        WalkClass::Ember,
+        WalkClass::Steep,
+        WalkClass::Overhang,
+    ];
 
     pub const fn srgb(self) -> [u8; 3] {
         match self {
             WalkClass::Buildable => [60, 200, 90],
             WalkClass::Walkable => [250, 190, 40],
             WalkClass::Steep => [235, 55, 70],
+            WalkClass::Lime => [150, 210, 60],
+            WalkClass::Yellow => [235, 225, 50],
+            WalkClass::Orange => [245, 140, 45],
+            WalkClass::Ember => [240, 95, 55],
+            WalkClass::Overhang => [150, 25, 110],
         }
     }
 }
@@ -741,12 +762,13 @@ pub struct GridParams {
     pub size: f32,
     pub major_every: u32,
     pub show_1024: bool,
+    pub cells: bool,
     pub opacity: f32,
 }
 
 impl Default for GridParams {
     fn default() -> Self {
-        Self { size: 16.0, major_every: 8, show_1024: true, opacity: 1.0 }
+        Self { size: 16.0, major_every: 8, show_1024: true, cells: true, opacity: 1.0 }
     }
 }
 

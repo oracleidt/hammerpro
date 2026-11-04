@@ -1518,7 +1518,8 @@ impl Viewports {
         let rect = view.rect;
         paint::axis_gizmo(painter, rect.left_bottom() + vec2(30.0, -30.0), view);
         if walk_legend_shown(state, view) {
-            paint::walk_legend(painter, rect.right_bottom() + vec2(-6.0, -6.0));
+            let r = &state.settings.render;
+            paint::walk_legend(painter, rect.right_bottom() + vec2(-6.0, -6.0), r.disp_walk_mode, r.disp_walk_angle);
         }
         if !view.is_2d() && state.settings.view.show_fps && !state.settings.workflow.show_view_info {
             paint::text_pill(

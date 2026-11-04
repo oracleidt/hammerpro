@@ -65,9 +65,23 @@ Textures:
 - Carving only touches the clicked brush. To cut a shape through several brushes, use [Carve](brush-operations.md) with a brush, or repeat the tool on each brush.
 - The faces of a carved hole are real faces: give them another texture later with the [texture tool](texture-tool.md).
 
+## Inset face
+
+**Tools > Inset face...** (also the **Inset face...** button of the options bar of this tool) works on the selected faces, selected with the texture tool or the face selection of the select tool. It moves the edges of each face inward by a distance and splits the brush into convex pieces: a frame of brushes around the face plus the inner block, so the result is still made of valid convex brushes. A box face inset gives 5 brushes (4 for the frame, 1 inner block) whose volumes add up to the original brush.
+
+The window asks for:
+
+- **Distance**: how far the edges move inward, in units (0.125 to 16384). It must be smaller than half of the narrowest part of the face.
+- **Depth**: 0 keeps the inner block flush with the face. A positive value raises it out of the face, a negative one sinks it into the brush (inset then extrude, like Blender I then E). A sink must stay under the thickness of the brush.
+- **Snap to grid**: rounds distance and depth to the grid (on by default when snapping is on).
+
+The kept faces keep their texture and alignment. The new faces (the sides of the frame hole and of the inner block) take the material of the inset face and, when parallel to it, its alignment. Overlays and cubemaps that used the face follow its pieces. The first piece keeps the brush id, the new pieces belong to the same owner, group and visgroups, and the whole operation is one undo step (**Inset face**). All the pieces are selected.
+
+Limits: one face per brush, the brush must be convex and valid, and displacement faces are refused. Otherwise a warning explains why nothing was done (for example **The distance is larger than the face**).
+
 ## MCP
 
-The MCP tool `extrude_face` does the same from an AI app: `solid`, `side` (the side index of the face, from `get_faces`), the outline `points` as world positions on the face, `mode` (`carve` or `extrude`), `depth`, `through`, and the texture of the new faces (`new_faces`: `face` or `current`, or a `material`). `get_tool_options` and `set_tool_options` read and change the options of the tool itself (tool `extrude`: `mode`, `depth`, `through`, `new_faces`). See the [MCP tool reference](../../MCP.md).
+The MCP tool `extrude_face` does the same from an AI app: `solid`, `side` (the side index of the face, from `get_faces`), the outline `points` as world positions on the face, `mode` (`carve` or `extrude`), `depth`, `through`, and the texture of the new faces (`new_faces`: `face` or `current`, or a `material`). `get_tool_options` and `set_tool_options` read and change the options of the tool itself (tool `extrude`: `mode`, `depth`, `through`, `new_faces`). The MCP tool `inset_face` does the inset from an AI app: `faces` (`[{solid, side}]`, default the selected faces, else the faces of `ids`), `distance`, `depth` (positive raises, negative sinks the inner block), `snap` (round to the editor's grid) and `material` for the new faces. See the [MCP tool reference](../../MCP.md).
 
 ## FAQ
 

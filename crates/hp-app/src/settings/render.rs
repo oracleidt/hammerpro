@@ -21,6 +21,28 @@ impl Disp2dSetting {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum DispWalkMode {
+    #[default]
+    Source,
+    Limit,
+    Gradient,
+}
+
+impl DispWalkMode {
+    pub const ALL: [DispWalkMode; 3] = [DispWalkMode::Source, DispWalkMode::Limit, DispWalkMode::Gradient];
+
+    pub const fn name(self) -> &'static str {
+        match self {
+            DispWalkMode::Source => "source",
+            DispWalkMode::Limit => "limit",
+            DispWalkMode::Gradient => "gradient",
+        }
+    }
+}
+
+pub const DEFAULT_WALK_ANGLE: f32 = 45.573;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Disp2dViewSetting {
     #[default]
     Global,
@@ -149,6 +171,8 @@ pub struct RenderSettings {
     pub displacements_2d_views: [Disp2dViewSetting; 4],
     pub disp_source_2d: bool,
     pub disp_walkable: bool,
+    pub disp_walk_mode: DispWalkMode,
+    pub disp_walk_angle: f32,
     pub occlusion_culling: bool,
     pub selection_outline: bool,
     pub grid_dotted: bool,
@@ -230,6 +254,8 @@ impl Default for RenderSettings {
             displacements_2d_views: [Disp2dViewSetting::Global; 4],
             disp_source_2d: true,
             disp_walkable: false,
+            disp_walk_mode: DispWalkMode::Source,
+            disp_walk_angle: DEFAULT_WALK_ANGLE,
             occlusion_culling: true,
             selection_outline: false,
             grid_dotted: false,
@@ -293,6 +319,8 @@ mod tests {
         assert_eq!(RenderSettings { near_plane: 100.0, ..Default::default() }.near(), 16.0);
         assert_eq!(s.displacements_2d, Disp2dSetting::Mesh);
         assert!(!s.disp_walkable);
+        assert_eq!(s.disp_walk_mode, DispWalkMode::Source);
+        assert_eq!(s.disp_walk_angle, DEFAULT_WALK_ANGLE);
         assert!(s.normal_maps, "normal maps are on by default");
         assert!(s.cubemaps && s.cubemaps_auto, "reflections are on by default");
         assert!(s.fog_preview && s.fog_volume_preview && s.fog_volume_texture, "fog is previewed by default");

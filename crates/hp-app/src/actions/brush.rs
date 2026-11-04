@@ -8,10 +8,20 @@ action_list! { brush_actions {
     ToolExtrude => "tool_extrude", Tools, ToolsSwitch, sc(SHIFT, Key::I), Ready;
     ToolBevel => "tool_bevel", Tools, ToolsSwitch, sc(SHIFT, Key::J), Ready;
     MergeBrushes => "merge_brushes", Tools, ToolsBrush, sc(CTRL_SHIFT, Key::M), Ready;
+    IntersectBrushes => "intersect_brushes", Tools, ToolsBrush, sc(CTRL_SHIFT, Key::K), Ready;
+    UnionBrushes => "union_brushes", Tools, ToolsBrush, None, Ready;
     MakeHintBrush => "make_hint_brush", Tools, Hidden, None, Ready;
     NodrawHiddenFaces => "nodraw_hidden_faces", Tools, ToolsBrush, None, Ready;
     TieEachToEntity => "tie_each_to_entity", Tools, ToolsBrush, sc(CTRL_SHIFT, Key::T), Ready;
     ConvertToDetail => "convert_to_detail", Tools, ToolsBrush, None, Ready;
+    CurveEdit => "curve_edit", Tools, ToolsBrush, None, Ready;
+    ToolRoad => "tool_road", Tools, ToolsSwitch, None, Ready;
+    RoadEdit => "road_edit", Tools, ToolsBrush, None, Ready;
+    InsetFace => "inset_face", Tools, ToolsBrush, None, Ready;
+    RoadSidewalk => "road_sidewalk", Tools, ToolsBrush, None, Ready;
+    RoadCurb => "road_curb", Tools, ToolsBrush, None, Ready;
+    RoadTerrain => "road_terrain", Tools, ToolsBrush, None, Ready;
+    RoadsideEdit => "roadside_edit", Tools, ToolsBrush, None, Ready;
 }}
 
 pub(super) const REPEATS: &[Action] = &[];
@@ -19,8 +29,13 @@ pub(super) const REPEATS: &[Action] = &[];
 pub(super) fn enabled(state: &AppState, action: Action) -> Option<bool> {
     let sel = state.doc.selection();
     Some(match action {
-        Action::MergeBrushes | Action::TieEachToEntity | Action::ConvertToDetail => !sel.objects.is_empty(),
-        Action::MakeHintBrush => !sel.faces.is_empty(),
+        Action::MergeBrushes
+        | Action::IntersectBrushes
+        | Action::UnionBrushes
+        | Action::TieEachToEntity
+        | Action::ConvertToDetail => !sel.objects.is_empty(),
+        Action::MakeHintBrush | Action::InsetFace => !sel.faces.is_empty(),
+        Action::RoadsideEdit => state.doc.selected_roadside_piece().is_some(),
         _ => return None,
     })
 }
@@ -36,10 +51,22 @@ pub(super) fn icon(_action: Action) -> Option<&'static str> {
 pub(super) const TR: TrTable = &[
     ("action.tool_polygon", "Polygon tool", "Outil polygone"),
     ("action.merge_brushes", "Merge brushes", "Fusionner les brushes"),
+    ("action.intersect_brushes", "Intersect brushes", "Intersection de brushes"),
+    ("action.union_brushes", "Union of brushes", "Union de brushes"),
     ("action.make_hint_brush", "Make hint brush", "Créer un brush hint"),
     ("action.nodraw_hidden_faces", "Nodraw on hidden faces...", "Nodraw sur les faces cachées..."),
     ("action.tie_each_to_entity", "Tie each to its own entity", "Lier chacun à sa propre entité"),
+    ("action.inset_face", "Inset face...", "Décaler la face..."),
     ("action.convert_to_detail", "Convert to func_detail", "Convertir en func_detail"),
+    ("action.road_sidewalk", "Sidewalk generator...", "Générateur de trottoirs..."),
+    ("action.road_curb", "Curb and gutter generator...", "Générateur de bordures et caniveaux..."),
+    ("action.road_terrain", "Blend terrain to road...", "Fondre le terrain sur la route..."),
+    ("action.roadside_edit", "Edit road details...", "Modifier les détails de route..."),
+    ("shell.undo.create_sidewalk", "Create sidewalk", "Création de trottoirs"),
+    ("shell.undo.create_curb", "Create curb and gutter", "Création de bordures et caniveaux"),
+    ("shell.undo.edit_roadside", "Edit road details", "Modification des détails de route"),
+    ("shell.undo.tag_roadside", "Tag road details", "Marquage des détails de route"),
+    ("shell.undo.blend_terrain_to_road", "Blend terrain to road", "Fusion du terrain sur la route"),
     ("tool.polygon", "Polygon", "Polygone"),
     ("action.tool_extrude", "Extrude / carve tool", "Outil extruder / creuser"),
     ("tool.extrude", "Extrude / carve", "Extruder / creuser"),
@@ -47,10 +74,42 @@ pub(super) const TR: TrTable = &[
     ("tool.bevel", "Bevel", "Biseau"),
     ("shell.undo.bevel_edges", "Bevel edges", "Biseautage d'arêtes"),
     ("action.tool_curve", "Curve tool", "Outil courbe"),
+    ("action.curve_edit", "Edit curve", "Modifier la courbe"),
+    ("shell.undo.edit_curve", "Edit curve", "Modification de courbe"),
+    ("shell.undo.create_curve", "Create curve", "Création de courbe"),
+    ("shell.undo.tag_curve", "Tag curve", "Marquage de courbe"),
+    (
+        "curve.edit_need",
+        "Select a brush made by the curve tool to edit its curve",
+        "Sélectionnez un brush créé par l'outil courbe pour modifier sa courbe",
+    ),
     ("tool.curve", "Curve", "Courbe"),
+    ("action.tool_road", "Road tool", "Outil route"),
+    ("action.road_edit", "Edit road", "Modifier la route"),
+    ("tool.road", "Road", "Route"),
+    ("shell.undo.create_road", "Create road", "Création de route"),
+    ("shell.undo.edit_road", "Edit road", "Modification de route"),
+    ("shell.undo.delete_road", "Delete road", "Suppression de route"),
+    ("shell.undo.split_road", "Split road", "Découpe de route"),
+    ("shell.undo.mcp_create_road", "MCP: create road", "MCP : création de route"),
+    ("shell.undo.mcp_edit_road", "MCP: edit road", "MCP : modification de route"),
+    ("shell.undo.mcp_delete_road", "MCP: delete road", "MCP : suppression de route"),
+    ("shell.undo.mcp_split_road", "MCP: split road", "MCP : découpe de route"),
+    ("shell.undo.mcp_add_road_junction", "MCP: road junction", "MCP : jonction de route"),
     ("shell.undo.tie_each_to_entity", "Tie each to entity", "Liaison de chaque brush à une entité"),
     ("shell.undo.make_hint_brush", "Make hint brush", "Création de brush hint"),
     ("shell.undo.carve_face", "Carve face", "Creusement de face"),
+    ("shell.undo.inset_face", "Inset face", "Décalage de face"),
+    ("shell.undo.resample_displacement_power", "Resample displacement power", "Rééchantillonnage de la puissance"),
+    ("shell.undo.intersect", "Intersect", "Intersection"),
+    ("shell.undo.union", "Union", "Union"),
+    ("shell.undo.thermal_erosion", "Thermal erosion", "Érosion thermique"),
+    ("shell.undo.hydraulic_erosion", "Hydraulic erosion", "Érosion hydraulique"),
+    (
+        "shell.undo.set_height_of_displacement_loop",
+        "Set height of displacement loop",
+        "Hauteur d'une boucle de displacement",
+    ),
     ("shell.undo.extrude_face", "Extrude face", "Extrusion de face"),
     ("shell.undo.nodraw_hidden_faces", "Nodraw hidden faces", "Nodraw sur les faces cachées"),
 ];

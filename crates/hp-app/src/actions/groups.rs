@@ -13,6 +13,7 @@ pub enum MenuGroup {
     EditClipboard,
     EditSelect,
     EditSelectMode,
+    EditSelectEdges,
     EditProperties,
     MapGrid,
     MapGrids,
@@ -74,6 +75,7 @@ impl MenuGroup {
             MenuGroup::EditClipboard => inline(30, 0),
             MenuGroup::EditSelect => inline(40, 0),
             MenuGroup::EditSelectMode => sub(40, 10, "menu.selection_mode", 160.0),
+            MenuGroup::EditSelectEdges => sub(40, 20, "menu.edge_selection", 220.0),
             MenuGroup::EditProperties => inline(50, 0),
             MenuGroup::MapGrid => inline(10, 0),
             MenuGroup::MapGrids => sub(10, 10, "menu.grids", 240.0),
@@ -120,6 +122,7 @@ impl MenuGroup {
             | MenuGroup::EditClipboard
             | MenuGroup::EditSelect
             | MenuGroup::EditSelectMode
+            | MenuGroup::EditSelectEdges
             | MenuGroup::EditProperties => C::Edit,
             MenuGroup::MapGrid
             | MenuGroup::MapGrids
@@ -158,6 +161,7 @@ pub const TR: TrTable = &[
     ("menu.instancing", "Instancing", "Instances"),
     ("menu.lighting", "Lighting", "Éclairage"),
     ("menu.grids", "Grids", "Grilles"),
+    ("menu.edge_selection", "Edge selection", "Sélection d'arêtes"),
     ("menu.view_type", "View type", "Type de vue"),
     ("menu.display", "Display options", "Options d'affichage"),
     ("menu.layout", "Layout", "Disposition"),

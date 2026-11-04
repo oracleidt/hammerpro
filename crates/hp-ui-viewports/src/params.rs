@@ -122,6 +122,7 @@ impl RenderConfig {
                 size: grid_size as f32,
                 major_every: v.grid_highlight_every.max(1),
                 show_1024: v.show_1024_grid,
+                cells: true,
                 opacity: 1.0,
             }),
             grid_size,
@@ -223,13 +224,16 @@ pub fn view_params(view: &ViewInfo, cfg: &RenderConfig) -> ViewParams {
         grid: if is_2d {
             let frame = cfg.frame(view.kind);
             let shader = if frame.is_plain() {
-                Some((frame.step.x, frame.major_every))
+                Some((frame.step.x, frame.major_every, true))
+            } else if frame.bounds.is_some() {
+                Some((frame.outside, 0, true))
             } else {
-                frame.bounds.map(|_| (frame.outside, 0))
+                Some((frame.step.x, 0, false))
             };
-            cfg.grid.zip(shader).map(|(g, (size, major))| GridParams {
+            cfg.grid.zip(shader).map(|(g, (size, major, cells))| GridParams {
                 size: size as f32,
                 major_every: if major > 0 { major } else { g.major_every },
+                cells,
                 ..g
             })
         } else {

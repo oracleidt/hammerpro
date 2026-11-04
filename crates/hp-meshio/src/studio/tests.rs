@@ -42,6 +42,7 @@ fn table() -> Model {
         ],
         up: UpAxis::Z,
         meters_per_unit: 1.0 / crate::UNITS_PER_METER,
+        objects: Vec::new(),
     }
 }
 
@@ -146,6 +147,7 @@ fn flat_pieces_get_a_collision() {
         materials: vec![Material { name: "sign".to_owned(), ..Material::default() }],
         up: UpAxis::Z,
         meters_per_unit: 1.0,
+        objects: Vec::new(),
     };
     let f = compile(&m, &["sign".to_owned()], &options(true, Collision::Pieces)).expect("compile");
     assert_eq!(f.convex_pieces, 1);
@@ -167,6 +169,7 @@ fn many_pieces_are_grouped() {
         materials: vec![Material { name: "a".to_owned(), ..Material::default() }],
         up: UpAxis::Z,
         meters_per_unit: 1.0,
+        objects: Vec::new(),
     };
     let f = compile(&m, &["a".to_owned()], &options(true, Collision::Pieces)).expect("compile");
     assert!(f.convex_pieces <= 40 && f.convex_pieces >= 20, "{}", f.convex_pieces);
@@ -198,6 +201,7 @@ fn large_models_split_into_body_parts() {
         materials: vec![Material { name: "a".to_owned(), ..Material::default() }],
         up: UpAxis::Z,
         meters_per_unit: 1.0,
+        objects: Vec::new(),
     };
     let f = compile(&m, &["a".to_owned()], &options(true, Collision::Box)).expect("compile");
     assert_eq!(f.body_parts, 3, "65536 vertices at most per body part");
@@ -261,6 +265,7 @@ fn sphere(subdivisions: usize) -> Model {
         materials: vec![Material { name: "ball".to_owned(), ..Material::default() }],
         up: UpAxis::Z,
         meters_per_unit: 1.0 / crate::UNITS_PER_METER,
+        objects: Vec::new(),
     }
 }
 

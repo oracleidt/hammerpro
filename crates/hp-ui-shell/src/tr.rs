@@ -11,6 +11,7 @@ pub const TABLES: &[TrTable] = &[
     crate::toasts::TR,
     crate::loading::TR,
     crate::grids::TR,
+    crate::grid_rotate::TR,
 ];
 
 pub fn all_tables() -> Vec<TrTable> {

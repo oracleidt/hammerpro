@@ -16,6 +16,7 @@ pub(crate) struct Brush;
 pub(crate) struct State {
     nodraw_scan: Option<NodrawScan>,
     nodraw_prompt: Option<NodrawPrompt>,
+    pub(super) inset: super::inset::InsetPrompt,
 }
 
 struct NodrawScan {
@@ -35,10 +36,15 @@ const HANDLED: &[Action] = &[
     Action::MakeHollow,
     Action::MergeConvex,
     Action::MergeBrushes,
+    Action::IntersectBrushes,
+    Action::UnionBrushes,
     Action::TieEachToEntity,
     Action::ConvertToDetail,
+    Action::CurveEdit,
+    Action::RoadEdit,
     Action::MakeHintBrush,
     Action::NodrawHiddenFaces,
+    Action::InsetFace,
 ];
 
 const DETAIL_CLASS: &str = "func_detail";
@@ -70,6 +76,24 @@ impl Package for Brush {
                 }
             }
             Action::ConvertToDetail => app.convert_to_detail(),
+            Action::RoadEdit => match hp_tools_create::road::apply::selected_road_piece(&app.state.doc) {
+                Some(id) => {
+                    app.state.runtime.brush.road_edit = Some(id);
+                    app.state.set_tool(ToolId::Road);
+                }
+                None => app.state.notify(Severity::Info, t!("road.edit_need")),
+            },
+            Action::CurveEdit => match app.state.doc.selected_curve_piece() {
+                Some(id) if hp_tools_create::road::apply::read_road(&app.state.doc, id).is_some() => {
+                    app.state.runtime.brush.road_edit = Some(id);
+                    app.state.set_tool(ToolId::Road);
+                }
+                Some(id) => {
+                    app.state.runtime.brush.curve_edit = Some(id);
+                    app.state.set_tool(ToolId::Curve);
+                }
+                None => app.state.notify(Severity::Info, t!("curve.edit_need")),
+            },
             Action::MoveToWorld => {
                 if app.require_selection() {
                     let objs = app.selected();
@@ -105,6 +129,8 @@ impl Package for Brush {
                 }
             }
             Action::MergeBrushes => app.merge_brushes(),
+            Action::IntersectBrushes => app.boolean_brushes(action),
+            Action::UnionBrushes => app.boolean_brushes(action),
             Action::MakeHintBrush => {
                 let faces = app.state.doc.selected_faces();
                 if faces.is_empty() {
@@ -117,6 +143,7 @@ impl Package for Brush {
                 }
             }
             Action::NodrawHiddenFaces => app.start_nodraw_scan(),
+            Action::InsetFace => app.start_inset(),
             _ => return false,
         }
         true
@@ -128,6 +155,7 @@ impl Package for Brush {
 
     fn dialogs(&self, app: &mut HammerProApp, ctx: &egui::Context) {
         app.nodraw_dialog(ctx);
+        app.inset_dialog(ctx);
     }
 
     fn translations(&self) -> TrTable {
@@ -235,6 +263,38 @@ impl HammerProApp {
 }
 
 impl HammerProApp {
+    fn boolean_brushes(&mut self, action: Action) {
+        let solids = self.state.doc.selected_solid_ids();
+        if solids.is_empty() {
+            self.state.notify(Severity::Info, t!("app.need_solids"));
+            return;
+        }
+        if solids.len() < 2 {
+            self.state.notify(Severity::Info, t!("app.need_two_solids"));
+            return;
+        }
+        let result = if action == Action::IntersectBrushes {
+            self.state.doc.intersect_solids(&solids).map(|_| ())
+        } else {
+            self.state.doc.union_solids(&solids).map(|_| ())
+        };
+        match result {
+            Ok(()) => {}
+            Err(EditError::Invalid(s)) if s == Document::MERGE_MIXED_OWNERS => {
+                self.state.notify(Severity::Warning, t!("brush.merge_mixed_owners"));
+            }
+            Err(EditError::Invalid(s)) if s == Document::BOOLEAN_NO_OVERLAP => {
+                self.state.notify(Severity::Warning, t!("brush.intersect_empty"));
+            }
+            Err(EditError::Invalid(s)) if s == Document::UNION_UNCHANGED => {
+                self.state.notify(Severity::Warning, t!("brush.union_unchanged"));
+            }
+            Err(e) => {
+                self.report(action, Err::<(), _>(e));
+            }
+        }
+    }
+
     pub(crate) fn bevel_shortcut(&mut self, ctx: &egui::Context) -> bool {
         if !matches!(self.state.tool, ToolId::Select | ToolId::Vertex) || !self.has_tool(ToolId::Bevel) {
             return false;
@@ -378,6 +438,16 @@ const TR: TrTable = &[
         "Les brushes ne forment pas une forme convexe. « Fusionner en un solide convexe » utilise plutôt leur enveloppe convexe.",
     ),
     (
+        "brush.intersect_empty",
+        "The brushes do not overlap: there is no shared volume to keep",
+        "Les brushes ne se chevauchent pas : il n'y a aucun volume commun à conserver",
+    ),
+    (
+        "brush.union_unchanged",
+        "Nothing to join: the brushes do not overlap and no touching pair forms a convex shape",
+        "Rien à joindre : les brushes ne se chevauchent pas et aucune paire en contact ne forme une forme convexe",
+    ),
+    (
         "brush.merge_mixed_owners",
         "The brushes must all be world brushes or belong to the same entity",
         "Les brushes doivent tous être des brushes du monde ou appartenir à la même entité",
@@ -388,6 +458,41 @@ const TR: TrTable = &[
         "Sélectionnez d'abord les faces qui deviennent des faces hint avec l'outil de texture",
     ),
     ("brush.hint_done", "{0} hint brush(es) made", "{0} brush(es) hint créé(s)"),
+    ("inset.need_face", "Select the faces to inset first", "Sélectionnez d'abord les faces à décaler"),
+    ("inset.faces", "{0} face(s) selected", "{0} face(s) sélectionnée(s)"),
+    ("inset.distance", "Distance", "Distance"),
+    (
+        "inset.distance_tip",
+        "How far the edges of the face move inward, in units",
+        "De combien les arêtes de la face reculent vers l'intérieur, en unités",
+    ),
+    ("inset.depth", "Depth", "Profondeur"),
+    (
+        "inset.depth_tip",
+        "Raise (positive) or sink (negative) the inner block in the same step, 0 keeps it flush",
+        "Surélève (positif) ou enfonce (négatif) le bloc intérieur dans la même opération, 0 le laisse au ras",
+    ),
+    ("inset.snap", "Snap to grid", "Aligner sur la grille"),
+    (
+        "inset.hint",
+        "The brush is split into a frame and an inner block, all convex. One face per brush.",
+        "Le brush est découpé en un cadre et un bloc intérieur, tous convexes. Une face par brush.",
+    ),
+    ("inset.done", "{0} brush(es) after the inset", "{0} brush(es) après le décalage"),
+    ("inset.err_face", "The side is not a face of the brush", "Le côté n'est pas une face du brush"),
+    ("inset.err_disp", "The face is a displacement", "La face est une displacement"),
+    (
+        "inset.err_distance",
+        "The distance must be from 0.125 to 16384 units",
+        "La distance doit aller de 0,125 à 16384 unités",
+    ),
+    ("inset.err_large", "The distance is larger than the face", "La distance dépasse la taille de la face"),
+    (
+        "inset.err_deep",
+        "The sink depth must stay under the brush thickness",
+        "La profondeur d'enfoncement doit rester sous l'épaisseur du brush",
+    ),
+    ("inset.err_limits", "The result goes past the map limits", "Le résultat dépasse les limites de la carte"),
     ("brush.already_detail", "The selection is already a func_detail", "La sélection est déjà un func_detail"),
     ("brush.nodraw_title", "Nodraw on hidden faces", "Nodraw sur les faces cachées"),
     ("brush.nodraw_searching", "Searching for hidden faces...", "Recherche des faces cachées..."),

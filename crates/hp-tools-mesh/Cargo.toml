@@ -14,7 +14,8 @@ hp-vmf.workspace = true
 hp-render.workspace = true
 egui.workspace = true
 glam.workspace = true
+image.workspace = true
+rfd.workspace = true
 
 [dev-dependencies]
 eframe.workspace = true
-image.workspace = true

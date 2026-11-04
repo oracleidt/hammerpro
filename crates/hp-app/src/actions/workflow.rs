@@ -38,6 +38,8 @@ action_list! { workflow_actions {
     AttachGrid => "attach_grid", Map, MapGrids, None, Ready;
     DetachGrid => "detach_grid", Map, MapGrids, None, Ready;
     GridManager => "grid_manager", Map, MapGrids, None, Ready;
+    RotateGrid45 => "rotate_grid_45", Map, MapGrids, None, Ready;
+    AlignGridToSelection => "align_grid_to_selection", Map, MapGrids, None, Ready;
 }}
 
 pub(super) const REPEATS: &[Action] = &[Action::Zoom2dIn, Action::Zoom2dOut];
@@ -53,6 +55,7 @@ pub(super) fn enabled(state: &AppState, action: Action) -> Option<bool> {
             Some(!state.doc.selection().objects.is_empty() && state.find_grid(&state.settings.grid.custom).is_some())
         }
         Action::DetachGrid => Some(state.doc.selection_grid(4096).is_some()),
+        Action::AlignGridToSelection => Some(!state.doc.selection().is_empty()),
         _ => None,
     }
 }
@@ -126,6 +129,12 @@ pub(super) const TR: TrTable = &[
     ("action.attach_grid", "Attach the grid to the selection", "Attacher la grille à la sélection"),
     ("action.detach_grid", "Detach the grid of the selection", "Détacher la grille de la sélection"),
     ("action.grid_manager", "Grid manager...", "Gestionnaire de grilles..."),
+    ("action.rotate_grid_45", "Rotate grid 45 degrees", "Pivoter la grille de 45 degrés"),
+    (
+        "action.align_grid_to_selection",
+        "Align grid to the selected edge or face",
+        "Aligner la grille sur l'arête ou la face sélectionnée",
+    ),
     ("shell.undo.attach_grid", "Attach grid", "Attachement de grille"),
     ("shell.undo.detach_grid", "Detach grid", "Détachement de grille"),
     ("shell.undo.edit_grid", "Edit grid", "Modification de grille"),

@@ -1,13 +1,23 @@
+pub mod blend;
+mod brush_math;
+mod brushes;
 pub mod commands;
+pub mod erode;
 pub(crate) mod highlight;
+pub mod loops;
 pub(crate) mod paint;
+mod resample;
+pub mod roadblend;
 mod script;
 pub mod sculpt;
 pub(crate) mod seams;
+pub mod slope;
+pub(crate) mod slope_ui;
 pub(crate) mod smooth;
 pub mod tags;
+pub mod terrain_windows;
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 
 use egui::{Align2, Button, Color32, CursorIcon, FontId, Key, Modifiers, Pos2, RichText, Ui};
@@ -48,6 +58,7 @@ struct Press {
     moved: f32,
     sweep: bool,
     paints: bool,
+    alt: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -63,6 +74,7 @@ struct StrokeState {
     neighbours: HashMap<FaceRef, Vec<FaceRef>>,
     told: bool,
     last_spot: Option<(Pos2, [u64; 5])>,
+    grab_anchor: Option<(FaceRef, DVec3)>,
 }
 
 fn locked_neighbours(allowed: &[FaceRef], faces: &[FaceRef]) -> Vec<FaceRef> {
@@ -122,6 +134,16 @@ enum PanelAction {
     InvertAlpha,
     Subdivide,
     Noise,
+    Terrain(erode::TerrainOp),
+    Blend,
+    BlendSet(usize),
+    BlendClear,
+    Slope(slope::SlopeOp),
+    SlopeMeasure,
+    SlopeTake,
+    SlopeSelect,
+    PathFromEntities,
+    PathClear,
     Flag(i32, bool),
     Shadows(bool),
     Scale(f64),
@@ -129,6 +151,9 @@ enum PanelAction {
     SelectOfSolids,
     Lightmap(i32),
     TagAll(TagKind, TagValue),
+    LoopSmooth,
+    LoopHeight,
+    LoopClear,
 }
 
 pub struct DisplacementTool {
@@ -138,6 +163,14 @@ pub struct DisplacementTool {
     press: Option<Press>,
     radius_drag: Option<RadiusDrag>,
     scale_factor: f64,
+    pub terrain: erode::TerrainOptions,
+    pub blend: blend::BlendOptions,
+    pub slope: slope::SlopeOptions,
+    blend_sets: [Vec<FaceRef>; 2],
+    blend_preview: bool,
+    preview_cache: slope_ui::PreviewCache,
+    measured: Option<slope::Measure>,
+    pick_path: bool,
     cursor: Option<CursorState>,
     hover_face: Option<(usize, FaceRef)>,
     disp_count: Cell<Option<(DocKey, usize)>>,
@@ -146,6 +179,8 @@ pub struct DisplacementTool {
     pub(crate) toward_eye_flat: Option<DVec3>,
     pub mask_grid: bool,
     pub mask_select: bool,
+    pub keep_shape: bool,
+    loops: loops::LoopState,
     loaded: bool,
 }
 
@@ -158,6 +193,14 @@ impl Default for DisplacementTool {
             press: None,
             radius_drag: None,
             scale_factor: 2.0,
+            terrain: erode::TerrainOptions::default(),
+            blend: blend::BlendOptions::default(),
+            slope: slope::SlopeOptions::default(),
+            blend_sets: [Vec::new(), Vec::new()],
+            blend_preview: true,
+            preview_cache: RefCell::new(None),
+            measured: None,
+            pick_path: false,
             cursor: None,
             hover_face: None,
             disp_count: Cell::new(None),
@@ -166,6 +209,8 @@ impl Default for DisplacementTool {
             toward_eye_flat: None,
             mask_grid: false,
             mask_select: false,
+            keep_shape: true,
+            loops: loops::LoopState::default(),
             loaded: false,
         }
     }
@@ -543,6 +588,7 @@ impl DisplacementTool {
             neighbours: HashMap::new(),
             told: false,
             last_spot: None,
+            grab_anchor: None,
         });
     }
 
@@ -644,7 +690,17 @@ impl DisplacementTool {
             self.tell_no_project_target(state);
             return 0;
         }
-        let filter = self.brush_targets(&state.doc, face, center, eye, &brush);
+        let mut filter = self.brush_targets(&state.doc, face, center, eye, &brush);
+        if self.interaction == Interaction::Sculpt
+            && brush.sculpt.op == sculpt::SculptOp::Grab
+            && let Some(stroke) = self.stroke.as_ref()
+        {
+            for f in stroke.sculpt.brush.grabbed_faces() {
+                if !filter.contains(&f) {
+                    filter.push(f);
+                }
+            }
+        }
         if filter.is_empty() {
             self.tell_unselected(state);
             return 0;
@@ -839,7 +895,23 @@ impl DisplacementTool {
             return;
         }
         let (o, d) = view.ray(pos);
-        let Some(hit) = pick_disp(&state.doc, &Ray::new(o, d)) else { return };
+        let grabbing =
+            self.interaction == Interaction::Sculpt && self.brush.sculpt.op == sculpt::SculptOp::Grab && !mods.shift;
+        let anchor = self.stroke.as_ref().and_then(|s| s.grab_anchor).filter(|_| grabbing);
+        let (face, point) = match anchor {
+            Some((face, origin)) => {
+                let forward = if view.is_2d() { -view.kind.toward_viewer() } else { view.cam3d.forward() };
+                let Some(p) = brush_math::view_plane_point(o, d, origin, forward) else { return };
+                (face, p)
+            }
+            None => {
+                let Some(hit) = pick_disp(&state.doc, &Ray::new(o, d)) else { return };
+                if grabbing && let Some(s) = self.stroke.as_mut() {
+                    s.grab_anchor = Some((hit.face, hit.point));
+                }
+                (hit.face, hit.point)
+            }
+        };
         let continuous = self.brush.continuous;
         let cam = &view.cam3d;
         let spot = (pos, [cam.pos.x, cam.pos.y, cam.pos.z, cam.yaw_deg, cam.pitch_deg].map(f64::to_bits));
@@ -851,8 +923,8 @@ impl DisplacementTool {
             s.last_spot = Some(spot);
         }
         self.look_from(&view.cam3d);
-        self.paint_on(state, hit.face, hit.point, mods, Some(view.cam3d.pos));
-        state.hover_world = Some(hit.point);
+        self.paint_on(state, face, point, mods, Some(view.cam3d.pos));
+        state.hover_world = Some(point);
     }
 
     fn cursor_inputs(&self, view: &ViewInfo) -> u64 {
@@ -1001,6 +1073,10 @@ impl DisplacementTool {
                 }
             } else {
                 self.radius_drag = None;
+                let still = f.pos.is_none_or(|p| p.distance(r.start) <= DRAG_START_PX * 2.0);
+                if !r.right && still && r.radius == self.brush.radius {
+                    self.loop_click(state, view, r.start);
+                }
             }
             return ToolFlow::Handled;
         }
@@ -1045,7 +1121,7 @@ impl DisplacementTool {
                 if let Some(p) = f.pos {
                     press.moved = press.moved.max(p.distance(press.pos));
                 }
-                let painting = self.interaction != Interaction::Select && !view.is_2d();
+                let painting = self.interaction != Interaction::Select && !view.is_2d() && !self.pick_path;
                 if !painting && press.moved > DRAG_START_PX {
                     if let Some(p) = f.pos {
                         let faces = pick_faces(state, view, p);
@@ -1074,7 +1150,15 @@ impl DisplacementTool {
             }
             self.press = None;
             if press.moved <= DRAG_START_PX * 2.0 && !press.sweep {
-                self.click_select(state, view, press.pos, ctrl, f.mods.shift);
+                if press.alt {
+                    self.loop_click(state, view, press.pos);
+                } else {
+                    if self.pick_path && !view.is_2d() {
+                        self.pick_path_point(state, view, press.pos);
+                    } else {
+                        self.click_select(state, view, press.pos, ctrl, f.mods.shift);
+                    }
+                }
             }
             return ToolFlow::Handled;
         }
@@ -1082,9 +1166,16 @@ impl DisplacementTool {
             && let Some(p) = f.pos
             && view.rect.contains(p)
         {
-            let paints = self.interaction != Interaction::Select && !view.is_2d();
-            self.press =
-                Some(Press { view: view.index, pos: p, time: state.frame.time, moved: 0.0, sweep: false, paints });
+            let paints = self.interaction != Interaction::Select && !view.is_2d() && !self.pick_path;
+            self.press = Some(Press {
+                view: view.index,
+                pos: p,
+                time: state.frame.time,
+                moved: 0.0,
+                sweep: false,
+                paints,
+                alt: f.mods.alt,
+            });
             return ToolFlow::Handled;
         }
         ToolFlow::Ignored
@@ -1230,6 +1321,7 @@ impl DisplacementTool {
                         })
                         .response
                         .on_hover_text(t!("disp.power_tip"));
+                    ui.checkbox(&mut self.keep_shape, t!("disp.keep_shape")).on_hover_text(t!("disp.keep_shape_tip"));
                 });
                 grid_row(ui, t!("disp.elevation"), |ui| {
                     let mut value = elevation.unwrap_or(0.0);
@@ -1276,6 +1368,7 @@ impl DisplacementTool {
             ui.label(RichText::new(hint).weak());
         }
         self.tools_ui(ui, state, &mut actions);
+        self.loop_ui(ui, state, &mut actions);
         actions
     }
 
@@ -1332,9 +1425,48 @@ impl DisplacementTool {
         if commands::noise_range_ui(ui, state) {
             state.settings_dirty = true;
         }
+        self.noise_kind_ui(ui);
         if ui.add_enabled(any, Button::new(t!("disp.noise"))).on_hover_text(t!("disp.noise_tip")).clicked() {
             actions.push(PanelAction::Noise);
         }
+        self.erosion_ui(ui, any, actions);
+        self.blend_ui(ui, state, actions);
+        self.slope_ui(ui, state, any, actions);
+        ui.horizontal_wrapped(|ui| {
+            if ui.add_enabled(any, Button::new(t!("disp.to_mesh"))).on_hover_text(t!("disp.to_mesh_tip")).clicked() {
+                state.request(hp_app::Action::DispToMesh);
+            }
+            let m = &mut state.settings.mesh;
+            let meters = ui
+                .checkbox(&mut m.mesh_export_meters, t!("disp.to_mesh_meters"))
+                .on_hover_text(t!("disp.to_mesh_meters_tip"));
+            let z_up = ui
+                .checkbox(&mut m.mesh_export_z_up, t!("disp.to_mesh_z_up"))
+                .on_hover_text(t!("disp.to_mesh_z_up_tip"));
+            if meters.changed() || z_up.changed() {
+                state.settings_dirty = true;
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            if ui.button(t!("disp.mesh_to_disp")).on_hover_text(t!("disp.mesh_to_disp_tip")).clicked() {
+                state.request(hp_app::Action::MeshToDisp);
+            }
+            if ui
+                .add_enabled(any, Button::new(t!("disp.conform_mesh")))
+                .on_hover_text(t!("disp.conform_mesh_tip"))
+                .clicked()
+            {
+                state.request(hp_app::Action::DispConformMesh);
+            }
+            let tileable = !state.doc.selected_objects().is_empty() || !state.doc.selected_faces().is_empty();
+            if ui
+                .add_enabled(tileable, Button::new(t!("disp.tile_selection")))
+                .on_hover_text(t!("disp.tile_selection_tip"))
+                .clicked()
+            {
+                state.request(hp_app::Action::DispTileSelection);
+            }
+        });
     }
 
     fn geometry_ui(&mut self, ui: &mut Ui) {
@@ -1444,6 +1576,10 @@ impl DisplacementTool {
                 (SculptOp::Push, "disp.sculpt.push", "disp.sculpt.push_tip"),
                 (SculptOp::Carve, "disp.sculpt.carve", "disp.sculpt.carve_tip"),
                 (SculptOp::Project, "disp.sculpt.project", "disp.sculpt.project_tip"),
+                (SculptOp::Pinch, "disp.sculpt.pinch", "disp.sculpt.pinch_tip"),
+                (SculptOp::Grab, "disp.sculpt.grab", "disp.sculpt.grab_tip"),
+                (SculptOp::Inflate, "disp.sculpt.inflate", "disp.sculpt.inflate_tip"),
+                (SculptOp::Flatten, "disp.sculpt.flatten", "disp.sculpt.flatten_tip"),
             ];
             for (op, label, tip) in ops {
                 if ui.add(Button::selectable(self.brush.sculpt.op == op, t!(label))).on_hover_text(t!(tip)).clicked() {
@@ -1504,6 +1640,30 @@ impl DisplacementTool {
                     })
                     .response
                     .on_hover_text(t!("disp.sculpt.profile_tip"));
+                });
+            }
+            SculptOp::Pinch | SculptOp::Inflate => {
+                grid_row(ui, t!("disp.strength"), |ui| {
+                    ui.add(
+                        egui::Slider::new(&mut self.brush.strength, 1.0..=8192.0)
+                            .logarithmic(true)
+                            .max_decimals(0)
+                            .suffix(t!("disp.per_second")),
+                    )
+                    .on_hover_text(t!("disp.strength_tip"));
+                });
+            }
+            SculptOp::Grab => {}
+            SculptOp::Flatten => {
+                grid_row(ui, t!("disp.strength"), |ui| {
+                    ui.add(egui::Slider::new(&mut s.flatten_strength, 0.0..=1.0).max_decimals(2))
+                        .on_hover_text(t!("disp.sculpt.flatten_strength_tip"));
+                });
+                grid_row(ui, t!("disp.sculpt.flatten_plane"), |ui| {
+                    ui.selectable_value(&mut s.flatten_fixed, false, t!("disp.sculpt.flatten_average"))
+                        .on_hover_text(t!("disp.sculpt.flatten_average_tip"));
+                    ui.selectable_value(&mut s.flatten_fixed, true, t!("disp.sculpt.flatten_fixed"))
+                        .on_hover_text(t!("disp.sculpt.flatten_fixed_tip"));
                 });
             }
             SculptOp::Project => {
@@ -1689,7 +1849,7 @@ impl DisplacementTool {
             }
             PanelAction::ClearFaces => state.doc.clear_face_selection(),
             PanelAction::SetPower(p) => {
-                self.set_power(state, p);
+                self.set_power_with(state, p, self.keep_shape);
             }
             PanelAction::Flatten => {
                 self.flatten(state);
@@ -1707,7 +1867,10 @@ impl DisplacementTool {
                 commands::subdivide(state);
             }
             PanelAction::Noise => {
-                commands::add_noise(state);
+                erode::apply(state, erode::TerrainOp::Noise, &self.terrain);
+            }
+            PanelAction::Terrain(op) => {
+                erode::apply(state, op, &self.terrain);
             }
             PanelAction::Flag(flag, on) => {
                 commands::set_flag(state, flag, on);
@@ -1730,6 +1893,14 @@ impl DisplacementTool {
             PanelAction::TagAll(kind, value) => {
                 self.tag_selection(state, kind, value);
             }
+            PanelAction::LoopSmooth => {
+                self.smooth_loop(state);
+            }
+            PanelAction::LoopHeight => {
+                self.set_loop_height(state);
+            }
+            PanelAction::LoopClear => self.loops.sel = None,
+            other => self.run_slope(state, other),
         }
     }
 
@@ -1758,6 +1929,8 @@ impl DisplacementTool {
             Interaction::Sculpt if mods.shift => VIEW_SUCCESS,
             Interaction::Sculpt => match (self.brush.sculpt.op, invert) {
                 (sculpt::SculptOp::Project, _) => VIEW_WARNING,
+                (sculpt::SculptOp::Flatten, _) => VIEW_WARNING,
+                (sculpt::SculptOp::Pinch | sculpt::SculptOp::Grab | sculpt::SculptOp::Inflate, false) => VIEW_ACCENT,
                 (sculpt::SculptOp::Push, false) | (sculpt::SculptOp::Carve, true) => VIEW_ACCENT,
                 _ => AXIS_Z,
             },
@@ -1792,6 +1965,10 @@ impl DisplacementTool {
                 sculpt::SculptOp::Push => t!("disp.sculpt.push"),
                 sculpt::SculptOp::Carve => t!("disp.sculpt.carve"),
                 sculpt::SculptOp::Project => t!("disp.sculpt.project"),
+                sculpt::SculptOp::Pinch => t!("disp.sculpt.pinch"),
+                sculpt::SculptOp::Grab => t!("disp.sculpt.grab"),
+                sculpt::SculptOp::Inflate => t!("disp.sculpt.inflate"),
+                sculpt::SculptOp::Flatten => t!("disp.sculpt.flatten"),
             },
         }
     }
@@ -1862,7 +2039,12 @@ impl Tool for DisplacementTool {
         flow
     }
 
+    fn action(&mut self, state: &mut AppState, action: hp_app::Action) -> bool {
+        self.loop_action(state, action) || self.run_menu_action(state, action)
+    }
+
     fn key_input(&mut self, state: &mut AppState, ctx: &egui::Context) -> bool {
+        self.take_loop_request(state);
         if self.stroke.is_some() && !ctx.input(|i| i.pointer.primary_down()) {
             self.end_stroke(state);
         }
@@ -1874,6 +2056,7 @@ impl Tool for DisplacementTool {
     }
 
     fn overlay(&self, state: &AppState, _view: &ViewInfo, out: &mut hp_render::Overlay) {
+        self.loop_overlay(state, out);
         let doc = &state.doc;
         let accent = rgba(VIEW_ACCENT);
         let mut dim = accent;
@@ -1897,7 +2080,8 @@ impl Tool for DisplacementTool {
             let c = [1.0, 1.0, 1.0, 0.45];
             mesh_border(mesh, |a, b| line_on_top(out, a, b, c));
         }
-        if self.interaction == Interaction::Select {
+        self.slope_overlay(state, out);
+        if self.interaction == Interaction::Select || self.pick_path {
             return;
         }
         if let Some(c) = self.cursor_fresh(state) {
@@ -1942,7 +2126,7 @@ impl Tool for DisplacementTool {
     }
 
     fn paint(&self, state: &AppState, view: &ViewInfo, painter: &egui::Painter) {
-        if self.interaction == Interaction::Select {
+        if self.interaction == Interaction::Select || self.pick_path {
             return;
         }
         let Some(c) = self.cursor_fresh(state) else { return };
@@ -1991,6 +2175,9 @@ impl Tool for DisplacementTool {
     }
 
     fn cursor(&self, state: &AppState, view: &ViewInfo, _pos: Pos2) -> Option<CursorIcon> {
+        if self.pick_path && !view.is_2d() {
+            return Some(CursorIcon::Crosshair);
+        }
         if self.interaction == Interaction::Select || view.is_2d() {
             return None;
         }
@@ -2010,6 +2197,9 @@ impl Tool for DisplacementTool {
         if self.disp_count(state) == 0 {
             return Some(t!("disp.hint_empty").to_owned());
         }
+        if let Some(text) = self.loop_status(state) {
+            return Some(text);
+        }
         if self.cursor_fresh(state).is_some_and(|c| c.blocked) {
             return Some(tf!("disp.hint_not_selected", key_label(Key::Escape)));
         }
@@ -2028,6 +2218,9 @@ impl Tool for DisplacementTool {
         if self.press.take().is_some() || self.radius_drag.take().is_some() {
             return true;
         }
+        if self.loops.sel.take().is_some() {
+            return true;
+        }
         if !state.doc.selection().faces.is_empty() {
             state.doc.clear_face_selection();
             return true;
@@ -2039,13 +2232,18 @@ impl Tool for DisplacementTool {
         if !self.loaded {
             self.sync_settings(state);
         }
+        if let Some(done) = self.loops.set_option(key, value) {
+            return done;
+        }
         let done = self.script_set_option(state, key, value);
         self.save_settings(state);
         done
     }
 
     fn option_values(&self) -> Vec<hp_app::tool::ToolOption> {
-        self.script_option_values()
+        let mut list = self.script_option_values();
+        list.extend(self.loops.option_values());
+        list
     }
 
     fn scripted_stroke(

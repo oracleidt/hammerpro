@@ -12,6 +12,7 @@ pub struct LabSettings {
     pub unprop_keep_prop: bool,
     pub unprop_shape: UnpropShape,
     pub model_lod: ModelLodSettings,
+    pub model_keep_params: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -62,6 +63,7 @@ impl Default for LabSettings {
             unprop_keep_prop: false,
             unprop_shape: UnpropShape::Auto,
             model_lod: ModelLodSettings::default(),
+            model_keep_params: true,
         }
     }
 }

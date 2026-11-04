@@ -2,7 +2,7 @@
 
 # Actions and keyboard shortcuts
 
-Every command of Hammer Pro 1.0.2 is an *action*: one entry shared by the menus, the toolbar, the keyboard shortcuts, the command palette (`Ctrl+P`), the `--script` files and the MCP server (`run_action`, `list_actions`). This page lists all 268 actions, menu by menu, in the order the menus show them.
+Every command of Hammer Pro 1.0.7 is an *action*: one entry shared by the menus, the toolbar, the keyboard shortcuts, the command palette (`Ctrl+P`), the `--script` files and the MCP server (`run_action`, `list_actions`). This page lists all 319 actions, menu by menu, in the order the menus show them.
 
 Columns:
 
@@ -39,6 +39,7 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | BSP Decompiler... | `open_bsp` |  |  |  |
 | BSP Sniffer... | `bsp_sniffer` |  |  |  |
 | Import a model (FBX, OBJ, glTF)... | `import_model` |  |  |  |
+| Import models (batch)... | `import_models_batch` |  |  |  |
 | Compile and run... | `run_map` | `Ctrl+F9` | `F9` | `F9` |
 | Compile now | `compile_now` | `F9` | `Ctrl+F9` | `Ctrl+F9` |
 | Cancel compile | `cancel_compile` |  |  |  |
@@ -74,6 +75,11 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Selection mode > Objects | `select_mode_objects` |  |  |  |
 | Selection mode > Solids | `select_mode_solids` |  |  |  |
 | Selection mode > Ignore groups | `toggle_ignore_groups` | `Ctrl+W` |  |  |
+| Edge selection > Select edge loop | `edge_select_loop` |  |  |  |
+| Edge selection > Select edge ring | `edge_select_ring` |  |  |  |
+| Edge selection > Grow selection | `edge_grow` |  |  |  |
+| Edge selection > Shrink selection | `edge_shrink` |  |  |  |
+| Edge selection > Select boundary | `edge_select_boundary` |  |  |  |
 | Properties | `properties` | `Alt+Enter` |  |  |
 | Edit color... | `edit_color` | `C` |  |  |
 | Set display color... | `set_display_color` |  |  |  |
@@ -99,6 +105,8 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Grids > Attach the grid to the selection | `attach_grid` |  |  |  |
 | Grids > Detach the grid of the selection | `detach_grid` |  |  |  |
 | Grids > Grid manager... | `grid_manager` |  |  |  |
+| Grids > Rotate grid 45 degrees | `rotate_grid_45` |  |  |  |
+| Grids > Align grid to the selected edge or face | `align_grid_to_selection` |  |  |  |
 | Check for problems | `check_problems` | `Alt+P` |  |  |
 | Entity report | `entity_report` |  |  |  |
 | Go to brush or entity id... | `go_to_brush` | `Ctrl+Shift+G` |  |  |
@@ -244,9 +252,18 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Move to floor, aligned to the surface | `move_to_floor_aligned` | `Ctrl+Alt+N` |  |  |
 | Move to ceiling, aligned to the surface | `move_to_ceiling_aligned` | `Ctrl+Alt+U` |  |  |
 | Merge brushes | `merge_brushes` | `Ctrl+Shift+M` |  |  |
+| Intersect brushes | `intersect_brushes` | `Ctrl+Shift+K` |  |  |
+| Union of brushes | `union_brushes` |  |  |  |
+| Inset face... | `inset_face` |  |  |  |
 | Nodraw on hidden faces... | `nodraw_hidden_faces` |  |  |  |
 | Tie each to its own entity | `tie_each_to_entity` | `Ctrl+Shift+T` |  |  |
 | Convert to func_detail | `convert_to_detail` |  |  |  |
+| Edit curve | `curve_edit` |  |  |  |
+| Edit road | `road_edit` |  |  |  |
+| Sidewalk generator... | `road_sidewalk` |  |  |  |
+| Curb and gutter generator... | `road_curb` |  |  |  |
+| Blend terrain to road... | `road_terrain` |  |  |  |
+| Edit road details... | `roadside_edit` |  |  |  |
 | Align > Align left | `align_left` |  |  |  |
 | Align > Align right | `align_right` |  |  |  |
 | Align > Align top | `align_top` |  |  |  |
@@ -267,6 +284,10 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Convert prop to brushes... | `prop_to_brushes` |  |  |  |
 | Generate nav mesh | `generate_nav_mesh` |  |  |  |
 | Static prop options (Propper)... | `propper_options` |  |  |  |
+| Send to Blender | `send_to_blender` |  |  |  |
+| Update from Blender | `pull_from_blender` |  |  |  |
+| Stop the Blender live link | `stop_blender_link` |  |  |  |
+| Install the Blender add-on | `install_blender_addon` |  |  |  |
 | Instancing > Create instance from selection... | `create_instance` | `Alt+S` |  |  |
 | Instancing > Edit instance | `edit_instance` |  |  |  |
 | Instancing > Collapse selected instances | `collapse_instances` |  |  |  |
@@ -289,14 +310,36 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Displacement tool | `tool_displacement` | `Shift+P` |  |  |
 | Polygon tool | `tool_polygon` | `Shift+N` |  |  |
 | Curve tool | `tool_curve` | `Shift+U` |  |  |
+| Road tool | `tool_road` |  |  |  |
 | Cordon tool | `tool_cordon` |  |  |  |
 | Path tool | `tool_path` |  |  |  |
 | Sprinkle tool | `tool_sprinkle` |  |  |  |
 | Split face | `vertex_split_face` | `Ctrl+F` |  |  |
 | Scale vertices... | `vertex_scale` | `Alt+E` |  |  |
+| Weld selected vertices | `vertex_weld` |  |  |  |
+| Weld vertices by distance | `vertex_weld_distance` |  |  |  |
+| Remove degenerate faces and edges | `vertex_cleanup` |  |  |  |
+| Slide edge loop... | `edge_slide` |  |  |  |
+| Rotate vertices... | `vertex_rotate` |  |  |  |
+| Smooth displacement loop | `disp_smooth_loop` |  |  |  |
+| Set height of displacement loop | `disp_loop_height` |  |  |  |
 | Subdivide displacements | `disp_subdivide` |  |  |  |
 | Invert displacement alpha | `disp_invert_alpha` |  |  |  |
 | Add noise to displacements... | `disp_noise` |  |  |  |
+| Fractal noise on displacements... | `disp_fractal_noise` |  |  |  |
+| Thermal erosion of displacements... | `disp_thermal_erosion` |  |  |  |
+| Hydraulic erosion of displacements... | `disp_hydraulic_erosion` |  |  |  |
+| Blend displacement heights | `disp_blend_heights` |  |  |  |
+| Limit displacement slope | `disp_limit_slope` |  |  |  |
+| Make displacement slope uniform | `disp_uniform_slope` |  |  |  |
+| Select displacements by slope | `disp_select_by_slope` |  |  |  |
+| Displacement to mesh... | `disp_to_mesh` |  |  |  |
+| Import heightmap... | `import_heightmap` |  |  |  |
+| Export heightmap... | `export_heightmap` |  |  |  |
+| Generate terrain... | `generate_terrain` |  |  |  |
+| Mesh to displacement... | `mesh_to_disp` |  |  |  |
+| Conform displacements to mesh... | `disp_conform_mesh` |  |  |  |
+| Tile selection with displacements... | `disp_tile_selection` |  |  |  |
 | UV lock (vertex tool) | `toggle_uv_lock` |  |  |  |
 | Reload content from disk | `reload_content` |  |  |  |
 | Rebuild the content index | `rebuild_content_index` |  |  |  |

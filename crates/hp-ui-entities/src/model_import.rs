@@ -8,6 +8,11 @@ use hp_meshio::smd::Collision;
 use hp_meshio::studio::{StudioError, StudioOptions};
 use hp_meshio::{Alpha, ImportOptions, Model, UpAxis};
 
+pub mod batch;
+mod batch_ui;
+pub use batch_ui::{ModelBatchDialog, Placement};
+mod params;
+
 pub const IMPORT_FOLDER: &str = "hammerpro";
 
 const TINY: f64 = 2.0;
@@ -29,6 +34,7 @@ struct Prepared {
     lod_triangles: Vec<usize>,
     bounds: (DVec3, DVec3),
     warnings: Vec<String>,
+    report: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -295,6 +301,13 @@ impl ModelImportDialog {
             state.settings_dirty = true;
         }
         ui.checkbox(&mut self.place, t!("entities.mi_place"));
+        if ui
+            .checkbox(&mut state.settings.lab.model_keep_params, t!("entities.mi_keep_params"))
+            .on_hover_text(t!("entities.mi_keep_params_tip"))
+            .changed()
+        {
+            state.settings_dirty = true;
+        }
         ui.add_space(4.0);
         ui.label(RichText::new(t!("entities.mi_materials")).strong());
         for (i, m) in model.materials.iter().enumerate() {
@@ -339,7 +352,11 @@ impl ModelImportDialog {
         }
         let name = clean_name(&self.name);
         self.name.clone_from(&name);
-        let source = self.source(model).clone();
+        let mut source = self.source(model).clone();
+        let keep = state.settings.lab.model_keep_params;
+        if !keep {
+            source.bake_uv_transforms();
+        }
         let opts = StudioOptions {
             model: format!("{IMPORT_FOLDER}/{name}"),
             cdmaterials: format!("models/{IMPORT_FOLDER}/{name}"),
@@ -355,7 +372,7 @@ impl ModelImportDialog {
         let repaint = ctx.clone();
         let worker_name = name.clone();
         std::thread::spawn(move || {
-            let _ = tx.send(prepare(&source, &opts, &worker_name, &root));
+            let _ = tx.send(prepare(&source, &opts, &worker_name, &root, keep));
             repaint.request_repaint();
         });
         self.stage = Stage::Writing(name, rx);
@@ -389,14 +406,10 @@ impl ModelImportDialog {
         for w in &p.warnings {
             state.log(Severity::Warning, w.clone());
         }
-        if hp_compile::sandbox::is_sandboxed() {
-            let dir = sandbox_content_dir();
-            let dirs = &mut state.settings.game.custom_texture_dirs;
-            if !dirs.iter().any(|d| d.path == dir) {
-                dirs.push(hp_app::settings::CustomDirSetting { path: dir, prefix: String::new(), enabled: true });
-            }
+        for r in &p.report {
+            state.log(Severity::Info, r.clone());
         }
-        state.assets.remount(&state.settings);
+        remount_after_write(state);
         let class = if self.writing_static { "prop_static" } else { "prop_physics" };
         state.current_model = Some(p.model.clone());
         state.current_model_skin = 0;
@@ -413,12 +426,23 @@ impl ModelImportDialog {
     }
 }
 
+pub fn remount_after_write(state: &mut AppState) {
+    if hp_compile::sandbox::is_sandboxed() {
+        let dir = sandbox_content_dir();
+        let dirs = &mut state.settings.game.custom_texture_dirs;
+        if !dirs.iter().any(|d| d.path == dir) {
+            dirs.push(hp_app::settings::CustomDirSetting { path: dir, prefix: String::new(), enabled: true });
+        }
+    }
+    state.assets.remount(&state.settings);
+}
+
 pub fn lod_options(s: hp_app::settings::ModelLodSettings) -> hp_meshio::lod::LodOptions {
     let s = s.clamped();
     hp_meshio::lod::LodOptions { enabled: s.enabled, levels: s.levels as usize, reduction: f64::from(s.reduction) }
 }
 
-fn content_root(state: &AppState) -> Option<PathBuf> {
+pub fn content_root(state: &AppState) -> Option<PathBuf> {
     if hp_compile::sandbox::is_sandboxed() {
         return Some(sandbox_content_dir());
     }
@@ -497,7 +521,7 @@ fn vector(c: &[f64]) -> String {
     format!("[{:.3} {:.3} {:.3}]", c[0], c[1], c[2])
 }
 
-fn prepare(model: &Model, opts: &StudioOptions, name: &str, root: &Path) -> Result<Prepared, String> {
+fn prepare(model: &Model, opts: &StudioOptions, name: &str, root: &Path, keep: bool) -> Result<Prepared, String> {
     let mat_dir = root.join("materials").join("models").join(IMPORT_FOLDER).join(name);
     let model_dir = root.join("models").join(IMPORT_FOLDER);
     for d in [&mat_dir, &model_dir] {
@@ -506,6 +530,7 @@ fn prepare(model: &Model, opts: &StudioOptions, name: &str, root: &Path) -> Resu
     let mut names: Vec<String> = Vec::with_capacity(model.materials.len());
     let mut warnings = Vec::new();
     let mut textures = 0;
+    let mut report: Vec<String> = Vec::new();
     for (i, m) in model.materials.iter().enumerate() {
         let mut file = hp_meshio::smd::material_file_name(&m.name, i);
         while names.contains(&file) {
@@ -558,6 +583,12 @@ fn prepare(model: &Model, opts: &StudioOptions, name: &str, root: &Path) -> Resu
             if textured && m.color[3] < 0.999 && m.alpha != Alpha::Opaque {
                 mat.params.push(("$alpha".to_owned(), format!("{:.3}", m.color[3])));
             }
+            if keep {
+                let built = params::build(m, &tex_path, &file, &mat_dir, textured, &mut warnings)?;
+                mat.params.extend(built.params.iter().cloned());
+                textures += built.textures;
+                report.push(params::report(&m.name, &built));
+            }
             std::fs::write(mat_dir.join(format!("{file}.vmt")), hp_vmt::write(&mat)).map_err(|e| e.to_string())?;
         }
         names.push(file);
@@ -593,6 +624,7 @@ fn prepare(model: &Model, opts: &StudioOptions, name: &str, root: &Path) -> Resu
         lod_triangles: files.lod_triangles.clone(),
         bounds,
         warnings,
+        report,
     })
 }
 
@@ -657,7 +689,7 @@ mod tests {
             collision: Collision::Box,
             lod: hp_meshio::lod::LodOptions::default(),
         };
-        let p = prepare(&model, &opts, "tri", &game).expect("prepare");
+        let p = prepare(&model, &opts, "tri", &game, true).expect("prepare");
         assert_eq!(p.model, "models/hammerpro/tri.mdl");
         assert_eq!(p.textures, 1);
         assert_eq!(p.pieces, 1);
@@ -680,6 +712,103 @@ mod tests {
         assert_eq!(srgb(1.0), 255);
         assert_eq!(srgb(0.0), 0);
         assert_eq!(srgb(0.5), 188);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    fn opts_for(name: &str) -> StudioOptions {
+        StudioOptions {
+            model: format!("hammerpro/{name}"),
+            cdmaterials: format!("models/hammerpro/{name}"),
+            static_prop: true,
+            surface_prop: "default".to_owned(),
+            mass: 10.0,
+            collision: Collision::Box,
+            lod: hp_meshio::lod::LodOptions::default(),
+        }
+    }
+
+    fn png(path: &Path, px: [u8; 4]) {
+        image::save_buffer(path, &px.repeat(16), 4, 4, image::ColorType::Rgba8).unwrap();
+    }
+
+    #[test]
+    fn obj_material_parameters_reach_the_vmt() {
+        crate::register_translations();
+        let root = std::env::temp_dir().join("hp_model_import_obj_params");
+        let _ = std::fs::remove_dir_all(&root);
+        let game = root.join("game");
+        std::fs::create_dir_all(&root).unwrap();
+        png(&root.join("d.png"), [200, 100, 50, 255]);
+        png(&root.join("n.png"), [128, 128, 255, 255]);
+        png(&root.join("e.png"), [255, 200, 0, 255]);
+        std::fs::write(
+            root.join("in.mtl"),
+            "newmtl shiny\nmap_Kd -s 2 3 1 d.png\nmap_Bump n.png\nKs 0.9 0.9 0.9\nNs 300\nKe 1 1 1\nmap_Ke e.png\nmap_Pr x.png\n",
+        )
+        .unwrap();
+        std::fs::write(root.join("in.obj"), "mtllib in.mtl\nv 0 0 0\nv 1 0 0\nv 0 1 0\nusemtl shiny\nf 1 2 3\n")
+            .unwrap();
+        let model = hp_meshio::read(&root.join("in.obj")).expect("read").to_source(&ImportOptions::default());
+        let p = prepare(&model, &opts_for("o"), "o", &game, true).expect("prepare");
+        let mats = game.join("materials/models/hammerpro/o");
+        let vmt = std::fs::read_to_string(mats.join("shiny.vmt")).unwrap();
+        for key in [
+            "$bumpmap",
+            "$phong",
+            "$phongexponent",
+            "$selfillum",
+            "$selfillummask",
+            "$basetexturetransform",
+            "$bumptransform",
+        ] {
+            assert!(vmt.contains(key), "{key} in {vmt}");
+        }
+        assert!(vmt.contains("models/hammerpro/o/shiny_n") && vmt.contains("shiny_illum"), "{vmt}");
+        for f in ["shiny.vtf", "shiny_n.vtf", "shiny_illum.vtf"] {
+            assert!(mats.join(f).is_file(), "{f}");
+        }
+        assert_eq!(p.report.len(), 1);
+        assert!(p.report[0].contains("shiny") && p.report[0].contains("$phong"), "{:?}", p.report);
+        let off = prepare(&model, &opts_for("o2"), "o2", &game, false).expect("prepare");
+        let plain = std::fs::read_to_string(game.join("materials/models/hammerpro/o2/shiny.vmt")).unwrap();
+        assert!(!plain.contains("$bumpmap") && !plain.contains("$phong") && !plain.contains("transform"), "{plain}");
+        assert!(off.report.is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn gltf_material_parameters_reach_the_vmt() {
+        crate::register_translations();
+        let root = std::env::temp_dir().join("hp_model_import_gltf_params");
+        let _ = std::fs::remove_dir_all(&root);
+        let game = root.join("game");
+        std::fs::create_dir_all(&root).unwrap();
+        png(&root.join("c.png"), [90, 90, 90, 255]);
+        png(&root.join("n.png"), [128, 128, 255, 255]);
+        png(&root.join("mr.png"), [0, 51, 255, 255]);
+        let mut bin = Vec::new();
+        for v in [0.0f32, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0] {
+            bin.extend_from_slice(&v.to_le_bytes());
+        }
+        std::fs::write(root.join("t.bin"), &bin).unwrap();
+        let json = r#"{"asset":{"version":"2.0"},"scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],
+            "meshes":[{"primitives":[{"attributes":{"POSITION":0},"material":0}]}],
+            "buffers":[{"byteLength":36,"uri":"t.bin"}],
+            "bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":36}],
+            "accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3"}],
+            "images":[{"uri":"c.png"},{"uri":"n.png"},{"uri":"mr.png"}],
+            "textures":[{"source":0},{"source":1},{"source":2}],
+            "materials":[{"name":"metal","pbrMetallicRoughness":{"metallicFactor":1,"roughnessFactor":1,
+              "baseColorTexture":{"index":0,"extensions":{"KHR_texture_transform":{"scale":[4,4]}}},
+              "metallicRoughnessTexture":{"index":2}},"normalTexture":{"index":1},
+              "emissiveFactor":[0.2,0.4,0.6]}]}"#;
+        std::fs::write(root.join("m.gltf"), json).unwrap();
+        let model = hp_meshio::read(&root.join("m.gltf")).expect("read").to_source(&ImportOptions::default());
+        prepare(&model, &opts_for("g"), "g", &game, true).expect("prepare");
+        let vmt = std::fs::read_to_string(game.join("materials/models/hammerpro/g/metal.vmt")).unwrap();
+        for key in ["$bumpmap", "\"$phong\" \"1\"", "$envmap", "$selfillumtint", "scale 4.0000 4.0000"] {
+            assert!(vmt.contains(key), "{key} in {vmt}");
+        }
         let _ = std::fs::remove_dir_all(&root);
     }
 }

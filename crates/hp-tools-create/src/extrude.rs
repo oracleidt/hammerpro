@@ -896,6 +896,14 @@ impl Tool for ExtrudeTool {
             if ui.add_enabled(self.outline.is_some(), egui::Button::new(t!("common.clear"))).clicked() {
                 self.clear();
             }
+            let has_faces = !state.doc.selected_faces().is_empty();
+            if ui
+                .add_enabled(has_faces, egui::Button::new(Action::InsetFace.label()))
+                .on_hover_text(t!("create.extrude.inset_tip"))
+                .clicked()
+            {
+                state.request(Action::InsetFace);
+            }
             if count > 0 {
                 ui.separator();
                 ui.label(tf!("create.extrude.count", count));

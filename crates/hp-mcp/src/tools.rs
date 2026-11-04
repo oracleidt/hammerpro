@@ -180,14 +180,14 @@ pub const EDITOR_TOOLS: &[ToolSpec] = &[
     ToolSpec {
         name: "create_brush",
         title: "Create a brush",
-        description: "Create a brush (block, wedge, cylinder, spike, sphere, arch or torus) filling a box, with a \
+        description: "Create a brush (block, wedge, cylinder, spike, sphere, arch, torus, stairs, spiral_stairs, ramp, pillar or doorway) filling a box, with a \
             material. With entity_class the brushes become a brush entity (func_detail, trigger_multiple...). The new \
             objects become the selection. One undo step.",
         kind: ToolKind::Edit,
         schema: || {
             object(
                 json!({
-                    "shape": { "type": "string", "enum": ["block", "wedge", "cylinder", "spike", "sphere", "arch", "torus"], "description": "Shape (default block)." },
+                    "shape": { "type": "string", "enum": ["block", "wedge", "cylinder", "spike", "sphere", "arch", "torus", "stairs", "spiral_stairs", "ramp", "pillar", "doorway"], "description": "Shape (default block)." },
                     "min": vec3("Box minimum [x, y, z]."),
                     "max": vec3("Box maximum [x, y, z]."),
                     "material": string("Material of every face (default: the editor's current material)."),

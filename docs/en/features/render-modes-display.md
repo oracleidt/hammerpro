@@ -60,7 +60,7 @@ Directly in the **View** menu:
 | **Walkable slopes** | Tints the surfaces too steep for players to stand on. | Off |
 | **Show displacements** | Displacements are drawn. | On |
 | **Displacement mesh in 2D views** | Switches the 2D views between the triangle grid of displacements and their outline. | Mesh |
-| **Displacement walkability** | Colors displacement triangles by walkability (see [Displacement tool](displacement-tool.md)). | Off |
+| **Displacement walkability** | Colors displacement triangles by walkability, or by slope angle with the Limit and Gradient modes (see [Displacement tool](displacement-tool.md#slope-control)). | Off |
 | **Radius culling** | Nothing farther than the culling radius from the camera is drawn (a circle shows it in the 2D views). | Off |
 | **Highlight invalid brushes** | Brushes that are not closed and convex are drawn in red in every view. | On |
 | **Show nodraw faces** | Shows or hides the nodraw faces in the 3D view. | Shown |

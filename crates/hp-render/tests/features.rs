@@ -625,7 +625,7 @@ fn occlusion_culling_skips_hidden_chunks_without_popping() {
 fn grid_styles_dotted_and_64_units() {
     let (device, queue) = gpu_or_skip!();
     let mut r = Renderer::new(&device, &queue);
-    let grid = GridParams { size: 16.0, major_every: 8, show_1024: false, opacity: 1.0 };
+    let grid = GridParams { size: 16.0, major_every: 8, show_1024: false, opacity: 1.0, cells: true };
     let view = ViewParams { grid: Some(grid), ..top([8.0, 8.0, 0.0], 1.0, [201, 201]) };
     let lit = |img: &Img| img.2.chunks_exact(4).filter(|p| p[0] > 30).count();
     r.render_view(1, &view, &Overlay::default());
@@ -987,7 +987,7 @@ fn displacement_detail_lines_and_walk_marks() {
 #[test]
 fn walk_colors_match_the_shader() {
     let src = include_str!("../src/shaders/lines.wgsl");
-    for c in WalkClass::ALL {
+    for c in WalkClass::GRADIENT {
         let [r, g, b] = c.srgb();
         let line = format!("vec3<f32>({r}.0, {g}.0, {b}.0)");
         assert!(src.contains(&line), "{c:?} color {line} in lines.wgsl");

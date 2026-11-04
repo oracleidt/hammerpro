@@ -6,7 +6,7 @@ use hp_app::actions::{Action, key_label, shortcut_label};
 use hp_app::state::AppState;
 use hp_app::tool::ToolOption;
 use hp_app::{Severity, Tool, ToolFlow, ToolId, ViewInfo, ViewInput, t, tf};
-use hp_editor::{EdgeRef, EditError, Id};
+use hp_editor::{EdgeRef, EditError, Id, RunKind};
 use hp_geom::{
     Aabb, BevelIssue, BevelKind, BevelParams, GeomError, MAX_BEVEL_RADIUS, MAX_BEVEL_SEGMENTS, MIN_BEVEL_RADIUS, Ray,
     point_segment_distance_2d,
@@ -64,6 +64,14 @@ struct Op {
     revision: u64,
 }
 
+#[derive(Clone, Debug)]
+struct RunHover {
+    edge: EdgeRef,
+    ring: bool,
+    revision: u64,
+    edges: Vec<EdgeRef>,
+}
+
 type PreviewSolid<'a> = (&'a [hp_vmf::Side], Option<&'a [Option<usize>]>);
 
 #[derive(Debug, Default)]
@@ -86,6 +94,7 @@ pub struct BevelTool {
     hover: Option<Hover>,
     wheel: f32,
     preview: RefCell<Preview>,
+    run_hover: Option<RunHover>,
 }
 
 impl Default for BevelTool {
@@ -316,6 +325,7 @@ impl BevelTool {
             hover: None,
             wheel: 0.0,
             preview: RefCell::new(Preview::default()),
+            run_hover: None,
         }
     }
 
@@ -511,11 +521,16 @@ impl BevelTool {
         }
         let edge = edge_at(state, view, pos, self.options.inverse);
         self.hover = Some(Hover { view: *view, pos, edge, frame: state.frame.index });
+        self.update_run_hover(state, view, edge, m.modifiers);
         if m.double_clicked
             && let Some(e) = edge
         {
             let edges = if self.picked.iter().any(|p| p.same_edge(&e)) { self.picked.clone() } else { vec![e] };
             self.start(state, edges, Some((view, pos)));
+            return ToolFlow::Handled;
+        }
+        if m.clicked && m.modifiers.alt {
+            self.pick_run(state, view, edge, m.modifiers);
             return ToolFlow::Handled;
         }
         if m.clicked {
@@ -530,6 +545,62 @@ impl BevelTool {
             return ToolFlow::Handled;
         }
         ToolFlow::Ignored
+    }
+
+    fn run_for(&self, state: &AppState, view: &ViewInfo, seed: &EdgeRef, ring: bool) -> Vec<EdgeRef> {
+        let kind = if ring { RunKind::Ring } else { RunKind::Loop };
+        let toward = if view.is_2d() {
+            view.kind.toward_viewer()
+        } else {
+            (view.cam3d.pos - edge_mid(seed)).normalize_or_zero()
+        };
+        let selected = state.doc.selected_solid_ids();
+        state.doc.edge_run_refs(kind, seed, &selected, Some(toward)).unwrap_or_default()
+    }
+
+    fn update_run_hover(&mut self, state: &AppState, view: &ViewInfo, edge: Option<EdgeRef>, mods: egui::Modifiers) {
+        let Some(seed) = edge.filter(|_| mods.alt) else {
+            self.run_hover = None;
+            return;
+        };
+        let ring = mods.ctrl || mods.command;
+        let revision = state.doc.revision();
+        if self.run_hover.as_ref().is_some_and(|h| h.ring == ring && h.revision == revision && h.edge.same_edge(&seed))
+        {
+            return;
+        }
+        let edges = self.run_for(state, view, &seed, ring);
+        self.run_hover = Some(RunHover { edge: seed, ring, revision, edges });
+    }
+
+    pub fn pick_run(&mut self, state: &mut AppState, view: &ViewInfo, edge: Option<EdgeRef>, mods: egui::Modifiers) {
+        let Some(seed) = edge else {
+            state.log(Severity::Info, t!("bevel.loop_none").to_owned());
+            return;
+        };
+        let ring = mods.ctrl || mods.command;
+        let run = self.run_for(state, view, &seed, ring);
+        self.run_hover = None;
+        self.pick_edges(state, run, seed, mods.shift, ring);
+    }
+
+    pub fn pick_edges(&mut self, state: &mut AppState, run: Vec<EdgeRef>, seed: EdgeRef, add: bool, ring: bool) {
+        let mut bevelable: Vec<EdgeRef> =
+            run.iter().copied().filter(|e| state.doc.bevel_opening(e, self.options.inverse).is_some()).collect();
+        if bevelable.is_empty() {
+            bevelable.push(seed);
+        }
+        self.picked_revision = state.doc.revision();
+        if !add {
+            self.picked.clear();
+        }
+        for e in bevelable.iter() {
+            if !self.picked.iter().any(|p| p.same_edge(e)) {
+                self.picked.push(*e);
+            }
+        }
+        let key = if ring { "bevel.ring_picked" } else { "bevel.loop_picked" };
+        state.log(Severity::Info, tf!(key, bevelable.len()));
     }
 
     fn refresh_preview(&self, state: &AppState) {
@@ -651,6 +722,7 @@ impl Tool for BevelTool {
     fn deactivate(&mut self, _state: &mut AppState) {
         self.op = None;
         self.hover = None;
+        self.run_hover = None;
         self.picked.clear();
     }
 
@@ -733,6 +805,11 @@ impl Tool for BevelTool {
             ov.point(e.b, picked, 6.0);
         }
         if self.op.is_none() {
+            if let Some(h) = self.run_hover.as_ref() {
+                for e in &h.edges {
+                    ov.xray_line(e.a, e.b, pending);
+                }
+            }
             if let Some(h) = self.hover.filter(|h| fresh(state, h.frame))
                 && let Some(e) = h.edge
             {

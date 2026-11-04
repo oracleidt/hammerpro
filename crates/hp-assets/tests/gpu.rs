@@ -128,7 +128,7 @@ fn top(center: DVec3, ppu: f32, size: [u32; 2]) -> ViewParams {
         size,
         kind: ViewKind::Ortho { axis: OrthoAxis::Top, center: center.as_vec3().to_array(), pixels_per_unit: ppu },
         mode: RenderMode::Wireframe,
-        grid: Some(GridParams { size: 64.0, major_every: 8, show_1024: true, opacity: 0.6 }),
+        grid: Some(GridParams { size: 64.0, major_every: 8, show_1024: true, opacity: 0.6, cells: true }),
         background: [0.08, 0.08, 0.09],
         selection_color: [1.0, 0.25, 0.25, 0.45],
         show_sprites: false,

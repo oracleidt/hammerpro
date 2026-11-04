@@ -128,7 +128,7 @@ Chaque modification faite par l'IA est **une étape d'annulation** nommée "MCP 
 | Help | `get_capabilities` : tous les outils par catégorie avec un exemple d'appel. L'IA commence par là. |
 | Map | `get_map_info` : fichier, modifications non enregistrées, compteurs, limites, sélection, étapes d'annulation, état du contenu et de la compilation. |
 | Files | Ouvrir un `.vmf`, enregistrer la map. |
-| Brushes and objects | Lister les solides, créer des brushes (bloc, coin, cylindre, pointe, sphère, arche, tore), appliquer des matériaux, déplacer, tourner, supprimer. |
+| Brushes and objects | Lister les solides, créer des brushes (bloc, coin, cylindre, pointe, sphère, arche, tore, escalier, colimaçon, rampe, pilier, encadrement de porte), appliquer des matériaux, déplacer, tourner, supprimer. |
 | Entities | Lister, lire, créer des entités et régler leurs keyvalues. |
 | Selection | Lire, changer et vider la sélection. |
 | History | Annuler et rétablir. |
@@ -154,6 +154,7 @@ Chaque modification faite par l'IA est **une étape d'annulation** nommée "MCP 
 | History and clipboard | Historique d'annulation, plusieurs étapes d'annulation ou de rétablissement, copier, couper, coller, collage spécial. |
 | Overlays and decals | Lister et créer des overlays et des décals. |
 | Paths | Chaînes d'entités de chemin. |
+| Routes | Créer, lire, lister, modifier, supprimer et couper des [routes](../features/road-tool.md), et relier l'extrémité d'une route au côté d'une autre avec des évasements. |
 | Skybox | Sky cameras, aperçu, interrupteur de skybox. |
 | Entity definitions | Infos FGD, ajouter, retirer, recharger, valider des fichiers FGD. |
 | Games | Lister les jeux pris en charge, lire et changer le jeu de la map. |

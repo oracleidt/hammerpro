@@ -101,6 +101,9 @@ pub(crate) fn read_only(path: &str) -> Option<&'static str> {
             "change it with create_compiler, set_compiler, delete_compiler, select_compiler and reset_compilers (programs need confirm there)",
         );
     }
+    if path == "blender.path" {
+        return Some("set it with blender_setup (path), which checks that it is a Blender program");
+    }
     if READ_ONLY.iter().any(|p| path == *p || path.starts_with(&format!("{p}."))) {
         return Some(if path.starts_with("keybindings") {
             "change key bindings with set_keybinding"

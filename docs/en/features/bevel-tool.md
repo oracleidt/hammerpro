@@ -31,6 +31,8 @@ The whole operation is one undo step (**Bevel edges**). The resulting brushes ar
 - A double click on an edge starts bevelling it at once.
 - Click away from any edge, or press `Escape`, to drop the picked edges.
 
+- `Alt`+click an edge to pick its whole **edge loop** (`Ctrl+Alt`+click: its edge ring, `Shift` adds to the picked edges instead of replacing them). The loop is worked out like in the [vertex tool](vertex-tool.md#edge-loops-and-rings), across the selected brushes and the brushes that touch them (up to 256), and the edges that have no corner to bevel are left out. Bevel it with `Ctrl+B`, `Enter` or the **Bevel** button: the four edges around a box face are bevelled at once, the outline of a wall made of several brushes is bevelled brush by brush, in one undo step.
+
 Edges of several brushes can be bevelled together. When two picked edges are on opposite sides of the same face (the two top edges of a wall), each radius is limited to half the face so the rounds never cross.
 
 ## 2D views
@@ -97,7 +99,7 @@ If you rebind **Snap selection to grid** in **Settings > Keyboard**, the bevel f
 
 ## MCP
 
-The MCP tool `bevel_edges` does the same from an AI app: `solid` with `edge` (an index from `get_brush_edges` or two points `[[x, y, z], [x, y, z]]`) or `edges` (several, also as `{solid, edge}` or `{solid, a, b}` objects on several brushes), `radius`, `segments`, `inverse`, and the texture of the rounded faces (`new_faces`: `face` or `current`, or a `material`). `dry_run` answers the radius and segments that would be used, the largest radius and the kind of each edge (`round`, `cove` or `fill`) without changing the map. `get_brush_edges` lists the edges of a brush. `get_tool_options` and `set_tool_options` read and change the options of the tool itself (tool `bevel`: `radius`, `segments`, `inverse`, `new_faces`). See the [MCP tool reference](../../MCP.md).
+The MCP tool `bevel_edges` does the same from an AI app: `solid` with `edge` (an index from `get_brush_edges` or two points `[[x, y, z], [x, y, z]]`) or `edges` (several, also as `{solid, edge}` or `{solid, a, b}` objects on several brushes), `radius`, `segments`, `inverse`, and the texture of the rounded faces (`new_faces`: `face` or `current`, or a `material`). `dry_run` answers the radius and segments that would be used, the largest radius and the kind of each edge (`round`, `cove` or `fill`) without changing the map. `get_brush_edges` lists the edges of a brush. With `expand` (`loop` or `ring`) every given edge is replaced by its whole edge loop or ring, across the brushes that share it (`select_edge_loop` and `select_edge_ring` answer the same edges). `get_tool_options` and `set_tool_options` read and change the options of the tool itself (tool `bevel`: `radius`, `segments`, `inverse`, `new_faces`). See the [MCP tool reference](../../MCP.md).
 
 ## FAQ
 
@@ -114,6 +116,7 @@ The MCP tool `bevel_edges` does the same from an AI app: `solid` with `edge` (an
 - [Extrude / carve tool](extrude-tool.md)
 - [Clip tool](clip-tool.md)
 - [Vertex tool](vertex-tool.md)
+- [Selection tool](selection-tool.md)
 - [Brush operations](brush-operations.md)
 - [Keyboard shortcuts](keyboard-shortcuts.md)
 

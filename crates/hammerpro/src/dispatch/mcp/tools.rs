@@ -103,9 +103,16 @@ pub(crate) struct Domain {
 
 pub(crate) const DOMAINS: &[&Domain] = &[
     &super::tools_edit::DOMAIN,
+    &super::tools_weld::DOMAIN,
+    &super::tools_loops::DOMAIN,
+    &super::tools_road::DOMAIN,
+    &super::tools_roadside::DOMAIN,
     &super::tools_groups::DOMAIN,
     &super::tools_grids::DOMAIN,
     &super::tools_disp::DOMAIN,
+    &super::tools_slope::DOMAIN,
+    &super::tools_terrain::DOMAIN,
+    &super::tools_meshdisp::DOMAIN,
     &super::tools_instances::DOMAIN,
     &super::tools_entities::DOMAIN,
     &super::tools_assets::DOMAIN,
@@ -123,6 +130,7 @@ pub(crate) const DOMAINS: &[&Domain] = &[
     &super::tools_games::DOMAIN,
     &super::tools_discord::DOMAIN,
     &super::tools_update::DOMAIN,
+    &super::tools_blender::DOMAIN,
     &super::tools_toolopts::DOMAIN,
     &super::tools_actions::DOMAIN,
     &super::tools_ui::DOMAIN,
@@ -815,7 +823,23 @@ fn delete_objects(state: &mut AppState, v: &Value) -> R<ToolResult> {
 
 fn create_brush(state: &mut AppState, v: &Value) -> R<ToolResult> {
     let a = args(v, &["shape", "min", "max", "material", "sides", "entity_class", "keyvalues"])?;
-    let shape = a.opt_enum("shape", &["block", "wedge", "cylinder", "spike", "sphere", "arch", "torus"])?;
+    let shape = a.opt_enum(
+        "shape",
+        &[
+            "block",
+            "wedge",
+            "cylinder",
+            "spike",
+            "sphere",
+            "arch",
+            "torus",
+            "stairs",
+            "spiral_stairs",
+            "ramp",
+            "pillar",
+            "doorway",
+        ],
+    )?;
     let kind = match shape.as_deref().unwrap_or("block") {
         "wedge" => hp_geom::Primitive::Wedge,
         "cylinder" => hp_geom::Primitive::Cylinder,
@@ -823,6 +847,11 @@ fn create_brush(state: &mut AppState, v: &Value) -> R<ToolResult> {
         "sphere" => hp_geom::Primitive::Sphere,
         "arch" => hp_geom::Primitive::Arch,
         "torus" => hp_geom::Primitive::Torus,
+        "stairs" => hp_geom::Primitive::Stairs,
+        "spiral_stairs" => hp_geom::Primitive::SpiralStairs,
+        "ramp" => hp_geom::Primitive::Ramp,
+        "pillar" => hp_geom::Primitive::Pillar,
+        "doorway" => hp_geom::Primitive::Doorway,
         _ => hp_geom::Primitive::Block,
     };
     let (p, q) = (a.vec3("min")?, a.vec3("max")?);

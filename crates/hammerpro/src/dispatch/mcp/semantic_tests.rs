@@ -72,8 +72,14 @@ fn samples(p: &Value) -> Vec<Value> {
 
 const SEMANTIC: &[&Domain] = &[
     &super::tools_edit::DOMAIN,
+    &super::tools_weld::DOMAIN,
+    &super::tools_loops::DOMAIN,
+    &super::tools_roadside::DOMAIN,
     &super::tools_groups::DOMAIN,
     &super::tools_disp::DOMAIN,
+    &super::tools_slope::DOMAIN,
+    &super::tools_terrain::DOMAIN,
+    &super::tools_meshdisp::DOMAIN,
     &super::tools_instances::DOMAIN,
     &super::tools_entities::DOMAIN,
     &super::tools_assets::DOMAIN,

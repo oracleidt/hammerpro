@@ -9,7 +9,8 @@ use hp_render::Overlay;
 use crate::tests_support::{fgd_state, info_2d, info_3d, info_3d_looking_down, settle};
 use crate::{BlockTool, ClipTool, DecalTool, EntityTool, OverlayTool, Primitive, TR};
 
-const SOURCES: [(&str, &str); 10] = [
+const SOURCES: [(&str, &str); 11] = [
+    ("block_structures.rs", include_str!("block_structures.rs")),
     ("block.rs", include_str!("block.rs")),
     ("clip.rs", include_str!("clip.rs")),
     ("common.rs", include_str!("common.rs")),
@@ -97,7 +98,8 @@ fn tool_list() {
             ToolId::Bevel,
             ToolId::Decal,
             ToolId::Overlay,
-            ToolId::Path
+            ToolId::Path,
+            ToolId::Road
         ]
     );
 }

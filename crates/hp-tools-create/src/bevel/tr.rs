@@ -39,6 +39,13 @@ pub const BEVEL_TR: TrTable = &[
     ("bevel.cancel_tip", "Cancel the bevel ({0} or right click)", "Annuler le biseau ({0} ou clic droit)"),
     ("bevel.clear_edges", "Clear edges", "Vider les arêtes"),
     ("bevel.picked", "{0} edge(s) picked", "{0} arête(s) choisie(s)"),
+    ("bevel.loop_picked", "Edge loop picked: {0} edge(s)", "Boucle d'arêtes choisie : {0} arête(s)"),
+    ("bevel.ring_picked", "Edge ring picked: {0} edge(s)", "Anneau d'arêtes choisi : {0} arête(s)"),
+    (
+        "bevel.loop_none",
+        "No edge under the cursor: Alt+click an edge to pick its loop.",
+        "Aucune arête sous le curseur : Alt+clic sur une arête pour choisir sa boucle.",
+    ),
     ("bevel.limit", "Largest radius: {0}", "Rayon maximal : {0}"),
     ("bevel.brushes", "{0} brush(es)", "{0} brush(es)"),
     ("bevel.kind_round", "Round", "Arrondi"),
@@ -71,8 +78,8 @@ pub const BEVEL_TR: TrTable = &[
     ("bevel.err_failed", "The bevel does not make valid brushes", "Le biseau ne donne pas de brushes valides"),
     (
         "bevel.hint_idle",
-        "Point at a brush edge and press {0} to bevel it. Click picks an edge, Ctrl+click picks several, double click starts at once.",
-        "Pointez une arête de brush et appuyez sur {0} pour la biseauter. Le clic choisit une arête, Ctrl+clic en choisit plusieurs, le double clic commence tout de suite.",
+        "Point at a brush edge and press {0} to bevel it. Click picks an edge, Ctrl+click picks several, Alt+click picks its whole edge loop (Ctrl+Alt: ring), double click starts at once.",
+        "Pointez une arête de brush et appuyez sur {0} pour la biseauter. Le clic choisit une arête, Ctrl+clic en choisit plusieurs, Alt+clic choisit toute sa boucle d'arêtes (Ctrl+Alt : anneau), le double clic commence tout de suite.",
     ),
     (
         "bevel.hint_picked",

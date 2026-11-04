@@ -589,7 +589,7 @@ the status `Planned`:
 | instances (4) | CreateInstance (Alt+S), EditInstance, CollapseInstances, CollapseAllInstances, InstancesHidden, InstancesTinted, InstancesNormal |
 | visibility (5) | ToolCordon, ToggleCordon, MoveToVisgroup, HiddenToVisgroup |
 | helpers (6) | ToggleOverlays, ToggleConnections, ToggleEditorObjects, TogglePointEntities, ToggleEntityNames, SimulateRopes |
-| mesh (7) | VertexSplitFace (Ctrl+F), VertexScale (Alt+E), DispSubdivide, DispInvertAlpha, DispNoise |
+| mesh (7) | VertexSplitFace (Ctrl+F), VertexScale (Alt+E), DispSubdivide, DispInvertAlpha, DispNoise, DispToMesh, MeshToDisp, DispConformMesh, DispTileSelection |
 | entities (8) | CopyKeyvalues, PasteKeyvalues, FindReplaceText (Ctrl+Alt+R), EditColor (C), EditSoundscapes, ShowSoundBrowser, ShowParticleBrowser, EntityHelp, ToolPath, PathInsertPoint, PathRemovePoint |
 | render (9) | ToggleGrid3d (P), FarPlaneCloser, FarPlaneFarther, RenderUnshaded (Alt+6), RenderSmoothingGroups (Alt+7), ToggleRenderEffects, ToggleSkyPreview, ToggleSkybox3d (Alt+V), ToggleCollisionModels, ToggleFogPreview, ToggleAnimatedMaterials, ToggleModelFade, ToggleOpaqueMaterials, ToggleWalkable, ToggleDisplacements, BackgroundImages |
 | lighting (10) | RenderLightmapGrid (Alt+8), RenderBaked (Ctrl+F5), BakeLighting, BakeAroundCamera, StopBake, SelectTinyLightmapFaces, ShowLighting |

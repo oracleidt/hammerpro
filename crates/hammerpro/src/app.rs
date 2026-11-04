@@ -602,13 +602,19 @@ impl HammerProApp {
 
         self.shell.tool_strip(ui, &mut self.state);
 
-        if self.state.settings.ui.show_console {
-            egui::Panel::bottom("hp_console").resizable(true).default_size(150.0).min_size(60.0).show(ui, |ui| {
-                self.shell.console(ui, &mut self.state);
-            });
-        }
-
         self.dock(ui);
+
+        if self.state.settings.ui.show_console {
+            let max = crate::panel_layout::console_max(ui.available_height());
+            egui::Panel::bottom("hp_console")
+                .resizable(true)
+                .default_size(crate::panel_layout::CONSOLE_DEFAULT.min(max))
+                .min_size(crate::panel_layout::CONSOLE_MIN)
+                .max_size(max)
+                .show(ui, |ui| {
+                    self.shell.console(ui, &mut self.state);
+                });
+        }
 
         egui::Panel::top("hp_map_tabs").exact_size(crate::tabs::TAB_BAR_HEIGHT).show(ui, |ui| {
             self.map_tabs_ui(ui);
@@ -673,7 +679,13 @@ impl HammerProApp {
         if !tabs.iter().any(|(t, _)| *t == self.state.ui.right_tab) {
             self.state.ui.right_tab = tabs[0].0;
         }
-        egui::Panel::right("hp_dock").resizable(true).default_size(380.0).min_size(260.0).show(ui, |ui| {
+        let max = crate::panel_layout::dock_max(ui.available_width());
+        let panel = egui::Panel::right("hp_dock")
+            .resizable(true)
+            .default_size(crate::panel_layout::DOCK_DEFAULT.min(max))
+            .min_size(crate::panel_layout::DOCK_MIN)
+            .max_size(max);
+        panel.show(ui, |ui| {
             self.shell.selection_bar(ui, &mut self.state);
             ui.separator();
             ui.horizontal_wrapped(|ui| {
@@ -1333,6 +1345,8 @@ impl HammerProApp {
             Command::ImportModel { path, confirm, scale } => {
                 crate::dispatch::lab::import_model_file(self, ctx, path, confirm, scale);
             }
+            Command::ImportModelsBatch(path) => self.pkg.blender.add_batch_inputs(vec![path]),
+            Command::MeshToDisp { path, confirm } => crate::dispatch::mesh_disp::script_open(self, path, confirm),
             Command::Theme(theme) => {
                 self.state.settings.ui.theme = theme;
                 hp_app::theme::apply(ctx, theme, self.state.settings.ui.ui_scale);

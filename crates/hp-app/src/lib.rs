@@ -5,6 +5,7 @@ pub mod dnd;
 pub mod extend;
 pub mod games;
 pub mod grid;
+pub mod grid_rotate;
 pub mod i18n;
 pub mod native_window;
 pub mod os;

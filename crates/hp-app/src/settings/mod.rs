@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::i18n::Lang;
 
+mod blender;
 mod brush;
 mod compile;
 pub mod compilers;
@@ -30,6 +31,7 @@ mod update;
 mod visibility;
 mod workflow;
 
+pub use blender::{BlenderFormat, BlenderSettings};
 pub use brush::BrushSettings;
 pub use compile::{
     BspModeSetting, CompilePresetSetting, CompileProfile, CompileSettings, FlagChoiceSetting, LightingSetting,
@@ -57,8 +59,8 @@ pub use mcp::McpSettings;
 pub use mesh::MeshSettings;
 pub use placement::{PlacementSettings, SprinkleMode, SprinkleSettings};
 pub use render::{
-    Disp2dSetting, Disp2dViewSetting, MAX_VRAM_BUDGET_MB, MIN_VRAM_BUDGET_MB, Models2dSetting, PropShadowSetting,
-    RenderSettings, ToneModeSetting, WaterDetailSetting,
+    DEFAULT_WALK_ANGLE, Disp2dSetting, Disp2dViewSetting, DispWalkMode, MAX_VRAM_BUDGET_MB, MIN_VRAM_BUDGET_MB,
+    Models2dSetting, PropShadowSetting, RenderSettings, ToneModeSetting, WaterDetailSetting,
 };
 pub use scan::{ScanModeSetting, ScanSettings};
 pub use selection::SelectionSettings;
@@ -150,6 +152,8 @@ pub struct Settings {
     pub update: UpdateSettings,
     #[serde(skip_serializing_if = "is_default")]
     pub sniffer: SnifferSettings,
+    #[serde(skip_serializing_if = "is_default")]
+    pub blender: BlenderSettings,
 }
 
 impl Default for Settings {
@@ -187,6 +191,7 @@ impl Default for Settings {
             scan: ScanSettings::default(),
             update: UpdateSettings::default(),
             sniffer: SnifferSettings::default(),
+            blender: BlenderSettings::default(),
         }
     }
 }

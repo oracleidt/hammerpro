@@ -2,7 +2,10 @@ use std::path::Path;
 
 use glam::{DMat4, DVec2, DVec3};
 
-use crate::{Alpha, Material, Model, Result, Triangle, UpAxis, find_file, invalid, push_polygon, smooth_normals};
+use crate::{
+    Alpha, Material, MeshObject, Model, NormalKind, Result, TextureSource, Triangle, UpAxis, find_file, invalid,
+    push_polygon, smooth_normals,
+};
 
 const MAX_ITEMS: usize = 20_000_000;
 const CREASE_DEG: f64 = 60.0;
@@ -45,6 +48,29 @@ fn map_file(rest: &str) -> &str {
     s.trim().trim_matches('"')
 }
 
+fn map_transform(rest: &str) -> ([f64; 2], [f64; 2]) {
+    let words: Vec<&str> = rest.split_whitespace().collect();
+    let mut scale = [1.0, 1.0];
+    let mut offset = [0.0, 0.0];
+    let mut k = 0;
+    while k < words.len() {
+        let target = match words[k] {
+            "-s" => Some(&mut scale),
+            "-o" => Some(&mut offset),
+            _ => None,
+        };
+        if let Some(t) = target {
+            for (j, slot) in t.iter_mut().enumerate() {
+                if let Some(v) = words.get(k + 1 + j).and_then(|w| w.parse::<f64>().ok()).filter(|v| v.is_finite()) {
+                    *slot = v;
+                }
+            }
+        }
+        k += 1;
+    }
+    (scale, offset)
+}
+
 fn read_mtl(text: &str, dir: &Path, materials: &mut Vec<Material>) {
     let mut current: Option<usize> = None;
     for line in text.lines() {
@@ -58,9 +84,50 @@ fn read_mtl(text: &str, dir: &Path, materials: &mut Vec<Material>) {
         };
         match key.to_ascii_lowercase().as_str() {
             "newmtl" => current = Some(material_index(materials, rest.trim())),
+            "map_bump" | "bump" | "norm" => {
+                let kind = if key.eq_ignore_ascii_case("norm") { NormalKind::DirectX } else { NormalKind::Bump };
+                let path = find_file(dir, map_file(rest));
+                let e = &mut materials[i].extras;
+                match path {
+                    Some(path) if e.normal.is_none() => {
+                        e.normal = Some((TextureSource { path: Some(path), embedded: None }, kind));
+                    }
+                    Some(_) => {}
+                    None => e.ignore("normal_missing"),
+                }
+            }
+            "ke" => {
+                let f = floats(rest.split_whitespace());
+                if f.len() >= 3 && f[..3].iter().any(|v| *v > 0.01) {
+                    materials[i].extras.emissive = Some([f[0], f[1], f[2]]);
+                }
+            }
+            "map_ke" => match find_file(dir, map_file(rest)) {
+                Some(path) => {
+                    let e = &mut materials[i].extras;
+                    e.emissive_texture = Some(TextureSource { path: Some(path), embedded: None });
+                    e.emissive.get_or_insert([1.0; 3]);
+                }
+                None => materials[i].extras.ignore("emissive_missing"),
+            },
+            "ks" => {
+                let f = floats(rest.split_whitespace());
+                if f.len() >= 3 {
+                    materials[i].extras.specular = Some(((f[0] + f[1] + f[2]) / 3.0).clamp(0.0, 1.0));
+                }
+            }
+            "ns" => materials[i].extras.shininess = floats(rest.split_whitespace()).first().copied(),
+            "pr" => materials[i].extras.roughness = floats(rest.split_whitespace()).first().map(|v| v.clamp(0.0, 1.0)),
+            "pm" => materials[i].extras.metallic = floats(rest.split_whitespace()).first().map(|v| v.clamp(0.0, 1.0)),
+            "map_ks" | "map_ns" | "map_pr" | "map_pm" => materials[i].extras.ignore("specular_texture"),
+            "disp" | "map_disp" => materials[i].extras.ignore("height_texture"),
             "map_kd" => {
                 if materials[i].texture.is_none() {
                     materials[i].texture = find_file(dir, map_file(rest));
+                    if materials[i].texture.is_some() {
+                        let (scale, offset) = map_transform(rest);
+                        materials[i].extras.set_flipped_v_transform(scale, offset);
+                    }
                 }
             }
             "kd" => {
@@ -114,7 +181,9 @@ pub(crate) fn read(bytes: &[u8], dir: &Path) -> Result<Model> {
     let mut current = usize::MAX;
     let mut group: u32 = 1;
     let mut has_groups = false;
-    let mut faces: Vec<(Vec<Corner>, usize, u32)> = Vec::new();
+    let mut faces: Vec<(Vec<Corner>, usize, u32, usize)> = Vec::new();
+    let mut names: Vec<String> = Vec::new();
+    let mut object = usize::MAX;
     for line in text.lines() {
         let line = line.trim().trim_start_matches('\u{feff}');
         let (key, rest) = line.split_once(char::is_whitespace).unwrap_or((line, ""));
@@ -149,6 +218,10 @@ pub(crate) fn read(bytes: &[u8], dir: &Path) -> Result<Model> {
                 }
             }
             "usemtl" => current = material_index(&mut materials, rest.trim()),
+            "o" => {
+                names.push(rest.trim().to_owned());
+                object = names.len() - 1;
+            }
             "s" => {
                 has_groups = true;
                 group = match rest.trim() {
@@ -168,7 +241,7 @@ pub(crate) fn read(bytes: &[u8], dir: &Path) -> Result<Model> {
                     })
                     .collect();
                 if corners.len() >= 3 {
-                    faces.push((corners, current, group));
+                    faces.push((corners, current, group, object));
                 }
             }
             _ => {}
@@ -188,7 +261,8 @@ pub(crate) fn read(bytes: &[u8], dir: &Path) -> Result<Model> {
     let mut computed = smooth_normals(&v, &polys, crease).into_iter();
     let mut triangles: Vec<Triangle> = Vec::new();
     let mut next_without = without.iter().peekable();
-    for (f, (corners, mat, _)) in faces.iter().enumerate() {
+    let mut objects: Vec<MeshObject> = Vec::new();
+    for (f, (corners, mat, _, owner)) in faces.iter().enumerate() {
         let smooth = if next_without.peek() == Some(&&f) {
             next_without.next();
             computed.next()
@@ -205,9 +279,19 @@ pub(crate) fn read(bytes: &[u8], dir: &Path) -> Result<Model> {
             })
             .collect();
         let material = if *mat == usize::MAX { default } else { (*mat).min(default) };
+        let before = triangles.len();
         push_polygon(&mut triangles, &pts, material, &DMat4::IDENTITY);
+        let added = triangles.len() - before;
+        if let Some(name) = names.get(*owner)
+            && added > 0
+        {
+            match objects.last_mut() {
+                Some(last) if last.name == *name && last.first + last.count == before => last.count += added,
+                _ => objects.push(MeshObject { name: name.clone(), extras: None, first: before, count: added }),
+            }
+        }
     }
-    Ok(Model { triangles, materials, up: UpAxis::Y, meters_per_unit: 1.0 })
+    Ok(Model { triangles, materials, up: UpAxis::Y, meters_per_unit: 1.0, objects })
 }
 
 #[cfg(test)]
@@ -253,6 +337,33 @@ mod tests {
         assert_eq!(m.materials[0].alpha, Alpha::Blend);
     }
 
+    #[test]
+    fn material_extras_from_the_mtl() {
+        let dir = std::env::temp_dir().join("hp_meshio_obj_extras");
+        let _ = std::fs::create_dir_all(&dir);
+        for f in ["d.png", "n.png", "e.png"] {
+            std::fs::write(dir.join(f), b"x").unwrap();
+        }
+        std::fs::write(
+            dir.join("x.mtl"),
+            "newmtl a\nmap_Kd -s 2 4 1 -o 0.5 0.25 0 d.png\nmap_Bump -bm 1 n.png\nKs 0.8 0.8 0.8\nNs 300\nKe 1 0.5 0\nmap_Ke e.png\nmap_Pr gone.png\nnewmtl b\nnorm n.png\nmap_bump nothere.png\n",
+        )
+        .unwrap();
+        let obj = "mtllib x.mtl\nv 0 0 0\nv 1 0 0\nv 0 1 0\nusemtl a\nf 1 2 3\nusemtl b\nf 1 2 3\n";
+        let m = read(obj.as_bytes(), &dir).expect("read");
+        let e = &m.materials[0].extras;
+        assert_eq!(e.uv_scale, [2.0, 4.0]);
+        assert_eq!(e.uv_offset, [0.5, 1.0 - 4.0 - 0.25]);
+        assert_eq!(e.normal.as_ref().map(|n| n.1), Some(NormalKind::Bump));
+        assert!((e.specular.unwrap() - 0.8).abs() < 1e-9);
+        assert_eq!(e.shininess, Some(300.0));
+        assert_eq!(e.emissive, Some([1.0, 0.5, 0.0]));
+        assert!(e.emissive_texture.is_some());
+        assert_eq!(e.ignored, ["specular_texture"]);
+        let b = &m.materials[1].extras;
+        assert_eq!(b.normal.as_ref().map(|n| n.1), Some(NormalKind::DirectX));
+        assert_eq!(b.ignored, ["normal_missing"]);
+    }
     #[test]
     fn smooth_normals_without_vn() {
         let obj = "v 0 0 0\nv 1 0 0.2\nv 1 1 0.2\nv 0 1 0\nv 2 0 0\nv 2 1 0\nv 2 0 -1\nv 2 1 -1\n\

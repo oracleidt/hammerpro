@@ -104,7 +104,7 @@ Les vignettes au nom rouge sont des matériaux manquants (damier violet et noir)
 
 ## Dossiers personnalisés
 
-La section repliable **Dossiers personnalisés (n)** liste vos dossiers de textures personnalisés avec leur case d'activation, leur nombre de matériaux, leur préfixe et leurs avertissements, ainsi que les boutons **Ajouter un dossier...**, **Actualiser** et **Importer des images...**. Voir [Dossiers de textures personnalisés](custom-texture-folders.md).
+La section repliable **Dossiers personnalisés (n)** liste vos dossiers de textures personnalisés avec leur case d'activation, leur nombre de matériaux, leur préfixe et leurs avertissements, ainsi que les boutons **Ajouter un dossier...**, **Actualiser** et **Importer des images...**. Voir [Dossiers de textures personnalisés](custom-texture-folders.md). Elle est repliée par défaut et ne s'ouvre que si vous cliquez dessus.
 
 ## Astuces
 

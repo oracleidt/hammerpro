@@ -10,6 +10,8 @@ pub struct MeshSettings {
     pub four_way_blends: bool,
     pub noise_min: f64,
     pub noise_max: f64,
+    pub mesh_export_meters: bool,
+    pub mesh_export_z_up: bool,
     pub disp_tool: BTreeMap<String, String>,
 }
 
@@ -21,6 +23,8 @@ impl Default for MeshSettings {
             four_way_blends: true,
             noise_min: -4.0,
             noise_max: 4.0,
+            mesh_export_meters: false,
+            mesh_export_z_up: false,
             disp_tool: BTreeMap::new(),
         }
     }

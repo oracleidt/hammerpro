@@ -38,6 +38,19 @@ domain! { "grids";
             "object_grids": boolean("Objects use their grid."),
             "plane_3d": boolean("Draw custom grids in the 3D view."),
         }, [];
+    rotate_grid: Edit, "Rotate the grid",
+        "Rotate the active grid of a 2D view by an angle around the axis of that view (any value in degrees, \
+        0 resets, 45 is the quick turn): angle sets it, delta adds to it, align turns it to the direction of the \
+        selected face, brush edge or entity (the longest edge seen in that view). view (top, front, side; \
+        default: the view of the grid controls) picks the view. For the global and per view grids the angle \
+        is kept in the settings; for a custom grid it changes its angles (one undo step in the map). Every tool \
+        then snaps to the rotated grid and the 2D view draws it. The result lists the grids with the new angle.",
+        {
+            "angle": number("Angle of the grid in degrees.", -360.0, 360.0),
+            "delta": number("Degrees to add to the current angle.", -360.0, 360.0),
+            "align": boolean("Turn the grid to the selected face, brush or entity."),
+            "view": choice("The 2D view to rotate the grid in (default: the target view).", VIEW_NAMES),
+        }, [];
     create_grid: Edit, "Create a custom grid",
         "Create a custom grid: name, step (one number, or [x, y, z] for a different step per axis, decimals \
         allowed), origin, angles [pitch, yaw, roll] (to follow a rotated building or a slope), major_every, \
@@ -136,7 +149,7 @@ fn spec_json(g: &GridSpec) -> Value {
 }
 
 fn view_grid_json(g: &ViewGrid) -> Value {
-    json!({ "size": g.size, "origin": g.origin, "major_every": g.major_every })
+    json!({ "size": g.size, "origin": g.origin, "major_every": g.major_every, "angle": g.angle })
 }
 
 fn source_json(s: &GridSource) -> Value {
@@ -164,7 +177,12 @@ pub(super) fn grids_json(state: &AppState) -> Value {
         .iter()
         .map(|(name, kind)| {
             let a = state.active_grid(*kind);
-            json!({ "view": name, "source": source_json(&a.source), "grid": frame_json(&a.frame) })
+            json!({
+                "view": name,
+                "source": source_json(&a.source),
+                "angle": state.grid_angle(*kind),
+                "grid": frame_json(&a.frame),
+            })
         })
         .collect();
     let map: Vec<Value> = state
@@ -185,7 +203,11 @@ pub(super) fn grids_json(state: &AppState) -> Value {
         "object_grids": g.object_grids,
         "plane_3d": g.plane_3d,
         "target_view": view_name(state.grid_target_view()),
-        "target": { "source": source_json(&target.source), "grid": frame_json(&target.frame) },
+        "target": {
+            "source": source_json(&target.source),
+            "angle": state.grid_angle(state.grid_target_view()),
+            "grid": frame_json(&target.frame),
+        },
         "active": active,
         "per_view": {
             "3d": view_grid_json(&g.per_view.perspective),
@@ -200,6 +222,29 @@ pub(super) fn grids_json(state: &AppState) -> Value {
 }
 
 fn list_grids(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
+    Ok(ToolResult::json(grids_json(state)))
+}
+
+fn rotate_grid(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
+    let angle = a.opt_f64("angle", -360.0, 360.0)?;
+    let delta = a.opt_f64("delta", -360.0, 360.0)?;
+    let align = a.opt_bool("align")?.unwrap_or(false);
+    if angle.is_none() && delta.is_none() && !align {
+        return Err("give angle, delta or align".to_owned());
+    }
+    let kind = a.opt_enum("view", VIEW_NAMES)?.map_or_else(|| state.grid_target_view(), |v| view_kind(&v));
+    in_step(state, "rotate_grid", |state| {
+        if align {
+            state.align_grid_to_selection(kind)?;
+        }
+        if let Some(angle) = angle {
+            state.set_grid_angle(kind, angle)?;
+        }
+        if let Some(delta) = delta {
+            state.rotate_grid(kind, delta)?;
+        }
+        Ok(())
+    })?;
     Ok(ToolResult::json(grids_json(state)))
 }
 
@@ -448,6 +493,27 @@ mod tests {
 
     fn fails(state: &mut AppState, name: &str, args: Value) -> String {
         err(state, name, args)
+    }
+
+    #[test]
+    fn rotate_grid_through_mcp() {
+        let mut state = hp_app::testing::test_state();
+        fails(&mut state, "rotate_grid", json!({}));
+        let v = call(&mut state, "rotate_grid", json!({ "view": "top", "angle": 45 }));
+        assert_eq!(v["active"][1]["angle"], 45.0);
+        assert_eq!(v["per_view"]["top"]["angle"], 45.0);
+        assert!(state.grid_frame(ViewKind::Top).is_rotated());
+        assert!(!state.grid_frame(ViewKind::Front).is_rotated());
+        let v = call(&mut state, "rotate_grid", json!({ "view": "top", "delta": -15.5 }));
+        assert_eq!(v["active"][1]["angle"], 29.5);
+        let v = call(&mut state, "rotate_grid", json!({ "view": "top", "angle": 0 }));
+        assert_eq!(v["active"][1]["angle"], 0.0);
+        fails(&mut state, "rotate_grid", json!({ "angle": 400 }));
+        fails(&mut state, "rotate_grid", json!({ "align": true }));
+        call(&mut state, "create_grid", json!({ "name": "R", "step": 8 }));
+        let v = call(&mut state, "rotate_grid", json!({ "view": "top", "angle": 30 }));
+        assert_eq!(v["map_grids"][0]["angles"][1], 30.0);
+        assert!(state.doc.undo_label().is_some_and(|l| l.contains("rotate_grid")));
     }
 
     #[test]

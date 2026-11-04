@@ -1041,8 +1041,8 @@ impl TextureBrowser {
         let n = state.settings.game.custom_texture_dirs.len();
         let mut action: Option<FolderAction> = None;
         egui::CollapsingHeader::new(RichText::new(tf!("tex.folders.title", n)).strong())
-            .id_salt("hp_tex_custom_folders")
-            .default_open(true)
+            .id_salt("hp_tex_custom_folders_closed")
+            .default_open(false)
             .show(ui, |ui| {
                 if n == 0 {
                     ui.label(RichText::new(t!("tex.folders.empty")).small().weak());

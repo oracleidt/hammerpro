@@ -8,6 +8,8 @@ use hp_geom::{Aabb, validate_solid};
 use hp_render::Overlay;
 
 use super::geom::*;
+use super::meta::CurveMeta;
+use super::section::Section;
 use super::tool::{CurvePhase, CurveTool};
 use super::tr::CURVE_TR;
 use crate::block::CreateAs;
@@ -32,6 +34,7 @@ fn spec<'a>(points: &'a [DVec2], segments: u32, thickness: f64) -> CurveSpec<'a>
         material: "dev/dev_measuregeneric01b",
         tex_scale: 0.25,
         lightmap_scale: 16,
+        section: Section::default(),
     }
 }
 
@@ -440,4 +443,82 @@ fn strings_are_translated_and_used() {
         }
     }
     assert!(checked > 20, "{checked}");
+}
+
+#[test]
+fn a_curve_remembers_itself_and_is_edited_in_one_step() {
+    let mut state = settle();
+    state.doc.clear_selection();
+    let mut tool = CurveTool::new();
+    let top = info_2d(ViewKind::Top, 1.0);
+    for p in [(0.0, 0.0), (128.0, 64.0), (256.0, 0.0)] {
+        click(&mut tool, &mut state, &top, DVec3::new(p.0, p.1, 0.0));
+    }
+    tool.set_subdivisions(6);
+    assert!(tool.set_option(&mut state, "profile", "curb"));
+    assert!(tool.set_option(&mut state, "roll_start", "4"));
+    assert!(tool.set_option(&mut state, "auto_bank", "10"));
+    assert!(!tool.set_option(&mut state, "profile", "wall"));
+    assert!(!tool.set_option(&mut state, "roll_end", "61"));
+    tool.validate();
+    let made = tool.create(&mut state).expect("curve");
+    assert!(made >= 18, "banking can only add halves: {made}");
+    let piece = state.doc.selected_curve_piece().expect("a selected curve brush");
+    let record = state.doc.curve_record(piece).expect("record");
+    assert_eq!(record.ids.len(), made);
+    let meta = CurveMeta::decode(&record.data).expect("data");
+    assert_eq!(meta.points, vec![v(0.0, 0.0), v(128.0, 64.0), v(256.0, 0.0)]);
+    assert_eq!(meta.segments, 6);
+    assert_eq!(meta.section.profile, super::section::Profile::Curb);
+    assert_eq!(meta.section.roll_start, 4.0);
+
+    let solids = state.doc.stats().solids;
+    let (undo, _) = state.doc.history_len();
+    state.runtime.brush.curve_edit = Some(piece);
+    let mut tool = CurveTool::new();
+    tool.activate(&mut state);
+    assert!(tool.is_editing());
+    assert_eq!(tool.phase(), CurvePhase::Adjusting);
+    assert_eq!(tool.points().len(), 3);
+    assert_eq!(tool.options.section.profile, super::section::Profile::Curb);
+    assert!(tool.insert_point_near(v(64.0, 40.0)));
+    assert_eq!(tool.points()[1], v(64.0, 40.0), "inserted between the nearest points");
+    assert!(tool.remove_point_at(3));
+    assert!(tool.remove_point_at(2));
+    assert_eq!(tool.points().len(), 2);
+    assert!(!tool.remove_point_at(0), "an edited curve keeps 2 points");
+    assert!(tool.set_option(&mut state, "profile", "ditch"));
+    assert!(tool.set_option(&mut state, "ditch_depth", "100"));
+    assert_eq!(tool.create(&mut state), None, "a ditch deeper than the height is refused");
+    assert_eq!(state.doc.stats().solids, solids);
+    assert!(tool.set_option(&mut state, "ditch_depth", "10"));
+    tool.set_subdivisions(4);
+    let n = tool.create(&mut state).expect("edit");
+    assert!(n >= 8);
+    assert!(!tool.is_editing());
+    assert_eq!(state.doc.stats().solids, solids - made + n);
+    assert_eq!(state.doc.history_len().0, undo + 1, "one undo step");
+    let piece = state.doc.selected_curve_piece().expect("new curve brushes selected");
+    assert_eq!(state.doc.curve_record(piece).expect("record").ids.len(), n);
+    assert_eq!(tool.options.section.profile, super::section::Profile::Flat, "the tool options come back");
+    state.doc.undo();
+    assert_eq!(state.doc.stats().solids, solids);
+    let back = state.doc.curve_record(record.ids[0]).expect("the old curve is back");
+    assert_eq!(back.ids.len(), made);
+}
+
+#[test]
+fn curb_and_banked_curves_build_valid_brushes() {
+    let pts = [v(0.0, 0.0), v(128.0, 64.0), v(256.0, 0.0), v(384.0, -64.0)];
+    for profile in super::section::Profile::ALL {
+        let section =
+            Section { profile, roll_start: 5.0, roll_end: -7.0, auto_gain: 6.0, auto_limit: 6.0, ..Section::default() };
+        let s = CurveSpec { section, ..spec(&pts, 12, 32.0) };
+        let brushes = build(&s).unwrap();
+        assert!(brushes.len() >= 12 * section.strip_count());
+        for sides in &brushes {
+            validate_solid(sides).unwrap();
+            assert!(sides.len() <= 6, "a banked piece keeps flat faces: {} faces", sides.len());
+        }
+    }
 }

@@ -3,7 +3,7 @@ use std::path::Path;
 use glam::{DMat3, DMat4, DQuat, DVec2, DVec3};
 use serde_json::Value;
 
-use crate::{Alpha, Material, Model, Result, Triangle, UpAxis, base64, invalid, push_polygon};
+use crate::{Alpha, Material, MeshObject, Model, Result, Triangle, UpAxis, base64, invalid, push_polygon};
 
 const MAX_TRIANGLES: usize = 10_000_000;
 const UNSUPPORTED: &[(&str, &str)] = &[
@@ -202,6 +202,9 @@ fn uv_transform(info: &Value) -> (usize, DMat3) {
     (set, m)
 }
 
+mod material;
+use material::{plain_transform, read_extras, texture_source};
+
 struct MaterialInfo {
     uv_set: usize,
     uv_xf: DMat3,
@@ -261,30 +264,17 @@ pub(crate) fn read(bytes: &[u8], dir: &Path) -> Result<Model> {
         mat.double_sided = m.get("doubleSided").and_then(Value::as_bool).unwrap_or(false);
         let tex_info =
             pbr.and_then(|p| p.get("baseColorTexture")).or_else(|| spec_gloss.and_then(|p| p.get("diffuseTexture")));
-        let (uv_set, uv_xf) = tex_info.map_or((0, DMat3::IDENTITY), uv_transform);
-        let texture = tex_info.and_then(|t| num(t, "index")).and_then(|t| arr(&doc.json, "textures").get(t as usize));
-        let source = texture.and_then(|t| {
-            num(t, "source").or_else(|| {
-                ["EXT_texture_webp", "KHR_texture_basisu", "MSFT_texture_dds"]
-                    .iter()
-                    .find_map(|e| t.pointer(&format!("/extensions/{e}/source")).and_then(Value::as_u64))
-            })
-        });
-        if let Some(img) = source.and_then(|s| arr(&doc.json, "images").get(s as usize)) {
-            let mime = img.get("mimeType").and_then(Value::as_str);
-            if let Some(uri) = img.get("uri").and_then(Value::as_str) {
-                if uri.starts_with("data:") {
-                    mat.embedded = load_uri(uri, dir).map(|b| (b, image_ext(mime, uri)));
-                } else {
-                    let path = dir.join(percent_decode(uri));
-                    if path.is_file() {
-                        mat.texture = Some(path);
-                    }
-                }
-            } else if let Some(view) = num(img, "bufferView") {
-                mat.embedded = doc.view(view as usize).map(|(b, _)| (b.to_vec(), image_ext(mime, "")));
-            }
+        let (uv_set, mut uv_xf) = tex_info.map_or((0, DMat3::IDENTITY), uv_transform);
+        if let Some((scale, offset)) = tex_info.and_then(plain_transform) {
+            mat.extras.uv_scale = scale;
+            mat.extras.uv_offset = offset;
+            uv_xf = DMat3::IDENTITY;
         }
+        if let Some(src) = tex_info.and_then(|t| texture_source(&doc, dir, t)) {
+            mat.texture = src.path;
+            mat.embedded = src.embedded;
+        }
+        read_extras(&doc, dir, m, &mut mat);
         materials.push(mat);
         infos.push(MaterialInfo { uv_set, uv_xf });
     }
@@ -335,8 +325,10 @@ pub(crate) fn read(bytes: &[u8], dir: &Path) -> Result<Model> {
         .collect();
 
     let mut triangles: Vec<Triangle> = Vec::new();
+    let mut objects: Vec<MeshObject> = Vec::new();
     for i in order {
         let node = &nodes[i];
+        let first = triangles.len();
         let xf = world[i].unwrap_or(DMat4::IDENTITY);
         let Some(mesh) = num(node, "mesh").and_then(|m| arr(&doc.json, "meshes").get(m as usize)) else { continue };
         let skin = num(node, "skin").and_then(|s| skins.get(s as usize)).and_then(Option::as_ref);
@@ -427,6 +419,11 @@ pub(crate) fn read(bytes: &[u8], dir: &Path) -> Result<Model> {
                 }
             }
         }
+        if triangles.len() > first {
+            let name = node.get("name").or_else(|| mesh.get("name")).and_then(Value::as_str).unwrap_or_default();
+            let extras = node.get("extras").or_else(|| mesh.get("extras")).cloned();
+            objects.push(MeshObject { name: name.to_owned(), extras, first, count: triangles.len() - first });
+        }
     }
     if triangles.is_empty() && arr(&doc.json, "meshes").iter().any(|m| !arr(m, "primitives").is_empty()) {
         let used: Vec<&str> = arr(&doc.json, "extensionsUsed").iter().filter_map(Value::as_str).collect();
@@ -436,7 +433,7 @@ pub(crate) fn read(bytes: &[u8], dir: &Path) -> Result<Model> {
             )));
         }
     }
-    Ok(Model { triangles, materials, up: UpAxis::Y, meters_per_unit: 1.0 })
+    Ok(Model { triangles, materials, up: UpAxis::Y, meters_per_unit: 1.0, objects })
 }
 
 #[cfg(test)]
@@ -497,6 +494,35 @@ mod tests {
         assert!(e.contains("Draco"), "{e}");
     }
 
+    #[test]
+    fn material_extras_are_read() {
+        let dir = std::env::temp_dir().join("hp_meshio_gltf_extras");
+        let _ = std::fs::create_dir_all(&dir);
+        for f in ["n.png", "e.png", "c.png"] {
+            std::fs::write(dir.join(f), b"x").unwrap();
+        }
+        let json = r#"{"asset":{"version":"2.0"},
+            "images":[{"uri":"c.png"},{"uri":"n.png"},{"uri":"e.png"}],
+            "textures":[{"source":0},{"source":1},{"source":2}],
+            "materials":[{"name":"steel",
+              "pbrMetallicRoughness":{"metallicFactor":0.9,"roughnessFactor":0.3,
+                "baseColorTexture":{"index":0,"extensions":{"KHR_texture_transform":{"scale":[2,3],"offset":[0.25,0.5]}}}},
+              "normalTexture":{"index":1},"emissiveTexture":{"index":2},"emissiveFactor":[1,0.5,0],
+              "occlusionTexture":{"index":0},"extensions":{"KHR_materials_clearcoat":{}}},
+              {"name":"spun","pbrMetallicRoughness":{"baseColorTexture":{"index":0,
+                "extensions":{"KHR_texture_transform":{"rotation":0.5}}}}}]}"#;
+        let m = read(json.as_bytes(), &dir).expect("read");
+        let e = &m.materials[0].extras;
+        assert_eq!(e.uv_scale, [2.0, 3.0]);
+        assert_eq!(e.uv_offset, [0.25, 0.5]);
+        assert_eq!(e.metallic, Some(0.9));
+        assert_eq!(e.roughness, Some(0.3));
+        assert_eq!(e.normal.as_ref().map(|n| n.1), Some(crate::NormalKind::OpenGl));
+        assert_eq!(e.emissive, Some([1.0, 0.5, 0.0]));
+        assert!(e.emissive_texture.is_some());
+        assert_eq!(e.ignored, ["occlusion_texture", "ext:KHR_materials_clearcoat"]);
+        assert!(!m.materials[1].extras.has_uv_transform(), "a rotation stays baked in the UVs");
+    }
     #[test]
     fn a_skinned_triangle_in_its_bind_pose() {
         let mut bin = Vec::new();

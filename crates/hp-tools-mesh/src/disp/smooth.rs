@@ -14,15 +14,15 @@ pub(crate) struct SmoothPart<'a> {
 }
 
 #[derive(Clone, Debug, Default)]
-struct Node {
-    members: Vec<(usize, usize)>,
-    pos: DVec3,
-    axis: DVec3,
+pub(super) struct Node {
+    pub(super) members: Vec<(usize, usize)>,
+    pub(super) pos: DVec3,
+    pub(super) axis: DVec3,
     weight: f64,
 }
 
 #[derive(Clone, Copy, Debug)]
-struct Junction {
+pub(super) struct Junction {
     node: usize,
     a: usize,
     b: usize,
@@ -71,8 +71,8 @@ fn weight(brush: &LocalBrush, mesh: &DispMesh, k: usize) -> f64 {
     brush.falloff.weight(dist / brush.radius)
 }
 
-struct Surface {
-    nodes: Vec<Node>,
+pub(super) struct Surface {
+    pub(super) nodes: Vec<Node>,
     node_of: Vec<usize>,
     first: Vec<usize>,
     valid: Vec<bool>,
@@ -83,11 +83,11 @@ impl Surface {
         self.first.get(part).copied().unwrap_or(0) + k
     }
 
-    fn node(&self, part: usize, k: usize) -> Option<usize> {
+    pub(super) fn node(&self, part: usize, k: usize) -> Option<usize> {
         self.node_of.get(self.gid(part, k)).copied().filter(|n| *n != usize::MAX)
     }
 
-    fn build(
+    pub(super) fn build(
         parts: &[SmoothPart<'_>],
         axis_of: impl Fn(&DispMesh, usize) -> DVec3,
         weight_of: impl Fn(&DispMesh, usize) -> f64,
@@ -211,7 +211,7 @@ impl Surface {
         Self { nodes, node_of, first, valid }
     }
 
-    fn neighbours(&self, parts: &[SmoothPart<'_>], ni: usize, diagonal: bool) -> Vec<usize> {
+    pub(super) fn neighbours(&self, parts: &[SmoothPart<'_>], ni: usize, diagonal: bool) -> Vec<usize> {
         let Some(node) = self.nodes.get(ni) else { return Vec::new() };
         let mut out: Vec<usize> = Vec::with_capacity(4 * node.members.len());
         let steps: [(isize, isize); 4] =
@@ -419,7 +419,7 @@ pub(crate) fn subdivide_parts(parts: &mut [SmoothPart<'_>]) -> Vec<usize> {
     changed
 }
 
-fn follow_junctions(junctions: &[Junction], nodes: &[Node], new_pos: &mut [DVec3]) {
+pub(super) fn follow_junctions(junctions: &[Junction], nodes: &[Node], new_pos: &mut [DVec3]) {
     let moved = |new_pos: &[DVec3], i: usize| match (new_pos.get(i), nodes.get(i)) {
         (Some(p), Some(n)) => *p != n.pos,
         _ => false,
@@ -436,7 +436,7 @@ fn follow_junctions(junctions: &[Junction], nodes: &[Node], new_pos: &mut [DVec3
     }
 }
 
-fn write_back(parts: &mut [SmoothPart<'_>], surface: &Surface, new_pos: &[DVec3], changed: &mut [usize]) {
+pub(super) fn write_back(parts: &mut [SmoothPart<'_>], surface: &Surface, new_pos: &[DVec3], changed: &mut [usize]) {
     for (ni, node) in surface.nodes.iter().enumerate() {
         let Some(&np) = new_pos.get(ni) else { continue };
         if !np.is_finite() || np.distance(node.pos) < 1e-9 {
@@ -453,7 +453,7 @@ fn write_back(parts: &mut [SmoothPart<'_>], surface: &Surface, new_pos: &[DVec3]
     }
 }
 
-fn find_junctions(parts: &[SmoothPart<'_>], surface: &Surface) -> Vec<Junction> {
+pub(super) fn find_junctions(parts: &[SmoothPart<'_>], surface: &Surface) -> Vec<Junction> {
     let mut out: Vec<Junction> = Vec::new();
     let valid = &surface.valid;
     let nodes = &surface.nodes;
@@ -524,7 +524,7 @@ fn find_junctions(parts: &[SmoothPart<'_>], surface: &Surface) -> Vec<Junction> 
     out
 }
 
-fn set_position(part: &mut SmoothPart<'_>, k: usize, p: DVec3) -> bool {
+pub(super) fn set_position(part: &mut SmoothPart<'_>, k: usize, p: DVec3) -> bool {
     let mesh = part.mesh;
     let disp = &mut *part.disp;
     let count = mesh.row_len * mesh.row_len;

@@ -42,6 +42,7 @@ hp-compile.workspace = true
 hp-bsp.workspace = true
 hp-bspc.workspace = true
 hp-mdl.workspace = true
+hp-meshio.workspace = true
 hp-render.workspace = true
 eframe.workspace = true
 egui.workspace = true
@@ -63,6 +64,7 @@ pollster.workspace = true
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
+    "Win32_System_Console",
     "Win32_System_Diagnostics_Debug",
     "Win32_System_Kernel",
     "Win32_System_LibraryLoader",

@@ -78,7 +78,7 @@ fn hammer_order(group: MenuGroup) -> &'static [Action] {
     }
 }
 
-const TOOLS_MENU_ORDER: [Action; 18] = [
+const TOOLS_MENU_ORDER: [Action; 19] = [
     Action::ToolSelect,
     Action::ToolCamera,
     Action::ToolEntity,
@@ -97,6 +97,7 @@ const TOOLS_MENU_ORDER: [Action; 18] = [
     Action::ToolSprinkle,
     Action::ToolDisplacement,
     Action::ToolCordon,
+    Action::ToolRoad,
 ];
 
 fn group_actions(cat: Category, group: MenuGroup) -> Vec<Action> {

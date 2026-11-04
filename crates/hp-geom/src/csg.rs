@@ -58,7 +58,7 @@ pub fn clip_solid_traced(
     clip_geom(sides, &geom, plane, None, next_side_id)
 }
 
-fn clip_geom(
+pub(crate) fn clip_geom(
     sides: &[Side],
     geom: &SolidGeom,
     plane: &Plane,
@@ -184,7 +184,7 @@ pub fn carve_traced(
     carve_impl(target, carver, false, next_side_id)
 }
 
-fn carve_impl(
+pub(crate) fn carve_impl(
     target: &[Side],
     carver: &[Side],
     cap_from_carver: bool,

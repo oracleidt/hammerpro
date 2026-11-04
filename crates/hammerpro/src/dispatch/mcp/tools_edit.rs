@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 
 use super::semantic::*;
 use super::tools::{Args, MAX_NAME, R, bounds_json, check_class, edit, material_name, obj_json, v3};
+use super::tools_curve::{create_curve_brushes, edit_curve_brushes, get_curve_brushes};
 
 domain! { "editing";
     duplicate_objects: Edit, "Duplicate objects",
@@ -105,6 +106,16 @@ domain! { "editing";
             "new_faces": choice("Texture of the new faces (default face).", &["face", "current"]),
             "material": string("Material of the new faces (instead of new_faces)."),
         }, ["solid", "side", "points"];
+ inset_face: Destructive, "Inset faces",
+ "Inset brush faces (the Tools > Inset face command, also in the extrude tool options): the edges of each face move inward by distance units and the brush is split into a frame of convex brushes around the face plus the inner block, so every piece stays a valid convex brush. The original textures stay on the visible faces and the new faces get the texture of the inset face (or material). depth raises (positive) or sinks (negative) the inner block in the same step, like Blender I then E. One face per brush, convex brushes only, displacement faces are refused. faces defaults to the selected faces, else the faces of ids. snap rounds distance and depth to the editor's grid. One undo step; answers the ids of the brushes made or changed (the first piece keeps the brush id, the last one is the inner block).",
+        {
+            "faces": faces("Faces [{solid, side}] (default: the selected faces)."),
+            "ids": target_ids(), "solid_ids": target_solid_ids(),
+            "distance": number("Inset distance in units (default 16).", 0.125, 16384.0),
+            "depth": number("Raise (positive) or sink (negative) the inner block by this many units (default 0).", -16384.0, 16384.0),
+            "snap": boolean("Round distance and depth to the editor's grid (default false)."),
+            "material": string("Material of the new faces (default: the inset face's)."),
+        }, [];
     get_brush_edges: Read, "Brush edges",
         "The edges of a solid as numbered [a, b] point pairs (the edge indices bevel_edges takes), with their length.",
         { "solid": integer("Solid id.", 1, i64::from(u32::MAX)) }, ["solid"];
@@ -130,6 +141,7 @@ domain! { "editing";
             "inverse": boolean("Concave bevel: cove or inner corner fill (default false)."),
             "new_faces": choice("Texture of the rounded faces (default face).", &["face", "current"]),
             "material": string("Material of the rounded faces (instead of new_faces)."),
+            "expand": choice("Bevel the whole edge loop or edge ring of every given edge (see select_edge_loop), across the brushes sharing it; edges with no corner to bevel are skipped (default none).", &["none", "loop", "ring"]),
             "dry_run": boolean("Only answer what the bevel would do (default false)."),
         }, [];
     hollow: Destructive, "Make hollow",
@@ -140,6 +152,12 @@ domain! { "editing";
         "Merge solids into one. convex_hull false (default) merges only when their union is convex and keeps every \
         texture; true takes their convex hull even when it adds volume.",
         { "ids": target_ids(), "solid_ids": target_solid_ids(), "convex_hull": boolean("Merge into the convex hull.") }, [];
+    intersect_brushes: Destructive, "Intersect brushes",
+        "Keep only the volume shared by all the given solids (boolean intersection). The first solid keeps its id, owner and editor data and becomes the shared volume; the others are deleted. Faces keep their textures and the new cut faces take the texture of the face that cut them. The solids must all be world solids or belong to the same entity, and must overlap.",
+        { "ids": target_ids(), "solid_ids": target_solid_ids() }, [];
+    union_brushes: Destructive, "Union of brushes",
+        "Join solids into the fewest convex solids covering exactly their union (boolean union). Overlapping solids are cut so they no longer overlap, then neighbours are merged wherever the result stays convex, so an L shape stays two solids. Each solid keeps its id when it still has a piece; solids fully inside others are deleted. Fails when nothing can be joined. Answers the solid ids left.",
+        { "ids": target_ids(), "solid_ids": target_solid_ids() }, [];
     get_brush_vertices: Read, "Brush vertices",
         "The vertices of a solid and its faces as lists of vertex indices (for move_brush_vertices).",
         { "solid": integer("Solid id.", 1, i64::from(u32::MAX)) }, ["solid"];
@@ -166,14 +184,16 @@ domain! { "editing";
             "entity_class": string("Brush entity class (func_detail...), default the world."),
         }, ["points"];
     create_primitive: Edit, "Create a primitive",
-        "Create a block, wedge, cylinder, spike, sphere, arch or torus in a box with every option of the block tool \
-        (sides, arch wall width, arc, start angle, add height, torus ring width, tube sides, rotation, spiral \
-        rise, up axis like a primitive drawn in the front or side view, texture scale, brush entity class). With \
+        "Create a block, wedge, cylinder, spike, sphere, arch, torus, stairs, spiral_stairs, ramp, pillar or doorway in a \
+        box with every option of the block tool (sides, arch wall width, arc, start angle, add height, torus ring \
+        width, tube sides, rotation, spiral rise, stair_steps, stair_step_height, stair_open, spiral_inner, \
+        spiral_angle, spiral_start, ramp_angle, pillar_base, pillar_capital, pillar_inset, door_width, door_height, \
+        door_thickness, door_arch, door_arch_radius, door_arch_segments, direction (stairs, spiral_stairs and ramp rise toward +y of the box by default), up axis like a primitive drawn in the front or side view, texture scale, brush entity class). With \
         depth_from_selection, the box's extent along that axis comes from the selection like a box drawn in a 2D \
         view (the selection bounds, else the last created object, else 64 units on top). The tool options of the \
         block tool itself (its arch preview window...) are set with set_tool_options.",
         {
-            "shape": choice("Shape.", &["block", "wedge", "cylinder", "spike", "sphere", "arch", "torus"]),
+            "shape": choice("Shape.", &["block", "wedge", "cylinder", "spike", "sphere", "arch", "torus", "stairs", "spiral_stairs", "ramp", "pillar", "doorway"]),
             "min": vec3("Box minimum."), "max": vec3("Box maximum."),
             "material": string("Material (default: the current material)."),
             "sides": integer("Sides of round shapes.", 3, 64),
@@ -186,6 +206,23 @@ domain! { "editing";
             "torus_arc": number("Torus rotation arc in degrees (over 360 only with torus_rise: a spiral).", 1.0, 3600.0),
             "torus_start_angle": number("Torus rotation start in degrees.", -360.0, 360.0),
             "torus_rise": number("Height gained over the torus arc (spiral ramps, helical pipes).", -16384.0, 16384.0),
+            "stair_steps": integer("Stairs and spiral_stairs: number of steps (default 8).", 1, 256),
+            "stair_step_height": number("Stairs and spiral_stairs: height of one step, 0 uses stair_steps.", 0.0, 1024.0),
+            "stair_open": boolean("Stairs and spiral_stairs: open steps (slabs two steps thick) instead of solid columns."),
+            "spiral_inner": number("Spiral stairs: inner radius, 0 for pie steps (default 16).", 0.0, 65536.0),
+            "spiral_angle": number("Spiral stairs: total turn in degrees, negative turns the other way (default 270, over 360 needs stair_open).", -3600.0, 3600.0),
+            "spiral_start": number("Spiral stairs: start angle in degrees.", -360.0, 360.0),
+            "ramp_angle": number("Ramp: slope angle in degrees (default 30).", 1.0, 89.0),
+            "pillar_base": number("Pillar: height of the base, 0 for none (default 16).", 0.0, 65536.0),
+            "pillar_capital": number("Pillar: height of the capital, 0 for none (default 16).", 0.0, 65536.0),
+            "pillar_inset": number("Pillar: how much narrower the shaft is than the base and capital (default 8).", 0.0, 65536.0),
+            "door_width": number("Doorway: opening width, 0 is half the wall.", 0.0, 65536.0),
+            "door_height": number("Doorway: opening height from the bottom, 0 is three quarters of the wall.", 0.0, 65536.0),
+            "door_thickness": number("Doorway: wall thickness centered in the box, 0 fills the box depth.", 0.0, 65536.0),
+            "door_arch": boolean("Doorway: give the opening a round top (an arch)."),
+            "door_arch_radius": number("Doorway arch: radius, at least half the opening, 0 is exactly half (a semicircle).", 0.0, 65536.0),
+            "door_arch_segments": integer("Doorway arch: number of straight pieces of the round top (default 8).", 2, 64),
+            "direction": choice("Stairs, spiral_stairs and ramp: side they rise toward, in the shape's frame (default +y; longest is along the longest side of the box; spiral_stairs start there).", &["+y", "-y", "+x", "-x", "longest"]),
             "up": axis("Axis the primitive stands along (default z; x or y like one drawn in the side or front view)."),
             "upside_down": boolean("The primitive grows the other way along its up axis."),
             "tex_scale": number("Texture scale of the new faces (default: the editor's).", 0.01, 64.0),
@@ -220,7 +257,45 @@ domain! { "editing";
             "material": string("Material (default: the current material)."),
             "tex_scale": number("Texture scale of the new faces (default: the editor's).", 0.01, 64.0),
             "entity_class": string("Put every brush in one brush entity of this class (func_detail...) instead of the world."),
+            "profile": choice("Cross section: flat (default), curb (a raised kerb on both sides, outside the thickness) or ditch (V shaped channel). Curb makes 3 brushes and ditch 2 per piece of the curve.", &["flat", "curb", "ditch"]),
+            "curb_width": number("Profile curb: width of each kerb in units (default 8).", 1.0, 256.0),
+            "curb_height": number("Profile curb: height of the kerbs above the road (default 8).", 0.0, 256.0),
+            "ditch_depth": number("Profile ditch: depth of the V under the edges (default 8, at least 1 under the height).", 0.0, 512.0),
+            "roll_start": number("Banking: roll angle in degrees at the start of the curve (default 0). Positive raises the left side when following the curve.", -60.0, 60.0),
+            "roll_end": number("Banking: roll angle in degrees at the end of the curve, interpolated along the curve (default 0).", -60.0, 60.0),
+            "auto_bank": number("Automatic banking: degrees of roll for a bend of radius 1000 units, proportional to the curvature, tilting toward the inside of the bend (default 0 is off).", 0.0, 90.0),
+            "auto_bank_limit": number("Automatic banking: largest roll in degrees it may add (default 8).", 0.0, 45.0),
         }, ["view", "points"];
+    edit_curve_brushes: Edit, "Edit curve brushes",
+        "Re-open a curve made by the curve tool or create_curve_brushes and replace its brushes (one undo step): \
+        give the solid_id of any brush of the curve (default: the selected curve brush) and only the fields that \
+        change; points, subdivisions, thickness, height, base, tex_scale, material and the cross section and \
+        banking options keep their stored values when left out. Add or remove points by sending the whole new \
+        points list (read the stored one with get_curve_brushes). The new brushes are selected and stay in the \
+        same brush entity, if any.",
+        {
+            "solid_id": integer("A brush of the curve (or its brush entity). Default: the selected curve brush.", 1, i64::from(u32::MAX)),
+            "points": { "type": "array", "items": vec2("Point [a, b]."), "minItems": 2, "maxItems": 1024, "description": "New points the curve goes through, in the curve's view axes." },
+            "subdivisions": integer("Number of pieces along the curve.", 2, 4096),
+            "thickness": number("Width of the road across the curve, centered on it.", 1.0, 1024.0),
+            "height": number("Height along the view's depth axis.", 1.0, 16384.0),
+            "base": number("Start along the view's depth axis.", -16384.0, 16384.0),
+            "snap": boolean("Snap the new points to the editor's grid (default true)."),
+            "material": string("Material (default: the material of the existing brushes)."),
+            "tex_scale": number("Texture scale of the new faces.", 0.01, 64.0),
+            "profile": choice("Cross section: flat (default), curb (a raised kerb on both sides, outside the thickness) or ditch (V shaped channel). Curb makes 3 brushes and ditch 2 per piece of the curve.", &["flat", "curb", "ditch"]),
+            "curb_width": number("Profile curb: width of each kerb in units (default 8).", 1.0, 256.0),
+            "curb_height": number("Profile curb: height of the kerbs above the road (default 8).", 0.0, 256.0),
+            "ditch_depth": number("Profile ditch: depth of the V under the edges (default 8, at least 1 under the height).", 0.0, 512.0),
+            "roll_start": number("Banking: roll angle in degrees at the start of the curve (default 0). Positive raises the left side when following the curve.", -60.0, 60.0),
+            "roll_end": number("Banking: roll angle in degrees at the end of the curve, interpolated along the curve (default 0).", -60.0, 60.0),
+            "auto_bank": number("Automatic banking: degrees of roll for a bend of radius 1000 units, proportional to the curvature, tilting toward the inside of the bend (default 0 is off).", 0.0, 90.0),
+            "auto_bank_limit": number("Automatic banking: largest roll in degrees it may add (default 8).", 0.0, 45.0),
+        }, [];
+    get_curve_brushes: Read, "Read a curve",
+        "Read the curve stored on the brushes made by the curve tool or create_curve_brushes: view, points, depth, \
+        subdivisions, thickness, cross section and banking options, and the ids of all its brushes.",
+        { "solid_id": integer("A brush of the curve (or its brush entity). Default: the selected curve brush.", 1, i64::from(u32::MAX)) }, [];
     snap_brush_vertices: Edit, "Snap brush vertices",
         "Move every vertex of solids to the nearest grid point (default: the editor's grid), fixing off grid brushes \
         (solids that would become invalid are left as they are).",
@@ -236,8 +311,9 @@ domain! { "editing";
             "ceiling_material": string("Ceiling material (default: the wall material)."),
         }, ["min", "max"];
     create_stairs: Edit, "Create stairs",
-        "Create a flight of stairs filling a box: a number of steps rising toward a direction (each step a block \
-        from the bottom of the box), grouped.",
+        "Create a flight of stairs filling a box, grouped: a shortcut of create_primitive with shape stairs (same \
+        geometry, so step_height, open steps and the other stair options are in create_primitive) that takes the steps \
+        and the direction it rises toward.",
         {
             "min": vec3("Box minimum."), "max": vec3("Box maximum."),
             "steps": integer("Number of steps.", 2, 256),
@@ -692,6 +768,29 @@ fn extrude_face(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     })))
 }
 
+fn inset_face(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
+    let faces = target_faces(state, a, "faces")?;
+    let mut distance = a.opt_f64("distance", hp_geom::MIN_INSET, hp_geom::MAX_INSET)?.unwrap_or(16.0);
+    let mut depth = a.opt_f64("depth", -hp_geom::MAX_INSET, hp_geom::MAX_INSET)?.unwrap_or(0.0);
+    if a.opt_bool("snap")?.unwrap_or(false) {
+        let g = grid(state);
+        distance = ((distance / g).round() * g).max(g);
+        depth = (depth / g).round() * g;
+    }
+    let material = a.opt_str("material", MAX_NAME)?.map(material_name).transpose()?;
+    let params = hp_geom::InsetParams { distance, depth, material };
+    let ids = edit(state, "inset_face", |doc| doc.inset_faces(&faces, &params))?;
+    let bounds =
+        state.doc.scene().objects_bounds(&ids.iter().map(|id| ObjRef::Solid(*id)).collect::<Vec<_>>(), &|_| None);
+    Ok(ToolResult::json(json!({
+        "solid_ids": ids,
+        "brushes": ids.len(),
+        "distance": distance,
+        "depth": depth,
+        "bounds": bounds_json(bounds),
+    })))
+}
+
 fn get_brush_edges(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let id = solid_id(&state.doc, a, "solid")?;
     let n = state.doc.scene().solid(id).filter(|n| n.geom.valid).ok_or("the solid has no valid geometry")?;
@@ -706,6 +805,7 @@ fn get_brush_edges(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
 }
 
 const MAX_BEVEL_EDGES: usize = 64;
+const MAX_EXPANDED_EDGES: usize = 512;
 
 fn edge_pair(v: &Value) -> Option<[DVec3; 2]> {
     let list = v.as_array().filter(|l| l.len() == 2)?;
@@ -779,6 +879,34 @@ fn bevel_edges(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let radius = a.opt_f64("radius", hp_geom::MIN_BEVEL_RADIUS, hp_geom::MAX_BEVEL_RADIUS)?.unwrap_or(16.0);
     let segments = a.opt_u64("segments", 1, u64::from(hp_geom::MAX_BEVEL_SEGMENTS))?.unwrap_or(4) as u32;
     let inverse = a.opt_bool("inverse")?.unwrap_or(false);
+    let edges = match a.opt_enum("expand", &["none", "loop", "ring"])?.as_deref() {
+        Some(kind @ ("loop" | "ring")) => {
+            let kind = if kind == "ring" { hp_editor::RunKind::Ring } else { hp_editor::RunKind::Loop };
+            let selected = state.doc.selected_solid_ids();
+            let mut out: Vec<hp_editor::EdgeRef> = Vec::new();
+            for seed in &edges {
+                let run = state.doc.edge_run_refs(kind, seed, &selected, None).map_err(|e| e.to_string())?;
+                let mut any = false;
+                for e in run {
+                    if state.doc.bevel_opening(&e, inverse).is_some() && !out.iter().any(|x| x.same_edge(&e)) {
+                        out.push(e);
+                        any = true;
+                    }
+                }
+                if !any && !out.iter().any(|x| x.same_edge(seed)) {
+                    out.push(*seed);
+                }
+            }
+            if out.len() > MAX_EXPANDED_EDGES {
+                return Err(format!(
+                    "the loops have {} edges, at most {MAX_EXPANDED_EDGES} can be bevelled at once",
+                    out.len()
+                ));
+            }
+            out
+        }
+        _ => edges,
+    };
     let material = match (a.opt_str("material", MAX_NAME)?, a.opt_enum("new_faces", &["face", "current"])?.as_deref()) {
         (Some(m), _) => Some(material_name(m)?),
         (None, Some("current")) => Some(opt_material(state, a, "material")?).filter(|m| !m.trim().is_empty()),
@@ -840,6 +968,24 @@ fn merge_brushes(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let id =
         edit(state, "merge_brushes", |doc| if hull { doc.merge_solids(&solids) } else { doc.merge_brushes(&solids) })?;
     Ok(ToolResult::json(json!({ "solid_id": id, "merged": solids.len() })))
+}
+
+fn intersect_brushes(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
+    let solids = target_solids(state, a, "solid_ids")?;
+    if solids.len() < 2 {
+        return Err("intersecting needs at least two solids".to_owned());
+    }
+    let id = edit(state, "intersect_brushes", |doc| doc.intersect_solids(&solids))?;
+    Ok(ToolResult::json(json!({ "solid_id": id, "intersected": solids.len() })))
+}
+
+fn union_brushes(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
+    let solids = target_solids(state, a, "solid_ids")?;
+    if solids.len() < 2 {
+        return Err("a union needs at least two solids".to_owned());
+    }
+    let ids = edit(state, "union_brushes", |doc| doc.union_solids(&solids))?;
+    Ok(ToolResult::json(json!({ "solid_ids": ids })))
 }
 
 fn get_brush_vertices(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
@@ -940,17 +1086,57 @@ fn create_brush_from_points(state: &mut AppState, a: &Args<'_>) -> R<ToolResult>
     Ok(ToolResult::json(json!({ "solid_id": solid, "entity_id": entity, "material": material })))
 }
 
+struct Made {
+    ids: Vec<u32>,
+    entity: Option<u32>,
+    bounds: hp_geom::Aabb,
+    material: String,
+}
+
 fn create_primitive(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
-    let kind =
-        match a.opt_enum("shape", &["block", "wedge", "cylinder", "spike", "sphere", "arch", "torus"])?.as_deref() {
-            Some("wedge") => hp_geom::Primitive::Wedge,
-            Some("cylinder") => hp_geom::Primitive::Cylinder,
-            Some("spike") => hp_geom::Primitive::Spike,
-            Some("sphere") => hp_geom::Primitive::Sphere,
-            Some("arch") => hp_geom::Primitive::Arch,
-            Some("torus") => hp_geom::Primitive::Torus,
-            _ => hp_geom::Primitive::Block,
-        };
+    let made = make_shape(state, a, "create_primitive", false)?;
+    Ok(ToolResult::json(json!({
+        "solid_ids": made.ids,
+        "entity_id": made.entity,
+        "material": made.material,
+        "bounds": super::tools::bounds_json(Some(made.bounds)),
+    })))
+}
+
+fn make_shape(state: &mut AppState, a: &Args<'_>, label: &str, group: bool) -> R<Made> {
+    let kind = match a
+        .opt_enum(
+            "shape",
+            &[
+                "block",
+                "wedge",
+                "cylinder",
+                "spike",
+                "sphere",
+                "arch",
+                "torus",
+                "stairs",
+                "spiral_stairs",
+                "ramp",
+                "pillar",
+                "doorway",
+            ],
+        )?
+        .as_deref()
+    {
+        Some("wedge") => hp_geom::Primitive::Wedge,
+        Some("cylinder") => hp_geom::Primitive::Cylinder,
+        Some("spike") => hp_geom::Primitive::Spike,
+        Some("sphere") => hp_geom::Primitive::Sphere,
+        Some("arch") => hp_geom::Primitive::Arch,
+        Some("torus") => hp_geom::Primitive::Torus,
+        Some("stairs") => hp_geom::Primitive::Stairs,
+        Some("spiral_stairs") => hp_geom::Primitive::SpiralStairs,
+        Some("ramp") => hp_geom::Primitive::Ramp,
+        Some("pillar") => hp_geom::Primitive::Pillar,
+        Some("doorway") => hp_geom::Primitive::Doorway,
+        _ => hp_geom::Primitive::Block,
+    };
     let mut bounds = hp_geom::Aabb::new(a.vec3("min")?, a.vec3("max")?);
     if let Some(d) = opt_axis(a, "depth_from_selection")? {
         let (lo, hi) = hp_tools_create::new_depth_range(state, state.runtime.brush.last_created, d);
@@ -987,6 +1173,32 @@ fn create_primitive(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
         torus_rotation_arc: torus_arc.unwrap_or(d.torus_rotation_arc),
         torus_rotation_start: a.opt_f64("torus_start_angle", -360.0, 360.0)?.unwrap_or(d.torus_rotation_start),
         torus_rotation_height: rise,
+        stair_steps: a
+            .opt_u64("stair_steps", 1, u64::from(hp_geom::MAX_STAIR_STEPS))?
+            .map_or(d.stair_steps, |n| n as u32),
+        stair_step_height: a.opt_f64("stair_step_height", 0.0, 1024.0)?.unwrap_or(d.stair_step_height),
+        stair_open: a.opt_bool("stair_open")?.unwrap_or(d.stair_open),
+        spiral_inner: a.opt_f64("spiral_inner", 0.0, 65536.0)?.unwrap_or(d.spiral_inner),
+        spiral_angle: a
+            .opt_f64("spiral_angle", -hp_geom::MAX_STAIR_ANGLE, hp_geom::MAX_STAIR_ANGLE)?
+            .unwrap_or(d.spiral_angle),
+        spiral_start: a.opt_f64("spiral_start", -360.0, 360.0)?.unwrap_or(d.spiral_start),
+        ramp_angle: a.opt_f64("ramp_angle", 1.0, 89.0)?.unwrap_or(d.ramp_angle),
+        pillar_base: a.opt_f64("pillar_base", 0.0, 65536.0)?.unwrap_or(d.pillar_base),
+        pillar_capital: a.opt_f64("pillar_capital", 0.0, 65536.0)?.unwrap_or(d.pillar_capital),
+        pillar_inset: a.opt_f64("pillar_inset", 0.0, 65536.0)?.unwrap_or(d.pillar_inset),
+        door_width: a.opt_f64("door_width", 0.0, 65536.0)?.unwrap_or(d.door_width),
+        door_height: a.opt_f64("door_height", 0.0, 65536.0)?.unwrap_or(d.door_height),
+        door_thickness: a.opt_f64("door_thickness", 0.0, 65536.0)?.unwrap_or(d.door_thickness),
+        door_arch: a.opt_bool("door_arch")?.unwrap_or(d.door_arch),
+        door_arch_radius: a.opt_f64("door_arch_radius", 0.0, 65536.0)?.unwrap_or(d.door_arch_radius),
+        door_arch_segments: a
+            .opt_u64("door_arch_segments", 2, u64::from(hp_geom::MAX_DOOR_ARCH_SEGMENTS))?
+            .map_or(d.door_arch_segments, |n| n as u32),
+        direction: a
+            .opt_enum("direction", &["+y", "-y", "+x", "-x", "longest"])?
+            .and_then(|v| hp_geom::RiseDirection::from_id(&v))
+            .unwrap_or(d.direction),
         up_axis: opt_axis(a, "up")?.unwrap_or(2),
         up_flip: a.opt_bool("upside_down")?.unwrap_or(false),
         tex_scale: a.opt_f64("tex_scale", 0.01, 64.0)?.unwrap_or_else(|| {
@@ -995,7 +1207,7 @@ fn create_primitive(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
         }),
         ..d
     };
-    let (ids, entity) = edit(state, "create_primitive", |doc| {
+    let (ids, entity) = edit(state, label, |doc| {
         let (ids, entity) = match &class {
             Some(class) => {
                 let mut next = doc.peek_next_side_id();
@@ -1013,16 +1225,14 @@ fn create_primitive(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
             Some(e) => vec![ObjRef::Entity(e)],
             None => ids.iter().map(|id| ObjRef::Solid(*id)).collect(),
         };
+        if group && entity.is_none() {
+            doc.group(&objs)?;
+        }
         doc.select(&objs, SelectOp::Replace);
         Ok((ids, entity))
     })?;
     state.runtime.brush.last_created = Some(bounds);
-    Ok(ToolResult::json(json!({
-        "solid_ids": ids,
-        "entity_id": entity,
-        "material": material,
-        "bounds": super::tools::bounds_json(Some(bounds)),
-    })))
+    Ok(Made { ids, entity, bounds, material })
 }
 
 fn create_polygon_brush(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
@@ -1073,100 +1283,6 @@ fn create_polygon_brush(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
         Ok(id)
     })?;
     Ok(ToolResult::json(json!({ "solid_id": id, "material": material })))
-}
-
-fn create_curve_brushes(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
-    use hp_tools_create::curve;
-    let view = a.opt_enum("view", &["top", "front", "side"])?.ok_or("view is required")?;
-    let kind = match view.as_str() {
-        "top" => hp_app::ViewKind::Top,
-        "front" => hp_app::ViewKind::Front,
-        _ => hp_app::ViewKind::Side,
-    };
-    let list = a.get("points").and_then(Value::as_array).filter(|l| (2..=curve::MAX_CURVE_POINTS).contains(&l.len()));
-    let list = list.ok_or_else(|| format!("points must be 2 to {} [a, b] points", curve::MAX_CURVE_POINTS))?;
-    let snap = a.opt_bool("snap")?.unwrap_or(true);
-    let g = grid(state);
-    let mut points = Vec::with_capacity(list.len());
-    for p in list {
-        let ab: Vec<f64> = p
-            .as_array()
-            .filter(|x| x.len() == 2)
-            .into_iter()
-            .flatten()
-            .filter_map(Value::as_f64)
-            .filter(|f| f.is_finite() && f.abs() <= 16384.0)
-            .collect();
-        if ab.len() != 2 {
-            return Err("points must contain [a, b] points with numbers from -16384 to 16384".to_owned());
-        }
-        let p = glam::DVec2::new(ab[0], ab[1]);
-        points.push(if snap { curve::snap_point(p, g) } else { p });
-    }
-    let segments = a.opt_u64("subdivisions", 2, 4096)?.map_or(16, |n| n as u32);
-    let thickness = a.opt_f64("thickness", 1.0, 1024.0)?.unwrap_or(16.0);
-    let d = match kind {
-        hp_app::ViewKind::Top => 2,
-        hp_app::ViewKind::Front => 0,
-        _ => 1,
-    };
-    let (auto_lo, auto_hi) = hp_tools_create::new_depth_range(state, state.runtime.brush.last_created, d);
-    let lo = a.opt_f64("base", -16384.0, 16384.0)?.unwrap_or(auto_lo);
-    let height = a.opt_f64("height", 1.0, 16384.0)?.unwrap_or(auto_hi - auto_lo);
-    let material = opt_material(state, a, "material")?;
-    let class = a.opt_str("entity_class", MAX_NAME)?.map(|c| c.trim().to_owned());
-    if let Some(c) = &class {
-        check_class(c)?;
-    }
-    let tex_scale = a.opt_f64("tex_scale", 0.01, 64.0)?.unwrap_or_else(|| {
-        let s = state.settings.edit.default_texture_scale;
-        if s.is_finite() && s.abs() > 1e-6 { s } else { hp_geom::DEFAULT_TEXTURE_SCALE }
-    });
-    let lightmap_scale = match state.settings.edit.default_lightmap_scale {
-        s if s > 0 => s,
-        _ => 16,
-    };
-    let layout = curve::layout(&points, segments, thickness).map_err(|e| e.to_string())?;
-    layout.check().map_err(|e| e.to_string())?;
-    let spec = curve::CurveSpec {
-        kind,
-        points: &points,
-        segments,
-        thickness,
-        depth: (lo, lo + height),
-        material: &material,
-        tex_scale,
-        lightmap_scale,
-    };
-    let (ids, entity) = edit(state, "create_curve_brushes", |doc| {
-        let mut next = doc.peek_next_side_id();
-        let solids = curve::build_brushes(&spec, &mut || {
-            let id = next;
-            next = next.saturating_add(1);
-            id
-        })
-        .map_err(|e| hp_editor::EditError::Invalid(e.to_string()))?;
-        match &class {
-            Some(class) => {
-                let id = doc.create_brush_entity(class, &[], solids)?;
-                doc.select(&[ObjRef::Entity(id)], SelectOp::Replace);
-                Ok((doc.scene().entity_solid_ids(id), Some(id)))
-            }
-            None => Ok((doc.create_solids(solids, Owner::World)?, None)),
-        }
-    })?;
-    let bounds = ids.iter().filter_map(|id| state.doc.scene().solid(*id).map(|n| n.bounds)).reduce(|a, b| a.union(&b));
-    state.runtime.brush.last_created = bounds;
-    Ok(ToolResult::json(json!({
-        "solid_ids": ids,
-        "entity_id": entity,
-        "count": ids.len(),
-        "length": layout.length,
-        "points": points.iter().map(|p| [p.x, p.y]).collect::<Vec<_>>(),
-        "depth": [lo, lo + height],
-        "material": material,
-        "bounds": bounds_json(bounds),
-    })))
 }
 
 fn snap_brush_vertices(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
@@ -1251,7 +1367,7 @@ fn create_room(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
 
 fn create_stairs(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let b = hp_geom::Aabb::new(a.vec3("min")?, a.vec3("max")?);
-    let n = a.opt_u64("steps", 2, 256)?.ok_or("steps is required")? as usize;
+    let n = a.opt_u64("steps", 2, 256)?.ok_or("steps is required")?;
     let dir = a.opt_enum("direction", &["+x", "-x", "+y", "-y"])?.ok_or("direction is required")?;
     let size = b.size();
     let axis = if dir.ends_with('x') { 0 } else { 1 };
@@ -1259,34 +1375,16 @@ fn create_stairs(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     if run < 1.0 || rise < 1.0 || size[1 - axis] < 1.0 {
         return Err("each step must be at least 1 unit deep, wide and high".to_owned());
     }
-    let material = opt_material(state, a, "material")?;
-    let boxes: Vec<hp_geom::Aabb> = (0..n)
-        .map(|i| {
-            let k = if dir.starts_with('+') { i } else { n - 1 - i };
-            let mut lo = b.min;
-            let mut hi = b.max;
-            lo[axis] = b.min[axis] + run * k as f64;
-            hi[axis] = lo[axis] + run;
-            hi.z = b.min.z + rise * (i + 1) as f64;
-            hp_geom::Aabb::new(lo, hi)
-        })
-        .collect();
-    let ids = edit(state, "create_stairs", |doc| {
-        let mut all = Vec::new();
-        for bx in &boxes {
-            let params = hp_geom::PrimitiveParams {
-                kind: hp_geom::Primitive::Block,
-                bounds: *bx,
-                material: material.clone(),
-                ..Default::default()
-            };
-            all.extend(doc.create_primitive(&params, Owner::World)?);
+    let mut map = serde_json::Map::new();
+    map.insert("shape".to_owned(), json!("stairs"));
+    map.insert("stair_steps".to_owned(), json!(n));
+    for key in ["min", "max", "direction", "material"] {
+        if let Some(v) = a.get(key) {
+            map.insert(key.to_owned(), v.clone());
         }
-        let objs: Vec<ObjRef> = all.iter().map(|id| ObjRef::Solid(*id)).collect();
-        doc.group(&objs)?;
-        Ok(all)
-    })?;
-    Ok(ToolResult::json(json!({ "solid_ids": ids, "step_depth": run, "step_height": rise })))
+    }
+    let made = make_shape(state, &Args { map: &map }, "create_stairs", true)?;
+    Ok(ToolResult::json(json!({ "solid_ids": made.ids, "step_depth": run, "step_height": rise })))
 }
 
 fn make_hint_brushes(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
@@ -1675,6 +1773,24 @@ mod tests {
     }
 
     #[test]
+    fn intersect_and_union_brushes() {
+        let mut s = hp_app::testing::test_state();
+        let mk = |s: &mut _, min: [i32; 3], max: [i32; 3]| {
+            ok(s, "create_primitive", json!({ "min": min, "max": max }))["solid_ids"][0].clone()
+        };
+        let a = mk(&mut s, [0, 0, 900], [64, 64, 964]);
+        let b = mk(&mut s, [32, 0, 900], [96, 64, 964]);
+        let r = ok(&mut s, "union_brushes", json!({ "solid_ids": [a, b] }));
+        assert_eq!(r["solid_ids"].as_array().unwrap().len(), 1);
+        assert_eq!(s.doc.undo_label(), Some("MCP: union_brushes"));
+        let c = mk(&mut s, [0, 0, 1200], [64, 64, 1264]);
+        let d = mk(&mut s, [32, 0, 1200], [96, 64, 1264]);
+        let r = ok(&mut s, "intersect_brushes", json!({ "solid_ids": [c, d] }));
+        assert_eq!(r["solid_id"], c);
+        err(&mut s, "intersect_brushes", json!({ "solid_ids": [c] }));
+    }
+
+    #[test]
     fn bevel_round_cove_and_fill() {
         let mut s = hp_app::testing::test_state();
         let edges = ok(&mut s, "get_brush_edges", json!({ "solid": 3 }));
@@ -1728,6 +1844,32 @@ mod tests {
         err(&mut s, "bevel_edges", json!({ "solid": 3, "edge": top, "segments": 40 }));
         err(&mut s, "bevel_edges", json!({ "solid": 3, "edge": "top" }));
         err(&mut s, "get_brush_edges", json!({ "solid": 999 }));
+    }
+
+    #[test]
+    fn inset_a_face_keeps_the_volume() {
+        let mut s = hp_app::testing::test_state();
+        let before = s.doc.scene().solid(3).unwrap().geom.volume();
+        let r = ok(&mut s, "inset_face", json!({ "faces": [{ "solid": 3, "side": 5 }], "distance": 4 }));
+        assert_eq!(r["brushes"], 5);
+        assert_eq!(r["solid_ids"][0], 3);
+        assert_eq!(s.doc.undo_label(), Some("MCP: inset_face"));
+        let vol: f64 = r["solid_ids"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|id| s.doc.scene().solid(id.as_u64().unwrap() as u32).unwrap().geom.volume())
+            .sum();
+        assert!((vol - before).abs() < 1e-6);
+        assert!(s.doc.undo());
+        let r = ok(
+            &mut s,
+            "inset_face",
+            json!({ "faces": [{ "solid": 3, "side": 5 }], "distance": 5, "depth": 3, "snap": true }),
+        );
+        assert_eq!(r["depth"], 0.0);
+        err(&mut s, "inset_face", json!({ "faces": [{ "solid": 3, "side": 5 }], "distance": 1000 }));
+        err(&mut s, "inset_face", json!({ "faces": [{ "solid": 3, "side": 99 }] }));
     }
 
     #[test]
@@ -1821,6 +1963,33 @@ mod tests {
         );
         assert_eq!(r["solid_ids"].as_array().unwrap().len(), 6);
         err(&mut s, "create_primitive", json!({ "min": [0, 0, 0], "max": [0, 10, 10] }));
+        let r = ok(
+            &mut s,
+            "create_primitive",
+            json!({ "shape": "stairs", "min": [2000, 0, 0], "max": [2064, 128, 96], "stair_steps": 6 }),
+        );
+        assert_eq!(r["solid_ids"].as_array().unwrap().len(), 6);
+        let r = ok(
+            &mut s,
+            "create_primitive",
+            json!({ "shape": "doorway", "min": [2100, 0, 0], "max": [2228, 16, 128], "door_width": 48, "door_height": 96 }),
+        );
+        assert_eq!(r["solid_ids"].as_array().unwrap().len(), 3);
+        for shape in ["spiral_stairs", "ramp", "pillar"] {
+            let r =
+                ok(&mut s, "create_primitive", json!({ "shape": shape, "min": [2300, 0, 0], "max": [2428, 128, 96] }));
+            assert!(!r["solid_ids"].as_array().unwrap().is_empty(), "{shape}");
+        }
+        err(
+            &mut s,
+            "create_primitive",
+            json!({ "shape": "ramp", "min": [0, 0, 0], "max": [64, 64, 64], "ramp_angle": 95 }),
+        );
+        err(
+            &mut s,
+            "create_primitive",
+            json!({ "shape": "doorway", "min": [0, 0, 0], "max": [64, 16, 64], "door_width": 63 }),
+        );
         s.doc.select(&[ObjRef::Solid(2)], SelectOp::Replace);
         let r = ok(
             &mut s,
@@ -1868,6 +2037,44 @@ mod tests {
         assert_eq!(r["solid_ids"].as_array().unwrap().len(), 8);
         assert_eq!(r["step_height"], 8.0);
         err(&mut s, "create_stairs", json!({ "min": [0, 0, 0], "max": [4, 64, 64], "steps": 8, "direction": "+x" }));
+        let top_x = |s: &hp_app::AppState, ids: &serde_json::Value| {
+            let id = ids.as_array().unwrap().iter().filter_map(serde_json::Value::as_u64).max_by_key(|i| {
+                s.doc.scene().objects_bounds(&[ObjRef::Solid(*i as u32)], &|_| None).map_or(0, |b| b.max.z as i64)
+            });
+            let b = s.doc.scene().objects_bounds(&[ObjRef::Solid(id.unwrap() as u32)], &|_| None).unwrap();
+            (b.min.x + b.max.x) * 0.5
+        };
+        let r = ok(
+            &mut s,
+            "create_primitive",
+            json!({ "shape": "stairs", "min": [3000, 0, 0], "max": [3128, 64, 64], "direction": "-x" }),
+        );
+        assert!(top_x(&s, &r["solid_ids"]) < 3064.0);
+        let r = ok(
+            &mut s,
+            "create_primitive",
+            json!({ "shape": "stairs", "min": [3200, 0, 0], "max": [3328, 64, 64], "direction": "longest" }),
+        );
+        assert!(top_x(&s, &r["solid_ids"]) > 3264.0);
+        err(
+            &mut s,
+            "create_primitive",
+            json!({ "shape": "stairs", "min": [0, 0, 0], "max": [64, 64, 64], "direction": "up" }),
+        );
+        let r = ok(
+            &mut s,
+            "create_primitive",
+            json!({
+                "shape": "doorway", "min": [3400, 0, 0], "max": [3528, 16, 128], "door_width": 64,
+                "door_height": 96, "door_arch": true, "door_arch_segments": 6,
+            }),
+        );
+        assert_eq!(r["solid_ids"].as_array().unwrap().len(), 8);
+        err(
+            &mut s,
+            "create_primitive",
+            json!({ "shape": "doorway", "min": [0, 0, 0], "max": [128, 16, 128], "door_width": 64, "door_arch": true, "door_arch_radius": 10 }),
+        );
         let r = ok(
             &mut s,
             "create_polygon_brush",
@@ -1949,6 +2156,45 @@ mod tests {
         err(&mut s, "create_curve_brushes", json!({ "view": "top", "points": [[0, 0], [1, 1]] }));
         err(&mut s, "create_curve_brushes", json!({ "view": "3d", "points": [[0, 0], [256, 0]] }));
         assert_eq!(s.doc.stats().solids, solids, "refused curves create nothing");
+    }
+
+    #[test]
+    fn curves_are_read_and_edited() {
+        let mut s = hp_app::testing::test_state();
+        s.doc.clear_selection();
+        let r = ok(
+            &mut s,
+            "create_curve_brushes",
+            json!({ "view": "top", "points": [[0, 0], [128, 64], [256, 0]], "subdivisions": 6, "thickness": 32, "profile": "curb", "curb_width": 8, "curb_height": 4, "roll_start": 3, "auto_bank": 5 }),
+        );
+        assert_eq!(r["count"], 18);
+        assert_eq!(r["profile"], "curb");
+        let first = r["solid_ids"][0].as_u64().unwrap();
+        let before = s.doc.stats().solids;
+        let (undo, _) = s.doc.history_len();
+        let got = ok(&mut s, "get_curve_brushes", json!({ "solid_id": first }));
+        assert_eq!(got["points"], json!([[0.0, 0.0], [128.0, 64.0], [256.0, 0.0]]));
+        assert_eq!(got["solid_ids"].as_array().unwrap().len(), 18);
+        assert_eq!(got["roll_start"], 3.0);
+        assert_eq!(got["auto_bank"], 5.0);
+        let e = ok(
+            &mut s,
+            "edit_curve_brushes",
+            json!({ "solid_id": first, "points": [[0, 0], [64, 32], [128, 64], [256, 0]], "profile": "ditch", "subdivisions": 5, "roll_end": -4 }),
+        );
+        assert_eq!(e["count"], 10);
+        assert_eq!(s.doc.stats().solids, before - 18 + 10);
+        assert_eq!(s.doc.history_len().0, undo + 1, "one undo step");
+        let again = ok(&mut s, "get_curve_brushes", json!({}));
+        assert_eq!(again["profile"], "ditch");
+        assert_eq!(again["points"].as_array().unwrap().len(), 4);
+        assert_eq!(again["roll_start"], 3.0, "kept");
+        assert_eq!(again["roll_end"], -4.0);
+        let e = err(&mut s, "edit_curve_brushes", json!({ "profile": "ditch", "ditch_depth": 500 }));
+        assert!(e.contains("ditch"), "{e}");
+        assert_eq!(s.doc.stats().solids, before - 18 + 10, "refused edits change nothing");
+        let e = err(&mut s, "get_curve_brushes", json!({ "solid_id": 4_000_000 }));
+        assert!(e.contains("not a brush made by the curve tool"), "{e}");
     }
 
     #[test]

@@ -3,6 +3,7 @@
 pub mod bevel;
 mod block;
 mod block_preview;
+mod block_structures;
 mod clip;
 mod clip3d;
 mod common;
@@ -15,10 +16,12 @@ mod overlay_tool;
 pub mod path;
 mod picker;
 mod polygon;
+pub mod road;
 mod tr;
 
 pub mod model_bvh;
 pub mod prefab_place;
+pub mod roadside;
 mod sprinkle;
 pub mod sprinkle_def;
 
@@ -42,6 +45,7 @@ pub use overlay_tool::{OverlayTool, overlay_basis, overlay_keyvalues};
 pub use path::{PATH_TR, PathTool};
 pub use polygon::{MAX_POLYGON_POINTS, PointCheck, PolygonOptions, PolygonTool, check_point, is_convex_outline};
 pub use prefab_place::{PREFAB_TR, insert_prefab};
+pub use road::{ROAD_TR, RoadTool};
 pub use sprinkle::{SPRINKLE_TR, SprinkleTool, user_sprinkle_dir};
 pub use tr::TR;
 
@@ -52,6 +56,7 @@ pub fn register_translations() {
     hp_app::i18n::register(PREFAB_TR);
     hp_app::i18n::register(PATH_TR);
     hp_app::i18n::register(CURVE_TR);
+    hp_app::i18n::register(ROAD_TR);
     hp_app::i18n::register(BEVEL_TR);
 }
 
@@ -67,5 +72,6 @@ pub fn tools() -> Vec<Box<dyn hp_app::Tool>> {
         Box::new(DecalTool::new()),
         Box::new(OverlayTool::new()),
         Box::new(PathTool::new()),
+        Box::new(RoadTool::new()),
     ]
 }

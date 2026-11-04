@@ -65,9 +65,23 @@ Textures :
 - Creuser ne touche que le brush cliqué. Pour découper une forme à travers plusieurs brushes, utilisez [Creuser](brush-operations.md) avec un brush, ou répétez l'outil sur chaque brush.
 - Les faces d'un trou creusé sont de vraies faces : changez leur texture ensuite avec l'[outil texture](texture-tool.md).
 
+## Décaler une face
+
+**Outils > Décaler la face...** (aussi le bouton **Décaler la face...** de la barre d'options de cet outil) agit sur les faces sélectionnées, avec l'outil texture ou la sélection de faces de l'outil de sélection. Il fait reculer les arêtes de chaque face vers l'intérieur d'une distance et découpe le brush en morceaux convexes : un cadre de brushes autour de la face plus le bloc intérieur, de sorte que le résultat reste composé de brushes convexes valides. Décaler la face d'une boîte donne 5 brushes (4 pour le cadre, 1 bloc intérieur) dont les volumes s'additionnent au volume du brush d'origine.
+
+La fenêtre demande :
+
+- **Distance** : de combien les arêtes reculent vers l'intérieur, en unités (0,125 à 16384). Elle doit rester inférieure à la moitié de la partie la plus étroite de la face.
+- **Profondeur** : 0 laisse le bloc intérieur au ras de la face. Une valeur positive le surélève hors de la face, une valeur négative l'enfonce dans le brush (décalage puis extrusion, comme I puis E dans Blender). L'enfoncement doit rester sous l'épaisseur du brush.
+- **Aligner sur la grille** : arrondit la distance et la profondeur à la grille (activé par défaut quand l'aimantation est active).
+
+Les faces conservées gardent leur texture et leur alignement. Les nouvelles faces (les côtés du trou du cadre et du bloc intérieur) prennent le matériau de la face décalée et, quand elles lui sont parallèles, son alignement. Les overlays et cubemaps qui utilisaient la face suivent ses morceaux. Le premier morceau garde l'id du brush, les nouveaux morceaux ont le même propriétaire, groupe et visgroups, et toute l'opération est une seule étape d'annulation (**Décalage de face**). Tous les morceaux sont sélectionnés.
+
+Limites : une seule face par brush, le brush doit être convexe et valide, et les faces de displacement sont refusées. Sinon un avertissement explique pourquoi rien n'a été fait (par exemple **La distance dépasse la taille de la face**).
+
 ## MCP
 
-L'outil MCP `extrude_face` fait la même chose depuis une application d'IA : `solid`, `side` (l'indice de la face dans le solide, donné par `get_faces`), les `points` du contour en positions du monde sur la face, `mode` (`carve` ou `extrude`), `depth`, `through`, et la texture des nouvelles faces (`new_faces` : `face` ou `current`, ou un `material`). `get_tool_options` et `set_tool_options` lisent et changent les options de l'outil lui-même (outil `extrude` : `mode`, `depth`, `through`, `new_faces`). Voir la [référence des outils MCP](../../MCP.md).
+L'outil MCP `extrude_face` fait la même chose depuis une application d'IA : `solid`, `side` (l'indice de la face dans le solide, donné par `get_faces`), les `points` du contour en positions du monde sur la face, `mode` (`carve` ou `extrude`), `depth`, `through`, et la texture des nouvelles faces (`new_faces` : `face` ou `current`, ou un `material`). `get_tool_options` et `set_tool_options` lisent et changent les options de l'outil lui-même (outil `extrude` : `mode`, `depth`, `through`, `new_faces`). L'outil MCP `inset_face` décale des faces depuis une application d'IA : `faces` (`[{solid, side}]`, par défaut les faces sélectionnées, sinon les faces de `ids`), `distance`, `depth` (positif surélève, négatif enfonce le bloc intérieur), `snap` (arrondir à la grille de l'éditeur) et `material` pour les nouvelles faces. Voir la [référence des outils MCP](../../MCP.md).
 
 ## FAQ
 

@@ -368,7 +368,7 @@ fn params(kind: ViewKind, mode: RenderMode, msaa: bool) -> ViewParams {
         size: [640, 400],
         kind,
         mode,
-        grid: Some(GridParams { size: 16.0, major_every: 8, show_1024: true, opacity: 1.0 }),
+        grid: Some(GridParams { size: 16.0, major_every: 8, show_1024: true, opacity: 1.0, cells: true }),
         background: [0.12, 0.12, 0.14],
         selection_color: [1.0, 0.1, 0.1, 0.45],
         show_sprites: true,
@@ -498,7 +498,7 @@ fn grid_lines_are_crisp_and_aligned() {
     let p = ViewParams {
         size: [256, 256],
         kind: ViewKind::Ortho { axis: OrthoAxis::Top, center: [0.0; 3], pixels_per_unit: 1.0 },
-        grid: Some(GridParams { size: 8.0, major_every: 4, show_1024: true, opacity: 1.0 }),
+        grid: Some(GridParams { size: 8.0, major_every: 4, show_1024: true, opacity: 1.0, cells: true }),
         background: [0.0; 3],
         ..params(ortho(OrthoAxis::Top), RenderMode::Wireframe, false)
     };

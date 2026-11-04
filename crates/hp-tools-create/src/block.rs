@@ -44,6 +44,23 @@ pub struct BlockOptions {
     pub torus_arc: f64,
     pub torus_start_angle: f64,
     pub torus_height: f64,
+    pub stair_steps: u32,
+    pub stair_step_height: f64,
+    pub stair_open: bool,
+    pub spiral_inner: f64,
+    pub spiral_angle: f64,
+    pub spiral_start: f64,
+    pub ramp_angle: f64,
+    pub pillar_base: f64,
+    pub pillar_capital: f64,
+    pub pillar_inset: f64,
+    pub door_width: f64,
+    pub door_height: f64,
+    pub door_thickness: f64,
+    pub door_arch: bool,
+    pub door_arch_radius: f64,
+    pub door_arch_segments: u32,
+    pub direction: hp_geom::RiseDirection,
     pub reorient: bool,
     pub tex_scale: f64,
     pub create_as: CreateAs,
@@ -64,6 +81,23 @@ impl Default for BlockOptions {
             torus_arc: 360.0,
             torus_start_angle: 0.0,
             torus_height: 0.0,
+            stair_steps: 8,
+            stair_step_height: 0.0,
+            stair_open: false,
+            spiral_inner: 16.0,
+            spiral_angle: 270.0,
+            spiral_start: 0.0,
+            ramp_angle: 30.0,
+            pillar_base: 16.0,
+            pillar_capital: 16.0,
+            pillar_inset: 8.0,
+            door_width: 0.0,
+            door_height: 0.0,
+            door_thickness: 0.0,
+            door_arch: false,
+            door_arch_radius: 0.0,
+            door_arch_segments: 8,
+            direction: hp_geom::RiseDirection::PlusY,
             reorient: true,
             tex_scale: hp_geom::DEFAULT_TEXTURE_SCALE,
             create_as: CreateAs::World,
@@ -100,6 +134,11 @@ pub(crate) fn primitive_key(kind: Primitive) -> &'static str {
         Primitive::Sphere => "create.prim.sphere",
         Primitive::Arch => "create.prim.arch",
         Primitive::Torus => "create.prim.torus",
+        Primitive::Stairs => "create.prim.stairs",
+        Primitive::SpiralStairs => "create.prim.spiral_stairs",
+        Primitive::Ramp => "create.prim.ramp",
+        Primitive::Pillar => "create.prim.pillar",
+        Primitive::Doorway => "create.prim.doorway",
     }
 }
 
@@ -300,7 +339,7 @@ impl BlockTool {
 
     fn params(&self, material: String, lightmap_scale: i32, bounds: Aabb) -> PrimitiveParams {
         let o = &self.options;
-        PrimitiveParams {
+        let mut params = PrimitiveParams {
             kind: o.kind,
             bounds,
             material,
@@ -319,7 +358,10 @@ impl BlockTool {
             tex_scale: o.tex_scale,
             lightmap_scale: if lightmap_scale > 0 { lightmap_scale } else { 16 },
             round_vertices: true,
-        }
+            ..PrimitiveParams::default()
+        };
+        crate::block_structures::apply(o, &mut params);
+        params
     }
 
     pub fn create(&mut self, state: &mut AppState, bounds: Aabb) -> Option<usize> {
@@ -604,6 +646,7 @@ impl BlockTool {
         let rising = match o.kind {
             Primitive::Arch => o.arch_add_height != 0.0,
             Primitive::Torus => o.torus_height != 0.0,
+            Primitive::Stairs | Primitive::SpiralStairs | Primitive::Ramp => true,
             _ => false,
         };
         PreviewStyle {
@@ -859,7 +902,7 @@ impl Tool for BlockTool {
             }
             ui.separator();
             self.params_ui(ui, false);
-            if is_round(self.options.kind) {
+            if has_preview(self.options.kind) {
                 self.preview_ui(ui, state);
                 ui.separator();
             }
@@ -952,7 +995,10 @@ impl Tool for BlockTool {
         let count = value.parse::<u32>().ok().filter(|v| (3..=MAX_PRIMITIVE_SIDES).contains(v));
         let set = |slot: &mut f64, v: Option<f64>| v.map(|v| *slot = v).is_some();
         match key {
-            "kind" => match Primitive::ALL.into_iter().find(|k| format!("{k:?}").eq_ignore_ascii_case(value)) {
+            "kind" => match Primitive::ALL
+                .into_iter()
+                .find(|k| format!("{k:?}").eq_ignore_ascii_case(value) || k.id().eq_ignore_ascii_case(value))
+            {
                 Some(k) => {
                     o.kind = k;
                     true
@@ -994,7 +1040,7 @@ impl Tool for BlockTool {
                     false
                 }
             }
-            _ => false,
+            _ => crate::block_structures::set_option(o, key, value).unwrap_or(false),
         }
     }
 
@@ -1010,7 +1056,7 @@ impl Tool for BlockTool {
             ToolOption::new(
                 "kind",
                 format!("{:?}", o.kind).to_ascii_lowercase(),
-                "primitive: block, wedge, cylinder, spike, sphere, arch or torus",
+                "primitive: block, wedge, cylinder, spike, sphere, arch, torus, stairs, spiral_stairs, ramp, pillar or doorway",
             ),
             ToolOption::new("sides", o.sides.to_string(), "sides of round primitives (3 to 64)"),
             ToolOption::new("wall", num(o.arch_wall_width), "arch wall width in units (1 or more)"),
@@ -1047,6 +1093,9 @@ impl Tool for BlockTool {
             ),
             ToolOption::new("keep_active", on(o.keep_active), "on: stay in the block tool after creating"),
         ]
+        .into_iter()
+        .chain(crate::block_structures::option_values(o, &num))
+        .collect()
     }
 }
 
@@ -1087,6 +1136,7 @@ impl BlockTool {
                 o.torus_arc = o.torus_arc.min(360.0);
             }
         }
+        crate::block_structures::params_ui(ui, o, grid);
         if o.kind == Primitive::Arch {
             let rise = egui::DragValue::new(&mut o.arch_add_height).range(-4096.0..=4096.0).speed(1.0);
             param(ui, "create.block.add_height", "create.block.add_height_tip", rise);
@@ -1123,7 +1173,19 @@ pub(crate) fn create_as_ui(
 }
 
 fn is_round(kind: Primitive) -> bool {
-    matches!(kind, Primitive::Cylinder | Primitive::Spike | Primitive::Sphere | Primitive::Arch | Primitive::Torus)
+    matches!(
+        kind,
+        Primitive::Cylinder
+            | Primitive::Spike
+            | Primitive::Sphere
+            | Primitive::Arch
+            | Primitive::Torus
+            | Primitive::Pillar
+    )
+}
+
+fn has_preview(kind: Primitive) -> bool {
+    is_round(kind) || crate::block_structures::is_structure(kind)
 }
 
 const PREVIEW_SIZE: f32 = 220.0;
@@ -1137,7 +1199,7 @@ fn length(v: &mut f64) -> egui::DragValue<'_> {
     egui::DragValue::new(v).range(1.0..=16384.0).speed(1.0)
 }
 
-fn param(ui: &mut Ui, label: &str, tip: &str, value: impl egui::Widget) {
+pub(crate) fn param(ui: &mut Ui, label: &str, tip: &str, value: impl egui::Widget) {
     let tip = t!(tip);
     ui.label(t!(label)).on_hover_text(tip);
     ui.add(value).on_hover_text(tip);
@@ -1169,6 +1231,9 @@ fn paint_primitive_icon(painter: &egui::Painter, r: Rect, kind: Primitive, color
     let p = |x: f32, y: f32| Pos2::new(r.left() + x * r.width(), r.top() + y * r.height());
     let poly = |pts: Vec<Pos2>| Shape::closed_line(pts, stroke);
     let line = |pts: Vec<Pos2>| Shape::line(pts, stroke);
+    if crate::block_structures::paint_icon(painter, r, kind, color) {
+        return;
+    }
     let mut shapes = Vec::new();
     match kind {
         Primitive::Block => {
@@ -1216,6 +1281,7 @@ fn paint_primitive_icon(painter: &egui::Painter, r: Rect, kind: Primitive, color
             shapes.push(poly(arc_points(c, r.width() * 0.5, r.height() * 0.36, 0.0, 360.0, 32)));
             shapes.push(poly(arc_points(c, r.width() * 0.2, r.height() * 0.12, 0.0, 360.0, 20)));
         }
+        _ => {}
     }
     painter.extend(shapes);
 }

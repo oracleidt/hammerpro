@@ -108,9 +108,10 @@ impl GridFrame {
         }
     }
 
-    pub fn from_view_grid(g: &ViewGrid) -> GridFrame {
+    pub fn from_view_grid(g: &ViewGrid, kind: ViewKind) -> GridFrame {
         let g = g.sanitized();
         GridFrame { origin: DVec3::from_array(g.origin), major_every: g.major_every, ..GridFrame::uniform(g.size) }
+            .rotated_in_view(kind, g.angle)
     }
 
     pub fn from_spec(spec: &GridSpec, outside: f64) -> GridFrame {
@@ -414,16 +415,18 @@ impl AppState {
             .unwrap_or(ViewKind::Top)
     }
 
-    fn global_grid(&self) -> ActiveGrid {
-        ActiveGrid { frame: GridFrame::uniform(self.settings.edit.grid_size), source: GridSource::Global }
+    fn global_grid(&self, kind: ViewKind) -> ActiveGrid {
+        let angle = self.settings.grid.per_view.get(kind).sanitized().angle;
+        let frame = GridFrame::uniform(self.settings.edit.grid_size).rotated_in_view(kind, angle);
+        ActiveGrid { frame, source: GridSource::Global }
     }
 
-    fn custom_active(&self, name: &str) -> ActiveGrid {
+    fn custom_active(&self, name: &str, kind: ViewKind) -> ActiveGrid {
         match self.find_grid(name) {
             Some((spec, source)) => {
                 ActiveGrid { frame: GridFrame::from_spec(&spec, self.settings.edit.grid_size), source }
             }
-            None => self.global_grid(),
+            None => self.global_grid(kind),
         }
     }
 
@@ -434,14 +437,15 @@ impl AppState {
     pub fn active_grid(&self, kind: ViewKind) -> ActiveGrid {
         let g = &self.settings.grid;
         match g.mode {
-            GridMode::Global => self.global_grid(),
+            GridMode::Global => self.global_grid(kind),
             GridMode::PerView => {
-                ActiveGrid { frame: GridFrame::from_view_grid(g.per_view.get(kind)), source: GridSource::View(kind) }
+                let frame = GridFrame::from_view_grid(g.per_view.get(kind), kind);
+                ActiveGrid { frame, source: GridSource::View(kind) }
             }
-            GridMode::Custom => self.custom_active(&g.custom),
+            GridMode::Custom => self.custom_active(&g.custom, kind),
             GridMode::Selection => match self.selection_grid_name() {
-                Some(name) => self.custom_active(&name),
-                None => self.global_grid(),
+                Some(name) => self.custom_active(&name, kind),
+                None => self.global_grid(kind),
             },
         }
     }
@@ -617,8 +621,12 @@ impl AppState {
 
     pub fn set_grid_mode(&mut self, mode: GridMode) {
         let g = &mut self.settings.grid;
-        if mode == GridMode::PerView && g.per_view == Default::default() {
-            g.per_view = crate::settings::PerViewGrids::uniform(self.settings.edit.grid_size);
+        if mode == GridMode::PerView && g.per_view.is_unset() {
+            let mut next = crate::settings::PerViewGrids::uniform(self.settings.edit.grid_size);
+            for kind in [ViewKind::Perspective, ViewKind::Top, ViewKind::Front, ViewKind::Side] {
+                next.get_mut(kind).angle = g.per_view.get(kind).angle;
+            }
+            g.per_view = next;
         }
         if g.mode != mode {
             g.mode = mode;

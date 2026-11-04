@@ -185,6 +185,25 @@ impl Document {
         self.map_disps(faces, "Displacement noise", |d, poly, _| hp_geom::add_noise(d, poly, min, max, seed))
     }
 
+    pub fn disp_fractal_noise(
+        &mut self,
+        faces: &[FaceRef],
+        min: f64,
+        max: f64,
+        params: &hp_geom::NoiseParams,
+    ) -> EditResult<usize> {
+        if !min.is_finite() || !max.is_finite() || min.abs() > 16384.0 || max.abs() > 16384.0 {
+            return Err(EditError::Invalid("noise range".to_owned()));
+        }
+        if !params.scale.is_finite() || params.scale <= 0.0 || !params.persistence.is_finite() {
+            return Err(EditError::Invalid("noise parameters".to_owned()));
+        }
+        let (lo, hi) = if min <= max { (min, max) } else { (max, min) };
+        self.map_disps(faces, "Fractal noise", |d, poly, _| {
+            hp_geom::add_height_fn(d, poly, |base| lo + (hi - lo) * (hp_geom::fractal_noise(base, params) * 0.5 + 0.5))
+        })
+    }
+
     pub fn scale_disps(&mut self, faces: &[FaceRef], factor: f64) -> EditResult<usize> {
         if !factor.is_finite() || factor.abs() > 1000.0 {
             return Err(EditError::Invalid("displacement scale".to_owned()));
@@ -317,6 +336,11 @@ mod tests {
         let wall = FaceRef::new(top.solid, 2);
         assert_eq!(doc.invert_disp_alpha(&[wall]).expect("nothing"), 0);
         assert!(doc.disp_noise(&[top], f64::NAN, 1.0, 1).is_err());
+        let fractal = hp_geom::NoiseParams { scale: 32.0, octaves: 3, persistence: 0.5, seed: 5 };
+        let n = check_undo_redo(&mut doc, |d| d.disp_fractal_noise(&[top], -8.0, 8.0, &fractal).expect("fractal"));
+        assert!(n > 0);
+        assert!(doc.disp_fractal_noise(&[top], f64::NAN, 1.0, &fractal).is_err());
+        assert!(doc.disp_fractal_noise(&[top], 0.0, 1.0, &hp_geom::NoiseParams { scale: 0.0, ..fractal }).is_err());
         assert!(doc.scale_disps(&[top], f64::INFINITY).is_err());
     }
 

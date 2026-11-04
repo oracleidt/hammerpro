@@ -76,6 +76,10 @@ impl DisplacementTool {
             SculptOp::Push => "push",
             SculptOp::Carve => "carve",
             SculptOp::Project => "project",
+            SculptOp::Pinch => "pinch",
+            SculptOp::Grab => "grab",
+            SculptOp::Inflate => "inflate",
+            SculptOp::Flatten => "flatten",
         };
         let push = match s.push_mode {
             PushMode::Absolute => "absolute",
@@ -96,7 +100,7 @@ impl DisplacementTool {
             TagValue::Auto => "auto",
         };
         let c = b.custom_axis;
-        vec![
+        let mut options = vec![
             ToolOption::new(
                 "mode",
                 mode,
@@ -122,7 +126,7 @@ impl DisplacementTool {
             ToolOption::new(
                 "strength",
                 num(b.strength),
-                "brush intensity: raise and lower speed in units per second (0 to 8192)",
+                "brush intensity: raise, lower, pinch and inflate speed in units per second (0 to 8192)",
             ),
             ToolOption::new("smooth", num(b.smooth), "smoothing strength, also of Shift while sculpting (0 to 1)"),
             ToolOption::new(
@@ -164,7 +168,11 @@ impl DisplacementTool {
                 b.blend_channel.map_or_else(|| "alpha".to_owned(), |ch| (ch + 1).to_string()),
                 "alpha (two texture blend) or the texture 1 to 4 of a 4-way blend material",
             ),
-            ToolOption::new("sculpt", sculpt, "sculpt operation: push, carve or project (onto the selected brushes)"),
+            ToolOption::new(
+                "sculpt",
+                sculpt,
+                "sculpt operation: push, carve, project (onto the selected brushes), pinch (pull toward the stroke                  center), grab (drag the vertices under the brush at the stroke start along the mouse), inflate                  (along each surface normal) or flatten (toward the average plane). Ctrl inverts",
+            ),
             ToolOption::new("push_mode", push, "push offset: absolute (units) or adaptive (percent of the radius)"),
             ToolOption::new(
                 "sculpt_bounds",
@@ -196,6 +204,16 @@ impl DisplacementTool {
                 "project: brushes farther than this are ignored (1 to 16384)",
             ),
             ToolOption::new(
+                "flatten_plane",
+                if s.flatten_fixed { "fixed" } else { "average" },
+                "flatten: average (plane of the vertices under the brush at each sample) or fixed (plane taken at the                  stroke start)",
+            ),
+            ToolOption::new(
+                "flatten_strength",
+                num(s.flatten_strength),
+                "flatten speed, share of the distance to the plane closed per step (0 to 1)",
+            ),
+            ToolOption::new(
                 "scale_factor",
                 num(self.scale_factor),
                 "factor of the Scale button of the panel (-16 to 16)",
@@ -216,7 +234,16 @@ impl DisplacementTool {
                 on_off(self.mask_select),
                 "on: do not tint the selected displacements (Hammer's Select mask)",
             ),
-        ]
+            ToolOption::new(
+                "keep_shape",
+                on_off(self.keep_shape),
+                "on: changing the power resamples the shape of the displacements (default), off: rebuilds them flat",
+            ),
+        ];
+        options.extend(self.terrain.values());
+        options.extend(self.blend.values());
+        options.extend(self.slope.values());
+        options
     }
 
     pub(super) fn script_set_option(&mut self, state: &mut AppState, key: &str, value: &str) -> bool {
@@ -253,6 +280,10 @@ impl DisplacementTool {
                 "push" => Some(SculptOp::Push),
                 "carve" => Some(SculptOp::Carve),
                 "project" => Some(SculptOp::Project),
+                "pinch" => Some(SculptOp::Pinch),
+                "grab" => Some(SculptOp::Grab),
+                "inflate" => Some(SculptOp::Inflate),
+                "flatten" => Some(SculptOp::Flatten),
                 _ => None,
             }
             .map(|o| b.sculpt.op = o)
@@ -353,6 +384,7 @@ impl DisplacementTool {
             .is_some(),
             "mask_grid" => flag.map(|f| self.mask_grid = f).is_some(),
             "mask_select" => flag.map(|f| self.mask_select = f).is_some(),
+            "keep_shape" => flag.map(|f| self.keep_shape = f).is_some(),
             "push_distance" => within(0.0, 4096.0).map(|n| b.sculpt.distance = n).is_some(),
             "push_percent" => within(0.0, 400.0).map(|n| b.sculpt.percent = n).is_some(),
             "carve_depth" => within(0.0, 4096.0).map(|n| b.sculpt.carve_depth = n).is_some(),
@@ -370,6 +402,14 @@ impl DisplacementTool {
             .map(|p| b.sculpt.profile = p)
             .is_some(),
             "project_range" => within(1.0, 16384.0).map(|n| b.sculpt.project_range = n).is_some(),
+            "flatten_plane" => match v.as_str() {
+                "average" => Some(false),
+                "fixed" => Some(true),
+                _ => None,
+            }
+            .map(|f| b.sculpt.flatten_fixed = f)
+            .is_some(),
+            "flatten_strength" => within(0.0, 1.0).map(|n| b.sculpt.flatten_strength = n).is_some(),
             "scale_factor" => within(-16.0, 16.0).map(|n| self.scale_factor = n).is_some(),
             "create" => match value.trim().parse::<u32>() {
                 Ok(p @ 2..=4) => {
@@ -410,7 +450,7 @@ impl DisplacementTool {
                 self.tag_selection(state, kind, value);
                 true
             }
-            _ => false,
+            _ => self.terrain.set(key, value) || self.blend.set(key, value) || self.slope.set(key, value),
         };
         if done {
             self.brush.sanitize();

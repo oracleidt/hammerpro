@@ -23,6 +23,7 @@ Pendant le montage du contenu du jeu, l'onglet affiche un indicateur de chargeme
 | **Modèles : N** | Nombre de modèles listés. |
 | Bouton grille / liste (`⊞` / `☰`) | Bascule entre la grille de vignettes et la liste. Enregistré (`model_grid_view` dans `[browser]`, grille par défaut). |
 | **+** | **Fichier > Importer un modèle (FBX, OBJ, glTF)...**, voir [Import de modèles](model-import.md). |
+| **++** | **Fichier > Importer des modèles (lot)...** : beaucoup de fichiers ou de dossiers d'un coup, voir [Import par lot](model-import.md#import-par-lot). |
 | **Récents (N)** | Les derniers modèles utilisés (8 affichés, 16 mémorisés pendant la session), au-dessus de la liste. Clic pour sélectionner, double-clic pour utiliser. |
 
 Dans la liste, les modèles sont regroupés sous des en-têtes de dossier avec leur nombre ; cliquez un en-tête pour le replier ou le déplier. Chaque ligne montre le nom du fichier et, quand le contenu a plusieurs sources, un badge qui indique d'où vient le modèle : **GMod**, **jeu : cstrike**, **dossier garrysmod**, **addon**, **Workshop 123456**, **perso** (un dossier de contenu personnalisé). Survolez une ligne pour voir le chemin complet.

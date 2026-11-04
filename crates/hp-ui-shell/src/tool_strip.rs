@@ -33,7 +33,9 @@ impl PaletteGroup {
 pub fn tool_group(tool: ToolId) -> PaletteGroup {
     match tool {
         ToolId::Select | ToolId::Camera => PaletteGroup::Navigate,
-        ToolId::Entity | ToolId::Block | ToolId::Polygon | ToolId::Curve | ToolId::Sprinkle => PaletteGroup::Create,
+        ToolId::Entity | ToolId::Block | ToolId::Polygon | ToolId::Curve | ToolId::Road | ToolId::Sprinkle => {
+            PaletteGroup::Create
+        }
         ToolId::Texture
         | ToolId::Decal
         | ToolId::Overlay
@@ -70,6 +72,7 @@ pub fn palette_items() -> Vec<PaletteItem> {
             PaletteGroup::Special => {
                 out.push(PaletteItem::Action(Action::BrushesToProp));
                 out.push(PaletteItem::Action(Action::PropToBrushes));
+                out.push(PaletteItem::Action(Action::SendToBlender));
             }
             PaletteGroup::View => out.push(PaletteItem::Isolate),
             _ => {}
@@ -253,6 +256,7 @@ fn disabled_hint(action: Action) -> Option<&'static str> {
     match action {
         Action::BrushesToProp => Some(t!("shell.toolbar.propper_needs")),
         Action::PropToBrushes => Some(t!("shell.toolbar.unpropper_needs")),
+        Action::SendToBlender => Some(t!("shell.toolbar.blender_needs")),
         Action::ApplyCurrentTexture => Some(t!("shell.toolbar.apply_texture_needs")),
         _ => None,
     }
@@ -303,6 +307,7 @@ mod tests {
                 T(ToolId::Polygon),
                 T(ToolId::Curve),
                 T(ToolId::Sprinkle),
+                T(ToolId::Road),
                 S,
                 T(ToolId::Texture),
                 A(Action::ApplyCurrentTexture),
@@ -318,6 +323,7 @@ mod tests {
                 T(ToolId::Cordon),
                 A(Action::BrushesToProp),
                 A(Action::PropToBrushes),
+                A(Action::SendToBlender),
                 S,
                 Isolate,
             ]

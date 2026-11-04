@@ -104,7 +104,7 @@ Thumbnails with a red name are missing materials (purple and black checkerboard)
 
 ## Custom folders
 
-The collapsible **Custom folders (n)** section lists your custom texture folders with their switch, material count, prefix and warnings, and has the **Add folder...**, **Rescan** and **Import images...** buttons. See [Custom texture folders](custom-texture-folders.md).
+The collapsible **Custom folders (n)** section lists your custom texture folders with their switch, material count, prefix and warnings, and has the **Add folder...**, **Rescan** and **Import images...** buttons. See [Custom texture folders](custom-texture-folders.md). It is closed by default, and opens again only when you click it.
 
 ## Tips
 

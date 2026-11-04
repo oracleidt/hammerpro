@@ -163,6 +163,10 @@ With objects selected and the pointer over a view (and **Nudge with arrow keys**
 
 With nothing selected, the arrow keys scroll the 2D view instead (see [Camera and navigation](camera-navigation.md)).
 
+## Edge loops
+
+The selection tool picks whole brushes, not edges, so it has no edge mode. The edge loop and edge ring commands live in the [vertex tool](vertex-tool.md#edge-loops-and-rings) (`Alt`+click an edge) and in the [bevel tool](bevel-tool.md) (`Alt`+click an edge to pick its loop for a bevel). To work on a loop from here, select the brushes that form it, press `Shift+V` for the vertex tool and `Alt`+click an edge. The commands of **Edit > Edge selection** and **Tools > Slide edge loop...** work in the vertex tool.
+
 ## Viewport context menu
 
 With a selection, a right click in a view adds at the top: **Move to floor**, **Move to ceiling**, their "aligned to the surface" versions, **Center origins** and **Movable pivot**. These are described in [Transform and align](transform-align.md).

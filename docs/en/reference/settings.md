@@ -293,6 +293,8 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `live_preview` | `true` | Vertex tool: solids show their new shape while dragging. |
 | `four_way_blends` | `true` | Alpha painting can paint the 4 textures of 4-way blend materials. |
 | `noise_min`, `noise_max` | `-4.0`, `4.0` | Height range of **Add noise to displacements**. |
+| `mesh_export_meters` | `false` | **Displacement to mesh** writes meters instead of Source units. |
+| `mesh_export_z_up` | `false` | **Displacement to mesh** writes Z up instead of Y up. |
 | `disp_tool` | `{}` | Every option of the displacement tool panel by name (written by the tool). |
 
 ## `[entities]`
@@ -381,6 +383,8 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `displacements_2d_views` | `["Global", ...]` | Per quadrant override of `displacements_2d`. |
 | `disp_source_2d` | `true` | Faint outline of the source brush of displacements in 2D. |
 | `disp_walkable` | `false` | Color displacement triangles by walkability. |
+| `disp_walk_mode` | `Source` | Colors of the walkability display: `Source` (three engine classes), `Limit` (green up to the angle, red above) or `Gradient` (bands around the angle). |
+| `disp_walk_angle` | `45.573` | Walkable angle in degrees for the `Limit` and `Gradient` modes (1 to 89); 45.573 is the Source limit. |
 | `occlusion_culling` | `true` | Skip chunks hidden behind closer geometry. |
 | `selection_outline` | `false` | Outline of the selection through walls. |
 | `grid_dotted` | `false` | 2D grid as dots. |
@@ -513,6 +517,7 @@ The **Build and save as content** window and the Map assets tab. See [Build and 
 | `model_lod.enabled` | `true` | Make levels of detail for generated models. |
 | `model_lod.levels` | `4` | Levels below the full model, 3 to 6. |
 | `model_lod.reduction` | `0.5` | Part of triangles kept per level, 0.2 to 0.9. |
+| `model_keep_params` | `true` | Model import writes the normal map, shine, self illumination and texture tiling of the file into the VMTs. |
 
 ## `[sniffer]`
 
@@ -552,7 +557,7 @@ The [BSP Sniffer](../features/bsp-sniffer.md) panel (File > BSP Sniffer...). Onl
 | --- | --- | --- |
 | `mode` | `"Global"` | `Global`, `PerView`, `Custom`, `Selection`. |
 | `custom` | `""` | Name of the custom grid of the Custom mode. |
-| `per_view` | 16 everywhere | `perspective`, `top`, `front`, `side`: each with `size`, `origin`, `major_every`. |
+| `per_view` | 16 everywhere | `perspective`, `top`, `front`, `side`: each with `size`, `origin`, `major_every`, `angle` (degrees, rotation of the grid in that view). |
 | `presets` | `[]` | Custom grids offered in every map (64 at most): `name`, `step` (per axis), `origin`, `angles`, `major_every`, optional `bounds` and `color`. |
 | `object_grids` | `true` | Editing an object that carries a grid snaps to it. |
 | `plane_3d` | `true` | Draw the plane of a custom or per view grid in 3D. |
@@ -589,6 +594,16 @@ See [Content index and scan](../features/content-index.md).
 | `update.skipped_version` | `""` | Tag of the release the user chose not to be asked about (**Don't show this again**), for example `"v1.0.3"`. Empty: none. |
 
 See [Updates](../features/updates.md).
+
+## `[blender]`
+
+**Settings > Blender link.** See [Blender link](../features/blender.md).
+
+| Key | Default | What it does |
+| --- | --- | --- |
+| `blender.path` | `""` | The Blender program (`blender.exe`); empty means Hammer Pro searches. MCP changes it with `blender_setup`, which checks it. |
+| `blender.format` | `"gltf"` | File format of a send: `gltf`, `obj` or `fbx`. |
+| `blender.live_link` | `true` | Watch the exported file and update the map when Blender writes it. |
 
 ## Related pages
 

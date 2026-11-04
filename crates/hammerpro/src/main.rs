@@ -41,6 +41,8 @@ macro_rules! eprint {
 
 mod app;
 mod autosave;
+mod batch;
+mod blender;
 mod bspc_cli;
 mod bspc_game;
 mod bspc_instances;
@@ -55,6 +57,7 @@ mod keyboard;
 mod logger;
 mod native_crash;
 mod opening;
+mod panel_layout;
 mod prompts;
 mod restart;
 mod script;
@@ -205,6 +208,10 @@ fn main() -> eframe::Result<()> {
     if std::env::args().nth(1).as_deref() == Some(bspc_cli::RAD_ARG) {
         let args: Vec<String> = std::env::args().skip(2).collect();
         std::process::exit(bspc_cli::run_rad(&args));
+    }
+    if std::env::args().nth(1).as_deref() == Some(batch::IMPORT_ARG) {
+        let args: Vec<String> = std::env::args().skip(2).collect();
+        std::process::exit(batch::run_cli(&args));
     }
     if std::env::args().nth(1).as_deref() == Some(dispatch::lighting::child::LIGHT_ARG) {
         let args: Vec<String> = std::env::args().skip(2).collect();

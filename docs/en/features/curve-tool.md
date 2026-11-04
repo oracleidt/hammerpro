@@ -2,7 +2,7 @@
 
 # Curve tool
 
-The curve tool builds curved walls, rails, kerbs, pipes seen from above or ramps seen from the side out of plain box brushes. You draw a stroke of any shape in a 2D view, choose how many pieces it is cut into and how thick they are, and the tool makes one convex 6 sided brush per piece, following the curve with mitred joints: neighbouring brushes share their joint face exactly, so there is no gap and no overlap.
+The curve tool builds curved walls, rails, kerbs, pipes seen from above or ramps seen from the side out of plain box brushes. You draw a stroke of any shape in a 2D view, choose how many pieces it is cut into and how thick they are, and the tool makes one convex 6 sided brush per piece (more pieces per step with a curb or ditch profile, see below), following the curve with mitred joints: neighbouring brushes share their joint face exactly, so there is no gap and no overlap.
 
 ## Opening it
 
@@ -39,6 +39,7 @@ Like the block tool, the brushes take their range along the view depth from the 
 | Option | What it does | Default |
 |---|---|---|
 | **Subdivisions**, **Thickness**, **Height** | As in the Curve window. | 16, 16, from the selection |
+| **Profile**, curb and ditch sizes, **Roll start**, **Roll end**, **Auto bank**, **Auto limit** | Cross section and banking, see below. | Flat, no banking |
 | **Scale** | Texture scale of the new faces (0.01 to 64). | **Default texture scale** setting |
 | Create as | **World brush**, **func_detail** or any brush entity class of the FGD. With a class, all the brushes go into one new brush entity. | World brush |
 | Current material | Material put on every face, like the block tool. Click it to show the texture browser. | the current material |
@@ -47,6 +48,38 @@ Like the block tool, the brushes take their range along the view depth from the 
 | Summary | **N point(s)**, then **N brushes, length L**, or in red why the curve cannot be built (hover it for the details). | |
 
 The new brushes become the selection; the whole curve is one undo step.
+
+## Cross section and banking
+
+The same Curve window and options bar hold the cross section and the banking. They apply to the whole curve.
+
+| Field | What it does | Range | Default |
+|---|---|---|---|
+| **Profile** | **Flat**: one brush per piece. **Curb**: the road plus a raised curb on each side, 3 brushes per piece. **Ditch**: a V shaped channel, 2 brushes per piece. | | Flat |
+| **Curb width** | Curb profile: width of each curb. The curbs are added outside the thickness, so the total width is the thickness plus two curbs. | 1 to 256 units | 8 |
+| **Curb height** | Curb profile: how far the curbs rise above the road. | 0 to 256 units | 8 |
+| **Ditch depth** | Ditch profile: how far the middle of the V sinks under the two edges. It must stay at least 1 unit under the height. | 0 to 512 units | 8 |
+| **Roll start**, **Roll end** | Banking: the roll angle in degrees at the start and at the end of the curve, changing evenly along the curve. A positive angle raises the left side when you follow the curve from its first point to its last one. | -60 to 60 degrees | 0 |
+| **Auto bank** | Automatic banking, proportional to the curvature: the roll in degrees for a bend of radius 1000 units (a bend of radius 500 gets twice as much). The road tilts toward the inside of each bend. 0 turns it off. It adds up to the roll start and end. | 0 to 90 | 0 |
+| **Auto limit** | Largest roll the automatic banking may add. | 0 to 45 degrees | 8 |
+
+The roll turns the cross section around the middle of the road, so the pieces still share their joint faces exactly. The ditch and the curbs also keep the same joints, piece after piece. The total roll is limited to 60 degrees. Every piece stays convex with flat faces: where banking, a bend or the ditch profile would twist the top of a piece, that piece is cut into two convex halves along a diagonal, so a banked curve can have more brushes than the pieces times the profile strips. A straight, evenly banked road stays one 6 sided brush per strip.
+
+## Editing a curve
+
+Every brush made by the curve tool remembers its curve: the points, the view, the depth and all the options are stored in the `editor` block of the brushes in the VMF, as `hammerpro_curve` keys. Hammer and Hammer++ ignore these keys and keep them when they save, so the map stays valid for them. Copies of the whole curve keep working. A brush you cut or move by hand keeps the data, but **Edit curve** puts back the shape of the curve.
+
+1. Select one brush of the curve (or its brush entity).
+2. **Tools > Edit curve**, or the command palette. The curve tool opens on the stored points, in the adjusting step, with the stored options.
+3. Change what you want:
+   - **Drag a point** to move it.
+   - **Shift+click** inserts a point on the curve, between the two nearest points.
+   - **Ctrl+click** a point removes it (a curve keeps at least 2 points).
+   - **Back** goes to the drawing step to click new points at the end, `Backspace` removes the last point.
+   - Change the subdivisions, thickness, height, profile and banking.
+4. `Enter` (or **Apply**) replaces all the brushes of the curve by the new ones, in one undo step. They keep the material and stay in the same brush entity, if any. `Escape` cancels without changing anything.
+
+If the brush has no curve data (it was not made by the curve tool, or the data was lost), the command says so.
 
 ## When the curve is refused
 
@@ -60,7 +93,7 @@ The new brushes become the selection; the whole curve is one undo step.
 - Few clicks give the smoothest curves: the spline does the rounding. A freehand stroke on a fine grid follows the hand more closely, including its wobbles.
 - 16 to 64 subdivisions are enough for most curves; high counts make many small brushes, which cost compile time. Put decorative curves in a `func_detail` with **Create as**.
 - The joints are mitred, so the outer corners are not on the grid. They are still clean planes shared by the two neighbours, and the map compiles without leaks or invalid brushes.
-- The MCP tool `create_curve_brushes` builds the same brushes from a list of points, and `set_tool_options` with tool `curve` sets `subdivisions`, `thickness`, `height`, `tex_scale`, `create_as` and `keep_active` (see [MCP tool reference](../../MCP.md)).
+- The MCP tool `create_curve_brushes` builds the same brushes from a list of points (with the `profile`, `curb_width`, `curb_height`, `ditch_depth`, `roll_start`, `roll_end`, `auto_bank` and `auto_bank_limit` options), `get_curve_brushes` reads the stored curve, `edit_curve_brushes` replaces the brushes of a curve with changed points or options in one undo step, and `set_tool_options` with tool `curve` sets `subdivisions`, `thickness`, `height`, `tex_scale`, `create_as`, `keep_active` and the same cross section and banking options (see [MCP tool reference](../../MCP.md)).
 
 ## FAQ
 
@@ -68,10 +101,12 @@ The new brushes become the selection; the whole curve is one undo step.
 
 **Can I make a closed ring?** Use the block tool's torus or arch for a perfect ring. With the curve tool, put the last point next to the first one.
 
-**Can I get cylinders or wedges?** No: the curve tool only makes box like brushes, 6 faces each, which are the most robust brushes for the compiler.
+**Can I get cylinders or wedges?** No: the curve tool only makes box like brushes, which are the most robust brushes for the compiler. The ditch profile makes wedge like pieces and banking tilts them, but they stay convex with flat faces.
 
 ## Related pages
 
+- [Road tool](road-tool.md)
+- [Road details](road-details.md)
 - [Block tool](block-tool.md)
 - [Polygon tool](polygon-tool.md)
 - [Vertex tool](vertex-tool.md)

@@ -64,7 +64,7 @@
 | Commande | Effet |
 |---|---|
 | `action ID` | Lance une action par son identifiant, comme son entrée de menu ou son raccourci (`compile_now`, `toggle_grid`...). Les identifiants sont listés dans [Actions et raccourcis](actions-shortcuts.md). Un identifiant inconnu affiche `unknown action`. |
-| `tool NOM` | Change d'outil : `select`, `camera`, `entity`, `block`, `texture`, `decal`, `overlay`, `clip`, `extrude`, `bevel`, `vertex`, `path`, `polygon`, `curve`, `sprinkle`, `displacement`, `cordon`. |
+| `tool NOM` | Change d'outil : `select`, `camera`, `entity`, `block`, `texture`, `decal`, `overlay`, `clip`, `extrude`, `bevel`, `vertex`, `path`, `polygon`, `curve`, `sprinkle`, `displacement`, `cordon`, `road`. |
 | `tool_option CLÉ VALEUR` | Règle une option de l'outil actif (voir Options des outils plus bas). La valeur est un seul mot : utilisez des virgules dans les listes (`custom_axis 0,0,1`). Une clé inconnue ou une mauvaise valeur affiche `tool ... has no option ...`. |
 | `open CHEMIN` | Ouvre une map et attend son chargement (jusqu'à 120 secondes). Si la map est déjà ouverte, son onglet est affiché. |
 | `save CHEMIN` | Enregistre la map dans CHEMIN, sans boîte de dialogue. |
@@ -77,6 +77,9 @@
 | `custom_folder CHEMIN [\| préfixe]` | Ajoute un dossier de textures personnalisé (activé) et recharge le contenu. Sans préfixe, un préfixe est proposé à partir du nom du dossier. |
 | `import_model CHEMIN` | Ouvre la fenêtre d'import de modèle avec un fichier (FBX, OBJ, glTF, GLB). |
 | `import_model_now CHEMIN` | Importe le modèle avec les options par défaut. |
+| `mesh_to_disp CHEMIN` | Ouvre la fenêtre [Maillage en displacement](../features/displacement-tool.md#maillage-en-displacement) avec un fichier de maillage (OBJ, FBX, glTF, GLB). |
+| `mesh_to_disp_now CHEMIN` | Lit le fichier de maillage et crée les dalles de displacement avec les options par défaut. |
+| `import_models_batch CHEMIN` | Ouvre l'[import par lot](../features/model-import.md#import-par-lot) avec ce fichier ou dossier (sous-dossiers inclus) déjà lu dans son tableau d'aperçu. |
 | `import_model_scaled ÉCHELLE CHEMIN` | Importe le modèle avec cette échelle (supérieure à 0). Les scripts écrivent le modèle dans un dossier de contenu temporaire, jamais dans le jeu. |
 
 ### Fenêtre et apparence
@@ -121,7 +124,7 @@
 
 | Clé | Valeurs |
 |---|---|
-| `kind` | `block`, `wedge`, `cylinder`, `spike`, `sphere`, `arch` ou `torus`. |
+| `kind` | `block`, `wedge`, `cylinder`, `spike`, `sphere`, `arch`, `torus`, `stairs`, `spiral_stairs`, `ramp`, `pillar` ou `doorway`. |
 | `sides` | Côtés des primitives rondes, 3 à 64. |
 | `wall` | Épaisseur de mur de l'arche en unités (1 ou plus). |
 | `arc` | Arc de l'arche en degrés, 1 à 360. |
@@ -132,6 +135,23 @@
 | `torus_arc` | Balayage du tore en degrés (au-delà de 360, une spirale avec une montée). |
 | `torus_start` | Angle de départ du tore en degrés. |
 | `torus_rise` | Hauteur gagnée sur le balayage du tore en unités. |
+| `steps` | Escalier et colimaçon : nombre de marches, 1 à 256. |
+| `step_height` | Escalier et colimaçon : hauteur d'une marche en unités, 0 utilise `steps`. |
+| `open` | on/off : marches ouvertes (dalles) au lieu de colonnes pleines. |
+| `inner` | Colimaçon : rayon intérieur en unités, 0 pour des marches en part de tarte. |
+| `spiral_angle` | Colimaçon : rotation totale en degrés, -3600 à 3600 (au-delà de 360 il faut `open`). |
+| `spiral_start` | Colimaçon : angle de départ en degrés. |
+| `slope` | Rampe : angle de pente en degrés, 1 à 89. |
+| `direction` | Escalier, colimaçon et rampe : côté vers lequel ils montent, `+y` (par défaut), `-y`, `+x`, `-x` ou `longest`. |
+| `base` | Pilier : hauteur du socle en unités, 0 pour aucun. |
+| `capital` | Pilier : hauteur du chapiteau en unités, 0 pour aucun. |
+| `inset` | Pilier : de combien le fût est plus étroit que le socle et le chapiteau. |
+| `door_width` | Encadrement : largeur de l'ouverture en unités, 0 vaut la moitié du mur. |
+| `door_height` | Encadrement : hauteur de l'ouverture en unités, 0 vaut les trois quarts du mur. |
+| `thickness` | Encadrement : épaisseur du mur en unités, 0 remplit la profondeur de la boîte. |
+| `door_arch` | on/off : encadrement avec un haut arrondi. |
+| `door_arch_radius` | Arche de l'encadrement : rayon en unités, au moins la moitié de l'ouverture, 0 vaut la moitié (demi-cercle). |
+| `door_arch_segments` | Arche de l'encadrement : nombre de morceaux droits du haut arrondi, 2 à 64. |
 | `reorient` | on/off : les primitives dessinées dans la vue de face ou de côté ou sur un mur s'orientent selon la profondeur de la vue (enregistré). |
 | `preview` | on/off : la grande fenêtre d'aperçu de la forme. |
 | `tex_scale` | Échelle de texture des nouvelles faces, 0.01 à 64. |
@@ -148,6 +168,26 @@
 | `tex_scale` | Échelle de texture des nouvelles faces, 0,01 à 64. |
 | `create_as` | `world`, ou une classe d'entité brush (`func_detail`...) qui contient tous les brushes. |
 | `keep_active` | on/off : rester dans l'outil courbe après la création. |
+
+### Outil route (`tool road`)
+
+| Clé | Valeurs |
+|---|---|
+| `lanes` | Nombre de voies, 1 à 8. |
+| `lane_width` | Largeur d'une voie, 16 à 256 unités. |
+| `shoulder` | Largeur de l'accotement de chaque côté, 0 ou 1 à 256 unités. |
+| `thickness` | Épaisseur de la dalle sous la surface, 2 à 128 unités. |
+| `step` | Longueur visée des segments, 16 à 512 unités. |
+| `tex_scale` | Échelle de texture des faces, 0,01 à 64. |
+| `material`, `shoulder_material`, `line_material`, `center_material` | Matériaux des voies, des accotements, des lignes et de la ligne centrale (accotement ou ligne centrale vide : comme les voies ou les lignes). |
+| `center_line`, `edge_line`, `divider_line` | `none`, `solid`, `dashed` ou `double`. |
+| `line_width`, `dash`, `gap` | Largeur des lignes, longueur d'un tiret et d'un espace. |
+| `roll_start`, `roll_end`, `auto_bank`, `auto_bank_limit` | Dévers, comme dans l'outil courbe. |
+| `follow_terrain` | on/off : la route suit le sol dessous. |
+| `lift` | Hauteur au-dessus du sol quand elle suit le terrain, -256 à 256. |
+| `base_height` | Hauteur du premier point quand aucun sol n'est trouvé, -16384 à 16384. |
+| `create_as` | `world`, ou une classe d'entité brush (`func_detail`...) qui contient tous les brushes. |
+| `keep_active` | on/off : rester dans l'outil route après la création. |
 
 ### Outil chemin (`tool path`)
 
@@ -225,10 +265,52 @@ Pour biseauter depuis un script, pointez l'arête et envoyez sa touche : `move @
 | `carve_profile` | `v`, `u`, `flat` ou 5 profondeurs de 0 à 1 séparées par des virgules. |
 | `project_range` | Project : les brushes plus loin que cette distance sont ignorés, 1 à 16384. |
 | `scale_factor` | Facteur du bouton Échelle, -16 à 16. |
+| `noise_type` | `random` ou `fractal` : le type de bruit d'Ajouter du bruit. |
+| `noise_scale` | Bruit fractal : taille des plus grands reliefs en unités, 1 à 65536. |
+| `noise_octaves` | Bruit fractal : couches de détail, 1 à 8. |
+| `noise_persistence` | Bruit fractal : poids de chaque couche plus fine, 0,05 à 1. |
+| `terrain_seed` | Graine du bruit fractal et de la pluie hydraulique, 0 à 4294967295. |
+| `thermal_iterations` | Passes de l'érosion thermique, 1 à 1000. |
+| `thermal_talus` | Érosion thermique : pente la plus raide, en degrés, sur laquelle la matière tient, 0 à 89. |
+| `thermal_strength` | Érosion thermique : part de l'excédent qui glisse par passe, 0 à 1. |
+| `hydraulic_iterations` | Passes de l'érosion hydraulique, 1 à 2000. |
+| `hydraulic_rain` | Érosion hydraulique : eau ajoutée par sommet et par passe, 0 à 100. |
+| `hydraulic_evaporation` | Érosion hydraulique : part de l'eau qui s'évapore par passe, 0 à 1. |
+| `hydraulic_capacity` | Érosion hydraulique : sédiments transportés par unité d'eau et de pente, 0 à 10. |
+| `hydraulic_deposition` | Érosion hydraulique : part des sédiments en excès qui se déposent par passe, 0 à 1. |
+| `hydraulic_strength` | Érosion hydraulique : part de la capacité manquante arrachée au sol par passe, 0 à 1. |
+| `blend_width` | Fusion des hauteurs : largeur de la zone de transition en unités, 0,01 à 65536. |
+| `blend_falloff` | Fusion des hauteurs : `linear`, `smooth`, `ease_in` ou `ease_out`. |
+| `blend_mode` | Fusion des hauteurs : `average`, `a_over_b`, `b_over_a`, `max` ou `min`. |
+| `blend_match_edges` | on/off : décale chaque côté de l'écart de hauteur à la ligne de rencontre. |
+| `blend_alpha` | on/off : fusionne l'alpha des textures sur la zone. |
+| `blend_match_powers` | on/off : rééchantillonne d'abord les displacements de puissance plus faible à la puissance la plus haute. |
+| `slope_max_angle` | Limite de pente : angle de triangle le plus raide en degrés, 1 à 89. |
+| `slope_terrace` | on/off : découpe les hauteurs en terrasses plates avant de limiter. |
+| `slope_terrace_step` | Hauteur d'un palier de terrasse en unités, 1 à 4096. |
+| `slope_terrace_strength` | Part dont les hauteurs se calent sur les terrasses, 0 à 1. |
+| `slope_ramp_angle` | Rampe : pente exacte en degrés, 0 à 89. |
+| `slope_ramp_direction` | Rampe : direction vers laquelle elle monte en degrés (0 est +X, 90 est +Y). |
+| `slope_ramp_pivot` | Rampe : `average`, `lowest` ou `highest`, ce qui reste en place. |
+| `slope_ramp_strength` | Rampe : part du chemin vers le plan, 0 à 1. |
+| `slope_ramp_detail` | Rampe : part du relief actuel conservée, 0 à 1. |
+| `slope_uniform_strength` | Pente uniforme : part du chemin vers une pente constante, 0 à 1. |
+| `slope_uniform_detail` | Pente uniforme : part du relief actuel conservée, 0 à 1. |
+| `slope_path` | Chemin de la pente constante : points `x y z; x y z` en unités du monde. |
+| `slope_path_width` | Chemin : demi-largeur en unités, 0,001 à 65536. |
+| `slope_path_falloff` | Chemin : `linear`, `smooth`, `ease_in` ou `ease_out`. |
+| `slope_path_strength` | Chemin : part du chemin vers la pente, 0 à 1. |
+| `slope_smooth_passes` | Passes d'adoucissement des pentes, 1 à 1000. |
+| `slope_smooth_strength` | Adoucissement des pentes : part rapprochée de la moyenne des voisins par passe, 0 à 1. |
+| `slope_select_angle` | Sélection par pente : angle en degrés depuis l'horizontale, 0 à 90. |
+| `slope_select_mode` | Sélection par pente : `above` ou `below`. |
+| `slope_select_match` | Sélection par pente : `any` ou `all` (un triangle ou tous). |
+| `slope_select_op` | Sélection par pente : `replace`, `add` ou `remove`. |
 | `tag_kind` | `walkable`, `buildable` ou `remove`. |
 | `tag_value` | `on`, `off` ou `auto`. |
 | `mask_grid` | on/off : cacher la grille de triangles des displacements sélectionnés. |
 | `mask_select` | on/off : ne pas teinter les displacements sélectionnés. |
+| `keep_shape` | on/off (activé par défaut) : changer la puissance rééchantillonne la forme au lieu de reconstruire à plat. |
 | `create` | `2`, `3` ou `4` : crée des displacements de cette puissance sur les faces sélectionnées (les boutons Créer). |
 | `select` | `all`, `adjacent`, `solids` ou `none` : les boutons de sélection du panneau. |
 | `cast_shadows` | on/off sur les displacements sélectionnés. |

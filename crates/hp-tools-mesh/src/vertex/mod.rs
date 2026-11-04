@@ -1,4 +1,9 @@
+pub mod loops;
 pub(crate) mod model;
+pub mod weld;
+pub mod xform;
+
+mod loop_tool;
 
 use std::cell::RefCell;
 
@@ -91,10 +96,15 @@ pub struct VertexTool {
     pub mode: VertexMode,
     pub selected_only: bool,
     pub merge_tolerance: f64,
+    pub weld_distance: f64,
+    pub weld_target: weld::WeldTarget,
+    weld_memo: Option<((u64, u64), usize)>,
     cache: RefCell<VertexCache>,
     drag: Option<VertexDrag>,
     rubber: Option<RubberBand>,
     scale: Option<ScaleState>,
+    xform: Option<xform::XformState>,
+    loop_hover: Option<loop_tool::LoopHover>,
     live: bool,
     hover: Option<Hover>,
     last_view: Option<ViewInfo>,
@@ -107,10 +117,15 @@ impl Default for VertexTool {
             mode: VertexMode::Both,
             selected_only: false,
             merge_tolerance: 1.0,
+            weld_distance: weld::DEFAULT_WELD_DISTANCE,
+            weld_target: weld::WeldTarget::default(),
+            weld_memo: None,
             cache: RefCell::new(VertexCache::default()),
             drag: None,
             rubber: None,
             scale: None,
+            xform: None,
+            loop_hover: None,
             live: false,
             hover: None,
             last_view: None,
@@ -149,7 +164,7 @@ impl VertexTool {
     }
 
     pub fn is_busy(&self) -> bool {
-        self.drag.is_some() || self.rubber.is_some() || self.scale.is_some()
+        self.drag.is_some() || self.rubber.is_some() || self.scale.is_some() || self.xform.is_some()
     }
 
     pub fn is_scaling(&self) -> bool {
@@ -187,6 +202,9 @@ impl VertexTool {
         if self.scale.as_ref().is_some_and(|s| s.generation != generation) {
             self.scale = None;
         }
+        if self.xform.as_ref().is_some_and(|x| x.generation != generation) {
+            self.xform = None;
+        }
         if self.hover.is_some_and(|h| h.generation != generation) {
             self.hover = None;
         }
@@ -201,6 +219,9 @@ impl VertexTool {
         if self.scale.is_some() {
             return self.scale_gesture(state, view, g, mods);
         }
+        if self.xform.is_some() {
+            return self.xform_gesture(g);
+        }
         let owns_drag = self.drag.as_ref().is_some_and(|d| d.view == view.index);
         let owns_rubber = self.rubber.as_ref().is_some_and(|r| r.view.index == view.index);
         match g {
@@ -212,6 +233,7 @@ impl VertexTool {
                     self.finish_rubber();
                 }
                 self.update_hover(view, Some(p));
+                self.update_loop_hover(view, Some(p), mods);
                 ToolFlow::Ignored
             }
             Gesture::Away => {
@@ -222,6 +244,7 @@ impl VertexTool {
                     self.finish_rubber();
                 }
                 self.update_hover(view, None);
+                self.update_loop_hover(view, None, mods);
                 ToolFlow::Ignored
             }
             Gesture::Click(p) => {
@@ -318,6 +341,10 @@ impl VertexTool {
     }
 
     fn click(&mut self, state: &mut AppState, view: &ViewInfo, p: Pos2, mods: Modifiers) {
+        if mods.alt {
+            self.alt_click(state, view, p, mods);
+            return;
+        }
         let ctrl = mods.command || mods.ctrl;
         let handle = pick_handle(&self.cache.get_mut().solids, view, p, self.mode.pickable());
         let cache = self.cache.get_mut();
@@ -513,6 +540,7 @@ impl VertexTool {
                 for e in &edits {
                     cache.follow_splits(e);
                 }
+                cache.pending_edges = Some(loop_tool::edge_followers(&cache.solids, &edits));
                 cache.pending_select = Some(reselect);
                 self.end_live(state, true);
                 self.report_lost_disps(state, &drag.solids);
@@ -562,6 +590,7 @@ impl VertexTool {
                 for e in edits {
                     cache.follow_splits(e);
                 }
+                cache.pending_edges = Some(loop_tool::edge_followers(&cache.solids, edits));
                 cache.pending_select = Some(reselect);
                 cache.invalidate();
                 cache.refresh(&state.doc);
@@ -763,6 +792,7 @@ impl VertexTool {
         self.drag.is_some()
             || self.rubber.is_some()
             || self.scale.is_some()
+            || self.xform.is_some()
             || cache.selected_count() > 0
             || !cache.splits.is_empty()
     }
@@ -945,6 +975,17 @@ fn cell_taken(cells: &std::collections::HashSet<(i32, i32)>, p: Pos2) -> bool {
 const MENU_SPLIT: u32 = 1;
 const MENU_SCALE: u32 = 2;
 const MENU_SNAP: u32 = 3;
+const MENU_WELD: u32 = 4;
+const MENU_WELD_DISTANCE: u32 = 5;
+const MENU_EDGE_ACTIONS: [(u32, Action); 7] = [
+    (6, Action::EdgeSelectLoop),
+    (7, Action::EdgeSelectRing),
+    (8, Action::EdgeGrow),
+    (9, Action::EdgeShrink),
+    (10, Action::EdgeSelectBoundary),
+    (11, Action::EdgeSlide),
+    (12, Action::VertexRotate),
+];
 
 impl Tool for VertexTool {
     fn id(&self) -> ToolId {
@@ -957,6 +998,8 @@ impl Tool for VertexTool {
         self.drag = None;
         self.rubber = None;
         self.scale = None;
+        self.xform = None;
+        self.loop_hover = None;
         self.hover = None;
     }
 
@@ -971,6 +1014,8 @@ impl Tool for VertexTool {
         self.drag = None;
         self.rubber = None;
         self.scale = None;
+        self.xform = None;
+        self.loop_hover = None;
         self.hover = None;
         self.cache.get_mut().splits.clear();
         self.cache.get_mut().invalidate();
@@ -979,8 +1024,23 @@ impl Tool for VertexTool {
     fn action(&mut self, state: &mut AppState, action: Action) -> bool {
         self.cache.get_mut().refresh(&state.doc);
         self.drop_stale(state);
-        let ours = matches!(action, Action::SnapToGrid | Action::VertexSplitFace | Action::VertexScale);
-        if ours && (self.drag.is_some() || self.rubber.is_some()) {
+        let ours = matches!(
+            action,
+            Action::SnapToGrid
+                | Action::VertexSplitFace
+                | Action::VertexScale
+                | Action::VertexWeld
+                | Action::VertexWeldDistance
+                | Action::VertexCleanup
+                | Action::VertexRotate
+                | Action::EdgeSelectLoop
+                | Action::EdgeSelectRing
+                | Action::EdgeGrow
+                | Action::EdgeShrink
+                | Action::EdgeSelectBoundary
+                | Action::EdgeSlide
+        );
+        if ours && (self.drag.is_some() || self.rubber.is_some() || self.xform.is_some()) {
             return true;
         }
         match action {
@@ -998,6 +1058,18 @@ impl Tool for VertexTool {
                 self.split_face(state);
                 true
             }
+            Action::VertexWeld => {
+                self.weld_selected(state);
+                true
+            }
+            Action::VertexWeldDistance => {
+                self.weld_by_distance(state);
+                true
+            }
+            Action::VertexCleanup => {
+                self.cleanup_edited(state);
+                true
+            }
             Action::VertexScale => {
                 if self.scale.is_some() {
                     self.apply_scale(state);
@@ -1006,6 +1078,13 @@ impl Tool for VertexTool {
                 }
                 true
             }
+            Action::VertexRotate
+            | Action::EdgeSelectLoop
+            | Action::EdgeSelectRing
+            | Action::EdgeGrow
+            | Action::EdgeShrink
+            | Action::EdgeSelectBoundary
+            | Action::EdgeSlide => self.edge_action(state, action),
             _ => false,
         }
     }
@@ -1020,6 +1099,10 @@ impl Tool for VertexTool {
     }
 
     fn wheel(&mut self, _state: &mut AppState, view: &ViewInfo, notches: f32, mods: Modifiers) -> ToolFlow {
+        if self.xform_wheel(notches, mods) {
+            self.last_view = Some(*view);
+            return ToolFlow::Handled;
+        }
         let Some(scale) = self.scale.as_ref() else { return ToolFlow::Ignored };
         if !mods.alt || !notches.is_finite() || notches == 0.0 {
             return ToolFlow::Ignored;
@@ -1038,11 +1121,23 @@ impl Tool for VertexTool {
             Some(s) => format!("{}  ({s})", a.label()),
             None => a.label().to_owned(),
         };
-        vec![
+        let mut entries = vec![
             ToolMenuEntry { label: label(Action::VertexSplitFace), id: MENU_SPLIT, enabled: self.can_split() },
             ToolMenuEntry { label: label(Action::VertexScale), id: MENU_SCALE, enabled: selected },
             ToolMenuEntry { label: t!("vertex.snap_selected").to_owned(), id: MENU_SNAP, enabled: selected },
-        ]
+            ToolMenuEntry { label: Action::VertexWeld.label().to_owned(), id: MENU_WELD, enabled: selected },
+            ToolMenuEntry {
+                label: Action::VertexWeldDistance.label().to_owned(),
+                id: MENU_WELD_DISTANCE,
+                enabled: !cache.solids.is_empty(),
+            },
+        ];
+        entries.extend(MENU_EDGE_ACTIONS.iter().map(|(id, a)| ToolMenuEntry {
+            label: a.label().to_owned(),
+            id: *id,
+            enabled: selected,
+        }));
+        entries
     }
 
     fn context_command(&mut self, state: &mut AppState, id: u32) {
@@ -1056,7 +1151,17 @@ impl Tool for VertexTool {
             MENU_SNAP => {
                 self.snap_selection(state);
             }
-            _ => {}
+            MENU_WELD => {
+                self.weld_selected(state);
+            }
+            MENU_WELD_DISTANCE => {
+                self.weld_by_distance(state);
+            }
+            other => {
+                if let Some((_, a)) = MENU_EDGE_ACTIONS.iter().find(|(i, _)| *i == other) {
+                    self.edge_action(state, *a);
+                }
+            }
         }
     }
 
@@ -1064,7 +1169,12 @@ impl Tool for VertexTool {
         self.cache.get_mut().refresh(&state.doc);
         self.drop_stale(state);
         let mut handled = false;
-        if self.scale.is_some() {
+        if self.xform.is_some() {
+            if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Enter)) {
+                self.apply_xform(state);
+                handled = true;
+            }
+        } else if self.scale.is_some() {
             if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Enter)) {
                 self.apply_scale(state);
                 handled = true;
@@ -1090,10 +1200,12 @@ impl Tool for VertexTool {
         let normal = rgba(HANDLE);
         let drag = self.current_drag(&cache);
         let scale = self.current_scale(&cache);
+        let xform = self.xform.as_ref().filter(|x| x.generation == cache.generation);
         let show_vertices = self.mode != VertexMode::Edges;
         let hidden = |ci: usize| {
             drag.is_some_and(|d| d.dragged_mask.get(ci).copied().unwrap_or(false))
                 || scale.is_some_and(|s| s.mask.get(ci).copied().unwrap_or(false))
+                || xform.is_some_and(|x| x.mask.get(ci).copied().unwrap_or(false))
         };
         for (ci, s) in cache.solids.iter().enumerate() {
             if hidden(ci) {
@@ -1118,6 +1230,7 @@ impl Tool for VertexTool {
                 line_on_top(out, *a, *b, split_color);
             }
         }
+        self.draw_loop_hover(out);
         if let Some(d) = drag {
             Self::draw_previews(out, &d.solids, &d.previews);
             if let DragKind::Axis(a) = d.kind {
@@ -1130,6 +1243,8 @@ impl Tool for VertexTool {
         } else if let Some(s) = scale {
             Self::draw_previews(out, &s.solids, &s.previews);
             point(out, s.center, rgba(PREVIEW), 6.0);
+        } else if xform.is_some() {
+            self.xform_overlay(out);
         } else if let Some(center) = cache.selection_center()
             && let Some(arms) = gizmo_arms(view, center)
         {
@@ -1153,7 +1268,7 @@ impl Tool for VertexTool {
         let clip = view.rect.expand(8.0);
         let drag = self.current_drag(&cache);
         let scale = self.current_scale(&cache);
-        if self.mode != VertexMode::Vertices && drag.is_none() && scale.is_none() {
+        if self.mode != VertexMode::Vertices && drag.is_none() && scale.is_none() && self.xform.is_none() {
             let fill = Color32::from_rgb(200, 200, 210);
             let stroke = Stroke::new(1.0, Color32::from_rgb(20, 20, 24));
             let occupied =
@@ -1240,6 +1355,8 @@ impl Tool for VertexTool {
                 };
                 painter.text(c + egui::vec2(12.0, -10.0), Align2::LEFT_BOTTOM, text, font, color);
             }
+        } else if self.xform.is_some() {
+            self.xform_paint(view, painter, cache.selection_center(), font.clone());
         } else if let Some(center) = cache.selection_center()
             && let Some(arms) = gizmo_arms(view, center)
         {
@@ -1259,6 +1376,10 @@ impl Tool for VertexTool {
             self.scale_options(ui, state);
             return;
         }
+        if self.xform.is_some() {
+            self.xform_options(ui, state);
+            return;
+        }
         let mode_tip = with_shortcut(state, t!("vertex.mode_tip"), Action::ToolVertex);
         let mut pending: Option<DVec3> = None;
         let mut snap_now = false;
@@ -1267,6 +1388,9 @@ impl Tool for VertexTool {
         let mut split = false;
         let mut scale = false;
         let can_split = self.can_split();
+        let mut weld_now = false;
+        let mut weld_distance_now = false;
+        let mut cleanup_now = false;
         ui.horizontal_wrapped(|ui| {
             for mode in [VertexMode::Both, VertexMode::Vertices, VertexMode::Edges] {
                 if ui.add(egui::Button::selectable(self.mode == mode, mode.label())).on_hover_text(&mode_tip).clicked()
@@ -1344,6 +1468,21 @@ impl Tool for VertexTool {
                 }
             }
         });
+        self.weld_options(ui, state, &mut [&mut weld_now, &mut weld_distance_now, &mut cleanup_now]);
+        let mut loop_clicks: Vec<Action> = Vec::new();
+        self.loop_options(ui, state, &mut loop_clicks);
+        for a in loop_clicks {
+            self.edge_action(state, a);
+        }
+        if weld_now {
+            self.weld_selected(state);
+        }
+        if weld_distance_now {
+            self.weld_by_distance(state);
+        }
+        if cleanup_now {
+            self.cleanup_edited(state);
+        }
         if select_all {
             self.cache.get_mut().select_all();
         }
@@ -1362,6 +1501,37 @@ impl Tool for VertexTool {
         if scale {
             self.start_scale(state);
         }
+    }
+
+    fn set_option(&mut self, _state: &mut AppState, key: &str, value: &str) -> bool {
+        let number =
+            |max: f64, min: f64| value.trim().parse::<f64>().ok().filter(|v| v.is_finite() && (min..=max).contains(v));
+        match key {
+            "merge_distance" => number(16.0, 0.0).map(|v| self.merge_tolerance = v).is_some(),
+            "weld_distance" => number(weld::MAX_WELD_DISTANCE, 0.001).map(|v| self.weld_distance = v).is_some(),
+            "weld_target" => weld::WeldTarget::parse(value).map(|v| self.weld_target = v).is_some(),
+            _ => false,
+        }
+    }
+
+    fn option_values(&self) -> Vec<hp_app::tool::ToolOption> {
+        vec![
+            hp_app::tool::ToolOption::new(
+                "merge_distance",
+                format!("{}", self.merge_tolerance),
+                "units from 0 to 16: a vertex dropped closer than this to another vertex merges with it",
+            ),
+            hp_app::tool::ToolOption::new(
+                "weld_distance",
+                format!("{}", self.weld_distance),
+                "units from 0.001 to 64: Weld by distance merges the vertices closer than this",
+            ),
+            hp_app::tool::ToolOption::new(
+                "weld_target",
+                self.weld_target.name(),
+                "where Weld selected vertices puts them: center, first or last (lowest or highest vertex index)",
+            ),
+        ]
     }
 
     fn cursor(&self, _state: &AppState, view: &ViewInfo, pos: Pos2) -> Option<CursorIcon> {
@@ -1405,10 +1575,16 @@ impl Tool for VertexTool {
                 None => tf!("vertex.hint_drag", d.moving_count(), fmt_vec3(d.delta)),
             });
         }
+        if let Some(h) = self.xform_hint() {
+            return Some(h);
+        }
         if self.rubber.is_some() {
             return Some(t!("vertex.hint_rubber").to_owned());
         }
         self.cache.borrow_mut().refresh(&state.doc);
+        if let Some(text) = self.loop_status() {
+            return Some(text);
+        }
         let cache = self.cache.borrow();
         if cache.solids.is_empty() {
             return Some(t!("vertex.hint_pick").to_owned());
@@ -1431,7 +1607,7 @@ impl Tool for VertexTool {
         if self.rubber.take().is_some() {
             return true;
         }
-        if self.scale.take().is_some() {
+        if self.scale.take().is_some() || self.xform.take().is_some() {
             return true;
         }
         let cache = self.cache.get_mut();
@@ -1450,6 +1626,68 @@ impl Tool for VertexTool {
 }
 
 impl VertexTool {
+    fn weld_options(&mut self, ui: &mut egui::Ui, state: &AppState, clicks: &mut [&mut bool; 3]) {
+        let selected = self.cache.get_mut().selected_count();
+        let by_selection = self.selected_weld_count();
+        let by_distance = self.distance_weld_count();
+        let empty = self.cache.get_mut().solids.is_empty();
+        ui.horizontal_wrapped(|ui| {
+            ui.label(t!("vertex.weld")).on_hover_text(t!("vertex.weld_tip"));
+            egui::ComboBox::from_id_salt("vertex_weld_target")
+                .selected_text(self.weld_target.label())
+                .show_ui(ui, |ui| {
+                    for target in [weld::WeldTarget::Center, weld::WeldTarget::First, weld::WeldTarget::Last] {
+                        ui.selectable_value(&mut self.weld_target, target, target.label());
+                    }
+                })
+                .response
+                .on_hover_text(t!("vertex.weld_target_tip"));
+            let tip = with_shortcut(state, t!("vertex.weld_selected_tip"), Action::VertexWeld);
+            if ui
+                .add_enabled(selected > 1, egui::Button::new(Action::VertexWeld.label()))
+                .on_hover_text(&tip)
+                .on_disabled_hover_text(&tip)
+                .clicked()
+            {
+                *clicks[0] = true;
+            }
+            if by_selection > 0 {
+                ui.label(tf!("vertex.weld_preview", by_selection));
+            }
+            ui.separator();
+            ui.label(t!("vertex.weld_distance")).on_hover_text(t!("vertex.weld_distance_tip"));
+            ui.add(
+                egui::DragValue::new(&mut self.weld_distance)
+                    .range(0.001..=weld::MAX_WELD_DISTANCE)
+                    .speed(0.05)
+                    .max_decimals(3),
+            )
+            .on_hover_text(t!("vertex.weld_distance_tip"));
+            let tip = with_shortcut(state, t!("vertex.weld_by_distance_tip"), Action::VertexWeldDistance);
+            if ui
+                .add_enabled(!empty, egui::Button::new(Action::VertexWeldDistance.label()))
+                .on_hover_text(&tip)
+                .on_disabled_hover_text(&tip)
+                .clicked()
+            {
+                *clicks[1] = true;
+            }
+            if by_distance > 0 {
+                ui.label(tf!("vertex.weld_preview", by_distance));
+            }
+            ui.separator();
+            let tip = with_shortcut(state, t!("vertex.cleanup_tip"), Action::VertexCleanup);
+            if ui
+                .add_enabled(!empty, egui::Button::new(Action::VertexCleanup.label()))
+                .on_hover_text(&tip)
+                .on_disabled_hover_text(&tip)
+                .clicked()
+            {
+                *clicks[2] = true;
+            }
+        });
+    }
+
     fn scale_options(&mut self, ui: &mut egui::Ui, state: &mut AppState) {
         let Some(scale) = self.scale.as_ref() else { return };
         let mut factor = scale.factor;

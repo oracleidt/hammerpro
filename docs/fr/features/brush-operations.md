@@ -14,6 +14,8 @@ Toutes sont dans le menu **Outils** (sauf **Créer un brush hint**, disponible s
 | **Rendre creux** | `Ctrl+H` | un ou plusieurs brushes |
 | **Fusionner les brushes** | `Ctrl+Maj+M` | au moins deux brushes |
 | **Fusionner en un solide convexe** | aucun | au moins deux brushes |
+| **Intersection de brushes** | `Ctrl+Maj+K` | au moins deux brushes |
+| **Union de brushes** | aucun | au moins deux brushes |
 | **Lier à une entité** | `Ctrl+T` | une sélection |
 | **Lier chacun à sa propre entité** | `Ctrl+Maj+T` | une sélection avec des brushes du monde |
 | **Renvoyer au monde** | `Ctrl+Maj+W` | des brushes d'entités de brush |
@@ -57,6 +59,23 @@ Le champ d'épaisseur a le focus clavier à l'ouverture : tapez la valeur puis `
 ## Fusionner en un solide convexe
 
 **Outils > Fusionner en un solide convexe** enveloppe les brushes sélectionnés dans leur enveloppe convexe, même si cela ajoute du volume. Le résultat remplace le premier brush (même id, même propriétaire, mêmes données d'éditeur) et les autres sont supprimés.
+
+## Intersection de brushes
+
+**Outils > Intersection de brushes** (`Ctrl+Maj+K`) ne garde que le volume commun à tous les brushes sélectionnés. Le résultat est un brush convexe qui remplace le premier brush sélectionné (même id, même propriétaire, mêmes données d'éditeur) ; les autres sont supprimés.
+
+- Les faces conservées gardent leur texture. Les nouvelles faces de coupe prennent la texture de la face qui les a coupées, comme Carve.
+- Si les brushes ne se chevauchent pas (un simple contact ne suffit pas), rien ne change et l'avertissement **Les brushes ne se chevauchent pas : il n'y a aucun volume commun à conserver** s'affiche.
+- Les brushes doivent tous être des brushes du monde ou appartenir à la même entité, sinon l'avertissement **Les brushes doivent tous être des brushes du monde ou appartenir à la même entité** s'affiche.
+
+## Union de brushes
+
+**Outils > Union de brushes** réunit les brushes sélectionnés en le moins possible de brushes convexes qui couvrent exactement leur union, sans ajouter de volume (contrairement à **Fusionner en un solide convexe**).
+
+1. Les brushes qui se chevauchent sont découpés pour ne plus se recouvrir, et les parties cachées à l'intérieur d'un autre brush sont retirées.
+2. Les voisins en contact sont refusionnés en un seul brush dès que leur union est convexe.
+
+Deux boîtes qui se chevauchent dans l'axe donnent donc une seule boîte, tandis qu'un L reste deux brushes qui se touchent sans se chevaucher. Chaque brush garde son id tant qu'il a encore un morceau ; ceux entièrement à l'intérieur d'autres brushes sont supprimés. Les nouveaux morceaux gardent le propriétaire et les données d'éditeur du brush dont ils viennent, et sont sélectionnés si lui l'était. Quand rien ne peut être joint, l'avertissement **Rien à joindre** s'affiche. La même règle de propriétaire que **Fusionner les brushes** s'applique. Une seule étape d'annulation.
 
 ## Lier à une entité
 
@@ -112,7 +131,7 @@ Les deux sont dans le menu **Outils**, dans **Paramètres > Édition > Comportem
 
 ## MCP
 
-Pour les assistants IA : `carve`, `hollow`, `merge_brushes` (`convex_hull` à true pour Fusionner en un solide convexe), `tie_to_entity`, `move_to_world`, `make_hint_brushes`, `find_hidden_faces`, `apply_nodraw` et `run_action` pour les autres commandes. Voir la [référence des outils MCP](../../MCP.md) (en anglais).
+Pour les assistants IA : `carve`, `hollow`, `merge_brushes` (`convex_hull` à true pour Fusionner en un solide convexe), `intersect_brushes`, `union_brushes`, `tie_to_entity`, `move_to_world`, `make_hint_brushes`, `find_hidden_faces`, `apply_nodraw` et `run_action` pour les autres commandes. Voir la [référence des outils MCP](../../MCP.md) (en anglais).
 
 ## Astuces
 
@@ -126,6 +145,8 @@ Pour les assistants IA : `carve`, `hollow`, `merge_brushes` (`convex_hull` à tr
 **Le carve n'a rien fait sur mon func_detail.** Le carve ne découpe que les brushes du monde. Faites d'abord **Renvoyer au monde**, creusez, puis liez à nouveau les morceaux.
 
 **Fusionner les brushes dit que la forme n'est pas convexe.** Les brushes fusionnés doivent former un brush convexe. Utilisez **Fusionner en un solide convexe** si l'ajout de volume ne vous gêne pas, ou gardez des brushes séparés.
+
+**L'union de brushes laisse plusieurs brushes.** Le résultat n'est fait que de brushes convexes : une union non convexe (un L, un T) en demande au moins deux. Ils ne se chevauchent plus et n'ont plus de faces internes.
 
 **Rendre creux échoue.** Le brush est trop fin pour l'épaisseur demandée. Réduisez l'épaisseur ou agrandissez le brush.
 

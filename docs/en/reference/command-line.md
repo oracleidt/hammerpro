@@ -12,9 +12,10 @@ hammerpro [map.vmf] [--lang en|fr] [--size WxH] [--screenshot out.png] [--frames
 hammerpro --mcp
 hammerpro --bspc [compiler options] <map.vmf>
 hammerpro --rad [lighting options] <map.bsp>
+hammerpro --import-models FILE_OR_DIR... --out DIR [options]
 ```
 
-`--mcp`, `--bspc`, `--rad` and `--light-preview` must be the **first** argument: they start a mode without any window. Every other argument belongs to the editor and can come in any order.
+`--mcp`, `--bspc`, `--rad`, `--import-models` and `--light-preview` must be the **first** argument: they start a mode without any window. Every other argument belongs to the editor and can come in any order.
 
 ## Editor arguments
 
@@ -40,10 +41,43 @@ An unknown argument starting with `--` prints `unknown argument: ...` on stderr 
 | `--mcp` | The MCP bridge that AI apps start themselves. It opens no window and forwards the tool calls to a Hammer Pro window whose MCP server is on. stdout only carries MCP messages. See [MCP server](mcp-server.md). |
 | `--bspc [options] <map>` | The Hammer Pro map compiler (geometry, portals, leak test and visibility), with the arguments of VBSP (`-game`, `-leaktest`...). It writes `<map>.bsp` next to the map, `<map>.lin` when the map leaks, `<map>.prt` for a sealed map, and a `<map>.log`. |
 | `--rad [options] <map>` | The Hammer Pro lighting, with the arguments of VRAD (`-ldr`, `-hdr`, `-both`, `-final`, `-fast`, `-bounce N`...) plus Hammer Pro's own options (`-nostaticpropshadows`, `-nodispshadows`...). It lights `<map>.bsp` in place. |
+| `--import-models FILE_OR_DIR... --out DIR [options]` | Batch conversion of OBJ, FBX, glTF and GLB files into Garry's Mod models, with no window and no game (see "Batch import" in [Model import](../features/model-import.md#batch-import)). |
 | `--light-preview ...` | Internal: the lighting of the baked lighting preview, started by the editor itself. You never need to run it. |
 | `--apply-update <zip> <program> <pid>` | Internal: the update helper that the editor starts from a copy of itself when you click **Update**. It has no window: it waits for the process `<pid>` to end, extracts `hammerpro.exe` from `<zip>`, replaces `<program>` (keeping `<program>.old`, rolling back on failure) and starts it. See [Updates](../features/updates.md). |
 
 Every flag of `--bspc` and `--rad`, with its effect and default, is documented in [Compiler command line](../compiler/command-line.md).
+
+## Batch model import
+
+```text
+hammerpro --import-models FILE_OR_DIR... --out DIR [options]
+```
+
+Must be the **first** argument. Each file or folder is converted to `DIR/models/hammerpro/<name>.mdl` (with `.vvd`, `.dx90.vtx` and `.phy`) and its textures to `DIR/materials/models/hammerpro/<name>/`. Nothing is read from or written to the game. The saved settings give the defaults for levels of detail and material parameters.
+
+| Option | What it does | Default |
+|---|---|---|
+| `--out DIR` | Output folder (required, except with `--dry-run`). | none |
+| `--recursive`, `-r` | Search folders recursively. | off |
+| `--formats LIST` | Formats taken from folders: `obj`, `fbx`, `gltf` (also `glb`), comma separated. | all |
+| `--template T` | Name template with `{name}`, `{folder}` and `{index}`. | `{name}` |
+| `--prefix P` | Text in front of every name. | none |
+| `--scale S` | Extra scale, 0.001 to 1000. | `1` |
+| `--no-units` | One unit of the file is one Source unit (no meter conversion). | off |
+| `--up auto\|y\|z` | Up axis of the files. | `auto` |
+| `--no-center` | Keep the origin of the file instead of the bottom center. | off |
+| `--kind static\|physics` | `prop_static` or `prop_physics`. | `static` |
+| `--surface NAME` | Surface property. | `default` |
+| `--mass KG` | Mass of physics props, 0.1 to 50000. | `20` |
+| `--collision pieces\|box\|none` | Collision model. | `pieces` |
+| `--no-lod`, `--lod-levels N`, `--lod-keep PCT` | Levels of detail: off, 3 to 6 levels, 20 to 90 % kept per level. | saved settings |
+| `--no-material-params` | Color, alpha and double sided only in the VMTs. | saved setting |
+| `--overwrite` | Replace models that exist (they are skipped by default). | off |
+| `--threads N` | Files converted at the same time. | half the processor threads, 1 to 4 |
+| `--dry-run` | Only read the files and print triangles, size, name and warnings. | off |
+| `--quiet`, `-q` | Print only the summary. | off |
+
+One line is printed per file (`OK`, `Warning`, `Error` or `Skipped`, the file, the model name, the reason), then a summary. Exit codes: `0` every file converted or skipped, `1` at least one file failed or no file was found, `2` a wrong option (the message and a usage line are printed).
 
 ## Automated runs
 

@@ -13,6 +13,10 @@ pub enum SculptOp {
     Push,
     Carve,
     Project,
+    Pinch,
+    Grab,
+    Inflate,
+    Flatten,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -47,6 +51,8 @@ pub struct SculptSettings {
     pub bounds: BoundsLimit,
     pub falloff_position: f64,
     pub falloff_final: f64,
+    pub flatten_fixed: bool,
+    pub flatten_strength: f64,
 }
 
 impl Default for SculptSettings {
@@ -62,6 +68,8 @@ impl Default for SculptSettings {
             bounds: BoundsLimit::Attenuated,
             falloff_position: 0.0,
             falloff_final: 0.0,
+            flatten_fixed: false,
+            flatten_strength: 0.5,
         }
     }
 }
@@ -75,6 +83,7 @@ impl SculptSettings {
         self.project_range = fix(self.project_range, 1.0, 16384.0, 512.0);
         self.falloff_position = fix(self.falloff_position, 0.0, 100.0, 0.0);
         self.falloff_final = fix(self.falloff_final, 0.0, 100.0, 0.0);
+        self.flatten_strength = fix(self.flatten_strength, 0.0, 1.0, 0.5);
         for v in &mut self.profile {
             *v = fix(*v, 0.0, 1.0, 0.0);
         }
@@ -113,11 +122,12 @@ impl SculptSettings {
 pub(crate) struct SculptStroke {
     start: HashMap<FaceRef, Vec<f64>>,
     path: Vec<DVec3>,
+    pub(super) brush: super::brushes::BrushStroke,
 }
 
 const MAX_PATH: usize = 4096;
 
-fn direction(brush: &BrushSettings, mesh: &DispMesh) -> DVec3 {
+pub(super) fn direction(brush: &BrushSettings, mesh: &DispMesh) -> DVec3 {
     match brush.axis {
         PaintAxis::X | PaintAxis::Y | PaintAxis::Z | PaintAxis::Custom => brush.axis_vector().unwrap_or(DVec3::Z),
         PaintAxis::FaceNormal
@@ -128,7 +138,7 @@ fn direction(brush: &BrushSettings, mesh: &DispMesh) -> DVec3 {
     }
 }
 
-fn plane_distance(mesh: &DispMesh, k: usize, p: DVec3, spatial: bool) -> Option<f64> {
+pub(super) fn plane_distance(mesh: &DispMesh, k: usize, p: DVec3, spatial: bool) -> Option<f64> {
     let (pos, base) = (*mesh.positions.get(k)?, *mesh.base_positions.get(k)?);
     Some(if spatial {
         pos.distance(p)
@@ -148,7 +158,7 @@ fn segment_distance(p: DVec3, a: DVec3, b: DVec3, normal: Option<DVec3>) -> f64 
     hp_geom::point_segment_distance(p, a, b)
 }
 
-fn set_position(disp: &mut DispInfo, mesh: &DispMesh, k: usize, p: DVec3) -> bool {
+pub(super) fn set_position(disp: &mut DispInfo, mesh: &DispMesh, k: usize, p: DVec3) -> bool {
     let count = mesh.row_len * mesh.row_len;
     let fnorm = mesh.face_normal;
     disp.normals.resize(count, fnorm);
@@ -210,6 +220,9 @@ pub(crate) fn sculpt_sample(
     let radius = brush.radius;
     if !center.is_finite() || !radius.is_finite() || radius <= 0.0 {
         return Ok(0);
+    }
+    if super::brushes::handles(sculpt.op) {
+        return super::brushes::sample(doc, faces, center, brush, sculpt, &mut stroke.brush, invert, dt);
     }
     if sculpt.op == SculptOp::Carve && stroke.path.last().is_none_or(|q| q.distance(center) > radius * 0.05) {
         stroke.path.push(center);
@@ -299,6 +312,7 @@ pub(crate) fn sculpt_sample(
                     let Some(hit) = project_point(doc, &targets, pos, dir, sculpt.project_range) else { continue };
                     h + (hit.dot(dir) - h) * w
                 }
+                SculptOp::Pinch | SculptOp::Grab | SculptOp::Inflate | SculptOp::Flatten => continue,
             };
             if (target - h).abs() < 1e-9 || !target.is_finite() {
                 continue;
@@ -319,6 +333,14 @@ pub(crate) fn sculpt_sample(
             None => updates.push((f.solid, vec![(f.side, new_disp)])),
         }
     }
+    commit_updates(doc, updates, total)
+}
+
+pub(super) fn commit_updates(
+    doc: &mut Document,
+    updates: Vec<(Id, Vec<(usize, DispInfo)>)>,
+    total: usize,
+) -> EditResult<usize> {
     if updates.is_empty() {
         return Ok(0);
     }

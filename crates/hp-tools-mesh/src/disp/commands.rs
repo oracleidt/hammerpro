@@ -68,14 +68,14 @@ pub fn add_noise(state: &mut AppState) -> usize {
     }
 }
 
-pub fn subdivide(state: &mut AppState) -> usize {
-    let faces = targets(&state.doc);
-    if !require(state, &faces) {
-        return 0;
-    }
-    let doc = &state.doc;
+pub(crate) fn reshape_doc(
+    doc: &mut Document,
+    faces: &[FaceRef],
+    label: &'static str,
+    run: impl FnOnce(&mut [SmoothPart<'_>]) -> Vec<usize>,
+) -> Result<usize, EditError> {
     let mut work: Vec<(FaceRef, hp_geom::DispMesh, hp_vmf::DispInfo)> = Vec::new();
-    for f in &faces {
+    for f in faces {
         let Some(node) = doc.scene().solid(f.solid) else { continue };
         let (Some(mesh), Some(disp)) =
             (node.disp_mesh(f.side), node.solid.sides.get(f.side).and_then(|s| s.disp.as_deref()))
@@ -87,7 +87,7 @@ pub fn subdivide(state: &mut AppState) -> usize {
     let counts = {
         let mut parts: Vec<SmoothPart<'_>> =
             work.iter_mut().map(|(_, mesh, disp)| SmoothPart { mesh, disp, pinned: false }).collect();
-        subdivide_parts(&mut parts)
+        run(&mut parts)
     };
     let mut updates = Vec::new();
     let mut moved = 0;
@@ -102,24 +102,46 @@ pub fn subdivide(state: &mut AppState) -> usize {
         updates.push((f, d));
     }
     if updates.is_empty() {
-        state.notify(Severity::Info, t!("disp.subdivide_nothing"));
-        return 0;
+        return Ok(0);
     }
-    let result = state.doc.transaction(UNDO_SUBDIVIDE, |doc| {
-        doc.set_disp_data(UNDO_SUBDIVIDE, updates)?;
-        let plan = plan_sew(doc, &faces, &[]);
+    doc.transaction(label, |doc| {
+        doc.set_disp_data(label, updates)?;
+        let plan = plan_sew(doc, faces, &[]);
         doc.set_disp_data(UNDO_SEW, plan.updates)?;
         Ok::<(), EditError>(())
-    });
-    match result {
-        Ok(()) => {
-            state.notify(Severity::Success, tf!("disp.subdivided", faces.len()));
-            moved
-        }
+    })?;
+    Ok(moved)
+}
+
+pub(crate) fn reshape(
+    state: &mut AppState,
+    label: &'static str,
+    run: impl FnOnce(&mut [SmoothPart<'_>]) -> Vec<usize>,
+) -> Option<(usize, usize)> {
+    let faces = targets(&state.doc);
+    if !require(state, &faces) {
+        return None;
+    }
+    match reshape_doc(&mut state.doc, &faces, label, run) {
+        Ok(moved) => Some((faces.len(), moved)),
         Err(e) => {
             failed(state, &e);
+            None
+        }
+    }
+}
+
+pub fn subdivide(state: &mut AppState) -> usize {
+    match reshape(state, UNDO_SUBDIVIDE, subdivide_parts) {
+        Some((faces, moved)) if moved > 0 => {
+            state.notify(Severity::Success, tf!("disp.subdivided", faces));
+            moved
+        }
+        Some(_) => {
+            state.notify(Severity::Info, t!("disp.subdivide_nothing"));
             0
         }
+        None => 0,
     }
 }
 
@@ -197,44 +219,6 @@ pub fn scale(state: &mut AppState, factor: f64) -> usize {
             failed(state, &e);
             0
         }
-    }
-}
-
-pub fn noise_window(ctx: &egui::Context, state: &mut AppState) {
-    if !state.runtime.mesh.noise_dialog {
-        return;
-    }
-    let mut open = true;
-    let mut apply = false;
-    let mut close = false;
-    let center = ctx.content_rect().center();
-    hp_app::chrome::Window::new(t!("disp.noise_title"))
-        .id(egui::Id::unique("hp_disp_noise_window"))
-        .pivot(egui::Align2::CENTER_CENTER)
-        .default_pos(center)
-        .open(&mut open)
-        .collapsible(false)
-        .resizable(false)
-        .show(ctx, |ui| {
-            let count = targets(&state.doc).len();
-            ui.label(egui::RichText::new(tf!("disp.noise_targets", count)).weak());
-            if noise_range_ui(ui, state) {
-                state.settings_dirty = true;
-            }
-            ui.horizontal(|ui| {
-                if ui.add_enabled(count > 0, egui::Button::new(t!("common.apply"))).clicked() {
-                    apply = true;
-                }
-                if ui.button(t!("common.close")).clicked() {
-                    close = true;
-                }
-            });
-        });
-    if apply {
-        add_noise(state);
-    }
-    if !open || close {
-        state.runtime.mesh.noise_dialog = false;
     }
 }
 

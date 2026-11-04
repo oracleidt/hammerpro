@@ -146,6 +146,7 @@ mod tests {
             materials: vec![Material { name: "Wood Dark!".to_owned(), ..Material::default() }],
             up: UpAxis::Z,
             meters_per_unit: 1.0,
+            objects: Vec::new(),
         }
     }
 

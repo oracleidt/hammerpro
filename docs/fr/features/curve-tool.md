@@ -2,7 +2,7 @@
 
 # Outil courbe
 
-L'outil courbe construit des murs courbes, des rambardes, des bordures, des tuyaux vus de dessus ou des rampes vues de côté avec de simples brushes en forme de boîte. Vous dessinez un tracé de n'importe quelle forme dans une vue 2D, vous choisissez en combien de morceaux il est coupé et leur épaisseur, et l'outil crée un brush convexe à 6 faces par morceau, qui suit la courbe avec des joints en onglet : deux brushes voisins partagent exactement leur face de jonction, sans trou ni chevauchement.
+L'outil courbe construit des murs courbes, des rambardes, des bordures, des tuyaux vus de dessus ou des rampes vues de côté avec de simples brushes en forme de boîte. Vous dessinez un tracé de n'importe quelle forme dans une vue 2D, vous choisissez en combien de morceaux il est coupé et leur épaisseur, et l'outil crée un brush convexe à 6 faces par morceau (plus de brushes par morceau avec un profil bordures ou fossé, voir plus bas), qui suit la courbe avec des joints en onglet : deux brushes voisins partagent exactement leur face de jonction, sans trou ni chevauchement.
 
 ## L'ouvrir
 
@@ -39,6 +39,7 @@ Comme pour l'outil bloc, les brushes prennent leur étendue dans la profondeur d
 | Option | Rôle | Par défaut |
 |---|---|---|
 | **Subdivisions**, **Épaisseur**, **Hauteur** | Comme dans la fenêtre Courbe. | 16, 16, selon la sélection |
+| **Profil**, tailles des bordures et du fossé, **Roulis début**, **Roulis fin**, **Dévers auto**, **Limite auto** | Section et dévers, voir plus bas. | Plat, sans dévers |
 | **Échelle** | Échelle de texture des nouvelles faces (0,01 à 64). | réglage **Échelle de texture par défaut** |
 | Créer comme | **Brush du monde**, **func_detail** ou toute classe d'entité brush du FGD. Avec une classe, tous les brushes vont dans une seule nouvelle entité brush. | Brush du monde |
 | Matériau actuel | Matériau posé sur chaque face, comme l'outil bloc. Cliquez dessus pour afficher le navigateur de textures. | le matériau actuel |
@@ -47,6 +48,38 @@ Comme pour l'outil bloc, les brushes prennent leur étendue dans la profondeur d
 | Résumé | **N point(s)**, puis **N brushes, longueur L**, ou en rouge pourquoi la courbe ne peut pas être construite (survolez-le pour les détails). | |
 
 Les nouveaux brushes deviennent la sélection ; toute la courbe tient en une seule étape d'annulation.
+
+## Section et dévers
+
+La même fenêtre Courbe et la même barre d'options contiennent la section et le dévers. Ils s'appliquent à toute la courbe.
+
+| Champ | Rôle | Plage | Par défaut |
+|---|---|---|---|
+| **Profil** | **Plat** : un brush par morceau. **Bordures** : la route plus une bordure surélevée de chaque côté, 3 brushes par morceau. **Fossé** : un canal en V, 2 brushes par morceau. | | Plat |
+| **Largeur bordure** | Profil bordures : largeur de chaque bordure. Les bordures s'ajoutent à l'extérieur de l'épaisseur, la largeur totale est donc l'épaisseur plus deux bordures. | 1 à 256 unités | 8 |
+| **Hauteur bordure** | Profil bordures : de combien les bordures dépassent la route. | 0 à 256 unités | 8 |
+| **Profondeur fossé** | Profil fossé : de combien le milieu du V s'enfonce sous les deux bords. Elle doit rester au moins 1 unité sous la hauteur. | 0 à 512 unités | 8 |
+| **Roulis début**, **Roulis fin** | Dévers : l'angle de roulis en degrés au début et à la fin de la courbe, qui varie régulièrement le long de la courbe. Un angle positif relève le côté gauche quand on suit la courbe du premier au dernier point. | -60 à 60 degrés | 0 |
+| **Dévers auto** | Dévers automatique, proportionnel à la courbure : le roulis en degrés pour un virage de rayon 1000 unités (un virage de rayon 500 en reçoit le double). La route penche vers l'intérieur de chaque virage. 0 le désactive. Il s'ajoute au roulis de début et de fin. | 0 à 90 | 0 |
+| **Limite auto** | Plus grand roulis que le dévers automatique peut ajouter. | 0 à 45 degrés | 8 |
+
+Le roulis fait tourner la section autour du milieu de la route, donc les morceaux partagent toujours exactement leurs faces de jonction. Le fossé et les bordures gardent aussi les mêmes jonctions, morceau après morceau. Le roulis total est limité à 60 degrés. Chaque morceau reste convexe à faces planes : là où le dévers, un virage ou le profil fossé vrillerait le dessus d'un morceau, ce morceau est coupé en deux moitiés convexes le long d'une diagonale, donc une courbe avec dévers peut avoir plus de brushes que les morceaux fois les bandes du profil. Une route droite au dévers régulier reste un brush à 6 faces par bande.
+
+## Modifier une courbe
+
+Chaque brush créé par l'outil courbe se souvient de sa courbe : les points, la vue, la profondeur et toutes les options sont stockés dans le bloc `editor` des brushes du VMF, sous forme de clés `hammerpro_curve`. Hammer et Hammer++ ignorent ces clés et les conservent à l'enregistrement, la carte reste donc valide pour eux. Les copies de la courbe entière continuent de fonctionner. Un brush coupé ou déplacé à la main garde les données, mais **Modifier la courbe** remet la forme de la courbe.
+
+1. Sélectionnez un brush de la courbe (ou son entité brush).
+2. **Outils > Modifier la courbe**, ou la palette de commandes. L'outil courbe s'ouvre sur les points enregistrés, à l'étape d'ajustement, avec les options enregistrées.
+3. Changez ce que vous voulez :
+   - **Faites glisser un point** pour le déplacer.
+   - **Maj+clic** insère un point sur la courbe, entre les deux points les plus proches.
+   - **Ctrl+clic** sur un point le retire (une courbe garde au moins 2 points).
+   - **Retour** revient au tracé pour cliquer de nouveaux points à la fin, `Retour arrière` retire le dernier point.
+   - Changez les subdivisions, l'épaisseur, la hauteur, le profil et le dévers.
+4. `Entrée` (ou **Appliquer**) remplace tous les brushes de la courbe par les nouveaux, en une seule étape d'annulation. Ils gardent le matériau et restent dans la même entité brush, s'il y en a une. `Échap` annule sans rien changer.
+
+Si le brush n'a pas de données de courbe (il n'a pas été créé par l'outil courbe, ou les données sont perdues), la commande le dit.
 
 ## Quand la courbe est refusée
 
@@ -60,7 +93,7 @@ Les nouveaux brushes deviennent la sélection ; toute la courbe tient en une seu
 - Peu de clics donnent les courbes les plus douces : la spline se charge de l'arrondi. Un tracé à main levée sur une grille fine suit davantage la main, tremblements compris.
 - 16 à 64 subdivisions suffisent pour la plupart des courbes ; un nombre élevé fait beaucoup de petits brushes, qui coûtent du temps de compilation. Mettez les courbes décoratives dans un `func_detail` avec **Créer comme**.
 - Les joints sont en onglet, donc les coins extérieurs ne tombent pas sur la grille. Ce sont quand même des plans propres partagés par les deux voisins, et la carte compile sans fuite ni brush invalide.
-- L'outil MCP `create_curve_brushes` construit les mêmes brushes à partir d'une liste de points, et `set_tool_options` avec l'outil `curve` règle `subdivisions`, `thickness`, `height`, `tex_scale`, `create_as` et `keep_active` (voir la [référence des outils MCP](../../MCP.md)).
+- L'outil MCP `create_curve_brushes` construit les mêmes brushes à partir d'une liste de points (avec les options `profile`, `curb_width`, `curb_height`, `ditch_depth`, `roll_start`, `roll_end`, `auto_bank` et `auto_bank_limit`), `get_curve_brushes` lit la courbe enregistrée, `edit_curve_brushes` remplace les brushes d'une courbe avec des points ou des options modifiés en une seule étape d'annulation, et `set_tool_options` avec l'outil `curve` règle `subdivisions`, `thickness`, `height`, `tex_scale`, `create_as`, `keep_active` et les mêmes options de section et de dévers (voir la [référence des outils MCP](../../MCP.md)).
 
 ## FAQ
 
@@ -68,10 +101,12 @@ Les nouveaux brushes deviennent la sélection ; toute la courbe tient en une seu
 
 **Puis-je faire un anneau fermé ?** Pour un anneau parfait, utilisez le tore ou l'arche de l'outil bloc. Avec l'outil courbe, placez le dernier point à côté du premier.
 
-**Puis-je obtenir des cylindres ou des coins ?** Non : l'outil courbe ne fait que des brushes en forme de boîte, à 6 faces chacun, les brushes les plus robustes pour le compilateur.
+**Puis-je obtenir des cylindres ou des coins ?** Non : l'outil courbe ne fait que des brushes en forme de boîte, les brushes les plus robustes pour le compilateur. Le profil fossé fait des morceaux en forme de coin et le dévers les incline, mais ils restent convexes à faces planes.
 
 ## Pages liées
 
+- [Outil route](road-tool.md)
+- [Détails de route](road-details.md)
 - [Outil bloc](block-tool.md)
 - [Outil polygone](polygon-tool.md)
 - [Outil vertex](vertex-tool.md)

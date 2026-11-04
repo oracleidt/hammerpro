@@ -512,8 +512,14 @@ fn panels_and_noise_window_render() {
         run_ui(&mut state, |ui, st| tool.options_ui(ui, st));
     }
     state.runtime.mesh.noise_dialog = true;
-    run_ctx(&mut state, commands::noise_window);
+    run_ctx(&mut state, |ctx, st| crate::disp::terrain_windows::noise_window(ctx, st, Some(&mut tool)));
     assert!(state.runtime.mesh.noise_dialog, "stays open until closed");
+    state.runtime.mesh.noise_dialog = false;
+    for which in [hp_app::runtime::ErosionDialog::Thermal, hp_app::runtime::ErosionDialog::Hydraulic] {
+        state.runtime.mesh.erosion_dialog = Some(which);
+        run_ctx(&mut state, |ctx, st| crate::disp::terrain_windows::erosion_window(ctx, st, Some(&mut tool)));
+        assert_eq!(state.runtime.mesh.erosion_dialog, Some(which));
+    }
     let (mut state, mut tool, _) = box_and_tool();
     tool.select_at(&state, &[DVec3::new(0.0, 0.0, 64.0), DVec3::new(128.0, 128.0, 64.0)]);
     tool.action(&mut state, Action::VertexSplitFace);

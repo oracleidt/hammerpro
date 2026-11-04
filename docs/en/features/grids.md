@@ -17,6 +17,7 @@ The grid is what the tools snap to and what the 2D views draw. Hammer Pro keeps 
 | **Grid from selection**, **Grid from face** | **Map > Grids** | none |
 | **Attach the grid to the selection**, **Detach the grid of the selection** | **Map > Grids** | none |
 | **Grid manager...** | **Map > Grids > Grid manager...** | none |
+| **Rotate grid 45 degrees**, **Align grid to the selected edge or face** | **Map > Grids**, command palette | none |
 
 With the Hammer and Hammer++ keymap presets, **Show grid** is `Shift+R`.
 
@@ -78,6 +79,21 @@ With **Objects use their grid** on, editing an object that carries a grid (movin
 - **Grids of the views**: for **Top**, **Front**, **Side** and **3D**, the **Size**, **Origin X Y Z** and **Major lines** used by **One grid per view**;
 - **Custom grids**: **New grid**, **Grid from selection**, **Grid from face**, the list of the grids of the map and of the presets, and every field of the chosen grid ("saved with the map" or "saved in the settings (every map)"), with **Use**, **Attach to the selection**, **Copy to the map** or **Save as preset**, and **Delete**.
 
+## Rotating the grid
+
+The **Rotate grid** row of the grid menu (the toolbar grid button) and of the grid manager turns the active grid in a 2D view, like Source 2 Hammer:
+
+- type any angle in degrees (decimals and negative values work) or drag the field; **0** goes back to the straight grid, **45** is the quick button;
+- **Rotate grid 45 degrees** adds 45 degrees to the current angle (twice gives a quarter turn, which looks straight again);
+- **Align grid to the selected edge or face** turns the grid to the longest edge of the selected face, of the selected brush or to the yaw of the selected entity, as seen in that 2D view.
+
+The grid turns around the axis of the view (Z in the top view, Y in the front view, X in the side view) and around its origin. The view used is the one under the mouse, else the last one used. What turns depends on the active grid:
+
+- **Global grid** and **One grid per view**: the angle of that view, kept in the `angle` field of `[grid.per_view.top]` (front, side, perspective) of `settings.toml`. The size stays the global one. Switching to one grid per view keeps the angles;
+- **Custom grid** (and the grid of the selection): its **Pitch Yaw Roll** change, so the angle is saved in the map with the grid and every change is an undo step.
+
+The 2D view draws the minor and major lines along the rotated axes, clipped to the view. The origin axes and the 1024 unit lines stay straight, like the map limits. Every tool (move, scale and resize handles, block, clip, vertex, extrude, path, entity placement) snaps to the rotated lattice, and **Ctrl + mouse wheel** changes its size as usual. Rotation is a lattice rotation in the plane of the view, so a brush resize handle snaps its point to the rotated nodes.
+
 ## How the grid is drawn
 
 | Option | Where | What it does | Default |
@@ -101,7 +117,7 @@ Grid settings live in the `[grid]` table of `settings.toml`: `mode`, `custom`, `
 
 - For stairs with 12 x 8 steps, make a custom grid with the step 12 12 8 and attach it to the staircase (see [Custom grids for stairs](../guides/custom-grids-for-stairs.md)).
 - **Snap selection to grid** (`Ctrl+B`) and **Snap each object to grid** (`Ctrl+Shift+B`) are in [Transform and align](transform-align.md).
-- MCP tools: `list_grids`, `set_grid_mode`, `create_grid`, `edit_grid`, `delete_grid`, `attach_grid` (see the [MCP tool reference](../../MCP.md)).
+- MCP tools: `list_grids`, `set_grid_mode`, `create_grid`, `edit_grid`, `delete_grid`, `attach_grid`, `rotate_grid` (angle, delta or align, for a view; see the [MCP tool reference](../../MCP.md)).
 
 ## FAQ
 
@@ -112,6 +128,8 @@ Grid settings live in the `[grid]` table of `settings.toml`: `mode`, `custom`, `
 **Where are custom grids saved?** Grids of the map are written in a `hammerpro_grids` block of the VMF and attached grids in the editor block of each object, so they come back when you open the map. Presets are in `settings.toml`.
 
 **I want a rotated grid around one building only.** Give the custom grid **Limits**: outside the box the global grid applies.
+
+**How do I get a 45 degree grid?** Open the grid menu, type 45 in **Rotate grid** (or use **Rotate grid 45 degrees**). To follow a wall, select it and use **Align grid to the selected edge or face**.
 
 ## Related pages
 

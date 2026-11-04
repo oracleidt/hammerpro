@@ -1,3 +1,4 @@
+mod blender;
 mod brush;
 mod compile;
 mod content;
@@ -13,14 +14,17 @@ mod launch;
 mod lighting;
 mod mcp;
 mod mesh;
+mod mesh_disp;
 mod placement;
 pub mod render;
+mod roadside;
 mod selection;
 mod startup;
 pub mod update;
 mod visibility;
 mod workflow;
 
+pub use blender::{BlenderLink, BlenderNote, BlenderRuntime, BlenderTarget, DispSent};
 pub use brush::BrushRuntime;
 pub use compile::{CompileBadge, CompileBrowse, CompileProgress, CompileRuntime};
 pub use content::{
@@ -42,11 +46,13 @@ pub use lighting::{
     LightingRuntime, PreviewStats,
 };
 pub use mcp::{McpClientRow, McpRuntime};
-pub use mesh::MeshRuntime;
+pub use mesh::{DispLoopRequest, EdgeRequest, ErosionDialog, MeshRuntime, TerrainPreview};
+pub use mesh_disp::MeshDispRuntime;
 pub use placement::{
     CreatePrefabRequest, FileStamp, PlacementRuntime, PrefabCache, PrefabLoad, PrefabTokens, file_stamp,
 };
 pub use render::RenderRuntime;
+pub use roadside::{PreviewLine, PreviewTri, RoadPreview, RoadsideRuntime};
 pub use selection::SelectionRuntime;
 pub use startup::{OpeningStatus, StartupRuntime};
 pub use update::{UpdateFailure, UpdateInfo, UpdateRuntime, UpdateStatus};
@@ -62,10 +68,12 @@ pub struct Runtime {
     pub visibility: VisibilityRuntime,
     pub helpers: HelpersRuntime,
     pub mesh: MeshRuntime,
+    pub mesh_disp: MeshDispRuntime,
     pub entities: EntitiesRuntime,
     pub render: RenderRuntime,
     pub lighting: LightingRuntime,
     pub placement: PlacementRuntime,
+    pub roadside: RoadsideRuntime,
     pub compile: CompileRuntime,
     pub startup: StartupRuntime,
     pub launch: LaunchRuntime,
@@ -75,6 +83,7 @@ pub struct Runtime {
     pub mcp: McpRuntime,
     pub discord: DiscordRuntime,
     pub update: UpdateRuntime,
+    pub blender: BlenderRuntime,
     pub gpu: GpuRuntime,
     pub storage: crate::storage::StorageRuntime,
 }

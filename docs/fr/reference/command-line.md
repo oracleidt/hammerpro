@@ -12,9 +12,10 @@ hammerpro [map.vmf] [--lang en|fr] [--size LxH] [--screenshot sortie.png] [--fra
 hammerpro --mcp
 hammerpro --bspc [options du compilateur] <map.vmf>
 hammerpro --rad [options de l'éclairage] <map.bsp>
+hammerpro --import-models FICHIER_OU_DOSSIER... --out DOSSIER [options]
 ```
 
-`--mcp`, `--bspc`, `--rad` et `--light-preview` doivent être le **premier** argument : ils lancent un mode sans fenêtre. Tous les autres arguments concernent l'éditeur et peuvent venir dans n'importe quel ordre.
+`--mcp`, `--bspc`, `--rad`, `--import-models` et `--light-preview` doivent être le **premier** argument : ils lancent un mode sans fenêtre. Tous les autres arguments concernent l'éditeur et peuvent venir dans n'importe quel ordre.
 
 ## Arguments de l'éditeur
 
@@ -40,10 +41,43 @@ Un argument inconnu commençant par `--` affiche `unknown argument: ...` sur std
 | `--mcp` | Le pont MCP que les applications d'IA lancent elles-mêmes. Il n'ouvre aucune fenêtre et transmet les appels d'outils à une fenêtre Hammer Pro dont le serveur MCP est actif. stdout ne transporte que des messages MCP. Voir [Serveur MCP](mcp-server.md). |
 | `--bspc [options] <map>` | Le compilateur de maps de Hammer Pro (géométrie, portails, test de fuite et visibilité), avec les arguments de VBSP (`-game`, `-leaktest`...). Il écrit `<map>.bsp` à côté de la map, `<map>.lin` quand la map fuit, `<map>.prt` pour une map étanche, et un `<map>.log`. |
 | `--rad [options] <map>` | L'éclairage de Hammer Pro, avec les arguments de VRAD (`-ldr`, `-hdr`, `-both`, `-final`, `-fast`, `-bounce N`...) plus les options propres à Hammer Pro (`-nostaticpropshadows`, `-nodispshadows`...). Il éclaire `<map>.bsp` sur place. |
+| `--import-models FICHIER_OU_DOSSIER... --out DOSSIER [options]` | Conversion par lot de fichiers OBJ, FBX, glTF et GLB en modèles Garry's Mod, sans fenêtre ni jeu (voir « Import par lot » dans [Import de modèles](../features/model-import.md#import-par-lot)). |
 | `--light-preview ...` | Interne : l'éclairage de l'aperçu précalculé, lancé par l'éditeur lui-même. Vous n'avez jamais besoin de le lancer. |
 | `--apply-update <zip> <programme> <pid>` | Interne : l'assistant de mise à jour que l'éditeur lance depuis une copie de lui-même quand vous cliquez sur **Mettre à jour**. Il n'a pas de fenêtre : il attend la fin du processus `<pid>`, extrait `hammerpro.exe` de `<zip>`, remplace `<programme>` (en gardant `<programme>.old`, avec retour en arrière en cas d'échec) et le lance. Voir [Mises à jour](../features/updates.md). |
 
 Toutes les options de `--bspc` et `--rad`, avec leur effet et leur valeur par défaut, sont décrites dans [Ligne de commande du compilateur](../compiler/command-line.md).
+
+## Import de modèles par lot
+
+```text
+hammerpro --import-models FICHIER_OU_DOSSIER... --out DOSSIER [options]
+```
+
+Doit être le **premier** argument. Chaque fichier ou dossier est converti en `DOSSIER/models/hammerpro/<nom>.mdl` (avec `.vvd`, `.dx90.vtx` et `.phy`) et ses textures en `DOSSIER/materials/models/hammerpro/<nom>/`. Rien n'est lu ni écrit dans le jeu. Les réglages enregistrés donnent les valeurs par défaut des niveaux de détail et des paramètres de matériaux.
+
+| Option | Effet | Défaut |
+|---|---|---|
+| `--out DOSSIER` | Dossier de sortie (obligatoire, sauf avec `--dry-run`). | aucun |
+| `--recursive`, `-r` | Cherche dans les dossiers récursivement. | désactivé |
+| `--formats LISTE` | Formats pris dans les dossiers : `obj`, `fbx`, `gltf` (aussi `glb`), séparés par des virgules. | tous |
+| `--template T` | Modèle de nom avec `{name}`, `{folder}` et `{index}`. | `{name}` |
+| `--prefix P` | Texte placé devant chaque nom. | aucun |
+| `--scale S` | Échelle supplémentaire, 0,001 à 1000. | `1` |
+| `--no-units` | Une unité du fichier vaut une unité Source (pas de conversion des mètres). | désactivé |
+| `--up auto\|y\|z` | Axe vertical des fichiers. | `auto` |
+| `--no-center` | Garde l'origine du fichier au lieu du bas au centre. | désactivé |
+| `--kind static\|physics` | `prop_static` ou `prop_physics`. | `static` |
+| `--surface NOM` | Propriété de surface. | `default` |
+| `--mass KG` | Masse des props physiques, 0,1 à 50000. | `20` |
+| `--collision pieces\|box\|none` | Modèle de collision. | `pieces` |
+| `--no-lod`, `--lod-levels N`, `--lod-keep PCT` | Niveaux de détail : désactivés, 3 à 6 niveaux, 20 à 90 % gardés par niveau. | réglages enregistrés |
+| `--no-material-params` | Couleur, alpha et double face seulement dans les VMT. | réglage enregistré |
+| `--overwrite` | Remplace les modèles qui existent (ignorés par défaut). | désactivé |
+| `--threads N` | Fichiers convertis en même temps. | moitié des threads du processeur, 1 à 4 |
+| `--dry-run` | Lit seulement les fichiers et affiche triangles, taille, nom et avertissements. | désactivé |
+| `--quiet`, `-q` | N'affiche que la synthèse. | désactivé |
+
+Une ligne est affichée par fichier (`OK`, `Warning`, `Error` ou `Skipped`, le fichier, le nom du modèle, la raison), puis une synthèse. Codes de sortie : `0` chaque fichier converti ou ignoré, `1` au moins un fichier en échec ou aucun fichier trouvé, `2` une option erronée (le message et une ligne d'usage sont affichés).
 
 ## Exécutions automatisées
 

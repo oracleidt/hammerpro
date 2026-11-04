@@ -417,6 +417,9 @@ impl ModelBrowser {
             if ui.small_button("+").on_hover_text(Action::ImportModel.label()).clicked() {
                 state.request(Action::ImportModel);
             }
+            if ui.small_button("++").on_hover_text(Action::ImportModelsBatch.label()).clicked() {
+                state.request(Action::ImportModelsBatch);
+            }
             let grid = state.settings.browser.model_grid;
             let (glyph, tip) = if grid { ("☰", t!("entities.pb_list")) } else { ("⊞", t!("entities.pb_grid")) };
             if ui.small_button(glyph).on_hover_text(tip).clicked() {

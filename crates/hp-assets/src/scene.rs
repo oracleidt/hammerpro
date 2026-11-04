@@ -417,7 +417,11 @@ impl AssetManager {
         if std::mem::replace(&mut self.scene.game_look, scene_display.game_look) != scene_display.game_look {
             self.scene.force_entities = true;
         }
-        let remesh_disps = prev_display.is_some_and(|p| p.disp_walkable != display.disp_walkable);
+        let remesh_disps = prev_display.is_some_and(|p| {
+            p.disp_walkable != display.disp_walkable
+                || (display.disp_walkable
+                    && (p.disp_walk_mode != display.disp_walk_mode || p.disp_walk_limit != display.disp_walk_limit))
+        });
         let (remesh, reflag) = match prev_display {
             Some(p) => (
                 p.smoothing_groups != display.smoothing_groups || p.visgroup_colors != display.visgroup_colors,

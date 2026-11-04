@@ -501,3 +501,35 @@ fn props_without_a_usable_model() {
     let problems = doc.check_problems_full(&ProblemContext::default(), &assets);
     assert_eq!(models(&problems), [971, 972, 973, 975, 976, 977, 978, 980, 983], "{problems:?}");
 }
+
+fn listed_ids(doc: &Document, overlay: u32) -> Vec<u32> {
+    overlay_sides(doc, overlay).split_ascii_whitespace().filter_map(|t| t.parse().ok()).collect()
+}
+
+#[test]
+fn union_and_merge_update_overlay_faces() {
+    let mut map = Map::new_empty();
+    map.world.solids.push(solid_with_ids(2, 10, DVec3::ZERO, 64.0));
+    map.world.solids.push(solid_with_ids(3, 20, DVec3::new(32.0, 32.0, 0.0), 64.0));
+    map.entities.push(overlay(50, "10 11 12 13 14 15 20 21 22 23 24 25"));
+    let mut doc = Document::from_map(map);
+    let before = vmf(&doc);
+    let ids = doc.union_solids(&[2, 3]).expect("union");
+    let alive: Vec<u32> = ids.iter().flat_map(|id| side_ids(&doc, *id)).collect();
+    let listed = listed_ids(&doc, 50);
+    assert!(!listed.is_empty());
+    assert!(listed.iter().all(|id| alive.contains(id)), "{listed:?} vs {alive:?}");
+    assert!(doc.undo());
+    assert_eq!(vmf(&doc), before);
+
+    let mut map = Map::new_empty();
+    map.world.solids.push(solid_with_ids(2, 10, DVec3::ZERO, 64.0));
+    map.world.solids.push(solid_with_ids(3, 20, DVec3::new(64.0, 0.0, 0.0), 64.0));
+    map.entities.push(overlay(50, "10 11 12 13 14 15 20 21 22 23 24 25"));
+    let mut doc = Document::from_map(map);
+    doc.merge_brushes(&[2, 3]).expect("merge");
+    let alive = side_ids(&doc, 2);
+    let listed = listed_ids(&doc, 50);
+    assert!(!listed.is_empty() && listed.len() < 12);
+    assert!(listed.iter().all(|id| alive.contains(id)), "{listed:?} vs {alive:?}");
+}

@@ -2,7 +2,7 @@
 
 # Hammer Pro documentation
 
-Welcome to the knowledge base of Hammer Pro 1.0.6, the level editor for Source engine maps built for Garry's Mod first. Every feature has its own page: what it is, how to open it, every option with its default, tips and a short FAQ. Pages link to each other, so start anywhere.
+Welcome to the knowledge base of Hammer Pro 1.0.7, the level editor for Source engine maps built for Garry's Mod first. Every feature has its own page: what it is, how to open it, every option with its default, tips and a short FAQ. Pages link to each other, so start anywhere.
 
 New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game setup](getting-started/game-setup.md) and [Your first map](getting-started/first-map.md), in that order.
 
@@ -27,11 +27,14 @@ New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game s
 | [Block tool](features/block-tool.md) | Brushes and every primitive with its options. |
 | [Polygon tool](features/polygon-tool.md) | Convex brushes from an outline clicked point by point. |
 | [Curve tool](features/curve-tool.md) | Curved walls and rails: box brushes with mitred joints along a stroke drawn in a 2D view. |
+| [Road tool](features/road-tool.md) | Roads along a spline: lanes, shoulders, lines, banking, heights, terrain following, junctions with flares. |
+| [Road details](features/road-details.md) | Sidewalks, curbs, V and U gutters with drain slots, rounded junction corners, and terrain blending to a road with texture fade. |
 | [Clip tool](features/clip-tool.md) | Cutting brushes with a plane. |
 | [Extrude / carve tool](features/extrude-tool.md) | Outlines clicked on a face, carved into the brush (recess or opening) or extruded out of it. |
 | [Bevel tool](features/bevel-tool.md) | Round or chamfer brush edges in the 3D view (`Ctrl+B`, mouse for the size, wheel for the segments), or bevel them inward: a cove, or a concave round filling an inner corner (arches). |
 | [Vertex tool](features/vertex-tool.md) | Moving, merging, splitting and scaling vertices. |
 | [Displacement tool](features/displacement-tool.md) | Creating, sculpting, painting alpha, tags, sewing, noise. |
+| [Terrain](features/terrain.md) | Import and export heightmaps, procedural terrain generation, erosion, automatic texturing. |
 | [Brush operations](features/brush-operations.md) | Carve, hollow, merge, tie to entity, func_detail, nodraw, hint brushes, texture lock. |
 | [Transform and align](features/transform-align.md) | Transform dialog, align, flip, snap, move to floor, physics placement. |
 | [Clipboard](features/clipboard.md) | Cut, copy, paste, paste special, duplicate, between Hammer Pro windows. |
@@ -71,6 +74,7 @@ New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game s
 | --- | --- |
 | [Model browser](features/model-browser.md) | Model grid, 3D preview, model inspector and tools. |
 | [Model import](features/model-import.md) | FBX, OBJ, glTF and GLB straight into the game. |
+| [Blender link](features/blender.md) | Send brushes, displacements or a prop to Blender and get the edit back by itself. |
 | [Propper](features/propper.md) | Brushes to a static prop (LODs, collision, displacement bake) and props back to brushes. |
 | [Sound browser](features/sound-browser.md) | Game sounds, soundscripts and the sound picker. |
 | [Particles](features/particles.md) | Particle browser and particle preview in the views. |

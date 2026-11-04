@@ -23,6 +23,7 @@ While the game content is mounting, the tab shows a spinner. Without a game fold
 | **Models: N** | Number of models listed. |
 | Grid / list button (`⊞` / `☰`) | Switches between the thumbnail grid and the list. Saved (`model_grid_view` in `[browser]`, default: grid). |
 | **+** | **File > Import a model (FBX, OBJ, glTF)...**, see [Model import](model-import.md). |
+| **++** | **File > Import models (batch)...**: many files or folders at once, see [Batch import](model-import.md#batch-import). |
 | **Recent (N)** | The last models you used (up to 8 shown, 16 remembered for the session), above the list. Click to select, double click to use. |
 
 In the list, models are grouped under folder headers with their count; click a header to fold or unfold it. Each row shows the file name and, when the content has several sources, a badge telling where the model comes from: **GMod**, **game: cstrike**, **garrysmod folder**, **addon**, **Workshop 123456**, **custom** (a custom content folder). Hover a row for the full path.

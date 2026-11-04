@@ -44,6 +44,8 @@ pub enum Command {
     Grid(f64),
     ToolOption { key: String, value: String },
     ImportModel { path: PathBuf, confirm: bool, scale: Option<f64> },
+    ImportModelsBatch(PathBuf),
+    MeshToDisp { path: PathBuf, confirm: bool },
     Theme(hp_app::settings::ThemeChoice),
     Setting { path: String, value: String },
     WindowSize(f32, f32),
@@ -219,6 +221,14 @@ pub fn parse(text: &str) -> Result<Vec<Command>, String> {
                 key: arg(0).ok_or_else(err)?.to_owned(),
                 value: arg(1).ok_or_else(err)?.to_owned(),
             },
+            "mesh_to_disp" => Command::MeshToDisp { path: PathBuf::from(tail), confirm: false },
+            "mesh_to_disp_now" => Command::MeshToDisp { path: PathBuf::from(tail), confirm: true },
+            "import_models_batch" => {
+                if tail.is_empty() {
+                    return Err(err());
+                }
+                Command::ImportModelsBatch(PathBuf::from(tail))
+            }
             "import_model" => Command::ImportModel { path: PathBuf::from(tail), confirm: false, scale: None },
             "import_model_now" => Command::ImportModel { path: PathBuf::from(tail), confirm: true, scale: None },
             "import_model_scaled" => {
@@ -524,6 +534,23 @@ import_model_scaled 0.01 a b.glb
         assert_eq!(cmds[1], Command::ImportModel { path: path("models/box.obj"), confirm: true, scale: None });
         assert_eq!(cmds[2], Command::ImportModel { path: path("a b.glb"), confirm: true, scale: Some(0.01) });
         assert!(parse("import_model_scaled 0 x.obj").is_err());
+        assert_eq!(
+            parse("import_models_batch C:/art/props").unwrap()[0],
+            Command::ImportModelsBatch(path("C:/art/props"))
+        );
+        assert!(parse("import_models_batch").is_err());
+    }
+
+    #[test]
+    fn parses_mesh_to_displacement() {
+        let cmds = parse(
+            "mesh_to_disp C:/art/hill.obj
+mesh_to_disp_now a b.glb
+",
+        )
+        .unwrap();
+        assert_eq!(cmds[0], Command::MeshToDisp { path: PathBuf::from("C:/art/hill.obj"), confirm: false });
+        assert_eq!(cmds[1], Command::MeshToDisp { path: PathBuf::from("a b.glb"), confirm: true });
     }
 
     #[test]

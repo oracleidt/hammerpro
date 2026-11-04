@@ -1,12 +1,16 @@
+use std::collections::HashSet;
 use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use glam::{DVec2, DVec3};
 use hp_app::AppState;
+use hp_editor::FaceRef;
 use hp_geom::{DispMesh, SolidGeom};
 use hp_vmf::TexAxis;
 use serde::{Deserialize, Serialize};
+
+mod model;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ExportKind {
@@ -63,6 +67,39 @@ struct ObjSolid {
 pub struct ObjInput {
     solids: Vec<ObjSolid>,
     materials: Vec<(String, [f64; 2])>,
+    layout: ObjLayout,
+    disp_only: bool,
+}
+
+pub const METERS_PER_UNIT: f64 = 0.01905;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ObjLayout {
+    pub meters: bool,
+    pub z_up: bool,
+}
+
+impl ObjLayout {
+    pub fn from_settings(s: &hp_app::settings::MeshSettings) -> Self {
+        Self { meters: s.mesh_export_meters, z_up: s.mesh_export_z_up }
+    }
+
+    fn position(self, p: DVec3) -> DVec3 {
+        let q = self.direction(p);
+        if self.meters { q * METERS_PER_UNIT } else { q }
+    }
+
+    fn direction(self, d: DVec3) -> DVec3 {
+        if self.z_up { d } else { yup(d) }
+    }
+
+    fn header(self) -> String {
+        format!(
+            "# Exported by Hammer Pro ({}, {} up)",
+            if self.meters { "meters" } else { "Source units" },
+            if self.z_up { "Z" } else { "Y" }
+        )
+    }
 }
 
 const DEFAULT_TEXTURE_SIZE: f64 = 512.0;
@@ -73,15 +110,28 @@ fn is_tool(material: &str) -> bool {
 
 impl ObjInput {
     pub fn from_state(state: &mut AppState) -> Self {
+        Self::build(state, None, ObjLayout::default())
+    }
+
+    pub fn from_displacements(state: &mut AppState, faces: &[FaceRef], layout: ObjLayout) -> Self {
+        let wanted: HashSet<(u32, usize)> = faces.iter().map(|f| (f.solid, f.side)).collect();
+        Self::build(state, Some(&wanted), layout)
+    }
+
+    pub(crate) fn build(state: &mut AppState, only: Option<&HashSet<(u32, usize)>>, layout: ObjLayout) -> Self {
         let mut names: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
         let mut materials: Vec<(String, [f64; 2])> = Vec::new();
         let mut solids = Vec::with_capacity(state.doc.scene().solids().len());
         for node in state.doc.scene().solids().values() {
-            let sides = node
+            let sides: Vec<SideInfo> = node
                 .solid
                 .sides
                 .iter()
-                .map(|s| {
+                .enumerate()
+                .map(|(i, s)| {
+                    if only.is_some_and(|w| !w.contains(&(node.solid.id, i))) {
+                        return SideInfo { material: u32::MAX, u: s.uaxis, v: s.vaxis };
+                    }
                     let next = u32::try_from(materials.len()).unwrap_or(u32::MAX);
                     let material = *names.entry(s.material.clone()).or_insert_with(|| {
                         materials.push((s.material.clone(), [DEFAULT_TEXTURE_SIZE; 2]));
@@ -90,6 +140,9 @@ impl ObjInput {
                     SideInfo { material, u: s.uaxis, v: s.vaxis }
                 })
                 .collect();
+            if only.is_some() && sides.iter().all(|s| s.material == u32::MAX) {
+                continue;
+            }
             solids.push(ObjSolid { id: node.solid.id, geom: Arc::clone(&node.geom), sides, disp: node.disp.clone() });
         }
         solids.sort_by_key(|s| s.id);
@@ -101,7 +154,7 @@ impl ObjInput {
                 *size = [f64::from(info.width), f64::from(info.height)];
             }
         }
-        Self { solids, materials }
+        Self { solids, materials, layout, disp_only: only.is_some() }
     }
 }
 
@@ -125,7 +178,7 @@ pub struct ObjStats {
 }
 
 pub fn write_obj(out: &mut impl Write, input: &ObjInput, mtl: &str) -> io::Result<ObjStats> {
-    writeln!(out, "# Exported by Hammer Pro (Source units, Y up)")?;
+    writeln!(out, "{}", input.layout.header())?;
     writeln!(out, "mtllib {mtl}")?;
     let mut stats = ObjStats::default();
     let (mut nv, mut nt, mut nn) = (1usize, 1usize, 1usize);
@@ -147,16 +200,19 @@ pub fn write_obj(out: &mut impl Write, input: &ObjInput, mtl: &str) -> io::Resul
                 current = Some(side.material);
             }
             let disp = solid.disp.get(face.side_index).and_then(Option::as_ref);
+            if input.disp_only && disp.is_none() {
+                continue;
+            }
             match disp {
                 Some(mesh) => {
                     for (p, base) in mesh.positions.iter().zip(&mesh.base_positions) {
-                        let q = yup(*p);
+                        let q = input.layout.position(*p);
                         writeln!(out, "v {} {} {}", q.x, q.y, q.z)?;
                         let t = uv(side, *size, *base);
                         writeln!(out, "vt {} {}", t.x, t.y)?;
                     }
                     for n in &mesh.normals {
-                        let n = yup(*n);
+                        let n = input.layout.direction(*n);
                         writeln!(out, "vn {} {} {}", n.x, n.y, n.z)?;
                     }
                     let count = mesh.positions.len();
@@ -178,12 +234,12 @@ pub fn write_obj(out: &mut impl Write, input: &ObjInput, mtl: &str) -> io::Resul
                 }
                 None => {
                     for p in &face.vertices {
-                        let q = yup(*p);
+                        let q = input.layout.position(*p);
                         writeln!(out, "v {} {} {}", q.x, q.y, q.z)?;
                         let t = uv(side, *size, *p);
                         writeln!(out, "vt {} {}", t.x, t.y)?;
                     }
-                    let n = yup(face.normal());
+                    let n = input.layout.direction(face.normal());
                     writeln!(out, "vn {} {} {}", n.x, n.y, n.z)?;
                     write!(out, "f")?;
                     for i in 0..face.vertices.len() {
@@ -285,6 +341,31 @@ mod tests {
         assert!(write_vmf(&map, &dir.join("missing/copy.vmf")).is_err());
         assert!(export_obj(&ObjInput::from_state(&mut state), &dir.join("missing/a.obj")).is_err());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn layouts_move_and_scale_points() {
+        let p = DVec3::new(100.0, 200.0, 300.0);
+        let source = ObjLayout::default();
+        assert_eq!(source.position(p), DVec3::new(100.0, 300.0, -200.0));
+        let z = ObjLayout { meters: true, z_up: true };
+        assert_eq!(z.position(p), p * METERS_PER_UNIT);
+        assert_eq!(z.direction(p), p);
+        assert!(z.header().contains("meters") && z.header().contains("Z up"));
+        assert!(source.header().contains("Source units") && source.header().contains("Y up"));
+    }
+
+    #[test]
+    fn no_displacement_means_nothing_to_write() {
+        let mut state = hp_app::testing::test_state();
+        let input = ObjInput::from_displacements(&mut state, &[FaceRef::new(2, 0)], ObjLayout::default());
+        let mut text = Vec::new();
+        let stats = write_obj(&mut text, &input, "a.mtl").expect("write");
+        assert_eq!(stats.faces, 0);
+        assert!(!String::from_utf8(text).expect("utf8").contains(
+            "
+v "
+        ));
     }
 
     #[test]

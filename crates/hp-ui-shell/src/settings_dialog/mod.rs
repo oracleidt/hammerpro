@@ -8,6 +8,7 @@ use crate::common::EscapeGuard;
 use crate::game_ui::GameJobs;
 use crate::keys::{Capture, capture_from_events, is_clipboard_event};
 
+mod blender;
 mod brush;
 mod compile;
 mod content;
@@ -139,6 +140,7 @@ fn package_pages() -> Vec<Box<dyn SettingsPage>> {
     pages.extend(discord::pages());
     pages.extend(storage::pages());
     pages.extend(update::pages());
+    pages.extend(blender::pages());
     pages
 }
 
@@ -168,6 +170,7 @@ pub(crate) const TABLES: &[TrTable] = &[
     lab::TR,
     mcp::TR,
     discord::TR,
+    blender::TR,
 ];
 
 const CONFIRM_SECS: f64 = 4.0;

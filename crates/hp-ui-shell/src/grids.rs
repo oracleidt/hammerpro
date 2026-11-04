@@ -9,8 +9,15 @@ use crate::menu::menu_entry;
 
 const MODE_ACTIONS: [Action; 4] =
     [Action::GridModeGlobal, Action::GridModePerView, Action::GridModeCustom, Action::GridModeSelection];
-const COMMAND_ACTIONS: [Action; 5] =
-    [Action::GridFromSelection, Action::GridFromFace, Action::AttachGrid, Action::DetachGrid, Action::GridManager];
+const COMMAND_ACTIONS: [Action; 7] = [
+    Action::GridFromSelection,
+    Action::GridFromFace,
+    Action::AttachGrid,
+    Action::DetachGrid,
+    Action::GridManager,
+    Action::RotateGrid45,
+    Action::AlignGridToSelection,
+];
 
 pub fn view_name(kind: ViewKind) -> &'static str {
     match kind {
@@ -91,6 +98,7 @@ pub fn grid_menu(ui: &mut Ui, state: &mut AppState) {
         }
     }
     ui.separator();
+    crate::grid_rotate::rotate_row(ui, state);
     for action in COMMAND_ACTIONS {
         action_entry(ui, state, action);
     }
@@ -156,6 +164,7 @@ pub fn run_grid_action(state: &mut AppState, action: Action) -> bool {
             }
         }
         Action::GridManager => state.ui.show_grid_manager = !state.ui.show_grid_manager,
+        Action::RotateGrid45 | Action::AlignGridToSelection => crate::grid_rotate::run(state, action),
         _ => return false,
     }
     true
@@ -236,6 +245,7 @@ impl GridManager {
                 }
             }
         });
+        crate::grid_rotate::rotate_row(ui, state);
         let mut object_grids = state.settings.grid.object_grids;
         if ui
             .checkbox(&mut object_grids, t!("shell.grid.object_grids"))

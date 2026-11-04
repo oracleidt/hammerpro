@@ -24,22 +24,46 @@ pub fn text_pill(painter: &Painter, pos: Pos2, anchor: Align2, text: String, col
     rect
 }
 
-pub fn walk_legend(painter: &Painter, corner: Pos2) -> Rect {
-    let rows: Vec<(Color32, &str)> = hp_render::WalkClass::ALL
-        .iter()
-        .map(|c| {
-            let [r, g, b] = c.srgb();
-            let label = match c {
-                hp_render::WalkClass::Buildable => hp_app::t!("viewport.walk_buildable"),
-                hp_render::WalkClass::Walkable => hp_app::t!("viewport.walk_walkable"),
-                hp_render::WalkClass::Steep => hp_app::t!("viewport.walk_steep"),
-            };
-            (Color32::from_rgb(r, g, b), label)
-        })
-        .collect();
+pub fn walk_legend(painter: &Painter, corner: Pos2, mode: hp_app::settings::DispWalkMode, angle: f32) -> Rect {
+    use hp_app::settings::DispWalkMode;
+    let limit = f64::from(hp_app::runtime::render::walk_limit(angle)) / 100.0;
+    let swatch_of = |c: hp_render::WalkClass| {
+        let [r, g, b] = c.srgb();
+        Color32::from_rgb(r, g, b)
+    };
+    let rows: Vec<(Color32, String)> = match mode {
+        DispWalkMode::Source => hp_render::WalkClass::ALL
+            .iter()
+            .map(|c| {
+                let label = match c {
+                    hp_render::WalkClass::Buildable => hp_app::t!("viewport.walk_buildable"),
+                    hp_render::WalkClass::Walkable => hp_app::t!("viewport.walk_walkable"),
+                    _ => hp_app::t!("viewport.walk_steep"),
+                };
+                (swatch_of(*c), label.to_owned())
+            })
+            .collect(),
+        DispWalkMode::Limit => vec![
+            (swatch_of(hp_render::WalkClass::Buildable), hp_app::tf!("viewport.walk_below", format!("{limit:.2}"))),
+            (swatch_of(hp_render::WalkClass::Steep), hp_app::tf!("viewport.walk_above", format!("{limit:.2}"))),
+        ],
+        DispWalkMode::Gradient => hp_render::WalkClass::GRADIENT
+            .iter()
+            .enumerate()
+            .map(|(band, c)| {
+                let (lo, hi) = hp_geom::slope_band_range(band, limit);
+                let text = if band == hp_render::WalkClass::GRADIENT.len() - 1 {
+                    hp_app::t!("viewport.walk_overhang").to_owned()
+                } else {
+                    hp_app::tf!("viewport.walk_band", format!("{lo:.0}"), format!("{hi:.0}"))
+                };
+                (swatch_of(*c), text)
+            })
+            .collect(),
+    };
     let title = painter.layout_no_wrap(hp_app::t!("viewport.walk_title").to_owned(), small_font(), TEXT_WEAK);
     let galleys: Vec<_> =
-        rows.iter().map(|(_, label)| painter.layout_no_wrap((*label).to_owned(), small_font(), TEXT)).collect();
+        rows.iter().map(|(_, label)| painter.layout_no_wrap(label.clone(), small_font(), TEXT)).collect();
     let line = 15.0;
     let swatch = 10.0;
     let width = galleys.iter().map(|g| g.size().x + swatch + 6.0).fold(title.size().x, f32::max) + 12.0;

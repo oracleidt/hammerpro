@@ -5,7 +5,7 @@ exclude = ["vendor/*"]
 default-members = ["crates/hammerpro"]
 
 [workspace.package]
-version = "1.0.6"
+version = "1.0.7"
 edition = "2024"
 license = "MIT"
 authors = ["HammerPro contributors"]
@@ -37,7 +37,7 @@ anyhow = "1"
 log = "0.4"
 memmap2 = "0.9"
 texpresso = { version = "2.0", features = ["rayon"] }
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "tga", "bmp"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "tga", "bmp", "tiff", "hdr", "exr"] }
 bytemuck = { version = "1.25", features = ["derive"] }
 crossbeam-channel = "0.5"
 parking_lot = "0.12"

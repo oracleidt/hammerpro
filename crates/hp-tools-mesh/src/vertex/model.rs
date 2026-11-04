@@ -284,6 +284,7 @@ pub(crate) struct VertexCache {
     pub solids: Vec<EditSolid>,
     pub truncated: bool,
     pub pending_select: Option<Vec<(Id, DVec3)>>,
+    pub pending_edges: Option<Vec<(Id, DVec3)>>,
     pub splits: Vec<PendingSplit>,
     pub frozen: bool,
 }
@@ -302,7 +303,7 @@ impl VertexCache {
 
     fn rebuild(&mut self, doc: &Document) {
         let keep = self.pending_select.take().unwrap_or_else(|| self.selected_positions());
-        let keep_edges = self.selected_edge_midpoints();
+        let keep_edges = self.pending_edges.take().unwrap_or_else(|| self.selected_edge_midpoints());
         let mut ids = doc.selected_solid_ids();
         ids.retain(|id| doc.is_solid_visible(*id));
         self.truncated = ids.len() > MAX_EDIT_SOLIDS;

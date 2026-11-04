@@ -483,13 +483,21 @@ pub fn add_noise(
         return Err(GeomError::InvalidInput("noise range is not finite".to_owned()));
     }
     let (lo, hi) = if min <= max { (min, max) } else { (max, min) };
+    add_height_fn(disp, face_vertices, |base| lo + (hi - lo) * noise_at(base, seed))
+}
+
+pub fn add_height_fn(
+    disp: &mut DispInfo,
+    face_vertices: &[DVec3],
+    height: impl Fn(DVec3) -> f64,
+) -> Result<usize, GeomError> {
     let mesh = build_disp(face_vertices, disp).ok_or(GeomError::NotQuad(face_vertices.len()))?;
     let normal = mesh.face_normal;
     fit_vertex_arrays(disp, normal).ok_or(GeomError::BadPower(disp.power))?;
     let mut changed = 0;
     for (k, base) in mesh.base_positions.iter().enumerate() {
-        let h = lo + (hi - lo) * noise_at(*base, seed);
-        if h == 0.0 {
+        let h = height(*base);
+        if h == 0.0 || !h.is_finite() {
             continue;
         }
         let (Some(nrm), Some(dist)) = (disp.normals.get_mut(k), disp.distances.get_mut(k)) else { continue };

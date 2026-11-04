@@ -112,7 +112,10 @@ fn glb_with_texture_transform_alpha_and_parents() {
     assert!(mat.embedded.as_ref().is_some_and(|(b, e)| b.starts_with(b"\x89PNG") && e == "png"));
     let t = &m.triangles[0];
     assert!(close(t.pos[0], DVec3::new(2.0, 0.0, 0.0)) && close(t.pos[1], DVec3::new(4.0, 0.0, 0.0)));
-    assert!((t.uv[1] - DVec2::new(2.5, 0.0)).length() < 1e-9, "{}", t.uv[1]);
+    assert!(mat.extras.has_uv_transform());
+    let mut baked = m.clone();
+    baked.bake_uv_transforms();
+    assert!((baked.triangles[0].uv[1] - DVec2::new(2.5, 0.0)).length() < 1e-9, "{}", baked.triangles[0].uv[1]);
     let s = in_place(&m);
     let (loaded, _) = round_trip(&s, true);
     assert_eq!(loaded.triangle_count(), 1);

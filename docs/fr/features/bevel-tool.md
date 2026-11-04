@@ -31,7 +31,9 @@ Toute l'opération est une seule étape d'annulation (**Biseautage d'arêtes**).
 - Un double clic sur une arête commence tout de suite son biseau.
 - Cliquez loin de toute arête, ou appuyez sur `Échap`, pour vider les arêtes choisies.
 
-Des arêtes de plusieurs brushes peuvent être biseautées ensemble. Quand deux arêtes choisies sont de part et d'autre de la même face (les deux arêtes du haut d'un mur), chaque rayon est limité à la moitié de la face pour que les arrondis ne se croisent jamais.
+- `Alt`+clic sur une arête choisit toute sa **boucle d'arêtes** (`Ctrl+Alt`+clic : son anneau d'arêtes, `Maj` ajoute aux arêtes choisies au lieu de les remplacer). La boucle se calcule comme dans l'[outil vertex](vertex-tool.md#boucles-et-anneaux-darêtes), à travers les brushes sélectionnés et les brushes qui les touchent (jusqu'à 256), et les arêtes sans coin à biseauter sont écartées. Biseautez-la avec `Ctrl+B`, `Entrée` ou le bouton **Biseauter** : les quatre arêtes autour d'une face de boîte sont biseautées d'un coup, le contour d'un mur fait de plusieurs brushes l'est brush par brush, en une seule étape d'annulation.
+
+Les arêtes de plusieurs brushes peuvent être biseautées ensemble. Quand deux arêtes choisies sont de part et d'autre de la même face (les deux arêtes du haut d'un mur), chaque rayon est limité à la moitié de la face pour que les arrondis ne se croisent jamais.
 
 ## Vues 2D
 
@@ -97,7 +99,7 @@ Si vous changez la touche de **Aligner la sélection sur la grille** dans **Para
 
 ## MCP
 
-L'outil MCP `bevel_edges` fait la même chose depuis une application d'IA : `solid` avec `edge` (un numéro donné par `get_brush_edges` ou deux points `[[x, y, z], [x, y, z]]`) ou `edges` (plusieurs, aussi sous forme d'objets `{solid, edge}` ou `{solid, a, b}` sur plusieurs brushes), `radius`, `segments`, `inverse`, et la texture des faces arrondies (`new_faces` : `face` ou `current`, ou un `material`). `dry_run` donne le rayon et les segments qui seraient utilisés, le rayon maximal et le type de chaque arête (`round`, `cove` ou `fill`) sans modifier la map. `get_brush_edges` liste les arêtes d'un brush. `get_tool_options` et `set_tool_options` lisent et changent les options de l'outil lui-même (outil `bevel` : `radius`, `segments`, `inverse`, `new_faces`). Voir la [référence des outils MCP](../../MCP.md).
+L'outil MCP `bevel_edges` fait la même chose depuis une application d'IA : `solid` avec `edge` (un numéro donné par `get_brush_edges` ou deux points `[[x, y, z], [x, y, z]]`) ou `edges` (plusieurs, aussi sous forme d'objets `{solid, edge}` ou `{solid, a, b}` sur plusieurs brushes), `radius`, `segments`, `inverse`, et la texture des faces arrondies (`new_faces` : `face` ou `current`, ou un `material`). `dry_run` donne le rayon et les segments qui seraient utilisés, le rayon maximal et le type de chaque arête (`round`, `cove` ou `fill`) sans modifier la map. `get_brush_edges` liste les arêtes d'un brush. Avec `expand` (`loop` ou `ring`), chaque arête donnée est remplacée par toute sa boucle ou son anneau d'arêtes, à travers les brushes qui la partagent (`select_edge_loop` et `select_edge_ring` répondent les mêmes arêtes). `get_tool_options` et `set_tool_options` lisent et changent les options de l'outil lui-même (outil `bevel` : `radius`, `segments`, `inverse`, `new_faces`). Voir la [référence des outils MCP](../../MCP.md).
 
 ## FAQ
 

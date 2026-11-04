@@ -37,6 +37,8 @@ Pick the mode with the three buttons of the options bar, or press `Shift+V` (sel
 | `Ctrl`+click a handle | Adds it to, or removes it from, the vertex selection |
 | Click a solid that is not edited | Edits that solid instead (`Ctrl`+click adds or removes it), unless **Selected solids only** is on |
 | Click empty space | Clears the vertex selection |
+| `Alt`+click an edge | Selects its **edge loop** (see [Edge loops and rings](#edge-loops-and-rings)); `Shift` adds it to the selection. Works in every handle mode and in the 2D and 3D views, the edge is picked along its whole length |
+| `Ctrl+Alt`+click an edge | Selects its **edge ring**; `Shift` adds |
 | Drag from empty space | Rectangle selection of the vertices (and edge midpoints) inside it; hold `Ctrl` to add to the selection |
 | Drag a vertex | Moves the selected vertices (the dragged one joins the selection if it was not selected) |
 | Drag a gizmo arm (3D view) | Moves the selected vertices along that world axis |
@@ -53,7 +55,7 @@ Pick the mode with the three buttons of the options bar, or press `Shift+V` (sel
 
 Arrow key nudges follow the **Nudge with arrow keys** option of the **Editing** settings page (on by default). Grid snapping follows the **Snap to grid** toggle of the toolbar (`Shift+W`). When the edited solids have a custom grid attached, vertex drags use that grid (see [Grids](grids.md)).
 
-The right-click menu of the views also offers **Split face**, **Scale vertices...** and **Snap vertices**.
+The right-click menu of the views also offers **Split face**, **Scale vertices...**, **Snap vertices**, the welding commands and the edge selection commands.
 
 ## How edits are applied
 
@@ -78,6 +80,9 @@ The right-click menu of the views also offers **Split face**, **Scale vertices..
 | **Position** | X, Y, Z of the center of the selected vertices: type a value to move them precisely (one undo step) | |
 | **Snap vertices** | Moves the selected vertices onto the nearest grid points (`Ctrl+B`) | |
 | **Scale vertices...** | Opens the vertex scale (`Alt+E`) | |
+| **Rotate vertices...** | Opens the vertex rotation | |
+
+A row holds the edge selection commands (see [Edge loops and rings](#edge-loops-and-rings)): **Select edge loop**, **Select edge ring**, **Grow selection**, **Shrink selection**, **Select boundary**, **Slide edge loop...** and **Rotate vertices...**, with the number of selected edges and vertices. Another row holds the welding commands (see [Welding vertices](#welding-vertices)): **Weld** with its target, **Weld selected vertices**, **Weld distance** with **Weld vertices by distance**, and **Remove degenerate faces and edges**.
 
 The last four appear when vertices are selected.
 
@@ -86,6 +91,22 @@ The last four appear when vertices are selected.
 Select two vertices (or two edges) of the same face, then press `Ctrl+F` (**Tools > Split face**). The face is split along the line between them. Selecting two vertices that are already joined by an edge does nothing: pick two vertices across the face.
 
 The split is kept by the tool until you move a vertex: the two halves become two faces, or merge back into one face if they are still flat. Use it to put a ridge or a fold in a wall, for example. Pending splits are drawn in their own color and counted in the options bar.
+
+## Welding vertices
+
+Dropping a vertex near another one merges them (see **Merge distance**). The welding commands do it on purpose, on whole selections, from the second row of the options bar, the **Tools** menu (while the vertex tool is active), the right-click menu of the views, the command palette and MCP. Each command is one undo step.
+
+| Command | What it does |
+| --- | --- |
+| **Weld selected vertices** | Merges the selected vertices of each solid into one vertex. The target is chosen in the list next to **Weld**: **To center** (the average of the vertices, default), **To first** or **To last** (the vertex with the lowest or highest index, the vertices have no selection order) |
+| **Weld vertices by distance** | Merges every pair of vertices of the edited solids closer than **Weld distance** (0.001 to 64 units, default 1), repeated until no pair is that close. Solids that would become invalid are left as they are and a warning counts them |
+| **Remove degenerate faces and edges** | Merges the vertices closer than 0.01 unit and removes the faces and edges that are left degenerate, and the faces that are no longer part of the solid. Welding already drops the faces it collapses, so this is for solids that came with such leftovers |
+
+A label next to each command previews the result, for example "12 vertices will be welded". It counts the vertices that disappear: for **Weld selected vertices** with the current selection and target, for **Weld vertices by distance** with the current distance.
+
+A weld that would make a solid concave or flat (for example merging two opposite corners of a face) is refused with a message, and nothing changes. The selected vertices stay selected on the welded vertex.
+
+MCP: `weld_brush_vertices` (mode `vertices`, `distance` or `cleanup`) does the same on the document, and the options `merge_distance`, `weld_distance` and `weld_target` of the vertex tool are listed by `get_tool_options` and changed with `set_tool_options`. The actions are `vertex_weld`, `vertex_weld_distance` and `vertex_cleanup`.
 
 ## Scale vertices
 
@@ -99,6 +120,21 @@ The split is kept by the tool until you move a vertex: the two halves become two
 | **Cancel** | Closes the scale without change (`Esc`) | |
 
 Over a view, `Alt` + mouse wheel changes the factor by 0.1 per notch, `Ctrl+Alt` + wheel by 0.01. An invalid result (a concave or flat solid) keeps the scale open with a message.
+
+## Edge loops and rings
+
+An *edge loop* is a line of edges that goes on by itself, and an *edge ring* is the set of parallel edges across the four sided faces. Brushes are convex solids, so the loops are worked out on the edges of all the edited brushes together: brushes that share a corner or an edge join into one network, and a face that lies exactly against the face of another brush counts as a wall between them, not as a surface.
+
+- **Edge loop.** The loop goes straight through a vertex where four edges meet (the middle of a wall made of several brushes, a grid) and follows the boundary of a face where three edges meet (the corners of a brush, so the loop of a box edge is the ring around one of its faces, and on a prism it follows the ring around the end cap). It stops at a vertex where five or more edges meet and at a dead end. When two faces are possible at a corner, the loop follows the face that looks toward you, then the one with the most sides. Along the border of a surface it follows that border.
+- **Edge ring.** From the edge, it crosses each four sided face to the opposite edge and goes on through the next face, in both directions. On a box it gives the four parallel edges.
+- **Alt+click** an edge to select its loop, **Ctrl+Alt+click** to select its ring, add `Shift` to add to the selection instead of replacing it. Holding `Alt` shows the loop (or the ring with `Ctrl`) that a click would select, in blue, in every view. The selected edges are drawn in yellow with their vertices in all views, and the status bar counts the selected edges and vertices.
+- **Selection commands.** **Edit > Edge selection** (also in the options bar, the right-click menu and the command palette): **Select edge loop** and **Select edge ring** extend the selected edges (or the edges between selected vertices) to their loops or rings; **Grow selection** adds every vertex next to the selected ones; **Shrink selection** removes the vertices that touch an unselected one; **Select boundary** keeps the edges on the border of the selected region (faces whose vertices are all selected) or, when no face is complete, the selected vertices that have an unselected neighbour.
+- **Moving the loop.** The selected loop is a normal vertex selection: drag it with the mouse or the gizmo, type its **Position**, nudge it with the arrow keys, or use **Scale vertices...** (`Alt+E`). Every brush that shares a vertex of the loop follows it. The edge selection stays after the move, and the move is one undo step.
+- **Rotate vertices...** (**Tools > Rotate vertices...**, options bar) rotates the selected vertices around a center with a live preview: the angle (-360 to 360 degrees, `Alt` + mouse wheel changes it by 5 degrees, `Ctrl+Alt` by 1), the axis (**X**, **Y**, **Z** or **Loop normal**, the normal of the plane of the selected vertices, so a loop turns in its own plane) and the center (the middle of the selected vertices, editable). **Apply** (`Enter`) or **Cancel** (`Esc`).
+- **Slide edge loop...** (**Tools > Slide edge loop...**, options bar) slides the selected loops along the neighbouring faces, keeping their shape, with a live preview. Each vertex of the loop moves along its own edge that leaves the loop: positive values go toward one side of the loop, negative values toward the other, by that fraction of the edge (-1 to 1, `Alt` + mouse wheel changes it by 0.05). Where a vertex has no edge on one side (the corner of a brush) the other edge is extended, so the cap of a box slides up or down along its sides. The selected edges must form simple loops or lines, without branches.
+- An invalid result (a concave or flat brush) is shown in red with the reason, like every vertex edit, and cannot be applied.
+
+MCP: `select_edge_loop`, `select_edge_ring` and `grow_edge_selection` (mode `grow`, `shrink` or `boundary`) give the edges and vertices of a loop, a ring or a selection for seed edges, with `toward` to choose the face and `select` to also show the result in the vertex tool; `move_edge_loop` moves, scales, rotates or slides a loop in one undo step (see the [MCP tool reference](../../MCP.md)). The actions are `edge_select_loop`, `edge_select_ring`, `edge_grow`, `edge_shrink`, `edge_select_boundary`, `edge_slide` and `vertex_rotate`.
 
 ## Settings
 
@@ -120,17 +156,22 @@ Over a view, `Alt` + mouse wheel changes the factor by 0.1 per notch, `Ctrl+Alt`
 
 **Why does my edit snap back when I release the mouse?** The solid would become concave or flat. The status bar shows the reason while you drag (edges turn red). Brushes must stay convex in Source.
 
-**How do I merge two vertices?** Drag one onto the other. Any vertex dropped closer than the **Merge distance** (1 unit by default) to a vertex that did not move is welded to it.
+**How do I merge two vertices?** Drag one onto the other. Any vertex dropped closer than the **Merge distance** (1 unit by default) to a vertex that did not move is welded to it. To merge several at once, select them and use **Weld selected vertices**, or use **Weld vertices by distance** to merge every close pair.
 
 **My textures stretch when I move vertices.** **UV lock** is on: textures follow the vertices. Turn it off to keep textures fixed in the world.
 
 **Can I edit vertices with an AI assistant?** Yes, the MCP tools `get_brush_vertices`, `set_brush_vertices`, `move_brush_vertices` and `snap_brush_vertices` do the same edits (see the [MCP tool reference](../../MCP.md)).
+
+**How do I select the whole line of edges around a brush face or along a wall?** `Alt`+click one of its edges. `Ctrl+Alt`+click selects the parallel edges instead.
+
+**The loop stops at a brush, why?** The loop only runs through the edited brushes, and brushes join only where their corners meet exactly. Select all the brushes of the wall first, and check that the corners line up.
 
 ## Related pages
 
 - [Selection tool](selection-tool.md)
 - [Clip tool](clip-tool.md)
 - [Displacement tool](displacement-tool.md)
+- [Bevel tool](bevel-tool.md)
 - [Grids](grids.md)
 - [Texture tool](texture-tool.md)
 - [UV editor](uv-editor.md)

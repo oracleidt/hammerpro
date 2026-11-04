@@ -163,6 +163,10 @@ Avec des objets sélectionnés et le pointeur sur une vue (et **Décaler avec le
 
 Sans sélection, les flèches font défiler la vue 2D (voir [Caméra et navigation](camera-navigation.md)).
 
+## Boucles d'arêtes
+
+L'outil de sélection choisit des brushes entiers, pas des arêtes : il n'a donc pas de mode arête. Les commandes de boucle et d'anneau d'arêtes sont dans l'[outil vertex](vertex-tool.md#boucles-et-anneaux-darêtes) (`Alt`+clic sur une arête) et dans l'[outil biseau](bevel-tool.md) (`Alt`+clic sur une arête pour choisir sa boucle avant un biseau). Pour travailler sur une boucle depuis ici, sélectionnez les brushes qui la forment, appuyez sur `Maj+V` pour l'outil vertex et faites `Alt`+clic sur une arête. Les commandes de **Édition > Sélection d'arêtes** et **Outils > Faire glisser la boucle d'arêtes...** fonctionnent dans l'outil vertex.
+
 ## Menu contextuel des vues
 
 Avec une sélection, un clic droit dans une vue ajoute en haut du menu : **Poser au sol**, **Coller au plafond**, leurs versions "aligné sur la surface", **Centrer les origines** et **Pivot déplaçable**. Ces commandes sont décrites dans [Transformer et aligner](transform-align.md).

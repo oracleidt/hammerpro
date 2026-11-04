@@ -40,11 +40,12 @@ pub struct ViewGrid {
     pub size: f64,
     pub origin: [f64; 3],
     pub major_every: u32,
+    pub angle: f64,
 }
 
 impl Default for ViewGrid {
     fn default() -> Self {
-        Self { size: 16.0, origin: [0.0; 3], major_every: 0 }
+        Self { size: 16.0, origin: [0.0; 3], major_every: 0, angle: 0.0 }
     }
 }
 
@@ -54,6 +55,7 @@ impl ViewGrid {
             size: clamp_grid(self.size, 16.0),
             origin: self.origin.map(clean_coord),
             major_every: self.major_every.min(MAX_MAJOR_EVERY),
+            angle: clean_angle(self.angle),
         }
     }
 }
@@ -84,6 +86,12 @@ impl PerViewGrids {
             ViewKind::Front => &mut self.front,
             ViewKind::Side => &mut self.side,
         }
+    }
+
+    pub fn is_unset(&self) -> bool {
+        [&self.perspective, &self.top, &self.front, &self.side]
+            .into_iter()
+            .all(|g| ViewGrid { angle: 0.0, ..g.clone() } == ViewGrid::default())
     }
 
     pub fn uniform(size: f64) -> PerViewGrids {
@@ -248,7 +256,7 @@ mod tests {
         assert_eq!(s, GridSettings::default());
         assert_eq!(s.mode, GridMode::Global);
         let mut s = GridSettings { mode: GridMode::PerView, ..GridSettings::default() };
-        s.per_view.top = ViewGrid { size: 12.0, origin: [4.0, 0.0, 0.0], major_every: 4 };
+        s.per_view.top = ViewGrid { size: 12.0, origin: [4.0, 0.0, 0.0], major_every: 4, angle: -30.0 };
         s.presets.push(GridSpec {
             name: "Stairs".into(),
             step: [12.0, 12.0, 8.0],

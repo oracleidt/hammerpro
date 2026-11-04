@@ -63,6 +63,8 @@ const HANDLED: &[Action] = &[
     Action::AttachGrid,
     Action::DetachGrid,
     Action::GridManager,
+    Action::RotateGrid45,
+    Action::AlignGridToSelection,
 ];
 
 impl Package for Workflow {
@@ -321,6 +323,7 @@ fn route_dropped_files(app: &mut HammerProApp, ctx: &egui::Context) {
         return;
     }
     let mut images = Vec::new();
+    let mut models = Vec::new();
     for path in dropped {
         let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         match drop_kind(&path) {
@@ -332,15 +335,15 @@ fn route_dropped_files(app: &mut HammerProApp, ctx: &egui::Context) {
                 app.state.notify(Severity::Info, tf!("workflow.drop_not_yet", name));
             }
             DropKind::Image => images.push(path),
-            DropKind::Model => {
-                if app.pkg.lab.model_import.busy() {
-                    app.state.notify(Severity::Info, t!("workflow.drop_model_busy"));
-                } else {
-                    app.pkg.lab.model_import.open_file(ctx, path);
-                }
-            }
+            DropKind::Model => models.push(path),
             DropKind::Unknown => app.state.notify(Severity::Info, tf!("workflow.drop_unsupported", name)),
         }
+    }
+    match models.len() {
+        0 => {}
+        1 if app.pkg.lab.model_import.busy() => app.state.notify(Severity::Info, t!("workflow.drop_model_busy")),
+        1 => app.pkg.lab.model_import.open_file(ctx, models.remove(0)),
+        _ => app.pkg.blender.add_batch_inputs(models),
     }
     if !images.is_empty() {
         let import = app.texture_dialogs.import_dialog();

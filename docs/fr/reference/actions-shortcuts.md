@@ -2,7 +2,7 @@
 
 # Actions et raccourcis clavier
 
-Chaque commande de Hammer Pro 1.0.2 est une *action* : une seule entrée partagée par les menus, la barre d'outils, les raccourcis clavier, la palette de commandes (`Ctrl+P`), les fichiers `--script` et le serveur MCP (`run_action`, `list_actions`). Cette page liste les 268 actions, menu par menu, dans l'ordre où les menus les affichent.
+Chaque commande de Hammer Pro 1.0.7 est une *action* : une seule entrée partagée par les menus, la barre d'outils, les raccourcis clavier, la palette de commandes (`Ctrl+P`), les fichiers `--script` et le serveur MCP (`run_action`, `list_actions`). Cette page liste les 319 actions, menu par menu, dans l'ordre où les menus les affichent.
 
 Colonnes :
 
@@ -39,6 +39,7 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Décompilateur de BSP... | `open_bsp` |  |  |  |
 | BSP Sniffer... | `bsp_sniffer` |  |  |  |
 | Importer un modèle (FBX, OBJ, glTF)... | `import_model` |  |  |  |
+| Importer des modèles (lot)... | `import_models_batch` |  |  |  |
 | Compiler et lancer... | `run_map` | `Ctrl+F9` | `F9` | `F9` |
 | Compiler maintenant | `compile_now` | `F9` | `Ctrl+F9` | `Ctrl+F9` |
 | Annuler la compilation | `cancel_compile` |  |  |  |
@@ -74,6 +75,11 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Mode de sélection > Objets | `select_mode_objects` |  |  |  |
 | Mode de sélection > Solides | `select_mode_solids` |  |  |  |
 | Mode de sélection > Ignorer les groupes | `toggle_ignore_groups` | `Ctrl+W` |  |  |
+| Sélection d'arêtes > Sélectionner la boucle d'arêtes | `edge_select_loop` |  |  |  |
+| Sélection d'arêtes > Sélectionner l'anneau d'arêtes | `edge_select_ring` |  |  |  |
+| Sélection d'arêtes > Agrandir la sélection | `edge_grow` |  |  |  |
+| Sélection d'arêtes > Réduire la sélection | `edge_shrink` |  |  |  |
+| Sélection d'arêtes > Sélectionner le contour | `edge_select_boundary` |  |  |  |
 | Propriétés | `properties` | `Alt+Entrée` |  |  |
 | Modifier la couleur... | `edit_color` | `C` |  |  |
 | Définir la couleur d'affichage... | `set_display_color` |  |  |  |
@@ -99,6 +105,8 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Grilles > Attacher la grille à la sélection | `attach_grid` |  |  |  |
 | Grilles > Détacher la grille de la sélection | `detach_grid` |  |  |  |
 | Grilles > Gestionnaire de grilles... | `grid_manager` |  |  |  |
+| Grilles > Pivoter la grille de 45 degrés | `rotate_grid_45` |  |  |  |
+| Grilles > Aligner la grille sur l'arête ou la face sélectionnée | `align_grid_to_selection` |  |  |  |
 | Vérifier les problèmes | `check_problems` | `Alt+P` |  |  |
 | Rapport des entités | `entity_report` |  |  |  |
 | Aller à un id de brush ou d'entité... | `go_to_brush` | `Ctrl+Maj+G` |  |  |
@@ -244,9 +252,18 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Poser au sol, aligné sur la surface | `move_to_floor_aligned` | `Ctrl+Alt+N` |  |  |
 | Coller au plafond, aligné sur la surface | `move_to_ceiling_aligned` | `Ctrl+Alt+U` |  |  |
 | Fusionner les brushes | `merge_brushes` | `Ctrl+Maj+M` |  |  |
+| Intersection de brushes | `intersect_brushes` | `Ctrl+Maj+K` |  |  |
+| Union de brushes | `union_brushes` |  |  |  |
+| Décaler la face... | `inset_face` |  |  |  |
 | Nodraw sur les faces cachées... | `nodraw_hidden_faces` |  |  |  |
 | Lier chacun à sa propre entité | `tie_each_to_entity` | `Ctrl+Maj+T` |  |  |
 | Convertir en func_detail | `convert_to_detail` |  |  |  |
+| Modifier la courbe | `curve_edit` |  |  |  |
+| Modifier la route | `road_edit` |  |  |  |
+| Générateur de trottoirs... | `road_sidewalk` |  |  |  |
+| Générateur de bordures et caniveaux... | `road_curb` |  |  |  |
+| Fondre le terrain sur la route... | `road_terrain` |  |  |  |
+| Modifier les détails de route... | `roadside_edit` |  |  |  |
 | Aligner > Aligner à gauche | `align_left` |  |  |  |
 | Aligner > Aligner à droite | `align_right` |  |  |  |
 | Aligner > Aligner en haut | `align_top` |  |  |  |
@@ -267,6 +284,10 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Convertir le prop en brushes... | `prop_to_brushes` |  |  |  |
 | Générer le nav mesh | `generate_nav_mesh` |  |  |  |
 | Options des props statiques (Propper)... | `propper_options` |  |  |  |
+| Envoyer vers Blender | `send_to_blender` |  |  |  |
+| Mettre à jour depuis Blender | `pull_from_blender` |  |  |  |
+| Arrêter le lien direct avec Blender | `stop_blender_link` |  |  |  |
+| Installer l'add-on Blender | `install_blender_addon` |  |  |  |
 | Instances > Créer une instance depuis la sélection... | `create_instance` | `Alt+S` |  |  |
 | Instances > Modifier l'instance | `edit_instance` |  |  |  |
 | Instances > Fusionner les instances sélectionnées | `collapse_instances` |  |  |  |
@@ -289,14 +310,36 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Outil displacement | `tool_displacement` | `Maj+P` |  |  |
 | Outil polygone | `tool_polygon` | `Maj+N` |  |  |
 | Outil courbe | `tool_curve` | `Maj+U` |  |  |
+| Outil route | `tool_road` |  |  |  |
 | Outil cordon | `tool_cordon` |  |  |  |
 | Outil chemin | `tool_path` |  |  |  |
 | Outil sprinkle | `tool_sprinkle` |  |  |  |
 | Scinder la face | `vertex_split_face` | `Ctrl+F` |  |  |
 | Mettre les sommets à l'échelle... | `vertex_scale` | `Alt+E` |  |  |
+| Souder les sommets sélectionnés | `vertex_weld` |  |  |  |
+| Souder les sommets par distance | `vertex_weld_distance` |  |  |  |
+| Supprimer les faces et arêtes dégénérées | `vertex_cleanup` |  |  |  |
+| Faire glisser la boucle d'arêtes... | `edge_slide` |  |  |  |
+| Faire tourner les sommets... | `vertex_rotate` |  |  |  |
+| Lisser la boucle du displacement | `disp_smooth_loop` |  |  |  |
+| Fixer la hauteur de la boucle du displacement | `disp_loop_height` |  |  |  |
 | Subdiviser les displacements | `disp_subdivide` |  |  |  |
 | Inverser l'alpha des displacements | `disp_invert_alpha` |  |  |  |
 | Ajouter du bruit aux displacements... | `disp_noise` |  |  |  |
+| Bruit fractal sur les displacements... | `disp_fractal_noise` |  |  |  |
+| Érosion thermique des displacements... | `disp_thermal_erosion` |  |  |  |
+| Érosion hydraulique des displacements... | `disp_hydraulic_erosion` |  |  |  |
+| Fusionner les hauteurs des displacements | `disp_blend_heights` |  |  |  |
+| Limiter la pente des displacements | `disp_limit_slope` |  |  |  |
+| Uniformiser la pente des displacements | `disp_uniform_slope` |  |  |  |
+| Sélectionner les displacements par pente | `disp_select_by_slope` |  |  |  |
+| Displacement en maillage... | `disp_to_mesh` |  |  |  |
+| Importer une carte de hauteur... | `import_heightmap` |  |  |  |
+| Exporter une carte de hauteur... | `export_heightmap` |  |  |  |
+| Générer un terrain... | `generate_terrain` |  |  |  |
+| Maillage en displacement... | `mesh_to_disp` |  |  |  |
+| Plaquer les displacements sur un maillage... | `disp_conform_mesh` |  |  |  |
+| Daller la sélection avec des displacements... | `disp_tile_selection` |  |  |  |
 | Verrouillage UV (outil sommets) | `toggle_uv_lock` |  |  |  |
 | Recharger le contenu depuis le disque | `reload_content` |  |  |  |
 | Reconstruire l'index du contenu | `rebuild_content_index` |  |  |  |

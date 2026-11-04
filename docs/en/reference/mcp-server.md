@@ -128,7 +128,7 @@ Every change the AI makes is **one undo step** named "MCP:" followed by what was
 | Help | `get_capabilities`: every tool by category with an example call. The AI starts here. |
 | Map | `get_map_info`: file, unsaved changes, counts, bounds, selection, undo steps, content and compile state. |
 | Files | Open a `.vmf`, save the map. |
-| Brushes and objects | List solids, create brushes (block, wedge, cylinder, spike, sphere, arch, torus), apply materials, move, rotate, delete. |
+| Brushes and objects | List solids, create brushes (block, wedge, cylinder, spike, sphere, arch, torus, stairs, spiral stairs, ramp, pillar, doorway), apply materials, move, rotate, delete. |
 | Entities | List, read, create entities and set their keyvalues. |
 | Selection | Read, change and clear the selection. |
 | History | Undo and redo. |
@@ -154,6 +154,7 @@ Every change the AI makes is **one undo step** named "MCP:" followed by what was
 | History and clipboard | Undo history, several undo or redo steps, copy, cut, paste, paste special. |
 | Overlays and decals | List and create overlays and decals. |
 | Paths | Path entity chains. |
+| Roads | Create, read, list, edit, delete and split [roads](../features/road-tool.md), and join the end of a road to the side of another with flares. |
 | Skybox | Sky cameras, preview, skybox switch. |
 | Entity definitions | FGD information, add, remove, reload, validate FGD files. |
 | Games | List the supported games, read and change the game of the map. |

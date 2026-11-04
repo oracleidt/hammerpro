@@ -6,7 +6,7 @@ use hp_app::{Action, Severity, t, tf};
 
 use super::Package;
 use crate::app::HammerProApp;
-use crate::export::{ExportKind, LastExport, ObjInput};
+use crate::export::{ExportKind, LastExport, ObjInput, ObjLayout};
 use crate::files::ViewState;
 
 pub(crate) struct Startup;
@@ -15,6 +15,7 @@ struct Export {
     kind: ExportKind,
     path: PathBuf,
     rx: Receiver<Result<usize, String>>,
+    remember: bool,
 }
 
 #[derive(Default)]
@@ -22,8 +23,14 @@ pub(crate) struct State {
     export: Option<Export>,
 }
 
-const HANDLED: &[Action] =
-    &[Action::ReloadContent, Action::RebuildContentIndex, Action::ExportCopy, Action::ExportAgain, Action::ExportObj];
+const HANDLED: &[Action] = &[
+    Action::ReloadContent,
+    Action::RebuildContentIndex,
+    Action::ExportCopy,
+    Action::ExportAgain,
+    Action::ExportObj,
+    Action::DispToMesh,
+];
 
 impl Package for Startup {
     fn handled(&self) -> &'static [Action] {
@@ -45,6 +52,7 @@ impl Package for Startup {
             }
             Action::ExportCopy => app.export_with_dialog(ExportKind::Vmf),
             Action::ExportObj => app.export_with_dialog(ExportKind::Obj),
+            Action::DispToMesh => app.disp_to_mesh_with_dialog(),
             Action::ExportAgain => {
                 let last: LastExport = app.state.sidecar.get();
                 match (last.kind, last.path) {
@@ -99,7 +107,36 @@ impl HammerProApp {
         }
     }
 
+    fn disp_to_mesh_with_dialog(&mut self) {
+        let faces = hp_tools_mesh::disp::commands::targets(&self.state.doc);
+        if faces.is_empty() {
+            self.state.notify(Severity::Info, t!("disp.nothing_selected"));
+            return;
+        }
+        let stem = self
+            .state
+            .doc
+            .path()
+            .or_else(|| self.state.doc.opened_from())
+            .and_then(Path::file_stem)
+            .map_or_else(|| "untitled".to_owned(), |s| s.to_string_lossy().into_owned());
+        if let Some(path) = crate::files::pick_save_obj(&self.state, &format!("{stem}_displacements.obj")) {
+            let layout = ObjLayout::from_settings(&self.state.settings.mesh);
+            let input = ObjInput::from_displacements(&mut self.state, &faces, layout);
+            self.start_obj_job(path, input, false);
+        }
+    }
+
     fn start_export(&mut self, kind: ExportKind, path: PathBuf) {
+        let input = (kind == ExportKind::Obj).then(|| ObjInput::from_state(&mut self.state));
+        self.start_export_job(kind, path, input, true);
+    }
+
+    fn start_obj_job(&mut self, path: PathBuf, input: ObjInput, remember: bool) {
+        self.start_export_job(ExportKind::Obj, path, Some(input), remember);
+    }
+
+    fn start_export_job(&mut self, kind: ExportKind, path: PathBuf, input: Option<ObjInput>, remember: bool) {
         if self.pkg.startup.export.is_some() {
             self.state.notify(Severity::Info, t!("startup.export_busy"));
             return;
@@ -113,7 +150,7 @@ impl HammerProApp {
                 Box::new(move || crate::export::write_vmf(&map, &target).map(|()| 0))
             }
             ExportKind::Obj => {
-                let input = ObjInput::from_state(&mut self.state);
+                let input = input.unwrap_or_else(|| ObjInput::from_state(&mut self.state));
                 Box::new(move || crate::export::export_obj(&input, &target).map(|s| s.faces))
             }
         };
@@ -123,7 +160,7 @@ impl HammerProApp {
             let _ = tx.send(result);
         });
         match spawned {
-            Ok(_) => self.pkg.startup.export = Some(Export { kind, path, rx }),
+            Ok(_) => self.pkg.startup.export = Some(Export { kind, path, rx, remember }),
             Err(e) => self.state.notify(Severity::Error, tf!("startup.export_failed", path.display(), e)),
         }
     }
@@ -147,7 +184,9 @@ impl HammerProApp {
                     ExportKind::Obj => tf!("startup.exported_obj", name, faces),
                 };
                 self.state.notify(Severity::Success, text);
-                self.state.sidecar.set(&LastExport { kind: Some(export.kind), path: Some(export.path) });
+                if export.remember {
+                    self.state.sidecar.set(&LastExport { kind: Some(export.kind), path: Some(export.path) });
+                }
             }
             Err(e) => self.state.notify(Severity::Error, tf!("startup.export_failed", name, e)),
         }

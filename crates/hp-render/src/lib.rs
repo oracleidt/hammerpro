@@ -529,12 +529,13 @@ fn grid_uniform_min(grid: &GridParams, ppu: f32, min_px: f32) -> ([f32; 4], [f32
     let every = grid.major_every.clamp(2, 1024) as f32;
     let min_px = if min_px.is_finite() { min_px.clamp(2.0, 64.0) } else { 4.0 };
     let fade = |px: f32| ((px - min_px) / min_px).clamp(0.0, 1.0);
-    let minor_alpha = fade(size * ppu) * opacity;
+    let cell = if grid.cells { opacity } else { 0.0 };
+    let minor_alpha = fade(size * ppu) * cell;
     let mut major = size * every;
     while major * ppu < min_px && major < 1.0e7 {
         major *= every;
     }
-    let major_alpha = opacity * (0.5 + 0.5 * fade(major * ppu));
+    let major_alpha = cell * (0.5 + 0.5 * fade(major * ppu));
     let a1024 = if grid.show_1024 && 1024.0 * ppu >= 4.0 { opacity } else { 0.0 };
     ([size, minor_alpha, major, major_alpha], [a1024, opacity, ppu, 0.0])
 }
@@ -4065,7 +4066,7 @@ mod tests {
 
     #[test]
     fn grid_adapts_to_zoom() {
-        let g = GridParams { size: 16.0, major_every: 8, show_1024: true, opacity: 1.0 };
+        let g = GridParams { size: 16.0, major_every: 8, show_1024: true, opacity: 1.0, cells: true };
         let (a, b) = grid_uniform(&g, 1.0);
         assert_eq!(a[0], 16.0);
         assert!(a[1] > 0.9, "16 px minor lines are visible");
@@ -4080,9 +4081,13 @@ mod tests {
         assert!(a[2] >= 32.0);
         let (a, _) = grid_uniform_min(&g, 1.0, f32::NAN);
         assert!(a[1] > 0.9, "a broken limit falls back to 4 px");
-        let bad = GridParams { size: f32::NAN, major_every: 0, show_1024: false, opacity: f32::INFINITY };
+        let bad = GridParams { size: f32::NAN, major_every: 0, show_1024: false, opacity: f32::INFINITY, cells: true };
         let (a, b) = grid_uniform(&bad, 1.0);
         assert!(a.iter().chain(b.iter()).all(|v| v.is_finite()));
+        let bare = GridParams { cells: false, ..g };
+        let (a, b) = grid_uniform(&bare, 1.0);
+        assert_eq!((a[1], a[3]), (0.0, 0.0), "no cell lines");
+        assert_eq!((b[0], b[1]), (1.0, 1.0), "the 1024 lines and the axes stay");
     }
 
     #[test]

@@ -2,7 +2,7 @@
 
 # Outil bloc
 
-L'outil bloc crée des brushes à partir de primitives (bloc, coin, cylindre, pointe, sphère, arche, tore). Vous tracez une boîte dans une vue 2D ou directement sur une surface dans la vue 3D, et la primitive est construite dans cette boîte avec le matériau actuel.
+L'outil bloc crée des brushes à partir de primitives (bloc, coin, cylindre, pointe, sphère, arche, tore, escalier, escalier en colimaçon, rampe, pilier, encadrement de porte). Vous tracez une boîte dans une vue 2D ou directement sur une surface dans la vue 3D, et la primitive est construite dans cette boîte avec le matériau actuel.
 
 ## Ouvrir l'outil
 
@@ -45,8 +45,13 @@ Les boutons des primitives sont à gauche de la barre d'options.
 | **Sphère** | Sphère (ellipsoïde) inscrite dans la boîte, un solide convexe par tranche (nombre de tranches : la moitié des côtés, au moins 2). | plusieurs |
 | **Arche** | Arche ou anneau de segments de mur, un solide convexe par segment. Si le mur est aussi épais que le rayon, les segments deviennent des parts de tarte. | un par côté |
 | **Tore** | Anneau à tube polygonal, un solide convexe par segment. Peut devenir une spirale avec une montée. | un par côté |
+| **Escalier** | Escalier droit qui monte vers la **Direction** choisie (+Y par défaut). La boîte donne la largeur, la longueur et la hauteur totale (Z) ; la dernière marche atteint le haut de la boîte. | un par marche |
+| **Escalier en colimaçon** | Marches autour du centre de la boîte (la hauteur de la boîte est la hauteur totale), chacune un secteur convexe entre le rayon intérieur et le rayon extérieur. | un par marche |
+| **Rampe** | Coin avec un angle de pente donné, qui monte vers la **Direction** choisie (+Y par défaut). Quand la pente monterait plus haut que la boîte, elle s'arrête en haut et le reste est plat. | 1 |
+| **Pilier** | Colonne à section en polygone régulier, avec un socle et un chapiteau facultatifs plus larges que le fût. | 1 à 3 |
+| **Encadrement de porte** | Mur qui remplit la boîte avec une ouverture centrée descendant jusqu'au bas de la boîte : deux montants et un linteau ; avec **Arche** le linteau reçoit un haut arrondi fait de morceaux droits. | 3, ou 2 plus les segments de l'arche |
 
-Les cylindres et les arches reçoivent des sommets entiers quand la forme reste valide ; les sphères et les tores ne sont jamais arrondis (leurs faces ne seraient plus planes). Quand les paramètres ne peuvent pas donner de forme dans la boîte, les vues 2D affichent **Paramètres invalides pour cette taille** sous la boîte.
+Les escaliers, rampes, piliers et encadrements sont faits de solides convexes qui ne se chevauchent pas, avec des sommets entiers quand la forme reste valide (les marches se calent alors sur des unités entières). Ils utilisent le matériau actuel sur toutes les faces. Les cylindres et les arches reçoivent des sommets entiers quand la forme reste valide ; les sphères et les tores ne sont jamais arrondis (leurs faces ne seraient plus planes). Quand les paramètres ne peuvent pas donner de forme dans la boîte, les vues 2D affichent **Paramètres invalides pour cette taille** sous la boîte.
 
 ## Options
 
@@ -64,6 +69,23 @@ Les paramètres affichés dépendent de la primitive. Les angles suivent la conv
 | **Arc** | tore | Angle parcouru par l'anneau : de 1 à 360 degrés, ou jusqu'à 3600 (dix tours) quand **Montée** n'est pas à 0. | 360 |
 | **Départ** | tore | Angle de départ du balayage, de -360 à 360 degrés. | 0 |
 | **Montée** | tore | Hauteur gagnée sur tout l'anneau, de -16384 à 16384 unités (rampes et tuyaux en spirale). | 0 |
+| **Marches** | escalier, colimaçon | Nombre de marches (1 à 256). La hauteur de la boîte est divisée à parts égales. | 8 |
+| **Haut. marche** | escalier, colimaçon | Hauteur d'une marche en unités (0 à 1024). Au-dessus de 0, elle remplace **Marches** : le nombre de marches est la hauteur de la boîte divisée par cette valeur, arrondi. | 0 |
+| **Ouvert** | escalier, colimaçon | Marches ouvertes : dalles de deux marches d'épaisseur au lieu de colonnes pleines jusqu'au bas de la boîte. Nécessaire pour une spirale de plus de 360 degrés. | désactivé |
+| **Rayon int.** | colimaçon | Rayon intérieur des marches, 0 pour des marches en part de tarte. Il doit rester plus petit que la boîte. | 16 |
+| **Rotation** | colimaçon | Angle total, de -3600 à 3600 degrés, négatif pour tourner dans l'autre sens (limité à 360 sauf **Ouvert**). Chaque marche doit couvrir moins de 180 degrés. | 270 |
+| **Départ** | colimaçon | Angle de départ, de -360 à 360 degrés. | 0 |
+| **Pente** | rampe | Angle de pente, de 1 à 89 degrés. | 30 |
+| **Direction** | escalier, colimaçon, rampe | Côté vers lequel montent l'escalier ou la rampe : **+Y**, **-Y**, **+X**, **-X** ou **Côté le plus long** (le plus long des côtés X et Y de la boîte : +X si X est plus long, sinon +Y). Un colimaçon démarre de ce côté puis tourne de **Rotation**. Les côtés sont ceux du repère de la forme, identiques aux axes du monde sauf si la forme se dresse selon un autre axe (voir **Orienter selon la vue**). | +Y |
+| **Base** | pilier | Hauteur du socle, 0 pour aucun. | 16 |
+| **Chapiteau** | pilier | Hauteur du chapiteau, 0 pour aucun. | 16 |
+| **Retrait** | pilier | De combien le fût est plus étroit que le socle et le chapiteau (utilisé s'il y a un socle ou un chapiteau). | 8 |
+| **Ouverture L** | encadrement | Largeur de l'ouverture, centrée. 0 vaut la moitié de la largeur du mur. | 0 |
+| **Ouverture H** | encadrement | Hauteur de l'ouverture depuis le bas de la boîte. 0 vaut les trois quarts de la hauteur du mur. | 0 |
+| **Épaisseur** | encadrement | Épaisseur du mur, centrée dans la profondeur de la boîte. 0 remplit toute la profondeur de la boîte. | 0 |
+| **Arche** | encadrement | Donne un haut arrondi à l'ouverture. Le haut de l'ouverture est à **Ouverture H** ; l'arche doit tenir en dessous. | désactivé |
+| **Rayon de l'arche** | encadrement | Rayon du haut arrondi. Au moins la moitié de l'ouverture ; 0 vaut exactement la moitié (demi-cercle). Un rayon plus grand donne une arche surbaissée. | 0 |
+| **Segments de l'arche** | encadrement | Nombre de morceaux droits qui forment le haut arrondi (2 à 64). | 8 |
 | **Orienter selon la vue** | toutes sauf le bloc | Les formes tracées dans la vue de face ou de côté (ou sur un mur en 3D) s'alignent sur l'axe de profondeur de la vue : un cylindre tracé dans la vue de face est couché le long de X. Enregistré dans le paramètre `reorient_primitives`. | activé |
 | **Échelle** | toutes | Échelle de texture des nouvelles faces (unités par texel, de 0,01 à 64). | paramètre **Échelle de texture par défaut** (0,25) |
 | Créer comme | toutes | **Brush du monde**, **func_detail** ou n'importe quelle classe d'entité brush du FGD (liste avec recherche, un nom de classe saisi est accepté). Avec une classe, tous les solides de la primitive vont dans une nouvelle entité brush avec les keyvalues par défaut du FGD. Les primitives du monde faites de plusieurs solides sont groupées. | Brush du monde |
@@ -93,9 +115,9 @@ La fenêtre Paramètres s'ouvre avec **Outils > Options...** (`Ctrl+,`).
 ## Astuces
 
 - Sélectionnez un brush avant de tracer dans la vue de dessus : la nouvelle boîte reprend sa plage de hauteur. Sélectionnez d'abord un mur de la pièce et la boîte prend toute la hauteur du mur.
-- Pour un escalier en colimaçon, prenez une arche avec une **Montée** égale à la hauteur d'une marche. Pour un tuyau en hélice, prenez un tore avec une **Montée** et un **Arc** supérieur à 360.
+- Pour un escalier, tracez la boîte avec la largeur, la longueur et la hauteur totale voulues et réglez **Marches** ou **Haut. marche**. Pour un colimaçon, prenez la primitive escalier en colimaçon (ou une arche avec une **Montée** égale à la hauteur d'une marche). Choisissez le côté vers lequel ils montent avec **Direction** (+Y, -Y, +X, -X ou le côté le plus long de la boîte). Pour un tuyau en hélice, prenez un tore avec une **Montée** et un **Arc** supérieur à 360.
 - Laissez **Orienter selon la vue** activé et tracez un cylindre dans la vue de face pour obtenir un tuyau couché le long de X sans devoir le tourner ensuite.
-- Nom de chaque option dans les fichiers `--script` et pour l'outil MCP `set_tool_options` : `kind`, `sides`, `wall`, `arc`, `start`, `rise`, `tube_sides`, `ring`, `torus_arc`, `torus_start`, `torus_rise`, `reorient`, `preview`, `tex_scale`, `keep_active`, `create_as`.
+- Nom de chaque option dans les fichiers `--script` et pour l'outil MCP `set_tool_options` : `kind`, `sides`, `wall`, `arc`, `start`, `rise`, `tube_sides`, `ring`, `torus_arc`, `torus_start`, `torus_rise`, `steps`, `step_height`, `open`, `inner`, `spiral_angle`, `spiral_start`, `slope`, `direction`, `base`, `capital`, `inset`, `door_width`, `door_height`, `thickness`, `door_arch`, `door_arch_radius`, `door_arch_segments`, `reorient`, `preview`, `tex_scale`, `keep_active`, `create_as`.
 
 ## FAQ
 

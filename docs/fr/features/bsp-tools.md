@@ -42,7 +42,7 @@ Sélectionnez une entrée pour la prévisualiser : fichiers texte (VMT, TXT, Lua
 
 ## Exporter en OBJ
 
-**Fichier > Exporter en OBJ...** écrit la géométrie des brushes et des displacements de la map, avec les coordonnées de texture, dans un fichier `.obj` et sa bibliothèque de matériaux `.mtl` à côté, pour les logiciels 3D (Blender, une visionneuse de modèles...). Les faces avec une texture `tools/` sont exclues. Les coordonnées passent du Z vers le haut de Source au Y vers le haut attendu par la plupart des logiciels 3D. La taille des textures vient du contenu du jeu quand elle est connue (512 sinon). Les fichiers sont écrits de façon atomique.
+**Fichier > Exporter en OBJ...** écrit la géométrie des brushes et des displacements de la map, avec les coordonnées de texture, dans un fichier `.obj` et sa bibliothèque de matériaux `.mtl` à côté, pour les logiciels 3D (Blender, une visionneuse de modèles...). Les faces avec une texture `tools/` sont exclues. Pour faire l'aller-retour d'une sélection avec Blender et la retrouver dans la map, utilisez plutôt le [lien avec Blender](blender.md). Les coordonnées passent du Z vers le haut de Source au Y vers le haut attendu par la plupart des logiciels 3D. La taille des textures vient du contenu du jeu quand elle est connue (512 sinon). Les fichiers sont écrits de façon atomique.
 
 ## Comparer deux maps
 

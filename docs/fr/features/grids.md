@@ -17,6 +17,7 @@ La grille est ce sur quoi les outils s'alignent et ce que dessinent les vues 2D.
 | **Grille depuis la sélection**, **Grille depuis la face** | **Map > Grilles** | aucun |
 | **Attacher la grille à la sélection**, **Détacher la grille de la sélection** | **Map > Grilles** | aucun |
 | **Gestionnaire de grilles...** | **Map > Grilles > Gestionnaire de grilles...** | aucun |
+| **Pivoter la grille de 45 degrés**, **Aligner la grille sur l'arête ou la face sélectionnée** | **Map > Grilles**, palette de commandes | aucun |
 
 Avec les préréglages de touches Hammer et Hammer++, **Afficher la grille** est sur `Maj+R`.
 
@@ -78,6 +79,21 @@ Avec **Les objets utilisent leur grille** activé, modifier un objet qui porte u
 - **Grilles des vues** : pour **Dessus**, **Face**, **Côté** et **3D**, la **Taille**, l'**Origine X Y Z** et les **Lignes principales** utilisées par **Une grille par vue** ;
 - **Grilles personnalisées** : **Nouvelle grille**, **Grille depuis la sélection**, **Grille depuis la face**, la liste des grilles de la map et des préréglages, et tous les champs de la grille choisie (« enregistrée avec la map » ou « enregistrée dans les paramètres (toutes les maps) »), avec **Utiliser**, **Attacher à la sélection**, **Copier dans la map** ou **Enregistrer comme préréglage**, et **Supprimer**.
 
+## Faire tourner la grille
+
+La ligne **Rotation de la grille** du menu des grilles (le bouton de grille de la barre d'outils) et du gestionnaire de grilles tourne la grille active dans une vue 2D, comme Hammer de Source 2 :
+
+- saisissez n'importe quel angle en degrés (décimales et valeurs négatives comprises) ou faites glisser le champ ; **0** revient à la grille droite, **45** est le bouton rapide ;
+- **Pivoter la grille de 45 degrés** ajoute 45 degrés à l'angle actuel (deux fois donne un quart de tour, qui paraît de nouveau droit) ;
+- **Aligner la grille sur l'arête ou la face sélectionnée** tourne la grille sur l'arête la plus longue de la face sélectionnée, du brush sélectionné ou sur le lacet de l'entité sélectionnée, vus dans cette vue 2D.
+
+La grille tourne autour de l'axe de la vue (Z en vue de dessus, Y en vue de face, X en vue de côté) et autour de son origine. La vue utilisée est celle sous la souris, sinon la dernière utilisée. Ce qui tourne dépend de la grille active :
+
+- **Grille globale** et **Une grille par vue** : l'angle de cette vue, gardé dans le champ `angle` de `[grid.per_view.top]` (front, side, perspective) de `settings.toml`. La taille reste la taille globale. Passer à une grille par vue garde les angles ;
+- **Grille personnalisée** (et grille de la sélection) : ses **Tangage Lacet Roulis** changent, donc l'angle est enregistré dans la map avec la grille et chaque changement est une étape d'annulation.
+
+La vue 2D dessine les lignes mineures et principales selon les axes tournés, coupées à la vue. Les axes de l'origine et les lignes de 1024 unités restent droits, comme les limites de la map. Tous les outils (déplacement, poignées de mise à l'échelle et de redimensionnement, bloc, découpe, sommets, extrusion, chemin, placement d'entités) s'alignent sur le réseau tourné, et **Ctrl + molette** change sa taille comme d'habitude. La rotation est une rotation du réseau dans le plan de la vue : une poignée de redimensionnement de brush aligne son point sur les nœuds tournés.
+
 ## Dessin de la grille
 
 | Option | Où | Effet | Défaut |
@@ -101,7 +117,7 @@ Les réglages de grille sont dans la table `[grid]` de `settings.toml` : `mode`,
 
 - Pour des marches de 12 x 8, créez une grille personnalisée de pas 12 12 8 et attachez-la à l'escalier (voir [Grilles personnalisées pour les escaliers](../guides/custom-grids-for-stairs.md)).
 - **Aligner la sélection sur la grille** (`Ctrl+B`) et **Aligner chaque objet sur la grille** (`Ctrl+Maj+B`) sont décrits dans [Transformer et aligner](transform-align.md).
-- Outils MCP : `list_grids`, `set_grid_mode`, `create_grid`, `edit_grid`, `delete_grid`, `attach_grid` (voir la [référence des outils MCP](../../MCP.md), en anglais).
+- Outils MCP : `list_grids`, `set_grid_mode`, `create_grid`, `edit_grid`, `delete_grid`, `attach_grid`, `rotate_grid` (angle, delta ou align, pour une vue ; voir la [référence des outils MCP](../../MCP.md), en anglais).
 
 ## FAQ
 
@@ -112,6 +128,8 @@ Les réglages de grille sont dans la table `[grid]` de `settings.toml` : `mode`,
 **Où sont enregistrées les grilles personnalisées ?** Les grilles de la map sont écrites dans un bloc `hammerpro_grids` du VMF et les grilles attachées dans le bloc editor de chaque objet : elles reviennent quand vous rouvrez la map. Les préréglages sont dans `settings.toml`.
 
 **Je veux une grille tournée autour d'un seul bâtiment.** Donnez des **Limites** à la grille personnalisée : en dehors de la boîte, la grille globale s'applique.
+
+**Comment obtenir une grille à 45 degrés ?** Ouvrez le menu des grilles, saisissez 45 dans **Rotation de la grille** (ou utilisez **Pivoter la grille de 45 degrés**). Pour suivre un mur, sélectionnez-le et utilisez **Aligner la grille sur l'arête ou la face sélectionnée**.
 
 ## Pages liées
 

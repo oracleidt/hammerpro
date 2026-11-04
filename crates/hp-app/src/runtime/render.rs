@@ -2,7 +2,7 @@ use std::cell::Cell;
 
 use hp_editor::Id;
 
-use crate::settings::{PropShadowSetting, RenderModeSetting, Settings, StaticPropShadows};
+use crate::settings::{DispWalkMode, PropShadowSetting, RenderModeSetting, Settings, StaticPropShadows};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct RenderDisplay {
@@ -15,6 +15,8 @@ pub struct RenderDisplay {
     pub displacements_in_2d: bool,
     pub displacements_only: bool,
     pub disp_walkable: bool,
+    pub disp_walk_mode: DispWalkMode,
+    pub disp_walk_limit: u16,
     pub sky: bool,
     pub sky_3d: bool,
     pub fog: Option<Id>,
@@ -54,6 +56,8 @@ impl Default for RenderDisplay {
             displacements_in_2d: true,
             displacements_only: false,
             disp_walkable: false,
+            disp_walk_mode: DispWalkMode::Source,
+            disp_walk_limit: 4557,
             sky: true,
             sky_3d: true,
             fog: None,
@@ -91,6 +95,8 @@ impl RenderDisplay {
             displacements_in_2d: r.displacements_in_2d,
             displacements_only: r.displacements_only,
             disp_walkable: r.disp_walkable,
+            disp_walk_mode: r.disp_walk_mode,
+            disp_walk_limit: walk_limit(r.disp_walk_angle),
             sky: r.sky_preview,
             sky_3d: r.skybox_3d,
             fog: r.fog_preview.then_some(rt.fog_controller.unwrap_or(0)),
@@ -121,6 +127,11 @@ impl RenderDisplay {
             prop_shadows: prop_shadows(s),
         }
     }
+}
+
+pub fn walk_limit(angle: f32) -> u16 {
+    let a = if angle.is_finite() { angle.clamp(1.0, 89.0) } else { 45.573 };
+    (a * 100.0).round() as u16
 }
 
 pub fn prop_shadows(s: &Settings) -> StaticPropShadows {

@@ -1,8 +1,8 @@
 use hp_app::extend::{SettingsPage, page_order};
 use hp_app::i18n::TrTable;
 use hp_app::settings::{
-    Disp2dSetting, Disp2dViewSetting, Models2dSetting, PropShadowSetting, RenderSettings, StaticPropShadows,
-    ToneModeSetting, WaterDetailSetting,
+    Disp2dSetting, Disp2dViewSetting, DispWalkMode, Models2dSetting, PropShadowSetting, RenderSettings,
+    StaticPropShadows, ToneModeSetting, WaterDetailSetting,
 };
 use hp_app::{AppState, t, tf};
 
@@ -13,6 +13,14 @@ pub(super) fn pages() -> Vec<Box<dyn SettingsPage>> {
 }
 
 struct RenderPage;
+
+fn walk_mode_label(m: DispWalkMode) -> &'static str {
+    match m {
+        DispWalkMode::Source => t!("shell.render.walk_mode_source"),
+        DispWalkMode::Limit => t!("shell.render.walk_mode_limit"),
+        DispWalkMode::Gradient => t!("shell.render.walk_mode_gradient"),
+    }
+}
 
 fn check(ui: &mut egui::Ui, value: &mut bool, label: &str, tip: &str) -> bool {
     ui.checkbox(value, label).on_hover_text(tip).changed()
@@ -302,6 +310,29 @@ impl SettingsPage for RenderPage {
             check(ui, &mut r.disp_source_2d, t!("shell.render.disp_source_2d"), t!("shell.render.disp_source_2d_tip"));
         changed |=
             check(ui, &mut r.disp_walkable, t!("shell.render.disp_walkable"), t!("shell.render.disp_walkable_tip"));
+        egui::Grid::new("hp_shell_render_walk").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
+            ui.label(t!("shell.render.walk_mode")).on_hover_text(t!("shell.render.walk_mode_tip"));
+            egui::ComboBox::from_id_salt("hp_shell_render_walk_mode")
+                .selected_text(walk_mode_label(r.disp_walk_mode))
+                .show_ui(ui, |ui| {
+                    for m in DispWalkMode::ALL {
+                        changed |= ui.selectable_value(&mut r.disp_walk_mode, m, walk_mode_label(m)).changed();
+                    }
+                });
+            ui.end_row();
+            ui.label(t!("shell.render.walk_angle")).on_hover_text(t!("shell.render.walk_angle_tip"));
+            changed |= ui
+                .add(
+                    egui::DragValue::new(&mut r.disp_walk_angle)
+                        .speed(0.1)
+                        .range(1.0..=89.0)
+                        .max_decimals(2)
+                        .suffix("°"),
+                )
+                .on_hover_text(t!("shell.render.walk_angle_tip"))
+                .changed();
+            ui.end_row();
+        });
 
         heading(ui, t!("shell.render.frame_rate"));
         egui::Grid::new("hp_shell_render_fps").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
@@ -825,6 +856,21 @@ pub(crate) const TR: TrTable = &[
         "Certaines vues 2D ont leur propre mode de displacements : elles suivent à nouveau celui-ci",
     ),
     ("shell.render.disp_walkable", "Displacement walkability", "Praticabilité des displacements"),
+    ("shell.render.walk_mode", "Walkability colors", "Couleurs de praticabilité"),
+    (
+        "shell.render.walk_mode_tip",
+        "Source rules (three classes), one limit angle (green below, red above) or an angle gradient with the limit in the middle",
+        "Règles de Source (trois classes), un seul angle limite (vert en dessous, rouge au-dessus) ou un dégradé d'angle centré sur la limite",
+    ),
+    ("shell.render.walk_mode_source", "Source rules", "Règles de Source"),
+    ("shell.render.walk_mode_limit", "Limit angle", "Angle limite"),
+    ("shell.render.walk_mode_gradient", "Angle gradient", "Dégradé d'angle"),
+    ("shell.render.walk_angle", "Walkable angle", "Angle praticable"),
+    (
+        "shell.render.walk_angle_tip",
+        "Steepest slope shown as walkable by the limit and gradient modes, in degrees from flat. The Source limit is 45.57 (normal Z of 0.7)",
+        "Pente la plus raide montrée comme praticable par les modes limite et dégradé, en degrés depuis l'horizontale. La limite de Source est 45,57 (normale Z de 0,7)",
+    ),
     (
         "shell.render.disp_walkable_tip",
         "Colors displacement triangles like Hammer: walkable and buildable (slope normal Z of 0.8 or more), walkable (0.7 or more), not walkable. Forced tags win, like in the compiled map",

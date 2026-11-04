@@ -42,7 +42,7 @@ Select an entry to preview it: text files (VMT, TXT, Lua, RES, CFG, JSON, VMF, R
 
 ## Export OBJ
 
-**File > Export OBJ...** writes the brush and displacement geometry of the map with texture coordinates to an `.obj` file and its `.mtl` material library next to it, for 3D tools (Blender, a model viewer...). Faces with `tools/` textures are left out. Coordinates are turned from Source's Z up to the Y up most 3D tools expect. Texture sizes come from the game content when known (512 otherwise). Files are written atomically.
+**File > Export OBJ...** writes the brush and displacement geometry of the map with texture coordinates to an `.obj` file and its `.mtl` material library next to it, for 3D tools (Blender, a model viewer...). Faces with `tools/` textures are left out. To round trip a selection with Blender and get it back in the map, use the [Blender link](blender.md) instead. Coordinates are turned from Source's Z up to the Y up most 3D tools expect. Texture sizes come from the game content when known (512 otherwise). Files are written atomically.
 
 ## Compare two maps
 

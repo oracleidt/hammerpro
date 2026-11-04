@@ -57,7 +57,7 @@ Hammer Pro est découpé en petites crates spécialisées dans `crates/`, avec d
 | `hp-ui-mapping` | Visgroups, arborescence, fenêtre de compilation avec journal en direct, vérification des problèmes, transformation, collage spécial, aller à un id, informations sur la map, pointfiles. |
 | `hp-ui-lab` | Fonctions plus lourdes : vue logique, affichage du nav mesh, ouverture des maps compilées, aperçu des particules, comparaison de maps. |
 | `hp-tools-select` | Outil de sélection (clic et cadre, poignées, clonage au glisser, gizmo 3D, déplacement au clavier) et outil caméra. |
-| `hp-tools-create` | Outils de création : bloc (primitives), entité, polygone, chemin, découpe, décal, overlay, cordon, sprinkle. |
+| `hp-tools-create` | Outils de création : bloc (primitives), entité, polygone, courbe, route, chemin, découpe, décal, overlay, cordon, sprinkle. |
 | `hp-tools-mesh` | Outil vertex et outil displacement. |
 | `hammerpro` | L'application (eframe/egui) : modules, répartition des actions, outils MCP, scripts, ligne de commande, gestion des plantages. |
 

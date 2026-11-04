@@ -4,20 +4,24 @@ use hp_editor::{EditError, EditResult, ObjRef};
 
 use crate::app::HammerProApp;
 
+mod blender;
 mod brush;
 mod compile;
 mod content;
 mod entities;
 mod health;
 mod helpers;
+mod inset;
 mod instances;
 pub(crate) mod lab;
 mod launch;
 pub(crate) mod lighting;
 pub(crate) mod mcp;
 mod mesh;
+pub(crate) mod mesh_disp;
 mod placement;
 mod render;
+mod roadside;
 mod selection;
 mod shell;
 mod startup;
@@ -71,8 +75,10 @@ const PACKAGES: &[&dyn Package] = &[
     &visibility::Visibility,
     &helpers::Helpers,
     &mesh::Mesh,
+    &mesh_disp::MeshDisp,
     &entities::Entities,
     &render::Render,
+    &roadside::Roadside,
     &lighting::Lighting,
     &placement::Placement,
     &compile::Compile,
@@ -81,6 +87,7 @@ const PACKAGES: &[&dyn Package] = &[
     &content::Content,
     &health::Health,
     &lab::Lab,
+    &blender::Bridge,
     &mcp::Mcp,
 ];
 
@@ -95,8 +102,10 @@ pub(crate) struct Packages {
     pub visibility: visibility::State,
     pub helpers: helpers::State,
     pub mesh: mesh::State,
+    pub mesh_disp: mesh_disp::State,
     pub entities: entities::State,
     pub render: render::State,
+    pub roadside: roadside::State,
     pub lighting: lighting::State,
     pub placement: placement::State,
     pub compile: compile::State,
@@ -105,6 +114,7 @@ pub(crate) struct Packages {
     pub content: content::State,
     pub health: health::State,
     pub lab: lab::State,
+    pub blender: blender::State,
     pub mcp: mcp::State,
 }
 

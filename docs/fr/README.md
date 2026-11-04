@@ -2,7 +2,7 @@
 
 # Documentation de Hammer Pro
 
-Bienvenue dans la base de connaissances de Hammer Pro 1.0.6, l'éditeur de maps pour le moteur Source pensé d'abord pour Garry's Mod. Chaque fonctionnalité a sa propre page : ce que c'est, comment l'ouvrir, chaque option avec sa valeur par défaut, des astuces et une courte FAQ. Les pages renvoient les unes aux autres : commencez où vous voulez.
+Bienvenue dans la base de connaissances de Hammer Pro 1.0.7, l'éditeur de maps pour le moteur Source pensé d'abord pour Garry's Mod. Chaque fonctionnalité a sa propre page : ce que c'est, comment l'ouvrir, chaque option avec sa valeur par défaut, des astuces et une courte FAQ. Les pages renvoient les unes aux autres : commencez où vous voulez.
 
 Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.md), [Configuration du jeu](getting-started/game-setup.md) puis [Votre première map](getting-started/first-map.md), dans cet ordre.
 
@@ -27,11 +27,14 @@ Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.m
 | [Outil bloc](features/block-tool.md) | Les brushes et chaque primitive avec ses options. |
 | [Outil polygone](features/polygon-tool.md) | Des brushes convexes à partir d'un contour cliqué point par point. |
 | [Outil courbe](features/curve-tool.md) | Murs et rambardes courbes : des brushes en boîte à joints en onglet le long d'un tracé dans une vue 2D. |
+| [Outil route](features/road-tool.md) | Routes le long d'une spline : voies, accotements, lignes, dévers, hauteurs, suivi du terrain, jonctions avec évasements. |
+| [Détails de route](features/road-details.md) | Trottoirs, bordures, caniveaux en V et en U avec fentes d'évacuation, angles de jonction arrondis, et fondu du terrain sur une route avec fondu de texture. |
 | [Outil de découpe](features/clip-tool.md) | Couper des brushes avec un plan. |
 | [Outil extruder / creuser](features/extrude-tool.md) | Des contours cliqués sur une face, creusés dans le brush (renfoncement ou ouverture) ou extrudés hors de la face. |
 | [Outil biseau](features/bevel-tool.md) | Arrondir ou chanfreiner les arêtes des brushes dans la vue 3D (`Ctrl+B`, souris pour la taille, molette pour les segments), ou les biseauter vers l'intérieur : une gorge, ou un arrondi concave qui remplit un coin intérieur (arches). |
 | [Outil vertex](features/vertex-tool.md) | Déplacer, fusionner, scinder et mettre à l'échelle des sommets. |
 | [Outil displacement](features/displacement-tool.md) | Créer, sculpter, peindre l'alpha, tags, couture, bruit. |
+| [Terrain](features/terrain.md) | Importer et exporter des cartes de hauteur, génération procédurale de terrain, érosion, texturage automatique. |
 | [Opérations sur les brushes](features/brush-operations.md) | Carve, creuser, fusionner, lier à une entité, func_detail, nodraw, brushes hint, verrouillage des textures. |
 | [Transformer et aligner](features/transform-align.md) | Fenêtre Transformer, aligner, retourner, magnétisme, poser au sol, placement physique. |
 | [Presse-papiers](features/clipboard.md) | Couper, copier, coller, collage spécial, dupliquer, entre fenêtres Hammer Pro. |
@@ -71,6 +74,7 @@ Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.m
 | --- | --- |
 | [Navigateur de modèles](features/model-browser.md) | Grille de modèles, aperçu 3D, inspecteur de modèles et outils. |
 | [Import de modèles](features/model-import.md) | FBX, OBJ, glTF et GLB directement dans le jeu. |
+| [Lien avec Blender](features/blender.md) | Envoyer des brushes, des displacements ou un prop vers Blender et récupérer la modification tout seul. |
 | [Propper](features/propper.md) | Des brushes vers un prop statique (LOD, collision, displacements précalculés) et des props vers des brushes. |
 | [Navigateur de sons](features/sound-browser.md) | Sons du jeu, soundscripts et sélecteur de sons. |
 | [Particules](features/particles.md) | Navigateur de particules et aperçu des particules dans les vues. |

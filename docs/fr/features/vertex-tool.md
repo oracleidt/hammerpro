@@ -37,6 +37,8 @@ Choisissez le mode avec les trois boutons de la barre d'options, ou appuyez sur 
 | `Ctrl`+clic sur une poignée | L'ajoute à la sélection de sommets ou l'en retire |
 | Clic sur un solide non édité | Édite ce solide à la place (`Ctrl`+clic l'ajoute ou le retire), sauf si **Solides sélectionnés seuls** est coché |
 | Clic dans le vide | Vide la sélection de sommets |
+| `Alt`+clic sur une arête | Sélectionne sa **boucle d'arêtes** (voir [Boucles et anneaux d'arêtes](#boucles-et-anneaux-darêtes)) ; `Maj` l'ajoute à la sélection. Fonctionne dans tous les modes de poignées et dans les vues 2D et 3D, l'arête est saisie sur toute sa longueur |
+| `Ctrl+Alt`+clic sur une arête | Sélectionne son **anneau d'arêtes** ; `Maj` ajoute |
 | Glisser depuis le vide | Sélection rectangulaire des sommets (et milieux d'arêtes) qu'il contient ; avec `Ctrl`, ajoute à la sélection |
 | Glisser un sommet | Déplace les sommets sélectionnés (le sommet glissé rejoint la sélection s'il n'en faisait pas partie) |
 | Glisser un axe du gizmo (vue 3D) | Déplace les sommets sélectionnés le long de cet axe du monde |
@@ -78,6 +80,9 @@ Le menu du clic droit des vues propose aussi **Scinder la face**, **Mettre les s
 | **Position** | X, Y, Z du centre des sommets sélectionnés : saisissez une valeur pour les déplacer avec précision (une étape d'annulation) | |
 | **Aligner les sommets** | Place les sommets sélectionnés sur les points de grille les plus proches (`Ctrl+B`) | |
 | **Mettre les sommets à l'échelle...** | Ouvre la mise à l'échelle des sommets (`Alt+E`) | |
+| **Faire tourner les sommets...** | Ouvre la rotation des sommets | |
+
+Une ligne contient les commandes de sélection d'arêtes (voir [Boucles et anneaux d'arêtes](#boucles-et-anneaux-darêtes)) : **Sélectionner la boucle d'arêtes**, **Sélectionner l'anneau d'arêtes**, **Agrandir la sélection**, **Réduire la sélection**, **Sélectionner le contour**, **Faire glisser la boucle d'arêtes...** et **Faire tourner les sommets...**, avec le nombre d'arêtes et de sommets sélectionnés. Une seconde ligne contient les commandes de soudure (voir [Souder des sommets](#souder-des-sommets)) : **Souder** avec sa cible, **Souder les sommets sélectionnés**, **Distance de soudure** avec **Souder les sommets par distance**, et **Supprimer les faces et arêtes dégénérées**.
 
 Les quatre derniers n'apparaissent que si des sommets sont sélectionnés.
 
@@ -86,6 +91,22 @@ Les quatre derniers n'apparaissent que si des sommets sont sélectionnés.
 Sélectionnez deux sommets (ou deux arêtes) d'une même face, puis appuyez sur `Ctrl+F` (**Outils > Scinder la face**). La face est coupée le long de la ligne qui les relie. Deux sommets déjà reliés par une arête ne donnent rien : prenez deux sommets opposés de la face.
 
 L'outil garde la scission en attente jusqu'à ce que vous déplaciez un sommet : les deux moitiés deviennent alors deux faces, ou redeviennent une seule face si elles sont encore planes. Pratique pour créer une arête vive ou un pli dans un mur. Les scissions en attente sont dessinées dans leur propre couleur et comptées dans la barre d'options.
+
+## Souder des sommets
+
+Lâcher un sommet près d'un autre les fusionne (voir **Distance de fusion**). Les commandes de soudure le font volontairement, sur des sélections entières, depuis la seconde ligne de la barre d'options, le menu **Outils** (quand l'outil vertex est actif), le menu du clic droit des vues, la palette de commandes et MCP. Chaque commande forme une seule étape d'annulation.
+
+| Commande | Effet |
+| --- | --- |
+| **Souder les sommets sélectionnés** | Fusionne les sommets sélectionnés de chaque solide en un seul sommet. La cible se choisit dans la liste à côté de **Souder** : **Au centre** (la moyenne des sommets, par défaut), **Au premier** ou **Au dernier** (le sommet d'indice le plus petit ou le plus grand, les sommets n'ont pas d'ordre de sélection) |
+| **Souder les sommets par distance** | Fusionne chaque paire de sommets des solides édités plus proche que la **Distance de soudure** (0,001 à 64 unités, 1 par défaut), en répétant jusqu'à ce qu'aucune paire ne soit aussi proche. Les solides qui deviendraient invalides restent tels quels et un avertissement les compte |
+| **Supprimer les faces et arêtes dégénérées** | Fusionne les sommets plus proches que 0,01 unité et supprime les faces et arêtes devenues dégénérées, ainsi que les faces qui ne font plus partie du solide. La soudure supprime déjà les faces qu'elle écrase, donc cette commande sert pour les solides qui arrivent avec de tels restes |
+
+Une étiquette à côté de chaque commande prévisualise le résultat, par exemple « 12 sommets seront soudés ». Elle compte les sommets qui disparaissent : pour **Souder les sommets sélectionnés** avec la sélection et la cible actuelles, pour **Souder les sommets par distance** avec la distance actuelle.
+
+Une soudure qui rendrait un solide concave ou plat (par exemple fusionner deux coins opposés d'une face) est refusée avec un message, et rien ne change. Les sommets sélectionnés restent sélectionnés sur le sommet soudé.
+
+MCP : `weld_brush_vertices` (mode `vertices`, `distance` ou `cleanup`) fait la même chose sur le document, et les options `merge_distance`, `weld_distance` et `weld_target` de l'outil vertex sont listées par `get_tool_options` et modifiées avec `set_tool_options`. Les actions sont `vertex_weld`, `vertex_weld_distance` et `vertex_cleanup`.
 
 ## Mettre les sommets à l'échelle
 
@@ -99,6 +120,21 @@ L'outil garde la scission en attente jusqu'à ce que vous déplaciez un sommet :
 | **Annuler** | Ferme sans rien changer (`Échap`) | |
 
 Au-dessus d'une vue, `Alt` + molette change le facteur de 0,1 par cran, `Ctrl+Alt` + molette de 0,01. Un résultat invalide (solide concave ou plat) garde la mise à l'échelle ouverte avec un message.
+
+## Boucles et anneaux d'arêtes
+
+Une *boucle d'arêtes* est une ligne d'arêtes qui continue d'elle-même, et un *anneau d'arêtes* est l'ensemble des arêtes parallèles à travers les faces à quatre côtés. Les brushes étant des solides convexes, les boucles se calculent sur les arêtes de tous les brushes édités ensemble : les brushes qui partagent un coin ou une arête forment un seul réseau, et une face qui touche exactement la face d'un autre brush compte comme un mur entre eux, pas comme une surface.
+
+- **Boucle d'arêtes.** La boucle traverse tout droit un sommet où se rencontrent quatre arêtes (le milieu d'un mur fait de plusieurs brushes, une grille) et suit le contour d'une face là où trois arêtes se rencontrent (les coins d'un brush : la boucle d'une arête de boîte est l'anneau autour d'une de ses faces, et sur un prisme elle suit l'anneau du dessus). Elle s'arrête à un sommet où cinq arêtes ou plus se rencontrent et à un cul-de-sac. Quand deux faces sont possibles à un coin, la boucle suit la face tournée vers vous, puis celle qui a le plus de côtés. Le long du bord d'une surface, elle suit ce bord.
+- **Anneau d'arêtes.** À partir de l'arête, il traverse chaque face à quatre côtés jusqu'à l'arête opposée et continue par la face suivante, dans les deux sens. Sur une boîte, il donne les quatre arêtes parallèles.
+- **Alt+clic** sur une arête sélectionne sa boucle, **Ctrl+Alt+clic** son anneau, ajoutez `Maj` pour ajouter à la sélection au lieu de la remplacer. Maintenir `Alt` montre en bleu, dans toutes les vues, la boucle (ou l'anneau avec `Ctrl`) qu'un clic sélectionnerait. Les arêtes sélectionnées sont dessinées en jaune avec leurs sommets dans toutes les vues, et la barre d'état compte les arêtes et sommets sélectionnés.
+- **Commandes de sélection.** **Édition > Sélection d'arêtes** (aussi dans la barre d'options, le menu contextuel et la palette de commandes) : **Sélectionner la boucle d'arêtes** et **Sélectionner l'anneau d'arêtes** étendent les arêtes sélectionnées (ou les arêtes entre sommets sélectionnés) à leurs boucles ou anneaux ; **Agrandir la sélection** ajoute tous les sommets voisins des sommets sélectionnés ; **Réduire la sélection** retire les sommets qui touchent un sommet non sélectionné ; **Sélectionner le contour** garde les arêtes du bord de la région sélectionnée (faces dont tous les sommets sont sélectionnés) ou, si aucune face n'est complète, les sommets sélectionnés qui ont un voisin non sélectionné.
+- **Déplacer la boucle.** La boucle sélectionnée est une sélection de sommets ordinaire : glissez-la à la souris ou avec le gizmo, tapez sa **Position**, décalez-la avec les flèches, ou utilisez **Mettre les sommets à l'échelle...** (`Alt+E`). Chaque brush qui partage un sommet de la boucle la suit. La sélection d'arêtes reste après le déplacement, qui forme une seule étape d'annulation.
+- **Faire tourner les sommets...** (**Outils > Faire tourner les sommets...**, barre d'options) fait tourner les sommets sélectionnés autour d'un centre avec aperçu en direct : l'angle (-360 à 360 degrés, `Alt` + molette le change de 5 degrés, `Ctrl+Alt` de 1), l'axe (**X**, **Y**, **Z** ou **Normale de la boucle**, la normale du plan des sommets sélectionnés, pour qu'une boucle tourne dans son propre plan) et le centre (le milieu des sommets sélectionnés, modifiable). **Appliquer** (`Entrée`) ou **Annuler** (`Échap`).
+- **Faire glisser la boucle d'arêtes...** (**Outils > Faire glisser la boucle d'arêtes...**, barre d'options) fait glisser les boucles sélectionnées le long des faces voisines en gardant leur forme, avec aperçu en direct. Chaque sommet de la boucle se déplace le long de sa propre arête qui quitte la boucle : les valeurs positives vont d'un côté de la boucle, les négatives de l'autre, de cette fraction de l'arête (-1 à 1, `Alt` + molette le change de 0,05). Là où un sommet n'a pas d'arête d'un côté (le coin d'un brush), l'autre arête est prolongée : le dessus d'une boîte glisse vers le haut ou le bas le long de ses côtés. Les arêtes sélectionnées doivent former des boucles ou des lignes simples, sans ramification.
+- Un résultat invalide (brush concave ou plat) s'affiche en rouge avec la raison, comme toute modification de sommets, et ne peut pas être appliqué.
+
+MCP : `select_edge_loop`, `select_edge_ring` et `grow_edge_selection` (mode `grow`, `shrink` ou `boundary`) donnent les arêtes et sommets d'une boucle, d'un anneau ou d'une sélection pour des arêtes de départ, avec `toward` pour choisir la face et `select` pour montrer aussi le résultat dans l'outil vertex ; `move_edge_loop` déplace, met à l'échelle, fait tourner ou glisser une boucle en une étape d'annulation (voir la [référence des outils MCP](../../MCP.md)). Les actions sont `edge_select_loop`, `edge_select_ring`, `edge_grow`, `edge_shrink`, `edge_select_boundary`, `edge_slide` et `vertex_rotate`.
 
 ## Paramètres
 
@@ -120,17 +156,22 @@ Au-dessus d'une vue, `Alt` + molette change le facteur de 0,1 par cran, `Ctrl+Al
 
 **Pourquoi ma modification revient en arrière quand je relâche la souris ?** Le solide deviendrait concave ou plat. La barre d'état donne la raison pendant le glissement (les arêtes passent en rouge). Dans Source, un brush doit rester convexe.
 
-**Comment fusionner deux sommets ?** Glissez l'un sur l'autre. Tout sommet lâché à moins de la **Distance de fusion** (1 unité par défaut) d'un sommet immobile est soudé à lui.
+**Comment fusionner deux sommets ?** Glissez l'un sur l'autre. Tout sommet lâché à moins de la **Distance de fusion** (1 unité par défaut) d'un sommet immobile est soudé à lui. Pour en fusionner plusieurs d'un coup, sélectionnez-les et utilisez **Souder les sommets sélectionnés**, ou **Souder les sommets par distance** pour fusionner chaque paire proche.
 
 **Mes textures s'étirent quand je bouge les sommets.** Le **Verrouillage UV** est activé : les textures suivent les sommets. Désactivez-le pour garder les textures fixes dans le monde.
 
 **Peut-on éditer les sommets avec un assistant IA ?** Oui, les outils MCP `get_brush_vertices`, `set_brush_vertices`, `move_brush_vertices` et `snap_brush_vertices` font les mêmes modifications (voir la [référence des outils MCP](../../MCP.md), en anglais).
+
+**Comment sélectionner toute la ligne d'arêtes autour d'une face de brush ou le long d'un mur ?** `Alt`+clic sur l'une de ses arêtes. `Ctrl+Alt`+clic sélectionne plutôt les arêtes parallèles.
+
+**La boucle s'arrête à un brush, pourquoi ?** La boucle ne traverse que les brushes édités, et les brushes ne se joignent que là où leurs coins se rencontrent exactement. Sélectionnez d'abord tous les brushes du mur et vérifiez que les coins sont alignés.
 
 ## Pages liées
 
 - [Outil de sélection](selection-tool.md)
 - [Outil de découpe](clip-tool.md)
 - [Outil displacement](displacement-tool.md)
+- [Outil biseau](bevel-tool.md)
 - [Grilles](grids.md)
 - [Outil texture](texture-tool.md)
 - [Éditeur UV](uv-editor.md)

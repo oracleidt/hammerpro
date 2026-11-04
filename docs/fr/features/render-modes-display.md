@@ -60,7 +60,7 @@ Directement dans le menu **Affichage** :
 | **Pentes praticables** | Teinte les surfaces trop pentues pour que les joueurs s'y tiennent. | Désactivé |
 | **Afficher les displacements** | Les displacements sont dessinés. | Activé |
 | **Maillage des displacements en vue 2D** | Fait passer les vues 2D de la grille de triangles des displacements à leur contour. | Maillage |
-| **Praticabilité des displacements** | Colore les triangles des displacements selon leur praticabilité (voir [Outil displacement](displacement-tool.md)). | Désactivé |
+| **Praticabilité des displacements** | Colore les triangles des displacements selon leur praticabilité, ou selon l'angle de pente avec les modes Limite et Dégradé (voir [Outil displacement](displacement-tool.md#contrôle-des-pentes)). | Désactivé |
 | **Limite de distance circulaire** | Rien n'est dessiné au-delà du rayon de limite autour de la caméra (un cercle le montre dans les vues 2D). | Désactivé |
 | **Surligner les brushes invalides** | Les brushes qui ne sont pas fermés et convexes sont dessinés en rouge dans toutes les vues. | Activé |
 | **Afficher le nodraw** | Affiche ou masque les faces nodraw dans la vue 3D. | Affiché |

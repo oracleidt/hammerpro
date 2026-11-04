@@ -267,10 +267,15 @@ fn vs_dot(@builtin(vertex_index) vi: u32, @location(0) pos: vec3<f32>, @location
     return out;
 }
 
-var<private> WALK_RGB: array<vec3<f32>, 3> = array<vec3<f32>, 3>(
+var<private> WALK_RGB: array<vec3<f32>, 8> = array<vec3<f32>, 8>(
     vec3<f32>(60.0, 200.0, 90.0),
     vec3<f32>(250.0, 190.0, 40.0),
     vec3<f32>(235.0, 55.0, 70.0),
+    vec3<f32>(150.0, 210.0, 60.0),
+    vec3<f32>(235.0, 225.0, 50.0),
+    vec3<f32>(245.0, 140.0, 45.0),
+    vec3<f32>(240.0, 95.0, 55.0),
+    vec3<f32>(150.0, 25.0, 110.0),
 );
 
 @vertex
@@ -282,7 +287,7 @@ fn vs_mark(@location(0) pos: vec3<f32>, @location(1) bits: u32) -> LineOut {
         out.color = vec4<f32>(0.0);
         return out;
     }
-    let walk = min((bits >> EDGE_CLASS_SHIFT) & 3u, 2u);
+    let walk = (bits >> EDGE_CLASS_SHIFT) & 7u;
     out.clip = biased(view.view_proj * vec4<f32>(pos, 1.0));
     let a = select(0.5, 0.3, is_ortho());
     out.color = vec4<f32>(srgb_to_linear(WALK_RGB[walk] / 255.0), a);

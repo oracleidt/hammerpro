@@ -293,6 +293,8 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `live_preview` | `true` | Outil vertex : les solides montrent leur nouvelle forme pendant le glisser. |
 | `four_way_blends` | `true` | La peinture d'alpha peut peindre les 4 textures des matériaux à mélange 4 voies. |
 | `noise_min`, `noise_max` | `-4.0`, `4.0` | Plage de hauteur de **Ajouter du bruit aux displacements...**. |
+| `mesh_export_meters` | `false` | **Displacement en maillage** écrit des mètres au lieu des unités Source. |
+| `mesh_export_z_up` | `false` | **Displacement en maillage** écrit Z vers le haut au lieu de Y vers le haut. |
 | `disp_tool` | `{}` | Toutes les options du panneau de l'outil displacement, par nom (écrites par l'outil). |
 
 ## `[entities]`
@@ -381,6 +383,8 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `displacements_2d_views` | `["Global", ...]` | Réglage propre à chaque quart, à la place de `displacements_2d`. |
 | `disp_source_2d` | `true` | Contour léger du brush d'origine des displacements en 2D. |
 | `disp_walkable` | `false` | Colore les triangles des displacements selon leur praticabilité. |
+| `disp_walk_mode` | `Source` | Couleurs de l'affichage de praticabilité : `Source` (trois classes du moteur), `Limit` (vert jusqu'à l'angle, rouge au-dessus) ou `Gradient` (bandes autour de l'angle). |
+| `disp_walk_angle` | `45.573` | Angle praticable en degrés pour les modes `Limit` et `Gradient` (1 à 89) ; 45,573 est la limite de Source. |
 | `occlusion_culling` | `true` | Saute les blocs cachés derrière une géométrie plus proche. |
 | `selection_outline` | `false` | Contour de la sélection à travers les murs. |
 | `grid_dotted` | `false` | Grille 2D en points. |
@@ -513,6 +517,7 @@ La fenêtre **Construire et enregistrer en contenu** et l'onglet Ressources de l
 | `model_lod.enabled` | `true` | Crée des niveaux de détail pour les modèles générés. |
 | `model_lod.levels` | `4` | Niveaux sous le modèle complet, de 3 à 6. |
 | `model_lod.reduction` | `0.5` | Part des triangles gardée à chaque niveau, de 0,2 à 0,9. |
+| `model_keep_params` | `true` | L'import de modèles écrit la normal map, le brillant, l'auto-illumination et le tiling des textures du fichier dans les VMT. |
 
 ## `[sniffer]`
 
@@ -552,7 +557,7 @@ Le panneau du [BSP Sniffer](../features/bsp-sniffer.md) (Fichier > BSP Sniffer..
 | --- | --- | --- |
 | `mode` | `"Global"` | `Global`, `PerView`, `Custom`, `Selection`. |
 | `custom` | `""` | Nom de la grille personnalisée du mode Custom. |
-| `per_view` | 16 partout | `perspective`, `top`, `front`, `side` : chacune avec `size`, `origin`, `major_every`. |
+| `per_view` | 16 partout | `perspective`, `top`, `front`, `side` : chacune avec `size`, `origin`, `major_every`, `angle` (degrés, rotation de la grille dans cette vue). |
 | `presets` | `[]` | Grilles personnalisées proposées dans toutes les maps (64 au plus) : `name`, `step` (par axe), `origin`, `angles`, `major_every`, `bounds` et `color` facultatifs. |
 | `object_grids` | `true` | Modifier un objet qui porte une grille s'aligne sur cette grille. |
 | `plane_3d` | `true` | Dessine le plan d'une grille personnalisée ou par vue en 3D. |
@@ -589,6 +594,16 @@ Voir [Index et analyse du contenu](../features/content-index.md).
 | `update.skipped_version` | `""` | Tag de la version dont l'utilisateur ne veut plus entendre parler (**Ne plus afficher**), par exemple `"v1.0.3"`. Vide : aucune. |
 
 Voir [Mises à jour](../features/updates.md).
+
+## `[blender]`
+
+**Paramètres > Lien avec Blender.** Voir [Lien avec Blender](../features/blender.md).
+
+| Clé | Défaut | Effet |
+| --- | --- | --- |
+| `blender.path` | `""` | Le programme Blender (`blender.exe`) ; vide veut dire que Hammer Pro le cherche. MCP le change avec `blender_setup`, qui le vérifie. |
+| `blender.format` | `"gltf"` | Format de fichier d'un envoi : `gltf`, `obj` ou `fbx`. |
+| `blender.live_link` | `true` | Surveille le fichier exporté et met la map à jour quand Blender l'écrit. |
 
 ## Pages liées
 

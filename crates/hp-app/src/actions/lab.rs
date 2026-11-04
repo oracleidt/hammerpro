@@ -17,6 +17,11 @@ action_list! { lab_actions {
     ToggleParticles => "toggle_particles", View, ViewDisplay, None, Ready;
     ToggleParticlesSelected => "toggle_particles_selected", View, ViewDisplay, None, Ready;
     ImportModel => "import_model", File, FileImport, None, Ready;
+    ImportModelsBatch => "import_models_batch", File, FileImport, None, Ready;
+    SendToBlender => "send_to_blender", Tools, ToolsContent, None, Ready;
+    PullFromBlender => "pull_from_blender", Tools, ToolsContent, None, Ready;
+    StopBlenderLink => "stop_blender_link", Tools, ToolsContent, None, Ready;
+    InstallBlenderAddon => "install_blender_addon", Tools, ToolsContent, None, Ready;
     TogglePlayerView => "toggle_player_view", View, ViewDisplay, sc(NONE, Key::F6), Ready;
     PropperOptions => "propper_options", Tools, ToolsPlacement, None, Ready;
 }}
@@ -27,6 +32,8 @@ pub(super) fn enabled(state: &AppState, action: Action) -> Option<bool> {
     match action {
         Action::ToggleParticlesSelected => Some(state.settings.lab.show_particles),
         Action::PropToBrushes => Some(selected_prop(state).is_some()),
+        Action::SendToBlender => Some(!state.doc.selection().is_empty()),
+        Action::PullFromBlender | Action::StopBlenderLink => Some(state.runtime.blender.link.is_some()),
         Action::BrushesToProp => {
             Some(state.doc.selection().objects.iter().any(|o| matches!(o, hp_editor::ObjRef::Solid(_))))
         }
@@ -75,6 +82,13 @@ pub(super) const TR: TrTable = &[
     ("action.open_bsp", "BSP Decompiler...", "Décompilateur de BSP..."),
     ("action.bsp_sniffer", "BSP Sniffer...", "BSP Sniffer..."),
     ("action.import_model", "Import a model (FBX, OBJ, glTF)...", "Importer un modèle (FBX, OBJ, glTF)..."),
+    ("action.import_models_batch", "Import models (batch)...", "Importer des modèles (lot)..."),
+    ("action.send_to_blender", "Send to Blender", "Envoyer vers Blender"),
+    ("action.pull_from_blender", "Update from Blender", "Mettre à jour depuis Blender"),
+    ("action.stop_blender_link", "Stop the Blender live link", "Arrêter le lien direct avec Blender"),
+    ("action.install_blender_addon", "Install the Blender add-on", "Installer l'add-on Blender"),
+    ("shell.undo.update_from_blender", "Update from Blender", "Mise à jour depuis Blender"),
+    ("shell.undo.import_models", "Import models", "Import de modèles"),
     ("action.compare_maps", "Compare with another map...", "Comparer avec une autre map..."),
     ("action.entity_gallery", "Insert entity gallery", "Insérer la galerie d'entités"),
     ("action.show_logical_view", "Logical view", "Vue logique"),

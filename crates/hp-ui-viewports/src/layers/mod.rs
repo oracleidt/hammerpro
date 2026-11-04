@@ -3,9 +3,12 @@ pub mod fog;
 pub mod helpers;
 pub mod instances;
 pub mod labels;
+pub mod mesh_disp;
 pub mod pointfile;
 pub mod portals;
 pub mod render;
+pub mod roadside;
+pub mod terrain;
 
 use hp_app::AppState;
 use hp_app::i18n::TrTable;
@@ -29,17 +32,20 @@ pub trait OverlayLayer {
 }
 
 pub(crate) const TABLES: &[TrTable] =
-    &[pointfile::TR, cordon::TR, portals::TR, instances::TR, helpers::TR, labels::TR, render::TR, fog::TR];
+    &[pointfile::TR, cordon::TR, portals::TR, instances::TR, helpers::TR, labels::TR, render::TR, fog::TR, terrain::TR];
 
 pub fn default_layers() -> Vec<Box<dyn OverlayLayer>> {
     let mut list = pointfile::layers();
     list.extend(cordon::layers());
     list.extend(portals::layers());
+    list.extend(roadside::layers());
     list.extend(instances::layers());
     list.extend(helpers::layers());
     list.extend(labels::layers());
     list.extend(fog::layers());
     list.extend(render::layers());
+    list.extend(terrain::layers());
+    list.extend(mesh_disp::layers());
     list
 }
 

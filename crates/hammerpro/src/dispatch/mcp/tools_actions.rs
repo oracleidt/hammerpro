@@ -38,6 +38,8 @@ pub(crate) const NEEDS_CONFIRM: &[(&str, &str)] = &[
     ("load_pointfile", "shows a file dialog the user must answer"),
     ("load_portal_file", "shows a file dialog the user must answer"),
     ("load_nav_mesh", "shows a file dialog the user must answer"),
+    ("send_to_blender", "starts Blender (use the send_to_blender tool)"),
+    ("install_blender_addon", "writes into Blender's folders (use blender_setup with install_addon)"),
 ];
 
 const STARTS_GAME: &[&str] = &["launch_game", "reload_in_game", "compile_now", "batch_compile"];
@@ -227,6 +229,9 @@ mod tests {
         "run_map",
         "use_sky_camera_in_game",
         "import_model",
+        "import_models_batch",
+        "import_heightmap",
+        "export_heightmap",
         "bsp_sniffer",
     ];
 

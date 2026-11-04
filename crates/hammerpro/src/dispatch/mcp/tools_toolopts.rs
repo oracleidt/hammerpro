@@ -23,6 +23,7 @@ const TOOL_NAMES: &[&str] = &[
     "sprinkle",
     "displacement",
     "cordon",
+    "road",
 ];
 
 const MAX_OPTIONS: usize = 64;
@@ -32,18 +33,21 @@ domain! { "tool options";
         "The options of the editing tools by name with their current values and what each takes: the selection \
         tool (handles: scale, rotate, skew; box: touching, inside, centers; gizmo on/off and gizmo_mode: move, \
         rotate, scale; gizmo_local; stretch_handles: the arrows on the faces of the selected brushes in the 3D \
-        view that stretch the selection along an axis, saved with the settings), the block tool (primitive, sides, arch wall, arc, start, rise, torus, reorient, the shape preview window, texture scale, \
+        view that stretch the selection along an axis, saved with the settings), the block tool (primitive incl. stairs, spiral_stairs, ramp, pillar, doorway, sides, arch wall, arc, start, rise, torus, steps, step_height, open, inner, spiral_angle, spiral_start, slope, direction, base, capital, inset, door_width, door_height, thickness, door_arch, door_arch_radius, door_arch_segments, reorient, the shape preview window, texture scale, \
         create as, keep active), the curve tool (subdivisions 2 to 4096, thickness 1 to 1024, height or auto, \
-        tex_scale, create_as, keep_active), the clip tool (keep: front, back, both; three_point; axis of the \
+        tex_scale, create_as, keep_active), the road tool (lanes, lane_width, shoulder, thickness, step, \
+        tex_scale, material, shoulder_material, line_material, center_material, center_line, edge_line, \
+        divider_line (none, solid, dashed, double), line_width, dash, gap, roll_start, roll_end, auto_bank, \
+        auto_bank_limit, follow_terrain, lift, base_height, create_as, keep_active), the clip tool (keep: front, back, both; three_point; axis of the \
         Shift+click cut in the 3D view: auto, x, y, z; the cut face material follows the \
         brush.clip_current_material setting), the path tool (class, base_name, loop, relink, offset; saved with the settings), the extrude / carve \
         tool (mode: carve, extrude; depth; through; new_faces: face, current), the bevel tool (radius, segments, \
-        inverse, new_faces: face, current) and the displacement tool's brush (mode: select, geometry, alpha, sculpt, tag; \
+        inverse, new_faces: face, current), the vertex tool (merge_distance 0 to 16, weld_distance 0.001 to 64 and weld_target: center, first, last, for the weld_brush_vertices tool and the weld actions) and the displacement tool's brush (mode: select, geometry, alpha, sculpt, tag; \
         effect; axis: normal, subdiv, center, view, view_flat (toward the camera on X and Y only), x, y, z, \
         custom; radius, strength (intensity), smooth, \
         target height, falloff, spatial, line of sight, autosew (live sewing), selected only, continuous, alpha \
-        effect, value and strength, blend channel, sculpt push, carve and project settings with bounds limit and \
-        falloff position and final, tag kind and value, grid and select masks). The displacement options are \
+        effect, value and strength, blend channel, sculpt push, carve, project, pinch, grab, inflate and flatten settings with bounds limit and \
+        falloff position and final, tag kind and value, grid and select masks, and the terrain options of the Tools section: noise_type random or fractal, noise_scale, noise_octaves, noise_persistence, terrain_seed, thermal_* and hydraulic_*, run by terrain_displacements, the height blending options blend_*, run by blend_displacements, and the slope options slope_*, run by control_slope and select_displacements_by_slope). The displacement options are \
         saved with the settings. Default: every tool that has options, and which tool is active.",
         { "tool": choice("Only this tool.", TOOL_NAMES) }, [];
     set_tool_options: Editor, "Change tool options",
@@ -86,7 +90,7 @@ pub(crate) fn tool_options_json(tools: &[Box<dyn Tool>], active: ToolId, which: 
     json!({ "active_tool": tool_name(active), "tools": list })
 }
 
-fn option_text(name: &str, v: &Value) -> R<String> {
+pub(crate) fn option_text(name: &str, v: &Value) -> R<String> {
     Ok(match v {
         Value::Bool(b) => if *b { "on" } else { "off" }.to_owned(),
         Value::Number(n) => match n.as_f64().filter(|x| x.is_finite()) {
@@ -115,7 +119,7 @@ pub(crate) fn set_tool_options_on(
     let known = tool.option_values();
     if known.is_empty() {
         return ToolResult::error(format!(
-            "set_tool_options: the {} tool has no options to set (the selection, block, curve, clip, extrude, bevel, path and displacement tools have)",
+            "set_tool_options: the {} tool has no options to set (the selection, block, curve, road, clip, extrude, bevel, vertex, path and displacement tools have)",
             tool_name(id)
         ));
     }

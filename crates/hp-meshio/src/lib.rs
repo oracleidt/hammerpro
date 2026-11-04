@@ -2,12 +2,16 @@ use std::path::{Path, PathBuf};
 
 use glam::{DMat4, DVec2, DVec3};
 
+pub mod export;
+mod extras;
 mod fbx;
 mod gltf;
 pub mod lod;
 mod obj;
 pub mod smd;
 pub mod studio;
+
+pub use extras::{MaterialExtras, NormalKind, TextureSource};
 
 #[derive(Debug, thiserror::Error)]
 pub enum MeshError {
@@ -44,6 +48,7 @@ pub struct Material {
     pub color: [f64; 4],
     pub alpha: Alpha,
     pub double_sided: bool,
+    pub extras: MaterialExtras,
 }
 
 impl Default for Material {
@@ -55,6 +60,7 @@ impl Default for Material {
             color: [1.0; 4],
             alpha: Alpha::Auto,
             double_sided: false,
+            extras: MaterialExtras::default(),
         }
     }
 }
@@ -81,11 +87,27 @@ pub enum UpAxis {
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
+pub struct MeshObject {
+    pub name: String,
+    pub extras: Option<serde_json::Value>,
+    pub first: usize,
+    pub count: usize,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Model {
     pub triangles: Vec<Triangle>,
     pub materials: Vec<Material>,
     pub up: UpAxis,
     pub meters_per_unit: f64,
+    pub objects: Vec<MeshObject>,
+}
+
+impl Model {
+    pub fn object_triangles(&self, object: &MeshObject) -> &[Triangle] {
+        let end = object.first.saturating_add(object.count).min(self.triangles.len());
+        self.triangles.get(object.first.min(end)..end).unwrap_or(&[])
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -346,7 +368,8 @@ mod tests {
             uv: [DVec2::ZERO; 3],
             material: 0,
         };
-        let m = Model { triangles: vec![t], materials: vec![], up: UpAxis::Y, meters_per_unit: 1.0 };
+        let m =
+            Model { triangles: vec![t], materials: vec![], up: UpAxis::Y, meters_per_unit: 1.0, objects: Vec::new() };
         let s = m.to_source(&ImportOptions { center: false, ..ImportOptions::default() });
         assert!((s.triangles[0].pos[2] - DVec3::new(0.0, 1.0, 1.0) * UNITS_PER_METER).length() < 1e-9);
         assert_eq!(s.triangles[0].normal[0], DVec3::Z);

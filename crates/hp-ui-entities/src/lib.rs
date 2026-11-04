@@ -55,4 +55,5 @@ pub use view::{
 
 pub fn register_translations() {
     hp_app::i18n::register(TR);
+    hp_app::i18n::register(model_import::batch::TR);
 }

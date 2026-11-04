@@ -51,7 +51,7 @@ fn top(background: [f32; 3], grid: bool) -> ViewParams {
         size: [101, 101],
         kind: ViewKind::Ortho { axis: OrthoAxis::Top, center: [0.5, 0.5, 0.0], pixels_per_unit: 1.0 },
         mode: RenderMode::Wireframe,
-        grid: grid.then_some(GridParams { size: 16.0, major_every: 8, show_1024: false, opacity: 1.0 }),
+        grid: grid.then_some(GridParams { size: 16.0, major_every: 8, show_1024: false, opacity: 1.0, cells: true }),
         background,
         selection_color: [1.0, 0.1, 0.1, 0.45],
         show_sprites: true,

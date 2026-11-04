@@ -40,6 +40,23 @@ fn walk_class(w: hp_geom::DispWalk) -> WalkClass {
     }
 }
 
+fn walk_classes(info: &hp_vmf::DispInfo, d: &hp_geom::DispMesh) -> Vec<WalkClass> {
+    use hp_app::settings::DispWalkMode;
+    let display = hp_app::runtime::render::render_display();
+    let limit = f64::from(display.disp_walk_limit) / 100.0;
+    match display.disp_walk_mode {
+        DispWalkMode::Source => hp_geom::disp_walk(info, d).into_iter().map(walk_class).collect(),
+        DispWalkMode::Limit => hp_geom::triangle_up_angles(&d.positions, &d.indices)
+            .into_iter()
+            .map(|a| if a <= limit { WalkClass::Buildable } else { WalkClass::Steep })
+            .collect(),
+        DispWalkMode::Gradient => hp_geom::triangle_up_angles(&d.positions, &d.indices)
+            .into_iter()
+            .map(|a| WalkClass::GRADIENT[hp_geom::slope_band(a, limit).min(WalkClass::GRADIENT.len() - 1)])
+            .collect(),
+    }
+}
+
 fn disp_grid_lines(positions: &[DVec3], n: usize, outline: &mut Vec<[f32; 3]>, detail: &mut Vec<[f32; 3]>) {
     let last = n.saturating_sub(1);
     for r in 0..n {
@@ -148,11 +165,11 @@ pub(crate) fn solid_mesh_seams(
             b.indices.extend(d.indices.iter().map(|i| base.saturating_add(*i)));
             disp_grid_lines(&d.positions, d.row_len, &mut edges, &mut detail_edges);
             if walk && let Some(info) = side.disp.as_deref() {
-                let classes = hp_geom::disp_walk(info, d);
+                let classes = walk_classes(info, d);
                 marks.reserve(classes.len());
                 for (t, w) in d.indices.chunks_exact(3).zip(classes) {
                     let p = |k: u32| d.positions.get(k as usize).map_or([0.0; 3], |p| f3(*p));
-                    marks.push(MarkTri { p: [p(t[0]), p(t[1]), p(t[2])], class: walk_class(w) });
+                    marks.push(MarkTri { p: [p(t[0]), p(t[1]), p(t[2])], class: w });
                 }
             }
             continue;

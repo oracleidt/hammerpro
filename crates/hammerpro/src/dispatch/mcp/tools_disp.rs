@@ -6,7 +6,7 @@ use hp_mcp::protocol::ToolResult;
 use serde_json::{Value, json};
 
 use super::semantic::*;
-use super::tools::{AppFn, Args, Outcome, R, edit, v3};
+use super::tools::{AppFn, Args, Outcome, R, Worker, edit, v3};
 
 const MAX_STROKES: usize = 4096;
 
@@ -15,6 +15,15 @@ domain! { "displacements";
         "Every displacement face of the map (or of some solids): face, power, elevation, flags and the bounds of \
         its surface.",
         { "solid_ids": ids("Only these solids."), "limit": limit(), "offset": offset() }, [];
+    displacement_to_mesh: Editor, "Displacement to mesh",
+        "Write displacements to an OBJ file (and its MTL) for Blender or any 3D tool, like the Displacement to mesh command: the displaced vertices, normals, UVs from the texture mapping and one material per texture. Targets: faces, ids or solid_ids, else the selected displacements or those of the selected solids. path is a full path or relative to the map folder (default: <map>_displacements.obj next to the map). units source (default) or meters (1 unit = 0.01905 m); up y (default) or z. Defaults come from the Displacement panel (settings mesh_export_meters and mesh_export_z_up).",
+        {
+            "faces": faces("Faces (default: the selected displacements)."), "ids": target_ids(), "solid_ids": target_solid_ids(),
+            "path": string("OBJ file: full path, or relative to the map folder."),
+            "units": choice("Unit of the coordinates.", &["source", "meters"]),
+            "up": choice("Up axis.", &["y", "z"]),
+            "overwrite": boolean("Replace existing files (default false)."),
+        }, [];
     select_displacements: Editor, "Select displacements",
         "Select displacement faces (every one, or those of some solids) for the displacement tools and Apply; \
         op adjacent adds the displacements sharing an edge with the selected ones (the panel's Select adjacent).",
@@ -70,6 +79,15 @@ domain! { "displacements";
             "min": number("Lowest offset.", -4096.0, 4096.0), "max": number("Highest offset.", -4096.0, 4096.0),
             "seed": integer("Random seed (default from the map).", 0, i64::from(u32::MAX)),
         }, ["min", "max"];
+    terrain_displacements: Edit, "Terrain noise and erosion",
+        "Run fractal noise, thermal erosion or hydraulic erosion on displacements (the Tools section of the displacement panel), one undo step, sewn afterwards. fractal_noise adds Perlin noise (octaves) between min and max (default: the noise range settings) along the face normal and is the same everywhere on the map, so neighbours match. thermal_erosion slides material down slopes steeper than the talus angle. hydraulic_erosion lets rain wash the terrain (sediment is dug and dropped, mass kept). Both erosions treat the sewn, connected displacements as one height field and work per displacement for the others. Their parameters are the displacement tool options (get_tool_options: noise_scale, noise_octaves, noise_persistence, terrain_seed, thermal_iterations, thermal_talus, thermal_strength, hydraulic_iterations, hydraulic_rain, hydraulic_evaporation, hydraulic_capacity, hydraulic_deposition, hydraulic_strength); options overrides them for this call only. The same seed gives the same result.",
+        {
+            "operation": choice("What to run.", &["fractal_noise", "thermal_erosion", "hydraulic_erosion"]),
+            "faces": faces("Faces (default: the selected displacements)."), "ids": target_ids(), "solid_ids": target_solid_ids(),
+            "options": { "type": "object", "description": "Terrain option names to values for this call (same names as the displacement tool options)." },
+            "min": number("fractal_noise: lowest height (default the noise_min setting).", -1024.0, 1024.0),
+            "max": number("fractal_noise: highest height (default the noise_max setting).", -1024.0, 1024.0),
+        }, ["operation"];
     scale_displacements: Edit, "Scale displacements",
         "Multiply the heights of displacements by a factor.",
         { "faces": faces("Faces (default: the selected displacements)."), "ids": target_ids(), "solid_ids": target_solid_ids(), "factor": number("Factor.", -100.0, 100.0) }, ["factor"];
@@ -120,13 +138,26 @@ domain! { "displacements";
     sew_displacements: Edit, "Sew displacements",
         "Make the shared edges and corners of neighbouring displacements identical (Hammer's Sew).",
         { "faces": faces("Faces (default: the selected displacements)."), "ids": target_ids(), "solid_ids": target_solid_ids() }, [];
+    resample_displacements: Edit, "Resample displacement power",
+        "Change the power (2, 3 or 4) of displacements, like the Power option of the displacement panel. With \
+        keep_shape (default true) the shape is kept: offsets, distances, normals, alpha, 4-way blend rows and \
+        triangle tags are resampled onto the new grid (interpolated going up, picked going down), flags and \
+        allowed vertices are kept, and the displacements are sewn together afterwards. With keep_shape false they \
+        are rebuilt flat.",
+        {
+            "faces": faces("Faces (default: the selected displacements)."),
+            "ids": target_ids(),
+            "solid_ids": target_solid_ids(),
+            "power": integer("New power.", 2, 4),
+            "keep_shape": boolean("Keep the shape (default true)."),
+        }, ["power"];
 }
 
 fn is_disp(state: &AppState, f: FaceRef) -> bool {
     state.doc.face_side(f).is_some_and(|s| s.disp.is_some())
 }
 
-fn disp_targets(state: &AppState, a: &Args<'_>, all_default: bool) -> R<Vec<FaceRef>> {
+pub(super) fn disp_targets(state: &AppState, a: &Args<'_>, all_default: bool) -> R<Vec<FaceRef>> {
     let given = a.get("faces").is_some() || a.get("ids").is_some() || a.get("solid_ids").is_some();
     let faces = if given || !all_default {
         match target_faces(state, a, "faces") {
@@ -403,6 +434,65 @@ fn displacement_noise(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     Ok(ToolResult::json(json!({ "faces": n, "seed": seed })))
 }
 
+fn terrain_displacements(state: &mut AppState, a: &Args<'_>) -> R<Outcome> {
+    use hp_tools_mesh::disp::erode::{TerrainOp, TerrainOptions, apply};
+    let (op, name) =
+        match a.opt_enum("operation", &["fractal_noise", "thermal_erosion", "hydraulic_erosion"])?.as_deref() {
+            Some("fractal_noise") => (TerrainOp::Noise, "fractal noise"),
+            Some("thermal_erosion") => (TerrainOp::Thermal, "thermal erosion"),
+            Some("hydraulic_erosion") => (TerrainOp::Hydraulic, "hydraulic erosion"),
+            _ => return Err("give operation: fractal_noise, thermal_erosion or hydraulic_erosion".to_owned()),
+        };
+    let faces = disp_targets(state, a, false)?;
+    let mut overrides: Vec<(String, String)> = Vec::new();
+    if let Some(map) = a.get("options") {
+        let map = map.as_object().ok_or("options must be an object: names to values")?;
+        let probe = TerrainOptions::default().values();
+        for (k, v) in map {
+            if !probe.iter().any(|o| o.key == k) {
+                let names: Vec<&str> = probe.iter().map(|o| o.key).collect();
+                return Err(format!("\"{k}\" is not a terrain option (options: {})", names.join(", ")));
+            }
+            overrides.push((k.clone(), super::tools_toolopts::option_text(k, v)?));
+        }
+    }
+    let min = a.opt_f64("min", -1024.0, 1024.0)?;
+    let max = a.opt_f64("max", -1024.0, 1024.0)?;
+    if state.doc.in_transaction() {
+        return Err("Hammer Pro is in the middle of another edit (a drag in a view?); try again".to_owned());
+    }
+    Ok(Outcome::AppFn(AppFn(Box::new(move |app, _ctx| {
+        let base = app
+            .tools
+            .iter()
+            .find(|t| t.id() == hp_app::ToolId::Displacement)
+            .map(|t| TerrainOptions::from_values(&t.option_values()))
+            .unwrap_or_default();
+        let mut opts = base;
+        for (k, v) in &overrides {
+            if !opts.set(k, v) {
+                return ToolResult::error(format!("terrain_displacements: {k} cannot be \"{v}\""));
+            }
+        }
+        let kept = (app.state.settings.mesh.noise_min, app.state.settings.mesh.noise_max);
+        if min.is_some() || max.is_some() {
+            app.state.settings.mesh.noise_min = min.unwrap_or(kept.0);
+            app.state.settings.mesh.noise_max = max.unwrap_or(kept.1);
+        }
+        let moved = with_faces_selected(&mut app.state, "terrain_displacements", &faces, |s| {
+            if op == TerrainOp::Noise {
+                opts.noise_kind = hp_tools_mesh::disp::erode::NoiseKind::Fractal;
+            }
+            apply(s, op, &opts)
+        });
+        (app.state.settings.mesh.noise_min, app.state.settings.mesh.noise_max) = kept;
+        match moved {
+            Ok(n) => ToolResult::json(json!({ "operation": name, "faces": faces.len(), "vertices_moved": n })),
+            Err(e) => ToolResult::error(format!("terrain_displacements: {e}")),
+        }
+    }))))
+}
+
 fn scale_displacements(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let faces = disp_targets(state, a, false)?;
     let factor = a.opt_f64("factor", -100.0, 100.0)?.ok_or("factor is required")?;
@@ -559,7 +649,7 @@ fn set_displacement_data(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     Ok(ToolResult::json(json!({ "faces": n })))
 }
 
-fn with_faces_selected<T>(
+pub(super) fn with_faces_selected<T>(
     state: &mut AppState,
     tool: &str,
     faces: &[FaceRef],
@@ -584,6 +674,67 @@ fn with_faces_selected<T>(
     Ok(out)
 }
 
+fn mesh_path(state: &AppState, a: &Args<'_>) -> R<std::path::PathBuf> {
+    let Some(given) = a.opt_str("path", 1024)? else {
+        let stem = state.doc.path().and_then(|p| p.file_stem()).map(|s| s.to_string_lossy().into_owned());
+        let stem = stem.ok_or_else(|| "save the map first or give a path".to_owned())?;
+        return Ok(super::semantic::map_dir(state)?.join(format!("{stem}_displacements.obj")));
+    };
+    let path = std::path::Path::new(given);
+    if path.is_absolute() {
+        let named = path.file_name().is_some_and(|n| !n.is_empty());
+        if !named || path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+            return Err(format!("invalid path \"{given}\""));
+        }
+        return Ok(if path.extension().is_none() { path.with_extension("obj") } else { path.to_path_buf() });
+    }
+    let rel = super::semantic::relative_file(given, "obj")?;
+    Ok(super::semantic::map_dir(state)?.join(rel))
+}
+
+fn displacement_to_mesh(state: &mut AppState, a: &Args<'_>) -> R<Outcome> {
+    let faces = disp_targets(state, a, true)?;
+    let path = mesh_path(state, a)?;
+    if !path.extension().is_some_and(|e| e.eq_ignore_ascii_case("obj")) {
+        return Err("path must end with .obj".to_owned());
+    }
+    let overwrite = a.opt_bool("overwrite")?.unwrap_or(false);
+    if !overwrite && (path.exists() || path.with_extension("mtl").exists()) {
+        return Err(format!("{} (or its .mtl) exists already (overwrite: true replaces it)", path.display()));
+    }
+    let mut layout = crate::export::ObjLayout::from_settings(&state.settings.mesh);
+    match a.opt_str("units", 16)? {
+        Some("source") => layout.meters = false,
+        Some("meters") => layout.meters = true,
+        Some(other) => return Err(format!("units must be source or meters, not {other}")),
+        None => {}
+    }
+    match a.opt_str("up", 16)? {
+        Some("y") => layout.z_up = false,
+        Some("z") => layout.z_up = true,
+        Some(other) => return Err(format!("up must be y or z, not {other}")),
+        None => {}
+    }
+    let input = crate::export::ObjInput::from_displacements(state, &faces, layout);
+    Ok(Worker::spawn("displacement_to_mesh", move || {
+        if let Some(dir) = path.parent()
+            && let Err(e) = std::fs::create_dir_all(dir)
+        {
+            return ToolResult::error(format!("displacement_to_mesh: cannot create the folder: {e}"));
+        }
+        match crate::export::export_obj(&input, &path) {
+            Ok(stats) => ToolResult::json(json!({
+                "written": path.display().to_string(),
+                "displacements": stats.faces,
+                "triangles": stats.triangles,
+                "units": if layout.meters { "meters" } else { "source" },
+                "up": if layout.z_up { "z" } else { "y" },
+            })),
+            Err(e) => ToolResult::error(format!("displacement_to_mesh: {e}")),
+        }
+    }))
+}
+
 fn subdivide_displacements(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let faces = disp_targets(state, a, false)?;
     let n = with_faces_selected(state, "subdivide_displacements", &faces, hp_tools_mesh::disp::commands::subdivide)?;
@@ -599,11 +750,40 @@ fn sew_displacements(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     Ok(ToolResult::json(json!({ "faces": faces.len(), "vertices_moved": n })))
 }
 
+fn resample_displacements(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
+    let faces = disp_targets(state, a, false)?;
+    let power = a.opt_u64("power", 2, 4)?.ok_or_else(|| "power is required".to_owned())? as u32;
+    let keep = a.opt_bool("keep_shape")?.unwrap_or(true);
+    let n = with_faces_selected(state, "resample_displacements", &faces, |s| {
+        hp_tools_mesh::DisplacementTool::new().set_power_with(s, power, keep)
+    })?;
+    Ok(ToolResult::json(json!({ "resampled": n, "power": power, "keep_shape": keep })))
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
 
     use super::super::semantic_tests::{err, ok};
+
+    #[test]
+    fn resample_keeps_the_shape_through_mcp() {
+        let mut s = hp_app::testing::test_state();
+        let top = json!([{ "solid": 2, "side": 0 }]);
+        ok(&mut s, "create_displacements", json!({ "faces": top, "power": 2 }));
+        let heights = vec![6.0; 25];
+        ok(&mut s, "set_displacement_data", json!({ "face": top, "distances": heights }));
+        let r = ok(&mut s, "resample_displacements", json!({ "faces": top, "power": 3 }));
+        assert_eq!(r["resampled"], 1);
+        let d = ok(&mut s, "get_displacement", json!({ "face": top, "positions": false }));
+        assert_eq!(d["power"], 3);
+        assert_eq!(d["distances"].as_array().map(Vec::len), Some(81));
+        assert_eq!(d["distances"][40], 6.0);
+        ok(&mut s, "resample_displacements", json!({ "faces": top, "power": 2, "keep_shape": false }));
+        let d = ok(&mut s, "get_displacement", json!({ "face": top, "positions": false }));
+        assert_eq!(d["distances"][12], 0.0);
+        err(&mut s, "resample_displacements", json!({ "faces": top }));
+    }
 
     #[test]
     fn multiblend_rows_through_mcp() {
@@ -726,6 +906,31 @@ mod tests {
             .expect("top side");
         ok(s, "create_displacements", json!({ "faces": [{ "solid": id, "side": side }], "power": 2 }));
         (id, side)
+    }
+
+    #[test]
+    fn displacement_to_mesh_writes_an_obj() {
+        let dir = std::env::temp_dir().join(format!("hp_disp_mesh_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut s = hp_app::testing::test_state();
+        s.doc.set_path(Some(dir.join("main.vmf")));
+        err(&mut s, "displacement_to_mesh", json!({}));
+        let top = json!([{ "solid": 2, "side": 0 }]);
+        ok(&mut s, "create_displacements", json!({ "faces": top, "power": 2 }));
+        let r = ok(&mut s, "displacement_to_mesh", json!({ "faces": top }));
+        assert_eq!(r["displacements"], 1);
+        assert_eq!(r["triangles"], 32);
+        let obj = std::fs::read_to_string(dir.join("main_displacements.obj")).unwrap();
+        assert!(obj.contains("Source units, Y up") && obj.lines().filter(|l| l.starts_with("v ")).count() == 25);
+        assert!(dir.join("main_displacements.mtl").is_file());
+        err(&mut s, "displacement_to_mesh", json!({ "faces": top }));
+        let r = ok(&mut s, "displacement_to_mesh", json!({ "path": "out/m", "units": "meters", "up": "z" }));
+        assert_eq!(r["up"], "z");
+        let obj = std::fs::read_to_string(dir.join("out/m.obj")).unwrap();
+        assert!(obj.contains("meters, Z up"));
+        err(&mut s, "displacement_to_mesh", json!({ "faces": top, "path": "../x", "overwrite": true }));
+        err(&mut s, "displacement_to_mesh", json!({ "faces": top, "units": "feet", "overwrite": true }));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

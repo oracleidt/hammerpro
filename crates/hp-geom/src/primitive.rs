@@ -5,6 +5,12 @@ use crate::texture::{effective_scale, world_axes};
 use crate::util::clean_coord;
 use crate::{Aabb, GeomError, WELD_EPS, convex_hull};
 
+mod direction;
+mod structures;
+
+pub use direction::RiseDirection;
+pub use structures::{MAX_DOOR_ARCH_SEGMENTS, MAX_STAIR_ANGLE, MAX_STAIR_STEPS, step_count};
+
 pub const MAX_PRIMITIVE_SIDES: u32 = 128;
 pub const MAX_SPIRAL_ARC: f64 = 3600.0;
 const MAX_SPIRAL_HEIGHT: f64 = 65536.0;
@@ -19,10 +25,15 @@ pub enum Primitive {
     Sphere,
     Arch,
     Torus,
+    Stairs,
+    SpiralStairs,
+    Ramp,
+    Pillar,
+    Doorway,
 }
 
 impl Primitive {
-    pub const ALL: [Primitive; 7] = [
+    pub const ALL: [Primitive; 12] = [
         Primitive::Block,
         Primitive::Wedge,
         Primitive::Cylinder,
@@ -30,6 +41,11 @@ impl Primitive {
         Primitive::Sphere,
         Primitive::Arch,
         Primitive::Torus,
+        Primitive::Stairs,
+        Primitive::SpiralStairs,
+        Primitive::Ramp,
+        Primitive::Pillar,
+        Primitive::Doorway,
     ];
 
     pub fn id(self) -> &'static str {
@@ -41,6 +57,11 @@ impl Primitive {
             Primitive::Sphere => "sphere",
             Primitive::Arch => "arch",
             Primitive::Torus => "torus",
+            Primitive::Stairs => "stairs",
+            Primitive::SpiralStairs => "spiral_stairs",
+            Primitive::Ramp => "ramp",
+            Primitive::Pillar => "pillar",
+            Primitive::Doorway => "doorway",
         }
     }
 }
@@ -60,6 +81,23 @@ pub struct PrimitiveParams {
     pub torus_rotation_arc: f64,
     pub torus_rotation_start: f64,
     pub torus_rotation_height: f64,
+    pub stair_steps: u32,
+    pub stair_step_height: f64,
+    pub stair_open: bool,
+    pub spiral_inner: f64,
+    pub spiral_angle: f64,
+    pub spiral_start: f64,
+    pub ramp_angle: f64,
+    pub pillar_base: f64,
+    pub pillar_capital: f64,
+    pub pillar_inset: f64,
+    pub door_width: f64,
+    pub door_height: f64,
+    pub door_thickness: f64,
+    pub door_arch: bool,
+    pub door_arch_radius: f64,
+    pub door_arch_segments: u32,
+    pub direction: RiseDirection,
     pub up_axis: usize,
     pub up_flip: bool,
     pub tex_scale: f64,
@@ -83,6 +121,23 @@ impl Default for PrimitiveParams {
             torus_rotation_arc: 360.0,
             torus_rotation_start: 0.0,
             torus_rotation_height: 0.0,
+            stair_steps: 8,
+            stair_step_height: 0.0,
+            stair_open: false,
+            spiral_inner: 16.0,
+            spiral_angle: 270.0,
+            spiral_start: 0.0,
+            ramp_angle: 30.0,
+            pillar_base: 16.0,
+            pillar_capital: 16.0,
+            pillar_inset: 8.0,
+            door_width: 0.0,
+            door_height: 0.0,
+            door_thickness: 0.0,
+            door_arch: false,
+            door_arch_radius: 0.0,
+            door_arch_segments: 8,
+            direction: RiseDirection::PlusY,
             up_axis: 2,
             up_flip: false,
             tex_scale: 0.25,
@@ -360,6 +415,9 @@ pub fn make_primitive(
                 }
                 point_sets.push(pts);
             }
+        }
+        Primitive::Stairs | Primitive::SpiralStairs | Primitive::Ramp | Primitive::Pillar | Primitive::Doorway => {
+            point_sets = structures::point_sets(params, &b)?;
         }
     }
     point_sets

@@ -1291,7 +1291,8 @@ fn custom_grids_are_drawn_as_lines() {
     let unlimited = hp_app::settings::GridSpec { bounds: None, ..state.map_grids()[0].clone() };
     state.put_custom_grid("R", unlimited, true, false).expect("edit");
     let cfg = RenderConfig::from_state(&state);
-    assert!(params::view_params(&top, &cfg).grid.is_none());
+    let bare = params::view_params(&top, &cfg).grid.expect("axes and 1024 lines of a rotated grid");
+    assert!(!bare.cells, "the lattice is drawn by the overlay");
     state.settings.grid.mode = hp_app::settings::GridMode::Global;
     let cfg = RenderConfig::from_state(&state);
     assert!(params::view_params(&top, &cfg).grid.is_some(), "Hammer's grid: the shader");

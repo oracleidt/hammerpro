@@ -383,9 +383,12 @@ impl Document {
         let others: Vec<ObjRef> = unique.iter().skip(1).map(|id| ObjRef::Solid(*id)).collect();
         let mut solid =
             self.scene.solids.get(&first).map(|n| n.solid.clone()).ok_or(EditError::NotFound(ObjRef::Solid(first)))?;
+        let source_refs: Vec<&[Side]> = lists.iter().map(Vec::as_slice).collect();
+        let side_ids = super::boolean::plane_side_map(&source_refs, &merged);
         solid.sides = merged;
         self.tx("Merge solids", |doc| {
             doc.update_solid(first, solid);
+            doc.remap_side_refs(&side_ids);
             doc.delete(&others)?;
             Ok(first)
         })

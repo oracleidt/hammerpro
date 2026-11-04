@@ -95,6 +95,7 @@ fn toolbar_glyph(action: Action) -> Option<&'static str> {
         Action::ApplyCurrentTexture => "✏",
         Action::BrushesToProp => "🗿",
         Action::PropToBrushes => "🔳",
+        Action::SendToBlender => "🔗",
         _ => return None,
     })
 }
@@ -524,6 +525,11 @@ pub(crate) const TR: hp_app::i18n::TrTable = &[
         "shell.toolbar.unpropper_needs",
         "Select a prop to turn back into brushes",
         "Sélectionnez un prop à retransformer en brushes",
+    ),
+    (
+        "shell.toolbar.blender_needs",
+        "Select displacements, brushes or a prop to send to Blender",
+        "Sélectionnez des displacements, des brushes ou un prop à envoyer vers Blender",
     ),
     (
         "shell.toolbar.apply_texture_needs",
