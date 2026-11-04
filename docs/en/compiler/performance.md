@@ -17,7 +17,7 @@ How to make compiles fast while you iterate, and what costs time in a release bu
 
 | Do | Why |
 |---|---|
-| Use **Draft** | Fast visibility, one bounce, `-fast` lighting, one dynamic range, no ambient occlusion, no packing. |
+| Use **Draft** | Fast visibility, one bounce, `-fast` lighting, one dynamic range, no packing. |
 | Keep **Compile leaking maps anyway** off | A leaking map stops after the geometry instead of lighting for nothing. |
 | Use **Only entities** for I/O and entity work | Seconds instead of a full compile (the smart recompile picks it on its own). |
 | Turn on **Play now, finish the lighting later** | You play a Draft at once; Normal or Final lighting replaces it in the background. |
@@ -40,7 +40,6 @@ How to make compiles fast while you iterate, and what costs time in a release bu
 | `-final` (more sky and indirect rays) | Needed for release quality; `-extrasky` adds more rays still. |
 | Both dynamic ranges | Final always computes LDR and HDR (two passes). |
 | `-StaticPropLighting` | Every vertex of every static prop is lit (sky and bounced light once per small group of vertices); the longest stage on maps with thousands of detailed props. **Light static props (per vertex)** off skips it. `-staticpropsamplescale` lowers its rays. |
-| Ambient occlusion | `-aosamples` (default 32, 64 with `-final`) sets its rays; `-noao` or `_ao 0` turns it off. |
 | `-StaticPropPolys`, `-textureshadows` | Finer prop shadows, slower. |
 | Lightmap resolution | Raise the lightmap scale of big or unseen faces (16 or more); the statistics list the faces and materials with the most luxels. `-luxeldensity` below 1 makes all lightmaps coarser. |
 | Many bounces | `-bounce` (default 100) stops earlier; bounces stop on their own when they add almost nothing. |

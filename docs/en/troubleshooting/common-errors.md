@@ -77,7 +77,7 @@ The lighting step prints a progress line at least every 30 seconds (`Lighting 41
 |---|---|
 | A long **Direct lighting** | Its time grows with the luxels, the number of lights each face sees and the sky over large outdoor areas. Raise the lightmap scale of big or unseen faces (the statistics list them), or compile with the Normal or Draft preset while iterating. |
 | A long **Static props** stage | **Light static props (per vertex)** (`-StaticPropLighting`, part of Final) lights every vertex of every prop. Turn it off while iterating, or lower `-staticpropsamplescale`. |
-| A long **Ambient occlusion**, **Bounce rays** or **Leaf ambient** | `-noao` (or `_ao 0`), `-bounce 1` and `-fastambient` cut them. |
+| A long **Bounce rays** or **Leaf ambient** | `-bounce 1` and `-fastambient` cut them. |
 | `Warning: the lighting stage "..." has not advanced for ...` | The stage is still working on something large (a huge face or a very detailed prop). The warning names what makes that stage slow. If it repeats for a long time, cancel and report it with the log ([Reporting bugs](reporting-bugs.md)). |
 
 The log of the step also names the stages before they run (`Lighting stages: ...`), so you know what is left.

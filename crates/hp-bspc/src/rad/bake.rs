@@ -172,7 +172,6 @@ pub(crate) struct Ctx<'a> {
     pub cameras: Vec<(Vec3A, f32)>,
     pub camera_areas: Vec<bool>,
     pub props: &'a super::props::Occluders,
-    pub ao: Option<super::ao::Ao>,
     pub blockers: &'a Bvh,
     pub work: &'a super::progress::Work,
 }
@@ -972,13 +971,7 @@ impl Ctx<'_> {
         Gather { step: step.max(1), gw, gh, xs, ys, normals, hits, luxels: f.luxels() }
     }
 
-    pub fn bounce(
-        &self,
-        lights: &mut [FaceLight],
-        bounces: u32,
-        scale: Option<&[Vec<f32>]>,
-        log: &mut dyn FnMut(&str),
-    ) -> (f64, f64) {
+    pub fn bounce(&self, lights: &mut [FaceLight], bounces: u32, log: &mut dyn FnMut(&str)) -> (f64, f64) {
         if bounces == 0 || self.faces.is_empty() {
             return (0.0, 0.0);
         }
@@ -1096,8 +1089,6 @@ impl Ctx<'_> {
             let g = &grids[fi];
             let nn = fl.normals;
             let (lux, npts) = (f.luxels(), g.gw * g.gh);
-            let k = scale.and_then(|s| s.get(fi)).map_or(&[][..], Vec::as_slice);
-            let k = if k.len() == lux { k } else { &[] };
             for p in 0..passes {
                 for n in 0..nn {
                     let src = &total[fi][(p * nn + n) * npts..(p * nn + n + 1) * npts];
@@ -1109,8 +1100,7 @@ impl Ctx<'_> {
                             let at = |x: usize, y: usize| src[y * g.gw + x];
                             let top = at(x0, y0).lerp(at(x1, y0), fx);
                             let bottom = at(x0, y1).lerp(at(x1, y1), fx);
-                            let ao = k.get(t * f.w + s).copied().unwrap_or(1.0);
-                            fl.values[base + t * f.w + s] += top.lerp(bottom, fy) * ao;
+                            fl.values[base + t * f.w + s] += top.lerp(bottom, fy);
                         }
                     }
                 }

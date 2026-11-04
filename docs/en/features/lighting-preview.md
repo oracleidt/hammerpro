@@ -41,10 +41,13 @@ The `light`, `light_spot`, `light_environment` and `light_dynamic` entities ligh
 Like Hammer++'s "3D Lighting Preview", but the numbers are the compiler's: the map is compiled in memory by the Hammer Pro compiler (the geometry step) and lit by its lighting step (VRAD's) in a separate process. The compiled faces are drawn with their lightmaps (the four bumped lightmaps of bump mapped faces, for the relief of the normal maps) and shaded exactly like the compiled lighting of the [player view](player-view.md) (the same bump weights, cubemap reflections, self illumination and texture scrolling, the LDR lightmaps of a map compiled without HDR the way the game draws them, the sky seen through the sky faces), so the preview gives the picture of the compiled map in game, and props are lit by the ambient cubes, world lights and static prop vertex lighting of the lit map. The static props follow the compile settings for prop shadows and prop lighting. A prop is lit at its lighting origin like in game: the `lightingorigin` entity when the key names one, else the center of the model.
 
 - When the preview is turned on and nothing is baked yet, a full bake starts (setting **Bake when the preview is turned on**).
-- An edited solid hides its baked faces until the next bake. With **Dynamic updates** on, the map is baked again once edits stop for the **Update delay**.
+- Every bake runs in two passes. A **quick pass** first, with the Hammer++ sampling of the map's options (**Sun Samples**, **Ambient Samples** and **Supersample** of the `light_plus` block, 6, 40 and off by default; Draft bounced light; no light probes), shown as soon as it is done: same light levels, a little more noise. Then a **refined pass** at the chosen **Quality** replaces it when nothing changed in between (progress kind **Refining**). An edit cancels the refined pass and starts a new quick one.
+- An edited solid hides its baked faces until the next bake; until then its faces, like the surfaces without lightmaps (water, translucent glass, props without baked lighting), are lit by the sun and the sky color only, without shadows. With **Dynamic updates** on, the map is baked again once edits stop for the **Update delay**.
+- The baked view only draws the lightmaps, like Hammer++: no real time light, sun shadow map, sky visibility map or light clusters are computed while it shows a bake, so moving the camera costs about as much as the Textured mode. Props are lit by the bake (ambient cubes, world lights, static prop vertex lighting).
 - **Bake around the camera** compiles and lights only what lies within the **Radius around the camera** of the 3D camera; the area is sealed like a cordon.
 - **Stop baking** stops at once (the lighting process is ended and its memory goes back to the system).
-- The lighting runs at a lower priority so the editor stays fluid. Large maps are previewed with coarser lightmaps (setting **Full resolution luxels**), and a note says "Large map: previewed at N times the lightmap resolution".
+- The preview compile only stops on what the preview really needs: limits of the game it cannot store are reported as warnings, the planes of the brushes under displacements (which the BSP does not keep) are left out so a map just over MAX_MAP_PLANES still bakes, and bad `env_cubemap` keys are ignored. A real compile still stops on them, like VBSP.
+- The lighting process and the compile threads run at a lower priority so the editor stays fluid, and the lightmap texture is only as large as the lightmaps need (at least 256 by 256 pixels, at most 2048), which saves video memory on small bakes. Large maps are previewed with coarser lightmaps (setting **Full resolution luxels**), and a note says "Large map: previewed at N times the lightmap resolution".
 - HDR or LDR comes from the compile settings: the tab shows **HDR** or **LDR** accordingly.
 
 ## The Lighting tab
@@ -58,10 +61,10 @@ Like Hammer++'s "3D Lighting Preview", but the numbers are the compiler's: the m
 | **Bake lighting** | Bakes the whole map. |
 | **Bake around the camera** | Bakes the area around the 3D camera (tooltip gives the radius). |
 | **Stop baking** | Enabled while a bake runs. |
-| Progress | Kind (**Whole map**, **Around the camera**, **Update**), phase (**Preparing**, **Compiling the map**, **Direct light**, **Bounced light**, **Finishing**) and time. |
+| Progress | Kind (**Whole map**, **Around the camera**, **Update**, **Refining**), phase (**Preparing**, **Compiling the map**, **Direct light**, **Bounced light**, **Finishing**) and time. |
 | Last result | "N faces baked in N s", or **Baking stopped**, or **Not baked yet**; video memory and shadow triangles. |
 | Warnings | "The map has no light entity", **Lighting is out of date** with **Bake again**. |
-| **Quality** | **Draft** (same light model and light levels as a compile, ambient occlusion included, noisier shadows, the default), **Normal** (a normal compile), **Final** (a final compile, slowest). |
+| **Quality** | **Draft** (same light model and light levels as a compile, noisier shadows, the default), **Normal** (a normal compile), **Final** (a final compile, slowest). |
 
 **Options (saved in the map)**: stored in the Hammer++ `light_plus` block of the VMF, so they travel with the map.
 
@@ -72,6 +75,9 @@ Like Hammer++'s "3D Lighting Preview", but the numbers are the compiler's: the m
 | **Dynamic updates** | Bakes again automatically once edits stop for the update delay. | On |
 | **Update delay** | 0 to 60 s. | 0 s |
 | **Radius around the camera** | Radius of **Bake around the camera**, 64 to 65536. | 1024 |
+| **Advanced > Sun samples** | Sun rays per luxel of the quick pass (Hammer++ **Sun Samples**), 1 to 256. | 6 |
+| **Advanced > Ambient samples** | Sky light directions per luxel of the quick pass (Hammer++ **Ambient Samples**), 16 to 5184. | 40 |
+| **Advanced > Supersample** | Smooths the shadow edges of the quick pass (Hammer++ **Supersample**), slower. | Off |
 | **Advanced > Show light reach** | Draws how far the selected lights reach. | Off |
 | **Advanced > Restore defaults** | Resets these options. | |
 
@@ -122,13 +128,15 @@ Rendering options used here: **Shadowed lights** (`render.light_shadows`, 16), *
 
 - Use **Bake around the camera** while you tune one room: it is much faster than a full bake.
 - Keep **Quality** on **Draft** while working; the light levels are the same, only the shadows are noisier.
-- MCP tools: `bake_lighting`, `get_lighting_status` (see the [MCP tool reference](../../MCP.md)).
+- MCP tools: `bake_lighting`, `get_lighting_status`, `set_lighting_options` (the options of the tab, see the [MCP tool reference](../../MCP.md)).
 
 ## FAQ
 
 **The baked preview stays dark.** The map has no light entity, or nothing is baked yet: press **Bake lighting**.
 
-**Why does a brush I moved look unlit?** Edited solids hide their baked faces until the next bake. With **Dynamic updates** on, it comes back once you stop editing.
+**Why does a brush I moved look unlit?** Edited solids hide their baked faces until the next bake and are lit by the sun and the sky color only meanwhile. With **Dynamic updates** on, it comes back once you stop editing.
+
+**Why does the lighting change a little a few seconds after a bake?** The quick pass is shown first, then the refined pass at the chosen quality replaces it. The light levels are the same; the refined pass has smoother shadows and less noise.
 
 **Does the preview match the game?** It uses the same compiler and lighting step as a real compile, at the quality you choose, and draws the result like the player view draws the compiled map. **Draft** differs from a compile only by its noise (fewer sky, sun and bounce rays); **Normal** matches a Normal compile and **Final** a final compile.
 
@@ -137,7 +145,7 @@ Rendering options used here: **Shadowed lights** (`render.light_shadows`, 16), *
 ## Related pages
 
 - [Render modes and display options](render-modes-display.md)
-- [Lighting and ambient occlusion guide](../guides/lighting-and-ao.md)
+- [Lighting guide](../guides/lighting.md)
 - [Cubemaps](../compiler/cubemaps.md)
 - [Player view](player-view.md)
 - [Settings reference](../reference/settings.md)

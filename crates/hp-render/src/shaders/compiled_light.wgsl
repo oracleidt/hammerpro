@@ -217,7 +217,11 @@ fn fs_compiled(in: ClOut) -> @location(0) vec4<f32> {
     if (flags & F_HOVERED) != 0u {
         rgb = mix(rgb, vec3<f32>(1.0), 0.18);
     }
-    rgb = mix(rgb, fog_color(in.world), fog_amount(in.world));
+    if BLEND_MODE == 2u {
+        rgb = apply_fog_black(rgb, in.world);
+    } else {
+        rgb = apply_fog(rgb, in.world);
+    }
     if BLEND_MODE == 0u {
         return vec4<f32>(rgb, 1.0);
     }

@@ -113,11 +113,12 @@ fn p_linear_to_srgb(x: f32) -> f32 {
 fn fs_particle(in: ParticleOut) -> @location(0) vec4<f32> {
     let t = textureSample(tex, samp_clamp, in.uv) * material.tint;
     let exposure = bitcast<f32>(view.misc.z);
+    fog_far_clip(in.world);
     let fog = fog_amount(in.world);
     if BLEND_MODE > 1.5 {
         let peak = p_linear_to_srgb(max(max(t.r, t.g), t.b));
         let a = clamp(t.a / max(peak, 1.0 / 255.0), 0.0, 1.0) * in.color.a;
-        let rgb = t.rgb * in.color.rgb * a * exposure * (1.0 - fog);
+        let rgb = fog_blend(t.rgb * in.color.rgb * a * exposure, vec3<f32>(0.0), fog);
         if max(max(rgb.r, rgb.g), rgb.b) < 1.0 / 512.0 {
             discard;
         }
@@ -128,8 +129,9 @@ fn fs_particle(in: ParticleOut) -> @location(0) vec4<f32> {
         discard;
     }
     let rgb = t.rgb * in.color.rgb * exposure;
+    let fogged = fog_blend(rgb, view.fog_a.rgb, fog);
     if BLEND_MODE > 0.5 {
-        return vec4<f32>(mix(rgb * a, fog_color(in.world) * a, fog), a);
+        return vec4<f32>(fogged * a, a);
     }
-    return vec4<f32>(mix(rgb, fog_color(in.world), fog), a);
+    return vec4<f32>(fogged, a);
 }

@@ -537,9 +537,9 @@ impl AssetManager {
                     self.on_material(name, data);
                 }
             }
-            JobResult::Texture { name, target, epoch, data } => {
+            JobResult::Texture { name, target, epoch, data, held } => {
                 if epoch == self.mount_gen {
-                    self.uploads.push_back(Upload { name, target, epoch, data });
+                    self.uploads.push_back(Upload { name, target, epoch, data, _held: held });
                 }
             }
             JobResult::Thumb { name, epoch, data } => self.on_thumb(name, epoch, data),

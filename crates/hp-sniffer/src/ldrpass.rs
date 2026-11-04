@@ -26,7 +26,9 @@ pub fn strategies(local_map: Option<&str>, connect: Option<&str>, hdr_level: u32
     let level = format!("+mat_hdr_level {hdr_level}");
     match (local_map, connect) {
         (Some(m), _) if !m.is_empty() => vec![vec![level, format!("+map {m}")]],
-        (_, Some(addr)) => vec![vec![level, "+retry".to_owned()], vec!["+disconnect".to_owned(), format!("+connect {addr}")]],
+        (_, Some(addr)) => {
+            vec![vec![level, "+retry".to_owned()], vec!["+disconnect".to_owned(), format!("+connect {addr}")]]
+        }
         _ => vec![vec![level, "+retry".to_owned()]],
     }
 }
@@ -59,7 +61,10 @@ pub fn read<S: MemSource + ?Sized>(src: &S, req: Request<'_>) -> Result<HubData,
     let mut last = "the game did not load the map again".to_owned();
     for steps in plans {
         tail.poll();
-        say(&format!("switching the game to low dynamic range lighting and loading the map again: {}", steps.join(", ")));
+        say(&format!(
+            "switching the game to low dynamic range lighting and loading the map again: {}",
+            steps.join(", ")
+        ));
         for (k, step) in steps.iter().enumerate() {
             if k > 0 {
                 nap(cancel, Duration::from_secs(3))?;
@@ -88,7 +93,9 @@ pub fn read<S: MemSource + ?Sized>(src: &S, req: Request<'_>) -> Result<HubData,
                     if before.as_ref().is_none_or(|b| world_was_reloaded(b, &d)) {
                         return Ok(d);
                     }
-                    last = "the game kept the world it had loaded (a reconnect to a local server does not load it again)".to_owned();
+                    last =
+                        "the game kept the world it had loaded (a reconnect to a local server does not load it again)"
+                            .to_owned();
                     break;
                 }
                 Some(d) => last = format!("{} faces instead of {surfaces}", d.faces.len()),

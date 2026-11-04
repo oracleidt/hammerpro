@@ -52,8 +52,6 @@ impl MemSource for Snap {
     }
 }
 
-
-
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let snap = Snap::open(&args[1]);
@@ -69,7 +67,12 @@ fn main() {
             println!("  pointer at {p:x}");
         }
     }
-    println!("entity lumps {}, structure by entities: {}", ents.len(), hp_sniffer::cmstruct::find_by_entities(&snap, &ents, &[8, 4]).map_or("no".to_owned(), |c| format!("yes at {:x} planes {}", c.base, c.planes.count)));
+    println!(
+        "entity lumps {}, structure by entities: {}",
+        ents.len(),
+        hp_sniffer::cmstruct::find_by_entities(&snap, &ents, &[8, 4])
+            .map_or("no".to_owned(), |c| format!("yes at {:x} planes {}", c.base, c.planes.count))
+    );
     let t = std::time::Instant::now();
     let world = hp_sniffer::memmap::find_all_mode(&snap, &opts, "x", hdr).expect("world");
     println!("world found in {:?}, hub: {:?}", t.elapsed(), world.hub.as_ref().map(|h| (&h.profile, h.pieces.len())));
@@ -89,7 +92,15 @@ fn main() {
         let all = hp_sniffer::memmap::material_ranks(&world, r, &names);
         let by_id = hp_sniffer::memmap::texdata_ranks(&r.texinfo, &r.material_ids, &names);
         let by_ptr = hp_sniffer::memmap::texdata_ranks(&r.texinfo, &std::collections::HashMap::new(), &names);
-        println!("texinfo {} names {} ids {}: final {} by id {} by pointer {}", want.len(), names.len(), r.material_ids.len(), acc(&all), acc(&by_id), acc(&by_ptr));
+        println!(
+            "texinfo {} names {} ids {}: final {} by id {} by pointer {}",
+            want.len(),
+            names.len(),
+            r.material_ids.len(),
+            acc(&all),
+            acc(&by_id),
+            acc(&by_ptr)
+        );
     }
     let bsp = hp_sniffer::memmap::build_bsp(&world, &text).expect("bsp");
     if let Some(out) = args.get(3)
@@ -117,14 +128,7 @@ fn main() {
             format!("differs {:.2}% of the bytes equal", 100.0 * same as f64 / t.len().max(o.len()) as f64)
         };
         total += t.len();
-        println!(
-            "{:>2} {:<28} truth {:>9} ours {:>9}  {}",
-            i,
-            hp_bsp::lump_name(i),
-            t.len(),
-            o.len(),
-            status
-        );
+        println!("{:>2} {:<28} truth {:>9} ours {:>9}  {}", i, hp_bsp::lump_name(i), t.len(), o.len(), status);
     }
     println!("exact bytes {exact} of {total}");
 }

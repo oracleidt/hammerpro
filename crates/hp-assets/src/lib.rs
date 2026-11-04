@@ -108,6 +108,7 @@ pub(crate) struct Upload {
     pub target: texture::TexTarget,
     pub epoch: u64,
     pub data: Option<texture::PreparedTexture>,
+    pub _held: queue::Held,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -245,6 +246,8 @@ impl AssetManager {
             + self.uploads.len()
             + self.mats.textures.loading_count()
             + self.mats.analyses.values().filter(|a| a.loading).count()
+            + usize::from(self.scene.instances_streamed)
+            + self.scene.realize_later.len()
     }
 
     pub fn stats(&self) -> AssetStats {
@@ -256,7 +259,8 @@ impl AssetManager {
             textures_loading: tex.values().filter(|e| e.loading).count(),
             textures_missing: tex.values().filter(|e| e.missing && !e.loading).count(),
             models_ready: self.models.map.values().filter(|m| matches!(m, models::ModelEntry::Ready(_))).count(),
-            models_loading: self.models.map.values().filter(|m| matches!(m, models::ModelEntry::Loading)).count(),
+            models_loading: self.models.map.values().filter(|m| matches!(m, models::ModelEntry::Loading)).count()
+                + self.scene.realize_later.len(),
             models_failed: self.models.map.values().filter(|m| matches!(m, models::ModelEntry::Failed(_))).count(),
             thumbnails: self.thumbs.map.values().filter(|t| matches!(t, thumbs::ThumbEntry::Ready { .. })).count(),
             queued_jobs: self.shared.queued(),

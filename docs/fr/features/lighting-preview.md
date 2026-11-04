@@ -41,10 +41,13 @@ Les entités `light`, `light_spot`, `light_environment` et `light_dynamic` écla
 Comme le « 3D Lighting Preview » de Hammer++, mais avec les chiffres du compilateur : la map est compilée en mémoire par le compilateur de Hammer Pro (l'étape de géométrie) et éclairée par son étape d'éclairage (celle de VRAD) dans un processus séparé. Les faces compilées sont dessinées avec leurs lightmaps (les quatre lightmaps bumpées des faces à normal map, pour le relief) et ombrées exactement comme l'éclairage compilé de la [vue joueur](player-view.md) (mêmes poids de relief, reflets de cubemap, auto-illumination et défilement de texture, les lightmaps LDR d'une map compilée sans HDR dessinées comme le jeu, le ciel vu à travers les faces de ciel), si bien que l'aperçu donne l'image de la map compilée en jeu, et les props sont éclairés par les ambient cubes, les lumières du monde et l'éclairage par sommets des props statiques de la map éclairée. Les props statiques suivent les réglages de compilation pour leurs ombres et leur éclairage. Un prop est éclairé à son origine d'éclairage comme en jeu : l'entité `lightingorigin` quand la clé en nomme une, sinon le centre du modèle.
 
 - Quand l'aperçu est activé et que rien n'est encore précalculé, un précalcul complet démarre (réglage **Précalculer à l'activation de l'aperçu**).
-- Un solide modifié masque ses faces précalculées jusqu'au prochain précalcul. Avec **Mises à jour dynamiques**, la map est précalculée à nouveau quand les modifications s'arrêtent pendant le **Délai de mise à jour**.
+- Chaque précalcul se fait en deux passes. D'abord une **passe rapide**, avec l'échantillonnage Hammer++ des options de la map (**Sun Samples**, **Ambient Samples** et **Supersample** du bloc `light_plus`, 6, 40 et désactivé par défaut ; lumière rebondie en Brouillon ; pas de sondes de lumière), affichée dès qu'elle est finie : mêmes niveaux de lumière, un peu plus de bruit. Puis une **passe affinée** à la **Qualité** choisie la remplace si rien n'a changé entre-temps (type de progression **Affinage**). Une modification annule la passe affinée et relance une passe rapide.
+- Un solide modifié masque ses faces précalculées jusqu'au prochain précalcul ; d'ici là ses faces, comme les surfaces sans lightmap (eau, vitres translucides, props sans éclairage précalculé), ne sont éclairées que par le soleil et la couleur du ciel, sans ombres. Avec **Mises à jour dynamiques**, la map est précalculée à nouveau quand les modifications s'arrêtent pendant le **Délai de mise à jour**.
+- La vue précalculée ne dessine que les lightmaps, comme Hammer++ : aucune lumière temps réel, carte d'ombre du soleil, carte de visibilité du ciel ni groupe de lumières n'est calculé tant qu'elle affiche un précalcul, donc bouger la caméra coûte à peu près autant que le mode Texturé. Les props sont éclairés par le précalcul (cubes ambiants, lumières du monde, éclairage par sommet des props statiques).
 - **Précalculer autour de la caméra** compile et éclaire seulement ce qui est à moins du **Rayon autour de la caméra** de la caméra 3D ; la zone est fermée comme un cordon.
 - **Arrêter le précalcul** arrête tout de suite (le processus d'éclairage est arrêté et sa mémoire rendue au système).
-- L'éclairage tourne avec une priorité plus basse pour que l'éditeur reste fluide. Les grandes maps sont prévisualisées avec des lightmaps plus grossières (réglage **Luxels en pleine résolution**), et une note l'indique (« Grande carte : aperçu à N fois la résolution des lightmaps »).
+- La compilation de l'aperçu ne s'arrête que sur ce dont l'aperçu a vraiment besoin : les limites du jeu qu'elle n'a pas à stocker sont signalées comme avertissements, les plans des brushes sous les displacements (que le BSP ne garde pas) sont laissés de côté pour qu'une map juste au-dessus de MAX_MAP_PLANES se précalcule quand même, et les clés `env_cubemap` invalides sont ignorées. Une vraie compilation s'y arrête toujours, comme VBSP.
+- Le processus d'éclairage et les threads de compilation tournent avec une priorité plus basse pour que l'éditeur reste fluide, et la texture des lightmaps n'est pas plus grande que ce qu'il faut (au moins 256 sur 256 pixels, au plus 2048), ce qui économise de la mémoire vidéo sur les petits précalculs. Les grandes maps sont prévisualisées avec des lightmaps plus grossières (réglage **Luxels en pleine résolution**), et une note l'indique (« Grande carte : aperçu à N fois la résolution des lightmaps »).
 - HDR ou LDR vient des réglages de compilation : l'onglet affiche **HDR** ou **LDR** en conséquence.
 
 ## L'onglet Éclairage
@@ -58,10 +61,10 @@ Section **Aperçu de l'éclairage** :
 | **Précalculer l'éclairage** | Précalcule toute la map. |
 | **Précalculer autour de la caméra** | Précalcule la zone autour de la caméra 3D (l'infobulle donne le rayon). |
 | **Arrêter le précalcul** | Actif pendant un précalcul. |
-| Progression | Type (**Carte entière**, **Autour de la caméra**, **Mise à jour**), phase (**Préparation**, **Compilation de la carte**, **Lumière directe**, **Lumière rebondie**, **Finalisation**) et durée. |
+| Progression | Type (**Carte entière**, **Autour de la caméra**, **Mise à jour**, **Affinage**), phase (**Préparation**, **Compilation de la carte**, **Lumière directe**, **Lumière rebondie**, **Finalisation**) et durée. |
 | Dernier résultat | « N faces précalculées en N s », **Précalcul arrêté** ou **Pas encore précalculé** ; mémoire vidéo et triangles d'ombre. |
 | Avertissements | « La carte n'a aucune entité de lumière », **L'éclairage n'est plus à jour** avec **Précalculer à nouveau**. |
-| **Qualité** | **Brouillon** (même modèle et mêmes niveaux de lumière qu'une compilation, occlusion ambiante comprise, ombres plus bruitées, par défaut), **Normal** (une compilation normale), **Finale** (une compilation finale, la plus lente). |
+| **Qualité** | **Brouillon** (même modèle et mêmes niveaux de lumière qu'une compilation, ombres plus bruitées, par défaut), **Normal** (une compilation normale), **Finale** (une compilation finale, la plus lente). |
 
 **Options (enregistrées dans la carte)** : stockées dans le bloc `light_plus` de Hammer++ du VMF, elles voyagent avec la map.
 
@@ -72,6 +75,9 @@ Section **Aperçu de l'éclairage** :
 | **Mises à jour dynamiques** | Précalcule à nouveau automatiquement quand les modifications s'arrêtent pendant le délai. | Activé |
 | **Délai de mise à jour** | De 0 à 60 s. | 0 s |
 | **Rayon autour de la caméra** | Rayon de **Précalculer autour de la caméra**, de 64 à 65536. | 1024 |
+| **Avancé > Échantillons du soleil** | Rayons de soleil par luxel de la passe rapide (**Sun Samples** de Hammer++), 1 à 256. | 6 |
+| **Avancé > Échantillons ambiants** | Directions de lumière du ciel par luxel de la passe rapide (**Ambient Samples** de Hammer++), 16 à 5184. | 40 |
+| **Avancé > Suréchantillonnage** | Adoucit les bords des ombres de la passe rapide (**Supersample** de Hammer++), plus lent. | Désactivé |
 | **Avancé > Afficher la portée des lumières** | Affiche la portée des lumières sélectionnées. | Désactivé |
 | **Avancé > Rétablir les valeurs par défaut** | Réinitialise ces options. | |
 
@@ -122,13 +128,15 @@ Réglages de rendu utilisés ici : **Lumières avec ombres** (`render.light_shad
 
 - Utilisez **Précalculer autour de la caméra** pendant que vous réglez une pièce : c'est bien plus rapide qu'un précalcul complet.
 - Gardez la **Qualité** sur **Brouillon** pendant le travail ; les niveaux de lumière sont les mêmes, seules les ombres sont plus bruitées.
-- Outils MCP : `bake_lighting`, `get_lighting_status` (voir la [référence des outils MCP](../../MCP.md), en anglais).
+- Outils MCP : `bake_lighting`, `get_lighting_status`, `set_lighting_options` (les options de l'onglet, voir la [référence des outils MCP](../../MCP.md), en anglais).
 
 ## FAQ
 
 **L'aperçu précalculé reste sombre.** La map n'a aucune entité de lumière, ou rien n'est encore précalculé : cliquez sur **Précalculer l'éclairage**.
 
-**Pourquoi un brush que j'ai déplacé paraît sans éclairage ?** Les solides modifiés masquent leurs faces précalculées jusqu'au prochain précalcul. Avec **Mises à jour dynamiques**, l'éclairage revient quand vous arrêtez de modifier.
+**Pourquoi un brush que j'ai déplacé paraît sans éclairage ?** Les solides modifiés masquent leurs faces précalculées jusqu'au prochain précalcul et ne sont éclairés entre-temps que par le soleil et la couleur du ciel. Avec **Mises à jour dynamiques**, l'éclairage revient quand vous arrêtez de modifier.
+
+**Pourquoi l'éclairage change-t-il un peu quelques secondes après un précalcul ?** La passe rapide s'affiche d'abord, puis la passe affinée à la qualité choisie la remplace. Les niveaux de lumière sont les mêmes ; la passe affinée a des ombres plus douces et moins de bruit.
 
 **L'aperçu correspond-il au jeu ?** Il utilise le même compilateur et la même étape d'éclairage qu'une vraie compilation, à la qualité choisie, et dessine le résultat comme la vue joueur dessine la map compilée. **Brouillon** ne diffère d'une compilation que par son bruit (moins de rayons de ciel, de soleil et de rebond) ; **Normal** correspond à une compilation Normal et **Finale** à une compilation finale.
 
@@ -137,7 +145,7 @@ Réglages de rendu utilisés ici : **Lumières avec ombres** (`render.light_shad
 ## Pages liées
 
 - [Modes de rendu et options d'affichage](render-modes-display.md)
-- [Guide éclairage et occlusion ambiante](../guides/lighting-and-ao.md)
+- [Guide de l'éclairage](../guides/lighting.md)
 - [Cubemaps](../compiler/cubemaps.md)
 - [Vue joueur](player-view.md)
 - [Référence des paramètres](../reference/settings.md)

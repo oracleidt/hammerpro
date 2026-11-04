@@ -99,7 +99,6 @@ pub(crate) fn light_stage_name(stage: &str) -> String {
     match stage {
         "scene" => t!("compile.light_stage.scene").to_owned(),
         "direct lighting" => t!("compile.light_stage.direct").to_owned(),
-        "ambient occlusion" => t!("compile.light_stage.occlusion").to_owned(),
         "bounce rays" => t!("compile.light_stage.bounce_rays").to_owned(),
         "bounced light" => t!("compile.light_stage.bounces").to_owned(),
         "leaf ambient" => t!("compile.light_stage.leaf_ambient").to_owned(),

@@ -36,7 +36,7 @@ pub(crate) fn volume_uniform(v: &FogVolume, depth: [f32; 2]) -> Option<FogVolume
     let rgb = |c: [f32; 3]| c.map(|x| srgb_to_linear(finite(x, 1.0).clamp(0.0, 1.0)));
     let [r, g, b] = rgb(f.color);
     let [r2, g2, b2] = rgb(f.color2);
-    let start = finite(f.start, 0.0).max(0.0);
+    let start = finite(f.start, 0.0).clamp(-1.0e6, 1.0e6);
     let end = finite(f.end, start + 1.0).max(start + 1.0);
     let density = finite(f.max_density, 1.0).clamp(0.0, 1.0);
     if density <= 0.0 {

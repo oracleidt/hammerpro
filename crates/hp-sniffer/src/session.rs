@@ -994,7 +994,13 @@ pub fn produce(
         {
             let r = crate::reflfix::apply(cur, &fs);
             if let Some(nb) = r.bsp {
-                say(Level::Info, format!("reflectivity overrides read from the material files of the game content: {}", r.overridden));
+                say(
+                    Level::Info,
+                    format!(
+                        "reflectivity overrides read from the material files of the game content: {}",
+                        r.overridden
+                    ),
+                );
                 bsp = Some(nb);
             }
         }
@@ -1129,7 +1135,12 @@ pub fn produce(
                     Level::Info,
                     format!(
                         "strip files rebuilt {} ({} bytes, {} not whole, {} failed), physics files rebuilt {} ({} bytes)",
-                        ar.memory_vtxs, ar.memory_vtx_bytes, ar.memory_vtx_partial, ar.memory_vtx_failed, ar.memory_phys, ar.memory_phy_bytes
+                        ar.memory_vtxs,
+                        ar.memory_vtx_bytes,
+                        ar.memory_vtx_partial,
+                        ar.memory_vtx_failed,
+                        ar.memory_phys,
+                        ar.memory_phy_bytes
                     ),
                 );
             }
@@ -1182,11 +1193,7 @@ pub fn produce(
                     "{} scrambled: {} guessed from the loaded materials, {} unresolved",
                     u.garbage_names, u.guessed, u.unresolved
                 );
-                let source = if u.guessed > 0 {
-                    "memory and game content"
-                } else {
-                    "absent"
-                };
+                let source = if u.guessed > 0 { "memory and game content" } else { "absent" };
                 let at = report.sources.iter().position(|r| r.category == "faces and texture axes").unwrap_or(0);
                 report.sources.insert(
                     at,
@@ -1971,7 +1978,14 @@ mod tests {
         props: usize,
     ) -> crate::engine::MemoryExtras {
         let disp: Vec<crate::engine::MemDisp> = (0..displacements)
-            .map(|i| crate::engine::MemDisp { face: i, start: [0.0; 3], power: 2, positions: Vec::new(), file: None, ..Default::default() })
+            .map(|i| crate::engine::MemDisp {
+                face: i,
+                start: [0.0; 3],
+                power: 2,
+                positions: Vec::new(),
+                file: None,
+                ..Default::default()
+            })
             .collect();
         let overlays: Vec<crate::engine::MemOverlay> = (0..overlays)
             .map(|i| crate::engine::MemOverlay {

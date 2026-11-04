@@ -39,7 +39,7 @@ Un argument inconnu commençant par `--` affiche `unknown argument: ...` sur std
 |---|---|
 | `--mcp` | Le pont MCP que les applications d'IA lancent elles-mêmes. Il n'ouvre aucune fenêtre et transmet les appels d'outils à une fenêtre Hammer Pro dont le serveur MCP est actif. stdout ne transporte que des messages MCP. Voir [Serveur MCP](mcp-server.md). |
 | `--bspc [options] <map>` | Le compilateur de maps de Hammer Pro (géométrie, portails, test de fuite et visibilité), avec les arguments de VBSP (`-game`, `-leaktest`...). Il écrit `<map>.bsp` à côté de la map, `<map>.lin` quand la map fuit, `<map>.prt` pour une map étanche, et un `<map>.log`. |
-| `--rad [options] <map>` | L'éclairage de Hammer Pro, avec les arguments de VRAD (`-ldr`, `-hdr`, `-both`, `-final`, `-fast`, `-bounce N`...) plus les options propres à Hammer Pro (occlusion ambiante `-ao`, `-aoradius`...). Il éclaire `<map>.bsp` sur place. |
+| `--rad [options] <map>` | L'éclairage de Hammer Pro, avec les arguments de VRAD (`-ldr`, `-hdr`, `-both`, `-final`, `-fast`, `-bounce N`...) plus les options propres à Hammer Pro (`-nostaticpropshadows`, `-nodispshadows`...). Il éclaire `<map>.bsp` sur place. |
 | `--light-preview ...` | Interne : l'éclairage de l'aperçu précalculé, lancé par l'éditeur lui-même. Vous n'avez jamais besoin de le lancer. |
 | `--apply-update <zip> <programme> <pid>` | Interne : l'assistant de mise à jour que l'éditeur lance depuis une copie de lui-même quand vous cliquez sur **Mettre à jour**. Il n'a pas de fenêtre : il attend la fin du processus `<pid>`, extrait `hammerpro.exe` de `<zip>`, remplace `<programme>` (en gardant `<programme>.old`, avec retour en arrière en cas d'échec) et le lance. Voir [Mises à jour](../features/updates.md). |
 

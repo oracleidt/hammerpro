@@ -805,7 +805,9 @@ fn fs_mesh(in: VsOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f
         if view.misc.x == MODE_FLAT {
             return vec4<f32>(0.5, 0.5, 0.5, 1.0);
         }
-        return modulate_output(albedo, material.tint * in.tint);
+        fog_far_clip(in.world);
+        let m = modulate_output(albedo, material.tint * in.tint);
+        return vec4<f32>(mix(m.rgb, vec3<f32>(0.5), fog_amount(in.world)), m.a);
     }
     albedo.a = material_texture_alpha(albedo.a);
     albedo = albedo * material_tint() * in.tint;
@@ -878,7 +880,11 @@ fn fs_mesh(in: VsOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f
     if (flags & F_HOVERED) != 0u {
         rgb = mix(rgb, vec3<f32>(1.0), 0.18);
     }
-    rgb = mix(rgb, fog_color(in.world), fog_amount(in.world));
+    if BLEND_MODE == 2u {
+        rgb = apply_fog_black(rgb, in.world);
+    } else {
+        rgb = apply_fog(rgb, in.world);
+    }
     if BLEND_MODE == 0u {
         return vec4<f32>(rgb, 1.0);
     }

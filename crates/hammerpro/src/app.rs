@@ -173,6 +173,14 @@ pub(crate) fn open_folder(path: &std::path::Path) {
     hp_app::os::open_folder(path, true);
 }
 
+fn install_pipeline_cache(rs: &egui_wgpu::RenderState, gfx: Option<&mut Gfx>) {
+    let Some(gfx) = gfx else { return };
+    if let Some(name) = hp_render::pipeline_cache::file_name(&rs.adapter.get_info()) {
+        gfx.renderer.install_pipeline_cache(&Settings::cache_dir().join("pipelines").join(name));
+    }
+    gfx.renderer.prewarm_pipelines();
+}
+
 impl HammerProApp {
     pub fn new(cc: &eframe::CreationContext<'_>, cli: Cli, log_rx: Receiver<(Severity, String)>) -> Self {
         let startup = crate::timing::StartupReport::new();
@@ -221,6 +229,7 @@ impl HammerProApp {
         if let Some(rs) = cc.wgpu_render_state.as_ref() {
             crate::gpu_guard::install(&rs.device);
             state.gfx = Some(Gfx::new(rs));
+            install_pipeline_cache(rs, state.gfx.as_mut());
             vram = crate::vram::VramMonitor::new(&rs.adapter.get_info());
         }
         state.ui.show_first_run = first_run && !automated;
@@ -459,6 +468,7 @@ impl HammerProApp {
         {
             crate::gpu_guard::install(&rs.device);
             self.state.gfx = Some(Gfx::new(rs));
+            install_pipeline_cache(rs, self.state.gfx.as_mut());
             self.vram = crate::vram::VramMonitor::new(&rs.adapter.get_info());
         }
 

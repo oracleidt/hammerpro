@@ -561,7 +561,8 @@ pub fn computed_radius(rec: &[u8], hdr: bool) -> Option<f32> {
     let linear = f64::from(f32_at(rec, ATTN_AT + 4));
     let quad = f64::from(f32_at(rec, ATTN_AT + 8));
     let i = [f64::from(f32_at(rec, 12)), f64::from(f32_at(rec, 16)), f64::from(f32_at(rec, 20))];
-    let target = (i[0] * i[0] + i[1] * i[1] + i[2] * i[2]).sqrt() / f64::from(if hdr { RADIUS_THRESHOLD_HDR } else { RADIUS_THRESHOLD_LDR });
+    let target = (i[0] * i[0] + i[1] * i[1] + i[2] * i[2]).sqrt()
+        / f64::from(if hdr { RADIUS_THRESHOLD_HDR } else { RADIUS_THRESHOLD_LDR });
     if quad > 0.0 {
         let disc = linear * linear - 4.0 * quad * (constant - target);
         return (disc >= 0.0).then(|| ((-linear + disc.sqrt()) / (2.0 * quad)) as f32);
@@ -672,7 +673,12 @@ pub fn collide_solid<S: MemSource + ?Sized>(src: &S, object: u64, p: &Profile) -
     Some(out)
 }
 
-pub fn read_phys_models<S: MemSource + ?Sized>(src: &S, models_addr: u64, count: usize, p: &Profile) -> Vec<(PhysModel, u16)> {
+pub fn read_phys_models<S: MemSource + ?Sized>(
+    src: &S,
+    models_addr: u64,
+    count: usize,
+    p: &Profile,
+) -> Vec<(PhysModel, u16)> {
     let raw = src.read_vec(models_addr, count * p.cm_model_stride);
     let mut out = Vec::new();
     for (i, r) in raw.chunks_exact(p.cm_model_stride).enumerate() {
@@ -825,7 +831,8 @@ pub fn decode_packed_keys(d: &[u8]) -> Option<String> {
     if d.len() < 12 || u16_at(d, 0) != 0x100 {
         return None;
     }
-    let (items, strings, start, values_at) = (usize::from(u16_at(d, 4)), usize::from(u16_at(d, 6)), 12usize, usize::from(u16_at(d, 10)));
+    let (items, strings, start, values_at) =
+        (usize::from(u16_at(d, 4)), usize::from(u16_at(d, 6)), 12usize, usize::from(u16_at(d, 10)));
     let table = start + items * 8;
     let text_at = table + strings * 2;
     if text_at > values_at || values_at > d.len() {
@@ -851,15 +858,21 @@ pub fn decode_packed_keys(d: &[u8]) -> Option<String> {
                 if inline {
                     out.push_str(&format!("{name} {{"));
                 } else {
-                    out.push_str(&format!("{name} {{
-"));
+                    out.push_str(&format!(
+                        "{name} {{
+"
+                    ));
                 }
                 block = Some(section);
             }
             2 => {
-                out.push_str(if inline { " }
-" } else { "}
-" });
+                out.push_str(if inline {
+                    " }
+"
+                } else {
+                    "}
+"
+                });
                 inline = false;
                 block = None;
             }
@@ -874,8 +887,12 @@ pub fn decode_packed_keys(d: &[u8]) -> Option<String> {
                     if inline {
                         out.push_str(&format!("\"{}\" \"{}\" ", string(a)?, string(b)?));
                     } else {
-                        out.push_str(&format!("\"{}\" \"{}\"
-", string(a)?, string(b)?));
+                        out.push_str(&format!(
+                            "\"{}\" \"{}\"
+",
+                            string(a)?,
+                            string(b)?
+                        ));
                     }
                     continue;
                 }
@@ -886,14 +903,18 @@ pub fn decode_packed_keys(d: &[u8]) -> Option<String> {
                     KeyKind::Float => fixed6(f(b)?),
                     KeyKind::Text => string(b)?,
                     KeyKind::Vec3 => format!("{} {} {} ", fixed6(f(b)?), fixed6(f(b + 4)?), fixed6(f(b + 8)?)),
-                    KeyKind::Vec4 => format!("{} {} {} {} ", fixed6(f(b)?), fixed6(f(b + 4)?), fixed6(f(b + 8)?), fixed6(f(b + 12)?)),
+                    KeyKind::Vec4 => {
+                        format!("{} {} {} {} ", fixed6(f(b)?), fixed6(f(b + 4)?), fixed6(f(b + 8)?), fixed6(f(b + 12)?))
+                    }
                     KeyKind::Pair => {
                         let word = i32_at(values.get(b..b + 4)?, 0);
                         format!("{},{}", word & 0xffff, (word >> 16) & 0xffff)
                     }
                 };
-                out.push_str(&format!("\"{name}\" \"{text}\"
-"));
+                out.push_str(&format!(
+                    "\"{name}\" \"{text}\"
+"
+                ));
             }
             _ => return None,
         }
@@ -909,16 +930,20 @@ pub fn key_text(model: &PhysModel) -> Vec<u8> {
     let mut t = String::new();
     if model.index == 0 {
         for i in 0..model.solids.len() {
-            t.push_str(&format!("staticsolid {{
+            t.push_str(&format!(
+                "staticsolid {{
 \"index\" \"{i}\"
 }}
-"));
+"
+            ));
         }
     } else {
-        t.push_str("solid {
+        t.push_str(
+            "solid {
 \"index\" \"0\"
 }
-");
+",
+        );
     }
     let mut out = t.into_bytes();
     out.push(0);
@@ -1015,7 +1040,10 @@ pub fn alt_contents<S: MemSource + ?Sized>(src: &S, starts: &[[f32; 3]]) -> Opti
                             continue;
                         }
                         let good = (0..sample)
-                            .filter(|k| src.read_vec(base + *k as u64 * stride as u64 + start_at, 12) == start_bytes(&starts[*k]))
+                            .filter(|k| {
+                                src.read_vec(base + *k as u64 * stride as u64 + start_at, 12)
+                                    == start_bytes(&starts[*k])
+                            })
                             .count();
                         if good * 10 < sample * 9 {
                             continue;

@@ -2,7 +2,7 @@
 
 # Hammer Pro documentation
 
-Welcome to the knowledge base of Hammer Pro 1.0.4, the level editor for Source engine maps built for Garry's Mod first. Every feature has its own page: what it is, how to open it, every option with its default, tips and a short FAQ. Pages link to each other, so start anywhere.
+Welcome to the knowledge base of Hammer Pro 1.0.5, the level editor for Source engine maps built for Garry's Mod first. Every feature has its own page: what it is, how to open it, every option with its default, tips and a short FAQ. Pages link to each other, so start anywhere.
 
 New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game setup](getting-started/game-setup.md) and [Your first map](getting-started/first-map.md), in that order.
 
@@ -137,7 +137,7 @@ New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game s
 | [Compile options](compiler/compile-options.md) | Every compile flag with its effect and default. |
 | [Choosing a compiler](compiler/compilers.md) | Valve's vbsp, vvis and vrad or your own programs instead of the built in compiler, with every option. |
 | [Compiler command line](compiler/command-line.md) | `hammerpro --bspc` and `hammerpro --rad`, every argument. |
-| [Worldspawn and light keys](compiler/worldspawn-keys.md) | Ambient occlusion keys, `_lightsrad` and the other keys the compiler reads. |
+| [Worldspawn and light keys](compiler/worldspawn-keys.md) | `_lightsrad` and the other keys the compiler reads. |
 | [Target games](compiler/target-games.md) | Supported Source games and engine branches. |
 | [Cubemaps](compiler/cubemaps.md) | Building cubemaps, writing them into the map, parallax corrected cubemaps. |
 | [Limits and logs](compiler/limits-and-logs.md) | Engine limits per game, reading the compile log and the statistics. |
@@ -162,7 +162,7 @@ New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game s
 | [Compile and test in Garry's Mod](guides/compile-and-test-gmod.md) | The fastest loop from editing to playing. |
 | [Make a prop with Propper](guides/make-a-prop-with-propper.md) | Turn brushes into a static prop with LODs and collision. |
 | [Sculpt displacements](guides/sculpt-displacements.md) | Terrain from a brush to painted blends. |
-| [Lighting and ambient occlusion](guides/lighting-and-ao.md) | Lights, previews, LDR and HDR, ambient occlusion. |
+| [Lighting](guides/lighting.md) | Lights, previews, LDR and HDR, static prop lighting. |
 | [Custom grids for stairs](guides/custom-grids-for-stairs.md) | A grid with a step per axis for regular stairs. |
 | [Collect content for a release](guides/collect-content-for-release.md) | Gather every custom file the map needs. |
 | [Port a map to another game](guides/port-to-another-game.md) | Change the target game and fix what differs. |

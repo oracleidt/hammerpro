@@ -11,6 +11,47 @@ use crate::jobs::{Job, JobResult};
 use crate::texture::TexFailure;
 
 pub(crate) const THUMB_STALE_FRAMES: u64 = 3;
+pub(crate) const INFLIGHT_TEXTURE_BYTES: u64 = 96 << 20;
+const INFLIGHT_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
+
+#[derive(Default)]
+pub(crate) struct Inflight {
+    bytes: Mutex<u64>,
+    cv: Condvar,
+}
+
+impl Inflight {
+    pub(crate) fn hold(self: &Arc<Self>, bytes: u64) -> Held {
+        *self.bytes.lock() += bytes;
+        Held { pool: Some(Arc::clone(self)), bytes }
+    }
+
+    pub(crate) fn wait_below(&self, cap: u64, shutdown: &AtomicBool) {
+        let deadline = std::time::Instant::now() + INFLIGHT_WAIT;
+        let mut held = self.bytes.lock();
+        while *held >= cap && !shutdown.load(Ordering::Acquire) {
+            if self.cv.wait_until(&mut held, deadline).timed_out() {
+                return;
+            }
+        }
+    }
+}
+
+pub(crate) struct Held {
+    pool: Option<Arc<Inflight>>,
+    bytes: u64,
+}
+
+impl Drop for Held {
+    fn drop(&mut self) {
+        if let Some(pool) = self.pool.take() {
+            let mut held = pool.bytes.lock();
+            *held = held.saturating_sub(self.bytes);
+            drop(held);
+            pool.cv.notify_all();
+        }
+    }
+}
 
 #[derive(Clone)]
 pub(crate) struct FsEnv {
@@ -66,6 +107,7 @@ pub(crate) struct Shared {
     pub running: AtomicUsize,
     broken: Mutex<(u64, AHashSet<String>)>,
     pub thumb_cache: RwLock<Option<Arc<crate::thumb_cache::ThumbDiskCache>>>,
+    pub inflight: Arc<Inflight>,
 }
 
 impl Shared {
@@ -83,6 +125,7 @@ impl Shared {
             running: AtomicUsize::new(0),
             broken: Mutex::new((0, AHashSet::new())),
             thumb_cache: RwLock::new(None),
+            inflight: Arc::default(),
         }
     }
 
@@ -162,6 +205,7 @@ impl Shared {
 
     pub(crate) fn stop(&self) {
         self.shutdown.store(true, Ordering::Release);
+        self.inflight.cv.notify_all();
         self.queues.lock().thumbs.clear();
         self.cv.notify_all();
     }

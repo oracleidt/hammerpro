@@ -1,7 +1,4 @@
 mod ambient;
-mod ao;
-#[cfg(test)]
-mod ao_tests;
 mod bake;
 mod data;
 mod detail;
@@ -25,7 +22,6 @@ use glam::Vec3A;
 use crate::emit::lump;
 use crate::materials::{contents, surf};
 pub use ambient::ProbeOptions;
-pub use ao::AoOptions;
 pub use output::check_lighting;
 pub use props::PropOptions;
 pub use texlights::{LightFile, LightFileData, TexLight, TexLightOptions};
@@ -55,7 +51,6 @@ pub struct RadOptions {
     pub fast_ambient: bool,
     pub luxel_density: f32,
     pub no_disp_shadows: bool,
-    pub ao: AoOptions,
     pub min_sun_samples: usize,
     pub normal_sampling: bool,
     pub probes: Option<ProbeOptions>,
@@ -80,7 +75,6 @@ impl Default for RadOptions {
             fast_ambient: false,
             luxel_density: 1.0,
             no_disp_shadows: false,
-            ao: AoOptions::default(),
             min_sun_samples: 0,
             normal_sampling: false,
             probes: None,
@@ -293,13 +287,9 @@ fn run_with(
 
     let (cameras, camera_areas) =
         if opts.no_skybox_recurse { (Vec::new(), Vec::new()) } else { bake::sky_cameras(&map) };
-    let ao = ao::resolve_and_log(opts, map.entities.first(), log);
     let detail_objects = detail::count(&src);
     let prop_lighting = opts.props.lighting && static_props.len() > 0;
     let mut plan = vec![Stage::Scene, Stage::Direct];
-    if ao.is_some() {
-        plan.push(Stage::Occlusion);
-    }
     if opts.bounces > 0 {
         plan.extend([Stage::BounceRays, Stage::Bounces]);
     }
@@ -329,7 +319,6 @@ fn run_with(
         camera_areas,
         props: &occluders,
         blockers: &blockers,
-        ao,
         work,
     };
     let t = Instant::now();
@@ -347,27 +336,12 @@ fn run_with(
     runner.par(|| disp::radial(&ctx, &mut light));
     log(&format!("direct light in {} ms", ms(t)));
     stage(report, "direct light", t);
-    let occlusion = ctx.ao.as_ref().map(|a| {
-        let t = Instant::now();
-        work.begin(Stage::Occlusion, luxels as u64);
-        let factors = runner.par(|| a.faces(&ctx, &light));
-        let (mean, min) = ao::summary(&factors);
-        log(&format!(
-            "ambient occlusion: {} rays per luxel, mean {mean:.3}, darkest {min:.3}, in {} ms",
-            a.samples(),
-            ms(t)
-        ));
-        stage(report, "ambient occlusion", t);
-        factors
-    });
     let t = Instant::now();
     {
         let unbounced = (opts.bounces > 0).then(|| runner.par(|| disp::before_bounce(&ctx, &light))).flatten();
-        let ao_before = occlusion.as_ref().map(|_| ao::disp_before(&ctx, &light));
         let mut lines = Vec::new();
-        let scale = occlusion.as_ref().map(|o| o.flat.as_slice());
         let (gather, bounce_passes) =
-            runner.par(|| ctx.bounce(&mut light, opts.bounces, scale, &mut |l| lines.push(l.to_owned())));
+            runner.par(|| ctx.bounce(&mut light, opts.bounces, &mut |l| lines.push(l.to_owned())));
         for l in &lines {
             log(l);
         }
@@ -378,9 +352,6 @@ fn run_with(
         report.bounces = lines.iter().filter(|l| l.starts_with("Bounce #")).count() as u32;
         if let Some(saved) = unbounced {
             runner.par(|| disp::after_bounce(&ctx, &mut light, saved));
-        }
-        if let (Some(o), Some(before)) = (&occlusion, &ao_before) {
-            runner.par(|| ao::apply_disps(&ctx, &mut light, before, &o.disp));
         }
     }
     if opts.bounces > 0 {

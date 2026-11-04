@@ -120,7 +120,11 @@ impl HubReport {
                 ),
             });
         }
-        let absent: Vec<&str> = NOT_KEPT.iter().filter(|i| !self.lumps.iter().any(|l| l.lump == **i)).map(|i| hp_bsp::lump_name(*i)).collect();
+        let absent: Vec<&str> = NOT_KEPT
+            .iter()
+            .filter(|i| !self.lumps.iter().any(|l| l.lump == **i))
+            .map(|i| hp_bsp::lump_name(*i))
+            .collect();
         if !absent.is_empty() {
             out.push(crate::merge::SourceRow {
                 category: "lumps only the compilers and tools read".to_owned(),
@@ -146,7 +150,10 @@ impl HubReport {
             total
         ));
         for l in &self.lumps {
-            out.push(format!("  lump {:2} {:<28} {:>10} bytes  {:<10} {}", l.lump, l.name, l.bytes, l.fidelity, l.note));
+            out.push(format!(
+                "  lump {:2} {:<28} {:>10} bytes  {:<10} {}",
+                l.lump, l.name, l.bytes, l.fidelity, l.note
+            ));
         }
         for m in &self.missing {
             out.push(format!("  not recognized in this build: {m}"));
@@ -336,7 +343,9 @@ pub fn align_cm_leafs(cm_leafs: &[crate::memmap::CLeaf], leafs: &[MemLeaf]) -> O
         return None;
     }
     let same = |a: &crate::memmap::CLeaf, b: &MemLeaf| {
-        a.contents == b.contents && a.cluster == b.cluster && a.area_flags == ((b.area as u16 & 0x1ff) | ((b.flags as u16) << 9))
+        a.contents == b.contents
+            && a.cluster == b.cluster
+            && a.area_flags == ((b.area as u16 & 0x1ff) | ((b.flags as u16) << 9))
     };
     let slack = cm_leafs.len() - leafs.len();
     (0..=slack.min(4)).find(|d| leafs.iter().enumerate().all(|(i, l)| cm_leafs.get(i + d).is_some_and(|c| same(c, l))))
@@ -399,17 +408,17 @@ pub fn edge_lumps(vertindices: &[u16], faces: &[Face]) -> (Vec<u8>, Vec<u8>) {
 fn light_pieces<S: MemSource + ?Sized>(src: &S, hub: &Hub, p: &Profile, hdr: bool, d: &mut HubData) {
     let hdr_idx = |ldr: usize, hdr_i: usize| if hdr { hdr_i } else { ldr };
     if let Some(v) = hubdec::worldlight_lump(src, hub, hdr) {
-        d.push(
-            hdr_idx(15, 54),
-            v,
-            0,
-            Fidelity::Exact,
-            "world lights, the radius the engine computes is cleared again",
-        );
+        d.push(hdr_idx(15, 54), v, 0, Fidelity::Exact, "world lights, the radius the engine computes is cleared again");
     }
     if let Some(index) = hubdec::ambient_index_lump(src, hub, p) {
         let n = hubdec::ambient_samples(&index);
-        d.push(hdr_idx(52, 51), index, 0, Fidelity::Equivalent, "leaf ambient index, first sample of empty leaves is not kept");
+        d.push(
+            hdr_idx(52, 51),
+            index,
+            0,
+            Fidelity::Equivalent,
+            "leaf ambient index, first sample of empty leaves is not kept",
+        );
         if let Some(a) = read_raw(src, hub.ambient_lighting, n * 28) {
             d.push(hdr_idx(56, 55), a, 1, Fidelity::Exact, "leaf ambient lighting");
         }
@@ -425,7 +434,13 @@ fn light_pieces<S: MemSource + ?Sized>(src: &S, hub: &Hub, p: &Profile, hdr: boo
             }
         }
         let lump = hubdec::face_lump(&faces, hub.lightdata, &d.vertindices, &d.vertexes, &HashMap::new());
-        d.push(hdr_idx(7, 58), lump.clone(), 1, Fidelity::Equivalent, "faces, area is recomputed, original face is not kept");
+        d.push(
+            hdr_idx(7, 58),
+            lump.clone(),
+            1,
+            Fidelity::Equivalent,
+            "faces, area is recomputed, original face is not kept",
+        );
         d.push(
             47,
             vec![0xff; faces.len() * 2],
@@ -441,7 +456,6 @@ fn light_pieces<S: MemSource + ?Sized>(src: &S, hub: &Hub, p: &Profile, hdr: boo
             p.s2_stride
         ));
     }
-
 }
 
 pub fn capture_lighting<S: MemSource + ?Sized>(src: &S, base: u64, ptr: usize, hdr: bool) -> Option<HubData> {
@@ -499,7 +513,14 @@ pub fn capture<S: MemSource + ?Sized>(src: &S, cm: &MemoryCm, widths: &[usize], 
     let planes = cm.cm.planes;
     let hub = find_hub(src, planes_addr, planes, widths)?;
     let p = best_profile(src, &hub, cm)?;
-    let mut d = HubData { profile: p.name.to_owned(), base: hub.base, ptr: hub.ptr, hdr, lightdata: hub.lightdata, ..HubData::default() };
+    let mut d = HubData {
+        profile: p.name.to_owned(),
+        base: hub.base,
+        ptr: hub.ptr,
+        hdr,
+        lightdata: hub.lightdata,
+        ..HubData::default()
+    };
     for pr in &hub.problems {
         d.problems.push(pr.clone());
     }
@@ -587,7 +608,8 @@ pub fn capture<S: MemSource + ?Sized>(src: &S, cm: &MemoryCm, widths: &[usize], 
         d.push(31, v, 0, Fidelity::Exact, "vertex normal indices");
     }
     {
-        let (a, b, c) = (hub.array(Field::Occluders), hub.array(Field::OccluderPolys), hub.array(Field::OccluderIndices));
+        let (a, b, c) =
+            (hub.array(Field::Occluders), hub.array(Field::OccluderPolys), hub.array(Field::OccluderIndices));
         if a.count >= 0 && b.count >= 0 && c.count >= 0 {
             let parts = (
                 read_raw(src, a.addr, a.count as usize * 40),
@@ -663,10 +685,7 @@ pub fn capture<S: MemSource + ?Sized>(src: &S, cm: &MemoryCm, widths: &[usize], 
             .map(|&a| {
                 let r = src.read_vec(a + p.model_first as u64, 8);
                 if r.len() == 8 {
-                    (
-                        i32::from_le_bytes([r[0], r[1], r[2], r[3]]),
-                        i32::from_le_bytes([r[4], r[5], r[6], r[7]]),
-                    )
+                    (i32::from_le_bytes([r[0], r[1], r[2], r[3]]), i32::from_le_bytes([r[4], r[5], r[6], r[7]]))
                 } else {
                     (0, 0)
                 }
@@ -718,7 +737,10 @@ pub fn capture<S: MemSource + ?Sized>(src: &S, cm: &MemoryCm, widths: &[usize], 
     match crate::modsig::map_flags(src, hub.ptr == 8) {
         Some(f) => {
             let (fidelity, note) = if f.inferred_low_bit {
-                (Fidelity::Equivalent, "map flags rebuilt from the booleans the engine derives (bit 0 inferred from bit 1)")
+                (
+                    Fidelity::Equivalent,
+                    "map flags rebuilt from the booleans the engine derives (bit 0 inferred from bit 1)",
+                )
             } else {
                 (Fidelity::Exact, "map flags rebuilt from the booleans the engine derives")
             };
@@ -730,11 +752,16 @@ pub fn capture<S: MemSource + ?Sized>(src: &S, cm: &MemoryCm, widths: &[usize], 
     if !phys.is_empty() {
         let lost = hubdec::undecoded_keys(&phys);
         let (fidelity, note) = if lost == 0 {
-            (Fidelity::Exact, "collision solids from the physics objects, key values decoded from the packed form".to_owned())
+            (
+                Fidelity::Exact,
+                "collision solids from the physics objects, key values decoded from the packed form".to_owned(),
+            )
         } else {
             (
                 Fidelity::Partial,
-                format!("collision solids from the physics objects, the key values of {lost} models could not be decoded and are minimal"),
+                format!(
+                    "collision solids from the physics objects, the key values of {lost} models could not be decoded and are minimal"
+                ),
             )
         };
         d.push(29, hubdec::physcollide_lump(&phys), 0, fidelity, &note);

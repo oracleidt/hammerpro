@@ -13,6 +13,7 @@ pub enum BakeKind {
     Full,
     AroundCamera,
     Update,
+    Refine,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

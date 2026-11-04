@@ -982,6 +982,7 @@ pub struct Environment {
     pub sky_paint: Option<SkyPaint>,
     pub sky_3d: Option<Sky3d>,
     pub fog: Option<Fog>,
+    pub sky_fog: Option<Fog>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

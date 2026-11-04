@@ -83,7 +83,14 @@ The toolbar repeats the most used switches: radius culling, displacement mesh, d
 
 ## Map fog
 
-**Fog preview** (on by default, toolbar button, **View > Fog preview**) draws the fog of an `env_fog_controller` in the 3D views and the [player view](player-view.md), like the map fog in game: **Primary Fog Color** (and **Secondary Fog Color** with **Fog Blend**, along **Primary Fog Direction** or the angles with **Use Angles for Fog Dir**), **Fog Start**, **Fog End**, **Fog Max Density** and **Far Z Clip Plane** (past it only the fog color is drawn, the sky too). Editing a key updates the view at once.
+**Fog preview** (on by default, toolbar button, **View > Fog preview**) draws the fog of an `env_fog_controller` in the 3D views and the [player view](player-view.md), like the map fog in game: **Primary Fog Color** (and **Secondary Fog Color** with **Fog Blend**, along **Primary Fog Direction** or the angles with **Use Angles for Fog Dir**), **Fog Start**, **Fog End**, **Fog Max Density** and **Far Z Clip Plane**. Editing a key updates the view at once. It works in the Textured, Lit, Flat and Unshaded modes, on baked lightmaps, water, particles, detail props and models, and in the player view.
+
+- The fog is computed like the game: it grows linearly with the distance along the view direction, from 0 at **Fog Start** (which may be negative: the fog is already there at the eye) to **Fog Max Density** at **Fog End**, and it is mixed in gamma space with the drawn color. A max density of 0.25 never covers more than a quarter of the color.
+- With **Fog Blend**, the fog color depends on where the camera looks, not on each pixel: looking along **Primary Fog Direction** gives the primary color, looking the other way the secondary one, half of each side on.
+- Past **Far Z Clip Plane** nothing is drawn, like the far clip plane of the game: the 2D sky shows through (when **Sky preview** is on), else the fog color, which fills the background of the 3D views while the fog shows, like the clear color of the game. The 2D sky is never fogged, like in game.
+- Additive materials and particles fade to black in the fog, modulate decals fade to no effect.
+- The 3D skybox does not take the map fog: it takes the fog keys of its `sky_camera` (**Fog Enable**, colors, blend, direction or **Use Angles for Fog Dir**, start, end, max density), measured in skybox units from the camera, like in game. A `sky_camera` with **Fog Enable** at No leaves the 3D skybox clear. **Fog preview** off turns both off.
+- MCP: `list_fog` gives `preview.fog`, `preview.sky_camera` and `preview.sky_fog`.
 
 - The submenu lists the controllers of the map; without a choice the game's choice is used: the last one with the **Master** flag, else the first one.
 - A controller with **Fog Enable** at No gives no fog, like in game, and the 3D view shows a warning at its bottom left.

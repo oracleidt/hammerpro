@@ -345,9 +345,7 @@ pub fn decode_table_items<S: MemSource + ?Sized>(src: &S, header: &[u8]) -> Opti
         }
         let good = (0..probe_count)
             .filter(|i| {
-                rd64(&probe, i * ITEM_STRIDE)
-                    .and_then(|p| read_c_string(src, p, 260))
-                    .is_some_and(|s| printable(&s))
+                rd64(&probe, i * ITEM_STRIDE).and_then(|p| read_c_string(src, p, 260)).is_some_and(|s| printable(&s))
             })
             .count();
         if good >= 2 && best.is_none_or(|(g, _)| good > g) {
@@ -364,11 +362,7 @@ pub fn decode_table_items<S: MemSource + ?Sized>(src: &S, header: &[u8]) -> Opti
     Some(items)
 }
 
-pub fn find_string_tables<S: MemSource + ?Sized>(
-    src: &S,
-    engine_rtti: &Rtti,
-    wanted: &[&str],
-) -> Vec<StringTable> {
+pub fn find_string_tables<S: MemSource + ?Sized>(src: &S, engine_rtti: &Rtti, wanted: &[&str]) -> Vec<StringTable> {
     let vts = engine_rtti.vtables_of("CNetworkStringTable");
     if vts.is_empty() {
         return Vec::new();

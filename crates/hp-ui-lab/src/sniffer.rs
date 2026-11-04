@@ -159,12 +159,7 @@ pub fn summary_lines(o: &Outcome) -> Vec<String> {
     }
     if r.unprotect.protected() {
         let u = &r.unprotect;
-        out.push(tf!(
-            "sniffer.sum.protected",
-            u.garbage_names,
-            u.guessed,
-            u.unresolved
-        ));
+        out.push(tf!("sniffer.sum.protected", u.garbage_names, u.guessed, u.unresolved));
     }
     if r.merge.file_used {
         let m = &r.merge;

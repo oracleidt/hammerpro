@@ -877,7 +877,6 @@ pub(crate) fn parse_rad_args(args: &[String]) -> Result<RadArgs, String> {
         ..RadArgs::default()
     };
     let opts = &mut r.opts;
-    opts.ao.by_default = true;
     let mut i = 0;
     while i < args.len() {
         let a = args[i].as_str();
@@ -948,18 +947,11 @@ pub(crate) fn parse_rad_args(args: &[String]) -> Result<RadArgs, String> {
             "-staticpropnormals" => opts.props.show_normals = true,
             "-nostaticpropshadows" => opts.props.shadows = false,
             "-nodispshadows" => opts.no_disp_shadows = true,
-            "-ao" => opts.ao.enabled = Some(true),
-            "-noao" => opts.ao.enabled = Some(false),
+            "-ao" | "-noao" => {}
             "-aoradius" | "-aostrength" | "-aosamples" => {
-                let v =
-                    args.get(i + 1).and_then(|v| v.trim().parse::<f32>().ok()).filter(|v| v.is_finite() && *v >= 0.0);
-                let Some(v) = v else { return Err(format!("expected a value after '{a}'")) };
-                match a.to_ascii_lowercase().as_str() {
-                    "-aoradius" => opts.ao.radius = Some(v),
-                    "-aostrength" => opts.ao.strength = Some(v),
-                    _ => opts.ao.samples = Some(v as u32),
+                if args.get(i + 1).is_some_and(|v| v.trim().parse::<f32>().is_ok()) {
+                    i += 1;
                 }
-                i += 1;
             }
             "-bounce" => {
                 if let Some(n) = next() {
@@ -1316,19 +1308,19 @@ mod tests {
     }
 
     #[test]
-    fn ambient_occlusion_options() {
+    fn old_ambient_occlusion_options_are_accepted_and_ignored() {
         use hp_bspc::rad::RadQuality;
-        let r = parse_rad_args(&args("-both map")).expect("parsed");
-        assert!(r.opts.ao.by_default && r.opts.ao.enabled.is_none());
+        let plain = parse_rad_args(&args("-both -final map")).expect("parsed");
         let r =
             parse_rad_args(&args("-both -final -ao -aoradius 128 -AOStrength 0.5 -aosamples 40 map")).expect("parsed");
-        let ao = &r.opts.ao;
-        assert_eq!((ao.enabled, ao.radius, ao.strength, ao.samples), (Some(true), Some(128.0), Some(0.5), Some(40)));
+        assert_eq!(r.opts, plain.opts);
         assert_eq!(r.opts.quality, RadQuality::Final);
         assert!(r.ignored.is_empty());
-        assert_eq!(parse_rad_args(&args("-noao map")).expect("parsed").opts.ao.enabled, Some(false));
-        assert!(parse_rad_args(&args("-aoradius map")).is_err());
-        assert!(parse_rad_args(&args("-aostrength -1 map")).is_err());
+        assert_eq!(
+            parse_rad_args(&args("-noao map")).expect("parsed").opts,
+            parse_rad_args(&args("map")).expect("parsed").opts
+        );
+        assert!(parse_rad_args(&args("-aoradius map")).is_ok());
     }
 
     #[test]

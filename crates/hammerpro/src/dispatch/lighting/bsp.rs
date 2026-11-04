@@ -296,6 +296,23 @@ fn orient(indices: &mut [u32], flat: &[DVec3], normal: DVec3) {
     }
 }
 
+pub(crate) fn lit_faces(bsp: &hp_bsp::Bsp) -> (usize, u64) {
+    let (faces, texinfo) = (bsp.lump(lump::FACES).unwrap_or_default(), bsp.lump(lump::TEXINFO).unwrap_or_default());
+    let mut out = (0usize, 0u64);
+    for f in (0..faces.len() / FACE_SIZE).map(|i| i * FACE_SIZE) {
+        let flags = i16_at(&faces, f + 10)
+            .and_then(|t| usize::try_from(t).ok())
+            .and_then(|t| i32_at(&texinfo, t * TEXINFO_SIZE + 64))
+            .unwrap_or(UNLIT);
+        let (Some(w), Some(h)) = (i32_at(&faces, f + 36), i32_at(&faces, f + 40)) else { continue };
+        let (Ok(w), Ok(h)) = (u64::try_from(w), u64::try_from(h)) else { continue };
+        if flags & UNLIT == 0 {
+            out = (out.0 + 1, out.1 + (w + 1) * (h + 1));
+        }
+    }
+    out
+}
+
 pub(crate) fn geometry(bsp: &hp_bsp::Bsp, sides: &SideTable, solids: &HashMap<u32, SolidInfo>) -> Geometry {
     let get = |i: usize| bsp.lump(i).unwrap_or(std::borrow::Cow::Borrowed(&[] as &[u8]));
     let (planes, vertexes, edges, surfedges, faces, texinfo, texdata, string_table, string_data, models, dispinfo) = (

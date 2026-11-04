@@ -87,8 +87,7 @@ pub fn find_vertex_alphas<S: MemSource + ?Sized>(
             }
             let slot = bloom_slot(quant(x));
             if bloom[slot / 64] & (1 << (slot % 64)) != 0
-                && let Some(list) =
-                    by_first.get(&[quant(x), quant(f32_at(data, j + 4)), quant(f32_at(data, j + 8))])
+                && let Some(list) = by_first.get(&[quant(x), quant(f32_at(data, j + 4)), quant(f32_at(data, j + 8))])
             {
                 for &t in list {
                     let need = targets[t].len() * VERTEX_STRIDE;

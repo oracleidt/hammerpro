@@ -17,10 +17,10 @@ pub mod luaparam;
 pub mod matguess;
 pub mod matmem;
 pub mod matvars;
-pub mod modelmem;
 pub mod memmap;
-pub mod modsig;
 pub mod merge;
+pub mod modelmem;
+pub mod modsig;
 pub mod occlusion;
 pub mod pakdir;
 pub mod passthrough;
@@ -40,4 +40,6 @@ pub mod unprotect;
 pub mod vbuf;
 pub mod world;
 
-pub use settings::{DecompileSettings, GameBits, GeometrySource, InsecureMode, MapFileMode, SettingValue, SnifferSettings};
+pub use settings::{
+    DecompileSettings, GameBits, GeometrySource, InsecureMode, MapFileMode, SettingValue, SnifferSettings,
+};

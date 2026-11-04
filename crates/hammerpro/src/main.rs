@@ -137,8 +137,9 @@ fn wgpu_options(transparent: bool) -> egui_wgpu::WgpuConfiguration {
     }
     setup.device_descriptor = Arc::new(|adapter: &wgpu::Adapter| wgpu::DeviceDescriptor {
         label: Some("hammerpro device"),
-        required_features: adapter.features()
-            & (wgpu::Features::TEXTURE_COMPRESSION_BC | wgpu::Features::POLYGON_MODE_LINE),
+        required_features: (adapter.features()
+            & (wgpu::Features::TEXTURE_COMPRESSION_BC | wgpu::Features::POLYGON_MODE_LINE))
+            | hp_render::pipeline_cache::wanted_features(adapter),
         required_limits: adapter.limits(),
         memory_hints: wgpu::MemoryHints::MemoryUsage,
         ..Default::default()

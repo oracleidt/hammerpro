@@ -845,13 +845,8 @@ fn light_prop(
                 } else {
                     direct_at(ctx, opts, &near, pos, normal, skip, (ignore, Part::Direct), &mut c);
                     let (sky, ind) = &soft[g];
-                    let k = if bounces {
-                        ctx.ao.as_ref().map_or(1.0, |ao| ao.vertex(ctx, pos, normal, pi as u32))
-                    } else {
-                        1.0
-                    };
                     for ((o, s), v) in c.iter_mut().zip(sky).zip(ind) {
-                        *o += *s + *v * k;
+                        *o += *s + *v;
                     }
                 }
                 Some(c)

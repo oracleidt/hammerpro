@@ -55,9 +55,7 @@ domain! { "compile and play";
                 {\"nodetail\": true, \"luxelscale\": 2, \"radius_override\": 4096}."),
             "rad_options": flag_options("Options of the lighting step for this compile, like bsp_options: \
                 {\"final\": true, \"bounce\": 8, \"fast\": false, \"softsun\": 2, \"extrasky\": 4, \"lights\": \
-                \"mylights.rad\"} (lights: a file of the map folder). Ambient occlusion: ao (force on), noao (force \
-                off), aoradius (units), aostrength (0 to 1), aosamples (rays); it is on by default for normal and \
-                final and the map's _ao keys decide when neither ao nor noao is set."),
+                \"mylights.rad\"} (lights: a file of the map folder)."),
             "copy_to_maps": boolean("Copy the BSP to the game's maps folder after this compile."),
             "compiler": string("Compiler for this compile only: an id or name of list_compilers (builtin: Hammer Pro's own)."),
         }, [];
@@ -71,8 +69,7 @@ domain! { "compile and play";
         AllowDynamicPropsAsStatic, wsaddons, serveraddons, propdebug, blocksize (0: no blocks)...) and of the \
         lighting step \
         (rad_options: final, fast, bounce, \
-        StaticPropLighting, StaticPropPolys, textureshadows, lights, chop, smooth, softsun, extrasky, ao, noao, \
-        aoradius, aostrength, aosamples...): each \
+        StaticPropLighting, StaticPropPolys, textureshadows, lights, chop, smooth, softsun, extrasky...): each \
         flag forced on (true or a value), forced off (false) or following the preset (null). Starting the game \
         after compiles and the maps folder need confirm: true (only when the user asked). Answers the settings \
         like get_compile_options.",
@@ -118,9 +115,7 @@ domain! { "compile and play";
                 force it on; false forces it off (even when the preset adds it); null follows the preset again. The \
                 named flags leave the extra arguments; the other extra arguments are kept."),
             "rad_options": flag_options("Options menu of the lighting step, like bsp_options (lights: a .rad file of \
-                the map folder). nostaticpropshadows is static_prop_shadows. Ambient occlusion: ao, noao, aoradius \
-                (units), aostrength (0 to 1), aosamples (rays); the map's _ao keys (set_map_properties) decide when \
-                neither ao nor noao is set."),
+                the map folder). nostaticpropshadows is static_prop_shadows."),
             "confirm": boolean("The user asked for this (needed to start the game after compiles or to set the maps folder)."),
         }, [];
     cancel_compile: Editor, "Cancel the compile",
@@ -131,7 +126,7 @@ domain! { "compile and play";
         lines containing a text; counts, leak pointfile and result. Lines reporting a known problem (leak, \
         microbrush, too many planes, missing material... the Valve messages) carry its code, explanation, fix and \
         the brush, side, entity or position they name; problems sums them up. While Hammer Pro's lighting runs, \
-        its step carries light: the stage (scene, direct lighting, ambient occlusion, bounce rays, bounced light, \
+        its step carries light: the stage (scene, direct lighting, bounce rays, bounced light, \
         leaf ambient, detail props, static props, writing), stage_percent, stage_index of stage_count, \
         overall_percent, elapsed_s and left_s (estimated seconds left, null while estimating); the log shows these \
         progress lines and a warning when a stage stops advancing. With from_file, the <map>.log the compiler \
@@ -189,13 +184,31 @@ domain! { "compile and play";
     bake_lighting: Editor, "Bake the lighting preview",
         "Bake the lighting preview (luxels on the CPU, like VRAD), around the camera only (around_camera), or stop \
         (cancel) the bake, with a quality: draft (fast), normal or final (like the compile presets; saved as the \
-        preview quality). Read the progress with get_lighting_status; set_render_mode baked shows the result.",
+        preview quality). A bake shows a quick pass first (the Sun Samples, Ambient Samples and Supersample of the \
+        map's light_plus options), then a refined pass at the quality (kind refine in get_lighting_status) replaces \
+        it unless the map changed. Read the progress with get_lighting_status; set_render_mode baked shows the result.",
         {
             "action": choice("start (default), around_camera or stop.", &["start", "around_camera", "stop"]),
             "quality": choice("Bake quality (default: the saved one).", &["draft", "normal", "final"]),
         }, [];
+    set_lighting_options: Editor, "Change the lighting preview options",
+        "Change the lighting preview options saved in the map (the Hammer++ light_plus block, shown by \
+        get_lighting_status in options): brightness (0 to 4), bounced light, dynamic updates (bake again once edits \
+        stop) and their delay (0 to 60 s), the radius of a bake around the camera (64 to 65536), and the sampling of \
+        the quick pass every bake shows first: sun_samples (1 to 256), ambient_samples (sky light directions, 16 to \
+        5184) and supersample. The refined pass that follows uses the bake quality. Answers the options.",
+        {
+            "brightness": number("Brightness of the preview.", 0.0, 4.0),
+            "bounced": boolean("Bounced light."),
+            "dynamic_updates": boolean("Bake again once edits stop."),
+            "update_delay": number("Seconds without edits before the map is baked again.", 0.0, 60.0),
+            "bake_radius": number("Radius of a bake around the camera, in units.", 64.0, 65536.0),
+            "sun_samples": integer("Sun samples of the quick pass (Hammer++ Sun Samples).", 1, 256),
+            "ambient_samples": integer("Sky light directions of the quick pass (Hammer++ Ambient Samples).", 16, 5184),
+            "supersample": boolean("Supersample the shadow edges in the quick pass (Hammer++ Supersample)."),
+        }, [];
     get_lighting_status: Read, "Lighting preview status",
-        "The lighting bake: quality, progress, last result (time, faces, luxels, density), preview statistics (with \
+        "The lighting bake: options (the map's lighting preview options, see set_lighting_options), quality, progress, last result (time, faces, luxels, density), preview statistics (with \
         what lights the props: the world lights, the static props and those with baked vertex lighting), tone \
         (the HDR tone mapping of the focused 3D view: mode, the exposure scale now, its range, the bloom amount, \
         what the env_tonemap_controller of the map sets and the luminance histogram the auto exposure reads), the \
@@ -1138,6 +1151,47 @@ fn bake_lighting(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     })))
 }
 
+fn set_lighting_options(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
+    if a.map.is_empty() {
+        return Err("give at least one option (get_lighting_status lists them in options)".to_owned());
+    }
+    let mut o = state.doc.light_plus();
+    if let Some(v) = a.opt_f64("brightness", 0.0, 4.0)? {
+        o.brightness_scale = v as f32;
+    }
+    if let Some(v) = a.opt_bool("bounced")? {
+        o.bounced = v;
+    }
+    if let Some(v) = a.opt_bool("dynamic_updates")? {
+        o.incremental = v;
+    }
+    if let Some(v) = a.opt_f64("update_delay", 0.0, 60.0)? {
+        o.incremental_delay = v as f32;
+    }
+    if let Some(v) = a.opt_f64("bake_radius", 64.0, 65536.0)? {
+        o.bake_dist = v as f32;
+    }
+    if let Some(v) = a.opt_u64("sun_samples", 1, 256)? {
+        o.samples_sun = v as u32;
+    }
+    if let Some(v) = a.opt_u64("ambient_samples", 16, 5184)? {
+        o.samples_ambient = v as u32;
+    }
+    if let Some(v) = a.opt_bool("supersample")? {
+        o.supersample = v;
+    }
+    state.doc.set_light_plus(&o).map_err(|e| e.to_string())?;
+    Ok(ToolResult::json(lighting_options(&state.doc.light_plus())))
+}
+
+fn lighting_options(o: &hp_editor::luxels::LightPlus) -> Value {
+    json!({
+        "brightness": o.brightness_scale, "bounced": o.bounced, "dynamic_updates": o.incremental,
+        "update_delay": o.incremental_delay, "bake_radius": o.bake_dist, "sun_samples": o.samples_sun,
+        "ambient_samples": o.samples_ambient, "supersample": o.supersample,
+    })
+}
+
 fn quality_name(q: LightingQuality) -> &'static str {
     match q {
         LightingQuality::Draft => "draft",
@@ -1158,6 +1212,7 @@ fn get_lighting_status(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
     let l = &state.runtime.lighting;
     let lower = |v: String| v.to_ascii_lowercase();
     Ok(ToolResult::json(json!({
+        "options": lighting_options(&state.doc.light_plus()),
         "quality": quality_name(state.settings.lighting.quality),
         "shown": state.settings.view.render_mode == hp_app::settings::RenderModeSetting::Baked,
         "baking": l.progress.as_ref().map(|p| json!({
@@ -1403,21 +1458,6 @@ mod tests {
         r.static_prop_shadows = false;
         let o = options_json(&r, Rad);
         assert_eq!(o["command_flags"], "-bounce 8 -chop 2 -extrasky 4 -softsun 2.5 -nostaticpropshadows");
-        let mut a = CompileSettings::default();
-        apply(
-            &mut a,
-            Rad,
-            &json!({ "ao": true, "aoradius": 128, "aostrength": 0.5, "aosamples": 48 }),
-            None,
-            "rad_options",
-        )
-        .unwrap();
-        let o = options_json(&a, Rad);
-        assert_eq!(o["command_flags"], "-ao -aoradius 128 -aosamples 48 -aostrength 0.5");
-        assert_eq!(o["options"]["aostrength"], 0.5);
-        apply(&mut a, Rad, &json!({ "ao": null, "noao": true }), None, "rad_options").unwrap();
-        assert!(options_json(&a, Rad)["command_flags"].as_str().unwrap().starts_with("-aoradius 128"));
-        assert!(options_json(&a, Rad)["command_flags"].as_str().unwrap().contains("-noao"));
         let dir = scratch("rad_lights").join("my maps");
         std::fs::create_dir_all(dir.join("content")).unwrap();
         std::fs::write(dir.join("extra.rad"), "lights/white 255 255 255 200\n").unwrap();
@@ -1596,5 +1636,16 @@ mod tests {
         err(&mut s, "bake_lighting", json!({ "action": "stop", "quality": "normal" }));
         let st = ok(&mut s, "get_lighting_status", json!({}));
         assert_eq!(st["quality"], "draft");
+        assert_eq!(st["options"]["ambient_samples"], 40, "the Hammer++ defaults");
+        let o =
+            ok(&mut s, "set_lighting_options", json!({ "ambient_samples": 80, "supersample": true, "sun_samples": 3 }));
+        assert_eq!(
+            (o["ambient_samples"].as_u64(), o["sun_samples"].as_u64(), o["supersample"].as_bool()),
+            (Some(80), Some(3), Some(true))
+        );
+        let plus = s.doc.light_plus();
+        assert_eq!((plus.samples_ambient, plus.samples_sun, plus.supersample), (80, 3, true));
+        err(&mut s, "set_lighting_options", json!({}));
+        err(&mut s, "set_lighting_options", json!({ "ambient_samples": 4 }));
     }
 }

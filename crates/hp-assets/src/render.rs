@@ -297,8 +297,13 @@ impl AssetManager {
         let sky_3d =
             self.scene.env.room.as_ref().map(|r| Sky3d { origin: r.origin.as_vec3().to_array(), scale: r.scale });
         let fog = display.fog.and_then(|id| fog_of(doc, id));
+        let sky_fog = display
+            .fog
+            .and(self.scene.env.room.as_ref())
+            .and_then(|r| doc.scene().entity(r.camera))
+            .and_then(|n| hp_app::runtime::fog::sky_camera_fog(&n.entity));
         self.sync_hdr_sky(renderer, None);
-        renderer.set_environment(Environment { sky, sky_paint, sky_3d, fog });
+        renderer.set_environment(Environment { sky, sky_paint, sky_3d, fog, sky_fog });
         renderer.set_tone_env(scan.tone);
         self.sync_sun_glow(renderer, scan.sun_glow.as_ref(), display);
         let room = self.scene.env.room.as_ref().map(|r| r.bounds);

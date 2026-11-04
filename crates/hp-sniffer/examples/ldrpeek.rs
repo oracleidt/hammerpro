@@ -5,8 +5,13 @@ fn main() {
     let pid: u32 = args[1].parse().expect("pid");
     let proc0 = GameProcess::open(pid).expect("open");
     let base = if args[2] == "auto" {
-        let opts = hp_sniffer::scan::ScanOptions { writable_only: true, min_region: 1 << 16, ..hp_sniffer::scan::ScanOptions::default() };
-        let ents: Vec<(u64, usize)> = hp_sniffer::scan::find_entity_lumps(&proc0, &opts).into_iter().map(|h| (h.addr, h.text.len())).collect();
+        let opts = hp_sniffer::scan::ScanOptions {
+            writable_only: true,
+            min_region: 1 << 16,
+            ..hp_sniffer::scan::ScanOptions::default()
+        };
+        let ents: Vec<(u64, usize)> =
+            hp_sniffer::scan::find_entity_lumps(&proc0, &opts).into_iter().map(|h| (h.addr, h.text.len())).collect();
         let cs = hp_sniffer::cmstruct::find_by_entities(&proc0, &ents, &[8]).expect("collision structure");
         let hub = hp_sniffer::hub::find_hub(&proc0, cs.planes.addr, cs.planes.count as usize, &[8]).expect("hub");
         println!("hub base {:x}", hub.base);

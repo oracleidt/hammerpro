@@ -113,20 +113,6 @@ Menu group **Quality** (lighting step).
 | `-centersamples` | Accepted like VRAD: luxels are always sampled at their middle when it is open. | always |
 | `-nodispshadows` | Hammer Pro option: displacements cast no shadow at all (they are still lit). One displacement can also be kept from casting shadows with the **Cast shadows** option of the [displacement tool](../features/displacement-tool.md). | off |
 
-## Ambient occlusion
-
-Hammer Pro additions (menu group **Quality**, lighting step). Ambient occlusion adds contact shadows in corners, creases, at the foot of walls and under props by darkening the bounced light near close geometry. Direct light and sky light keep their own shadows, so nothing is darkened twice. It has no effect with `-bounce 0`.
-
-| Flag | Effect | Default |
-|---|---|---|
-| `-ao` | Turns ambient occlusion on. | on for Normal and Final, off for Draft |
-| `-noao` | No ambient occlusion, whatever the map says. | |
-| `-aoradius <units>` | How far geometry darkens a surface (4 to 1024). | 96 |
-| `-aostrength <0..1>` | 0 is none, 1 means a closed corner loses all its bounced light. 0 turns it off. | 0.75 |
-| `-aosamples <n>` | Rays per luxel and per static prop vertex (4 to 512): more is smoother and slower. | 32, 64 with `-final`, 16 for a Draft that turns it on |
-
-Without `-ao` or `-noao`, the worldspawn keys `_ao`, `_aoradius`, `_aostrength`, `_aosamples` decide (see [Worldspawn and light keys](worldspawn-keys.md)), then the defaults above.
-
 ## Static props
 
 Menu group **Static props** (lighting step).
@@ -192,7 +178,7 @@ Menu group **Debugging**.
 - [Command line](command-line.md)
 - [Compile and run window](compile-window.md)
 - [Worldspawn and light keys](worldspawn-keys.md)
-- [Lighting and ambient occlusion](../guides/lighting-and-ao.md)
+- [Lighting](../guides/lighting.md)
 - [Compile performance](performance.md)
 
 ---

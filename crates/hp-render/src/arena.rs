@@ -81,6 +81,8 @@ impl RangeAlloc {
     }
 }
 
+const GROW_DOUBLE_BELOW: u64 = 16 << 20;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Grow {
     Fits,
@@ -116,7 +118,9 @@ impl GrowBuffer {
         if needed > max {
             return Grow::TooLarge;
         }
-        let new_size = self.size.saturating_mul(2).max(needed).min(max).next_multiple_of(wgpu::COPY_BUFFER_ALIGNMENT);
+        let step = if self.size < GROW_DOUBLE_BELOW { self.size.saturating_mul(2) } else { self.size + self.size / 4 };
+        let new_size =
+            step.max(needed.saturating_add(needed / 8)).min(max).next_multiple_of(wgpu::COPY_BUFFER_ALIGNMENT);
         let make = |size: u64| {
             crate::memory::guarded(device, || {
                 device.create_buffer(&wgpu::BufferDescriptor {

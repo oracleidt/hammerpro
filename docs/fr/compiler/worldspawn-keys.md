@@ -8,10 +8,6 @@ Les clés de la map (worldspawn) et des entités que le compilateur lit pour con
 
 | Clé | Lue par | Effet | Par défaut |
 |---|---|---|---|
-| `_ao` | éclairage | Occlusion ambiante de Hammer Pro : `1` activée, `0` désactivée. Utilisée quand la ligne de commande n'a ni `-ao` ni `-noao`. | activée en Normal et Final, désactivée en Brouillon |
-| `_aoradius` | éclairage | Rayon de l'occlusion ambiante en unités (4 à 1024), sans `-aoradius`. | 96 |
-| `_aostrength` | éclairage | Force de l'occlusion ambiante de 0 à 1, sans `-aostrength`. 0 la désactive. | 0.75 |
-| `_aosamples` | éclairage | Rayons d'occlusion ambiante par luxel et par sommet de prop (4 à 512), sans `-aosamples`. | 32 (64 avec `-final`) |
 | `_lightsrad` | éclairage | Un fichier de lumières de texture propre à la map (la clé qu'utilise Hammer++). Un chemin complet, ou relatif au dossier du jeu, au dossier de la map ou au dossier de Garry's Mod. Lu après `lights.rad` et `-lights` (une seule fois si c'est le même fichier que `-lights`), avant `<map>.rad`. | aucun |
 | `detailvbsp` | géométrie | Le fichier de définition des props de détail des matériaux `%detailtype`. | `detail.vbsp` |
 | `skyname` | géométrie | Le ciel dont les textures servent aux cubemaps provisoires (voir [Cubemaps](cubemaps.md)). | |
@@ -75,13 +71,11 @@ Les lumières de texture viennent de `lights.rad` et des autres fichiers de lumi
 
 ## FAQ
 
-**Comment désactiver l'occlusion ambiante pour une seule map ?** Ajoutez la clé worldspawn `_ao` avec la valeur `0`. Un `-ao` forcé dans le menu d'options reste prioritaire.
-
 **Ma map Hammer++ a une clé `_lightsrad`, est-ce que ça marche ?** Oui, le fichier est lu comme Hammer++ le prévoit, et le journal affiche `Map light file (_lightsrad): ...`.
 
 ## Pages liées
 - [Options de compilation](compile-options.md)
-- [Éclairage et occlusion ambiante](../guides/lighting-and-ao.md)
+- [Éclairage](../guides/lighting.md)
 - [Propriétés des entités](../features/entity-properties.md)
 - [Cubemaps](cubemaps.md)
 

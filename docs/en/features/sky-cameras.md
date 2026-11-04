@@ -17,6 +17,8 @@ A `sky_camera` sits in a small room (the 3D skybox) that the game draws around t
 
 With **3D skybox** on (default, `render.skybox_3d`), the room around the sky camera is drawn around the map at its `scale`, like in game. **Sky preview** (`render.sky_preview`, on) draws the 2D sky of the worldspawn `skyname` behind it. Sky faces (`toolsskybox`) keep their tool texture unless **See the sky through toolsskybox** is on (**Settings > Rendering**). `Alt+V` shows "3D skybox shown" or "3D skybox hidden".
 
+With **Fog preview** on, the 3D skybox takes the fog of its sky camera (**Fog Enable**, colors, blend, direction, start, end, max density), measured in skybox units, and never the map fog, like in game; see [Map fog](render-modes-display.md#map-fog).
+
 A sky camera without a valid `scale` (a whole number of at least 1) uses 16, the FGD default, and is labelled "invalid" in the menus.
 
 ## Several sky cameras

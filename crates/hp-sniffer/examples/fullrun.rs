@@ -55,25 +55,37 @@ impl MemSource for Snap {
     }
 }
 
-
-
-
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let snap = Snap::open(&args[1]);
     let out = std::path::PathBuf::from(&args[2]);
     let map = args.get(3).cloned().unwrap_or_else(|| "gm_construct".to_owned());
-    let game = std::path::PathBuf::from(args.get(4).cloned().unwrap_or_else(|| "D:/SteamLibrary/steamapps/common/GarrysMod/garrysmod".to_owned()));
+    let game = std::path::PathBuf::from(
+        args.get(4).cloned().unwrap_or_else(|| "D:/SteamLibrary/steamapps/common/GarrysMod/garrysmod".to_owned()),
+    );
     let use_file = args.get(5).is_some_and(|v| v == "file");
     let opts = ScanOptions { writable_only: true, min_region: 1 << 16, ..ScanOptions::default() };
     let hits = hp_sniffer::scan::find_entity_lumps(&snap, &opts);
     let hit = hits.iter().max_by_key(|h| h.entities).expect("entity lump").clone();
-    let mut settings = hp_sniffer::SnifferSettings { save_models: false, save_materials: false, save_sounds: false, save_other: false, ..hp_sniffer::SnifferSettings::default() };
+    let mut settings = hp_sniffer::SnifferSettings {
+        save_models: false,
+        save_materials: false,
+        save_sounds: false,
+        save_other: false,
+        ..hp_sniffer::SnifferSettings::default()
+    };
     if use_file {
         settings.set_internal("use_map_file", &hp_sniffer::SettingValue::Bool(true)).expect("setting");
     }
     let access = FileAccess::new(settings.file_allowed());
-    let input = CaptureInput { game_dir: &game, map_hint: Some(map.clone()), settings: &settings, access: &access, rescan: None, rescan_limit: std::time::Duration::ZERO };
+    let input = CaptureInput {
+        game_dir: &game,
+        map_hint: Some(map.clone()),
+        settings: &settings,
+        access: &access,
+        rescan: None,
+        rescan_limit: std::time::Duration::ZERO,
+    };
     let cancel = AtomicBool::new(false);
     let scratch = out.join("_work");
     std::fs::create_dir_all(&scratch).expect("scratch");
@@ -81,7 +93,10 @@ fn main() {
     let cap = capture_from(&snap, &hit, &input, &scratch, None, &cancel).ok().expect("capture");
     println!("captured in {:?}, map file opens {}", t.elapsed(), cap.report.map_file_opens);
     let mut timings = Vec::new();
-    let (report, produced) = produce(cap, &map, None, &settings, &out, "snapshot", 0, None, &cancel, &mut timings, None).ok().expect("produce");
+    let (report, produced) =
+        produce(cap, &map, None, &settings, &out, "snapshot", 0, None, &cancel, &mut timings, None)
+            .ok()
+            .expect("produce");
     println!("{}", report.render_text());
     println!("bsp {:?}", produced.bsp_path);
 }

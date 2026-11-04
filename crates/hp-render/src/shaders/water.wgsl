@@ -469,7 +469,7 @@ fn fs_water(in: WaterOut, @builtin(front_facing) front: bool) -> @location(0) ve
     }
     rgb = rgb * in.tint.rgb;
     rgb = editor_states(rgb, in.flags);
-    rgb = mix(rgb, fog_color(in.world), fog_amount(in.world));
+    rgb = apply_fog(rgb, in.world);
     let eye_under = wview.under_range.z > 0.5;
     let under_face = (flags & W_BELOW) != 0u;
     if (in.flags & F_COMPILED_LIGHT) != 0u && (!front || under_face != eye_under) {

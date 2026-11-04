@@ -49,9 +49,9 @@ Under the game arguments, the launch options (**Start the game:** after the comp
 
 | Preset | Geometry | Visibility | Lighting | Packing |
 |---|---|---|---|---|
-| **Draft** | full, stops on leaks | Fast (`-fastvis`) | Draft (`-bounce 1 -fast`), one dynamic range, ambient occlusion off | no (development addon) |
-| **Normal** | full | Normal (`-vis`) | Normal (no extra flag), ambient occlusion on | no (development addon) |
-| **Final** | full | Normal (`-vis`) | Final (`-final -StaticPropLighting`), always LDR + HDR, ambient occlusion with 64 rays | yes |
+| **Draft** | full, stops on leaks | Fast (`-fastvis`) | Draft (`-bounce 1 -fast`), one dynamic range | no (development addon) |
+| **Normal** | full | Normal (`-vis`) | Normal (no extra flag) | no (development addon) |
+| **Final** | full | Normal (`-vis`) | Final (`-final -StaticPropLighting`), always LDR + HDR | yes |
 | **Custom** | your choices of the step lists | | | as the policy says |
 
 Changing a step list makes the preset **Custom** unless the choices match a named preset.

@@ -222,7 +222,6 @@ pub const TR: TrTable = &[
     ("compile.light_estimating", "estimating the time left", "estimation du temps restant"),
     ("compile.light_stage.scene", "Preparing the scene", "Préparation de la scène"),
     ("compile.light_stage.direct", "Direct lighting", "Éclairage direct"),
-    ("compile.light_stage.occlusion", "Ambient occlusion", "Occlusion ambiante"),
     ("compile.light_stage.bounce_rays", "Bounce rays", "Rayons des rebonds"),
     ("compile.light_stage.bounces", "Bounced light", "Lumière rebondie"),
     ("compile.light_stage.leaf_ambient", "Ambient light of the leaves", "Lumière ambiante des leafs"),
@@ -947,31 +946,6 @@ pub const TR: TrTable = &[
         "compile.flag.staticpropnormals",
         "Debug: static props show their vertex normals instead of their lighting.",
         "Débogage : les props statiques affichent les normales de leurs sommets au lieu de leur éclairage.",
-    ),
-    (
-        "compile.flag.ao",
-        "Hammer Pro option: ambient occlusion, contact shadows in corners, creases and under props (darkens the bounced light near close geometry). On by default for Normal and Final, off for Draft; the map's _ao key decides when neither -ao nor -noao is given.",
-        "Option de Hammer Pro : occlusion ambiante, des ombres de contact dans les coins, les plis et sous les props (assombrit la lumière rebondie près de la géométrie proche). Activée par défaut en Normal et Final, désactivée en Brouillon ; la clé _ao de la map décide quand ni -ao ni -noao n'est donnée.",
-    ),
-    (
-        "compile.flag.noao",
-        "Hammer Pro option: no ambient occlusion, whatever the map's _ao key says.",
-        "Option de Hammer Pro : pas d'occlusion ambiante, quoi que dise la clé _ao de la map.",
-    ),
-    (
-        "compile.flag.aoradius",
-        "Ambient occlusion radius: how far geometry darkens a surface, in units (default 96, map key _aoradius).",
-        "Rayon de l'occlusion ambiante : distance jusqu'à laquelle la géométrie assombrit une surface, en unités (96 par défaut, clé de map _aoradius).",
-    ),
-    (
-        "compile.flag.aostrength",
-        "Ambient occlusion strength from 0 (none) to 1 (a closed corner loses all its bounced light), default 0.75 (map key _aostrength).",
-        "Force de l'occlusion ambiante de 0 (aucune) à 1 (un coin fermé perd toute sa lumière rebondie), 0.75 par défaut (clé de map _aostrength).",
-    ),
-    (
-        "compile.flag.aosamples",
-        "Ambient occlusion rays per luxel and per static prop vertex (default 32, 64 with -final; more is smoother and slower; map key _aosamples).",
-        "Rayons d'occlusion ambiante par luxel et par sommet de prop statique (32 par défaut, 64 avec -final ; plus est plus lisse et plus lent ; clé de map _aosamples).",
     ),
     (
         "compile.flag.nowsaddons",

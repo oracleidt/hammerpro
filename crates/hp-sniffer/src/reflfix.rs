@@ -2,8 +2,10 @@ use hp_bsp::{Bsp, lump};
 use hp_fs::GameFs;
 
 pub fn strip_comments(text: &str) -> String {
-    text.lines().map(|l| l.split("//").next().unwrap_or("")).collect::<Vec<_>>().join("
-")
+    text.lines().map(|l| l.split("//").next().unwrap_or("")).collect::<Vec<_>>().join(
+        "
+",
+    )
 }
 
 pub fn vmt_reflectivity(text: &str) -> Option<[f32; 3]> {
@@ -92,22 +94,37 @@ mod tests {
 
     #[test]
     fn a_commented_out_override_is_not_read() {
-        assert_eq!(vmt_reflectivity("{
+        assert_eq!(
+            vmt_reflectivity(
+                "{
 //\"$reflectivity\" \"[.2 .3 .2]\"
-}"), None);
+}"
+            ),
+            None
+        );
     }
 
     #[test]
     fn the_base_texture_is_read_from_the_vmt_text() {
-        assert_eq!(vmt_basetexture("\"LightmappedGeneric\"
+        assert_eq!(
+            vmt_basetexture(
+                "\"LightmappedGeneric\"
 {
 	\"$basetexture\" \"tools/toolshint\"
 }
-"), Some("tools/toolshint".to_owned()));
-        assert_eq!(vmt_basetexture("\"X\"
+"
+            ),
+            Some("tools/toolshint".to_owned())
+        );
+        assert_eq!(
+            vmt_basetexture(
+                "\"X\"
 {
 }
-"), None);
+"
+            ),
+            None
+        );
     }
 
     #[test]

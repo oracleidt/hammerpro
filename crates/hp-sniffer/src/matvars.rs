@@ -267,7 +267,8 @@ pub fn read_shader_defaults<S: MemSource + ?Sized>(src: &S, modules: &[&str]) ->
     let mut d = ShaderDefaults::default();
     for m in modules {
         let Some(base) = src.module_base(m) else { continue };
-        let regions: Vec<_> = src.regions().into_iter().filter(|r| r.image && r.base >= base && r.base < base + 0x40_0000).collect();
+        let regions: Vec<_> =
+            src.regions().into_iter().filter(|r| r.image && r.base >= base && r.base < base + 0x40_0000).collect();
         let hi = regions.iter().map(|r| r.base + r.size).max().unwrap_or(base);
         let mut image = vec![0u8; (hi - base) as usize];
         for r in &regions {
@@ -348,7 +349,8 @@ pub fn derived_values(all: &[(String, Vec<MatVar>)]) -> std::collections::HashSe
         .collect()
 }
 
-const SPRITE_ORIENTATIONS: [&str; 5] = ["parallel_upright", "facing_upright", "vp_parallel", "oriented", "vp_parallel_oriented"];
+const SPRITE_ORIENTATIONS: [&str; 5] =
+    ["parallel_upright", "facing_upright", "vp_parallel", "oriented", "vp_parallel_oriented"];
 
 pub fn sprite_orientation(text: &str) -> Option<String> {
     let index = text.trim().parse::<f32>().ok()?;
@@ -381,7 +383,9 @@ pub fn rebuild_vmt(
         if matches!(v.value, VarValue::Texture(ref t) | VarValue::Material(ref t) if t.is_empty()) {
             continue;
         }
-        if defaults.is_default(&lname, &text) || derived.contains(&(shader.to_owned(), lname.clone(), text.to_ascii_lowercase())) {
+        if defaults.is_default(&lname, &text)
+            || derived.contains(&(shader.to_owned(), lname.clone(), text.to_ascii_lowercase()))
+        {
             continue;
         }
         let text = if lname == "$spriteorientation" { sprite_orientation(&text).unwrap_or(text) } else { text };

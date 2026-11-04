@@ -396,6 +396,7 @@ fn sky_background_and_3d_skybox() {
         sky_paint: None,
         sky_3d: Some(Sky3d { origin: [10_000.0, 0.0, 0.0], scale: 16.0 }),
         fog: None,
+        sky_fog: None,
     });
     r.set_view_options(
         1,

@@ -49,9 +49,9 @@ Sous les arguments du jeu, les options de lancement (**Démarrer le jeu :** apr�
 
 | Préréglage | Géométrie | Visibilité | Éclairage | Empaquetage |
 |---|---|---|---|---|
-| **Brouillon** | complète, arrêt sur fuite | Rapide (`-fastvis`) | Brouillon (`-bounce 1 -fast`), une seule plage dynamique, sans occlusion ambiante | non (addon de développement) |
-| **Normal** | complète | Normal (`-vis`) | Normal (aucun paramètre en plus), occlusion ambiante | non (addon de développement) |
-| **Final** | complète | Normal (`-vis`) | Final (`-final -StaticPropLighting`), toujours LDR + HDR, occlusion ambiante à 64 rayons | oui |
+| **Brouillon** | complète, arrêt sur fuite | Rapide (`-fastvis`) | Brouillon (`-bounce 1 -fast`), une seule plage dynamique | non (addon de développement) |
+| **Normal** | complète | Normal (`-vis`) | Normal (aucun paramètre en plus) | non (addon de développement) |
+| **Final** | complète | Normal (`-vis`) | Final (`-final -StaticPropLighting`), toujours LDR + HDR | oui |
 | **Personnalisé** | vos choix dans les listes d'étapes | | | selon la règle |
 
 Changer une liste d'étape passe le préréglage en **Personnalisé**, sauf si les choix correspondent à un préréglage nommé.

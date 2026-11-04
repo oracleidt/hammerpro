@@ -64,7 +64,7 @@ pub fn controller_fog(e: &Entity) -> Fog {
     } else {
         e.get("fogdir").and_then(floats3).map_or([1.0, 0.0, 0.0], |d| d.map(|v| v as f32))
     };
-    let start = num(e, "fogstart", 0.0).max(0.0);
+    let start = num(e, "fogstart", 0.0).clamp(-1.0e6, 1.0e6);
     let far_z = num(e, "farz", -1.0);
     Fog {
         color,
@@ -132,6 +132,13 @@ pub fn is_master(e: &Entity) -> bool {
 pub fn global_fog(doc: &Document, chosen: Option<Id>) -> Option<Fog> {
     let (_, e) = global_controller(doc, chosen)?;
     fog_enabled(e).then(|| controller_fog(e))
+}
+
+pub fn sky_camera_fog(e: &Entity) -> Option<Fog> {
+    if !hp_editor::sky::is_sky_camera(e) || !fog_enabled(e) {
+        return None;
+    }
+    Some(Fog { far_z: 0.0, ..controller_fog(e) })
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -591,7 +598,7 @@ mod tests {
             "env_fog_controller",
             &[("fogstart", "-50"), ("fogend", "nan"), ("fogmaxdensity", "4"), ("fogcolor", "a b c"), ("farz", "-1")],
         ));
-        assert_eq!((f.start, f.end, f.max_density, f.far_z), (0.0, 4096.0, 1.0, 0.0));
+        assert_eq!((f.start, f.end, f.max_density, f.far_z), (-50.0, 4096.0, 1.0, 0.0), "a negative start is kept");
         assert_eq!(f.color, [1.0; 3]);
         assert_eq!(f.color2, f.color);
         let angled = controller_fog(&ent(1, "env_fog_controller", &[("use_angles", "1"), ("angles", "-90 0 0")]));
@@ -599,6 +606,29 @@ mod tests {
         assert!(name_matches("cave*", "CAVE_fog") && name_matches("Cave_Fog", "cave_fog"));
         assert!(!name_matches("cave", "cave_fog") && !name_matches("", "a") && !name_matches("*x", "a"));
         assert!(!name_matches("é*", "e"), "byte boundaries are safe");
+    }
+
+    #[test]
+    fn the_sky_camera_fog_follows_its_own_keys() {
+        let keys: &[(&str, &str)] = &[
+            ("fogenable", "1"),
+            ("fogcolor", "255 0 0"),
+            ("fogcolor2", "0 0 255"),
+            ("fogblend", "1"),
+            ("fogstart", "100"),
+            ("fogend", "300"),
+            ("fogmaxdensity", "0.5"),
+            ("use_angles", "1"),
+            ("angles", "0 90 0"),
+        ];
+        let f = sky_camera_fog(&ent(1, "sky_camera", keys)).expect("sky fog on");
+        assert_eq!((f.color, f.color2, f.blend), ([1.0, 0.0, 0.0], [0.0, 0.0, 1.0], true));
+        assert_eq!((f.start, f.end, f.max_density, f.far_z), (100.0, 300.0, 0.5, 0.0));
+        assert!((f.dir[1] - 1.0).abs() < 1e-6, "use_angles takes the camera angles: {:?}", f.dir);
+        let mut off = keys.to_vec();
+        off[0] = ("fogenable", "0");
+        assert!(sky_camera_fog(&ent(1, "sky_camera", &off)).is_none());
+        assert!(sky_camera_fog(&ent(1, "env_fog_controller", keys)).is_none());
     }
 
     #[test]

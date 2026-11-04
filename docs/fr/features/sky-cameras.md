@@ -17,6 +17,8 @@ Une `sky_camera` se trouve dans une petite pièce (la skybox 3D) que le jeu dess
 
 Avec **Skybox 3D** activé (par défaut, `render.skybox_3d`), la pièce autour de la sky_camera est dessinée autour de la map à son `scale`, comme en jeu. **Aperçu du ciel** (`render.sky_preview`, activé) dessine derrière le ciel 2D du `skyname` du worldspawn. Les faces de ciel (`toolsskybox`) gardent leur texture d'outil, sauf si **Voir le ciel à travers toolsskybox** est activé (**Paramètres > Rendu**). `Alt+V` affiche « Skybox 3D affichée » ou « Skybox 3D masquée ».
 
+Avec **Aperçu du brouillard** activé, la skybox 3D prend le brouillard de sa sky_camera (**Fog Enable**, couleurs, mélange, direction, début, fin, densité max), mesuré en unités de la skybox, et jamais le brouillard de la map, comme en jeu ; voir [Brouillard de la map](render-modes-display.md#brouillard-de-la-map).
+
 Une sky_camera sans `scale` valide (un nombre entier d'au moins 1) utilise 16, la valeur par défaut du FGD, et est marquée « non valide » dans les menus.
 
 ## Plusieurs sky_camera

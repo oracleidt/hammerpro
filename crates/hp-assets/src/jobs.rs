@@ -6,7 +6,7 @@ use hp_fs::AssetEntry;
 
 use crate::material::{MaterialData, material_job};
 use crate::models::{PreparedModel, model_job};
-use crate::queue::{BC_YES, BoundsState, FsEnv, Shared, THUMB_STALE_FRAMES};
+use crate::queue::{BC_YES, BoundsState, FsEnv, INFLIGHT_TEXTURE_BYTES, Shared, THUMB_STALE_FRAMES};
 use crate::texture::{PreparedTexture, TexFailure, TexTarget, prepare_texture};
 use crate::thumb_cache::ThumbDiskCache;
 
@@ -71,7 +71,7 @@ pub(crate) enum MountOutcome {
 
 pub(crate) enum JobResult {
     Material { name: String, epoch: u64, data: MaterialData },
-    Texture { name: String, target: TexTarget, epoch: u64, data: Option<PreparedTexture> },
+    Texture { name: String, target: TexTarget, epoch: u64, data: Option<PreparedTexture>, held: crate::queue::Held },
     Thumb { name: String, epoch: u64, data: Option<ThumbPixels> },
     ThumbDropped { name: String },
     Model { path: String, epoch: u64, data: Result<Arc<PreparedModel>, String> },
@@ -90,9 +90,12 @@ pub(crate) fn run(job: Job, shared: &Shared) -> Option<JobResult> {
             Some(JobResult::Material { name, epoch: env.epoch, data })
         }
         Job::Texture { name, target, env } => {
+            shared.inflight.wait_below(INFLIGHT_TEXTURE_BYTES, &shared.shutdown);
             let bc = shared.bc.load(Ordering::Relaxed) == BC_YES;
             let data = prepare_texture(&env.fs, &name, bc).map_err(|f| shared.report_texture(env.epoch, f)).ok();
-            Some(JobResult::Texture { name, target, epoch: env.epoch, data })
+            let bytes = data.as_ref().map_or(0, |p| p.upload.levels.iter().map(|l| l.len() as u64).sum());
+            let held = shared.inflight.hold(bytes);
+            Some(JobResult::Texture { name, target, epoch: env.epoch, data, held })
         }
         Job::Thumb { name, fresh, last_seen, env } => {
             let frame = shared.current_frame();

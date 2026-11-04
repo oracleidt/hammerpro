@@ -199,3 +199,52 @@ fn baked_faces_draw_over_the_world() {
     r.add_lightmap_block(2, &[LightmapBatch { material: MAT, vertices: &verts, indices: &[0, 1, 99] }]);
     assert!(!r.ensure_lightmap_layers(64, 0));
 }
+
+#[test]
+fn the_baked_view_draws_the_lightmaps_without_real_time_light() {
+    let Some((device, queue)) = gpu() else {
+        eprintln!("no GPU adapter: test skipped");
+        return;
+    };
+    let mut r = Renderer::new(&device, &queue);
+    r.set_material(MAT, &MaterialDesc { texture: None, tint: [1.0; 4], ..Default::default() });
+    r.upsert_object(FLOOR, floor_mesh());
+    let sun = PreviewLight {
+        kind: LightKind::Directional { dir: [0.2, 0.1, -1.0] },
+        pos: [0.0; 3],
+        color: [1.0, 1.0, 1.0],
+        intensity: 1.0,
+        range: 0.0,
+        falloff: None,
+    };
+    let lamp = PreviewLight { kind: LightKind::Point, pos: [0.0, 0.0, 100.0], range: 2000.0, ..sun };
+    r.set_lights(&[sun, lamp], [0.1; 3]);
+    r.set_sun(SunParams { spread_deg: 0.0, sky_ambient: true });
+    r.render_view(0, &params(RenderMode::Lit), &Overlay::default());
+    let lit_draws = r.stats().draw_calls;
+    r.render_view(0, &params(RenderMode::Textured), &Overlay::default());
+    let textured_draws = r.stats().draw_calls;
+    assert!(lit_draws > textured_draws, "the Lit mode draws its shadow maps: {lit_draws} vs {textured_draws}");
+
+    r.add_lightmap_faces(&[(
+        0,
+        LightmapFace { object: FLOOR, generation: r.lightmap_generation(FLOOR), scale: 16.0, flags: 0 },
+    )]);
+    let verts = floor_lm(0);
+    r.add_lightmap_block(1, &[LightmapBatch { material: MAT, vertices: &verts, indices: &[0, 1, 2, 0, 2, 3] }]);
+    assert!(r.ensure_lightmap_layers(64, 1));
+    let texels = vec![texel(0.0, 1.0, 0.0); 33 * 33];
+    r.write_lightmap(0, LightmapRect { layer: 0, x: 0, y: 0, w: 33, h: 33, density: 1.0, bumped: false }, &texels);
+    r.set_lightmap_display(LightmapDisplay::Baked, 1.0);
+    r.render_view(0, &params(RenderMode::Lit), &Overlay::default());
+    let baked_draws = r.stats().draw_calls;
+    assert!(baked_draws <= textured_draws, "no shadow map, sky map or light work: {baked_draws} vs {textured_draws}");
+    let p = pixel(&r, 64, 64);
+    assert!(p[1] > 150 && p[0] < 60, "the lightmap shows {p:?}");
+
+    r.upsert_object(FLOOR, floor_mesh());
+    r.render_view(0, &params(RenderMode::Lit), &Overlay::default());
+    assert!(r.stats().draw_calls <= textured_draws, "still no real time light work");
+    let stale = pixel(&r, 64, 64);
+    assert!(stale[0] > 60 && stale[0].abs_diff(stale[1]) < 30, "an edited face waits, lit by the sun alone: {stale:?}");
+}

@@ -49,7 +49,6 @@ fn u64_at(d: &[u8], at: usize) -> u64 {
     u64::from_le_bytes([d[at], d[at + 1], d[at + 2], d[at + 3], d[at + 4], d[at + 5], d[at + 6], d[at + 7]])
 }
 
-
 fn u32_at(d: &[u8], at: usize) -> u32 {
     u32::from_le_bytes([d[at], d[at + 1], d[at + 2], d[at + 3]])
 }
@@ -138,7 +137,8 @@ pub fn read_key_names<S: MemSource + ?Sized>(src: &S, system: u64) -> Option<Key
 
 fn read_wide<S: MemSource + ?Sized>(src: &S, addr: u64) -> Option<String> {
     let raw = src.read_vec(addr, 2048);
-    let units: Vec<u16> = raw.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).take_while(|u| *u != 0).collect();
+    let units: Vec<u16> =
+        raw.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).take_while(|u| *u != 0).collect();
     Some(String::from_utf16_lossy(&units))
 }
 
@@ -237,7 +237,6 @@ pub struct MemMaterial {
     pub from_variables: bool,
 }
 
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct MemTexture {
     pub address: u64,
@@ -274,7 +273,11 @@ pub fn find_textures<S: MemSource + ?Sized>(src: &S, opts: &ScanOptions) -> Vec<
     let finder = memchr::memmem::Finder::new(&needle).into_owned();
     let scan = ScanOptions { overlap: TEXTURE_SIZE, writable_only: true, ..*opts };
     let mut addrs: Vec<u64> = par_chunks(src, &scan, |base, data, own| {
-        finder.find_iter(data).filter(|&j| j < own && (base + j as u64).is_multiple_of(4)).map(|j| base + j as u64).collect::<Vec<u64>>()
+        finder
+            .find_iter(data)
+            .filter(|&j| j < own && (base + j as u64).is_multiple_of(4))
+            .map(|j| base + j as u64)
+            .collect::<Vec<u64>>()
     })
     .into_iter()
     .flatten()
@@ -332,7 +335,8 @@ pub fn infer_key_names<S: MemSource + ?Sized>(src: &S, opts: &ScanOptions, roots
         .iter()
         .filter_map(|&r| {
             let rec = src.read_vec(r, KV_SIZE);
-            (rec.len() == KV_SIZE).then(|| (r, u64::from(rec[KV_NAME_HIGH_AT]) | (u64::from(u16_at(&rec, KV_NAME_LOW_AT)) << 8)))
+            (rec.len() == KV_SIZE)
+                .then(|| (r, u64::from(rec[KV_NAME_HIGH_AT]) | (u64::from(u16_at(&rec, KV_NAME_LOW_AT)) << 8)))
         })
         .take(24)
         .collect();
@@ -380,7 +384,12 @@ pub fn find_key_values_system<S: MemSource + ?Sized>(src: &S, module: u64, vtabl
         while off < r.size {
             let n = (r.size - off).min(8 << 20) as usize;
             let data = src.read_vec(r.base + off, n);
-            hits.extend(finder.find_iter(&data).filter(|&j| (r.base + off + j as u64).is_multiple_of(8)).map(|j| r.base + off + j as u64));
+            hits.extend(
+                finder
+                    .find_iter(&data)
+                    .filter(|&j| (r.base + off + j as u64).is_multiple_of(8))
+                    .map(|j| r.base + off + j as u64),
+            );
             off += n as u64;
         }
     }
@@ -393,7 +402,11 @@ pub fn material_key_roots<S: MemSource + ?Sized>(src: &S, opts: &ScanOptions, ma
     let finder = memchr::memmem::Finder::new(&needle).into_owned();
     let scan = ScanOptions { overlap: MATERIAL_SIZE, writable_only: true, ..*opts };
     let addrs: Vec<u64> = par_chunks(src, &scan, |base, data, own| {
-        finder.find_iter(data).filter(|&j| j < own && (base + j as u64).is_multiple_of(4)).map(|j| base + j as u64).collect::<Vec<u64>>()
+        finder
+            .find_iter(data)
+            .filter(|&j| j < own && (base + j as u64).is_multiple_of(4))
+            .map(|j| base + j as u64)
+            .collect::<Vec<u64>>()
     })
     .into_iter()
     .flatten()
@@ -421,14 +434,19 @@ pub fn find_materials<S: MemSource + ?Sized>(src: &S, opts: &ScanOptions) -> Vec
     let finder = memchr::memmem::Finder::new(&needle).into_owned();
     let scan = ScanOptions { overlap: MATERIAL_SIZE, writable_only: true, ..*opts };
     let mut addrs: Vec<u64> = par_chunks(src, &scan, |base, data, own| {
-        finder.find_iter(data).filter(|&j| j < own && (base + j as u64).is_multiple_of(4)).map(|j| base + j as u64).collect::<Vec<u64>>()
+        finder
+            .find_iter(data)
+            .filter(|&j| j < own && (base + j as u64).is_multiple_of(4))
+            .map(|j| base + j as u64)
+            .collect::<Vec<u64>>()
     })
     .into_iter()
     .flatten()
     .collect();
     addrs.sort_unstable();
     addrs.dedup();
-    let tables = crate::matvars::SymbolTables { var_names: mat + crate::matvars::VAR_NAMES_RVA, object_names: table_cell };
+    let tables =
+        crate::matvars::SymbolTables { var_names: mat + crate::matvars::VAR_NAMES_RVA, object_names: table_cell };
     let defaults = crate::matvars::read_shader_defaults(src, &SHADER_MODULES);
     let mut out = Vec::new();
     let mut pending: Vec<(usize, Option<String>, Vec<crate::matvars::MatVar>)> = Vec::new();
@@ -460,8 +478,11 @@ pub fn find_materials<S: MemSource + ?Sized>(src: &S, opts: &ScanOptions) -> Vec
         pending.push((out.len(), shader.clone(), vars));
         out.push(MemMaterial { address: a, name, shader, vmt: None, from_variables: true });
     }
-    let population: Vec<(String, Vec<crate::matvars::MatVar>)> =
-        pending.iter().filter(|(_, s, v)| s.is_some() && !v.is_empty()).map(|(_, s, v)| (s.clone().unwrap_or_default(), v.clone())).collect();
+    let population: Vec<(String, Vec<crate::matvars::MatVar>)> = pending
+        .iter()
+        .filter(|(_, s, v)| s.is_some() && !v.is_empty())
+        .map(|(_, s, v)| (s.clone().unwrap_or_default(), v.clone()))
+        .collect();
     let derived = crate::matvars::derived_values(&population);
     let mut staged: Vec<(usize, String, Vec<crate::proxymem::ProxyBlock>)> = Vec::new();
     for (at, shader, vars) in pending {
@@ -471,7 +492,8 @@ pub fn find_materials<S: MemSource + ?Sized>(src: &S, opts: &ScanOptions) -> Vec
             staged.push((at, text, crate::proxymem::read_proxies(src, &rec, &tables)));
         }
     }
-    let lua_keys: Vec<String> = staged.iter().flat_map(|(_, _, b)| b.iter()).filter_map(|b| b.lua_key.clone()).collect();
+    let lua_keys: Vec<String> =
+        staged.iter().flat_map(|(_, _, b)| b.iter()).filter_map(|b| b.lua_key.clone()).collect();
     let lua = crate::luaparam::proxy_values(src, opts, &lua_keys);
     for (at, text, mut blocks) in staged {
         for b in blocks.iter_mut() {
@@ -538,7 +560,8 @@ mod tests {
             let taken = std::mem::take(&mut self.strings);
             let strings = self.alloc(taken);
             let mut system = vec![0u8; 0x80];
-            system[KV_SYSTEM_STRINGS_AT as usize..KV_SYSTEM_STRINGS_AT as usize + 8].copy_from_slice(&strings.to_le_bytes());
+            system[KV_SYSTEM_STRINGS_AT as usize..KV_SYSTEM_STRINGS_AT as usize + 8]
+                .copy_from_slice(&strings.to_le_bytes());
             self.alloc(system)
         }
     }
@@ -612,7 +635,8 @@ mod tests {
         let mut sys_obj = vec![0u8; 0x80];
         sys_obj[0..8].copy_from_slice(&(kv_base + KEYVALUES_SYSTEM_VTABLE_RVA).to_le_bytes());
         let strings = read_u64(&m, system + KV_SYSTEM_STRINGS_AT);
-        sys_obj[KV_SYSTEM_STRINGS_AT as usize..KV_SYSTEM_STRINGS_AT as usize + 8].copy_from_slice(&strings.to_le_bytes());
+        sys_obj[KV_SYSTEM_STRINGS_AT as usize..KV_SYSTEM_STRINGS_AT as usize + 8]
+            .copy_from_slice(&strings.to_le_bytes());
         m.add(kv_base + 0x2000, sys_obj);
         let table = 0x5000_0000u64;
         let mut t = vec![0u8; 0x80];

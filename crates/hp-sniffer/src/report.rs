@@ -471,7 +471,12 @@ impl SniffReport {
             ));
             line(format!(
                 "  strip files (.dx90.vtx) rebuilt {} ({} bytes, {} not whole, {} failed); physics files (.phy) rebuilt {} ({} bytes)",
-                a.memory_vtxs, a.memory_vtx_bytes, a.memory_vtx_partial, a.memory_vtx_failed, a.memory_phys, a.memory_phy_bytes
+                a.memory_vtxs,
+                a.memory_vtx_bytes,
+                a.memory_vtx_partial,
+                a.memory_vtx_failed,
+                a.memory_phys,
+                a.memory_phy_bytes
             ));
         }
         if a.textures_loaded > 0 {
@@ -482,7 +487,11 @@ impl SniffReport {
             if a.textures_with_file > 0 {
                 line(format!(
                     "  texture copies in the process memory: of {} textures with a file on this computer {} have the whole file resident, {} partly, the others live in video memory only; {} whole texture files ({} bytes) are resident in all",
-                    a.textures_with_file, a.textures_resident_whole, a.textures_resident_partial, a.vtf_blobs_resident, a.vtf_blobs_resident_bytes
+                    a.textures_with_file,
+                    a.textures_resident_whole,
+                    a.textures_resident_partial,
+                    a.vtf_blobs_resident,
+                    a.vtf_blobs_resident_bytes
                 ));
             }
         }

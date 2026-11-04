@@ -115,8 +115,6 @@ Lighting. With no range option, `--rad` computes LDR only.
 | `-StaticPropNormals` | | Debug: props show their normals. | off |
 | `-nostaticpropshadows` | | Hammer Pro: no static prop shadow at all. | off |
 | `-nodispshadows` | | Hammer Pro: no displacement shadow. | off |
-| `-ao` / `-noao` | | Hammer Pro: ambient occlusion on or off. | on, off with `-fast` |
-| `-aoradius` / `-aostrength` / `-aosamples` | number | Ambient occlusion settings. | 96 / 0.75 / 32 (64 with `-final`) |
 | `-noaddons`, `-wsaddons`, `-nowsaddons`, `-serveraddons`, `-mount_appid` | | Content mounted for the models, like `--bspc`. | addons and Workshop items mounted |
 | `-radius_override` | units | Accepted and skipped (a VVIS option often passed to every tool). | |
 
@@ -124,7 +122,7 @@ Every other option gets `Warning: option ... is not supported by this lighting c
 
 Texture light files are read in this order: `lights.rad` of the game (the game folder, then the folders of the Garry's Mod install, its `bin` folders last), the `-lights` file, the file named by the worldspawn key `_lightsrad`, then `<map>.rad` next to the map.
 
-While it lights, `--rad` lists its stages (`Lighting stages: direct lighting, ambient occlusion, bounce rays, bounced light, leaf ambient, static props, writing`), then reports each stage that runs longer than a second:
+While it lights, `--rad` lists its stages (`Lighting stages: direct lighting, bounce rays, bounced light, leaf ambient, static props, writing`), then reports each stage that runs longer than a second:
 
 ```
 Lighting 41%: direct lighting 60% (stage 2 of 7), 27 s elapsed, about 17 s left

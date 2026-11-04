@@ -116,13 +116,13 @@ impl ClientTracker {
         let (class_index, model_index) = world.map(|w| (w.class_index, w.model_index)).unwrap_or((0, 0));
         let bsp_name = map_hint.map(|m| format!("maps/{}.bsp", m.trim().to_ascii_lowercase()));
         let entities = tracker.read_list(src).unwrap_or_default();
-        let from_objects = |name: &str| -> Vec<StringTable> { tables.iter().filter(|t| t.name == name).cloned().collect() };
-        let mut class_candidates: Vec<StringTable> = from_objects("networkstring")
-            .into_iter()
-            .filter(|t| world_class_ok(t, class_index))
-            .collect();
+        let from_objects =
+            |name: &str| -> Vec<StringTable> { tables.iter().filter(|t| t.name == name).cloned().collect() };
+        let mut class_candidates: Vec<StringTable> =
+            from_objects("networkstring").into_iter().filter(|t| world_class_ok(t, class_index)).collect();
         if best_score(&class_candidates, |t| class_score(t, &entities)) == 0 && class_index > 0 {
-            for items in scan_item_arrays(src, "worldspawn", class_index as usize, &|i| i.iter().flatten().count() > 8) {
+            for items in scan_item_arrays(src, "worldspawn", class_index as usize, &|i| i.iter().flatten().count() > 8)
+            {
                 class_candidates.push(StringTable { name: "networkstring".to_owned(), items });
             }
         }
@@ -133,7 +133,9 @@ impl ClientTracker {
         if best_score(&model_candidates, |t| model_score(t, &entities)) == 0
             && let Some(bsp) = bsp_name.as_deref()
         {
-            for items in scan_item_arrays(src, bsp, (model_index & MODEL_SLOT_MASK).max(1) as usize, &model_items_look_right) {
+            for items in
+                scan_item_arrays(src, bsp, (model_index & MODEL_SLOT_MASK).max(1) as usize, &model_items_look_right)
+            {
                 model_candidates.push(StringTable { name: "modelprecache".to_owned(), items });
             }
         }
@@ -146,7 +148,9 @@ impl ClientTracker {
             );
         }
         if tracker.models.is_empty() {
-            tracker.notes.push("the model string table of this map was not found: networked models are not named".to_owned());
+            tracker
+                .notes
+                .push("the model string table of this map was not found: networked models are not named".to_owned());
         }
         Ok(tracker)
     }
@@ -172,7 +176,9 @@ impl ClientTracker {
     fn read_list<S: MemSource + ?Sized>(&self, src: &S) -> Option<Vec<ClientEntity>> {
         let raw = read_span(src, self.list_address, LIST_OFFSETS[LIST_OFFSETS.len() - 1] + ENTITY_SLOTS * ENTRY_STRIDE);
         let first = LIST_OFFSETS.iter().copied().find(|&o| {
-            rd64(&raw, o).filter(|p| user_pointer(*p)).is_some_and(|p| self.class_of(src, p).as_deref() == Some("C_World"))
+            rd64(&raw, o)
+                .filter(|p| user_pointer(*p))
+                .is_some_and(|p| self.class_of(src, p).as_deref() == Some("C_World"))
         })?;
         let mut out = Vec::new();
         for slot in 0..ENTITY_SLOTS {
@@ -203,7 +209,8 @@ impl ClientTracker {
         let map_id = read_i32(&d, o.map_id)?;
         let class_index = read_i32(&d, o.class_index).unwrap_or(0);
         let model_index = read_i32(&d, o.model_index).unwrap_or(0);
-        let classname = if class_index > 0 { lookup(&self.classes, class_index).unwrap_or_default() } else { String::new() };
+        let classname =
+            if class_index > 0 { lookup(&self.classes, class_index).unwrap_or_default() } else { String::new() };
         let model_slot = model_index & MODEL_SLOT_MASK;
         let model = if model_slot > 1 { lookup(&self.models, model_slot).unwrap_or_default() } else { String::new() };
         let color = read_i32(&d, o.color).map(|c| c.to_le_bytes()).unwrap_or([255; 4]);
@@ -726,7 +733,8 @@ mod tests {
     #[test]
     fn an_item_with_a_model_on_the_client_and_none_in_the_lump_is_not_added_twice() {
         let mut text = lump();
-        text.push_str("{
+        text.push_str(
+            "{
 \"classname\" \"weapon_smg1\"
 \"origin\" \"10 10 10\"
 }
@@ -734,7 +742,8 @@ mod tests {
 \"classname\" \"weapon_smg1\"
 \"origin\" \"500 500 10\"
 }
-");
+",
+        );
         let mut near = client(6, 1300, "weapon_smg1", "C_WeaponSMG1", [498.0, 502.0, -8.0]);
         near.model = "models/weapons/w_smg1.mdl".into();
         let mut other = client(7, 1299, "weapon_smg1", "C_WeaponSMG1", [12.0, 9.0, -9.0]);

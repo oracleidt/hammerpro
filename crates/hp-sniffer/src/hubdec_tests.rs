@@ -23,10 +23,8 @@ fn a_node_record_becomes_a_bsp_node() {
     let nodes_addr = 0x2000u64;
     let leafs_addr = 0x3000u64;
     let mut nodes = vec![0u8; p.node_stride * 2];
-    let specs = [
-        (3u64, nodes_addr + p.node_stride as u64, leafs_addr),
-        (5, leafs_addr + p.leaf_stride as u64, leafs_addr),
-    ];
+    let specs =
+        [(3u64, nodes_addr + p.node_stride as u64, leafs_addr), (5, leafs_addr + p.leaf_stride as u64, leafs_addr)];
     for (i, (plane, c0, c1)) in specs.into_iter().enumerate() {
         let r = &mut nodes[i * p.node_stride..(i + 1) * p.node_stride];
         r[p.node_plane..p.node_plane + 8].copy_from_slice(&(planes_addr + plane * 20).to_le_bytes());
@@ -40,7 +38,8 @@ fn a_node_record_becomes_a_bsp_node() {
     }
     let mut mem = VecMem::default();
     mem.add(nodes_addr, nodes);
-    let hub = hub_with(&[(Field::Planes, 10, planes_addr), (Field::Nodes, 2, nodes_addr), (Field::Leafs, 4, leafs_addr)]);
+    let hub =
+        hub_with(&[(Field::Planes, 10, planes_addr), (Field::Nodes, 2, nodes_addr), (Field::Leafs, 4, leafs_addr)]);
     let lump = node_lump(&mem, &hub, &p).expect("nodes");
     assert_eq!(lump.len(), 64);
     assert_eq!(i32_at(&lump, 0), 3);
@@ -352,7 +351,8 @@ fn displacement_records_take_the_engine_fields() {
     let mut lump = vec![0u8; 176 * 2];
     lump[176 + 36..176 + 38].copy_from_slice(&9u16.to_le_bytes());
     let mut extras = HashMap::new();
-    extras.insert(9usize, DispExtra { contents: 1, sample_start: 440, neighbors: vec![7; 88], allowed: vec![0xff; 40] });
+    extras
+        .insert(9usize, DispExtra { contents: 1, sample_start: 440, neighbors: vec![7; 88], allowed: vec![0xff; 40] });
     assert_eq!(patch_dispinfo(&mut lump, &extras), 1);
     assert_eq!(i32_at(&lump, 176 + 32), 1);
     assert_eq!(i32_at(&lump, 176 + 44), 440);
@@ -447,7 +447,16 @@ fn a_custom_key_inside_a_known_block_keeps_its_text_and_a_break_block_stays_on_o
     let mut values = Vec::new();
     values.extend_from_slice(&0i32.to_le_bytes());
     let d = pack(
-        &[(1, 0, 0, 0), (0, 0, 0, 0), (0, 0xffff, 0, 1), (2, 0, 0, 0), (1, 0xffff, 2, 0), (0, 0xffff, 3, 4), (0, 0xffff, 5, 6), (2, 0xffff, 0, 0)],
+        &[
+            (1, 0, 0, 0),
+            (0, 0, 0, 0),
+            (0, 0xffff, 0, 1),
+            (2, 0, 0, 0),
+            (1, 0xffff, 2, 0),
+            (0, 0xffff, 3, 4),
+            (0, 0xffff, 5, 6),
+            (2, 0xffff, 0, 0),
+        ],
         &["massbias", "2.000000", "break", "model", "gibs/x", "health", "0"],
         &values,
     );
@@ -478,7 +487,10 @@ fn a_ragdoll_constraint_block_is_written_with_its_float_and_int_keys() {
     values.extend_from_slice(&1i32.to_le_bytes());
     values.extend_from_slice(&(-40.0f32).to_le_bytes());
     let d = pack(&[(1, 2, 0, 0), (0, 2, 0, 0), (0, 2, 8, 4), (2, 2, 0, 0)], &[], &values);
-    assert_eq!(decode_packed_keys(&d).expect("keys"), "ragdollconstraint {\n\"parent\" \"1\"\n\"zmin\" \"-40.000000\"\n}\n");
+    assert_eq!(
+        decode_packed_keys(&d).expect("keys"),
+        "ragdollconstraint {\n\"parent\" \"1\"\n\"zmin\" \"-40.000000\"\n}\n"
+    );
 }
 
 #[test]

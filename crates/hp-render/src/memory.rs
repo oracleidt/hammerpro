@@ -30,6 +30,29 @@ pub(crate) fn guarded<T>(device: &wgpu::Device, f: impl FnOnce() -> T) -> (T, bo
     (out, oom)
 }
 
+pub(crate) const STAGING_SLICE: u64 = 16 << 20;
+const STAGING_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
+
+#[derive(Default)]
+pub(crate) struct StagingPacer {
+    pending: u64,
+    last: Option<wgpu::SubmissionIndex>,
+}
+
+impl StagingPacer {
+    pub fn wrote(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, bytes: u64) {
+        self.pending = self.pending.saturating_add(bytes);
+        if self.pending < STAGING_SLICE {
+            return;
+        }
+        self.pending = 0;
+        let index = queue.submit([]);
+        if let Some(prev) = self.last.replace(index) {
+            let _ = device.poll(wgpu::PollType::Wait { submission_index: Some(prev), timeout: Some(STAGING_WAIT) });
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct VramInfo {
     pub budget: u64,

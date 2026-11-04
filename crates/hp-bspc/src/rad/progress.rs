@@ -5,7 +5,6 @@ use std::time::{Duration, Instant};
 pub enum Stage {
     Scene,
     Direct,
-    Occlusion,
     BounceRays,
     Bounces,
     LeafAmbient,
@@ -15,10 +14,9 @@ pub enum Stage {
 }
 
 impl Stage {
-    pub const ALL: [Stage; 9] = [
+    pub const ALL: [Stage; 8] = [
         Stage::Scene,
         Stage::Direct,
-        Stage::Occlusion,
         Stage::BounceRays,
         Stage::Bounces,
         Stage::LeafAmbient,
@@ -31,7 +29,6 @@ impl Stage {
         match self {
             Stage::Scene => "scene",
             Stage::Direct => "direct lighting",
-            Stage::Occlusion => "ambient occlusion",
             Stage::BounceRays => "bounce rays",
             Stage::Bounces => "bounced light",
             Stage::LeafAmbient => "leaf ambient",
@@ -49,7 +46,6 @@ impl Stage {
         match self {
             Stage::Scene => 0.03,
             Stage::Direct => 0.55,
-            Stage::Occlusion => 0.04,
             Stage::BounceRays => 0.08,
             Stage::Bounces => 0.08,
             Stage::LeafAmbient => 0.08,
@@ -66,7 +62,6 @@ impl Stage {
                 "its time grows with the luxels (small lightmap scales), the lights each face sees and the sky of the \
                  light_environment over large outdoor areas; -fast or larger lightmap scales cut it"
             }
-            Stage::Occlusion => "-aosamples and -aoradius set its cost; -noao turns it off",
             Stage::BounceRays => "its time grows with the luxels; -fast or -bounce 0 cut it",
             Stage::Bounces => "-bounce sets the number of passes",
             Stage::LeafAmbient => "maps with very many leaves take long here; -fastambient cuts it",

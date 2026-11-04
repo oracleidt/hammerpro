@@ -141,8 +141,14 @@ fn the_collision_structure_is_found_from_the_entity_text_and_from_the_planes_in_
         let by_planes = find_by_planes(&b.mem, b.planes_at, 8, &[ptr]).expect("by planes");
         assert_eq!(by_text, by_planes, "{ptr}");
         assert_eq!((by_text.planes.count, by_text.nodes.count, by_text.leafs.count), (8, 2, 4));
-        assert_eq!((by_text.empty_leaf, by_text.cmodels.count, by_text.brushes.count, by_text.vis.count), (3, 1, 2, 32));
-        assert!(find_by_entities(&b.mem, &b.entities, &[if ptr == 8 { 4 } else { 8 }]).is_none(), "the other width does not fit");
+        assert_eq!(
+            (by_text.empty_leaf, by_text.cmodels.count, by_text.brushes.count, by_text.vis.count),
+            (3, 1, 2, 32)
+        );
+        assert!(
+            find_by_entities(&b.mem, &b.entities, &[if ptr == 8 { 4 } else { 8 }]).is_none(),
+            "the other width does not fit"
+        );
         assert!(find_by_planes(&b.mem, b.planes_at, 9, &[ptr]).is_none(), "the plane count has to agree");
         assert!(find_by_entities(&b.mem, &[(0x28_0000, 5000)], &[ptr]).is_none(), "the text length has to agree");
     }

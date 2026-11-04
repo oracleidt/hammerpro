@@ -22,6 +22,7 @@ pub(crate) const SKY_WGSL: &str = shader_source!("sky.wgsl");
 pub(crate) const SUN_GLOW_WGSL: &str = shader_source!("material.wgsl", "parallax.wgsl", "sun_glow.wgsl");
 pub(crate) const DETAIL_WGSL: &str = shader_source!("material.wgsl", "parallax.wgsl", "detail.wgsl");
 
+#[derive(Clone)]
 pub(crate) struct Shared {
     pub view_bgl: wgpu::BindGroupLayout,
     pub material_bgl: wgpu::BindGroupLayout,
@@ -502,54 +503,56 @@ pub(crate) fn build_with(
     } else {
         wgpu::DepthBiasState::default()
     };
-    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some(d.label),
-        layout: Some(d.layout),
-        vertex: wgpu::VertexState {
-            module: d.module,
-            entry_point: Some(d.vs),
-            compilation_options: wgpu::PipelineCompilationOptions {
-                constants: d.constants,
-                zero_initialize_workgroup_memory: false,
+    crate::pipeline_cache::with(device, |cache| {
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some(d.label),
+            layout: Some(d.layout),
+            vertex: wgpu::VertexState {
+                module: d.module,
+                entry_point: Some(d.vs),
+                compilation_options: wgpu::PipelineCompilationOptions {
+                    constants: d.constants,
+                    zero_initialize_workgroup_memory: false,
+                },
+                buffers: d.buffers,
             },
-            buffers: d.buffers,
-        },
-        primitive: wgpu::PrimitiveState {
-            topology: d.topology,
-            strip_index_format: None,
-            front_face: wgpu::FrontFace::Ccw,
-            cull_mode: d.cull,
-            unclipped_depth: false,
-            polygon_mode,
-            conservative: false,
-        },
-        depth_stencil: Some(wgpu::DepthStencilState {
-            format: DEPTH_FORMAT,
-            depth_write_enabled: Some(d.depth_write),
-            depth_compare: Some(if d.depth_test {
-                wgpu::CompareFunction::GreaterEqual
-            } else {
-                wgpu::CompareFunction::Always
+            primitive: wgpu::PrimitiveState {
+                topology: d.topology,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: d.cull,
+                unclipped_depth: false,
+                polygon_mode,
+                conservative: false,
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_write_enabled: Some(d.depth_write),
+                depth_compare: Some(if d.depth_test {
+                    wgpu::CompareFunction::GreaterEqual
+                } else {
+                    wgpu::CompareFunction::Always
+                }),
+                stencil: wgpu::StencilState::default(),
+                bias,
             }),
-            stencil: wgpu::StencilState::default(),
-            bias,
-        }),
-        multisample: wgpu::MultisampleState { count: samples, mask: !0, alpha_to_coverage_enabled: false },
-        fragment: Some(wgpu::FragmentState {
-            module: d.module,
-            entry_point: Some(d.fs),
-            compilation_options: wgpu::PipelineCompilationOptions {
-                constants: d.constants,
-                zero_initialize_workgroup_memory: false,
-            },
-            targets: &[Some(wgpu::ColorTargetState {
-                format: COLOR_FORMAT,
-                blend: d.blend.state(),
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
-        }),
-        multiview_mask: None,
-        cache: None,
+            multisample: wgpu::MultisampleState { count: samples, mask: !0, alpha_to_coverage_enabled: false },
+            fragment: Some(wgpu::FragmentState {
+                module: d.module,
+                entry_point: Some(d.fs),
+                compilation_options: wgpu::PipelineCompilationOptions {
+                    constants: d.constants,
+                    zero_initialize_workgroup_memory: false,
+                },
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: COLOR_FORMAT,
+                    blend: d.blend.state(),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            multiview_mask: None,
+            cache,
+        })
     })
 }
 
@@ -627,14 +630,46 @@ impl PipelineSet {
         };
         let passes =
             [MeshPass::Opaque, MeshPass::AlphaTest, MeshPass::Translucent, MeshPass::Additive, MeshPass::Modulate];
-        let chunk = passes.map(|p| [mesh("vs_chunk", &chunk_vb, p, false), mesh("vs_chunk", &chunk_vb, p, true)]);
-        let model =
-            passes.map(|p| [mesh("vs_model", &model_mesh_vb, p, false), mesh("vs_model", &model_mesh_vb, p, true)]);
-        let chunk_faded = [false, true]
-            .map(|alpha| [faded("vs_chunk", &chunk_vb, alpha, false), faded("vs_chunk", &chunk_vb, alpha, true)]);
-        let model_faded = [false, true].map(|alpha| {
-            [faded("vs_model", &model_mesh_vb, alpha, false), faded("vs_model", &model_mesh_vb, alpha, true)]
-        });
+        let pair = |a: &(dyn Fn() -> wgpu::RenderPipeline + Sync), b: &(dyn Fn() -> wgpu::RenderPipeline + Sync)| {
+            let (a, b) = rayon::join(a, b);
+            [a, b]
+        };
+        let ((chunk, model), (chunk_faded, model_faded)) = rayon::join(
+            || {
+                rayon::join(
+                    || {
+                        passes.map(|p| {
+                            pair(&|| mesh("vs_chunk", &chunk_vb, p, false), &|| mesh("vs_chunk", &chunk_vb, p, true))
+                        })
+                    },
+                    || {
+                        passes.map(|p| {
+                            pair(&|| mesh("vs_model", &model_mesh_vb, p, false), &|| {
+                                mesh("vs_model", &model_mesh_vb, p, true)
+                            })
+                        })
+                    },
+                )
+            },
+            || {
+                rayon::join(
+                    || {
+                        [false, true].map(|alpha| {
+                            pair(&|| faded("vs_chunk", &chunk_vb, alpha, false), &|| {
+                                faded("vs_chunk", &chunk_vb, alpha, true)
+                            })
+                        })
+                    },
+                    || {
+                        [false, true].map(|alpha| {
+                            pair(&|| faded("vs_model", &model_mesh_vb, alpha, false), &|| {
+                                faded("vs_model", &model_mesh_vb, alpha, true)
+                            })
+                        })
+                    },
+                )
+            },
+        );
 
         let lines = |vs: &str, buffers: &Buffers<'_>, constants: &[(&str, f64)], depth: bool| {
             build(
@@ -955,64 +990,68 @@ impl ShadowPipelines {
         let build = |vs: &str, fs: &str, alpha: bool, buffers: &[Option<wgpu::VertexBufferLayout<'_>>]| {
             let constants: &[(&str, f64)] = &[("ALPHA_TEST", 0.0), ("BLEND_MODE", 0.0)];
             let sky_faces = fs == "fs_sky_cut" || fs == "fs_sky_peel";
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("hp-render shadow"),
-                layout: Some(if alpha { &shared.layout_material } else { &shared.layout_view }),
-                vertex: wgpu::VertexState {
-                    module: &shared.mesh,
-                    entry_point: Some(vs),
-                    compilation_options: wgpu::PipelineCompilationOptions {
-                        constants,
-                        zero_initialize_workgroup_memory: false,
+            crate::pipeline_cache::with(device, |cache| {
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("hp-render shadow"),
+                    layout: Some(if alpha { &shared.layout_material } else { &shared.layout_view }),
+                    vertex: wgpu::VertexState {
+                        module: &shared.mesh,
+                        entry_point: Some(vs),
+                        compilation_options: wgpu::PipelineCompilationOptions {
+                            constants,
+                            zero_initialize_workgroup_memory: false,
+                        },
+                        buffers,
                     },
-                    buffers,
-                },
-                primitive: wgpu::PrimitiveState {
-                    topology: wgpu::PrimitiveTopology::TriangleList,
-                    strip_index_format: None,
-                    front_face: wgpu::FrontFace::Ccw,
-                    cull_mode: None,
-                    unclipped_depth: false,
-                    polygon_mode: wgpu::PolygonMode::Fill,
-                    conservative: false,
-                },
-                depth_stencil: Some(wgpu::DepthStencilState {
-                    format: DEPTH_FORMAT,
-                    depth_write_enabled: Some(true),
-                    depth_compare: Some(if sky_faces {
-                        wgpu::CompareFunction::GreaterEqual
-                    } else {
-                        wgpu::CompareFunction::LessEqual
+                    primitive: wgpu::PrimitiveState {
+                        topology: wgpu::PrimitiveTopology::TriangleList,
+                        strip_index_format: None,
+                        front_face: wgpu::FrontFace::Ccw,
+                        cull_mode: None,
+                        unclipped_depth: false,
+                        polygon_mode: wgpu::PolygonMode::Fill,
+                        conservative: false,
+                    },
+                    depth_stencil: Some(wgpu::DepthStencilState {
+                        format: DEPTH_FORMAT,
+                        depth_write_enabled: Some(true),
+                        depth_compare: Some(if sky_faces {
+                            wgpu::CompareFunction::GreaterEqual
+                        } else {
+                            wgpu::CompareFunction::LessEqual
+                        }),
+                        stencil: wgpu::StencilState::default(),
+                        bias: if sky_faces {
+                            wgpu::DepthBiasState::default()
+                        } else {
+                            wgpu::DepthBiasState { constant: 0, slope_scale: 1.5, clamp: 0.0 }
+                        },
                     }),
-                    stencil: wgpu::StencilState::default(),
-                    bias: if sky_faces {
-                        wgpu::DepthBiasState::default()
-                    } else {
-                        wgpu::DepthBiasState { constant: 0, slope_scale: 1.5, clamp: 0.0 }
-                    },
-                }),
-                multisample: wgpu::MultisampleState::default(),
-                fragment: Some(wgpu::FragmentState {
-                    module: &shared.mesh,
-                    entry_point: Some(fs),
-                    compilation_options: wgpu::PipelineCompilationOptions {
-                        constants,
-                        zero_initialize_workgroup_memory: false,
-                    },
-                    targets: &[],
-                }),
-                multiview_mask: None,
-                cache: None,
+                    multisample: wgpu::MultisampleState::default(),
+                    fragment: Some(wgpu::FragmentState {
+                        module: &shared.mesh,
+                        entry_point: Some(fs),
+                        compilation_options: wgpu::PipelineCompilationOptions {
+                            constants,
+                            zero_initialize_workgroup_memory: false,
+                        },
+                        targets: &[],
+                    }),
+                    multiview_mask: None,
+                    cache,
+                })
             })
         };
-        Self {
+        let set = Self {
             chunk: build("vs_chunk", "fs_shadow_cut", false, &chunk_vb),
             chunk_alpha: build("vs_chunk", "fs_shadow_alpha", true, &chunk_vb),
             model: build("vs_model", "fs_shadow_cut", false, &model_vb),
             model_alpha: build("vs_model", "fs_shadow_alpha", true, &model_vb),
             sky_cut: build("vs_chunk", "fs_sky_cut", false, &chunk_vb),
             sky_peel: build("vs_chunk", "fs_sky_peel", false, &chunk_vb),
-        }
+        };
+        crate::pipeline_cache::save_if_dirty(device);
+        set
     }
 }
 

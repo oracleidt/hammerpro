@@ -95,7 +95,6 @@ Les messages du compilateur sont en anglais, comme ceux de Valve.
 | `in solid volume` | Une entité est dans une brush solide. | Placez-la dans un espace libre. |
 | `findportalside`, `brush with win 0` | Des brushes qui se chevauchent ou invalides. | Nettoyez les brushes à cet endroit. |
 | `max_map_brushes`, `max_map_planes`, `max_map_portals` | Une limite stricte. | Fusionnez des brushes, gardez la géométrie sur la grille, passez les petites brushes en `func_detail`. |
-| `ambient occlusion: radius ..., strength ..., N rays` | Information : les réglages d'occlusion ambiante utilisés. | |
 | `Warning: ... is not supported by the Hammer Pro compiler (ignored)` | Une option de Valve que ce compilateur ne fait pas. | Rien ; retirez-la pour ne plus avoir l'avertissement. |
 | `Warning: Couldn't open texlight file ...` | Un fichier de lumières est introuvable. | Vérifiez `-lights` ou `_lightsrad`. |
 

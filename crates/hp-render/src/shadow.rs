@@ -196,7 +196,7 @@ impl Layers {
         }
     }
 
-    fn from_sun(self) -> bool {
+    fn sun_first(self) -> bool {
         self == Layers::Sun
     }
 
@@ -428,7 +428,7 @@ impl Renderer {
         if self.sky_layers[slot].as_ref().is_none_or(|(k, _)| *k != key) {
             let mut tris = Vec::new();
             self.scene.sky_triangles(travel, &mut tris);
-            let found = sky_layers::analyze(&sky_layers::Basis::of(travel), &tris, which.from_sun());
+            let found = sky_layers::analyze(&sky_layers::Basis::of(travel), &tris, which.sun_first());
             self.sky_layers[slot] = Some((key, found));
         }
         self.sky_layers[slot].as_ref().map_or(1, |(_, l)| l.layers())
@@ -485,7 +485,7 @@ impl Renderer {
             let size = target.size as f32;
             let cut_size = target.cut_size as f32;
             let range = depth_range.max(1.0);
-            let from_sun = which.from_sun();
+            let from_sun = which.sun_first();
             let cut_proj = if from_sun { reversed_depth(view_proj) } else { view_proj };
             for k in 0..target.layers {
                 let base = ViewUniform {

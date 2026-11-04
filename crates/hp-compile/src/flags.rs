@@ -262,31 +262,6 @@ pub const FLAGS: &[FlagInfo] = &[
         false,
         "Debug: static props show their vertex normals instead of their lighting.",
     ),
-    info(
-        StepKind::Rad,
-        "-ao",
-        false,
-        "Hammer Pro option: ambient occlusion, contact shadows in corners, creases and under props (darkens the bounced light near close geometry). On by default for Normal and Final, off for Draft; the map's _ao key decides when neither -ao nor -noao is given.",
-    ),
-    info(StepKind::Rad, "-noao", false, "Hammer Pro option: no ambient occlusion, whatever the map's _ao key says."),
-    info(
-        StepKind::Rad,
-        "-aoradius",
-        true,
-        "Ambient occlusion radius: how far geometry darkens a surface, in units (default 96, map key _aoradius).",
-    ),
-    info(
-        StepKind::Rad,
-        "-aostrength",
-        true,
-        "Ambient occlusion strength from 0 (none) to 1 (a closed corner loses all its bounced light), default 0.75 (map key _aostrength).",
-    ),
-    info(
-        StepKind::Rad,
-        "-aosamples",
-        true,
-        "Ambient occlusion rays per luxel and per static prop vertex (default 32, 64 with -final; more is smoother and slower; map key _aosamples).",
-    ),
 ];
 
 pub fn flag_info(step: StepKind, flag: &str) -> Option<&'static FlagInfo> {

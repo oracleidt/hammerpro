@@ -187,7 +187,6 @@ const F_NO_SHADOW: u32 = 131072u;
 
 const OPT_WALKABLE: u32 = 1u;
 const OPT_FOG: u32 = 2u;
-const OPT_FOG_BLEND: u32 = 4u;
 const OPT_GRID_3D: u32 = 8u;
 const OPT_SKY_PASS: u32 = 16u;
 const OPT_MODEL_FADE: u32 = 32u;
@@ -283,25 +282,49 @@ fn hidden_in_view(flags: u32) -> bool {
     return (view.opts.x & OPT_SKY_PASS) != 0u && (flags & F_SKY_3D) == 0u;
 }
 
-fn fog_amount(world: vec3<f32>) -> f32 {
-    if (view.opts.x & OPT_FOG) == 0u || is_ortho() {
-        return 0.0;
+fn fog_on() -> bool {
+    return (view.opts.x & OPT_FOG) != 0u && !is_ortho();
+}
+
+fn fog_depth(world: vec3<f32>) -> f32 {
+    return dot(world - view.eye.xyz, view.forward.xyz);
+}
+
+fn fog_far_clip(world: vec3<f32>) {
+    if fog_on() && view.proj.z > 0.0 && fog_depth(world) > view.proj.z {
+        discard;
     }
-    let depth = dot(world - view.eye.xyz, view.forward.xyz);
-    if view.proj.z > 0.0 && depth > view.proj.z {
-        return 1.0;
+}
+
+fn fog_amount(world: vec3<f32>) -> f32 {
+    if !fog_on() {
+        return 0.0;
     }
     let start = view.fog_b.w;
     let end = max(view.fog_c.w, start + 1.0);
-    let ramp = clamp((depth - start) / (end - start), 0.0, view.fog_a.w);
-    return ramp * ramp;
+    return clamp((fog_depth(world) - start) / (end - start), 0.0, view.fog_a.w);
 }
 
-fn fog_color(world: vec3<f32>) -> vec3<f32> {
-    if (view.opts.x & OPT_FOG_BLEND) == 0u {
-        return view.fog_a.rgb;
+fn fog_gamma(c: vec3<f32>) -> vec3<f32> {
+    let v = max(c, vec3<f32>(0.0));
+    let lo = v * 12.92;
+    let hi = 1.055 * pow(v, vec3<f32>(1.0 / 2.4)) - vec3<f32>(0.055);
+    return select(hi, lo, v <= vec3<f32>(0.0031308));
+}
+
+fn fog_blend(rgb: vec3<f32>, target_gamma: vec3<f32>, f: f32) -> vec3<f32> {
+    if f <= 0.0 {
+        return rgb;
     }
-    let dir = normalize(world - view.eye.xyz + vec3<f32>(1e-4, 0.0, 0.0));
-    let t = clamp(dot(dir, view.fog_c.xyz) * 0.5 + 0.5, 0.0, 1.0);
-    return mix(view.fog_b.rgb, view.fog_a.rgb, t);
+    return srgb_to_linear(mix(fog_gamma(rgb), target_gamma, f));
+}
+
+fn apply_fog(rgb: vec3<f32>, world: vec3<f32>) -> vec3<f32> {
+    fog_far_clip(world);
+    return fog_blend(rgb, view.fog_a.rgb, fog_amount(world));
+}
+
+fn apply_fog_black(rgb: vec3<f32>, world: vec3<f32>) -> vec3<f32> {
+    fog_far_clip(world);
+    return fog_blend(rgb, vec3<f32>(0.0), fog_amount(world));
 }

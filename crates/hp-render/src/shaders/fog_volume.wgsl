@@ -86,7 +86,7 @@ fn fs_fog_volume(in: FogOut) -> @location(0) vec4<f32> {
     f *= smoothstep(0.0, 6.0, path);
     var rgb = vol.fog_a.rgb;
     if vol.lo.w > 0.5 {
-        let t = clamp(dot(ray, vol.fog_c.xyz) * 0.5 + 0.5, 0.0, 1.0);
+        let t = clamp(dot(view.forward.xyz, vol.fog_c.xyz) * 0.5 + 0.5, 0.0, 1.0);
         rgb = mix(vol.fog_b.rgb, vol.fog_a.rgb, t);
     }
     return vec4<f32>(rgb, clamp(f, 0.0, 1.0));

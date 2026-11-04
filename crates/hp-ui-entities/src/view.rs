@@ -573,43 +573,13 @@ pub fn compiler_world_props() -> Vec<Property> {
         p.default = default.map(str::to_owned);
         p
     }
-    let mut ao =
-        prop("_ao", PropertyType::Choices, hp_app::t!("entities.world_ao"), hp_app::t!("entities.world_ao_help"), None);
-    ao.choices = [("", "entities.world_ao_default"), ("1", "entities.world_ao_on"), ("0", "entities.world_ao_off")]
-        .iter()
-        .map(|(v, k)| hp_fgd::Choice { value: (*v).into(), display: hp_app::t!(k).into() })
-        .collect();
-    vec![
-        ao,
-        prop(
-            "_aoradius",
-            PropertyType::Float,
-            hp_app::t!("entities.world_aoradius"),
-            hp_app::t!("entities.world_aoradius_help"),
-            Some("96"),
-        ),
-        prop(
-            "_aostrength",
-            PropertyType::Float,
-            hp_app::t!("entities.world_aostrength"),
-            hp_app::t!("entities.world_aostrength_help"),
-            Some("0.75"),
-        ),
-        prop(
-            "_aosamples",
-            PropertyType::Integer,
-            hp_app::t!("entities.world_aosamples"),
-            hp_app::t!("entities.world_aosamples_help"),
-            None,
-        ),
-        prop(
-            "_lightsrad",
-            PropertyType::String,
-            hp_app::t!("entities.world_lightsrad"),
-            hp_app::t!("entities.world_lightsrad_help"),
-            None,
-        ),
-    ]
+    vec![prop(
+        "_lightsrad",
+        PropertyType::String,
+        hp_app::t!("entities.world_lightsrad"),
+        hp_app::t!("entities.world_lightsrad_help"),
+        None,
+    )]
 }
 
 #[cfg(test)]
@@ -625,14 +595,11 @@ mod tests {
         for f in [Some(&fgd), None] {
             let view = EntityView::build(&state.doc, Target::World, f, &names);
             let keys: Vec<&str> = view.props.iter().map(|r| r.key.as_str()).collect();
-            for k in ["_ao", "_aoradius", "_aostrength", "_aosamples", "_lightsrad"] {
-                assert_eq!(keys.iter().filter(|x| x.eq_ignore_ascii_case(k)).count(), 1, "{k} in {keys:?}");
-            }
-            let ao = view.props.iter().find(|r| r.key == "_ao").and_then(|r| r.prop.as_ref()).expect("_ao");
-            assert_eq!(ao.choices.iter().map(|c| c.value.as_str()).collect::<Vec<_>>(), ["", "1", "0"]);
+            assert_eq!(keys.iter().filter(|x| x.eq_ignore_ascii_case("_lightsrad")).count(), 1, "{keys:?}");
+            assert!(!keys.iter().any(|x| x.eq_ignore_ascii_case("_ao")), "no ambient occlusion keys");
         }
         let view = EntityView::build(&state.doc, Target::Entities(vec![5]), Some(&fgd), &names);
-        assert!(!view.props.iter().any(|r| r.key == "_aoradius"));
+        assert!(!view.props.iter().any(|r| r.key == "_lightsrad"));
     }
 
     fn ids_of(doc: &Document, class: &str) -> Vec<Id> {

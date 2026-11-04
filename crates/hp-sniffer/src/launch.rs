@@ -61,7 +61,9 @@ pub fn with_bits(install: GmodInstall, bits: crate::settings::GameBits) -> Resul
         GameBits::Bits64 if wide.is_file() => Ok(GmodInstall { exe: wide, is_64bit: true, direct: false, ..install }),
         GameBits::Bits64 => Err(format!("there is no 64 bit game in {}", install.root.display())),
         GameBits::Bits32 if !install.is_64bit => Ok(install),
-        GameBits::Bits32 if narrow.is_file() => Ok(GmodInstall { exe: narrow, is_64bit: false, direct: true, ..install }),
+        GameBits::Bits32 if narrow.is_file() => {
+            Ok(GmodInstall { exe: narrow, is_64bit: false, direct: true, ..install })
+        }
         GameBits::Bits32 => Err(format!("there is no 32 bit game in {}", install.root.display())),
     }
 }
@@ -600,9 +602,13 @@ mod tests {
 
     #[test]
     fn the_first_reading_is_always_high_dynamic_range() {
-        let s = SnifferSettings { launch_options: "-windowed +mat_hdr_level 0 +volume 0".to_owned(), ..SnifferSettings::default() };
+        let s = SnifferSettings {
+            launch_options: "-windowed +mat_hdr_level 0 +volume 0".to_owned(),
+            ..SnifferSettings::default()
+        };
         let args = build_args(&s, "1.2.3.4", 27015, Some(false));
-        let at: Vec<usize> = args.iter().enumerate().filter(|(_, a)| a.as_str() == "+mat_hdr_level").map(|(i, _)| i).collect();
+        let at: Vec<usize> =
+            args.iter().enumerate().filter(|(_, a)| a.as_str() == "+mat_hdr_level").map(|(i, _)| i).collect();
         assert_eq!(at.len(), 1, "{args:?}");
         assert_eq!(args[at[0] + 1], HDR_LEVEL);
         assert!(args.contains(&"+volume".to_owned()), "the other options stay");
@@ -611,9 +617,13 @@ mod tests {
 
     #[test]
     fn the_models_are_always_loaded_with_every_detail_level() {
-        let s = SnifferSettings { launch_options: "-windowed +r_rootlod 2 +volume 0".to_owned(), ..SnifferSettings::default() };
+        let s = SnifferSettings {
+            launch_options: "-windowed +r_rootlod 2 +volume 0".to_owned(),
+            ..SnifferSettings::default()
+        };
         let args = build_args(&s, "h", 1, Some(false));
-        let at: Vec<usize> = args.iter().enumerate().filter(|(_, a)| a.as_str() == "+r_rootlod").map(|(i, _)| i).collect();
+        let at: Vec<usize> =
+            args.iter().enumerate().filter(|(_, a)| a.as_str() == "+r_rootlod").map(|(i, _)| i).collect();
         assert_eq!(at.len(), 1);
         assert_eq!(args[at[0] + 1], "0");
     }

@@ -18,7 +18,9 @@ const BAKE_STACK: usize = 64 << 20;
 
 pub(crate) struct Job {
     pub id: u64,
-    pub map: hp_vmf::Map,
+    pub serial: u64,
+    pub map: Option<hp_vmf::Map>,
+    pub keep: bool,
     pub solids: HashMap<u32, SolidInfo>,
     pub fs: Option<hp_fs::GameFs>,
     pub hdr: bool,
@@ -31,6 +33,8 @@ pub(crate) struct Job {
     pub max_layers: u32,
     pub coarsen: f64,
     pub lit: bool,
+    pub tuning: child::Tuning,
+    pub exe: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -63,6 +67,7 @@ pub(crate) struct Baked {
     pub props: Option<Arc<hp_editor::limits::world_light::PropLighting>>,
     pub indirect: Option<Arc<hp_render::IndirectVolume>>,
     pub hdr: bool,
+    pub child_peak: Option<super::memory::Usage>,
 }
 
 pub(crate) enum Outcome {
@@ -78,10 +83,22 @@ pub(crate) enum Msg {
 
 struct Cancelled;
 
+#[derive(Clone)]
+struct Compiled {
+    serial: u64,
+    bsp: Arc<hp_bsp::Bsp>,
+    sides: Arc<SideTable>,
+    leaked: bool,
+    warnings: Vec<String>,
+}
+
+type Cache = Arc<std::sync::Mutex<Option<Compiled>>>;
+
 pub(crate) struct Worker {
     tx: Option<Sender<Job>>,
     rx: Receiver<Msg>,
     wanted: Arc<AtomicU64>,
+    cache: Cache,
 }
 
 impl Worker {
@@ -90,6 +107,8 @@ impl Worker {
         let (out, rx) = crossbeam_channel::unbounded();
         let wanted = Arc::new(AtomicU64::new(0));
         let w = wanted.clone();
+        let cache: Cache = Arc::default();
+        let kept = cache.clone();
         std::thread::Builder::new().name("hp-light-bake".to_owned()).spawn(move || {
             for job in jobs {
                 if w.load(Ordering::Acquire) != job.id {
@@ -97,7 +116,8 @@ impl Worker {
                 }
                 let id = job.id;
                 let ctx = Ctx { id, wanted: &w, out: &out, wake: &*wake, start: Instant::now(), faces: 0, game: None };
-                let outcome = match catch_unwind(AssertUnwindSafe(|| hp_editor::background::run(|| run(job, &ctx)))) {
+                let task = || hp_editor::background::run(|| run(job, &ctx, &kept));
+                let outcome = match catch_unwind(AssertUnwindSafe(task)) {
                     Ok(o) => o,
                     Err(_) if ctx.cancelled() => Outcome::Cancelled,
                     Err(_) => Outcome::Failed("the compiler stopped on an error".to_owned()),
@@ -106,7 +126,7 @@ impl Worker {
                 wake();
             }
         })?;
-        Ok(Self { tx: Some(tx), rx, wanted })
+        Ok(Self { tx: Some(tx), rx, wanted, cache })
     }
 
     pub fn submit(&self, job: Job) {
@@ -118,6 +138,9 @@ impl Worker {
 
     pub fn stop(&self) {
         self.wanted.store(0, Ordering::Release);
+        if let Ok(mut c) = self.cache.lock() {
+            *c = None;
+        }
     }
 
     pub fn poll(&self) -> Vec<Msg> {
@@ -183,9 +206,28 @@ fn coarsen(map: &mut hp_vmf::Map, factor: f64) {
     }
 }
 
-fn run(job: Job, ctx: &Ctx<'_>) -> Outcome {
+fn lower_thread_priority() {
+    #[cfg(windows)]
+    unsafe {
+        use windows_sys::Win32::System::Threading::{
+            GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_BELOW_NORMAL,
+        };
+        SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+    }
+}
+
+fn note_memory(stage: &str) {
+    if let Some(u) = super::memory::of_self() {
+        log::debug!("lighting preview memory: {stage}: {} MB", u.working_set >> 20);
+    }
+}
+
+fn run(job: Job, ctx: &Ctx<'_>, cache: &std::sync::Mutex<Option<Compiled>>) -> Outcome {
+    note_memory("start");
     let Job {
+        serial,
         map,
+        keep,
         solids,
         fs,
         hdr,
@@ -198,21 +240,94 @@ fn run(job: Job, ctx: &Ctx<'_>) -> Outcome {
         max_layers,
         coarsen: factor,
         lit: indirect_only,
+        tuning,
+        exe,
         ..
     } = job;
-    let mut map = map;
     ctx.progress(BakePhase::Preparing, 0.01);
+    let fs = fs.unwrap_or_else(hp_fs::GameFs::empty);
+    let reused = cache.lock().ok().and_then(|mut c| c.take()).filter(|c| c.serial == serial);
+    let compiled = match (reused, map) {
+        (Some(c), _) => {
+            log::info!("lighting preview: the compiled map of the quick pass is used again");
+            c
+        }
+        (None, Some(map)) => match compile(map, factor, &fs, threads.0, ctx, serial) {
+            Ok(c) => c,
+            Err(o) => return o,
+        },
+        (None, None) => return Outcome::Cancelled,
+    };
+    if keep && let Ok(mut c) = cache.lock() {
+        *c = Some(compiled.clone());
+    }
+    let Compiled { bsp, sides, leaked, warnings, .. } = compiled;
+    let (faces, luxels) = bsp::lit_faces(&bsp);
+    let geometry = {
+        let bsp = bsp.clone();
+        let task = move || if indirect_only { bsp::Geometry::default() } else { bsp::geometry(&bsp, &sides, &solids) };
+        std::thread::Builder::new().name("hp-light-geometry".to_owned()).spawn(task)
+    };
+    let ctx = Ctx { faces, game: fs.game_dir(), ..*ctx };
+    ctx.progress(BakePhase::Direct, 0.15);
+
+    let tau = 2.0 + luxels as f32 * seconds_per_luxel(quality);
+    let args = LightArgs { hdr, quality, bounces, threads: threads.1, prop_shadows, prop_lighting, tuning };
+    let lit = light(bsp, exe.as_deref(), args, &ctx, tau);
+    note_memory("lit");
+    let mut geo = match geometry.map(std::thread::JoinHandle::join) {
+        Ok(Ok(g)) => g,
+        _ => return Outcome::Failed("the preview geometry could not be read".to_owned()),
+    };
+    let (lit, triangles) = match lit {
+        Ok(f) => f,
+        Err(LightError::Cancelled) => return Outcome::Cancelled,
+        Err(LightError::Failed(e)) => return Outcome::Failed(e),
+    };
+    let luxels: u64 = geo.faces.iter().map(|f| u64::from(f.w) * u64::from(f.h)).sum();
+    ctx.progress(BakePhase::Finishing, 0.95);
+    let child::LitResult { flat, bsp: lit_bsp, peak } = lit;
+    note_memory("result read");
+    let (props, indirect) = model_lighting(lit_bsp, hdr);
+    note_memory("models");
+    let mut baked = if indirect_only { Baked::default() } else { assemble(&mut geo, flat, layer_size, max_layers) };
+    note_memory("assembled");
+    baked.props = props;
+    baked.indirect = indirect;
+    baked.hdr = hdr;
+    baked.luxels = luxels;
+    baked.triangles = triangles;
+    baked.child_peak = peak;
+    baked.unbound = geo.unbound;
+    baked.leaked = leaked;
+    baked.coarsen = factor;
+    baked.warnings = warnings;
+    baked.seconds = ctx.start.elapsed().as_secs_f32();
+    Outcome::Baked(Box::new(baked))
+}
+
+fn compile(
+    mut map: hp_vmf::Map,
+    factor: f64,
+    fs: &hp_fs::GameFs,
+    threads: usize,
+    ctx: &Ctx<'_>,
+    serial: u64,
+) -> Result<Compiled, Outcome> {
     coarsen(&mut map, factor);
     let sides = SideTable::from_map(&map);
     let solid_count = map.world.solids.len() + map.entities.iter().map(|e| e.solids.len()).sum::<usize>();
-    let fs = fs.unwrap_or_else(hp_fs::GameFs::empty);
     let materials = crate::bspc_cli::GameMaterials { fs: fs.clone(), opts: Default::default() };
-    let models = crate::bspc_cli::GameModels { fs: &fs, allow_dynamic: false };
-    let builder =
-        || rayon::ThreadPoolBuilder::new().num_threads(threads.0.max(1)).thread_name(|i| format!("hp-light-{i}"));
+    let models = crate::bspc_cli::GameModels { fs, allow_dynamic: false };
+    let builder = || {
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(threads.max(1))
+            .thread_name(|i| format!("hp-light-{i}"))
+            .start_handler(|_| lower_thread_priority())
+    };
     let pool = match builder().stack_size(BAKE_STACK).build().or_else(|_| builder().build()) {
         Ok(p) => p,
-        Err(e) => return Outcome::Failed(format!("cannot start the threads: {e}")),
+        Err(e) => return Err(Outcome::Failed(format!("cannot start the threads: {e}"))),
     };
 
     let t = Instant::now();
@@ -237,7 +352,12 @@ fn run(job: Job, ctx: &Ctx<'_>) -> Outcome {
         }
     };
     ctx.progress(BakePhase::Compiling, 0.02);
-    let opts = hp_bspc::CompileOptions { vis: hp_bspc::VisLevel::Fast, relaxed_limits: true, ..Default::default() };
+    let opts = hp_bspc::CompileOptions {
+        vis: hp_bspc::VisLevel::Fast,
+        relaxed_limits: true,
+        lean_planes: true,
+        ..Default::default()
+    };
     let mut compiled = pool.install(|| hp_bspc::compile(&map, &materials, &models, &opts, &mut log));
     let mut retried = None;
     if let Err(hp_bspc::CompileError::Failed(e)) = &compiled
@@ -257,49 +377,21 @@ fn run(job: Job, ctx: &Ctx<'_>) -> Outcome {
     }
     let mut out = match compiled {
         Ok(out) => out,
-        Err(hp_bspc::CompileError::Leaked { .. }) => return Outcome::Failed("the map leaked".to_owned()),
-        Err(e) => return Outcome::Failed(e.to_string()),
+        Err(hp_bspc::CompileError::Leaked { .. }) => return Err(Outcome::Failed("the map leaked".to_owned())),
+        Err(e) => return Err(Outcome::Failed(e.to_string())),
     };
     log::info!("lighting preview: compiled in {:.2} s", t.elapsed().as_secs_f32());
+    note_memory("compiled");
     if ctx.cancelled() {
-        return Outcome::Cancelled;
+        return Err(Outcome::Cancelled);
     }
     let bytes = std::mem::take(&mut out.bsp);
     drop(out);
     let bsp = match hp_bsp::Bsp::from_vec(bytes) {
-        Ok(b) => b,
-        Err(e) => return Outcome::Failed(e.to_string()),
+        Ok(b) => Arc::new(b),
+        Err(e) => return Err(Outcome::Failed(e.to_string())),
     };
-    let mut geo = bsp::geometry(&bsp, &sides, &solids);
-    drop(sides);
-    drop(solids);
-    let luxels: u64 = geo.faces.iter().map(|f| u64::from(f.w) * u64::from(f.h)).sum();
-    let ctx = Ctx { faces: geo.faces.len(), game: fs.game_dir(), ..*ctx };
-    ctx.progress(BakePhase::Direct, 0.15);
-
-    let tau = 2.0 + luxels as f32 * seconds_per_luxel(quality);
-    let args = LightArgs { hdr, quality, bounces, threads: threads.1, prop_shadows, prop_lighting };
-    let lit = light(bsp, args, &ctx, tau);
-    let (lit, triangles) = match lit {
-        Ok(f) => f,
-        Err(LightError::Cancelled) => return Outcome::Cancelled,
-        Err(LightError::Failed(e)) => return Outcome::Failed(e),
-    };
-    ctx.progress(BakePhase::Finishing, 0.95);
-    let child::LitResult { flat, bsp: lit_bsp } = lit;
-    let (props, indirect) = model_lighting(lit_bsp);
-    let mut baked = if indirect_only { Baked::default() } else { assemble(&mut geo, flat, layer_size, max_layers) };
-    baked.props = props;
-    baked.indirect = indirect;
-    baked.hdr = hdr;
-    baked.luxels = luxels;
-    baked.triangles = triangles;
-    baked.unbound = geo.unbound;
-    baked.leaked = leaked;
-    baked.coarsen = factor;
-    baked.warnings = warnings;
-    baked.seconds = ctx.start.elapsed().as_secs_f32();
-    Outcome::Baked(Box::new(baked))
+    Ok(Compiled { serial, bsp, sides: Arc::new(sides), leaked, warnings })
 }
 
 enum LightError {
@@ -336,12 +428,12 @@ fn line_phase(line: &str, triangles: &mut usize) -> Option<(BakePhase, f32)> {
 
 type ModelLight = (Option<Arc<hp_editor::limits::world_light::PropLighting>>, Option<Arc<hp_render::IndirectVolume>>);
 
-fn model_lighting(bytes: Vec<u8>) -> ModelLight {
+fn model_lighting(bytes: Vec<u8>, hdr: bool) -> ModelLight {
     let Some(bsp) = hp_bsp::Bsp::from_vec(bytes).map_err(|e| log::warn!("lighting preview: the lit map: {e}")).ok()
     else {
         return (None, None);
     };
-    let props = crate::dispatch::health::portals::bake_prop_lighting(&bsp)
+    let props = crate::dispatch::health::portals::bake_prop_lighting(&bsp, hdr)
         .filter(hp_editor::limits::world_light::PropLighting::has_data)
         .map(Arc::new);
     (props, indirect_volume(&bsp))
@@ -361,13 +453,23 @@ struct LightArgs {
     threads: usize,
     prop_shadows: bool,
     prop_lighting: bool,
+    tuning: child::Tuning,
 }
 
-fn light(bsp: hp_bsp::Bsp, la: LightArgs, ctx: &Ctx<'_>, tau: f32) -> Result<(child::LitResult, usize), LightError> {
-    let LightArgs { hdr, quality, bounces, threads, prop_shadows, prop_lighting } = la;
-    let exe = std::env::current_exe()
+pub(crate) fn child_exe() -> Option<PathBuf> {
+    std::env::current_exe()
         .ok()
-        .filter(|p| p.file_stem().is_some_and(|s| s.to_string_lossy().eq_ignore_ascii_case("hammerpro")));
+        .filter(|p| p.file_stem().is_some_and(|s| s.to_string_lossy().eq_ignore_ascii_case("hammerpro")))
+}
+
+fn light(
+    bsp: Arc<hp_bsp::Bsp>,
+    exe: Option<&Path>,
+    la: LightArgs,
+    ctx: &Ctx<'_>,
+    tau: f32,
+) -> Result<(child::LitResult, usize), LightError> {
+    let LightArgs { hdr, quality, bounces, threads, prop_shadows, prop_lighting, tuning } = la;
     let dir = std::env::temp_dir();
     let stem = format!("hammerpro-light-{}-{}", std::process::id(), ctx.id);
     let (input, output) = (dir.join(format!("{stem}.bsp")), dir.join(format!("{stem}.lit")));
@@ -376,7 +478,7 @@ fn light(bsp: hp_bsp::Bsp, la: LightArgs, ctx: &Ctx<'_>, tau: f32) -> Result<(ch
         && std::fs::write(&input, bsp.bytes()).is_ok()
     {
         drop(bsp);
-        let r = light_child(&exe, &input, &output, la, ctx, tau);
+        let r = light_child(exe, &input, &output, la, ctx, tau);
         drop(temp);
         return r;
     }
@@ -397,6 +499,7 @@ fn light(bsp: hp_bsp::Bsp, la: LightArgs, ctx: &Ctx<'_>, tau: f32) -> Result<(ch
         ctx.game,
         prop_shadows,
         prop_lighting,
+        tuning,
         &mut log,
     );
     drop(bsp);
@@ -415,7 +518,7 @@ fn light_child(
     tau: f32,
 ) -> Result<(child::LitResult, usize), LightError> {
     use std::process::{Command, Stdio};
-    let LightArgs { hdr, quality, bounces, threads, prop_shadows, prop_lighting } = la;
+    let LightArgs { hdr, quality, bounces, threads, prop_shadows, prop_lighting, tuning } = la;
     let mut cmd = Command::new(exe);
     cmd.arg(child::LIGHT_ARG)
         .arg(input)
@@ -427,13 +530,15 @@ fn light_child(
         .arg(ctx.game.map(|g| g.as_os_str().to_owned()).unwrap_or_default())
         .arg(if prop_shadows { "1" } else { "0" })
         .arg(if prop_lighting { "1" } else { "0" })
+        .arg(tuning.arg())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x0800_0000 | 0x0000_8000);
+        use windows_sys::Win32::System::Threading::{BELOW_NORMAL_PRIORITY_CLASS, CREATE_NO_WINDOW};
+        cmd.creation_flags(CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS);
     }
     let mut proc = cmd.spawn().map_err(|e| LightError::Failed(format!("cannot start the lighting: {e}")))?;
     let _stdin = proc.stdin.take();
@@ -497,8 +602,18 @@ fn light_child(
         let why = last_lines.iter().rev().find(|l| l.starts_with("Error")).cloned();
         return Err(LightError::Failed(why.unwrap_or_else(|| format!("the lighting stopped ({status})"))));
     }
-    let lit = child::read_result(output).map_err(LightError::Failed)?;
+    let mut lit = child::read_result(output).map_err(LightError::Failed)?;
+    lit.peak = super::memory::of_child(&proc);
     Ok((lit, triangles))
+}
+
+const MIN_ATLAS: u32 = 256;
+
+fn atlas_size(sizes: &[(u32, u32)], most: u32) -> u32 {
+    let area: u64 = sizes.iter().map(|&(w, h)| u64::from(w) * u64::from(h)).sum();
+    let widest = sizes.iter().map(|&(w, h)| w.max(h)).max().unwrap_or(0);
+    let side = ((area as f64 * 1.3).sqrt().ceil() as u32).max(widest).max(MIN_ATLAS);
+    side.checked_next_power_of_two().unwrap_or(most).min(most.max(1))
 }
 
 fn assemble(geo: &mut bsp::Geometry, flat: FlatLightmaps, layer_size: u32, max_layers: u32) -> Baked {
@@ -506,16 +621,16 @@ fn assemble(geo: &mut bsp::Geometry, flat: FlatLightmaps, layer_size: u32, max_l
         flat.face(f.bsp as usize).filter(|&(o, n)| (o as usize) + (f.w * f.h * n) as usize <= flat.texels.len())
     };
     geo.faces.retain(|f| lit(f).is_some());
-    let mut atlas = Atlas::new(layer_size, max_layers);
     let images: Vec<(u32, u32)> = geo
         .faces
         .iter()
         .map(|f| {
             let (o, n) = lit(f).unwrap_or((0, 1));
-            (o, if n == 4 && f.w * 4 <= atlas.size() { 4 } else { 1 })
+            (o, if n == 4 && f.w * 4 <= layer_size { 4 } else { 1 })
         })
         .collect();
     let sizes: Vec<(u32, u32)> = geo.faces.iter().zip(&images).map(|(f, (_, n))| (f.w * n, f.h)).collect();
+    let mut atlas = Atlas::new(atlas_size(&sizes, layer_size), max_layers);
     let rects = atlas.alloc_many(&sizes);
     let atlas_full = rects.iter().filter(|r| r.is_none()).count();
     let faces: Vec<FaceRecord> = geo
@@ -629,8 +744,10 @@ mod tests {
         let map = hp_vmf::parse(&text).expect("parse");
         let job = Job {
             id: 7,
-            map,
-            solids,
+            serial: 1,
+            map: Some(map),
+            keep: false,
+            solids: solids.clone(),
             fs: None,
             hdr: true,
             quality: RadQuality::Draft,
@@ -642,16 +759,48 @@ mod tests {
             max_layers: 4,
             coarsen: 1.0,
             lit: false,
+            tuning: child::Tuning::default(),
+            exe: None,
         };
         let wanted = AtomicU64::new(7);
         let (out, rx) = crossbeam_channel::unbounded();
         let wake = || {};
         let ctx = Ctx { id: 7, wanted: &wanted, out: &out, wake: &wake, start: Instant::now(), faces: 0, game: None };
-        let baked = match run(job, &ctx) {
+        let cache = std::sync::Mutex::new(None);
+        let solids_again = solids;
+        let job = Job { keep: true, ..job };
+        let baked = match run(job, &ctx, &cache) {
             Outcome::Baked(b) => b,
             Outcome::Cancelled => panic!("cancelled"),
             Outcome::Failed(e) => panic!("failed: {e}"),
         };
+        assert!(cache.lock().unwrap().is_some(), "the compiled map waits for the refined pass");
+        let refine = |serial: u64| Job {
+            id: 7,
+            serial,
+            map: None,
+            keep: false,
+            solids: solids_again.clone(),
+            fs: None,
+            hdr: true,
+            quality: RadQuality::Draft,
+            bounces: 2,
+            prop_shadows: true,
+            prop_lighting: true,
+            threads: (2, 2),
+            layer_size: 256,
+            max_layers: 4,
+            coarsen: 1.0,
+            lit: false,
+            tuning: child::Tuning::default(),
+            exe: None,
+        };
+        assert!(matches!(run(refine(2), &ctx, &cache), Outcome::Cancelled), "another serial cannot use it");
+        let job = Job { keep: true, map: Some(hp_vmf::parse(&text).expect("parse")), ..refine(1) };
+        assert!(matches!(run(job, &ctx, &cache), Outcome::Baked(_)));
+        let Outcome::Baked(again) = run(refine(1), &ctx, &cache) else { panic!("the refined pass") };
+        assert_eq!(again.faces.len(), baked.faces.len());
+        assert!(cache.lock().unwrap().is_none(), "used once");
         assert_eq!(baked.unbound, 0, "every face found its solid");
         assert!(baked.faces.len() >= 6, "{} faces", baked.faces.len());
         assert!(baked.faces.iter().all(|f| (2..8).contains(&f.solid) && f.generation == u64::from(f.solid)));
@@ -683,7 +832,9 @@ mod tests {
         let map = hp_vmf::parse(&text).expect("parse");
         let lit_job = Job {
             id: 9,
-            map,
+            serial: 1,
+            map: Some(map),
+            keep: false,
             solids: HashMap::new(),
             fs: None,
             hdr: true,
@@ -696,8 +847,10 @@ mod tests {
             max_layers: 4,
             coarsen: 1.0,
             lit: true,
+            tuning: child::Tuning::default(),
+            exe: None,
         };
-        let Outcome::Baked(lit) = run(lit_job, &ctx) else { panic!("the Lit mode bake failed") };
+        let Outcome::Baked(lit) = run(lit_job, &ctx, &Default::default()) else { panic!("the Lit mode bake failed") };
         assert!(lit.faces.is_empty() && lit.texels.is_empty() && lit.blocks.is_empty(), "no atlas for the Lit mode");
         let own = lit.indirect.as_ref().expect("the light probes");
         assert_eq!(own.cells(), volume.cells(), "the same probes as the full bake");
@@ -707,7 +860,9 @@ mod tests {
         let map = hp_vmf::parse(&text).expect("parse");
         let job = Job {
             id: 8,
-            map,
+            serial: 1,
+            map: Some(map),
+            keep: false,
             solids: HashMap::new(),
             fs: None,
             hdr: false,
@@ -720,8 +875,10 @@ mod tests {
             max_layers: 1,
             coarsen: 1.0,
             lit: false,
+            tuning: child::Tuning::default(),
+            exe: None,
         };
-        let r = catch_unwind(AssertUnwindSafe(|| run(job, &ctx)));
+        let r = catch_unwind(AssertUnwindSafe(|| run(job, &ctx, &Default::default())));
         assert!(matches!(r, Err(_) | Ok(Outcome::Cancelled)));
     }
 
@@ -756,7 +913,9 @@ mod tests {
         for (text, hdr) in [(&point, true), (&point, false), (&sun, true), (&sun, false)] {
             let job = Job {
                 id: 3,
-                map: hp_vmf::parse(text).expect("parse"),
+                serial: 1,
+                map: Some(hp_vmf::parse(text).expect("parse")),
+                keep: false,
                 solids: HashMap::new(),
                 fs: None,
                 hdr,
@@ -769,13 +928,15 @@ mod tests {
                 max_layers: 4,
                 coarsen: 1.0,
                 lit: false,
+                tuning: child::Tuning::default(),
+                exe: None,
             };
             let wanted = AtomicU64::new(3);
             let (out, _rx) = crossbeam_channel::unbounded();
             let wake = || {};
             let ctx =
                 Ctx { id: 3, wanted: &wanted, out: &out, wake: &wake, start: Instant::now(), faces: 0, game: None };
-            let baked = match run(job, &ctx) {
+            let baked = match run(job, &ctx, &Default::default()) {
                 Outcome::Baked(b) => b,
                 Outcome::Cancelled => panic!("cancelled"),
                 Outcome::Failed(e) => panic!("failed: {e}"),
@@ -853,7 +1014,9 @@ mod tests {
             editor.scene().solid(8).and_then(|n| n.disp_mesh(0)).expect("editor displacement").positions.clone();
         let job = Job {
             id: 9,
-            map,
+            serial: 1,
+            map: Some(map),
+            keep: false,
             solids,
             fs: Some(fs),
             hdr: true,
@@ -866,12 +1029,14 @@ mod tests {
             max_layers: 4,
             coarsen: 1.0,
             lit: false,
+            tuning: child::Tuning::default(),
+            exe: None,
         };
         let wanted = AtomicU64::new(9);
         let (out, _rx) = crossbeam_channel::unbounded();
         let wake = || {};
         let ctx = Ctx { id: 9, wanted: &wanted, out: &out, wake: &wake, start: Instant::now(), faces: 0, game: None };
-        let baked = match run(job, &ctx) {
+        let baked = match run(job, &ctx, &Default::default()) {
             Outcome::Baked(b) => b,
             Outcome::Cancelled => panic!("cancelled"),
             Outcome::Failed(e) => panic!("failed: {e}"),
@@ -913,6 +1078,19 @@ mod tests {
             let want = hp_render::lightmap::pack_blend([1.0 - t, t, 0.0, 0.0]);
             assert_eq!(v.blend, want, "vertex {i} at {p}");
         }
+    }
+
+    #[test]
+    fn the_atlas_is_as_small_as_the_lightmaps() {
+        assert_eq!(atlas_size(&[], 2048), MIN_ATLAS);
+        assert_eq!(atlas_size(&[(16, 16); 4], 2048), MIN_ATLAS);
+        assert_eq!(atlas_size(&[(300, 20)], 2048), 512, "as wide as the widest face");
+        assert_eq!(atlas_size(&[(32, 32); 2000], 2048), 2048);
+        assert_eq!(atlas_size(&[(32, 32); 100_000], 2048), 2048, "more layers past the largest size");
+        let sizes = [(40, 30); 700];
+        let mut atlas = Atlas::new(atlas_size(&sizes, 2048), 64);
+        assert!(atlas.alloc_many(&sizes).iter().all(Option::is_some));
+        assert!(atlas.layers() <= 2, "{} layers of {}", atlas.layers(), atlas.size());
     }
 
     #[test]

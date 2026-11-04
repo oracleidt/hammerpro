@@ -207,13 +207,9 @@ Les entités brush sont placées au centre de leurs brushes. Sur les maps de plu
 
 | Clé | Valeurs |
 |---|---|
-| **Occlusion ambiante (Hammer Pro)** (`_ao`) | **Selon la compilation**, **Activée**, **Désactivée**. Vide : activée en Normal et Final, désactivée en Brouillon. |
-| **Rayon de l'occlusion ambiante** (`_aoradius`) | 4 à 1024 unités, 96 par défaut. |
-| **Force de l'occlusion ambiante** (`_aostrength`) | 0 à 1, 0.75 par défaut. |
-| **Rayons de l'occlusion ambiante** (`_aosamples`) | 4 à 512. Vide : 32, 64 en Final. |
 | **Fichier de lumières (lights.rad)** (`_lightsrad`) | Un fichier de lumières de textures pour cette map. |
 
-Les options de compilation `-ao`, `-noao`, `-aoradius`, `-aostrength` et `-aosamples` priment sur ces clés. Voir [Clés du worldspawn](../compiler/worldspawn-keys.md).
+Voir [Clés du worldspawn](../compiler/worldspawn-keys.md).
 
 ## Options
 

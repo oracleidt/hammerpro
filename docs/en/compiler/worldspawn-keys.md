@@ -8,10 +8,6 @@ The keys of the map (worldspawn) and of the entities that the compiler reads to 
 
 | Key | Read by | Effect | Default |
 |---|---|---|---|
-| `_ao` | lighting | Hammer Pro ambient occlusion: `1` on, `0` off. Used when the command line has neither `-ao` nor `-noao`. | on for Normal and Final, off for Draft |
-| `_aoradius` | lighting | Ambient occlusion radius in units (4 to 1024), when there is no `-aoradius`. | 96 |
-| `_aostrength` | lighting | Ambient occlusion strength from 0 to 1, when there is no `-aostrength`. 0 turns it off. | 0.75 |
-| `_aosamples` | lighting | Ambient occlusion rays per luxel and per prop vertex (4 to 512), when there is no `-aosamples`. | 32 (64 with `-final`) |
 | `_lightsrad` | lighting | A per map texture light file (the key Hammer++ uses). A full path, or a path relative to the game folder, the map's folder or the Garry's Mod folder. Read after `lights.rad` and `-lights` (once when it is the same file as `-lights`), before `<map>.rad`. | none |
 | `detailvbsp` | geometry | The detail prop definition file for the `%detailtype` materials. | `detail.vbsp` |
 | `skyname` | geometry | The sky whose textures are copied into the cubemap placeholders (see [Cubemaps](cubemaps.md)). | |
@@ -75,13 +71,11 @@ Texture lights come from `lights.rad` and the other light files listed above, no
 
 ## FAQ
 
-**How do I turn ambient occlusion off for one map only?** Add the worldspawn key `_ao` with value `0`. A `-ao` forced in the options menu still wins.
-
 **My Hammer++ map has `_lightsrad`, does it work?** Yes, the file is read like Hammer++ intends, and the log says `Map light file (_lightsrad): ...`.
 
 ## Related pages
 - [Compile options](compile-options.md)
-- [Lighting and ambient occlusion](../guides/lighting-and-ao.md)
+- [Lighting](../guides/lighting.md)
 - [Entity properties](../features/entity-properties.md)
 - [Cubemaps](cubemaps.md)
 

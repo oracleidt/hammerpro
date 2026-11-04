@@ -35,6 +35,8 @@ const UPLOAD_BUDGET: Duration = Duration::from_millis(6);
 const NO_TINT: [f32; 4] = [1.0; 4];
 const CUBEMAP_BUDGET: Duration = Duration::from_millis(3);
 pub(crate) const MAX_PARKED: usize = 8;
+const INSTANCE_STREAM_INTERVAL: Duration = Duration::from_millis(250);
+const REALIZE_BUDGET: Duration = Duration::from_millis(12);
 
 pub(crate) struct EntState {
     pub desc: EntityDesc,
@@ -58,6 +60,9 @@ pub(crate) struct SceneSync {
     pub ents: AHashMap<Id, EntState>,
     pub derived: Derived,
     pub instances_dirty: bool,
+    pub instances_streamed: bool,
+    pub instances_built: Option<Instant>,
+    pub realize_later: AHashSet<String>,
     pub sprites_dirty: bool,
     pub lights_dirty: bool,
     pub projector_overrides: Vec<hp_app::state::ProjectorOverride>,
@@ -1178,10 +1183,11 @@ impl AssetManager {
         opts: &SceneOptions,
         display: &RenderDisplay,
     ) {
-        if self.models.newly_ready.is_empty() {
+        if self.models.newly_ready.is_empty() && self.scene.realize_later.is_empty() {
             return;
         }
-        let ready = std::mem::take(&mut self.models.newly_ready);
+        let mut ready = std::mem::take(&mut self.models.newly_ready);
+        ready.extend(self.scene.realize_later.drain());
         if !opts.show_models {
             return;
         }
@@ -1193,7 +1199,19 @@ impl AssetManager {
                     .is_some_and(|(p, _)| ready.contains(&model_data_key(p, s.desc.anim.as_deref())))
         };
         let ids: Vec<Id> = self.scene.ents.iter().filter(|(_, s)| waits(s)).map(|(id, _)| *id).collect();
-        for id in ids {
+        let dirty_before = self.scene.instances_dirty;
+        let start = Instant::now();
+        for (i, &id) in ids.iter().enumerate() {
+            if start.elapsed() > REALIZE_BUDGET {
+                for rest in &ids[i..] {
+                    if let Some(s) = self.scene.ents.get(rest)
+                        && let Some((p, _)) = &s.desc.model
+                    {
+                        self.scene.realize_later.insert(model_data_key(p, s.desc.anim.as_deref()));
+                    }
+                }
+                break;
+            }
             if let Some(state) = self.scene.ents.get(&id) {
                 let mut desc = state.desc.clone();
                 if !display.render_effects {
@@ -1202,6 +1220,10 @@ impl AssetManager {
                 let flags = point_entity_flags(doc, id, self.scene.env.room.as_ref(), display.prop_shadows);
                 self.realize_entity(renderer, id, desc, flags, opts);
             }
+        }
+        if !dirty_before && self.scene.instances_dirty {
+            self.scene.instances_dirty = false;
+            self.scene.instances_streamed = true;
         }
     }
 
@@ -1245,9 +1267,19 @@ impl AssetManager {
 
     fn rebuild_instances(&mut self, doc: &Document, renderer: &mut Renderer) {
         if !self.scene.instances_dirty {
-            return;
+            if !self.scene.instances_streamed {
+                return;
+            }
+            let recent = self.scene.instances_built.is_some_and(|t| t.elapsed() < INSTANCE_STREAM_INTERVAL);
+            let streaming = !self.scene.realize_later.is_empty()
+                || self.models.map.values().any(|m| matches!(m, crate::models::ModelEntry::Loading));
+            if recent && streaming {
+                return;
+            }
         }
         self.scene.instances_dirty = false;
+        self.scene.instances_streamed = false;
+        self.scene.instances_built = Some(Instant::now());
         let mut names: Option<AHashMap<String, glam::DVec3>> = None;
         let mut origins: AHashMap<u32, [f32; 3]> = AHashMap::new();
         let mut wanted: AHashSet<String> = AHashSet::new();

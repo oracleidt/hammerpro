@@ -124,7 +124,7 @@ fn finish(rgb_in: vec3<f32>, in: LmOut) -> vec4<f32> {
     if (flags & F_HOVERED) != 0u {
         rgb = mix(rgb, vec3<f32>(1.0), 0.18);
     }
-    rgb = mix(rgb, fog_color(in.world), fog_amount(in.world));
+    rgb = apply_fog(rgb, in.world);
     return vec4<f32>(rgb, 1.0);
 }
 

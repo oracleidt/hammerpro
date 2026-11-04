@@ -1,4 +1,6 @@
-use crate::cm::{AxialBox, BRUSH_RECORD, BrushRec, CmFindings, PLANE_RECORD, Side, parse_brushes, read_boxes, valid_plane};
+use crate::cm::{
+    AxialBox, BRUSH_RECORD, BrushRec, CmFindings, PLANE_RECORD, Side, parse_brushes, read_boxes, valid_plane,
+};
 use crate::hub::{Array, find_pointer_hits};
 use crate::memmap::{CModel, CNode, MemoryCm};
 use crate::procmem::MemSource;
@@ -62,7 +64,9 @@ pub fn parse_struct<S: MemSource + ?Sized>(src: &S, planes_ptr_at: u64, ptr: usi
     if raw.len() < total {
         return None;
     }
-    let pair = |off: usize| -> Array { Array { count: i64::from(i32_at(&raw, off)), addr: ptr_at(&raw, off + count_to_ptr, ptr) } };
+    let pair = |off: usize| -> Array {
+        Array { count: i64::from(i32_at(&raw, off)), addr: ptr_at(&raw, off + count_to_ptr, ptr) }
+    };
     let mut off = 0usize;
     let next = |off: &mut usize| {
         let p = pair(*off);
@@ -101,7 +105,8 @@ pub fn parse_struct<S: MemSource + ?Sized>(src: &S, planes_ptr_at: u64, ptr: usi
 }
 
 fn sane(cs: &CmStruct) -> bool {
-    let counts = [&cs.brushsides, &cs.boxes, &cs.planes, &cs.nodes, &cs.leafs, &cs.leafbrushes, &cs.cmodels, &cs.brushes];
+    let counts =
+        [&cs.brushsides, &cs.boxes, &cs.planes, &cs.nodes, &cs.leafs, &cs.leafbrushes, &cs.cmodels, &cs.brushes];
     counts.iter().all(|a| (0..=MAX_COUNT).contains(&a.count))
         && cs.planes.count > 0
         && cs.nodes.count > 0
@@ -111,7 +116,12 @@ fn sane(cs: &CmStruct) -> bool {
         && i64::from(cs.empty_leaf) == cs.leafs.count - 1
 }
 
-pub fn find_by_planes<S: MemSource + ?Sized>(src: &S, planes_addr: u64, planes: usize, widths: &[usize]) -> Option<CmStruct> {
+pub fn find_by_planes<S: MemSource + ?Sized>(
+    src: &S,
+    planes_addr: u64,
+    planes: usize,
+    widths: &[usize],
+) -> Option<CmStruct> {
     for &ptr in widths {
         for hit in find_pointer_hits(src, planes_addr, ptr) {
             let Some(cs) = parse_struct(src, hit, ptr) else { continue };
@@ -155,7 +165,9 @@ pub fn find_by_entities<S: MemSource + ?Sized>(
         for &(addr, len) in entities {
             for hit in find_pointer_hits(src, addr, ptr) {
                 let Some((back, window)) = read_back(src, hit, BACK_REACH) else { continue };
-                let has_len = (0..window.len().saturating_sub(4)).step_by(4).any(|o| (i32_at(&window, o) as usize).abs_diff(len) <= 1);
+                let has_len = (0..window.len().saturating_sub(4))
+                    .step_by(4)
+                    .any(|o| (i32_at(&window, o) as usize).abs_diff(len) <= 1);
                 if !has_len {
                     continue;
                 }

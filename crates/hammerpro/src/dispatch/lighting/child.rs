@@ -5,7 +5,55 @@ use hp_bspc::rad::{RadOptions, RadQuality};
 
 use super::bsp::{self, FlatLightmaps};
 
-const PREVIEW_SUN_SAMPLES: usize = 16;
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Tuning {
+    pub sun_samples: usize,
+    pub ambient_samples: usize,
+    pub supersample: bool,
+    pub quick: bool,
+}
+
+impl Default for Tuning {
+    fn default() -> Self {
+        Self { sun_samples: 6, ambient_samples: 40, supersample: false, quick: false }
+    }
+}
+
+const MIN_AMBIENT_SAMPLES: usize = 16;
+const MAX_SAMPLES: usize = 256;
+const MAX_AMBIENT_SAMPLES: usize = 162 * 32;
+
+impl Tuning {
+    pub fn of(o: &hp_editor::luxels::LightPlus) -> Self {
+        Self {
+            sun_samples: (o.samples_sun as usize).clamp(1, MAX_SAMPLES),
+            ambient_samples: (o.samples_ambient as usize).clamp(MIN_AMBIENT_SAMPLES, MAX_AMBIENT_SAMPLES),
+            supersample: o.supersample,
+            quick: false,
+        }
+    }
+
+    pub fn quick(self) -> Self {
+        Self { quick: true, ..self }
+    }
+
+    pub(crate) fn arg(self) -> String {
+        format!("{},{},{},{}", self.sun_samples, self.ambient_samples, u8::from(self.supersample), u8::from(self.quick))
+    }
+
+    fn parse(s: &str) -> Self {
+        let d = Self::default();
+        let mut parts = s.split(',').map(str::trim);
+        let mut number = |default: usize, lo: usize, hi: usize| {
+            parts.next().and_then(|v| v.parse::<usize>().ok()).map_or(default, |v| v.clamp(lo, hi))
+        };
+        let sun_samples = number(d.sun_samples, 1, MAX_SAMPLES);
+        let ambient_samples = number(d.ambient_samples, MIN_AMBIENT_SAMPLES, MAX_AMBIENT_SAMPLES);
+        let supersample = number(0, 0, 1) == 1;
+        let quick = number(0, 0, 1) == 1;
+        Self { sun_samples, ambient_samples, supersample, quick }
+    }
+}
 
 pub(crate) const LIGHT_ARG: &str = "--light-preview";
 
@@ -35,21 +83,27 @@ pub(crate) fn options(
     threads: Option<usize>,
     prop_shadows: bool,
     prop_lighting: bool,
+    tuning: Tuning,
 ) -> RadOptions {
     let mut opts = RadOptions { hdr, ldr: !hdr, bounces, quality, threads, ..RadOptions::default() };
     opts.props.shadows = prop_shadows;
-    opts.ao.by_default = true;
-    opts.ao.in_draft = true;
-    opts.min_sun_samples = PREVIEW_SUN_SAMPLES;
-    opts.normal_sampling = true;
+    opts.min_sun_samples = tuning.sun_samples;
+    if tuning.quick {
+        opts.quality = RadQuality::Draft;
+        opts.extra_sky = Some(tuning.ambient_samples as f32 / 162.0);
+        opts.no_extra = !tuning.supersample;
+    } else {
+        opts.normal_sampling = true;
+    }
     opts.props.lighting = prop_lighting;
-    opts.probes = Some(hp_bspc::rad::ProbeOptions::default());
+    opts.probes = (!tuning.quick).then(hp_bspc::rad::ProbeOptions::default);
     opts
 }
 
 pub(crate) struct LitResult {
     pub flat: FlatLightmaps,
     pub bsp: Vec<u8>,
+    pub peak: Option<super::memory::Usage>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -62,9 +116,10 @@ pub(crate) fn light(
     game: Option<&Path>,
     prop_shadows: bool,
     prop_lighting: bool,
+    tuning: Tuning,
     log: &mut dyn FnMut(&str),
 ) -> Result<LitResult, String> {
-    let mut opts = options(hdr, quality, bounces, threads, prop_shadows, prop_lighting);
+    let mut opts = options(hdr, quality, bounces, threads, prop_shadows, prop_lighting, tuning);
     let world = crate::bspc_cli::world_lights_rad(bytes);
     opts.texlights.files = crate::bspc_cli::light_files(game, None, None, world.as_deref(), None, log);
     let lit = if prop_shadows || prop_lighting {
@@ -75,7 +130,21 @@ pub(crate) fn light(
     };
     let bsp = hp_bsp::Bsp::from_vec(lit).map_err(|e| e.to_string())?;
     let flat = bsp::flat_lightmaps(&bsp, hdr)?;
-    Ok(LitResult { flat, bsp: bsp.bytes().to_vec() })
+    Ok(LitResult { flat, bsp: for_models(bsp)?, peak: None })
+}
+
+fn for_models(bsp: hp_bsp::Bsp) -> Result<Vec<u8>, String> {
+    use hp_bsp::lump;
+    let keep = |i: usize| {
+        matches!(i, lump::ENTITIES | lump::GAME_LUMP | lump::PAKFILE)
+            || i == hp_light::probes::LUMP
+            || crate::dispatch::health::portals::PROP_LIGHTING_LUMPS.contains(&i)
+    };
+    let mut edit = bsp.edit();
+    for i in (0..hp_bsp::LUMP_COUNT).filter(|i| !keep(*i)) {
+        edit.remove_lump(i).map_err(|e| e.to_string())?;
+    }
+    edit.to_vec().map_err(|e| e.to_string())
 }
 
 pub(crate) fn write_result(path: &Path, lit: &LitResult) -> std::io::Result<()> {
@@ -115,25 +184,21 @@ pub(crate) fn read_result(path: &Path) -> Result<LitResult, String> {
     let texels = read(texels)?;
     let mut bsp = vec![0u8; bsp_len];
     file.read_exact(&mut bsp).map_err(|e| e.to_string())?;
-    Ok(LitResult { flat: FlatLightmaps { offsets, texels }, bsp })
+    Ok(LitResult { flat: FlatLightmaps { offsets, texels }, bsp, peak: None })
 }
 
 pub(crate) fn run(args: &[String]) -> i32 {
-    let (game, prop_shadows, prop_lighting, args) = match args {
-        [rest @ .., game, shadows, lighting] if rest.len() == 6 => {
-            (Some(game.as_str()), shadows != "0", lighting != "0", rest)
-        }
-        [rest @ .., game, shadows] if rest.len() == 6 => (Some(game.as_str()), shadows != "0", true, rest),
-        [rest @ .., game] if rest.len() == 6 => (Some(game.as_str()), true, true, rest),
-        _ => (None, true, true, args),
-    };
-    let game = game.filter(|g| !g.is_empty());
-    let [input, output, hdr, quality, bounces, threads] = args else {
+    let (Some(args), extra) = (args.get(..6), args.get(6..).unwrap_or_default()) else {
         println!(
-            "Error: usage: hammerpro {LIGHT_ARG} <in.bsp> <out> <hdr 0|1> <draft|normal|final> <bounces> <threads> [game] [prop shadows 0|1] [prop lighting 0|1]"
+            "Error: usage: hammerpro {LIGHT_ARG} <in.bsp> <out> <hdr 0|1> <draft|normal|final> <bounces> <threads> [game] [prop shadows 0|1] [prop lighting 0|1] [sun samples,ambient samples,supersample 0|1,quick 0|1]"
         );
         return 1;
     };
+    let [input, output, hdr, quality, bounces, threads] = args else { return 1 };
+    let game = extra.first().map(String::as_str).filter(|g| !g.is_empty());
+    let prop_shadows = extra.get(1).is_none_or(|v| v != "0");
+    let prop_lighting = extra.get(2).is_none_or(|v| v != "0");
+    let tuning = extra.get(3).map_or_else(Tuning::default, |t| Tuning::parse(t));
     let _ = std::thread::Builder::new().name("hp-light-watch".to_owned()).spawn(|| {
         let mut buf = [0u8; 64];
         let mut stdin = std::io::stdin();
@@ -166,6 +231,7 @@ pub(crate) fn run(args: &[String]) -> i32 {
         game.map(Path::new),
         prop_shadows,
         prop_lighting,
+        tuning,
         &mut log,
     );
     drop(data);
@@ -197,7 +263,7 @@ mod tests {
             offsets: vec![0, u32::MAX, 4 | FlatLightmaps::BUMPED],
             texels: vec![1, 2, 3, 4, 5, 6, 7, 8],
         };
-        let lit = LitResult { flat: flat.clone(), bsp: b"VBSP and the rest".to_vec() };
+        let lit = LitResult { flat: flat.clone(), bsp: b"VBSP and the rest".to_vec(), peak: None };
         write_result(&path, &lit).expect("write");
         let read = read_result(&path).expect("read");
         assert_eq!(read.bsp, lit.bsp);
@@ -212,15 +278,43 @@ mod tests {
     }
 
     #[test]
+    fn tuning_follows_the_lighting_options() {
+        let t = Tuning { sun_samples: 12, ambient_samples: 40, supersample: true, quick: false };
+        assert_eq!(Tuning::parse(&t.arg()), t);
+        assert_eq!(Tuning::parse(&t.quick().arg()), t.quick());
+        assert_eq!(Tuning::parse("x"), Tuning::default());
+        assert_eq!(Tuning::parse("9").sun_samples, 9, "a lone sun sample count");
+        assert_eq!(options(true, RadQuality::Normal, 1, None, true, true, t).min_sun_samples, 12);
+        let plus = hp_editor::luxels::LightPlus { samples_ambient: 3, ..Default::default() };
+        assert_eq!(Tuning::of(&plus).ambient_samples, MIN_AMBIENT_SAMPLES);
+    }
+
+    #[test]
+    fn the_quick_pass_follows_hammer_plus_plus() {
+        let t = Tuning::of(&hp_editor::luxels::LightPlus::default()).quick();
+        let o = options(true, RadQuality::Final, 100, None, true, true, t);
+        assert_eq!(o.quality, RadQuality::Draft);
+        assert!(!o.normal_sampling && o.no_extra, "no supersampling, like the Hammer++ default");
+        assert_eq!(o.extra_sky.map(|n| (162.0 * n).round() as usize), Some(40), "the 40 ambient samples");
+        assert_eq!(o.min_sun_samples, 6);
+        assert!(o.probes.is_none(), "the light probes of the Lit mode wait for the refined pass");
+        let slow = options(true, RadQuality::Final, 100, None, true, true, Tuning { quick: false, ..t });
+        assert_eq!(
+            (slow.quality, slow.normal_sampling, slow.no_extra, slow.extra_sky),
+            (RadQuality::Final, true, false, None)
+        );
+        assert!(slow.probes.is_some());
+    }
+
+    #[test]
     fn prop_options_follow_the_settings() {
         for shadows in [true, false] {
             for lighting in [true, false] {
-                let o = options(true, RadQuality::Final, 4, Some(2), shadows, lighting);
+                let o = options(true, RadQuality::Final, 4, Some(2), shadows, lighting, Tuning::default());
                 assert_eq!((o.props.shadows, o.props.lighting), (shadows, lighting));
                 assert!(o.hdr && !o.ldr);
                 assert_eq!((o.bounces, o.threads, o.quality), (4, Some(2), RadQuality::Final));
-                assert!(o.ao.by_default && o.ao.in_draft, "the preview keeps the ambient occlusion of a compile");
-                assert_eq!(o.min_sun_samples, 16, "the sun penumbra of a Normal compile at every quality");
+                assert_eq!(o.min_sun_samples, 6, "the Sun Samples of Hammer++");
                 assert!(o.normal_sampling, "the preview samples the sky and the bounce like a Normal compile");
             }
         }

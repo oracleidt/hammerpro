@@ -113,6 +113,7 @@ impl LightingTab {
                 BakeKind::Full => t!("lighting.kind_full"),
                 BakeKind::AroundCamera => t!("lighting.kind_around"),
                 BakeKind::Update => t!("lighting.kind_update"),
+                BakeKind::Refine => t!("lighting.kind_refine"),
             };
             let text = tf!("lighting.progress", kind, phase_text(p.phase), fmt_decimal(f64::from(p.elapsed_s), 1));
             ui.add(hp_app::widgets::progress_bar(p.fraction.clamp(0.0, 1.0)).text(text));
@@ -179,6 +180,15 @@ impl LightingTab {
         });
         egui::CollapsingHeader::new(t!("lighting.advanced")).id_salt("hp_lighting_advanced").show(ui, |ui| {
             egui::Grid::new("hp_lighting_advanced_grid").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
+                ui.label(t!("lighting.sun_samples")).on_hover_text(t!("lighting.quick_tip"));
+                ui.add(egui::DragValue::new(&mut o.samples_sun).range(1..=256).speed(0.2));
+                ui.end_row();
+                ui.label(t!("lighting.ambient_samples")).on_hover_text(t!("lighting.quick_tip"));
+                ui.add(egui::DragValue::new(&mut o.samples_ambient).range(16..=5184).speed(1.0));
+                ui.end_row();
+                ui.label(t!("lighting.supersample")).on_hover_text(t!("lighting.quick_tip"));
+                ui.checkbox(&mut o.supersample, "");
+                ui.end_row();
                 ui.label(t!("lighting.debug"));
                 ui.checkbox(&mut o.debug, "").on_hover_text(t!("lighting.debug_tip"));
                 ui.end_row();

@@ -22,6 +22,7 @@ mod overlay;
 pub mod parallax;
 mod park;
 mod particles;
+pub mod pipeline_cache;
 mod pipelines;
 mod projector;
 mod reflection;
@@ -253,6 +254,8 @@ pub struct Renderer {
     overlay_bytes: Vec<u8>,
     retained: HashMap<u32, RetainedGpu>,
     retained_uploads: u64,
+    staging: memory::StagingPacer,
+    prewarm: Option<std::thread::JoinHandle<Vec<(usize, PipelineSet)>>>,
     shadow: Option<shadow::ShadowGpu>,
     shadow_dummy_array: wgpu::TextureView,
     sky_layers: [shadow::SkyAnalysis; 2],
@@ -571,7 +574,6 @@ fn unique_edges(verts: &[gpu::GpuVertex], indices: &[u32]) -> Vec<u32> {
 
 const OPT_WALKABLE: u32 = 1;
 const OPT_FOG: u32 = 2;
-const OPT_FOG_BLEND: u32 = 4;
 const OPT_GRID_3D: u32 = 8;
 const OPT_SKY_PASS: u32 = 16;
 const OPT_MODEL_FADE: u32 = 32;
@@ -656,6 +658,19 @@ fn light_background(bg: [f32; 3]) -> bool {
     0.2126 * r + 0.7152 * g + 0.0722 * b > 0.5
 }
 
+pub(crate) fn fog_view_color(f: &Fog, forward: Vec3) -> ([f32; 3], Vec3) {
+    let c = |c: [f32; 3]| c.map(|v| finite_or(v, 1.0).clamp(0.0, 1.0));
+    let dir = Vec3::from(f.dir).normalize_or(Vec3::X);
+    let dir = if dir.is_finite() { dir } else { Vec3::X };
+    let (primary, secondary) = (c(f.color), c(f.color2));
+    if !f.blend {
+        return (primary, dir);
+    }
+    let fwd = forward.normalize_or(Vec3::X);
+    let t = (0.5 * fwd.dot(dir) + 0.5).clamp(0.0, 1.0);
+    (std::array::from_fn(|i| t * primary[i] + (1.0 - t) * secondary[i]), dir)
+}
+
 fn options_uniform(cam: &Camera, o: &ViewOptions, env: &Environment, sky_pass: bool, ldr_sky: bool) -> OptionsUniform {
     let mut bits = 0u32;
     let mut grid3d = [0.0f32; 4];
@@ -711,22 +726,19 @@ fn options_uniform(cam: &Camera, o: &ViewOptions, env: &Environment, sky_pass: b
                 finite_or(g.opacity, 0.45).clamp(0.0, 1.0),
             ];
         }
-        if let Some(f) = env.fog.filter(|_| o.show_fog && !sky_pass) {
-            let start = finite_or(f.start, 0.0).max(0.0);
+        let fog = if sky_pass { env.sky_fog } else { env.fog };
+        if let Some(f) = fog.filter(|_| o.show_fog) {
+            let start = finite_or(f.start, 0.0).clamp(-1.0e6, 1.0e6);
             let end = finite_or(f.end, start + 1.0).max(start + 1.0);
-            let rgb = |c: [f32; 3]| [srgb_to_linear(c[0]), srgb_to_linear(c[1]), srgb_to_linear(c[2])];
-            let [r, g, b] = rgb(f.color);
-            let [r2, g2, b2] = rgb(f.color2);
-            let dir = Vec3::from(f.dir).normalize_or(Vec3::X);
-            let dir = if dir.is_finite() { dir } else { Vec3::X };
+            let (gamma, dir) = fog_view_color(&f, cam.forward);
+            let [r, g, b] = gamma.map(srgb_to_linear);
             bits |= OPT_FOG;
-            if f.blend {
-                bits |= OPT_FOG_BLEND;
-            }
-            fog_a = [r, g, b, finite_or(f.max_density, 1.0).clamp(0.0, 1.0)];
-            fog_b = [r2, g2, b2, start];
+            fog_a = [gamma[0], gamma[1], gamma[2], finite_or(f.max_density, 1.0).clamp(0.0, 1.0)];
+            fog_b = [r, g, b, start];
             fog_c = [dir.x, dir.y, dir.z, end];
-            far_z = finite_or(f.far_z, 0.0).max(0.0);
+            if !sky_pass {
+                far_z = finite_or(f.far_z, 0.0).max(0.0);
+            }
         }
     }
     let sprite_px = finite_or(o.sprites_2d_px, 0.0).clamp(0.0, 256.0) as u32;
@@ -891,6 +903,8 @@ impl Renderer {
             overlay_bytes: Vec::new(),
             retained: HashMap::new(),
             retained_uploads: 0,
+            staging: memory::StagingPacer::default(),
+            prewarm: None,
             shadow: None,
             shadow_dummy_array: shadow_dummy,
             sky_layers: [None, None],
@@ -1034,6 +1048,7 @@ impl Renderer {
         if oom {
             return Err(RenderError::OutOfMemory);
         }
+        self.staging.wrote(&self.device, &self.queue, entry.bytes);
         self.content_gen += 1;
         let id = self.next_tex;
         self.next_tex = self.next_tex.checked_add(1).filter(|v| *v != TexId::FLAT_NORMAL.0).unwrap_or(3);
@@ -1340,12 +1355,24 @@ impl Renderer {
         self.scene.bulk = on;
     }
 
+    fn write_arena(&mut self, w: scene::Write) {
+        let buf = &self.arenas[w.arena as usize];
+        if w.data.is_empty() || w.offset + w.data.len() as u64 > buf.size {
+            return;
+        }
+        self.queue.write_buffer(&buf.buffer, w.offset, &w.data);
+        let bytes = w.data.len() as u64;
+        drop(w);
+        self.staging.wrote(&self.device, &self.queue, bytes);
+    }
+
     fn flush_with(&mut self, parallel: bool) {
         if std::mem::take(&mut self.instances_dirty) {
             self.pack_instances();
         }
-        let out = self.scene.flush(parallel);
-        if !out.writes.is_empty() || !out.state_ranges.is_empty() {
+        let mut out = self.scene.flush_deferred(parallel);
+        let rebuilt = std::mem::take(&mut out.rebuilt);
+        if !out.writes.is_empty() || !rebuilt.is_empty() || !out.state_ranges.is_empty() {
             self.shadow_epoch += 1;
         }
         self.sync_materials();
@@ -1355,12 +1382,13 @@ impl Renderer {
                 self.upload_failed = true;
             }
         }
-        for w in &out.writes {
-            let buf = &self.arenas[w.arena as usize];
-            if w.data.is_empty() || w.offset + w.data.len() as u64 > buf.size {
-                continue;
+        for batch in rebuilt.chunks(scene::ASSEMBLE_BATCH) {
+            for w in self.scene.assemble_chunks(batch, parallel) {
+                self.write_arena(w);
             }
-            self.queue.write_buffer(&buf.buffer, w.offset, &w.data);
+        }
+        for w in std::mem::take(&mut out.writes) {
+            self.write_arena(w);
         }
         let state_size = size_of::<ObjState>() as u64;
         let need = u64::from(out.states_len) * state_size;
@@ -1420,6 +1448,7 @@ impl Renderer {
     }
 
     fn insert_model(&mut self, model: ModelGpu) -> ModelId {
+        self.staging.wrote(&self.device, &self.queue, model.bytes);
         let id = self.next_model;
         self.next_model = self.next_model.checked_add(1).unwrap_or(1);
         self.models.insert(id, model);
@@ -1892,9 +1921,19 @@ impl Renderer {
 
     fn ensure_pipelines(&mut self, samples: u32) -> usize {
         let i = usize::from(samples > 1);
+        if self.pipelines[i].is_none()
+            && let Some(handle) = self.prewarm.take()
+        {
+            for (k, set) in handle.join().unwrap_or_default() {
+                if let Some(slot) = self.pipelines.get_mut(k).filter(|p| p.is_none()) {
+                    *slot = Some(set);
+                }
+            }
+        }
         if self.pipelines[i].is_none() {
             self.pipelines[i] = Some(PipelineSet::new(&self.device, &self.shared, samples));
         }
+        pipeline_cache::save_if_dirty(&self.device);
         i
     }
 
@@ -2323,7 +2362,7 @@ impl Renderer {
         let chain = !self.probing && reflecting.is_none() && self.tone_chain(&opts, params.mode, cam.is_ortho);
         self.prepare_tone(view_id, params.size, params.mode, chain);
         let tone = reflecting.map_or_else(|| self.tone_scale_for(view_id, chain), |r| r.tone);
-        let lit = params.mode == RenderMode::Lit && !cam.is_ortho;
+        let lit = params.mode == RenderMode::Lit && !cam.is_ortho && !self.baked_lit(&cam, params.mode);
         if !cam.is_ortho && opts.cubemaps && reflecting.is_none() {
             self.cubes.note_view(view_id, &params, &opts);
         }
@@ -2469,7 +2508,11 @@ impl Renderer {
             for h in hooks.iter_mut() {
                 h.prepare(&hook_cx, &mut enc);
             }
-            let bg = params.background.map(|c| f64::from(srgb_to_linear(c)));
+            let bg = if uniform.opts[0] & OPT_FOG != 0 && shaded_3d {
+                [0, 1, 2].map(|i| f64::from(uniform.fog_b[i]))
+            } else {
+                params.background.map(|c| f64::from(srgb_to_linear(c)))
+            };
             let clear = wgpu::Color { r: bg[0], g: bg[1], b: bg[2], a: 1.0 };
             let (target, resolve) = match &view.msaa_view {
                 Some(m) => (m, Some(&view.color_view)),
@@ -2935,6 +2978,27 @@ impl Renderer {
             self.play_base.remove(&id);
             self.scene.set_flags(id, old);
             self.content_gen += 1;
+        }
+    }
+
+    pub fn install_pipeline_cache(&self, path: &std::path::Path) -> bool {
+        pipeline_cache::install(&self.device, path)
+    }
+
+    pub fn prewarm_pipelines(&mut self) {
+        if self.prewarm.is_some() || self.pipelines.iter().any(Option::is_some) {
+            return;
+        }
+        let device = self.device.clone();
+        let shared = self.shared.clone();
+        let spawned = std::thread::Builder::new().name("hp-render-pipelines".to_owned()).spawn(move || {
+            let (msaa, single) =
+                rayon::join(|| PipelineSet::new(&device, &shared, 4), || PipelineSet::new(&device, &shared, 1));
+            vec![(1, msaa), (0, single)]
+        });
+        match spawned {
+            Ok(handle) => self.prewarm = Some(handle),
+            Err(e) => log::warn!("hp-render: cannot start the pipeline thread: {e}"),
         }
     }
 

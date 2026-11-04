@@ -2,7 +2,7 @@
 
 # Documentation de Hammer Pro
 
-Bienvenue dans la base de connaissances de Hammer Pro 1.0.4, l'éditeur de maps pour le moteur Source pensé d'abord pour Garry's Mod. Chaque fonctionnalité a sa propre page : ce que c'est, comment l'ouvrir, chaque option avec sa valeur par défaut, des astuces et une courte FAQ. Les pages renvoient les unes aux autres : commencez où vous voulez.
+Bienvenue dans la base de connaissances de Hammer Pro 1.0.5, l'éditeur de maps pour le moteur Source pensé d'abord pour Garry's Mod. Chaque fonctionnalité a sa propre page : ce que c'est, comment l'ouvrir, chaque option avec sa valeur par défaut, des astuces et une courte FAQ. Les pages renvoient les unes aux autres : commencez où vous voulez.
 
 Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.md), [Configuration du jeu](getting-started/game-setup.md) puis [Votre première map](getting-started/first-map.md), dans cet ordre.
 
@@ -137,7 +137,7 @@ Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.m
 | [Options de compilation](compiler/compile-options.md) | Chaque option de compilation avec son effet et sa valeur par défaut. |
 | [Choisir un compilateur](compiler/compilers.md) | vbsp, vvis et vrad de Valve ou vos propres programmes à la place du compilateur intégré, avec chaque option. |
 | [Ligne de commande du compilateur](compiler/command-line.md) | `hammerpro --bspc` et `hammerpro --rad`, chaque argument. |
-| [Clés worldspawn et lumières](compiler/worldspawn-keys.md) | Clés d'occlusion ambiante, `_lightsrad` et les autres clés lues par le compilateur. |
+| [Clés worldspawn et lumières](compiler/worldspawn-keys.md) | `_lightsrad` et les autres clés lues par le compilateur. |
 | [Jeux cibles](compiler/target-games.md) | Jeux Source pris en charge et branches du moteur. |
 | [Cubemaps](compiler/cubemaps.md) | Construire les cubemaps, les écrire dans la map, cubemaps à correction de parallaxe. |
 | [Limites et journaux](compiler/limits-and-logs.md) | Limites du moteur par jeu, lire le journal de compilation et les statistiques. |
@@ -162,7 +162,7 @@ Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.m
 | [Compiler et tester dans Garry's Mod](guides/compile-and-test-gmod.md) | La boucle la plus rapide entre l'édition et le jeu. |
 | [Créer un prop avec Propper](guides/make-a-prop-with-propper.md) | Transformer des brushes en prop statique avec LOD et collision. |
 | [Sculpter des displacements](guides/sculpt-displacements.md) | Du brush au terrain peint avec des mélanges de textures. |
-| [Éclairage et occlusion ambiante](guides/lighting-and-ao.md) | Lumières, aperçus, LDR et HDR, occlusion ambiante. |
+| [Éclairage](guides/lighting.md) | Lumières, aperçus, LDR et HDR, éclairage des props statiques. |
 | [Grilles personnalisées pour les escaliers](guides/custom-grids-for-stairs.md) | Une grille avec un pas par axe pour des marches régulières. |
 | [Rassembler le contenu pour une publication](guides/collect-content-for-release.md) | Réunir chaque fichier personnalisé dont la map a besoin. |
 | [Porter une map vers un autre jeu](guides/port-to-another-game.md) | Changer de jeu cible et corriger ce qui diffère. |

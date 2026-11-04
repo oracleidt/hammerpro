@@ -75,7 +75,7 @@ Si Garry's Mod est déjà lancé, la map se charge dans le jeu en cours (« Jeu 
 ## Pour aller plus loin
 
 - [Compiler et tester dans Garry's Mod](../guides/compile-and-test-gmod.md)
-- [Éclairage et occlusion ambiante](../guides/lighting-and-ao.md)
+- [Éclairage](../guides/lighting.md)
 - [Outil de sélection](../features/selection-tool.md)
 - [Fenêtre Compiler et lancer](../compiler/compile-window.md)
 

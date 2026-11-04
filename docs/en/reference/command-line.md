@@ -39,7 +39,7 @@ An unknown argument starting with `--` prints `unknown argument: ...` on stderr 
 |---|---|
 | `--mcp` | The MCP bridge that AI apps start themselves. It opens no window and forwards the tool calls to a Hammer Pro window whose MCP server is on. stdout only carries MCP messages. See [MCP server](mcp-server.md). |
 | `--bspc [options] <map>` | The Hammer Pro map compiler (geometry, portals, leak test and visibility), with the arguments of VBSP (`-game`, `-leaktest`...). It writes `<map>.bsp` next to the map, `<map>.lin` when the map leaks, `<map>.prt` for a sealed map, and a `<map>.log`. |
-| `--rad [options] <map>` | The Hammer Pro lighting, with the arguments of VRAD (`-ldr`, `-hdr`, `-both`, `-final`, `-fast`, `-bounce N`...) plus Hammer Pro's own options (ambient occlusion `-ao`, `-aoradius`...). It lights `<map>.bsp` in place. |
+| `--rad [options] <map>` | The Hammer Pro lighting, with the arguments of VRAD (`-ldr`, `-hdr`, `-both`, `-final`, `-fast`, `-bounce N`...) plus Hammer Pro's own options (`-nostaticpropshadows`, `-nodispshadows`...). It lights `<map>.bsp` in place. |
 | `--light-preview ...` | Internal: the lighting of the baked lighting preview, started by the editor itself. You never need to run it. |
 | `--apply-update <zip> <program> <pid>` | Internal: the update helper that the editor starts from a copy of itself when you click **Update**. It has no window: it waits for the process `<pid>` to end, extracts `hammerpro.exe` from `<zip>`, replaces `<program>` (keeping `<program>.old`, rolling back on failure) and starts it. See [Updates](../features/updates.md). |
 

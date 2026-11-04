@@ -173,19 +173,116 @@ fn read_bsp(path: &Path) -> Result<BspLoad, String> {
     Ok(BspLoad { vis, costs, world, counts, areas, clusters, modified: unix_secs(meta.modified().ok()) })
 }
 
-pub(crate) fn bake_prop_lighting(bsp: &hp_bsp::Bsp) -> Option<PropLighting> {
+pub(crate) fn bake_prop_lighting(bsp: &hp_bsp::Bsp, hdr: bool) -> Option<PropLighting> {
     let lump = |i: usize| bsp.lump(i).map(|c| c.into_owned()).unwrap_or_default();
     let leaf_version = bsp.lump_info(lump::LEAFS).ok()?.version;
-    let vis = BspVis::from_lumps(
-        &lump(lump::PLANES),
-        &lump(lump::NODES),
-        &lump(lump::LEAFS),
-        leaf_version,
-        &lump(lump::MODELS),
-        &lump(lump::VISIBILITY),
-    )
-    .ok();
-    read_world(bsp, vis.as_ref(), leaf_version).map(|w| w.light.props)
+    let (planes, leafs, models) = (lump(lump::PLANES), lump(lump::LEAFS), lump(lump::MODELS));
+    let vis =
+        BspVis::from_lumps(&planes, &lump(lump::NODES), &leafs, leaf_version, &models, &lump(lump::VISIBILITY)).ok();
+    let sky = sky_face_bounds(bsp, &models)?;
+    let mode = if hdr { LightMode::Hdr } else { LightMode::Ldr };
+    let (_, scales) = light_styles(&bsp.entities().unwrap_or_default());
+    Some(read_prop_lighting(bsp, sky, vis.as_ref(), mode, &scales, &planes, &leafs, leaf_version, &models))
+}
+
+pub(crate) const PROP_LIGHTING_LUMPS: &[usize] = &[
+    lump::PLANES,
+    lump::NODES,
+    lump::LEAFS,
+    lump::MODELS,
+    lump::VISIBILITY,
+    lump::FACES,
+    lump::TEXINFO,
+    world::lump::VERTEXES,
+    world::lump::EDGES,
+    world::lump::SURFEDGES,
+    world_light::lump::LEAF_AMBIENT_INDEX,
+    world_light::lump::LEAF_AMBIENT_LIGHTING,
+    world_light::lump::LEAF_AMBIENT_INDEX_HDR,
+    world_light::lump::LEAF_AMBIENT_LIGHTING_HDR,
+    world_light::lump::WORLDLIGHTS,
+    world_light::lump::WORLDLIGHTS_HDR,
+    MAP_FLAGS_LUMP,
+];
+
+fn sky_face_bounds(bsp: &hp_bsp::Bsp, models: &[u8]) -> Option<Vec<([f32; 3], [f32; 3])>> {
+    const FACE: usize = 56;
+    const SKY: i32 = 0x2 | 0x4;
+    const SKIPPED: i32 = 0x80 | 0x100 | 0x200;
+    let lump = |i: usize| bsp.lump(i).map(|c| c.into_owned()).unwrap_or_default();
+    let faces = match lump(lump::FACES) {
+        f if f.is_empty() => lump(world::lump::FACES_HDR),
+        f => f,
+    };
+    let texinfo = lump(lump::TEXINFO);
+    let (vertexes, edges, surfedges) =
+        (lump(world::lump::VERTEXES), lump(world::lump::EDGES), lump(world::lump::SURFEDGES));
+    let int = |d: &[u8], o: usize| d.get(o..o + 4).map(|b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]));
+    let short = |d: &[u8], o: usize| d.get(o..o + 2).map(|b| i16::from_le_bytes([b[0], b[1]]));
+    let float = |d: &[u8], o: usize| d.get(o..o + 4).map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]));
+    let first = int(models, 40).and_then(|v| usize::try_from(v).ok()).unwrap_or(0);
+    let count = int(models, 44).and_then(|v| usize::try_from(v).ok()).unwrap_or(0);
+    let total = faces.len() / FACE;
+    let mut kept = 0usize;
+    let mut out = Vec::new();
+    for f in first.min(total)..first.saturating_add(count).min(total) {
+        let o = f * FACE;
+        let texinfo_of = short(&faces, o + 10).and_then(|t| usize::try_from(t).ok());
+        let Some(flags) = texinfo_of.and_then(|t| int(&texinfo, t * 72 + 64)) else { continue };
+        if flags & SKIPPED != 0 {
+            continue;
+        }
+        let first_edge = int(&faces, o + 4).and_then(|v| usize::try_from(v).ok()).unwrap_or(0);
+        let edge_count = short(&faces, o + 8).and_then(|v| usize::try_from(v).ok()).unwrap_or(0);
+        if !(3..=512).contains(&edge_count) {
+            continue;
+        }
+        let (mut lo, mut hi) = ([f32::MAX; 3], [f32::MIN; 3]);
+        let mut whole = true;
+        for e in 0..edge_count {
+            let point = int(&surfedges, (first_edge + e) * 4).and_then(|se| {
+                let at = se.unsigned_abs() as usize * 4 + if se < 0 { 2 } else { 0 };
+                let v = edges.get(at..at + 2).map(|b| usize::from(u16::from_le_bytes([b[0], b[1]])))?;
+                Some([float(&vertexes, v * 12)?, float(&vertexes, v * 12 + 4)?, float(&vertexes, v * 12 + 8)?])
+            });
+            let Some(p) = point.filter(|p| p.iter().all(|c| c.is_finite())) else {
+                whole = false;
+                break;
+            };
+            for k in 0..3 {
+                lo[k] = lo[k].min(p[k]);
+                hi[k] = hi[k].max(p[k]);
+            }
+        }
+        if !whole {
+            continue;
+        }
+        kept += 1;
+        if flags & SKY != 0 {
+            out.push((lo, hi));
+        }
+    }
+    (kept > 0).then_some(out)
+}
+
+fn light_styles(entities: &[hp_bsp::entities::Entity]) -> (world_light::StyleTable, [f32; world_light::MAX_STYLES]) {
+    let int = |e: &hp_bsp::entities::Entity, k: &str| e.get(k).and_then(|v| v.trim().parse::<i64>().ok()).unwrap_or(0);
+    let styles = world_light::StyleTable::from_entities(
+        entities
+            .iter()
+            .filter(|e| {
+                e.get("classname").is_some_and(|c| LIGHT_CLASSES.iter().any(|k| c.trim().eq_ignore_ascii_case(k)))
+            })
+            .map(|e| world_light::LightEntity {
+                name: e.get("targetname").unwrap_or_default(),
+                style: int(e, "style").clamp(-1, 1 << 16) as i32,
+                default_style: int(e, "defaultstyle").clamp(-1, 1 << 16) as i32,
+                start_dark: int(e, "spawnflags") & 1 != 0,
+                pattern: e.get("pattern").unwrap_or_default(),
+            }),
+    );
+    let scales = styles.values(0.0, &styles.initial());
+    (styles, scales)
 }
 
 fn read_cubemaps(bsp: &hp_bsp::Bsp, path: &Path) -> Vec<world::WorldCubemap> {
@@ -240,22 +337,7 @@ fn read_world(bsp: &hp_bsp::Bsp, vis: Option<&BspVis>, leaf_version: u32) -> Opt
         (LightMode::Fullbright, Vec::new(), Vec::new())
     };
     let entities = bsp.entities().unwrap_or_default();
-    let int = |e: &hp_bsp::entities::Entity, k: &str| e.get(k).and_then(|v| v.trim().parse::<i64>().ok()).unwrap_or(0);
-    let styles = world_light::StyleTable::from_entities(
-        entities
-            .iter()
-            .filter(|e| {
-                e.get("classname").is_some_and(|c| LIGHT_CLASSES.iter().any(|k| c.trim().eq_ignore_ascii_case(k)))
-            })
-            .map(|e| world_light::LightEntity {
-                name: e.get("targetname").unwrap_or_default(),
-                style: int(e, "style").clamp(-1, 1 << 16) as i32,
-                default_style: int(e, "defaultstyle").clamp(-1, 1 << 16) as i32,
-                start_dark: int(e, "spawnflags") & 1 != 0,
-                pattern: e.get("pattern").unwrap_or_default(),
-            }),
-    );
-    let scales = styles.values(0.0, &styles.initial());
+    let (styles, scales) = light_styles(&entities);
     let vec3 = |e: &hp_bsp::entities::Entity, k: &str| -> [f32; 3] {
         let v: Vec<f32> = e.get(k).unwrap_or_default().split_whitespace().filter_map(|x| x.parse().ok()).collect();
         if v.len() == 3 && v.iter().all(|x| x.is_finite()) { [v[0], v[1], v[2]] } else { [0.0; 3] }
@@ -304,7 +386,8 @@ fn read_world(bsp: &hp_bsp::Bsp, vis: Option<&BspVis>, leaf_version: u32) -> Opt
     w.entity_ids = ids;
     w.rope_entities = rope_entities(&entities);
     w.particle_entities = particle_entities(&entities);
-    w.light.props = read_prop_lighting(bsp, &w, vis, mode, &scales, &planes, &leafs, leaf_version, &models);
+    let sky = w.faces.iter().filter(|f| f.sky).map(|f| w.bounds_of(f)).collect();
+    w.light.props = read_prop_lighting(bsp, sky, vis, mode, &scales, &planes, &leafs, leaf_version, &models);
     Some(w)
 }
 
@@ -353,7 +436,7 @@ fn particle_entities(entities: &[hp_bsp::entities::Entity]) -> Vec<hp_vmf::Entit
 #[allow(clippy::too_many_arguments)]
 fn read_prop_lighting(
     bsp: &hp_bsp::Bsp,
-    w: &BspWorld,
+    sky: Vec<([f32; 3], [f32; 3])>,
     vis: Option<&BspVis>,
     mode: LightMode,
     scales: &[f32; world_light::MAX_STYLES],
@@ -385,7 +468,7 @@ fn read_prop_lighting(
         worldlights: &lights,
     };
     let mut p = PropLighting::from_lumps(&l, scales);
-    p.set_sky_faces(w.faces.iter().filter(|f| f.sky).map(|f| w.bounds_of(f)).collect());
+    p.set_sky_faces(sky);
     p.set_visibility(vis.cloned().map(std::sync::Arc::new));
     if mode == LightMode::Fullbright {
         return p;

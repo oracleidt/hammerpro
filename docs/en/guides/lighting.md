@@ -1,8 +1,8 @@
-[Documentation](../README.md) > Guides > Lighting and ambient occlusion | [Français](../../fr/guides/lighting-and-ao.md)
+[Documentation](../README.md) > Guides > Lighting | [Français](../../fr/guides/lighting.md)
 
-# Lighting and ambient occlusion
+# Lighting
 
-This guide lights a map from the first light to the final compile: place lights, preview them in the editor (real time, then baked), compile in LDR and HDR, add ambient occlusion and light the static props.
+This guide lights a map from the first light to the final compile: place lights, preview them in the editor (real time, then baked), compile in LDR and HDR and light the static props.
 
 ## Step 1: place the lights
 
@@ -52,28 +52,11 @@ In **File > Compile and run...** (`Ctrl+F9`), the **Dynamic range** row sets wha
 
 **Final** always computes both, **Draft** computes one. The **Preset** sets the quality: Draft uses `-bounce 1 -fast`, Final uses `-final -StaticPropLighting`. For a quick look at the real lighting, compile with **Normal**; for the release, **Final**.
 
-## Step 6: ambient occlusion
-
-Hammer Pro's lighting adds ambient occlusion, which VRAD does not have for lightmaps: contact shadows in corners, creases, at the foot of walls and under props. It only darkens the bounced light near close geometry; direct light and sky light keep their own shadows.
-
-By default it is **on for Normal and Final, off for Draft**. Control it per map in **Map > Map properties...** (these keys are shown whatever the FGD):
-
-| Map property | Key | Effect | Default |
-|---|---|---|---|
-| **Ambient occlusion (Hammer Pro)** | `_ao` | **Compile default**, **On** or **Off**. | Compile default |
-| **Ambient occlusion radius** | `_aoradius` | How far geometry darkens a surface, in units (4 to 1024). | 96 |
-| **Ambient occlusion strength** | `_aostrength` | 0 (none) to 1 (a closed corner loses all its bounced light). | 0.75 |
-| **Ambient occlusion rays** | `_aosamples` | Rays per luxel and per static prop vertex (4 to 512). More is smoother and slower. | 32, 64 with Final |
-
-Or per compile, with the lighting options of the compile window (the menu **All lighting options (hammerpro --rad)** or the **Extra lighting arguments**): `-ao`, `-noao`, `-aoradius N`, `-aostrength N`, `-aosamples N`. These options win over the map keys.
-
-Tips: a smaller radius keeps the shadows tight in the corners, a larger one darkens wider areas around big shapes. Lower the strength if corners look dirty.
-
-## Step 7: light the static props
+## Step 6: light the static props
 
 In the **Static props** section of the compile window:
 
-- **Light static props (per vertex)**: when the quality asks for it (Final), the lighting bakes the light of every static prop vertex (`-StaticPropLighting`): shadows, bounced light and ambient occlusion on the props. Slow on big maps. Off: the game lights the props itself.
+- **Light static props (per vertex)**: when the quality asks for it (Final), the lighting bakes the light of every static prop vertex (`-StaticPropLighting`): shadows and bounced light on the props. Slow on big maps. Off: the game lights the props itself.
 - **Static prop shadows**: props cast shadows in the lighting. Off: no prop shadow at all, and their models are not even loaded (`-nostaticpropshadows`), much faster on maps with many props.
 
 You can also force `-StaticPropLighting` with a Normal compile through the lighting options menu. Each flag is described in [Compile options](../compiler/compile-options.md).
@@ -81,8 +64,6 @@ You can also force `-StaticPropLighting` with a Normal compile through the light
 ## FAQ
 
 **The baked preview and the game do not look the same.** Check that the preview and the compile use the same dynamic range, and that the game shows HDR only if you compiled HDR.
-
-**Corners look too dark.** Lower **Ambient occlusion strength**, or set **Ambient occlusion (Hammer Pro)** to **Off** for this map.
 
 **Props are black or flat.** Compile with **Final** (or force `-StaticPropLighting`) so prop vertices get baked lighting, and keep **Static prop shadows** on.
 

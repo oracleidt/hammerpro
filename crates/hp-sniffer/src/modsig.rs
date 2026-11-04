@@ -83,7 +83,8 @@ pub fn flags_from_code(code: &[u8], code_va: u64, wide: bool) -> Vec<(usize, u64
         let at = from + rel;
         from = at + 1;
         let before = &code[at.saturating_sub(LOAD_REACH)..at];
-        let pushes_lump = before.windows(5).any(|w| w == [0xBA, 0x3B, 0, 0, 0]) || before.windows(2).any(|w| w == [0x6A, 0x3B]);
+        let pushes_lump =
+            before.windows(5).any(|w| w == [0xBA, 0x3B, 0, 0, 0]) || before.windows(2).any(|w| w == [0x6A, 0x3B]);
         if !pushes_lump {
             continue;
         }
@@ -190,9 +191,14 @@ mod tests {
     fn code_for(wide: bool, va: u64, globals: &[u64]) -> Vec<u8> {
         let mut c = vec![0x90u8; 8];
         if wide {
-            c.extend_from_slice(&[0xBA, 0x3B, 0, 0, 0, 0x48, 0x8D, 0x4C, 0x24, 0x20, 0xE8, 1, 2, 3, 4, 0x48, 0x8B, 0x44, 0x24, 0x38, 0x8B, 0x00]);
+            c.extend_from_slice(&[
+                0xBA, 0x3B, 0, 0, 0, 0x48, 0x8D, 0x4C, 0x24, 0x20, 0xE8, 1, 2, 3, 4, 0x48, 0x8B, 0x44, 0x24, 0x38,
+                0x8B, 0x00,
+            ]);
         } else {
-            c.extend_from_slice(&[0x6A, 0x3B, 0x8D, 0x8D, 1, 2, 3, 4, 0xE8, 1, 2, 3, 4, 0x8B, 0x85, 1, 2, 3, 4, 0x8B, 0x00]);
+            c.extend_from_slice(&[
+                0x6A, 0x3B, 0x8D, 0x8D, 1, 2, 3, 4, 0xE8, 1, 2, 3, 4, 0x8B, 0x85, 1, 2, 3, 4, 0x8B, 0x00,
+            ]);
         }
         c.extend_from_slice(&ANCHOR);
         let put = |c: &mut Vec<u8>, g: u64| {

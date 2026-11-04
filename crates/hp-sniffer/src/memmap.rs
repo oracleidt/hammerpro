@@ -249,10 +249,11 @@ pub fn read_models<S: MemSource + ?Sized>(src: &S, addr: u64, count: usize) -> V
 }
 
 pub fn find_full_struct<S: MemSource + ?Sized>(src: &S, opts: &ScanOptions) -> Option<MemoryCm> {
-    let ents: Vec<(u64, usize)> = crate::scan::find_entity_lumps(src, &ScanOptions { writable_only: true, min_region: 1 << 16, ..*opts })
-        .into_iter()
-        .map(|h| (h.addr, h.text.len()))
-        .collect();
+    let ents: Vec<(u64, usize)> =
+        crate::scan::find_entity_lumps(src, &ScanOptions { writable_only: true, min_region: 1 << 16, ..*opts })
+            .into_iter()
+            .map(|h| (h.addr, h.text.len()))
+            .collect();
     let cs = crate::cmstruct::find_by_entities(src, &ents, &[8, 4]).or_else(|| {
         let g = find_cm_geometry(src, opts)?;
         crate::cmstruct::find_by_planes(src, g.planes_addr, g.planes, &[8, 4])
@@ -285,7 +286,19 @@ pub fn find_full<S: MemSource + ?Sized>(src: &S, opts: &ScanOptions) -> Option<M
     if models.is_empty() {
         return None;
     }
-    Some(MemoryCm { cm, plane_bytes, leafs_addr, leafs, leafbrushes, models_addr, models, nodes_addr, nodes, vis: None, structured: false })
+    Some(MemoryCm {
+        cm,
+        plane_bytes,
+        leafs_addr,
+        leafs,
+        leafbrushes,
+        models_addr,
+        models,
+        nodes_addr,
+        nodes,
+        vis: None,
+        structured: false,
+    })
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -384,7 +397,8 @@ pub fn find_all_mode<S: MemSource + ?Sized>(src: &S, opts: &ScanOptions, map: &s
             let mut data = data;
             if !cm.structured {
                 data.problems.push(
-                    "the collision world was found by scanning for its brush table, its structure was not recognised".to_owned(),
+                    "the collision world was found by scanning for its brush table, its structure was not recognised"
+                        .to_owned(),
                 );
             }
             (ok.then_some(r), Some(data))
@@ -438,7 +452,8 @@ pub fn narrow_extras<S: MemSource + ?Sized>(
     plane_bytes: &[u8],
     map: &str,
 ) -> MemoryExtras {
-    let mut x = MemoryExtras { displacements: crate::hubdisp::read_displacements(src, faces, p), ..MemoryExtras::default() };
+    let mut x =
+        MemoryExtras { displacements: crate::hubdisp::read_displacements(src, faces, p), ..MemoryExtras::default() };
     let alpha_found = {
         let targets: Vec<&[[f32; 3]]> = x.displacements.iter().map(|d| d.positions.as_slice()).collect();
         crate::vbuf::find_vertex_alphas(src, opts, &targets)
@@ -829,7 +844,10 @@ pub fn resolve_material_ranks(world: &mut MemoryWorld) {
 const SHARED_SURFACES: usize = 5;
 const SHARED_SUPPORT: usize = 3;
 
-pub fn shared_materials(texinfo: &[crate::world::RenderTexInfo], votes: &HashMap<usize, usize>) -> std::collections::HashSet<u64> {
+pub fn shared_materials(
+    texinfo: &[crate::world::RenderTexInfo],
+    votes: &HashMap<usize, usize>,
+) -> std::collections::HashSet<u64> {
     let mut support: HashMap<u64, HashMap<usize, usize>> = HashMap::new();
     for (t, surface) in votes {
         if let Some(info) = texinfo.get(*t) {
@@ -879,7 +897,8 @@ fn vote_material_names(world: &MemoryWorld, render: &RenderWorld) -> (HashMap<u6
             }
         }
     }
-    let pick = |v: HashMap<usize, u32>| v.into_iter().max_by_key(|(idx, c)| (*c, std::cmp::Reverse(*idx))).map(|(idx, _)| idx);
+    let pick =
+        |v: HashMap<usize, u32>| v.into_iter().max_by_key(|(idx, c)| (*c, std::cmp::Reverse(*idx))).map(|(idx, _)| idx);
     let by_material = votes
         .into_iter()
         .filter_map(|(ptr, v)| {
@@ -986,7 +1005,8 @@ pub fn hidden_texinfo(
     normal: [f32; 3],
 ) -> Option<i16> {
     let render = render?;
-    let mut cands: Vec<usize> = (0..render.texinfo.len()).filter(|&t| ranks.get(t).copied() == Some(surface as i32)).collect();
+    let mut cands: Vec<usize> =
+        (0..render.texinfo.len()).filter(|&t| ranks.get(t).copied() == Some(surface as i32)).collect();
     if cands.is_empty() {
         return None;
     }
@@ -1123,8 +1143,10 @@ pub fn build_bsp(world: &MemoryWorld, entity_text: &str) -> Result<Bsp, String> 
                     };
                     if agrees { t as i16 } else { with_surface(&mut texinfo, &mut combined, t, *surface) }
                 }
-                None => hidden_texinfo(world.render.as_ref(), &texinfo_ranks, &texinfo_use, *surface, planes.normal(*plane))
-                    .unwrap_or_else(|| texinfo_for(&mut texinfo, *surface, texinfo_class(planes.normal(*plane)))),
+                None => {
+                    hidden_texinfo(world.render.as_ref(), &texinfo_ranks, &texinfo_use, *surface, planes.normal(*plane))
+                        .unwrap_or_else(|| texinfo_for(&mut texinfo, *surface, texinfo_class(planes.normal(*plane))))
+                }
             };
             sides.extend_from_slice(&(*plane as u16).to_le_bytes());
             sides.extend_from_slice(&ti.to_le_bytes());
@@ -1186,11 +1208,7 @@ pub fn build_bsp(world: &MemoryWorld, entity_text: &str) -> Result<Bsp, String> 
             models.extend_from_slice(&v.to_le_bytes());
         }
         models.extend_from_slice(&m.headnode.to_le_bytes());
-        let (first, count) = world
-            .hub
-            .as_ref()
-            .and_then(|h| h.model_faces.get(mi).copied())
-            .unwrap_or((0, 0));
+        let (first, count) = world.hub.as_ref().and_then(|h| h.model_faces.get(mi).copied()).unwrap_or((0, 0));
         models.extend_from_slice(&first.to_le_bytes());
         models.extend_from_slice(&count.to_le_bytes());
     }
@@ -1319,11 +1337,15 @@ fn apply_hub(
         put(extra, 13, surfedges, 0);
     }
     if let (Some(r), Some(t)) = (&world.render, h.texdata_count()) {
-        let ranks = material_ranks(world, r, &if world.cm.cm.surface_names.is_empty() {
-            vec![String::from("TOOLS/TOOLSNODRAW")]
-        } else {
-            world.cm.cm.surface_names.clone()
-        });
+        let ranks = material_ranks(
+            world,
+            r,
+            &if world.cm.cm.surface_names.is_empty() {
+                vec![String::from("TOOLS/TOOLSNODRAW")]
+            } else {
+                world.cm.cm.surface_names.clone()
+            },
+        );
         let mut infos: Vec<Option<crate::hubdata::MaterialInfo>> = vec![None; t];
         for (ti, tex) in r.texinfo.iter().enumerate() {
             let rank = ranks.get(ti).copied().unwrap_or(-1);
@@ -2142,8 +2164,9 @@ pub(crate) mod tests {
 
     #[test]
     fn a_material_that_stands_for_many_textures_is_found_from_the_votes() {
-        let texinfo: Vec<crate::world::RenderTexInfo> =
-            (0..40).map(|i| texinfo_with_axes([1.0, 0.0, 0.0], [0.0, 1.0, 0.0], if i < 30 { 0x10 } else { 0x20 + i as u64 })).collect();
+        let texinfo: Vec<crate::world::RenderTexInfo> = (0..40)
+            .map(|i| texinfo_with_axes([1.0, 0.0, 0.0], [0.0, 1.0, 0.0], if i < 30 { 0x10 } else { 0x20 + i as u64 }))
+            .collect();
         let votes: HashMap<usize, usize> = (0..40).map(|i| (i, i % 6)).collect();
         let shared = shared_materials(&texinfo, &votes);
         assert!(shared.contains(&0x10), "thirty texture infos vote for six surfaces");
@@ -2161,14 +2184,22 @@ pub(crate) mod tests {
         hub.push(53, vec![9u8; 32], 1, crate::hubdata::Fidelity::Exact, "lighting");
         hub.model_faces = vec![(4, 9)];
         world.hub = Some(hub);
-        let bsp = build_bsp(&world, "{
+        let bsp = build_bsp(
+            &world,
+            "{
 \"classname\" \"worldspawn\"
 }
-").expect("bsp");
+",
+        )
+        .expect("bsp");
         assert_eq!(bsp.lump(5).expect("nodes").into_owned(), vec![7u8; 64]);
         assert_eq!(bsp.lump(53).expect("lighting").into_owned(), vec![9u8; 32]);
         assert_eq!(bsp.lump(58).expect("faces").len(), 112);
-        assert_eq!(bsp.lump(7).expect("faces copy").len(), 112, "the faces of a high dynamic range reading also fill the plain slot");
+        assert_eq!(
+            bsp.lump(7).expect("faces copy").len(),
+            112,
+            "the faces of a high dynamic range reading also fill the plain slot"
+        );
         assert_eq!(bsp.header().lumps[53].version, 1);
         let models = bsp.lump(14).expect("models").into_owned();
         assert_eq!(i32::from_le_bytes([models[40], models[41], models[42], models[43]]), 4);

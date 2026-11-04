@@ -17,7 +17,7 @@ Comment garder des compilations rapides pendant que vous itérez, et ce qui pren
 
 | À faire | Pourquoi |
 |---|---|
-| Utiliser **Brouillon** | Visibilité rapide, un rebond, éclairage `-fast`, une seule plage dynamique, pas d'occlusion ambiante, pas d'empaquetage. |
+| Utiliser **Brouillon** | Visibilité rapide, un rebond, éclairage `-fast`, une seule plage dynamique, pas d'empaquetage. |
 | Laisser **Compiler quand même les maps qui fuient** décoché | Une map qui fuit s'arrête après la géométrie au lieu d'être éclairée pour rien. |
 | Utiliser **Entités seules** pour le travail sur les entités et les I/O | Quelques secondes au lieu d'une compilation complète (la recompilation intelligente le choisit toute seule). |
 | Activer **Jouer tout de suite, finir l'éclairage ensuite** | Vous jouez tout de suite un brouillon ; l'éclairage Normal ou Final le remplace en arrière-plan. |
@@ -40,7 +40,6 @@ Comment garder des compilations rapides pendant que vous itérez, et ce qui pren
 | `-final` (plus de rayons du ciel et indirects) | Nécessaire pour la qualité finale ; `-extrasky` ajoute encore des rayons. |
 | Les deux plages dynamiques | Final calcule toujours LDR et HDR (deux passes). |
 | `-StaticPropLighting` | Chaque sommet de chaque prop statique est éclairé (ciel et lumière rebondie une fois par petit groupe de sommets) ; l'étape la plus longue sur les maps avec des milliers de props détaillés. Décocher **Éclairer les props statiques (par sommet)** l'évite. `-staticpropsamplescale` réduit ses rayons. |
-| Occlusion ambiante | `-aosamples` (32 par défaut, 64 avec `-final`) règle ses rayons ; `-noao` ou `_ao 0` la désactive. |
 | `-StaticPropPolys`, `-textureshadows` | Ombres de props plus fines, plus lentes. |
 | Résolution des lightmaps | Augmentez l'échelle de lightmap des grandes faces ou de celles qu'on ne voit pas (16 ou plus) ; les statistiques listent les faces et matériaux avec le plus de luxels. `-luxeldensity` sous 1 rend toutes les lightmaps plus grossières. |
 | Beaucoup de rebonds | `-bounce` (100 par défaut) s'arrête plus tôt ; les rebonds s'arrêtent d'eux-mêmes quand ils n'ajoutent presque plus rien. |

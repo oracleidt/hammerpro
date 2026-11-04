@@ -52,16 +52,12 @@ domain! { "documents";
     get_map_properties: Read, "Map properties",
         "The worldspawn keyvalues (skyname, detail material, light settings...), the map file, its format version \
         and the editor version that saved it, and compiler_keys: the worldspawn keys Hammer Pro's lighting compiler \
-        reads (_ao, _aoradius, _aostrength, _aosamples: ambient occlusion; _lightsrad: the map's texture light \
-        file) with their value, default and meaning.",
+        reads (_lightsrad: the map's texture light file) with their value, default and meaning.",
         {}, [];
     set_map_properties: Edit, "Set map properties",
         "Set or remove worldspawn keyvalues (skyname, detailmaterial, detailvbsp, maxpropscreenwidth...). A value of \
-        \"\" removes the key. Lighting compiler keys: _ao (1 on, 0 off, \"\" the compile decides: on for Normal and \
-        Final), _aoradius (units, default 96), _aostrength (0 to 1, default 0.75), _aosamples (rays, default 32, \
-        64 with Final), _lightsrad (a texture light file read like -lights: relative to the game folder or the map \
-        folder, or a full path). The -ao, -noao, -aoradius, -aostrength and -aosamples compile options win over \
-        the keys.",
+        \"\" removes the key. Lighting compiler key: _lightsrad (a texture light file read like -lights: relative to \
+        the game folder or the map folder, or a full path).",
         { "keyvalues": keyvalues("Keys and values.") }, ["keyvalues"];
 }
 

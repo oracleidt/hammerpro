@@ -14,7 +14,7 @@ domain! { "fog";
         "The fog the 3D views preview and every fog_volume. preview: render.fog_preview (the global fog of an \
         env_fog_controller in the 3D views and the player view), the controller it shows (chosen with \
         preview_fog, else the one the game uses: the last with the Master flag, or the first of the map) and its resolved fog (null when that controller has Fog Enable \
-        at No), render.fog_volume_preview and render.fog_volume_texture. controllers: id, name, fog_enable, the \
+        at No), sky_camera (the sky_camera of the 3D skybox preview) and sky_fog (its own fog keys, drawn in the 3D         skybox only and measured in skybox units, null when its fogenable is off or the fog preview is off),         render.fog_volume_preview and render.fog_volume_texture. The preview works like the game: linear fog from         start to end capped by max_density and mixed in gamma space, color2 blended by the view direction when         blend is on, nothing drawn past farz (the sky or the fog color shows there) and the 2D sky never fogged.         controllers: id, name, fog_enable, the \
         fog read from its keys (color and color2 as 0 to 255, dir, blend, start, end, max_density, farz: 0 when \
         off) and the fog_volume ids that use it. fog_volumes: id, name, fog_name, bounds (the box around its \
         brushes, like the game), status (controller, controller_disabled, missing_controller or no_fog_name), \
@@ -103,6 +103,17 @@ fn list_fog(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
     let r = &state.settings.render;
     let chosen = state.runtime.render.fog_controller;
     let shown = fog::global_controller(doc, chosen).map(|(id, _)| id);
+    let sky_camera = state
+        .runtime
+        .render
+        .sky_camera
+        .filter(|id| doc.scene().entity(*id).is_some_and(|n| hp_editor::sky::is_sky_camera(&n.entity)))
+        .or_else(|| hp_editor::sky::game_sky_camera(doc));
+    let sky_fog = sky_camera
+        .filter(|_| r.fog_preview)
+        .and_then(|id| doc.scene().entity(id))
+        .and_then(|n| fog::sky_camera_fog(&n.entity))
+        .map(|f| fog_json(&f));
     let mut controllers: Vec<(u32, Value)> = doc
         .scene()
         .entities()
@@ -137,6 +148,8 @@ fn list_fog(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
             "controller": shown,
             "chosen": chosen,
             "fog": if r.fog_preview { fog::global_fog(doc, chosen).map(|f| fog_json(&f)) } else { None },
+            "sky_camera": sky_camera,
+            "sky_fog": sky_fog,
             "fog_volume_preview": r.fog_volume_preview,
             "fog_volume_texture": r.fog_volume_texture,
         },
@@ -229,6 +242,7 @@ mod tests {
         assert_eq!(l["preview"]["fog_preview"], true);
         assert_eq!(l["preview"]["controller"], off);
         assert_eq!(l["preview"]["fog"], json!(null), "the first controller has its fog off");
+        assert_eq!((l["preview"]["sky_camera"].clone(), l["preview"]["sky_fog"].clone()), (json!(null), json!(null)));
         assert_eq!(l["controllers"][1]["used_by"], json!([vol]));
         assert_eq!(l["controllers"][1]["fog"]["farz"], 3000.0);
         let v = &l["fog_volumes"][0];
@@ -250,6 +264,17 @@ mod tests {
             (json!("controller_disabled"), json!("clears_fog"), json!(true))
         );
         assert!(err(&mut s, "preview_fog", json!({ "id": vol })).contains("not an env_fog_controller"));
+        let sky = s
+            .doc
+            .create_point_entity(
+                "sky_camera",
+                DVec3::new(0.0, 0.0, -2000.0),
+                &[kv("fogenable", "1"), kv("fogcolor", "0 255 0"), kv("fogstart", "10"), kv("fogend", "90")],
+            )
+            .expect("sky camera");
+        let p = &ok(&mut s, "list_fog", json!({}))["preview"];
+        assert_eq!(p["sky_camera"], sky);
+        assert_eq!((p["sky_fog"]["color"].clone(), p["sky_fog"]["end"].clone()), (json!([0, 255, 0]), json!(90.0)));
         ok(&mut s, "preview_fog", json!({ "show": false }));
         assert!(!s.settings.render.fog_preview && s.runtime.render.fog_controller.is_none());
     }

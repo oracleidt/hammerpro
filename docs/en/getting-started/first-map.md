@@ -75,7 +75,7 @@ If Garry's Mod is already running, the map loads in the running game ("Game read
 ## Next steps
 
 - [Compile and test in Garry's Mod](../guides/compile-and-test-gmod.md)
-- [Lighting and ambient occlusion](../guides/lighting-and-ao.md)
+- [Lighting](../guides/lighting.md)
 - [Selection tool](../features/selection-tool.md)
 - [Compile and run window](../compiler/compile-window.md)
 

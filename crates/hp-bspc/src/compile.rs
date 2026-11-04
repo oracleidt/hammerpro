@@ -33,6 +33,7 @@ pub struct CompileOptions {
     pub min_luxel_scale: f64,
     pub max_lightmap_dim: f64,
     pub relaxed_limits: bool,
+    pub lean_planes: bool,
     pub block_size: u32,
     pub prop_debug: bool,
     pub format: hp_bsp::BspFormat,
@@ -70,6 +71,7 @@ impl Default for CompileOptions {
             min_luxel_scale: 1.0,
             max_lightmap_dim: crate::faces::MAX_LIGHTMAP_DIM,
             relaxed_limits: false,
+            lean_planes: false,
             block_size: crate::tree::BLOCK_SIZE as u32,
             prop_debug: false,
             format: hp_bsp::BspFormat::default(),
@@ -499,31 +501,42 @@ pub fn compile(
                 continue;
             }
             let first_side = side_texes.len();
-            match build_brush(
+            let has_disp = into_world && solid.sides.iter().any(|s| s.disp.is_some());
+            let lean = opts.lean_planes && has_disp;
+            let mut scratch = lean.then(PlaneSet::new);
+            let set = match scratch.as_mut() {
+                Some(s) => s,
+                None => &mut planes,
+            };
+            let built = build_brush(
                 solid,
                 ei,
                 DVec3::ZERO,
                 &BrushLoad { base, strip_detail, ..load },
-                &mut planes,
+                set,
                 &mut tex,
                 &mut brush_facts,
                 &mut side_texes,
                 &overlay_ids,
                 log,
-            ) {
-                Ok(Some(b)) if into_world && solid.sides.iter().any(|s| s.disp.is_some()) => {
+            );
+            match built {
+                Ok(Some(b)) if has_disp => {
                     for s in &solid.sides {
                         let Some(info) = &s.disp else { continue };
                         let Some(bs) = b.sides.iter().find(|x| x.side_id == s.id) else { continue };
+                        let plane_of = |i: usize| scratch.as_ref().map_or_else(|| planes.getf(i), |s| s.getf(i));
                         let order: Vec<([f32; 3], f32)> = solid
                             .sides
                             .iter()
                             .filter_map(|x| b.sides.iter().find(|y| y.side_id == x.id))
                             .map(|y| {
-                                let (n, d) = planes.getf(y.plane);
+                                let (n, d) = plane_of(y.plane);
                                 ([n.x, n.y, n.z], d)
                             })
                             .collect();
+                        let (face_normal, face_dist) = plane_of(bs.plane);
+                        let face_plane = if lean { planes.find_f32(face_normal, face_dist) } else { bs.plane };
                         let at = solid
                             .sides
                             .iter()
@@ -553,7 +566,7 @@ pub fn compile(
                         }
                         disps.push(crate::disp::DispFace {
                             winding: w,
-                            plane: bs.plane,
+                            plane: face_plane,
                             texinfo: bs.texinfo,
                             info: (**info).clone(),
                             contents: b.contents & !contents::DETAIL,
@@ -1466,7 +1479,8 @@ Probably too many areaportals"
     let bsp = lumps.file(map.version_info.map_version);
     let mut problems = crate::validate::validate(&bsp);
     if opts.relaxed_limits {
-        let relaxed = ["too many edges", "too many surface edges", "too many brush sides"];
+        let relaxed =
+            ["too many edges", "too many surface edges", "too many brush sides", "cubemap", "too many cubemaps"];
         problems.retain(|p| !relaxed.iter().any(|r| p.starts_with(r)));
     }
     if !problems.is_empty() {

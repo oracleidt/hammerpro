@@ -39,10 +39,17 @@ pub struct MemVCollide {
 }
 
 pub fn surface_len(head: &[u8]) -> Option<usize> {
-    if head.len() < SURFACE_SIGNATURE_AT + 4 || head[SURFACE_SIGNATURE_AT..SURFACE_SIGNATURE_AT + 4] != SURFACE_SIGNATURE {
+    if head.len() < SURFACE_SIGNATURE_AT + 4
+        || head[SURFACE_SIGNATURE_AT..SURFACE_SIGNATURE_AT + 4] != SURFACE_SIGNATURE
+    {
         return None;
     }
-    let word = u32::from_le_bytes([head[SURFACE_SIZE_AT], head[SURFACE_SIZE_AT + 1], head[SURFACE_SIZE_AT + 2], head[SURFACE_SIZE_AT + 3]]);
+    let word = u32::from_le_bytes([
+        head[SURFACE_SIZE_AT],
+        head[SURFACE_SIZE_AT + 1],
+        head[SURFACE_SIZE_AT + 2],
+        head[SURFACE_SIZE_AT + 3],
+    ]);
     let n = (word >> 8) as usize;
     (n > SURFACE_SIGNATURE_AT + 4 && n <= MAX_SURFACE).then_some(n)
 }
@@ -152,7 +159,9 @@ const MDL_BONE_INDEX: usize = 160;
 const BONE_RECORD: usize = 216;
 
 pub fn mdl_bone_names(mdl: &[u8]) -> Vec<String> {
-    let (Some(count), Some(index)) = (mdl.get(MDL_BONE_COUNT..MDL_BONE_COUNT + 4), mdl.get(MDL_BONE_INDEX..MDL_BONE_INDEX + 4)) else {
+    let (Some(count), Some(index)) =
+        (mdl.get(MDL_BONE_COUNT..MDL_BONE_COUNT + 4), mdl.get(MDL_BONE_INDEX..MDL_BONE_INDEX + 4))
+    else {
         return Vec::new();
     };
     let count = usize::try_from(i32::from_le_bytes([count[0], count[1], count[2], count[3]])).unwrap_or(0).min(512);
@@ -182,11 +191,17 @@ fn mdl_text(mdl: &[u8], at: usize, rel: i64) -> Option<String> {
 
 pub fn mdl_case_names(mdl: &[u8]) -> Vec<String> {
     let mut out = mdl_bone_names(mdl);
-    if let Some(rel) = mdl.get(MDL_SURFACE_PROP..MDL_SURFACE_PROP + 4).map(|b| i32::from_le_bytes([b[0], b[1], b[2], b[3]])) {
+    if let Some(rel) =
+        mdl.get(MDL_SURFACE_PROP..MDL_SURFACE_PROP + 4).map(|b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+    {
         out.extend(mdl_text(mdl, 0, i64::from(rel)));
     }
-    let count = mdl.get(MDL_BONE_COUNT..MDL_BONE_COUNT + 4).map_or(0, |b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]).clamp(0, 512)) as usize;
-    let index = mdl.get(MDL_BONE_INDEX..MDL_BONE_INDEX + 4).map_or(0, |b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]).max(0)) as usize;
+    let count = mdl
+        .get(MDL_BONE_COUNT..MDL_BONE_COUNT + 4)
+        .map_or(0, |b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]).clamp(0, 512)) as usize;
+    let index = mdl
+        .get(MDL_BONE_INDEX..MDL_BONE_INDEX + 4)
+        .map_or(0, |b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]).max(0)) as usize;
     for k in 0..count {
         let at = index + k * BONE_RECORD;
         if let Some(b) = mdl.get(at + BONE_SURFACE_PROP..at + BONE_SURFACE_PROP + 4) {

@@ -108,3 +108,33 @@ fn relaxed_limits_only_warn() {
         "{log:#?}"
     );
 }
+
+#[test]
+fn lean_planes_leave_out_the_planes_of_displacement_brushes() {
+    let map = hp_vmf::parse(&common::maps::displacement().text()).expect("the VMF parses");
+    let compile = |lean: bool| {
+        let opts = hp_bspc::CompileOptions { lean_planes: lean, ..Default::default() };
+        let out = hp_bspc::compile(&map, &common::GameMats, &hp_bspc::props::NoModels, &opts, &mut |_| {})
+            .unwrap_or_else(|e| panic!("compiles: {e}"));
+        Lumps::from_bytes(&out.bsp)
+    };
+    let (full, lean) = (compile(false), compile(true));
+    assert!(lean.planes().len() < full.planes().len(), "{} vs {}", lean.planes().len(), full.planes().len());
+    let disp_planes = |l: &Lumps| {
+        let planes = l.planes();
+        let mut v: Vec<String> = l
+            .faces()
+            .iter()
+            .filter(|f| f.dispinfo != -1)
+            .map(|f| {
+                let p = &planes[usize::from(f.plane)];
+                format!("{:?} {}", p.normal, p.dist)
+            })
+            .collect();
+        v.sort();
+        v
+    };
+    assert!(!disp_planes(&full).is_empty());
+    assert_eq!(disp_planes(&full), disp_planes(&lean), "the displacements keep their planes");
+    assert_eq!(full.faces().len(), lean.faces().len());
+}

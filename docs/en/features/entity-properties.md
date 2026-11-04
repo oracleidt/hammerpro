@@ -207,13 +207,9 @@ Brush entities are placed at the center of their brushes. On maps with more than
 
 | Key | Values |
 |---|---|
-| **Ambient occlusion (Hammer Pro)** (`_ao`) | **Compile default**, **On**, **Off**. Empty: on for Normal and Final, off for Draft. |
-| **Ambient occlusion radius** (`_aoradius`) | 4 to 1024 units, default 96. |
-| **Ambient occlusion strength** (`_aostrength`) | 0 to 1, default 0.75. |
-| **Ambient occlusion rays** (`_aosamples`) | 4 to 512. Empty: 32, 64 with Final. |
 | **Light file (lights.rad)** (`_lightsrad`) | A texture light file for this map. |
 
-The compile options `-ao`, `-noao`, `-aoradius`, `-aostrength` and `-aosamples` win over these keys. See [Worldspawn keys](../compiler/worldspawn-keys.md).
+See [Worldspawn keys](../compiler/worldspawn-keys.md).
 
 ## Options
 

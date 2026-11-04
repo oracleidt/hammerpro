@@ -93,7 +93,6 @@ The compiler prints VBSP's wording on purpose, so the same rules work on logs of
 | `in solid volume` | An entity is inside a solid brush. | Move it into open space. |
 | `findportalside`, `brush with win 0` | Overlapping or invalid brushes. | Clean up the brushes at that place. |
 | `max_map_brushes`, `max_map_planes`, `max_map_portals` | A hard limit. | Merge brushes, keep geometry on the grid, turn small brushes into `func_detail`. |
-| `ambient occlusion: radius ..., strength ..., N rays` | Information: the ambient occlusion settings used. | |
 | `Warning: ... is not supported by the Hammer Pro compiler (ignored)` | A Valve option this compiler does not do. | Nothing; remove it to silence the warning. |
 | `Warning: Couldn't open texlight file ...` | A light file was not found. | Check `-lights` or `_lightsrad`. |
 

@@ -190,11 +190,7 @@ pub const TR: TrTable = &[
         "Permutes planes, vertexes, edges, texinfo and texdata and renumbers every reference, so the map renders and collides identically. Skipped safely when a reference cannot be renumbered.",
         "Permute plans, sommets, arêtes, texinfo et texdata et renumérote chaque référence, la carte s'affiche et collisionne à l'identique. Ignoré sans risque si une référence ne peut pas être renumérotée.",
     ),
-    (
-        "release.opt_protect_world",
-        "Reorder brushes and faces",
-        "Réordonner brushes et faces",
-    ),
+    ("release.opt_protect_world", "Reorder brushes and faces", "Réordonner brushes et faces"),
     (
         "release.opt_protect_world_tip",
         "Permutes brushes with their sides and faces inside each node, renumbering every reference. Skipped safely when a reference cannot be renumbered.",

@@ -9,6 +9,7 @@ struct DetailOut {
     @location(0) uv: vec2<f32>,
     @location(1) alpha: f32,
     @location(2) color: vec4<f32>,
+    @location(3) world: vec3<f32>,
 };
 
 var<private> TRIS: array<u32, 6> = array<u32, 6>(0u, 1u, 2u, 0u, 2u, 3u);
@@ -69,6 +70,7 @@ fn vs_detail(
         uv.x = tex_rect.z;
     }
     out.uv = uv;
+    out.world = p;
     out.clip = view.view_proj * vec4<f32>(p, 1.0);
     return out;
 }
@@ -91,5 +93,5 @@ fn fs_detail(in: DetailOut) -> @location(0) vec4<f32> {
     if a < 0.02 {
         discard;
     }
-    return vec4<f32>(t.rgb, a);
+    return vec4<f32>(apply_fog(t.rgb, in.world), a);
 }

@@ -77,7 +77,7 @@ L'étape d'éclairage écrit une ligne de progression au moins toutes les 30 sec
 |---|---|
 | Un **Éclairage direct** long | Sa durée grandit avec les luxels, le nombre de lumières que voit chaque face et le ciel sur les grandes zones extérieures. Augmentez l'échelle de lightmap des grandes faces ou des faces invisibles (les statistiques les listent), ou compilez en Normal ou Brouillon pendant que vous itérez. |
 | Une étape **Props statiques** longue | **Éclairer les props statiques (par sommet)** (`-StaticPropLighting`, inclus dans Final) éclaire chaque sommet de chaque prop. Désactivez-le pendant l'itération, ou réduisez `-staticpropsamplescale`. |
-| Une **Occlusion ambiante**, des **Rayons des rebonds** ou une **Lumière ambiante des leafs** longs | `-noao` (ou `_ao 0`), `-bounce 1` et `-fastambient` les réduisent. |
+| Des **Rayons des rebonds** ou une **Lumière ambiante des leafs** longs | `-bounce 1` et `-fastambient` les réduisent. |
 | `Warning: the lighting stage "..." has not advanced for ...` | L'étape travaille encore sur quelque chose de grand (une face immense ou un prop très détaillé). L'avertissement dit ce qui rend cette étape lente. S'il se répète longtemps, annulez et signalez-le avec le journal ([Signaler un bug](reporting-bugs.md)). |
 
 Le journal de l'étape nomme aussi les étapes avant qu'elles commencent (`Lighting stages: ...`), vous savez donc ce qui reste.

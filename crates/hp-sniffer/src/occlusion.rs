@@ -201,7 +201,8 @@ pub fn read_arrays<S: MemSource + ?Sized>(
     polys: (u64, i64),
     indices: (u64, i64),
 ) -> Option<MemOcclusion> {
-    let (n, p, v) = (usize::try_from(occluders.1).ok()?, usize::try_from(polys.1).ok()?, usize::try_from(indices.1).ok()?);
+    let (n, p, v) =
+        (usize::try_from(occluders.1).ok()?, usize::try_from(polys.1).ok()?, usize::try_from(indices.1).ok()?);
     if n == 0 || n > 65_536 || p > 1 << 20 || v > 1 << 22 || occluders.0 == 0 {
         return None;
     }
@@ -221,8 +222,9 @@ pub fn read_arrays<S: MemSource + ?Sized>(
 }
 
 pub fn occlusion_lump(o: &MemOcclusion) -> Vec<u8> {
-    let mut out =
-        Vec::with_capacity(12 + o.occluders.len() * OCCLUDER_RECORD + o.polys.len() * POLY_RECORD + o.indices.len() * 4);
+    let mut out = Vec::with_capacity(
+        12 + o.occluders.len() * OCCLUDER_RECORD + o.polys.len() * POLY_RECORD + o.indices.len() * 4,
+    );
     out.extend_from_slice(&(o.occluders.len() as i32).to_le_bytes());
     for c in &o.occluders {
         out.extend_from_slice(&c.flags.to_le_bytes());
@@ -276,7 +278,14 @@ mod tests {
     pub(crate) fn sample() -> MemOcclusion {
         MemOcclusion {
             occluders: vec![
-                Occluder { flags: 0, first_poly: 0, poly_count: 1, mins: [0.0, 0.0, 8.0], maxs: [64.0, 64.0, 8.0], area: 3 },
+                Occluder {
+                    flags: 0,
+                    first_poly: 0,
+                    poly_count: 1,
+                    mins: [0.0, 0.0, 8.0],
+                    maxs: [64.0, 64.0, 8.0],
+                    area: 3,
+                },
                 Occluder {
                     flags: 1,
                     first_poly: 1,

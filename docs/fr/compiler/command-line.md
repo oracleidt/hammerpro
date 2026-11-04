@@ -115,8 +115,6 @@ Sans contenu de jeu (Garry's Mod introuvable et pas de `-game`), les matériaux 
 | `-StaticPropNormals` | | Débogage : les props montrent leurs normales. | désactivé |
 | `-nostaticpropshadows` | | Hammer Pro : aucune ombre de prop statique. | désactivé |
 | `-nodispshadows` | | Hammer Pro : aucune ombre de displacement. | désactivé |
-| `-ao` / `-noao` | | Hammer Pro : occlusion ambiante activée ou non. | activée, désactivée avec `-fast` |
-| `-aoradius` / `-aostrength` / `-aosamples` | nombre | Réglages de l'occlusion ambiante. | 96 / 0.75 / 32 (64 avec `-final`) |
 | `-noaddons`, `-wsaddons`, `-nowsaddons`, `-serveraddons`, `-mount_appid` | | Contenu monté pour les modèles, comme `--bspc`. | addons et objets du Workshop montés |
 | `-radius_override` | unités | Accepté et ignoré (une option de VVIS souvent passée à tous les outils). | |
 
@@ -124,7 +122,7 @@ Toute autre option donne `Warning: option ... is not supported by this lighting 
 
 Les fichiers de lumières de texture sont lus dans cet ordre : `lights.rad` du jeu (le dossier du jeu, puis les dossiers de l'installation de Garry's Mod, ses dossiers `bin` en dernier), le fichier de `-lights`, le fichier désigné par la clé worldspawn `_lightsrad`, puis `<map>.rad` à côté de la map.
 
-Pendant l'éclairage, `--rad` annonce ses étapes (`Lighting stages: direct lighting, ambient occlusion, bounce rays, bounced light, leaf ambient, static props, writing`), puis rend compte de chaque étape qui dure plus d'une seconde :
+Pendant l'éclairage, `--rad` annonce ses étapes (`Lighting stages: direct lighting, bounce rays, bounced light, leaf ambient, static props, writing`), puis rend compte de chaque étape qui dure plus d'une seconde :
 
 ```
 Lighting 41%: direct lighting 60% (stage 2 of 7), 27 s elapsed, about 17 s left

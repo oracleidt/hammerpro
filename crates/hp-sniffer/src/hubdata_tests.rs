@@ -252,7 +252,9 @@ fn texture_infos_keep_the_engine_flags_without_the_extra_half() {
 #[test]
 fn leaf_lists_of_the_collision_world_are_aligned_on_the_render_leaves() {
     let cm = |c: &[(i32, i16)]| -> Vec<CLeaf> {
-        c.iter().map(|&(contents, cluster)| CLeaf { contents, cluster, area_flags: 0x401, first_brush: 0, num_brushes: 0 }).collect()
+        c.iter()
+            .map(|&(contents, cluster)| CLeaf { contents, cluster, area_flags: 0x401, first_brush: 0, num_brushes: 0 })
+            .collect()
     };
     let leaf = |contents, cluster| MemLeaf {
         contents,
@@ -266,7 +268,11 @@ fn leaf_lists_of_the_collision_world_are_aligned_on_the_render_leaves() {
         num_mark: 0,
     };
     let leafs = vec![leaf(1, -1), leaf(0, 0), leaf(0, 3)];
-    assert_eq!(align_cm_leafs(&cm(&[(1, -1), (0, 0), (0, 3), (0, -1)]), &leafs), Some(0), "an extra leaf at the end is not an offset");
+    assert_eq!(
+        align_cm_leafs(&cm(&[(1, -1), (0, 0), (0, 3), (0, -1)]), &leafs),
+        Some(0),
+        "an extra leaf at the end is not an offset"
+    );
     assert_eq!(align_cm_leafs(&cm(&[(9, 9), (1, -1), (0, 0), (0, 3)]), &leafs), Some(1));
     assert_eq!(align_cm_leafs(&cm(&[(1, -1), (0, 5), (0, 3)]), &leafs), None);
     assert_eq!(align_cm_leafs(&[], &leafs), None);
@@ -282,7 +288,8 @@ fn edges_are_shared_between_faces_and_unused_entries_stay_valid() {
     assert_eq!(surf[..3], [1, 2, 3]);
     assert_eq!(surf[3], -2, "the second face walks the shared edge the other way round");
     assert!(surf[6] > 0 && surf[7] > 0, "entries no face uses still get an edge");
-    let e: Vec<(u16, u16)> = edges.chunks_exact(4).map(|c| (u16::from_le_bytes([c[0], c[1]]), u16::from_le_bytes([c[2], c[3]]))).collect();
+    let e: Vec<(u16, u16)> =
+        edges.chunks_exact(4).map(|c| (u16::from_le_bytes([c[0], c[1]]), u16::from_le_bytes([c[2], c[3]]))).collect();
     assert_eq!(e[0], (0, 0));
     assert_eq!(e[surf[0] as usize], (0, 1));
     for (k, s) in surf.iter().take(6).enumerate() {
@@ -296,10 +303,7 @@ fn edges_are_shared_between_faces_and_unused_entries_stay_valid() {
 
 #[test]
 fn a_texture_data_lump_carries_the_material_values() {
-    let infos = vec![
-        Some(MaterialInfo { reflectivity: [0.25, 0.5, 0.75], width: 512, height: 256 }),
-        None,
-    ];
+    let infos = vec![Some(MaterialInfo { reflectivity: [0.25, 0.5, 0.75], width: 512, height: 256 }), None];
     let lump = texdata_lump(2, &infos);
     assert_eq!(lump.len(), 64);
     assert_eq!(f32::from_le_bytes([lump[4], lump[5], lump[6], lump[7]]), 0.5);
@@ -317,9 +321,8 @@ fn the_material_of_a_texture_info_gives_its_reflectivity_and_size() {
     let tex = 0x40_0000u64;
     let mut mem = VecMem::default();
     let mut mat = vec![0u8; 0x100];
-    mat[0x80 - 0x18..0x80 - 0x18 + 12].copy_from_slice(
-        &[0.1f32, 0.2, 0.3].iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<u8>>(),
-    );
+    mat[0x80 - 0x18..0x80 - 0x18 + 12]
+        .copy_from_slice(&[0.1f32, 0.2, 0.3].iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<u8>>());
     mat[0x80 - 32..0x80 - 24].copy_from_slice(&tex.to_le_bytes());
     mem.add(ptr - 0x80, mat);
     let mut t = vec![0u8; 0x80];

@@ -362,7 +362,8 @@ pub fn find_loaded_models<S: MemSource + ?Sized>(
     headers.sort();
     let mut chosen = resolve_model_names(&headers, wanted);
     if wanted.iter().any(|w| !chosen.contains_key(w)) {
-        let entries = crate::studiomem::find_cache(src, &opts).map(|c| crate::studiomem::entries(src, c)).unwrap_or_default();
+        let entries =
+            crate::studiomem::find_cache(src, &opts).map(|c| crate::studiomem::entries(src, c)).unwrap_or_default();
         let unresolved: Vec<&String> = wanted.iter().filter(|w| !chosen.contains_key(*w)).collect();
         for want in unresolved {
             let full = format!("models/{want}");
@@ -408,7 +409,8 @@ pub fn recover_models_from_memory<S: MemSource + ?Sized>(
     }
     let found = find_loaded_models(src, opts, &wanted);
     let mut recovered_vvd: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let blocks: std::cell::OnceCell<std::collections::BTreeMap<i32, crate::modelmem::RebuiltVvd>> = std::cell::OnceCell::new();
+    let blocks: std::cell::OnceCell<std::collections::BTreeMap<i32, crate::modelmem::RebuiltVvd>> =
+        std::cell::OnceCell::new();
     let studio: std::cell::OnceCell<Vec<crate::studiomem::StudioEntry>> = std::cell::OnceCell::new();
     for m in missing {
         if !m.to_ascii_lowercase().ends_with(".mdl") {
@@ -427,7 +429,9 @@ pub fn recover_models_from_memory<S: MemSource + ?Sized>(
             report.memory_model_bytes += bytes.len() as u64;
             *report.by_class.entry(AssetClass::Model.label().to_owned()).or_default() += 1;
             let vvd = recover_vvd(src, opts, &blocks, bytes, &path, &vpath, report, &mut recovered_vvd);
-            let entries = studio.get_or_init(|| crate::studiomem::find_cache(src, opts).map(|c| crate::studiomem::entries(src, c)).unwrap_or_default());
+            let entries = studio.get_or_init(|| {
+                crate::studiomem::find_cache(src, opts).map(|c| crate::studiomem::entries(src, c)).unwrap_or_default()
+            });
             recover_studio(src, entries, bytes, &path, &vpath, vvd.as_deref(), report, &mut recovered_vvd);
         }
     }
@@ -511,7 +515,13 @@ fn residency<S: MemSource + ?Sized>(
             c.found,
             c.windows,
             c.fraction() * 100.0,
-            if c.whole { "whole file resident" } else if c.found > 0 { "partly resident" } else { "video memory only" }
+            if c.whole {
+                "whole file resident"
+            } else if c.found > 0 {
+                "partly resident"
+            } else {
+                "video memory only"
+            }
         ));
     }
     if lines.is_empty() {
@@ -544,7 +554,13 @@ pub fn list_video_only_textures<S: MemSource + ?Sized>(
         report.textures_video_only_bytes += t.bytes;
         let same = blobs
             .iter()
-            .filter(|b| b.width == t.width && b.height == t.height && b.frames == t.frames && b.format == t.format && (b.faces == 6) == t.cube)
+            .filter(|b| {
+                b.width == t.width
+                    && b.height == t.height
+                    && b.frames == t.frames
+                    && b.format == t.format
+                    && (b.faces == 6) == t.cube
+            })
             .count();
         lines.push(format!(
             "{vpath}\t{}x{}\tformat {}\tflags {:#x}\tframes {}\t{}\t{} bytes\tresident whole files of the same size and format: {same}",
@@ -639,7 +655,10 @@ fn recover_studio<S: MemSource + ?Sized>(
                     recovered.insert(format!("{stem}dx90.vtx"));
                     for variant in ["dx80.vtx", "sw.vtx"] {
                         let wanted = format!("{stem}{variant}");
-                        let listed = report.missing.iter().any(|m| m.to_ascii_lowercase().replace(char::from(92u8), "/") == wanted);
+                        let listed = report
+                            .missing
+                            .iter()
+                            .any(|m| m.to_ascii_lowercase().replace(char::from(92u8), "/") == wanted);
                         if listed && std::fs::write(mdl_path.with_extension(variant), &vtx.bytes).is_ok() {
                             report.memory_vtx_bytes += vtx.bytes.len() as u64;
                             recovered.insert(wanted);
@@ -796,7 +815,8 @@ entity
         assert_eq!(got["hpcustom/door_new.mdl"], (0x1000, 7980));
         assert_eq!(got["props_c17/oildrum001.mdl"], (0x2000, 5000));
         assert!(!got.contains_key("x/none.mdl"));
-        let twice: std::collections::HashSet<String> = ["a/door_new.mdl".to_owned(), "b/door_new.mdl".to_owned()].into_iter().collect();
+        let twice: std::collections::HashSet<String> =
+            ["a/door_new.mdl".to_owned(), "b/door_new.mdl".to_owned()].into_iter().collect();
         assert_eq!(resolve_model_names(&headers, &twice).len(), 1, "one header serves one wanted name");
     }
 }

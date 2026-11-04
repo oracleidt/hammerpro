@@ -42,9 +42,12 @@ pub(crate) struct Write {
     pub data: Vec<u8>,
 }
 
+pub(crate) const ASSEMBLE_BATCH: usize = 32;
+
 #[derive(Debug, Default)]
 pub(crate) struct FlushOutput {
     pub writes: Vec<Write>,
+    pub rebuilt: Vec<u32>,
     pub state_ranges: Vec<(u32, u32)>,
     pub states_len: u32,
 }
@@ -1125,7 +1128,27 @@ impl Scene {
         }
     }
 
+    #[cfg(test)]
     pub fn flush(&mut self, parallel: bool) -> FlushOutput {
+        let mut out = self.flush_deferred(parallel);
+        let rebuilt = std::mem::take(&mut out.rebuilt);
+        let mut writes = self.assemble_chunks(&rebuilt, parallel);
+        writes.append(&mut out.writes);
+        out.writes = writes;
+        out
+    }
+
+    pub fn assemble_chunks(&self, ids: &[u32], parallel: bool) -> Vec<Write> {
+        let jobs: Vec<&Chunk> = ids.iter().filter_map(|&c| self.chunk(c)).collect();
+        let objects = &self.objects;
+        if parallel && jobs.len() > 4 {
+            jobs.into_par_iter().flat_map_iter(|ch| assemble_chunk(ch, objects)).collect()
+        } else {
+            jobs.into_iter().flat_map(|ch| assemble_chunk(ch, objects)).collect()
+        }
+    }
+
+    pub fn flush_deferred(&mut self, parallel: bool) -> FlushOutput {
         self.epoch += 1;
         let mut out = FlushOutput::default();
 
@@ -1197,15 +1220,7 @@ impl Scene {
                 rebuilt.push(c);
             }
         }
-        let jobs: Vec<(u32, &Chunk)> = rebuilt.iter().filter_map(|&c| self.chunk(c).map(|ch| (c, ch))).collect();
-        let objects = &self.objects;
-        let assemble = |(_, ch): (u32, &Chunk)| assemble_chunk(ch, objects);
-        let built: Vec<Vec<Write>> = if parallel && jobs.len() > 4 {
-            jobs.into_par_iter().map(assemble).collect()
-        } else {
-            jobs.into_iter().map(assemble).collect()
-        };
-        out.writes.extend(built.into_iter().flatten());
+        out.rebuilt = rebuilt;
 
         let epoch = self.epoch;
         for s in std::mem::take(&mut self.staged) {

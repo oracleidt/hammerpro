@@ -52,7 +52,6 @@ impl MemSource for Snap {
     }
 }
 
-
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let snap = Snap::open(&args[1]);

@@ -457,7 +457,11 @@ pub fn source_rows(stats: &MergeStats, file_allowed: bool, game_files: usize, me
     let (s, d) = if file {
         ("memory and map file", format!("{} of {} sides from the file", stats.sides_from_file, stats.sides))
     } else {
-        ("memory", "sides no face covers take the texture info of the same material that fits their plane (approximate)".to_owned())
+        (
+            "memory",
+            "sides no face covers take the texture info of the same material that fits their plane (approximate)"
+                .to_owned(),
+        )
     };
     out.push(row("texture axes of hidden sides", s, d));
     out.push(row("displacement geometry", "memory", String::new()));
@@ -465,7 +469,11 @@ pub fn source_rows(stats: &MergeStats, file_allowed: bool, game_files: usize, me
     out.push(row("displacement vertex alphas", s, d));
     let (s, d) = pick_mem(stats.disp_allowed_mem, stats.displacements_from_file, stats.displacements);
     out.push(row("displacement allowed vertices", s, d));
-    out.push(row("displacement triangle tags", "memory", "computed from the slopes of the recovered geometry".to_owned()));
+    out.push(row(
+        "displacement triangle tags",
+        "memory",
+        "computed from the slopes of the recovered geometry".to_owned(),
+    ));
     if stats.props_added_from_file > 0 {
         out.push(row(
             "static props placement",

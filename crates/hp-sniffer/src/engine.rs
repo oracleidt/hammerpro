@@ -481,8 +481,10 @@ pub fn parse_overlay_with<S: MemSource + ?Sized>(
     if raw.len() != count as usize * l.ptr {
         return None;
     }
-    let faces: Option<Vec<i32>> =
-        raw.chunks_exact(l.ptr).map(|c| face_of_pointer(ptr_at(c, 0, l.ptr), faces_addr, faces, l.face_record)).collect();
+    let faces: Option<Vec<i32>> = raw
+        .chunks_exact(l.ptr)
+        .map(|c| face_of_pointer(ptr_at(c, 0, l.ptr), faces_addr, faces, l.face_record))
+        .collect();
     Some(MemOverlay {
         id,
         texinfo,
@@ -838,7 +840,8 @@ fn find_static_props_with<S: MemSource + ?Sized>(src: &S, opts: &ScanOptions, l:
             continue;
         }
         let vtable = ptr_at(&reference, l.prop_vtable_at, l.ptr);
-        let props: Vec<MemProp> = records.iter().zip(names).filter_map(|(r, n)| n.map(|n| parse_prop(r, n, l))).collect();
+        let props: Vec<MemProp> =
+            records.iter().zip(names).filter_map(|(r, n)| n.map(|n| parse_prop(r, n, l))).collect();
         runs.push((vtable, props, records.len()));
     }
     let Some(lead) = runs.iter().max_by_key(|r| r.1.len()).map(|r| r.0) else { return (Vec::new(), 0) };
@@ -906,8 +909,7 @@ fn find_static_props_with<S: MemSource + ?Sized>(src: &S, opts: &ScanOptions, l:
 }
 
 pub fn attach_fades(props: &mut [MemProp], runs: &[(u64, Vec<crate::fade::FadeEntry>)]) -> usize {
-    let by_index: HashMap<u16, usize> =
-        props.iter().enumerate().filter_map(|(i, p)| p.index.map(|x| (x, i))).collect();
+    let by_index: HashMap<u16, usize> = props.iter().enumerate().filter_map(|(i, p)| p.index.map(|x| (x, i))).collect();
     let score = |list: &Vec<crate::fade::FadeEntry>| {
         list.iter()
             .filter(|e| {
@@ -1834,7 +1836,10 @@ pub(crate) mod tests {
         }
         let (found, expected) = find_overlays(&mem, &ScanOptions::default(), faces_addr, 100, 4000);
         assert_eq!((found.len(), expected), (4, 4));
-        assert_eq!(found.iter().map(|o| (o.texinfo, o.render_order)).collect::<Vec<_>>(), [(10, 0), (11, 1), (12, 2), (13, 3)]);
+        assert_eq!(
+            found.iter().map(|o| (o.texinfo, o.render_order)).collect::<Vec<_>>(),
+            [(10, 0), (11, 1), (12, 2), (13, 3)]
+        );
         let lump = overlay_lump(&found);
         assert_eq!(u16_at(&lump[3 * OVERLAY_RECORD_BYTES..], 6) >> 14, 3);
         assert_eq!(u16_at(&lump[2 * OVERLAY_RECORD_BYTES..], 6) & 0x3fff, 1);
@@ -1851,7 +1856,9 @@ pub(crate) mod tests {
             let p = parse_prop(&r, "models/a.mdl".to_owned(), &LAYOUT_X64);
             p.default_lighting_origin()
         };
-        assert!((center[0] - 100.0).abs() < 1e-3 && (center[1] - 200.0).abs() < 1e-3 && (center[2] - 315.0).abs() < 1e-3);
+        assert!(
+            (center[0] - 100.0).abs() < 1e-3 && (center[1] - 200.0).abs() < 1e-3 && (center[2] - 315.0).abs() < 1e-3
+        );
         put_f32s(&mut r, PROP_LIGHTING_AT, &center);
         let plain = parse_prop(&r, "models/a.mdl".to_owned(), &LAYOUT_X64);
         assert_eq!((plain.index, plain.flags), (Some(9), 0x65));
@@ -1879,7 +1886,12 @@ pub(crate) mod tests {
             ..MemProp::default()
         };
         let mut props = vec![mk(0, 1), mk(1, 0), mk(2, 1), mk(3, 1)];
-        let entry = |index: u32, mn: f32, mx: f32| crate::fade::FadeEntry { index, min_sq: mn * mn, max_sq: mx * mx, squared: true };
+        let entry = |index: u32, mn: f32, mx: f32| crate::fade::FadeEntry {
+            index,
+            min_sq: mn * mn,
+            max_sq: mx * mx,
+            squared: true,
+        };
         let runs = vec![
             (0x1000u64, vec![entry(0, 5.0, 6.0)]),
             (0x2000u64, vec![entry(0, 300.0, 400.0), entry(2, 450.0, 1250.0), entry(3, 0.0, 3500.0)]),
@@ -1914,7 +1926,10 @@ pub(crate) mod tests {
         assert_eq!(d.allowed.expect("allowed")[0], 0xffff_fff0);
         d.alphas = Some((0..25).map(|k| (k * 10) as u8).collect());
         let lumps = displacement_lumps(&world, &plane_bytes_z(64.0), &[d]);
-        assert_eq!(u32::from_le_bytes([lumps.dispinfo[136], lumps.dispinfo[137], lumps.dispinfo[138], lumps.dispinfo[139]]), 0xffff_fff0);
+        assert_eq!(
+            u32::from_le_bytes([lumps.dispinfo[136], lumps.dispinfo[137], lumps.dispinfo[138], lumps.dispinfo[139]]),
+            0xffff_fff0
+        );
         assert_eq!(f32_at(&lumps.dispverts, 7 * 20 + 16), 70.0);
         assert_eq!(f32_at(&lumps.dispverts, 24 * 20 + 16), 240.0);
         let zero = parse_displacement(&mem_without_allowed(), 0, 0x5000_0000).expect("displacement");

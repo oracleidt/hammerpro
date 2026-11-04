@@ -113,20 +113,6 @@ Groupe **Qualité** (étape d'éclairage).
 | `-centersamples` | Accepté comme par VRAD : les luxels sont toujours échantillonnés en leur milieu quand il est dégagé. | toujours |
 | `-nodispshadows` | Option de Hammer Pro : les displacements ne projettent aucune ombre (ils restent éclairés). Un seul displacement peut aussi ne pas projeter d'ombre avec l'option **Projeter des ombres** de l'[outil displacement](../features/displacement-tool.md). | désactivé |
 
-## Occlusion ambiante
-
-Ajouts de Hammer Pro (groupe **Qualité**, étape d'éclairage). L'occlusion ambiante ajoute des ombres de contact dans les coins, les plis, au pied des murs et sous les props en assombrissant la lumière rebondie près de la géométrie proche. La lumière directe et celle du ciel gardent leurs propres ombres, rien n'est donc assombri deux fois. Sans effet avec `-bounce 0`.
-
-| Paramètre | Effet | Par défaut |
-|---|---|---|
-| `-ao` | Active l'occlusion ambiante. | activée en Normal et Final, désactivée en Brouillon |
-| `-noao` | Pas d'occlusion ambiante, quoi que dise la map. | |
-| `-aoradius <unités>` | Distance jusqu'à laquelle la géométrie assombrit une surface (4 à 1024). | 96 |
-| `-aostrength <0..1>` | 0 : aucune, 1 : un coin fermé perd toute sa lumière rebondie. 0 la désactive. | 0.75 |
-| `-aosamples <n>` | Rayons par luxel et par sommet de prop statique (4 à 512) : plus est plus lisse et plus lent. | 32, 64 avec `-final`, 16 pour un brouillon qui l'active |
-
-Sans `-ao` ni `-noao`, ce sont les clés worldspawn `_ao`, `_aoradius`, `_aostrength`, `_aosamples` qui décident (voir [Clés worldspawn et lumières](worldspawn-keys.md)), puis les valeurs ci-dessus.
-
 ## Props statiques
 
 Groupe **Props statiques** (étape d'éclairage).
@@ -192,7 +178,7 @@ Groupe **Débogage**.
 - [Ligne de commande](command-line.md)
 - [Fenêtre Compiler et lancer](compile-window.md)
 - [Clés worldspawn et lumières](worldspawn-keys.md)
-- [Éclairage et occlusion ambiante](../guides/lighting-and-ao.md)
+- [Éclairage](../guides/lighting.md)
 - [Performances de compilation](performance.md)
 
 ---

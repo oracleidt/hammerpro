@@ -914,33 +914,6 @@ pub const TR: TrTable = &[
         "Click to use a color, right click to store the current one (saved in the map)",
         "Clic pour utiliser une couleur, clic droit pour y ranger la couleur actuelle (enregistré dans la map)",
     ),
-    ("entities.world_ao", "Ambient occlusion (Hammer Pro)", "Occlusion ambiante (Hammer Pro)"),
-    (
-        "entities.world_ao_help",
-        "Contact shadows in corners, creases and under props: darkens the bounced light near close geometry. Empty: the compile decides (on for Normal and Final, off for Draft). The -ao and -noao compile options win over this key.",
-        "Ombres de contact dans les coins, les plis et sous les props : assombrit la lumière rebondie près de la géométrie proche. Vide : la compilation décide (activée en Normal et Final, désactivée en Brouillon). Les options -ao et -noao de la compilation priment sur cette clé.",
-    ),
-    ("entities.world_ao_default", "Compile default", "Selon la compilation"),
-    ("entities.world_ao_on", "On", "Activée"),
-    ("entities.world_ao_off", "Off", "Désactivée"),
-    ("entities.world_aoradius", "Ambient occlusion radius", "Rayon de l'occlusion ambiante"),
-    (
-        "entities.world_aoradius_help",
-        "How far geometry darkens a surface, in units (4 to 1024, default 96). -aoradius wins over this key.",
-        "Distance jusqu'à laquelle la géométrie assombrit une surface, en unités (4 à 1024, 96 par défaut). -aoradius prime sur cette clé.",
-    ),
-    ("entities.world_aostrength", "Ambient occlusion strength", "Force de l'occlusion ambiante"),
-    (
-        "entities.world_aostrength_help",
-        "From 0 (none) to 1 (a closed corner loses all its bounced light), default 0.75. -aostrength wins over this key.",
-        "De 0 (aucune) à 1 (un coin fermé perd toute sa lumière rebondie), 0.75 par défaut. -aostrength prime sur cette clé.",
-    ),
-    ("entities.world_aosamples", "Ambient occlusion rays", "Rayons de l'occlusion ambiante"),
-    (
-        "entities.world_aosamples_help",
-        "Rays per luxel and per static prop vertex (4 to 512). Empty: 32, 64 with Final. -aosamples wins over this key.",
-        "Rayons par luxel et par sommet de prop statique (4 à 512). Vide : 32, 64 en Final. -aosamples prime sur cette clé.",
-    ),
     ("entities.world_lightsrad", "Light file (lights.rad)", "Fichier de lumières (lights.rad)"),
     (
         "entities.world_lightsrad_help",

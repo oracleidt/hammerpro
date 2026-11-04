@@ -1,7 +1,10 @@
 mod bake;
+#[cfg(test)]
+mod bench;
 mod bsp;
 pub(crate) mod child;
 mod grid;
+mod memory;
 
 use std::collections::{HashMap, HashSet};
 
@@ -57,6 +60,7 @@ struct Running {
     serial: u64,
     scope: Scope,
     lit: bool,
+    quick: bool,
 }
 
 struct Upload {
@@ -66,6 +70,7 @@ struct Upload {
     scope: Scope,
     written: usize,
     lit: bool,
+    quick: bool,
 }
 
 struct Preview {
@@ -73,6 +78,7 @@ struct Preview {
     next_id: u64,
     running: Option<Running>,
     upload: Option<Upload>,
+    refine: Option<(Scope, u64)>,
     shown_serial: Option<u64>,
     shown_faces: u32,
     shown_blocks: u32,
@@ -188,6 +194,7 @@ impl Preview {
             next_id: 1,
             running: None,
             upload: None,
+            refine: None,
             shown_serial: None,
             shown_faces: 0,
             shown_blocks: 0,
@@ -215,15 +222,19 @@ impl Preview {
     }
 
     fn bake(&mut self, state: &mut AppState, scope: Scope, kind: BakeKind, lit: bool) {
+        let quick = !lit && kind != BakeKind::Refine;
+        if quick {
+            self.refine = None;
+        }
         let t = std::time::Instant::now();
         let export = hp_editor::compile_export::CompileExport::default();
-        let snap = match &scope {
-            Scope::All => state.doc.compile_snapshot(&export),
+        let map = (kind != BakeKind::Refine).then(|| match &scope {
+            Scope::All => state.doc.compile_snapshot(&export).map,
             Scope::Around { center, radius } => {
                 let r = DVec3::splat(radius.max(64.0));
-                state.doc.compile_snapshot_in(&export, &[hp_geom::Aabb::new(*center - r, *center + r)])
+                state.doc.compile_snapshot_in(&export, &[hp_geom::Aabb::new(*center - r, *center + r)]).map
             }
-        };
+        });
         let solids: HashMap<u32, bsp::SolidInfo> = {
             let renderer = state.gfx.as_ref().map(|g| &g.renderer);
             state
@@ -254,7 +265,9 @@ impl Preview {
         let serial = state.doc.content_serial();
         self.worker.submit(bake::Job {
             id,
-            map: snap.map,
+            serial,
+            map,
+            keep: quick,
             solids,
             fs: state.assets.fs().cloned(),
             hdr: if lit { state.settings.render.light_preview_hdr } else { uses_hdr(state.settings.compile.lighting) },
@@ -267,13 +280,15 @@ impl Preview {
             max_layers,
             coarsen: factor,
             lit,
+            tuning: if quick { child::Tuning::of(&options).quick() } else { child::Tuning::of(&options) },
+            exe: bake::child_exe(),
         });
         log::info!(
             "lighting preview: bake {id} ({kind:?}{}) started, map copied in {} ms",
             if lit { ", for the Lit mode" } else { "" },
             t.elapsed().as_millis()
         );
-        self.running = Some(Running { id, kind, serial, scope: scope.clone(), lit });
+        self.running = Some(Running { id, kind, serial, scope: scope.clone(), lit, quick });
         self.last_scope = Some(scope);
         state.runtime.lighting.stale = false;
         state.runtime.lighting.progress =
@@ -281,6 +296,7 @@ impl Preview {
     }
 
     fn stop(&mut self, state: &mut AppState) {
+        self.refine = None;
         if let Some(r) = self.running.take() {
             self.worker.stop();
             state.runtime.lighting.progress = None;
@@ -317,6 +333,13 @@ impl Preview {
                                 props.map_or(0, |p| p.static_props.len()),
                                 props.map_or(0, |p| p.static_props.iter().filter(|s| s.colors.is_some()).count()),
                             );
+                            if let Some(peak) = baked.child_peak {
+                                log::info!(
+                                    "lighting preview: the lighting process peaked at {} MB, the editor uses {} MB",
+                                    peak.peak_mb(),
+                                    memory::of_self().map_or(0, |u| u.working_set >> 20)
+                                );
+                            }
                             if !baked.warnings.is_empty() {
                                 log::warn!("lighting preview: {}", baked.warnings.join("; "));
                                 state.notify(
@@ -338,11 +361,12 @@ impl Preview {
                                 scope: r.scope,
                                 written: 0,
                                 lit: r.lit,
+                                quick: r.quick,
                             });
                         }
                         bake::Outcome::Cancelled => {
                             state.runtime.lighting.progress = None;
-                            if !r.lit {
+                            if !r.lit && r.kind != BakeKind::Refine {
                                 state.runtime.lighting.last = Some(BakeSummary {
                                     kind: r.kind,
                                     cancelled: true,
@@ -392,70 +416,19 @@ impl Preview {
         let AppState { gfx, assets, runtime, .. } = state;
         let Some(gfx) = gfx.as_mut() else { return };
         let r = &mut gfx.renderer;
-        let b = &up.baked;
         if up.written == 0 {
-            r.set_lightmap_ldr(!b.hdr);
-            let old: Vec<u32> = (0..self.shown_faces).collect();
-            r.remove_lightmap_faces(&old);
-            for id in 0..self.shown_blocks {
-                r.remove_lightmap_block(id);
-            }
-            if b.layers > 0 && !r.ensure_lightmap_layers(b.layer_size, b.layers) && !self.atlas_warned {
+            let fits = show_geometry(r, assets.as_mut(), &up.baked, (self.shown_faces, self.shown_blocks));
+            if !fits && !self.atlas_warned {
                 self.atlas_warned = true;
+                let b = &up.baked;
                 log::warn!("lighting preview: the GPU cannot hold {} lightmap layers of {}", b.layers, b.layer_size);
             }
-            let faces: Vec<(u32, LightmapFace)> = b
-                .faces
-                .iter()
-                .enumerate()
-                .map(|(i, f)| {
-                    let face =
-                        LightmapFace { object: f.solid, generation: f.generation, scale: f.scale, flags: f.flags };
-                    (i as u32, face)
-                })
-                .collect();
-            r.add_lightmap_faces(&faces);
-            let materials: Vec<hp_render::MaterialId> =
-                b.materials.iter().map(|m| assets.render_material_id(m)).collect();
-            for (id, block) in b.blocks.iter().enumerate() {
-                let batches: Vec<LightmapBatch<'_>> = block
-                    .batches
-                    .iter()
-                    .filter_map(|(m, v, i)| {
-                        Some(LightmapBatch { material: *materials.get(*m as usize)?, vertices: v, indices: i })
-                    })
-                    .collect();
-                r.add_lightmap_block(id as u32, &batches);
-            }
-            self.shown_faces = b.faces.len() as u32;
-            self.shown_blocks = b.blocks.len() as u32;
+            self.shown_faces = up.baked.faces.len() as u32;
+            self.shown_blocks = up.baked.blocks.len() as u32;
             up.baked.blocks = Vec::new();
         }
+        up.written = write_texels(r, &up.baked, up.written, MAX_TEXELS_PER_FRAME);
         let b = &up.baked;
-        let mut batch: Vec<(u32, LightmapRect, &[u32])> = Vec::new();
-        let mut texels = 0usize;
-        while up.written < b.faces.len() && texels < MAX_TEXELS_PER_FRAME {
-            let i = up.written;
-            up.written += 1;
-            let f = &b.faces[i];
-            let Some(rect) = f.rect else { continue };
-            let n = (rect.w * rect.h) as usize;
-            let Some(data) = b.texels.get(f.texels as usize..f.texels as usize + n) else { continue };
-            let images = f.images.max(1);
-            let rect = LightmapRect {
-                layer: rect.layer,
-                x: rect.x,
-                y: rect.y,
-                w: rect.w / images,
-                h: rect.h,
-                density: 1.0,
-                bumped: images == 4,
-            };
-            batch.push((i as u32, rect, data));
-            texels += n;
-        }
-        r.write_lightmaps(&batch);
-        drop(batch);
         let rt = &mut runtime.lighting;
         if up.written < b.faces.len() {
             let fraction = 0.95 + 0.05 * up.written as f32 / b.faces.len().max(1) as f32;
@@ -475,8 +448,10 @@ impl Preview {
             }
         };
         assets.set_baked_prop_lighting(b.props.clone(), region);
-        r.set_indirect_volume(b.indirect.clone());
-        self.indirect_serial = b.indirect.as_ref().map(|_| up.serial);
+        if b.indirect.is_some() {
+            r.set_indirect_volume(b.indirect.clone());
+            self.indirect_serial = Some(up.serial);
+        }
         rt.progress = self.running.as_ref().and(rt.progress);
         rt.has_bake = true;
         let density = (1.0 / b.coarsen.max(1.0)) as f32;
@@ -505,7 +480,8 @@ impl Preview {
         };
         self.has_bake = true;
         self.shown_serial = Some(up.serial);
-        if up.kind != BakeKind::Update {
+        self.refine = up.quick.then(|| (up.scope.clone(), up.serial));
+        if !matches!(up.kind, BakeKind::Update | BakeKind::Refine) {
             let text = tf!(
                 "app.lighting.baked",
                 hp_ui_mapping::lighting::fmt_count(b.faces.len() as u64),
@@ -528,6 +504,12 @@ impl Preview {
         let current =
             self.running.as_ref().map(|r| r.serial).or(self.upload.as_ref().map(|u| u.serial)).or(self.shown_serial);
         if current == Some(serial) {
+            if self.running.is_none()
+                && self.upload.is_none()
+                && let Some((scope, _)) = self.refine.take_if(|(_, s)| *s == serial)
+            {
+                self.bake(state, scope, BakeKind::Refine, false);
+            }
             return;
         }
         let options = state.doc.light_plus();
@@ -541,6 +523,7 @@ impl Preview {
         }
         let scope = self.last_scope.clone().unwrap_or(Scope::All);
         let kind = self.running.as_ref().map_or(BakeKind::Update, |r| r.kind);
+        let kind = if kind == BakeKind::Refine { BakeKind::Update } else { kind };
         self.bake(state, scope, kind, false);
     }
 
@@ -599,6 +582,71 @@ impl Preview {
         }
         self.bake(state, Scope::All, BakeKind::Update, true);
     }
+}
+
+fn show_geometry(
+    r: &mut hp_render::Renderer,
+    assets: &mut dyn hp_app::state::AssetsApi,
+    b: &bake::Baked,
+    shown: (u32, u32),
+) -> bool {
+    r.set_lightmap_ldr(!b.hdr);
+    let old: Vec<u32> = (0..shown.0).collect();
+    r.remove_lightmap_faces(&old);
+    for id in 0..shown.1 {
+        r.remove_lightmap_block(id);
+    }
+    let fits = b.layers == 0 || r.ensure_lightmap_layers(b.layer_size, b.layers);
+    let faces: Vec<(u32, LightmapFace)> = b
+        .faces
+        .iter()
+        .enumerate()
+        .map(|(i, f)| {
+            let face = LightmapFace { object: f.solid, generation: f.generation, scale: f.scale, flags: f.flags };
+            (i as u32, face)
+        })
+        .collect();
+    r.add_lightmap_faces(&faces);
+    let materials: Vec<hp_render::MaterialId> = b.materials.iter().map(|m| assets.render_material_id(m)).collect();
+    for (id, block) in b.blocks.iter().enumerate() {
+        let batches: Vec<LightmapBatch<'_>> = block
+            .batches
+            .iter()
+            .filter_map(|(m, v, i)| {
+                Some(LightmapBatch { material: *materials.get(*m as usize)?, vertices: v, indices: i })
+            })
+            .collect();
+        r.add_lightmap_block(id as u32, &batches);
+    }
+    fits
+}
+
+fn write_texels(r: &mut hp_render::Renderer, b: &bake::Baked, from: usize, budget: usize) -> usize {
+    let mut written = from;
+    let mut batch: Vec<(u32, LightmapRect, &[u32])> = Vec::new();
+    let mut texels = 0usize;
+    while written < b.faces.len() && texels < budget {
+        let i = written;
+        written += 1;
+        let f = &b.faces[i];
+        let Some(rect) = f.rect else { continue };
+        let n = (rect.w * rect.h) as usize;
+        let Some(data) = b.texels.get(f.texels as usize..f.texels as usize + n) else { continue };
+        let images = f.images.max(1);
+        let rect = LightmapRect {
+            layer: rect.layer,
+            x: rect.x,
+            y: rect.y,
+            w: rect.w / images,
+            h: rect.h,
+            density: 1.0,
+            bumped: images == 4,
+        };
+        batch.push((i as u32, rect, data));
+        texels += n;
+    }
+    r.write_lightmaps(&batch);
+    written
 }
 
 fn read_lut(fs: Option<&hp_fs::GameFs>, map_dir: Option<&std::path::Path>, name: &str) -> Option<Vec<u8>> {
@@ -852,6 +900,7 @@ fn forget(app: &mut HammerProApp) {
         p.worker.stop();
         p.running = None;
         p.upload = None;
+        p.refine = None;
         p.shown_serial = None;
         p.shown_faces = 0;
         p.shown_blocks = 0;
