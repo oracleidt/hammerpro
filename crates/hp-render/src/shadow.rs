@@ -9,6 +9,8 @@ use crate::scene::ArenaKind;
 use crate::{MaterialFlags, Renderer, classify, sky_layers};
 
 pub(crate) const SHADOW_SIZE: u32 = 4096;
+pub(crate) const SHADOW_SIZE_MANY: u32 = 2048;
+const FULL_SIZE_LAYERS: u32 = 3;
 pub(crate) const SHADOW_DISTANCE: f32 = 8192.0;
 const SIZE_STEP: f32 = 512.0;
 pub(crate) const SKY_MAP_SIZE: u32 = 2048;
@@ -22,11 +24,12 @@ pub(crate) struct ShadowFit {
     pub view_proj: Mat4,
     pub texel_world: f32,
     pub depth_range: f32,
+    pub size: u32,
 }
 
 impl ShadowFit {
     pub fn params(&self) -> [f32; 4] {
-        [1.0, 2.0 / self.depth_range.max(1.0), 1.0 / SHADOW_SIZE as f32, self.texel_world * 1.5]
+        [1.0, 2.0 / self.depth_range.max(1.0), 1.0 / self.size.max(1) as f32, self.texel_world * 1.5]
     }
 
     pub fn soft_params(&self, spread_deg: f32) -> [f32; 4] {
@@ -90,7 +93,7 @@ pub(crate) fn sky_fit(eye: Vec3, scene_min: Vec3, scene_max: Vec3) -> Option<Sky
     })
 }
 
-pub(crate) fn fit(cam: &Camera, dir: Vec3, scene_min: Vec3, scene_max: Vec3) -> Option<ShadowFit> {
+pub(crate) fn fit(cam: &Camera, dir: Vec3, scene_min: Vec3, scene_max: Vec3, map_size: u32) -> Option<ShadowFit> {
     if !(scene_min.is_finite() && scene_max.is_finite() && scene_min.cmple(scene_max).all()) {
         return None;
     }
@@ -139,7 +142,7 @@ pub(crate) fn fit(cam: &Camera, dir: Vec3, scene_min: Vec3, scene_max: Vec3) -> 
     }
     let step = f64::from(SIZE_STEP);
     let size = ((x1 - x0).max(y1 - y0) + 64.0).div_euclid(step) * step + step;
-    let texel = size / f64::from(SHADOW_SIZE);
+    let texel = size / f64::from(map_size.max(1));
     let snap = |v: f64| (v / texel).floor() * texel;
     let (cx, cy) = ((x0 + x1) * 0.5, (y0 + y1) * 0.5);
     let (ox, oy) = (snap(cx - size * 0.5), snap(cy - size * 0.5));
@@ -153,7 +156,12 @@ pub(crate) fn fit(cam: &Camera, dir: Vec3, scene_min: Vec3, scene_max: Vec3) -> 
         [0.0, 0.0, 0.0, 1.0],
     ];
     let view_proj = mat_from_rows(rows);
-    view_proj.is_finite().then_some(ShadowFit { view_proj, texel_world: texel as f32, depth_range: range as f32 })
+    view_proj.is_finite().then_some(ShadowFit {
+        view_proj,
+        texel_world: texel as f32,
+        depth_range: range as f32,
+        size: map_size.max(1),
+    })
 }
 
 pub(crate) fn reversed_depth(view_proj: Mat4) -> Mat4 {
@@ -200,8 +208,9 @@ impl Layers {
         self == Layers::Sun
     }
 
-    fn sizes(self) -> (u32, u32) {
+    pub(crate) fn sizes(self, layers: u32) -> (u32, u32) {
         match self {
+            Layers::Sun if layers > FULL_SIZE_LAYERS => (SHADOW_SIZE_MANY, SUN_CUT_SIZE),
             Layers::Sun => (SHADOW_SIZE, SUN_CUT_SIZE),
             Layers::Sky => (SKY_MAP_SIZE, SKY_CUT_SIZE),
         }
@@ -215,7 +224,7 @@ impl Layers {
     }
 
     pub(crate) fn bytes(self, layers: u32) -> u64 {
-        let (size, cut) = self.sizes();
+        let (size, cut) = self.sizes(layers);
         let occ = u64::from(size).pow(2) * if self.mips() > 1 { 4 } else { 3 } / 3;
         (occ + u64::from(cut).pow(2)) * 4 * u64::from(layers.max(1))
     }
@@ -435,7 +444,7 @@ impl Renderer {
     }
 
     fn create_layers(&self, which: Layers, layers: u32) -> ShadowGpu {
-        let (size, cut_size) = which.sizes();
+        let (size, cut_size) = which.sizes(layers);
         let label = match which {
             Layers::Sun => "hp-render shadow map",
             Layers::Sky => "hp-render sky visibility map",
@@ -540,7 +549,8 @@ impl Renderer {
         let sun = self.lights_cpu.first().filter(|_| self.dir_lights > 0)?;
         let dir = Vec3::new(sun.dir[0], sun.dir[1], sun.dir[2]).normalize_or(Vec3::NEG_Z);
         let (lo, hi) = self.scene_bounds();
-        let fit = fit(cam, dir, lo, hi)?;
+        let layers = self.analyze_sky(Layers::Sun, dir);
+        let fit = fit(cam, dir, lo, hi, Layers::Sun.sizes(layers).0)?;
         let dirty = self.prepare_layers(Layers::Sun, fit.view_proj, dir, fit.depth_range)?;
         Some((fit, dirty))
     }
@@ -849,7 +859,7 @@ mod tests {
     fn fit_contains_visible_scene() {
         let c = cam([0.0, -2000.0, 500.0], [0.0, 1.0, -0.3]);
         let (smin, smax) = (Vec3::new(-5000.0, -5000.0, -100.0), Vec3::new(5000.0, 5000.0, 1000.0));
-        let f = fit(&c, Vec3::new(0.3, 0.2, -1.0), smin, smax).expect("fit");
+        let f = fit(&c, Vec3::new(0.3, 0.2, -1.0), smin, smax, SHADOW_SIZE).expect("fit");
         let p = f.view_proj * Vec4::new(0.0, 0.0, 0.0, 1.0);
         assert!(p.x.abs() < 1.0 && p.y.abs() < 1.0 && (0.0..=1.0).contains(&p.z), "{p:?}");
         let q = f.view_proj * Vec4::new(-30.0, -20.0, 100.0, 1.0);
@@ -869,13 +879,16 @@ mod tests {
     #[test]
     fn fit_is_stable_and_handles_degenerate_input() {
         let (smin, smax) = (Vec3::splat(-1000.0), Vec3::splat(1000.0));
-        let a = fit(&cam([0.0; 3], [1.0, 0.0, 0.0]), Vec3::NEG_Z, smin, smax).expect("fit");
-        let b = fit(&cam([0.01, 0.0, 0.0], [1.0, 0.0, 0.0]), Vec3::NEG_Z, smin, smax).expect("fit");
+        let a = fit(&cam([0.0; 3], [1.0, 0.0, 0.0]), Vec3::NEG_Z, smin, smax, SHADOW_SIZE).expect("fit");
+        let b = fit(&cam([0.01, 0.0, 0.0], [1.0, 0.0, 0.0]), Vec3::NEG_Z, smin, smax, SHADOW_SIZE).expect("fit");
         assert_eq!(a.view_proj, b.view_proj, "tiny camera moves keep the same texels");
-        assert!(fit(&cam([0.0; 3], [1.0, 0.0, 0.0]), Vec3::new(0.0, 0.0, -1.0), smin, smax).is_some());
-        assert!(fit(&cam([0.0; 3], [1.0, 0.0, 0.0]), Vec3::NEG_Z, Vec3::INFINITY, Vec3::NEG_INFINITY).is_none());
+        assert!(fit(&cam([0.0; 3], [1.0, 0.0, 0.0]), Vec3::new(0.0, 0.0, -1.0), smin, smax, SHADOW_SIZE).is_some());
+        assert!(
+            fit(&cam([0.0; 3], [1.0, 0.0, 0.0]), Vec3::NEG_Z, Vec3::INFINITY, Vec3::NEG_INFINITY, SHADOW_SIZE)
+                .is_none()
+        );
         let far_scene = (Vec3::splat(100_000.0), Vec3::splat(100_100.0));
-        assert!(fit(&cam([0.0; 3], [1.0, 0.0, 0.0]), Vec3::NEG_Z, far_scene.0, far_scene.1).is_none());
-        assert!(fit(&cam([0.0; 3], [1.0, 0.0, 0.0]), Vec3::NAN, smin, smax).is_some());
+        assert!(fit(&cam([0.0; 3], [1.0, 0.0, 0.0]), Vec3::NEG_Z, far_scene.0, far_scene.1, SHADOW_SIZE).is_none());
+        assert!(fit(&cam([0.0; 3], [1.0, 0.0, 0.0]), Vec3::NAN, smin, smax, SHADOW_SIZE).is_some());
     }
 }

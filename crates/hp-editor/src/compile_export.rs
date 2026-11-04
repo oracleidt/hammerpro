@@ -156,9 +156,20 @@ impl Document {
                 if !e.solids.is_empty() {
                     return e.solids.iter().any(|s| solid_touches(s.id));
                 }
-                e.origin().is_none_or(|o| inside_any(&boxes, o))
+                e.classname.eq_ignore_ascii_case("light_environment")
+                    || e.origin().is_none_or(|o| inside_any(&boxes, o))
             });
             cordoned_out += before - map.entities.len();
+            if let Some(first) = boxes.first() {
+                let inside = DVec3::new(first.center().x, first.center().y, first.max.z - 8.0);
+                for e in &mut map.entities {
+                    if e.classname.eq_ignore_ascii_case("light_environment")
+                        && e.origin().is_none_or(|o| !inside_any(&boxes, o))
+                    {
+                        e.set("origin", format!("{} {} {}", inside.x, inside.y, inside.z));
+                    }
+                }
+            }
             let next_id = self.seal_cordons(&mut map, &boxes, &export.seal_material);
             added_player_start = self.add_player_start(&mut map, &boxes, next_id);
             map.cordons.active = false;
@@ -362,6 +373,22 @@ entity { "id" "12" "classname" "info_player_start" "origin" "1032 1032 100" }
         let all = d.compile_snapshot_in(&CompileExport::default(), &[]);
         assert_eq!(all.map.world.solids.len(), 2);
         assert!(!all.is_cordoned());
+    }
+
+    #[test]
+    fn the_sun_stays_in_a_cut_out_box() {
+        let mut d = doc();
+        let far = DVec3::new(-5000.0, -5000.0, 0.0);
+        d.create_point_entity("light_environment", far, &[("_light".to_owned(), "255 255 255 200".to_owned())])
+            .expect("sun");
+        d.create_point_entity("light", far, &[]).expect("light");
+        let around = Aabb::new(DVec3::new(900.0, 900.0, -64.0), DVec3::new(1200.0, 1200.0, 256.0));
+        let snap = d.compile_snapshot_in(&CompileExport::default(), &[around]);
+        let classes: Vec<&str> = snap.map.entities.iter().map(|e| e.classname.as_str()).collect();
+        assert!(classes.contains(&"light_environment"), "{classes:?}");
+        let sun = snap.map.entities.iter().find(|e| e.classname == "light_environment").expect("sun");
+        assert!(sun.origin().is_some_and(|o| around.contains_point(o)), "moved inside the box: {:?}", sun.origin());
+        assert!(!classes.contains(&"light"), "{classes:?}");
     }
 
     #[test]

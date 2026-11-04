@@ -1,6 +1,7 @@
 use glam::{DVec3, Vec2, Vec3};
 
 pub(crate) const MAX_SKY_LAYERS: u32 = 3;
+pub(crate) const MAX_SUN_LAYERS: u32 = 8;
 pub(crate) const LAYER_GAP: f32 = 24.0;
 const GRID: usize = 256;
 const MIN_SPACING: f32 = 16.0;
@@ -95,12 +96,13 @@ impl LayerRegion {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct SkyLayers {
     pub count: u32,
+    pub max: u32,
     pub regions: Vec<LayerRegion>,
 }
 
 impl SkyLayers {
     pub fn layers(&self) -> u32 {
-        self.count.clamp(1, MAX_SKY_LAYERS)
+        self.count.clamp(1, self.max.max(1))
     }
 
     pub fn region(&self, layer: u32) -> Option<&LayerRegion> {
@@ -129,8 +131,9 @@ pub(crate) fn analyze(basis: &Basis, tris: &[[Vec3; 3]], from_sun: bool) -> SkyL
             bounds.add(p.truncate());
         }
     }
+    let max = if from_sun { MAX_SUN_LAYERS } else { MAX_SKY_LAYERS };
     if bounds.is_empty() {
-        return SkyLayers::default();
+        return SkyLayers { max, ..SkyLayers::default() };
     }
     let extent = (bounds.hi - bounds.lo).max_element().max(1.0);
     let mut spacing = (extent / GRID as f32).max(MIN_SPACING);
@@ -197,7 +200,7 @@ pub(crate) fn analyze(basis: &Basis, tris: &[[Vec3; 3]], from_sun: bool) -> SkyL
             count = count.max(clusters);
             let p = center(ix, iy);
             let here = Rect { lo: p, hi: p }.grown(spacing);
-            for k in 1..clusters.min(MAX_SKY_LAYERS) {
+            for k in 1..clusters.min(max) {
                 let i = (k - 1) as usize;
                 if regions.len() <= i {
                     let empty = LayerRegion { rect: Rect::EMPTY, depth: f32::INFINITY, below: f32::NEG_INFINITY };
@@ -215,7 +218,7 @@ pub(crate) fn analyze(basis: &Basis, tris: &[[Vec3; 3]], from_sun: bool) -> SkyL
         }
     }
     let regions = regions.into_iter().map(|r| LayerRegion { rect: r.rect.grown(REGION_MARGIN), ..r }).collect();
-    SkyLayers { count, regions }
+    SkyLayers { count, max, regions }
 }
 
 #[cfg(test)]
@@ -275,7 +278,8 @@ mod tests {
         let huge: Vec<[Vec3; 3]> =
             (0..200).flat_map(|i| quad([-30000.0, -30000.0], [30000.0, 30000.0], i as f32 * 100.0)).collect();
         let l = analyze(&b, &huge, true);
-        assert_eq!(l.layers(), MAX_SKY_LAYERS);
+        assert_eq!(l.layers(), MAX_SUN_LAYERS);
+        assert_eq!(analyze(&b, &huge, false).layers(), MAX_SKY_LAYERS);
         assert!(facing(Vec3::NEG_Z, Vec3::NEG_Z) && !facing(Vec3::Z, Vec3::NEG_Z));
         let r = Rect { lo: Vec2::ZERO, hi: Vec2::ONE };
         assert!(r.overlaps(&Rect { lo: Vec2::splat(0.5), hi: Vec2::splat(4.0) }));

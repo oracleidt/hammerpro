@@ -8,7 +8,7 @@
 
 Hammer Pro opens and saves standard `.vmf` files, so you can use it side by side with Hammer and Hammer++. It is written in Rust, renders with the GPU through wgpu, stays smooth on huge maps and compiles maps with its own built in compiler: no VBSP, VVIS or VRAD needed.
 
-Version **1.0.5**.
+Version **1.0.6**.
 
 ## Highlights
 

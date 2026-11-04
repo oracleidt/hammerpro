@@ -681,6 +681,28 @@ fn a_map_sealed_in_sky_on_every_side_gets_the_sun() {
 }
 
 #[test]
+fn rooms_stacked_above_the_sky_do_not_shadow_the_map() {
+    let (device, queue) = gpu_or_skip!();
+    let mut r = Renderer::new(&device, &queue);
+    mat(&mut r, WORLD, [200, 200, 200, 255], MaterialFlags::empty());
+    mat(&mut r, SKY, [120, 160, 255, 255], MaterialFlags::SKY);
+    r.upsert_object(1, box_mesh([-1500.0, -1500.0, -64.0], [1500.0, 1500.0, 0.0], WORLD));
+    sky_shell(&mut r, 10, 2048.0, -512.0, 2048.0, 64.0);
+    for (k, z) in [4000.0f32, 7000.0, 10000.0, 13000.0].into_iter().enumerate() {
+        let id = 100 + 10 * k as u32;
+        r.upsert_object(id, box_mesh([-30000.0, -30000.0, z], [30000.0, 30000.0, z + 32.0], WORLD));
+        r.upsert_object(id + 1, sky_brush([-30000.0, -30000.0, z + 1500.0], [30000.0, 30000.0, z + 1532.0], WORLD));
+        r.set_object_flags(id + 1, ObjectFlags::NO_SHADOW);
+    }
+    r.set_lights(&[slanted_sun(0.8)], [0.05; 3]);
+    let v = looking_down([0.0, 0.0, 1500.0]);
+    let img = shot(&mut r, 7, &v, "rooms_above_the_sky");
+    let open_at = screen(&v, [-700.0, -500.0, 0.0]);
+    let open = px(&img, open_at.0, open_at.1);
+    assert!(open[0] > 150, "the map under its own sky gets the sun: {open:?}");
+}
+
+#[test]
 fn sky_light_under_a_room_above_the_sky_is_open_sky() {
     let (device, queue) = gpu_or_skip!();
     let mut r = Renderer::new(&device, &queue);
