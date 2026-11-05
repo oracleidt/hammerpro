@@ -13,6 +13,7 @@ pub enum MenuGroup {
     EditClipboard,
     EditSelect,
     EditSelectMode,
+    EditSelectElement,
     EditSelectEdges,
     EditProperties,
     MapGrid,
@@ -75,6 +76,7 @@ impl MenuGroup {
             MenuGroup::EditClipboard => inline(30, 0),
             MenuGroup::EditSelect => inline(40, 0),
             MenuGroup::EditSelectMode => sub(40, 10, "menu.selection_mode", 160.0),
+            MenuGroup::EditSelectElement => sub(40, 15, "menu.select_element", 160.0),
             MenuGroup::EditSelectEdges => sub(40, 20, "menu.edge_selection", 220.0),
             MenuGroup::EditProperties => inline(50, 0),
             MenuGroup::MapGrid => inline(10, 0),
@@ -122,6 +124,7 @@ impl MenuGroup {
             | MenuGroup::EditClipboard
             | MenuGroup::EditSelect
             | MenuGroup::EditSelectMode
+            | MenuGroup::EditSelectElement
             | MenuGroup::EditSelectEdges
             | MenuGroup::EditProperties => C::Edit,
             MenuGroup::MapGrid

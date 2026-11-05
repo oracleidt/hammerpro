@@ -186,6 +186,10 @@ impl KeyBindings {
     }
 
     pub fn take_triggered(&self, events: &mut Vec<egui::Event>) -> Vec<Action> {
+        self.take_triggered_where(events, |_| true)
+    }
+
+    pub fn take_triggered_where(&self, events: &mut Vec<egui::Event>, allow: impl Fn(Action) -> bool) -> Vec<Action> {
         let mut out = Vec::new();
         events.retain(|event| {
             let (candidates, repeat) = match event {
@@ -200,6 +204,9 @@ impl KeyBindings {
             let Some(action) = candidates.iter().find_map(|c| self.action_for(c)) else {
                 return true;
             };
+            if !allow(action) {
+                return true;
+            }
             if !repeat || action.repeats() {
                 out.push(action);
             }

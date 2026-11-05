@@ -230,6 +230,8 @@ fn main() -> eframe::Result<()> {
 
     let native_frames = !cli.is_automated()
         && hp_app::settings::Settings::load_or_default(&hp_app::settings::Settings::default_path()).ui.native_frames;
+    let start_fullscreen = !cli.is_automated()
+        && hp_app::settings::Settings::load_or_default(&hp_app::settings::Settings::default_path()).ui.start_fullscreen;
     let margin = if native_frames { 0.0 } else { 2.0 * hp_app::chrome::MARGIN };
     let viewport = egui::ViewportBuilder::default()
         .with_title("Hammer Pro")
@@ -238,6 +240,7 @@ fn main() -> eframe::Result<()> {
         .with_icon(icon::app_icon())
         .with_drag_and_drop(true)
         .with_decorations(native_frames)
+        .with_fullscreen(start_fullscreen)
         .with_transparent(true);
 
     let options = eframe::NativeOptions {

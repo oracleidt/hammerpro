@@ -75,6 +75,7 @@ const SEMANTIC: &[&Domain] = &[
     &super::tools_weld::DOMAIN,
     &super::tools_loops::DOMAIN,
     &super::tools_roadside::DOMAIN,
+    &super::tools_pipe::DOMAIN,
     &super::tools_groups::DOMAIN,
     &super::tools_disp::DOMAIN,
     &super::tools_slope::DOMAIN,
@@ -93,6 +94,7 @@ const SEMANTIC: &[&Domain] = &[
     &super::tools_sky::DOMAIN,
     &super::tools_fgd::DOMAIN,
     &super::tools_toolopts::DOMAIN,
+    &super::tools_shader::DOMAIN,
 ];
 
 fn domain_specs() -> impl Iterator<Item = &'static hp_mcp::tools::ToolSpec> {

@@ -134,6 +134,7 @@ Every change the AI makes is **one undo step** named "MCP:" followed by what was
 | History | Undo and redo. |
 | Clipboard | Read the VMF text of objects and paste VMF text. |
 | Assets | Search materials, models, sounds and particles, material and model information and previews, VMT editing, image import, UV layers and texture alignment. |
+| Shader editor | The node based image editor: node and preset lists, creating, reading, editing, checking, rendering and writing `.hpshader` graphs as VTF and VMT files, and opening the editor window. See [Shader editor](../features/shader-editor.md). |
 | Map health | Check for problems, fix them, engine limits, map statistics, hidden faces. |
 | Compile | Compile with a preset and follow the progress. |
 | Views | Camera, screenshots of a view, layout of the quadrants, 3D render modes, player view, 2D zoom and pan. |

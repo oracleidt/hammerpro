@@ -47,6 +47,7 @@ En mode choix, le navigateur affiche « Choix pour *clé* : double-cliquez sur u
 |---|---|---|---|
 | **Afficher les particules** | **Affichage > Options d'affichage**, et **Paramètres > Nav mesh et particules** | Joue les effets des `info_particle_system` proches de la caméra dans les vues 3D. `show_particles` dans `[lab]`. | Activé |
 | **Particules de la sélection uniquement** | Aux mêmes endroits | Ne joue que les effets des systèmes de particules sélectionnés. `particles_selected_only` dans `[lab]`. | Désactivé |
+| **Aperçu des effets de volume** | Aux mêmes endroits | Approximation animée de `func_smokevolume`, `env_embers`, `func_dustcloud` et `func_dustmotes` (voir plus bas). `show_entity_fx` dans `[lab]` ; action `toggle_entity_fx`. | Activé |
 
 ### Ce qui est joué
 
@@ -57,6 +58,29 @@ En mode choix, le navigateur affiche « Choix pour *clé* : double-cliquez sur u
 - Dans la [vue joueur](player-view.md) avec le monde compilé, ce sont les systèmes de particules de la map compilée qui sont joués.
 
 Survolez ou sélectionnez un `info_particle_system` dans une vue 3D pour voir le nom de son effet au-dessus, avec son état : rien de plus s'il est joué, « (à l'arrêt : trop loin ou trop nombreux) », « (chargement...) » ou « (introuvable dans les fichiers de particules) ».
+
+## Effets de volume dans les vues
+
+`func_smokevolume`, `env_embers`, `func_dustcloud` et `func_dustmotes` sont dessinés par le moteur en jeu ; Hammer Pro en montre une approximation dans les vues 3D, activée par **Aperçu des effets de volume**. L'étendue est la boîte des brushes de l'entité (une entité ponctuelle a une boîte de 96 unités), tracée en fin contour (plus clair si sélectionnée) et remplie de particules colorées animées qui restent à l'intérieur :
+
+| Entité | Clés utilisées | Aspect |
+|---|---|---|
+| `func_smokevolume` | `Color1`, `Color2` (chaque volute prend une couleur entre les deux), `ParticleDrawWidth` (taille des volutes), `ParticleSpacingDistance` (moins de volutes si grand), `Density` (opacité), `MovementSpeed` | Grosses volutes douces qui dérivent lentement |
+| `env_embers` | `rendercolor`, `density` (nombre), `lifetime`, `speed` | Petites étincelles vives qui montent en ondulant, avec fondu |
+| `func_dustcloud` | `Color`, `SizeMin`, `SizeMax`, `SpawnRate`, `LifetimeMin`, `LifetimeMax`, `SpeedMax`, `FallSpeed`, `Alpha`, `DistMax` | Grains translucides plus gros |
+| `func_dustmotes` | Mêmes clés | Fines poussières qui dérivent |
+
+L'aperçu est borné : seules les entités à moins de 3072 unités de la caméra (ou `DistMax` si plus petit) sont montrées, 24 au plus à la fois (les plus proches d'abord), 120 particules chacune et 1600 en tout, avec moins de particules quand l'entité est loin. Les entités masquées ne sont pas montrées. Pour `info_particle_system`, ce sont les vrais fichiers de particules qui sont joués (voir plus haut).
+
+## Fenêtre d'aperçu des particules
+
+Le bouton `▶` à côté du champ **Particle System Name** (`effect_name`) d'un `info_particle_system` (aussi **Affichage > Panneaux > Aperçu des particules...**, action `particle_preview`) ouvre une fenêtre avec :
+
+- une zone de recherche (tous les mots doivent figurer dans le nom ou le fichier ; `!mot` exclut) et la liste de tous les systèmes de l'index du contenu et des fichiers de particules, avec leur fichier en infobulle ;
+- une vue animée et tournante du système sélectionné, jouée depuis le vrai fichier de particules (la même simulation que les vues 3D, 400 particules au plus) : les matériaux additifs brillent, les traînées sont des lignes. **Pause**/**Lecture**, **Relancer** et **Tourner** (la rotation automatique) sont dessous, avec le nombre de particules et les opérateurs non simulés ;
+- **Assigner à N entités** (ou **Utiliser pour ce champ** quand la fenêtre vient d'un champ) : écrit le nom dans la clé (une étape d'annulation). Un double-clic sur un système fait pareil. **Copier le nom** le copie.
+
+Fermer la fenêtre pendant qu'elle attend un choix annule ce choix.
 
 ## Astuces
 

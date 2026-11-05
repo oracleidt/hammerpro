@@ -60,12 +60,19 @@ pub(crate) struct State {
     compare_job: Option<hp_ui_lab::compare::CompareJob>,
     compare: hp_ui_lab::compare::CompareWindow,
     sniffer: hp_ui_lab::sniffer::SnifferWindow,
+    sound_editor: hp_ui_lab::sound_edit::SoundEditorWindow,
+    color_editor: hp_ui_lab::color_edit::ColorEditorWindow,
+    color_zone: hp_ui_lab::color_zone::ZoneDriver,
+    preview: Option<hp_ui_lab::particle_preview::ParticlePreviewWindow>,
     pub(crate) model_import: hp_ui_entities::model_import::ModelImportDialog,
 }
 
 const HANDLED: &[Action] = &[
     Action::OpenBsp,
     Action::OpenBspSniffer,
+    Action::OpenSoundEditor,
+    Action::OpenColorCorrectionEditor,
+    Action::ToggleColorCorrectionPreview,
     Action::ShowLogicalView,
     Action::ToggleNavMesh,
     Action::LoadNavMesh,
@@ -76,6 +83,12 @@ const HANDLED: &[Action] = &[
     Action::PropperOptions,
     Action::ToggleParticles,
     Action::ToggleParticlesSelected,
+    Action::ToggleEntityFx,
+    Action::ParticlePreview,
+    Action::FlyApplyTexture,
+    Action::FlyApplyTextureBrush,
+    Action::FlyPickTexture,
+    Action::FlyAlignTexture,
     Action::CompareMaps,
     Action::EntityGallery,
     Action::ImportModel,
@@ -166,6 +179,23 @@ impl Package for Lab {
                 s.particles_selected_only = !s.particles_selected_only;
                 app.state.settings_dirty = true;
             }
+            Action::ToggleEntityFx => {
+                let s = &mut app.state.settings.lab;
+                s.show_entity_fx = !s.show_entity_fx;
+                app.state.settings_dirty = true;
+            }
+            Action::ParticlePreview => {
+                let p = &mut app.state.runtime.lab.particle_preview;
+                p.open = !p.open;
+            }
+            Action::FlyApplyTexture
+            | Action::FlyApplyTextureBrush
+            | Action::FlyPickTexture
+            | Action::FlyAlignTexture => {
+                if let Some(op) = hp_ui_viewports::fly_texture::op_of(action) {
+                    hp_ui_viewports::fly_texture::run(&mut app.state, op);
+                }
+            }
             Action::CompareMaps => {
                 if app.pkg.lab.compare_pick.is_none() && app.pkg.lab.compare_job.is_none() {
                     app.pkg.lab.compare_pick =
@@ -205,6 +235,19 @@ impl Package for Lab {
                     app.pkg.lab.nav_pick = Some(pick_file(app, t!("lab.nav.files").to_owned(), &["nav"], ctx));
                 }
             }
+            Action::OpenSoundEditor => {
+                let rt = &mut app.state.runtime.lab.sound_color;
+                rt.sound_open = !rt.sound_open;
+            }
+            Action::OpenColorCorrectionEditor => {
+                let rt = &mut app.state.runtime.lab.sound_color;
+                rt.color_open = !rt.color_open;
+            }
+            Action::ToggleColorCorrectionPreview => {
+                let s = &mut app.state.settings.lab;
+                s.color_correction_preview = !s.color_correction_preview;
+                app.state.settings_dirty = true;
+            }
             Action::OpenBspSniffer => {
                 let rt = &mut app.state.runtime.lab.sniffer;
                 rt.open = !rt.open;
@@ -221,6 +264,9 @@ impl Package for Lab {
 
     fn init(&self, app: &mut HammerProApp) {
         hp_app::i18n::register(hp_ui_lab::SNIFFER_TR);
+        hp_app::i18n::register(hp_ui_lab::PARTICLE_PREVIEW_TR);
+        hp_app::i18n::register(hp_ui_lab::SOUND_TR);
+        hp_app::i18n::register(hp_ui_lab::COLOR_TR);
         let old = content_cache(app).join("decompiled");
         if old.is_dir() {
             let _ = std::thread::Builder::new().name("hp-lab-clean".into()).spawn(move || {
@@ -237,7 +283,8 @@ impl Package for Lab {
         let handle = app.pkg.lab.nav.clone();
         app.viewports.add_layer(Box::new(hp_ui_lab::nav::NavLayer::new(handle)));
         let particles = app.pkg.lab.particles.clone();
-        app.viewports.add_layer(Box::new(hp_ui_lab::particles::ParticleLayer::new(particles)));
+        app.viewports.add_layer(Box::new(hp_ui_lab::particles::ParticleLayer::new(particles.clone())));
+        app.viewports.add_layer(Box::new(hp_ui_lab::entity_fx::EntityFxLayer::new(particles)));
         app.viewports.set_logical_content(Box::new(hp_ui_lab::logic::LogicalQuadrants::default()));
         app.shell.add_status_segment(Box::new(NavStatus));
     }
@@ -302,6 +349,7 @@ impl Package for Lab {
         poll_bsp(app, ctx);
         nav_tick(app, ctx);
         particles_tick(app, ctx);
+        app.pkg.lab.color_zone.update(&mut app.state, ctx);
     }
 
     fn map_loaded(&self, app: &mut HammerProApp) {
@@ -331,6 +379,17 @@ impl Package for Lab {
         app.pkg.lab.logic.show(ctx, &mut app.state);
         app.pkg.lab.compare.show(ctx, &mut app.state);
         app.pkg.lab.sniffer.show(ctx, &mut app.state);
+        app.pkg.lab.sound_editor.show(ctx, &mut app.state);
+        app.pkg.lab.color_editor.show(ctx, &mut app.state);
+        if app.state.runtime.lab.particle_preview.open || app.pkg.lab.preview.is_some() {
+            let handle = app.pkg.lab.particles.clone();
+            let window = app
+                .pkg
+                .lab
+                .preview
+                .get_or_insert_with(|| hp_ui_lab::particle_preview::ParticlePreviewWindow::new(handle));
+            window.show(ctx, &mut app.state);
+        }
         app.pkg.lab.model_import.show(ctx, &mut app.state);
         if let Some(imported) = app.pkg.lab.model_import.take_imported()
             && imported.place
@@ -900,7 +959,10 @@ fn poll_nav_gen(app: &mut HammerProApp) {
 }
 
 fn particles_tick(app: &mut HammerProApp, ctx: &egui::Context) {
-    if !app.state.settings.lab.show_particles {
+    if app.state.settings.lab.show_entity_fx && app.pkg.lab.particles.lock().is_ok_and(|s| s.fx_active) {
+        ctx.request_repaint();
+    }
+    if !app.state.settings.lab.show_particles && !app.state.runtime.lab.particle_preview.open {
         if std::mem::take(&mut app.pkg.lab.particles_shown)
             && let Some(gfx) = app.state.gfx.as_mut()
         {

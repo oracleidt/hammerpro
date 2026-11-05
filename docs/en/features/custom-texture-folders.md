@@ -79,6 +79,7 @@ In every kind of folder, a PNG, JPG, JPEG, TGA or BMP image below the material r
 | **Generate mipmaps** | Writes mipmaps in the VTFs. | on |
 | **Overwrite existing files** | Replaces VTF and VMT files that already exist (else those images fail). | off |
 | **Import** | Starts (also `Enter`). The line above tells **Materials will be named prefix/<image name> in folder**. | |
+| **Shader editor...** | Opens the [shader editor](shader-editor.md) on the first image of the list, to tint it, build a normal map or blend tiles before writing it. | |
 | **Cancel** | Closes the window; during the conversion it stops after the current file. | |
 
 The conversion runs in the background with a progress bar (**Importing N of M...**). Each image gives a `.vtf` (format chosen from its content) and a `.vmt` with the same alpha rule as above. Files go to `materials/<suggested prefix>` of a game style folder, or to the root of any other folder, under its prefix. The image name is cleaned the same way; two images with the same cleaned name: the later ones fail. The result is **N image(s) imported, M failed**.

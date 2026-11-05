@@ -15,9 +15,8 @@ use hp_render::Overlay;
 
 use crate::clip3d::{MAGNET_PX, magnet, snap_targets};
 use crate::common::{
-    COLOR_FRONT, COLOR_PENDING, COLOR_REMOVED, HANDLE_TOLERANCE, Mouse, Ov, Snap, active_material, clean_vec,
-    consume_plain_key, consume_tabs, dominant_axis, fmt_len, fresh, material_chip, paint_label, pick_surface_with,
-    rgba,
+    COLOR_FRONT, COLOR_PENDING, COLOR_REMOVED, DistanceSnap, HANDLE_TOLERANCE, Mouse, Ov, Snap, active_material,
+    clean_vec, consume_plain_key, consume_tabs, fmt_len, fresh, material_chip, paint_label, pick_surface_with, rgba,
 };
 
 pub const MAX_EXTRUDE_DEPTH: f64 = 16384.0;
@@ -448,11 +447,11 @@ impl ExtrudeTool {
         }
     }
 
-    fn depth_from(&self, view: &ViewInfo, start: Pos2, pos: Pos2, from: f64, snap: &Snap) -> Option<f64> {
+    fn depth_from(&self, view: &ViewInfo, start: Pos2, pos: Pos2, from: f64, snap: &DistanceSnap) -> Option<f64> {
         let o = self.outline.as_ref()?;
         let n = o.target.plane.normal;
         let delta = depth_delta(view, start, pos, o.center(), n)?;
-        Some(snap.len(from + delta, dominant_axis(n)))
+        Some(snap.distance(o.center(), n, from + delta))
     }
 
     pub(crate) fn handle_mouse(&mut self, state: &mut AppState, view: &ViewInfo, m: &Mouse) -> ToolFlow {
@@ -481,7 +480,8 @@ impl ExtrudeTool {
                     self.move_point(view, pos, &snap, index, m.modifiers);
                 }
                 Some(Drag::Depth { view: vi, start, from }) if vi == view.index => {
-                    if let Some(d) = self.depth_from(view, start, pos, from, &snap) {
+                    let depth_snap = DistanceSnap::for_extrude(state, view, m.modifiers);
+                    if let Some(d) = self.depth_from(view, start, pos, from, &depth_snap) {
                         self.set_depth(d);
                     }
                 }
@@ -910,6 +910,13 @@ impl Tool for ExtrudeTool {
                 .clicked()
             {
                 state.request(Action::InsetInteractive);
+            }
+            if ui
+                .add_enabled(has_faces, egui::Button::new(Action::ExtrudeInteractive.label()))
+                .on_hover_text(t!("create.extrude.extrude_live_tip"))
+                .clicked()
+            {
+                state.request(Action::ExtrudeInteractive);
             }
             if count > 0 {
                 ui.separator();

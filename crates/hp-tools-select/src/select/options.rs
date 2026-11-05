@@ -1,6 +1,7 @@
 use std::cell::Cell;
 
 use hp_app::AppState;
+use hp_app::settings::SelectElement;
 use hp_app::tool::ToolOption;
 
 use super::SelectTool;
@@ -8,12 +9,12 @@ use crate::gizmo::GizmoMode;
 use crate::math::HandleMode;
 
 thread_local! {
-    static SETTINGS_SNAPSHOT: Cell<(bool, bool)> = const { Cell::new((true, false)) };
+    static SETTINGS_SNAPSHOT: Cell<(bool, bool, SelectElement)> = const { Cell::new((true, false, SelectElement::Object)) };
 }
 
 pub fn sync_options(state: &AppState) {
     let s = &state.settings.selection;
-    SETTINGS_SNAPSHOT.with(|c| c.set((s.stretch_handles, s.gizmo_local)));
+    SETTINGS_SNAPSHOT.with(|c| c.set((s.stretch_handles, s.gizmo_local, s.element)));
 }
 
 fn on_off(b: bool) -> &'static str {
@@ -60,6 +61,12 @@ impl SelectTool {
                 "centers" => self.centers_only = true,
                 _ => return false,
             },
+            "element" => {
+                let Some(e) = SelectElement::from_id(&v) else { return false };
+                state.settings.selection.element = e;
+                state.runtime.selection.clear_elements();
+                state.settings_dirty = true;
+            }
             "gizmo" => match flag(&v) {
                 Some(b) => self.gizmo_visible = b,
                 None => return false,
@@ -86,7 +93,7 @@ impl SelectTool {
     }
 
     pub(super) fn named_option_values(&self) -> Vec<ToolOption> {
-        let (stretch, local) = SETTINGS_SNAPSHOT.with(Cell::get);
+        let (stretch, local, element) = SETTINGS_SNAPSHOT.with(Cell::get);
         let boxed = if self.centers_only {
             "centers"
         } else if self.box_inside {
@@ -95,6 +102,13 @@ impl SelectTool {
             "touching"
         };
         vec![
+            ToolOption::new(
+                "element",
+                element.id(),
+                "object, face, edge or vertex: what a click in a 3D view selects. face fills the face selection \
+                 (the inset and extrude keys use it), edge and vertex pick the edge or corner of a brush under \
+                 the cursor (the bevel and vertex tools take them over). Shortcuts 4, 3, 2, 1.",
+            ),
             ToolOption::new(
                 "handles",
                 handle_mode_name(self.handle_mode),

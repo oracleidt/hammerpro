@@ -1,5 +1,5 @@
 use glam::{DMat4, DVec3};
-use hp_app::settings::SelectModeSetting;
+use hp_app::settings::{SelectElement, SelectModeSetting};
 use hp_app::state::RightTab;
 use hp_app::{Action, Severity, t, tf};
 
@@ -35,6 +35,10 @@ const HANDLED: &[Action] = &[
     Action::SelectModeGroups,
     Action::SelectModeObjects,
     Action::SelectModeSolids,
+    Action::SelectElementObject,
+    Action::SelectElementVertex,
+    Action::SelectElementEdge,
+    Action::SelectElementFace,
     Action::Properties,
     Action::CommandPalette,
     Action::Settings,
@@ -51,6 +55,7 @@ const HANDLED: &[Action] = &[
     Action::Center2dOnSelection,
     Action::Center3dOnSelection,
     Action::MaximizeView,
+    Action::ToggleFullscreen,
     Action::ShowTextureBrowser,
     Action::ShowModelBrowser,
     Action::ShowEntityProperties,
@@ -135,6 +140,10 @@ impl Package for Shell {
             Action::SelectModeGroups => app.set_select_mode(SelectModeSetting::Groups),
             Action::SelectModeObjects => app.set_select_mode(SelectModeSetting::Objects),
             Action::SelectModeSolids => app.set_select_mode(SelectModeSetting::Solids),
+            Action::SelectElementObject => app.set_select_element(SelectElement::Object),
+            Action::SelectElementVertex => app.set_select_element(SelectElement::Vertex),
+            Action::SelectElementEdge => app.set_select_element(SelectElement::Edge),
+            Action::SelectElementFace => app.set_select_element(SelectElement::Face),
             Action::Properties => app.show_panel(RightTab::Entity),
             Action::CommandPalette => app.state.ui.show_command_palette = true,
             Action::Settings => app.state.ui.show_settings = true,
@@ -181,6 +190,11 @@ impl Package for Shell {
             }
             Action::Center2dOnSelection => app.center_2d(),
             Action::Center3dOnSelection => app.center_3d(),
+            Action::ToggleFullscreen => {
+                let on = !ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(on));
+                app.state.ui.fullscreen = on;
+            }
             Action::MaximizeView => {
                 app.state.ui.maximized_view = match app.state.ui.maximized_view {
                     Some(_) => None,
@@ -261,7 +275,10 @@ impl HammerProApp {
                 DVec3::ZERO
             }
         });
-        match self.state.doc.paste(text, offset) {
+        let fgd = self.state.assets.fgd().filter(|f| !f.is_empty());
+        let targets =
+            |class: &str, key: &str| fgd.and_then(|f| hp_app::runtime::helpers::fgd_target_key(f, class, key));
+        match self.state.doc.paste_with(text, offset, Some(&targets)) {
             Ok(objs) if !objs.is_empty() => {
                 self.state.doc.select(&objs, hp_editor::SelectOp::Replace);
             }
@@ -347,6 +364,12 @@ impl HammerProApp {
             RightTab::Tool | RightTab::Package(_) => {}
         }
         self.state.ui.right_tab = tab;
+        self.state.settings_dirty = true;
+    }
+
+    fn set_select_element(&mut self, element: SelectElement) {
+        self.state.settings.selection.element = element;
+        self.state.runtime.selection.clear_elements();
         self.state.settings_dirty = true;
     }
 

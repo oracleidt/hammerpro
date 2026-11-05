@@ -138,3 +138,24 @@ fn lean_planes_leave_out_the_planes_of_displacement_brushes() {
     assert_eq!(disp_planes(&full), disp_planes(&lean), "the displacements keep their planes");
     assert_eq!(full.faces().len(), lean.faces().len());
 }
+
+#[test]
+fn the_preview_compile_leaves_out_the_physics_and_keeps_the_geometry() {
+    let map = hp_vmf::parse(&common::maps::displacement().text()).expect("the VMF parses");
+    let compile = |preview: bool| {
+        let opts = hp_bspc::CompileOptions { preview, ..Default::default() };
+        let out = hp_bspc::compile(&map, &common::GameMats, &hp_bspc::props::NoModels, &opts, &mut |_| {})
+            .unwrap_or_else(|e| panic!("compiles: {e}"));
+        out.bsp
+    };
+    let (full, preview) = (compile(false), compile(true));
+    let physics = |bytes: &[u8]| {
+        let bsp = hp_bsp::Bsp::from_vec(bytes.to_vec()).expect("a BSP");
+        bsp.lump(29).map_or(0, |l| l.len())
+    };
+    assert!(physics(&full) > 0, "the normal compile writes the collision data");
+    assert_eq!(physics(&preview), 0, "the preview compile does not");
+    assert!(preview.len() < full.len());
+    let faces = |bytes: &[u8]| Lumps::from_bytes(bytes).faces().len();
+    assert_eq!(faces(&full), faces(&preview));
+}

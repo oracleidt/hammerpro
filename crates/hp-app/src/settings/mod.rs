@@ -63,7 +63,7 @@ pub use render::{
     Models2dSetting, PropShadowSetting, RenderSettings, ToneModeSetting, WaterDetailSetting,
 };
 pub use scan::{ScanModeSetting, ScanSettings};
-pub use selection::SelectionSettings;
+pub use selection::{SelectElement, SelectionSettings};
 pub use shell::{
     EditSettings, KeyboardLayout, RenderModeSetting, SelectModeSetting, ThemeChoice, UiSettings, ViewSettings,
 };
@@ -72,7 +72,8 @@ pub use update::UpdateSettings;
 pub use visibility::VisibilitySettings;
 pub use workflow::{
     CtrlWheel, DisplayUnits, FLY_RESPONSE_MAX, GRID_MAX, GRID_MIN, GRID_STEP_MAX, GRID_STEP_MIN, MAX_LAYOUT_NAME,
-    MAX_LAYOUTS, NavScheme, SavedLayout, WorkflowSettings, clamp_grid, grid_step,
+    MAX_LAYOUTS, NavScheme, SavedLayout, TOOL_GRID_MAX, TOOL_GRID_MIN, WorkflowSettings, clamp_grid, grid_step,
+    tool_grid,
 };
 
 impl Settings {

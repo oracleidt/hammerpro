@@ -1,4 +1,5 @@
 pub mod camera;
+pub mod fly_texture;
 pub mod input;
 pub mod io;
 pub mod layers;
@@ -71,6 +72,7 @@ pub fn register_translations() {
         hp_app::i18n::register(table);
     }
     hp_app::i18n::register(workflow::TR);
+    hp_app::i18n::register(fly_texture::TR);
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -480,6 +482,7 @@ impl Viewports {
                     state.cameras.cam3d.pitch_deg = 0.0;
                     self.player_view = Some(v);
                     self.mouselook = None;
+                    fly_texture::leave(state);
                     self.gesture = None;
                     self.velocity = DVec3::ZERO;
                     self.keys.clear();
@@ -877,6 +880,7 @@ impl Viewports {
                 if self.warp.request(input.focused, input.pointer, input.motion.is_some(), ml.anchor) {
                     ctx.send_viewport_cmd(egui::ViewportCommand::CursorPosition(ml.anchor));
                 }
+                fly_texture::frame(ctx, state, input, ml.view);
                 if input.pressed[PRIMARY]
                     && hovered == Some(ml.view)
                     && !self.swallow
@@ -907,6 +911,10 @@ impl Viewports {
                     ctx.send_viewport_cmd(egui::ViewportCommand::CursorPosition(s.rect.center()));
                 }
             }
+        }
+
+        if self.mouselook.is_none() {
+            fly_texture::leave(state);
         }
 
         let mut ended = None;

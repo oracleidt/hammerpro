@@ -160,6 +160,9 @@ impl SelectTool {
             return false;
         };
         for (key, kind) in MODAL_KEYS {
+            if key == Key::E && !state.doc.selection().faces.is_empty() {
+                continue;
+            }
             if take_plain_key(ctx, key, false) {
                 self.start_modal(state, &view, kind, pos);
                 return true;

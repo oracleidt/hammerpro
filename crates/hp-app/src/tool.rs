@@ -21,10 +21,11 @@ pub enum ToolId {
     Displacement,
     Cordon,
     Road,
+    Pipe,
 }
 
 impl ToolId {
-    pub const ALL: [ToolId; 18] = [
+    pub const ALL: [ToolId; 19] = [
         ToolId::Select,
         ToolId::Camera,
         ToolId::Entity,
@@ -43,6 +44,7 @@ impl ToolId {
         ToolId::Displacement,
         ToolId::Cordon,
         ToolId::Road,
+        ToolId::Pipe,
     ];
 
     pub fn label_key(self) -> &'static str {
@@ -65,6 +67,7 @@ impl ToolId {
             ToolId::Cordon => "tool.cordon",
             ToolId::Sprinkle => "tool.sprinkle",
             ToolId::Road => "tool.road",
+            ToolId::Pipe => "tool.pipe",
         }
     }
 
@@ -93,6 +96,7 @@ impl ToolId {
             ToolId::Cordon => Action::ToolCordon,
             ToolId::Sprinkle => Action::ToolSprinkle,
             ToolId::Road => Action::ToolRoad,
+            ToolId::Pipe => Action::ToolPipe,
         }
     }
 
@@ -115,7 +119,8 @@ impl ToolId {
             ToolId::Curve => "➰",
             ToolId::Cordon => "⛶",
             ToolId::Sprinkle => "✨",
-            ToolId::Road => "═",
+            ToolId::Road => "☰",
+            ToolId::Pipe => "⊟",
         }
     }
 }

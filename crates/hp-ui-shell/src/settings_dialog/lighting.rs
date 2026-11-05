@@ -36,6 +36,10 @@ impl SettingsPage for LightingPage {
             .checkbox(&mut s.auto_bake, t!("shell.lighting.auto_bake"))
             .on_hover_text(t!("shell.lighting.auto_bake_tip"))
             .changed();
+        changed |= ui
+            .checkbox(&mut s.auto_scope, t!("shell.lighting.auto_scope"))
+            .on_hover_text(t!("shell.lighting.auto_scope_tip"))
+            .changed();
         egui::Grid::new("hp_shell_lighting").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
             ui.label(t!("shell.lighting.threads"));
             changed |= ui
@@ -47,6 +51,18 @@ impl SettingsPage for LightingPage {
             changed |= ui
                 .add(egui::DragValue::new(&mut s.max_luxels_millions).range(LightingSettings::LUXELS_RANGE))
                 .on_hover_text(t!("shell.lighting.max_luxels_tip"))
+                .changed();
+            ui.end_row();
+            ui.label(t!("shell.lighting.auto_scope_luxels"));
+            changed |= ui
+                .add(egui::DragValue::new(&mut s.auto_scope_luxels_millions).range(LightingSettings::LUXELS_RANGE))
+                .on_hover_text(t!("shell.lighting.auto_scope_luxels_tip"))
+                .changed();
+            ui.end_row();
+            ui.label(t!("shell.lighting.auto_scope_radius"));
+            changed |= ui
+                .add(egui::DragValue::new(&mut s.auto_scope_radius).range(LightingSettings::RADIUS_RANGE).suffix(" u"))
+                .on_hover_text(t!("shell.lighting.auto_scope_radius_tip"))
                 .changed();
             ui.end_row();
         });
@@ -85,6 +101,32 @@ pub(crate) const TR: TrTable = &[
         "shell.lighting.auto_bake_tip",
         "Starts a bake of the whole map when the baked lighting preview is turned on and nothing is baked yet",
         "Lance le précalcul de toute la carte quand l'aperçu de l'éclairage précalculé est activé et que rien n'est encore précalculé",
+    ),
+    (
+        "shell.lighting.auto_scope",
+        "Bake only around the camera on big maps",
+        "Précalculer autour de la caméra sur les grandes cartes",
+    ),
+    (
+        "shell.lighting.auto_scope_tip",
+        "A map above the luxel threshold is baked within the radius below around the 3D camera instead of whole, which cuts the memory and the time a lot. The baked area follows the camera once it moves out of the central half and stays still for a second. Off: the whole map is always baked.",
+        "Une carte au-dessus du seuil de luxels est précalculée dans le rayon ci-dessous autour de la caméra 3D au lieu de l'être en entier, ce qui réduit beaucoup la mémoire et le temps. La zone précalculée suit la caméra quand elle sort de la moitié centrale et reste immobile une seconde. Désactivé : toute la carte est toujours précalculée.",
+    ),
+    (
+        "shell.lighting.auto_scope_luxels",
+        "Big map threshold (millions of luxels)",
+        "Seuil de grande carte (millions de luxels)",
+    ),
+    (
+        "shell.lighting.auto_scope_luxels_tip",
+        "Maps with more luxels than this are baked around the camera only. Used by the next bake.",
+        "Les cartes avec plus de luxels que cela sont précalculées seulement autour de la caméra. Utilisé par le prochain précalcul.",
+    ),
+    ("shell.lighting.auto_scope_radius", "Big map radius", "Rayon des grandes cartes"),
+    (
+        "shell.lighting.auto_scope_radius_tip",
+        "Radius in units around the 3D camera of the area baked on a big map. Used by the next bake.",
+        "Rayon en unités autour de la caméra 3D de la zone précalculée sur une grande carte. Utilisé par le prochain précalcul.",
     ),
     ("shell.lighting.threads", "Baking threads", "Threads de précalcul"),
     (

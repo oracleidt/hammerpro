@@ -3,7 +3,6 @@ use glam::DVec3;
 use hp_app::actions::key_label;
 use hp_app::{AppState, Severity, t, tf, theme};
 use hp_editor::{Document, EditError, PasteSpecial};
-use hp_fgd::{PropertyType, ResolvedFgd};
 
 use crate::util::{enter_pressed, escape_pressed, icon_title, plural};
 
@@ -12,14 +11,6 @@ const MANY_COPIES: u32 = 1_000;
 
 fn read_clipboard() -> Result<String, String> {
     arboard::Clipboard::new().and_then(|mut c| c.get_text()).map_err(|e| e.to_string())
-}
-
-fn is_target_key(fgd: &ResolvedFgd, class: &str, key: &str) -> Option<bool> {
-    let p = fgd.class(class)?.property(key)?;
-    Some(matches!(
-        p.kind,
-        PropertyType::TargetDestination | PropertyType::TargetNameOrClass | PropertyType::FilterClass
-    ))
 }
 
 pub(crate) struct PasteSpecialDialog {
@@ -47,7 +38,8 @@ impl PasteSpecialDialog {
         opts.name_prefix = opts.name_prefix.trim().to_owned();
         opts.pivot = if self.around_pivot { state.pivot.filter(|p| p.is_finite()) } else { None };
         let fgd = state.assets.fgd().filter(|f| !f.is_empty());
-        let targets = |class: &str, key: &str| fgd.and_then(|f| is_target_key(f, class, key));
+        let targets =
+            |class: &str, key: &str| fgd.and_then(|f| hp_app::runtime::helpers::fgd_target_key(f, class, key));
         let result = state.doc.paste_special_with(text, &opts, Some(&targets));
         match result {
             Ok(objs) => {

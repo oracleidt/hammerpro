@@ -101,7 +101,7 @@ const SPECS: &[ToolSpec] = &[
         description: "Click like the user: press and release a mouse button. Position: window x, y, or a view with \
             fx, fy, x, y or a world point (e.g. view \"top\", world [0, 0, 0]). In the 3D view the Selection and \
             Camera tools select the clicked object (mods [\"ctrl\"]: add or remove it); while flying in mouselook \
-            (ui_key \"Z\") a left click selects at the crosshair.",
+            (ui_key \"Z\") a left click selects at the crosshair, a right click applies the current material to the \n            targeted face (Shift: its whole brush) and a middle click picks its material; the keys of fly_apply_texture \n            (T), fly_apply_texture_brush (F), fly_pick_texture (V) and fly_align_texture (N) do the same from the keyboard.",
         kind: ToolKind::Editor,
         schema: || pointer_schema(json!({ "button": one_of("Default left.", BUTTONS) })),
     },

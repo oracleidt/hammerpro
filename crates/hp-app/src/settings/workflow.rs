@@ -7,6 +7,8 @@ use crate::widgets::{PLAIN_COORD_LIMIT, fmt_coord};
 
 pub const GRID_MIN: f64 = 0.01;
 pub const GRID_MAX: f64 = 4096.0;
+pub const TOOL_GRID_MIN: f64 = 1.0;
+pub const TOOL_GRID_MAX: f64 = 1024.0;
 pub const GRID_STEP_MIN: f64 = 1.25;
 pub const GRID_STEP_MAX: f64 = 10.0;
 pub const FLY_RESPONSE_MAX: f32 = 0.5;
@@ -16,6 +18,10 @@ pub const MAX_LAYOUT_NAME: usize = 48;
 
 pub fn clamp_grid(size: f64, fallback: f64) -> f64 {
     if size.is_finite() && size > 0.0 { size.clamp(GRID_MIN, GRID_MAX) } else { fallback.clamp(GRID_MIN, GRID_MAX) }
+}
+
+pub fn tool_grid(step: f64) -> f64 {
+    if step.is_finite() { step.clamp(TOOL_GRID_MIN, TOOL_GRID_MAX) } else { TOOL_GRID_MIN }
 }
 
 pub fn grid_step(current: f64, factor: f64, larger: bool) -> f64 {
@@ -199,6 +205,17 @@ mod tests {
         assert_eq!(clamp_grid(-4.0, 8.0), 8.0);
         assert_eq!(clamp_grid(0.001, 8.0), GRID_MIN);
         assert_eq!(clamp_grid(f64::INFINITY, 1e9), GRID_MAX);
+    }
+
+    #[test]
+    fn tool_grids_stay_between_1_and_1024_inside_the_setting_range() {
+        assert_eq!(tool_grid(0.25), 1.0);
+        assert_eq!(tool_grid(16.0), 16.0);
+        assert_eq!(tool_grid(4096.0), 1024.0);
+        assert_eq!(tool_grid(f64::NAN), 1.0);
+        const { assert!(GRID_MIN <= TOOL_GRID_MIN && TOOL_GRID_MAX <= GRID_MAX) };
+        assert_eq!(clamp_grid(1.0, 8.0), 1.0);
+        assert_eq!(clamp_grid(1024.0, 8.0), 1024.0);
     }
 
     #[test]

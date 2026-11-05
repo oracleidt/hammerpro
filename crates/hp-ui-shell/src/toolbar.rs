@@ -212,6 +212,7 @@ pub fn toolbar(ui: &mut Ui, state: &mut AppState) {
         return;
     }
     ui.horizontal_wrapped(|ui| {
+        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
         ui.spacing_mut().item_spacing.x = 2.0;
         for (i, group) in TOOLBAR.iter().enumerate() {
             if i > 0 {
@@ -412,12 +413,7 @@ fn render_mode_dropdown(ui: &mut Ui, state: &mut AppState) {
 }
 
 fn run_button(ui: &mut Ui, state: &mut AppState) {
-    let text = RichText::new(t!("shell.toolbar.compile")).strong().color(hp_app::theme::on_accent());
-    let button = egui::Button::new(text)
-        .fill(hp_app::theme::accent())
-        .stroke(egui::Stroke::new(1.0, hp_app::theme::accent()))
-        .min_size(egui::vec2(0.0, 24.0));
-    let r = ui.add(button);
+    let r = hp_app::widgets::accent_button(ui, t!("shell.toolbar.compile"));
     if with_action_tooltip(r, state, Action::RunMap).clicked() {
         state.request(Action::RunMap);
     }
@@ -438,7 +434,10 @@ pub(crate) fn paint_eye(painter: &egui::Painter, c: egui::Pos2, color: Color32, 
 
 fn paint_icon(painter: &egui::Painter, c: egui::Pos2, color: egui::Color32, icon: Icon, scale: f32) {
     let s = scale;
-    let stroke = egui::Stroke::new(1.6, color);
+    let c = hp_app::widgets::crisp_center(painter, c);
+    let stroke = hp_app::widgets::crisp_stroke(painter, 1.6, color);
+    let thin = hp_app::widgets::crisp_stroke(painter, 1.0, color);
+    let heavy = hp_app::widgets::crisp_stroke(painter, 2.0, color);
     let eye = |painter: &egui::Painter| {
         let (w, h) = (9.0 * s, 5.5 * s);
         let lid = |sign: f32| -> Vec<egui::Pos2> {
@@ -458,7 +457,7 @@ fn paint_icon(painter: &egui::Painter, c: egui::Pos2, color: egui::Color32, icon
     };
     let slash = |painter: &egui::Painter| {
         let d = egui::vec2(8.0 * s, 8.0 * s);
-        painter.line_segment([c - d, c + d], egui::Stroke::new(2.0, color));
+        painter.line_segment([c - d, c + d], heavy);
     };
     match icon {
         Icon::Glyph(_) => {}
@@ -471,18 +470,18 @@ fn paint_icon(painter: &egui::Painter, c: egui::Pos2, color: egui::Color32, icon
             eye(painter);
             slash(painter);
             let r = egui::Rect::from_center_size(c, egui::vec2(24.0 * s, 20.0 * s));
-            painter.rect_stroke(r, 2.0, egui::Stroke::new(1.0, color), egui::StrokeKind::Inside);
+            painter.rect_stroke(hp_app::widgets::crisp_rect(painter, r), 2.0, thin, egui::StrokeKind::Inside);
         }
         Icon::Group | Icon::Ungroup => {
             let apart = if icon == Icon::Ungroup { 3.5 } else { 0.0 };
             let size = egui::vec2(8.0 * s, 8.0 * s);
             let a = egui::Rect::from_center_size(c + egui::vec2(-3.0 * s - apart, -2.0 * s), size);
             let b = egui::Rect::from_center_size(c + egui::vec2(3.0 * s + apart, 2.0 * s), size);
-            painter.rect_filled(a, 1.0, color);
-            painter.rect_stroke(b, 1.0, stroke, egui::StrokeKind::Inside);
+            painter.rect_filled(hp_app::widgets::crisp_rect(painter, a), 1.0, color);
+            painter.rect_stroke(hp_app::widgets::crisp_rect(painter, b), 1.0, stroke, egui::StrokeKind::Inside);
             if icon == Icon::Group {
                 let frame = a.union(b).expand(2.5 * s);
-                painter.rect_stroke(frame, 2.0, egui::Stroke::new(1.0, color), egui::StrokeKind::Outside);
+                painter.rect_stroke(hp_app::widgets::crisp_rect(painter, frame), 2.0, thin, egui::StrokeKind::Outside);
             }
         }
     }

@@ -96,6 +96,16 @@ impl SettingsDialog {
             }
             ui.end_row();
 
+            ui.label(t!("shell.settings.start_fullscreen"));
+            if ui
+                .checkbox(&mut state.settings.ui.start_fullscreen, "")
+                .on_hover_text(t!("shell.settings.start_fullscreen_tip"))
+                .changed()
+            {
+                state.settings_dirty = true;
+            }
+            ui.end_row();
+
             ui.label(t!("shell.settings.native_frames"));
             if ui
                 .checkbox(&mut state.settings.ui.native_frames, "")
@@ -300,6 +310,7 @@ pub(super) fn reset(state: &mut AppState) {
     s.ui.background_zoom = d.background_zoom;
     s.ui.background_hide_3d = d.background_hide_3d;
     s.ui.native_frames = d.native_frames;
+    s.ui.start_fullscreen = d.start_fullscreen;
     let e = EditSettings::default();
     s.edit.autosave_minutes = e.autosave_minutes;
     s.edit.autosave_keep = e.autosave_keep;
@@ -317,6 +328,12 @@ pub(crate) const TR: TrTable = &[
     ("shell.settings.accent_custom", "Custom color", "Couleur personnalisée"),
     ("shell.settings.ui_scale", "Interface scale", "Échelle de l'interface"),
     ("shell.settings.show_fps", "Show frame rate", "Afficher les images par seconde"),
+    ("shell.settings.start_fullscreen", "Start in full screen", "Démarrer en plein écran"),
+    (
+        "shell.settings.start_fullscreen_tip",
+        "Hammer Pro opens in borderless full screen on the primary monitor. F11 (View > Full screen) switches it on and off at any time. Applied at the next start.",
+        "Hammer Pro s'ouvre en plein écran sans bordure sur l'écran principal. F11 (Affichage > Plein écran) l'active et le désactive à tout moment. Appliqué au prochain démarrage.",
+    ),
     ("shell.settings.native_frames", "Native window frames", "Cadres de fenêtre natifs"),
     (
         "shell.settings.native_frames_tip",

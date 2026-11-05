@@ -6,12 +6,14 @@ use hp_app::actions::key_label;
 use hp_app::tool::ToolOption;
 use hp_app::{AppState, Severity, Tool, ToolFlow, ToolId, ToolMenuEntry, ViewInfo, ViewInput, t, tf};
 use hp_editor::{EditError, FaceRef};
-use hp_geom::{InsetIssue, InsetParams, MAX_INSET, MIN_INSET, Plane, inset_ring};
+use hp_geom::{InsetIssue, InsetParams, MAX_INSET, MIN_EXTRUDE_DEPTH, MIN_INSET, Plane, region_rings};
 use hp_render::Overlay;
 
-use crate::common::{COLOR_FRONT, COLOR_GHOST, COLOR_PENDING, Ov, fmt_len, paint_label, rgba};
+use crate::common::{COLOR_FRONT, COLOR_GHOST, COLOR_PENDING, DistanceSnap, Ov, fmt_len, paint_label, rgba};
 
 pub const DEPTH_KEY: Key = Key::E;
+
+pub const INDIVIDUAL_KEY: Key = Key::I;
 
 const MAX_TYPED: usize = 12;
 
@@ -19,6 +21,12 @@ const MAX_TYPED: usize = 12;
 pub enum InsetTarget {
     Thickness,
     Depth,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ModalKind {
+    Inset,
+    Extrude,
 }
 
 pub fn thickness_from_distance(base: f64, now: f64, px_per_unit: f64) -> f64 {
@@ -39,14 +47,6 @@ pub fn depth_from_drag(base: f64, delta: Vec2, normal_px: Vec2, px_per_unit: f64
         f64::from(delta.x * normal_px.x + delta.y * normal_px.y) / len2
     };
     (base + d).clamp(-MAX_INSET, MAX_INSET)
-}
-
-pub fn snap_value(value: f64, grid: f64, minimum: f64) -> f64 {
-    if !(grid.is_finite() && grid > 0.0) {
-        return value;
-    }
-    let s = (value / grid).round() * grid;
-    if value.abs() < 1e-12 { 0.0 } else { s.abs().max(minimum).copysign(s) }
 }
 
 pub fn typed_push(buffer: &mut String, ch: char) -> bool {
@@ -77,9 +77,17 @@ pub fn issue_key(issue: InsetIssue) -> &'static str {
         InsetIssue::TooLarge => "inset.err_large",
         InsetIssue::TooDeep => "inset.err_deep",
         InsetIssue::PastLimits => "inset.err_limits",
+        InsetIssue::BadRegion => "inset.err_region",
     }
 }
 
+pub fn hovered_face(state: &AppState, view: &ViewInfo, pos: Pos2) -> Option<FaceRef> {
+    if view.is_2d() {
+        return None;
+    }
+    let hit = crate::common::pick_surface(state, view, pos)?;
+    Some(FaceRef::new(hit.solid, hit.side_index))
+}
 pub fn error_text(e: &EditError) -> String {
     match e {
         EditError::Geom(g) => match InsetIssue::of(g) {
@@ -122,11 +130,15 @@ struct Anchor {
 
 #[derive(Clone, Debug, Default)]
 struct Preview {
-    key: Option<(u64, u64, u64)>,
+    key: Option<(u64, u64, u64, u64)>,
     outcome: Option<Result<usize, String>>,
 }
 
 pub struct InsetModal {
+    kind: ModalKind,
+    individual: bool,
+    raw_depth: f64,
+    snap: DistanceSnap,
     faces: Vec<FaceData>,
     center: DVec3,
     normal: DVec3,
@@ -146,6 +158,14 @@ pub struct InsetModal {
 
 impl InsetModal {
     pub fn start(state: &AppState, faces: &[FaceRef]) -> Option<Self> {
+        Self::start_kind(state, faces, ModalKind::Inset)
+    }
+
+    pub fn start_extrude(state: &AppState, faces: &[FaceRef]) -> Option<Self> {
+        Self::start_kind(state, faces, ModalKind::Extrude)
+    }
+
+    fn start_kind(state: &AppState, faces: &[FaceRef], kind: ModalKind) -> Option<Self> {
         let mut data: Vec<FaceData> = Vec::with_capacity(faces.len());
         for f in faces {
             if data.iter().any(|d| d.face == *f) {
@@ -163,6 +183,10 @@ impl InsetModal {
         let normal =
             data.iter().fold(DVec3::ZERO, |s, d| s + d.plane.normal).try_normalize().unwrap_or(data[0].plane.normal);
         Some(Self {
+            kind,
+            individual: false,
+            raw_depth: 0.0,
+            snap: DistanceSnap::OFF,
             faces: data,
             center,
             normal,
@@ -171,7 +195,7 @@ impl InsetModal {
             pointer: None,
             thickness: 0.0,
             depth: 0.0,
-            target: InsetTarget::Thickness,
+            target: if kind == ModalKind::Extrude { InsetTarget::Depth } else { InsetTarget::Thickness },
             typed: String::new(),
             depth_anchor: None,
             depth_base: 0.0,
@@ -205,8 +229,65 @@ impl InsetModal {
         self.faces.len()
     }
 
+    pub fn kind(&self) -> ModalKind {
+        self.kind
+    }
+
+    pub fn is_individual(&self) -> bool {
+        self.individual
+    }
+
+    pub fn toggle_individual(&mut self) {
+        if self.kind == ModalKind::Inset && self.faces.len() > 1 {
+            self.individual = !self.individual;
+        }
+    }
+
+    pub fn is_alternate_grid(&self) -> bool {
+        self.snap.is_alternate()
+    }
+
+    fn primary(&self) -> &FaceData {
+        &self.faces[0]
+    }
+
+    fn aligned_depth(&self, raw: f64) -> f64 {
+        let f = self.primary();
+        self.snap.distance(f.vertices[0], f.plane.normal, raw)
+    }
+
+    fn depths(&self) -> Vec<f64> {
+        self.faces
+            .iter()
+            .map(|f| {
+                if self.snap.is_on() && self.typed.is_empty() {
+                    self.snap.distance(f.vertices[0], f.plane.normal, self.raw_depth)
+                } else {
+                    self.depth
+                }
+            })
+            .collect()
+    }
+
+    fn extrusions(&self) -> Vec<(FaceRef, f64)> {
+        self.faces
+            .iter()
+            .zip(self.depths())
+            .filter(|(_, d)| *d >= MIN_EXTRUDE_DEPTH)
+            .map(|(f, d)| (f.face, d))
+            .collect()
+    }
+
+    fn snap_note(&self) -> String {
+        match (self.snap.nominal(), self.snap.is_alternate()) {
+            (Some(step), true) => tf!("modal.grid_alt", fmt_len(step)),
+            (Some(step), false) => tf!("modal.grid", fmt_len(step)),
+            (None, _) => t!("modal.grid_free").to_owned(),
+        }
+    }
+
     pub fn params(&self) -> InsetParams {
-        InsetParams { distance: self.thickness, depth: self.depth, material: None }
+        InsetParams { distance: self.thickness, depth: self.depth, material: None, individual: self.individual }
     }
 
     pub fn set_values(&mut self, thickness: f64, depth: f64) {
@@ -263,11 +344,15 @@ impl InsetModal {
         let v = typed_value(&self.typed).unwrap_or(0.0);
         match self.target {
             InsetTarget::Thickness => self.thickness = v.clamp(0.0, MAX_INSET),
-            InsetTarget::Depth => self.depth = v.clamp(-MAX_INSET, MAX_INSET),
+            InsetTarget::Depth => {
+                let floor = if self.kind == ModalKind::Extrude { 0.0 } else { -MAX_INSET };
+                self.depth = v.clamp(floor, MAX_INSET);
+                self.raw_depth = self.depth;
+            }
         }
     }
 
-    pub fn on_pointer(&mut self, view: &ViewInfo, pos: Pos2, snap: bool) {
+    pub(crate) fn on_pointer(&mut self, view: &ViewInfo, pos: Pos2, snap: DistanceSnap) {
         self.pointer = Some((view.index, pos));
         let Some(ppu) = pixels_per_unit(view, self.center) else { return };
         let Some(c) = view.world_to_screen(self.center) else { return };
@@ -290,16 +375,25 @@ impl InsetModal {
         if !self.typed.is_empty() {
             return;
         }
+        self.snap = snap;
+        let face_normal = self.primary().plane.normal;
         match self.target {
             InsetTarget::Thickness => {
                 let v = thickness_from_distance(anchor.base, now, ppu);
-                self.thickness = if snap && v > 0.0 { snap_value(v, view.grid, view.grid.max(MIN_INSET)) } else { v };
+                self.thickness = match snap.step(face_normal) {
+                    Some(step) if v > 0.0 => snap.thickness(v, face_normal).max(step.max(MIN_INSET)),
+                    _ => v,
+                };
             }
             InsetTarget::Depth => {
                 let from = self.depth_anchor.unwrap_or(pos);
                 let n = normal_pixels(view, self.center, self.normal);
-                let v = depth_from_drag(self.depth_base, pos - from, n, ppu);
-                self.depth = if snap { snap_value(v, view.grid, 0.0) } else { v };
+                let mut v = depth_from_drag(self.depth_base, pos - from, n, ppu);
+                if self.kind == ModalKind::Extrude {
+                    v = v.max(0.0);
+                }
+                self.raw_depth = v;
+                self.depth = if snap.is_on() { self.aligned_depth(v) } else { v };
             }
         }
     }
@@ -309,6 +403,9 @@ impl InsetModal {
     }
 
     pub fn confirm(&mut self, state: &mut AppState) -> bool {
+        if self.kind == ModalKind::Extrude {
+            return self.confirm_extrude(state);
+        }
         if self.thickness < MIN_INSET {
             state.notify(Severity::Info, t!("inset_modal.too_small"));
             return false;
@@ -327,20 +424,50 @@ impl InsetModal {
         }
     }
 
+    fn confirm_extrude(&mut self, state: &mut AppState) -> bool {
+        let list = self.extrusions();
+        if list.is_empty() {
+            state.notify(Severity::Info, t!("extrude_modal.too_small"));
+            return false;
+        }
+        match state.doc.extrude_faces(&list, None) {
+            Ok(ids) => {
+                state.log(Severity::Info, tf!("extrude_modal.done", ids.len()));
+                self.finished = true;
+                true
+            }
+            Err(e) => {
+                state.notify(Severity::Warning, tf!("app.op_failed", t!("action.extrude_interactive"), error_text(&e)));
+                false
+            }
+        }
+    }
+
+    fn preview_key(&self, state: &AppState) -> (u64, u64, u64, u64) {
+        let depths = self.depths().iter().fold(0u64, |h, d| h.rotate_left(7) ^ d.to_bits());
+        (state.doc.revision(), self.thickness.to_bits(), self.depth.to_bits(), depths ^ u64::from(self.individual))
+    }
+
     fn refresh_preview(&self, state: &AppState) {
-        let key = (state.doc.revision(), self.thickness.to_bits(), self.depth.to_bits());
+        let key = self.preview_key(state);
         let Ok(mut pv) = self.preview.try_borrow_mut() else { return };
         if pv.key == Some(key) {
             return;
         }
         pv.key = Some(key);
-        pv.outcome = (self.thickness >= MIN_INSET).then(|| {
-            let faces: Vec<FaceRef> = self.faces.iter().map(|f| f.face).collect();
-            match state.doc.inset_preview(&faces, &self.params()) {
-                Ok(plan) => Ok(plan.iter().map(|(_, pieces)| pieces.len()).sum()),
-                Err(e) => Err(error_text(&e)),
+        pv.outcome = match self.kind {
+            ModalKind::Inset => (self.thickness >= MIN_INSET).then(|| {
+                let faces: Vec<FaceRef> = self.faces.iter().map(|f| f.face).collect();
+                match state.doc.inset_preview(&faces, &self.params()) {
+                    Ok(plan) => Ok(plan.iter().map(|(_, pieces)| pieces.len()).sum()),
+                    Err(e) => Err(error_text(&e)),
+                }
+            }),
+            ModalKind::Extrude => {
+                let list = self.extrusions();
+                (!list.is_empty()).then(|| state.doc.extrude_faces_preview(&list, None).map_err(|e| error_text(&e)))
             }
-        });
+        };
     }
 
     fn error(&self, state: &AppState) -> Option<String> {
@@ -358,17 +485,30 @@ impl InsetModal {
     }
 
     pub fn label(&self, state: &AppState) -> String {
-        let a = self.value_text(InsetTarget::Thickness, self.thickness);
-        let b = self.value_text(InsetTarget::Depth, self.depth);
-        let (a, b) = match self.target {
-            InsetTarget::Thickness => {
-                (format!("[{}: {a}]", t!("inset_modal.thickness")), format!("{}: {b}", t!("inset_modal.depth")))
+        let mut s = match self.kind {
+            ModalKind::Inset => {
+                let a = self.value_text(InsetTarget::Thickness, self.thickness);
+                let b = self.value_text(InsetTarget::Depth, self.depth);
+                let (a, b) = match self.target {
+                    InsetTarget::Thickness => {
+                        (format!("[{}: {a}]", t!("inset_modal.thickness")), format!("{}: {b}", t!("inset_modal.depth")))
+                    }
+                    InsetTarget::Depth => {
+                        (format!("{}: {a}", t!("inset_modal.thickness")), format!("[{}: {b}]", t!("inset_modal.depth")))
+                    }
+                };
+                let mut s = format!("{a}   {b}");
+                if self.faces.len() > 1 {
+                    let mode = if self.individual { t!("inset_modal.individual") } else { t!("inset_modal.region") };
+                    s.push_str(&format!("   {mode}"));
+                }
+                s
             }
-            InsetTarget::Depth => {
-                (format!("{}: {a}", t!("inset_modal.thickness")), format!("[{}: {b}]", t!("inset_modal.depth")))
+            ModalKind::Extrude => {
+                format!("{}: {}", t!("extrude_modal.distance"), self.value_text(InsetTarget::Depth, self.depth))
             }
         };
-        let mut s = format!("{a}   {b}");
+        s.push_str(&format!("   {}", self.snap_note()));
         if let Some(e) = self.error(state) {
             s.push_str(&format!("   ({e})"));
         } else if let Some(n) = self.brushes(state) {
@@ -378,40 +518,85 @@ impl InsetModal {
     }
 
     pub fn hint(&self, state: &AppState) -> String {
-        if self.anchor.is_none() {
-            return t!("inset_modal.hint_wait").to_owned();
-        }
-        let e = key_label(DEPTH_KEY);
         let enter = key_label(Key::Enter);
         let esc = key_label(Key::Escape);
-        format!("{}   {}", self.label(state), tf!("inset_modal.hint", e, enter, esc))
+        if self.anchor.is_none() {
+            let key = if self.kind == ModalKind::Inset { "inset_modal.hint_wait" } else { "extrude_modal.hint_wait" };
+            return t!(key).to_owned();
+        }
+        match self.kind {
+            ModalKind::Inset => {
+                let e = key_label(DEPTH_KEY);
+                let i = key_label(INDIVIDUAL_KEY);
+                format!("{}   {}", self.label(state), tf!("inset_modal.hint", e, enter, esc, i))
+            }
+            ModalKind::Extrude => format!("{}   {}", self.label(state), tf!("extrude_modal.hint", enter, esc)),
+        }
     }
 
     pub fn overlay(&self, state: &AppState, view: &ViewInfo, out: &mut Overlay) {
+        match self.kind {
+            ModalKind::Inset => self.overlay_inset(state, view, out),
+            ModalKind::Extrude => self.overlay_extrude(state, view, out),
+        }
+    }
+
+    fn overlay_extrude(&self, state: &AppState, view: &ViewInfo, out: &mut Overlay) {
+        let failed = self.error(state).is_some();
+        let mut ov = Ov::new(out, view);
+        let edge = rgba(if failed { hp_app::theme::VIEW_ERROR } else { COLOR_PENDING }, 1.0);
+        let fill = rgba(COLOR_PENDING, 0.28);
+        let ghost = rgba(COLOR_GHOST, 0.8);
+        for (f, d) in self.faces.iter().zip(self.depths()) {
+            if d < MIN_EXTRUDE_DEPTH {
+                continue;
+            }
+            let lift = f.plane.normal * d;
+            let top: Vec<DVec3> = f.vertices.iter().map(|v| *v + lift).collect();
+            for v in &f.vertices {
+                ov.xray_line(*v, *v + lift, ghost);
+            }
+            ov.polygon_outline(&top, edge, true);
+            ov.polygon_fill(&top, fill);
+        }
+    }
+
+    fn overlay_inset(&self, state: &AppState, view: &ViewInfo, out: &mut Overlay) {
         if self.thickness < MIN_INSET {
             return;
         }
         let failed = self.error(state).is_some();
         let mut ov = Ov::new(out, view);
         let cut = rgba(COLOR_FRONT, 1.0);
+        let bad = rgba(hp_app::theme::VIEW_ERROR, 1.0);
         let inner = rgba(if failed { hp_app::theme::VIEW_ERROR } else { COLOR_PENDING }, 1.0);
         let fill = rgba(COLOR_PENDING, 0.28);
         let ghost = rgba(COLOR_GHOST, 0.8);
-        for f in &self.faces {
-            let Some(ring) = inset_ring(&f.vertices, &f.plane, self.thickness) else {
-                ov.polygon_outline(&f.vertices, rgba(hp_app::theme::VIEW_ERROR, 1.0), true);
+        let shapes: Vec<(usize, Plane, Vec<DVec3>)> = self
+            .faces
+            .iter()
+            .map(|f| (usize::try_from(f.face.solid).unwrap_or(usize::MAX), f.plane, f.vertices.clone()))
+            .collect();
+        for (group, ring) in region_rings(&shapes, self.thickness, self.individual) {
+            let Some(ring) = ring else {
+                for i in group {
+                    ov.polygon_outline(&self.faces[i].vertices, bad, true);
+                }
                 continue;
             };
-            let lift = f.plane.normal * self.depth;
-            let top: Vec<DVec3> = ring.iter().map(|r| r[1] + lift).collect();
-            for r in &ring {
-                ov.xray_line(r[0], r[1], cut);
+            let lift = self.faces[group[0]].plane.normal * self.depth;
+            let top: Vec<DVec3> = ring.inner.iter().map(|p| *p + lift).collect();
+            for (o, i) in ring.outer.iter().zip(&ring.inner) {
+                ov.xray_line(*o, *i, cut);
                 if self.depth != 0.0 {
-                    ov.xray_line(r[1], r[1] + lift, ghost);
+                    ov.xray_line(*i, *i + lift, ghost);
                 }
             }
+            ov.polygon_outline(&ring.outer, cut, true);
             ov.polygon_outline(&top, inner, true);
-            ov.polygon_fill(&top, fill);
+            if group.len() == 1 {
+                ov.polygon_fill(&top, fill);
+            }
         }
     }
 
@@ -446,7 +631,11 @@ impl InsetModal {
         }
         let r = input.response;
         if let Some(pos) = input.pointer {
-            self.on_pointer(input.view, pos, input.modifiers.ctrl || input.modifiers.command);
+            let snap = match self.kind {
+                ModalKind::Inset => DistanceSnap::for_inset(state, input.view, input.modifiers),
+                ModalKind::Extrude => DistanceSnap::for_extrude(state, input.view, input.modifiers),
+            };
+            self.on_pointer(input.view, pos, snap);
         }
         let cancel = r.secondary_clicked()
             || (r.contains_pointer() && r.ctx.input(|i| i.pointer.button_pressed(PointerButton::Secondary)));
@@ -498,7 +687,8 @@ impl InsetModal {
                 Key::Backspace => {
                     self.backspace();
                 }
-                k if k == DEPTH_KEY => self.toggle_target(),
+                k if k == DEPTH_KEY && self.kind == ModalKind::Inset => self.toggle_target(),
+                k if k == INDIVIDUAL_KEY => self.toggle_individual(),
                 _ => {}
             }
             if self.finished {
@@ -661,7 +851,12 @@ impl Tool for WithInset<'_> {
 pub const INSET_MODAL_TR: hp_app::i18n::TrTable = &[
     ("inset_modal.thickness", "Inset", "Décalage"),
     ("inset_modal.depth", "Depth", "Profondeur"),
+    ("inset_modal.region", "[region]", "[région]"),
+    ("inset_modal.individual", "[individual]", "[individuel]"),
     ("inset_modal.brushes", "{0} brush(es)", "{0} brush(es)"),
+    ("modal.grid", "grid {0}", "grille {0}"),
+    ("modal.grid_alt", "alt grid {0}", "grille alt. {0}"),
+    ("modal.grid_free", "free", "libre"),
     (
         "inset_modal.too_small",
         "Move the mouse toward the face center or type a thickness of at least 0.125 first",
@@ -674,8 +869,30 @@ pub const INSET_MODAL_TR: hp_app::i18n::TrTable = &[
     ),
     (
         "inset_modal.hint",
-        "Mouse: thickness (toward the face center = thicker), {0}: depth, Ctrl: grid, digits: exact value, {1} or click: apply, {2} or right click: cancel",
-        "Souris : épaisseur (vers le centre de la face = plus épais), {0} : profondeur, Ctrl : grille, chiffres : valeur exacte, {1} ou clic : appliquer, {2} ou clic droit : annuler",
+        "Mouse: thickness (toward the face center = thicker), {0}: depth, {3}: region or individual, Ctrl: force the grid, Alt: free, digits: exact value, {1} or click: apply, {2} or right click: cancel",
+        "Souris : épaisseur (vers le centre de la face = plus épais), {0} : profondeur, {3} : région ou individuel, Ctrl : forcer la grille, Alt : libre, chiffres : valeur exacte, {1} ou clic : appliquer, {2} ou clic droit : annuler",
+    ),
+    ("extrude_modal.distance", "Extrude", "Extrusion"),
+    (
+        "extrude_modal.too_small",
+        "Move the mouse along the face normal or type a distance of at least 0.125 first",
+        "Déplacez la souris le long de la normale de la face ou tapez d'abord une distance d'au moins 0,125",
+    ),
+    (
+        "extrude_modal.hint_wait",
+        "Extrude: move the mouse over a view to start",
+        "Extrusion : placez la souris sur une vue pour commencer",
+    ),
+    (
+        "extrude_modal.hint",
+        "Mouse: distance along the face normal, Alt: alternate grid, Ctrl: force the grid, digits: exact value, {0} or click: apply, {1} or right click: cancel",
+        "Souris : distance le long de la normale de la face, Alt : grille alternative, Ctrl : forcer la grille, chiffres : valeur exacte, {0} ou clic : appliquer, {1} ou clic droit : annuler",
+    ),
+    ("extrude_modal.done", "Extruded {0} new brush(es)", "{0} nouveau(x) brush(es) extrudé(s)"),
+    (
+        "extrude_modal.need_face",
+        "Select faces or put the mouse over a face in a 3D view to extrude",
+        "Sélectionnez des faces ou placez la souris sur une face dans une vue 3D pour extruder",
     ),
 ];
 
@@ -702,15 +919,6 @@ mod tests {
     }
 
     #[test]
-    fn grid_snap_keeps_a_minimum() {
-        assert_eq!(snap_value(13.0, 8.0, 8.0), 16.0);
-        assert_eq!(snap_value(1.0, 8.0, 8.0), 8.0);
-        assert_eq!(snap_value(-5.0, 8.0, 0.0), -8.0);
-        assert_eq!(snap_value(0.0, 8.0, 0.0), 0.0);
-        assert_eq!(snap_value(5.5, 0.0, 8.0), 5.5);
-    }
-
-    #[test]
     fn typed_numbers_are_checked() {
         let mut b = String::new();
         for ch in "-12,5".chars() {
@@ -725,6 +933,10 @@ mod tests {
         assert_eq!(typed_value(""), None);
     }
 
+    fn grid16() -> DistanceSnap {
+        DistanceSnap::with_frame(hp_app::grid::GridFrame::uniform(16.0), false)
+    }
+
     fn modal_on_solid_3() -> (AppState, InsetModal, ViewInfo) {
         let state = crate::tests_support::settle();
         let view = crate::tests_support::info_3d_looking_down(DVec3::new(0.0, 0.0, 600.0));
@@ -736,13 +948,13 @@ mod tests {
     fn the_mouse_the_keys_and_the_apply() {
         let (mut state, mut m, view) = modal_on_solid_3();
         let c = view.world_to_screen(m.center).expect("center");
-        m.on_pointer(&view, c + Vec2::new(150.0, 0.0), false);
+        m.on_pointer(&view, c + Vec2::new(150.0, 0.0), DistanceSnap::OFF);
         assert_eq!(m.thickness(), 0.0);
-        m.on_pointer(&view, c + Vec2::new(100.0, 0.0), false);
+        m.on_pointer(&view, c + Vec2::new(100.0, 0.0), DistanceSnap::OFF);
         assert!(m.thickness() > 0.0);
-        m.on_pointer(&view, c + Vec2::new(100.0, 40.0), true);
+        m.on_pointer(&view, c + Vec2::new(100.0, 40.0), grid16());
         assert!(m.thickness() > 0.0 && (m.thickness() / 16.0).fract() == 0.0, "ctrl snaps to the grid of 16");
-        m.on_pointer(&view, c + Vec2::new(300.0, 0.0), false);
+        m.on_pointer(&view, c + Vec2::new(300.0, 0.0), DistanceSnap::OFF);
         assert_eq!(m.thickness(), 0.0);
         assert!(!m.confirm(&mut state), "a zero thickness is refused");
         assert!(m.is_active());
@@ -750,7 +962,7 @@ mod tests {
             m.type_char(ch);
         }
         assert_eq!(m.thickness(), 24.0);
-        m.on_pointer(&view, c + Vec2::new(10.0, 0.0), false);
+        m.on_pointer(&view, c + Vec2::new(10.0, 0.0), DistanceSnap::OFF);
         assert_eq!(m.thickness(), 24.0, "a typed value is not moved by the mouse");
         m.toggle_target();
         assert_eq!(m.target(), InsetTarget::Depth);
@@ -770,7 +982,7 @@ mod tests {
         let (mut state, mut m, view) = modal_on_solid_3();
         let before = state.doc.revision();
         let c = view.world_to_screen(m.center).expect("center");
-        m.on_pointer(&view, c + Vec2::new(150.0, 0.0), false);
+        m.on_pointer(&view, c + Vec2::new(150.0, 0.0), DistanceSnap::OFF);
         m.set_values(5000.0, 0.0);
         assert!(m.error(&state).is_some());
         assert!(!m.confirm(&mut state));
@@ -785,5 +997,74 @@ mod tests {
         ok.overlay(&state, &view, &mut out);
         assert!(!out.lines.is_empty() || !out.lines_on_top.is_empty());
         assert!(ok.brushes(&state).is_some());
+    }
+
+    #[test]
+    fn the_extrude_modal_grows_a_new_brush_aligned_to_the_grid() {
+        let mut state = crate::tests_support::settle();
+        let view = crate::tests_support::info_3d_looking_down(DVec3::new(0.0, 0.0, 600.0));
+        let before = state.doc.scene().solids().len();
+        let mut m = InsetModal::start_extrude(&state, &[FaceRef::new(3, 5)]).expect("modal");
+        assert_eq!(m.kind(), ModalKind::Extrude);
+        assert_eq!(m.target(), InsetTarget::Depth);
+        let c = view.world_to_screen(m.center).expect("center");
+        let n = normal_pixels(&view, m.center, m.normal);
+        let out = if n.length() > 0.5 { n.normalized() * 90.0 } else { Vec2::new(0.0, -90.0) };
+        m.on_pointer(&view, c, DistanceSnap::OFF);
+        m.on_pointer(&view, c - out, DistanceSnap::OFF);
+        assert_eq!(m.depth(), 0.0, "pulling inward is not an extrusion");
+        assert!(!m.confirm(&mut state));
+        assert!(m.is_active());
+        m.on_pointer(&view, c + out, DistanceSnap::OFF);
+        let free = m.depth();
+        assert!(free > 0.0);
+        m.on_pointer(&view, c + out, grid16());
+        let base = m.faces[0].vertices[0].z;
+        let tip = (base + m.depth()) / 16.0;
+        assert!((tip - tip.round()).abs() < 1e-9, "the new face lies on the grid: {tip}");
+        let fine = DistanceSnap::with_frame(hp_app::grid::GridFrame::uniform(16.0).alternate(), true);
+        m.on_pointer(&view, c + out, fine);
+        let tip = (base + m.depth()) / 8.0;
+        assert!((tip - tip.round()).abs() < 1e-9 && m.is_alternate_grid());
+        assert!(m.label(&state).contains("alt grid 8"));
+        assert!(m.hint(&state).contains("Alt"));
+        let mut out = Overlay::default();
+        m.overlay(&state, &view, &mut out);
+        assert!(!out.lines.is_empty() || !out.lines_on_top.is_empty());
+        assert!(m.confirm(&mut state));
+        assert!(!m.is_active());
+        assert_eq!(state.doc.scene().solids().len(), before + 1);
+        assert_eq!(state.doc.undo_label(), Some("Extrude face"));
+    }
+
+    #[test]
+    fn typed_extrusions_ignore_the_grid_and_several_faces_make_several_brushes() {
+        let mut state = crate::tests_support::settle();
+        let before = state.doc.scene().solids().len();
+        let faces = [FaceRef::new(3, 5), FaceRef::new(3, 4)];
+        let mut m = InsetModal::start_extrude(&state, &faces).expect("modal");
+        assert_eq!(m.face_count(), 2);
+        m.snap = grid16();
+        for ch in "13".chars() {
+            m.type_char(ch);
+        }
+        assert_eq!(m.depth(), 13.0);
+        assert_eq!(m.depths(), vec![13.0, 13.0]);
+        assert!(m.confirm(&mut state));
+        assert_eq!(state.doc.scene().solids().len(), before + 2);
+    }
+
+    #[test]
+    fn region_and_individual_insets_are_toggled_for_several_faces_only() {
+        let state = crate::tests_support::settle();
+        let mut one = InsetModal::start(&state, &[FaceRef::new(3, 5)]).expect("one");
+        one.toggle_individual();
+        assert!(!one.is_individual());
+        let mut two = InsetModal::start(&state, &[FaceRef::new(3, 5), FaceRef::new(3, 4)]).expect("two");
+        assert!(!two.is_individual() && !two.params().individual);
+        two.toggle_individual();
+        assert!(two.is_individual() && two.params().individual);
+        two.toggle_individual();
+        assert!(!two.is_individual());
     }
 }

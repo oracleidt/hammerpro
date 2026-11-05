@@ -397,6 +397,10 @@ fn stats_section(ui: &mut Ui, rt: &LightingRuntime) {
         .weak()
         .small(),
     );
+    if s.scope_radius > 0.0 {
+        let follows = if s.scope_auto { t!("lighting.scope_follows") } else { "" };
+        ui.label(RichText::new(tf!("lighting.scope", s.scope_radius.round(), follows)).weak().small());
+    }
 }
 
 #[cfg(test)]

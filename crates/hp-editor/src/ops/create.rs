@@ -338,13 +338,23 @@ impl Document {
     }
 
     pub fn duplicate(&mut self, objs: &[ObjRef], offset: DVec3) -> EditResult<Vec<ObjRef>> {
+        self.duplicate_with(objs, offset, None)
+    }
+
+    pub fn duplicate_with(
+        &mut self,
+        objs: &[ObjRef],
+        offset: DVec3,
+        is_target_key: Option<crate::problems::TargetKeyFn<'_>>,
+    ) -> EditResult<Vec<ObjRef>> {
         if !offset.is_finite() {
             return Err(EditError::Invalid("offset is not finite".to_owned()));
         }
-        let frag = self.extract_fragment(objs);
+        let mut frag = self.extract_fragment(objs);
         if frag.is_empty() {
             return Err(EditError::Nothing("nothing to duplicate"));
         }
+        self.auto_rename_copy(&mut frag, is_target_key);
         self.tx("Duplicate", |doc| {
             let new = doc.instantiate(frag, true)?;
             if offset != DVec3::ZERO {

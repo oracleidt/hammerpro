@@ -67,6 +67,13 @@ impl Bsp {
         Ok(Bsp { data: Data::Owned(data), header, path: None })
     }
 
+    pub fn into_vec(self) -> Vec<u8> {
+        match self.data {
+            Data::Owned(v) => v,
+            Data::Mapped(m) => m.to_vec(),
+        }
+    }
+
     pub fn path(&self) -> Option<&Path> {
         self.path.as_deref()
     }

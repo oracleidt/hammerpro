@@ -242,6 +242,17 @@ impl Document {
         anchor: DVec3,
         keep_visgroups: bool,
     ) -> EditResult<Vec<ObjRef>> {
+        self.duplicate_transformed_with(objs, m, anchor, keep_visgroups, None)
+    }
+
+    pub fn duplicate_transformed_with(
+        &mut self,
+        objs: &[ObjRef],
+        m: DMat4,
+        anchor: DVec3,
+        keep_visgroups: bool,
+        is_target_key: Option<crate::problems::TargetKeyFn<'_>>,
+    ) -> EditResult<Vec<ObjRef>> {
         Self::check_affine(&m)?;
         if !anchor.is_finite() {
             return Err(EditError::Invalid("pivot is not finite".to_owned()));
@@ -250,6 +261,7 @@ impl Document {
         if frag.is_empty() {
             return Err(EditError::Nothing("nothing to duplicate"));
         }
+        self.auto_rename_copy(&mut frag, is_target_key);
         if !keep_visgroups {
             let clear = |e: &mut hp_vmf::EditorInfo| {
                 e.visgroup_ids.clear();

@@ -61,15 +61,15 @@ pub use disp::{
 pub use edge_net::{EdgeNet, EdgeRun, NET_EPS, NetSolid, SlideVertex};
 pub use extrude::{
     ExtrudeIssue, ExtrudeMode, FaceExtrudeParams, FaceExtrudeResult, FaceFrame, MAX_OUTLINE_POINTS, MIN_EXTRUDE_DEPTH,
-    convex_decompose, face_extrude, face_thickness, outline_is_simple, path_is_simple, signed_area,
+    convex_decompose, face_extrude, face_prism, face_thickness, outline_is_simple, path_is_simple, signed_area,
 };
 pub use hull::{
     ConvexHull, FaceTopology, HullFace, VertexEdit, VertexEditOptions, convex_hull, is_convex, rebuild_from_points,
     rebuild_solid, split_edge, unique_vertices,
 };
 pub use inset::{
-    InsetIssue, InsetParams, MAX_INSET, MIN_INSET, clean_polygon, face_inset, faces_inset, inset_corners,
-    inset_polygon, inset_ring,
+    InsetIssue, InsetParams, MAX_INSET, MIN_INSET, RegionRing, clean_polygon, face_inset, faces_inset, inset_corners,
+    inset_polygon, inset_ring, offset_region, region_rings, solids_inset,
 };
 pub use pick::{ViewAxis, point_segment_distance, point_segment_distance_2d, ray_aabb, ray_solid, ray_triangle};
 pub use plane::{Plane, PlaneSide};

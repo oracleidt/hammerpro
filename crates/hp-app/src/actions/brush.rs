@@ -16,9 +16,11 @@ action_list! { brush_actions {
     ConvertToDetail => "convert_to_detail", Tools, ToolsBrush, None, Ready;
     CurveEdit => "curve_edit", Tools, ToolsBrush, None, Ready;
     ToolRoad => "tool_road", Tools, ToolsSwitch, None, Ready;
+    ToolPipe => "tool_pipe", Tools, ToolsSwitch, None, Ready;
     RoadEdit => "road_edit", Tools, ToolsBrush, None, Ready;
     InsetFace => "inset_face", Tools, ToolsBrush, None, Ready;
     InsetInteractive => "inset_interactive", Tools, ToolsBrush, None, Ready;
+    ExtrudeInteractive => "extrude_interactive", Tools, ToolsBrush, sc(NONE, Key::E), Ready;
     RoadSidewalk => "road_sidewalk", Tools, ToolsBrush, None, Ready;
     RoadCurb => "road_curb", Tools, ToolsBrush, None, Ready;
     RoadTerrain => "road_terrain", Tools, ToolsBrush, None, Ready;
@@ -59,6 +61,7 @@ pub(super) const TR: TrTable = &[
     ("action.tie_each_to_entity", "Tie each to its own entity", "Lier chacun à sa propre entité"),
     ("action.inset_face", "Inset face...", "Décaler la face..."),
     ("action.inset_interactive", "Interactive inset (I)", "Décalage interactif (I)"),
+    ("action.extrude_interactive", "Interactive extrude (E)", "Extrusion interactive (E)"),
     ("action.convert_to_detail", "Convert to func_detail", "Convertir en func_detail"),
     ("action.road_sidewalk", "Sidewalk generator...", "Générateur de trottoirs..."),
     ("action.road_curb", "Curb and gutter generator...", "Générateur de bordures et caniveaux..."),
@@ -89,6 +92,10 @@ pub(super) const TR: TrTable = &[
     ("action.tool_road", "Road tool", "Outil route"),
     ("action.road_edit", "Edit road", "Modifier la route"),
     ("tool.road", "Road", "Route"),
+    ("action.tool_pipe", "Pipe tool", "Outil tuyau"),
+    ("tool.pipe", "Pipe", "Tuyau"),
+    ("shell.undo.create_pipe", "Create pipe", "Création de tuyau"),
+    ("shell.undo.mcp_create_pipe", "MCP: create pipe", "MCP : création de tuyau"),
     ("shell.undo.create_road", "Create road", "Création de route"),
     ("shell.undo.edit_road", "Edit road", "Modification de route"),
     ("shell.undo.delete_road", "Delete road", "Suppression de route"),

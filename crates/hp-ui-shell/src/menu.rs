@@ -78,7 +78,7 @@ fn hammer_order(group: MenuGroup) -> &'static [Action] {
     }
 }
 
-const TOOLS_MENU_ORDER: [Action; 19] = [
+const TOOLS_MENU_ORDER: [Action; 20] = [
     Action::ToolSelect,
     Action::ToolCamera,
     Action::ToolEntity,
@@ -98,6 +98,7 @@ const TOOLS_MENU_ORDER: [Action; 19] = [
     Action::ToolDisplacement,
     Action::ToolCordon,
     Action::ToolRoad,
+    Action::ToolPipe,
 ];
 
 fn group_actions(cat: Category, group: MenuGroup) -> Vec<Action> {
@@ -584,7 +585,8 @@ mod tests {
     fn menus_follow_hammer() {
         use Action as A;
         use MenuItem::{Action as I, Builtin as B, Separator as S};
-        let core: Vec<Action> = Action::DECLARED[..91].to_vec();
+        let about = Action::DECLARED.iter().position(|a| *a == Action::About).unwrap_or(90);
+        let core: Vec<Action> = Action::DECLARED[..=about].to_vec();
         assert_eq!(core.last(), Some(&Action::About));
         let only_core = |items: Vec<MenuItem>| -> Vec<MenuItem> {
             let mut out: Vec<MenuItem> = Vec::new();
@@ -649,11 +651,17 @@ mod tests {
                 I(A::PasteSpecial),
                 I(A::Delete),
                 I(A::Duplicate),
+                I(A::ArrayDuplicate),
                 S,
                 I(A::SelectAll),
                 I(A::SelectNone),
                 I(A::InvertSelection),
                 sub("menu.selection_mode", 160.0, &[A::SelectModeGroups, A::SelectModeObjects, A::SelectModeSolids]),
+                sub(
+                    "menu.select_element",
+                    160.0,
+                    &[A::SelectElementObject, A::SelectElementVertex, A::SelectElementEdge, A::SelectElementFace],
+                ),
                 S,
                 I(A::Properties),
             ]
@@ -697,6 +705,7 @@ mod tests {
                 I(A::Center2dOnSelection),
                 I(A::Center3dOnSelection),
                 I(A::MaximizeView),
+                I(A::ToggleFullscreen),
                 S,
                 sub(
                     "menu.panels",

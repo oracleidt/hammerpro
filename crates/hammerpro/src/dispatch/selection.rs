@@ -13,6 +13,7 @@ pub(crate) struct State {}
 
 const HANDLED: &[Action] = &[
     Action::PasteSpecial,
+    Action::ArrayDuplicate,
     Action::SnapToGrid,
     Action::TransformDialog,
     Action::FlipX,
@@ -46,6 +47,7 @@ impl Package for Selection {
     fn handle(&self, app: &mut HammerProApp, _ctx: &egui::Context, action: Action) -> bool {
         match action {
             Action::PasteSpecial => app.state.ui.show_paste_special = true,
+            Action::ArrayDuplicate => app.state.ui.show_array_duplicate = true,
             Action::SnapToGrid | Action::SnapToGridIndividually => {
                 if app.require_selection() {
                     let objs = app.selected();

@@ -55,6 +55,19 @@ Ce que sélectionne un clic sur un solide dépend du mode de sélection, réglé
 
 **Ignorer les groupes** (`Ctrl+W`, **Édition > Mode de sélection**) passe en Solides, puis revient au mode d'avant. Le mode est enregistré dans `settings.toml` (`[edit] select_mode`). Voir [Groupes](groups.md).
 
+### Sélectionner des faces, des arêtes ou des sommets (Choisir)
+
+Les boutons **Choisir** de la barre d'options (aussi **Édition > Élément de sélection**) fixent le type d'élément qu'un clic dans une vue 3D sélectionne. Le réglage est enregistré dans `settings.toml` (`[selection] element`).
+
+| Choisir | Touche | Un clic sélectionne | Utilisé par |
+|---|---|---|---|
+| **Objet** | `4` | L'objet entier, selon le mode de sélection (par défaut) | Tout le reste |
+| **Sommet** | `1` | Le coin de brush le plus proche du curseur | L'outil vertex s'ouvre avec lui sélectionné |
+| **Arête** | `2` | L'arête de brush la plus proche du curseur | `Ctrl+B` biseaute les arêtes sélectionnées ; l'outil vertex s'ouvre avec elles sélectionnées |
+| **Face** | `3` | La face sous le curseur (la sélection de faces de l'outil texture) | Décalage `I` et extrusion `E` |
+
+`Maj` ou `Ctrl` ajoute à la sélection ou en retire, un clic simple la remplace, et un clic dans le vide l'efface. Les arêtes et les sommets sont pris à quelques pixels du curseur et seulement s'ils ne sont pas cachés derrière un autre brush ; choisir une arête ou un sommet sélectionne aussi son brush, pour que l'outil vertex puisse le modifier. Les arêtes sélectionnées sont dessinées en jaune, les sommets sélectionnés comme des points jaunes. Modifier la carte efface les arêtes et sommets sélectionnés. Maj plus les chiffres (1 sommet, 2 arête, 3 face, 4 objet) sont les raccourcis des actions `select_element_vertex`, `select_element_edge`, `select_element_face` et `select_element_object` ; ils se changent dans **Réglages > Clavier**. Dans les vues 2D, un clic sélectionne toujours des objets. L'outil MCP `select_elements` sélectionne des arêtes ou des sommets par leur numéro, `select_faces` des faces, et `get_selection` et `set_tool_options` (outil `select`, option `element`) lisent et changent le réglage.
+
 ### Commandes du menu Édition
 
 | Commande | Raccourci | Effet |
@@ -175,6 +188,7 @@ Avec une sélection, un clic droit dans une vue ajoute en haut du menu : **Poser
 
 | Option | Effet | Par défaut |
 |---|---|---|
+| **Choisir :** Objet / Sommet / Arête / Face | Ce qu'un clic dans une vue 3D sélectionne (voir plus haut) | Objet |
 | **Cadre :** Touchés / Contenus / Centres | Ce que prend une sélection par cadre (voir plus haut) | Touchés |
 | **Poignées :** Échelle / Rotation / Inclinaison | Rôle des poignées 2D | Échelle |
 | **Étirement 3D** | Flèches sur les faces des brushes sélectionnés dans la vue 3D (enregistré dans les paramètres) | Activé |

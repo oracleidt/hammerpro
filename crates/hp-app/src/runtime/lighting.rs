@@ -47,6 +47,8 @@ pub struct PreviewStats {
     pub world_lights: usize,
     pub static_props: usize,
     pub vertex_lit_props: usize,
+    pub scope_radius: f32,
+    pub scope_auto: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

@@ -186,7 +186,7 @@ domain! { "compile and play";
         (cancel) the bake, with a quality: draft (fast), normal or final (like the compile presets; saved as the \
         preview quality). A bake shows a quick pass first (the Sun Samples, Ambient Samples and Supersample of the \
         map's light_plus options), then a refined pass at the quality (kind refine in get_lighting_status) replaces \
-        it unless the map changed. Read the progress with get_lighting_status; set_render_mode baked shows the result.",
+        it unless the map changed. Read the progress with get_lighting_status; set_render_mode baked shows the result. A map above lighting.auto_scope_luxels_millions million luxels (default 2) is baked only within lighting.auto_scope_radius units of the 3D camera (default 3072) and the area follows the camera; set_setting lighting.auto_scope false bakes the whole map. get_lighting_status preview.scope tells which.",
         {
             "action": choice("start (default), around_camera or stop.", &["start", "around_camera", "stop"]),
             "quality": choice("Bake quality (default: the saved one).", &["draft", "normal", "final"]),
@@ -1229,6 +1229,7 @@ fn get_lighting_status(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
         "preview": {
             "faces": l.stats.faces, "baked_faces": l.stats.baked_faces, "luxels": l.stats.luxels,
             "triangles": l.stats.triangles, "layers": l.stats.layers, "gpu_bytes": l.stats.gpu_bytes,
+            "scope": json!({ "around_camera": l.stats.scope_radius > 0.0, "radius": l.stats.scope_radius, "big_map_auto": l.stats.scope_auto }),
             "models": {
                 "world_lights": l.stats.world_lights, "static_props": l.stats.static_props,
                 "vertex_lit_props": l.stats.vertex_lit_props,

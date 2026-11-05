@@ -1,0 +1,14 @@
+[package]
+name = "hp-shader"
+description = "Hammer Pro shader editor engine: node graph for images and materials, CPU evaluation, presets, VTF and VMT output."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+hp-vtf.workspace = true
+hp-vmt.workspace = true
+rayon.workspace = true
+serde.workspace = true
+serde_json = "1"

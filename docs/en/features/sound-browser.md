@@ -77,6 +77,7 @@ In pick mode the browser shows a banner "Pick for *key*: double click an item, o
 - [Soundscapes](soundscapes.md)
 - [Model browser](model-browser.md)
 - [Particles](particles.md)
+- [Sound editor](sound-editor.md)
 - [Game setup](../getting-started/game-setup.md)
 - [Settings reference](../reference/settings.md)
 

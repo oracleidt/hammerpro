@@ -1,0 +1,10 @@
+[package]
+name = "hp-colorgrade"
+description = "Hammer Pro color correction: 32x32x32 lookup tables (.raw), grading parameters, presets and color_correction entity zones."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+serde.workspace = true

@@ -76,6 +76,7 @@ pub struct ParticleShared {
     pub wanted: HashSet<String>,
     pub missing: HashSet<String>,
     pub active: bool,
+    pub fx_active: bool,
     pub sprite_layer: bool,
     pub sprites: Vec<ParticleSprite>,
     pub materials: Vec<String>,

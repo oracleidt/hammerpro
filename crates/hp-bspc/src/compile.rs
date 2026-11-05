@@ -34,6 +34,7 @@ pub struct CompileOptions {
     pub max_lightmap_dim: f64,
     pub relaxed_limits: bool,
     pub lean_planes: bool,
+    pub preview: bool,
     pub block_size: u32,
     pub prop_debug: bool,
     pub format: hp_bsp::BspFormat,
@@ -72,6 +73,7 @@ impl Default for CompileOptions {
             max_lightmap_dim: crate::faces::MAX_LIGHTMAP_DIM,
             relaxed_limits: false,
             lean_planes: false,
+            preview: false,
             block_size: crate::tree::BLOCK_SIZE as u32,
             prop_debug: false,
             format: hp_bsp::BspFormat::default(),
@@ -924,54 +926,56 @@ Probably too many areaportals"
     }
     let mut water = crate::water::WaterData::default();
     water.add_model(0, &mut tree, &portals, &planes, &brushes);
-    let mut prt_tree = Tree {
-        nodes: tree
-            .nodes
-            .iter()
-            .map(|n| crate::tree::Node {
-                plane: n.plane,
-                children: n.children,
-                parent: n.parent,
-                contents: n.contents,
-                cluster: n.cluster,
-                ..Default::default()
-            })
-            .collect(),
-        head: tree.head,
-        outside: tree.outside,
-        mins: tree.mins,
-        maxs: tree.maxs,
-    };
-    let prt_portals = Portals::make(&mut prt_tree, &planes);
     let mut vis_portals = Vec::new();
-    let mut stack = vec![prt_tree.head];
-    while let Some(n) = stack.pop() {
-        if !prt_tree.nodes[n].is_leaf() {
-            let [f, b] = prt_tree.nodes[n].children;
-            stack.push(b);
-            stack.push(f);
-            continue;
-        }
-        for &pid in &prt_tree.nodes[n].portals {
-            let p = &prt_portals.list[pid];
-            if p.nodes[0] != n || p.on_node.is_none() || p.winding.points.len() < 3 {
+    if !opts.preview || (opts.vis != VisLevel::Off && !leaked) {
+        let mut prt_tree = Tree {
+            nodes: tree
+                .nodes
+                .iter()
+                .map(|n| crate::tree::Node {
+                    plane: n.plane,
+                    children: n.children,
+                    parent: n.parent,
+                    contents: n.contents,
+                    cluster: n.cluster,
+                    ..Default::default()
+                })
+                .collect(),
+            head: tree.head,
+            outside: tree.outside,
+            mins: tree.mins,
+            maxs: tree.maxs,
+        };
+        let prt_portals = Portals::make(&mut prt_tree, &planes);
+        let mut stack = vec![prt_tree.head];
+        while let Some(n) = stack.pop() {
+            if !prt_tree.nodes[n].is_leaf() {
+                let [f, b] = prt_tree.nodes[n].children;
+                stack.push(b);
+                stack.push(f);
                 continue;
             }
-            let [a, b] = p.nodes;
-            let (ca, cb) = (prt_tree.nodes[a].cluster, prt_tree.nodes[b].cluster);
-            if ca < 0 || cb < 0 || ca == cb || !prt_tree.nodes[a].is_leaf() || !prt_tree.nodes[b].is_leaf() {
-                continue;
+            for &pid in &prt_tree.nodes[n].portals {
+                let p = &prt_portals.list[pid];
+                if p.nodes[0] != n || p.on_node.is_none() || p.winding.points.len() < 3 {
+                    continue;
+                }
+                let [a, b] = p.nodes;
+                let (ca, cb) = (prt_tree.nodes[a].cluster, prt_tree.nodes[b].cluster);
+                if ca < 0 || cb < 0 || ca == cb || !prt_tree.nodes[a].is_leaf() || !prt_tree.nodes[b].is_leaf() {
+                    continue;
+                }
+                let clusters = if winding_faces_away(&p.winding.points, p.plane.normal) {
+                    [cb as u32, ca as u32]
+                } else {
+                    [ca as u32, cb as u32]
+                };
+                vis_portals.push(ClusterPortal { points: p.winding.points.clone(), clusters });
             }
-            let clusters = if winding_faces_away(&p.winding.points, p.plane.normal) {
-                [cb as u32, ca as u32]
-            } else {
-                [ca as u32, cb as u32]
-            };
-            vis_portals.push(ClusterPortal { points: p.winding.points.clone(), clusters });
         }
+        drop((prt_tree, prt_portals));
     }
-    drop((prt_tree, prt_portals));
-    let prt = prt_text(clusters, &vis_portals);
+    let prt = if opts.preview { String::new() } else { prt_text(clusters, &vis_portals) };
     stage("occluders, clusters, water");
     if leaked {
         log(&format!(
@@ -1085,6 +1089,9 @@ Probably too many areaportals"
         model_number[*ent] = k + 1;
     }
     stage("emit models");
+    drop(portals);
+    drop(faces);
+    drop(live);
     lumps.brushes(&brushes, &mut planes);
     let mut phys_models = Vec::new();
     let leaf_brushes = |t: &Tree| -> Vec<usize> {
@@ -1129,98 +1136,105 @@ Probably too many areaportals"
             }
         }
     }
-    let phys_solid = |i: usize| -> crate::phys::ConvexSolid {
-        let b = &brushes[i];
-        let world = b.entity == 0;
-        let sides = crate::phys::lump_brush_sides(&brush_lump, &side_lump, i)
-            .into_iter()
-            .enumerate()
-            .map(|(k, (plane, texinfo, bevel))| {
-                let p = planes.get(plane);
-                crate::phys::BrushSide {
-                    plane: [p.normal.x as f32, p.normal.y as f32, p.normal.z as f32, p.dist as f32],
-                    bevel,
-                    visible: if k >= b.sides.len() {
-                        true
-                    } else if world {
-                        b.sides[k].visible
-                    } else {
-                        entity_visible.contains(&(i, k))
-                    },
-                    surfaceprop: texinfo_prop(texinfo),
-                }
-            })
-            .collect();
-        crate::phys::ConvexSolid { sides, brush: i as i32 }
-    };
-    let convexes = |ids: &[usize], mask: u32| -> Vec<crate::phys::ConvexSolid> {
-        let mut ids: Vec<usize> = ids.iter().copied().filter(|&i| brushes[i].contents & mask != 0).collect();
-        ids.sort_unstable();
-        ids.dedup();
-        ids.into_iter().map(phys_solid).collect()
-    };
-    let mut extras = crate::phys::WorldExtras {
-        surface_props: crate::phys::SurfaceProps::load(&|p| materials.read_file(p)),
-        ..Default::default()
-    };
-    for (index, ids) in groups {
-        let mask = if index == 0 { PHYS_MASK & !contents::GRATE } else { MODEL_PHYS_MASK };
-        let solids = convexes(&ids, mask);
-        let mut model = crate::phys::PhysModel { model_index: index, solids, ..Default::default() };
-        if index == 0 {
-            for extra in [contents::GRATE, contents::PLAYERCLIP, contents::MONSTERCLIP] {
-                let more = convexes(&ids, extra);
-                if !more.is_empty() {
-                    extras.statics.push((extra, more));
-                }
-            }
-            if !opts.no_virtual_mesh && disps.iter().all(|d| d.info.power <= 3) {
-                extras.virtual_terrain = true;
-                lumps.data.insert(crate::emit::lump::PHYSDISP, (crate::disp::physdisp_lump(&disps, PHYS_MASK), 0));
-            } else {
-                extras.terrain = terrain_soups(&disps);
-            }
-        } else if let Some((_, _, f, _, _)) = model_trees.get(index as usize - 1) {
-            let (lo, hi) = crate::brushbsp::brushes_bounds(&brushes, &models[index as usize - 1].brushes);
-            model.size = [hi.x as f32 - lo.x as f32, hi.y as f32 - lo.y as f32, hi.z as f32 - lo.z as f32];
-            let mut faces: Vec<(usize, String, f32)> = f
-                .list
-                .iter()
-                .filter_map(|fc| {
-                    let area = if fc.piece {
-                        0.0
-                    } else {
-                        crate::brushbsp::area(&fc.winding.points.iter().map(|p| p.as_vec3()).collect())
-                    };
-                    fc.output.map(|o| (o, texinfo_prop(fc.texinfo).unwrap_or_default(), area))
+    if opts.preview {
+        drop(std::mem::take(&mut model_trees));
+    }
+    if !opts.preview {
+        let phys_solid = |i: usize| -> crate::phys::ConvexSolid {
+            let b = &brushes[i];
+            let world = b.entity == 0;
+            let sides = crate::phys::lump_brush_sides(&brush_lump, &side_lump, i)
+                .into_iter()
+                .enumerate()
+                .map(|(k, (plane, texinfo, bevel))| {
+                    let p = planes.get(plane);
+                    crate::phys::BrushSide {
+                        plane: [p.normal.x as f32, p.normal.y as f32, p.normal.z as f32, p.dist as f32],
+                        bevel,
+                        visible: if k >= b.sides.len() {
+                            true
+                        } else if world {
+                            b.sides[k].visible
+                        } else {
+                            entity_visible.contains(&(i, k))
+                        },
+                        surfaceprop: texinfo_prop(texinfo),
+                    }
                 })
                 .collect();
-            faces.sort_by_key(|x| x.0);
-            model.faces = faces.into_iter().map(|(_, p, a)| (p, a)).collect();
+            crate::phys::ConvexSolid { sides, brush: i as i32 }
+        };
+        let convexes = |ids: &[usize], mask: u32| -> Vec<crate::phys::ConvexSolid> {
+            let mut ids: Vec<usize> = ids.iter().copied().filter(|&i| brushes[i].contents & mask != 0).collect();
+            ids.sort_unstable();
+            ids.dedup();
+            ids.into_iter().map(phys_solid).collect()
+        };
+        let mut extras = crate::phys::WorldExtras {
+            surface_props: crate::phys::SurfaceProps::load(&|p| materials.read_file(p)),
+            ..Default::default()
+        };
+        for (index, ids) in groups {
+            let mask = if index == 0 { PHYS_MASK & !contents::GRATE } else { MODEL_PHYS_MASK };
+            let solids = convexes(&ids, mask);
+            let mut model = crate::phys::PhysModel { model_index: index, solids, ..Default::default() };
+            if index == 0 {
+                for extra in [contents::GRATE, contents::PLAYERCLIP, contents::MONSTERCLIP] {
+                    let more = convexes(&ids, extra);
+                    if !more.is_empty() {
+                        extras.statics.push((extra, more));
+                    }
+                }
+                if !opts.no_virtual_mesh && disps.iter().all(|d| d.info.power <= 3) {
+                    extras.virtual_terrain = true;
+                    lumps.data.insert(crate::emit::lump::PHYSDISP, (crate::disp::physdisp_lump(&disps, PHYS_MASK), 0));
+                } else {
+                    extras.terrain = terrain_soups(&disps);
+                }
+            } else if let Some((_, _, f, _, _)) = model_trees.get(index as usize - 1) {
+                let (lo, hi) = crate::brushbsp::brushes_bounds(&brushes, &models[index as usize - 1].brushes);
+                model.size = [hi.x as f32 - lo.x as f32, hi.y as f32 - lo.y as f32, hi.z as f32 - lo.z as f32];
+                let mut faces: Vec<(usize, String, f32)> = f
+                    .list
+                    .iter()
+                    .filter_map(|fc| {
+                        let area = if fc.piece {
+                            0.0
+                        } else {
+                            crate::brushbsp::area(&fc.winding.points.iter().map(|p| p.as_vec3()).collect())
+                        };
+                        fc.output.map(|o| (o, texinfo_prop(fc.texinfo).unwrap_or_default(), area))
+                    })
+                    .collect();
+                faces.sort_by_key(|x| x.0);
+                model.faces = faces.into_iter().map(|(_, p, a)| (p, a)).collect();
+            }
+            if !model.solids.is_empty() || index == 0 {
+                phys_models.push(model);
+            }
         }
-        if !model.solids.is_empty() || index == 0 {
-            phys_models.push(model);
-        }
+        let fluids: Vec<crate::phys::Fluid> = water
+            .models
+            .iter()
+            .filter(|wm| wm.model == 0 && !wm.brushes.is_empty())
+            .map(|wm| crate::phys::Fluid {
+                convexes: convexes(&wm.brushes, u32::MAX),
+                surfaceprop: "water".to_owned(),
+                damping: 0.01,
+                contents: wm.contents,
+                surface: wm.has_surface.then_some([
+                    wm.normal.x as f32,
+                    wm.normal.y as f32,
+                    wm.normal.z as f32,
+                    wm.dist as f32,
+                ]),
+            })
+            .collect();
+        extras.fluids = fluids;
+        lumps
+            .data
+            .insert(crate::emit::lump::PHYSCOLLIDE, (crate::phys::physcollide_lump_world(&phys_models, &extras), 0));
     }
-    let fluids: Vec<crate::phys::Fluid> = water
-        .models
-        .iter()
-        .filter(|wm| wm.model == 0 && !wm.brushes.is_empty())
-        .map(|wm| crate::phys::Fluid {
-            convexes: convexes(&wm.brushes, u32::MAX),
-            surfaceprop: "water".to_owned(),
-            damping: 0.01,
-            contents: wm.contents,
-            surface: wm.has_surface.then_some([
-                wm.normal.x as f32,
-                wm.normal.y as f32,
-                wm.normal.z as f32,
-                wm.dist as f32,
-            ]),
-        })
-        .collect();
-    extras.fluids = fluids;
-    lumps.data.insert(crate::emit::lump::PHYSCOLLIDE, (crate::phys::physcollide_lump_world(&phys_models, &extras), 0));
     stage("physics");
     lumps.data.insert(crate::emit::lump::LEAFWATERDATA, (water.lump(), 0));
     let max_overlays = hp_bsp::limits::OVERLAYS.max_usize_in(opts.format.limits);
@@ -1274,6 +1288,11 @@ Probably too many areaportals"
         };
         let macros = crate::emit::face_macro_textures(&mut lumps.data, &macro_of);
         lumps.data.insert(lump::FACE_MACRO_TEXTURE_INFO, (macros, 0));
+    }
+    let has_water = brushes.iter().any(|b| b.contents & contents::MASK_WATER != 0);
+    let brush_count = brushes.len();
+    if opts.preview {
+        brushes = Vec::new();
     }
     stage("overlays, finish");
     let mut computed = false;
@@ -1382,7 +1401,6 @@ Probably too many areaportals"
         log("Visibility skipped: the map leaks (everything is drawn)");
     }
     stage("visibility");
-    let has_water = brushes.iter().any(|b| b.contents & contents::MASK_WATER != 0);
     if computed {
         let marked = crate::water::fog_volumes(&mut lumps.data, pvs_rows.as_deref());
         if has_water {
@@ -1477,6 +1495,8 @@ Probably too many areaportals"
     let faces_written = lumps.data.get(&crate::emit::lump::FACES).map_or(0, |(d, _)| d.len() / 56);
     stage("cubemaps");
     let bsp = lumps.file(map.version_info.map_version);
+    let leaf_count = lumps.leaf_count();
+    drop(lumps);
     let mut problems = crate::validate::validate(&bsp);
     if opts.relaxed_limits {
         let relaxed =
@@ -1491,7 +1511,9 @@ Probably too many areaportals"
     }
     stage("write, validate");
     log("BSP checked: every index and range is valid");
-    if let Ok(file) = hp_bsp::Bsp::from_vec(bsp.clone()) {
+    if !opts.preview
+        && let Ok(file) = hp_bsp::Bsp::from_vec(bsp.clone())
+    {
         let classes: Vec<&str> = entities.iter().map(|e| e.classname.as_str()).collect();
         let input = crate::stats::GeometryInput {
             map,
@@ -1510,7 +1532,7 @@ Probably too many areaportals"
     log(&format!(
         "{} faces, {} leaves, {:.1} MB, {:.2} s elapsed",
         faces_written,
-        lumps.leaf_count(),
+        leaf_count,
         bsp.len() as f64 / 1_048_576.0,
         start.elapsed().as_secs_f64()
     ));
@@ -1519,7 +1541,7 @@ Probably too many areaportals"
         leak: leak_path,
         clusters,
         faces: faces_written,
-        brushes: brushes.len(),
+        brushes: brush_count,
         vis_portals,
         prt,
         trace: trace_text,

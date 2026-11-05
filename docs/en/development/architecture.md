@@ -22,6 +22,7 @@ Hammer Pro is split into small, focused crates under `crates/`, with dependencie
 | `hp-nav` | Reader of navigation meshes (`.nav`), versions 1 to 16. |
 | `hp-pcf` | Particle systems of `.pcf` files (binary DMX) and a small preview simulation. |
 | `hp-meshio` | Reading OBJ, glTF/GLB and FBX models and compiling them into game model files. |
+| `hp-shader` | The engine of the shader editor: node graph (`.hpshader` JSON), node catalog, CPU evaluation, presets, and writing the outputs as VTF and VMT. No UI code. |
 
 ### Geometry, content and compiling
 
@@ -52,7 +53,7 @@ Hammer Pro is split into small, focused crates under `crates/`, with dependencie
 |---|---|
 | `hp-ui-shell` | Menu bar, toolbar, tool palette, status bar, console, toasts, settings window, command palette, shortcuts and About dialogs, first run wizard. |
 | `hp-ui-viewports` | The 2x2 views: layout, splitters, camera navigation, rendering, input routing to the tools, context menu, drag and drop. |
-| `hp-ui-textures` | Texture browser, texture application tool (Face Edit), find and replace textures, material (VMT) editor, image import. |
+| `hp-ui-textures` | Texture browser, texture application tool (Face Edit), find and replace textures, material (VMT) editor, image import, the shader editor window. |
 | `hp-ui-entities` | Entity properties (SmartEdit, flags, I/O, keyvalues), class picker, model browser, find entities, entity report, map properties. |
 | `hp-ui-mapping` | Visgroups, outliner, compile window with live log, check for problems, transform, paste special, go to id, map information, pointfiles. |
 | `hp-ui-lab` | Larger features: logical view, nav mesh display, opening compiled maps, particle preview, map comparison. |

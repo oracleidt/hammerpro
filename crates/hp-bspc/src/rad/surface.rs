@@ -757,7 +757,7 @@ pub(crate) fn blocker_scene(map: &MapData) -> Bvh {
     let mut tris = Vec::new();
     world_brush_triangles(map, true, &mut tris);
     entity_brush_triangles(map, &mut tris);
-    Bvh::new(&tris)
+    Bvh::from_vec(tris)
 }
 
 pub(crate) fn shadow_scene(
@@ -797,7 +797,7 @@ pub(crate) fn shadow_scene(
             }
         }
     }
-    (Bvh::with_groups(&tris, super::props::shadow_class, super::props::SHADOW_GROUPS), has_sky)
+    (Bvh::from_vec_groups(tris, super::props::shadow_class, super::props::SHADOW_GROUPS), has_sky)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -848,7 +848,7 @@ pub(crate) fn surface_scene(
             info.push(kind);
         }
     }
-    (Bvh::new(&tris), info)
+    (Bvh::from_vec(tris), info)
 }
 
 pub(crate) fn sky_clusters(map: &MapData) -> Vec<i32> {

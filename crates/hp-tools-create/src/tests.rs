@@ -99,7 +99,8 @@ fn tool_list() {
             ToolId::Decal,
             ToolId::Overlay,
             ToolId::Path,
-            ToolId::Road
+            ToolId::Road,
+            ToolId::Pipe
         ]
     );
 }

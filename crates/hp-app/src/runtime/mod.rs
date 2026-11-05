@@ -10,6 +10,8 @@ mod health;
 pub mod helpers;
 pub mod instances;
 mod lab;
+mod soundcolor;
+pub use soundcolor::SoundColorRuntime;
 mod launch;
 mod lighting;
 mod mcp;
@@ -19,6 +21,7 @@ mod placement;
 pub mod render;
 mod roadside;
 mod selection;
+mod shader;
 mod startup;
 pub mod update;
 mod visibility;
@@ -38,7 +41,8 @@ pub use health::{HealthRuntime, LeakResult};
 pub use helpers::HelpersRuntime;
 pub use instances::InstancesRuntime;
 pub use lab::{
-    DEFAULT_CAMERA_DISTANCE, DEFAULT_PLAYER_MODEL, LabRuntime, LightStyleReport, PlayerPlace, PlayerState, TrainReport,
+    DEFAULT_CAMERA_DISTANCE, DEFAULT_PLAYER_MODEL, FlyTextureOp, FlyTextureRuntime, LabRuntime, LightStyleReport,
+    ParticlePreviewRuntime, PlayerPlace, PlayerState, TrainReport,
 };
 pub use launch::{ContentUse, GameState, LaunchRuntime, MapLoadReport, content_use};
 pub use lighting::{
@@ -54,6 +58,7 @@ pub use placement::{
 pub use render::RenderRuntime;
 pub use roadside::{PreviewLine, PreviewTri, RoadPreview, RoadsideRuntime};
 pub use selection::SelectionRuntime;
+pub use shader::{LiveGraph, ShaderRequest, ShaderRuntime};
 pub use startup::{OpeningStatus, StartupRuntime};
 pub use update::{UpdateFailure, UpdateInfo, UpdateRuntime, UpdateStatus};
 pub use visibility::VisibilityRuntime;
@@ -86,4 +91,5 @@ pub struct Runtime {
     pub blender: BlenderRuntime,
     pub gpu: GpuRuntime,
     pub storage: crate::storage::StorageRuntime,
+    pub shader: ShaderRuntime,
 }

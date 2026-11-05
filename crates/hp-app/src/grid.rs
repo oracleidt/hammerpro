@@ -2,7 +2,10 @@ use glam::{DMat3, DVec2, DVec3};
 use hp_editor::{GRIDS_BLOCK, ObjRef};
 use hp_geom::Aabb;
 
-use crate::settings::{GRID_MAX, GRID_MIN, GridMode, GridSpec, MAX_CUSTOM_GRIDS, ViewGrid, clamp_grid};
+use crate::settings::{
+    GRID_MAX, GRID_MIN, GridMode, GridSpec, MAX_CUSTOM_GRIDS, TOOL_GRID_MAX, TOOL_GRID_MIN, ViewGrid, clamp_grid,
+    tool_grid,
+};
 use crate::state::AppState;
 use crate::view::{QuadrantView, ViewKind};
 
@@ -216,6 +219,49 @@ impl GridFrame {
             }
         }
         best
+    }
+
+    pub fn tool_nominal(&self) -> f64 {
+        tool_grid(self.nominal())
+    }
+
+    pub fn tool_step_along(&self, k: usize) -> f64 {
+        tool_grid(self.step_along(k))
+    }
+
+    pub fn plane_step(&self, normal: DVec3) -> f64 {
+        let Some(n) = normal.try_normalize() else { return self.tool_nominal() };
+        let cols = [self.axes.x_axis, self.axes.y_axis, self.axes.z_axis];
+        let in_plane = (0..3).filter(|j| cols[*j].dot(n).abs() < 0.5).map(|j| tool_grid(self.step[j]));
+        let best = in_plane.fold(f64::INFINITY, f64::min);
+        if best.is_finite() { best } else { self.tool_nominal() }
+    }
+
+    pub fn alternate(&self) -> GridFrame {
+        let size = self.tool_nominal();
+        let half = size / 2.0;
+        GridFrame::uniform(if half >= TOOL_GRID_MIN { half } else { (size * 2.0).min(TOOL_GRID_MAX) })
+    }
+
+    pub fn snap_distance(&self, from: DVec3, normal: DVec3, distance: f64) -> f64 {
+        let Some(n) = normal.try_normalize() else { return distance };
+        if !distance.is_finite() || !from.is_finite() {
+            return distance;
+        }
+        let frame = if self.contains(from) { *self } else { self.outside_frame() };
+        let cols = [frame.axes.x_axis, frame.axes.y_axis, frame.axes.z_axis];
+        for (j, col) in cols.iter().enumerate() {
+            let c = col.dot(n);
+            if c.abs() > 1.0 - 1e-6 {
+                let step = tool_grid(frame.step[j]);
+                let s0 = (from - frame.origin).dot(*col);
+                let target = s0 + distance * c;
+                let snapped = (target / step).round() * step;
+                return tidy((snapped - s0) / c);
+            }
+        }
+        let step = frame.tool_nominal();
+        tidy((distance / step).round() * step)
     }
 
     pub fn axis(&self, k: usize) -> AxisSnap {
@@ -761,6 +807,32 @@ mod tests {
         assert_eq!(g.nominal(), 8.0);
         let p = g.on_plane(DVec3::new(9.0, 11.0, 3.0), DVec3::Z);
         assert_eq!(p, DVec3::new(4.0, 0.0, 3.0));
+    }
+
+    #[test]
+    fn tool_distances_follow_the_grid_clamp_and_alternate() {
+        let g = GridFrame::uniform(16.0);
+        assert_eq!(g.snap_distance(DVec3::ZERO, DVec3::Z, 21.0), 16.0);
+        assert_eq!(g.snap_distance(DVec3::new(0.0, 0.0, 5.0), DVec3::Z, 20.0), 27.0);
+        assert_eq!(g.snap_distance(DVec3::new(0.0, 0.0, 5.0), DVec3::NEG_Z, 20.0), 21.0);
+        assert_eq!(g.alternate().nominal(), 8.0);
+        assert_eq!(GridFrame::uniform(1.0).alternate().nominal(), 2.0);
+        assert_eq!(GridFrame::uniform(0.25).tool_nominal(), 1.0);
+        assert_eq!(GridFrame::uniform(4096.0).tool_nominal(), 1024.0);
+        let fine = GridFrame::uniform(0.25);
+        assert_eq!(fine.snap_distance(DVec3::ZERO, DVec3::X, 2.4), 2.0);
+        let spec = GridSpec { name: "R".into(), step: [16.0; 3], angles: [0.0, 45.0, 0.0], ..GridSpec::default() };
+        let r = GridFrame::from_spec(&spec, 16.0);
+        let n = r.axes.x_axis;
+        let d = r.snap_distance(DVec3::ZERO, n, 20.0);
+        assert!((d - 16.0).abs() < 1e-6, "{d}");
+        let off = r.snap_distance(DVec3::ZERO, DVec3::Z.lerp(DVec3::X, 0.3).normalize(), 20.0);
+        assert!((off / 16.0 - (off / 16.0).round()).abs() < 1e-9, "{off}");
+        assert_eq!(g.plane_step(DVec3::Z), 16.0);
+        let stairs =
+            GridFrame::from_spec(&GridSpec { name: "S".into(), step: [12.0, 24.0, 8.0], ..GridSpec::default() }, 16.0);
+        assert_eq!(stairs.plane_step(DVec3::Z), 12.0);
+        assert_eq!(stairs.plane_step(DVec3::X), 8.0);
     }
 
     #[test]

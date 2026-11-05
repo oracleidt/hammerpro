@@ -15,7 +15,7 @@ Chaque résultat est fait de brushes convexes valides, la map se compile comme n
 
 1. Passez la souris sur un brush dans la vue 3D. L'arête sous le curseur est surlignée en jaune, avec les deux faces qui l'entourent.
 2. Appuyez sur `Ctrl+B`. Le biseau commence avec le dernier rayon utilisé (16 unités la première fois), limité par ce que permettent les faces.
-3. Montez la souris pour agrandir le biseau, descendez-la pour le réduire. La taille suit la grille ; maintenez `Alt` pour une taille libre. Vous pouvez aussi la taper dans le champ **Rayon** de la barre d'options.
+3. Montez la souris pour agrandir le biseau, descendez-la pour le réduire. La taille suit d'elle-même la grille active (taille, grille personnalisée et rotation respectées, pas gardé entre 1 et 1024 unités, voir [Grille pour le biseau, le décalage et l'extrusion](extrude-tool.md#grille-pour-le-biseau-le-décalage-et-lextrusion)) ; maintenez `Ctrl` pour forcer la grille et `Alt` pour une taille libre. Vous pouvez aussi la taper dans le champ **Rayon** de la barre d'options.
 4. Tournez la **molette** vers le haut pour plus de segments (un arrondi plus lisse) et vers le bas pour moins. Un seul segment donne un chanfrein plat. Le champ **Segments** fait la même chose.
 5. Appuyez sur `B` (ou de nouveau `Ctrl+B`) pour passer du biseau normal au biseau inversé.
 6. Appuyez sur `Entrée` ou cliquez pour appliquer. `Échap` ou un clic droit annule.
@@ -92,7 +92,7 @@ Pour faire les deux coins en une étape, choisissez d'abord les deux arêtes ave
 `Ctrl+B` est aussi **Aligner la sélection sur la grille** dans tous les jeux de raccourcis (Hammer Pro, Hammer et Hammer++). Les deux se partagent la touche ainsi :
 
 - Dans l'outil **Biseau**, `Ctrl+B` commence le biseau quand une arête est sous le curseur ou que des arêtes sont choisies, et passe au biseau inversé pendant l'opération. Sinon il aligne la sélection sur la grille comme d'habitude.
-- Dans les outils **Sélection** et **Vertex**, `Ctrl+B` biseaute l'arête de brush sous le curseur quand le curseur est sur une arête dans la **vue 3D**. Partout ailleurs (une vue 2D, le milieu d'une face, le vide) il aligne la sélection (ou les vertex sélectionnés) sur la grille comme avant.
+- Dans les outils **Sélection** et **Vertex**, `Ctrl+B` biseaute les arêtes choisies avec **Arête** dans l'outil de sélection ([Sélectionner des faces, des arêtes ou des sommets](selection-tool.md#sélectionner-des-faces-des-arêtes-ou-des-sommets-choisir)) s'il y en a, sinon l'arête de brush sous le curseur quand le curseur est sur une arête dans la **vue 3D**. Partout ailleurs (une vue 2D, le milieu d'une face, le vide) il aligne la sélection (ou les vertex sélectionnés) sur la grille comme avant.
 - Dans tous les autres outils, `Ctrl+B` aligne seulement sur la grille.
 
 Si vous changez la touche de **Aligner la sélection sur la grille** dans **Paramètres > Clavier**, le biseau suit la nouvelle touche.

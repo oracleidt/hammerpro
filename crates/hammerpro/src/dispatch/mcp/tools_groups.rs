@@ -5,7 +5,7 @@ use hp_mcp::protocol::ToolResult;
 use serde_json::{Value, json};
 
 use super::semantic::*;
-use super::tools::{Args, MAX_NAME, R, bounds_json, edit, obj_json};
+use super::tools::{Args, MAX_NAME, R, bounds_json, edit, obj_json, v3};
 
 const MAX_SETS: usize = 4096;
 
@@ -29,6 +29,18 @@ domain! { "groups and visibility";
     select_faces: Editor, "Select faces",
         "Select faces (texture application mode): [{solid, side}].",
         { "faces": faces("Faces."), "op": op() }, ["faces"];
+    select_elements: Editor, "Select edges or vertices",
+        "Select edges or vertices of one brush, the same selection the selection tool makes with its element option \
+        set to edge or vertex (keys 2 and 1). indices are edge numbers (get_brush_edges) or vertex numbers \
+        (get_brush_vertices) of the solid. The brush itself is selected too. The bevel tool (Ctrl+B) bevels the \
+        selected edges and the vertex tool opens with them selected. Faces are selected with select_faces. \
+        get_selection answers the selected edges and vertices.",
+        {
+            "element": choice("What the indices name.", &["edge", "vertex"]),
+            "solid": integer("Solid id.", 1, i64::from(u32::MAX)),
+            "indices": { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 65535 }, "minItems": 1, "maxItems": 512, "description": "Edge or vertex numbers of the solid." },
+            "op": op(),
+        }, ["element", "solid", "indices"];
     select_all: Editor, "Select all",
         "Select every visible object (or invert the selection with invert: true).",
         { "invert": boolean("Invert the selection instead.") }, [];
@@ -247,15 +259,39 @@ fn pattern(a: &Args<'_>) -> R<String> {
     Ok(p.to_owned())
 }
 
+pub(super) fn element_json(state: &AppState) -> Value {
+    let revision = state.doc.revision();
+    let sel = &state.runtime.selection;
+    let edges: Vec<Value> = sel
+        .fresh_edges(revision)
+        .iter()
+        .take(200)
+        .map(|e| json!({ "solid": e.solid, "a": v3(e.a), "b": v3(e.b) }))
+        .collect();
+    let vertices: Vec<Value> =
+        sel.fresh_vertices(revision).iter().take(200).map(|(s, p)| json!({ "solid": s, "point": v3(*p) })).collect();
+    json!({
+        "element": state.settings.selection.element.id(),
+        "edges": edges,
+        "edge_count": sel.fresh_edges(revision).len(),
+        "vertices": vertices,
+        "vertex_count": sel.fresh_vertices(revision).len(),
+    })
+}
+
 fn selection_json(state: &AppState) -> Value {
     let objs = state.doc.selected_objects();
     let faces = state.doc.selected_faces();
-    json!({
+    let mut out = json!({
         "selected": objs.len(),
         "faces": faces.len(),
         "objects": objs.iter().take(200).map(|o| obj_json(*o)).collect::<Vec<_>>(),
         "bounds": bounds_json(state.doc.selection_bounds(&bounds_fn(state))),
-    })
+    });
+    if let (Some(map), Value::Object(extra)) = (out.as_object_mut(), element_json(state)) {
+        map.extend(extra);
+    }
+    out
 }
 
 fn visgroup_exists(state: &AppState, id: u32) -> R<()> {
@@ -313,6 +349,84 @@ fn select_in_box(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
 fn select_faces(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let faces: Vec<FaceRef> = opt_faces(&state.doc, a, "faces")?.unwrap_or_default();
     state.doc.select_faces(&faces, sel_op(a)?);
+    Ok(ToolResult::json(selection_json(state)))
+}
+
+fn select_elements(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
+    let element = a.opt_enum("element", &["edge", "vertex"])?.ok_or("element is required")?;
+    let solid = solid_id(&state.doc, a, "solid")?;
+    let list = a
+        .get("indices")
+        .and_then(Value::as_array)
+        .filter(|l| !l.is_empty() && l.len() <= 512)
+        .ok_or("indices must be a list of 1 to 512 numbers")?;
+    let mut indices = Vec::with_capacity(list.len());
+    for v in list {
+        indices.push(v.as_u64().map(|i| i as usize).ok_or("indices must be non-negative integers")?);
+    }
+    let op = sel_op(a)?;
+    let node = state.doc.scene().solid(solid).filter(|n| n.geom.valid).ok_or("the solid has no valid geometry")?;
+    let (edges, verts) = if element == "edge" {
+        let all = node.geom.edges();
+        let mut out = Vec::with_capacity(indices.len());
+        for i in &indices {
+            let [p, q] = all.get(*i).copied().ok_or_else(|| format!("the solid has {} edges", all.len()))?;
+            out.push(hp_editor::EdgeRef::new(solid, p, q));
+        }
+        (out, Vec::new())
+    } else {
+        let (points, _) = state.doc.solid_vertices(solid).ok_or("the solid has no valid geometry")?;
+        let mut out = Vec::with_capacity(indices.len());
+        for i in &indices {
+            let p = points.get(*i).copied().ok_or_else(|| format!("the solid has {} vertices", points.len()))?;
+            out.push((solid, p));
+        }
+        (Vec::new(), out)
+    };
+    state.settings.selection.element =
+        if element == "edge" { hp_app::settings::SelectElement::Edge } else { hp_app::settings::SelectElement::Vertex };
+    state.doc.select(
+        &[hp_editor::ObjRef::Solid(solid)],
+        if op == SelectOp::Replace { SelectOp::Replace } else { SelectOp::Add },
+    );
+    let revision = state.doc.revision();
+    let sel = &mut state.runtime.selection;
+    if sel.element_revision != revision || op == SelectOp::Replace {
+        sel.clear_elements();
+    }
+    sel.element_revision = revision;
+    if element == "edge" {
+        sel.vertices.clear();
+    } else {
+        sel.edges.clear();
+    }
+    for e in edges {
+        let at = sel.edges.iter().position(|x| x.same_edge(&e));
+        match (op, at) {
+            (SelectOp::Remove, Some(i)) => {
+                sel.edges.remove(i);
+            }
+            (SelectOp::Toggle, Some(i)) => {
+                sel.edges.remove(i);
+            }
+            (SelectOp::Remove, None) | (_, Some(_)) => {}
+            (_, None) => sel.edges.push(e),
+        }
+    }
+    for (id, p) in verts {
+        let at = sel.vertices.iter().position(|(i, q)| *i == id && q.distance(p) < 1e-3);
+        match (op, at) {
+            (SelectOp::Remove, Some(i)) => {
+                sel.vertices.remove(i);
+            }
+            (SelectOp::Toggle, Some(i)) => {
+                sel.vertices.remove(i);
+            }
+            (SelectOp::Remove, None) | (_, Some(_)) => {}
+            (_, None) => sel.vertices.push((id, p)),
+        }
+    }
+    state.settings_dirty = true;
     Ok(ToolResult::json(selection_json(state)))
 }
 

@@ -113,6 +113,10 @@ La vue 2D dessine les lignes mineures et principales selon les axes tournés, co
 
 Les réglages de grille sont dans la table `[grid]` de `settings.toml` : `mode`, `custom`, `per_view`, `presets`, `object_grids` (activé), `plane_3d` (activé).
 
+## Plage de la grille et outils biseau, décalage et extrusion
+
+La taille de la grille accepte toutes les valeurs de 0,01 à 4096 unités. Les distances à la souris du [biseau](bevel-tool.md), du décalage interactif et de l'extrusion interactive suivent la grille active (taille, grille personnalisée et rotation) mais n'utilisent jamais un pas inférieur à 1 ou supérieur à 1024, et chaque brush qu'ils créent a ses nouvelles faces sur cette grille. Pendant l'extrusion, `Alt` passe à la grille alternative, une grille alignée sur les axes de la moitié de la taille. Voir [Grille pour le biseau, le décalage et l'extrusion](extrude-tool.md#grille-pour-le-biseau-le-décalage-et-lextrusion).
+
 ## Astuces
 
 - Pour des marches de 12 x 8, créez une grille personnalisée de pas 12 12 8 et attachez-la à l'escalier (voir [Grilles personnalisées pour les escaliers](../guides/custom-grids-for-stairs.md)).

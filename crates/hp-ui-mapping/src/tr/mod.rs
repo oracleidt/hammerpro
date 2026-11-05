@@ -1,6 +1,7 @@
 use hp_app::i18n::TrTable;
 
 pub mod areaportals;
+pub mod array;
 pub mod autovis;
 pub mod compile;
 pub mod compile_stats;
@@ -21,6 +22,7 @@ pub mod prefabs;
 pub mod problems;
 pub mod propper;
 pub mod release;
+pub mod scatter;
 pub mod target;
 pub mod transform;
 pub mod valve_flags;
@@ -28,6 +30,7 @@ pub mod visgroups;
 
 pub const TABLES: &[(&str, TrTable)] = &[
     ("visgroups", visgroups::TR),
+    ("array", array::TR),
     ("autovis", autovis::TR),
     ("outliner", outliner::TR),
     ("compile", compile::TR),
@@ -43,6 +46,7 @@ pub const TABLES: &[(&str, TrTable)] = &[
     ("portals", portals::TR),
     ("areaportals", areaportals::TR),
     ("release", release::TR),
+    ("scatter", scatter::TR),
     ("inspector", inspector::TR),
     ("lighting", lighting::TR),
     ("prefabs", prefabs::TR),

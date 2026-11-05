@@ -25,6 +25,33 @@ pub fn path_clone_link(state: &crate::AppState, objs: &[hp_editor::ObjRef]) -> O
     from_fgd.or_else(|| Document::known_path_next_key(class)).map(|key| (*id, key))
 }
 
+pub fn fgd_target_key(fgd: &hp_fgd::ResolvedFgd, class: &str, key: &str) -> Option<bool> {
+    let p = fgd.class(class)?.property(key)?;
+    Some(matches!(
+        p.kind,
+        hp_fgd::PropertyType::TargetDestination
+            | hp_fgd::PropertyType::TargetNameOrClass
+            | hp_fgd::PropertyType::FilterClass
+    ))
+}
+
+pub fn array_frame(state: &crate::AppState) -> hp_editor::ArrayFrame {
+    let frame = state.target_grid().frame;
+    let step = if state.snap_enabled() { frame.step.max(glam::DVec3::ZERO) } else { glam::DVec3::ZERO };
+    hp_editor::ArrayFrame { origin: frame.origin, axes: frame.axes, step }
+}
+
+pub fn array_duplicate(
+    state: &mut crate::AppState,
+    objs: &[hp_editor::ObjRef],
+    spec: &hp_editor::ArraySpec,
+) -> hp_editor::EditResult<(hp_editor::ArrayPlan, Vec<hp_editor::ObjRef>)> {
+    let fgd = state.assets.fgd().filter(|f| !f.is_empty());
+    let targets = |class: &str, key: &str| fgd.and_then(|f| fgd_target_key(f, class, key));
+    let assets = &state.assets;
+    state.doc.array_copies(objs, spec, &|e| assets.entity_bounds(e), Some(&targets))
+}
+
 pub fn duplicate_linking_paths(
     state: &mut crate::AppState,
     objs: &[hp_editor::ObjRef],
@@ -33,8 +60,10 @@ pub fn duplicate_linking_paths(
 ) -> hp_editor::EditResult<Vec<hp_editor::ObjRef>> {
     let keep = state.settings.selection.clone_keeps_visgroups;
     let link = path_clone_link(state, objs);
+    let fgd = state.assets.fgd().filter(|f| !f.is_empty());
+    let targets = |class: &str, key: &str| fgd.and_then(|f| fgd_target_key(f, class, key));
     state.doc.transaction("Duplicate", |doc| {
-        let new = doc.duplicate_transformed(objs, m, anchor, keep)?;
+        let new = doc.duplicate_transformed_with(objs, m, anchor, keep, Some(&targets))?;
         if let (Some((src, key)), [hp_editor::ObjRef::Entity(copy)]) = (link, new.as_slice()) {
             doc.link_cloned_path_node(src, *copy, key)?;
         }

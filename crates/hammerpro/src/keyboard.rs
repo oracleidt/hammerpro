@@ -180,7 +180,10 @@ impl KeyRouter {
             } else {
                 Vec::new()
             };
-            let actions = state.keys.take_triggered(&mut i.events);
+            let looking = state.runtime.lab.fly_texture.active;
+            let actions = state
+                .keys
+                .take_triggered_where(&mut i.events, |a| looking || hp_ui_viewports::fly_texture::op_of(a).is_none());
             i.events.extend(kept);
             (actions, paste)
         });

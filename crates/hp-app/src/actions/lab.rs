@@ -16,6 +16,12 @@ action_list! { lab_actions {
     LoadNavMesh => "load_nav_mesh", Map, MapPointfile, None, Ready;
     ToggleParticles => "toggle_particles", View, ViewDisplay, None, Ready;
     ToggleParticlesSelected => "toggle_particles_selected", View, ViewDisplay, None, Ready;
+    ToggleEntityFx => "toggle_entity_fx", View, ViewDisplay, None, Ready;
+    ParticlePreview => "particle_preview", View, ViewPanels, None, Ready;
+    FlyApplyTexture => "fly_apply_texture", Tools, Hidden, sc(NONE, Key::T), Ready;
+    FlyApplyTextureBrush => "fly_apply_texture_brush", Tools, Hidden, sc(NONE, Key::F), Ready;
+    FlyPickTexture => "fly_pick_texture", Tools, Hidden, sc(NONE, Key::V), Ready;
+    FlyAlignTexture => "fly_align_texture", Tools, Hidden, sc(NONE, Key::N), Ready;
     ImportModel => "import_model", File, FileImport, None, Ready;
     ImportModelsBatch => "import_models_batch", File, FileImport, None, Ready;
     SendToBlender => "send_to_blender", Tools, ToolsContent, None, Ready;
@@ -23,6 +29,9 @@ action_list! { lab_actions {
     StopBlenderLink => "stop_blender_link", Tools, ToolsContent, None, Ready;
     InstallBlenderAddon => "install_blender_addon", Tools, ToolsContent, None, Ready;
     TogglePlayerView => "toggle_player_view", View, ViewDisplay, sc(NONE, Key::F6), Ready;
+    OpenSoundEditor => "sound_editor", Tools, ToolsContent, None, Ready;
+    OpenColorCorrectionEditor => "color_correction_editor", Tools, ToolsContent, None, Ready;
+    ToggleColorCorrectionPreview => "toggle_color_correction_preview", View, ViewDisplay, None, Ready;
     PropperOptions => "propper_options", Tools, ToolsPlacement, None, Ready;
 }}
 
@@ -31,6 +40,9 @@ pub(super) const REPEATS: &[Action] = &[];
 pub(super) fn enabled(state: &AppState, action: Action) -> Option<bool> {
     match action {
         Action::ToggleParticlesSelected => Some(state.settings.lab.show_particles),
+        Action::FlyApplyTexture | Action::FlyApplyTextureBrush | Action::FlyPickTexture | Action::FlyAlignTexture => {
+            Some(state.runtime.lab.fly_texture.active)
+        }
         Action::PropToBrushes => Some(selected_prop(state).is_some()),
         Action::SendToBlender => Some(!state.doc.selection().is_empty()),
         Action::PullFromBlender | Action::StopBlenderLink => Some(state.runtime.blender.link.is_some()),
@@ -59,9 +71,14 @@ pub(super) fn check(state: &AppState, action: Action) -> Option<Check> {
         Action::ShowLogicalView => Some(Check::Toggle(state.runtime.lab.logic_open)),
         Action::PropperOptions => Some(Check::Toggle(state.runtime.lab.propper_options_open)),
         Action::OpenBspSniffer => Some(Check::Toggle(state.runtime.lab.sniffer.open)),
+        Action::OpenSoundEditor => Some(Check::Toggle(state.runtime.lab.sound_color.sound_open)),
+        Action::OpenColorCorrectionEditor => Some(Check::Toggle(state.runtime.lab.sound_color.color_open)),
+        Action::ToggleColorCorrectionPreview => Some(Check::Toggle(state.settings.lab.color_correction_preview)),
         Action::ToggleNavMesh => Some(Check::Toggle(state.settings.lab.show_nav_mesh)),
         Action::ToggleParticles => Some(Check::Toggle(state.settings.lab.show_particles)),
         Action::ToggleParticlesSelected => Some(Check::Toggle(state.settings.lab.particles_selected_only)),
+        Action::ToggleEntityFx => Some(Check::Toggle(state.settings.lab.show_entity_fx)),
+        Action::ParticlePreview => Some(Check::Toggle(state.runtime.lab.particle_preview.open)),
         Action::TogglePlayerView => Some(Check::Toggle(state.runtime.lab.player.active)),
         _ => None,
     }
@@ -199,8 +216,37 @@ pub(super) const TR: TrTable = &[
     ("lab.navgen.failed", "Nav mesh generation failed: {0}", "Échec de la génération du nav mesh : {0}"),
     ("action.load_nav_mesh", "Load nav mesh...", "Charger un nav mesh..."),
     ("action.toggle_player_view", "Player view", "Vue joueur"),
+    ("action.sound_editor", "Sound editor...", "Éditeur de sons..."),
+    ("action.color_correction_editor", "Color correction editor...", "Éditeur de correction des couleurs..."),
+    (
+        "action.toggle_color_correction_preview",
+        "Preview color_correction entities",
+        "Prévisualiser les entités color_correction",
+    ),
     ("action.toggle_particles", "Show particles", "Afficher les particules"),
     ("action.toggle_particles_selected", "Particles of the selection only", "Particules de la sélection uniquement"),
+    ("action.toggle_entity_fx", "Preview volume effects", "Aperçu des effets de volume"),
+    ("action.particle_preview", "Particle preview...", "Aperçu des particules..."),
+    (
+        "action.fly_apply_texture",
+        "Camera mode: apply the texture to the targeted face",
+        "Mode caméra : appliquer la texture à la face visée",
+    ),
+    (
+        "action.fly_apply_texture_brush",
+        "Camera mode: apply the texture to the whole targeted brush",
+        "Mode caméra : appliquer la texture à tout le brush visé",
+    ),
+    (
+        "action.fly_pick_texture",
+        "Camera mode: pick the texture of the targeted face",
+        "Mode caméra : prélever la texture de la face visée",
+    ),
+    (
+        "action.fly_align_texture",
+        "Camera mode: align the targeted face texture to the view",
+        "Mode caméra : aligner la texture de la face visée sur la vue",
+    ),
     ("shell.undo.move_in_logical_view", "Move in logical view", "Déplacement dans la vue logique"),
     ("shell.undo.arrange_logical_view", "Arrange logical view", "Organisation de la vue logique"),
     ("shell.undo.insert_entity_gallery", "Insert entity gallery", "Insertion de la galerie d'entités"),

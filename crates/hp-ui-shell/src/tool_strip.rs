@@ -33,9 +33,13 @@ impl PaletteGroup {
 pub fn tool_group(tool: ToolId) -> PaletteGroup {
     match tool {
         ToolId::Select | ToolId::Camera => PaletteGroup::Navigate,
-        ToolId::Entity | ToolId::Block | ToolId::Polygon | ToolId::Curve | ToolId::Road | ToolId::Sprinkle => {
-            PaletteGroup::Create
-        }
+        ToolId::Entity
+        | ToolId::Block
+        | ToolId::Polygon
+        | ToolId::Curve
+        | ToolId::Road
+        | ToolId::Pipe
+        | ToolId::Sprinkle => PaletteGroup::Create,
         ToolId::Texture
         | ToolId::Decal
         | ToolId::Overlay
@@ -156,7 +160,8 @@ fn group_line(ui: &mut Ui, width: f32) {
     let (rect, _) = ui.allocate_exact_size(egui::vec2(width, SEPARATOR), egui::Sense::hover());
     if ui.is_rect_visible(rect) {
         let stroke = ui.visuals().widgets.noninteractive.bg_stroke;
-        ui.painter().hline(rect.x_range().shrink(4.0), rect.center().y, stroke);
+        let painter = ui.painter();
+        painter.hline(rect.x_range().shrink(4.0), painter.round_to_pixel_center(rect.center().y), stroke);
     }
 }
 
@@ -308,6 +313,7 @@ mod tests {
                 T(ToolId::Curve),
                 T(ToolId::Sprinkle),
                 T(ToolId::Road),
+                T(ToolId::Pipe),
                 S,
                 T(ToolId::Texture),
                 A(Action::ApplyCurrentTexture),
@@ -485,7 +491,7 @@ mod tests {
         crate::register_translations();
         let mut state = hp_app::testing::test_state();
         state.tool = ToolId::Block;
-        let buttons = strip_buttons(&mut state, egui::vec2(1600.0, 960.0));
+        let buttons = strip_buttons(&mut state, egui::vec2(1600.0, 1500.0));
         let button = |label: &str| buttons.iter().find(|b| b.0 == label).unwrap_or_else(|| panic!("{label}")).clone();
         assert!(button(t!("tool.block")).1, "the active tool is toggled");
         assert!(!button(t!("tool.select")).1);
@@ -506,9 +512,10 @@ mod tests {
                 screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 900.0))),
                 ..Default::default()
             };
-            let out = ctx.run_ui(input, |ui| {
+            let mut out = ctx.run_ui(input, |ui| {
                 tool_strip(ui, state);
             });
+            out.textures_delta.clear();
             out.shapes
         };
         let shapes = frame(&mut state);

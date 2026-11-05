@@ -23,6 +23,22 @@ These controls work with every tool and every control scheme:
 - The fly speed ramps up in **Camera acceleration time** seconds (0: at once).
 - `Ctrl` never flies: while flying or in mouselook, a left click selects the object at the crosshair (the center of the view), and `Ctrl+click` adds it to or removes it from the selection, like Hammer. The displacement brush keeps painting instead.
 - Shortcuts do not fire while the keyboard flies the camera.
+
+### Texturing while in mouselook
+
+In mouselook (`Z`) you can texture the face under the crosshair without leaving the camera mode, with any tool:
+
+| Input | Effect |
+|---|---|
+| `T` (`fly_apply_texture`) or right click | Apply the current material to the targeted face |
+| `F` (`fly_apply_texture_brush`) or `Shift+right click` | Apply the current material to every face of the targeted brush |
+| `V` (`fly_pick_texture`) or middle click | Pick the material of the targeted face as the current material |
+| `N` (`fly_align_texture`) | Align the texture of the targeted face to the view (the camera right and up directions) |
+
+- The targeted face (the first solid face along the view direction, up to 16384 units) is highlighted in yellow with its outline. A crosshair is drawn at the center of the view with the solid, side and material of the target, and a hint line at the bottom of the view lists the keys and the current material.
+- Every edit is one undo step. The keys are actions, so they can be changed in **Settings > Keyboard** (`[keybindings]`) like any other; they only work in mouselook.
+- The left click keeps selecting the object at the crosshair.
+- Through MCP: `ui_key` with `z` enters mouselook, then `t`, `f`, `v` or `n` act on the face at the center of the view (`set_camera` aims, `list_keybindings` gives the keys).
 - When the active tool uses the right click in the 3D view (the texture tool applies the current material), `Shift+right click` opens the context menu.
 
 ### Keyboard layout (camera keys)

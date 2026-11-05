@@ -16,6 +16,7 @@ All are in the **Edit** menu and in the right click menu of the views:
 | **Paste special...** | `Ctrl+Shift+V` | Opens the Paste special dialog (several copies, offset, rotation) |
 | **Delete** | `Delete` | Deletes the selected objects |
 | **Duplicate** | `Ctrl+D` | Copies the selection one grid step away on X and Y, without using the clipboard; the copies are selected |
+| **Array duplicate...** | `Ctrl+Shift+D` | Opens the Array dialog: copies of the selection along one or several axes with a gap between them |
 | **Copy keyvalues** | none | Copies the keyvalues of the selected entity |
 | **Paste keyvalues** | none | Pastes them onto the selected entities |
 
@@ -55,6 +56,31 @@ The clipboard is the system clipboard, as VMF text: top level `solid`, `entity` 
 - `Enter` pastes, `Escape` closes. The values stay for the session.
 - The whole paste is one undo step.
 
+## Array duplicate
+
+**Edit > Array duplicate...** (`Ctrl+Shift+D`) duplicates the selected brushes and entities along one or several axes at once, in one undo step:
+
+| Option | What it does | Default |
+|---|---|---|
+| **X, Y, Z** (checkboxes) | The axes to duplicate along. Check one for a row, two for a grid, three for a block | X |
+| **Copies** | Copies along each checked axis (1 to 1024; at most 4096 copies in all) | 3 |
+| **Gap** | Space between the bounding boxes of two neighbours on that axis (not the distance between centers). Negative values overlap the copies | 0 |
+| **Step** | Read only: the distance used between two copies on that axis, after the grid alignment | |
+
+- The step of each axis is the size of the selection on that axis plus the gap, rounded up to the active grid, and the copies are placed on the grid. This follows the **active grid**, including rotated and custom grids: X, Y and Z are then the axes of that grid. With **Snap to grid** off the gap is used exactly.
+- With several axes the copies fill the whole grid (2 copies on X and 1 on Y make 5 new copies).
+- It works on brushes, point entities, brush entities and groups. The new copies are selected. `Enter` applies, `Escape` closes.
+- Entity names are numbered automatically, see below. The MCP tool `array_duplicate` does the same with `axes`, `count` or `counts`, `gap` or `gaps`, and `snap`.
+
+## Names of duplicated entities
+
+When a copy, paste, duplicate, clone or array contains named entities whose names already exist, the copies get new names so they never clash:
+
+- A name ending with digits is incremented: a set made of `porte1` (a `func_door`) and `btn1` (a `func_button`) becomes `porte2` and `btn2`, the next copy `porte3` and `btn3`. The same number step is used for the whole set, and it is always the next number that is free in the whole map (the leading zeros are kept: `door01` gives `door02`).
+- A name without digits gets a number only when it is needed to avoid a duplicate (`lamp` gives `lamp2`).
+- Names that do not exist yet (cutting then pasting, pasting into another map) stay as they are.
+- Everything in the copied set that points to a renamed entity follows: the targets of outputs, `parentname` and the keys of type target (`target`, filters...) are rewritten to the new names. References to entities outside the set are left alone.
+
 ## Duplicate and clone
 
 **Duplicate** (`Ctrl+D`) copies the selection one grid step away on X and Y. With the [Selection tool](selection-tool.md) you can also clone by holding `Shift` while dragging (move, scale, rotate, skew, gizmo, stretch) or with `Shift+arrow keys`. All these copies stay in the visgroups of their originals when **Keep visgroups when cloning** is on (page **Selection**, default on). They do not touch the clipboard.
@@ -73,6 +99,7 @@ Select one entity and use **Edit > Copy keyvalues**, then select other entities 
 
 ## Tips
 
+- To lay out a row of identical pieces with an exact gap, use **Array duplicate** and check one axis.
 - To lay out a row of identical pieces, copy one, open Paste special, click `<` on the axis of the row and set the number of copies.
 - A spiral staircase: one step, **Rotation per copy** of 15 on Z and an **Offset per copy** of 8 on Z, with the pivot on the axis of the stairs.
 - **File > Export selection as VMF...** saves the selection to a file instead of the clipboard (see [VMF compatibility](../getting-started/vmf-compatibility.md)).
@@ -83,7 +110,7 @@ Select one entity and use **Edit > Copy keyvalues**, then select other entities 
 
 **Paste says the clipboard does not contain map objects.** The clipboard holds something else (text, an image). Copy objects first.
 
-**My pasted entities lost their links.** Use **Make entity names unique** or a **Name prefix**: the keys naming other pasted entities follow the new names.
+**My pasted entities lost their links.** Pasted entities are renamed automatically when their names exist, and the links inside the pasted set follow. Use a **Name prefix** in Paste special for your own naming.
 
 ## Related pages
 

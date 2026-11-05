@@ -100,6 +100,7 @@ Surtout sur **Paramètres > Vues** ; les clés `show_*` sont aussi dans le menu 
 | `background_zoom` | `1.0` | Son zoom par rapport à la taille qui couvre juste la fenêtre. |
 | `background_hide_3d` | `true` | Ne pas la dessiner sur les vues 3D. |
 | `native_frames` | `false` | Utilise les barres de titre et les cadres du système au lieu de ceux de Hammer Pro (bureau à distance, certains gestionnaires de fenêtres). Appliqué tout de suite. |
+| `start_fullscreen` | `true` | Démarre en plein écran sans bordure sur l'écran principal. `F11` active et désactive le plein écran à tout moment. Appliqué au prochain démarrage. |
 | `uv_window`, `portals_window` | absentes | Dernière position de l'éditeur d'UV et de la fenêtre des portails quand ce sont des fenêtres séparées (écrites par Hammer Pro). |
 
 ## `[game]` : jeu, contenu et définitions d'entités
@@ -406,6 +407,9 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `auto_bake` | `true` | Lance un précalcul quand l'aperçu précalculé est activé et que rien n'est encore calculé. |
 | `threads` | `0` | Threads du précalcul (0 : tous les cœurs sauf deux), jusqu'à 256. |
 | `max_luxels_millions` | `16` | Luxels calculés en pleine résolution, de 1 à 64 millions. |
+| `auto_scope` | `true` | Ne précalcule une grande carte qu'autour de la caméra 3D et suit la caméra. |
+| `auto_scope_luxels_millions` | `2` | Nombre de luxels au-dessus duquel une carte est grande, de 1 à 64 millions. |
+| `auto_scope_radius` | `3072` | Rayon en unités de la zone précalculée sur une grande carte, de 256 à 32768. |
 | `tiny_scale` | `4` | Échelle de lightmap à partir de laquelle (ou en dessous) une face est jugée minuscule, de 1 à 64. |
 | `budget_styles` | `1` | Styles de lumière comptés par le budget de lightmap, de 1 à 4. |
 | `show_budget` | `true` | Jauge du budget de lightmap dans la barre d'état. |
@@ -511,6 +515,8 @@ La fenêtre **Construire et enregistrer en contenu** et l'onglet Ressources de l
 | `nav_fill` | `true` | Remplit les zones en 3D. |
 | `show_particles` | `true` | Joue les effets des `info_particle_system`. |
 | `particles_selected_only` | `false` | Seulement les systèmes sélectionnés. |
+| `show_entity_fx` | `true` | Aperçu de `func_smokevolume`, `env_embers`, `func_dustcloud` et `func_dustmotes`. |
+| `color_correction_preview` | `false` | Applique aux vues 3D les tables des entités `color_correction` et `color_correction_volume` selon la distance de la caméra. Voir [Correction des couleurs](../features/color-correction.md). |
 | `unprop_detail` | `true` | **Convertir le prop en brushes...** range les brushes dans un `func_detail`. |
 | `unprop_keep_prop` | `false` | Garde le prop. |
 | `unprop_shape` | `"auto"` | `auto`, `collision` ou `render`. |

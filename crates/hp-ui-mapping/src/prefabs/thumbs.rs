@@ -206,7 +206,11 @@ impl Thumbs {
                 Some(t) if t.rgba.len() == t.size * t.size * 4 => {
                     let image = egui::ColorImage::from_rgba_unmultiplied([t.size, t.size], &t.rgba);
                     let name = format!("prefab_thumb:{}", path.display());
-                    let texture = ctx.load_texture(name, image, egui::TextureOptions::LINEAR);
+                    let texture = ctx.load_texture(
+                        name,
+                        image,
+                        egui::TextureOptions::LINEAR.with_mipmap_mode(Some(egui::TextureFilter::Linear)),
+                    );
                     self.clock += 1;
                     Entry::Ready { texture, stamp, last_used: self.clock }
                 }

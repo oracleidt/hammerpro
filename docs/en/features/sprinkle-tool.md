@@ -108,6 +108,7 @@ Only `.txt` files are read, without subfolders, up to 1 MB per file and 512 file
 
 ## Related pages
 
+- [Scatter by material](scatter-by-material.md)
 - [Prefabs](prefabs.md)
 - [Entity tool](entity-tool.md)
 - [Model browser](model-browser.md)

@@ -77,8 +77,29 @@ fn place_switch(ui: &mut Ui, state: &mut AppState, separate: bool) {
     });
 }
 
+static WINDOW_EPOCH: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
 pub(crate) fn window_id() -> egui::Id {
-    egui::Id::unique("hp_compile_window")
+    egui::Id::unique("hp_compile_window").with(WINDOW_EPOCH.load(std::sync::atomic::Ordering::Relaxed))
+}
+
+const WINDOW_SIZE: egui::Vec2 = egui::vec2(900.0, 680.0);
+const WINDOW_MIN: egui::Vec2 = egui::vec2(600.0, 440.0);
+
+fn window_size_for(screen: egui::Rect) -> egui::Vec2 {
+    let room = (screen.size() - egui::vec2(48.0, 64.0)).max(egui::vec2(320.0, 240.0));
+    WINDOW_SIZE.min(room)
+}
+
+fn window_min_for(screen: egui::Rect) -> egui::Vec2 {
+    let room = (screen.size() - egui::vec2(48.0, 64.0)).max(egui::vec2(320.0, 240.0));
+    WINDOW_MIN.min(room)
+}
+
+fn window_state_is_squashed(ctx: &egui::Context) -> bool {
+    let screen = ctx.content_rect();
+    let want = window_min_for(screen);
+    ctx.memory(|m| m.area_rect(window_id())).is_some_and(|r| r.width() < want.x - 1.0 || r.height() < want.y - 1.0)
 }
 
 pub(crate) fn same_file(a: &Path, b: &Path) -> bool {
@@ -501,14 +522,20 @@ impl CompileDialog {
     fn embedded_window(&mut self, ctx: &egui::Context, state: &mut AppState) -> bool {
         let typing = ctx.text_edit_focused();
         let mut open = true;
+        if window_state_is_squashed(ctx) {
+            WINDOW_EPOCH.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+        let screen = ctx.content_rect();
+        let size = window_size_for(screen);
         let response = hp_app::chrome::Window::new(icon_title("⚙", t!("compile.title")))
             .id(window_id())
-            .default_pos(crate::util::centered_pos(ctx, egui::vec2(900.0, 680.0)))
+            .default_pos(crate::util::centered_pos(ctx, size))
             .open(&mut open)
-            .default_size([900.0, 680.0])
-            .min_size([600.0, 440.0])
+            .default_size(size)
+            .min_size(window_min_for(screen))
             .resizable(true)
-            .collapsible(true)
+            .collapsible(false)
+            .constrain(true)
             .show(ctx, |ui| {
                 place_switch(ui, state, false);
                 self.window_ui(ui, state)
@@ -527,12 +554,16 @@ impl CompileDialog {
 
     fn separate_window(&mut self, ctx: &egui::Context, state: &mut AppState) -> bool {
         let native = state.settings.ui.native_frames;
+        if state.settings.compile.window.as_ref().is_some_and(|p| !native_window::is_usable_placement(p)) {
+            state.settings.compile.window = None;
+            state.settings_dirty = true;
+        }
         let builder = self.os_builder.get_or_insert_with(|| {
             native_window::builder(
                 ctx,
                 t!("compile.title"),
-                egui::vec2(900.0, 680.0),
-                egui::vec2(600.0, 440.0),
+                WINDOW_SIZE,
+                WINDOW_MIN,
                 state.settings.compile.window.as_ref(),
                 native,
             )
@@ -546,6 +577,7 @@ impl CompileDialog {
             let restore = state.settings.compile.window.clone();
             if let Some(now) = self.native.follow(&ctx, &title, restore.as_ref(), Some(native_window::COMPILE_WINDOW))
                 && restore.as_ref() != Some(&now)
+                && native_window::is_usable_placement(&now)
             {
                 state.settings.compile.window = Some(now);
                 state.settings_dirty = true;

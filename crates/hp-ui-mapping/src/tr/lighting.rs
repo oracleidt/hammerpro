@@ -147,6 +147,8 @@ pub const TR: TrTable = &[
         "Estimated size of the lightmaps in the BSP against the 2 GB a face can address in them, the only limit the game has (VBSP also removes hidden faces)",
         "Taille estimée des lightmaps dans le BSP face aux 2 Go qu'une face peut y adresser, la seule limite du jeu (VBSP retire aussi les faces cachées)",
     ),
+    ("lighting.scope", "Scope: {0} units around the camera{1}", "Zone : {0} unités autour de la caméra{1}"),
+    ("lighting.scope_follows", " (big map, follows the camera)", " (grande carte, suit la caméra)"),
     (
         "lighting.stats",
         "{0} of {1} faces baked, {2} of video memory, {3} shadow triangles",

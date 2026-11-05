@@ -25,7 +25,10 @@ domain! { "assets";
         views does with it: playing, loaded (not playing: too far, too many or not selected with \"selected \
         only\"), loading, not_found (no particle file of the content defines it), the particle file and the \
         operators the preview does not simulate. Also the preview settings (lab.show_particles, \
-        lab.particles_selected_only: change them with set_setting or the toggle_particles action) and its caps.",
+        lab.particles_selected_only, lab.show_entity_fx for the volume preview of func_smokevolume, env_embers, \
+        func_dustcloud and func_dustmotes: change them with set_setting or the toggle_particles, \
+        toggle_particles_selected and toggle_entity_fx actions), its caps and whether the particle preview window \
+        (action particle_preview) is open.",
         { "query": string("Only effects or target names containing this text."), "limit": limit(), "offset": offset() }, [];
     list_asset_sources: Read, "Content sources",
         "The mounted content sources (game folders, VPKs, addons, workshop GMAs, custom folders) and the custom \
@@ -484,6 +487,10 @@ fn list_particle_systems(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
         "preview": {
             "show_particles": settings.show_particles,
             "selected_only": settings.particles_selected_only,
+            "volume_effects": settings.show_entity_fx,
+            "volume_effects_max_entities": hp_ui_lab::entity_fx::MAX_ENTITIES,
+            "volume_effects_max_particles": hp_ui_lab::entity_fx::MAX_PARTICLES,
+            "preview_window_open": state.runtime.lab.particle_preview.open,
             "effects_playing": report.playing.len(),
             "particles": report.particles,
             "max_effects": hp_ui_lab::particles::MAX_EFFECTS,
@@ -645,7 +652,7 @@ fn read_material(state: &mut AppState, a: &Args<'_>) -> R<Outcome> {
     }))
 }
 
-fn custom_dirs(state: &AppState) -> Vec<PathBuf> {
+pub(super) fn custom_dirs(state: &AppState) -> Vec<PathBuf> {
     state.settings.game.custom_texture_dirs.iter().filter(|d| d.enabled).map(|d| d.path.clone()).collect()
 }
 
@@ -666,7 +673,7 @@ fn resolved(p: &Path) -> PathBuf {
     }
 }
 
-fn inside(path: &Path, dirs: &[PathBuf]) -> bool {
+pub(super) fn inside(path: &Path, dirs: &[PathBuf]) -> bool {
     if path.components().any(|c| matches!(c, Component::ParentDir)) || !path.is_absolute() {
         return false;
     }

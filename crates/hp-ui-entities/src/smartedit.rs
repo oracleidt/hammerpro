@@ -207,6 +207,41 @@ impl SmartEdit {
         show_browser_for(cx, kind);
     }
 
+    fn preview_particle_button(&mut self, ui: &mut Ui, cx: &mut Cx, view: &EntityView, row: &PropRow) {
+        let open = cx.runtime.lab.particle_preview.open;
+        let resp = side_button(ui, "▶", open).on_hover_text(t!("entities.preview_particles"));
+        if !resp.clicked() {
+            return;
+        }
+        if open {
+            cx.runtime.lab.particle_preview.open = false;
+            let waiting = cx.runtime.entities.asset_pick.as_ref().is_some_and(|p| {
+                p.result.is_none() && p.kind == AssetKind::Particle && p.key.eq_ignore_ascii_case(&row.key)
+            });
+            if waiting {
+                cx.runtime.entities.asset_pick = None;
+            }
+            return;
+        }
+        let class = view.single_class().map_or_else(|| tf!("entities.n_classes", view.classes.len()), str::to_owned);
+        let label = format!("{class} ({})", row.key);
+        let current = row.agg.text();
+        start_asset_pick(
+            &mut cx.runtime.entities.asset_pick,
+            AssetKind::Particle,
+            &view.target,
+            &row.key,
+            label,
+            current,
+        );
+        let preview = &mut cx.runtime.lab.particle_preview;
+        preview.open = true;
+        let current = current.trim();
+        if !current.is_empty() {
+            preview.selected = Some(current.to_owned());
+        }
+    }
+
     pub fn properties(&mut self, ui: &mut Ui, cx: &mut Cx, view: &EntityView, names: &MapNames, ops: &mut Vec<Op>) {
         fit_scroll_content(ui);
         ui.horizontal(|ui| {
@@ -586,7 +621,7 @@ impl SmartEdit {
                 self.browse_button(ui, cx, view, row, AssetKind::Sound, t!("entities.browse_sound_browser"));
             }
             PropertyType::ParticleSystem => {
-                let text_w = (w - 2.0 * (BUTTON_W + spacing)).max(40.0);
+                let text_w = (w - 3.0 * (BUTTON_W + spacing)).max(40.0);
                 self.buffers.field(ui, id, display, FieldOpts { hint, width: text_w, ..FieldOpts::default() }, set_key);
                 let btn = side_button(ui, icon("▾"), false).on_hover_text(t!("entities.pick_particle"));
                 if picker_is_open(&btn) {
@@ -606,6 +641,7 @@ impl SmartEdit {
                     }
                 }
                 self.browse_button(ui, cx, view, row, AssetKind::Particle, t!("entities.browse_particles"));
+                self.preview_particle_button(ui, cx, view, row);
             }
             PropertyType::Scene | PropertyType::Script => {
                 let text_w = (w - BUTTON_W - spacing).max(40.0);

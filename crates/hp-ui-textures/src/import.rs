@@ -334,6 +334,15 @@ impl ImportDialog {
             if go.clicked() || enter {
                 self.start(state);
             }
+            let first = self.files.first().cloned();
+            if ui
+                .add_enabled(first.is_some(), egui::Button::new(t!("tex.import.shader")))
+                .on_hover_text(t!("tex.import.shader_tip"))
+                .clicked()
+                && let Some(file) = first
+            {
+                state.runtime.shader.open(hp_app::runtime::ShaderRequest { path: Some(file), ..Default::default() });
+            }
             if ui.button(t!("common.cancel")).clicked() {
                 self.files.clear();
             }

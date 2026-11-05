@@ -327,9 +327,12 @@ pub(super) fn describe(host: &mut dyn UiHost, ctx: &egui::Context, tree: Option<
         ("map_info", ui.show_map_info),
         ("transform", ui.show_transform),
         ("paste_special", ui.show_paste_special),
+        ("array_duplicate", ui.show_array_duplicate),
         ("go_to_brush", ui.show_goto),
+        ("scatter_by_material", ui.show_scatter),
         ("material_editor", ui.show_material_editor),
         ("first_run", ui.show_first_run),
+        ("shader_editor", state.runtime.shader.show),
     ];
     let dialogs: Vec<&str> = flags.iter().filter(|(_, on)| *on).map(|(name, _)| *name).collect();
     let views: Vec<Value> = rects

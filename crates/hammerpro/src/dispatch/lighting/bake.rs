@@ -110,6 +110,7 @@ impl Worker {
         let cache: Cache = Arc::default();
         let kept = cache.clone();
         std::thread::Builder::new().name("hp-light-bake".to_owned()).spawn(move || {
+            lower_thread_priority();
             for job in jobs {
                 if w.load(Ordering::Acquire) != job.id {
                     continue;
@@ -206,6 +207,17 @@ fn coarsen(map: &mut hp_vmf::Map, factor: f64) {
     }
 }
 
+fn strip_hidden(map: &mut hp_vmf::Map) {
+    map.entities.retain(|e| !e.hidden);
+    for e in std::iter::once(&mut map.world).chain(map.entities.iter_mut()) {
+        e.solids.retain(|s| !s.hidden);
+        e.solids.shrink_to_fit();
+    }
+    map.entities.shrink_to_fit();
+    map.visgroups.clear();
+    map.extra_blocks.clear();
+}
+
 fn lower_thread_priority() {
     #[cfg(windows)]
     unsafe {
@@ -214,6 +226,7 @@ fn lower_thread_priority() {
         };
         SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
     }
+    super::memory::lower_thread_memory_priority();
 }
 
 fn note_memory(stage: &str) {
@@ -265,7 +278,10 @@ fn run(job: Job, ctx: &Ctx<'_>, cache: &std::sync::Mutex<Option<Compiled>>) -> O
     let (faces, luxels) = bsp::lit_faces(&bsp);
     let geometry = {
         let bsp = bsp.clone();
-        let task = move || if indirect_only { bsp::Geometry::default() } else { bsp::geometry(&bsp, &sides, &solids) };
+        let task = move || {
+            lower_thread_priority();
+            if indirect_only { bsp::Geometry::default() } else { bsp::geometry(&bsp, &sides, &solids) }
+        };
         std::thread::Builder::new().name("hp-light-geometry".to_owned()).spawn(task)
     };
     let ctx = Ctx { faces, game: fs.game_dir(), ..*ctx };
@@ -317,6 +333,7 @@ fn compile(
     coarsen(&mut map, factor);
     let sides = SideTable::from_map(&map);
     let solid_count = map.world.solids.len() + map.entities.iter().map(|e| e.solids.len()).sum::<usize>();
+    strip_hidden(&mut map);
     let materials = crate::bspc_cli::GameMaterials { fs: fs.clone(), opts: Default::default() };
     let models = crate::bspc_cli::GameModels { fs, allow_dynamic: false };
     let builder = || {
@@ -356,6 +373,7 @@ fn compile(
         vis: hp_bspc::VisLevel::Fast,
         relaxed_limits: true,
         lean_planes: true,
+        preview: true,
         ..Default::default()
     };
     let mut compiled = pool.install(|| hp_bspc::compile(&map, &materials, &models, &opts, &mut log));
@@ -491,7 +509,7 @@ fn light(
         }
     };
     let lit = child::light(
-        bsp.bytes(),
+        bsp.bytes().to_vec(),
         hdr,
         quality,
         bounces,
@@ -1091,6 +1109,25 @@ mod tests {
         let mut atlas = Atlas::new(atlas_size(&sizes, 2048), 64);
         assert!(atlas.alloc_many(&sizes).iter().all(Option::is_some));
         assert!(atlas.layers() <= 2, "{} layers of {}", atlas.layers(), atlas.size());
+    }
+
+    #[test]
+    fn hidden_objects_are_left_out_of_the_compiled_copy() {
+        let text = r#"world { "id" "1" "classname" "worldspawn"
+  solid { "id" "2" side { "id" "1" "plane" "(0 64 64) (64 64 64) (64 0 64)" "material" "A" } }
+  solid { "id" "3" side { "id" "2" "plane" "(0 0 0) (64 0 0) (64 64 0)" "material" "A" } }
+}
+entity { "id" "5" "classname" "light" "origin" "0 0 0" }
+entity { "id" "6" "classname" "light" "origin" "9 9 9" }"#;
+        let mut map = hp_vmf::parse(text).expect("parse");
+        map.world.solids[1].hidden = true;
+        map.entities[1].hidden = true;
+        map.visgroups.push(Default::default());
+        strip_hidden(&mut map);
+        let ids: Vec<u32> = map.world.solids.iter().map(|s| s.id).collect();
+        assert_eq!(ids, [2]);
+        assert_eq!(map.entities.iter().map(|e| e.id).collect::<Vec<_>>(), [5]);
+        assert!(map.visgroups.is_empty());
     }
 
     #[test]

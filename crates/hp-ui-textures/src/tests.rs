@@ -840,10 +840,38 @@ fn custom_folder_without_materials_shows_zero() {
     state.assets.remount(&state.settings);
     let mut b = TextureBrowser::new();
     let ctx = egui::Context::default();
-    let mut texts = Vec::new();
     for _ in 0..3 {
-        texts = painted_texts(&ctx, &mut state, |ui, s| b.ui(ui, s));
+        painted_texts(&ctx, &mut state, |ui, s| b.ui(ui, s));
     }
+    let title = hp_app::tf!("tex.folders.title", 1);
+    let mut header = None;
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(480.0, 900.0))),
+        ..Default::default()
+    };
+    let out = ctx.run_ui(input, |ui| {
+        egui::CentralPanel::default().show(ui, |ui| b.ui(ui, &mut state));
+    });
+    for clipped in &out.shapes {
+        if let egui::Shape::Text(t) = &clipped.shape
+            && t.galley.text() == title
+        {
+            header = Some(t.pos + egui::vec2(4.0, 4.0));
+        }
+    }
+    let pos = header.expect("the custom folders header is painted");
+    for events in [click(pos), Vec::new(), Vec::new()] {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(480.0, 900.0))),
+            events,
+            ..Default::default()
+        };
+        let mut out = ctx.run_ui(input, |ui| {
+            egui::CentralPanel::default().show(ui, |ui| b.ui(ui, &mut state));
+        });
+        out.textures_delta.clear();
+    }
+    let texts = painted_texts(&ctx, &mut state, |ui, s| b.ui(ui, s));
     let zero = hp_app::tf!("tex.folders.count", 0);
     let not_loaded = hp_app::t!("tex.folders.not_mounted");
     assert!(texts.iter().any(|t| t == &zero), "{texts:?}");

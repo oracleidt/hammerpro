@@ -1,6 +1,6 @@
 use crate::actions::{Action, Check};
 use crate::i18n::TrTable;
-use crate::settings::{RenderModeSetting, SelectModeSetting};
+use crate::settings::{RenderModeSetting, SelectElement, SelectModeSetting};
 use crate::state::AppState;
 
 action_list! { shell_actions {
@@ -21,12 +21,17 @@ action_list! { shell_actions {
     PasteSpecial => "paste_special", Edit, EditClipboard, sc(CTRL_SHIFT, Key::V), Ready;
     Delete => "delete", Edit, EditClipboard, sc(NONE, Key::Delete), Ready;
     Duplicate => "duplicate", Edit, EditClipboard, sc(CTRL, Key::D), Ready;
+    ArrayDuplicate => "array_duplicate", Edit, EditClipboard, sc(CTRL_SHIFT, Key::D), Ready;
     SelectAll => "select_all", Edit, EditSelect, sc(CTRL, Key::A), Ready;
     SelectNone => "select_none", Edit, EditSelect, sc(CTRL_SHIFT, Key::A), Ready;
     InvertSelection => "invert_selection", Edit, EditSelect, sc(CTRL, Key::I), Ready;
     SelectModeGroups => "select_mode_groups", Edit, EditSelectMode, None, Ready;
     SelectModeObjects => "select_mode_objects", Edit, EditSelectMode, None, Ready;
     SelectModeSolids => "select_mode_solids", Edit, EditSelectMode, None, Ready;
+    SelectElementObject => "select_element_object", Edit, EditSelectElement, sc(SHIFT, Key::Num4), Ready;
+    SelectElementVertex => "select_element_vertex", Edit, EditSelectElement, sc(SHIFT, Key::Num1), Ready;
+    SelectElementEdge => "select_element_edge", Edit, EditSelectElement, sc(SHIFT, Key::Num2), Ready;
+    SelectElementFace => "select_element_face", Edit, EditSelectElement, sc(SHIFT, Key::Num3), Ready;
     FindEntities => "find_entities", Edit, EditFind, sc(CTRL_SHIFT, Key::F), Ready;
     ReplaceTextures => "replace_textures", Tools, ToolsBrush, sc(CTRL_SHIFT, Key::R), Ready;
     Properties => "properties", Edit, EditProperties, sc(ALT, Key::Enter), Ready;
@@ -69,6 +74,7 @@ action_list! { shell_actions {
     Center2dOnSelection => "center_2d", View, ViewNav, sc(CTRL, Key::E), Ready;
     Center3dOnSelection => "center_3d", View, ViewNav, sc(CTRL_SHIFT, Key::E), Ready;
     MaximizeView => "maximize_view", View, ViewNav, sc(SHIFT, Key::Z), Ready;
+    ToggleFullscreen => "toggle_fullscreen", View, ViewNav, sc(NONE, Key::F11), Ready;
     RenderTextured => "render_textured", View, ViewRender, sc(ALT, Key::Num1), Ready;
     RenderFlat => "render_flat", View, ViewRender, sc(ALT, Key::Num2), Ready;
     RenderWireframe => "render_wireframe", View, ViewRender, sc(ALT, Key::Num3), Ready;
@@ -119,6 +125,7 @@ pub(super) fn enabled(state: &AppState, action: Action) -> Option<bool> {
         | Action::Copy
         | Action::Delete
         | Action::Duplicate
+        | Action::ArrayDuplicate
         | Action::ExportSelection
         | Action::Group
         | Action::TieToEntity
@@ -158,6 +165,7 @@ pub(super) fn check(state: &AppState, action: Action) -> Option<Check> {
         Action::ToggleHelpers => Check::Toggle(s.view.show_helpers),
         Action::ToggleToolTextures => Check::Toggle(s.view.show_tool_textures),
         Action::MaximizeView => Check::Toggle(state.ui.maximized_view.is_some()),
+        Action::ToggleFullscreen => Check::Toggle(state.ui.fullscreen),
         Action::RenderTextured => Check::Radio(s.view.render_mode == RenderModeSetting::Textured),
         Action::RenderFlat => Check::Radio(s.view.render_mode == RenderModeSetting::Flat),
         Action::RenderWireframe => Check::Radio(s.view.render_mode == RenderModeSetting::Wireframe),
@@ -166,6 +174,10 @@ pub(super) fn check(state: &AppState, action: Action) -> Option<Check> {
         Action::SelectModeGroups => Check::Radio(s.edit.select_mode == SelectModeSetting::Groups),
         Action::SelectModeObjects => Check::Radio(s.edit.select_mode == SelectModeSetting::Objects),
         Action::SelectModeSolids => Check::Radio(s.edit.select_mode == SelectModeSetting::Solids),
+        Action::SelectElementObject => Check::Radio(s.selection.element == SelectElement::Object),
+        Action::SelectElementVertex => Check::Radio(s.selection.element == SelectElement::Vertex),
+        Action::SelectElementEdge => Check::Radio(s.selection.element == SelectElement::Edge),
+        Action::SelectElementFace => Check::Radio(s.selection.element == SelectElement::Face),
         Action::ShowConsole => Check::Toggle(s.ui.show_console),
         Action::ShowTextureBrowser => Check::Toggle(s.ui.show_texture_browser),
         Action::ShowModelBrowser => Check::Toggle(s.ui.show_model_browser),

@@ -345,6 +345,7 @@ pub(crate) fn make_info(
         surface_prop: mat.surface_prop().map(str::to_owned),
         keywords: mat.keywords().map(str::to_owned).collect(),
         base_texture: mat.base_texture(),
+        base_texture2: if mat.is_blend() { mat.base_texture2() } else { None },
         source,
         missing: false,
         decal_scale: decal_scale_of(mat),

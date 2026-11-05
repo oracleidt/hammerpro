@@ -238,6 +238,8 @@ fn gray_visuals(theme: ThemeChoice) -> Visuals {
     v.ime_composition.active_underline_stroke = Stroke::new(2.0, p.strong);
     v.ime_composition.inactive_underline_stroke = Stroke::new(1.0, p.text_weak);
     v.striped = false;
+    v.text_options.font_hinting = true;
+    v.text_options.subpixel_binning = false;
     v.slider_trailing_fill = true;
 
     let r = CornerRadius::same(RADIUS);

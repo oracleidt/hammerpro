@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use glam::DVec3;
 use hp_app::AppState;
 use hp_app::runtime::instances::{InstanceCache, key_fixup};
+use hp_app::scatter::{Area, ScatterItem, ScatterSpec};
 use hp_editor::instances::{CollapseOptions, ExpandOptions, FixupStyle, InstanceSpec};
 use hp_editor::prefab::{InsertOptions, Prefab, PrefabPlacement};
 use hp_editor::{ObjRef, PickOptions, SelectOp};
@@ -79,8 +80,20 @@ domain! { "instances and prefabs";
             "overwrite": boolean("Replace an existing prefab (default false)."),
         }, ["name"];
     sprinkle: Edit, "Sprinkle",
-        "Scatter point entities (props, lights...) on the surfaces below an area, like the Sprinkle tool: a list of \
-        weighted items, a count, a minimum spacing, random yaw, optional alignment to the surface.",
+        "Scatter point entities (props, lights...) on the surfaces below an area, like the Sprinkle tool, with \
+        material based placement. Give a list of weighted assets (a model path with a class, default \
+        prop_static, or any class with keyvalues), a count, a minimum spacing and the area: a circle (center, \
+        radius), a box (min, max), or the targeted brushes and displacements (solid_ids, the area is their \
+        bounds and only their surfaces receive assets). An asset can be tied to a texture: texture is a name \
+        matched against the material name, its $basetexture (layer 1) and its $basetexture2 (layer 2) of a blend \
+        material (WorldVertexTransition, LightmappedGeneric with a blend...), with * and ? allowed, and \
+        min_blend (default 0.5) is how much of that texture must show at the point: for a displacement the \
+        interpolated vertex alpha gives layer 1 at 1 - alpha and layer 2 at alpha, a face of another material \
+        shows its texture fully. So grass can grow only where grass1 dominates. Random yaw, scale range \
+        (written to modelscale, for games that read it), offset along the surface normal, alignment to the \
+        surface, a steepest slope, a seed and, only if snap_to_grid is true, positions on the active grid \
+        (the grid of the view, with its rotation and custom steps). With preview true nothing is placed: the \
+        answer gives the count the same call would place. One undo step.",
         {
             "items": {
                 "type": "array",
@@ -89,25 +102,35 @@ domain! { "instances and prefabs";
                 "items": {
                     "type": "object",
                     "properties": {
-                        "classname": { "type": "string" },
+                        "classname": { "type": "string", "description": "Entity class (default prop_static)." },
+                        "model": { "type": "string", "description": "Model path, sets the model key." },
                         "keyvalues": { "type": "object", "additionalProperties": { "type": "string" } },
                         "weight": { "type": "number", "minimum": 0.001, "maximum": 1000 },
+                        "texture": { "type": "string", "description": "Only where this texture shows (name, with * and ?)." },
+                        "min_blend": { "type": "number", "minimum": 0, "maximum": 1, "description": "Least share of the texture at the point (default 0.5)." },
                     },
-                    "required": ["classname"],
                     "additionalProperties": false,
                 },
-                "description": "Items: classname, keyvalues (model...), weight (default 1).",
+                "description": "Assets: classname or model, keyvalues, weight (default 1), texture and min_blend.",
             },
             "center": vec3("Area center (circle, with radius)."),
             "radius": number("Area radius.", 1.0, 65536.0),
             "min": vec3("Area box minimum (instead of center and radius)."),
             "max": vec3("Area box maximum."),
+            "solid_ids": target_solid_ids(),
             "count": integer("Number of items.", 1, MAX_SPRINKLE as i64),
             "spacing": number("Least distance between two items (default 0).", 0.0, 4096.0),
             "seed": integer("Random seed.", 0, i64::from(u32::MAX)),
             "random_yaw": boolean("Random yaw (default true)."),
             "align": boolean("Turn items to the surface normal (default false)."),
             "max_slope": number("Steepest surface in degrees (default 90).", 0.0, 90.0),
+            "scale_min": number("Smallest random scale (default 1).", 0.01, 100.0),
+            "scale_max": number("Largest random scale (default: scale_min).", 0.01, 100.0),
+            "offset_min": number("Lowest offset along the surface normal (default 0), negative sinks the asset.", -4096.0, 4096.0),
+            "offset_max": number("Highest offset along the surface normal (default: offset_min).", -4096.0, 4096.0),
+            "snap_to_grid": boolean("Put positions on the active grid (default false: random positions)."),
+            "view": choice("View whose grid is used with snap_to_grid (default top).", &["top", "front", "side"]),
+            "preview": boolean("Only count what would be placed, change nothing (default false)."),
         }, ["items", "count"];
     trace_ray: Read, "Trace a ray",
         "The first solid (and face) or point entity hit by a ray: object, face, point, normal, distance.",
@@ -493,123 +516,104 @@ fn create_prefab(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     })))
 }
 
-struct Item {
-    classname: String,
-    keyvalues: Vec<(String, String)>,
-    weight: f64,
-}
-
-fn sprinkle_items(a: &Args<'_>) -> R<Vec<Item>> {
+fn sprinkle_items(a: &Args<'_>) -> R<Vec<ScatterItem>> {
     let list = a.get("items").and_then(Value::as_array).filter(|l| !l.is_empty() && l.len() <= 64);
     let list = list.ok_or("items must be 1 to 64 objects")?;
     list.iter()
         .map(|v| {
-            let ia = super::tools::args(v, &["classname", "keyvalues", "weight"]).map_err(|e| format!("items: {e}"))?;
-            let classname = ia.str("classname", MAX_NAME)?.trim().to_owned();
+            let allowed = ["classname", "model", "keyvalues", "weight", "texture", "min_blend"];
+            let ia = super::tools::args(v, &allowed).map_err(|e| format!("items: {e}"))?;
+            let classname = ia.opt_str("classname", MAX_NAME)?.map_or("prop_static", str::trim).to_owned();
             check_class(&classname)?;
-            let keyvalues = ia.keyvalues("keyvalues")?;
+            let mut keyvalues = ia.keyvalues("keyvalues")?;
+            if let Some(model) = ia.opt_str("model", MAX_NAME)? {
+                keyvalues.retain(|(k, _)| !k.eq_ignore_ascii_case("model"));
+                keyvalues.push(("model".to_owned(), model.trim().replace('\\', "/")));
+            }
             let weight = ia.opt_f64("weight", 0.001, 1000.0)?.unwrap_or(1.0);
-            Ok(Item { classname, keyvalues, weight })
+            let texture = ia.opt_str("texture", MAX_NAME)?.map(|t| t.trim().to_owned()).filter(|t| !t.is_empty());
+            let min_blend = ia.opt_f64("min_blend", 0.0, 1.0)?.unwrap_or(hp_app::scatter::DEFAULT_MIN_BLEND);
+            Ok(ScatterItem { classname, keyvalues, weight, texture, min_blend })
         })
         .collect()
+}
+
+fn sprinkle_area(state: &AppState, a: &Args<'_>, targets: Option<&[u32]>) -> R<Area> {
+    match (a.opt_vec3("center")?, a.opt_f64("radius", 1.0, 65536.0)?, a.opt_vec3("min")?, a.opt_vec3("max")?) {
+        (Some(c), Some(r), None, None) => Ok(Area::Circle { center: c, radius: r }),
+        (None, None, Some(p), Some(q)) => Ok(Area::Box(hp_geom::Aabb::new(p, q))),
+        (None, None, None, None) => {
+            let ids = targets.ok_or("give center and radius, min and max, or solid_ids")?;
+            let b = ids
+                .iter()
+                .filter_map(|id| state.doc.scene().solid(*id).map(|n| n.bounds))
+                .reduce(|x, y| x.union(&y))
+                .ok_or("none of the solid_ids is a solid of the map")?;
+            Ok(Area::Box(b))
+        }
+        _ => Err("give center and radius, or min and max, or only solid_ids".to_owned()),
+    }
 }
 
 fn sprinkle(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let items = sprinkle_items(a)?;
     let count = a.opt_u64("count", 1, MAX_SPRINKLE)?.ok_or("count is required")? as usize;
-    let (center, radius, area) =
-        match (a.opt_vec3("center")?, a.opt_f64("radius", 1.0, 65536.0)?, a.opt_vec3("min")?, a.opt_vec3("max")?) {
-            (Some(c), Some(r), None, None) => {
-                (c, r, hp_geom::Aabb::new(c - DVec3::new(r, r, 0.0), c + DVec3::new(r, r, 0.0)))
-            }
-            (None, None, Some(p), Some(q)) => {
-                let b = hp_geom::Aabb::new(p, q);
-                (b.center(), 0.0, b)
-            }
-            _ => return Err("give center and radius, or min and max".to_owned()),
+    let targets: Option<Vec<u32>> = match a.get("solid_ids") {
+        Some(_) => Some(
+            super::semantic::targets(state, a)?
+                .into_iter()
+                .filter_map(|o| match o {
+                    ObjRef::Solid(id) => Some(id),
+                    ObjRef::Entity(_) => None,
+                })
+                .collect(),
+        ),
+        None => None,
+    };
+    let area = sprinkle_area(state, a, targets.as_deref())?;
+    let mut spec = ScatterSpec::new(items, count, area);
+    spec.targets = targets;
+    spec.spacing = a.opt_f64("spacing", 0.0, 4096.0)?.unwrap_or(0.0);
+    spec.seed = a.opt_u64("seed", 0, u64::from(u32::MAX))?.unwrap_or_else(|| state.doc.revision());
+    spec.random_yaw = a.opt_bool("random_yaw")?.unwrap_or(true);
+    spec.align = a.opt_bool("align")?.unwrap_or(false);
+    spec.max_slope = a.opt_f64("max_slope", 0.0, 90.0)?.unwrap_or(90.0);
+    let scale_min = a.opt_f64("scale_min", 0.01, 100.0)?.unwrap_or(1.0);
+    spec.scale = (scale_min, a.opt_f64("scale_max", 0.01, 100.0)?.unwrap_or(scale_min));
+    let offset_min = a.opt_f64("offset_min", -4096.0, 4096.0)?.unwrap_or(0.0);
+    spec.offset = (offset_min, a.opt_f64("offset_max", -4096.0, 4096.0)?.unwrap_or(offset_min));
+    if a.opt_bool("snap_to_grid")?.unwrap_or(false) {
+        let kind = match a.opt_enum("view", &["top", "front", "side"])?.as_deref() {
+            Some("front") => hp_app::ViewKind::Front,
+            Some("side") => hp_app::ViewKind::Side,
+            _ => hp_app::ViewKind::Top,
         };
-    let spacing = a.opt_f64("spacing", 0.0, 4096.0)?.unwrap_or(0.0);
-    let seed = a.opt_u64("seed", 0, u64::from(u32::MAX))?.unwrap_or_else(|| state.doc.revision());
-    let random_yaw = a.opt_bool("random_yaw")?.unwrap_or(true);
-    let align = a.opt_bool("align")?.unwrap_or(false);
-    let max_slope = a.opt_f64("max_slope", 0.0, 90.0)?.unwrap_or(90.0);
-    let add = scatter(state, &items, count, (center, radius, area), (spacing, seed, random_yaw, align, max_slope))?;
+        spec.grid = Some(state.grid_frame(kind));
+    }
+    let plan = hp_app::scatter::plan_in_state(state, &spec).map_err(|e| e.to_string())?;
+    let preview = a.opt_bool("preview")?.unwrap_or(false);
+    let mut out = json!({
+        "asked": count,
+        "would_place": plan.placements.len(),
+        "per_item": plan.per_item,
+        "rejected": {
+            "no_surface": plan.missed,
+            "too_steep": plan.too_steep,
+            "too_close": plan.too_close,
+            "wrong_texture": plan.wrong_texture,
+        },
+        "preview": preview,
+    });
+    if preview {
+        return Ok(ToolResult::json(out));
+    }
+    let add = plan.items(&spec);
     let ids = edit(state, "sprinkle", |doc| doc.sprinkle(&add, &[]))?;
-    Ok(ToolResult::json(json!({ "placed": ids.len(), "ids": ids, "asked": count })))
-}
-
-fn scatter(
-    state: &AppState,
-    items: &[Item],
-    count: usize,
-    (center, radius, area): (DVec3, f64, hp_geom::Aabb),
-    (spacing, seed, random_yaw, align, max_slope): (f64, u64, bool, bool, f64),
-) -> R<Vec<hp_editor::prefab::SprinkleItem>> {
-    let min_dot = max_slope.to_radians().cos() - 1e-9;
-    let f = bounds_fn(state);
-    let top = state
-        .doc
-        .scene()
-        .objects_bounds(&state.doc.scene().solids().keys().map(|id| ObjRef::Solid(*id)).collect::<Vec<_>>(), &f)
-        .map_or(area.max.z, |b| b.max.z.max(area.max.z))
-        + 1.0;
-    let total_weight: f64 = items.iter().map(|i| i.weight).sum();
-    let mut rng = Rng(seed);
-    let mut placed: Vec<DVec3> = Vec::new();
-    let mut add = Vec::new();
-    let opts = PickOptions { include_entities: false, ..Default::default() };
-    let attempts = count * 30;
-    for _ in 0..attempts {
-        if add.len() >= count {
-            break;
-        }
-        let (x, y) = if radius > 0.0 {
-            let (r, t) = (radius * rng.next().sqrt(), rng.next() * std::f64::consts::TAU);
-            (center.x + r * t.cos(), center.y + r * t.sin())
-        } else {
-            (area.min.x + rng.next() * (area.max.x - area.min.x), area.min.y + rng.next() * (area.max.y - area.min.y))
-        };
-        let ray = hp_geom::Ray::new(DVec3::new(x, y, top), DVec3::NEG_Z);
-        let Some(hit) = state.doc.pick_ray(&ray, &opts, &f) else { continue };
-        if hit.point.z < area.min.z - 1e-6 && radius == 0.0 {
-            continue;
-        }
-        if hit.normal.z < min_dot {
-            continue;
-        }
-        if spacing > 0.0 && placed.iter().any(|p| p.distance(hit.point) < spacing) {
-            continue;
-        }
-        let mut pick = rng.next() * total_weight;
-        let item = items.iter().find(|i| {
-            pick -= i.weight;
-            pick < 0.0
-        });
-        let item = item.unwrap_or(&items[items.len() - 1]);
-        let yaw = if random_yaw { (rng.next() * 360.0).floor() } else { 0.0 };
-        let angles = if align {
-            let n = hit.normal;
-            let pitch = -n.x.atan2(n.z).to_degrees();
-            let roll = n.y.atan2(n.z).to_degrees();
-            DVec3::new(pitch, yaw, roll)
-        } else {
-            DVec3::new(0.0, yaw, 0.0)
-        };
-        let mut kv = item.keyvalues.clone();
-        if !kv.iter().any(|(k, _)| k.eq_ignore_ascii_case("angles")) {
-            kv.push(("angles".to_owned(), hp_vmf::fmt_vec3(angles)));
-        }
-        placed.push(hit.point);
-        add.push(hp_editor::prefab::SprinkleItem {
-            classname: item.classname.clone(),
-            origin: hit.point,
-            keyvalues: kv,
-        });
+    if let Value::Object(map) = &mut out {
+        map.insert("placed".to_owned(), json!(ids.len()));
+        map.insert("ids".to_owned(), json!(ids));
     }
-    if add.is_empty() {
-        return Err("no surface was found below the area (or none flat enough)".to_owned());
-    }
-    Ok(add)
+    Ok(ToolResult::json(out))
 }
 
 fn trace_ray(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
@@ -752,5 +756,50 @@ mod tests {
             json!({ "items": [{ "classname": "info_target" }], "center": [99999, 0, 0], "radius": 10, "count": 1 }),
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn sprinkle_by_texture_targets_and_preview() {
+        let mut s = hp_app::testing::test_state();
+        let entities = s.doc.stats().entities;
+        let items = json!([
+            { "model": "models/props/grass.mdl", "texture": "dev/*", "weight": 1 },
+            { "model": "models/props/rock.mdl", "texture": "concrete/*", "weight": 1 },
+        ]);
+        let r = ok(
+            &mut s,
+            "sprinkle",
+            json!({ "items": items, "solid_ids": [2], "count": 30, "seed": 5, "preview": true, "scale_min": 0.5, "scale_max": 1.5 }),
+        );
+        assert_eq!(r["preview"], true);
+        assert_eq!(s.doc.stats().entities, entities, "a preview places nothing");
+        let per = r["per_item"].as_array().unwrap();
+        assert!(per[0].as_u64().unwrap() > 0);
+        assert_eq!(per[1], 0, "the floor is not concrete");
+        assert!(r["rejected"]["wrong_texture"].as_u64().unwrap() == 0);
+
+        let r =
+            ok(&mut s, "sprinkle", json!({ "items": items, "solid_ids": [3], "count": 10, "seed": 5, "align": true }));
+        let ids = r["ids"].as_array().unwrap();
+        assert!(!ids.is_empty());
+        assert_eq!(r["per_item"][0], 0);
+        let e = s.doc.scene().entity(ids[0].as_u64().unwrap() as u32).unwrap();
+        assert_eq!(e.entity.classname, "prop_static");
+        assert_eq!(e.entity.get("model"), Some("models/props/rock.mdl"));
+        assert_eq!(s.doc.undo_label(), Some("MCP: sprinkle"));
+
+        err(&mut s, "sprinkle", json!({ "items": items, "count": 5 }));
+        err(&mut s, "sprinkle", json!({ "items": items, "solid_ids": [999], "count": 5 }));
+        err(
+            &mut s,
+            "sprinkle",
+            json!({ "items": [{ "model": "models/a.mdl", "texture": "zzz" }], "solid_ids": [2], "count": 5 }),
+        );
+        let snapped = ok(
+            &mut s,
+            "sprinkle",
+            json!({ "items": [{ "model": "models/a.mdl" }], "solid_ids": [2], "count": 12, "snap_to_grid": true, "view": "front" }),
+        );
+        assert!(snapped["placed"].as_u64().unwrap() > 0);
     }
 }

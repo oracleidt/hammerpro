@@ -57,6 +57,8 @@ impl Tuning {
 
 pub(crate) const LIGHT_ARG: &str = "--light-preview";
 
+const PREVIEW_BOUNCE_BUDGET: usize = 192 << 20;
+
 const MAGIC: &[u8; 4] = b"HPLP";
 const VERSION: u32 = 3;
 
@@ -97,6 +99,7 @@ pub(crate) fn options(
     }
     opts.props.lighting = prop_lighting;
     opts.probes = (!tuning.quick).then(hp_bspc::rad::ProbeOptions::default);
+    opts.bounce_budget = PREVIEW_BOUNCE_BUDGET;
     opts
 }
 
@@ -108,7 +111,7 @@ pub(crate) struct LitResult {
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn light(
-    bytes: &[u8],
+    bytes: Vec<u8>,
     hdr: bool,
     quality: RadQuality,
     bounces: u32,
@@ -120,13 +123,17 @@ pub(crate) fn light(
     log: &mut dyn FnMut(&str),
 ) -> Result<LitResult, String> {
     let mut opts = options(hdr, quality, bounces, threads, prop_shadows, prop_lighting, tuning);
-    let world = crate::bspc_cli::world_lights_rad(bytes);
+    let src = hp_bsp::Bsp::from_vec(bytes).map_err(|e| format!("not a BSP file: {e}"))?;
+    let world = src.entities().ok().and_then(|e| {
+        e.first().and_then(|w| w.get("_lightsrad").map(str::trim).filter(|v| !v.is_empty()).map(str::to_owned))
+    });
+    let bytes = src.into_vec();
     opts.texlights.files = crate::bspc_cli::light_files(game, None, None, world.as_deref(), None, log);
     let lit = if prop_shadows || prop_lighting {
         let models = crate::bspc_cli::LazyModels::of_game(game.map(Path::to_path_buf));
-        hp_bspc::rad::light_bsp_with(bytes, &opts, &models, log)?
+        hp_bspc::rad::light_bsp_owned(bytes, &opts, &models, log)?
     } else {
-        hp_bspc::rad::light_bsp(bytes, &opts, log)?
+        hp_bspc::rad::light_bsp_owned(bytes, &opts, &hp_bspc::props::NoModels, log)?
     };
     let bsp = hp_bsp::Bsp::from_vec(lit).map_err(|e| e.to_string())?;
     let flat = bsp::flat_lightmaps(&bsp, hdr)?;
@@ -176,9 +183,16 @@ pub(crate) fn read_result(path: &Path) -> Result<LitResult, String> {
         return Err("truncated lighting preview result".to_owned());
     }
     let mut read = |n: usize| -> Result<Vec<u32>, String> {
-        let mut bytes = vec![0u8; n * 4];
-        file.read_exact(&mut bytes).map_err(|e| e.to_string())?;
-        Ok(bytes.chunks_exact(4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]])).collect())
+        const CHUNK: usize = 1 << 16;
+        let mut out: Vec<u32> = Vec::with_capacity(n);
+        let mut bytes = vec![0u8; CHUNK.min(n.max(1)) * 4];
+        while out.len() < n {
+            let take = CHUNK.min(n - out.len());
+            let buf = &mut bytes[..take * 4];
+            file.read_exact(buf).map_err(|e| e.to_string())?;
+            out.extend(buf.chunks_exact(4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]])));
+        }
+        Ok(out)
     };
     let offsets = read(faces)?;
     let texels = read(texels)?;
@@ -199,6 +213,7 @@ pub(crate) fn run(args: &[String]) -> i32 {
     let prop_shadows = extra.get(1).is_none_or(|v| v != "0");
     let prop_lighting = extra.get(2).is_none_or(|v| v != "0");
     let tuning = extra.get(3).map_or_else(Tuning::default, |t| Tuning::parse(t));
+    super::memory::lower_process_memory_priority();
     let _ = std::thread::Builder::new().name("hp-light-watch".to_owned()).spawn(|| {
         let mut buf = [0u8; 64];
         let mut stdin = std::io::stdin();
@@ -223,7 +238,7 @@ pub(crate) fn run(args: &[String]) -> i32 {
         let _ = out.flush();
     };
     let lit = light(
-        &data,
+        data,
         hdr == "1",
         parse_quality(quality),
         bounces.parse().unwrap_or(100),
@@ -234,7 +249,6 @@ pub(crate) fn run(args: &[String]) -> i32 {
         tuning,
         &mut log,
     );
-    drop(data);
     let lit = match lit {
         Ok(f) => f,
         Err(e) => {
@@ -313,6 +327,10 @@ mod tests {
                 let o = options(true, RadQuality::Final, 4, Some(2), shadows, lighting, Tuning::default());
                 assert_eq!((o.props.shadows, o.props.lighting), (shadows, lighting));
                 assert!(o.hdr && !o.ldr);
+                assert!(
+                    o.bounce_budget < hp_bspc::rad::BOUNCE_BUDGET,
+                    "the preview bounces within a smaller memory budget"
+                );
                 assert_eq!((o.bounces, o.threads, o.quality), (4, Some(2), RadQuality::Final));
                 assert_eq!(o.min_sun_samples, 6, "the Sun Samples of Hammer++");
                 assert!(o.normal_sampling, "the preview samples the sky and the bounce like a Normal compile");

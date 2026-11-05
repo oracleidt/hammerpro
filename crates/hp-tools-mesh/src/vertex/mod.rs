@@ -994,7 +994,18 @@ impl Tool for VertexTool {
 
     fn activate(&mut self, state: &mut AppState) {
         *self.cache.get_mut() = VertexCache::default();
-        self.cache.get_mut().refresh(&state.doc);
+        let revision = state.doc.revision();
+        let picked = &state.runtime.selection;
+        let edges = picked.fresh_edges(revision);
+        let mut corners: Vec<(hp_editor::Id, DVec3)> = picked.fresh_vertices(revision).to_vec();
+        corners.extend(edges.iter().flat_map(|e| [(e.solid, e.a), (e.solid, e.b)]));
+        let mids: Vec<(hp_editor::Id, DVec3)> = edges.iter().map(|e| (e.solid, (e.a + e.b) * 0.5)).collect();
+        let cache = self.cache.get_mut();
+        if !corners.is_empty() {
+            cache.pending_select = Some(corners);
+            cache.pending_edges = Some(mids);
+        }
+        cache.refresh(&state.doc);
         self.drag = None;
         self.rubber = None;
         self.scale = None;

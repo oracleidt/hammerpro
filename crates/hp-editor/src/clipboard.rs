@@ -3,6 +3,7 @@ use hp_geom::Aabb;
 use hp_kv::Block;
 use hp_vmf::{EditorInfo, Group};
 
+use crate::copy_names::{apply_renames, increment_names};
 use crate::document::Document;
 use crate::ids::{IdMap, id_map};
 use crate::ops::Fragment;
@@ -122,9 +123,17 @@ fn fragment_bounds(frag: &Fragment) -> Option<Aabb> {
     (!b.is_empty() && b.min.is_finite() && b.max.is_finite()).then_some(b)
 }
 
-const COMMON_TARGET_KEYS: &[&str] = &["target", "parentname", "lasertarget", "filtername", "damagefilter"];
-
 impl Document {
+    pub(crate) fn auto_rename_copy(&self, frag: &mut Fragment, is_target_key: Option<TargetKeyFn<'_>>) {
+        let mut used: std::collections::HashSet<String> = self
+            .scene
+            .entities
+            .values()
+            .filter_map(|n| n.entity.get("targetname").map(|t| t.trim().to_ascii_lowercase()))
+            .collect();
+        increment_names(frag, &mut used, is_target_key);
+    }
+
     pub fn copy(&self, objs: &[ObjRef]) -> String {
         let frag = self.extract_fragment(objs);
         let mut out = String::new();
@@ -172,10 +181,20 @@ impl Document {
     }
 
     pub fn paste(&mut self, text: &str, offset: DVec3) -> EditResult<Vec<ObjRef>> {
+        self.paste_with(text, offset, None)
+    }
+
+    pub fn paste_with(
+        &mut self,
+        text: &str,
+        offset: DVec3,
+        is_target_key: Option<TargetKeyFn<'_>>,
+    ) -> EditResult<Vec<ObjRef>> {
         if !offset.is_finite() {
             return Err(EditError::Invalid("offset is not finite".to_owned()));
         }
-        let frag = Self::parse_clipboard(text)?;
+        let mut frag = Self::parse_clipboard(text)?;
+        self.auto_rename_copy(&mut frag, is_target_key);
         let layout = SideLayout::of(&frag);
         self.tx("Paste", |doc| {
             let objs = doc.instantiate(frag, false)?;
@@ -267,6 +286,7 @@ fn rename_entities(
     is_target_key: Option<TargetKeyFn<'_>>,
 ) {
     if opts.name_prefix.is_empty() && !opts.unique_names {
+        increment_names(frag, used, is_target_key);
         return;
     }
     let mut renames: Vec<(String, String)> = Vec::new();
@@ -302,38 +322,7 @@ fn rename_entities(
     if renames.is_empty() {
         return;
     }
-    let renamed = |name: &str| renames.iter().find(|(old, _)| old.eq_ignore_ascii_case(name.trim())).map(|(_, n)| n);
-    let names_entity = |class: &str, key: &str| {
-        if key.eq_ignore_ascii_case("targetname") || key.eq_ignore_ascii_case("classname") {
-            return false;
-        }
-        is_target_key
-            .and_then(|f| f(class, key))
-            .unwrap_or_else(|| COMMON_TARGET_KEYS.iter().any(|k| k.eq_ignore_ascii_case(key)))
-    };
-    for e in &mut frag.entities {
-        for c in &mut e.connections {
-            if let Some(new) = renamed(&c.target) {
-                c.target.clone_from(new);
-            }
-        }
-        let class = e.classname.clone();
-        for (key, value) in &mut e.props {
-            if !names_entity(&class, key) {
-                continue;
-            }
-            let (name, rest) = match value.split_once(',') {
-                Some((n, r)) if key.eq_ignore_ascii_case("parentname") => (n.to_owned(), Some(r.to_owned())),
-                _ => (value.clone(), None),
-            };
-            if let Some(new) = renamed(&name) {
-                *value = match rest {
-                    Some(r) => format!("{new},{r}"),
-                    None => new.clone(),
-                };
-            }
-        }
-    }
+    apply_renames(frag, &renames, is_target_key);
 }
 
 const SIDE_LIST_KEYS: [&str; 2] = ["sides", "sides2"];

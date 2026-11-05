@@ -18,12 +18,17 @@ const CORE: &[(&str, &str)] = &[
     ("paste_special", "Ctrl+Shift+V"),
     ("delete", "Delete"),
     ("duplicate", "Ctrl+D"),
+    ("array_duplicate", "Ctrl+Shift+D"),
     ("select_all", "Ctrl+A"),
     ("select_none", "Ctrl+Shift+A"),
     ("invert_selection", "Ctrl+I"),
     ("select_mode_groups", ""),
     ("select_mode_objects", ""),
     ("select_mode_solids", ""),
+    ("select_element_object", "Shift+4"),
+    ("select_element_vertex", "Shift+1"),
+    ("select_element_edge", "Shift+2"),
+    ("select_element_face", "Shift+3"),
     ("find_entities", "Ctrl+Shift+F"),
     ("replace_textures", "Ctrl+Shift+R"),
     ("properties", "Alt+Enter"),
@@ -64,6 +69,7 @@ const CORE: &[(&str, &str)] = &[
     ("center_2d", "Ctrl+E"),
     ("center_3d", "Ctrl+Shift+E"),
     ("maximize_view", "Shift+Z"),
+    ("toggle_fullscreen", "F11"),
     ("render_textured", "Alt+1"),
     ("render_flat", "Alt+2"),
     ("render_wireframe", "Alt+3"),
@@ -347,6 +353,7 @@ fn tools_follow_the_hammer_order_and_keys() {
             T::Displacement,
             T::Cordon,
             T::Road,
+            T::Pipe,
         ]
     );
     let hammer_keys = [

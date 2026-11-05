@@ -494,8 +494,8 @@ impl BevelTool {
         }
         let raw = anchor.radius + f64::from(anchor.pos.y - pos.y) * anchor.per_px;
         let snap = Snap::new(state, view, modifiers);
-        let r = if snap.is_on() { snap.len(raw, 0) } else { (raw * 100.0).round() / 100.0 };
-        let r = if r < MIN_BEVEL_RADIUS && snap.is_on() { snap.step() } else { r };
+        let r = if snap.is_on() { snap.tool_radius(raw) } else { (raw * 100.0).round() / 100.0 };
+        let r = if r < MIN_BEVEL_RADIUS && snap.is_on() { snap.tool_step() } else { r };
         self.options.radius = clean(r.clamp(MIN_BEVEL_RADIUS, op.limit));
     }
 
@@ -711,6 +711,14 @@ impl Tool for BevelTool {
     }
 
     fn activate(&mut self, state: &mut AppState) {
+        let seeded = std::mem::take(&mut state.runtime.brush.bevel_edges);
+        let seeded: Vec<EdgeRef> = seeded.into_iter().filter(|e| edge_exists(state, e)).collect();
+        if !seeded.is_empty() {
+            self.picked = seeded.clone();
+            self.picked_revision = state.doc.revision();
+            self.start(state, seeded, None);
+            return;
+        }
         if let Some((view, pos)) = state.runtime.brush.bevel_start.take()
             && let Some(edge) = edge_at(state, &view, pos, self.options.inverse)
         {

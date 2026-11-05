@@ -161,6 +161,7 @@ pub struct UiSettings {
     pub background_zoom: f32,
     pub background_hide_3d: bool,
     pub native_frames: bool,
+    pub start_fullscreen: bool,
     pub uv_window: Option<super::WindowPlacement>,
     pub portals_window: Option<super::WindowPlacement>,
 }
@@ -187,6 +188,7 @@ impl Default for UiSettings {
             background_zoom: 1.0,
             background_hide_3d: true,
             native_frames: false,
+            start_fullscreen: true,
             uv_window: None,
             portals_window: None,
         }

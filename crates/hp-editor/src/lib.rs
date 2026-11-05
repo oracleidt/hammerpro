@@ -1,8 +1,10 @@
 #![forbid(unsafe_code)]
 
+mod array;
 pub mod background;
 mod changes;
 mod clipboard;
+mod copy_names;
 mod curve_meta;
 mod document;
 mod extra;
@@ -43,6 +45,7 @@ pub mod unprop;
 #[cfg(test)]
 mod tests;
 
+pub use array::{ArrayAxis, ArrayFrame, ArrayPlan, ArraySpec, MAX_ARRAY_AXIS_COUNT, MAX_ARRAY_COPIES};
 pub use changes::Changes;
 pub use clipboard::PasteSpecial;
 pub use curve_meta::{CURVE_KEY, CurveRecord, editor_curve_tag};

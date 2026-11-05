@@ -202,6 +202,8 @@ impl HammerProApp {
         settings.sync_game();
         hp_app::i18n::set_lang(cli.lang.unwrap_or(settings.language));
         hp_app::theme::set_accent(settings.ui.accent_color);
+        hp_app::fonts::install(&cc.egui_ctx);
+        hp_app::hover::install(&cc.egui_ctx);
         hp_app::theme::apply(&cc.egui_ctx, settings.ui.theme, settings.ui.ui_scale);
         cc.egui_ctx.options_mut(|o| o.quit_shortcuts.clear());
         #[cfg(windows)]
@@ -565,6 +567,7 @@ impl HammerProApp {
     fn window(&mut self, ui: &mut egui::Ui) {
         let native = self.state.settings.ui.native_frames;
         hp_app::chrome::sync_decorations(ui.ctx(), native, self.native_frames_at_start);
+        self.state.ui.fullscreen = ui.ctx().input(|i| i.viewport().fullscreen.unwrap_or(false));
         let dirty = self.state.doc.is_dirty();
         let mut spec =
             hp_app::chrome::ChromeSpec::main(format!("{} - Hammer Pro", files::map_display_name(&self.state)), native);
@@ -593,13 +596,14 @@ impl HammerProApp {
             let i = tool_index(self.state.tool);
             ui.separator();
             ui.horizontal(|ui| {
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                 ui.set_min_height(OPTIONS_ROW_HEIGHT);
                 ui.label(egui::RichText::new(t!(self.state.tool.label_key())).strong());
                 ui.separator();
                 if self.tools[i].wants_side_panel() {
                     ui.label(egui::RichText::new(t!("app.options_in_dock")).weak());
                 } else {
-                    self.tools[i].options_ui(ui, &mut self.state);
+                    ui.vertical(|ui| self.tools[i].options_ui(ui, &mut self.state));
                 }
             });
         });

@@ -20,6 +20,10 @@ Une fenêtre agrandie a des coins carrés et pas d'ombre. Quand la carte graphiq
 
 **Paramètres > Général > Cadres de fenêtre natifs** utilise les barres de titre et les cadres du système au lieu de ceux de Hammer Pro, pour le bureau à distance ou les gestionnaires de fenêtres qui ont du mal avec eux. C'est appliqué tout de suite, dans les deux sens, à la fenêtre principale et aux fenêtres séparées. Clé `ui.native_frames`, désactivée par défaut.
 
+## Plein écran
+
+Hammer Pro démarre en plein écran sans bordure sur l'écran principal, en gardant sa propre barre de titre et ses boutons. `F11` (**Affichage > Plein écran**) active et désactive le plein écran à tout moment. **Paramètres > Général > Démarrer en plein écran** (clé `ui.start_fullscreen`, activée par défaut) désactive le démarrage en plein écran ; c'est appliqué au prochain démarrage.
+
 ## Fenêtres séparées
 
 Ces fenêtres peuvent quitter la fenêtre principale et devenir des fenêtres du système, à placer sur un autre écran et à garder ouvertes pendant que vous travaillez :

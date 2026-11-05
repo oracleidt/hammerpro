@@ -323,7 +323,7 @@ fn source_ui(ui: &mut egui::Ui, st: &mut State, prop: Option<u32>, size_known: b
             ui.label(egui::RichText::new(t!("mesh_disp.no_source")).weak());
         }
         if let Some(e) = &st.error {
-            ui.colored_label(egui::Color32::LIGHT_RED, e);
+            ui.colored_label(hp_app::theme::error(), e);
         }
         ui.horizontal_wrapped(|ui| {
             if ui.button(t!("mesh_disp.open_file")).on_hover_text(t!("mesh_disp.open_file_tip")).clicked() {
@@ -508,7 +508,7 @@ fn mesh_window(app: &mut HammerProApp, ctx: &egui::Context) {
         match &st.plan {
             Some(Ok(plan)) => summary_ui(ui, plan, &opts),
             Some(Err(e)) => {
-                ui.colored_label(egui::Color32::LIGHT_RED, error_text(e));
+                ui.colored_label(hp_app::theme::error(), error_text(e));
             }
             None => {
                 ui.label(egui::RichText::new(t!("mesh_disp.no_source")).weak());
@@ -579,7 +579,7 @@ fn summary_ui(ui: &mut egui::Ui, plan: &TilePlan, opts: &MeshDispOptions) {
     }
     let w = plan.warnings;
     let warn = |ui: &mut egui::Ui, text: String| {
-        ui.colored_label(egui::Color32::from_rgb(240, 190, 70), text);
+        ui.colored_label(hp_app::theme::warning(), text);
     };
     if plan.skipped > 0 {
         ui.label(egui::RichText::new(tf!("mesh_disp.skipped", plan.skipped)).weak());

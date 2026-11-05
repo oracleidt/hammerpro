@@ -559,6 +559,7 @@ pub const TR: TrTable = &[
         "Uniquement pour les fichiers sur le disque (pas dans les archives VPK ou GMA)",
     ),
     ("tex.menu.edit", "Edit material...", "Modifier le matériau..."),
+    ("tex.menu.shader", "Edit in the shader editor", "Modifier dans l'éditeur de shaders"),
     ("tex.menu.exclude", "Hide the folder {0}", "Masquer le dossier {0}"),
     (
         "tex.menu.exclude_tip",
@@ -661,6 +662,12 @@ pub const TR: TrTable = &[
         "Les matériaux seront nommés {0}/<nom de l'image> dans {1}",
     ),
     ("tex.import.start", "Import", "Importer"),
+    ("tex.import.shader", "Shader editor...", "Éditeur de shaders..."),
+    (
+        "tex.import.shader_tip",
+        "Edit the first image with the node based shader editor before importing it",
+        "Modifier la première image avec l'éditeur de shaders à nœuds avant de l'importer",
+    ),
     ("tex.import.progress", "Importing {0} of {1}...", "Importation {0} sur {1}..."),
     ("tex.import.done", "{0} image(s) imported, {1} failed", "{0} image(s) importée(s), {1} en échec"),
     ("tex.import.none", "No image could be imported ({0} failed)", "Aucune image n'a pu être importée ({0} en échec)"),

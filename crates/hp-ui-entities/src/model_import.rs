@@ -193,24 +193,41 @@ impl ModelImportDialog {
             _ => None,
         };
         if let Some(text) = busy_text {
-            hp_app::chrome::Window::new(t!("entities.mi_title")).collapsible(false).resizable(false).show(ctx, |ui| {
+            let reading = matches!(self.stage, Stage::Reading(..));
+            let mut open = true;
+            let mut window = hp_app::chrome::Window::new(t!("entities.mi_title"))
+                .id(egui::Id::unique("hp_model_import_busy"))
+                .collapsible(false)
+                .resizable(false);
+            if reading {
+                window = window.open(&mut open);
+            }
+            let resp = window.show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.spinner();
                     ui.label(text);
                 });
             });
+            let escape =
+                reading && crate::dialogs::escape_closes(ctx, resp.as_ref().map(|r| r.response.layer_id), false);
+            if reading && (!open || escape) {
+                self.stage = Stage::Idle;
+            }
             return;
         }
         let Stage::Ready(path, model) = std::mem::replace(&mut self.stage, Stage::Idle) else { return };
         let mut open = true;
         let mut start = false;
-        hp_app::chrome::Window::new(t!("entities.mi_title"))
+        let response = hp_app::chrome::Window::new(t!("entities.mi_title"))
             .id(egui::Id::unique("hp_model_import"))
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
             .default_width(460.0)
             .show(ctx, |ui| start = self.ui(ui, state, &path, &model));
+        if crate::dialogs::escape_closes(ctx, response.as_ref().map(|r| r.response.layer_id), false) {
+            open = false;
+        }
         if !open {
             return;
         }

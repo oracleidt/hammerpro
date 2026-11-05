@@ -105,6 +105,7 @@ pub(crate) const DOMAINS: &[&Domain] = &[
     &super::tools_edit::DOMAIN,
     &super::tools_weld::DOMAIN,
     &super::tools_loops::DOMAIN,
+    &super::tools_pipe::DOMAIN,
     &super::tools_road::DOMAIN,
     &super::tools_roadside::DOMAIN,
     &super::tools_groups::DOMAIN,
@@ -139,6 +140,8 @@ pub(crate) const DOMAINS: &[&Domain] = &[
     &super::tools_gpu::DOMAIN,
     &super::tools_storage::DOMAIN,
     &super::tools_sniffer::DOMAIN,
+    &super::tools_shader::DOMAIN,
+    &super::tools_media::DOMAIN,
     &super::tools_help::DOMAIN,
 ];
 
@@ -638,13 +641,17 @@ fn get_selection(state: &AppState) -> ToolResult {
         .take(MAX_LIST as usize)
         .map(|f| json!({ "solid": f.solid, "side": f.side }))
         .collect();
-    ToolResult::json(json!({
+    let mut out = json!({
         "objects": objs,
         "object_count": doc.selection().objects.len(),
         "faces": faces,
         "face_count": doc.selection().faces.len(),
         "bounds": bounds_json(doc.selection_bounds(&entity_bounds(state))),
-    }))
+    });
+    if let (Some(map), Value::Object(extra)) = (out.as_object_mut(), super::tools_groups::element_json(state)) {
+        map.extend(extra);
+    }
+    ToolResult::json(out)
 }
 
 fn search_assets(state: &AppState, v: &Value, models: bool) -> R<ToolResult> {

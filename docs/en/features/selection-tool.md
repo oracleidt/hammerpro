@@ -55,6 +55,19 @@ What a click on a solid selects depends on the selection mode, set in the main t
 
 **Ignore groups** (`Ctrl+W`, **Edit > Selection mode**) switches to Solids, and back to the mode you used before. The mode is saved in `settings.toml` (`[edit] select_mode`). See [Groups](groups.md).
 
+### Selecting faces, edges or vertices (Pick)
+
+The **Pick** buttons of the options bar (also **Edit > Selection element**) choose the type of element a click in a 3D view selects. The setting is saved in `settings.toml` (`[selection] element`).
+
+| Pick | Key | A click selects | Used by |
+|---|---|---|---|
+| **Object** | `4` | The whole object, as the selection mode says (default) | Everything else |
+| **Vertex** | `1` | The corner of a brush nearest to the cursor | The vertex tool opens with it selected |
+| **Edge** | `2` | The brush edge nearest to the cursor | `Ctrl+B` bevels the selected edges; the vertex tool opens with them selected |
+| **Face** | `3` | The face under the cursor (the face selection of the texture tool) | Inset `I` and extrude `E` |
+
+`Shift` or `Ctrl` adds to the selection or removes from it, a plain click replaces it, and a click on nothing clears it. Edges and vertices are picked within a few pixels of the cursor and only when they are not hidden behind another brush; picking an edge or a vertex also selects its brush, so the vertex tool can edit it. Selected edges are drawn in yellow, selected vertices as yellow points. Changing the map clears the selected edges and vertices. Shift plus the digit keys (1 vertex, 2 edge, 3 face, 4 object) are shortcuts of the actions `select_element_vertex`, `select_element_edge`, `select_element_face` and `select_element_object`; they can be rebound in **Settings > Keyboard**. In the 2D views a click always selects objects. The MCP tool `select_elements` selects edges or vertices by number, `select_faces` selects faces, and `get_selection` and `set_tool_options` (tool `select`, option `element`) read and change the setting.
+
 ### Edit menu commands
 
 | Command | Shortcut | What it does |
@@ -175,6 +188,7 @@ With a selection, a right click in a view adds at the top: **Move to floor**, **
 
 | Option | What it does | Default |
 |---|---|---|
+| **Pick:** Object / Vertex / Edge / Face | What a click in a 3D view selects (see above) | Object |
 | **Box:** Touching / Inside / Centers | What a box selection takes (see above) | Touching |
 | **Handles:** Scale / Rotate / Skew | What the 2D handles do | Scale |
 | **3D stretch** | Arrows on the faces of the selected brushes in the 3D view (saved in the settings) | On |

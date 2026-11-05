@@ -38,7 +38,8 @@ struct PendingInsert {
     at: InsertAt,
 }
 
-const HANDLED: &[Action] = &[Action::ShowPrefabs, Action::CreatePrefab, Action::InsertOriginalPrefab];
+const HANDLED: &[Action] =
+    &[Action::ShowPrefabs, Action::CreatePrefab, Action::InsertOriginalPrefab, Action::ScatterByMaterial];
 
 impl Package for Placement {
     fn handled(&self) -> &'static [Action] {
@@ -48,6 +49,7 @@ impl Package for Placement {
     fn handle(&self, app: &mut HammerProApp, ctx: &egui::Context, action: Action) -> bool {
         match action {
             Action::ShowPrefabs => show_prefabs(app),
+            Action::ScatterByMaterial => app.state.ui.show_scatter = true,
             Action::CreatePrefab => {
                 if app.require_selection() {
                     app.state.runtime.placement.create_open = true;

@@ -100,6 +100,7 @@ Mostly on **Settings > Viewports**; the `show_*` toggles are also in the **View*
 | `background_zoom` | `1.0` | Its zoom over the size that just covers the window. |
 | `background_hide_3d` | `true` | Do not draw it over the 3D views. |
 | `native_frames` | `false` | Use the title bars and frames of the system instead of Hammer Pro's (remote desktop, some window managers). Applied at once. |
+| `start_fullscreen` | `true` | Start in borderless full screen on the primary monitor. `F11` switches full screen on and off at any time. Applied at the next start. |
 | `uv_window`, `portals_window` | none | Last position of the UV editor and portals windows when they are separate windows (written by Hammer Pro). |
 
 ## `[game]`: game, content and entity definitions
@@ -406,6 +407,9 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `auto_bake` | `true` | Start a bake when the baked preview is turned on and nothing is baked. |
 | `threads` | `0` | Bake threads (0: every core but two), up to 256. |
 | `max_luxels_millions` | `16` | Luxels baked at full resolution, 1 to 64 million. |
+| `auto_scope` | `true` | Bakes a big map only around the 3D camera and follows the camera. |
+| `auto_scope_luxels_millions` | `2` | Luxel count above which a map counts as big, 1 to 64 million. |
+| `auto_scope_radius` | `3072` | Radius in units of the area baked on a big map, 256 to 32768. |
 | `tiny_scale` | `4` | Lightmap scale at or under which a face is tiny, 1 to 64. |
 | `budget_styles` | `1` | Light styles counted by the lightmap budget, 1 to 4. |
 | `show_budget` | `true` | Lightmap budget gauge in the status bar. |
@@ -511,6 +515,8 @@ The **Build and save as content** window and the Map assets tab. See [Build and 
 | `nav_fill` | `true` | Fill areas in 3D. |
 | `show_particles` | `true` | Play `info_particle_system` effects. |
 | `particles_selected_only` | `false` | Only the selected systems. |
+| `show_entity_fx` | `true` | Preview `func_smokevolume`, `env_embers`, `func_dustcloud` and `func_dustmotes`. |
+| `color_correction_preview` | `false` | Apply the lookup tables of the `color_correction` and `color_correction_volume` entities to the 3D views by camera distance. See [Color correction](../features/color-correction.md). |
 | `unprop_detail` | `true` | **Convert prop to brushes** puts the brushes in a `func_detail`. |
 | `unprop_keep_prop` | `false` | Keep the prop. |
 | `unprop_shape` | `"auto"` | `auto`, `collision` or `render`. |

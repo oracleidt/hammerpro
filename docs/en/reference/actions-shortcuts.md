@@ -2,7 +2,7 @@
 
 # Actions and keyboard shortcuts
 
-Every command of Hammer Pro 1.0.8 is an *action*: one entry shared by the menus, the toolbar, the keyboard shortcuts, the command palette (`Ctrl+P`), the `--script` files and the MCP server (`run_action`, `list_actions`). This page lists all 319 actions, menu by menu, in the order the menus show them.
+Every command of Hammer Pro 1.0.9 is an *action*: one entry shared by the menus, the toolbar, the keyboard shortcuts, the command palette (`Ctrl+P`), the `--script` files and the MCP server (`run_action`, `list_actions`). This page lists all 340 actions, menu by menu, in the order the menus show them.
 
 Columns:
 
@@ -64,6 +64,7 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Paste special... | `paste_special` | `Ctrl+Shift+V` |  |  |
 | Delete | `delete` | `Delete` |  |  |
 | Duplicate | `duplicate` | `Ctrl+D` |  |  |
+| Array duplicate... | `array_duplicate` | `Ctrl+Shift+D` |  |  |
 | Copy keyvalues | `copy_keyvalues` |  |  |  |
 | Paste keyvalues | `paste_keyvalues` |  |  |  |
 | Select all | `select_all` | `Ctrl+A` | `Ctrl+Shift+A` | `Ctrl+Shift+A` |
@@ -74,6 +75,10 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Selection mode > Groups | `select_mode_groups` |  |  |  |
 | Selection mode > Objects | `select_mode_objects` |  |  |  |
 | Selection mode > Solids | `select_mode_solids` |  |  |  |
+| Selection element > Whole objects | `select_element_object` | `Shift+4` |  |  |
+| Selection element > Vertices | `select_element_vertex` | `Shift+1` |  |  |
+| Selection element > Edges | `select_element_edge` | `Shift+2` |  |  |
+| Selection element > Faces | `select_element_face` | `Shift+3` |  |  |
 | Selection mode > Ignore groups | `toggle_ignore_groups` | `Ctrl+W` |  |  |
 | Edge selection > Select edge loop | `edge_select_loop` |  |  |  |
 | Edge selection > Select edge ring | `edge_select_ring` |  |  |  |
@@ -197,7 +202,9 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Display options > Show nav mesh | `toggle_nav_mesh` |  |  |  |
 | Display options > Show particles | `toggle_particles` |  |  |  |
 | Display options > Particles of the selection only | `toggle_particles_selected` |  |  |  |
+| Display options > Preview volume effects | `toggle_entity_fx` |  |  |  |
 | Display options > Player view | `toggle_player_view` | `F6` |  |  |
+| Display options > Preview color_correction entities | `toggle_color_correction_preview` |  |  |  |
 | Hide selected | `hide_selected` | `H` |  |  |
 | Hide unselected | `hide_unselected` | `Ctrl+Shift+H` |  |  |
 | Unhide all | `unhide_all` | `U` |  |  |
@@ -207,6 +214,7 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Center 2D views on selection | `center_2d` | `Ctrl+E` |  |  |
 | Center 3D view on selection | `center_3d` | `Ctrl+Shift+E` |  |  |
 | Maximize view | `maximize_view` | `Shift+Z` |  |  |
+| Full screen | `toggle_fullscreen` | `F11` |  |  |
 | Zoom 2D views in | `zoom_2d_in` | `+` |  |  |
 | Zoom 2D views out | `zoom_2d_out` | `-` |  |  |
 | Reset view splits | `reset_view_splits` |  | `Ctrl+A` | `Ctrl+A` |
@@ -223,6 +231,7 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Panels > Status bar | `show_status_bar` |  |  |  |
 | Panels > Sound browser | `show_sound_browser` |  |  | `Shift+F12` |
 | Panels > Particle browser | `show_particle_browser` |  |  | `Shift+F11` |
+| Panels > Particle preview... | `particle_preview` |  |  |  |
 | Panels > Lighting | `show_lighting` |  |  |  |
 | Panels > Prefabs | `show_prefabs` |  |  |  |
 
@@ -256,6 +265,7 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Union of brushes | `union_brushes` |  |  |  |
 | Inset face... | `inset_face` |  |  |  |
 | Interactive inset (I) | `inset_interactive` |  |  |  |
+| Interactive extrude (E) | `extrude_interactive` | `E` |  |  |
 | Nodraw on hidden faces... | `nodraw_hidden_faces` |  |  |  |
 | Tie each to its own entity | `tie_each_to_entity` | `Ctrl+Shift+T` |  |  |
 | Convert to func_detail | `convert_to_detail` |  |  |  |
@@ -280,15 +290,19 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Remove path points and relink | `path_remove_point` |  |  |  |
 | Create prefab... | `create_prefab` | `Ctrl+R` |  |  |
 | Insert prefab at original size | `insert_original_prefab` | `Alt+Shift+C` |  |  |
+| Scatter by material... | `scatter_by_material` |  |  |  |
 | Physics placement (drop and settle) | `physics_placement` |  |  |  |
 | Convert brushes to a static prop | `brushes_to_prop` |  |  |  |
 | Convert prop to brushes... | `prop_to_brushes` |  |  |  |
 | Generate nav mesh | `generate_nav_mesh` |  |  |  |
 | Static prop options (Propper)... | `propper_options` |  |  |  |
+| Shader editor... | `shader_editor` |  |  |  |
 | Send to Blender | `send_to_blender` |  |  |  |
 | Update from Blender | `pull_from_blender` |  |  |  |
 | Stop the Blender live link | `stop_blender_link` |  |  |  |
 | Install the Blender add-on | `install_blender_addon` |  |  |  |
+| Sound editor... | `sound_editor` |  |  |  |
+| Color correction editor... | `color_correction_editor` |  |  |  |
 | Instancing > Create instance from selection... | `create_instance` | `Alt+S` |  |  |
 | Instancing > Edit instance | `edit_instance` |  |  |  |
 | Instancing > Collapse selected instances | `collapse_instances` |  |  |  |
@@ -312,6 +326,7 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Polygon tool | `tool_polygon` | `Shift+N` |  |  |
 | Curve tool | `tool_curve` | `Shift+U` |  |  |
 | Road tool | `tool_road` |  |  |  |
+| Pipe tool | `tool_pipe` |  |  |  |
 | Cordon tool | `tool_cordon` |  |  |  |
 | Path tool | `tool_path` |  |  |  |
 | Sprinkle tool | `tool_sprinkle` |  |  |  |
@@ -377,6 +392,10 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 |---|---|---|---|---|
 | Gizmo in local space | `toggle_gizmo_local` | `Ctrl+J` |  |  |
 | Make hint brush | `make_hint_brush` |  |  |  |
+| Camera mode: apply the texture to the targeted face | `fly_apply_texture` | `T` |  |  |
+| Camera mode: apply the texture to the whole targeted brush | `fly_apply_texture_brush` | `F` |  |  |
+| Camera mode: pick the texture of the targeted face | `fly_pick_texture` | `V` |  |  |
+| Camera mode: align the targeted face texture to the view | `fly_align_texture` | `N` |  |  |
 
 ## Keys inside the clipping tool
 

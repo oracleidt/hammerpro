@@ -108,6 +108,7 @@ Seuls les fichiers `.txt` sont lus, sans les sous-dossiers, jusqu'à 1 Mo par fi
 
 ## Pages liées
 
+- [Semis par matériau](scatter-by-material.md)
 - [Prefabs](prefabs.md)
 - [Outil entité](entity-tool.md)
 - [Navigateur de modèles](model-browser.md)

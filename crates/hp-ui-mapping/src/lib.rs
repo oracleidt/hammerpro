@@ -16,6 +16,7 @@ pub mod portals;
 pub mod prefabs;
 pub mod propper;
 pub mod release;
+mod scatter;
 
 pub use compile::{
     CompileDialog, compile_content_args, compile_options_ui, compiler_commands, compiler_list, compiler_name,
@@ -43,6 +44,7 @@ fn package_dialogs() -> Vec<Box<dyn dialogs::MapDialog>> {
     list.extend(lighting::dialogs());
     list.extend(prefabs::dialogs());
     list.extend(propper::dialogs());
+    list.extend(scatter::dialogs());
     list
 }
 

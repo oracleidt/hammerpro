@@ -2,6 +2,44 @@ use serde::{Deserialize, Serialize};
 
 const HANDLE_SIZE_RANGE: std::ops::RangeInclusive<f32> = 4.0..=16.0;
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SelectElement {
+    #[default]
+    Object,
+    Face,
+    Edge,
+    Vertex,
+}
+
+impl SelectElement {
+    pub const ALL: [SelectElement; 4] =
+        [SelectElement::Object, SelectElement::Face, SelectElement::Edge, SelectElement::Vertex];
+
+    pub fn id(self) -> &'static str {
+        match self {
+            SelectElement::Object => "object",
+            SelectElement::Face => "face",
+            SelectElement::Edge => "edge",
+            SelectElement::Vertex => "vertex",
+        }
+    }
+
+    pub fn from_id(s: &str) -> Option<Self> {
+        let s = s.trim().to_ascii_lowercase();
+        Self::ALL.into_iter().find(|e| e.id() == s || format!("{}s", e.id()) == s)
+    }
+
+    pub fn label_key(self) -> &'static str {
+        match self {
+            SelectElement::Object => "seltool.element.object",
+            SelectElement::Face => "seltool.element.face",
+            SelectElement::Edge => "seltool.element.edge",
+            SelectElement::Vertex => "seltool.element.vertex",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SelectionSettings {
@@ -18,6 +56,7 @@ pub struct SelectionSettings {
     pub random_yaw_snap: f64,
     pub random_tilt: bool,
     pub random_tilt_deg: f64,
+    pub element: SelectElement,
 }
 
 impl Default for SelectionSettings {
@@ -36,6 +75,7 @@ impl Default for SelectionSettings {
             random_yaw_snap: 0.0,
             random_tilt: false,
             random_tilt_deg: 3.0,
+            element: SelectElement::Object,
         }
     }
 }

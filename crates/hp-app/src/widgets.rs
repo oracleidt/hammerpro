@@ -3,18 +3,88 @@ use glam::DVec3;
 
 use crate::t;
 
+pub const HOVER_SECONDS: f32 = 0.12;
+
+pub fn crisp_width(ppp: f32, width: f32) -> f32 {
+    let ppp = if ppp.is_finite() && ppp > 0.0 { ppp } else { 1.0 };
+    (width * ppp).round().max(1.0) / ppp
+}
+
+pub fn crisp_stroke(painter: &egui::Painter, width: f32, color: egui::Color32) -> egui::Stroke {
+    egui::Stroke::new(crisp_width(painter.pixels_per_point(), width), color)
+}
+
+pub fn crisp_center(painter: &egui::Painter, p: egui::Pos2) -> egui::Pos2 {
+    egui::pos2(painter.round_to_pixel_center(p.x), painter.round_to_pixel_center(p.y))
+}
+
+pub fn crisp_rect(painter: &egui::Painter, r: egui::Rect) -> egui::Rect {
+    use egui::emath::GuiRounding as _;
+    r.round_to_pixels(painter.pixels_per_point())
+}
+
+pub fn hover_amounts(ui: &Ui, r: &Response) -> (f32, f32) {
+    let live = r.enabled();
+    let ctx = ui.ctx();
+    let ease = egui::emath::easing::cubic_out;
+    let hover =
+        ctx.animate_bool_with_time_and_easing(r.id.with("hp_fx_hover"), live && r.hovered(), HOVER_SECONDS, ease);
+    let press = ctx.animate_bool_with_time_and_easing(
+        r.id.with("hp_fx_press"),
+        live && r.is_pointer_button_down_on(),
+        HOVER_SECONDS,
+        ease,
+    );
+    (hover, press)
+}
+
 pub fn icon_toggle(ui: &mut Ui, icon: &str, selected: bool, tooltip: &str) -> Response {
     let mut button =
         egui::Button::selectable(selected, RichText::new(icon).size(16.0)).min_size(egui::vec2(28.0, 26.0));
     if selected {
         button = button.stroke(egui::Stroke::new(1.0, crate::theme::accent()));
     }
-    ui.add(button).on_hover_text(tooltip)
+    let r = ui.add(button);
+    r.on_hover_text(tooltip)
+}
+
+pub fn accent_button(ui: &mut Ui, text: &str) -> Response {
+    use egui::emath::GuiRounding as _;
+    let ppp = ui.ctx().pixels_per_point();
+    let galley = egui::WidgetText::from(RichText::new(text).strong().color(crate::theme::on_accent())).into_galley(
+        ui,
+        Some(egui::TextWrapMode::Extend),
+        f32::INFINITY,
+        egui::TextStyle::Button,
+    );
+    let pad = ui.spacing().button_padding;
+    let size = egui::vec2(galley.size().x + 2.0 * pad.x + 6.0, (galley.size().y + 2.0 * pad.y).max(24.0));
+    let (rect, r) = ui.allocate_exact_size(size, egui::Sense::click());
+    r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, ui.is_enabled(), text));
+    if ui.is_rect_visible(rect) {
+        let (hover, press) = hover_amounts(ui, &r);
+        let accent = crate::theme::accent();
+        let fill = accent.lerp_to_gamma(crate::theme::on_accent(), (hover * 0.14 + press * 0.12).min(0.3));
+        let grown = rect.expand(hover * 1.0 - press * 0.5);
+        let painter = ui.painter();
+        painter.rect_filled(grown, crate::theme::RADIUS, fill);
+        painter.rect_stroke(grown, crate::theme::RADIUS, egui::Stroke::new(1.0, accent), egui::StrokeKind::Inside);
+        let origin = (grown.center() - galley.size() * 0.5).round_to_pixels(ppp);
+        painter.galley(origin, galley, crate::theme::on_accent());
+        if r.has_focus() {
+            painter.rect_stroke(
+                grown.expand(1.0),
+                f32::from(crate::theme::RADIUS) + 1.0,
+                ui.visuals().selection.stroke,
+                egui::StrokeKind::Outside,
+            );
+        }
+    }
+    r
 }
 
 pub fn primary_button(ui: &mut Ui, text: &str) -> Response {
-    let text = RichText::new(text).strong().color(crate::theme::on_accent());
-    ui.add(egui::Button::new(text).fill(crate::theme::accent()).min_size(egui::vec2(0.0, 24.0)))
+    accent_button(ui, text)
 }
 
 pub fn toggle(ui: &mut Ui, on: &mut bool, label: Option<&str>) -> Response {
@@ -287,6 +357,17 @@ pub fn model_lod_ui(ui: &mut Ui, lod: &mut crate::settings::ModelLodSettings) ->
         *lod = lod.clamped();
     }
     changed
+}
+
+pub fn vsep(ui: &mut Ui) {
+    let height = ui.spacing().interact_size.y;
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.spacing().item_spacing.x + 2.0, height), egui::Sense::hover());
+    if ui.is_rect_visible(rect) {
+        let painter = ui.painter();
+        let x = painter.round_to_pixel_center(rect.center().x);
+        let stroke = crisp_stroke(painter, 1.0, ui.visuals().widgets.noninteractive.bg_stroke.color);
+        painter.vline(x, rect.y_range().shrink(2.0), stroke);
+    }
 }
 
 #[cfg(test)]

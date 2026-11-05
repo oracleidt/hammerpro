@@ -79,6 +79,11 @@ struct Preview {
     running: Option<Running>,
     upload: Option<Upload>,
     refine: Option<(Scope, u64)>,
+    cancelling: bool,
+    restart: Option<BakeKind>,
+    auto_scoped: bool,
+    cam_last: DVec3,
+    cam_moved_at: f64,
     shown_serial: Option<u64>,
     shown_faces: u32,
     shown_blocks: u32,
@@ -174,6 +179,15 @@ fn material_kinds(state: &mut AppState) -> HashMap<String, LightmapKind> {
         .collect()
 }
 
+fn big_map_radius(state: &mut AppState) -> Option<f64> {
+    let s = state.settings.lighting.sanitized();
+    if !s.auto_scope {
+        return None;
+    }
+    let limit = u64::from(s.auto_scope_luxels_millions) * 1_000_000;
+    (map_luxels(state) > limit).then_some(f64::from(s.auto_scope_radius))
+}
+
 fn map_luxels(state: &mut AppState) -> u64 {
     let revision = state.doc.revision();
     if let Some(b) = state.runtime.lighting.budget.as_ref().filter(|b| b.revision == revision) {
@@ -195,6 +209,11 @@ impl Preview {
             running: None,
             upload: None,
             refine: None,
+            cancelling: false,
+            restart: None,
+            auto_scoped: false,
+            cam_last: DVec3::ZERO,
+            cam_moved_at: 0.0,
             shown_serial: None,
             shown_faces: 0,
             shown_blocks: 0,
@@ -226,6 +245,8 @@ impl Preview {
         if quick {
             self.refine = None;
         }
+        self.cancelling = false;
+        self.restart = None;
         let t = std::time::Instant::now();
         let export = hp_editor::compile_export::CompileExport::default();
         let map = (kind != BakeKind::Refine).then(|| match &scope {
@@ -297,6 +318,8 @@ impl Preview {
 
     fn stop(&mut self, state: &mut AppState) {
         self.refine = None;
+        self.cancelling = false;
+        self.restart = None;
         if let Some(r) = self.running.take() {
             self.worker.stop();
             state.runtime.lighting.progress = None;
@@ -366,7 +389,9 @@ impl Preview {
                         }
                         bake::Outcome::Cancelled => {
                             state.runtime.lighting.progress = None;
-                            if !r.lit && r.kind != BakeKind::Refine {
+                            if std::mem::take(&mut self.cancelling) {
+                                self.restart = Some(r.kind);
+                            } else if !r.lit && r.kind != BakeKind::Refine {
                                 state.runtime.lighting.last = Some(BakeSummary {
                                     kind: r.kind,
                                     cancelled: true,
@@ -477,6 +502,11 @@ impl Preview {
                 .props
                 .as_ref()
                 .map_or(0, |p| p.static_props.iter().filter(|s| s.colors.is_some()).count()),
+            scope_radius: match &up.scope {
+                Scope::All => 0.0,
+                Scope::Around { radius, .. } => radius.max(64.0) as f32,
+            },
+            scope_auto: self.auto_scoped,
         };
         self.has_bake = true;
         self.shown_serial = Some(up.serial);
@@ -498,7 +528,7 @@ impl Preview {
             self.seen_serial = serial;
             self.changed_at = now;
         }
-        if !self.has_bake && self.running.is_none() {
+        if !self.has_bake && self.running.is_none() && self.restart.is_none() {
             return;
         }
         let current =
@@ -510,6 +540,7 @@ impl Preview {
             {
                 self.bake(state, scope, BakeKind::Refine, false);
             }
+            self.follow_camera(state, now);
             return;
         }
         let options = state.doc.light_plus();
@@ -517,14 +548,40 @@ impl Preview {
             state.runtime.lighting.stale = self.has_bake && self.running.is_none();
             return;
         }
+        if !self.cancelling && self.running.as_ref().is_some_and(|r| !r.lit && r.serial != serial) {
+            self.cancelling = true;
+            self.worker.stop();
+        }
         let delay = f64::from(options.incremental_delay).max(MIN_UPDATE_DELAY);
         if now - self.changed_at < delay {
             return;
         }
         let scope = self.last_scope.clone().unwrap_or(Scope::All);
-        let kind = self.running.as_ref().map_or(BakeKind::Update, |r| r.kind);
+        let kind = self.running.as_ref().map(|r| r.kind).or(self.restart).unwrap_or(BakeKind::Update);
         let kind = if kind == BakeKind::Refine { BakeKind::Update } else { kind };
         self.bake(state, scope, kind, false);
+    }
+
+    fn follow_camera(&mut self, state: &mut AppState, now: f64) {
+        let cam = state.cameras.cam3d.pos;
+        if cam != self.cam_last {
+            self.cam_last = cam;
+            self.cam_moved_at = now;
+        }
+        if !self.auto_scoped
+            || !self.has_bake
+            || self.running.is_some()
+            || self.upload.is_some()
+            || self.refine.is_some()
+            || now - self.cam_moved_at < 1.0
+        {
+            return;
+        }
+        let Some(Scope::Around { center, radius }) = self.last_scope.clone() else { return };
+        if (cam - center).length() < radius * 0.5 {
+            return;
+        }
+        self.bake(state, Scope::Around { center: cam, radius }, BakeKind::AroundCamera, false);
     }
 
     fn note_indirect(&self, state: &mut AppState) {
@@ -750,11 +807,18 @@ impl Lighting {
             return;
         }
         let Some(mut p) = app.pkg.lighting.preview.take() else { return };
+        let big = if around { None } else { big_map_radius(&mut app.state) };
         let (scope, kind) = if around {
+            (Scope::Around { center, radius }, BakeKind::AroundCamera)
+        } else if let Some(radius) = big {
             (Scope::Around { center, radius }, BakeKind::AroundCamera)
         } else {
             (Scope::All, BakeKind::Full)
         };
+        p.auto_scoped = big.is_some();
+        if let Some(radius) = big {
+            app.state.notify(Severity::Info, tf!("app.lighting.big_map", radius.round()));
+        }
         p.bake(&mut app.state, scope, kind, false);
         app.pkg.lighting.preview = Some(p);
     }
@@ -1096,6 +1160,11 @@ const TR: TrTable = &[
         "app.lighting.limits",
         "Lighting preview made past limits of the game (a compile for the game stops on them): {0}",
         "Aperçu de l'éclairage fait au-delà de limites du jeu (une compilation pour le jeu s'y arrête) : {0}",
+    ),
+    (
+        "app.lighting.big_map",
+        "Big map: the lighting preview covers {0} units around the camera and follows it (Tools > Options > Lighting)",
+        "Grande carte : l'aperçu de l'éclairage couvre {0} unités autour de la caméra et la suit (Outils > Options > Éclairage)",
     ),
     (
         "app.lighting.start_failed",

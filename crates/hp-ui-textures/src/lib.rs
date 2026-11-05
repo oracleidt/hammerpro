@@ -11,6 +11,7 @@ mod matedit_single;
 pub mod picker;
 pub mod replace;
 pub mod search;
+pub mod shader;
 pub mod shared;
 pub mod tool;
 mod tr;
@@ -29,6 +30,7 @@ pub use tr::TR;
 
 pub fn register_translations() {
     hp_app::i18n::register(TR);
+    hp_app::i18n::register(shader::tr::TR);
 }
 
 #[derive(Default)]
@@ -36,6 +38,7 @@ pub struct TextureDialogs {
     replace: replace::ReplaceDialog,
     editor: matedit::MaterialEditor,
     import: import::ImportDialog,
+    shader: shader::ShaderEditor,
 }
 
 impl TextureDialogs {
@@ -47,6 +50,7 @@ impl TextureDialogs {
         self.replace.show(ctx, state);
         self.editor.show(ctx, state);
         self.import.show(ctx, state);
+        self.shader.show(ctx, state);
     }
 
     pub fn replace_dialog(&mut self) -> &mut replace::ReplaceDialog {
@@ -59,6 +63,10 @@ impl TextureDialogs {
 
     pub fn import_dialog(&mut self) -> &mut import::ImportDialog {
         &mut self.import
+    }
+
+    pub fn shader_editor(&mut self) -> &mut shader::ShaderEditor {
+        &mut self.shader
     }
 }
 

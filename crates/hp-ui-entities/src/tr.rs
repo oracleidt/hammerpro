@@ -575,6 +575,11 @@ pub const TR: TrTable = &[
         "Choose in the sound browser (double click a sound)",
         "Choisir dans le navigateur de sons (double-cliquez sur un son)",
     ),
+    (
+        "entities.preview_particles",
+        "Preview the particle systems (live animation) and pick one",
+        "Aperçu des systèmes de particules (animation en direct) et choix",
+    ),
     ("entities.pick_particle", "Particle systems of the game content", "Systèmes de particules du contenu du jeu"),
     (
         "entities.browse_particles",

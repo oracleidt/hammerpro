@@ -1,0 +1,16 @@
+[package]
+name = "hp-audio"
+description = "Hammer Pro sound editing: decode WAV, MP3 and OGG, gain, trim, loop markers, PCM WAV output, waveform peaks and playback."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+rodio = { version = "0.23", default-features = false, features = ["wav", "mp3", "vorbis", "symphonia-adpcm"] }
+thiserror.workspace = true
+log.workspace = true
+serde.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+rodio = { version = "0.23", default-features = false, features = ["playback", "wav", "mp3", "vorbis", "symphonia-adpcm"] }

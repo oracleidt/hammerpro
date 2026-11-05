@@ -1,4 +1,5 @@
 mod draw;
+mod element;
 mod extra;
 mod keys;
 mod options;
@@ -1179,8 +1180,11 @@ impl SelectTool {
             _ => d.bounds.center(),
         };
         let link = extra::path_link(state, &d.objs);
+        let fgd = state.assets.fgd().filter(|f| !f.is_empty());
+        let targets =
+            |class: &str, key: &str| fgd.and_then(|f| hp_app::runtime::helpers::fgd_target_key(f, class, key));
         state.doc.transaction("Duplicate", |doc| {
-            let new = doc.duplicate_transformed(&d.objs, m, anchor, keep)?;
+            let new = doc.duplicate_transformed_with(&d.objs, m, anchor, keep, Some(&targets))?;
             if let (Some((src, key)), [ObjRef::Entity(copy)]) = (link, new.as_slice()) {
                 doc.link_cloned_path_node(src, *copy, key)?;
             }
@@ -1249,6 +1253,9 @@ impl SelectTool {
             return;
         }
         self.hover.key = None;
+        if element::click(state, view, pos, mods) {
+            return;
+        }
         match click_select_3d(state, view, pos, mods, &mut self.cycle) {
             Pick3d::Nothing => {}
             Pick3d::Toggled => self.pick_click = Some(PickClick { view: view.index, pos }),
@@ -1627,6 +1634,7 @@ impl Tool for SelectTool {
     }
 
     fn overlay(&self, state: &AppState, view: &ViewInfo, out: &mut Overlay) {
+        element::push_overlay(state, out);
         if let Some(d) = &self.drag {
             if d.transforms() {
                 let color =

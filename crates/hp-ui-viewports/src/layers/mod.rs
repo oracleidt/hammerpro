@@ -46,6 +46,7 @@ pub fn default_layers() -> Vec<Box<dyn OverlayLayer>> {
     list.extend(render::layers());
     list.extend(terrain::layers());
     list.extend(mesh_disp::layers());
+    list.extend(crate::fly_texture::layers());
     list
 }
 

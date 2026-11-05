@@ -526,6 +526,14 @@ impl ModelBrowser {
         }
         ui.separator();
 
+        if self.selected.is_some()
+            && ui.rect_contains_pointer(ui.max_rect())
+            && !ui.ctx().text_edit_focused()
+            && !egui::Popup::is_any_open(ui.ctx())
+            && ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape))
+        {
+            self.selected = None;
+        }
         match self.selected.clone() {
             Some(path) => {
                 let height = ui.available_height();
@@ -833,7 +841,19 @@ impl ModelBrowser {
         pick: Option<&crate::cx::ModelPick>,
         height: f32,
     ) {
-        ui.label(RichText::new(model_file_stem(path)).strong()).on_hover_text(path);
+        let mut close = false;
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(model_file_stem(path)).strong()).on_hover_text(path);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.small_button("{d7}").on_hover_text(t!("common.close")).clicked() {
+                    close = true;
+                }
+            });
+        });
+        if close {
+            self.selected = None;
+            return;
+        }
         ui.label(RichText::new(path).small().weak());
         let info = state.assets.model_info(path);
 
@@ -1526,6 +1546,37 @@ mod tests {
         assert_eq!(browser.preview_skin(), 3, "the first click of a double click keeps the skin");
         browser.select("models/b.mdl");
         assert_eq!(browser.preview_skin(), 0);
+    }
+
+    #[test]
+    fn escape_and_the_close_button_dismiss_the_model_details() {
+        crate::register_translations();
+        let mut state = hp_app::testing::test_state();
+        let mut browser = ModelBrowser::new();
+        let ctx = egui::Context::default();
+        let frame =
+            |ctx: &egui::Context, browser: &mut ModelBrowser, state: &mut AppState, events: Vec<egui::Event>| {
+                let input = egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, vec2(400.0, 900.0))),
+                    events,
+                    ..Default::default()
+                };
+                let mut out = ctx.run_ui(input, |ui| browser.ui(ui, state));
+                out.textures_delta.clear();
+            };
+        browser.select("models/a.mdl");
+        let hover = egui::Event::PointerMoved(egui::pos2(200.0, 450.0));
+        frame(&ctx, &mut browser, &mut state, vec![hover]);
+        assert!(browser.selected().is_some());
+        let esc = egui::Event::Key {
+            key: Key::Escape,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::NONE,
+        };
+        frame(&ctx, &mut browser, &mut state, vec![esc]);
+        assert!(browser.selected().is_none(), "Escape dismisses the details");
     }
 
     #[test]

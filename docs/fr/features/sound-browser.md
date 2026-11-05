@@ -77,6 +77,7 @@ En mode choix, le navigateur affiche un bandeau « Choix pour *clé* : double-cl
 - [Soundscapes](soundscapes.md)
 - [Navigateur de modèles](model-browser.md)
 - [Particules](particles.md)
+- [Éditeur de sons](sound-editor.md)
 - [Configuration du jeu](../getting-started/game-setup.md)
 - [Référence des paramètres](../reference/settings.md)
 

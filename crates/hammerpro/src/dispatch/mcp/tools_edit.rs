@@ -16,16 +16,24 @@ domain! { "editing";
         on X and Y). The copies are selected.",
         { "ids": target_ids(), "solid_ids": target_solid_ids(), "offset": vec3("Offset [x, y, z] of the copies.") }, [];
     array_duplicate: Edit, "Array of copies",
-        "Make several copies of objects, each one moved, rotated and scaled from the previous one (Hammer's Paste \
-        special): copy N gets N times the offset and the rotation.",
+        "Make several copies of objects. Transform mode (offset, rotate, scale): each copy is moved, rotated and \
+        scaled from the previous one, copy N gets N times the offset and the rotation. Grid mode (axes or counts): \
+        a grid of copies along the X, Y and Z axes of the active grid, with a gap between the bounding boxes; the \
+        step of each axis is rounded up to the grid and positions are aligned to it (rotated and custom grids \
+        included) unless snap is false. One undo step.",
         {
             "ids": target_ids(), "solid_ids": target_solid_ids(),
-            "count": integer("Number of copies.", 1, 256),
+            "axes": strings("Grid mode: axes to duplicate along, any of x, y, z.", 3),
+            "counts": json!({ "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 1024 }, "minItems": 3, "maxItems": 3, "description": "Grid mode: copies per axis [nx, ny, nz], 0 turns an axis off." }),
+            "gap": number("Grid mode: space between the bounding boxes on every axis (default 0).", -131072.0, 131072.0),
+            "gaps": vec3("Grid mode: space per axis [x, y, z], overrides gap."),
+            "snap": boolean("Grid mode: align steps and positions to the active grid (default: the snap setting)."),
+            "count": integer("Number of copies (transform mode: 1 to 256; grid mode: copies per axis with axes, 1 to 1024).", 1, 1024),
             "offset": vec3("Offset between two copies [x, y, z]."),
             "rotate": vec3("Rotation between two copies, degrees around X, Y and Z."),
             "scale": number("Scale between two copies (1: same size).", 0.01, 100.0),
             "pivot": vec3("Pivot of the rotation and scale (default: center of the objects)."),
-        }, ["count"];
+        }, [];
     transform_objects: Edit, "Transform objects",
         "Move, rotate (degrees around X, then Y, then Z) and scale objects around a pivot (default: the center of \
         their bounds), in one step. Entities turn with their angles.",
@@ -107,15 +115,27 @@ domain! { "editing";
             "material": string("Material of the new faces (instead of new_faces)."),
         }, ["solid", "side", "points"];
  inset_face: Destructive, "Inset faces",
- "Inset brush faces (the Tools > Inset face command and the interactive inset, the I key in the 3D view): the edges of each face move inward by distance units and the brush is split into a frame of convex brushes around the face plus the inner block, so every piece stays a valid convex brush. The frame is made of one quad per edge of the face (a triangle gives 3, a quad 4, an n-gon n), every face is inset individually (region mode is not offered because the pieces of a region around a crease of a convex brush would not be convex). The original textures stay on the visible faces and the new faces get the texture of the inset face (or material). depth raises (positive) or sinks (negative) the inner block in the same step, like Blender I then E. Several faces of one brush are cut one after the other into pieces that tile the brush. Convex brushes only, displacement faces are refused, and a distance larger than the face allows is refused. faces defaults to the selected faces, else the faces of ids. snap rounds distance and depth to the editor's grid (the Ctrl key of the interactive inset). dry_run answers the number of brushes without changing the map. One undo step; answers the ids of the brushes made or changed (the first piece keeps the brush id, the last one is the inner block).",
+ "Inset brush faces (the Tools > Inset face command and the interactive inset, the I key in the 3D view): the edges of the face move inward by distance units and the brush is split into a frame of convex brushes around the face plus the inner block, so every piece stays a valid convex brush. The frame is made of one quad per edge of the outline (a triangle gives 3, a quad 4, an n-gon n). Several faces make a region inset by default: faces on the same plane that share an edge (the tops of side by side brushes, a floor made of several brushes) are inset together, with one shared outline around their union and one inner block, like Blender's inset without individual; the outline may be concave (an L shape) but must have no hole and no pinch point. individual: true insets every face on its own instead (Blender's individual mode, the I key again in the interactive inset). Faces that are not coplanar and touching (the top and the front of one brush, faces far apart) are always inset on their own. The original textures stay on the visible faces and the new faces get the texture of the inset face (or material). depth raises (positive) or sinks (negative) the inner block in the same step, like Blender I then E. Convex brushes only, displacement faces are refused, and a distance larger than the region allows is refused. faces defaults to the selected faces, else the faces of ids. snap rounds distance and depth to the active grid (size, custom grid and rotation, sizes clamped to 1 to 1024) and puts the new top plane on a grid plane. dry_run answers the number of brushes without changing the map. One undo step; answers the ids of the brushes made or changed.",
         {
             "faces": faces("Faces [{solid, side}] (default: the selected faces)."),
             "ids": target_ids(), "solid_ids": target_solid_ids(),
             "distance": number("Inset distance in units (default 16).", 0.125, 16384.0),
             "depth": number("Raise (positive) or sink (negative) the inner block by this many units (default 0).", -16384.0, 16384.0),
-            "snap": boolean("Round distance and depth to the editor's grid (default false)."),
+            "individual": boolean("Inset every face on its own instead of one shared outline per touching coplanar group (default false)."),
+            "snap": boolean("Round distance and depth to the active grid (default false)."),
             "dry_run": boolean("Only answer how many brushes the inset would make, or why it fails (default false)."),
             "material": string("Material of the new faces (default: the inset face's)."),
+        }, [];
+    extrude_faces: Destructive, "Extrude faces into new brushes",
+        "Extrude brush faces outward into new brushes (the interactive extrude, the E key in the 3D view): each face becomes the base of a new convex brush distance units high along the face normal, textured like the face (or material), never merged into the original brush. Several faces make several brushes in one undo step, each pulled along its own normal. faces defaults to the selected faces, else the faces of ids. snap puts the new top plane of every brush on a plane of the active grid (grid size, custom grid and rotation honored, size clamped to 1 to 1024); alt_grid does the same on the alternate grid, which is the Alt key of the interactive extrude: an axis aligned grid at the origin of half the grid size (double when the grid size is 1), ignoring rotation and custom grids. dry_run answers the number of brushes without changing the map. To carve into a brush or extrude only part of a face use extrude_face. Answers the ids of the new brushes and the distance used for each face.",
+        {
+            "faces": faces("Faces [{solid, side}] (default: the selected faces)."),
+            "ids": target_ids(), "solid_ids": target_solid_ids(),
+            "distance": number("Height of the new brushes in units (default 16).", 0.125, 16384.0),
+            "snap": boolean("Align the new top planes to the active grid (default false)."),
+            "alt_grid": boolean("Align them to the alternate grid instead (the Alt key, default false)."),
+            "material": string("Material of the new faces (default: the face's)."),
+            "dry_run": boolean("Only answer how many brushes would be made, or why it fails (default false)."),
         }, [];
     get_brush_edges: Read, "Brush edges",
         "The edges of a solid as numbered [a, b] point pairs (the edge indices bevel_edges takes), with their length.",
@@ -522,13 +542,89 @@ fn duplicate_objects(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let objs = targets(state, a)?;
     let g = grid(state);
     let offset = a.opt_vec3("offset")?.unwrap_or(DVec3::new(g, g, 0.0));
-    let copies = edit(state, "duplicate_objects", |doc| doc.duplicate(&objs, offset))?;
+    let AppState { doc, assets, .. } = state;
+    if doc.in_transaction() {
+        return Err("Hammer Pro is in the middle of another edit; try again".to_owned());
+    }
+    let fgd = assets.fgd().filter(|f| !f.is_empty());
+    let targets = |class: &str, key: &str| fgd.and_then(|f| hp_app::runtime::helpers::fgd_target_key(f, class, key));
+    let copies = doc
+        .transaction(super::tools::undo_label("duplicate_objects"), |doc| {
+            doc.duplicate_with(&objs, offset, Some(&targets))
+        })
+        .map_err(|e| e.to_string())?;
     Ok(ToolResult::json(json!({ "copies": objs_json(&copies) })))
+}
+
+fn grid_array(state: &mut AppState, a: &Args<'_>, objs: &[ObjRef]) -> R<ToolResult> {
+    let names = a.strings("axes", 3)?;
+    let mut enabled = [false; 3];
+    for n in &names {
+        match n.to_ascii_lowercase().as_str() {
+            "x" => enabled[0] = true,
+            "y" => enabled[1] = true,
+            "z" => enabled[2] = true,
+            other => return Err(format!("axes: \"{other}\" is not x, y or z")),
+        }
+    }
+    let per_axis = a.opt_u64("count", 1, u64::from(hp_editor::MAX_ARRAY_AXIS_COUNT))?;
+    let counts = match a.get("counts") {
+        Some(v) => {
+            let arr = v.as_array().filter(|x| x.len() == 3).ok_or("counts must be [nx, ny, nz]")?;
+            let mut out = [0u32; 3];
+            for (o, x) in out.iter_mut().zip(arr) {
+                let n = x.as_u64().filter(|n| *n <= u64::from(hp_editor::MAX_ARRAY_AXIS_COUNT));
+                *o = n.ok_or("counts must be integers from 0 to 1024")? as u32;
+            }
+            Some(out)
+        }
+        None => None,
+    };
+    let mut axes = [hp_editor::ArrayAxis::default(); 3];
+    for k in 0..3 {
+        let on = names.is_empty() || enabled[k];
+        axes[k].count = match counts {
+            Some(c) if on => c[k],
+            Some(_) => 0,
+            None if enabled[k] => per_axis.ok_or("count is required with axes")? as u32,
+            None => 0,
+        };
+    }
+    let gap = a.opt_f64("gap", -131072.0, 131072.0)?.unwrap_or(0.0);
+    let gaps = a.opt_vec3("gaps")?.unwrap_or(DVec3::splat(gap));
+    for k in 0..3 {
+        axes[k].gap = gaps[k];
+    }
+    let mut frame = hp_app::runtime::helpers::array_frame(state);
+    if !a.opt_bool("snap")?.unwrap_or(state.snap_enabled()) {
+        frame.step = DVec3::ZERO;
+    }
+    let spec = hp_editor::ArraySpec { axes, frame };
+    let AppState { doc, assets, .. } = state;
+    if doc.in_transaction() {
+        return Err("Hammer Pro is in the middle of another edit; try again".to_owned());
+    }
+    let fgd = assets.fgd().filter(|f| !f.is_empty());
+    let targets = |class: &str, key: &str| fgd.and_then(|f| hp_app::runtime::helpers::fgd_target_key(f, class, key));
+    let (plan, copies) = doc
+        .transaction(super::tools::undo_label("array_duplicate"), |doc| {
+            doc.array_copies(objs, &spec, &|e| assets.entity_bounds(e), Some(&targets))
+        })
+        .map_err(|e| e.to_string())?;
+    Ok(ToolResult::json(json!({
+        "copies": objs_json(&copies),
+        "steps": v3(plan.steps),
+        "extent": v3(plan.extent),
+        "snapped_to_grid": spec.frame.step != DVec3::ZERO,
+    })))
 }
 
 fn array_duplicate(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let objs = targets(state, a)?;
-    let count = a.opt_u64("count", 1, 256)?.unwrap_or(1) as u32;
+    if a.get("axes").is_some() || a.get("counts").is_some() {
+        return grid_array(state, a, &objs);
+    }
+    let count = a.opt_u64("count", 1, 256)?.ok_or("count is required")? as u32;
     let offset = a.opt_vec3("offset")?.unwrap_or(DVec3::ZERO);
     let rot = a.opt_vec3("rotate")?.unwrap_or(DVec3::ZERO);
     let scale = a.opt_f64("scale", 0.01, 100.0)?.unwrap_or(1.0);
@@ -769,21 +865,43 @@ fn extrude_face(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     })))
 }
 
+fn face_reference(state: &AppState, face: &FaceRef) -> Option<(DVec3, DVec3)> {
+    let g = state.doc.scene().solid(face.solid)?.geom.face_for_side(face.side)?;
+    Some((g.vertices.first().copied()?, g.plane.normal))
+}
+
 fn inset_face(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let faces = target_faces(state, a, "faces")?;
     let mut distance = a.opt_f64("distance", hp_geom::MIN_INSET, hp_geom::MAX_INSET)?.unwrap_or(16.0);
     let mut depth = a.opt_f64("depth", -hp_geom::MAX_INSET, hp_geom::MAX_INSET)?.unwrap_or(0.0);
+    let individual = a.opt_bool("individual")?.unwrap_or(false);
     if a.opt_bool("snap")?.unwrap_or(false) {
-        let g = grid(state);
-        distance = ((distance / g).round() * g).max(g);
-        depth = (depth / g).round() * g;
+        let frame = state.target_grid().frame;
+        match faces.first().and_then(|f| face_reference(state, f)) {
+            Some((from, normal)) => {
+                let step = frame.plane_step(normal);
+                distance = ((distance / step).round() * step).max(step.max(hp_geom::MIN_INSET));
+                depth = frame.snap_distance(from, normal, depth);
+            }
+            None => {
+                let g = hp_app::settings::tool_grid(state.grid_size());
+                distance = ((distance / g).round() * g).max(g);
+                depth = (depth / g).round() * g;
+            }
+        }
     }
     let material = a.opt_str("material", MAX_NAME)?.map(material_name).transpose()?;
-    let params = hp_geom::InsetParams { distance, depth, material };
+    let params = hp_geom::InsetParams { distance, depth, material, individual };
     if a.opt_bool("dry_run")?.unwrap_or(false) {
         let plan = state.doc.inset_preview(&faces, &params).map_err(|e| e.to_string())?;
         let brushes: usize = plan.iter().map(|(_, p)| p.len()).sum();
-        let answer = json!({ "dry_run": true, "brushes": brushes, "distance": distance, "depth": depth });
+        let answer = json!({
+            "dry_run": true,
+            "brushes": brushes,
+            "distance": distance,
+            "depth": depth,
+            "individual": individual,
+        });
         return Ok(ToolResult::json(answer));
     }
     let ids = edit(state, "inset_face", |doc| doc.inset_faces(&faces, &params))?;
@@ -794,6 +912,44 @@ fn inset_face(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
         "brushes": ids.len(),
         "distance": distance,
         "depth": depth,
+        "individual": individual,
+        "bounds": bounds_json(bounds),
+    })))
+}
+
+fn extrude_faces(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
+    let faces = target_faces(state, a, "faces")?;
+    let distance = a.opt_f64("distance", hp_geom::MIN_EXTRUDE_DEPTH, 16384.0)?.unwrap_or(16.0);
+    let snap = a.opt_bool("snap")?.unwrap_or(false);
+    let alt = a.opt_bool("alt_grid")?.unwrap_or(false);
+    let material = a.opt_str("material", MAX_NAME)?.map(material_name).transpose()?;
+    let base = state.target_grid().frame;
+    let frame = if alt { base.alternate() } else { base };
+    let mut list: Vec<(FaceRef, f64)> = Vec::with_capacity(faces.len());
+    for f in &faces {
+        let d = match face_reference(state, f) {
+            Some((from, normal)) if snap || alt => frame.snap_distance(from, normal, distance),
+            _ => distance,
+        };
+        list.push((*f, d));
+    }
+    list.retain(|(_, d)| *d >= hp_geom::MIN_EXTRUDE_DEPTH);
+    if list.is_empty() {
+        return Err("the distance snaps to less than 0.125 on every face".to_owned());
+    }
+    let depths: Vec<Value> =
+        list.iter().map(|(f, d)| json!({ "solid": f.solid, "side": f.side, "distance": d })).collect();
+    if a.opt_bool("dry_run")?.unwrap_or(false) {
+        let n = state.doc.extrude_faces_preview(&list, material.as_deref()).map_err(|e| e.to_string())?;
+        return Ok(ToolResult::json(json!({ "dry_run": true, "brushes": n, "faces": depths })));
+    }
+    let ids = edit(state, "extrude_faces", |doc| doc.extrude_faces(&list, material.as_deref()))?;
+    let bounds =
+        state.doc.scene().objects_bounds(&ids.iter().map(|id| ObjRef::Solid(*id)).collect::<Vec<_>>(), &|_| None);
+    Ok(ToolResult::json(json!({
+        "solid_ids": ids,
+        "brushes": ids.len(),
+        "faces": depths,
         "bounds": bounds_json(bounds),
     })))
 }
@@ -1690,6 +1846,20 @@ mod tests {
         assert_eq!(r["copies"].as_array().unwrap().len(), 3);
         assert_eq!(solid_count(&s), n + 4);
         err(&mut s, "array_duplicate", json!({ "solid_ids": [3], "count": 2 }));
+        let before = solid_count(&s);
+        let r = ok(&mut s, "array_duplicate", json!({ "solid_ids": [3], "axes": ["x", "y"], "count": 1, "gap": 8 }));
+        assert_eq!(r["copies"].as_array().unwrap().len(), 3);
+        assert_eq!(solid_count(&s), before + 3);
+        assert!(r["steps"][0].as_f64().unwrap() >= 520.0);
+        assert_eq!(s.doc.undo_label(), Some("MCP: array_duplicate"));
+        let r = ok(
+            &mut s,
+            "array_duplicate",
+            json!({ "solid_ids": [3], "counts": [0, 0, 2], "gaps": [0, 0, 5], "snap": false }),
+        );
+        assert_eq!(r["steps"][2], json!(133.0));
+        err(&mut s, "array_duplicate", json!({ "solid_ids": [3], "axes": ["w"], "count": 1 }));
+        err(&mut s, "array_duplicate", json!({ "solid_ids": [3], "axes": ["x"] }));
 
         let r = ok(
             &mut s,
@@ -1884,6 +2054,74 @@ mod tests {
         let two = json!({ "faces": [{ "solid": 3, "side": 5 }, { "solid": 3, "side": 4 }], "distance": 4 });
         let r = ok(&mut s, "inset_face", two);
         assert!(r["brushes"].as_u64().unwrap() > 5);
+    }
+
+    #[test]
+    fn extrude_faces_make_new_aligned_brushes() {
+        let mut s = hp_app::testing::test_state();
+        let before = s.doc.scene().solids().len();
+        let dry = ok(
+            &mut s,
+            "extrude_faces",
+            json!({ "faces": [{ "solid": 3, "side": 5 }], "distance": 20, "dry_run": true }),
+        );
+        assert_eq!(dry["brushes"], 1);
+        assert_eq!(s.doc.scene().solids().len(), before);
+        let r =
+            ok(&mut s, "extrude_faces", json!({ "faces": [{ "solid": 3, "side": 5 }], "distance": 21, "snap": true }));
+        assert_eq!(r["brushes"], 1);
+        assert_eq!(r["faces"][0]["distance"], 16.0);
+        assert_eq!(s.doc.scene().solids().len(), before + 1);
+        assert_eq!(s.doc.undo_label(), Some("MCP: extrude_faces"));
+        assert!(s.doc.undo());
+        let r = ok(
+            &mut s,
+            "extrude_faces",
+            json!({ "faces": [{ "solid": 3, "side": 5 }], "distance": 21, "alt_grid": true }),
+        );
+        assert_eq!(r["faces"][0]["distance"], 24.0);
+        assert!(s.doc.undo());
+        let r = ok(
+            &mut s,
+            "extrude_faces",
+            json!({ "faces": [{ "solid": 3, "side": 5 }, { "solid": 3, "side": 4 }], "distance": 8 }),
+        );
+        assert_eq!(r["brushes"], 2);
+        err(&mut s, "extrude_faces", json!({ "faces": [{ "solid": 3, "side": 99 }], "distance": 8 }));
+        err(&mut s, "extrude_faces", json!({ "faces": [{ "solid": 3, "side": 5 }], "distance": 0 }));
+    }
+
+    #[test]
+    fn region_inset_and_individual_are_a_choice() {
+        let mut s = hp_app::testing::test_state();
+        let faces = json!([{ "solid": 3, "side": 5 }, { "solid": 3, "side": 4 }]);
+        let shared = ok(&mut s, "inset_face", json!({ "faces": faces, "distance": 4, "dry_run": true }));
+        assert_eq!(shared["individual"], false);
+        let alone =
+            ok(&mut s, "inset_face", json!({ "faces": faces, "distance": 4, "individual": true, "dry_run": true }));
+        assert_eq!(alone["individual"], true);
+        assert_eq!(alone["brushes"], shared["brushes"]);
+    }
+
+    #[test]
+    fn edges_and_vertices_are_selected_by_number() {
+        let mut s = hp_app::testing::test_state();
+        let r = ok(&mut s, "select_elements", json!({ "element": "edge", "solid": 3, "indices": [0, 1] }));
+        assert_eq!(r["element"], "edge");
+        assert_eq!(r["edge_count"], 2);
+        assert_eq!(r["vertex_count"], 0);
+        let r = ok(&mut s, "select_elements", json!({ "element": "edge", "solid": 3, "indices": [1], "op": "remove" }));
+        assert_eq!(r["edge_count"], 1);
+        let r = ok(&mut s, "select_elements", json!({ "element": "vertex", "solid": 3, "indices": [0, 2, 2] }));
+        assert_eq!(r["element"], "vertex");
+        assert_eq!(r["vertex_count"], 2);
+        assert_eq!(r["edge_count"], 0);
+        let sel = ok(&mut s, "get_selection", json!({}));
+        assert_eq!(sel["vertex_count"], 2);
+        assert_eq!(sel["element"], "vertex");
+        err(&mut s, "select_elements", json!({ "element": "edge", "solid": 3, "indices": [9999] }));
+        err(&mut s, "select_elements", json!({ "element": "face", "solid": 3, "indices": [0] }));
+        err(&mut s, "select_elements", json!({ "element": "vertex", "solid": 3, "indices": [] }));
     }
 
     #[test]
@@ -2182,7 +2420,7 @@ mod tests {
             json!({ "view": "top", "points": [[0, 0], [128, 64], [256, 0]], "subdivisions": 6, "thickness": 32, "profile": "curb", "curb_width": 8, "curb_height": 4, "roll_start": 3, "auto_bank": 5 }),
         );
         let n = r["count"].as_u64().unwrap() as usize;
-        assert!(n >= 18 && n % 18 == 0, "3 brushes a piece, banked pieces split: {n}");
+        assert!(n >= 18 && n.is_multiple_of(18), "3 brushes a piece, banked pieces split: {n}");
         assert_eq!(r["profile"], "curb");
         let first = r["solid_ids"][0].as_u64().unwrap();
         let before = s.doc.stats().solids;
@@ -2198,7 +2436,7 @@ mod tests {
             json!({ "solid_id": first, "points": [[0, 0], [64, 32], [128, 64], [256, 0]], "profile": "ditch", "subdivisions": 5, "roll_end": -4 }),
         );
         let m = e["count"].as_u64().unwrap() as usize;
-        assert!(m >= 10 && m % 10 == 0, "2 brushes a piece: {m}");
+        assert!(m >= 10 && m.is_multiple_of(10), "2 brushes a piece: {m}");
         assert_eq!(s.doc.stats().solids, before - n + m);
         assert_eq!(s.doc.history_len().0, undo + 1, "one undo step");
         let again = ok(&mut s, "get_curve_brushes", json!({}));

@@ -2,7 +2,7 @@
 
 # Documentation de Hammer Pro
 
-Bienvenue dans la base de connaissances de Hammer Pro 1.0.8, l'éditeur de maps pour le moteur Source pensé d'abord pour Garry's Mod. Chaque fonctionnalité a sa propre page : ce que c'est, comment l'ouvrir, chaque option avec sa valeur par défaut, des astuces et une courte FAQ. Les pages renvoient les unes aux autres : commencez où vous voulez.
+Bienvenue dans la base de connaissances de Hammer Pro 1.0.9, l'éditeur de maps pour le moteur Source pensé d'abord pour Garry's Mod. Chaque fonctionnalité a sa propre page : ce que c'est, comment l'ouvrir, chaque option avec sa valeur par défaut, des astuces et une courte FAQ. Les pages renvoient les unes aux autres : commencez où vous voulez.
 
 Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.md), [Configuration du jeu](getting-started/game-setup.md) puis [Votre première map](getting-started/first-map.md), dans cet ordre.
 
@@ -28,6 +28,8 @@ Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.m
 | [Outil polygone](features/polygon-tool.md) | Des brushes convexes à partir d'un contour cliqué point par point. |
 | [Outil courbe](features/curve-tool.md) | Murs et rambardes courbes : des brushes en boîte à joints en onglet le long d'un tracé dans une vue 2D. |
 | [Outil route](features/road-tool.md) | Routes le long d'une spline : voies, accotements, lignes, dévers, hauteurs, suivi du terrain, jonctions avec évasements. |
+| [Outil tuyau](features/pipe-tool.md) | Tuyaux et conduits en brushes : creux ou pleins, carrés ou ronds, coudes à 90 degrés, colliers, parcours sur la grille. |
+| [Semis par matériau](features/scatter-by-material.md) | Des props placés seulement là où une texture apparaît sur les matériaux de mélange et les displacements, avec nombre, écart, rotation, échelle et graine. |
 | [Détails de route](features/road-details.md) | Trottoirs, bordures, caniveaux en V et en U avec fentes d'évacuation, angles de jonction arrondis, et fondu du terrain sur une route avec fondu de texture. |
 | [Outil de découpe](features/clip-tool.md) | Couper des brushes avec un plan. |
 | [Outil extruder / creuser](features/extrude-tool.md) | Des contours cliqués sur une face, creusés dans le brush (renfoncement ou ouverture) ou extrudés hors de la face. |
@@ -67,6 +69,7 @@ Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.m
 | [Index et analyse du contenu](features/content-index.md) | L'index enregistré des fichiers du jeu, analyse des disques durs et SSD, dossiers en double. |
 | [Éditeur UV](features/uv-editor.md) | Modes face, arête et sommet, calques, fenêtre séparée. |
 | [Éditeur de matériaux](features/material-editor.md) | Modifier des VMT, un par un ou par lots. |
+| [Éditeur de shaders](features/shader-editor.md) | Éditeur d'images et de matériaux à nœuds : bruit, flou, rampes de couleurs, normal maps, mélange de tuiles, écrit en VTF et VMT. |
 
 ### Modèles, sons et effets
 
@@ -77,6 +80,8 @@ Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.m
 | [Lien avec Blender](features/blender.md) | Envoyer des brushes, des displacements ou un prop vers Blender et récupérer la modification tout seul. |
 | [Propper](features/propper.md) | Des brushes vers un prop statique (LOD, collision, displacements précalculés) et des props vers des brushes. |
 | [Navigateur de sons](features/sound-browser.md) | Sons du jeu, soundscripts et sélecteur de sons. |
+| [Éditeur de sons](features/sound-editor.md) | Coupe, gain, marqueurs de boucle et sortie WAV pour tout son du jeu. |
+| [Correction des couleurs](features/color-correction.md) | Éditeur de tables de couleurs (.raw) et aperçu 3D des entités color_correction. |
 | [Particules](features/particles.md) | Navigateur de particules et aperçu des particules dans les vues. |
 
 ### Vues et rendu

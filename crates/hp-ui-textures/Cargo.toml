@@ -18,6 +18,8 @@ log.workspace = true
 hp-fs.workspace = true
 hp-vmt.workspace = true
 hp-vtf.workspace = true
+hp-shader = { path = "../hp-shader" }
+serde_json = "1"
 rfd.workspace = true
 ahash.workspace = true
 

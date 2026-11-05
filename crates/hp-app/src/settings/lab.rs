@@ -8,11 +8,13 @@ pub struct LabSettings {
     pub nav_fill: bool,
     pub show_particles: bool,
     pub particles_selected_only: bool,
+    pub show_entity_fx: bool,
     pub unprop_detail: bool,
     pub unprop_keep_prop: bool,
     pub unprop_shape: UnpropShape,
     pub model_lod: ModelLodSettings,
     pub model_keep_params: bool,
+    pub color_correction_preview: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -59,11 +61,13 @@ impl Default for LabSettings {
             nav_fill: true,
             show_particles: true,
             particles_selected_only: false,
+            show_entity_fx: true,
             unprop_detail: true,
             unprop_keep_prop: false,
             unprop_shape: UnpropShape::Auto,
             model_lod: ModelLodSettings::default(),
             model_keep_params: true,
+            color_correction_preview: false,
         }
     }
 }

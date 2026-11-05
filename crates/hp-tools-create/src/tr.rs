@@ -294,8 +294,13 @@ pub const TR: TrTable = &[
     ),
     (
         "create.extrude.inset_live_tip",
-        "Inset the selected faces live: move the mouse to set the thickness, E for the depth, type a number for an exact value (also the I key in the 3D view)",
-        "Décaler les faces sélectionnées en direct : bougez la souris pour l'épaisseur, E pour la profondeur, tapez un nombre pour une valeur exacte (aussi la touche I dans la vue 3D)",
+        "Inset the selected faces live: move the mouse to set the thickness, E for the depth, I again for region or individual, type a number for an exact value (also the I key in the 3D view)",
+        "Décaler les faces sélectionnées en direct : bougez la souris pour l'épaisseur, E pour la profondeur, I de nouveau pour région ou individuel, tapez un nombre pour une valeur exacte (aussi la touche I dans la vue 3D)",
+    ),
+    (
+        "create.extrude.extrude_live_tip",
+        "Extrude the selected faces into new brushes live: move the mouse to set the distance, Alt for the alternate grid, type a number for an exact value (also the E key in the 3D view)",
+        "Extruder en direct les faces sélectionnées en nouveaux brushes : bougez la souris pour la distance, Alt pour la grille alternative, tapez un nombre pour une valeur exacte (aussi la touche E dans la vue 3D)",
     ),
     ("create.extrude.apply_tip", "Carve or extrude the outline ({0})", "Creuser ou extruder le contour ({0})"),
     ("create.extrude.count", "{0} point(s)", "{0} point(s)"),

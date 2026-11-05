@@ -241,6 +241,20 @@ impl Snap {
         }
     }
 
+    pub(crate) fn tool_step(&self) -> f64 {
+        self.frame.map_or(1.0, |f| f.tool_nominal())
+    }
+
+    pub(crate) fn tool_radius(&self, x: f64) -> f64 {
+        match self.frame {
+            Some(f) if x.is_finite() => {
+                let step = f.tool_nominal();
+                clean((x / step).round() * step)
+            }
+            _ => x,
+        }
+    }
+
     pub(crate) fn v2(&self, p: DVec2) -> DVec2 {
         match self.frame {
             Some(f) => {
@@ -265,6 +279,73 @@ impl Snap {
                 if q.is_finite() { q } else { p }
             }
             None => p,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct DistanceSnap {
+    frame: Option<GridFrame>,
+    alternate: bool,
+}
+
+impl DistanceSnap {
+    pub(crate) const OFF: DistanceSnap = DistanceSnap { frame: None, alternate: false };
+
+    pub(crate) fn for_inset(state: &AppState, view: &ViewInfo, modifiers: Modifiers) -> Self {
+        let forced = modifiers.ctrl || modifiers.command;
+        if (state.snap_enabled() && !modifiers.alt) || forced {
+            Self { frame: Some(state.edit_grid_frame(view.kind)), alternate: false }
+        } else {
+            Self::OFF
+        }
+    }
+
+    pub(crate) fn for_extrude(state: &AppState, view: &ViewInfo, modifiers: Modifiers) -> Self {
+        let forced = modifiers.ctrl || modifiers.command;
+        if !(state.snap_enabled() || forced) {
+            return Self::OFF;
+        }
+        let base = state.edit_grid_frame(view.kind);
+        if modifiers.alt {
+            Self { frame: Some(base.alternate()), alternate: true }
+        } else {
+            Self { frame: Some(base), alternate: false }
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_frame(frame: GridFrame, alternate: bool) -> Self {
+        Self { frame: Some(frame), alternate }
+    }
+
+    pub(crate) fn is_on(&self) -> bool {
+        self.frame.is_some()
+    }
+
+    pub(crate) fn is_alternate(&self) -> bool {
+        self.alternate
+    }
+
+    pub(crate) fn step(&self, normal: DVec3) -> Option<f64> {
+        self.frame.map(|f| f.plane_step(normal))
+    }
+
+    pub(crate) fn nominal(&self) -> Option<f64> {
+        self.frame.map(|f| f.tool_nominal())
+    }
+
+    pub(crate) fn thickness(&self, value: f64, normal: DVec3) -> f64 {
+        match self.step(normal) {
+            Some(step) if value.is_finite() => clean((value / step).round() * step),
+            _ => value,
+        }
+    }
+
+    pub(crate) fn distance(&self, from: DVec3, normal: DVec3, value: f64) -> f64 {
+        match self.frame {
+            Some(f) => clean(f.snap_distance(from, normal, value)),
+            None => value,
         }
     }
 }

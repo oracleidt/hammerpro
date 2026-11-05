@@ -34,6 +34,8 @@ pub enum RadQuality {
     Final,
 }
 
+pub const BOUNCE_BUDGET: usize = 1 << 29;
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct RadOptions {
     pub hdr: bool,
@@ -44,6 +46,7 @@ pub struct RadOptions {
     pub texlights: TexLightOptions,
     pub props: PropOptions,
     pub no_extra: bool,
+    pub bounce_budget: usize,
     pub extra_sky: Option<f32>,
     pub smooth_angle: f64,
     pub soft_sun: f32,
@@ -68,6 +71,7 @@ impl Default for RadOptions {
             texlights: TexLightOptions::default(),
             props: PropOptions::default(),
             no_extra: false,
+            bounce_budget: BOUNCE_BUDGET,
             extra_sky: None,
             smooth_angle: 45.0,
             soft_sun: 0.0,
@@ -93,7 +97,16 @@ pub fn light_bsp_with(
     models: &dyn crate::props::ModelSource,
     log: &mut dyn FnMut(&str),
 ) -> Result<Vec<u8>, String> {
-    light_bsp_with_report(bsp, opts, models, log, &mut crate::stats::RadReport::default())
+    light_bsp_with_report(std::borrow::Cow::Borrowed(bsp), opts, models, log, &mut crate::stats::RadReport::default())
+}
+
+pub fn light_bsp_owned(
+    bsp: Vec<u8>,
+    opts: &RadOptions,
+    models: &dyn crate::props::ModelSource,
+    log: &mut dyn FnMut(&str),
+) -> Result<Vec<u8>, String> {
+    light_bsp_with_report(std::borrow::Cow::Owned(bsp), opts, models, log, &mut crate::stats::RadReport::default())
 }
 
 pub fn light_bsp_report(
@@ -103,12 +116,12 @@ pub fn light_bsp_report(
     log: &mut dyn FnMut(&str),
 ) -> Result<(Vec<u8>, crate::stats::RadReport), String> {
     let mut report = crate::stats::RadReport::default();
-    let out = light_bsp_with_report(bsp, opts, models, log, &mut report)?;
+    let out = light_bsp_with_report(std::borrow::Cow::Borrowed(bsp), opts, models, log, &mut report)?;
     Ok((out, report))
 }
 
 fn light_bsp_with_report(
-    bsp: &[u8],
+    bsp: std::borrow::Cow<'_, [u8]>,
     opts: &RadOptions,
     models: &dyn crate::props::ModelSource,
     log: &mut dyn FnMut(&str),
@@ -154,7 +167,7 @@ fn stage(report: &mut crate::stats::RadReport, name: &str, t: Instant) {
 }
 
 fn run_with(
-    bytes: &[u8],
+    bytes: std::borrow::Cow<'_, [u8]>,
     opts: &RadOptions,
     runner: &Runner<'_>,
     models: &dyn crate::props::ModelSource,
@@ -165,7 +178,7 @@ fn run_with(
     use progress::Stage;
     let start = Instant::now();
     work.begin(Stage::Scene, 8);
-    let mut src = hp_bsp::Bsp::from_vec(bytes.to_vec()).map_err(|e| format!("not a BSP file: {e}"))?;
+    let mut src = hp_bsp::Bsp::from_vec(bytes.into_owned()).map_err(|e| format!("not a BSP file: {e}"))?;
     if opts.luxel_density > 0.0 && opts.luxel_density < 1.0 {
         let scaled = output::rescale_luxels(src, opts.luxel_density)?;
         src = hp_bsp::Bsp::from_vec(scaled).map_err(|e| format!("not a BSP file: {e}"))?;
@@ -222,8 +235,7 @@ fn run_with(
 
     let t = Instant::now();
     let all = runner.par(|| surface::lit_faces(&map, opts.smooth_angle));
-    let faces: Vec<surface::LitFace> = all.iter().flatten().cloned().collect();
-    let lit_index = bake::lit_index(map.faces.len(), &faces);
+    let lit_index = bake::lit_index(map.faces.len(), all.iter().flatten());
     work.add(1);
     let rules_table = tables.first();
     let no_shadow = |m: &str| rules_table.is_some_and(|t| t.casts_no_shadow(m));
@@ -263,7 +275,7 @@ fn run_with(
     work.add(1);
     let blockers = runner.par(|| surface::blocker_scene(&map));
     work.add(1);
-    drop(all);
+    let faces: Vec<surface::LitFace> = all.into_iter().flatten().collect();
     let sky_clusters = surface::sky_clusters(&map);
     let luxels: usize = faces.iter().map(|f| f.luxels()).sum();
     if luxels > 1 << 26 {
@@ -320,6 +332,7 @@ fn run_with(
         props: &occluders,
         blockers: &blockers,
         work,
+        bounce_budget: opts.bounce_budget,
     };
     let t = Instant::now();
     work.begin(Stage::Direct, luxels as u64);

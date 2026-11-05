@@ -23,6 +23,22 @@ Ces contrôles marchent avec tous les outils et tous les schémas :
 - La vitesse de vol monte en **Temps d'accélération de la caméra** secondes (0 : immédiat).
 - `Ctrl` ne fait jamais voler : en vol ou en vue souris, un clic gauche sélectionne l'objet sous le viseur (le centre de la vue), et `Ctrl+clic` l'ajoute ou le retire de la sélection, comme dans Hammer. Le pinceau des displacements, lui, continue de peindre.
 - Les raccourcis ne se déclenchent pas pendant que le clavier pilote la caméra.
+
+### Texturer en vue souris
+
+En vue souris (`Z`), vous pouvez texturer la face sous le viseur sans quitter le mode caméra, avec n'importe quel outil :
+
+| Entrée | Effet |
+|---|---|
+| `T` (`fly_apply_texture`) ou clic droit | Applique la texture actuelle à la face visée |
+| `F` (`fly_apply_texture_brush`) ou `Maj+clic droit` | Applique la texture actuelle à toutes les faces du brush visé |
+| `V` (`fly_pick_texture`) ou clic du milieu | Prélève la texture de la face visée comme texture actuelle |
+| `N` (`fly_align_texture`) | Aligne la texture de la face visée sur la vue (les directions droite et haut de la caméra) |
+
+- La face visée (la première face de solide dans la direction du regard, jusqu'à 16384 unités) est surlignée en jaune avec son contour. Un viseur est dessiné au centre de la vue avec le solide, la face et la texture de la cible, et une ligne d'aide en bas de la vue liste les touches et la texture actuelle.
+- Chaque modification est une étape d'annulation. Les touches sont des actions : elles se changent dans **Paramètres > Clavier** (`[keybindings]`) comme les autres, et ne fonctionnent qu'en vue souris.
+- Le clic gauche continue de sélectionner l'objet sous le viseur.
+- Par MCP : `ui_key` avec `z` entre en vue souris, puis `t`, `f`, `v` ou `n` agissent sur la face au centre de la vue (`set_camera` pour viser, `list_keybindings` pour les touches).
 - Quand l'outil actif utilise le clic droit dans la vue 3D (l'outil de texture applique la texture actuelle), `Maj+clic droit` ouvre le menu contextuel.
 
 ### Disposition du clavier (touches de la caméra)

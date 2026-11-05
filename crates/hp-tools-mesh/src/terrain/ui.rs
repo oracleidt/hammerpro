@@ -172,7 +172,7 @@ fn setup_ui(ui: &mut egui::Ui, id: &str, s: &mut TileSetup, with_size: bool) {
         let sp = s.spacing();
         ui.label(egui::RichText::new(tf!("terrain.layout", tx, ty, tx * ty, format!("{:.1}", sp.x.min(sp.y)))).weak());
         if let Err(e) = s.validate() {
-            ui.colored_label(Color32::LIGHT_RED, e);
+            ui.colored_label(hp_app::theme::error(), e);
         }
     }
 }
@@ -227,7 +227,7 @@ fn paint_layout(ui: &mut egui::Ui, thumb: Option<&HeightField>, o: &ImportOption
         }
     }
     let (tx, ty) = o.setup.tiles();
-    let line = Stroke::new(1.0, Color32::from_rgb(255, 200, 0));
+    let line = Stroke::new(1.0, hp_app::theme::warning());
     for i in 0..=tx {
         let x = rect.left() + rect.width() * i as f32 / tx as f32;
         painter.line_segment([Pos2::new(x, rect.top()), Pos2::new(x, rect.bottom())], line);
@@ -276,7 +276,7 @@ fn import_window(ctx: &egui::Context, tui: &mut TerrainUi, state: &mut AppState)
                         ui.label(egui::RichText::new(tf!("terrain.image_info", w, h)).weak());
                     }
                     Some((Err(e), _)) if !tui.import.path.trim().is_empty() => {
-                        ui.colored_label(Color32::LIGHT_RED, e);
+                        ui.colored_label(hp_app::theme::error(), e);
                     }
                     _ => {}
                 }

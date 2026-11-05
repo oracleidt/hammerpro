@@ -12,7 +12,36 @@ pub struct LabRuntime {
     pub unprop_open: bool,
     pub propper_options_open: bool,
     pub particles: ParticleReport,
+    pub particle_preview: ParticlePreviewRuntime,
+    pub fly_texture: FlyTextureRuntime,
     pub sniffer: SnifferRuntime,
+    pub sound_color: super::soundcolor::SoundColorRuntime,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ParticlePreviewRuntime {
+    pub open: bool,
+    pub selected: Option<String>,
+    pub search: String,
+    pub fx_active: bool,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct FlyTextureRuntime {
+    pub active: bool,
+    pub view: usize,
+    pub target: Option<hp_editor::FaceRef>,
+    pub material: String,
+    pub key: Option<(glam::DVec3, f64, f64, u64)>,
+    pub last: Option<FlyTextureOp>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FlyTextureOp {
+    Apply,
+    ApplyBrush,
+    Pick,
+    Align,
 }
 
 #[derive(Debug, Default)]

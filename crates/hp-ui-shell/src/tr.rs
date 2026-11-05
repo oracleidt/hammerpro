@@ -73,6 +73,7 @@ pub const TR: TrTable = &[
     ("shell.undo.merge_solids", "Merge solids", "Fusion de solides"),
     ("shell.undo.make_hollow", "Make hollow", "Évidement"),
     ("shell.undo.duplicate", "Duplicate", "Duplication"),
+    ("shell.undo.array", "Array duplicate", "Duplication en série"),
     ("shell.undo.delete", "Delete", "Suppression"),
     ("shell.undo.cut", "Cut", "Couper"),
     ("shell.undo.create_solid", "Create solid", "Création de solide"),

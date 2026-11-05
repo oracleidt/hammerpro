@@ -449,6 +449,25 @@ impl Bvh {
     }
 
     pub fn with_groups(tris: &[Triangle], class: impl Fn(u32) -> u8, groups: &[u8]) -> Self {
+        let (sets, lo, hi) = Self::sets_of(tris, class, groups);
+        Self::from_sets(sets, lo, hi)
+    }
+
+    pub fn from_vec(tris: Vec<Triangle>) -> Self {
+        Self::from_vec_groups(tris, |_| 1, &[])
+    }
+
+    pub fn from_vec_groups(tris: Vec<Triangle>, class: impl Fn(u32) -> u8, groups: &[u8]) -> Self {
+        let (sets, lo, hi) = Self::sets_of(&tris, class, groups);
+        drop(tris);
+        Self::from_sets(sets, lo, hi)
+    }
+
+    fn sets_of(
+        tris: &[Triangle],
+        class: impl Fn(u32) -> u8,
+        groups: &[u8],
+    ) -> (Vec<Vec<(Triangle, u8)>>, Vec3A, Vec3A) {
         let mut sets: Vec<Vec<(Triangle, u8)>> = vec![Vec::new(); groups.len() + 1];
         let (mut lo, mut hi) = (Vec3A::splat(f32::INFINITY), Vec3A::splat(f32::NEG_INFINITY));
         for t in tris {
@@ -462,8 +481,12 @@ impl Bvh {
             let g = groups.iter().position(|g| g & c == c).unwrap_or(groups.len());
             sets[g].push((*t, c));
         }
-        let trees: Vec<Tree> = sets.iter().filter(|s| !s.is_empty()).map(|s| Tree::build(s)).collect();
+        (sets, lo, hi)
+    }
+
+    fn from_sets(sets: Vec<Vec<(Triangle, u8)>>, lo: Vec3A, hi: Vec3A) -> Self {
         let count = sets.iter().map(Vec::len).sum();
+        let trees: Vec<Tree> = sets.into_iter().filter(|s| !s.is_empty()).map(Tree::build).collect();
         Self { trees, count, bounds: (count > 0).then_some((lo, hi)) }
     }
 
@@ -587,7 +610,7 @@ impl Tree {
         if mask & self.classes == self.classes { ALL_CLASSES } else { mask }
     }
 
-    fn build(tris: &[(Triangle, u8)]) -> Tree {
+    fn build(tris: Vec<(Triangle, u8)>) -> Tree {
         let mut build: Vec<BuildPrim> = tris
             .iter()
             .enumerate()
@@ -599,7 +622,11 @@ impl Tree {
             .collect();
         let mut bin = Vec::with_capacity(build.len() / 2 + 1);
         build_rec(&mut build, &mut bin, 0, 0);
-        let ordered: Vec<(Triangle, u8)> = build.iter().map(|b| tris[b.index as usize]).collect();
+        let order: Vec<u32> = build.iter().map(|b| b.index).collect();
+        drop(build);
+        let ordered: Vec<(Triangle, u8)> = order.iter().map(|&i| tris[i as usize]).collect();
+        drop(order);
+        drop(tris);
         let root = bin[0];
         let mut c = Collapse {
             bin: &bin,
@@ -625,7 +652,7 @@ impl Tree {
         } else {
             c.node(0);
         }
-        let classes = tris.iter().fold(0, |a, t| a | t.1);
+        let classes = ordered.iter().fold(0, |a, t| a | t.1);
         Tree { nodes: c.nodes, packs: c.packs, classes }
     }
 
@@ -1059,5 +1086,28 @@ mod tests {
         assert!((h.t - (1000.0 - 12.0)).abs() < 1e-3);
         assert!(!b.occluded(Vec3A::new(9.5, 9.5, 1000.0), -Vec3A::Z, 2000.0, |_| true));
         assert!(b.occluded(Vec3A::new(8.5, 8.5, 1000.0), -Vec3A::Z, 2000.0, |_| true));
+    }
+
+    #[test]
+    fn an_owned_build_gives_the_same_tree() {
+        let mut grid = Vec::new();
+        for x in 0..40 {
+            for y in 0..40 {
+                let min = Vec3A::new(x as f32 * 10.0, y as f32 * 10.0, 0.0);
+                grid.extend(quad(min, min + Vec3A::splat(9.0), (x + y) as f32, x * 1000 + y));
+            }
+        }
+        let class = |p: u32| if p.is_multiple_of(2) { 1 } else { 2 };
+        let borrowed = Bvh::with_groups(&grid, class, &[1]);
+        let owned = Bvh::from_vec_groups(grid.clone(), class, &[1]);
+        assert_eq!(borrowed.len(), owned.len());
+        assert_eq!(borrowed.bytes(), owned.bytes());
+        for k in 0..50 {
+            let o = Vec3A::new(5.0 + k as f32 * 7.0, 5.0 + k as f32 * 3.0, 500.0);
+            let a = borrowed.closest(o, -Vec3A::Z, 1000.0, |_| true).map(|h| (h.payload, h.t));
+            let b = owned.closest(o, -Vec3A::Z, 1000.0, |_| true).map(|h| (h.payload, h.t));
+            assert_eq!(a, b);
+        }
+        assert_eq!(Bvh::from_vec(grid.clone()).len(), Bvh::new(&grid).len());
     }
 }

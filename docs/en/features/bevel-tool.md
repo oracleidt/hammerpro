@@ -15,7 +15,7 @@ Every result is made of valid convex brushes, so the map compiles like any other
 
 1. Move the mouse over a brush in the 3D view. The edge under the cursor is highlighted in yellow, with the two faces around it.
 2. Press `Ctrl+B`. The bevel starts with the last radius used (16 units the first time), limited to what the faces allow.
-3. Move the mouse **up** to make the bevel bigger and **down** to make it smaller. The size snaps to the grid; hold `Alt` for a free size. You can also type it in the **Radius** field of the options bar.
+3. Move the mouse **up** to make the bevel bigger and **down** to make it smaller. The size snaps by itself to the active grid (size, custom grid and rotation honored, the step kept between 1 and 1024 units, see [Grid for bevel, inset and extrude](extrude-tool.md#grid-for-bevel-inset-and-extrude)); hold `Ctrl` to force the grid and `Alt` for a free size. You can also type it in the **Radius** field of the options bar.
 4. Turn the **mouse wheel** up for more segments (a smoother round) and down for fewer. One segment is a flat chamfer. The **Segments** field does the same.
 5. Press `B` (or `Ctrl+B` again) to switch between the normal and the inverse bevel.
 6. Press `Enter` or click to apply. `Escape` or a right click cancels.
@@ -92,7 +92,7 @@ To do both corners in one step, pick the two edges with `Ctrl+click` first.
 `Ctrl+B` is also **Snap selection to grid** in every key preset (Hammer Pro, Hammer and Hammer++). The two share the key this way:
 
 - In the **Bevel** tool, `Ctrl+B` starts the bevel when an edge is under the cursor or edges are picked, and switches to the inverse bevel during the operation. Otherwise it snaps the selection to the grid as usual.
-- In the **Selection** and **Vertex** tools, `Ctrl+B` bevels the brush edge under the cursor when the cursor is on an edge in the **3D view**. Anywhere else (a 2D view, the middle of a face, empty space) it snaps the selection (or the selected vertices) to the grid as before.
+- In the **Selection** and **Vertex** tools, `Ctrl+B` bevels the edges picked with the selection tool's **Edge** pick ([Selecting faces, edges or vertices](selection-tool.md#selecting-faces-edges-or-vertices-pick)) when there are some, else the brush edge under the cursor when the cursor is on an edge in the **3D view**. Anywhere else (a 2D view, the middle of a face, empty space) it snaps the selection (or the selected vertices) to the grid as before.
 - In every other tool `Ctrl+B` only snaps to grid.
 
 If you rebind **Snap selection to grid** in **Settings > Keyboard**, the bevel follows the new key.

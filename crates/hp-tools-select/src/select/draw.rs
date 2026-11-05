@@ -1,5 +1,6 @@
 use egui::{Align2, Color32, FontId, Key, Painter, Pos2, Rect, Stroke, StrokeKind};
 use glam::DVec3;
+use hp_app::settings::SelectElement;
 use hp_app::theme::{VIEW_ACCENT, VIEW_SUCCESS};
 use hp_app::{AppState, ViewInfo, t, tf};
 use hp_geom::Aabb;
@@ -379,6 +380,23 @@ impl SelectTool {
 
     pub(super) fn options(&mut self, ui: &mut egui::Ui, state: &mut AppState) {
         ui.horizontal_wrapped(|ui| {
+            ui.label(t!("seltool.element")).on_hover_text(t!("seltool.element_tip"));
+            for (element, action) in [
+                (SelectElement::Object, hp_app::Action::SelectElementObject),
+                (SelectElement::Vertex, hp_app::Action::SelectElementVertex),
+                (SelectElement::Edge, hp_app::Action::SelectElementEdge),
+                (SelectElement::Face, hp_app::Action::SelectElementFace),
+            ] {
+                let on = state.settings.selection.element == element;
+                if ui
+                    .add(egui::Button::selectable(on, t!(element.label_key())))
+                    .on_hover_text(t!("seltool.element_tip"))
+                    .clicked()
+                {
+                    state.request(action);
+                }
+            }
+            hp_app::widgets::vsep(ui);
             ui.label(t!("seltool.box")).on_hover_text(t!("seltool.box_tip"));
             for (inside, key) in [(false, "seltool.box.touching"), (true, "seltool.box.inside")] {
                 if ui
@@ -397,7 +415,7 @@ impl SelectTool {
             {
                 self.centers_only = !self.centers_only;
             }
-            ui.separator();
+            hp_app::widgets::vsep(ui);
             ui.label(t!("seltool.handles")).on_hover_text(t!("seltool.handles_tip"));
             for mode in HandleMode::ALL {
                 if ui
@@ -414,13 +432,14 @@ impl SelectTool {
                 state.settings_dirty = true;
                 self.hover.stretch = None;
             }
-            ui.separator();
+            hp_app::widgets::vsep(ui);
             ui.label(t!("seltool.gizmo")).on_hover_text(t!("seltool.gizmo_tip"));
             ui.checkbox(&mut self.gizmo_visible, t!("seltool.gizmo.show")).on_hover_text(t!("seltool.gizmo.show_tip"));
-            ui.add_enabled_ui(self.gizmo_visible, |ui| {
+            let gizmo_on = self.gizmo_visible;
+            {
                 for mode in GizmoMode::ALL {
                     if ui
-                        .add(egui::Button::selectable(self.gizmo_mode == mode, t!(mode.label_key())))
+                        .add_enabled(gizmo_on, egui::Button::selectable(self.gizmo_mode == mode, t!(mode.label_key())))
                         .on_hover_text(t!("seltool.gizmo_tip"))
                         .clicked()
                     {
@@ -432,11 +451,15 @@ impl SelectTool {
                     Some(sc) => format!("{} ({})", t!("seltool.gizmo.local_tip"), hp_app::actions::shortcut_label(&sc)),
                     None => t!("seltool.gizmo.local_tip").to_owned(),
                 };
-                if ui.add(egui::Button::selectable(local, t!("seltool.gizmo.local"))).on_hover_text(tip).clicked() {
+                if ui
+                    .add_enabled(gizmo_on, egui::Button::selectable(local, t!("seltool.gizmo.local")))
+                    .on_hover_text(tip)
+                    .clicked()
+                {
                     state.request(hp_app::Action::ToggleGizmoLocal);
                 }
-            });
-            ui.separator();
+            }
+            hp_app::widgets::vsep(ui);
             let pivot = state.pivot.is_some();
             if ui
                 .add(egui::Button::selectable(pivot, t!("seltool.pivot")))
@@ -445,7 +468,7 @@ impl SelectTool {
             {
                 state.request(hp_app::Action::TogglePivot);
             }
-            ui.separator();
+            hp_app::widgets::vsep(ui);
             for (kind, key) in
                 [(QueryKind::Class, "seltool.query.class"), (QueryKind::Material, "seltool.query.material")]
             {

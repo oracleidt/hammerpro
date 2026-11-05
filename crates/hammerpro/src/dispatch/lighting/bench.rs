@@ -56,10 +56,16 @@ impl Sampler {
         let peak = Arc::new(AtomicU64::new(0));
         let stop = Arc::new(AtomicBool::new(false));
         let (p, s) = (peak.clone(), stop.clone());
+        let trace = std::env::var_os("HP_BENCH_TRACE").is_some();
         std::thread::spawn(move || {
+            let mut last = 0u64;
             while !s.load(Ordering::Relaxed) {
                 if let Some(u) = memory::of_self() {
                     p.fetch_max(u.working_set, Ordering::Relaxed);
+                    if trace && u.working_set.abs_diff(last) > (6 << 20) {
+                        last = u.working_set;
+                        eprintln!("MEM {}", u.working_set >> 20);
+                    }
                 }
                 std::thread::sleep(Duration::from_millis(15));
             }
@@ -199,6 +205,8 @@ fn frames(gfx: &mut Gfx, label: &str, eye: Vec3, target: Vec3, mode: RenderMode)
 
 fn job(doc: &Document, gfx: &Gfx, fs: Option<hp_fs::GameFs>, around: Option<(DVec3, f64)>, quick: bool) -> bake::Job {
     let export = hp_editor::compile_export::CompileExport::default();
+    let started = Instant::now();
+    let before = now();
     let snap = match around {
         None => doc.compile_snapshot(&export),
         Some((center, radius)) => {
@@ -206,6 +214,11 @@ fn job(doc: &Document, gfx: &Gfx, fs: Option<hp_fs::GameFs>, around: Option<(DVe
             doc.compile_snapshot_in(&export, &[hp_geom::Aabb::new(center - r, center + r)])
         }
     };
+    eprintln!(
+        "BENCH snapshot of the map on the editor thread: {:.1} ms, +{} MB",
+        started.elapsed().as_secs_f64() * 1000.0,
+        mb(now().saturating_sub(before))
+    );
     let solids: HashMap<u32, bsp::SolidInfo> = doc
         .scene()
         .solids()
@@ -220,6 +233,10 @@ fn job(doc: &Document, gfx: &Gfx, fs: Option<hp_fs::GameFs>, around: Option<(DVe
         })
         .collect();
     let options = doc.light_plus();
+    let threads = std::env::var("HP_BENCH_THREADS")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .map_or_else(|| super::bake_threads(0), |n| (n.max(1), n.max(1)));
     let exe = std::env::var_os("HP_BENCH_EXE").map(PathBuf::from).filter(|p| p.is_file());
     bake::Job {
         id: if quick { 1 } else { 2 },
@@ -233,7 +250,7 @@ fn job(doc: &Document, gfx: &Gfx, fs: Option<hp_fs::GameFs>, around: Option<(DVe
         bounces: super::bounces(options.bounced),
         prop_shadows: true,
         prop_lighting: true,
-        threads: super::bake_threads(0),
+        threads,
         layer_size: super::LAYER_SIZE,
         max_layers: 64,
         coarsen: 1.0,
@@ -317,11 +334,12 @@ fn bake_and_baked_view() {
     let radius: f64 = std::env::var("HP_BENCH_RADIUS").ok().and_then(|v| v.parse().ok()).unwrap_or(0.0);
     let around = (radius > 0.0).then(|| (center.as_dvec3(), radius));
     let worker = bake::Worker::start(Box::new(|| {})).expect("worker");
-    let quick = run_bake(&worker, &sampler, job(&doc, &gfx, fs.clone(), around, true), "quick");
+    let quick =
+        run_bake(&worker, &sampler, job(&doc, &gfx, fs.clone(), around, true), "quick", &mut gfx, (near, center));
     show(&mut gfx, &mut am, &quick);
     frames(&mut gfx, "quick near", near, center, RenderMode::Lit);
     save(&gfx, "quick_near");
-    let baked = run_bake(&worker, &sampler, job(&doc, &gfx, fs, around, false), "refined");
+    let baked = run_bake(&worker, &sampler, job(&doc, &gfx, fs, around, false), "refined", &mut gfx, (near, center));
     compare(&quick, &baked);
     drop(quick);
     sampler.reset();
@@ -382,7 +400,31 @@ fn save(gfx: &Gfx, name: &str) {
     let _ = image::save_buffer(&out, &px, w, h, image::ColorType::Rgba8);
 }
 
-fn run_bake(worker: &bake::Worker, sampler: &Sampler, job: bake::Job, label: &str) -> Box<bake::Baked> {
+fn run_bake(
+    worker: &bake::Worker,
+    sampler: &Sampler,
+    job: bake::Job,
+    label: &str,
+    gfx: &mut Gfx,
+    view: (Vec3, Vec3),
+) -> Box<bake::Baked> {
+    let mut frame_ms: Vec<f64> = Vec::new();
+    let mut idle: Vec<f64> = Vec::new();
+    for i in 0..60 {
+        let t = Instant::now();
+        let mut p = persp(view.0, view.1, (i % 10) as f32 * 0.02);
+        p.mode = RenderMode::Textured;
+        gfx.renderer.render_view(40, &p, &Overlay::default());
+        let _ = gfx.device.poll(wgpu::PollType::wait_indefinitely());
+        idle.push(t.elapsed().as_secs_f64() * 1000.0);
+        std::thread::sleep(Duration::from_millis(16).saturating_sub(t.elapsed()));
+    }
+    idle.sort_by(|a, b| a.total_cmp(b));
+    eprintln!(
+        "BENCH frames before the {label} bake: median {:.2} ms, worst {:.2} ms",
+        idle[idle.len() / 2],
+        idle[idle.len() - 1]
+    );
     let base = now();
     sampler.reset();
     let t = Instant::now();
@@ -400,9 +442,24 @@ fn run_bake(worker: &bake::Worker, sampler: &Sampler, job: bake::Job, label: &st
         if let Some(b) = done {
             break b;
         }
-        std::thread::sleep(Duration::from_millis(20));
+        let t = Instant::now();
+        let mut p = persp(view.0, view.1, (frame_ms.len() % 10) as f32 * 0.02);
+        p.mode = RenderMode::Textured;
+        gfx.renderer.render_view(40, &p, &Overlay::default());
+        let _ = gfx.device.poll(wgpu::PollType::wait_indefinitely());
+        frame_ms.push(t.elapsed().as_secs_f64() * 1000.0);
+        std::thread::sleep(Duration::from_millis(16).saturating_sub(t.elapsed()));
     };
     let peak = sampler.peak();
+    frame_ms.sort_by(|a, b| a.total_cmp(b));
+    let at = |q: f64| frame_ms.get(((frame_ms.len() as f64 - 1.0) * q).round() as usize).copied().unwrap_or(0.0);
+    eprintln!(
+        "BENCH frames during the {label} bake: {} frames, median {:.2} ms, p95 {:.2} ms, worst {:.2} ms",
+        frame_ms.len(),
+        at(0.5),
+        at(0.95),
+        at(1.0)
+    );
     eprintln!(
         "BENCH bake {label} {:.2} s: {} faces, {} luxels, {} layers of {}, {} texels; editor {} MB before, peak {} MB          (+{} MB), {} MB after; lighting process peak {:?} MB",
         t.elapsed().as_secs_f32(),

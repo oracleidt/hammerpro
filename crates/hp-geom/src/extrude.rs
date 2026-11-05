@@ -778,6 +778,41 @@ pub fn face_extrude(
     }
 }
 
+pub fn face_prism(
+    sides: &[Side],
+    side_index: usize,
+    depth: f64,
+    material: Option<&str>,
+    next_side_id: &mut dyn FnMut() -> u32,
+) -> Result<Vec<Side>, GeomError> {
+    let geom = validate_solid(sides)?;
+    let face = geom.face_for_side(side_index).ok_or(ExtrudeIssue::NotAFace)?;
+    let source = sides.get(side_index).ok_or(ExtrudeIssue::NotAFace)?;
+    if source.disp.is_some() {
+        return Err(ExtrudeIssue::Displacement.into());
+    }
+    if !depth.is_finite() || depth < MIN_EXTRUDE_DEPTH {
+        return Err(ExtrudeIssue::NoDepth.into());
+    }
+    let frame = FaceFrame::new(&face.plane);
+    let mut ring: Vec<DVec3> = face.vertices.clone();
+    let flat: Vec<DVec2> = ring.iter().map(|v| frame.to_2d(*v)).collect();
+    if signed_area(&flat) < 0.0 {
+        ring.reverse();
+    }
+    let material =
+        material.map(str::trim).filter(|m| !m.is_empty()).map_or_else(|| source.material.clone(), str::to_owned);
+    let mut out = prism(&ring, face.plane.normal, 0.0, depth, source, next_side_id).ok_or(ExtrudeIssue::TooThin)?;
+    for s in &mut out {
+        dress(s, source, face.plane.normal, &material);
+    }
+    let b = build_solid(&out).aabb;
+    if b.min.min_element() < -MAX_COORD || b.max.max_element() > MAX_COORD {
+        return Err(ExtrudeIssue::PastLimits.into());
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1160,5 +1195,29 @@ mod tests {
             }
         }
         assert!(made > 100, "{made}");
+    }
+
+    #[test]
+    fn a_face_prism_is_a_new_separate_brush_on_the_face() {
+        let side_facing = |sides: &[Side], normal: DVec3| {
+            sides.iter().position(|s| Plane::from_side(s).is_some_and(|p| p.normal.dot(normal) > 0.999)).expect("side")
+        };
+        let cube = hammer_box(DVec3::ZERO, DVec3::new(128.0, 128.0, 64.0));
+        let top = side_facing(&cube, DVec3::Z);
+        let mut n = 5000;
+        let mut next = || {
+            n += 1;
+            n
+        };
+        let brush = face_prism(&cube, top, 32.0, None, &mut next).expect("prism");
+        let g = build_solid(&brush);
+        assert!(g.valid);
+        assert!((g.volume() - 128.0 * 128.0 * 32.0).abs() < 1e-6);
+        assert!((g.aabb.min.z - 64.0).abs() < 1e-6 && (g.aabb.max.z - 96.0).abs() < 1e-6);
+        assert!(face_prism(&cube, top, 0.0, None, &mut next).is_err());
+        assert!(face_prism(&cube, 99, 8.0, None, &mut next).is_err());
+        let down = side_facing(&cube, DVec3::NEG_Z);
+        let g = build_solid(&face_prism(&cube, down, 8.0, Some("DEV/X"), &mut next).expect("down"));
+        assert!((g.aabb.min.z + 8.0).abs() < 1e-6 && g.aabb.max.z.abs() < 1e-6);
     }
 }

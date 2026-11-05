@@ -21,10 +21,13 @@ hp-tools-select = { path = "../hp-tools-select" }
 hp-tools-create = { path = "../hp-tools-create" }
 hp-tools-mesh = { path = "../hp-tools-mesh" }
 hp-ui-textures = { path = "../hp-ui-textures" }
+hp-shader = { path = "../hp-shader" }
 hp-ui-entities = { path = "../hp-ui-entities" }
 hp-ui-mapping = { path = "../hp-ui-mapping" }
 hp-light = { path = "../hp-light" }
 hp-ui-lab = { path = "../hp-ui-lab" }
+hp-audio = { path = "../hp-audio" }
+hp-colorgrade = { path = "../hp-colorgrade" }
 hp-sniffer = { path = "../hp-sniffer" }
 hp-decompile = { path = "../hp-decompile" }
 hp-mcp = { path = "../hp-mcp" }
@@ -60,6 +63,7 @@ arboard = "3"
 
 [dev-dependencies]
 pollster.workspace = true
+hp-vtf.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = [

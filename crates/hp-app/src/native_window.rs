@@ -80,6 +80,13 @@ pub(crate) fn placement_of(rect: PxRect, monitor: Option<&Monitor>) -> WindowPla
     }
 }
 
+pub const USABLE_WIDTH: i32 = 480;
+pub const USABLE_HEIGHT: i32 = 360;
+
+pub fn is_usable_placement(p: &WindowPlacement) -> bool {
+    p.width >= USABLE_WIDTH && p.height >= USABLE_HEIGHT
+}
+
 pub(crate) fn restore_rect(saved: &WindowPlacement, monitors: &[Monitor]) -> PxRect {
     let mut r = PxRect::new(saved.x, saved.y, saved.width.max(MIN_WIDTH), saved.height.max(MIN_HEIGHT));
     let monitors: Vec<&Monitor> = monitors.iter().filter(|m| m.work.w > 0 && m.work.h > 0).collect();
@@ -601,6 +608,14 @@ mod tests {
 
     fn saved(x: i32, y: i32, w: i32, h: i32, monitor: &str, mx: i32, my: i32) -> WindowPlacement {
         WindowPlacement { x, y, width: w, height: h, monitor: monitor.to_owned(), monitor_x: mx, monitor_y: my }
+    }
+
+    #[test]
+    fn a_squashed_window_is_not_a_usable_place() {
+        let m = two_screens();
+        assert!(!is_usable_placement(&placement_of(PxRect::new(0, 0, 900, 64), Some(&m[0]))));
+        assert!(!is_usable_placement(&placement_of(PxRect::new(0, 0, 200, 700), Some(&m[0]))));
+        assert!(is_usable_placement(&placement_of(PxRect::new(0, 0, 900, 700), Some(&m[0]))));
     }
 
     #[test]

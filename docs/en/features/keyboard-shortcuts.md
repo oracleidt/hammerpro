@@ -77,6 +77,10 @@ The **Hammer++** set adds:
 
 The set does not touch the shortcuts you changed yourself: they stay on top of any set. The camera controls (mouse and fly keys) are chosen separately, with **Camera controls** in **Settings > Viewports** (see [Camera and navigation](camera-navigation.md)). The first run wizard sets both from the editor you come from (reopen it with **Help > Setup assistant...**).
 
+### I, E and the digit keys: inset, extrude and the pick element
+
+`I` starts the interactive inset and `E` the interactive extrude on the selected faces, or on the face under the mouse when none is selected, while a 3D view has the mouse (see [Extrude tool](extrude-tool.md#interactive-inset-i)). `I` is shared with **Bounding boxes**, which it keeps when there is no face to inset. `E` is the action `extrude_interactive`; the selection tool keeps `E` for the scale of the selected objects, except while faces are selected. The digit keys `1`, `2`, `3` and `4` pick vertices, edges, faces or objects with the selection tool ([Pick](selection-tool.md#selecting-faces-edges-or-vertices-pick)). While the inset or extrude is running: `Ctrl` forces the grid, `Alt` frees the inset or switches the extrude to the alternate grid, `Enter` or a click applies, `Escape` or a right click cancels.
+
 ### Ctrl+B: snap to grid and bevel
 
 `Ctrl+B` is **Snap selection to grid** in every set. It also bevels: in the [bevel tool](bevel-tool.md), and in the Selection and Vertex tools when the cursor is on a brush edge in the 3D view, it starts bevelling that edge. Anywhere else it snaps to the grid as before. Rebinding **Snap selection to grid** moves both.

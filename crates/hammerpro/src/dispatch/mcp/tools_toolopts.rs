@@ -24,6 +24,7 @@ const TOOL_NAMES: &[&str] = &[
     "displacement",
     "cordon",
     "road",
+    "pipe",
 ];
 
 const MAX_OPTIONS: usize = 64;
@@ -31,14 +32,14 @@ const MAX_OPTIONS: usize = 64;
 domain! { "tool options";
     get_tool_options: Read, "Tool options",
         "The options of the editing tools by name with their current values and what each takes: the selection \
-        tool (handles: scale, rotate, skew; box: touching, inside, centers; gizmo on/off and gizmo_mode: move, \
+        tool (element: object, face, edge, vertex, what a click in a 3D view selects; handles: scale, rotate, skew; box: touching, inside, centers; gizmo on/off and gizmo_mode: move, \
         rotate, scale; gizmo_local; stretch_handles: the arrows on the faces of the selected brushes in the 3D \
         view that stretch the selection along an axis, saved with the settings), the block tool (primitive incl. stairs, spiral_stairs, ramp, pillar, doorway, sides, arch wall, arc, start, rise, torus, steps, step_height, open, inner, spiral_angle, spiral_start, slope, direction, base, capital, inset, door_width, door_height, thickness, door_arch, door_arch_radius, door_arch_segments, reorient, the shape preview window, texture scale, \
         create as, keep active), the curve tool (subdivisions 2 to 4096, thickness 1 to 1024, height or auto, \
         tex_scale, create_as, keep_active), the road tool (lanes, lane_width, shoulder, thickness, step, \
         tex_scale, material, shoulder_material, line_material, center_material, center_line, edge_line, \
         divider_line (none, solid, dashed, double), line_width, dash, gap, roll_start, roll_end, auto_bank, \
-        auto_bank_limit, follow_terrain, lift, base_height, create_as, keep_active), the clip tool (keep: front, back, both; three_point; axis of the \
+        auto_bank_limit, follow_terrain, lift, base_height, create_as, keep_active), the pipe tool (shape, sides, radius, hollow, wall, segments, segment_length, bend_radius, bend_slices, collar_every, collar_size, collar_length, collar_ends, collar_bends, tex_scale, path, heading, depth, keep_active; create_pipe builds a pipe without the tool), the clip tool (keep: front, back, both; three_point; axis of the \
         Shift+click cut in the 3D view: auto, x, y, z; the cut face material follows the \
         brush.clip_current_material setting), the path tool (class, base_name, loop, relink, offset; saved with the settings), the extrude / carve \
         tool (mode: carve, extrude; depth; through; new_faces: face, current), the bevel tool (radius, segments, \

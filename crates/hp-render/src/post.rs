@@ -9,6 +9,8 @@ const SHADER: &str = r#"
 @group(0) @binding(0) var src: texture_2d<f32>;
 @group(0) @binding(1) var lut: texture_3d<f32>;
 @group(0) @binding(2) var lut_samp: sampler;
+@group(0) @binding(3) var zone_lut: texture_3d<f32>;
+@group(0) @binding(4) var<uniform> flags: vec4<f32>;
 
 @vertex
 fn vs_full(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
@@ -29,20 +31,62 @@ fn to_linear(c: vec3<f32>) -> vec3<f32> {
     return select(hi, lo, c <= vec3<f32>(0.04045));
 }
 
+fn grid_coord(s: vec3<f32>) -> vec3<f32> {
+    return s * (31.0 / 32.0) + vec3<f32>(0.5 / 32.0);
+}
+
 @fragment
 fn fs_lut(@builtin(position) p: vec4<f32>) -> @location(0) vec4<f32> {
     let c = textureLoad(src, vec2<i32>(p.xy), 0);
-    let s = clamp(to_srgb(c.rgb), vec3<f32>(0.0), vec3<f32>(1.0));
-    let uvw = s * (31.0 / 32.0) + vec3<f32>(0.5 / 32.0);
-    let g = textureSampleLevel(lut, lut_samp, uvw, 0.0).rgb;
-    return vec4<f32>(to_linear(g), c.a);
+    var s = clamp(to_srgb(c.rgb), vec3<f32>(0.0), vec3<f32>(1.0));
+    if flags.x > 0.5 {
+        s = clamp(textureSampleLevel(lut, lut_samp, grid_coord(s), 0.0).rgb, vec3<f32>(0.0), vec3<f32>(1.0));
+    }
+    if flags.y > 0.5 {
+        s = clamp(textureSampleLevel(zone_lut, lut_samp, grid_coord(s), 0.0).rgb, vec3<f32>(0.0), vec3<f32>(1.0));
+    }
+    return vec4<f32>(to_linear(s), c.a);
 }
 "#;
 
 #[derive(Default)]
 pub(crate) struct ColorLut {
     view: Option<wgpu::TextureView>,
+    zone: Option<wgpu::TextureView>,
     generation: u64,
+}
+
+fn upload_lut(device: &wgpu::Device, queue: &wgpu::Queue, data: &[u8]) -> wgpu::TextureView {
+    let extent = wgpu::Extent3d { width: LUT_SIZE, height: LUT_SIZE, depth_or_array_layers: LUT_SIZE };
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("hp-render color correction"),
+        size: extent,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D3,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    queue.write_texture(
+        texture.as_image_copy(),
+        data,
+        wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(LUT_SIZE * 4), rows_per_image: Some(LUT_SIZE) },
+        extent,
+    );
+    texture.create_view(&wgpu::TextureViewDescriptor::default())
+}
+
+fn identity_lut() -> Vec<u8> {
+    let step = 255.0 / (LUT_SIZE - 1) as f32;
+    let n = LUT_SIZE * LUT_SIZE * LUT_SIZE;
+    let mut out = Vec::with_capacity(n as usize * 4);
+    for i in 0..n {
+        let (r, g, b) = (i % LUT_SIZE, (i / LUT_SIZE) % LUT_SIZE, i / (LUT_SIZE * LUT_SIZE));
+        out.extend([r, g, b].map(|c| (c as f32 * step).round() as u8));
+        out.push(255);
+    }
+    out
 }
 
 impl Renderer {
@@ -51,34 +95,28 @@ impl Renderer {
         let lut = lut.filter(|d| d.len() == size);
         let cc = &mut self.lightmap.color;
         cc.generation += 1;
-        cc.view = lut.map(|data| {
-            let texture = self.device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("hp-render color correction"),
-                size: wgpu::Extent3d { width: LUT_SIZE, height: LUT_SIZE, depth_or_array_layers: LUT_SIZE },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D3,
-                format: wgpu::TextureFormat::Rgba8Unorm,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                view_formats: &[],
-            });
-            self.queue.write_texture(
-                texture.as_image_copy(),
-                data,
-                wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(LUT_SIZE * 4),
-                    rows_per_image: Some(LUT_SIZE),
-                },
-                wgpu::Extent3d { width: LUT_SIZE, height: LUT_SIZE, depth_or_array_layers: LUT_SIZE },
-            );
-            texture.create_view(&wgpu::TextureViewDescriptor::default())
-        });
+        cc.view = lut.map(|data| upload_lut(&self.device, &self.queue, data));
         self.content_gen += 1;
     }
 
     pub fn has_color_correction(&self) -> bool {
         self.lightmap.color.view.is_some()
+    }
+
+    pub fn set_color_zone(&mut self, lut: Option<&[u8]>) {
+        let size = (LUT_SIZE * LUT_SIZE * LUT_SIZE * 4) as usize;
+        let lut = lut.filter(|d| d.len() == size);
+        let cc = &mut self.lightmap.color;
+        if lut.is_none() && cc.zone.is_none() {
+            return;
+        }
+        cc.generation += 1;
+        cc.zone = lut.map(|data| upload_lut(&self.device, &self.queue, data));
+        self.content_gen += 1;
+    }
+
+    pub fn has_color_zone(&self) -> bool {
+        self.lightmap.color.zone.is_some()
     }
 }
 
@@ -92,6 +130,8 @@ struct Source {
 pub(crate) struct PostPass {
     pipeline: Option<(wgpu::RenderPipeline, wgpu::BindGroupLayout, wgpu::Sampler)>,
     sources: std::collections::HashMap<u32, Source>,
+    identity: Option<wgpu::TextureView>,
+    flags: Option<wgpu::Buffer>,
 }
 
 impl PostPass {
@@ -124,6 +164,26 @@ impl PostPass {
                         binding: 2,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D3,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 4,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Uniform,
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
                         count: None,
                     },
                 ],
@@ -183,11 +243,13 @@ impl PassHook for PostPass {
 
     fn finish(&mut self, cx: &HookContext<'_>, encoder: &mut wgpu::CommandEncoder) {
         let lm = &cx.renderer.lightmap;
-        let Some(lut) = &lm.color.view else {
+        let map_on = lm.color.view.is_some() && lm.display() == LightmapDisplay::Baked;
+        let zone_on = lm.color.zone.is_some();
+        if !map_on && !zone_on {
             self.sources.clear();
             return;
-        };
-        if cx.is_ortho || lm.display() != LightmapDisplay::Baked {
+        }
+        if cx.is_ortho {
             return;
         }
         let device = cx.device();
@@ -197,6 +259,22 @@ impl PassHook for PostPass {
             return;
         }
         self.pipeline(device);
+        if self.identity.is_none() {
+            self.identity = Some(upload_lut(device, cx.queue(), &identity_lut()));
+        }
+        let flags = self.flags.get_or_insert_with(|| {
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("hp-render color correction flags"),
+                size: 16,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            })
+        });
+        let values: [f32; 4] = [f32::from(u8::from(map_on)), f32::from(u8::from(zone_on)), 0.0, 0.0];
+        cx.queue().write_buffer(flags, 0, bytemuck::cast_slice(&values));
+        let Some(identity) = &self.identity else { return };
+        let lut = lm.color.view.as_ref().unwrap_or(identity);
+        let zone = lm.color.zone.as_ref().unwrap_or(identity);
         let Some((pipeline, layout, sampler)) = &self.pipeline else { return };
         let src = self.sources.entry(cx.view_id).or_insert_with(|| Source {
             texture: device.create_texture(&wgpu::TextureDescriptor {
@@ -235,6 +313,8 @@ impl PassHook for PostPass {
                     wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) },
                     wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(lut) },
                     wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(sampler) },
+                    wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(zone) },
+                    wgpu::BindGroupEntry { binding: 4, resource: flags.as_entire_binding() },
                 ],
             });
             src.bind = Some((bg, generation));

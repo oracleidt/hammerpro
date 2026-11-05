@@ -52,6 +52,14 @@ impl SettingsPage for LabPage {
         ui.add_enabled_ui(s.show_particles, |ui| {
             changed |= ui.checkbox(&mut s.particles_selected_only, t!("action.toggle_particles_selected")).changed();
         });
+        changed |= ui
+            .checkbox(&mut s.show_entity_fx, t!("action.toggle_entity_fx"))
+            .on_hover_text(t!("shell.lab.entity_fx_tip"))
+            .changed();
+        changed |= ui
+            .checkbox(&mut s.color_correction_preview, t!("action.toggle_color_correction_preview"))
+            .on_hover_text(t!("shell.lab.cc_preview_tip"))
+            .changed();
         if changed {
             state.settings_dirty = true;
         }
@@ -64,6 +72,11 @@ impl SettingsPage for LabPage {
 }
 
 pub(crate) const TR: TrTable = &[
+    (
+        "shell.lab.cc_preview_tip",
+        "Applies the lookup tables of the color_correction entities to the 3D views by distance from the camera, like the game.",
+        "Applique aux vues 3D les tables des entités color_correction selon la distance de la caméra, comme le jeu.",
+    ),
     ("shell.lab.page", "Nav mesh and particles", "Nav mesh et particules"),
     ("shell.lab.nav", "Navigation mesh", "Maillage de navigation"),
     ("shell.lab.nav_fill", "Fill the areas in the 3D view", "Remplir les zones dans la vue 3D"),
@@ -84,6 +97,11 @@ pub(crate) const TR: TrTable = &[
         "Contours des zones : vert praticable, bleu accroupi, jaune saut, rouge à éviter, cyan escalier, magenta coupée de la partie où les joueurs apparaissent.",
     ),
     ("shell.lab.particles", "Particles", "Particules"),
+    (
+        "shell.lab.entity_fx_tip",
+        "Animated approximation of func_smokevolume, env_embers, func_dustcloud and func_dustmotes in the 3D view (the volume box and coloured particles)",
+        "Approximation animée de func_smokevolume, env_embers, func_dustcloud et func_dustmotes dans la vue 3D (la boîte du volume et des particules colorées)",
+    ),
     (
         "shell.lab.particles_tip",
         "Plays the effects of info_particle_system near the camera in the 3D view (approximate colors, no textures)",

@@ -1,3 +1,4 @@
+mod array;
 mod goto;
 pub(crate) mod instance;
 mod mapinfo;
@@ -19,6 +20,7 @@ pub struct MapDialogs {
     problems: problems::ProblemsDialog,
     transform: transform::TransformDialog,
     paste: paste::PasteSpecialDialog,
+    array: array::ArrayDialog,
     goto: goto::GotoDialog,
     map_info: mapinfo::MapInfoDialog,
     packages: Vec<Box<dyn MapDialog>>,
@@ -30,6 +32,7 @@ impl Default for MapDialogs {
             problems: problems::ProblemsDialog::default(),
             transform: transform::TransformDialog::default(),
             paste: paste::PasteSpecialDialog::default(),
+            array: array::ArrayDialog::default(),
             goto: goto::GotoDialog::default(),
             map_info: mapinfo::MapInfoDialog::default(),
             packages: crate::package_dialogs(),
@@ -46,6 +49,7 @@ impl MapDialogs {
         self.problems.show(ctx, state);
         self.transform.show(ctx, state);
         self.paste.show(ctx, state);
+        self.array.show(ctx, state);
         self.goto.show(ctx, state);
         self.map_info.show(ctx, state);
         for dialog in &mut self.packages {
@@ -151,9 +155,10 @@ mod tests {
     fn escape_closes_the_top_dialog_with_the_pointer_over_a_view() {
         crate::register_translations();
         type Flag = fn(&mut hp_app::AppState) -> &mut bool;
-        let flags: [(&str, Flag); 5] = [
+        let flags: [(&str, Flag); 6] = [
             ("transform", |s| &mut s.ui.show_transform),
             ("paste special", |s| &mut s.ui.show_paste_special),
+            ("array duplicate", |s| &mut s.ui.show_array_duplicate),
             ("problems", |s| &mut s.ui.show_problems),
             ("map info", |s| &mut s.ui.show_map_info),
             ("go to", |s| &mut s.ui.show_goto),

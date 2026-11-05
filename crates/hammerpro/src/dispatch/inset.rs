@@ -22,6 +22,7 @@ pub(crate) fn snapped(grid: f64, distance: f64, depth: f64) -> (f64, f64) {
     if grid <= 0.0 {
         return (distance, depth);
     }
+    let grid = hp_app::settings::tool_grid(grid);
     (((distance / grid).round() * grid).max(grid), (depth / grid).round() * grid)
 }
 
@@ -45,11 +46,24 @@ impl HammerProApp {
         p.open = true;
     }
 
-    pub(crate) fn start_inset_modal(&mut self) {
-        if self.pkg.brush.inset_modal.as_ref().is_some_and(|m| m.is_active()) {
+    fn modal_faces(&self, ctx: &egui::Context) -> Vec<hp_editor::FaceRef> {
+        let faces = self.active_face_selection();
+        if !faces.is_empty() {
+            return faces;
+        }
+        let Some((view, pos)) = self.viewports.hovered_view(&self.state, ctx) else { return Vec::new() };
+        hp_tools_create::hovered_face(&self.state, &view, pos).into_iter().collect()
+    }
+
+    fn modal_running(&self) -> bool {
+        self.pkg.brush.inset_modal.as_ref().is_some_and(|m| m.is_active())
+    }
+
+    pub(crate) fn start_inset_modal(&mut self, ctx: &egui::Context) {
+        if self.modal_running() {
             return;
         }
-        let faces = self.active_face_selection();
+        let faces = self.modal_faces(ctx);
         if faces.is_empty() {
             self.state.notify(Severity::Info, t!("inset.need_face"));
             return;
@@ -60,19 +74,34 @@ impl HammerProApp {
         }
     }
 
+    pub(crate) fn start_extrude_modal(&mut self, ctx: &egui::Context) {
+        if self.modal_running() {
+            return;
+        }
+        let faces = self.modal_faces(ctx);
+        if faces.is_empty() {
+            self.state.notify(Severity::Info, t!("extrude_modal.need_face"));
+            return;
+        }
+        match hp_tools_create::InsetModal::start_extrude(&self.state, &faces) {
+            Some(modal) => self.pkg.brush.inset_modal = Some(modal),
+            None => self.state.notify(Severity::Warning, t!("inset.err_face")),
+        }
+    }
+
     pub(crate) fn inset_shortcut(&mut self, ctx: &egui::Context) -> bool {
         use hp_app::ToolId;
         if !matches!(self.state.tool, ToolId::Select | ToolId::Texture | ToolId::Extrude | ToolId::Vertex) {
             return false;
         }
-        if self.pkg.brush.inset_modal.as_ref().is_some_and(|m| m.is_active()) {
+        if self.modal_running() {
             return false;
         }
         let Some((view, _)) = self.viewports.hovered_view(&self.state, ctx) else { return false };
-        if view.is_2d() || self.active_face_selection().is_empty() {
+        if view.is_2d() || self.modal_faces(ctx).is_empty() {
             return false;
         }
-        self.start_inset_modal();
+        self.start_inset_modal(ctx);
         self.pkg.brush.inset_modal.is_some()
     }
 
@@ -83,7 +112,7 @@ impl HammerProApp {
             return;
         }
         let (distance, depth) = if snap { snapped(self.state.grid_size(), distance, depth) } else { (distance, depth) };
-        let params = InsetParams { distance, depth, material: None };
+        let params = InsetParams { distance, depth, ..Default::default() };
         match self.state.doc.inset_faces(&faces, &params) {
             Ok(ids) => self.state.log(Severity::Info, tf!("inset.done", ids.len())),
             Err(e) => {
@@ -147,5 +176,7 @@ mod tests {
         assert_eq!(snapped(8.0, 13.0, -3.0), (16.0, 0.0));
         assert_eq!(snapped(8.0, 1.0, 12.0), (8.0, 16.0));
         assert_eq!(snapped(0.0, 5.0, 2.0), (5.0, 2.0));
+        assert_eq!(snapped(0.25, 5.2, 2.6), (5.0, 3.0));
+        assert_eq!(snapped(4096.0, 5000.0, 600.0), (5120.0, 1024.0));
     }
 }

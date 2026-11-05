@@ -47,6 +47,7 @@ In pick mode the browser shows "Pick for *key*: double click an item, or select 
 |---|---|---|---|
 | **Show particles** | **View > Display options**, and **Settings > Nav mesh and particles** | Plays the effects of `info_particle_system` entities near the camera in the 3D views. `show_particles` in `[lab]`. | On |
 | **Particles of the selection only** | Same places | Plays only the effects of the selected particle systems. `particles_selected_only` in `[lab]`. | Off |
+| **Preview volume effects** | Same places | Animated approximation of `func_smokevolume`, `env_embers`, `func_dustcloud` and `func_dustmotes` (see below). `show_entity_fx` in `[lab]`; action `toggle_entity_fx`. | On |
 
 ### What plays
 
@@ -58,10 +59,33 @@ In pick mode the browser shows "Pick for *key*: double click an item, or select 
 
 Hover or select an `info_particle_system` in a 3D view to see its effect name above it, with its state: nothing more when it plays, "(not playing: too far or too many)", "(loading...)" or "(not found in the particle files)".
 
+## Volume effects in the views
+
+`func_smokevolume`, `env_embers`, `func_dustcloud` and `func_dustmotes` are drawn by the engine in game; Hammer Pro shows an approximation in the 3D views, switched with **Preview volume effects**. The extent is the box of the entity's brushes (a point entity gets a 96 unit box), drawn as a thin outline (brighter when selected) and filled with animated coloured particles that stay inside it:
+
+| Entity | Keys used | Look |
+|---|---|---|
+| `func_smokevolume` | `Color1`, `Color2` (each puff picks a colour between them), `ParticleDrawWidth` (puff size), `ParticleSpacingDistance` (fewer puffs when larger), `Density` (opacity), `MovementSpeed` | Big soft puffs drifting slowly |
+| `env_embers` | `rendercolor`, `density` (count), `lifetime`, `speed` | Small bright sparks rising with a wobble, fading in and out |
+| `func_dustcloud` | `Color`, `SizeMin`, `SizeMax`, `SpawnRate`, `LifetimeMin`, `LifetimeMax`, `SpeedMax`, `FallSpeed`, `Alpha`, `DistMax` | Larger translucent specks |
+| `func_dustmotes` | Same keys | Fine drifting motes |
+
+The preview is bounded: only entities within 3072 units of the camera (or `DistMax` when smaller) are shown, at most 24 at once (nearest first), 120 particles each and 1600 in all, with fewer particles the farther the entity is. Hidden entities are not shown. For `info_particle_system` the real particle files are played instead (see above).
+
+## Particle preview window
+
+The `▶` button next to the **Particle System Name** field (`effect_name`) of an `info_particle_system` (also **View > Panels > Particle preview...**, action `particle_preview`) opens a window with:
+
+- a search box (all words must appear in the name or file; `!word` excludes) and the list of every system of the content index and the particle files, with its file in the tooltip;
+- a live, turning view of the selected system, played from the real particle file (the same simulation as the 3D views, at most 400 particles): additive materials glow, trails are drawn as lines. **Pause**/**Play**, **Restart** and **Turn** (the automatic rotation) are under it, with the particle count and the operators that are not simulated;
+- **Assign to N entities** (or **Use for this field** when opened from a field): writes the name into the key (one undo step). A double click on a system does the same. **Copy name** copies it.
+
+Closing the window while it waits for a choice cancels that choice.
+
 ## Tips
 
 - On a map with many effects, turn on **Particles of the selection only** to watch one effect at a time.
-- Through MCP, `search_particles` searches the systems of the content and `list_particle_systems` reports the state of each `info_particle_system` of the map (see the [MCP tool reference](../../MCP.md)).
+- Through MCP, `toggle_entity_fx` and `particle_preview` (`run_action`), `lab.show_entity_fx` (`set_setting`), `search_particles` searches the systems of the content and `list_particle_systems` reports the state of each `info_particle_system` of the map (see the [MCP tool reference](../../MCP.md)).
 
 ## FAQ
 

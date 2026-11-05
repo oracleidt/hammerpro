@@ -2,7 +2,7 @@
 
 # Actions et raccourcis clavier
 
-Chaque commande de Hammer Pro 1.0.8 est une *action* : une seule entrée partagée par les menus, la barre d'outils, les raccourcis clavier, la palette de commandes (`Ctrl+P`), les fichiers `--script` et le serveur MCP (`run_action`, `list_actions`). Cette page liste les 319 actions, menu par menu, dans l'ordre où les menus les affichent.
+Chaque commande de Hammer Pro 1.0.9 est une *action* : une seule entrée partagée par les menus, la barre d'outils, les raccourcis clavier, la palette de commandes (`Ctrl+P`), les fichiers `--script` et le serveur MCP (`run_action`, `list_actions`). Cette page liste les 340 actions, menu par menu, dans l'ordre où les menus les affichent.
 
 Colonnes :
 
@@ -64,6 +64,7 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Collage spécial... | `paste_special` | `Ctrl+Maj+V` |  |  |
 | Supprimer | `delete` | `Suppr` |  |  |
 | Dupliquer | `duplicate` | `Ctrl+D` |  |  |
+| Duplication en série... | `array_duplicate` | `Ctrl+Maj+D` |  |  |
 | Copier les keyvalues | `copy_keyvalues` |  |  |  |
 | Coller les keyvalues | `paste_keyvalues` |  |  |  |
 | Tout sélectionner | `select_all` | `Ctrl+A` | `Ctrl+Maj+A` | `Ctrl+Maj+A` |
@@ -74,6 +75,10 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Mode de sélection > Groupes | `select_mode_groups` |  |  |  |
 | Mode de sélection > Objets | `select_mode_objects` |  |  |  |
 | Mode de sélection > Solides | `select_mode_solids` |  |  |  |
+| Élément de sélection > Objets entiers | `select_element_object` | `Shift+4` |  |  |
+| Élément de sélection > Sommets | `select_element_vertex` | `Shift+1` |  |  |
+| Élément de sélection > Arêtes | `select_element_edge` | `Shift+2` |  |  |
+| Élément de sélection > Faces | `select_element_face` | `Shift+3` |  |  |
 | Mode de sélection > Ignorer les groupes | `toggle_ignore_groups` | `Ctrl+W` |  |  |
 | Sélection d'arêtes > Sélectionner la boucle d'arêtes | `edge_select_loop` |  |  |  |
 | Sélection d'arêtes > Sélectionner l'anneau d'arêtes | `edge_select_ring` |  |  |  |
@@ -197,7 +202,9 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Options d'affichage > Afficher le nav mesh | `toggle_nav_mesh` |  |  |  |
 | Options d'affichage > Afficher les particules | `toggle_particles` |  |  |  |
 | Options d'affichage > Particules de la sélection uniquement | `toggle_particles_selected` |  |  |  |
+| Options d'affichage > Aperçu des effets de volume | `toggle_entity_fx` |  |  |  |
 | Options d'affichage > Vue joueur | `toggle_player_view` | `F6` |  |  |
+| Options d'affichage > Prévisualiser les entités color_correction | `toggle_color_correction_preview` |  |  |  |
 | Masquer la sélection | `hide_selected` | `H` |  |  |
 | Masquer le reste | `hide_unselected` | `Ctrl+Maj+H` |  |  |
 | Tout afficher | `unhide_all` | `U` |  |  |
@@ -207,6 +214,7 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Centrer les vues 2D sur la sélection | `center_2d` | `Ctrl+E` |  |  |
 | Centrer la vue 3D sur la sélection | `center_3d` | `Ctrl+Maj+E` |  |  |
 | Agrandir la vue | `maximize_view` | `Maj+Z` |  |  |
+| Plein écran | `toggle_fullscreen` | `F11` |  |  |
 | Zoom avant des vues 2D | `zoom_2d_in` | `+` |  |  |
 | Zoom arrière des vues 2D | `zoom_2d_out` | `-` |  |  |
 | Réinitialiser le partage des vues | `reset_view_splits` |  | `Ctrl+A` | `Ctrl+A` |
@@ -223,6 +231,7 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Panneaux > Barre d'état | `show_status_bar` |  |  |  |
 | Panneaux > Navigateur de sons | `show_sound_browser` |  |  | `Maj+F12` |
 | Panneaux > Navigateur de particules | `show_particle_browser` |  |  | `Maj+F11` |
+| Panneaux > Aperçu des particules... | `particle_preview` |  |  |  |
 | Panneaux > Éclairage | `show_lighting` |  |  |  |
 | Panneaux > Prefabs | `show_prefabs` |  |  |  |
 
@@ -256,6 +265,7 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Union de brushes | `union_brushes` |  |  |  |
 | Décaler la face... | `inset_face` |  |  |  |
 | Décalage interactif (I) | `inset_interactive` |  |  |  |
+| Extrusion interactive (E) | `extrude_interactive` | `E` |  |  |
 | Nodraw sur les faces cachées... | `nodraw_hidden_faces` |  |  |  |
 | Lier chacun à sa propre entité | `tie_each_to_entity` | `Ctrl+Maj+T` |  |  |
 | Convertir en func_detail | `convert_to_detail` |  |  |  |
@@ -280,15 +290,19 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Supprimer des points de chemin et relier | `path_remove_point` |  |  |  |
 | Créer un prefab... | `create_prefab` | `Ctrl+R` |  |  |
 | Insérer le prefab à sa taille d'origine | `insert_original_prefab` | `Alt+Maj+C` |  |  |
+| Semis par matériau... | `scatter_by_material` |  |  |  |
 | Placement physique (chute et pose) | `physics_placement` |  |  |  |
 | Convertir les brushes en prop statique | `brushes_to_prop` |  |  |  |
 | Convertir le prop en brushes... | `prop_to_brushes` |  |  |  |
 | Générer le nav mesh | `generate_nav_mesh` |  |  |  |
 | Options des props statiques (Propper)... | `propper_options` |  |  |  |
+| Éditeur de shaders... | `shader_editor` |  |  |  |
 | Envoyer vers Blender | `send_to_blender` |  |  |  |
 | Mettre à jour depuis Blender | `pull_from_blender` |  |  |  |
 | Arrêter le lien direct avec Blender | `stop_blender_link` |  |  |  |
 | Installer l'add-on Blender | `install_blender_addon` |  |  |  |
+| Éditeur de sons... | `sound_editor` |  |  |  |
+| Éditeur de correction des couleurs... | `color_correction_editor` |  |  |  |
 | Instances > Créer une instance depuis la sélection... | `create_instance` | `Alt+S` |  |  |
 | Instances > Modifier l'instance | `edit_instance` |  |  |  |
 | Instances > Fusionner les instances sélectionnées | `collapse_instances` |  |  |  |
@@ -312,6 +326,7 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Outil polygone | `tool_polygon` | `Maj+N` |  |  |
 | Outil courbe | `tool_curve` | `Maj+U` |  |  |
 | Outil route | `tool_road` |  |  |  |
+| Outil tuyau | `tool_pipe` |  |  |  |
 | Outil cordon | `tool_cordon` |  |  |  |
 | Outil chemin | `tool_path` |  |  |  |
 | Outil sprinkle | `tool_sprinkle` |  |  |  |
@@ -377,6 +392,10 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 |---|---|---|---|---|
 | Gizmo en repère local | `toggle_gizmo_local` | `Ctrl+J` |  |  |
 | Créer un brush hint | `make_hint_brush` |  |  |  |
+| Mode caméra : appliquer la texture à la face visée | `fly_apply_texture` | `T` |  |  |
+| Mode caméra : appliquer la texture à tout le brush visé | `fly_apply_texture_brush` | `F` |  |  |
+| Mode caméra : prélever la texture de la face visée | `fly_pick_texture` | `V` |  |  |
+| Mode caméra : aligner la texture de la face visée sur la vue | `fly_align_texture` | `N` |  |  |
 
 ## Touches dans l'outil de découpe
 

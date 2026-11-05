@@ -1,4 +1,4 @@
-use hp_geom::{ClipPiece, InsetParams, faces_inset};
+use hp_geom::{ClipPiece, InsetParams, solids_inset};
 use hp_vmf::{Side, Solid};
 
 use super::csg::{derived_solid, record_side_ids};
@@ -29,22 +29,30 @@ impl Document {
                 order.push(f.solid);
             }
         }
-        let mut next = self.next_side_id;
-        let mut jobs = Vec::with_capacity(order.len());
-        for solid in order {
-            let n = self.scene.solids.get(&solid).ok_or(EditError::NotFound(ObjRef::Solid(solid)))?;
-            let sides: Vec<usize> = faces.iter().filter(|f| f.solid == solid).map(|f| f.side).collect();
-            if let Some(side) = sides.iter().find(|s| **s >= n.solid.sides.len()) {
-                return Err(EditError::Invalid(format!("solid {solid} has no side {side}")));
+        let mut originals: Vec<(Id, Owner, Vec<Side>)> = Vec::with_capacity(order.len());
+        let mut picks: Vec<(usize, usize)> = Vec::with_capacity(faces.len());
+        for (slot, solid) in order.iter().enumerate() {
+            let n = self.scene.solids.get(solid).ok_or(EditError::NotFound(ObjRef::Solid(*solid)))?;
+            for f in faces.iter().filter(|f| f.solid == *solid) {
+                if f.side >= n.solid.sides.len() {
+                    return Err(EditError::Invalid(format!("solid {solid} has no side {}", f.side)));
+                }
+                picks.push((slot, f.side));
             }
-            let original = n.solid.sides.clone();
-            let pieces = faces_inset(&original, &sides, params, &mut || {
-                let id = next;
-                next = next.saturating_add(1);
-                id
-            })?;
-            jobs.push(Job { solid, owner: n.owner, original, pieces });
+            originals.push((*solid, n.owner, n.solid.sides.clone()));
         }
+        let mut next = self.next_side_id;
+        let slices: Vec<&[Side]> = originals.iter().map(|(_, _, s)| s.as_slice()).collect();
+        let pieces = solids_inset(&slices, &picks, params, &mut || {
+            let id = next;
+            next = next.saturating_add(1);
+            id
+        })?;
+        let jobs = originals
+            .into_iter()
+            .zip(pieces)
+            .map(|((solid, owner, original), pieces)| Job { solid, owner, original, pieces })
+            .collect();
         Ok((jobs, next))
     }
 
@@ -161,7 +169,7 @@ mod tests {
             .create_solid(box_sides(DVec3::new(256.0, 0.0, 0.0), DVec3::new(384.0, 128.0, 64.0), "B"), Owner::World)
             .expect("b");
         let faces = [top(&doc, a), top(&doc, b)];
-        let params = InsetParams { distance: 16.0, depth: 8.0, material: None };
+        let params = InsetParams { distance: 16.0, depth: 8.0, ..Default::default() };
         let ids = doc.inset_faces(&faces, &params).expect("inset");
         assert_eq!(ids.len(), 10);
         let volume: f64 = ids.iter().map(|id| doc.scene().solid(*id).expect("piece").geom.volume()).sum();
@@ -200,5 +208,26 @@ mod tests {
         assert_eq!(plan.len(), 1);
         assert_eq!(plan[0].1.len(), 5);
         assert_eq!(vmf(&doc), before);
+    }
+
+    #[test]
+    fn adjacent_coplanar_faces_are_inset_as_one_region() {
+        let mut doc = Document::new_empty();
+        let a = doc.create_solid(box_sides(DVec3::ZERO, DVec3::new(64.0, 128.0, 64.0), "A"), Owner::World).expect("a");
+        let b = doc
+            .create_solid(box_sides(DVec3::new(64.0, 0.0, 0.0), DVec3::new(128.0, 128.0, 64.0), "B"), Owner::World)
+            .expect("b");
+        doc.clear_history();
+        let faces = [top(&doc, a), top(&doc, b)];
+        let shared = InsetParams { distance: 16.0, ..Default::default() };
+        let each = InsetParams { distance: 16.0, individual: true, ..Default::default() };
+        let plan_shared: usize = doc.inset_preview(&faces, &shared).expect("shared").iter().map(|(_, p)| p.len()).sum();
+        let plan_each: usize = doc.inset_preview(&faces, &each).expect("each").iter().map(|(_, p)| p.len()).sum();
+        assert!(plan_shared < plan_each, "{plan_shared} vs {plan_each}");
+        let ids = check_undo_redo(&mut doc, |d| d.inset_faces(&faces, &shared).expect("inset"));
+        assert_eq!(doc.history_len().0, 1);
+        let volume: f64 = ids.iter().map(|id| doc.scene().solid(*id).expect("piece").geom.volume()).sum();
+        assert!((volume - 128.0 * 128.0 * 64.0).abs() < 1e-6);
+        assert!(ids.iter().all(|id| doc.scene().solid(*id).expect("piece").geom.valid));
     }
 }

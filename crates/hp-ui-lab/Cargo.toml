@@ -9,6 +9,7 @@ authors.workspace = true
 [dependencies]
 hp-app = { path = "../hp-app" }
 hp-ui-viewports = { path = "../hp-ui-viewports" }
+hp-ui-entities = { path = "../hp-ui-entities" }
 hp-editor.workspace = true
 hp-vmf.workspace = true
 hp-fgd.workspace = true
@@ -20,6 +21,9 @@ hp-decompile = { path = "../hp-decompile" }
 hp-pcf = { path = "../hp-pcf" }
 hp-fs.workspace = true
 hp-sniffer = { path = "../hp-sniffer" }
+hp-audio = { path = "../hp-audio" }
+hp-colorgrade = { path = "../hp-colorgrade" }
+image.workspace = true
 rfd.workspace = true
 egui.workspace = true
 glam.workspace = true

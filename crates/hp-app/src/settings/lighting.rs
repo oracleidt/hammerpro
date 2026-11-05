@@ -18,6 +18,9 @@ pub struct LightingSettings {
     pub budget_styles: u32,
     pub show_budget: bool,
     pub quality: LightingQuality,
+    pub auto_scope: bool,
+    pub auto_scope_luxels_millions: u32,
+    pub auto_scope_radius: u32,
 }
 
 impl Default for LightingSettings {
@@ -30,6 +33,9 @@ impl Default for LightingSettings {
             budget_styles: 1,
             show_budget: true,
             quality: LightingQuality::Draft,
+            auto_scope: true,
+            auto_scope_luxels_millions: 2,
+            auto_scope_radius: 3072,
         }
     }
 }
@@ -37,6 +43,7 @@ impl Default for LightingSettings {
 impl LightingSettings {
     pub const MAX_THREADS: u32 = 256;
     pub const LUXELS_RANGE: std::ops::RangeInclusive<u32> = 1..=64;
+    pub const RADIUS_RANGE: std::ops::RangeInclusive<u32> = 256..=32768;
 
     pub fn sanitized(&self) -> Self {
         Self {
@@ -47,6 +54,11 @@ impl LightingSettings {
             budget_styles: self.budget_styles.clamp(1, 4),
             show_budget: self.show_budget,
             quality: self.quality,
+            auto_scope: self.auto_scope,
+            auto_scope_luxels_millions: self
+                .auto_scope_luxels_millions
+                .clamp(*Self::LUXELS_RANGE.start(), *Self::LUXELS_RANGE.end()),
+            auto_scope_radius: self.auto_scope_radius.clamp(*Self::RADIUS_RANGE.start(), *Self::RADIUS_RANGE.end()),
         }
     }
 }
@@ -62,6 +74,9 @@ mod tests {
         let bad = LightingSettings { threads: 9999, max_luxels_millions: 0, tiny_scale: 0, budget_styles: 9, ..d };
         let s = bad.sanitized();
         assert_eq!((s.threads, s.max_luxels_millions, s.tiny_scale, s.budget_styles), (256, 1, 1, 4));
+        let wild = LightingSettings { auto_scope_luxels_millions: 0, auto_scope_radius: 1, ..d };
+        assert_eq!((wild.sanitized().auto_scope_luxels_millions, wild.sanitized().auto_scope_radius), (1, 256));
+        assert!(d.auto_scope);
         let parsed: LightingSettings = toml::from_str("").unwrap();
         assert_eq!(parsed, d);
     }

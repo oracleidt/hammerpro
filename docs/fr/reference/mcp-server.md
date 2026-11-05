@@ -134,6 +134,7 @@ Chaque modification faite par l'IA est **une étape d'annulation** nommée "MCP 
 | History | Annuler et rétablir. |
 | Clipboard | Lire le texte VMF d'objets et coller du texte VMF. |
 | Assets | Chercher matériaux, modèles, sons et particules, infos et aperçus de matériaux et de modèles, édition de VMT, import d'images, calques UV et alignement de textures. |
+| Éditeur de shaders | L'éditeur d'images à nœuds : listes de nœuds et de préréglages, création, lecture, modification, vérification, rendu et écriture de graphes `.hpshader` en fichiers VTF et VMT, et ouverture de la fenêtre de l'éditeur. Voir [Éditeur de shaders](../features/shader-editor.md). |
 | Map health | Vérifier les problèmes, les corriger, limites du moteur, statistiques de la map, faces cachées. |
 | Compile | Compiler avec un préréglage et suivre la progression. |
 | Views | Caméra, captures d'une vue, disposition des quadrants, modes de rendu 3D, vue joueur, zoom et déplacement 2D. |

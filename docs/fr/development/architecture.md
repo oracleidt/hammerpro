@@ -21,6 +21,7 @@ Hammer Pro est découpé en petites crates spécialisées dans `crates/`, avec d
 | `hp-bsp` | Lecture et écriture robustes des fichiers BSP, versions 19 à 21 : lumps, pakfile, cubemaps, game lumps, Protect your BSP. |
 | `hp-nav` | Lecture des nav meshes (`.nav`), versions 1 à 16. |
 | `hp-pcf` | Systèmes de particules des fichiers `.pcf` (DMX binaire) et petite simulation d'aperçu. |
+| `hp-shader` | Le moteur de l'éditeur de shaders : graphe de nœuds (JSON `.hpshader`), catalogue de nœuds, évaluation sur processeur, préréglages, et écriture des sorties en VTF et VMT. Aucun code d'interface. |
 | `hp-meshio` | Lecture des modèles OBJ, glTF/GLB et FBX et compilation en fichiers de modèles du jeu. |
 
 ### Géométrie, contenu et compilation
@@ -52,7 +53,7 @@ Hammer Pro est découpé en petites crates spécialisées dans `crates/`, avec d
 |---|---|
 | `hp-ui-shell` | Barre de menus, barre d'outils, palette d'outils, barre d'état, console, toasts, fenêtre des paramètres, palette de commandes, fenêtres des raccourcis et À propos, assistant du premier lancement. |
 | `hp-ui-viewports` | Les vues en 2x2 : disposition, séparateurs, navigation de la caméra, rendu, envoi des entrées aux outils, menu contextuel, glisser-déposer. |
-| `hp-ui-textures` | Navigateur de textures, outil d'application de texture (Face Edit), recherche et remplacement de textures, éditeur de matériaux (VMT), import d'images. |
+| `hp-ui-textures` | Navigateur de textures, outil d'application de texture (Face Edit), recherche et remplacement de textures, éditeur de matériaux (VMT), import d'images, fenêtre de l'éditeur de shaders. |
 | `hp-ui-entities` | Propriétés des entités (SmartEdit, flags, I/O, keyvalues), choix de classe, navigateur de modèles, recherche d'entités, rapport des entités, propriétés de la map. |
 | `hp-ui-mapping` | Visgroups, arborescence, fenêtre de compilation avec journal en direct, vérification des problèmes, transformation, collage spécial, aller à un id, informations sur la map, pointfiles. |
 | `hp-ui-lab` | Fonctions plus lourdes : vue logique, affichage du nav mesh, ouverture des maps compilées, aperçu des particules, comparaison de maps. |

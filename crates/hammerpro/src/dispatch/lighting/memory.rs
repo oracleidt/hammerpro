@@ -56,3 +56,43 @@ pub(crate) fn of_self() -> Option<Usage> {
 pub(crate) fn of_self() -> Option<Usage> {
     None
 }
+
+#[cfg(windows)]
+pub(crate) fn lower_process_memory_priority() {
+    use windows_sys::Win32::System::Threading::{
+        GetCurrentProcess, MEMORY_PRIORITY_INFORMATION, MEMORY_PRIORITY_VERY_LOW, ProcessMemoryPriority,
+        SetProcessInformation,
+    };
+    let info = MEMORY_PRIORITY_INFORMATION { MemoryPriority: MEMORY_PRIORITY_VERY_LOW };
+    unsafe {
+        SetProcessInformation(
+            GetCurrentProcess(),
+            ProcessMemoryPriority,
+            (&raw const info).cast(),
+            size_of::<MEMORY_PRIORITY_INFORMATION>() as u32,
+        );
+    }
+}
+
+#[cfg(not(windows))]
+pub(crate) fn lower_process_memory_priority() {}
+
+#[cfg(windows)]
+pub(crate) fn lower_thread_memory_priority() {
+    use windows_sys::Win32::System::Threading::{
+        GetCurrentThread, MEMORY_PRIORITY_INFORMATION, MEMORY_PRIORITY_VERY_LOW, SetThreadInformation,
+        ThreadMemoryPriority,
+    };
+    let info = MEMORY_PRIORITY_INFORMATION { MemoryPriority: MEMORY_PRIORITY_VERY_LOW };
+    unsafe {
+        SetThreadInformation(
+            GetCurrentThread(),
+            ThreadMemoryPriority,
+            (&raw const info).cast(),
+            size_of::<MEMORY_PRIORITY_INFORMATION>() as u32,
+        );
+    }
+}
+
+#[cfg(not(windows))]
+pub(crate) fn lower_thread_memory_priority() {}

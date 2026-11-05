@@ -20,6 +20,10 @@ A maximized window has square corners and no shadow. When the graphics card cann
 
 **Settings > General > Native window frames** uses the title bars and frames of the system instead of Hammer Pro's, for remote desktop or window managers that have trouble with them. It applies at once, both ways, to the main window and to the separate windows. Key `ui.native_frames`, off by default.
 
+## Full screen
+
+Hammer Pro starts in borderless full screen on the primary monitor, with its own title bar and buttons kept. `F11` (**View > Full screen**) switches full screen on and off at any time. **Settings > General > Start in full screen** (key `ui.start_fullscreen`, on by default) turns the start in full screen off; it applies at the next start.
+
 ## Separate windows
 
 These windows can leave the main window and become windows of the system, which you can put on another screen and keep open while you work:

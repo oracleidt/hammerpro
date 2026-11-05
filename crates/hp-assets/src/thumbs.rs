@@ -151,7 +151,11 @@ impl AssetManager {
                 continue;
             }
             let image = egui::ColorImage::from_rgba_unmultiplied([w, h], &px.rgba);
-            let handle = ctx.load_texture(format!("thumb:{name}"), image, egui::TextureOptions::LINEAR);
+            let handle = ctx.load_texture(
+                format!("thumb:{name}"),
+                image,
+                egui::TextureOptions::LINEAR.with_mipmap_mode(Some(egui::TextureFilter::Linear)),
+            );
             self.thumbs.insert_ready(name, handle, px.size, frame);
             self.thumbs.budget.1 += 1;
         }

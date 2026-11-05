@@ -30,6 +30,7 @@ const HANDLED: &[Action] = &[
     Action::OpenArchive,
     Action::SaveAsNewVersion,
     Action::ShowMapAssets,
+    Action::ShaderEditor,
 ];
 
 impl Package for Content {
@@ -48,6 +49,7 @@ impl Package for Content {
                 app.state.runtime.content.release_tab = Some("publish");
             }
             Action::ShowMapAssets => show_map_assets(app),
+            Action::ShaderEditor => app.state.runtime.shader.show = true,
             Action::SaveAsNewVersion => match app.state.doc.path().and_then(|p| p.file_stem()) {
                 Some(stem) => app.pkg.content.new_version = Some(next_version(&stem.to_string_lossy())),
                 None => app.state.request(Action::SaveMapAs),

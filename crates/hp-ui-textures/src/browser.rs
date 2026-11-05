@@ -213,6 +213,7 @@ struct ListCache {
 }
 
 enum CellAction {
+    Shader(String),
     Click { index: usize, name: String, ctrl: bool, shift: bool },
     Apply(String),
     Mark(String),
@@ -1557,6 +1558,9 @@ impl TextureBrowser {
                 state.ui.show_replace_textures = true;
             }
             CellAction::Reveal(path) => crate::util::reveal_or_log(state, &path),
+            CellAction::Shader(name) => {
+                state.runtime.shader.open(hp_app::runtime::ShaderRequest { source: Some(name), ..Default::default() });
+            }
             CellAction::Edit(name) => {
                 let list = if self.marked.contains(&name) { self.marked.clone() } else { vec![name] };
                 crate::shared::post_editor(ctx, list);
@@ -1726,6 +1730,10 @@ fn cell_menu(
     }
     if ui.add_enabled(entry.source != MISSING_SOURCE, egui::Button::new(t!("tex.menu.edit"))).clicked() {
         actions.push(CellAction::Edit(name.clone()));
+        ui.close();
+    }
+    if ui.add_enabled(entry.source != MISSING_SOURCE, egui::Button::new(t!("tex.menu.shader"))).clicked() {
+        actions.push(CellAction::Shader(name.clone()));
         ui.close();
     }
     let folder = folder_of(name);

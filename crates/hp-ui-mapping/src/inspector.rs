@@ -410,7 +410,11 @@ impl Inspector {
                         {
                             let img =
                                 egui::ColorImage::from_rgba_unmultiplied([*width as usize, *height as usize], rgba);
-                            Some(ctx.load_texture("hp_inspector_preview", img, egui::TextureOptions::LINEAR))
+                            Some(ctx.load_texture(
+                                "hp_inspector_preview",
+                                img,
+                                egui::TextureOptions::LINEAR.with_mipmap_mode(Some(egui::TextureFilter::Linear)),
+                            ))
                         }
                         _ => None,
                     };

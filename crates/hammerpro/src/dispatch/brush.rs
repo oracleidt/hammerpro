@@ -59,6 +59,7 @@ const HANDLED: &[Action] = &[
     Action::NodrawHiddenFaces,
     Action::InsetFace,
     Action::InsetInteractive,
+    Action::ExtrudeInteractive,
 ];
 
 const DETAIL_CLASS: &str = "func_detail";
@@ -68,7 +69,7 @@ impl Package for Brush {
         HANDLED
     }
 
-    fn handle(&self, app: &mut HammerProApp, _ctx: &egui::Context, action: Action) -> bool {
+    fn handle(&self, app: &mut HammerProApp, ctx: &egui::Context, action: Action) -> bool {
         match action {
             Action::TieToEntity => app.tie_to_entity(),
             Action::TieEachToEntity => {
@@ -158,7 +159,8 @@ impl Package for Brush {
             }
             Action::NodrawHiddenFaces => app.start_nodraw_scan(),
             Action::InsetFace => app.start_inset(),
-            Action::InsetInteractive => app.start_inset_modal(),
+            Action::InsetInteractive => app.start_inset_modal(ctx),
+            Action::ExtrudeInteractive => app.start_extrude_modal(ctx),
             _ => return false,
         }
         true
@@ -313,6 +315,12 @@ impl HammerProApp {
     pub(crate) fn bevel_shortcut(&mut self, ctx: &egui::Context) -> bool {
         if !matches!(self.state.tool, ToolId::Select | ToolId::Vertex) || !self.has_tool(ToolId::Bevel) {
             return false;
+        }
+        let picked = self.state.runtime.selection.fresh_edges(self.state.doc.revision()).to_vec();
+        if !picked.is_empty() {
+            self.state.runtime.brush.bevel_edges = picked;
+            self.switch_tool(ToolId::Bevel);
+            return true;
         }
         let Some((view, pos)) = self.viewports.hovered_view(&self.state, ctx) else { return false };
         if view.is_2d() || hp_tools_create::bevel::edge_at(&self.state, &view, pos, false).is_none() {
@@ -508,6 +516,11 @@ const TR: TrTable = &[
         "La profondeur d'enfoncement doit rester sous l'épaisseur du brush",
     ),
     ("inset.err_limits", "The result goes past the map limits", "Le résultat dépasse les limites de la carte"),
+    (
+        "inset.err_region",
+        "The selected faces do not form one simple region (hole or single point contact)",
+        "Les faces sélectionnées ne forment pas une région simple (trou ou contact en un seul point)",
+    ),
     ("brush.already_detail", "The selection is already a func_detail", "La sélection est déjà un func_detail"),
     ("brush.nodraw_title", "Nodraw on hidden faces", "Nodraw sur les faces cachées"),
     ("brush.nodraw_searching", "Searching for hidden faces...", "Recherche des faces cachées..."),

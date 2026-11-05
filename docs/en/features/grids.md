@@ -113,6 +113,10 @@ The 2D view draws the minor and major lines along the rotated axes, clipped to t
 
 Grid settings live in the `[grid]` table of `settings.toml`: `mode`, `custom`, `per_view`, `presets`, `object_grids` (on), `plane_3d` (on).
 
+## Grid size range and the bevel, inset and extrude tools
+
+The grid size accepts every value from 0.01 to 4096 units. The mouse distances of the [bevel](bevel-tool.md), the interactive inset and the interactive extrude follow the active grid (size, custom grid and rotation) but never use a step under 1 or over 1024, and every brush they create has its new faces on that grid. While extruding, `Alt` switches to the alternate grid, an axis aligned grid of half the size. See [Grid for bevel, inset and extrude](extrude-tool.md#grid-for-bevel-inset-and-extrude).
+
 ## Tips
 
 - For stairs with 12 x 8 steps, make a custom grid with the step 12 12 8 and attach it to the staircase (see [Custom grids for stairs](../guides/custom-grids-for-stairs.md)).

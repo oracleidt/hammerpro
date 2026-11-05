@@ -79,6 +79,7 @@ Dans tous les types de dossiers, une image PNG, JPG, JPEG, TGA ou BMP sous la ra
 | **Générer les mipmaps** | Écrit des mipmaps dans les VTF. | activé |
 | **Écraser les fichiers existants** | Remplace les fichiers VTF et VMT déjà présents (sinon ces images échouent). | désactivé |
 | **Importer** | Lance l'importation (aussi `Entrée`). La ligne au-dessus indique **Les matériaux seront nommés préfixe/<nom de l'image> dans dossier**. | |
+| **Éditeur de shaders...** | Ouvre l'[éditeur de shaders](shader-editor.md) sur la première image de la liste, pour la teinter, fabriquer une normal map ou mélanger des tuiles avant de l'écrire. | |
 | **Annuler** | Ferme la fenêtre ; pendant la conversion, s'arrête après le fichier en cours. | |
 
 La conversion tourne en arrière-plan avec une barre de progression (**Importation N sur M...**). Chaque image donne un `.vtf` (format choisi selon son contenu) et un `.vmt` avec la même règle d'alpha que plus haut. Les fichiers vont dans `materials/<préfixe suggéré>` d'un dossier de type jeu, ou à la racine de tout autre dossier, sous son préfixe. Le nom de l'image est nettoyé de la même façon ; si deux images donnent le même nom, les suivantes échouent. Le résultat s'affiche : **N image(s) importée(s), M en échec**.

@@ -174,6 +174,7 @@ pub(crate) struct Ctx<'a> {
     pub props: &'a super::props::Occluders,
     pub blockers: &'a Bvh,
     pub work: &'a super::progress::Work,
+    pub bounce_budget: usize,
 }
 
 pub(crate) fn sky_cameras(map: &MapData) -> (Vec<(Vec3A, f32)>, Vec<bool>) {
@@ -978,7 +979,7 @@ impl Ctx<'_> {
         let rays = self.params.bounce_rays;
         let total: usize = self.faces.iter().map(|f| f.luxels()).sum();
         let mut step = self.params.bounce_step;
-        while step < 16 && total / (step * step) * rays * 8 > 1 << 29 {
+        while step < 16 && total / (step * step) * rays * 8 > self.bounce_budget {
             step *= 2;
         }
         let clock = std::time::Instant::now();
@@ -1241,9 +1242,9 @@ pub(crate) fn stitch(faces: &[LitFace], lights: &mut [FaceLight]) {
     }
 }
 
-pub(crate) fn lit_index(n_faces: usize, faces: &[LitFace]) -> Vec<Option<u32>> {
+pub(crate) fn lit_index<'a>(n_faces: usize, faces: impl Iterator<Item = &'a LitFace>) -> Vec<Option<u32>> {
     let mut v = vec![None; n_faces];
-    for (i, f) in faces.iter().enumerate() {
+    for (i, f) in faces.enumerate() {
         if let Some(slot) = v.get_mut(f.face) {
             *slot = Some(i as u32);
         }
