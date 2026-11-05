@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Compiler > Target games | [Français](../../fr/compiler/target-games.md)
+[Documentation](../README.md) > Compiler > Target games | [Français](../../fr/compiler/target-games.md) | [Русский](../../ru/compiler/target-games.md)
 
 # Target games
 

@@ -55,6 +55,7 @@ pub(crate) fn resolve(target: Option<&str>, game: Option<&Path>) -> Result<CliGa
 }
 
 impl CliGame {
+    #[cfg(test)]
     pub(crate) fn mount(&self, opts: &hp_fs::MountOptions) -> Option<Result<hp_fs::GameFs, hp_fs::FsError>> {
         let p = self.profile.as_ref()?;
         Some(hp_fs::GameFs::for_game(p, opts))

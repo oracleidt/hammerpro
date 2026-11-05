@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Fenêtre des paramètres | [English](../../en/features/settings-dialog.md)
+[Documentation](../README.md) > Fonctionnalités > Fenêtre des paramètres | [English](../../en/features/settings-dialog.md) | [Русский](../../ru/features/settings-dialog.md)
 
 # Fenêtre des paramètres
 

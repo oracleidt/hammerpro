@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Caméras de skybox | [English](../../en/features/sky-cameras.md)
+[Documentation](../README.md) > Fonctionnalités > Caméras de skybox | [English](../../en/features/sky-cameras.md) | [Русский](../../ru/features/sky-cameras.md)
 
 # Caméras de skybox
 

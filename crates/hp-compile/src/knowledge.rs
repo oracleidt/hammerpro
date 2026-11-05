@@ -199,10 +199,26 @@ const RULES: &[(&str, Knowledge)] = &[
         ),
     ),
     (
+        "skybox fallback:",
+        kb(
+            "skybox_fallback",
+            "The requested sky has missing or invalid materials or textures. The compiled map uses an available fallback sky; the source VMF keeps its skyname. Mount the original sky's content to restore its appearance.",
+            Fix::OpenProblems,
+        ),
+    ),
+    (
+        "lightmaps are entirely black",
+        kb(
+            "black_lightmaps",
+            "This lighting pass contains no lit surfaces. Check light entities, light_environment, openings to tools/toolsskybox and HDR brightness scales. A missing default reflection cubemap is a separate issue.",
+            Fix::OpenProblems,
+        ),
+    ),
+    (
         "to build the default cubemap",
         kb(
             "skybox_cubemap",
-            "Harmless with the Garry's Mod skies: the game builds the cubemaps itself (buildcubemaps).",
+            "The default reflection cubemap could not be built from the sky materials. Check the mounted sky textures and buildcubemaps in game. This does not disable baked surface lighting; an entirely black map needs a separate lighting check.",
             Fix::OpenDocs("https://developer.valvesoftware.com/wiki/Cubemaps"),
         ),
     ),

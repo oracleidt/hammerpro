@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Détails de route | [English](../../en/features/road-details.md)
+[Documentation](../README.md) > Fonctionnalités > Détails de route | [English](../../en/features/road-details.md) | [Русский](../../ru/features/road-details.md)
 
 # Détails de route : trottoirs, bordures, caniveaux et fondu du terrain
 

@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Caméra et navigation | [English](../../en/features/camera-navigation.md)
+[Documentation](../README.md) > Fonctionnalités > Caméra et navigation | [English](../../en/features/camera-navigation.md) | [Русский](../../ru/features/camera-navigation.md)
 
 # Caméra et navigation
 
@@ -20,7 +20,7 @@ Ces contrôles marchent avec tous les outils et tous les schémas :
 | Molette | Avancer ou reculer, vers le curseur si **Zoomer vers le curseur** est activé. `Maj` : plus vite |
 | Clic droit sans bouger | Ouvre le menu contextuel de la vue |
 
-- La vitesse de vol monte en **Temps d'accélération de la caméra** secondes (0 : immédiat).
+- Désactivez **Paramètres > Vues > Déplacements fluides de la caméra** pour des mouvements précis avec démarrage et arrêt immédiats. Avec l'option activée, la vitesse monte en **Temps d'accélération de la caméra** secondes (0 est également immédiat). Ce temps est conservé lorsque les déplacements fluides sont désactivés.
 - `Ctrl` ne fait jamais voler : en vol ou en vue souris, un clic gauche sélectionne l'objet sous le viseur (le centre de la vue), et `Ctrl+clic` l'ajoute ou le retire de la sélection, comme dans Hammer. Le pinceau des displacements, lui, continue de peindre.
 - Les raccourcis ne se déclenchent pas pendant que le clavier pilote la caméra.
 
@@ -137,6 +137,7 @@ Chaque vue a un en-tête : cliquez sur le nom de la vue pour choisir un autre ty
 |---|---|---|
 | **Contrôles de la caméra** | Hammer Pro, Hammer ou Hammer++ (bouton du milieu) | Hammer Pro |
 | **Inverser l'axe X de la souris** | Inverse l'axe horizontal pour regarder autour | Désactivé |
+| **Déplacements fluides de la caméra** | Accélération et décélération ; désactiver pour démarrer et s'arrêter immédiatement | Activé |
 | **Temps d'accélération de la caméra** | Temps que met la caméra en vol pour atteindre sa vitesse (0 à 0,5 s) | 0,07 s |
 | **Ctrl + molette en 2D** | Change la taille de la grille, ou zoome toutes les vues 2D | Change la taille de la grille |
 | **Zoomer les vues 2D ensemble** | Zoomer une vue 2D zoome les autres | Désactivé |

@@ -171,6 +171,7 @@ fn after(ui: &mut Ui, c: &mut CompileSettings) {
         for (value, key) in [
             (&mut c.save_before_compile, "shell.compile.save_before"),
             (&mut c.copy_to_maps, "shell.compile.copy_to_maps"),
+            (&mut c.bsp_beside_vmf, "shell.compile.bsp_beside_vmf"),
             (&mut c.launch_game, "shell.compile.launch_game"),
             (&mut c.launch_via_steam, "shell.compile.launch_steam"),
             (&mut c.load_pointfile_on_leak, "shell.compile.load_pointfile"),
@@ -364,6 +365,11 @@ pub(crate) const TR: TrTable = &[
         "Enregistrer la map avant de compiler (la compilation n'en a jamais besoin)",
     ),
     ("shell.compile.copy_to_maps", "Copy the BSP to garrysmod/maps", "Copier le BSP dans garrysmod/maps"),
+    (
+        "shell.compile.bsp_beside_vmf",
+        "Save the BSP beside the VMF (intermediate files in the cache)",
+        "Enregistrer le BSP à côté du VMF (fichiers intermédiaires dans le cache)",
+    ),
     ("shell.compile.launch_game", "Launch the game after compiling", "Lancer le jeu après la compilation"),
     ("shell.compile.launch_steam", "Launch through Steam", "Lancer via Steam"),
     (

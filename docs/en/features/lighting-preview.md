@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Lighting preview | [Français](../../fr/features/lighting-preview.md)
+[Documentation](../README.md) > Features > Lighting preview | [Français](../../fr/features/lighting-preview.md) | [Русский](../../ru/features/lighting-preview.md)
 
 # Lighting preview
 

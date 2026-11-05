@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Dépannage > Signaler un bug | [English](../../en/troubleshooting/reporting-bugs.md)
+[Documentation](../README.md) > Dépannage > Signaler un bug | [English](../../en/troubleshooting/reporting-bugs.md) | [Русский](../../ru/troubleshooting/reporting-bugs.md)
 
 # Signaler un bug
 

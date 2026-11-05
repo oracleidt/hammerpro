@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Statut Discord | [English](../../en/features/discord.md)
+[Documentation](../README.md) > Fonctionnalités > Statut Discord | [English](../../en/features/discord.md) | [Русский](../../ru/features/discord.md)
 
 # Statut Discord (Rich Presence)
 

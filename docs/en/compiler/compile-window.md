@@ -1,8 +1,10 @@
-[Documentation](../README.md) > Compiler > Compile and run window | [Français](../../fr/compiler/compile-window.md)
+[Documentation](../README.md) > Compiler > Compile and run window | [Français](../../fr/compiler/compile-window.md) | [Русский](../../ru/compiler/compile-window.md)
 
 # Compile and run window
 
 The **Compile and run** window sets how maps are compiled, runs the compile and shows its live log, statistics and timing history. Its settings are also the ones **F9** uses.
+
+**Save BSP beside VMF** in the compile settings writes the final BSP next to the source VMF. Intermediate files and the compile snapshot use the application cache instead of creating `.hammerpro_build` beside the map. The source VMF is preserved, and **Copy to the maps folder** remains independent. This setting takes effect on the next compile; existing build folders are left in place. Unsaved maps continue to use the cache.
 
 ## Opening it
 

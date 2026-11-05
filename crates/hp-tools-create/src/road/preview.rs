@@ -10,13 +10,20 @@ pub(super) fn mesh(road: &Road, mut material: impl FnMut(&str) -> MaterialId) ->
     let mut edges = Vec::new();
     for piece in &road.pieces {
         let corners = &piece.corners;
-        let faces: Vec<Vec<usize>> = match corners.len() {
-            8 => [[4, 6, 7, 5], [0, 1, 3, 2], [0, 4, 5, 1], [2, 3, 7, 6], [0, 2, 6, 4], [1, 5, 7, 3]]
-                .into_iter()
-                .map(Vec::from)
-                .collect(),
-            6 => vec![vec![3, 4, 5], vec![0, 2, 1], vec![0, 1, 4, 3], vec![1, 2, 5, 4], vec![2, 0, 3, 5]],
-            _ => continue,
+        let faces: Vec<Vec<usize>> = if road.meta.layout != super::model::RoadLayout::Path {
+            let n = corners.len() / 2;
+            let mut faces = vec![(0..n).collect(), (n..2 * n).collect()];
+            faces.extend((0..n).map(|i| vec![i, (i + 1) % n, (i + 1) % n + n, i + n]));
+            faces
+        } else {
+            match corners.len() {
+                8 => [[4, 6, 7, 5], [0, 1, 3, 2], [0, 4, 5, 1], [2, 3, 7, 6], [0, 2, 6, 4], [1, 5, 7, 3]]
+                    .into_iter()
+                    .map(Vec::from)
+                    .collect(),
+                6 => vec![vec![3, 4, 5], vec![0, 2, 1], vec![0, 1, 4, 3], vec![1, 2, 5, 4], vec![2, 0, 3, 5]],
+                _ => continue,
+            }
         };
         let center = corners.iter().sum::<DVec3>() / corners.len() as f64;
         let id = material(&piece.material);

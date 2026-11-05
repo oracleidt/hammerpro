@@ -66,6 +66,7 @@ pub struct RoadSample {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum JunctionProblem {
+    Preset,
     MissingTarget,
     SelfTarget,
     Parallel,
@@ -76,6 +77,9 @@ pub enum JunctionProblem {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum RoadError {
+    LayoutPoints,
+    LayoutSize,
+    LayoutOptions,
     TooFewPoints,
     OutOfRange,
     TooShort(f64),
@@ -90,6 +94,18 @@ pub enum RoadError {
 impl std::fmt::Display for RoadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            RoadError::LayoutPoints => write!(
+                f,
+                "road presets need exactly two points: center (start for a cul-de-sac), then arm end (bulb center for a cul-de-sac)"
+            ),
+            RoadError::LayoutSize => write!(
+                f,
+                "the preset is too small for this width and radius: move the second point farther away or reduce the width or radius"
+            ),
+            RoadError::LayoutOptions => write!(
+                f,
+                "road presets use a plane through both points: turn off terrain following, banking and automatic road junctions"
+            ),
             RoadError::TooFewPoints => write!(f, "the road needs at least 2 different points"),
             RoadError::OutOfRange => write!(f, "the road goes outside the map (coordinates up to {MAX_COORD})"),
             RoadError::TooShort(l) => {
@@ -106,6 +122,10 @@ impl std::fmt::Display for RoadError {
                 write!(f, "the road would need {n} brushes (limit {MAX_PIECES}): raise the segment length")
             }
             RoadError::Junction(p) => match p {
+                JunctionProblem::Preset => write!(
+                    f,
+                    "automatic side junctions need free path roads; place the road at a preset's open arm instead"
+                ),
                 JunctionProblem::MissingTarget => write!(f, "the road of the junction was not found"),
                 JunctionProblem::SelfTarget => write!(f, "a road cannot join itself"),
                 JunctionProblem::Parallel => {
@@ -338,6 +358,9 @@ pub fn elevations(meta: &RoadMeta) -> Result<Elevations, RoadError> {
 
 pub fn build(meta: &RoadMeta, env: &RoadEnv<'_>) -> Result<Road, RoadError> {
     let meta = meta.clone().clamped();
+    if meta.layout != super::model::RoadLayout::Path {
+        return super::presets::build(&meta);
+    }
     let band_list = bands(&meta)?;
     let mut pts = clean_points(&meta.points)?;
     let half = meta.total_width() * 0.5;

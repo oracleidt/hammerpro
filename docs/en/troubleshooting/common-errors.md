@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Troubleshooting > Common errors | [Français](../../fr/troubleshooting/common-errors.md)
+[Documentation](../README.md) > Troubleshooting > Common errors | [Français](../../fr/troubleshooting/common-errors.md) | [Русский](../../ru/troubleshooting/common-errors.md)
 
 # Common errors
 

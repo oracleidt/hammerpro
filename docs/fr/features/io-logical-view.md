@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > I/O et vue logique | [English](../../en/features/io-logical-view.md)
+[Documentation](../README.md) > Fonctionnalités > I/O et vue logique | [English](../../en/features/io-logical-view.md) | [Русский](../../ru/features/io-logical-view.md)
 
 # I/O et vue logique
 

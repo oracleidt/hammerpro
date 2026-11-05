@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Brush operations | [Français](../../fr/features/brush-operations.md)
+[Documentation](../README.md) > Features > Brush operations | [Français](../../fr/features/brush-operations.md) | [Русский](../../ru/features/brush-operations.md)
 
 # Brush operations
 

@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Raccourcis clavier | [English](../../en/features/keyboard-shortcuts.md)
+[Documentation](../README.md) > Fonctionnalités > Raccourcis clavier | [English](../../en/features/keyboard-shortcuts.md) | [Русский](../../ru/features/keyboard-shortcuts.md)
 
 # Raccourcis clavier
 

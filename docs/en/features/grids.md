@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Grids | [Français](../../fr/features/grids.md)
+[Documentation](../README.md) > Features > Grids | [Français](../../fr/features/grids.md) | [Русский](../../ru/features/grids.md)
 
 # Grids
 

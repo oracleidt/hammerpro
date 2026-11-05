@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Compilateur > Clés worldspawn et lumières | [English](../../en/compiler/worldspawn-keys.md)
+[Documentation](../README.md) > Compilateur > Clés worldspawn et lumières | [English](../../en/compiler/worldspawn-keys.md) | [Русский](../../ru/compiler/worldspawn-keys.md)
 
 # Clés worldspawn et lumières
 

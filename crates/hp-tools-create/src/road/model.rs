@@ -6,7 +6,7 @@ pub const VERSION: &str = "r1";
 pub const MAX_POINTS: usize = 512;
 pub const MAX_LANES: u32 = 8;
 pub const MIN_LANE_WIDTH: f64 = 16.0;
-pub const MAX_LANE_WIDTH: f64 = 256.0;
+pub const MAX_LANE_WIDTH: f64 = MAX_TOTAL_WIDTH;
 pub const MAX_SHOULDER: f64 = 256.0;
 pub const MIN_THICKNESS: f64 = 2.0;
 pub const MAX_THICKNESS: f64 = 128.0;
@@ -18,11 +18,40 @@ pub const MIN_DASH: f64 = 4.0;
 pub const MAX_DASH: f64 = 1024.0;
 pub const MAX_LIFT: f64 = 256.0;
 pub const MAX_FLARE: f64 = 512.0;
-pub const MAX_TOTAL_WIDTH: f64 = 2048.0;
+pub const MAX_RADIUS: f64 = 4096.0;
+pub const MAX_TOTAL_WIDTH: f64 = hp_geom::MAX_COORD * 2.0;
 pub const MAX_COORD: f64 = hp_geom::MAX_COORD;
 pub const MAX_NAME: usize = 128;
 pub const DEFAULT_LINE_MATERIAL: &str = "dev/reflectivity_90";
 pub const DEFAULT_MATERIAL: &str = "dev/dev_measuregeneric01b";
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum RoadLayout {
+    #[default]
+    Path,
+    Tee,
+    Cross,
+    Wye,
+    CulDeSac,
+}
+
+impl RoadLayout {
+    pub const ALL: [Self; 5] = [Self::Path, Self::Tee, Self::Cross, Self::Wye, Self::CulDeSac];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Path => "path",
+            Self::Tee => "tee",
+            Self::Cross => "cross",
+            Self::Wye => "wye",
+            Self::CulDeSac => "cul_de_sac",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|layout| layout.name().eq_ignore_ascii_case(text.trim()))
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RoadPoint {
@@ -159,6 +188,8 @@ pub struct RoadMeta {
     pub end_slope: Option<f64>,
     pub u0: f64,
     pub junction: Option<Junction>,
+    pub layout: RoadLayout,
+    pub radius: f64,
 }
 
 impl Default for RoadMeta {
@@ -191,6 +222,8 @@ impl Default for RoadMeta {
             end_slope: None,
             u0: 0.0,
             junction: None,
+            layout: RoadLayout::Path,
+            radius: 256.0,
         }
     }
 }
@@ -259,6 +292,7 @@ impl RoadMeta {
         self.dash = fin(self.dash, MIN_DASH, MAX_DASH);
         self.gap = fin(self.gap, MIN_DASH, MAX_DASH);
         self.lift = fin(self.lift, -MAX_LIFT, MAX_LIFT);
+        self.radius = fin(self.radius, 0.0, MAX_RADIUS);
         self.u0 = if self.u0.is_finite() { self.u0 } else { 0.0 };
         self.bank = Section { profile: crate::curve::Profile::Flat, ..self.bank }.clamped();
         self.material = clean_name(&self.material);
@@ -297,7 +331,7 @@ impl RoadMeta {
             .junction
             .map_or(String::new(), |j| format!("{},{},{},{}", j.end.name(), j.target, j.flare, j.attach.name()));
         let mut out = format!(
-            "{VERSION};uid={};lanes={};lw={};sh={};th={};step={};tex={};mat={};smat={};lmat={};cmat={};cl={};el={};dl={};lwid={};dash={};gap={};r0={};r1={};ab={};al={};ft={};lift={};sd={};ed={};ss={};es={};u0={};junc={};pts=",
+            "{VERSION};uid={};lanes={};lw={};sh={};th={};step={};tex={};mat={};smat={};lmat={};cmat={};cl={};el={};dl={};lwid={};dash={};gap={};r0={};r1={};ab={};al={};ft={};lift={};sd={};ed={};ss={};es={};u0={};junc={};layout={};radius={};pts=",
             self.uid,
             self.lanes,
             self.lane_width,
@@ -327,6 +361,8 @@ impl RoadMeta {
             opt(self.end_slope),
             self.u0,
             junction,
+            self.layout.name(),
+            self.radius,
         );
         for (i, p) in self.points.iter().enumerate() {
             if i > 0 {
@@ -362,6 +398,8 @@ impl RoadMeta {
             };
             match k {
                 "uid" => m.uid = v.parse().ok()?,
+                "layout" => m.layout = RoadLayout::parse(v)?,
+                "radius" => m.radius = num()?,
                 "lanes" => m.lanes = v.parse().ok()?,
                 "lw" => m.lane_width = num()?,
                 "sh" => m.shoulder = num()?,

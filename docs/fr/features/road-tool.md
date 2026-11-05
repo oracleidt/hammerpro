@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Outil route | [English](../../en/features/road-tool.md)
+[Documentation](../README.md) > Fonctionnalités > Outil route | [English](../../en/features/road-tool.md) | [Русский](../../ru/features/road-tool.md)
 
 # Outil route
 
@@ -24,16 +24,20 @@ Les hauteurs sont lissées : entre les points la route monte et descend le long 
 
 Lorsque la vue souris est activée, un clic gauche pose un point au réticule. Quittez ce mode pour manipuler les flèches. **Nouvelle route** efface le tracé en attente pour en commencer un autre. En modification, ce bouton annule les changements non appliqués de la route existante.
 
+Pendant le tracé ou la modification, `Ctrl+Z` annule le dernier point, déplacement ou changement de réglage ; `Ctrl+Y` le rétablit. Un glissement entier, y compris le prolongement avec Maj, compte pour une étape. Cet historique local ne touche pas les autres objets de la map. **Appliquer** ou **Créer** enregistre la route entière en une étape dans l'historique normal ; annuler abandonne les changements en cours.
+
 ## Réglages de la route
+
+Une seule voie peut dépasser l'ancien plafond de 256 unités. Pour une surface large simple, choisissez une voie, aucun accotement et aucune ligne centrale, de bord ou de séparation : l'outil crée un brush par segment longitudinal. Élargir la voie n'ajoute ni voie ni bande supplémentaire. L'ancien plafond de largeur totale de 2048 unités est supprimé ; les coins générés doivent toujours tenir dans les coordonnées d'une map Source.
 
 La barre d'options contient les voies, la largeur de voie, l'accotement, **Suivre le terrain**, le matériau de la nouvelle route, **Créer en tant que** (brush du monde, `func_detail` ou toute classe d'entité brush : tous les brushes vont dans une seule entité), l'épingle et les boutons. **Réglages de la route** ouvre la fenêtre avec tout le reste.
 
 | Réglage | Effet | Plage | Défaut |
 |---|---|---|---|
 | **Voies** | Nombre de voies. | 1 à 8 | 2 |
-| **Largeur de voie** | Largeur d'une voie. | 16 à 256 unités | 128 |
+| **Largeur de voie** | Largeur d'une voie. | 16 à 32768 unités, dans les limites de la map | 128 |
 | **Accotement** | Largeur de l'accotement de chaque côté des voies, 0 pour aucun. | 0, ou 1 à 256 | 16 |
-| **Largeur totale** | Voies plus les deux accotements (information, 2048 au plus). | | 288 |
+| **Largeur totale** | Voies plus les deux accotements (information, limitée par l'espace de coordonnées de Source). | | 288 |
 | **Épaisseur de dalle** | Profondeur des brushes sous la surface de la route. | 2 à 128 | 8 |
 | **Longueur de segment** | Longueur visée d'un segment. Des segments plus courts suivent mieux virages, pentes et terrain mais font plus de brushes (8000 au plus pour une route). | 16 à 512 | 64 |
 | **Échelle de texture** | Échelle de texture des faces. | 0,01 à 64 | celle de l'éditeur |
@@ -53,6 +57,16 @@ La barre d'options contient les voies, la largeur de voie, l'accotement, **Suivr
 | **Hauteur de départ** | Hauteur du premier point quand il est posé dans une vue 2D et qu'il n'y a pas de sol dessous. | -16384 à 16384 | 0 |
 
 Les lignes sont de fins brushes convexes dans la surface de la route, ni des overlays ni des brushes surélevés : elles ne scintillent donc jamais contre la route. Une ligne pointillée est un brush par segment qui a le matériau de la ligne pour le tiret et le matériau de la route pour l'espace. Les tirets suivent les segments : leur longueur est arrondie à un nombre entier de segments (avec des segments de 64 unités et des tirets de 96 unités, un tiret fait 2 segments). Les lignes doivent tenir dans la largeur de voie : une voie au moins aussi large que quelques lignes.
+
+## Formes de carrefour et cul-de-sac
+
+Choisissez **Forme** dans la barre d'options ou les **Réglages de la route** : **Tracé libre**, **Jonction en T**, **Carrefour à quatre branches**, **Jonction en Y** ou **Cul-de-sac arrondi**. Ces formes sont des éléments de route complets et modifiables, avec aperçu texturé en direct.
+
+Pour un carrefour, placez exactement deux points : son centre puis l'extrémité d'une branche. Leur direction tourne toute la forme ; leur distance règle la longueur de chaque branche. Le T a sa branche d'arrivée dirigée vers le deuxième point et sa route traversante perpendiculaire. Le Y a trois branches espacées de 120 degrés. Pour un cul-de-sac, le premier point est l'entrée de la route et le deuxième le centre du cercle de retournement, qui dépasse ce point.
+
+Le **Rayon** règle les angles arrondis ou le cercle de retournement. Celui-ci doit dépasser la moitié de la largeur totale des voies. Si l'aperçu indique un manque de place, éloignez le deuxième point ou réduisez la largeur ou le rayon. La **Longueur de segment** règle la finesse des arcs et le nombre de brushes. Accotements et lignes de rive suivent le contour et laissent les extrémités ouvertes. Les lignes centrales et séparatrices sont omises dans les formes.
+
+Les hauteurs des deux points définissent un plan incliné unique. Désactivez le suivi du terrain, le dévers et les jonctions latérales automatiques ; **Utiliser une surface plane** réinitialise ces options. Réactivez **Road** sur la forme créée pour déplacer les points ou modifier ses réglages. Continuez les routes manuellement depuis les extrémités ouvertes. Les jonctions latérales automatiques et la division restent disponibles pour les tracés libres.
 
 ## Suivre le terrain
 
@@ -93,7 +107,7 @@ La jonction est mémorisée. Quand vous modifiez ou coupez l'autre route, les ro
 
 - **Segments repliés dans un virage serré** (rouge) : la demi-largeur dépasse le rayon du virage. Écartez les points, ou cliquez sur **Adapter la largeur au virage** pour réduire ensemble les voies, les accotements et les lignes sans déplacer le tracé. Si la largeur minimale reste trop grande, ouvrez le virage en déplaçant ses points.
 - **Lignes trop larges** : les lignes ne tiennent pas dans les voies. Réduisez la largeur des lignes ou élargissez les voies.
-- **Trop courte**, **trop de brushes**, **plus large que 2048 unités**, **hors de la carte**, et les problèmes de jonction ci-dessus.
+- **Trop courte**, **trop de brushes**, **plus large que l'espace de coordonnées de Source**, **hors de la carte**, et les problèmes de jonction ci-dessus.
 
 ## MCP
 

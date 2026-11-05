@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Éditeur de matériaux | [English](../../en/features/material-editor.md)
+[Documentation](../README.md) > Fonctionnalités > Éditeur de matériaux | [English](../../en/features/material-editor.md) | [Русский](../../ru/features/material-editor.md)
 
 # Éditeur de matériaux
 

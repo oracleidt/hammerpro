@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Guides > Lighting | [Français](../../fr/guides/lighting.md)
+[Documentation](../README.md) > Guides > Lighting | [Français](../../fr/guides/lighting.md) | [Русский](../../ru/guides/lighting.md)
 
 # Lighting
 

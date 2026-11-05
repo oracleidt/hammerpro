@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Troubleshooting > Reporting bugs | [Français](../../fr/troubleshooting/reporting-bugs.md)
+[Documentation](../README.md) > Troubleshooting > Reporting bugs | [Français](../../fr/troubleshooting/reporting-bugs.md) | [Русский](../../ru/troubleshooting/reporting-bugs.md)
 
 # Reporting bugs
 

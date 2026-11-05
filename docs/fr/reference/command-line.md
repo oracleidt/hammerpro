@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Référence > Ligne de commande | [English](../../en/reference/command-line.md)
+[Documentation](../README.md) > Référence > Ligne de commande | [English](../../en/reference/command-line.md) | [Русский](../../ru/reference/command-line.md)
 
 # Ligne de commande
 
@@ -7,7 +7,7 @@
 ## Syntaxe
 
 ```text
-hammerpro [map.vmf] [--lang en|fr] [--size LxH] [--screenshot sortie.png] [--frames N]
+hammerpro [map.vmf] [--lang en|fr|ru] [--size LxH] [--screenshot sortie.png] [--frames N]
           [--maximize-view 0..3] [--tool NOM] [--script fichier.txt] [--bench-open map.vmf]
 hammerpro --mcp
 hammerpro --bspc [options du compilateur] <map.vmf>
@@ -24,7 +24,7 @@ hammerpro --import-models FICHIER_OU_DOSSIER... --out DOSSIER [options]
 | Argument | Effet | Par défaut |
 |---|---|---|
 | `map.vmf` | Tout argument qui ne commence pas par `--` est la map à ouvrir au démarrage (comme **Fichier > Ouvrir une map...**). S'il y en a plusieurs, c'est le dernier qui compte. | aucune (map vide) |
-| `--lang en` / `--lang fr` | Langue de l'interface pour cette session uniquement. La langue enregistrée dans les paramètres ne change pas. Toute autre valeur est ignorée. | la langue enregistrée |
+| `--lang en` / `--lang fr` / `--lang ru` | Langue de l'interface pour cette session uniquement. La langue enregistrée dans les paramètres ne change pas. Toute autre valeur est ignorée. | la langue enregistrée |
 | `--size LxH` | Taille du contenu de la fenêtre en points, par exemple `--size 1920x1080`. La marge du cadre de fenêtre s'ajoute autour, et la taille minimale est 960x600. | `1600x960` |
 | `--screenshot sortie.png` | Exécution automatisée : dessine N images (voir `--frames`), enregistre un PNG de toute la fenêtre dans le fichier donné puis se ferme. | désactivé |
 | `--frames N` | Nombre d'images dessinées avant la capture de `--screenshot` (au moins 2). | `90` |

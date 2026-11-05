@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Outil courbe | [English](../../en/features/curve-tool.md)
+[Documentation](../README.md) > Fonctionnalités > Outil courbe | [English](../../en/features/curve-tool.md) | [Русский](../../ru/features/curve-tool.md)
 
 # Outil courbe
 

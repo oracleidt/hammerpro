@@ -165,6 +165,7 @@ pub struct UiSettings {
     pub start_fullscreen: bool,
     pub uv_window: Option<super::WindowPlacement>,
     pub portals_window: Option<super::WindowPlacement>,
+    pub floating_panels: std::collections::BTreeSet<String>,
 }
 
 impl Default for UiSettings {
@@ -192,6 +193,7 @@ impl Default for UiSettings {
             start_fullscreen: true,
             uv_window: None,
             portals_window: None,
+            floating_panels: std::collections::BTreeSet::new(),
         }
     }
 }

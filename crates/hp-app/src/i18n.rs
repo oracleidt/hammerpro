@@ -13,15 +13,17 @@ pub enum Lang {
     #[default]
     En,
     Fr,
+    Ru,
 }
 
 impl Lang {
-    pub const ALL: [Lang; 2] = [Lang::En, Lang::Fr];
+    pub const ALL: [Lang; 3] = [Lang::En, Lang::Fr, Lang::Ru];
 
     pub fn native_name(self) -> &'static str {
         match self {
             Lang::En => "English",
             Lang::Fr => "Français",
+            Lang::Ru => "Русский",
         }
     }
 
@@ -29,12 +31,14 @@ impl Lang {
         match self {
             Lang::En => "en",
             Lang::Fr => "fr",
+            Lang::Ru => "ru",
         }
     }
 
     pub fn from_system() -> Lang {
         match sys_locale::get_locale() {
             Some(l) if l.to_ascii_lowercase().starts_with("fr") => Lang::Fr,
+            Some(l) if l.to_ascii_lowercase().starts_with("ru") => Lang::Ru,
             _ => Lang::En,
         }
     }
@@ -49,6 +53,7 @@ pub fn set_lang(lang: Lang) {
 pub fn lang() -> Lang {
     match CURRENT.load(Ordering::Relaxed) {
         1 => Lang::Fr,
+        2 => Lang::Ru,
         _ => Lang::En,
     }
 }
@@ -119,11 +124,16 @@ pub fn tr(key: &str) -> &'static str {
 }
 
 pub fn tr_in(key: &str, lang: Lang) -> &'static str {
+    if lang == Lang::Ru
+        && let Some(text) = russian().get(key).filter(|s| !s.is_empty())
+    {
+        return text;
+    }
     {
         let reg = registry().read();
         if let Some(&(en, fr)) = reg.map.get(key) {
             return match lang {
-                Lang::En => en,
+                Lang::En | Lang::Ru => en,
                 Lang::Fr => {
                     if fr.is_empty() {
                         en
@@ -145,6 +155,20 @@ pub fn tr_in(key: &str, lang: Lang) -> &'static str {
     let leaked: &'static str = Box::leak(key.to_owned().into_boxed_str());
     reg.missing.insert(key.to_owned(), leaked);
     leaked
+}
+
+fn russian() -> &'static HashMap<String, String> {
+    static RU: OnceLock<HashMap<String, String>> = OnceLock::new();
+    RU.get_or_init(|| {
+        serde_json::from_str(include_str!("i18n/ru.json")).unwrap_or_else(|error| {
+            log::error!("cannot read the Russian interface catalog: {error}");
+            HashMap::new()
+        })
+    })
+}
+
+pub fn has_translation(key: &str, lang: Lang) -> bool {
+    if lang == Lang::Ru { russian().get(key).is_some_and(|text| !text.is_empty()) } else { has_key(key) }
 }
 
 pub fn has_key(key: &str) -> bool {
@@ -272,5 +296,24 @@ mod tests {
         assert_eq!(tr_in("test.hello", Lang::En), "Hello");
         assert_eq!(tr_in("test.hello", Lang::Fr), "Bonjour");
         assert_eq!(tr_in("test.unknown.key", Lang::Fr), "test.unknown.key");
+        assert_eq!(tr_in("test.hello", Lang::Ru), "Hello");
+        assert_eq!(tr_in("common.cancel", Lang::Ru), "Отмена");
+        assert_eq!(Lang::Ru.native_name(), "Русский");
+        assert_eq!(Lang::Ru.code(), "ru");
+        assert_eq!(serde_json::from_str::<Lang>("\"Ru\"").ok(), Some(Lang::Ru));
+    }
+
+    #[test]
+    fn russian_catalog_parses_without_empty_or_damaged_strings() {
+        let parsed = serde_json::from_str::<HashMap<String, String>>(include_str!("i18n/ru.json"));
+        assert!(parsed.is_ok());
+        let catalog = parsed.unwrap_or_default();
+        assert!(catalog.len() > 8000);
+        for (key, text) in catalog {
+            assert!(!text.is_empty(), "{key}");
+            assert!(!text.contains('\u{fffd}'), "{key}");
+            assert!(!text.contains('⟦'), "{key}: unrestored technical token");
+            assert!(!text.contains('\u{2013}') && !text.contains('\u{2014}'), "{key}");
+        }
     }
 }

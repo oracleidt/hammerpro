@@ -28,6 +28,7 @@ pub(crate) struct Job {
     pub settings: CompileSettings,
     pub root: Option<PathBuf>,
     pub fs: Option<hp_fs::GameFs>,
+    pub output_bsp: Option<PathBuf>,
 }
 
 #[derive(Default)]
@@ -53,7 +54,7 @@ impl Progressive {
 
     pub(crate) fn start(&mut self, ctx: &egui::Context, job: Job) {
         self.cancel();
-        let Job { snapshot_vmf, map_name, dir, settings, root, fs } = job;
+        let Job { snapshot_vmf, map_name, dir, settings, root, fs, output_bsp } = job;
         let mut s = settings;
         let quality = match s.progressive_preset {
             CompilePresetSetting::Final => CompilePresetSetting::Final,
@@ -73,7 +74,7 @@ impl Progressive {
                 let _ = tx.send(e);
                 repaint.request_repaint();
             };
-            let result = run(&snapshot_vmf, &dir, &map_name, (s, root, fs), &c2, &send);
+            let result = run(&snapshot_vmf, &dir, &map_name, (s, root, fs, output_bsp), &c2, &send);
             send(Event::Done(result));
         });
         if spawned.is_ok() {
@@ -118,7 +119,7 @@ fn run(
     snapshot_vmf: &Path,
     dir: &Path,
     map_name: &str,
-    (settings, root, fs): (CompileSettings, Option<PathBuf>, Option<hp_fs::GameFs>),
+    (settings, root, fs, output_bsp): (CompileSettings, Option<PathBuf>, Option<hp_fs::GameFs>, Option<PathBuf>),
     cancel: &AtomicBool,
     send: &dyn Fn(Event),
 ) -> Result<String, String> {
@@ -170,6 +171,9 @@ fn run(
     let Some(target) = target else { return Err(t!("compile.err_no_game").to_owned()) };
     if hp_compile::sandbox::is_sandboxed() {
         return Err(hp_compile::sandbox::REFUSED.to_owned());
+    }
+    if let Some(output) = output_bsp.filter(|output| *output != target) {
+        copy_atomic(&bsp, &output).map_err(|e| format!("{}: {e}", output.display()))?;
     }
     let t0 = Instant::now();
     let mut told = false;
@@ -225,6 +229,7 @@ mod tests {
             map_name: "gm_p".into(),
             dir: dir.join("work"),
             settings: CompileSettings::default(),
+            output_bsp: None,
             root: Some(dir.join("no_game")),
             fs: None,
         };

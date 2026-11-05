@@ -734,6 +734,8 @@ const TEST_FGD: &str = r#"
     ]
 ]
 @SolidClass = func_detail : "Detail brush" []
+@PointClass studio("models/editor/fixed.mdl") = prop_fixed : "Fixed model" []
+@PointClass studioprop() = prop_default : "Default model" [ model(studio) : "Model" : "models/default.mdl" ]
 @PointClass studio("models/editor/playerstart.mdl") = info_player_deathmatch : "Spawn point, GMod style (model, no size)"
 [
     angles(angle) : "Pitch Yaw Roll (Y Z X)" : "0 0 0"
@@ -962,6 +964,20 @@ fn create_here_places_like_the_entity_tool() {
     }
     assert_eq!(placement::placement_bounds(&mut h.state, "info_player_deathmatch", None), PLAYERSTART_HULL);
     assert_eq!(placement::placement_bounds(&mut h.state, "info_player_start", None), PLAYERSTART_HULL);
+}
+
+#[test]
+fn create_here_preserves_predefined_models_instead_of_the_browser_model() {
+    let mut h = fgd_harness();
+    h.state.cameras.cam3d =
+        Camera3d { pos: DVec3::new(-100.0, -60.0, 300.0), yaw_deg: 0.0, pitch_deg: -89.0, ..Camera3d::default() };
+    h.state.current_model = Some("models/browser.mdl".to_owned());
+    h.state.current_model_skin = 4;
+    for (class, expected, x) in [("prop_fixed", None, -100.0), ("prop_default", Some("models/default.mdl"), 100.0)] {
+        let e = create_here(&mut h, class, vec2(x, 0.0));
+        assert_eq!(e.get("model"), expected);
+        assert_eq!(e.get("skin"), None);
+    }
 }
 
 #[test]

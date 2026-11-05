@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Getting started > Your first map | [Français](../../fr/getting-started/first-map.md)
+[Documentation](../README.md) > Getting started > Your first map | [Français](../../fr/getting-started/first-map.md) | [Русский](../../ru/getting-started/first-map.md)
 
 # Your first map
 

@@ -190,6 +190,13 @@ pub fn undo_key(label: &str) -> String {
 }
 
 pub fn menu_label(state: &AppState, action: Action) -> String {
+    if state.tool == hp_app::ToolId::Road && state.runtime.brush.road_history.is_some() {
+        match action {
+            Action::Undo => return tf!("shell.undo_named", undo_step_text("Edit road")),
+            Action::Redo => return tf!("shell.redo_named", undo_step_text("Edit road")),
+            _ => {}
+        }
+    }
     match action {
         Action::Undo => match state.doc.undo_label() {
             Some(l) => tf!("shell.undo_named", undo_step_text(l)),
@@ -809,6 +816,24 @@ mod tests {
         assert_eq!(hp_app::i18n::tr_in("shell.undo.snap_to_grid", Lang::Fr), "Alignement sur la grille");
         assert_eq!(undo_key("Nudge vertices"), "shell.undo.nudge_vertices");
         assert_eq!(undo_key("Edit map properties "), "shell.undo.edit_map_properties");
+    }
+
+    #[test]
+    fn road_point_history_controls_menu_labels_and_availability() {
+        let _g = crate::tests::lang_guard();
+        crate::register_translations();
+        hp_app::i18n::set_lang(Lang::En);
+        let mut state = hp_app::testing::test_state();
+        state.tool = hp_app::ToolId::Road;
+        state.runtime.brush.road_history = Some((true, false));
+        assert!(Action::Undo.enabled(&state));
+        assert!(!Action::Redo.enabled(&state));
+        assert_eq!(menu_label(&state, Action::Undo), tf!("shell.undo_named", "Edit road"));
+        state.runtime.brush.road_history = Some((false, true));
+        assert!(!Action::Undo.enabled(&state));
+        assert!(Action::Redo.enabled(&state));
+        state.tool = hp_app::ToolId::Select;
+        assert_eq!(Action::Undo.enabled(&state), state.doc.can_undo());
     }
 
     const UNDO_CALLS: [&str; 8] = [

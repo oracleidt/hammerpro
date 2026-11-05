@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Sound editor | [Français](../../fr/features/sound-editor.md)
+[Documentation](../README.md) > Features > Sound editor | [Français](../../fr/features/sound-editor.md) | [Русский](../../ru/features/sound-editor.md)
 
 # Sound editor
 

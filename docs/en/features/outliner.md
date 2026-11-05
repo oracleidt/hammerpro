@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Outliner | [Français](../../fr/features/outliner.md)
+[Documentation](../README.md) > Features > Outliner | [Français](../../fr/features/outliner.md) | [Русский](../../ru/features/outliner.md)
 
 # Outliner
 

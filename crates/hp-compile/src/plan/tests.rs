@@ -34,7 +34,10 @@ fn draft_preset() {
     let root = r"D:\Steam\GarrysMod";
     let game = r"D:\Steam\GarrysMod\garrysmod";
     let map = r"C:\My Maps\gm_test";
-    assert_eq!(args(&plan, StepKind::Bsp), vec!["--bspc", "-gmod", root, "-fastvis", "-game", game, map]);
+    assert_eq!(
+        args(&plan, StepKind::Bsp),
+        vec!["--bspc", "-gmod", root, "-fastvis", "-AllowDynamicPropsAsStatic", "-game", game, map]
+    );
     assert_eq!(
         args(&plan, StepKind::Rad),
         vec!["--rad", "-ldr", "-bounce", "1", "-fast", "-gmod", root, "-game", game, map]
@@ -71,7 +74,7 @@ fn normal_and_final_presets() {
     };
     let normal = CompilePlan::preset(Preset::Normal, &tools(), &vmf(), &opts).unwrap();
     assert_eq!(kinds(&normal), vec![StepKind::Bsp, StepKind::Rad]);
-    assert_eq!(args(&normal, StepKind::Bsp)[3..6], ["-vis", "-threads", "6"]);
+    assert_eq!(args(&normal, StepKind::Bsp)[3..7], ["-vis", "-AllowDynamicPropsAsStatic", "-threads", "6"]);
     let rad = args(&normal, StepKind::Rad);
     assert_eq!(&rad[..6], &["--rad", "-ldr", "-threads", "6", "-bounce", "4"]);
     assert!(rad.contains(&r"C:\my file".to_owned()));
@@ -180,7 +183,7 @@ fn command_lines() {
     let plan = CompilePlan::preset(Preset::Draft, &tools(), &vmf(), &PlanOptions::default()).unwrap();
     assert_eq!(
         command_line_string(&plan.steps[0]),
-        r#""C:\Program Files\HammerPro\hammerpro.exe" --bspc -gmod D:\Steam\GarrysMod -fastvis -game D:\Steam\GarrysMod\garrysmod "C:\My Maps\gm_test""#
+        r#""C:\Program Files\HammerPro\hammerpro.exe" --bspc -gmod D:\Steam\GarrysMod -fastvis -AllowDynamicPropsAsStatic -game D:\Steam\GarrysMod\garrysmod "C:\My Maps\gm_test""#
     );
     assert_eq!(
         plan.steps[2].command_line(),
@@ -395,8 +398,19 @@ fn flag_choices_in_steps() {
     let plan = CompilePlan::preset(Preset::Draft, &tools(), &vmf(), &opts).unwrap();
     let bsp = args(&plan, StepKind::Bsp);
     assert_eq!(
-        bsp[3..12],
-        ["-fastvis", "-leaktest", "-luxelscale", "4", "-forceskyvis", "-threads", "4", "-nodetail", "-game"]
+        bsp[3..13],
+        [
+            "-fastvis",
+            "-leaktest",
+            "-AllowDynamicPropsAsStatic",
+            "-luxelscale",
+            "4",
+            "-forceskyvis",
+            "-threads",
+            "4",
+            "-nodetail",
+            "-game"
+        ]
     );
     assert_eq!(rad_flags_of(&plan), ["-extrasky", "2", "-threads", "4", "-bounce", "4", "-softsun", "2"]);
     for st in &plan.steps {
@@ -422,7 +436,10 @@ fn another_game_gets_its_target_and_no_gmod_root() {
     let plan = CompilePlan::preset(Preset::Draft, &tf, &vmf(), &opts).unwrap();
     let game = r"D:\Steam\Team Fortress 2\tf";
     let map = r"C:\My Maps\gm_test";
-    assert_eq!(args(&plan, StepKind::Bsp), vec!["--bspc", "-fastvis", "-target", "tf", "-game", game, map]);
+    assert_eq!(
+        args(&plan, StepKind::Bsp),
+        vec!["--bspc", "-fastvis", "-AllowDynamicPropsAsStatic", "-target", "tf", "-game", game, map]
+    );
     assert_eq!(
         args(&plan, StepKind::Rad),
         vec!["--rad", "-ldr", "-bounce", "1", "-fast", "-target", "tf", "-game", game, map]

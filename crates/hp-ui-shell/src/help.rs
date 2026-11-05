@@ -6,7 +6,7 @@ use crate::common::{CATEGORIES, EscapeGuard, accent_text, category_label, headin
 use crate::fuzzy::{Query, fold};
 use crate::keys::{alias_text, shortcut_search_text, shortcut_text};
 
-pub const REPOSITORY_URL: &str = "https://github.com/hammerpro/hammerpro";
+pub const REPOSITORY_URL: &str = "https://github.com/oracleidt/hammerpro";
 pub const VDC_URL: &str = "https://developer.valvesoftware.com/wiki/Valve_Hammer_Editor";
 
 pub fn scheme_label_key(scheme: NavScheme) -> &'static str {

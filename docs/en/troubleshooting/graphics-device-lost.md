@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Troubleshooting > Graphics device lost | [Français](../../fr/troubleshooting/graphics-device-lost.md)
+[Documentation](../README.md) > Troubleshooting > Graphics device lost | [Français](../../fr/troubleshooting/graphics-device-lost.md) | [Русский](../../ru/troubleshooting/graphics-device-lost.md)
 
 # Graphics device lost
 

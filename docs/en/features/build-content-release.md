@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Build and save as content | [Français](../../fr/features/build-content-release.md)
+[Documentation](../README.md) > Features > Build and save as content | [Français](../../fr/features/build-content-release.md) | [Русский](../../ru/features/build-content-release.md)
 
 # Build and save as content
 

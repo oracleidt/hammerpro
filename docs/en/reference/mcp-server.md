@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Reference > MCP server | [Français](../../fr/reference/mcp-server.md)
+[Documentation](../README.md) > Reference > MCP server | [Français](../../fr/reference/mcp-server.md) | [Русский](../../ru/reference/mcp-server.md)
 
 # MCP server
 

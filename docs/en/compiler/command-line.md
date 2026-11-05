@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Compiler > Command line | [Français](../../fr/compiler/command-line.md)
+[Documentation](../README.md) > Compiler > Command line | [Français](../../fr/compiler/command-line.md) | [Русский](../../ru/compiler/command-line.md)
 
 # Compiler command line
 

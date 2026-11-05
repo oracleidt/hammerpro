@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Couleurs d'affichage | [English](../../en/features/display-colors.md)
+[Documentation](../README.md) > Fonctionnalités > Couleurs d'affichage | [English](../../en/features/display-colors.md) | [Русский](../../ru/features/display-colors.md)
 
 # Couleurs d'affichage
 

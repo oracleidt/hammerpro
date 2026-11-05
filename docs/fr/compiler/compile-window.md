@@ -1,8 +1,10 @@
-[Documentation](../README.md) > Compilateur > Fenêtre Compiler et lancer | [English](../../en/compiler/compile-window.md)
+[Documentation](../README.md) > Compilateur > Fenêtre Compiler et lancer | [English](../../en/compiler/compile-window.md) | [Русский](../../ru/compiler/compile-window.md)
 
 # Fenêtre Compiler et lancer
 
 La fenêtre **Compiler et lancer** règle la façon dont les maps sont compilées, lance la compilation et affiche en direct son journal, ses statistiques et l'historique des durées. Ses réglages sont aussi ceux qu'utilise **F9**.
+
+**Enregistrer le BSP à côté du VMF**, dans les réglages de compilation, place le BSP final à côté du VMF source. Les fichiers intermédiaires et la copie de compilation utilisent le cache de l'application au lieu de créer `.hammerpro_build` à côté de la map. Le VMF source est conservé et **Copier dans le dossier maps** reste indépendant. Le réglage agit dès la prochaine compilation ; les anciens dossiers de compilation restent en place. Les maps non enregistrées utilisent toujours le cache.
 
 ## L'ouvrir
 

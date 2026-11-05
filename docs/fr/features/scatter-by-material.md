@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Semis par matériau | [English](../../en/features/scatter-by-material.md)
+[Documentation](../README.md) > Fonctionnalités > Semis par matériau | [English](../../en/features/scatter-by-material.md) | [Русский](../../ru/features/scatter-by-material.md)
 
 # Semis par matériau
 

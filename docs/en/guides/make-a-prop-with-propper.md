@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Guides > Make a prop with Propper | [Français](../../fr/guides/make-a-prop-with-propper.md)
+[Documentation](../README.md) > Guides > Make a prop with Propper | [Français](../../fr/guides/make-a-prop-with-propper.md) | [Русский](../../ru/guides/make-a-prop-with-propper.md)
 
 # Make a prop with Propper
 

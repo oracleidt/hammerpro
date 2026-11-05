@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Cadres de fenêtre | [English](../../en/features/window-frames.md)
+[Documentation](../README.md) > Fonctionnalités > Cadres de fenêtre | [English](../../en/features/window-frames.md) | [Русский](../../ru/features/window-frames.md)
 
 # Cadres de fenêtre et fenêtres séparées
 

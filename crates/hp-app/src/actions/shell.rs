@@ -119,8 +119,18 @@ pub(super) fn enabled(state: &AppState, action: Action) -> Option<bool> {
     let has_objects = !sel.objects.is_empty();
     let has_any = !sel.is_empty();
     Some(match action {
-        Action::Undo => state.doc.can_undo(),
-        Action::Redo => state.doc.can_redo(),
+        Action::Undo => state
+            .runtime
+            .brush
+            .road_history
+            .filter(|_| state.tool == crate::ToolId::Road)
+            .map_or_else(|| state.doc.can_undo(), |h| h.0),
+        Action::Redo => state
+            .runtime
+            .brush
+            .road_history
+            .filter(|_| state.tool == crate::ToolId::Road)
+            .map_or_else(|| state.doc.can_redo(), |h| h.1),
         Action::Cut
         | Action::Copy
         | Action::Delete

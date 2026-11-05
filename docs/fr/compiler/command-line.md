@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Compilateur > Ligne de commande | [English](../../en/compiler/command-line.md)
+[Documentation](../README.md) > Compilateur > Ligne de commande | [English](../../en/compiler/command-line.md) | [Русский](../../ru/compiler/command-line.md)
 
 # Ligne de commande du compilateur
 

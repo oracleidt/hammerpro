@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Propper | [English](../../en/features/propper.md)
+[Documentation](../README.md) > Fonctionnalités > Propper | [English](../../en/features/propper.md) | [Русский](../../ru/features/propper.md)
 
 # Propper
 

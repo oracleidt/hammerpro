@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Mises à jour | [English](../../en/features/updates.md)
+[Documentation](../README.md) > Fonctionnalités > Mises à jour | [English](../../en/features/updates.md) | [Русский](../../ru/features/updates.md)
 
 # Mises à jour
 

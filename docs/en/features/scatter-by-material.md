@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Scatter by material | [Français](../../fr/features/scatter-by-material.md)
+[Documentation](../README.md) > Features > Scatter by material | [Français](../../fr/features/scatter-by-material.md) | [Русский](../../ru/features/scatter-by-material.md)
 
 # Scatter by material
 

@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Custom texture folders | [Français](../../fr/features/custom-texture-folders.md)
+[Documentation](../README.md) > Features > Custom texture folders | [Français](../../fr/features/custom-texture-folders.md) | [Русский](../../ru/features/custom-texture-folders.md)
 
 # Custom texture folders
 

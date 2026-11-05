@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Guides > Rassembler le contenu pour une publication | [English](../../en/guides/collect-content-for-release.md)
+[Documentation](../README.md) > Guides > Rassembler le contenu pour une publication | [English](../../en/guides/collect-content-for-release.md) | [Русский](../../ru/guides/collect-content-for-release.md)
 
 # Rassembler le contenu pour une publication
 

@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Dépannage > FAQ | [English](../../en/troubleshooting/faq.md)
+[Documentation](../README.md) > Dépannage > FAQ | [English](../../en/troubleshooting/faq.md) | [Русский](../../ru/troubleshooting/faq.md)
 
 # FAQ
 

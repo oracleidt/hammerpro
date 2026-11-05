@@ -934,6 +934,7 @@ impl Portals {
                             let one = match hp_app::i18n::lang() {
                                 hp_app::i18n::Lang::Fr => n <= 1,
                                 hp_app::i18n::Lang::En => n == 1,
+                                hp_app::i18n::Lang::Ru => n % 10 == 1 && n % 100 != 11,
                             };
                             let key = if one { "app.health.portals_loaded_one" } else { "app.health.portals_loaded" };
                             state.notify(Severity::Success, tf!(key, n, file.clusters));

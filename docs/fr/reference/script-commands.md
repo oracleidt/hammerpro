@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Référence > Commandes de script | [English](../../en/reference/script-commands.md)
+[Documentation](../README.md) > Référence > Commandes de script | [English](../../en/reference/script-commands.md) | [Русский](../../ru/reference/script-commands.md)
 
 # Commandes de script
 

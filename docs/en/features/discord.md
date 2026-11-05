@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Discord Rich Presence | [Français](../../fr/features/discord.md)
+[Documentation](../README.md) > Features > Discord Rich Presence | [Français](../../fr/features/discord.md) | [Русский](../../ru/features/discord.md)
 
 # Discord Rich Presence
 

@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Vue joueur | [English](../../en/features/player-view.md)
+[Documentation](../README.md) > Fonctionnalités > Vue joueur | [English](../../en/features/player-view.md) | [Русский](../../ru/features/player-view.md)
 
 # Vue joueur
 

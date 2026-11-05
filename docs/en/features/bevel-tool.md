@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Bevel tool | [Français](../../fr/features/bevel-tool.md)
+[Documentation](../README.md) > Features > Bevel tool | [Français](../../fr/features/bevel-tool.md) | [Русский](../../ru/features/bevel-tool.md)
 
 # Bevel tool
 

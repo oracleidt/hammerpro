@@ -4,6 +4,8 @@ use glam::DVec3;
 use crate::materials::{MaterialFacts, MaterialSource};
 use crate::winding::Winding;
 
+mod sky;
+
 pub const MAX_SAMPLES: usize = 1024;
 pub const TEXTURE_NAME_LENGTH: usize = 128;
 const DEFAULT_SIZE: u32 = 32;
@@ -588,22 +590,27 @@ impl<'a> Cubemaps<'a> {
         }
     }
 
-    fn sky_format(&self, sky: &str) -> Option<(hp_vtf::ImageFormat, u32, u32, u32)> {
+    pub fn resolve_sky(&mut self, requested: &str) -> String {
+        let requested = requested.trim();
+        if requested.eq_ignore_ascii_case("painted") || sky::renderable(self.source, requested) {
+            return requested.to_owned();
+        }
+        for fallback in ["sky_day01_01", "sky_borealis01", "sky_day01_09"] {
+            if !fallback.eq_ignore_ascii_case(requested) && sky::renderable(self.source, fallback) {
+                self.messages.push(format!(
+                    "Warning: skybox fallback: skybox/{requested} has missing or invalid material/texture files; using {fallback} in the compiled map. Mount the requested sky's content to keep its appearance. The source VMF is unchanged."
+                ));
+                return fallback.to_owned();
+            }
+        }
+        requested.to_owned()
+    }
+
+    fn sky_format(&self, sky: &str, hdr: bool) -> Option<(hp_vtf::ImageFormat, u32, u32, u32)> {
         let mut first: Option<hp_vtf::VtfInfo> = None;
         let mut union = 0u32;
         for face in ["rt", "lf", "bk", "ft", "up", "dn"] {
-            let material = format!("skybox/{sky}{face}");
-            let vmt =
-                self.source.read_file(&format!("materials/{}.vmt", hp_vmt::normalize_material_name(&material)))?;
-            let mut m = hp_vmt::parse(&text_of(&vmt)).ok()?;
-            if m.is_patch() {
-                let load = |p: &str| self.source.read_file(p).map(|b| text_of(&b));
-                m = hp_vmt::resolve_patch(&m, &load).ok()?;
-            }
-            let m = m.resolve_fallbacks(hp_vmt::DEFAULT_DX_LEVEL, false);
-            let texture = m.get("$basetexture")?.trim().to_owned();
-            let vtf = self.source.read_file(&format!("materials/{}.vtf", hp_vmt::normalize_texture_path(&texture)))?;
-            let info = hp_vtf::read_info(&vtf).ok()?;
+            let info = sky::face(self.source, sky, face, hdr).or_else(|| sky::face(self.source, sky, face, !hdr))?;
             union |= info.flags;
             let no_alpha = |f: u32| f & !(hp_vtf::flags::EIGHTBITALPHA | hp_vtf::flags::ONEBITALPHA);
             if let Some(f) = &first {
@@ -623,7 +630,10 @@ impl<'a> Cubemaps<'a> {
     pub fn finish(&mut self, sky: Option<&str>) -> (Vec<u8>, Vec<(String, Vec<u8>)>) {
         if !self.map.is_empty() {
             let sky = sky.map(str::trim).unwrap_or("");
-            let format = self.sky_format(sky);
+            let formats = [self.sky_format(sky, false), self.sky_format(sky, true)];
+            if formats.iter().all(Option::is_none) && !sky.eq_ignore_ascii_case("painted") {
+                self.messages.push(format!("Warning: Can't load skybox file skybox/{sky} to build the default cubemap! Check the mounted sky materials and textures. This warning does not disable baked lighting."));
+            }
             let mut names: Vec<String> = Vec::new();
             for s in self.used.iter().copied().chain(0..self.samples.len()) {
                 let o = self.samples[s].origin;
@@ -633,13 +643,7 @@ impl<'a> Cubemaps<'a> {
                 }
             }
             for hdr in [false, true] {
-                let pass = match format {
-                    Some((_, _, _, first)) if hdr && first & SRGB != 0 => None,
-                    f => f,
-                };
-                let Some((ldr_format, flags, frames, _)) = pass else {
-                    self.messages
-                        .push(format!("Warning: Can't load skybox file skybox/{sky} to build the default cubemap!"));
+                let Some((ldr_format, flags, frames, _)) = formats[usize::from(hdr)] else {
                     continue;
                 };
                 self.messages.push(format!(
@@ -647,6 +651,7 @@ impl<'a> Cubemaps<'a> {
                     if hdr { "HDR " } else { "LDR " }
                 ));
                 let format = if hdr { hp_vtf::ImageFormat::from_raw(24).unwrap_or(ldr_format) } else { ldr_format };
+                let flags = if hdr { flags & !SRGB } else { flags };
                 let data = black_cubemap(format, flags | hp_vtf::flags::ENVMAP, frames, DEFAULT_SIZE);
                 let ext = if hdr { "hdr.vtf" } else { "vtf" };
                 self.add_file(&format!("materials/maps/{}/cubemapdefault.{ext}", self.map), data.clone(), false);
@@ -975,7 +980,7 @@ mod tests {
         assert!(sea.contains("\"$bottommaterial\"\t\t\"maps/gm_test/water/sea_beneath_0_0_64\""), "{sea}");
         assert!(get("materials/maps/gm_test/water/sea_beneath_0_0_64.vmt").is_some());
         assert!(!files_out.iter().any(|(n, _)| n.ends_with(".vtf")));
-        assert_eq!(cm.messages.iter().filter(|m| m.contains("Can't load skybox file skybox/missing")).count(), 2);
+        assert_eq!(cm.messages.iter().filter(|m| m.contains("Can't load skybox file skybox/missing")).count(), 1);
     }
 
     #[test]
@@ -996,7 +1001,7 @@ mod tests {
                 ("materials/maps/gm_sky/cubemapdefault.hdr.vtf".to_owned(), 24, 65608),
             ]
         );
-        assert_eq!(names("sky_day01_01"), vec![("materials/maps/gm_sky/cubemapdefault.vtf".to_owned(), 3, 24658)]);
+        assert_eq!(names("sky_day01_01").len(), 2);
         let a = entity("env_cubemap", &[("origin", "0 0 64")]);
         let mut cm = Cubemaps::new(&[&world, &a], Some("gm_sky"), &files);
         let (_, out) = cm.finish(Some("sky_day01_09"));
@@ -1010,6 +1015,41 @@ mod tests {
                 "materials/maps/gm_sky/c0_0_64.hdr.vtf"
             ]
         );
+    }
+
+    #[test]
+    fn missing_sky_uses_a_real_available_fallback_and_keeps_procedural_skies() {
+        let files = Files(Vec::new(), sky("sky_day01_01", 3, 0x34c));
+        let world = entity("worldspawn", &[]);
+        let mut cm = Cubemaps::new(&[&world], Some("gm_sky"), &files);
+        assert_eq!(cm.resolve_sky("nycityday"), "sky_day01_01");
+        assert!(cm.messages.iter().any(|line| line.contains("skybox fallback:") && line.contains("nycityday")));
+        assert_eq!(cm.resolve_sky("painted"), "painted");
+        let missing = Files(Vec::new(), Vec::new());
+        let mut cm = Cubemaps::new(&[&world], Some("gm_sky"), &missing);
+        assert_eq!(cm.resolve_sky("nycityday"), "nycityday");
+    }
+
+    #[test]
+    fn hdr_sky_materials_supply_valid_ldr_and_hdr_cubemap_placeholders() {
+        let mut source = sky("city_hdr", 3, 0x34c);
+        for (name, data) in &mut source {
+            if name.ends_with(".vmt") {
+                *data = String::from_utf8_lossy(data).replace("$basetexture", "$hdrbasetexture").into_bytes();
+            }
+        }
+        let files = Files(Vec::new(), source);
+        let world = entity("worldspawn", &[]);
+        let mut cm = Cubemaps::new(&[&world], Some("gm_hdr"), &files);
+        assert_eq!(cm.resolve_sky("city"), "city");
+        let (_, out) = cm.finish(Some("city"));
+        assert_eq!(out.len(), 2);
+        assert!(!cm.messages.iter().any(|line| line.contains("Can't load skybox")));
+        let hdr = out.iter().find(|(name, _)| name.ends_with(".hdr.vtf")).unwrap();
+        let info = hp_vtf::read_info(&hdr.1).unwrap();
+        assert_eq!(info.format.raw(), 24);
+        assert_eq!(info.flags & SRGB, 0);
+        assert_eq!(info.faces, 6);
     }
 
     #[test]
@@ -1118,7 +1158,7 @@ mod tests {
         ] {
             assert!(pak.contains(f), "{f}");
         }
-        assert!(!pak.contains("materials/maps/gm_cubetest/cubemapdefault.hdr.vtf"));
+        assert!(pak.contains("materials/maps/gm_cubetest/cubemapdefault.hdr.vtf"));
         assert!(crate::validate::validate(&out.bsp).is_empty());
         let mut edit = bsp.edit();
         edit.set_pakfile(hp_bsp::PakWriter::new().finish(hp_bsp::PakOptions::default()).unwrap()).unwrap();

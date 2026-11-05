@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Dossiers de textures personnalisés | [English](../../en/features/custom-texture-folders.md)
+[Documentation](../README.md) > Fonctionnalités > Dossiers de textures personnalisés | [English](../../en/features/custom-texture-folders.md) | [Русский](../../ru/features/custom-texture-folders.md)
 
 # Dossiers de textures personnalisés
 

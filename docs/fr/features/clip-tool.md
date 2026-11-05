@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Outil de découpe | [English](../../en/features/clip-tool.md)
+[Documentation](../README.md) > Fonctionnalités > Outil de découpe | [English](../../en/features/clip-tool.md) | [Русский](../../ru/features/clip-tool.md)
 
 # Outil de découpe
 

@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Clipboard | [Français](../../fr/features/clipboard.md)
+[Documentation](../README.md) > Features > Clipboard | [Français](../../fr/features/clipboard.md) | [Русский](../../ru/features/clipboard.md)
 
 # Clipboard
 

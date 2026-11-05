@@ -1,8 +1,8 @@
-[Hammer Pro](../../README.md) > Documentation | [Français](../fr/README.md)
+[Hammer Pro](../../README.md) > Documentation | [Français](../fr/README.md) | [Русский](../ru/README.md)
 
 # Hammer Pro documentation
 
-Welcome to the knowledge base of Hammer Pro 1.1.4, the level editor for Source engine maps built for Garry's Mod first. Every feature has its own page: what it is, how to open it, every option with its default, tips and a short FAQ. Pages link to each other, so start anywhere.
+Welcome to the knowledge base of Hammer Pro 1.1.5, the level editor for Source engine maps built for Garry's Mod first. Every feature has its own page: what it is, how to open it, every option with its default, tips and a short FAQ. Pages link to each other, so start anywhere.
 
 New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game setup](getting-started/game-setup.md) and [Your first map](getting-started/first-map.md), in that order.
 
@@ -133,7 +133,7 @@ New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game s
 | [Keyboard shortcuts](features/keyboard-shortcuts.md) | Shortcut sets, rebinding, conflicts, `F1` reference. |
 | [Command palette](features/command-palette.md) | `Ctrl+P`: every command by name. |
 | [Multiple maps](features/multiple-maps.md) | Tabs, switching maps, saved layouts. |
-| [Themes and languages](features/themes-languages.md) | Dark and light themes, accent color, scale, background image, English and French. |
+| [Themes and languages](features/themes-languages.md) | Dark and light themes, accent color, scale, background image, English, French and Russian. |
 | [Window frames and separate windows](features/window-frames.md) | Hammer Pro frames, native frames, windows on other screens. |
 | [Autosave and crash recovery](features/autosave-crash.md) | Autosaves, emergency saves, crash reports. |
 | [Discord Rich Presence](features/discord.md) | What your Discord profile shows while you map. |

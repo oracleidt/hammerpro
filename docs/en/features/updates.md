@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Updates | [Français](../../fr/features/updates.md)
+[Documentation](../README.md) > Features > Updates | [Français](../../fr/features/updates.md) | [Русский](../../ru/features/updates.md)
 
 # Updates
 

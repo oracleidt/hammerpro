@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Guides > Éclairage | [English](../../en/guides/lighting.md)
+[Documentation](../README.md) > Guides > Éclairage | [English](../../en/guides/lighting.md) | [Русский](../../ru/guides/lighting.md)
 
 # Éclairage
 

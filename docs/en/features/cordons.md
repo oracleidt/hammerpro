@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Cordons | [Français](../../fr/features/cordons.md)
+[Documentation](../README.md) > Features > Cordons | [Français](../../fr/features/cordons.md) | [Русский](../../ru/features/cordons.md)
 
 # Cordons
 

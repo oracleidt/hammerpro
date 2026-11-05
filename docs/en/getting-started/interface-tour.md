@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Getting started > Interface tour | [Français](../../fr/getting-started/interface-tour.md)
+[Documentation](../README.md) > Getting started > Interface tour | [Français](../../fr/getting-started/interface-tour.md) | [Русский](../../ru/getting-started/interface-tour.md)
 
 # Interface tour
 
@@ -51,6 +51,10 @@ The vertical strip along the left edge holds the tools as icons, in groups separ
 ## The four views
 
 The center of the window is a 2x2 grid of views: the 3D view at top left, Top (X/Y) at top right, Front (Y/Z) at bottom left and Side (X/Z) at bottom right. Drag the splitters to resize them (**View > Reset view splits** puts them back). Each view has a **View** menu in its corner to change what it shows (any quadrant can also show the 2D logical view). `Shift+Z` maximizes the view under the mouse, and `F2` to `F5` change its type. See [Camera and navigation](../features/camera-navigation.md) and [Render modes and display options](../features/render-modes-display.md).
+
+## Separate panels
+
+Right-click a side-panel tab and choose **Float panel**, or use the **Float panel** button beside the tabs. The panel opens in its own movable, resizable window inside the editor, so properties, textures, models and other panels can remain visible together. Repeat for as many panels as needed. **Dock panel**, or closing its floating window, puts it back in the side tabs. Floating choices and window placement survive restarts; visibility still follows **View > Panels**.
 
 ## Map tabs
 

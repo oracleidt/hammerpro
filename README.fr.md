@@ -2,15 +2,19 @@
 
 # Hammer Pro
 
+[Русский](README.ru.md) | [Documentation en russe](docs/ru/README.md)
+
 **Un éditeur de maps moderne et rapide pour le moteur Source, pensé d'abord pour Garry's Mod.**
 
 [Read in English](README.md) | [Documentation](docs/fr/README.md) | [Documentation in English](docs/en/README.md) | [Discord](https://discord.gg/eAEWWKRNAe)
 
 Hammer Pro ouvre et enregistre des fichiers `.vmf` standard : vous pouvez l'utiliser en parallèle de Hammer et de Hammer++. Il est écrit en Rust, dessine avec la carte graphique grâce à wgpu, reste fluide sur les très grandes maps et compile les maps avec son propre compilateur intégré : ni VBSP, ni VVIS, ni VRAD.
 
-Version **1.1.4**.
+Version **1.1.5**.
 
-L'[outil route](docs/fr/features/road-tool.md) permet maintenant de régler les pentes directement en 3D avec des poignées XYZ, un aperçu texturé en direct et Maj+glisser pour prolonger les deux extrémités.
+Le russe est disponible pour l'interface et la [documentation](docs/ru/README.md). Les options VBSP, VVIS et VRAD du compilateur externe sélectionné sont accessibles dans la fenêtre de compilation. Les modèles physiques peuvent servir de décors statiques par défaut ; les ciels absents ont un remplacement signalé et les lightmaps noires un diagnostic distinct.
+
+L'[outil route](docs/fr/features/road-tool.md) ajoute l'annulation locale des points, les voies uniques plus larges et des formes modifiables en T, à quatre branches, en Y et en cul-de-sac arrondi. Les panneaux peuvent flotter séparément dans l'éditeur, le BSP peut être enregistré à côté du VMF et les déplacements fluides de la caméra ont un interrupteur dédié. Les modèles prédéfinis des entités et le thème au démarrage sont conservés.
 
 La [création de props depuis des brushes](docs/fr/features/propper.md) propose le type statique ou physique mobile, la collision, la masse et les LOD avant de générer le modèle.
 
@@ -34,7 +38,7 @@ Chaque fonctionnalité a sa propre page dans la [documentation](docs/fr/README.m
 - **Publier.** [Ressources de la map](docs/fr/features/map-assets.md) liste et rassemble chaque fichier utilisé par la map, [Construire et enregistrer en contenu](docs/fr/features/build-content-release.md) prépare un addon prêt à partager avec une liste de contrôle et la publication sur le Workshop, [Protect your BSP](docs/fr/features/bsp-protection.md) livre une copie protégée de la map.
 - **Aides au gameplay.** [Génération du nav mesh](docs/fr/features/nav-mesh.md), [plusieurs skybox 3D et une entité pour en changer](docs/fr/features/sky-cameras.md), [soundscapes](docs/fr/features/soundscapes.md), [aperçu des particules](docs/fr/features/particles.md), [lancement et rechargement en jeu](docs/fr/features/game-launch.md).
 - **Assistants IA.** Un [serveur MCP](docs/fr/reference/mcp-server.md) intégré permet à Claude, Codex ou Gemini de lire et modifier la map ouverte, de la vérifier, de la compiler et de faire des captures d'écran, chaque modification formant une seule étape d'annulation.
-- **Votre éditeur.** Interface noir et blanc (sombre ou claire), [anglais et français](docs/fr/features/themes-languages.md), [jeux de raccourcis de Hammer et Hammer++](docs/fr/features/keyboard-shortcuts.md), [statut Discord](docs/fr/features/discord.md), [mises à jour automatiques](docs/fr/features/updates.md).
+- **Votre éditeur.** Interface noir et blanc (sombre ou claire), [anglais, français et russe](docs/fr/features/themes-languages.md), [jeux de raccourcis de Hammer et Hammer++](docs/fr/features/keyboard-shortcuts.md), [statut Discord](docs/fr/features/discord.md), [mises à jour automatiques](docs/fr/features/updates.md).
 
 ## Configuration requise
 
@@ -95,7 +99,7 @@ L'exécutable est `target/release/hammerpro.exe`. Il faut Rust 1.95 ou plus réc
 
 ## Contribuer
 
-Les contributions sont les bienvenues. Lisez d'abord [CONTRIBUTING.md](CONTRIBUTING.md). Les traductions sont à côté du code, dans la table `TR` de chaque crate (anglais et français) ; ajouter une langue revient à ajouter une colonne.
+Les contributions sont les bienvenues. Lisez d'abord [CONTRIBUTING.md](CONTRIBUTING.md). Les traductions anglaises et françaises se trouvent dans la table `TR` de chaque crate. Le catalogue russe est intégré dans `crates/hp-app/src/i18n/ru.json` ; la documentation est disponible dans `docs/en`, `docs/fr` et `docs/ru`.
 
 ## Licence
 

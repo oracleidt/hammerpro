@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Reference > Command line | [Français](../../fr/reference/command-line.md)
+[Documentation](../README.md) > Reference > Command line | [Français](../../fr/reference/command-line.md) | [Русский](../../ru/reference/command-line.md)
 
 # Command line
 
@@ -7,7 +7,7 @@
 ## Usage
 
 ```text
-hammerpro [map.vmf] [--lang en|fr] [--size WxH] [--screenshot out.png] [--frames N]
+hammerpro [map.vmf] [--lang en|fr|ru] [--size WxH] [--screenshot out.png] [--frames N]
           [--maximize-view 0..3] [--tool NAME] [--script file.txt] [--bench-open map.vmf]
 hammerpro --mcp
 hammerpro --bspc [compiler options] <map.vmf>
@@ -24,7 +24,7 @@ hammerpro --import-models FILE_OR_DIR... --out DIR [options]
 | Argument | What it does | Default |
 |---|---|---|
 | `map.vmf` | Any argument that does not start with `--` is the map to open at startup (like **File > Open map...**). With several, the last one wins. | none (empty map) |
-| `--lang en` / `--lang fr` | Interface language for this session only. The language saved in the settings is not changed. Any other value is ignored. | the saved language |
+| `--lang en` / `--lang fr` / `--lang ru` | Interface language for this session only. The language saved in the settings is not changed. Any other value is ignored. | the saved language |
 | `--size WxH` | Size of the window content in points, for example `--size 1920x1080`. The window frame margin is added around it, and the minimum size is 960x600. | `1600x960` |
 | `--screenshot out.png` | Automated run: draws N frames (see `--frames`), saves a PNG of the whole window to the given file and closes. | off |
 | `--frames N` | Number of frames drawn before the `--screenshot` capture (at least 2). | `90` |

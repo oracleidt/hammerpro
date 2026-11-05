@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Development > Building from source | [Français](../../fr/development/building.md)
+[Documentation](../README.md) > Development > Building from source | [Français](../../fr/development/building.md) | [Русский](../../ru/development/building.md)
 
 # Building from source
 

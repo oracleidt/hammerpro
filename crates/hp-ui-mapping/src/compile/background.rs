@@ -132,9 +132,12 @@ impl Background {
         let snap = state.doc.compile_snapshot(&CompileDialog::export_of(&s, &state.settings.visibility));
         let snapshot_ms = u64::try_from(t0.elapsed().as_millis()).unwrap_or(u64::MAX);
         self.last_snapshot_ms = Some(snapshot_ms);
-        let Ok(mut target) =
-            snapshot::target_for(state.doc.path(), snap.is_cordoned(), &Settings::cache_dir().join("untitled"))
-        else {
+        let Ok(mut target) = snapshot::target_for(
+            state.doc.path(),
+            snap.is_cordoned(),
+            &Settings::cache_dir().join("untitled"),
+            state.settings.compile.bsp_beside_vmf,
+        ) else {
             return;
         };
         let map_key = hp_app::sidecar::map_key(target.source.as_deref());

@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Guides > Custom grids for stairs | [Français](../../fr/guides/custom-grids-for-stairs.md)
+[Documentation](../README.md) > Guides > Custom grids for stairs | [Français](../../fr/guides/custom-grids-for-stairs.md) | [Русский](../../ru/guides/custom-grids-for-stairs.md)
 
 # Custom grids for stairs
 

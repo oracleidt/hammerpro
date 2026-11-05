@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Block tool | [Français](../../fr/features/block-tool.md)
+[Documentation](../README.md) > Features > Block tool | [Français](../../fr/features/block-tool.md) | [Русский](../../ru/features/block-tool.md)
 
 # Block tool
 

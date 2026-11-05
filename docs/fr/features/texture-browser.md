@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Navigateur de textures | [English](../../en/features/texture-browser.md)
+[Documentation](../README.md) > Fonctionnalités > Navigateur de textures | [English](../../en/features/texture-browser.md) | [Русский](../../ru/features/texture-browser.md)
 
 # Navigateur de textures
 

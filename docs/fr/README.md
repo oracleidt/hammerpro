@@ -1,8 +1,8 @@
-[Hammer Pro](../../README.fr.md) > Documentation | [English](../en/README.md)
+[Hammer Pro](../../README.fr.md) > Documentation | [English](../en/README.md) | [Русский](../ru/README.md)
 
 # Documentation de Hammer Pro
 
-Bienvenue dans la base de connaissances de Hammer Pro 1.1.4, l'éditeur de maps pour le moteur Source pensé d'abord pour Garry's Mod. Chaque fonctionnalité a sa propre page : ce que c'est, comment l'ouvrir, chaque option avec sa valeur par défaut, des astuces et une courte FAQ. Les pages renvoient les unes aux autres : commencez où vous voulez.
+Bienvenue dans la base de connaissances de Hammer Pro 1.1.5, l'éditeur de maps pour le moteur Source pensé d'abord pour Garry's Mod. Chaque fonctionnalité a sa propre page : ce que c'est, comment l'ouvrir, chaque option avec sa valeur par défaut, des astuces et une courte FAQ. Les pages renvoient les unes aux autres : commencez où vous voulez.
 
 Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.md), [Configuration du jeu](getting-started/game-setup.md) puis [Votre première map](getting-started/first-map.md), dans cet ordre.
 
@@ -133,7 +133,7 @@ Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.m
 | [Raccourcis clavier](features/keyboard-shortcuts.md) | Jeux de raccourcis, modifier un raccourci, conflits, référence `F1`. |
 | [Palette de commandes](features/command-palette.md) | `Ctrl+P` : toutes les commandes par leur nom. |
 | [Plusieurs maps](features/multiple-maps.md) | Onglets, changer de map, dispositions enregistrées. |
-| [Thèmes et langues](features/themes-languages.md) | Thèmes sombre et clair, couleur d'accent, échelle, image de fond, anglais et français. |
+| [Thèmes et langues](features/themes-languages.md) | Thèmes sombre et clair, couleur d'accent, échelle, image de fond, anglais, français et russe. |
 | [Cadres de fenêtre et fenêtres séparées](features/window-frames.md) | Cadres de Hammer Pro, cadres natifs, fenêtres sur d'autres écrans. |
 | [Sauvegarde automatique et plantages](features/autosave-crash.md) | Sauvegardes automatiques, sauvegardes d'urgence, rapports de plantage. |
 | [Statut Discord (Rich Presence)](features/discord.md) | Ce que votre profil Discord affiche pendant que vous mappez. |

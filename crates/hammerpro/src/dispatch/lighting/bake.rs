@@ -421,7 +421,7 @@ fn compile_local(
     let solid_count = map.world.solids.len() + map.entities.iter().map(|e| e.solids.len()).sum::<usize>();
     strip_hidden(&mut map);
     let materials = crate::bspc_cli::GameMaterials { fs: fs.clone(), opts: Default::default() };
-    let models = crate::bspc_cli::GameModels { fs, allow_dynamic: false };
+    let models = crate::bspc_cli::GameModels { fs, allow_dynamic: true };
     let builder = || {
         rayon::ThreadPoolBuilder::new()
             .num_threads(threads.max(1))

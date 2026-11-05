@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Autosave and crash recovery | [Français](../../fr/features/autosave-crash.md)
+[Documentation](../README.md) > Features > Autosave and crash recovery | [Français](../../fr/features/autosave-crash.md) | [Русский](../../ru/features/autosave-crash.md)
 
 # Autosave and crash recovery
 

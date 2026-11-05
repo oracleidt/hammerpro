@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Path tool | [Français](../../fr/features/path-tool.md)
+[Documentation](../README.md) > Features > Path tool | [Français](../../fr/features/path-tool.md) | [Русский](../../ru/features/path-tool.md)
 
 # Path tool
 

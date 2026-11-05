@@ -48,14 +48,24 @@ impl Target {
     }
 }
 
-pub(crate) fn target_for(doc_path: Option<&Path>, cordoned: bool, untitled_dir: &Path) -> Result<Target, String> {
+pub(crate) fn target_for(
+    doc_path: Option<&Path>,
+    cordoned: bool,
+    untitled_dir: &Path,
+    beside: bool,
+) -> Result<Target, String> {
     let suffix = if cordoned { "_cordon" } else { "" };
     match doc_path {
         Some(p) => {
             let abs = std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf());
             let name = hp_compile::validated_map_name(&abs).map_err(|e| super::notices::plan_error_text(&e))?;
             let dir = abs.parent().map_or_else(|| PathBuf::from("."), Path::to_path_buf);
-            Ok(Target { name: format!("{name}{suffix}"), build_dir: dir.join(BUILD_DIR), source: Some(abs) })
+            let build_dir = if beside {
+                hp_app::settings::Settings::cache_dir().join("compile").join(hp_app::sidecar::map_key(Some(&abs)))
+            } else {
+                dir.join(BUILD_DIR)
+            };
+            Ok(Target { name: format!("{name}{suffix}"), build_dir, source: Some(abs) })
         }
         None => Ok(Target { name: format!("untitled{suffix}"), build_dir: untitled_dir.to_path_buf(), source: None }),
     }
@@ -378,7 +388,7 @@ pub(crate) fn prepare_snapshot(mut input: SnapshotInput) -> SnapshotOutput {
     }
     let mat_ms = t_mat.elapsed().as_millis();
 
-    if external.is_some()
+    if (external.is_some() || s.bsp_beside_vmf)
         && let Some(dir) = input.target.source.as_deref().and_then(Path::parent)
     {
         let n = super::compilers::point_instances_at_the_map_folder(&mut input.snapshot.map, dir);
@@ -420,11 +430,12 @@ pub(crate) fn prepare_snapshot(mut input: SnapshotInput) -> SnapshotOutput {
     if let Some(profile) =
         super::expert::active_profile(s).filter(|_| !input.background && !input.release && external.is_none())
     {
-        let plan = match super::expert::plan_of(profile, &input.target, &tools) {
+        let mut plan = match super::expert::plan_of(profile, &input.target, &tools) {
             Ok(p) => p,
             Err(e) => return fail(messages, e),
         };
         messages.push((LogSeverity::Info, tf!("compile.expert.running", profile.name)));
+        publish_bsp_step(&mut plan, &input.target, s);
         let workdir = plan::work_dir(&plan.vmf_path);
         return SnapshotOutput {
             result: Ok(Prepared {
@@ -516,6 +527,9 @@ pub(crate) fn prepare_snapshot(mut input: SnapshotInput) -> SnapshotOutput {
         let map_key = hp_app::sidecar::map_key(input.target.source.as_deref());
         plan = plan.with_cache(key, dir.clone(), &map_key, 0);
     }
+    if !input.background {
+        publish_bsp_step(&mut plan, &input.target, s);
+    }
     let estimate_ms = estimate(&entries, &plan);
     if let Some(c) = &choice {
         messages.push((LogSeverity::Info, auto_text(c.kind, estimate_ms, s.copy_to_maps || s.launch_game)));
@@ -546,6 +560,16 @@ pub(crate) fn prepare_snapshot(mut input: SnapshotInput) -> SnapshotOutput {
         dry: None,
         messages,
     }
+}
+
+pub(super) fn publish_bsp_step(plan: &mut CompilePlan, target: &Target, settings: &CompileSettings) {
+    if !settings.bsp_beside_vmf {
+        return;
+    }
+    let Some(dir) = target.source.as_deref().and_then(Path::parent) else { return };
+    let step = hp_compile::Step::copy(StepKind::Custom, plan.bsp_path(), dir.join(format!("{}.bsp", target.name)));
+    let at = plan.steps.iter().position(|s| s.kind == StepKind::LaunchGame).unwrap_or(plan.steps.len());
+    plan.steps.insert(at, step);
 }
 
 fn hdr_level(game_dir: &Path) -> Option<u32> {
@@ -615,16 +639,42 @@ mod tests {
     fn targets() {
         crate::register_translations();
         let dir = std::path::absolute(crate::test_scratch("compile_targets")).expect("absolute");
-        let t = target_for(Some(&dir.join("gm_room.vmf")), false, &dir.join("untitled")).expect("target");
+        let t = target_for(Some(&dir.join("gm_room.vmf")), false, &dir.join("untitled"), false).expect("target");
         assert_eq!(t.name, "gm_room");
         assert_eq!(t.build_dir, dir.join(BUILD_DIR));
         assert_eq!(t.vmf(), dir.join(BUILD_DIR).join("gm_room.vmf"));
-        let c = target_for(Some(&dir.join("gm_room.vmf")), true, &dir).expect("target");
+        let c = target_for(Some(&dir.join("gm_room.vmf")), true, &dir, false).expect("target");
         assert_eq!(c.name, "gm_room_cordon");
-        let u = target_for(None, false, &dir.join("untitled")).expect("untitled");
+        let u = target_for(None, false, &dir.join("untitled"), false).expect("untitled");
         assert_eq!((u.name.as_str(), u.source.is_none()), ("untitled", true));
-        assert!(target_for(Some(&dir.join("my map.vmf")), false, &dir).is_err());
-        assert!(target_for(None, false, Path::new("C:/Users/J\u{e9}r\u{f4}me/cache")).is_ok());
+        assert!(target_for(Some(&dir.join("my map.vmf")), false, &dir, false).is_err());
+        assert!(target_for(None, false, Path::new("C:/Users/J\u{e9}r\u{f4}me/cache"), false).is_ok());
+    }
+
+    #[test]
+    fn beside_vmf_keeps_the_source_safe_and_publishes_before_launch() {
+        let dir = std::path::absolute(crate::test_scratch("compile_beside_vmf")).unwrap();
+        std::fs::create_dir_all(&dir).unwrap();
+        let source = dir.join("gm_room.vmf");
+        let original = b"world { \"id\" \"1\" \"classname\" \"worldspawn\" }";
+        std::fs::write(&source, original).unwrap();
+        let target = target_for(Some(&source), false, &dir, true).unwrap();
+        assert_ne!(target.vmf(), source);
+        assert!(!target.build_dir.starts_with(&dir));
+        let other = target_for(Some(&dir.join("other/gm_room.vmf")), false, &dir, true).unwrap();
+        assert_ne!(target.build_dir, other.build_dir);
+        let mut plan = CompilePlan::new(target.vmf());
+        plan.steps.push(hp_compile::Step::new(StepKind::LaunchGame, "game.exe", Vec::new()));
+        let settings = CompileSettings { bsp_beside_vmf: true, ..CompileSettings::default() };
+        publish_bsp_step(&mut plan, &target, &settings);
+        assert!(
+            matches!(&plan.steps[0].action,hp_compile::StepAction::Copy { from, to } if *from == target.vmf().with_extension("bsp") && *to == source.with_extension("bsp"))
+        );
+        assert_eq!(plan.steps[1].kind, StepKind::LaunchGame);
+        let snapshot = hp_app::testing::test_state().doc.compile_snapshot(&CompileExport::default());
+        let temporary = crate::test_scratch("beside_snapshot");
+        snapshot.write(&temporary, &target.name).unwrap();
+        assert_eq!(std::fs::read(&source).unwrap(), original);
     }
 
     #[test]
@@ -676,7 +726,7 @@ hidden { entity { "id" "6" "classname" "prop_static" "model" "models/hidden.mdl"
         let doc = hp_editor::Document::new_empty();
         let input = SnapshotInput {
             snapshot: doc.compile_snapshot(&CompileExport::default()),
-            target: target_for(Some(&dir.join("gm_x.vmf")), false, &dir).expect("target"),
+            target: target_for(Some(&dir.join("gm_x.vmf")), false, &dir, false).expect("target"),
             settings: CompileSettings::default(),
             gmod_root: Some(dir.join("no_such_install")),
             fs: None,
@@ -726,7 +776,7 @@ hidden { entity { "id" "6" "classname" "prop_static" "model" "models/hidden.mdl"
         let doc = hp_editor::Document::new_empty();
         let input = SnapshotInput {
             snapshot: doc.compile_snapshot(&CompileExport::default()),
-            target: target_for(None, false, &untitled).expect("target"),
+            target: target_for(None, false, &untitled, false).expect("target"),
             settings: CompileSettings::default(),
             gmod_root: Some(root),
             fs: None,
@@ -754,7 +804,7 @@ hidden { entity { "id" "6" "classname" "prop_static" "model" "models/hidden.mdl"
         let doc = hp_editor::Document::new_empty();
         let make = |fs: Option<hp_fs::GameFs>| SnapshotInput {
             snapshot: doc.compile_snapshot(&CompileExport::default()),
-            target: target_for(Some(&dir.join("gm_x.vmf")), false, &dir).expect("target"),
+            target: target_for(Some(&dir.join("gm_x.vmf")), false, &dir, false).expect("target"),
             settings: CompileSettings::default(),
             gmod_root: Some(dir.join("no_such_install")),
             fs,

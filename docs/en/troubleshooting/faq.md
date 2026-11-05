@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Troubleshooting > FAQ | [Français](../../fr/troubleshooting/faq.md)
+[Documentation](../README.md) > Troubleshooting > FAQ | [Français](../../fr/troubleshooting/faq.md) | [Русский](../../ru/troubleshooting/faq.md)
 
 # FAQ
 
@@ -26,7 +26,7 @@ Short answers to the questions asked most often, with links to the pages that ex
 
 **I come from Hammer: can I keep my shortcuts?** Yes. Choose **Hammer** or **Hammer++** in the setup assistant (**Help > Setup assistant...**) or in **Settings > Keyboard**. See [Keyboard shortcuts](../features/keyboard-shortcuts.md).
 
-**How do I switch between English and French?** **View > Language**, at any time; the whole interface switches at once. `--lang en` or `--lang fr` on the command line forces it for one run. See [Themes and languages](../features/themes-languages.md).
+**How do I switch between English, French and Russian?** **View > Language**, at any time; the whole interface switches at once. `--lang en` or `--lang fr` on the command line forces it for one run. See [Themes and languages](../features/themes-languages.md).
 
 **Where are my settings?** In `%APPDATA%\HammerPro\settings.toml`. See [Files and folders](../reference/files-and-folders.md).
 

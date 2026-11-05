@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Detail props preview | [Français](../../fr/features/detail-props-preview.md)
+[Documentation](../README.md) > Features > Detail props preview | [Français](../../fr/features/detail-props-preview.md) | [Русский](../../ru/features/detail-props-preview.md)
 
 # Detail props preview
 

@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Navigateur de modèles | [English](../../en/features/model-browser.md)
+[Documentation](../README.md) > Fonctionnalités > Navigateur de modèles | [English](../../en/features/model-browser.md) | [Русский](../../ru/features/model-browser.md)
 
 # Navigateur de modèles
 

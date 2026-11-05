@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Compiler > Compile performance | [Français](../../fr/compiler/performance.md)
+[Documentation](../README.md) > Compiler > Compile performance | [Français](../../fr/compiler/performance.md) | [Русский](../../ru/compiler/performance.md)
 
 # Compile performance
 

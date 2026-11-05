@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Outil polygone | [English](../../en/features/polygon-tool.md)
+[Documentation](../README.md) > Fonctionnalités > Outil polygone | [English](../../en/features/polygon-tool.md) | [Русский](../../ru/features/polygon-tool.md)
 
 # Outil polygone
 

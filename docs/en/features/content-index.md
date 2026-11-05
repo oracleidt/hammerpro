@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Content index and scan | [Français](../../fr/features/content-index.md)
+[Documentation](../README.md) > Features > Content index and scan | [Français](../../fr/features/content-index.md) | [Русский](../../ru/features/content-index.md)
 
 # Content index and scan
 

@@ -9,7 +9,7 @@ Hammer and Hammer++.
 - Open anything fast. Big VMFs load in well under a second; assets stream in
   the background so the UI never blocks.
 - Everything Hammer++ does, with a cleaner UI and more power tools.
-- English and French UI, switchable live.
+- English, French and Russian UI, switchable live.
 - Pure Rust, GPU rendering through wgpu, UI through egui.
 
 ## Crates
@@ -75,8 +75,10 @@ hp-vmf, hp-fs <- hp-light <- hp-bspc, hp-assets, hammerpro
   The app uses `anyhow` at the edges.
 - Never use the em dash or en dash characters anywhere (code, comments, UI
   strings, docs). Use a hyphen, a colon or parentheses.
-- All UI text goes through the i18n layer (`hammerpro::i18n`), with English
-  and French translations.
+- All UI text goes through the i18n layer (`hp_app::i18n`), with English,
+  French and Russian translations. English and French entries are registered
+  by each crate. The Russian catalog is bundled in `hp-app/src/i18n/ru.json`
+  and loaded once when selected; the application tests validate coverage.
 
 ## Data flow
 

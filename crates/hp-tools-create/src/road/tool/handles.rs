@@ -40,7 +40,11 @@ impl RoadTool {
     }
 
     fn extrude_endpoint(&mut self, index: usize, modifiers: Modifiers) -> usize {
-        if !modifiers.shift || self.points.len() >= MAX_POINTS || self.points.len() < 2 {
+        if self.options.meta.layout != crate::road::RoadLayout::Path
+            || !modifiers.shift
+            || self.points.len() >= MAX_POINTS
+            || self.points.len() < 2
+        {
             return index;
         }
         if index == 0 {

@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Troubleshooting > Editor performance | [Français](../../fr/troubleshooting/performance.md)
+[Documentation](../README.md) > Troubleshooting > Editor performance | [Français](../../fr/troubleshooting/performance.md) | [Русский](../../ru/troubleshooting/performance.md)
 
 # Editor performance
 

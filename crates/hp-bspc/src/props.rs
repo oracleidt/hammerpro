@@ -60,13 +60,16 @@ pub fn static_prop_error(
     keyvalues: &str,
     allow_dynamic: bool,
 ) -> Option<String> {
+    if allow_dynamic {
+        return None;
+    }
     if !is_static {
         return Some(format!(
             "Error! To use model \"{path}\"
       with {entity}, it must be compiled with $staticprop!"
         ));
     }
-    if allow_dynamic || keyvalues.trim().is_empty() {
+    if keyvalues.trim().is_empty() {
         return None;
     }
     let kv = hp_kv::parse(keyvalues).ok()?;
@@ -848,7 +851,7 @@ mod static_check_tests {
     use super::*;
 
     #[test]
-    fn vbsp_refuses_dynamic_and_non_static_models() {
+    fn vbsp_can_allow_dynamic_and_non_static_models() {
         let kv_dynamic = "mdlkeyvalue\n{\nprop_data\n{\n\"base\" \"Metal.Small\"\n}\n}\n";
         let kv_allowed = "mdlkeyvalue\n{\nprop_data\n{\n\"base\" \"Metal.Small\"\n\"allowstatic\" \"1\"\n}\n}\n";
         let m = "models/props_c17/oildrum001.mdl";
@@ -862,9 +865,10 @@ mod static_check_tests {
         assert_eq!(static_prop_error(m, "prop_static", true, kv_allowed, false), None);
         assert_eq!(static_prop_error(m, "prop_static", true, "", false), None);
         assert!(
-            static_prop_error(m, "prop_static", false, "", true)
+            static_prop_error(m, "prop_static", false, "", false)
                 .is_some_and(|e| e.ends_with("it must be compiled with $staticprop!"))
         );
+        assert_eq!(static_prop_error(m, "prop_static", false, kv_dynamic, true), None);
     }
 
     struct Refusing;

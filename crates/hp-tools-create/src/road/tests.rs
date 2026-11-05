@@ -27,6 +27,76 @@ fn solids(road: &Road) -> Vec<Vec<hp_vmf::Side>> {
 }
 
 #[test]
+fn junction_presets_produce_closed_nonoverlapping_brushes_and_survive_editing() {
+    use super::model::RoadLayout;
+    for layout in [RoadLayout::Tee, RoadLayout::Cross, RoadLayout::Wye, RoadLayout::CulDeSac] {
+        for edge in LineKind::ALL {
+            let m = RoadMeta {
+                layout,
+                edge,
+                points: vec![p(128.0, -64.0, 16.0), p(1152.0, 192.0, 64.0)],
+                ..RoadMeta::default()
+            };
+            let road = built(&m);
+            let geometries: Vec<_> = solids(&road).iter().map(|s| hp_geom::validate_solid(s).unwrap()).collect();
+            assert!(geometries.iter().all(|g| g.volume() > 0.0));
+            for x in (-1100..1600).step_by(91) {
+                for y in (-1200..1300).step_by(87) {
+                    let xy = DVec2::new(x as f64 + 0.371, y as f64 + 0.217);
+                    let dir = (m.points[1].xy() - m.points[0].xy()).normalize();
+                    let z = m.points[0].z
+                        + (xy - m.points[0].xy()).dot(dir) * 48.0 / m.points[0].xy().distance(m.points[1].xy())
+                        - m.thickness * 0.5;
+                    let point = xy.extend(z);
+                    let count =
+                        geometries.iter().filter(|g| g.faces.iter().all(|f| f.plane.distance(point) < -1e-5)).count();
+                    assert!(count <= 1, "overlapping brushes for {layout:?}/{edge:?} at {point}");
+                }
+            }
+            let preview = super::preview::mesh(&road, |_| 0);
+            assert!(!preview.batches.is_empty());
+            assert_eq!(RoadMeta::decode(&m.encode()), Some(m.clone()));
+        }
+        let mut state = settle();
+        let m = RoadMeta { layout, points: vec![p(0.0, 0.0, 0.0), p(1024.0, 0.0, 0.0)], ..RoadMeta::default() };
+        let old_count = state.doc.stats().solids;
+        let made = apply::create_road(&mut state.doc, &m, 16, Target::World).unwrap();
+        let (record, mut loaded) = apply::read_road(&state.doc, made.ids[0]).unwrap();
+        assert_eq!(loaded.layout, layout);
+        loaded.radius = 192.0;
+        loaded.points[1].z = 128.0;
+        let changed = apply::replace_road(&mut state.doc, &record, &loaded, 16).unwrap();
+        assert_eq!(apply::read_road(&state.doc, changed.ids[0]).unwrap().1.radius, 192.0);
+        assert!(state.doc.undo());
+        assert!(state.doc.undo());
+        assert_eq!(state.doc.stats().solids, old_count);
+    }
+}
+
+#[test]
+fn road_presets_reject_ambiguous_points_invalid_dimensions_and_out_of_map_geometry() {
+    use super::model::RoadLayout;
+    let mut m = RoadMeta {
+        layout: RoadLayout::Cross,
+        points: vec![p(0.0, 0.0, 0.0), p(1024.0, 0.0, 0.0)],
+        ..RoadMeta::default()
+    };
+    m.points.push(p(1500.0, 0.0, 0.0));
+    assert_eq!(build(&m, &RoadEnv::default()).unwrap_err(), RoadError::LayoutPoints);
+    m.points.pop();
+    m.radius = 2048.0;
+    assert_eq!(build(&m, &RoadEnv::default()).unwrap_err(), RoadError::LayoutSize);
+    m.radius = 256.0;
+    m.follow_terrain = true;
+    assert_eq!(build(&m, &RoadEnv::default()).unwrap_err(), RoadError::LayoutOptions);
+    m.follow_terrain = false;
+    m.points[0].x += 16000.0;
+    m.points[1].x += 16000.0;
+    assert_eq!(build(&m, &RoadEnv::default()).unwrap_err(), RoadError::OutOfRange);
+    assert_eq!(RoadMeta::decode("r1;pts=0,0,0 512,0,0").unwrap().layout, RoadLayout::Path);
+}
+
+#[test]
 fn straight_road_has_the_expected_cross_section() {
     let road = built(&meta(&[p(0.0, 0.0, 0.0), p(512.0, 0.0, 0.0)]));
     assert_eq!(road.samples.len(), 9);
@@ -162,9 +232,30 @@ fn tight_bends_are_refused() {
     assert_eq!(build(&meta(&[p(0.0, 0.0, 0.0)]), &RoadEnv::default()).unwrap_err(), RoadError::TooFewPoints);
     let mut wide = meta(&[p(0.0, 0.0, 0.0), p(900.0, 0.0, 0.0)]);
     wide.lanes = 8;
-    wide.lane_width = 256.0;
+    wide.lane_width = super::model::MAX_TOTAL_WIDTH / f64::from(wide.lanes);
     wide.shoulder = 16.0;
     assert_eq!(build(&wide, &RoadEnv::default()).unwrap_err(), RoadError::TooWide);
+}
+
+#[test]
+fn a_single_wide_lane_keeps_one_brush_per_segment_and_roundtrips() {
+    let mut m = meta(&[p(0.0, 0.0, 128.0), p(1024.0, 0.0, 256.0)]);
+    m.lanes = 1;
+    m.shoulder = 0.0;
+    m.center = LineKind::None;
+    m.edge = LineKind::None;
+    m.divider = LineKind::None;
+    m.lane_width = 256.0;
+    let narrow = built(&m);
+    m.lane_width = 4096.0;
+    let wide = built(&m);
+    assert_eq!(wide.pieces.len(), narrow.pieces.len());
+    assert_eq!(wide.pieces.len(), wide.samples.len() - 1);
+    assert_eq!(wide.lane_half_width, 2048.0);
+    assert_eq!(RoadMeta::decode(&m.encode()).unwrap().lane_width, 4096.0);
+    assert_eq!(solids(&wide).len(), wide.pieces.len());
+    m.points.iter_mut().for_each(|point| point.y = super::model::MAX_COORD - 8.0);
+    assert_eq!(build(&m, &RoadEnv::default()).unwrap_err(), RoadError::OutOfRange);
 }
 
 #[test]

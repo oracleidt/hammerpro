@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Entity properties | [Français](../../fr/features/entity-properties.md)
+[Documentation](../README.md) > Features > Entity properties | [Français](../../fr/features/entity-properties.md) | [Русский](../../ru/features/entity-properties.md)
 
 # Entity properties
 

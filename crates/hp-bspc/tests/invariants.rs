@@ -10,6 +10,49 @@ struct Compiled {
     lumps: Lumps,
 }
 
+#[test]
+fn smoke_volumes_keep_inline_bounds_settings_and_do_not_fill_the_world() {
+    for material in ["tools/toolsfog", "tools/toolstrigger", "tools/toolsnodraw"] {
+        let mut map = common::Vmf::new();
+        map.world =
+            common::room(DVec3::new(-256.0, -256.0, 0.0), DVec3::new(256.0, 256.0, 256.0), "dev/dev_measuregeneric01b");
+        map.point("info_player_start", DVec3::new(200.0, 200.0, 8.0), &[]);
+        map.brush_entity(
+            "func_smokevolume",
+            &[
+                ("origin", "64 32 0"),
+                ("targetname", "smoke"),
+                ("material", "particle/particle_smokegrenade"),
+                ("ParticleSpacingDistance", "32"),
+                ("ParticleDrawWidth", "64"),
+                ("Density", "1"),
+                ("spawnflags", "1"),
+            ],
+            vec![common::block(DVec3::new(-128.0, -128.0, 32.0), DVec3::new(128.0, 128.0, 160.0), material)],
+        );
+        let out = common::compile(&map.text());
+        let lumps = Lumps::from_bytes(&out.bsp);
+        let models = lumps.models();
+        assert_eq!(models.len(), 2);
+        assert_eq!(models[1].mins, [-192.0, -160.0, 32.0]);
+        assert_eq!(models[1].maxs, [64.0, 96.0, 160.0]);
+        let entities = lumps.entities();
+        let smoke =
+            entities.iter().find(|e| e.iter().any(|(k, v)| k == "classname" && v == "func_smokevolume")).unwrap();
+        for (key, value) in [
+            ("model", "*1"),
+            ("material", "particle/particle_smokegrenade"),
+            ("ParticleSpacingDistance", "32"),
+            ("Density", "1"),
+        ] {
+            assert!(smoke.iter().any(|(k, v)| k.eq_ignore_ascii_case(key) && v == value), "{material}: missing {key}");
+        }
+        let leaf = leaf_at(&lumps, DVec3::new(0.0, 0.0, 96.0));
+        assert_eq!(lumps.leaves()[leaf].contents as u32 & contents::SOLID, 0);
+        assert!(model_leaves(&lumps, 1).iter().all(|i| lumps.leaves()[*i].cluster == -1));
+    }
+}
+
 fn compiled(name: &str, text: &str, mats: &dyn hp_bspc::MaterialSource) -> Compiled {
     let out = common::compile_with(text, mats, &hp_bspc::CompileOptions::default());
     let lumps = Lumps::from_bytes(&out.bsp);

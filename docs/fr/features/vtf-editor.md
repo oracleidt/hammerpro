@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Éditeur de VTF | [English](../../en/features/vtf-editor.md)
+[Documentation](../README.md) > Fonctionnalités > Éditeur de VTF | [English](../../en/features/vtf-editor.md) | [Русский](../../ru/features/vtf-editor.md)
 
 # Éditeur de VTF
 

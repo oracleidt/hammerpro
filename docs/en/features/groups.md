@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Groups | [Français](../../fr/features/groups.md)
+[Documentation](../README.md) > Features > Groups | [Français](../../fr/features/groups.md) | [Русский](../../ru/features/groups.md)
 
 # Groups
 

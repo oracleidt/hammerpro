@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Compilateur > Limites et journaux | [English](../../en/compiler/limits-and-logs.md)
+[Documentation](../README.md) > Compilateur > Limites et journaux | [English](../../en/compiler/limits-and-logs.md) | [Русский](../../ru/compiler/limits-and-logs.md)
 
 # Limites et journaux
 

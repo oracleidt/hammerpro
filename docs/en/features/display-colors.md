@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Display colors | [Français](../../fr/features/display-colors.md)
+[Documentation](../README.md) > Features > Display colors | [Français](../../fr/features/display-colors.md) | [Русский](../../ru/features/display-colors.md)
 
 # Display colors
 

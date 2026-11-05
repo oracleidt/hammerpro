@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Getting started > Game setup | [Français](../../fr/getting-started/game-setup.md)
+[Documentation](../README.md) > Getting started > Game setup | [Français](../../fr/getting-started/game-setup.md) | [Русский](../../ru/getting-started/game-setup.md)
 
 # Game setup
 
@@ -10,7 +10,7 @@ The **Hammer Pro setup** assistant opens on the first start (when no settings fi
 
 | Step | What you choose |
 |---|---|
-| 1. Welcome | The interface language (English or French), and **Coming from Hammer or Hammer++?**: **No, Hammer Pro defaults**, **Hammer** or **Hammer++**. This sets the keyboard shortcut preset and the camera controls together; shortcuts you changed yourself stay. |
+| 1. Welcome | The interface language (English, French or Russian), and **Coming from Hammer or Hammer++?**: **No, Hammer Pro defaults**, **Hammer** or **Hammer++**. This sets the keyboard shortcut preset and the camera controls together; shortcuts you changed yourself stay. |
 | 2. Which game do you map for? | The game (see below). For Garry's Mod, its folder is searched in your Steam libraries the first time this step shows; "Everything needed was found." confirms it. |
 | 3. Content | **Mount addons**, **Mount Workshop downloads**, **Use mount.cfg games** (Garry's Mod only) and your **Custom texture folders**. |
 

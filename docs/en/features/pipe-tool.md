@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Pipe tool | [Français](../../fr/features/pipe-tool.md)
+[Documentation](../README.md) > Features > Pipe tool | [Français](../../fr/features/pipe-tool.md) | [Русский](../../ru/features/pipe-tool.md)
 
 # Pipe tool
 
@@ -10,6 +10,8 @@ The pipe tool builds pipes and ducts out of brushes (not props): straight runs c
 - Everything follows the **active grid**: see [Grids](grids.md). The start snaps to the grid, the directions are the axes of the grid (so a rotated grid gives a rotated pipe), lengths round to the grid step along the pipe, and the radius and the bend radius round to the smallest step of the grid. Wall thickness, collar size and collar length round to half a grid step. With snapping off (the **Snap to grid** toggle) nothing is rounded.
 
 ## Drawing a route
+
+In the 3D view, clicking an existing brush surface places only the starting point. Empty sky/background is not a surface, and later 3D clicks do not add corners. Continue in a 2D view or enter moves in **Route** after the first point.
 
 1. **Click** the start in a 2D view (or on a surface in the 3D view).
 2. **Click** the next corners in the same 2D view. The pipe turns at every click, and each new point is held on a grid axis of the view plane: the segment is straight and its length is a whole number of grid steps. The pipe lies in the plane of that view (at the depth of the first click, which comes from the selection like the block tool); to climb, type the route (below), or draw it in the Front or Side view.

@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Compiler > Overview | [Français](../../fr/compiler/overview.md)
+[Documentation](../README.md) > Compiler > Overview | [Français](../../fr/compiler/overview.md) | [Русский](../../ru/compiler/overview.md)
 
 # The built in compiler
 

@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Modes de rendu et options d'affichage | [English](../../en/features/render-modes-display.md)
+[Documentation](../README.md) > Fonctionnalités > Modes de rendu et options d'affichage | [English](../../en/features/render-modes-display.md) | [Русский](../../ru/features/render-modes-display.md)
 
 # Modes de rendu et options d'affichage
 

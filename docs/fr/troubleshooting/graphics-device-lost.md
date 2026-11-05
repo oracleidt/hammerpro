@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Dépannage > Périphérique graphique perdu | [English](../../en/troubleshooting/graphics-device-lost.md)
+[Documentation](../README.md) > Dépannage > Périphérique graphique perdu | [English](../../en/troubleshooting/graphics-device-lost.md) | [Русский](../../ru/troubleshooting/graphics-device-lost.md)
 
 # Périphérique graphique perdu
 

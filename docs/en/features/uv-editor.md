@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > UV editor | [Français](../../fr/features/uv-editor.md)
+[Documentation](../README.md) > Features > UV editor | [Français](../../fr/features/uv-editor.md) | [Русский](../../ru/features/uv-editor.md)
 
 # UV editor
 

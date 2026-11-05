@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Particles | [Français](../../fr/features/particles.md)
+[Documentation](../README.md) > Features > Particles | [Français](../../fr/features/particles.md) | [Русский](../../ru/features/particles.md)
 
 # Particles
 

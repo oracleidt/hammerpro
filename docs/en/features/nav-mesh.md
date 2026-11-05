@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Navigation mesh | [Français](../../fr/features/nav-mesh.md)
+[Documentation](../README.md) > Features > Navigation mesh | [Français](../../fr/features/nav-mesh.md) | [Русский](../../ru/features/nav-mesh.md)
 
 # Navigation mesh
 

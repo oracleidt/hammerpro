@@ -205,6 +205,9 @@ fn build_chain(doc: &Document, meta: &RoadMeta, own: &[Id], depth: usize, notch:
                 return Err(RoadError::Junction(JunctionProblem::MissingTarget));
             }
             let entry = find_road(doc, j.target).ok_or(RoadError::Junction(JunctionProblem::MissingTarget))?;
+            if entry.meta.layout != super::model::RoadLayout::Path {
+                return Err(RoadError::Junction(JunctionProblem::Preset));
+            }
             Some(build_chain(doc, &entry.meta, &entry.record.ids, depth + 1, false)?)
         }
         None => None,
@@ -437,6 +440,9 @@ fn arc3d(dense: &super::spline::Dense, elevation: &super::spline::Elevation, s: 
 }
 
 pub fn split_meta(meta: &RoadMeta, at: SplitAt, new_uid: u32) -> Result<(RoadMeta, RoadMeta), ApplyError> {
+    if meta.layout != super::model::RoadLayout::Path {
+        return Err(ApplyError::Build(RoadError::LayoutOptions));
+    }
     let meta = meta.clone().clamped();
     let bad = |s: &str| ApplyError::Split(s.to_owned());
     let e = elevations(&meta)?;

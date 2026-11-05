@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Troubleshooting > Discord presence not showing | [Français](../../fr/troubleshooting/discord-presence.md)
+[Documentation](../README.md) > Troubleshooting > Discord presence not showing | [Français](../../fr/troubleshooting/discord-presence.md) | [Русский](../../ru/troubleshooting/discord-presence.md)
 
 # Discord presence not showing
 

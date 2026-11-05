@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Guides > Collect content for a release | [Français](../../fr/guides/collect-content-for-release.md)
+[Documentation](../README.md) > Guides > Collect content for a release | [Français](../../fr/guides/collect-content-for-release.md) | [Русский](../../ru/guides/collect-content-for-release.md)
 
 # Collect content for a release
 

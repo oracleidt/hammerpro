@@ -196,6 +196,13 @@ pub fn model_box(info: &ModelInfo) -> Option<(DVec3, DVec3)> {
 }
 
 pub fn is_prop_class(state: &AppState, class: &str) -> bool {
+    let def = state.assets.fgd().and_then(|f| f.class(class));
+    if def.is_some_and(|c| {
+        c.studio().is_some_and(|s| s.model.is_some())
+            || c.property("model").and_then(|p| p.default_value()).is_some_and(|m| !m.trim().is_empty())
+    }) {
+        return false;
+    }
     class.trim().to_ascii_lowercase().starts_with("prop_")
         || state
             .assets
@@ -212,7 +219,9 @@ pub fn placement_bounds(state: &mut AppState, class: &str, model: Option<&str>) 
         .and_then(|c| c.size())
         .map(|(a, b)| (DVec3::from_array(a), DVec3::from_array(b)))
         .filter(|(a, b)| a.is_finite() && b.is_finite());
-    let fixed_model = def.and_then(|c| c.studio()).and_then(|s| s.model);
+    let fixed_model = def.and_then(|c| c.studio()).and_then(|s| s.model).or_else(|| {
+        def.and_then(|c| c.property("model")).and_then(|p| p.default_value()).filter(|m| !m.trim().is_empty())
+    });
     let model = if is_prop_class(state, class) {
         model.map(str::to_owned).or_else(|| state.current_model.clone())
     } else if size.is_none() {

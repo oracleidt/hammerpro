@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Prise en main > Tour de l'interface | [English](../../en/getting-started/interface-tour.md)
+[Documentation](../README.md) > Prise en main > Tour de l'interface | [English](../../en/getting-started/interface-tour.md) | [Русский](../../ru/getting-started/interface-tour.md)
 
 # Tour de l'interface
 
@@ -51,6 +51,10 @@ La bande verticale le long du bord gauche regroupe les outils sous forme d'icôn
 ## Les quatre vues
 
 Le centre de la fenêtre est une grille de 2x2 vues : la vue 3D en haut à gauche, Dessus (X/Y) en haut à droite, Face (Y/Z) en bas à gauche et Côté (X/Z) en bas à droite. Faites glisser les séparateurs pour les redimensionner (**Affichage > Réinitialiser le partage des vues** les remet en place). Chaque vue a un menu **Vue** dans son coin pour changer ce qu'elle affiche (n'importe quel quart peut aussi afficher la vue logique 2D). `Maj+Z` agrandit la vue sous la souris, et `F2` à `F5` changent son type. Voir [Caméra et navigation](../features/camera-navigation.md) et [Modes de rendu et affichage](../features/render-modes-display.md).
+
+## Panneaux séparés
+
+Faites un clic droit sur un onglet latéral puis **Détacher le panneau**, ou utilisez le bouton du même nom à côté des onglets. Le panneau s'ouvre dans sa propre fenêtre déplaçable et redimensionnable dans l'éditeur : propriétés, textures, modèles et autres panneaux peuvent rester visibles ensemble. Répétez pour les panneaux souhaités. **Rattacher le panneau**, ou fermer sa fenêtre flottante, le remet dans les onglets. Le choix et la position sont conservés au redémarrage ; la visibilité reste réglée dans **Affichage > Panneaux**.
 
 ## Onglets des maps
 

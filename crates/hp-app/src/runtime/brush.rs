@@ -9,4 +9,5 @@ pub struct BrushRuntime {
     pub bevel_edges: Vec<hp_editor::EdgeRef>,
     pub curve_edit: Option<hp_editor::Id>,
     pub road_edit: Option<hp_editor::Id>,
+    pub road_history: Option<(bool, bool)>,
 }

@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Guides > Grilles personnalisées pour les escaliers | [English](../../en/guides/custom-grids-for-stairs.md)
+[Documentation](../README.md) > Guides > Grilles personnalisées pour les escaliers | [English](../../en/guides/custom-grids-for-stairs.md) | [Русский](../../ru/guides/custom-grids-for-stairs.md)
 
 # Grilles personnalisées pour les escaliers
 

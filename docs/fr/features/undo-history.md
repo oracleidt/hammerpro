@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Annulation et historique | [English](../../en/features/undo-history.md)
+[Documentation](../README.md) > Fonctionnalités > Annulation et historique | [English](../../en/features/undo-history.md) | [Русский](../../ru/features/undo-history.md)
 
 # Annulation et historique
 

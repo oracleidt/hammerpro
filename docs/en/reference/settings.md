@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Reference > Settings | [Français](../../fr/reference/settings.md)
+[Documentation](../README.md) > Reference > Settings | [Français](../../fr/reference/settings.md) | [Русский](../../ru/reference/settings.md)
 
 # Settings reference
 
@@ -18,7 +18,7 @@ Values in the tables use TOML syntax: `true`, `16.0`, `"Dark"`. Enumerations are
 
 | Key | Default | What it does |
 | --- | --- | --- |
-| `language` | system language | `"En"` or `"Fr"`. Interface language. On the first run it comes from the system language. **Settings > General**, or the `--lang` argument for one run. |
+| `language` | system language | `"En"`, `"Fr"` or `"Ru"`. Interface language. On the first run it comes from the system language. **Settings > General**, or the `--lang` argument for one run. |
 | `language_chosen` | `false` | Set once the first language choice was made. |
 | `recent_files` | `[]` | The maps of **File > Recent maps**, newest first, 12 at most. **Settings > General > Recent maps** clears it. |
 | `keybindings` | `{}` | Your shortcut changes: action id = shortcut text (`undo = "Ctrl+Alt+Z"`, `""` for no shortcut). Only changed actions are written. Ids are listed in [Actions and keyboard shortcuts](actions-shortcuts.md). **Settings > Keyboard**. |
@@ -91,6 +91,7 @@ Mostly on **Settings > Viewports**; the `show_*` toggles are also in the **View*
 | `show_outliner` | `false` | Outliner tab. |
 | `show_model_browser` | `false` | Models tab. |
 | `show_console` | `true` | Console panel. |
+| `floating_panels` | `[]` | Side panels shown in separate movable windows inside the editor. Use **Float panel** or **Dock panel** to manage them. |
 | `thumbnail_size` | `96.0` | Size of the texture browser thumbnails. |
 | `split_x`, `split_y` | `0.5`, `0.5` | Position of the splitters of the 2x2 views (0 to 1). |
 | `quadrants` | `[0, 1, 2, 3]` | View of each quadrant: 0 = 3D, 1 = Top, 2 = Front, 3 = Side, 4 = 2D logical. |
@@ -140,6 +141,7 @@ Mostly on **Settings > Viewports**; the `show_*` toggles are also in the **View*
 | `dev_addon` | `true` | Iteration builds copy custom content to `garrysmod/addons/hammerpro_dev` instead of packing it. |
 | `export_custom_materials` | `false` | Export the custom materials. |
 | `copy_to_maps` | `true` | Copy the BSP to the game's `maps` folder. |
+| `bsp_beside_vmf` | `false` | Save the final BSP beside the source VMF, with intermediate files in the application cache instead of a local build folder. |
 | `maps_dir_override` | none | Folder the BSP is copied to (absent: `garrysmod/maps`). |
 | `launch_game` | `true` | Run the game after the compile. |
 | `launch_via_steam` | `false` | Start the game through Steam. |
@@ -233,6 +235,7 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `keymap_preset` | `"HammerPro"` | Shortcut set: `HammerPro`, `Hammer`, `HammerPlusPlus`. Your own shortcuts stay on top. |
 | `nav_scheme` | `"HammerPro"` | Camera controls: `HammerPro` (right drag looks, WASD flies, middle drag pans), `Hammer` (plus Space + left drag looks, Space + right drag pans, left + right drag moves, arrow keys look), `HammerPlusPlus` (the Hammer controls, middle button looks in 3D). |
 | `invert_mouse_x` | `false` | Invert the horizontal mouse axis when looking around. |
+| `camera_smoothing` | `true` | Enable smooth 3D camera acceleration; false makes movement start and stop immediately. |
 | `fly_response` | `0.07` | Seconds the fly camera takes to reach its speed, 0 to 0.5 (0: at once). |
 | `grid_step_factor` | `2.0` | Factor of `[` and `]`, 1.25 to 10. With 2, the powers of two from 1/8 to 4096. |
 | `ctrl_wheel` | `"GridSize"` | `Ctrl` + wheel in a 2D view: `GridSize` or `ZoomAll2d`. |

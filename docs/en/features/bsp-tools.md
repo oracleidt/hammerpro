@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > BSP tools | [Français](../../fr/features/bsp-tools.md)
+[Documentation](../README.md) > Features > BSP tools | [Français](../../fr/features/bsp-tools.md) | [Русский](../../ru/features/bsp-tools.md)
 
 # BSP tools
 

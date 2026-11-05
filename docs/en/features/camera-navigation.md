@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Camera and navigation | [Français](../../fr/features/camera-navigation.md)
+[Documentation](../README.md) > Features > Camera and navigation | [Français](../../fr/features/camera-navigation.md) | [Русский](../../ru/features/camera-navigation.md)
 
 # Camera and navigation
 
@@ -20,7 +20,7 @@ These controls work with every tool and every control scheme:
 | Mouse wheel | Move forward or back, toward the cursor when **Zoom toward the cursor** is on. `Shift`: faster |
 | Right click without moving | Opens the viewport context menu |
 
-- The fly speed ramps up in **Camera acceleration time** seconds (0: at once).
+- Disable **Settings > Viewports > Smooth camera movement** for precise movement with immediate starts and stops. When enabled, fly speed ramps up in **Camera acceleration time** seconds (0 also means immediate). The acceleration setting is preserved when smoothing is disabled.
 - `Ctrl` never flies: while flying or in mouselook, a left click selects the object at the crosshair (the center of the view), and `Ctrl+click` adds it to or removes it from the selection, like Hammer. The displacement brush keeps painting instead.
 - Shortcuts do not fire while the keyboard flies the camera.
 
@@ -137,6 +137,7 @@ Each view has a header: click the view name to pick another view type (and, in 3
 |---|---|---|
 | **Camera controls** | Hammer Pro, Hammer or Hammer++ (middle mouse) | Hammer Pro |
 | **Invert mouse X** | Inverts the horizontal axis when looking around | Off |
+| **Smooth camera movement** | Enable acceleration and deceleration; disable for immediate starts and stops | On |
 | **Camera acceleration time** | Time the fly camera takes to reach its speed (0 to 0.5 s) | 0.07 s |
 | **Ctrl + mouse wheel in 2D** | Changes the grid size, or zooms every 2D view | Changes the grid size |
 | **Zoom the 2D views together** | Zooming one 2D view zooms the others | Off |

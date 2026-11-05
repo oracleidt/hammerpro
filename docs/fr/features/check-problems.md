@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Vérifier les problèmes | [English](../../en/features/check-problems.md)
+[Documentation](../README.md) > Fonctionnalités > Vérifier les problèmes | [English](../../en/features/check-problems.md) | [Русский](../../ru/features/check-problems.md)
 
 # Vérifier les problèmes
 

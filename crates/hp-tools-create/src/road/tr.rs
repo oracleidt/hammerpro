@@ -1,6 +1,49 @@
 use hp_app::i18n::TrTable;
 
 pub const ROAD_TR: TrTable = &[
+    ("road.layout", "Shape", "Forme"),
+    ("road.layout_path", "Free path", "Tracé libre"),
+    ("road.layout_tee", "T junction", "Jonction en T"),
+    ("road.layout_cross", "Four-way junction", "Carrefour à quatre branches"),
+    ("road.layout_wye", "Y junction", "Jonction en Y"),
+    ("road.layout_cul_de_sac", "Rounded cul-de-sac", "Cul-de-sac arrondi"),
+    ("road.radius", "Radius", "Rayon"),
+    (
+        "road.radius_tip",
+        "Corner radius, or bulb radius for a cul-de-sac. Increase the segment length to use fewer brushes.",
+        "Rayon des angles, ou du cercle de retournement pour un cul-de-sac. Augmentez la longueur de segment pour réduire le nombre de brushes.",
+    ),
+    (
+        "road.layout_tip",
+        "Presets use two points: center then arm end; for a cul-de-sac, start then bulb center. Move either point to resize or rotate. Both heights define one plane. Edge lines and shoulders follow the outline; center and divider lines are omitted inside presets.",
+        "Les formes utilisent deux points : centre puis extrémité d'une branche ; pour un cul-de-sac, début puis centre du cercle. Déplacez les points pour redimensionner ou tourner. Les deux hauteurs définissent un plan. Lignes de rive et accotements suivent le contour ; les lignes centrales et séparatrices sont omises dans ces formes.",
+    ),
+    ("road.preset_plane", "Use a planar surface", "Utiliser une surface plane"),
+    (
+        "road.err.layout_points",
+        "This shape needs exactly two points. Start a new road or remove the extra points.",
+        "Cette forme utilise exactement deux points. Commencez une nouvelle route ou retirez les points supplémentaires.",
+    ),
+    (
+        "road.err.layout_size",
+        "This shape is too small for its width and radius. Move the second point farther away or reduce the width or radius. A cul-de-sac radius must exceed half the lane area width.",
+        "Cette forme est trop petite pour sa largeur et son rayon. Éloignez le deuxième point ou réduisez la largeur ou le rayon. Le rayon d'un cul-de-sac doit dépasser la moitié de la largeur des voies.",
+    ),
+    (
+        "road.err.layout_options",
+        "Presets use one plane through both points. Turn off terrain following, banking and automatic road junctions. Splitting is only available for free paths.",
+        "Les formes utilisent un plan passant par les deux points. Désactivez le suivi du terrain, le dévers et les jonctions automatiques. La division est réservée aux tracés libres.",
+    ),
+    (
+        "road.err.j_preset",
+        "Automatic side junctions require free paths. Place the road at an open arm of this shape instead.",
+        "Les jonctions latérales automatiques demandent des tracés libres. Placez la route à une extrémité ouverte de cette forme.",
+    ),
+    (
+        "road.history_tip",
+        "Ctrl+Z undoes a point or setting change; Ctrl+Y redoes it. Apply or Create commits the whole road as one map undo step.",
+        "Ctrl+Z annule un point ou un changement de réglage ; Ctrl+Y le rétablit. Appliquer ou Créer enregistre la route entière en une étape dans l'historique de la map.",
+    ),
     ("road.fit_width", "Fit width to bend", "Adapter la largeur au virage"),
     (
         "road.fit_width_tip",
@@ -30,7 +73,11 @@ pub const ROAD_TR: TrTable = &[
     ("road.lanes", "Lanes", "Voies"),
     ("road.lanes_tip", "Number of lanes (1 to 8)", "Nombre de voies (1 à 8)"),
     ("road.lane_width", "Lane width", "Largeur de voie"),
-    ("road.lane_width_tip", "Width of one lane in units (16 to 256)", "Largeur d'une voie en unités (16 à 256)"),
+    (
+        "road.lane_width_tip",
+        "Width of one lane in units (16 to 32768). The road must fit inside the map.",
+        "Largeur d'une voie en unités (16 à 32768). La route doit tenir dans les limites de la map.",
+    ),
     ("road.shoulder", "Shoulder", "Accotement"),
     (
         "road.shoulder_tip",
@@ -246,7 +293,11 @@ pub const ROAD_TR: TrTable = &[
         "The shoulder must be 0 or at least 1 unit",
         "L'accotement doit valoir 0 ou au moins 1 unité",
     ),
-    ("road.err.wide", "The road is wider than 2048 units", "La route est plus large que 2048 unités"),
+    (
+        "road.err.wide",
+        "The road is wider than the Source world span",
+        "La route est plus large que l'espace de coordonnées de Source",
+    ),
     (
         "road.err.many",
         "The road would need {0} brushes: raise the segment length",

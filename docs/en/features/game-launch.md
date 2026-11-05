@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Game launch | [Français](../../fr/features/game-launch.md)
+[Documentation](../README.md) > Features > Game launch | [Français](../../fr/features/game-launch.md) | [Русский](../../ru/features/game-launch.md)
 
 # Game launch
 

@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Curve tool | [Français](../../fr/features/curve-tool.md)
+[Documentation](../README.md) > Features > Curve tool | [Français](../../fr/features/curve-tool.md) | [Русский](../../ru/features/curve-tool.md)
 
 # Curve tool
 

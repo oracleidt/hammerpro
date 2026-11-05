@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Référence > Paramètres | [English](../../en/reference/settings.md)
+[Documentation](../README.md) > Référence > Paramètres | [English](../../en/reference/settings.md) | [Русский](../../ru/reference/settings.md)
 
 # Référence des paramètres
 
@@ -18,7 +18,7 @@ Les valeurs suivent la syntaxe TOML : `true`, `16.0`, `"Dark"`. Les énumératio
 
 | Clé | Défaut | Effet |
 | --- | --- | --- |
-| `language` | langue du système | `"En"` ou `"Fr"`. Langue de l'interface. Au premier lancement, elle vient de la langue du système. **Paramètres > Général**, ou l'argument `--lang` pour un seul lancement. |
+| `language` | langue du système | `"En"`, `"Fr"` ou `"Ru"`. Langue de l'interface. Au premier lancement, elle vient de la langue du système. **Paramètres > Général**, ou l'argument `--lang` pour un seul lancement. |
 | `language_chosen` | `false` | Passe à `true` une fois la langue choisie la première fois. |
 | `recent_files` | `[]` | Les maps de **Fichier > Maps récentes**, la plus récente en premier, 12 au plus. **Paramètres > Général** permet de vider la liste. |
 | `keybindings` | `{}` | Vos raccourcis modifiés : id de l'action = texte du raccourci (`undo = "Ctrl+Alt+Z"`, `""` pour aucun raccourci). Les noms de touches sont en anglais (`Shift`, pas `Maj`). Seules les actions modifiées sont écrites. Les ids sont listés dans [Actions et raccourcis clavier](actions-shortcuts.md). **Paramètres > Clavier**. |
@@ -91,6 +91,7 @@ Surtout sur **Paramètres > Vues** ; les clés `show_*` sont aussi dans le menu 
 | `show_outliner` | `false` | Onglet Arborescence. |
 | `show_model_browser` | `false` | Onglet Modèles. |
 | `show_console` | `true` | Panneau de la console. |
+| `floating_panels` | `[]` | Panneaux latéraux ouverts dans des fenêtres séparées à l'intérieur de l'éditeur. Utilisez **Détacher le panneau** ou **Rattacher le panneau**. |
 | `thumbnail_size` | `96.0` | Taille des vignettes du navigateur de textures. |
 | `split_x`, `split_y` | `0.5`, `0.5` | Position des séparateurs de la grille 2x2 des vues (0 à 1). |
 | `quadrants` | `[0, 1, 2, 3]` | Vue de chaque quart : 0 = 3D, 1 = Dessus, 2 = Face, 3 = Côté, 4 = logique 2D. |
@@ -140,6 +141,7 @@ Surtout sur **Paramètres > Vues** ; les clés `show_*` sont aussi dans le menu 
 | `dev_addon` | `true` | Les compilations d'itération copient le contenu personnalisé dans `garrysmod/addons/hammerpro_dev` au lieu de l'intégrer. |
 | `export_custom_materials` | `false` | Exporte les matériaux personnalisés. |
 | `copy_to_maps` | `true` | Copie le BSP dans le dossier `maps` du jeu. |
+| `bsp_beside_vmf` | `false` | Enregistre le BSP final à côté du VMF source et place les fichiers intermédiaires dans le cache de l'application. |
 | `maps_dir_override` | absente | Dossier où copier le BSP (absente : `garrysmod/maps`). |
 | `launch_game` | `true` | Lance le jeu après la compilation. |
 | `launch_via_steam` | `false` | Lance le jeu par Steam. |
@@ -233,6 +235,7 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `keymap_preset` | `"HammerPro"` | Jeu de raccourcis : `HammerPro`, `Hammer`, `HammerPlusPlus`. Vos propres raccourcis restent prioritaires. |
 | `nav_scheme` | `"HammerPro"` | Contrôles de la caméra : `HammerPro` (clic droit glissé pour regarder, ZQSD/WASD pour voler, clic molette glissé pour faire défiler), `Hammer` (en plus : Espace + clic gauche glissé regarde, Espace + clic droit glissé fait défiler, clics gauche et droit glissés déplacent, les flèches regardent), `HammerPlusPlus` (les contrôles de Hammer, le clic molette regarde en 3D). |
 | `invert_mouse_x` | `false` | Inverse l'axe horizontal de la souris. |
+| `camera_smoothing` | `true` | Activer l'accélération fluide de la caméra 3D ; false rend les démarrages et arrêts immédiats. |
 | `fly_response` | `0.07` | Secondes que met la caméra pour atteindre sa vitesse, de 0 à 0,5 (0 : immédiat). |
 | `grid_step_factor` | `2.0` | Facteur de `[` et `]`, de 1,25 à 10. Avec 2, les puissances de deux de 1/8 à 4096. |
 | `ctrl_wheel` | `"GridSize"` | `Ctrl` + molette dans une vue 2D : `GridSize` (taille de grille) ou `ZoomAll2d` (zoom de toutes les vues 2D). |

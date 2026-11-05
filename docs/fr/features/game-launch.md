@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Lancement du jeu | [English](../../en/features/game-launch.md)
+[Documentation](../README.md) > Fonctionnalités > Lancement du jeu | [English](../../en/features/game-launch.md) | [Русский](../../ru/features/game-launch.md)
 
 # Lancement du jeu
 

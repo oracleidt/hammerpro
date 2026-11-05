@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Sky cameras | [Français](../../fr/features/sky-cameras.md)
+[Documentation](../README.md) > Features > Sky cameras | [Français](../../fr/features/sky-cameras.md) | [Русский](../../ru/features/sky-cameras.md)
 
 # Sky cameras
 

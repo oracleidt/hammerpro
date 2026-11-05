@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Stockage | [English](../../en/features/storage.md)
+[Documentation](../README.md) > Fonctionnalités > Stockage | [English](../../en/features/storage.md) | [Русский](../../ru/features/storage.md)
 
 # Stockage (espace disque)
 

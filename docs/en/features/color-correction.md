@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Color correction | [Français](../../fr/features/color-correction.md)
+[Documentation](../README.md) > Features > Color correction | [Français](../../fr/features/color-correction.md) | [Русский](../../ru/features/color-correction.md)
 
 # Color correction
 

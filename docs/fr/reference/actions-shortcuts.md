@@ -1,8 +1,8 @@
-[Documentation](../README.md) > Référence > Actions et raccourcis clavier | [English](../../en/reference/actions-shortcuts.md)
+[Documentation](../README.md) > Référence > Actions et raccourcis clavier | [English](../../en/reference/actions-shortcuts.md) | [Русский](../../ru/reference/actions-shortcuts.md)
 
 # Actions et raccourcis clavier
 
-Chaque commande de Hammer Pro 1.1.4 est une *action* : une seule entrée partagée par les menus, la barre d'outils, les raccourcis clavier, la palette de commandes (`Ctrl+P`), les fichiers `--script` et le serveur MCP (`run_action`, `list_actions`). Cette page liste les 345 actions, menu par menu, dans l'ordre où les menus les affichent.
+Chaque commande de Hammer Pro 1.1.5 est une *action* : une seule entrée partagée par les menus, la barre d'outils, les raccourcis clavier, la palette de commandes (`Ctrl+P`), les fichiers `--script` et le serveur MCP (`run_action`, `list_actions`). Cette page liste les 345 actions, menu par menu, dans l'ordre où les menus les affichent.
 
 Colonnes :
 

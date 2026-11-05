@@ -1,8 +1,10 @@
-[Documentation](../README.md) > Features > Entity tool | [Français](../../fr/features/entity-tool.md)
+[Documentation](../README.md) > Features > Entity tool | [Français](../../fr/features/entity-tool.md) | [Русский](../../ru/features/entity-tool.md)
 
 # Entity tool
 
 The entity tool places point entities: on surfaces in the 3D view (resting on floors, walls, ceilings and on prop models), or on the grid in the 2D views. It also places prefabs chosen in the Prefabs tab.
+
+A model fixed by the entity definition, or supplied as an FGD model default, takes precedence over the model browser. Its skin is also preserved; the browser skin applies only to generic props using the selected browser model.
 
 ## Opening it
 
@@ -35,7 +37,7 @@ The box used to rest the entity on surfaces is, in this order: the collision hul
 | Option | What it does | Default |
 |---|---|---|
 | **Class** | Searchable class picker (see below). Its tooltip shows the FGD description of the class. Without loaded entity definitions it becomes a plain text field (**Class name**). | **Default point entity** setting |
-| **Model** | Only for prop classes (`prop_*` and classes with a studio model helper and no fixed model): the model chosen in the model browser, or **No model selected**. | |
+| **Model** | Only for generic prop classes (`prop_*` or a studio prop helper, without a fixed model or a nonempty FGD model default): the model chosen in the model browser, or **No model selected**. | |
 | **Skin N** | Skin chosen in the model browser, written to new props (shown when it is not the default skin). | |
 | **Models...** | Opens the Models tab of the model browser to choose the model. | |
 | **Align to surface** | Prop classes only: rotate props so their up axis follows the surface normal (the `angles` keyvalue is set). | off |

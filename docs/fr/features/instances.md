@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Instances | [English](../../en/features/instances.md)
+[Documentation](../README.md) > Fonctionnalités > Instances | [English](../../en/features/instances.md) | [Русский](../../ru/features/instances.md)
 
 # Instances
 
@@ -46,7 +46,7 @@ Le contenu des instances sélectionnées est encadré (instances imbriquées com
 
 | Champ | Effet |
 | --- | --- |
-| **Nom du fichier :** | Nom du nouveau VMF (pas de séparateur de dossier, ni `: * ? " < > |`). |
+| **Nom du fichier :** | Nom du nouveau VMF (pas de séparateur de dossier, ni `: * ? " < > \|`). |
 | **Dossier :** | Où l'enregistrer, avec **Parcourir...**. Par défaut le **Dossier par défaut** des paramètres (`instances`, relatif au dossier de la map). Une map pas encore enregistrée demande un chemin complet. |
 | **Origine :** | X, Y, Z. La sélection est enregistrée autour de ce point, qui devient l'origine de la `func_instance`. Part du centre de la sélection, aligné sur la grille. |
 | **Remplacer le fichier existant** | Affiché quand le fichier existe déjà. |

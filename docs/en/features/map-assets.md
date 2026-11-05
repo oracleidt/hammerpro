@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Map assets | [Français](../../fr/features/map-assets.md)
+[Documentation](../README.md) > Features > Map assets | [Français](../../fr/features/map-assets.md) | [Русский](../../ru/features/map-assets.md)
 
 # Map assets
 

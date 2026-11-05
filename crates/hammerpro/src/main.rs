@@ -107,6 +107,7 @@ fn parse_cli() -> Cli {
                 cli.lang = match args.next().as_deref() {
                     Some("fr") => Some(hp_app::i18n::Lang::Fr),
                     Some("en") => Some(hp_app::i18n::Lang::En),
+                    Some("ru") => Some(hp_app::i18n::Lang::Ru),
                     _ => None,
                 }
             }
@@ -208,6 +209,10 @@ fn pick_adapter(adapters: &[wgpu::Adapter], surface: Option<&wgpu::Surface<'_>>)
 }
 
 fn main() -> eframe::Result<()> {
+    if std::env::args().nth(1).is_some_and(|arg| arg == bspc_cli::BSPC_ARG || arg == bspc_cli::RAD_ARG) {
+        let settings = hp_app::settings::Settings::load_or_default(&hp_app::settings::Settings::default_path());
+        hp_fs::configure_scan(settings.scan.to_config());
+    }
     if std::env::args().nth(1).as_deref() == Some(hp_mcp::BRIDGE_ARG) {
         let options = hp_mcp::bridge::BridgeOptions {
             tools: dispatch::mcp::tool_specs(),

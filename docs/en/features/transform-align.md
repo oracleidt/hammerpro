@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Transform and align | [Français](../../fr/features/transform-align.md)
+[Documentation](../README.md) > Features > Transform and align | [Français](../../fr/features/transform-align.md) | [Русский](../../ru/features/transform-align.md)
 
 # Transform and align
 

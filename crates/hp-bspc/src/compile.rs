@@ -350,6 +350,11 @@ pub fn compile(
     let mut brushes: Vec<MapBrush> = Vec::new();
     let mut entities: Vec<&hp_vmf::Entity> = vec![&map.world];
     entities.extend(map.entities.iter());
+    log(&format!(
+        "Loading materials for {} entities and {} brushes",
+        entities.len(),
+        entities.iter().map(|e| e.solids.len()).sum::<usize>()
+    ));
 
     let mut facts_cache: ahash::AHashMap<String, crate::materials::MaterialFacts> = ahash::AHashMap::new();
     let mut prefetched: ahash::AHashMap<String, crate::materials::MaterialFacts> = {
@@ -362,6 +367,7 @@ pub fn compile(
             .map(|s| s.material.as_str())
             .filter(|m| seen.insert(m.to_ascii_lowercase()))
             .collect();
+        log(&format!("Resolving {} unique materials", names.len()));
         names.par_iter().map(|m| (m.to_ascii_lowercase(), materials.facts(m))).collect::<Vec<_>>().into_iter().collect()
     };
     let mut missing: Vec<String> = Vec::new();
@@ -399,6 +405,7 @@ pub fn compile(
     }
 
     let load = BrushLoad::of(opts);
+    log("Loading brush geometry...");
     for (ei, ent) in entities.iter().enumerate() {
         let class = ent.classname.clone();
         let into_world = ei == 0 || merges_into_world(&class);
@@ -1444,6 +1451,13 @@ Probably too many areaportals"
             format: opts.format,
         },
     )?;
+    let requested_sky = key(&map.world, "skyname").unwrap_or("");
+    let sky = cubemaps.resolve_sky(requested_sky);
+    if sky != requested_sky.trim()
+        && let Some(world) = out_ents.iter_mut().find(|entity| entity.classname() == "worldspawn")
+    {
+        world.set("skyname", &sky);
+    }
     if has_water && crate::water::ensure_lod_control(&mut out_ents) {
         log("Water found with no water_lod_control entity, creating a default one.");
     }
@@ -1491,7 +1505,7 @@ Probably too many areaportals"
     lumps.game_lumps.push((crate::detail_props::DPRP, opts.format.detail_props_version, dprp));
     stage("props");
 
-    crate::cubemap::emit(&mut cubemaps, &mut lumps, key(&map.world, "skyname"), log);
+    crate::cubemap::emit(&mut cubemaps, &mut lumps, Some(&sky), log);
     let faces_written = lumps.data.get(&crate::emit::lump::FACES).map_or(0, |(d, _)| d.len() / 56);
     stage("cubemaps");
     let bsp = lumps.file(map.version_info.map_version);

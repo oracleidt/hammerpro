@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Troubleshooting > Crashes and logs | [Français](../../fr/troubleshooting/crashes-and-logs.md)
+[Documentation](../README.md) > Troubleshooting > Crashes and logs | [Français](../../fr/troubleshooting/crashes-and-logs.md) | [Русский](../../ru/troubleshooting/crashes-and-logs.md)
 
 # Crashes and logs
 

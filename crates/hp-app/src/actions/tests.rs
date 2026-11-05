@@ -242,7 +242,7 @@ fn labels_are_readable_and_localized() {
         for lang in Lang::ALL {
             let label = shortcut_label_in(&sc, lang);
             for raw in raw_names {
-                if raw == "Shift" && lang == Lang::En {
+                if raw == "Shift" && lang != Lang::Fr {
                     continue;
                 }
                 assert!(!label.contains(raw), "{}: {label}", a.id());

@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Sauvegarde automatique et plantages | [English](../../en/features/autosave-crash.md)
+[Documentation](../README.md) > Fonctionnalités > Sauvegarde automatique et plantages | [English](../../en/features/autosave-crash.md) | [Русский](../../ru/features/autosave-crash.md)
 
 # Sauvegarde automatique et plantages
 

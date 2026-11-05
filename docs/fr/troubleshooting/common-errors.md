@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Dépannage > Erreurs courantes | [English](../../en/troubleshooting/common-errors.md)
+[Documentation](../README.md) > Dépannage > Erreurs courantes | [English](../../en/troubleshooting/common-errors.md) | [Русский](../../ru/troubleshooting/common-errors.md)
 
 # Erreurs courantes
 

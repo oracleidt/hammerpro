@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Palette de commandes | [English](../../en/features/command-palette.md)
+[Documentation](../README.md) > Fonctionnalités > Palette de commandes | [English](../../en/features/command-palette.md) | [Русский](../../ru/features/command-palette.md)
 
 # Palette de commandes
 

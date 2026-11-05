@@ -281,6 +281,10 @@ fn gray_visuals(theme: ThemeChoice) -> Visuals {
 pub fn apply(ctx: &egui::Context, theme: ThemeChoice, ui_scale: f32) {
     IS_DARK.store(theme == ThemeChoice::Dark, Ordering::Relaxed);
     let visuals = visuals(theme);
+    ctx.set_theme(match theme {
+        ThemeChoice::Dark => egui::Theme::Dark,
+        ThemeChoice::Light => egui::Theme::Light,
+    });
     ctx.set_visuals(visuals);
     ctx.all_styles_mut(|style| {
         style.spacing.item_spacing = egui::vec2(6.0, 4.0);
@@ -614,5 +618,23 @@ mod tests {
         assert_eq!(error(), Color32::WHITE);
         assert_eq!(text_weak(), DARK.text_weak);
         assert!(ctx.global_style().visuals.dark_mode);
+    }
+
+    #[test]
+    fn explicit_theme_survives_opposite_system_theme_on_first_frame() {
+        let _guard = crate::testing::lang_lock();
+        for (choice, system, dark) in
+            [(ThemeChoice::Dark, egui::Theme::Light, true), (ThemeChoice::Light, egui::Theme::Dark, false)]
+        {
+            let ctx = egui::Context::default();
+            ctx.set_theme(egui::ThemePreference::System);
+            apply(&ctx, choice, 1.0);
+            for _ in 0..2 {
+                let _ = ctx.run_ui(egui::RawInput { system_theme: Some(system), ..Default::default() }, |ui| {
+                    assert_eq!(ui.visuals().dark_mode, dark);
+                    assert_eq!(ui.visuals().panel_fill, palette_of(choice).bg1);
+                });
+            }
+        }
     }
 }

@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Polygon tool | [Français](../../fr/features/polygon-tool.md)
+[Documentation](../README.md) > Features > Polygon tool | [Français](../../fr/features/polygon-tool.md) | [Русский](../../ru/features/polygon-tool.md)
 
 # Polygon tool
 

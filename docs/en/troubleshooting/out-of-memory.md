@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Troubleshooting > Out of memory | [Français](../../fr/troubleshooting/out-of-memory.md)
+[Documentation](../README.md) > Troubleshooting > Out of memory | [Français](../../fr/troubleshooting/out-of-memory.md) | [Русский](../../ru/troubleshooting/out-of-memory.md)
 
 # Out of memory
 

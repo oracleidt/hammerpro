@@ -74,6 +74,7 @@ pub fn format_bytes_in(bytes: u64, lang: crate::i18n::Lang) -> String {
     let units: [&str; 5] = match lang {
         crate::i18n::Lang::En => ["B", "KB", "MB", "GB", "TB"],
         crate::i18n::Lang::Fr => ["o", "Ko", "Mo", "Go", "To"],
+        crate::i18n::Lang::Ru => ["Б", "КБ", "МБ", "ГБ", "ТБ"],
     };
     if bytes < 1024 {
         return format!("{bytes} {}", units[0]);

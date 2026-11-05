@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Index et analyse du contenu | [English](../../en/features/content-index.md)
+[Documentation](../README.md) > Fonctionnalités > Index et analyse du contenu | [English](../../en/features/content-index.md) | [Русский](../../ru/features/content-index.md)
 
 # Index et analyse du contenu
 

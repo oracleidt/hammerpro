@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Aperçu des detail props | [English](../../en/features/detail-props-preview.md)
+[Documentation](../README.md) > Fonctionnalités > Aperçu des detail props | [English](../../en/features/detail-props-preview.md) | [Русский](../../ru/features/detail-props-preview.md)
 
 # Aperçu des detail props
 

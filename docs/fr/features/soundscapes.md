@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Soundscapes | [English](../../en/features/soundscapes.md)
+[Documentation](../README.md) > Fonctionnalités > Soundscapes | [English](../../en/features/soundscapes.md) | [Русский](../../ru/features/soundscapes.md)
 
 # Soundscapes
 

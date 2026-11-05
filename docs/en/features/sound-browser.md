@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Sound browser | [Français](../../fr/features/sound-browser.md)
+[Documentation](../README.md) > Features > Sound browser | [Français](../../fr/features/sound-browser.md) | [Русский](../../ru/features/sound-browser.md)
 
 # Sound browser
 

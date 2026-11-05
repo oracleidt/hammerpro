@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Guides > Port a map to another game | [Français](../../fr/guides/port-to-another-game.md)
+[Documentation](../README.md) > Guides > Port a map to another game | [Français](../../fr/guides/port-to-another-game.md) | [Русский](../../ru/guides/port-to-another-game.md)
 
 # Port a map to another game
 

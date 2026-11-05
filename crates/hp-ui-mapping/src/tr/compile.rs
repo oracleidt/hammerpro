@@ -56,6 +56,12 @@ pub const TR: TrTable = &[
     ),
     ("compile.after", "After", "Après"),
     ("compile.copy_to_maps", "Copy to the maps folder", "Copier dans le dossier maps"),
+    ("compile.bsp_beside_vmf", "Save BSP beside VMF", "Enregistrer le BSP à côté du VMF"),
+    (
+        "compile.bsp_beside_vmf_tip",
+        "Write the final BSP next to the source VMF. Temporary snapshots and intermediate files use Hammer Pro's cache instead of a .hammerpro_build folder beside the map. The source VMF is never overwritten. Applies to the next compile.",
+        "Écrire le BSP final à côté du VMF source. Les copies temporaires et fichiers intermédiaires utilisent le cache de Hammer Pro au lieu d'un dossier .hammerpro_build à côté de la map. Le VMF source n'est jamais écrasé. S'applique à la prochaine compilation.",
+    ),
     ("compile.launch_game", "Launch the game", "Lancer le jeu"),
     ("compile.via_steam", "Through Steam", "Via Steam"),
     (
@@ -1069,8 +1075,18 @@ pub const TR: TrTable = &[
     ),
     (
         "compile.kb.skybox_cubemap",
-        "Harmless with the Garry's Mod skies: the game builds the cubemaps itself (buildcubemaps).",
-        "Sans conséquence avec les ciels de Garry's Mod : le jeu construit lui-même les cubemaps (buildcubemaps).",
+        "The default reflection cubemap could not be built from the sky materials. Check the mounted sky textures and buildcubemaps in game. This does not disable baked surface lighting; an entirely black map needs a separate lighting check.",
+        "La cubemap de réflexion par défaut n'a pas pu être créée à partir du ciel. Vérifiez les textures montées du ciel et buildcubemaps en jeu. Cela ne désactive pas l'éclairage des surfaces ; une map entièrement noire nécessite une vérification de l'éclairage.",
+    ),
+    (
+        "compile.kb.skybox_fallback",
+        "The requested sky has missing or invalid materials or textures. The compiled map uses an available fallback sky; the source VMF keeps its skyname. Mount the original sky's content to restore its appearance.",
+        "Des matériaux ou textures du ciel demandé sont absents ou invalides. La map compilée utilise un ciel de remplacement disponible ; le VMF garde son skyname. Montez le contenu du ciel d'origine pour retrouver son apparence.",
+    ),
+    (
+        "compile.kb.black_lightmaps",
+        "This lighting pass contains no lit surfaces. Check light entities, light_environment, openings to tools/toolsskybox and HDR brightness scales. A missing default reflection cubemap is a separate issue.",
+        "Cette passe d'éclairage ne contient aucune surface éclairée. Vérifiez les lumières, light_environment, les ouvertures vers tools/toolsskybox et les intensités HDR. L'absence d'une cubemap de réflexion par défaut est un problème distinct.",
     ),
     (
         "compile.kb.limit_brushes",

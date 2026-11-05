@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Outil extruder / creuser | [English](../../en/features/extrude-tool.md)
+[Documentation](../README.md) > Fonctionnalités > Outil extruder / creuser | [English](../../en/features/extrude-tool.md) | [Русский](../../ru/features/extrude-tool.md)
 
 # Outil extruder / creuser
 

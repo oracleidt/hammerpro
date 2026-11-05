@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Rechercher et remplacer des textures | [English](../../en/features/find-replace-textures.md)
+[Documentation](../README.md) > Fonctionnalités > Rechercher et remplacer des textures | [English](../../en/features/find-replace-textures.md) | [Русский](../../ru/features/find-replace-textures.md)
 
 # Rechercher et remplacer des textures
 

@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Prise en main > Configuration du jeu | [English](../../en/getting-started/game-setup.md)
+[Documentation](../README.md) > Prise en main > Configuration du jeu | [English](../../en/getting-started/game-setup.md) | [Русский](../../ru/getting-started/game-setup.md)
 
 # Configuration du jeu
 
@@ -10,7 +10,7 @@ L'assistant **Configuration de Hammer Pro** s'ouvre au premier lancement (quand 
 
 | Étape | Ce que vous choisissez |
 |---|---|
-| 1. Bienvenue | La langue de l'interface (anglais ou français), et **Vous venez de Hammer ou de Hammer++ ?** : **Non, réglages Hammer Pro**, **Hammer** ou **Hammer++**. Ce choix règle d'un coup le jeu de raccourcis clavier et les contrôles de caméra ; les raccourcis que vous avez modifiés vous-même sont conservés. |
+| 1. Bienvenue | La langue de l'interface (anglais, français ou russe), et **Vous venez de Hammer ou de Hammer++ ?** : **Non, réglages Hammer Pro**, **Hammer** ou **Hammer++**. Ce choix règle d'un coup le jeu de raccourcis clavier et les contrôles de caméra ; les raccourcis que vous avez modifiés vous-même sont conservés. |
 | 2. Pour quel jeu faites-vous des maps ? | Le jeu (voir plus bas). Pour Garry's Mod, son dossier est recherché dans vos bibliothèques Steam la première fois que l'étape s'affiche ; « Tout le nécessaire a été trouvé. » le confirme. |
 | 3. Contenu | **Monter les addons**, **Monter les téléchargements du Workshop**, **Utiliser les jeux de mount.cfg** (Garry's Mod uniquement) et vos **Dossiers de textures personnalisés**. |
 

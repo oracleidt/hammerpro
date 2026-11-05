@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Développement > Contribuer | [English](../../en/development/contributing.md)
+[Documentation](../README.md) > Développement > Contribuer | [English](../../en/development/contributing.md) | [Русский](../../ru/development/contributing.md)
 
 # Contribuer
 

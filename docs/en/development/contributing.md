@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Development > Contributing | [Français](../../fr/development/contributing.md)
+[Documentation](../README.md) > Development > Contributing | [Français](../../fr/development/contributing.md) | [Русский](../../ru/development/contributing.md)
 
 # Contributing
 

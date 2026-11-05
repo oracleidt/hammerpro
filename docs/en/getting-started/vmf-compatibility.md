@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Getting started > VMF compatibility | [Français](../../fr/getting-started/vmf-compatibility.md)
+[Documentation](../README.md) > Getting started > VMF compatibility | [Français](../../fr/getting-started/vmf-compatibility.md) | [Русский](../../ru/getting-started/vmf-compatibility.md)
 
 # VMF compatibility
 

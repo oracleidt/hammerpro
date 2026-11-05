@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Outil tranche | [English](../../en/features/slice-tool.md)
+[Documentation](../README.md) > Fonctionnalités > Outil tranche | [English](../../en/features/slice-tool.md) | [Русский](../../ru/features/slice-tool.md)
 
 # Outil tranche
 

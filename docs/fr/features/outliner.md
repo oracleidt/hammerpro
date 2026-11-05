@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Arborescence | [English](../../en/features/outliner.md)
+[Documentation](../README.md) > Fonctionnalités > Arborescence | [English](../../en/features/outliner.md) | [Русский](../../ru/features/outliner.md)
 
 # Arborescence
 

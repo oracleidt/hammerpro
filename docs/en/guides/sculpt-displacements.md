@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Guides > Sculpt displacements | [Français](../../fr/guides/sculpt-displacements.md)
+[Documentation](../README.md) > Guides > Sculpt displacements | [Français](../../fr/guides/sculpt-displacements.md) | [Русский](../../ru/guides/sculpt-displacements.md)
 
 # Sculpt displacements
 

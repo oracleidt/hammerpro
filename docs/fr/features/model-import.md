@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Import de modèles | [English](../../en/features/model-import.md)
+[Documentation](../README.md) > Fonctionnalités > Import de modèles | [English](../../en/features/model-import.md) | [Русский](../../ru/features/model-import.md)
 
 # Import de modèles
 

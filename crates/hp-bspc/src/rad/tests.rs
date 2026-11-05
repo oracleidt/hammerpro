@@ -126,6 +126,71 @@ fn quick() -> RadOptions {
     }
 }
 
+#[test]
+fn missing_sky_cannot_disable_surface_lighting_and_a_fallback_changes_only_the_compiled_sky() {
+    struct SkyFiles(bool);
+    impl MaterialSource for SkyFiles {
+        fn facts(&self, name: &str) -> MaterialFacts {
+            Mats.facts(name)
+        }
+
+        fn read_file(&self, path: &str) -> Option<Vec<u8>> {
+            if !self.0 || !path.starts_with("materials/skybox/sky_day01_01") {
+                return None;
+            }
+            if path.ends_with(".vmt") {
+                let texture = path.trim_start_matches("materials/").trim_end_matches(".vmt");
+                return Some(format!("UnlitGeneric {{ \"$basetexture\" \"{texture}\" }}").into_bytes());
+            }
+            path.ends_with(".vtf")
+                .then(|| crate::cubemap::black_cubemap(hp_vtf::ImageFormat::from_raw(3).unwrap(), 0x34c, 1, 32))
+        }
+    }
+    let text =
+        room("DEV/DEV_MEASUREGENERIC01B", &light_entity(500, "64 128 128", "")).replace("sky_day01_01", "nycityday");
+    let map = hp_vmf::parse(&text).unwrap();
+    let mut lightmaps = Vec::new();
+    for fallback in [false, true] {
+        let mut messages = Vec::new();
+        let opts = crate::CompileOptions { map_name: Some("gm_missing_sky".to_owned()), ..Default::default() };
+        let compiled = crate::compile(&map, &SkyFiles(fallback), &crate::props::NoModels, &opts, &mut |line| {
+            messages.push(line.to_owned())
+        })
+        .unwrap();
+        let file = hp_bsp::Bsp::from_vec(compiled.bsp.clone()).unwrap();
+        assert_eq!(
+            file.entities().unwrap()[0].get("skyname"),
+            Some(if fallback { "sky_day01_01" } else { "nycityday" })
+        );
+        assert_eq!(map.world.get("skyname"), Some("nycityday"));
+        assert!(messages.iter().any(|line| if fallback {
+            line.contains("skybox fallback:")
+        } else {
+            line.contains("Can't load skybox")
+        }));
+        let lit = light_bsp(&compiled.bsp, &quick(), &mut |line| messages.push(line.to_owned())).unwrap();
+        assert!(!messages.iter().any(|line| line.contains("lightmaps are entirely black")));
+        assert!(crate::validate::validate(&lit).is_empty());
+        let file = hp_bsp::Bsp::from_vec(lit.clone()).unwrap();
+        for hdr in [false, true] {
+            let value = luxel_at(&lit, DVec3::new(100.0, 40.0, 0.0), DVec3::Z, hdr).unwrap();
+            assert!(value.max_element() > 1.0, "fallback={fallback}, hdr={hdr}: {value:?}");
+            lightmaps.push(file.lump(if hdr { lump::LIGHTING_HDR } else { lump::LIGHTING }).unwrap().into_owned());
+        }
+    }
+    assert_eq!(lightmaps[..2], lightmaps[2..]);
+}
+
+#[test]
+fn an_unlit_map_reports_black_lightmaps_for_each_pass() {
+    let bsp = compile_vmf(&room("DEV/DEV_MEASUREGENERIC01B", ""));
+    let mut messages = Vec::new();
+    light_bsp(&bsp, &quick(), &mut |line| messages.push(line.to_owned())).unwrap();
+    for pass in ["LDR", "HDR"] {
+        assert!(messages.iter().any(|line| line.contains(&format!("{pass} lightmaps are entirely black"))));
+    }
+}
+
 pub(super) fn luxel_at(bsp: &[u8], p: DVec3, normal: DVec3, hdr: bool) -> Option<Vec3A> {
     let src = hp_bsp::Bsp::from_vec(bsp.to_vec()).ok()?;
     let map = MapData::read(&src).ok()?;

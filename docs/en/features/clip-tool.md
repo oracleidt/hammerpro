@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Clip tool | [Français](../../fr/features/clip-tool.md)
+[Documentation](../README.md) > Features > Clip tool | [Français](../../fr/features/clip-tool.md) | [Русский](../../ru/features/clip-tool.md)
 
 # Clip tool
 

@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Plusieurs maps | [English](../../en/features/multiple-maps.md)
+[Documentation](../README.md) > Fonctionnalités > Plusieurs maps | [English](../../en/features/multiple-maps.md) | [Русский](../../ru/features/multiple-maps.md)
 
 # Plusieurs maps
 

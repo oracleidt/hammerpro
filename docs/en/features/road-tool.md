@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Road tool | [Français](../../fr/features/road-tool.md)
+[Documentation](../README.md) > Features > Road tool | [Français](../../fr/features/road-tool.md) | [Русский](../../ru/features/road-tool.md)
 
 # Road tool
 
@@ -24,16 +24,20 @@ Heights are smooth: between points the road rises and falls along a curve that g
 
 With mouse look enabled, a left click places a point at the crosshair. Leave mouse look to use the arrows. **New road** clears the pending path and starts another road. It cancels unapplied changes when editing an existing road.
 
+Press `Ctrl+Z` while drawing or editing to undo the last point, drag or setting change. `Ctrl+Y` restores it. An entire drag, including Shift endpoint extrusion, is one step. Local undo never changes other map objects. **Apply** or **Create** commits the whole road as one normal map undo step; cancelling discards the pending edits.
+
 ## Road settings
+
+A single lane can be wider than the old 256-unit limit. For a simple wide surface, set one lane, no shoulder and no center, edge or divider lines: the tool builds one road brush per longitudinal segment. Widening that lane does not add another lane or extra surface bands. The old 2048-unit total-width cap is removed; generated corners still have to fit within Source map coordinates.
 
 The options bar holds the lanes, lane width, shoulder, **Follow terrain**, the material of the new road, **Create as** (world brush, `func_detail` or any brush entity class: all the brushes go into one entity), the pin and the buttons. **Road settings** opens the window with everything else.
 
 | Setting | What it does | Range | Default |
 |---|---|---|---|
 | **Lanes** | Number of lanes. | 1 to 8 | 2 |
-| **Lane width** | Width of one lane. | 16 to 256 units | 128 |
+| **Lane width** | Width of one lane. | 16 to 32768 units, within the map | 128 |
 | **Shoulder** | Width of the shoulder on each side of the lanes, 0 for none. | 0, or 1 to 256 | 16 |
-| **Total width** | Lanes plus both shoulders (information, at most 2048). | | 288 |
+| **Total width** | Lanes plus both shoulders (information, bounded by the Source world span). | | 288 |
 | **Slab depth** | How far the brushes go down under the road surface. | 2 to 128 | 8 |
 | **Segment length** | Target length of one segment. Shorter segments follow bends, slopes and terrain better but make more brushes (at most 8000 for a road). | 16 to 512 | 64 |
 | **Texture scale** | Texture scale of the faces. | 0.01 to 64 | the editor default |
@@ -53,6 +57,16 @@ The options bar holds the lanes, lane width, shoulder, **Follow terrain**, the m
 | **Start height** | Height of the first point when it is placed in a 2D view and there is no ground under it. | -16384 to 16384 | 0 |
 
 The lines are thin convex brushes in the surface of the road, not overlays and not raised, so they never flicker against the road. A dashed line is one brush per segment that has the line material for the dash and the road material for the gap. Dashes follow the segments: their length is rounded to a whole number of segments (with 64 unit segments and 96 unit dashes, a dash is 2 segments). Lines must fit in the lane width: a lane at least as wide as a few lines.
+
+## Junction and cul-de-sac presets
+
+Choose **Shape** in the options bar or **Road settings**: **Free path**, **T junction**, **Four-way junction**, **Y junction**, or **Rounded cul-de-sac**. These are complete editable road pieces, with a live textured preview.
+
+For a junction, place exactly two points: its center, then the end of one arm. Their direction rotates the entire junction; their distance sets every arm's length. A T has its stem toward the second point and its through road perpendicular to that stem. A Y has three arms 120 degrees apart. For a cul-de-sac, the first point is the road entrance and the second is the center of the turning bulb. The bulb extends beyond the second point.
+
+Set **Radius** for rounded junction corners or the cul-de-sac bulb. The bulb radius must exceed half the combined lane width. If the preview says there is too little room, move the second point farther away or reduce the width or radius. **Segment length** controls arc detail and brush count. Shoulders and edge markings follow the perimeter and leave arm mouths open. Center and divider markings are omitted within presets.
+
+The heights of the two points define a single graded plane. Terrain following, banking and automatic side-junctions must be off; **Use a planar surface** clears those options. Reopen a created shape with **Road tool** to move either handle or change its settings. Continue roads from the open arm ends manually. Automatic side-joining and splitting remain available for free paths.
 
 ## Following the terrain
 
@@ -93,7 +107,7 @@ The junction is remembered. When you edit or split the other road, the roads joi
 
 - **Segments fold inside a tight bend** (red): the half width exceeds the bend radius. Move the points farther apart, or click **Fit width to bend** to reduce lane, shoulder and marking widths together without moving the path. If the bend is still invalid at the minimum width, open the bend by moving its points.
 - **Lines too wide**: the lines do not fit in the lanes. Lower the line width or widen the lanes.
-- **Too short**, **too many brushes**, **wider than 2048 units**, **outside the map**, and the junction problems above.
+- **Too short**, **too many brushes**, **wider than the Source world span**, **outside the map**, and the junction problems above.
 
 ## MCP
 

@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Outil displacement | [English](../../en/features/displacement-tool.md)
+[Documentation](../README.md) > Fonctionnalités > Outil displacement | [English](../../en/features/displacement-tool.md) | [Русский](../../ru/features/displacement-tool.md)
 
 # Outil displacement
 

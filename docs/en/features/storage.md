@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Storage | [Français](../../fr/features/storage.md)
+[Documentation](../README.md) > Features > Storage | [Français](../../fr/features/storage.md) | [Русский](../../ru/features/storage.md)
 
 # Storage (disk usage)
 

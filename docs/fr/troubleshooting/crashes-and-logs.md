@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Dépannage > Plantages et journaux | [English](../../en/troubleshooting/crashes-and-logs.md)
+[Documentation](../README.md) > Dépannage > Plantages et journaux | [English](../../en/troubleshooting/crashes-and-logs.md) | [Русский](../../ru/troubleshooting/crashes-and-logs.md)
 
 # Plantages et journaux
 

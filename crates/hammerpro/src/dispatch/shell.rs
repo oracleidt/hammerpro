@@ -381,11 +381,12 @@ pub fn docs_url(lang: hp_app::i18n::Lang) -> String {
     let file = match lang {
         hp_app::i18n::Lang::Fr => "README.fr.md",
         hp_app::i18n::Lang::En => "README.md",
+        hp_app::i18n::Lang::Ru => "README.ru.md",
     };
     format!("{}/blob/HEAD/{file}", hp_ui_shell::help::REPOSITORY_URL)
 }
 
-pub const ISSUES_URL: &str = "https://github.com/hammerpro/hammerpro/issues";
+pub const ISSUES_URL: &str = "https://github.com/oracleidt/hammerpro/issues";
 
 #[cfg(test)]
 mod tests {
@@ -396,11 +397,13 @@ mod tests {
     fn documentation_follows_the_ui_language() {
         let fr = docs_url(Lang::Fr);
         let en = docs_url(Lang::En);
+        let ru = docs_url(Lang::Ru);
         assert!(fr.starts_with(hp_ui_shell::help::REPOSITORY_URL), "{fr}");
         assert!(fr.ends_with("/blob/HEAD/README.fr.md"), "{fr}");
         assert!(en.ends_with("/blob/HEAD/README.md"), "{en}");
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        for url in [&fr, &en] {
+        assert!(ru.ends_with("/blob/HEAD/README.ru.md"), "{ru}");
+        for url in [&fr, &en, &ru] {
             let file = url.rsplit('/').next().expect("file name");
             assert!(root.join(file).is_file(), "{file} is missing");
         }

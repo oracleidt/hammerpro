@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Outil tuyau | [English](../../en/features/pipe-tool.md)
+[Documentation](../README.md) > Fonctionnalités > Outil tuyau | [English](../../en/features/pipe-tool.md) | [Русский](../../ru/features/pipe-tool.md)
 
 # Outil tuyau
 
@@ -10,6 +10,8 @@ L'outil tuyau construit des tuyaux et des conduits en brushes (pas en props) : d
 - Tout suit la **grille active** : voir [Grilles](grids.md). Le départ se cale sur la grille, les directions sont les axes de la grille (une grille tournée donne donc un tuyau tourné), les longueurs sont arrondies au pas de la grille le long du tuyau, et le rayon et le rayon de coude sont arrondis au plus petit pas de la grille. L'épaisseur de paroi, la taille et la longueur des colliers sont arrondies à un demi pas de grille. Sans magnétisme (le bouton **Magnétisme**), rien n'est arrondi.
 
 ## Dessiner un parcours
+
+Dans la vue 3D, un clic sur une surface de brush place uniquement le point de départ. Le ciel ou fond vide n'est pas une surface, et les clics 3D suivants n'ajoutent pas de virages. Continuez dans une vue 2D ou saisissez les déplacements dans **Parcours** après le premier point.
 
 1. **Cliquez** le départ dans une vue 2D (ou sur une surface dans la vue 3D).
 2. **Cliquez** les coins suivants dans la même vue 2D. Le tuyau tourne à chaque clic, et chaque nouveau point est tenu sur un axe de la grille dans le plan de la vue : le segment est droit et sa longueur est un nombre entier de pas de grille. Le tuyau reste dans le plan de cette vue (à la profondeur du premier clic, qui vient de la sélection comme l'outil bloc) ; pour monter, saisissez le parcours (ci-dessous) ou dessinez-le dans la vue de face ou de côté.

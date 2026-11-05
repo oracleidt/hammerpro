@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Compiler > Limits and logs | [Français](../../fr/compiler/limits-and-logs.md)
+[Documentation](../README.md) > Compiler > Limits and logs | [Français](../../fr/compiler/limits-and-logs.md) | [Русский](../../ru/compiler/limits-and-logs.md)
 
 # Limits and logs
 

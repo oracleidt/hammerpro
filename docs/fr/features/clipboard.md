@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Presse-papiers | [English](../../en/features/clipboard.md)
+[Documentation](../README.md) > Fonctionnalités > Presse-papiers | [English](../../en/features/clipboard.md) | [Русский](../../ru/features/clipboard.md)
 
 # Presse-papiers
 

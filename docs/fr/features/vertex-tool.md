@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Outil vertex | [English](../../en/features/vertex-tool.md)
+[Documentation](../README.md) > Fonctionnalités > Outil vertex | [English](../../en/features/vertex-tool.md) | [Русский](../../ru/features/vertex-tool.md)
 
 # Outil vertex
 

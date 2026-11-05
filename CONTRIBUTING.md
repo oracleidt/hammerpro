@@ -42,9 +42,15 @@ CI runs the same commands on Windows and Linux.
 
 ## Translations
 
-Each UI crate has a `TR` table of `(key, English, French)` entries. To improve
-a translation, edit the text in that table. To add a language, add a variant to
-`hp_app::i18n::Lang` and a column to the tables (a script can help).
+Each UI crate has a `TR` table of `(key, English, French)` entries. Russian
+translations are bundled by key in `crates/hp-app/src/i18n/ru.json`. Add the
+Russian entry whenever adding a UI key, preserving every numbered placeholder
+and technical identifier. The application's translation coverage test checks
+that every registered UI string has Russian text and matching arguments.
+
+Documentation lives in `docs/en`, `docs/fr` and `docs/ru`. Keep code examples,
+command flags and API names unchanged when translating prose, and preserve
+links and anchors. The documentation command follows the selected UI language.
 
 ## Reporting bugs
 

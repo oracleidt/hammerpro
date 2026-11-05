@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > BSP Sniffer | [English](../../en/features/bsp-sniffer.md)
+[Documentation](../README.md) > Fonctionnalités > BSP Sniffer | [English](../../en/features/bsp-sniffer.md) | [Русский](../../ru/features/bsp-sniffer.md)
 
 # BSP Sniffer
 

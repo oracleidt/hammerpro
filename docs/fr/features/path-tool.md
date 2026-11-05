@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Outil chemin | [English](../../en/features/path-tool.md)
+[Documentation](../README.md) > Fonctionnalités > Outil chemin | [English](../../en/features/path-tool.md) | [Русский](../../ru/features/path-tool.md)
 
 # Outil chemin
 

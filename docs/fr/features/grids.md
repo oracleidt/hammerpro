@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Grilles | [English](../../en/features/grids.md)
+[Documentation](../README.md) > Fonctionnalités > Grilles | [English](../../en/features/grids.md) | [Русский](../../ru/features/grids.md)
 
 # Grilles
 

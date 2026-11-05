@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Decals and overlays | [Français](../../fr/features/decals-overlays.md)
+[Documentation](../README.md) > Features > Decals and overlays | [Français](../../fr/features/decals-overlays.md) | [Русский](../../ru/features/decals-overlays.md)
 
 # Decals and overlays
 

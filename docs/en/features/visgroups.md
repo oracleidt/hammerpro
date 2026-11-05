@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Visgroups | [Français](../../fr/features/visgroups.md)
+[Documentation](../README.md) > Features > Visgroups | [Français](../../fr/features/visgroups.md) | [Русский](../../ru/features/visgroups.md)
 
 # Visgroups
 

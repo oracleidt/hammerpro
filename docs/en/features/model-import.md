@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Model import | [Français](../../fr/features/model-import.md)
+[Documentation](../README.md) > Features > Model import | [Français](../../fr/features/model-import.md) | [Русский](../../ru/features/model-import.md)
 
 # Model import
 

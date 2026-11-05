@@ -1,8 +1,8 @@
-[Documentation](../README.md) > Features > Themes and languages | [Français](../../fr/features/themes-languages.md)
+[Documentation](../README.md) > Features > Themes and languages | [Français](../../fr/features/themes-languages.md) | [Русский](../../ru/features/themes-languages.md)
 
 # Themes and languages
 
-Hammer Pro has a dark theme and a light one, an optional accent color, an interface scale, an optional background image over the window, and its whole interface in English and French, switchable at any time without a restart.
+Hammer Pro has a dark theme and a light one, an optional accent color, an interface scale, an optional background image over the window, and its whole interface in English, French and Russian, switchable at any time without a restart.
 
 ## Interface icons
 
@@ -14,9 +14,11 @@ Everything on this page is in **Settings > General** (**Tools > Options...**, `C
 
 ## Appearance
 
+The selected light or dark theme is applied from startup, independently of the operating system theme and any previously restored interface state.
+
 | Option | What it does | Default |
 | --- | --- | --- |
-| **Language** | Language of the interface: English or Français. Applied at once. | the system language at first start |
+| **Language** | Language of the interface: English, Français or Русский. Applied at once. | the system language at first start |
 | **Theme** | **Dark** or **Light**. Applied at once. Key `ui.theme`. | Dark |
 | **Accent color** | **Black and white** (no accent), one of eight swatches (blue, orange, green, purple, red, pink, cyan, yellow), or a **Custom color** from the color picker. It colors highlights, the active tool and the selection of the interface. Key `ui.accent_color`. | Black and white |
 | **Interface scale** | Size of the whole interface, 0.75x to 2x by steps of 0.05. Applied when you release the slider. The **1x** button resets it. Key `ui.ui_scale`. | 1x |
@@ -41,7 +43,7 @@ The image covers the window and is centered, then moved and zoomed by these sett
 
 ## Languages
 
-The interface exists in English and French. Every label, tooltip, message and the compile log notices follow the language. Ways to change it:
+The interface exists in English, French and Russian. Every label, tooltip, message and the compile log notices follow the language. Ways to change it:
 
 - **Settings > General > Language**.
 - **View > Language**, then **English** or **Français**.
@@ -68,7 +70,7 @@ See [Command line](../reference/command-line.md).
 
 ## FAQ
 
-**Can I translate Hammer Pro into another language?** Only English and French exist in 1.0.2. Every text lives in translation tables in the source; see [Extending Hammer Pro](../development/extending.md).
+**Can I translate Hammer Pro into another language?** Only English, French and Russian exist in 1.0.2. Every text lives in translation tables in the source; see [Extending Hammer Pro](../development/extending.md).
 
 **The interface is too big after I changed the scale.** Click **1x** next to the slider, or edit `ui_scale` in settings.toml.
 

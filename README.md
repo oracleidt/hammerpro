@@ -4,13 +4,15 @@
 
 **A modern, fast level editor for Source engine maps, built for Garry's Mod first.**
 
-[Lire en français](README.fr.md) | [Documentation](docs/en/README.md) | [Documentation en français](docs/fr/README.md) | [Discord](https://discord.gg/eAEWWKRNAe)
+[Lire en français](README.fr.md) | [Русский](README.ru.md) | [Documentation](docs/en/README.md) | [Documentation en français](docs/fr/README.md) | [Discord](https://discord.gg/eAEWWKRNAe)
 
 Hammer Pro opens and saves standard `.vmf` files, so you can use it side by side with Hammer and Hammer++. It is written in Rust, renders with the GPU through wgpu, stays smooth on huge maps and compiles maps with its own built in compiler: no VBSP, VVIS or VRAD needed.
 
-Version **1.1.4**.
+Version **1.1.5**.
 
-The [road tool](docs/en/features/road-tool.md) now edits slopes directly in 3D with XYZ handles, a live textured preview, and Shift-drag extension from either end.
+Russian is available for the interface and the [documentation](docs/ru/README.md). Compile settings now expose the selected external compiler's VBSP, VVIS and VRAD options. Static scenery can use physics-capable models by default; missing skies have a reported fallback and black lightmaps have a separate diagnostic.
+
+The [road tool](docs/en/features/road-tool.md) adds local point undo/redo, wider single lanes and editable T, four-way, Y and rounded cul-de-sac presets. Side panels can float independently inside the editor, BSP output can sit beside the VMF, and camera smoothing has a clear toggle. Predefined entity models and the startup theme are preserved.
 
 [Brush-to-prop creation](docs/en/features/propper.md) asks for static or movable physics behavior, collision, mass and LOD settings before generating the model.
 
@@ -34,7 +36,7 @@ Every feature has its own page in the [documentation](docs/en/README.md).
 - **Ship it.** [Map assets](docs/en/features/map-assets.md) lists and collects every file the map uses, [Build and save as content](docs/en/features/build-content-release.md) makes a ready to share addon with a release checklist and Workshop publishing, [Protect your BSP](docs/en/features/bsp-protection.md) ships a protected copy of the map.
 - **Gameplay helpers.** [Navigation mesh generation](docs/en/features/nav-mesh.md), [several 3D skyboxes and a skybox switch entity](docs/en/features/sky-cameras.md), [soundscapes](docs/en/features/soundscapes.md), [particle preview](docs/en/features/particles.md), [game launch and reload](docs/en/features/game-launch.md).
 - **AI assistants.** A built in [MCP server](docs/en/reference/mcp-server.md) lets Claude, Codex or Gemini read and edit the open map, check it, compile it and take screenshots, every edit being one undo step.
-- **Your editor.** Black and white interface (dark or light), [English and French](docs/en/features/themes-languages.md), [Hammer and Hammer++ shortcut sets](docs/en/features/keyboard-shortcuts.md), [Discord Rich Presence](docs/en/features/discord.md), [automatic updates](docs/en/features/updates.md).
+- **Your editor.** Black and white interface (dark or light), [English, French and Russian](docs/en/features/themes-languages.md), [Hammer and Hammer++ shortcut sets](docs/en/features/keyboard-shortcuts.md), [Discord Rich Presence](docs/en/features/discord.md), [automatic updates](docs/en/features/updates.md).
 
 ## Requirements
 
@@ -95,7 +97,7 @@ The executable is `target/release/hammerpro.exe`. Rust 1.95 or newer is required
 
 ## Contributing
 
-Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md). Translations live next to the code in each crate's `TR` table (English and French); adding a language means adding one column.
+Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md). English and French translations live next to the code in each crate's `TR` table. The Russian interface catalog is bundled in `crates/hp-app/src/i18n/ru.json`; documentation is available in `docs/en`, `docs/fr` and `docs/ru`.
 
 ## License
 

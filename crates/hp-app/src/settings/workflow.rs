@@ -128,6 +128,7 @@ pub struct WorkflowSettings {
     pub nav_scheme: NavScheme,
     pub invert_mouse_x: bool,
     pub fly_response: f32,
+    pub camera_smoothing: bool,
     pub grid_step_factor: f64,
     pub ctrl_wheel: CtrlWheel,
     pub link_2d_zoom: bool,
@@ -149,6 +150,7 @@ impl Default for WorkflowSettings {
             nav_scheme: NavScheme::HammerPro,
             invert_mouse_x: false,
             fly_response: FLY_RESPONSE_DEFAULT,
+            camera_smoothing: true,
             grid_step_factor: 2.0,
             ctrl_wheel: CtrlWheel::GridSize,
             link_2d_zoom: false,
@@ -167,6 +169,9 @@ impl Default for WorkflowSettings {
 
 impl WorkflowSettings {
     pub fn fly_response_secs(&self) -> f64 {
+        if !self.camera_smoothing {
+            return 0.0;
+        }
         let r = self.fly_response;
         f64::from(if r.is_finite() { r.clamp(0.0, FLY_RESPONSE_MAX) } else { FLY_RESPONSE_DEFAULT })
     }
@@ -259,5 +264,18 @@ mod tests {
         assert!(NavScheme::Hammer.hammer_gestures() && !NavScheme::Hammer.middle_looks());
         assert!(NavScheme::HammerPlusPlus.hammer_gestures() && NavScheme::HammerPlusPlus.middle_looks());
         assert!(!NavScheme::HammerPro.hammer_gestures());
+    }
+
+    #[test]
+    fn disabling_camera_smoothing_preserves_response_and_survives_save() {
+        let mut settings =
+            WorkflowSettings { camera_smoothing: false, fly_response: 0.35, ..WorkflowSettings::default() };
+        assert_eq!(settings.fly_response_secs(), 0.0);
+        let saved = toml::to_string(&settings).unwrap();
+        settings = toml::from_str(&saved).unwrap();
+        assert_eq!(settings.fly_response_secs(), 0.0);
+        settings.camera_smoothing = true;
+        assert_eq!(settings.fly_response_secs(), f64::from(0.35_f32));
+        assert!(toml::from_str::<WorkflowSettings>("").unwrap().camera_smoothing);
     }
 }

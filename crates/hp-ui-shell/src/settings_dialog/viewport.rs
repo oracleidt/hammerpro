@@ -42,9 +42,16 @@ fn workflow_section(ui: &mut Ui, w: &mut WorkflowSettings) -> bool {
         ui.label(t!("shell.view.invert_x"));
         changed |= ui.checkbox(&mut w.invert_mouse_x, "").changed();
         ui.end_row();
+        ui.label(t!("shell.view.camera_smoothing")).on_hover_text(t!("shell.view.camera_smoothing_tip"));
+        changed |=
+            ui.checkbox(&mut w.camera_smoothing, "").on_hover_text(t!("shell.view.camera_smoothing_tip")).changed();
+        ui.end_row();
         ui.label(t!("shell.view.fly_response")).on_hover_text(t!("shell.view.fly_response_tip"));
         changed |= ui
-            .add(egui::Slider::new(&mut w.fly_response, 0.0..=FLY_RESPONSE_MAX).fixed_decimals(2).suffix(" s"))
+            .add_enabled(
+                w.camera_smoothing,
+                egui::Slider::new(&mut w.fly_response, 0.0..=FLY_RESPONSE_MAX).fixed_decimals(2).suffix(" s"),
+            )
             .changed();
         ui.end_row();
         ui.label(t!("shell.view.ctrl_wheel"));
@@ -225,6 +232,7 @@ pub(super) fn reset(state: &mut AppState) {
     w.nav_scheme = d.nav_scheme;
     w.invert_mouse_x = d.invert_mouse_x;
     w.fly_response = d.fly_response;
+    w.camera_smoothing = d.camera_smoothing;
     w.ctrl_wheel = d.ctrl_wheel;
     w.link_2d_zoom = d.link_2d_zoom;
     w.grid_step_factor = d.grid_step_factor;
@@ -303,6 +311,12 @@ pub(crate) const TR: TrTable = &[
     ("shell.view.ctl_digits_desc", "Zoom presets of the 2D view", "Zooms prédéfinis de la vue 2D"),
     ("shell.view.invert_x", "Invert mouse X", "Inverser l'axe X de la souris"),
     ("shell.view.fly_response", "Camera acceleration time", "Temps d'accélération de la caméra"),
+    ("shell.view.camera_smoothing", "Smooth camera movement", "Déplacements fluides de la caméra"),
+    (
+        "shell.view.camera_smoothing_tip",
+        "Disable for precise movement: the 3D camera starts and stops immediately with the movement keys. The acceleration time is kept for when smoothing is enabled again.",
+        "Désactivez pour des déplacements précis : la caméra 3D démarre et s'arrête immédiatement avec les touches de déplacement. Le temps d'accélération est conservé pour la réactivation.",
+    ),
     (
         "shell.view.fly_response_tip",
         "Time the flying camera takes to reach its speed (0: at once)",

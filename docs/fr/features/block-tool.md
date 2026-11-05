@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Outil bloc | [English](../../en/features/block-tool.md)
+[Documentation](../README.md) > Fonctionnalités > Outil bloc | [English](../../en/features/block-tool.md) | [Русский](../../ru/features/block-tool.md)
 
 # Outil bloc
 

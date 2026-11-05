@@ -485,6 +485,26 @@ fn option_rows(ui: &mut Ui, st: &mut CompilerStep, mode_flags: bool, window: Win
     }
 }
 
+pub(crate) fn active_options_ui(ui: &mut Ui, state: &mut AppState) {
+    let (_, detected) = detection(ui.ctx(), state);
+    let mut profile = active_of(state, &detected);
+    if profile.is_builtin() {
+        return;
+    }
+    let before = profile.clone();
+    let window = WindowModes::of(state);
+    for (index, step) in profile.steps.iter_mut().enumerate() {
+        let Some(tool) = valve_tool(step.kind) else { continue };
+        let salt = format!("hp_compile_external_{}_{index}", profile.id);
+        egui::CollapsingHeader::new(tf!("compilers.options_step", tool.key().to_ascii_uppercase()))
+            .id_salt((&salt, "step"))
+            .show(ui, |ui| option_rows(ui, step, profile.mode_flags, window, true, &salt));
+    }
+    if profile != before {
+        store(state, profile);
+    }
+}
+
 fn flag_row(ui: &mut Ui, st: &mut CompilerStep, f: &ValveFlag, mode_flags: bool, forced: &[String], editable: bool) {
     let tip = flag_tip(f);
     let locked = mode_flags && f.managed.is_some();
@@ -808,7 +828,8 @@ fn preview_lines(
     let s = &state.settings.compile;
     let cordoned = s.compile_cordon_only && state.doc.cordons_in_use();
     let untitled = hp_app::settings::Settings::cache_dir().join("untitled");
-    let target = super::snapshot::target_for(state.doc.path(), cordoned, &untitled)?;
+    let target =
+        super::snapshot::target_for(state.doc.path(), cordoned, &untitled, state.settings.compile.bsp_beside_vmf)?;
     let vmf = target.vmf();
     let cx = super::compilers::Context {
         vmf: &vmf,
@@ -1132,6 +1153,39 @@ mod tests {
         for tool in ValveTool::ALL {
             assert!(hp_compile::valve::valve_flags(tool).count() > 10);
         }
+    }
+
+    #[test]
+    fn active_external_compiler_shows_bsp_vis_and_rad_options_in_every_language() {
+        let _lang = crate::lang_lock();
+        crate::register_translations();
+        let mut state = hp_app::testing::test_state();
+        let mut profile = CompilerProfile::blank("Hammer++");
+        profile.id = "user:external-options".to_owned();
+        state.settings.compile.compilers.push(profile.clone());
+        state.settings.compile.set_active_compiler(&profile.id);
+        fn text(shape: &egui::Shape, out: &mut String) {
+            match shape {
+                egui::Shape::Text(value) => out.push_str(&value.galley.job.text),
+                egui::Shape::Vec(shapes) => shapes.iter().for_each(|shape| text(shape, out)),
+                _ => {}
+            }
+        }
+        for lang in hp_app::i18n::Lang::ALL {
+            hp_app::i18n::set_lang(lang);
+            let ctx = egui::Context::default();
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| active_options_ui(ui, &mut state));
+            let mut shown = String::new();
+            for clipped in &output.shapes {
+                text(&clipped.shape, &mut shown);
+            }
+            for tool in ["VBSP", "VVIS", "VRAD"] {
+                assert!(shown.contains(tool), "{lang:?}: {shown}");
+            }
+            assert_eq!(state.settings.compile.compilers[0], profile);
+            output.textures_delta.clear();
+        }
+        hp_app::i18n::set_lang(hp_app::i18n::Lang::En);
     }
 
     #[test]

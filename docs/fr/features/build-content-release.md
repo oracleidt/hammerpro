@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Construire et enregistrer en contenu | [English](../../en/features/build-content-release.md)
+[Documentation](../README.md) > Fonctionnalités > Construire et enregistrer en contenu | [English](../../en/features/build-content-release.md) | [Русский](../../ru/features/build-content-release.md)
 
 # Construire et enregistrer en contenu
 

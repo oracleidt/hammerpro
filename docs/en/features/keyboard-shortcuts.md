@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Keyboard shortcuts | [Français](../../fr/features/keyboard-shortcuts.md)
+[Documentation](../README.md) > Features > Keyboard shortcuts | [Français](../../fr/features/keyboard-shortcuts.md) | [Русский](../../ru/features/keyboard-shortcuts.md)
 
 # Keyboard shortcuts
 

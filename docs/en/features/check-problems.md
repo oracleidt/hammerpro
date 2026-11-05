@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Check for problems | [Français](../../fr/features/check-problems.md)
+[Documentation](../README.md) > Features > Check for problems | [Français](../../fr/features/check-problems.md) | [Русский](../../ru/features/check-problems.md)
 
 # Check for problems
 

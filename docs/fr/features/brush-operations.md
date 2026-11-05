@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Opérations sur les brushes | [English](../../en/features/brush-operations.md)
+[Documentation](../README.md) > Fonctionnalités > Opérations sur les brushes | [English](../../en/features/brush-operations.md) | [Русский](../../ru/features/brush-operations.md)
 
 # Opérations sur les brushes
 

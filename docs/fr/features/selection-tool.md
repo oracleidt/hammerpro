@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Outil de sélection | [English](../../en/features/selection-tool.md)
+[Documentation](../README.md) > Fonctionnalités > Outil de sélection | [English](../../en/features/selection-tool.md) | [Русский](../../ru/features/selection-tool.md)
 
 # Outil de sélection
 

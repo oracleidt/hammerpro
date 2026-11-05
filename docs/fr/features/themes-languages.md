@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Thèmes et langues | [English](../../en/features/themes-languages.md)
+[Documentation](../README.md) > Fonctionnalités > Thèmes et langues | [English](../../en/features/themes-languages.md) | [Русский](../../ru/features/themes-languages.md)
 
 # Thèmes et langues
 
@@ -14,9 +14,11 @@ Tout ce qui est sur cette page se trouve dans **Paramètres > Général** (**Out
 
 ## Apparence
 
+Le thème clair ou sombre choisi est appliqué dès le démarrage, indépendamment du thème du système et de l'état d'interface restauré.
+
 | Option | Effet | Défaut |
 | --- | --- | --- |
-| **Langue** | Langue de l'interface : English ou Français. Appliquée tout de suite. | la langue du système au premier démarrage |
+| **Langue** | Langue de l'interface : English, Français ou Русский. Appliquée tout de suite. | la langue du système au premier démarrage |
 | **Thème** | **Sombre** ou **Clair**. Appliqué tout de suite. Clé `ui.theme`. | Sombre |
 | **Couleur d'accent** | **Noir et blanc** (pas d'accent), une des huit pastilles (bleu, orange, vert, violet, rouge, rose, cyan, jaune), ou une **Couleur personnalisée** choisie au sélecteur. Elle colore les surlignages, l'outil actif et la sélection dans l'interface. Clé `ui.accent_color`. | Noir et blanc |
 | **Échelle de l'interface** | Taille de toute l'interface, de 0,75x à 2x par pas de 0,05. Appliquée quand vous relâchez le curseur. Le bouton **1x** la remet à zéro. Clé `ui.ui_scale`. | 1x |

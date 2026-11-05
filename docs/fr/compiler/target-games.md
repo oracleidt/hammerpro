@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Compilateur > Jeux cibles | [English](../../en/compiler/target-games.md)
+[Documentation](../README.md) > Compilateur > Jeux cibles | [English](../../en/compiler/target-games.md) | [Русский](../../ru/compiler/target-games.md)
 
 # Jeux cibles
 

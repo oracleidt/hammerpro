@@ -94,8 +94,12 @@ impl PreviewCache {
     fn compute_lines(state: &AppState, probe: &ToolProbe, cordoned: bool) -> Vec<PreviewLine> {
         let Some(res) = probe.result.as_ref().and_then(|r| r.resolved.as_ref()) else { return Vec::new() };
         let s = &state.settings.compile;
-        let Ok(target) = snapshot::target_for(state.doc.path(), cordoned, &Settings::cache_dir().join("untitled"))
-        else {
+        let Ok(target) = snapshot::target_for(
+            state.doc.path(),
+            cordoned,
+            &Settings::cache_dir().join("untitled"),
+            state.settings.compile.bsp_beside_vmf,
+        ) else {
             return Vec::new();
         };
         let external = match super::compilers::choice(s, &res.tools) {
@@ -185,9 +189,12 @@ impl PreviewCache {
         let t0 = Instant::now();
         let snap = state.doc.compile_snapshot(&export);
         self.auto_cost_ms = Some(u64::try_from(t0.elapsed().as_millis()).unwrap_or(u64::MAX));
-        let Ok(target) =
-            snapshot::target_for(state.doc.path(), snap.is_cordoned(), &Settings::cache_dir().join("untitled"))
-        else {
+        let Ok(target) = snapshot::target_for(
+            state.doc.path(),
+            snap.is_cordoned(),
+            &Settings::cache_dir().join("untitled"),
+            state.settings.compile.bsp_beside_vmf,
+        ) else {
             self.auto_key = Some(key);
             return;
         };
@@ -294,12 +301,15 @@ impl CompileDialog {
                 let before = state.settings.compile.clone();
                 ui.add_enabled_ui(!running, |ui| {
                     self.main_grid(ui, state, cordons);
-                    let builtin_options = !state.settings.compile.expert && self.external_name.is_none();
-                    ui.add_enabled_ui(builtin_options, |ui| {
-                        let s = &mut state.settings.compile;
-                        super::options_ui::step_menu(ui, s, StepKind::Bsp, "hp_compile_opts");
-                        super::options_ui::step_menu(ui, s, StepKind::Rad, "hp_compile_opts");
-                    });
+                    if self.external_name.is_some() {
+                        super::compilers_ui::active_options_ui(ui, state);
+                    } else {
+                        ui.add_enabled_ui(!state.settings.compile.expert, |ui| {
+                            let s = &mut state.settings.compile;
+                            super::options_ui::step_menu(ui, s, StepKind::Bsp, "hp_compile_opts");
+                            super::options_ui::step_menu(ui, s, StepKind::Rad, "hp_compile_opts");
+                        });
+                    }
                     egui::CollapsingHeader::new(t!("compile.advanced")).id_salt("hp_compile_advanced").show(ui, |ui| {
                         browse = Self::advanced_ui(ui, state, &self.probe);
                     });
@@ -365,7 +375,7 @@ impl CompileDialog {
             ui.end_row();
 
             ui.label(t!("compile.steps"));
-            ui.add_enabled_ui(!s.expert, |ui| {
+            ui.add_enabled_ui(!s.expert || external, |ui| {
                 ui.horizontal(|ui| {
                     let mut changed = false;
                     ui.label(t!("compile.step.bsp"));
@@ -495,11 +505,13 @@ impl CompileDialog {
                 ui.end_row();
             }
 
-            ui.label(t!("compile.static_props"));
-            ui.add_enabled_ui(!s.expert, |ui| {
-                ui.horizontal_wrapped(|ui| super::options_ui::prop_toggles(ui, s));
-            });
-            ui.end_row();
+            if !external {
+                ui.label(t!("compile.static_props"));
+                ui.add_enabled_ui(!s.expert, |ui| {
+                    ui.horizontal_wrapped(|ui| super::options_ui::prop_toggles(ui, s));
+                });
+                ui.end_row();
+            }
 
             ui.label(t!("compile.before"));
             ui.horizontal_wrapped(|ui| {
@@ -547,6 +559,8 @@ impl CompileDialog {
             ui.label(t!("compile.after"));
             ui.horizontal_wrapped(|ui| {
                 ui.checkbox(&mut s.copy_to_maps, t!("compile.copy_to_maps"));
+                ui.checkbox(&mut s.bsp_beside_vmf, t!("compile.bsp_beside_vmf"))
+                    .on_hover_text(t!("compile.bsp_beside_vmf_tip"));
                 ui.checkbox(&mut s.launch_game, t!("compile.launch_game"));
                 ui.add_enabled(s.launch_game, egui::Checkbox::new(&mut s.launch_via_steam, t!("compile.via_steam")))
                     .on_hover_text(t!("compile.via_steam_tip"));

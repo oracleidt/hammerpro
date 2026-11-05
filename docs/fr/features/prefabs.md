@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Prefabs | [English](../../en/features/prefabs.md)
+[Documentation](../README.md) > Fonctionnalités > Prefabs | [English](../../en/features/prefabs.md) | [Русский](../../ru/features/prefabs.md)
 
 # Prefabs
 

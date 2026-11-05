@@ -497,7 +497,7 @@ pub fn auto_threads(spare_a_core: bool) -> Option<u32> {
 }
 
 pub fn bsp_flags(mode: BspMode, vis: VisMode, stop_on_leak: bool) -> Vec<&'static str> {
-    match mode {
+    let mut flags = match mode {
         BspMode::Off => Vec::new(),
         BspMode::OnlyEnts => vec!["-onlyents"],
         BspMode::OnlyProps => vec!["-onlyprops"],
@@ -514,7 +514,11 @@ pub fn bsp_flags(mode: BspMode, vis: VisMode, stop_on_leak: bool) -> Vec<&'stati
             }
             out
         }
+    };
+    if mode != BspMode::Off {
+        flags.push("-AllowDynamicPropsAsStatic");
     }
+    flags
 }
 
 pub fn rad_lighting(mode: RadMode, chosen: Lighting) -> Lighting {
@@ -573,11 +577,14 @@ mod tests {
 
     #[test]
     fn mode_flags() {
-        assert_eq!(bsp_flags(BspMode::Full, VisMode::Full, true), ["-vis", "-leaktest"]);
-        assert_eq!(bsp_flags(BspMode::Full, VisMode::Fast, false), ["-fastvis"]);
-        assert!(bsp_flags(BspMode::Full, VisMode::Off, false).is_empty());
-        assert_eq!(bsp_flags(BspMode::OnlyEnts, VisMode::Full, true), ["-onlyents"]);
-        assert_eq!(bsp_flags(BspMode::EntsAndProps, VisMode::Off, false), ["-onlyents", "-onlyprops"]);
+        assert_eq!(bsp_flags(BspMode::Full, VisMode::Full, true), ["-vis", "-leaktest", "-AllowDynamicPropsAsStatic"]);
+        assert_eq!(bsp_flags(BspMode::Full, VisMode::Fast, false), ["-fastvis", "-AllowDynamicPropsAsStatic"]);
+        assert_eq!(bsp_flags(BspMode::Full, VisMode::Off, false), ["-AllowDynamicPropsAsStatic"]);
+        assert_eq!(bsp_flags(BspMode::OnlyEnts, VisMode::Full, true), ["-onlyents", "-AllowDynamicPropsAsStatic"]);
+        assert_eq!(
+            bsp_flags(BspMode::EntsAndProps, VisMode::Off, false),
+            ["-onlyents", "-onlyprops", "-AllowDynamicPropsAsStatic"]
+        );
         assert_eq!(rad_flags(RadMode::Draft), ["-bounce", "1", "-fast"]);
         assert_eq!(rad_flags(RadMode::Final), ["-final", "-StaticPropLighting"]);
         assert!(rad_flags(RadMode::Normal).is_empty());
@@ -633,10 +640,23 @@ mod tests {
         assert_eq!((f, e), (words("-bounce 1 -fast"), Vec::<String>::new()));
         let bsp = [choice("-trace", true, "3 7"), choice("-embed", true, r"C:\my maps\extra")];
         let (f, _) = merge_flags(StepKind::Bsp, &bsp_flags(BspMode::Full, VisMode::Full, true), &bsp, &[]);
-        assert_eq!(f, ["-vis", "-leaktest", "-trace", "3", "7", "-embed", r"C:\my maps\extra"]);
+        assert_eq!(
+            f,
+            ["-vis", "-leaktest", "-AllowDynamicPropsAsStatic", "-trace", "3", "7", "-embed", r"C:\my maps\extra"]
+        );
         assert!(choice("-trace", true, "3").args(StepKind::Bsp).is_none());
         assert!(choice("-final", false, "").args(StepKind::Rad).is_none());
         assert_eq!(choice("-FINAL", true, "x").args(StepKind::Rad), Some(vec!["-final".to_owned()]));
+    }
+
+    #[test]
+    fn dynamic_models_are_kept_by_default_and_strict_validation_can_be_restored() {
+        let default = bsp_flags(BspMode::Full, VisMode::Full, true);
+        assert!(default.contains(&"-AllowDynamicPropsAsStatic"));
+        let strict = [choice("-AllowDynamicPropsAsStatic", false, "")];
+        let (args, _) = merge_flags(StepKind::Bsp, &default, &strict, &[]);
+        assert!(!args.iter().any(|arg| arg.eq_ignore_ascii_case("-AllowDynamicPropsAsStatic")));
+        assert!(args.iter().any(|arg| arg == "-vis"));
     }
 
     #[test]

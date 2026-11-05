@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Material editor | [Français](../../fr/features/material-editor.md)
+[Documentation](../README.md) > Features > Material editor | [Français](../../fr/features/material-editor.md) | [Русский](../../ru/features/material-editor.md)
 
 # Material editor
 

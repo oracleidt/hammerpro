@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Slice tool | [Français](../../fr/features/slice-tool.md)
+[Documentation](../README.md) > Features > Slice tool | [Français](../../fr/features/slice-tool.md) | [Русский](../../ru/features/slice-tool.md)
 
 # Slice tool
 

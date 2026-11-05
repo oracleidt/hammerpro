@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Compiler > Cubemaps | [Français](../../fr/compiler/cubemaps.md)
+[Documentation](../README.md) > Compiler > Cubemaps | [Français](../../fr/compiler/cubemaps.md) | [Русский](../../ru/compiler/cubemaps.md)
 
 # Cubemaps
 
@@ -11,7 +11,9 @@ During the geometry step:
 - Every `env_cubemap` becomes a cubemap sample of the BSP (and leaves the entity lump). A map holds 1024 samples at most.
 - Every face whose material uses `$envmap env_cubemap` gets a patched copy of its material, `materials/maps/<map>/<material>_<x>_<y>_<z>`, pointing at the cubemap of the nearest sample in front of it, or the one an `env_cubemap` picked in its **sides** key. Materials named by `$bottommaterial`, `$crackmaterial` and `$fallbackmaterial` are patched too when they use the cubemap.
 - `cubemapsize`: 0 is the default size, otherwise the cubemap is 2^(size-1) texels wide.
-- The pakfile gets a placeholder `c<x>_<y>_<z>.vtf` (and `.hdr.vtf`) per sample and `cubemapdefault.vtf`, so the map renders before the real cubemaps exist. Like Garry's Mod's VBSP, the placeholders are black 32x32 cubemaps in the format of the sky textures (`skyname`). None are written when the sky textures cannot be read; the log line about the skybox VTF files is harmless with the Garry's Mod skies, since the game builds the cubemaps itself.
+- The pakfile gets a placeholder `c<x>_<y>_<z>.vtf` (and `.hdr.vtf`) per sample and `cubemapdefault.vtf`. Like Garry's Mod's VBSP, these are black 32x32 reflection placeholders until real cubemaps are built. LDR, HDR and compressed HDR sky materials are recognized, including `_hdr` faces.
+- If the requested sky has missing or invalid files, the compiler uses an available standard sky and logs its name. The compiled BSP gets that fallback `skyname`; the source VMF is unchanged. Mount the original sky's content to keep its appearance. Procedural `painted` skies are preserved. If no fallback is available, the missing sky is reported instead of pretending its assets exist.
+- Missing reflection cubemaps do not disable baked surface lighting. A completely dark lighting pass has its own warning: check lights, `light_environment`, sky openings and HDR brightness scales.
 - The pakfile stays stored (not compressed): the engine only builds cubemaps into stored pakfiles.
 
 ## Building the real cubemaps

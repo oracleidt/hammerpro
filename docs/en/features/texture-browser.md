@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Texture browser | [Français](../../fr/features/texture-browser.md)
+[Documentation](../README.md) > Features > Texture browser | [Français](../../fr/features/texture-browser.md) | [Русский](../../ru/features/texture-browser.md)
 
 # Texture browser
 

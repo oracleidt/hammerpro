@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Propriétés des entités | [English](../../en/features/entity-properties.md)
+[Documentation](../README.md) > Fonctionnalités > Propriétés des entités | [English](../../en/features/entity-properties.md) | [Русский](../../ru/features/entity-properties.md)
 
 # Propriétés des entités
 

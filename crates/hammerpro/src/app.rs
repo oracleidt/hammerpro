@@ -176,6 +176,18 @@ pub(crate) fn dock_rank(tab: RightTab) -> u8 {
     }
 }
 
+fn panel_key(tab: RightTab) -> String {
+    match tab {
+        RightTab::Textures => "textures".to_owned(),
+        RightTab::Entity => "entity".to_owned(),
+        RightTab::Models => "models".to_owned(),
+        RightTab::Visgroups => "visgroups".to_owned(),
+        RightTab::Outliner => "outliner".to_owned(),
+        RightTab::Tool => "tool".to_owned(),
+        RightTab::Package(id) => format!("package/{id}"),
+    }
+}
+
 pub(crate) fn open_folder(path: &std::path::Path) {
     hp_app::os::open_folder(path, true);
 }
@@ -742,7 +754,13 @@ impl HammerProApp {
     }
 
     fn dock(&mut self, ui: &mut egui::Ui) {
-        let tabs = self.dock_tabs();
+        let available = self.dock_tabs();
+        let tabs: Vec<_> = available
+            .iter()
+            .filter(|(tab, _)| !self.state.settings.ui.floating_panels.contains(&panel_key(*tab)))
+            .cloned()
+            .collect();
+        self.floating_panels(ui.ctx(), &available);
         if tabs.is_empty() {
             return;
         }
@@ -761,27 +779,70 @@ impl HammerProApp {
             ui.horizontal_wrapped(|ui| {
                 for (tab, label) in &tabs {
                     let selected = self.state.ui.right_tab == *tab;
-                    if ui.add(egui::Button::selectable(selected, label.as_str())).clicked() {
+                    let response = ui.add(egui::Button::selectable(selected, label.as_str()));
+                    if response.clicked() {
                         self.state.ui.right_tab = *tab;
                     }
+                    response.context_menu(|ui| {
+                        if ui.button(t!("dock.detach")).on_hover_text(t!("dock.detach_tip")).clicked() {
+                            self.state.settings.ui.floating_panels.insert(panel_key(*tab));
+                            self.state.settings_dirty = true;
+                            ui.close();
+                        }
+                    });
+                }
+                if ui.small_button(t!("dock.detach")).on_hover_text(t!("dock.detach_tip")).clicked() {
+                    self.state.settings.ui.floating_panels.insert(panel_key(self.state.ui.right_tab));
+                    self.state.settings_dirty = true;
                 }
             });
             ui.separator();
-            match self.state.ui.right_tab {
-                RightTab::Tool => {
-                    let i = tool_index(self.state.tool);
-                    egui::ScrollArea::vertical().id_salt("hp_tool_panel").show(ui, |ui| {
-                        self.tools[i].options_ui(ui, &mut self.state);
-                    });
-                }
-                RightTab::Textures => self.textures.ui(ui, &mut self.state),
-                RightTab::Entity => self.entity_panel.ui(ui, &mut self.state),
-                RightTab::Models => self.models.ui(ui, &mut self.state),
-                RightTab::Visgroups => self.visgroups.ui(ui, &mut self.state),
-                RightTab::Outliner => self.outliner.ui(ui, &mut self.state),
-                RightTab::Package(id) => crate::dispatch::dock_ui(self, ui, id),
-            }
+            self.dock_panel_ui(ui, self.state.ui.right_tab);
         });
+    }
+
+    fn dock_panel_ui(&mut self, ui: &mut egui::Ui, tab: RightTab) {
+        match tab {
+            RightTab::Tool => {
+                let i = tool_index(self.state.tool);
+                egui::ScrollArea::vertical().id_salt("hp_tool_panel").show(ui, |ui| {
+                    self.tools[i].options_ui(ui, &mut self.state);
+                });
+            }
+            RightTab::Textures => self.textures.ui(ui, &mut self.state),
+            RightTab::Entity => self.entity_panel.ui(ui, &mut self.state),
+            RightTab::Models => self.models.ui(ui, &mut self.state),
+            RightTab::Visgroups => self.visgroups.ui(ui, &mut self.state),
+            RightTab::Outliner => self.outliner.ui(ui, &mut self.state),
+            RightTab::Package(id) => crate::dispatch::dock_ui(self, ui, id),
+        }
+    }
+
+    fn floating_panels(&mut self, ctx: &egui::Context, tabs: &[(RightTab, String)]) {
+        for (tab, label) in tabs {
+            let key = panel_key(*tab);
+            if !self.state.settings.ui.floating_panels.contains(&key) {
+                continue;
+            }
+            let mut open = true;
+            let mut redock = false;
+            hp_app::chrome::Window::new(label)
+                .id(egui::Id::unique(("hp_floating_panel", &key)))
+                .open(&mut open)
+                .default_size(egui::vec2(420.0, 560.0))
+                .min_width(240.0)
+                .resizable(true)
+                .show(ctx, |ui| {
+                    redock = ui.button(t!("dock.redock")).on_hover_text(t!("dock.redock_tip")).clicked();
+                    ui.separator();
+                    ui.push_id(&key, |ui| self.dock_panel_ui(ui, *tab));
+                });
+            if !open || redock {
+                self.state.settings.ui.floating_panels.remove(&key);
+                self.state.ui.right_tab = *tab;
+                self.state.settings_dirty = true;
+            }
+        }
     }
 
     fn dialogs(&mut self, ctx: &egui::Context) {
@@ -1503,6 +1564,10 @@ impl Drop for HammerProApp {
 }
 
 pub const TR: hp_app::i18n::TrTable = &[
+    ("dock.detach", "Float panel", "Détacher le panneau"),
+    ("dock.detach_tip", "Show this panel in its own movable, resizable window inside the editor. Other panels remain available. You can also right-click a tab.", "Afficher ce panneau dans sa propre fenêtre déplaçable et redimensionnable dans l'éditeur. Les autres panneaux restent disponibles. Vous pouvez aussi faire un clic droit sur un onglet."),
+    ("dock.redock", "Dock panel", "Rattacher le panneau"),
+    ("dock.redock_tip", "Return this panel to the side tabs. Closing the floating window also docks it.", "Remettre ce panneau dans les onglets latéraux. Fermer la fenêtre flottante le rattache également."),
     ("dock.textures", "Textures", "Textures"),
     ("dock.entity", "Entity", "Entité"),
     ("dock.models", "Models", "Modèles"),
@@ -1720,6 +1785,37 @@ mod tests {
     #[test]
     fn binary_table_is_clean() {
         assert!(hp_app::i18n::lint_table(super::TR).is_empty());
+    }
+
+    #[test]
+    fn russian_covers_the_registered_interface_and_preserves_format_arguments() {
+        super::register_all_translations();
+        let entries = hp_app::i18n::entries();
+        if let Some(path) = std::env::var_os("HP_EXPORT_I18N") {
+            std::fs::write(path, serde_json::to_vec_pretty(&entries).expect("translation export"))
+                .expect("write translations");
+        }
+        let arguments = |text: &str| {
+            let mut out: Vec<_> = text
+                .split('{')
+                .skip(1)
+                .filter_map(|part| part.split_once('}').and_then(|(index, _)| index.parse::<usize>().ok()))
+                .collect();
+            out.sort_unstable();
+            out
+        };
+        let mut missing = Vec::new();
+        for (key, en, _) in entries {
+            if key.starts_with("test.") {
+                continue;
+            }
+            if !hp_app::i18n::has_translation(key, hp_app::i18n::Lang::Ru) {
+                missing.push(key);
+                continue;
+            }
+            assert_eq!(arguments(en), arguments(hp_app::i18n::tr_in(key, hp_app::i18n::Lang::Ru)), "{key}");
+        }
+        assert!(missing.is_empty(), "Missing Russian translations: {missing:?}");
     }
 
     #[test]

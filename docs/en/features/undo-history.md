@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Undo and history | [Français](../../fr/features/undo-history.md)
+[Documentation](../README.md) > Features > Undo and history | [Français](../../fr/features/undo-history.md) | [Русский](../../ru/features/undo-history.md)
 
 # Undo and history
 

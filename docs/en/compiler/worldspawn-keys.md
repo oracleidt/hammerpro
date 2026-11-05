@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Compiler > Worldspawn and light keys | [Français](../../fr/compiler/worldspawn-keys.md)
+[Documentation](../README.md) > Compiler > Worldspawn and light keys | [Français](../../fr/compiler/worldspawn-keys.md) | [Русский](../../ru/compiler/worldspawn-keys.md)
 
 # Worldspawn and light keys
 

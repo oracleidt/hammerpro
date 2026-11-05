@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Référence > Serveur MCP | [English](../../en/reference/mcp-server.md)
+[Documentation](../README.md) > Référence > Serveur MCP | [English](../../en/reference/mcp-server.md) | [Русский](../../ru/reference/mcp-server.md)
 
 # Serveur MCP
 

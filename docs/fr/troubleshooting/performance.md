@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Dépannage > Performances de l'éditeur | [English](../../en/troubleshooting/performance.md)
+[Documentation](../README.md) > Dépannage > Performances de l'éditeur | [English](../../en/troubleshooting/performance.md) | [Русский](../../ru/troubleshooting/performance.md)
 
 # Performances de l'éditeur
 

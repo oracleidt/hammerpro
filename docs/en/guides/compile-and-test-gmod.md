@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Guides > Compile and test in Garry's Mod | [Français](../../fr/guides/compile-and-test-gmod.md)
+[Documentation](../README.md) > Guides > Compile and test in Garry's Mod | [Français](../../fr/guides/compile-and-test-gmod.md) | [Русский](../../ru/guides/compile-and-test-gmod.md)
 
 # Compile and test in Garry's Mod
 

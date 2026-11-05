@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Sprinkle tool | [Français](../../fr/features/sprinkle-tool.md)
+[Documentation](../README.md) > Features > Sprinkle tool | [Français](../../fr/features/sprinkle-tool.md) | [Русский](../../ru/features/sprinkle-tool.md)
 
 # Sprinkle tool
 

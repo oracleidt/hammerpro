@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Extrude / carve tool | [Français](../../fr/features/extrude-tool.md)
+[Documentation](../README.md) > Features > Extrude / carve tool | [Français](../../fr/features/extrude-tool.md) | [Русский](../../ru/features/extrude-tool.md)
 
 # Extrude / carve tool
 

@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Hide and isolate | [Français](../../fr/features/hide-isolate.md)
+[Documentation](../README.md) > Features > Hide and isolate | [Français](../../fr/features/hide-isolate.md) | [Русский](../../ru/features/hide-isolate.md)
 
 # Hide and isolate
 

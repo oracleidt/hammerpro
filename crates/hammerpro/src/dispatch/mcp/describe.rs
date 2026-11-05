@@ -357,6 +357,7 @@ pub(super) fn describe(host: &mut dyn UiHost, ctx: &egui::Context, tree: Option<
     let s = &state.settings;
     let panels = json!({
         "dock_tab": format!("{:?}", ui.right_tab).to_ascii_lowercase(),
+        "floating_panels": s.ui.floating_panels,
         "texture_browser": s.ui.show_texture_browser,
         "entity_properties": s.ui.show_entity_properties,
         "model_browser": s.ui.show_model_browser,

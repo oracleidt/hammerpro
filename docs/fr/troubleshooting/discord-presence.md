@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Dépannage > Le statut Discord ne s'affiche pas | [English](../../en/troubleshooting/discord-presence.md)
+[Documentation](../README.md) > Dépannage > Le statut Discord ne s'affiche pas | [English](../../en/troubleshooting/discord-presence.md) | [Русский](../../ru/troubleshooting/discord-presence.md)
 
 # Le statut Discord ne s'affiche pas
 

@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Instances | [Français](../../fr/features/instances.md)
+[Documentation](../README.md) > Features > Instances | [Français](../../fr/features/instances.md) | [Русский](../../ru/features/instances.md)
 
 # Instances
 
@@ -46,7 +46,7 @@ The content of the selected instances is outlined (nested instances included) an
 
 | Field | What it does |
 | --- | --- |
-| **File name:** | Name of the new VMF (no folder separator, no `: * ? " < > |`). |
+| **File name:** | Name of the new VMF (no folder separator, no `: * ? " < > \|`). |
 | **Folder:** | Where it is saved, with **Browse...**. Defaults to the **Default folder** setting (`instances`, relative to the map folder). An unsaved map needs a full folder path. |
 | **Origin:** | X, Y, Z. The selection is saved around this point, which becomes the origin of the `func_instance`. Starts at the center of the selection, snapped to the grid. |
 | **Replace the existing file** | Shown when the file exists. |

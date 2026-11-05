@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Ressources de la map | [English](../../en/features/map-assets.md)
+[Documentation](../README.md) > Fonctionnalités > Ressources de la map | [English](../../en/features/map-assets.md) | [Русский](../../ru/features/map-assets.md)
 
 # Ressources de la map
 

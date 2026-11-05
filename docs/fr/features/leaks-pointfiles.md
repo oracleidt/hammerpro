@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Fuites et pointfiles | [English](../../en/features/leaks-pointfiles.md)
+[Documentation](../README.md) > Fonctionnalités > Fuites et pointfiles | [English](../../en/features/leaks-pointfiles.md) | [Русский](../../ru/features/leaks-pointfiles.md)
 
 # Fuites et pointfiles
 

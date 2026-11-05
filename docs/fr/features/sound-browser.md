@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Navigateur de sons | [English](../../en/features/sound-browser.md)
+[Documentation](../README.md) > Fonctionnalités > Navigateur de sons | [English](../../en/features/sound-browser.md) | [Русский](../../ru/features/sound-browser.md)
 
 # Navigateur de sons
 

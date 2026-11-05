@@ -222,25 +222,75 @@ impl LazyModels {
     fn game_fs(&self) -> Option<&hp_fs::GameFs> {
         self.fs
             .get_or_init(|| {
-                let fs = match &self.profile {
-                    Some(p) => hp_fs::GameFs::for_game(p, &self.mount).ok()?,
-                    None => {
-                        let root = self
-                            .gmod
-                            .clone()
-                            .or_else(|| self.game.as_deref().and_then(gmod_root_of))
-                            .or_else(hp_fs::detect_gmod_root)?;
-                        hp_fs::GameFs::for_gmod(&root, &self.mount).ok()?
-                    }
-                };
+                let root = self
+                    .gmod
+                    .clone()
+                    .or_else(|| self.game.as_deref().and_then(gmod_root_of))
+                    .or_else(hp_fs::detect_gmod_root);
+                let fs = mount_content(self.profile.as_ref(), root.as_deref(), &self.mount)?.ok()?;
                 let own = self.profile.as_ref().map(|p| p.game_dir.clone());
                 for g in self.game.iter().filter(|g| Some(*g) != own.as_ref()).chain(&self.search_paths) {
+                    say(&format!("Mounting search path: {}", g.display()));
                     let _ = fs.add_game_dir(g);
                 }
+                hp_fs::flush_index();
                 Some(fs)
             })
             .as_ref()
     }
+}
+
+fn mount_content(
+    profile: Option<&hp_fs::GameProfile>,
+    root: Option<&Path>,
+    options: &hp_fs::MountOptions,
+) -> Option<Result<hp_fs::GameFs, hp_fs::FsError>> {
+    if profile.is_none() && root.is_none() {
+        return None;
+    }
+    say("Mounting game content...");
+    let progress = hp_fs::MountProgress::new();
+    let started = std::time::Instant::now();
+    let result = std::thread::scope(|scope| {
+        let (done, wait) = std::sync::mpsc::channel::<()>();
+        let tracking = &progress;
+        scope.spawn(move || {
+            while matches!(
+                wait.recv_timeout(std::time::Duration::from_secs(2)),
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+            ) {
+                let status = tracking.snapshot();
+                say(&format!(
+                    "Game content: {:?}, {}/{} sources, {:.0} s: {}",
+                    status.stage,
+                    status.done,
+                    status.total,
+                    started.elapsed().as_secs_f64(),
+                    status.current
+                ));
+            }
+        });
+        let staged = match profile {
+            Some(profile) => hp_fs::GameFs::for_game_staged_with(profile, options, &progress),
+            None => hp_fs::GameFs::for_gmod_staged_with(root.unwrap_or_else(|| Path::new(".")), options, &progress),
+        };
+        let result = staged.map(|(fs, rest)| {
+            fs.finish_mount_with(rest, &progress);
+            fs
+        });
+        let _ = done.send(());
+        result
+    });
+    hp_fs::flush_index();
+    match &result {
+        Ok(fs) => say(&format!(
+            "Game content ready: {} sources in {:.3} s",
+            fs.sources().len(),
+            started.elapsed().as_secs_f64()
+        )),
+        Err(_) => say(&format!("Game content mount failed after {:.3} s", started.elapsed().as_secs_f64())),
+    }
+    Some(result)
 }
 
 static LOG_FILE: std::sync::Mutex<Option<std::fs::File>> = std::sync::Mutex::new(None);
@@ -703,7 +753,7 @@ fn run_compile(a: &BspcArgs, map: &Path) -> i32 {
         say(&cli.describe());
     }
     let root = a.gmod.clone().or_else(|| a.game.as_deref().and_then(gmod_root_of)).or_else(hp_fs::detect_gmod_root);
-    let mounted = cli.mount(&a.mount).or_else(|| root.as_deref().map(|r| hp_fs::GameFs::for_gmod(r, &a.mount)));
+    let mounted = mount_content(cli.profile.as_ref(), root.as_deref(), &a.mount);
     let fs = match mounted {
         Some(Ok(fs)) => fs,
         Some(Err(e)) => {
@@ -718,10 +768,12 @@ fn run_compile(a: &BspcArgs, map: &Path) -> i32 {
     for g in
         a.game.iter().filter(|g| Some(g.as_path()) != cli.game_dir()).chain(a.search_paths.iter()).chain(a.embed.iter())
     {
+        say(&format!("Mounting search path: {}", g.display()));
         if let Err(e) = fs.add_game_dir(g) {
             say(&format!("Warning: {}: {e}", g.display()));
         }
     }
+    hp_fs::flush_index();
     if crate::bspc_instances::has_instances(&parsed) {
         let files = crate::bspc_instances::InstanceFiles { vmf: &vmf, game_dir: a.game.as_deref(), fs: Some(&fs) };
         if cli.profile.is_some() {

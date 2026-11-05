@@ -8,13 +8,14 @@ use hp_tools_create::road::model::{
     MAX_DASH, MAX_FLARE, MAX_LANE_WIDTH, MAX_LANES, MAX_LIFT, MAX_LINE_WIDTH, MAX_POINTS, MAX_SHOULDER, MAX_STEP,
     MAX_THICKNESS, MIN_DASH, MIN_LANE_WIDTH, MIN_LINE_WIDTH, MIN_STEP, MIN_THICKNESS,
 };
-use hp_tools_create::road::{Attach, Junction, JunctionEnd, LineKind, RoadMeta, RoadPoint};
+use hp_tools_create::road::{Attach, Junction, JunctionEnd, LineKind, RoadLayout, RoadMeta, RoadPoint};
 use serde_json::{Value, json};
 
 use super::semantic::*;
 use super::tools::{Args, MAX_NAME, R, bounds_json, check_class, edit, material_name};
 
 const LINE_NAMES: [&str; 4] = ["none", "solid", "dashed", "double"];
+const LAYOUT_NAMES: [&str; 5] = ["path", "tee", "cross", "wye", "cul_de_sac"];
 const COORD: f64 = 16384.0;
 
 domain! { "roads";
@@ -31,8 +32,10 @@ domain! { "roads";
         and any solid_id of the road with get_road, edit_road, split_road, add_road_junction, delete_road).",
         {
             "points": { "type": "array", "items": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 3 }, "minItems": 2, "maxItems": 512, "description": "Points [x, y] or [x, y, z] the road goes through, in order." },
+            "layout": choice("Shape (default path). Presets use exactly two points: center and arm end; cul_de_sac uses start and bulb center. Both heights define a plane. No terrain following, banking or automatic side junctions. Only edge markings are drawn in presets.", &LAYOUT_NAMES),
+            "radius": number("Corner radius, or bulb radius for cul_de_sac (default 256). Move the second point farther away to fit the width and radius.", 0.0, 4096.0),
             "lanes": integer("Number of lanes (default 2).", 1, 8),
-            "lane_width": number("Width of one lane in units (default 128).", 16.0, 256.0),
+            "lane_width": number("Width of one lane in units (default 128), within the map bounds.", MIN_LANE_WIDTH, MAX_LANE_WIDTH),
             "shoulder": number("Width of the shoulder on each side in units (default 16; 0 for none, else at least 1).", 0.0, 256.0),
             "thickness": number("How far the brushes go down under the surface (default 8).", 2.0, 128.0),
             "step": number("Target length of a segment in units (default 64).", 16.0, 512.0),
@@ -79,8 +82,10 @@ domain! { "roads";
             "solid_id": integer("A brush of the road (or its brush entity). Default: the selected road.", 1, i64::from(u32::MAX)),
             "road_uid": integer("The uid of the road, instead of a brush id.", 1, i64::from(u32::MAX)),
             "points": { "type": "array", "items": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 3 }, "minItems": 2, "maxItems": 512, "description": "New points [x, y] or [x, y, z]; a point without z keeps the ground or previous height rule of create_road." },
+            "layout": choice("Shape: path, tee, cross, wye, cul_de_sac. Presets need exactly two points and a planar surface.", &LAYOUT_NAMES),
+            "radius": number("Corner radius, or bulb radius for cul_de_sac.", 0.0, 4096.0),
             "lanes": integer("Number of lanes.", 1, 8),
-            "lane_width": number("Width of one lane in units.", 16.0, 256.0),
+            "lane_width": number("Width of one lane in units, within the map bounds.", MIN_LANE_WIDTH, MAX_LANE_WIDTH),
             "shoulder": number("Width of the shoulder on each side (0, or 1 to 256).", 0.0, 256.0),
             "thickness": number("How far the brushes go down under the surface.", 2.0, 128.0),
             "step": number("Target length of a segment in units.", 16.0, 512.0),
@@ -206,6 +211,12 @@ fn material_arg(a: &Args<'_>, key: &str, allow_empty: bool) -> R<Option<String>>
 }
 
 fn apply_fields(state: &AppState, a: &Args<'_>, m: &mut RoadMeta) -> R<()> {
+    if let Some(v) = a.opt_enum("layout", &LAYOUT_NAMES)? {
+        m.layout = RoadLayout::parse(&v).ok_or("invalid road layout")?;
+    }
+    if let Some(v) = a.opt_f64("radius", 0.0, hp_tools_create::road::model::MAX_RADIUS)? {
+        m.radius = v;
+    }
     if let Some(v) = a.opt_u64("lanes", 1, u64::from(MAX_LANES))? {
         m.lanes = v as u32;
     }
@@ -282,6 +293,8 @@ fn meta_json(m: &RoadMeta) -> Value {
     json!({
         "road_uid": m.uid,
         "points": m.points.iter().map(|p| [p.x, p.y, p.z]).collect::<Vec<_>>(),
+        "layout": m.layout.name(),
+        "radius": m.radius,
         "lanes": m.lanes,
         "lane_width": m.lane_width,
         "shoulder": m.shoulder,
@@ -495,6 +508,31 @@ mod tests {
 
     fn ids(v: &serde_json::Value) -> Vec<u32> {
         v["solid_ids"].as_array().unwrap().iter().map(|x| x.as_u64().unwrap() as u32).collect()
+    }
+
+    #[test]
+    fn wide_roads_and_editable_junction_shapes_are_available_through_mcp() {
+        let mut state = hp_app::testing::test_state();
+        let wide = ok(
+            &mut state,
+            "create_road",
+            json!({"points":[[0,0,0],[1024,0,0]],"lanes":1,"lane_width":4096,"shoulder":0,"center_line":"none","edge_line":"none","divider_line":"none","snap":false}),
+        );
+        assert_eq!(wide["lane_width"].as_f64(), Some(4096.0));
+        for (i, layout) in ["tee", "cross", "wye", "cul_de_sac"].iter().enumerate() {
+            let y = 4000 + i * 2500;
+            let made = ok(
+                &mut state,
+                "create_road",
+                json!({"points":[[0,y,0],[1024,y,32]],"layout":layout,"radius":256,"snap":false}),
+            );
+            let uid = made["road_uid"].as_u64().unwrap();
+            let read = ok(&mut state, "get_road", json!({"road_uid":uid}));
+            assert_eq!(read["layout"], *layout);
+            let changed = ok(&mut state, "edit_road", json!({"road_uid":uid,"radius":192}));
+            assert_eq!(changed["radius"].as_f64(), Some(192.0));
+        }
+        err(&mut state, "create_road", json!({"points":[[0,0],[1024,0],[2048,0]],"layout":"cross"}));
     }
 
     #[test]

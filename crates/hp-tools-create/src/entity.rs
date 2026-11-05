@@ -19,6 +19,12 @@ const MAX_RECENT: usize = 12;
 const DEFAULT_HALF: f64 = 8.0;
 
 pub fn is_prop_class(class: &str, def: Option<&ResolvedClass>) -> bool {
+    if def.is_some_and(|c| {
+        c.studio().is_some_and(|s| s.model.is_some())
+            || c.property("model").and_then(|p| p.default_value()).is_some_and(|m| !m.trim().is_empty())
+    }) {
+        return false;
+    }
     class.trim().to_ascii_lowercase().starts_with("prop_")
         || def.and_then(|c| c.studio()).is_some_and(|s| s.is_prop && s.model.is_none())
 }
@@ -142,7 +148,9 @@ impl EntityTool {
         let prop = is_prop_class(class, def);
         let size =
             def.and_then(ResolvedClass::size).map(|(a, b)| Aabb::new(DVec3::from_array(a), DVec3::from_array(b)));
-        let fixed_model = def.and_then(|c| c.studio()).and_then(|s| s.model);
+        let fixed_model = def.and_then(|c| c.studio()).and_then(|s| s.model).or_else(|| {
+            def.and_then(|c| c.property("model")).and_then(|p| p.default_value()).filter(|m| !m.trim().is_empty())
+        });
         let model = if prop {
             state.current_model.clone()
         } else if size.is_none() {
@@ -550,6 +558,31 @@ mod tests {
 
     fn player_box() -> Aabb {
         Aabb::new(DVec3::new(-16.0, -16.0, 0.0), DVec3::new(16.0, 16.0, 72.0))
+    }
+
+    #[test]
+    fn predefined_prop_models_ignore_browser_selection_during_creation() {
+        let mut state = crate::tests_support::fgd_state_from(
+            r#"
+            @PointClass studio("models/editor/fixed.mdl") = prop_fixed : "Fixed" []
+            @PointClass studioprop() = prop_default : "Default" [ model(studio) : "Model" : "models/default.mdl" ]
+            @PointClass studioprop() = prop_generic : "Generic" [ model(studio) : "Model" ]
+        "#,
+        );
+        state.current_model = Some("models/browser.mdl".to_owned());
+        state.current_model_skin = 3;
+        let mut tool = EntityTool::new();
+        for (class, expected) in [
+            ("prop_fixed", None),
+            ("prop_default", Some("models/default.mdl")),
+            ("prop_generic", Some("models/browser.mdl")),
+        ] {
+            state.current_entity_class = class.to_owned();
+            let id = tool.place(&mut state, DVec3::ZERO, None, false).unwrap();
+            let entity = &state.doc.scene().entity(id).unwrap().entity;
+            assert_eq!(entity.get("model"), expected);
+            assert_eq!(entity.get("skin"), if class == "prop_generic" { Some("3") } else { None });
+        }
     }
 
     #[test]

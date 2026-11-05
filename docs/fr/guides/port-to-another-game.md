@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Guides > Porter une map vers un autre jeu | [English](../../en/guides/port-to-another-game.md)
+[Documentation](../README.md) > Guides > Porter une map vers un autre jeu | [English](../../en/guides/port-to-another-game.md) | [Русский](../../ru/guides/port-to-another-game.md)
 
 # Porter une map vers un autre jeu
 

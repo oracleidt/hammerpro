@@ -11,6 +11,7 @@ pub const TR: TrTable = &[
     ),
     ("compilers.tab", "Compilers", "Compilateurs"),
     ("compilers.edit", "Edit compilers...", "Modifier les compilateurs..."),
+    ("compilers.options_step", "{0} options", "Options {0}"),
     (
         "compilers.intro",
         "Choose a compiler on the left to see and change its steps. The one marked with ✔ builds the map of this game when you press F9.",
@@ -213,8 +214,8 @@ pub const TR: TrTable = &[
     ("compilers.var.light_exe", "Program of the lighting step", "Programme de l'étape d'éclairage"),
     (
         "compilers.external_note",
-        "Compiled by {0}: the preset, the modes and the dynamic range are passed as flags; the option menus, the extra arguments and the smart recompile below belong to Hammer Pro's compiler and are not used.",
-        "Compilé par {0} : le préréglage, les modes et la plage dynamique sont transmis en options ; les menus d'options, les arguments supplémentaires et la recompilation intelligente ci-dessous appartiennent au compilateur de Hammer Pro et ne servent pas.",
+        "Compiled by {0}. Change its VBSP, VVIS and VRAD options below. The compiler profile keeps these choices separately from Hammer Pro's built-in compiler; its preset flags setting controls whether the window's modes are added.",
+        "Compilé par {0}. Réglez ses options VBSP, VVIS et VRAD ci-dessous. Le profil garde ces choix séparément du compilateur intégré de Hammer Pro ; son réglage des options de préréglage contrôle l'ajout des modes de la fenêtre.",
     ),
     ("compilers.kind.bsp", "Geometry (BSP)", "Géométrie (BSP)"),
     ("compilers.kind.vis", "Visibility (VIS)", "Visibilité (VIS)"),

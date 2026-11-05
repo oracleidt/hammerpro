@@ -1,10 +1,12 @@
-[Documentation](../README.md) > Compiler > Compile options | [Français](../../fr/compiler/compile-options.md)
+[Documentation](../README.md) > Compiler > Compile options | [Français](../../fr/compiler/compile-options.md) | [Русский](../../ru/compiler/compile-options.md)
 
 # Compile options
 
 Every flag the Hammer Pro compiler understands, with its effect and its default. The geometry step (`hammerpro --bspc`, which also computes the visibility) and the lighting step (`hammerpro --rad`) each have their own flags.
 
 ## Where you set them
+
+The built-in compiler enables `-AllowDynamicPropsAsStatic` by default. Physics-capable models placed as `prop_static` are kept as static scenery instead of being deleted. They do not gain physics or animation. Disable the flag in the geometry options to restore strict model checks; missing or broken model files are still rejected.
 
 - **The options menus** of the [Compile and run window](compile-window.md) (and of **Settings > Compile**): **All geometry and visibility options (hammerpro --bspc)** and **All lighting options (hammerpro --rad)**. A flag follows the preset until you force it on (with its value) or off. The choices are saved in `settings.toml` under `[compile.bsp_flag_choices]` and `[compile.rad_flag_choices]`, for example:
   ```toml

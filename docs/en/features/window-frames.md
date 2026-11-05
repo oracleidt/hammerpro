@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Window frames | [Français](../../fr/features/window-frames.md)
+[Documentation](../README.md) > Features > Window frames | [Français](../../fr/features/window-frames.md) | [Русский](../../ru/features/window-frames.md)
 
 # Window frames and separate windows
 

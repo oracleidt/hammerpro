@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Lien avec Blender | [English](../../en/features/blender.md)
+[Documentation](../README.md) > Fonctionnalités > Lien avec Blender | [English](../../en/features/blender.md) | [Русский](../../ru/features/blender.md)
 
 # Lien avec Blender
 

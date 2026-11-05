@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Road details | [Français](../../fr/features/road-details.md)
+[Documentation](../README.md) > Features > Road details | [Français](../../fr/features/road-details.md) | [Русский](../../ru/features/road-details.md)
 
 # Road details: sidewalks, curbs, gutters and terrain blending
 

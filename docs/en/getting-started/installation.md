@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Getting started > Installation | [Français](../../fr/getting-started/installation.md)
+[Documentation](../README.md) > Getting started > Installation | [Français](../../fr/getting-started/installation.md) | [Русский](../../ru/getting-started/installation.md)
 
 # Installation
 
@@ -21,7 +21,7 @@ Hammer Pro 1.0.2 is a single program, `hammerpro.exe`, with no installer. It bri
 ## First start
 
 - With no settings file yet, Hammer Pro opens the **Hammer Pro setup** assistant: language, the editor you come from (Hammer, Hammer++ or the Hammer Pro defaults), the game folder and the content to load. See [Game setup](game-setup.md).
-- The interface language starts as the language of your system (English or French). You can force it for one run with `hammerpro --lang en` or `--lang fr` (see [Command line reference](../reference/command-line.md)).
+- The interface language starts as the language of your system (English, French or Russian). You can force it for one run with `hammerpro --lang en` or `--lang fr` (see [Command line reference](../reference/command-line.md)).
 - The game content (VPKs, addons, Workshop) mounts in the background: the editor is usable while it loads, and a card over the views shows the progress.
 - You can open a map directly: `hammerpro path\to\map.vmf`, or drag a `.vmf` onto the window.
 

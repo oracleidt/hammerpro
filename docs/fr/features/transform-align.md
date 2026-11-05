@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Transformer et aligner | [English](../../en/features/transform-align.md)
+[Documentation](../README.md) > Fonctionnalités > Transformer et aligner | [English](../../en/features/transform-align.md) | [Русский](../../ru/features/transform-align.md)
 
 # Transformer et aligner
 

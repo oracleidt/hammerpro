@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Référence > Fichiers et dossiers | [English](../../en/reference/files-and-folders.md)
+[Documentation](../README.md) > Référence > Fichiers et dossiers | [English](../../en/reference/files-and-folders.md) | [Русский](../../ru/reference/files-and-folders.md)
 
 # Fichiers et dossiers
 

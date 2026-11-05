@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Prise en main > Compatibilité VMF | [English](../../en/getting-started/vmf-compatibility.md)
+[Documentation](../README.md) > Prise en main > Compatibilité VMF | [English](../../en/getting-started/vmf-compatibility.md) | [Русский](../../ru/getting-started/vmf-compatibility.md)
 
 # Compatibilité VMF
 

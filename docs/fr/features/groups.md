@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Groupes | [English](../../en/features/groups.md)
+[Documentation](../README.md) > Fonctionnalités > Groupes | [English](../../en/features/groups.md) | [Русский](../../ru/features/groups.md)
 
 # Groupes
 

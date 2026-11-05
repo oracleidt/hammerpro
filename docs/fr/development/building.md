@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Développement > Compiler depuis les sources | [English](../../en/development/building.md)
+[Documentation](../README.md) > Développement > Compiler depuis les sources | [English](../../en/development/building.md) | [Русский](../../ru/development/building.md)
 
 # Compiler depuis les sources
 

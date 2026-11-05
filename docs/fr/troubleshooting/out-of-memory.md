@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Dépannage > Mémoire insuffisante | [English](../../en/troubleshooting/out-of-memory.md)
+[Documentation](../README.md) > Dépannage > Mémoire insuffisante | [English](../../en/troubleshooting/out-of-memory.md) | [Русский](../../ru/troubleshooting/out-of-memory.md)
 
 # Mémoire insuffisante
 

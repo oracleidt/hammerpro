@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Texture tool | [Français](../../fr/features/texture-tool.md)
+[Documentation](../README.md) > Features > Texture tool | [Français](../../fr/features/texture-tool.md) | [Русский](../../ru/features/texture-tool.md)
 
 # Texture tool
 

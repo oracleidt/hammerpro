@@ -225,6 +225,7 @@ pub(crate) fn plural(n: usize, one: &'static str, other: &'static str) -> &'stat
     let singular = match hp_app::i18n::lang() {
         hp_app::i18n::Lang::Fr => n <= 1,
         hp_app::i18n::Lang::En => n == 1,
+        hp_app::i18n::Lang::Ru => n % 10 == 1 && n % 100 != 11,
     };
     if singular { one } else { other }
 }

@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Outil entité | [English](../../en/features/entity-tool.md)
+[Documentation](../README.md) > Fonctionnalités > Outil entité | [English](../../en/features/entity-tool.md) | [Русский](../../ru/features/entity-tool.md)
 
 # Outil entité
 

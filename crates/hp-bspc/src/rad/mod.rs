@@ -378,6 +378,22 @@ fn run_with(
 
     runner.par(|| bake::stitch(&faces, &mut light));
 
+    if !faces.is_empty() {
+        for (pass, &hdr) in passes.iter().enumerate() {
+            let black = faces.iter().zip(&light).all(|(face, values)| {
+                let start = values.index(pass, 0, 0, face.luxels());
+                let end = start + values.styles.len() * values.normals * face.luxels();
+                face.minlight <= 0.0 && values.values[start..end].iter().all(|value| value.max_element() <= 0.0)
+            });
+            if black {
+                log(&format!(
+                    "Warning: {} lightmaps are entirely black. Check the map's light entities, light_environment, sky openings and HDR brightness scales. Missing reflection cubemaps do not turn off baked lighting.",
+                    if hdr { "HDR" } else { "LDR" }
+                ));
+            }
+        }
+    }
+
     let t = Instant::now();
     work.begin(Stage::LeafAmbient, map.leafs.len() as u64);
     let per_face: Vec<(Vec<Vec<glam::Vec3A>>, Vec<glam::Vec3A>)> = runner.par(|| {

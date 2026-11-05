@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Compilateur > Cubemaps | [English](../../en/compiler/cubemaps.md)
+[Documentation](../README.md) > Compilateur > Cubemaps | [English](../../en/compiler/cubemaps.md) | [Русский](../../ru/compiler/cubemaps.md)
 
 # Cubemaps
 
@@ -11,10 +11,14 @@ Pendant l'étape de géométrie :
 - Chaque `env_cubemap` devient un échantillon de cubemap du BSP (et quitte le lump des entités). Une map contient au plus 1024 échantillons.
 - Chaque face dont le matériau utilise `$envmap env_cubemap` reçoit une copie patchée de son matériau, `materials/maps/<map>/<matériau>_<x>_<y>_<z>`, qui pointe vers la cubemap de l'échantillon le plus proche devant elle, ou celui qu'un `env_cubemap` a choisi dans sa clé **sides**. Les matériaux désignés par `$bottommaterial`, `$crackmaterial` et `$fallbackmaterial` sont patchés aussi s'ils utilisent la cubemap.
 - `cubemapsize` : 0 donne la taille par défaut, sinon la cubemap fait 2^(taille-1) texels de côté.
-- Le pakfile reçoit une cubemap provisoire `c<x>_<y>_<z>.vtf` (et `.hdr.vtf`) par échantillon et `cubemapdefault.vtf`, pour que la map s'affiche avant que les vraies cubemaps existent. Comme le VBSP de Garry's Mod, ces cubemaps provisoires sont noires, en 32x32, au format des textures du ciel (`skyname`). Aucune n'est écrite si les textures du ciel ne peuvent pas être lues ; la ligne du journal sur les fichiers VTF de la skybox est sans conséquence avec les ciels de Garry's Mod, puisque le jeu construit lui-même les cubemaps.
+- Le pakfile reçoit des cubemaps provisoires noires de 32x32 pour les reflets, en LDR et HDR, avant la construction des vraies cubemaps.
 - Le pakfile reste stocké (non compressé) : le moteur ne construit les cubemaps que dans des pakfiles stockés.
 
 ## Construire les vraies cubemaps
+
+Les matériaux de ciel LDR, HDR et HDR compressé sont reconnus, y compris les faces `_hdr`. Si les fichiers du ciel demandé sont absents ou invalides, le compilateur utilise un ciel standard disponible et indique son nom dans le journal. Seul le BSP reçoit ce `skyname` de remplacement ; le VMF source reste inchangé. Montez le contenu du ciel d'origine pour conserver son apparence. Les ciels procéduraux `painted` sont préservés.
+
+Une cubemap de réflexion manquante ne coupe pas l'éclairage des surfaces. Une passe d'éclairage entièrement noire produit son propre avertissement : vérifiez les lumières, `light_environment`, les ouvertures vers le ciel et les intensités HDR.
 
 Trois façons :
 

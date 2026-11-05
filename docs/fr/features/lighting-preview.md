@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Aperçu de l'éclairage | [English](../../en/features/lighting-preview.md)
+[Documentation](../README.md) > Fonctionnalités > Aperçu de l'éclairage | [English](../../en/features/lighting-preview.md) | [Русский](../../ru/features/lighting-preview.md)
 
 # Aperçu de l'éclairage
 

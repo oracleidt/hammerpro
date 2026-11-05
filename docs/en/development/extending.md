@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Development > Extending Hammer Pro | [Français](../../fr/development/extending.md)
+[Documentation](../README.md) > Development > Extending Hammer Pro | [Français](../../fr/development/extending.md) | [Русский](../../ru/development/extending.md)
 
 # Extending Hammer Pro
 

@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Particules | [English](../../en/features/particles.md)
+[Documentation](../README.md) > Fonctionnalités > Particules | [English](../../en/features/particles.md) | [Русский](../../ru/features/particles.md)
 
 # Particules
 

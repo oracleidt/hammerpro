@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Masquer et isoler | [English](../../en/features/hide-isolate.md)
+[Documentation](../README.md) > Fonctionnalités > Masquer et isoler | [English](../../en/features/hide-isolate.md) | [Русский](../../ru/features/hide-isolate.md)
 
 # Masquer et isoler
 

@@ -1,6 +1,8 @@
-[Documentation](../README.md) > Compilateur > Options de compilation | [English](../../en/compiler/compile-options.md)
+[Documentation](../README.md) > Compilateur > Options de compilation | [English](../../en/compiler/compile-options.md) | [Русский](../../ru/compiler/compile-options.md)
 
 # Options de compilation
+
+Le compilateur intégré active `-AllowDynamicPropsAsStatic` par défaut. Les modèles physiques placés en `prop_static` restent des décors statiques au lieu d'être supprimés ; ils ne deviennent ni animés ni physiques. Décochez cette option de géométrie pour rétablir les contrôles stricts. Les fichiers de modèle absents ou invalides restent refusés.
 
 Tous les paramètres que comprend le compilateur de Hammer Pro, avec leur effet et leur valeur par défaut. L'étape de géométrie (`hammerpro --bspc`, qui calcule aussi la visibilité) et l'étape d'éclairage (`hammerpro --rad`) ont chacune leurs paramètres.
 

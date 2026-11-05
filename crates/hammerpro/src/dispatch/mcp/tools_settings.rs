@@ -335,6 +335,15 @@ fn set_setting(state: &AppState, v: &Value) -> R<Outcome> {
     let a = args(v, &["path", "value"])?;
     let path = a.str("path", MAX_PATH)?.trim();
     let value = a.map.get("value").ok_or("value is required")?;
+    let normalized = if path == "ui.floating_panels" {
+        value.as_array().filter(|values| values.iter().all(Value::is_string)).map(|values| {
+            let values: std::collections::BTreeSet<_> = values.iter().filter_map(Value::as_str).collect();
+            json!(values)
+        })
+    } else {
+        None
+    };
+    let value = normalized.as_ref().unwrap_or(value);
     let segs = check_path(path)?;
     if segs.is_empty() {
         return Err("path is required (e.g. \"view.fov_deg\")".to_owned());
@@ -673,6 +682,24 @@ mod tests {
         assert!(state.settings.scan.to_config().index_file.is_none());
         assert_eq!(state.settings.scan.to_config().mode, hp_fs::ScanMode::Sequential);
         assert!(read_only("scan.mode").is_none() && read_only("scan.use_index").is_none());
+    }
+
+    #[test]
+    fn panel_layout_accepts_an_unordered_set_and_camera_and_output_options_persist() {
+        let _lang = hp_app::testing::lang_lock();
+        let mut state = hp_app::testing::test_state();
+        set(&mut state, "ui.floating_panels", json!(["textures", "entity", "models", "textures"]));
+        assert_eq!(
+            state.settings.ui.floating_panels.iter().map(String::as_str).collect::<Vec<_>>(),
+            ["entity", "models", "textures"]
+        );
+        set(&mut state, "workflow.camera_smoothing", json!(false));
+        set(&mut state, "compile.bsp_beside_vmf", json!(true));
+        assert_eq!(state.settings.workflow.fly_response_secs(), 0.0);
+        let saved = serde_json::to_string(&state.settings).unwrap();
+        let restored: hp_app::settings::Settings = serde_json::from_str(&saved).unwrap();
+        assert_eq!(restored.ui.floating_panels, state.settings.ui.floating_panels);
+        assert!(!restored.workflow.camera_smoothing && restored.compile.bsp_beside_vmf);
     }
 
     #[test]

@@ -10,7 +10,7 @@ use hp_app::{AppState, Severity, t, tf, theme};
 use hp_compile::CompileEvent;
 
 use super::plan::{self, PrepInput};
-use super::snapshot::{BUILD_DIR, used_assets};
+use super::snapshot::{self, used_assets};
 use crate::util::{fmt_duration_ms, icon_title};
 
 const MAX_VMF_BYTES: u64 = 1024 * 1024 * 1024;
@@ -290,26 +290,42 @@ fn compile_one(
         repaint.request_repaint();
     };
     send(t!("compile.preparing").to_owned(), 0.0);
-    let name = match hp_compile::validated_map_name(vmf) {
-        Ok(n) => n,
-        Err(e) => return RowStatus::Failed(super::notices::plan_error_text(&e)),
+    let target = match snapshot::target_for(
+        Some(vmf),
+        false,
+        &Settings::cache_dir().join("untitled"),
+        settings.bsp_beside_vmf,
+    ) {
+        Ok(t) => t,
+        Err(e) => return RowStatus::Failed(e),
     };
     if std::fs::metadata(vmf).map(|m| m.len()).unwrap_or(u64::MAX) > MAX_VMF_BYTES {
         return RowStatus::Failed(tf!("compile.batch.too_large", vmf.display()));
     }
-    let map = match hp_vmf::load(vmf) {
+    let mut map = match hp_vmf::load(vmf) {
         Ok(m) => m,
         Err(e) => return RowStatus::Failed(e.to_string()),
     };
     let (materials, models) = used_assets(&map);
-    let dir = vmf.parent().map_or_else(|| PathBuf::from("."), Path::to_path_buf).join(BUILD_DIR);
-    if let Err(e) = std::fs::create_dir_all(&dir) {
+    let dir = &target.build_dir;
+    if let Err(e) = std::fs::create_dir_all(dir) {
         return RowStatus::Failed(format!("{}: {e}", dir.display()));
     }
-    let copy = dir.join(format!("{name}.vmf"));
-    if let Err(e) = std::fs::copy(vmf, &copy) {
+    let copy = target.vmf();
+    let staged = if settings.bsp_beside_vmf {
+        if let Some(parent) = target.source.as_deref().and_then(Path::parent) {
+            super::compilers::point_instances_at_the_map_folder(&mut map, parent);
+        }
+        hp_vmf::save_with(&map, &copy, &hp_vmf::SaveOptions { backup: false, sync: false })
+            .map(|_| 0)
+            .map_err(|e| e.to_string())
+    } else {
+        std::fs::copy(vmf, &copy).map_err(|e| e.to_string())
+    };
+    if let Err(e) = staged {
         return RowStatus::Failed(format!("{}: {e}", copy.display()));
     }
+    let output_settings = settings.clone();
     let out = plan::prepare(PrepInput {
         vmf: copy,
         settings,
@@ -320,10 +336,11 @@ fn compile_one(
         cache_dir: Settings::cache_dir().join("pack"),
         content_dir: Settings::cache_dir().join("compile_content"),
     });
-    let (plan, workdir) = match out.result {
+    let (mut plan, workdir) = match out.result {
         Ok(p) => p,
         Err(e) => return RowStatus::Failed(e),
     };
+    snapshot::publish_bsp_step(&mut plan, &target, &output_settings);
     let steps = plan.steps.len().max(1) as f32;
     let kinds: Vec<hp_compile::StepKind> = plan.steps.iter().map(|s| s.kind).collect();
     let handle = hp_compile::start(plan, &workdir);
@@ -381,7 +398,7 @@ mod tests {
             compile_one(&vmf, CompileSettings::default(), Some(dir.join("no_game")), None, &cancel, &tx, 0, &ctx);
         assert!(matches!(status, RowStatus::Failed(_)), "{status:?}");
         assert!(rx.try_iter().count() >= 1, "progress was reported");
-        assert!(dir.join(BUILD_DIR).join("gm_batch.vmf").is_file());
+        assert!(dir.join(snapshot::BUILD_DIR).join("gm_batch.vmf").is_file());
         let bad = compile_one(&dir.join("my map.vmf"), CompileSettings::default(), None, None, &cancel, &tx, 0, &ctx);
         assert!(matches!(bad, RowStatus::Failed(_)));
     }

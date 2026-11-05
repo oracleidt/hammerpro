@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Éditeur de sons | [English](../../en/features/sound-editor.md)
+[Documentation](../README.md) > Fonctionnalités > Éditeur de sons | [English](../../en/features/sound-editor.md) | [Русский](../../ru/features/sound-editor.md)
 
 # Éditeur de sons
 

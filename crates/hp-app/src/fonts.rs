@@ -101,6 +101,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn default_fonts_can_render_the_russian_interface() {
+        let ctx = egui::Context::default();
+        ctx.set_fonts(definitions_with(None, None));
+        let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
+            ui.ctx().fonts_mut(|fonts| {
+                for font in [egui::FontId::proportional(14.0), egui::FontId::monospace(13.0)] {
+                    assert!(fonts.has_glyphs(&font, "Русский Язык Ёё Выделение Текстуры"));
+                }
+            });
+        });
+    }
+
+    #[test]
     fn without_system_fonts_the_defaults_stay() {
         let defs = definitions_with(None, None);
         assert!(!defs.font_data.contains_key(UI_FONT));

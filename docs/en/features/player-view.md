@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Player view | [Français](../../fr/features/player-view.md)
+[Documentation](../README.md) > Features > Player view | [Français](../../fr/features/player-view.md) | [Русский](../../ru/features/player-view.md)
 
 # Player view
 

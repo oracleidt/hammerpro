@@ -1,6 +1,8 @@
-[Documentation](../README.md) > Compiler > Choosing a compiler | [Français](../../fr/compiler/compilers.md)
+[Documentation](../README.md) > Compiler > Choosing a compiler | [Français](../../fr/compiler/compilers.md) | [Русский](../../ru/compiler/compilers.md)
 
 # Choosing a compiler
+
+When an external profile such as Hammer++ is selected, the compile window exposes its **VBSP options**, **VVIS options** and **VRAD options** directly. These controls edit the selected profile's own flags and values, separately from Hammer Pro's built-in compiler settings. The resulting command preview shows the exact arguments. Managed quality, lighting and thread options follow the profile's preset-flags setting.
 
 Hammer Pro compiles maps with its own compiler by default (see [The built in compiler](overview.md)). You can also compile with Valve's tools (vbsp, vvis, vrad) found next to the game, or with a compiler of your own: any programs, with your own arguments. The choice is kept for each game.
 

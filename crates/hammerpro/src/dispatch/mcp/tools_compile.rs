@@ -57,6 +57,7 @@ domain! { "compile and play";
                 {\"final\": true, \"bounce\": 8, \"fast\": false, \"softsun\": 2, \"extrasky\": 4, \"lights\": \
                 \"mylights.rad\"} (lights: a file of the map folder)."),
             "copy_to_maps": boolean("Copy the BSP to the game's maps folder after this compile."),
+            "bsp_beside_vmf": boolean("Save the final BSP beside the source VMF and keep intermediate files in Hammer Pro's cache. The source VMF is preserved."),
             "compiler": string("Compiler for this compile only: an id or name of list_compilers (builtin: Hammer Pro's own)."),
         }, [];
     set_compile_options: Editor, "Change the compile settings",
@@ -107,6 +108,7 @@ domain! { "compile and play";
             "expert": boolean("Expert mode: run the active profile instead of the preset."),
             "profile": string("Expert profile to make active (turns expert mode on)."),
             "copy_to_maps": boolean("Copy the BSP to the game's maps folder after a compile."),
+            "bsp_beside_vmf": boolean("Save the final BSP beside the source VMF, with intermediates in the cache instead of .hammerpro_build."),
             "maps_dir_override": string("Folder the BSP is copied to: an existing absolute folder, or \"\" for garrysmod/maps. Needs confirm."),
             "launch_game": boolean("Start the game after a compile (true needs confirm)."),
             "launch_via_steam": boolean("Start the game through Steam instead of its executable."),
@@ -458,6 +460,7 @@ fn compile_options_json(state: &AppState) -> Value {
         "dev_addon": s.dev_addon,
         "keep_cubemaps": state.settings.content.keep_cubemaps,
         "copy_to_maps": s.copy_to_maps,
+        "bsp_beside_vmf": s.bsp_beside_vmf,
         "maps_dir_override": s.maps_dir_override.as_ref().map(|p| p.display().to_string()),
         "launch_game": s.launch_game,
         "launch_via_steam": s.launch_via_steam,
@@ -572,6 +575,9 @@ fn apply_options(state: &AppState, s: &mut CompileSettings, a: &Args<'_>, like_w
     }
     if let Some(v) = a.opt_bool("copy_to_maps")? {
         s.copy_to_maps = v;
+    }
+    if let Some(v) = a.opt_bool("bsp_beside_vmf")? {
+        s.bsp_beside_vmf = v;
     }
     Ok(())
 }
@@ -1400,7 +1406,7 @@ mod tests {
         assert_eq!(o["options"]["micro"], 2.0);
         assert!(o["forced"].get("micro").is_none() && o["forced"]["nodetail"] == false);
         assert_eq!(o["other_arguments"], json!(["-foo"]));
-        assert_eq!(o["preset_flags"], "-vis -leaktest");
+        assert_eq!(o["preset_flags"], "-vis -leaktest -AllowDynamicPropsAsStatic");
         let line = o["command_flags"].as_str().unwrap();
         assert!(line.contains("-luxelscale 2") && line.contains("-trace 1 5") && !line.contains("-nodetail"), "{line}");
         apply(&mut s, Bsp, &json!({ "luxelscale": 0.5, "micro": null, "trace": null }), None, "b").unwrap();
@@ -1501,7 +1507,10 @@ mod tests {
         assert_eq!(c.preset, hp_app::settings::CompilePresetSetting::Custom);
         assert_eq!(o["bsp_options"]["options"]["nodetail"], true);
         assert_eq!(o["rad_options"]["options"]["softsun"], 2.0);
-        assert_eq!(o["bsp_options"]["command_flags"], "-fastvis -leaktest -forceskyvis -nodetail");
+        assert_eq!(
+            o["bsp_options"]["command_flags"],
+            "-fastvis -leaktest -AllowDynamicPropsAsStatic -forceskyvis -nodetail"
+        );
         assert!(s.settings_dirty);
         assert_eq!((o["static_prop_lighting"].as_bool(), o["static_prop_shadows"].as_bool()), (Some(true), Some(true)));
         let o =

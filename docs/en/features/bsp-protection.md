@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Protect your BSP | [Français](../../fr/features/bsp-protection.md)
+[Documentation](../README.md) > Features > Protect your BSP | [Français](../../fr/features/bsp-protection.md) | [Русский](../../ru/features/bsp-protection.md)
 
 # Protect your BSP
 

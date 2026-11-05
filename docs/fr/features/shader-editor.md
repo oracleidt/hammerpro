@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Éditeur de shaders | [English](../../en/features/shader-editor.md)
+[Documentation](../README.md) > Fonctionnalités > Éditeur de shaders | [English](../../en/features/shader-editor.md) | [Русский](../../ru/features/shader-editor.md)
 
 # Éditeur de shaders
 

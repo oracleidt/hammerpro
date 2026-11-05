@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Guides > Use Hammer Pro with an AI assistant | [Français](../../fr/guides/mcp-with-ai-assistant.md)
+[Documentation](../README.md) > Guides > Use Hammer Pro with an AI assistant | [Français](../../fr/guides/mcp-with-ai-assistant.md) | [Русский](../../ru/guides/mcp-with-ai-assistant.md)
 
 # Use Hammer Pro with an AI assistant
 

@@ -93,6 +93,18 @@ impl OutputSplitter {
             self.reset_line();
             return;
         }
+        if [
+            "Mounting game content...",
+            "Game content: ",
+            "Loading materials for ",
+            "Resolving ",
+            "Loading brush geometry...",
+        ]
+        .iter()
+        .any(|prefix| line.starts_with(prefix))
+        {
+            out(Piece::Progress { fraction: 0.0, phase: Some(line.trim().to_owned()) });
+        }
         if self.last_ticks != Some(PACIFIER_TICKS)
             && let Some(pos) = memchr::memmem::find(&self.buf, PACIFIER)
         {
@@ -224,6 +236,17 @@ fn phase_label(prefix: &[u8]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn content_loading_reports_its_phase_and_keeps_the_log() {
+        let pieces = run_chunks(&[b"Mounting game con", b"tent...\nGame content: Addons, 2/5 sources, 2 s: example\n"]);
+        assert_eq!(pieces.len(), 4);
+        for pair in pieces.chunks_exact(2) {
+            let Piece::Line(line) = &pair[1] else { panic!("loading journal entry missing") };
+            assert_eq!(pair[0], Piece::Progress { fraction: 0.0, phase: Some(line.clone()) });
+        }
+        assert_eq!(run_chunks(&[b"Loading example.vmf\n"]), vec![Piece::Line("Loading example.vmf".into())]);
+    }
 
     fn run_chunks(chunks: &[&[u8]]) -> Vec<Piece> {
         let mut splitter = OutputSplitter::new();

@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Terrain | [Français](../../fr/features/terrain.md)
+[Documentation](../README.md) > Features > Terrain | [Français](../../fr/features/terrain.md) | [Русский](../../ru/features/terrain.md)
 
 # Terrain: heightmaps and procedural generation
 

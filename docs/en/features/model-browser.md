@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Model browser | [Français](../../fr/features/model-browser.md)
+[Documentation](../README.md) > Features > Model browser | [Français](../../fr/features/model-browser.md) | [Русский](../../ru/features/model-browser.md)
 
 # Model browser
 

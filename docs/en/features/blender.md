@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Blender link | [Français](../../fr/features/blender.md)
+[Documentation](../README.md) > Features > Blender link | [Français](../../fr/features/blender.md) | [Русский](../../ru/features/blender.md)
 
 # Blender link
 

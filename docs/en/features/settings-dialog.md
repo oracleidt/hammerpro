@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Settings window | [Français](../../fr/features/settings-dialog.md)
+[Documentation](../README.md) > Features > Settings window | [Français](../../fr/features/settings-dialog.md) | [Русский](../../ru/features/settings-dialog.md)
 
 # Settings window
 

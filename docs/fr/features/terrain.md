@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Terrain | [English](../../en/features/terrain.md)
+[Documentation](../README.md) > Fonctionnalités > Terrain | [English](../../en/features/terrain.md) | [Русский](../../ru/features/terrain.md)
 
 # Terrain : cartes de hauteur et génération procédurale
 

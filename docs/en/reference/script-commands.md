@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Reference > Script commands | [Français](../../fr/reference/script-commands.md)
+[Documentation](../README.md) > Reference > Script commands | [Français](../../fr/reference/script-commands.md) | [Русский](../../ru/reference/script-commands.md)
 
 # Script commands
 

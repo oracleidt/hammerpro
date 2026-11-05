@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Fonctionnalités > Outil biseau | [English](../../en/features/bevel-tool.md)
+[Documentation](../README.md) > Fonctionnalités > Outil biseau | [English](../../en/features/bevel-tool.md) | [Русский](../../ru/features/bevel-tool.md)
 
 # Outil biseau
 

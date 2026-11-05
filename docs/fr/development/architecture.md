@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Développement > Architecture | [English](../../en/development/architecture.md)
+[Documentation](../README.md) > Développement > Architecture | [English](../../en/development/architecture.md) | [Русский](../../ru/development/architecture.md)
 
 # Architecture
 

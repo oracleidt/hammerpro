@@ -1,4 +1,4 @@
-[Documentation](../README.md) > Features > Command palette | [Français](../../fr/features/command-palette.md)
+[Documentation](../README.md) > Features > Command palette | [Français](../../fr/features/command-palette.md) | [Русский](../../ru/features/command-palette.md)
 
 # Command palette
 

@@ -722,6 +722,7 @@ impl CompileDialog {
             state.doc.path(),
             snapshot.is_cordoned(),
             &Settings::cache_dir().join("untitled"),
+            state.settings.compile.bsp_beside_vmf,
         ) {
             Ok(t) => t,
             Err(e) => {
@@ -964,6 +965,13 @@ impl CompileDialog {
                 settings: s.clone(),
                 root: game_root(state),
                 fs: state.assets.fs().cloned(),
+                output_bsp: cur
+                    .target
+                    .source
+                    .as_deref()
+                    .and_then(std::path::Path::parent)
+                    .filter(|_| s.bsp_beside_vmf)
+                    .map(|dir| dir.join(format!("{}.bsp", cur.target.name))),
             };
             self.progressive.start(&ctx, job);
         }
