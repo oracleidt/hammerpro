@@ -16,6 +16,7 @@ use hp_tools_select::gizmo::GizmoMode;
 mod handles;
 #[cfg(test)]
 mod history_tests;
+mod user_presets;
 
 use super::apply::{
     ApplyError, RoadCreated, build_in_doc, create_road, ground_height, list_roads, read_road, replace_road,
@@ -93,6 +94,7 @@ struct Snapshot {
     options: RoadOptions,
     carry: Carry,
     follow_material: bool,
+    preset_name: String,
 }
 
 pub struct RoadTool {
@@ -123,6 +125,7 @@ pub struct RoadTool {
     redo: Vec<Snapshot>,
     history_group: bool,
     history_active: bool,
+    preset_name: String,
 }
 
 impl Default for RoadTool {
@@ -219,11 +222,13 @@ impl RoadTool {
                 options: RoadOptions::default(),
                 carry: Carry::default(),
                 follow_material: true,
+                preset_name: String::new(),
             }),
             undo: Vec::new(),
             redo: Vec::new(),
             history_group: false,
             history_active: false,
+            preset_name: String::new(),
         }
     }
 
@@ -253,6 +258,7 @@ impl RoadTool {
             options: self.options.clone(),
             carry: self.carry.clone(),
             follow_material: self.follow_material,
+            preset_name: self.preset_name.clone(),
         }
     }
 
@@ -304,6 +310,7 @@ impl RoadTool {
         self.options = previous.options;
         self.carry = previous.carry;
         self.follow_material = previous.follow_material;
+        self.preset_name = previous.preset_name;
         self.drag = None;
         self.hover = None;
         self.baseline = Some(self.snapshot());
@@ -410,6 +417,7 @@ impl RoadTool {
             self.join_attach = j.attach;
         }
         self.options.meta = RoadMeta { points: Vec::new(), junction: None, ..meta };
+        self.match_user_preset(state);
         self.selected = None;
         self.drag = None;
         self.hover = None;
@@ -863,6 +871,8 @@ impl RoadTool {
             .resizable(false)
             .default_pos(Pos2::new(rect.left() + 64.0, rect.bottom() - 560.0))
             .show(ui.ctx(), |ui| {
+                self.presets_ui(ui, state);
+                ui.separator();
                 let m = &mut self.options.meta;
                 Self::layout_ui(ui, m);
                 if m.layout != RoadLayout::Path {
@@ -1279,6 +1289,7 @@ impl Tool for RoadTool {
             if self.editing.is_some() {
                 ui.label(egui::RichText::new(t!("road.editing")).strong());
             }
+            self.preset_combo(ui, state, "strip");
             let m = &mut self.options.meta;
             Self::layout_ui(ui, m);
             ui.label(t!("road.lanes")).on_hover_text(t!("road.lanes_tip"));
@@ -1418,6 +1429,12 @@ impl Tool for RoadTool {
     fn set_option(&mut self, state: &mut AppState, key: &str, value: &str) -> bool {
         self.ensure_init(state);
         let v = value.trim();
+        match key {
+            "preset_save" => return self.save_user_preset(state, v),
+            "preset_load" => return self.load_user_preset(state, v),
+            "preset_delete" => return self.delete_user_preset(state, v),
+            _ => {}
+        }
         if key == "fit_width" {
             return match v.to_ascii_lowercase().as_str() {
                 "on" | "true" | "1" => self.fit_width_to_bends(state),
@@ -1524,6 +1541,17 @@ impl Tool for RoadTool {
         };
         let flag = |b: bool| if b { "on" } else { "off" };
         let mut values = vec![
+            ToolOption::new(
+                "preset_save",
+                "",
+                "save or update the current road settings under this name; saved in the editor settings",
+            ),
+            ToolOption::new(
+                "preset_load",
+                self.preset_name.clone(),
+                "load a named road settings preset without replacing the current points; supports local Undo/Redo",
+            ),
+            ToolOption::new("preset_delete", "", "delete the named saved road settings preset"),
             ToolOption::new(
                 "layout",
                 m.layout.name(),

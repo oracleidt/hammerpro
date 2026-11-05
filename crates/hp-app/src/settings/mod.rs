@@ -33,7 +33,7 @@ mod vtf;
 mod workflow;
 
 pub use blender::{BlenderFormat, BlenderSettings};
-pub use brush::BrushSettings;
+pub use brush::{BrushSettings, RoadPreset};
 pub use compile::{
     BspModeSetting, CompilePresetSetting, CompileProfile, CompileSettings, FlagChoiceSetting, LightingSetting,
     PackPolicy, ProfileStep, RadModeSetting, StaticPropShadows, VisModeSetting, WindowPlacement,

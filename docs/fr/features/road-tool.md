@@ -76,6 +76,14 @@ Avec **Suivre le terrain**, les nouveaux points prennent la hauteur du sol sous 
 
 Sur la face supérieure de chaque brush la texture suit la route : l'axe U suit la direction de la route (dans la pente, donc sans étirement sur une colline) et l'axe V va en travers. La position U est la distance le long de la route : les segments voisins se prolongent exactement sur la ligne centrale, sans saut aux joints, et les deux moitiés d'une route coupée gardent la même suite. Dans un virage, le bord intérieur est un peu plus court que le bord extérieur : la texture suit la ligne centrale, et l'écart reste faible pour les longueurs de segment usuelles. Les côtés et le dessous gardent l'alignement habituel sur le monde.
 
+## Préréglages de route enregistrés
+
+Dans les **Réglages de la route**, saisissez un **Nom du préréglage**, puis cliquez sur **Enregistrer le préréglage**. Enregistrez chaque type de route sous un nom différent, puis rappelez-le dans **Préréglages enregistrés**, depuis la barre de l'outil ou la fenêtre des réglages. Ils sont sauvegardés dans les paramètres de l'éditeur et restent disponibles sur les autres maps et après redémarrage. Modifiez vos réglages et cliquez sur **Mettre à jour le préréglage** pour remplacer la version enregistrée, ou sur **Supprimer le préréglage** pour l'enlever. Un astérisque indique que les réglages actuels diffèrent de la version enregistrée. Sélectionner à nouveau le même préréglage restaure ses réglages.
+
+Un préréglage inclut largeur et nombre de voies, matériaux, marquages, segmentation, forme et rayon, suivi du terrain, inclinaison, mode de création et maintien de l'outil actif. Il conserve les points du tracé, la hauteur de placement et les connexions de la map. Son chargement peut être annulé avec `Ctrl+Z` et rétabli avec `Ctrl+Y`, même avant de placer un point. Enregistrer ou supprimer un préréglage ne modifie aucun brush de la map.
+
+Pour retrouver les réglages d'une route déjà créée, sélectionnez un de ses brushes et activez l'outil Route, ou utilisez **Outils > Modifier la route**. Ses points et réglages sont restaurés pour l'édition. Enregistrez alors ces réglages sous un nom pour les réutiliser sur d'autres routes.
+
 ## Modifier une route existante
 
 Chaque brush créé par l'outil route se souvient de sa route dans les clés `hammerpro_curve` du VMF (`r1;...`, points avec leurs hauteurs, tous les réglages, la jonction).

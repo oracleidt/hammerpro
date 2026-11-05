@@ -1,6 +1,23 @@
 use hp_app::i18n::TrTable;
 
 pub const ROAD_TR: TrTable = &[
+    ("road.presets", "Saved presets", "Préréglages enregistrés"),
+    ("road.preset_name", "Preset name", "Nom du préréglage"),
+    ("road.preset_save", "Save preset", "Enregistrer le préréglage"),
+    ("road.preset_update", "Update preset", "Mettre à jour le préréglage"),
+    ("road.preset_delete", "Delete preset", "Supprimer le préréglage"),
+    ("road.preset_manage", "Manage presets...", "Gérer les préréglages..."),
+    ("road.preset_empty", "No saved road presets yet.", "Aucun préréglage de route enregistré."),
+    (
+        "road.preset_invalid",
+        "This road preset could not be loaded. Your current settings are unchanged.",
+        "Impossible de charger ce préréglage de route. Vos réglages actuels sont conservés.",
+    ),
+    (
+        "road.preset_tip",
+        "Save named road settings and reuse them in any map after restarting the editor. Presets include materials, width, markings, segmentation, shape and banking, without replacing your points, height or map connections. Loading a preset supports local Undo/Redo. An asterisk marks modified settings.",
+        "Enregistrez vos réglages de route sous un nom et réutilisez-les sur toutes les maps, même après redémarrage. Les préréglages incluent matériaux, largeur, marquages, segmentation, forme et inclinaison, sans remplacer les points, la hauteur ni les connexions de la map. Leur chargement est annulable avec Annuler/Rétablir. Un astérisque indique des réglages modifiés.",
+    ),
     ("road.layout", "Shape", "Forme"),
     ("road.layout_path", "Free path", "Tracé libre"),
     ("road.layout_tee", "T junction", "Jonction en T"),

@@ -76,6 +76,14 @@ With **Follow terrain** on, new points take the height of the ground under them 
 
 On the top face of every brush the texture runs along the road: the U axis follows the direction of the road (on the slope, so a texture is not stretched on a hill) and the V axis goes across. The U position is the distance along the road, so neighbouring segments continue each other exactly on the center line, with no jump at the joints, and the two halves of a split road keep the same run. On a bend the inside edge is a little shorter than the outside edge: the texture follows the center line, and the error stays small for the usual segment lengths. The sides and the bottom keep the normal world alignment.
 
+## Saved road presets
+
+In **Road settings**, enter a **Preset name** and choose **Save preset**. Save different road types under different names, then recall one from **Saved presets** in the tool bar or settings window. Presets are stored in the editor settings and remain available in other maps and after restarting. Change the settings and choose **Update preset** to replace that named preset, or **Delete preset** to remove it. An asterisk beside the name means the current settings differ from the saved version. Selecting the same preset again restores its saved settings.
+
+A preset includes lane widths and count, materials, markings, segmentation, shape and radius, terrain following, banking, creation mode and keep-active mode. It leaves the current trace points, placement height and map connections unchanged. Loading a preset supports local `Ctrl+Z` and `Ctrl+Y`, including before placing a point. Saving or deleting a preset does not change any map brushes.
+
+To recover settings from a road you already created, select one of its brushes and activate the Road tool, or use **Tools > Edit road**. Its stored points and settings are restored for editing. Save those settings as a named preset to use them for other roads.
+
 ## Editing an existing road
 
 Every brush made by the road tool remembers its road in the `hammerpro_curve` keys of the VMF (`r1;...`, points with their heights, every setting, the junction).

@@ -4,6 +4,97 @@ use super::*;
 use crate::tests_support::{info_2d, settle};
 
 #[test]
+fn named_presets_switch_settings_without_replacing_the_trace_and_support_undo() {
+    let mut state = settle();
+    let mut tool = RoadTool::new();
+    tool.activate(&mut state);
+    tool.options.meta.lanes = 1;
+    tool.options.meta.lane_width = 2048.0;
+    tool.options.meta.material = "road/wide".into();
+    tool.options.meta.step = 256.0;
+    tool.options.meta.layout = RoadLayout::Tee;
+    tool.options.meta.radius = 96.0;
+    tool.options.create_as = CreateAs::Entity("func_detail".into());
+    tool.options.keep_active = false;
+    assert!(tool.set_option(&mut state, "preset_save", "Wide"));
+    assert!(state.settings_dirty);
+    tool.options.meta.lane_width = 64.0;
+    tool.options.meta.material = "road/narrow".into();
+    tool.options.meta.step = 32.0;
+    tool.options.meta.layout = RoadLayout::Path;
+    assert!(tool.set_option(&mut state, "preset_save", "Narrow"));
+    tool.add_point(RoadPoint::new(128.0, 256.0, 32.0));
+    tool.add_point(RoadPoint::new(2304.0, 256.0, 128.0));
+    tool.options.base_z = 192.0;
+    tool.carry.uid = 9;
+    tool.carry.u0 = 512.0;
+    tool.carry.junction = Some(Junction { end: JunctionEnd::End, target: 2, flare: 32.0, attach: Attach::Lane });
+    tool.record_history();
+    let points = tool.points.clone();
+    let carry = tool.carry.clone();
+    let narrow = tool.options.clone();
+    let revision = state.doc.revision();
+    assert!(tool.set_option(&mut state, "preset_load", "Wide"));
+    assert_eq!(tool.options.meta.lane_width, 2048.0);
+    assert_eq!(tool.options.meta.step, 256.0);
+    assert_eq!(tool.options.meta.material, "road/wide");
+    assert_eq!(tool.options.meta.layout, RoadLayout::Tee);
+    assert_eq!(tool.points, points);
+    assert_eq!(tool.carry, carry);
+    assert_eq!(tool.options.base_z, 192.0);
+    assert!(!tool.follow_material);
+    assert!(tool.action(&mut state, Action::Undo));
+    assert_eq!(tool.options, narrow);
+    assert_eq!(tool.preset_name, "Narrow");
+    assert!(tool.action(&mut state, Action::Redo));
+    assert_eq!(tool.preset_name, "Wide");
+    tool.sync_material(&state);
+    assert_eq!(tool.options.meta.material, "road/wide");
+    assert_eq!(state.doc.revision(), revision);
+    let saved = RoadMeta::decode(&state.settings.brush.road_presets["Wide"].road).unwrap();
+    assert_eq!(saved.uid, 0);
+    assert!(saved.junction.is_none());
+    assert_ne!(saved.points, points);
+    let mut restarted = settle();
+    restarted.settings.brush = state.settings.brush.clone();
+    let mut new_tool = RoadTool::new();
+    assert!(new_tool.set_option(&mut restarted, "preset_load", "Wide"));
+    assert_eq!(new_tool.options.meta.lane_width, 2048.0);
+    assert_eq!(new_tool.options.create_as, CreateAs::Entity("func_detail".into()));
+    assert!(!new_tool.options.keep_active);
+    assert!(new_tool.points.is_empty());
+}
+
+#[test]
+fn presets_can_be_updated_deleted_and_undone_before_drawing_without_document_undo() {
+    let mut state = settle();
+    let mut tool = RoadTool::new();
+    tool.activate(&mut state);
+    tool.options.meta.lane_width = 128.0;
+    assert!(tool.set_option(&mut state, "preset_save", "  Road A  "));
+    tool.options.meta.lane_width = 256.0;
+    assert!(tool.set_option(&mut state, "preset_save", "Road A"));
+    assert_eq!(state.settings.brush.road_presets.len(), 1);
+    tool.options.meta.lane_width = 64.0;
+    assert!(tool.set_option(&mut state, "preset_load", "Road A"));
+    assert_eq!(tool.options.meta.lane_width, 256.0);
+    assert!(tool.action(&mut state, Action::Undo));
+    assert_eq!(tool.options.meta.lane_width, 64.0);
+    assert!(tool.action(&mut state, Action::Redo));
+    assert_eq!(tool.options.meta.lane_width, 256.0);
+    assert!(tool.set_option(&mut state, "preset_delete", "Road A"));
+    assert!(state.settings.brush.road_presets.is_empty());
+    assert_eq!(tool.options.meta.lane_width, 256.0);
+    assert!(!tool.set_option(&mut state, "preset_load", "Road A"));
+    assert!(!tool.set_option(&mut state, "preset_save", " "));
+    state.settings.brush.road_presets.insert("Broken".into(), hp_app::settings::RoadPreset::default());
+    let before = tool.options.clone();
+    assert!(!tool.set_option(&mut state, "preset_load", "Broken"));
+    assert_eq!(tool.options, before);
+    assert!(!state.doc.can_undo());
+}
+
+#[test]
 fn points_undo_and_redo_without_touching_document_history() {
     let mut state = settle();
     state.tool = ToolId::Road;
