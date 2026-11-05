@@ -863,6 +863,7 @@ impl RoadTool {
         let interior = self.selected.is_some_and(|i| i > 0 && i + 1 < self.points.len());
         let before = (self.options.clone(), self.carry.junction);
         let material_before = self.options.meta.material.clone();
+        let version_before = self.version;
         let rect = ui.ctx().content_rect();
         hp_app::chrome::Window::new(if editing { t!("road.window_edit") } else { t!("road.window_title") })
             .id(egui::Id::unique("hp_road_settings"))
@@ -1060,7 +1061,7 @@ impl RoadTool {
         if !open {
             self.show_window = false;
         }
-        if self.options.meta.material != material_before {
+        if self.options.meta.material != material_before && self.version == version_before {
             self.follow_material = self.options.meta.material == current;
         }
         match action {
@@ -1429,6 +1430,9 @@ impl Tool for RoadTool {
     fn set_option(&mut self, state: &mut AppState, key: &str, value: &str) -> bool {
         self.ensure_init(state);
         let v = value.trim();
+        if matches!(key, "preset_save" | "preset_load" | "preset_delete") && v.is_empty() {
+            return true;
+        }
         match key {
             "preset_save" => return self.save_user_preset(state, v),
             "preset_load" => return self.load_user_preset(state, v),

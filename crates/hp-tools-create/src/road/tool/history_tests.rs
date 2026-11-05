@@ -86,7 +86,10 @@ fn presets_can_be_updated_deleted_and_undone_before_drawing_without_document_und
     assert!(state.settings.brush.road_presets.is_empty());
     assert_eq!(tool.options.meta.lane_width, 256.0);
     assert!(!tool.set_option(&mut state, "preset_load", "Road A"));
-    assert!(!tool.set_option(&mut state, "preset_save", " "));
+    assert!(!tool.save_user_preset(&mut state, " "));
+    for key in ["preset_save", "preset_load", "preset_delete"] {
+        assert!(tool.set_option(&mut state, key, ""));
+    }
     state.settings.brush.road_presets.insert("Broken".into(), hp_app::settings::RoadPreset::default());
     let before = tool.options.clone();
     assert!(!tool.set_option(&mut state, "preset_load", "Broken"));
