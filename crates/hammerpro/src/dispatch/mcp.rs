@@ -47,6 +47,7 @@ mod tools_loops;
 mod tools_media;
 mod tools_meshdisp;
 mod tools_overlays;
+mod tools_particles;
 mod tools_paths;
 mod tools_pipe;
 mod tools_road;

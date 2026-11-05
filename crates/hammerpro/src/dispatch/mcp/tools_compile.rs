@@ -186,7 +186,7 @@ domain! { "compile and play";
         (cancel) the bake, with a quality: draft (fast), normal or final (like the compile presets; saved as the \
         preview quality). A bake shows a quick pass first (the Sun Samples, Ambient Samples and Supersample of the \
         map's light_plus options), then a refined pass at the quality (kind refine in get_lighting_status) replaces \
-        it unless the map changed. Read the progress with get_lighting_status; set_render_mode baked shows the result. A map above lighting.auto_scope_luxels_millions million luxels (default 2) is baked only within lighting.auto_scope_radius units of the 3D camera (default 3072) and the area follows the camera; set_setting lighting.auto_scope false bakes the whole map. get_lighting_status preview.scope tells which.",
+        it unless the lighting inputs changed. Read the progress with get_lighting_status; set_render_mode baked shows the result. The start action always bakes the whole map and keeps the result while navigating or switching render modes. The around_camera action explicitly limits the bake to a region. Automatic entry into baked mode can use a camera-following region only when lighting.auto_scope is enabled (default false), above lighting.auto_scope_luxels_millions million luxels (default 2), within lighting.auto_scope_radius units (default 3072). get_lighting_status preview.scope tells which.",
         {
             "action": choice("start (default), around_camera or stop.", &["start", "around_camera", "stop"]),
             "quality": choice("Bake quality (default: the saved one).", &["draft", "normal", "final"]),

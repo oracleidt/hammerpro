@@ -175,6 +175,7 @@ pub(crate) struct Ctx<'a> {
     pub blockers: &'a Bvh,
     pub work: &'a super::progress::Work,
     pub bounce_budget: usize,
+    pub bounce_tile_budget: usize,
 }
 
 pub(crate) fn sky_cameras(map: &MapData) -> (Vec<(Vec3A, f32)>, Vec<bool>) {
@@ -908,7 +909,7 @@ struct Gather {
     xs: Vec<usize>,
     ys: Vec<usize>,
     normals: Vec<[Vec3A; 4]>,
-    hits: Vec<(u32, u16, u16)>,
+    hits: super::tiles::Hits,
     luxels: usize,
 }
 
@@ -937,7 +938,7 @@ fn cosine_dir(n: Vec3A, k: usize, count: usize, seed: u32) -> Vec3A {
 const Q: f32 = 32.0;
 
 impl Ctx<'_> {
-    fn gather_grid(&self, fi: usize, step: usize, rays: usize) -> Gather {
+    fn gather_grid(&self, fi: usize, step: usize, rays: usize, store: &super::tiles::Store) -> Result<Gather, String> {
         let f = &self.faces[fi];
         let xs = axis_points(f.w, step);
         let ys = axis_points(f.h, step);
@@ -969,12 +970,17 @@ impl Ctx<'_> {
                 }
             }
         }
-        Gather { step: step.max(1), gw, gh, xs, ys, normals, hits, luxels: f.luxels() }
+        Ok(Gather { step: step.max(1), gw, gh, xs, ys, normals, hits: store.keep(hits)?, luxels: f.luxels() })
     }
 
-    pub fn bounce(&self, lights: &mut [FaceLight], bounces: u32, log: &mut dyn FnMut(&str)) -> (f64, f64) {
+    pub fn bounce(
+        &self,
+        lights: &mut [FaceLight],
+        bounces: u32,
+        log: &mut dyn FnMut(&str),
+    ) -> Result<(f64, f64), String> {
         if bounces == 0 || self.faces.is_empty() {
-            return (0.0, 0.0);
+            return Ok((0.0, 0.0));
         }
         let rays = self.params.bounce_rays;
         let total: usize = self.faces.iter().map(|f| f.luxels()).sum();
@@ -984,11 +990,20 @@ impl Ctx<'_> {
         }
         let clock = std::time::Instant::now();
         self.work.begin(super::progress::Stage::BounceRays, total as u64);
+        let store = super::tiles::Store::new(self.bounce_tile_budget);
         let grids: Vec<Gather> = (0..self.faces.len())
             .into_par_iter()
-            .map(|i| self.gather_grid(i, step, rays))
-            .inspect(|g| self.work.add(g.luxels as u64))
-            .collect();
+            .map(|i| self.gather_grid(i, step, rays, &store))
+            .inspect(|g| {
+                if let Ok(g) = g {
+                    self.work.add(g.luxels as u64);
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let (memory, disk) = store.usage();
+        if disk > 0 {
+            log(&format!("bounce ray cache: {} MB in memory, {} MB in temporary tiles", memory >> 20, disk >> 20));
+        }
         let points: usize = grids.iter().map(|g| g.gw * g.gh).sum();
         let gather_time = clock.elapsed().as_secs_f64();
         log(&format!("bounce: {points} gather points, {rays} rays each, traced in {} ms", clock.elapsed().as_millis()));
@@ -1017,30 +1032,34 @@ impl Ctx<'_> {
                     let nn = normals[fi];
                     let npts = g.gw * g.gh;
                     let mut pts = vec![Vec3A::ZERO; passes * nn * npts];
-                    for gp in 0..npts {
-                        let seed = hash(fi as u32, gp as u32, 0x5eed);
-                        let normals = &g.normals[gp];
-                        for k in 0..rays {
-                            let (hi, s, t) = g.hits[gp * rays + k];
-                            let hi = hi as usize;
-                            let Some(hf) = self.faces.get(hi) else { continue };
-                            let (s, t) = (f32::from(s) / Q, f32::from(t) / Q);
-                            let mut wts = [1.0f32; 4];
-                            if nn > 1 {
-                                let dir = cosine_dir(normals[0], k, rays, seed);
-                                let d0 = dir.dot(normals[0]).max(1e-4);
-                                for n in 1..nn {
-                                    wts[n] = dir.dot(normals[n]).max(0.0) / d0;
+                    for tile in g.hits.tiles(rays * 128) {
+                        let (start, hits) = tile?;
+                        for point in 0..hits.len() / rays {
+                            let gp = start / rays + point;
+                            let seed = hash(fi as u32, gp as u32, 0x5eed);
+                            let normals = &g.normals[gp];
+                            for k in 0..rays {
+                                let (hi, s, t) = hits[point * rays + k];
+                                let hi = hi as usize;
+                                let Some(hf) = self.faces.get(hi) else { continue };
+                                let (s, t) = (f32::from(s) / Q, f32::from(t) / Q);
+                                let mut wts = [1.0f32; 4];
+                                if nn > 1 {
+                                    let dir = cosine_dir(normals[0], k, rays, seed);
+                                    let d0 = dir.dot(normals[0]).max(1e-4);
+                                    for n in 1..nn {
+                                        wts[n] = dir.dot(normals[n]).max(0.0) / d0;
+                                    }
                                 }
-                            }
-                            let cell = if b == 0 { None } else { Some(grid_cell(&grids[hi], s, t)) };
-                            for p in 0..passes {
-                                let v = match cell {
-                                    None => lookup(direct[hi][p], hf.w, hf.h, s, t),
-                                    Some(c) => c.sample(&emit[hi][p], grids[hi].gw),
-                                } * hf.reflectivity;
-                                for n in 0..nn {
-                                    pts[(p * nn + n) * npts + gp] += v * wts[n];
+                                let cell = if b == 0 { None } else { Some(grid_cell(&grids[hi], s, t)) };
+                                for p in 0..passes {
+                                    let v = match cell {
+                                        None => lookup(direct[hi][p], hf.w, hf.h, s, t),
+                                        Some(c) => c.sample(&emit[hi][p], grids[hi].gw),
+                                    } * hf.reflectivity;
+                                    for n in 0..nn {
+                                        pts[(p * nn + n) * npts + gp] += v * wts[n];
+                                    }
                                 }
                             }
                         }
@@ -1048,9 +1067,9 @@ impl Ctx<'_> {
                     for v in &mut pts {
                         *v /= rays as f32;
                     }
-                    pts
+                    Ok(pts)
                 })
-                .collect();
+                .collect::<Result<Vec<_>, String>>()?;
             let mut added = 0.0f32;
             emit = recv
                 .iter()
@@ -1107,7 +1126,7 @@ impl Ctx<'_> {
                 }
             }
         });
-        (gather_time, clock.elapsed().as_secs_f64())
+        Ok((gather_time, clock.elapsed().as_secs_f64()))
     }
 }
 

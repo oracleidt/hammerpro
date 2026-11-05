@@ -8,7 +8,7 @@ override WIRE_SET: u32 = 0u;
 override ENTITY_ONLY: bool = false;
 
 struct VsOut {
-    @builtin(position) clip: vec4<f32>,
+    @builtin(position) @invariant clip: vec4<f32>,
     @location(0) world: vec3<f32>,
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
@@ -488,11 +488,22 @@ fn sky_horizon(xy: vec2<f32>, dir: vec2<f32>, z: f32, layer: u32) -> f32 {
     var horizon = -1.0e9;
     var r = 10.0;
     for (var i = 0u; i < SKY_MARCH_STEPS; i++) {
-        let level = clamp(round(log2(max(0.2 * r / texel, 1.0))), 0.0, SKY_LEVELS);
-        let size = texel * exp2(level);
+        var level: f32;
+        var next: f32;
+        if view.sky_march[0].z > 0.5 {
+            r = view.sky_march[i].x;
+            level = view.sky_march[i].y;
+            next = SKY_MARCH_FAR + 1.0;
+            if i + 1u < SKY_MARCH_STEPS {
+                next = view.sky_march[i + 1u].x;
+            }
+        } else {
+            level = clamp(round(log2(max(0.2 * r / texel, 1.0))), 0.0, SKY_LEVELS);
+            next = r + texel * exp2(level) * 1.6;
+        }
         let h = sky_height_lod(xy + dir * r, layer, u32(level));
         horizon = max(horizon, (h - z) / r);
-        r += size * 1.6;
+        r = next;
         if r > SKY_MARCH_FAR {
             break;
         }
@@ -932,6 +943,15 @@ fn fs_mesh(in: VsOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f
         return vec4<f32>(rgb * a, 0.0);
     }
     return vec4<f32>(rgb, a);
+}
+
+@fragment
+fn fs_depth(in: VsOut) -> @location(0) vec4<f32> {
+    fog_far_clip(in.world);
+    if in.fade < 1.0 && in.fade < bayer4(in.clip.xy) {
+        discard;
+    }
+    return vec4<f32>(0.0);
 }
 
 @fragment

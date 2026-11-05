@@ -17,6 +17,8 @@ hammerpro --import-models FICHIER_OU_DOSSIER... --out DOSSIER [options]
 
 `--mcp`, `--bspc`, `--rad`, `--import-models` et `--light-preview` doivent être le **premier** argument : ils lancent un mode sans fenêtre. Tous les autres arguments concernent l'éditeur et peuvent venir dans n'importe quel ordre.
 
+`--no-save-settings` charge les paramètres habituels mais conserve les changements de préférences en mémoire pour cette session. L'édition, l'annulation et l'enregistrement des maps restent disponibles. Cette option permet de tester temporairement l'échelle de l'interface ou les réglages du rendu.
+
 ## Arguments de l'éditeur
 
 | Argument | Effet | Par défaut |

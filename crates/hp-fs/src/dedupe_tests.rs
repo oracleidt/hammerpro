@@ -55,6 +55,24 @@ fn spellings_of_a_missing_path_collapse_too() {
     assert_eq!(dedupe_items(items).len(), 1);
 }
 
+#[cfg(windows)]
+#[test]
+fn missing_paths_under_a_canonical_ancestor_share_the_same_identity() {
+    let tmp = TempDir::new("dedupe-missing-alias");
+    let logical = tmp.path().join("missing").join("materials");
+    let physical = std::fs::canonicalize(tmp.path()).unwrap().join("missing").join("materials");
+    let dotted = tmp.path().join("missing").join("unused").join("..").join("materials");
+    let extended = PathBuf::from(format!("\\\\?\\{}", dotted.display()));
+    let items = vec![
+        dir_item(&logical, "logical", SourceOrigin::Extra),
+        dir_item(&physical, "physical", SourceOrigin::Extra),
+        dir_item(&extended, "extended", SourceOrigin::Extra),
+    ];
+    let out = dedupe_items(items);
+    assert_eq!(out.len(), 1, "{:?}", out.iter().map(|item| &item.path).collect::<Vec<_>>());
+    assert_eq!(out[0].label, "logical");
+}
+
 #[test]
 fn different_kinds_and_folders_are_kept() {
     let tmp = TempDir::new("dedupe-kinds");

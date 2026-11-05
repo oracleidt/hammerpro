@@ -26,15 +26,15 @@ Appuyez sur `Alt+5` (**Affichage > Mode de rendu 3D > Aperçu de l'éclairage**)
 Pour le vrai rendu de la map compilée (lumière rebondie, lightmaps, props éclairés comme en jeu) :
 
 1. Appuyez sur `Ctrl+F5` (**Affichage > Mode de rendu 3D > Aperçu de l'éclairage précalculé**).
-2. Lancez le précalcul : **Map > Éclairage > Précalculer l'éclairage** (toute la map) ou **Map > Éclairage > Précalculer autour de la caméra** (seulement ce qui se trouve dans le **Rayon autour de la caméra**, plus rapide sur les grandes maps). **Map > Éclairage > Arrêter le précalcul** l'arrête.
+2. Lancez le précalcul : **Map > Éclairage > Précalculer l'éclairage** calcule toujours toute la carte et conserve cette portée pendant la navigation. **Map > Éclairage > Précalculer autour de la caméra** calcule seulement une région fixe dans le **Rayon autour de la caméra** à sa position de départ. **Map > Éclairage > Arrêter le précalcul** l'arrête.
 3. Ouvrez l'onglet **Éclairage** (**Affichage > Panneaux > Éclairage**) pour régler l'aperçu :
    - **Qualité** : **Brouillon** (mêmes niveaux de lumière, ombres plus bruitées), **Normal**, **Finale** (la plus lente).
    - **Lumière rebondie** : la lumière renvoyée par les surfaces (précalculs plus lents).
-   - **Mises à jour dynamiques** avec un **Délai de mise à jour** : relance le précalcul tout seul quand vous arrêtez de modifier.
+   - **Mises à jour dynamiques** avec un **Délai de mise à jour** : relance le précalcul quand les modifications affectant l'éclairage s'arrêtent.
    - **Budget des lightmaps** : la taille estimée des lightmaps face aux 2 Go qu'une face peut y adresser, avec les faces les plus coûteuses.
-4. L'aperçu suit la plage dynamique des réglages de compilation (LDR ou HDR).
+4. Attendez les passes rapide et affinée, puis naviguez avec le résultat calculé. Les déplacements de caméra et la sélection n'invalident pas un précalcul global. L'aperçu suit la plage dynamique des réglages de compilation (LDR ou HDR).
 
-Les fils de calcul et le budget de luxels de l'aperçu se règlent dans la page **Éclairage** des paramètres. Détails : [Aperçu de l'éclairage](../features/lighting-preview.md).
+Les fils de calcul et le budget de luxels de l'aperçu se règlent dans la page **Éclairage** des paramètres. L'activation automatique utilise toute la carte par défaut. **Précalculer autour de la caméra sur les grandes cartes** est un mode régional optionnel pour l'activation automatique dont la région suit la caméra ; les choix existants enregistrés sont conservés. La luminosité de l'aperçu, la correction colorimétrique et le délai de mise à jour ne relancent pas le calcul d'éclairage. Détails : [Aperçu de l'éclairage](../features/lighting-preview.md).
 
 ## Étape 4 : échelle de lightmap
 

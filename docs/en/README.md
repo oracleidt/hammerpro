@@ -2,7 +2,7 @@
 
 # Hammer Pro documentation
 
-Welcome to the knowledge base of Hammer Pro 1.1.0, the level editor for Source engine maps built for Garry's Mod first. Every feature has its own page: what it is, how to open it, every option with its default, tips and a short FAQ. Pages link to each other, so start anywhere.
+Welcome to the knowledge base of Hammer Pro 1.1.1, the level editor for Source engine maps built for Garry's Mod first. Every feature has its own page: what it is, how to open it, every option with its default, tips and a short FAQ. Pages link to each other, so start anywhere.
 
 New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game setup](getting-started/game-setup.md) and [Your first map](getting-started/first-map.md), in that order.
 
@@ -84,7 +84,7 @@ New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game s
 | [Sound browser](features/sound-browser.md) | Game sounds, soundscripts and the sound picker. |
 | [Sound editor](features/sound-editor.md) | Trim, gain, loop markers and WAV output for any game sound. |
 | [Color correction](features/color-correction.md) | Color lookup table editor (.raw) and 3D preview of color_correction entities. |
-| [Particles](features/particles.md) | Particle browser and particle preview in the views. |
+| [Particles](features/particles.md) | PCF system editor, operator library, live preview, browser and addon export. |
 
 ### Views and rendering
 

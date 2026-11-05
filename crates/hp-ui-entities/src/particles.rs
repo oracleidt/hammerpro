@@ -415,6 +415,12 @@ impl ParticleBrowser {
             {
                 ui.ctx().copy_text(s.clone());
             }
+            if ui.add_enabled(sel.is_some(), egui::Button::new(t!("entities.pb_edit"))).clicked()
+                && let Some(name) = &sel
+            {
+                state.runtime.lab.particle_preview.selected = Some(name.clone());
+                state.request(hp_app::Action::ParticleEditor);
+            }
         });
         if state.assets.fs().is_none() {
             ui.label(RichText::new(t!("entities.sb_no_content")).color(theme::warning()).small());

@@ -19,7 +19,9 @@ Choose the mode in **View > 3D render mode**, with the render mode list of the t
 | **Smoothing groups** | `Alt+7` | Faces colored by smoothing group. |
 | **Lightmap grid** | `Alt+8` | Hammer's 3D lightmap grid: the luxel grid of every lightmapped face (cells as wide as its lightmap scale, displacements included), grey at 16, red when finer, green when coarser; no bake needed. Faces without a lightmap keep their texture. |
 | **3D Color Correction** | `Alt+9` | The textured view with the `color_correction` entities applied: their lookup tables blend by the distance of the 3D camera (full weight inside `minfalloff`, none past `maxfalloff`, times `maxweight`), so you see the grade of the game without turning on the separate color correction preview setting (see [Color correction](color-correction.md)). Same as the **3D color correction preview** setting, only tied to the mode. |
-| **Baked lighting preview** | `Ctrl+F5` | The lighting the game will have, computed by the built-in compiler (see [Lighting preview](lighting-preview.md)). |
+| **Baked lighting preview** | `Ctrl+F5` | Lighting computed by the built-in compiler, then reused while navigating (see [Lighting preview](lighting-preview.md)). |
+
+The render mode menu in the corner of the 3D view uses the same names. **Lighting preview** keeps direct lighting in real time. **Baked lighting preview** starts a whole-map calculation by default; wait for its quick and refined passes. **Map > Lighting > Bake lighting** always calculates the whole map without camera tracking. The optional regional setting is off by default and affects automatic activation only; when enabled, its region follows the camera and can trigger another bake.
 
 **View > View type** also has **3D textured view** (`F5`) and **3D flat view** (`Shift+F5`). The mode is remembered between sessions (`view.render_mode`).
 
@@ -166,7 +168,7 @@ The images are stored in the map (`bgimages_plus` block of the VMF), so they tra
 | --- | --- | --- |
 | **Frame rate limit** (`render.max_fps`) | Most frames per second (0: no limit; with vertical sync the display limits it). | 0 |
 | **In the background** (`render.unfocused_fps`) | Limit while the window is not active (0: no limit). | 30 |
-| **Vertical sync** (`render.vsync`) | Waits for the screen refresh (applies after a restart). | On |
+| **Vertical sync** (`render.vsync`) | Waits for the screen refresh (applies immediately). | On |
 
 ## Other Rendering settings
 

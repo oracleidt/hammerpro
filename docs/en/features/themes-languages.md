@@ -4,6 +4,10 @@
 
 Hammer Pro has a dark theme and a light one, an optional accent color, an interface scale, an optional background image over the window, and its whole interface in English and French, switchable at any time without a restart.
 
+## Interface icons
+
+Hammer Pro embeds a uniform set of outline icons for its toolbars, tools, dialogs and status indicators. The icons keep their proportions and spacing at every interface scale, independently of the installed Windows symbol fonts. Text continues to use the normal interface font. The bundled icon subset derives from [Microsoft Fluent UI System Icons](https://github.com/microsoft/fluentui-system-icons); its MIT license is included in the font and in `assets/fonts/LICENSE.txt`.
+
 ## Opening it
 
 Everything on this page is in **Settings > General** (**Tools > Options...**, `Ctrl+,`), sections **Appearance** and **Background image**. The language is also in **View > Language** and the command palette.

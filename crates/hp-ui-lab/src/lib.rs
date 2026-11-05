@@ -7,6 +7,7 @@ pub mod logic;
 pub mod media;
 pub mod nav;
 pub mod nav_gen;
+pub mod particle_editor;
 pub mod particle_preview;
 pub mod particles;
 pub mod sniffer;
@@ -27,4 +28,5 @@ pub fn register_translations() {
     hp_app::i18n::register(SOUND_TR);
     hp_app::i18n::register(COLOR_TR);
     hp_app::i18n::register(particle_preview::TR);
+    hp_app::i18n::register(particle_editor::TR);
 }

@@ -489,6 +489,9 @@ impl ParticlePreviewWindow {
             {
                 ui.ctx().copy_text(s.clone());
             }
+            if ui.add_enabled(selected.is_some(), egui::Button::new(t!("pe.edit_file"))).clicked() {
+                state.request(hp_app::Action::ParticleEditor);
+            }
         });
         if state.assets.fs().is_none() {
             ui.label(RichText::new(t!("entities.sb_no_content")).color(hp_app::theme::warning()).small());

@@ -101,7 +101,9 @@ fn lexical_clean(path: &Path) -> PathBuf {
         match c {
             Component::CurDir => {}
             Component::ParentDir => {
-                if !out.pop() {
+                if matches!(out.components().next_back(), Some(Component::Normal(_))) {
+                    out.pop();
+                } else if !out.has_root() {
                     out.push("..");
                 }
             }
@@ -111,15 +113,67 @@ fn lexical_clean(path: &Path) -> PathBuf {
     out
 }
 
-pub(crate) fn path_key(path: &Path) -> String {
-    let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| {
-        let absolute = if path.is_absolute() {
-            path.to_path_buf()
-        } else {
-            std::env::current_dir().map_or_else(|_| path.to_path_buf(), |cwd| cwd.join(path))
-        };
-        lexical_clean(&absolute)
+#[cfg(windows)]
+fn ordinary_windows_path(path: &Path) -> PathBuf {
+    use std::ffi::OsString;
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+
+    let wide: Vec<u16> = path.as_os_str().encode_wide().collect();
+    let slash = u16::from(b'\\');
+    if !wide.starts_with(&[slash, slash, u16::from(b'?'), slash]) {
+        return path.to_path_buf();
+    }
+    let tail = &wide[4..];
+    let unc = tail.get(..4).is_some_and(|prefix| {
+        prefix.iter().zip(b"UNC\\").all(|(a, b)| *a == u16::from(*b) || *a == u16::from(b.to_ascii_lowercase()))
     });
+    if unc {
+        let mut normal = vec![slash, slash];
+        normal.extend_from_slice(&tail[4..]);
+        PathBuf::from(OsString::from_wide(&normal))
+    } else if tail.len() >= 3
+        && u8::try_from(tail[0]).is_ok_and(|drive| drive.is_ascii_alphabetic())
+        && tail[1] == u16::from(b':')
+        && (tail[2] == slash || tail[2] == u16::from(b'/'))
+    {
+        PathBuf::from(OsString::from_wide(tail))
+    } else {
+        path.to_path_buf()
+    }
+}
+
+fn canonical_input(path: &Path) -> PathBuf {
+    #[cfg(windows)]
+    let path = ordinary_windows_path(path);
+    #[cfg(not(windows))]
+    let path = path.to_path_buf();
+    let absolute = std::path::absolute(&path).unwrap_or(path);
+    #[cfg(windows)]
+    let absolute = lexical_clean(&absolute);
+    absolute
+}
+
+fn canonical_existing_ancestor(path: &Path) -> PathBuf {
+    let clean = lexical_clean(path);
+    let mut probe = clean.as_path();
+    let mut missing = Vec::new();
+    loop {
+        if let Ok(mut found) = std::fs::canonicalize(probe) {
+            for part in missing.iter().rev() {
+                found.push(part);
+            }
+            return found;
+        }
+        let Some(name) = probe.file_name() else { return clean };
+        missing.push(name.to_os_string());
+        let Some(parent) = probe.parent() else { return clean };
+        probe = parent;
+    }
+}
+
+pub(crate) fn path_key(path: &Path) -> String {
+    let input = canonical_input(path);
+    let canonical = std::fs::canonicalize(&input).unwrap_or_else(|_| canonical_existing_ancestor(&input));
     let mut key = canonical.to_string_lossy().replace('\\', "/");
     if cfg!(windows) {
         key.make_ascii_lowercase();
@@ -202,6 +256,17 @@ pub fn detect_workshop_dir(gmod_root: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn extended_paths_are_normalized_before_canonicalization() {
+        assert_eq!(canonical_input(Path::new(r"\\?\C:\root/folder/../assets/.")), PathBuf::from(r"C:\root\assets"));
+        assert_eq!(
+            canonical_input(Path::new(r"\\?\UnC\server\share\folder\..\assets\.")),
+            PathBuf::from(r"\\server\share\assets")
+        );
+        assert_eq!(canonical_input(Path::new(r"\\?\C:\..\assets")), PathBuf::from(r"C:\assets"));
+    }
 
     #[test]
     fn library_folders_current_and_old_format() {

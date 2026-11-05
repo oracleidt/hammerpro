@@ -160,6 +160,9 @@ impl SelectTool {
             return false;
         };
         for (key, kind) in MODAL_KEYS {
+            if kind != ModalKind::Move && !super::element::picked_points(state).is_empty() {
+                continue;
+            }
             if key == Key::E && !state.doc.selection().faces.is_empty() {
                 continue;
             }
@@ -193,6 +196,9 @@ impl SelectTool {
             }
         }
         for (key, kind) in MODAL_KEYS {
+            if kind != ModalKind::Move && self.drag.as_ref().is_some_and(|d| d.elements) {
+                continue;
+            }
             while take_plain_key(ctx, key, false) {
                 if let Some(Drag { op: DragOp::Modal(m), last_pos, .. }) = self.drag.as_mut()
                     && m.kind != kind
@@ -241,7 +247,7 @@ impl SelectTool {
         let frame = state.edit_grid_frame(kind);
         let steps = DVec3::new(frame.step_along(0), frame.step_along(1), frame.step_along(2));
         let grid_step = |k: super::NudgeKey| nudge_delta(k, view, 1.0) * steps;
-        let clones = state.settings.selection.shift_arrow_clones;
+        let clones = state.settings.selection.shift_arrow_clones && super::element::picked_points(state).is_empty();
         let (mut delta, mut clone_delta) = (DVec3::ZERO, DVec3::ZERO);
         for (k, m) in keys {
             match m {

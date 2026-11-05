@@ -78,6 +78,39 @@ enum Insert {
 }
 
 impl GameFs {
+    pub fn from_source_mounts(
+        root: Option<PathBuf>,
+        game_dir: Option<PathBuf>,
+        mounts: &[crate::SourceMount],
+    ) -> Result<Self, FsError> {
+        let fs = Self::with_dirs(root, game_dir);
+        let mut opened = Vec::with_capacity(mounts.len());
+        for mount in mounts {
+            let kind = match &mount.kind {
+                crate::SourceMountKind::Dir => PlanKind::GameDir,
+                crate::SourceMountKind::Vpk => PlanKind::Vpk,
+                crate::SourceMountKind::Gma => PlanKind::Gma { label_prefix: "Addon" },
+                crate::SourceMountKind::Custom { prefix } => PlanKind::Custom(CustomDir {
+                    path: mount.path.clone(),
+                    prefix: prefix.clone(),
+                    enabled: mount.enabled,
+                }),
+            };
+            let item = PlanItem {
+                kind,
+                path: mount.path.clone(),
+                label: mount.label.clone(),
+                origin: mount.origin,
+                enabled: mount.enabled,
+            };
+            let mut source = open_item(item)?;
+            source.label = mount.label.clone();
+            opened.push(source);
+        }
+        *fs.inner.sources.write() = opened.into_iter().map(|source| Arc::new(fs.make_source(source))).collect();
+        Ok(fs)
+    }
+
     pub fn empty() -> Self {
         Self::with_dirs(None, None)
     }
@@ -511,6 +544,37 @@ mod tests {
         tmp.write("gmod/sourceengine/materials/shared/wall.vmt", b"base");
         tmp.write("gmod/sourceengine/materials/base/b.vmt", b"base b");
         tmp.path().join("gmod")
+    }
+
+    #[test]
+    fn mount_snapshot_preserves_priority_custom_prefixes_and_disabled_sources() {
+        let tmp = TempDir::new("fs-snapshot");
+        let root = fake_gmod(&tmp);
+        let custom = tmp.mkdir("art");
+        tmp.write("art/pixel.png", &png(2, 2, [7, 11, 13, 255]));
+        let fs = GameFs::for_gmod(
+            &root,
+            &MountOptions {
+                mount_workshop: false,
+                custom_dirs: vec![CustomDir::with_prefix(&custom, "testprefix")],
+                ..Default::default()
+            },
+        )
+        .expect("mount");
+        let addon = fs.sources().iter().find(|s| s.origin == SourceOrigin::Addon).expect("addon").id;
+        fs.set_source_enabled(addon, false);
+        let mounts: Vec<_> = fs.sources().iter().map(SourceInfo::mount).collect();
+        let restored =
+            GameFs::from_source_mounts(fs.root().map(Path::to_path_buf), fs.game_dir().map(Path::to_path_buf), &mounts)
+                .expect("restore");
+        assert_eq!(restored.root(), fs.root());
+        assert_eq!(restored.game_dir(), fs.game_dir());
+        assert_eq!(restored.sources().iter().map(SourceInfo::mount).collect::<Vec<_>>(), mounts);
+        for path in
+            ["materials/shared/wall.vmt", "models/a.mdl", "materials/custom/testprefix/pixel.vmt", "sound/x/beep.wav"]
+        {
+            assert_eq!(restored.read(path), fs.read(path), "{path}");
+        }
     }
 
     #[test]

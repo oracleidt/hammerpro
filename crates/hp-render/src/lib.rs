@@ -99,6 +99,7 @@ struct ModelGpu {
     ibuf: wgpu::Buffer,
     parts: Vec<ModelPartGpu>,
     lod_parts: Vec<ModelPartGpu>,
+    lod_ranges: Vec<(f32, f32)>,
     edges: Option<(wgpu::Buffer, u32)>,
     collision: Option<(wgpu::Buffer, u32)>,
     collision_hull: Option<(wgpu::Buffer, u32)>,
@@ -121,6 +122,7 @@ struct Group {
     start: u32,
     count: u32,
     hull: u32,
+    lod: Option<u32>,
 }
 
 struct RetainedGpu {
@@ -314,6 +316,7 @@ pub struct Renderer {
     profiler: Option<profile::GpuProfiler>,
     frame_cpu: profile::CpuTimes,
     reflection_cpu_ms: f32,
+    reflection_active: bool,
     reflecting: Option<reflection::Reflecting>,
     water_reflect: Option<(Mat4, wgpu::TextureView)>,
     local_shadows: local_shadow::LocalShadows,
@@ -975,6 +978,7 @@ impl Renderer {
             profiler: profile::GpuProfiler::new(&device, &queue),
             frame_cpu: profile::CpuTimes::default(),
             reflection_cpu_ms: 0.0,
+            reflection_active: false,
             reflecting: None,
             water_reflect: None,
             local_shadows: local_shadow::LocalShadows::new(&device),
@@ -1586,6 +1590,7 @@ impl Renderer {
             ibuf,
             parts: if failed { Vec::new() } else { out_parts },
             lod_parts: if failed { Vec::new() } else { lod_parts },
+            lod_ranges: ranges,
             edges: if failed { None } else { edges },
             collision: None,
             collision_hull: None,
@@ -1825,7 +1830,7 @@ impl Renderer {
                     g.count += 1;
                     g.hull += h;
                 }
-                _ => groups.push(Group { key: inst.model.0, start: n - 1, count: 1, hull: h }),
+                _ => groups.push(Group { key: inst.model.0, start: n - 1, count: 1, hull: h, lod: None }),
             }
         }
         for id in std::mem::replace(&mut self.instance_refs, refs) {
@@ -1885,7 +1890,7 @@ impl Renderer {
             let n = data.len() as u32;
             match groups.last_mut() {
                 Some(g) if g.key == mat => g.count += 1,
-                _ => groups.push(Group { key: mat, start: n - 1, count: 1, hull: 0 }),
+                _ => groups.push(Group { key: mat, start: n - 1, count: 1, hull: 0, lod: None }),
             }
         }
         (data, refs, groups)
@@ -2303,6 +2308,7 @@ impl Renderer {
             sky_paint: o.sky_paint,
             indirect_a: [0.0; 4],
             indirect_b: [1.0, 1.0, 1.0, 0.0],
+            sky_march: [[0.0; 4]; 18],
         }
     }
 
@@ -2395,6 +2401,10 @@ impl Renderer {
         let opts = self.view_options(view_id);
         let reflecting = self.reflecting;
         let mut cam = Camera::new(&params);
+        if reflecting.is_none() && !cam.is_ortho {
+            self.reflection_cpu_ms = 0.0;
+            self.reflection_active = false;
+        }
         if let Some(r) = &reflecting {
             cam = cam.clipped_by(r.plane);
         }
@@ -2416,6 +2426,9 @@ impl Renderer {
         } else {
             None
         };
+        if reflecting.is_none() && !cam.is_ortho {
+            self.reflection_active = reflect.is_some();
+        }
         self.water_reflect = reflect;
         let _ = lap.take();
         let fit_cam = reflecting.map_or(cam, |r| r.main_cam);
@@ -2440,6 +2453,9 @@ impl Renderer {
         if let Some((fit, _)) = &sky_map {
             (uniform.sky_vis_a, uniform.sky_vis_b) = fit.params();
             uniform.sky_vis_b[3] = self.layer_count(shadow::Layers::Sky) as f32;
+            if !profile::baseline("skymarch") {
+                uniform.sky_march = sky_layers::march_steps(uniform.sky_vis_b[2]);
+            }
         }
         (uniform.indirect_a, uniform.indirect_b) = self.indirect_uniform(lit && opts.indirect_light);
         let shaded_3d = !cam.is_ortho && params.mode != RenderMode::Wireframe;
@@ -2504,7 +2520,7 @@ impl Renderer {
         let mut hooks = std::mem::take(&mut self.hooks);
         let mut animated = false;
         let packed = if shaded_3d && params.show_models && !self.probing {
-            self.pack_visible(&cam.planes[..cam.plane_count])
+            self.pack_view_instances(&cam, opts.model_lods)
         } else {
             None
         };
@@ -3123,7 +3139,11 @@ impl Renderer {
         profile::FrameTimes {
             cpu: self.frame_cpu,
             gpu: self.profiler.as_ref().and_then(|p| p.latest),
-            reflection_gpu_ms: self.profiler.as_ref().map_or(0.0, |p| p.latest_reflection),
+            reflection_gpu_ms: if self.reflection_active {
+                self.profiler.as_ref().map_or(0.0, |p| p.latest_reflection)
+            } else {
+                0.0
+            },
             reflection_cpu_ms: self.reflection_cpu_ms,
             gpu_supported: self.profiler.is_some(),
         }
@@ -3732,6 +3752,8 @@ impl DrawCtx<'_> {
             if pipe != Some((d.pass, d.two_sided)) {
                 let p = if faded {
                     &self.ps.chunk_faded[usize::from(d.pass == MeshPass::AlphaTest)][usize::from(d.two_sided)]
+                } else if d.pass == MeshPass::Opaque && self.depth_prepass() {
+                    &self.ps.chunk_equal[usize::from(d.two_sided)]
                 } else {
                     &self.ps.chunk[d.pass as usize][usize::from(d.two_sided)]
                 };
@@ -3889,6 +3911,9 @@ impl DrawCtx<'_> {
             let Some(model) = r.models.get(&g.key) else { continue };
             let mut bound_model = false;
             for part in model.parts.iter().chain(&model.lod_parts) {
+                if g.lod.is_some_and(|lod| lod != part.lod) {
+                    continue;
+                }
                 let desc = r.scene.materials.get(part.material as usize).and_then(|m| m.desc);
                 let Some((p, two)) = classify_with(desc.as_ref(), self.opts.force_opaque, false) else { continue };
                 if !wanted.contains(&p) {
@@ -3918,7 +3943,7 @@ impl DrawCtx<'_> {
                     n.material();
                 }
                 pass.draw_indexed(part.first..part.first + part.count, 0, g.start..g.start + g.count);
-                if part.lod == 0 {
+                if g.lod.is_some() || part.lod == 0 {
                     n.model(u64::from(part.count / 3) * u64::from(g.count), g.count);
                 }
             }
@@ -4152,7 +4177,12 @@ impl DrawCtx<'_> {
         let mut mat = u32::MAX;
         for (i, d) in list.iter().enumerate() {
             if pipe != Some((d.pass, d.two_sided)) {
-                pass.set_pipeline(&self.ps.chunk[d.pass as usize][usize::from(d.two_sided)]);
+                let pipeline = if d.pass == MeshPass::Opaque && self.depth_prepass() {
+                    &self.ps.chunk_equal[usize::from(d.two_sided)]
+                } else {
+                    &self.ps.chunk[d.pass as usize][usize::from(d.two_sided)]
+                };
+                pass.set_pipeline(pipeline);
                 pipe = Some((d.pass, d.two_sided));
             }
             if mat != d.material {

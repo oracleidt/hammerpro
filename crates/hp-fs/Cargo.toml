@@ -20,6 +20,7 @@ parking_lot.workspace = true
 ahash.workspace = true
 image.workspace = true
 log.workspace = true
+serde.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = [

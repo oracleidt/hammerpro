@@ -16,6 +16,16 @@ pub(crate) enum Picked {
     Vertex(Id, DVec3),
 }
 
+pub(crate) fn is_selected(state: &AppState, picked: Picked) -> bool {
+    let rev = state.doc.revision();
+    let sel = &state.runtime.selection;
+    match picked {
+        Picked::Face(face) => state.doc.selection().contains_face(face),
+        Picked::Edge(edge) => sel.fresh_edges(rev).iter().any(|e| e.same_edge(&edge)),
+        Picked::Vertex(id, p) => sel.fresh_vertices(rev).iter().any(|(i, q)| *i == id && q.distance(p) < 1e-3),
+    }
+}
+
 fn segment_px(p: Pos2, a: Pos2, b: Pos2) -> f32 {
     let ab = b - a;
     let len2 = ab.length_sq();

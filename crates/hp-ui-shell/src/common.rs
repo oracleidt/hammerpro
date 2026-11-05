@@ -62,7 +62,7 @@ pub fn category_label(cat: hp_app::actions::Category) -> &'static str {
     t!(cat.label_key())
 }
 
-pub const CATEGORIES: [hp_app::actions::Category; 7] = hp_app::actions::Category::ALL;
+pub const CATEGORIES: [hp_app::actions::Category; 8] = hp_app::actions::Category::ALL;
 
 pub fn weak(ui: &Ui) -> Color32 {
     ui.visuals().weak_text_color()

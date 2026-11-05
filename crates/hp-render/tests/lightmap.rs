@@ -201,6 +201,75 @@ fn baked_faces_draw_over_the_world() {
 }
 
 #[test]
+fn baked_faces_survive_display_remeshing_with_tracking_disabled() {
+    let Some((device, queue)) = gpu() else {
+        eprintln!("no GPU adapter: test skipped");
+        return;
+    };
+    let mut r = Renderer::new(&device, &queue);
+    r.set_material(MAT, &MaterialDesc { texture: None, tint: [1.0; 4], ..Default::default() });
+    r.upsert_object(FLOOR, floor_mesh());
+    r.add_lightmap_faces(&[(
+        0,
+        LightmapFace { object: FLOOR, generation: r.lightmap_generation(FLOOR), scale: 16.0, flags: 0 },
+    )]);
+    let vertices = floor_lm(0);
+    r.add_lightmap_block(1, &[LightmapBatch { material: MAT, vertices: &vertices, indices: &[0, 1, 2, 0, 2, 3] }]);
+    assert!(r.ensure_lightmap_layers(64, 1));
+    r.write_lightmap(
+        0,
+        LightmapRect { layer: 0, x: 0, y: 0, w: 33, h: 33, density: 1.0, bumped: false },
+        &[texel(1.0, 0.0, 0.0); 33 * 33],
+    );
+    r.set_lightmap_display(LightmapDisplay::Baked, 1.0);
+    r.render_view(0, &params(RenderMode::Lit), &Overlay::default());
+    let before = r.read_view_rgba8(0).expect("baked image");
+    assert!(pixel(&r, 32, 64)[0] > 200);
+
+    r.set_lightmap_display(LightmapDisplay::Off, 1.0);
+    r.set_lightmap_tracking(false);
+    let mut remeshed = floor_mesh();
+    remeshed.wire_color = [17, 18, 19];
+    r.upsert_object(FLOOR, remeshed);
+    assert_eq!(r.lightmap_stats().valid_faces, 0);
+    r.set_lightmap_tracking(false);
+    assert_eq!(r.take_lightmap_changes(), vec![FLOOR]);
+    let generation = r.lightmap_generation(FLOOR);
+    r.revalidate_lightmap_objects(&[(FLOOR, generation)]);
+    assert_eq!(r.lightmap_stats().valid_faces, 1);
+    r.set_lightmap_display(LightmapDisplay::Baked, 1.0);
+    r.render_view(0, &params(RenderMode::Lit), &Overlay::default());
+    assert_eq!(r.read_view_rgba8(0).expect("restored image"), before);
+
+    let mut changed = floor_mesh();
+    for batch in &mut changed.batches {
+        for vertex in &mut batch.vertices {
+            vertex.pos[2] += 64.0;
+        }
+    }
+    changed.aabb_min[2] += 64.0;
+    changed.aabb_max[2] += 64.0;
+    r.upsert_object(FLOOR, changed);
+    assert_eq!(r.take_lightmap_changes(), vec![FLOOR]);
+    r.revalidate_lightmap_objects(&[(FLOOR, generation)]);
+    assert_eq!(r.lightmap_stats().valid_faces, 0);
+    r.render_view(0, &params(RenderMode::Lit), &Overlay::default());
+    assert_ne!(r.read_view_rgba8(0).expect("changed geometry"), before);
+
+    r.remove_lightmap_faces(&[0]);
+    r.revalidate_lightmap_objects(&[(FLOOR, r.lightmap_generation(FLOOR))]);
+    assert_eq!(r.lightmap_stats().valid_faces, 0);
+    r.add_lightmap_faces(&[(
+        1,
+        LightmapFace { object: FLOOR, generation: r.lightmap_generation(FLOOR), scale: 16.0, flags: 0 },
+    )]);
+    r.upsert_object(FLOOR, floor_mesh());
+    r.revalidate_lightmap_objects(&[(FLOOR, r.lightmap_generation(FLOOR))]);
+    let stats = r.lightmap_stats();
+    assert_eq!((stats.faces, stats.valid_faces, stats.baked_faces), (1, 0, 0));
+}
+
+#[test]
 fn the_baked_view_draws_the_lightmaps_without_real_time_light() {
     let Some((device, queue)) = gpu() else {
         eprintln!("no GPU adapter: test skipped");

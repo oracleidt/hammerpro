@@ -17,6 +17,8 @@ hammerpro --import-models FILE_OR_DIR... --out DIR [options]
 
 `--mcp`, `--bspc`, `--rad`, `--import-models` and `--light-preview` must be the **first** argument: they start a mode without any window. Every other argument belongs to the editor and can come in any order.
 
+`--no-save-settings` loads the usual settings but keeps preference changes in memory for this session. It leaves normal editing, undo and map saving available. This is useful for a temporary test of interface scale or rendering options.
+
 ## Editor arguments
 
 | Argument | What it does | Default |

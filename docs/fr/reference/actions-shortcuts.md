@@ -2,7 +2,7 @@
 
 # Actions et raccourcis clavier
 
-Chaque commande de Hammer Pro 1.1.0 est une *action* : une seule entrée partagée par les menus, la barre d'outils, les raccourcis clavier, la palette de commandes (`Ctrl+P`), les fichiers `--script` et le serveur MCP (`run_action`, `list_actions`). Cette page liste les 340 actions, menu par menu, dans l'ordre où les menus les affichent.
+Chaque commande de Hammer Pro 1.1.1 est une *action* : une seule entrée partagée par les menus, la barre d'outils, les raccourcis clavier, la palette de commandes (`Ctrl+P`), les fichiers `--script` et le serveur MCP (`run_action`, `list_actions`). Cette page liste les 345 actions, menu par menu, dans l'ordre où les menus les affichent.
 
 Colonnes :
 
@@ -216,7 +216,7 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Centrer les vues 2D sur la sélection | `center_2d` | `Ctrl+E` |  |  |
 | Centrer la vue 3D sur la sélection | `center_3d` | `Ctrl+Maj+E` |  |  |
 | Agrandir la vue | `maximize_view` | `Maj+Z` |  |  |
-| Plein écran | `toggle_fullscreen` | `F11` |  |  |
+| Agrandir la fenêtre | `toggle_fullscreen` | `F11` |  |  |
 | Zoom avant des vues 2D | `zoom_2d_in` | `+` |  |  |
 | Zoom arrière des vues 2D | `zoom_2d_out` | `-` |  |  |
 | Réinitialiser le partage des vues | `reset_view_splits` |  | `Ctrl+A` | `Ctrl+A` |
@@ -390,11 +390,20 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Aide de l'entité | `entity_help` |  |  |  |
 | À propos de Hammer Pro | `about` |  |  |  |
 
+## Menu Autres
+
+| Action | Raccourci | Rôle |
+|---|---|---|
+| `particle_editor` | Aucun | Ouvre l'éditeur PCF intégré et sélectionne l'effet de l'entité sélectionnée si son fichier peut être chargé sans abandonner les modifications en cours. |
+
+Voir [Particules](../features/particles.md).
+
 ## Palette de commandes uniquement
 
 | Commande | Id | Par défaut | Hammer | Hammer++ |
 |---|---|---|---|---|
 | Gizmo en repère local | `toggle_gizmo_local` | `Ctrl+J` |  |  |
+| Installer la mise à jour disponible | `install_update` |  |  |  |
 | Créer un brush hint | `make_hint_brush` |  |  |  |
 | Mode caméra : appliquer la texture à la face visée | `fly_apply_texture` | `T` |  |  |
 | Mode caméra : appliquer la texture à tout le brush visé | `fly_apply_texture_brush` | `F` |  |  |

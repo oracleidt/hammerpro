@@ -44,6 +44,10 @@ pub fn channel(i: usize) -> Color32 {
     }
 }
 
+pub fn particle_gradient(c: [u8; 4]) -> egui::Color32 {
+    egui::Color32::from_rgba_unmultiplied(c[0], c[1], c[2], c[3])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

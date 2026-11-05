@@ -20,9 +20,11 @@ A maximized window has square corners and no shadow. When the graphics card cann
 
 **Settings > General > Native window frames** uses the title bars and frames of the system instead of Hammer Pro's, for remote desktop or window managers that have trouble with them. It applies at once, both ways, to the main window and to the separate windows. Key `ui.native_frames`, off by default.
 
-## Full screen
+## Maximized startup and restore
 
-Hammer Pro starts in borderless full screen on the primary monitor, with its own title bar and buttons kept. `F11` (**View > Full screen**) switches full screen on and off at any time. **Settings > General > Start in full screen** (key `ui.start_fullscreen`, on by default) turns the start in full screen off; it applies at the next start.
+Hammer Pro starts maximized in the Windows work area. The taskbar remains accessible, and the minimize, maximize/restore and close buttons stay visible. `F11` (**View > Maximize window**) switches between maximized and restored, restoring the previous window position and size. This is normal window maximization within the work area.
+
+**Settings > General > Start maximized** is on by default and applies at the next start. Its historical configuration key remains `ui.start_fullscreen`, and the action identifier remains `toggle_fullscreen` for compatibility; both now control maximization and restore. Fresh runtime verification of the work-area bounds and restore behavior is pending.
 
 ## Separate windows
 

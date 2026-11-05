@@ -245,6 +245,19 @@ fn water_refracts_fogs_and_reflects() {
     assert!(reds > 5, "the wall is reflected under itself: {reds} red rows");
     let counts = r.view_counts(2).expect("counts");
     assert!(counts.draw_calls > 0);
+    assert!(r.frame_times().reflection_cpu_ms > 0.0, "visible water renders its reflection");
+    r.set_object_flags(1, ObjectFlags::HIDDEN);
+    r.render_view(2, &grazing, &Overlay::default());
+    assert_eq!(r.frame_times().reflection_cpu_ms, 0.0, "hidden water renders no reflection");
+    assert_eq!(
+        r.frame_times().reflection_gpu_ms,
+        0.0,
+        "a previous GPU sample is not reported for an absent reflection"
+    );
+    r.set_object_flags(1, ObjectFlags::empty());
+    let away = persp([0.0, -700.0, 400.0], [0.0, -1600.0, 800.0], false);
+    r.render_view(2, &away, &Overlay::default());
+    assert_eq!(r.frame_times().reflection_cpu_ms, 0.0, "offscreen water renders no reflection");
 }
 
 #[test]

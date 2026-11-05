@@ -961,8 +961,8 @@ pub(crate) const TR: TrTable = &[
     ("shell.render.vsync", "Vertical sync", "Synchronisation verticale"),
     (
         "shell.render.vsync_tip",
-        "Waits for the screen refresh (applies after a restart)",
-        "Attend le rafraîchissement de l'écran (s'applique après un redémarrage)",
+        "Waits for the screen refresh (applies immediately)",
+        "Attend le rafraîchissement de l'écran (s'applique immédiatement)",
     ),
     ("shell.render.vram", "Graphics memory", "Mémoire graphique"),
     ("shell.render.vram_budget", "Graphics memory budget", "Budget de mémoire graphique"),

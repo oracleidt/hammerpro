@@ -28,6 +28,12 @@ pub(crate) struct Changes {
     pub models: Vec<String>,
 }
 
+impl Changes {
+    fn affects_lighting(&self, epoch: u64) -> bool {
+        self.epoch == epoch && (!self.materials.is_empty() || !self.models.is_empty())
+    }
+}
+
 type Stamp = Option<(u64, SystemTime)>;
 
 fn stamp(path: &std::path::Path) -> Stamp {
@@ -201,7 +207,12 @@ impl AssetManager {
             return;
         }
         let Some(fs) = self.fs.clone() else { return };
-        let ready = |m: &&String| matches!(self.models.map.get(*m), Some(crate::models::ModelEntry::Ready(_)));
+        let ready = |m: &&String| {
+            matches!(
+                self.models.map.get(*m),
+                Some(crate::models::ModelEntry::Ready(_) | crate::models::ModelEntry::Cached(_))
+            )
+        };
         let models_print = fingerprint(self.models.map.keys().filter(ready).map(String::as_str));
         let print =
             fingerprint(self.mats.users.keys().map(String::as_str)) ^ models_print.rotate_left(17) ^ self.mount_gen;
@@ -223,9 +234,10 @@ impl AssetManager {
         let Some(watcher) = &self.watcher else { return };
         let found: Vec<Changes> = watcher.rx.try_iter().collect();
         for changes in found {
-            if changes.epoch != self.mount_gen {
+            if !changes.affects_lighting(self.mount_gen) {
                 continue;
             }
+            self.lighting_generation = self.lighting_generation.wrapping_add(1);
             for name in &changes.materials {
                 self.invalidate_material_impl(name);
             }
@@ -269,7 +281,7 @@ mod tests {
     use super::*;
 
     fn scratch(name: &str) -> PathBuf {
-        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/hp-assets/scratch").join(name);
+        let dir = std::env::temp_dir().join(format!("hp-assets-watcher-{}", std::process::id())).join(name);
         let _ = std::fs::remove_dir_all(&dir);
         let _ = std::fs::create_dir_all(&dir);
         dir
@@ -325,5 +337,17 @@ mod tests {
         assert_eq!(fingerprint(["a", "b"].into_iter()), fingerprint(["b", "a"].into_iter()));
         assert_ne!(fingerprint(["a"].into_iter()), fingerprint(["a", "b"].into_iter()));
         assert_eq!(model_files("models/a.mdl"), vec!["models/a.mdl".to_owned(), "models/a.vvd".to_owned()]);
+    }
+
+    #[test]
+    fn only_actual_changes_from_the_current_mount_affect_lighting() {
+        let mut changes = Changes { epoch: 7, ..Default::default() };
+        assert!(!changes.affects_lighting(7));
+        changes.materials.push("brick/wall".to_owned());
+        assert!(changes.affects_lighting(7));
+        assert!(!changes.affects_lighting(8));
+        changes.materials.clear();
+        changes.models.push("models/props/crate.mdl".to_owned());
+        assert!(changes.affects_lighting(7));
     }
 }

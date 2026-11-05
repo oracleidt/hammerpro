@@ -64,6 +64,8 @@ pub(crate) struct State {
     color_editor: hp_ui_lab::color_edit::ColorEditorWindow,
     color_zone: hp_ui_lab::color_zone::ZoneDriver,
     preview: Option<hp_ui_lab::particle_preview::ParticlePreviewWindow>,
+    pub(crate) particle_editor: hp_ui_lab::particle_editor::EditorHandle,
+    editor_window: Option<hp_ui_lab::particle_editor::ParticleEditorWindow>,
     pub(crate) model_import: hp_ui_entities::model_import::ModelImportDialog,
 }
 
@@ -85,6 +87,7 @@ const HANDLED: &[Action] = &[
     Action::ToggleParticlesSelected,
     Action::ToggleEntityFx,
     Action::ParticlePreview,
+    Action::ParticleEditor,
     Action::FlyApplyTexture,
     Action::FlyApplyTextureBrush,
     Action::FlyPickTexture,
@@ -150,6 +153,54 @@ fn file_name(path: &std::path::Path) -> String {
     path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
 }
 
+fn open_particle_editor(app: &mut HammerProApp) {
+    let selected = app.state.runtime.lab.particle_preview.selected.clone().or_else(|| {
+        hp_ui_lab::particle_preview::particle_entities(&app.state).into_iter().find_map(|id| {
+            let node = app.state.doc.scene().entity(id)?;
+            let name = node.entity.get("effect_name")?.trim();
+            (!name.is_empty()).then(|| name.to_owned())
+        })
+    });
+    let source = selected.as_ref().and_then(|name| {
+        app.state.assets.particles()?.systems.iter().find(|s| s.name.eq_ignore_ascii_case(name)).map(|s| s.file.clone())
+    });
+    let mut editor = app.pkg.lab.particle_editor.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    editor.open = true;
+    let Some(name) = selected else { return };
+    if let Some(id) = editor.doc.find_system(&name) {
+        editor.select(id);
+        return;
+    }
+    if editor.dirty() {
+        return;
+    }
+    let Some(source) = source else { return };
+    let Some(bytes) = app.state.assets.fs().and_then(|fs| fs.read(&source)) else { return };
+    if bytes.len() > 64 * 1024 * 1024 {
+        return;
+    }
+    match editor.load_bytes(&source, &bytes) {
+        Ok(()) => {
+            if let Some(id) = editor.doc.find_system(&name) {
+                editor.select(id);
+            }
+        }
+        Err(e) => app.state.notify(Severity::Warning, tf!("pe.operation_failed", e)),
+    }
+}
+
+impl HammerProApp {
+    pub(crate) fn flush_particle_edits(&mut self) {
+        if let Some(window) = &mut self.pkg.lab.editor_window {
+            window.flush_pending_edits();
+        }
+    }
+
+    pub(crate) fn particle_document_dirty(&self) -> bool {
+        self.pkg.lab.particle_editor.lock().unwrap_or_else(std::sync::PoisonError::into_inner).dirty()
+    }
+}
+
 impl Package for Lab {
     fn handled(&self) -> &'static [Action] {
         HANDLED
@@ -195,6 +246,9 @@ impl Package for Lab {
                     app.state.runtime.lab.particle_preview.selected = name;
                 }
                 app.state.runtime.lab.particle_preview.open = opening;
+            }
+            Action::ParticleEditor => {
+                open_particle_editor(app);
             }
             Action::FlyApplyTexture
             | Action::FlyApplyTextureBrush
@@ -273,6 +327,7 @@ impl Package for Lab {
     fn init(&self, app: &mut HammerProApp) {
         hp_app::i18n::register(hp_ui_lab::SNIFFER_TR);
         hp_app::i18n::register(hp_ui_lab::PARTICLE_PREVIEW_TR);
+        hp_app::i18n::register(hp_ui_lab::particle_editor::TR);
         hp_app::i18n::register(hp_ui_lab::SOUND_TR);
         hp_app::i18n::register(hp_ui_lab::COLOR_TR);
         let old = content_cache(app).join("decompiled");
@@ -389,6 +444,13 @@ impl Package for Lab {
         app.pkg.lab.sniffer.show(ctx, &mut app.state);
         app.pkg.lab.sound_editor.show(ctx, &mut app.state);
         app.pkg.lab.color_editor.show(ctx, &mut app.state);
+        let editor = app.pkg.lab.particle_editor.clone();
+        let particles = app.pkg.lab.particles.clone();
+        app.pkg
+            .lab
+            .editor_window
+            .get_or_insert_with(|| hp_ui_lab::particle_editor::ParticleEditorWindow::new(particles, editor))
+            .show(ctx, &mut app.state);
         if app.state.runtime.lab.particle_preview.open || app.pkg.lab.preview.is_some() {
             let handle = app.pkg.lab.particles.clone();
             let window = app

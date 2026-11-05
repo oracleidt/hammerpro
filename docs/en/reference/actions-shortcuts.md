@@ -2,7 +2,7 @@
 
 # Actions and keyboard shortcuts
 
-Every command of Hammer Pro 1.1.0 is an *action*: one entry shared by the menus, the toolbar, the keyboard shortcuts, the command palette (`Ctrl+P`), the `--script` files and the MCP server (`run_action`, `list_actions`). This page lists all 340 actions, menu by menu, in the order the menus show them.
+Every command of Hammer Pro 1.1.1 is an *action*: one entry shared by the menus, the toolbar, the keyboard shortcuts, the command palette (`Ctrl+P`), the `--script` files and the MCP server (`run_action`, `list_actions`). This page lists all 345 actions, menu by menu, in the order the menus show them.
 
 Columns:
 
@@ -216,7 +216,7 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Center 2D views on selection | `center_2d` | `Ctrl+E` |  |  |
 | Center 3D view on selection | `center_3d` | `Ctrl+Shift+E` |  |  |
 | Maximize view | `maximize_view` | `Shift+Z` |  |  |
-| Full screen | `toggle_fullscreen` | `F11` |  |  |
+| Maximize window | `toggle_fullscreen` | `F11` |  |  |
 | Zoom 2D views in | `zoom_2d_in` | `+` |  |  |
 | Zoom 2D views out | `zoom_2d_out` | `-` |  |  |
 | Reset view splits | `reset_view_splits` |  | `Ctrl+A` | `Ctrl+A` |
@@ -390,11 +390,20 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Entity help | `entity_help` |  |  |  |
 | About Hammer Pro | `about` |  |  |  |
 
+## Other menu
+
+| Action | Shortcut | What it does |
+|---|---|---|
+| `particle_editor` | None | Opens the integrated PCF editor, selecting the particle effect of the selected entity when its file can be loaded without discarding unsaved edits. |
+
+See [Particles](../features/particles.md).
+
 ## Command palette only
 
 | Command | Id | Default | Hammer | Hammer++ |
 |---|---|---|---|---|
 | Gizmo in local space | `toggle_gizmo_local` | `Ctrl+J` |  |  |
+| Install the available update | `install_update` |  |  |  |
 | Make hint brush | `make_hint_brush` |  |  |  |
 | Camera mode: apply the texture to the targeted face | `fly_apply_texture` | `T` |  |  |
 | Camera mode: apply the texture to the whole targeted brush | `fly_apply_texture_brush` | `F` |  |  |

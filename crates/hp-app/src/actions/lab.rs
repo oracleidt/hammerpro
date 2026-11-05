@@ -18,6 +18,7 @@ action_list! { lab_actions {
     ToggleParticlesSelected => "toggle_particles_selected", View, ViewDisplay, None, Ready;
     ToggleEntityFx => "toggle_entity_fx", View, ViewDisplay, None, Ready;
     ParticlePreview => "particle_preview", View, ViewPanels, None, Ready;
+    ParticleEditor => "particle_editor", Other, OtherEditors, None, Ready;
     FlyApplyTexture => "fly_apply_texture", Tools, Hidden, sc(NONE, Key::T), Ready;
     FlyApplyTextureBrush => "fly_apply_texture_brush", Tools, Hidden, sc(NONE, Key::F), Ready;
     FlyPickTexture => "fly_pick_texture", Tools, Hidden, sc(NONE, Key::V), Ready;
@@ -227,6 +228,7 @@ pub(super) const TR: TrTable = &[
     ("action.toggle_particles_selected", "Particles of the selection only", "Particules de la sélection uniquement"),
     ("action.toggle_entity_fx", "Preview volume effects", "Aperçu des effets de volume"),
     ("action.particle_preview", "Particle preview...", "Aperçu des particules..."),
+    ("action.particle_editor", "Particle editor...", "Éditeur de particules..."),
     (
         "action.fly_apply_texture",
         "Camera mode: apply the texture to the targeted face",

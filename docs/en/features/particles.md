@@ -82,6 +82,71 @@ The `▶` button next to the **Particle System Name** field (`effect_name`) of a
 
 Closing the window while it waits for a choice cancels that choice.
 
+## Integrated particle editor
+
+Open **Other > Particle editor** (action `particle_editor`). This editor creates and changes the systems inside a PCF file. The particle browser and its smaller preview window remain available for choosing existing game effects.
+
+### Files and systems
+
+**New** creates an empty document. **Open PCF** reads an external file. The path field accepts an absolute path or a mounted path such as `particles/fire_01.pcf`; **Load** opens it and **Mounted PCFs** lists indexed game files, filtered by the path field. Opening a mounted file does not overwrite the game archive: choose an external path with **Save as**. File and folder dialogs run independently of the editor window.
+
+The left panel filters systems by name. Select a system to show its properties, operators and children. Enter a name and use **Create** or **Rename**; **Duplicate** copies the system and its operator graph under a unique name. **Delete** removes the system and its child references. The document has its own **Undo** and **Redo** history, separate from map editing. Closing, replacing or clearing an unsaved document asks whether to discard changes. An asterisk in the window title marks unsaved changes, and undoing back to the saved state clears it.
+
+Saving writes binary DMX version 5. The document retains element identities, element references, operator order, typed attributes, external references and binary attribute payloads rather than rebuilding a file from the subset understood by the preview. Opening and saving a file therefore preserves operators that the preview does not implement. Malformed references, invalid values and files above the PCF size limit are rejected.
+
+### Operators and parameters
+
+Each system has **Emitters**, **Initializers**, **Operators**, **Force generators**, **Constraints** and **Renderers** groups. The operator library supplies common Source functions and their initial parameters. Opening or importing a PCF also adds its operator definitions to the session's library. A function name can be entered directly to add another Source operator.
+
+Select an operator in the tree to edit every stored parameter, including its `functionName`. **Inspect referenced element** follows nested DMX element references into their own properties. **Copy** and **Paste** copy operators across systems. **Move up**, **Move down**, or dragging a row onto another row in the same category changes execution order. Every operation supports undo. Add or remove parameters using their exact Source names; unknown parameters retain their values and types.
+
+| Parameter type | Editor |
+|---|---|
+| Integer, float, Boolean, string | Numeric drag control, checkbox or text field |
+| Color | Color and alpha picker |
+| Vector 2, 3 or 4 | Individual numeric components |
+| Element reference | Dropdown of document elements, including an empty reference |
+| Arrays | Indexed values with insertion and removal |
+| Float arrays | Numeric values and a draggable curve |
+| Color arrays | Color stops and a gradient preview |
+| Angles, quaternion, matrix | Numeric components retaining the original DMX type |
+| Other binary types | Hexadecimal payload editor retaining the DMX type |
+
+Edits to numeric and text controls are committed when the gesture or field edit ends, so undo returns to the value before the edit. Save and document replacement commit pending edits before processing the action. Minimum/maximum inconsistencies, invalid control point indices and other problems appear in **Validation**.
+
+The `radius scale` and `alpha fade and decay` operators also have draggable lifetime/value handles that edit their actual Source timing and scale/alpha fields. The `color fade` operator shows a gradient from the system's base color to its fade color. The individual Source parameters remain editable below these controls.
+
+System properties include material, maximum and initial particle counts, radius, color and bounding box. Use **Choose sprite material** beside a material field to search mounted materials and choose from thumbnails. The material's existing Source shader and texture sheet are used for previewing.
+
+**Child systems** links another system in the document with a start delay. Select a child row to edit its reference, delay and end-cap settings or remove it. Cyclic child graphs are rejected. Other control-point and operator parameters are edited through their stored fields.
+
+### Live preview
+
+The right panel uses the same particle simulation and GPU renderer as the map's 3D view. It displays the selected system and its children with mounted sprite materials, alpha/additive blending, animation frames, trails and ropes supported by that renderer.
+
+Drag to orbit, scroll to zoom and double click to restore the camera. **Pause/Play**, **Restart**, playback speed from 0.05x to 4x, **Grid** and the background color control affect only the preview. Add control points, enter their coordinates or drag their CP markers in the canvas. The statistics show the particle count and the measured CPU simulation time. The preview caps active particles at 30000 and displays a warning when the cap is reached.
+
+The PCF editor can preserve and edit more operators than the simulation implements. The preview and validation panel explicitly list functions that are not simulated. Such functions are still saved for Source; a saved effect must be checked in the target game before treating its appearance as final. A model or screen-space renderer is not converted into an approximate sprite renderer.
+
+### Templates, importing and addon export
+
+The **Fire**, **Smoke**, **Sparks**, **Rain** and **Explosion** templates add editable systems to the current document. Repeated imports use unique system names. **Import systems** reads another PCF, copies its systems and remaps their graph references.
+
+**Export addon** chooses an addon root and writes `particles/<file>.pcf` plus `particles/particles_manifest.txt`. Existing manifest entries are retained. The registration window provides `game.AddParticles` and `PrecacheParticleSystem` calls that can be copied into the addon's Lua. Exporting the PCF does not package its sprite materials: those must exist in the game content or be included with the addon.
+
+**Assign to selection** writes the selected system's name into `effect_name` of selected `info_particle_system` entities, or into a waiting particle field. The map change is one map undo step. Save/export the edited PCF and make it available to the game so that the named effect can be loaded there.
+
+### MCP access
+
+| Tool | Purpose |
+|---|---|
+| `get_particle_document` | Read the current document, systems, typed parameters and editor state |
+| `list_particle_operators` | Discover operator categories, function names and default parameters |
+| `particle_editor` | Perform file, system, operator, parameter, child, history, preview and assignment operations |
+| `capture_particle_preview` | Capture the live editor preview through the shared GPU renderer |
+
+The `particle_editor` operations include `new`, `open`, `read`, `import`, `save`, `export`, `validate`, `create`, `rename`, `duplicate`, `delete`, `select`, `preset`, `add_operator`, `remove_operator`, `move_operator`, `copy_operator`, `paste_operator`, `set_parameter`, `remove_parameter`, `add_child`, `remove_child`, `undo`, `redo`, `preview` and `assign`. They use the same document and undo history as the window. Use the [generated MCP reference](../../MCP.md) for the current argument schema and supported value types. The editor must be open and rendered before capturing its preview.
+
 ## Tips
 
 - On a map with many effects, turn on **Particles of the selection only** to watch one effect at a time.

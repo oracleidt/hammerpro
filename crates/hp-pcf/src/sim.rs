@@ -524,7 +524,7 @@ impl Plan {
         for op in &def.initializers {
             p.compile_init(op);
         }
-        for op in &def.operators {
+        for op in def.forces.iter().chain(&def.operators).chain(&def.constraints) {
             p.compile_op(op);
         }
         p
@@ -711,7 +711,6 @@ impl Plan {
                 multiply: b(op, "output is scalar of initial random range", false),
                 within: b(op, "only active within specified input range", false),
             },
-            "sequence two random" => return,
             _ => {
                 self.unsupported.push(op.function.clone());
                 return;
@@ -851,7 +850,6 @@ impl Plan {
                 range: f(op, "falloff range", 100.0).max(0.0),
                 factor: f(op, "dampen scale", 1.0).clamp(0.0, 1.0),
             },
-            "movement lock to control point" | "movement lock to bone" => return,
             _ => {
                 self.unsupported.push(op.function.clone());
                 return;

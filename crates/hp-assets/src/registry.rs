@@ -466,6 +466,7 @@ impl AssetManager {
         let key = model_key(path);
         match self.models.map.get(&key) {
             Some(ModelEntry::Ready(m)) => return ModelState::Ready(Arc::clone(&m.info)),
+            Some(ModelEntry::Cached(info)) => return ModelState::Ready(Arc::clone(info)),
             Some(ModelEntry::Failed(e)) => return ModelState::Failed(tf!("assets.model_failed", e)),
             Some(ModelEntry::Loading) => {
                 request_model_shared(&self.shared, &key);
@@ -485,6 +486,7 @@ impl AssetManager {
     }
 
     pub(crate) fn model_data(&mut self, key: &str) -> Option<Arc<crate::models::PreparedModel>> {
+        self.models.last_used.insert(key.to_owned(), self.shared.current_frame());
         match self.models.map.get(key) {
             Some(ModelEntry::Ready(m)) => Some(Arc::clone(m)),
             Some(ModelEntry::Failed(_)) => None,
@@ -492,7 +494,7 @@ impl AssetManager {
                 request_model_shared(&self.shared, key);
                 None
             }
-            None => {
+            None | Some(ModelEntry::Cached(_)) => {
                 self.models.map.insert(key.to_owned(), ModelEntry::Loading);
                 request_model_again(&self.shared, key);
                 None
@@ -638,6 +640,7 @@ impl AssetManager {
     fn on_model(&mut self, path: String, data: Result<Arc<crate::models::PreparedModel>, String>) {
         match data {
             Ok(m) => {
+                self.models.last_used.insert(path.clone(), self.shared.current_frame());
                 self.models.map.insert(path.clone(), ModelEntry::Ready(m));
                 self.models.newly_ready.insert(path.clone());
             }
@@ -861,6 +864,7 @@ impl AssetManager {
             self.process_model_thumbs(gfx);
         }
         self.create_thumb_textures();
+        self.trim_model_geometry();
         if !self.uploads.is_empty() {
             ctx.request_repaint();
         }

@@ -461,6 +461,7 @@ impl HammerProApp {
     }
 
     pub(crate) fn cancel_closing(&mut self) {
+        self.particle_exit = crate::particle_exit::Controller::default();
         self.update.disarm();
         self.close_queue.clear();
         self.close_keep = None;
@@ -468,12 +469,22 @@ impl HammerProApp {
     }
 
     pub(crate) fn continue_exit(&mut self, ctx: &egui::Context) {
-        match self.tabs.first_dirty(&self.state, &self.exit_answered) {
+        let answered = self
+            .exit_answered
+            .iter()
+            .filter_map(|(&id, &revision)| {
+                self.tabs.doc(&self.state, id).filter(|doc| doc.revision() == revision).map(|_| id)
+            })
+            .collect();
+        match self.tabs.first_dirty(&self.state, &answered) {
             Some(id) => {
                 self.switch_to_tab(id);
                 self.pending = Some(PendingOp::Exit);
             }
             None => {
+                if !crate::particle_exit::gate(self, ctx) {
+                    return;
+                }
                 self.exit_answered.clear();
                 self.allow_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);

@@ -157,6 +157,7 @@ pub(crate) struct ViewUniform {
     pub sky_paint: [[f32; 4]; 6],
     pub indirect_a: [f32; 4],
     pub indirect_b: [f32; 4],
+    pub sky_march: [[f32; 4]; 18],
 }
 
 pub(crate) const BLEND_PAINTED: u32 = 1 << 30;
@@ -222,7 +223,8 @@ mod tests {
         assert_eq!(size_of::<ObjState>(), 16);
         assert_eq!(size_of::<MaterialUniform>(), 384);
         assert_eq!(size_of::<LightGpu>(), 96);
-        assert_eq!(size_of::<ViewUniform>(), 64 * 2 + 16 * 39);
+        assert_eq!(size_of::<ViewUniform>(), 64 * 2 + 16 * 57);
+        assert_eq!(std::mem::offset_of!(ViewUniform, sky_march), 752);
     }
 
     #[test]

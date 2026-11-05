@@ -100,7 +100,7 @@ Mostly on **Settings > Viewports**; the `show_*` toggles are also in the **View*
 | `background_zoom` | `1.0` | Its zoom over the size that just covers the window. |
 | `background_hide_3d` | `true` | Do not draw it over the 3D views. |
 | `native_frames` | `false` | Use the title bars and frames of the system instead of Hammer Pro's (remote desktop, some window managers). Applied at once. |
-| `start_fullscreen` | `true` | Start in borderless full screen on the primary monitor. `F11` switches full screen on and off at any time. Applied at the next start. |
+| `start_fullscreen` | `true` | Historical key for **Start maximized**. Starts maximized in the Windows work area, keeping the taskbar accessible and the minimize, maximize/restore and close buttons visible. `F11` (**Maximize window**) switches between maximized and restored, preserving the previous window position and size. Applied at the next start. |
 | `uv_window`, `portals_window` | none | Last position of the UV editor and portals windows when they are separate windows (written by Hammer Pro). |
 
 ## `[game]`: game, content and entity definitions
@@ -395,7 +395,7 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `hide_nodraw`, `hide_clips`, `hide_triggers`, `hide_hints` | `false` | Tool texture groups hidden in the 3D view. |
 | `max_fps` | `0` | Frame rate cap (0: none). |
 | `unfocused_fps` | `30` | Frame rate when the window is not focused (0: no cap). |
-| `vsync` | `true` | Wait for the display refresh (after a restart). |
+| `vsync` | `true` | Wait for the display refresh (applies immediately). |
 | `vram_budget_mb` | `0` | Graphics memory Hammer Pro may use, in MB (0: automatic, 90% of what the system gives the program). Above 85% the maps of other tabs are freed from the graphics card, above the budget textures are shown at a lower resolution. See [Out of memory](../troubleshooting/out-of-memory.md). |
 | `keep_background_maps_on_gpu` | `true` | Keep the maps of other tabs on the graphics card while there is room, for instant tab switches. |
 | `performance_mode` | `Auto` | `Auto` and `Off` draw the preview at full quality. `Auto` lowers the quality one step (with a notice and a Restore full quality button over the 3D view) only when the 3D view stays under 20 FPS for several seconds. `Low` (75% resolution, no MSAA or bloom, 4 shadowed lights, 2048 sun shadow, textures up to 1024 pixels) and `VeryLow` (50% resolution, no shadows from lights, reflections, normal maps or fog volumes, textures up to 512 pixels) always lower it. **Settings > Rendering > Performance**, `set_setting render.performance_mode`. See [Editor performance](../troubleshooting/performance.md). |
@@ -408,16 +408,20 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 
 | Key | Default | What it does |
 | --- | --- | --- |
-| `auto_bake` | `true` | Start a bake when the baked preview is turned on and nothing is baked. |
+| `auto_bake` | `true` | Start a bake when the baked preview is turned on and nothing is baked. Whole map by default; the optional regional mode applies to this automatic start. |
 | `threads` | `0` | Bake threads (0: every core but two), up to 256. |
 | `max_luxels_millions` | `16` | Luxels baked at full resolution, 1 to 64 million. |
-| `auto_scope` | `true` | Bakes a big map only around the 3D camera and follows the camera. |
-| `auto_scope_luxels_millions` | `2` | Luxel count above which a map counts as big, 1 to 64 million. |
-| `auto_scope_radius` | `3072` | Radius in units of the area baked on a big map, 256 to 32768. |
+| `auto_scope` | `false` | Opt-in regional mode for automatic preview activation on big maps. Its region follows the camera; explicit **Bake lighting** always calculates the whole map. |
+| `auto_scope_luxels_millions` | `2` | Threshold for the optional automatic regional mode, 1 to 64 million luxels. |
+| `auto_scope_radius` | `3072` | Radius of the optional automatic region, 256 to 32768 units. Separate from the manual camera radius in the Lighting tab. |
 | `tiny_scale` | `4` | Lightmap scale at or under which a face is tiny, 1 to 64. |
 | `budget_styles` | `1` | Light styles counted by the lightmap budget, 1 to 4. |
 | `show_budget` | `true` | Lightmap budget gauge in the status bar. |
 | `quality` | `"Draft"` | `Draft`, `Normal` or `Final`. |
+
+Existing saved `auto_scope` values are preserved. If the field is absent, the default is `false`. **Bake around the camera** remains a manual bake of a fixed region; the automatic regional mode follows the camera after it leaves the central half and stays still for a second.
+
+A whole-map result is reused while navigating. Geometry, lights, materials and calculation settings affect its validity; camera movement, selection, preview brightness, color correction and the update delay do not invalidate it. Dynamic updates schedule a new bake after relevant changes; otherwise the Lighting tab marks the result stale and offers **Bake again**.
 
 ## `[placement]`
 

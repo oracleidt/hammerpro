@@ -53,10 +53,11 @@ fn category_name(c: Category) -> &'static str {
         Category::Tools => "tools",
         Category::Window => "window",
         Category::Help => "help",
+        Category::Other => "other",
     }
 }
 
-const CATEGORIES: &[&str] = &["file", "edit", "map", "view", "tools", "window", "help"];
+const CATEGORIES: &[&str] = &["file", "edit", "map", "view", "tools", "window", "help", "other"];
 
 const SPECS: &[ToolSpec] = &[
     ToolSpec {

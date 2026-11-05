@@ -150,6 +150,7 @@ pub struct AssetManager {
     pub(crate) fs_gen_seen: u64,
     pub(crate) lists_pending: bool,
     pub(crate) generation: u64,
+    pub(crate) lighting_generation: u64,
     pub(crate) mats: registry::Materials,
     pub(crate) thumbs: thumbs::Thumbs,
     pub(crate) models: models::Models,
@@ -205,6 +206,7 @@ impl AssetManager {
             fs_gen_seen: 0,
             lists_pending: false,
             generation: 1,
+            lighting_generation: 1,
             mats: registry::Materials::default(),
             thumbs: thumbs::Thumbs::default(),
             models: models::Models::default(),
@@ -261,7 +263,12 @@ impl AssetManager {
             textures_ready: tex.values().filter(|e| e.current.is_some()).count(),
             textures_loading: tex.values().filter(|e| e.loading).count(),
             textures_missing: tex.values().filter(|e| e.missing && !e.loading).count(),
-            models_ready: self.models.map.values().filter(|m| matches!(m, models::ModelEntry::Ready(_))).count(),
+            models_ready: self
+                .models
+                .map
+                .values()
+                .filter(|m| matches!(m, models::ModelEntry::Ready(_) | models::ModelEntry::Cached(_)))
+                .count(),
             models_loading: self.models.map.values().filter(|m| matches!(m, models::ModelEntry::Loading)).count()
                 + self.scene.realize_later.len(),
             models_failed: self.models.map.values().filter(|m| matches!(m, models::ModelEntry::Failed(_))).count(),
@@ -326,6 +333,10 @@ impl hp_app::AssetsApi for AssetManager {
 
     fn generation(&self) -> u64 {
         self.generation
+    }
+
+    fn lighting_generation(&self) -> u64 {
+        self.lighting_generation.wrapping_add(self.mount_gen)
     }
 
     fn busy(&self) -> bool {

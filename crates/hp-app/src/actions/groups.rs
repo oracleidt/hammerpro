@@ -43,6 +43,7 @@ pub enum MenuGroup {
     WindowMaps,
     HelpDocs,
     HelpAbout,
+    OtherEditors,
     Hidden,
 }
 
@@ -106,6 +107,7 @@ impl MenuGroup {
             MenuGroup::WindowMaps => inline(30, 0),
             MenuGroup::HelpDocs => inline(10, 0),
             MenuGroup::HelpAbout => inline(90, 0),
+            MenuGroup::OtherEditors => inline(10, 0),
             MenuGroup::Hidden => None,
         }
     }
@@ -113,6 +115,7 @@ impl MenuGroup {
     pub const fn category(self) -> Option<super::Category> {
         use super::Category as C;
         Some(match self {
+            MenuGroup::OtherEditors => C::Other,
             MenuGroup::FileNew
             | MenuGroup::FileClose
             | MenuGroup::FileSave

@@ -58,6 +58,7 @@ mod logger;
 mod native_crash;
 mod opening;
 mod panel_layout;
+mod particle_exit;
 mod perf;
 mod prompts;
 mod restart;
@@ -88,6 +89,7 @@ pub struct Cli {
     pub height: f32,
     pub bench_open: Option<PathBuf>,
     pub restore: Option<PathBuf>,
+    pub no_save_settings: bool,
 }
 
 impl Cli {
@@ -111,6 +113,7 @@ fn parse_cli() -> Cli {
             "--screenshot" => cli.screenshot = args.next().map(PathBuf::from),
             "--script" => cli.script = args.next().map(PathBuf::from),
             "--bench-open" => cli.bench_open = args.next().map(PathBuf::from),
+            "--no-save-settings" => cli.no_save_settings = true,
             restart::RESTORE_ARG => cli.restore = args.next().map(PathBuf::from),
             "--frames" => cli.frames = args.next().and_then(|v| v.parse().ok()).unwrap_or(90),
             "--maximize-view" => cli.maximize_view = args.next().and_then(|v| v.parse().ok()),
@@ -241,8 +244,6 @@ fn main() -> eframe::Result<()> {
 
     let native_frames = !cli.is_automated()
         && hp_app::settings::Settings::load_or_default(&hp_app::settings::Settings::default_path()).ui.native_frames;
-    let start_fullscreen = !cli.is_automated()
-        && hp_app::settings::Settings::load_or_default(&hp_app::settings::Settings::default_path()).ui.start_fullscreen;
     let margin = if native_frames { 0.0 } else { 2.0 * hp_app::chrome::MARGIN };
     let viewport = egui::ViewportBuilder::default()
         .with_title("Hammer Pro")
@@ -251,7 +252,7 @@ fn main() -> eframe::Result<()> {
         .with_icon(icon::app_icon())
         .with_drag_and_drop(true)
         .with_decorations(native_frames)
-        .with_fullscreen(start_fullscreen)
+        .with_fullscreen(false)
         .with_transparent(true);
 
     let options = eframe::NativeOptions {

@@ -12,6 +12,7 @@ mod surface;
 #[cfg(test)]
 mod tests;
 mod texlights;
+mod tiles;
 
 use std::time::Instant;
 
@@ -142,7 +143,7 @@ fn light_bsp_with_report(
     let runner = Runner { pool: pool.as_ref() };
     report.limits = opts.limits;
     let work = progress::Work::new();
-    progress::watch(&work, log, |log| run_with(bsp, opts, &runner, models, log, report, &work))
+    progress::watch(&work, log, |log| run_with(bsp, opts, &runner, models, log, report, &work, opts.bounce_budget / 4))
 }
 
 struct Runner<'a> {
@@ -166,6 +167,7 @@ fn stage(report: &mut crate::stats::RadReport, name: &str, t: Instant) {
     report.stages.push((name.to_owned(), t.elapsed().as_secs_f64()));
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_with(
     bytes: std::borrow::Cow<'_, [u8]>,
     opts: &RadOptions,
@@ -174,6 +176,7 @@ fn run_with(
     log: &mut dyn FnMut(&str),
     report: &mut crate::stats::RadReport,
     work: &progress::Work,
+    bounce_tile_budget: usize,
 ) -> Result<Vec<u8>, String> {
     use progress::Stage;
     let start = Instant::now();
@@ -333,6 +336,7 @@ fn run_with(
         blockers: &blockers,
         work,
         bounce_budget: opts.bounce_budget,
+        bounce_tile_budget,
     };
     let t = Instant::now();
     work.begin(Stage::Direct, luxels as u64);
@@ -354,7 +358,7 @@ fn run_with(
         let unbounced = (opts.bounces > 0).then(|| runner.par(|| disp::before_bounce(&ctx, &light))).flatten();
         let mut lines = Vec::new();
         let (gather, bounce_passes) =
-            runner.par(|| ctx.bounce(&mut light, opts.bounces, &mut |l| lines.push(l.to_owned())));
+            runner.par(|| ctx.bounce(&mut light, opts.bounces, &mut |l| lines.push(l.to_owned())))?;
         for l in &lines {
             log(l);
         }

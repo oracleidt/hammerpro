@@ -253,6 +253,9 @@ pub trait AssetsApi {
     fn fs(&self) -> Option<&hp_fs::GameFs>;
     fn fgd(&self) -> Option<&hp_fgd::ResolvedFgd>;
     fn generation(&self) -> u64;
+    fn lighting_generation(&self) -> u64 {
+        0
+    }
     fn busy(&self) -> bool {
         false
     }

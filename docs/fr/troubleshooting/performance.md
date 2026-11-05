@@ -12,6 +12,34 @@ Hammer Pro est conçu pour rester fluide sur des maps énormes, mais un contenu 
 - **Paramètres > Rendu > Performance > Afficher le temps d'image et la mémoire dans la vue 3D** (`render.perf_hud`) ajoute un affichage sur la vue 3D : images par seconde et temps d'image, temps CPU du rendu (préparation, enregistrement, envoi), temps GPU par étape (ombres, scène, effets, reflet de l'eau) quand la carte graphique gère les requêtes d'horodatage, mémoire vive et graphique utilisées, carte graphique et niveau de qualité.
 - Par MCP, `get_performance` renvoie les mêmes chiffres, et `run_benchmark` fait tourner la caméra sur un tour complet et renvoie les temps d'image moyen et pire, les millisecondes CPU et GPU et la mémoire.
 
+Gardez la fenêtre active pour comparer les images par seconde : la limite en arrière-plan et la gestion mémoire de Windows peuvent changer le résultat quand elle perd le focus. Utilisez la même map, caméra, taille de vue, mode de rendu et mode de performance. Comparez la mémoire après chargement, après passage en mode éclairé et après déplacement dans la map ; comparez les millisecondes CPU et GPU en plus des images par seconde.
+
+## Rendu en qualité maximale et mémoire
+
+Le rendu éclairé utilise une passe de profondeur pour la géométrie opaque du monde et des brushes, puis éclaire ces surfaces à cette profondeur. Les instances de modèles n'utilisent pas cette prépasse. L'occlusion de la lumière du ciel réutilise une table par vue avec les mêmes distances d'échantillonnage et niveaux de mipmap. Les listes des clusters écartent les lumières qui ne peuvent pas contribuer au cluster, en conservant l'ordre de priorité existant. Ces optimisations gardent les réglages de qualité maximale.
+
+**Niveaux de détail des modèles** (`render.model_lods`) suit les seuils Source du modèle et sa taille projetée. Le CPU évite d'envoyer les niveaux inutilisés quand il peut préserver l'ordre de dessin existant ; les modèles transparents et les seuils ambigus conservent la sélection par le shader. Désactiver ce réglage garde le niveau le plus fin.
+
+Les textures DXT1, DXT3 et DXT5 sont envoyées dans leur format BC quand la carte graphique le gère. Les formats non gérés utilisent le repli RGBA existant. Les buffers de transfert décodés sont libérés après l'envoi. Le cache de géométrie des modèles utilise un budget de 128 Mio pour les données CPU sans référence, évince les moins récemment utilisées et conserve les informations des modèles. Les maps actives, variantes de modèles et lecteurs en cours gardent les données nécessaires à la sélection et à l'édition ; ce budget de cache est distinct de la RAM totale de l'éditeur et de la mémoire GPU.
+
+L'eau masquée et l'eau hors du frustum de la caméra ne déclenchent pas de passe de reflet. Cette élimination existait déjà en 1.1.0. En 1.1.1, les mesures de performance affichent un temps de reflet nul quand cette passe est ignorée, au lieu de reprendre la mesure du reflet précédent. L'eau visible conserve la qualité de reflet existante.
+
+## Calculer l'éclairage, puis naviguer
+
+**Aperçu de l'éclairage** (`Alt+5`) dessine les lumières directes en temps réel. **Aperçu de l'éclairage précalculé** (`Ctrl+F5`) réutilise les lightmaps calculées. Choisissez **Map > Éclairage > Précalculer l'éclairage** et attendez la fin des passes rapide et affinée avant d'évaluer la navigation. Cette action calcule toujours toute la carte ; déplacer la caméra ou changer la sélection n'invalide pas son résultat.
+
+L'option **Précalculer autour de la caméra sur les grandes cartes** est désactivée par défaut. Si elle est activée, elle concerne le démarrage automatique de l'aperçu et suit la caméra : entrer dans une autre région peut donc lancer un nouveau précalcul. **Précalculer l'éclairage** revient à un résultat global. Les choix existants enregistrés sont conservés.
+
+La géométrie, les lumières, les matériaux et les paramètres de calcul peuvent invalider le résultat. La luminosité de l'aperçu, la correction colorimétrique et le délai de mise à jour ne relancent pas le calcul d'éclairage. La progression, le dernier résultat et l'avertissement périmé de l'onglet Éclairage distinguent la préparation d'un résultat réutilisable. Avec les mises à jour dynamiques désactivées, utilisez **Précalculer à nouveau** après un changement pertinent. Voir [Aperçu de l'éclairage](../features/lighting-preview.md).
+
+## Mémoire de l'aperçu d'éclairage
+
+La préparation de la géométrie de l'aperçu d'éclairage s'exécute dans un processus séparé. Il reçoit un instantané des dossiers, VPK, GMA et préfixes de textures personnalisées montés, dans leur ordre de priorité actuel. L'éditeur conserve le BSP et les correspondances de faces nécessaires à l'affichage, puis réutilise la géométrie préparée pour la passe affinée. Annuler l'aperçu arrête son processus de travail.
+
+Les rayons de rebond utilisent un cache borné : 48 Mio pour l'aperçu et 128 Mio avec le budget mémoire par défaut du compilateur. Les enregistrements excédentaires sont lus dans le stockage temporaire par tuiles de 128 points de collecte. Les positions d'échantillonnage, le nombre de rayons et l'ordre d'accumulation restent identiques. Les fichiers temporaires se ferment et disparaissent à la fin ou à l'annulation du processus d'éclairage. Cela borne le cache des rayons ; les lightmaps, la géométrie, les sondes et les autres données du compilateur utilisent leur propre mémoire.
+
+Utilisez les actions d'éclairage existantes ou l'outil MCP `bake_lighting` avec `action: "start"`, `"around_camera"` ou `"stop"` pour démarrer ou annuler un aperçu, et `get_lighting_status` pour l'inspecter. Voir [Aperçu de l'éclairage](../features/lighting-preview.md) et [Performances de compilation](../compiler/performance.md).
+
 ## Mode de performance
 
 **Paramètres > Rendu > Performance** (`render.performance_mode`, `render.render_scale`) :
@@ -29,7 +57,7 @@ Rien de cela ne change l'aspect par défaut : la vitesse du mode par défaut vie
 
 ### Essayer une carte graphique plus faible
 
-La variable d'environnement `HP_ADAPTER` choisit la carte graphique au démarrage : `integrated`, `cpu` (le rendu logiciel de Windows, bon substitut d'une carte très faible) ou une partie du nom d'une carte. `HP_PERF_BASELINE=all` désactive les accélérations du mode par défaut (instances et occulteurs d'ombre hors d'une vue, ombre du soleil conservée, lecture différée de l'exposition, clusters de lumières en parallèle) pour comparer, avec les mêmes images.
+La variable d'environnement `HP_ADAPTER` choisit la carte graphique au démarrage : `integrated`, `cpu` (le rendu logiciel de Windows, bon substitut d'une carte très faible) ou une partie du nom d'une carte. `HP_PERF_BASELINE=all` désactive les accélérations de rendu par défaut pour les comparaisons. Une liste séparée par des virgules permet de les isoler : `instances`, `shadowfit`, `exposure`, `clusters`, `prepass`, `lods`, `skymarch`, `clusterbounds`. `lods` concerne seulement l'envoi par le CPU ; le niveau de détail Source sélectionné est conservé. Ces commutateurs de diagnostic ne changent pas les réglages de qualité enregistrés.
 
 ## Réglages d'images par seconde
 
@@ -39,7 +67,7 @@ Page **Paramètres > Rendu**, groupe **Images par seconde** :
 |---|---|---|
 | **Limite d'images par seconde** | Nombre maximal d'images par seconde (0 : aucune limite ; avec la synchronisation verticale, l'écran la limite). Baissez-la pour économiser batterie et chaleur sur un portable. | 0 |
 | **En arrière-plan** | Limite d'images par seconde quand la fenêtre n'est pas active (0 : aucune limite). | 30 |
-| **Synchronisation verticale** | Attend le rafraîchissement de l'écran. S'applique après un redémarrage. | Activé |
+| **Synchronisation verticale** | Attend le rafraîchissement de l'écran. S'applique immédiatement. | Activé |
 
 ## Ce que dessine la vue 3D
 
@@ -50,7 +78,7 @@ Page **Paramètres > Rendu**, groupe **Images par seconde** :
 | **Limite de distance circulaire** et **Rayon de limite** | Paramètres > Rendu, aussi **Affichage > Options d'affichage > Limite de distance circulaire** et la barre d'outils | Rien n'est dessiné au-delà du rayon autour de la caméra (un cercle le montre dans les vues 2D), comme le radius culling de Hammer. | Désactivé, 4096 |
 | **Ignorer la géométrie cachée** | Paramètres > Rendu | Les parties de la map dont tous les objets sont masqués ne sont pas dessinées du tout. | Activé |
 | **Distance des modèles** | Paramètres > Rendu | Les modèles plus loin que cela sont dessinés en boîtes (0 : aucune limite). Très utile sur les maps chargées en props. | 0 |
-| `lod_distances` | `settings.toml`, table `[render]` | Deux distances au-delà desquelles les modèles lourds utilisent leur LOD 1 et LOD 2 (0 : toujours le modèle complet). Pas encore d'interface. | `[0, 0]` |
+| **Niveaux de détail des modèles** | Paramètres > Rendu | Utilise les niveaux de détail Source du modèle selon sa taille à l'écran. Désactivé : chaque modèle utilise son niveau le plus fin. | Activé |
 | **Relief (normal maps)** | Paramètres > Rendu | Désactivé : surfaces plates et moins de mémoire vidéo. | Activé |
 | **Reflets des cubemaps** et **Redessiner les cubemaps après les modifications** | Paramètres > Rendu | Les matériaux avec `$envmap` reflètent des cubemaps dessinées par l'éditeur. Sans le redessin automatique, elles restent telles quelles jusqu'à **Map > Éclairage > Reconstruire les cubemaps**. | Activé, Activé |
 | **Lumières avec ombres** | Paramètres > Rendu | En mode Aperçu de l'éclairage, nombre de lumières ponctuelles et de spots proches de la caméra qui projettent des ombres (0 : le soleil seulement, 16 au maximum). | 4 |
@@ -59,7 +87,7 @@ Page **Paramètres > Rendu**, groupe **Images par seconde** :
 | **Détail de l'eau** | Paramètres > Rendu | Reflets complets et Reflet du monde dessinent la scène une seconde fois (1024 pixels de large au plus) pour le miroir de l'eau coûteuse ; Reflets simples est le moins coûteux. | Reflets complets |
 | **Fondu des modèles**, **Effets de rendu**, **Matériaux animés** | Affichage > Options d'affichage (les deux premiers aussi dans Paramètres > Rendu) | Coûts modestes ; à couper quand chaque image compte. | Désactivé, Activé, Activé |
 
-Le mode de rendu compte aussi : **Couleurs unies** (`Alt+2`) et **Filaire** (`Alt+3`) sont les moins coûteux ; **Aperçu de l'éclairage** (`Alt+5`) et **Aperçu de l'éclairage précalculé** (`Ctrl+F5`) les plus coûteux. Voir [Modes de rendu et affichage](../features/render-modes-display.md) et [Aperçu de l'éclairage](../features/lighting-preview.md).
+Le mode de rendu compte aussi : **Couleurs unies** (`Alt+2`) et **Filaire** (`Alt+3`) évitent le travail d'éclairage. **Aperçu de l'éclairage** (`Alt+5`) calcule les lumières directes pendant la navigation ; **Aperçu de l'éclairage précalculé** (`Ctrl+F5`) prépare l'éclairage puis réutilise ce résultat. Les matériaux, modèles et reflets contribuent toujours au coût de dessin. Voir [Modes de rendu et affichage](../features/render-modes-display.md) et [Aperçu de l'éclairage](../features/lighting-preview.md).
 
 ## Ce que dessinent les vues 2D
 

@@ -45,6 +45,8 @@ pub struct SystemDef {
     pub emitters: Vec<Operator>,
     pub initializers: Vec<Operator>,
     pub operators: Vec<Operator>,
+    pub forces: Vec<Operator>,
+    pub constraints: Vec<Operator>,
     pub renderers: Vec<Operator>,
     pub children: Vec<Child>,
 }
@@ -61,6 +63,8 @@ impl Default for SystemDef {
             emitters: Vec::new(),
             initializers: Vec::new(),
             operators: Vec::new(),
+            forces: Vec::new(),
+            constraints: Vec::new(),
             renderers: Vec::new(),
             children: Vec::new(),
         }
@@ -108,6 +112,8 @@ pub fn systems(dmx: &Dmx) -> Vec<SystemDef> {
             emitters: operators(dmx, e, "emitters"),
             initializers: operators(dmx, e, "initializers"),
             operators: operators(dmx, e, "operators"),
+            forces: operators(dmx, e, "forces"),
+            constraints: operators(dmx, e, "constraints"),
             renderers: operators(dmx, e, "renderers"),
             children,
         });

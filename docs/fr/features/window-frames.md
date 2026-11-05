@@ -20,9 +20,11 @@ Une fenêtre agrandie a des coins carrés et pas d'ombre. Quand la carte graphiq
 
 **Paramètres > Général > Cadres de fenêtre natifs** utilise les barres de titre et les cadres du système au lieu de ceux de Hammer Pro, pour le bureau à distance ou les gestionnaires de fenêtres qui ont du mal avec eux. C'est appliqué tout de suite, dans les deux sens, à la fenêtre principale et aux fenêtres séparées. Clé `ui.native_frames`, désactivée par défaut.
 
-## Plein écran
+## Démarrage agrandi et restauration
 
-Hammer Pro démarre en plein écran sans bordure sur l'écran principal, en gardant sa propre barre de titre et ses boutons. `F11` (**Affichage > Plein écran**) active et désactive le plein écran à tout moment. **Paramètres > Général > Démarrer en plein écran** (clé `ui.start_fullscreen`, activée par défaut) désactive le démarrage en plein écran ; c'est appliqué au prochain démarrage.
+Hammer Pro démarre agrandi dans la zone utile Windows. La barre des tâches reste accessible et les boutons réduire, agrandir/restaurer et fermer restent visibles. `F11` (**Affichage > Agrandir la fenêtre**) bascule entre agrandi et restauré, en restaurant la position et la taille précédentes. Il s'agit d'un agrandissement classique dans la zone utile.
+
+**Paramètres > Général > Démarrer agrandi** est activé par défaut et s'applique au prochain démarrage. Sa clé historique reste `ui.start_fullscreen` et l'identifiant d'action reste `toggle_fullscreen` pour compatibilité ; les deux contrôlent désormais l'agrandissement et la restauration. Une nouvelle vérification en exécution des dimensions dans la zone utile et de la restauration reste à effectuer.
 
 ## Fenêtres séparées
 

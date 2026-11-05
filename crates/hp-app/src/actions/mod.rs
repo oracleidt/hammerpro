@@ -19,10 +19,11 @@ pub enum Category {
     Tools,
     Window,
     Help,
+    Other,
 }
 
 impl Category {
-    pub const ALL: [Category; 7] = [
+    pub const ALL: [Category; 8] = [
         Category::File,
         Category::Edit,
         Category::Map,
@@ -30,6 +31,7 @@ impl Category {
         Category::Tools,
         Category::Window,
         Category::Help,
+        Category::Other,
     ];
 
     pub fn label_key(self) -> &'static str {
@@ -41,6 +43,7 @@ impl Category {
             Category::Tools => "menu.tools",
             Category::Window => "menu.window",
             Category::Help => "menu.help",
+            Category::Other => "menu.other",
         }
     }
 }

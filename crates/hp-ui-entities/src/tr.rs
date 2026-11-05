@@ -817,6 +817,7 @@ pub const TR: TrTable = &[
     ("entities.pb_count", "Systems: {0}", "Systèmes : {0}"),
     ("entities.pb_select_hint", "Select a particle system", "Sélectionnez un système de particules"),
     ("entities.pb_apply", "Apply to selected ({0})", "Appliquer à la sélection ({0})"),
+    ("entities.pb_edit", "Edit PCF", "Modifier le PCF"),
     (
         "entities.pb_apply_tip",
         "Set this system on the selected info_particle_system entities (double click does it too)",

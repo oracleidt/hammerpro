@@ -31,7 +31,7 @@ In the order of the list:
 
 | Page | What it contains |
 | --- | --- |
-| **General** | **Appearance**: language, theme, accent color, interface scale, show frame rate, native window frames, start in full screen. **Background image**: image, opacity, position, zoom, fit, hide it over the 3D view. **Autosave**: save every N minutes, copies kept per map (and the folder). **Maps**: open maps in new tabs. **Recent maps**: how many, **Clear recent maps**. See [Themes and languages](themes-languages.md), [Autosave and crash recovery](autosave-crash.md), [Multiple maps](multiple-maps.md). |
+| **General** | **Appearance**: language, theme, accent color, interface scale, show frame rate, native window frames, start maximized. **Background image**: image, opacity, position, zoom, fit, hide it over the 3D view. **Autosave**: save every N minutes, copies kept per map (and the folder). **Maps**: open maps in new tabs. **Recent maps**: how many, **Clear recent maps**. See [Themes and languages](themes-languages.md), [Autosave and crash recovery](autosave-crash.md), [Multiple maps](multiple-maps.md). |
 | **Discord** | Discord Rich Presence: show activity, map name, elapsed time, active tool, application ID (empty: Hammer Pro's own), button link, and the **Status:** line (connected, Discord not running...). See [Discord Rich Presence](discord.md). |
 | **Updates** | **Check for updates on startup**, **Check for updates now**, **Show the update**, the status line and the skipped version (**Stop skipping**). See [Updates](updates.md). |
 | **VTF editor** | The external VTF editor (**Browse...**, **Detect**, the editors found), and **Always use the built in editor**. See [VTF editor](vtf-editor.md). |

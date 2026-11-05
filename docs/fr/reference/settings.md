@@ -100,7 +100,7 @@ Surtout sur **Paramètres > Vues** ; les clés `show_*` sont aussi dans le menu 
 | `background_zoom` | `1.0` | Son zoom par rapport à la taille qui couvre juste la fenêtre. |
 | `background_hide_3d` | `true` | Ne pas la dessiner sur les vues 3D. |
 | `native_frames` | `false` | Utilise les barres de titre et les cadres du système au lieu de ceux de Hammer Pro (bureau à distance, certains gestionnaires de fenêtres). Appliqué tout de suite. |
-| `start_fullscreen` | `true` | Démarre en plein écran sans bordure sur l'écran principal. `F11` active et désactive le plein écran à tout moment. Appliqué au prochain démarrage. |
+| `start_fullscreen` | `true` | Clé historique de **Démarrer agrandi**. Démarre agrandi dans la zone utile Windows, en gardant la barre des tâches accessible et les boutons réduire, agrandir/restaurer et fermer visibles. `F11` (**Agrandir la fenêtre**) bascule entre agrandi et restauré, en conservant la position et la taille précédentes. Appliqué au prochain démarrage. |
 | `uv_window`, `portals_window` | absentes | Dernière position de l'éditeur d'UV et de la fenêtre des portails quand ce sont des fenêtres séparées (écrites par Hammer Pro). |
 
 ## `[game]` : jeu, contenu et définitions d'entités
@@ -395,7 +395,7 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `hide_nodraw`, `hide_clips`, `hide_triggers`, `hide_hints` | `false` | Groupes de textures outils masqués dans la vue 3D. |
 | `max_fps` | `0` | Limite d'images par seconde (0 : aucune). |
 | `unfocused_fps` | `30` | Images par seconde quand la fenêtre n'a pas le focus (0 : sans limite). |
-| `vsync` | `true` | Attend le rafraîchissement de l'écran (après un redémarrage). |
+| `vsync` | `true` | Attend le rafraîchissement de l'écran (s'applique immédiatement). |
 | `vram_budget_mb` | `0` | Mémoire graphique que Hammer Pro peut utiliser, en Mo (0 : automatique, 90 % de ce que le système donne au programme). Au-delà de 85 %, les maps des autres onglets sont retirées de la carte graphique, au-delà du budget les textures sont affichées en plus basse résolution. Voir [Mémoire insuffisante](../troubleshooting/out-of-memory.md). |
 | `keep_background_maps_on_gpu` | `true` | Garde les maps des autres onglets sur la carte graphique tant qu'il y a de la place, pour un changement d'onglet instantané. |
 | `performance_mode` | `Auto` | `Auto` et `Off` dessinent l'aperçu en pleine qualité. `Auto` baisse la qualité d'un cran (avec un avis et un bouton Rétablir la qualité maximale sur la vue 3D) seulement quand la vue 3D reste sous 20 images par seconde pendant plusieurs secondes. `Low` (résolution à 75 %, sans MSAA ni bloom, 4 lumières avec ombres, ombre du soleil en 2048, textures jusqu'à 1024 pixels) et `VeryLow` (résolution à 50 %, sans ombres des lumières, reflets, normal maps ni volumes de brouillard, textures jusqu'à 512 pixels) la baissent toujours. **Paramètres > Rendu > Performance**, `set_setting render.performance_mode`. Voir [Performance de l'éditeur](../troubleshooting/performance.md). |
@@ -408,16 +408,20 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 
 | Clé | Défaut | Effet |
 | --- | --- | --- |
-| `auto_bake` | `true` | Lance un précalcul quand l'aperçu précalculé est activé et que rien n'est encore calculé. |
+| `auto_bake` | `true` | Lance un précalcul quand l'aperçu précalculé est activé et que rien n'est encore calculé. Toute la carte par défaut ; le mode régional optionnel concerne ce démarrage automatique. |
 | `threads` | `0` | Threads du précalcul (0 : tous les cœurs sauf deux), jusqu'à 256. |
 | `max_luxels_millions` | `16` | Luxels calculés en pleine résolution, de 1 à 64 millions. |
-| `auto_scope` | `true` | Ne précalcule une grande carte qu'autour de la caméra 3D et suit la caméra. |
-| `auto_scope_luxels_millions` | `2` | Nombre de luxels au-dessus duquel une carte est grande, de 1 à 64 millions. |
-| `auto_scope_radius` | `3072` | Rayon en unités de la zone précalculée sur une grande carte, de 256 à 32768. |
+| `auto_scope` | `false` | Mode régional optionnel au démarrage automatique de l'aperçu sur les grandes cartes. Sa région suit la caméra ; **Précalculer l'éclairage** calcule toujours toute la carte. |
+| `auto_scope_luxels_millions` | `2` | Seuil du mode régional automatique optionnel, de 1 à 64 millions de luxels. |
+| `auto_scope_radius` | `3072` | Rayon de la région automatique optionnelle, de 256 à 32768 unités. Distinct du rayon manuel de l'onglet Éclairage. |
 | `tiny_scale` | `4` | Échelle de lightmap à partir de laquelle (ou en dessous) une face est jugée minuscule, de 1 à 64. |
 | `budget_styles` | `1` | Styles de lumière comptés par le budget de lightmap, de 1 à 4. |
 | `show_budget` | `true` | Jauge du budget de lightmap dans la barre d'état. |
 | `quality` | `"Draft"` | `Draft`, `Normal` ou `Final`. |
+
+Les valeurs existantes enregistrées de `auto_scope` sont conservées. Si le champ est absent, le défaut est `false`. **Précalculer autour de la caméra** reste un précalcul manuel d'une région fixe ; le mode régional automatique suit la caméra quand elle quitte la moitié centrale et reste immobile une seconde.
+
+Le résultat global est réutilisé pendant la navigation. La géométrie, les lumières, les matériaux et les paramètres de calcul affectent sa validité ; les déplacements de caméra, la sélection, la luminosité de l'aperçu, la correction colorimétrique et le délai de mise à jour ne l'invalident pas. Les mises à jour dynamiques planifient un nouveau précalcul après les changements pertinents ; sinon l'onglet Éclairage indique que le résultat est périmé et propose **Précalculer à nouveau**.
 
 ## `[placement]`
 

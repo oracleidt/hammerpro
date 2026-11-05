@@ -12,6 +12,34 @@ Hammer Pro is built to stay smooth on huge maps, but heavy content, a weak GPU o
 - **Settings > Rendering > Performance > Show frame time and memory in the 3D view** (`render.perf_hud`) adds a readout over the 3D view: FPS and frame time, the CPU time of the render (prepare, record, submit), the GPU time per stage (shadows, scene, post effects, water reflection) when the graphics card supports timestamp queries, the RAM and graphics memory in use, the graphics card and the quality level.
 - Through MCP, `get_performance` returns the same numbers, and `run_benchmark` turns the camera through a full circle and returns the average and worst frame times, the CPU and GPU milliseconds and the memory.
 
+Keep the window active for frame rate comparisons: the background frame limit and Windows memory management can change the result when it loses focus. Use the same map, camera, view size, render mode and performance mode. Compare memory after loading, after entering Lit mode and after moving through the map; compare CPU and GPU milliseconds as well as FPS.
+
+## Full quality rendering and memory
+
+The Lit renderer uses a depth pass for opaque world and brush geometry, then shades those surfaces at that depth. Model instances do not use this prepass. Sky light occlusion reuses a per-view table of the same sample distances and mip levels. Light cluster lists discard lights that cannot contribute to the cluster while retaining the existing priority order. These optimizations keep the full quality settings.
+
+**Model levels of detail** (`render.model_lods`) follows the model's Source switch points and its projected size. The CPU avoids submitting unused model levels when it can preserve the existing drawing order; transparent models and ambiguous switch boundaries retain the shader's selection. Turning this setting off keeps the finest model level.
+
+DXT1, DXT3 and DXT5 textures are uploaded in their BC formats when the graphics card supports them. Unsupported formats use the existing RGBA fallback. Decoded upload buffers are released after upload. The model geometry cache uses a 128 MiB budget for unreferenced CPU data, evicts the least recently used data and keeps model information available. Active maps, model variants and current readers keep the data required for selection and editing; this cache budget is separate from total editor RAM and GPU memory.
+
+Hidden water and water outside the camera frustum do not trigger a reflection pass. This culling already existed in 1.1.0. In 1.1.1, the performance readout reports zero reflection time when that pass is skipped, instead of carrying over the previous reflection's sample. Visible water retains its existing reflection quality.
+
+## Calculate lighting, then navigate
+
+**Lighting preview** (`Alt+5`) draws direct lighting in real time. **Baked lighting preview** (`Ctrl+F5`) reuses calculated lightmaps. Choose **Map > Lighting > Bake lighting** and wait for the quick and refined passes to finish before evaluating navigation. This action always calculates the whole map; moving the camera or changing the selection does not invalidate its result.
+
+The optional **Bake only around the camera on big maps** setting is off by default. When enabled, it applies to automatic preview activation and follows the camera, so entering another region can start another bake. Explicit **Bake lighting** returns to a global result. Existing saved choices are preserved.
+
+Geometry, lights, materials and calculation settings can invalidate the result. Preview brightness, color correction and the update delay do not restart the lighting calculation. Use the Lighting tab's progress, last result and stale warning to distinguish preparation from a reusable result. With dynamic updates disabled, use **Bake again** after a relevant change. See [Lighting preview](../features/lighting-preview.md).
+
+## Lighting preview memory
+
+Geometry preparation for the lighting preview runs in a separate process. It receives a snapshot of the mounted folders, VPKs, GMAs and custom texture prefixes in their current priority order. The editor keeps the BSP and face bindings required to display the result, and reuses the prepared geometry for the refined pass. Cancelling the preview stops its worker process.
+
+Bounce rays use a bounded cache: 48 MiB for the preview and 128 MiB with the compiler's default memory budget. Excess ray records are read from temporary storage in tiles of 128 gather points. Sampling positions, ray counts and accumulation order stay the same. Temporary files close and disappear when the lighting process finishes or is cancelled. This bounds the ray cache; lightmaps, geometry, probes and other compiler data use their own memory.
+
+Use the existing lighting actions or MCP `bake_lighting` with `action: "start"`, `"around_camera"` or `"stop"` to start or cancel a preview, and `get_lighting_status` to inspect it. See [Lighting preview](../features/lighting-preview.md) and [Compile performance](../compiler/performance.md).
+
 ## Performance mode
 
 **Settings > Rendering > Performance** (`render.performance_mode`, `render.render_scale`):
@@ -29,7 +57,7 @@ Nothing here changes the default look: the speed of the default mode comes from 
 
 ### Trying a weaker graphics card
 
-The environment variable `HP_ADAPTER` picks the graphics adapter at startup: `integrated`, `cpu` (the Windows software renderer, a good stand-in for a very weak card) or a part of an adapter name. `HP_PERF_BASELINE=all` switches off the speed-ups of the default mode (instances and shadow casters outside a view, the kept sun shadow, the lazy exposure readback, the parallel light clusters) to compare, with the same pictures.
+The environment variable `HP_ADAPTER` picks the graphics adapter at startup: `integrated`, `cpu` (the Windows software renderer, a good stand-in for a very weak card) or a part of an adapter name. `HP_PERF_BASELINE=all` switches off the default rendering speed-ups for comparisons. A comma-separated list can isolate them: `instances`, `shadowfit`, `exposure`, `clusters`, `prepass`, `lods`, `skymarch`, `clusterbounds`. `lods` controls CPU submission only; it preserves the selected Source level of detail. These switches are diagnostic controls and do not change the saved quality settings.
 
 ## Frame rate settings
 
@@ -39,7 +67,7 @@ Page **Settings > Rendering**, group **Frame rate**:
 |---|---|---|
 | **Frame rate limit** | Most frames per second (0: no limit; with vertical sync the display limits it). Lower it to save power and heat on laptops. | 0 |
 | **In the background** | Frame rate limit while the window is not active (0: no limit). | 30 |
-| **Vertical sync** | Waits for the screen refresh. Applies after a restart. | On |
+| **Vertical sync** | Waits for the screen refresh. Applies immediately. | On |
 
 ## What the 3D view draws
 
@@ -50,7 +78,7 @@ Page **Settings > Rendering**, group **Frame rate**:
 | **Radius culling** and **Culling radius** | Settings > Rendering, also **View > Display options > Radius culling** and the toolbar | Nothing farther than the radius from the camera is drawn (a circle shows it in the 2D views), like Hammer's radius culling. | Off, 4096 |
 | **Skip hidden geometry** | Settings > Rendering | Parts of the map whose objects are all hidden are not drawn at all. | On |
 | **Model distance** | Settings > Rendering | Models farther than this are drawn as boxes (0: no limit). A big help on maps with many props. | 0 |
-| `lod_distances` | `settings.toml`, table `[render]` | Two distances beyond which heavy models use their LOD 1 and LOD 2 (0: always the full model). No UI yet. | `[0, 0]` |
+| **Model levels of detail** | Settings > Rendering | Uses the model's Source levels of detail according to its size on screen. Off: every model uses its finest level. | On |
 | **Relief (normal maps)** | Settings > Rendering | Off: flat surfaces and less video memory. | On |
 | **Cubemap reflections** and **Redraw the cubemaps after edits** | Settings > Rendering | Materials with `$envmap` reflect cubemaps drawn by the editor. Turning off the automatic redraw keeps them until **Map > Lighting > Rebuild cubemaps**. | On, On |
 | **Shadowed lights** | Settings > Rendering | In the Lit render mode, how many point and spot lights near the camera cast shadows (0: only the sun, 16 at most). | 4 |
@@ -59,7 +87,7 @@ Page **Settings > Rendering**, group **Frame rate**:
 | **Water detail** | Settings > Rendering | Reflect all and Reflect world draw the scene a second time (at most 1024 pixels wide) for the mirror of expensive water; Simple reflections is the cheapest. | Reflect all |
 | **Model fade**, **Render effects**, **Animated materials** | View > Display options (the first two also in Settings > Rendering) | Small costs; turn off when every frame counts. | Off, On, On |
 
-The render mode matters too: **Flat shaded** (`Alt+2`) and **Wireframe** (`Alt+3`) are the cheapest; **Lighting preview** (`Alt+5`) and **Baked lighting preview** (`Ctrl+F5`) the most expensive. See [Render modes and display options](../features/render-modes-display.md) and [Lighting preview](../features/lighting-preview.md).
+The render mode matters too: **Flat shaded** (`Alt+2`) and **Wireframe** (`Alt+3`) avoid lighting work. **Lighting preview** (`Alt+5`) computes direct lighting during navigation; **Baked lighting preview** (`Ctrl+F5`) prepares lighting first and reuses that result. Materials, models and reflections still contribute to drawing cost. See [Render modes and display options](../features/render-modes-display.md) and [Lighting preview](../features/lighting-preview.md).
 
 ## What the 2D views draw
 

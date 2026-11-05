@@ -82,6 +82,71 @@ Le bouton `▶` à côté du champ **Particle System Name** (`effect_name`) d'un
 
 Fermer la fenêtre pendant qu'elle attend un choix annule ce choix.
 
+## Éditeur de particules intégré
+
+Ouvrez **Autres > Éditeur de particules** (action `particle_editor`). Cet éditeur crée et modifie les systèmes contenus dans un PCF. Le navigateur de particules et sa petite fenêtre d'aperçu restent disponibles pour choisir les effets existants du jeu.
+
+### Fichiers et systèmes
+
+**Nouveau** crée un document vide. **Ouvrir un PCF** lit un fichier externe. Le champ de chemin accepte un chemin absolu ou monté, comme `particles/fire_01.pcf` ; **Charger** l'ouvre et **PCF montés** liste les fichiers indexés du jeu, filtrés par ce champ. L'ouverture d'un fichier monté ne remplace pas l'archive du jeu : choisissez un chemin externe avec **Enregistrer sous**. Les dialogues de fichiers et dossiers fonctionnent indépendamment de la fenêtre de l'éditeur.
+
+Le panneau gauche filtre les systèmes par nom. Sélectionnez un système pour afficher ses propriétés, opérateurs et enfants. Saisissez un nom puis utilisez **Créer** ou **Renommer** ; **Dupliquer** copie le système et son graphe d'opérateurs sous un nom unique. **Supprimer** retire le système et ses références enfants. Le document possède son historique **Annuler** et **Rétablir**, distinct de celui de la map. Fermer, remplacer ou vider un document modifié demande de confirmer l'abandon des changements. Un astérisque dans le titre marque les modifications non enregistrées ; revenir par annulation à l'état enregistré le retire.
+
+L'enregistrement produit un DMX binaire version 5. Le document conserve les identités d'éléments, références, ordre des opérateurs, attributs typés, références externes et données binaires au lieu de reconstruire un fichier depuis la seule partie comprise par l'aperçu. Un opérateur non simulé reste donc présent après ouverture et enregistrement. Les références incorrectes, valeurs invalides et fichiers dépassant la limite de taille PCF sont rejetés.
+
+### Opérateurs et paramètres
+
+Chaque système contient les groupes **Émetteurs**, **Initialisateurs**, **Opérateurs**, **Générateurs de forces**, **Contraintes** et **Rendus**. La bibliothèque propose les fonctions Source courantes avec leurs paramètres initiaux. Ouvrir ou importer un PCF ajoute aussi ses définitions d'opérateurs à la bibliothèque de la session. Il est possible de saisir directement le nom d'une autre fonction Source.
+
+Sélectionnez un opérateur dans l'arbre pour modifier tous ses paramètres enregistrés, y compris `functionName`. **Modifier l'élément référencé** ouvre les propriétés des éléments DMX imbriqués. **Copier** et **Coller** transfèrent les opérateurs entre systèmes. **Monter**, **Descendre** ou glisser une ligne sur une autre de la même catégorie modifie l'ordre d'exécution. Chaque opération est annulable. Ajoutez ou retirez des paramètres avec leurs noms Source exacts ; les paramètres inconnus conservent leurs valeurs et types.
+
+| Type de paramètre | Éditeur |
+|---|---|
+| Entier, décimal, booléen, texte | Valeur numérique glissable, case ou champ de texte |
+| Couleur | Sélecteur de couleur et alpha |
+| Vecteur 2, 3 ou 4 | Composantes numériques séparées |
+| Référence d'élément | Liste des éléments du document, avec référence vide |
+| Tableaux | Valeurs indexées, ajout et retrait |
+| Tableaux de décimaux | Valeurs numériques et courbe glissable |
+| Tableaux de couleurs | Étapes de couleur et aperçu du dégradé |
+| Angles, quaternion, matrice | Composantes numériques avec conservation du type DMX |
+| Autres données binaires | Éditeur hexadécimal conservant le type DMX |
+
+Les champs numériques et textuels sont validés à la fin du geste ou de la saisie, pour que l'annulation revienne à la valeur précédente. L'enregistrement et le remplacement d'un document valident les saisies en attente avant de continuer. Les incohérences minimum/maximum, indices de points de contrôle invalides et autres problèmes apparaissent dans **Validation**.
+
+Les opérateurs `radius scale` et `alpha fade and decay` proposent aussi des points glissables durée/valeur qui modifient leurs vrais champs Source de temps et de taille/alpha. L'opérateur `color fade` affiche un dégradé entre la couleur de base du système et sa couleur de fondu. Les paramètres Source individuels restent modifiables sous ces contrôles.
+
+Les propriétés du système comprennent le matériau, les nombres maximal et initial de particules, le rayon, la couleur et la boîte englobante. **Choisir le matériau du sprite**, à côté d'un champ de matériau, permet de chercher dans les matériaux montés et leurs vignettes. L'aperçu utilise le shader Source et la planche de sprites existants du matériau.
+
+**Systèmes enfants** lie un autre système du document avec un délai de démarrage. Sélectionnez sa ligne pour modifier la référence, le délai et la fin d'émission, ou retirer l'enfant. Les cycles d'enfants sont rejetés. Les autres paramètres de points de contrôle et d'opérateurs sont accessibles par leurs champs enregistrés.
+
+### Aperçu animé
+
+Le panneau droit utilise la même simulation et le même moteur GPU que la vue 3D de la map. Il affiche le système sélectionné et ses enfants avec les matériaux montés, les mélanges alpha/additif, les images d'animation, les traînées et les cordes pris en charge par ce moteur.
+
+Glissez pour orbiter, utilisez la molette pour zoomer et double-cliquez pour réinitialiser la caméra. **Pause/Lecture**, **Relancer**, la vitesse de 0,05x à 4x, **Grille** et la couleur de fond affectent uniquement l'aperçu. Ajoutez des points de contrôle, saisissez leurs coordonnées ou glissez leurs repères CP dans la vue. Les statistiques indiquent le nombre de particules et le temps CPU mesuré de simulation. L'aperçu limite les particules actives à 30000 et affiche un avertissement si cette limite est atteinte.
+
+L'éditeur PCF peut conserver et modifier davantage d'opérateurs que la simulation n'en implémente. L'aperçu et la validation listent explicitement les fonctions non simulées. Elles restent enregistrées pour Source ; vérifiez l'effet sauvegardé dans le jeu cible avant de considérer son aspect comme définitif. Un rendu par modèle ou dans l'espace écran n'est pas remplacé par une approximation en sprites.
+
+### Modèles, import et export d'addon
+
+Les modèles **Feu**, **Fumée**, **Étincelles**, **Pluie** et **Explosion** ajoutent des systèmes modifiables au document courant. Les imports répétés prennent des noms uniques. **Importer des systèmes** lit un autre PCF, copie ses systèmes et remappe les références de leur graphe.
+
+**Exporter l'addon** choisit la racine d'un addon et écrit `particles/<fichier>.pcf` avec `particles/particles_manifest.txt`. Les entrées existantes du manifeste sont conservées. La fenêtre d'enregistrement fournit les appels `game.AddParticles` et `PrecacheParticleSystem` à copier dans le Lua de l'addon. L'export du PCF n'empaquette pas ses matériaux de sprites : ils doivent exister dans le contenu du jeu ou être inclus dans l'addon.
+
+**Assigner à la sélection** écrit le nom du système sélectionné dans `effect_name` des entités `info_particle_system` sélectionnées, ou dans un champ de particules en attente de choix. La modification de map compte pour une étape d'annulation de la map. Enregistrez/exportez le PCF modifié et rendez-le disponible au jeu pour qu'il puisse charger l'effet nommé.
+
+### Accès MCP
+
+| Outil | Fonction |
+|---|---|
+| `get_particle_document` | Lire le document, ses systèmes, paramètres typés et l'état de l'éditeur |
+| `list_particle_operators` | Découvrir les catégories, fonctions et paramètres initiaux |
+| `particle_editor` | Effectuer les opérations de fichier, système, opérateur, paramètre, enfant, historique, aperçu et assignation |
+| `capture_particle_preview` | Capturer l'aperçu animé via le moteur GPU partagé |
+
+Les opérations de `particle_editor` comprennent `new`, `open`, `read`, `import`, `save`, `export`, `validate`, `create`, `rename`, `duplicate`, `delete`, `select`, `preset`, `add_operator`, `remove_operator`, `move_operator`, `copy_operator`, `paste_operator`, `set_parameter`, `remove_parameter`, `add_child`, `remove_child`, `undo`, `redo`, `preview` et `assign`. Elles utilisent le même document et le même historique que la fenêtre. La [référence MCP générée](../../MCP.md), en anglais, donne les arguments et types de valeurs actuellement acceptés. La fenêtre doit être ouverte et rendue avant la capture de son aperçu.
+
 ## Astuces
 
 - Sur une map avec beaucoup d'effets, activez **Particules de la sélection uniquement** pour regarder un effet à la fois.

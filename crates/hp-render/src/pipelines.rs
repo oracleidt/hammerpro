@@ -274,6 +274,7 @@ pub(crate) struct PipelineSet {
     pub chunk: [[wgpu::RenderPipeline; 2]; MESH_PASSES],
     pub chunk_faded: [[wgpu::RenderPipeline; 2]; 2],
     pub prepass: [wgpu::RenderPipeline; 2],
+    pub chunk_equal: [wgpu::RenderPipeline; 2],
     pub model: [[wgpu::RenderPipeline; 2]; MESH_PASSES],
     pub model_faded: [[wgpu::RenderPipeline; 2]; 2],
     pub edge_depth: wgpu::RenderPipeline,
@@ -499,6 +500,16 @@ pub(crate) fn build_with(
     d: Desc<'_>,
     polygon_mode: wgpu::PolygonMode,
 ) -> wgpu::RenderPipeline {
+    build_depth(device, samples, d, polygon_mode, None)
+}
+
+fn build_depth(
+    device: &wgpu::Device,
+    samples: u32,
+    d: Desc<'_>,
+    polygon_mode: wgpu::PolygonMode,
+    depth_compare: Option<wgpu::CompareFunction>,
+) -> wgpu::RenderPipeline {
     let bias = if polygon_mode == wgpu::PolygonMode::Line && d.depth_test {
         wgpu::DepthBiasState { constant: 8, slope_scale: 1.0, clamp: 0.0 }
     } else {
@@ -529,11 +540,11 @@ pub(crate) fn build_with(
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: DEPTH_FORMAT,
                 depth_write_enabled: Some(d.depth_write),
-                depth_compare: Some(if d.depth_test {
+                depth_compare: depth_compare.or(Some(if d.depth_test {
                     wgpu::CompareFunction::GreaterEqual
                 } else {
                     wgpu::CompareFunction::Always
-                }),
+                })),
                 stencil: wgpu::StencilState::default(),
                 bias,
             }),
@@ -576,7 +587,7 @@ impl PipelineSet {
         let point_vb = [Some(vertex_layout(size_of::<PointInstance>(), wgpu::VertexStepMode::Instance, &POINT_ATTRS))];
         let sprite_vb = [Some(vertex_layout(size_of::<SpriteGpu>(), wgpu::VertexStepMode::Instance, &SPRITE_ATTRS))];
 
-        let mesh = |vs: &str, buffers: &Buffers<'_>, pass: MeshPass, two_sided: bool| {
+        let mesh = |vs: &str, buffers: &Buffers<'_>, pass: MeshPass, two_sided: bool, equal: bool| {
             let (blend, depth_write, mode) = match pass {
                 MeshPass::Opaque | MeshPass::AlphaTest => (Blend::Replace, true, 0.0),
                 MeshPass::Translucent => (Blend::Alpha, false, 1.0),
@@ -585,7 +596,7 @@ impl PipelineSet {
             };
             let alpha_test = if pass == MeshPass::AlphaTest { 1.0 } else { 0.0 };
             let tint_filter = if matches!(pass, MeshPass::Opaque | MeshPass::AlphaTest) { 1.0 } else { 0.0 };
-            build(
+            build_depth(
                 device,
                 samples,
                 Desc {
@@ -598,10 +609,12 @@ impl PipelineSet {
                     topology: wgpu::PrimitiveTopology::TriangleList,
                     cull: if two_sided { None } else { Some(wgpu::Face::Back) },
                     depth_test: true,
-                    depth_write,
+                    depth_write: depth_write && !equal,
                     blend,
                     constants: &[("ALPHA_TEST", alpha_test), ("BLEND_MODE", mode), ("TINT_FILTER", tint_filter)],
                 },
+                wgpu::PolygonMode::Fill,
+                equal.then_some(wgpu::CompareFunction::Equal),
             )
         };
         let faded = |vs: &str, buffers: &Buffers<'_>, alpha_test: bool, two_sided: bool| {
@@ -640,13 +653,15 @@ impl PipelineSet {
                 rayon::join(
                     || {
                         passes.map(|p| {
-                            pair(&|| mesh("vs_chunk", &chunk_vb, p, false), &|| mesh("vs_chunk", &chunk_vb, p, true))
+                            pair(&|| mesh("vs_chunk", &chunk_vb, p, false, false), &|| {
+                                mesh("vs_chunk", &chunk_vb, p, true, false)
+                            })
                         })
                     },
                     || {
                         passes.map(|p| {
-                            pair(&|| mesh("vs_model", &model_mesh_vb, p, false), &|| {
-                                mesh("vs_model", &model_mesh_vb, p, true)
+                            pair(&|| mesh("vs_model", &model_mesh_vb, p, false, false), &|| {
+                                mesh("vs_model", &model_mesh_vb, p, true, false)
                             })
                         })
                     },
@@ -851,12 +866,12 @@ impl PipelineSet {
                         depth_write_enabled: Some(true),
                         depth_compare: Some(wgpu::CompareFunction::GreaterEqual),
                         stencil: wgpu::StencilState::default(),
-                        bias: wgpu::DepthBiasState { constant: -4, slope_scale: 0.0, clamp: 0.0 },
+                        bias: wgpu::DepthBiasState::default(),
                     }),
                     multisample: wgpu::MultisampleState { count: samples, mask: !0, alpha_to_coverage_enabled: false },
                     fragment: Some(wgpu::FragmentState {
                         module: &shared.mesh,
-                        entry_point: Some("fs_fill"),
+                        entry_point: Some("fs_depth"),
                         compilation_options: wgpu::PipelineCompilationOptions::default(),
                         targets: &[Some(wgpu::ColorTargetState {
                             format: COLOR_FORMAT,
@@ -870,10 +885,12 @@ impl PipelineSet {
             })
         };
         let prepass = [prepass_pipe(false), prepass_pipe(true)];
+        let chunk_equal = [false, true].map(|two| mesh("vs_chunk", &chunk_vb, MeshPass::Opaque, two, true));
         Self {
             chunk,
             chunk_faded,
             prepass,
+            chunk_equal,
             model,
             model_faded,
             edge_depth: edge(1.0, true),

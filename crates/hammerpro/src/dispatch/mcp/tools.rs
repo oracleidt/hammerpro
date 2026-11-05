@@ -125,6 +125,7 @@ pub(crate) const DOMAINS: &[&Domain] = &[
     &super::tools_docs::DOMAIN,
     &super::tools_history::DOMAIN,
     &super::tools_overlays::DOMAIN,
+    &super::tools_particles::DOMAIN,
     &super::tools_paths::DOMAIN,
     &super::tools_sky::DOMAIN,
     &super::tools_fog::DOMAIN,

@@ -53,5 +53,5 @@ pub use mount::{DeferredMount, MountOptions};
 pub use path::normalize_path;
 pub use progress::{MountProgress, MountSnapshot, MountStage};
 pub use scan::{ScanConfig, ScanStats, clear_index, configure as configure_scan, flush_index, scan_config, scan_stats};
-pub use source::{SourceInfo, SourceKind, SourceOrigin};
+pub use source::{SourceInfo, SourceKind, SourceMount, SourceMountKind, SourceOrigin};
 pub use texture::{CustomImageInfo, LoadedTexture};

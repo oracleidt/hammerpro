@@ -202,6 +202,9 @@ pub(crate) fn read_result(path: &Path) -> Result<LitResult, String> {
 }
 
 pub(crate) fn run(args: &[String]) -> i32 {
+    if args.first().is_some_and(|argument| argument == "prepare") {
+        return super::prepare::run(&args[1..]);
+    }
     let (Some(args), extra) = (args.get(..6), args.get(6..).unwrap_or_default()) else {
         println!(
             "Error: usage: hammerpro {LIGHT_ARG} <in.bsp> <out> <hdr 0|1> <draft|normal|final> <bounces> <threads> [game] [prop shadows 0|1] [prop lighting 0|1] [sun samples,ambient samples,supersample 0|1,quick 0|1]"
@@ -214,16 +217,7 @@ pub(crate) fn run(args: &[String]) -> i32 {
     let prop_lighting = extra.get(2).is_none_or(|v| v != "0");
     let tuning = extra.get(3).map_or_else(Tuning::default, |t| Tuning::parse(t));
     super::memory::lower_process_memory_priority();
-    let _ = std::thread::Builder::new().name("hp-light-watch".to_owned()).spawn(|| {
-        let mut buf = [0u8; 64];
-        let mut stdin = std::io::stdin();
-        loop {
-            match stdin.read(&mut buf) {
-                Ok(0) | Err(_) => std::process::exit(3),
-                Ok(_) => {}
-            }
-        }
-    });
+    watch_parent();
     let data = match std::fs::read(input) {
         Ok(d) => d,
         Err(e) => {
@@ -262,6 +256,19 @@ pub(crate) fn run(args: &[String]) -> i32 {
     }
     println!("done");
     0
+}
+
+pub(super) fn watch_parent() {
+    let _ = std::thread::Builder::new().name("hp-light-watch".to_owned()).spawn(|| {
+        let mut buf = [0u8; 64];
+        let mut stdin = std::io::stdin();
+        loop {
+            match stdin.read(&mut buf) {
+                Ok(0) | Err(_) => std::process::exit(3),
+                Ok(_) => {}
+            }
+        }
+    });
 }
 
 #[cfg(test)]

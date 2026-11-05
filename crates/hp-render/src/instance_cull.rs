@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use glam::{Vec3, Vec4};
 
 use crate::arena::GrowBuffer;
+use crate::camera::Camera;
 use crate::camera::aabb_inside;
 use crate::gpu::InstanceGpu;
 use crate::{Group, Renderer};
@@ -50,7 +51,7 @@ impl Renderer {
     pub(crate) fn reserve_instance_pool(&mut self) {
         self.instance_pool.reset();
         let count = self.instance_data.len();
-        if count < MIN_INSTANCES {
+        if count == 0 {
             return;
         }
         let want = (count as u64 * size_of::<InstanceGpu>() as u64 + ALIGN) * POOL_PASSES;
@@ -66,40 +67,70 @@ impl Renderer {
     }
 
     pub(crate) fn pack_visible(&self, planes: &[Vec4]) -> Option<Packed> {
+        self.pack_visible_with(planes, None)
+    }
+
+    pub(crate) fn pack_view_instances(&self, cam: &Camera, model_lods: bool) -> Option<Packed> {
+        let lods = (!crate::profile::baseline("lods")).then_some((cam, model_lods));
+        self.pack_visible_with(&cam.planes[..cam.plane_count], lods)
+    }
+
+    fn pack_visible_with(&self, planes: &[Vec4], lods: Option<(&Camera, bool)>) -> Option<Packed> {
         let total = self.instance_data.len();
-        if total < MIN_INSTANCES
-            || self.instance_boxes.len() != total
-            || !self.instance_pool.enabled
-            || crate::profile::baseline("instances")
-        {
+        let cull = total >= MIN_INSTANCES
+            && self.instance_boxes.len() == total
+            && self.instance_pool.enabled
+            && !crate::profile::baseline("instances");
+        let choose_lods = lods.is_some() && self.models.values().any(|m| !m.lod_parts.is_empty());
+        if total == 0 || (!cull && !choose_lods) {
             return None;
         }
         let mut out = self.instance_pool.scratch.lock().ok()?;
         out.clear();
         let mut groups: Vec<Group> = Vec::with_capacity(self.instance_groups.len().min(1024));
         for g in &self.instance_groups {
-            let start = out.len() as u32;
+            let lod_model = choose_lods.then(|| self.models.get(&g.key)).flatten().filter(|model| {
+                model.lod_ranges.iter().all(|(lo, hi)| hi > lo)
+                    && model.parts.iter().chain(&model.lod_parts).all(|part| {
+                        let desc = self.scene.materials.get(part.material as usize).and_then(|m| m.desc);
+                        crate::classify(desc.as_ref()).is_some_and(|(pass, _)| {
+                            matches!(pass, crate::MeshPass::Opaque | crate::MeshPass::AlphaTest)
+                        })
+                    })
+            });
             let mesh_end = g.start + g.count - g.hull.min(g.count);
-            let mut hull = 0u32;
             for i in g.start..g.start + g.count {
-                let (Some(data), Some((lo, hi))) =
-                    (self.instance_data.get(i as usize), self.instance_boxes.get(i as usize))
-                else {
-                    continue;
-                };
-                let pad = Vec3::splat(PAD) + (*hi - *lo) * PAD_FRACTION;
-                if !aabb_inside(planes, *lo - pad, *hi + pad) {
-                    continue;
+                let Some(data) = self.instance_data.get(i as usize) else { continue };
+                if cull && let Some((lo, hi)) = self.instance_boxes.get(i as usize) {
+                    let pad = Vec3::splat(PAD) + (*hi - *lo) * PAD_FRACTION;
+                    if !aabb_inside(planes, *lo - pad, *hi + pad) {
+                        continue;
+                    }
                 }
+                let start = out.len() as u32;
+                let hull = u32::from(i >= mesh_end);
+                let lod = if data.tint[3] >= 0.999 {
+                    lods.and_then(|(cam, on)| {
+                        let model = lod_model?;
+                        if !on {
+                            return Some(0);
+                        }
+                        choose_lod(cam, data, &model.lod_ranges)
+                    })
+                } else {
+                    None
+                };
                 out.push(*data);
-                hull += u32::from(i >= mesh_end);
-            }
-            let count = out.len() as u32 - start;
-            if count > 0 {
-                groups.push(Group { key: g.key, start, count, hull });
+                match groups.last_mut() {
+                    Some(last) if last.key == g.key && last.lod == lod && (last.hull == 0 || hull != 0) => {
+                        last.count += 1;
+                        last.hull += hull;
+                    }
+                    _ => groups.push(Group { key: g.key, start, count: 1, hull, lod }),
+                }
             }
         }
-        if out.len() >= total {
+        if out.len() >= total && !choose_lods {
             return None;
         }
         let bytes: &[u8] = bytemuck::cast_slice(&out);
@@ -113,4 +144,19 @@ impl Renderer {
         }
         Some(Packed { offset, len: len.max(4), groups })
     }
+}
+
+fn choose_lod(cam: &Camera, instance: &InstanceGpu, ranges: &[(f32, f32)]) -> Option<u32> {
+    let origin = Vec3::from_slice(&instance.m3);
+    let up = cam.up * 0.5;
+    let a = cam.view_proj * (origin + up).extend(1.0);
+    let b = cam.view_proj * (origin - up).extend(1.0);
+    let y = |p: Vec4| if p.w >= 0.001 { p.y / p.w } else { p.y * 1000.0 };
+    let width = cam.height * (y(b) - y(a)).abs();
+    let metric = if width != 0.0 { 100.0 / width } else { 0.0 };
+    let margin = metric.abs().max(1.0) * 1e-4;
+    ranges
+        .iter()
+        .enumerate()
+        .find_map(|(i, &(lo, hi))| (metric > lo + margin && metric < hi - margin).then_some(i as u32))
 }

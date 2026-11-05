@@ -30,7 +30,7 @@ impl SourceKind {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub enum SourceOrigin {
     Custom,
     GameLoose,
@@ -40,6 +40,41 @@ pub enum SourceOrigin {
     Extra,
     Workshop,
     Download,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum SourceMountKind {
+    Dir,
+    Vpk,
+    Gma,
+    Custom { prefix: String },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SourceMount {
+    pub kind: SourceMountKind,
+    pub label: String,
+    pub path: PathBuf,
+    pub enabled: bool,
+    pub origin: SourceOrigin,
+}
+
+impl SourceInfo {
+    pub fn mount(&self) -> SourceMount {
+        let kind = match &self.kind {
+            SourceKind::Dir => SourceMountKind::Dir,
+            SourceKind::Vpk(_) => SourceMountKind::Vpk,
+            SourceKind::Gma(_) => SourceMountKind::Gma,
+            SourceKind::Custom(dir) => SourceMountKind::Custom { prefix: dir.prefix.clone() },
+        };
+        SourceMount {
+            kind,
+            label: self.label.clone(),
+            path: self.path.clone(),
+            enabled: self.enabled,
+            origin: self.origin,
+        }
+    }
 }
 
 impl SourceOrigin {

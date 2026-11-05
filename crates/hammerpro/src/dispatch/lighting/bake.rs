@@ -90,6 +90,7 @@ struct Compiled {
     sides: Arc<SideTable>,
     leaked: bool,
     warnings: Vec<String>,
+    peak: Option<super::memory::Usage>,
 }
 
 type Cache = Arc<std::sync::Mutex<Option<Compiled>>>;
@@ -235,6 +236,19 @@ fn note_memory(stage: &str) {
     }
 }
 
+fn take_compiled(cache: &std::sync::Mutex<Option<Compiled>>, serial: u64, snapshot: bool) -> Option<Compiled> {
+    let compiled = cache.lock().ok()?.take()?;
+    (!snapshot && compiled.serial == serial).then_some(compiled)
+}
+
+fn retain_compiled(cache: &std::sync::Mutex<Option<Compiled>>, ctx: &Ctx<'_>, compiled: &Compiled) {
+    if let Ok(mut cache) = cache.lock()
+        && !ctx.cancelled()
+    {
+        *cache = Some(compiled.clone());
+    }
+}
+
 fn run(job: Job, ctx: &Ctx<'_>, cache: &std::sync::Mutex<Option<Compiled>>) -> Outcome {
     note_memory("start");
     let Job {
@@ -259,22 +273,22 @@ fn run(job: Job, ctx: &Ctx<'_>, cache: &std::sync::Mutex<Option<Compiled>>) -> O
     } = job;
     ctx.progress(BakePhase::Preparing, 0.01);
     let fs = fs.unwrap_or_else(hp_fs::GameFs::empty);
-    let reused = cache.lock().ok().and_then(|mut c| c.take()).filter(|c| c.serial == serial);
+    let reused = take_compiled(cache, serial, map.is_some());
     let compiled = match (reused, map) {
         (Some(c), _) => {
             log::info!("lighting preview: the compiled map of the quick pass is used again");
             c
         }
-        (None, Some(map)) => match compile(map, factor, &fs, threads.0, ctx, serial) {
+        (None, Some(map)) => match compile(map, factor, &fs, threads.0, ctx, serial, exe.as_deref()) {
             Ok(c) => c,
             Err(o) => return o,
         },
         (None, None) => return Outcome::Cancelled,
     };
-    if keep && let Ok(mut c) = cache.lock() {
-        *c = Some(compiled.clone());
+    if keep {
+        retain_compiled(cache, ctx, &compiled);
     }
-    let Compiled { bsp, sides, leaked, warnings, .. } = compiled;
+    let Compiled { bsp, sides, leaked, warnings, peak: compile_peak, .. } = compiled;
     let (faces, luxels) = bsp::lit_faces(&bsp);
     let geometry = {
         let bsp = bsp.clone();
@@ -303,6 +317,15 @@ fn run(job: Job, ctx: &Ctx<'_>, cache: &std::sync::Mutex<Option<Compiled>>) -> O
     let luxels: u64 = geo.faces.iter().map(|f| u64::from(f.w) * u64::from(f.h)).sum();
     ctx.progress(BakePhase::Finishing, 0.95);
     let child::LitResult { flat, bsp: lit_bsp, peak } = lit;
+    let peak = match (compile_peak, peak) {
+        (Some(a), Some(b)) => Some(super::memory::Usage {
+            peak_working_set: a.peak_working_set.max(b.peak_working_set),
+            peak_committed: a.peak_committed.max(b.peak_committed),
+            working_set: a.working_set.max(b.working_set),
+            committed: a.committed.max(b.committed),
+        }),
+        (a, b) => a.or(b),
+    };
     note_memory("result read");
     let (props, indirect) = model_lighting(lit_bsp, hdr);
     note_memory("models");
@@ -329,6 +352,69 @@ fn compile(
     threads: usize,
     ctx: &Ctx<'_>,
     serial: u64,
+    exe: Option<&Path>,
+) -> Result<Compiled, Outcome> {
+    #[cfg(test)]
+    if std::env::var_os("HP_BENCH_GEOMETRY_IN_EDITOR").is_some() {
+        return compile_local(map, factor, fs, threads, ctx, serial, false);
+    }
+    let Some(exe) = exe else {
+        #[cfg(test)]
+        return compile_local(map, factor, fs, threads, ctx, serial, false);
+        #[cfg(not(test))]
+        return Err(Outcome::Failed("the preview geometry process executable could not be located".to_owned()));
+    };
+    coarsen(&mut map, factor);
+    let sides = Arc::new(SideTable::from_map(&map));
+    strip_hidden(&mut map);
+    let started = Instant::now();
+    ctx.progress(BakePhase::Compiling, 0.02);
+    let out = super::prepare::compile(
+        map,
+        fs,
+        exe,
+        threads,
+        ctx.id,
+        || ctx.cancelled(),
+        || {
+            ctx.progress(BakePhase::Compiling, eased(0.02, 0.12, started.elapsed().as_secs_f32(), 2.0));
+        },
+    )
+    .map_err(|error| match error {
+        super::prepare::Error::Cancelled => Outcome::Cancelled,
+        super::prepare::Error::Failed(message) => Outcome::Failed(message),
+    })?;
+    let bsp = Arc::new(hp_bsp::Bsp::from_vec(out.bsp).map_err(|error| Outcome::Failed(error.to_string()))?);
+    log::info!("lighting preview: geometry prepared outside the editor in {:.2} s", started.elapsed().as_secs_f32());
+    Ok(Compiled { serial, bsp, sides, leaked: out.leaked, warnings: out.warnings, peak: out.peak })
+}
+
+pub(super) fn compile_for_child(
+    map: hp_vmf::Map,
+    fs: &hp_fs::GameFs,
+    threads: usize,
+) -> Result<super::prepare::Output, String> {
+    let wanted = AtomicU64::new(1);
+    let (out, _) = crossbeam_channel::unbounded();
+    let wake = || {};
+    let ctx =
+        Ctx { id: 1, wanted: &wanted, out: &out, wake: &wake, start: Instant::now(), faces: 0, game: fs.game_dir() };
+    let compiled = compile_local(map, 1.0, fs, threads, &ctx, 0, true).map_err(|outcome| match outcome {
+        Outcome::Failed(message) => message,
+        _ => "the preview preparation was cancelled".to_owned(),
+    })?;
+    let bsp = Arc::try_unwrap(compiled.bsp).map(hp_bsp::Bsp::into_vec).unwrap_or_else(|bsp| bsp.bytes().to_vec());
+    Ok(super::prepare::Output { bsp, leaked: compiled.leaked, warnings: compiled.warnings, peak: None })
+}
+
+fn compile_local(
+    mut map: hp_vmf::Map,
+    factor: f64,
+    fs: &hp_fs::GameFs,
+    threads: usize,
+    ctx: &Ctx<'_>,
+    serial: u64,
+    stdout: bool,
 ) -> Result<Compiled, Outcome> {
     coarsen(&mut map, factor);
     let sides = SideTable::from_map(&map);
@@ -363,6 +449,12 @@ fn compile(
             );
         }
         log::debug!("preview compile: {line}");
+        if stdout {
+            use std::io::Write;
+            let mut output = std::io::stdout().lock();
+            let _ = writeln!(output, "{line}");
+            let _ = output.flush();
+        }
         if last.elapsed() > Duration::from_millis(200) {
             last = Instant::now();
             ctx.progress(BakePhase::Compiling, eased(0.02, 0.12, t.elapsed().as_secs_f32(), tau));
@@ -409,7 +501,7 @@ fn compile(
         Ok(b) => Arc::new(b),
         Err(e) => return Err(Outcome::Failed(e.to_string())),
     };
-    Ok(Compiled { serial, bsp, sides: Arc::new(sides), leaked, warnings })
+    Ok(Compiled { serial, bsp, sides: Arc::new(sides), leaked, warnings, peak: None })
 }
 
 enum LightError {
@@ -477,7 +569,7 @@ struct LightArgs {
 pub(crate) fn child_exe() -> Option<PathBuf> {
     std::env::current_exe()
         .ok()
-        .filter(|p| p.file_stem().is_some_and(|s| s.to_string_lossy().eq_ignore_ascii_case("hammerpro")))
+        .filter(|p| !cfg!(test) || p.file_stem().is_some_and(|s| s.to_string_lossy().eq_ignore_ascii_case("hammerpro")))
 }
 
 fn light(
@@ -727,6 +819,34 @@ mod tests {
     }
 
     #[test]
+    fn serialized_preparation_preserves_geometry_and_mount_resolution() {
+        let walls = [
+            ([-16.0, -16.0, -16.0], [272.0, 272.0, 0.0]),
+            ([-16.0, -16.0, 256.0], [272.0, 272.0, 272.0]),
+            ([-16.0, -16.0, 0.0], [0.0, 272.0, 256.0]),
+            ([256.0, -16.0, 0.0], [272.0, 272.0, 256.0]),
+            ([0.0, -16.0, 0.0], [256.0, 0.0, 256.0]),
+            ([0.0, 256.0, 0.0], [256.0, 272.0, 256.0]),
+        ];
+        let mut text = String::from("world { \"id\" \"1\" \"classname\" \"worldspawn\" ");
+        for (index, (lo, hi)) in walls.into_iter().enumerate() {
+            text += &solid(2 + index as u32, 10 + index as u32 * 6, lo, hi);
+        }
+        text += "} entity { \"id\" \"100\" \"classname\" \"info_player_start\" \"origin\" \"128 128 64\" }";
+        let map = hp_vmf::parse(&text).expect("map");
+        let fs = hp_fs::GameFs::empty();
+        let local = compile_for_child(map.clone(), &fs, 2).expect("local");
+        let serialized = hp_vmf::write(&map);
+        let restored_map = hp_vmf::parse(&serialized).expect("restore map");
+        let mounts: Vec<_> = fs.sources().iter().map(hp_fs::SourceInfo::mount).collect();
+        let restored_fs = hp_fs::GameFs::from_source_mounts(None, None, &mounts).expect("restore mounts");
+        let restored = compile_for_child(restored_map, &restored_fs, 2).expect("restored");
+        assert_eq!(restored.bsp, local.bsp, "the child receives identical compile inputs");
+        assert_eq!(restored.leaked, local.leaked);
+        assert_eq!(restored.warnings, local.warnings);
+    }
+
+    #[test]
     fn a_room_is_compiled_lit_and_bound_to_its_solids() {
         let walls = [
             ([-16.0, -16.0, -16.0], [272.0, 272.0, 0.0]),
@@ -793,6 +913,13 @@ mod tests {
             Outcome::Failed(e) => panic!("failed: {e}"),
         };
         assert!(cache.lock().unwrap().is_some(), "the compiled map waits for the refined pass");
+        let saved = cache.lock().unwrap().clone().unwrap();
+        assert!(take_compiled(&cache, 1, true).is_none(), "an explicit snapshot always takes precedence");
+        wanted.store(0, Ordering::Release);
+        retain_compiled(&cache, &ctx, &saved);
+        assert!(cache.lock().unwrap().is_none(), "a cancelled document cannot repopulate the cache");
+        wanted.store(7, Ordering::Release);
+        retain_compiled(&cache, &ctx, &saved);
         let refine = |serial: u64| Job {
             id: 7,
             serial,

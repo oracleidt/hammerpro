@@ -2,7 +2,7 @@
 
 # Documentation de Hammer Pro
 
-Bienvenue dans la base de connaissances de Hammer Pro 1.1.0, l'éditeur de maps pour le moteur Source pensé d'abord pour Garry's Mod. Chaque fonctionnalité a sa propre page : ce que c'est, comment l'ouvrir, chaque option avec sa valeur par défaut, des astuces et une courte FAQ. Les pages renvoient les unes aux autres : commencez où vous voulez.
+Bienvenue dans la base de connaissances de Hammer Pro 1.1.1, l'éditeur de maps pour le moteur Source pensé d'abord pour Garry's Mod. Chaque fonctionnalité a sa propre page : ce que c'est, comment l'ouvrir, chaque option avec sa valeur par défaut, des astuces et une courte FAQ. Les pages renvoient les unes aux autres : commencez où vous voulez.
 
 Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.md), [Configuration du jeu](getting-started/game-setup.md) puis [Votre première map](getting-started/first-map.md), dans cet ordre.
 
@@ -84,7 +84,7 @@ Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.m
 | [Navigateur de sons](features/sound-browser.md) | Sons du jeu, soundscripts et sélecteur de sons. |
 | [Éditeur de sons](features/sound-editor.md) | Coupe, gain, marqueurs de boucle et sortie WAV pour tout son du jeu. |
 | [Correction des couleurs](features/color-correction.md) | Éditeur de tables de couleurs (.raw) et aperçu 3D des entités color_correction. |
-| [Particules](features/particles.md) | Navigateur de particules et aperçu des particules dans les vues. |
+| [Particules](features/particles.md) | Éditeur de systèmes PCF, bibliothèque d'opérateurs, aperçu, navigateur et export d'addon. |
 
 ### Vues et rendu
 

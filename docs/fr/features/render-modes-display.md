@@ -19,7 +19,9 @@ Choisissez le mode dans **Affichage > Mode de rendu 3D**, dans la liste des mode
 | **Groupes de lissage** | `Alt+7` | Les faces colorées par groupe de lissage. |
 | **Grille de lightmap** | `Alt+8` | La grille de lightmap 3D de Hammer : la grille des luxels de chaque face avec lightmap (carreaux aussi larges que son échelle de lightmap, displacements compris), grise à 16, rouge si plus fine, verte si plus grossière ; sans précalcul. Les faces sans lightmap gardent leur texture. |
 | **3D Correction colorimétrique** | `Alt+9` | La vue texturée avec les entités `color_correction` appliquées : leurs tables de couleurs se mélangent selon la distance de la caméra 3D (poids plein dans `minfalloff`, nul au-delà de `maxfalloff`, multiplié par `maxweight`), donc vous voyez l'étalonnage du jeu sans activer l'aperçu séparé de la correction colorimétrique (voir [Correction colorimétrique](color-correction.md)). Comme le réglage d'aperçu, mais lié au mode. |
-| **Aperçu de l'éclairage précalculé** | `Ctrl+F5` | L'éclairage que le jeu aura, calculé par le compilateur intégré (voir [Aperçu de l'éclairage](lighting-preview.md)). |
+| **Aperçu de l'éclairage précalculé** | `Ctrl+F5` | L'éclairage calculé par le compilateur intégré, puis réutilisé pendant la navigation (voir [Aperçu de l'éclairage](lighting-preview.md)). |
+
+Le menu des modes dans le coin de la vue 3D utilise les mêmes noms. **Aperçu de l'éclairage** conserve les lumières directes en temps réel. **Aperçu de l'éclairage précalculé** démarre un calcul global par défaut ; attendez ses passes rapide et affinée. **Map > Éclairage > Précalculer l'éclairage** calcule toujours toute la carte sans suivi de caméra. L'option régionale est désactivée par défaut et concerne seulement l'activation automatique ; si elle est activée, sa région suit la caméra et peut déclencher un autre précalcul.
 
 **Affichage > Type de vue** a aussi **Vue 3D texturée** (`F5`) et **Vue 3D unie** (`Maj+F5`). Le mode est conservé d'une session à l'autre (`view.render_mode`).
 
@@ -166,7 +168,7 @@ Les images sont enregistrées dans la map (bloc `bgimages_plus` du VMF) et voyag
 | --- | --- | --- |
 | **Limite d'images par seconde** (`render.max_fps`) | Nombre maximal d'images par seconde (0 : aucune limite ; avec la synchronisation verticale, l'écran la limite). | 0 |
 | **En arrière-plan** (`render.unfocused_fps`) | Limite quand la fenêtre n'est pas active (0 : aucune limite). | 30 |
-| **Synchronisation verticale** (`render.vsync`) | Attend le rafraîchissement de l'écran (s'applique après un redémarrage). | Activé |
+| **Synchronisation verticale** (`render.vsync`) | Attend le rafraîchissement de l'écran (s'applique immédiatement). | Activé |
 
 ## Autres réglages de rendu
 

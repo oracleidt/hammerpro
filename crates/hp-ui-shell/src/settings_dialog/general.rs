@@ -328,11 +328,11 @@ pub(crate) const TR: TrTable = &[
     ("shell.settings.accent_custom", "Custom color", "Couleur personnalisée"),
     ("shell.settings.ui_scale", "Interface scale", "Échelle de l'interface"),
     ("shell.settings.show_fps", "Show frame rate", "Afficher les images par seconde"),
-    ("shell.settings.start_fullscreen", "Start in full screen", "Démarrer en plein écran"),
+    ("shell.settings.start_fullscreen", "Start maximized", "Démarrer agrandi"),
     (
         "shell.settings.start_fullscreen_tip",
-        "Hammer Pro opens in borderless full screen on the primary monitor. F11 (View > Full screen) switches it on and off at any time. Applied at the next start.",
-        "Hammer Pro s'ouvre en plein écran sans bordure sur l'écran principal. F11 (Affichage > Plein écran) l'active et le désactive à tout moment. Appliqué au prochain démarrage.",
+        "Hammer Pro opens maximized in the monitor's work area. The taskbar and window buttons stay visible. F11 (View > Maximize window) restores the previous window size and position or maximizes it again. Applied at the next start.",
+        "Hammer Pro s'ouvre agrandi dans la zone utile du moniteur. La barre des tâches et les boutons de fenêtre restent visibles. F11 (Affichage > Agrandir la fenêtre) restaure la taille et la position précédentes ou agrandit à nouveau la fenêtre. Appliqué au prochain démarrage.",
     ),
     ("shell.settings.native_frames", "Native window frames", "Cadres de fenêtre natifs"),
     (

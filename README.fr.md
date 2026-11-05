@@ -8,7 +8,9 @@
 
 Hammer Pro ouvre et enregistre des fichiers `.vmf` standard : vous pouvez l'utiliser en parallèle de Hammer et de Hammer++. Il est écrit en Rust, dessine avec la carte graphique grâce à wgpu, reste fluide sur les très grandes maps et compile les maps avec son propre compilateur intégré : ni VBSP, ni VVIS, ni VRAD.
 
-Version **1.1.0**.
+Version **1.1.1**.
+
+L'[éditeur de particules intégré](docs/fr/features/particles.md), accessible dans **Autres > Éditeur de particules**, crée et modifie les systèmes PCF avec paramètres typés, bibliothèque d'opérateurs, annulation, aperçu direct, export d'addon et commandes MCP.
 
 ## Points forts
 

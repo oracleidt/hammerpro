@@ -13,6 +13,21 @@ pub(crate) struct PreparedLods {
     pub lods: Vec<Vec<PreparedPart>>,
 }
 
+impl PreparedLods {
+    pub(crate) fn geometry_bytes(&self) -> usize {
+        self.lods
+            .iter()
+            .flatten()
+            .map(|part| {
+                part.vertices.capacity() * size_of::<hp_render::Vertex>()
+                    + part.indices.capacity() * size_of::<u32>()
+                    + part.tangents.capacity() * size_of::<[f32; 4]>()
+                    + part.color_index.capacity() * size_of::<u32>()
+            })
+            .sum()
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct Lods {
     pub on: bool,

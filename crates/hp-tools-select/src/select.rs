@@ -654,7 +654,9 @@ impl SelectTool {
     fn begin_transform(&mut self, state: &AppState, view: &ViewInfo, op: DragOp, pos: Pos2, mods: Modifiers) {
         let Some(bounds) = self.selection_bounds(state) else { return };
         let elements = !element::picked_points(state).is_empty();
-        if elements && !matches!(op, DragOp::Move { .. } | DragOp::GizmoMove { .. }) {
+        let moving = matches!(op, DragOp::Move { .. } | DragOp::GizmoMove { .. })
+            || matches!(&op, DragOp::Modal(m) if m.kind == ModalKind::Move);
+        if elements && !moving {
             return;
         }
         let objs = if elements { Vec::new() } else { state.doc.selected_objects() };
@@ -805,6 +807,31 @@ impl SelectTool {
         }
         let part = self.gizmo_hit(state, view, origin);
         let (Some(part), Some(c)) = (part, self.gizmo_center(state)) else {
+            if state.settings.selection.element != hp_app::settings::SelectElement::Object {
+                if let Some(picked) = element::pick(state, view, origin, state.settings.selection.element) {
+                    if !element::is_selected(state, picked) {
+                        element::click(state, view, origin, mods);
+                        self.sel_cache.set(None);
+                    }
+                    if let Some(bounds) = element::picked_bounds(state) {
+                        let center = self.active_pivot(state).unwrap_or_else(|| bounds.center());
+                        let (o, d) = view.ray(origin);
+                        if let Some(anchor) = ray_plane(o, d, center, view.cam3d.forward()) {
+                            self.begin_transform(
+                                state,
+                                view,
+                                DragOp::GizmoMove { part: GizmoPart::Center, anchor, delta: DVec3::ZERO },
+                                origin,
+                                mods,
+                            );
+                        }
+                    }
+                } else {
+                    element::click(state, view, origin, mods);
+                    self.sel_cache.set(None);
+                }
+                return;
+            }
             if let Some(p) = self.active_pivot(state)
                 && !ctrl(mods)
                 && self.pivot_hit(state, view, origin)
@@ -1033,7 +1060,20 @@ impl SelectTool {
                             *delta = out;
                         }
                     }
-                    GizmoPart::Ring(_) | GizmoPart::Center => {}
+                    GizmoPart::Center => {
+                        if let Some(start) = view.world_to_screen(*anchor) {
+                            *delta = modal_move(
+                                view,
+                                c,
+                                axes,
+                                crate::modal::Lock::Free,
+                                start,
+                                pos,
+                                snap_on.then_some(MoveSnap { reference: snap_ref, grid, frame }),
+                            );
+                        }
+                    }
+                    GizmoPart::Ring(_) => {}
                 }
             }
             DragOp::GizmoRotate { axis, start_vec, start_screen, angle } => {
@@ -1174,6 +1214,9 @@ impl SelectTool {
                 DragOp::Move { delta, .. } | DragOp::GizmoMove { delta, .. } if d.elements => {
                     element::translate_picked(state, *delta).map(|_| ())
                 }
+                DragOp::Modal(md) if d.elements && md.kind == ModalKind::Move => {
+                    element::translate_picked(state, md.delta).map(|_| ())
+                }
                 DragOp::Move { delta, .. } | DragOp::GizmoMove { delta, .. } => state.doc.translate(&d.objs, *delta),
                 DragOp::Modal(md) if md.kind == ModalKind::Move => state.doc.translate(&d.objs, md.delta),
                 DragOp::Scale { new_bounds, .. } => state.doc.scale_bounds(&d.objs, &d.bounds, new_bounds),
@@ -1280,6 +1323,7 @@ impl SelectTool {
         }
         self.hover.key = None;
         if element::click(state, view, pos, mods) {
+            self.sel_cache.set(None);
             return;
         }
         match click_select_3d(state, view, pos, mods, &mut self.cycle) {
@@ -1637,6 +1681,10 @@ impl Tool for SelectTool {
         self.note_view(view);
         self.hover.key = None;
         self.pick_click = None;
+        if element::click(state, view, pos, mods) {
+            self.sel_cache.set(None);
+            return ToolFlow::Handled;
+        }
         if click_select_3d(state, view, pos, mods, &mut self.cycle) == Pick3d::Replaced {
             self.handle_mode = HandleMode::Scale;
         }

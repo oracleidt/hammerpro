@@ -4,6 +4,10 @@
 
 Hammer Pro a un thème sombre et un thème clair, une couleur d'accent facultative, une échelle d'interface, une image de fond facultative sur la fenêtre, et toute son interface en anglais et en français, que l'on change à tout moment sans redémarrer.
 
+## Icônes de l'interface
+
+Hammer Pro intègre un ensemble homogène d'icônes pour ses barres d'outils, outils, fenêtres et indicateurs. Leurs proportions et leur espacement restent identiques à chaque échelle de l'interface, indépendamment des polices de symboles installées sous Windows. Le texte conserve sa police habituelle. Le sous-ensemble intégré provient des [Microsoft Fluent UI System Icons](https://github.com/microsoft/fluentui-system-icons) ; sa licence MIT est incluse dans la police et dans `assets/fonts/LICENSE.txt`.
+
 ## Où le régler
 
 Tout ce qui est sur cette page se trouve dans **Paramètres > Général** (**Outils > Options...**, `Ctrl+,`), sections **Apparence** et **Image de fond**. La langue est aussi dans **Affichage > Langue** et dans la palette de commandes.

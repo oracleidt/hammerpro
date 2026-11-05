@@ -125,7 +125,7 @@ impl AssetManager {
             let prepared = match self.models.map.get(&key) {
                 Some(ModelEntry::Ready(m)) => Some(Arc::clone(m)),
                 Some(ModelEntry::Failed(_)) => None,
-                Some(ModelEntry::Loading) | None => continue,
+                Some(ModelEntry::Loading | ModelEntry::Cached(_)) | None => continue,
             };
             if !h.pending.insert(key.clone()) {
                 continue;

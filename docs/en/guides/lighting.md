@@ -26,15 +26,15 @@ Press `Alt+5` (**View > 3D render mode > Lighting preview**). The 3D view draws 
 For the real look of the compiled map (bounced light, lightmaps, props lit like in game):
 
 1. Press `Ctrl+F5` (**View > 3D render mode > Baked lighting preview**).
-2. Bake: **Map > Lighting > Bake lighting** (whole map) or **Map > Lighting > Bake around the camera** (only what lies within the **Radius around the camera**, faster on big maps). **Map > Lighting > Stop baking** stops it.
+2. Bake: **Map > Lighting > Bake lighting** always calculates the whole map and keeps that scope while you navigate. **Map > Lighting > Bake around the camera** calculates only a fixed region within the **Radius around the camera** at its starting position. **Map > Lighting > Stop baking** stops it.
 3. Open the **Lighting** tab (**View > Panels > Lighting**) to set the preview:
    - **Quality**: **Draft** (same light levels, noisier shadows), **Normal**, **Final** (slowest).
    - **Bounced light**: light reflected by surfaces (slower bakes).
-   - **Dynamic updates** with an **Update delay**: bakes again by itself once your edits stop.
+   - **Dynamic updates** with an **Update delay**: bakes again once changes affecting lighting stop.
    - **Lightmap budget**: the estimated size of the lightmaps against the 2 GB a face can address in them, with the most expensive faces.
-4. The preview follows the dynamic range of the compile settings (LDR or HDR).
+4. Wait for the quick and refined passes, then navigate using the calculated result. Camera movement and selection do not invalidate a global bake. The preview follows the dynamic range of the compile settings (LDR or HDR).
 
-The baking threads and the luxel budget of the preview are on the **Lighting** page of the settings. Details: [Lighting preview](../features/lighting-preview.md).
+The baking threads and the luxel budget of the preview are on the **Lighting** page of the settings. Automatic activation uses the whole map by default. **Bake only around the camera on big maps** is an opt-in regional mode for automatic activation whose region follows the camera; existing saved choices are preserved. Preview brightness, color correction and the update delay do not restart the lighting calculation. Details: [Lighting preview](../features/lighting-preview.md).
 
 ## Step 4: lightmap scale
 

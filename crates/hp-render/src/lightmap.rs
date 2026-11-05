@@ -286,9 +286,7 @@ impl Lightmaps {
         self.counter += 1;
         let counter = self.counter;
         self.generations.insert(object, counter);
-        if self.tracking {
-            self.changed.insert(object);
-        }
+        self.changed.insert(object);
         if has_faces {
             let list = self.by_object.get(&object).cloned().unwrap_or_default();
             for i in list {
@@ -353,9 +351,6 @@ impl Renderer {
 
     pub fn set_lightmap_tracking(&mut self, on: bool) {
         self.lightmap.tracking = on;
-        if !on {
-            self.lightmap.changed.clear();
-        }
     }
 
     pub fn lightmap_generation(&self, object: ObjectId) -> u64 {
@@ -448,16 +443,25 @@ impl Renderer {
     }
 
     pub fn revalidate_lightmap_object(&mut self, object: ObjectId, generation: u64) {
-        if generation < self.lightmap.generation(object) {
-            return;
-        }
-        let list = self.lightmap.by_object.get(&object).cloned().unwrap_or_default();
-        for i in list {
-            if let Some(f) = self.lightmap.faces.get_mut(i as usize)
-                && f.gpu.flags & VALID == 0
-            {
-                f.gpu.flags |= VALID;
-                self.lightmap.mark(i);
+        self.revalidate_lightmap_objects(&[(object, generation)]);
+    }
+
+    pub fn revalidate_lightmap_objects(&mut self, objects: &[(ObjectId, u64)]) {
+        for &(object, generation) in objects {
+            if generation < self.lightmap.generation(object) {
+                continue;
+            }
+            let list = self.lightmap.by_object.get(&object).cloned().unwrap_or_default();
+            for i in list {
+                if let Some(f) = self.lightmap.faces.get_mut(i as usize)
+                    && f.live
+                    && f.object == object
+                    && f.gpu.flags & BAKED != 0
+                    && f.gpu.flags & VALID == 0
+                {
+                    f.gpu.flags |= VALID;
+                    self.lightmap.mark(i);
+                }
             }
         }
         self.flush_lightmap_faces();
@@ -1089,8 +1093,10 @@ mod tests {
         lm.faces.push(FaceCpu { gpu: FaceGpu { flags: VALID, ..Default::default() }, object: 5, live: true });
         lm.by_object.insert(5, vec![0]);
         lm.tracking = false;
+        lm.changed.clear();
         lm.object_changed(5);
         assert_eq!(lm.generation(5), 2, "objects with faces always count");
+        assert!(lm.changed.contains(&5), "objects with faces notify without grid tracking");
         assert_eq!(lm.faces[0].gpu.flags & VALID, 0, "stale faces are hidden");
         assert_eq!(*lm.dirty.lock().unwrap(), Some((0, 1)));
         lm.objects_cleared();

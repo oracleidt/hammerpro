@@ -375,29 +375,96 @@ fn finish_clusters(
         let (slice, tail) = tail.split_at_mut(take);
         rest = tail;
         used = t[0] + take as u32;
-        if t[1] > MAX_PER_CLUSTER {
+        if t[1] > 0 {
             jobs.push((ci as u32, slice, t));
         }
     }
-    let crowded = jobs.len() as u32;
+    let crowded = jobs.iter().filter(|(_, _, t)| t[1] > MAX_PER_CLUSTER).count() as u32;
+    let tighten = !crate::profile::baseline("clusterbounds");
+    let view_lights: Vec<Vec3> = lights
+        .iter()
+        .map(|l| {
+            let delta = Vec3::from_slice(&l.pos_range) - cam.eye;
+            Vec3::new(delta.dot(cam.right), delta.dot(cam.up), delta.dot(cam.forward))
+        })
+        .collect();
     jobs.into_par_iter().for_each(|(ci, slice, t)| {
         let (s, rest) = (ci / plane, ci % plane);
-        let center = grid.center(cam, rest % grid.tiles_x, rest / grid.tiles_x, s);
-        let mut scored: Vec<(f32, u32)> =
-            slice.iter().map(|&i| (lights.get(i as usize).map_or(0.0, |l| light_score(l, center)), i)).collect();
-        let keep = MAX_PER_CLUSTER as usize;
-        let order = |a: &(f32, u32), b: &(f32, u32)| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1));
-        if scored.len() > keep {
+        let (x, y) = (rest % grid.tiles_x, rest / grid.tiles_x);
+        if t[1] > MAX_PER_CLUSTER {
+            let center = grid.center(cam, x, y, s);
+            let mut scored: Vec<(f32, u32)> =
+                slice.iter().map(|&i| (lights.get(i as usize).map_or(0.0, |l| light_score(l, center)), i)).collect();
+            let keep = MAX_PER_CLUSTER as usize;
+            let order = |a: &(f32, u32), b: &(f32, u32)| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1));
             scored.select_nth_unstable_by(keep - 1, order);
             scored.truncate(keep);
+            scored.sort_unstable_by(order);
+            for (slot, (_, i)) in slice.iter_mut().zip(scored) {
+                *slot = i;
+            }
+            t[1] = MAX_PER_CLUSTER;
         }
-        scored.sort_unstable_by(order);
-        for (slot, (_, i)) in slice.iter_mut().zip(scored) {
-            *slot = i;
+        if tighten {
+            let bounds = ClusterBounds::new(cam, grid, x, y, s);
+            let mut kept = 0usize;
+            for at in 0..t[1] as usize {
+                let index = slice[at];
+                let visible = lights.get(index as usize).is_none_or(|l| {
+                    l.cone[3] > l.cone[2] || bounds.intersects(view_lights[index as usize], l.pos_range[3])
+                });
+                if visible {
+                    slice[kept] = index;
+                    kept += 1;
+                }
+            }
+            t[1] = kept as u32;
         }
-        t[1] = MAX_PER_CLUSTER;
     });
+    let mut end = 0usize;
+    for t in &mut table {
+        let start = t[0] as usize;
+        let count = t[1] as usize;
+        list.copy_within(start..start + count, end);
+        t[0] = end as u32;
+        end += count;
+    }
+    list.truncate(end);
+    if list.capacity() > end.saturating_mul(2) {
+        list.shrink_to_fit();
+    }
     Clusters { table, list, crowded }
+}
+
+struct ClusterBounds {
+    x: [f32; 2],
+    y: [f32; 2],
+    z: [f32; 2],
+    lengths: [f32; 4],
+}
+
+impl ClusterBounds {
+    fn new(cam: &Camera, grid: &ClusterGrid, x: u32, y: u32, slice: u32) -> Self {
+        let tx = cam.tan_half_fov * cam.width / cam.height;
+        let ty = cam.tan_half_fov;
+        let px = |p: f32| (p / cam.width * 2.0 - 1.0) * tx;
+        let py = |p: f32| (1.0 - p / cam.height * 2.0) * ty;
+        let x = [px((x * TILE_PX) as f32 - 2.0), px(((x + 1) * TILE_PX) as f32 + 2.0)];
+        let y = [py(((y + 1) * TILE_PX) as f32 + 2.0), py((y * TILE_PX) as f32 - 2.0)];
+        let (z0, z1) = slab(grid, slice);
+        let lengths = [x[0], x[1], y[0], y[1]].map(|v| (1.0 + v * v).sqrt());
+        Self { x, y, z: [z0, z1], lengths }
+    }
+
+    fn intersects(&self, p: Vec3, radius: f32) -> bool {
+        let radius = radius + radius.abs() * 1e-5 + 0.01;
+        p.z + radius >= self.z[0]
+            && p.z - radius <= self.z[1]
+            && p.x - self.x[0] * p.z >= -radius * self.lengths[0]
+            && self.x[1] * p.z - p.x >= -radius * self.lengths[1]
+            && p.y - self.y[0] * p.z >= -radius * self.lengths[2]
+            && self.y[1] * p.z - p.y >= -radius * self.lengths[3]
+    }
 }
 
 #[cfg(test)]

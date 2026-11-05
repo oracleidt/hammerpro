@@ -5,6 +5,8 @@ use egui::{FontData, FontDefinitions, FontFamily, FontTweak};
 
 const UI_FONT: &str = "hp-ui";
 const SYMBOL_FONT: &str = "hp-symbols";
+const ICON_FONT: &str = "hp-icons";
+const ICON_BYTES: &[u8] = include_bytes!("../../../assets/fonts/hammerpro-icons.ttf");
 
 struct Candidate {
     files: &'static [&'static str],
@@ -80,6 +82,10 @@ pub fn definitions_with(ui: Option<Vec<u8>>, symbols: Option<Vec<u8>>) -> FontDe
             }
         }
     }
+    defs.font_data.insert(ICON_FONT.to_owned(), Arc::new(FontData::from_static(ICON_BYTES).tweak(crisp())));
+    for family in [FontFamily::Proportional, FontFamily::Monospace] {
+        defs.families.entry(family).or_default().insert(0, ICON_FONT.to_owned());
+    }
     defs
 }
 
@@ -105,10 +111,31 @@ mod tests {
     fn the_ui_font_leads_and_symbols_follow() {
         let defs = definitions_with(Some(vec![0]), Some(vec![0]));
         let list = &defs.families[&FontFamily::Proportional];
-        assert_eq!(list[0], UI_FONT);
-        assert_eq!(list[1], SYMBOL_FONT);
+        assert_eq!(list[0], ICON_FONT);
+        assert_eq!(list[1], UI_FONT);
+        assert_eq!(list[2], SYMBOL_FONT);
         let mono = &defs.families[&FontFamily::Monospace];
-        assert_eq!(mono[0], "Hack");
+        assert_eq!(mono[0], ICON_FONT);
+        assert_eq!(mono[1], "Hack");
         assert!(mono.iter().any(|n| n == SYMBOL_FONT));
+    }
+
+    #[test]
+    fn icons_have_consistent_advances_at_every_ui_scale() {
+        let ctx = egui::Context::default();
+        ctx.set_fonts(definitions_with(None, None));
+        for scale in [1.0, 1.25, 1.5, 2.0] {
+            ctx.set_pixels_per_point(scale);
+            let _ = ctx.run_ui(egui::RawInput::default(), |ui| {
+                ui.ctx().fonts_mut(|fonts| {
+                    let id = egui::FontId::proportional(20.0);
+                    for glyph in ["🗋", "🗁", "💾", "📷", "⚙", "🌿", "🎨", "🔍", "🔒"] {
+                        assert!(fonts.has_glyphs(&id, glyph), "{glyph}");
+                        let text = fonts.layout_no_wrap(glyph.to_owned(), id.clone(), egui::Color32::WHITE);
+                        assert!((text.size().x - 20.0).abs() <= 1.0 / scale, "{glyph}: {:?}", text.size());
+                    }
+                });
+            });
+        }
     }
 }

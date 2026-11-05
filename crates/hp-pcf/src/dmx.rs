@@ -16,7 +16,16 @@ pub enum Value {
     Floats(Vec<f32>),
     Vec3s(Vec<[f32; 3]>),
     Strs(Vec<String>),
+    External(String),
+    References(Vec<Reference>),
+    Raw { kind: u8, data: Vec<u8> },
     Other,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Reference {
+    Element(Option<usize>),
+    External(String),
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -62,6 +71,11 @@ impl Element {
     pub fn vec3(&self, name: &str) -> Option<[f32; 3]> {
         match self.get(name)? {
             Value::Vec3(v) if v.iter().all(|c| c.is_finite()) => Some(*v),
+            Value::Raw { kind: TYPE_QANGLE, data } if data.len() == 12 => {
+                let v =
+                    std::array::from_fn(|i| f32::from_le_bytes(data[i * 4..i * 4 + 4].try_into().expect("four bytes")));
+                v.iter().all(|c| c.is_finite()).then_some(v)
+            }
             _ => None,
         }
     }
@@ -84,6 +98,9 @@ impl Element {
         match self.get(name) {
             Some(Value::Elements(v)) => v.iter().flatten().copied().collect(),
             Some(Value::Element(Some(i))) => vec![*i],
+            Some(Value::References(refs)) => {
+                refs.iter().filter_map(|r| if let Reference::Element(id) = r { *id } else { None }).collect()
+            }
             _ => Vec::new(),
         }
     }
@@ -93,6 +110,7 @@ impl Element {
 pub struct Dmx {
     pub version: u32,
     pub elements: Vec<Element>,
+    pub ids: Vec<[u8; 16]>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -181,13 +199,16 @@ fn fixed_size(t: u8, layout: Layout) -> Option<usize> {
     })
 }
 
-fn element_ref(c: &mut Cur<'_>, count: usize) -> Option<Option<usize>> {
+fn element_ref(c: &mut Cur<'_>, count: usize) -> Option<Reference> {
     let i = c.i32()?;
     if i == -2 {
-        c.cstr()?;
-        return Some(None);
+        return Some(Reference::External(text(c.cstr()?)));
     }
-    Some(usize::try_from(i).ok().filter(|&i| i < count))
+    if i == -1 {
+        return Some(Reference::Element(None));
+    }
+    let i = usize::try_from(i).ok()?;
+    (i < count).then_some(Reference::Element(Some(i)))
 }
 
 fn read_value(c: &mut Cur<'_>, t: u8, layout: Layout, table: &[&[u8]], count: usize) -> Option<Value> {
@@ -195,7 +216,10 @@ fn read_value(c: &mut Cur<'_>, t: u8, layout: Layout, table: &[&[u8]], count: us
         if layout.index_i32 { usize::try_from(c.i32()?).ok() } else { c.u16().map(usize::from) }
     };
     Some(match t {
-        TYPE_ELEMENT => Value::Element(element_ref(c, count)?),
+        TYPE_ELEMENT => match element_ref(c, count)? {
+            Reference::Element(i) => Value::Element(i),
+            Reference::External(s) => Value::External(s),
+        },
         TYPE_INT => Value::Int(c.i32()?),
         TYPE_FLOAT => Value::Float(c.f32()?),
         TYPE_BOOL => Value::Bool(c.u8()? != 0),
@@ -204,17 +228,18 @@ fn read_value(c: &mut Cur<'_>, t: u8, layout: Layout, table: &[&[u8]], count: us
             Value::Str(text(s))
         }
         TYPE_VOID => {
+            let start = c.p;
             let n = c.count(1)?;
             c.take(n)?;
-            Value::Other
+            Value::Raw { kind: t, data: c.d[start..c.p].to_vec() }
         }
         TYPE_COLOR => {
             let b = c.take(4)?;
             Value::Color([b[0], b[1], b[2], b[3]])
         }
         TYPE_VEC2 => Value::Vec2([c.f32()?, c.f32()?]),
-        TYPE_VEC3 | TYPE_QANGLE => Value::Vec3([c.f32()?, c.f32()?, c.f32()?]),
-        TYPE_VEC4 | TYPE_QUAT => Value::Vec4([c.f32()?, c.f32()?, c.f32()?, c.f32()?]),
+        TYPE_VEC3 => Value::Vec3([c.f32()?, c.f32()?, c.f32()?]),
+        TYPE_VEC4 => Value::Vec4([c.f32()?, c.f32()?, c.f32()?, c.f32()?]),
         t if t > ARRAY_BASE => {
             let base = t - ARRAY_BASE;
             match base {
@@ -224,7 +249,18 @@ fn read_value(c: &mut Cur<'_>, t: u8, layout: Layout, table: &[&[u8]], count: us
                     for _ in 0..n {
                         v.push(element_ref(c, count)?);
                     }
-                    Value::Elements(v)
+                    if v.iter().all(|r| matches!(r, Reference::Element(_))) {
+                        Value::Elements(
+                            v.into_iter()
+                                .map(|r| match r {
+                                    Reference::Element(i) => i,
+                                    Reference::External(_) => unreachable!(),
+                                })
+                                .collect(),
+                        )
+                    } else {
+                        Value::References(v)
+                    }
                 }
                 TYPE_INT => {
                     let n = c.count(4)?;
@@ -259,24 +295,27 @@ fn read_value(c: &mut Cur<'_>, t: u8, layout: Layout, table: &[&[u8]], count: us
                     Value::Strs(v)
                 }
                 TYPE_VOID => {
+                    let start = c.p;
                     let n = c.count(4)?;
                     for _ in 0..n {
                         let k = c.count(1)?;
                         c.take(k)?;
                     }
-                    Value::Other
+                    Value::Raw { kind: t, data: c.d[start..c.p].to_vec() }
                 }
                 b => {
+                    let start = c.p;
                     let size = fixed_size(b, layout)?;
                     let n = c.count(size)?;
                     c.take(n.checked_mul(size)?)?;
-                    Value::Other
+                    Value::Raw { kind: t, data: c.d[start..c.p].to_vec() }
                 }
             }
         }
         t => {
+            let start = c.p;
             c.take(fixed_size(t, layout)?)?;
-            Value::Other
+            Value::Raw { kind: t, data: c.d[start..c.p].to_vec() }
         }
     })
 }
@@ -299,10 +338,11 @@ fn parse_with(data: &[u8], body: usize, version: u32, layout: Layout) -> Option<
     };
     let count = c.count(17)?;
     let mut elements: Vec<Element> = Vec::with_capacity(count);
+    let mut ids = Vec::with_capacity(count);
     for _ in 0..count {
         let kind = if version >= 2 { *table.get(index(&mut c)?)? } else { c.cstr()? };
         let name = if layout.names_indexed { *table.get(index(&mut c)?)? } else { c.cstr()? };
-        c.take(16)?;
+        ids.push(c.take(16)?.try_into().ok()?);
         elements.push(Element { kind: text(kind), name: text(name), attrs: Vec::new() });
     }
     for e in elements.iter_mut() {
@@ -315,10 +355,13 @@ fn parse_with(data: &[u8], body: usize, version: u32, layout: Layout) -> Option<
             e.attrs.push((text(name), v));
         }
     }
-    (c.p == data.len()).then_some(Dmx { version, elements })
+    (c.p == data.len()).then_some(Dmx { version, elements, ids })
 }
 
 pub fn parse(data: &[u8]) -> Result<Dmx, PcfError> {
+    if data.len() > crate::MAX_FILE_SIZE {
+        return Err(PcfError::TooLarge);
+    }
     let head_end = data.iter().take(256).position(|&b| b == 0).ok_or(PcfError::NotDmx)?;
     let head = std::str::from_utf8(&data[..head_end]).map_err(|_| PcfError::NotDmx)?;
     let mut words = head.split_whitespace();
@@ -363,4 +406,145 @@ pub fn parse(data: &[u8]) -> Result<Dmx, PcfError> {
         ],
     };
     candidates.into_iter().find_map(|layout| parse_with(data, body, version, layout)).ok_or(PcfError::Corrupt)
+}
+
+pub fn write(dmx: &Dmx) -> Result<Vec<u8>, PcfError> {
+    use std::collections::HashMap;
+    let mut strings = Vec::<&str>::new();
+    let mut table = HashMap::<&str, i32>::new();
+    fn add<'a>(s: &'a str, strings: &mut Vec<&'a str>, table: &mut HashMap<&'a str, i32>) -> Result<(), PcfError> {
+        if s.contains('\0') {
+            return Err(PcfError::Corrupt);
+        }
+        if !table.contains_key(s) {
+            let index = i32::try_from(strings.len()).map_err(|_| PcfError::TooLarge)?;
+            strings.push(s);
+            table.insert(s, index);
+        }
+        Ok(())
+    }
+    for e in &dmx.elements {
+        add(&e.kind, &mut strings, &mut table)?;
+        add(&e.name, &mut strings, &mut table)?;
+        for (key, value) in &e.attrs {
+            add(key, &mut strings, &mut table)?;
+            if let Value::Str(s) = value {
+                add(s, &mut strings, &mut table)?;
+            }
+        }
+    }
+    let mut out = b"<!-- dmx encoding binary 5 format pcf 2 -->\n\0".to_vec();
+    let count = |n: usize| i32::try_from(n).map(i32::to_le_bytes).map_err(|_| PcfError::TooLarge);
+    out.extend(count(strings.len())?);
+    for s in strings {
+        out.extend(s.as_bytes());
+        out.push(0);
+    }
+    out.extend(count(dmx.elements.len())?);
+    for (index, e) in dmx.elements.iter().enumerate() {
+        out.extend(table[&e.kind.as_str()].to_le_bytes());
+        out.extend(table[&e.name.as_str()].to_le_bytes());
+        out.extend(dmx.ids.get(index).copied().unwrap_or_else(|| generated_id(index)));
+    }
+    fn reference(out: &mut Vec<u8>, r: &Reference, count: usize) -> Result<(), PcfError> {
+        match r {
+            Reference::Element(Some(i)) if *i < count => out.extend((*i as i32).to_le_bytes()),
+            Reference::Element(None) => out.extend((-1i32).to_le_bytes()),
+            Reference::External(s) if !s.contains('\0') => {
+                out.extend((-2i32).to_le_bytes());
+                out.extend(s.as_bytes());
+                out.push(0);
+            }
+            _ => return Err(PcfError::Corrupt),
+        }
+        Ok(())
+    }
+    for e in &dmx.elements {
+        out.extend(count(e.attrs.len())?);
+        for (key, value) in &e.attrs {
+            out.extend(table[&key.as_str()].to_le_bytes());
+            let kind = match value {
+                Value::Element(_) | Value::External(_) => 1,
+                Value::Int(_) => 2,
+                Value::Float(_) => 3,
+                Value::Bool(_) => 4,
+                Value::Str(_) => 5,
+                Value::Color(_) => 8,
+                Value::Vec2(_) => 9,
+                Value::Vec3(_) => 10,
+                Value::Vec4(_) => 11,
+                Value::Elements(_) | Value::References(_) => 15,
+                Value::Ints(_) => 16,
+                Value::Floats(_) => 17,
+                Value::Strs(_) => 19,
+                Value::Vec3s(_) => 24,
+                Value::Raw { kind, .. } => *kind,
+                Value::Other => return Err(PcfError::Corrupt),
+            };
+            out.push(kind);
+            match value {
+                Value::Element(i) => reference(&mut out, &Reference::Element(*i), dmx.elements.len())?,
+                Value::External(s) => reference(&mut out, &Reference::External(s.clone()), dmx.elements.len())?,
+                Value::Int(v) => out.extend(v.to_le_bytes()),
+                Value::Float(v) => out.extend(v.to_le_bytes()),
+                Value::Bool(v) => out.push(u8::from(*v)),
+                Value::Str(s) => out.extend(table[&s.as_str()].to_le_bytes()),
+                Value::Color(v) => out.extend(v),
+                Value::Vec2(v) => v.iter().for_each(|f| out.extend(f.to_le_bytes())),
+                Value::Vec3(v) => v.iter().for_each(|f| out.extend(f.to_le_bytes())),
+                Value::Vec4(v) => v.iter().for_each(|f| out.extend(f.to_le_bytes())),
+                Value::Elements(v) => {
+                    out.extend(count(v.len())?);
+                    for r in v {
+                        reference(&mut out, &Reference::Element(*r), dmx.elements.len())?;
+                    }
+                }
+                Value::References(v) => {
+                    out.extend(count(v.len())?);
+                    for r in v {
+                        reference(&mut out, r, dmx.elements.len())?;
+                    }
+                }
+                Value::Ints(v) => {
+                    out.extend(count(v.len())?);
+                    v.iter().for_each(|i| out.extend(i.to_le_bytes()));
+                }
+                Value::Floats(v) => {
+                    out.extend(count(v.len())?);
+                    v.iter().for_each(|f| out.extend(f.to_le_bytes()));
+                }
+                Value::Vec3s(v) => {
+                    out.extend(count(v.len())?);
+                    v.iter().flatten().for_each(|f| out.extend(f.to_le_bytes()));
+                }
+                Value::Strs(v) => {
+                    out.extend(count(v.len())?);
+                    for s in v {
+                        if s.contains('\0') {
+                            return Err(PcfError::Corrupt);
+                        }
+                        out.extend(s.as_bytes());
+                        out.push(0);
+                    }
+                }
+                Value::Raw { data, .. } => out.extend(data),
+                Value::Other => return Err(PcfError::Corrupt),
+            }
+            if out.len() > crate::MAX_FILE_SIZE {
+                return Err(PcfError::TooLarge);
+            }
+        }
+    }
+    parse(&out)?;
+    Ok(out)
+}
+
+pub(crate) fn generated_id(index: usize) -> [u8; 16] {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    let mut id = [0; 16];
+    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64);
+    id[..8].copy_from_slice(&(nanos ^ index as u64).to_le_bytes());
+    id[8..].copy_from_slice(&NEXT.fetch_add(1, Ordering::Relaxed).to_le_bytes());
+    id
 }

@@ -384,7 +384,7 @@ fn tools_follow_the_hammer_order_and_keys() {
 #[test]
 fn menus_are_hammer_menus() {
     let labels: Vec<&str> = Category::ALL.iter().map(|c| crate::i18n::tr_in(c.label_key(), Lang::En)).collect();
-    assert_eq!(labels, ["File", "Edit", "Map", "View", "Tools", "Window", "Help"]);
+    assert_eq!(labels, ["File", "Edit", "Map", "View", "Tools", "Window", "Help", "Other"]);
     assert_eq!(Action::ToggleSnap.category(), Category::Map, "Map > Snap to grid");
     assert_eq!(Action::ToggleGrid.category(), Category::Map, "Map > Show grid");
     assert_eq!(Action::Carve.category(), Category::Tools, "Tools > Carve");

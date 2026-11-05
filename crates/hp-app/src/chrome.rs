@@ -387,7 +387,9 @@ impl Chrome {
             return chrome;
         }
         chrome.paint_window(ui);
-        chrome.caption_input(ui);
+        if !fullscreen {
+            chrome.caption_input(ui);
+        }
         chrome.buttons(ui);
         chrome
     }

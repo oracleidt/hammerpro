@@ -33,7 +33,7 @@ impl Default for LightingSettings {
             budget_styles: 1,
             show_budget: true,
             quality: LightingQuality::Draft,
-            auto_scope: true,
+            auto_scope: false,
             auto_scope_luxels_millions: 2,
             auto_scope_radius: 3072,
         }
@@ -76,7 +76,7 @@ mod tests {
         assert_eq!((s.threads, s.max_luxels_millions, s.tiny_scale, s.budget_styles), (256, 1, 1, 4));
         let wild = LightingSettings { auto_scope_luxels_millions: 0, auto_scope_radius: 1, ..d };
         assert_eq!((wild.sanitized().auto_scope_luxels_millions, wild.sanitized().auto_scope_radius), (1, 256));
-        assert!(d.auto_scope);
+        assert!(!d.auto_scope);
         let parsed: LightingSettings = toml::from_str("").unwrap();
         assert_eq!(parsed, d);
     }

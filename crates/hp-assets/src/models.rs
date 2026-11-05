@@ -27,6 +27,19 @@ pub(crate) struct PreparedModel {
 }
 
 impl PreparedModel {
+    pub(crate) fn geometry_bytes(&self) -> usize {
+        self.parts
+            .iter()
+            .chain(&self.variant_parts)
+            .map(|p| {
+                p.vertices.capacity() * size_of::<Vertex>()
+                    + p.indices.capacity() * size_of::<u32>()
+                    + p.tangents.capacity() * size_of::<[f32; 4]>()
+                    + p.color_index.capacity() * size_of::<u32>()
+            })
+            .sum()
+    }
+
     pub(crate) fn skin_count(&self) -> usize {
         self.skin_materials.len().max(1)
     }
@@ -304,6 +317,7 @@ fn valid_hull(min: [f32; 3], max: [f32; 3]) -> Option<(DVec3, DVec3)> {
 pub(crate) enum ModelEntry {
     Loading,
     Ready(Arc<PreparedModel>),
+    Cached(Arc<ModelInfo>),
     Failed(String),
 }
 
@@ -321,6 +335,7 @@ pub(crate) struct Models {
     pub render: AHashMap<(String, u32), RenderModel>,
     pub variants: AHashMap<VariantKey, (RenderModel, std::sync::Weak<PreparedModel>)>,
     pub newly_ready: AHashSet<String>,
+    pub last_used: AHashMap<String, u64>,
 }
 
 pub(crate) fn entity_matrix(origin: DVec3, angles: DVec3, scale: f64) -> DMat4 {

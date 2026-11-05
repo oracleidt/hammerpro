@@ -117,3 +117,40 @@ fn only_the_instances_in_view_are_drawn_and_the_picture_is_the_same() {
     let drawn = full.chunks(4).filter(|p| [p[0], p[1], p[2]] != background).count();
     assert!(drawn > 40, "the models are visible: {drawn} pixels differ from the background");
 }
+
+#[test]
+fn cpu_lods_match_individually_selected_models_in_both_lighting_modes() {
+    let Some((device, queue)) = gpu() else {
+        eprintln!("no GPU adapter available: test skipped");
+        return;
+    };
+    let mut renderer = Renderer::new(&device, &queue);
+    renderer.set_material(PROP, &MaterialDesc::default());
+    let part = |height: f32| {
+        let vertex = |y, z| Vertex { pos: [0.0, y, z], normal: [1.0, 0.0, 0.0], uv: [0.0; 2], alpha: 1.0 };
+        ModelPart {
+            material: PROP,
+            vertices: vec![vertex(-40.0, -height), vertex(40.0, -height), vertex(40.0, height), vertex(-40.0, height)],
+            indices: vec![0, 1, 2, 0, 2, 3],
+            tangents: Vec::new(),
+        }
+    };
+    let near = renderer.create_model(&[part(40.0)]);
+    let far = renderer.create_model(&[part(15.0)]);
+    let automatic = renderer.create_model_lods(&[
+        ModelLod { switch_point: 0.0, parts: vec![part(40.0)] },
+        ModelLod { switch_point: 500.0, parts: vec![part(15.0)] },
+    ]);
+    renderer.set_view_options(1, ViewOptions { model_lods: true, ..Default::default() });
+    renderer.set_view_options(2, ViewOptions { model_lods: true, ..Default::default() });
+    for mode in [RenderMode::Textured, RenderMode::Lit] {
+        let params = ViewParams { mode, ..view() };
+        renderer.set_model_instances(&[at(automatic, 10, -60.0, 300.0, 0.0), at(automatic, 11, 80.0, 1500.0, 0.0)]);
+        renderer.render_view(1, &params, &Overlay::default());
+        let picked = renderer.read_view_rgba8(1).expect("automatic pixels").2;
+        renderer.set_model_instances(&[at(near, 10, -60.0, 300.0, 0.0), at(far, 11, 80.0, 1500.0, 0.0)]);
+        renderer.render_view(2, &params, &Overlay::default());
+        let expected = renderer.read_view_rgba8(2).expect("selected pixels").2;
+        assert_eq!(picked, expected, "{mode:?}: CPU LOD selection preserves every pixel");
+    }
+}

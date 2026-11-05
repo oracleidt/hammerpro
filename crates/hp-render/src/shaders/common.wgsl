@@ -30,6 +30,7 @@ struct View {
     sky_paint: array<vec4<f32>, 6>,
     indirect_a: vec4<f32>,
     indirect_b: vec4<f32>,
+    sky_march: array<vec4<f32>, 18>,
 };
 
 struct ObjState {

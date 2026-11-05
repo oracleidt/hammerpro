@@ -149,6 +149,33 @@ pub(super) fn luxel_at(bsp: &[u8], p: DVec3, normal: DVec3, hdr: bool) -> Option
 }
 
 #[test]
+fn disk_tiles_keep_the_entire_lighting_output_identical() {
+    let bsp = compile_vmf(&room("DEV/DEV_MEASUREGENERIC01B", &light_entity(500, "64 128 128", "")));
+    let opts = quick();
+    let bake = |budget| {
+        let mut report = crate::stats::RadReport::default();
+        let mut lines = Vec::new();
+        let result = run_with(
+            std::borrow::Cow::Borrowed(&bsp),
+            &opts,
+            &Runner { pool: None },
+            &crate::props::NoModels,
+            &mut |line| lines.push(line.to_owned()),
+            &mut report,
+            &progress::Work::new(),
+            budget,
+        )
+        .expect("lighting");
+        (result, lines)
+    };
+    let (memory, memory_lines) = bake(usize::MAX);
+    let (disk, disk_lines) = bake(0);
+    assert!(!memory_lines.iter().any(|line| line.starts_with("bounce ray cache:")));
+    assert!(disk_lines.iter().any(|line| line.starts_with("bounce ray cache:")));
+    assert_eq!(memory, disk, "tiling preserves every lightmap, probe, prop and BSP byte");
+}
+
+#[test]
 fn box_room_light_and_shadow() {
     let bsp = compile_vmf(&room("DEV/DEV_MEASUREGENERIC01B", &light_entity(500, "64 128 128", "")));
     let mut lines = Vec::new();

@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 pub mod dmx;
+pub mod editor;
 pub mod model;
 pub mod sheet;
 pub mod sim;

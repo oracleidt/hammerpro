@@ -1,4 +1,4 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
@@ -70,6 +70,7 @@ pub struct HammerProApp {
     pub(crate) recover_prompt: Option<RecoverPrompt>,
     pub(crate) crash_prompt: Option<PendingCrash>,
     pub(crate) compile_exit_prompt: bool,
+    pub(crate) particle_exit: crate::particle_exit::Controller,
     background: hp_ui_shell::background::BackgroundImage,
     settings_saved_at: Instant,
     screenshot: Option<ScreenshotJob>,
@@ -79,6 +80,7 @@ pub struct HammerProApp {
     worst_frame: f32,
     title: String,
     native_frames_at_start: bool,
+    startup_maximized: Option<bool>,
     pub(crate) central_size: egui::Vec2,
     pub(crate) clipboard: Option<arboard::Clipboard>,
     pub(crate) paste_event_text: Option<String>,
@@ -97,6 +99,7 @@ pub struct HammerProApp {
     script_command: Option<Command>,
     script_idle: Option<(Instant, u64)>,
     pub(crate) persist_settings: bool,
+    save_preferences: bool,
     pub(crate) opener: crate::opening::Opener,
     pub(crate) startup: crate::timing::StartupReport,
     pub(crate) open_report: Option<crate::timing::OpenReport>,
@@ -109,7 +112,7 @@ pub struct HammerProApp {
     pub(crate) open_queue: VecDeque<(PathBuf, files::OpenKind, OpenTarget)>,
     pub(crate) close_queue: VecDeque<TabId>,
     pub(crate) close_keep: Option<TabId>,
-    pub(crate) exit_answered: HashSet<TabId>,
+    pub(crate) exit_answered: HashMap<TabId, u64>,
     pub(crate) published_tabs: Option<(crate::tabs::PublishedTabs, Option<PathBuf>)>,
     pub(crate) tab_bar_action: Option<TabAction>,
     pub(crate) unsaved_asked: Option<(PendingOp, TabId)>,
@@ -134,6 +137,7 @@ fn register_all_translations() {
     hp_app::i18n::register(crate::tabs::TR);
     hp_app::i18n::register(crate::vram::TR);
     hp_app::i18n::register(crate::perf::TR);
+    hp_app::i18n::register(crate::particle_exit::TR);
     crate::dispatch::register_translations();
 }
 
@@ -268,6 +272,7 @@ impl HammerProApp {
         };
 
         let native_frames_at_start = state.settings.ui.native_frames;
+        let startup_maximized = (!automated).then_some(state.settings.ui.start_fullscreen);
         let cli_restore = cli.restore.clone();
         let mut app = Self {
             state,
@@ -294,6 +299,7 @@ impl HammerProApp {
             recover_prompt: None,
             crash_prompt,
             compile_exit_prompt: false,
+            particle_exit: crate::particle_exit::Controller::default(),
             background: hp_ui_shell::background::BackgroundImage::default(),
             settings_saved_at: Instant::now(),
             screenshot,
@@ -303,6 +309,7 @@ impl HammerProApp {
             worst_frame: 0.0,
             title: String::new(),
             native_frames_at_start,
+            startup_maximized,
             central_size: egui::vec2(1200.0, 800.0),
             clipboard: arboard::Clipboard::new().ok(),
             paste_event_text: None,
@@ -333,6 +340,7 @@ impl HammerProApp {
             script_command: None,
             script_idle: None,
             persist_settings: !automated,
+            save_preferences: !cli.no_save_settings,
             opener: crate::opening::Opener::default(),
             startup,
             open_report: None,
@@ -345,7 +353,7 @@ impl HammerProApp {
             open_queue: VecDeque::new(),
             close_queue: VecDeque::new(),
             close_keep: None,
-            exit_answered: HashSet::new(),
+            exit_answered: HashMap::new(),
             published_tabs: None,
             tab_bar_action: None,
             unsaved_asked: None,
@@ -449,6 +457,7 @@ impl HammerProApp {
             || self.recover_prompt.is_some()
             || self.crash_prompt.is_some()
             || self.compile_exit_prompt
+            || self.particle_exit.active()
             || self.state.ui.show_first_run
             || self.state.ui.show_command_palette
     }
@@ -576,9 +585,18 @@ impl HammerProApp {
     }
 
     fn window(&mut self, ui: &mut egui::Ui) {
+        if let Some(maximized) = self.startup_maximized.take() {
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(maximized));
+            ui.ctx().request_repaint();
+        }
         let native = self.state.settings.ui.native_frames;
         hp_app::chrome::sync_decorations(ui.ctx(), native, self.native_frames_at_start);
-        self.state.ui.fullscreen = ui.ctx().input(|i| i.viewport().fullscreen.unwrap_or(false));
+        if ui.ctx().input(|i| i.viewport().fullscreen.unwrap_or(false)) {
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(true));
+        }
+        self.state.ui.fullscreen = ui.ctx().input(|i| i.viewport().maximized.unwrap_or(false));
         let dirty = self.state.doc.is_dirty();
         let mut spec =
             hp_app::chrome::ChromeSpec::main(format!("{} - Hammer Pro", files::map_display_name(&self.state)), native);
@@ -772,6 +790,7 @@ impl HammerProApp {
         self.compile.show(ctx, &mut self.state);
         crate::dispatch::dialogs(self, ctx);
         self.unsaved_prompt(ctx);
+        crate::particle_exit::show(self, ctx);
         self.hollow_dialog(ctx);
         self.compile_exit_dialog(ctx);
         self.recover_dialog(ctx);
@@ -798,7 +817,7 @@ impl HammerProApp {
                 self.start_open(ctx, &autosave, files::OpenKind::Recovered { original }, here);
             }
             PendingOp::Exit => {
-                self.exit_answered.insert(self.tabs.active_id());
+                self.exit_answered.insert(self.tabs.active_id(), self.state.doc.revision());
                 self.continue_exit(ctx);
             }
             PendingOp::Close => self.finish_close(),
@@ -828,10 +847,11 @@ impl HammerProApp {
         if !ctx.input(|i| i.viewport().close_requested()) || self.allow_close {
             return;
         }
+        self.flush_particle_edits();
         if self.compile.is_running() {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.compile_exit_prompt = true;
-        } else if self.any_map_dirty() {
+        } else if self.any_map_dirty() || self.particle_document_dirty() {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             if self.pending.is_none() {
                 self.exit_answered.clear();
@@ -934,7 +954,7 @@ impl HammerProApp {
     }
 
     pub(crate) fn save_settings(&mut self) {
-        if !self.persist_settings {
+        if !self.persist_settings || !self.save_preferences {
             self.state.settings_dirty = false;
             return;
         }
@@ -1422,6 +1442,18 @@ impl HammerProApp {
 
 impl eframe::App for HammerProApp {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        if let Some(mut config) = frame.wgpu_surface_config() {
+            let present_mode = if self.state.settings.render.vsync {
+                wgpu::PresentMode::AutoVsync
+            } else {
+                wgpu::PresentMode::AutoNoVsync
+            };
+            if config.present_mode != present_mode {
+                config.present_mode = present_mode;
+                frame.set_wgpu_surface_config(config);
+                log::info!("Presentation mode: {present_mode:?}");
+            }
+        }
         self.watch_native_failures();
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.frame(ui, frame)));
         hp_app::native_window::upload_textures(ui.ctx());

@@ -191,8 +191,8 @@ impl Package for Shell {
             Action::Center2dOnSelection => app.center_2d(),
             Action::Center3dOnSelection => app.center_3d(),
             Action::ToggleFullscreen => {
-                let on = !ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
-                ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(on));
+                let on = !ctx.input(|i| i.viewport().maximized.unwrap_or(false));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(on));
                 app.state.ui.fullscreen = on;
             }
             Action::MaximizeView => {

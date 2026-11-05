@@ -99,8 +99,8 @@ pub(crate) const TR: TrTable = &[
     ("shell.lighting.auto_bake", "Bake when the preview is turned on", "Précalculer à l'activation de l'aperçu"),
     (
         "shell.lighting.auto_bake_tip",
-        "Starts a bake of the whole map when the baked lighting preview is turned on and nothing is baked yet",
-        "Lance le précalcul de toute la carte quand l'aperçu de l'éclairage précalculé est activé et que rien n'est encore précalculé",
+        "Starts a bake when the baked lighting preview is turned on and nothing is baked yet. Uses the whole map by default; the optional regional mode applies to this automatic start.",
+        "Lance un précalcul quand l'aperçu précalculé est activé et que rien n'est encore calculé. Toute la carte est utilisée par défaut ; le mode régional optionnel concerne ce démarrage automatique.",
     ),
     (
         "shell.lighting.auto_scope",
@@ -109,8 +109,8 @@ pub(crate) const TR: TrTable = &[
     ),
     (
         "shell.lighting.auto_scope_tip",
-        "A map above the luxel threshold is baked within the radius below around the 3D camera instead of whole, which cuts the memory and the time a lot. The baked area follows the camera once it moves out of the central half and stays still for a second. Off: the whole map is always baked.",
-        "Une carte au-dessus du seuil de luxels est précalculée dans le rayon ci-dessous autour de la caméra 3D au lieu de l'être en entier, ce qui réduit beaucoup la mémoire et le temps. La zone précalculée suit la caméra quand elle sort de la moitié centrale et reste immobile une seconde. Désactivé : toute la carte est toujours précalculée.",
+        "Optional regional mode for automatic preview activation on maps above the luxel threshold. The region follows the camera after it leaves the central half and stays still for a second. Off by default. Bake lighting always calculates the whole map and never follows the camera.",
+        "Mode régional optionnel à l'activation automatique de l'aperçu sur les cartes au-dessus du seuil de luxels. La zone suit la caméra quand elle quitte la moitié centrale et reste immobile une seconde. Désactivé par défaut. Précalculer l'éclairage calcule toujours toute la carte sans suivre la caméra.",
     ),
     (
         "shell.lighting.auto_scope_luxels",
@@ -119,14 +119,14 @@ pub(crate) const TR: TrTable = &[
     ),
     (
         "shell.lighting.auto_scope_luxels_tip",
-        "Maps with more luxels than this are baked around the camera only. Used by the next bake.",
-        "Les cartes avec plus de luxels que cela sont précalculées seulement autour de la caméra. Utilisé par le prochain précalcul.",
+        "Threshold for the optional regional bake on automatic preview activation. Bake lighting remains a whole-map calculation.",
+        "Seuil du précalcul régional optionnel à l'activation automatique de l'aperçu. Précalculer l'éclairage conserve un calcul de toute la carte.",
     ),
     ("shell.lighting.auto_scope_radius", "Big map radius", "Rayon des grandes cartes"),
     (
         "shell.lighting.auto_scope_radius_tip",
-        "Radius in units around the 3D camera of the area baked on a big map. Used by the next bake.",
-        "Rayon en unités autour de la caméra 3D de la zone précalculée sur une grande carte. Utilisé par le prochain précalcul.",
+        "Radius of the optional automatic regional preview. Bake around the camera uses its separate radius in the Lighting tab. Used by the next automatic regional bake.",
+        "Rayon de l'aperçu régional automatique optionnel. Précalculer autour de la caméra utilise son rayon distinct dans l'onglet Éclairage. Utilisé par le prochain précalcul régional automatique.",
     ),
     ("shell.lighting.threads", "Baking threads", "Threads de précalcul"),
     (
