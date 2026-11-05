@@ -35,7 +35,7 @@ En vue souris (`Z`), vous pouvez texturer la face sous le viseur sans quitter le
 | `V` (`fly_pick_texture`) ou clic du milieu | Prélève la texture de la face visée comme texture actuelle |
 | `N` (`fly_align_texture`) | Aligne la texture de la face visée sur la vue (les directions droite et haut de la caméra) |
 
-- La face visée (la première face de solide dans la direction du regard, jusqu'à 16384 unités) est surlignée en jaune avec son contour. Un viseur est dessiné au centre de la vue avec le solide, la face et la texture de la cible, et une ligne d'aide en bas de la vue liste les touches et la texture actuelle.
+- La face visée (la première face de solide dans la direction du regard, jusqu'à 16384 unités) n'est pas surlignée : le viseur et son étiquette la désignent. Un viseur est dessiné au centre de la vue avec le solide, la face et la texture de la cible, et une ligne d'aide en bas de la vue liste les touches et la texture actuelle.
 - Chaque modification est une étape d'annulation. Les touches sont des actions : elles se changent dans **Paramètres > Clavier** (`[keybindings]`) comme les autres, et ne fonctionnent qu'en vue souris.
 - Le clic gauche continue de sélectionner l'objet sous le viseur.
 - Par MCP : `ui_key` avec `z` entre en vue souris, puis `t`, `f`, `v` ou `n` agissent sur la face au centre de la vue (`set_camera` pour viser, `list_keybindings` pour les touches).

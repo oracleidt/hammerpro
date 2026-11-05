@@ -47,7 +47,7 @@ In pick mode the browser shows "Pick for *key*: double click an item, or select 
 |---|---|---|---|
 | **Show particles** | **View > Display options**, and **Settings > Nav mesh and particles** | Plays the effects of `info_particle_system` entities near the camera in the 3D views. `show_particles` in `[lab]`. | On |
 | **Particles of the selection only** | Same places | Plays only the effects of the selected particle systems. `particles_selected_only` in `[lab]`. | Off |
-| **Preview volume effects** | Same places | Animated approximation of `func_smokevolume`, `env_embers`, `func_dustcloud` and `func_dustmotes` (see below). `show_entity_fx` in `[lab]`; action `toggle_entity_fx`. | On |
+| **Preview volume effects** | Same places | Textured, animated reproduction of `func_smokevolume`, `env_embers`, `func_dustcloud` and `func_dustmotes` (see below). `show_entity_fx` in `[lab]`; action `toggle_entity_fx`. | On |
 
 ### What plays
 
@@ -61,23 +61,23 @@ Hover or select an `info_particle_system` in a 3D view to see its effect name ab
 
 ## Volume effects in the views
 
-`func_smokevolume`, `env_embers`, `func_dustcloud` and `func_dustmotes` are drawn by the engine in game; Hammer Pro shows an approximation in the 3D views, switched with **Preview volume effects**. The extent is the box of the entity's brushes (a point entity gets a 96 unit box), drawn as a thin outline (brighter when selected) and filled with animated coloured particles that stay inside it:
+`func_smokevolume`, `env_embers`, `func_dustcloud` and `func_dustmotes` are drawn by the engine in game; Hammer Pro reproduces them in the 3D views, switched with **Preview volume effects**. They are drawn like the particle files: textured billboards with the real sprite of the mounted game content (its `.vmt` decides additive or alpha blending, the overbright factor, `$alpha` and the fade size; the sprite sheet frames of `SpriteCard` materials are blended like the game does), through the same renderer. The extent is the box of the entity's brushes (a point entity gets a 96 unit box). No box is drawn around the volume: the entity is highlighted like any other selected entity.
 
-| Entity | Keys used | Look |
-|---|---|---|
-| `func_smokevolume` | `Color1`, `Color2` (each puff picks a colour between them), `ParticleDrawWidth` (puff size), `ParticleSpacingDistance` (fewer puffs when larger), `Density` (opacity), `MovementSpeed` | Big soft puffs drifting slowly |
-| `env_embers` | `rendercolor`, `density` (count), `lifetime`, `speed` | Small bright sparks rising with a wobble, fading in and out |
-| `func_dustcloud` | `Color`, `SizeMin`, `SizeMax`, `SpawnRate`, `LifetimeMin`, `LifetimeMax`, `SpeedMax`, `FallSpeed`, `Alpha`, `DistMax` | Larger translucent specks |
-| `func_dustmotes` | Same keys | Fine drifting motes |
+| Entity | Keys used | Sprite | Look |
+|---|---|---|---|
+| `func_smokevolume` | `Color1`, `Color2` (each puff picks a colour between them), `ParticleDrawWidth` (puff size), `ParticleSpacingDistance` (puffs sit on a grid with this spacing), `Density` (opacity), `MovementSpeed` (sway), `RotationSpeed` (spin), `Material` | `particle/particle_smokegrenade` (or the `Material` key) | Soft puffs on a grid, turning and swaying slowly |
+| `env_embers` | `rendercolor`, `renderamt`, `density` (sparks per second), `lifetime`, `speed` | `effects/ember_swirling001` | Small additive sparks that rise and wobble, leave the brush, flicker and fade out |
+| `func_dustcloud` | `Color`, `SizeMin`, `SizeMax` (sprite half size), `SpawnRate`, `LifetimeMin`, `LifetimeMax`, `SpeedMax` (random speed on each axis), `FallSpeed`, `Alpha`, `DistMax` | `particle/particle_smokegrenade` | Large faint specks that fade in and out, fade with the distance and disappear when they leave the brush |
+| `func_dustmotes` | Same keys | `particle/sparkles` | The same motion with the sparkle sprite |
 
-The preview is bounded: only entities within 3072 units of the camera (or `DistMax` when smaller) are shown, at most 24 at once (nearest first), 120 particles each and 1600 in all, with fewer particles the farther the entity is. Hidden entities are not shown. For `info_particle_system` the real particle files are played instead (see above).
+Defaults follow the FGD: `func_dustcloud` uses `SizeMin` 100, `SizeMax` 200 and `Alpha` 30 (a dense white haze), `func_dustmotes` uses 10, 20 and `Alpha` 255. The game lights dust by the lightmaps; the preview shows it unlit. The start state is respected: `env_embers` needs the `Start On` flag (1) and the dust entities are hidden with `StartDisabled` (the `TurnOn` and `TurnOff` inputs only exist at run time and are not simulated). `Frozen` dust is drawn still. When a sprite is missing from the content, the next known sprite is tried, then the name is kept (the missing material shows). The preview is bounded: only entities within 3072 units of the camera (or `DistMax` when smaller) are shown, at most 24 at once (nearest first), 300 particles each (160 puffs for smoke) and 2400 in all, with fewer particles the farther the entity is. Hidden entities are not shown. For `info_particle_system` the real particle files are played instead (see above).
 
 ## Particle preview window
 
 The `▶` button next to the **Particle System Name** field (`effect_name`) of an `info_particle_system` (also **View > Panels > Particle preview...**, action `particle_preview`) opens a window with:
 
 - a search box (all words must appear in the name or file; `!word` excludes) and the list of every system of the content index and the particle files, with its file in the tooltip;
-- a live, turning view of the selected system, played from the real particle file (the same simulation as the 3D views, at most 400 particles): additive materials glow, trails are drawn as lines. **Pause**/**Play**, **Restart** and **Turn** (the automatic rotation) are under it, with the particle count and the operators that are not simulated;
+- a live view of the selected system, played from the real particle file with the same simulation, the same renderer and the same sprites as the 3D views (an offscreen render of the renderer shown as an image, at most 400 particles): textured sprites, additive and alpha blending, sprite sheet frames, trails and ropes. Drag to orbit, scroll to zoom, double click to reset the camera. The control points are at the origin with no angles, like an `info_particle_system` without `cpoint` keys. **Pause**/**Play**, **Restart** and **Turn** (the automatic rotation) are under it, with the particle count and the operators that are not simulated. Opening it with the `particle_preview` action while an `info_particle_system` is selected starts on its effect;
 - **Assign to N entities** (or **Use for this field** when opened from a field): writes the name into the key (one undo step). A double click on a system does the same. **Copy name** copies it.
 
 Closing the window while it waits for a choice cancels that choice.

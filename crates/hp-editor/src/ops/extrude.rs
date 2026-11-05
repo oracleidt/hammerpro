@@ -1,5 +1,7 @@
 use glam::DVec3;
-use hp_geom::{ClipPiece, ExtrudeMode, FaceExtrudeParams, face_extrude, face_prism};
+use hp_geom::{
+    ClipPiece, ExtrudeIssue, ExtrudeMode, FaceExtrudeParams, MIN_EXTRUDE_DEPTH, build_solid, face_extrude, face_prism,
+};
 use hp_vmf::{Side, Solid};
 
 use super::csg::{derived_solid, record_side_ids};
@@ -103,13 +105,27 @@ struct Prism {
     sides: Vec<Side>,
 }
 
+struct Carve {
+    solid: Id,
+    template: Solid,
+    owner: Owner,
+    piece: ClipPiece,
+}
+
+struct Plan {
+    prisms: Vec<Prism>,
+    carves: Vec<Carve>,
+    next: u32,
+}
+
 impl Document {
-    fn plan_prisms(&self, faces: &[(FaceRef, f64)], material: Option<&str>) -> EditResult<(Vec<Prism>, u32)> {
+    fn plan_extrusions(&self, faces: &[(FaceRef, f64)], material: Option<&str>) -> EditResult<Plan> {
         if faces.is_empty() {
             return Err(EditError::Nothing("no face to extrude"));
         }
         let mut next = self.next_side_id;
-        let mut out: Vec<Prism> = Vec::with_capacity(faces.len());
+        let mut prisms: Vec<Prism> = Vec::with_capacity(faces.len());
+        let mut carves: Vec<Carve> = Vec::new();
         let mut seen: Vec<FaceRef> = Vec::with_capacity(faces.len());
         for (face, depth) in faces {
             if seen.contains(face) {
@@ -120,39 +136,92 @@ impl Document {
             if face.side >= n.solid.sides.len() {
                 return Err(EditError::Invalid(format!("solid {} has no side {}", face.solid, face.side)));
             }
-            let sides = face_prism(&n.solid.sides, face.side, *depth, material, &mut || {
+            let mut fresh = || {
                 let id = next;
                 next = next.saturating_add(1);
                 id
-            })?;
-            out.push(Prism { template: n.solid.clone(), owner: n.owner, sides });
+            };
+            if *depth <= -MIN_EXTRUDE_DEPTH {
+                let at = match carves.iter().position(|c| c.solid == face.solid) {
+                    Some(i) => i,
+                    None => {
+                        carves.push(Carve {
+                            solid: face.solid,
+                            template: n.solid.clone(),
+                            owner: n.owner,
+                            piece: ClipPiece::whole(&n.solid.sides),
+                        });
+                        carves.len() - 1
+                    }
+                };
+                let carve = &mut carves[at];
+                let Some(index) = carve.piece.origins.iter().position(|o| *o == Some(face.side)) else { continue };
+                let geom = build_solid(&carve.piece.sides);
+                let Some(outline) = geom.face_for_side(index).map(|f| f.vertices.clone()) else { continue };
+                let params = FaceExtrudeParams {
+                    mode: ExtrudeMode::Carve,
+                    depth: -*depth,
+                    through: false,
+                    material: material.map(str::to_owned),
+                };
+                let result = face_extrude(&carve.piece.sides, index, &outline, &params, &mut fresh)?;
+                if result.pieces.len() != 1 {
+                    return Err(hp_geom::GeomError::from(ExtrudeIssue::ThroughBrush).into());
+                }
+                if let Some(piece) = result.pieces.into_iter().next() {
+                    carve.piece = piece.compose(&carve.piece.origins);
+                }
+            } else {
+                let sides = face_prism(&n.solid.sides, face.side, *depth, material, &mut fresh)?;
+                prisms.push(Prism { template: n.solid.clone(), owner: n.owner, sides });
+            }
         }
-        Ok((out, next))
+        Ok(Plan { prisms, carves, next })
     }
 
     pub fn extrude_faces_preview(&self, faces: &[(FaceRef, f64)], material: Option<&str>) -> EditResult<usize> {
-        Ok(self.plan_prisms(faces, material)?.0.len())
+        let plan = self.plan_extrusions(faces, material)?;
+        Ok(plan.prisms.len() + plan.carves.len())
     }
 
     pub fn extrude_faces(&mut self, faces: &[(FaceRef, f64)], material: Option<&str>) -> EditResult<Vec<Id>> {
-        let (prisms, next) = self.plan_prisms(faces, material)?;
-        self.next_side_id = next;
-        self.tx(UNDO_EXTRUDE_FACE, |doc| {
-            let mut ids = Vec::with_capacity(prisms.len());
+        let plan = self.plan_extrusions(faces, material)?;
+        self.next_side_id = plan.next;
+        let label = if plan.prisms.is_empty() { UNDO_CARVE_FACE } else { UNDO_EXTRUDE_FACE };
+        self.tx(label, |doc| {
+            let mut ids = Vec::with_capacity(plan.prisms.len() + plan.carves.len());
             let mut select: Vec<ObjRef> = Vec::new();
-            for p in prisms {
-                let id = doc.alloc_object_id();
-                let added = doc.add_solids(vec![(derived_solid(&p.template, id, p.sides), p.owner)]);
-                match p.owner {
-                    Owner::World => select.extend(added.iter().map(|i| ObjRef::Solid(*i))),
-                    Owner::Entity(e) => {
-                        if !select.contains(&ObjRef::Entity(e)) {
-                            select.push(ObjRef::Entity(e));
-                        }
+            let mut side_ids: IdMap<Vec<Id>> = id_map(0);
+            let pick = |owner: Owner, added: &[Id], select: &mut Vec<ObjRef>| match owner {
+                Owner::World => select.extend(added.iter().map(|i| ObjRef::Solid(*i))),
+                Owner::Entity(e) => {
+                    if !select.contains(&ObjRef::Entity(e)) {
+                        select.push(ObjRef::Entity(e));
                     }
                 }
+            };
+            for c in plan.carves {
+                let original = doc
+                    .scene
+                    .solids
+                    .get(&c.solid)
+                    .map(|n| n.solid.sides.clone())
+                    .ok_or(EditError::NotFound(ObjRef::Solid(c.solid)))?;
+                record_side_ids(&original, &[&c.piece], &mut side_ids);
+                let mut solid = c.template;
+                solid.sides = c.piece.sides;
+                doc.update_solid(c.solid, solid);
+                pick(c.owner, &[c.solid], &mut select);
+                ids.push(c.solid);
+            }
+            for p in plan.prisms {
+                let id = doc.alloc_object_id();
+                let added = doc.add_solids(vec![(derived_solid(&p.template, id, p.sides), p.owner)]);
+                pick(p.owner, &added, &mut select);
                 ids.extend(added);
             }
+            doc.remap_side_refs(&side_ids);
+            doc.deselect_missing();
             if !select.is_empty() {
                 doc.select(&select, SelectOp::Replace);
             }
@@ -273,5 +342,41 @@ mod tests {
         assert!(doc.extrude_faces(&[(faces[0].0, 0.0)], None).is_err());
         assert!(doc.extrude_faces(&[(FaceRef::new(a, 99), 8.0)], None).is_err());
         assert_eq!(vmf(&doc), before);
+    }
+
+    #[test]
+    fn negative_depth_carves_into_the_brush() {
+        let mut doc = Document::new_empty();
+        let block = doc
+            .create_solid(box_sides(DVec3::ZERO, DVec3::new(128.0, 128.0, 64.0), "BLOCK"), Owner::World)
+            .expect("block");
+        doc.clear_history();
+        let face_with = |doc: &Document, normal: DVec3| {
+            let n = doc.scene().solid(block).expect("solid");
+            let i = n.solid.sides.iter().position(|s| Plane::from_side(s).is_some_and(|p| p.normal == normal));
+            FaceRef::new(block, i.expect("face"))
+        };
+        let top = face_with(&doc, DVec3::Z);
+        let ids = check_undo_redo(&mut doc, |d| d.extrude_faces(&[(top, -16.0)], None).expect("carve"));
+        assert_eq!(ids, vec![block]);
+        assert_eq!(doc.undo_label(), Some("Carve face"));
+        let n = doc.scene().solid(block).expect("block");
+        assert!(n.geom.valid);
+        assert!((n.geom.volume() - 128.0 * 128.0 * 48.0).abs() < 1e-6);
+        assert_eq!(n.bounds.max.z, 48.0);
+        assert!(doc.selection().objects.contains(&ObjRef::Solid(block)));
+        let top = face_with(&doc, DVec3::Z);
+        let right = face_with(&doc, DVec3::X);
+        let ids = check_undo_redo(&mut doc, |d| d.extrude_faces(&[(top, -8.0), (right, -32.0)], None).expect("two"));
+        assert_eq!(ids.len(), 1);
+        let n = doc.scene().solid(block).expect("block");
+        assert!(n.geom.valid);
+        assert_eq!(n.bounds.max.z, 40.0);
+        assert_eq!(n.bounds.max.x, 96.0);
+        assert_eq!(doc.extrude_faces_preview(&[(top, -8.0)], None).expect("preview"), 1);
+        let before = vmf(&doc);
+        assert!(doc.extrude_faces(&[(face_with(&doc, DVec3::Z), -500.0)], None).is_err());
+        assert!(doc.extrude_faces(&[(face_with(&doc, DVec3::Z), -0.01)], None).is_err());
+        assert_eq!(vmf(&doc), before, "a carve through the brush changes nothing");
     }
 }

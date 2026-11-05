@@ -34,7 +34,7 @@ Chaque texte visible passe par la couche i18n, avec un texte anglais et un texte
 
 ## Apparence et couleurs
 
-L'interface est en noir et blanc : chaque couleur de l'interface vient des jetons de `hp_app::theme`. La couleur est réservée au contenu (vues, vignettes, couleurs des entités).
+L'interface est en noir et blanc : chaque couleur de l'interface vient des jetons de `hp_app::theme`. La couleur est réservée au contenu (vues, vignettes, couleurs des entités). Les couleurs qui portent un sens dans les données (catégories de nœuds et types de broches de l'éditeur de shaders, canaux R, V et B de l'étalonnage, grille du terrain) vivent dans `crates/hp-app/src/data_colors.rs`, le seul fichier où le test du thème accepte des couleurs teintées.
 
 ## Ajouter un outil MCP
 

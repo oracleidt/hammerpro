@@ -9,6 +9,7 @@ pub mod menu;
 pub mod overlay;
 pub mod paint;
 pub mod params;
+pub mod perf_ui;
 pub mod pick;
 pub mod placement;
 pub mod player;
@@ -72,6 +73,7 @@ pub fn register_translations() {
         hp_app::i18n::register(table);
     }
     hp_app::i18n::register(workflow::TR);
+    hp_app::i18n::register(perf_ui::TR);
     hp_app::i18n::register(fly_texture::TR);
 }
 
@@ -224,6 +226,7 @@ pub struct Viewports {
     logical: Option<Box<dyn LogicalContent>>,
     header_rects: [Rect; 4],
     info_rects: [Rect; 4],
+    perf_rects: [Rect; 4],
     stats: Option<(f64, RenderStats)>,
     render_cache: RenderCache,
 }
@@ -280,6 +283,7 @@ impl Viewports {
             logical: None,
             header_rects: [Rect::NOTHING; 4],
             info_rects: [Rect::NOTHING; 4],
+            perf_rects: [Rect::NOTHING; 4],
             stats: None,
             render_cache: RenderCache::default(),
         }
@@ -370,11 +374,13 @@ impl Viewports {
             let Some(r) = r else {
                 self.header_rects[index] = Rect::NOTHING;
                 self.info_rects[index] = Rect::NOTHING;
+                self.perf_rects[index] = Rect::NOTHING;
                 continue;
             };
             let Some(kind) = quadrant_view(&state.settings.ui.quadrants, index).kind() else {
                 self.header_rects[index] = Rect::NOTHING;
                 self.info_rects[index] = Rect::NOTHING;
+                self.perf_rects[index] = Rect::NOTHING;
                 let rect = pixel_align(*r, ppp, false);
                 self.logical_rects[index] = Some(rect);
                 logical::view_ui(ui, state, self.logical.as_deref_mut(), index, rect, maximized);
@@ -395,7 +401,9 @@ impl Viewports {
         }
         let dnd_active = egui::DragAndDrop::has_any_payload(&ctx);
         let on_header = |i: usize| {
-            input.pointer.is_some_and(|p| self.header_rects[i].contains(p) || self.info_rects[i].contains(p))
+            input.pointer.is_some_and(|p| {
+                self.header_rects[i].contains(p) || self.info_rects[i].contains(p) || self.perf_rects[i].contains(p)
+            })
         };
         let hovered = slots
             .iter()
@@ -1369,11 +1377,18 @@ impl Viewports {
         let bg = Color32::from_rgb((bg[0] * 255.0) as u8, (bg[1] * 255.0) as u8, (bg[2] * 255.0) as u8);
         let mut drawn = false;
         if let Some(gfx) = state.gfx.as_mut() {
-            let params = view_params(&view, cfg);
+            let mut params = view_params(&view, cfg);
+            if !view.is_2d() {
+                params.size = params::scaled_size(params.size, cfg.render_scale);
+            }
             let mut options = view_options(&view, cfg);
             let animate = state.settings.render.animate_materials && state.tool != ToolId::Texture;
             let shows = gfx.renderer.view_shows_animation(i as u32) || gfx.renderer.view_texture(i as u32).is_none();
-            if !view.is_2d() && animate && shows && gfx.renderer.has_animated_materials() {
+            if !view.is_2d()
+                && animate
+                && shows
+                && (gfx.renderer.has_animated_materials() || gfx.renderer.detail_sprites_sway())
+            {
                 options.time = (state.frame.time % 3600.0) as f32;
                 ctx.request_repaint();
             }
@@ -1384,7 +1399,9 @@ impl Viewports {
                 options.fog_volume_inside = options.fog_volumes;
                 options.fog_volumes = false;
             }
-            gfx.renderer.set_tone_settings(state.settings.render.tone());
+            gfx.renderer.set_tone_settings(params::tone_for(&state.settings.render, &cfg.plan));
+            gfx.renderer.set_quality(params::quality_for(&cfg.plan));
+            gfx.renderer.set_lazy_exposure(true);
             gfx.renderer.set_view_options(i as u32, options);
             let key = ViewKey {
                 params,
@@ -1395,6 +1412,9 @@ impl Viewports {
             if self.render_cache.needs_render(i, &key, has_image) {
                 gfx.renderer.render_view(i as u32, &params, &self.overlay);
                 self.render_cache.rendered(i, key);
+                if gfx.renderer.wants_another_frame() {
+                    ctx.request_repaint();
+                }
                 state.runtime.render.views_rendered += 1;
                 if !view.is_2d() {
                     gfx.renderer.step_tone(i as u32, state.frame.dt);
@@ -1428,6 +1448,11 @@ impl Viewports {
         } else {
             self.info_rects[i] = Rect::NOTHING;
         }
+        self.perf_rects[i] = if view.is_2d() {
+            Rect::NOTHING
+        } else {
+            perf_ui::show(ui, state, slot.rect, slot.rect.top() + HEADER_HEIGHT + 10.0, i)
+        };
         hover_set
     }
 
@@ -2018,7 +2043,7 @@ fn prop_model_keys(state: &AppState, class: &str) -> Vec<(&'static str, String)>
     }
 }
 
-pub(crate) const RENDER_MODES: [(RenderModeSetting, Action); 9] = [
+pub(crate) const RENDER_MODES: [(RenderModeSetting, Action); 10] = [
     (RenderModeSetting::Textured, Action::RenderTextured),
     (RenderModeSetting::Unshaded, Action::RenderUnshaded),
     (RenderModeSetting::Flat, Action::RenderFlat),
@@ -2028,10 +2053,11 @@ pub(crate) const RENDER_MODES: [(RenderModeSetting, Action); 9] = [
     (RenderModeSetting::SmoothingGroups, Action::RenderSmoothingGroups),
     (RenderModeSetting::Baked, Action::RenderBaked),
     (RenderModeSetting::LightmapGrid, Action::RenderLightmapGrid),
+    (RenderModeSetting::ColorCorrected, Action::RenderColorCorrected),
 ];
 
 pub fn tool_takes_right_click(tool: ToolId, kind: ViewKind, modifiers: egui::Modifiers) -> bool {
-    tool == ToolId::Texture && kind == ViewKind::Perspective && !modifiers.shift
+    tool == ToolId::Slice || tool == ToolId::Texture && kind == ViewKind::Perspective && !modifiers.shift
 }
 
 pub fn tool_works_while_navigating(tool: ToolId) -> bool {

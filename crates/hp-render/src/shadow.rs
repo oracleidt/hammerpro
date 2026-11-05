@@ -25,9 +25,26 @@ pub(crate) struct ShadowFit {
     pub texel_world: f32,
     pub depth_range: f32,
     pub size: u32,
+    pub dir: Vec3,
+    pub window: [f64; 4],
+    pub need: [f64; 4],
+    pub depth: [f64; 2],
 }
 
 impl ShadowFit {
+    pub fn can_replace(&self, fresh: &ShadowFit) -> bool {
+        const SLACK: f64 = 1.0;
+        self.size == fresh.size
+            && self.dir.dot(fresh.dir) > 0.999_999
+            && self.texel_world == fresh.texel_world
+            && self.window[0] <= fresh.need[0] - SLACK
+            && self.window[1] <= fresh.need[2] - SLACK
+            && self.window[0] + self.window[2] >= fresh.need[1] + SLACK
+            && self.window[1] + self.window[3] >= fresh.need[3] + SLACK
+            && self.depth[0] <= fresh.depth[0]
+            && self.depth[1] >= fresh.depth[1]
+    }
+
     pub fn params(&self) -> [f32; 4] {
         [1.0, 2.0 / self.depth_range.max(1.0), 1.0 / self.size.max(1) as f32, self.texel_world * 1.5]
     }
@@ -161,6 +178,10 @@ pub(crate) fn fit(cam: &Camera, dir: Vec3, scene_min: Vec3, scene_max: Vec3, map
         texel_world: texel as f32,
         depth_range: range as f32,
         size: map_size.max(1),
+        dir: f.as_vec3(),
+        window: [ox, oy, size, size],
+        need: [x0, x1, y0, y1],
+        depth: [d0, d1],
     })
 }
 
@@ -208,6 +229,11 @@ impl Layers {
         self == Layers::Sun
     }
 
+    pub(crate) fn sizes_capped(self, layers: u32, cap: u32) -> (u32, u32) {
+        let (a, b) = self.sizes(layers);
+        if self == Layers::Sun { (a.min(cap), b.min(cap)) } else { (a, b) }
+    }
+
     pub(crate) fn sizes(self, layers: u32) -> (u32, u32) {
         match self {
             Layers::Sun if layers > FULL_SIZE_LAYERS => (SHADOW_SIZE_MANY, SUN_CUT_SIZE),
@@ -223,8 +249,8 @@ impl Layers {
         }
     }
 
-    pub(crate) fn bytes(self, layers: u32) -> u64 {
-        let (size, cut) = self.sizes(layers);
+    pub(crate) fn bytes(self, layers: u32, cap: u32) -> u64 {
+        let (size, cut) = self.sizes_capped(layers, cap);
         let occ = u64::from(size).pow(2) * if self.mips() > 1 { 4 } else { 3 } / 3;
         (occ + u64::from(cut).pow(2)) * 4 * u64::from(layers.max(1))
     }
@@ -444,7 +470,7 @@ impl Renderer {
     }
 
     fn create_layers(&self, which: Layers, layers: u32) -> ShadowGpu {
-        let (size, cut_size) = which.sizes(layers);
+        let (size, cut_size) = which.sizes_capped(layers, self.quality.sun_shadow_size);
         let label = match which {
             Layers::Sun => "hp-render shadow map",
             Layers::Sky => "hp-render sky visibility map",
@@ -550,7 +576,24 @@ impl Renderer {
         let dir = Vec3::new(sun.dir[0], sun.dir[1], sun.dir[2]).normalize_or(Vec3::NEG_Z);
         let (lo, hi) = self.scene_bounds();
         let layers = self.analyze_sky(Layers::Sun, dir);
-        let fit = fit(cam, dir, lo, hi, Layers::Sun.sizes(layers).0)?;
+        let fresh = fit(cam, dir, lo, hi, Layers::Sun.sizes_capped(layers, self.quality.sun_shadow_size).0)?;
+        let serial = self.render_serial;
+        let resting = match self.sun_cam {
+            Some((vp, first)) if vp == cam.view_proj => first != serial,
+            _ => false,
+        };
+        if self.sun_cam.is_none_or(|(vp, _)| vp != cam.view_proj) {
+            self.sun_cam = Some((cam.view_proj, serial));
+        }
+        let fit = match self.sun_fit {
+            Some(kept) if !resting && kept.can_replace(&fresh) && !crate::profile::baseline("shadowfit") => kept,
+            _ => fresh,
+        };
+        self.sun_followup = fit != fresh;
+        if self.sun_followup {
+            self.content_gen += 1;
+        }
+        self.sun_fit = Some(fit);
         let dirty = self.prepare_layers(Layers::Sun, fit.view_proj, dir, fit.depth_range)?;
         Some((fit, dirty))
     }
@@ -579,6 +622,7 @@ impl Renderer {
             return (0, 0);
         };
         let planes: [Vec4; 6] = frustum_planes(view_proj);
+        let packed = self.pack_visible(&planes);
         let (mut draws, mut tris) = (0u32, 0u64);
         for (k, (target, group)) in t.cut_layers.iter().zip(cut_groups).enumerate() {
             let mut pass = depth_pass(enc, target, 0.0, "hp-render sky cut pass");
@@ -598,7 +642,7 @@ impl Renderer {
                 (_, Some(region)) => Some(CasterCull { basis: &basis, region }),
                 (_, None) => continue,
             };
-            let (d, n) = self.draw_shadow_casters(&mut pass, &t.pipelines, &planes, cull.as_ref());
+            let (d, n) = self.draw_shadow_casters(&mut pass, &t.pipelines, &planes, cull.as_ref(), packed.as_ref());
             draws += d;
             tris += n;
         }
@@ -718,6 +762,7 @@ impl Renderer {
         pipelines: &ShadowPipelines,
         planes: &[Vec4; 6],
         cull: Option<&CasterCull<'_>>,
+        packed: Option<&crate::instance_cull::Packed>,
     ) -> (u32, u64) {
         let (mut draws, mut tris) = (0u32, 0u64);
         pass.set_vertex_buffer(0, self.arenas[ArenaKind::MeshVerts as usize].buffer.slice(..));
@@ -756,10 +801,12 @@ impl Renderer {
         if self.instance_count == 0 {
             return (draws, tris);
         }
-        pass.set_vertex_buffer(1, self.instances.buffer.slice(..));
+        let packed = packed.filter(|_| cull.is_none());
+        let (source, groups) = self.instance_source(packed);
+        pass.set_vertex_buffer(1, source);
         let mut runs: Vec<Range<u32>> = Vec::new();
         let mut current: Option<u8> = None;
-        for g in &self.instance_groups {
+        for g in groups {
             let Some(model) = self.models.get(&g.key) else { continue };
             let hull = model.shadow_hull.as_ref().filter(|_| g.hull > 0);
             let mesh_count = if hull.is_some() { g.count - g.hull.min(g.count) } else { g.count };
@@ -890,5 +937,24 @@ mod tests {
         let far_scene = (Vec3::splat(100_000.0), Vec3::splat(100_100.0));
         assert!(fit(&cam([0.0; 3], [1.0, 0.0, 0.0]), Vec3::NEG_Z, far_scene.0, far_scene.1, SHADOW_SIZE).is_none());
         assert!(fit(&cam([0.0; 3], [1.0, 0.0, 0.0]), Vec3::NAN, smin, smax, SHADOW_SIZE).is_some());
+    }
+
+    #[test]
+    fn a_kept_fit_serves_small_moves_and_not_big_ones() {
+        let (smin, smax) = (Vec3::new(-20000.0, -20000.0, -500.0), Vec3::new(20000.0, 20000.0, 2000.0));
+        let dir = Vec3::new(0.3, 0.2, -1.0);
+        let kept = fit(&cam([0.0, 0.0, 100.0], [1.0, 0.0, 0.0]), dir, smin, smax, SHADOW_SIZE).expect("fit");
+        let near = fit(&cam([30.0, 10.0, 100.0], [1.0, 0.0, 0.0]), dir, smin, smax, SHADOW_SIZE).expect("fit");
+        assert_ne!(kept.view_proj, near.view_proj, "a fresh fit moves with the camera");
+        assert!(kept.can_replace(&near), "a small move stays inside the kept window");
+        let far = fit(&cam([2000.0, 0.0, 100.0], [1.0, 0.0, 0.0]), dir, smin, smax, SHADOW_SIZE).expect("fit");
+        assert!(!kept.can_replace(&far), "a big move needs a new window");
+        let turned = fit(&cam([0.0, 0.0, 100.0], [0.0, 1.0, 0.0]), dir, smin, smax, SHADOW_SIZE).expect("fit");
+        assert!(kept.can_replace(&kept));
+        assert!(kept.size == turned.size);
+        let other_dir =
+            fit(&cam([0.0, 0.0, 100.0], [1.0, 0.0, 0.0]), Vec3::new(-0.3, 0.2, -1.0), smin, smax, SHADOW_SIZE)
+                .expect("fit");
+        assert!(!kept.can_replace(&other_dir), "a moved sun needs a new fit");
     }
 }

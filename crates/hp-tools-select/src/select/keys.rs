@@ -266,7 +266,13 @@ impl SelectTool {
             }
             Self::report(state, r.map(|_| ()));
         }
-        if delta.length_squared() > 1e-12 {
+        if delta.length_squared() > 1e-12 && !super::element::picked_points(state).is_empty() {
+            let r = super::element::translate_picked(state, delta).map(|_| ());
+            if r.is_ok() {
+                moved += delta;
+            }
+            Self::report(state, r);
+        } else if delta.length_squared() > 1e-12 {
             let objs = state.doc.selected_objects();
             let r = state.doc.nudge(&objs, delta);
             if r.is_ok() {

@@ -5,6 +5,7 @@ struct ParticleOut {
     @location(0) uv: vec2<f32>,
     @location(1) color: vec4<f32>,
     @location(2) world: vec3<f32>,
+    @location(3) addself: f32,
 };
 
 var<private> P_CORNERS: array<vec2<f32>, 6> = array<vec2<f32>, 6>(
@@ -30,7 +31,7 @@ fn vs_particle(
     @location(3) roll: f32,
     @location(4) rect: vec4<f32>,
     @location(5) color: vec4<f32>,
-    @location(6) mode: u32,
+    @location(6) mode_bits: u32,
     @location(7) bright: f32,
     @location(8) fade: vec2<f32>,
 ) -> ParticleOut {
@@ -39,6 +40,8 @@ fn vs_particle(
         out.clip = COLLAPSED;
         return out;
     }
+    let mode = mode_bits & 255u;
+    out.addself = f32(mode_bits >> 8u) / 256.0;
     let c = P_CORNERS[vi % 6u];
     out.uv = mix(rect.xy, rect.zw, vec2<f32>(c.x * 0.5 + 0.5, 0.5 - c.y * 0.5));
     let half = max(size, 0.0) * 0.5;
@@ -131,7 +134,7 @@ fn fs_particle(in: ParticleOut) -> @location(0) vec4<f32> {
     let rgb = t.rgb * in.color.rgb * exposure;
     let fogged = fog_blend(rgb, view.fog_a.rgb, fog);
     if BLEND_MODE > 0.5 {
-        return vec4<f32>(fogged * a, a);
+        return vec4<f32>(fogged * (a + in.addself * t.a * 0.12), a);
     }
     return vec4<f32>(fogged, a);
 }

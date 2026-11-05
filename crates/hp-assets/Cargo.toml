@@ -26,6 +26,7 @@ crossbeam-channel.workspace = true
 parking_lot.workspace = true
 ahash.workspace = true
 hp-bsp.workspace = true
+hp-bspc.workspace = true
 image.workspace = true
 wgpu.workspace = true
 

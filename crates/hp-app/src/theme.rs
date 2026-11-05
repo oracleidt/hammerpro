@@ -525,8 +525,8 @@ mod tests {
             assert!(!files.is_empty(), "{krate} has sources");
             for file in files {
                 let rel = file.strip_prefix(&crates_dir).unwrap_or(&file).to_string_lossy().replace('\\', "/");
-                let content =
-                    CONTENT_FILES.iter().any(|c| if c.ends_with('/') { rel.starts_with(c) } else { rel == *c });
+                let content = rel.ends_with("/data_colors.rs")
+                    || CONTENT_FILES.iter().any(|c| if c.ends_with('/') { rel.starts_with(c) } else { rel == *c });
                 let Ok(text) = std::fs::read_to_string(&file) else { continue };
                 for (n, line) in text.lines().enumerate() {
                     if line.trim_start().starts_with("#[cfg(test)]") {
@@ -573,6 +573,32 @@ mod tests {
             }
         }
         assert!(problems.is_empty(), "UI chrome must be black and white:\n{}", problems.join("\n"));
+    }
+
+    #[test]
+    fn data_colors_live_in_one_file() {
+        let crates_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let mut found = Vec::new();
+        for krate in UI_CRATES {
+            let mut files = Vec::new();
+            rs_files(&crates_dir.join(krate).join("src"), &mut files);
+            for file in files {
+                let rel = file.strip_prefix(&crates_dir).unwrap_or(&file).to_string_lossy().replace('\\', "/");
+                if rel.ends_with("/data_colors.rs") {
+                    found.push(rel);
+                }
+            }
+        }
+        assert_eq!(found, vec!["hp-app/src/data_colors.rs".to_owned()]);
+    }
+
+    #[test]
+    fn data_colors_are_hued_where_they_carry_meaning() {
+        use crate::data_colors as d;
+        for c in [d::PIN_COLOR, d::PIN_FLOAT, d::PIN_UV, d::CHANNEL_RED, d::CHANNEL_GREEN, d::CHANNEL_BLUE] {
+            assert!(!is_gray(c));
+        }
+        assert!(is_gray(d::CHANNEL_MASTER) && is_gray(d::NODE_OTHER));
     }
 
     #[test]

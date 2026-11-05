@@ -47,7 +47,7 @@ En mode choix, le navigateur affiche « Choix pour *clé* : double-cliquez sur u
 |---|---|---|---|
 | **Afficher les particules** | **Affichage > Options d'affichage**, et **Paramètres > Nav mesh et particules** | Joue les effets des `info_particle_system` proches de la caméra dans les vues 3D. `show_particles` dans `[lab]`. | Activé |
 | **Particules de la sélection uniquement** | Aux mêmes endroits | Ne joue que les effets des systèmes de particules sélectionnés. `particles_selected_only` dans `[lab]`. | Désactivé |
-| **Aperçu des effets de volume** | Aux mêmes endroits | Approximation animée de `func_smokevolume`, `env_embers`, `func_dustcloud` et `func_dustmotes` (voir plus bas). `show_entity_fx` dans `[lab]` ; action `toggle_entity_fx`. | Activé |
+| **Aperçu des effets de volume** | Aux mêmes endroits | Reproduction texturée et animée de `func_smokevolume`, `env_embers`, `func_dustcloud` et `func_dustmotes` (voir plus bas). `show_entity_fx` dans `[lab]` ; action `toggle_entity_fx`. | Activé |
 
 ### Ce qui est joué
 
@@ -61,23 +61,23 @@ Survolez ou sélectionnez un `info_particle_system` dans une vue 3D pour voir le
 
 ## Effets de volume dans les vues
 
-`func_smokevolume`, `env_embers`, `func_dustcloud` et `func_dustmotes` sont dessinés par le moteur en jeu ; Hammer Pro en montre une approximation dans les vues 3D, activée par **Aperçu des effets de volume**. L'étendue est la boîte des brushes de l'entité (une entité ponctuelle a une boîte de 96 unités), tracée en fin contour (plus clair si sélectionnée) et remplie de particules colorées animées qui restent à l'intérieur :
+`func_smokevolume`, `env_embers`, `func_dustcloud` et `func_dustmotes` sont dessinés par le moteur en jeu ; Hammer Pro les reproduit dans les vues 3D, activé par **Aperçu des effets de volume**. Ils sont dessinés comme les fichiers de particules : des billboards texturés avec le vrai sprite du contenu du jeu monté (son `.vmt` décide du mélange additif ou alpha, du facteur de surluminosité, de `$alpha` et de la taille de fondu ; les images des planches de sprites des matériaux `SpriteCard` sont fondues comme dans le jeu), par le même moteur de rendu. L'étendue est la boîte des brushes de l'entité (une entité ponctuelle a une boîte de 96 unités). Aucune boîte n'est tracée autour du volume : l'entité est surlignée comme n'importe quelle autre entité sélectionnée.
 
-| Entité | Clés utilisées | Aspect |
-|---|---|---|
-| `func_smokevolume` | `Color1`, `Color2` (chaque volute prend une couleur entre les deux), `ParticleDrawWidth` (taille des volutes), `ParticleSpacingDistance` (moins de volutes si grand), `Density` (opacité), `MovementSpeed` | Grosses volutes douces qui dérivent lentement |
-| `env_embers` | `rendercolor`, `density` (nombre), `lifetime`, `speed` | Petites étincelles vives qui montent en ondulant, avec fondu |
-| `func_dustcloud` | `Color`, `SizeMin`, `SizeMax`, `SpawnRate`, `LifetimeMin`, `LifetimeMax`, `SpeedMax`, `FallSpeed`, `Alpha`, `DistMax` | Grains translucides plus gros |
-| `func_dustmotes` | Mêmes clés | Fines poussières qui dérivent |
+| Entité | Clés utilisées | Sprite | Aspect |
+|---|---|---|---|
+| `func_smokevolume` | `Color1`, `Color2` (chaque volute prend une couleur entre les deux), `ParticleDrawWidth` (taille des volutes), `ParticleSpacingDistance` (les volutes sont sur une grille de cet écart), `Density` (opacité), `MovementSpeed` (balancement), `RotationSpeed` (rotation), `Material` | `particle/particle_smokegrenade` (ou la clé `Material`) | Volutes douces sur une grille, qui tournent et se balancent lentement |
+| `env_embers` | `rendercolor`, `renderamt`, `density` (étincelles par seconde), `lifetime`, `speed` | `effects/ember_swirling001` | Petites étincelles additives qui montent en ondulant, sortent du brush, scintillent et s'estompent |
+| `func_dustcloud` | `Color`, `SizeMin`, `SizeMax` (demi-taille du sprite), `SpawnRate`, `LifetimeMin`, `LifetimeMax`, `SpeedMax` (vitesse aléatoire sur chaque axe), `FallSpeed`, `Alpha`, `DistMax` | `particle/particle_smokegrenade` | Grands grains ténus qui apparaissent et disparaissent en fondu, s'estompent avec la distance et disparaissent en quittant le brush |
+| `func_dustmotes` | Mêmes clés | `particle/sparkles` | Le même mouvement avec le sprite d'étincelles |
 
-L'aperçu est borné : seules les entités à moins de 3072 unités de la caméra (ou `DistMax` si plus petit) sont montrées, 24 au plus à la fois (les plus proches d'abord), 120 particules chacune et 1600 en tout, avec moins de particules quand l'entité est loin. Les entités masquées ne sont pas montrées. Pour `info_particle_system`, ce sont les vrais fichiers de particules qui sont joués (voir plus haut).
+Les valeurs par défaut suivent le FGD : `func_dustcloud` utilise `SizeMin` 100, `SizeMax` 200 et `Alpha` 30 (une brume blanche dense), `func_dustmotes` utilise 10, 20 et `Alpha` 255. Le jeu éclaire la poussière avec les lightmaps ; l'aperçu la montre non éclairée. L'état de départ est respecté : `env_embers` demande le drapeau `Start On` (1) et les entités de poussière sont masquées par `StartDisabled` (les entrées `TurnOn` et `TurnOff` n'existent qu'en jeu et ne sont pas simulées). La poussière `Frozen` est dessinée immobile. Quand un sprite manque dans le contenu, le sprite connu suivant est essayé, puis le nom est conservé (le matériau manquant s'affiche). L'aperçu est borné : seules les entités à moins de 3072 unités de la caméra (ou `DistMax` si plus petit) sont montrées, 24 au plus à la fois (les plus proches d'abord), 300 particules chacune (160 volutes pour la fumée) et 2400 en tout, avec moins de particules quand l'entité est loin. Les entités masquées ne sont pas montrées. Pour `info_particle_system`, ce sont les vrais fichiers de particules qui sont joués (voir plus haut).
 
 ## Fenêtre d'aperçu des particules
 
 Le bouton `▶` à côté du champ **Particle System Name** (`effect_name`) d'un `info_particle_system` (aussi **Affichage > Panneaux > Aperçu des particules...**, action `particle_preview`) ouvre une fenêtre avec :
 
 - une zone de recherche (tous les mots doivent figurer dans le nom ou le fichier ; `!mot` exclut) et la liste de tous les systèmes de l'index du contenu et des fichiers de particules, avec leur fichier en infobulle ;
-- une vue animée et tournante du système sélectionné, jouée depuis le vrai fichier de particules (la même simulation que les vues 3D, 400 particules au plus) : les matériaux additifs brillent, les traînées sont des lignes. **Pause**/**Lecture**, **Relancer** et **Tourner** (la rotation automatique) sont dessous, avec le nombre de particules et les opérateurs non simulés ;
+- une vue animée du système sélectionné, jouée depuis le vrai fichier de particules avec la même simulation, le même moteur de rendu et les mêmes sprites que les vues 3D (un rendu hors écran du moteur affiché comme une image, 400 particules au plus) : sprites texturés, mélange additif et alpha, images des planches de sprites, traînées et cordes. Glissez pour orbiter, molette pour zoomer, double-clic pour recentrer la caméra. Les points de contrôle sont à l'origine sans angles, comme un `info_particle_system` sans clés `cpoint`. **Pause**/**Lecture**, **Relancer** et **Tourner** (la rotation automatique) sont dessous, avec le nombre de particules et les opérateurs non simulés. L'ouvrir avec l'action `particle_preview` pendant qu'un `info_particle_system` est sélectionné démarre sur son effet ;
 - **Assigner à N entités** (ou **Utiliser pour ce champ** quand la fenêtre vient d'un champ) : écrit le nom dans la clé (une étape d'annulation). Un double-clic sur un système fait pareil. **Copier le nom** le copie.
 
 Fermer la fenêtre pendant qu'elle attend un choix annule ce choix.

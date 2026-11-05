@@ -127,6 +127,7 @@ Ces deux réglages se trouvent aussi sur la page **Brushes** de la fenêtre Para
 
 ## Pages liées
 
+- [Outil tranche](slice-tool.md)
 - [Outil bloc](block-tool.md)
 - [Outil vertex](vertex-tool.md)
 - [Outil extruder / creuser](extrude-tool.md)

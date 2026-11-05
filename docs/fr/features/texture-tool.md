@@ -41,6 +41,7 @@ Le cadre du matériau montre le matériau des faces sélectionnées. Si elles en
 | Commande | Effet |
 |---|---|
 | **Parcourir...** | Ouvre le navigateur de textures : le prochain matériau choisi est appliqué aux faces sélectionnées, puis le panneau revient. |
+| **Modifier le matériau** | Ouvre l'[éditeur de matériaux](material-editor.md) sur le matériau des faces sélectionnées (sur tous si les faces en utilisent plusieurs). |
 | **Appliquer l'actuel** | Applique le matériau actuel du navigateur aux faces sélectionnées. |
 | Bouton image (**En faire le matériau actuel**) | Fait du matériau des faces le matériau actuel (seulement si elles en partagent un). |
 | Déposer un matériau sur le cadre | Applique le matériau glissé aux faces sélectionnées. |

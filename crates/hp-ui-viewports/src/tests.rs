@@ -1179,6 +1179,7 @@ fn the_render_mode_menu_lists_every_mode_once() {
         M::SmoothingGroups,
         M::Baked,
         M::LightmapGrid,
+        M::ColorCorrected,
     ];
     for m in all {
         match m {
@@ -1190,7 +1191,8 @@ fn the_render_mode_menu_lists_every_mode_once() {
             | M::Unshaded
             | M::SmoothingGroups
             | M::Baked
-            | M::LightmapGrid => {}
+            | M::LightmapGrid
+            | M::ColorCorrected => {}
         }
         assert_eq!(crate::RENDER_MODES.iter().filter(|(x, _)| *x == m).count(), 1, "{m:?}");
     }

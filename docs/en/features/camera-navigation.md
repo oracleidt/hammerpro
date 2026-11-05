@@ -35,7 +35,7 @@ In mouselook (`Z`) you can texture the face under the crosshair without leaving 
 | `V` (`fly_pick_texture`) or middle click | Pick the material of the targeted face as the current material |
 | `N` (`fly_align_texture`) | Align the texture of the targeted face to the view (the camera right and up directions) |
 
-- The targeted face (the first solid face along the view direction, up to 16384 units) is highlighted in yellow with its outline. A crosshair is drawn at the center of the view with the solid, side and material of the target, and a hint line at the bottom of the view lists the keys and the current material.
+- The targeted face (the first solid face along the view direction, up to 16384 units) is not highlighted: the crosshair and its label name it. A crosshair is drawn at the center of the view with the solid, side and material of the target, and a hint line at the bottom of the view lists the keys and the current material.
 - Every edit is one undo step. The keys are actions, so they can be changed in **Settings > Keyboard** (`[keybindings]`) like any other; they only work in mouselook.
 - The left click keeps selecting the object at the crosshair.
 - Through MCP: `ui_key` with `z` enters mouselook, then `t`, `f`, `v` or `n` act on the face at the center of the view (`set_camera` aims, `list_keybindings` gives the keys).

@@ -42,12 +42,14 @@ fn vs_detail(
     out.color = vec4<f32>(srgb_to_linear(color.rgb), color.a);
     var dx = right;
     var dy = up;
-    if orient == 2u {
+    let mode = orient & 255u;
+    let sway = f32(orient >> 8u) / 255.0;
+    if mode == 2u {
         let h = vec2<f32>(-ofs.y, ofs.x);
         let len = max(length(h), 1e-4);
         dx = vec3<f32>(h / len, 0.0);
         dy = vec3<f32>(0.0, 0.0, 1.0);
-    } else if orient == 1u {
+    } else if mode == 1u {
         dx = view.right.xyz;
         dy = view.up.xyz;
     }
@@ -68,6 +70,12 @@ fn vs_detail(
     if corner == 2u || corner == 3u {
         p += dx * (lr.x - ul.x);
         uv.x = tex_rect.z;
+    }
+    if sway > 0.0 && (corner == 0u || corner == 3u) {
+        let phase = origin.x * 0.043 + origin.y * 0.061;
+        let t = view.sky.z;
+        let wave = sin(t * 1.9 + phase) * 0.7 + sin(t * 3.1 + phase * 1.7) * 0.3;
+        p += dx * (wave * sway * 0.3 * (ul.y - lr.y));
     }
     out.uv = uv;
     out.world = p;

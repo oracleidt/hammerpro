@@ -29,6 +29,7 @@ mod shell;
 mod startup;
 mod update;
 mod visibility;
+mod vtf;
 mod workflow;
 
 pub use blender::{BlenderFormat, BlenderSettings};
@@ -60,7 +61,7 @@ pub use mesh::MeshSettings;
 pub use placement::{PlacementSettings, SprinkleMode, SprinkleSettings};
 pub use render::{
     DEFAULT_WALK_ANGLE, Disp2dSetting, Disp2dViewSetting, DispWalkMode, MAX_VRAM_BUDGET_MB, MIN_VRAM_BUDGET_MB,
-    Models2dSetting, PropShadowSetting, RenderSettings, ToneModeSetting, WaterDetailSetting,
+    Models2dSetting, PerformanceMode, PropShadowSetting, RenderSettings, ToneModeSetting, WaterDetailSetting,
 };
 pub use scan::{ScanModeSetting, ScanSettings};
 pub use selection::{SelectElement, SelectionSettings};
@@ -70,6 +71,7 @@ pub use shell::{
 pub use startup::{CustomDirSetting, GameSettings, MapGame, StartupSettings, profile_of};
 pub use update::UpdateSettings;
 pub use visibility::VisibilitySettings;
+pub use vtf::VtfSettings;
 pub use workflow::{
     CtrlWheel, DisplayUnits, FLY_RESPONSE_MAX, GRID_MAX, GRID_MIN, GRID_STEP_MAX, GRID_STEP_MIN, MAX_LAYOUT_NAME,
     MAX_LAYOUTS, NavScheme, SavedLayout, TOOL_GRID_MAX, TOOL_GRID_MIN, WorkflowSettings, clamp_grid, grid_step,
@@ -155,6 +157,8 @@ pub struct Settings {
     pub sniffer: SnifferSettings,
     #[serde(skip_serializing_if = "is_default")]
     pub blender: BlenderSettings,
+    #[serde(skip_serializing_if = "is_default")]
+    pub vtf: VtfSettings,
 }
 
 impl Default for Settings {
@@ -193,6 +197,7 @@ impl Default for Settings {
             update: UpdateSettings::default(),
             sniffer: SnifferSettings::default(),
             blender: BlenderSettings::default(),
+            vtf: VtfSettings::default(),
         }
     }
 }

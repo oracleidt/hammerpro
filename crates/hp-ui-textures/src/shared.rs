@@ -22,6 +22,13 @@ pub struct BrowserSelection(pub Vec<String>);
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct BrowseForFaces(pub bool);
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TextureLink {
+    pub key: String,
+    pub texture: String,
+}
+
+const TEXTURE_LINK: &str = "texture_link";
 const REPLACE: &str = "replace_prefill";
 const EDITOR: &str = "editor_request";
 const IMPORT: &str = "import_request";
@@ -34,6 +41,16 @@ pub fn post_replace(ctx: &egui::Context, prefill: ReplacePrefill) {
 
 pub fn take_replace(ctx: &egui::Context) -> Option<ReplacePrefill> {
     ctx.data_mut(|d| d.remove_temp::<ReplacePrefill>(key(REPLACE)))
+}
+
+pub fn post_texture_link(ctx: &egui::Context, param: &str, texture: &str) {
+    ctx.data_mut(|d| {
+        d.insert_temp(key(TEXTURE_LINK), TextureLink { key: param.to_owned(), texture: texture.to_owned() })
+    });
+}
+
+pub fn take_texture_link(ctx: &egui::Context) -> Option<TextureLink> {
+    ctx.data_mut(|d| d.remove_temp::<TextureLink>(key(TEXTURE_LINK)))
 }
 
 pub fn post_editor(ctx: &egui::Context, materials: Vec<String>) {
@@ -83,6 +100,11 @@ mod tests {
         post_editor(&ctx, vec!["x".into()]);
         assert_eq!(take_editor(&ctx).map(|r| r.0), Some(vec!["x".to_owned()]));
         assert!(take_editor(&ctx).is_none());
+
+        assert!(take_texture_link(&ctx).is_none());
+        post_texture_link(&ctx, "$basetexture", "a/b");
+        assert_eq!(take_texture_link(&ctx).map(|l| l.texture), Some("a/b".to_owned()));
+        assert!(take_texture_link(&ctx).is_none());
 
         post_import(&ctx, vec![PathBuf::from("a.png")]);
         assert_eq!(take_import(&ctx).map(|r| r.0.len()), Some(1));

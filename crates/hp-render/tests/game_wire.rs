@@ -238,6 +238,7 @@ fn detail_sprites_fade_turn_and_show_as_lines() {
         lr: [30.0, 0.0],
         tex: [0.0, 0.0, 1.0, 1.0],
         orientation,
+        sway: 0,
         color: [255; 4],
         object,
     };
@@ -318,4 +319,65 @@ fn brush_entities_cover_the_world_lines_behind_them() {
         let (ox, oy) = project(eye, [100.0, 100.0, 50.0]);
         assert!(count(&img, PINK, 8, Some([ox - 3, oy - 2, ox + 3, oy + 3])) > 0, "level {level}: door outline");
     }
+}
+
+#[test]
+fn detail_sprites_sway_with_time_at_the_top_only() {
+    let Some((device, queue)) = gpu() else {
+        eprintln!("no GPU adapter available: test skipped");
+        return;
+    };
+    let mut r = Renderer::new(&device, &queue);
+    mat(&mut r, PROP, [255, 0, 0, 255]);
+    let sprite = |sway| DetailSprite {
+        origin: [0.0, 300.0, -30.0],
+        right: [1.0, 0.0, 0.0],
+        up: [0.0, 0.0, 1.0],
+        ul: [-30.0, 60.0],
+        lr: [30.0, 0.0],
+        tex: [0.0, 0.0, 1.0, 1.0],
+        orientation: DetailSpriteOrientation::Fixed,
+        sway,
+        color: [255; 4],
+        object: 20,
+    };
+    let eye = [0.0, 0.0, 0.0];
+    let centroid = |img: &Img, rect: [u32; 4]| {
+        let (mut sum, mut n) = (0.0f32, 0u32);
+        for y in rect[1]..rect[3].min(img.1) {
+            for x in rect[0]..rect[2].min(img.0) {
+                let i = ((y * img.0 + x) * 4) as usize;
+                if near(&img.2[i..i + 4], [255, 0, 0], 40) {
+                    sum += x as f32;
+                    n += 1;
+                }
+            }
+        }
+        (n > 0).then(|| sum / n as f32)
+    };
+    let (_, top) = project(eye, [0.0, 300.0, 30.0]);
+    let (_, bottom) = project(eye, [0.0, 300.0, -30.0]);
+    let mid = (top + bottom) / 2;
+    let upper = [0, top, SIZE, top + (mid - top) / 2];
+    let lower = [0, mid + (bottom - mid) / 2, SIZE, bottom];
+    let shot = |r: &mut Renderer, time: f32, name: &str| {
+        r.set_view_options(1, ViewOptions { time, ..ViewOptions::default() });
+        r.render_view(1, &view(eye), &Overlay::default());
+        save(r, name)
+    };
+    r.set_detail_sprites(PROP, &[sprite(0)]);
+    assert!(!r.detail_sprites_sway());
+    let still_a = shot(&mut r, 0.0, "sway_off_a");
+    let still_b = shot(&mut r, 0.8, "sway_off_b");
+    assert_eq!(centroid(&still_a, upper), centroid(&still_b, upper), "no sway, no movement");
+    r.set_detail_sprites(PROP, &[sprite(255)]);
+    assert!(r.detail_sprites_sway());
+    let a = shot(&mut r, 0.0, "sway_a");
+    let b = shot(&mut r, 0.8, "sway_b");
+    let (ua, ub) = (centroid(&a, upper).expect("top"), centroid(&b, upper).expect("top"));
+    assert!((ua - ub).abs() > 2.0, "the top sways: {ua} vs {ub}");
+    let (la, lb) = (centroid(&a, lower).expect("foot"), centroid(&b, lower).expect("foot"));
+    assert!((la - lb).abs() < (ua - ub).abs() * 0.5, "the foot stays put: {la} vs {lb}");
+    r.set_detail_sprites(PROP, &[]);
+    assert!(!r.detail_sprites_sway());
 }

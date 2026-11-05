@@ -100,6 +100,7 @@ Thumbnails with a red name are missing materials (purple and black checkerboard)
 | **Replace with this...** | Opens [Find and replace textures](find-replace-textures.md) with the current material in **Find** and this one in **Replace with**. |
 | **Open containing folder** | Opens the folder of the VMT, VTF or image in the file explorer (only for files on disk, not inside VPK or GMA archives). |
 | **Edit material...** | Opens the [material editor](material-editor.md) on it (or on the multiple selection when it is part of it). |
+| **Edit texture (VTF editor)...** | Opens the base texture of the material in the built in [VTF editor](vtf-editor.md). |
 | **Edit in the shader editor** | Opens the [shader editor](shader-editor.md) on the material: on its saved graph when it has one next to its files, else on its base texture. |
 | **Hide the folder ...** | Hides the folder of the material from the browser. |
 

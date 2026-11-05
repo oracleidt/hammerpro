@@ -13,12 +13,14 @@ const AUTO_SHARE: f64 = 0.9;
 const MIN_TEXTURE_LIMIT: u32 = 256;
 const DISCRETE_FALLBACK: u64 = 3 << 30;
 const OTHER_FALLBACK: u64 = 3 << 29;
+const SHARED_CAP: u64 = 2 << 30;
 const WARN_GAP: f64 = 60.0;
 const QUIET_GAP: f64 = 30.0;
 
 pub(crate) struct VramMonitor {
     probe: VramProbe,
     fallback: u64,
+    shared: bool,
     next_check: f64,
     oom_seen: u64,
     last_release: f64,
@@ -26,6 +28,7 @@ pub(crate) struct VramMonitor {
     calm_since: Option<f64>,
     warned: VramPressure,
     last_warning: f64,
+    capped: bool,
 }
 
 impl Default for VramMonitor {
@@ -33,6 +36,7 @@ impl Default for VramMonitor {
         Self {
             probe: VramProbe::none(),
             fallback: OTHER_FALLBACK,
+            shared: false,
             next_check: 0.0,
             oom_seen: hp_render::memory::out_of_memory_events(),
             last_release: f64::NEG_INFINITY,
@@ -40,15 +44,17 @@ impl Default for VramMonitor {
             calm_since: None,
             warned: VramPressure::Normal,
             last_warning: f64::NEG_INFINITY,
+            capped: false,
         }
     }
 }
 
-pub(crate) fn auto_budget(driver_budget: Option<u64>, fallback: u64) -> u64 {
-    match driver_budget {
+pub(crate) fn auto_budget(driver_budget: Option<u64>, fallback: u64, shared: bool) -> u64 {
+    let budget = match driver_budget {
         Some(b) if b > 0 => (b as f64 * AUTO_SHARE) as u64,
         _ => fallback,
-    }
+    };
+    if shared { budget.min(SHARED_CAP) } else { budget }
 }
 
 pub(crate) fn pressure(usage: u64, budget: u64, out_of_memory: bool) -> VramPressure {
@@ -123,7 +129,8 @@ impl VramMonitor {
             ),
             None => log::info!("graphics memory: the driver does not report a budget, {} MB is assumed", mb(fallback)),
         }
-        Self { probe, fallback, ..Self::default() }
+        let shared = matches!(info.device_type, wgpu::DeviceType::IntegratedGpu | wgpu::DeviceType::Cpu);
+        Self { probe, fallback, shared, ..Self::default() }
     }
 
     pub(crate) fn tick(&mut self, state: &mut AppState, now: f64) {
@@ -154,11 +161,12 @@ impl VramMonitor {
             None => (estimate.total(), VramSource::Estimate),
         };
         let fixed = state.settings.render.vram_budget();
-        let budget = fixed.unwrap_or_else(|| auto_budget(driver.map(|v| v.budget), self.fallback));
+        let budget = fixed.unwrap_or_else(|| auto_budget(driver.map(|v| v.budget), self.fallback, self.shared));
         let keep = state.settings.render.keep_background_maps_on_gpu;
         let level = pressure(usage, budget, new_oom || upload_failed);
         let texture_limit = gfx.renderer.texture_limit();
-        let max_texture = gfx.renderer.max_texture_size();
+        let plan_cap = state.runtime.render.perf.plan(state.settings.render.performance_mode).texture_limit;
+        let max_texture = gfx.renderer.max_texture_size().min(plan_cap).max(MIN_TEXTURE_LIMIT);
         state.assets.set_parked_gpu_limit(parked_limit(budget, usage, parked, keep && level == VramPressure::Normal));
         let mut released = GpuReleased::default();
         let worth = new_oom || usage > self.released_at.saturating_add(budget / 20) || parked > 0;
@@ -177,6 +185,16 @@ impl VramMonitor {
             self.last_release = now;
             self.released_at = usage;
             self.calm_since = None;
+        }
+        let texture_limit = state.gfx.as_ref().map_or(texture_limit, |g| g.renderer.texture_limit());
+        if texture_limit > max_texture
+            && let Some(gfx) = state.gfx.as_mut()
+        {
+            state.assets.apply_texture_limit(gfx, max_texture);
+            self.capped = true;
+        } else if self.capped && plan_cap == u32::MAX {
+            self.capped = false;
+            self.calm_since = Some(now - RAISE_AFTER);
         }
         if level == VramPressure::Normal && usage as f64 <= budget as f64 * RAISE_BELOW && texture_limit < max_texture {
             let since = *self.calm_since.get_or_insert(now);
@@ -284,9 +302,11 @@ mod tests {
 
     #[test]
     fn budget_comes_from_the_driver_when_it_reports_one() {
-        assert_eq!(auto_budget(Some(8 << 30), DISCRETE_FALLBACK), (8u64 << 30) * 9 / 10);
-        assert_eq!(auto_budget(None, DISCRETE_FALLBACK), DISCRETE_FALLBACK);
-        assert_eq!(auto_budget(Some(0), OTHER_FALLBACK), OTHER_FALLBACK);
+        assert_eq!(auto_budget(Some(8 << 30), DISCRETE_FALLBACK, false), (8u64 << 30) * 9 / 10);
+        assert_eq!(auto_budget(None, DISCRETE_FALLBACK, false), DISCRETE_FALLBACK);
+        assert_eq!(auto_budget(Some(0), OTHER_FALLBACK, false), OTHER_FALLBACK);
+        assert_eq!(auto_budget(Some(16 << 30), OTHER_FALLBACK, true), SHARED_CAP, "integrated graphics share the RAM");
+        assert_eq!(auto_budget(Some(1 << 30), OTHER_FALLBACK, true), (1u64 << 30) * 9 / 10);
     }
 
     #[test]

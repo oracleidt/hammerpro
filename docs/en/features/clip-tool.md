@@ -127,6 +127,7 @@ The two settings are also on the **Brushes** page of the Settings window (**Show
 
 ## Related pages
 
+- [Slice tool](slice-tool.md)
 - [Block tool](block-tool.md)
 - [Vertex tool](vertex-tool.md)
 - [Extrude / carve tool](extrude-tool.md)

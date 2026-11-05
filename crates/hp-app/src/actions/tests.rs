@@ -343,6 +343,7 @@ fn tools_follow_the_hammer_order_and_keys() {
             T::Decal,
             T::Overlay,
             T::Clip,
+            T::Slice,
             T::Extrude,
             T::Bevel,
             T::Vertex,
@@ -435,4 +436,16 @@ fn take_action_consumes_only_that_action() {
     let mut repeated = vec![press(egui::Key::B, ctrl, true)];
     assert!(!keys.take_action(&mut repeated, Action::SnapToGrid), "a held key does not start it again");
     assert_eq!(keys.take_triggered(&mut events), vec![Action::SelectAll]);
+}
+
+#[test]
+fn slice_tool_action_has_id_shortcut_and_tool() {
+    let a = Action::from_id("tool_slice").expect("tool_slice");
+    assert_eq!(a, Action::ToolSlice);
+    assert_eq!(a.default_shortcut().map(|s| format_shortcut(&s)).as_deref(), Some("Shift+Y"));
+    assert_eq!(a.tool(), Some(crate::ToolId::Slice));
+    assert_eq!(crate::ToolId::Slice.action(), a);
+    assert!(a.is_ready());
+    assert!(crate::i18n::has_key(&a.label_key()));
+    assert!(crate::i18n::has_key(crate::ToolId::Slice.label_key()));
 }

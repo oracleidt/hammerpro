@@ -253,6 +253,9 @@ pub trait AssetsApi {
     fn fs(&self) -> Option<&hp_fs::GameFs>;
     fn fgd(&self) -> Option<&hp_fgd::ResolvedFgd>;
     fn generation(&self) -> u64;
+    fn busy(&self) -> bool {
+        false
+    }
     fn late_mount(&self) -> usize {
         0
     }
@@ -327,6 +330,15 @@ pub trait AssetsApi {
     }
     fn begin_frame(&mut self, ctx: &egui::Context, gfx: Option<&mut Gfx>);
     fn sync_scene(&mut self, doc: &mut hp_editor::Document, gfx: &mut Gfx, opts: &SceneOptions);
+    fn sync_detail_preview(
+        &mut self,
+        doc: &hp_editor::Document,
+        gfx: &mut Gfx,
+        request: &crate::runtime::render::DetailPreviewRequest,
+    ) -> crate::runtime::render::DetailPreviewReport {
+        let _ = (doc, gfx);
+        crate::runtime::render::DetailPreviewReport { enabled: request.enabled, ..Default::default() }
+    }
     fn render_material_id(&mut self, name: &str) -> hp_render::MaterialId;
     fn status_line(&self) -> Option<String>;
     fn pending_work(&self) -> usize {
@@ -678,6 +690,7 @@ impl AppState {
             RenderModeSetting::SmoothingGroups => hp_render::RenderMode::SmoothingGroups,
             RenderModeSetting::Baked => hp_render::RenderMode::Lit,
             RenderModeSetting::LightmapGrid => hp_render::RenderMode::Flat,
+            RenderModeSetting::ColorCorrected => hp_render::RenderMode::Textured,
         }
     }
 

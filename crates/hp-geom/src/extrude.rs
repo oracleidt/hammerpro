@@ -51,10 +51,11 @@ pub enum ExtrudeIssue {
     TooThin,
     PastLimits,
     NoCut,
+    ThroughBrush,
 }
 
 impl ExtrudeIssue {
-    pub const ALL: [ExtrudeIssue; 10] = [
+    pub const ALL: [ExtrudeIssue; 11] = [
         ExtrudeIssue::TooManyPoints,
         ExtrudeIssue::TooFewPoints,
         ExtrudeIssue::Crossing,
@@ -65,6 +66,7 @@ impl ExtrudeIssue {
         ExtrudeIssue::TooThin,
         ExtrudeIssue::PastLimits,
         ExtrudeIssue::NoCut,
+        ExtrudeIssue::ThroughBrush,
     ];
 
     pub fn message(self) -> &'static str {
@@ -79,6 +81,7 @@ impl ExtrudeIssue {
             ExtrudeIssue::TooThin => "a piece of the outline is too thin",
             ExtrudeIssue::PastLimits => "the result goes past the map limits",
             ExtrudeIssue::NoCut => "the outline does not cut into the brush",
+            ExtrudeIssue::ThroughBrush => "the carve goes through the whole brush",
         }
     }
 

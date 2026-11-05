@@ -8,6 +8,7 @@ use crate::util::{enter_pressed, escape_pressed, icon_title, plural};
 
 pub(crate) const MAX_COPIES: u32 = 10_000;
 const MANY_COPIES: u32 = 1_000;
+const CLIPBOARD_POLL: f64 = 0.75;
 
 fn read_clipboard() -> Result<String, String> {
     arboard::Clipboard::new().and_then(|mut c| c.get_text()).map_err(|e| e.to_string())
@@ -18,6 +19,11 @@ pub(crate) struct PasteSpecialDialog {
     pub(crate) around_pivot: bool,
     pub(crate) error: Option<String>,
     size_cache: Option<(usize, u64, DVec3)>,
+    clip: Option<(u64, String)>,
+    clip_read_at: f64,
+    preview_key: Option<u64>,
+    preview_note: Option<String>,
+    owns_preview: bool,
 }
 
 impl Default for PasteSpecialDialog {
@@ -27,6 +33,11 @@ impl Default for PasteSpecialDialog {
             around_pivot: true,
             error: None,
             size_cache: None,
+            clip: None,
+            clip_read_at: f64::NEG_INFINITY,
+            preview_key: None,
+            preview_note: None,
+            owns_preview: false,
         }
     }
 }
@@ -106,11 +117,96 @@ impl PasteSpecialDialog {
         }
     }
 
+    fn clear_preview(&mut self, state: &mut AppState) {
+        self.clip = None;
+        self.clip_read_at = f64::NEG_INFINITY;
+        self.preview_key = None;
+        self.preview_note = None;
+        if self.owns_preview {
+            self.owns_preview = false;
+            state.runtime.workflow.paste_preview = None;
+        }
+    }
+
+    pub(crate) fn refresh_preview(&mut self, state: &mut AppState, clipboard: Option<&str>) {
+        use std::hash::{Hash, Hasher};
+        let now = state.frame.time;
+        if let Some(text) = clipboard {
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            text.hash(&mut h);
+            self.clip = Some((h.finish(), text.to_owned()));
+            self.clip_read_at = now;
+        } else if self.clip.is_none() || now - self.clip_read_at >= CLIPBOARD_POLL {
+            self.clip_read_at = now;
+            match read_clipboard() {
+                Ok(text) => {
+                    let mut h = std::collections::hash_map::DefaultHasher::new();
+                    text.hash(&mut h);
+                    let hash = h.finish();
+                    if self.clip.as_ref().is_none_or(|(old, _)| *old != hash) {
+                        self.clip = Some((hash, text));
+                    }
+                }
+                Err(e) => {
+                    self.clip = None;
+                    self.preview_key = None;
+                    self.preview_note = Some(tf!("paste.err_clipboard", e));
+                    state.runtime.workflow.paste_preview = None;
+                    return;
+                }
+            }
+        }
+        let Some((hash, text)) = &self.clip else { return };
+        let mut opts = self.opts.clone();
+        opts.copies = opts.copies.clamp(1, MAX_COPIES);
+        opts.pivot = if self.around_pivot { state.pivot.filter(|p| p.is_finite()) } else { None };
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        hash.hash(&mut h);
+        opts.copies.hash(&mut h);
+        opts.start_at_original.hash(&mut h);
+        for v in [opts.offset, opts.rotation, opts.pivot.unwrap_or(DVec3::NAN)] {
+            for c in v.to_array() {
+                c.to_bits().hash(&mut h);
+            }
+        }
+        let key = h.finish();
+        if self.preview_key == Some(key) {
+            return;
+        }
+        self.preview_key = Some(key);
+        match Document::paste_special_preview(text, &opts) {
+            Ok(preview) => {
+                self.preview_note = Some(if preview.shown_copies < preview.copies {
+                    tf!("paste.preview_partial", preview.shown_copies, preview.copies)
+                } else {
+                    tf!("paste.preview_ok", preview.objects, preview.copies)
+                });
+                let wf = &mut state.runtime.workflow;
+                wf.paste_preview_serial = wf.paste_preview_serial.wrapping_add(1);
+                wf.paste_preview = Some((wf.paste_preview_serial, std::sync::Arc::new(preview)));
+                self.owns_preview = true;
+            }
+            Err(EditError::EmptyClipboard) => {
+                self.preview_note = Some(t!("paste.err_empty").to_owned());
+                state.runtime.workflow.paste_preview = None;
+            }
+            Err(e) => {
+                self.preview_note = Some(tf!("paste.err_failed", e));
+                state.runtime.workflow.paste_preview = None;
+            }
+        }
+    }
+
     pub(crate) fn show(&mut self, ctx: &egui::Context, state: &mut AppState) {
         if !state.ui.show_paste_special {
             self.error = None;
+            if self.clip.is_some() || self.owns_preview || self.preview_note.is_some() {
+                self.clear_preview(state);
+            }
             return;
         }
+        self.refresh_preview(state, None);
+        ctx.request_repaint_after(std::time::Duration::from_secs_f64(CLIPBOARD_POLL));
         let mut open = true;
         let mut do_paste = false;
         let response = hp_app::chrome::Window::new(icon_title("📋", t!("paste.title")))
@@ -133,6 +229,7 @@ impl PasteSpecialDialog {
         }
         if !open {
             state.ui.show_paste_special = false;
+            self.clear_preview(state);
         }
     }
 
@@ -192,6 +289,9 @@ impl PasteSpecialDialog {
         let copies = o.copies.clamp(1, MAX_COPIES);
         let total = o.offset * f64::from(copies);
         ui.label(RichText::new(tf!("paste.total_offset", hp_app::widgets::fmt_vec3(total))).weak());
+        if let Some(note) = &self.preview_note {
+            ui.label(RichText::new(note).weak());
+        }
         if copies > MANY_COPIES {
             ui.label(RichText::new(tf!("paste.many_copies", copies)).color(theme::warning()));
         }

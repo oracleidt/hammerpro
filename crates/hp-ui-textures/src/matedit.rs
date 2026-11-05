@@ -494,6 +494,9 @@ impl MaterialEditor {
     }
 
     pub fn show(&mut self, ctx: &egui::Context, state: &mut AppState) {
+        if let Some(link) = crate::shared::take_texture_link(ctx) {
+            self.single.set(&link.key, Some(&link.texture));
+        }
         if let Some(req) = crate::shared::take_editor(ctx) {
             self.set_materials(ctx, state, req.0);
             state.ui.show_material_editor = true;

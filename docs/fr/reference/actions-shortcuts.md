@@ -2,7 +2,7 @@
 
 # Actions et raccourcis clavier
 
-Chaque commande de Hammer Pro 1.0.9 est une *action* : une seule entrée partagée par les menus, la barre d'outils, les raccourcis clavier, la palette de commandes (`Ctrl+P`), les fichiers `--script` et le serveur MCP (`run_action`, `list_actions`). Cette page liste les 340 actions, menu par menu, dans l'ordre où les menus les affichent.
+Chaque commande de Hammer Pro 1.1.0 est une *action* : une seule entrée partagée par les menus, la barre d'outils, les raccourcis clavier, la palette de commandes (`Ctrl+P`), les fichiers `--script` et le serveur MCP (`run_action`, `list_actions`). Cette page liste les 340 actions, menu par menu, dans l'ordre où les menus les affichent.
 
 Colonnes :
 
@@ -158,13 +158,14 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Mode de rendu 3D > Texturé sans ombrage | `render_unshaded` | `Alt+6` |  |  |
 | Mode de rendu 3D > Groupes de lissage | `render_smoothing_groups` | `Alt+7` |  |  |
 | Mode de rendu 3D > Grille de lightmap | `render_lightmap_grid` | `Alt+8` |  |  |
+| Mode de rendu 3D > 3D Correction colorimétrique | `render_color_corrected` | `Alt+9` |  |  |
 | Mode de rendu 3D > Aperçu de l'éclairage précalculé | `render_baked` | `Ctrl+F5` |  |  |
 | Afficher les modèles | `toggle_models` |  |  |  |
 | Afficher les aides et sprites | `toggle_helpers` |  |  |  |
 | Afficher les textures outils | `toggle_tool_textures` |  |  | `Ctrl+Maj+F2` |
 | Images de fond... | `background_images` |  |  |  |
 | Options d'affichage > Informations de la vue 3D | `toggle_view_info` | `O` |  |  |
-| Options d'affichage > Boîtes englobantes | `toggle_bounds_overlay` | `I` |  |  |
+| Options d'affichage > Boîtes englobantes | `toggle_bounds_overlay` |  |  |  |
 | Options d'affichage > Afficher les overlays | `toggle_overlays` |  |  |  |
 | Options d'affichage > Afficher les connexions | `toggle_connections` |  |  |  |
 | Options d'affichage > Afficher les objets d'éditeur | `toggle_editor_objects` |  |  | `Alt+O` |
@@ -191,6 +192,7 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Options d'affichage > Afficher le nodraw | `toggle_nodraw` |  |  |  |
 | Options d'affichage > Afficher les collisions des modèles | `toggle_collision_only` |  |  |  |
 | Options d'affichage > Aperçu de l'eau | `toggle_water_preview` |  |  |  |
+| Options d'affichage > Aperçu des detail props (herbe) | `toggle_detail_preview` |  |  |  |
 | Options d'affichage > Aperçu des fog_volume | `toggle_fog_volumes` |  |  |  |
 | Options d'affichage > Texture des fog_volume | `toggle_fog_volume_texture` |  |  |  |
 | Options d'affichage > Aperçu des poissons | `toggle_fish_preview` |  |  |  |
@@ -264,7 +266,7 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Intersection de brushes | `intersect_brushes` | `Ctrl+Maj+K` |  |  |
 | Union de brushes | `union_brushes` |  |  |  |
 | Décaler la face... | `inset_face` |  |  |  |
-| Décalage interactif (I) | `inset_interactive` |  |  |  |
+| Décalage interactif (I) | `inset_interactive` | `I` |  |  |
 | Extrusion interactive (E) | `extrude_interactive` | `E` |  |  |
 | Nodraw sur les faces cachées... | `nodraw_hidden_faces` |  |  |  |
 | Lier chacun à sa propre entité | `tie_each_to_entity` | `Ctrl+Maj+T` |  |  |
@@ -297,6 +299,7 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Générer le nav mesh | `generate_nav_mesh` |  |  |  |
 | Options des props statiques (Propper)... | `propper_options` |  |  |  |
 | Éditeur de shaders... | `shader_editor` |  |  |  |
+| Éditeur de VTF... | `vtf_editor` |  |  |  |
 | Envoyer vers Blender | `send_to_blender` |  |  |  |
 | Mettre à jour depuis Blender | `pull_from_blender` |  |  |  |
 | Arrêter le lien direct avec Blender | `stop_blender_link` |  |  |  |
@@ -319,6 +322,7 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Outil décal | `tool_decal` | `Maj+D` |  |  |
 | Outil overlay | `tool_overlay` | `Maj+O` |  |  |
 | Outil de découpe | `tool_clip` | `Maj+X` |  |  |
+| Outil tranche | `tool_slice` | `Maj+Y` |  |  |
 | Outil extruder / creuser | `tool_extrude` | `Maj+I` |  |  |
 | Outil biseau | `tool_bevel` | `Maj+J` |  |  |
 | Outil vertex | `tool_vertex` | `Maj+V` |  |  |
@@ -414,6 +418,20 @@ Quand l'outil de découpe est actif, ces touches vont d'abord à l'outil (elles 
 | `Alt` (maintenu) | Sans magnétisme. |
 
 Voir [Outil de découpe](../features/clip-tool.md).
+
+## Touches dans l'outil tranche
+
+Quand l'outil tranche est actif, ces entrées vont d'abord à l'outil :
+
+| Touche | Rôle |
+|---|---|
+| `Maj+Y` (à nouveau), `Tab`, `O` | Alterner entre de gauche à droite et de haut en bas. |
+| Molette (3D), `Maj` + molette (2D) | Plus ou moins de segments, de 1 à 64. |
+| Clic gauche, `Entrée` | Appliquer les coupes. |
+| Clic droit, `Échap` | Remettre la position au centre de l'objet. |
+| `Alt` (maintenu) | Sans magnétisme. |
+
+Voir [Outil tranche](../features/slice-tool.md).
 
 ## Pages liées
 

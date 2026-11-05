@@ -44,6 +44,7 @@ pub fn tool_group(tool: ToolId) -> PaletteGroup {
         | ToolId::Decal
         | ToolId::Overlay
         | ToolId::Clip
+        | ToolId::Slice
         | ToolId::Extrude
         | ToolId::Bevel
         | ToolId::Vertex
@@ -320,6 +321,7 @@ mod tests {
                 T(ToolId::Decal),
                 T(ToolId::Overlay),
                 T(ToolId::Clip),
+                T(ToolId::Slice),
                 T(ToolId::Extrude),
                 T(ToolId::Bevel),
                 T(ToolId::Vertex),

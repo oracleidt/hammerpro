@@ -8,6 +8,7 @@ La fenêtre **Éditeur de matériaux** modifie les fichiers VMT sans quitter Ham
 
 - **Modifier le matériau** dans l'en-tête du [navigateur de textures](texture-browser.md) : ouvre l'éditeur sur le matériau actuel, ou sur la sélection multiple du navigateur (`Ctrl+clic`, `Maj+clic`).
 - Clic droit sur une vignette > **Modifier le matériau...** : l'ouvre sur ce matériau (ou sur la sélection multiple si le matériau en fait partie).
+- [Outil texture](texture-tool.md) : **Modifier le matériau** à côté de **Parcourir...** l'ouvre sur le matériau des faces sélectionnées.
 - `Échap` ou le bouton de fermeture de la fenêtre la ferme.
 
 ## Charger des matériaux

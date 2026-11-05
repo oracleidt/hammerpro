@@ -143,6 +143,44 @@ impl Sheet {
         seq.frames.last().map_or(FULL_UV, |f| f.uv)
     }
 
+    pub fn frame_blend(&self, number: u32, cycle: f32) -> ([f32; 4], [f32; 4], f32) {
+        let Some(seq) = self.sequence(number) else { return (FULL_UV, FULL_UV, 0.0) };
+        let n = seq.frames.len();
+        let cycle = if !cycle.is_finite() || cycle < 0.0 {
+            0.0
+        } else if seq.clamp {
+            cycle.min(1.0)
+        } else {
+            cycle.fract()
+        };
+        let (index, frac);
+        if seq.total <= 0.0 {
+            let x = cycle * n as f32;
+            index = (x as usize).min(n - 1);
+            frac = x - index as f32;
+        } else {
+            let mut t = cycle * seq.total;
+            let mut found = (n - 1, 0.0f32);
+            for (i, f) in seq.frames.iter().enumerate() {
+                if t < f.duration {
+                    found = (i, if f.duration > 0.0 { t / f.duration } else { 0.0 });
+                    break;
+                }
+                t -= f.duration;
+            }
+            (index, frac) = found;
+        }
+        let next = if index + 1 < n {
+            index + 1
+        } else if seq.clamp {
+            index
+        } else {
+            0
+        };
+        let frac = if next == index { 0.0 } else { frac.clamp(0.0, 1.0) };
+        (seq.frames[index].uv, seq.frames[next].uv, frac)
+    }
+
     pub fn frame_count(&self, number: u32) -> usize {
         self.sequence(number).map_or(0, |s| s.frames.len())
     }

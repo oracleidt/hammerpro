@@ -2,6 +2,7 @@ mod bump;
 mod cubemaps;
 mod decals;
 mod detail;
+mod detail_preview;
 mod entities;
 mod env_scan;
 mod envmap;
@@ -158,6 +159,7 @@ pub struct AssetManager {
     pub(crate) model_thumbs: model_thumbs::ModelThumbs,
     pub(crate) player: player::PlayerModel,
     pub(crate) play_world: playworld::PlayWorld,
+    pub(crate) detail_preview: detail_preview::DetailPreview,
     pub(crate) play_transforms: AHashMap<hp_vmf::Id, glam::DMat4>,
     pub(crate) play_dirty: Vec<hp_vmf::Id>,
     pub(crate) game_hidden: AHashSet<u32>,
@@ -218,6 +220,7 @@ impl AssetManager {
             play_hidden: AHashSet::new(),
             play_hidden_dirty: false,
             play_world: playworld::PlayWorld::default(),
+            detail_preview: detail_preview::DetailPreview::default(),
             uploads: VecDeque::new(),
             fresh: AHashSet::new(),
             messages: Vec::new(),
@@ -323,6 +326,14 @@ impl hp_app::AssetsApi for AssetManager {
 
     fn generation(&self) -> u64 {
         self.generation
+    }
+
+    fn busy(&self) -> bool {
+        self.status != AssetStatus::Ready
+            || self.shared.queued() > 0
+            || !self.uploads.is_empty()
+            || self.late_sources > 0
+            || !self.scene.realize_later.is_empty()
     }
 
     fn late_mount(&self) -> usize {
@@ -523,6 +534,15 @@ impl hp_app::AssetsApi for AssetManager {
 
     fn sync_scene(&mut self, doc: &mut hp_editor::Document, gfx: &mut Gfx, opts: &SceneOptions) {
         self.sync_scene_impl(doc, &mut gfx.renderer, opts);
+    }
+
+    fn sync_detail_preview(
+        &mut self,
+        doc: &hp_editor::Document,
+        gfx: &mut Gfx,
+        request: &hp_app::runtime::render::DetailPreviewRequest,
+    ) -> hp_app::runtime::render::DetailPreviewReport {
+        self.sync_detail_preview_impl(doc, &mut gfx.renderer, request)
     }
 
     fn park_scene(&mut self, doc: &mut hp_editor::Document, gfx: &mut Gfx) {

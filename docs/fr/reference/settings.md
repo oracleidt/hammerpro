@@ -239,7 +239,7 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `link_2d_zoom` | `false` | Zoomer une vue 2D zoome les autres. |
 | `units` | `"Units"` | Longueurs de la barre d'état : `Units`, `Inches`, `FeetInches`, `Meters` (une unité = 2,54 cm). |
 | `show_view_info` | `false` | Images par seconde, position et angles de la caméra dans la vue 3D (`O`). |
-| `show_bounds` | `false` | Boîtes englobantes des objets visibles (`I`). |
+| `show_bounds` | `false` | Boîtes englobantes jaunes des objets visibles. Pas de raccourci (`I` est le décalage interactif) : activez-les par **Affichage > Options d'affichage > Boîtes englobantes**. |
 | `show_toolbar`, `show_tool_palette`, `show_status_bar` | `true` | **Affichage > Panneaux**. |
 | `show_history` | `false` | Onglet de l'historique des modifications. |
 | `layouts` | `{}` | Dispositions enregistrées (**Fenêtre > Disposition > Enregistrer la disposition...**), 32 au plus : `quadrants`, `split_x`, `split_y`, `maximized`, `panels`. |
@@ -346,6 +346,7 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `skybox_3d` | `true` | Skybox 3D autour de `sky_camera` (`Alt+V`). |
 | `sky_see_through` | `false` | Laisse de côté les faces `toolsskybox` pour voir le ciel au travers. |
 | `water_preview` | `true` | Eau dessinée comme en jeu. |
+| `detail_preview` | `false` | Herbe et objets de détail des matériaux `%detailtype` répartis autour de la caméra 3D (voir [Aperçu des detail props](../features/detail-props-preview.md)). |
 | `water_detail` | `"ReflectAll"` | Comme l'option vidéo Détail de l'eau du jeu : `ReflectAll` (r_waterforceexpensive et r_waterforcereflectentities : eau coûteuse à toute distance qui reflète le monde, les props, les entités de brushes, le ciel et la skybox 3D dessinés une seconde fois en miroir par rapport à sa surface), `ReflectWorld` (coûteuse près de la caméra, bon marché au-delà de `$cheapwaterenddistance`, props et entités de brushes seulement avec `$reflectentities` ; `$reflectskyboxonly` et `$reflect3dskybox 0` sont respectés), `Simple` (eau bon marché partout). |
 | `fog_preview` | `true` | Aperçu du brouillard d'un `env_fog_controller` (Fog Enable, couleurs, mélange, début, fin, densité max, farz) dans les vues 3D et la vue joueur. |
 | `fog_volume_preview` | `true` | Entourer et remplir les brushes `fog_volume` de leur brouillard (celui du contrôleur, ou un aspect par défaut avec une étiquette d'avertissement) ; la vue joueur prend le brouillard du contrôleur dedans. |
@@ -397,6 +398,9 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `vsync` | `true` | Attend le rafraîchissement de l'écran (après un redémarrage). |
 | `vram_budget_mb` | `0` | Mémoire graphique que Hammer Pro peut utiliser, en Mo (0 : automatique, 90 % de ce que le système donne au programme). Au-delà de 85 %, les maps des autres onglets sont retirées de la carte graphique, au-delà du budget les textures sont affichées en plus basse résolution. Voir [Mémoire insuffisante](../troubleshooting/out-of-memory.md). |
 | `keep_background_maps_on_gpu` | `true` | Garde les maps des autres onglets sur la carte graphique tant qu'il y a de la place, pour un changement d'onglet instantané. |
+| `performance_mode` | `Auto` | `Auto` et `Off` dessinent l'aperçu en pleine qualité. `Auto` baisse la qualité d'un cran (avec un avis et un bouton Rétablir la qualité maximale sur la vue 3D) seulement quand la vue 3D reste sous 20 images par seconde pendant plusieurs secondes. `Low` (résolution à 75 %, sans MSAA ni bloom, 4 lumières avec ombres, ombre du soleil en 2048, textures jusqu'à 1024 pixels) et `VeryLow` (résolution à 50 %, sans ombres des lumières, reflets, normal maps ni volumes de brouillard, textures jusqu'à 512 pixels) la baissent toujours. **Paramètres > Rendu > Performance**, `set_setting render.performance_mode`. Voir [Performance de l'éditeur](../troubleshooting/performance.md). |
+| `render_scale` | `1.0` | Dessine la vue 3D à cette part de sa taille (0,25 à 1) puis l'étire sur la fenêtre. 1.0 est la qualité maximale. |
+| `perf_hud` | `false` | Affiche dans la vue 3D les images par seconde, le temps d'image, le temps CPU et GPU par étape, la mémoire et le niveau de qualité. |
 
 ## `[lighting]`
 
@@ -610,6 +614,15 @@ Voir [Mises à jour](../features/updates.md).
 | `blender.path` | `""` | Le programme Blender (`blender.exe`) ; vide veut dire que Hammer Pro le cherche. MCP le change avec `blender_setup`, qui le vérifie. |
 | `blender.format` | `"gltf"` | Format de fichier d'un envoi : `gltf`, `obj` ou `fbx`. |
 | `blender.live_link` | `true` | Surveille le fichier exporté et met la map à jour quand Blender l'écrit. |
+
+## `[vtf]`
+
+**Paramètres > Éditeur de VTF.** Voir [Éditeur de VTF](../features/vtf-editor.md).
+
+| Clé | Défaut | Effet |
+| --- | --- | --- |
+| `vtf.editor_path` | `""` | L'éditeur VTF externe (VTFEdit, VTFEdit++, VTFEdit Reloaded...) ; vide veut dire que Hammer Pro le cherche. Seul l'utilisateur le change. |
+| `vtf.prefer_integrated` | `false` | Ouvre les textures dans l'éditeur VTF intégré même si un éditeur externe est trouvé. |
 
 ## Pages liées
 

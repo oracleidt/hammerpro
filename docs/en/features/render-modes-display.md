@@ -18,6 +18,7 @@ Choose the mode in **View > 3D render mode**, with the render mode list of the t
 | **Textured, unshaded** | `Alt+6` | Materials without the editor shading. |
 | **Smoothing groups** | `Alt+7` | Faces colored by smoothing group. |
 | **Lightmap grid** | `Alt+8` | Hammer's 3D lightmap grid: the luxel grid of every lightmapped face (cells as wide as its lightmap scale, displacements included), grey at 16, red when finer, green when coarser; no bake needed. Faces without a lightmap keep their texture. |
+| **3D Color Correction** | `Alt+9` | The textured view with the `color_correction` entities applied: their lookup tables blend by the distance of the 3D camera (full weight inside `minfalloff`, none past `maxfalloff`, times `maxweight`), so you see the grade of the game without turning on the separate color correction preview setting (see [Color correction](color-correction.md)). Same as the **3D color correction preview** setting, only tied to the mode. |
 | **Baked lighting preview** | `Ctrl+F5` | The lighting the game will have, computed by the built-in compiler (see [Lighting preview](lighting-preview.md)). |
 
 **View > View type** also has **3D textured view** (`F5`) and **3D flat view** (`Shift+F5`). The mode is remembered between sessions (`view.render_mode`).
@@ -40,7 +41,6 @@ Directly in the **View** menu:
 | Entry | What it does | Default |
 | --- | --- | --- |
 | **3D view information** (`O`) | Frame rate, camera position and angles in the 3D view. | Off |
-| **Bounding boxes** (`I`) | Bounding boxes of the visible objects. With faces selected and the mouse over the 3D view, `I` starts the [interactive inset](extrude-tool.md) instead. | Off |
 | **Show overlays** | Overlays drawn on their faces (see [Decals and overlays](decals-overlays.md)). | On |
 | **Show connections** | Input/output lines: off, selected, all (each use goes to the next). See [I/O and logical view](io-logical-view.md). | Selected |
 | **Show editor objects** | Entity icons and helper geometry that only exist in the editor. | On |
@@ -65,6 +65,8 @@ Directly in the **View** menu:
 | **Highlight invalid brushes** | Brushes that are not closed and convex are drawn in red in every view. | On |
 | **Show nodraw faces** | Shows or hides the nodraw faces in the 3D view. | Shown |
 | **Water preview** | Water drawn like in game: refraction, water fog, reflection of the scene and the sky, moving waves. Off: its tool texture. | On |
+| **Bounding boxes** | Yellow bounding boxes of the visible objects. Off by default and without a shortcut (`I` only starts the [interactive inset](extrude-tool.md)); switch it on here or with the action `toggle_bounds_overlay` from the command palette. | Off |
+| **Detail props preview (grass)** | Scatters the grass and detail objects of `%detailtype` materials around the 3D camera (see [Detail props preview](detail-props-preview.md)). Also a toolbar button. | Off |
 | **Water detail** | Like the game's Water Detail option (`render.water_detail`): **Reflect all** draws expensive water at every distance, reflecting the world, props, brush entities, the sky and the 3D skybox drawn again mirrored about its surface; **Reflect world** keeps the expensive water near the camera and reflects props and brush entities only for materials with `$reflectentities`; **Simple reflections** draws cheap water. | Reflect all |
 | **Fog volume preview** | Each `fog_volume` is outlined and filled with its fog, with a label of its links and problems (see [Fog volumes](#fog-volumes)). Also a toolbar button. | On |
 | **Fog volume texture** | The material of the `fog_volume` brushes is drawn in the 3D view, like Hammer. Off: only the fog shows. | On |

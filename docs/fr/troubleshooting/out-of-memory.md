@@ -27,7 +27,7 @@ Quitter la vue joueur libère le monde compilé, ses lightmaps et son ciel. Rela
 
 | Paramètre | Ce qu'il fait |
 |---|---|
-| **Budget de mémoire graphique** | Quantité de mémoire graphique que Hammer Pro peut utiliser. **Automatique** (0, par défaut) utilise 90 % de ce que Windows donne au programme, ou 3 Go (1,5 Go sur une puce graphique intégrée) quand le pilote ne le dit pas. Indiquez une valeur en Mo pour laisser de la place au jeu ou à un autre programme lancé en même temps. |
+| **Budget de mémoire graphique** | Quantité de mémoire graphique que Hammer Pro peut utiliser. **Automatique** (0, par défaut) utilise 90 % de ce que Windows donne au programme, ou 3 Go (1,5 Go sur une puce graphique intégrée) quand le pilote ne le dit pas ; sur une puce graphique intégrée, qui utilise la mémoire du système, jamais plus de 2 Go. Indiquez une valeur en Mo pour laisser de la place au jeu ou à un autre programme lancé en même temps. |
 | **Garder les autres onglets sur la carte graphique** | Activé (par défaut) : le changement d'onglet est instantané tant qu'il y a de la place. Désactivé : seule la map affichée reste sur la carte graphique, les autres se rechargent quand vous les affichez. |
 | **Libérer la mémoire graphique maintenant** | Libère tout de suite les maps des autres onglets, les textures et modèles inutilisés, et les miniatures. |
 

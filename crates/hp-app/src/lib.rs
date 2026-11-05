@@ -1,6 +1,7 @@
 pub mod actions;
 pub mod chrome;
 pub mod console;
+pub mod data_colors;
 pub mod dnd;
 pub mod extend;
 pub mod fonts;
@@ -24,6 +25,7 @@ pub mod testing;
 pub mod theme;
 pub mod tool;
 pub mod view;
+pub mod vtf_external;
 pub mod widgets;
 
 pub use actions::Action;

@@ -9,6 +9,7 @@ action_list! { content_actions {
     PublishWorkshop => "publish_workshop", File, FileRun, None, Ready;
     ShowMapAssets => "show_map_assets", Map, MapInfo, None, Ready;
     ShaderEditor => "shader_editor", Tools, ToolsContent, None, Ready;
+    VtfEditor => "vtf_editor", Tools, ToolsContent, None, Ready;
 }}
 
 pub(super) const REPEATS: &[Action] = &[];
@@ -41,4 +42,5 @@ pub(super) const TR: TrTable = &[
     ("action.publish_workshop", "Publish on the Workshop...", "Publier sur le Workshop..."),
     ("action.show_map_assets", "Map assets", "Ressources de la map"),
     ("action.shader_editor", "Shader editor...", "Éditeur de shaders..."),
+    ("action.vtf_editor", "VTF editor...", "Éditeur de VTF..."),
 ];

@@ -1,27 +1,19 @@
-use egui::{Color32, Modifiers, Pos2};
+use egui::{Modifiers, Pos2};
 use glam::DVec3;
 use hp_app::settings::SelectElement;
 use hp_app::{AppState, ViewInfo};
 use hp_editor::{EdgeRef, FaceRef, Id, ObjRef, PickOptions, SelectOp};
 use hp_geom::{Aabb, Ray};
-use hp_render::{Overlay, OverlayLine, OverlayPoint};
 
 const PICK_PX: f32 = 9.0;
 
 const MAX_POOL: usize = 64;
-
-const SELECTED: Color32 = Color32::from_rgb(255, 214, 0);
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Picked {
     Face(FaceRef),
     Edge(EdgeRef),
     Vertex(Id, DVec3),
-}
-
-fn color(c: Color32) -> [f32; 4] {
-    let [r, g, b, a] = c.to_array();
-    [f32::from(r) / 255.0, f32::from(g) / 255.0, f32::from(b) / 255.0, f32::from(a) / 255.0]
 }
 
 fn segment_px(p: Pos2, a: Pos2, b: Pos2) -> f32 {
@@ -121,9 +113,13 @@ pub(crate) fn click(state: &mut AppState, view: &ViewInfo, pos: Pos2, mods: Modi
     match picked {
         Some(Picked::Face(face)) => {
             state.runtime.selection.clear_elements();
+            if !state.doc.selection().objects.is_empty() {
+                state.doc.select(&[], SelectOp::Replace);
+            }
             state.doc.select_faces(&[face], if add { SelectOp::Toggle } else { SelectOp::Replace });
         }
         Some(Picked::Edge(edge)) => {
+            state.doc.clear_face_selection();
             let sel = &mut state.runtime.selection;
             sel.vertices.clear();
             if sel.element_revision != state.doc.revision() {
@@ -140,6 +136,7 @@ pub(crate) fn click(state: &mut AppState, view: &ViewInfo, pos: Pos2, mods: Modi
             take_solid(state, edge.solid, add);
         }
         Some(Picked::Vertex(id, p)) => {
+            state.doc.clear_face_selection();
             let sel = &mut state.runtime.selection;
             sel.edges.clear();
             if sel.element_revision != state.doc.revision() {
@@ -164,7 +161,7 @@ pub(crate) fn click(state: &mut AppState, view: &ViewInfo, pos: Pos2, mods: Modi
             }
         }
     }
-    state.runtime.selection.element_revision = state.doc.revision();
+    state.commit_picks();
     true
 }
 
@@ -173,17 +170,80 @@ fn take_solid(state: &mut AppState, id: Id, add: bool) {
     state.doc.select(&[ObjRef::Solid(id)], op);
 }
 
-pub(crate) fn push_overlay(state: &AppState, out: &mut Overlay) {
+pub(crate) fn picked_points(state: &AppState) -> Vec<(Id, Vec<DVec3>)> {
+    if state.settings.selection.element == SelectElement::Object {
+        return Vec::new();
+    }
     let rev = state.doc.revision();
     let sel = &state.runtime.selection;
-    let c = color(SELECTED);
+    let mut out: Vec<(Id, Vec<DVec3>)> = Vec::new();
+    let mut push = |id: Id, p: DVec3| match out.iter_mut().find(|(i, _)| *i == id) {
+        Some((_, v)) => v.push(p),
+        None => out.push((id, vec![p])),
+    };
     for e in sel.fresh_edges(rev) {
-        out.lines_on_top.push(OverlayLine { a: e.a.as_vec3().to_array(), b: e.b.as_vec3().to_array(), color: c });
-        out.lines.push(OverlayLine { a: e.a.as_vec3().to_array(), b: e.b.as_vec3().to_array(), color: c });
+        push(e.solid, e.a);
+        push(e.solid, e.b);
     }
-    for (_, p) in sel.fresh_vertices(rev) {
-        out.points.push(OverlayPoint { pos: p.as_vec3().to_array(), color: c, size_px: 9.0 });
+    for (id, p) in sel.fresh_vertices(rev) {
+        push(*id, *p);
     }
+    for f in &state.doc.selection().faces {
+        if let Some(face) = state.doc.scene().solid(f.solid).and_then(|n| n.geom.face_for_side(f.side)) {
+            for v in &face.vertices {
+                push(f.solid, *v);
+            }
+        }
+    }
+    out
+}
+
+pub(crate) fn picked_ghost(state: &AppState) -> (Vec<[DVec3; 2]>, Vec<DVec3>) {
+    let rev = state.doc.revision();
+    let sel = &state.runtime.selection;
+    let mut lines: Vec<[DVec3; 2]> = sel.fresh_edges(rev).iter().map(|e| [e.a, e.b]).collect();
+    let points: Vec<DVec3> = sel.fresh_vertices(rev).iter().map(|(_, p)| *p).collect();
+    for f in &state.doc.selection().faces {
+        if let Some(face) = state.doc.scene().solid(f.solid).and_then(|n| n.geom.face_for_side(f.side)) {
+            let n = face.vertices.len();
+            for i in 0..n {
+                lines.push([face.vertices[i], face.vertices[(i + 1) % n]]);
+            }
+        }
+    }
+    (lines, points)
+}
+
+pub(crate) fn picked_bounds(state: &AppState) -> Option<Aabb> {
+    let mut b = Aabb::EMPTY;
+    for (_, pts) in picked_points(state) {
+        for p in pts {
+            b.extend(p);
+        }
+    }
+    (!b.is_empty()).then_some(b)
+}
+
+pub(crate) fn translate_picked(state: &mut AppState, delta: DVec3) -> Result<bool, hp_editor::EditError> {
+    let moves = picked_points(state);
+    if moves.is_empty() {
+        return Ok(false);
+    }
+    let rev = state.doc.revision();
+    let fresh = state.runtime.selection.element_revision == rev;
+    state.doc.translate_points(&moves, delta)?;
+    let sel = &mut state.runtime.selection;
+    if fresh {
+        for e in &mut sel.edges {
+            e.a += delta;
+            e.b += delta;
+        }
+        for (_, p) in &mut sel.vertices {
+            *p += delta;
+        }
+    }
+    state.commit_picks();
+    Ok(true)
 }
 
 #[cfg(test)]
@@ -196,10 +256,5 @@ mod tests {
         assert_eq!(segment_px(Pos2::new(5.0, 3.0), a, b), 3.0);
         assert_eq!(segment_px(Pos2::new(-4.0, 3.0), a, b), 5.0);
         assert_eq!(segment_px(Pos2::new(1.0, 1.0), a, a), (2.0f32).sqrt());
-    }
-
-    #[test]
-    fn colors_are_normalized() {
-        assert_eq!(color(Color32::from_rgb(255, 0, 0)), [1.0, 0.0, 0.0, 1.0]);
     }
 }

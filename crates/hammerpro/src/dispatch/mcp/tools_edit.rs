@@ -126,12 +126,12 @@ domain! { "editing";
             "dry_run": boolean("Only answer how many brushes the inset would make, or why it fails (default false)."),
             "material": string("Material of the new faces (default: the inset face's)."),
         }, [];
-    extrude_faces: Destructive, "Extrude faces into new brushes",
-        "Extrude brush faces outward into new brushes (the interactive extrude, the E key in the 3D view): each face becomes the base of a new convex brush distance units high along the face normal, textured like the face (or material), never merged into the original brush. Several faces make several brushes in one undo step, each pulled along its own normal. faces defaults to the selected faces, else the faces of ids. snap puts the new top plane of every brush on a plane of the active grid (grid size, custom grid and rotation honored, size clamped to 1 to 1024); alt_grid does the same on the alternate grid, which is the Alt key of the interactive extrude: an axis aligned grid at the origin of half the grid size (double when the grid size is 1), ignoring rotation and custom grids. dry_run answers the number of brushes without changing the map. To carve into a brush or extrude only part of a face use extrude_face. Answers the ids of the new brushes and the distance used for each face.",
+    extrude_faces: Destructive, "Extrude faces into new brushes or carve them inward",
+        "Extrude brush faces outward into new brushes (the interactive extrude, the E key in the 3D view): each face becomes the base of a new convex brush distance units high along the face normal, textured like the face (or material), never merged into the original brush. Several faces make several brushes in one undo step, each pulled along its own normal. faces defaults to the selected faces, else the faces of ids. snap puts the new top plane of every brush on a plane of the active grid (grid size, custom grid and rotation honored, size clamped to 1 to 1024); alt_grid does the same on the alternate grid, which is the Alt key of the interactive extrude: an axis aligned grid at the origin of half the grid size (double when the grid size is 1), ignoring rotation and custom grids. dry_run answers the number of brushes without changing the map. A negative distance carves instead: the slab of material of that depth under each face is cut out of its own brush (the face moves inward, the brush stays one valid convex brush, the answer lists that brush id), in the same single undo step, with the same snap, alt_grid and material behavior; it fails when the carve would go through the whole brush. To carve a pocket or extrude only part of a face use extrude_face. Answers the ids of the new or carved brushes and the distance used for each face.",
         {
             "faces": faces("Faces [{solid, side}] (default: the selected faces)."),
             "ids": target_ids(), "solid_ids": target_solid_ids(),
-            "distance": number("Height of the new brushes in units (default 16).", 0.125, 16384.0),
+            "distance": number("Height of the new brushes in units, or minus the depth to carve inward when negative (default 16; magnitude at least 0.125).", -16384.0, 16384.0),
             "snap": boolean("Align the new top planes to the active grid (default false)."),
             "alt_grid": boolean("Align them to the alternate grid instead (the Alt key, default false)."),
             "material": string("Material of the new faces (default: the face's)."),
@@ -919,7 +919,7 @@ fn inset_face(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
 
 fn extrude_faces(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let faces = target_faces(state, a, "faces")?;
-    let distance = a.opt_f64("distance", hp_geom::MIN_EXTRUDE_DEPTH, 16384.0)?.unwrap_or(16.0);
+    let distance = a.opt_f64("distance", -16384.0, 16384.0)?.unwrap_or(16.0);
     let snap = a.opt_bool("snap")?.unwrap_or(false);
     let alt = a.opt_bool("alt_grid")?.unwrap_or(false);
     let material = a.opt_str("material", MAX_NAME)?.map(material_name).transpose()?;
@@ -933,7 +933,7 @@ fn extrude_faces(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
         };
         list.push((*f, d));
     }
-    list.retain(|(_, d)| *d >= hp_geom::MIN_EXTRUDE_DEPTH);
+    list.retain(|(_, d)| d.abs() >= hp_geom::MIN_EXTRUDE_DEPTH);
     if list.is_empty() {
         return Err("the distance snaps to less than 0.125 on every face".to_owned());
     }
@@ -2089,6 +2089,29 @@ mod tests {
         assert_eq!(r["brushes"], 2);
         err(&mut s, "extrude_faces", json!({ "faces": [{ "solid": 3, "side": 99 }], "distance": 8 }));
         err(&mut s, "extrude_faces", json!({ "faces": [{ "solid": 3, "side": 5 }], "distance": 0 }));
+    }
+
+    #[test]
+    fn extrude_faces_with_a_negative_distance_carve_the_brush() {
+        let mut s = hp_app::testing::test_state();
+        let before = s.doc.scene().solids().len();
+        let volume = s.doc.scene().solid(3).unwrap().geom.volume();
+        let dry = ok(
+            &mut s,
+            "extrude_faces",
+            json!({ "faces": [{ "solid": 3, "side": 5 }], "distance": -2, "dry_run": true }),
+        );
+        assert_eq!(dry["brushes"], 1);
+        assert_eq!(s.doc.scene().solid(3).unwrap().geom.volume(), volume);
+        let r = ok(&mut s, "extrude_faces", json!({ "faces": [{ "solid": 3, "side": 5 }], "distance": -2 }));
+        assert_eq!(r["solid_ids"], json!([3]));
+        assert_eq!(r["faces"][0]["distance"], -2.0);
+        assert_eq!(s.doc.scene().solids().len(), before);
+        assert!(s.doc.scene().solid(3).unwrap().geom.volume() < volume);
+        assert_eq!(s.doc.undo_label(), Some("MCP: extrude_faces"));
+        assert!(s.doc.undo());
+        assert_eq!(s.doc.scene().solid(3).unwrap().geom.volume(), volume);
+        err(&mut s, "extrude_faces", json!({ "faces": [{ "solid": 3, "side": 5 }], "distance": -16000 }));
     }
 
     #[test]

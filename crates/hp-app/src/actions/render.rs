@@ -9,6 +9,7 @@ action_list! { render_actions {
     FarPlaneFarther => "far_plane_farther", View, ViewNav, None, Ready;
     RenderUnshaded => "render_unshaded", View, ViewRender, sc(ALT, Key::Num6), Ready;
     RenderSmoothingGroups => "render_smoothing_groups", View, ViewRender, sc(ALT, Key::Num7), Ready;
+    RenderColorCorrected => "render_color_corrected", View, ViewRender, sc(ALT, Key::Num9), Ready;
     ToggleRenderEffects => "toggle_render_effects", View, ViewDisplay, None, Ready;
     ToggleSkyPreview => "toggle_sky_preview", View, ViewDisplay, None, Ready;
     ToggleSkybox3d => "toggle_skybox_3d", View, ViewDisplay, sc(ALT, Key::V), Ready;
@@ -28,6 +29,7 @@ action_list! { render_actions {
     ToggleNodraw => "toggle_nodraw", View, ViewDisplay, None, Ready;
     ToggleCollisionOnly => "toggle_collision_only", View, ViewDisplay, None, Ready;
     ToggleWaterPreview => "toggle_water_preview", View, ViewDisplay, None, Ready;
+    ToggleDetailPreview => "toggle_detail_preview", View, ViewDisplay, None, Ready;
     ToggleFogVolumes => "toggle_fog_volumes", View, ViewDisplay, None, Ready;
     ToggleFogVolumeTexture => "toggle_fog_volume_texture", View, ViewDisplay, None, Ready;
     ToggleFishPreview => "toggle_fish_preview", View, ViewDisplay, None, Ready;
@@ -60,6 +62,7 @@ pub(super) fn check(state: &AppState, action: Action) -> Option<Check> {
         Action::ToggleGrid3d => Check::Toggle(r.grid_3d),
         Action::RenderUnshaded => Check::Radio(mode == RenderModeSetting::Unshaded),
         Action::RenderSmoothingGroups => Check::Radio(mode == RenderModeSetting::SmoothingGroups),
+        Action::RenderColorCorrected => Check::Radio(mode == RenderModeSetting::ColorCorrected),
         Action::ToggleRenderEffects => Check::Toggle(r.render_effects),
         Action::ToggleSkyPreview => Check::Toggle(r.sky_preview),
         Action::ToggleSkybox3d => Check::Toggle(r.skybox_3d),
@@ -67,6 +70,7 @@ pub(super) fn check(state: &AppState, action: Action) -> Option<Check> {
         Action::ToggleCollisionOnly => Check::Toggle(r.collision_only),
         Action::ToggleFogPreview => Check::Toggle(r.fog_preview),
         Action::ToggleWaterPreview => Check::Toggle(r.water_preview),
+        Action::ToggleDetailPreview => Check::Toggle(r.detail_preview),
         Action::ToggleFogVolumes => Check::Toggle(r.fog_volume_preview),
         Action::ToggleFogVolumeTexture => Check::Toggle(r.fog_volume_texture),
         Action::ToggleFishPreview => Check::Toggle(r.fish_preview),
@@ -116,6 +120,7 @@ pub(super) const TR: TrTable = &[
     ("action.far_plane_farther", "Longer draw distance", "Distance d'affichage plus longue"),
     ("action.render_unshaded", "Textured, unshaded", "Texturé sans ombrage"),
     ("action.render_smoothing_groups", "Smoothing groups", "Groupes de lissage"),
+    ("action.render_color_corrected", "3D Color Correction", "3D Correction colorimétrique"),
     ("action.toggle_render_effects", "Render effects", "Effets de rendu"),
     ("action.toggle_sky_preview", "Sky preview", "Aperçu du ciel"),
     ("action.toggle_skybox_3d", "3D skybox", "Skybox 3D"),
@@ -123,6 +128,7 @@ pub(super) const TR: TrTable = &[
     ("action.toggle_collision_only", "Show model collisions", "Afficher les collisions des modèles"),
     ("action.toggle_fog_preview", "Fog preview", "Aperçu du brouillard"),
     ("action.toggle_water_preview", "Water preview", "Aperçu de l'eau"),
+    ("action.toggle_detail_preview", "Detail props preview (grass)", "Aperçu des detail props (herbe)"),
     ("action.toggle_fog_volumes", "Fog volume preview", "Aperçu des fog_volume"),
     ("action.toggle_fog_volume_texture", "Fog volume texture", "Texture des fog_volume"),
     ("action.toggle_fish_preview", "Fish preview", "Aperçu des poissons"),

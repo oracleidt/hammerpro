@@ -19,6 +19,7 @@ pub enum RenderModeSetting {
     SmoothingGroups,
     Baked,
     LightmapGrid,
+    ColorCorrected,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

@@ -59,6 +59,8 @@ Pick the folder (root), the folder under it, and the name, then **Save the .raw*
 
 ## Previewing the color_correction entities in the 3D views
 
+The quickest way is the **3D Color Correction** render mode (**View > 3D render mode**, `Alt+9`, the mode list of the toolbar, MCP `set_render_mode` with `color_corrected`): the textured view with the lookup tables of the map entities applied, without turning on the setting below. It is the textured mode plus the preview, so it follows the same rules.
+
 **View > Display options > Preview color_correction entities** (action `toggle_color_correction_preview`, setting `lab.color_correction_preview`, default off) applies the lookup tables of the map entities to the 3D views, from the editor camera or, in the [player view](player-view.md), from the player camera. It follows the game:
 
 | Key value | Effect |

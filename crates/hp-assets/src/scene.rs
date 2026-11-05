@@ -1301,6 +1301,7 @@ impl AssetManager {
         self.scene.lighting_origin_names = wanted;
         let player = self.player_instance(renderer);
         let details = self.play_detail_instances(renderer);
+        let previewed = self.detail_preview_instances(renderer);
         let list: Vec<ModelInstance> = self
             .scene
             .ents
@@ -1331,6 +1332,7 @@ impl AssetManager {
             }))
             .chain(player)
             .chain(details)
+            .chain(previewed)
             .collect();
         self.play_model_lighting(renderer, &list, &origins);
         renderer.set_model_instances(&list);

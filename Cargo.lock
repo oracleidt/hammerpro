@@ -1510,7 +1510,7 @@ dependencies = [
 
 [[package]]
 name = "hammerpro"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "arboard",
  "crossbeam-channel",
@@ -1620,7 +1620,7 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "hp-app"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "dirs",
  "egui",
@@ -1647,7 +1647,7 @@ dependencies = [
 
 [[package]]
 name = "hp-assets"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "ahash",
  "crossbeam-channel",
@@ -1656,6 +1656,7 @@ dependencies = [
  "glam",
  "hp-app",
  "hp-bsp",
+ "hp-bspc",
  "hp-editor",
  "hp-fgd",
  "hp-fs",
@@ -1676,7 +1677,7 @@ dependencies = [
 
 [[package]]
 name = "hp-audio"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "log",
  "rodio",
@@ -1686,7 +1687,7 @@ dependencies = [
 
 [[package]]
 name = "hp-bsp"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "crc32fast",
  "lzma-rust2",
@@ -1697,7 +1698,7 @@ dependencies = [
 
 [[package]]
 name = "hp-bspc"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "ahash",
  "glam",
@@ -1721,14 +1722,14 @@ dependencies = [
 
 [[package]]
 name = "hp-colorgrade"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "serde",
 ]
 
 [[package]]
 name = "hp-compile"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "crossbeam-channel",
  "hp-bsp",
@@ -1742,7 +1743,7 @@ dependencies = [
 
 [[package]]
 name = "hp-decompile"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "glam",
  "hp-bsp",
@@ -1755,7 +1756,7 @@ dependencies = [
 
 [[package]]
 name = "hp-discord"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "log",
  "serde_json",
@@ -1764,7 +1765,7 @@ dependencies = [
 
 [[package]]
 name = "hp-editor"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "glam",
  "hp-bsp",
@@ -1778,14 +1779,14 @@ dependencies = [
 
 [[package]]
 name = "hp-fgd"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "thiserror 2.0.21",
 ]
 
 [[package]]
 name = "hp-fs"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "ahash",
  "hp-bsp",
@@ -1805,7 +1806,7 @@ dependencies = [
 
 [[package]]
 name = "hp-geom"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "glam",
  "hp-kv",
@@ -1816,7 +1817,7 @@ dependencies = [
 
 [[package]]
 name = "hp-gma"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "crc32fast",
  "hashbrown 0.16.1",
@@ -1830,7 +1831,7 @@ dependencies = [
 
 [[package]]
 name = "hp-kv"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "memchr",
  "thiserror 2.0.21",
@@ -1838,7 +1839,7 @@ dependencies = [
 
 [[package]]
 name = "hp-light"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "glam",
  "hp-fs",
@@ -1848,7 +1849,7 @@ dependencies = [
 
 [[package]]
 name = "hp-mcp"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "dirs",
  "getrandom 0.3.4",
@@ -1861,7 +1862,7 @@ dependencies = [
 
 [[package]]
 name = "hp-mdl"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "bytemuck",
  "thiserror 2.0.21",
@@ -1869,7 +1870,7 @@ dependencies = [
 
 [[package]]
 name = "hp-meshio"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "flate2",
  "glam",
@@ -1880,21 +1881,21 @@ dependencies = [
 
 [[package]]
 name = "hp-nav"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "thiserror 2.0.21",
 ]
 
 [[package]]
 name = "hp-pcf"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "thiserror 2.0.21",
 ]
 
 [[package]]
 name = "hp-render"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "ahash",
  "bytemuck",
@@ -1911,7 +1912,7 @@ dependencies = [
 
 [[package]]
 name = "hp-shader"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "hp-vmt",
  "hp-vtf",
@@ -1922,7 +1923,7 @@ dependencies = [
 
 [[package]]
 name = "hp-sniffer"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "ahash",
  "crc32fast",
@@ -1950,7 +1951,7 @@ dependencies = [
 
 [[package]]
 name = "hp-tools-create"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "egui",
  "glam",
@@ -1968,7 +1969,7 @@ dependencies = [
 
 [[package]]
 name = "hp-tools-mesh"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "eframe",
  "egui",
@@ -1984,7 +1985,7 @@ dependencies = [
 
 [[package]]
 name = "hp-tools-select"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "egui",
  "glam",
@@ -2000,7 +2001,7 @@ dependencies = [
 
 [[package]]
 name = "hp-ui-entities"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "egui",
  "egui-wgpu",
@@ -2028,7 +2029,7 @@ dependencies = [
 
 [[package]]
 name = "hp-ui-lab"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "crossbeam-channel",
  "egui",
@@ -2056,7 +2057,7 @@ dependencies = [
 
 [[package]]
 name = "hp-ui-mapping"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "arboard",
  "egui",
@@ -2087,7 +2088,7 @@ dependencies = [
 
 [[package]]
 name = "hp-ui-shell"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "eframe",
  "egui",
@@ -2107,7 +2108,7 @@ dependencies = [
 
 [[package]]
 name = "hp-ui-textures"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "ahash",
  "eframe",
@@ -2131,7 +2132,7 @@ dependencies = [
 
 [[package]]
 name = "hp-ui-viewports"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "egui",
  "glam",
@@ -2147,7 +2148,7 @@ dependencies = [
 
 [[package]]
 name = "hp-update"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "flate2",
  "log",
@@ -2157,7 +2158,7 @@ dependencies = [
 
 [[package]]
 name = "hp-vmf"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "glam",
  "hp-kv",
@@ -2168,7 +2169,7 @@ dependencies = [
 
 [[package]]
 name = "hp-vmt"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "hp-kv",
  "rayon",
@@ -2177,7 +2178,7 @@ dependencies = [
 
 [[package]]
 name = "hp-vpk"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "crc32fast",
  "hashbrown 0.16.1",
@@ -2190,7 +2191,7 @@ dependencies = [
 
 [[package]]
 name = "hp-vtf"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "image",
  "rayon",

@@ -238,6 +238,21 @@ impl TextureTool {
                             state.ui.right_tab = RightTab::Textures;
                             state.ui.focus_texture_search = true;
                         }
+                        let editable: Vec<String> = if mixed {
+                            materials.iter().filter(|m| !m.is_empty()).cloned().collect()
+                        } else if name.is_empty() {
+                            Vec::new()
+                        } else {
+                            vec![name.clone()]
+                        };
+                        if ui
+                            .add_enabled(!editable.is_empty(), egui::Button::new(t!("tex.face.edit_material")))
+                            .on_hover_text(t!("tex.face.edit_material_tip"))
+                            .clicked()
+                        {
+                            crate::shared::post_editor(ui.ctx(), editable);
+                            state.ui.show_material_editor = true;
+                        }
                         let current = state.current_material.clone();
                         if ui
                             .button(t!("tex.face.apply_current"))

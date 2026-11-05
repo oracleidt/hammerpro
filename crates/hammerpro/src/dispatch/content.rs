@@ -31,6 +31,7 @@ const HANDLED: &[Action] = &[
     Action::SaveAsNewVersion,
     Action::ShowMapAssets,
     Action::ShaderEditor,
+    Action::VtfEditor,
 ];
 
 impl Package for Content {
@@ -50,6 +51,7 @@ impl Package for Content {
             }
             Action::ShowMapAssets => show_map_assets(app),
             Action::ShaderEditor => app.state.runtime.shader.show = true,
+            Action::VtfEditor => app.state.runtime.vtf.open_window(),
             Action::SaveAsNewVersion => match app.state.doc.path().and_then(|p| p.file_stem()) {
                 Some(stem) => app.pkg.content.new_version = Some(next_version(&stem.to_string_lossy())),
                 None => app.state.request(Action::SaveMapAs),

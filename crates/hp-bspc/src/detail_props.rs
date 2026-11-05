@@ -763,15 +763,21 @@ fn matrix_angles(forward: Vec3, left: Vec3, up_z: f32) -> Vec3 {
     }
 }
 
-#[derive(Default)]
 struct Builder {
     lump: DetailLump,
     overflow: usize,
+    cap: usize,
+}
+
+impl Default for Builder {
+    fn default() -> Self {
+        Builder { lump: DetailLump::default(), overflow: 0, cap: MAX_OBJECTS }
+    }
 }
 
 impl Builder {
     fn full(&mut self) -> bool {
-        if self.lump.objects.len() >= MAX_OBJECTS {
+        if self.lump.objects.len() >= self.cap {
             self.overflow += 1;
             return true;
         }
@@ -1146,6 +1152,61 @@ pub fn place(
     (lump, report)
 }
 
+#[derive(Clone, Debug)]
+pub enum ScatterSurface {
+    Face { points: Vec<Vec3>, normal: Vec3 },
+    Disp { power: u32, base: Vec<Vec3>, verts: Vec<Vec3>, alphas: Vec<f32> },
+}
+
+pub fn scatter(
+    surface: &ScatterSurface,
+    t: &DetailType,
+    seed: u32,
+    cap: usize,
+    model_ok: &dyn Fn(&str) -> bool,
+) -> DetailLump {
+    let mut p = Placer {
+        rand: CrtRand::new(seed),
+        uniform: Uniform::new(seed as i32),
+        gauss: Gaussian::default(),
+        out: Builder { cap: cap.min(MAX_OBJECTS), ..Builder::default() },
+        model_ok,
+        blockers: &[],
+    };
+    if t.groups.is_empty() {
+        return p.out.lump;
+    }
+    match surface {
+        ScatterSurface::Face { points, normal } => {
+            if points.len() < 3 {
+                return p.out.lump;
+            }
+            let mut pts = points.clone();
+            let cross = (pts[1] - pts[0]).cross(pts[2] - pts[0]);
+            if cross.dot(*normal) > 0.0 {
+                pts.reverse();
+            }
+            p.on_face(&pts, t, Vec3::ZERO);
+        }
+        ScatterSurface::Disp { power, base, verts, alphas } => {
+            let w = (1usize << (*power).clamp(1, 4)) + 1;
+            if !(1..=4).contains(power) || base.len() != w * w || verts.len() != w * w || alphas.len() != w * w {
+                return p.out.lump;
+            }
+            let points = [base[0], base[(w - 1) * w], base[w * w - 1], base[w - 1]];
+            let core = CoreDisp {
+                width: w,
+                points,
+                flat: base.clone(),
+                verts: verts.clone(),
+                alphas: alphas.iter().map(|a| a * 255.0).collect(),
+            };
+            p.on_disp(&points, &core, t, Vec3::ZERO);
+        }
+    }
+    p.out.lump
+}
+
 pub fn compile_lump(
     entities: &[&hp_vmf::Entity],
     get: &dyn Fn(usize) -> Vec<u8>,
@@ -1505,5 +1566,62 @@ detail
         assert_eq!(DetailLump::default().to_bytes(), vec![0u8; 12]);
         assert!(DetailLump::parse(&[0u8; 11]).is_err());
         assert_eq!(parse_styles(&styles_to_bytes(&[([1, 2, 3, 4], 5)])).unwrap(), vec![([1, 2, 3, 4], 5)]);
+    }
+
+    fn scatter_dict() -> DetailDict {
+        parse_detail_vbsp(
+            "detail { grass { \"density\" \"100000\" Group { \"alpha\" \"1\" A { \"sprite\" \"0 0 64 32 512\" \"amount\" \"1\" \"sway\" \"0.5\" } } } }",
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn scatter_covers_a_face_deterministically() {
+        let dict = scatter_dict();
+        let t = dict.find("grass").unwrap();
+        let quad = vec![
+            Vec3::new(0.0, 0.0, 10.0),
+            Vec3::new(0.0, 256.0, 10.0),
+            Vec3::new(256.0, 256.0, 10.0),
+            Vec3::new(256.0, 0.0, 10.0),
+        ];
+        let s = ScatterSurface::Face { points: quad.clone(), normal: Vec3::Z };
+        let a = scatter(&s, t, 7, 10_000, &|_| true);
+        let b = scatter(&s, t, 7, 10_000, &|_| true);
+        assert_eq!(a, b);
+        assert!(a.objects.len() > 400, "{}", a.objects.len());
+        assert!(a.objects.iter().all(|o| (0.0..=256.0).contains(&o.origin.x) && o.origin.z == 10.0));
+        let reversed = ScatterSurface::Face { points: quad.into_iter().rev().collect(), normal: Vec3::Z };
+        assert_eq!(scatter(&reversed, t, 7, 10_000, &|_| true).objects.len(), a.objects.len());
+        assert_eq!(scatter(&s, t, 7, 25, &|_| true).objects.len(), 25);
+        assert_ne!(scatter(&s, t, 8, 10_000, &|_| true), a);
+        assert!(a.objects.iter().all(|o| o.sway == 127 && o.kind == kind::SPRITE));
+    }
+
+    #[test]
+    fn scatter_follows_a_displacement_and_its_alpha() {
+        let dict = parse_detail_vbsp(
+            "detail { grass { \"density\" \"100000\" Dirt { \"alpha\" \"0\" A { \"sprite\" \"0 0 64 32 512\" } } Lush { \"alpha\" \"1\" B { \"sprite\" \"64 0 64 32 512\" } } } }",
+        )
+        .unwrap();
+        let t = dict.find("grass").unwrap();
+        let w = 5;
+        let base: Vec<Vec3> =
+            (0..w * w).map(|k| Vec3::new((k % w) as f32 * 64.0, (k / w) as f32 * 64.0, 0.0)).collect();
+        let verts: Vec<Vec3> = base.iter().map(|b| *b + Vec3::Z * 8.0).collect();
+        let surface = |a: f32| ScatterSurface::Disp {
+            power: 2,
+            base: base.clone(),
+            verts: verts.clone(),
+            alphas: vec![a; w * w],
+        };
+        let lush = scatter(&surface(1.0), t, 3, 100_000, &|_| true);
+        let dirt = scatter(&surface(0.0), t, 3, 100_000, &|_| true);
+        assert!(lush.objects.len() > 300 && dirt.objects.len() > 300);
+        assert!(lush.objects.iter().all(|o| (o.origin.z - 8.0).abs() < 0.01));
+        assert!(lush.sprites.iter().all(|s| s[4] > 0.12), "alpha 1 picks the second group");
+        assert!(dirt.sprites.iter().all(|s| s[4] < 0.12), "alpha 0 picks the first group");
+        let bad = ScatterSurface::Disp { power: 2, base: base.clone(), verts: Vec::new(), alphas: Vec::new() };
+        assert!(scatter(&bad, t, 3, 100, &|_| true).objects.is_empty());
     }
 }

@@ -40,6 +40,32 @@ impl Default for PasteSpecial {
     }
 }
 
+pub const PREVIEW_MAX_LINES: usize = 40_000;
+
+const MARKER_HALF: f64 = 8.0;
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct PastePreview {
+    pub lines: Vec<[DVec3; 2]>,
+    pub copies: u32,
+    pub shown_copies: u32,
+    pub objects: usize,
+}
+
+fn marker_lines(c: DVec3, out: &mut Vec<[DVec3; 2]>) {
+    let h = DVec3::splat(MARKER_HALF);
+    let corner = |i: usize| {
+        c + DVec3::new(
+            if i & 1 == 0 { -h.x } else { h.x },
+            if i & 2 == 0 { -h.y } else { h.y },
+            if i & 4 == 0 { -h.z } else { h.z },
+        )
+    };
+    for (a, b) in [(0, 1), (2, 3), (4, 5), (6, 7), (0, 2), (1, 3), (4, 6), (5, 7), (0, 4), (1, 5), (2, 6), (3, 7)] {
+        out.push([corner(a), corner(b)]);
+    }
+}
+
 fn editor_block(e: &EditorInfo) -> Block {
     let mut b = Block::new("editor");
     let [r, g, bl] = e.color;
@@ -213,6 +239,52 @@ impl Document {
     pub fn clipboard_bounds(text: &str) -> EditResult<Aabb> {
         let frag = Self::parse_clipboard(text)?;
         fragment_bounds(&frag).ok_or(EditError::EmptyClipboard)
+    }
+
+    pub fn paste_special_preview(text: &str, opts: &PasteSpecial) -> EditResult<PastePreview> {
+        if opts.copies == 0 || opts.copies > 10_000 {
+            return Err(EditError::Invalid("copies must be from 1 to 10000".to_owned()));
+        }
+        if !opts.offset.is_finite() || !opts.rotation.is_finite() || !opts.pivot.is_none_or(|p| p.is_finite()) {
+            return Err(EditError::Invalid("offset, rotation and pivot must be finite".to_owned()));
+        }
+        let frag = Self::parse_clipboard(text)?;
+        let center = opts.pivot.unwrap_or_else(|| fragment_bounds(&frag).map_or(DVec3::ZERO, |b| b.center()));
+        let mut base: Vec<[DVec3; 2]> = Vec::new();
+        let solids = frag.solids.iter().chain(frag.entities.iter().flat_map(|e| e.solids.iter()));
+        for s in solids {
+            base.extend(hp_geom::build_solid(&s.sides).edges());
+        }
+        for e in &frag.entities {
+            if e.solids.is_empty()
+                && let Some(o) = e.origin().filter(|o| o.is_finite())
+            {
+                marker_lines(o, &mut base);
+            }
+        }
+        let objects = frag.solids.len() + frag.entities.len();
+        let mut preview = PastePreview { lines: Vec::new(), copies: opts.copies, shown_copies: 0, objects };
+        if base.is_empty() {
+            return Ok(preview);
+        }
+        for k in 0..opts.copies {
+            if preview.lines.len() + base.len() > PREVIEW_MAX_LINES && k > 0 {
+                break;
+            }
+            let step = if opts.start_at_original { f64::from(k) } else { f64::from(k) + 1.0 };
+            let angles = opts.rotation * step;
+            let q = (angles != DVec3::ZERO).then(|| {
+                DQuat::from_euler(EulerRot::ZYX, angles.z.to_radians(), angles.y.to_radians(), angles.x.to_radians())
+            });
+            let off = opts.offset * step;
+            let map = |p: DVec3| match q {
+                Some(q) => center + q * (p - center) + off,
+                None => p + off,
+            };
+            preview.lines.extend(base.iter().map(|[a, b]| [map(*a), map(*b)]));
+            preview.shown_copies = k + 1;
+        }
+        Ok(preview)
     }
 
     pub fn paste_special(&mut self, text: &str, opts: &PasteSpecial) -> EditResult<Vec<ObjRef>> {

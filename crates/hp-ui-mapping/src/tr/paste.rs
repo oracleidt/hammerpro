@@ -22,6 +22,16 @@ pub const TR: TrTable = &[
     ),
     ("paste.total_offset", "Offset of the last copy: {0}", "Décalage de la dernière copie : {0}"),
     (
+        "paste.preview_ok",
+        "Preview in the views: {0} object(s) x {1} copy(ies)",
+        "Aperçu dans les vues : {0} objet(s) x {1} copie(s)",
+    ),
+    (
+        "paste.preview_partial",
+        "Preview in the views: first {0} of {1} copies",
+        "Aperçu dans les vues : les {0} premières copies sur {1}",
+    ),
+    (
         "paste.size_tip",
         "Use the size of the clipboard contents on this axis (copies side by side)",
         "Utiliser la taille du contenu du presse-papiers sur cet axe (copies côte à côte)",

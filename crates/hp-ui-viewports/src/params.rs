@@ -1,6 +1,7 @@
 use egui::Rect;
 use hp_app::AppState;
 use hp_app::grid::GridFrame;
+use hp_app::runtime::{PerfPlan, Reflections};
 use hp_app::settings::{Disp2dSetting, Models2dSetting};
 use hp_app::state::Cameras;
 use hp_app::view::{ViewInfo, ViewKind};
@@ -30,6 +31,8 @@ pub struct RenderConfig {
     pub options_3d: ViewOptions,
     pub options_2d: ViewOptions,
     pub disp_2d: [Detail2d; 4],
+    pub plan: PerfPlan,
+    pub render_scale: f32,
 }
 
 pub fn detail_2d(mode: Disp2dSetting) -> Detail2d {
@@ -54,6 +57,12 @@ impl RenderConfig {
         let far = f64::from(v.far_plane);
         let sel = rgb_f32(v.selection_color);
         let r = &state.settings.render;
+        let plan = state.runtime.render.perf.plan(r.performance_mode);
+        let water_detail = match (plan.reflections, r.water_detail.detail()) {
+            (Reflections::Simple, _) | (_, hp_render::WaterDetail::Simple) => hp_render::WaterDetail::Simple,
+            (Reflections::World, _) | (_, hp_render::WaterDetail::ReflectWorld) => hp_render::WaterDetail::ReflectWorld,
+            _ => hp_render::WaterDetail::ReflectAll,
+        };
         let finite = |x: f32, d: f32| if x.is_finite() { x } else { d };
         let options_3d = ViewOptions {
             grid_3d: r.grid_3d.then(|| Grid3d {
@@ -62,20 +71,20 @@ impl RenderConfig {
                 fade_cells: finite(r.grid_3d_fade_cells, 64.0).clamp(4.0, 4096.0),
                 opacity: finite(r.grid_3d_opacity, 0.45).clamp(0.0, 1.0),
             }),
-            model_distance: finite(r.model_distance, 0.0).max(0.0),
+            model_distance: plan.model_distance_for(finite(r.model_distance, 0.0).max(0.0)),
             show_sky: r.sky_preview,
             show_sky_3d: r.skybox_3d,
             sky_see_through: r.sky_see_through,
             water_preview: r.water_preview,
-            water_detail: r.water_detail.detail(),
-            normal_maps: r.normal_maps,
-            cubemaps: r.cubemaps,
-            light_shadows: r.light_shadows.min(hp_render::MAX_SHADOWED_LIGHTS),
-            indirect_light: r.lit_indirect,
+            water_detail,
+            normal_maps: r.normal_maps && plan.normal_maps,
+            cubemaps: r.cubemaps && plan.cubemaps,
+            light_shadows: r.light_shadows.min(hp_render::MAX_SHADOWED_LIGHTS).min(plan.light_shadows),
+            indirect_light: r.lit_indirect && plan.indirect,
             model_lods: r.model_lods,
-            sun_glow: r.sun_glow,
+            sun_glow: r.sun_glow && plan.sun_glow,
             show_fog: r.fog_preview,
-            fog_volumes: r.fog_volume_preview,
+            fog_volumes: r.fog_volume_preview && plan.fog_volumes,
             occlusion_culling: r.occlusion_culling,
             force_opaque: r.force_opaque,
             walkable: r.walkable,
@@ -133,12 +142,14 @@ impl RenderConfig {
             mode: state.render_mode(),
             show_sprites: v.show_helpers,
             show_models: v.show_models,
-            msaa: v.msaa,
+            msaa: v.msaa && plan.msaa,
             game_pixel_grid: r.game_pixel_grid,
             near: f64::from(r.near()),
             options_3d,
             options_2d,
             disp_2d: std::array::from_fn(|i| detail_2d(r.displacements_2d_of(i))),
+            plan,
+            render_scale: r.scale().min(plan.scale),
         }
     }
 }
@@ -194,6 +205,23 @@ pub fn view_options(view: &ViewInfo, cfg: &RenderConfig) -> ViewOptions {
     }
     let detail_2d = cfg.disp_2d.get(view.index).copied().unwrap_or(cfg.options_2d.detail_2d);
     ViewOptions { detail_2d, ..cfg.options_2d }
+}
+
+pub fn scaled_size(size: [u32; 2], scale: f32) -> [u32; 2] {
+    if !(scale.is_finite() && scale < 1.0) {
+        return size;
+    }
+    let scale = scale.max(0.25);
+    size.map(|v| ((v as f32 * scale).round() as u32).max(1))
+}
+
+pub fn tone_for(r: &hp_app::settings::RenderSettings, plan: &PerfPlan) -> hp_render::ToneSettings {
+    let tone = r.tone();
+    if plan.bloom { tone } else { hp_render::ToneSettings { bloom: 0.0, ..tone } }
+}
+
+pub fn quality_for(plan: &PerfPlan) -> hp_render::Quality {
+    hp_render::Quality { sun_shadow_size: plan.sun_shadow_size, local_shadow_size: plan.local_shadow_size }
 }
 
 pub fn view_params(view: &ViewInfo, cfg: &RenderConfig) -> ViewParams {
@@ -444,5 +472,51 @@ mod tests {
         assert!(opts(&state, 1, ViewKind::Top).walk_marks);
         let o3 = opts(&state, 0, ViewKind::Perspective);
         assert!(o3.walk_marks && o3.detail_2d == Detail2d::All, "3D views always show the grid");
+    }
+
+    #[test]
+    fn full_quality_changes_nothing_and_the_lower_modes_only_lower() {
+        use hp_app::settings::PerformanceMode;
+        let mut state = hp_app::testing::test_state();
+        let full = RenderConfig::from_state(&state);
+        assert!(full.plan.is_full() && full.render_scale == 1.0);
+        assert!(full.msaa && full.options_3d.sun_glow && full.options_3d.normal_maps && full.options_3d.cubemaps);
+        assert_eq!(full.options_3d.light_shadows, state.settings.render.light_shadows);
+        assert_eq!(full.options_3d.water_detail, hp_render::WaterDetail::ReflectAll);
+        assert_eq!(full.options_3d.model_distance, 0.0);
+        state.runtime.render.perf.auto_level = hp_app::runtime::PerfLevel::VeryLow;
+        let auto_lowered = RenderConfig::from_state(&state);
+        assert!(!auto_lowered.plan.is_full(), "Auto follows the level it measured");
+        state.settings.render.performance_mode = PerformanceMode::Off;
+        assert!(RenderConfig::from_state(&state).plan.is_full(), "Off ignores what Auto measured");
+        state.settings.render.performance_mode = PerformanceMode::Low;
+        let low = RenderConfig::from_state(&state);
+        assert!(!low.msaa && low.render_scale == 0.75 && low.options_3d.light_shadows <= 4);
+        assert_eq!(low.options_3d.water_detail, hp_render::WaterDetail::ReflectWorld);
+        state.settings.render.performance_mode = PerformanceMode::VeryLow;
+        state.settings.render.render_scale = 0.9;
+        let very = RenderConfig::from_state(&state);
+        assert!(very.render_scale == 0.5 && !very.options_3d.cubemaps && !very.options_3d.normal_maps);
+        assert_eq!(very.options_3d.light_shadows, 0);
+        assert_eq!(very.options_3d.water_detail, hp_render::WaterDetail::Simple);
+        assert!(very.options_3d.model_distance > 0.0);
+        assert_eq!(tone_for(&state.settings.render, &very.plan).bloom, 0.0);
+        assert_eq!(tone_for(&state.settings.render, &full.plan).bloom, state.settings.render.bloom);
+        assert_eq!(quality_for(&very.plan).sun_shadow_size, 1024);
+        assert_eq!(quality_for(&full.plan), hp_render::Quality::default());
+    }
+
+    #[test]
+    fn the_render_scale_shrinks_only_the_3d_picture() {
+        assert_eq!(scaled_size([1000, 600], 1.0), [1000, 600]);
+        assert_eq!(scaled_size([1000, 600], 0.5), [500, 300]);
+        assert_eq!(scaled_size([1000, 600], 0.01), [250, 150], "never below a quarter");
+        assert_eq!(scaled_size([1, 1], 0.5), [1, 1]);
+        assert_eq!(scaled_size([1000, 600], f32::NAN), [1000, 600]);
+        let mut state = hp_app::testing::test_state();
+        state.settings.render.render_scale = 5.0;
+        assert_eq!(RenderConfig::from_state(&state).render_scale, 1.0, "more than 100% is not a thing");
+        state.settings.render.render_scale = f32::NAN;
+        assert_eq!(RenderConfig::from_state(&state).render_scale, 1.0);
     }
 }

@@ -106,6 +106,7 @@ pub(crate) const DOMAINS: &[&Domain] = &[
     &super::tools_weld::DOMAIN,
     &super::tools_loops::DOMAIN,
     &super::tools_pipe::DOMAIN,
+    &super::tools_slice::DOMAIN,
     &super::tools_road::DOMAIN,
     &super::tools_roadside::DOMAIN,
     &super::tools_groups::DOMAIN,
@@ -127,6 +128,7 @@ pub(crate) const DOMAINS: &[&Domain] = &[
     &super::tools_paths::DOMAIN,
     &super::tools_sky::DOMAIN,
     &super::tools_fog::DOMAIN,
+    &super::tools_detail::DOMAIN,
     &super::tools_fgd::DOMAIN,
     &super::tools_games::DOMAIN,
     &super::tools_discord::DOMAIN,
@@ -141,6 +143,7 @@ pub(crate) const DOMAINS: &[&Domain] = &[
     &super::tools_storage::DOMAIN,
     &super::tools_sniffer::DOMAIN,
     &super::tools_shader::DOMAIN,
+    &super::tools_vtf::DOMAIN,
     &super::tools_media::DOMAIN,
     &super::tools_help::DOMAIN,
 ];

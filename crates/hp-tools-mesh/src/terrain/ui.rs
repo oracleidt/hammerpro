@@ -227,7 +227,7 @@ fn paint_layout(ui: &mut egui::Ui, thumb: Option<&HeightField>, o: &ImportOption
         }
     }
     let (tx, ty) = o.setup.tiles();
-    let line = Stroke::new(1.0, hp_app::theme::warning());
+    let line = Stroke::new(1.0, hp_app::data_colors::TILE_GRID);
     for i in 0..=tx {
         let x = rect.left() + rect.width() * i as f32 / tx as f32;
         painter.line_segment([Pos2::new(x, rect.top()), Pos2::new(x, rect.bottom())], line);

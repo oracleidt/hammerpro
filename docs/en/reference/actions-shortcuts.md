@@ -2,7 +2,7 @@
 
 # Actions and keyboard shortcuts
 
-Every command of Hammer Pro 1.0.9 is an *action*: one entry shared by the menus, the toolbar, the keyboard shortcuts, the command palette (`Ctrl+P`), the `--script` files and the MCP server (`run_action`, `list_actions`). This page lists all 340 actions, menu by menu, in the order the menus show them.
+Every command of Hammer Pro 1.1.0 is an *action*: one entry shared by the menus, the toolbar, the keyboard shortcuts, the command palette (`Ctrl+P`), the `--script` files and the MCP server (`run_action`, `list_actions`). This page lists all 340 actions, menu by menu, in the order the menus show them.
 
 Columns:
 
@@ -158,13 +158,14 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | 3D render mode > Textured, unshaded | `render_unshaded` | `Alt+6` |  |  |
 | 3D render mode > Smoothing groups | `render_smoothing_groups` | `Alt+7` |  |  |
 | 3D render mode > Lightmap grid | `render_lightmap_grid` | `Alt+8` |  |  |
+| 3D render mode > 3D Color Correction | `render_color_corrected` | `Alt+9` |  |  |
 | 3D render mode > Baked lighting preview | `render_baked` | `Ctrl+F5` |  |  |
 | Show models | `toggle_models` |  |  |  |
 | Show helpers and sprites | `toggle_helpers` |  |  |  |
 | Show tool textures | `toggle_tool_textures` |  |  | `Ctrl+Shift+F2` |
 | Background images... | `background_images` |  |  |  |
 | Display options > 3D view information | `toggle_view_info` | `O` |  |  |
-| Display options > Bounding boxes | `toggle_bounds_overlay` | `I` |  |  |
+| Display options > Bounding boxes | `toggle_bounds_overlay` |  |  |  |
 | Display options > Show overlays | `toggle_overlays` |  |  |  |
 | Display options > Show connections | `toggle_connections` |  |  |  |
 | Display options > Show editor objects | `toggle_editor_objects` |  |  | `Alt+O` |
@@ -191,6 +192,7 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Display options > Show nodraw faces | `toggle_nodraw` |  |  |  |
 | Display options > Show model collisions | `toggle_collision_only` |  |  |  |
 | Display options > Water preview | `toggle_water_preview` |  |  |  |
+| Display options > Detail props preview (grass) | `toggle_detail_preview` |  |  |  |
 | Display options > Fog volume preview | `toggle_fog_volumes` |  |  |  |
 | Display options > Fog volume texture | `toggle_fog_volume_texture` |  |  |  |
 | Display options > Fish preview | `toggle_fish_preview` |  |  |  |
@@ -264,7 +266,7 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Intersect brushes | `intersect_brushes` | `Ctrl+Shift+K` |  |  |
 | Union of brushes | `union_brushes` |  |  |  |
 | Inset face... | `inset_face` |  |  |  |
-| Interactive inset (I) | `inset_interactive` |  |  |  |
+| Interactive inset (I) | `inset_interactive` | `I` |  |  |
 | Interactive extrude (E) | `extrude_interactive` | `E` |  |  |
 | Nodraw on hidden faces... | `nodraw_hidden_faces` |  |  |  |
 | Tie each to its own entity | `tie_each_to_entity` | `Ctrl+Shift+T` |  |  |
@@ -297,6 +299,7 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Generate nav mesh | `generate_nav_mesh` |  |  |  |
 | Static prop options (Propper)... | `propper_options` |  |  |  |
 | Shader editor... | `shader_editor` |  |  |  |
+| VTF editor... | `vtf_editor` |  |  |  |
 | Send to Blender | `send_to_blender` |  |  |  |
 | Update from Blender | `pull_from_blender` |  |  |  |
 | Stop the Blender live link | `stop_blender_link` |  |  |  |
@@ -319,6 +322,7 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Decal tool | `tool_decal` | `Shift+D` |  |  |
 | Overlay tool | `tool_overlay` | `Shift+O` |  |  |
 | Clipping tool | `tool_clip` | `Shift+X` |  |  |
+| Slice tool | `tool_slice` | `Shift+Y` |  |  |
 | Extrude / carve tool | `tool_extrude` | `Shift+I` |  |  |
 | Bevel tool | `tool_bevel` | `Shift+J` |  |  |
 | Vertex tool | `tool_vertex` | `Shift+V` |  |  |
@@ -414,6 +418,20 @@ While the clipping tool is active, these keys go to the tool first (they win ove
 | `Alt` (held) | No snapping. |
 
 See [Clip tool](../features/clip-tool.md).
+
+## Keys inside the slice tool
+
+While the slice tool is active, these inputs go to the tool first:
+
+| Key | What it does |
+|---|---|
+| `Shift+Y` (again), `Tab`, `O` | Switch between left to right and top to bottom. |
+| Wheel (3D), `Shift` + wheel (2D) | More or fewer segments, 1 to 64. |
+| Left click, `Enter` | Apply the cuts. |
+| Right click, `Escape` | Put the position back at the center of the object. |
+| `Alt` (held) | No snapping. |
+
+See [Slice tool](../features/slice-tool.md).
 
 ## Related pages
 

@@ -521,7 +521,9 @@ impl AppState {
 
     pub fn display_grid_frame(&self, kind: ViewKind) -> GridFrame {
         match self.tool {
-            crate::ToolId::Select | crate::ToolId::Vertex | crate::ToolId::Clip => self.edit_grid_frame(kind),
+            crate::ToolId::Select | crate::ToolId::Vertex | crate::ToolId::Clip | crate::ToolId::Slice => {
+                self.edit_grid_frame(kind)
+            }
             _ => self.grid_frame(kind),
         }
     }

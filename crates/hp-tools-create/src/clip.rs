@@ -94,7 +94,7 @@ fn toward(normal: DVec3, eye: DVec3, at: DVec3) -> DVec3 {
     if normal.dot(eye - at) < 0.0 { -normal } else { normal }
 }
 
-fn consume_letter(ctx: &egui::Context, key: Key) -> bool {
+pub(crate) fn consume_letter(ctx: &egui::Context, key: Key) -> bool {
     ctx.input_mut(|i| {
         if i.modifiers.any() {
             return false;

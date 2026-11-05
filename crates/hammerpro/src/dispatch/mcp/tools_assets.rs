@@ -28,7 +28,8 @@ domain! { "assets";
         lab.particles_selected_only, lab.show_entity_fx for the volume preview of func_smokevolume, env_embers, \
         func_dustcloud and func_dustmotes: change them with set_setting or the toggle_particles, \
         toggle_particles_selected and toggle_entity_fx actions), its caps and whether the particle preview window \
-        (action particle_preview) is open.",
+        (action particle_preview: it opens on the effect of the selected info_particle_system and draws it with the \
+        same renderer as the 3D views) is open and which system it plays.",
         { "query": string("Only effects or target names containing this text."), "limit": limit(), "offset": offset() }, [];
     list_asset_sources: Read, "Content sources",
         "The mounted content sources (game folders, VPKs, addons, workshop GMAs, custom folders) and the custom \
@@ -491,6 +492,7 @@ fn list_particle_systems(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
             "volume_effects_max_entities": hp_ui_lab::entity_fx::MAX_ENTITIES,
             "volume_effects_max_particles": hp_ui_lab::entity_fx::MAX_PARTICLES,
             "preview_window_open": state.runtime.lab.particle_preview.open,
+            "preview_window_system": state.runtime.lab.particle_preview.selected,
             "effects_playing": report.playing.len(),
             "particles": report.particles,
             "max_effects": hp_ui_lab::particles::MAX_EFFECTS,

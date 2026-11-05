@@ -2,7 +2,7 @@
 
 # Hammer Pro documentation
 
-Welcome to the knowledge base of Hammer Pro 1.0.9, the level editor for Source engine maps built for Garry's Mod first. Every feature has its own page: what it is, how to open it, every option with its default, tips and a short FAQ. Pages link to each other, so start anywhere.
+Welcome to the knowledge base of Hammer Pro 1.1.0, the level editor for Source engine maps built for Garry's Mod first. Every feature has its own page: what it is, how to open it, every option with its default, tips and a short FAQ. Pages link to each other, so start anywhere.
 
 New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game setup](getting-started/game-setup.md) and [Your first map](getting-started/first-map.md), in that order.
 
@@ -32,6 +32,7 @@ New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game s
 | [Scatter by material](features/scatter-by-material.md) | Props placed only where a texture shows on blend materials and displacements, with count, spacing, rotation, scale and seed. |
 | [Road details](features/road-details.md) | Sidewalks, curbs, V and U gutters with drain slots, rounded junction corners, and terrain blending to a road with texture fade. |
 | [Clip tool](features/clip-tool.md) | Cutting brushes with a plane. |
+| [Slice tool](features/slice-tool.md) | Cutting brushes into several equal blocks, left to right or top to bottom, from the 3D view (`Shift+Y`, mouse for the position, wheel for the segments). |
 | [Extrude / carve tool](features/extrude-tool.md) | Outlines clicked on a face, carved into the brush (recess or opening) or extruded out of it. |
 | [Bevel tool](features/bevel-tool.md) | Round or chamfer brush edges in the 3D view (`Ctrl+B`, mouse for the size, wheel for the segments), or bevel them inward: a cove, or a concave round filling an inner corner (arches). |
 | [Vertex tool](features/vertex-tool.md) | Moving, merging, splitting and scaling vertices. |
@@ -69,6 +70,7 @@ New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game s
 | [Content index and scan](features/content-index.md) | The saved index of the game files, hard disk and SSD scanning, duplicate folders. |
 | [UV editor](features/uv-editor.md) | Face, edge and vertex modes, layers, its own window. |
 | [Material editor](features/material-editor.md) | Editing VMT files, one at a time or in batch. |
+| [VTF editor](features/vtf-editor.md) | Edit textures in VTFEdit (or another installed VTF editor) or in the built in editor: channels, mips, frames, cubemaps, flags, formats, normal maps. |
 | [Shader editor](features/shader-editor.md) | Node based image and material editor: noise, blur, color ramps, normal maps, tile blending, written as VTF and VMT. |
 
 ### Models, sounds and effects
@@ -88,6 +90,7 @@ New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game s
 
 | Page | What you will find |
 | --- | --- |
+| [Detail props preview](features/detail-props-preview.md) | The grass and detail objects of `%detailtype` materials shown in the 3D view without compiling. |
 | [Render modes and display options](features/render-modes-display.md) | 3D render modes, every display toggle, background images, frame rate. |
 | [Lighting preview](features/lighting-preview.md) | Lit mode, baked lighting, shadows, normal maps, cubemap reflections, lightmap tools. |
 | [Player view](features/player-view.md) | Walking the map like a player, with the compiled world, lightmaps and counters. |

@@ -182,7 +182,7 @@ impl HammerProApp {
         if action == Action::SnapToGrid && self.bevel_shortcut(ctx) {
             return;
         }
-        if action == Action::ToggleBoundsOverlay && self.inset_shortcut(ctx) {
+        if action == Action::InsetInteractive && self.inset_shortcut(ctx) {
             return;
         }
         if self.active_tool_action(action) {

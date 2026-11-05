@@ -9,6 +9,28 @@ Hammer Pro est conçu pour rester fluide sur des maps énormes, mais un contenu 
 - **Paramètres > Général > Afficher les images par seconde** affiche les images par seconde dans la barre d'état.
 - **Affichage > Options d'affichage > Informations de la vue 3D** (`O`) affiche la position de la caméra et, pour la vue 3D, les appels de dessin, les triangles et les blocs dessinés, et le nombre de blocs écartés.
 
+- **Paramètres > Rendu > Performance > Afficher le temps d'image et la mémoire dans la vue 3D** (`render.perf_hud`) ajoute un affichage sur la vue 3D : images par seconde et temps d'image, temps CPU du rendu (préparation, enregistrement, envoi), temps GPU par étape (ombres, scène, effets, reflet de l'eau) quand la carte graphique gère les requêtes d'horodatage, mémoire vive et graphique utilisées, carte graphique et niveau de qualité.
+- Par MCP, `get_performance` renvoie les mêmes chiffres, et `run_benchmark` fait tourner la caméra sur un tour complet et renvoie les temps d'image moyen et pire, les millisecondes CPU et GPU et la mémoire.
+
+## Mode de performance
+
+**Paramètres > Rendu > Performance** (`render.performance_mode`, `render.render_scale`) :
+
+| Mode | Effet |
+|---|---|
+| **Auto** (défaut) | Qualité maximale. Seulement si la vue 3D reste sous 20 images par seconde pendant plusieurs secondes (6 sur une puce graphique intégrée, 10 sinon, hors chargement) Hammer Pro baisse la qualité d'un cran, affiche un avis, et propose **Rétablir la qualité maximale** sur la vue 3D et dans les réglages. Après un rétablissement, la réduction automatique reste suspendue jusqu'à ce que vous changiez de mode. Il ne baisse rien sur une carte graphique qui suit. |
+| **Off** | Toujours la qualité maximale, jamais baissée automatiquement. |
+| **Low** | Résolution de rendu à 75 %, sans anticrénelage ni bloom, 4 lumières avec ombres, ombre du soleil en 2048, textures jusqu'à 1024 pixels, l'eau reflète seulement le monde, sans occlusion de la lumière du ciel. |
+| **Very low** | Résolution de rendu à 50 %, sans anticrénelage ni bloom, sans ombres des lumières, sans reflets, normal maps ni volumes de brouillard, ombre du soleil en 1024, textures jusqu'à 512 pixels, props dessinés en boîtes au-delà de 3072 unités. |
+
+**L'échelle de rendu** dessine la vue 3D entre 25 % et 100 % de sa taille puis l'étire sur la fenêtre ; 100 % (défaut) est la qualité maximale. Elle fonctionne avec chaque mode (le plus bas des deux s'applique).
+
+Rien de cela ne change l'aspect par défaut : la vitesse du mode par défaut vient du fait de dessiner moins de ce qu'on ne voit pas (les props et les occulteurs d'ombre hors d'une vue ne sont plus envoyés à la carte graphique, l'ombre du soleil est conservée quand la caméra bouge un peu), pas d'une baisse de qualité.
+
+### Essayer une carte graphique plus faible
+
+La variable d'environnement `HP_ADAPTER` choisit la carte graphique au démarrage : `integrated`, `cpu` (le rendu logiciel de Windows, bon substitut d'une carte très faible) ou une partie du nom d'une carte. `HP_PERF_BASELINE=all` désactive les accélérations du mode par défaut (instances et occulteurs d'ombre hors d'une vue, ombre du soleil conservée, lecture différée de l'exposition, clusters de lumières en parallèle) pour comparer, avec les mêmes images.
+
 ## Réglages d'images par seconde
 
 Page **Paramètres > Rendu**, groupe **Images par seconde** :

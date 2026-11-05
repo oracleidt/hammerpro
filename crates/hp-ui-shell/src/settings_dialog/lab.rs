@@ -99,8 +99,8 @@ pub(crate) const TR: TrTable = &[
     ("shell.lab.particles", "Particles", "Particules"),
     (
         "shell.lab.entity_fx_tip",
-        "Animated approximation of func_smokevolume, env_embers, func_dustcloud and func_dustmotes in the 3D view (the volume box and coloured particles)",
-        "Approximation animée de func_smokevolume, env_embers, func_dustcloud et func_dustmotes dans la vue 3D (la boîte du volume et des particules colorées)",
+        "Animated, textured sprites for func_smokevolume, env_embers, func_dustcloud and func_dustmotes in the 3D view, with the sprites of the game content",
+        "Sprites texturés et animés pour func_smokevolume, env_embers, func_dustcloud et func_dustmotes dans la vue 3D, avec les sprites du contenu du jeu",
     ),
     (
         "shell.lab.particles_tip",

@@ -254,7 +254,7 @@ impl SelectTool {
             }
             None => {
                 let hovered = if self.hover.view == Some(view.index) { self.hover.gizmo } else { None };
-                (pivot, self.gizmo_axes(state), hovered, self.gizmo_mode)
+                (pivot, self.gizmo_axes(state), hovered, self.effective_gizmo_mode(state))
             }
         };
         let Some(layout) = GizmoLayout::with_axes(view, center, axes) else { return };

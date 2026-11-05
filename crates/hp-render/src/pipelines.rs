@@ -273,6 +273,7 @@ pub(crate) const MESH_PASSES: usize = 5;
 pub(crate) struct PipelineSet {
     pub chunk: [[wgpu::RenderPipeline; 2]; MESH_PASSES],
     pub chunk_faded: [[wgpu::RenderPipeline; 2]; 2],
+    pub prepass: [wgpu::RenderPipeline; 2],
     pub model: [[wgpu::RenderPipeline; 2]; MESH_PASSES],
     pub model_faded: [[wgpu::RenderPipeline; 2]; 2],
     pub edge_depth: wgpu::RenderPipeline,
@@ -822,9 +823,57 @@ impl PipelineSet {
                 0.0,
             ),
         };
+        let prepass_pipe = |two_sided: bool| {
+            crate::pipeline_cache::with(device, |cache| {
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("hp-render depth prepass"),
+                    layout: Some(&shared.layout_view),
+                    vertex: wgpu::VertexState {
+                        module: &shared.mesh,
+                        entry_point: Some("vs_chunk"),
+                        compilation_options: wgpu::PipelineCompilationOptions {
+                            constants: &[("ALPHA_TEST", 0.0), ("BLEND_MODE", 0.0), ("TINT_FILTER", 1.0)],
+                            zero_initialize_workgroup_memory: false,
+                        },
+                        buffers: &chunk_vb,
+                    },
+                    primitive: wgpu::PrimitiveState {
+                        topology: wgpu::PrimitiveTopology::TriangleList,
+                        strip_index_format: None,
+                        front_face: wgpu::FrontFace::Ccw,
+                        cull_mode: if two_sided { None } else { Some(wgpu::Face::Back) },
+                        unclipped_depth: false,
+                        polygon_mode: wgpu::PolygonMode::Fill,
+                        conservative: false,
+                    },
+                    depth_stencil: Some(wgpu::DepthStencilState {
+                        format: DEPTH_FORMAT,
+                        depth_write_enabled: Some(true),
+                        depth_compare: Some(wgpu::CompareFunction::GreaterEqual),
+                        stencil: wgpu::StencilState::default(),
+                        bias: wgpu::DepthBiasState { constant: -4, slope_scale: 0.0, clamp: 0.0 },
+                    }),
+                    multisample: wgpu::MultisampleState { count: samples, mask: !0, alpha_to_coverage_enabled: false },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &shared.mesh,
+                        entry_point: Some("fs_fill"),
+                        compilation_options: wgpu::PipelineCompilationOptions::default(),
+                        targets: &[Some(wgpu::ColorTargetState {
+                            format: COLOR_FORMAT,
+                            blend: None,
+                            write_mask: wgpu::ColorWrites::empty(),
+                        })],
+                    }),
+                    multiview_mask: None,
+                    cache,
+                })
+            })
+        };
+        let prepass = [prepass_pipe(false), prepass_pipe(true)];
         Self {
             chunk,
             chunk_faded,
+            prepass,
             model,
             model_faded,
             edge_depth: edge(1.0, true),

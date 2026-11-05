@@ -42,6 +42,7 @@ struct Pipes {
 pub(crate) struct DetailSprites {
     buffer: Option<GrowBuffer>,
     count: u32,
+    swaying: bool,
     material: MaterialId,
     refs: Vec<ObjectId>,
     module: Option<wgpu::ShaderModule>,
@@ -126,11 +127,12 @@ impl Renderer {
             let rect = [s.ul[0], s.ul[1], s.lr[0], s.lr[1]];
             data.push(DetailGpu {
                 origin: finite3(s.origin),
-                orient: match s.orientation {
-                    DetailSpriteOrientation::Fixed => 0,
-                    DetailSpriteOrientation::ScreenAligned => 1,
-                    DetailSpriteOrientation::Vertical => 2,
-                },
+                orient: u32::from(s.sway) << 8
+                    | match s.orientation {
+                        DetailSpriteOrientation::Fixed => 0,
+                        DetailSpriteOrientation::ScreenAligned => 1,
+                        DetailSpriteOrientation::Vertical => 2,
+                    },
                 right: finite3(s.right),
                 slot,
                 up: finite3(s.up),
@@ -143,6 +145,7 @@ impl Renderer {
             self.scene.release_ref(id);
         }
         self.detail.material = material;
+        self.detail.swaying = sprites.iter().any(|s| s.sway > 0);
         self.detail.count = data.len() as u32;
         if !data.is_empty() {
             let bytes: &[u8] = bytemuck::cast_slice(&data);
@@ -179,6 +182,10 @@ impl Renderer {
 
     pub fn detail_sprite_count(&self) -> u32 {
         self.detail.count
+    }
+
+    pub fn detail_sprites_sway(&self) -> bool {
+        self.detail.count > 0 && self.detail.swaying
     }
 
     pub fn set_detail_fade(&mut self, fade: Option<[f32; 2]>) {

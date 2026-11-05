@@ -383,8 +383,11 @@ fn select_elements(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
         }
         (Vec::new(), out)
     };
-    state.settings.selection.element =
+    let want =
         if element == "edge" { hp_app::settings::SelectElement::Edge } else { hp_app::settings::SelectElement::Vertex };
+    if state.settings.selection.element != want {
+        state.set_pick_element(want);
+    }
     state.doc.select(
         &[hp_editor::ObjRef::Solid(solid)],
         if op == SelectOp::Replace { SelectOp::Replace } else { SelectOp::Add },
@@ -426,6 +429,7 @@ fn select_elements(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
             (_, None) => sel.vertices.push((id, p)),
         }
     }
+    state.commit_picks();
     state.settings_dirty = true;
     Ok(ToolResult::json(selection_json(state)))
 }

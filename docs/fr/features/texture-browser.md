@@ -100,6 +100,7 @@ Les vignettes au nom rouge sont des matériaux manquants (damier violet et noir)
 | **Remplacer par celui-ci...** | Ouvre [Rechercher et remplacer des textures](find-replace-textures.md) avec le matériau actuel dans **Rechercher** et celui-ci dans **Remplacer par**. |
 | **Ouvrir le dossier** | Ouvre le dossier du VMT, du VTF ou de l'image dans l'explorateur (seulement pour les fichiers sur le disque, pas dans les archives VPK ou GMA). |
 | **Modifier le matériau...** | Ouvre l'[éditeur de matériaux](material-editor.md) sur ce matériau (ou sur la sélection multiple s'il en fait partie). |
+| **Modifier la texture (éditeur VTF)...** | Ouvre la texture de base du matériau dans l'[éditeur de VTF](vtf-editor.md) intégré. |
 | **Modifier dans l'éditeur de shaders** | Ouvre l'[éditeur de shaders](shader-editor.md) sur le matériau : sur son graphe enregistré s'il en a un à côté de ses fichiers, sinon sur sa texture de base. |
 | **Masquer le dossier ...** | Masque le dossier du matériau dans le navigateur. |
 

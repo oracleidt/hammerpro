@@ -14,6 +14,7 @@ const TOOL_NAMES: &[&str] = &[
     "decal",
     "overlay",
     "clip",
+    "slice",
     "extrude",
     "bevel",
     "vertex",
@@ -41,7 +42,7 @@ domain! { "tool options";
         divider_line (none, solid, dashed, double), line_width, dash, gap, roll_start, roll_end, auto_bank, \
         auto_bank_limit, follow_terrain, lift, base_height, create_as, keep_active), the pipe tool (shape, sides, radius, hollow, wall, segments, segment_length, bend_radius, bend_slices, collar_every, collar_size, collar_length, collar_ends, collar_bends, tex_scale, path, heading, depth, keep_active; create_pipe builds a pipe without the tool), the clip tool (keep: front, back, both; three_point; axis of the \
         Shift+click cut in the 3D view: auto, x, y, z; the cut face material follows the \
-        brush.clip_current_material setting), the path tool (class, base_name, loop, relink, offset; saved with the settings), the extrude / carve \
+        brush.clip_current_material setting), the slice tool (orientation: left_right or top_bottom; segments 1 to 64, the number of cuts; slice_brushes slices without the tool), the path tool (class, base_name, loop, relink, offset; saved with the settings), the extrude / carve \
         tool (mode: carve, extrude; depth; through; new_faces: face, current), the bevel tool (radius, segments, \
         inverse, new_faces: face, current), the vertex tool (merge_distance 0 to 16, weld_distance 0.001 to 64 and weld_target: center, first, last, for the weld_brush_vertices tool and the weld actions) and the displacement tool's brush (mode: select, geometry, alpha, sculpt, tag; \
         effect; axis: normal, subdiv, center, view, view_flat (toward the camera on X and Y only), x, y, z, \

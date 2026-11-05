@@ -75,12 +75,7 @@ impl Default for ColorEditorWindow {
 const CHANNEL_NAMES: [&str; 4] = ["cc.master", "cc.red", "cc.green", "cc.blue"];
 
 fn channel_color(i: usize) -> Color32 {
-    match i {
-        1 => Color32::from_gray(235),
-        2 => Color32::from_gray(170),
-        3 => Color32::from_gray(120),
-        _ => Color32::from_gray(200),
-    }
+    hp_app::data_colors::channel(i)
 }
 
 impl ColorEditorWindow {

@@ -213,6 +213,7 @@ fn issue_text(e: &GeomError) -> String {
         Some(ExtrudeIssue::TooThin) => "create.extrude.err_thin",
         Some(ExtrudeIssue::PastLimits) => "create.extrude.err_limits",
         Some(ExtrudeIssue::NoCut) => "create.extrude.err_no_cut",
+        Some(ExtrudeIssue::ThroughBrush) => "create.extrude.err_through",
         None => return e.to_string(),
     };
     t!(key).to_owned()

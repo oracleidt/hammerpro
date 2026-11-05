@@ -6,7 +6,7 @@ use hp_mcp::tools::MAX_VMF_TEXT;
 use serde_json::json;
 
 use super::semantic::*;
-use super::tools::{AppFn, Args, Outcome, R, edit, obj_json};
+use super::tools::{AppFn, Args, Outcome, R, bounds_json, edit, obj_json};
 
 domain! { "history and clipboard";
     get_history: Read, "Undo history",
@@ -45,6 +45,8 @@ domain! { "history and clipboard";
             "group": boolean("Group each copy."),
             "unique_names": boolean("Rename entities whose name exists already (name_2...)."),
             "name_prefix": string("Prefix added to every entity name."),
+            "preview": boolean("Do not paste: show the copies as a green wireframe ghost in the 3D and 2D views, like the live preview of the Paste special dialog, and answer how many objects, copies and lines it holds with the bounds of the ghost. The ghost stays until clear_preview or a real paste."),
+            "clear_preview": boolean("Remove the ghost left by preview (no text needed)."),
         }, [];
 }
 
@@ -176,8 +178,29 @@ fn special_options(a: &Args<'_>) -> R<PasteSpecial> {
     })
 }
 
-fn paste_special_text(state: &mut AppState, text: &str, opts: &PasteSpecial) -> R<ToolResult> {
+fn paste_special_text(state: &mut AppState, text: &str, opts: &PasteSpecial, preview: bool) -> R<ToolResult> {
     Document::clipboard_bounds(text).map_err(|e| format!("the text has no map objects: {e}"))?;
+    if preview {
+        let ghost = Document::paste_special_preview(text, opts).map_err(|e| e.to_string())?;
+        let mut bounds = hp_geom::Aabb::EMPTY;
+        for [a, b] in &ghost.lines {
+            bounds.extend(*a);
+            bounds.extend(*b);
+        }
+        let answer = json!({
+            "preview": true,
+            "objects": ghost.objects,
+            "copies": ghost.copies,
+            "shown_copies": ghost.shown_copies,
+            "lines": ghost.lines.len(),
+            "bounds": bounds_json((!bounds.is_empty()).then_some(bounds)),
+        });
+        let wf = &mut state.runtime.workflow;
+        wf.paste_preview_serial = wf.paste_preview_serial.wrapping_add(1);
+        wf.paste_preview = Some((wf.paste_preview_serial, std::sync::Arc::new(ghost)));
+        return Ok(ToolResult::json(answer));
+    }
+    state.runtime.workflow.paste_preview = None;
     let objs = edit(state, "paste_special", |doc| doc.paste_special(text, opts))?;
     Ok(ToolResult::json(json!({
         "pasted": objs.len(),
@@ -186,12 +209,17 @@ fn paste_special_text(state: &mut AppState, text: &str, opts: &PasteSpecial) -> 
 }
 
 fn paste_special(state: &mut AppState, a: &Args<'_>) -> R<Outcome> {
+    if a.opt_bool("clear_preview")?.unwrap_or(false) {
+        let had = state.runtime.workflow.paste_preview.take().is_some();
+        return Ok(Outcome::Done(ToolResult::json(json!({ "cleared": had }))));
+    }
     let opts = special_options(a)?;
+    let preview = a.opt_bool("preview")?.unwrap_or(false);
     match (a.opt_str("text", MAX_VMF_TEXT)?, a.opt_bool("from_clipboard")?.unwrap_or(false)) {
         (Some(_), true) => Err("give text or from_clipboard, not both".to_owned()),
-        (Some(text), false) => paste_special_text(state, text, &opts).map(Outcome::Done),
+        (Some(text), false) => paste_special_text(state, text, &opts, preview).map(Outcome::Done),
         (None, true) => Ok(Outcome::AppFn(AppFn(Box::new(move |app, _ctx| {
-            let r = get_clipboard(app).and_then(|text| paste_special_text(&mut app.state, &text, &opts));
+            let r = get_clipboard(app).and_then(|text| paste_special_text(&mut app.state, &text, &opts, preview));
             r.unwrap_or_else(|e| ToolResult::error(format!("paste_special: {e}")))
         })))),
         (None, false) => Err("give text, or from_clipboard: true".to_owned()),
@@ -222,6 +250,19 @@ mod tests {
         assert_eq!(r["pasted"].as_u64().unwrap(), 3);
         assert_eq!(s.doc.stats().solids, n + 3);
         assert_eq!(s.doc.undo_label(), Some("MCP: paste_special"));
+        let n = s.doc.stats().solids;
+        let r = ok(
+            &mut s,
+            "paste_special",
+            json!({ "text": text, "copies": 2, "offset": [0, 0, 96], "rotation": [0, 0, 45], "preview": true }),
+        );
+        assert_eq!((r["copies"].as_u64(), r["shown_copies"].as_u64()), (Some(2), Some(2)));
+        assert!(r["lines"].as_u64().unwrap() > 0);
+        assert_eq!(s.doc.stats().solids, n, "a preview changes nothing");
+        assert!(s.runtime.workflow.paste_preview.is_some());
+        let r = ok(&mut s, "paste_special", json!({ "clear_preview": true }));
+        assert_eq!(r["cleared"], true);
+        assert!(s.runtime.workflow.paste_preview.is_none());
         err(&mut s, "paste_special", json!({ "text": "not a map" }));
         err(&mut s, "paste_special", json!({}));
         err(&mut s, "paste_special", json!({ "text": "x", "from_clipboard": true }));

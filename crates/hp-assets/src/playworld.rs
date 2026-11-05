@@ -410,6 +410,7 @@ impl AssetManager {
                     DetailOrientation::ScreenAligned => hp_render::DetailSpriteOrientation::ScreenAligned,
                     DetailOrientation::Vertical => hp_render::DetailSpriteOrientation::Vertical,
                 },
+                sway: 0,
                 object: detail_object(g),
             });
         }
@@ -701,7 +702,11 @@ impl AssetManager {
         Some(PlayRopes { model, colors })
     }
 
-    fn model_loading(&self, path: &str) -> bool {
+    pub(crate) fn play_world_active(&self) -> bool {
+        self.play_world.uploaded.is_some() || self.play_world.wanted.is_some()
+    }
+
+    pub(crate) fn model_loading(&self, path: &str) -> bool {
         matches!(self.models.map.get(path), None | Some(crate::models::ModelEntry::Loading))
     }
 

@@ -433,6 +433,16 @@ const SKY_COS: array<f32, 6> = array<f32, 6>(0.991445, 0.923880, 0.793353, 0.608
 const SKY_SIN: array<f32, 6> = array<f32, 6>(0.130526, 0.382683, 0.608761, 0.793353, 0.923880, 0.991445);
 const SKY_AREA: array<f32, 6> = array<f32, 6>(0.135517, 0.126282, 0.108441, 0.083209, 0.052308, 0.017841);
 const SKY_OPEN_FLOOR: f32 = 2.112467;
+const SKY_DIRS: array<vec2<f32>, 8> = array<vec2<f32>, 8>(
+    vec2<f32>(1.0, 0.0),
+    vec2<f32>(0.70710678, 0.70710678),
+    vec2<f32>(0.0, 1.0),
+    vec2<f32>(-0.70710678, 0.70710678),
+    vec2<f32>(-1.0, 0.0),
+    vec2<f32>(-0.70710678, -0.70710678),
+    vec2<f32>(0.0, -1.0),
+    vec2<f32>(0.70710678, -0.70710678),
+);
 
 fn sky_uv(xy: vec2<f32>) -> vec2<f32> {
     return vec2<f32>((xy.x - view.sky_vis_a.x) * view.sky_vis_a.z, 1.0 - (xy.y - view.sky_vis_a.y) * view.sky_vis_a.z);
@@ -502,10 +512,10 @@ fn sky_visibility(world: vec3<f32>, n: vec3<f32>, sky3d: bool) -> f32 {
     var coss = SKY_COS;
     var sins = SKY_SIN;
     var areas = SKY_AREA;
+    var dirs = SKY_DIRS;
     var sum = 0.0;
     for (var a = 0u; a < SKY_AZIMUTHS; a++) {
-        let ang = f32(a) * 6.2831853 / f32(SKY_AZIMUTHS);
-        let dir = vec2<f32>(cos(ang), sin(ang));
+        let dir = dirs[a];
         if dot(n.xy, dir) <= 0.0 && n.z <= 0.0 {
             continue;
         }
@@ -663,7 +673,7 @@ fn lighting_world(world: vec3<f32>, n: vec3<f32>, ln: vec3<f32>, frag: vec2<f32>
         indirect = ind.rgb;
         cover = smoothstep(0.02, 0.5, ind.a);
     }
-    if cover < 0.999 {
+    if cover < 0.999 && (view.ambient.r + view.ambient.g + view.ambient.b) > 0.0 {
         sum = view.ambient.rgb * ambient_term(world, ln, sky3d);
     }
     sum = mix(sum, indirect, cover);

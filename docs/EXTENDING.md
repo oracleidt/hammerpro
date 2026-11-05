@@ -585,13 +585,13 @@ the status `Planned`:
 |---|---|
 | selection (1) | MoveToFloor (Alt+N), MoveToCeiling (Alt+U), SnapToGridIndividually (Ctrl+Shift+B), CenterOrigins, TogglePivot, FlipHorizontal (Ctrl+L), FlipVertical, AlignCenterHorizontal, AlignCenterVertical, ToggleGizmoLocal (Ctrl+J) |
 | brush (2) | ToolPolygon (Shift+N), MergeBrushes (Ctrl+Shift+M), MakeHintBrush, NodrawHiddenFaces, TieEachToEntity (Ctrl+Shift+T), ConvertToDetail |
-| workflow (3) | CloseMap (Ctrl+F4), ToggleIgnoreGroups (Ctrl+W), Zoom2dIn (+), Zoom2dOut (-), ResetViewSplits, ViewTop (F2), ViewSide (F3), ViewFront (F4), View3dTextured (F5), View3dFlat (Shift+F5), CycleView2d (Tab), ToggleViewInfo (O), ToggleBoundsOverlay (I), ShowHistory, ShowToolbar, ShowToolPalette, ShowStatusBar, SaveLayout, ResetLayout |
+| workflow (2) | CloseMap (Ctrl+F4), ToggleIgnoreGroups (Ctrl+W), Zoom2dIn (+), Zoom2dOut (-), ResetViewSplits, ViewTop (F2), ViewSide (F3), ViewFront (F4), View3dTextured (F5), View3dFlat (Shift+F5), CycleView2d (Tab), ToggleViewInfo (O), ToggleBoundsOverlay, ShowHistory, ShowToolbar, ShowToolPalette, ShowStatusBar, SaveLayout, ResetLayout |
 | instances (4) | CreateInstance (Alt+S), EditInstance, CollapseInstances, CollapseAllInstances, InstancesHidden, InstancesTinted, InstancesNormal |
 | visibility (5) | ToolCordon, ToggleCordon, MoveToVisgroup, HiddenToVisgroup |
 | helpers (6) | ToggleOverlays, ToggleConnections, ToggleEditorObjects, TogglePointEntities, ToggleEntityNames, SimulateRopes |
 | mesh (7) | VertexSplitFace (Ctrl+F), VertexScale (Alt+E), DispSubdivide, DispInvertAlpha, DispNoise, DispToMesh, MeshToDisp, DispConformMesh, DispTileSelection |
 | entities (8) | CopyKeyvalues, PasteKeyvalues, FindReplaceText (Ctrl+Alt+R), EditColor (C), EditSoundscapes, ShowSoundBrowser, ShowParticleBrowser, EntityHelp, ToolPath, PathInsertPoint, PathRemovePoint |
-| render (9) | ToggleGrid3d (P), FarPlaneCloser, FarPlaneFarther, RenderUnshaded (Alt+6), RenderSmoothingGroups (Alt+7), ToggleRenderEffects, ToggleSkyPreview, ToggleSkybox3d (Alt+V), ToggleCollisionModels, ToggleFogPreview, ToggleAnimatedMaterials, ToggleModelFade, ToggleOpaqueMaterials, ToggleWalkable, ToggleDisplacements, BackgroundImages |
+| render (9) | ToggleGrid3d (P), FarPlaneCloser, FarPlaneFarther, RenderUnshaded (Alt+6), RenderSmoothingGroups (Alt+7), RenderColorCorrected (Alt+9), ToggleDetailPreview, ToggleRenderEffects, ToggleSkyPreview, ToggleSkybox3d (Alt+V), ToggleCollisionModels, ToggleFogPreview, ToggleAnimatedMaterials, ToggleModelFade, ToggleOpaqueMaterials, ToggleWalkable, ToggleDisplacements, BackgroundImages |
 | lighting (10) | RenderLightmapGrid (Alt+8), RenderBaked (Ctrl+F5), BakeLighting, BakeAroundCamera, StopBake, SelectTinyLightmapFaces, ShowLighting |
 | placement (11) | ToolSprinkle, CreatePrefab (Ctrl+R), InsertOriginalPrefab (Alt+Shift+C), ShowPrefabs |
 | compile (12) | CompileNow, CancelCompile, BatchCompile |
@@ -1168,6 +1168,13 @@ both themes (the overlays of the views). The test
 `ui_crates_hold_no_hued_chrome_colors` (hp-app) scans the UI crates: a hued
 color literal outside the content modules it lists, a `VIEW_*` or `AXIS_*`
 color outside the view crates, or a dark only constant in a panel fails it.
+
+Colors that carry meaning in the data (the node categories and pin types of
+the shader editor, the R, G and B channels of the color grading curves, the
+grid over a terrain thumbnail) are not chrome: they live in
+`crates/hp-app/src/data_colors.rs`, the one file the test allows hued
+literals in (any `data_colors.rs` of a UI crate is exempt, and a second one
+fails the test `data_colors_live_in_one_file`). Chrome never reads from it.
 
 ## Translations
 

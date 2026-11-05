@@ -1,8 +1,8 @@
 use hp_app::extend::{SettingsPage, page_order};
 use hp_app::i18n::TrTable;
 use hp_app::settings::{
-    Disp2dSetting, Disp2dViewSetting, DispWalkMode, Models2dSetting, PropShadowSetting, RenderSettings,
-    StaticPropShadows, ToneModeSetting, WaterDetailSetting,
+    Disp2dSetting, Disp2dViewSetting, DispWalkMode, Models2dSetting, PerformanceMode, PropShadowSetting,
+    RenderSettings, StaticPropShadows, ToneModeSetting, WaterDetailSetting,
 };
 use hp_app::{AppState, t, tf};
 
@@ -90,6 +90,7 @@ impl SettingsPage for RenderPage {
             t!("shell.render.sky_see_through_tip"),
         );
         changed |= check(ui, &mut r.water_preview, t!("shell.render.water"), t!("shell.render.water_tip"));
+        changed |= check(ui, &mut r.detail_preview, t!("shell.render.detail"), t!("shell.render.detail_tip"));
         ui.horizontal(|ui| {
             ui.label(t!("shell.render.water_detail")).on_hover_text(t!("shell.render.water_detail_tip"));
             egui::ComboBox::from_id_salt("hp_shell_render_water_detail")
@@ -386,6 +387,45 @@ impl SettingsPage for RenderPage {
         if ui.button(t!("shell.render.vram_free")).on_hover_text(t!("shell.render.vram_free_tip")).clicked() {
             state.runtime.gpu.release_request = Some(false);
         }
+
+        heading(ui, t!("shell.render.perf"));
+        let perf = &mut state.runtime.render.perf;
+        egui::Grid::new("hp_shell_render_perf").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
+            ui.label(t!("shell.render.perf_mode"));
+            let before = r.performance_mode;
+            egui::ComboBox::from_id_salt("hp_shell_render_perf_mode")
+                .selected_text(perf_mode_label(r.performance_mode))
+                .show_ui(ui, |ui| {
+                    for m in PerformanceMode::ALL {
+                        ui.selectable_value(&mut r.performance_mode, m, perf_mode_label(m))
+                            .on_hover_text(perf_mode_tip(m));
+                    }
+                });
+            changed |= before != r.performance_mode;
+            ui.end_row();
+            ui.label(t!("shell.render.render_scale"));
+            changed |= ui
+                .add(
+                    egui::Slider::new(&mut r.render_scale, 0.25..=1.0)
+                        .custom_formatter(|v, _| format!("{:.0}%", v * 100.0)),
+                )
+                .on_hover_text(t!("shell.render.render_scale_tip"))
+                .changed();
+            ui.end_row();
+        });
+        changed |= check(ui, &mut r.perf_hud, t!("shell.render.perf_hud"), t!("shell.render.perf_hud_tip"));
+        let level = perf.level(r.performance_mode);
+        ui.label(egui::RichText::new(tf!("shell.render.perf_now", level.id().replace('_', " "), perf.adapter)).weak());
+        if perf.reduced_automatically(r.performance_mode) || perf.auto_locked {
+            let label = if perf.auto_locked { t!("shell.render.perf_resume") } else { t!("shell.render.perf_restore") };
+            if ui.button(label).clicked() {
+                if perf.auto_locked {
+                    perf.unlock();
+                } else {
+                    perf.restore_request = true;
+                }
+            }
+        }
         if changed {
             state.settings_dirty = true;
         }
@@ -410,6 +450,24 @@ fn water_detail_label(m: WaterDetailSetting) -> &'static str {
         WaterDetailSetting::Simple => t!("shell.render.water_simple"),
         WaterDetailSetting::ReflectWorld => t!("shell.render.water_reflect_world"),
         WaterDetailSetting::ReflectAll => t!("shell.render.water_reflect_all"),
+    }
+}
+
+fn perf_mode_label(m: PerformanceMode) -> &'static str {
+    match m {
+        PerformanceMode::Auto => t!("shell.render.perf_auto"),
+        PerformanceMode::Off => t!("shell.render.perf_off"),
+        PerformanceMode::Low => t!("shell.render.perf_low"),
+        PerformanceMode::VeryLow => t!("shell.render.perf_very_low"),
+    }
+}
+
+fn perf_mode_tip(m: PerformanceMode) -> &'static str {
+    match m {
+        PerformanceMode::Auto => t!("shell.render.perf_auto_tip"),
+        PerformanceMode::Off => t!("shell.render.perf_off_tip"),
+        PerformanceMode::Low => t!("shell.render.perf_low_tip"),
+        PerformanceMode::VeryLow => t!("shell.render.perf_very_low_tip"),
     }
 }
 
@@ -602,6 +660,12 @@ pub(crate) const TR: TrTable = &[
         "Dessine la pièce autour de la sky_camera à son échelle autour de la carte, comme en jeu",
     ),
     ("shell.render.water", "Water preview", "Aperçu de l'eau"),
+    ("shell.render.detail", "Detail props preview (grass)", "Aperçu des detail props (herbe)"),
+    (
+        "shell.render.detail_tip",
+        "Scatters the detail sprites and models of the detail.vbsp group named by the %detailtype of a material (grass and the like) over the displacements and brush faces that use it, like the game does at compile time: only around the 3D camera, a bounded number, fading with the distance",
+        "Répartit les sprites et modèles de détail du groupe du detail.vbsp nommé par le %detailtype d'un matériau (herbe et autres) sur les displacements et faces de brush qui l'utilisent, comme le jeu à la compilation : seulement autour de la caméra 3D, en nombre borné, avec un fondu selon la distance",
+    ),
     (
         "shell.render.water_tip",
         "Draws water like in game: refraction of what is under it, water fog, reflection of the scene and the sky, \
@@ -905,8 +969,8 @@ pub(crate) const TR: TrTable = &[
     ("shell.render.vram_auto", "Automatic", "Automatique"),
     (
         "shell.render.vram_budget_tip",
-        "How much graphics card memory Hammer Pro may use. Automatic: 90% of what Windows gives the program (or 3 GB, 1.5 GB on integrated graphics, when the driver does not tell). Above 85% the maps open in other tabs are freed from the graphics card; above the budget textures are shown at a lower resolution until memory is free again.",
-        "Quantité de mémoire de la carte graphique que Hammer Pro peut utiliser. Automatique : 90 % de ce que Windows donne au programme (ou 3 Go, 1,5 Go sur une puce graphique intégrée, quand le pilote ne le dit pas). Au-delà de 85 %, les maps ouvertes dans les autres onglets sont retirées de la carte graphique ; au-delà du budget, les textures sont affichées en plus basse résolution jusqu'à ce que la mémoire se libère.",
+        "How much graphics card memory Hammer Pro may use. Automatic: 90% of what Windows gives the program (or 3 GB, 1.5 GB on integrated graphics, when the driver does not tell), at most 2 GB on integrated graphics, which use the system memory. Above 85% the maps open in other tabs are freed from the graphics card; above the budget textures are shown at a lower resolution until memory is free again.",
+        "Quantité de mémoire de la carte graphique que Hammer Pro peut utiliser. Automatique : 90 % de ce que Windows donne au programme (ou 3 Go, 1,5 Go sur une puce graphique intégrée, quand le pilote ne le dit pas), au plus 2 Go sur une puce graphique intégrée, qui utilise la mémoire du système. Au-delà de 85 %, les maps ouvertes dans les autres onglets sont retirées de la carte graphique ; au-delà du budget, les textures sont affichées en plus basse résolution jusqu'à ce que la mémoire se libère.",
     ),
     (
         "shell.render.vram_keep_tabs",
@@ -921,6 +985,51 @@ pub(crate) const TR: TrTable = &[
     ("shell.render.vram_now", "In use: {0} MB of {1} MB ({2})", "Utilisée : {0} Mo sur {1} Mo ({2})"),
     ("shell.render.vram_driver", "measured by the driver", "mesurée par le pilote"),
     ("shell.render.vram_estimate", "estimated", "estimée"),
+    ("shell.render.perf", "Performance", "Performance"),
+    ("shell.render.perf_mode", "Performance mode", "Mode de performance"),
+    ("shell.render.perf_auto", "Auto", "Auto"),
+    ("shell.render.perf_off", "Off (full quality)", "Désactivé (qualité maximale)"),
+    ("shell.render.perf_low", "Low", "Bas"),
+    ("shell.render.perf_very_low", "Very low", "Très bas"),
+    (
+        "shell.render.perf_auto_tip",
+        "Full quality. Only if the 3D view stays under 20 FPS for several seconds the quality is lowered one step, with a notice and a button to restore it.",
+        "Qualité maximale. Seulement si la vue 3D reste sous 20 images par seconde pendant plusieurs secondes, la qualité baisse d'un cran, avec un avis et un bouton pour la rétablir.",
+    ),
+    (
+        "shell.render.perf_off_tip",
+        "Always full quality, never lowered automatically.",
+        "Toujours la qualité maximale, jamais baissée automatiquement.",
+    ),
+    (
+        "shell.render.perf_low_tip",
+        "75% render resolution, no antialiasing, no bloom, 4 shadowed lights, a 2048 sun shadow, textures up to 1024 pixels, water reflects the world only.",
+        "Résolution de rendu à 75 %, sans anticrénelage ni bloom, 4 lumières avec ombres, ombre du soleil en 2048, textures jusqu'à 1024 pixels, l'eau reflète seulement le monde.",
+    ),
+    (
+        "shell.render.perf_very_low_tip",
+        "50% render resolution, no antialiasing, bloom, light shadows, reflections, normal maps or fog volumes, a 1024 sun shadow, textures up to 512 pixels.",
+        "Résolution de rendu à 50 %, sans anticrénelage, bloom, ombres des lumières, reflets, normal maps ni volumes de brouillard, ombre du soleil en 1024, textures jusqu'à 512 pixels.",
+    ),
+    ("shell.render.render_scale", "Render scale (3D view)", "Échelle de rendu (vue 3D)"),
+    (
+        "shell.render.render_scale_tip",
+        "Draws the 3D view at this share of its size and stretches it to the window. 100% is full quality; lower is faster on weak graphics cards.",
+        "Dessine la vue 3D à cette part de sa taille puis l'étire à la fenêtre. 100 % est la qualité maximale ; plus bas est plus rapide sur les cartes graphiques faibles.",
+    ),
+    (
+        "shell.render.perf_hud",
+        "Show frame time and memory in the 3D view",
+        "Afficher le temps d'image et la mémoire dans la vue 3D",
+    ),
+    (
+        "shell.render.perf_hud_tip",
+        "FPS, CPU and GPU time per frame (shadows, scene, post effects, water), memory in use and the quality level.",
+        "Images par seconde, temps CPU et GPU par image (ombres, scène, effets, eau), mémoire utilisée et niveau de qualité.",
+    ),
+    ("shell.render.perf_now", "Quality level now: {0} ({1})", "Niveau de qualité actuel : {0} ({1})"),
+    ("shell.render.perf_restore", "Restore full quality", "Rétablir la qualité maximale"),
+    ("shell.render.perf_resume", "Allow automatic reduction again", "Réautoriser la réduction automatique"),
     ("shell.render.vram_free", "Free graphics memory now", "Libérer la mémoire graphique maintenant"),
     (
         "shell.render.vram_free_tip",

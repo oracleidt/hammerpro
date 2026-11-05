@@ -103,6 +103,31 @@ impl WaterDetailSetting {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum PerformanceMode {
+    #[default]
+    Auto,
+    Off,
+    Low,
+    VeryLow,
+}
+
+impl PerformanceMode {
+    pub const ALL: [PerformanceMode; 4] =
+        [PerformanceMode::Auto, PerformanceMode::Off, PerformanceMode::Low, PerformanceMode::VeryLow];
+
+    pub const fn id(self) -> &'static str {
+        match self {
+            PerformanceMode::Auto => "Auto",
+            PerformanceMode::Off => "Off",
+            PerformanceMode::Low => "Low",
+            PerformanceMode::VeryLow => "VeryLow",
+        }
+    }
+}
+
+pub const MIN_RENDER_SCALE: f32 = 0.25;
+
 pub const MIN_VRAM_BUDGET_MB: u32 = 256;
 pub const MAX_VRAM_BUDGET_MB: u32 = 262_144;
 
@@ -133,6 +158,7 @@ pub struct RenderSettings {
     pub skybox_3d: bool,
     pub sky_see_through: bool,
     pub water_preview: bool,
+    pub detail_preview: bool,
     pub water_detail: WaterDetailSetting,
     pub fog_preview: bool,
     pub fog_volume_preview: bool,
@@ -187,6 +213,9 @@ pub struct RenderSettings {
     pub vsync: bool,
     pub vram_budget_mb: u32,
     pub keep_background_maps_on_gpu: bool,
+    pub performance_mode: PerformanceMode,
+    pub render_scale: f32,
+    pub perf_hud: bool,
 }
 
 impl Default for RenderSettings {
@@ -216,6 +245,7 @@ impl Default for RenderSettings {
             skybox_3d: true,
             sky_see_through: false,
             water_preview: true,
+            detail_preview: false,
             water_detail: WaterDetailSetting::ReflectAll,
             fog_preview: true,
             fog_volume_preview: true,
@@ -270,6 +300,9 @@ impl Default for RenderSettings {
             vsync: true,
             vram_budget_mb: 0,
             keep_background_maps_on_gpu: true,
+            performance_mode: PerformanceMode::Auto,
+            render_scale: 1.0,
+            perf_hud: false,
         }
     }
 }
@@ -296,6 +329,10 @@ impl RenderSettings {
     pub fn vram_budget(&self) -> Option<u64> {
         (self.vram_budget_mb > 0)
             .then(|| u64::from(self.vram_budget_mb.clamp(MIN_VRAM_BUDGET_MB, MAX_VRAM_BUDGET_MB)) << 20)
+    }
+
+    pub fn scale(&self) -> f32 {
+        if self.render_scale.is_finite() { self.render_scale.clamp(MIN_RENDER_SCALE, 1.0) } else { 1.0 }
     }
 
     pub fn near(&self) -> f32 {
@@ -334,6 +371,25 @@ mod tests {
         assert_eq!(s.prop_shadows, PropShadowSetting::Auto);
         let mesh: RenderSettings = toml::from_str("prop_shadows = \"Collision\"").expect("parse");
         assert_eq!(mesh.prop_shadows, PropShadowSetting::Collision);
+    }
+
+    #[test]
+    fn performance_settings_default_to_full_quality_and_load_by_name() {
+        let s: RenderSettings = toml::from_str(
+            "grid_3d = true
+",
+        )
+        .expect("parse");
+        assert_eq!(s.performance_mode, PerformanceMode::Auto);
+        assert_eq!((s.render_scale, s.scale(), s.perf_hud), (1.0, 1.0, false));
+        for m in PerformanceMode::ALL {
+            let r: RenderSettings = toml::from_str(&format!("performance_mode = \"{}\"", m.id())).expect("parse");
+            assert_eq!(r.performance_mode, m);
+        }
+        let odd = RenderSettings { render_scale: 0.01, ..Default::default() };
+        assert_eq!(odd.scale(), MIN_RENDER_SCALE);
+        assert_eq!(RenderSettings { render_scale: 7.0, ..Default::default() }.scale(), 1.0);
+        assert_eq!(RenderSettings { render_scale: f32::NAN, ..Default::default() }.scale(), 1.0);
     }
 
     #[test]

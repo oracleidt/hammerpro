@@ -52,9 +52,11 @@ The clipboard is the system clipboard, as VMF text: top level `solid`, `entity` 
 | **Rotate around the pivot** | The rotation turns around the movable pivot instead of the center of the copied objects. Only available while the pivot is shown (**Movable pivot**) | On |
 
 - The dialog shows **Offset of the last copy** so you can check the total.
+- While the dialog is open, every change (copies, offset, rotation, start at the original position, rotate around the pivot) immediately shows the result as a green wireframe ghost of all the copies in the 3D and 2D views, and the dialog says how many objects and copies the preview shows. Nothing is pasted until you click **Paste** or press `Enter`; **Cancel**, `Escape` or closing the window removes the ghost. The preview follows the clipboard if it changes while the dialog is open, and with a very large number of copies it shows the first ones (the dialog says how many).
 - Renamed entities keep working together: the keys of the pasted entities that name another pasted entity (targets, filters) follow the new names.
 - `Enter` pastes, `Escape` closes. The values stay for the session.
 - The whole paste is one undo step.
+- The MCP tool `paste_special` pastes text or the clipboard (`text` or `from_clipboard`) with `copies`, `offset`, `rotation`, `pivot`, `start_at_original`, `group`, `unique_names` and `name_prefix`. With `preview: true` it pastes nothing and shows the same green ghost in the views, answering the objects, copies, shown copies, number of lines and bounds of the ghost; `clear_preview: true` removes it, and a real paste clears it too.
 
 ## Array duplicate
 

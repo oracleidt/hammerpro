@@ -185,8 +185,16 @@ impl Package for Lab {
                 app.state.settings_dirty = true;
             }
             Action::ParticlePreview => {
-                let p = &mut app.state.runtime.lab.particle_preview;
-                p.open = !p.open;
+                let opening = !app.state.runtime.lab.particle_preview.open;
+                if opening && app.state.runtime.lab.particle_preview.selected.is_none() {
+                    let name = hp_ui_lab::particle_preview::particle_entities(&app.state).into_iter().find_map(|id| {
+                        let node = app.state.doc.scene().entity(id)?;
+                        let n = node.entity.get("effect_name")?.trim();
+                        (!n.is_empty()).then(|| n.to_owned())
+                    });
+                    app.state.runtime.lab.particle_preview.selected = name;
+                }
+                app.state.runtime.lab.particle_preview.open = opening;
             }
             Action::FlyApplyTexture
             | Action::FlyApplyTextureBrush
@@ -963,7 +971,11 @@ fn particles_tick(app: &mut HammerProApp, ctx: &egui::Context) {
         ctx.request_repaint();
     }
     if !app.state.settings.lab.show_particles && !app.state.runtime.lab.particle_preview.open {
-        if std::mem::take(&mut app.pkg.lab.particles_shown)
+        let fx_on = app.state.settings.lab.show_entity_fx
+            && app.pkg.lab.particles.lock().is_ok_and(|s| !s.fx_sprites.is_empty());
+        if fx_on {
+            particles_draw(app);
+        } else if std::mem::take(&mut app.pkg.lab.particles_shown)
             && let Some(gfx) = app.state.gfx.as_mut()
         {
             gfx.renderer.set_particles(&[]);
@@ -1133,38 +1145,22 @@ fn map_particle_files(app: &HammerProApp) -> Vec<String> {
 
 fn particles_draw(app: &mut HammerProApp) {
     let lab = &mut app.pkg.lab;
+    let eye = app.state.cameras.cam3d.pos.as_vec3();
     let AppState { assets, gfx, .. } = &mut app.state;
     let Ok(mut shared) = lab.particles.lock() else { return };
     shared.sprite_layer = gfx.is_some();
     let Some(gfx) = gfx.as_mut() else { return };
-    if shared.sprites.is_empty() && !lab.particles_shown {
+    if shared.sprites.is_empty() && shared.fx_sprites.is_empty() && !lab.particles_shown {
         return;
     }
-    let mut ids: Vec<[Option<hp_render::MaterialId>; 2]> = vec![[None; 2]; shared.materials.len()];
-    let materials = &shared.materials;
-    let instances: Vec<hp_render::ParticleInstance> = shared
-        .sprites
-        .iter()
-        .filter_map(|p| {
-            let i = p.material as usize;
-            let additive = p.blend == hp_render::ParticleBlend::Additive;
-            let slot = &mut ids.get_mut(i)?[usize::from(additive)];
-            let material = *slot.get_or_insert_with(|| assets.sprite_material_id(&materials[i], additive));
-            Some(hp_render::ParticleInstance {
-                pos: p.pos,
-                size: p.size,
-                axis: p.axis,
-                roll: p.roll,
-                uv: p.uv,
-                color: p.color,
-                bright: p.bright,
-                orient: p.orient,
-                material,
-                screen_fade: p.screen_fade,
-                blend: p.blend,
-            })
-        })
-        .collect();
+    let mut instances = hp_ui_lab::particles::instances_of(&shared.sprites, &shared.materials, &mut **assets);
+    if !shared.fx_sprites.is_empty() {
+        instances.extend(hp_ui_lab::particles::instances_of(&shared.fx_sprites, &shared.fx_materials, &mut **assets));
+        instances.sort_by(|a, b| {
+            let d = |p: &hp_render::ParticleInstance| (glam::Vec3::from(p.pos) - eye).length_squared();
+            d(b).total_cmp(&d(a))
+        });
+    }
     lab.particles_shown = !instances.is_empty();
     gfx.renderer.set_particles(&instances);
 }

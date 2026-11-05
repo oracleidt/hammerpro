@@ -24,6 +24,7 @@ mod tr;
 pub mod model_bvh;
 pub mod prefab_place;
 pub mod roadside;
+mod slice;
 mod sprinkle;
 pub mod sprinkle_def;
 
@@ -53,6 +54,9 @@ pub use pipe::{PIPE_TR, PipeTool};
 pub use polygon::{MAX_POLYGON_POINTS, PointCheck, PolygonOptions, PolygonTool, check_point, is_convex_outline};
 pub use prefab_place::{PREFAB_TR, insert_prefab};
 pub use road::{ROAD_TR, RoadTool};
+pub use slice::{
+    MAX_SEGMENTS, Orientation, SLICE_TR, SliceLayout, SliceTool, orientation_axis, snap_position, view_basis,
+};
 pub use sprinkle::{SPRINKLE_TR, SprinkleTool, user_sprinkle_dir};
 pub use tr::TR;
 
@@ -66,6 +70,7 @@ pub fn register_translations() {
     hp_app::i18n::register(ROAD_TR);
     hp_app::i18n::register(PIPE_TR);
     hp_app::i18n::register(BEVEL_TR);
+    hp_app::i18n::register(SLICE_TR);
     hp_app::i18n::register(INSET_MODAL_TR);
 }
 
@@ -76,6 +81,7 @@ pub fn tools() -> Vec<Box<dyn hp_app::Tool>> {
         Box::new(CurveTool::new()),
         Box::new(EntityTool::new()),
         Box::new(ClipTool::new()),
+        Box::new(SliceTool::new()),
         Box::new(ExtrudeTool::new()),
         Box::new(BevelTool::new()),
         Box::new(DecalTool::new()),

@@ -11,6 +11,8 @@ use hp_render::Overlay;
 
 use crate::common::{COLOR_FRONT, COLOR_GHOST, COLOR_PENDING, DistanceSnap, Ov, fmt_len, paint_label, rgba};
 
+const COLOR_CARVE: egui::Color32 = hp_app::data_colors::CARVE;
+
 pub const DEPTH_KEY: Key = Key::E;
 
 pub const INDIVIDUAL_KEY: Key = Key::I;
@@ -273,7 +275,7 @@ impl InsetModal {
         self.faces
             .iter()
             .zip(self.depths())
-            .filter(|(_, d)| *d >= MIN_EXTRUDE_DEPTH)
+            .filter(|(_, d)| d.abs() >= MIN_EXTRUDE_DEPTH)
             .map(|(f, d)| (f.face, d))
             .collect()
     }
@@ -345,8 +347,7 @@ impl InsetModal {
         match self.target {
             InsetTarget::Thickness => self.thickness = v.clamp(0.0, MAX_INSET),
             InsetTarget::Depth => {
-                let floor = if self.kind == ModalKind::Extrude { 0.0 } else { -MAX_INSET };
-                self.depth = v.clamp(floor, MAX_INSET);
+                self.depth = v.clamp(-MAX_INSET, MAX_INSET);
                 self.raw_depth = self.depth;
             }
         }
@@ -388,10 +389,7 @@ impl InsetModal {
             InsetTarget::Depth => {
                 let from = self.depth_anchor.unwrap_or(pos);
                 let n = normal_pixels(view, self.center, self.normal);
-                let mut v = depth_from_drag(self.depth_base, pos - from, n, ppu);
-                if self.kind == ModalKind::Extrude {
-                    v = v.max(0.0);
-                }
+                let v = depth_from_drag(self.depth_base, pos - from, n, ppu);
                 self.raw_depth = v;
                 self.depth = if snap.is_on() { self.aligned_depth(v) } else { v };
             }
@@ -544,17 +542,22 @@ impl InsetModal {
     fn overlay_extrude(&self, state: &AppState, view: &ViewInfo, out: &mut Overlay) {
         let failed = self.error(state).is_some();
         let mut ov = Ov::new(out, view);
-        let edge = rgba(if failed { hp_app::theme::VIEW_ERROR } else { COLOR_PENDING }, 1.0);
-        let fill = rgba(COLOR_PENDING, 0.28);
         let ghost = rgba(COLOR_GHOST, 0.8);
         for (f, d) in self.faces.iter().zip(self.depths()) {
-            if d < MIN_EXTRUDE_DEPTH {
+            if d.abs() < MIN_EXTRUDE_DEPTH {
                 continue;
             }
+            let carving = d < 0.0;
+            let tone = if carving { COLOR_CARVE } else { COLOR_PENDING };
+            let edge = rgba(if failed { hp_app::theme::VIEW_ERROR } else { tone }, 1.0);
+            let fill = rgba(tone, 0.28);
             let lift = f.plane.normal * d;
             let top: Vec<DVec3> = f.vertices.iter().map(|v| *v + lift).collect();
             for v in &f.vertices {
                 ov.xray_line(*v, *v + lift, ghost);
+            }
+            if carving {
+                ov.polygon_outline(&f.vertices, edge, true);
             }
             ov.polygon_outline(&top, edge, true);
             ov.polygon_fill(&top, fill);
@@ -875,8 +878,8 @@ pub const INSET_MODAL_TR: hp_app::i18n::TrTable = &[
     ("extrude_modal.distance", "Extrude", "Extrusion"),
     (
         "extrude_modal.too_small",
-        "Move the mouse along the face normal or type a distance of at least 0.125 first",
-        "Déplacez la souris le long de la normale de la face ou tapez d'abord une distance d'au moins 0,125",
+        "Move the mouse along the face normal or type a distance of at least 0.125 (negative carves) first",
+        "Déplacez la souris le long de la normale de la face ou tapez d'abord une distance d'au moins 0,125 (négative : creuser)",
     ),
     (
         "extrude_modal.hint_wait",
@@ -885,10 +888,10 @@ pub const INSET_MODAL_TR: hp_app::i18n::TrTable = &[
     ),
     (
         "extrude_modal.hint",
-        "Mouse: distance along the face normal, Alt: alternate grid, Ctrl: force the grid, digits: exact value, {0} or click: apply, {1} or right click: cancel",
-        "Souris : distance le long de la normale de la face, Alt : grille alternative, Ctrl : forcer la grille, chiffres : valeur exacte, {0} ou clic : appliquer, {1} ou clic droit : annuler",
+        "Mouse: distance along the face normal (inward = carve into the brush), Alt: alternate grid, Ctrl: force the grid, digits: exact value, {0} or click: apply, {1} or right click: cancel",
+        "Souris : distance le long de la normale de la face (vers l'intérieur = creuser le brush), Alt : grille alternative, Ctrl : forcer la grille, chiffres : valeur exacte, {0} ou clic : appliquer, {1} ou clic droit : annuler",
     ),
-    ("extrude_modal.done", "Extruded {0} new brush(es)", "{0} nouveau(x) brush(es) extrudé(s)"),
+    ("extrude_modal.done", "Extruded or carved {0} brush(es)", "{0} brush(es) extrudé(s) ou creusé(s)"),
     (
         "extrude_modal.need_face",
         "Select faces or put the mouse over a face in a 3D view to extrude",
@@ -1012,7 +1015,11 @@ mod tests {
         let out = if n.length() > 0.5 { n.normalized() * 90.0 } else { Vec2::new(0.0, -90.0) };
         m.on_pointer(&view, c, DistanceSnap::OFF);
         m.on_pointer(&view, c - out, DistanceSnap::OFF);
-        assert_eq!(m.depth(), 0.0, "pulling inward is not an extrusion");
+        assert!(m.depth() < 0.0, "pulling inward carves");
+        let mut carve = Overlay::default();
+        m.overlay(&state, &view, &mut carve);
+        assert!(!carve.lines.is_empty() || !carve.lines_on_top.is_empty());
+        m.set_values(0.0, 0.0);
         assert!(!m.confirm(&mut state));
         assert!(m.is_active());
         m.on_pointer(&view, c + out, DistanceSnap::OFF);
@@ -1035,6 +1042,27 @@ mod tests {
         assert!(!m.is_active());
         assert_eq!(state.doc.scene().solids().len(), before + 1);
         assert_eq!(state.doc.undo_label(), Some("Extrude face"));
+    }
+
+    #[test]
+    fn a_negative_extrusion_carves_the_brush_instead_of_adding_one() {
+        let mut state = crate::tests_support::settle();
+        let before = state.doc.scene().solids().len();
+        let volume = state.doc.scene().solid(3).expect("solid").geom.volume();
+        let mut m = InsetModal::start_extrude(&state, &[FaceRef::new(3, 5)]).expect("modal");
+        for ch in "-2".chars() {
+            assert!(m.type_char(ch));
+        }
+        assert_eq!(m.depth(), -2.0);
+        assert!(m.label(&state).contains("-2"));
+        assert_eq!(m.brushes(&state), Some(1));
+        assert!(m.confirm(&mut state));
+        assert_eq!(state.doc.scene().solids().len(), before);
+        assert_eq!(state.doc.undo_label(), Some("Carve face"));
+        let after = state.doc.scene().solid(3).expect("solid");
+        assert!(after.geom.valid && after.geom.volume() < volume);
+        assert!(state.doc.undo());
+        assert!((state.doc.scene().solid(3).expect("solid").geom.volume() - volume).abs() < 1e-6);
     }
 
     #[test]

@@ -59,6 +59,8 @@ Choisissez le dossier racine, le dossier dessous et le nom, puis **Enregistrer l
 
 ## Prévisualiser les entités color_correction dans les vues 3D
 
+Le plus rapide est le mode de rendu **3D Correction colorimétrique** (**Affichage > Mode de rendu 3D**, `Alt+9`, la liste des modes de la barre d'outils, MCP `set_render_mode` avec `color_corrected`) : la vue texturée avec les tables des entités de la map appliquées, sans activer le réglage ci-dessous. C'est le mode texturé plus l'aperçu, donc il suit les mêmes règles.
+
 **Vue > Options d'affichage > Prévisualiser les entités color_correction** (action `toggle_color_correction_preview`, réglage `lab.color_correction_preview`, désactivé par défaut) applique les tables des entités de la map aux vues 3D, depuis la caméra de l'éditeur ou, dans la [vue joueur](player-view.md), depuis la caméra du joueur. Il suit le jeu :
 
 | Clé | Effet |

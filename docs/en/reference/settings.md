@@ -239,7 +239,7 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `link_2d_zoom` | `false` | Zooming one 2D view zooms the others. |
 | `units` | `"Units"` | Lengths of the status bar: `Units`, `Inches`, `FeetInches`, `Meters` (one unit = 2.54 cm). |
 | `show_view_info` | `false` | Frame rate, camera position and angles in the 3D view (`O`). |
-| `show_bounds` | `false` | Bounding boxes of visible objects (`I`). |
+| `show_bounds` | `false` | Yellow bounding boxes of visible objects. No shortcut (`I` is the interactive inset): toggle it from **View > Display options > Bounding boxes**. |
 | `show_toolbar`, `show_tool_palette`, `show_status_bar` | `true` | **View > Panels**. |
 | `show_history` | `false` | Undo history tab. |
 | `layouts` | `{}` | Saved layouts (**Window > Layout > Save layout...**), 32 at most: `quadrants`, `split_x`, `split_y`, `maximized`, `panels`. |
@@ -346,6 +346,7 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `skybox_3d` | `true` | 3D skybox around `sky_camera` (`Alt+V`). |
 | `sky_see_through` | `false` | Leave `toolsskybox` faces out so the sky shows through. |
 | `water_preview` | `true` | Water drawn like in game. |
+| `detail_preview` | `false` | Grass and detail objects of `%detailtype` materials scattered around the 3D camera (see [Detail props preview](../features/detail-props-preview.md)). |
 | `water_detail` | `"ReflectAll"` | Like the Water Detail video option of the game: `ReflectAll` (r_waterforceexpensive and r_waterforcereflectentities: expensive water at every distance reflecting the world, props, brush entities, the sky and the 3D skybox drawn again mirrored about its surface), `ReflectWorld` (expensive near the camera, cheap past `$cheapwaterenddistance`, props and brush entities only with `$reflectentities`; `$reflectskyboxonly` and `$reflect3dskybox 0` are honored), `Simple` (cheap water everywhere). |
 | `fog_preview` | `true` | Preview the fog of an `env_fog_controller` (Fog Enable, colors, blend, start, end, max density, farz) in the 3D views and the player view. |
 | `fog_volume_preview` | `true` | Outline and fill `fog_volume` brushes with their fog (the controller's, or a default look with a warning label); the player view takes the controller fog inside them. |
@@ -397,6 +398,9 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `vsync` | `true` | Wait for the display refresh (after a restart). |
 | `vram_budget_mb` | `0` | Graphics memory Hammer Pro may use, in MB (0: automatic, 90% of what the system gives the program). Above 85% the maps of other tabs are freed from the graphics card, above the budget textures are shown at a lower resolution. See [Out of memory](../troubleshooting/out-of-memory.md). |
 | `keep_background_maps_on_gpu` | `true` | Keep the maps of other tabs on the graphics card while there is room, for instant tab switches. |
+| `performance_mode` | `Auto` | `Auto` and `Off` draw the preview at full quality. `Auto` lowers the quality one step (with a notice and a Restore full quality button over the 3D view) only when the 3D view stays under 20 FPS for several seconds. `Low` (75% resolution, no MSAA or bloom, 4 shadowed lights, 2048 sun shadow, textures up to 1024 pixels) and `VeryLow` (50% resolution, no shadows from lights, reflections, normal maps or fog volumes, textures up to 512 pixels) always lower it. **Settings > Rendering > Performance**, `set_setting render.performance_mode`. See [Editor performance](../troubleshooting/performance.md). |
+| `render_scale` | `1.0` | Draws the 3D view at this share of its size (0.25 to 1) and stretches it over the window. 1.0 is full quality. |
+| `perf_hud` | `false` | Shows FPS, frame time, CPU and GPU time per stage, memory and the quality level in the 3D view. |
 
 ## `[lighting]`
 
@@ -610,6 +614,15 @@ See [Updates](../features/updates.md).
 | `blender.path` | `""` | The Blender program (`blender.exe`); empty means Hammer Pro searches. MCP changes it with `blender_setup`, which checks it. |
 | `blender.format` | `"gltf"` | File format of a send: `gltf`, `obj` or `fbx`. |
 | `blender.live_link` | `true` | Watch the exported file and update the map when Blender writes it. |
+
+## `[vtf]`
+
+**Settings > VTF editor.** See [VTF editor](../features/vtf-editor.md).
+
+| Key | Default | What it does |
+| --- | --- | --- |
+| `vtf.editor_path` | `""` | The external VTF editor (VTFEdit, VTFEdit++, VTFEdit Reloaded...); empty means Hammer Pro searches. Only the user changes it. |
+| `vtf.prefer_integrated` | `false` | Open textures in the built in VTF editor even when an external one is found. |
 
 ## Related pages
 

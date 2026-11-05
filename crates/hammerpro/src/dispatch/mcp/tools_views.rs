@@ -28,6 +28,7 @@ const MODES: &[(&str, Action, RenderModeSetting)] = &[
     ("smoothing_groups", Action::RenderSmoothingGroups, RenderModeSetting::SmoothingGroups),
     ("baked", Action::RenderBaked, RenderModeSetting::Baked),
     ("lightmap_grid", Action::RenderLightmapGrid, RenderModeSetting::LightmapGrid),
+    ("color_corrected", Action::RenderColorCorrected, RenderModeSetting::ColorCorrected),
 ];
 const MODE_NAMES: &[&str] = &[
     "textured",
@@ -39,6 +40,7 @@ const MODE_NAMES: &[&str] = &[
     "smoothing_groups",
     "baked",
     "lightmap_grid",
+    "color_corrected",
 ];
 
 const SPECS: &[ToolSpec] = &[
@@ -116,7 +118,7 @@ const SPECS: &[ToolSpec] = &[
             with -nostaticpropshadows; setting render.prop_shadows: Auto, Mesh or Collision); the point and spot lights in view cast shadows too (the brightest first, so a light never shines through walls), how many set by the setting render.light_shadows (0 to 64, 16 by default, 0: the sun only; disableshadows props cast none); the sky light and the light bounced by the other surfaces come from a background bake of the map with the compiler while the setting render.lit_indirect is on (the default; get_lighting_status realtime.indirect tells its state), like the game's lightmaps, the lights and the sun staying real time; lights inside an opaque \
             brush light nothing like in game; $selfillum glows by the base alpha, $selfillummask or the $envmapmask alpha of $selfillum_envmapmask_alpha, times $selfillumtint, also in baked and the player view), unshaded (textured without shading), smoothing_groups, baked \
             (the baked lighting preview, see bake_lighting; props lit by the bake like the game: ambient cubes, \
-            world lights, static prop vertex lighting) or lightmap_grid (Hammer's 3D lightmap grid, no bake needed: every lightmapped face shows its luxel grid, one checker cell per lightmapscale units along its texture axes, displacements included, grey at scale 16, redder when finer, greener when coarser, yellow lines where VBSP splits a face wider than 32 luxels, shaded by the baked lighting once a bake exists; faces without a lightmap (nodraw, tool textures, sky, water, unlit) and props keep their texture). In the textured modes water surfaces are drawn like in game (refraction, water fog, reflection, moving waves) while the setting render.water_preview is on (set_setting, or run_action toggle_water_preview); off, they show their tool texture. Expensive water reflects the scene drawn again mirrored about its surface like the game; render.water_detail follows the Water Detail option of the game: ReflectAll (default, expensive at every distance, reflects the world, props, brush entities, the sky and the 3D skybox), ReflectWorld (expensive near the camera, props and brush entities only with $reflectentities) or Simple (cheap water). \
+            world lights, static prop vertex lighting), lightmap_grid (Hammer's 3D lightmap grid, no bake needed: every lightmapped face shows its luxel grid, one checker cell per lightmapscale units along its texture axes, displacements included, grey at scale 16, redder when finer, greener when coarser, yellow lines where VBSP splits a face wider than 32 luxels, shaded by the baked lighting once a bake exists; faces without a lightmap (nodraw, tool textures, sky, water, unlit) and props keep their texture), or color_corrected (3D Color Correction, Alt+9: the textured view with the color_correction_* entities' LUTs applied by camera distance, the zone weights of color_correction_zones, without turning on lab.color_correction_preview; a color_correction_preview call is shown too). In the textured modes water surfaces are drawn like in game (refraction, water fog, reflection, moving waves) while the setting render.water_preview is on (set_setting, or run_action toggle_water_preview); off, they show their tool texture. Expensive water reflects the scene drawn again mirrored about its surface like the game; render.water_detail follows the Water Detail option of the game: ReflectAll (default, expensive at every distance, reflects the world, props, brush entities, the sky and the 3D skybox), ReflectWorld (expensive near the camera, props and brush entities only with $reflectentities) or Simple (cheap water). \
             The map fog of an env_fog_controller (fogenable, fogcolor, fogcolor2 with fogblend, fogstart, fogend, \
             fogmaxdensity, farz) covers the 3D views and the player view while render.fog_preview is on (the \
             default; run_action toggle_fog_preview, preview_fog chooses the controller). Every fog_volume is \

@@ -1067,6 +1067,7 @@ fn particles_blend_add_turn_and_show_sheet_frames() {
         uv: [0.0, 0.0, 1.0, 1.0],
         color,
         bright: 1.0,
+        add_self: 0.0,
         orient: ParticleOrient::Screen,
         material,
         screen_fade: [0.0; 2],
@@ -1136,4 +1137,58 @@ fn particles_blend_add_turn_and_show_sheet_frames() {
     let gen0 = r.content_generation();
     r.set_particles(&[]);
     assert_eq!(r.content_generation(), gen0, "removing nothing changes nothing");
+}
+
+#[test]
+fn the_particle_preview_view_draws_exactly_like_the_scene_view() {
+    let (device, queue) = gpu_or_skip!();
+    let mut r = Renderer::new(&device, &queue);
+    r.set_material(4, &MaterialDesc { texture: Some(TexId::WHITE), ..Default::default() });
+    let mut px = Vec::new();
+    for y in 0..8u32 {
+        for x in 0..8u32 {
+            let d = ((x as f32 - 3.5).powi(2) + (y as f32 - 3.5).powi(2)).sqrt() / 4.5;
+            let a = ((1.0 - d).clamp(0.0, 1.0) * 255.0) as u8;
+            px.extend_from_slice(&[255, 200, 120, a]);
+        }
+    }
+    let blob = r.create_texture(&TextureUpload { width: 8, height: 8, format: TexFormat::Rgba8Srgb, levels: vec![px] });
+    r.set_material(5, &MaterialDesc { texture: Some(blob), tex_size: [8.0, 8.0], ..Default::default() });
+    let particle = |pos: [f32; 3], material: MaterialId, blend: ParticleBlend| ParticleInstance {
+        pos,
+        size: 70.0,
+        axis: [0.0; 3],
+        roll: 0.4,
+        uv: [0.0, 0.0, 1.0, 1.0],
+        color: [1.0, 0.8, 0.6, 0.8],
+        bright: 1.0,
+        add_self: 0.0,
+        orient: ParticleOrient::Screen,
+        material,
+        screen_fade: [0.0; 2],
+        blend,
+    };
+    let list = [
+        particle([0.0, 40.0, 0.0], 5, ParticleBlend::Alpha),
+        particle([10.0, -30.0, 10.0], 5, ParticleBlend::Additive),
+        particle([-20.0, 0.0, -10.0], 4, ParticleBlend::AddSelf),
+    ];
+    let view = ViewParams {
+        show_sprites: false,
+        msaa: false,
+        ..persp([-400.0, 0.0, 0.0], [0.0, 0.0, 0.0], [128, 128], RenderMode::Textured)
+    };
+    r.set_particles(&list);
+    r.render_view(1, &view, &Overlay::default());
+    let scene = save(&r, 1, "preview_scene");
+    r.set_particles(&[]);
+    r.render_particle_preview(7, &view, &list);
+    assert_eq!(r.preview_particle_count(), 3);
+    assert_eq!(r.particle_count(), 0, "the scene particles are untouched");
+    let preview = save(&r, 7, "preview_view");
+    let bad = scene.2.iter().zip(&preview.2).filter(|(a, b)| (i32::from(**a) - i32::from(**b)).abs() > 2).count();
+    assert!(bad < 40, "{bad} differing channels");
+    assert!(count_near(&preview, [255, 200, 120], 120) > 200, "the sprites are visible");
+    r.render_particle_preview(7, &view, &[]);
+    assert_eq!(r.preview_particle_count(), 0);
 }

@@ -21,6 +21,7 @@ pub(super) const TR: TrTable = &[
     ("shell.undo.mcp_import_models_batch", "MCP: import models", "MCP : import de modèles"),
     ("shell.undo.mcp_prop_to_brushes", "MCP: convert prop to brushes", "MCP : conversion du prop en brushes"),
     ("shell.undo.mcp_clip_brushes", "MCP: clip brushes", "MCP : découpe de brushes"),
+    ("shell.undo.mcp_slice_brushes", "MCP: slice brushes", "MCP : tranche de brushes"),
     ("shell.undo.mcp_carve", "MCP: carve", "MCP : creusement"),
     (
         "shell.undo.mcp_extrude_face",
@@ -149,6 +150,8 @@ pub(super) const TR: TrTable = &[
     ("shell.undo.mcp_set_max_distance", "MCP: set maximum distance", "MCP : distance maximale"),
     ("shell.undo.mcp_edit_material", "MCP: edit materials", "MCP : modification de matériaux"),
     ("shell.undo.mcp_import_images", "MCP: import images", "MCP : import d'images"),
+    ("shell.undo.mcp_edit_vtf", "MCP: edit a VTF texture", "MCP : modification d'une texture VTF"),
+    ("shell.undo.mcp_export_vtf", "MCP: export a VTF texture", "MCP : export d'une texture VTF"),
     ("shell.undo.mcp_create_shader_graph", "MCP: create a shader graph", "MCP : création d'un graphe de shader"),
     ("shell.undo.mcp_edit_shader_graph", "MCP: edit a shader graph", "MCP : modification d'un graphe de shader"),
     ("shell.undo.mcp_bake_shader_graph", "MCP: write a shader graph", "MCP : écriture d'un graphe de shader"),

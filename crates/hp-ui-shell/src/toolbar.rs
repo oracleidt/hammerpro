@@ -44,6 +44,7 @@ pub const TOOLBAR: &[&[ToolbarItem]] = {
             I(A::ToggleSkybox3d),
             I(A::ToggleFogPreview),
             I(A::ToggleFogVolumes),
+            I(A::ToggleDetailPreview),
             I(A::ToggleParticles),
             I(A::SimulateRopes),
         ],
@@ -90,6 +91,7 @@ fn toolbar_glyph(action: Action) -> Option<&'static str> {
         Action::ToggleSkybox3d => "☁",
         Action::ToggleFogPreview => "🌁",
         Action::ToggleFogVolumes => "▣",
+        Action::ToggleDetailPreview => "🌿",
         Action::ToggleParticles => "🎆",
         Action::SimulateRopes => "〰",
         Action::ApplyCurrentTexture => "✏",
@@ -170,7 +172,7 @@ fn group_separator(ui: &mut Ui) {
     ui.add_space(2.0);
 }
 
-pub const RENDER_MODES: [(RenderModeSetting, Action); 9] = [
+pub const RENDER_MODES: [(RenderModeSetting, Action); 10] = [
     (RenderModeSetting::Textured, Action::RenderTextured),
     (RenderModeSetting::Unshaded, Action::RenderUnshaded),
     (RenderModeSetting::Flat, Action::RenderFlat),
@@ -180,6 +182,7 @@ pub const RENDER_MODES: [(RenderModeSetting, Action); 9] = [
     (RenderModeSetting::SmoothingGroups, Action::RenderSmoothingGroups),
     (RenderModeSetting::Baked, Action::RenderBaked),
     (RenderModeSetting::LightmapGrid, Action::RenderLightmapGrid),
+    (RenderModeSetting::ColorCorrected, Action::RenderColorCorrected),
 ];
 
 pub const SELECT_MODES: [(SelectModeSetting, Action); 3] = [
@@ -652,6 +655,7 @@ mod tests {
             RenderModeSetting::SmoothingGroups,
             RenderModeSetting::Baked,
             RenderModeSetting::LightmapGrid,
+            RenderModeSetting::ColorCorrected,
         ] {
             match m {
                 RenderModeSetting::Textured
@@ -662,7 +666,8 @@ mod tests {
                 | RenderModeSetting::Lit
                 | RenderModeSetting::SmoothingGroups
                 | RenderModeSetting::Baked
-                | RenderModeSetting::LightmapGrid => assert_eq!(listed(m), 1, "{m:?}"),
+                | RenderModeSetting::LightmapGrid
+                | RenderModeSetting::ColorCorrected => assert_eq!(listed(m), 1, "{m:?}"),
             }
         }
         let actions: std::collections::HashSet<_> = RENDER_MODES.iter().map(|(_, a)| *a).collect();

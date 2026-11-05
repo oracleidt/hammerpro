@@ -616,6 +616,7 @@ pub struct DetailSprite {
     pub lr: [f32; 2],
     pub tex: [f32; 4],
     pub orientation: DetailSpriteOrientation,
+    pub sway: u8,
     pub color: [u8; 4],
     pub object: ObjectId,
 }
@@ -706,6 +707,18 @@ pub struct PreviewLight {
 pub struct SunParams {
     pub spread_deg: f32,
     pub sky_ambient: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Quality {
+    pub sun_shadow_size: u32,
+    pub local_shadow_size: u32,
+}
+
+impl Default for Quality {
+    fn default() -> Self {
+        Self { sun_shadow_size: u32::MAX, local_shadow_size: u32::MAX }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

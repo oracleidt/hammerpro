@@ -179,12 +179,24 @@ pub(crate) struct Clusters {
     pub crowded: u32,
 }
 
-pub(crate) fn build_clusters(cam: &Camera, grid: &ClusterGrid, lights: &[LightGpu], first_local: u32) -> Clusters {
-    let n = grid.count();
-    let mut counts = vec![0u32; n];
+#[derive(Clone, Copy, Debug)]
+struct Cell {
+    light: u32,
+    slice: u32,
+    rect: [u32; 4],
+}
+
+fn slab(grid: &ClusterGrid, slice: u32) -> (f32, f32) {
+    let edge = |s: u32| grid.near * (s as f32 / grid.scale.max(1e-6)).exp();
+    let z0 = if slice == 0 { 0.0 } else { edge(slice) * 0.999 };
+    let z1 = if slice + 1 >= grid.slices { f32::MAX } else { edge(slice + 1) * 1.001 };
+    (z0, z1)
+}
+
+fn cluster_cells(cam: &Camera, grid: &ClusterGrid, lights: &[LightGpu], first_local: u32) -> Vec<Cell> {
     let aspect = cam.width / cam.height;
     let (tx, ty) = (cam.tan_half_fov * aspect, cam.tan_half_fov);
-    let mut spans: Vec<(u32, [u32; 6])> = Vec::new();
+    let mut cells: Vec<Cell> = Vec::new();
     for (i, l) in lights.iter().enumerate().skip(first_local as usize) {
         let p = Vec3::new(l.pos_range[0], l.pos_range[1], l.pos_range[2]);
         let r = l.pos_range[3];
@@ -194,42 +206,128 @@ pub(crate) fn build_clusters(cam: &Camera, grid: &ClusterGrid, lights: &[LightGp
             continue;
         }
         let (s0, s1) = (grid.slice(vz - r), grid.slice(vz + r));
-        let (x0, x1, y0, y1) = if vz - r <= grid.near {
-            (0, grid.tiles_x - 1, 0, grid.tiles_y - 1)
-        } else {
-            let (zn, zf) = (vz - r, vz + r);
-            let lo = |v: f32| if v < 0.0 { v / zn } else { v / zf };
-            let hi = |v: f32| if v > 0.0 { v / zn } else { v / zf };
-            let nx0 = lo(vx - r) / tx;
-            let nx1 = hi(vx + r) / tx;
-            let ny0 = lo(vy - r) / ty;
-            let ny1 = hi(vy + r) / ty;
-            if nx1 < -1.0 || nx0 > 1.0 || ny1 < -1.0 || ny0 > 1.0 {
+        for s in s0..=s1 {
+            let (z0, z1) = slab(grid, s);
+            let dz = if vz < z0 {
+                z0 - vz
+            } else if vz > z1 {
+                vz - z1
+            } else {
+                0.0
+            };
+            if dz >= r {
                 continue;
             }
-            let to_px_x = |nx: f32| ((nx.clamp(-1.0, 1.0) + 1.0) * 0.5 * cam.width) as u32 / TILE_PX;
-            let to_px_y = |ny: f32| ((1.0 - ny.clamp(-1.0, 1.0)) * 0.5 * cam.height) as u32 / TILE_PX;
-            (
-                to_px_x(nx0).min(grid.tiles_x - 1),
-                to_px_x(nx1).min(grid.tiles_x - 1),
-                to_px_y(ny1).min(grid.tiles_y - 1),
-                to_px_y(ny0).min(grid.tiles_y - 1),
-            )
-        };
-        spans.push((i as u32, [x0, x1, y0, y1, s0, s1]));
+            let rz = (r * r - dz * dz).sqrt();
+            let (zn, zf) = (z0.max(vz - r), z1.min(vz + r));
+            let rect = if zn <= grid.near {
+                [0, grid.tiles_x - 1, 0, grid.tiles_y - 1]
+            } else {
+                let lo = |v: f32| if v < 0.0 { v / zn } else { v / zf };
+                let hi = |v: f32| if v > 0.0 { v / zn } else { v / zf };
+                let nx0 = lo(vx - rz) / tx;
+                let nx1 = hi(vx + rz) / tx;
+                let ny0 = lo(vy - rz) / ty;
+                let ny1 = hi(vy + rz) / ty;
+                if nx1 < -1.0 || nx0 > 1.0 || ny1 < -1.0 || ny0 > 1.0 {
+                    continue;
+                }
+                let to_px_x = |nx: f32| ((nx.clamp(-1.0, 1.0) + 1.0) * 0.5 * cam.width) as u32 / TILE_PX;
+                let to_px_y = |ny: f32| ((1.0 - ny.clamp(-1.0, 1.0)) * 0.5 * cam.height) as u32 / TILE_PX;
+                [
+                    to_px_x(nx0).min(grid.tiles_x - 1),
+                    to_px_x(nx1).min(grid.tiles_x - 1),
+                    to_px_y(ny1).min(grid.tiles_y - 1),
+                    to_px_y(ny0).min(grid.tiles_y - 1),
+                ]
+            };
+            cells.push(Cell { light: i as u32, slice: s, rect });
+        }
     }
+    cells
+}
+
+fn cell_refs(cells: &[Cell]) -> usize {
+    cells
+        .iter()
+        .map(|c| {
+            let [x0, x1, y0, y1] = c.rect;
+            (x1 + 1).saturating_sub(x0) as usize * (y1 + 1).saturating_sub(y0) as usize
+        })
+        .sum()
+}
+
+pub(crate) fn build_clusters(cam: &Camera, grid: &ClusterGrid, lights: &[LightGpu], first_local: u32) -> Clusters {
+    let cells = cluster_cells(cam, grid, lights, first_local);
+    if cell_refs(&cells) > MAX_REFS || crate::profile::baseline("clusters") {
+        return build_serial(cam, grid, lights, &cells);
+    }
+    let (tx, plane) = (grid.tiles_x as usize, (grid.tiles_x * grid.tiles_y) as usize);
+    let mut by_slice: Vec<Vec<Cell>> = vec![Vec::new(); grid.slices as usize];
+    for c in &cells {
+        if let Some(v) = by_slice.get_mut(c.slice as usize) {
+            v.push(*c);
+        }
+    }
+    let parts: Vec<(Vec<u32>, Vec<u32>)> = by_slice
+        .par_iter()
+        .map(|ids| {
+            let mut counts = vec![0u32; plane];
+            for c in ids {
+                let [x0, x1, y0, y1] = c.rect;
+                for y in y0 as usize..=y1 as usize {
+                    for n in &mut counts[y * tx + x0 as usize..=y * tx + x1 as usize] {
+                        *n += 1;
+                    }
+                }
+            }
+            let mut offsets = vec![0u32; plane];
+            let mut total = 0u32;
+            for (o, n) in offsets.iter_mut().zip(&counts) {
+                *o = total;
+                total += n;
+            }
+            let mut list = vec![0u32; total as usize];
+            let mut fill = offsets;
+            for c in ids {
+                let [x0, x1, y0, y1] = c.rect;
+                for y in y0 as usize..=y1 as usize {
+                    for at in y * tx + x0 as usize..=y * tx + x1 as usize {
+                        list[fill[at] as usize] = c.light;
+                        fill[at] += 1;
+                    }
+                }
+            }
+            (counts, list)
+        })
+        .collect();
+    let mut table = vec![[0u32; 2]; grid.count()];
+    let mut list: Vec<u32> = Vec::with_capacity(parts.iter().map(|(_, l)| l.len()).sum());
+    for (s, (counts, part)) in parts.iter().enumerate() {
+        let mut offset = list.len() as u32;
+        for (at, n) in counts.iter().enumerate() {
+            table[s * plane + at] = [offset, *n];
+            offset += n;
+        }
+        list.extend_from_slice(part);
+    }
+    finish_clusters(cam, grid, lights, table, list)
+}
+
+fn build_serial(cam: &Camera, grid: &ClusterGrid, lights: &[LightGpu], cells: &[Cell]) -> Clusters {
+    let n = grid.count();
+    let mut counts = vec![0u32; n];
     let idx = |x: u32, y: u32, s: u32| ((s * grid.tiles_y + y) * grid.tiles_x + x) as usize;
     let mut total = 0usize;
-    for (_, [x0, x1, y0, y1, s0, s1]) in &spans {
-        for s in *s0..=*s1 {
-            for y in *y0..=*y1 {
-                for x in *x0..=*x1 {
-                    if let Some(c) = counts.get_mut(idx(x, y, s))
-                        && total < MAX_REFS
-                    {
-                        *c += 1;
-                        total += 1;
-                    }
+    for c in cells {
+        let [x0, x1, y0, y1] = c.rect;
+        for y in y0..=y1 {
+            for x in x0..=x1 {
+                if let Some(n) = counts.get_mut(idx(x, y, c.slice))
+                    && total < MAX_REFS
+                {
+                    *n += 1;
+                    total += 1;
                 }
             }
         }
@@ -241,22 +339,31 @@ pub(crate) fn build_clusters(cam: &Camera, grid: &ClusterGrid, lights: &[LightGp
         offset += c;
     }
     let mut list = vec![0u32; total];
-    for (li, [x0, x1, y0, y1, s0, s1]) in &spans {
-        for s in *s0..=*s1 {
-            for y in *y0..=*y1 {
-                for x in *x0..=*x1 {
-                    let ci = idx(x, y, s);
-                    let (Some(t), Some(&cap)) = (table.get_mut(ci), counts.get(ci)) else { continue };
-                    if t[1] < cap
-                        && let Some(slot) = list.get_mut((t[0] + t[1]) as usize)
-                    {
-                        *slot = *li;
-                        t[1] += 1;
-                    }
+    for c in cells {
+        let [x0, x1, y0, y1] = c.rect;
+        for y in y0..=y1 {
+            for x in x0..=x1 {
+                let ci = idx(x, y, c.slice);
+                let (Some(t), Some(&cap)) = (table.get_mut(ci), counts.get(ci)) else { continue };
+                if t[1] < cap
+                    && let Some(slot) = list.get_mut((t[0] + t[1]) as usize)
+                {
+                    *slot = c.light;
+                    t[1] += 1;
                 }
             }
         }
     }
+    finish_clusters(cam, grid, lights, table, list)
+}
+
+fn finish_clusters(
+    cam: &Camera,
+    grid: &ClusterGrid,
+    lights: &[LightGpu],
+    mut table: Vec<[u32; 2]>,
+    mut list: Vec<u32>,
+) -> Clusters {
     let plane = grid.tiles_x * grid.tiles_y;
     let mut jobs: Vec<(u32, &mut [u32], &mut [u32; 2])> = Vec::new();
     let mut rest: &mut [u32] = &mut list;
@@ -452,5 +559,75 @@ mod tests {
         assert_eq!(gpu_falloff(Some(&zero)).0, DEFAULT_ATTEN, "all zero terms would divide by zero");
         let capped = LightFalloff { quadratic: 1.0, cap: f32::NAN, ..zero };
         assert_eq!(gpu_falloff(Some(&capped)).0, [0.0, 0.0, 1.0, 1.0e9]);
+    }
+
+    fn scattered(count: usize) -> Packed {
+        let mut lights: Vec<PreviewLight> = Vec::new();
+        let mut seed = 12345u32;
+        let mut next = || {
+            seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+            (seed >> 8) as f32 / 16_777_216.0
+        };
+        for _ in 0..count {
+            let pos = [next() * 6000.0 - 500.0, next() * 4000.0 - 2000.0, next() * 1000.0 - 300.0];
+            lights.push(point(pos, 50.0 + next() * 2500.0));
+        }
+        pack_lights(&lights)
+    }
+
+    #[test]
+    fn the_parallel_build_matches_the_serial_one() {
+        let c = cam();
+        let grid = ClusterGrid::new(&c);
+        let packed = scattered(400);
+        let first = packed.n_dir;
+        let fast = build_clusters(&c, &grid, &packed.lights, first);
+        let cells = cluster_cells(&c, &grid, &packed.lights, first);
+        let serial = build_serial(&c, &grid, &packed.lights, &cells);
+        assert_eq!(fast.crowded, serial.crowded);
+        assert_eq!(fast.table, serial.table);
+        assert_eq!(fast.list, serial.list);
+        assert!(fast.list.len() > 100, "the test lights reach clusters");
+    }
+
+    #[test]
+    fn every_point_a_light_reaches_finds_it_in_its_cluster() {
+        let c = cam();
+        let grid = ClusterGrid::new(&c);
+        let packed = scattered(60);
+        let first = packed.n_dir;
+        let built = build_clusters(&c, &grid, &packed.lights, first);
+        assert_eq!(built.crowded, 0);
+        let mut seed = 777u32;
+        let mut next = || {
+            seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+            (seed >> 8) as f32 / 16_777_216.0
+        };
+        let mut checked = 0;
+        for (i, l) in packed.lights.iter().enumerate().skip(first as usize) {
+            let center = Vec3::new(l.pos_range[0], l.pos_range[1], l.pos_range[2]);
+            for _ in 0..200 {
+                let dir = Vec3::new(next() * 2.0 - 1.0, next() * 2.0 - 1.0, next() * 2.0 - 1.0).normalize_or_zero();
+                let p = center + dir * (next() * l.pos_range[3] * 0.999);
+                let clip = c.view_proj * p.extend(1.0);
+                let depth = (p - c.eye).dot(c.forward);
+                if clip.w <= 1e-3 || depth <= grid.near || depth >= grid.far {
+                    continue;
+                }
+                let (nx, ny) = (clip.x / clip.w, clip.y / clip.w);
+                if nx.abs() >= 1.0 || ny.abs() >= 1.0 {
+                    continue;
+                }
+                let px = (nx + 1.0) * 0.5 * c.width;
+                let py = (1.0 - ny) * 0.5 * c.height;
+                let (x, y) = ((px as u32 / TILE_PX).min(grid.tiles_x - 1), (py as u32 / TILE_PX).min(grid.tiles_y - 1));
+                let at = ((grid.slice(depth) * grid.tiles_y + y) * grid.tiles_x + x) as usize;
+                let [offset, count] = built.table[at];
+                let found = built.list[offset as usize..(offset + count) as usize].contains(&(i as u32));
+                assert!(found, "light {i} misses a point {depth} units deep it lights");
+                checked += 1;
+            }
+        }
+        assert!(checked > 500, "{checked} points checked");
     }
 }

@@ -37,6 +37,8 @@ const HANDLED: &[Action] = &[
     Action::FarPlaneFarther,
     Action::RenderUnshaded,
     Action::RenderSmoothingGroups,
+    Action::RenderColorCorrected,
+    Action::ToggleDetailPreview,
     Action::ToggleRenderEffects,
     Action::ToggleSkyPreview,
     Action::ToggleSkybox3d,
@@ -83,6 +85,7 @@ impl Package for Render {
             Action::RenderLit => set_render_mode(state, RenderModeSetting::Lit),
             Action::RenderUnshaded => set_render_mode(state, RenderModeSetting::Unshaded),
             Action::RenderSmoothingGroups => set_render_mode(state, RenderModeSetting::SmoothingGroups),
+            Action::RenderColorCorrected => set_render_mode(state, RenderModeSetting::ColorCorrected),
             Action::ToggleModels => state.settings.view.show_models = !state.settings.view.show_models,
             Action::ToggleToolTextures => {
                 state.settings.view.show_tool_textures = !state.settings.view.show_tool_textures;
@@ -102,6 +105,7 @@ impl Package for Render {
             }
             Action::ToggleFogPreview => r.fog_preview = !r.fog_preview,
             Action::ToggleWaterPreview => r.water_preview = !r.water_preview,
+            Action::ToggleDetailPreview => r.detail_preview = !r.detail_preview,
             Action::ToggleFogVolumes => r.fog_volume_preview = !r.fog_volume_preview,
             Action::ToggleFogVolumeTexture => r.fog_volume_texture = !r.fog_volume_texture,
             Action::ToggleFishPreview => r.fish_preview = !r.fish_preview,

@@ -18,7 +18,7 @@ action_list! { workflow_actions {
     View3dFlat => "view_3d_flat", View, ViewType, sc(SHIFT, Key::F5), Ready;
     CycleView2d => "cycle_view_2d", View, ViewType, sc(NONE, Key::Tab), Ready;
     ToggleViewInfo => "toggle_view_info", View, ViewDisplay, sc(NONE, Key::O), Ready;
-    ToggleBoundsOverlay => "toggle_bounds_overlay", View, ViewDisplay, sc(NONE, Key::I), Ready;
+    ToggleBoundsOverlay => "toggle_bounds_overlay", View, ViewDisplay, None, Ready;
     ShowHistory => "show_history", View, ViewPanels, None, Ready;
     ShowToolbar => "show_toolbar", View, ViewPanels, None, Ready;
     ShowToolPalette => "show_tool_palette", View, ViewPanels, None, Ready;

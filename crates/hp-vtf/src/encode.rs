@@ -1,18 +1,14 @@
-use std::borrow::Cow;
 use std::io::Cursor;
 use std::sync::LazyLock;
 
 use rayon::prelude::*;
 use texpresso::{Algorithm, COLOUR_WEIGHTS_PERCEPTUAL, COLOUR_WEIGHTS_UNIFORM, Params};
 
-use crate::header::{RESOURCE_HIGH_RES, RESOURCE_LOW_RES, SIGNATURE};
 use crate::{ImageFormat, RgbaImage, VtfError, flags};
 
 const GAMMA: f32 = 2.2;
 
 pub const MAX_POW2_SIZE: u32 = 4096;
-
-const LOW_RES_MAX: u32 = 16;
 
 const MAX_IMPORT_DIM: u32 = 32_768;
 
@@ -74,32 +70,13 @@ pub enum MipFilter {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum OutFormat {
-    Dxt1,
-    Dxt5,
-    Bgra8888,
-    Bgr888,
-}
-
-impl OutFormat {
-    fn image_format(self) -> ImageFormat {
-        match self {
-            Self::Dxt1 => ImageFormat::Dxt1,
-            Self::Dxt5 => ImageFormat::Dxt5,
-            Self::Bgra8888 => ImageFormat::Bgra8888,
-            Self::Bgr888 => ImageFormat::Bgr888,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Filter {
+pub(crate) enum Filter {
     Gamma,
     Linear,
     Normal,
 }
 
-fn filter_for(tex_flags: u32) -> Filter {
+pub(crate) fn filter_for(tex_flags: u32) -> Filter {
     if tex_flags & flags::NORMAL != 0 {
         Filter::Normal
     } else if tex_flags & flags::SSBUMP != 0 {
@@ -174,7 +151,7 @@ impl AxisTaps {
     }
 }
 
-fn resample(src: &[u8], w: usize, h: usize, tw: usize, th: usize, filter: Filter) -> Vec<u8> {
+pub(crate) fn resample(src: &[u8], w: usize, h: usize, tw: usize, th: usize, filter: Filter) -> Vec<u8> {
     let px = src.as_chunks::<4>().0;
     let xt = AxisTaps::new(w, tw);
     let yt = AxisTaps::new(h, th);
@@ -239,7 +216,7 @@ fn resample(src: &[u8], w: usize, h: usize, tw: usize, th: usize, filter: Filter
     out
 }
 
-fn nearest_pow2(v: u32) -> u32 {
+pub(crate) fn nearest_pow2(v: u32) -> u32 {
     if v >= MAX_POW2_SIZE {
         return MAX_POW2_SIZE;
     }
@@ -251,7 +228,7 @@ fn nearest_pow2(v: u32) -> u32 {
     if v - down < up - v { down } else { up }
 }
 
-fn reflectivity(pixels: &[u8]) -> [f32; 3] {
+pub(crate) fn reflectivity(pixels: &[u8]) -> [f32; 3] {
     let lut = &*GAMMA_TO_LINEAR;
     let px = pixels.as_chunks::<4>().0;
     if px.is_empty() {
@@ -273,7 +250,7 @@ fn reflectivity(pixels: &[u8]) -> [f32; 3] {
     sum.map(|s| (s / n) as f32)
 }
 
-fn texpresso_params(quality: EncodeQuality, filter: Filter) -> Params {
+pub(crate) fn texpresso_params(quality: EncodeQuality, filter: Filter) -> Params {
     Params {
         algorithm: match quality {
             EncodeQuality::Fast => Algorithm::RangeFit,
@@ -285,21 +262,7 @@ fn texpresso_params(quality: EncodeQuality, filter: Filter) -> Params {
     }
 }
 
-fn compress_level(format: OutFormat, rgba: &[u8], w: usize, h: usize, params: Params) -> Vec<u8> {
-    let bc = |f: texpresso::Format| {
-        let mut out = vec![0u8; f.compressed_size(w, h)];
-        f.compress(rgba, w, h, params, &mut out);
-        out
-    };
-    match format {
-        OutFormat::Dxt1 => bc(texpresso::Format::Bc1),
-        OutFormat::Dxt5 => bc(texpresso::Format::Bc3),
-        OutFormat::Bgra8888 => rgba.as_chunks::<4>().0.iter().flat_map(|&[r, g, b, a]| [b, g, r, a]).collect(),
-        OutFormat::Bgr888 => rgba.as_chunks::<4>().0.iter().flat_map(|&[r, g, b, _]| [b, g, r]).collect(),
-    }
-}
-
-fn check_image(img: &RgbaImage) -> Result<(usize, usize), VtfError> {
+pub(crate) fn check_image(img: &RgbaImage) -> Result<(usize, usize), VtfError> {
     if img.width == 0 || img.height == 0 {
         return Err(VtfError::InvalidDimensions { width: img.width, height: img.height });
     }
@@ -320,166 +283,26 @@ pub fn encode(img: &RgbaImage, opts: &EncodeOptions) -> Result<Vec<u8>, VtfError
 }
 
 pub fn encode_frames(frames: &[RgbaImage], opts: &EncodeOptions) -> Result<Vec<u8>, VtfError> {
-    let first = frames.first().ok_or_else(|| VtfError::InvalidImage("no frames".into()))?;
-    if frames.len() > usize::from(u16::MAX) {
-        return Err(VtfError::InvalidImage("too many frames".into()));
-    }
-    if opts.version_minor > 5 {
-        return Err(VtfError::UnsupportedVersion(7, opts.version_minor));
-    }
-    let (sw, sh) = check_image(first)?;
-    for f in frames {
-        if check_image(f)? != (sw, sh) {
-            return Err(VtfError::InvalidImage("all frames must have the same size".into()));
-        }
-    }
-
-    let (tw, th) = if opts.resize_to_pow2 {
-        (nearest_pow2(first.width), nearest_pow2(first.height))
-    } else {
-        (first.width, first.height)
-    };
-    if tw > u32::from(u16::MAX) || th > u32::from(u16::MAX) {
-        return Err(VtfError::TooLarge);
-    }
-    let (w, h) = (tw as usize, th as usize);
-
-    let mut tex_flags = opts.flags & !flags::ENVMAP;
-    let filter = match opts.mip_filter {
-        MipFilter::FromFlags => filter_for(tex_flags),
-        MipFilter::Color => Filter::Gamma,
-        MipFilter::Data => Filter::Linear,
-        MipFilter::Normal => Filter::Normal,
-    };
+    let images: Vec<Vec<RgbaImage>> = frames.iter().map(|f| vec![f.clone()]).collect();
     let opaque = frames.iter().all(RgbaImage::is_opaque);
     let format = match opts.format {
-        EncodeFormat::Auto if opaque => OutFormat::Dxt1,
-        EncodeFormat::Auto | EncodeFormat::Dxt5 => OutFormat::Dxt5,
-        EncodeFormat::Dxt1 => OutFormat::Dxt1,
-        EncodeFormat::Bgra8888 => OutFormat::Bgra8888,
-        EncodeFormat::Bgr888 => OutFormat::Bgr888,
+        EncodeFormat::Auto if opaque => ImageFormat::Dxt1,
+        EncodeFormat::Auto | EncodeFormat::Dxt5 => ImageFormat::Dxt5,
+        EncodeFormat::Dxt1 => ImageFormat::Dxt1,
+        EncodeFormat::Bgra8888 => ImageFormat::Bgra8888,
+        EncodeFormat::Bgr888 => ImageFormat::Bgr888,
     };
-    if !opaque {
-        match format {
-            OutFormat::Dxt1 => tex_flags |= flags::ONEBITALPHA,
-            OutFormat::Dxt5 | OutFormat::Bgra8888 if tex_flags & flags::ONEBITALPHA == 0 => {
-                tex_flags |= flags::EIGHTBITALPHA;
-            }
-            _ => {}
-        }
-    }
-
-    let mip_count = if opts.mipmaps { 32 - tw.max(th).leading_zeros() } else { 1 };
-
-    let (mut lw, mut lh) = (tw, th);
-    let mut low_mip = 0u32;
-    while lw > LOW_RES_MAX || lh > LOW_RES_MAX {
-        lw = (lw / 2).max(1);
-        lh = (lh / 2).max(1);
-        low_mip += 1;
-    }
-
-    let params = texpresso_params(opts.quality, filter);
-    let mut levels: Vec<Vec<Vec<u8>>> = Vec::with_capacity(frames.len());
-    let mut low_src: Option<Vec<u8>> = None;
-    let mut base_reflectivity = [0f32; 3];
-    for (fi, frame) in frames.iter().enumerate() {
-        let mut cur: Cow<'_, [u8]> = if (sw, sh) == (w, h) {
-            Cow::Borrowed(&frame.pixels)
-        } else {
-            Cow::Owned(resample(&frame.pixels, sw, sh, w, h, filter))
-        };
-        if fi == 0 {
-            base_reflectivity = reflectivity(&cur);
-        }
-        let (mut cw, mut ch) = (w, h);
-        let mut out_levels = Vec::with_capacity(mip_count as usize);
-        for mip in 0..mip_count {
-            if mip > 0 {
-                let (nw, nh) = ((cw / 2).max(1), (ch / 2).max(1));
-                cur = Cow::Owned(resample(&cur, cw, ch, nw, nh, filter));
-                (cw, ch) = (nw, nh);
-            }
-            if fi == 0 && mip == low_mip {
-                low_src = Some(cur.to_vec());
-            }
-            out_levels.push(compress_level(format, &cur, cw, ch, params));
-        }
-        levels.push(out_levels);
-    }
-    let mut low_rgba = match low_src {
-        Some(v) => v,
-        None => resample(&first.pixels, sw, sh, lw as usize, lh as usize, filter),
+    let compose_opts = crate::compose::ComposeOptions {
+        format,
+        mipmaps: opts.mipmaps,
+        flags: opts.flags,
+        version_minor: opts.version_minor,
+        resize_to_pow2: opts.resize_to_pow2,
+        quality: opts.quality,
+        mip_filter: opts.mip_filter,
+        ..crate::compose::ComposeOptions::default()
     };
-    for p in low_rgba.as_chunks_mut::<4>().0 {
-        p[3] = 255;
-    }
-    let low_data = compress_level(
-        OutFormat::Dxt1,
-        &low_rgba,
-        lw as usize,
-        lh as usize,
-        texpresso_params(EncodeQuality::Fast, filter),
-    );
-
-    let hi_size: usize = levels.iter().flatten().map(Vec::len).sum();
-    let minor = opts.version_minor;
-    let header_size: usize = match minor {
-        0 | 1 => 64,
-        2 => 80,
-        _ => 80 + 2 * 8,
-    };
-    let low_offset = header_size;
-    let hi_offset = low_offset + low_data.len();
-    let total = hi_offset + hi_size;
-    let hi_offset_u32 = u32::try_from(hi_offset).map_err(|_| VtfError::TooLarge)?;
-    u32::try_from(total).map_err(|_| VtfError::TooLarge)?;
-
-    let mut out = Vec::with_capacity(total);
-    out.extend_from_slice(&SIGNATURE);
-    out.extend_from_slice(&7u32.to_le_bytes());
-    out.extend_from_slice(&minor.to_le_bytes());
-    out.extend_from_slice(&(header_size as u32).to_le_bytes());
-    out.extend_from_slice(&(tw as u16).to_le_bytes());
-    out.extend_from_slice(&(th as u16).to_le_bytes());
-    out.extend_from_slice(&tex_flags.to_le_bytes());
-    out.extend_from_slice(&(frames.len() as u16).to_le_bytes());
-    out.extend_from_slice(&0u16.to_le_bytes());
-    out.extend_from_slice(&[0; 4]);
-    for c in base_reflectivity {
-        out.extend_from_slice(&c.to_le_bytes());
-    }
-    out.extend_from_slice(&[0; 4]);
-    out.extend_from_slice(&1.0f32.to_le_bytes());
-    out.extend_from_slice(&format.image_format().raw().to_le_bytes());
-    out.push(mip_count as u8);
-    out.extend_from_slice(&ImageFormat::Dxt1.raw().to_le_bytes());
-    out.push(lw as u8);
-    out.push(lh as u8);
-    if minor >= 2 {
-        out.extend_from_slice(&1u16.to_le_bytes());
-    }
-    if minor >= 3 {
-        out.extend_from_slice(&[0; 3]);
-        out.extend_from_slice(&2u32.to_le_bytes());
-        out.extend_from_slice(&[0; 8]);
-        out.extend_from_slice(&RESOURCE_LOW_RES);
-        out.push(0);
-        out.extend_from_slice(&(low_offset as u32).to_le_bytes());
-        out.extend_from_slice(&RESOURCE_HIGH_RES);
-        out.push(0);
-        out.extend_from_slice(&hi_offset_u32.to_le_bytes());
-    }
-    out.resize(header_size, 0);
-    out.extend_from_slice(&low_data);
-    for mip in (0..mip_count as usize).rev() {
-        for frame in &levels {
-            if let Some(level) = frame.get(mip) {
-                out.extend_from_slice(level);
-            }
-        }
-    }
-    Ok(out)
+    crate::compose::compose(&images, &compose_opts)
 }
 
 pub fn load_image_file(bytes: &[u8], ext_hint: &str) -> Result<RgbaImage, VtfError> {

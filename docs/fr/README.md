@@ -2,7 +2,7 @@
 
 # Documentation de Hammer Pro
 
-Bienvenue dans la base de connaissances de Hammer Pro 1.0.9, l'éditeur de maps pour le moteur Source pensé d'abord pour Garry's Mod. Chaque fonctionnalité a sa propre page : ce que c'est, comment l'ouvrir, chaque option avec sa valeur par défaut, des astuces et une courte FAQ. Les pages renvoient les unes aux autres : commencez où vous voulez.
+Bienvenue dans la base de connaissances de Hammer Pro 1.1.0, l'éditeur de maps pour le moteur Source pensé d'abord pour Garry's Mod. Chaque fonctionnalité a sa propre page : ce que c'est, comment l'ouvrir, chaque option avec sa valeur par défaut, des astuces et une courte FAQ. Les pages renvoient les unes aux autres : commencez où vous voulez.
 
 Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.md), [Configuration du jeu](getting-started/game-setup.md) puis [Votre première map](getting-started/first-map.md), dans cet ordre.
 
@@ -32,6 +32,7 @@ Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.m
 | [Semis par matériau](features/scatter-by-material.md) | Des props placés seulement là où une texture apparaît sur les matériaux de mélange et les displacements, avec nombre, écart, rotation, échelle et graine. |
 | [Détails de route](features/road-details.md) | Trottoirs, bordures, caniveaux en V et en U avec fentes d'évacuation, angles de jonction arrondis, et fondu du terrain sur une route avec fondu de texture. |
 | [Outil de découpe](features/clip-tool.md) | Couper des brushes avec un plan. |
+| [Outil tranche](features/slice-tool.md) | Couper des brushes en plusieurs blocs égaux, de gauche à droite ou de haut en bas, depuis la vue 3D (`Maj+Y`, souris pour la position, molette pour les segments). |
 | [Outil extruder / creuser](features/extrude-tool.md) | Des contours cliqués sur une face, creusés dans le brush (renfoncement ou ouverture) ou extrudés hors de la face. |
 | [Outil biseau](features/bevel-tool.md) | Arrondir ou chanfreiner les arêtes des brushes dans la vue 3D (`Ctrl+B`, souris pour la taille, molette pour les segments), ou les biseauter vers l'intérieur : une gorge, ou un arrondi concave qui remplit un coin intérieur (arches). |
 | [Outil vertex](features/vertex-tool.md) | Déplacer, fusionner, scinder et mettre à l'échelle des sommets. |
@@ -69,6 +70,7 @@ Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.m
 | [Index et analyse du contenu](features/content-index.md) | L'index enregistré des fichiers du jeu, analyse des disques durs et SSD, dossiers en double. |
 | [Éditeur UV](features/uv-editor.md) | Modes face, arête et sommet, calques, fenêtre séparée. |
 | [Éditeur de matériaux](features/material-editor.md) | Modifier des VMT, un par un ou par lots. |
+| [Éditeur de VTF](features/vtf-editor.md) | Modifier des textures dans VTFEdit (ou un autre éditeur VTF installé) ou dans l'éditeur intégré : canaux, mips, images, cubemaps, drapeaux, formats, normal maps. |
 | [Éditeur de shaders](features/shader-editor.md) | Éditeur d'images et de matériaux à nœuds : bruit, flou, rampes de couleurs, normal maps, mélange de tuiles, écrit en VTF et VMT. |
 
 ### Modèles, sons et effets
@@ -88,6 +90,7 @@ Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.m
 
 | Page | Ce que vous y trouverez |
 | --- | --- |
+| [Aperçu des detail props](features/detail-props-preview.md) | L'herbe et les objets de détail des matériaux `%detailtype` affichés dans la vue 3D sans compiler. |
 | [Modes de rendu et options d'affichage](features/render-modes-display.md) | Modes de rendu 3D, chaque option d'affichage, images de fond, images par seconde. |
 | [Aperçu de l'éclairage](features/lighting-preview.md) | Mode éclairé, éclairage précalculé, ombres, normal maps, reflets des cubemaps, outils de lightmap. |
 | [Vue joueur](features/player-view.md) | Parcourir la map comme un joueur, avec le monde compilé, les lightmaps et les compteurs. |

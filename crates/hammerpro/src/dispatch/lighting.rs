@@ -4,7 +4,7 @@ mod bench;
 mod bsp;
 pub(crate) mod child;
 mod grid;
-mod memory;
+pub(crate) mod memory;
 
 use std::collections::{HashMap, HashSet};
 

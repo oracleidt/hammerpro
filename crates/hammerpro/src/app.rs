@@ -115,6 +115,8 @@ pub struct HammerProApp {
     pub(crate) unsaved_asked: Option<(PendingOp, TabId)>,
     dropped_maps: Vec<PathBuf>,
     vram: crate::vram::VramMonitor,
+    perf: crate::perf::PerfMonitor,
+    perf_bench: crate::perf::BenchDriver,
 }
 
 fn register_all_translations() {
@@ -131,6 +133,7 @@ fn register_all_translations() {
     hp_app::i18n::register(TR);
     hp_app::i18n::register(crate::tabs::TR);
     hp_app::i18n::register(crate::vram::TR);
+    hp_app::i18n::register(crate::perf::TR);
     crate::dispatch::register_translations();
 }
 
@@ -233,6 +236,7 @@ impl HammerProApp {
             state.gfx = Some(Gfx::new(rs));
             install_pipeline_cache(rs, state.gfx.as_mut());
             vram = crate::vram::VramMonitor::new(&rs.adapter.get_info());
+            crate::perf::PerfMonitor::set_adapter(&mut state, &rs.adapter.get_info());
         }
         state.ui.show_first_run = first_run && !automated;
         if let Some(tool) = cli.tool {
@@ -347,6 +351,8 @@ impl HammerProApp {
             unsaved_asked: None,
             dropped_maps: Vec::new(),
             vram,
+            perf: crate::perf::PerfMonitor::default(),
+            perf_bench: crate::perf::BenchDriver::new(),
         };
         if let Some(bench) = &app.bench {
             app.initial_open = Some(bench.map().to_path_buf());
@@ -466,6 +472,7 @@ impl HammerProApp {
                 if self.avg_frame_time == 0.0 { elapsed } else { self.avg_frame_time * 0.9 + elapsed * 0.1 };
         }
         self.state.apply_selection_undo_setting();
+        self.state.sync_pick_elements();
         let f = &mut self.state.frame;
         f.dt = dt;
         f.time = now.duration_since(self.start).as_secs_f64();
@@ -481,6 +488,7 @@ impl HammerProApp {
             self.state.gfx = Some(Gfx::new(rs));
             install_pipeline_cache(rs, self.state.gfx.as_mut());
             self.vram = crate::vram::VramMonitor::new(&rs.adapter.get_info());
+            crate::perf::PerfMonitor::set_adapter(&mut self.state, &rs.adapter.get_info());
         }
 
         while let Ok((severity, text)) = self.log_rx.try_recv() {
@@ -489,6 +497,9 @@ impl HammerProApp {
         self.report_gpu_errors();
         let now = self.state.frame.time;
         self.vram.tick(&mut self.state, now);
+        let busy = self.state.assets.busy();
+        self.perf.tick(&mut self.state, elapsed, self.avg_frame_time * 1000.0, busy, now);
+        self.perf_bench.tick(&mut self.state, ctx, elapsed);
         if self.state.runtime.gpu.pressure >= hp_app::runtime::VramPressure::High
             && crate::dispatch::lighting::release_hidden(self)
         {
@@ -651,6 +662,16 @@ impl HammerProApp {
                 assets.sync_scene(doc, gfx, &opts);
                 self.last_sync = start.elapsed();
                 self.sync_count += 1;
+            }
+        }
+        {
+            let request = hp_app::runtime::render::DetailPreviewRequest {
+                enabled: self.state.settings.render.detail_preview,
+                eye: self.state.cameras.cam3d.pos.as_vec3().to_array(),
+            };
+            let AppState { assets, doc, gfx, runtime, .. } = &mut self.state;
+            if let Some(gfx) = gfx.as_mut() {
+                runtime.render.detail_preview = assets.sync_detail_preview(doc, gfx, &request);
             }
         }
         crate::dispatch::lighting::scene_synced(self);

@@ -27,7 +27,7 @@ Leaving the player view frees the compiled world, its lightmaps and its sky. Bak
 
 | Setting | What it does |
 |---|---|
-| **Graphics memory budget** | How much graphics memory Hammer Pro may use. **Automatic** (0, the default) uses 90% of what Windows gives the program, or 3 GB (1.5 GB on integrated graphics) when the driver does not tell. Set a value in MB to leave room for the game or another program running at the same time. |
+| **Graphics memory budget** | How much graphics memory Hammer Pro may use. **Automatic** (0, the default) uses 90% of what Windows gives the program, or 3 GB (1.5 GB on integrated graphics) when the driver does not tell; on integrated graphics, which use the system memory, never more than 2 GB. Set a value in MB to leave room for the game or another program running at the same time. |
 | **Keep other tabs on the graphics card** | On (default): switching tabs is instant while there is room. Off: only the map you see stays on the graphics card, the others load again when shown. |
 | **Free graphics memory now** | Frees the maps of the other tabs, unused textures and models, and the thumbnails at once. |
 

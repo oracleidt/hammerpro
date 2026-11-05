@@ -8,6 +8,7 @@ The **Material editor** window edits VMT files without leaving Hammer Pro. It ha
 
 - **Edit material** in the header of the [texture browser](texture-browser.md): opens the editor on the current material, or on the multiple selection of the browser (`Ctrl+click`, `Shift+click`).
 - Right click a thumbnail > **Edit material...**: opens it on that material (or on the multiple selection when the material is part of it).
+- [Texture tool](texture-tool.md): **Edit material** next to **Browse...** opens it on the material of the selected faces.
 - `Escape` or the window's close button closes it.
 
 ## Loading materials
@@ -60,7 +61,7 @@ Each parameter row shows its key (bold when set), a widget, a `✖` button (**Re
 | Color | A text field (`[1 1 1]`, values above 1 can be typed) and a color picker. |
 | Choice | A dropdown with named values. |
 | Surface property | A dropdown of the common `$surfaceprop` values. |
-| Texture | A path field (`folder/texture`) and a `…` button (**Choose a texture file**): the file (VTF, PNG, TGA, JPG) must be inside a `materials` folder, its path is written without extension. |
+| Texture | A **VTF** button (opens the texture in VTFEdit, VTFEdit++, VTFEdit Reloaded or another installed VTF editor, or in the built in [VTF editor](vtf-editor.md); right click for the choice), a path field (`folder/texture`) and a `…` button (**Choose a texture file**): the file (VTF, PNG, TGA, JPG) must be inside a `materials` folder, its path is written without extension. |
 | Text or vector | A text field showing the default. |
 
 **Other parameters** lists the parameters of the file the pages do not know, each editable with a remove button, and a row to add any parameter (`$parameter`, **value**, **Add**). Blocks like `Proxies` are edited in the text.

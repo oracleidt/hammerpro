@@ -94,6 +94,7 @@ fn tool_list() {
             ToolId::Curve,
             ToolId::Entity,
             ToolId::Clip,
+            ToolId::Slice,
             ToolId::Extrude,
             ToolId::Bevel,
             ToolId::Decal,

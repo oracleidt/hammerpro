@@ -19,6 +19,8 @@ pub struct WorkflowRuntime {
     pub tabs: Vec<MapTabInfo>,
     pub active_tab: u64,
     pub tab_request: Option<TabRequest>,
+    pub paste_preview: Option<(u64, std::sync::Arc<hp_editor::PastePreview>)>,
+    pub paste_preview_serial: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

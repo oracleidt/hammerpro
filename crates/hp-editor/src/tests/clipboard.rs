@@ -110,3 +110,52 @@ fn paste_special_copies() {
     let objs = doc.paste_special(&text, &at_original).expect("at original");
     assert_eq!(bounds(&doc, objs[0]).min, DVec3::ZERO);
 }
+
+#[test]
+fn paste_special_preview_matches_the_pasted_geometry() {
+    let (src, objs) = source();
+    let text = src.copy(&objs);
+    let opts = PasteSpecial {
+        copies: 3,
+        offset: DVec3::new(256.0, 32.0, 0.0),
+        rotation: DVec3::new(0.0, 0.0, 90.0),
+        ..PasteSpecial::default()
+    };
+    let preview = Document::paste_special_preview(&text, &opts).expect("preview");
+    assert_eq!((preview.copies, preview.shown_copies), (3, 3));
+    assert_eq!(preview.objects, 3);
+    assert!(!preview.lines.is_empty() && preview.lines.len().is_multiple_of(3));
+    let mut doc = Document::new_empty();
+    let rev = doc.revision();
+    let text = src.copy(&objs[..2]);
+    let pasted = doc.paste_special(&text, &opts).expect("special");
+    assert_ne!(doc.revision(), rev);
+    let solids_only = Document::paste_special_preview(&text, &opts).expect("solids");
+    let (mut lo, mut hi) = (DVec3::splat(f64::MAX), DVec3::splat(f64::MIN));
+    for [a, b] in &solids_only.lines {
+        lo = lo.min(*a).min(*b);
+        hi = hi.max(*a).max(*b);
+    }
+    let (mut dlo, mut dhi) = (DVec3::splat(f64::MAX), DVec3::splat(f64::MIN));
+    for o in &pasted {
+        if let ObjRef::Solid(id) = o {
+            let b = doc.scene().solid(*id).expect("solid").bounds;
+            dlo = dlo.min(b.min);
+            dhi = dhi.max(b.max);
+        }
+    }
+    for e in doc.scene().entities().keys() {
+        for id in doc.scene().entity_solid_ids(*e) {
+            let b = doc.scene().solid(id).expect("solid").bounds;
+            dlo = dlo.min(b.min);
+            dhi = dhi.max(b.max);
+        }
+    }
+    assert!((lo - dlo).abs().max_element() < 1e-6, "{lo:?} {dlo:?}");
+    assert!((hi - dhi).abs().max_element() < 1e-6, "{hi:?} {dhi:?}");
+    assert!(Document::paste_special_preview(&text, &PasteSpecial { copies: 0, ..PasteSpecial::default() }).is_err());
+    assert!(Document::paste_special_preview("junk", &opts).is_err());
+    let many = PasteSpecial { copies: 10_000, offset: DVec3::X, ..PasteSpecial::default() };
+    let capped = Document::paste_special_preview(&text, &many).expect("many");
+    assert!(capped.shown_copies < 10_000 && capped.lines.len() <= crate::PREVIEW_MAX_LINES);
+}

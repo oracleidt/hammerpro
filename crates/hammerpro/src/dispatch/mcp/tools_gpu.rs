@@ -13,6 +13,15 @@ domain! { "graphics memory";
         error), the estimated split (geometry, textures, models, lightmaps, compiled world, other, maps parked \
         in background tabs), the texture size limit applied under pressure, and what was freed so far.",
         {}, [];
+    get_performance: Read, "Frame time and quality",
+        "Frame time and quality of the 3D view: FPS, frame time, CPU time of the last 3D render (prepare, record,         submit), GPU time from timestamp queries when the graphics card supports them (shadows, scene, post         effects, water reflection), working set RAM, the graphics card, whether it is integrated, the performance         mode (render.performance_mode: Auto, Off, Low or VeryLow), the quality level in force (full, low, very_low),         whether Auto lowered it and at how many FPS, render.render_scale and render.perf_hud (the on-screen readout).         Auto only lowers the quality after the 3D view stays under 20 FPS for several seconds. Drive the camera         (set_camera, wait_frames) before reading to measure a view.",
+        {}, [];
+    run_benchmark: Editor, "Benchmark the 3D view",
+        "Turn the 3D camera through a full circle around its position over a number of frames (the camera is         put back afterwards) and measure the frame time of the real window: average FPS, frame time average,         95th percentile and worst, CPU render time, GPU time per stage when the card supports timestamp         queries, and the working set RAM at the start, end and peak. It starts at once; call wait_frames, then         get_performance: its benchmark field is running while it runs, then holds the result. vsync caps the         FPS at the refresh rate, so compare the CPU and GPU milliseconds as well.",
+        { "frames": integer("Frames to draw (default 300).", 10, 3600) }, [];
+    restore_full_quality: Editor, "Restore full quality",
+        "Go back to the full quality preview after Auto lowered it, and pause the automatic reduction until         render.performance_mode is changed. Same as the Restore full quality button over the 3D view.",
+        {}, [];
     free_gpu_memory: Editor, "Free graphics memory",
         "Free graphics memory now: the maps parked in background tabs (they load again when shown), textures \
         and models no open map uses, and the thumbnail caches. With lower_textures, textures are also loaded \
@@ -64,6 +73,91 @@ fn get_gpu_memory(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
         "last_release": g.last_release,
         "warning": g.warning,
     })))
+}
+
+fn bench_json(p: &hp_app::runtime::PerfRuntime) -> serde_json::Value {
+    match (&p.bench_result, p.bench_running) {
+        (_, true) => json!({ "running": true }),
+        (Some(r), false) => json!({
+            "running": false,
+            "frames": r.frames,
+            "seconds": r.seconds,
+            "avg_fps": r.avg_fps,
+            "frame_ms": { "avg": r.frame_ms_avg, "median": r.frame_ms_median, "p95": r.frame_ms_p95, "max": r.frame_ms_max },
+            "cpu_ms_avg": r.cpu_ms_avg,
+            "cpu_ms_median": r.cpu_ms_median,
+            "draw_calls_avg": r.draw_calls_avg,
+            "triangles_avg": r.triangles_avg,
+            "model_instances_drawn_avg": r.model_instances_avg,
+            "gpu_ms_median": r.gpu_ms_median,
+            "cpu_phases_ms_avg": { "setup": r.cpu_phases_ms_avg[0], "water_reflection": r.cpu_phases_ms_avg[1], "light_clusters": r.cpu_phases_ms_avg[2], "shadow_prep": r.cpu_phases_ms_avg[3], "model_culling": r.cpu_phases_ms_avg[4], "prepare_total": r.cpu_phases_ms_avg[5], "record": r.cpu_phases_ms_avg[6], "submit": r.cpu_phases_ms_avg[7] },
+            "gpu_ms_avg": { "total": r.gpu_ms_avg, "shadows": r.gpu_shadows_ms_avg, "scene": r.gpu_scene_ms_avg, "post": r.gpu_post_ms_avg, "water_reflection": r.gpu_reflection_ms_avg },
+            "working_set_mb": { "start": r.working_set_start_mb, "end": r.working_set_end_mb, "peak": r.working_set_peak_mb },
+            "views_rendered": r.views_rendered,
+        }),
+        _ => serde_json::Value::Null,
+    }
+}
+
+fn get_performance(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
+    let r = &state.settings.render;
+    let p = &state.runtime.render.perf;
+    let s = &p.sample;
+    let level = p.level(r.performance_mode);
+    Ok(ToolResult::json(json!({
+        "fps": state.frame.fps,
+        "frame_ms": s.frame_ms,
+        "cpu_ms": {
+            "total": s.prepare_ms + s.record_ms + s.submit_ms,
+            "prepare": s.prepare_ms,
+            "record": s.record_ms,
+            "submit": s.submit_ms,
+            "setup": s.setup_ms,
+            "water_reflection": s.reflection_cpu_ms,
+            "light_clusters": s.clusters_ms,
+            "shadow_prep": s.shadow_prep_ms,
+            "model_culling": s.models_ms,
+        },
+        "gpu_ms": if s.gpu_supported {
+            json!({
+                "total": s.gpu_total_ms + s.gpu_reflection_ms,
+                "shadows": s.gpu_shadows_ms,
+                "scene": s.gpu_scene_ms,
+                "post": s.gpu_post_ms,
+                "water_reflection": s.gpu_reflection_ms,
+            })
+        } else {
+            serde_json::Value::Null
+        },
+        "gpu_timing_supported": s.gpu_supported,
+        "working_set_mb": s.working_set >> 20,
+        "vram_usage_mb": state.runtime.gpu.usage >> 20,
+        "adapter": p.adapter,
+        "integrated_gpu": p.integrated,
+        "performance_mode": r.performance_mode.id(),
+        "quality_level": level.id(),
+        "reduced_automatically": p.reduced_automatically(r.performance_mode),
+        "auto_locked_to_full": p.auto_locked,
+        "auto_fps_measured": p.auto_fps,
+        "auto_reductions": p.auto_events,
+        "render_scale": r.scale(),
+        "perf_hud": r.perf_hud,
+        "benchmark": bench_json(p),
+        "views_rendered": state.runtime.render.views_rendered,
+        "views_reused": state.runtime.render.views_reused,
+    })))
+}
+
+fn run_benchmark(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
+    let frames = a.opt_u64("frames", 10, 3600)?.unwrap_or(300) as u32;
+    state.runtime.render.perf.bench_request = Some(hp_app::runtime::BenchRequest { frames });
+    state.runtime.render.perf.bench_running = true;
+    Ok(ToolResult::json(json!({ "started": true, "frames": frames })))
+}
+
+fn restore_full_quality(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
+    state.runtime.render.perf.restore_request = true;
+    Ok(ToolResult::json(json!({ "requested": true })))
 }
 
 fn free_gpu_memory(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {

@@ -5,18 +5,26 @@ use egui::{Align2, Color32, FontId, Pos2, Rect, RichText, ScrollArea, Sense, Str
 use hp_app::runtime::AssetKind;
 use hp_app::state::{ParticleCatalog, ParticleSystemInfo};
 use hp_app::{AppState, Severity, t, tf};
-use hp_pcf::{Effect, Plan, Points, RenderKind};
+use hp_pcf::{Effect, Plan, Points};
 
-use crate::particles::{EffectStatus, MaterialLook, ParticleHandle, guess_additive, material_key, material_tint};
+use crate::particles::{
+    EffectStatus, ParticleHandle, ParticleSprite, append_sprites, instances_of, material_key, sort_far_first,
+};
 
 pub const CANVAS: f32 = 300.0;
-pub const MAX_PARTICLES: usize = 400;
+pub const MAX_PARTICLES: usize = crate::particles::MAX_PER_EFFECT;
 pub const MAX_ROWS: usize = 20_000;
+pub const VIEW_ID: u32 = 0x5043_4650;
 const ROW_H: f32 = 20.0;
 const SPIN_DEG_PER_SEC: f32 = 24.0;
-const PITCH_DEG: f32 = 22.0;
 const WARM_UP: f32 = 1.5;
 const MIN_EXTENT: f32 = 48.0;
+const FOV_DEG: f32 = 60.0;
+const BACKGROUND: [f32; 3] = [0.09, 0.1, 0.12];
+const MIN_ZOOM: f32 = 0.2;
+const MAX_ZOOM: f32 = 6.0;
+const DEFAULT_PITCH: f32 = 20.0;
+const DEFAULT_YAW: f32 = 215.0;
 
 pub fn matches(query: &str, name: &str, file: &str) -> bool {
     let name = name.to_ascii_lowercase();
@@ -45,7 +53,10 @@ pub struct ParticlePreviewWindow {
     paused: bool,
     spin: bool,
     yaw: f32,
+    pitch: f32,
+    zoom: f32,
     extent: f32,
+    rendered: usize,
     center_z: f32,
     scroll_to_selected: bool,
     last_selected: Option<String>,
@@ -60,9 +71,12 @@ impl ParticlePreviewWindow {
             rows_key: None,
             playing: None,
             paused: false,
-            spin: true,
-            yaw: 35.0,
+            spin: false,
+            yaw: DEFAULT_YAW,
+            pitch: DEFAULT_PITCH,
+            zoom: 1.0,
             extent: 128.0,
+            rendered: 0,
             center_z: 32.0,
             scroll_to_selected: false,
             last_selected: None,
@@ -134,7 +148,7 @@ impl ParticlePreviewWindow {
             let n = sheet.sequences.iter().map(|q| q.number).max()?.min(63) as usize;
             Some((0..=n as u32).map(|i| sheet.frame_count(i) as u32).collect())
         });
-        let points = Points::at([0.0; 3]);
+        let points = Points::with_angles([0.0; 3], [0.0; 3]);
         if effect.continuous() {
             for _ in 0..(WARM_UP / 0.05) as usize {
                 effect.step_at(0.05, &points, MAX_PARTICLES);
@@ -166,7 +180,7 @@ impl ParticlePreviewWindow {
             return;
         }
         let Some(p) = self.playing.as_mut() else { return };
-        p.effect.step_at(dt.clamp(0.0, 0.1), &Points::at([0.0; 3]), MAX_PARTICLES);
+        p.effect.step_at(dt.clamp(0.0, 0.1), &Points::with_angles([0.0; 3], [0.0; 3]), MAX_PARTICLES);
         if self.spin {
             self.yaw = (self.yaw + SPIN_DEG_PER_SEC * dt.clamp(0.0, 0.1)).rem_euclid(360.0);
         }
@@ -187,79 +201,104 @@ impl ParticlePreviewWindow {
         }
     }
 
-    fn project(&self, pos: [f32; 3], rect: Rect) -> (Pos2, f32) {
+    fn eye_basis(&self) -> ([f32; 3], [f32; 3], [f32; 3], [f32; 3]) {
         let (sy, cy) = self.yaw.to_radians().sin_cos();
-        let (sp, cp) = PITCH_DEG.to_radians().sin_cos();
-        let x = pos[0] * cy - pos[1] * sy;
-        let depth = pos[0] * sy + pos[1] * cy;
-        let z = pos[2] - self.center_z;
-        let screen_x = x;
-        let screen_y = z * cp - depth * sp;
-        let scale = rect.width().min(rect.height()) * 0.5 / self.extent;
-        (rect.center() + vec2(screen_x * scale, -screen_y * scale), scale)
+        let (sp, cp) = self.pitch.to_radians().sin_cos();
+        let forward = [-cp * cy, -cp * sy, -sp];
+        let target = [0.0, 0.0, self.center_z];
+        let half = (FOV_DEG.to_radians() * 0.5).tan();
+        let dist = self.extent * 1.1 / half * self.zoom;
+        let eye = [target[0] - forward[0] * dist, target[1] - forward[1] * dist, target[2] - forward[2] * dist];
+        let mut right = [forward[1], -forward[0], 0.0];
+        let n = (right[0] * right[0] + right[1] * right[1]).sqrt().max(1e-6);
+        right = right.map(|c| c / n);
+        let up = [
+            right[1] * forward[2] - right[2] * forward[1],
+            right[2] * forward[0] - right[0] * forward[2],
+            right[0] * forward[1] - right[1] * forward[0],
+        ];
+        (eye, forward, right, up)
     }
 
-    fn paint_canvas(&self, painter: &egui::Painter, rect: Rect) {
-        painter.rect_filled(rect, 4.0, Color32::from_gray(18));
-        let grid = Stroke::new(1.0, Color32::from_gray(40));
-        let ring: Vec<Pos2> = (0..=24)
+    fn project(&self, p: [f32; 3], rect: Rect) -> Option<Pos2> {
+        let (eye, f, r, u) = self.eye_basis();
+        let d = [p[0] - eye[0], p[1] - eye[1], p[2] - eye[2]];
+        let dot = |a: [f32; 3], b: [f32; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+        let depth = dot(d, f);
+        if depth < 1.0 {
+            return None;
+        }
+        let half = (FOV_DEG.to_radians() * 0.5).tan();
+        let aspect = rect.width() / rect.height().max(1.0);
+        let x = dot(d, r) / depth / (half * aspect);
+        let y = dot(d, u) / depth / half;
+        Some(Pos2::new(rect.center().x + x * rect.width() * 0.5, rect.center().y - y * rect.height() * 0.5))
+    }
+
+    fn sprites(&self) -> (Vec<ParticleSprite>, Vec<String>) {
+        let mut sprites = Vec::new();
+        let mut materials = Vec::new();
+        let Some(playing) = &self.playing else { return (sprites, materials) };
+        let Ok(shared) = self.handle.lock() else { return (sprites, materials) };
+        append_sprites(std::iter::once((7, &playing.effect)), &shared.looks, &mut sprites, &mut materials);
+        let (eye, ..) = self.eye_basis();
+        sort_far_first(&mut sprites, eye);
+        (sprites, materials)
+    }
+
+    fn render_gpu(&mut self, state: &mut AppState, size_px: [u32; 2]) -> Option<egui::TextureId> {
+        let (sprites, materials) = self.sprites();
+        let (eye, forward, _, up) = self.eye_basis();
+        let AppState { assets, gfx, .. } = state;
+        let gfx = gfx.as_mut()?;
+        let instances = instances_of(&sprites, &materials, &mut **assets);
+        self.rendered = instances.len();
+        let params = hp_render::ViewParams {
+            size: size_px,
+            kind: hp_render::ViewKind::Perspective { eye, forward, up, fov_y_deg: FOV_DEG, near: 1.0, far: 65_536.0 },
+            mode: hp_render::RenderMode::Textured,
+            grid: None,
+            background: BACKGROUND,
+            selection_color: [1.0, 0.3, 0.3, 0.0],
+            show_sprites: false,
+            show_models: false,
+            msaa: true,
+            game_pixel_grid: false,
+        };
+        gfx.renderer.render_particle_preview(VIEW_ID, &params, &instances);
+        gfx.view_egui_texture(VIEW_ID)
+    }
+
+    fn paint_canvas(&mut self, ui: &egui::Ui, state: &mut AppState, rect: Rect) {
+        let painter = ui.painter_at(rect);
+        painter.rect_filled(rect, 4.0, hp_app::data_colors::PREVIEW_BACKDROP);
+        let ppp = ui.ctx().pixels_per_point();
+        let size_px = [(rect.width() * ppp).round().max(16.0) as u32, (rect.height() * ppp).round().max(16.0) as u32];
+        if let Some(tex) = self.render_gpu(state, size_px) {
+            let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
+            painter.image(tex, rect, uv, Color32::WHITE);
+        }
+        let grid = Stroke::new(1.0, Color32::from_white_alpha(28));
+        let ring: Vec<Option<Pos2>> = (0..=48)
             .map(|k| {
-                let a = k as f32 / 24.0 * std::f32::consts::TAU;
-                self.project([a.cos() * self.extent * 0.8, a.sin() * self.extent * 0.8, 0.0], rect).0
+                let a = k as f32 / 48.0 * std::f32::consts::TAU;
+                self.project([a.cos() * self.extent, a.sin() * self.extent, 0.0], rect)
             })
             .collect();
-        painter.add(egui::Shape::line(ring, grid));
-        let clip = painter.with_clip_rect(rect);
-        let Some(playing) = &self.playing else { return };
-        let shared = self.handle.lock().ok();
-        let default_look = MaterialLook::default();
-        let mut items: Vec<(f32, Pos2, f32, Color32, Option<Pos2>)> = Vec::new();
-        for (plan, particles) in playing.effect.systems() {
-            let key = material_key(&plan.material);
-            let additive = shared
-                .as_ref()
-                .and_then(|s| s.looks.get(&key).map(|l| l.additive || l.blend() != default_look.blend()))
-                .unwrap_or_else(|| guess_additive(&key));
-            let tint = material_tint(&plan.material);
-            for q in particles {
-                if q.alpha <= 0.01 || q.radius <= 0.0 || !q.pos.iter().all(|v| v.is_finite()) {
-                    continue;
-                }
-                let (p, scale) = self.project(q.pos, rect);
-                let a = (q.alpha * if additive { 0.7 } else { 0.5 }).clamp(0.0, 1.0);
-                let rgb = [q.color[0] * tint[0], q.color[1] * tint[1], q.color[2] * tint[2]];
-                let color = if additive {
-                    Color32::from_rgba_premultiplied(
-                        (rgb[0] * a * 255.0) as u8,
-                        (rgb[1] * a * 255.0) as u8,
-                        (rgb[2] * a * 255.0) as u8,
-                        0,
-                    )
-                } else {
-                    Color32::from_rgba_unmultiplied(
-                        (rgb[0] * 255.0) as u8,
-                        (rgb[1] * 255.0) as u8,
-                        (rgb[2] * 255.0) as u8,
-                        (a * 255.0) as u8,
-                    )
-                };
-                let tail = (plan.render.kind == RenderKind::Trail).then(|| {
-                    let back =
-                        [q.pos[0] - q.vel[0] * q.trail, q.pos[1] - q.vel[1] * q.trail, q.pos[2] - q.vel[2] * q.trail];
-                    self.project(back, rect).0
-                });
-                let depth = q.pos[0] * self.yaw.to_radians().sin() + q.pos[1] * self.yaw.to_radians().cos();
-                items.push((depth, p, (q.radius * scale).clamp(0.5, 120.0), color, tail));
+        for w in ring.windows(2) {
+            if let (Some(a), Some(b)) = (w[0], w[1]) {
+                painter.line_segment([a, b], grid);
             }
         }
-        items.sort_by(|a, b| b.0.total_cmp(&a.0));
-        for (_, p, r, color, tail) in items {
-            match tail {
-                Some(t) => {
-                    clip.line_segment([p, t], Stroke::new(r.max(1.0), color));
-                }
-                None => {
-                    clip.circle_filled(p, r, color);
+        if let Some(o) = self.project([0.0; 3], rect) {
+            let len = self.extent * 0.35;
+            for (dir, color) in [
+                ([len, 0.0, 0.0], hp_app::data_colors::CHANNEL_RED),
+                ([0.0, len, 0.0], hp_app::data_colors::CHANNEL_GREEN),
+                ([0.0, 0.0, len], hp_app::data_colors::CHANNEL_BLUE),
+            ] {
+                if let Some(e) = self.project(dir, rect) {
+                    painter.line_segment([o, e], Stroke::new(1.5, color));
                 }
             }
         }
@@ -369,8 +408,25 @@ impl ParticlePreviewWindow {
 
     fn preview_ui(&mut self, ui: &mut egui::Ui, state: &mut AppState) {
         let selected = state.runtime.lab.particle_preview.selected.clone();
-        let (rect, _) = ui.allocate_exact_size(vec2(CANVAS, CANVAS), Sense::hover());
-        self.paint_canvas(&ui.painter_at(rect), rect);
+        let width = ui.available_width().clamp(CANVAS, 640.0);
+        let (rect, response) = ui.allocate_exact_size(vec2(width, CANVAS), Sense::click_and_drag());
+        if response.dragged() {
+            let delta = response.drag_delta();
+            self.yaw = (self.yaw - delta.x * 0.4).rem_euclid(360.0);
+            self.pitch = (self.pitch + delta.y * 0.4).clamp(-85.0, 85.0);
+        }
+        if response.hovered() {
+            let scroll = ui.input(|i| i.smooth_scroll_delta.y);
+            if scroll != 0.0 {
+                self.zoom = (self.zoom * (1.0 - scroll * 0.002)).clamp(MIN_ZOOM, MAX_ZOOM);
+            }
+        }
+        if response.double_clicked() {
+            self.yaw = DEFAULT_YAW;
+            self.pitch = DEFAULT_PITCH;
+            self.zoom = 1.0;
+        }
+        self.paint_canvas(ui, state, rect);
         let status = selected.as_deref().and_then(|s| self.status(s));
         if let Some(status) = status {
             let (text, warn) = match status {
@@ -391,6 +447,7 @@ impl ParticlePreviewWindow {
                 Color32::from_gray(150),
             );
         }
+        ui.label(RichText::new(t!("lab.pp.hint")).small().weak());
         ui.horizontal(|ui| {
             let label = if self.paused { t!("lab.pp.play") } else { t!("lab.pp.pause") };
             if ui.button(label).clicked() {
@@ -501,6 +558,11 @@ pub(crate) const TR: hp_app::i18n::TrTable = &[
     ("lab.pp.pause", "Pause", "Pause"),
     ("lab.pp.restart", "Restart", "Relancer"),
     ("lab.pp.spin", "Turn", "Tourner"),
+    (
+        "lab.pp.hint",
+        "Same renderer as the 3D view. Drag to orbit, scroll to zoom, double click to reset the camera",
+        "Même moteur de rendu que la vue 3D. Glisser pour orbiter, molette pour zoomer, double-clic pour recentrer la caméra",
+    ),
     ("lab.pp.particles", "{0} particles", "{0} particules"),
     ("lab.pp.unsupported", "Not simulated: {0}", "Non simulé : {0}"),
     ("lab.pp.assign", "Assign to {0} entities", "Assigner à {0} entités"),

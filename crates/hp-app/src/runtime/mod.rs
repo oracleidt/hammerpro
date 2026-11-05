@@ -17,6 +17,7 @@ mod lighting;
 mod mcp;
 mod mesh;
 mod mesh_disp;
+pub mod perf;
 mod placement;
 pub mod render;
 mod roadside;
@@ -25,6 +26,7 @@ mod shader;
 mod startup;
 pub mod update;
 mod visibility;
+mod vtf;
 mod workflow;
 
 pub use blender::{BlenderLink, BlenderNote, BlenderRuntime, BlenderTarget, DispSent};
@@ -52,6 +54,7 @@ pub use lighting::{
 pub use mcp::{McpClientRow, McpRuntime};
 pub use mesh::{DispLoopRequest, EdgeRequest, ErosionDialog, MeshRuntime, TerrainPreview};
 pub use mesh_disp::MeshDispRuntime;
+pub use perf::{BenchRequest, BenchResult, PerfLevel, PerfPlan, PerfRuntime, PerfSample, Reflections};
 pub use placement::{
     CreatePrefabRequest, FileStamp, PlacementRuntime, PrefabCache, PrefabLoad, PrefabTokens, file_stamp,
 };
@@ -62,6 +65,7 @@ pub use shader::{LiveGraph, ShaderRequest, ShaderRuntime};
 pub use startup::{OpeningStatus, StartupRuntime};
 pub use update::{UpdateFailure, UpdateInfo, UpdateRuntime, UpdateStatus};
 pub use visibility::VisibilityRuntime;
+pub use vtf::{VtfRequest, VtfRuntime};
 pub use workflow::{MAX_DROPPED, MapTabInfo, TabRequest, WorkflowMapMemory, WorkflowRuntime};
 
 #[derive(Debug, Default)]
@@ -92,4 +96,5 @@ pub struct Runtime {
     pub gpu: GpuRuntime,
     pub storage: crate::storage::StorageRuntime,
     pub shader: ShaderRuntime,
+    pub vtf: VtfRuntime,
 }

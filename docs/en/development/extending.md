@@ -34,7 +34,7 @@ Every user-visible text goes through the i18n layer with an English and a French
 
 ## Look and colors
 
-The interface is black and white: every UI color comes from the `hp_app::theme` tokens. Color is reserved for content (views, thumbnails, entity colors).
+The interface is black and white: every UI color comes from the `hp_app::theme` tokens. Color is reserved for content (views, thumbnails, entity colors). Colors that carry meaning in the data (shader node categories and pin types, the R, G and B channels of the color grading, the terrain grid) live in `crates/hp-app/src/data_colors.rs`, the one file the theme test lets hold hued colors.
 
 ## Adding an MCP tool
 

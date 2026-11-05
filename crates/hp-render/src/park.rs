@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use glam::Vec3;
 
 use crate::arena::GrowBuffer;
-use crate::gpu::LightGpu;
+use crate::gpu::{InstanceGpu, LightGpu};
 use crate::scene::Scene;
 use crate::sprite_layers::SpriteLayer;
 use crate::{Group, ModelInstance, ObjectId, Renderer};
@@ -18,6 +18,7 @@ pub struct ParkedScene {
     instance_refs: Vec<ObjectId>,
     instance_bounds: Option<(Vec3, Vec3)>,
     instance_boxes: Vec<(Vec3, Vec3)>,
+    instance_data: Vec<InstanceGpu>,
     instance_list: Vec<ModelInstance>,
     translucent_instances: bool,
     sprites: GrowBuffer,
@@ -83,6 +84,7 @@ impl Renderer {
             instance_refs,
             instance_bounds,
             instance_boxes,
+            instance_data,
             instance_list,
             translucent_instances,
             sprites,
@@ -108,6 +110,7 @@ impl Renderer {
             instance_refs: std::mem::replace(&mut self.instance_refs, instance_refs),
             instance_bounds: std::mem::replace(&mut self.instance_bounds, instance_bounds),
             instance_boxes: std::mem::replace(&mut self.instance_boxes, instance_boxes),
+            instance_data: std::mem::replace(&mut self.instance_data, instance_data),
             instance_list: std::mem::replace(&mut self.instance_list, instance_list),
             translucent_instances: std::mem::replace(&mut self.translucent_instances, translucent_instances),
             sprites: std::mem::replace(&mut self.sprites, sprites),
@@ -152,6 +155,7 @@ impl Renderer {
             instance_refs: Vec::new(),
             instance_bounds: None,
             instance_boxes: Vec::new(),
+            instance_data: Vec::new(),
             instance_list: Vec::new(),
             translucent_instances: false,
             sprites: GrowBuffer::new(d, "hp-render sprites", vb, 1 << 12),

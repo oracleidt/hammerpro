@@ -134,23 +134,14 @@ fn geometry(graph: &Graph, node: &Node, def: &NodeDef, thumbs: bool) -> Geo {
 }
 
 fn category_color(cat: &str) -> Color32 {
-    match cat {
-        "input" => Color32::from_gray(74),
-        "uv" => Color32::from_gray(92),
-        "math" => Color32::from_gray(58),
-        "color" => Color32::from_gray(110),
-        "filter" => Color32::from_gray(128),
-        "procedural" => Color32::from_gray(84),
-        "channels" => Color32::from_gray(100),
-        _ => Color32::from_gray(66),
-    }
+    hp_app::data_colors::node_category(cat)
 }
 
 pub fn pin_color(ty: PinTy) -> Color32 {
     match ty {
-        PinTy::Color => Color32::from_gray(235),
-        PinTy::Float => Color32::from_gray(180),
-        PinTy::Uv => Color32::from_gray(135),
+        PinTy::Color => hp_app::data_colors::PIN_COLOR,
+        PinTy::Float => hp_app::data_colors::PIN_FLOAT,
+        PinTy::Uv => hp_app::data_colors::PIN_UV,
     }
 }
 

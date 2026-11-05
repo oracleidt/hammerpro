@@ -1,9 +1,10 @@
 use bytemuck::{Pod, Zeroable};
 
 use crate::arena::GrowBuffer;
+use crate::camera::Camera;
 use crate::pipelines::{self, Blend, Desc, Shared, vertex_layout};
 use crate::types::MaterialId;
-use crate::{FrameCounter, Renderer};
+use crate::{FrameCounter, Renderer, ViewParams};
 
 pub(crate) const PARTICLE_WGSL: &str = concat!(
     include_str!("shaders/common.wgsl"),
@@ -41,6 +42,7 @@ pub struct ParticleInstance {
     pub uv: [f32; 4],
     pub color: [f32; 4],
     pub bright: f32,
+    pub add_self: f32,
     pub screen_fade: [f32; 2],
     pub orient: ParticleOrient,
     pub material: MaterialId,
@@ -161,26 +163,16 @@ fn pack_fade(f: [f32; 2]) -> u32 {
 }
 
 fn pack(particles: &[ParticleInstance]) -> (Vec<ParticleGpu>, Vec<Run>) {
-    let mut first: Vec<((ParticleBlend, MaterialId), usize)> = Vec::new();
-    let mut keyed: Vec<(usize, usize, usize)> = Vec::with_capacity(particles.len());
-    for (i, p) in particles.iter().enumerate() {
-        if !p.pos.iter().all(|c| c.is_finite()) {
-            continue;
-        }
-        let key = (p.blend, p.material);
-        let order = match first.iter().find(|(k, _)| *k == key) {
-            Some((_, o)) => *o,
-            None => {
-                first.push((key, i));
-                i
-            }
-        };
-        keyed.push((blend_index(p.blend), order, i));
-    }
+    let mut keyed: Vec<(usize, usize)> = particles
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| p.pos.iter().all(|c| c.is_finite()))
+        .map(|(i, p)| (blend_index(p.blend), i))
+        .collect();
     keyed.sort_unstable();
     let mut data = Vec::with_capacity(keyed.len());
     let mut runs: Vec<Run> = Vec::new();
-    for (_, _, i) in keyed {
+    for (_, i) in keyed {
         let p = &particles[i];
         let rect = if p.uv.iter().all(|v| v.is_finite()) { p.uv } else { [0.0, 0.0, 1.0, 1.0] };
         let color = p.color.map(|c| finite(c, 0.0).clamp(0.0, 1.0));
@@ -191,12 +183,13 @@ fn pack(particles: &[ParticleInstance]) -> (Vec<ParticleGpu>, Vec<Run>) {
             roll: finite(p.roll, 0.0),
             rect,
             color: crate::pack_rgba(color),
-            mode: match p.orient {
-                ParticleOrient::Screen => 0,
-                ParticleOrient::Upright => 1,
-                ParticleOrient::Flat => 2,
-                ParticleOrient::Stretched => 3,
-            },
+            mode: (finite(p.add_self, 0.0).clamp(0.0, 16.0) * 256.0).round() as u32 * 256
+                + match p.orient {
+                    ParticleOrient::Screen => 0,
+                    ParticleOrient::Upright => 1,
+                    ParticleOrient::Flat => 2,
+                    ParticleOrient::Stretched => 3,
+                },
             bright: finite(p.bright, 1.0).clamp(0.0, 16.0),
             fade: pack_fade(p.screen_fade),
         });
@@ -211,38 +204,51 @@ fn pack(particles: &[ParticleInstance]) -> (Vec<ParticleGpu>, Vec<Run>) {
 
 impl Renderer {
     pub fn set_particles(&mut self, particles: &[ParticleInstance]) {
+        if self.upload_particles(false, particles) {
+            self.content_gen += 1;
+        }
+    }
+
+    fn upload_particles(&mut self, preview: bool, particles: &[ParticleInstance]) -> bool {
         let limit = (self.max_buffer / size_of::<ParticleGpu>() as u64) as usize;
         let particles = &particles[..particles.len().min(limit)];
-        if particles.is_empty() && self.particles.count == 0 {
-            return;
-        }
-        let (data, runs) = pack(particles);
-        for r in &runs {
-            let _ = self.scene.material_slot(r.material);
-        }
-        if !runs.is_empty() {
-            self.sync_materials();
-        }
-        self.particles.count = data.len() as u32;
-        self.particles.runs = runs;
-        if !data.is_empty() {
-            let bytes: &[u8] = bytemuck::cast_slice(&data);
-            let buffer = self.particles.buffer.get_or_insert_with(|| {
-                GrowBuffer::new(&self.device, "hp-render particles", wgpu::BufferUsages::VERTEX, 1 << 14)
-            });
-            let _ = buffer.ensure(&self.device, &self.queue, bytes.len() as u64, self.max_buffer, false);
-            if bytes.len() as u64 <= buffer.size {
-                self.queue.write_buffer(&buffer.buffer, 0, bytes);
-            } else {
-                self.particles.count = 0;
-                self.particles.runs.clear();
+        let mut set = std::mem::take(if preview { &mut self.preview_particles } else { &mut self.particles });
+        let label = if preview { "hp-render preview particles" } else { "hp-render particles" };
+        let changed = !(particles.is_empty() && set.count == 0);
+        if changed {
+            let (data, runs) = pack(particles);
+            for r in &runs {
+                let _ = self.scene.material_slot(r.material);
+            }
+            if !runs.is_empty() {
+                self.sync_materials();
+            }
+            set.count = data.len() as u32;
+            set.runs = runs;
+            if !data.is_empty() {
+                let bytes: &[u8] = bytemuck::cast_slice(&data);
+                let buffer = set
+                    .buffer
+                    .get_or_insert_with(|| GrowBuffer::new(&self.device, label, wgpu::BufferUsages::VERTEX, 1 << 14));
+                let _ = buffer.ensure(&self.device, &self.queue, bytes.len() as u64, self.max_buffer, false);
+                if bytes.len() as u64 <= buffer.size {
+                    self.queue.write_buffer(&buffer.buffer, 0, bytes);
+                } else {
+                    set.count = 0;
+                    set.runs.clear();
+                }
             }
         }
-        self.content_gen += 1;
+        *(if preview { &mut self.preview_particles } else { &mut self.particles }) = set;
+        changed
     }
 
     pub fn particle_count(&self) -> u32 {
         self.particles.count
+    }
+
+    pub fn preview_particle_count(&self) -> u32 {
+        self.preview_particles.count
     }
 
     pub(crate) fn ensure_particle_pipes(&mut self, samples: u32) {
@@ -252,7 +258,91 @@ impl Renderer {
     }
 
     pub(crate) fn draw_particles(&self, pass: &mut wgpu::RenderPass<'_>, samples: u32, n: &mut FrameCounter) {
-        let d = &self.particles;
+        self.draw_particle_set(&self.particles, pass, samples, n);
+    }
+
+    pub fn render_particle_preview(
+        &mut self,
+        view_id: u32,
+        params: &ViewParams,
+        particles: &[ParticleInstance],
+    ) -> &wgpu::TextureView {
+        self.flush();
+        let mut params = *params;
+        params.size = [params.size[0].clamp(1, self.max_tex_dim), params.size[1].clamp(1, self.max_tex_dim)];
+        let mut opts = self.view_options(view_id);
+        opts.show_fog = false;
+        opts.fog_volume_inside = false;
+        opts.show_sky = false;
+        opts.show_sky_3d = false;
+        opts.compiled_lighting = false;
+        opts.occlusion_culling = false;
+        let cam = Camera::new(&params);
+        let samples = if params.msaa { 4 } else { 1 };
+        self.upload_particles(true, particles);
+        self.ensure_view(view_id, params.size, samples);
+        self.prepare_tone(view_id, params.size, params.mode, false);
+        if self.preview_particles.count > 0 {
+            self.preview_particles.pipes(&self.device, &self.shared, samples);
+        }
+        let uniform = self.view_uniform(&cam, &params, &opts, None, None, false, 1.0);
+        self.ensure_view_bind_group(view_id);
+        let mut counter = FrameCounter::default();
+        let mut enc = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("hp-render particle preview") });
+        if let Some(view) = self.views.get(&view_id)
+            && let Some(bind_group) = view.bind_group.as_ref()
+        {
+            self.queue.write_buffer(&view.uniform, 0, bytemuck::bytes_of(&uniform));
+            let bg = params.background.map(|c| f64::from(crate::gpu::srgb_to_linear(c)));
+            let clear = wgpu::Color { r: bg[0], g: bg[1], b: bg[2], a: 1.0 };
+            let (target, resolve) = match &view.msaa_view {
+                Some(m) => (m, Some(&view.color_view)),
+                None => (&view.color_view, None),
+            };
+            let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("hp-render particle preview pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: target,
+                    depth_slice: None,
+                    resolve_target: resolve,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(clear),
+                        store: if resolve.is_some() { wgpu::StoreOp::Discard } else { wgpu::StoreOp::Store },
+                    },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &view.depth_view,
+                    depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(0.0), store: wgpu::StoreOp::Discard }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            pass.set_bind_group(0, bind_group, &[]);
+            self.draw_particle_set(&self.preview_particles, &mut pass, samples, &mut counter);
+        }
+        let present = self.views.get(&view_id).map(|v| (v.color.clone(), v.color_view.clone(), v.display_srgb.clone()));
+        if let Some((color, color_view, display)) = present {
+            let inputs = crate::hdr::FrameInputs {
+                color: &color,
+                color_view: &color_view,
+                display: &display,
+                size: params.size,
+                chain: false,
+            };
+            self.record_present(&mut enc, view_id, &inputs);
+        }
+        self.queue.submit([enc.finish()]);
+        match self.views.get(&view_id) {
+            Some(view) => &view.display_view,
+            None => &self.fallback_view,
+        }
+    }
+
+    fn draw_particle_set(&self, d: &Particles, pass: &mut wgpu::RenderPass<'_>, samples: u32, n: &mut FrameCounter) {
         let (Some(buffer), Some(p)) = (&d.buffer, d.pipes.iter().find(|p| p.samples == samples)) else { return };
         if d.count == 0 {
             return;
@@ -288,6 +378,7 @@ mod tests {
             uv: [0.0, 0.0, 1.0, 1.0],
             color: [1.0; 4],
             bright: 1.0,
+            add_self: 0.0,
             screen_fade: [0.0; 2],
             orient: ParticleOrient::Screen,
             material,
@@ -296,7 +387,7 @@ mod tests {
     }
 
     #[test]
-    fn runs_keep_the_order_and_put_additive_last() {
+    fn runs_stay_back_to_front_and_put_additive_last() {
         use ParticleBlend::{AddSelf, Additive, Alpha};
         let list = [
             p(1, Alpha, 0.0),
@@ -310,8 +401,11 @@ mod tests {
         assert_eq!(data.len(), 5, "non finite positions are skipped");
         let keys: Vec<(MaterialId, ParticleBlend, u32, u32)> =
             runs.iter().map(|r| (r.material, r.blend, r.start, r.count)).collect();
-        assert_eq!(keys, vec![(1, Alpha, 0, 2), (3, Alpha, 2, 1), (4, AddSelf, 3, 1), (2, Additive, 4, 1)]);
-        assert_eq!(data[1].pos[0], 3.0, "material 1 kept its order");
+        assert_eq!(
+            keys,
+            vec![(1, Alpha, 0, 1), (3, Alpha, 1, 1), (1, Alpha, 2, 1), (4, AddSelf, 3, 1), (2, Additive, 4, 1)]
+        );
+        assert_eq!(data[2].pos[0], 3.0, "the order of the list is kept inside a blend");
     }
 
     #[test]

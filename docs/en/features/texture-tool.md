@@ -41,6 +41,7 @@ The material box shows the material of the selected faces. When they use several
 | Control | What it does |
 |---|---|
 | **Browse...** | Opens the texture browser: the next material you pick there is applied to the selected faces, then the panel comes back. |
+| **Edit material** | Opens the [material editor](material-editor.md) on the material of the selected faces (on all of them when the faces use several). |
 | **Apply current** | Applies the current material of the texture browser to the selected faces. |
 | Image button (**Make this the current material**) | Makes the material of the faces current (only when they share one). |
 | Drop a material on the box | Applies the dragged material to the selected faces. |

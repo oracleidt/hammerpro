@@ -4,10 +4,12 @@ pub mod helpers;
 pub mod instances;
 pub mod labels;
 pub mod mesh_disp;
+pub mod paste_preview;
 pub mod pointfile;
 pub mod portals;
 pub mod render;
 pub mod roadside;
+pub mod selection;
 pub mod terrain;
 
 use hp_app::AppState;
@@ -41,6 +43,8 @@ pub fn default_layers() -> Vec<Box<dyn OverlayLayer>> {
     list.extend(roadside::layers());
     list.extend(instances::layers());
     list.extend(helpers::layers());
+    list.extend(selection::layers());
+    list.extend(paste_preview::layers());
     list.extend(labels::layers());
     list.extend(fog::layers());
     list.extend(render::layers());

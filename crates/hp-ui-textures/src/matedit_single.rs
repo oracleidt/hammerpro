@@ -192,6 +192,8 @@ impl SingleEditor {
                 ui.label(RichText::new(t!("tex.me1.preview_note")).small().weak());
             }
             ui.add_space(4.0);
+            self.linked_textures_ui(ui, state, &mat);
+            ui.add_space(4.0);
             ui.label(RichText::new(t!("tex.me1.text")).strong());
             egui::ScrollArea::vertical().id_salt("hp_me1_text").show(ui, |ui| {
                 ui.add(
@@ -241,7 +243,8 @@ impl SingleEditor {
                     self.set(param.key, None);
                 }
                 let shown = value.unwrap_or(param.default);
-                if let Some(new) = widget(ui, state, param, shown, set) {
+                let material = self.name.clone().unwrap_or_default();
+                if let Some(new) = widget(ui, state, param, shown, set, &material) {
                     let new = new.trim().to_owned();
                     if new.is_empty() {
                         self.set(param.key, None);
@@ -252,6 +255,29 @@ impl SingleEditor {
             });
         });
         ui.label(RichText::new(if fr { param.french } else { param.english }).small().weak());
+    }
+
+    fn linked_textures_ui(&mut self, ui: &mut Ui, state: &mut AppState, mat: &hp_vmt::Material) {
+        let linked: Vec<(&'static str, String)> = vmt_params::PARAMS
+            .iter()
+            .filter(|p| p.kind == Kind::Texture)
+            .filter_map(|p| mat.get(p.key).map(str::trim).filter(|v| !v.is_empty()).map(|v| (p.key, v.to_owned())))
+            .collect();
+        ui.label(RichText::new(t!("tex.me1.linked")).strong());
+        if linked.is_empty() {
+            ui.label(RichText::new(t!("tex.me1.linked_none")).small().weak());
+            return;
+        }
+        let material = self.name.clone().unwrap_or_default();
+        egui::Grid::new("hp_me1_linked").num_columns(3).spacing([6.0, 3.0]).show(ui, |ui| {
+            for (key, texture) in &linked {
+                ui.label(RichText::new(*key).monospace().small());
+                ui.add(egui::Label::new(RichText::new(texture).small()).truncate()).on_hover_text(texture);
+                vtf_button(ui, state, texture, key, &material);
+                ui.end_row();
+            }
+        });
+        ui.label(RichText::new(t!("tex.me1.linked_tip")).small().weak());
     }
 
     fn other_ui(&mut self, ui: &mut Ui, mat: &hp_vmt::Material) {
@@ -294,7 +320,14 @@ fn other_params(mat: &hp_vmt::Material) -> Vec<(String, String)> {
     mat.params.iter().filter(|(k, _)| vmt_params::find(k).is_none()).cloned().collect()
 }
 
-fn widget(ui: &mut Ui, state: &mut AppState, param: &VmtParam, shown: &str, set: bool) -> Option<String> {
+fn widget(
+    ui: &mut Ui,
+    state: &mut AppState,
+    param: &VmtParam,
+    shown: &str,
+    set: bool,
+    material: &str,
+) -> Option<String> {
     let id = ui.scope_id().with(("hp_me1_param", param.key));
     match param.kind {
         Kind::Flag => {
@@ -355,6 +388,9 @@ fn widget(ui: &mut Ui, state: &mut AppState, param: &VmtParam, shown: &str, set:
         Kind::Texture => {
             let mut text = if set { shown.to_owned() } else { String::new() };
             let mut out = None;
+            if set {
+                vtf_button(ui, state, shown, param.key, material);
+            }
             if ui.button("…").on_hover_text(t!("tex.me1.pick_texture")).clicked()
                 && let Some(path) = pick_texture(state)
             {
@@ -373,6 +409,40 @@ fn widget(ui: &mut Ui, state: &mut AppState, param: &VmtParam, shown: &str, set:
                 .then_some(text)
         }
     }
+}
+
+fn vtf_button(ui: &mut Ui, state: &mut AppState, texture: &str, key: &str, material: &str) {
+    let texture = hp_vmt::normalize_texture_path(texture);
+    let external = crate::vtfedit::external_editor_ui(state);
+    let tip = match &external {
+        Some(e) if !state.settings.vtf.prefer_integrated => tf!("tex.me1.vtf_tip_external", e.label),
+        _ => t!("tex.me1.vtf_tip_integrated").to_owned(),
+    };
+    let r = ui.add_enabled(!texture.is_empty(), egui::Button::new(t!("tex.me1.vtf_edit")).small()).on_hover_text(tip);
+    let request = |external: Option<bool>| hp_app::runtime::VtfRequest {
+        texture: Some(texture.clone()),
+        file: None,
+        external,
+        materials: if material.is_empty() { Vec::new() } else { vec![material.to_owned()] },
+        param: Some(key.to_owned()),
+    };
+    if r.clicked() {
+        state.runtime.vtf.open(request(None));
+    }
+    r.context_menu(|ui| {
+        if ui.button(t!("tex.me1.vtf_integrated")).clicked() {
+            state.runtime.vtf.open(request(Some(false)));
+            ui.close();
+        }
+        let label = match &external {
+            Some(e) => tf!("tex.me1.vtf_external_named", e.label),
+            None => t!("tex.me1.vtf_external").to_owned(),
+        };
+        if ui.add_enabled(external.is_some(), egui::Button::new(label)).clicked() {
+            state.runtime.vtf.open(request(Some(true)));
+            ui.close();
+        }
+    });
 }
 
 fn pick_texture(state: &mut AppState) -> Option<String> {

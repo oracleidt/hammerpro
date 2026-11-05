@@ -47,7 +47,7 @@ mod tests;
 
 pub use array::{ArrayAxis, ArrayFrame, ArrayPlan, ArraySpec, MAX_ARRAY_AXIS_COUNT, MAX_ARRAY_COPIES};
 pub use changes::Changes;
-pub use clipboard::PasteSpecial;
+pub use clipboard::{PREVIEW_MAX_LINES, PastePreview, PasteSpecial};
 pub use curve_meta::{CURVE_KEY, CurveRecord, editor_curve_tag};
 pub use document::{Document, EditOptions, ManifestLink};
 pub use glob::{glob_match, glob_replace};
@@ -56,7 +56,7 @@ pub use history::{FACE_SELECTION_STEP, SELECTION_STEP, UndoLimits};
 pub use ids::{IdBuildHasher, IdHasher, IdMap, IdSet};
 pub use ops::{AlignMode, BevelOutcome, ClipKeep, EdgeRef, EntityQuery, FaceEdit, ReplaceScope};
 pub use ops::{ConnPart, MAX_TEXT_LEN, TextField, TextMatch, TextQuery, find_ranges};
-pub use ops::{LoopScope, MAX_LOOP_SOLIDS, RunKind};
+pub use ops::{LoopScope, MAX_LOOP_SOLIDS, MAX_SLICE_PLANES, RunKind};
 pub use ops::{MAX_JITTER_DEG, RandomRotate, RandomRotateReport};
 pub use pick::{EntityRay, Hit, PickOptions, RectMode};
 pub use problems::{

@@ -399,6 +399,42 @@ impl Document {
         Some(unique_vertices(&n.geom))
     }
 
+    pub fn translate_points(&mut self, moves: &[(Id, Vec<DVec3>)], delta: DVec3) -> EditResult<usize> {
+        if !delta.is_finite() {
+            return Err(EditError::Invalid("offset is not finite".to_owned()));
+        }
+        if delta == DVec3::ZERO || moves.is_empty() {
+            return Ok(0);
+        }
+        let mut plans: Vec<(Id, Vec<DVec3>, Vec<DVec3>)> = Vec::with_capacity(moves.len());
+        let mut count = 0;
+        for (id, wanted) in moves {
+            let (base, _) = self.solid_vertices(*id).ok_or(EditError::NotFound(ObjRef::Solid(*id)))?;
+            let mut points = base.clone();
+            let mut hit = 0;
+            for (p, q) in points.iter_mut().zip(&base) {
+                if wanted.iter().any(|w| w.distance_squared(*q) < 1e-6) {
+                    *p += delta;
+                    hit += 1;
+                }
+            }
+            if hit > 0 {
+                count += hit;
+                plans.push((*id, base, points));
+            }
+        }
+        if plans.is_empty() {
+            return Err(EditError::Nothing("no vertex of the selection is on the brush"));
+        }
+        self.tx("Move elements", |doc| {
+            for (id, base, points) in &plans {
+                let edit = hp_geom::VertexEdit { points, base: Some(base), topology: None };
+                doc.edit_solid_vertices(*id, &edit, hp_geom::VertexEditOptions { uv_lock: true })?;
+            }
+            Ok(count)
+        })
+    }
+
     pub fn set_solid_vertices(&mut self, id: Id, points: &[DVec3]) -> EditResult<()> {
         let n = self.scene.solids.get(&id).ok_or(EditError::NotFound(ObjRef::Solid(id)))?;
         if points.iter().any(|p| !p.is_finite()) {

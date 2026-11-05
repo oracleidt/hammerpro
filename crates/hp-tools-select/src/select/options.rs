@@ -63,9 +63,7 @@ impl SelectTool {
             },
             "element" => {
                 let Some(e) = SelectElement::from_id(&v) else { return false };
-                state.settings.selection.element = e;
-                state.runtime.selection.clear_elements();
-                state.settings_dirty = true;
+                state.set_pick_element(e);
             }
             "gizmo" => match flag(&v) {
                 Some(b) => self.gizmo_visible = b,

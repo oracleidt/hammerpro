@@ -18,6 +18,7 @@ Choisissez le mode dans **Affichage > Mode de rendu 3D**, dans la liste des mode
 | **Texturé sans ombrage** | `Alt+6` | Les matériaux sans l'ombrage de l'éditeur. |
 | **Groupes de lissage** | `Alt+7` | Les faces colorées par groupe de lissage. |
 | **Grille de lightmap** | `Alt+8` | La grille de lightmap 3D de Hammer : la grille des luxels de chaque face avec lightmap (carreaux aussi larges que son échelle de lightmap, displacements compris), grise à 16, rouge si plus fine, verte si plus grossière ; sans précalcul. Les faces sans lightmap gardent leur texture. |
+| **3D Correction colorimétrique** | `Alt+9` | La vue texturée avec les entités `color_correction` appliquées : leurs tables de couleurs se mélangent selon la distance de la caméra 3D (poids plein dans `minfalloff`, nul au-delà de `maxfalloff`, multiplié par `maxweight`), donc vous voyez l'étalonnage du jeu sans activer l'aperçu séparé de la correction colorimétrique (voir [Correction colorimétrique](color-correction.md)). Comme le réglage d'aperçu, mais lié au mode. |
 | **Aperçu de l'éclairage précalculé** | `Ctrl+F5` | L'éclairage que le jeu aura, calculé par le compilateur intégré (voir [Aperçu de l'éclairage](lighting-preview.md)). |
 
 **Affichage > Type de vue** a aussi **Vue 3D texturée** (`F5`) et **Vue 3D unie** (`Maj+F5`). Le mode est conservé d'une session à l'autre (`view.render_mode`).
@@ -40,7 +41,6 @@ Directement dans le menu **Affichage** :
 | Entrée | Effet | Défaut |
 | --- | --- | --- |
 | **Informations de la vue 3D** (`O`) | Images par seconde, position et angles de la caméra dans la vue 3D. | Désactivé |
-| **Boîtes englobantes** (`I`) | Boîtes englobantes des objets visibles. Avec des faces sélectionnées et la souris sur la vue 3D, `I` lance à la place le [décalage interactif](extrude-tool.md). | Désactivé |
 | **Afficher les overlays** | Les overlays dessinés sur leurs faces (voir [Décals et overlays](decals-overlays.md)). | Activé |
 | **Afficher les connexions** | Lignes des entrées/sorties : aucune, sélection, toutes (chaque clic passe à la suivante). Voir [E/S et vue logique](io-logical-view.md). | Sélection |
 | **Afficher les objets d'éditeur** | Icônes d'entités et aides qui n'existent que dans l'éditeur. | Activé |
@@ -65,6 +65,8 @@ Directement dans le menu **Affichage** :
 | **Surligner les brushes invalides** | Les brushes qui ne sont pas fermés et convexes sont dessinés en rouge dans toutes les vues. | Activé |
 | **Afficher le nodraw** | Affiche ou masque les faces nodraw dans la vue 3D. | Affiché |
 | **Aperçu de l'eau** | L'eau dessinée comme en jeu : réfraction, brouillard de l'eau, reflet de la scène et du ciel, vagues animées. Désactivé : sa texture d'outil. | Activé |
+| **Boîtes englobantes** | Boîtes englobantes jaunes des objets visibles. Désactivé par défaut et sans raccourci (`I` lance seulement le [décalage interactif](extrude-tool.md)) ; activez-les ici ou avec l'action `toggle_bounds_overlay` depuis la palette de commandes. | Désactivé |
+| **Aperçu des detail props (herbe)** | Répartit l'herbe et les objets de détail des matériaux `%detailtype` autour de la caméra 3D (voir [Aperçu des detail props](detail-props-preview.md)). Aussi un bouton de la barre d'outils. | Désactivé |
 | **Détail de l'eau** | Comme l'option Détail de l'eau du jeu (`render.water_detail`) : **Reflets complets** dessine l'eau coûteuse à toute distance, qui reflète le monde, les props, les entités de brushes, le ciel et la skybox 3D dessinés une seconde fois en miroir ; **Reflet du monde** garde l'eau coûteuse près de la caméra et ne reflète props et entités de brushes que pour les matériaux avec `$reflectentities` ; **Reflets simples** dessine l'eau bon marché. | Reflets complets |
 | **Aperçu des fog_volume** | Chaque `fog_volume` est entouré et rempli de son brouillard, avec une étiquette de ses liens et problèmes (voir [Volumes de brouillard](#volumes-de-brouillard)). Aussi un bouton de la barre d'outils. | Activé |
 | **Texture des fog_volume** | Le matériau des brushes `fog_volume` est dessiné dans la vue 3D, comme Hammer. Désactivé : seul le brouillard apparaît. | Activé |

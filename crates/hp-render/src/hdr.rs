@@ -229,6 +229,7 @@ pub(crate) struct Tone {
     pub(crate) settings: ToneSettings,
     pub(crate) env: ToneEnv,
     pub(crate) lit_hdr: bool,
+    pub(crate) lazy_readback: bool,
     gpu: Option<Gpu>,
     views: HashMap<u32, ViewTone>,
 }
@@ -449,6 +450,10 @@ impl Renderer {
             self.tone.settings = s;
             self.content_gen += 1;
         }
+    }
+
+    pub fn set_lazy_exposure(&mut self, on: bool) {
+        self.tone.lazy_readback = on;
     }
 
     pub fn tone_settings(&self) -> ToneSettings {
@@ -704,8 +709,11 @@ impl Renderer {
             h.inflight = Some((state, index));
         }
         let Some((state, index)) = h.inflight.as_ref() else { return v.scale };
-        let _ =
-            self.device.poll(wgpu::PollType::Wait { submission_index: Some(index.clone()), timeout: Some(READ_WAIT) });
+        let _ = if self.tone.lazy_readback && !crate::profile::baseline("exposure") {
+            self.device.poll(wgpu::PollType::Poll)
+        } else {
+            self.device.poll(wgpu::PollType::Wait { submission_index: Some(index.clone()), timeout: Some(READ_WAIT) })
+        };
         let mapped = match state.load(Ordering::Acquire) {
             MAP_WAITING => return v.scale,
             s => s == MAP_OK,

@@ -85,6 +85,7 @@ impl Default for RenderDisplay {
 impl RenderDisplay {
     pub fn from_settings(s: &Settings, rt: &RenderRuntime) -> Self {
         let r = &s.render;
+        let plan = rt.perf.plan(r.performance_mode);
         Self {
             smoothing_groups: s.view.render_mode == RenderModeSetting::SmoothingGroups,
             render_effects: r.render_effects,
@@ -117,13 +118,13 @@ impl RenderDisplay {
             .iter()
             .filter(|(on, _)| *on)
             .fold(0, |m, (_, bit)| m | bit),
-            normal_maps: r.normal_maps,
-            cubemaps: r.cubemaps,
+            normal_maps: r.normal_maps && plan.normal_maps,
+            cubemaps: r.cubemaps && plan.cubemaps,
             cubemaps_auto: r.cubemaps_auto,
             light_hdr: r.light_preview_hdr,
             projected_textures: r.projected_textures,
-            sky_occlusion: r.sky_occlusion,
-            sun_glow: r.sun_glow,
+            sky_occlusion: r.sky_occlusion && plan.sky_occlusion,
+            sun_glow: r.sun_glow && plan.sun_glow,
             prop_shadows: prop_shadows(s),
         }
     }
@@ -160,12 +161,48 @@ pub fn previewed_sky_camera(state: &crate::AppState) -> Option<Id> {
     hp_editor::sky::is_sky_camera(&node.entity).then_some(id)
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DetailPreviewRequest {
+    pub enabled: bool,
+    pub eye: [f32; 3],
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DetailTypeReport {
+    pub material: String,
+    pub detail_type: String,
+    pub surfaces: usize,
+    pub known: bool,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DetailPreviewReport {
+    pub enabled: bool,
+    pub drawn: bool,
+    pub dict_file: Option<String>,
+    pub dict_types: usize,
+    pub dict_error: Option<String>,
+    pub sprite_material: String,
+    pub surfaces: usize,
+    pub displacements: usize,
+    pub brush_faces: usize,
+    pub surfaces_in_range: usize,
+    pub sprites: usize,
+    pub models: usize,
+    pub capped: bool,
+    pub view_distance: f32,
+    pub fade_distance: f32,
+    pub types: Vec<DetailTypeReport>,
+}
+
 #[derive(Debug, Default)]
 pub struct RenderRuntime {
+    pub detail_preview: DetailPreviewReport,
     pub fog_controller: Option<Id>,
     pub sky_camera: Option<Id>,
     pub views_rendered: u64,
     pub views_reused: u64,
+    pub perf: super::perf::PerfRuntime,
 }
 
 #[cfg(test)]

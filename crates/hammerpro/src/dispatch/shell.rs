@@ -368,9 +368,7 @@ impl HammerProApp {
     }
 
     fn set_select_element(&mut self, element: SelectElement) {
-        self.state.settings.selection.element = element;
-        self.state.runtime.selection.clear_elements();
-        self.state.settings_dirty = true;
+        self.state.set_pick_element(element);
     }
 
     fn set_select_mode(&mut self, mode: SelectModeSetting) {

@@ -222,6 +222,7 @@ enum CellAction {
     ReplaceWith(String),
     Reveal(PathBuf),
     Edit(String),
+    Vtf(String),
     Exclude(String),
 }
 
@@ -1561,6 +1562,16 @@ impl TextureBrowser {
             CellAction::Shader(name) => {
                 state.runtime.shader.open(hp_app::runtime::ShaderRequest { source: Some(name), ..Default::default() });
             }
+            CellAction::Vtf(name) => match state.assets.material_info(&name).and_then(|i| i.base_texture.clone()) {
+                Some(texture) => state.runtime.vtf.open(hp_app::runtime::VtfRequest {
+                    texture: Some(texture),
+                    file: None,
+                    external: Some(false),
+                    materials: vec![name],
+                    param: Some("$basetexture".to_owned()),
+                }),
+                None => state.notify(Severity::Warning, tf!("tex.menu.vtf_none", name)),
+            },
             CellAction::Edit(name) => {
                 let list = if self.marked.contains(&name) { self.marked.clone() } else { vec![name] };
                 crate::shared::post_editor(ctx, list);
@@ -1730,6 +1741,11 @@ fn cell_menu(
     }
     if ui.add_enabled(entry.source != MISSING_SOURCE, egui::Button::new(t!("tex.menu.edit"))).clicked() {
         actions.push(CellAction::Edit(name.clone()));
+        ui.close();
+    }
+    let vtf = ui.add_enabled(entry.source != MISSING_SOURCE, egui::Button::new(t!("tex.menu.vtf")));
+    if vtf.on_hover_text(t!("tex.menu.vtf_tip")).clicked() {
+        actions.push(CellAction::Vtf(name.clone()));
         ui.close();
     }
     if ui.add_enabled(entry.source != MISSING_SOURCE, egui::Button::new(t!("tex.menu.shader"))).clicked() {

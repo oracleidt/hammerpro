@@ -21,6 +21,7 @@ pub mod uv_layers;
 pub mod uv_ops;
 pub(crate) mod uv_select;
 pub(crate) mod vmt_params;
+pub mod vtfedit;
 
 use hp_app::AppState;
 
@@ -31,6 +32,7 @@ pub use tr::TR;
 pub fn register_translations() {
     hp_app::i18n::register(TR);
     hp_app::i18n::register(shader::tr::TR);
+    hp_app::i18n::register(vtfedit::TR);
 }
 
 #[derive(Default)]
@@ -39,6 +41,7 @@ pub struct TextureDialogs {
     editor: matedit::MaterialEditor,
     import: import::ImportDialog,
     shader: shader::ShaderEditor,
+    vtf: vtfedit::VtfEditor,
 }
 
 impl TextureDialogs {
@@ -51,6 +54,7 @@ impl TextureDialogs {
         self.editor.show(ctx, state);
         self.import.show(ctx, state);
         self.shader.show(ctx, state);
+        self.vtf.show(ctx, state);
     }
 
     pub fn replace_dialog(&mut self) -> &mut replace::ReplaceDialog {
@@ -67,6 +71,10 @@ impl TextureDialogs {
 
     pub fn shader_editor(&mut self) -> &mut shader::ShaderEditor {
         &mut self.shader
+    }
+
+    pub fn vtf_editor(&mut self) -> &mut vtfedit::VtfEditor {
+        &mut self.vtf
     }
 }
 

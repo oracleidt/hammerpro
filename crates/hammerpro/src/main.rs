@@ -58,6 +58,7 @@ mod logger;
 mod native_crash;
 mod opening;
 mod panel_layout;
+mod perf;
 mod prompts;
 mod restart;
 mod script;
@@ -142,7 +143,8 @@ fn wgpu_options(transparent: bool) -> egui_wgpu::WgpuConfiguration {
         label: Some("hammerpro device"),
         required_features: (adapter.features()
             & (wgpu::Features::TEXTURE_COMPRESSION_BC | wgpu::Features::POLYGON_MODE_LINE))
-            | hp_render::pipeline_cache::wanted_features(adapter),
+            | hp_render::pipeline_cache::wanted_features(adapter)
+            | hp_render::profile::wanted_features(adapter),
         required_limits: adapter.limits(),
         memory_hints: wgpu::MemoryHints::MemoryUsage,
         ..Default::default()
@@ -175,10 +177,19 @@ fn pick_adapter(adapters: &[wgpu::Adapter], surface: Option<&wgpu::Surface<'_>>)
         };
         (!transparent(a), kind, api)
     };
+    let wanted = std::env::var("HP_ADAPTER").ok().map(|v| v.to_ascii_lowercase()).filter(|v| !v.is_empty());
+    let named = |a: &wgpu::Adapter| {
+        wanted.as_deref().is_some_and(|w| {
+            let info = a.get_info();
+            info.name.to_ascii_lowercase().contains(w)
+                || (w == "integrated" && info.device_type == wgpu::DeviceType::IntegratedGpu)
+                || (w == "cpu" && info.device_type == wgpu::DeviceType::Cpu)
+        })
+    };
     let best = adapters
         .iter()
         .filter(|a| surface.is_none_or(|s| a.is_surface_supported(s)))
-        .min_by_key(|a| rank(a))
+        .min_by_key(|a| (!named(a), rank(a)))
         .ok_or_else(|| "no graphics adapter can draw to the window".to_owned())?;
     let can = transparent(best);
     hp_app::chrome::set_transparency_available(can);

@@ -17,9 +17,10 @@ action_list! { brush_actions {
     CurveEdit => "curve_edit", Tools, ToolsBrush, None, Ready;
     ToolRoad => "tool_road", Tools, ToolsSwitch, None, Ready;
     ToolPipe => "tool_pipe", Tools, ToolsSwitch, None, Ready;
+    ToolSlice => "tool_slice", Tools, ToolsSwitch, sc(SHIFT, Key::Y), Ready;
     RoadEdit => "road_edit", Tools, ToolsBrush, None, Ready;
     InsetFace => "inset_face", Tools, ToolsBrush, None, Ready;
-    InsetInteractive => "inset_interactive", Tools, ToolsBrush, None, Ready;
+    InsetInteractive => "inset_interactive", Tools, ToolsBrush, sc(NONE, Key::I), Ready;
     ExtrudeInteractive => "extrude_interactive", Tools, ToolsBrush, sc(NONE, Key::E), Ready;
     RoadSidewalk => "road_sidewalk", Tools, ToolsBrush, None, Ready;
     RoadCurb => "road_curb", Tools, ToolsBrush, None, Ready;
@@ -73,6 +74,9 @@ pub(super) const TR: TrTable = &[
     ("shell.undo.tag_roadside", "Tag road details", "Marquage des détails de route"),
     ("shell.undo.blend_terrain_to_road", "Blend terrain to road", "Fusion du terrain sur la route"),
     ("tool.polygon", "Polygon", "Polygone"),
+    ("action.tool_slice", "Slice tool", "Outil tranche"),
+    ("tool.slice", "Slice", "Tranche"),
+    ("shell.undo.slice", "Slice", "Tranche"),
     ("action.tool_extrude", "Extrude / carve tool", "Outil extruder / creuser"),
     ("tool.extrude", "Extrude / carve", "Extruder / creuser"),
     ("action.tool_bevel", "Bevel tool", "Outil biseau"),

@@ -1,12 +1,10 @@
 use egui::{Align2, Color32, Stroke, vec2};
-use glam::DVec3;
 use hp_app::actions::shortcut_label;
 use hp_app::runtime::FlyTextureOp;
 use hp_app::view::ViewInfo;
 use hp_app::{Action, AppState, Severity, t, tf};
 use hp_editor::{FaceRef, ObjRef, PickOptions};
 use hp_geom::Ray;
-use hp_render::{Overlay, OverlayLine, OverlayTri};
 
 use crate::input::{FrameInput, MIDDLE, SECONDARY};
 use crate::layers::OverlayLayer;
@@ -155,35 +153,9 @@ pub fn layers() -> Vec<Box<dyn OverlayLayer>> {
 
 pub struct FlyTextureLayer;
 
-const FILL: [f32; 4] = [1.0, 0.85, 0.2, 0.22];
-const LINE: [f32; 4] = [1.0, 0.9, 0.3, 1.0];
-
 impl OverlayLayer for FlyTextureLayer {
     fn name(&self) -> &'static str {
         "fly_texture"
-    }
-
-    fn add(&self, state: &AppState, view: &ViewInfo, out: &mut Overlay) {
-        let fly = &state.runtime.lab.fly_texture;
-        if !fly.active || view.index != fly.view || view.kind.is_2d() {
-            return;
-        }
-        let Some(face) = fly.target else { return };
-        let Some(poly) = state.doc.face_polygon(face) else { return };
-        if poly.len() < 3 {
-            return;
-        }
-        let normal = (poly[1] - poly[0]).cross(poly[2] - poly[1]).normalize_or_zero();
-        let lift = normal * 0.15;
-        let p = |v: DVec3| (v + lift).as_vec3().to_array();
-        for i in 1..poly.len() - 1 {
-            out.triangles.push(OverlayTri { p: [p(poly[0]), p(poly[i]), p(poly[i + 1])], color: FILL });
-        }
-        for i in 0..poly.len() {
-            let a = p(poly[i]);
-            let b = p(poly[(i + 1) % poly.len()]);
-            out.lines_on_top.push(OverlayLine { a, b, color: LINE });
-        }
     }
 
     fn paint(&self, state: &AppState, view: &ViewInfo, painter: &egui::Painter) {
@@ -240,6 +212,8 @@ pub(crate) const TR: hp_app::i18n::TrTable = &[
 
 #[cfg(test)]
 mod tests {
+    use glam::DVec3;
+
     use super::*;
 
     fn state_facing_wall() -> AppState {

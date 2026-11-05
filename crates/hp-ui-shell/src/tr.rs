@@ -20,6 +20,7 @@ pub fn all_tables() -> Vec<TrTable> {
 
 pub const TR: TrTable = &[
     ("shell.undo.move", "Move", "Déplacement"),
+    ("shell.undo.move_elements", "Move elements", "Déplacement d'éléments"),
     ("shell.undo.rotate", "Rotate", "Rotation"),
     ("shell.undo.layer_variant", "Layer variant", "Variante de couche"),
     ("shell.undo.scale", "Scale", "Mise à l'échelle"),

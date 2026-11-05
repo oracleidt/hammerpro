@@ -39,6 +39,7 @@ pub(crate) const RANGES: &[(&str, f64, f64)] = &[
     ("render.max_fps", 0.0, 1000.0),
     ("render.light_shadows", 0.0, hp_render::MAX_SHADOWED_LIGHTS as f64),
     ("render.unfocused_fps", 0.0, 1000.0),
+    ("render.render_scale", 0.25, 1.0),
     ("render.vram_budget_mb", 0.0, hp_app::settings::MAX_VRAM_BUDGET_MB as f64),
     ("selection.rotation_snap_deg", 1.0, 90.0),
     ("selection.random_yaw_min", -360.0, 360.0),
@@ -201,7 +202,7 @@ pub(crate) fn settings_json(s: &Settings) -> Value {
         }
         tables!(
             selection, brush, workflow, instances, visibility, helpers, mesh, entities, render, lighting, placement,
-            startup, launch, content, health, lab, mcp, grid, discord, scan, update, sniffer, blender,
+            startup, launch, content, health, lab, mcp, grid, discord, scan, update, sniffer, blender, vtf,
         );
     }
     v

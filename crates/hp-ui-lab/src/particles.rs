@@ -25,12 +25,23 @@ pub struct MaterialLook {
     pub overbright: f32,
     pub add_self: f32,
     pub fade_size: [f32; 2],
+    pub opacity: f32,
+    pub blend_frames: bool,
     pub sheet: Option<Sheet>,
 }
 
 impl Default for MaterialLook {
     fn default() -> Self {
-        Self { found: false, additive: false, overbright: 1.0, add_self: 0.0, fade_size: [0.0; 2], sheet: None }
+        Self {
+            found: false,
+            additive: false,
+            overbright: 1.0,
+            add_self: 0.0,
+            fade_size: [0.0; 2],
+            opacity: 1.0,
+            blend_frames: false,
+            sheet: None,
+        }
     }
 }
 
@@ -46,7 +57,7 @@ impl MaterialLook {
     }
 
     pub fn brightness(&self) -> f32 {
-        if self.blend() == ParticleBlend::AddSelf { self.overbright * (1.0 + self.add_self) } else { self.overbright }
+        self.overbright
     }
 }
 
@@ -80,6 +91,8 @@ pub struct ParticleShared {
     pub sprite_layer: bool,
     pub sprites: Vec<ParticleSprite>,
     pub materials: Vec<String>,
+    pub fx_sprites: Vec<ParticleSprite>,
+    pub fx_materials: Vec<String>,
     pub playing: Vec<(Id, String)>,
     pub particles: usize,
 }
@@ -106,6 +119,7 @@ pub struct ParticleSprite {
     pub uv: [f32; 4],
     pub color: [f32; 4],
     pub bright: f32,
+    pub add_self: f32,
     pub orient: ParticleOrient,
     pub blend: ParticleBlend,
     pub screen_fade: [f32; 2],
@@ -150,7 +164,22 @@ pub fn read_material_look(fs: &hp_fs::GameFs, material: &str) -> MaterialLook {
     let start = m.get_f32("$startfadesize").filter(|v| v.is_finite()).unwrap_or(10.0);
     let end = m.get_f32("$endfadesize").filter(|v| v.is_finite()).unwrap_or(20.0);
     let fade_size = if start < 4.0 && end > start { [start.max(0.0), end.min(4.0)] } else { [0.0; 2] };
-    MaterialLook { found: true, additive: m.flag("$additive") || sprite_mode, overbright, add_self, fade_size, sheet }
+    let opacity = m
+        .get_f32("srgb?$alpha")
+        .or_else(|| m.get_f32("$alpha"))
+        .filter(|v| v.is_finite())
+        .map_or(1.0, |v| v.clamp(0.0, 1.0));
+    let blend_frames = m.shader.eq_ignore_ascii_case("spritecard") && m.get_i32("$blendframes").unwrap_or(1) != 0;
+    MaterialLook {
+        found: true,
+        additive: m.flag("$additive") || sprite_mode,
+        overbright,
+        add_self,
+        fade_size,
+        opacity,
+        blend_frames,
+        sheet,
+    }
 }
 
 #[derive(Debug, Default)]
@@ -233,12 +262,188 @@ pub fn particle_uv(plan: &Plan, p: &hp_pcf::Particle, sheet: Option<&Sheet>) -> 
     uv
 }
 
+pub fn particle_uv_blend(plan: &Plan, p: &hp_pcf::Particle, sheet: &Sheet) -> ([f32; 4], [f32; 4], f32) {
+    let total = sheet.sequence(p.sequence).map_or(0.0, |s| s.total);
+    let (mut a, mut b, f) = sheet.frame_blend(p.sequence, plan.cycle(p, total));
+    if p.flip {
+        a.swap(0, 2);
+        b.swap(0, 2);
+    }
+    (a, b, f)
+}
+
 pub fn orientation(orient: u8) -> ParticleOrient {
     match orient {
         1 => ParticleOrient::Upright,
         2 | 3 => ParticleOrient::Flat,
         _ => ParticleOrient::Screen,
     }
+}
+
+pub fn append_sprites<'a>(
+    effects: impl Iterator<Item = (Id, &'a Effect)>,
+    looks: &HashMap<String, Arc<MaterialLook>>,
+    sprites: &mut Vec<ParticleSprite>,
+    materials: &mut Vec<String>,
+) {
+    let mut material_of = |name: &str| -> u32 {
+        match materials.iter().position(|n| n.eq_ignore_ascii_case(name)) {
+            Some(i) => i as u32,
+            None => {
+                materials.push(name.to_owned());
+                (materials.len() - 1) as u32
+            }
+        }
+    };
+    for (id, effect) in effects {
+        for (plan, particles) in effect.systems() {
+            if particles.is_empty() {
+                continue;
+            }
+            let key = material_key(&plan.material);
+            let guessed;
+            let look = match looks.get(&key) {
+                Some(l) => &**l,
+                None => {
+                    guessed = MaterialLook { additive: guess_additive(&key), ..MaterialLook::default() };
+                    &guessed
+                }
+            };
+            let blend = look.blend();
+            let bright = look.brightness();
+            let add_self = if blend == ParticleBlend::AddSelf { look.add_self } else { 0.0 };
+            let material = material_of(&plan.material);
+            let render = plan.render;
+            let base = |p: &hp_pcf::Particle| ParticleSprite {
+                pos: p.pos,
+                size: p.radius * 2.0,
+                axis: [0.0; 3],
+                roll: p.rotation,
+                uv: particle_uv(plan, p, look.sheet.as_ref()),
+                color: [p.color[0], p.color[1], p.color[2], (p.alpha * look.opacity).clamp(0.0, 1.0)],
+                bright,
+                add_self,
+                orient: orientation(render.orient),
+                blend,
+                screen_fade: look.fade_size,
+                material,
+                entity: id,
+            };
+            let visible =
+                |p: &hp_pcf::Particle| p.alpha > 0.004 && p.radius > 0.0 && p.pos.iter().all(|v| v.is_finite());
+            match render.kind {
+                RenderKind::Sprites => {
+                    for p in particles.iter().filter(|p| visible(p)) {
+                        let mut s = base(p);
+                        if render.orient == 3 {
+                            s.axis = [0.0, 0.0, 1.0];
+                        }
+                        push_blended(sprites, s, plan, p, look);
+                    }
+                }
+                RenderKind::Trail => {
+                    for p in particles.iter().filter(|p| visible(p)) {
+                        let speed = (p.vel[0] * p.vel[0] + p.vel[1] * p.vel[1] + p.vel[2] * p.vel[2]).sqrt();
+                        let mut len = (speed * p.trail).clamp(render.min_len, render.max_len.max(render.min_len));
+                        if render.len_fade_in > 0.0 {
+                            len *= (p.age / render.len_fade_in).clamp(0.0, 1.0);
+                        }
+                        if speed < 1e-3 || len < 0.05 {
+                            continue;
+                        }
+                        let d = p.vel.map(|c| c / speed);
+                        let mut s = base(p);
+                        s.pos = [p.pos[0] - d[0] * len * 0.5, p.pos[1] - d[1] * len * 0.5, p.pos[2] - d[2] * len * 0.5];
+                        s.axis = d.map(|c| c * len);
+                        s.orient = ParticleOrient::Stretched;
+                        s.roll = 0.0;
+                        push_blended(sprites, s, plan, p, look);
+                    }
+                }
+                RenderKind::Rope => {
+                    for w in particles.windows(2) {
+                        let (a, b) = (&w[0], &w[1]);
+                        if !visible(a) || !visible(b) {
+                            continue;
+                        }
+                        let axis = [b.pos[0] - a.pos[0], b.pos[1] - a.pos[1], b.pos[2] - a.pos[2]];
+                        let mut s = base(a);
+                        s.pos = [(a.pos[0] + b.pos[0]) * 0.5, (a.pos[1] + b.pos[1]) * 0.5, (a.pos[2] + b.pos[2]) * 0.5];
+                        s.size = a.radius + b.radius;
+                        s.axis = axis;
+                        s.orient = ParticleOrient::Stretched;
+                        s.roll = 0.0;
+                        s.uv = hp_pcf::sheet::FULL_UV;
+                        s.color[3] = (a.alpha + b.alpha) * 0.5 * look.opacity;
+                        sprites.push(s);
+                    }
+                }
+                RenderKind::None => {}
+            }
+        }
+    }
+}
+
+fn push_blended(
+    sprites: &mut Vec<ParticleSprite>,
+    mut s: ParticleSprite,
+    plan: &Plan,
+    p: &hp_pcf::Particle,
+    look: &MaterialLook,
+) {
+    let Some(sheet) = look.sheet.as_ref().filter(|_| look.blend_frames) else {
+        sprites.push(s);
+        return;
+    };
+    let (a, b, f) = particle_uv_blend(plan, p, sheet);
+    if f <= 0.01 || a == b {
+        sprites.push(ParticleSprite { uv: a, ..s });
+        return;
+    }
+    let alpha = s.color[3];
+    sprites.push(ParticleSprite { uv: a, color: [s.color[0], s.color[1], s.color[2], alpha * (1.0 - f)], ..s });
+    s.uv = b;
+    s.color[3] = alpha * f;
+    sprites.push(s);
+}
+
+pub fn sort_far_first(sprites: &mut [ParticleSprite], eye: [f32; 3]) {
+    let d2 = |s: &ParticleSprite| {
+        let d = [s.pos[0] - eye[0], s.pos[1] - eye[1], s.pos[2] - eye[2]];
+        d[0] * d[0] + d[1] * d[1] + d[2] * d[2]
+    };
+    sprites.sort_by(|a, b| d2(b).total_cmp(&d2(a)));
+}
+
+pub fn instances_of(
+    sprites: &[ParticleSprite],
+    materials: &[String],
+    assets: &mut dyn hp_app::state::AssetsApi,
+) -> Vec<hp_render::ParticleInstance> {
+    let mut ids: Vec<[Option<hp_render::MaterialId>; 2]> = vec![[None; 2]; materials.len()];
+    sprites
+        .iter()
+        .filter_map(|p| {
+            let i = p.material as usize;
+            let additive = p.blend == ParticleBlend::Additive;
+            let slot = &mut ids.get_mut(i)?[usize::from(additive)];
+            let material = *slot.get_or_insert_with(|| assets.sprite_material_id(&materials[i], additive));
+            Some(hp_render::ParticleInstance {
+                pos: p.pos,
+                size: p.size,
+                axis: p.axis,
+                roll: p.roll,
+                uv: p.uv,
+                color: p.color,
+                bright: p.bright,
+                add_self: p.add_self,
+                orient: p.orient,
+                material,
+                screen_fade: p.screen_fade,
+                blend: p.blend,
+            })
+        })
+        .collect()
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -400,109 +605,8 @@ impl ParticleLayer {
         let ParticleShared { sprites, materials, looks, .. } = shared;
         sprites.clear();
         materials.clear();
-        let mut material_of = |name: &str| -> u32 {
-            match materials.iter().position(|n| n.eq_ignore_ascii_case(name)) {
-                Some(i) => i as u32,
-                None => {
-                    materials.push(name.to_owned());
-                    (materials.len() - 1) as u32
-                }
-            }
-        };
-        let default_look = MaterialLook::default();
-        for (id, playing) in &self.effects {
-            for (plan, particles) in playing.effect.systems() {
-                if particles.is_empty() {
-                    continue;
-                }
-                let key = material_key(&plan.material);
-                let look = looks.get(&key).map(|l| &**l);
-                let guessed;
-                let look = match look {
-                    Some(l) => l,
-                    None => {
-                        guessed = MaterialLook { additive: guess_additive(&key), ..default_look.clone() };
-                        &guessed
-                    }
-                };
-                let blend = look.blend();
-                let bright = look.brightness();
-                let material = material_of(&plan.material);
-                let render = plan.render;
-                let base = |p: &hp_pcf::Particle| ParticleSprite {
-                    pos: p.pos,
-                    size: p.radius * 2.0,
-                    axis: [0.0; 3],
-                    roll: p.rotation,
-                    uv: particle_uv(plan, p, look.sheet.as_ref()),
-                    color: [p.color[0], p.color[1], p.color[2], p.alpha.clamp(0.0, 1.0)],
-                    bright,
-                    orient: orientation(render.orient),
-                    blend,
-                    screen_fade: look.fade_size,
-                    material,
-                    entity: *id,
-                };
-                let visible =
-                    |p: &hp_pcf::Particle| p.alpha > 0.004 && p.radius > 0.0 && p.pos.iter().all(|v| v.is_finite());
-                match render.kind {
-                    RenderKind::Sprites => {
-                        for p in particles.iter().filter(|p| visible(p)) {
-                            let mut s = base(p);
-                            if render.orient == 3 {
-                                s.axis = [0.0, 0.0, 1.0];
-                            }
-                            sprites.push(s);
-                        }
-                    }
-                    RenderKind::Trail => {
-                        for p in particles.iter().filter(|p| visible(p)) {
-                            let speed = (p.vel[0] * p.vel[0] + p.vel[1] * p.vel[1] + p.vel[2] * p.vel[2]).sqrt();
-                            let mut len = (speed * p.trail).clamp(render.min_len, render.max_len.max(render.min_len));
-                            if render.len_fade_in > 0.0 {
-                                len *= (p.age / render.len_fade_in).clamp(0.0, 1.0);
-                            }
-                            if speed < 1e-3 || len < 0.05 {
-                                continue;
-                            }
-                            let d = p.vel.map(|c| c / speed);
-                            let mut s = base(p);
-                            s.pos =
-                                [p.pos[0] - d[0] * len * 0.5, p.pos[1] - d[1] * len * 0.5, p.pos[2] - d[2] * len * 0.5];
-                            s.axis = d.map(|c| c * len);
-                            s.orient = ParticleOrient::Stretched;
-                            s.roll = 0.0;
-                            sprites.push(s);
-                        }
-                    }
-                    RenderKind::Rope => {
-                        for w in particles.windows(2) {
-                            let (a, b) = (&w[0], &w[1]);
-                            if !visible(a) || !visible(b) {
-                                continue;
-                            }
-                            let axis = [b.pos[0] - a.pos[0], b.pos[1] - a.pos[1], b.pos[2] - a.pos[2]];
-                            let mut s = base(a);
-                            s.pos =
-                                [(a.pos[0] + b.pos[0]) * 0.5, (a.pos[1] + b.pos[1]) * 0.5, (a.pos[2] + b.pos[2]) * 0.5];
-                            s.size = a.radius + b.radius;
-                            s.axis = axis;
-                            s.orient = ParticleOrient::Stretched;
-                            s.roll = 0.0;
-                            s.uv = hp_pcf::sheet::FULL_UV;
-                            s.color[3] = (a.alpha + b.alpha) * 0.5;
-                            sprites.push(s);
-                        }
-                    }
-                    RenderKind::None => {}
-                }
-            }
-        }
-        let d2 = |s: &ParticleSprite| {
-            let d = [s.pos[0] - eye[0], s.pos[1] - eye[1], s.pos[2] - eye[2]];
-            d[0] * d[0] + d[1] * d[1] + d[2] * d[2]
-        };
-        sprites.sort_by(|a, b| d2(b).total_cmp(&d2(a)));
+        append_sprites(self.effects.iter().map(|(id, p)| (*id, &p.effect)), looks, sprites, materials);
+        sort_far_first(sprites, eye);
     }
 
     fn stop_all(&mut self) {
@@ -861,10 +965,11 @@ mod tests {
         let mut input = egui::RawInput { events, ..Default::default() };
         let mut count = 0;
         for _ in 0..2 {
-            let out = ctx.run_ui(std::mem::take(&mut input), |ui| {
+            let mut out = ctx.run_ui(std::mem::take(&mut input), |ui| {
                 let painter = ui.painter().clone();
                 layer.paint(state, view, &painter);
             });
+            out.textures_delta.clear();
             count = out.shapes.len();
             if let Some(p) = hover {
                 input.events.push(egui::Event::PointerMoved(p));
@@ -987,6 +1092,11 @@ mod tests {
             "SpriteCard { $basetexture particle/none $addself .5 $overbrightfactor 2 $startfadesize .4 $endfadesize .6 }",
         )
         .expect("vmt");
+        std::fs::write(
+            dir.join("materials/particle/puff.vmt"),
+            "UnlitGeneric { $basetexture particle/none $translucent 1 \"srgb?$alpha\" \".27\" }",
+        )
+        .expect("vmt");
         let fs = hp_fs::GameFs::empty();
         assert!(fs.add_game_dir(&dir).is_ok());
         let glow = read_material_look(&fs, "Particle\\Glow.vmt");
@@ -995,10 +1105,13 @@ mod tests {
         let sheet = glow.sheet.as_ref().expect("sheet");
         assert_eq!(sheet.frame_count(0), 2);
         assert_eq!(sheet.frame_uv(0, 0.75), [0.5, 0.0, 1.0, 0.5]);
+        let puff = read_material_look(&fs, "particle/puff");
+        assert!((puff.opacity - 0.27).abs() < 1e-4, "{}", puff.opacity);
+        assert_eq!(glow.opacity, 1.0);
         let smoke = read_material_look(&fs, "particle/smoke");
         assert!(smoke.found && !smoke.additive && smoke.sheet.is_none());
         assert_eq!(smoke.blend(), ParticleBlend::AddSelf);
-        assert_eq!(smoke.brightness(), 3.0);
+        assert_eq!(smoke.brightness(), 2.0);
         assert_eq!(smoke.fade_size, [0.4, 0.6]);
         assert_eq!(glow.blend(), ParticleBlend::Additive);
         assert_eq!(glow.fade_size, [0.0; 2], "no fade by default");

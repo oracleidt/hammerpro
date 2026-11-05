@@ -112,6 +112,13 @@ impl LocalShadows {
         self.slots.iter().flatten().filter(|s| s.ready()).count()
     }
 
+    pub fn reset_size(&mut self) {
+        self.slots.clear();
+        self.texture = None;
+        self.layers.clear();
+        self.dirty = true;
+    }
+
     pub fn release(&mut self, view_id: u32) {
         if self.owner == Some(view_id) {
             self.owner = None;
@@ -247,7 +254,7 @@ impl Renderer {
         }
         if owner {
             if ls.slots.len() != count {
-                ls.size = shadow_size(count);
+                ls.size = shadow_size(count).min(self.quality.local_shadow_size);
                 ls.slots = vec![None; count];
                 ls.texture = None;
                 ls.layers.clear();
@@ -442,7 +449,8 @@ impl Renderer {
             });
             pass.set_bind_group(0, bg, &[]);
             let planes: [Vec4; 6] = frustum_planes(m);
-            let (d, t) = self.draw_shadow_casters(&mut pass, pipelines, &planes, None);
+            let packed = self.pack_visible(&planes);
+            let (d, t) = self.draw_shadow_casters(&mut pass, pipelines, &planes, None, packed.as_ref());
             draws += d;
             tris += t;
             done.push(layer);

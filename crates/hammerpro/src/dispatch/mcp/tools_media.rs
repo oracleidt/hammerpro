@@ -108,7 +108,7 @@ domain! { "sound and color";
         off is true: from a preset, a grade (with an optional base) or an existing .raw (path). Nothing is saved \
         and the map is not changed. The color_correction entities of the map are previewed by the setting \
         lab.color_correction_preview (action toggle_color_correction_preview) and color_correction_zones reports \
-        them.",
+        them; the 3D render mode color_corrected (set_render_mode) shows them without that setting.",
         {
             "preset": choice("Preview a preset.", &["neutral", "black_white", "sepia", "warm", "cool", "high_contrast", "faded", "night", "vivid", "cinematic", "horror", "invert"]),
             "grade": json!({ "type": "object", "additionalProperties": true, "description": "Grade parameters as in color_correction_generate." }),
@@ -123,7 +123,7 @@ domain! { "sound and color";
         file_not_found), and what is applied now. The weight follows the engine: full weight inside minfalloff, \
         fading to 0 at maxfalloff, times maxweight; fadeInDuration and fadeOutDuration smooth enabling and \
         disabling; an exclusive entity with weight hides the others; several entities blend. Needs the setting \
-        lab.color_correction_preview on for the weights to be applied to the views.",
+        lab.color_correction_preview on, or the 3D render mode color_corrected (set_render_mode, Alt+9), for the weights to be applied to the views.",
         {}, [];
     open_media_editor: Editor, "Open the sound or color correction editor",
         "Open the sound editor or the color correction editor window, optionally loading a sound (a game path or \
@@ -483,7 +483,8 @@ fn color_correction_zones(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> 
         })
         .collect();
     Ok(ToolResult::json(json!({
-        "preview_enabled": state.settings.lab.color_correction_preview,
+        "preview_enabled": state.settings.lab.color_correction_preview
+            || state.settings.view.render_mode == hp_app::settings::RenderModeSetting::ColorCorrected,
         "editor_preview": rt.preview_lut.is_some(),
         "applied": rt.zone_applied,
         "camera": eye,

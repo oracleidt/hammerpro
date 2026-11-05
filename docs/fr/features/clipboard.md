@@ -52,9 +52,11 @@ Hammer Pro utilise le presse-papiers du système, sous forme de texte VMF : des 
 | **Pivoter autour du pivot** | La rotation tourne autour du pivot déplaçable au lieu du centre des objets copiés. Disponible seulement quand le pivot est affiché (**Pivot déplaçable**) | Activé |
 
 - La boîte affiche **Décalage de la dernière copie** pour vérifier le total.
+- Tant que la boîte est ouverte, chaque changement (copies, décalage, rotation, départ à la position d'origine, rotation autour du pivot) montre aussitôt le résultat sous forme d'un fantôme filaire vert de toutes les copies dans les vues 3D et 2D, et la boîte indique combien d'objets et de copies l'aperçu montre. Rien n'est collé tant que vous ne cliquez pas sur **Coller** ou n'appuyez pas sur `Entrée` ; **Annuler**, `Échap` ou la fermeture de la fenêtre retire le fantôme. L'aperçu suit le presse-papiers s'il change pendant que la boîte est ouverte, et avec un très grand nombre de copies il montre les premières (la boîte dit combien).
 - Les entités renommées restent liées entre elles : les clés des entités collées qui nomment une autre entité collée (cibles, filtres) suivent les nouveaux noms.
 - `Entrée` colle, `Échap` ferme. Les valeurs sont gardées pour la session.
 - Tout le collage tient en une seule étape d'annulation.
+- L'outil MCP `paste_special` colle du texte ou le presse-papiers (`text` ou `from_clipboard`) avec `copies`, `offset`, `rotation`, `pivot`, `start_at_original`, `group`, `unique_names` et `name_prefix`. Avec `preview: true` il ne colle rien et montre le même fantôme vert dans les vues, en donnant les objets, les copies, les copies montrées, le nombre de lignes et les limites du fantôme ; `clear_preview: true` le retire, et un vrai collage l'efface aussi.
 
 ## Duplication en série
 

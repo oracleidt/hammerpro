@@ -1,15 +1,20 @@
 #![forbid(unsafe_code)]
 
 mod bc;
+mod compose;
 mod decode;
+mod document;
 mod encode;
 mod error;
 pub mod flags;
 mod format;
 mod header;
+pub mod ops;
 mod remap;
 
+pub use compose::{ComposeOptions, ENCODABLE, can_encode, compose};
 pub use decode::convert_to_rgba8;
+pub use document::VtfDocument;
 pub use encode::{
     EncodeFormat, EncodeOptions, EncodeQuality, MAX_POW2_SIZE, MipFilter, encode, encode_frames, load_image_file,
 };
@@ -108,6 +113,42 @@ pub fn decode_rgba8(data: &[u8], opts: &DecodeOptions) -> Result<RgbaImage, VtfE
         MipSelect::MaxDimension(n) => decode::downscale_to_fit(img, n),
         _ => img,
     })
+}
+
+pub fn decode_slice_rgba8(data: &[u8], mip: u32, frame: u32, face: u32, slice: u32) -> Result<RgbaImage, VtfError> {
+    let parsed = header::parse(data)?;
+    let range = parsed.level_range(mip, frame, face)?;
+    let (w, h, d) = parsed.info.mip_dimensions(mip);
+    if slice >= d {
+        return Err(VtfError::Corrupt("slice out of range"));
+    }
+    let size = parsed.info.slice_size(mip).ok_or(VtfError::TooLarge)?;
+    let shift = size.checked_mul(u64::from(slice)).ok_or(VtfError::TooLarge)?;
+    let bytes = header::slice_range(data, range.start + shift..range.end + shift)?;
+    convert_to_rgba8(parsed.info.format, bytes, w, h)
+}
+
+pub fn patch_header(
+    data: &[u8],
+    tex_flags: u32,
+    bumpmap_scale: f32,
+    reflectivity: [f32; 3],
+    first_frame: u16,
+) -> Result<Vec<u8>, VtfError> {
+    let parsed = header::parse(data)?;
+    let mut out = data.to_vec();
+    let keep_env = parsed.info.flags & flags::ENVMAP;
+    let new_flags = (tex_flags & !flags::ENVMAP) | keep_env;
+    out[20..24].copy_from_slice(&new_flags.to_le_bytes());
+    let cube_without_start = parsed.info.faces == 6 && parsed.info.first_frame == 0xFFFF;
+    if !cube_without_start {
+        out[26..28].copy_from_slice(&first_frame.to_le_bytes());
+    }
+    for (i, c) in reflectivity.iter().enumerate() {
+        out[32 + 4 * i..36 + 4 * i].copy_from_slice(&c.to_le_bytes());
+    }
+    out[48..52].copy_from_slice(&bumpmap_scale.to_le_bytes());
+    Ok(out)
 }
 
 pub fn raw_level(data: &[u8], mip: u32, frame: u32, face: u32) -> Result<RawLevel<'_>, VtfError> {

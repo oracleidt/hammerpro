@@ -22,10 +22,11 @@ pub enum ToolId {
     Cordon,
     Road,
     Pipe,
+    Slice,
 }
 
 impl ToolId {
-    pub const ALL: [ToolId; 19] = [
+    pub const ALL: [ToolId; 20] = [
         ToolId::Select,
         ToolId::Camera,
         ToolId::Entity,
@@ -34,6 +35,7 @@ impl ToolId {
         ToolId::Decal,
         ToolId::Overlay,
         ToolId::Clip,
+        ToolId::Slice,
         ToolId::Extrude,
         ToolId::Bevel,
         ToolId::Vertex,
@@ -68,6 +70,7 @@ impl ToolId {
             ToolId::Sprinkle => "tool.sprinkle",
             ToolId::Road => "tool.road",
             ToolId::Pipe => "tool.pipe",
+            ToolId::Slice => "tool.slice",
         }
     }
 
@@ -97,6 +100,7 @@ impl ToolId {
             ToolId::Sprinkle => Action::ToolSprinkle,
             ToolId::Road => Action::ToolRoad,
             ToolId::Pipe => Action::ToolPipe,
+            ToolId::Slice => Action::ToolSlice,
         }
     }
 
@@ -121,6 +125,7 @@ impl ToolId {
             ToolId::Sprinkle => "✨",
             ToolId::Road => "☰",
             ToolId::Pipe => "⊟",
+            ToolId::Slice => "⊞",
         }
     }
 }

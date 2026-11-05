@@ -427,3 +427,65 @@ fn pre_aged_particles_start_part_way_through_their_life() {
     assert!(sim.particles.iter().all(|p| (p.age - 1.01).abs() < 1e-4), "{:?}", sim.particles[0].age);
     assert!(Plan::new(&def).unsupported.is_empty());
 }
+
+#[test]
+fn random_fades_and_color_fades_ease_in_and_out_by_default() {
+    let fade = |ease: Option<bool>| {
+        let mut attrs = vec![
+            ("fade in time min", fl(1.0)),
+            ("fade in time max", fl(1.0)),
+            ("proportional 0/1", Value::Bool(false)),
+        ];
+        if let Some(e) = ease {
+            attrs.push(("ease in and out", Value::Bool(e)));
+        }
+        system(
+            "s",
+            vec![burst(4)],
+            vec![op("Lifetime Random", vec![("lifetime_min", fl(4.0)), ("lifetime_max", fl(4.0))])],
+            vec![op("Alpha Fade In Random", attrs), op("Lifespan Decay", vec![])],
+        )
+    };
+    let quarter = |ease| run(&fade(ease), &Points::at([0.0; 3]), 0.25).particles[0].alpha;
+    assert!((quarter(Some(false)) - 0.25).abs() < 0.03, "linear");
+    assert!((quarter(None) - 0.156).abs() < 0.03, "eased by default: {}", quarter(None));
+    assert!((quarter(Some(true)) - quarter(None)).abs() < 1e-4);
+    let def = system(
+        "c",
+        vec![burst(2)],
+        vec![
+            op("Lifetime Random", vec![("lifetime_min", fl(2.0)), ("lifetime_max", fl(2.0))]),
+            op(
+                "Color Random",
+                vec![("color1", Value::Color([0, 0, 0, 255])), ("color2", Value::Color([0, 0, 0, 255]))],
+            ),
+        ],
+        vec![op("Color Fade", vec![("color_fade", Value::Color([255, 255, 255, 255]))]), op("Lifespan Decay", vec![])],
+    );
+    let quarter_color = run(&def, &Points::at([0.0; 3]), 0.5).particles[0].color[0];
+    assert!((quarter_color - 0.156).abs() < 0.04, "eased: {quarter_color}");
+}
+
+#[test]
+fn frame_blend_gives_both_frames_and_the_fraction() {
+    use crate::sheet::{SheetFrame, SheetSequence};
+    let frame = |x: f32| SheetFrame { duration: 1.0, uv: [x, 0.0, x + 0.25, 1.0] };
+    let looping = Sheet {
+        sequences: vec![SheetSequence {
+            number: 0,
+            clamp: false,
+            frames: vec![frame(0.0), frame(0.25), frame(0.5)],
+            total: 3.0,
+        }],
+    };
+    let (a, b, f) = looping.frame_blend(0, 0.5);
+    assert_eq!(a, looping.frame_uv(0, 0.5));
+    assert_eq!(b[0], 0.5);
+    assert!((f - 0.5).abs() < 1e-4, "{f}");
+    let (_, wrapped, _) = looping.frame_blend(0, 0.9);
+    assert_eq!(wrapped[0], 0.0, "a looping sequence blends the last frame into the first");
+    let clamped = Sheet { sequences: vec![SheetSequence { clamp: true, ..looping.sequences[0].clone() }] };
+    let (last, same, f) = clamped.frame_blend(0, 1.0);
+    assert_eq!(last, same);
+    assert_eq!(f, 0.0);
+}

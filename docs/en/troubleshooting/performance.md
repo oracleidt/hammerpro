@@ -9,6 +9,28 @@ Hammer Pro is built to stay smooth on huge maps, but heavy content, a weak GPU o
 - **Settings > General > Show frame rate** shows the frames per second in the status bar.
 - **View > Display options > 3D view information** (`O`) shows the camera position and, for the 3D view, the draw calls, triangles and chunks drawn, and how many chunks culling skipped.
 
+- **Settings > Rendering > Performance > Show frame time and memory in the 3D view** (`render.perf_hud`) adds a readout over the 3D view: FPS and frame time, the CPU time of the render (prepare, record, submit), the GPU time per stage (shadows, scene, post effects, water reflection) when the graphics card supports timestamp queries, the RAM and graphics memory in use, the graphics card and the quality level.
+- Through MCP, `get_performance` returns the same numbers, and `run_benchmark` turns the camera through a full circle and returns the average and worst frame times, the CPU and GPU milliseconds and the memory.
+
+## Performance mode
+
+**Settings > Rendering > Performance** (`render.performance_mode`, `render.render_scale`):
+
+| Mode | What it does |
+|---|---|
+| **Auto** (default) | Full quality. Only if the 3D view stays under 20 FPS for several seconds (6 on integrated graphics, 10 otherwise, while nothing is loading) Hammer Pro lowers the quality one step, shows a notice, and offers **Restore full quality** over the 3D view and in the settings. After you restore, the automatic reduction stays paused until you change the mode. It never lowers anything on a graphics card that keeps up. |
+| **Off** | Always full quality, never lowered automatically. |
+| **Low** | 75% render resolution, no antialiasing, no bloom, 4 shadowed lights, a 2048 sun shadow, textures up to 1024 pixels, water reflects the world only, no sky light occlusion. |
+| **Very low** | 50% render resolution, no antialiasing or bloom, no shadows from lights, no reflections, normal maps or fog volumes, a 1024 sun shadow, textures up to 512 pixels, props drawn as boxes beyond 3072 units. |
+
+**Render scale** draws the 3D view at 25% to 100% of its size and stretches it over the window; 100% (the default) is full quality. It works with every mode (the lowest of the two applies).
+
+Nothing here changes the default look: the speed of the default mode comes from drawing less that you cannot see (props and shadow casters outside a view are no longer sent to the graphics card, the sun shadow is kept while the camera moves a little), not from lowering the quality.
+
+### Trying a weaker graphics card
+
+The environment variable `HP_ADAPTER` picks the graphics adapter at startup: `integrated`, `cpu` (the Windows software renderer, a good stand-in for a very weak card) or a part of an adapter name. `HP_PERF_BASELINE=all` switches off the speed-ups of the default mode (instances and shadow casters outside a view, the kept sun shadow, the lazy exposure readback, the parallel light clusters) to compare, with the same pictures.
+
 ## Frame rate settings
 
 Page **Settings > Rendering**, group **Frame rate**:

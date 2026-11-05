@@ -78,6 +78,9 @@ struct Drag {
     mods: Modifiers,
     last_pos: Pos2,
     revision: u64,
+    elements: bool,
+    ghost: Vec<[DVec3; 2]>,
+    ghost_points: Vec<DVec3>,
 }
 
 impl Drag {
@@ -102,7 +105,7 @@ impl Drag {
             | DragOp::Skew { .. }
             | DragOp::GizmoRotate { .. }
             | DragOp::GizmoScale { .. }
-            | DragOp::FaceStretch { .. } => self.mods.shift,
+            | DragOp::FaceStretch { .. } => self.mods.shift && !self.elements,
             _ => false,
         }
     }
@@ -315,15 +318,20 @@ impl SelectTool {
     }
 
     fn selection_info(&self, state: &AppState) -> Option<SelCache> {
-        if state.doc.selection().objects.is_empty() {
-            return None;
-        }
         let (revision, frame) = (state.doc.revision(), state.frame.index);
         if let Some(c) = self.sel_cache.get()
             && c.revision == revision
             && c.frame == frame
         {
             return Some(c);
+        }
+        if let Some(bounds) = element::picked_bounds(state) {
+            let info = SelCache { revision, frame, bounds: Some(bounds), brushes: false };
+            self.sel_cache.set(Some(info));
+            return Some(info);
+        }
+        if state.doc.selection().objects.is_empty() {
+            return None;
         }
         let scene = state.doc.scene();
         let mut b = Aabb::EMPTY;
@@ -579,7 +587,7 @@ impl SelectTool {
         } else {
             None
         };
-        let mode = self.gizmo_mode;
+        let mode = self.effective_gizmo_mode(state);
         let blocked =
             |p: Pos2| gizmo.is_some_and(|g| g.hit(view, p, mode).is_some()) || self.pivot_first_3d(state, view, p);
         crate::stretch::layout(view, &b, &blocked)
@@ -598,7 +606,11 @@ impl SelectTool {
             return None;
         }
         let center = self.gizmo_center(state)?;
-        GizmoLayout::with_axes(view, center, self.gizmo_axes(state))?.hit(view, pos, self.gizmo_mode)
+        GizmoLayout::with_axes(view, center, self.gizmo_axes(state))?.hit(view, pos, self.effective_gizmo_mode(state))
+    }
+
+    fn effective_gizmo_mode(&self, state: &AppState) -> GizmoMode {
+        if element::picked_points(state).is_empty() { self.gizmo_mode } else { GizmoMode::Move }
     }
 
     fn gizmo_center(&self, state: &AppState) -> Option<DVec3> {
@@ -641,7 +653,12 @@ impl SelectTool {
 
     fn begin_transform(&mut self, state: &AppState, view: &ViewInfo, op: DragOp, pos: Pos2, mods: Modifiers) {
         let Some(bounds) = self.selection_bounds(state) else { return };
-        let objs = state.doc.selected_objects();
+        let elements = !element::picked_points(state).is_empty();
+        if elements && !matches!(op, DragOp::Move { .. } | DragOp::GizmoMove { .. }) {
+            return;
+        }
+        let objs = if elements { Vec::new() } else { state.doc.selected_objects() };
+        let (ghost, ghost_points) = if elements { element::picked_ghost(state) } else { (Vec::new(), Vec::new()) };
         let preview = PreviewGeom::capture(&state.doc, &objs, &|e| state.entity_bounds(e));
         let snap_ref = snap_reference(state, &objs, &bounds);
         let pivot = self.pivot_for(state, &objs, &bounds);
@@ -669,6 +686,9 @@ impl SelectTool {
             mods,
             last_pos: pos,
             revision: state.doc.revision(),
+            elements,
+            ghost,
+            ghost_points,
         });
     }
 
@@ -687,6 +707,9 @@ impl SelectTool {
             mods,
             last_pos: pos,
             revision: state.doc.revision(),
+            elements: false,
+            ghost: Vec::new(),
+            ghost_points: Vec::new(),
         });
     }
 
@@ -797,7 +820,7 @@ impl SelectTool {
         };
         let axes = self.gizmo_axes(state);
         let (o, d) = view.ray(origin);
-        let op = match (self.gizmo_mode, part) {
+        let op = match (self.effective_gizmo_mode(state), part) {
             (GizmoMode::Scale, GizmoPart::Axis(k)) => {
                 let Some(t) = closest_param_on_line(o, d, c, axes[k % 3]).filter(|t| t.abs() > 1e-6) else { return };
                 DragOp::GizmoScale { part, start: t, scale: DVec3::ONE }
@@ -1148,6 +1171,9 @@ impl SelectTool {
             self.clone_transform(state, &d, m)
         } else {
             match &d.op {
+                DragOp::Move { delta, .. } | DragOp::GizmoMove { delta, .. } if d.elements => {
+                    element::translate_picked(state, *delta).map(|_| ())
+                }
                 DragOp::Move { delta, .. } | DragOp::GizmoMove { delta, .. } => state.doc.translate(&d.objs, *delta),
                 DragOp::Modal(md) if md.kind == ModalKind::Move => state.doc.translate(&d.objs, md.delta),
                 DragOp::Scale { new_bounds, .. } => state.doc.scale_bounds(&d.objs, &d.bounds, new_bounds),
@@ -1634,12 +1660,21 @@ impl Tool for SelectTool {
     }
 
     fn overlay(&self, state: &AppState, view: &ViewInfo, out: &mut Overlay) {
-        element::push_overlay(state, out);
         if let Some(d) = &self.drag {
             if d.transforms() {
                 let color =
                     if d.is_clone() { rgba(hp_app::theme::VIEW_SUCCESS, 1.0) } else { rgba(draw::PREVIEW_COLOR, 1.0) };
                 d.preview.push(out, &d.matrix(), color);
+                if d.elements {
+                    let m = d.matrix();
+                    let f = |p: DVec3| m.transform_point3(p).as_vec3().to_array();
+                    for [a, b] in &d.ghost {
+                        out.lines_on_top.push(hp_render::OverlayLine { a: f(*a), b: f(*b), color });
+                    }
+                    for p in &d.ghost_points {
+                        out.points.push(hp_render::OverlayPoint { pos: f(*p), color, size_px: 11.0 });
+                    }
+                }
             }
             if !matches!(d.op, DragOp::Paint { .. }) {
                 return;

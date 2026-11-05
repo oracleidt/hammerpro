@@ -16,6 +16,7 @@ mod instance;
 mod origins;
 mod path_nodes;
 mod random_rotate;
+mod slice;
 mod visgroup;
 
 pub use bevel::{BevelOutcome, EdgeRef};
@@ -25,6 +26,7 @@ pub use entity::EntityQuery;
 pub use find_replace::{ConnPart, MAX_TEXT_LEN, TextField, TextMatch, TextQuery, find_ranges};
 pub use material::{FaceEdit, ReplaceScope};
 pub use random_rotate::{MAX_JITTER_DEG, RandomRotate, RandomRotateReport};
+pub use slice::MAX_SLICE_PLANES;
 pub use transform::AlignMode;
 
 pub(crate) use create::Fragment;

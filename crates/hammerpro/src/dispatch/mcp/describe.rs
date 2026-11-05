@@ -333,6 +333,7 @@ pub(super) fn describe(host: &mut dyn UiHost, ctx: &egui::Context, tree: Option<
         ("material_editor", ui.show_material_editor),
         ("first_run", ui.show_first_run),
         ("shader_editor", state.runtime.shader.show),
+        ("vtf_editor", state.runtime.vtf.show),
     ];
     let dialogs: Vec<&str> = flags.iter().filter(|(_, on)| *on).map(|(name, _)| *name).collect();
     let views: Vec<Value> = rects

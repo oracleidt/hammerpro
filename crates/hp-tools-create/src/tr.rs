@@ -325,6 +325,7 @@ pub const TR: TrTable = &[
     ("create.extrude.err_thin", "A piece of the outline is too thin", "Un morceau du contour est trop fin"),
     ("create.extrude.err_limits", "The result goes past the map limits", "Le résultat dépasse les limites de la map"),
     ("create.extrude.err_no_cut", "The outline does not cut into the brush", "Le contour n'entame pas le brush"),
+    ("create.extrude.err_through", "The carve goes through the whole brush", "La découpe traverse tout le brush"),
     (
         "create.extrude.not_ready",
         "The outline needs at least 3 points and must not cross itself",

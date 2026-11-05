@@ -326,11 +326,13 @@ enum Op {
         min: f32,
         max: f32,
         proportional: bool,
+        ease: bool,
     },
     FadeOut {
         min: f32,
         max: f32,
         proportional: bool,
+        ease: bool,
     },
     FadeAndDecay {
         start: f32,
@@ -732,19 +734,21 @@ impl Plan {
                 min: f(op, "fade in time min", 0.25).max(0.0),
                 max: f(op, "fade in time max", 0.25).max(0.0),
                 proportional: b(op, "proportional 0/1", true),
+                ease: b(op, "ease in and out", true),
             },
             "alpha fade out random" => Op::FadeOut {
                 min: f(op, "fade out time min", 0.25).max(0.0),
                 max: f(op, "fade out time max", 0.25).max(0.0),
                 proportional: b(op, "proportional 0/1", true),
+                ease: b(op, "ease in and out", true),
             },
             "alpha fade in simple" => {
                 let t = f(op, "proportional fade in time", 0.25).max(0.0);
-                Op::FadeIn { min: t, max: t, proportional: true }
+                Op::FadeIn { min: t, max: t, proportional: true, ease: false }
             }
             "alpha fade out simple" => {
                 let t = f(op, "proportional fade out time", 0.25).max(0.0);
-                Op::FadeOut { min: t, max: t, proportional: true }
+                Op::FadeOut { min: t, max: t, proportional: true, ease: false }
             }
             "alpha fade and decay" | "alpha fade and decay for tracers" => {
                 self.decays = true;
@@ -769,7 +773,7 @@ impl Plan {
                 color: rgb(op.color("color_fade").unwrap_or([255; 4])),
                 t0: f(op, "fade_start_time", 0.0),
                 t1: f(op, "fade_end_time", 1.0),
-                ease: b(op, "ease_in_and_out", false),
+                ease: b(op, "ease_in_and_out", true),
             },
             "rotation basic" => Op::RotationBasic,
             "rotation spin roll" | "rotation spin yaw" => Op::Spin {
@@ -1271,16 +1275,18 @@ fn operate(plan: &Plan, part: &mut Particle, points: &Points, dt: f32) {
                     part.vel = scale(part.vel, (1.0 - drag).powf(dt * 30.0));
                 }
             }
-            Op::FadeIn { proportional, .. } => {
+            Op::FadeIn { proportional, ease: smooth, .. } => {
                 let span = if *proportional { part.fade_in } else { part.fade_in / life };
                 if span > 0.0 {
-                    alpha *= (t / span).clamp(0.0, 1.0);
+                    let x = (t / span).clamp(0.0, 1.0);
+                    alpha *= if *smooth { ease(x) } else { x };
                 }
             }
-            Op::FadeOut { proportional, .. } => {
+            Op::FadeOut { proportional, ease: smooth, .. } => {
                 let span = if *proportional { part.fade_out } else { part.fade_out / life };
                 if span > 0.0 {
-                    alpha *= ((1.0 - t) / span).clamp(0.0, 1.0);
+                    let x = ((1.0 - t) / span).clamp(0.0, 1.0);
+                    alpha *= if *smooth { ease(x) } else { x };
                 }
             }
             Op::FadeAndDecay { start, end, in0, in1, out0, out1 } => {

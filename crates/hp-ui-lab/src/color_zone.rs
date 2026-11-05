@@ -73,7 +73,9 @@ impl ZoneDriver {
             }
             return;
         }
-        if !state.settings.lab.color_correction_preview {
+        if !(state.settings.lab.color_correction_preview
+            || state.settings.view.render_mode == hp_app::settings::RenderModeSetting::ColorCorrected)
+        {
             if self.applied != Applied::None {
                 if let Some(gfx) = state.gfx.as_mut() {
                     gfx.renderer.set_color_zone(None);

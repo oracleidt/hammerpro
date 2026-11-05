@@ -640,6 +640,7 @@ fn detail_sprites_follow_the_detail_distances() {
         lr: [400.0, -400.0],
         tex: [0.0, 0.0, 1.0, 1.0],
         orientation: DetailSpriteOrientation::Fixed,
+        sway: 0,
         color: [255; 4],
         object: 80,
     };

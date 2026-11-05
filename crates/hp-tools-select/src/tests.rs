@@ -1100,3 +1100,53 @@ fn nudges_follow_the_steps_of_the_grid() {
     let after = bounds(&state, WALL).min;
     assert!(approx(after.x - before.x, 12.0), "{before} -> {after}");
 }
+
+fn top_face(state: &AppState, id: u32) -> hp_editor::FaceRef {
+    let n = state.doc.scene().solid(id).expect("solid");
+    let i = n.geom.faces.iter().position(|f| f.plane.normal.z > 0.99).expect("top face");
+    let side = n.geom.faces[i].side_index;
+    hp_editor::FaceRef::new(id, side)
+}
+
+#[test]
+fn arrows_move_the_picked_face_instead_of_the_object() {
+    let mut state = state();
+    state.settings.selection.element = hp_app::settings::SelectElement::Face;
+    let mut tool = SelectTool::new();
+    let face = top_face(&state, 3);
+    state.doc.clear_selection();
+    state.doc.select_faces(&[face], hp_editor::SelectOp::Replace);
+    let before = bounds(&state, WALL);
+    tool.nudge_for_tests(&mut state, NudgeView::View2d(ViewKind::Front), &[(NudgeKey::Up, NudgeMod::Plain)]);
+    let after = bounds(&state, WALL);
+    assert!(approx(after.max.z - before.max.z, 16.0), "{before:?} -> {after:?}");
+    assert!(approx(after.min.z, before.min.z), "only the top face moved");
+    assert_eq!(state.doc.selected_faces().len(), 1, "the face stays selected");
+    assert!(state.doc.undo());
+    assert!(approx(bounds(&state, WALL).max.z, before.max.z));
+}
+
+#[test]
+fn arrows_move_picked_vertices_and_edges_and_keep_them_picked() {
+    let mut state = state();
+    state.settings.selection.element = hp_app::settings::SelectElement::Vertex;
+    let mut tool = SelectTool::new();
+    let b = bounds(&state, WALL);
+    let top: Vec<DVec3> = [
+        DVec3::new(b.min.x, b.min.y, b.max.z),
+        DVec3::new(b.max.x, b.min.y, b.max.z),
+        DVec3::new(b.max.x, b.max.y, b.max.z),
+        DVec3::new(b.min.x, b.max.y, b.max.z),
+    ]
+    .to_vec();
+    state.doc.set_selection(&[WALL]);
+    let rev = state.doc.revision();
+    state.runtime.selection.element_revision = rev;
+    state.runtime.selection.edges = vec![hp_editor::EdgeRef::new(3, top[0], top[1])];
+    tool.nudge_for_tests(&mut state, NudgeView::View2d(ViewKind::Front), &[(NudgeKey::Up, NudgeMod::Plain)]);
+    let after = bounds(&state, WALL);
+    assert!(approx(after.max.z, b.max.z + 16.0), "{b:?} -> {after:?}");
+    let fresh = state.runtime.selection.fresh_edges(state.doc.revision()).to_vec();
+    assert_eq!(fresh.len(), 1, "the picked edge follows the move");
+    assert!(approx(fresh[0].a.z, top[0].z + 16.0));
+}

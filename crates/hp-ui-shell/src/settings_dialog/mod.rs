@@ -34,6 +34,7 @@ mod storage;
 mod update;
 mod viewport;
 mod visibility;
+mod vtf;
 mod workflow;
 
 pub use discord::shown_status as discord_shown_status;
@@ -141,6 +142,7 @@ fn package_pages() -> Vec<Box<dyn SettingsPage>> {
     pages.extend(storage::pages());
     pages.extend(update::pages());
     pages.extend(blender::pages());
+    pages.extend(vtf::pages());
     pages
 }
 
@@ -171,6 +173,7 @@ pub(crate) const TABLES: &[TrTable] = &[
     mcp::TR,
     discord::TR,
     blender::TR,
+    vtf::TR,
 ];
 
 const CONFIRM_SECS: f64 = 4.0;
