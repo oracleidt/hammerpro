@@ -19,6 +19,11 @@ fn main() {
     if let Some(dir) = git_dir(&git) {
         let head = dir.join("HEAD");
         println!("cargo:rerun-if-changed={}", head.display());
+        for path in [dir.join("refs"), dir.join("packed-refs")] {
+            if path.exists() {
+                println!("cargo:rerun-if-changed={}", path.display());
+            }
+        }
         if let Some((commit, reference)) = head_commit(&dir) {
             if let Some(reference) = reference {
                 println!("cargo:rerun-if-changed={}", dir.join(reference).display());

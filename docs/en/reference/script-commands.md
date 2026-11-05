@@ -173,6 +173,9 @@
 
 | Key | Values |
 |---|---|
+| `selected_point` | Select a point, numbered from 1. |
+| `point_x`, `point_y`, `point_z` | Coordinates of the selected point. Changing Z turns terrain following off. |
+| `fit_width` | Set `on` to reduce the width until the current tight bend fits; keeps the path in place. |
 | `lanes` | Number of lanes, 1 to 8. |
 | `lane_width` | Width of one lane, 16 to 256 units. |
 | `shoulder` | Width of the shoulder on each side, 0 or 1 to 256 units. |

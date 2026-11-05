@@ -421,6 +421,27 @@ fn translations_are_clean() {
 }
 
 #[test]
+fn width_fit_resolves_a_tight_bend_without_moving_the_path() {
+    use hp_app::Tool;
+    let mut state = settle();
+    let mut tool = super::RoadTool::new();
+    let points = [p(0.0, 0.0, 0.0), p(240.0, 0.0, 0.0), p(240.0, 240.0, 0.0)];
+    for point in points {
+        tool.add_point(point);
+    }
+    if tool.preview(&state).is_ok() {
+        tool.set_option(&mut state, "lane_width", "256");
+        tool.set_option(&mut state, "shoulder", "128");
+    }
+    assert!(matches!(&*tool.preview(&state), Err(RoadError::Folded(_))));
+    assert!(tool.fit_width_to_bends(&state));
+    assert_eq!(tool.points(), points);
+    assert!(tool.preview(&state).is_ok());
+    assert!(tool.options.meta.lane_width >= 16.0);
+    assert!(tool.option_values().iter().any(|o| o.key == "fit_width"));
+}
+
+#[test]
 fn roads_ignore_every_road_as_ground() {
     let mut state = settle();
     let mut a = meta(&[p(-200.0, -120.0, 0.0), p(200.0, -120.0, 0.0)]);

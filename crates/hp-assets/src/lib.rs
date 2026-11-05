@@ -32,6 +32,7 @@ mod shadow_hulls;
 mod texture;
 mod thumb_cache;
 mod thumbs;
+mod tool_preview;
 mod util;
 mod watcher;
 mod water;
@@ -586,6 +587,10 @@ impl hp_app::AssetsApi for AssetManager {
 
     fn render_material_id(&mut self, name: &str) -> hp_render::MaterialId {
         self.world_material(name)
+    }
+
+    fn set_tool_preview(&mut self, mesh: Option<Arc<hp_render::ObjectMesh>>, hidden: &[hp_editor::Id]) {
+        self.scene.tool_preview.set(mesh, hidden);
     }
 
     fn pending_work(&self) -> usize {

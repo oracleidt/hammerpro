@@ -50,11 +50,13 @@ pub(crate) fn producers() -> Vec<Box<dyn DerivedProducer>> {
     list.extend(crate::instances::producers());
     list.extend(crate::render::producers());
     list.extend(crate::lights::producers());
+    list.push(Box::new(crate::tool_preview::PreviewProducer::default()));
     list
 }
 
 #[derive(Default)]
 pub(crate) struct SceneSync {
+    pub tool_preview: crate::tool_preview::ToolPreview,
     pub opts: Option<SceneOptions>,
     pub selected: AHashSet<u32>,
     pub ents: AHashMap<Id, EntState>,
@@ -591,6 +593,16 @@ impl AssetManager {
         self.sync_shadow_hulls(renderer, &display);
         self.mats.apply_dirty(renderer);
         self.scene.revision = Some(doc.revision());
+        let restore = std::mem::take(&mut self.scene.tool_preview.restore);
+        for id in restore.into_iter().chain(self.scene.tool_preview.hidden.iter().copied()) {
+            if doc.scene().solid(id).is_some() {
+                let mut flags = solid_flags(doc, id, &display, self.scene.env.room.as_ref());
+                if self.scene.tool_preview.hidden.contains(&id) {
+                    flags |= ObjectFlags::NO_3D | ObjectFlags::NO_SHADOW;
+                }
+                renderer.set_object_flags(id, flags);
+            }
+        }
         renderer.set_cubemap_auto(display.cubemaps_auto);
         if display.cubemaps {
             renderer.step_cubemaps(CUBEMAP_BUDGET);

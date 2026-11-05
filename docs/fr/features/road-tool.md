@@ -15,12 +15,14 @@ Il s'appuie sur l'[outil courbe](curve-tool.md) : la même spline lisse, la mêm
 ## Dessiner la route
 
 1. Cliquez des points l'un après l'autre dans la **vue de dessus** ou dans la **vue 3D**. Dans la vue de dessus le point s'aimante à la grille (maintenez `Alt` pour ne pas aimanter) et prend la hauteur du point précédent, ou la hauteur du sol quand **Suivre le terrain** est activé. Dans la vue 3D le point est posé sur la surface sous le curseur, ou sur le plan du point précédent quand il n'y a pas de surface.
-2. L'aperçu est en direct : les bords des voies et la ligne centrale dans les vues 2D, les brushes eux-mêmes dans la vue 3D. Le nombre de brushes et la longueur s'affichent près du dernier point et dans la barre d'options. En rouge, la raison quand la route ne peut pas être construite.
-3. **Glissez un point** pour le déplacer. Dans la vue de dessus il se déplace en x et y, dans la vue 3D en x et y à sa propre hauteur. Dans les vues de **face** et de **côté** il se déplace sur son axe horizontal et en hauteur : c'est ainsi qu'on change la hauteur à la main.
-4. **Cliquez un point** pour le sélectionner : son numéro et sa hauteur apparaissent dans la barre d'options, où vous pouvez taper la hauteur. `Ctrl+clic` sur un point le retire, `Maj+clic` dans la vue de dessus insère un point sur la route entre les deux points les plus proches (sa hauteur suit la route), `Retour arrière` retire le dernier point, `Suppr` retire le point sélectionné, **Inverser** retourne la route pour ajouter des points à l'autre bout. Une route compte au plus 512 points.
+2. L'aperçu est texturé et mis à jour en direct dans la vue 3D, avec une ligne centrale lisse et des points de contrôle blancs. Il reprend les matériaux, les marquages, la largeur et la hauteur des brushes finaux. Les bords et la ligne centrale restent visibles en 2D. Aucun brush n'est modifié avant validation.
+3. **Cliquez un point** pour le sélectionner. Ses flèches rouge X, verte Y et bleue Z apparaissent en 3D. **Glissez la flèche bleue vers le haut pour faire monter la route**, ou vers le bas pour la descendre. Les flèches rouge et verte déplacent le point latéralement ; les carrés entre les flèches limitent le déplacement à un plan. Glisser directement le point le déplace horizontalement. `Ctrl+glisser` sur un point change aussi uniquement sa hauteur. `Alt` désactive le magnétisme. Les vues de face et de côté permettent toujours de régler la hauteur. Une modification manuelle de hauteur désactive **Suivre le terrain** pour que le sol ne remplace pas la pente.
+4. **Maj+glisser une extrémité** ou sa flèche prolonge la route de ce côté, en conservant l'ancien point. La barre d'options permet aussi de saisir les coordonnées **X, Y et Z**. `Ctrl+clic` sur un point le retire ; `Maj+clic` dans la vue de dessus ou 3D insère un point sur la spline existante. `Retour arrière` retire le dernier point, `Suppr` retire le point sélectionné et **Inverser** change le côté où les nouveaux clics ajoutent des points. Une route compte au plus 512 points.
 5. `Entrée`, un double clic ou le bouton **Créer** construit la route. `Échap` annule. Les nouveaux brushes sont sélectionnés et toute la route forme une seule étape d'annulation.
 
 Les hauteurs sont lissées : entre les points la route monte et descend le long d'une courbe qui passe par la hauteur de chaque point sans la dépasser (une colline entre deux parties plates n'a jamais de bosse plus haute que ses points). Les pentes sont mesurées sur la route elle-même, la texture n'est donc pas étirée dans une pente.
+
+Lorsque la vue souris est activée, un clic gauche pose un point au réticule. Quittez ce mode pour manipuler les flèches. **Nouvelle route** efface le tracé en attente pour en commencer un autre. En modification, ce bouton annule les changements non appliqués de la route existante.
 
 ## Réglages de la route
 
@@ -65,7 +67,7 @@ Sur la face supérieure de chaque brush la texture suit la route : l'axe U suit 
 Chaque brush créé par l'outil route se souvient de sa route dans les clés `hammerpro_curve` du VMF (`r1;...`, points avec leurs hauteurs, tous les réglages, la jonction).
 
 1. Sélectionnez un brush de la route (ou son entité brush).
-2. **Outils > Modifier la route**. L'outil s'ouvre sur les points mémorisés avec les réglages mémorisés, et la fenêtre Route s'ouvre.
+2. Activez **Outil route** pour rouvrir directement la route sélectionnée, ou choisissez **Outils > Modifier la route** pour l'ouvrir avec sa fenêtre de réglages.
 3. Glissez, ajoutez, insérez, retirez des points, changez des hauteurs, n'importe quel réglage, matériau, ligne, dévers, jonction.
 4. `Entrée` ou **Appliquer** remplace tous les brushes de la route par les nouveaux en une seule étape d'annulation. Ils restent dans la même entité brush, s'il y en a une, et sont sélectionnés. `Échap` annule sans rien changer.
 
@@ -89,7 +91,7 @@ La jonction est mémorisée. Quand vous modifiez ou coupez l'autre route, les ro
 
 ## Quand la route est refusée
 
-- **Segments repliés dans un virage serré** (rouge) : la demi-largeur de la route est plus grande que le rayon du virage. Réduisez la largeur de voie ou l'accotement, ou ouvrez le virage.
+- **Segments repliés dans un virage serré** (rouge) : la demi-largeur dépasse le rayon du virage. Écartez les points, ou cliquez sur **Adapter la largeur au virage** pour réduire ensemble les voies, les accotements et les lignes sans déplacer le tracé. Si la largeur minimale reste trop grande, ouvrez le virage en déplaçant ses points.
 - **Lignes trop larges** : les lignes ne tiennent pas dans les voies. Réduisez la largeur des lignes ou élargissez les voies.
 - **Trop courte**, **trop de brushes**, **plus large que 2048 unités**, **hors de la carte**, et les problèmes de jonction ci-dessus.
 
@@ -105,7 +107,7 @@ La jonction est mémorisée. Quand vous modifiez ou coupez l'autre route, les ro
 | `split_road` | Coupe une route en deux avec `point`, `at` ou `distance`. |
 | `add_road_junction` | Relie une extrémité de route (`end`) au côté de `target_uid` avec un `flare` et un `attach` (`outer` ou `lane`), ou retire la jonction avec `remove`. |
 
-`set_tool_options` avec l'outil `road` règle les mêmes paramètres pour la prochaine route dessinée avec l'outil (`lanes`, `lane_width`, `shoulder`, `thickness`, `step`, `tex_scale`, `material`, `shoulder_material`, `line_material`, `center_material`, `center_line`, `edge_line`, `divider_line`, `line_width`, `dash`, `gap`, `roll_start`, `roll_end`, `auto_bank`, `auto_bank_limit`, `follow_terrain`, `lift`, `base_height`, `create_as`, `keep_active`). Voir la [référence des outils MCP](../../MCP.md).
+`set_tool_options` avec l'outil `road` règle les mêmes paramètres pour la prochaine route dessinée avec l'outil (`lanes`, `lane_width`, `shoulder`, `thickness`, `step`, `tex_scale`, `material`, `shoulder_material`, `line_material`, `center_material`, `center_line`, `edge_line`, `divider_line`, `line_width`, `dash`, `gap`, `roll_start`, `roll_end`, `auto_bank`, `auto_bank_limit`, `follow_terrain`, `lift`, `base_height`, `create_as`, `keep_active`). Pendant le tracé ou la modification, `selected_point` (numéroté à partir de 1) et `point_x`, `point_y`, `point_z` permettent de régler ses points. `fit_width` à true adapte la largeur à un virage serré. Voir la [référence des outils MCP](../../MCP.md).
 
 ## Conseils
 

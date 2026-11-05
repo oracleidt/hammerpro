@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use glam::DVec3;
 use hp_app::AppState;
+use hp_app::data_colors;
 use hp_app::runtime::wind;
 use hp_editor::Id;
 use hp_render::{ParticleBlend, ParticleOrient};
@@ -622,7 +623,7 @@ impl OverlayLayer for EntityFxLayer {
             let (Some(start), Some(end)) = (view.world_to_screen(sample.origin), view.world_to_screen(end)) else {
                 continue;
             };
-            let color = if sample.gusting { egui::Color32::YELLOW } else { hp_app::theme::VIEW_ACCENT };
+            let color = if sample.gusting { data_colors::WIND_GUST } else { data_colors::WIND_NORMAL };
             if start.distance_sq(end) > 1.0 {
                 painter.arrow(start, end - start, egui::Stroke::new(2.0, color));
             }

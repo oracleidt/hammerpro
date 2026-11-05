@@ -2,7 +2,7 @@
 
 # Actions and keyboard shortcuts
 
-Every command of Hammer Pro 1.1.3 is an *action*: one entry shared by the menus, the toolbar, the keyboard shortcuts, the command palette (`Ctrl+P`), the `--script` files and the MCP server (`run_action`, `list_actions`). This page lists all 345 actions, menu by menu, in the order the menus show them.
+Every command of Hammer Pro 1.1.4 is an *action*: one entry shared by the menus, the toolbar, the keyboard shortcuts, the command palette (`Ctrl+P`), the `--script` files and the MCP server (`run_action`, `list_actions`). This page lists all 345 actions, menu by menu, in the order the menus show them.
 
 Columns:
 

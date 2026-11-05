@@ -173,6 +173,9 @@
 
 | Clé | Valeurs |
 |---|---|
+| `selected_point` | Sélectionner un point, numéroté à partir de 1. |
+| `point_x`, `point_y`, `point_z` | Coordonnées du point sélectionné. Modifier Z désactive le suivi du terrain. |
+| `fit_width` | `on` réduit la largeur pour passer le virage actuel, sans déplacer le tracé. |
 | `lanes` | Nombre de voies, 1 à 8. |
 | `lane_width` | Largeur d'une voie, 16 à 256 unités. |
 | `shoulder` | Largeur de l'accotement de chaque côté, 0 ou 1 à 256 unités. |

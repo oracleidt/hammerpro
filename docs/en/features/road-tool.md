@@ -15,12 +15,14 @@ It is built on the [curve tool](curve-tool.md): same smooth spline, same way of 
 ## Drawing the road
 
 1. Click points one after the other in the **top view** or in the **3D view**. In the top view the point snaps to the grid (hold `Alt` for no snapping) and takes the height of the previous point, or the height of the ground when **Follow terrain** is on. In the 3D view the point is placed on the surface under the cursor, or on the plane of the previous point when there is no surface.
-2. The preview is live: the lane edges and the center line in the 2D views, the brushes themselves in the 3D view. The number of brushes and the length are shown near the last point and in the options bar. In red, the reason when the road cannot be built.
-3. **Drag a point** to move it. In the top view it moves in x and y, in the 3D view it moves in x and y at its own height. In the **front** and **side** views it moves in its horizontal axis and in height, so a drag there is how you change the height by hand.
-4. **Click a point** to select it: its number and height appear in the options bar, where you can type the height. `Ctrl+click` a point removes it, `Shift+click` in the top view inserts a point on the road between the two nearest points (its height follows the road), `Backspace` removes the last point, `Delete` removes the selected one, **Reverse** turns the road around to add points at the other end. A road holds at most 512 points.
+2. The preview is live and textured in 3D, with the smooth centerline and white control points. It uses the same materials, lane markings, width and height as the generated brushes. In 2D the lane edges and centerline remain visible. No brushes are changed until you confirm.
+3. **Click a point** to select it. Its red X, green Y and blue Z arrows appear in 3D. **Drag the blue arrow up to make the road climb**, or down to lower it. The red and green arrows move it sideways; the squares between arrows constrain movement to a plane. A direct point drag moves it horizontally. `Ctrl+drag` on a point also changes only its height. `Alt` disables snapping. Front and side view drags still change height. Manual height edits turn **Follow terrain** off so the ground cannot override the slope.
+4. **Shift+drag an endpoint** or its arrow to extend the road from that end, leaving the old point in place. The options bar also has editable **X, Y and Z** coordinates. `Ctrl+click` a point removes it; `Shift+click` in the top or 3D view inserts a point on the existing spline. `Backspace` removes the last point, `Delete` removes the selected one, and **Reverse** changes the end used by new clicks. A road holds at most 512 points.
 5. `Enter`, a double click, or the **Create** button builds the road. `Escape` cancels. The new brushes are selected and the whole road is one undo step.
 
 Heights are smooth: between points the road rises and falls along a curve that goes through every point height without overshooting (a hill between two flat parts never gets a bump higher than its points). Slopes are measured on the road itself, so the texture is not stretched on a slope.
+
+With mouse look enabled, a left click places a point at the crosshair. Leave mouse look to use the arrows. **New road** clears the pending path and starts another road. It cancels unapplied changes when editing an existing road.
 
 ## Road settings
 
@@ -65,7 +67,7 @@ On the top face of every brush the texture runs along the road: the U axis follo
 Every brush made by the road tool remembers its road in the `hammerpro_curve` keys of the VMF (`r1;...`, points with their heights, every setting, the junction).
 
 1. Select one brush of the road (or its brush entity).
-2. **Tools > Edit road**. The tool opens on the stored points with the stored settings, and the Road window opens.
+2. Activate **Road tool** to reopen the selected road directly, or choose **Tools > Edit road** to open it with the settings window.
 3. Drag, add, insert, remove points, change heights, any setting, material, line, banking, junction.
 4. `Enter` or **Apply** replaces all the brushes of the road by the new ones in one undo step. They stay in the same brush entity, if any, and are selected. `Escape` cancels without changing anything.
 
@@ -89,7 +91,7 @@ The junction is remembered. When you edit or split the other road, the roads joi
 
 ## When the road is refused
 
-- **Segments fold inside a tight bend** (red): the half width of the road is larger than the radius of the bend. Lower the lane width or the shoulder, or open the bend.
+- **Segments fold inside a tight bend** (red): the half width exceeds the bend radius. Move the points farther apart, or click **Fit width to bend** to reduce lane, shoulder and marking widths together without moving the path. If the bend is still invalid at the minimum width, open the bend by moving its points.
 - **Lines too wide**: the lines do not fit in the lanes. Lower the line width or widen the lanes.
 - **Too short**, **too many brushes**, **wider than 2048 units**, **outside the map**, and the junction problems above.
 
@@ -105,7 +107,7 @@ The junction is remembered. When you edit or split the other road, the roads joi
 | `split_road` | Cuts a road in two with `point`, `at` or `distance`. |
 | `add_road_junction` | Joins a road end (`end`) to the side of `target_uid` with a `flare` and an `attach` (`outer` or `lane`), or removes the junction with `remove`. |
 
-`set_tool_options` with tool `road` sets the same settings for the next road drawn with the tool (`lanes`, `lane_width`, `shoulder`, `thickness`, `step`, `tex_scale`, `material`, `shoulder_material`, `line_material`, `center_material`, `center_line`, `edge_line`, `divider_line`, `line_width`, `dash`, `gap`, `roll_start`, `roll_end`, `auto_bank`, `auto_bank_limit`, `follow_terrain`, `lift`, `base_height`, `create_as`, `keep_active`). See the [MCP tool reference](../../MCP.md).
+`set_tool_options` with tool `road` sets the same settings for the next road drawn with the tool (`lanes`, `lane_width`, `shoulder`, `thickness`, `step`, `tex_scale`, `material`, `shoulder_material`, `line_material`, `center_material`, `center_line`, `edge_line`, `divider_line`, `line_width`, `dash`, `gap`, `roll_start`, `roll_end`, `auto_bank`, `auto_bank_limit`, `follow_terrain`, `lift`, `base_height`, `create_as`, `keep_active`). While a road is being drawn or edited, `selected_point` (numbered from 1) and `point_x`, `point_y`, `point_z` control its points. Setting `fit_width` to true fits the width to a tight bend. See the [MCP tool reference](../../MCP.md).
 
 ## Tips
 

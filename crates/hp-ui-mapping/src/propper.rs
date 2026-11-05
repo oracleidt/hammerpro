@@ -195,7 +195,7 @@ impl MapDialog for CreateDialog {
             ui.heading(t!("propper.create_title"));
             creation_options(ui, state);
             if !ready {
-                ui.label(RichText::new(t!("lab.prop.select")).color(theme::warning()));
+                ui.label(RichText::new(t!("propper.create_select")).color(theme::warning()));
             }
             ui.separator();
             ui.horizontal(|ui| {

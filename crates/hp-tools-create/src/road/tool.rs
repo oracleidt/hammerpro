@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use egui::{Align2, CursorIcon, Key, Pos2, Ui, Vec2};
 use glam::{DVec2, DVec3};
@@ -10,12 +11,15 @@ use hp_app::{Severity, Tool, ToolFlow, ToolId, ViewInfo, ViewInput, ViewKind, t,
 use hp_editor::CurveRecord;
 use hp_geom::Aabb;
 use hp_render::Overlay;
+use hp_tools_select::gizmo::GizmoMode;
+
+mod handles;
 
 use super::apply::{
     ApplyError, RoadCreated, build_in_doc, create_road, ground_height, list_roads, read_road, replace_road,
     road_piece_ids, split_road,
 };
-use super::build::{PieceRole, Road, RoadError, elevations};
+use super::build::{Road, RoadError, elevations};
 use super::model::{
     Attach, Junction, JunctionEnd, LineKind, MAX_DASH, MAX_FLARE, MAX_LANE_WIDTH, MAX_LANES, MAX_LIFT, MAX_LINE_WIDTH,
     MAX_POINTS, MAX_SHOULDER, MAX_STEP, MAX_THICKNESS, MIN_DASH, MIN_LANE_WIDTH, MIN_LINE_WIDTH, MIN_STEP,
@@ -71,9 +75,10 @@ struct Hover {
     frame: u64,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum Drag {
     Point(usize),
+    Gizmo(handles::PointDrag),
     Swallow,
 }
 
@@ -89,6 +94,7 @@ pub struct RoadTool {
     hover: Option<Hover>,
     version: u64,
     cache: RefCell<Option<Cached>>,
+    visual_key: Option<(u64, u64)>,
     road_ids: RefCell<Option<(u64, Rc<HashSet<hp_editor::Id>>)>>,
     roads: Vec<(u32, String)>,
     roads_rev: u64,
@@ -148,6 +154,7 @@ impl RoadTool {
             hover: None,
             version: 0,
             cache: RefCell::new(None),
+            visual_key: None,
             road_ids: RefCell::new(None),
             roads: Vec::new(),
             roads_rev: u64::MAX,
@@ -177,6 +184,21 @@ impl RoadTool {
 
     fn bump(&mut self) {
         self.version = self.version.wrapping_add(1);
+    }
+
+    fn sync_preview(&mut self, state: &mut AppState) {
+        let key = (state.doc.revision(), self.version);
+        if self.visual_key == Some(key) {
+            return;
+        }
+        self.visual_key = Some(key);
+        match &*self.preview(state) {
+            Ok(road) => {
+                let mesh = super::preview::mesh(road, |name| state.assets.render_material_id(name));
+                state.assets.set_tool_preview(Some(Arc::new(mesh)), &self.own_ids());
+            }
+            Err(_) => state.assets.set_tool_preview(None, &[]),
+        }
     }
 
     fn ensure_init(&mut self, state: &AppState) {
@@ -380,11 +402,47 @@ impl RoadTool {
         match self.points.get_mut(index) {
             Some(p) if z.is_finite() && z.abs() <= MAX_BASE_Z => {
                 p.z = z;
+                self.options.meta.follow_terrain = false;
                 self.bump();
                 true
             }
             _ => false,
         }
+    }
+
+    pub fn fit_width_to_bends(&mut self, state: &AppState) -> bool {
+        if !matches!(&*self.preview(state), Err(RoadError::Folded(_))) {
+            return false;
+        }
+        let original = self.meta();
+        let scaled = |factor: f64| {
+            let mut m = original.clone();
+            m.lane_width = (original.lane_width * factor).max(MIN_LANE_WIDTH);
+            m.shoulder = if original.shoulder == 0.0 { 0.0 } else { (original.shoulder * factor).max(1.0) };
+            m.line_width = (original.line_width * factor).max(MIN_LINE_WIDTH);
+            m
+        };
+        let own = self.own_ids();
+        let valid = |factor| build_in_doc(&state.doc, &scaled(factor), &own).is_ok();
+        let mut lo = MIN_LANE_WIDTH / original.lane_width;
+        if !valid(lo) {
+            return false;
+        }
+        let mut hi = 1.0;
+        for _ in 0..18 {
+            let mid = (lo + hi) * 0.5;
+            if valid(mid) {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        let fitted = scaled(lo);
+        self.options.meta.lane_width = fitted.lane_width;
+        self.options.meta.shoulder = fitted.shoulder;
+        self.options.meta.line_width = fitted.line_width;
+        self.bump();
+        true
     }
 
     fn point_at(&self, view: &ViewInfo, pos: Pos2) -> Option<usize> {
@@ -456,27 +514,28 @@ impl RoadTool {
         let Some(pos) = m.pos else { return ToolFlow::Ignored };
         let snap = Snap::new(state, view, m.modifiers);
         if m.hovering() {
-            self.hover = self.new_point_at(state, view, pos, &snap).map(|p| Hover {
-                pos: p,
-                kind: view.kind,
-                frame: state.frame.index,
-            });
+            self.hover = (self.point_at(view, pos).is_none() && self.gizmo_at(view, pos).is_none())
+                .then(|| self.new_point_at(state, view, pos, &snap))
+                .flatten()
+                .map(|p| Hover { pos: p, kind: view.kind, frame: state.frame.index });
             return ToolFlow::Ignored;
         }
         let origin = m.origin().unwrap_or(pos);
         if m.drag_started {
-            self.drag = Some(match self.point_at(view, origin) {
-                Some(i) => {
-                    self.selected = Some(i);
-                    Drag::Point(i)
-                }
-                None => Drag::Swallow,
-            });
+            self.begin_point_drag(view, origin, m.modifiers);
         }
-        if (m.dragging || m.drag_stopped)
-            && let Some(Drag::Point(i)) = self.drag
-        {
-            self.drag_point(state, view, pos, &snap, i);
+        if m.dragging || m.drag_stopped {
+            match self.drag {
+                Some(Drag::Point(i)) => {
+                    let old = self.points[i].z;
+                    self.drag_point(state, view, pos, &snap, i);
+                    if matches!(view.kind, ViewKind::Front | ViewKind::Side) && (self.points[i].z - old).abs() > 1e-6 {
+                        self.options.meta.follow_terrain = false;
+                    }
+                }
+                Some(Drag::Gizmo(d)) => self.drag_gizmo(view, pos, &snap, d),
+                _ => {}
+            }
         }
         if m.clicked && !m.drag_started && self.drag.is_none() {
             let hit = self.point_at(view, origin);
@@ -484,8 +543,11 @@ impl RoadTool {
                 self.create(state);
             } else if let (true, Some(i)) = (m.modifiers.command, hit) {
                 self.remove_point_at(i);
-            } else if m.modifiers.shift && view.kind == ViewKind::Top && self.points.len() >= 2 {
-                self.insert_point_near(snap.v2(view.screen_to_2d(origin)));
+            } else if self.gizmo_at(view, origin).is_some() {
+            } else if m.modifiers.shift && self.points.len() >= 2 {
+                if let Some(p) = self.new_point_at(state, view, origin, &snap) {
+                    self.insert_point_near(p.truncate());
+                }
             } else if let Some(i) = hit {
                 self.selected = Some(i);
             } else if let Some(p) = self.new_point_at(state, view, origin, &snap) {
@@ -495,6 +557,7 @@ impl RoadTool {
         if m.drag_stopped {
             self.drag = None;
         }
+        self.sync_preview(state);
         ToolFlow::Handled
     }
 
@@ -547,6 +610,7 @@ impl RoadTool {
                 self.last_bounds = Some(bounds);
                 state.runtime.brush.last_created = Some(bounds);
                 self.clear();
+                state.assets.set_tool_preview(None, &[]);
                 if edited || !self.options.keep_active {
                     state.set_tool(ToolId::Select);
                 }
@@ -853,25 +917,6 @@ impl RoadTool {
     }
 }
 
-fn draw_piece(ov: &mut Ov<'_>, corners: &[DVec3], color: [f32; 4], fill: Option<[f32; 4]>) {
-    if let Ok(c) = <&[DVec3; 8]>::try_from(corners) {
-        ov.hull_edges(c, color, true);
-        if let Some(f) = fill {
-            ov.hull_faces(c, f);
-        }
-    } else if corners.len() == 6 {
-        let (bottom, top) = (&corners[..3], &corners[3..]);
-        ov.polygon_outline(bottom, color, true);
-        ov.polygon_outline(top, color, true);
-        for i in 0..3 {
-            ov.xray_line(bottom[i], top[i], color);
-        }
-        if let Some(f) = fill {
-            ov.polygon_fill(top, f);
-        }
-    }
-}
-
 impl Tool for RoadTool {
     fn id(&self) -> ToolId {
         ToolId::Road
@@ -879,7 +924,15 @@ impl Tool for RoadTool {
 
     fn activate(&mut self, state: &mut AppState) {
         self.ensure_init(state);
+        let auto_edit = state.runtime.brush.road_edit.is_none() && self.points.is_empty();
+        if auto_edit {
+            state.runtime.brush.road_edit = super::apply::selected_road_piece(&state.doc);
+        }
         self.take_request(state);
+        if auto_edit {
+            self.show_window = false;
+        }
+        self.sync_preview(state);
     }
 
     fn deactivate(&mut self, state: &mut AppState) {
@@ -893,6 +946,20 @@ impl Tool for RoadTool {
         }
         let m = Mouse::from_input(input);
         self.handle_mouse(state, input.view, &m)
+    }
+
+    fn click_while_flying(
+        &mut self,
+        state: &mut AppState,
+        view: &ViewInfo,
+        pos: Pos2,
+        modifiers: egui::Modifiers,
+    ) -> ToolFlow {
+        self.handle_mouse(
+            state,
+            view,
+            &Mouse { pos: Some(pos), press_origin: Some(pos), clicked: true, modifiers, ..Default::default() },
+        )
     }
 
     fn key_input(&mut self, state: &mut AppState, ctx: &egui::Context) -> bool {
@@ -924,8 +991,10 @@ impl Tool for RoadTool {
         let faint = rgba(COLOR_PENDING, 0.35);
         let built = self.preview(state);
         let good = built.is_ok();
-        for w in self.points.windows(2) {
-            ov.line(w[0].xyz(), w[1].xyz(), faint);
+        if !good {
+            for w in self.points.windows(2) {
+                ov.line(w[0].xyz(), w[1].xyz(), faint);
+            }
         }
         if let Ok(road) = &*built {
             let shape = rgba(COLOR_SHAPE, 0.9);
@@ -948,17 +1017,22 @@ impl Tool for RoadTool {
                 let c: Vec<DVec3> = road.samples.iter().map(|s| s.center).collect();
                 polyline(&mut ov, &c, centre);
             } else {
-                let fill = rgba(COLOR_PENDING, 0.10);
-                for piece in &road.pieces {
-                    let flare = matches!(piece.role, PieceRole::Flare(_));
-                    draw_piece(&mut ov, &piece.corners, if flare { shape } else { line }, Some(fill));
+                for w in road.samples.windows(2) {
+                    ov.line(w[0].center + DVec3::Z * 0.5, w[1].center + DVec3::Z * 0.5, centre);
                 }
             }
         }
         let bad = rgba(COLOR_REMOVED, 1.0);
         for (i, p) in self.points.iter().enumerate() {
             let size = if self.selected == Some(i) { 10.0 } else { 7.0 };
-            ov.point(p.xyz(), if good || self.points.len() < 2 { line } else { bad }, size);
+            let color = if !good && self.points.len() >= 2 {
+                bad
+            } else if self.selected == Some(i) {
+                line
+            } else {
+                rgba(egui::Color32::WHITE, 1.0)
+            };
+            ov.point(p.xyz(), color, size);
         }
         if let Some(h) = self.hover.filter(|h| h.kind == view.kind && fresh(state, h.frame) && self.drag.is_none())
             && let Some(last) = self.points.last()
@@ -972,6 +1046,13 @@ impl Tool for RoadTool {
 
     fn paint(&self, state: &AppState, view: &ViewInfo, painter: &egui::Painter) {
         let painter = painter.with_clip_rect(view.rect.intersect(painter.clip_rect()));
+        if let Some(layout) = self.gizmo_layout(view) {
+            let active = match self.drag {
+                Some(Drag::Gizmo(d)) => Some(d.part),
+                _ => painter.ctx().pointer_hover_pos().and_then(|p| self.gizmo_at(view, p)),
+            };
+            layout.paint(view, &painter, GizmoMode::Move, active);
+        }
         if let Some(i) = self.selected
             && let Some(p) = self.points.get(i)
             && let Some(s) = view.world_to_screen(p.xyz())
@@ -1008,6 +1089,10 @@ impl Tool for RoadTool {
         self.take_request(state);
         let before = (self.options.clone(), self.selected, self.points.clone());
         ui.horizontal_wrapped(|ui| {
+            if ui.button(t!("road.new")).on_hover_text(t!("road.new_tip")).clicked() {
+                self.clear();
+                state.assets.set_tool_preview(None, &[]);
+            }
             if self.editing.is_some() {
                 ui.label(egui::RichText::new(t!("road.editing")).strong());
             }
@@ -1067,19 +1152,36 @@ impl Tool for RoadTool {
             if let Some(i) = self.selected.filter(|i| *i < self.points.len()) {
                 ui.separator();
                 ui.label(tf!("road.point", i + 1, self.points.len())).on_hover_text(t!("road.point_tip"));
-                let mut z = self.points[i].z;
-                if ui
-                    .add(egui::DragValue::new(&mut z).speed(0.5).range(-MAX_BASE_Z..=MAX_BASE_Z).max_decimals(2))
-                    .on_hover_text(t!("road.point_height_tip"))
-                    .changed()
-                {
-                    self.set_point_height(i, z);
+                let mut point = self.points[i].xyz();
+                for axis in 0..3 {
+                    if ui
+                        .add(
+                            egui::DragValue::new(&mut point[axis])
+                                .prefix(["X ", "Y ", "Z "][axis])
+                                .speed(0.5)
+                                .range(-MAX_BASE_Z..=MAX_BASE_Z)
+                                .max_decimals(2),
+                        )
+                        .on_hover_text(t!("road.point_height_tip"))
+                        .changed()
+                    {
+                        if axis == 2 {
+                            self.options.meta.follow_terrain = false;
+                        }
+                        self.points[i] = RoadPoint::new(point.x, point.y, point.z);
+                    }
                 }
             }
             if let Some((text, ok)) = self.summary(state) {
                 ui.separator();
                 let color = if ok { ui.visuals().weak_text_color() } else { hp_app::theme::VIEW_ERROR };
                 ui.label(egui::RichText::new(text).color(color));
+                if matches!(&*self.preview(state), Err(RoadError::Folded(_)))
+                    && ui.button(t!("road.fit_width")).on_hover_text(t!("road.fit_width_tip")).clicked()
+                    && !self.fit_width_to_bends(state)
+                {
+                    state.notify(Severity::Warning, t!("road.fit_failed").to_owned());
+                }
             }
         });
         self.options.meta = RoadMeta { bank: self.options.meta.bank.clamped(), ..self.options.meta.clone() };
@@ -1087,13 +1189,14 @@ impl Tool for RoadTool {
             self.bump();
         }
         self.settings_window(ui, state);
+        self.sync_preview(state);
     }
 
     fn cursor(&self, _state: &AppState, view: &ViewInfo, pos: Pos2) -> Option<CursorIcon> {
-        if matches!(self.drag, Some(Drag::Point(_))) {
+        if matches!(self.drag, Some(Drag::Point(_) | Drag::Gizmo(_))) {
             return Some(CursorIcon::Grabbing);
         }
-        if self.point_at(view, pos).is_some() {
+        if self.point_at(view, pos).is_some() || self.gizmo_at(view, pos).is_some() {
             return Some(CursorIcon::Grab);
         }
         Some(if view.kind == ViewKind::Top || !view.is_2d() { CursorIcon::Crosshair } else { CursorIcon::Default })
@@ -1112,15 +1215,45 @@ impl Tool for RoadTool {
         })
     }
 
-    fn cancel(&mut self, _state: &mut AppState) -> bool {
+    fn cancel(&mut self, state: &mut AppState) -> bool {
         let had = !self.points.is_empty() || self.drag.is_some() || self.editing.is_some();
         self.clear();
+        state.assets.set_tool_preview(None, &[]);
         had
     }
 
     fn set_option(&mut self, state: &mut AppState, key: &str, value: &str) -> bool {
         self.ensure_init(state);
         let v = value.trim();
+        if key == "fit_width" {
+            return match v.to_ascii_lowercase().as_str() {
+                "on" | "true" | "1" => self.fit_width_to_bends(state),
+                "off" | "false" | "0" => true,
+                _ => false,
+            };
+        }
+        if key == "selected_point" {
+            let Some(index) = v.parse::<usize>().ok().filter(|i| *i <= self.points.len()) else {
+                return false;
+            };
+            self.selected = index.checked_sub(1);
+            return true;
+        }
+        if let Some(axis) = ["point_x", "point_y", "point_z"].iter().position(|key_name| *key_name == key) {
+            let Some(value) = v.parse::<f64>().ok().filter(|v| v.is_finite() && v.abs() <= MAX_BASE_Z) else {
+                return false;
+            };
+            let Some(index) = self.selected else { return value == 0.0 };
+            let Some(point) = self.points.get(index) else { return false };
+            let mut point = point.xyz();
+            point[axis] = value;
+            self.points[index] = RoadPoint::new(point.x, point.y, point.z);
+            if axis == 2 {
+                self.options.meta.follow_terrain = false;
+            }
+            self.bump();
+            return true;
+        }
         let flag = match v.to_ascii_lowercase().as_str() {
             "on" | "true" | "1" => Some(true),
             "off" | "false" | "0" => Some(false),
@@ -1195,7 +1328,12 @@ impl Tool for RoadTool {
             s.trim_end_matches('0').trim_end_matches('.').to_owned()
         };
         let flag = |b: bool| if b { "on" } else { "off" };
-        vec![
+        let mut values = vec![
+            ToolOption::new(
+                "fit_width",
+                "off",
+                "set on to fit lane, shoulder and line widths to the current tight bend without moving points",
+            ),
             ToolOption::new("lanes", m.lanes.to_string(), "number of lanes (1 to 8)"),
             ToolOption::new("lane_width", num(m.lane_width), "width of one lane in units (16 to 256)"),
             ToolOption::new(
@@ -1256,6 +1394,22 @@ impl Tool for RoadTool {
                 "world, or a brush entity class (func_detail...) holding every brush",
             ),
             ToolOption::new("keep_active", flag(self.options.keep_active), "on: stay in the road tool after creating"),
-        ]
+        ];
+        let point = self.selected.and_then(|i| self.points.get(i)).copied().unwrap_or(RoadPoint::new(0.0, 0.0, 0.0));
+        values.extend([
+            ToolOption::new(
+                "selected_point",
+                self.selected.map_or(0, |i| i + 1).to_string(),
+                "select a control point numbered from 1; 0 means none selected",
+            ),
+            ToolOption::new("point_x", num(point.x), "X coordinate, requires a selected point"),
+            ToolOption::new("point_y", num(point.y), "Y coordinate, requires a selected point"),
+            ToolOption::new(
+                "point_z",
+                num(point.z),
+                "height, requires a selected point; manual height turns off terrain following",
+            ),
+        ]);
+        values
     }
 }

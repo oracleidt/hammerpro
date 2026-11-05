@@ -145,7 +145,7 @@ impl RopeParams {
             texture_scale: e.get("TextureScale").map_or(4.0, atof).clamp(0.1, 10.0),
             material,
             dangling: e.get("Dangling").is_some_and(|v| atoi(v) == 1),
-            wind: !e.get("NoWind").is_some_and(|v| atoi(v) != 0),
+            wind: e.get("NoWind").is_none_or(|v| atoi(v) == 0),
         }
     }
 

@@ -4,6 +4,11 @@ pub const TR: TrTable = &[
     ("propper.options_title", "Prop options (Propper)", "Options des props (Propper)"),
     ("propper.create_title", "Create prop from brushes", "Créer un prop à partir des brushes"),
     ("propper.create", "Create prop", "Créer le prop"),
+    (
+        "propper.create_select",
+        "Select brushes or displacements to turn into a prop.",
+        "Sélectionnez des brushes ou des displacements à convertir en prop.",
+    ),
     ("propper.physics", "Movable physics prop", "Prop physique mobile"),
     (
         "propper.physics_tip",

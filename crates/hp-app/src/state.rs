@@ -282,6 +282,7 @@ pub trait AssetsApi {
     fn set_game_hidden(&mut self, _objs: &[hp_editor::ObjRef]) {}
     fn set_model_lods(&mut self, _on: bool) {}
     fn set_play_hidden(&mut self, _objs: &[hp_editor::ObjRef]) {}
+    fn set_tool_preview(&mut self, _mesh: Option<Arc<hp_render::ObjectMesh>>, _hidden: &[hp_editor::Id]) {}
     fn set_play_world(
         &mut self,
         _world: Option<Arc<hp_editor::limits::world::BspWorld>>,

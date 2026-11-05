@@ -3,6 +3,7 @@ pub mod apply;
 pub mod build;
 pub mod junction;
 pub mod model;
+mod preview;
 pub mod spline;
 mod tool;
 mod tr;

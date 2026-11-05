@@ -1,6 +1,23 @@
 use hp_app::i18n::TrTable;
 
 pub const ROAD_TR: TrTable = &[
+    ("road.fit_width", "Fit width to bend", "Adapter la largeur au virage"),
+    (
+        "road.fit_width_tip",
+        "Reduce lane, shoulder and line widths together until the road fits this bend. The path stays in place.",
+        "Réduire ensemble la largeur des voies, des accotements et des lignes pour passer ce virage. Le tracé reste en place.",
+    ),
+    (
+        "road.fit_failed",
+        "This bend is still too tight at the minimum width. Move its points farther apart.",
+        "Ce virage reste trop serré à la largeur minimale. Écartez ses points.",
+    ),
+    ("road.new", "New road", "Nouvelle route"),
+    (
+        "road.new_tip",
+        "Start a new road. Pending changes to the current road are discarded.",
+        "Commencer une nouvelle route. Les modifications non appliquées de la route actuelle sont annulées.",
+    ),
     ("road.editing", "Editing road", "Modification de route"),
     ("road.window_title", "Road", "Route"),
     ("road.window_edit", "Edit road", "Modifier la route"),
@@ -166,8 +183,8 @@ pub const ROAD_TR: TrTable = &[
     ("road.point_tip", "The selected point of the road", "Le point sélectionné de la route"),
     (
         "road.point_height_tip",
-        "Height of the selected point. The road rises and falls smoothly between the points. Drag a point in the front or side view to change its height too.",
-        "Hauteur du point sélectionné. La route monte et descend en douceur entre les points. Glissez un point dans la vue de face ou de côté pour changer aussi sa hauteur.",
+        "Coordinates of the selected point. In 3D, drag its blue Z arrow to raise or lower the road, or the red and green arrows to move it. Manual height changes turn off Follow terrain.",
+        "Coordonnées du point sélectionné. En 3D, glissez sa flèche bleue Z pour monter ou descendre la route, ou les flèches rouge et verte pour le déplacer. Une modification manuelle de hauteur désactive Suivre le terrain.",
     ),
     ("road.point_label", "Point {0}, height {1}", "Point {0}, hauteur {1}"),
     ("road.hover", "{0}, height {1}", "{0}, hauteur {1}"),
@@ -194,18 +211,18 @@ pub const ROAD_TR: TrTable = &[
     ),
     (
         "road.hint_points",
-        "Click to add points. {0}: remove the last point, {1}: cancel",
-        "Cliquez pour ajouter des points. {0} : retirer le dernier point, {1} : annuler",
+        "Click farther away for the second point. Drag the blue arrow to change height. {0}: remove the last point, {1}: cancel",
+        "Cliquez plus loin pour le deuxième point. Glissez la flèche bleue pour changer la hauteur. {0} : retirer le dernier point, {1} : annuler",
     ),
     (
         "road.hint_ready",
-        "Click to add points, drag to move them (front and side views change the height). {0}: create, {1}: remove the last point, {2}: cancel. Shift+click inserts a point, {3}+click removes one",
-        "Cliquez pour ajouter des points, glissez pour les déplacer (les vues de face et de côté changent la hauteur). {0} : créer, {1} : retirer le dernier point, {2} : annuler. Maj+clic insère un point, {3}+clic en retire un",
+        "Click to add points. Drag the blue arrow to change height, Shift+drag an endpoint to extend. {0}: create, {1}: remove last, {2}: cancel. Shift+click: insert, {3}+click: remove",
+        "Cliquez pour ajouter des points. Flèche bleue : hauteur, Maj+glisser une extrémité : prolonger. {0} : créer, {1} : retirer le dernier, {2} : annuler. Maj+clic : insérer, {3}+clic : retirer",
     ),
     (
         "road.hint_edit",
-        "Editing a road: drag points, click to add at the end, Shift+click to insert, {2}+click a point to remove it. {0}: apply, {1}: cancel",
-        "Modification d'une route : glissez les points, cliquez pour ajouter à la fin, Maj+clic pour insérer, {2}+clic sur un point pour le retirer. {0} : appliquer, {1} : annuler",
+        "Editing road: drag points or XYZ arrows, blue arrow changes height. Shift+drag an endpoint: extend, Shift+click: insert, {2}+click: remove. {0}: apply, {1}: cancel",
+        "Route : glissez les points ou les flèches XYZ, la bleue change la hauteur. Maj+glisser une extrémité : prolonger, Maj+clic : insérer, {2}+clic : retirer. {0} : appliquer, {1} : annuler",
     ),
     (
         "road.err.points",

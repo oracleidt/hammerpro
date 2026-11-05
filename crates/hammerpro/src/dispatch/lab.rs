@@ -785,7 +785,7 @@ fn place_imported(app: &mut HammerProApp, imported: &hp_ui_entities::model_impor
 
 enum PropJob {
     Preparing(Receiver<Result<hp_ui_mapping::propper::PreparedProp, String>>, Vec<hp_editor::Id>),
-    Compiling(CompileHandle, Vec<hp_editor::Id>, hp_ui_mapping::propper::PreparedProp),
+    Compiling(CompileHandle, Vec<hp_editor::Id>, Box<hp_ui_mapping::propper::PreparedProp>),
 }
 
 fn start_brushes_to_prop(app: &mut HammerProApp, ctx: &egui::Context) {
@@ -915,7 +915,7 @@ fn poll_prop_job(app: &mut HammerProApp, ctx: &egui::Context) {
                 let triangles = prepared.lod_triangles.first().copied().unwrap_or(0);
                 app.state.console.info(tf!("lab.prop.compiling", triangles, prepared.model.clone()));
                 app.state.console.info(prepared.details());
-                app.pkg.lab.prop_job = Some(PropJob::Compiling(handle, solids, prepared));
+                app.pkg.lab.prop_job = Some(PropJob::Compiling(handle, solids, Box::new(prepared)));
             }
         },
         Some(PropJob::Compiling(handle, solids, prepared)) => {

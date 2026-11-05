@@ -40,7 +40,7 @@ domain! { "tool options";
         tex_scale, create_as, keep_active), the road tool (lanes, lane_width, shoulder, thickness, step, \
         tex_scale, material, shoulder_material, line_material, center_material, center_line, edge_line, \
         divider_line (none, solid, dashed, double), line_width, dash, gap, roll_start, roll_end, auto_bank, \
-        auto_bank_limit, follow_terrain, lift, base_height, create_as, keep_active), the pipe tool (shape, sides, radius, hollow, wall, segments, segment_length, bend_radius, bend_slices, collar_every, collar_size, collar_length, collar_ends, collar_bends, tex_scale, path, heading, depth, keep_active; create_pipe builds a pipe without the tool), the clip tool (keep: front, back, both; three_point; axis of the \
+        auto_bank_limit, follow_terrain, lift, base_height, create_as, keep_active, selected_point (numbered from 1), point_x, point_y, point_z and fit_width), the pipe tool (shape, sides, radius, hollow, wall, segments, segment_length, bend_radius, bend_slices, collar_every, collar_size, collar_length, collar_ends, collar_bends, tex_scale, path, heading, depth, keep_active; create_pipe builds a pipe without the tool), the clip tool (keep: front, back, both; three_point; axis of the \
         Shift+click cut in the 3D view: auto, x, y, z; the cut face material follows the \
         brush.clip_current_material setting), the slice tool (orientation: left_right or top_bottom; segments 1 to 64, the number of cuts; slice_brushes slices without the tool), the path tool (class, base_name, loop, relink, offset; saved with the settings), the extrude / carve \
         tool (mode: carve, extrude; depth; through; new_faces: face, current), the bevel tool (radius, segments, \
@@ -133,8 +133,12 @@ pub(crate) fn set_tool_options_on(
             names.join(", ")
         ));
     }
+    let mut ordered: Vec<_> = options.iter().collect();
+    if id == ToolId::Road {
+        ordered.sort_by_key(|(key, _)| key != "selected_point");
+    }
     let mut set = Vec::new();
-    for (k, v) in options {
+    for (k, v) in ordered {
         if !tool.set_option(state, k, v) {
             let takes = known.iter().find(|o| o.key == k).map_or("", |o| o.takes);
             let done = if set.is_empty() { String::new() } else { format!(" ({} were set)", set.join(", ")) };
@@ -210,6 +214,26 @@ mod tests {
             assert_eq!(name, format!("{id:?}").to_ascii_lowercase(), "{id:?}");
             assert_eq!(super::tool_of(name), Some(id));
         }
+    }
+
+    #[test]
+    fn road_coordinates_apply_to_the_requested_point_regardless_of_json_key_order() {
+        let mut state = hp_app::testing::test_state();
+        let mut road = hp_tools_create::RoadTool::new();
+        road.add_point(hp_tools_create::road::RoadPoint::new(0.0, 0.0, 0.0));
+        road.add_point(hp_tools_create::road::RoadPoint::new(800.0, 0.0, 0.0));
+        let mut tools: Vec<Box<dyn hp_app::Tool>> = vec![Box::new(road)];
+        let options = vec![("point_z".to_owned(), "256".to_owned()), ("selected_point".to_owned(), "1".to_owned())];
+        let result = set_tool_options_on(&mut tools, &mut state, ToolId::Road, &options);
+        assert!(!result.is_error, "{}", result.first_text());
+        let now = tool_options_json(&tools, ToolId::Road, Some(ToolId::Road));
+        assert_eq!(value(&now, "road", "selected_point"), "1");
+        assert_eq!(value(&now, "road", "point_z"), "256");
+        let result =
+            set_tool_options_on(&mut tools, &mut state, ToolId::Road, &[("selected_point".into(), "2".into())]);
+        assert!(!result.is_error);
+        let now = tool_options_json(&tools, ToolId::Road, Some(ToolId::Road));
+        assert_eq!(value(&now, "road", "point_z"), "0");
     }
 
     #[test]

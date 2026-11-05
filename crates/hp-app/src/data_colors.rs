@@ -21,6 +21,8 @@ pub const NODE_OTHER: Color32 = Color32::from_rgb(70, 70, 70);
 pub const TILE_GRID: Color32 = Color32::from_rgb(255, 200, 0);
 pub const PREVIEW_BACKDROP: Color32 = Color32::from_rgb(23, 25, 31);
 pub const CARVE: Color32 = Color32::from_rgb(255, 96, 64);
+pub const WIND_GUST: Color32 = Color32::YELLOW;
+pub const WIND_NORMAL: Color32 = Color32::from_rgb(255, 140, 40);
 
 pub fn node_category(cat: &str) -> Color32 {
     match cat {

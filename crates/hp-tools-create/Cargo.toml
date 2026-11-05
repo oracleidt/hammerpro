@@ -12,6 +12,7 @@ hp-editor.workspace = true
 hp-geom.workspace = true
 hp-vmf.workspace = true
 hp-render.workspace = true
+hp-tools-select = { path = "../hp-tools-select" }
 egui.workspace = true
 glam.workspace = true
 log.workspace = true
