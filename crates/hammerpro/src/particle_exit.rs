@@ -26,7 +26,6 @@ impl Controller {
             return true;
         }
         self.asking = true;
-        session.open = true;
         false
     }
 }
@@ -184,7 +183,7 @@ mod tests {
         session.changed();
         assert!(!controller.gate_session(&mut session));
         assert!(controller.active());
-        assert!(session.open);
+        assert!(!session.open);
         controller.approved = Some(session.revision);
         assert!(controller.gate_session(&mut session));
         session.doc.create_system("second").unwrap();

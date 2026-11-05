@@ -60,6 +60,29 @@ pub struct PropExport {
     pub pieces: usize,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PropOptions {
+    pub physics: bool,
+    pub collision: bool,
+    pub mass: f64,
+}
+
+impl Default for PropOptions {
+    fn default() -> Self {
+        Self { physics: false, collision: true, mass: 10.0 }
+    }
+}
+
+impl PropOptions {
+    pub fn clamped(self) -> Self {
+        Self {
+            physics: self.physics,
+            collision: self.collision || self.physics,
+            mass: if self.mass.is_finite() { self.mass.clamp(0.1, 50_000.0) } else { 10.0 },
+        }
+    }
+}
+
 pub fn material_key(name: &str) -> String {
     name.trim().replace('\\', "/").trim_end_matches(".vmt").to_ascii_lowercase()
 }
@@ -383,17 +406,29 @@ pub fn collect_prop(doc: &Document, solids: &[Id], size: &dyn Fn(&str) -> (u32, 
 
 impl PropGeometry {
     pub fn files(&self, model_path: &str, surface_prop: &str, lods: &[PropLod]) -> PropExport {
+        self.files_with_options(model_path, surface_prop, lods, PropOptions::default())
+    }
+
+    pub fn files_with_options(
+        &self,
+        model_path: &str,
+        surface_prop: &str,
+        lods: &[PropLod],
+        options: PropOptions,
+    ) -> PropExport {
+        let options = options.clamped();
         let mut materials: Vec<String> = self.tris.iter().map(|t| t.material.clone()).collect();
         materials.sort();
         materials.dedup();
         let model = model_path.trim_matches('/').replace('\\', "/");
         let surface = if surface_prop.trim().is_empty() { "default" } else { surface_prop.trim() };
         let stem = model.rsplit('/').next().unwrap_or("prop");
-        let (phys_smd, collision) = if self.pieces.is_empty() {
+        let (phys_smd, collision) = if self.pieces.is_empty() || !options.collision {
             (String::new(), String::new())
         } else {
+            let mass = if options.physics { format!("\t$mass {}\n", options.mass) } else { String::new() };
             let qc = format!(
-                "$collisionmodel \"{stem}_phys.smd\" {{\n\t$concave\n\t$maxconvexpieces {}\n}}\n",
+                "$collisionmodel \"{stem}_phys.smd\" {{\n\t$concave\n\t$maxconvexpieces {}\n{mass}}}\n",
                 self.pieces.len()
             );
             (phys_smd_text(&self.pieces), qc)
@@ -408,9 +443,10 @@ impl PropGeometry {
             ));
             lod_smds.push(smd_text(&lod.tris));
         }
+        let static_prop = if options.physics { "" } else { "$staticprop\n" };
         let qc = format!(
             "$modelname \"{model}.mdl\"\n\
-             $staticprop\n\
+             {static_prop}\
              $surfaceprop \"{surface}\"\n\
              $cdmaterials \"/\"\n\
              $body \"body\" \"{stem}_ref.smd\"\n\
@@ -426,7 +462,7 @@ impl PropGeometry {
             materials,
             origin: self.origin,
             triangles: self.tris.len(),
-            pieces: self.pieces.len(),
+            pieces: if options.collision { self.pieces.len() } else { 0 },
         }
     }
 }
@@ -443,6 +479,17 @@ pub fn export_prop(
 
 impl Document {
     pub fn replace_with_prop(&mut self, ids: &[Id], model: &str, origin: DVec3) -> crate::EditResult<Id> {
+        self.replace_with_prop_options(ids, model, origin, PropOptions::default())
+    }
+
+    pub fn replace_with_prop_options(
+        &mut self,
+        ids: &[Id],
+        model: &str,
+        origin: DVec3,
+        options: PropOptions,
+    ) -> crate::EditResult<Id> {
+        let options = options.clamped();
         let model = model.trim();
         if model.is_empty() {
             return Err(crate::EditError::Invalid("empty model path".to_owned()));
@@ -451,14 +498,18 @@ impl Document {
         if existing.is_empty() {
             return Err(crate::EditError::Invalid("no solid to convert".to_owned()));
         }
-        self.tx("Convert to static prop", |doc| {
+        let label = if options.physics { "Convert to physics prop" } else { "Convert to static prop" };
+        self.tx(label, |doc| {
             doc.delete(&existing.iter().map(|id| ObjRef::Solid(*id)).collect::<Vec<_>>())?;
             let origin = format!("{} {} {}", origin.x.round(), origin.y.round(), origin.z.round());
             let model = format!("models/{}.mdl", model.trim_start_matches('/').trim_end_matches(".mdl"));
             doc.create_point_entity(
-                "prop_static",
+                if options.physics { "prop_physics" } else { "prop_static" },
                 hp_vmf::parse_vec3(&origin).unwrap_or(DVec3::ZERO),
-                &[("model".to_owned(), model), ("solid".to_owned(), "6".to_owned())],
+                &[
+                    ("model".to_owned(), model),
+                    ("solid".to_owned(), if options.collision { "6" } else { "0" }.to_owned()),
+                ],
             )
         })
     }

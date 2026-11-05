@@ -14,7 +14,7 @@ use crate::util::{enter_pressed, escape_pressed, icon_title, plural};
 pub mod bake;
 
 pub(crate) fn dialogs() -> Vec<Box<dyn MapDialog>> {
-    vec![Box::new(UnpropDialog::default()), Box::new(OptionsDialog)]
+    vec![Box::new(UnpropDialog::default()), Box::new(OptionsDialog), Box::new(CreateDialog)]
 }
 
 pub fn lod_options(s: hp_app::settings::ModelLodSettings) -> hp_meshio::lod::LodOptions {
@@ -31,6 +31,8 @@ pub struct PreparedProp {
     pub pieces: usize,
     pub surface_prop: String,
     pub baked: Option<(usize, (u32, u32), bool)>,
+    pub options: hp_editor::prop_export::PropOptions,
+    pub game_dir: std::path::PathBuf,
 }
 
 impl PreparedProp {
@@ -56,9 +58,14 @@ pub fn prepare_prop(
     mut geo: hp_editor::prop_export::PropGeometry,
     model: &str,
     lod: hp_app::settings::ModelLodSettings,
+    options: hp_editor::prop_export::PropOptions,
     src_dir: &std::path::Path,
     game_dir: &std::path::Path,
 ) -> Result<PreparedProp, String> {
+    let options = options.clamped();
+    if options.physics && geo.pieces.is_empty() {
+        return Err(t!("propper.physics_empty").to_owned());
+    }
     let failed = |e: std::io::Error| tf!("propper.write_failed", e.to_string());
     let surface_prop =
         fs.and_then(|fs| bake::dominant_surface_prop(fs, &geo.tris)).unwrap_or_else(|| "default".to_owned());
@@ -77,7 +84,7 @@ pub fn prepare_prop(
         baked = Some((b.faces, b.size, b.bump));
     }
     let lods = prop_lods(&geo.tris, lod);
-    let export = geo.files(model, &surface_prop, &lods);
+    let export = geo.files_with_options(model, &surface_prop, &lods, options);
     let stem = model.rsplit('/').next().unwrap_or("prop").to_owned();
     std::fs::create_dir_all(src_dir).map_err(failed)?;
     let qc = src_dir.join(format!("{stem}.qc"));
@@ -99,6 +106,8 @@ pub fn prepare_prop(
         pieces: export.pieces,
         surface_prop,
         baked,
+        options,
+        game_dir: game_dir.to_path_buf(),
     })
 }
 
@@ -146,6 +155,63 @@ pub fn prop_lods(
 
 struct OptionsDialog;
 
+fn creation_options(ui: &mut egui::Ui, state: &mut AppState) {
+    let s = &mut state.settings.lab;
+    let mut changed = ui.checkbox(&mut s.propper_physics, t!("propper.physics")).changed();
+    ui.label(RichText::new(t!("propper.physics_tip")).small().weak());
+    if s.propper_physics && !s.propper_collision {
+        s.propper_collision = true;
+        changed = true;
+    }
+    ui.add_enabled_ui(!s.propper_physics, |ui| {
+        changed |= ui.checkbox(&mut s.propper_collision, t!("propper.collision")).changed();
+    });
+    if s.propper_physics {
+        ui.label(RichText::new(t!("propper.physics_collision")).small().weak());
+        ui.horizontal(|ui| {
+            ui.label(t!("propper.mass"));
+            changed |= ui.add(egui::DragValue::new(&mut s.propper_mass).speed(0.5).range(0.1..=50_000.0)).changed();
+        });
+    }
+    ui.separator();
+    changed |= hp_app::widgets::model_lod_ui(ui, &mut s.model_lod);
+    if changed {
+        state.settings_dirty = true;
+    }
+}
+
+struct CreateDialog;
+
+impl MapDialog for CreateDialog {
+    fn show(&mut self, ctx: &egui::Context, state: &mut AppState) {
+        if !state.runtime.lab.propper_create_open {
+            return;
+        }
+        let mut create = false;
+        let mut cancel = false;
+        let ready = !state.doc.selected_solid_ids().is_empty();
+        let modal = egui::Modal::new(egui::Id::unique("hp_propper_create")).show(ctx, |ui| {
+            ui.set_width(420.0);
+            ui.heading(t!("propper.create_title"));
+            creation_options(ui, state);
+            if !ready {
+                ui.label(RichText::new(t!("lab.prop.select")).color(theme::warning()));
+            }
+            ui.separator();
+            ui.horizontal(|ui| {
+                create = ui.add_enabled(ready, egui::Button::new(t!("propper.create"))).clicked();
+                cancel = ui.button(t!("common.cancel")).clicked();
+            });
+        });
+        create |= ready && enter_pressed(ctx, &modal.response);
+        cancel |= modal.should_close();
+        if create || cancel {
+            state.runtime.lab.propper_create_open = false;
+            state.runtime.lab.propper_create_confirmed = create && !cancel;
+        }
+    }
+}
+
 impl MapDialog for OptionsDialog {
     fn show(&mut self, ctx: &egui::Context, state: &mut AppState) {
         if !state.runtime.lab.propper_options_open {
@@ -163,11 +229,11 @@ impl MapDialog for OptionsDialog {
             .show(ctx, |ui| {
                 ui.label(RichText::new(t!("propper.options_intro")).weak());
                 ui.add_space(4.0);
-                if hp_app::widgets::model_lod_ui(ui, &mut state.settings.lab.model_lod) {
-                    state.settings_dirty = true;
-                }
+                creation_options(ui, state);
                 ui.add_space(4.0);
-                ui.label(RichText::new(t!("propper.options_collision")).weak());
+                if state.settings.lab.propper_options().collision {
+                    ui.label(RichText::new(t!("propper.options_collision")).weak());
+                }
                 ui.label(RichText::new(t!("propper.options_blend")).weak());
                 ui.separator();
                 ui.horizontal(|ui| {

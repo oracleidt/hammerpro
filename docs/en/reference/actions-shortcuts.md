@@ -2,7 +2,7 @@
 
 # Actions and keyboard shortcuts
 
-Every command of Hammer Pro 1.1.2 is an *action*: one entry shared by the menus, the toolbar, the keyboard shortcuts, the command palette (`Ctrl+P`), the `--script` files and the MCP server (`run_action`, `list_actions`). This page lists all 345 actions, menu by menu, in the order the menus show them.
+Every command of Hammer Pro 1.1.3 is an *action*: one entry shared by the menus, the toolbar, the keyboard shortcuts, the command palette (`Ctrl+P`), the `--script` files and the MCP server (`run_action`, `list_actions`). This page lists all 345 actions, menu by menu, in the order the menus show them.
 
 Columns:
 
@@ -294,10 +294,10 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Insert prefab at original size | `insert_original_prefab` | `Alt+Shift+C` |  |  |
 | Scatter by material... | `scatter_by_material` |  |  |  |
 | Physics placement (drop and settle) | `physics_placement` |  |  |  |
-| Convert brushes to a static prop | `brushes_to_prop` |  |  |  |
+| Convert brushes to a prop | `brushes_to_prop` |  |  |  |
 | Convert prop to brushes... | `prop_to_brushes` |  |  |  |
 | Generate nav mesh | `generate_nav_mesh` |  |  |  |
-| Static prop options (Propper)... | `propper_options` |  |  |  |
+| Prop options (Propper)... | `propper_options` |  |  |  |
 | Shader editor... | `shader_editor` |  |  |  |
 | VTF editor... | `vtf_editor` |  |  |  |
 | Send to Blender | `send_to_blender` |  |  |  |

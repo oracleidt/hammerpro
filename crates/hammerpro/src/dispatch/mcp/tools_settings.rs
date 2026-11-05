@@ -60,6 +60,7 @@ pub(crate) const RANGES: &[(&str, f64, f64)] = &[
     ("grid.per_view.side.major_every", 0.0, hp_app::settings::MAX_MAJOR_EVERY as f64),
     ("lab.model_lod.levels", 3.0, 6.0),
     ("lab.model_lod.reduction", 0.2, 0.9),
+    ("lab.propper_mass", 0.1, 50_000.0),
 ];
 
 const READ_ONLY: &[&str] = &[

@@ -11,6 +11,8 @@ pub struct LabRuntime {
     pub player: PlayerState,
     pub unprop_open: bool,
     pub propper_options_open: bool,
+    pub propper_create_open: bool,
+    pub propper_create_confirmed: bool,
     pub particles: ParticleReport,
     pub particle_preview: ParticlePreviewRuntime,
     pub fly_texture: FlyTextureRuntime,

@@ -8,7 +8,9 @@
 
 Hammer Pro opens and saves standard `.vmf` files, so you can use it side by side with Hammer and Hammer++. It is written in Rust, renders with the GPU through wgpu, stays smooth on huge maps and compiles maps with its own built in compiler: no VBSP, VVIS or VRAD needed.
 
-Version **1.1.2**.
+Version **1.1.3**.
+
+[Brush-to-prop creation](docs/en/features/propper.md) asks for static or movable physics behavior, collision, mass and LOD settings before generating the model.
 
 The [wind preview](docs/en/features/particles.md#wind-from-env_wind) shows env_wind direction and gusts in 3D, with wind-driven dust and optional rope simulation respecting each entity's wind settings.
 

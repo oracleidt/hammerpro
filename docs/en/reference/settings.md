@@ -531,6 +531,9 @@ The **Build and save as content** window and the Map assets tab. See [Build and 
 | `model_lod.enabled` | `true` | Make levels of detail for generated models. |
 | `model_lod.levels` | `4` | Levels below the full model, 3 to 6. |
 | `model_lod.reduction` | `0.5` | Part of triangles kept per level, 0.2 to 0.9. |
+| `propper_physics` | `false` | Create a movable physics prop from brushes. |
+| `propper_collision` | `true` | Generate collision; required for physics props. |
+| `propper_mass` | `10.0` | Physics prop mass in kg, 0.1 to 50000. |
 | `model_keep_params` | `true` | Model import writes the normal map, shine, self illumination and texture tiling of the file into the VMTs. |
 
 ## `[sniffer]`

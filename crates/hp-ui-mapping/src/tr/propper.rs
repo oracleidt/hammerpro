@@ -1,11 +1,31 @@
 use hp_app::i18n::TrTable;
 
 pub const TR: TrTable = &[
-    ("propper.options_title", "Static prop options (Propper)", "Options des props statiques (Propper)"),
+    ("propper.options_title", "Prop options (Propper)", "Options des props (Propper)"),
+    ("propper.create_title", "Create prop from brushes", "Créer un prop à partir des brushes"),
+    ("propper.create", "Create prop", "Créer le prop"),
+    ("propper.physics", "Movable physics prop", "Prop physique mobile"),
+    (
+        "propper.physics_tip",
+        "Enabled: a movable prop_physics. Disabled: a fixed prop_static.",
+        "Activé : un prop_physics mobile. Désactivé : un prop_static fixe.",
+    ),
+    ("propper.collision", "Generate collision model", "Générer un modèle de collision"),
+    ("propper.mass", "Mass (kg)", "Masse (kg)"),
+    (
+        "propper.physics_collision",
+        "A movable physics prop requires a collision model.",
+        "Un prop physique mobile nécessite un modèle de collision.",
+    ),
+    (
+        "propper.physics_empty",
+        "The selection has no collision geometry for a physics prop.",
+        "La sélection ne contient aucune géométrie de collision pour un prop physique.",
+    ),
     (
         "propper.options_intro",
-        "Used by \"Convert brushes to a static prop\" and by the model import.",
-        "Utilisées par \"Convertir les brushes en prop statique\" et par l'import de modèles.",
+        "Used by brush-to-prop creation. The model import shares the LOD settings.",
+        "Utilisées pour créer un prop depuis des brushes. L'import de modèles partage les réglages de LOD.",
     ),
     (
         "propper.options_collision",

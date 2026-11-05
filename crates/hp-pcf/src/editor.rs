@@ -159,6 +159,17 @@ impl Document {
     pub fn mark_saved(&mut self) {
         self.saved = self.data.clone();
     }
+    pub fn discard_changes(&mut self) -> bool {
+        if !self.is_modified() {
+            return false;
+        }
+        self.data.clone_from(&self.saved);
+        self.undo.clear();
+        self.redo.clear();
+        self.clipboard = None;
+        self.revision = self.revision.wrapping_add(1);
+        true
+    }
     pub fn to_bytes(&self) -> Result<Vec<u8>, PcfError> {
         dmx::write(&self.data)
     }

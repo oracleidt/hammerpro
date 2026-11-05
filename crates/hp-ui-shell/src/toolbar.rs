@@ -520,8 +520,8 @@ pub(crate) const TR: hp_app::i18n::TrTable = &[
     ("shell.toolbar.to_entity", "To entity", "Vers une entité"),
     (
         "shell.toolbar.propper_needs",
-        "Select the brushes to turn into a static prop",
-        "Sélectionnez les brushes à transformer en prop statique",
+        "Select the brushes to turn into a prop",
+        "Sélectionnez les brushes à transformer en prop",
     ),
     (
         "shell.toolbar.unpropper_needs",

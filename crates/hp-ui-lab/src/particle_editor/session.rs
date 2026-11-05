@@ -107,6 +107,16 @@ impl EditorSession {
         true
     }
 
+    pub fn close_discarding_changes(&mut self) {
+        if self.doc.discard_changes() {
+            self.selected = self.doc.systems().first().copied();
+            self.selected_element = self.selected;
+            self.changed();
+            self.saved_revision = self.revision;
+        }
+        self.open = false;
+    }
+
     pub fn new_document(&mut self) {
         self.doc = Document::new();
         self.source = None;

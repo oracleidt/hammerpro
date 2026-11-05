@@ -757,7 +757,13 @@ impl ParticleEditorWindow {
                 self.name.clear();
                 self.status = None;
             }
-            Pending::Close => session.open = false,
+            Pending::Close => {
+                session.close_discarding_changes();
+                self.drafts.clear();
+                self.draft_revision = session.revision;
+                self.material_target = None;
+                self.export_lua = None;
+            }
             Pending::Open(source) => {
                 let result = crate::media::read_source(state, &source, |p| {
                     let p = p.replace('\\', "/");

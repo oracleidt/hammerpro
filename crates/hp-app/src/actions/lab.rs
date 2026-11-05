@@ -119,7 +119,7 @@ pub(super) const TR: TrTable = &[
     ),
     ("shell.undo.physics_placement", "Physics placement", "Placement physique"),
     ("shell.undo.push_props", "Push props", "Pousser des props"),
-    ("action.brushes_to_prop", "Convert brushes to a static prop", "Convertir les brushes en prop statique"),
+    ("action.brushes_to_prop", "Convert brushes to a prop...", "Convertir les brushes en prop..."),
     ("lab.lod.enabled", "Levels of detail (LOD)", "Niveaux de détail (LOD)"),
     (
         "lab.lod.enabled_tip",
@@ -138,7 +138,7 @@ pub(super) const TR: TrTable = &[
         "Part of the triangles of the level above each level keeps (small models are reduced more gently).",
         "Part des triangles du niveau précédent que garde chaque niveau (les petits modèles sont réduits plus doucement).",
     ),
-    ("action.propper_options", "Static prop options (Propper)...", "Options des props statiques (Propper)..."),
+    ("action.propper_options", "Prop options (Propper)...", "Options des props (Propper)..."),
     (
         "lab.prop.sandboxed",
         "Automated runs do not compile models (studiomdl writes into the game).",
@@ -183,6 +183,7 @@ pub(super) const TR: TrTable = &[
         "Le modèle a compilé mais les brushes n'ont pas pu être remplacés : {0}",
     ),
     ("shell.undo.convert_to_static_prop", "Convert to static prop", "Conversion en prop statique"),
+    ("shell.undo.convert_to_physics_prop", "Convert to physics prop", "Conversion en prop physique"),
     ("action.prop_to_brushes", "Convert prop to brushes...", "Convertir le prop en brushes..."),
     ("shell.undo.convert_prop_to_brushes", "Convert prop to brushes", "Conversion du prop en brushes"),
     ("action.generate_nav_mesh", "Generate nav mesh", "Générer le nav mesh"),

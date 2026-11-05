@@ -458,6 +458,7 @@ impl HammerProApp {
             || self.crash_prompt.is_some()
             || self.compile_exit_prompt
             || self.particle_exit.active()
+            || self.state.runtime.lab.propper_create_open
             || self.state.ui.show_first_run
             || self.state.ui.show_command_palette
     }

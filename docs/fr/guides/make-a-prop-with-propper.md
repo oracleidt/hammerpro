@@ -2,7 +2,7 @@
 
 # Créer un prop avec Propper
 
-Propper transforme des brushes (et des displacements) en prop statique : un vrai modèle `.mdl` avec niveaux de détail et modèle de collision, placé en `prop_static` à l'endroit des brushes. Ce guide crée un prop, puis montre le chemin inverse (un prop transformé en brushes).
+Propper transforme des brushes (et des displacements) en modèle `.mdl`, avec niveaux de détail et collision optionnelle, placé en `prop_static` ou en `prop_physics` mobile à l'endroit des brushes. Ce guide crée un prop, puis montre le chemin inverse (un prop transformé en brushes).
 
 ## Avant de commencer
 
@@ -18,7 +18,7 @@ Propper transforme des brushes (et des displacements) en prop statique : un vrai
 
 ## Étape 2 : vérifier les options
 
-Ouvrez **Outils > Options des props statiques (Propper)...**. Ces options servent à **Convertir les brushes en prop statique** et à l'import de modèles (FBX, OBJ, glTF) :
+Ouvrez **Outils > Options des props (Propper)...**. Les LOD sont partagés avec l'import de modèles (FBX, OBJ, glTF), les options physiques s'appliquent à **Convertir les brushes en prop** :
 
 | Option | Effet | Par défaut |
 |---|---|---|
@@ -34,9 +34,10 @@ La fenêtre rappelle aussi comment le modèle est construit :
 ## Étape 3 : convertir
 
 1. Sélectionnez les brushes (et displacements) de l'objet.
-2. Choisissez **Outils > Convertir les brushes en prop statique**.
-3. La console affiche la préparation (textures de mélange, niveaux de détail, collision), puis la compilation `studiomdl`.
-4. Une fois terminé, les brushes sont remplacés par un `prop_static` qui utilise `models/hammerpro/<map>_<id>.mdl`, en une seule étape d'annulation : `Ctrl+Z` fait revenir les brushes.
+2. Choisissez **Outils > Convertir les brushes en prop**.
+3. Dans la fenêtre de création, choisissez le type statique ou physique mobile, la collision, la masse et les LOD, puis **Créer le prop**.
+4. La console affiche la préparation (textures de mélange, niveaux de détail, collision), puis la compilation `studiomdl`.
+5. Une fois terminé, les brushes sont remplacés par un `prop_static` ou un `prop_physics` qui utilise `models/hammerpro/<map>_<id>.mdl`, en une seule étape d'annulation : `Ctrl+Z` fait revenir les brushes.
 
 Le modèle est écrit dans le dossier `models\hammerpro\` du jeu, vous pouvez donc tester la map tout de suite. Au moment de publier, **Construire et enregistrer en contenu** le rassemble avec la map (voir [Rassembler le contenu pour une publication](collect-content-for-release.md)).
 

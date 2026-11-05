@@ -2,7 +2,7 @@
 
 # Make a prop with Propper
 
-Propper turns brushes (and displacements) into a static prop: a real `.mdl` model with levels of detail and a collision model, placed as a `prop_static` where the brushes were. This guide builds a prop, then shows the way back (a prop turned into brushes).
+Propper turns brushes (and displacements) into a real `.mdl` model with levels of detail and optional collision, placed as a `prop_static` or a movable `prop_physics` where the brushes were. This guide builds a prop, then shows the way back (a prop turned into brushes).
 
 ## Before you start
 
@@ -18,7 +18,7 @@ Propper turns brushes (and displacements) into a static prop: a real `.mdl` mode
 
 ## Step 2: check the options
 
-Open **Tools > Static prop options (Propper)...**. These options are used by **Convert brushes to a static prop** and by the model import (FBX, OBJ, glTF):
+Open **Tools > Prop options (Propper)...**. The LOD settings are shared with model import (FBX, OBJ, glTF); physics and collision choices apply to **Convert brushes to a prop**:
 
 | Option | What it does | Default |
 |---|---|---|
@@ -34,9 +34,10 @@ The window also reminds you how the model is built:
 ## Step 3: convert
 
 1. Select the brushes (and displacements) of the object.
-2. Choose **Tools > Convert brushes to a static prop**.
-3. The console shows the preparation (blend textures, levels of detail, collision), then the `studiomdl` compile.
-4. When it is done, the brushes are replaced by a `prop_static` using `models/hammerpro/<map>_<id>.mdl`, in one undo step: `Ctrl+Z` brings the brushes back.
+2. Choose **Tools > Convert brushes to a prop**.
+3. In the creation window, choose Movable physics prop, collision, mass and LOD options, then click Create prop.
+4. The console shows the preparation (blend textures, levels of detail, collision), then the `studiomdl` compile.
+5. When it is done, the brushes are replaced by a `prop_static` or `prop_physics` using `models/hammerpro/<map>_<id>.mdl`, in one undo step: `Ctrl+Z` brings the brushes back.
 
 The model is written into the game's `models\hammerpro\` folder, so you can test the map right away. When you publish, **Build and save as content** collects it with the map (see [Collect content for a release](collect-content-for-release.md)).
 

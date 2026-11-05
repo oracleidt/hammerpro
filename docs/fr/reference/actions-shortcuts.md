@@ -2,7 +2,7 @@
 
 # Actions et raccourcis clavier
 
-Chaque commande de Hammer Pro 1.1.2 est une *action* : une seule entrée partagée par les menus, la barre d'outils, les raccourcis clavier, la palette de commandes (`Ctrl+P`), les fichiers `--script` et le serveur MCP (`run_action`, `list_actions`). Cette page liste les 345 actions, menu par menu, dans l'ordre où les menus les affichent.
+Chaque commande de Hammer Pro 1.1.3 est une *action* : une seule entrée partagée par les menus, la barre d'outils, les raccourcis clavier, la palette de commandes (`Ctrl+P`), les fichiers `--script` et le serveur MCP (`run_action`, `list_actions`). Cette page liste les 345 actions, menu par menu, dans l'ordre où les menus les affichent.
 
 Colonnes :
 
@@ -294,10 +294,10 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Insérer le prefab à sa taille d'origine | `insert_original_prefab` | `Alt+Maj+C` |  |  |
 | Semis par matériau... | `scatter_by_material` |  |  |  |
 | Placement physique (chute et pose) | `physics_placement` |  |  |  |
-| Convertir les brushes en prop statique | `brushes_to_prop` |  |  |  |
+| Convertir les brushes en prop | `brushes_to_prop` |  |  |  |
 | Convertir le prop en brushes... | `prop_to_brushes` |  |  |  |
 | Générer le nav mesh | `generate_nav_mesh` |  |  |  |
-| Options des props statiques (Propper)... | `propper_options` |  |  |  |
+| Options des props (Propper)... | `propper_options` |  |  |  |
 | Éditeur de shaders... | `shader_editor` |  |  |  |
 | Éditeur de VTF... | `vtf_editor` |  |  |  |
 | Envoyer vers Blender | `send_to_blender` |  |  |  |

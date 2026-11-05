@@ -2,19 +2,34 @@
 
 # Propper
 
-Propper turns selected brushes and displacements into a static prop (a compiled model with its collision, levels of detail and baked blend materials) and replaces them with a `prop_static`. Unpropper does the reverse: it rebuilds a prop as editable brushes.
+Propper turns selected brushes and displacements into a compiled model, with optional collision, levels of detail and baked blend materials, and replaces them with a `prop_static` or a movable `prop_physics`. Unpropper does the reverse: it rebuilds a prop as editable brushes.
 
 ## Opening it
 
 | Command | Where | What it needs |
 |---|---|---|
-| **Convert brushes to a static prop** | **Tools** menu, and a button of the tool palette | Selected brushes (world brushes or brushes of entities). Greyed out otherwise: "Select the brushes to turn into a static prop". |
+| **Convert brushes to a prop...** | **Tools** menu, and a button of the tool palette | Selected brushes (world brushes or brushes of entities). Greyed out otherwise: "Select the brushes to turn into a prop". |
 | **Convert prop to brushes...** | **Tools** menu, and a button of the tool palette | A selected `prop_*` entity whose `model` is a `.mdl`. Greyed out otherwise: "Select a prop to turn back into brushes". |
-| **Static prop options (Propper)...** | **Tools** menu | Nothing. |
+| **Prop options (Propper)...** | **Tools** menu | Nothing. |
 
 None of them has a default shortcut (bind one in **Settings > Keyboard**).
 
-## Convert brushes to a static prop
+## Convert brushes to a prop
+
+### Creation window
+
+**Convert brushes to a prop...** first opens a confirmation window. Choose the options, then click **Create prop** (or Enter). **Cancel** or Escape closes the window before creating files or replacing brushes.
+
+| Option | Effect | Default |
+|---|---|---|
+| **Movable physics prop** | Creates a `prop_physics` model and entity; off creates a fixed `prop_static`. | Off |
+| **Generate collision model** | Generates convex collision geometry. Turning it off creates a non-colliding static decoration. Physics props require it. | On |
+| **Mass (kg)** | Compiled physical mass, from 0.1 to 50000 kg; shown for physics props. | 10 |
+| **Levels of detail (LOD)** | Enables LOD generation and controls level count/reduction. | On, 4 levels, 50% |
+
+The global **Prop options (Propper)...** window contains the same defaults. The model import shares the LOD options; its own physics controls remain in the model importer. Creation settings are saved as `lab.propper_physics`, `lab.propper_collision` and `lab.propper_mass`.
+
+Through MCP, use `set_setting` to configure these keys and the `lab.model_lod` keys, select the brushes, then `run_action` with `brushes_to_prop`. Confirm the creation window with `ui_key` Enter or `ui_click` on Create prop.
 
 ### Before you start
 
@@ -27,15 +42,15 @@ None of them has a default shortcut (bind one in **Settings > Keyboard**).
 2. The surface property of the model is the dominant one of the materials used.
 3. Blend materials (`WorldVertexTransition`) of displacements cannot be used by a model: each such displacement gets a rectangle of a texture atlas (at most 4096 texels wide) where both textures are mixed by the painted alpha like the shader does (with `$blendmodulatetexture`, the `$detail` texture, and the bump maps mixed into a normal map). A `VertexLitGeneric` material shows the result. The rest of the model keeps its materials.
 4. The levels of detail are made from the shared settings (see below).
-5. The collision model keeps every brush as one convex piece, tool faces included, so the prop collides like the brushes did. Displacements collide too: their surface is cut into slabs hanging 8 units below it, so players walk and props rest on the exact surface.
+5. When collision is enabled, the collision model keeps every brush as one convex piece, tool faces included, so the prop collides like the brushes did. Displacements collide too: their surface is cut into slabs hanging 8 units below it, so players walk and props rest on the exact surface.
 6. The SMD and QC source files are written into the `propsrc` folder of the Hammer Pro cache, the baked textures into `materials/models/<model>/` of the game folder, then studiomdl compiles `models/hammerpro/<map name>_<code>.mdl` into the game (an unsaved map is named `map`). The console shows its output.
-7. The content is mounted again and the brushes are replaced by a `prop_static` at the center of their bounds, so nothing moves (one undo step, "Convert to static prop"). Brush entities left empty are removed.
+7. The content is mounted again and the brushes are replaced by a `prop_static` or `prop_physics` at the center of their bounds, according to the chosen type (one undo step). Brush entities left empty are removed.
 
 The toast and the console tell the result: levels of detail with their triangle counts, collision pieces, surface property, and the baked atlas size when there was one.
 
-## Static prop options (Propper)
+## Prop options (Propper)
 
-This window holds the options of "Convert brushes to a static prop", also used by the [model import](model-import.md). They are saved in `[lab.model_lod]`.
+This window holds the options of "Convert brushes to a prop". The [model import](model-import.md) shares the LOD settings in `[lab.model_lod]`. Physics and collision options apply to brush conversion.
 
 | Option | What it does | Default |
 |---|---|---|
@@ -65,11 +80,13 @@ Limits: at most 20000 render triangles to rebuild from, and at most 1024 brushes
 
 ## Tips
 
-- A prop made by Propper converts back to its exact original brushes with **Automatic** or **Collision model**: Propper's collision model is made of them.
+- A prop made by Propper with collision enabled converts back to its exact original brushes with **Automatic** or **Collision model**: Propper's collision model is made of them.
 - Put the props you make in a content pack with **Build and save as content**: the models are in `models/hammerpro/` of the game (see [Build and save as content](build-content-release.md)).
 - Through MCP, `run_action brushes_to_prop` and the `prop_to_brushes` tool do the same, and the LOD options are the settings `lab.model_lod.enabled`, `lab.model_lod.levels` and `lab.model_lod.reduction` (see the [MCP tool reference](../../MCP.md)).
 
 ## FAQ
+
+**Does conversion overwrite source VMTs?** Ordinary brush material names are retained. Blended displacement materials produce an atlas and a dedicated `VertexLitGeneric` VMT under `materials/models/hammerpro/<model>/blend.vmt`. Those generated files belong to the model export.
 
 **"studiomdl was not found in the game's bin folder".** Propper compiles with the studiomdl of Garry's Mod: check the game folder in **Settings > Game**. The [model import](model-import.md) does not need it.
 

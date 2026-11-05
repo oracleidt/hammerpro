@@ -266,7 +266,12 @@ impl Package for Lab {
             }
             Action::EntityGallery => insert_gallery(app),
             Action::GenerateNavMesh => start_nav_gen(app, ctx),
-            Action::BrushesToProp => start_brushes_to_prop(app, ctx),
+            Action::BrushesToProp => {
+                if app.pkg.lab.prop_job.is_none() {
+                    app.state.runtime.lab.propper_create_confirmed = false;
+                    app.state.runtime.lab.propper_create_open = true;
+                }
+            }
             Action::PropToBrushes => app.state.runtime.lab.unprop_open = true,
             Action::PropperOptions => {
                 let open = &mut app.state.runtime.lab.propper_options_open;
@@ -388,6 +393,9 @@ impl Package for Lab {
             app.request_open(ctx, path);
         }
         poll_nav_gen(app);
+        if std::mem::take(&mut app.state.runtime.lab.propper_create_confirmed) {
+            start_brushes_to_prop(app, ctx);
+        }
         poll_prop_job(app, ctx);
         if let Some(path) = poll_pick(&mut app.pkg.lab.compare_pick, ctx) {
             app.state.log(Severity::Info, tf!("lab.compare.working", file_name(&path)));
@@ -830,7 +838,15 @@ fn start_brushes_to_prop(app: &mut HammerProApp, ctx: &egui::Context) {
         }
     }
     let clean: String = stem.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_').take(40).collect();
-    let model = format!("hammerpro/{clean}_{h:08x}");
+    let options = app.state.settings.lab.propper_options();
+    let suffix = if options.physics {
+        "_physics"
+    } else if !options.collision {
+        "_visual"
+    } else {
+        ""
+    };
+    let model = format!("hammerpro/{clean}_{h:08x}{suffix}");
     let mut sizes: std::collections::HashMap<String, (u32, u32)> = std::collections::HashMap::new();
     let materials: Vec<String> = {
         let scene = app.state.doc.scene();
@@ -867,7 +883,8 @@ fn start_brushes_to_prop(app: &mut HammerProApp, ctx: &egui::Context) {
     let repaint = ctx.clone();
     app.state.console.info(tf!("lab.prop.preparing", geometry.tris.len(), format!("models/{model}.mdl")));
     std::thread::spawn(move || {
-        let _ = tx.send(hp_ui_mapping::propper::prepare_prop(fs.as_ref(), geometry, &model, lod, &dir, &game_dir));
+        let _ =
+            tx.send(hp_ui_mapping::propper::prepare_prop(fs.as_ref(), geometry, &model, lod, options, &dir, &game_dir));
         repaint.request_repaint();
     });
     app.pkg.lab.prop_job = Some(PropJob::Preparing(rx, solids));
@@ -890,13 +907,7 @@ fn poll_prop_job(app: &mut HammerProApp, ctx: &egui::Context) {
                     app.state.notify(Severity::Warning, t!("lab.prop.no_studiomdl"));
                     return;
                 };
-                let game_dir = app
-                    .state
-                    .assets
-                    .fs()
-                    .and_then(|f| f.game_dir().map(std::path::Path::to_path_buf))
-                    .or_else(|| root.map(|r| r.join("garrysmod")))
-                    .unwrap_or_default();
+                let game_dir = prepared.game_dir.clone();
                 let dir = prepared.qc.parent().map(std::path::Path::to_path_buf).unwrap_or_default();
                 let plan = hp_ui_entities::model_tools::studiomdl_plan(&exe, &game_dir, &prepared.qc);
                 let repaint = ctx.clone();
@@ -935,8 +946,17 @@ fn poll_prop_job(app: &mut HammerProApp, ctx: &egui::Context) {
                 app.state.notify(Severity::Error, t!("lab.prop.compile_failed"));
                 return;
             }
+            if prepared.pieces == 0 {
+                let path = prepared.game_dir.join(format!("models/{}.phy", prepared.model));
+                if let Err(error) = std::fs::remove_file(&path)
+                    && error.kind() != std::io::ErrorKind::NotFound
+                {
+                    app.state.notify(Severity::Error, tf!("propper.write_failed", error));
+                    return;
+                }
+            }
             app.state.assets.remount(&app.state.settings);
-            match app.state.doc.replace_with_prop(&solids, &prepared.model, prepared.origin) {
+            match app.state.doc.replace_with_prop_options(&solids, &prepared.model, prepared.origin, prepared.options) {
                 Ok(_) => {
                     let done = tf!("lab.prop.done", format!("models/{}.mdl", prepared.model));
                     app.state.notify(Severity::Success, format!("{done} {}", prepared.details()));

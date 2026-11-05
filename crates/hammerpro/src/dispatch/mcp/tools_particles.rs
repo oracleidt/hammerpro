@@ -313,7 +313,7 @@ fn apply_editor(state: &mut AppState, s: &mut EditorSession, a: &Args<'_>) -> R<
     let revision = s.doc.revision();
     match op {
         "show" => s.open = true,
-        "close" => s.open = false,
+        "close" => s.close_discarding_changes(),
         "new" => {
             s.new_document();
             s.open = true;
@@ -469,7 +469,7 @@ fn apply_editor(state: &mut AppState, s: &mut EditorSession, a: &Args<'_>) -> R<
         }
         _ => return Err("unknown particle editor operation".into()),
     }
-    if s.doc.revision() != revision && !matches!(op, "new" | "open" | "preset") {
+    if s.doc.revision() != revision && !matches!(op, "new" | "open" | "preset" | "close") {
         s.changed();
     }
     result["dirty"] = json!(s.dirty());
