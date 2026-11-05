@@ -49,7 +49,7 @@ Directly in the **View** menu:
 | **Show point entities** | Every point entity. | On |
 | **Show entity names** | Names next to point entities in the 2D views. | On |
 | **Helpers of every entity** | Helpers of every entity instead of the selected ones only. | Off |
-| **Show ropes** / **Simulate ropes** | Ropes as they hang in game; simulated ropes swing while they settle. | On / Off |
+| **Show ropes** / **Simulate ropes** | Ropes as they hang in game; simulated ropes settle and respond to env_wind unless Disable Wind is on. | On / Off |
 | **Render effects** | Render amount, mode and color, body groups, default animation and scale of entities. | On |
 | **Sky preview** | The 2D sky (worldspawn `skyname`) behind the 3D view. | On |
 | **3D skybox** (`Alt+V`) | The room around the `sky_camera`, at its scale, around the map (see [Sky cameras](sky-cameras.md)). | On |

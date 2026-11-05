@@ -673,6 +673,7 @@ impl HammerProApp {
         });
 
         {
+            hp_app::runtime::wind::update(&self.state);
             let opts = self.state.scene_options();
             let AppState { assets, doc, gfx, .. } = &mut self.state;
             if let Some(gfx) = gfx.as_mut() {

@@ -5,6 +5,7 @@ use ahash::{AHashMap, AHashSet};
 use glam::DVec3;
 use hp_app::runtime::helpers::scene_display;
 use hp_app::runtime::instances::{self as rt, InstanceCache, InstanceScene};
+use hp_app::runtime::wind;
 use hp_app::settings::InstanceDisplay;
 use hp_editor::instances::is_instance;
 use hp_editor::{Document, Id};
@@ -111,6 +112,7 @@ pub(crate) struct RopeParams {
     pub texture_scale: f64,
     pub material: String,
     pub dangling: bool,
+    pub wind: bool,
 }
 
 impl RopeParams {
@@ -143,6 +145,7 @@ impl RopeParams {
             texture_scale: e.get("TextureScale").map_or(4.0, atof).clamp(0.1, 10.0),
             material,
             dangling: e.get("Dangling").is_some_and(|v| atoi(v) == 1),
+            wind: !e.get("NoWind").is_some_and(|v| atoi(v) != 0),
         }
     }
 
@@ -184,8 +187,13 @@ impl RopeSim {
     }
 
     pub(crate) fn step(&mut self) -> f64 {
-        let accel = DVec3::new(0.0, 0.0, -GRAVITY) * (STEP * STEP * 0.5);
+        self.step_with_wind(false)
+    }
+
+    fn step_with_wind(&mut self, apply_wind: bool) -> f64 {
         for (p, prev) in self.nodes.iter_mut().zip(self.prev.iter_mut()) {
+            let force = if apply_wind { wind::rope_velocity_at(*p) * 10.0 } else { DVec3::ZERO };
+            let accel = (DVec3::new(0.0, 0.0, -GRAVITY) + force) * (STEP * STEP * 0.5);
             let old = *p;
             *p = old + (old - *prev) * DAMPING + accel;
             *prev = old;
@@ -702,7 +710,18 @@ impl DerivedProducer for RopeProducer {
                 }
             }
         }
-        let busy = self.segments.values().any(|s| s.animating || s.pending);
+        if display.1 && wind::active() {
+            for (id, segment) in &mut self.segments {
+                if segment.params.wind
+                    && cx.doc.is_entity_visible(*id)
+                    && segment.sim.nodes.iter().any(|p| wind::rope_velocity_at(*p).length_squared() > 1e-6)
+                {
+                    segment.animating = true;
+                }
+            }
+        }
+        let tick_due = self.last_step.is_none_or(|time| time.elapsed().as_secs_f64() >= STEP);
+        let busy = self.segments.values().any(|s| s.pending || (s.animating && tick_due));
         !self.dirty.is_empty() || busy || self.clear || !self.inst_dirty.is_empty()
     }
 
@@ -735,7 +754,7 @@ impl DerivedProducer for RopeProducer {
                 if animate {
                     let mut moved: f64 = 0.0;
                     for _ in 0..steps {
-                        moved = seg.sim.step();
+                        moved = seg.sim.step_with_wind(seg.params.wind);
                     }
                     if moved < SETTLED {
                         seg.animating = false;

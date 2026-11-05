@@ -282,7 +282,7 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `show_editor_objects` | `true` | Icônes des entités et géométrie des aides. |
 | `show_entity_names` | `true` | Noms des entités ponctuelles dans les vues 2D. |
 | `show_ropes` | `true` | Dessine les cordes comme elles pendent en jeu. |
-| `simulate_ropes` | `false` | Anime les cordes pendant qu'elles se stabilisent. |
+| `simulate_ropes` | `false` | Anime les cordes pendant leur stabilisation et sous env_wind, sauf si NoWind est activé. |
 
 ## `[mesh]`
 

@@ -72,6 +72,28 @@ Hover or select an `info_particle_system` in a 3D view to see its effect name ab
 
 Defaults follow the FGD: `func_dustcloud` uses `SizeMin` 100, `SizeMax` 200 and `Alpha` 30 (a dense white haze), `func_dustmotes` uses 10, 20 and `Alpha` 255. The game lights dust by the lightmaps; the preview shows it unlit. The start state is respected: `env_embers` needs the `Start On` flag (1) and the dust entities are hidden with `StartDisabled` (the `TurnOn` and `TurnOff` inputs only exist at run time and are not simulated). `Frozen` dust is drawn still. When a sprite is missing from the content, the next known sprite is tried, then the name is kept (the missing material shows). The preview is bounded: only entities within 3072 units of the camera (or `DistMax` when smaller) are shown, at most 24 at once (nearest first), 300 particles each (160 puffs for smoke) and 2400 in all, with fewer particles the farther the entity is. Hidden entities are not shown. For `info_particle_system` the real particle files are played instead (see above).
 
+### Wind from env_wind
+
+With **Preview volume effects** enabled, `func_dustmotes` and `func_dustcloud` respond to the map's `env_wind` controllers. **Affected By Wind** must be enabled (default on for dust motes), **Frozen** must be off, and **Start Disabled** must be off for the effect to appear. Turning **Affected By Wind** off keeps the entity's own random motion and fall speed.
+
+| env_wind setting | Preview |
+|---|---|
+| **Angles** | Initial horizontal wind direction; yaw is used |
+| **Min/Max normal speed** | Base wind speed between gusts |
+| **Min/Max gust speed** | Speed during gusts |
+| **Min/Max gust delay** | Random time between gusts |
+| **Gust Duration** | Duration of each gust |
+| **Max gust dir change** | Direction changes at the start of gusts |
+| **Radius** | `-1` affects the whole map; a positive radius affects particles inside that sphere |
+
+Local controllers take priority inside their radius; otherwise the first global controller is used. Hidden controllers are excluded. Editing a controller or the affected entity's options updates the preview directly. Dust accelerates toward the current horizontal wind while retaining its vertical fall speed. This follows the wind-response behavior in the [Source SDK](https://github.com/ValveSoftware/source-sdk-2013/blob/master/src/game/client/c_func_dust.cpp).
+
+Selecting an `env_wind` shows an animated direction arrow and its current speed in the 3D view, labeled **Normal wind** or **Gust**. Existing radius helpers show the controller's area. The preview uses a deterministic gust sequence, not the target game's random sequence, and does not execute entity I/O.
+
+Map ropes (`move_rope` and `keyframe_rope`) also respond while **Show ropes** and **Simulate ropes** are enabled, unless **Disable Wind** is on. Wind simulation is limited to rope nodes within 1000 units of the camera. `func_smokevolume` and `env_embers` keep their own motion; they do not gain wind behavior merely because an `env_wind` exists. Particle systems still depend on the operators supported by their preview simulator.
+
+Through MCP, use `get_entity` and `set_entity_keyvalues` to read or change the controller and the `AffectedByWind`, `Frozen` and `NoWind` keys. `set_setting` controls `lab.show_entity_fx`, `helpers.show_ropes` and `helpers.simulate_ropes`.
+
 ## Particle preview window
 
 The `▶` button next to the **Particle System Name** field (`effect_name`) of an `info_particle_system` (also **View > Panels > Particle preview...**, action `particle_preview`) opens a window with:
@@ -90,7 +112,7 @@ Open **Other > Particle editor** (action `particle_editor`). This editor creates
 
 **New** creates an empty document. **Open PCF** reads an external file. The path field accepts an absolute path or a mounted path such as `particles/fire_01.pcf`; **Load** opens it and **Mounted PCFs** lists indexed game files, filtered by the path field. Opening a mounted file does not overwrite the game archive: choose an external path with **Save as**. File and folder dialogs run independently of the editor window.
 
-The left panel filters systems by name. Select a system to show its properties, operators and children. Enter a name and use **Create** or **Rename**; **Duplicate** copies the system and its operator graph under a unique name. **Delete** removes the system and its child references. The document has its own **Undo** and **Redo** history, separate from map editing. Closing, replacing or clearing an unsaved document asks whether to discard changes. An asterisk in the window title marks unsaved changes, and undoing back to the saved state clears it.
+The left panel filters systems by name. Select a system to show its properties, operators and children. Enter a name and use **Create** or **Rename**; **Duplicate** copies the system and its operator graph under a unique name. **Delete** removes the system and its child references. The document has its own **Undo** and **Redo** history, separate from map editing. Use the title-bar X or the toolbar **Close** button to close the editor. Closing, replacing or clearing an unsaved document opens a foreground modal asking whether to discard changes. Cancel, Escape or clicking outside the prompt returns to editing without losing changes. An asterisk in the window title marks unsaved changes, and undoing back to the saved state clears it.
 
 Saving writes binary DMX version 5. The document retains element identities, element references, operator order, typed attributes, external references and binary attribute payloads rather than rebuilding a file from the subset understood by the preview. Opening and saving a file therefore preserves operators that the preview does not implement. Malformed references, invalid values and files above the PCF size limit are rejected.
 

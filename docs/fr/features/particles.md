@@ -72,6 +72,28 @@ Survolez ou sélectionnez un `info_particle_system` dans une vue 3D pour voir le
 
 Les valeurs par défaut suivent le FGD : `func_dustcloud` utilise `SizeMin` 100, `SizeMax` 200 et `Alpha` 30 (une brume blanche dense), `func_dustmotes` utilise 10, 20 et `Alpha` 255. Le jeu éclaire la poussière avec les lightmaps ; l'aperçu la montre non éclairée. L'état de départ est respecté : `env_embers` demande le drapeau `Start On` (1) et les entités de poussière sont masquées par `StartDisabled` (les entrées `TurnOn` et `TurnOff` n'existent qu'en jeu et ne sont pas simulées). La poussière `Frozen` est dessinée immobile. Quand un sprite manque dans le contenu, le sprite connu suivant est essayé, puis le nom est conservé (le matériau manquant s'affiche). L'aperçu est borné : seules les entités à moins de 3072 unités de la caméra (ou `DistMax` si plus petit) sont montrées, 24 au plus à la fois (les plus proches d'abord), 300 particules chacune (160 volutes pour la fumée) et 2400 en tout, avec moins de particules quand l'entité est loin. Les entités masquées ne sont pas montrées. Pour `info_particle_system`, ce sont les vrais fichiers de particules qui sont joués (voir plus haut).
 
+### Vent de env_wind
+
+Avec **Prévisualiser les effets de volume**, `func_dustmotes` et `func_dustcloud` réagissent aux contrôleurs `env_wind` de la map. **Affected By Wind** doit être activé (par défaut), **Frozen** désactivé et **Start Disabled** désactivé pour afficher l'effet. Désactiver **Affected By Wind** conserve le mouvement propre à l'entité et sa vitesse de chute.
+
+| Paramètre de env_wind | Aperçu |
+|---|---|
+| **Angles** | Direction horizontale initiale du vent, selon le yaw |
+| **Min/Max normal speed** | Vitesse de base entre les rafales |
+| **Min/Max gust speed** | Vitesse pendant les rafales |
+| **Min/Max gust delay** | Délai aléatoire entre les rafales |
+| **Gust Duration** | Durée de chaque rafale |
+| **Max gust dir change** | Changement de direction au début des rafales |
+| **Radius** | `-1` agit sur toute la map ; un rayon positif agit dans cette sphère |
+
+Les contrôleurs locaux sont prioritaires dans leur rayon ; sinon le premier contrôleur global est utilisé. Les contrôleurs masqués sont exclus. Modifier un contrôleur ou les options d'une entité met directement l'aperçu à jour. Les poussières accélèrent vers le vent horizontal actuel en conservant leur vitesse de chute verticale, selon le comportement du [Source SDK](https://github.com/ValveSoftware/source-sdk-2013/blob/master/src/game/client/c_func_dust.cpp).
+
+Sélectionner un `env_wind` affiche une flèche animée de direction et sa vitesse actuelle dans la vue 3D, avec **Vent normal** ou **Rafale**. Les aides de rayon existantes montrent sa zone d'action. L'aperçu utilise une séquence de rafales déterministe, distincte de la séquence aléatoire du jeu, et n'exécute pas les entrées/sorties des entités.
+
+Les cordes de la map (`move_rope` et `keyframe_rope`) réagissent aussi lorsque **Afficher les cordes** et **Simuler les cordes** sont activés, sauf si **Disable Wind** est activé. Le vent n'est simulé que sur les nœuds de corde à moins de 1000 unités de la caméra. `func_smokevolume` et `env_embers` conservent leur mouvement propre ; ajouter un `env_wind` ne leur applique pas automatiquement du vent. Les systèmes de particules restent soumis aux opérateurs pris en charge par leur simulateur d'aperçu.
+
+Via MCP, `get_entity` et `set_entity_keyvalues` lisent et modifient le contrôleur et les clés `AffectedByWind`, `Frozen` et `NoWind`. `set_setting` règle `lab.show_entity_fx`, `helpers.show_ropes` et `helpers.simulate_ropes`.
+
 ## Fenêtre d'aperçu des particules
 
 Le bouton `▶` à côté du champ **Particle System Name** (`effect_name`) d'un `info_particle_system` (aussi **Affichage > Panneaux > Aperçu des particules...**, action `particle_preview`) ouvre une fenêtre avec :
@@ -90,7 +112,7 @@ Ouvrez **Autres > Éditeur de particules** (action `particle_editor`). Cet édit
 
 **Nouveau** crée un document vide. **Ouvrir un PCF** lit un fichier externe. Le champ de chemin accepte un chemin absolu ou monté, comme `particles/fire_01.pcf` ; **Charger** l'ouvre et **PCF montés** liste les fichiers indexés du jeu, filtrés par ce champ. L'ouverture d'un fichier monté ne remplace pas l'archive du jeu : choisissez un chemin externe avec **Enregistrer sous**. Les dialogues de fichiers et dossiers fonctionnent indépendamment de la fenêtre de l'éditeur.
 
-Le panneau gauche filtre les systèmes par nom. Sélectionnez un système pour afficher ses propriétés, opérateurs et enfants. Saisissez un nom puis utilisez **Créer** ou **Renommer** ; **Dupliquer** copie le système et son graphe d'opérateurs sous un nom unique. **Supprimer** retire le système et ses références enfants. Le document possède son historique **Annuler** et **Rétablir**, distinct de celui de la map. Fermer, remplacer ou vider un document modifié demande de confirmer l'abandon des changements. Un astérisque dans le titre marque les modifications non enregistrées ; revenir par annulation à l'état enregistré le retire.
+Le panneau gauche filtre les systèmes par nom. Sélectionnez un système pour afficher ses propriétés, opérateurs et enfants. Saisissez un nom puis utilisez **Créer** ou **Renommer** ; **Dupliquer** copie le système et son graphe d'opérateurs sous un nom unique. **Supprimer** retire le système et ses références enfants. Le document possède son historique **Annuler** et **Rétablir**, distinct de celui de la map. La croix du titre ou le bouton **Fermer** de la barre d'outils ferme l'éditeur. Fermer, remplacer ou vider un document modifié ouvre une confirmation modale au premier plan. **Annuler**, Échap ou un clic hors de la confirmation revient à l'édition sans perdre les modifications. Un astérisque dans le titre marque les modifications non enregistrées ; revenir par annulation à l'état enregistré le retire.
 
 L'enregistrement produit un DMX binaire version 5. Le document conserve les identités d'éléments, références, ordre des opérateurs, attributs typés, références externes et données binaires au lieu de reconstruire un fichier depuis la seule partie comprise par l'aperçu. Un opérateur non simulé reste donc présent après ouverture et enregistrement. Les références incorrectes, valeurs invalides et fichiers dépassant la limite de taille PCF sont rejetés.
 

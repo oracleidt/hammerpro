@@ -49,7 +49,7 @@ Directement dans le menu **Affichage** :
 | **Afficher les entités ponctuelles** | Toutes les entités ponctuelles. | Activé |
 | **Afficher les noms des entités** | Noms à côté des entités ponctuelles dans les vues 2D. | Activé |
 | **Aides de toutes les entités** | Les aides de toutes les entités au lieu de la sélection seulement. | Désactivé |
-| **Afficher les cordes** / **Simuler les cordes** | Les cordes telles qu'elles pendent en jeu ; simulées, elles se balancent avant de se stabiliser. | Activé / Désactivé |
+| **Afficher les cordes** / **Simuler les cordes** | Les cordes telles qu'elles pendent en jeu ; simulées, elles se stabilisent et réagissent à env_wind sauf si Disable Wind est activé. | Activé / Désactivé |
 | **Effets de rendu** | Opacité, mode et couleur de rendu, groupes de corps, animation par défaut et échelle des entités. | Activé |
 | **Aperçu du ciel** | Le ciel 2D (`skyname` du worldspawn) derrière la vue 3D. | Activé |
 | **Skybox 3D** (`Alt+V`) | La pièce autour de la `sky_camera`, à son échelle, autour de la map (voir [Caméras de skybox](sky-cameras.md)). | Activé |

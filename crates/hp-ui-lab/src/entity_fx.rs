@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use glam::DVec3;
 use hp_app::AppState;
+use hp_app::runtime::wind;
 use hp_editor::Id;
 use hp_render::{ParticleBlend, ParticleOrient};
 use hp_ui_viewports::layers::OverlayLayer;
@@ -75,6 +76,7 @@ pub struct Fx {
     pub dist_max: f64,
     pub enabled: bool,
     pub frozen: bool,
+    pub wind: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -141,6 +143,7 @@ pub fn build(id: Id, e: &hp_vmf::Entity, bounds: Option<(DVec3, DVec3)>) -> Opti
         dist_max: MAX_DISTANCE,
         enabled: true,
         frozen: false,
+        wind: false,
     };
     match kind {
         FxKind::Smoke => {
@@ -191,6 +194,7 @@ pub fn build(id: Id, e: &hp_vmf::Entity, bounds: Option<(DVec3, DVec3)>) -> Opti
             fx.reach = dist;
             fx.enabled = num(e, "StartDisabled", 0.0) < 0.5;
             fx.frozen = num(e, "Frozen", 0.0) >= 0.5;
+            fx.wind = num(e, "AffectedByWind", 1.0) >= 0.5;
             if fx.frozen {
                 fx.count = (rate as usize).clamp(MIN_COUNT, MAX_PER_ENTITY);
             }
@@ -334,6 +338,78 @@ fn distance_to_box(p: DVec3, min: DVec3, max: DVec3) -> f64 {
     (p - c).length()
 }
 
+struct DustParticle {
+    seed: u64,
+    pos: DVec3,
+    velocity: DVec3,
+    age: f32,
+    life: f32,
+}
+
+impl DustParticle {
+    fn new(fx: &Fx, seed: u64, warm: bool) -> Self {
+        let ext = fx.max - fx.min;
+        let life = lerp(fx.life[0], fx.life[1], rnd(seed, 0)).max(0.2);
+        Self {
+            seed,
+            pos: fx.min + ext * DVec3::new(f64::from(rnd(seed, 2)), f64::from(rnd(seed, 3)), f64::from(rnd(seed, 4))),
+            velocity: DVec3::new(
+                f64::from((rnd(seed, 5) * 2.0 - 1.0) * fx.speed),
+                f64::from((rnd(seed, 6) * 2.0 - 1.0) * fx.speed),
+                f64::from((rnd(seed, 7) * 2.0 - 1.0) * fx.speed - fx.fall),
+            ),
+            age: if warm { life * rnd(seed, 1) } else { 0.0 },
+            life,
+        }
+    }
+}
+
+struct Dust {
+    source: Fx,
+    particles: Vec<DustParticle>,
+}
+
+impl Dust {
+    fn new(fx: &Fx) -> Self {
+        let base = u64::from(fx.id).wrapping_mul(0x2545_F491_4F6C_DD1D);
+        let particles = (0..fx.count)
+            .map(|i| DustParticle::new(fx, mix(base ^ (i as u64).wrapping_mul(0x9E37_79B9)), true))
+            .collect();
+        Self { source: fx.clone(), particles }
+    }
+
+    fn draw(&mut self, dt: f32, scale: f32, eye: DVec3, out: &mut Vec<Pt>) {
+        let fx = &self.source;
+        let n = ((fx.count as f32 * scale.clamp(0.0, 1.0)).ceil() as usize).min(fx.count);
+        let step = f64::from(dt.clamp(0.0, 0.1));
+        for (index, particle) in self.particles.iter_mut().enumerate() {
+            particle.age += step as f32;
+            if let Some(velocity) = wind::velocity_at(particle.pos) {
+                for axis in 0..2 {
+                    let delta = velocity[axis] - particle.velocity[axis];
+                    particle.velocity[axis] += delta.signum() * delta.abs().min(50.0 * step);
+                }
+            }
+            particle.pos += particle.velocity * step;
+            if particle.age >= particle.life || !inside(particle.pos, fx.min, fx.max) {
+                *particle = DustParticle::new(fx, mix(particle.seed.wrapping_add(1)), false);
+            }
+            if index >= n {
+                continue;
+            }
+            let phase = particle.age / particle.life;
+            let fade = smooth(phase / 0.2).min(smooth((1.0 - phase) / 0.3));
+            let near = (1.0 - particle.pos.distance(eye) / fx.dist_max.max(1.0)).clamp(0.0, 1.0) as f32;
+            out.push(Pt {
+                pos: particle.pos.as_vec3().to_array(),
+                radius: lerp(fx.size[0], fx.size[1], rnd(particle.seed, 10)),
+                color: [fx.color_a[0], fx.color_a[1], fx.color_a[2], fx.alpha * fade * near],
+                roll: rnd(particle.seed, 16) * std::f32::consts::TAU,
+            });
+        }
+    }
+}
+
 pub fn pick_material(fs: Option<&hp_fs::GameFs>, kind: FxKind, custom: &str) -> String {
     let custom = custom.trim();
     let candidates = kind.materials();
@@ -357,6 +433,7 @@ pub struct EntityFxLayer {
     generation: u64,
     chosen: HashMap<(FxKind, String), String>,
     looked: HashSet<String>,
+    dust: HashMap<Id, Dust>,
 }
 
 impl EntityFxLayer {
@@ -370,6 +447,7 @@ impl EntityFxLayer {
             generation: u64::MAX,
             chosen: HashMap::new(),
             looked: HashSet::new(),
+            dust: HashMap::new(),
         }
     }
 
@@ -394,6 +472,7 @@ impl EntityFxLayer {
             })
             .collect();
         self.sources.sort_by_key(|s| s.id);
+        self.dust.retain(|id, dust| self.sources.iter().any(|fx| fx.id == *id && *fx == dust.source));
     }
 
     fn set_active(&self, active: bool) {
@@ -409,6 +488,12 @@ impl EntityFxLayer {
     }
 
     fn build_sprites(&mut self, state: &AppState, eye: DVec3) {
+        let wind_active = wind::active();
+        if !wind_active {
+            self.dust.clear();
+        } else {
+            self.dust.retain(|id, _| self.visible.iter().any(|(index, _)| self.sources[*index].id == *id));
+        }
         let fs = state.assets.fs();
         let generation = state.assets.generation();
         if self.generation != generation {
@@ -448,7 +533,11 @@ impl EntityFxLayer {
                 }
             };
             pts.clear();
-            particles(fx, self.time, scale, eye, &mut pts);
+            if wind_active && fx.wind && !fx.frozen && matches!(fx.kind, FxKind::Cloud | FxKind::Motes) {
+                self.dust.entry(fx.id).or_insert_with(|| Dust::new(fx)).draw(state.frame.dt, scale, eye, &mut pts);
+            } else {
+                particles(fx, self.time, scale, eye, &mut pts);
+            }
             for p in &pts {
                 fx_sprites.push(ParticleSprite {
                     pos: p.pos,
@@ -476,8 +565,10 @@ impl OverlayLayer for EntityFxLayer {
     }
 
     fn prepare(&mut self, state: &AppState) {
+        wind::update(state);
         if !state.settings.lab.show_entity_fx {
             self.visible.clear();
+            self.dust.clear();
             self.set_active(false);
             return;
         }
@@ -513,6 +604,36 @@ impl OverlayLayer for EntityFxLayer {
             self.set_active(false);
         } else {
             self.build_sprites(state, cam);
+        }
+    }
+
+    fn paint(&self, state: &AppState, view: &hp_app::ViewInfo, painter: &egui::Painter) {
+        if view.is_2d() || !state.settings.lab.show_entity_fx {
+            return;
+        }
+        let painter = painter.with_clip_rect(view.rect);
+        for sample in wind::samples() {
+            if !state.doc.is_selected(hp_editor::ObjRef::Entity(sample.id)) {
+                continue;
+            }
+            let speed = sample.velocity.length();
+            let direction = sample.velocity.normalize_or_zero();
+            let end = sample.origin + direction * (speed * 1.2).clamp(32.0, 320.0);
+            let (Some(start), Some(end)) = (view.world_to_screen(sample.origin), view.world_to_screen(end)) else {
+                continue;
+            };
+            let color = if sample.gusting { egui::Color32::YELLOW } else { hp_app::theme::VIEW_ACCENT };
+            if start.distance_sq(end) > 1.0 {
+                painter.arrow(start, end - start, egui::Stroke::new(2.0, color));
+            }
+            let label = if sample.gusting { hp_app::t!("lab.wind.gust") } else { hp_app::t!("lab.wind.normal") };
+            painter.text(
+                end + egui::vec2(0.0, -8.0),
+                egui::Align2::CENTER_BOTTOM,
+                hp_app::tf!("lab.wind.speed", label, format!("{speed:.1}")),
+                egui::FontId::proportional(12.0),
+                color,
+            );
         }
     }
 }

@@ -27,6 +27,7 @@ mod startup;
 pub mod update;
 mod visibility;
 mod vtf;
+pub mod wind;
 mod workflow;
 
 pub use blender::{BlenderLink, BlenderNote, BlenderRuntime, BlenderTarget, DispSent};

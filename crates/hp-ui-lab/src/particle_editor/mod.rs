@@ -229,6 +229,10 @@ impl ParticleEditorWindow {
             {
                 self.status = Some(t!("pe.select_entity").to_owned());
             }
+            ui.separator();
+            if ui.button(t!("chrome.close")).clicked() {
+                self.request(Pending::Close, session, state);
+            }
         });
         ui.horizontal(|ui| {
             ui.label(t!("pe.file"));
@@ -790,22 +794,22 @@ impl ParticleEditorWindow {
             return;
         }
         let mut action = None;
-        hp_app::chrome::Window::new(t!("pe.unsaved"))
-            .id(egui::Id::unique("pe_discard"))
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-            .show(ctx, |ui| {
-                ui.label(t!("pe.discard_question"));
-                ui.horizontal(|ui| {
-                    if ui.button(t!("pe.discard")).clicked() {
-                        action = Some(true);
-                    }
-                    if ui.button(t!("pe.cancel")).clicked() {
-                        action = Some(false);
-                    }
-                });
+        let modal = egui::Modal::new(egui::Id::unique("pe_discard")).show(ctx, |ui| {
+            ui.set_max_width(420.0);
+            ui.heading(t!("pe.unsaved"));
+            ui.label(t!("pe.discard_question"));
+            ui.horizontal_wrapped(|ui| {
+                if ui.button(t!("pe.discard")).clicked() {
+                    action = Some(true);
+                }
+                if ui.button(t!("pe.cancel")).clicked() {
+                    action = Some(false);
+                }
             });
+        });
+        if action.is_none() && modal.should_close() {
+            action = Some(false);
+        }
         if let Some(discard) = action
             && let Some(action) = self.pending.take()
             && discard

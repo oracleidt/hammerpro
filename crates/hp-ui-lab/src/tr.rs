@@ -1,6 +1,9 @@
 use hp_app::i18n::TrTable;
 
 pub const TR: TrTable = &[
+    ("lab.wind.normal", "Normal wind", "Vent normal"),
+    ("lab.wind.gust", "Gust", "Rafale"),
+    ("lab.wind.speed", "{0}: {1} units/s", "{0} : {1} unités/s"),
     ("lab.logic.title", "Logical view", "Vue logique"),
     ("lab.logic.search", "Find an entity...", "Chercher une entité..."),
     ("lab.logic.filter_all", "All entities", "Toutes les entités"),
