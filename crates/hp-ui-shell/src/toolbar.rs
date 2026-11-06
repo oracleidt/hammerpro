@@ -6,7 +6,7 @@ use crate::common::{
     Check, GRID_SIZES, action_check, action_enabled, action_icon, close_on_escape, fmt_grid, with_action_tooltip,
 };
 
-const BUTTON_SIZE: egui::Vec2 = egui::vec2(26.0, 24.0);
+const BUTTON_SIZE: egui::Vec2 = egui::vec2(24.0, 24.0);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ToolbarItem {
@@ -627,25 +627,27 @@ mod tests {
         crate::register_translations();
         for lang in hp_app::i18n::Lang::ALL {
             hp_app::i18n::set_lang(lang);
-            let mut state = hp_app::testing::test_state();
-            let ctx = egui::Context::default();
-            let mut height = 0.0;
-            let mut right = 0.0;
-            for _ in 0..2 {
-                let input = egui::RawInput {
-                    screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1920.0, 1080.0))),
-                    ..Default::default()
-                };
-                let mut out = ctx.run_ui(input, |ui| {
-                    let before = ui.cursor().top();
-                    toolbar(ui, &mut state);
-                    height = ui.cursor().top() - before;
-                    right = ui.min_rect().right();
-                });
-                out.textures_delta.clear();
+            for width in [1920.0, 1536.0] {
+                let mut state = hp_app::testing::test_state();
+                let ctx = egui::Context::default();
+                let mut height = 0.0;
+                let mut right = 0.0;
+                for _ in 0..2 {
+                    let input = egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(width, 1080.0))),
+                        ..Default::default()
+                    };
+                    let mut out = ctx.run_ui(input, |ui| {
+                        let before = ui.cursor().top();
+                        toolbar(ui, &mut state);
+                        height = ui.cursor().top() - before;
+                        right = ui.min_rect().right();
+                    });
+                    out.textures_delta.clear();
+                }
+                assert!(height < 40.0, "{lang:?}, width {width}: toolbar wrapped to {height} points");
+                assert!(right <= width, "{lang:?}, width {width}: toolbar extends to {right}");
             }
-            assert!(height < 40.0, "{lang:?}: toolbar wrapped to {height} points");
-            assert!(right <= 1920.0, "{lang:?}: toolbar extends to {right}");
         }
         hp_app::i18n::set_lang(hp_app::i18n::Lang::En);
     }
