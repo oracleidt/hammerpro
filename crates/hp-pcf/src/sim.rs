@@ -133,6 +133,9 @@ pub struct Points {
 }
 
 impl Points {
+    /// Native frame of a secondary control point whose orientation has never been set.
+    pub const UNSET_AXES: [V3; 3] = [[0.0, 1.0, 0.0], [-1.0, 0.0, 0.0], [0.0, 0.0, 1.0]];
+
     pub fn at(origin: V3) -> Points {
         Points {
             pos: vec![origin],
@@ -177,11 +180,7 @@ impl Points {
         if cp == 0 {
             self.axes
         } else {
-            usize::try_from(cp).ok().and_then(|i| self.orientations.get(i)).copied().unwrap_or([
-                [1.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0],
-                [0.0, 0.0, 1.0],
-            ])
+            usize::try_from(cp).ok().and_then(|i| self.orientations.get(i)).copied().unwrap_or(Self::UNSET_AXES)
         }
     }
 

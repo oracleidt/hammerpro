@@ -48,6 +48,29 @@ fn run(def: &SystemDef, points: &Points, seconds: f32) -> Sim {
 struct FloorTrace;
 
 #[test]
+fn unset_secondary_control_points_keep_the_native_default_orientation() {
+    let definitions = crate::parse_file(include_bytes!("../tests/data/cp_default_frame_cases.pcf")).unwrap();
+    let frames: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/cp_default_frame_native_samples.json")).unwrap();
+    assert_eq!(frames.len(), 44);
+    for index in 0..9 {
+        let name = format!("hp_spritecard_frame{index}");
+        let plan = Arc::new(Plan::new(definitions.iter().find(|definition| definition.name == name).unwrap()));
+        let mut sim = Sim::new(plan, 17);
+        let mut points = Points::unparented([0.0; 3]);
+        points.pos.push([0.0; 3]);
+        for (frame, sample) in frames.iter().enumerate() {
+            sim.step_at(sample["dt"].as_f64().unwrap() as f32, &points, &[], 1);
+            assert_eq!(sim.particles.len(), 1);
+            for axis in 0..3 {
+                let expected = sample["positions"][index][axis].as_f64().unwrap() as f32;
+                assert_eq!(sim.particles[0].pos[axis].to_bits(), expected.to_bits(), "{name} frame{frame} axis{axis}");
+            }
+        }
+    }
+}
+
+#[test]
 fn moving_and_rotating_control_point_locks_match_native_game_frames() {
     let definitions = crate::parse_file(include_bytes!("../tests/data/lock_cp_live_cases.pcf")).unwrap();
     let frames: Vec<serde_json::Value> =
@@ -2017,6 +2040,8 @@ fn sequential_path_curves_match_native_bulge_orientation_and_unclamped_midpoints
     let mut points = Points::at([0.0; 3]);
     points.pos.push([100.0, 0.0, 0.0]);
     points.axes = [[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]];
+    // The native probe explicitly sets CP 1's forward vector to +X.
+    points.orientations = vec![Points::UNSET_AXES, Points::at([0.0; 3]).axes];
     for case in cases {
         let name = format!("hp_spritecard_{}", case["name"].as_str().unwrap());
         let plan = Arc::new(Plan::new(definitions.iter().find(|d| d.name == name).unwrap()));

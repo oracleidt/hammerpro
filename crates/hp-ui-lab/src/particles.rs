@@ -679,7 +679,7 @@ fn sources_of<'a>(entities: impl Iterator<Item = (Id, &'a hp_vmf::Entity)> + Clo
                 }
                 points.objects[k] = Some(*object);
                 if points.orientations.len() <= k {
-                    points.orientations.resize(k + 1, Points::at([0.0; 3]).axes);
+                    points.orientations.resize(k + 1, Points::UNSET_AXES);
                 }
                 points.orientations[k] = Points::with_angles(f3(*p), *angles).axes;
             }
@@ -1254,6 +1254,10 @@ mod tests {
         assert_eq!(s.points.get(2), [0.0; 3]);
         assert_eq!(s.points.get(3), [100.0, 0.0, 50.0]);
         assert_eq!(s.points.get(4), [0.0; 3]);
+        assert_eq!(s.points.orientation(1), Points::with_angles([100.0, 0.0, 50.0], [0.0; 3]).axes);
+        assert_eq!(s.points.orientation(2), Points::UNSET_AXES);
+        assert_eq!(s.points.orientation(3), s.points.orientation(1));
+        assert_eq!(s.points.orientation(4), Points::UNSET_AXES);
         assert!((s.points.axes[0][1] - 1.0).abs() < 1e-5);
     }
 
