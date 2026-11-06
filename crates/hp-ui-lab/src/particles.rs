@@ -409,7 +409,7 @@ pub fn append_sprites<'a>(
                 roll: p.rotation,
                 yaw: p.yaw,
                 uv: particle_uv(plan, p, look.sheet.as_ref()),
-                color: [p.color[0], p.color[1], p.color[2], p.alpha.clamp(0.0, 1.0)],
+                color: [p.color[0], p.color[1], p.color[2], p.opacity()],
                 bright,
                 add_self,
                 orient: orientation(render.orient),
@@ -421,7 +421,7 @@ pub fn append_sprites<'a>(
                 entity: id,
             };
             let visible =
-                |p: &hp_pcf::Particle| p.alpha > 0.004 && p.radius > 0.0 && p.pos.iter().all(|v| v.is_finite());
+                |p: &hp_pcf::Particle| p.opacity() > 0.01 && p.radius > 0.0 && p.pos.iter().all(|v| v.is_finite());
             match render.kind {
                 RenderKind::Sprites => {
                     for p in particles.iter().filter(|p| visible(p)) {
@@ -465,7 +465,7 @@ pub fn append_sprites<'a>(
                         s.orient = ParticleOrient::Stretched;
                         s.roll = 0.0;
                         s.uv = hp_pcf::sheet::FULL_UV;
-                        s.color[3] = (a.alpha + b.alpha) * 0.5;
+                        s.color[3] = (a.opacity() + b.opacity()) * 0.5;
                         sprites.push(s);
                     }
                 }
@@ -955,7 +955,7 @@ impl OverlayLayer for ParticleLayer {
         for playing in self.effects.values() {
             let mut last: Option<(*const Plan, [f32; 3])> = None;
             for (plan, p) in playing.effect.particles() {
-                if p.alpha <= 0.01 || p.radius <= 0.0 {
+                if p.opacity() <= 0.01 || p.radius <= 0.0 {
                     continue;
                 }
                 let tint = match last {
@@ -970,7 +970,7 @@ impl OverlayLayer for ParticleLayer {
                     p.color[0] * tint[0],
                     p.color[1] * tint[1],
                     p.color[2] * tint[2],
-                    (p.alpha * SPRITE_COVERAGE).clamp(0.0, 1.0),
+                    (p.opacity() * SPRITE_COVERAGE).clamp(0.0, 1.0),
                 ];
                 let corner = |k: usize| {
                     let (a, b) = HEX[k];
@@ -1478,6 +1478,29 @@ mod tests {
     }
 
     #[test]
+    fn exported_sprite_opacity_and_visibility_match_native_alpha2_samples() {
+        let definitions = hp_pcf::parse_file(include_bytes!("../../hp-pcf/tests/data/alpha2_cases.pcf")).unwrap();
+        let cases: Vec<serde_json::Value> =
+            serde_json::from_str(include_str!("../../hp-pcf/tests/data/alpha2_native_samples.json")).unwrap();
+        for case in cases {
+            let name = format!("hp_spritecard_{}", case["name"].as_str().unwrap());
+            let definition = definitions.iter().find(|def| def.name == name).unwrap();
+            let plan = Arc::new(Plan::new(definition));
+            let mut effect = Effect::new(&name, &|_| Some(plan.clone()), 17).unwrap();
+            effect.step(0.0, [0.0; 3], 1);
+            let mut sprites = Vec::new();
+            let mut materials = Vec::new();
+            let looks = HashMap::from([(plan.material.clone(), Arc::new(MaterialLook::default()))]);
+            append_sprites(std::iter::once((1, &effect)), &looks, &mut sprites, &mut materials);
+            let visible = case["pixel"][1].as_u64().unwrap() > 0;
+            assert_eq!(sprites.len(), usize::from(visible), "{name}");
+            if visible {
+                assert_eq!(sprites[0].color[3], case["opacity"].as_f64().unwrap() as f32, "{name}");
+            }
+        }
+    }
+
+    #[test]
     fn stock_gmod_effects_play() {
         let root = std::path::Path::new("D:/SteamLibrary/steamapps/common/GarrysMod");
         if !root.join("garrysmod").is_dir() {
@@ -1522,22 +1545,25 @@ mod tests {
                 points: Points::at([0.0; 3]),
                 model_objects: Default::default(),
             };
-            let mut playing = ParticleLayer::start(&mut shared, &s).unwrap_or_else(|| panic!("{name}"));
-            for _ in 0..20 {
-                playing.effect.step_at(0.05, &s.points, MAX_PER_EFFECT);
-            }
-            let layer = ParticleLayer {
+            let playing = ParticleLayer::start(&mut shared, &s).unwrap_or_else(|| panic!("{name}"));
+            let mut layer = ParticleLayer {
                 lighting: None,
                 handle: new_handle(),
                 sources: Vec::new(),
                 sources_key: None,
                 effects: HashMap::from([(1, playing)]),
             };
-            layer.fill_sprites(&mut shared, [-300.0, 0.0, 0.0]);
+            let mut peak_sprites = 0;
+            // Short bursts can finish fading before one second; verify their rendered lifetime.
+            for _ in 0..20 {
+                layer.effects.get_mut(&1).unwrap().effect.step_at(0.05, &s.points, MAX_PER_EFFECT);
+                layer.fill_sprites(&mut shared, [-300.0, 0.0, 0.0]);
+                peak_sprites = peak_sprites.max(shared.sprites.len());
+            }
             let unsupported: Vec<&String> =
                 layer.effects[&1].effect.sims.iter().flat_map(|(_, s)| &s.plan().unsupported).collect();
-            eprintln!("{name}: {} sprites, unsupported {unsupported:?}", shared.sprites.len());
-            assert!(!shared.sprites.is_empty(), "{name} draws");
+            eprintln!("{name}: {peak_sprites} peak sprites, unsupported {unsupported:?}");
+            assert!(peak_sprites > 0, "{name} draws");
         }
     }
 }

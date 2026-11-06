@@ -1566,9 +1566,10 @@ fn simulated_colors_fades_and_noise_match_native_spritecard_pixels() {
     let (device, queue) = gpu_or_skip!();
     let mut renderer = Renderer::new(&device, &queue);
     mat(&mut renderer, 4, [128, 128, 128, 128], MaterialFlags::empty());
+    mat(&mut renderer, 5, [0, 255, 0, 255], MaterialFlags::empty());
     let view = persp([-128.0, 0.0, 0.0], [0.0; 3], [128, 128], RenderMode::Textured);
-    let mut check = |particle: &hp_pcf::Particle, expected: &serde_json::Value, context: &str| {
-        renderer.set_particles(&[ParticleInstance {
+    let mut check = |particle: &hp_pcf::Particle, expected: &serde_json::Value, context: &str, material| {
+        let sprite = ParticleInstance {
             animation: ParticleAnimation::default(),
             pos: [0.0; 3],
             size: particle.radius * 2.0,
@@ -1576,16 +1577,17 @@ fn simulated_colors_fades_and_noise_match_native_spritecard_pixels() {
             roll: particle.rotation,
             yaw: particle.yaw,
             uv: [0.0, 0.0, 1.0, 1.0],
-            color: [particle.color[0], particle.color[1], particle.color[2], particle.alpha],
+            color: [particle.color[0], particle.color[1], particle.color[2], particle.opacity()],
             bright: 1.0,
             add_self: 0.0,
             screen_fade: [0.0; 2],
             refraction_blur: 0.0,
             no_fog: true,
             orient: ParticleOrient::Screen,
-            material: 4,
+            material,
             blend: ParticleBlend::Alpha,
-        }]);
+        };
+        renderer.set_particles(if particle.opacity() > 0.01 { std::slice::from_ref(&sprite) } else { &[] });
         renderer.render_view(1, &view, &Overlay::default());
         let (_, _, pixels) = renderer.read_view_rgba8(1).unwrap();
         let actual = &pixels[(64 * 128 + 64) * 4..][..3];
@@ -1610,7 +1612,7 @@ fn simulated_colors_fades_and_noise_match_native_spritecard_pixels() {
         let mut sim =
             hp_pcf::Sim::new(Arc::new(hp_pcf::Plan::new(definitions.iter().find(|def| def.name == name).unwrap())), 17);
         sim.step_in(0.0, &points, &[], 1, &world);
-        check(&sim.particles[0], &case["pixel"], &name);
+        check(&sim.particles[0], &case["pixel"], &name, 4);
     }
     for (file, reference) in [
         (
@@ -1636,8 +1638,18 @@ fn simulated_colors_fades_and_noise_match_native_spritecard_pixels() {
             let definition = definitions.iter().find(|def| def.name == name).unwrap();
             let mut sim = hp_pcf::Sim::new(Arc::new(hp_pcf::Plan::new(definition)), 17);
             sim.step(0.0, [0.0; 3], 1);
-            check(&sim.particles[0], &case["pixel"], &name);
+            check(&sim.particles[0], &case["pixel"], &name, 4);
         }
+    }
+    let definitions = hp_pcf::parse_file(include_bytes!("../../hp-pcf/tests/data/alpha2_cases.pcf")).unwrap();
+    let cases: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../../hp-pcf/tests/data/alpha2_native_samples.json")).unwrap();
+    for case in cases {
+        let name = format!("hp_spritecard_{}", case["name"].as_str().unwrap());
+        let definition = definitions.iter().find(|def| def.name == name).unwrap();
+        let mut sim = hp_pcf::Sim::new(Arc::new(hp_pcf::Plan::new(definition)), 17);
+        sim.step(0.0, [0.0; 3], 1);
+        check(&sim.particles[0], &case["pixel"], &name, 5);
     }
     let definitions = hp_pcf::parse_file(include_bytes!("../../hp-pcf/tests/data/color_fade_cases.pcf")).unwrap();
     let cases: Vec<serde_json::Value> =
@@ -1652,7 +1664,7 @@ fn simulated_colors_fades_and_noise_match_native_spritecard_pixels() {
             while age - sim.particles[0].age > 0.000001 {
                 sim.step((age - sim.particles[0].age).min(0.05), [0.0; 3], 1);
             }
-            check(&sim.particles[0], &sample["pixel"], &format!("{name} age {age}"));
+            check(&sim.particles[0], &sample["pixel"], &format!("{name} age {age}"), 4);
         }
     }
 }

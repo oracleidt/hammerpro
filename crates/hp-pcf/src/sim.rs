@@ -209,6 +209,7 @@ enum Field {
     Rotation,
     RotationSpeed,
     Alpha,
+    Alpha2,
     CreationTime,
     Sequence,
     Sequence2,
@@ -224,7 +225,8 @@ impl Field {
             3 => Field::Radius,
             4 => Field::Rotation,
             5 => Field::RotationSpeed,
-            7 | 16 => Field::Alpha,
+            7 => Field::Alpha,
+            16 => Field::Alpha2,
             8 => Field::CreationTime,
             9 => Field::Sequence,
             13 => Field::Sequence2,
@@ -309,6 +311,7 @@ enum Init {
     Alpha {
         min: f32,
         max: f32,
+        exp: f32,
     },
     Rotation {
         initial: f32,
@@ -422,6 +425,7 @@ impl Init {
                 Field::Rotation => 1 << 4,
                 Field::RotationSpeed => 1 << 5,
                 Field::Alpha => 1 << 7,
+                Field::Alpha2 => 1 << 16,
                 Field::CreationTime => 1 << 8,
                 Field::Sequence => 1 << 9,
                 Field::TrailLength => 1 << 10,
@@ -851,8 +855,8 @@ impl Plan {
                 Init::FromParent { inherit: f(op, "Inherited Velocity Scale", 0.0) }
             }
             "lifetime random" => Init::Lifetime {
-                min: f(op, "lifetime_min", 0.0).clamp(0.0, 600.0),
-                max: f(op, "lifetime_max", 0.0).clamp(0.0, 600.0),
+                min: f(op, "lifetime_min", 0.0),
+                max: f(op, "lifetime_max", 0.0),
                 exp: f(op, "lifetime_random_exponent", 1.0),
             },
             "lifetime from sequence" => {
@@ -865,8 +869,9 @@ impl Plan {
             },
 
             "alpha random" => Init::Alpha {
-                min: (f(op, "alpha_min", 255.0) / 255.0).clamp(0.0, 1.0),
-                max: (f(op, "alpha_max", 255.0) / 255.0).clamp(0.0, 1.0),
+                min: f(op, "alpha_min", 255.0) * (1.0 / 255.0),
+                max: f(op, "alpha_max", 255.0) * (1.0 / 255.0),
+                exp: f(op, "alpha_random_exponent", 1.0),
             },
             "rotation random" => Init::Rotation {
                 initial: f(op, "rotation_initial", 0.0).to_radians(),
@@ -1194,6 +1199,7 @@ pub struct Particle {
     pub radius: f32,
     pub color: [f32; 3],
     pub alpha: f32,
+    pub alpha2: f32,
     pub rotation: f32,
     pub sequence: u32,
     pub sequence2: u32,
@@ -1212,6 +1218,13 @@ pub struct Particle {
     alpha_add: f32,
     color_add: [f32; 3],
     born: f32,
+}
+
+impl Particle {
+    /// Source combines both alpha attributes in the byte-sized particle render list.
+    pub fn opacity(&self) -> f32 {
+        ((self.alpha * self.alpha2).clamp(0.0, 1.0) * 255.0).round_ties_even() / 255.0
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1347,6 +1360,7 @@ impl Sim {
                 radius: plan.radius,
                 color: plan.color,
                 alpha: plan.alpha,
+                alpha2: 1.0,
                 rotation: plan.rotation,
                 sequence: plan.sequence,
                 sequence2: 0,
@@ -1465,7 +1479,7 @@ impl Sim {
                     Init::Color(color) => {
                         color::initialize(color, part, points, world, &mut self.rng, &mut self.colors[index]);
                     }
-                    Init::Alpha { min, max } => part.base_alpha = self.rng.range(*min, *max),
+                    Init::Alpha { min, max, exp } => part.base_alpha = self.rng.range_exp(*min, *max, *exp),
                     Init::Rotation { initial, min, max, exp, flip } => {
                         let mut r = self.rng.range_exp(*min, *max, *exp);
                         if *flip && self.rng.next() < 0.5 {
@@ -1545,6 +1559,7 @@ impl Sim {
                 Field::Rotation,
                 Field::RotationSpeed,
                 Field::Alpha,
+                Field::Alpha2,
                 Field::CreationTime,
                 Field::Sequence,
                 Field::Sequence2,
@@ -1620,6 +1635,7 @@ fn get_field(p: &Particle, field: Field) -> f32 {
         Field::Rotation => p.rotation,
         Field::RotationSpeed => p.rotation_speed,
         Field::Alpha => p.base_alpha,
+        Field::Alpha2 => p.alpha2,
         Field::CreationTime => p.born,
         Field::Sequence => p.sequence as f32,
         Field::Sequence2 => p.sequence2 as f32,
@@ -1639,6 +1655,7 @@ fn set_field(p: &mut Particle, field: Field, x: f32, multiply: bool) {
         Field::Rotation => &mut p.rotation,
         Field::RotationSpeed => &mut p.rotation_speed,
         Field::Alpha => &mut p.base_alpha,
+        Field::Alpha2 => &mut p.alpha2,
         Field::TrailLength => &mut p.trail,
         Field::Yaw => &mut p.yaw,
         Field::Sequence | Field::Sequence2 => {
@@ -1649,10 +1666,8 @@ fn set_field(p: &mut Particle, field: Field, x: f32, multiply: bool) {
         }
         Field::CreationTime | Field::Other => return,
     };
-    *slot = if multiply { *slot * x } else { x };
-    p.base_alpha = p.base_alpha.clamp(0.0, 1.0);
-    p.base_radius = p.base_radius.max(0.0);
-    p.life = p.life.clamp(0.0, 600.0);
+    let value = if multiply { *slot * x } else { x };
+    *slot = if matches!(field, Field::Alpha | Field::Alpha2) { value.clamp(0.0, 1.0) } else { value };
 }
 
 fn osc_time(p: &Particle, life: f32, proportional: bool, t0: f32, t1: f32, se_prop: bool) -> Option<f32> {
@@ -1793,6 +1808,7 @@ fn operate(
                 match field {
                     Field::Radius => part.radius_add += s,
                     Field::Alpha => part.alpha_add += s,
+                    Field::Alpha2 => part.alpha2 = (part.alpha2 + s).clamp(0.0, 1.0),
                     Field::Rotation => part.rotation += s,
                     Field::Yaw => part.yaw += s,
                     _ => {}
@@ -1855,6 +1871,7 @@ fn operate(
                 match field {
                     Field::Radius => part.radius_add += r,
                     Field::Alpha => part.alpha_add += r,
+                    Field::Alpha2 => part.alpha2 = (part.alpha2 + r).clamp(0.0, 1.0),
                     Field::Rotation => part.rotation += r,
                     Field::Yaw => part.yaw += r,
                     _ => {}

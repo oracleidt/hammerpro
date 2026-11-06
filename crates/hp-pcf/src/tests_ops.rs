@@ -48,6 +48,67 @@ fn run(def: &SystemDef, points: &Points, seconds: f32) -> Sim {
 struct FloorTrace;
 
 #[test]
+fn long_lifetimes_and_pre_age_match_native_without_an_editor_time_cap() {
+    let definitions = crate::parse_file(include_bytes!("../tests/data/long_life_cases.pcf")).unwrap();
+    let cases: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/long_life_native_samples.json")).unwrap();
+    for case in cases {
+        let name = format!("hp_spritecard_{}", case["name"].as_str().unwrap());
+        let mut definition = definitions.iter().find(|def| def.name == name).unwrap().clone();
+        definition.initializers.retain(|op| op.function != "Remap Scalar to Vector");
+        let mut sim = Sim::new(Arc::new(Plan::new(&definition)), 0);
+        sim.step(0.0, [0.0; 3], 1);
+        let expected = -case["born"].as_f64().unwrap() as f32;
+        assert_eq!(sim.particles[0].age, expected, "{name}");
+        assert_eq!(sim.particles[0].life, expected * 2.0, "{name}");
+    }
+}
+
+#[test]
+fn alpha2_stays_independent_and_combines_with_native_render_list_rounding() {
+    let definitions = crate::parse_file(include_bytes!("../tests/data/alpha2_cases.pcf")).unwrap();
+    let cases: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/alpha2_native_samples.json")).unwrap();
+    assert_eq!(cases.len(), 30);
+    for case in cases {
+        let name = format!("hp_spritecard_{}", case["name"].as_str().unwrap());
+        let definition = definitions.iter().find(|def| def.name == name).unwrap();
+        let mut sim = Sim::new(Arc::new(Plan::new(definition)), 0);
+        sim.step(0.0, [0.0; 3], 1);
+        let particle = &sim.particles[0];
+        assert_eq!(particle.alpha.to_bits(), (case["primary"].as_f64().unwrap() as f32).to_bits(), "{name}");
+        assert_eq!(particle.alpha2.to_bits(), (case["secondary"].as_f64().unwrap() as f32).to_bits(), "{name}");
+        assert_eq!(particle.opacity().to_bits(), (case["opacity"].as_f64().unwrap() as f32).to_bits(), "{name}");
+        assert_eq!(particle.life, 10000.0, "alpha initialization must preserve the configured lifetime");
+        let expected = case["pixel"][1].as_u64().unwrap();
+        assert_eq!(particle.opacity() > 0.01, expected > 0, "{name}");
+    }
+}
+
+#[test]
+fn alpha2_remaps_and_ramps_preserve_primary_alpha_and_long_lifetimes() {
+    let definition = system(
+        "alpha2-ramp",
+        vec![burst(1)],
+        vec![
+            op("Lifetime Random", vec![("lifetime_min", fl(4000.0)), ("lifetime_max", fl(4000.0))]),
+            op("Alpha Random", vec![("alpha_min", Value::Int(128)), ("alpha_max", Value::Int(128))]),
+            op(
+                "Remap Noise to Scalar",
+                vec![("output field", Value::Int(16)), ("output minimum", fl(0.25)), ("output maximum", fl(0.25))],
+            ),
+        ],
+        vec![op("Ramp Scalar Linear Simple", vec![("ramp field", Value::Int(16)), ("ramp rate", fl(1.0))])],
+    );
+    let mut sim = Sim::new(Arc::new(Plan::new(&definition)), 0);
+    sim.step(0.0, [0.0; 3], 1);
+    sim.step(0.05, [0.0; 3], 1);
+    assert_eq!(sim.particles[0].alpha, 128.0 / 255.0);
+    assert!((sim.particles[0].alpha2 - 0.3).abs() < 1e-6);
+    assert_eq!(sim.particles[0].life, 4000.0);
+}
+
+#[test]
 fn native_initializer_passes_preserve_pre_age_for_both_authored_orders() {
     let definitions = crate::parse_file(include_bytes!("../tests/data/preage_order_cases.pcf")).unwrap();
     let cases: Vec<serde_json::Value> =
