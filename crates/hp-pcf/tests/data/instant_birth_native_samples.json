@@ -1,0 +1,34 @@
+[
+  {
+    "name": "instant0",
+    "born": 0
+  },
+  {
+    "name": "instant1",
+    "born": 0.0010000000474974513
+  },
+  {
+    "name": "instant2",
+    "born": 0.009999999776482582
+  },
+  {
+    "name": "instant3",
+    "born": 0.05000000074505806
+  },
+  {
+    "name": "instant4",
+    "born": 0.15000000596046448
+  },
+  {
+    "name": "instant5",
+    "born": 0.15700000524520874
+  },
+  {
+    "name": "instant6",
+    "born": 0.5
+  },
+  {
+    "name": "instant7",
+    "born": 1
+  }
+]

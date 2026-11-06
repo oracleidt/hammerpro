@@ -48,6 +48,43 @@ fn run(def: &SystemDef, points: &Points, seconds: f32) -> Sim {
 struct FloorTrace;
 
 #[test]
+fn delayed_bursts_keep_native_birth_dates_across_frame_boundaries() {
+    let definitions = crate::parse_file(include_bytes!("../tests/data/instant_birth_cases.pcf")).unwrap();
+    let cases: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/instant_birth_native_samples.json")).unwrap();
+    for case in cases {
+        let name = format!("hp_spritecard_{}", case["name"].as_str().unwrap());
+        let mut definition = definitions.iter().find(|def| def.name == name).unwrap().clone();
+        definition.initializers.retain(|op| op.function != "Remap Scalar to Vector");
+        definition.initializers.push(op(
+            "Remap Initial Scalar",
+            vec![
+                ("input field", Value::Int(8)),
+                ("input minimum", fl(0.0)),
+                ("input maximum", fl(16.0)),
+                ("output field", Value::Int(3)),
+                ("output minimum", fl(0.0)),
+                ("output maximum", fl(16.0)),
+            ],
+        ));
+        let born = case["born"].as_f64().unwrap() as f32;
+        for dt in [0.016, 0.033, 0.05, 0.1] {
+            let mut sim = Sim::new(Arc::new(Plan::new(&definition)), 17);
+            let mut time = 0.0;
+            while time < 1.1 {
+                time += dt;
+                sim.step(dt, [0.0; 3], 1);
+                assert_eq!(sim.particles.len(), usize::from(time >= born), "{name} dt{dt} time{time}");
+                if let Some(particle) = sim.particles.first() {
+                    assert_eq!(particle.radius.to_bits(), born.to_bits(), "{name} dt{dt}");
+                    assert!((particle.age - (time - born)).abs() < 0.000002, "{name} dt{dt} age{}", particle.age);
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn long_lifetimes_and_pre_age_match_native_without_an_editor_time_cap() {
     let definitions = crate::parse_file(include_bytes!("../tests/data/long_life_cases.pcf")).unwrap();
     let cases: Vec<serde_json::Value> =

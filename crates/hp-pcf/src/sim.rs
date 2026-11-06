@@ -1608,7 +1608,7 @@ impl Sim {
                         self.fired[i] = true;
                         count = if max > min { self.rng.integer(*min, *max) as usize } else { *max as usize };
                     }
-                    emission::Batch::instant(t0, count.min(room))
+                    emission::Batch::instant(*start, count.min(room))
                 }
                 _ => self.emission[i].births(e, (t1, dt), points, self.parented.then_some(parents.len()), room, world),
             };
