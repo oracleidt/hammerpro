@@ -255,6 +255,7 @@ fn every_brush_option_reads_back() {
         ("project_range", "800"),
         ("flatten_plane", "fixed"),
         ("flatten_strength", "0.25"),
+        ("relax_strength", "0.75"),
         ("scale_factor", "-2"),
         ("tag_kind", "remove"),
         ("tag_value", "off"),
