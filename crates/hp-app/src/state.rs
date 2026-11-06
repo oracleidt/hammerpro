@@ -242,6 +242,13 @@ pub struct LightPreviewReport {
     pub sun: Option<SunReport>,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct ParticleLighting {
+    pub baked: Option<Arc<hp_editor::limits::world_light::PropLighting>>,
+    pub region: Option<[[f64; 3]; 2]>,
+    pub styles: Vec<f32>,
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct FgdReport {
     pub files: Vec<std::path::PathBuf>,
@@ -300,6 +307,9 @@ pub trait AssetsApi {
     ) {
     }
     fn set_light_styles(&mut self, _values: &[f32]) {}
+    fn particle_lighting(&self) -> ParticleLighting {
+        ParticleLighting::default()
+    }
     fn set_projector_overrides(&mut self, _overrides: &[ProjectorOverride]) {}
     fn light_preview(&self) -> Option<LightPreviewReport> {
         None

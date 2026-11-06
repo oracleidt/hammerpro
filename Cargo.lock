@@ -1868,6 +1868,7 @@ dependencies = [
  "hp-vmf",
  "indexmap",
  "rayon",
+ "serde_json",
  "thiserror 2.0.21",
 ]
 
@@ -2018,6 +2019,7 @@ dependencies = [
  "ahash",
  "bytemuck",
  "glam 0.34.1",
+ "hp-pcf",
  "image",
  "log",
  "pollster 1.0.1",

@@ -1169,3 +1169,81 @@ fn yaw_spinning_uses_its_native_rate_keys_without_changing_roll() {
     assert!((sim.particles[0].yaw - std::f32::consts::FRAC_PI_4).abs() < 0.00001);
     assert_eq!(sim.particles[0].rotation, 0.0);
 }
+
+#[test]
+fn color_lighting_matches_native_pixels_for_each_tint_and_blend_mode() {
+    struct Lighting {
+        particle: [f32; 3],
+        controls: [[f32; 3]; 2],
+        origin: [f32; 3],
+    }
+    impl crate::environment::Environment for Lighting {
+        fn lighting(&self, position: [f32; 3]) -> [f32; 3] {
+            if position[0] < self.origin[0] - 100.0 {
+                self.controls[1]
+            } else if position[0] > self.origin[0] + 5.0 {
+                self.particle
+            } else {
+                self.controls[0]
+            }
+        }
+    }
+    let reference: serde_json::Value =
+        serde_json::from_str(include_str!("../tests/data/color_light_native_samples.json")).unwrap();
+    let read = |value: &serde_json::Value| std::array::from_fn(|axis| value[axis].as_f64().unwrap() as f32);
+    let world = Lighting {
+        particle: read(&reference["lighting"]),
+        controls: [read(&reference["control_lighting"][0]), read(&reference["control_lighting"][1])],
+        origin: read(&reference["origin"]),
+    };
+    let mut points = Points::at(world.origin);
+    points.pos.push([world.origin[0] - 256.0, world.origin[1], world.origin[2]]);
+    let definitions = crate::parse_file(include_bytes!("../tests/data/color_light_cases.pcf")).unwrap();
+    for case in reference["cases"].as_array().unwrap() {
+        let name = format!("hp_spritecard_{}", case["name"].as_str().unwrap());
+        let plan = Arc::new(Plan::new(definitions.iter().find(|def| def.name == name).unwrap()));
+        assert!(plan.unsupported.is_empty(), "{name}: {:?}", plan.unsupported);
+        let mut sim = Sim::new(plan, 17);
+        sim.step_in(0.0, &points, &[], 1, &world);
+        let actual = gray_sprite_pixel(sim.particles[0].color);
+        for (channel, value) in actual.into_iter().enumerate() {
+            let expected = case["pixel"][channel].as_u64().unwrap() as u8;
+            assert!(value.abs_diff(expected) <= 2, "{name}: {actual:?} vs {}", case["pixel"]);
+        }
+    }
+}
+
+fn gray_sprite_pixel(color: [f32; 3]) -> [u8; 3] {
+    // Native SpriteCard vertex colors use gamma 2.2; the texture uses sRGB.
+    let texture = ((128.0f32 / 255.0 + 0.055) / 1.055).powf(2.4);
+    color.map(|channel| {
+        let linear = channel.max(0.0).powf(2.2) * texture * (128.0 / 255.0);
+        let encoded = if linear <= 0.0031308 { linear * 12.92 } else { 1.055 * linear.powf(1.0 / 2.4) - 0.055 };
+        (encoded.clamp(0.0, 1.0) * 255.0).round() as u8
+    })
+}
+
+#[test]
+fn color_fades_match_native_pixels_at_measured_particle_ages() {
+    let reference: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/color_fade_native_samples.json")).unwrap();
+    let definitions = crate::parse_file(include_bytes!("../tests/data/color_fade_cases.pcf")).unwrap();
+    for case in reference {
+        let name = format!("hp_spritecard_{}", case["name"].as_str().unwrap());
+        let plan = Arc::new(Plan::new(definitions.iter().find(|def| def.name == name).unwrap()));
+        assert!(plan.unsupported.is_empty(), "{name}: {:?}", plan.unsupported);
+        let mut sim = Sim::new(plan, 17);
+        sim.step(0.0, [0.0; 3], 1);
+        for sample in case["samples"].as_array().unwrap() {
+            let age = sample["age"].as_f64().unwrap() as f32;
+            while age - sim.particles[0].age > 0.000001 {
+                sim.step((age - sim.particles[0].age).min(0.05), [0.0; 3], 1);
+            }
+            let actual = gray_sprite_pixel(sim.particles[0].color);
+            for (channel, value) in actual.into_iter().enumerate() {
+                let expected = sample["pixel"][channel].as_u64().unwrap() as u8;
+                assert!(value.abs_diff(expected) <= 2, "{name} age {age}: {actual:?} vs {}", sample["pixel"]);
+            }
+        }
+    }
+}

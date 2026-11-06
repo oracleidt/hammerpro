@@ -1544,3 +1544,88 @@ fn spritecard_yaw_geometry_matches_native_coverage_and_remains_independent_of_ro
         }
     }
 }
+
+#[test]
+fn simulated_colors_and_fades_match_native_spritecard_pixels() {
+    struct Lighting {
+        origin: [f32; 3],
+        particle: [f32; 3],
+        controls: [[f32; 3]; 2],
+    }
+    impl hp_pcf::environment::Environment for Lighting {
+        fn lighting(&self, position: [f32; 3]) -> [f32; 3] {
+            if position[0] < self.origin[0] - 100.0 {
+                self.controls[1]
+            } else if position[0] > self.origin[0] + 5.0 {
+                self.particle
+            } else {
+                self.controls[0]
+            }
+        }
+    }
+    let (device, queue) = gpu_or_skip!();
+    let mut renderer = Renderer::new(&device, &queue);
+    mat(&mut renderer, 4, [128, 128, 128, 128], MaterialFlags::empty());
+    let view = persp([-128.0, 0.0, 0.0], [0.0; 3], [128, 128], RenderMode::Textured);
+    let mut check = |particle: &hp_pcf::Particle, expected: &serde_json::Value, context: &str| {
+        renderer.set_particles(&[ParticleInstance {
+            animation: ParticleAnimation::default(),
+            pos: [0.0; 3],
+            size: particle.radius * 2.0,
+            axis: [0.0; 3],
+            roll: particle.rotation,
+            yaw: particle.yaw,
+            uv: [0.0, 0.0, 1.0, 1.0],
+            color: [particle.color[0], particle.color[1], particle.color[2], particle.alpha],
+            bright: 1.0,
+            add_self: 0.0,
+            screen_fade: [0.0; 2],
+            refraction_blur: 0.0,
+            no_fog: true,
+            orient: ParticleOrient::Screen,
+            material: 4,
+            blend: ParticleBlend::Alpha,
+        }]);
+        renderer.render_view(1, &view, &Overlay::default());
+        let (_, _, pixels) = renderer.read_view_rgba8(1).unwrap();
+        let actual = &pixels[(64 * 128 + 64) * 4..][..3];
+        for (channel, value) in actual.iter().enumerate() {
+            let target = expected[channel].as_u64().unwrap() as u8;
+            assert!(value.abs_diff(target) <= 2, "{context}: {actual:?} vs native {expected}");
+        }
+    };
+    let reference: serde_json::Value =
+        serde_json::from_str(include_str!("../../hp-pcf/tests/data/color_light_native_samples.json")).unwrap();
+    let read = |value: &serde_json::Value| std::array::from_fn(|axis| value[axis].as_f64().unwrap() as f32);
+    let world = Lighting {
+        origin: read(&reference["origin"]),
+        particle: read(&reference["lighting"]),
+        controls: [read(&reference["control_lighting"][0]), read(&reference["control_lighting"][1])],
+    };
+    let mut points = hp_pcf::Points::at(world.origin);
+    points.pos.push([world.origin[0] - 256.0, world.origin[1], world.origin[2]]);
+    let definitions = hp_pcf::parse_file(include_bytes!("../../hp-pcf/tests/data/color_light_cases.pcf")).unwrap();
+    for case in reference["cases"].as_array().unwrap() {
+        let name = format!("hp_spritecard_{}", case["name"].as_str().unwrap());
+        let mut sim =
+            hp_pcf::Sim::new(Arc::new(hp_pcf::Plan::new(definitions.iter().find(|def| def.name == name).unwrap())), 17);
+        sim.step_in(0.0, &points, &[], 1, &world);
+        check(&sim.particles[0], &case["pixel"], &name);
+    }
+    let definitions = hp_pcf::parse_file(include_bytes!("../../hp-pcf/tests/data/color_fade_cases.pcf")).unwrap();
+    let cases: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../../hp-pcf/tests/data/color_fade_native_samples.json")).unwrap();
+    for case in cases {
+        let name = format!("hp_spritecard_{}", case["name"].as_str().unwrap());
+        let mut sim =
+            hp_pcf::Sim::new(Arc::new(hp_pcf::Plan::new(definitions.iter().find(|def| def.name == name).unwrap())), 17);
+        sim.step(0.0, [0.0; 3], 1);
+        for sample in case["samples"].as_array().unwrap() {
+            let age = sample["age"].as_f64().unwrap() as f32;
+            while age - sim.particles[0].age > 0.000001 {
+                sim.step((age - sim.particles[0].age).min(0.05), [0.0; 3], 1);
+            }
+            check(&sim.particles[0], &sample["pixel"], &format!("{name} age {age}"));
+        }
+    }
+}

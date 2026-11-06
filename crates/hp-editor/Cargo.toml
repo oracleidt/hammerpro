@@ -15,3 +15,6 @@ glam.workspace = true
 rayon.workspace = true
 thiserror.workspace = true
 indexmap = { workspace = true, features = ["rayon"] }
+
+[dev-dependencies]
+serde_json = "1"

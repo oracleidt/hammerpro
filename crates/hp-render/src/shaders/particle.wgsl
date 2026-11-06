@@ -130,7 +130,7 @@ fn vs_particle(
             alpha *= 1.0 - clamp((share - f0) / (f1 - f0), 0.0, 1.0);
         }
     }
-    out.color = vec4<f32>(srgb_to_linear(color.rgb) * max(bright, 0.0), alpha);
+    out.color = vec4<f32>(pow(max(color.rgb, vec3<f32>(0.0)), vec3<f32>(2.2)) * max(bright, 0.0), alpha);
     out.clip = view.view_proj * vec4<f32>(world, 1.0);
     return out;
 }

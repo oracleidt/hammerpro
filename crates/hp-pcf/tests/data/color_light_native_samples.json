@@ -1,0 +1,269 @@
+{
+  "origin": [
+    951.6129760742188,
+    -799,
+    -79.08000183105469
+  ],
+  "lighting": [
+    0.524203896522522,
+    0.5346570014953613,
+    0.49735888838768005
+  ],
+  "control_lighting": [
+    [
+      0.5250638127326965,
+      0.5361529588699341,
+      0.49931925535202026
+    ],
+    [
+      0.5549208521842957,
+      0.5856665372848511,
+      0.5615221261978149
+    ]
+  ],
+  "cases": [
+    {
+      "name": "lit_amp0",
+      "pixel": [
+        0,
+        0,
+        0,
+        255
+      ]
+    },
+    {
+      "name": "lit_amp0_min128",
+      "pixel": [
+        0,
+        0,
+        0,
+        255
+      ]
+    },
+    {
+      "name": "lit_amp2",
+      "pixel": [
+        92,
+        92,
+        91,
+        255
+      ]
+    },
+    {
+      "name": "lit_amp_half",
+      "pixel": [
+        17,
+        17,
+        15,
+        255
+      ]
+    },
+    {
+      "name": "lit_bias1",
+      "pixel": [
+        45,
+        46,
+        41,
+        255
+      ]
+    },
+    {
+      "name": "lit_colored",
+      "pixel": [
+        16,
+        43,
+        41,
+        255
+      ]
+    },
+    {
+      "name": "lit_colored_bias2",
+      "pixel": [
+        0,
+        68,
+        79,
+        255
+      ]
+    },
+    {
+      "name": "lit_colored_mode0",
+      "pixel": [
+        29,
+        29,
+        23,
+        255
+      ]
+    },
+    {
+      "name": "lit_colored_mode1",
+      "pixel": [
+        29,
+        16,
+        4,
+        255
+      ]
+    },
+    {
+      "name": "lit_colored_mode2",
+      "pixel": [
+        29,
+        16,
+        4,
+        255
+      ]
+    },
+    {
+      "name": "lit_colored_mode3",
+      "pixel": [
+        43,
+        29,
+        23,
+        255
+      ]
+    },
+    {
+      "name": "lit_max64",
+      "pixel": [
+        16,
+        16,
+        16,
+        255
+      ]
+    },
+    {
+      "name": "lit_max64_amp2",
+      "pixel": [
+        43,
+        43,
+        43,
+        255
+      ]
+    },
+    {
+      "name": "lit_max64_amp_half",
+      "pixel": [
+        4,
+        4,
+        4,
+        255
+      ]
+    },
+    {
+      "name": "lit_min128",
+      "pixel": [
+        45,
+        46,
+        43,
+        255
+      ]
+    },
+    {
+      "name": "lit_min128_amp_quarter",
+      "pixel": [
+        4,
+        5,
+        4,
+        255
+      ]
+    },
+    {
+      "name": "lit_tint",
+      "pixel": [
+        43,
+        16,
+        4,
+        255
+      ]
+    },
+    {
+      "name": "lit_tint_bias1",
+      "pixel": [
+        45,
+        46,
+        41,
+        255
+      ]
+    },
+    {
+      "name": "lit_tint_bias_half",
+      "pixel": [
+        44,
+        31,
+        23,
+        255
+      ]
+    },
+    {
+      "name": "lit_white",
+      "pixel": [
+        92,
+        92,
+        92,
+        255
+      ]
+    },
+    {
+      "name": "random_tint1",
+      "pixel": [
+        45,
+        46,
+        42,
+        255
+      ]
+    },
+    {
+      "name": "random_tint_colored_mode1",
+      "pixel": [
+        29,
+        16,
+        4,
+        255
+      ]
+    },
+    {
+      "name": "random_tint_cp1",
+      "pixel": [
+        48,
+        51,
+        48,
+        255
+      ]
+    },
+    {
+      "name": "random_tint_half",
+      "pixel": [
+        44,
+        31,
+        23,
+        255
+      ]
+    },
+    {
+      "name": "raw_gray",
+      "pixel": [
+        43,
+        43,
+        43,
+        255
+      ]
+    },
+    {
+      "name": "raw_red",
+      "pixel": [
+        92,
+        0,
+        0,
+        255
+      ]
+    },
+    {
+      "name": "raw_white",
+      "pixel": [
+        92,
+        92,
+        92,
+        255
+      ]
+    }
+  ]
+}

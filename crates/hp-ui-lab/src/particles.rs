@@ -739,7 +739,12 @@ impl OverlayLayer for ParticleLayer {
             near.iter().map(|(_, source)| (source.id, shared.trace_requirement(&source.name))).collect();
         shared.world_requirement = requirements.values().copied().flatten().max();
         let physics = Arc::clone(&shared.physics);
-        let world = crate::particle_world::ParticleEnvironment { state, physics: &physics };
+        let mut lighting = state.assets.particle_lighting();
+        if !state.runtime.lighting.has_bake {
+            lighting.baked = None;
+            lighting.region = None;
+        }
+        let world = crate::particle_world::ParticleEnvironment { state, physics: &physics, lighting: Some(&lighting) };
         let keep: HashSet<Id> = near.iter().map(|(_, s)| s.id).collect();
         self.effects.retain(|id, _| keep.contains(id));
         let dt = state.frame.dt.clamp(0.0, 0.1);

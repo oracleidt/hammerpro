@@ -77,6 +77,14 @@ pub(crate) fn group_drawn(i: usize, drawn: Option<&Vec<bool>>) -> bool {
 }
 
 impl AssetManager {
+    pub(crate) fn particle_lighting_impl(&self) -> hp_app::state::ParticleLighting {
+        hp_app::state::ParticleLighting {
+            baked: self.play_world.baked.as_ref().map(|(lighting, _)| Arc::clone(lighting)),
+            region: self.play_world.baked_region,
+            styles: if self.play_world.wanted.is_some() { self.play_world.style_values.clone() } else { Vec::new() },
+        }
+    }
+
     pub(crate) fn set_play_world_impl(&mut self, world: Option<Arc<BspWorld>>, visible: Option<Arc<Vec<bool>>>) {
         self.play_world.wanted = world.map(|w| (w, visible));
     }

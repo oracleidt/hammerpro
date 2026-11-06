@@ -82,6 +82,7 @@ fn non_solid_material(material: &str) -> bool {
 pub struct ParticleEnvironment<'a> {
     pub state: &'a AppState,
     pub physics: &'a Physics,
+    pub lighting: Option<&'a hp_app::state::ParticleLighting>,
 }
 
 impl Environment for ParticleEnvironment<'_> {
@@ -132,11 +133,58 @@ impl Environment for ParticleEnvironment<'_> {
     fn wind(&self, position: Vector) -> Vector {
         hp_app::runtime::wind::velocity_at(vec(position)).unwrap_or(DVec3::ZERO).as_vec3().to_array()
     }
+
+    fn lighting(&self, position: Vector) -> Vector {
+        let styles = self.lighting.map_or(&[][..], |lighting| lighting.styles.as_slice());
+        if self.state.runtime.lab.player.active
+            && !self.state.runtime.lab.player.editor_world
+            && let Some(world) = &self.state.runtime.health.world
+        {
+            return if world.light.mode == hp_editor::limits::world_light::LightMode::Fullbright {
+                [1.0; 3]
+            } else {
+                world.light.props.point_color_with_styles(position, styles)
+            };
+        }
+        if let Some(lighting) = self.lighting
+            && let Some(baked) = &lighting.baked
+            && lighting
+                .region
+                .is_none_or(|[lo, hi]| (0..3).all(|axis| (lo[axis]..=hi[axis]).contains(&f64::from(position[axis]))))
+        {
+            return baked.point_color_with_styles(position, styles);
+        }
+        [1.0; 3]
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn particle_lighting_uses_the_bake_region_and_the_active_compiled_world() {
+        let mut state = hp_app::testing::test_state();
+        let physics = Physics::default();
+        let lighting = hp_app::state::ParticleLighting {
+            baked: Some(Arc::new(hp_editor::limits::world_light::PropLighting::default())),
+            region: Some([[-16.0; 3], [16.0; 3]]),
+            ..Default::default()
+        };
+        let world = ParticleEnvironment { state: &state, physics: &physics, lighting: Some(&lighting) };
+        assert_eq!(world.lighting([0.0; 3]), [0.0; 3]);
+        assert_eq!(world.lighting([100.0; 3]), [1.0; 3]);
+        state.runtime.lab.player.active = true;
+        state.runtime.lab.player.editor_world = false;
+        state.runtime.health.world = Some(Arc::new(hp_editor::limits::world::BspWorld::default()));
+        let world = ParticleEnvironment { state: &state, physics: &physics, lighting: Some(&lighting) };
+        assert_eq!(world.lighting([0.0; 3]), [1.0; 3]);
+        let mut compiled = hp_editor::limits::world::BspWorld::default();
+        compiled.light.mode = hp_editor::limits::world_light::LightMode::Hdr;
+        state.runtime.health.world = Some(Arc::new(compiled));
+        let world = ParticleEnvironment { state: &state, physics: &physics, lighting: None };
+        assert_eq!(world.lighting([100.0; 3]), [0.0; 3]);
+    }
 
     #[test]
     fn displacement_ray_and_hull_flags_are_respected_independently() {
@@ -170,7 +218,7 @@ mod tests {
                 )
                 .unwrap();
             state.doc.set_disp_flags(&[face], flag, true).unwrap();
-            let world = ParticleEnvironment { state: &state, physics: &Physics::default() };
+            let world = ParticleEnvironment { state: &state, physics: &Physics::default(), lighting: None };
             assert_eq!(world.trace([0.0, 0.0, 64.0], [0.0, 0.0, -64.0], 0.0, true).is_some(), ray);
             assert_eq!(world.trace([0.0, 0.0, 64.0], [0.0, 0.0, -64.0], 2.0, true).is_some(), hull);
         }
@@ -184,7 +232,7 @@ mod tests {
         let handle = crate::particles::new_handle();
         prepare(&mut state, &handle, &egui::Context::default());
         let shared = handle.lock().unwrap();
-        let world = ParticleEnvironment { state: &state, physics: &shared.physics };
+        let world = ParticleEnvironment { state: &state, physics: &shared.physics, lighting: None };
         let captures: Vec<serde_json::Value> =
             serde_json::from_str(include_str!("../tests/data/particle_trace_native.json")).unwrap();
         let vector = |value: &serde_json::Value| {

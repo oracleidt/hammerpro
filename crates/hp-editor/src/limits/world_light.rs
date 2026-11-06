@@ -743,6 +743,47 @@ impl PropLighting {
         out
     }
 
+    pub fn point_color(&self, p: [f32; 3]) -> [f32; 3] {
+        self.point_color_with_styles(p, &[])
+    }
+
+    pub fn point_color_with_styles(&self, p: [f32; 3], styles: &[f32]) -> [f32; 3] {
+        if p.iter().any(|value| !value.is_finite()) {
+            return [0.0; 3];
+        }
+        let spacing = [8.0, 8.0, 16.0];
+        let p = std::array::from_fn(|axis| (p[axis] / spacing[axis]).floor() * spacing[axis] + spacing[axis] * 0.5);
+        let mut color = [0.0; 3];
+        for side in self.ambient_at(p) {
+            for axis in 0..3 {
+                color[axis] += side[axis] / 6.0;
+            }
+        }
+        let row = self.pvs.as_ref().and_then(|vis| {
+            let cluster = vis.cluster_at(glam::DVec3::new(f64::from(p[0]), f64::from(p[1]), f64::from(p[2])))?;
+            vis.visible_from(cluster)
+        });
+        for light in &self.lights {
+            if !matches!(light.kind, EmitKind::Sky | EmitKind::SkyAmbient)
+                && let (Some(row), Ok(cluster)) = (&row, usize::try_from(light.cluster))
+                && !row.get(cluster).copied().unwrap_or(true)
+            {
+                continue;
+            }
+            let Some((attenuation, direction)) = self.light_at(light, p) else { continue };
+            let style = usize::try_from(light.style).ok().filter(|style| *style < MAX_STYLES).unwrap_or(0);
+            let scale = styles.get(style).copied().unwrap_or_else(|| self.style_scale(style));
+            let amount = attenuation * direction.iter().map(|value| value.abs()).sum::<f32>() / 6.0 * scale;
+            if !amount.is_finite() || amount <= 0.0 || luminance(light.intensity) <= 0.0 {
+                continue;
+            }
+            for (channel, intensity) in color.iter_mut().zip(light.intensity) {
+                *channel += intensity * amount;
+            }
+        }
+        color.map(|value| if value.is_finite() { value.max(0.0) } else { 0.0 })
+    }
+
     fn sees_sky(&self, p: [f32; 3], dir_to_sun: [f32; 3]) -> bool {
         let Some(hit) = self.first_hit(p, dir_to_sun, 65536.0) else { return false };
         self.sky.iter().any(|(lo, hi)| (0..3).all(|k| hit[k] >= lo[k] - 2.0 && hit[k] <= hi[k] + 2.0))
@@ -1401,6 +1442,58 @@ mod tests {
         assert_eq!(m.styled.len(), 1, "the sky light is not culled by the cluster of its lump entry");
         assert_eq!(m.styled[0].kind, EmitKind::Sky);
         assert_eq!(m.styled[0].style, 33);
+    }
+
+    #[test]
+    fn point_colors_match_native_light_cache_cells_and_spherical_lighting() {
+        let native: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/data/point_lighting_native_samples.json")).unwrap();
+        let vector = |value: &serde_json::Value| std::array::from_fn(|axis| value[axis].as_f64().unwrap() as f32);
+        let samples: Vec<_> = native["samples"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|sample| AmbientSample {
+                pos: std::array::from_fn(|axis| sample["position"][axis].as_u64().unwrap() as u8),
+                cube: std::array::from_fn(|side| vector(&sample["cube"][side])),
+            })
+            .collect();
+        let lighting = PropLighting {
+            planes: vec![([0.0, 0.0, 1.0], 1024.0)],
+            nodes: vec![(0, [-2, -1])],
+            leaves: vec![
+                TreeLeaf {
+                    min: std::array::from_fn(|axis| native["min"][axis].as_i64().unwrap() as i16),
+                    max: std::array::from_fn(|axis| native["max"][axis].as_i64().unwrap() as i16),
+                    ..TreeLeaf::default()
+                },
+                TreeLeaf { contents: 1, ..TreeLeaf::default() },
+            ],
+            ambient_index: vec![(samples.len() as u16, 0), (0, 0)],
+            samples,
+            sky: vec![([-65536.0, -65536.0, 1024.0], [65536.0, 65536.0, 1024.0])],
+            lights: vec![WorldLightSource {
+                kind: EmitKind::Sky,
+                normal: vector(&native["sun"]["direction"]),
+                intensity: vector(&native["sun"]["intensity"]),
+                style: 33,
+                ..WorldLightSource::default()
+            }],
+            styles: vec![1.0; MAX_STYLES],
+            ..PropLighting::default()
+        };
+        for query in native["queries"].as_array().unwrap() {
+            let position = vector(&query["position"]);
+            let expected = vector(&query["color"]);
+            let actual = lighting.point_color(position);
+            for channel in 0..3 {
+                assert!(
+                    (actual[channel] - expected[channel]).abs() < 0.000001,
+                    "{position:?}: {actual:?} versus native{expected:?}"
+                );
+            }
+        }
+        assert_eq!(lighting.point_color([f32::NAN, 0.0, 0.0]), [0.0; 3]);
     }
 
     #[test]

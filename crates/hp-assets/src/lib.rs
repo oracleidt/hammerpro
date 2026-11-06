@@ -443,6 +443,10 @@ impl hp_app::AssetsApi for AssetManager {
         self.set_light_styles_impl(values);
     }
 
+    fn particle_lighting(&self) -> hp_app::state::ParticleLighting {
+        self.particle_lighting_impl()
+    }
+
     fn set_projector_overrides(&mut self, overrides: &[hp_app::state::ProjectorOverride]) {
         if self.scene.projector_overrides != overrides {
             self.scene.projector_overrides = overrides.to_vec();

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::environment::{EmptyEnvironment, Environment};
 use crate::model::{Operator, SystemDef};
 
+mod color;
 mod control;
 mod forces;
 mod scalar;
@@ -280,10 +281,7 @@ enum Init {
         max: f32,
         exp: f32,
     },
-    Color {
-        a: [f32; 3],
-        b: [f32; 3],
-    },
+    Color(color::Color),
     Alpha {
         min: f32,
         max: f32,
@@ -653,6 +651,10 @@ impl Plan {
     }
 
     fn compile_init(&mut self, op: &Operator) {
+        if let Some(color) = color::compile(op) {
+            self.inits.push(Init::Color(color));
+            return;
+        }
         let init = match op.function.to_ascii_lowercase().as_str() {
             "position within sphere random" => Init::Sphere {
                 cp: i(op, "control_point_number", 0),
@@ -714,10 +716,7 @@ impl Plan {
                 max: f(op, "radius_max", 1.0).clamp(0.0, 100_000.0),
                 exp: f(op, "radius_random_exponent", 1.0),
             },
-            "color random" => Init::Color {
-                a: rgb(op.color("color1").unwrap_or([255; 4])),
-                b: rgb(op.color("color2").unwrap_or([255; 4])),
-            },
+
             "alpha random" => Init::Alpha {
                 min: (f(op, "alpha_min", 255.0) / 255.0).clamp(0.0, 1.0),
                 max: (f(op, "alpha_max", 255.0) / 255.0).clamp(0.0, 1.0),
@@ -1070,11 +1069,13 @@ pub struct Sim {
     frames: Vec<u32>,
     previous_points: Option<Points>,
     point_traces: Vec<control::PointTraceState>,
+    colors: Vec<Option<color::Cached>>,
 }
 
 impl Sim {
     pub fn new(plan: Arc<Plan>, seed: u32) -> Sim {
         let n = plan.emitters.len();
+        let colors = vec![None; plan.inits.len()];
         let point_traces = vec![control::PointTraceState::default(); plan.point_traces.len()];
         Sim {
             plan,
@@ -1087,6 +1088,7 @@ impl Sim {
             frames: Vec::new(),
             previous_points: None,
             point_traces,
+            colors,
         }
     }
 
@@ -1108,6 +1110,7 @@ impl Sim {
         self.born = 0;
         self.previous_points = None;
         self.point_traces.fill(control::PointTraceState::default());
+        self.colors.fill(None);
         self.acc.iter_mut().for_each(|a| *a = 0.0);
         self.fired.iter_mut().for_each(|f| *f = false);
     }
@@ -1175,7 +1178,7 @@ impl Sim {
             born: self.time,
         };
         let mut pre_age = 0.0f32;
-        for init in &plan.inits {
+        for (index, init) in plan.inits.iter().enumerate() {
             match init {
                 Init::Impact(impact) => part.life = spatial::impact_lifetime(impact, &part, world),
                 Init::Scalar(remap) => {
@@ -1236,9 +1239,8 @@ impl Sim {
                     part.life = if frames > 0 { frames as f32 / fps } else { 1.0 };
                 }
                 Init::Radius { min, max, exp } => part.base_radius = self.rng.range_exp(*min, *max, *exp),
-                Init::Color { a, b } => {
-                    let t = self.rng.next();
-                    part.base_color = lerp3(*a, *b, t);
+                Init::Color(color) => {
+                    color::initialize(color, &mut part, points, world, &mut self.rng, &mut self.colors[index]);
                 }
                 Init::Alpha { min, max } => part.base_alpha = self.rng.range(*min, *max),
                 Init::Rotation { initial, min, max, exp, flip } => {
