@@ -11,6 +11,20 @@ use crate::tool::ToolId;
 use crate::view::{Camera2d, Camera3d, ViewKind};
 
 pub type BoneMatrices = Arc<Vec<[[f32; 4]; 3]>>;
+pub use hp_pcf::environment::ModelHitbox as ParticleHitbox;
+
+#[derive(Clone, Debug, Default)]
+pub struct ParticleModelSnapshot {
+    pub models: HashMap<u32, HashMap<String, Arc<[hp_pcf::environment::ModelHitbox]>>>,
+    pub pending: std::collections::HashSet<u32>,
+}
+
+impl ParticleModelSnapshot {
+    pub fn hitboxes(&self, object: u32, set: &str) -> Option<Arc<[hp_pcf::environment::ModelHitbox]>> {
+        let sets = self.models.get(&object)?;
+        sets.get(&set.to_ascii_lowercase()).or_else(|| sets.get("")).cloned()
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AssetStatus {
@@ -309,6 +323,9 @@ pub trait AssetsApi {
     fn set_light_styles(&mut self, _values: &[f32]) {}
     fn particle_lighting(&self) -> ParticleLighting {
         ParticleLighting::default()
+    }
+    fn particle_model_snapshot(&mut self, _entities: &[(u32, hp_vmf::Entity)], _editor: bool) -> ParticleModelSnapshot {
+        ParticleModelSnapshot::default()
     }
     fn set_projector_overrides(&mut self, _overrides: &[ProjectorOverride]) {}
     fn light_preview(&self) -> Option<LightPreviewReport> {

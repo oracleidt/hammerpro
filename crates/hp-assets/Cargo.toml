@@ -32,6 +32,7 @@ image.workspace = true
 wgpu.workspace = true
 
 [dev-dependencies]
+serde_json = "1"
 pollster.workspace = true
 wgpu.workspace = true
 egui-wgpu.workspace = true

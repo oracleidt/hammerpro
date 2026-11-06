@@ -290,7 +290,9 @@ fn load_from_resolves_companions() {
     assert_eq!(model.triangle_count(), 2);
     let err = crate::load_from("models/none.mdl", read, &LoadOptions::default());
     assert!(matches!(err, Err(MdlError::MissingFile { file: crate::FileKind::Mdl, .. })));
-    let no_vtx = |path: &str| if path.ends_with(".vtx") { None } else { read(path) };
+    let no_vtx = |path: &str| {
+        if path.ends_with(".vtx") { None } else { read(path) }
+    };
     let err = crate::load_from("models/quad.mdl", no_vtx, &LoadOptions::default());
     assert!(matches!(err, Err(MdlError::MissingFile { file: crate::FileKind::Vtx, .. })));
 }
@@ -370,5 +372,55 @@ fn corrupted_synthetic_models_never_panic() {
         let (mdl, vvd, vtx) = build(spec);
         let (ok, err) = torture([&mdl, &vvd, &vtx], 0x9e37_79b9_7f4a_7c15, 20_000);
         assert!(ok > 0 && err > 0, "ok {ok} err {err}");
+    }
+}
+
+#[test]
+fn self_authored_native_studio_model_preserves_all_named_hitbox_sets() {
+    let model = load(
+        include_bytes!("../tests/data/hitboxes.mdl"),
+        include_bytes!("../tests/data/hitboxes.vvd"),
+        include_bytes!("../tests/data/hitboxes.dx90.vtx"),
+        &LoadOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(model.bones.len(), 2);
+    assert_eq!(model.hitbox_sets.len(), 2);
+    assert_eq!(model.hitbox_sets[0].name, "default");
+    assert_eq!(model.hitbox_sets[0].hitboxes, model.hitboxes);
+    let effects = &model.hitbox_sets[1];
+    assert_eq!(effects.name, "effects");
+    assert_eq!(effects.hitboxes.len(), 2);
+    assert_eq!(effects.hitboxes[0].bone, 0);
+    assert_eq!(effects.hitboxes[0].min, [4.0, 14.0, 24.0]);
+    assert_eq!(effects.hitboxes[0].max, [16.0, 26.0, 36.0]);
+    assert_eq!(effects.hitboxes[1].bone, 1);
+    assert_eq!(effects.hitboxes[1].min, [96.0, -4.0, -4.0]);
+    assert_eq!(effects.hitboxes[1].max, [104.0, 4.0, 4.0]);
+}
+
+#[test]
+fn named_hitbox_bone_matrices_match_the_native_studio_pose() {
+    let model = load(
+        include_bytes!("../tests/data/hitboxes.mdl"),
+        include_bytes!("../tests/data/hitboxes.vvd"),
+        include_bytes!("../tests/data/hitboxes.dx90.vtx"),
+        &LoadOptions::default(),
+    )
+    .unwrap();
+    let native: Vec<crate::SkinMatrix> =
+        serde_json::from_str(include_str!("../tests/data/hitbox_native_bones.json")).unwrap();
+    assert_eq!(model.bone_matrices.len(), native.len());
+    for (bone, (actual, expected)) in model.bone_matrices.iter().zip(native).enumerate() {
+        for row in 0..3 {
+            for column in 0..4 {
+                assert!(
+                    (actual[row][column] - expected[row][column]).abs() < 0.0001,
+                    "bone{bone} [{row}][{column}]: {} vs {}",
+                    actual[row][column],
+                    expected[row][column]
+                );
+            }
+        }
     }
 }

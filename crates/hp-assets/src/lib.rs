@@ -18,6 +18,7 @@ mod model_thumbs;
 mod models;
 mod mount;
 pub mod parallax;
+mod particle_models;
 pub mod particle_volumes;
 mod particles;
 mod pick;
@@ -446,6 +447,13 @@ impl hp_app::AssetsApi for AssetManager {
 
     fn particle_lighting(&self) -> hp_app::state::ParticleLighting {
         self.particle_lighting_impl()
+    }
+    fn particle_model_snapshot(
+        &mut self,
+        entities: &[(u32, hp_vmf::Entity)],
+        editor: bool,
+    ) -> hp_app::state::ParticleModelSnapshot {
+        self.particle_model_snapshot_impl(entities, editor)
     }
 
     fn set_projector_overrides(&mut self, overrides: &[hp_app::state::ProjectorOverride]) {

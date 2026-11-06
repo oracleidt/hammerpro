@@ -172,16 +172,16 @@ fn operator_templates_add_as_one_undoable_edit() {
 }
 
 #[test]
-fn supported_sequences_and_unsupported_bone_locks_are_reported() {
+fn supported_sequences_and_model_locks_round_trip_without_preview_warnings() {
     let mut doc = Document::new();
     let system = doc.create_system("unsupported_preview").unwrap();
     doc.add_operator(system, Category::Initializers, "sequence two random").unwrap();
     doc.add_operator(system, Category::Operators, "movement lock to control point").unwrap();
     doc.add_operator(system, Category::Operators, "movement lock to bone").unwrap();
     let plan = crate::Plan::new(&doc.definitions()[0]);
-    assert_eq!(plan.unsupported, vec!["movement lock to bone"]);
+    assert!(plan.unsupported.is_empty());
     let issues = doc.validate();
-    assert_eq!(issues.iter().filter(|i| i.message.contains("no preview implementation")).count(), 1);
+    assert_eq!(issues.iter().filter(|i| i.message.contains("no preview implementation")).count(), 0);
     assert_eq!(Document::parse(&doc.to_bytes().unwrap()).unwrap().definitions(), doc.definitions());
 }
 

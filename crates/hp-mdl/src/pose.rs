@@ -394,10 +394,30 @@ fn zero_frame(
 pub(crate) struct Posing {
     pub skin: Option<Vec<Mat34>>,
     pub sequence: Option<usize>,
+    pub bones: Vec<Mat34>,
 }
 
 pub(crate) fn posing(mdl: &[u8], studio: &Studio, pose: Pose) -> Posing {
-    let none = Posing { skin: None, sequence: None };
+    let none = Posing {
+        skin: None,
+        sequence: None,
+        bones: studio
+            .bones
+            .iter()
+            .map(|bone| {
+                let m = bone.pose_to_bone;
+                let mut inverse = IDENTITY;
+                for row in 0..3 {
+                    for column in 0..3 {
+                        inverse[row][column] = m[column][row];
+                    }
+                    inverse[row][3] =
+                        -(inverse[row][0] * m[0][3] + inverse[row][1] * m[1][3] + inverse[row][2] * m[2][3]);
+                }
+                inverse
+            })
+            .collect(),
+    };
     if studio.info.flags & crate::mdl::FLAG_STATIC_PROP != 0 || studio.bones.is_empty() {
         return none;
     }
@@ -411,14 +431,19 @@ pub(crate) fn posing(mdl: &[u8], studio: &Studio, pose: Pose) -> Posing {
     let decoded = wanted.and_then(|s| sequence_pose(&r, None, &studio.bones, (s, 0), 0, 0.0).map(|p| (s, p)));
     let sequence = decoded.as_ref().map(|(s, _)| *s);
     let local = decoded.map(|(_, p)| p).unwrap_or_else(|| studio.bones.iter().map(|b| (b.pos, b.quat)).collect());
-    let skin = skin_from_local(&studio.bones, &local);
+    let bones = model_from_local(&studio.bones, &local);
+    let skin: Vec<_> = bones.iter().zip(&studio.bones).map(|(m, b)| mul(m, &b.pose_to_bone)).collect();
     let identity =
         skin.iter().flatten().flatten().zip(IDENTITY.iter().flatten().cycle()).all(|(a, b)| (a - b).abs() < 1e-5);
     let finite = skin.iter().flatten().flatten().all(|v| v.is_finite());
-    Posing { skin: (!identity && finite).then_some(skin), sequence }
+    Posing { skin: (!identity && finite).then_some(skin), sequence, bones }
 }
 
 pub(crate) fn skin_from_local(bones: &[Bone], local: &[([f32; 3], [f32; 4])]) -> Vec<Mat34> {
+    model_from_local(bones, local).iter().zip(bones).map(|(m, b)| mul(m, &b.pose_to_bone)).collect()
+}
+
+fn model_from_local(bones: &[Bone], local: &[([f32; 3], [f32; 4])]) -> Vec<Mat34> {
     let mut bone_to_model: Vec<Mat34> = Vec::with_capacity(bones.len());
     for (i, (bone, (pos, quat))) in bones.iter().zip(local).enumerate() {
         let m = quat_matrix(*quat, *pos);
@@ -428,7 +453,7 @@ pub(crate) fn skin_from_local(bones: &[Bone], local: &[([f32; 3], [f32; 4])]) ->
             None => m,
         });
     }
-    bone_to_model.iter().zip(bones).map(|(m, b)| mul(m, &b.pose_to_bone)).collect()
+    bone_to_model
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -528,8 +553,12 @@ pub(crate) fn skin_vertex(
     let mut total = 0.0f32;
     let count = usize::from(w.count.min(3)).max(1);
     for i in 0..count {
-        let (Some(&bone), Some(&weight)) = (w.bones.get(i), w.weights.get(i)) else { continue };
-        let Some(m) = skin.get(usize::from(bone)) else { continue };
+        let (Some(&bone), Some(&weight)) = (w.bones.get(i), w.weights.get(i)) else {
+            continue;
+        };
+        let Some(m) = skin.get(usize::from(bone)) else {
+            continue;
+        };
         let weight = if w.count == 0 { 1.0 } else { weight };
         if weight.is_nan() || weight <= 0.0 {
             continue;

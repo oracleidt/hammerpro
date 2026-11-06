@@ -729,6 +729,7 @@ mod tests {
             bounds: ([0.0; 3], [1.0, 1.0, 0.0]),
             helpers: Default::default(),
             lod_switch: Vec::new(),
+            ..Default::default()
         };
         let m = wire_mesh(&data);
         assert_eq!(m.edges.len(), 5 * 2, "4 sides and the diagonal");

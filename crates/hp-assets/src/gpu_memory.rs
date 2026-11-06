@@ -175,6 +175,7 @@ mod tests {
             bounds: ([0.0; 3], [0.0; 3]),
             helpers: Default::default(),
             lod_switch: Vec::new(),
+            ..Default::default()
         }
     }
 

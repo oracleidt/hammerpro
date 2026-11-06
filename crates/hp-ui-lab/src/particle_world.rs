@@ -11,6 +11,7 @@ use hp_pcf::environment::{Environment, Trace, Vector};
 use crate::particles::ParticleHandle;
 
 mod build;
+pub(crate) mod models;
 pub(crate) mod rays;
 mod tree;
 pub(crate) use build::Preparation;
@@ -19,6 +20,7 @@ use tree::SurfaceTree;
 
 #[derive(Clone, Debug)]
 struct Body {
+    id: u32,
     path: String,
     transform: DMat4,
     collision: Option<Arc<SurfaceTree>>,
@@ -85,9 +87,23 @@ pub struct ParticleEnvironment<'a> {
     pub physics: &'a Physics,
     pub lighting: Option<&'a hp_app::state::ParticleLighting>,
     pub(crate) rays: Option<&'a rays::RayWorld>,
+    pub(crate) models: Option<&'a models::Models>,
 }
 
 impl Environment for ParticleEnvironment<'_> {
+    fn model_hitboxes(&self, object: u32, set: &str) -> Option<Arc<[hp_pcf::environment::ModelHitbox]>> {
+        self.models?.data.hitboxes(object, set)
+    }
+
+    fn inside_model(&self, object: u32, position: Vector) -> bool {
+        self.physics.bodies.iter().filter(|body| body.id == object).any(|body| {
+            body.collision.as_ref().is_some_and(|tree| {
+                let direction = [0.524, 0.373, 0.765];
+                tree.ray(position, direction, f32::MAX)
+                    .is_some_and(|hit| hit.normal.iter().zip(direction).map(|(a, b)| a * b).sum::<f32>() > 0.0)
+            })
+        })
+    }
     fn trace_environment(
         &self,
         environment: hp_pcf::environment::RayEnvironment,
@@ -183,18 +199,30 @@ mod tests {
             region: Some([[-16.0; 3], [16.0; 3]]),
             ..Default::default()
         };
-        let world = ParticleEnvironment { state: &state, physics: &physics, lighting: Some(&lighting), rays: None };
+        let world = ParticleEnvironment {
+            state: &state,
+            physics: &physics,
+            lighting: Some(&lighting),
+            rays: None,
+            models: None,
+        };
         assert_eq!(world.lighting([0.0; 3]), [0.0; 3]);
         assert_eq!(world.lighting([100.0; 3]), [1.0; 3]);
         state.runtime.lab.player.active = true;
         state.runtime.lab.player.editor_world = false;
         state.runtime.health.world = Some(Arc::new(hp_editor::limits::world::BspWorld::default()));
-        let world = ParticleEnvironment { state: &state, physics: &physics, lighting: Some(&lighting), rays: None };
+        let world = ParticleEnvironment {
+            state: &state,
+            physics: &physics,
+            lighting: Some(&lighting),
+            rays: None,
+            models: None,
+        };
         assert_eq!(world.lighting([0.0; 3]), [1.0; 3]);
         let mut compiled = hp_editor::limits::world::BspWorld::default();
         compiled.light.mode = hp_editor::limits::world_light::LightMode::Hdr;
         state.runtime.health.world = Some(Arc::new(compiled));
-        let world = ParticleEnvironment { state: &state, physics: &physics, lighting: None, rays: None };
+        let world = ParticleEnvironment { state: &state, physics: &physics, lighting: None, rays: None, models: None };
         assert_eq!(world.lighting([100.0; 3]), [0.0; 3]);
     }
 
@@ -230,7 +258,13 @@ mod tests {
                 )
                 .unwrap();
             state.doc.set_disp_flags(&[face], flag, true).unwrap();
-            let world = ParticleEnvironment { state: &state, physics: &Physics::default(), lighting: None, rays: None };
+            let world = ParticleEnvironment {
+                state: &state,
+                physics: &Physics::default(),
+                lighting: None,
+                rays: None,
+                models: None,
+            };
             assert_eq!(world.trace([0.0, 0.0, 64.0], [0.0, 0.0, -64.0], 0.0, true).is_some(), ray);
             assert_eq!(world.trace([0.0, 0.0, 64.0], [0.0, 0.0, -64.0], 2.0, true).is_some(), hull);
         }
@@ -244,7 +278,8 @@ mod tests {
         let handle = crate::particles::new_handle();
         prepare(&mut state, &handle, &egui::Context::default());
         let shared = handle.lock().unwrap();
-        let world = ParticleEnvironment { state: &state, physics: &shared.physics, lighting: None, rays: None };
+        let world =
+            ParticleEnvironment { state: &state, physics: &shared.physics, lighting: None, rays: None, models: None };
         let captures: Vec<serde_json::Value> =
             serde_json::from_str(include_str!("../tests/data/particle_trace_native.json")).unwrap();
         let vector = |value: &serde_json::Value| {

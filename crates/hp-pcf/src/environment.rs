@@ -25,7 +25,24 @@ pub struct RayHit {
     pub normal: Vector,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ModelHitbox {
+    pub minimum: Vector,
+    pub maximum: Vector,
+    pub transform: [[f32; 4]; 3],
+}
+
 pub trait Environment {
+    fn model_hitboxes(&self, _object: u32, _set: &str) -> Option<std::sync::Arc<[ModelHitbox]>> {
+        None
+    }
+    fn previous_model_hitboxes(&self, _object: u32, _set: &str) -> Option<std::sync::Arc<[ModelHitbox]>> {
+        None
+    }
+    fn inside_model(&self, _object: u32, _position: Vector) -> bool {
+        false
+    }
+
     /// The distance is a ray parameter; the direction is deliberately not renormalized.
     fn trace_environment(
         &self,

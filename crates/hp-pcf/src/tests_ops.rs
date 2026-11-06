@@ -1405,3 +1405,155 @@ fn named_environment_culling_and_lifetime_limits_match_native_precipitation_and_
         }
     }
 }
+
+#[test]
+fn sequential_path_curves_match_native_bulge_orientation_and_unclamped_midpoints() {
+    let definitions = crate::parse_file(include_bytes!("../tests/data/path_curve_cases.pcf")).unwrap();
+    let cases: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/path_curve_native_samples.json")).unwrap();
+    let mut points = Points::at([0.0; 3]);
+    points.pos.push([100.0, 0.0, 0.0]);
+    points.axes = [[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]];
+    for case in cases {
+        let name = format!("hp_spritecard_{}", case["name"].as_str().unwrap());
+        let plan = Arc::new(Plan::new(definitions.iter().find(|d| d.name == name).unwrap()));
+        assert!(plan.unsupported.is_empty());
+        let mut sim = Sim::new(plan, 17);
+        sim.step_at(0.0, &points, &[], 100);
+        assert_eq!(sim.particles.len(), 3);
+        for axis in 0..3 {
+            let low = sim.particles.iter().map(|p| p.pos[axis]).min_by(f32::total_cmp).unwrap();
+            let high = sim.particles.iter().map(|p| p.pos[axis]).max_by(f32::total_cmp).unwrap();
+            assert!(
+                (low - case["minimum"][axis].as_f64().unwrap() as f32).abs() < 0.0001,
+                "{name} axis{axis} low={low}"
+            );
+            assert!(
+                (high - case["maximum"][axis].as_f64().unwrap() as f32).abs() < 0.0001,
+                "{name} axis{axis} high={high}"
+            );
+        }
+    }
+}
+
+#[test]
+fn cp_hierarchy_parents_highest_point_and_biased_volume_match_native_distributions() {
+    let definitions = crate::parse_file(include_bytes!("../tests/data/hierarchy_cases.pcf")).unwrap();
+    let cases: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/hierarchy_native_samples.json")).unwrap();
+    for case in cases {
+        let short = case["name"].as_str().unwrap();
+        let name = format!("hp_spritecard_{short}");
+        let mut points = Points::at([0.0; 3]);
+        points.parents = vec![0, 0, 1];
+        points.pos = match short {
+            "capsame" => vec![[100.0, 0.0, 0.0]; 3],
+            "capbias" => vec![[0.0; 3]; 3],
+            _ => vec![[0.0; 3], [100.0, 0.0, 0.0], [300.0, 0.0, 0.0]],
+        };
+        if short == "capparent" {
+            points.parents[1] = 2;
+        }
+        let plan = Arc::new(Plan::new(definitions.iter().find(|d| d.name == name).unwrap()));
+        assert!(plan.unsupported.is_empty(), "{name}: {:?}", plan.unsupported);
+        let mut sim = Sim::new(plan, 17);
+        sim.step_at(0.0, &points, &[], 5000);
+        assert_eq!(sim.particles.len(), 5000);
+        for axis in 0..3 {
+            let low = sim.particles.iter().map(|p| p.pos[axis]).fold(0.0, f32::min);
+            let high = sim.particles.iter().map(|p| p.pos[axis]).fold(0.0, f32::max);
+            let expected_low = case["minimum"][axis].as_f64().unwrap() as f32;
+            let expected_high = case["maximum"][axis].as_f64().unwrap() as f32;
+            // A different collection seed changes the extrema within the same uniform volume.
+            assert!((low - expected_low).abs() < 0.15, "{name} axis{axis}: {low} vs {expected_low}");
+            assert!((high - expected_high).abs() < 0.15, "{name} axis{axis}: {high} vs {expected_high}");
+        }
+    }
+}
+
+#[test]
+fn model_hitbox_positions_and_bone_lock_match_native_centers_and_animated_transforms() {
+    use crate::environment::{Environment, ModelHitbox};
+    struct Scene {
+        bones: Vec<[[f32; 4]; 3]>,
+        phase: std::cell::Cell<usize>,
+        queries: std::cell::Cell<usize>,
+    }
+    impl Environment for Scene {
+        fn model_hitboxes(&self, object: u32, set: &str) -> Option<Arc<[ModelHitbox]>> {
+            assert_eq!(object, 7);
+            self.queries.set(self.queries.get() + 1);
+            let bounds = if set == "effects" {
+                vec![(0, [4.0, 14.0, 24.0], [16.0, 26.0, 36.0]), (1, [96.0, -4.0, -4.0], [104.0, 4.0, 4.0])]
+            } else {
+                vec![(0, [-16.0; 3], [16.0; 3])]
+            };
+            Some(
+                bounds
+                    .into_iter()
+                    .map(|(bone, minimum, maximum)| {
+                        let mut transform = self.bones[bone];
+                        if self.phase.get() == 2 {
+                            let x = transform[0];
+                            transform[0] = transform[1].map(|value| -value);
+                            transform[1] = x;
+                        }
+                        if (1..=2).contains(&self.phase.get()) {
+                            transform[0][3] += 100.0;
+                        }
+                        ModelHitbox { minimum, maximum, transform }
+                    })
+                    .collect::<Vec<_>>()
+                    .into(),
+            )
+        }
+    }
+    let definitions = crate::parse_file(include_bytes!("../tests/data/model_position_cases.pcf")).unwrap();
+    let reference: serde_json::Value =
+        serde_json::from_str(include_str!("../tests/data/model_position_native_samples.json")).unwrap();
+    let world = Scene {
+        bones: serde_json::from_value(reference["bones"].clone()).unwrap(),
+        phase: std::cell::Cell::new(0),
+        queries: std::cell::Cell::new(0),
+    };
+    for case in reference["cases"].as_array().unwrap() {
+        let short = case["name"].as_str().unwrap();
+        let name = format!("hp_spritecard_{short}");
+        let plan = Arc::new(Plan::new(definitions.iter().find(|d| d.name == name).unwrap()));
+        assert!(plan.unsupported.is_empty(), "{name}: {:?}", plan.unsupported);
+        let mut points = Points::at([17.0, 19.0, 23.0]);
+        if short != "capnone" {
+            points.objects = vec![Some(7)];
+        }
+        world.phase.set(0);
+        world.queries.set(0);
+        let mut sim = Sim::new(plan, 17);
+        sim.step_in(0.025, &points, &[], 100, &world);
+        assert_eq!(sim.particles.len(), 1);
+        assert_eq!(world.queries.get(), usize::from(short != "capnone"));
+        for (phase, sample) in case["samples"].as_array().unwrap().iter().enumerate() {
+            if phase > 0 {
+                for _ in 0..100 {
+                    sim.step_in(0.025, &points, &[], 100, &world);
+                }
+                world.phase.set(phase);
+                sim.step_in(0.025, &points, &[], 100, &world);
+            }
+            let particle = &sim.particles[0];
+            for axis in 0..3 {
+                let low = particle.pos[axis].min(points.pos[0][axis]);
+                let high = particle.pos[axis].max(points.pos[0][axis]);
+                let expected_low = sample["minimum"][axis].as_f64().unwrap() as f32;
+                let expected_high = sample["maximum"][axis].as_f64().unwrap() as f32;
+                assert!(
+                    (low - expected_low).abs() < 0.0001,
+                    "{short} phase{phase} axis{axis} low={low} vs {expected_low}"
+                );
+                assert!(
+                    (high - expected_high).abs() < 0.0001,
+                    "{short} phase{phase} axis{axis} high={high} vs {expected_high}"
+                );
+            }
+        }
+    }
+}

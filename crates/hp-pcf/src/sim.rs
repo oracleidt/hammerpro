@@ -6,6 +6,8 @@ use crate::model::{Operator, SystemDef};
 mod color;
 mod control;
 mod forces;
+mod model;
+mod path;
 mod rays;
 mod scalar;
 mod spatial;
@@ -130,6 +132,8 @@ pub struct Points {
     pub pos: Vec<V3>,
     pub axes: [V3; 3],
     pub orientations: Vec<[V3; 3]>,
+    pub parents: Vec<i32>,
+    pub objects: Vec<Option<u32>>,
 }
 
 impl Points {
@@ -138,6 +142,8 @@ impl Points {
             pos: vec![origin],
             axes: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
             orientations: Vec::new(),
+            parents: Vec::new(),
+            objects: Vec::new(),
         }
     }
 
@@ -149,7 +155,13 @@ impl Points {
         let forward = [cp * cy, cp * sy, -sp];
         let right = [-sr * sp * cy + cr * sy, -sr * sp * sy - cr * cy, -sr * cp];
         let up = [cr * sp * cy + sr * sy, cr * sp * sy - sr * cy, cr * cp];
-        Points { pos: vec![origin], axes: [forward, scale(right, -1.0), up], orientations: Vec::new() }
+        Points {
+            pos: vec![origin],
+            axes: [forward, scale(right, -1.0), up],
+            orientations: Vec::new(),
+            parents: Vec::new(),
+            objects: Vec::new(),
+        }
     }
 
     pub fn get(&self, i: i32) -> V3 {
@@ -265,10 +277,13 @@ enum Init {
         end: i32,
         max_dist: f32,
         bulge: f32,
+        bulge_control: i32,
         mid: f32,
         steps: Option<f32>,
         looping: bool,
     },
+    Hierarchy(path::Hierarchy),
+    Model(model::Position),
     FromParent {
         inherit: f32,
     },
@@ -356,6 +371,7 @@ enum Init {
 
 #[derive(Clone, Debug, PartialEq)]
 enum Op {
+    BoneLock(model::Lock),
     Scalar(scalar::Remap),
     Lock(control::Lock),
     Force(forces::Force),
@@ -548,8 +564,36 @@ fn bools3(op: &Operator, name: &str) -> [bool; 3] {
 }
 
 impl Plan {
+    pub fn model_control_points(&self) -> Vec<i32> {
+        let mut points: Vec<_> = self
+            .inits
+            .iter()
+            .filter_map(|init| match init {
+                Init::Model(op) => Some(op.control_point()),
+                _ => None,
+            })
+            .chain(self.ops.iter().filter_map(|op| match op {
+                Op::BoneLock(op) => Some(op.control_point()),
+                _ => None,
+            }))
+            .collect();
+        points.sort_unstable();
+        points.dedup();
+        points
+    }
+
     pub fn uses_ray_environments(&self) -> bool {
         self.inits.iter().any(|init| matches!(init, Init::RayEnvironment(_)))
+    }
+
+    pub fn model_collision_control_points(&self) -> Vec<i32> {
+        self.inits
+            .iter()
+            .filter_map(|init| match init {
+                Init::Model(op) if op.needs_collision() => Some(op.control_point()),
+                _ => None,
+            })
+            .collect()
     }
 
     pub fn trace_requirement(&self) -> Option<bool> {
@@ -705,6 +749,7 @@ impl Plan {
                 end: i(op, "end control point number", 0),
                 max_dist: f(op, "maximum distance", 0.0),
                 bulge: f(op, "bulge", 0.0),
+                bulge_control: i(op, "bulge control 0=random 1=orientation of start pnt 2=orientation of end point", 0),
                 mid: f(op, "mid point position", 0.5),
                 steps: if op.function.eq_ignore_ascii_case("position along path sequential") {
                     Some(f(op, "particles to map from start to end", 100.0))
@@ -713,6 +758,8 @@ impl Plan {
                 },
                 looping: b(op, "restart behavior (0 = bounce, 1 = loop )", true),
             },
+            "position on model random" => Init::Model(model::compile_position(op).unwrap()),
+            "position in cp hierarchy" => Init::Hierarchy(path::Hierarchy::compile(op)),
             "position from parent particles" | "position from parent cache" => {
                 Init::FromParent { inherit: f(op, "Inherited Velocity Scale", 0.0) }
             }
@@ -975,6 +1022,10 @@ impl Plan {
                     self.ops.push(Op::Scalar(remap));
                     return;
                 }
+                if let Some(lock) = model::compile_lock(op) {
+                    self.ops.push(Op::BoneLock(lock));
+                    return;
+                }
                 if let Some(lock) = control::compile_lock(op) {
                     self.ops.push(Op::Lock(lock));
                     return;
@@ -1043,6 +1094,8 @@ pub struct Particle {
     previous_pos: V3,
     previous_dt: f32,
     initial_values: [f32; Field::Other as usize + 1],
+    hitbox: i32,
+    hitbox_relative: V3,
     pub pos: V3,
     pub vel: V3,
     pub age: f32,
@@ -1084,6 +1137,8 @@ pub struct Sim {
     point_traces: Vec<control::PointTraceState>,
     colors: Vec<Option<color::Cached>>,
     path_steps: Vec<(f32, bool)>,
+    path_bulge: V3,
+    previous_models: model::Cache,
 }
 
 impl Sim {
@@ -1105,6 +1160,8 @@ impl Sim {
             point_traces,
             colors,
             path_steps,
+            path_bulge: Rng(seed | 1).range3([-1.0; 3], [1.0; 3]),
+            previous_models: Default::default(),
         }
     }
 
@@ -1132,6 +1189,7 @@ impl Sim {
         self.point_traces.fill(control::PointTraceState::default());
         self.colors.fill(None);
         self.path_steps.fill((0.0, false));
+        self.previous_models.clear();
         self.acc.iter_mut().for_each(|a| *a = 0.0);
         self.fired.iter_mut().for_each(|f| *f = false);
     }
@@ -1172,6 +1230,8 @@ impl Sim {
             previous_pos: origin,
             previous_dt: 0.0,
             initial_values: [0.0; Field::Other as usize + 1],
+            hitbox: 0,
+            hitbox_relative: [0.0; 3],
             pos: origin,
             vel: [0.0; 3],
             age: 0.0,
@@ -1235,7 +1295,7 @@ impl Sim {
                     part.pos = add(points.get(*cp), scale(out, r));
                     part.vel = add(part.vel, scale(out, self.rng.range(*smin, *smax)));
                 }
-                Init::Path { start, end, max_dist, bulge, mid, steps, looping } => {
+                Init::Path { start, end, max_dist, bulge, bulge_control, mid, steps, looping } => {
                     let a = points.get(*start);
                     let z = points.get(*end);
                     let t = if let Some(count) = *steps {
@@ -1257,14 +1317,13 @@ impl Sim {
                     } else {
                         self.rng.next()
                     };
-                    let mut p = lerp3(a, z, t);
-                    if *bulge != 0.0 {
-                        let m = mid.clamp(0.05, 0.95);
-                        let k = if t < m { t / m } else { (1.0 - t) / (1.0 - m) };
-                        let side = self.rng.dir();
-                        p = add(p, scale(side, bulge * length(sub(z, a)) * k.sin() * 0.5));
-                    }
-                    part.pos = add(p, scale(self.rng.dir(), self.rng.range(0.0, *max_dist)));
+                    let middle = path::middle(points, *start, *end, *mid, *bulge, *bulge_control, self.path_bulge);
+                    let p = lerp3(lerp3(a, middle, t), lerp3(middle, z, t), t);
+                    part.pos = add(p, self.rng.range3([-*max_dist; 3], [*max_dist; 3]));
+                }
+                Init::Model(op) => model::initialize(op, &mut part, points, world, &mut self.rng),
+                Init::Hierarchy(op) => {
+                    part.pos = path::hierarchy(op, points, self.time, part.born, self.path_bulge, &mut self.rng);
                 }
                 Init::FromParent { inherit } => {
                     if !parents.is_empty() {
@@ -1392,6 +1451,9 @@ impl Sim {
         if t0 == 0.0 && self.fired.iter().all(|f| !f) && self.born == 0 {
             to_emit += self.plan.initial;
         }
+        let previous_models = std::mem::take(&mut self.previous_models);
+        let frame = model::Frame::new(world, &previous_models);
+        let world = &frame;
         let plan = self.plan.clone();
         let mut generated = std::borrow::Cow::Borrowed(points);
         for (op, state) in plan.point_traces.iter().zip(&mut self.point_traces) {
@@ -1437,6 +1499,7 @@ impl Sim {
         self.particles.retain(|p| !p.dead && p.pos.iter().all(|c| c.is_finite() && c.abs() < 1.0e6));
         self.time = t1;
         self.previous_points = Some(points.clone());
+        self.previous_models = frame.finish();
     }
 }
 
@@ -1518,6 +1581,7 @@ fn operate(
         let before_pos = part.pos;
         let before_vel = part.vel;
         match op {
+            Op::BoneLock(lock) => model::apply_lock(lock, part, points, dt, world),
             Op::Scalar(remap) => {
                 if alpha_written {
                     part.alpha = alpha + part.alpha_add;

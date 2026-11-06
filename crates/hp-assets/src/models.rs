@@ -15,6 +15,7 @@ pub(crate) struct PreparedPart {
     pub color_index: Vec<u32>,
 }
 
+#[derive(Default)]
 pub(crate) struct PreparedModel {
     pub info: Arc<ModelInfo>,
     pub parts: Vec<PreparedPart>,
@@ -24,6 +25,9 @@ pub(crate) struct PreparedModel {
     pub bounds: ([f32; 3], [f32; 3]),
     pub helpers: PreviewHelpers,
     pub lod_switch: Vec<f32>,
+    pub particle_sets: Vec<hp_mdl::HitboxSet>,
+    pub particle_bones: Vec<hp_mdl::SkinMatrix>,
+    pub bind_bones: Vec<hp_mdl::SkinMatrix>,
 }
 
 impl PreparedModel {
@@ -186,6 +190,16 @@ pub(crate) fn model_job(fs: &hp_fs::GameFs, key: &str) -> Result<PreparedModel, 
     };
     let helpers = preview_helpers(&model);
     let lod_switch = model.lod_switch_points.clone();
+    let bind_bones = model
+        .bones
+        .iter()
+        .map(|bone| {
+            let m = bone_to_model(bone);
+            let cols = m.matrix3.to_cols_array_2d();
+            let t = m.translation.to_array();
+            std::array::from_fn(|row| [cols[0][row], cols[1][row], cols[2][row], t[row]])
+        })
+        .collect();
     Ok(PreparedModel {
         info: Arc::new(info),
         parts,
@@ -195,6 +209,9 @@ pub(crate) fn model_job(fs: &hp_fs::GameFs, key: &str) -> Result<PreparedModel, 
         bounds,
         helpers,
         lod_switch,
+        particle_sets: model.hitbox_sets,
+        particle_bones: model.bone_matrices,
+        bind_bones,
     })
 }
 
@@ -385,6 +402,7 @@ mod tests {
             bounds: ([0.0; 3], [0.0; 3]),
             helpers: PreviewHelpers::default(),
             lod_switch: Vec::new(),
+            ..Default::default()
         };
         assert_eq!(pm.skin_count(), 2);
         assert_eq!(pm.part_material(1, 1), "d");
@@ -412,6 +430,7 @@ mod tests {
             bounds: ([0.0; 3], [0.0; 3]),
             helpers: PreviewHelpers::default(),
             lod_switch: Vec::new(),
+            ..Default::default()
         };
         assert_eq!(pm.body_choices(0), vec![0, 0]);
         assert_eq!(pm.body_choices(5), vec![2, 1]);

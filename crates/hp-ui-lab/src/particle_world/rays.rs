@@ -291,7 +291,13 @@ mod tests {
             let blocker = !context["blocker"].is_null();
             for volumes in [cooked(blocker), native(blocker)] {
                 let rays = RayWorld::new(key(&state), volumes);
-                let world = ParticleEnvironment { state: &state, physics: &physics, lighting: None, rays: Some(&rays) };
+                let world = ParticleEnvironment {
+                    state: &state,
+                    physics: &physics,
+                    lighting: None,
+                    rays: Some(&rays),
+                    models: None,
+                };
                 for case in context["cases"].as_array().unwrap() {
                     let name = format!("hp_spritecard_{}", case["name"].as_str().unwrap());
                     let plan = Arc::new(hp_pcf::Plan::new(

@@ -98,6 +98,8 @@ impl EffectStatus {
 
 #[derive(Debug, Default)]
 pub struct ParticleShared {
+    pub(crate) models: Arc<crate::particle_world::models::Models>,
+    pub(crate) model_requirement: HashSet<Id>,
     pub physics: Arc<crate::particle_world::Physics>,
     pub(crate) rays: Arc<crate::particle_world::rays::RayWorld>,
     pub(crate) ray_requirement: bool,
@@ -122,6 +124,22 @@ pub struct ParticleShared {
 }
 
 impl ParticleShared {
+    fn model_control_points(&self, name: &str, collisions: bool) -> Vec<i32> {
+        let mut todo = vec![name.to_ascii_lowercase()];
+        let mut seen = HashSet::new();
+        let mut points = Vec::new();
+        while let Some(name) = todo.pop() {
+            if !seen.insert(name.clone()) || seen.len() > 256 {
+                continue;
+            }
+            let Some(plan) = self.library.get(&name) else { continue };
+            points.extend(if collisions { plan.model_collision_control_points() } else { plan.model_control_points() });
+            todo.extend(plan.children.iter().map(|(child, _)| child.to_ascii_lowercase()));
+        }
+        points.sort_unstable();
+        points.dedup();
+        points
+    }
     fn trace_requirement(&self, name: &str) -> Option<bool> {
         let mut todo = vec![name.to_ascii_lowercase()];
         let mut seen = HashSet::new();
@@ -539,6 +557,7 @@ struct Source {
     label: String,
     origin: DVec3,
     points: Points,
+    model_objects: Arc<HashSet<Id>>,
 }
 
 #[derive(Clone, Debug)]
@@ -600,19 +619,30 @@ fn f3(v: DVec3) -> [f32; 3] {
     [v.x as f32, v.y as f32, v.z as f32]
 }
 
+pub(crate) fn compiled_entity_id(index: usize, entity: &hp_vmf::Entity) -> Id {
+    entity.get("hammerid").and_then(|value| value.trim().parse().ok()).unwrap_or(BSP_ID_BASE + index as Id)
+}
+
 fn sources_of<'a>(entities: impl Iterator<Item = (Id, &'a hp_vmf::Entity)> + Clone) -> Vec<Source> {
+    let model_objects: Arc<HashSet<Id>> = Arc::new(
+        entities
+            .clone()
+            .filter(|(_, entity)| entity.get("model").is_some_and(|path| path.to_ascii_lowercase().ends_with(".mdl")))
+            .map(|(id, _)| id)
+            .collect(),
+    );
     let is_system = |e: &hp_vmf::Entity| e.classname.eq_ignore_ascii_case("info_particle_system");
     let wants_points = entities.clone().any(|(_, e)| {
         is_system(e)
             && e.props.iter().any(|(k, v)| k.to_ascii_lowercase().starts_with("cpoint") && !v.trim().is_empty())
     });
-    let mut named: HashMap<String, (DVec3, [f32; 3])> = HashMap::new();
+    let mut named: HashMap<String, (Id, DVec3, [f32; 3])> = HashMap::new();
     if wants_points {
-        for (_, e) in entities.clone() {
+        for (id, e) in entities.clone() {
             if let (Some(n), Some(o)) = (e.get("targetname"), e.origin()) {
                 let n = n.trim().to_ascii_lowercase();
                 if !n.is_empty() && o.is_finite() {
-                    named.entry(n).or_insert((o, parse3(e.get("angles")).unwrap_or([0.0; 3])));
+                    named.entry(n).or_insert((id, o, parse3(e.get("angles")).unwrap_or([0.0; 3])));
                 }
             }
         }
@@ -626,23 +656,42 @@ fn sources_of<'a>(entities: impl Iterator<Item = (Id, &'a hp_vmf::Entity)> + Clo
         let Some(origin) = e.origin().filter(|o| o.is_finite()) else { continue };
         let angles = parse3(e.get("angles")).unwrap_or([0.0; 3]);
         let mut points = Points::with_angles(f3(origin), angles);
+        points.objects.push(Some(id));
+        for k in 1..hp_pcf::sim::MAX_CONTROL_POINTS {
+            if let Some(parent) = e.get(&format!("cpoint{k}_parent")).and_then(|value| value.trim().parse::<i32>().ok())
+            {
+                points.parents.resize(k + 1, 0);
+                points.parents[k] = parent.clamp(0, 63);
+            }
+        }
         if !named.is_empty() {
             for k in 1..hp_pcf::sim::MAX_CONTROL_POINTS {
                 let Some(target) = e.get(&format!("cpoint{k}")).map(|t| t.trim().to_ascii_lowercase()) else {
                     continue;
                 };
-                let Some((p, angles)) = named.get(&target) else { continue };
+                let Some((object, p, angles)) = named.get(&target) else { continue };
                 if points.pos.len() <= k {
                     points.pos.resize(k + 1, f3(origin));
                 }
                 points.pos[k] = f3(*p);
+                if points.objects.len() <= k {
+                    points.objects.resize(k + 1, None);
+                }
+                points.objects[k] = Some(*object);
                 if points.orientations.len() <= k {
                     points.orientations.resize(k + 1, Points::at([0.0; 3]).axes);
                 }
                 points.orientations[k] = Points::with_angles(f3(*p), *angles).axes;
             }
         }
-        out.push(Source { id, name: name.to_ascii_lowercase(), label: name.to_owned(), origin, points });
+        out.push(Source {
+            id,
+            name: name.to_ascii_lowercase(),
+            label: name.to_owned(),
+            origin,
+            points,
+            model_objects: Arc::clone(&model_objects),
+        });
     }
     out
 }
@@ -675,15 +724,8 @@ impl ParticleLayer {
         self.sources_key = Some(key);
         self.sources = match Self::compiled_world(state) {
             Some(w) => {
-                let list: Vec<(Id, &hp_vmf::Entity)> = w
-                    .particle_entities
-                    .iter()
-                    .enumerate()
-                    .map(|(i, e)| {
-                        let id = e.get("hammerid").and_then(|v| v.trim().parse::<Id>().ok());
-                        (id.unwrap_or(BSP_ID_BASE + i as Id), e)
-                    })
-                    .collect();
+                let list: Vec<(Id, &hp_vmf::Entity)> =
+                    w.particle_entities.iter().enumerate().map(|(i, e)| (compiled_entity_id(i, e), e)).collect();
                 sources_of(list.iter().map(|(id, e)| (*id, *e)))
             }
             None => sources_of(state.doc.scene().entities().iter().map(|(id, node)| (*id, &node.entity))),
@@ -744,6 +786,7 @@ impl ParticleLayer {
         self.lighting = None;
         if let Ok(mut s) = self.handle.lock() {
             s.world_requirement = None;
+            s.model_requirement.clear();
             s.ray_requirement = false;
             s.active = false;
             s.playing.clear();
@@ -763,6 +806,7 @@ impl OverlayLayer for ParticleLayer {
         if !settings.show_particles {
             if let Ok(mut shared) = self.handle.lock() {
                 shared.world_requirement = None;
+                shared.model_requirement.clear();
                 shared.ray_requirement = false;
             }
             if !self.effects.is_empty() || self.handle.lock().is_ok_and(|s| s.active || !s.sprites.is_empty()) {
@@ -788,9 +832,36 @@ impl OverlayLayer for ParticleLayer {
         near.sort_by(|a, b| a.0.total_cmp(&b.0));
         near.truncate(MAX_EFFECTS);
         let Ok(mut shared) = self.handle.lock() else { return };
-        let requirements: HashMap<_, _> =
-            near.iter().map(|(_, source)| (source.id, shared.trace_requirement(&source.name))).collect();
+        let requirements: HashMap<_, _> = near
+            .iter()
+            .map(|(_, source)| {
+                let inside = shared.model_control_points(&source.name, true).into_iter().any(|cp| {
+                    source
+                        .points
+                        .objects
+                        .get(cp as usize)
+                        .copied()
+                        .flatten()
+                        .is_some_and(|id| source.model_objects.contains(&id))
+                });
+                (source.id, if inside { Some(true) } else { shared.trace_requirement(&source.name) })
+            })
+            .collect();
         shared.world_requirement = requirements.values().copied().flatten().max();
+        let model_requirements: HashMap<_, Vec<_>> = near
+            .iter()
+            .map(|(_, source)| {
+                let objects = shared
+                    .model_control_points(&source.name, false)
+                    .into_iter()
+                    .filter_map(|cp| source.points.objects.get(cp as usize).copied().flatten())
+                    .filter(|id| source.model_objects.contains(id))
+                    .collect();
+                (source.id, objects)
+            })
+            .collect();
+        shared.model_requirement = model_requirements.values().flatten().copied().collect();
+        let models = Arc::clone(&shared.models);
         let ray_requirements: HashSet<_> = near
             .iter()
             .filter(|(_, source)| shared.uses_ray_environments(&source.name))
@@ -816,6 +887,7 @@ impl OverlayLayer for ParticleLayer {
             physics: &physics,
             lighting: Some(&lighting),
             rays: Some(&rays),
+            models: Some(&models),
         };
         let keep: HashSet<Id> = near.iter().map(|(_, s)| s.id).collect();
         self.effects.retain(|id, _| keep.contains(id));
@@ -823,6 +895,10 @@ impl OverlayLayer for ParticleLayer {
         let mut budget = MAX_PARTICLES;
         let mut starts = 0;
         for (_, s) in &near {
+            if model_requirements.get(&s.id).is_some_and(|objects| !objects.is_empty() && !models.ready(state, objects))
+            {
+                continue;
+            }
             if ray_requirements.contains(&s.id) && !rays.ready(state) {
                 continue;
             }
@@ -1159,6 +1235,7 @@ mod tests {
         sys.set("origin", "0 0 0");
         sys.set("angles", "0 90 0");
         sys.set("cpoint1", "Target");
+        sys.set("cpoint1_parent", "2");
         sys.set("cpoint3", "nobody");
         let mut target = hp_vmf::Entity { id: 6, classname: "info_target".into(), ..Default::default() };
         target.set("targetname", "target");
@@ -1171,6 +1248,8 @@ mod tests {
         let s = &sources[0];
         assert_eq!(s.name, "beam_fx");
         assert_eq!(s.points.get(1), [100.0, 0.0, 50.0]);
+        assert_eq!(s.points.parents[1], 2);
+        assert_eq!(s.points.objects, vec![Some(5), Some(6)]);
         assert_eq!(s.points.get(3), [0.0, 0.0, 0.0]);
         assert!((s.points.axes[0][1] - 1.0).abs() < 1e-5);
     }
@@ -1438,6 +1517,7 @@ mod tests {
                 label: name.into(),
                 origin: DVec3::ZERO,
                 points: Points::at([0.0; 3]),
+                model_objects: Default::default(),
             };
             let mut playing = ParticleLayer::start(&mut shared, &s).unwrap_or_else(|| panic!("{name}"));
             for _ in 0..20 {

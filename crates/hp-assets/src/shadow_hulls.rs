@@ -182,6 +182,7 @@ mod tests {
             bounds: ([0.0; 3], [10.0; 3]),
             helpers: crate::models::PreviewHelpers::default(),
             lod_switch: Vec::new(),
+            ..Default::default()
         };
         let tris = shadow_hull(None, "models/a.mdl", Some(&model)).expect("hull");
         assert_eq!(tris.len(), 4, "a tetrahedron, the inner point and the flat part dropped");

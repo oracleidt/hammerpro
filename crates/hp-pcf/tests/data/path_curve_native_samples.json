@@ -1,0 +1,93 @@
+[
+  {
+    "name": "capearly",
+    "minimum": [
+      0,
+      0,
+      0
+    ],
+    "maximum": [
+      100,
+      50,
+      0
+    ]
+  },
+  {
+    "name": "caplate",
+    "minimum": [
+      0,
+      0,
+      0
+    ],
+    "maximum": [
+      100,
+      50,
+      0
+    ]
+  },
+  {
+    "name": "capmiddle",
+    "minimum": [
+      0,
+      0,
+      0
+    ],
+    "maximum": [
+      100,
+      50,
+      0
+    ]
+  },
+  {
+    "name": "capnegative",
+    "minimum": [
+      0,
+      -50,
+      0
+    ],
+    "maximum": [
+      100,
+      0,
+      0
+    ]
+  },
+  {
+    "name": "capnobulge",
+    "minimum": [
+      0,
+      0,
+      0
+    ],
+    "maximum": [
+      100,
+      0,
+      0
+    ]
+  },
+  {
+    "name": "capoutside",
+    "minimum": [
+      0,
+      0,
+      0
+    ],
+    "maximum": [
+      125,
+      50,
+      0
+    ]
+  },
+  {
+    "name": "capparallel",
+    "minimum": [
+      0,
+      0,
+      0
+    ],
+    "maximum": [
+      100,
+      0,
+      0
+    ]
+  }
+]

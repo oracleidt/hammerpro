@@ -1,0 +1,67 @@
+[
+  {
+    "name": "capbias",
+    "minimum": [
+      0,
+      0,
+      0
+    ],
+    "maximum": [
+      64,
+      0,
+      16
+    ]
+  },
+  {
+    "name": "capfixed",
+    "minimum": [
+      0,
+      0,
+      0
+    ],
+    "maximum": [
+      99.97560119628906,
+      0,
+      0
+    ]
+  },
+  {
+    "name": "caphighest",
+    "minimum": [
+      0,
+      0,
+      0
+    ],
+    "maximum": [
+      299.951171875,
+      0,
+      0
+    ]
+  },
+  {
+    "name": "capparent",
+    "minimum": [
+      0,
+      0,
+      0
+    ],
+    "maximum": [
+      300,
+      0,
+      0
+    ]
+  },
+  {
+    "name": "capsame",
+    "minimum": [
+      0,
+      0,
+      0
+    ],
+    "maximum": [
+      100,
+      0,
+      0
+    ]
+  }
+]

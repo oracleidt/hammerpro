@@ -125,6 +125,12 @@ pub struct Attachment {
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
+pub struct HitboxSet {
+    pub name: String,
+    pub hitboxes: Vec<Hitbox>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Hitbox {
     pub bone: i32,
     pub group: i32,
@@ -203,6 +209,7 @@ pub(crate) struct Studio {
     pub include_models: Vec<String>,
     pub sequences: Vec<Sequence>,
     pub hitboxes: Vec<Hitbox>,
+    pub hitbox_sets: Vec<HitboxSet>,
     pub attachments: Vec<Attachment>,
 }
 
@@ -313,7 +320,8 @@ pub(crate) fn parse(data: &[u8]) -> Result<Studio> {
     let body_parts = parse_body_parts(&r)?;
     let include_models = parse_include_models(&r)?;
     let sequences = parse_sequences(&r).unwrap_or_default();
-    let hitboxes = parse_hitboxes(&r).unwrap_or_default();
+    let hitbox_sets = parse_hitbox_sets(&r).unwrap_or_default();
+    let hitboxes = hitbox_sets.first().map(|set| set.hitboxes.clone()).unwrap_or_default();
     let attachments = parse_attachments(&r).unwrap_or_default();
 
     Ok(Studio {
@@ -326,6 +334,7 @@ pub(crate) fn parse(data: &[u8]) -> Result<Studio> {
         include_models,
         sequences,
         hitboxes,
+        hitbox_sets,
         attachments,
     })
 }
@@ -351,28 +360,32 @@ fn parse_attachments(r: &Reader<'_>) -> Result<Vec<Attachment>> {
 const HITBOX_SET_SIZE: usize = 12;
 const HITBOX_SIZE: usize = 68;
 
-fn parse_hitboxes(r: &Reader<'_>) -> Result<Vec<Hitbox>> {
-    let (set, sets) =
+fn parse_hitbox_sets(r: &Reader<'_>) -> Result<Vec<HitboxSet>> {
+    let (first, sets) =
         r.rel_table(0, r.i32(H_NUM_HITBOX_SETS + 4)?, r.i32(H_NUM_HITBOX_SETS)?, HITBOX_SET_SIZE, "hitbox set table")?;
-    if sets == 0 {
-        return Ok(Vec::new());
-    }
-    let (start, n) = r.rel_table(set, r.i32(set + 8)?, r.i32(set + 4)?, HITBOX_SIZE, "hitbox table")?;
-    let mut out = Vec::with_capacity(n);
-    for i in 0..n {
-        let b = start + i * HITBOX_SIZE;
-        let name_rel = r.i32(b + 32)?;
-        out.push(Hitbox {
-            bone: r.i32(b)?,
-            group: r.i32(b + 4)?,
-            min: r.floats(b + 8)?,
-            max: r.floats(b + 20)?,
-            name: if name_rel == 0 {
-                String::new()
-            } else {
-                rel_str(r, b, name_rel, "hitbox name").unwrap_or_default()
-            },
-        });
+    let mut out = Vec::with_capacity(sets);
+    for index in 0..sets {
+        let set = first + index * HITBOX_SET_SIZE;
+        let name_rel = r.i32(set)?;
+        let name = if name_rel == 0 { String::new() } else { rel_str(r, set, name_rel, "hitbox set name")? };
+        let (start, n) = r.rel_table(set, r.i32(set + 8)?, r.i32(set + 4)?, HITBOX_SIZE, "hitbox table")?;
+        let mut hitboxes = Vec::with_capacity(n);
+        for i in 0..n {
+            let b = start + i * HITBOX_SIZE;
+            let name_rel = r.i32(b + 32)?;
+            hitboxes.push(Hitbox {
+                bone: r.i32(b)?,
+                group: r.i32(b + 4)?,
+                min: r.floats(b + 8)?,
+                max: r.floats(b + 20)?,
+                name: if name_rel == 0 {
+                    String::new()
+                } else {
+                    rel_str(r, b, name_rel, "hitbox name").unwrap_or_default()
+                },
+            });
+        }
+        out.push(HitboxSet { name, hitboxes });
     }
     Ok(out)
 }

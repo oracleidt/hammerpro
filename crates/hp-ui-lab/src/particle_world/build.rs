@@ -46,6 +46,7 @@ impl Physics {
 }
 
 pub fn prepare(state: &mut AppState, handle: &ParticleHandle, ctx: &egui::Context) {
+    super::models::prepare(state, handle, ctx);
     super::rays::prepare(state, handle, ctx);
     let Ok(mut shared) = handle.lock() else { return };
     let Some(props) = shared.world_requirement.filter(|_| state.settings.lab.show_particles) else {
@@ -98,7 +99,7 @@ pub fn prepare(state: &mut AppState, handle: &ParticleHandle, ctx: &egui::Contex
                 .unwrap_or(1.0);
             let transform =
                 DMat4::from_scale_rotation_translation(DVec3::splat(scale), hp_geom::angles_to_quat(angles), origin);
-            bodies.push(Body { path, transform, collision: None });
+            bodies.push(Body { id: entity.id, path, transform, collision: None });
         }
     }
     let previous = Arc::clone(&shared.physics);
