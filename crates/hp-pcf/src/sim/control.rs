@@ -1,6 +1,68 @@
 use super::*;
 
 #[derive(Clone, Debug, PartialEq)]
+pub(super) struct PointTrace {
+    from: i32,
+    to: usize,
+    direction: V3,
+    length: f32,
+    offset: f32,
+    interval: f32,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(super) struct PointTraceState {
+    value: Option<V3>,
+    next: f32,
+}
+
+pub(super) fn compile_point_trace(op: &Operator) -> Option<PointTrace> {
+    if !op.function.eq_ignore_ascii_case("Set Control Point to Impact Point") {
+        return None;
+    }
+    Some(PointTrace {
+        from: i(op, "Control Point to Trace From", 0),
+        to: i(op, "Control Point to Set", 1).clamp(0, MAX_CONTROL_POINTS as i32 - 1) as usize,
+        direction: v(op, "Trace Direction Override", [0.0; 3]),
+        length: f(op, "Max Trace Length", 1024.0).max(0.0),
+        offset: f(op, "Offset End Point Amount", 0.0),
+        interval: f(op, "Trace Update Rate", 0.1).max(0.0),
+    })
+}
+
+fn impact_point(op: &PointTrace, points: &Points, world: &dyn Environment) -> V3 {
+    let start = points.get(op.from);
+    let direction = if dot(op.direction, op.direction) > 0.0 { op.direction } else { points.orientation(op.from)[0] };
+    let end = add(start, scale(direction, op.length));
+    let point = match world.trace(start, end, 0.0, false) {
+        Some(hit) if hit.fraction.is_finite() => lerp3(start, end, hit.fraction.clamp(0.0, 1.0)),
+        _ => end,
+    };
+    sub(point, scale(direction, op.offset))
+}
+
+pub(super) fn update_point_trace(
+    op: &PointTrace,
+    state: &mut PointTraceState,
+    points: &mut Points,
+    world: &dyn Environment,
+    time: f32,
+) {
+    if state.value.is_none() {
+        state.value = Some(impact_point(op, points, world));
+        state.next = op.interval;
+    }
+    if time >= state.next {
+        state.value = Some(impact_point(op, points, world));
+        state.next = time + op.interval;
+    }
+    if points.pos.len() <= op.to {
+        points.pos.resize(op.to + 1, [0.0; 3]);
+    }
+    points.pos[op.to] = state.value.unwrap_or([0.0; 3]);
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub(super) struct ChildPoints {
     count: usize,
     first: usize,

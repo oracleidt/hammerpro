@@ -2,6 +2,39 @@ use super::*;
 use crate::environment::Environment;
 
 #[derive(Clone, Debug, PartialEq)]
+pub(super) struct Impact {
+    offset: f32,
+    distance: f32,
+    bias: V3,
+}
+
+pub(super) fn compile_impact(op: &Operator) -> Option<Impact> {
+    if !op.function.eq_ignore_ascii_case("Lifetime from Time to Impact") || !b(op, "collide with water", true) {
+        return None;
+    }
+    Some(Impact {
+        offset: f(op, "trace offset", 0.0),
+        distance: f(op, "maximum trace length", 1024.0).max(0.0),
+        bias: v(op, "bias distance", [1.0; 3]),
+    })
+}
+
+pub(super) fn impact_lifetime(op: &Impact, part: &Particle, world: &dyn Environment) -> f32 {
+    let speed = length(part.vel);
+    if !speed.is_finite() || speed < 1e-6 {
+        return 0.0;
+    }
+    let direction = scale(part.vel, 1.0 / speed);
+    let start = add(part.pos, scale(direction, op.offset));
+    let end = add(start, scale(direction, op.distance));
+    let distance = match world.trace(start, end, 0.0, false) {
+        Some(hit) if hit.fraction.is_finite() => sub(lerp3(start, end, hit.fraction.clamp(0.0, 1.0)), part.pos),
+        _ => scale(direction, op.distance),
+    };
+    length(mul(distance, op.bias)) / speed
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub(super) enum SpatialOp {
     Collision { bounce: f32, slide: f32, radius_scale: f32, brush_only: bool },
     Plane { cp: i32, point: V3, normal: V3, global_point: bool, global_normal: bool },
@@ -47,42 +80,33 @@ pub(super) fn compile(op: &Operator) -> Option<SpatialOp> {
 pub(super) fn apply(op: &SpatialOp, part: &mut Particle, old: V3, points: &Points, dt: f32, world: &dyn Environment) {
     match op {
         SpatialOp::Collision { bounce, slide, radius_scale, brush_only } => {
-            let mut start = old;
-            let mut end = part.pos;
-            let mut remaining = dt;
-            for _ in 0..8 {
-                let Some(hit) = world.trace(start, end, part.radius * radius_scale, *brush_only) else {
-                    part.pos = end;
-                    return;
-                };
-                let len = length(hit.normal);
-                if !hit.fraction.is_finite() || !len.is_finite() || len < 1e-6 {
-                    part.pos = start;
-                    part.vel = [0.0; 3];
-                    return;
-                }
-                let normal = scale(hit.normal, 1.0 / len);
-                let fraction = hit.fraction.clamp(0.0, 1.0);
-                part.pos = lerp3(start, end, fraction);
-                let speed = dot(part.vel, normal);
-                if speed < 0.0 {
-                    let tangent = sub(part.vel, scale(normal, speed));
-                    let movement = sub(end, start);
-                    let reflected = sub(movement, scale(normal, 2.0 * dot(movement, normal)));
-                    let magnitude_squared = dot(movement, movement);
-                    let impulse = if dt > 0.0 && magnitude_squared > 1e-12 {
-                        wide::f32x4::splat(magnitude_squared).recip_sqrt().to_array()[0] * bounce / dt
-                    } else {
-                        0.0
-                    };
-                    part.vel = add(scale(tangent, *slide), scale(reflected, impulse));
-                }
-                remaining *= 1.0 - fraction;
-                if hit.start_solid || remaining < 1e-6 || length(part.vel) < 1e-6 {
-                    return;
-                }
-                start = part.pos;
-                end = add(start, scale(part.vel, remaining));
+            let movement = sub(part.pos, old);
+            let size_squared = dot(movement, movement);
+            if dt <= 0.0 || size_squared < 1e-12 {
+                return;
+            }
+            let direction = scale(movement, wide::f32x4::splat(size_squared).recip_sqrt().to_array()[0]);
+            let endpoint = add(part.pos, scale(direction, part.radius * radius_scale));
+            let Some(hit) = world.trace(old, endpoint, 0.0, *brush_only) else {
+                return;
+            };
+            let len = length(hit.normal);
+            if !hit.fraction.is_finite() || !len.is_finite() || len < 1e-6 {
+                return;
+            }
+            let normal = scale(hit.normal, 1.0 / len);
+            let fraction = hit.fraction.clamp(0.0, 1.0);
+            part.pos = add(old, scale(movement, fraction));
+            if *bounce != 0.0 || *slide != 0.0 {
+                let tangent = sub(movement, scale(normal, dot(movement, normal)));
+                let reflected = sub(direction, scale(normal, 2.0 * dot(direction, normal)));
+                let response = add(scale(tangent, *slide), scale(reflected, *bounce));
+                part.pos = add(part.pos, scale(response, 1.0 - fraction));
+                part.previous_pos = sub(part.pos, response);
+                part.vel = scale(response, 1.0 / dt);
+            } else {
+                part.previous_pos = old;
+                part.vel = scale(sub(part.pos, old), 1.0 / dt);
             }
         }
         SpatialOp::Plane { cp, point, normal, global_point, global_normal } => {

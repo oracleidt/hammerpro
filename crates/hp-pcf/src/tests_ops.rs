@@ -318,6 +318,141 @@ fn child_control_points_match_native_initial_and_following_particles() {
 }
 
 #[test]
+fn traced_control_points_propagate_through_child_generations() {
+    let definitions = crate::parse_file(include_bytes!("../tests/data/cpimpact_cases.pcf")).unwrap();
+    let mut root = definitions.into_iter().find(|def| def.name == "hp_cpimpact_up").unwrap();
+    let mut child = root.clone();
+    child.name = "child".into();
+    child.operators.retain(|op| op.function != "Set Control Point to Impact Point");
+    let mut grandchild = child.clone();
+    grandchild.name = "grandchild".into();
+    child.children.push(Child { system: grandchild.name.clone(), delay: 0.0 });
+    root.children.push(Child { system: child.name.clone(), delay: 0.0 });
+    let plans: std::collections::HashMap<_, _> =
+        [root, child, grandchild].into_iter().map(|def| (def.name.clone(), Arc::new(Plan::new(&def)))).collect();
+    let mut effect = Effect::new("hp_cpimpact_up", &|name| plans.get(name).cloned(), 17).unwrap();
+    let mut points = Points::at([0.0, 0.0, 64.0]);
+    points.pos.push([0.0, 0.0, 64.0]);
+    for frame in 0..12 {
+        if frame == 6 {
+            points.pos[1][2] = 96.0;
+        }
+        effect.step_at(1.0 / 30.0, &points, 10);
+        let particles: Vec<_> = effect.particles().collect();
+        assert_eq!(particles.len(), 3);
+        let expected = if frame < 6 { 192.0 } else { 224.0 };
+        assert!((particles[0].1.pos[2] - expected).abs() < 0.001);
+        for (_, particle) in &particles[1..] {
+            assert_eq!(particle.pos, particles[0].1.pos);
+        }
+    }
+}
+
+#[test]
+fn particle_radii_extend_rays_and_preserve_native_contact_damping() {
+    struct NativeFloor;
+    impl crate::environment::Environment for NativeFloor {
+        fn trace(&self, start: [f32; 3], end: [f32; 3], radius: f32, _: bool) -> Option<crate::environment::Trace> {
+            assert_eq!(radius, 0.0);
+            (end[2] < 0.0).then(|| crate::environment::Trace {
+                fraction: ((start[2] - 0.03125) / (start[2] - end[2])).clamp(0.0, 1.0),
+                normal: [0.0, 0.0, 1.0],
+                start_solid: false,
+            })
+        }
+    }
+    let definitions = crate::parse_file(include_bytes!("../tests/data/radius_cases.pcf")).unwrap();
+    let data: serde_json::Value =
+        serde_json::from_str(include_str!("../tests/data/radius_native_samples.json")).unwrap();
+    for def in definitions {
+        let name = def.name.strip_prefix("hp_radius_").unwrap();
+        let mut sim = Sim::new(Arc::new(Plan::new(&def)), 17);
+        for (index, sample) in data["cases"][name].as_array().unwrap().iter().enumerate().skip(1) {
+            sim.step_in(sample["dt"].as_f64().unwrap() as f32, &Points::at([0.0, 0.0, 64.0]), &[], 1, &NativeFloor);
+            let expected = sample["lo"][2].as_f64().unwrap() as f32 + 64.0;
+            let actual = sim.particles[0].pos[2];
+            assert!((actual - expected).abs() < 0.00001, "{name}, frame {index}: actual {actual}, native {expected}");
+        }
+    }
+}
+
+#[test]
+fn impact_lifetimes_match_native_hits_misses_biases_and_stationary_particles() {
+    struct NativeFloor;
+    impl crate::environment::Environment for NativeFloor {
+        fn trace(&self, start: [f32; 3], end: [f32; 3], radius: f32, _: bool) -> Option<crate::environment::Trace> {
+            assert_eq!(radius, 0.0);
+            (start[2] >= 0.0 && end[2] < 0.0).then(|| crate::environment::Trace {
+                fraction: ((start[2] - 0.03125) / (start[2] - end[2])).clamp(0.0, 1.0),
+                normal: [0.0, 0.0, 1.0],
+                start_solid: false,
+            })
+        }
+    }
+    let definitions = crate::parse_file(include_bytes!("../tests/data/impact_cases.pcf")).unwrap();
+    let data: serde_json::Value =
+        serde_json::from_str(include_str!("../tests/data/impact_native_samples.json")).unwrap();
+    let frames = data["cases"]["upward"].as_array().unwrap();
+    for def in definitions {
+        let name = def.name.strip_prefix("hp_impact_").unwrap();
+        let plan = Arc::new(Plan::new(&def));
+        assert!(plan.unsupported.is_empty(), "{name}: {:?}", plan.unsupported);
+        let mut sim = Sim::new(plan, 17);
+        for (frame, sample) in frames.iter().enumerate().skip(1) {
+            sim.step_in(sample["dt"].as_f64().unwrap() as f32, &Points::at([0.0, 0.0, 64.0]), &[], 1, &NativeFloor);
+            let alive = frame < data["cases"][name].as_array().unwrap().len();
+            assert_eq!(!sim.particles.is_empty(), alive, "{name}, frame {frame}, time {}", sim.time());
+        }
+    }
+}
+
+#[test]
+fn traced_control_points_match_native_offsets_and_update_intervals() {
+    struct NativeWorld;
+    impl crate::environment::Environment for NativeWorld {
+        fn trace(&self, start: [f32; 3], end: [f32; 3], radius: f32, _: bool) -> Option<crate::environment::Trace> {
+            assert_eq!(radius, 0.0);
+            let mut best: Option<crate::environment::Trace> = None;
+            for (axis, plane, normal) in [(2, 0.0, [0.0, 0.0, 1.0]), (0, 1024.0, [-1.0, 0.0, 0.0])] {
+                let crossing = if axis == 2 {
+                    start[axis] >= plane && end[axis] < plane
+                } else {
+                    start[axis] <= plane && end[axis] > plane
+                };
+                if !crossing {
+                    continue;
+                }
+                let approach = (start[axis] - end[axis]).abs();
+                let fraction = ((plane - start[axis]) / (end[axis] - start[axis]) - 0.03125 / approach).clamp(0.0, 1.0);
+                if best.is_none_or(|old| fraction < old.fraction) {
+                    best = Some(crate::environment::Trace { fraction, normal, start_solid: false });
+                }
+            }
+            best
+        }
+    }
+    let definitions = crate::parse_file(include_bytes!("../tests/data/cpimpact_cases.pcf")).unwrap();
+    let data: serde_json::Value =
+        serde_json::from_str(include_str!("../tests/data/cpimpact_native_samples.json")).unwrap();
+    for def in definitions {
+        let name = def.name.strip_prefix("hp_cpimpact_").unwrap();
+        let plan = Arc::new(Plan::new(&def));
+        assert!(plan.unsupported.is_empty());
+        let mut sim = Sim::new(plan, 17);
+        for (frame, sample) in data["cases"][name].as_array().unwrap().iter().enumerate().skip(1) {
+            let mut points = Points::at([0.0, 0.0, 64.0]);
+            points.pos.push([0.0, 0.0, 64.0 + (frame - 1) as f32 * 2.0]);
+            sim.step_in(sample["dt"].as_f64().unwrap() as f32, &points, &[], 1, &NativeWorld);
+            let expected =
+                [sample["hi"][0].as_f64().unwrap() as f32, 0.0, sample["lo"][2].as_f64().unwrap() as f32 + 64.0];
+            let actual = sim.particles[0].pos;
+            let error = actual.iter().zip(expected).map(|(a, b)| (a - b).powi(2)).sum::<f32>().sqrt();
+            assert!(error < 0.001, "{name}, frame {frame}: actual {actual:?}, native {expected:?}");
+        }
+    }
+}
+
+#[test]
 fn local_speeds_turn_with_the_angles() {
     let def = system(
         "s",
@@ -668,7 +803,9 @@ fn real_sprite_sheets() {
         return;
     }
     let loose = std::path::Path::new("D:/SteamLibrary/steamapps/common/GarrysMod/garrysmod/materials/particle");
-    let Ok(entries) = std::fs::read_dir(loose) else { return };
+    let Ok(entries) = std::fs::read_dir(loose) else {
+        return;
+    };
     let mut found = 0;
     for e in entries.flatten() {
         let p = e.path();

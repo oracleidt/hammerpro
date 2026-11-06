@@ -215,6 +215,7 @@ impl Field {
 
 #[derive(Clone, Debug, PartialEq)]
 enum Init {
+    Impact(spatial::Impact),
     Scalar(scalar::Remap),
     InheritVelocity {
         cp: i32,
@@ -486,6 +487,7 @@ pub struct Plan {
     inits: Vec<Init>,
     ops: Vec<Op>,
     child_points: Vec<control::ChildPoints>,
+    point_traces: Vec<control::PointTrace>,
     decays: bool,
     max: usize,
     initial: usize,
@@ -538,6 +540,7 @@ impl Plan {
             inits: Vec::new(),
             ops: Vec::new(),
             child_points: Vec::new(),
+            point_traces: Vec::new(),
             decays: false,
             max: (def.max_particles as usize).min(MAX_PREVIEW_PARTICLES),
             initial: (def.initial_particles as usize).min(MAX_PREVIEW_PARTICLES),
@@ -750,6 +753,10 @@ impl Plan {
                 within: b(op, "only active within specified input range", false),
             },
             _ => {
+                if let Some(impact) = spatial::compile_impact(op) {
+                    self.inits.push(Init::Impact(impact));
+                    return;
+                }
                 if let Some(remap) = scalar::compile(op) {
                     self.inits.push(Init::Scalar(remap));
                     return;
@@ -897,6 +904,10 @@ impl Plan {
                 factor: f(op, "dampen scale", 1.0).clamp(0.0, 1.0),
             },
             _ => {
+                if let Some(trace) = control::compile_point_trace(op) {
+                    self.point_traces.push(trace);
+                    return;
+                }
                 if let Some(child) = control::compile_child_points(op) {
                     self.child_points.push(child);
                     return;
@@ -1005,11 +1016,13 @@ pub struct Sim {
     born: u32,
     frames: Vec<u32>,
     previous_points: Option<Points>,
+    point_traces: Vec<control::PointTraceState>,
 }
 
 impl Sim {
     pub fn new(plan: Arc<Plan>, seed: u32) -> Sim {
         let n = plan.emitters.len();
+        let point_traces = vec![control::PointTraceState::default(); plan.point_traces.len()];
         Sim {
             plan,
             particles: Vec::new(),
@@ -1020,6 +1033,7 @@ impl Sim {
             born: 0,
             frames: Vec::new(),
             previous_points: None,
+            point_traces,
         }
     }
 
@@ -1040,6 +1054,7 @@ impl Sim {
         self.time = 0.0;
         self.born = 0;
         self.previous_points = None;
+        self.point_traces.fill(control::PointTraceState::default());
         self.acc.iter_mut().for_each(|a| *a = 0.0);
         self.fired.iter_mut().for_each(|f| *f = false);
     }
@@ -1049,7 +1064,9 @@ impl Sim {
     }
 
     fn sphere(&mut self, part: &mut Particle, points: &Points, init: &Init) {
-        let Init::Sphere { cp, dmin, dmax, bias, abs, smin, smax, sexp, lmin, lmax, spread } = init else { return };
+        let Init::Sphere { cp, dmin, dmax, bias, abs, smin, smax, sexp, lmin, lmax, spread } = init else {
+            return;
+        };
         let center = if *spread && points.highest() > 0 {
             points.get((self.rng.bits() as usize % (points.highest() + 1)) as i32)
         } else {
@@ -1106,6 +1123,7 @@ impl Sim {
         let mut pre_age = 0.0f32;
         for init in &plan.inits {
             match init {
+                Init::Impact(impact) => part.life = spatial::impact_lifetime(impact, &part, world),
                 Init::Scalar(remap) => {
                     if let Some(value) = scalar::evaluate(remap, &part, points, world, self.time, false) {
                         set_field(&mut part, remap.field, value, false);
@@ -1270,6 +1288,11 @@ impl Sim {
             to_emit += self.plan.initial;
         }
         let plan = self.plan.clone();
+        let mut generated = std::borrow::Cow::Borrowed(points);
+        for (op, state) in plan.point_traces.iter().zip(&mut self.point_traces) {
+            control::update_point_trace(op, state, generated.to_mut(), world, t1);
+        }
+        let points = &*generated;
         for (i, e) in plan.emitters.iter().enumerate() {
             let window = |start: f32, duration: f32| {
                 let end = if duration > 0.0 { start + duration } else { f32::INFINITY };
@@ -1304,7 +1327,7 @@ impl Sim {
             operate(&plan, part, points, self.previous_points.as_ref().unwrap_or(points), dt, world, &mut self.rng);
         }
         if plan.decays {
-            self.particles.retain(|p| p.life <= 0.0 || p.age < p.life);
+            self.particles.retain(|p| p.age < p.life);
         }
         self.particles.retain(|p| !p.dead && p.pos.iter().all(|c| c.is_finite() && c.abs() < 1.0e6));
         self.time = t1;
@@ -1477,7 +1500,9 @@ fn operate(
                 }
             }
             Op::OscScalar { field, rate, freq, proportional, t0, t1, se_prop, mult, phase } => {
-                let Some(time) = osc_time(part, life, *proportional, *t0, *t1, *se_prop) else { continue };
+                let Some(time) = osc_time(part, life, *proportional, *t0, *t1, *se_prop) else {
+                    continue;
+                };
                 let r = lerp(rate[0], rate[1], hash01(part.seed, key));
                 let fr = lerp(freq[0], freq[1], hash01(part.seed, key + 1));
                 let s = ((time * fr * mult + phase) * std::f32::consts::TAU).sin() * r * dt;
@@ -1490,7 +1515,9 @@ fn operate(
                 }
             }
             Op::OscVector { color: on_color, rate, freq, proportional, t0, t1, se_prop, mult, phase } => {
-                let Some(time) = osc_time(part, life, *proportional, *t0, *t1, *se_prop) else { continue };
+                let Some(time) = osc_time(part, life, *proportional, *t0, *t1, *se_prop) else {
+                    continue;
+                };
                 let mut d = [0.0; 3];
                 for c in 0..3 {
                     let r = lerp(rate[0][c], rate[1][c], hash01(part.seed, key + c as u32));
@@ -1584,7 +1611,7 @@ fn operate(
             }
             _ => false,
         };
-        if !matches!(op, Op::Movement { .. }) {
+        if !matches!(op, Op::Movement { .. } | Op::Spatial(spatial::SpatialOp::Collision { .. })) {
             if part.vel != before_vel {
                 part.previous_pos = sub(part.pos, scale(part.vel, part.previous_dt));
             } else if part.pos != before_pos {
@@ -1674,6 +1701,9 @@ impl Effect {
             if let Some(Some(p)) = self.parents.get(i)
                 && let Some((_, parent)) = self.sims.get(*p)
             {
+                if let Some(points) = &parent.previous_points {
+                    child_points = std::borrow::Cow::Owned(points.clone());
+                }
                 self.scratch.extend(parent.particles.iter().map(|q| (q.pos, q.vel)));
                 for spec in &parent.plan.child_points {
                     control::copy_child_points(spec, &parent.particles, child_points.to_mut());
