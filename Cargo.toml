@@ -25,6 +25,7 @@ hp-fs = { path = "crates/hp-fs" }
 hp-compile = { path = "crates/hp-compile" }
 hp-render = { path = "crates/hp-render" }
 hp-editor = { path = "crates/hp-editor" }
+hp-physics = { path = "crates/hp-physics" }
 hp-bsp = { path = "crates/hp-bsp" }
 hp-meshio = { path = "crates/hp-meshio" }
 hp-bspc = { path = "crates/hp-bspc" }

@@ -1,0 +1,12 @@
+[package]
+name = "hp-physics"
+description = "Rigid-body simulation for the Hammer Pro physics tool."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+rapier = { package = "rapier3d-f64", version = "0.36.1" }
+glam.workspace = true
+thiserror.workspace = true
