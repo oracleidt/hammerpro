@@ -57,9 +57,9 @@ struct Controller {
     speed: f32,
     target: f32,
     gusting: bool,
-    switch: f32,
-    time: f32,
-    variation_time: f32,
+    switch: f64,
+    time: f64,
+    variation_time: f64,
     angle_variation: f32,
     speed_variation: f32,
     velocity: DVec3,
@@ -73,7 +73,6 @@ fn angle_mod(degrees: f32) -> f32 {
 impl Controller {
     fn new(config: Config, time: f64) -> Self {
         let yaw = config.yaw as i32 as f32;
-        let time = time as f32;
         let mut value = Self {
             config,
             random: UniformRandomStream::new(0),
@@ -90,7 +89,7 @@ impl Controller {
             velocity: DVec3::ZERO,
             visible: true,
         };
-        value.advance(f64::from(time));
+        value.advance(time);
         value
     }
 
@@ -101,32 +100,32 @@ impl Controller {
     }
 
     fn advance(&mut self, time: f64) {
-        let time = time as f32;
         if !time.is_finite() || time < self.time {
             return;
         }
         while time >= self.variation_time {
             self.angle_variation = self.variation.float(-10.0, 10.0);
             self.speed_variation = 1.0 + self.variation.float(-0.2, 0.2);
-            let next = self.variation_time + 0.1;
+            let next = self.variation_time + f64::from(0.1f32);
             if next <= self.variation_time {
                 break;
             }
             self.variation_time = next;
         }
         while time > self.switch {
-            self.approach(self.switch - self.time);
+            self.approach((self.switch - self.time) as f32);
             self.time = self.switch;
             if self.gusting {
                 self.target = self.random.int(self.config.normal[0] as i32, self.config.normal[1] as i32) as f32;
                 self.gusting = false;
-                self.switch += self.config.delay[0] as f32 + self.random.float(0.0, self.config.delay[1] as f32);
+                self.switch +=
+                    f64::from(self.config.delay[0] as f32 + self.random.float(0.0, self.config.delay[1] as f32));
             } else {
                 self.target = self.random.int(self.config.gust[0] as i32, self.config.gust[1] as i32) as f32;
                 let turn = self.config.turn as i32;
-                self.yaw = angle_mod(self.yaw + self.random.int(-turn, turn) as f32);
+                self.yaw = angle_mod(self.yaw + self.random.int(-turn, turn) as f32).trunc();
                 self.gusting = true;
-                self.switch += self.config.duration as f32;
+                self.switch += f64::from(self.config.duration as f32);
             }
             if self.switch <= self.time {
                 self.switch = self.time + 0.01;
@@ -135,7 +134,7 @@ impl Controller {
                 }
             }
         }
-        self.approach(time - self.time);
+        self.approach((time - self.time) as f32);
         self.time = time;
         let yaw = (self.yaw + self.angle_variation).to_radians();
         let speed = self.speed * self.speed_variation;
@@ -193,6 +192,10 @@ pub fn active() -> bool {
     FIELD.with(|field| field.borrow().controllers.iter().any(|c| c.visible && c.config.radius != 0.0))
 }
 
+pub fn global_velocity() -> DVec3 {
+    FIELD.with(|field| field.borrow().controllers.iter().find(|c| c.visible).map_or(DVec3::ZERO, |c| c.velocity))
+}
+
 pub fn rope_velocity_at(pos: DVec3) -> DVec3 {
     let near = FIELD.with(|field| field.borrow().eye.distance_squared(pos) < 1_000_000.0);
     if near { velocity_at(pos).unwrap_or(DVec3::ZERO) } else { DVec3::ZERO }
@@ -237,17 +240,58 @@ mod tests {
     }
 
     #[test]
-    fn wind_starts_at_rest_and_matches_native_random_variation_samples() {
-        for [time, x, y] in [
-            [0.0, 0.0, 0.0],
-            [0.05, 0.18399456, 6.2731967],
-            [1.0, -15.4169302, 173.8703308],
-            [2.75, 57.0533257, 396.6413269],
-            [6.0, -45.7830391, 431.1471252],
-        ] {
-            let mut controller = Controller::new(config(), 0.0);
-            controller.advance(time);
-            assert!(controller.velocity.distance(DVec3::new(x, y, 0.0)) < 0.0001, "{time}: {:?}", controller.velocity);
+    fn wind_starts_at_rest_and_accelerates_toward_the_target() {
+        let mut controller = Controller::new(config(), 0.0);
+        assert_eq!(controller.velocity, DVec3::ZERO);
+        controller.advance(0.5);
+        assert_eq!(controller.speed, 75.0);
+        controller.advance(2.75);
+        assert_eq!(controller.speed, 400.0);
+    }
+
+    #[test]
+    fn steady_and_gusting_wind_match_captured_garrys_mod_samples() {
+        #[derive(serde::Deserialize)]
+        struct Sample {
+            time: f64,
+            frametime: f64,
+            velocity: [f64; 3],
+        }
+        #[derive(serde::Deserialize)]
+        struct Case {
+            normal: [f64; 2],
+            gust: [f64; 2],
+            delay: [f64; 2],
+            duration: f64,
+            turn: f64,
+            start: f64,
+            samples: Vec<Sample>,
+        }
+        #[derive(serde::Deserialize)]
+        struct Capture {
+            cases: Vec<Case>,
+        }
+        let capture: Capture = serde_json::from_str(include_str!("wind_native_samples.json")).unwrap();
+        for case in capture.cases {
+            let config = Config {
+                normal: case.normal,
+                gust: case.gust,
+                delay: case.delay,
+                duration: case.duration,
+                turn: case.turn,
+                ..config()
+            };
+            let mut controller = Controller::new(config, case.start);
+            for sample in case.samples {
+                controller.advance(sample.time - sample.frametime);
+                let expected = DVec3::from_array(sample.velocity);
+                assert!(
+                    controller.velocity.distance(expected) < 0.002,
+                    "{}: actual {:?}, native {expected:?}",
+                    sample.time,
+                    controller.velocity
+                );
+            }
         }
     }
 

@@ -92,6 +92,7 @@ impl EffectStatus {
 
 #[derive(Debug, Default)]
 pub struct ParticleShared {
+    pub physics: Arc<crate::particle_world::Physics>,
     pub library: HashMap<String, Arc<Plan>>,
     pub library_gen: u64,
     pub files: HashMap<String, String>,
@@ -517,13 +518,13 @@ fn sources_of<'a>(entities: impl Iterator<Item = (Id, &'a hp_vmf::Entity)> + Clo
         is_system(e)
             && e.props.iter().any(|(k, v)| k.to_ascii_lowercase().starts_with("cpoint") && !v.trim().is_empty())
     });
-    let mut named: HashMap<String, DVec3> = HashMap::new();
+    let mut named: HashMap<String, (DVec3, [f32; 3])> = HashMap::new();
     if wants_points {
         for (_, e) in entities.clone() {
             if let (Some(n), Some(o)) = (e.get("targetname"), e.origin()) {
                 let n = n.trim().to_ascii_lowercase();
                 if !n.is_empty() && o.is_finite() {
-                    named.entry(n).or_insert(o);
+                    named.entry(n).or_insert((o, parse3(e.get("angles")).unwrap_or([0.0; 3])));
                 }
             }
         }
@@ -542,11 +543,15 @@ fn sources_of<'a>(entities: impl Iterator<Item = (Id, &'a hp_vmf::Entity)> + Clo
                 let Some(target) = e.get(&format!("cpoint{k}")).map(|t| t.trim().to_ascii_lowercase()) else {
                     continue;
                 };
-                let Some(p) = named.get(&target) else { continue };
+                let Some((p, angles)) = named.get(&target) else { continue };
                 if points.pos.len() <= k {
                     points.pos.resize(k + 1, f3(origin));
                 }
                 points.pos[k] = f3(*p);
+                if points.orientations.len() <= k {
+                    points.orientations.resize(k + 1, Points::at([0.0; 3]).axes);
+                }
+                points.orientations[k] = Points::with_angles(f3(*p), *angles).axes;
             }
         }
         out.push(Source { id, name: name.to_ascii_lowercase(), label: name.to_owned(), origin, points });
@@ -597,7 +602,16 @@ impl ParticleLayer {
         };
     }
 
+    #[cfg(test)]
     fn start(shared: &mut ParticleShared, s: &Source) -> Option<Playing> {
+        Self::start_in(shared, s, &hp_pcf::environment::EmptyEnvironment)
+    }
+
+    fn start_in(
+        shared: &mut ParticleShared,
+        s: &Source,
+        world: &dyn hp_pcf::environment::Environment,
+    ) -> Option<Playing> {
         let library = &shared.library;
         let lookup = |n: &str| library.get(&n.to_ascii_lowercase()).cloned();
         let Some(mut effect) = Effect::new(&s.name, &lookup, s.id) else {
@@ -623,7 +637,7 @@ impl ParticleLayer {
         if effect.continuous() {
             let steps = (WARM_UP / 0.05) as usize;
             for _ in 0..steps {
-                effect.step_at(0.05, &s.points, MAX_PER_EFFECT);
+                effect.step_in(0.05, &s.points, MAX_PER_EFFECT, world);
             }
         }
         Some(Playing { name: s.name.clone(), effect, rebuild_after })
@@ -679,6 +693,8 @@ impl OverlayLayer for ParticleLayer {
         near.sort_by(|a, b| a.0.total_cmp(&b.0));
         near.truncate(MAX_EFFECTS);
         let Ok(mut shared) = self.handle.lock() else { return };
+        let physics = Arc::clone(&shared.physics);
+        let world = crate::particle_world::ParticleEnvironment { state, physics: &physics };
         let keep: HashSet<Id> = near.iter().map(|(_, s)| s.id).collect();
         self.effects.retain(|id, _| keep.contains(id));
         let dt = state.frame.dt.clamp(0.0, 0.1);
@@ -694,7 +710,7 @@ impl OverlayLayer for ParticleLayer {
                     continue;
                 }
                 starts += 1;
-                match Self::start(&mut shared, s) {
+                match Self::start_in(&mut shared, s, &world) {
                     Some(p) => {
                         self.effects.insert(s.id, p);
                     }
@@ -705,7 +721,7 @@ impl OverlayLayer for ParticleLayer {
                 }
             }
             if let Some(p) = self.effects.get_mut(&s.id) {
-                p.effect.step_at(dt, &s.points, budget.min(MAX_PER_EFFECT));
+                p.effect.step_in(dt, &s.points, budget.min(MAX_PER_EFFECT), &world);
                 budget = budget.saturating_sub(p.effect.particle_count());
             }
         }

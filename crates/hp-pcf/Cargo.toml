@@ -7,4 +7,8 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
+wide = "1.7"
 thiserror.workspace = true
+
+[dev-dependencies]
+serde_json = "1"

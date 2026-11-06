@@ -37,15 +37,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let entry = unsupported.entry(function.clone()).or_insert_with(|| (0usize, String::new()));
                 entry.0 += 1;
                 if entry.1.is_empty() {
-                    let op = system
-                        .emitters
-                        .iter()
-                        .chain(&system.initializers)
-                        .chain(&system.operators)
-                        .chain(&system.forces)
-                        .chain(&system.constraints)
-                        .chain(&system.renderers)
-                        .find(|op| &op.function == function);
+                    let op = [
+                        ("emitter", &system.emitters),
+                        ("initializer", &system.initializers),
+                        ("operator", &system.operators),
+                        ("force", &system.forces),
+                        ("constraint", &system.constraints),
+                        ("renderer", &system.renderers),
+                    ]
+                    .into_iter()
+                    .flat_map(|(category, ops)| ops.iter().map(move |op| (category, op)))
+                    .find(|(_, op)| &op.function == function);
                     entry.1 = format!("{} {:?}: {op:?}", path.display(), system.name);
                 }
             }

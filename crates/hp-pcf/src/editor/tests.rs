@@ -179,12 +179,9 @@ fn unsupported_secondary_sequences_and_bone_locks_are_reported() {
     doc.add_operator(system, Category::Operators, "movement lock to control point").unwrap();
     doc.add_operator(system, Category::Operators, "movement lock to bone").unwrap();
     let plan = crate::Plan::new(&doc.definitions()[0]);
-    assert_eq!(
-        plan.unsupported,
-        vec!["sequence two random", "movement lock to control point", "movement lock to bone"]
-    );
+    assert_eq!(plan.unsupported, vec!["sequence two random", "movement lock to bone"]);
     let issues = doc.validate();
-    assert_eq!(issues.iter().filter(|i| i.message.contains("no preview implementation")).count(), 3);
+    assert_eq!(issues.iter().filter(|i| i.message.contains("no preview implementation")).count(), 2);
     assert_eq!(Document::parse(&doc.to_bytes().unwrap()).unwrap().definitions(), doc.definitions());
 }
 

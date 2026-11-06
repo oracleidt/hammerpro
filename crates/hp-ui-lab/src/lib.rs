@@ -9,6 +9,7 @@ pub mod nav;
 pub mod nav_gen;
 pub mod particle_editor;
 pub mod particle_preview;
+pub mod particle_world;
 pub mod particles;
 pub mod sniffer;
 pub mod sound_edit;

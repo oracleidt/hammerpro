@@ -1,6 +1,12 @@
 use std::sync::Arc;
 
+use crate::environment::{EmptyEnvironment, Environment};
 use crate::model::{Operator, SystemDef};
+
+mod control;
+mod forces;
+mod scalar;
+mod spatial;
 
 pub const MAX_PREVIEW_PARTICLES: usize = 512;
 pub const MAX_CONTROL_POINTS: usize = 64;
@@ -120,11 +126,16 @@ impl Rng {
 pub struct Points {
     pub pos: Vec<V3>,
     pub axes: [V3; 3],
+    pub orientations: Vec<[V3; 3]>,
 }
 
 impl Points {
     pub fn at(origin: V3) -> Points {
-        Points { pos: vec![origin], axes: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]] }
+        Points {
+            pos: vec![origin],
+            axes: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+            orientations: Vec::new(),
+        }
     }
 
     pub fn with_angles(origin: V3, angles: V3) -> Points {
@@ -135,7 +146,7 @@ impl Points {
         let forward = [cp * cy, cp * sy, -sp];
         let right = [-sr * sp * cy + cr * sy, -sr * sp * sy - cr * cy, -sr * cp];
         let up = [cr * sp * cy + sr * sy, cr * sp * sy - sr * cy, cr * cp];
-        Points { pos: vec![origin], axes: [forward, scale(right, -1.0), up] }
+        Points { pos: vec![origin], axes: [forward, scale(right, -1.0), up], orientations: Vec::new() }
     }
 
     pub fn get(&self, i: i32) -> V3 {
@@ -145,6 +156,18 @@ impl Points {
 
     fn local(&self, v: V3) -> V3 {
         add(add(scale(self.axes[0], v[0]), scale(self.axes[1], v[1])), scale(self.axes[2], v[2]))
+    }
+
+    pub fn orientation(&self, cp: i32) -> [V3; 3] {
+        if cp == 0 {
+            self.axes
+        } else {
+            usize::try_from(cp).ok().and_then(|i| self.orientations.get(i)).copied().unwrap_or([
+                [1.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0],
+                [0.0, 0.0, 1.0],
+            ])
+        }
     }
 
     fn highest(&self) -> usize {
@@ -192,6 +215,12 @@ impl Field {
 
 #[derive(Clone, Debug, PartialEq)]
 enum Init {
+    Scalar(scalar::Remap),
+    InheritVelocity {
+        cp: i32,
+        scale: f32,
+    },
+    Warp(control::Warp),
     Sphere {
         cp: i32,
         dmin: f32,
@@ -318,6 +347,10 @@ enum Init {
 
 #[derive(Clone, Debug, PartialEq)]
 enum Op {
+    Scalar(scalar::Remap),
+    Lock(control::Lock),
+    Force(forces::Force),
+    Spatial(spatial::SpatialOp),
     Movement {
         gravity: V3,
         drag: f32,
@@ -687,6 +720,9 @@ impl Plan {
                 lmin: v(op, "speed_in_local_coordinate_system_min", [0.0; 3]),
                 lmax: v(op, "speed_in_local_coordinate_system_max", [0.0; 3]),
             },
+            "velocity inherit from control point" => {
+                Init::InheritVelocity { cp: i(op, "control point number", 0), scale: f(op, "velocity scale", 1.0) }
+            }
             "velocity noise" | "initial velocity noise" => Init::Noise {
                 min: v(op, "output minimum", [0.0; 3]),
                 max: v(op, "output maximum", [0.0; 3]),
@@ -712,6 +748,14 @@ impl Plan {
                 within: b(op, "only active within specified input range", false),
             },
             _ => {
+                if let Some(remap) = scalar::compile(op) {
+                    self.inits.push(Init::Scalar(remap));
+                    return;
+                }
+                if let Some(warp) = control::compile_warp(op) {
+                    self.inits.push(Init::Warp(warp));
+                    return;
+                }
                 self.unsupported.push(op.function.clone());
                 return;
             }
@@ -851,6 +895,22 @@ impl Plan {
                 factor: f(op, "dampen scale", 1.0).clamp(0.0, 1.0),
             },
             _ => {
+                if let Some(remap) = scalar::compile(op) {
+                    self.ops.push(Op::Scalar(remap));
+                    return;
+                }
+                if let Some(lock) = control::compile_lock(op) {
+                    self.ops.push(Op::Lock(lock));
+                    return;
+                }
+                if let Some(compiled) = forces::compile(op) {
+                    self.ops.push(Op::Force(compiled));
+                    return;
+                }
+                if let Some(compiled) = spatial::compile(op) {
+                    self.ops.push(Op::Spatial(compiled));
+                    return;
+                }
                 self.unsupported.push(op.function.clone());
                 return;
             }
@@ -898,6 +958,10 @@ impl Plan {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Particle {
+    dead: bool,
+    previous_pos: V3,
+    previous_dt: f32,
+    initial_values: [f32; Field::Other as usize + 1],
     pub pos: V3,
     pub vel: V3,
     pub age: f32,
@@ -934,6 +998,7 @@ pub struct Sim {
     rng: Rng,
     born: u32,
     frames: Vec<u32>,
+    previous_points: Option<Points>,
 }
 
 impl Sim {
@@ -948,6 +1013,7 @@ impl Sim {
             rng: Rng(seed | 1),
             born: 0,
             frames: Vec::new(),
+            previous_points: None,
         }
     }
 
@@ -967,6 +1033,7 @@ impl Sim {
         self.particles.clear();
         self.time = 0.0;
         self.born = 0;
+        self.previous_points = None;
         self.acc.iter_mut().for_each(|a| *a = 0.0);
         self.fired.iter_mut().for_each(|f| *f = false);
     }
@@ -996,11 +1063,15 @@ impl Sim {
         part.vel = add(scale(dir, speed), points.local(self.rng.range3(*lmin, *lmax)));
     }
 
-    fn spawn(&mut self, points: &Points, parents: &[(V3, V3)]) {
+    fn spawn(&mut self, points: &Points, parents: &[(V3, V3)], dt: f32, world: &dyn Environment) {
         let plan = self.plan.clone();
         let origin = points.get(0);
         let seed = self.rng.bits();
         let mut part = Particle {
+            dead: false,
+            previous_pos: origin,
+            previous_dt: 0.0,
+            initial_values: [0.0; Field::Other as usize + 1],
             pos: origin,
             vel: [0.0; 3],
             age: 0.0,
@@ -1029,6 +1100,18 @@ impl Sim {
         let mut pre_age = 0.0f32;
         for init in &plan.inits {
             match init {
+                Init::Scalar(remap) => {
+                    if let Some(value) = scalar::evaluate(remap, &part, points, world, self.time, false) {
+                        set_field(&mut part, remap.field, value, false);
+                    }
+                }
+                Init::InheritVelocity { cp, scale: amount } => {
+                    if dt > 0.0 {
+                        let previous = self.previous_points.as_ref().unwrap_or(points);
+                        part.vel = add(part.vel, scale(sub(points.get(*cp), previous.get(*cp)), amount / dt));
+                    }
+                }
+                Init::Warp(warp) => control::apply_warp(warp, &mut part, points, self.time, &mut self.rng),
                 Init::Sphere { .. } => self.sphere(&mut part, points, init),
                 Init::Box { cp, min, max } => part.pos = add(points.get(*cp), self.rng.range3(*min, *max)),
                 Init::Offset { min, max, local, radius } => {
@@ -1146,6 +1229,19 @@ impl Sim {
         part.radius = part.base_radius;
         part.color = part.base_color;
         part.alpha = part.base_alpha;
+        for field in [
+            Field::Lifetime,
+            Field::Radius,
+            Field::Rotation,
+            Field::RotationSpeed,
+            Field::Alpha,
+            Field::CreationTime,
+            Field::Sequence,
+            Field::TrailLength,
+            Field::Yaw,
+        ] {
+            part.initial_values[field as usize] = get_field(&part, field);
+        }
         self.born = self.born.wrapping_add(1);
         self.particles.push(part);
     }
@@ -1155,6 +1251,10 @@ impl Sim {
     }
 
     pub fn step_at(&mut self, dt: f32, points: &Points, parents: &[(V3, V3)], budget: usize) {
+        self.step_in(dt, points, parents, budget, &EmptyEnvironment);
+    }
+
+    pub fn step_in(&mut self, dt: f32, points: &Points, parents: &[(V3, V3)], budget: usize, world: &dyn Environment) {
         let dt = if dt.is_finite() { dt.clamp(0.0, 0.1) } else { 0.0 };
         let cap = self.plan.max.min(budget);
         let t0 = self.time;
@@ -1191,17 +1291,18 @@ impl Sim {
         }
         let room = cap.saturating_sub(self.particles.len());
         for _ in 0..to_emit.min(room) {
-            self.spawn(points, parents);
+            self.spawn(points, parents, dt, world);
         }
         for part in &mut self.particles {
             part.age += dt;
-            operate(&plan, part, points, dt);
+            operate(&plan, part, points, self.previous_points.as_ref().unwrap_or(points), dt, world, &mut self.rng);
         }
         if plan.decays {
             self.particles.retain(|p| p.life <= 0.0 || p.age < p.life);
         }
-        self.particles.retain(|p| p.pos.iter().all(|c| c.is_finite() && c.abs() < 1.0e6));
+        self.particles.retain(|p| !p.dead && p.pos.iter().all(|c| c.is_finite() && c.abs() < 1.0e6));
         self.time = t1;
+        self.previous_points = Some(points.clone());
     }
 }
 
@@ -1259,18 +1360,60 @@ fn wander(seed: u32, key: u32, t: f32) -> f32 {
     (0.5 + 0.3 * (t * 2.1 + a).sin() + 0.2 * (t * 5.3 + b).sin()).clamp(0.0, 1.0)
 }
 
-fn operate(plan: &Plan, part: &mut Particle, points: &Points, dt: f32) {
+#[allow(clippy::too_many_arguments)]
+fn operate(
+    plan: &Plan,
+    part: &mut Particle,
+    points: &Points,
+    previous: &Points,
+    dt: f32,
+    world: &dyn Environment,
+    rng: &mut Rng,
+) {
     let life = if part.life > 0.0 { part.life } else { 1.0 };
     let t = (part.age / life).clamp(0.0, 1.0);
     let mut alpha = part.base_alpha;
     let mut color = part.base_color;
+    let old = part.pos;
+    let mut acceleration = [0.0; 3];
     for (k, op) in plan.ops.iter().enumerate() {
         let key = k as u32 * 7;
+        let before_pos = part.pos;
+        let before_vel = part.vel;
         match op {
+            Op::Scalar(remap) => {
+                part.alpha = alpha;
+                part.radius = (part.base_radius * part.radius_scale + part.radius_add).max(0.0);
+                if let Some(value) = scalar::evaluate(remap, part, points, world, part.born + part.age, true) {
+                    match remap.field {
+                        Field::Alpha => {
+                            alpha = value;
+                            part.alpha_add = 0.0;
+                        }
+                        Field::Radius => {
+                            part.base_radius = value;
+                            part.radius_scale = 1.0;
+                            part.radius_add = 0.0;
+                        }
+                        _ => set_field(part, remap.field, value, false),
+                    }
+                }
+            }
+            Op::Lock(lock) => control::apply_lock(lock, part, points, previous, key),
+            Op::Force(force) => acceleration = add(acceleration, forces::acceleration(force, part, points, rng)),
+            Op::Spatial(op) => spatial::apply(op, part, old, points, dt, world),
             Op::Movement { gravity, drag } => {
-                part.vel = add(part.vel, scale(*gravity, dt));
-                if *drag > 0.0 {
-                    part.vel = scale(part.vel, (1.0 - drag).powf(dt * 30.0));
+                if dt > 0.0 {
+                    let movement = if part.previous_dt > 0.0 {
+                        scale(sub(part.pos, part.previous_pos), dt / part.previous_dt)
+                    } else {
+                        scale(part.vel, dt)
+                    };
+                    let movement = scale(movement, (1.0 - drag).powf(dt * 30.0));
+                    part.previous_pos = part.pos;
+                    part.previous_dt = dt;
+                    part.pos = add(part.pos, add(movement, scale(add(*gravity, acceleration), dt * dt)));
+                    part.vel = scale(sub(part.pos, part.previous_pos), 1.0 / dt);
                 }
             }
             Op::FadeIn { proportional, ease: smooth, .. } => {
@@ -1424,8 +1567,14 @@ fn operate(plan: &Plan, part: &mut Particle, points: &Points, dt: f32) {
                 }
             }
         }
+        if !matches!(op, Op::Movement { .. }) {
+            if part.vel != before_vel {
+                part.previous_pos = sub(part.pos, scale(part.vel, part.previous_dt));
+            } else if part.pos != before_pos {
+                part.previous_pos = add(part.previous_pos, sub(part.pos, before_pos));
+            }
+        }
     }
-    part.pos = add(part.pos, scale(part.vel, dt));
     part.alpha = (alpha + part.alpha_add).clamp(0.0, 1.0);
     part.radius = (part.base_radius * part.radius_scale + part.radius_add).max(0.0);
     part.color = add(color, part.color_add).map(|c| c.clamp(0.0, 1.0));
@@ -1491,6 +1640,10 @@ impl Effect {
     }
 
     pub fn step_at(&mut self, dt: f32, points: &Points, budget: usize) {
+        self.step_in(dt, points, budget, &EmptyEnvironment);
+    }
+
+    pub fn step_in(&mut self, dt: f32, points: &Points, budget: usize, world: &dyn Environment) {
         let dt = if dt.is_finite() { dt.clamp(0.0, 0.1) } else { 0.0 };
         self.time += dt;
         let mut left = budget;
@@ -1506,7 +1659,7 @@ impl Effect {
                 self.scratch.extend(parent.particles.iter().take(256).map(|q| (q.pos, q.vel)));
             }
             let sim = &mut self.sims[i].1;
-            sim.step_at(dt, points, &self.scratch, left.saturating_add(sim.particles.len()).min(budget));
+            sim.step_in(dt, points, &self.scratch, left.saturating_add(sim.particles.len()).min(budget), world);
             left = left.saturating_sub(sim.particles.len());
         }
         let done = self.sims.iter().all(|(d, s)| self.time >= *d && s.plan.finite() && s.finished());

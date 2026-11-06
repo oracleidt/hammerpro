@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use hp_geom::{Aabb, DispMesh, SolidGeom};
 use hp_kv::Block;
@@ -23,6 +23,7 @@ pub struct SolidNode {
     pub geom: Arc<SolidGeom>,
     pub disp: Vec<Option<Arc<DispMesh>>>,
     pub bounds: Aabb,
+    pub(crate) sweep: OnceLock<Arc<hp_geom::SweepHull>>,
     pub(crate) order: u64,
 }
 
@@ -31,7 +32,7 @@ impl SolidNode {
         let geom = Arc::new(hp_geom::build_solid(&solid.sides));
         let disp = build_disps(&solid, &geom);
         let bounds = node_bounds(&geom, &disp);
-        Self { solid, owner, geom, disp, bounds, order }
+        Self { solid, owner, geom, disp, bounds, sweep: OnceLock::new(), order }
     }
 
     pub(crate) fn with_solid(&self, solid: Solid) -> Self {
@@ -63,7 +64,7 @@ impl SolidNode {
             Vec::new()
         };
         let bounds = node_bounds(&geom, &disp);
-        Self { solid, owner: self.owner, geom, disp, bounds, order: self.order }
+        Self { solid, owner: self.owner, geom, disp, bounds, sweep: self.sweep.clone(), order: self.order }
     }
 
     pub fn disp_mesh(&self, side: usize) -> Option<&Arc<DispMesh>> {

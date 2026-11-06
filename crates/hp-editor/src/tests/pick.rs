@@ -19,6 +19,30 @@ fn row() -> (Document, Vec<crate::Id>, crate::Id) {
 }
 
 #[test]
+fn swept_particles_use_real_brush_and_displacement_geometry() {
+    let mut doc = Document::new_empty();
+    let solid = doc.create_solid(cube(DVec3::ZERO, 64.0), Owner::World).unwrap();
+    let (id, hit) =
+        doc.trace_hull(DVec3::new(-10.0, 32.0, 32.0), DVec3::new(100.0, 32.0, 32.0), DVec3::splat(2.0), None).unwrap();
+    assert_eq!(id, solid);
+    assert!((hit.fraction - 8.0 / 110.0).abs() < 1e-12);
+    assert_eq!(hit.normal, DVec3::NEG_X);
+    let filter = |node: &crate::SolidNode| node.solid.id != solid;
+    assert!(
+        doc.trace_hull(DVec3::new(-10.0, 32.0, 32.0), DVec3::new(100.0, 32.0, 32.0), DVec3::splat(2.0), Some(&filter))
+            .is_none()
+    );
+    doc.create_displacements(&[crate::FaceRef::new(solid, 0)], 2).unwrap();
+    let (_, hit) =
+        doc.trace_hull(DVec3::new(32.0, 32.0, 80.0), DVec3::new(32.0, 32.0, -80.0), DVec3::splat(2.0), None).unwrap();
+    assert!((hit.fraction - 14.0 / 160.0).abs() < 1e-12);
+    assert_eq!(hit.normal, DVec3::Z);
+    assert!(
+        doc.trace_hull(DVec3::new(90.0, 90.0, 80.0), DVec3::new(90.0, 90.0, -80.0), DVec3::splat(2.0), None).is_none()
+    );
+}
+
+#[test]
 fn ray_picks_closest() {
     let (doc, ids, e) = row();
     let opts = PickOptions::default();

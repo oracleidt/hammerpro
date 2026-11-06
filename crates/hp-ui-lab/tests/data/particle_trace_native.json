@@ -1,0 +1,326 @@
+[
+  {
+    "hit": true,
+    "startsolid": false,
+    "finish": [
+      0,
+      0,
+      -100
+    ],
+    "fraction": 0.4998437464237213,
+    "allsolid": false,
+    "start": [
+      0,
+      0,
+      100
+    ],
+    "radius": 0,
+    "hitpos": [
+      0,
+      0,
+      0.03125
+    ],
+    "normal": [
+      0,
+      0,
+      1
+    ]
+  },
+  {
+    "hit": false,
+    "startsolid": false,
+    "finish": [
+      0,
+      0,
+      500
+    ],
+    "fraction": 1,
+    "allsolid": false,
+    "start": [
+      0,
+      0,
+      16
+    ],
+    "radius": 0,
+    "hitpos": [
+      0,
+      0,
+      500
+    ],
+    "normal": [
+      0,
+      0,
+      0
+    ]
+  },
+  {
+    "hit": true,
+    "startsolid": false,
+    "finish": [
+      1100,
+      0,
+      64
+    ],
+    "fraction": 0.2396874874830246,
+    "allsolid": false,
+    "start": [
+      1000,
+      0,
+      64
+    ],
+    "radius": 0,
+    "hitpos": [
+      1023.96875,
+      0,
+      64
+    ],
+    "normal": [
+      -1,
+      0,
+      0
+    ]
+  },
+  {
+    "hit": true,
+    "startsolid": false,
+    "finish": [
+      0,
+      0,
+      -100
+    ],
+    "fraction": 0.4948437511920929,
+    "allsolid": false,
+    "start": [
+      0,
+      0,
+      100
+    ],
+    "radius": 1,
+    "hitpos": [
+      0,
+      0,
+      1.03125
+    ],
+    "normal": [
+      0,
+      0,
+      1
+    ]
+  },
+  {
+    "hit": false,
+    "startsolid": false,
+    "finish": [
+      0,
+      0,
+      500
+    ],
+    "fraction": 1,
+    "allsolid": false,
+    "start": [
+      0,
+      0,
+      16
+    ],
+    "radius": 1,
+    "hitpos": [
+      0,
+      0,
+      500
+    ],
+    "normal": [
+      0,
+      0,
+      0
+    ]
+  },
+  {
+    "hit": true,
+    "startsolid": false,
+    "finish": [
+      1100,
+      0,
+      64
+    ],
+    "fraction": 0.22968749701976776,
+    "allsolid": false,
+    "start": [
+      1000,
+      0,
+      64
+    ],
+    "radius": 1,
+    "hitpos": [
+      1022.96875,
+      0,
+      64
+    ],
+    "normal": [
+      -1,
+      0,
+      0
+    ]
+  },
+  {
+    "hit": true,
+    "startsolid": false,
+    "finish": [
+      0,
+      0,
+      -100
+    ],
+    "fraction": 0.4898437261581421,
+    "allsolid": false,
+    "start": [
+      0,
+      0,
+      100
+    ],
+    "radius": 2,
+    "hitpos": [
+      0,
+      0,
+      2.0312576293945312
+    ],
+    "normal": [
+      0,
+      0,
+      1
+    ]
+  },
+  {
+    "hit": false,
+    "startsolid": false,
+    "finish": [
+      0,
+      0,
+      500
+    ],
+    "fraction": 1,
+    "allsolid": false,
+    "start": [
+      0,
+      0,
+      16
+    ],
+    "radius": 2,
+    "hitpos": [
+      0,
+      0,
+      500
+    ],
+    "normal": [
+      0,
+      0,
+      0
+    ]
+  },
+  {
+    "hit": true,
+    "startsolid": false,
+    "finish": [
+      1100,
+      0,
+      64
+    ],
+    "fraction": 0.21968749165534973,
+    "allsolid": false,
+    "start": [
+      1000,
+      0,
+      64
+    ],
+    "radius": 2,
+    "hitpos": [
+      1021.96875,
+      0,
+      64
+    ],
+    "normal": [
+      -1,
+      0,
+      0
+    ]
+  },
+  {
+    "hit": true,
+    "startsolid": false,
+    "finish": [
+      0,
+      0,
+      -100
+    ],
+    "fraction": 0.4598437249660492,
+    "allsolid": false,
+    "start": [
+      0,
+      0,
+      100
+    ],
+    "radius": 8,
+    "hitpos": [
+      0,
+      0,
+      8.031257629394531
+    ],
+    "normal": [
+      0,
+      0,
+      1
+    ]
+  },
+  {
+    "hit": false,
+    "startsolid": false,
+    "finish": [
+      0,
+      0,
+      500
+    ],
+    "fraction": 1,
+    "allsolid": false,
+    "start": [
+      0,
+      0,
+      16
+    ],
+    "radius": 8,
+    "hitpos": [
+      0,
+      0,
+      500
+    ],
+    "normal": [
+      0,
+      0,
+      0
+    ]
+  },
+  {
+    "hit": true,
+    "startsolid": false,
+    "finish": [
+      1100,
+      0,
+      64
+    ],
+    "fraction": 0.15968748927116394,
+    "allsolid": false,
+    "start": [
+      1000,
+      0,
+      64
+    ],
+    "radius": 8,
+    "hitpos": [
+      1015.96875,
+      0,
+      64
+    ],
+    "normal": [
+      -1,
+      0,
+      0
+    ]
+  }
+]

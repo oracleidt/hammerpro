@@ -510,6 +510,56 @@ impl Document {
         out
     }
 
+    pub fn trace_hull(
+        &self,
+        start: DVec3,
+        end: DVec3,
+        half: DVec3,
+        filter: Option<&dyn Fn(&SolidNode) -> bool>,
+    ) -> Option<(Id, hp_geom::SweepHit)> {
+        if !start.is_finite() || !end.is_finite() || !half.is_finite() || half.min_element() < 0.0 {
+            return None;
+        }
+        let bounds = Aabb::new(start, end).expand(half.max_element());
+        let mut best: Option<(Id, hp_geom::SweepHit)> = None;
+        self.box_candidates(&bounds, |node| {
+            if filter.is_some_and(|filter| !filter(node)) {
+                return;
+            }
+            let mut consider = |hit: hp_geom::SweepHit| {
+                if best.is_none_or(|(_, current)| hit.fraction < current.fraction) {
+                    best = Some((node.solid.id, hit));
+                }
+            };
+            if node.has_disp() {
+                for mesh in node.disp.iter().flatten() {
+                    if !mesh.aabb.expand(half.max_element()).intersects(&bounds) {
+                        continue;
+                    }
+                    for tri in mesh.indices.chunks_exact(3) {
+                        let (Some(&a), Some(&b), Some(&c)) = (
+                            mesh.positions.get(tri[0] as usize),
+                            mesh.positions.get(tri[1] as usize),
+                            mesh.positions.get(tri[2] as usize),
+                        ) else {
+                            continue;
+                        };
+                        if let Some(hit) = hp_geom::sweep_box_triangle(start, end, half, [a, b, c]) {
+                            consider(hit);
+                        }
+                    }
+                }
+            } else if let Some(hit) = node
+                .sweep
+                .get_or_init(|| std::sync::Arc::new(hp_geom::SweepHull::new(&node.geom)))
+                .trace(start, end, half)
+            {
+                consider(hit);
+            }
+        });
+        best
+    }
+
     fn solid_pickable(&self, id: Id, opts: &PickOptions<'_>) -> bool {
         if opts.ignore_hidden && !self.is_solid_pickable(id) {
             return false;

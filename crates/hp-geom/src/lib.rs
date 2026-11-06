@@ -18,6 +18,7 @@ mod plane;
 mod primitive;
 pub mod roadside;
 mod slope;
+mod sweep;
 mod terrain;
 mod terrain_gen;
 #[cfg(test)]
@@ -82,6 +83,7 @@ pub use slope::{
     SlopeStats, incline_degrees, slope_band, slope_band_range, triangle_gradient, triangle_inclines,
     triangle_up_angles, up_angle_degrees,
 };
+pub use sweep::{SweepHit, SweepHull, sweep_box_solid, sweep_box_triangle};
 pub use terrain::{
     HeightGraph, HydraulicParams, MAX_ITERATIONS, MAX_OCTAVES, NoiseParams, ThermalParams, fractal_noise, perlin,
 };

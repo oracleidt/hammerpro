@@ -210,7 +210,7 @@ pub fn build(id: Id, e: &hp_vmf::Entity, bounds: Option<(DVec3, DVec3)>) -> Opti
             fx.reach = dist;
             fx.enabled = num(e, "StartDisabled", 0.0) < 0.5;
             fx.frozen = num(e, "Frozen", 0.0) >= 0.5;
-            fx.wind = num(e, "AffectedByWind", 1.0) >= 0.5;
+            fx.wind = true;
             if fx.frozen {
                 fx.count = (rate as usize).min(MAX_PER_ENTITY);
             }
@@ -463,11 +463,10 @@ impl Dust {
         let step = f64::from(dt.clamp(0.0, 0.1));
         for (index, particle) in self.particles.iter_mut().enumerate() {
             particle.age += step as f32;
-            if let Some(velocity) = wind::velocity_at(particle.pos) {
-                for axis in 0..2 {
-                    let delta = velocity[axis] - particle.velocity[axis];
-                    particle.velocity[axis] += delta.signum() * delta.abs().min(50.0 * step);
-                }
+            let velocity = wind::global_velocity();
+            for axis in 0..2 {
+                let delta = velocity[axis] - particle.velocity[axis];
+                particle.velocity[axis] += delta.signum() * delta.abs().min(50.0 * step);
             }
             particle.pos += particle.velocity * step;
             if particle.age >= particle.life {
@@ -575,12 +574,7 @@ impl EntityFxLayer {
     }
 
     fn build_sprites(&mut self, state: &AppState, eye: DVec3) {
-        let wind_active = wind::active();
-        if !wind_active {
-            self.dust.clear();
-        } else {
-            self.dust.retain(|id, _| self.visible.iter().any(|(index, _)| self.sources[*index].id == *id));
-        }
+        self.dust.retain(|id, _| self.visible.iter().any(|(index, _)| self.sources[*index].id == *id));
         let fs = state.assets.fs();
         let generation = state.assets.generation();
         if self.generation != generation {
@@ -620,7 +614,7 @@ impl EntityFxLayer {
                 }
             };
             pts.clear();
-            if wind_active && fx.wind && !fx.frozen && matches!(fx.kind, FxKind::Cloud | FxKind::Motes) {
+            if !fx.frozen && matches!(fx.kind, FxKind::Cloud | FxKind::Motes) {
                 self.dust.entry(fx.id).or_insert_with(|| Dust::new(fx)).draw(
                     state.frame.dt,
                     scale,
@@ -781,6 +775,29 @@ mod tests {
         }
         assert!(FxKind::of("info_particle_system").is_none());
         assert!(build(1, &entity("prop_static", &[]), bounds()).is_none());
+    }
+
+    #[test]
+    fn dust_loses_horizontal_speed_without_wind_but_preserves_fall_speed() {
+        let state = hp_app::testing::test_state();
+        wind::update(&state);
+        let fx = build(72, &entity("func_dustcloud", &[("SpawnRate", "1")]), bounds()).unwrap();
+        let mut dust = Dust::new(&fx);
+        dust.particles = vec![DustParticle {
+            seed: 1,
+            pos: DVec3::ZERO,
+            velocity: DVec3::new(20.0, -10.0, -7.0),
+            age: 0.0,
+            life: 10.0,
+        }];
+        let mut output = Vec::new();
+        dust.draw(0.1, 1.0, eye(), DVec3::X, &mut output);
+        assert!(dust.particles[0].velocity.distance(DVec3::new(15.0, -5.0, -7.0)) < 1e-5);
+        assert!(dust.particles[0].pos.distance(DVec3::new(1.5, -0.5, -0.7)) < 1e-5);
+        for _ in 0..3 {
+            dust.draw(0.1, 1.0, eye(), DVec3::X, &mut output);
+        }
+        assert!(dust.particles[0].velocity.distance(DVec3::new(0.0, 0.0, -7.0)) < 1e-5);
     }
 
     #[test]

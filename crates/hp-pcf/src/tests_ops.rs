@@ -45,6 +45,203 @@ fn run(def: &SystemDef, points: &Points, seconds: f32) -> Sim {
     sim
 }
 
+struct FloorTrace;
+
+impl crate::environment::Environment for FloorTrace {
+    fn trace(&self, start: [f32; 3], end: [f32; 3], radius: f32, _: bool) -> Option<crate::environment::Trace> {
+        let a = start[2] - radius;
+        let b = end[2] - radius;
+        if a >= 0.0 && b < 0.0 {
+            Some(crate::environment::Trace { fraction: a / (a - b), normal: [0.0, 0.0, 1.0], start_solid: false })
+        } else {
+            None
+        }
+    }
+}
+
+#[test]
+fn traced_collisions_bounce_after_movement_and_preserve_the_slide_velocity() {
+    let mut def = system("bounce", vec![burst(1)], vec![], vec![op("Movement Basic", vec![])]);
+    def.radius = 0.25;
+    def.constraints.push(op("Collision via traces", vec![("amount of bounce", fl(1.0)), ("amount of slide", fl(1.0))]));
+    let plan = Arc::new(Plan::new(&def));
+    assert!(plan.unsupported.is_empty());
+    let mut sim = Sim::new(plan, 17);
+    sim.step(0.0, [0.0, 0.0, 1.0], 10);
+    sim.particles[0].vel = [10.0, 0.0, -40.0];
+    sim.step_in(0.1, &Points::at([0.0, 0.0, 1.0]), &[], 10, &FloorTrace);
+    let particle = sim.particles[0];
+    assert!(particle.pos[0] > 1.0);
+    assert!(particle.pos[2] >= particle.radius);
+    assert!((particle.vel[0] - 12.425356).abs() < 0.005);
+    assert!((particle.vel[2] - 9.701425).abs() < 0.005);
+    def.constraints[0] = op("Collision via traces", vec![("collision mode", Value::Int(1))]);
+    assert_eq!(Plan::new(&def).unsupported, ["Collision via traces"]);
+}
+
+#[test]
+fn plane_and_distance_constraints_apply_to_the_position_after_movement() {
+    let def = system(
+        "plane",
+        vec![burst(1)],
+        vec![],
+        vec![
+            op("Movement Basic", vec![]),
+            op(
+                "Prevent passing through a plane",
+                vec![("global normal", Value::Bool(true)), ("global origin", Value::Bool(true))],
+            ),
+        ],
+    );
+    let mut sim = Sim::new(Arc::new(Plan::new(&def)), 17);
+    sim.step(0.0, [0.0, 0.0, 1.0], 10);
+    sim.particles[0].vel = [10.0, 0.0, -40.0];
+    sim.step(0.1, [0.0; 3], 10);
+    assert_eq!(sim.particles[0].pos, [1.0, 0.0, 0.0]);
+    assert_eq!(sim.particles[0].vel, [10.0, 0.0, 0.0]);
+    let mut def = def;
+    def.operators[1] = op("Constrain Distance to Control Point", vec![("maximum distance", fl(0.5))]);
+    let mut sim = Sim::new(Arc::new(Plan::new(&def)), 17);
+    sim.step(0.0, [0.0; 3], 10);
+    sim.particles[0].vel = [100.0, 0.0, 0.0];
+    sim.step(0.1, [0.0; 3], 10);
+    assert_eq!(sim.particles[0].pos, [0.5, 0.0, 0.0]);
+}
+
+#[test]
+fn spatial_culling_removes_particles_even_without_lifespan_decay() {
+    let def = system(
+        "cull",
+        vec![burst(1)],
+        vec![],
+        vec![op("Movement Basic", vec![]), op("Cull when crossing sphere", vec![("Cull Distance", fl(1.0))])],
+    );
+    let mut sim = Sim::new(Arc::new(Plan::new(&def)), 17);
+    sim.step(0.0, [0.0; 3], 10);
+    sim.particles[0].vel = [100.0, 0.0, 0.0];
+    sim.step(0.1, [0.0; 3], 10);
+    assert!(sim.particles.is_empty());
+}
+
+#[test]
+fn movement_drag_and_forces_match_captured_garrys_mod_particle_positions() {
+    let definitions = crate::parse_file(include_bytes!("../tests/data/operator_cases.pcf")).unwrap();
+    let captures: serde_json::Value =
+        serde_json::from_str(include_str!("../tests/data/operator_native_samples.json")).unwrap();
+    let vector = |value: &serde_json::Value| {
+        let v = value.as_array().unwrap();
+        [v[0].as_f64().unwrap() as f32, v[1].as_f64().unwrap() as f32, v[2].as_f64().unwrap() as f32]
+    };
+    for definition in definitions {
+        let name = definition.name.strip_prefix("hp_probe_").unwrap();
+        let plan = Arc::new(Plan::new(&definition));
+        assert!(plan.unsupported.is_empty(), "{name}: {:?}", plan.unsupported);
+        let mut sim = Sim::new(plan, 17);
+        for sample in captures["cases"][name].as_array().unwrap() {
+            let lo = vector(&sample["lo"]);
+            let hi = vector(&sample["hi"]);
+            if (0..3).any(|axis| lo[axis] > hi[axis]) {
+                continue;
+            }
+            sim.step(sample["dt"].as_f64().unwrap() as f32, [0.0, 0.0, 64.0], 1);
+            let expected = [0, 1, 2].map(|axis| if lo[axis].abs() > hi[axis].abs() { lo[axis] } else { hi[axis] });
+            let position = sim.particles[0].pos;
+            let actual = [position[0], position[1], position[2] - 64.0];
+            let error = actual.iter().zip(expected).map(|(a, b)| (a - b).powi(2)).sum::<f32>().sqrt();
+            assert!(error < 0.001, "{name}, {}: actual {actual:?}, native {expected:?}", sim.time());
+        }
+    }
+}
+
+#[test]
+fn control_point_motion_warp_and_collisions_match_native_particle_samples() {
+    struct NativeFloor;
+    impl crate::environment::Environment for NativeFloor {
+        fn trace(&self, start: [f32; 3], end: [f32; 3], radius: f32, _: bool) -> Option<crate::environment::Trace> {
+            let a = start[2] - radius;
+            let b = end[2] - radius;
+            (a >= 0.0 && b < 0.0).then(|| crate::environment::Trace {
+                fraction: ((a - 0.03125) / (a - b)).clamp(0.0, 1.0),
+                normal: [0.0, 0.0, 1.0],
+                start_solid: false,
+            })
+        }
+    }
+    let definitions = crate::parse_file(include_bytes!("../tests/data/spatial_cases.pcf")).unwrap();
+    let captures: serde_json::Value =
+        serde_json::from_str(include_str!("../tests/data/spatial_native_samples.json")).unwrap();
+    let vector = |value: &serde_json::Value| {
+        let v = value.as_array().unwrap();
+        [v[0].as_f64().unwrap() as f32, v[1].as_f64().unwrap() as f32, v[2].as_f64().unwrap() as f32]
+    };
+    for definition in definitions {
+        let name = definition.name.strip_prefix("hp_spatial_").unwrap();
+        let plan = Arc::new(Plan::new(&definition));
+        if name == "locked_range" {
+            assert_eq!(plan.unsupported, ["Movement Lock to Control Point"]);
+            continue;
+        }
+        assert!(plan.unsupported.is_empty(), "{name}: {:?}", plan.unsupported);
+        let mut sim = Sim::new(plan, 17);
+        let mut points = Points::at([0.0, 0.0, 64.0]);
+        for (frame, sample) in captures["cases"][name].as_array().unwrap().iter().enumerate() {
+            let lo = vector(&sample["lo"]);
+            let hi = vector(&sample["hi"]);
+            if (0..3).all(|axis| lo[axis] <= hi[axis]) {
+                sim.step_in(sample["dt"].as_f64().unwrap() as f32, &points, &[], 1, &NativeFloor);
+                let expected = [0, 1, 2].map(|axis| {
+                    if (lo[axis] - (points.get(0)[axis] - [0.0, 0.0, 64.0][axis])).abs() < 0.0001 {
+                        hi[axis]
+                    } else {
+                        lo[axis]
+                    }
+                });
+                let p = sim.particles[0].pos;
+                let actual = [p[0], p[1], p[2] - 64.0];
+                let error = actual.iter().zip(expected).map(|(a, b)| (a - b).powi(2)).sum::<f32>().sqrt();
+                assert!(error < 0.01, "{name}, frame {frame}: actual {actual:?}, native {expected:?}, error {error}");
+            }
+            points = Points::with_angles(
+                vector(&sample["cp"]["position"]),
+                [0.0, sample["cp"]["yaw"].as_f64().unwrap() as f32, 0.0],
+            );
+        }
+    }
+}
+
+#[test]
+fn scalar_lifetimes_and_inherited_velocity_match_native_particle_samples() {
+    let definitions = crate::parse_file(include_bytes!("../tests/data/scalar_cases.pcf")).unwrap();
+    let captures: serde_json::Value =
+        serde_json::from_str(include_str!("../tests/data/scalar_native_samples.json")).unwrap();
+    let frames = captures["cases"]["inherit_velocity"].as_array().unwrap();
+    for definition in definitions {
+        let name = definition.name.strip_prefix("hp_scalar_").unwrap();
+        let plan = Arc::new(Plan::new(&definition));
+        assert!(plan.unsupported.is_empty(), "{name}: {:?}", plan.unsupported);
+        let mut sim = Sim::new(plan, 17);
+        for (frame, timing) in frames.iter().enumerate().skip(1) {
+            let mut points = Points::at([0.0, 0.0, 64.0]);
+            points.pos.extend([
+                [if name == "inherit_velocity" { (frame - 1) as f32 * 2.0 } else { 0.0 }, 0.0, 64.0],
+                [0.25, 0.0, 0.0],
+            ]);
+            points.orientations = vec![points.axes, points.axes, Points::with_angles([0.0; 3], [0.0, 90.0, 0.0]).axes];
+            sim.step_at(timing["dt"].as_f64().unwrap() as f32, &points, &[], 1);
+            let native = captures["cases"][name].as_array().unwrap().get(frame);
+            let native_alive = native.is_some_and(|sample| {
+                sample["hi"][0].as_f64().unwrap() >= if name == "inherit_velocity" { 90.0 } else { 10.0 }
+            });
+            assert_eq!(!sim.particles.is_empty(), native_alive, "{name}, frame {frame}, time {}", sim.time());
+            if native_alive {
+                let expected = native.unwrap()["hi"][0].as_f64().unwrap() as f32;
+                let actual = sim.particles[0].pos[0];
+                assert!((actual - expected).abs() < 0.005, "{name}, frame {frame}: actual {actual}, native {expected}");
+            }
+        }
+    }
+}
+
 #[test]
 fn local_speeds_turn_with_the_angles() {
     let def = system(

@@ -2,6 +2,7 @@
 
 pub mod dmx;
 pub mod editor;
+pub mod environment;
 pub mod model;
 pub mod random;
 pub mod sheet;
