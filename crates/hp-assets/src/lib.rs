@@ -18,6 +18,7 @@ mod model_thumbs;
 mod models;
 mod mount;
 pub mod parallax;
+pub mod particle_volumes;
 mod particles;
 mod pick;
 mod player;

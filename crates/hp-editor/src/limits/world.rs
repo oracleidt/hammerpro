@@ -103,6 +103,23 @@ pub struct FaceGroup {
     pub max: [f32; 3],
 }
 
+pub fn particle_precipitation(entity: &hp_vmf::Entity) -> bool {
+    entity.classname.eq_ignore_ascii_case("func_precipitation")
+        && (entity
+            .get("preciptype")
+            .and_then(|value| value.trim().parse::<u32>().ok())
+            .is_some_and(|value| (4..=7).contains(&value))
+            || ["particle_name", "particle_name_inner", "particle_name_outer"]
+                .iter()
+                .any(|key| entity.get(key).is_some_and(|value| !value.trim().is_empty())))
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ParticleVolumes {
+    pub precipitation: Vec<[[f32; 3]; 3]>,
+    pub blockers: Vec<[[f32; 3]; 3]>,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct BspWorld {
     pub materials: Vec<String>,
@@ -117,6 +134,7 @@ pub struct BspWorld {
     pub entity_ids: Vec<u32>,
     pub rope_entities: Vec<hp_vmf::Entity>,
     pub particle_entities: Vec<hp_vmf::Entity>,
+    pub particle_volumes: ParticleVolumes,
     pub light: WorldLight,
     pub entity_faces: Vec<WorldFace>,
     pub entity_models: Vec<EntityModel>,

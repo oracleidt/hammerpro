@@ -99,6 +99,9 @@ impl EffectStatus {
 #[derive(Debug, Default)]
 pub struct ParticleShared {
     pub physics: Arc<crate::particle_world::Physics>,
+    pub(crate) rays: Arc<crate::particle_world::rays::RayWorld>,
+    pub(crate) ray_requirement: bool,
+    pub(crate) ray_preparation: crate::particle_world::rays::Preparation,
     pub(crate) world_requirement: Option<bool>,
     pub(crate) world_preparation: crate::particle_world::Preparation,
     pub library: HashMap<String, Arc<Plan>>,
@@ -132,6 +135,22 @@ impl ParticleShared {
             todo.extend(plan.children.iter().map(|(child, _)| child.to_ascii_lowercase()));
         }
         requirement
+    }
+
+    fn uses_ray_environments(&self, name: &str) -> bool {
+        let mut todo = vec![name.to_ascii_lowercase()];
+        let mut seen = HashSet::new();
+        while let Some(name) = todo.pop() {
+            if !seen.insert(name.clone()) || seen.len() > 256 {
+                continue;
+            }
+            let Some(plan) = self.library.get(&name) else { continue };
+            if plan.uses_ray_environments() {
+                return true;
+            }
+            todo.extend(plan.children.iter().map(|(child, _)| child.to_ascii_lowercase()));
+        }
+        false
     }
 
     pub fn status(&self, name: &str) -> EffectStatus {
@@ -725,6 +744,7 @@ impl ParticleLayer {
         self.lighting = None;
         if let Ok(mut s) = self.handle.lock() {
             s.world_requirement = None;
+            s.ray_requirement = false;
             s.active = false;
             s.playing.clear();
             s.particles = 0;
@@ -743,6 +763,7 @@ impl OverlayLayer for ParticleLayer {
         if !settings.show_particles {
             if let Ok(mut shared) = self.handle.lock() {
                 shared.world_requirement = None;
+                shared.ray_requirement = false;
             }
             if !self.effects.is_empty() || self.handle.lock().is_ok_and(|s| s.active || !s.sprites.is_empty()) {
                 self.stop_all();
@@ -770,6 +791,13 @@ impl OverlayLayer for ParticleLayer {
         let requirements: HashMap<_, _> =
             near.iter().map(|(_, source)| (source.id, shared.trace_requirement(&source.name))).collect();
         shared.world_requirement = requirements.values().copied().flatten().max();
+        let ray_requirements: HashSet<_> = near
+            .iter()
+            .filter(|(_, source)| shared.uses_ray_environments(&source.name))
+            .map(|(_, source)| source.id)
+            .collect();
+        shared.ray_requirement = !ray_requirements.is_empty();
+        let rays = Arc::clone(&shared.rays);
         let physics = Arc::clone(&shared.physics);
         let mut lighting = state.assets.particle_lighting();
         if !state.runtime.lighting.has_bake {
@@ -783,13 +811,21 @@ impl OverlayLayer for ParticleLayer {
             }
             self.lighting = Some(context);
         }
-        let world = crate::particle_world::ParticleEnvironment { state, physics: &physics, lighting: Some(&lighting) };
+        let world = crate::particle_world::ParticleEnvironment {
+            state,
+            physics: &physics,
+            lighting: Some(&lighting),
+            rays: Some(&rays),
+        };
         let keep: HashSet<Id> = near.iter().map(|(_, s)| s.id).collect();
         self.effects.retain(|id, _| keep.contains(id));
         let dt = state.frame.dt.clamp(0.0, 0.1);
         let mut budget = MAX_PARTICLES;
         let mut starts = 0;
         for (_, s) in &near {
+            if ray_requirements.contains(&s.id) && !rays.ready(state) {
+                continue;
+            }
             if requirements.get(&s.id).copied().flatten().is_some_and(|props| !physics.ready(state, props)) {
                 continue;
             }

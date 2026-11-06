@@ -6,6 +6,7 @@ use crate::model::{Operator, SystemDef};
 mod color;
 mod control;
 mod forces;
+mod rays;
 mod scalar;
 mod spatial;
 
@@ -219,6 +220,7 @@ impl Field {
 
 #[derive(Clone, Debug, PartialEq)]
 enum Init {
+    RayEnvironment(rays::Cull),
     Impact(spatial::Impact),
     Scalar(scalar::Remap),
     InheritVelocity {
@@ -546,6 +548,10 @@ fn bools3(op: &Operator, name: &str) -> [bool; 3] {
 }
 
 impl Plan {
+    pub fn uses_ray_environments(&self) -> bool {
+        self.inits.iter().any(|init| matches!(init, Init::RayEnvironment(_)))
+    }
+
     pub fn trace_requirement(&self) -> Option<bool> {
         if !self.point_traces.is_empty() || self.inits.iter().any(|op| matches!(op, Init::Impact(_))) {
             return Some(true);
@@ -653,6 +659,10 @@ impl Plan {
     }
 
     fn compile_init(&mut self, op: &Operator) {
+        if let Some(cull) = rays::compile(op) {
+            self.inits.push(Init::RayEnvironment(cull));
+            return;
+        }
         if let Some(color) = color::compile(op) {
             self.inits.push(Init::Color(color));
             return;
@@ -1191,6 +1201,7 @@ impl Sim {
         let mut pre_age = 0.0f32;
         for (index, init) in plan.inits.iter().enumerate() {
             match init {
+                Init::RayEnvironment(cull) => rays::initialize(cull, &mut part, dt, world),
                 Init::Impact(impact) => part.life = spatial::impact_lifetime(impact, &part, world),
                 Init::Scalar(remap) => {
                     if let Some(value) = scalar::evaluate(remap, &part, points, world, self.time, false) {

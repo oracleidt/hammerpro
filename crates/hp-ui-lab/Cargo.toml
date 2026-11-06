@@ -16,6 +16,7 @@ hp-fgd.workspace = true
 hp-geom.workspace = true
 hp-render.workspace = true
 hp-bsp.workspace = true
+hp-bspc.workspace = true
 hp-nav = { path = "../hp-nav" }
 hp-decompile = { path = "../hp-decompile" }
 hp-pcf = { path = "../hp-pcf" }

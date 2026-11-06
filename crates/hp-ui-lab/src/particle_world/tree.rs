@@ -21,6 +21,63 @@ pub(super) struct SurfaceTree {
 }
 
 impl SurfaceTree {
+    /// Named particle environments preserve the triangle normal on either side.
+    pub(super) fn ray(&self, start: Vector, direction: Vector, maximum: f32) -> Option<hp_pcf::environment::RayHit> {
+        if !start.iter().chain(&direction).all(|v| v.is_finite()) || maximum.is_nan() || maximum < 0.0 {
+            return None;
+        }
+        let (start, direction) = (vec(start), vec(direction));
+        if direction.length_squared() == 0.0 || self.nodes.is_empty() {
+            return None;
+        }
+        let mut best = None;
+        self.visit_ray(0, start, direction, f64::from(maximum), &mut best);
+        best.map(|(distance, normal)| hp_pcf::environment::RayHit {
+            distance: distance as f32,
+            normal: normal.as_vec3().to_array(),
+        })
+    }
+
+    fn visit_ray(&self, index: usize, origin: DVec3, direction: DVec3, maximum: f64, best: &mut Option<(f64, DVec3)>) {
+        let node = &self.nodes[index];
+        let limit = best.map_or(maximum, |(distance, _)| distance.min(maximum));
+        if !ray_bounds(origin, direction, node.bounds(), limit) {
+            return;
+        }
+        match *node {
+            Node::Branch { left, right, .. } => {
+                self.visit_ray(left, origin, direction, maximum, best);
+                self.visit_ray(right, origin, direction, maximum, best);
+            }
+            Node::Leaf { start, end, .. } => {
+                for surface in &self.surfaces[start..end] {
+                    let [a, b, c] = surface.points;
+                    let (ab, ac) = (b - a, c - a);
+                    let cross = direction.cross(ac);
+                    let determinant = ab.dot(cross);
+                    if determinant.abs() < 1e-12 {
+                        continue;
+                    }
+                    let inverse = determinant.recip();
+                    let offset = origin - a;
+                    let u = offset.dot(cross) * inverse;
+                    if !(0.0..=1.0).contains(&u) {
+                        continue;
+                    }
+                    let q = offset.cross(ab);
+                    let v = direction.dot(q) * inverse;
+                    if v < 0.0 || u + v > 1.0 {
+                        continue;
+                    }
+                    let distance = ac.dot(q) * inverse;
+                    if distance >= 0.0 && distance <= maximum && best.is_none_or(|(old, _)| distance < old) {
+                        *best = Some((distance, ab.cross(ac).normalize()));
+                    }
+                }
+            }
+        }
+    }
+
     pub(super) fn new(surfaces: Vec<Surface>) -> Self {
         let mut tree = Self { surfaces, nodes: Vec::new() };
         if !tree.surfaces.is_empty() {
@@ -86,6 +143,26 @@ impl SurfaceTree {
             }
         }
     }
+}
+
+fn ray_bounds(origin: DVec3, direction: DVec3, bounds: Aabb, maximum: f64) -> bool {
+    let (mut near, mut far) = (0.0f64, maximum);
+    for axis in 0..3 {
+        if direction[axis] == 0.0 {
+            if origin[axis] < bounds.min[axis] || origin[axis] > bounds.max[axis] {
+                return false;
+            }
+        } else {
+            let a = (bounds.min[axis] - origin[axis]) / direction[axis];
+            let b = (bounds.max[axis] - origin[axis]) / direction[axis];
+            near = near.max(a.min(b));
+            far = far.min(a.max(b));
+            if near > far {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 #[cfg(test)]

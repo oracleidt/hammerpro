@@ -1326,3 +1326,82 @@ fn sequential_path_edge_cases_match_native_zero_fractional_and_bouncing_bounds()
         assert!((actual - expected).abs() < 0.001, "{name}: {actual} vs {expected}");
     }
 }
+
+#[test]
+fn named_environment_culling_and_lifetime_limits_match_native_precipitation_and_blockers() {
+    use crate::environment::{Environment, RayEnvironment, RayHit};
+    struct Scene {
+        precipitation: [[f32; 3]; 2],
+        blocker: Option<[[f32; 3]; 2]>,
+    }
+    impl Environment for Scene {
+        fn trace_environment(
+            &self,
+            environment: RayEnvironment,
+            start: [f32; 3],
+            direction: [f32; 3],
+            maximum: f32,
+        ) -> Option<RayHit> {
+            let bounds = match environment {
+                RayEnvironment::Precipitation => self.precipitation,
+                RayEnvironment::PrecipitationBlocker => self.blocker?,
+            };
+            let mut result = None;
+            for axis in 0..3 {
+                if direction[axis] == 0.0 {
+                    continue;
+                }
+                for side in 0..2 {
+                    let distance = (bounds[side][axis] - start[axis]) / direction[axis];
+                    if distance < 0.0 || distance > maximum {
+                        continue;
+                    }
+                    let point: [f32; 3] = std::array::from_fn(|axis| start[axis] + distance * direction[axis]);
+                    if (0..3)
+                        .any(|axis| point[axis] < bounds[0][axis] - 0.0001 || point[axis] > bounds[1][axis] + 0.0001)
+                    {
+                        continue;
+                    }
+                    if result.is_none_or(|old: RayHit| distance < old.distance) {
+                        let mut normal = [0.0; 3];
+                        normal[axis] = if side == 0 { 1.0 } else { -1.0 };
+                        result = Some(RayHit { distance, normal });
+                    }
+                }
+            }
+            result
+        }
+    }
+    let mut definitions = crate::parse_file(include_bytes!("../tests/data/precip_cases.pcf")).unwrap();
+    for definition in &mut definitions {
+        definition.initializers.retain(|op| !op.function.eq_ignore_ascii_case("Remap Scalar to Vector"));
+    }
+    let contexts: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/precip_native_samples.json")).unwrap();
+    let bounds = |value: &serde_json::Value| {
+        std::array::from_fn(|side| std::array::from_fn(|axis| value[side][axis].as_f64().unwrap() as f32))
+    };
+    for context in contexts {
+        let world = Scene {
+            precipitation: bounds(&context["precipitation"]),
+            blocker: (!context["blocker"].is_null()).then(|| bounds(&context["blocker"])),
+        };
+        for case in context["cases"].as_array().unwrap() {
+            let name = format!("hp_spritecard_{}", case["name"].as_str().unwrap());
+            let plan = Arc::new(Plan::new(definitions.iter().find(|d| d.name == name).unwrap()));
+            assert!(plan.unsupported.is_empty(), "{name}: {:?}", plan.unsupported);
+            let mut sim = Sim::new(plan, 17);
+            sim.step_in(0.025, &Points::at([0.0, 0.0, 64.0]), &[], 100, &world);
+            assert_eq!(!sim.particles.is_empty(), case["alive"].as_bool().unwrap(), "{} {name}", context["name"]);
+            if let Some(particle) = sim.particles.first() {
+                let expected = case["life"].as_f64().unwrap() as f32;
+                assert!(
+                    (particle.life - expected).abs() < 0.00001,
+                    "{} {name}: {} vs {expected}",
+                    context["name"],
+                    particle.life
+                );
+            }
+        }
+    }
+}

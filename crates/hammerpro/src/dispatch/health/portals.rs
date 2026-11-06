@@ -386,6 +386,7 @@ fn read_world(bsp: &hp_bsp::Bsp, vis: Option<&BspVis>, leaf_version: u32) -> Opt
     w.entity_ids = ids;
     w.rope_entities = rope_entities(&entities);
     w.particle_entities = particle_entities(&entities);
+    w.particle_volumes = hp_assets::particle_volumes::read(bsp, &entities);
     let sky = w.faces.iter().filter(|f| f.sky).map(|f| w.bounds_of(f)).collect();
     w.light.props = read_prop_lighting(bsp, sky, vis, mode, &scales, &planes, &leafs, leaf_version, &models);
     Some(w)

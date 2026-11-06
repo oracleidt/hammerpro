@@ -1,0 +1,472 @@
+[
+  {
+    "name": "open",
+    "precipitation": [
+      [
+        -127.5,
+        -127.5,
+        16.5
+      ],
+      [
+        127.5,
+        127.5,
+        255.5
+      ]
+    ],
+    "blocker": null,
+    "cases": [
+      {
+        "name": "blocker_cull",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "blocker_keep",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "blocker_life",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "fixed_cull_miss",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "fixed_hit",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "fixed_keep_hit",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "fixed_miss",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "missing_cull",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "missing_keep",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "normal_down_cull",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "normal_down_keep",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "normal_up_cull",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "normal_up_keep",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "ray_back",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "ray_down",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "ray_down_offset",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "ray_forward",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "ray_left",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "ray_right",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "velocity_down_life",
+        "alive": true,
+        "life": 0.47504344940185544
+      },
+      {
+        "name": "velocity_down_offset",
+        "alive": true,
+        "life": 0.47504344940185544
+      },
+      {
+        "name": "velocity_normal_down",
+        "alive": true,
+        "life": 1.915175323486328
+      },
+      {
+        "name": "velocity_normal_up",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "velocity_outside",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "velocity_up_cull",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "velocity_up_keep",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "velocity_up_life",
+        "alive": true,
+        "life": 1.915175323486328
+      }
+    ]
+  },
+  {
+    "name": "roof",
+    "precipitation": [
+      [
+        -127.5,
+        -127.5,
+        16.5
+      ],
+      [
+        127.5,
+        127.5,
+        255.5
+      ]
+    ],
+    "blocker": null,
+    "cases": [
+      {
+        "name": "blocker_cull",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "blocker_keep",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "blocker_life",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "fixed_cull_miss",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "fixed_hit",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "fixed_keep_hit",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "fixed_miss",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "missing_cull",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "missing_keep",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "normal_down_cull",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "normal_down_keep",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "normal_up_cull",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "normal_up_keep",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "ray_back",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "ray_down",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "ray_down_offset",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "ray_forward",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "ray_left",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "ray_right",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "velocity_down_life",
+        "alive": true,
+        "life": 0.47504344940185544
+      },
+      {
+        "name": "velocity_down_offset",
+        "alive": true,
+        "life": 0.47504344940185544
+      },
+      {
+        "name": "velocity_normal_down",
+        "alive": true,
+        "life": 1.915175323486328
+      },
+      {
+        "name": "velocity_normal_up",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "velocity_outside",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "velocity_up_cull",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "velocity_up_keep",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "velocity_up_life",
+        "alive": true,
+        "life": 1.915175323486328
+      }
+    ]
+  },
+  {
+    "name": "blocker",
+    "precipitation": [
+      [
+        -127.5,
+        -127.5,
+        16.5
+      ],
+      [
+        127.5,
+        127.5,
+        255.5
+      ]
+    ],
+    "blocker": [
+      [
+        -63.5,
+        -63.5,
+        128.5
+      ],
+      [
+        63.5,
+        63.5,
+        143.5
+      ]
+    ],
+    "cases": [
+      {
+        "name": "blocker_cull",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "blocker_keep",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "blocker_life",
+        "alive": true,
+        "life": 0.6450590515136718
+      },
+      {
+        "name": "fixed_cull_miss",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "fixed_hit",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "fixed_keep_hit",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "fixed_miss",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "missing_cull",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "missing_keep",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "normal_down_cull",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "normal_down_keep",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "normal_up_cull",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "normal_up_keep",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "ray_back",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "ray_down",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "ray_down_offset",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "ray_forward",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "ray_left",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "ray_right",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "velocity_down_life",
+        "alive": true,
+        "life": 0.47504344940185544
+      },
+      {
+        "name": "velocity_down_offset",
+        "alive": true,
+        "life": 0.47504344940185544
+      },
+      {
+        "name": "velocity_normal_down",
+        "alive": true,
+        "life": 1.915175323486328
+      },
+      {
+        "name": "velocity_normal_up",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "velocity_outside",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "velocity_up_cull",
+        "alive": false,
+        "life": null
+      },
+      {
+        "name": "velocity_up_keep",
+        "alive": true,
+        "life": 10.0
+      },
+      {
+        "name": "velocity_up_life",
+        "alive": true,
+        "life": 1.915175323486328
+      }
+    ]
+  }
+]

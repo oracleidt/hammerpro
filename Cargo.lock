@@ -2179,6 +2179,7 @@ dependencies = [
  "hp-app",
  "hp-audio",
  "hp-bsp",
+ "hp-bspc",
  "hp-colorgrade",
  "hp-decompile",
  "hp-editor",

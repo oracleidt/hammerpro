@@ -46,6 +46,7 @@ impl Physics {
 }
 
 pub fn prepare(state: &mut AppState, handle: &ParticleHandle, ctx: &egui::Context) {
+    super::rays::prepare(state, handle, ctx);
     let Ok(mut shared) = handle.lock() else { return };
     let Some(props) = shared.world_requirement.filter(|_| state.settings.lab.show_particles) else {
         shared.world_preparation.pending = None;
