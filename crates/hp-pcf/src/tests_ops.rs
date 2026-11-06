@@ -48,6 +48,163 @@ fn run(def: &SystemDef, points: &Points, seconds: f32) -> Sim {
 struct FloorTrace;
 
 #[test]
+fn native_initializer_passes_preserve_pre_age_for_both_authored_orders() {
+    let definitions = crate::parse_file(include_bytes!("../tests/data/preage_order_cases.pcf")).unwrap();
+    let cases: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/preage_order_native_samples.json")).unwrap();
+    for case in cases {
+        let name = format!("hp_spritecard_{}", case["name"].as_str().unwrap());
+        let mut definition = definitions.iter().find(|def| def.name == name).unwrap().clone();
+        definition.initializers.retain(|op| op.function != "Remap Scalar to Vector");
+        let mut sim = Sim::new(Arc::new(Plan::new(&definition)), 0);
+        sim.step(0.0, [0.0; 3], 1);
+        assert_eq!(sim.particles[0].age, -case["born"].as_f64().unwrap() as f32, "{name}");
+    }
+}
+
+#[test]
+fn base_attributes_are_initialized_once_then_modified_in_authored_order() {
+    let definition = system(
+        "initializer-passes",
+        vec![burst(1)],
+        vec![
+            op(
+                "Remap Initial Scalar",
+                vec![
+                    ("input field", Value::Int(3)),
+                    ("input minimum", fl(0.0)),
+                    ("input maximum", fl(10.0)),
+                    ("output field", Value::Int(3)),
+                    ("output minimum", fl(100.0)),
+                    ("output maximum", fl(200.0)),
+                ],
+            ),
+            op("Radius Random", vec![("radius_min", fl(2.0)), ("radius_max", fl(2.0))]),
+            op("Radius Random", vec![("radius_min", fl(16.0)), ("radius_max", fl(16.0))]),
+        ],
+        vec![],
+    );
+    let mut sim = Sim::new(Arc::new(Plan::new(&definition)), 0);
+    sim.step(0.0, [0.0; 3], 1);
+    assert_eq!(sim.particles[0].radius, 120.0);
+}
+
+#[test]
+fn scalar_noise_world_clock_reaches_the_simulation_environment() {
+    struct Clock {
+        ticks: [u32; 3],
+        calls: std::cell::Cell<usize>,
+    }
+    impl crate::environment::Environment for Clock {
+        fn time_milliseconds(&self) -> u32 {
+            let index = self.calls.get();
+            self.calls.set(index + 1);
+            self.ticks[index]
+        }
+    }
+    let cases: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/noise_initializers_native_math.json")).unwrap();
+    let case = cases
+        .iter()
+        .find(|c| {
+            c["kind"] == "remap" && c["field"] == 3 && c["world_scale"] != 0 && c["expected"].as_f64().unwrap() > 0.0
+        })
+        .unwrap();
+    let read = |name: &str| case[name].as_f64().unwrap() as f32;
+    let vector = |name: &str| std::array::from_fn(|axis| case[name][axis].as_f64().unwrap() as f32);
+    let definition = system(
+        "world-noise",
+        vec![burst(1)],
+        vec![
+            op(
+                "Position Within Box Random",
+                vec![("min", Value::Vec3(vector("position"))), ("max", Value::Vec3(vector("position")))],
+            ),
+            op(
+                "Remap Noise to Scalar",
+                vec![
+                    ("output field", Value::Int(3)),
+                    ("output minimum", fl(read("min"))),
+                    ("output maximum", fl(read("max"))),
+                    ("time noise coordinate scale", fl(read("time_scale"))),
+                    ("spatial noise coordinate scale", fl(read("spatial_scale"))),
+                    ("time coordinate offset", fl(read("born") + read("time_offset"))),
+                    ("spatial coordinate offset", Value::Vec3(vector("spatial_offset"))),
+                    ("world time noise coordinate scale", fl(read("world_scale"))),
+                    ("absolute value", Value::Bool(case["absolute"].as_bool().unwrap())),
+                    ("invert absolute value", Value::Bool(case["invert"].as_bool().unwrap())),
+                ],
+            ),
+        ],
+        vec![],
+    );
+    let world = Clock {
+        ticks: std::array::from_fn(|axis| case["ticks"][axis].as_u64().unwrap() as u32),
+        calls: std::cell::Cell::new(0),
+    };
+    let mut sim = Sim::new(Arc::new(Plan::new(&definition)), 0);
+    sim.step_in(0.0, &Points::at([0.0; 3]), &[], 1, &world);
+    assert_eq!(world.calls.get(), 3);
+    assert_eq!(sim.particles[0].radius.to_bits(), read("expected").to_bits());
+}
+
+#[test]
+fn scalar_noise_initializers_match_native_pixels_and_creation_times() {
+    let definitions = crate::parse_file(include_bytes!("../tests/data/noise_initializers_cases.pcf")).unwrap();
+    let cases: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/noise_initializers_native_samples.json")).unwrap();
+    for case in cases {
+        let name = format!("hp_spritecard_{}", case["name"].as_str().unwrap());
+        let mut definition = definitions.iter().find(|def| def.name == name).unwrap().clone();
+        definition.initializers.retain(|op| op.function != "Remap Scalar to Vector");
+        let mut sim = Sim::new(Arc::new(Plan::new(&definition)), 0);
+        sim.step(0.0, [0.0; 3], 1);
+        assert_eq!(sim.particles.len(), 1, "{name}");
+        let particle = &sim.particles[0];
+        if case["kind"] == "preage" {
+            let expected = case["measured_born"].as_f64().unwrap() as f32;
+            assert!((particle.age + expected).abs() < 0.0001, "{name}: {} vs {}", particle.age, -expected);
+        } else {
+            let gray = ((128.0f32 / 255.0 + 0.055) / 1.055).powf(2.4);
+            let linear = gray * (128.0 / 255.0) * particle.alpha;
+            let pixel =
+                (if linear <= 0.0031308 { linear * 12.92 } else { 1.055 * linear.powf(1.0 / 2.4) - 0.055 }) * 255.0;
+            let expected = case["pixel"][0].as_f64().unwrap() as f32;
+            assert!((pixel.round() - expected).abs() <= 1.0, "{name}: {pixel} vs {expected}");
+        }
+    }
+}
+
+#[test]
+fn pre_age_changes_creation_time_before_later_initializers_and_can_reach_full_lifetime() {
+    let definition = system(
+        "full-pre-age",
+        vec![burst(1)],
+        vec![
+            op("Lifetime Random", vec![("lifetime_min", fl(10.0)), ("lifetime_max", fl(10.0))]),
+            op("Lifetime Pre-Age Noise", vec![("start age minimum", fl(1.0)), ("start age maximum", fl(1.0))]),
+            op(
+                "Remap Initial Scalar",
+                vec![
+                    ("input field", Value::Int(8)),
+                    ("input minimum", fl(-10.0)),
+                    ("input maximum", fl(0.0)),
+                    ("output field", Value::Int(3)),
+                    ("output minimum", fl(1.0)),
+                    ("output maximum", fl(11.0)),
+                ],
+            ),
+        ],
+        vec![],
+    );
+    let mut sim = Sim::new(Arc::new(Plan::new(&definition)), 0);
+    sim.step(0.0, [0.0; 3], 1);
+    let particle = &sim.particles[0];
+    assert_eq!(particle.age, 10.0);
+    assert_eq!(particle.radius, 1.0);
+}
+
+#[test]
 fn velocity_noise_matches_native_trajectories_and_uses_the_selected_control_point() {
     let definitions = crate::parse_file(include_bytes!("../tests/data/velocity_noise_cases.pcf")).unwrap();
     let cases: Vec<serde_json::Value> =

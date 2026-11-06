@@ -1,4 +1,4 @@
-use super::{Operator, Points, V3, add, b, f, i, lerp, scale, v};
+use super::{Environment, Field, Operator, Points, V3, add, b, f, i, lerp, scale, v};
 
 #[derive(Clone, Debug, PartialEq)]
 struct Coordinates {
@@ -21,6 +21,58 @@ impl Coordinates {
     fn at(&self, position: V3, born: f32) -> V3 {
         let time = (born + self.time_offset) * self.time_scale;
         add(scale(add(position, self.spatial_offset), self.spatial_scale), [time; 3])
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct Scalar {
+    coordinates: Coordinates,
+    min: f32,
+    max: f32,
+    absolute: bool,
+    invert: bool,
+    world_scale: f32,
+}
+
+impl Scalar {
+    pub(super) fn compile(op: &Operator, field: Field, pre_age: bool) -> Self {
+        let angle = |value: f32| {
+            if !pre_age && matches!(field, Field::Rotation | Field::Yaw) {
+                (value as f64 * (std::f64::consts::PI / 180.0)) as f32
+            } else {
+                value
+            }
+        };
+        Self {
+            coordinates: Coordinates::compile(op, if pre_age { 1.0 } else { 0.1 }, if pre_age { 1.0 } else { 0.001 }),
+            min: angle(f(op, if pre_age { "start age minimum" } else { "output minimum" }, 0.0)),
+            max: angle(f(op, if pre_age { "start age maximum" } else { "output maximum" }, 1.0)),
+            absolute: b(op, "absolute value", false),
+            invert: b(op, "invert absolute value", false),
+            world_scale: if pre_age { 0.0 } else { f(op, "world time noise coordinate scale", 0.0) },
+        }
+    }
+
+    pub(super) fn evaluate(&self, position: V3, born: f32, world: &dyn Environment) -> f32 {
+        let time = (born + self.coordinates.time_offset) * self.coordinates.time_scale;
+        let times = if self.world_scale != 0.0 {
+            let ticks = std::array::from_fn::<_, 3, _>(|_| world.time_milliseconds() as f32 * self.world_scale);
+            [time + ticks[2], time + ticks[1], time + ticks[0]]
+        } else {
+            [time; 3]
+        };
+        let position =
+            add(scale(add(position, self.coordinates.spatial_offset), self.coordinates.spatial_scale), times);
+        let mut value = scalar(position);
+        if self.absolute {
+            value = value.abs();
+        }
+        if self.invert {
+            value = 1.0 - value;
+        }
+        let factor = if self.absolute { 1.0 } else { 0.5 };
+        let range = self.max - self.min;
+        value * (range * factor) + ((1.0 - factor) * range + self.min)
     }
 }
 
@@ -126,6 +178,54 @@ pub(super) fn map(value: f32, min: f32, max: f32, dt: Option<f32>) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scalar_initializers_match_native_flags_clocks_angles_and_pre_age() {
+        struct Clock {
+            ticks: [u32; 3],
+            calls: std::cell::Cell<usize>,
+        }
+        impl Environment for Clock {
+            fn time_milliseconds(&self) -> u32 {
+                let index = self.calls.get();
+                self.calls.set(index + 1);
+                self.ticks[index]
+            }
+        }
+        let cases: Vec<serde_json::Value> =
+            serde_json::from_str(include_str!("../../tests/data/noise_initializers_native_math.json")).unwrap();
+        let vector = |value: &serde_json::Value| std::array::from_fn(|axis| value[axis].as_f64().unwrap() as f32);
+        for case in cases {
+            let read = |name: &str| case[name].as_f64().unwrap() as f32;
+            let op = Scalar {
+                coordinates: Coordinates {
+                    time_scale: read("time_scale"),
+                    spatial_scale: read("spatial_scale"),
+                    time_offset: read("time_offset"),
+                    spatial_offset: vector(&case["spatial_offset"]),
+                },
+                min: read("min"),
+                max: read("max"),
+                absolute: case["absolute"].as_bool().unwrap(),
+                invert: case["invert"].as_bool().unwrap(),
+                world_scale: read("world_scale"),
+            };
+            let world = Clock {
+                ticks: std::array::from_fn(|axis| case["ticks"][axis].as_u64().unwrap() as u32),
+                calls: std::cell::Cell::new(0),
+            };
+            let value = op.evaluate(vector(&case["position"]), read("born"), &world);
+            let value = if case["kind"] == "preage" {
+                read("born") - value.clamp(0.0, 1.0) * read("life")
+            } else if case["field"] == 7 {
+                value.clamp(0.0, 1.0)
+            } else {
+                value
+            };
+            assert_eq!(value.to_bits(), read("expected").to_bits(), "{case}");
+            assert_eq!(world.calls.get(), if op.world_scale != 0.0 { 3 } else { 0 });
+        }
+    }
 
     #[test]
     fn velocity_coordinates_flags_and_ranges_match_native_initializer() {

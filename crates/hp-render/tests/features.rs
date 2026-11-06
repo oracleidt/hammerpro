@@ -1621,10 +1621,17 @@ fn simulated_colors_fades_and_noise_match_native_spritecard_pixels() {
             include_bytes!("../../hp-pcf/tests/data/noise_vector_cases.pcf").as_slice(),
             include_str!("../../hp-pcf/tests/data/noise_vector_native.json"),
         ),
+        (
+            include_bytes!("../../hp-pcf/tests/data/noise_initializers_cases.pcf").as_slice(),
+            include_str!("../../hp-pcf/tests/data/noise_initializers_native_samples.json"),
+        ),
     ] {
         let definitions = hp_pcf::parse_file(file).unwrap();
         let cases: Vec<serde_json::Value> = serde_json::from_str(reference).unwrap();
         for case in cases {
+            if case["kind"] == "preage" {
+                continue;
+            }
             let name = format!("hp_spritecard_{}", case["name"].as_str().unwrap());
             let definition = definitions.iter().find(|def| def.name == name).unwrap();
             let mut sim = hp_pcf::Sim::new(Arc::new(hp_pcf::Plan::new(definition)), 17);

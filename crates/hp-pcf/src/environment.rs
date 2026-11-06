@@ -33,6 +33,12 @@ pub struct ModelHitbox {
 }
 
 pub trait Environment {
+    /// Monotonic milliseconds for Source's world-time noise coordinate.
+    fn time_milliseconds(&self) -> u32 {
+        static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+        START.get_or_init(std::time::Instant::now).elapsed().as_millis() as u32
+    }
+
     fn model_hitboxes(&self, _object: u32, _set: &str) -> Option<std::sync::Arc<[ModelHitbox]>> {
         None
     }

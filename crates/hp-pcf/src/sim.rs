@@ -349,13 +349,9 @@ enum Init {
     Noise(noise::Velocity),
     NoiseScalar {
         field: Field,
-        min: f32,
-        max: f32,
+        noise: noise::Scalar,
     },
-    PreAge {
-        min: f32,
-        max: f32,
-    },
+    PreAge(noise::Scalar),
     Remap {
         input: Field,
         imin: f32,
@@ -366,6 +362,74 @@ enum Init {
         multiply: bool,
         within: bool,
     },
+}
+
+impl Init {
+    fn modifier(&self) -> bool {
+        match self {
+            Self::Sphere { .. }
+            | Self::Box { .. }
+            | Self::Ring { .. }
+            | Self::Path { .. }
+            | Self::Model(_)
+            | Self::Hierarchy(_)
+            | Self::FromParent { .. }
+            | Self::Lifetime { .. }
+            | Self::Radius { .. }
+            | Self::Color(_)
+            | Self::Alpha { .. }
+            | Self::Rotation { .. }
+            | Self::RotationSpeed { .. }
+            | Self::Yaw { .. }
+            | Self::Sequence { .. }
+            | Self::TrailLength { .. }
+            | Self::NoiseScalar { .. } => false,
+            Self::RayEnvironment(_)
+            | Self::Impact(_)
+            | Self::Scalar(_)
+            | Self::InheritVelocity { .. }
+            | Self::Warp(_)
+            | Self::Offset { .. }
+            | Self::LifeFromSequence { .. }
+            | Self::YawFlip { .. }
+            | Self::Velocity { .. }
+            | Self::Noise(_)
+            | Self::PreAge(_)
+            | Self::Remap { .. } => true,
+        }
+    }
+
+    fn written_attributes(&self) -> u32 {
+        match self {
+            Self::Model(_) => 0xc105,
+            Self::Path { steps: Some(_), .. } => 0x8005,
+            Self::FromParent { .. } => 7,
+            Self::Sphere { .. } | Self::Box { .. } | Self::Ring { .. } | Self::Path { .. } | Self::Hierarchy(_) => 5,
+            Self::Lifetime { .. } => 1 << 1,
+            Self::Radius { .. } => 1 << 3,
+            Self::Rotation { .. } => 1 << 4,
+            Self::RotationSpeed { .. } => 1 << 5,
+            Self::Color(_) => 1 << 6,
+            Self::Alpha { .. } => 1 << 7,
+            Self::Sequence { second, .. } => 1 << if *second { 13 } else { 9 },
+            Self::TrailLength { .. } => 1 << 10,
+            Self::Yaw { .. } => 1 << 12,
+            Self::NoiseScalar { field, .. } => match field {
+                Field::Lifetime => 1 << 1,
+                Field::Radius => 1 << 3,
+                Field::Rotation => 1 << 4,
+                Field::RotationSpeed => 1 << 5,
+                Field::Alpha => 1 << 7,
+                Field::CreationTime => 1 << 8,
+                Field::Sequence => 1 << 9,
+                Field::TrailLength => 1 << 10,
+                Field::Yaw => 1 << 12,
+                Field::Sequence2 => 1 << 13,
+                Field::Other => 0,
+            },
+            _ => 0,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -641,6 +705,23 @@ impl Plan {
         for op in &def.initializers {
             p.compile_init(op);
         }
+        let mut modifiers = Vec::new();
+        // Source initializes each base attribute once, then runs modifiers in their authored order.
+        // Emitters have already assigned creation time and the particle identifier.
+        let mut initialized = (1u32 << 8) | (1 << 11);
+        p.inits.retain(|init| {
+            if init.modifier() {
+                modifiers.push(init.clone());
+                return false;
+            }
+            let written = init.written_attributes();
+            if written != 0 && written & !initialized == 0 {
+                return false;
+            }
+            initialized |= written;
+            true
+        });
+        p.inits.extend(modifiers);
         for op in def.forces.iter().chain(&def.operators).chain(&def.constraints) {
             p.compile_op(op);
         }
@@ -822,15 +903,11 @@ impl Plan {
                 Init::InheritVelocity { cp: i(op, "control point number", 0), scale: f(op, "velocity scale", 1.0) }
             }
             "velocity noise" | "initial velocity noise" => Init::Noise(noise::Velocity::compile(op)),
-            "remap noise to scalar" => Init::NoiseScalar {
-                field: Field::from_index(i(op, "output field", 3)),
-                min: f(op, "output minimum", 0.0),
-                max: f(op, "output maximum", 1.0),
-            },
-            "lifetime pre-age noise" => Init::PreAge {
-                min: f(op, "start age minimum", 0.0).clamp(0.0, 1.0),
-                max: f(op, "start age maximum", 0.0).clamp(0.0, 1.0),
-            },
+            "remap noise to scalar" => {
+                let field = Field::from_index(i(op, "output field", 3));
+                Init::NoiseScalar { field, noise: noise::Scalar::compile(op, field, false) }
+            }
+            "lifetime pre-age noise" => Init::PreAge(noise::Scalar::compile(op, Field::Other, true)),
             "remap initial scalar" => Init::Remap {
                 input: Field::from_index(i(op, "input field", 8)),
                 imin: f(op, "input minimum", 0.0),
@@ -1269,7 +1346,6 @@ impl Sim {
             color_add: [0.0; 3],
             born: self.time,
         };
-        let mut pre_age = 0.0f32;
         for (index, init) in plan.inits.iter().enumerate() {
             match init {
                 Init::RayEnvironment(cull) => rays::initialize(cull, &mut part, dt, world),
@@ -1395,9 +1471,13 @@ impl Sim {
                 Init::Noise(op) => {
                     part.vel = add(part.vel, op.evaluate(part.pos, part.born, points));
                 }
-                Init::NoiseScalar { field, min, max } => {
-                    let x = self.rng.range(*min, *max);
-                    set_field(&mut part, *field, x, false);
+                Init::NoiseScalar { field, noise } => {
+                    let x = noise.evaluate(part.pos, part.born, world);
+                    if *field == Field::CreationTime {
+                        part.born = x;
+                    } else {
+                        set_field(&mut part, *field, x, false);
+                    }
                 }
                 Init::Remap { input, imin, imax, output, omin, omax, multiply, within } => {
                     let x = get_field(&part, *input);
@@ -1407,7 +1487,9 @@ impl Sim {
                     let k = if (imax - imin).abs() > 1e-6 { ((x - imin) / (imax - imin)).clamp(0.0, 1.0) } else { 0.0 };
                     set_field(&mut part, *output, lerp(*omin, *omax, k), *multiply);
                 }
-                Init::PreAge { min, max } => pre_age = self.rng.range(*min, *max),
+                Init::PreAge(noise) => {
+                    part.born -= noise.evaluate(part.pos, part.born, world).clamp(0.0, 1.0) * part.life;
+                }
             }
         }
         for op in &plan.ops {
@@ -1420,9 +1502,7 @@ impl Sim {
         if !part.life.is_finite() || part.life < 0.0 {
             part.life = 1.0;
         }
-        if pre_age > 0.0 && part.life > 0.0 {
-            part.age = pre_age.clamp(0.0, 0.95) * part.life;
-        }
+        part.age = (self.time - part.born).max(0.0);
         part.radius = part.base_radius;
         part.color = part.base_color;
         part.alpha = part.base_alpha;

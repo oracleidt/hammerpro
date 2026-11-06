@@ -1,0 +1,734 @@
+[
+  {
+    "name": "r0",
+    "position": [
+      0,
+      0,
+      0
+    ],
+    "scale": 1,
+    "kind": "remap",
+    "absolute": false,
+    "invert": false,
+    "pixel": [
+      84,
+      84,
+      84,
+      255
+    ],
+    "position_bounds": [
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ]
+    ]
+  },
+  {
+    "name": "r1",
+    "position": [
+      1,
+      2,
+      3
+    ],
+    "scale": 0.1,
+    "kind": "remap",
+    "absolute": true,
+    "invert": false,
+    "pixel": [
+      60,
+      60,
+      60,
+      255
+    ],
+    "position_bounds": [
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        1,
+        2,
+        3
+      ]
+    ]
+  },
+  {
+    "name": "r2",
+    "position": [
+      0.25,
+      0.5,
+      0.75
+    ],
+    "scale": -0.25,
+    "kind": "remap",
+    "absolute": false,
+    "invert": true,
+    "pixel": [
+      79,
+      79,
+      79,
+      255
+    ],
+    "position_bounds": [
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        0.25,
+        0.5,
+        0.75
+      ]
+    ]
+  },
+  {
+    "name": "r3",
+    "position": [
+      -0.25,
+      -0.5,
+      -0.75
+    ],
+    "scale": 1,
+    "kind": "remap",
+    "absolute": true,
+    "invert": true,
+    "pixel": [
+      83,
+      83,
+      83,
+      255
+    ],
+    "position_bounds": [
+      [
+        -0.25,
+        -0.5,
+        -0.75
+      ],
+      [
+        0,
+        0,
+        0
+      ]
+    ]
+  },
+  {
+    "name": "r4",
+    "position": [
+      64,
+      128,
+      256
+    ],
+    "scale": 0,
+    "kind": "remap",
+    "absolute": false,
+    "invert": false,
+    "pixel": [
+      84,
+      84,
+      84,
+      255
+    ],
+    "position_bounds": [
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        64,
+        128,
+        256
+      ]
+    ]
+  },
+  {
+    "name": "r5",
+    "position": [
+      -63.5,
+      127.75,
+      255.125
+    ],
+    "scale": 101,
+    "kind": "remap",
+    "absolute": true,
+    "invert": false,
+    "pixel": [
+      75,
+      75,
+      75,
+      255
+    ],
+    "position_bounds": [
+      [
+        -63.5,
+        0,
+        0
+      ],
+      [
+        0,
+        127.75,
+        255.125
+      ]
+    ]
+  },
+  {
+    "name": "r6",
+    "position": [
+      256.1,
+      0,
+      0
+    ],
+    "scale": 0.01,
+    "kind": "remap",
+    "absolute": false,
+    "invert": true,
+    "pixel": [
+      92,
+      92,
+      92,
+      255
+    ],
+    "position_bounds": [
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        256.1000061035156,
+        0,
+        0
+      ]
+    ]
+  },
+  {
+    "name": "r7",
+    "position": [
+      0.001,
+      0.002,
+      -0.003
+    ],
+    "scale": 0.1,
+    "kind": "remap",
+    "absolute": true,
+    "invert": true,
+    "pixel": [
+      41,
+      41,
+      41,
+      255
+    ],
+    "position_bounds": [
+      [
+        0,
+        0,
+        -0.003000000026077032
+      ],
+      [
+        0.0010000000474974513,
+        0.0020000000949949026,
+        0
+      ]
+    ]
+  },
+  {
+    "name": "r8",
+    "position": [
+      32760,
+      40,
+      -20
+    ],
+    "scale": 0.1,
+    "kind": "remap",
+    "absolute": false,
+    "invert": false,
+    "pixel": [
+      67,
+      67,
+      67,
+      255
+    ],
+    "position_bounds": [
+      [
+        0,
+        0,
+        -20
+      ],
+      [
+        32760,
+        40,
+        0
+      ]
+    ]
+  },
+  {
+    "name": "r9",
+    "position": [
+      -32760,
+      40,
+      -20
+    ],
+    "scale": 0.1,
+    "kind": "remap",
+    "absolute": true,
+    "invert": false,
+    "pixel": [
+      82,
+      82,
+      82,
+      255
+    ],
+    "position_bounds": [
+      [
+        -32760,
+        0,
+        -20
+      ],
+      [
+        0,
+        40,
+        0
+      ]
+    ]
+  },
+  {
+    "name": "r10",
+    "position": [
+      0,
+      0,
+      100
+    ],
+    "scale": 1,
+    "kind": "remap",
+    "absolute": false,
+    "invert": true,
+    "pixel": [
+      84,
+      84,
+      84,
+      255
+    ],
+    "position_bounds": [
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        100
+      ]
+    ]
+  },
+  {
+    "name": "r11",
+    "position": [
+      0,
+      100,
+      0
+    ],
+    "scale": 1,
+    "kind": "remap",
+    "absolute": true,
+    "invert": true,
+    "pixel": [
+      56,
+      56,
+      56,
+      255
+    ],
+    "position_bounds": [
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        100,
+        0
+      ]
+    ]
+  },
+  {
+    "name": "q0",
+    "position": [
+      0,
+      0,
+      0
+    ],
+    "scale": 1,
+    "kind": "preage",
+    "absolute": false,
+    "invert": false,
+    "pixel": [
+      0,
+      0,
+      0,
+      255
+    ],
+    "position_bounds": [
+      [
+        -964.7060546875,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ]
+    ],
+    "measured_born": -9.647060546875
+  },
+  {
+    "name": "q1",
+    "position": [
+      1,
+      2,
+      3
+    ],
+    "scale": 0.1,
+    "kind": "preage",
+    "absolute": true,
+    "invert": false,
+    "pixel": [
+      0,
+      0,
+      0,
+      255
+    ],
+    "position_bounds": [
+      [
+        -388.8046875,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ]
+    ],
+    "measured_born": -3.888046875
+  },
+  {
+    "name": "q2",
+    "position": [
+      0.25,
+      0.5,
+      0.75
+    ],
+    "scale": -0.25,
+    "kind": "preage",
+    "absolute": false,
+    "invert": true,
+    "pixel": [
+      0,
+      0,
+      0,
+      255
+    ],
+    "position_bounds": [
+      [
+        -818.1376953125,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ]
+    ],
+    "measured_born": -8.181376953125
+  },
+  {
+    "name": "q3",
+    "position": [
+      -0.25,
+      -0.5,
+      -0.75
+    ],
+    "scale": 1,
+    "kind": "preage",
+    "absolute": true,
+    "invert": true,
+    "pixel": [
+      0,
+      0,
+      0,
+      255
+    ],
+    "position_bounds": [
+      [
+        -925.4912109375,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ]
+    ],
+    "measured_born": -9.254912109375
+  },
+  {
+    "name": "q4",
+    "position": [
+      64,
+      128,
+      256
+    ],
+    "scale": 0,
+    "kind": "preage",
+    "absolute": false,
+    "invert": false,
+    "pixel": [
+      0,
+      0,
+      0,
+      255
+    ],
+    "position_bounds": [
+      [
+        -964.7060546875,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ]
+    ],
+    "measured_born": -9.647060546875
+  },
+  {
+    "name": "q5",
+    "position": [
+      -63.5,
+      127.75,
+      255.125
+    ],
+    "scale": 101,
+    "kind": "preage",
+    "absolute": true,
+    "invert": false,
+    "pixel": [
+      0,
+      0,
+      0,
+      255
+    ],
+    "position_bounds": [
+      [
+        -698.28515625,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ]
+    ],
+    "measured_born": -6.9828515625
+  },
+  {
+    "name": "q6",
+    "position": [
+      256.1,
+      0,
+      0
+    ],
+    "scale": 0.01,
+    "kind": "preage",
+    "absolute": false,
+    "invert": true,
+    "pixel": [
+      0,
+      0,
+      0,
+      255
+    ],
+    "position_bounds": [
+      [
+        -1000,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ]
+    ],
+    "measured_born": -10.0
+  },
+  {
+    "name": "q7",
+    "position": [
+      0.001,
+      0.002,
+      -0.003
+    ],
+    "scale": 0.1,
+    "kind": "preage",
+    "absolute": true,
+    "invert": true,
+    "pixel": [
+      0,
+      0,
+      0,
+      255
+    ],
+    "position_bounds": [
+      [
+        -70.587890625,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ]
+    ],
+    "measured_born": -0.70587890625
+  },
+  {
+    "name": "q8",
+    "position": [
+      32760,
+      40,
+      -20
+    ],
+    "scale": 0.1,
+    "kind": "preage",
+    "absolute": false,
+    "invert": false,
+    "pixel": [
+      0,
+      0,
+      0,
+      255
+    ],
+    "position_bounds": [
+      [
+        -533.3330078125,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ]
+    ],
+    "measured_born": -5.333330078125
+  },
+  {
+    "name": "q9",
+    "position": [
+      -32760,
+      40,
+      -20
+    ],
+    "scale": 0.1,
+    "kind": "preage",
+    "absolute": true,
+    "invert": false,
+    "pixel": [
+      0,
+      0,
+      0,
+      255
+    ],
+    "position_bounds": [
+      [
+        -898.0400390625,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ]
+    ],
+    "measured_born": -8.980400390625
+  },
+  {
+    "name": "q10",
+    "position": [
+      0,
+      0,
+      100
+    ],
+    "scale": 1,
+    "kind": "preage",
+    "absolute": false,
+    "invert": true,
+    "pixel": [
+      0,
+      0,
+      0,
+      255
+    ],
+    "position_bounds": [
+      [
+        -962.7451171875,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ]
+    ],
+    "measured_born": -9.627451171875
+  },
+  {
+    "name": "q11",
+    "position": [
+      0,
+      100,
+      0
+    ],
+    "scale": 1,
+    "kind": "preage",
+    "absolute": true,
+    "invert": true,
+    "pixel": [
+      0,
+      0,
+      0,
+      255
+    ],
+    "position_bounds": [
+      [
+        -313.7255859375,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ]
+    ],
+    "measured_born": -3.137255859375
+  }
+]

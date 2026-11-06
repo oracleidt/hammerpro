@@ -25,6 +25,10 @@ impl<'a> Frame<'a> {
 }
 
 impl Environment for Frame<'_> {
+    fn time_milliseconds(&self) -> u32 {
+        self.world.time_milliseconds()
+    }
+
     fn model_hitboxes(&self, object: u32, set: &str) -> Option<Arc<[ModelHitbox]>> {
         let key = (object, set.to_owned());
         if let Some(value) = self.current.borrow().get(&key) {
