@@ -48,6 +48,96 @@ fn run(def: &SystemDef, points: &Points, seconds: f32) -> Sim {
 struct FloorTrace;
 
 #[test]
+fn common_operator_timing_and_strength_match_native_game_frames() {
+    let definitions = crate::parse_file(include_bytes!("../tests/data/common_operator_live_cases.pcf")).unwrap();
+    let frames: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/common_operator_live_native_samples.json")).unwrap();
+    assert_eq!(frames.len(), 149);
+    for index in 0..8 {
+        let name = format!("hp_spritecard_common{index}");
+        let definition = definitions.iter().find(|def| def.name == name).unwrap();
+        let plan = Arc::new(Plan::new(definition));
+        assert!(plan.unsupported.is_empty());
+        let mut sim = Sim::new(plan, 17);
+        for (frame, sample) in frames.iter().enumerate() {
+            sim.step(sample["dt"].as_f64().unwrap() as f32, [0.0; 3], 1);
+            assert_eq!(sim.particles.len(), 1);
+            let expected = sample["positions"][index].as_f64().unwrap() as f32;
+            assert_eq!(sim.particles[0].pos[0].to_bits(), expected.to_bits(), "{name} frame{frame}");
+        }
+    }
+}
+
+#[test]
+fn inactive_decay_preserves_particles_and_does_not_consume_an_oscillation_random_slot() {
+    let wave = op(
+        "Oscillate Scalar",
+        vec![
+            ("oscillation field", Value::Int(0)),
+            ("oscillation rate min", fl(0.0)),
+            ("oscillation rate max", fl(1.0)),
+            ("oscillation frequency min", fl(0.0)),
+            ("oscillation frequency max", fl(0.0)),
+        ],
+    );
+    let definition = system("reference", vec![burst(1)], vec![], vec![wave.clone()]);
+    let mut gated = definition.clone();
+    gated.operators.insert(0, op("Lifespan Decay", vec![("operator start fadein", fl(10.0))]));
+    let mut a = Sim::new(Arc::new(Plan::new(&definition)), 17);
+    let mut b = Sim::new(Arc::new(Plan::new(&gated)), 17);
+    for _ in 0..30 {
+        a.step(0.05, [0.0; 3], 1);
+        b.step(0.05, [0.0; 3], 1);
+        assert_eq!(a.particles.len(), 1);
+        assert_eq!(b.particles.len(), 1);
+        assert_eq!(a.particles[0].pos, b.particles[0].pos);
+    }
+}
+
+#[test]
+fn disabled_alpha_and_color_oscillators_keep_their_last_attribute_values() {
+    let definition = system(
+        "frozen",
+        vec![burst(1)],
+        vec![],
+        vec![
+            op(
+                "Oscillate Scalar",
+                vec![
+                    ("oscillation field", Value::Int(7)),
+                    ("oscillation rate min", fl(-1.0)),
+                    ("oscillation rate max", fl(-1.0)),
+                    ("oscillation frequency min", fl(0.0)),
+                    ("oscillation frequency max", fl(0.0)),
+                    ("operator end fadeout", fl(0.1)),
+                ],
+            ),
+            op(
+                "Oscillate Vector",
+                vec![
+                    ("oscillation field", Value::Int(6)),
+                    ("oscillation rate min", Value::Vec3([-1.0; 3])),
+                    ("oscillation rate max", Value::Vec3([-1.0; 3])),
+                    ("oscillation frequency min", Value::Vec3([0.0; 3])),
+                    ("oscillation frequency max", Value::Vec3([0.0; 3])),
+                    ("operator end fadeout", fl(0.1)),
+                ],
+            ),
+        ],
+    );
+    let mut sim = Sim::new(Arc::new(Plan::new(&definition)), 17);
+    sim.step(0.05, [0.0; 3], 1);
+    let alpha = sim.particles[0].alpha;
+    let color = sim.particles[0].color;
+    assert!(alpha < 1.0 && color[0] < 1.0);
+    for _ in 0..5 {
+        sim.step(0.1, [0.0; 3], 1);
+        assert_eq!(sim.particles[0].alpha, alpha);
+        assert_eq!(sim.particles[0].color, color);
+    }
+}
+
+#[test]
 fn scalar_and_vector_oscillation_preserve_native_inertia_with_basic_movement() {
     let definitions = crate::parse_file(include_bytes!("../tests/data/oscillation_movement_cases.pcf")).unwrap();
     let frames: Vec<serde_json::Value> =

@@ -5,6 +5,7 @@ use crate::model::{Operator, SystemDef};
 
 mod batch;
 mod color;
+mod common;
 mod control;
 mod emission;
 mod forces;
@@ -499,10 +500,13 @@ pub struct Plan {
     emitters: Vec<Emit>,
     inits: Vec<Init>,
     ops: Vec<Op>,
-    op_random_offsets: Vec<u32>,
+    operator_schedule: Vec<common::Entry>,
+    op_schedule: Vec<usize>,
+    trace_schedule: Vec<usize>,
+    child_schedule: Vec<usize>,
+    decay_schedule: Vec<usize>,
     child_points: Vec<control::ChildPoints>,
     point_traces: Vec<control::PointTrace>,
-    decays: bool,
     max: usize,
     initial: usize,
     radius: f32,
@@ -599,10 +603,13 @@ impl Plan {
             emitters: Vec::new(),
             inits: Vec::new(),
             ops: Vec::new(),
-            op_random_offsets: Vec::new(),
+            operator_schedule: Vec::new(),
+            op_schedule: Vec::new(),
+            trace_schedule: Vec::new(),
+            child_schedule: Vec::new(),
+            decay_schedule: Vec::new(),
             child_points: Vec::new(),
             point_traces: Vec::new(),
-            decays: false,
             max: (def.max_particles as usize).min(MAX_PREVIEW_PARTICLES),
             initial: (def.initial_particles as usize).min(MAX_PREVIEW_PARTICLES),
             radius: def.radius,
@@ -640,14 +647,22 @@ impl Plan {
             true
         });
         p.inits.extend(modifiers);
-        for category in [&def.forces, &def.operators, &def.constraints] {
-            let mut slot = 0u32;
-            for op in category {
+        for (category, operators) in [&def.forces, &def.operators, &def.constraints].into_iter().enumerate() {
+            for op in operators {
+                let schedule = p.operator_schedule.len();
+                p.operator_schedule.push(common::Entry::new(op, category, oscillation::before_emitters(&op.function)));
                 let first = p.ops.len();
+                let traces = p.point_traces.len();
+                let children = p.child_points.len();
                 p.compile_op(op);
-                p.op_random_offsets.extend(std::iter::repeat_n(slot.wrapping_mul(17), p.ops.len() - first));
-                if !oscillation::before_emitters(&op.function) {
-                    slot = slot.wrapping_add(1);
+                p.op_schedule.extend(std::iter::repeat_n(schedule, p.ops.len() - first));
+                p.trace_schedule.extend(std::iter::repeat_n(schedule, p.point_traces.len() - traces));
+                p.child_schedule.extend(std::iter::repeat_n(schedule, p.child_points.len() - children));
+                if matches!(
+                    op.function.to_ascii_lowercase().as_str(),
+                    "lifespan decay" | "alpha fade and decay" | "alpha fade and decay for tracers"
+                ) {
+                    p.decay_schedule.push(schedule);
                 }
             }
         }
@@ -881,7 +896,6 @@ impl Plan {
                 Op::Movement { gravity: v(op, "gravity", [0.0; 3]), drag: f(op, "drag", 0.0).clamp(0.0, 1.0) }
             }
             "lifespan decay" => {
-                self.decays = true;
                 return;
             }
             "alpha fade in random" => Op::FadeIn {
@@ -904,17 +918,14 @@ impl Plan {
                 let t = f(op, "proportional fade out time", 0.25).max(0.0);
                 Op::FadeOut { min: t, max: t, proportional: true, ease: false }
             }
-            "alpha fade and decay" | "alpha fade and decay for tracers" => {
-                self.decays = true;
-                Op::FadeAndDecay {
-                    start: f(op, "start_alpha", 1.0),
-                    end: f(op, "end_alpha", 0.0),
-                    in0: f(op, "start_fade_in_time", 0.0),
-                    in1: f(op, "end_fade_in_time", 0.5),
-                    out0: f(op, "start_fade_out_time", 0.5),
-                    out1: f(op, "end_fade_out_time", 1.0),
-                }
-            }
+            "alpha fade and decay" | "alpha fade and decay for tracers" => Op::FadeAndDecay {
+                start: f(op, "start_alpha", 1.0),
+                end: f(op, "end_alpha", 0.0),
+                in0: f(op, "start_fade_in_time", 0.0),
+                in1: f(op, "end_fade_in_time", 0.5),
+                out0: f(op, "start_fade_out_time", 0.5),
+                out1: f(op, "end_fade_out_time", 1.0),
+            },
             "radius scale" => Op::RadiusScale {
                 t0: f(op, "start_time", 0.0),
                 t1: f(op, "end_time", 1.0),
@@ -1146,6 +1157,7 @@ pub struct Sim {
     path_steps: Vec<(f32, bool)>,
     path_bulge: V3,
     previous_models: model::Cache,
+    operator_states: Vec<common::State>,
 }
 
 impl Sim {
@@ -1155,6 +1167,7 @@ impl Sim {
         let colors = vec![None; plan.inits.len()];
         let path_steps = vec![(0.0, false); plan.inits.len()];
         let point_traces = vec![control::PointTraceState::default(); plan.point_traces.len()];
+        let operator_states = vec![common::State::default(); plan.operator_schedule.len()];
         Sim {
             plan,
             particles: Vec::new(),
@@ -1172,6 +1185,7 @@ impl Sim {
             path_steps,
             path_bulge: Rng(seed).range3([-1.0; 3], [1.0; 3]),
             previous_models: Default::default(),
+            operator_states,
         }
     }
 
@@ -1200,6 +1214,7 @@ impl Sim {
         self.colors.fill(None);
         self.path_steps.fill((0.0, false));
         self.previous_models.clear();
+        self.operator_states.fill(common::State::default());
         for (state, emitter) in self.emission.iter_mut().zip(&self.plan.emitters) {
             *state = emission::State::new(emitter);
         }
@@ -1451,7 +1466,7 @@ impl Sim {
             }
             part.age = self.time - part.born;
             part.radius = part.base_radius;
-            part.color = part.base_color;
+            part.color = part.base_color.map(|value| value.clamp(0.0, 1.0));
             part.alpha = part.base_alpha;
             for field in [
                 Field::PositionX,
@@ -1491,8 +1506,12 @@ impl Sim {
         let frame = model::Frame::new(world, &previous_models);
         let world = &frame;
         let plan = self.plan.clone();
+        common::prepare(&plan.operator_schedule, &mut self.operator_states, t1, self.seed, false);
         let mut generated = std::borrow::Cow::Borrowed(points);
-        for (op, state) in plan.point_traces.iter().zip(&mut self.point_traces) {
+        for (index, (op, state)) in plan.point_traces.iter().zip(&mut self.point_traces).enumerate() {
+            if !self.operator_states[plan.trace_schedule[index]].active() {
+                continue;
+            }
             control::update_point_trace(op, state, generated.to_mut(), world, t1);
         }
         let points = &*generated;
@@ -1517,9 +1536,19 @@ impl Sim {
         }
         for part in &mut self.particles {
             part.age += dt;
-            operate(&plan, part, points, self.previous_points.as_ref().unwrap_or(points), dt, world, &mut self.rng, t1);
+            operate(
+                &plan,
+                &self.operator_states,
+                part,
+                points,
+                self.previous_points.as_ref().unwrap_or(points),
+                dt,
+                world,
+                &mut self.rng,
+                t1,
+            );
         }
-        if plan.decays {
+        if plan.decay_schedule.iter().any(|index| self.operator_states[*index].active()) {
             self.particles.retain(|p| p.age < p.life);
         }
         self.particles.retain(|p| !p.dead && p.pos.iter().all(|c| c.is_finite() && c.abs() < 1.0e6));
@@ -1576,6 +1605,7 @@ fn set_field(p: &mut Particle, field: Field, x: f32, multiply: bool) {
 #[allow(clippy::too_many_arguments)]
 fn operate(
     plan: &Plan,
+    operator_states: &[common::State],
     part: &mut Particle,
     points: &Points,
     previous: &Points,
@@ -1593,6 +1623,10 @@ fn operate(
     let old = part.pos;
     let mut acceleration = [0.0; 3];
     for (k, op) in plan.ops.iter().enumerate() {
+        let state = operator_states[plan.op_schedule[k]];
+        if !state.active() {
+            continue;
+        }
         let key = k as u32 * 7;
         let before_pos = part.pos;
         let before_vel = part.vel;
@@ -1695,7 +1729,8 @@ fn operate(
                 }
             }
             Op::OscScalar { field, wave } => {
-                let Some(delta) = wave.delta((time, part.born, part.life), part.seed, plan.op_random_offsets[k], dt)
+                let Some(delta) =
+                    wave.delta((time, part.born, part.life), part.seed, state.random_offset, dt * state.strength)
                 else {
                     continue;
                 };
@@ -1718,7 +1753,8 @@ fn operate(
                 }
             }
             Op::OscVector { field, wave } => {
-                let Some(delta) = wave.delta((time, part.born, part.life), part.seed, plan.op_random_offsets[k], dt)
+                let Some(delta) =
+                    wave.delta((time, part.born, part.life), part.seed, state.random_offset, dt * state.strength)
                 else {
                     continue;
                 };
@@ -1841,9 +1877,13 @@ fn operate(
             }
         }
     }
-    part.alpha = (alpha + part.alpha_add).clamp(0.0, 1.0);
+    if alpha_written {
+        part.alpha = (alpha + part.alpha_add).clamp(0.0, 1.0);
+    }
     part.radius = (part.base_radius * part.radius_scale + part.radius_add).max(0.0);
-    part.color = color.map(|c| c.clamp(0.0, 1.0));
+    if color_written {
+        part.color = color.map(|c| c.clamp(0.0, 1.0));
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1935,7 +1975,10 @@ impl Effect {
                     child_points = std::borrow::Cow::Owned(points.clone());
                 }
                 self.scratch.extend(parent.particles.iter().map(|q| (q.pos, q.vel)));
-                for spec in &parent.plan.child_points {
+                for (index, spec) in parent.plan.child_points.iter().enumerate() {
+                    if !parent.operator_states[parent.plan.child_schedule[index]].active() {
+                        continue;
+                    }
                     control::copy_child_points(
                         spec,
                         &parent.particles,
