@@ -61,7 +61,9 @@ Hover or select an `info_particle_system` in a 3D view to see its effect name ab
 
 ## Volume effects in the views
 
-`func_smokevolume`, `env_embers`, `func_dustcloud` and `func_dustmotes` are drawn by the engine in game; Hammer Pro reproduces them in the 3D views, switched with **Preview volume effects**. They are drawn like the particle files: textured billboards with the real sprite of the mounted game content (its `.vmt` decides additive or alpha blending, the overbright factor, `$alpha` and the fade size; the sprite sheet frames of `SpriteCard` materials are blended like the game does), through the same renderer. The extent is the box of the entity's brushes (a point entity gets a 96 unit box). No box is drawn around the volume: the entity is highlighted like any other selected entity.
+`func_smokevolume`, `env_embers`, `func_dustcloud` and `func_dustmotes` are brush entities rendered by the game engine. **Preview volume effects** approximates them in the 3D views using their visible brush bounds and mounted materials. A point entity without brushes has no valid volume and is not previewed. The selected entity is highlighted normally.
+
+These four effects need brush bounds in world coordinates. Saving/exporting repairs an old brush-center `origin` without moving its volume; trains and point-entity positions are unaffected. After upgrading an affected map, save it and run a **full geometry compile** once, including when using an external compiler. An entities-only update cannot repair bounds already baked into an old BSP. Effect materials are included in compile staging and packing inputs.
 
 | Entity | Keys used | Sprite | Look |
 |---|---|---|---|
@@ -70,7 +72,7 @@ Hover or select an `info_particle_system` in a 3D view to see its effect name ab
 | `func_dustcloud` | `Color`, `SizeMin`, `SizeMax` (sprite half size), `SpawnRate`, `LifetimeMin`, `LifetimeMax`, `SpeedMax` (random speed on each axis), `FallSpeed`, `Alpha`, `DistMax` | `particle/particle_smokegrenade` | Large faint specks that fade in and out, fade with the distance and disappear when they leave the brush |
 | `func_dustmotes` | Same keys | `particle/sparkles` | The same motion with the sparkle sprite |
 
-Defaults follow the FGD: `func_dustcloud` uses `SizeMin` 100, `SizeMax` 200 and `Alpha` 30 (a dense white haze), `func_dustmotes` uses 10, 20 and `Alpha` 255. The game lights dust by the lightmaps; the preview shows it unlit. The start state is respected: `env_embers` needs the `Start On` flag (1) and the dust entities are hidden with `StartDisabled` (the `TurnOn` and `TurnOff` inputs only exist at run time and are not simulated). `Frozen` dust is drawn still. When a sprite is missing from the content, the next known sprite is tried, then the name is kept (the missing material shows). The preview is bounded: only entities within 3072 units of the camera (or `DistMax` when smaller) are shown, at most 24 at once (nearest first), 300 particles each (160 puffs for smoke) and 2400 in all, with fewer particles the farther the entity is. Hidden entities are not shown. For `info_particle_system` the real particle files are played instead (see above).
+Defaults follow the FGD. Dust is lit by lightmaps in game and shown unlit in the preview. An unnamed `env_embers` starts enabled; a named one needs **Start On** (flag 1) or runtime I/O. Dust respects `StartDisabled` and `Frozen`; runtime I/O is not simulated. An explicit `Material` name is retained even when missing, so the preview does not hide that problem by selecting a stock replacement. Built-in sprites can use their known fallback. The preview is limited to 24 nearby effects, 300 particles each (160 puffs for smoke), and 2400 overall within 3072 units or the smaller `DistMax`. Hidden brushes do not contribute a preview volume. The game uses the original density and spacing, so a very small smoke spacing can be much more expensive than its bounded preview.
 
 ### Wind from env_wind
 

@@ -72,7 +72,8 @@ pub fn duplicate_linking_paths(
 }
 
 pub fn brush_entity_needs_origin(fgd: Option<&hp_fgd::ResolvedFgd>, class: &str) -> bool {
-    fgd.and_then(|f| f.class(class.trim())).is_some_and(|c| c.is_solid() && c.property("origin").is_some())
+    !hp_vmf::is_world_particle_volume(class)
+        && fgd.and_then(|f| f.class(class.trim())).is_some_and(|c| c.is_solid() && c.property("origin").is_some())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

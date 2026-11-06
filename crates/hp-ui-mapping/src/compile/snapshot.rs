@@ -134,10 +134,13 @@ pub(crate) fn used_assets(map: &Map) -> (Vec<String>, Vec<String>) {
         }
     }
     for e in map.entities.iter().filter(|e| !e.hidden) {
-        if let Some(m) = e.get("material")
-            && e.classname.to_ascii_lowercase().starts_with("info_overlay")
-        {
-            materials.push(normalize_material(m));
+        for (key, value) in &e.props {
+            if matches!(
+                hp_editor::deps_roots::fallback_kind(&e.classname, key, value),
+                Some(hp_editor::deps_roots::RootKind::Material | hp_editor::deps_roots::RootKind::Sprite)
+            ) {
+                materials.push(normalize_material(value));
+            }
         }
         if let Some(m) = e.get("model") {
             let m = m.trim().replace('\\', "/").to_ascii_lowercase();
@@ -692,6 +695,21 @@ hidden { entity { "id" "6" "classname" "prop_static" "model" "models/hidden.mdl"
         let (mats, models) = used_assets(&map);
         assert_eq!(mats, vec!["custom/brick".to_owned(), "decals/graffiti".to_owned()]);
         assert_eq!(models, vec!["models/props/box.mdl".to_owned()]);
+    }
+
+    #[test]
+    fn effect_materials_are_included_in_compile_staging_and_packing_inputs() {
+        let map = hp_vmf::parse(
+            r#"world { "id" "1" "classname" "worldspawn" }
+entity { "id" "2" "classname" "func_smokevolume" "Material" "CSGO/Particle/particle_smokegrenade" }
+entity { "id" "3" "classname" "env_smokestack" "SmokeMaterial" "custom/embers.vmt" }
+entity { "id" "4" "classname" "env_sprite" "model" "sprites/glow01.vmt" }
+hidden { entity { "id" "5" "classname" "func_smokevolume" "material" "hidden/smoke" } }
+"#,
+        )
+        .unwrap();
+        let (materials, _) = used_assets(&map);
+        assert_eq!(materials, ["csgo/particle/particle_smokegrenade", "custom/embers", "sprites/glow01"]);
     }
 
     #[test]

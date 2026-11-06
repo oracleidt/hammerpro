@@ -11,45 +11,86 @@ struct Compiled {
 }
 
 #[test]
-fn smoke_volumes_keep_inline_bounds_settings_and_do_not_fill_the_world() {
-    for material in ["tools/toolsfog", "tools/toolstrigger", "tools/toolsnodraw"] {
-        let mut map = common::Vmf::new();
-        map.world =
-            common::room(DVec3::new(-256.0, -256.0, 0.0), DVec3::new(256.0, 256.0, 256.0), "dev/dev_measuregeneric01b");
-        map.point("info_player_start", DVec3::new(200.0, 200.0, 8.0), &[]);
-        map.brush_entity(
-            "func_smokevolume",
-            &[
-                ("origin", "64 32 0"),
-                ("targetname", "smoke"),
+fn integrated_visibility_logs_start_and_completion() {
+    let map = hp_vmf::parse(&common::maps::chop().text()).unwrap();
+    let mut lines = Vec::new();
+    let options = hp_bspc::CompileOptions { vis: hp_bspc::VisLevel::Full, ..Default::default() };
+    hp_bspc::compile(&map, &common::GameMats, &hp_bspc::props::NoModels, &options, &mut |line| {
+        lines.push(line.to_owned())
+    })
+    .unwrap();
+    assert!(lines.iter().any(|line| line.starts_with("Visibility 0%: ")));
+    assert!(lines.iter().any(|line| line.starts_with("Visibility 100%: ")));
+}
+
+#[test]
+fn particle_volumes_keep_world_bounds_settings_and_do_not_fill_the_world() {
+    for class in ["func_smokevolume", "env_embers", "func_dustcloud", "func_dustmotes"] {
+        for material in ["tools/toolsfog", "tools/toolstrigger", "tools/toolsnodraw"] {
+            let mut map = common::Vmf::new();
+            map.world = common::room(
+                DVec3::new(-256.0, -256.0, 0.0),
+                DVec3::new(256.0, 256.0, 256.0),
+                "dev/dev_measuregeneric01b",
+            );
+            map.point("info_player_start", DVec3::new(200.0, 200.0, 8.0), &[]);
+            map.brush_entity(
+                class,
+                &[
+                    ("origin", "64 32 0"),
+                    ("targetname", "smoke"),
+                    ("material", "particle/particle_smokegrenade"),
+                    ("ParticleSpacingDistance", "32"),
+                    ("ParticleDrawWidth", "64"),
+                    ("Density", "1"),
+                    ("spawnflags", "1"),
+                ],
+                vec![common::block(DVec3::new(-128.0, -128.0, 32.0), DVec3::new(128.0, 128.0, 160.0), material)],
+            );
+            let text = map.text();
+            let source = hp_vmf::parse(&text).unwrap();
+            let out = hp_bspc::compile(
+                &source,
+                &common::GameMats,
+                &hp_bspc::props::NoModels,
+                &hp_bspc::CompileOptions::default(),
+                &mut |_| {},
+            )
+            .unwrap();
+            assert_eq!(source.entities.last().unwrap().get("origin"), Some("64 32 0"));
+            let lumps = Lumps::from_bytes(&out.bsp);
+            let models = lumps.models();
+            assert_eq!(models.len(), 2);
+            assert_eq!(models[1].mins, [-128.0, -128.0, 32.0]);
+            assert_eq!(models[1].maxs, [128.0, 128.0, 160.0]);
+            let entities = lumps.entities();
+            let smoke = entities.iter().find(|e| e.iter().any(|(k, v)| k == "classname" && v == class)).unwrap();
+            assert!(!smoke.iter().any(|(key, _)| key.eq_ignore_ascii_case("origin")));
+            for (key, value) in [
+                ("model", "*1"),
                 ("material", "particle/particle_smokegrenade"),
                 ("ParticleSpacingDistance", "32"),
-                ("ParticleDrawWidth", "64"),
                 ("Density", "1"),
-                ("spawnflags", "1"),
-            ],
-            vec![common::block(DVec3::new(-128.0, -128.0, 32.0), DVec3::new(128.0, 128.0, 160.0), material)],
-        );
-        let out = common::compile(&map.text());
-        let lumps = Lumps::from_bytes(&out.bsp);
-        let models = lumps.models();
-        assert_eq!(models.len(), 2);
-        assert_eq!(models[1].mins, [-192.0, -160.0, 32.0]);
-        assert_eq!(models[1].maxs, [64.0, 96.0, 160.0]);
-        let entities = lumps.entities();
-        let smoke =
-            entities.iter().find(|e| e.iter().any(|(k, v)| k == "classname" && v == "func_smokevolume")).unwrap();
-        for (key, value) in [
-            ("model", "*1"),
-            ("material", "particle/particle_smokegrenade"),
-            ("ParticleSpacingDistance", "32"),
-            ("Density", "1"),
-        ] {
-            assert!(smoke.iter().any(|(k, v)| k.eq_ignore_ascii_case(key) && v == value), "{material}: missing {key}");
+            ] {
+                assert!(
+                    smoke.iter().any(|(k, v)| k.eq_ignore_ascii_case(key) && v == value),
+                    "{material}: missing {key}"
+                );
+            }
+            let leaf = leaf_at(&lumps, DVec3::new(0.0, 0.0, 96.0));
+            assert_eq!(lumps.leaves()[leaf].contents as u32 & contents::SOLID, 0);
+            assert!(model_leaves(&lumps, 1).iter().all(|i| lumps.leaves()[*i].cluster == -1));
+            let updated = hp_bspc::compile::entities_only(&source, &common::GameMats, &out.bsp).unwrap();
+            assert_eq!(Lumps::from_bytes(&updated).models()[1].mins, models[1].mins);
+            let bsp = hp_bsp::Bsp::from_vec(updated).unwrap();
+            let mut entities = bsp.entities().unwrap();
+            entities.iter_mut().find(|e| e.classname() == class).unwrap().set("origin", "64 32 0");
+            let mut edit = bsp.edit();
+            edit.set_entities(&entities).unwrap();
+            let stale = edit.to_vec().unwrap();
+            let error = hp_bspc::compile::entities_only(&source, &common::GameMats, &stale).unwrap_err();
+            assert!(error.to_string().contains("full geometry compile"));
         }
-        let leaf = leaf_at(&lumps, DVec3::new(0.0, 0.0, 96.0));
-        assert_eq!(lumps.leaves()[leaf].contents as u32 & contents::SOLID, 0);
-        assert!(model_leaves(&lumps, 1).iter().all(|i| lumps.leaves()[*i].cluster == -1));
     }
 }
 

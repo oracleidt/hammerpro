@@ -198,14 +198,28 @@ impl Document {
         let targets: Vec<Id> = entities
             .iter()
             .copied()
-            .filter(|id| self.scene.entities.get(id).is_some_and(|n| n.entity.classname != classname))
+            .filter(|id| {
+                self.scene.entities.get(id).is_some_and(|n| {
+                    n.entity.classname != classname
+                        || (hp_vmf::is_world_particle_volume(classname)
+                            && self.scene.entity_solid_count(*id) > 0
+                            && n.entity.get("origin").is_some())
+                })
+            })
             .collect();
         if targets.is_empty() {
             return Ok(0);
         }
         self.tx("Change class", |doc| {
             for id in &targets {
-                doc.update_entity(*id, |e| classname.clone_into(&mut e.classname));
+                let world_particles =
+                    hp_vmf::is_world_particle_volume(classname) && doc.scene.entity_solid_count(*id) > 0;
+                doc.update_entity(*id, |e| {
+                    classname.clone_into(&mut e.classname);
+                    if world_particles {
+                        while e.remove("origin").is_some() {}
+                    }
+                });
             }
             Ok(targets.len())
         })

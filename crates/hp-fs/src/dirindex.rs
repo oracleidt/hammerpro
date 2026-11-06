@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use ahash::AHashMap;
+use parking_lot::Mutex;
 
 use crate::error::FsError;
 use crate::path::{normalize_path, under_prefix};
@@ -28,7 +30,8 @@ pub(crate) const PROFILE_MATERIALS: &str = "materials";
 #[derive(Debug)]
 pub(crate) struct DirIndex {
     root: PathBuf,
-    files: AHashMap<Box<str>, Box<str>>,
+    files: OnceLock<AHashMap<Box<str>, Box<str>>>,
+    lookups: Mutex<AHashMap<String, Option<PathBuf>>>,
 }
 
 impl DirIndex {
@@ -43,7 +46,11 @@ impl DirIndex {
             let key: Box<str> = normalize_path(&rel).into();
             files.entry(key).or_insert_with(|| rel.into_boxed_str());
         }
-        Self { root: root.to_path_buf(), files }
+        Self { root: root.to_path_buf(), files: OnceLock::from(files), lookups: Mutex::default() }
+    }
+
+    pub(crate) fn for_lookup(root: &Path) -> Self {
+        Self { root: root.to_path_buf(), files: OnceLock::new(), lookups: Mutex::default() }
     }
 
     pub(crate) fn root(&self) -> &Path {
@@ -51,20 +58,61 @@ impl DirIndex {
     }
 
     pub(crate) fn len(&self) -> usize {
-        self.files.len()
+        self.files.get().map_or(0, |files| files.len())
     }
 
     #[inline]
     pub(crate) fn contains(&self, vpath: &str) -> bool {
-        self.files.contains_key(vpath)
+        self.files.get().map_or_else(|| self.disk_path(vpath).is_some(), |files| files.contains_key(vpath))
     }
 
     pub(crate) fn disk_path(&self, vpath: &str) -> Option<PathBuf> {
-        self.files.get(vpath).map(|rel| self.root.join(&**rel))
+        if let Some(files) = self.files.get() {
+            return files.get(vpath).map(|rel| self.root.join(&**rel));
+        }
+        if let Some(hit) = self.lookups.lock().get(vpath) {
+            return hit.clone();
+        }
+        let resolved = self.resolve(vpath);
+        self.lookups.lock().insert(vpath.to_owned(), resolved.clone());
+        resolved
+    }
+
+    fn resolve(&self, vpath: &str) -> Option<PathBuf> {
+        let parts: Vec<_> = vpath.split('/').collect();
+        if !parts.first().is_some_and(|p| ASSET_DIRS.iter().any(|d| d.eq_ignore_ascii_case(p)))
+            || parts.iter().any(|p| p.is_empty() || *p == "." || *p == ".." || p.contains(['\\', ':']))
+            || parts.len() > MAX_DEPTH as usize + 1
+        {
+            return None;
+        }
+        let direct = self.root.join(vpath);
+        if direct.is_file() {
+            return Some(direct);
+        }
+        let mut path = self.root.clone();
+        for part in parts {
+            let exact = path.join(part);
+            if exact.exists() {
+                path = exact;
+            } else {
+                path = std::fs::read_dir(&path)
+                    .ok()?
+                    .flatten()
+                    .find(|entry| entry.file_name().to_string_lossy().eq_ignore_ascii_case(part))?
+                    .path();
+            }
+        }
+        path.is_file().then_some(path)
     }
 
     pub(crate) fn for_each_path<'a>(&'a self, prefix: &str, ext: Option<&str>, f: &mut dyn FnMut(&'a str)) {
-        for key in self.files.keys() {
+        let files = self.files.get_or_init(|| {
+            walk_files(&self.root, Some(ASSET_DIRS), &|_| true, Some(PROFILE_GAME))
+                .map(|rels| Self::from_rels(&self.root, rels).files.into_inner().unwrap_or_default())
+                .unwrap_or_default()
+        });
+        for key in files.keys() {
             if under_prefix(key, prefix) && ext.is_none_or(|e| crate::path::extension(key) == e) {
                 f(key);
             }
@@ -100,6 +148,57 @@ mod tests {
         let mut all = Vec::new();
         index.for_each_path("", None, &mut |p| all.push(p));
         assert_eq!(all.len(), 3);
+    }
+
+    #[test]
+    fn targeted_reads_do_not_walk_or_index_unrelated_content() {
+        let tmp = TempDir::new("lookup-only");
+        tmp.write("Materials/Mixed/Smoke.VMT", b"smoke");
+        tmp.write("models/props/crate.mdl", b"model");
+        tmp.write("materials/unrelated/nested/unused.vmt", b"unused");
+        tmp.write("lua/autorun/x.lua", b"lua");
+        let index = DirIndex::for_lookup(tmp.path());
+        for path in ["materials/mixed/smoke.vmt", "models/props/crate.mdl"] {
+            assert!(index.contains(path));
+            assert!(index.disk_path(path).unwrap().is_file());
+        }
+        for path in ["materials/missing.vmt", "lua/autorun/x.lua", "materials/../readme.txt"] {
+            assert!(!index.contains(path));
+        }
+        assert!(index.files.get().is_none(), "reads never enumerate the full content tree");
+        let mut listed = Vec::new();
+        index.for_each_path("materials", Some("vmt"), &mut |p| listed.push(p.to_owned()));
+        listed.sort();
+        assert_eq!(listed, ["materials/mixed/smoke.vmt", "materials/unrelated/nested/unused.vmt"]);
+        assert!(index.files.get().is_some(), "enumeration still builds a complete index on demand");
+    }
+
+    #[test]
+    #[ignore = "set HP_FS_BENCH_ROOT to an existing large game content directory"]
+    fn compare_indexed_and_targeted_mount_cost() {
+        let root = std::env::var_os("HP_FS_BENCH_ROOT").expect("HP_FS_BENCH_ROOT");
+        let root = Path::new(&root);
+        let started = std::time::Instant::now();
+        let indexed = DirIndex::build_game_dir(root).unwrap();
+        let indexed_time = started.elapsed();
+        let started = std::time::Instant::now();
+        let targeted = DirIndex::for_lookup(root);
+        let mut checked = 0;
+        indexed.for_each_path("materials", Some("vmt"), &mut |path| {
+            if checked < 8 {
+                assert_eq!(
+                    fs::read(indexed.disk_path(path).unwrap()).unwrap(),
+                    fs::read(targeted.disk_path(path).unwrap()).unwrap()
+                );
+                checked += 1;
+            }
+        });
+        eprintln!(
+            "{} files: indexed mount {indexed_time:?}, targeted mount and {checked} reads {:?}",
+            indexed.len(),
+            started.elapsed()
+        );
+        assert!(targeted.files.get().is_none());
     }
 
     #[test]

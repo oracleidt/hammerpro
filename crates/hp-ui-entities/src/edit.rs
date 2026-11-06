@@ -434,6 +434,27 @@ mod tests {
     }
 
     #[test]
+    fn changing_to_particle_volume_does_not_rebase_the_brush_or_keep_a_previous_pivot() {
+        let mut state = state();
+        let fgd = hp_fgd::Fgd::parse(
+            "@BaseClass = Origin [ origin(origin) : \"Origin\" ]\n\
+             @SolidClass base(Origin) = env_embers : \"Embers\" []\n\
+             @SolidClass = func_smokevolume : \"Smoke\" []",
+            None,
+        )
+        .resolve();
+        let bounds = state.doc.scene().entity_solid_bounds(6).unwrap();
+        for class in ["env_embers", "func_smokevolume"] {
+            state.doc.set_entity_key(&[6], "origin", "880 560 77.5").unwrap();
+            apply(&mut state.doc, Some(&fgd), Op::ChangeClass { ids: vec![6], class: class.into() }).unwrap();
+            assert!(state.doc.scene().entity(6).unwrap().entity.origin().is_none(), "{class}");
+            assert_eq!(state.doc.scene().entity_solid_bounds(6), Some(bounds));
+            assert!(state.doc.undo());
+            assert_eq!(state.doc.scene().entity(6).unwrap().entity.get("origin"), Some("880 560 77.5"));
+        }
+    }
+
+    #[test]
     fn light_color_change_is_one_undo_step() {
         let mut s = state();
         let doc = &mut s.doc;

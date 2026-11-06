@@ -14,6 +14,7 @@ use crate::source::{SourceData, SourceOrigin};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MountOptions {
+    pub lookup_only: bool,
     pub mount_addons: bool,
     pub mount_workshop: bool,
     pub mount_cfg: bool,
@@ -27,6 +28,7 @@ pub struct MountOptions {
 impl Default for MountOptions {
     fn default() -> Self {
         Self {
+            lookup_only: false,
             mount_addons: true,
             mount_workshop: true,
             mount_cfg: true,
@@ -197,9 +199,17 @@ pub(crate) struct Opened {
 }
 
 pub(crate) fn open_item(item: PlanItem) -> Result<Opened, FsError> {
+    open_item_for(item, false)
+}
+
+fn open_item_for(item: PlanItem, lookup_only: bool) -> Result<Opened, FsError> {
     let mut label = item.label;
     let data = match item.kind {
-        PlanKind::GameDir => SourceData::Dir(DirIndex::build_game_dir(&item.path)?),
+        PlanKind::GameDir => SourceData::Dir(if lookup_only {
+            DirIndex::for_lookup(&item.path)
+        } else {
+            DirIndex::build_game_dir(&item.path)?
+        }),
         PlanKind::Vpk => SourceData::Vpk(Arc::new(hp_vpk::VpkArchive::open(&item.path)?)),
         PlanKind::Gma { label_prefix } => {
             let gma = hp_gma::GmaArchive::open(&item.path)?;
@@ -213,13 +223,13 @@ pub(crate) fn open_item(item: PlanItem) -> Result<Opened, FsError> {
     Ok(Opened { label, path: item.path, origin: item.origin, enabled: item.enabled, data })
 }
 
-pub(crate) fn open_all(items: Vec<PlanItem>) -> (Vec<Opened>, Vec<String>) {
-    open_all_with(items, None)
-}
-
 type OpenResult = (String, Duration, Result<Opened, FsError>);
 
-pub(crate) fn open_all_with(items: Vec<PlanItem>, progress: Option<&MountProgress>) -> (Vec<Opened>, Vec<String>) {
+pub(crate) fn open_all_for(
+    items: Vec<PlanItem>,
+    progress: Option<&MountProgress>,
+    lookup_only: bool,
+) -> (Vec<Opened>, Vec<String>) {
     if let Some(p) = progress {
         p.begin_opening(items.len());
     }
@@ -233,7 +243,7 @@ pub(crate) fn open_all_with(items: Vec<PlanItem>, progress: Option<&MountProgres
             std::thread::sleep(step * (i as u32 + 1));
         }
         let start = Instant::now();
-        let result = open_item(item);
+        let result = open_item_for(item, lookup_only);
         if let Some(p) = progress {
             p.finished_one();
         }

@@ -465,6 +465,7 @@ fn is_reserved_key(k: &str, is_world: bool) -> bool {
 
 fn write_entity_body(out: &mut Out, e: &Entity, ind: usize, world_version: Option<i32>) {
     let is_world = world_version.is_some();
+    let world_particles = !e.solids.is_empty() && crate::is_world_particle_volume(&e.classname);
     open(out, ind, if is_world { "world" } else { "entity" });
     let i = ind + 1;
     kv_int(out, i, "id", e.id.into());
@@ -484,7 +485,7 @@ fn write_entity_body(out: &mut Out, e: &Entity, ind: usize, world_version: Optio
         props = rest;
     }
     for (k, v) in props {
-        if !is_reserved_key(k, is_world) {
+        if !is_reserved_key(k, is_world) && !(world_particles && k.eq_ignore_ascii_case("origin")) {
             kv_text(out, i, k, v);
         }
     }
@@ -503,7 +504,19 @@ fn write_entity_body(out: &mut Out, e: &Entity, ind: usize, world_version: Optio
     if let Some((k, v)) = deferred_origin {
         kv_text(out, i, k, v);
     }
-    write_list(out, &e.solids, i, write_solid_wrapped, estimate_solid);
+    if world_particles {
+        for solid in &e.solids {
+            let origin_helper = solid
+                .sides
+                .first()
+                .is_some_and(|side| side.material.replace('\\', "/").trim().eq_ignore_ascii_case("tools/toolsorigin"));
+            if !origin_helper {
+                write_solid_wrapped(out, solid, i);
+            }
+        }
+    } else {
+        write_list(out, &e.solids, i, write_solid_wrapped, estimate_solid);
+    }
     for g in &e.groups {
         write_group(out, g, i);
     }
@@ -756,6 +769,37 @@ mod tests {
 
     fn out() -> Out {
         Out::new(0, &TextFormat::default())
+    }
+
+    #[test]
+    fn particle_brush_volumes_export_in_world_space_without_changing_the_brushes() {
+        for class in ["env_embers", "func_smokevolume", "func_dustcloud", "func_dustmotes", "func_tracktrain"] {
+            let entity = Entity {
+                id: 2,
+                classname: class.into(),
+                props: vec![("origin".into(), "880 560 77.5".into()), ("spawnflags".into(), "1".into())],
+                solids: vec![Solid {
+                    id: 3,
+                    sides: vec![Side { id: 4, material: "tools/toolstrigger".into(), ..Default::default() }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            };
+            let mut entity = entity;
+            let mut helper = entity.solids[0].clone();
+            helper.id = 5;
+            helper.sides[0].material = "tools/toolsorigin".into();
+            entity.solids.push(helper);
+            let text = write_entity_fragment(&entity);
+            assert_eq!(text.contains("\"origin\""), class == "func_tracktrain", "{class}: {text}");
+            assert!(text.contains("\"spawnflags\" \"1\""));
+            assert!(text.contains("tools/toolstrigger"));
+            assert_eq!(text.contains("tools/toolsorigin"), class == "func_tracktrain");
+            assert_eq!(entity.solids.len(), 2);
+            assert_eq!(entity.origin(), Some(DVec3::new(880.0, 560.0, 77.5)));
+            let point = Entity { solids: Vec::new(), ..entity };
+            assert!(write_entity_fragment(&point).contains("\"origin\""), "point origins are still positions");
+        }
     }
 
     #[test]

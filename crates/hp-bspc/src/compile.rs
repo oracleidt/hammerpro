@@ -418,15 +418,28 @@ pub fn compile(
         if class.eq_ignore_ascii_case(crate::cubemap::PARALLAX_OBB_CLASS) {
             continue;
         }
-        let key_origin = key(ent, "origin").and_then(parse_vec);
+        let world_particles = hp_vmf::is_world_particle_volume(&class) && !ent.solids.is_empty();
+        if world_particles && key(ent, "origin").and_then(parse_vec).is_some_and(|origin| origin != DVec3::ZERO) {
+            log(&format!(
+                "Warning: entity {} ({class}): ignoring its origin to keep the particle volume in world coordinates",
+                ent.id
+            ));
+        }
+        let key_origin = if world_particles { None } else { key(ent, "origin").and_then(parse_vec) };
         origins_of[ei] = key_origin;
         if areaportal && ent.solids.len() != 1 {
             return Err(CompileError::Failed(format!("Entity {ei}: func_areaportal can only be a single brush")));
         }
         if ent.solids.is_empty() {
+            if hp_vmf::is_world_particle_volume(&class) {
+                log(&format!(
+                    "Warning: entity {} ({class}) has no visible volume brushes and cannot emit particles in game",
+                    ent.id
+                ));
+            }
             continue;
         }
-        let world_coords = into_world || areaportal || occluder || viscluster;
+        let world_coords = into_world || areaportal || occluder || viscluster || world_particles;
         let mut origin = if world_coords { DVec3::ZERO } else { key_origin.unwrap_or(DVec3::ZERO) };
         let mut list = Vec::new();
         let mut origin_brush = None;
@@ -441,7 +454,9 @@ pub fn compile(
                     }
                 }
                 origin_brush = Some(origin_brush_center(lo, hi));
-                origin_brush_of[ei] = origin_brush;
+                if !world_particles {
+                    origin_brush_of[ei] = origin_brush;
+                }
                 list.push((solid, true));
                 continue;
             }
@@ -1357,6 +1372,8 @@ Probably too many areaportals"
         let share = if vopts.fast { 0.9 } else { 0.05 };
         let t_pvs = std::time::Instant::now();
         let mut base_secs: Option<f64> = None;
+        let mut last_progress = t_pvs;
+        let mut last_percent = None;
         let lump_of = |i: usize| lumps.data.get(&i).map_or(&[][..], |(d, _)| d.as_slice());
         let sky = crate::vis::sky_clusters(
             lump_of(crate::emit::lump::LEAFS),
@@ -1368,6 +1385,19 @@ Probably too many areaportals"
         let pvs = crate::vis::compute_pvs_for_sky(clusters as usize, &portals, &vopts, radius, &sky, &mut |f| {
             if base_secs.is_none() && f >= share {
                 base_secs = Some(t_pvs.elapsed().as_secs_f64());
+            }
+            let percent = (f.clamp(0.0, 1.0) * 100.0) as u32;
+            if last_percent.is_none()
+                || last_progress.elapsed().as_secs() >= 2
+                || (percent == 100 && last_percent != Some(100))
+            {
+                log(&format!(
+                    "Visibility {percent}%: {clusters} clusters, {} portals, {:.0} s elapsed",
+                    portals.len(),
+                    t_pvs.elapsed().as_secs_f64()
+                ));
+                last_percent = Some(percent);
+                last_progress = std::time::Instant::now();
             }
         });
         let pvs_secs = t_pvs.elapsed().as_secs_f64();
@@ -1797,7 +1827,11 @@ pub(crate) fn entity_list(
         }
         set(&mut l, "classname", ent.classname.clone());
         for (k, v) in &ent.props {
-            if k.eq_ignore_ascii_case("id") {
+            if k.eq_ignore_ascii_case("id")
+                || (hp_vmf::is_world_particle_volume(&ent.classname)
+                    && keys.model_number.get(ei).copied().unwrap_or(0) > 0
+                    && k.eq_ignore_ascii_case("origin"))
+            {
                 continue;
             }
             set(&mut l, k, v.clone());
@@ -1940,6 +1974,14 @@ pub fn entities_only_for(
     let map = visible.as_ref().unwrap_or(map);
     let bsp = hp_bsp::Bsp::from_vec(existing.to_vec()).map_err(|e| CompileError::Failed(e.to_string()))?;
     let old = bsp.entities().unwrap_or_default();
+    if old.iter().any(|entity| {
+        hp_vmf::is_world_particle_volume(entity.classname())
+            && entity.get("origin").and_then(parse_vec).is_some_and(|origin| origin != DVec3::ZERO)
+    }) {
+        return Err(CompileError::Failed(
+            "A particle volume in the existing BSP has a rebased origin. Run a full geometry compile to rebuild its world-space volume before using entities-only mode.".to_owned(),
+        ));
+    }
     let mut entities: Vec<&hp_vmf::Entity> = vec![&map.world];
     entities.extend(map.entities.iter());
     let mut removed = vec![false; entities.len()];
@@ -1981,13 +2023,14 @@ pub fn entities_only_for(
                 .collect();
             ladders[ei] = Some(ladder_bounds(built.iter()));
         }
-        origins_of[ei] = key(ent, "origin").and_then(parse_vec);
+        let world_particles = hp_vmf::is_world_particle_volume(&ent.classname) && !ent.solids.is_empty();
+        origins_of[ei] = if world_particles { None } else { key(ent, "origin").and_then(parse_vec) };
         let special =
             crate::areas::is_areaportal_class(&ent.classname) || crate::occluder::is_occluder_class(&ent.classname);
         if ei == 0 || ent.solids.is_empty() || merges_into_world(&ent.classname) || removed[ei] || special {
             continue;
         }
-        for solid in ent.solids.iter().filter(|s| is_origin(s)) {
+        for solid in ent.solids.iter().filter(|s| !world_particles && is_origin(s)) {
             let (mut lo, mut hi) = (DVec3::splat(f64::MAX), DVec3::splat(f64::MIN));
             for s in &solid.sides {
                 for p in s.plane {

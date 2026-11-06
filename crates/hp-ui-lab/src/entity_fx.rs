@@ -16,7 +16,6 @@ pub const MAX_PARTICLES: usize = 2400;
 pub const MAX_PER_ENTITY: usize = 300;
 pub const MAX_DISTANCE: f64 = 3072.0;
 const MIN_COUNT: usize = 4;
-const POINT_BOX: f64 = 48.0;
 const SMOKE_CELLS: usize = 160;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -119,10 +118,7 @@ fn grid_for(ext: DVec3, spacing: f64) -> [usize; 3] {
 
 pub fn build(id: Id, e: &hp_vmf::Entity, bounds: Option<(DVec3, DVec3)>) -> Option<Fx> {
     let kind = FxKind::of(&e.classname)?;
-    let (min, max) = bounds.filter(|(a, b)| a.is_finite() && b.is_finite()).or_else(|| {
-        let o = e.origin().filter(|o| o.is_finite())?;
-        Some((o - DVec3::splat(POINT_BOX), o + DVec3::splat(POINT_BOX)))
-    })?;
+    let (min, max) = bounds.filter(|(a, b)| a.is_finite() && b.is_finite() && a.cmplt(*b).all())?;
     let ext = (max - min).max(DVec3::splat(1.0));
     let mut fx = Fx {
         id,
@@ -170,7 +166,7 @@ pub fn build(id: Id, e: &hp_vmf::Entity, bounds: Option<(DVec3, DVec3)>) -> Opti
             let rate = num(e, "density", 50.0).clamp(0.0, 4096.0);
             fx.count = ((rate * life * 0.875) as usize).clamp(MIN_COUNT, MAX_PER_ENTITY);
             fx.speed = num(e, "speed", 32.0).clamp(0.0, 1024.0);
-            fx.enabled = flag(e, "spawnflags", 1);
+            fx.enabled = flag(e, "spawnflags", 1) || e.get("targetname").is_none_or(|name| name.trim().is_empty());
             fx.size = [4.0, 9.0];
             fx.alpha = (num(e, "renderamt", 255.0).clamp(0.0, 255.0) / 255.0).max(0.05);
         }
@@ -413,16 +409,14 @@ impl Dust {
 
 pub fn pick_material(fs: Option<&hp_fs::GameFs>, kind: FxKind, custom: &str) -> String {
     let custom = custom.trim();
+    if !custom.is_empty() {
+        return custom.to_owned();
+    }
     let candidates = kind.materials();
     let Some(fs) = fs else {
-        return if custom.is_empty() { candidates[0].to_owned() } else { custom.to_owned() };
+        return candidates[0].to_owned();
     };
-    std::iter::once(custom)
-        .filter(|c| !c.is_empty())
-        .chain(candidates.iter().copied())
-        .find(|c| fs.material(c).is_some())
-        .unwrap_or(if custom.is_empty() { candidates[0] } else { custom })
-        .to_owned()
+    candidates.iter().copied().find(|c| fs.material(c).is_some()).unwrap_or(candidates[0]).to_owned()
 }
 
 pub struct EntityFxLayer {
@@ -468,7 +462,13 @@ impl EntityFxLayer {
             .iter()
             .filter_map(|(id, node)| {
                 FxKind::of(&node.entity.classname)?;
-                let bounds = scene.entity_solid_bounds(*id).map(|b| (b.min, b.max));
+                let bounds = scene
+                    .entity_solid_ids(*id)
+                    .into_iter()
+                    .filter(|id| state.doc.is_solid_visible(*id))
+                    .filter_map(|id| scene.solids().get(&id).map(|node| node.bounds))
+                    .reduce(|a, b| a.union(&b))
+                    .map(|b| (b.min, b.max));
                 build(*id, &node.entity, bounds)
             })
             .collect();
@@ -732,9 +732,13 @@ mod tests {
 
     #[test]
     fn start_states_and_frozen_dust_follow_the_keys() {
-        assert!(!build(1, &entity("env_embers", &[]), bounds()).unwrap().enabled);
+        assert!(build(1, &entity("env_embers", &[]), bounds()).unwrap().enabled);
         assert!(build(1, &entity("env_embers", &[("spawnflags", "1")]), bounds()).unwrap().enabled);
-        assert!(!build(1, &entity("env_embers", &[("spawnflags", "2")]), bounds()).unwrap().enabled);
+        assert!(
+            !build(1, &entity("env_embers", &[("spawnflags", "2"), ("targetname", "controlled")]), bounds())
+                .unwrap()
+                .enabled
+        );
         assert!(build(1, &entity("env_embers", &[("spawnflags", "3")]), bounds()).unwrap().enabled);
         assert!(build(1, &entity("func_dustmotes", &[]), bounds()).unwrap().enabled);
         assert!(!build(1, &entity("func_dustcloud", &[("StartDisabled", "1")]), bounds()).unwrap().enabled);
@@ -748,11 +752,13 @@ mod tests {
     }
 
     #[test]
-    fn point_entities_get_a_small_box() {
-        let e = entity("env_embers", &[("origin", "100 200 300")]);
-        let fx = build(9, &e, None).unwrap();
-        assert_eq!(fx.min, DVec3::new(52.0, 152.0, 252.0));
-        assert!(build(9, &entity("env_embers", &[]), None).is_none());
+    fn particle_volumes_require_real_brush_bounds() {
+        for class in ["env_embers", "func_smokevolume", "func_dustcloud", "func_dustmotes"] {
+            let e = entity(class, &[("origin", "100 200 300")]);
+            assert!(build(9, &e, None).is_none());
+            assert!(build(9, &e, Some((DVec3::ZERO, DVec3::ZERO))).is_none());
+            assert!(build(9, &e, bounds()).is_some());
+        }
     }
 
     #[test]
@@ -830,17 +836,28 @@ mod tests {
         assert_eq!(pick_material(None, FxKind::Motes, ""), "particle/sparkles");
         assert_eq!(pick_material(None, FxKind::Smoke, "particle/custom"), "particle/custom");
         assert_eq!(pick_material(None, FxKind::Cloud, ""), "particle/particle_smokegrenade");
+        assert_eq!(
+            pick_material(Some(&hp_fs::GameFs::empty()), FxKind::Smoke, "csgo/particle/missing"),
+            "csgo/particle/missing"
+        );
     }
 
     #[test]
     fn the_layer_is_bounded_and_follows_the_setting() {
         let mut state = hp_app::testing::test_state();
         let mut map = hp_vmf::Map::new_empty();
+        let brush = hp_vmf::parse(hp_app::testing::TEST_VMF).unwrap().world.solids.remove(0);
         for i in 0..60 {
             let mut e = hp_vmf::Entity { id: 100 + i, classname: "env_embers".into(), ..Default::default() };
             e.set("origin", format!("{} 0 0", i * 16));
             e.set("density", "96");
             e.set("spawnflags", "1");
+            let mut solid = brush.clone();
+            solid.id = 1000 + i;
+            for (side, surface) in solid.sides.iter_mut().enumerate() {
+                surface.id = 2000 + i * 10 + side as u32;
+            }
+            e.solids.push(solid);
             map.entities.push(e);
         }
         state.doc = hp_editor::Document::from_map(map);
@@ -857,6 +874,11 @@ mod tests {
             assert_eq!(shared.fx_materials, vec!["effects/ember_swirling001".to_owned()]);
             assert!(shared.fx_sprites.iter().all(|s| s.material == 0));
         }
+        let brushes: Vec<_> = (0..60).map(|i| hp_editor::ObjRef::Solid(1000 + i)).collect();
+        state.doc.set_hidden(&brushes, true);
+        layer.prepare(&state);
+        assert_eq!(layer.visible_count(), 0, "hidden brushes cannot leave a fictional particle volume");
+        state.doc.set_hidden(&brushes, false);
         state.settings.lab.show_entity_fx = false;
         layer.prepare(&state);
         assert_eq!(layer.visible_count(), 0);

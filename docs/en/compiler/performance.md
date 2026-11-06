@@ -2,6 +2,8 @@
 
 # Compile performance
 
+The integrated geometry compiler resolves loose content files on demand instead of recursively indexing every content directory at each launch. Source priority and case-insensitive lookup are preserved. Archive indexes still need to be opened, and compressed addon content may take time on its first read. The journal reports content mounting and material loading before geometry processing; a long wait in these phases is not yet BSP tree generation.
+
 How to make compiles fast while you iterate, and what costs time in a release build. For the speed of the editor itself, see [Editor performance](../troubleshooting/performance.md).
 
 ## Already done for you

@@ -249,6 +249,7 @@ fn mount_content(
         return None;
     }
     say("Mounting game content...");
+    let options = hp_fs::MountOptions { lookup_only: true, ..options.clone() };
     let progress = hp_fs::MountProgress::new();
     let started = std::time::Instant::now();
     let result = std::thread::scope(|scope| {
@@ -271,8 +272,8 @@ fn mount_content(
             }
         });
         let staged = match profile {
-            Some(profile) => hp_fs::GameFs::for_game_staged_with(profile, options, &progress),
-            None => hp_fs::GameFs::for_gmod_staged_with(root.unwrap_or_else(|| Path::new(".")), options, &progress),
+            Some(profile) => hp_fs::GameFs::for_game_staged_with(profile, &options, &progress),
+            None => hp_fs::GameFs::for_gmod_staged_with(root.unwrap_or_else(|| Path::new(".")), &options, &progress),
         };
         let result = staged.map(|(fs, rest)| {
             fs.finish_mount_with(rest, &progress);

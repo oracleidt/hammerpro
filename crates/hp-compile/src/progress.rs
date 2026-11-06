@@ -93,6 +93,19 @@ impl OutputSplitter {
             self.reset_line();
             return;
         }
+        if let Some(fraction) = line
+            .trim()
+            .strip_prefix("Visibility ")
+            .and_then(|rest| rest.split_once("%: "))
+            .and_then(|(percent, _)| percent.parse::<f32>().ok())
+            .filter(|percent| (0.0..=100.0).contains(percent))
+            .map(|percent| percent / 100.0)
+        {
+            out(Piece::Progress { fraction, phase: Some(line.trim().to_owned()) });
+            out(Piece::Line(line));
+            self.reset_line();
+            return;
+        }
         if [
             "Mounting game content...",
             "Game content: ",
@@ -236,6 +249,19 @@ fn phase_label(prefix: &[u8]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn integrated_visibility_reports_progress_during_the_geometry_step() {
+        let line = "Visibility 37%: 1728 clusters, 6544 portals, 12 s elapsed";
+        assert_eq!(
+            run_chunks(&[b"Visibility 37%: 1728 clusters, ", b"6544 portals, 12 s elapsed\n"]),
+            vec![Piece::Progress { fraction: 0.37, phase: Some(line.into()) }, Piece::Line(line.into()),]
+        );
+        for invalid in ["Visibility NaN%: invalid", "Visibility 101%: invalid", "Visibility -1%: invalid"] {
+            let text = format!("{invalid}\n");
+            assert_eq!(run_chunks(&[text.as_bytes()]), vec![Piece::Line(invalid.into())]);
+        }
+    }
 
     #[test]
     fn content_loading_reports_its_phase_and_keeps_the_log() {

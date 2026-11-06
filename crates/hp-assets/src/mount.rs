@@ -53,6 +53,7 @@ impl MountRequest {
         Self {
             root: g.gmod_root.clone().filter(|p| !p.as_os_str().is_empty()),
             opts: MountOptions {
+                lookup_only: false,
                 mount_addons: g.mount_addons,
                 mount_workshop: g.mount_workshop,
                 mount_cfg: g.mount_cfg,

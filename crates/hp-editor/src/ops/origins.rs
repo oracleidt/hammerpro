@@ -23,6 +23,9 @@ impl Document {
             .filter(|id| seen.insert(**id))
             .filter_map(|id| {
                 let node = self.scene.entities.get(id)?;
+                if hp_vmf::is_world_particle_volume(&node.entity.classname) {
+                    return None;
+                }
                 if node.entity.get("origin").is_some_and(|o| hp_vmf::parse_vec3(o).is_some()) {
                     return None;
                 }

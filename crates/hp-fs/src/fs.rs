@@ -10,8 +10,8 @@ use crate::detect::{is_gmod_root, path_key};
 use crate::error::FsError;
 use crate::material::MaterialCache;
 use crate::mount::{
-    DeferredMount, MountOptions, Opened, PlanItem, PlanKind, folder_name, game_folder_items, is_deferred, open_all,
-    open_all_with, open_item, plan_gmod, vpk_label,
+    DeferredMount, MountOptions, Opened, PlanItem, PlanKind, folder_name, game_folder_items, is_deferred, open_all_for,
+    open_item, plan_gmod, vpk_label,
 };
 use crate::path::normalize_path;
 use crate::progress::{MountProgress, MountStage};
@@ -42,6 +42,7 @@ pub struct GameFs {
 pub(crate) struct Inner {
     root: Option<PathBuf>,
     game_dir: Option<PathBuf>,
+    lookup_only: bool,
     sources: RwLock<Snapshot>,
     mutate: Mutex<()>,
     next_id: AtomicU32,
@@ -120,6 +121,7 @@ impl GameFs {
             inner: Arc::new(Inner {
                 root,
                 game_dir,
+                lookup_only: false,
                 sources: RwLock::new(Arc::from(Vec::new())),
                 mutate: Mutex::new(()),
                 next_id: AtomicU32::new(1),
@@ -157,7 +159,7 @@ impl GameFs {
         let (items, mut warnings) = plan_gmod(root, opts)?;
         let (late, items): (Vec<PlanItem>, Vec<PlanItem>) = items.into_iter().partition(|i| is_deferred(i.origin));
         let planned = start.elapsed();
-        let (opened, open_warnings) = open_all_with(items, Some(progress));
+        let (opened, open_warnings) = open_all_for(items, Some(progress), opts.lookup_only);
         log::info!(
             "mounted {} sources from {} in {:?} (planning {:?})",
             opened.len(),
@@ -166,7 +168,8 @@ impl GameFs {
             planned
         );
         warnings.extend(open_warnings);
-        let fs = Self::with_dirs(Some(root.to_path_buf()), Some(root.join("garrysmod")));
+        let mut fs = Self::with_dirs(Some(root.to_path_buf()), Some(root.join("garrysmod")));
+        Arc::get_mut(&mut fs.inner).expect("new filesystem").lookup_only = opts.lookup_only;
         let list: Vec<Arc<Source>> = opened.into_iter().map(|o| Arc::new(fs.make_source(o))).collect();
         *fs.inner.sources.write() = Arc::from(list);
         *fs.inner.warnings.lock() = warnings;
@@ -190,7 +193,7 @@ impl GameFs {
         progress.set_stage(MountStage::Planning);
         let start = std::time::Instant::now();
         let (items, mut warnings) = crate::games::plan_game(profile, opts)?;
-        let (opened, open_warnings) = open_all_with(items, Some(progress));
+        let (opened, open_warnings) = open_all_for(items, Some(progress), opts.lookup_only);
         log::info!(
             "mounted {} sources of {} from {} in {:?}",
             opened.len(),
@@ -204,7 +207,8 @@ impl GameFs {
         } else {
             Some(profile.root.clone())
         };
-        let fs = Self::with_dirs(root, Some(profile.game_dir.clone()));
+        let mut fs = Self::with_dirs(root, Some(profile.game_dir.clone()));
+        Arc::get_mut(&mut fs.inner).expect("new filesystem").lookup_only = opts.lookup_only;
         let list: Vec<Arc<Source>> = opened.into_iter().map(|o| Arc::new(fs.make_source(o))).collect();
         *fs.inner.sources.write() = Arc::from(list);
         *fs.inner.warnings.lock() = warnings;
@@ -230,8 +234,8 @@ impl GameFs {
             .ok();
         let items = rest.items;
         let (opened, warnings) = match pool {
-            Some(pool) => pool.install(|| open_all_with(items, Some(progress))),
-            None => open_all_with(items, Some(progress)),
+            Some(pool) => pool.install(|| open_all_for(items, Some(progress), self.inner.lookup_only)),
+            None => open_all_for(items, Some(progress), self.inner.lookup_only),
         };
         let added = opened.len();
         self.insert(opened, Insert::Bottom);
@@ -386,7 +390,7 @@ impl GameFs {
                 ids.extend(same);
             }
         }
-        let (opened, open_warnings) = open_all(fresh);
+        let (opened, open_warnings) = open_all_for(fresh, None, self.inner.lookup_only);
         warnings.extend(open_warnings);
         self.inner.warnings.lock().extend(warnings);
         ids.extend(self.insert(opened, Insert::Bottom));
@@ -575,6 +579,42 @@ mod tests {
         {
             assert_eq!(restored.read(path), fs.read(path), "{path}");
         }
+    }
+
+    #[test]
+    fn compiler_lookup_mount_preserves_search_priority_and_extra_paths() {
+        let tmp = TempDir::new("compiler-lookup-mount");
+        let root = fake_gmod(&tmp);
+        let indexed = GameFs::for_gmod(&root, &MountOptions { mount_workshop: false, ..Default::default() }).unwrap();
+        let lookup =
+            GameFs::for_gmod(&root, &MountOptions { lookup_only: true, mount_workshop: false, ..Default::default() })
+                .unwrap();
+        let extra = tmp.mkdir("extra");
+        tmp.write("extra/materials/extra/new.vmt", b"extra");
+        indexed.add_game_dir(&extra).unwrap();
+        lookup.add_game_dir(&extra).unwrap();
+        for path in [
+            "materials/shared/wall.vmt",
+            "materials/addon/a.vmt",
+            "models/a.mdl",
+            "sound/x/beep.wav",
+            "materials/base/b.vmt",
+            "materials/extra/new.vmt",
+            "materials/absent.vmt",
+        ] {
+            assert_eq!(indexed.read(path), lookup.read(path), "{path}");
+            assert_eq!(indexed.which_source(path), lookup.which_source(path), "{path}");
+        }
+        assert!(
+            lookup
+                .snapshot()
+                .iter()
+                .filter_map(|s| match &s.data {
+                    SourceData::Dir(d) => Some(d.len()),
+                    _ => None,
+                })
+                .all(|len| len == 0)
+        );
     }
 
     #[test]

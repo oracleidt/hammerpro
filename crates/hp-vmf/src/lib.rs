@@ -22,6 +22,12 @@ pub use timings::LoadTimings;
 
 pub type Id = u32;
 
+pub fn is_world_particle_volume(class: &str) -> bool {
+    ["func_smokevolume", "env_embers", "func_dustcloud", "func_dustmotes"]
+        .iter()
+        .any(|name| class.trim().eq_ignore_ascii_case(name))
+}
+
 pub const MAX_DISP_POWER: u32 = 4;
 
 pub const MAX_NESTING: usize = 256;

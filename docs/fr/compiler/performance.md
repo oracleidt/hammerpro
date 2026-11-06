@@ -2,6 +2,8 @@
 
 # Performances de compilation
 
+Le compilateur de géométrie intégré recherche les fichiers de contenu à la demande au lieu d’indexer récursivement tous les dossiers à chaque lancement. La priorité des sources et la recherche sans distinction de casse sont conservées. Les index des archives restent à ouvrir et le premier accès à un addon compressé peut prendre du temps. Le journal indique le montage du contenu et le chargement des matériaux avant la géométrie ; une attente pendant ces phases ne correspond pas encore à la construction de l’arbre BSP.
+
 Comment garder des compilations rapides pendant que vous itérez, et ce qui prend du temps dans une version finale. Pour la vitesse de l'éditeur lui-même, voir [Performances de l'éditeur](../troubleshooting/performance.md).
 
 ## Déjà fait pour vous
