@@ -27,6 +27,27 @@ fn solids(road: &Road) -> Vec<Vec<hp_vmf::Side>> {
 }
 
 #[test]
+fn world_roads_compile_as_detail_without_extra_brushes_or_changing_entity_roads() {
+    let m = meta(&[p(0.0, 0.0, 16.0), p(256.0, 128.0, 64.0), p(768.0, -128.0, 32.0)]);
+    let expected = built(&m).pieces.len();
+    for target in [Target::World, Target::NewEntity { class: "func_brush", keyvalues: &[] }] {
+        let mut doc = hp_editor::Document::new_empty();
+        let made = apply::create_road(&mut doc, &m, 16, target).unwrap();
+        assert_eq!(made.ids.len(), expected);
+        assert_eq!(doc.stats().solids, expected);
+        for id in &made.ids {
+            let node = doc.scene().solid(*id).unwrap();
+            let contents = if made.entity.is_none() { hp_vmf::CONTENTS_DETAIL } else { 0 };
+            assert!(node.solid.sides.iter().all(|s| s.compile_contents() == contents));
+            assert_eq!(node.owner, made.entity.map_or(hp_editor::Owner::World, hp_editor::Owner::Entity));
+        }
+        assert_eq!(doc.to_map().entities.len(), usize::from(made.entity.is_some()));
+        assert!(doc.undo());
+        assert_eq!(doc.stats().solids, 0);
+    }
+}
+
+#[test]
 fn junction_presets_produce_closed_nonoverlapping_brushes_and_survive_editing() {
     use super::model::RoadLayout;
     for layout in [RoadLayout::Tee, RoadLayout::Cross, RoadLayout::Wye, RoadLayout::CulDeSac] {

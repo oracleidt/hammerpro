@@ -124,6 +124,60 @@ const DETAIL: i32 = 0x0800_0000;
 const MASK_WATER: i32 = 0x30;
 
 #[test]
+fn inline_world_detail_contents_matches_func_detail_with_all_detail_switches() {
+    let original = hp_vmf::parse(&detail_and_water().text()).unwrap();
+    let mut inline = original.clone();
+    let entity = inline.entities.iter().position(|e| e.classname == "func_detail").unwrap();
+    let mut detail = inline.entities.remove(entity);
+    for solid in &mut detail.solids {
+        for side in &mut solid.sides {
+            side.add_compile_contents(hp_vmf::CONTENTS_DETAIL);
+        }
+    }
+    inline.world.solids.extend(detail.solids);
+    for options in [
+        CompileOptions::default(),
+        CompileOptions { no_detail: true, ..Default::default() },
+        CompileOptions { full_detail: true, ..Default::default() },
+    ] {
+        let compile = |map: &hp_vmf::Map| {
+            let out = hp_bspc::compile(map, &GameMats, &hp_bspc::props::NoModels, &options, &mut |_| {}).unwrap();
+            Lumps::from_bytes(&out.bsp)
+        };
+        let reference = compile(&original);
+        let result = compile(&inline);
+        // IDs/order differ, but structural cuts, render faces and collision contents must agree.
+        assert_eq!(result.nodes().len(), reference.nodes().len());
+        assert_eq!(result.faces().len(), reference.faces().len());
+        let mut expected: Vec<_> = reference.brushes().iter().map(|b| b.contents).collect();
+        let mut actual: Vec<_> = result.brushes().iter().map(|b| b.contents).collect();
+        expected.sort_unstable();
+        actual.sort_unstable();
+        assert_eq!(actual, expected);
+    }
+}
+
+#[test]
+fn inline_nodraw_flags_hide_faces_without_removing_collision() {
+    let mut m = small_room();
+    m.world.push(block(v(-64.0, -64.0, 16.0), v(64.0, 64.0, 64.0), WALL));
+    let visible = hp_vmf::parse(&m.text()).unwrap();
+    let mut hidden = visible.clone();
+    for side in &mut hidden.world.solids.last_mut().unwrap().sides {
+        side.extra_props.push(("flags".into(), "128".into()));
+    }
+    let compile = |map: &hp_vmf::Map| {
+        let out = hp_bspc::compile(map, &GameMats, &hp_bspc::props::NoModels, &CompileOptions::default(), &mut |_| {})
+            .unwrap();
+        Lumps::from_bytes(&out.bsp)
+    };
+    let before = compile(&visible);
+    let after = compile(&hidden);
+    assert_eq!(after.brushes(), before.brushes());
+    assert!(after.faces().len() < before.faces().len());
+}
+
+#[test]
 fn nodetail_nowater_and_fulldetail() {
     let m = detail_and_water();
     let (all, _) = compiled(&m, &CompileOptions::default());

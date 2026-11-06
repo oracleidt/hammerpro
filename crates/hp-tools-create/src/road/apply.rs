@@ -252,9 +252,20 @@ pub fn road_solids(road: &Road, lightmap: i32, first_side_id: u32) -> Result<Vec
         .collect()
 }
 
-fn place(doc: &mut Document, solids: Vec<Vec<Side>>, target: Target<'_>) -> Result<(Vec<Id>, Option<Id>), EditError> {
+fn place(
+    doc: &mut Document,
+    mut solids: Vec<Vec<Side>>,
+    target: Target<'_>,
+) -> Result<(Vec<Id>, Option<Id>), EditError> {
     match target {
-        Target::World => Ok((doc.create_solids(solids, Owner::World)?, None)),
+        Target::World => {
+            // Small spline segments must not split the structural world BSP: VBSP can otherwise
+            // emit cracks and oversized portal faces along their nearly coplanar surfaces.
+            for side in solids.iter_mut().flatten() {
+                side.add_compile_contents(hp_vmf::CONTENTS_DETAIL);
+            }
+            Ok((doc.create_solids(solids, Owner::World)?, None))
+        }
         Target::NewEntity { class, keyvalues } => {
             let e = doc.create_brush_entity(class, keyvalues, solids)?;
             Ok((doc.scene().entity_solid_ids(e), Some(e)))

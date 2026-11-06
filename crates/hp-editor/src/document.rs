@@ -293,7 +293,9 @@ impl Document {
     }
 
     pub fn to_map(&self) -> Map {
-        self.scene.to_map()
+        let mut map = self.scene.to_map();
+        crate::curve_meta::prepare_road_contents(&mut map);
+        map
     }
 
     pub fn to_vmf_string(&self) -> String {

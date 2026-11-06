@@ -2416,7 +2416,10 @@ fn build_brush(
         if sides.iter().any(|x| x.plane == (p ^ 1)) {
             return Err(format!("Brush {id}: mirrored plane"));
         }
-        let facts = facts_of(&s.material);
+        let mut facts = facts_of(&s.material);
+        facts.raw_contents |= s.compile_contents();
+        facts.surf |= s.compile_surface_flags();
+        facts.contents = crate::materials::side_contents(facts.raw_contents, facts.surf);
         if surfaceprop.is_empty() {
             surfaceprop = facts.surfaceprop.clone();
         }

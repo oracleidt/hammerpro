@@ -135,7 +135,8 @@ La jonction est mémorisée. Quand vous modifiez ou coupez l'autre route, les ro
 
 - Dessinez la route avec peu de points et laissez la spline arrondir ; ajoutez un point là où la route doit passer exactement.
 - Pour une route sur des collines, activez **Suivre le terrain** avant le premier clic, dessinez dans la vue de dessus, puis affinez la hauteur de certains points dans la vue de face ou de côté.
-- Mettez les longues routes dans un `func_detail` avec **Créer en tant que** : la route ne coupe alors pas la visibilité de la carte. Gardez une longueur de segment de 64 ou plus pour les longues routes afin de limiter le nombre de brushes et le temps de compilation.
+- Les routes du monde sont automatiquement compilées comme géométrie de détail pour éviter les fissures et les faces parasites dans les virages et les pentes. Elles restent des brushes du monde, avec le même nombre de brushes et des collisions. Les anciennes routes reçoivent ce marquage à l'enregistrement ou à l'export, y compris pour la compilation. Gardez un sol structurel dessous : les routes de détail ne ferment pas la carte. Une valeur `contents` explicitement définie sur une face est conservée.
+- Gardez une longueur de segment de 64 ou plus pour les longues routes afin de limiter le nombre de brushes et le temps de compilation. **Créer en tant que** accepte toujours `func_detail` et les autres entités brush.
 - Une route compile comme de simples brushes convexes ; avec du dévers le dessus d'un segment peut être légèrement gauchi, ce que le compilateur découpe en quelques faces de plus.
 
 ## Pages liées

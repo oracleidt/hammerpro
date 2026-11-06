@@ -10,6 +10,7 @@ mod read;
 mod report;
 mod save;
 mod scan;
+mod side_flags;
 pub mod timings;
 mod write;
 
@@ -29,6 +30,7 @@ pub fn is_world_particle_volume(class: &str) -> bool {
 }
 
 pub const MAX_DISP_POWER: u32 = 4;
+pub const CONTENTS_DETAIL: u32 = 0x0800_0000;
 
 pub const MAX_NESTING: usize = 256;
 

@@ -12,7 +12,7 @@ pub mod contents {
     pub const PLAYERCLIP: u32 = 0x10000;
     pub const MONSTERCLIP: u32 = 0x20000;
     pub const ORIGIN: u32 = 0x0100_0000;
-    pub const DETAIL: u32 = 0x0800_0000;
+    pub const DETAIL: u32 = hp_vmf::CONTENTS_DETAIL;
     pub const TRANSLUCENT: u32 = 0x1000_0000;
     pub const LADDER: u32 = 0x2000_0000;
     pub const TESTFOGVOLUME: u32 = 0x100;

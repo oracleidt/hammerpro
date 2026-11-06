@@ -135,7 +135,8 @@ The junction is remembered. When you edit or split the other road, the roads joi
 
 - Draw the road with few points and let the spline do the rounding; add a point where the road must pass exactly.
 - For a road on hills, switch on **Follow terrain** before the first click, draw in the top view, then fine tune the heights of single points in the front or side view.
-- Put long roads in a `func_detail` with **Create as**: the road then does not cut the visibility of the map. Keep the segment length at 64 or more for long roads to keep the brush count and the compile time low.
+- World roads automatically compile as detail geometry to prevent cracks and stray faces along curved or sloped segments. They remain world brushes, with the same brush count and collision. Existing roads receive this marking when saved or exported, including compilation. Keep structural ground underneath: detail roads do not seal the map. An explicit side `contents` override is preserved.
+- Keep the segment length at 64 or more for long roads to keep the brush count and compile time low. **Create as** still supports `func_detail` and other brush entities.
 - A road compiles as plain convex brushes; with banking the top of a segment can be slightly twisted, which the compiler splits into a few more faces.
 
 ## Related pages
