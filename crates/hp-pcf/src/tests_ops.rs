@@ -1208,7 +1208,7 @@ fn color_lighting_matches_native_pixels_for_each_tint_and_blend_mode() {
         let actual = gray_sprite_pixel(sim.particles[0].color);
         for (channel, value) in actual.into_iter().enumerate() {
             let expected = case["pixel"][channel].as_u64().unwrap() as u8;
-            assert!(value.abs_diff(expected) <= 2, "{name}: {actual:?} vs {}", case["pixel"]);
+            assert!(value.abs_diff(expected) <= 1, "{name}: {actual:?} vs {}", case["pixel"]);
         }
     }
 }
@@ -1242,8 +1242,87 @@ fn color_fades_match_native_pixels_at_measured_particle_ages() {
             let actual = gray_sprite_pixel(sim.particles[0].color);
             for (channel, value) in actual.into_iter().enumerate() {
                 let expected = sample["pixel"][channel].as_u64().unwrap() as u8;
-                assert!(value.abs_diff(expected) <= 2, "{name} age {age}: {actual:?} vs {}", sample["pixel"]);
+                assert!(value.abs_diff(expected) <= 1, "{name} age {age}: {actual:?} vs {}", sample["pixel"]);
             }
         }
+    }
+}
+
+#[test]
+fn native_particle_caps_and_sequential_float_steps_are_preserved() {
+    let definitions = crate::parse_file(include_bytes!("../tests/data/cap_cases.pcf")).unwrap();
+    let cases: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/cap_native_samples.json")).unwrap();
+    let mut points = Points::at([0.0, 0.0, 64.0]);
+    points.pos.push([10000.0, 0.0, 64.0]);
+    for case in cases {
+        let count = case["count"].as_u64().unwrap() as usize;
+        let name = format!("hp_spritecard_cap{count}");
+        let plan = Arc::new(Plan::new(definitions.iter().find(|d| d.name == name).unwrap()));
+        assert!(plan.unsupported.is_empty());
+        let mut sim = Sim::new(plan, 17);
+        sim.step_at(0.0, &points, &[], 10000);
+        assert_eq!(sim.particles.len(), count.min(5000));
+        let maximum = sim.particles.iter().map(|p| p.pos[0]).max_by(f32::total_cmp).unwrap();
+        let expected = case["maximum"].as_f64().unwrap() as f32;
+        assert!((maximum - expected).abs() < 0.001, "{name}: {maximum} vs {expected}");
+        sim.restart();
+        sim.step_at(0.0, &points, &[], 10000);
+        assert_eq!(sim.particles[0].pos[0], 0.0);
+    }
+}
+
+#[test]
+fn replacing_the_lighting_context_refreshes_new_particles_without_restarting_existing_ones() {
+    struct Lighting(std::cell::Cell<f32>);
+    impl crate::environment::Environment for Lighting {
+        fn lighting(&self, _: [f32; 3]) -> [f32; 3] {
+            [self.0.get(); 3]
+        }
+    }
+    let def = system(
+        "color cache",
+        vec![op("emit_continuously", vec![("emission_rate", fl(4.0))])],
+        vec![op("Color Random", vec![("tint_perc", fl(1.0))])],
+        vec![],
+    );
+    let world = Lighting(std::cell::Cell::new(0.0));
+    let points = Points::at([0.0; 3]);
+    let mut sim = Sim::new(Arc::new(Plan::new(&def)), 17);
+    for _ in 0..3 {
+        sim.step_in(0.1, &points, &[], 20, &world);
+    }
+    world.0.set(1.0);
+    for _ in 0..3 {
+        sim.step_in(0.1, &points, &[], 20, &world);
+    }
+    assert_eq!(sim.particles.len(), 2);
+    assert!(sim.particles.iter().all(|p| p.color == [0.0; 3]));
+    let age = sim.particles[0].age;
+    sim.invalidate_lighting();
+    for _ in 0..3 {
+        sim.step_in(0.1, &points, &[], 20, &world);
+    }
+    assert_eq!(sim.particles.len(), 3);
+    assert_eq!(sim.particles[2].color, [1.0; 3]);
+    assert_eq!(sim.particles[0].color, [0.0; 3]);
+    assert!(sim.particles[0].age > age);
+}
+
+#[test]
+fn sequential_path_edge_cases_match_native_zero_fractional_and_bouncing_bounds() {
+    let definitions = crate::parse_file(include_bytes!("../tests/data/path_edge_cases.pcf")).unwrap();
+    let cases: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/path_edge_native_samples.json")).unwrap();
+    let mut points = Points::at([0.0, 0.0, 64.0]);
+    points.pos.push([10000.0, 0.0, 64.0]);
+    for case in cases {
+        let name = format!("hp_spritecard_{}", case["name"].as_str().unwrap());
+        let mut sim = Sim::new(Arc::new(Plan::new(definitions.iter().find(|d| d.name == name).unwrap())), 17);
+        sim.step_at(0.0, &points, &[], 100);
+        assert_eq!(sim.particles.len(), 8);
+        let actual = sim.particles.iter().map(|p| p.pos[0]).max_by(f32::total_cmp).unwrap();
+        let expected = case["max"][0].as_f64().unwrap() as f32;
+        assert!((actual - expected).abs() < 0.001, "{name}: {actual} vs {expected}");
     }
 }

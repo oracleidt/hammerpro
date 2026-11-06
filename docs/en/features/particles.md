@@ -53,7 +53,8 @@ In pick mode the browser shows "Pick for *key*: double click an item, or select 
 
 - The definitions come from the particle files of the mounted content: the files of the map's particle manifest (`maps/<map>_particles.txt`) first, then the particle catalog of the content. They are read in the background, with the look of their materials (`$additive`, `$overbrightfactor`, `$addself`, fade sizes, the sprite sheet of the base texture). Child systems are loaded too.
 - Every effect plays whatever its start state (`start_active`), at its control points: the entity itself with its angles, and the entities named by its `cpoint1` to `cpoint63` keys. Continuous effects start already running (1.5 seconds ahead).
-- To keep the cost low whatever the map size, only effects within 4096 units of the camera play, at most 24 at once (nearest first), with at most 3000 particles in all and 400 per effect.
+- Only effects within 4096 units of the camera play, at most 24 at once (nearest first). Each PCF system retains its `max_particles` setting up to the game limit of 5,000; parent and child systems share the effect budget. The particle browser and editor use the same system limit. Use **Particles of the selection only** when inspecting dense effects on a heavy map.
+- `Color Lit Per Particle` samples the compiled or baked map lighting at each particle; `Color Random` can tint from its chosen control point. Without a map lighting bake, the editor uses fullbright lighting. Replacing a bake refreshes cached tints for newly spawned particles without restarting existing particles.
 - Particles are drawn by the renderer with their sprite sheet frame, screen aligned, upright, flat or stretched (trails, ropes), blended or additive. The preview is an approximation: some operators of the particle system are not simulated.
 - In the [player view](player-view.md) with the compiled world, the particle systems of the compiled map play instead.
 

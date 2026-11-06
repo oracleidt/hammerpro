@@ -1591,7 +1591,7 @@ fn simulated_colors_and_fades_match_native_spritecard_pixels() {
         let actual = &pixels[(64 * 128 + 64) * 4..][..3];
         for (channel, value) in actual.iter().enumerate() {
             let target = expected[channel].as_u64().unwrap() as u8;
-            assert!(value.abs_diff(target) <= 2, "{context}: {actual:?} vs native {expected}");
+            assert!(value.abs_diff(target) <= 1, "{context}: {actual:?} vs native {expected}");
         }
     };
     let reference: serde_json::Value =

@@ -10,8 +10,8 @@ use hp_render::{Overlay, OverlayTri, ParticleBlend, ParticleOrient};
 use hp_ui_viewports::layers::OverlayLayer;
 
 pub const MAX_EFFECTS: usize = 24;
-pub const MAX_PARTICLES: usize = 3000;
-pub const MAX_PER_EFFECT: usize = 400;
+pub const MAX_PARTICLES: usize = MAX_PER_EFFECT * MAX_EFFECTS;
+pub const MAX_PER_EFFECT: usize = hp_pcf::sim::MAX_EFFECT_PARTICLES;
 pub const MAX_DISTANCE: f64 = 4096.0;
 const STARTS_PER_FRAME: usize = 4;
 const WARM_UP: f32 = 1.5;
@@ -522,6 +522,36 @@ struct Source {
     points: Points,
 }
 
+#[derive(Clone, Debug)]
+struct LightingContext {
+    baked: Option<Arc<hp_editor::limits::world_light::PropLighting>>,
+    region: Option<[[f64; 3]; 2]>,
+    compiled: Option<Arc<hp_editor::limits::world::BspWorld>>,
+}
+
+impl LightingContext {
+    fn new(state: &AppState, lighting: &hp_app::state::ParticleLighting) -> Self {
+        let compiled = if state.runtime.lab.player.active && !state.runtime.lab.player.editor_world {
+            state.runtime.health.world.clone()
+        } else {
+            None
+        };
+        Self {
+            baked: if compiled.is_none() { lighting.baked.clone() } else { None },
+            region: if compiled.is_none() { lighting.region } else { None },
+            compiled,
+        }
+    }
+}
+
+impl PartialEq for LightingContext {
+    fn eq(&self, other: &Self) -> bool {
+        self.baked.as_ref().map(Arc::as_ptr) == other.baked.as_ref().map(Arc::as_ptr)
+            && self.compiled.as_ref().map(Arc::as_ptr) == other.compiled.as_ref().map(Arc::as_ptr)
+            && self.region == other.region
+    }
+}
+
 struct Playing {
     name: String,
     effect: Effect,
@@ -539,6 +569,7 @@ pub struct ParticleLayer {
     sources: Vec<Source>,
     sources_key: Option<SourcesKey>,
     effects: HashMap<Id, Playing>,
+    lighting: Option<LightingContext>,
 }
 
 fn parse3(s: Option<&str>) -> Option<[f32; 3]> {
@@ -599,7 +630,7 @@ fn sources_of<'a>(entities: impl Iterator<Item = (Id, &'a hp_vmf::Entity)> + Clo
 
 impl ParticleLayer {
     pub fn new(handle: ParticleHandle) -> Self {
-        Self { handle, sources: Vec::new(), sources_key: None, effects: HashMap::new() }
+        Self { handle, sources: Vec::new(), sources_key: None, effects: HashMap::new(), lighting: None }
     }
 
     pub fn particle_count(&self) -> usize {
@@ -691,6 +722,7 @@ impl ParticleLayer {
 
     fn stop_all(&mut self) {
         self.effects.clear();
+        self.lighting = None;
         if let Ok(mut s) = self.handle.lock() {
             s.world_requirement = None;
             s.active = false;
@@ -743,6 +775,13 @@ impl OverlayLayer for ParticleLayer {
         if !state.runtime.lighting.has_bake {
             lighting.baked = None;
             lighting.region = None;
+        }
+        let context = LightingContext::new(state, &lighting);
+        if self.lighting.as_ref() != Some(&context) {
+            for playing in self.effects.values_mut() {
+                playing.effect.invalidate_lighting();
+            }
+            self.lighting = Some(context);
         }
         let world = crate::particle_world::ParticleEnvironment { state, physics: &physics, lighting: Some(&lighting) };
         let keep: HashSet<Id> = near.iter().map(|(_, s)| s.id).collect();
@@ -925,6 +964,53 @@ mod tests {
         state.cameras.cam3d.pitch_deg = 0.0;
         state.frame.dt = 1.0 / 30.0;
         state
+    }
+
+    #[test]
+    fn dense_native_parent_and_child_systems_keep_their_full_particle_counts() {
+        let definition = hp_pcf::parse_file(include_bytes!("../../hp-pcf/tests/data/cap_cases.pcf"))
+            .unwrap()
+            .into_iter()
+            .find(|system| system.name == "hp_spritecard_cap5000")
+            .unwrap();
+        let mut parent = definition.clone();
+        parent.name = "fire_small".into();
+        parent.children.push(hp_pcf::Child { system: "dense_child".into(), delay: 0.0 });
+        let mut child = definition;
+        child.name = "dense_child".into();
+        let handle = new_handle();
+        {
+            let mut shared = handle.lock().unwrap();
+            shared.library.insert(parent.name.clone(), Arc::new(Plan::new(&parent)));
+            shared.library.insert(child.name.clone(), Arc::new(Plan::new(&child)));
+            shared.sprite_layer = true;
+        }
+        let mut layer = ParticleLayer::new(handle.clone());
+        layer.prepare(&state_with_particles(1));
+        assert_eq!(layer.particle_count(), 10000);
+        assert_eq!(handle.lock().unwrap().sprites.len(), 10000);
+    }
+
+    #[test]
+    fn lighting_context_tracks_bake_replacements_without_resetting_for_animated_styles() {
+        let mut state = hp_app::testing::test_state();
+        let mut lighting = hp_app::state::ParticleLighting::default();
+        let empty = LightingContext::new(&state, &lighting);
+        lighting.baked = Some(Arc::new(hp_editor::limits::world_light::PropLighting::default()));
+        let first = LightingContext::new(&state, &lighting);
+        assert_ne!(empty, first);
+        assert_eq!(first, LightingContext::new(&state, &lighting.clone()));
+        lighting.styles = vec![0.5];
+        assert_eq!(first, LightingContext::new(&state, &lighting));
+        lighting.region = Some([[-16.0; 3], [16.0; 3]]);
+        assert_ne!(first, LightingContext::new(&state, &lighting));
+        lighting.region = None;
+        lighting.baked = Some(Arc::new(hp_editor::limits::world_light::PropLighting::default()));
+        assert_ne!(first, LightingContext::new(&state, &lighting));
+        state.runtime.lab.player.active = true;
+        state.runtime.lab.player.editor_world = false;
+        state.runtime.health.world = Some(Arc::new(hp_editor::limits::world::BspWorld::default()));
+        assert_ne!(first, LightingContext::new(&state, &lighting));
     }
 
     #[test]
@@ -1322,6 +1408,7 @@ mod tests {
                 playing.effect.step_at(0.05, &s.points, MAX_PER_EFFECT);
             }
             let layer = ParticleLayer {
+                lighting: None,
                 handle: new_handle(),
                 sources: Vec::new(),
                 sources_key: None,

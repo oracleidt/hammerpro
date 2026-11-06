@@ -12,7 +12,7 @@ use crate::particles::{
 };
 
 pub const EDITOR_VIEW_ID: u32 = 0x5043_4645;
-const MAX_PREVIEW_PARTICLES: usize = 30_000;
+const MAX_PREVIEW_PARTICLES: usize = hp_pcf::sim::MAX_EFFECT_PARTICLES;
 
 pub(super) struct Preview {
     handle: ParticleHandle,

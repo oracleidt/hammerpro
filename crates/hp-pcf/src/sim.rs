@@ -9,11 +9,12 @@ mod forces;
 mod scalar;
 mod spatial;
 
-pub const MAX_PREVIEW_PARTICLES: usize = 512;
+pub const MAX_PREVIEW_PARTICLES: usize = 5000;
 pub const MAX_CONTROL_POINTS: usize = 64;
 const LOOP_PAUSE: f32 = 0.6;
 const MAX_CHILD_DEPTH: usize = 4;
 const MAX_SYSTEMS: usize = 16;
+pub const MAX_EFFECT_PARTICLES: usize = MAX_PREVIEW_PARTICLES * MAX_SYSTEMS;
 const MAX_SEQUENCES: u32 = 64;
 
 type V3 = [f32; 3];
@@ -263,7 +264,8 @@ enum Init {
         max_dist: f32,
         bulge: f32,
         mid: f32,
-        steps: u32,
+        steps: Option<f32>,
+        looping: bool,
     },
     FromParent {
         inherit: f32,
@@ -695,10 +697,11 @@ impl Plan {
                 bulge: f(op, "bulge", 0.0),
                 mid: f(op, "mid point position", 0.5),
                 steps: if op.function.eq_ignore_ascii_case("position along path sequential") {
-                    i(op, "particles to map from start to end", 100).clamp(1, 100_000) as u32
+                    Some(f(op, "particles to map from start to end", 100.0))
                 } else {
-                    0
+                    None
                 },
+                looping: b(op, "restart behavior (0 = bounce, 1 = loop )", true),
             },
             "position from parent particles" | "position from parent cache" => {
                 Init::FromParent { inherit: f(op, "Inherited Velocity Scale", 0.0) }
@@ -1070,12 +1073,14 @@ pub struct Sim {
     previous_points: Option<Points>,
     point_traces: Vec<control::PointTraceState>,
     colors: Vec<Option<color::Cached>>,
+    path_steps: Vec<(f32, bool)>,
 }
 
 impl Sim {
     pub fn new(plan: Arc<Plan>, seed: u32) -> Sim {
         let n = plan.emitters.len();
         let colors = vec![None; plan.inits.len()];
+        let path_steps = vec![(0.0, false); plan.inits.len()];
         let point_traces = vec![control::PointTraceState::default(); plan.point_traces.len()];
         Sim {
             plan,
@@ -1089,6 +1094,7 @@ impl Sim {
             previous_points: None,
             point_traces,
             colors,
+            path_steps,
         }
     }
 
@@ -1104,6 +1110,10 @@ impl Sim {
         self.frames = frames;
     }
 
+    pub fn invalidate_lighting(&mut self) {
+        self.colors.fill(None);
+    }
+
     pub fn restart(&mut self) {
         self.particles.clear();
         self.time = 0.0;
@@ -1111,6 +1121,7 @@ impl Sim {
         self.previous_points = None;
         self.point_traces.fill(control::PointTraceState::default());
         self.colors.fill(None);
+        self.path_steps.fill((0.0, false));
         self.acc.iter_mut().for_each(|a| *a = 0.0);
         self.fired.iter_mut().for_each(|f| *f = false);
     }
@@ -1213,10 +1224,28 @@ impl Sim {
                     part.pos = add(points.get(*cp), scale(out, r));
                     part.vel = add(part.vel, scale(out, self.rng.range(*smin, *smax)));
                 }
-                Init::Path { start, end, max_dist, bulge, mid, steps } => {
+                Init::Path { start, end, max_dist, bulge, mid, steps, looping } => {
                     let a = points.get(*start);
                     let z = points.get(*end);
-                    let t = if *steps > 0 { (self.born % *steps) as f32 / *steps as f32 } else { self.rng.next() };
+                    let t = if let Some(count) = *steps {
+                        let amount = if count > 1.0 { 1.0 / (count - 1.0) } else { 0.0 };
+                        let (position, reverse) = &mut self.path_steps[index];
+                        let mut step = if *reverse { -amount } else { amount };
+                        if *position > 1.0 || *position < 0.0 {
+                            if *looping {
+                                *position += if *reverse { 1.0 } else { -1.0 };
+                            } else {
+                                *reverse = !*reverse;
+                                step = -step;
+                                *position += step * 2.0;
+                            }
+                        }
+                        let value = *position;
+                        *position += step;
+                        value
+                    } else {
+                        self.rng.next()
+                    };
                     let mut p = lerp3(a, z, t);
                     if *bulge != 0.0 {
                         let m = mid.clamp(0.05, 0.95);
@@ -1746,6 +1775,12 @@ impl Effect {
             if let Some(f) = frames(&sim.plan) {
                 sim.set_sequence_frames(f);
             }
+        }
+    }
+
+    pub fn invalidate_lighting(&mut self) {
+        for (_, sim) in &mut self.sims {
+            sim.invalidate_lighting();
         }
     }
 

@@ -71,15 +71,17 @@ pub(super) fn initialize(
         Source::Control { point, movement } => {
             let position = points.get(point);
             if cached.is_none_or(|cached| {
-                dot(sub(position, cached.position), sub(position, cached.position)) > movement * movement
+                dot(sub(position, cached.position), sub(position, cached.position)) >= movement * movement
             }) {
                 *cached = Some(Cached { position, light: world.lighting(position) });
             }
             cached.as_ref().map_or([1.0; 3], |cached| cached.light)
         }
     };
-    let light: V3 =
-        std::array::from_fn(|axis| light[axis].max(color.minimum[axis]).min(color.maximum[axis]) * color.amplification);
+    let light: V3 = std::array::from_fn(|axis| {
+        ((light[axis].clamp(0.0, 1.0) * 255.0).floor() / 255.0).min(color.maximum[axis]).max(color.minimum[axis])
+            * color.amplification
+    });
     let mixed = std::array::from_fn(|axis| match color.blend {
         1 if light[axis] < 0.5 => 2.0 * base[axis] * light[axis],
         1 => 1.0 - 2.0 * (1.0 - base[axis]) * (1.0 - light[axis]),

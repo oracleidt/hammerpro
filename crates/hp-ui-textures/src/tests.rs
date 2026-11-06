@@ -835,6 +835,8 @@ fn grid_cells_and_labels_are_not_in_the_tab_order() {
 
 #[test]
 fn custom_folder_without_materials_shows_zero() {
+    let _lang = hp_app::testing::lang_lock();
+    hp_app::i18n::set_lang(hp_app::i18n::Lang::En);
     let (mut state, folder) = custom_state("folder_no_materials", "mdlonly", &[("models/fuzz/a.mdl", b"IDST")], false);
     let _ = std::fs::create_dir_all(folder.join("materials"));
     state.assets.remount(&state.settings);

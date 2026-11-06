@@ -122,6 +122,15 @@
       ]
     },
     {
+      "name": "lit_inverted_clamp",
+      "pixel": [
+        68,
+        68,
+        68,
+        255
+      ]
+    },
+    {
       "name": "lit_max64",
       "pixel": [
         16,
@@ -235,6 +244,24 @@
         44,
         31,
         23,
+        255
+      ]
+    },
+    {
+      "name": "random_tint_inverted_clamp",
+      "pixel": [
+        68,
+        68,
+        68,
+        255
+      ]
+    },
+    {
+      "name": "random_tint_precision",
+      "pixel": [
+        28,
+        51,
+        29,
         255
       ]
     },
