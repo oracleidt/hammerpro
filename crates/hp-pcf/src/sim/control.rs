@@ -1,5 +1,24 @@
 use super::*;
 
+pub(super) struct Positions<'a> {
+    pub current: &'a Points,
+    pub previous: &'a Points,
+    pub time: f32,
+    pub dt: f32,
+}
+
+impl Positions<'_> {
+    pub(super) fn at(&self, cp: i32, requested: f32) -> V3 {
+        let current = self.current.get(cp);
+        if self.dt == 0.0 {
+            return current;
+        }
+        // Source clamps past samples, but permits extrapolation past this frame.
+        let amount = ((self.dt - (self.time - requested)) / self.dt).max(0.0);
+        lerp3(self.previous.get(cp), current, amount)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct PointTrace {
     from: i32,
@@ -142,4 +161,36 @@ pub(super) fn apply_warp(op: &Warp, particle: &mut Particle, points: &Points, ti
     particle.pos = add(points.get(op.cp), warp(sub(particle.pos, points.get(op.cp))));
     particle.previous_pos = add(points.get(op.cp), warp(sub(particle.previous_pos, points.get(op.cp))));
     particle.vel = warp(particle.vel);
+}
+
+#[cfg(test)]
+mod position_time_tests {
+    use super::*;
+
+    #[test]
+    fn native_control_point_time_sampling_matches_float_bits() {
+        let cases: Vec<serde_json::Value> =
+            serde_json::from_str(include_str!("../../tests/data/cp_position_time_native_samples.json")).unwrap();
+        assert_eq!(cases.len(), 300);
+        for (index, case) in cases.iter().enumerate() {
+            let cp = case["cp"].as_i64().unwrap() as i32;
+            let vector = |key: &str| std::array::from_fn(|axis| case[key][axis].as_f64().unwrap() as f32);
+            let mut current = Points::at([0.0; 3]);
+            current.pos.resize(64, [0.0; 3]);
+            let mut previous = current.clone();
+            current.pos[cp as usize] = vector("new");
+            previous.pos[cp as usize] = vector("old");
+            let positions = Positions {
+                current: &current,
+                previous: &previous,
+                time: case["time"].as_f64().unwrap() as f32,
+                dt: case["dt"].as_f64().unwrap() as f32,
+            };
+            let actual = positions.at(cp, case["requested"].as_f64().unwrap() as f32);
+            let expected = vector("expected");
+            for axis in 0..3 {
+                assert_eq!(actual[axis].to_bits(), expected[axis].to_bits(), "case{index} axis{axis}");
+            }
+        }
+    }
 }

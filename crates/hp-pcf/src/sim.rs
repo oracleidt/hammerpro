@@ -1224,14 +1224,14 @@ impl Sim {
         self.particles.is_empty() && self.plan.emission_end().is_some_and(|end| self.time > end)
     }
 
-    fn sphere(rng: &mut Rng, part: &mut Particle, points: &Points, init: &Init) {
+    fn sphere(rng: &mut Rng, part: &mut Particle, points: &Points, positions: &control::Positions<'_>, init: &Init) {
         let Init::Sphere { cp, dmin, dmax, bias, abs, smin, smax, sexp, lmin, lmax, spread } = init else {
             return;
         };
         let center = if *spread && points.highest() > 0 {
-            points.get((rng.integer(0, points.highest() as u32) as usize) as i32)
+            positions.at((rng.integer(0, points.highest() as u32) as usize) as i32, part.born)
         } else {
-            points.get(*cp)
+            positions.at(*cp, part.born)
         };
         let (mut d, l) = rng.in_sphere();
         for k in 0..3 {
@@ -1303,6 +1303,12 @@ impl Sim {
             return;
         }
         // Initialize the whole emitter batch before advancing to the next initializer.
+        let positions = control::Positions {
+            current: points,
+            previous: self.previous_points.as_ref().unwrap_or(points),
+            time: self.time + dt,
+            dt,
+        };
         for (index, init) in plan.inits.iter().enumerate() {
             if let Init::NoiseScalar { field, noise } = init {
                 noise.initialize_batch(*field, batch, first, world);
@@ -1326,8 +1332,10 @@ impl Sim {
                         }
                     }
                     Init::Warp(warp) => control::apply_warp(warp, part, points, self.time, &mut self.rng),
-                    Init::Sphere { .. } => Self::sphere(&mut self.rng, part, points, init),
-                    Init::Box { cp, min, max } => part.pos = add(points.get(*cp), self.rng.range3(*min, *max)),
+                    Init::Sphere { .. } => Self::sphere(&mut self.rng, part, points, &positions, init),
+                    Init::Box { cp, min, max } => {
+                        part.pos = add(positions.at(*cp, part.born), self.rng.range3(*min, *max));
+                    }
                     Init::Offset { min, max, local, radius } => {
                         let mut o = self.rng.range3(*min, *max);
                         if *radius {
@@ -1348,12 +1356,12 @@ impl Sim {
                         let a = t * std::f32::consts::TAU;
                         let r = radius + self.rng.range(-0.5, 0.5) * thickness;
                         let out = points.local([a.cos(), a.sin(), 0.0]);
-                        part.pos = add(points.get(*cp), scale(out, r));
+                        part.pos = add(positions.at(*cp, part.born), scale(out, r));
                         part.vel = add(part.vel, scale(out, self.rng.range(*smin, *smax)));
                     }
                     Init::Path { start, end, max_dist, bulge, bulge_control, mid, steps, looping } => {
-                        let a = points.get(*start);
-                        let z = points.get(*end);
+                        let a = positions.at(*start, part.born);
+                        let z = positions.at(*end, part.born);
                         let t = if let Some(count) = *steps {
                             let amount = if count > 1.0 { 1.0 / (count - 1.0) } else { 0.0 };
                             let (position, reverse) = &mut self.path_steps[index];
@@ -1373,7 +1381,14 @@ impl Sim {
                         } else {
                             self.rng.next()
                         };
-                        let middle = path::middle(points, *start, *end, *mid, *bulge, *bulge_control, self.path_bulge);
+                        let middle = path::middle(
+                            points,
+                            [(*start, a), (*end, z)],
+                            *mid,
+                            *bulge,
+                            *bulge_control,
+                            self.path_bulge,
+                        );
                         let p = lerp3(lerp3(a, middle, t), lerp3(middle, z, t), t);
                         part.pos = add(p, self.rng.range3([-*max_dist; 3], [*max_dist; 3]));
                     }

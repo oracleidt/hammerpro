@@ -48,6 +48,68 @@ fn run(def: &SystemDef, points: &Points, seconds: f32) -> Sim {
 struct FloorTrace;
 
 #[test]
+fn moving_control_points_sample_each_birth_time_for_box_sphere_ring_and_path() {
+    let cases: [(&str, &[u8], &str); 4] = [
+        (
+            "box",
+            include_bytes!("../tests/data/cp_birth_box_cases.pcf"),
+            include_str!("../tests/data/cp_birth_box_native_samples.json"),
+        ),
+        (
+            "sphere",
+            include_bytes!("../tests/data/cp_birth_sphere_cases.pcf"),
+            include_str!("../tests/data/cp_birth_sphere_native_samples.json"),
+        ),
+        (
+            "ring",
+            include_bytes!("../tests/data/cp_birth_ring_cases.pcf"),
+            include_str!("../tests/data/cp_birth_ring_native_samples.json"),
+        ),
+        (
+            "path",
+            include_bytes!("../tests/data/cp_birth_path_cases.pcf"),
+            include_str!("../tests/data/cp_birth_path_native_samples.json"),
+        ),
+    ];
+    let points = |value: &serde_json::Value| {
+        let vector = |key: &str| std::array::from_fn(|axis| value[key][axis].as_f64().unwrap() as f32);
+        let mut points = Points::at(vector("position"));
+        points.pos.push(vector("secondary"));
+        points
+    };
+    for (shape, fixture, reference) in cases {
+        let definitions = crate::parse_file(fixture).unwrap();
+        let reference: serde_json::Value = serde_json::from_str(reference).unwrap();
+        let frames = reference["frames"].as_array().unwrap();
+        assert_eq!(frames.len(), 59);
+        for index in 0..9 {
+            let name = format!("hp_spritecard_birth{index}");
+            let plan = Arc::new(Plan::new(definitions.iter().find(|definition| definition.name == name).unwrap()));
+            assert!(plan.unsupported.is_empty());
+            let mut sim = Sim::new(plan, 17);
+            sim.step_at(0.0, &points(&reference["initial_points"]), &[], 1);
+            for (frame, sample) in frames.iter().enumerate() {
+                sim.step_at(sample["dt"].as_f64().unwrap() as f32, &points(&sample["points"]), &[], 1);
+                let expected = &sample["positions"][index];
+                if expected.is_null() {
+                    assert!(sim.particles.is_empty(), "{shape} {name} frame{frame}");
+                    continue;
+                }
+                assert_eq!(sim.particles.len(), 1, "{shape} {name} frame{frame}");
+                for axis in 0..3 {
+                    let value = expected[axis].as_f64().unwrap() as f32;
+                    assert_eq!(
+                        sim.particles[0].pos[axis].to_bits(),
+                        value.to_bits(),
+                        "{shape} {name} frame{frame} axis{axis}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn unset_secondary_control_points_keep_the_native_default_orientation() {
     let definitions = crate::parse_file(include_bytes!("../tests/data/cp_default_frame_cases.pcf")).unwrap();
     let frames: Vec<serde_json::Value> =

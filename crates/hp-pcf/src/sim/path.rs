@@ -33,15 +33,13 @@ impl Hierarchy {
 
 pub(super) fn middle(
     points: &Points,
-    start: i32,
-    end: i32,
+    endpoints: [(i32, V3); 2],
     midpoint: f32,
     bulge: f32,
     orientation: i32,
     random: V3,
 ) -> V3 {
-    let a = points.get(start);
-    let z = points.get(end);
+    let [(start, a), (end, z)] = endpoints;
     let middle = lerp3(a, z, midpoint);
     if orientation == 0 {
         return add(middle, scale(random, bulge));
@@ -71,7 +69,8 @@ pub(super) fn hierarchy(op: &Hierarchy, points: &Points, time: f32, born: f32, r
     let child = minimum + (rng.next() * (maximum as i32 - minimum + 1) as f32) as i32;
     let parent = points.parents.get(child as usize).copied().unwrap_or(0).clamp(0, 63);
     let start = points.get(parent);
-    let middle = middle(points, parent, child, op.midpoint, op.bulge, op.bulge_control, random);
+    let middle =
+        middle(points, [(parent, start), (child, points.get(child))], op.midpoint, op.bulge, op.bulge_control, random);
     let finish = scale(points.get(child), amount);
     let t = rng.next();
     let p = lerp3(lerp3(start, middle, t), lerp3(middle, finish, t), t);
