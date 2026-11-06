@@ -10,6 +10,7 @@ mod emission;
 mod forces;
 mod model;
 mod noise;
+mod oscillation;
 mod path;
 mod random;
 mod rays;
@@ -204,6 +205,7 @@ enum Emit {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Field {
+    PositionX,
     Lifetime,
     Radius,
     Rotation,
@@ -221,6 +223,7 @@ enum Field {
 impl Field {
     fn from_index(i: i32) -> Field {
         match i {
+            0 => Field::PositionX,
             1 => Field::Lifetime,
             3 => Field::Radius,
             4 => Field::Rotation,
@@ -422,6 +425,7 @@ impl Init {
             Self::NoiseScalar { field, .. } => match field {
                 Field::Lifetime => 1 << 1,
                 Field::Radius => 1 << 3,
+                Field::PositionX => 1 << 0,
                 Field::Rotation => 1 << 4,
                 Field::RotationSpeed => 1 << 5,
                 Field::Alpha => 1 << 7,
@@ -498,14 +502,7 @@ enum Op {
     },
     OscScalar {
         field: Field,
-        rate: [f32; 2],
-        freq: [f32; 2],
-        proportional: bool,
-        t0: f32,
-        t1: f32,
-        se_prop: bool,
-        mult: f32,
-        phase: f32,
+        wave: oscillation::Scalar,
     },
     OscVector {
         color: bool,
@@ -589,6 +586,7 @@ pub struct Plan {
     emitters: Vec<Emit>,
     inits: Vec<Init>,
     ops: Vec<Op>,
+    op_random_offsets: Vec<u32>,
     child_points: Vec<control::ChildPoints>,
     point_traces: Vec<control::PointTrace>,
     decays: bool,
@@ -688,6 +686,7 @@ impl Plan {
             emitters: Vec::new(),
             inits: Vec::new(),
             ops: Vec::new(),
+            op_random_offsets: Vec::new(),
             child_points: Vec::new(),
             point_traces: Vec::new(),
             decays: false,
@@ -728,8 +727,16 @@ impl Plan {
             true
         });
         p.inits.extend(modifiers);
-        for op in def.forces.iter().chain(&def.operators).chain(&def.constraints) {
-            p.compile_op(op);
+        for category in [&def.forces, &def.operators, &def.constraints] {
+            let mut slot = 0u32;
+            for op in category {
+                let first = p.ops.len();
+                p.compile_op(op);
+                p.op_random_offsets.extend(std::iter::repeat_n(slot.wrapping_mul(17), p.ops.len() - first));
+                if !oscillation::before_emitters(&op.function) {
+                    slot = slot.wrapping_add(1);
+                }
+            }
         }
         p
     }
@@ -1026,14 +1033,7 @@ impl Plan {
             }
             "oscillate scalar" => Op::OscScalar {
                 field: Field::from_index(i(op, "oscillation field", 7)),
-                rate: [f(op, "oscillation rate min", 0.0), f(op, "oscillation rate max", 0.0)],
-                freq: [f(op, "oscillation frequency min", 1.0), f(op, "oscillation frequency max", 1.0)],
-                proportional: b(op, "proportional 0/1", true),
-                t0: (f(op, "start time min", 0.0) + f(op, "start time max", 0.0)) * 0.5,
-                t1: (f(op, "end time min", 1.0) + f(op, "end time max", 1.0)) * 0.5,
-                se_prop: b(op, "start/end proportional", true),
-                mult: f(op, "oscillation multiplier", 2.0),
-                phase: f(op, "oscillation start phase", 0.5),
+                wave: oscillation::Scalar::compile(op),
             },
             "oscillate vector" => Op::OscVector {
                 color: i(op, "oscillation field", 0) == 6,
@@ -1554,6 +1554,7 @@ impl Sim {
             part.color = part.base_color;
             part.alpha = part.base_alpha;
             for field in [
+                Field::PositionX,
                 Field::Lifetime,
                 Field::Radius,
                 Field::Rotation,
@@ -1616,7 +1617,7 @@ impl Sim {
         }
         for part in &mut self.particles {
             part.age += dt;
-            operate(&plan, part, points, self.previous_points.as_ref().unwrap_or(points), dt, world, &mut self.rng);
+            operate(&plan, part, points, self.previous_points.as_ref().unwrap_or(points), dt, world, &mut self.rng, t1);
         }
         if plan.decays {
             self.particles.retain(|p| p.age < p.life);
@@ -1630,6 +1631,7 @@ impl Sim {
 
 fn get_field(p: &Particle, field: Field) -> f32 {
     match field {
+        Field::PositionX => p.pos[0],
         Field::Lifetime => p.life,
         Field::Radius => p.base_radius,
         Field::Rotation => p.rotation,
@@ -1650,6 +1652,7 @@ fn set_field(p: &mut Particle, field: Field, x: f32, multiply: bool) {
         return;
     }
     let slot = match field {
+        Field::PositionX => &mut p.pos[0],
         Field::Lifetime => &mut p.life,
         Field::Radius => &mut p.base_radius,
         Field::Rotation => &mut p.rotation,
@@ -1687,6 +1690,7 @@ fn operate(
     dt: f32,
     world: &dyn Environment,
     rng: &mut Rng,
+    time: f32,
 ) {
     let life = if part.life > 0.0 { part.life } else { 1.0 };
     let t = (part.age / life).clamp(0.0, 1.0);
@@ -1798,20 +1802,27 @@ fn operate(
                     part.rotation += r;
                 }
             }
-            Op::OscScalar { field, rate, freq, proportional, t0, t1, se_prop, mult, phase } => {
-                let Some(time) = osc_time(part, life, *proportional, *t0, *t1, *se_prop) else {
+            Op::OscScalar { field, wave } => {
+                let Some(delta) = wave.delta((time, part.born, part.life), part.seed, plan.op_random_offsets[k], dt)
+                else {
                     continue;
                 };
-                let r = lerp(rate[0], rate[1], hash01(part.seed, key));
-                let fr = lerp(freq[0], freq[1], hash01(part.seed, key + 1));
-                let s = ((time * fr * mult + phase) * std::f32::consts::TAU).sin() * r * dt;
                 match field {
-                    Field::Radius => part.radius_add += s,
-                    Field::Alpha => part.alpha_add += s,
-                    Field::Alpha2 => part.alpha2 = (part.alpha2 + s).clamp(0.0, 1.0),
-                    Field::Rotation => part.rotation += s,
-                    Field::Yaw => part.yaw += s,
-                    _ => {}
+                    Field::PositionX => part.pos[0] += delta,
+                    Field::Radius => part.radius_add += delta,
+                    Field::Alpha => {
+                        let current = if alpha_written { alpha + part.alpha_add } else { part.alpha };
+                        alpha = (current + delta).clamp(0.0, 1.0);
+                        part.alpha_add = 0.0;
+                    }
+                    Field::Alpha2 => part.alpha2 = (part.alpha2 + delta).clamp(0.0, 1.0),
+                    Field::Rotation => part.rotation += delta,
+                    Field::Yaw => part.yaw += delta,
+                    Field::CreationTime => part.born += delta,
+                    _ => {
+                        let value = get_field(part, *field) + delta;
+                        set_field(part, *field, value, false);
+                    }
                 }
             }
             Op::OscVector { color: on_color, rate, freq, proportional, t0, t1, se_prop, mult, phase } => {
