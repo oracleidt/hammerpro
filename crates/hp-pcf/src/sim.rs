@@ -13,6 +13,7 @@ mod model;
 mod noise;
 mod oscillation;
 mod path;
+mod ramp;
 mod random;
 mod rays;
 mod scalar;
@@ -463,7 +464,7 @@ enum Op {
     OscVector { field: i32, wave: oscillation::Vector },
     NoiseScalar { field: Field, min: f32, max: f32, speed: f32, additive: bool },
     NoiseVector { field: i32, min: V3, max: V3, speed: f32, additive: bool },
-    Ramp { field: Field, rate: [f32; 2], t0: f32, t1: f32 },
+    Ramp { field: Field, ramp: ramp::Ramp },
     MaxVelocity { max: f32 },
     Constrain { cp: i32, min: f32, max: f32, offset: V3 },
     RotateAround { cp: i32, axis: V3, rate: f32 },
@@ -986,21 +987,13 @@ impl Plan {
                 speed: f(op, "noise coordinate scale", 0.1),
                 additive: b(op, "additive", false),
             },
-            "ramp scalar linear random" | "ramp scalar spline random" => Op::Ramp {
-                field: Field::from_index(i(op, "ramp field", 3)),
-                rate: [f(op, "ramp rate min", 0.0), f(op, "ramp rate max", 0.0)],
-                t0: (f(op, "start time min", 0.0) + f(op, "start time max", 0.0)) * 0.5,
-                t1: (f(op, "end time min", 1.0) + f(op, "end time max", 1.0)) * 0.5,
+            "ramp scalar linear random"
+            | "ramp scalar spline random"
+            | "ramp scalar linear simple"
+            | "ramp scalar spline simple" => Op::Ramp {
+                field: Field::from_index(i(op, "ramp field", 3).clamp(0, 21)),
+                ramp: ramp::Ramp::compile(op),
             },
-            "ramp scalar linear simple" | "ramp scalar spline simple" => {
-                let rate = f(op, "ramp rate", 0.0);
-                Op::Ramp {
-                    field: Field::from_index(i(op, "ramp field", 3)),
-                    rate: [rate, rate],
-                    t0: f(op, "start time", 0.0),
-                    t1: f(op, "end time", 1.0),
-                }
-            }
             "movement max velocity" => Op::MaxVelocity { max: f(op, "maximum velocity", 0.0).max(0.0) },
             "constrain distance to control point" => Op::Constrain {
                 cp: i(op, "control point number", 0),
@@ -1802,18 +1795,33 @@ fn operate(
                     part.previous_pos = if *additive { add(part.previous_pos, scale(x, dt)) } else { x };
                 }
             }
-            Op::Ramp { field, rate, t0, t1 } => {
-                if t < *t0 || t > *t1 {
+            Op::Ramp { field, ramp } => {
+                let current = match field {
+                    Field::Radius => part.base_radius * part.radius_scale + part.radius_add,
+                    Field::Alpha if alpha_written => alpha + part.alpha_add,
+                    Field::Alpha => part.alpha,
+                    _ => get_field(part, *field),
+                };
+                let Some(value) = ramp.apply(
+                    (time, part.born, part.life),
+                    part.seed,
+                    state.random_offset,
+                    dt * state.strength,
+                    current,
+                ) else {
                     continue;
-                }
-                let r = lerp(rate[0], rate[1], hash01(part.seed, key)) * dt;
+                };
                 match field {
-                    Field::Radius => part.radius_add += r,
-                    Field::Alpha => part.alpha_add += r,
-                    Field::Alpha2 => part.alpha2 = (part.alpha2 + r).clamp(0.0, 1.0),
-                    Field::Rotation => part.rotation += r,
-                    Field::Yaw => part.yaw += r,
-                    _ => {}
+                    Field::Radius => {
+                        part.base_radius = value;
+                        part.radius_scale = 1.0;
+                        part.radius_add = 0.0;
+                    }
+                    Field::Alpha => {
+                        alpha = value;
+                        part.alpha_add = 0.0;
+                    }
+                    _ => set_field(part, *field, value, false),
                 }
             }
             Op::MaxVelocity { max } => {
@@ -1869,6 +1877,7 @@ fn operate(
                 | Op::NoiseVector { .. }
                 | Op::OscVector { .. }
                 | Op::OscScalar { field: Field::PositionX, .. }
+                | Op::Ramp { field: Field::PositionX, .. }
         ) {
             if part.vel != before_vel {
                 part.previous_pos = sub(part.pos, scale(part.vel, part.previous_dt));
