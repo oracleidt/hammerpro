@@ -1,4 +1,4 @@
-use super::{Environment, Field, Operator, Points, V3, add, b, f, i, lerp, scale, v};
+use super::{Environment, Field, Operator, Particle, Points, V3, add, b, batch, f, i, lerp, scale, set_field, v};
 
 #[derive(Clone, Debug, PartialEq)]
 struct Coordinates {
@@ -32,6 +32,7 @@ pub(super) struct Scalar {
     absolute: bool,
     invert: bool,
     world_scale: f32,
+    world_time: bool,
 }
 
 impl Scalar {
@@ -48,6 +49,7 @@ impl Scalar {
             absolute: b(op, "absolute value", false),
             invert: b(op, "invert absolute value", false),
             world_scale: f(op, "world time noise coordinate scale", 0.0),
+            world_time: true,
         }
     }
 
@@ -66,17 +68,25 @@ impl Scalar {
             absolute: b(op, "absolute value", false),
             invert: b(op, "invert absolute value", false),
             world_scale: if pre_age { 0.0 } else { f(op, "world time noise coordinate scale", 0.0) },
+            world_time: !pre_age,
         }
     }
 
     pub(super) fn evaluate(&self, position: V3, born: f32, world: &dyn Environment) -> f32 {
+        self.sample(position, self.time_coordinates(born, world, true))
+    }
+
+    fn time_coordinates(&self, born: f32, world: &dyn Environment, include_world: bool) -> V3 {
         let time = (born + self.coordinates.time_offset) * self.coordinates.time_scale;
-        let times = if self.world_scale != 0.0 {
+        if self.world_time && include_world {
             let ticks = std::array::from_fn::<_, 3, _>(|_| world.time_milliseconds() as f32 * self.world_scale);
             [time + ticks[2], time + ticks[1], time + ticks[0]]
         } else {
             [time; 3]
-        };
+        }
+    }
+
+    fn sample(&self, position: V3, times: V3) -> f32 {
         let position =
             add(scale(add(position, self.coordinates.spatial_offset), self.coordinates.spatial_scale), times);
         let mut value = scalar(position);
@@ -89,6 +99,32 @@ impl Scalar {
         let factor = if self.absolute { 1.0 } else { 0.5 };
         let range = self.max - self.min;
         value * (range * factor) + ((1.0 - factor) * range + self.min)
+    }
+
+    pub(super) fn initialize_batch(
+        &self,
+        field: Field,
+        particles: &mut [Particle],
+        first: usize,
+        world: &dyn Environment,
+    ) {
+        for span in batch::spans(first, particles.len()) {
+            // Source freezes one birth time for a scalar span, or the first four lane times
+            // for an entire vector span. Its vector initializer does not apply world time.
+            let times = if span.vectorized {
+                std::array::from_fn(|lane| self.time_coordinates(particles[span.range.start + lane].born, world, false))
+            } else {
+                [self.time_coordinates(particles[span.range.start].born, world, true); 4]
+            };
+            for (index, particle) in particles[span.range].iter_mut().enumerate() {
+                let value = self.sample(particle.pos, times[if span.vectorized { index & 3 } else { 0 }]);
+                if field == Field::CreationTime {
+                    particle.born = value;
+                } else {
+                    set_field(particle, field, value, false);
+                }
+            }
+        }
     }
 }
 
@@ -196,6 +232,91 @@ mod tests {
     use super::*;
 
     #[test]
+    fn native_batch_threshold_alignment_lane_times_and_clocks_match_all_samples() {
+        use crate::dmx::{Element, Value};
+        use crate::{Plan, Sim, SystemDef};
+        use std::sync::Arc;
+        struct Clock {
+            ticks: Vec<u32>,
+            index: std::cell::Cell<usize>,
+        }
+        impl Environment for Clock {
+            fn time_milliseconds(&self) -> u32 {
+                let index = self.index.get();
+                self.index.set(index + 1);
+                self.ticks[index]
+            }
+        }
+        let cases: Vec<serde_json::Value> =
+            serde_json::from_str(include_str!("../../tests/data/noise_batches_native_samples.json")).unwrap();
+        assert_eq!(cases.len(), 104);
+        for case in cases {
+            let read = |key: &str| case[key].as_f64().unwrap() as f32;
+            let vector = |value: &serde_json::Value| std::array::from_fn(|axis| value[axis].as_f64().unwrap() as f32);
+            let op = Operator {
+                function: "Remap Noise to Scalar".into(),
+                params: Element {
+                    kind: "DmeParticleOperator".into(),
+                    name: String::new(),
+                    attrs: vec![
+                        ("output field".into(), Value::Int(7)),
+                        ("output minimum".into(), Value::Float(read("min"))),
+                        ("output maximum".into(), Value::Float(read("max"))),
+                        ("time noise coordinate scale".into(), Value::Float(read("time_scale"))),
+                        ("spatial noise coordinate scale".into(), Value::Float(read("spatial_scale"))),
+                        ("time coordinate offset".into(), Value::Float(read("time_offset"))),
+                        ("spatial coordinate offset".into(), Value::Vec3(vector(&case["spatial_offset"]))),
+                        ("absolute value".into(), Value::Bool(case["absolute"].as_bool().unwrap())),
+                        ("invert absolute value".into(), Value::Bool(case["invert"].as_bool().unwrap())),
+                        ("world time noise coordinate scale".into(), Value::Float(read("world_scale"))),
+                    ],
+                },
+            };
+            let total = case["positions"].as_array().unwrap().len();
+            let definition = SystemDef {
+                max_particles: total as u32,
+                emitters: vec![Operator {
+                    function: "emit_instantaneously".into(),
+                    params: Element {
+                        kind: String::new(),
+                        name: String::new(),
+                        attrs: vec![("num_to_emit".into(), Value::Int(total as i32))],
+                    },
+                }],
+                ..Default::default()
+            };
+            let mut sim = Sim::new(Arc::new(Plan::new(&definition)), 0);
+            sim.step(0.0, [0.0; 3], total);
+            assert_eq!(sim.particles.len(), total);
+            for (index, particle) in sim.particles.iter_mut().enumerate() {
+                particle.pos = vector(&case["positions"][index]);
+                particle.born = case["births"][index].as_f64().unwrap() as f32;
+            }
+            let world = Clock {
+                ticks: case["ticks"].as_array().unwrap().iter().map(|tick| tick.as_u64().unwrap() as u32).collect(),
+                index: std::cell::Cell::new(0),
+            };
+            let first = case["first"].as_u64().unwrap() as usize;
+            let count = case["count"].as_u64().unwrap() as usize;
+            Scalar::compile(&op, Field::Alpha, false).initialize_batch(
+                Field::Alpha,
+                &mut sim.particles[first..first + count],
+                first,
+                &world,
+            );
+            for (index, particle) in sim.particles[first..first + count].iter().enumerate() {
+                let expected = case["expected"][index].as_f64().unwrap() as f32;
+                assert_eq!(
+                    particle.base_alpha.to_bits(),
+                    expected.to_bits(),
+                    "first={first} count={count} item={index}"
+                );
+            }
+            assert_eq!(world.index.get(), case["clock_calls"].as_u64().unwrap() as usize);
+        }
+    }
+
+    #[test]
     fn scalar_initializers_match_native_flags_clocks_angles_and_pre_age() {
         struct Clock {
             ticks: [u32; 3],
@@ -225,6 +346,7 @@ mod tests {
                 absolute: case["absolute"].as_bool().unwrap(),
                 invert: case["invert"].as_bool().unwrap(),
                 world_scale: read("world_scale"),
+                world_time: case["kind"] == "remap",
             };
             let world = Clock {
                 ticks: std::array::from_fn(|axis| case["ticks"][axis].as_u64().unwrap() as u32),
@@ -239,7 +361,7 @@ mod tests {
                 value
             };
             assert_eq!(value.to_bits(), read("expected").to_bits(), "{case}");
-            assert_eq!(world.calls.get(), if op.world_scale != 0.0 { 3 } else { 0 });
+            assert_eq!(world.calls.get(), if op.world_time { 3 } else { 0 });
         }
     }
 

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::environment::{EmptyEnvironment, Environment};
 use crate::model::{Operator, SystemDef};
 
+mod batch;
 mod color;
 mod control;
 mod emission;
@@ -1295,16 +1296,16 @@ impl Sim {
         self.particles.is_empty() && self.plan.emission_end().is_some_and(|end| self.time > end)
     }
 
-    fn sphere(&mut self, part: &mut Particle, points: &Points, init: &Init) {
+    fn sphere(rng: &mut Rng, part: &mut Particle, points: &Points, init: &Init) {
         let Init::Sphere { cp, dmin, dmax, bias, abs, smin, smax, sexp, lmin, lmax, spread } = init else {
             return;
         };
         let center = if *spread && points.highest() > 0 {
-            points.get((self.rng.integer(0, points.highest() as u32) as usize) as i32)
+            points.get((rng.integer(0, points.highest() as u32) as usize) as i32)
         } else {
             points.get(*cp)
         };
-        let (mut d, l) = self.rng.in_sphere();
+        let (mut d, l) = rng.in_sphere();
         for k in 0..3 {
             if abs[k] {
                 d[k] = d[k].abs();
@@ -1314,223 +1315,246 @@ impl Sim {
         let n = length(d);
         let dir = if n > 1e-6 { scale(d, 1.0 / n) } else { [0.0, 0.0, 1.0] };
         part.pos = add(center, scale(dir, lerp(*dmin, *dmax, l)));
-        let speed = self.rng.range_exp(*smin, *smax, *sexp);
-        part.vel = add(scale(dir, speed), points.local(self.rng.range3(*lmin, *lmax)));
+        let speed = rng.range_exp(*smin, *smax, *sexp);
+        part.vel = add(scale(dir, speed), points.local(rng.range3(*lmin, *lmax)));
     }
 
-    fn spawn(&mut self, points: &Points, parents: &[(V3, V3)], dt: f32, world: &dyn Environment, born: f32) {
+    fn spawn_batch(
+        &mut self,
+        points: &Points,
+        parents: &[(V3, V3)],
+        dt: f32,
+        world: &dyn Environment,
+        births: emission::Batch,
+    ) {
         let plan = self.plan.clone();
+        let base_born = self.born;
+        let first = self.particles.len();
         let origin = [0.0; 3];
-        let seed = self.seed.wrapping_add(self.born);
-        let mut part = Particle {
-            dead: false,
-            previous_pos: origin,
-            previous_dt: 0.0,
-            initial_values: [0.0; Field::Other as usize + 1],
-            hitbox: 0,
-            hitbox_relative: [0.0; 3],
-            pos: origin,
-            vel: [0.0; 3],
-            age: 0.0,
-            life: 1.0,
-            radius: plan.radius,
-            color: plan.color,
-            alpha: plan.alpha,
-            rotation: plan.rotation,
-            sequence: plan.sequence,
-            sequence2: 0,
-            trail: 0.1,
-            flip: false,
-            seed,
-            base_radius: plan.radius,
-            base_color: plan.color,
-            base_alpha: plan.alpha,
-            fade_in: 0.0,
-            fade_out: 0.0,
-            rotation_speed: plan.rotation_speed,
-            yaw: 0.0,
-            radius_scale: 1.0,
-            radius_add: 0.0,
-            alpha_add: 0.0,
-            color_add: [0.0; 3],
-            born,
-        };
+        for born in births {
+            let seed = self.seed.wrapping_add(base_born.wrapping_add((self.particles.len() - first) as u32));
+            let part = Particle {
+                dead: false,
+                previous_pos: origin,
+                previous_dt: 0.0,
+                initial_values: [0.0; Field::Other as usize + 1],
+                hitbox: 0,
+                hitbox_relative: [0.0; 3],
+                pos: origin,
+                vel: [0.0; 3],
+                age: 0.0,
+                life: 1.0,
+                radius: plan.radius,
+                color: plan.color,
+                alpha: plan.alpha,
+                rotation: plan.rotation,
+                sequence: plan.sequence,
+                sequence2: 0,
+                trail: 0.1,
+                flip: false,
+                seed,
+                base_radius: plan.radius,
+                base_color: plan.color,
+                base_alpha: plan.alpha,
+                fade_in: 0.0,
+                fade_out: 0.0,
+                rotation_speed: plan.rotation_speed,
+                yaw: 0.0,
+                radius_scale: 1.0,
+                radius_add: 0.0,
+                alpha_add: 0.0,
+                color_add: [0.0; 3],
+                born,
+            };
+            self.particles.push(part);
+        }
+        let batch = &mut self.particles[first..];
+        let count = batch.len();
+        if count == 0 {
+            return;
+        }
+        // Initialize the whole emitter batch before advancing to the next initializer.
         for (index, init) in plan.inits.iter().enumerate() {
-            match init {
-                Init::RayEnvironment(cull) => rays::initialize(cull, &mut part, dt, world),
-                Init::Impact(impact) => part.life = spatial::impact_lifetime(impact, &part, world),
-                Init::Scalar(remap) => {
-                    if let Some(value) = scalar::evaluate(remap, &part, points, world, self.time, false) {
-                        set_field(&mut part, remap.field, value, false);
-                    }
-                }
-                Init::InheritVelocity { cp, scale: amount } => {
-                    if dt > 0.0 {
-                        let previous = self.previous_points.as_ref().unwrap_or(points);
-                        part.vel = add(part.vel, scale(sub(points.get(*cp), previous.get(*cp)), amount / dt));
-                    }
-                }
-                Init::Warp(warp) => control::apply_warp(warp, &mut part, points, self.time, &mut self.rng),
-                Init::Sphere { .. } => self.sphere(&mut part, points, init),
-                Init::Box { cp, min, max } => part.pos = add(points.get(*cp), self.rng.range3(*min, *max)),
-                Init::Offset { min, max, local, radius } => {
-                    let mut o = self.rng.range3(*min, *max);
-                    if *radius {
-                        o = scale(o, part.base_radius);
-                    }
-                    if *local {
-                        o = points.local(o);
-                    }
-                    part.pos = add(part.pos, o);
-                }
-                Init::Ring { cp, radius, thickness, smin, smax, even } => {
-                    let t = if *even { (self.born % 32) as f32 / 32.0 } else { self.rng.next() };
-                    let a = t * std::f32::consts::TAU;
-                    let r = radius + self.rng.range(-0.5, 0.5) * thickness;
-                    let out = points.local([a.cos(), a.sin(), 0.0]);
-                    part.pos = add(points.get(*cp), scale(out, r));
-                    part.vel = add(part.vel, scale(out, self.rng.range(*smin, *smax)));
-                }
-                Init::Path { start, end, max_dist, bulge, bulge_control, mid, steps, looping } => {
-                    let a = points.get(*start);
-                    let z = points.get(*end);
-                    let t = if let Some(count) = *steps {
-                        let amount = if count > 1.0 { 1.0 / (count - 1.0) } else { 0.0 };
-                        let (position, reverse) = &mut self.path_steps[index];
-                        let mut step = if *reverse { -amount } else { amount };
-                        if *position > 1.0 || *position < 0.0 {
-                            if *looping {
-                                *position += if *reverse { 1.0 } else { -1.0 };
-                            } else {
-                                *reverse = !*reverse;
-                                step = -step;
-                                *position += step * 2.0;
-                            }
+            if let Init::NoiseScalar { field, noise } = init {
+                noise.initialize_batch(*field, batch, first, world);
+                continue;
+            }
+            for (part_index, part) in batch.iter_mut().enumerate() {
+                match init {
+                    Init::RayEnvironment(cull) => rays::initialize(cull, part, dt, world),
+                    Init::Impact(impact) => part.life = spatial::impact_lifetime(impact, part, world),
+                    Init::Scalar(remap) => {
+                        if let Some(value) = scalar::evaluate(remap, part, points, world, self.time, false) {
+                            set_field(part, remap.field, value, false);
                         }
-                        let value = *position;
-                        *position += step;
-                        value
-                    } else {
-                        self.rng.next()
-                    };
-                    let middle = path::middle(points, *start, *end, *mid, *bulge, *bulge_control, self.path_bulge);
-                    let p = lerp3(lerp3(a, middle, t), lerp3(middle, z, t), t);
-                    part.pos = add(p, self.rng.range3([-*max_dist; 3], [*max_dist; 3]));
-                }
-                Init::Model(op) => model::initialize(op, &mut part, points, world, &mut self.rng),
-                Init::Hierarchy(op) => {
-                    part.pos = path::hierarchy(op, points, self.time, part.born, self.path_bulge, &mut self.rng);
-                }
-                Init::FromParent { inherit } => {
-                    if !parents.is_empty() {
-                        let (pos, vel) = parents[self.rng.integer(0, parents.len() as u32 - 1) as usize];
-                        part.pos = pos;
-                        part.vel = add(part.vel, scale(vel, *inherit));
                     }
-                }
-                Init::Lifetime { min, max, exp } => part.life = self.rng.range_exp(*min, *max, *exp),
-                Init::LifeFromSequence { fps } => {
-                    let frames = self.frames.get(part.sequence as usize).copied().unwrap_or(0);
-                    part.life = if frames > 0 { frames as f32 / fps } else { 1.0 };
-                }
-                Init::Radius { min, max, exp } => part.base_radius = self.rng.range_exp(*min, *max, *exp),
-                Init::Color(color) => {
-                    color::initialize(color, &mut part, points, world, &mut self.rng, &mut self.colors[index]);
-                }
-                Init::Alpha { min, max } => part.base_alpha = self.rng.range(*min, *max),
-                Init::Rotation { initial, min, max, exp, flip } => {
-                    let mut r = self.rng.range_exp(*min, *max, *exp);
-                    if *flip && self.rng.next() < 0.5 {
-                        r = -r;
+                    Init::InheritVelocity { cp, scale: amount } => {
+                        if dt > 0.0 {
+                            let previous = self.previous_points.as_ref().unwrap_or(points);
+                            part.vel = add(part.vel, scale(sub(points.get(*cp), previous.get(*cp)), amount / dt));
+                        }
                     }
-                    part.rotation = if *flip { r } else { initial + r };
-                }
-                Init::RotationSpeed { constant, min, max, exp, flip } => {
-                    let mut s = self.rng.range_exp(*min, *max, *exp);
-                    if *flip && self.rng.next() < 0.5 {
-                        s = -s;
+                    Init::Warp(warp) => control::apply_warp(warp, part, points, self.time, &mut self.rng),
+                    Init::Sphere { .. } => Self::sphere(&mut self.rng, part, points, init),
+                    Init::Box { cp, min, max } => part.pos = add(points.get(*cp), self.rng.range3(*min, *max)),
+                    Init::Offset { min, max, local, radius } => {
+                        let mut o = self.rng.range3(*min, *max);
+                        if *radius {
+                            o = scale(o, part.base_radius);
+                        }
+                        if *local {
+                            o = points.local(o);
+                        }
+                        part.pos = add(part.pos, o);
                     }
-                    part.rotation_speed = if *flip { s } else { constant + s };
-                }
-                Init::Yaw { initial, min, max, exp } => {
-                    part.yaw = initial + self.rng.range_exp(*min, *max, *exp);
-                }
-                Init::YawFlip { chance } => {
-                    if self.rng.next() < *chance {
-                        part.yaw += std::f32::consts::PI;
+                    Init::Ring { cp, radius, thickness, smin, smax, even } => {
+                        let t = if *even {
+                            (base_born.wrapping_add(part_index as u32) % 32) as f32 / 32.0
+                        } else {
+                            self.rng.next()
+                        };
+                        let a = t * std::f32::consts::TAU;
+                        let r = radius + self.rng.range(-0.5, 0.5) * thickness;
+                        let out = points.local([a.cos(), a.sin(), 0.0]);
+                        part.pos = add(points.get(*cp), scale(out, r));
+                        part.vel = add(part.vel, scale(out, self.rng.range(*smin, *smax)));
                     }
-                }
-                Init::Sequence { min, max, second } => {
-                    let (lo, hi) = (*min.min(max), *min.max(max));
-                    let value = self.rng.integer(lo as u32, hi as u32);
-                    if *second {
-                        part.sequence2 = value;
-                    } else {
-                        part.sequence = value;
+                    Init::Path { start, end, max_dist, bulge, bulge_control, mid, steps, looping } => {
+                        let a = points.get(*start);
+                        let z = points.get(*end);
+                        let t = if let Some(count) = *steps {
+                            let amount = if count > 1.0 { 1.0 / (count - 1.0) } else { 0.0 };
+                            let (position, reverse) = &mut self.path_steps[index];
+                            let mut step = if *reverse { -amount } else { amount };
+                            if *position > 1.0 || *position < 0.0 {
+                                if *looping {
+                                    *position += if *reverse { 1.0 } else { -1.0 };
+                                } else {
+                                    *reverse = !*reverse;
+                                    step = -step;
+                                    *position += step * 2.0;
+                                }
+                            }
+                            let value = *position;
+                            *position += step;
+                            value
+                        } else {
+                            self.rng.next()
+                        };
+                        let middle = path::middle(points, *start, *end, *mid, *bulge, *bulge_control, self.path_bulge);
+                        let p = lerp3(lerp3(a, middle, t), lerp3(middle, z, t), t);
+                        part.pos = add(p, self.rng.range3([-*max_dist; 3], [*max_dist; 3]));
                     }
-                }
-                Init::TrailLength { min, max } => part.trail = self.rng.range(*min, *max),
-                Init::Velocity { smin, smax, lmin, lmax } => {
-                    let d = self.rng.dir();
-                    part.vel = add(
-                        part.vel,
-                        add(scale(d, self.rng.range(*smin, *smax)), points.local(self.rng.range3(*lmin, *lmax))),
-                    );
-                }
-                Init::Noise(op) => {
-                    part.vel = add(part.vel, op.evaluate(part.pos, part.born, points));
-                }
-                Init::NoiseScalar { field, noise } => {
-                    let x = noise.evaluate(part.pos, part.born, world);
-                    if *field == Field::CreationTime {
-                        part.born = x;
-                    } else {
-                        set_field(&mut part, *field, x, false);
+                    Init::Model(op) => model::initialize(op, part, points, world, &mut self.rng),
+                    Init::Hierarchy(op) => {
+                        part.pos = path::hierarchy(op, points, self.time, part.born, self.path_bulge, &mut self.rng);
                     }
-                }
-                Init::Remap { input, imin, imax, output, omin, omax, multiply, within } => {
-                    let x = get_field(&part, *input);
-                    if *within && (x < imin.min(*imax) || x > imin.max(*imax)) {
-                        continue;
+                    Init::FromParent { inherit } => {
+                        if !parents.is_empty() {
+                            let (pos, vel) = parents[self.rng.integer(0, parents.len() as u32 - 1) as usize];
+                            part.pos = pos;
+                            part.vel = add(part.vel, scale(vel, *inherit));
+                        }
                     }
-                    let k = if (imax - imin).abs() > 1e-6 { ((x - imin) / (imax - imin)).clamp(0.0, 1.0) } else { 0.0 };
-                    set_field(&mut part, *output, lerp(*omin, *omax, k), *multiply);
-                }
-                Init::PreAge(noise) => {
-                    part.born -= noise.evaluate(part.pos, part.born, world).clamp(0.0, 1.0) * part.life;
+                    Init::Lifetime { min, max, exp } => part.life = self.rng.range_exp(*min, *max, *exp),
+                    Init::LifeFromSequence { fps } => {
+                        let frames = self.frames.get(part.sequence as usize).copied().unwrap_or(0);
+                        part.life = if frames > 0 { frames as f32 / fps } else { 1.0 };
+                    }
+                    Init::Radius { min, max, exp } => part.base_radius = self.rng.range_exp(*min, *max, *exp),
+                    Init::Color(color) => {
+                        color::initialize(color, part, points, world, &mut self.rng, &mut self.colors[index]);
+                    }
+                    Init::Alpha { min, max } => part.base_alpha = self.rng.range(*min, *max),
+                    Init::Rotation { initial, min, max, exp, flip } => {
+                        let mut r = self.rng.range_exp(*min, *max, *exp);
+                        if *flip && self.rng.next() < 0.5 {
+                            r = -r;
+                        }
+                        part.rotation = if *flip { r } else { initial + r };
+                    }
+                    Init::RotationSpeed { constant, min, max, exp, flip } => {
+                        let mut s = self.rng.range_exp(*min, *max, *exp);
+                        if *flip && self.rng.next() < 0.5 {
+                            s = -s;
+                        }
+                        part.rotation_speed = if *flip { s } else { constant + s };
+                    }
+                    Init::Yaw { initial, min, max, exp } => {
+                        part.yaw = initial + self.rng.range_exp(*min, *max, *exp);
+                    }
+                    Init::YawFlip { chance } => {
+                        if self.rng.next() < *chance {
+                            part.yaw += std::f32::consts::PI;
+                        }
+                    }
+                    Init::Sequence { min, max, second } => {
+                        let (lo, hi) = (*min.min(max), *min.max(max));
+                        let value = self.rng.integer(lo as u32, hi as u32);
+                        if *second {
+                            part.sequence2 = value;
+                        } else {
+                            part.sequence = value;
+                        }
+                    }
+                    Init::TrailLength { min, max } => part.trail = self.rng.range(*min, *max),
+                    Init::Velocity { smin, smax, lmin, lmax } => {
+                        let d = self.rng.dir();
+                        part.vel = add(
+                            part.vel,
+                            add(scale(d, self.rng.range(*smin, *smax)), points.local(self.rng.range3(*lmin, *lmax))),
+                        );
+                    }
+                    Init::Noise(op) => {
+                        part.vel = add(part.vel, op.evaluate(part.pos, part.born, points));
+                    }
+                    Init::NoiseScalar { .. } => {} // Handled once for the complete batch above.
+                    Init::Remap { input, imin, imax, output, omin, omax, multiply, within } => {
+                        let x = get_field(part, *input);
+                        if *within && (x < imin.min(*imax) || x > imin.max(*imax)) {
+                            continue;
+                        }
+                        let k =
+                            if (imax - imin).abs() > 1e-6 { ((x - imin) / (imax - imin)).clamp(0.0, 1.0) } else { 0.0 };
+                        set_field(part, *output, lerp(*omin, *omax, k), *multiply);
+                    }
+                    Init::PreAge(noise) => {
+                        part.born -= noise.evaluate(part.pos, part.born, world).clamp(0.0, 1.0) * part.life;
+                    }
                 }
             }
         }
-        for op in &plan.ops {
-            match op {
-                Op::FadeIn { min, max, .. } => part.fade_in = self.rng.range(*min, *max),
-                Op::FadeOut { min, max, .. } => part.fade_out = self.rng.range(*min, *max),
-                _ => {}
+        for part in batch.iter_mut() {
+            for op in &plan.ops {
+                match op {
+                    Op::FadeIn { min, max, .. } => part.fade_in = self.rng.range(*min, *max),
+                    Op::FadeOut { min, max, .. } => part.fade_out = self.rng.range(*min, *max),
+                    _ => {}
+                }
+            }
+            if !part.life.is_finite() || part.life < 0.0 {
+                part.life = 1.0;
+            }
+            part.age = self.time - part.born;
+            part.radius = part.base_radius;
+            part.color = part.base_color;
+            part.alpha = part.base_alpha;
+            for field in [
+                Field::Lifetime,
+                Field::Radius,
+                Field::Rotation,
+                Field::RotationSpeed,
+                Field::Alpha,
+                Field::CreationTime,
+                Field::Sequence,
+                Field::Sequence2,
+                Field::TrailLength,
+                Field::Yaw,
+            ] {
+                part.initial_values[field as usize] = get_field(part, field);
             }
         }
-        if !part.life.is_finite() || part.life < 0.0 {
-            part.life = 1.0;
-        }
-        part.age = self.time - part.born;
-        part.radius = part.base_radius;
-        part.color = part.base_color;
-        part.alpha = part.base_alpha;
-        for field in [
-            Field::Lifetime,
-            Field::Radius,
-            Field::Rotation,
-            Field::RotationSpeed,
-            Field::Alpha,
-            Field::CreationTime,
-            Field::Sequence,
-            Field::Sequence2,
-            Field::TrailLength,
-            Field::Yaw,
-        ] {
-            part.initial_values[field as usize] = get_field(&part, field);
-        }
-        self.born = self.born.wrapping_add(1);
-        self.particles.push(part);
+        self.born = self.born.wrapping_add(count as u32);
     }
 
     pub fn step(&mut self, dt: f32, origin: V3, budget: usize) {
@@ -1557,9 +1581,8 @@ impl Sim {
         }
         let points = &*generated;
         if t0 == 0.0 && self.fired.iter().all(|f| !f) && self.born == 0 {
-            for _ in 0..plan.initial.min(cap.saturating_sub(self.particles.len())) {
-                self.spawn(points, parents, dt, world, t0);
-            }
+            let count = plan.initial.min(cap.saturating_sub(self.particles.len()));
+            self.spawn_batch(points, parents, dt, world, emission::Batch::instant(t0, count));
         }
         for (i, e) in plan.emitters.iter().enumerate() {
             let room = cap.saturating_sub(self.particles.len());
@@ -1574,9 +1597,7 @@ impl Sim {
                 }
                 _ => self.emission[i].births(e, (t1, dt), points, self.parented.then_some(parents.len()), room, world),
             };
-            for born in births {
-                self.spawn(points, parents, dt, world, born);
-            }
+            self.spawn_batch(points, parents, dt, world, births);
         }
         for part in &mut self.particles {
             part.age += dt;
