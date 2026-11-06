@@ -1,12 +1,12 @@
 use egui::{Color32, RichText, Ui};
-use hp_app::settings::{GRID_MAX, GRID_MIN, RenderModeSetting, SelectModeSetting};
+use hp_app::settings::{GRID_MAX, GRID_MIN, Models2dSetting, RenderModeSetting, SelectModeSetting};
 use hp_app::{Action, AppState, t, tf};
 
 use crate::common::{
     Check, GRID_SIZES, action_check, action_enabled, action_icon, close_on_escape, fmt_grid, with_action_tooltip,
 };
 
-const BUTTON_SIZE: egui::Vec2 = egui::vec2(28.0, 24.0);
+const BUTTON_SIZE: egui::Vec2 = egui::vec2(26.0, 24.0);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ToolbarItem {
@@ -14,11 +14,12 @@ pub enum ToolbarItem {
     GridSize,
     Compile,
     RenderMode,
+    Props2d,
 }
 
 pub const TOOLBAR: &[&[ToolbarItem]] = {
     use Action as A;
-    use ToolbarItem::{Action as I, Compile, GridSize, RenderMode};
+    use ToolbarItem::{Action as I, Compile, GridSize, Props2d, RenderMode};
     &[
         &[I(A::NewMap), I(A::OpenMap), I(A::SaveMap)],
         &[I(A::ToggleGrid), I(A::ToggleGrid3d), GridSize, I(A::ToggleSnap)],
@@ -39,6 +40,7 @@ pub const TOOLBAR: &[&[ToolbarItem]] = {
         &[
             I(A::ToggleHelpers),
             I(A::ToggleModels),
+            Props2d,
             I(A::ToggleToolTextures),
             I(A::ToggleEditorObjects),
             I(A::ToggleSkybox3d),
@@ -167,9 +169,7 @@ fn toolbar_hint(action: Action) -> Option<&'static str> {
 }
 
 fn group_separator(ui: &mut Ui) {
-    ui.add_space(2.0);
     ui.separator();
-    ui.add_space(2.0);
 }
 
 pub const RENDER_MODES: [(RenderModeSetting, Action); 10] = [
@@ -216,7 +216,8 @@ pub fn toolbar(ui: &mut Ui, state: &mut AppState) {
     }
     ui.horizontal_wrapped(|ui| {
         ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-        ui.spacing_mut().item_spacing.x = 2.0;
+        ui.spacing_mut().item_spacing.x = 1.0;
+        ui.spacing_mut().button_padding.x = 3.0;
         for (i, group) in TOOLBAR.iter().enumerate() {
             if i > 0 {
                 group_separator(ui);
@@ -227,10 +228,38 @@ pub fn toolbar(ui: &mut Ui, state: &mut AppState) {
                     ToolbarItem::GridSize => grid_controls(ui, state),
                     ToolbarItem::Compile => run_button(ui, state),
                     ToolbarItem::RenderMode => render_mode_dropdown(ui, state),
+                    ToolbarItem::Props2d => {
+                        props_2d_button(ui, state);
+                    }
                 }
             }
         }
     });
+}
+
+fn props_2d_button(ui: &mut Ui, state: &mut AppState) -> egui::Response {
+    let on = state.settings.render.models_in_2d != Models2dSetting::Boxes;
+    let response = ui
+        .add(egui::Button::selectable(on, "2D").min_size(BUTTON_SIZE))
+        .on_hover_text(t!("shell.toolbar.props_2d_tip"));
+    if response.clicked() {
+        state.settings.render.models_in_2d = if on { Models2dSetting::Boxes } else { Models2dSetting::Wireframe };
+        state.settings_dirty = true;
+    }
+    response.context_menu(|ui| {
+        for (mode, key) in [
+            (Models2dSetting::Boxes, "shell.render.models_boxes"),
+            (Models2dSetting::Wireframe, "shell.render.models_wire"),
+            (Models2dSetting::SelectedOnly, "shell.render.models_selected"),
+        ] {
+            if ui.selectable_label(state.settings.render.models_in_2d == mode, t!(key)).clicked() {
+                state.settings.render.models_in_2d = mode;
+                state.settings_dirty = true;
+                ui.close();
+            }
+        }
+    });
+    response
 }
 
 pub fn selection_bar(ui: &mut Ui, state: &mut AppState) {
@@ -493,6 +522,11 @@ fn paint_icon(painter: &egui::Painter, c: egui::Pos2, color: egui::Color32, icon
 pub(crate) const TR: hp_app::i18n::TrTable = &[
     ("shell.toolbar.compile", "Compile", "Compiler"),
     (
+        "shell.toolbar.props_2d_tip",
+        "Prop wireframes in 2D: show or hide model edges. When hidden, bounding boxes remain selectable. Right-click to show wireframes only for selected props.",
+        "Wireframe des props en 2D : afficher ou masquer les arêtes des modèles. Quand elles sont masquées, les boîtes restent sélectionnables. Clic droit pour afficher uniquement les props sélectionnés en wireframe.",
+    ),
+    (
         "shell.toolbar.isolate_on",
         "Isolate the selection (hide everything else)",
         "Isoler la sélection (masquer tout le reste)",
@@ -585,6 +619,63 @@ mod tests {
         });
         out.textures_delta.clear();
         assert_eq!(height, 0.0);
+    }
+
+    #[test]
+    fn toolbar_fits_a_full_hd_screen() {
+        let _guard = crate::tests::lang_guard();
+        crate::register_translations();
+        for lang in hp_app::i18n::Lang::ALL {
+            hp_app::i18n::set_lang(lang);
+            let mut state = hp_app::testing::test_state();
+            let ctx = egui::Context::default();
+            let mut height = 0.0;
+            let mut right = 0.0;
+            for _ in 0..2 {
+                let input = egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1920.0, 1080.0))),
+                    ..Default::default()
+                };
+                let mut out = ctx.run_ui(input, |ui| {
+                    let before = ui.cursor().top();
+                    toolbar(ui, &mut state);
+                    height = ui.cursor().top() - before;
+                    right = ui.min_rect().right();
+                });
+                out.textures_delta.clear();
+            }
+            assert!(height < 40.0, "{lang:?}: toolbar wrapped to {height} points");
+            assert!(right <= 1920.0, "{lang:?}: toolbar extends to {right}");
+        }
+        hp_app::i18n::set_lang(hp_app::i18n::Lang::En);
+    }
+
+    #[test]
+    fn props_2d_toggle_hides_selected_wireframes_and_restores_all_wireframes() {
+        let mut state = hp_app::testing::test_state();
+        let ctx = egui::Context::default();
+        let mut rect = egui::Rect::NOTHING;
+        for expected in [None, Some(Models2dSetting::Boxes), Some(Models2dSetting::Wireframe)] {
+            let events = expected.map_or_else(Vec::new, |_| {
+                [true, false]
+                    .map(|pressed| egui::Event::PointerButton {
+                        pos: rect.center(),
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    })
+                    .into()
+            });
+            let mut out = ctx.run_ui(egui::RawInput { events, ..Default::default() }, |ui| {
+                rect = props_2d_button(ui, &mut state).rect;
+            });
+            out.textures_delta.clear();
+            if let Some(expected) = expected {
+                assert_eq!(state.settings.render.models_in_2d, expected);
+                assert!(state.settings_dirty);
+                state.settings_dirty = false;
+            }
+        }
     }
 
     #[test]
