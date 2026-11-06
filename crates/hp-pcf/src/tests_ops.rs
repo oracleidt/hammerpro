@@ -177,10 +177,6 @@ fn control_point_motion_warp_and_collisions_match_native_particle_samples() {
     for definition in definitions {
         let name = definition.name.strip_prefix("hp_spatial_").unwrap();
         let plan = Arc::new(Plan::new(&definition));
-        if name == "locked_range" {
-            assert_eq!(plan.unsupported, ["Movement Lock to Control Point"]);
-            continue;
-        }
         assert!(plan.unsupported.is_empty(), "{name}: {:?}", plan.unsupported);
         let mut sim = Sim::new(plan, 17);
         let mut points = Points::at([0.0, 0.0, 64.0]);
@@ -238,6 +234,85 @@ fn scalar_lifetimes_and_inherited_velocity_match_native_particle_samples() {
                 let actual = sim.particles[0].pos[0];
                 assert!((actual - expected).abs() < 0.005, "{name}, frame {frame}: actual {actual}, native {expected}");
             }
+        }
+    }
+}
+
+#[test]
+fn scalar_remaps_keep_initial_and_current_values_distinct() {
+    for (mode, expected) in
+        [("output is scalar of initial random range", 0.5), ("output is scalar of current value", 0.125)]
+    {
+        let def = system(
+            "remap",
+            vec![burst(1)],
+            vec![],
+            vec![op(
+                "Remap Distance to Control Point to Scalar",
+                vec![
+                    ("output field", Value::Int(7)),
+                    ("output minimum", fl(0.5)),
+                    ("output maximum", fl(0.5)),
+                    (mode, Value::Bool(true)),
+                ],
+            )],
+        );
+        let mut sim = Sim::new(Arc::new(Plan::new(&def)), 17);
+        for _ in 0..3 {
+            sim.step(0.05, [0.0; 3], 1);
+        }
+        assert!((sim.particles[0].alpha - expected).abs() < 1e-6, "{mode}: {}", sim.particles[0].alpha);
+    }
+    let def = system(
+        "los",
+        vec![burst(1)],
+        vec![],
+        vec![op("Remap Distance to Control Point to Scalar", vec![("ensure line of sight", Value::Bool(true))])],
+    );
+    assert_eq!(Plan::new(&def).unsupported, ["Remap Distance to Control Point to Scalar"]);
+}
+
+#[test]
+fn distance_lock_matches_nine_native_offset_and_radius_combinations() {
+    let definitions = crate::parse_file(include_bytes!("../tests/data/distance_cases.pcf")).unwrap();
+    let capture: serde_json::Value =
+        serde_json::from_str(include_str!("../tests/data/distance_native_samples.json")).unwrap();
+    for definition in definitions {
+        let name = definition.name.strip_prefix("hp_distance_").unwrap();
+        let plan = Arc::new(Plan::new(&definition));
+        assert!(plan.unsupported.is_empty());
+        let mut sim = Sim::new(plan, 17);
+        let mut points = Points::at([0.0, 0.0, 64.0]);
+        for (frame, sample) in capture["cases"][name].as_array().unwrap().iter().enumerate() {
+            if frame > 0 {
+                sim.step_at(sample["dt"].as_f64().unwrap() as f32, &points, &[], 1);
+                let expected = sample["hi"][0].as_f64().unwrap() as f32;
+                assert!(
+                    (sim.particles[0].pos[0] - expected).abs() < 0.0001,
+                    "{name}, frame {frame}: actual {}, native {expected}",
+                    sim.particles[0].pos[0]
+                );
+            }
+            points.pos[0][0] = sample["cp"]["position"][0].as_f64().unwrap() as f32;
+        }
+    }
+}
+
+#[test]
+fn child_control_points_match_native_initial_and_following_particles() {
+    let definitions = crate::parse_file(include_bytes!("../tests/data/child_cases.pcf")).unwrap();
+    let plans: std::collections::HashMap<String, Arc<Plan>> =
+        definitions.iter().map(|d| (d.name.clone(), Arc::new(Plan::new(d)))).collect();
+    assert!(plans.values().all(|p| p.unsupported.is_empty()));
+    let captures: serde_json::Value =
+        serde_json::from_str(include_str!("../tests/data/child_native_samples.json")).unwrap();
+    for name in ["initial", "follow", "five"] {
+        let mut effect = Effect::new(&format!("hp_child_{name}"), &|name| plans.get(name).cloned(), 17).unwrap();
+        for (frame, sample) in captures["cases"][name].as_array().unwrap().iter().enumerate().skip(1) {
+            effect.step(sample["dt"].as_f64().unwrap() as f32, [0.0, 0.0, 64.0], 10);
+            let expected = sample["hi"][0].as_f64().unwrap() as f32;
+            let actual = effect.particles().map(|(_, p)| p.pos[0]).reduce(f32::max).unwrap();
+            assert!((actual - expected).abs() < 0.002, "{name}, frame {frame}: actual {actual}, native {expected}");
         }
     }
 }

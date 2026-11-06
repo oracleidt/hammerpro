@@ -1,6 +1,39 @@
 use super::*;
 
 #[derive(Clone, Debug, PartialEq)]
+pub(super) struct ChildPoints {
+    count: usize,
+    first: usize,
+    particle: usize,
+}
+
+pub(super) fn compile_child_points(op: &Operator) -> Option<ChildPoints> {
+    if !op.function.eq_ignore_ascii_case("Set child control points from particle positions")
+        || i(op, "Group ID to affect", 0) != 0
+    {
+        return None;
+    }
+    Some(ChildPoints {
+        count: i(op, "# of control points to set", 1).clamp(0, MAX_CONTROL_POINTS as i32) as usize,
+        first: i(op, "First control point to set", 0).clamp(0, MAX_CONTROL_POINTS as i32 - 1) as usize,
+        particle: i(op, "first particle to copy", 0).max(0) as usize,
+    })
+}
+
+pub(super) fn copy_child_points(op: &ChildPoints, particles: &[Particle], points: &mut Points) {
+    for (index, particle) in particles.iter().skip(op.particle).take(op.count).enumerate() {
+        let cp = op.first + index;
+        if cp >= MAX_CONTROL_POINTS {
+            break;
+        }
+        if points.pos.len() <= cp {
+            points.pos.resize(cp + 1, [0.0; 3]);
+        }
+        points.pos[cp] = particle.pos;
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub(super) struct Lock {
     cp: i32,
     start: [f32; 2],
@@ -11,9 +44,6 @@ pub(super) struct Lock {
 
 pub(super) fn compile_lock(op: &Operator) -> Option<Lock> {
     if !op.function.eq_ignore_ascii_case("Movement Lock to Control Point") {
-        return None;
-    }
-    if f(op, "distance fade range", 0.0) != 0.0 {
         return None;
     }
     Some(Lock {
@@ -38,7 +68,8 @@ pub(super) fn apply_lock(op: &Lock, particle: &mut Particle, points: &Points, pr
         0.0
     };
     if op.distance > 0.0 {
-        strength *= (1.0 - length(sub(particle.pos, points.get(op.cp))) / op.distance).clamp(0.0, 1.0);
+        let fade = (1.0 - length(sub(particle.pos, previous.get(op.cp))) / op.distance).clamp(0.0, 1.0);
+        strength *= 4.0 * fade / (1.0 + 3.0 * fade);
     }
     particle.pos = add(particle.pos, scale(sub(points.get(op.cp), previous.get(op.cp)), strength));
 }

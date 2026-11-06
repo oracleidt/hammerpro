@@ -42,6 +42,9 @@ pub(super) fn compile(op: &Operator) -> Option<Remap> {
         _ => return None,
     };
     let field = Field::from_index(i(op, "output field", 3));
+    if matches!(input, Input::Distance { los: true, .. }) {
+        return None;
+    }
     if field == Field::Other {
         return None;
     }

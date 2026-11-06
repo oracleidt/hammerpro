@@ -485,6 +485,7 @@ pub struct Plan {
     emitters: Vec<Emit>,
     inits: Vec<Init>,
     ops: Vec<Op>,
+    child_points: Vec<control::ChildPoints>,
     decays: bool,
     max: usize,
     initial: usize,
@@ -536,6 +537,7 @@ impl Plan {
             emitters: Vec::new(),
             inits: Vec::new(),
             ops: Vec::new(),
+            child_points: Vec::new(),
             decays: false,
             max: (def.max_particles as usize).min(MAX_PREVIEW_PARTICLES),
             initial: (def.initial_particles as usize).min(MAX_PREVIEW_PARTICLES),
@@ -895,6 +897,10 @@ impl Plan {
                 factor: f(op, "dampen scale", 1.0).clamp(0.0, 1.0),
             },
             _ => {
+                if let Some(child) = control::compile_child_points(op) {
+                    self.child_points.push(child);
+                    return;
+                }
                 if let Some(remap) = scalar::compile(op) {
                     self.ops.push(Op::Scalar(remap));
                     return;
@@ -1373,6 +1379,7 @@ fn operate(
     let life = if part.life > 0.0 { part.life } else { 1.0 };
     let t = (part.age / life).clamp(0.0, 1.0);
     let mut alpha = part.base_alpha;
+    let mut alpha_written = false;
     let mut color = part.base_color;
     let old = part.pos;
     let mut acceleration = [0.0; 3];
@@ -1382,7 +1389,9 @@ fn operate(
         let before_vel = part.vel;
         match op {
             Op::Scalar(remap) => {
-                part.alpha = alpha;
+                if alpha_written {
+                    part.alpha = alpha + part.alpha_add;
+                }
                 part.radius = (part.base_radius * part.radius_scale + part.radius_add).max(0.0);
                 if let Some(value) = scalar::evaluate(remap, part, points, world, part.born + part.age, true) {
                     match remap.field {
@@ -1567,6 +1576,14 @@ fn operate(
                 }
             }
         }
+        alpha_written |= match op {
+            Op::FadeIn { .. } | Op::FadeOut { .. } | Op::FadeAndDecay { .. } => true,
+            Op::Scalar(remap) => remap.field == Field::Alpha,
+            Op::NoiseScalar { field, .. } | Op::OscScalar { field, .. } | Op::Ramp { field, .. } => {
+                *field == Field::Alpha
+            }
+            _ => false,
+        };
         if !matches!(op, Op::Movement { .. }) {
             if part.vel != before_vel {
                 part.previous_pos = sub(part.pos, scale(part.vel, part.previous_dt));
@@ -1653,13 +1670,17 @@ impl Effect {
                 continue;
             }
             self.scratch.clear();
+            let mut child_points = std::borrow::Cow::Borrowed(points);
             if let Some(Some(p)) = self.parents.get(i)
                 && let Some((_, parent)) = self.sims.get(*p)
             {
-                self.scratch.extend(parent.particles.iter().take(256).map(|q| (q.pos, q.vel)));
+                self.scratch.extend(parent.particles.iter().map(|q| (q.pos, q.vel)));
+                for spec in &parent.plan.child_points {
+                    control::copy_child_points(spec, &parent.particles, child_points.to_mut());
+                }
             }
             let sim = &mut self.sims[i].1;
-            sim.step_in(dt, points, &self.scratch, left.saturating_add(sim.particles.len()).min(budget), world);
+            sim.step_in(dt, &child_points, &self.scratch, left.saturating_add(sim.particles.len()).min(budget), world);
             left = left.saturating_sub(sim.particles.len());
         }
         let done = self.sims.iter().all(|(d, s)| self.time >= *d && s.plan.finite() && s.finished());

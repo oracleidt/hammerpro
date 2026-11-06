@@ -79,7 +79,7 @@ pub fn prepare(state: &mut AppState, handle: &ParticleHandle) {
     let Ok(mut shared) = handle.lock() else { return };
     let physics = Arc::make_mut(&mut shared.physics);
     let compiled = (state.runtime.lab.player.active && !state.runtime.lab.player.editor_world)
-        .then(|| state.runtime.health.world.as_ref())
+        .then_some(state.runtime.health.world.as_ref())
         .flatten();
     let compiled_id = compiled.map_or(0, |world| Arc::as_ptr(world) as usize);
     let key = (state.sidecar.serial(), state.doc.revision(), state.assets.generation(), compiled_id);
