@@ -13,7 +13,6 @@ use super::tags::is_removed;
 use crate::common::{DocKey, f3};
 
 const LIFT: f64 = 0.2;
-const FILL_ALPHA: f32 = 0.3;
 const LINE_ALPHA: f32 = 0.9;
 pub(crate) const REMOVED: [f32; 4] = [0.55, 0.2, 0.85, 0.6];
 
@@ -45,6 +44,7 @@ pub(crate) fn version(state: &AppState, view: &ViewInfo, opts: HighlightOpts) ->
         f.hash(&mut h);
     }
     opts.hash(&mut h);
+    state.settings.mesh.displacement_selection_opacity().to_bits().hash(&mut h);
     state.settings.view.selection_color.hash(&mut h);
     view.kind.hash(&mut h);
     if view.is_2d() {
@@ -74,13 +74,13 @@ fn lifted(mesh: &DispMesh, k: usize) -> Option<DVec3> {
 
 pub(crate) fn build(state: &AppState, view: &ViewInfo, opts: HighlightOpts, out: &mut Overlay) {
     let doc = &state.doc;
-    let fill = selection(state, FILL_ALPHA);
+    let fill = selection(state, state.settings.mesh.displacement_selection_opacity());
     let line = selection(state, LINE_ALPHA);
     let in_3d = view.kind == ViewKind::Perspective;
     let grid = opts.grid && (in_3d || grid_in_2d(state, view));
     for f in selected(state) {
         let Some(mesh) = doc.scene().solid(f.solid).and_then(|n| n.disp_mesh(f.side)) else { continue };
-        if in_3d && opts.tint {
+        if in_3d && opts.tint && fill[3] > 0.0 {
             out.triangles.extend(mesh.indices.chunks_exact(3).filter_map(|t| {
                 let p = [lifted(mesh, t[0] as usize)?, lifted(mesh, t[1] as usize)?, lifted(mesh, t[2] as usize)?];
                 Some(OverlayTri { p: p.map(f3), color: fill })

@@ -46,6 +46,32 @@ fn every_selected_displacement_shows_its_tint_and_grid() {
 }
 
 #[test]
+fn selection_opacity_refreshes_the_mesh_mask_without_editing_the_surface() {
+    let (mut state, tool, face) = floor_with_disp(3);
+    state.doc.select_faces(&[face], SelectOp::Replace);
+    let view = above(0.0, 0.0);
+    let initial = disp_info(&state, face);
+    let revision = state.doc.revision();
+    let mut previous_version = None;
+    for opacity in [0.0, 0.237, 1.0] {
+        state.settings.mesh.disp_selection_opacity = opacity;
+        let version = tool.retained_overlay_version(&state, &view);
+        assert_ne!(version, previous_version);
+        previous_version = version;
+        let out = retained(&tool, &state, &view);
+        assert!(!out.lines.is_empty(), "topology stays visible");
+        if opacity == 0.0 {
+            assert!(out.triangles.is_empty());
+        } else {
+            assert_eq!(out.triangles.len(), 128);
+            assert!(out.triangles.iter().all(|t| t.color[3] == opacity));
+        }
+        assert_eq!(state.doc.revision(), revision);
+        assert_eq!(disp_info(&state, face), initial);
+    }
+}
+
+#[test]
 fn options_are_saved_and_restored() {
     use hp_app::Tool as _;
     let mut state = state_with(&[FLOOR]);

@@ -10,6 +10,11 @@ The displacement tool creates, destroys, selects, sculpts and paints displacemen
 - Its options are in the **Displacement** tab of the right panel, which opens by itself when the tool is selected. The panel options are saved in the settings (`mesh.disp_tool`) and come back the next time you use the tool.
 - The first line of the panel shows how many displacements the map has.
 
+## Selection highlight opacity
+
+In the **Selection** section, **Selection opacity** controls the selected face highlight from 0 to 100%. Click the numeric value to enter a precise percentage (for example 23.7%). At 0%, the tint disappears while the topology edges and vertices remain visible. The highlight follows the displacement surface. This editor setting is saved across sessions and does not change materials, displacement blend alpha or the compiled map.
+
+
 ## Modes
 
 The row of buttons at the top of the panel chooses what clicks and drags do in the views.

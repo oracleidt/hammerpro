@@ -10,6 +10,11 @@ L'outil displacement crée, détruit, sélectionne, sculpte et peint les displac
 - Ses options sont dans l'onglet **Displacement** du panneau de droite, qui s'ouvre tout seul quand l'outil est choisi. Les options du panneau sont enregistrées dans les paramètres (`mesh.disp_tool`) et reviennent à la prochaine utilisation.
 - La première ligne du panneau indique combien de displacements contient la map.
 
+## Opacité du surlignage de sélection
+
+Dans la section **Sélection**, **Opacité de la sélection** règle le voile des faces sélectionnées de 0 à 100 %. Cliquez sur la valeur numérique pour saisir un pourcentage précis (par exemple 23,7 %). À 0 %, le voile disparaît et les arêtes de la topologie ainsi que les sommets restent visibles. Le surlignage suit la surface du displacement. Ce réglage de l’éditeur est conservé entre les sessions et ne modifie ni les matériaux, ni l’alpha de mélange du displacement, ni la map compilée.
+
+
 ## Modes
 
 La rangée de boutons en haut du panneau choisit ce que font les clics et les glissements dans les vues.

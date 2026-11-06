@@ -306,6 +306,12 @@ pub const TR: TrTable = &[
         "Crée des displacements de puissance {0} ({1} x {1} sommets)",
     ),
     ("disp.selection", "Selection", "Sélection"),
+    ("disp.selection_opacity", "Selection opacity", "Opacité de la sélection"),
+    (
+        "disp.selection_opacity_tip",
+        "Opacity of the selected face highlight in the editor, from 0 to 100%. Click the value to enter a precise percentage. Edges and vertices remain visible.",
+        "Opacité du surlignage des faces sélectionnées dans l'éditeur, de 0 à 100 %. Cliquez sur la valeur pour saisir un pourcentage précis. Les arêtes et les sommets restent visibles.",
+    ),
     (
         "disp.selected_faces",
         "{0} displacement(s) among {1} selected face(s)",
