@@ -585,6 +585,11 @@ impl hp_app::AssetsApi for AssetManager {
         self.sprite_material_impl(name, additive)
     }
 
+    fn refractive_sprite_material_id(&mut self, name: &str) -> hp_render::MaterialId {
+        let key = crate::util::sprite_material(name).unwrap_or_default();
+        self.asset_material(&key, crate::material::MatKind::SpriteRefract)
+    }
+
     fn render_material_id(&mut self, name: &str) -> hp_render::MaterialId {
         self.world_material(name)
     }

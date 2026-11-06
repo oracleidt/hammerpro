@@ -378,6 +378,10 @@ pub trait AssetsApi {
         let _ = additive;
         self.render_material_id(name)
     }
+
+    fn refractive_sprite_material_id(&mut self, name: &str) -> hp_render::MaterialId {
+        self.sprite_material_id(name, false)
+    }
 }
 
 pub struct Gfx {

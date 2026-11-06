@@ -45,7 +45,7 @@ pub(crate) struct AnaEntry {
 #[derive(Default)]
 pub(crate) struct Materials {
     pub records: Vec<MatRecord>,
-    pub by_name: [AHashMap<String, MaterialId>; 4],
+    pub by_name: [AHashMap<String, MaterialId>; 5],
     pub raw_world: AHashMap<String, MaterialId>,
     pub flat: AHashMap<[u8; 4], MaterialId>,
     pub dirty: Vec<MaterialId>,
@@ -65,6 +65,7 @@ fn kind_index(kind: MatKind) -> usize {
         MatKind::Model => 1,
         MatKind::Sprite => 2,
         MatKind::SpriteAdditive => 3,
+        MatKind::SpriteRefract => 4,
     }
 }
 

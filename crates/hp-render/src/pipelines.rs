@@ -511,6 +511,21 @@ fn build_depth(
     polygon_mode: wgpu::PolygonMode,
     depth_compare: Option<wgpu::CompareFunction>,
 ) -> wgpu::RenderPipeline {
+    build_inner(device, samples, d, polygon_mode, depth_compare, true)
+}
+
+pub(crate) fn build_color_only(device: &wgpu::Device, d: Desc<'_>) -> wgpu::RenderPipeline {
+    build_inner(device, 1, d, wgpu::PolygonMode::Fill, None, false)
+}
+
+fn build_inner(
+    device: &wgpu::Device,
+    samples: u32,
+    d: Desc<'_>,
+    polygon_mode: wgpu::PolygonMode,
+    depth_compare: Option<wgpu::CompareFunction>,
+    depth: bool,
+) -> wgpu::RenderPipeline {
     let bias = if polygon_mode == wgpu::PolygonMode::Line && d.depth_test {
         wgpu::DepthBiasState { constant: 8, slope_scale: 1.0, clamp: 0.0 }
     } else {
@@ -538,7 +553,7 @@ fn build_depth(
                 polygon_mode,
                 conservative: false,
             },
-            depth_stencil: Some(wgpu::DepthStencilState {
+            depth_stencil: depth.then_some(wgpu::DepthStencilState {
                 format: DEPTH_FORMAT,
                 depth_write_enabled: Some(d.depth_write),
                 depth_compare: depth_compare.or(Some(if d.depth_test {

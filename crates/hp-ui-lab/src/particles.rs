@@ -28,6 +28,9 @@ pub struct MaterialLook {
     pub opacity: f32,
     pub blend_frames: bool,
     pub sheet: Option<Sheet>,
+    pub refraction: Option<f32>,
+    pub refraction_blur: f32,
+    pub no_fog: bool,
 }
 
 impl Default for MaterialLook {
@@ -41,13 +44,18 @@ impl Default for MaterialLook {
             opacity: 1.0,
             blend_frames: false,
             sheet: None,
+            refraction: None,
+            refraction_blur: 0.0,
+            no_fog: false,
         }
     }
 }
 
 impl MaterialLook {
     pub fn blend(&self) -> ParticleBlend {
-        if self.additive {
+        if self.refraction.is_some() {
+            ParticleBlend::Refract
+        } else if self.additive {
             ParticleBlend::Additive
         } else if self.add_self > 0.0 {
             ParticleBlend::AddSelf
@@ -58,6 +66,10 @@ impl MaterialLook {
 
     pub fn brightness(&self) -> f32 {
         self.overbright
+    }
+
+    pub fn blend_parameter(&self) -> f32 {
+        self.refraction.unwrap_or_else(|| if self.blend() == ParticleBlend::AddSelf { self.add_self } else { 0.0 })
     }
 }
 
@@ -123,6 +135,8 @@ pub struct ParticleSprite {
     pub orient: ParticleOrient,
     pub blend: ParticleBlend,
     pub screen_fade: [f32; 2],
+    pub refraction_blur: f32,
+    pub no_fog: bool,
     pub material: u32,
     pub entity: Id,
 }
@@ -179,6 +193,12 @@ pub fn read_material_look(fs: &hp_fs::GameFs, material: &str) -> MaterialLook {
         opacity,
         blend_frames,
         sheet,
+        refraction: m
+            .shader
+            .eq_ignore_ascii_case("refract")
+            .then(|| m.get_f32("$refractamount").filter(|v| v.is_finite()).unwrap_or(0.02).clamp(-1.0, 1.0)),
+        refraction_blur: m.get_f32("$bluramount").filter(|v| v.is_finite()).unwrap_or(0.0).clamp(0.0, 4.0),
+        no_fog: m.flag("$nofog"),
     }
 }
 
@@ -311,7 +331,7 @@ pub fn append_sprites<'a>(
             };
             let blend = look.blend();
             let bright = look.brightness();
-            let add_self = if blend == ParticleBlend::AddSelf { look.add_self } else { 0.0 };
+            let add_self = look.blend_parameter();
             let material = material_of(&plan.material);
             let render = plan.render;
             let base = |p: &hp_pcf::Particle| ParticleSprite {
@@ -320,12 +340,14 @@ pub fn append_sprites<'a>(
                 axis: [0.0; 3],
                 roll: p.rotation,
                 uv: particle_uv(plan, p, look.sheet.as_ref()),
-                color: [p.color[0], p.color[1], p.color[2], (p.alpha * look.opacity).clamp(0.0, 1.0)],
+                color: [p.color[0], p.color[1], p.color[2], p.alpha.clamp(0.0, 1.0)],
                 bright,
                 add_self,
                 orient: orientation(render.orient),
                 blend,
                 screen_fade: look.fade_size,
+                refraction_blur: look.refraction_blur,
+                no_fog: look.no_fog,
                 material,
                 entity: id,
             };
@@ -374,7 +396,7 @@ pub fn append_sprites<'a>(
                         s.orient = ParticleOrient::Stretched;
                         s.roll = 0.0;
                         s.uv = hp_pcf::sheet::FULL_UV;
-                        s.color[3] = (a.alpha + b.alpha) * 0.5 * look.opacity;
+                        s.color[3] = (a.alpha + b.alpha) * 0.5;
                         sprites.push(s);
                     }
                 }
@@ -427,7 +449,11 @@ pub fn instances_of(
             let i = p.material as usize;
             let additive = p.blend == ParticleBlend::Additive;
             let slot = &mut ids.get_mut(i)?[usize::from(additive)];
-            let material = *slot.get_or_insert_with(|| assets.sprite_material_id(&materials[i], additive));
+            let material = if p.blend == ParticleBlend::Refract {
+                assets.refractive_sprite_material_id(&materials[i])
+            } else {
+                *slot.get_or_insert_with(|| assets.sprite_material_id(&materials[i], additive))
+            };
             Some(hp_render::ParticleInstance {
                 pos: p.pos,
                 size: p.size,
@@ -440,6 +466,8 @@ pub fn instances_of(
                 orient: p.orient,
                 material,
                 screen_fade: p.screen_fade,
+                refraction_blur: p.refraction_blur,
+                no_fog: p.no_fog,
                 blend: p.blend,
             })
         })
@@ -1097,6 +1125,11 @@ mod tests {
             "UnlitGeneric { $basetexture particle/none $translucent 1 \"srgb?$alpha\" \".27\" }",
         )
         .expect("vmt");
+        std::fs::write(
+            dir.join("materials/particle/heat.vmt"),
+            "Refract { $normalmap particle/heat $refractamount -.007 $bluramount 1 $nofog 1 }",
+        )
+        .expect("vmt");
         let fs = hp_fs::GameFs::empty();
         assert!(fs.add_game_dir(&dir).is_ok());
         let glow = read_material_look(&fs, "Particle\\Glow.vmt");
@@ -1117,7 +1150,29 @@ mod tests {
         assert_eq!(glow.fade_size, [0.0; 2], "no fade by default");
         let missing = read_material_look(&fs, "particle/fire_missing");
         assert!(!missing.found && missing.additive, "guessed from the name");
+        let heat = read_material_look(&fs, "particle/heat");
+        assert_eq!(heat.blend(), ParticleBlend::Refract);
+        assert_eq!(heat.blend_parameter(), -0.007);
+        assert_eq!(heat.refraction_blur, 1.0);
+        assert!(heat.no_fog);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn material_opacity_stays_in_the_material_instead_of_being_applied_twice() {
+        let plan = plan("alpha_test");
+        let mut effect = Effect::new("alpha_test", &|_| Some(plan.clone()), 9).expect("effect");
+        effect.step(0.1, [0.0; 3], 20);
+        let mut sprites = Vec::new();
+        let mut materials = Vec::new();
+        let looks = HashMap::from([(
+            "particle/fire".to_owned(),
+            Arc::new(MaterialLook { opacity: 0.25, ..Default::default() }),
+        )]);
+        append_sprites(std::iter::once((1, &effect)), &looks, &mut sprites, &mut materials);
+        let alpha: Vec<_> = effect.particles().map(|(_, p)| p.alpha).collect();
+        assert!(!sprites.is_empty());
+        assert_eq!(sprites.iter().map(|p| p.color[3]).collect::<Vec<_>>(), alpha);
     }
 
     #[test]

@@ -10,6 +10,7 @@ pub(crate) enum MatKind {
     Model,
     Sprite,
     SpriteAdditive,
+    SpriteRefract,
 }
 
 pub(crate) const LUM_SUFFIX: &str = "|lum";
@@ -24,7 +25,15 @@ pub(crate) fn texture_keys(kind: MatKind, a: &MatAnalysis) -> Vec<String> {
         [a.texture.as_deref(), a.texture2.as_deref(), a.texture3.as_deref(), a.texture4.as_deref()]
             .into_iter()
             .flatten()
-            .map(|t| if lum { format!("{t}{LUM_SUFFIX}") } else { t.to_owned() })
+            .map(|t| {
+                if kind == MatKind::SpriteRefract {
+                    format!("{t}{}", crate::bump::NORMAL_SUFFIX)
+                } else if lum {
+                    format!("{t}{LUM_SUFFIX}")
+                } else {
+                    t.to_owned()
+                }
+            })
             .collect();
     if let Some(w) = a.water.as_ref().filter(|_| kind == MatKind::World) {
         keys.extend(crate::water::texture_keys(w).filter(|k| !keys.contains(k)).collect::<Vec<_>>());
@@ -242,7 +251,7 @@ pub(crate) fn analyze(name: &str, mat: &Material, texture_flags: &dyn Fn(&str) -
     let blend4 = mat.shader_kind() == hp_vmt::ShaderKind::Lightmapped4WayBlend;
     let (texture3, texture4) =
         if blend4 { (mat.texture("$basetexture3"), mat.texture("$basetexture4")) } else { (None, None) };
-    let alpha = mat.alpha();
+    let alpha = mat.get_f32("srgb?$alpha").filter(|v| v.is_finite()).unwrap_or_else(|| mat.alpha()).clamp(0.0, 1.0);
     let usage = shown_usage(&mat, mat.alpha_usage(&texture_has_alpha), texture.as_deref());
     let (mut flags, alpha_ref) = if tool.is_some() {
         let mut f = MaterialFlags::empty();
@@ -259,6 +268,9 @@ pub(crate) fn analyze(name: &str, mat: &Material, texture_flags: &dyn Fn(&str) -
     } else {
         alpha_flags(&usage)
     };
+    if alpha < 0.999 && !flags.contains(MaterialFlags::ALPHA_TEST) {
+        flags |= MaterialFlags::TRANSLUCENT;
+    }
     match mat.shader_kind() {
         hp_vmt::ShaderKind::Modulate => {
             flags = MaterialFlags::MODULATE;
@@ -399,7 +411,7 @@ pub(crate) fn asset_desc(
     show_tools: bool,
 ) -> MaterialDesc {
     let fit = |size: [u32; 2]| match kind {
-        MatKind::Model | MatKind::Sprite | MatKind::SpriteAdditive => [1.0, 1.0],
+        MatKind::Model | MatKind::Sprite | MatKind::SpriteAdditive | MatKind::SpriteRefract => [1.0, 1.0],
         MatKind::World => [size[0].max(1) as f32, size[1].max(1) as f32],
     };
     let resolve = |look: TexLook| match look {
@@ -433,7 +445,15 @@ pub(crate) fn asset_desc(
         }
         AnaLook::Ready(a) => {
             let lum = wants_lum(kind, a);
-            let look = |t: &str| if lum { tex(&format!("{t}{LUM_SUFFIX}")) } else { tex(t) };
+            let look = |t: &str| {
+                if kind == MatKind::SpriteRefract {
+                    tex(&format!("{t}{}", crate::bump::NORMAL_SUFFIX))
+                } else if lum {
+                    tex(&format!("{t}{LUM_SUFFIX}"))
+                } else {
+                    tex(t)
+                }
+            };
             let (id, tex_size) = resolve(a.texture.as_deref().map_or(TexLook::Missing, look));
             let texture2 = a.texture2.as_deref().map(|t| resolve(look(t)).0);
             let blend_tex =
@@ -458,7 +478,7 @@ pub(crate) fn asset_desc(
             if a.tool.is_some_and(blocks_light) {
                 flags |= MaterialFlags::LIGHT_BLOCKER;
             }
-            let sprite = matches!(kind, MatKind::Sprite | MatKind::SpriteAdditive);
+            let sprite = matches!(kind, MatKind::Sprite | MatKind::SpriteAdditive | MatKind::SpriteRefract);
             let detail = a.detail.as_ref().filter(|_| !sprite).and_then(|d| match tex(&d.texture) {
                 TexLook::Ready(id, _) => Some(d.desc(id)),
                 TexLook::Loading | TexLook::Missing => None,
@@ -704,6 +724,30 @@ mod tests {
         assert_eq!(a.flags, MaterialFlags::OPAQUE_TEXTURE, "opaque: the texture alpha is ignored");
         assert_eq!(a.tool, None);
         assert_eq!(a.tint, [0.5, 1.0, 1.0, 1.0]);
+    }
+
+    #[test]
+    fn refractive_particles_use_a_linear_normal_map_and_one_material_alpha() {
+        let a = analyze("sprites/heat", &mat("Refract { $normalmap sprites/heat_normal $alpha 0.25 }"));
+        assert_eq!(texture_keys(MatKind::SpriteRefract, &a), ["sprites/heat_normal|normal"]);
+        let desc = asset_desc(
+            MatKind::SpriteRefract,
+            "sprites/heat",
+            AnaLook::Ready(&a),
+            &|key| {
+                if key == "sprites/heat_normal|normal" {
+                    TexLook::Ready(TexId::WHITE, [16, 16])
+                } else {
+                    TexLook::Missing
+                }
+            },
+            true,
+        );
+        assert_eq!(desc.texture, Some(TexId::WHITE));
+        assert_eq!(desc.tint[3], 0.25);
+        let srgb = analyze("particle/puff", &mat("UnlitGeneric { $basetexture particle/puff \"srgb?$alpha\" 0.27 }"));
+        assert_eq!(srgb.tint[3], 0.27);
+        assert!(srgb.flags.contains(MaterialFlags::TRANSLUCENT));
     }
 
     #[test]

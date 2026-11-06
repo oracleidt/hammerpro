@@ -6,7 +6,7 @@ use hp_app::AppState;
 use hp_app::data_colors;
 use hp_app::runtime::wind;
 use hp_editor::Id;
-use hp_render::{ParticleBlend, ParticleOrient};
+use hp_render::ParticleOrient;
 use hp_ui_viewports::layers::OverlayLayer;
 
 use crate::particles::{MaterialLook, ParticleHandle, ParticleSprite, material_key, read_material_look};
@@ -83,6 +83,8 @@ pub struct Fx {
     pub wind: bool,
     pub direction: DVec3,
     pub spread: f32,
+    pub heatwave: bool,
+    pub emissive: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -155,6 +157,8 @@ pub fn build(id: Id, e: &hp_vmf::Entity, bounds: Option<(DVec3, DVec3)>) -> Opti
         wind: false,
         direction: direction(e),
         spread: 0.0,
+        heatwave: false,
+        emissive: flag(e, "spawnflags", 1),
     };
     match kind {
         FxKind::Smoke => {
@@ -223,13 +227,14 @@ pub fn build(id: Id, e: &hp_vmf::Entity, bounds: Option<(DVec3, DVec3)>) -> Opti
             fx.size = [num(e, "StartSize", 10.0).clamp(0.0, 255.0), num(e, "EndSize", 25.0).clamp(0.0, 255.0)];
             fx.spin = num(e, "RollSpeed", 8.0).clamp(0.0, 720.0);
             fx.alpha = num(e, "renderamt", 255.0).clamp(0.0, 255.0) / 255.0;
-            fx.enabled = flag(e, "spawnflags", 1) && fx.speed > 0.0;
+            fx.enabled = num(e, "InitialState", 0.0) >= 0.5 && fx.speed > 0.0;
             if e.classname.eq_ignore_ascii_case("env_steamjet") {
                 let yaw = e.angles().unwrap_or(DVec3::ZERO).y.to_radians();
                 fx.direction = DVec3::new(-yaw.sin(), yaw.cos(), 0.0);
             }
-            if num(e, "type", 0.0) >= 0.5 {
-                fx.enabled = false;
+            fx.heatwave = num(e, "type", 0.0) >= 0.5;
+            if fx.heatwave {
+                fx.material = "sprites/heatwave".to_owned();
             }
         }
     }
@@ -258,6 +263,11 @@ fn lerp(a: f32, b: f32, t: f32) -> f32 {
 }
 
 pub fn particles(fx: &Fx, time: f64, scale: f32, eye: DVec3, out: &mut Vec<Pt>) {
+    particles_in_view(fx, time, scale, eye, (fx.min + fx.max) * 0.5 - eye, out);
+}
+
+fn particles_in_view(fx: &Fx, time: f64, scale: f32, eye: DVec3, forward: DVec3, out: &mut Vec<Pt>) {
+    let forward = forward.try_normalize().unwrap_or(DVec3::X);
     let n = ((fx.count as f32 * scale.clamp(0.0, 1.0)).ceil() as usize).min(fx.count);
     let seed_base = u64::from(fx.id).wrapping_mul(0x2545_F491_4F6C_DD1D);
     let ext = fx.max - fx.min;
@@ -281,7 +291,7 @@ pub fn particles(fx: &Fx, time: f64, scale: f32, eye: DVec3, out: &mut Vec<Pt>) 
             ),
             FxKind::Embers => ember(fx, seed, time, ext, rgb, out),
             FxKind::Steam => steam(fx, seed, time, rgb, out),
-            FxKind::Cloud | FxKind::Motes => dust(fx, seed, time, ext, eye, rgb, out),
+            FxKind::Cloud | FxKind::Motes => dust(fx, seed, time, ext, eye, forward, rgb, out),
         }
     }
 }
@@ -325,21 +335,27 @@ fn ember(fx: &Fx, seed: u64, time: f64, ext: DVec3, rgb: [f32; 3], out: &mut Vec
         f64::from(rnd(seed, 7) * 2.0 - 1.0),
     ) * f64::from(fx.speed / 8.0);
     let velocity = fx.direction * f64::from(fx.speed) + jitter;
-    let mut pos = start + velocity * f64::from(age);
+    let speed = velocity.length();
+    let elapsed = f64::from(age).min(speed);
+    let mut pos = start + velocity.normalize_or_zero() * (speed * elapsed - 0.5 * elapsed * elapsed);
     if fx.wind
         && let Some(wind) = wind::velocity_at(pos)
     {
         pos += wind * f64::from(age) * 0.5;
     }
     let flicker = lerp(0.75, 1.0, rnd(seed, 9));
-    let fade_in = 1.0;
     let fade_out = 1.0 - phase;
     let radius = (1.0 - phase).max(0.001);
     out.push(Pt {
         pos: [pos.x as f32, pos.y as f32, pos.z as f32],
         radius,
-        color: [rgb[0], rgb[1], rgb[2], (fx.alpha * fade_in * fade_out * flicker).clamp(0.0, 1.0)],
-        roll: rnd(seed, 16) * std::f32::consts::TAU,
+        color: [
+            rgb[0] * flicker * fade_out,
+            rgb[1] * flicker * fade_out,
+            rgb[2] * flicker * fade_out,
+            fx.alpha * fade_out,
+        ],
+        roll: 0.0,
     });
 }
 
@@ -360,7 +376,8 @@ fn steam(fx: &Fx, seed: u64, time: f64, rgb: [f32; 3], out: &mut Vec<Pt>) {
     });
 }
 
-fn dust(fx: &Fx, seed: u64, time: f64, ext: DVec3, eye: DVec3, rgb: [f32; 3], out: &mut Vec<Pt>) {
+#[allow(clippy::too_many_arguments)]
+fn dust(fx: &Fx, seed: u64, time: f64, ext: DVec3, eye: DVec3, forward: DVec3, rgb: [f32; 3], out: &mut Vec<Pt>) {
     let life = lerp(fx.life[0], fx.life[1], rnd(seed, 0)).max(0.2);
     let mut phase = ((time / f64::from(life)) + f64::from(rnd(seed, 1))).rem_euclid(1.0) as f32;
     if fx.frozen {
@@ -377,10 +394,14 @@ fn dust(fx: &Fx, seed: u64, time: f64, ext: DVec3, eye: DVec3, rgb: [f32; 3], ou
     );
     let pos = start + vel * age;
     let fade = if fx.frozen { 1.0 } else { (phase * std::f32::consts::PI).sin().powi(2) };
-    let near = (1.0 - (pos - eye).length() / fx.dist_max.max(1.0)).clamp(0.0, 1.0) as f32;
+    let depth = (pos - eye).dot(forward);
+    let near = (1.0 - depth / fx.dist_max.max(1.0)).clamp(0.0, 1.0) as f32;
+    if depth <= 0.0 || depth > fx.dist_max {
+        return;
+    }
     out.push(Pt {
         pos: [pos.x as f32, pos.y as f32, pos.z as f32],
-        radius: dust_radius(fx, rnd(seed, 10), pos.distance(eye)),
+        radius: dust_radius(fx, rnd(seed, 10), depth),
         color: [rgb[0], rgb[1], rgb[2], (fx.alpha * fade * near).clamp(0.0, 1.0)],
         roll: rnd(seed, 16) * std::f32::consts::TAU,
     });
@@ -436,7 +457,7 @@ impl Dust {
         Self { source: fx.clone(), particles }
     }
 
-    fn draw(&mut self, dt: f32, scale: f32, eye: DVec3, out: &mut Vec<Pt>) {
+    fn draw(&mut self, dt: f32, scale: f32, eye: DVec3, forward: DVec3, out: &mut Vec<Pt>) {
         let fx = &self.source;
         let n = ((fx.count as f32 * scale.clamp(0.0, 1.0)).ceil() as usize).min(fx.count);
         let step = f64::from(dt.clamp(0.0, 0.1));
@@ -457,10 +478,14 @@ impl Dust {
             }
             let phase = particle.age / particle.life;
             let fade = if fx.frozen { 1.0 } else { (phase * std::f32::consts::PI).sin().powi(2) };
-            let near = (1.0 - particle.pos.distance(eye) / fx.dist_max.max(1.0)).clamp(0.0, 1.0) as f32;
+            let depth = (particle.pos - eye).dot(forward);
+            let near = (1.0 - depth / fx.dist_max.max(1.0)).clamp(0.0, 1.0) as f32;
+            if depth <= 0.0 || depth > fx.dist_max {
+                continue;
+            }
             out.push(Pt {
                 pos: particle.pos.as_vec3().to_array(),
-                radius: dust_radius(fx, rnd(particle.seed, 10), particle.pos.distance(eye)),
+                radius: dust_radius(fx, rnd(particle.seed, 10), depth),
                 color: [fx.color_a[0], fx.color_a[1], fx.color_a[2], fx.alpha * fade * near],
                 roll: rnd(particle.seed, 16) * std::f32::consts::TAU,
             });
@@ -596,9 +621,15 @@ impl EntityFxLayer {
             };
             pts.clear();
             if wind_active && fx.wind && !fx.frozen && matches!(fx.kind, FxKind::Cloud | FxKind::Motes) {
-                self.dust.entry(fx.id).or_insert_with(|| Dust::new(fx)).draw(state.frame.dt, scale, eye, &mut pts);
+                self.dust.entry(fx.id).or_insert_with(|| Dust::new(fx)).draw(
+                    state.frame.dt,
+                    scale,
+                    eye,
+                    state.cameras.cam3d.forward(),
+                    &mut pts,
+                );
             } else {
-                particles(fx, self.time, scale, eye, &mut pts);
+                particles_in_view(fx, self.time, scale, eye, state.cameras.cam3d.forward(), &mut pts);
             }
             for p in &pts {
                 fx_sprites.push(ParticleSprite {
@@ -607,12 +638,18 @@ impl EntityFxLayer {
                     axis: [0.0; 3],
                     roll: p.roll,
                     uv: hp_pcf::sheet::FULL_UV,
-                    color: [p.color[0], p.color[1], p.color[2], (p.color[3] * look.opacity).clamp(0.0, 1.0)],
+                    color: [p.color[0], p.color[1], p.color[2], p.color[3].clamp(0.0, 1.0)],
                     bright: look.brightness(),
-                    add_self: if look.blend() == ParticleBlend::AddSelf { look.add_self } else { 0.0 },
-                    orient: ParticleOrient::Screen,
+                    add_self: look.blend_parameter(),
+                    orient: if matches!(fx.kind, FxKind::Smoke | FxKind::Steam) && !fx.heatwave {
+                        if fx.emissive { ParticleOrient::ScreenEmissive } else { ParticleOrient::ScreenLit }
+                    } else {
+                        ParticleOrient::Screen
+                    },
                     blend: look.blend(),
                     screen_fade: look.fade_size,
+                    refraction_blur: look.refraction_blur,
+                    no_fog: look.no_fog,
                     material,
                     entity: fx.id,
                 });
@@ -644,21 +681,27 @@ impl OverlayLayer for EntityFxLayer {
             .filter(|(_, s)| s.enabled && s.count > 0 && s.alpha > 0.0 && state.doc.is_entity_visible(s.id))
             .filter_map(|(i, s)| {
                 let d = distance_to_box(cam, s.min, s.max);
-                (d <= s.reach).then_some((d, i))
+                let in_range = if matches!(s.kind, FxKind::Cloud | FxKind::Motes) {
+                    let forward = state.cameras.cam3d.forward();
+                    let depth = ((s.min + s.max) * 0.5 - cam).dot(forward);
+                    let radius = ((s.max - s.min) * 0.5).dot(forward.abs());
+                    depth - radius <= s.reach && depth + radius > 0.0
+                } else {
+                    d <= s.reach
+                };
+                in_range.then_some((d, i))
             })
             .collect();
         near.sort_by(|a, b| a.0.total_cmp(&b.0));
         near.truncate(MAX_ENTITIES);
         let mut budget = MAX_PARTICLES;
         self.visible.clear();
-        for (d, i) in near {
+        for (_, i) in near {
             if budget < MIN_COUNT {
                 break;
             }
             let s = &self.sources[i];
-            let reach = s.reach.max(1.0);
-            let scale = (1.0 - 0.6 * (d / reach)).clamp(0.4, 1.0) as f32;
-            let n = ((s.count as f32 * scale).ceil() as usize).min(s.count).min(budget);
+            let n = s.count.min(budget);
             if n == 0 {
                 continue;
             }
@@ -798,6 +841,7 @@ mod tests {
                     ("SpreadSpeed", "0"),
                     ("Rate", "10"),
                     ("spawnflags", "1"),
+                    ("InitialState", "1"),
                 ],
             ),
             None,
@@ -825,6 +869,45 @@ mod tests {
         assert_eq!(smoke.grid, [4; 3]);
         assert_eq!(smoke.size, [2.5; 2]);
         assert_eq!(smoke.alpha, 0.2);
+    }
+
+    #[test]
+    fn steam_start_state_and_heatwave_are_independent_of_emissive() {
+        for flags in [0, 1] {
+            for active in [0, 1] {
+                let e = entity(
+                    "env_steam",
+                    &[("spawnflags", &flags.to_string()), ("InitialState", &active.to_string()), ("type", "1")],
+                );
+                let fx = build(1, &e, None).unwrap();
+                assert_eq!(fx.enabled, active == 1);
+                assert_eq!(fx.emissive, flags == 1);
+                assert!(fx.heatwave);
+                assert_eq!(fx.material, "sprites/heatwave");
+            }
+        }
+        assert!(!build(1, &entity("env_steam", &[("spawnflags", "1")]), None).unwrap().enabled);
+    }
+
+    #[test]
+    fn dust_and_motes_use_camera_depth_instead_of_radial_distance() {
+        for class in ["func_dustcloud", "func_dustmotes"] {
+            let fx = build(
+                1,
+                &entity(class, &[("Frozen", "1"), ("DistMax", "1000")]),
+                Some((DVec3::new(100.0, 0.0, 0.0), DVec3::new(200.0, 40.0, 40.0))),
+            )
+            .unwrap();
+            let mut a = Vec::new();
+            let mut b = Vec::new();
+            particles_in_view(&fx, 1.0, 1.0, DVec3::ZERO, DVec3::X, &mut a);
+            particles_in_view(&fx, 1.0, 1.0, DVec3::new(0.0, 800.0, 0.0), DVec3::X, &mut b);
+            assert!(!a.is_empty());
+            assert_eq!(a, b);
+            let mut behind = Vec::new();
+            particles_in_view(&fx, 1.0, 1.0, DVec3::ZERO, -DVec3::X, &mut behind);
+            assert!(behind.is_empty());
+        }
     }
 
     #[test]

@@ -72,7 +72,7 @@ Ces quatre effets nécessitent des bornes en coordonnées du monde. La sauvegard
 | `func_dustcloud` | `Color`, `SizeMin`, `SizeMax` (demi-taille du sprite), `SpawnRate`, `LifetimeMin`, `LifetimeMax`, `SpeedMax` (vitesse aléatoire sur chaque axe), `FallSpeed`, `Alpha`, `DistMax` | `particle/sparkles` | Grands sprites avec fondu selon la durée de vie et la distance ; peuvent quitter le brush |
 | `func_dustmotes` | Mêmes clés | `particle/sparkles` | Sprites dont la taille suit la profondeur, avec les unités des motes de Source |
 
-Les valeurs par défaut suivent le FGD. En jeu, la poussière reçoit les lightmaps ; son aperçu est non éclairé. Un `env_embers` sans nom démarre activé ; avec un nom, il nécessite **Start On** (indicateur 1) ou une entrée en jeu. La poussière respecte `StartDisabled` et `Frozen` ; les entrées/sorties en jeu ne sont pas simulées. Un nom `Material` explicite est conservé même s’il manque, pour ne pas masquer le problème avec un matériau standard. Les sprites intégrés peuvent utiliser leur remplacement connu. L’aperçu est limité à 24 effets proches, 2048 particules chacun (2048 bouffées de fumée), 8192 au total, dans un rayon de 3072 unités ou le `DistMax` inférieur. Les brushes masqués ne contribuent pas au volume de l’aperçu. Le jeu utilise la densité et l’espacement d’origine : un espacement très petit peut donc coûter beaucoup plus que l’aperçu limité.
+Les valeurs par défaut suivent le FGD. Un `env_embers` sans nom démarre activé ; avec un nom, il nécessite **Start On** (indicateur 1) ou une entrée en jeu. La poussière respecte `StartDisabled` et `Frozen` ; les entrées/sorties en jeu ne sont pas simulées. Un nom `Material` explicite est conservé même s’il manque, pour ne pas masquer le problème avec un matériau standard. Les sprites intégrés peuvent utiliser leur remplacement connu. L’aperçu est limité à 24 effets proches, 2048 particules chacun (2048 bouffées de fumée), 8192 au total, dans un rayon de 3072 unités ou le `DistMax` inférieur. Les brushes masqués ne contribuent pas au volume de l’aperçu. Le jeu utilise la densité et l’espacement d’origine : un espacement très petit peut donc coûter beaucoup plus que l’aperçu limité.
 
 ### Vent de env_wind
 
@@ -194,9 +194,13 @@ Un `shadow_control` visible affiche les ombres projetées des modèles dans les 
 
 ### Jets de vapeur et fidélité
 
-`env_steam` et l'ancien `env_steamjet` affichent la vapeur normale selon Start On, les angles, la couleur/alpha, Speed, SpreadSpeed, JetLength, Rate, StartSize, EndSize et RollSpeed. L'ancienne classe conserve son orientation latérale. La réfraction du mode Heat Wave n'est pas reproduite par cet aperçu de sprites. La fumée respecte la largeur et l'opacité demandées et s'estompe près de la caméra. Nuages et motes suivent leurs unités de taille respectives et utilisent `particle/sparkles`. Un débit ou une opacité nuls restent invisibles. La poussière peut quitter le brush avant la fin de sa durée de vie. L'éclairage, les collisions, la distorsion et les entrées/sorties peuvent encore différer du jeu ; vérifiez le résultat compilé en jeu.
+`env_steam` et l'ancien `env_steamjet` utilisent **Initial State** (`InitialState`) : **Off** (0) par défaut en jeu, **On** (1) pour émettre dès le démarrage. **Emissive** (indicateur 1) contrôle l'éclairage séparément. Les angles, la couleur/alpha, Speed, SpreadSpeed, JetLength, Rate, StartSize, EndSize et RollSpeed sont respectés.
 
-Les braises `env_embers` suivent `env_wind` si `AffectedByWind` vaut 1 ; la valeur 0 conserve leur mouvement propre.
+**Heat Wave** (`type` 1) utilise `sprites/heatwave` pour réfracter la scène derrière le jet, avec la normale du matériau, `$refractamount` signé, `$bluramount` et `$nofog`. La profondeur des objets devant le jet est vérifiée avec et sans anticrénelage. Examinez la réfraction dans la vue 3D d'une map : le navigateur isolé ne contient qu'un fond uni à déformer.
+
+La fumée et la vapeur normale utilisent l'éclairage de la scène en mode **Éclairé** et avec l'éclairage compilé ; **Emissive** ajoute leur couleur à cette lumière. Les autres modes gardent l'affichage d'édition. La poussière et les motes utilisent la profondeur de vue pour le fondu et la taille des motes. Les particules PCF et d'entités sont triées ensemble par profondeur ; l'alpha du matériau est appliqué une seule fois. Leur nombre est conservé tant que le budget le permet, sans réduction automatique liée à l'éloignement.
+
+Les braises diminuent en couleur, alpha et taille, sans rotation et avec un ralentissement progressif. La fumée respecte largeur/opacité et fondu près de la caméra ; la poussière peut quitter son brush et respecte les tailles/débits/alphas nuls. Les budgets, les séquences aléatoires, les échanges de fumée, les collisions et les opérateurs PCF non pris en charge peuvent encore différer ; vérifiez le résultat final en jeu.
 
 ## Pages liées
 

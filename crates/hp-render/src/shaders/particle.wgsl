@@ -1,4 +1,4 @@
-override BLEND_MODE: f32 = 0.0;
+override PARTICLE_BLEND_MODE: f32 = 0.0;
 
 struct ParticleOut {
     @builtin(position) clip: vec4<f32>,
@@ -6,6 +6,8 @@ struct ParticleOut {
     @location(1) color: vec4<f32>,
     @location(2) world: vec3<f32>,
     @location(3) addself: f32,
+    @location(4) @interpolate(flat) lightmode: u32,
+    @location(5) @interpolate(flat) effects: u32,
 };
 
 var<private> P_CORNERS: array<vec2<f32>, 6> = array<vec2<f32>, 6>(
@@ -34,14 +36,20 @@ fn vs_particle(
     @location(6) mode_bits: u32,
     @location(7) bright: f32,
     @location(8) fade: vec2<f32>,
+    @location(9) effects: u32,
 ) -> ParticleOut {
     var out: ParticleOut;
     if is_ortho() || hidden_in_view(0u) {
         out.clip = COLLAPSED;
         return out;
     }
-    let mode = mode_bits & 255u;
+    let mode = mode_bits & 127u;
+    out.effects = effects;
+    out.lightmode = select(0u, mode - 3u, mode >= 4u && mode <= 5u);
     out.addself = f32(mode_bits >> 8u) / 256.0;
+    if (mode_bits & 128u) != 0u {
+        out.addself = f32(mode_bits >> 8u) / 65536.0 - 1.0;
+    }
     let c = P_CORNERS[vi % 6u];
     out.uv = mix(rect.xy, rect.zw, vec2<f32>(c.x * 0.5 + 0.5, 0.5 - c.y * 0.5));
     let half = max(size, 0.0) * 0.5;
@@ -79,7 +87,7 @@ fn vs_particle(
             }
         }
     }
-    if mode == P_SCREEN || mode == P_FLAT {
+    if mode == P_SCREEN || mode == P_FLAT || mode >= 4u {
         let cr = cos(roll);
         let sr = sin(roll);
         let rx = dx * cr + dy * sr;
@@ -112,16 +120,35 @@ fn p_linear_to_srgb(x: f32) -> f32 {
     return 1.055 * pow(x, 1.0 / 2.4) - 0.055;
 }
 
+fn particle_color(in: ParticleOut) -> vec3<f32> {
+    if in.lightmode == 0u || (view.misc.x != MODE_LIT && (view.opts.x & OPT_COMPILED_LIGHT) == 0u) {
+        return in.color.rgb;
+    }
+    var sum = vec3<f32>(0.0);
+    for (var axis = 0u; axis < 3u; axis++) {
+        var n = vec3<f32>(0.0);
+        n[axis] = 1.0;
+        sum += lighting(in.world, n, n, in.clip.xy, 0u, false);
+        sum += lighting(in.world, -n, -n, in.clip.xy, 0u, false);
+    }
+    let light = clamp(sum / 6.0, vec3<f32>(0.0), vec3<f32>(1.0));
+    if in.lightmode == 2u {
+        return min(in.color.rgb + light, vec3<f32>(1.0));
+    }
+    return in.color.rgb * light;
+}
+
 @fragment
 fn fs_particle(in: ParticleOut) -> @location(0) vec4<f32> {
     let t = textureSample(tex, samp_clamp, in.uv) * material.tint;
     let exposure = bitcast<f32>(view.misc.z);
     fog_far_clip(in.world);
-    let fog = fog_amount(in.world);
-    if BLEND_MODE > 1.5 {
+    let fog = select(fog_amount(in.world), 0.0, (in.effects & 65536u) != 0u);
+    let color = particle_color(in);
+    if PARTICLE_BLEND_MODE > 1.5 {
         let peak = p_linear_to_srgb(max(max(t.r, t.g), t.b));
         let a = clamp(t.a / max(peak, 1.0 / 255.0), 0.0, 1.0) * in.color.a;
-        let rgb = fog_blend(t.rgb * in.color.rgb * a * exposure, vec3<f32>(0.0), fog);
+        let rgb = fog_blend(t.rgb * color * a * exposure, vec3<f32>(0.0), fog);
         if max(max(rgb.r, rgb.g), rgb.b) < 1.0 / 512.0 {
             discard;
         }
@@ -131,9 +158,9 @@ fn fs_particle(in: ParticleOut) -> @location(0) vec4<f32> {
     if a < 1.0 / 255.0 {
         discard;
     }
-    let rgb = t.rgb * in.color.rgb * exposure;
+    let rgb = t.rgb * color * exposure;
     let fogged = fog_blend(rgb, view.fog_a.rgb, fog);
-    if BLEND_MODE > 0.5 {
+    if PARTICLE_BLEND_MODE > 0.5 {
         return vec4<f32>(fogged * (a + in.addself * t.a * 0.12), a);
     }
     return vec4<f32>(fogged, a);

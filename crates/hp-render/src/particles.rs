@@ -6,12 +6,16 @@ use crate::pipelines::{self, Blend, Desc, Shared, vertex_layout};
 use crate::types::MaterialId;
 use crate::{FrameCounter, Renderer, ViewParams};
 
+mod refract;
+
 pub(crate) const PARTICLE_WGSL: &str = concat!(
     include_str!("shaders/common.wgsl"),
     "\n",
     include_str!("shaders/material.wgsl"),
     "\n",
     include_str!("shaders/parallax.wgsl"),
+    "\n",
+    include_str!("shaders/mesh.wgsl"),
     "\n",
     include_str!("shaders/particle.wgsl")
 );
@@ -23,6 +27,8 @@ pub enum ParticleOrient {
     Upright,
     Flat,
     Stretched,
+    ScreenLit,
+    ScreenEmissive,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -31,6 +37,7 @@ pub enum ParticleBlend {
     Alpha,
     Additive,
     AddSelf,
+    Refract,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -44,6 +51,8 @@ pub struct ParticleInstance {
     pub bright: f32,
     pub add_self: f32,
     pub screen_fade: [f32; 2],
+    pub refraction_blur: f32,
+    pub no_fog: bool,
     pub orient: ParticleOrient,
     pub material: MaterialId,
     pub blend: ParticleBlend,
@@ -61,9 +70,10 @@ pub(crate) struct ParticleGpu {
     mode: u32,
     bright: f32,
     fade: u32,
+    effects: u32,
 }
 
-const ATTRS: [wgpu::VertexAttribute; 9] = [
+const ATTRS: [wgpu::VertexAttribute; 10] = [
     wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x3, offset: 0, shader_location: 0 },
     wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32, offset: 12, shader_location: 1 },
     wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x3, offset: 16, shader_location: 2 },
@@ -73,6 +83,7 @@ const ATTRS: [wgpu::VertexAttribute; 9] = [
     wgpu::VertexAttribute { format: wgpu::VertexFormat::Uint32, offset: 52, shader_location: 6 },
     wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32, offset: 56, shader_location: 7 },
     wgpu::VertexAttribute { format: wgpu::VertexFormat::Unorm16x2, offset: 60, shader_location: 8 },
+    wgpu::VertexAttribute { format: wgpu::VertexFormat::Uint32, offset: 64, shader_location: 9 },
 ];
 
 const BLENDS: [ParticleBlend; 3] = [ParticleBlend::Alpha, ParticleBlend::AddSelf, ParticleBlend::Additive];
@@ -82,6 +93,7 @@ fn blend_index(b: ParticleBlend) -> usize {
         ParticleBlend::Alpha => 0,
         ParticleBlend::AddSelf => 1,
         ParticleBlend::Additive => 2,
+        ParticleBlend::Refract => 3,
     }
 }
 
@@ -105,6 +117,7 @@ pub(crate) struct Particles {
     count: u32,
     module: Option<wgpu::ShaderModule>,
     pipes: Vec<Pipes>,
+    refraction: Option<refract::Refraction>,
 }
 
 impl Particles {
@@ -121,7 +134,7 @@ impl Particles {
         let vb = [Some(vertex_layout(size_of::<ParticleGpu>(), wgpu::VertexStepMode::Instance, &ATTRS))];
         let make = |b: ParticleBlend| {
             let (label, blend) = match b {
-                ParticleBlend::Alpha => ("hp-render particles", Blend::Alpha),
+                ParticleBlend::Alpha | ParticleBlend::Refract => ("hp-render particles", Blend::Alpha),
                 ParticleBlend::AddSelf => ("hp-render particles add self", Blend::Premultiplied),
                 ParticleBlend::Additive => ("hp-render particles additive", Blend::Additive),
             };
@@ -140,7 +153,7 @@ impl Particles {
                     depth_test: true,
                     depth_write: false,
                     blend,
-                    constants: &[("BLEND_MODE", blend_index(b) as f64)],
+                    constants: &[("PARTICLE_BLEND_MODE", blend_index(b) as f64)],
                 },
                 wgpu::PolygonMode::Fill,
             )
@@ -176,6 +189,11 @@ fn pack(particles: &[ParticleInstance]) -> (Vec<ParticleGpu>, Vec<Run>) {
         let p = &particles[i];
         let rect = if p.uv.iter().all(|v| v.is_finite()) { p.uv } else { [0.0, 0.0, 1.0, 1.0] };
         let color = p.color.map(|c| finite(c, 0.0).clamp(0.0, 1.0));
+        let (parameter, flag) = if p.blend == ParticleBlend::Refract {
+            (((finite(p.add_self, 0.0).clamp(-1.0, 1.0) + 1.0) * 65536.0).round() as u32, 128)
+        } else {
+            ((finite(p.add_self, 0.0).clamp(0.0, 16.0) * 256.0).round() as u32, 0)
+        };
         data.push(ParticleGpu {
             pos: p.pos,
             size: finite(p.size, 0.0).max(0.0),
@@ -183,15 +201,20 @@ fn pack(particles: &[ParticleInstance]) -> (Vec<ParticleGpu>, Vec<Run>) {
             roll: finite(p.roll, 0.0),
             rect,
             color: crate::pack_rgba(color),
-            mode: (finite(p.add_self, 0.0).clamp(0.0, 16.0) * 256.0).round() as u32 * 256
+            mode: parameter * 256
+                + flag
                 + match p.orient {
                     ParticleOrient::Screen => 0,
                     ParticleOrient::Upright => 1,
                     ParticleOrient::Flat => 2,
                     ParticleOrient::Stretched => 3,
+                    ParticleOrient::ScreenLit => 4,
+                    ParticleOrient::ScreenEmissive => 5,
                 },
             bright: finite(p.bright, 1.0).clamp(0.0, 16.0),
             fade: pack_fade(p.screen_fade),
+            effects: (finite(p.refraction_blur, 0.0).clamp(0.0, 4.0) * 4096.0).round() as u32
+                | if p.no_fog { 65536 } else { 0 },
         });
         let n = data.len() as u32;
         match runs.last_mut() {
@@ -352,6 +375,9 @@ impl Renderer {
         pass.set_vertex_buffer(0, buffer.buffer.slice(..));
         let mut bound = None;
         for r in &d.runs {
+            if r.blend == ParticleBlend::Refract {
+                continue;
+            }
             let Some(g) = self.scene.find_material(r.material).and_then(|s| self.mat_gpu.get(s as usize)) else {
                 continue;
             };
@@ -382,6 +408,8 @@ mod tests {
             bright: 1.0,
             add_self: 0.0,
             screen_fade: [0.0; 2],
+            refraction_blur: 0.0,
+            no_fog: false,
             orient: ParticleOrient::Screen,
             material,
             blend,
@@ -427,7 +455,22 @@ mod tests {
         assert_eq!(data[0].mode, 3);
         assert_eq!(data[0].fade, 0xFFFF_0000, "start 0, end clamped to 4");
         assert_eq!(pack_fade([1.0, 2.0]), (16384 | (32768 << 16)));
-        assert_eq!(size_of::<ParticleGpu>(), 64);
+        assert_eq!(size_of::<ParticleGpu>(), 68);
+    }
+
+    #[test]
+    fn signed_refraction_and_material_effects_survive_gpu_packing() {
+        let mut particle = p(1, ParticleBlend::Refract, 0.0);
+        particle.add_self = -0.007;
+        particle.refraction_blur = 1.0;
+        particle.no_fog = true;
+        let (data, _) = pack(&[particle]);
+        let encoded = data[0];
+        assert_ne!(encoded.mode & 128, 0);
+        let amount = (encoded.mode >> 8) as f32 / 65536.0 - 1.0;
+        assert!((amount + 0.007).abs() < 1.0 / 65536.0);
+        assert_eq!(encoded.effects & 65535, 4096);
+        assert_ne!(encoded.effects & 65536, 0);
     }
 
     #[test]

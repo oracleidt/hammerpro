@@ -1071,6 +1071,8 @@ fn particles_blend_add_turn_and_show_sheet_frames() {
         orient: ParticleOrient::Screen,
         material,
         screen_fade: [0.0; 2],
+        refraction_blur: 0.0,
+        no_fog: false,
         blend: ParticleBlend::Alpha,
     };
     let view = ViewParams {
@@ -1140,6 +1142,117 @@ fn particles_blend_add_turn_and_show_sheet_frames() {
 }
 
 #[test]
+fn particles_refract_the_scene_and_keep_foreground_depth_with_and_without_msaa() {
+    let (device, queue) = gpu_or_skip!();
+    let mut r = Renderer::new(&device, &queue);
+    mat(&mut r, 4, [255, 0, 0, 255], MaterialFlags::UNLIT);
+    mat(&mut r, 5, [0, 0, 255, 255], MaterialFlags::UNLIT);
+    mat(&mut r, 6, [0, 255, 0, 255], MaterialFlags::UNLIT);
+    r.upsert_object(1, box_mesh([50.0, -400.0, -200.0], [60.0, 0.0, 200.0], 4, [0; 3]));
+    r.upsert_object(2, box_mesh([50.0, 0.0, -200.0], [60.0, 400.0, 200.0], 5, [0; 3]));
+    let normal = r.create_texture(&TextureUpload {
+        width: 4,
+        height: 4,
+        format: TexFormat::Rgba8Linear,
+        levels: vec![[255, 128, 255, 255].repeat(16)],
+    });
+    r.set_material(7, &MaterialDesc { texture: Some(normal), ..Default::default() });
+    let particle = ParticleInstance {
+        pos: [0.0; 3],
+        size: 220.0,
+        axis: [0.0; 3],
+        roll: 0.0,
+        uv: [0.0, 0.0, 1.0, 1.0],
+        color: [1.0; 4],
+        bright: 1.0,
+        add_self: 0.08,
+        screen_fade: [0.0; 2],
+        refraction_blur: 0.0,
+        no_fog: false,
+        orient: ParticleOrient::Screen,
+        material: 7,
+        blend: ParticleBlend::Refract,
+    };
+    for msaa in [false, true] {
+        let view = ViewParams { msaa, ..persp([-400.0, 0.0, 0.0], [0.0; 3], [128, 128], RenderMode::Unshaded) };
+        r.set_particles(&[]);
+        r.render_view(1, &view, &Overlay::default());
+        let plain = save(&r, 1, &format!("heat_plain_{msaa}"));
+        r.set_particles(&[particle]);
+        r.render_view(1, &view, &Overlay::default());
+        let heat = save(&r, 1, &format!("heat_refract_{msaa}"));
+        let changed = plain.2.chunks_exact(4).zip(heat.2.chunks_exact(4)).filter(|(a, b)| a != b).count();
+        assert!(changed > 100, "scene must be distorted, {changed} pixels changed");
+        r.set_particles(&[ParticleInstance { add_self: -0.08, refraction_blur: 1.0, no_fog: true, ..particle }]);
+        r.render_view(1, &view, &Overlay::default());
+        let reversed = save(&r, 1, &format!("heat_negative_{msaa}"));
+        assert_ne!(reversed.2, plain.2, "negative refraction must stay visible");
+        assert_ne!(reversed.2, heat.2, "negative refraction has the opposite direction");
+        r.set_particles(&[ParticleInstance { add_self: 0.0, ..particle }]);
+        r.render_view(1, &view, &Overlay::default());
+        assert_eq!(r.read_view_rgba8(1).unwrap().2, plain.2, "zero refraction is invisible");
+        r.upsert_object(3, box_mesh([-80.0, -30.0, -30.0], [-60.0, 30.0, 30.0], 6, [0; 3]));
+        r.set_particles(&[]);
+        r.render_view(1, &view, &Overlay::default());
+        let front = save(&r, 1, &format!("heat_front_{msaa}"));
+        r.set_particles(&[particle]);
+        r.render_view(1, &view, &Overlay::default());
+        let occluded = save(&r, 1, &format!("heat_occluded_{msaa}"));
+        assert_eq!(pixel(&front, 64, 64), pixel(&occluded, 64, 64));
+        r.remove_object(3);
+    }
+    r.remove_view(1);
+    r.render_view(1, &persp([-400.0, 0.0, 0.0], [0.0; 3], [192, 128], RenderMode::Textured), &Overlay::default());
+    assert_eq!(r.read_view_rgba8(1).unwrap().0, 192);
+}
+
+#[test]
+fn particles_respect_scene_lighting_emissive_and_material_opacity() {
+    let (device, queue) = gpu_or_skip!();
+    let mut r = Renderer::new(&device, &queue);
+    r.set_material(4, &MaterialDesc { texture: Some(TexId::WHITE), ..Default::default() });
+    let view = ViewParams { background: [0.0; 3], ..persp([-400.0, 0.0, 0.0], [0.0; 3], [64, 64], RenderMode::Lit) };
+    let p = ParticleInstance {
+        pos: [0.0; 3],
+        size: 220.0,
+        axis: [0.0; 3],
+        roll: 0.0,
+        uv: [0.0, 0.0, 1.0, 1.0],
+        color: [0.5, 0.5, 0.5, 1.0],
+        bright: 1.0,
+        add_self: 0.0,
+        screen_fade: [0.0; 2],
+        refraction_blur: 0.0,
+        no_fog: false,
+        orient: ParticleOrient::ScreenLit,
+        material: 4,
+        blend: ParticleBlend::Alpha,
+    };
+    r.set_lights(&[], [0.0; 3]);
+    r.set_particles(&[p]);
+    r.render_view(1, &view, &Overlay::default());
+    let dark = pixel(&save(&r, 1, "particles_lit_dark"), 32, 32)[0];
+    r.set_particles(&[ParticleInstance { orient: ParticleOrient::Screen, ..p }]);
+    r.render_view(1, &view, &Overlay::default());
+    let unlit = pixel(&save(&r, 1, "particles_unlit"), 32, 32)[0];
+    assert!(dark < 5 && unlit > 100);
+    r.set_lights(&[], [0.25; 3]);
+    r.set_particles(&[p]);
+    r.render_view(1, &view, &Overlay::default());
+    let lit = pixel(&save(&r, 1, "particles_lit_ambient"), 32, 32)[0];
+    assert!(lit > dark + 20 && lit < unlit);
+    r.set_particles(&[ParticleInstance { orient: ParticleOrient::ScreenEmissive, ..p }]);
+    r.render_view(1, &view, &Overlay::default());
+    let emissive = pixel(&save(&r, 1, "particles_emissive"), 32, 32)[0];
+    assert!(emissive > lit && emissive >= unlit);
+    r.set_material(4, &MaterialDesc { texture: Some(TexId::WHITE), tint: [1.0, 1.0, 1.0, 0.25], ..Default::default() });
+    r.set_particles(&[ParticleInstance { color: [1.0; 4], orient: ParticleOrient::Screen, ..p }]);
+    r.render_view(1, &view, &Overlay::default());
+    let alpha = pixel(&save(&r, 1, "particles_material_alpha"), 32, 32)[0];
+    assert!((130..=142).contains(&alpha), "one quarter linear opacity: {alpha}");
+}
+
+#[test]
 fn the_particle_preview_view_draws_exactly_like_the_scene_view() {
     let (device, queue) = gpu_or_skip!();
     let mut r = Renderer::new(&device, &queue);
@@ -1166,6 +1279,8 @@ fn the_particle_preview_view_draws_exactly_like_the_scene_view() {
         orient: ParticleOrient::Screen,
         material,
         screen_fade: [0.0; 2],
+        refraction_blur: 0.0,
+        no_fog: false,
         blend,
     };
     let list = [

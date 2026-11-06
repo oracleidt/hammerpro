@@ -72,7 +72,7 @@ These four effects need brush bounds in world coordinates. Saving/exporting repa
 | `func_dustcloud` | `Color`, `SizeMin`, `SizeMax` (sprite half size), `SpawnRate`, `LifetimeMin`, `LifetimeMax`, `SpeedMax` (random speed on each axis), `FallSpeed`, `Alpha`, `DistMax` | `particle/sparkles` | Large sparkles with a sine-squared lifetime fade and distance fade; may drift outside the brush |
 | `func_dustmotes` | Same keys | `particle/sparkles` | Sparkles whose size scales with view depth using Source mote units |
 
-Defaults follow the FGD. Dust is lit by lightmaps in game and shown unlit in the preview. An unnamed `env_embers` starts enabled; a named one needs **Start On** (flag 1) or runtime I/O. Dust respects `StartDisabled` and `Frozen`; runtime I/O is not simulated. An explicit `Material` name is retained even when missing, so the preview does not hide that problem by selecting a stock replacement. Built-in sprites can use their known fallback. The preview is limited to 24 nearby effects, 2048 particles each (2048 puffs for smoke), and 8192 overall within 3072 units or the smaller `DistMax`. Hidden brushes do not contribute a preview volume. The game uses the original density and spacing, so a very small smoke spacing can be much more expensive than its bounded preview.
+Defaults follow the FGD. An unnamed `env_embers` starts enabled; a named one needs **Start On** (flag 1) or runtime I/O. Dust respects `StartDisabled` and `Frozen`; runtime I/O is not simulated. An explicit `Material` name is retained even when missing, so the preview does not hide that problem by selecting a stock replacement. Built-in sprites can use their known fallback. The preview is limited to 24 nearby effects, 2048 particles each (2048 puffs for smoke), and 8192 overall within 3072 units or the smaller `DistMax`. Hidden brushes do not contribute a preview volume. The game uses the original density and spacing, so a very small smoke spacing can be much more expensive than its bounded preview.
 
 ### Wind from env_wind
 
@@ -194,7 +194,13 @@ A visible `shadow_control` previews projected model shadows in textured and lit 
 
 ### Steam jets and accuracy
 
-`env_steam` and legacy `env_steamjet` preview normal steam with Start On, angles, color/alpha, Speed, SpreadSpeed, JetLength, Rate, StartSize, EndSize and RollSpeed. The legacy class uses its sideways orientation. Heat-wave refraction is not reproduced by the sprite preview. Smoke keeps the requested width and opacity and fades near the camera. Cloud and mote sizes follow their different engine units, and both use `particle/sparkles`. Zero emission rates and zero alpha stay invisible. Dust can leave its spawning brush before its lifetime ends. Lighting, collisions, heat distortion and runtime I/O can still differ from a compiled map; the editor is not a substitute for checking the result in game.
+`env_steam` and legacy `env_steamjet` use **Initial State** (`InitialState`): **Off** (0) by default in game, **On** (1) to emit immediately. **Emissive** (flag 1) controls lighting independently. Angles, color/alpha, Speed, SpreadSpeed, JetLength, Rate, StartSize, EndSize and RollSpeed are respected.
+
+**Heat Wave** (`type` 1) uses `sprites/heatwave` to refract the scene behind the jet, through the material normal map and signed `$refractamount`, including `$bluramount` and `$nofog`. Foreground depth is checked with and without MSAA. Inspect refraction in a map's 3D view: the isolated particle browser has only a flat background to distort.
+
+Smoke and normal steam use scene lighting in **Lit** and compiled-lighting views; **Emissive** adds their color to that lighting. Other modes retain the editing display. Dust/motes use camera-axis depth for fade and mote size. PCF and entity particles share a depth-sorted list; material alpha is applied once. Counts are retained while the budget allows, instead of dropping simply with camera distance.
+
+Embers fade in color, alpha and size with zero roll and gradual slowdown. Smoke respects width/opacity and near-camera fade; dust can leave its brush and respects zero size/rate/alpha. Budgets, exact engine randomness, smoke trading, collisions and unsupported PCF operators can still differ; check final effects in game.
 
 ## Related pages
 

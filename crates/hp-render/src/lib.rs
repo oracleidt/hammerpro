@@ -2519,6 +2519,8 @@ impl Renderer {
         let water_frame = self.prepare_water(view_id, &cam, &params, &opts);
         let fog_frame = self.prepare_fog_volumes(view_id, &cam, &params, &opts);
         let sun_frame = self.prepare_sun_glow(view_id, &cam, &params, &opts);
+        let particle_refraction =
+            !cam.is_ortho && params.mode != RenderMode::Wireframe && self.prepare_particle_refraction(view_id);
         if sky_cam.is_some() {
             self.ensure_sky_pass(view_id);
         }
@@ -2685,7 +2687,8 @@ impl Renderer {
                 sky_drawn = true;
             }
             let two_phase = occ_args.is_some();
-            let split = (water_frame.is_some() || fog_frame.is_some() || sun_frame.is_some()) && !cam.is_ortho;
+            let split = (water_frame.is_some() || fog_frame.is_some() || sun_frame.is_some() || particle_refraction)
+                && !cam.is_ortho;
             {
                 let (resolve_now, color_store, depth_store) = if two_phase {
                     (None, wgpu::StoreOp::Store, wgpu::StoreOp::Store)
@@ -2765,7 +2768,7 @@ impl Renderer {
                 }
             }
             if split {
-                let keep = fog_frame.is_some() || sun_frame.is_some();
+                let keep = fog_frame.is_some() || sun_frame.is_some() || particle_refraction;
                 ctx.record_water(&mut enc, water_frame.as_ref(), view_id, &lists, keep, &mut counter);
             }
             if let Some(frame) = fog_frame.as_ref().filter(|_| split) {
@@ -2779,6 +2782,9 @@ impl Renderer {
             }
         }
         self.hooks = hooks;
+        if particle_refraction {
+            self.record_particle_refraction(&mut enc, view_id, &mut counter);
+        }
         if let Some(p) = self.profiler.as_ref() {
             p.mark(&mut enc, 2);
         }
@@ -3001,6 +3007,7 @@ impl Renderer {
     }
 
     pub fn remove_view(&mut self, view_id: u32) {
+        self.remove_particle_refraction_view(view_id);
         self.views.remove(&view_id);
         self.retained.remove(&view_id);
         self.forget_water_view(view_id);
