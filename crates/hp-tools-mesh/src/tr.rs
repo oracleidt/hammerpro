@@ -2,6 +2,27 @@ use hp_app::i18n::TrTable;
 
 pub const TR: TrTable = &[
     (
+        "disp.hint_relax",
+        "Hold LMB: relax surface topology. Shift: smooth. Borders and sharp features stay fixed; Ctrl does not invert Relax.",
+        "Maintenir le clic gauche : relaxer la topologie. Shift : lisser. Les bords et reliefs marqués restent fixes ; Ctrl n'inverse pas Relax.",
+    ),
+    ("disp.sculpt.relax", "Relax", "Relax"),
+    (
+        "disp.sculpt.relax_tip",
+        "Hold the left mouse button to redistribute vertices along the surface. Borders, sharp features and triangle orientation are protected. Ctrl does not invert Relax.",
+        "Maintenez le clic gauche pour répartir les sommets sur la surface. Les bords, les reliefs marqués et l'orientation des triangles sont protégés. Ctrl n'inverse pas Relax.",
+    ),
+    (
+        "disp.sculpt.relax_strength_tip",
+        "Rate of relaxation while painting (0 to 1). Preserves the surface at the start of the stroke.",
+        "Vitesse de relaxation pendant le trait (0 à 1). Conserve la surface du début du trait.",
+    ),
+    (
+        "vertex.align_tip",
+        "S then X, Y or Z: align selected vertices at their group center on the active grid (2D views).",
+        "S puis X, Y ou Z : aligner les sommets au centre du groupe sur la grille active (vues 2D).",
+    ),
+    (
         "mesh.err.flat",
         "the solid would be flat (its vertices must not all lie on one plane)",
         "le solide serait plat (ses sommets ne doivent pas tous être dans un même plan)",

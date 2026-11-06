@@ -257,7 +257,8 @@ To bevel from a script, point at the edge and send its key: `move @v0:0.5,0.4` t
 | `alpha_value` | Target alpha of the set effect, 0 to 255. |
 | `alpha_strength` | Alpha add and remove speed per second, 0 to 16384. |
 | `blend_channel` | `alpha` (also `none`) for a two texture blend, or `1` to `4` for a texture of a 4-way blend. |
-| `sculpt` | `push`, `carve` or `project`. |
+| `sculpt` | `push`, `carve`, `project`, `pinch`, `grab`, `inflate`, `flatten`, `relax`. |
+| `relax_strength` | Relax strength, 0 to 1; use with `mode sculpt`, `sculpt relax`. |
 | `push_mode` | `absolute` (units) or `adaptive` (percent of the radius). |
 | `sculpt_bounds` | `attenuated` or `additive`. |
 | `falloff_position` | Push: percent of the radius that gets the whole offset, 0 to 100. |

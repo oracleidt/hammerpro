@@ -1376,6 +1376,9 @@ impl Viewports {
         let bg = if view.is_2d() { cfg.background_2d } else { cfg.background_3d };
         let bg = Color32::from_rgb((bg[0] * 255.0) as u8, (bg[1] * 255.0) as u8, (bg[2] * 255.0) as u8);
         let mut drawn = false;
+        if !view.is_2d() && state.runtime.fade.sample(state).is_some() {
+            ctx.request_repaint();
+        }
         if let Some(gfx) = state.gfx.as_mut() {
             let mut params = view_params(&view, cfg);
             if !view.is_2d() {

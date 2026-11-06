@@ -280,7 +280,8 @@
 | `alpha_value` | Целевая альфа установленного эффекта: от 0 до 255. |
 | `alpha_strength` | Альфа добавляет и удаляет скорость в секунду, от 0 до 16384. |
 | `blend_channel` | `alpha` (также `none`) для двухтекстурной смеси или от `1` до `4` для текстуры 4-сторонней смеси. |
-| `sculpt` | `push`, `carve` или `project`. |
+| `sculpt` | `push`, `carve`, `project`, `pinch`, `grab`, `inflate`, `flatten`, `relax`. |
+| `relax_strength` | Сила Relax от 0 до 1; вместе с `mode sculpt`, `sculpt relax`. |
 | `push_mode` | `absolute` (единицы) или `adaptive` (процент радиуса). |
 | `sculpt_bounds` | `attenuated` или `additive`. |
 | `falloff_position` | Push: процент радиуса, на который попадает все смещение, от 0 до 100. |

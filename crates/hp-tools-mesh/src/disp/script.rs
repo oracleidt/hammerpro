@@ -80,6 +80,7 @@ impl DisplacementTool {
             SculptOp::Grab => "grab",
             SculptOp::Inflate => "inflate",
             SculptOp::Flatten => "flatten",
+            SculptOp::Relax => "relax",
         };
         let push = match s.push_mode {
             PushMode::Absolute => "absolute",
@@ -153,7 +154,7 @@ impl DisplacementTool {
             ),
             ToolOption::new(
                 "continuous",
-                on_off(b.continuous),
+                on_off(b.continuous || (self.interaction == Interaction::Sculpt && s.op == SculptOp::Relax)),
                 "on: holding the button still keeps painting (Hammer++ continuous mouse); off: only while moving",
             ),
             ToolOption::new("alpha_effect", alpha, "alpha painting: add, remove, set or smooth"),
@@ -171,7 +172,7 @@ impl DisplacementTool {
             ToolOption::new(
                 "sculpt",
                 sculpt,
-                "sculpt operation: push, carve, project (onto the selected brushes), pinch (pull toward the stroke                  center), grab (drag the vertices under the brush at the stroke start along the mouse), inflate                  (along each surface normal) or flatten (toward the average plane). Ctrl inverts",
+                "sculpt operation: push, carve, project, pinch, grab, inflate, flatten or relax (redistribute vertices on the original surface while protecting borders and triangle orientation). Ctrl inverts except relax",
             ),
             ToolOption::new("push_mode", push, "push offset: absolute (units) or adaptive (percent of the radius)"),
             ToolOption::new(
@@ -212,6 +213,11 @@ impl DisplacementTool {
                 "flatten_strength",
                 num(s.flatten_strength),
                 "flatten speed, share of the distance to the plane closed per step (0 to 1)",
+            ),
+            ToolOption::new(
+                "relax_strength",
+                num(s.relax_strength),
+                "relax speed (0 to 1), protects the original surface and pinned borders",
             ),
             ToolOption::new(
                 "scale_factor",
@@ -284,6 +290,7 @@ impl DisplacementTool {
                 "grab" => Some(SculptOp::Grab),
                 "inflate" => Some(SculptOp::Inflate),
                 "flatten" => Some(SculptOp::Flatten),
+                "relax" => Some(SculptOp::Relax),
                 _ => None,
             }
             .map(|o| b.sculpt.op = o)
@@ -410,6 +417,7 @@ impl DisplacementTool {
             .map(|f| b.sculpt.flatten_fixed = f)
             .is_some(),
             "flatten_strength" => within(0.0, 1.0).map(|n| b.sculpt.flatten_strength = n).is_some(),
+            "relax_strength" => within(0.0, 1.0).map(|n| b.sculpt.relax_strength = n).is_some(),
             "scale_factor" => within(-16.0, 16.0).map(|n| self.scale_factor = n).is_some(),
             "create" => match value.trim().parse::<u32>() {
                 Ok(p @ 2..=4) => {

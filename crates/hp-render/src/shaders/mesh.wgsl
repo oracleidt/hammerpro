@@ -774,6 +774,27 @@ fn grid_coverage(world: vec3<f32>, n: vec3<f32>) -> vec2<f32> {
     return vec2<f32>(minor * dense, major);
 }
 
+fn controlled_shadow(world: vec3<f32>) -> vec3<f32> {
+    if view.control_params.x < 0.5 { return vec3<f32>(1.0); }
+    let clip = view.control_vp * vec4<f32>(world, 1.0);
+    let position = clip.xyz / clip.w;
+    let uv = vec2<f32>(position.x * 0.5 + 0.5, 0.5 - position.y * 0.5);
+    if any(uv <= vec2<f32>(0.0)) || any(uv >= vec2<f32>(1.0)) || position.z <= 0.0 || position.z >= 1.0 { return vec3<f32>(1.0); }
+    let dimensions = vec2<i32>(textureDimensions(control_map));
+    let pixel = vec2<i32>(uv * vec2<f32>(dimensions));
+    var amount = 0.0;
+    for (var y = -1; y <= 1; y++) {
+        for (var x = -1; x <= 1; x++) {
+            let depth = textureLoad(control_map, clamp(pixel + vec2<i32>(x, y), vec2<i32>(0), dimensions - vec2<i32>(1)), 0, 0);
+            let distance = (position.z - depth) * view.control_params.y;
+            if distance > view.control_params.w && distance < view.control_params.z {
+                amount += 1.0 - smoothstep(view.control_params.z * 0.75, view.control_params.z, distance);
+            }
+        }
+    }
+    return mix(vec3<f32>(1.0), srgb_to_linear(view.control_color.rgb), amount / 9.0);
+}
+
 @fragment
 fn fs_mesh(in: VsOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
     let uv = in.uv * material.inv_tex_size + material.scroll * view.sky.z;
@@ -905,6 +926,7 @@ fn fs_mesh(in: VsOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f
         let major = grid.y * min(view.grid3d.w * 1.6, 1.0) * fade;
         rgb = mix(rgb, vec3<f32>(1.0), max(minor * 0.55, major * 0.8));
     }
+    rgb *= controlled_shadow(in.world);
     if (flags & F_INSTANCE) != 0u {
         rgb = mix(rgb, INSTANCE_RGB * (0.4 + dot(rgb, vec3<f32>(0.3, 0.59, 0.11))), 0.45);
     }

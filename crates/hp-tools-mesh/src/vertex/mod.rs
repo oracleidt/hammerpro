@@ -109,6 +109,7 @@ pub struct VertexTool {
     hover: Option<Hover>,
     last_view: Option<ViewInfo>,
     last_warning: Option<(String, u64)>,
+    align_armed: Option<(f64, u64, u64, usize)>,
 }
 
 impl Default for VertexTool {
@@ -130,6 +131,7 @@ impl Default for VertexTool {
             hover: None,
             last_view: None,
             last_warning: None,
+            align_armed: None,
         }
     }
 }
@@ -213,6 +215,9 @@ impl VertexTool {
     pub(crate) fn handle(&mut self, state: &mut AppState, view: &ViewInfo, g: Gesture, mods: Modifiers) -> ToolFlow {
         self.cache.get_mut().refresh(&state.doc);
         self.drop_stale(state);
+        if matches!(g, Gesture::Click(_) | Gesture::DragStart { .. }) {
+            self.align_armed = None;
+        }
         if !matches!(g, Gesture::Away) {
             self.last_view = Some(*view);
         }
@@ -655,6 +660,94 @@ impl VertexTool {
         self.apply(state, &edits, reselect, UNDO_SNAP, None)
     }
 
+    pub(crate) fn align_selection(&mut self, state: &mut AppState, axis: usize) -> bool {
+        if axis > 2 || self.is_busy() {
+            return false;
+        }
+        let Some(view) = self.nudge_view(state).filter(ViewInfo::is_2d) else { return false };
+        let grid = state.edit_grid_frame(view.kind);
+        let cache = self.cache.get_mut();
+        cache.refresh(&state.doc);
+        let selected = cache.selected_positions();
+        if selected.len() < 2 {
+            return false;
+        }
+        let (min, max) =
+            selected.iter().fold((DVec3::splat(f64::INFINITY), DVec3::splat(f64::NEG_INFINITY)), |(a, b), (_, p)| {
+                (a.min(*p), b.max(*p))
+            });
+        let center = (min + max) * 0.5;
+        let coordinate = grid.axis_at(axis, center).snap(center[axis]);
+        let (edits, _) = cache.transformed_selection(|mut p| {
+            p[axis] = coordinate;
+            p
+        });
+        let reselect = selected
+            .into_iter()
+            .map(|(id, mut p)| {
+                p[axis] = coordinate;
+                (id, p)
+            })
+            .collect();
+        !edits.is_empty() && self.apply(state, &edits, reselect, "Align vertices", None)
+    }
+
+    fn align_keys(&mut self, state: &mut AppState, ctx: &egui::Context) -> bool {
+        let Some(view) = self.nudge_view(state).filter(ViewInfo::is_2d) else {
+            self.align_armed = None;
+            return false;
+        };
+        if self.is_busy() || ctx.egui_wants_keyboard_input() || self.cache.get_mut().selected_count() < 2 {
+            self.align_armed = None;
+            return false;
+        }
+        let now = state.frame.time;
+        let identity = (state.sidecar.serial(), state.doc.revision(), view.index);
+        if self.align_armed.is_some_and(|(time, serial, revision, view)| {
+            (now - time > 1.0 && !ctx.input(|i| i.key_down(Key::S))) || (serial, revision, view) != identity
+        }) {
+            self.align_armed = None;
+        }
+        let mut armed_at = self.align_armed.map(|s| s.0);
+        let mut armed = armed_at.is_some();
+        let mut axis = None;
+        let mut handled = false;
+        ctx.input_mut(|input| {
+            input.events.retain(|event| {
+                let egui::Event::Key { key, pressed: true, repeat, modifiers, .. } = event else { return true };
+                if *modifiers != Modifiers::NONE {
+                    armed = false;
+                    return true;
+                }
+                if *key == Key::S && !repeat {
+                    armed = true;
+                    armed_at = Some(now);
+                    handled = true;
+                    return false;
+                }
+                if armed && !repeat {
+                    axis = match key {
+                        Key::X => Some(0),
+                        Key::Y => Some(1),
+                        Key::Z => Some(2),
+                        _ => None,
+                    };
+                    armed = false;
+                    if axis.is_some() {
+                        handled = true;
+                        return false;
+                    }
+                }
+                true
+            })
+        });
+        self.align_armed = armed.then_some((armed_at.unwrap_or(now), identity.0, identity.1, identity.2));
+        if let Some(axis) = axis {
+            self.align_selection(state, axis);
+        }
+        handled
+    }
+
     fn can_split(&self) -> bool {
         self.cache.borrow().solids.iter().any(|s| s.split_points().len() == 2)
     }
@@ -1012,6 +1105,7 @@ impl Tool for VertexTool {
         self.xform = None;
         self.loop_hover = None;
         self.hover = None;
+        self.align_armed = None;
     }
 
     fn reactivate(&mut self, state: &mut AppState) {
@@ -1179,7 +1273,7 @@ impl Tool for VertexTool {
     fn key_input(&mut self, state: &mut AppState, ctx: &egui::Context) -> bool {
         self.cache.get_mut().refresh(&state.doc);
         self.drop_stale(state);
-        let mut handled = false;
+        let mut handled = self.align_keys(state, ctx);
         if self.xform.is_some() {
             if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Enter)) {
                 self.apply_xform(state);
@@ -1424,8 +1518,11 @@ impl Tool for VertexTool {
             ui.separator();
             let cache = self.cache.get_mut();
             let selected = cache.selected_count();
-            ui.label(tf!("vertex.stats", selected, cache.vertex_count()))
-                .on_hover_text(tf!("vertex.stats_tip", cache.solids.len()));
+            ui.label(tf!("vertex.stats", selected, cache.vertex_count())).on_hover_text(format!(
+                "{}\n{}",
+                tf!("vertex.stats_tip", cache.solids.len()),
+                t!("vertex.align_tip")
+            ));
             if cache.truncated {
                 warning_badge(ui, &tf!("vertex.truncated", model::MAX_EDIT_SOLIDS));
             }
@@ -1571,6 +1668,9 @@ impl Tool for VertexTool {
     }
 
     fn status_hint(&self, state: &AppState) -> Option<String> {
+        if self.align_armed.is_some() {
+            return Some(t!("vertex.align_tip").to_owned());
+        }
         if let Some(s) = self.scale.as_ref() {
             return Some(match s.first_error() {
                 Some(e) => tf!("vertex.hint_scale_invalid", vertex_error_text(e)),

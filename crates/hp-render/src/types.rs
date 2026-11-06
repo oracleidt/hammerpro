@@ -925,7 +925,17 @@ impl FogVolume {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ShadowControl {
+    pub direction: [f32; 3],
+    pub color: [f32; 3],
+    pub distance: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ViewOptions {
+    pub shadow_control: Option<ShadowControl>,
+    pub screen_fade: [f32; 4],
+    pub fade_modulate: bool,
     pub grid_3d: Option<Grid3d>,
     pub models_2d: Models2d,
     pub model_distance: f32,
@@ -969,6 +979,9 @@ pub struct ViewOptions {
 impl Default for ViewOptions {
     fn default() -> Self {
         Self {
+            shadow_control: None,
+            screen_fade: [0.0; 4],
+            fade_modulate: false,
             grid_3d: None,
             models_2d: Models2d::default(),
             model_distance: 0.0,

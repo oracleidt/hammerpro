@@ -12,11 +12,11 @@ use hp_ui_viewports::layers::OverlayLayer;
 use crate::particles::{MaterialLook, ParticleHandle, ParticleSprite, material_key, read_material_look};
 
 pub const MAX_ENTITIES: usize = 24;
-pub const MAX_PARTICLES: usize = 2400;
-pub const MAX_PER_ENTITY: usize = 300;
+pub const MAX_PARTICLES: usize = 8192;
+pub const MAX_PER_ENTITY: usize = 2048;
 pub const MAX_DISTANCE: f64 = 3072.0;
 const MIN_COUNT: usize = 4;
-const SMOKE_CELLS: usize = 160;
+const SMOKE_CELLS: usize = 2048;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum FxKind {
@@ -24,6 +24,7 @@ pub enum FxKind {
     Embers,
     Cloud,
     Motes,
+    Steam,
 }
 
 impl FxKind {
@@ -33,6 +34,7 @@ impl FxKind {
             "env_embers" => Some(FxKind::Embers),
             "func_dustcloud" => Some(FxKind::Cloud),
             "func_dustmotes" => Some(FxKind::Motes),
+            "env_steam" | "env_steamjet" => Some(FxKind::Steam),
             _ => None,
         }
     }
@@ -43,14 +45,16 @@ impl FxKind {
             FxKind::Embers => "env_embers",
             FxKind::Cloud => "func_dustcloud",
             FxKind::Motes => "func_dustmotes",
+            FxKind::Steam => "env_steam",
         }
     }
 
     pub fn materials(self) -> &'static [&'static str] {
         match self {
-            FxKind::Smoke | FxKind::Cloud => &["particle/particle_smokegrenade", "particle/smokesprites_0001"],
-            FxKind::Embers => &["effects/ember_swirling001", "particle/fire"],
-            FxKind::Motes => &["particle/sparkles", "effects/fleck_cement1"],
+            FxKind::Smoke => &["particle/particle_smokegrenade", "particle/smokesprites_0001"],
+            FxKind::Embers => &["particle/fire"],
+            FxKind::Cloud | FxKind::Motes => &["particle/sparkles"],
+            FxKind::Steam => &["particle/particle_smokegrenade"],
         }
     }
 }
@@ -77,6 +81,8 @@ pub struct Fx {
     pub enabled: bool,
     pub frozen: bool,
     pub wind: bool,
+    pub direction: DVec3,
+    pub spread: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -106,10 +112,10 @@ fn color(e: &hp_vmf::Entity, key: &str) -> [f32; 3] {
 }
 
 fn grid_for(ext: DVec3, spacing: f64) -> [usize; 3] {
-    let mut step = spacing.max(8.0);
+    let mut step = spacing.max(1.0);
     loop {
         let g = [ext.x, ext.y, ext.z].map(|e| ((e / step).round() as usize).max(1));
-        if g[0] * g[1] * g[2] <= SMOKE_CELLS {
+        if g.iter().try_fold(1usize, |a, b| a.checked_mul(*b)).is_some_and(|n| n <= SMOKE_CELLS) {
             return g;
         }
         step *= 1.15;
@@ -118,6 +124,12 @@ fn grid_for(ext: DVec3, spacing: f64) -> [usize; 3] {
 
 pub fn build(id: Id, e: &hp_vmf::Entity, bounds: Option<(DVec3, DVec3)>) -> Option<Fx> {
     let kind = FxKind::of(&e.classname)?;
+    let bounds = if kind == FxKind::Steam {
+        let origin = e.origin().filter(|p| p.is_finite()).unwrap_or(DVec3::ZERO);
+        Some((origin, origin + DVec3::splat(1.0)))
+    } else {
+        bounds
+    };
     let (min, max) = bounds.filter(|(a, b)| a.is_finite() && b.is_finite() && a.cmplt(*b).all())?;
     let ext = (max - min).max(DVec3::splat(1.0));
     let mut fx = Fx {
@@ -141,13 +153,15 @@ pub fn build(id: Id, e: &hp_vmf::Entity, bounds: Option<(DVec3, DVec3)>) -> Opti
         enabled: true,
         frozen: false,
         wind: false,
+        direction: direction(e),
+        spread: 0.0,
     };
     match kind {
         FxKind::Smoke => {
             fx.color_a = color(e, "Color1");
             fx.color_b = color(e, "Color2");
-            let width = num(e, "ParticleDrawWidth", 120.0).clamp(8.0, 1024.0);
-            let spacing = f64::from(num(e, "ParticleSpacingDistance", 80.0).clamp(16.0, 1024.0));
+            let width = num(e, "ParticleDrawWidth", 120.0).clamp(0.01, 4096.0);
+            let spacing = f64::from(num(e, "ParticleSpacingDistance", 80.0).clamp(1.0, 4096.0));
             let density = num(e, "Density", 1.0).clamp(0.0, 4.0);
             fx.grid = grid_for(ext, spacing);
             fx.count = fx.grid[0] * fx.grid[1] * fx.grid[2];
@@ -155,49 +169,76 @@ pub fn build(id: Id, e: &hp_vmf::Entity, bounds: Option<(DVec3, DVec3)>) -> Opti
             fx.life = [30.0, 30.0];
             fx.speed = num(e, "MovementSpeed", 10.0).clamp(0.0, 512.0);
             fx.spin = num(e, "RotationSpeed", 10.0).clamp(-720.0, 720.0);
-            fx.alpha = (1.25 * density.min(1.5)).clamp(0.0, 1.0);
+            fx.alpha = density.clamp(0.0, 1.0);
             fx.material = e.get("Material").map(|m| m.trim().to_owned()).unwrap_or_default();
         }
         FxKind::Embers => {
             fx.color_a = color(e, "rendercolor");
             fx.color_b = fx.color_a;
             let life = num(e, "lifetime", 4.0).clamp(0.2, 60.0);
-            fx.life = [life * 0.75, life];
+            fx.life = [life, life];
             let rate = num(e, "density", 50.0).clamp(0.0, 4096.0);
-            fx.count = ((rate * life * 0.875) as usize).clamp(MIN_COUNT, MAX_PER_ENTITY);
+            fx.count = ((rate * life) as usize).min(MAX_PER_ENTITY);
             fx.speed = num(e, "speed", 32.0).clamp(0.0, 1024.0);
             fx.enabled = flag(e, "spawnflags", 1) || e.get("targetname").is_none_or(|name| name.trim().is_empty());
-            fx.size = [4.0, 9.0];
-            fx.alpha = (num(e, "renderamt", 255.0).clamp(0.0, 255.0) / 255.0).max(0.05);
+            fx.size = [1.0, 1.0];
+            fx.wind = num(e, "AffectedByWind", 0.0) >= 0.5;
+            fx.alpha = num(e, "renderamt", 255.0).clamp(0.0, 255.0) / 255.0;
         }
         FxKind::Cloud | FxKind::Motes => {
             fx.color_a = color(e, "Color");
             fx.color_b = fx.color_a;
             let (size_default, alpha_default) =
                 if kind == FxKind::Cloud { ([100.0, 200.0], 30.0) } else { ([10.0, 20.0], 255.0) };
-            let size_min = num(e, "SizeMin", size_default[0]).clamp(0.5, 512.0);
-            let size_max = num(e, "SizeMax", size_default[1]).clamp(size_min, 512.0);
+            let size_min = num(e, "SizeMin", size_default[0]).clamp(0.0, 4096.0);
+            let size_max = num(e, "SizeMax", size_default[1]).clamp(size_min, 4096.0);
             let life_min = num(e, "LifetimeMin", 3.0).clamp(0.2, 120.0);
             let life_max = num(e, "LifetimeMax", 5.0).clamp(life_min, 120.0);
             let rate = num(e, "SpawnRate", 40.0).clamp(0.0, 1000.0);
-            fx.count = ((rate * (life_min + life_max) * 0.5) as usize).clamp(MIN_COUNT, MAX_PER_ENTITY);
+            fx.count = ((rate * (life_min + life_max) * 0.5) as usize).min(MAX_PER_ENTITY);
             fx.size = [size_min, size_max];
             fx.life = [life_min, life_max];
             fx.speed = num(e, "SpeedMax", 13.0).clamp(0.0, 512.0);
             fx.fall = num(e, "FallSpeed", 0.0).clamp(-512.0, 512.0);
-            fx.alpha = (num(e, "Alpha", alpha_default).clamp(0.0, 255.0) / 255.0).clamp(0.02, 1.0);
-            let dist = f64::from(num(e, "DistMax", 1024.0)).clamp(128.0, MAX_DISTANCE);
+            fx.alpha = num(e, "Alpha", alpha_default).clamp(0.0, 255.0) / 255.0;
+            let dist = f64::from(num(e, "DistMax", 1024.0)).clamp(1.0, MAX_DISTANCE);
             fx.dist_max = dist;
             fx.reach = dist;
             fx.enabled = num(e, "StartDisabled", 0.0) < 0.5;
             fx.frozen = num(e, "Frozen", 0.0) >= 0.5;
             fx.wind = num(e, "AffectedByWind", 1.0) >= 0.5;
             if fx.frozen {
-                fx.count = (rate as usize).clamp(MIN_COUNT, MAX_PER_ENTITY);
+                fx.count = (rate as usize).min(MAX_PER_ENTITY);
+            }
+        }
+        FxKind::Steam => {
+            fx.color_a = color(e, "rendercolor");
+            fx.color_b = fx.color_a;
+            fx.speed = num(e, "Speed", 120.0).clamp(0.0, 10000.0);
+            fx.spread = num(e, "SpreadSpeed", 15.0).clamp(0.0, 10000.0);
+            let life = num(e, "JetLength", 80.0).clamp(0.0, 100000.0) / fx.speed.max(0.001);
+            fx.life = [life.clamp(0.001, 120.0); 2];
+            fx.count = (num(e, "Rate", 26.0).clamp(0.0, 4096.0) * fx.life[0]).ceil() as usize;
+            fx.count = fx.count.min(MAX_PER_ENTITY);
+            fx.size = [num(e, "StartSize", 10.0).clamp(0.0, 255.0), num(e, "EndSize", 25.0).clamp(0.0, 255.0)];
+            fx.spin = num(e, "RollSpeed", 8.0).clamp(0.0, 720.0);
+            fx.alpha = num(e, "renderamt", 255.0).clamp(0.0, 255.0) / 255.0;
+            fx.enabled = flag(e, "spawnflags", 1) && fx.speed > 0.0;
+            if e.classname.eq_ignore_ascii_case("env_steamjet") {
+                let yaw = e.angles().unwrap_or(DVec3::ZERO).y.to_radians();
+                fx.direction = DVec3::new(-yaw.sin(), yaw.cos(), 0.0);
+            }
+            if num(e, "type", 0.0) >= 0.5 {
+                fx.enabled = false;
             }
         }
     }
     Some(fx)
+}
+
+fn direction(e: &hp_vmf::Entity) -> DVec3 {
+    let a = e.angles().filter(|a| a.is_finite()).unwrap_or(DVec3::ZERO) * (std::f64::consts::PI / 180.0);
+    DVec3::new(a.x.cos() * a.y.cos(), a.x.cos() * a.y.sin(), -a.x.sin())
 }
 
 fn mix(mut x: u64) -> u64 {
@@ -216,15 +257,6 @@ fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + (b - a) * t
 }
 
-fn smooth(t: f32) -> f32 {
-    let t = t.clamp(0.0, 1.0);
-    t * t * (3.0 - 2.0 * t)
-}
-
-fn inside(p: DVec3, min: DVec3, max: DVec3) -> bool {
-    p.x >= min.x && p.x <= max.x && p.y >= min.y && p.y <= max.y && p.z >= min.z && p.z <= max.z
-}
-
 pub fn particles(fx: &Fx, time: f64, scale: f32, eye: DVec3, out: &mut Vec<Pt>) {
     let n = ((fx.count as f32 * scale.clamp(0.0, 1.0)).ceil() as usize).min(fx.count);
     let seed_base = u64::from(fx.id).wrapping_mul(0x2545_F491_4F6C_DD1D);
@@ -238,14 +270,23 @@ pub fn particles(fx: &Fx, time: f64, scale: f32, eye: DVec3, out: &mut Vec<Pt>) 
             lerp(fx.color_a[2], fx.color_b[2], tint),
         ];
         match fx.kind {
-            FxKind::Smoke => smoke_puff(fx, i as usize, seed, time, rgb, out),
+            FxKind::Smoke => smoke_puff(
+                fx,
+                (i as usize * fx.count / n.max(1)).min(fx.count.saturating_sub(1)),
+                seed,
+                time,
+                eye,
+                rgb,
+                out,
+            ),
             FxKind::Embers => ember(fx, seed, time, ext, rgb, out),
+            FxKind::Steam => steam(fx, seed, time, rgb, out),
             FxKind::Cloud | FxKind::Motes => dust(fx, seed, time, ext, eye, rgb, out),
         }
     }
 }
 
-fn smoke_puff(fx: &Fx, i: usize, seed: u64, time: f64, rgb: [f32; 3], out: &mut Vec<Pt>) {
+fn smoke_puff(fx: &Fx, i: usize, seed: u64, time: f64, eye: DVec3, rgb: [f32; 3], out: &mut Vec<Pt>) {
     let [nx, ny, nz] = fx.grid;
     let (ix, iy, iz) = (i % nx, (i / nx) % ny, i / (nx * ny));
     if iz >= nz {
@@ -262,12 +303,12 @@ fn smoke_puff(fx: &Fx, i: usize, seed: u64, time: f64, rgb: [f32; 3], out: &mut 
         (time * w + p).sin() * reach.min(limit * 0.5)
     };
     let pos = DVec3::new(center.x + sway(0, cell.x), center.y + sway(1, cell.y), center.z + sway(2, cell.z));
-    let spin = fx.spin.to_radians() * time as f32 * lerp(0.6, 1.0, rnd(seed, 41));
-    let breathe = 1.0 + 0.06 * ((time as f32) * 0.7 + rnd(seed, 42) * std::f32::consts::TAU).sin();
+    let spin = fx.spin.to_radians() * time as f32 * lerp(-1.0, 1.0, rnd(seed, 41));
+    let near = ((pos.distance(eye) - 10.0) / 20.0).clamp(0.0, 1.0) as f32;
     out.push(Pt {
         pos: [pos.x as f32, pos.y as f32, pos.z as f32],
-        radius: fx.size[0] * lerp(0.9, 1.1, rnd(seed, 43)) * breathe,
-        color: [rgb[0], rgb[1], rgb[2], fx.alpha * lerp(0.75, 1.0, rnd(seed, 44))],
+        radius: fx.size[0],
+        color: [rgb[0], rgb[1], rgb[2], fx.alpha * near],
         roll: rnd(seed, 40) * std::f32::consts::TAU + spin,
     });
 }
@@ -278,26 +319,44 @@ fn ember(fx: &Fx, seed: u64, time: f64, ext: DVec3, rgb: [f32; 3], out: &mut Vec
     let age = phase * life;
     let start = fx.min
         + DVec3::new(ext.x * f64::from(rnd(seed, 2)), ext.y * f64::from(rnd(seed, 3)), ext.z * f64::from(rnd(seed, 4)));
-    let theta = rnd(seed, 5) * std::f32::consts::TAU;
-    let speed = fx.speed * lerp(0.5, 1.0, rnd(seed, 7));
-    let (w1, w2) = (lerp(1.4, 3.2, rnd(seed, 11)), lerp(1.4, 3.2, rnd(seed, 12)));
-    let amp = fx.speed * 0.18;
-    let drift = DVec3::new(
-        f64::from(theta.cos() * speed * 0.55 + (age * w1 + rnd(seed, 13) * std::f32::consts::TAU).sin() * amp),
-        f64::from(theta.sin() * speed * 0.55 + (age * w2 + rnd(seed, 14) * std::f32::consts::TAU).sin() * amp),
-        f64::from(speed * lerp(0.15, 0.55, rnd(seed, 6))),
-    );
-    let pos = start + drift * f64::from(age) * 0.6;
-    let step = (time * 14.0 + f64::from(rnd(seed, 15)) * 50.0).floor() as u64;
-    let flicker = lerp(0.45, 1.0, rnd(seed, 100 + step % 997));
-    let fade_in = smooth(phase / 0.08);
+    let jitter = DVec3::new(
+        f64::from(rnd(seed, 5) * 2.0 - 1.0),
+        f64::from(rnd(seed, 6) * 2.0 - 1.0),
+        f64::from(rnd(seed, 7) * 2.0 - 1.0),
+    ) * f64::from(fx.speed / 8.0);
+    let velocity = fx.direction * f64::from(fx.speed) + jitter;
+    let mut pos = start + velocity * f64::from(age);
+    if fx.wind
+        && let Some(wind) = wind::velocity_at(pos)
+    {
+        pos += wind * f64::from(age) * 0.5;
+    }
+    let flicker = lerp(0.75, 1.0, rnd(seed, 9));
+    let fade_in = 1.0;
     let fade_out = 1.0 - phase;
-    let radius = lerp(fx.size[0], fx.size[1], rnd(seed, 10)) * lerp(1.0, 0.55, phase);
+    let radius = (1.0 - phase).max(0.001);
     out.push(Pt {
         pos: [pos.x as f32, pos.y as f32, pos.z as f32],
         radius,
         color: [rgb[0], rgb[1], rgb[2], (fx.alpha * fade_in * fade_out * flicker).clamp(0.0, 1.0)],
         roll: rnd(seed, 16) * std::f32::consts::TAU,
+    });
+}
+
+fn steam(fx: &Fx, seed: u64, time: f64, rgb: [f32; 3], out: &mut Vec<Pt>) {
+    let life = fx.life[0];
+    let phase = (time / f64::from(life) + f64::from(rnd(seed, 1))).rem_euclid(1.0) as f32;
+    let age = phase * life;
+    let right = fx.direction.cross(DVec3::Z).try_normalize().unwrap_or(DVec3::X);
+    let up = right.cross(fx.direction).normalize_or_zero();
+    let velocity = fx.direction * f64::from(fx.speed)
+        + (right * f64::from(rnd(seed, 2) * 2.0 - 1.0) + up * f64::from(rnd(seed, 3) * 2.0 - 1.0))
+            * f64::from(fx.spread);
+    out.push(Pt {
+        pos: (fx.min + velocity * f64::from(age)).as_vec3().to_array(),
+        radius: lerp(fx.size[0], fx.size[1], age).max(0.0),
+        color: [rgb[0], rgb[1], rgb[2], fx.alpha * (phase * std::f32::consts::PI).sin()],
+        roll: rnd(seed, 4) * std::f32::consts::TAU + age * fx.spin.to_radians() * (rnd(seed, 5) * 2.0 - 1.0),
     });
 }
 
@@ -317,17 +376,19 @@ fn dust(fx: &Fx, seed: u64, time: f64, ext: DVec3, eye: DVec3, rgb: [f32; 3], ou
         (f64::from(rnd(seed, 7)) * 2.0 - 1.0) * s - f64::from(fx.fall),
     );
     let pos = start + vel * age;
-    if !inside(pos, fx.min, fx.max) {
-        return;
-    }
-    let fade = smooth(phase / 0.2).min(smooth((1.0 - phase) / 0.3));
+    let fade = if fx.frozen { 1.0 } else { (phase * std::f32::consts::PI).sin().powi(2) };
     let near = (1.0 - (pos - eye).length() / fx.dist_max.max(1.0)).clamp(0.0, 1.0) as f32;
     out.push(Pt {
         pos: [pos.x as f32, pos.y as f32, pos.z as f32],
-        radius: lerp(fx.size[0], fx.size[1], rnd(seed, 10)),
+        radius: dust_radius(fx, rnd(seed, 10), pos.distance(eye)),
         color: [rgb[0], rgb[1], rgb[2], (fx.alpha * fade * near).clamp(0.0, 1.0)],
         roll: rnd(seed, 16) * std::f32::consts::TAU,
     });
+}
+
+fn dust_radius(fx: &Fx, random: f32, depth: f64) -> f32 {
+    let size = lerp(fx.size[0], fx.size[1], random);
+    if fx.kind == FxKind::Motes { size * depth as f32 / 10000.0 } else { size }
 }
 
 fn distance_to_box(p: DVec3, min: DVec3, max: DVec3) -> f64 {
@@ -388,18 +449,18 @@ impl Dust {
                 }
             }
             particle.pos += particle.velocity * step;
-            if particle.age >= particle.life || !inside(particle.pos, fx.min, fx.max) {
+            if particle.age >= particle.life {
                 *particle = DustParticle::new(fx, mix(particle.seed.wrapping_add(1)), false);
             }
             if index >= n {
                 continue;
             }
             let phase = particle.age / particle.life;
-            let fade = smooth(phase / 0.2).min(smooth((1.0 - phase) / 0.3));
+            let fade = if fx.frozen { 1.0 } else { (phase * std::f32::consts::PI).sin().powi(2) };
             let near = (1.0 - particle.pos.distance(eye) / fx.dist_max.max(1.0)).clamp(0.0, 1.0) as f32;
             out.push(Pt {
                 pos: particle.pos.as_vec3().to_array(),
-                radius: lerp(fx.size[0], fx.size[1], rnd(particle.seed, 10)),
+                radius: dust_radius(fx, rnd(particle.seed, 10), particle.pos.distance(eye)),
                 color: [fx.color_a[0], fx.color_a[1], fx.color_a[2], fx.alpha * fade * near],
                 roll: rnd(particle.seed, 16) * std::f32::consts::TAU,
             });
@@ -580,7 +641,7 @@ impl OverlayLayer for EntityFxLayer {
             .sources
             .iter()
             .enumerate()
-            .filter(|(_, s)| s.enabled && state.doc.is_entity_visible(s.id))
+            .filter(|(_, s)| s.enabled && s.count > 0 && s.alpha > 0.0 && state.doc.is_entity_visible(s.id))
             .filter_map(|(i, s)| {
                 let d = distance_to_box(cam, s.min, s.max);
                 (d <= s.reach).then_some((d, i))
@@ -598,6 +659,9 @@ impl OverlayLayer for EntityFxLayer {
             let reach = s.reach.max(1.0);
             let scale = (1.0 - 0.6 * (d / reach)).clamp(0.4, 1.0) as f32;
             let n = ((s.count as f32 * scale).ceil() as usize).min(s.count).min(budget);
+            if n == 0 {
+                continue;
+            }
             budget -= n;
             self.visible.push((i, n as f32 / s.count.max(1) as f32));
         }
@@ -660,12 +724,107 @@ mod tests {
     }
 
     #[test]
-    fn only_the_four_classes_are_previewed() {
-        for c in ["func_smokevolume", "env_embers", "func_dustcloud", "func_dustmotes", "FUNC_DUSTMOTES"] {
+    fn supported_volume_and_jet_classes_are_previewed() {
+        for c in [
+            "func_smokevolume",
+            "env_embers",
+            "func_dustcloud",
+            "func_dustmotes",
+            "FUNC_DUSTMOTES",
+            "env_steam",
+            "env_steamjet",
+        ] {
             assert!(FxKind::of(c).is_some(), "{c}");
         }
         assert!(FxKind::of("info_particle_system").is_none());
         assert!(build(1, &entity("prop_static", &[]), bounds()).is_none());
+    }
+
+    #[test]
+    fn ember_wind_is_opt_in_and_follows_the_controller_direction() {
+        let mut state = hp_app::testing::test_state();
+        let mut map = hp_vmf::Map::new_empty();
+        let mut controller = entity(
+            "env_wind",
+            &[
+                ("angles", "0 90 0"),
+                ("minwind", "400"),
+                ("maxwind", "400"),
+                ("mingustdelay", "1000"),
+                ("maxgustdelay", "1000"),
+            ],
+        );
+        controller.id = 90;
+        map.entities.push(controller);
+        state.doc = hp_editor::Document::from_map(map);
+        state.frame.time = 1.0;
+        wind::update(&state);
+        let off = build(71, &entity("env_embers", &[("AffectedByWind", "0"), ("speed", "0")]), bounds()).unwrap();
+        let on = build(71, &entity("env_embers", &[("AffectedByWind", "1"), ("speed", "0")]), bounds()).unwrap();
+        let (mut a, mut b) = (Vec::new(), Vec::new());
+        particles(&off, 1.0, 1.0, eye(), &mut a);
+        particles(&on, 1.0, 1.0, eye(), &mut b);
+        assert_eq!(a.len(), b.len());
+        assert!(a.iter().zip(&b).all(|(a, b)| b.pos[1] >= a.pos[1]));
+        assert!(a.iter().zip(&b).any(|(a, b)| b.pos[1] - a.pos[1] > 100.0));
+        state.doc = hp_editor::Document::from_map(hp_vmf::Map::new_empty());
+        wind::update(&state);
+    }
+
+    #[test]
+    fn rates_sizes_and_jet_direction_match_the_entity_parameters() {
+        for class in ["env_embers", "func_dustcloud", "func_dustmotes"] {
+            let fx = build(
+                1,
+                &entity(class, &[("density", "0"), ("SpawnRate", "0"), ("SizeMin", "0.02"), ("SizeMax", "0.02")]),
+                bounds(),
+            )
+            .unwrap();
+            assert_eq!(fx.count, 0);
+        }
+        let cloud = build(1, &entity("func_dustcloud", &[("SizeMin", "10"), ("SizeMax", "10")]), bounds()).unwrap();
+        let motes = build(1, &entity("func_dustmotes", &[("SizeMin", "10"), ("SizeMax", "10")]), bounds()).unwrap();
+        assert_eq!(dust_radius(&cloud, 0.5, 1000.0), 10.0);
+        assert_eq!(dust_radius(&motes, 0.5, 1000.0), 1.0);
+        let steam = build(
+            1,
+            &entity(
+                "env_steam",
+                &[
+                    ("origin", "0 0 0"),
+                    ("angles", "-90 0 0"),
+                    ("Speed", "100"),
+                    ("JetLength", "200"),
+                    ("SpreadSpeed", "0"),
+                    ("Rate", "10"),
+                    ("spawnflags", "1"),
+                ],
+            ),
+            None,
+        )
+        .unwrap();
+        assert_eq!(steam.count, 20);
+        assert!(steam.enabled);
+        assert_eq!(steam.life, [2.0, 2.0]);
+        let mut points = Vec::new();
+        particles(&steam, 1.0, 1.0, eye(), &mut points);
+        assert!(
+            points
+                .iter()
+                .all(|p| p.pos[0].abs() < 0.001 && p.pos[1].abs() < 0.001 && p.pos[2] >= 0.0 && p.pos[2] <= 200.0)
+        );
+        let smoke = build(
+            1,
+            &entity(
+                "func_smokevolume",
+                &[("ParticleDrawWidth", "5"), ("ParticleSpacingDistance", "2"), ("Density", "0.2")],
+            ),
+            Some((DVec3::ZERO, DVec3::splat(8.0))),
+        )
+        .unwrap();
+        assert_eq!(smoke.grid, [4; 3]);
+        assert_eq!(smoke.size, [2.5; 2]);
+        assert_eq!(smoke.alpha, 0.2);
     }
 
     #[test]
@@ -703,7 +862,7 @@ mod tests {
             bounds(),
         )
         .unwrap();
-        assert_eq!(embers.count, 52);
+        assert_eq!(embers.count, 60);
         assert_eq!(embers.life[1], 2.0);
         assert_eq!(embers.speed, 64.0);
         let huge = build(3, &entity("env_embers", &[("density", "100000"), ("lifetime", "60")]), bounds()).unwrap();
@@ -762,7 +921,7 @@ mod tests {
     }
 
     #[test]
-    fn dust_and_smoke_stay_in_the_volume_and_everything_moves() {
+    fn bounded_preview_particles_remain_finite_and_animate() {
         for class in ["func_smokevolume", "env_embers", "func_dustcloud", "func_dustmotes"] {
             let fx = build(11, &entity(class, &[("FallSpeed", "30"), ("MovementSpeed", "40")]), bounds()).unwrap();
             let mut a = Vec::new();
@@ -773,10 +932,6 @@ mod tests {
             for p in a.iter().chain(&b) {
                 assert!(p.radius > 0.0 && (0.0..=1.0).contains(&p.color[3]), "{class}");
                 assert!(p.pos.iter().all(|v| v.is_finite()), "{class}");
-                if matches!(fx.kind, FxKind::Cloud | FxKind::Motes) {
-                    assert!(p.pos[0] >= -0.01 && p.pos[0] <= 256.01, "{class}");
-                    assert!(p.pos[2] >= -0.01 && p.pos[2] <= 128.01, "{class}");
-                }
             }
             let moved = a.len() != b.len() || a.iter().zip(&b).any(|(p, q)| p.pos != q.pos);
             assert!(moved, "{class} animates");
@@ -832,10 +987,10 @@ mod tests {
 
     #[test]
     fn material_choice_falls_back_to_the_known_sprites() {
-        assert_eq!(pick_material(None, FxKind::Embers, ""), "effects/ember_swirling001");
+        assert_eq!(pick_material(None, FxKind::Embers, ""), "particle/fire");
         assert_eq!(pick_material(None, FxKind::Motes, ""), "particle/sparkles");
         assert_eq!(pick_material(None, FxKind::Smoke, "particle/custom"), "particle/custom");
-        assert_eq!(pick_material(None, FxKind::Cloud, ""), "particle/particle_smokegrenade");
+        assert_eq!(pick_material(None, FxKind::Cloud, ""), "particle/sparkles");
         assert_eq!(
             pick_material(Some(&hp_fs::GameFs::empty()), FxKind::Smoke, "csgo/particle/missing"),
             "csgo/particle/missing"
@@ -871,7 +1026,7 @@ mod tests {
             assert!(shared.fx_active);
             assert!(!shared.fx_sprites.is_empty());
             assert!(shared.fx_sprites.len() <= MAX_PARTICLES + MAX_ENTITIES);
-            assert_eq!(shared.fx_materials, vec!["effects/ember_swirling001".to_owned()]);
+            assert_eq!(shared.fx_materials, vec!["particle/fire".to_owned()]);
             assert!(shared.fx_sprites.iter().all(|s| s.material == 0));
         }
         let brushes: Vec<_> = (0..60).map(|i| hp_editor::ObjRef::Solid(1000 + i)).collect();

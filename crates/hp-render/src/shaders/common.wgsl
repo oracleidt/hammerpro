@@ -31,6 +31,9 @@ struct View {
     indirect_a: vec4<f32>,
     indirect_b: vec4<f32>,
     sky_march: array<vec4<f32>, 18>,
+    control_vp: mat4x4<f32>,
+    control_params: vec4<f32>,
+    control_color: vec4<f32>,
 };
 
 struct ObjState {
@@ -93,6 +96,7 @@ fn light_falloff(l: Light, dist: f32, model: bool) -> f32 {
 @group(0) @binding(4) var<storage, read> lights: array<Light>;
 @group(0) @binding(5) var<storage, read> clusters: array<vec2<u32>>;
 @group(0) @binding(6) var<storage, read> light_indices: array<u32>;
+@group(0) @binding(22) var control_map: texture_depth_2d_array;
 @group(0) @binding(7) var shadow_map: texture_depth_2d_array;
 @group(0) @binding(8) var shadow_samp: sampler_comparison;
 @group(0) @binding(9) var<storage, read> model_lights: array<vec4<f32>>;

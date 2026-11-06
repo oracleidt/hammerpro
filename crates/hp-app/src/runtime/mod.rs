@@ -4,6 +4,7 @@ mod compile;
 mod content;
 mod discord;
 mod entities;
+pub mod fade;
 pub mod fog;
 mod gpu;
 mod health;
@@ -23,6 +24,7 @@ pub mod render;
 mod roadside;
 mod selection;
 mod shader;
+pub mod shadow;
 mod startup;
 pub mod update;
 mod visibility;
@@ -71,6 +73,7 @@ pub use workflow::{MAX_DROPPED, MapTabInfo, TabRequest, WorkflowMapMemory, Workf
 
 #[derive(Debug, Default)]
 pub struct Runtime {
+    pub fade: fade::FadePreview,
     pub selection: SelectionRuntime,
     pub brush: BrushRuntime,
     pub workflow: WorkflowRuntime,

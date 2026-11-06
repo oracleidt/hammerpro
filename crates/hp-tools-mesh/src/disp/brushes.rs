@@ -192,7 +192,7 @@ pub(crate) fn sample(
                 keep(*f, built);
             }
         }
-        SculptOp::Push | SculptOp::Carve | SculptOp::Project => return Ok(0),
+        SculptOp::Push | SculptOp::Carve | SculptOp::Project | SculptOp::Relax => return Ok(0),
     }
     commit_updates(doc, updates, total)
 }

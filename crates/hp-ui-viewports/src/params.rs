@@ -65,6 +65,9 @@ impl RenderConfig {
         };
         let finite = |x: f32, d: f32| if x.is_finite() { x } else { d };
         let options_3d = ViewOptions {
+            shadow_control: hp_app::runtime::shadow::preview(state),
+            screen_fade: state.runtime.fade.sample(state).map_or([0.0; 4], |s| s.0),
+            fade_modulate: state.runtime.fade.sample(state).is_some_and(|s| s.1),
             grid_3d: r.grid_3d.then(|| Grid3d {
                 size: grid_size as f32,
                 major_every: v.grid_highlight_every.max(1),

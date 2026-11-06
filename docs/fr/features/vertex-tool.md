@@ -12,6 +12,11 @@ L'outil vertex modifie la forme des solides sélectionnés en déplaçant, fusio
 
 Les options de l'outil sont dans la barre d'options au-dessus des vues.
 
+## Aligner les sommets sur un axe
+
+Dans une vue 2D, sélectionnez au moins deux sommets, appuyez sur `S`, puis sur `X`, `Y` ou `Z` (maintenir `S` fonctionne aussi). Les sommets prennent une coordonnée commune sur cet axe du monde. La référence est le centre des bornes de tout le groupe sélectionné, arrondi sur la grille active, avec l'origine et le pas de la vue. Les autres coordonnées restent identiques. Le raccourci est inactif dans les champs texte et les vues 3D. Chaque alignement est une étape d'annulation et conserve la sélection. L'opération s'applique aux brushes du monde, aux entités brush et aux faces de base des displacements ; les solides doivent rester valides et les displacements doivent garder des faces planes à quatre sommets.
+
+
 ## Poignées
 
 - Les **poignées carrées** sont les sommets. Les **poignées rondes** sont les milieux des arêtes.

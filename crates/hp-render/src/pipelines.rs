@@ -155,6 +155,7 @@ impl Shared {
                 storage_entry(18, wgpu::ShaderStages::FRAGMENT),
                 storage_entry(19, wgpu::ShaderStages::FRAGMENT),
                 depth_entry(21),
+                depth_entry(22),
                 wgpu::BindGroupLayoutEntry {
                     binding: 20,
                     visibility: wgpu::ShaderStages::FRAGMENT,

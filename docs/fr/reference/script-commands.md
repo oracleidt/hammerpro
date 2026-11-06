@@ -257,7 +257,8 @@ Pour biseauter depuis un script, pointez l'arête et envoyez sa touche : `move @
 | `alpha_value` | Alpha visé par l'effet set, 0 à 255. |
 | `alpha_strength` | Vitesse d'ajout et de retrait d'alpha par seconde, 0 à 16384. |
 | `blend_channel` | `alpha` (aussi `none`) pour un mélange de deux textures, ou `1` à `4` pour une texture d'un mélange à 4 textures. |
-| `sculpt` | `push`, `carve` ou `project`. |
+| `sculpt` | `push`, `carve`, `project`, `pinch`, `grab`, `inflate`, `flatten`, `relax`. |
+| `relax_strength` | Force de Relax, de 0 à 1 ; avec `mode sculpt`, `sculpt relax`. |
 | `push_mode` | `absolute` (unités) ou `adaptive` (pourcentage du rayon). |
 | `sculpt_bounds` | `attenuated` ou `additive`. |
 | `falloff_position` | Push : pourcentage du rayon qui reçoit tout le décalage, 0 à 100. |

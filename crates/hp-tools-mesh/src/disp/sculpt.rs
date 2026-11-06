@@ -17,6 +17,7 @@ pub enum SculptOp {
     Grab,
     Inflate,
     Flatten,
+    Relax,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -53,6 +54,7 @@ pub struct SculptSettings {
     pub falloff_final: f64,
     pub flatten_fixed: bool,
     pub flatten_strength: f64,
+    pub relax_strength: f64,
 }
 
 impl Default for SculptSettings {
@@ -70,6 +72,7 @@ impl Default for SculptSettings {
             falloff_final: 0.0,
             flatten_fixed: false,
             flatten_strength: 0.5,
+            relax_strength: 0.5,
         }
     }
 }
@@ -84,6 +87,7 @@ impl SculptSettings {
         self.falloff_position = fix(self.falloff_position, 0.0, 100.0, 0.0);
         self.falloff_final = fix(self.falloff_final, 0.0, 100.0, 0.0);
         self.flatten_strength = fix(self.flatten_strength, 0.0, 1.0, 0.5);
+        self.relax_strength = fix(self.relax_strength, 0.0, 1.0, 0.5);
         for v in &mut self.profile {
             *v = fix(*v, 0.0, 1.0, 0.0);
         }
@@ -123,6 +127,7 @@ pub(crate) struct SculptStroke {
     start: HashMap<FaceRef, Vec<f64>>,
     path: Vec<DVec3>,
     pub(super) brush: super::brushes::BrushStroke,
+    relax: super::relax::RelaxStroke,
 }
 
 const MAX_PATH: usize = 4096;
@@ -224,6 +229,9 @@ pub(crate) fn sculpt_sample(
     if super::brushes::handles(sculpt.op) {
         return super::brushes::sample(doc, faces, center, brush, sculpt, &mut stroke.brush, invert, dt);
     }
+    if sculpt.op == SculptOp::Relax {
+        return super::relax::sample(doc, faces, center, brush, &mut stroke.relax, dt);
+    }
     if sculpt.op == SculptOp::Carve && stroke.path.last().is_none_or(|q| q.distance(center) > radius * 0.05) {
         stroke.path.push(center);
         if stroke.path.len() > MAX_PATH {
@@ -312,7 +320,7 @@ pub(crate) fn sculpt_sample(
                     let Some(hit) = project_point(doc, &targets, pos, dir, sculpt.project_range) else { continue };
                     h + (hit.dot(dir) - h) * w
                 }
-                SculptOp::Pinch | SculptOp::Grab | SculptOp::Inflate | SculptOp::Flatten => continue,
+                SculptOp::Pinch | SculptOp::Grab | SculptOp::Inflate | SculptOp::Flatten | SculptOp::Relax => continue,
             };
             if (target - h).abs() < 1e-9 || !target.is_finite() {
                 continue;

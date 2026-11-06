@@ -12,6 +12,11 @@ The vertex tool reshapes the selected solids by moving, merging and splitting th
 
 The options of the tool are shown in the options bar above the views.
 
+## Align selected vertices on an axis
+
+In a 2D view, select at least two vertices, press `S`, then `X`, `Y` or `Z` (holding `S` while pressing the axis also works). The selected vertices receive one common coordinate on that world axis. The reference is the center of the bounds of the entire selected group, snapped to the active grid, including the current view's grid origin and spacing. Other coordinates stay unchanged. The shortcut is inactive in text fields and 3D views. Each alignment is one undo step and keeps the vertex selection. World brushes, brush entities and displacement base faces use the same operation; solids must remain valid and displacement faces must remain planar quads.
+
+
 ## Handles
 
 - **Square handles** are vertices. **Round handles** are edge midpoints.

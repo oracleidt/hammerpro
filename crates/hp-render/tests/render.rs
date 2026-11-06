@@ -1147,6 +1147,79 @@ fn sun_casts_shadows_in_lit_mode() {
     assert!(i32::from(c[0]) > i32::from(a[0]) + 80, "no shadow once hidden: {c:?}");
 }
 
+#[test]
+fn shadow_control_projects_models_without_sun_and_respects_distance_and_visibility() {
+    let (device, queue) = gpu_or_skip!();
+    let mut r = Renderer::new(&device, &queue);
+    r.set_material(1, &MaterialDesc { texture: Some(TexId::WHITE), tex_size: [1.0; 2], ..Default::default() });
+    r.upsert_object(1, box_mesh([-1024.0, -1024.0, -16.0], [1024.0, 1024.0, 0.0], 1, [255; 3]));
+    let model = r.create_model(&pyramid(1));
+    r.set_model_instances(&[ModelInstance {
+        model,
+        transform: [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 128.0, 1.0]],
+        object: 3,
+        tint: [1.0; 4],
+        fade: [0.0; 2],
+    }]);
+    let p = ViewParams {
+        size: [256, 256],
+        kind: ViewKind::Perspective {
+            eye: [0.0, -800.0, 800.0],
+            forward: [0.0, 1.0, -1.0],
+            up: [0.0, 0.0, 1.0],
+            fov_y_deg: 60.0,
+            near: 4.0,
+            far: 10000.0,
+        },
+        ..params(persp(), RenderMode::Textured, true)
+    };
+    let under = p.world_to_screen([0.0, -10.0, 0.0]).unwrap();
+    let sample = |r: &Renderer, name: &str| {
+        let img = save(r, 9, name);
+        pixel(&img, under[0] as u32, under[1] as u32)[0]
+    };
+    r.render_view(9, &p, &Overlay::default());
+    let open = sample(&r, "control_off");
+    let config = ShadowControl { direction: [0.0, 0.0, -1.0], color: [0.1; 3], distance: 512.0 };
+    r.set_view_options(9, ViewOptions { shadow_control: Some(config), ..Default::default() });
+    r.render_view(9, &p, &Overlay::default());
+    let shaded = sample(&r, "control_on");
+    assert!(i32::from(open) > i32::from(shaded) + 60, "open {open}, shadow {shaded}");
+    r.set_view_options(
+        9,
+        ViewOptions { shadow_control: Some(ShadowControl { distance: 16.0, ..config }), ..Default::default() },
+    );
+    r.render_view(9, &p, &Overlay::default());
+    assert!(i32::from(sample(&r, "control_short")) > i32::from(shaded) + 60);
+    r.set_view_options(9, ViewOptions { shadow_control: Some(config), ..Default::default() });
+    r.set_object_flags(3, ObjectFlags::HIDDEN);
+    r.render_view(9, &p, &Overlay::default());
+    assert!(i32::from(sample(&r, "control_hidden")) > i32::from(shaded) + 60);
+}
+
+#[test]
+fn fade_postprocess_blends_modulates_and_clears() {
+    let (device, queue) = gpu_or_skip!();
+    let mut r = Renderer::new(&device, &queue);
+    let p = ViewParams { background: [0.5; 3], size: [64, 64], ..params(persp(), RenderMode::Textured, true) };
+    r.render_view(15, &p, &Overlay::default());
+    let original = pixel(&save(&r, 15, "fade_original"), 32, 32);
+    r.set_view_options(15, ViewOptions { screen_fade: [1.0, 0.0, 0.0, 1.0], ..Default::default() });
+    r.render_view(15, &p, &Overlay::default());
+    let red = pixel(&save(&r, 15, "fade_red"), 32, 32);
+    assert!(red[0] > 245 && red[1] < 5 && red[2] < 5, "{red:?}");
+    r.set_view_options(
+        15,
+        ViewOptions { screen_fade: [1.0, 0.0, 0.0, 1.0], fade_modulate: true, ..Default::default() },
+    );
+    r.render_view(15, &p, &Overlay::default());
+    let modulated = pixel(&save(&r, 15, "fade_modulate"), 32, 32);
+    assert!((i32::from(modulated[0]) - i32::from(original[0])).abs() < 3 && modulated[1] < 5);
+    r.set_view_options(15, ViewOptions::default());
+    r.render_view(15, &p, &Overlay::default());
+    assert_eq!(pixel(&save(&r, 15, "fade_cleared"), 32, 32), original);
+}
+
 fn color_near(img: &(u32, u32, Vec<u8>), x: u32, y: u32, rgb: [u8; 3], tol: i32) -> bool {
     let (x0, x1) = (x.saturating_sub(2), (x + 2).min(img.0 - 1));
     (x0..=x1).any(|xx| {

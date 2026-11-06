@@ -238,6 +238,7 @@ pub(super) const TR: TrTable = &[
     ("shell.undo.mcp_move_edge_loop", "MCP: move edge loop", "MCP : déplacement de la boucle d'arêtes"),
     ("shell.undo.mcp_weld_brush_vertices", "MCP: weld vertices", "MCP : soudure des sommets"),
     ("shell.undo.scale_vertices", "Scale vertices", "Mise à l'échelle des sommets"),
+    ("shell.undo.align_vertices", "Align vertices", "Alignement des sommets"),
     ("shell.undo.sculpt_displacement", "Sculpt displacement", "Sculpture du displacement"),
     ("shell.undo.tag_displacement", "Tag displacement", "Marquage du displacement"),
     ("shell.undo.displacement_shadows", "Displacement shadows", "Ombres du displacement"),

@@ -68,11 +68,11 @@ Ces quatre effets nécessitent des bornes en coordonnées du monde. La sauvegard
 | Entité | Clés utilisées | Sprite | Aspect |
 |---|---|---|---|
 | `func_smokevolume` | `Color1`, `Color2` (chaque volute prend une couleur entre les deux), `ParticleDrawWidth` (taille des volutes), `ParticleSpacingDistance` (les volutes sont sur une grille de cet écart), `Density` (opacité), `MovementSpeed` (balancement), `RotationSpeed` (rotation), `Material` | `particle/particle_smokegrenade` (ou la clé `Material`) | Volutes douces sur une grille, qui tournent et se balancent lentement |
-| `env_embers` | `rendercolor`, `renderamt`, `density` (étincelles par seconde), `lifetime`, `speed` | `effects/ember_swirling001` | Petites étincelles additives qui montent en ondulant, sortent du brush, scintillent et s'estompent |
-| `func_dustcloud` | `Color`, `SizeMin`, `SizeMax` (demi-taille du sprite), `SpawnRate`, `LifetimeMin`, `LifetimeMax`, `SpeedMax` (vitesse aléatoire sur chaque axe), `FallSpeed`, `Alpha`, `DistMax` | `particle/particle_smokegrenade` | Grands grains ténus qui apparaissent et disparaissent en fondu, s'estompent avec la distance et disparaissent en quittant le brush |
-| `func_dustmotes` | Mêmes clés | `particle/sparkles` | Le même mouvement avec le sprite d'étincelles |
+| `env_embers` | `rendercolor`, `renderamt`, `density` (étincelles par seconde), `lifetime`, `speed` | `particle/fire` | Petites braises émises selon les angles, de taille 1 à 0 ; influence optionnelle de env_wind |
+| `func_dustcloud` | `Color`, `SizeMin`, `SizeMax` (demi-taille du sprite), `SpawnRate`, `LifetimeMin`, `LifetimeMax`, `SpeedMax` (vitesse aléatoire sur chaque axe), `FallSpeed`, `Alpha`, `DistMax` | `particle/sparkles` | Grands sprites avec fondu selon la durée de vie et la distance ; peuvent quitter le brush |
+| `func_dustmotes` | Mêmes clés | `particle/sparkles` | Sprites dont la taille suit la profondeur, avec les unités des motes de Source |
 
-Les valeurs par défaut suivent le FGD. En jeu, la poussière reçoit les lightmaps ; son aperçu est non éclairé. Un `env_embers` sans nom démarre activé ; avec un nom, il nécessite **Start On** (indicateur 1) ou une entrée en jeu. La poussière respecte `StartDisabled` et `Frozen` ; les entrées/sorties en jeu ne sont pas simulées. Un nom `Material` explicite est conservé même s’il manque, pour ne pas masquer le problème avec un matériau standard. Les sprites intégrés peuvent utiliser leur remplacement connu. L’aperçu est limité à 24 effets proches, 300 particules chacun (160 bouffées de fumée), 2400 au total, dans un rayon de 3072 unités ou le `DistMax` inférieur. Les brushes masqués ne contribuent pas au volume de l’aperçu. Le jeu utilise la densité et l’espacement d’origine : un espacement très petit peut donc coûter beaucoup plus que l’aperçu limité.
+Les valeurs par défaut suivent le FGD. En jeu, la poussière reçoit les lightmaps ; son aperçu est non éclairé. Un `env_embers` sans nom démarre activé ; avec un nom, il nécessite **Start On** (indicateur 1) ou une entrée en jeu. La poussière respecte `StartDisabled` et `Frozen` ; les entrées/sorties en jeu ne sont pas simulées. Un nom `Material` explicite est conservé même s’il manque, pour ne pas masquer le problème avec un matériau standard. Les sprites intégrés peuvent utiliser leur remplacement connu. L’aperçu est limité à 24 effets proches, 2048 particules chacun (2048 bouffées de fumée), 8192 au total, dans un rayon de 3072 unités ou le `DistMax` inférieur. Les brushes masqués ne contribuent pas au volume de l’aperçu. Le jeu utilise la densité et l’espacement d’origine : un espacement très petit peut donc coûter beaucoup plus que l’aperçu limité.
 
 ### Vent de env_wind
 
@@ -92,7 +92,7 @@ Les contrôleurs locaux sont prioritaires dans leur rayon ; sinon le premier con
 
 Sélectionner un `env_wind` affiche une flèche animée de direction et sa vitesse actuelle dans la vue 3D, avec **Vent normal** ou **Rafale**. Les aides de rayon existantes montrent sa zone d'action. L'aperçu utilise une séquence de rafales déterministe, distincte de la séquence aléatoire du jeu, et n'exécute pas les entrées/sorties des entités.
 
-Les cordes de la map (`move_rope` et `keyframe_rope`) réagissent aussi lorsque **Afficher les cordes** et **Simuler les cordes** sont activés, sauf si **Disable Wind** est activé. Le vent n'est simulé que sur les nœuds de corde à moins de 1000 unités de la caméra. `func_smokevolume` et `env_embers` conservent leur mouvement propre ; ajouter un `env_wind` ne leur applique pas automatiquement du vent. Les systèmes de particules restent soumis aux opérateurs pris en charge par leur simulateur d'aperçu.
+Les cordes de la map (`move_rope` et `keyframe_rope`) réagissent aussi lorsque **Afficher les cordes** et **Simuler les cordes** sont activés, sauf si **Disable Wind** est activé. Le vent n'est simulé que sur les nœuds de corde à moins de 1000 unités de la caméra. `func_smokevolume` conserve son mouvement propre. Les braises `env_embers` suivent le vent lorsque `AffectedByWind` vaut 1. Les systèmes de particules restent soumis aux opérateurs pris en charge par leur simulateur d'aperçu.
 
 Via MCP, `get_entity` et `set_entity_keyvalues` lisent et modifient le contrôleur et les clés `AffectedByWind`, `Frozen` et `NoWind`. `set_setting` règle `lab.show_entity_fx`, `helpers.show_ropes` et `helpers.simulate_ropes`.
 
@@ -195,3 +195,17 @@ Les opérations de `particle_editor` comprennent `new`, `open`, `read`, `import`
 
 ---
 [Retour à l'index de la documentation](../README.md)
+
+### Lecture du fondu
+
+Sélectionnez un `env_fade` et cliquez sur **Lecture** au-dessus des propriétés. L'aperçu agit sur les vues 3D et utilise `rendercolor`, `renderamt`, `duration`, `holdtime`, **Fade In** et **Modulate**. Fade In maintient d'abord la couleur, puis la dissipe ; Fade Out atteint la couleur, puis la maintient. La lecture s'arrête après la durée et le maintien, même avec **Stay Out**. **Arrêter** retire immédiatement l'aperçu. La map et les sorties ne sont pas modifiées. Changer de map, supprimer ou masquer l'entité retire l'effet visible.
+
+### Contrôle des ombres
+
+Un `shadow_control` visible affiche les ombres projetées des modèles dans les vues 3D texturées et éclairées. L'aperçu utilise les angles (ou l'ancienne direction), la couleur, la distance et `disableallshadows`. Il ne nécessite pas de soleil et ne modifie pas l'environnement lumineux. Les modèles masqués ou dont les ombres sont désactivées ne projettent pas ces ombres. Cette projection par carte d'ombres reste une approximation de la méthode utilisée par Source.
+
+### Jets de vapeur et fidélité
+
+`env_steam` et l'ancien `env_steamjet` affichent la vapeur normale selon Start On, les angles, la couleur/alpha, Speed, SpreadSpeed, JetLength, Rate, StartSize, EndSize et RollSpeed. L'ancienne classe conserve son orientation latérale. La réfraction du mode Heat Wave n'est pas reproduite par cet aperçu de sprites. La fumée respecte la largeur et l'opacité demandées et s'estompe près de la caméra. Nuages et motes suivent leurs unités de taille respectives et utilisent `particle/sparkles`. Un débit ou une opacité nuls restent invisibles. La poussière peut quitter le brush avant la fin de sa durée de vie. L'éclairage, les collisions, la distorsion et les entrées/sorties peuvent encore différer du jeu ; vérifiez le résultat compilé en jeu.
+
+Les braises `env_embers` suivent `env_wind` si `AffectedByWind` vaut 1 ; la valeur 0 conserve leur mouvement propre.

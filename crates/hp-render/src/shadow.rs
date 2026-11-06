@@ -425,7 +425,7 @@ impl CasterCull<'_> {
 }
 
 impl Renderer {
-    fn scene_bounds(&self) -> (Vec3, Vec3) {
+    pub(crate) fn scene_bounds(&self) -> (Vec3, Vec3) {
         let (mut lo, mut hi) = self.instance_bounds.unwrap_or((Vec3::INFINITY, Vec3::NEG_INFINITY));
         for ch in self.scene.chunks.iter().flatten() {
             if !ch.is_edge() && ch.used_i > 0 {
@@ -642,7 +642,8 @@ impl Renderer {
                 (_, Some(region)) => Some(CasterCull { basis: &basis, region }),
                 (_, None) => continue,
             };
-            let (d, n) = self.draw_shadow_casters(&mut pass, &t.pipelines, &planes, cull.as_ref(), packed.as_ref());
+            let (d, n) =
+                self.draw_shadow_casters(&mut pass, &t.pipelines, &planes, cull.as_ref(), packed.as_ref(), false);
             draws += d;
             tris += n;
         }
@@ -708,6 +709,10 @@ impl Renderer {
                     resource: wgpu::BindingResource::TextureView(cut.unwrap_or(dummy)),
                 },
                 wgpu::BindGroupEntry { binding: 17, resource: wgpu::BindingResource::TextureView(dummy) },
+                wgpu::BindGroupEntry {
+                    binding: 22,
+                    resource: wgpu::BindingResource::TextureView(&self.shadow_dummy_array),
+                },
                 wgpu::BindGroupEntry { binding: 18, resource: self.dummy_storage.as_entire_binding() },
                 wgpu::BindGroupEntry { binding: 19, resource: self.projectors.buffer.as_entire_binding() },
                 wgpu::BindGroupEntry {
@@ -763,12 +768,13 @@ impl Renderer {
         planes: &[Vec4; 6],
         cull: Option<&CasterCull<'_>>,
         packed: Option<&crate::instance_cull::Packed>,
+        models_only: bool,
     ) -> (u32, u64) {
         let (mut draws, mut tris) = (0u32, 0u64);
         pass.set_vertex_buffer(0, self.arenas[ArenaKind::MeshVerts as usize].buffer.slice(..));
         pass.set_index_buffer(self.arenas[ArenaKind::Indices as usize].buffer.slice(..), wgpu::IndexFormat::Uint32);
         let mut current: Option<bool> = None;
-        for (mi, m) in self.scene.materials.iter().enumerate() {
+        for (mi, m) in self.scene.materials.iter().enumerate().filter(|_| !models_only) {
             if casts_no_shadow(m.desc.as_ref()) {
                 continue;
             }

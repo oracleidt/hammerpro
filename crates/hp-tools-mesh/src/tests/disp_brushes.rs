@@ -135,6 +135,8 @@ fn the_new_brushes_are_scriptable_and_the_panel_renders() {
         ("sculpt", "grab"),
         ("sculpt", "inflate"),
         ("sculpt", "flatten"),
+        ("sculpt", "relax"),
+        ("relax_strength", "0.75"),
         ("flatten_plane", "fixed"),
         ("flatten_strength", "0.25"),
     ] {
@@ -142,11 +144,159 @@ fn the_new_brushes_are_scriptable_and_the_panel_renders() {
     }
     assert!(!tool.set_option(&mut state, "flatten_plane", "tilted"));
     assert!(!tool.set_option(&mut state, "flatten_strength", "2"));
-    for op in [SculptOp::Pinch, SculptOp::Grab, SculptOp::Inflate, SculptOp::Flatten] {
+    assert!(!tool.set_option(&mut state, "relax_strength", "2"));
+    for op in [SculptOp::Pinch, SculptOp::Grab, SculptOp::Inflate, SculptOp::Flatten, SculptOp::Relax] {
         tool.brush.sculpt.op = op;
         run_ui(&mut state, |ui, st| tool.options_ui(ui, st));
         assert!(tool.status_hint(&state).is_some());
     }
+}
+
+fn distorted_surface(state: &mut AppState, face: FaceRef, sloped: bool) {
+    let source = mesh(state, face);
+    let mut disp = (**state.doc.face_side(face).and_then(|s| s.disp.as_ref()).unwrap()).clone();
+    let row = source.row_len;
+    for (k, base) in source.base_positions.iter().enumerate() {
+        let (x, y) = (k % row, k / row);
+        let inside = x > 0 && x + 1 < row && y > 0 && y + 1 < row;
+        let offset = if inside {
+            DVec3::new(if x % 2 == 0 { 18.0 } else { -18.0 }, if y % 2 == 0 { 12.0 } else { -12.0 }, 0.0)
+        } else {
+            DVec3::ZERO
+        };
+        disp.offsets[k] = offset;
+        if sloped {
+            disp.distances[k] = 100.0 + (base.x + offset.x) * 0.2;
+        }
+        disp.alphas[k] = k as f64 * 2.0;
+    }
+    state.doc.set_disp_data("distorted surface", vec![(face, disp)]).unwrap();
+}
+
+fn edge_variance(surface: &hp_geom::DispMesh) -> f64 {
+    let row = surface.row_len;
+    let mut lengths = Vec::new();
+    for k in 0..surface.positions.len() {
+        if k % row + 1 < row {
+            lengths.push(surface.positions[k].distance(surface.positions[k + 1]));
+        }
+        if k / row + 1 < row {
+            lengths.push(surface.positions[k].distance(surface.positions[k + row]));
+        }
+    }
+    let average = lengths.iter().sum::<f64>() / lengths.len() as f64;
+    lengths.iter().map(|n| (n - average).powi(2)).sum::<f64>() / lengths.len() as f64
+}
+
+#[test]
+fn relax_redistributes_the_surface_without_changing_borders_topology_or_alpha() {
+    for sloped in [false, true] {
+        let (mut state, mut tool, face) = setup(SculptOp::Relax);
+        tool.brush.radius = 800.0;
+        tool.brush.sculpt.relax_strength = 1.0;
+        distorted_surface(&mut state, face, sloped);
+        let before = mesh(&state, face);
+        let alphas = state.doc.face_side(face).unwrap().disp.as_ref().unwrap().alphas.clone();
+        let original = vmf(&state);
+        state.doc.clear_history();
+        stroke(&mut state, &mut tool, &vec![DVec3::new(0.0, 0.0, if sloped { 100.0 } else { 0.0 }); 40], false);
+        let after = mesh(&state, face);
+        assert!(
+            edge_variance(&after) < edge_variance(&before) * 0.2,
+            "{sloped}: {} -> {}",
+            edge_variance(&before),
+            edge_variance(&after)
+        );
+        assert_eq!(after.indices, before.indices);
+        assert_eq!(state.doc.face_side(face).unwrap().disp.as_ref().unwrap().alphas, alphas);
+        for (k, p) in after.positions.iter().enumerate() {
+            let row = after.row_len;
+            if k % row == 0 || k % row + 1 == row || k / row == 0 || k / row + 1 == row {
+                assert_eq!(*p, before.positions[k]);
+            }
+            assert!(p.is_finite());
+            assert!(
+                (p.z - if sloped { 100.0 + p.x * 0.2 } else { 0.0 }).abs() < 1e-7,
+                "stays on the reference surface: {p}"
+            );
+        }
+        for tri in after.indices.chunks_exact(3) {
+            let [a, b, c] = [tri[0] as usize, tri[1] as usize, tri[2] as usize];
+            let old = (before.positions[b] - before.positions[a]).cross(before.positions[c] - before.positions[a]);
+            let new = (after.positions[b] - after.positions[a]).cross(after.positions[c] - after.positions[a]);
+            assert!(old.dot(new) > 0.0 && new.length_squared() > 1e-6);
+        }
+        assert_eq!(undo_steps(&state), 1);
+        assert!(state.doc.undo());
+        assert_eq!(vmf(&state), original);
+        assert!(state.doc.redo());
+        assert_eq!(mesh(&state, face).positions, after.positions);
+    }
+}
+
+#[test]
+fn relax_keeps_working_while_the_mouse_is_held_still() {
+    let (mut state, mut tool, face) = setup(SculptOp::Relax);
+    distorted_surface(&mut state, face, false);
+    tool.brush.radius = 800.0;
+    tool.brush.continuous = false;
+    state.frame.dt = 0.05;
+    let view = view3d(DVec3::new(0.0, -300.0, 300.0), 90.0, -45.0);
+    let position = view.world_to_screen(DVec3::ZERO).unwrap();
+    let input =
+        PointerFrame { pos: Some(position), pressed: true, down: true, mods: Modifiers::NONE, ..Default::default() };
+    tool.handle_pointer(&mut state, &view, input);
+    let first = mesh(&state, face);
+    for _ in 0..20 {
+        state.frame.index += 1;
+        state.frame.time += 0.05;
+        tool.handle_pointer(&mut state, &view, PointerFrame { pressed: false, ..input });
+    }
+    assert!(tool.is_painting());
+    tool.handle_pointer(&mut state, &view, PointerFrame { pressed: false, down: false, ..input });
+    assert!(edge_variance(&mesh(&state, face)) < edge_variance(&first) * 0.7);
+}
+
+#[test]
+fn relax_preserves_a_sharp_ridge_on_a_power_four_surface() {
+    let (mut state, mut tool, face) = floor_with_disp(4);
+    tool.interaction = Interaction::Sculpt;
+    tool.brush.sculpt.op = SculptOp::Relax;
+    tool.brush.sculpt.relax_strength = 1.0;
+    tool.brush.radius = 1000.0;
+    tool.brush.falloff = Falloff::Constant;
+    let source = mesh(&state, face);
+    let mut disp = (**state.doc.face_side(face).unwrap().disp.as_ref().unwrap()).clone();
+    for (k, base) in source.base_positions.iter().enumerate() {
+        let row = source.row_len;
+        let (x, y) = (k % row, k / row);
+        if x > 0 && x + 1 < row && y > 0 && y + 1 < row {
+            disp.offsets[k] = DVec3::new(
+                if base.x.abs() < 1e-8 {
+                    0.0
+                } else if x % 2 == 0 {
+                    6.0
+                } else {
+                    -6.0
+                },
+                if y % 2 == 0 { 4.0 } else { -4.0 },
+                0.0,
+            );
+        }
+        disp.distances[k] = 10.0 + (base.x + disp.offsets[k].x).abs() * 1.2;
+    }
+    state.doc.set_disp_data("ridge", vec![(face, disp)]).unwrap();
+    let before = mesh(&state, face);
+    stroke(&mut state, &mut tool, &[DVec3::new(0.0, 0.0, 10.0); 40], false);
+    let after = mesh(&state, face);
+    assert!(before.positions.iter().zip(&after.positions).any(|(a, b)| a.distance(*b) > 1e-4));
+    for (a, b) in before.positions.iter().zip(&after.positions) {
+        assert!((b.z - 10.0 - b.x.abs() * 1.2).abs() < 1e-6, "reference surface {a} -> {b}");
+        if a.x.abs() < 1e-8 {
+            assert_eq!(*a, *b, "the ridge is pinned");
+        }
+    }
+    assert_eq!(after.indices, before.indices);
 }
 
 #[test]

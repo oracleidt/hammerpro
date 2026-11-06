@@ -383,7 +383,7 @@ impl Renderer {
             pass.set_bind_group(0, bg, &[]);
             let planes: [Vec4; 6] = frustum_planes(m);
             let packed = self.pack_visible(&planes);
-            let (d, t) = self.draw_shadow_casters(&mut pass, pipelines, &planes, None, packed.as_ref());
+            let (d, t) = self.draw_shadow_casters(&mut pass, pipelines, &planes, None, packed.as_ref(), false);
             draws += d;
             tris += t;
         }

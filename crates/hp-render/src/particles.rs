@@ -332,6 +332,8 @@ impl Renderer {
                 display: &display,
                 size: params.size,
                 chain: false,
+                fade: [0.0; 4],
+                fade_modulate: false,
             };
             self.record_present(&mut enc, view_id, &inputs);
         }

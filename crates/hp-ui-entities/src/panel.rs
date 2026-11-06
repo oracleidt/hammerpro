@@ -108,6 +108,24 @@ impl EntityPanel {
 
     pub fn ui_with_fgd(&mut self, ui: &mut Ui, state: &mut AppState, fgd: Option<&ResolvedFgd>) {
         self.refresh(state, fgd);
+        if let [id] = self.summary.entities.as_slice()
+            && let Some(entity) = state.doc.scene().entity(*id).map(|n| &n.entity)
+            && entity.classname.eq_ignore_ascii_case("env_fade")
+        {
+            let entity = entity.clone();
+            ui.horizontal(|ui| {
+                ui.label(t!("entities.fade_preview"));
+                if ui.button(t!("entities.fade_play")).clicked() {
+                    state.runtime.fade.play(&entity, state.sidecar.serial(), state.frame.time);
+                    ui.ctx().request_repaint();
+                }
+                if state.runtime.fade.sample(state).is_some() && ui.button(t!("entities.fade_stop")).clicked() {
+                    state.runtime.fade.stop();
+                    ui.ctx().request_repaint();
+                }
+            });
+            ui.separator();
+        }
         for (name, thumb) in self.thumbs.iter_mut() {
             *thumb = state.assets.thumbnail(ui.ctx(), name);
         }

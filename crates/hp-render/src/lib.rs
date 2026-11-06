@@ -2,6 +2,7 @@ mod arena;
 mod bgimages;
 mod camera;
 mod compiled_light;
+mod control_shadow;
 mod cubemaps;
 mod detail_sprites;
 mod extra_passes;
@@ -261,6 +262,7 @@ pub struct Renderer {
     staging: memory::StagingPacer,
     prewarm: Option<std::thread::JoinHandle<Vec<(usize, PipelineSet)>>>,
     shadow: Option<shadow::ShadowGpu>,
+    control_shadow: Option<control_shadow::ControlShadow>,
     shadow_dummy_array: wgpu::TextureView,
     sky_layers: [shadow::SkyAnalysis; 2],
     sky_signature: (u64, u64),
@@ -923,6 +925,7 @@ impl Renderer {
             staging: memory::StagingPacer::default(),
             prewarm: None,
             shadow: None,
+            control_shadow: None,
             shadow_dummy_array: shadow_dummy,
             sky_layers: [None, None],
             sky_signature: (0, 0),
@@ -2177,6 +2180,12 @@ impl Renderer {
                         self.sky_map.as_ref().map_or(&self.shadow_dummy_array, |s| &s.cut),
                     ),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 22,
+                    resource: wgpu::BindingResource::TextureView(
+                        self.control_shadow.as_ref().map_or(&self.shadow_dummy_array, |s| &s.view),
+                    ),
+                },
                 wgpu::BindGroupEntry { binding: 18, resource: self.indirect_buffer().as_entire_binding() },
                 wgpu::BindGroupEntry { binding: 19, resource: self.projectors.buffer.as_entire_binding() },
                 wgpu::BindGroupEntry {
@@ -2309,6 +2318,9 @@ impl Renderer {
             indirect_a: [0.0; 4],
             indirect_b: [1.0, 1.0, 1.0, 0.0],
             sky_march: [[0.0; 4]; 18],
+            control_vp: Mat4::IDENTITY.to_cols_array_2d(),
+            control_params: [0.0; 4],
+            control_color: [0.0; 4],
         }
     }
 
@@ -2434,6 +2446,13 @@ impl Renderer {
         let fit_cam = reflecting.map_or(cam, |r| r.main_cam);
         let grid = lit.then(|| self.update_clusters(view_id, &cam));
         let clusters_ms = lap.take();
+        let control = if !cam.is_ortho
+            && matches!(params.mode, RenderMode::Textured | RenderMode::TexturedWire | RenderMode::Lit)
+        {
+            opts.shadow_control.and_then(|c| self.prepare_control_shadow(&fit_cam, c))
+        } else {
+            None
+        };
         let shadow = if lit { self.prepare_shadow(&fit_cam) } else { None };
         let sky_map = if lit && self.sun.sky_ambient { self.prepare_sky_map(&fit_cam) } else { None };
         let local_layers = if reflecting.is_some() {
@@ -2446,6 +2465,11 @@ impl Renderer {
         };
         let shadow_prep_ms = lap.take();
         let mut uniform = self.view_uniform(&cam, &params, &opts, grid, shadow.as_ref().map(|s| &s.0), false, tone);
+        if let (Some((fit, _)), Some(config)) = (&control, opts.shadow_control) {
+            uniform.control_vp = fit.view_proj.to_cols_array_2d();
+            uniform.control_params = [1.0, fit.depth_range, config.distance, (fit.texel_world * 0.5).max(0.05)];
+            uniform.control_color = [config.color[0], config.color[1], config.color[2], 1.0];
+        }
         if let Some((fit, _)) = &shadow {
             uniform.sun_soft = fit.soft_params(self.sun.spread_deg);
             uniform.sun_soft[3] = self.layer_count(shadow::Layers::Sun) as f32;
@@ -2536,6 +2560,11 @@ impl Renderer {
         }
         if let Some((fit, true)) = &shadow {
             let (draws, tris) = self.record_shadow(&mut enc, fit);
+            counter.draws += draws;
+            counter.triangles += tris;
+        }
+        if let Some((fit, true)) = &control {
+            let (draws, tris) = self.record_control_shadow(&mut enc, fit);
             counter.draws += draws;
             counter.triangles += tris;
         }
@@ -2761,6 +2790,8 @@ impl Renderer {
                 display: &display,
                 size: params.size,
                 chain,
+                fade: if cam.is_ortho || is_reflection { [0.0; 4] } else { opts.screen_fade },
+                fade_modulate: opts.fade_modulate,
             };
             self.record_present(&mut enc, view_id, &inputs);
         }

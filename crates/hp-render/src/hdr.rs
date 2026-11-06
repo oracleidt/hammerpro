@@ -180,6 +180,7 @@ struct BloomParams {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Pod, Zeroable)]
 struct PresentParams {
     bloom: [f32; 4],
+    fade: [f32; 4],
 }
 
 struct Gpu {
@@ -441,6 +442,8 @@ pub(crate) struct FrameInputs<'a> {
     pub display: &'a wgpu::TextureView,
     pub size: [u32; 2],
     pub chain: bool,
+    pub fade: [f32; 4],
+    pub fade_modulate: bool,
 }
 
 impl Renderer {
@@ -645,7 +648,15 @@ impl Renderer {
             present_buffer = v.present.clone();
         }
         let _ = f.color;
-        let params = PresentParams { bloom: [if bloom_ready { amount * BLOOM_GAIN } else { 0.0 }, 0.0, 0.0, 0.0] };
+        let params = PresentParams {
+            bloom: [
+                if bloom_ready { amount * BLOOM_GAIN } else { 0.0 },
+                f32::from(u8::from(f.fade_modulate)),
+                0.0,
+                0.0,
+            ],
+            fade: f.fade,
+        };
         let buffer = present_buffer
             .unwrap_or_else(|| uniform_buffer(device, "hp-render present params", size_of::<PresentParams>()));
         queue.write_buffer(&buffer, 0, bytemuck::bytes_of(&params));

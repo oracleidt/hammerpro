@@ -68,11 +68,11 @@ These four effects need brush bounds in world coordinates. Saving/exporting repa
 | Entity | Keys used | Sprite | Look |
 |---|---|---|---|
 | `func_smokevolume` | `Color1`, `Color2` (each puff picks a colour between them), `ParticleDrawWidth` (puff size), `ParticleSpacingDistance` (puffs sit on a grid with this spacing), `Density` (opacity), `MovementSpeed` (sway), `RotationSpeed` (spin), `Material` | `particle/particle_smokegrenade` (or the `Material` key) | Soft puffs on a grid, turning and swaying slowly |
-| `env_embers` | `rendercolor`, `renderamt`, `density` (sparks per second), `lifetime`, `speed` | `effects/ember_swirling001` | Small additive sparks that rise and wobble, leave the brush, flicker and fade out |
-| `func_dustcloud` | `Color`, `SizeMin`, `SizeMax` (sprite half size), `SpawnRate`, `LifetimeMin`, `LifetimeMax`, `SpeedMax` (random speed on each axis), `FallSpeed`, `Alpha`, `DistMax` | `particle/particle_smokegrenade` | Large faint specks that fade in and out, fade with the distance and disappear when they leave the brush |
-| `func_dustmotes` | Same keys | `particle/sparkles` | The same motion with the sparkle sprite |
+| `env_embers` | `rendercolor`, `renderamt`, `density` (sparks per second), `lifetime`, `speed` | `particle/fire` | Small sparks emitted along the entity angles, fading from size 1 to 0; optional env_wind influence |
+| `func_dustcloud` | `Color`, `SizeMin`, `SizeMax` (sprite half size), `SpawnRate`, `LifetimeMin`, `LifetimeMax`, `SpeedMax` (random speed on each axis), `FallSpeed`, `Alpha`, `DistMax` | `particle/sparkles` | Large sparkles with a sine-squared lifetime fade and distance fade; may drift outside the brush |
+| `func_dustmotes` | Same keys | `particle/sparkles` | Sparkles whose size scales with view depth using Source mote units |
 
-Defaults follow the FGD. Dust is lit by lightmaps in game and shown unlit in the preview. An unnamed `env_embers` starts enabled; a named one needs **Start On** (flag 1) or runtime I/O. Dust respects `StartDisabled` and `Frozen`; runtime I/O is not simulated. An explicit `Material` name is retained even when missing, so the preview does not hide that problem by selecting a stock replacement. Built-in sprites can use their known fallback. The preview is limited to 24 nearby effects, 300 particles each (160 puffs for smoke), and 2400 overall within 3072 units or the smaller `DistMax`. Hidden brushes do not contribute a preview volume. The game uses the original density and spacing, so a very small smoke spacing can be much more expensive than its bounded preview.
+Defaults follow the FGD. Dust is lit by lightmaps in game and shown unlit in the preview. An unnamed `env_embers` starts enabled; a named one needs **Start On** (flag 1) or runtime I/O. Dust respects `StartDisabled` and `Frozen`; runtime I/O is not simulated. An explicit `Material` name is retained even when missing, so the preview does not hide that problem by selecting a stock replacement. Built-in sprites can use their known fallback. The preview is limited to 24 nearby effects, 2048 particles each (2048 puffs for smoke), and 8192 overall within 3072 units or the smaller `DistMax`. Hidden brushes do not contribute a preview volume. The game uses the original density and spacing, so a very small smoke spacing can be much more expensive than its bounded preview.
 
 ### Wind from env_wind
 
@@ -92,7 +92,7 @@ Local controllers take priority inside their radius; otherwise the first global 
 
 Selecting an `env_wind` shows an animated direction arrow and its current speed in the 3D view, labeled **Normal wind** or **Gust**. Existing radius helpers show the controller's area. The preview uses a deterministic gust sequence, not the target game's random sequence, and does not execute entity I/O.
 
-Map ropes (`move_rope` and `keyframe_rope`) also respond while **Show ropes** and **Simulate ropes** are enabled, unless **Disable Wind** is on. Wind simulation is limited to rope nodes within 1000 units of the camera. `func_smokevolume` and `env_embers` keep their own motion; they do not gain wind behavior merely because an `env_wind` exists. Particle systems still depend on the operators supported by their preview simulator.
+Map ropes (`move_rope` and `keyframe_rope`) also respond while **Show ropes** and **Simulate ropes** are enabled, unless **Disable Wind** is on. Wind simulation is limited to rope nodes within 1000 units of the camera. `env_embers` responds to `env_wind` when `AffectedByWind` is 1; with 0 it keeps only its own movement. `func_smokevolume` keeps its own movement. Particle systems still depend on the operators supported by their preview simulator.
 
 Through MCP, use `get_entity` and `set_entity_keyvalues` to read or change the controller and the `AffectedByWind`, `Frozen` and `NoWind` keys. `set_setting` controls `lab.show_entity_fx`, `helpers.show_ropes` and `helpers.simulate_ropes`.
 
@@ -195,3 +195,15 @@ The `particle_editor` operations include `new`, `open`, `read`, `import`, `save`
 
 ---
 [Back to the documentation index](../README.md)
+
+### Fade playback
+
+Select one `env_fade` and click **Play** above its entity properties. The preview affects the 3D views, with `rendercolor`, `renderamt`, `duration`, `holdtime`, **Fade In** and **Modulate**. Fade In holds the starting color before clearing it; Fade Out reaches the color before holding it. Playback stops automatically after duration plus hold time, including when **Stay Out** is set. **Stop** clears the preview immediately. This does not change the map or trigger outputs. Switching maps or deleting/hiding the entity clears its visible effect.
+
+### Shadow control
+
+A visible `shadow_control` previews projected model shadows in textured and lit 3D views. It uses the entity's angles (or legacy direction), shadow color, distance and `disableallshadows`. No sunlight is required, and it does not change the lighting environment. Hidden models and models with shadows disabled do not cast these shadows. This directional shadow-map preview is an approximation of Source's projected model shadows, rather than its exact render-to-texture implementation.
+
+### Steam jets and accuracy
+
+`env_steam` and legacy `env_steamjet` preview normal steam with Start On, angles, color/alpha, Speed, SpreadSpeed, JetLength, Rate, StartSize, EndSize and RollSpeed. The legacy class uses its sideways orientation. Heat-wave refraction is not reproduced by the sprite preview. Smoke keeps the requested width and opacity and fades near the camera. Cloud and mote sizes follow their different engine units, and both use `particle/sparkles`. Zero emission rates and zero alpha stay invisible. Dust can leave its spawning brush before its lifetime ends. Lighting, collisions, heat distortion and runtime I/O can still differ from a compiled map; the editor is not a substitute for checking the result in game.

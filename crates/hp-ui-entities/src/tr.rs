@@ -1,6 +1,9 @@
 use hp_app::i18n::TrTable;
 
 pub const TR: TrTable = &[
+    ("entities.fade_preview", "Fade preview", "Aperçu du fondu"),
+    ("entities.fade_play", "Play", "Lecture"),
+    ("entities.fade_stop", "Stop", "Arrêter"),
     ("entities.edit_failed", "Edit failed: {0}", "Échec de la modification : {0}"),
     ("entities.no_match", "No match", "Aucun résultat"),
     ("entities.picker_use_custom", "Use \"{0}\"", "Utiliser « {0} »"),

@@ -30,6 +30,100 @@ fn box_and_tool() -> (AppState, VertexTool, hp_editor::Id) {
     (state, tool, id)
 }
 
+#[test]
+fn s_axis_aligns_the_selected_group_on_the_grid_and_undoes_as_one_edit() {
+    for axis in 0..3 {
+        for func in [false, true] {
+            let mut state = state_with(&[]);
+            state.settings.edit.grid_size = 32.0;
+            let mut amax = DVec3::splat(64.0);
+            amax[axis] = 64.0;
+            let mut bmin = DVec3::ZERO;
+            bmin[(axis + 1) % 3] = 256.0;
+            let mut bmax = bmin + DVec3::splat(64.0);
+            bmax[axis] = 96.0;
+            let a = block(&mut state, DVec3::ZERO, amax);
+            let b = block(&mut state, bmin, bmax);
+            if func {
+                state.doc.tie_to_entity(&[ObjRef::Solid(a), ObjRef::Solid(b)], "func_brush", &[]).unwrap();
+            }
+            state.doc.select(&[ObjRef::Solid(a), ObjRef::Solid(b)], SelectOp::Replace);
+            let mut tool = VertexTool::new();
+            tool.activate(&mut state);
+            let points: Vec<_> = [a, b]
+                .into_iter()
+                .flat_map(|id| {
+                    EditSolid::from_doc(&state.doc, id)
+                        .unwrap()
+                        .points
+                        .into_iter()
+                        .filter(move |p| (p[axis] - if id == a { 64.0 } else { 96.0 }).abs() < 1e-6)
+                })
+                .collect();
+            tool.select_at(&state, &points);
+            let view = view2d(ViewKind::Front, DVec2::ZERO, 1.0);
+            tool.handle(&mut state, &view, Gesture::Hover(Pos2::new(5.0, 5.0)), Modifiers::NONE);
+            state.ui.hovered_view = Some(view.index);
+            state.doc.clear_history();
+            let before = vmf(&state);
+            assert!(run_keys(
+                &mut state,
+                &mut tool,
+                &[(egui::Key::S, Modifiers::NONE), ([egui::Key::X, egui::Key::Y, egui::Key::Z][axis], Modifiers::NONE)]
+            ));
+            let selection = tool.selected_vertices(&state);
+            assert_eq!(selection.len(), 8);
+            assert!(selection.iter().all(|(_, p)| (p[axis] - 96.0).abs() < 1e-6), "{axis}: {selection:?}");
+            assert_eq!(state.doc.history_len().0, 1);
+            assert!(state.doc.undo());
+            assert_eq!(vmf(&state), before);
+            assert!(state.doc.redo());
+        }
+    }
+}
+
+#[test]
+fn axis_alignment_preserves_a_displacement_quad() {
+    let (mut state, _, face) = floor_with_disp(2);
+    let other = block(&mut state, DVec3::new(640.0, 0.0, -64.0), DVec3::new(704.0, 64.0, 64.0));
+    state.doc.select(&[ObjRef::Solid(FLOOR), ObjRef::Solid(other)], SelectOp::Replace);
+    let mut tool = VertexTool::new();
+    tool.activate(&mut state);
+    let points: Vec<_> = [FLOOR, other]
+        .into_iter()
+        .flat_map(|id| {
+            EditSolid::from_doc(&state.doc, id)
+                .unwrap()
+                .points
+                .into_iter()
+                .filter(move |p| (p.z - if id == FLOOR { 0.0 } else { 64.0 }).abs() < 1e-6)
+        })
+        .collect();
+    tool.select_at(&state, &points);
+    let view = view2d(ViewKind::Front, DVec2::ZERO, 1.0);
+    tool.handle(&mut state, &view, Gesture::Hover(Pos2::new(5.0, 5.0)), Modifiers::NONE);
+    assert!(tool.align_selection(&mut state, 2));
+    assert_eq!(state.doc.disp_faces(), vec![face]);
+    assert!(tool.selected_vertices(&state).iter().all(|(_, p)| (p.z - 32.0).abs() < 1e-6));
+}
+
+#[test]
+fn axis_shortcuts_ignore_3d_and_modified_keys_and_refuse_flat_solids() {
+    let (mut state, mut tool, _) = box_and_tool();
+    tool.select_all_vertices(&state);
+    let before = vmf(&state);
+    let perspective = view3d(DVec3::splat(500.0), 45.0, -20.0);
+    tool.handle(&mut state, &perspective, Gesture::Hover(Pos2::new(5.0, 5.0)), Modifiers::NONE);
+    assert!(!run_keys(&mut state, &mut tool, &[(egui::Key::S, Modifiers::NONE), (egui::Key::X, Modifiers::NONE)]));
+    let top = view2d(ViewKind::Top, DVec2::ZERO, 1.0);
+    tool.handle(&mut state, &top, Gesture::Hover(Pos2::new(5.0, 5.0)), Modifiers::NONE);
+    state.ui.hovered_view = Some(top.index);
+    assert!(!run_keys(&mut state, &mut tool, &[(egui::Key::S, ctrl()), (egui::Key::X, ctrl())]));
+    assert!(run_keys(&mut state, &mut tool, &[(egui::Key::S, Modifiers::NONE), (egui::Key::X, Modifiers::NONE)]));
+    assert_eq!(vmf(&state), before);
+    assert!(has_toast(&mut state), "invalid flat brush reports a reason");
+}
+
 fn has_edge(state: &AppState, id: hp_editor::Id, a: DVec3, b: DVec3) -> bool {
     let g = &state.doc.scene().solid(id).expect("solid").geom;
     g.edges()

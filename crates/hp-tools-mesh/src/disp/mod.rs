@@ -6,6 +6,7 @@ pub mod erode;
 pub(crate) mod highlight;
 pub mod loops;
 pub(crate) mod paint;
+mod relax;
 mod resample;
 pub mod roadblend;
 mod script;
@@ -912,7 +913,8 @@ impl DisplacementTool {
                 (hit.face, hit.point)
             }
         };
-        let continuous = self.brush.continuous;
+        let continuous = self.brush.continuous
+            || (self.interaction == Interaction::Sculpt && self.brush.sculpt.op == sculpt::SculptOp::Relax);
         let cam = &view.cam3d;
         let spot = (pos, [cam.pos.x, cam.pos.y, cam.pos.z, cam.yaw_deg, cam.pitch_deg].map(f64::to_bits));
         if let Some(s) = self.stroke.as_mut() {
@@ -1361,6 +1363,7 @@ impl DisplacementTool {
             self.brush_ui(ui);
             ui.add_space(4.0);
             let hint = match self.interaction {
+                Interaction::Sculpt if self.brush.sculpt.op == sculpt::SculptOp::Relax => t!("disp.hint_relax"),
                 Interaction::Sculpt => t!("disp.hint_sculpt"),
                 Interaction::Tag => t!("disp.hint_tag"),
                 _ => t!("disp.paint_hint"),
@@ -1580,6 +1583,7 @@ impl DisplacementTool {
                 (SculptOp::Grab, "disp.sculpt.grab", "disp.sculpt.grab_tip"),
                 (SculptOp::Inflate, "disp.sculpt.inflate", "disp.sculpt.inflate_tip"),
                 (SculptOp::Flatten, "disp.sculpt.flatten", "disp.sculpt.flatten_tip"),
+                (SculptOp::Relax, "disp.sculpt.relax", "disp.sculpt.relax_tip"),
             ];
             for (op, label, tip) in ops {
                 if ui.add(Button::selectable(self.brush.sculpt.op == op, t!(label))).on_hover_text(t!(tip)).clicked() {
@@ -1654,6 +1658,12 @@ impl DisplacementTool {
                 });
             }
             SculptOp::Grab => {}
+            SculptOp::Relax => {
+                grid_row(ui, t!("disp.strength"), |ui| {
+                    ui.add(egui::Slider::new(&mut s.relax_strength, 0.0..=1.0).max_decimals(2))
+                        .on_hover_text(t!("disp.sculpt.relax_strength_tip"));
+                });
+            }
             SculptOp::Flatten => {
                 grid_row(ui, t!("disp.strength"), |ui| {
                     ui.add(egui::Slider::new(&mut s.flatten_strength, 0.0..=1.0).max_decimals(2))
@@ -1674,7 +1684,9 @@ impl DisplacementTool {
             }
         });
         egui::Grid::new("hp_disp_sculpt_axis").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
-            self.axis_row(ui, false);
+            if self.brush.sculpt.op != SculptOp::Relax {
+                self.axis_row(ui, false);
+            }
             grid_row(ui, t!("disp.sculpt.smoothing"), |ui| {
                 ui.add(egui::Slider::new(&mut self.brush.smooth, 0.0..=1.0).max_decimals(2))
                     .on_hover_text(t!("disp.sculpt.smoothing_tip"));
@@ -1782,7 +1794,15 @@ impl DisplacementTool {
         ui.checkbox(&mut self.brush.autosew, t!("disp.autosew")).on_hover_text(t!("disp.autosew_tip"));
         ui.checkbox(&mut self.brush.selected_only, t!("disp.selected_only"))
             .on_hover_text(t!("disp.selected_only_tip"));
-        ui.checkbox(&mut self.brush.continuous, t!("disp.continuous")).on_hover_text(t!("disp.continuous_tip"));
+        let relax = self.interaction == Interaction::Sculpt && self.brush.sculpt.op == sculpt::SculptOp::Relax;
+        let mut continuous = self.brush.continuous || relax;
+        if ui
+            .add_enabled(!relax, egui::Checkbox::new(&mut continuous, t!("disp.continuous")))
+            .on_hover_text(t!("disp.continuous_tip"))
+            .changed()
+        {
+            self.brush.continuous = continuous;
+        }
     }
 
     fn tag_ui(&mut self, ui: &mut Ui, state: &mut AppState, actions: &mut Vec<PanelAction>) {
@@ -1969,6 +1989,7 @@ impl DisplacementTool {
                 sculpt::SculptOp::Grab => t!("disp.sculpt.grab"),
                 sculpt::SculptOp::Inflate => t!("disp.sculpt.inflate"),
                 sculpt::SculptOp::Flatten => t!("disp.sculpt.flatten"),
+                sculpt::SculptOp::Relax => t!("disp.sculpt.relax"),
             },
         }
     }
