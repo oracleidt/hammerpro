@@ -26,6 +26,10 @@ fn f3(v: DVec3) -> [f32; 3] {
 }
 
 pub fn push_face(out: &mut Overlay, view: &ViewInfo, poly: &[DVec3], thick: bool) {
+    push_face_with_opacity(out, view, poly, thick, [FACE_FILL[3], FACE_FILL_THROUGH[3]]);
+}
+
+fn push_face_with_opacity(out: &mut Overlay, view: &ViewInfo, poly: &[DVec3], thick: bool, opacity: [f32; 2]) {
     if poly.len() < 3 || poly.iter().any(|p| !p.is_finite()) {
         return;
     }
@@ -36,11 +40,15 @@ pub fn push_face(out: &mut Overlay, view: &ViewInfo, poly: &[DVec3], thick: bool
     let p0 = f3(poly[0] + lift);
     for w in poly[1..].windows(2) {
         let tri = [p0, f3(w[0] + lift), f3(w[1] + lift)];
-        if !view.is_2d() {
-            out.triangles.push(OverlayTri { p: tri, color: FACE_FILL });
+        let fill = [FACE_FILL[0], FACE_FILL[1], FACE_FILL[2], opacity[0]];
+        let through = [FACE_FILL_THROUGH[0], FACE_FILL_THROUGH[1], FACE_FILL_THROUGH[2], opacity[1]];
+        if !view.is_2d() && fill[3] > 0.0 {
+            out.triangles.push(OverlayTri { p: tri, color: fill });
         }
-        out.triangles_on_top
-            .push(OverlayTri { p: tri, color: if view.is_2d() { FACE_FILL } else { FACE_FILL_THROUGH } });
+        let top = if view.is_2d() { fill } else { through };
+        if top[3] > 0.0 {
+            out.triangles_on_top.push(OverlayTri { p: tri, color: top });
+        }
     }
     for i in 0..poly.len() {
         let (a, b) = (poly[i] + lift, poly[(i + 1) % poly.len()] + lift);
@@ -74,7 +82,14 @@ impl OverlayLayer for SelectionLayer {
             let thick = state.doc.selection().faces.len() <= MAX_THICK_FACES;
             for face in state.doc.selection().faces.iter().take(MAX_FACES) {
                 if let Some(poly) = state.doc.face_polygon(*face) {
-                    push_face(out, view, poly, thick);
+                    if state.tool == ToolId::Displacement {
+                        let has_disp =
+                            state.doc.scene().solid(face.solid).is_some_and(|n| n.disp_mesh(face.side).is_some());
+                        let opacity = if has_disp { 0.0 } else { state.settings.mesh.displacement_selection_opacity() };
+                        push_face_with_opacity(out, view, poly, thick, [opacity, 0.0]);
+                    } else {
+                        push_face(out, view, poly, thick);
+                    }
                 }
             }
         }
@@ -141,5 +156,31 @@ mod tests {
         assert_eq!(both.points.len(), 2);
         state.runtime.selection.element_revision = rev.wrapping_add(1);
         assert!(drawn(&state, ViewKind::Perspective).is_empty(), "stale picks are not drawn");
+    }
+
+    #[test]
+    fn displacement_opacity_does_not_leave_a_second_flat_mask() {
+        let mut state = hp_app::testing::test_state();
+        let face = FaceRef::new(3, 5);
+        state.tool = ToolId::Displacement;
+        state.doc.select_faces(&[face], SelectOp::Replace);
+        for opacity in [0.0, 0.237, 1.0] {
+            state.settings.mesh.disp_selection_opacity = opacity;
+            let out = drawn(&state, ViewKind::Perspective);
+            assert!(!out.lines_on_top.is_empty());
+            assert!(out.triangles_on_top.is_empty());
+            if opacity == 0.0 {
+                assert!(out.triangles.is_empty());
+            } else {
+                assert!(out.triangles.iter().all(|t| t.color[3] == opacity));
+            }
+        }
+        state.doc.create_displacements(&[face], 2).unwrap();
+        let out = drawn(&state, ViewKind::Perspective);
+        assert!(out.triangles.is_empty() && out.triangles_on_top.is_empty());
+        assert!(!out.lines_on_top.is_empty());
+        state.settings.mesh.disp_selection_opacity = 0.0;
+        state.tool = ToolId::Select;
+        assert!(!drawn(&state, ViewKind::Perspective).triangles.is_empty());
     }
 }

@@ -1250,6 +1250,18 @@ impl DisplacementTool {
         let sel_disps = selected_disp_faces(&state.doc);
         let sel_faces = state.doc.selection().faces.len();
         ui.label(RichText::new(tf!("disp.selected_faces", sel_disps.len(), sel_faces)).weak());
+        ui.horizontal(|ui| {
+            ui.label(t!("disp.selection_opacity"));
+            let mut opacity = state.settings.mesh.displacement_selection_opacity() * 100.0;
+            if ui
+                .add(egui::Slider::new(&mut opacity, 0.0..=100.0).suffix(" %").max_decimals(1).step_by(0.1))
+                .on_hover_text(t!("disp.selection_opacity_tip"))
+                .changed()
+            {
+                state.settings.mesh.disp_selection_opacity = opacity / 100.0;
+                state.settings_dirty = true;
+            }
+        });
         ui.horizontal_wrapped(|ui| {
             if ui
                 .add_enabled(total > 0, Button::new(t!("disp.select_all")))
