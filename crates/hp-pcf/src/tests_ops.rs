@@ -48,6 +48,50 @@ fn run(def: &SystemDef, points: &Points, seconds: f32) -> Sim {
 struct FloorTrace;
 
 #[test]
+fn moving_and_rotating_control_point_locks_match_native_game_frames() {
+    let definitions = crate::parse_file(include_bytes!("../tests/data/lock_cp_live_cases.pcf")).unwrap();
+    let frames: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/lock_cp_live_native_samples.json")).unwrap();
+    assert_eq!(frames.len(), 149);
+    let mut maximum_errors = [0.0f32; 9];
+    let mut first_differences = Vec::new();
+    for index in 0..9 {
+        let name = format!("hp_spritecard_lock{index}");
+        let plan = Arc::new(Plan::new(definitions.iter().find(|definition| definition.name == name).unwrap()));
+        assert!(plan.unsupported.is_empty());
+        let mut sim = Sim::new(plan, 17);
+        let mut measured = 0;
+        for (frame, sample) in frames.iter().enumerate() {
+            let point = &sample["points"][index];
+            let vector = |value: &serde_json::Value| std::array::from_fn(|axis| value[axis].as_f64().unwrap() as f32);
+            let mut points = Points::at(vector(&point["position"]));
+            points.pos.push(vector(&sample["static_point1"]["position"]));
+            points.axes = std::array::from_fn(|axis| vector(&point["axes"][axis]));
+            points.orientations =
+                vec![points.axes, std::array::from_fn(|axis| vector(&sample["static_point1"]["axes"][axis]))];
+            sim.step_at(sample["dt"].as_f64().unwrap() as f32, &points, &[], 1);
+            assert_eq!(sim.particles.len(), 1);
+            for axis in 0..3 {
+                if let Some(expected) = sample["positions"][index][axis].as_f64() {
+                    measured += 1;
+                    let actual = sim.particles[0].pos[axis];
+                    let error = (actual - expected as f32).abs();
+                    maximum_errors[index] = maximum_errors[index].max(error);
+                    if error > 0.002 && first_differences.len() < 12 {
+                        first_differences.push((index, frame, axis, actual, expected));
+                    }
+                }
+            }
+        }
+        assert!(measured >= 250);
+    }
+    assert!(
+        maximum_errors.iter().all(|error| *error == 0.0),
+        "maximum errors {maximum_errors:?}; first {first_differences:?}"
+    );
+}
+
+#[test]
 fn ramp_variants_match_native_trajectories_including_the_default_random_window() {
     let definitions = crate::parse_file(include_bytes!("../tests/data/ramp_live_cases.pcf")).unwrap();
     let frames: Vec<serde_json::Value> =

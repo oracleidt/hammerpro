@@ -17,11 +17,13 @@ mod ramp;
 mod random;
 mod rays;
 mod scalar;
+mod simd_random;
 mod spatial;
 
 pub const MAX_PREVIEW_PARTICLES: usize = 5000;
 pub const MAX_CONTROL_POINTS: usize = 64;
 const LOOP_PAUSE: f32 = 0.6;
+const INITIAL_PREVIOUS_DT: f32 = 0.05;
 const MAX_CHILD_DEPTH: usize = 4;
 const MAX_SYSTEMS: usize = 16;
 pub const MAX_EFFECT_PARTICLES: usize = MAX_PREVIEW_PARTICLES * MAX_SYSTEMS;
@@ -74,16 +76,6 @@ fn bias(x: f32, amount: f32) -> f32 {
 
 fn ease(t: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
-}
-
-fn hash01(seed: u32, key: u32) -> f32 {
-    let mut x = seed ^ key.wrapping_mul(0x9E37_79B9);
-    x ^= x >> 16;
-    x = x.wrapping_mul(0x7FEB_352D);
-    x ^= x >> 15;
-    x = x.wrapping_mul(0x846C_A68B);
-    x ^= x >> 16;
-    (x >> 8) as f32 / (1u32 << 24) as f32
 }
 
 #[derive(Clone, Debug)]
@@ -351,6 +343,7 @@ enum Init {
         max: f32,
     },
     Velocity {
+        cp: i32,
         smin: f32,
         smax: f32,
         lmin: V3,
@@ -840,6 +833,7 @@ impl Plan {
                 max: f(op, "length_max", 0.1).clamp(0.0, 100.0),
             },
             "velocity random" => Init::Velocity {
+                cp: i(op, "control_point_number", 0).clamp(0, 63),
                 smin: f(op, "random_speed_min", f(op, "speed_min", 0.0)),
                 smax: f(op, "random_speed_max", f(op, "speed_max", 0.0)),
                 lmin: v(op, "speed_in_local_coordinate_system_min", [0.0; 3]),
@@ -1095,6 +1089,7 @@ pub struct Particle {
     dead: bool,
     previous_pos: V3,
     previous_dt: f32,
+    velocity_snapshot: V3,
     initial_values: [f32; Field::Other as usize + 1],
     hitbox: i32,
     hitbox_relative: V3,
@@ -1137,6 +1132,7 @@ pub struct Sim {
     plan: Arc<Plan>,
     pub particles: Vec<Particle>,
     time: f32,
+    previous_dt: f32,
     emission: Vec<emission::State>,
     parented: bool,
     fired: Vec<bool>,
@@ -1151,6 +1147,9 @@ pub struct Sim {
     path_bulge: V3,
     previous_models: model::Cache,
     operator_states: Vec<common::State>,
+    particle_op_states: Vec<ParticleOpState>,
+    lock_states: Vec<control::LockState>,
+    simd_random: simd_random::Stream,
 }
 
 impl Sim {
@@ -1161,10 +1160,12 @@ impl Sim {
         let path_steps = vec![(0.0, false); plan.inits.len()];
         let point_traces = vec![control::PointTraceState::default(); plan.point_traces.len()];
         let operator_states = vec![common::State::default(); plan.operator_schedule.len()];
+        let lock_states = vec![control::LockState::default(); plan.ops.len()];
         Sim {
             plan,
             particles: Vec::new(),
             time: 0.0,
+            previous_dt: INITIAL_PREVIOUS_DT,
             emission,
             parented: false,
             fired: vec![false; n],
@@ -1179,6 +1180,9 @@ impl Sim {
             path_bulge: Rng(seed).range3([-1.0; 3], [1.0; 3]),
             previous_models: Default::default(),
             operator_states,
+            particle_op_states: Vec::new(),
+            lock_states,
+            simd_random: simd_random::Stream::new(seed),
         }
     }
 
@@ -1201,6 +1205,7 @@ impl Sim {
     pub fn restart(&mut self) {
         self.particles.clear();
         self.time = 0.0;
+        self.previous_dt = INITIAL_PREVIOUS_DT;
         self.born = 0;
         self.previous_points = None;
         self.point_traces.fill(control::PointTraceState::default());
@@ -1208,6 +1213,8 @@ impl Sim {
         self.path_steps.fill((0.0, false));
         self.previous_models.clear();
         self.operator_states.fill(common::State::default());
+        self.particle_op_states.clear();
+        self.lock_states.fill(control::LockState::default());
         for (state, emitter) in self.emission.iter_mut().zip(&self.plan.emitters) {
             *state = emission::State::new(emitter);
         }
@@ -1258,7 +1265,8 @@ impl Sim {
             let part = Particle {
                 dead: false,
                 previous_pos: origin,
-                previous_dt: 0.0,
+                previous_dt: self.previous_dt,
+                velocity_snapshot: [0.0; 3],
                 initial_values: [0.0; Field::Other as usize + 1],
                 hitbox: 0,
                 hitbox_relative: [0.0; 3],
@@ -1313,7 +1321,9 @@ impl Sim {
                     Init::InheritVelocity { cp, scale: amount } => {
                         if dt > 0.0 {
                             let previous = self.previous_points.as_ref().unwrap_or(points);
-                            part.vel = add(part.vel, scale(sub(points.get(*cp), previous.get(*cp)), amount / dt));
+                            let velocity = scale(sub(points.get(*cp), previous.get(*cp)), amount / dt);
+                            part.vel = add(part.vel, velocity);
+                            part.previous_pos = sub(part.previous_pos, scale(velocity, part.previous_dt));
                         }
                     }
                     Init::Warp(warp) => control::apply_warp(warp, part, points, self.time, &mut self.rng),
@@ -1328,6 +1338,7 @@ impl Sim {
                             o = points.local(o);
                         }
                         part.pos = add(part.pos, o);
+                        part.previous_pos = add(part.previous_pos, o);
                     }
                     Init::Ring { cp, radius, thickness, smin, smax, even } => {
                         let t = if *even {
@@ -1420,15 +1431,21 @@ impl Sim {
                         }
                     }
                     Init::TrailLength { min, max } => part.trail = self.rng.range(*min, *max),
-                    Init::Velocity { smin, smax, lmin, lmax } => {
+                    Init::Velocity { cp, smin, smax, lmin, lmax } => {
                         let d = self.rng.dir();
-                        part.vel = add(
-                            part.vel,
-                            add(scale(d, self.rng.range(*smin, *smax)), points.local(self.rng.range3(*lmin, *lmax))),
-                        );
+                        let speed = self.rng.range(*smin, *smax);
+                        let local = self.rng.range3(*lmin, *lmax);
+                        let axes = points.orientation(*cp);
+                        let local =
+                            add(add(scale(axes[0], local[0]), scale(axes[1], local[1])), scale(axes[2], local[2]));
+                        let velocity = add(scale(d, speed), local);
+                        part.vel = add(part.vel, velocity);
+                        part.previous_pos = sub(part.previous_pos, scale(velocity, part.previous_dt));
                     }
                     Init::Noise(op) => {
-                        part.vel = add(part.vel, op.evaluate(part.pos, part.born, points));
+                        let velocity = op.evaluate(part.pos, part.born, points);
+                        part.vel = add(part.vel, velocity);
+                        part.previous_pos = sub(part.previous_pos, scale(velocity, part.previous_dt));
                     }
                     Init::NoiseScalar { .. } => {} // Handled once for the complete batch above.
                     Init::Remap { input, imin, imax, output, omin, omax, multiply, within } => {
@@ -1443,6 +1460,9 @@ impl Sim {
                     Init::PreAge(noise) => {
                         part.born -= noise.evaluate(part.pos, part.born, world).clamp(0.0, 1.0) * part.life;
                     }
+                }
+                if init.written_attributes() & (1 << 2) != 0 {
+                    part.previous_pos = sub(part.pos, scale(part.vel, part.previous_dt));
                 }
             }
         }
@@ -1461,6 +1481,7 @@ impl Sim {
             part.radius = part.base_radius;
             part.color = part.base_color.map(|value| value.clamp(0.0, 1.0));
             part.alpha = part.base_alpha;
+            part.velocity_snapshot = part.vel;
             for field in [
                 Field::PositionX,
                 Field::Lifetime,
@@ -1528,24 +1549,36 @@ impl Sim {
             self.spawn_batch(points, parents, dt, world, births);
         }
         for part in &mut self.particles {
+            // Public velocity edits must update the native previous-position representation.
+            if part.vel != part.velocity_snapshot {
+                part.previous_pos = sub(part.pos, scale(part.vel, part.previous_dt));
+            }
             part.age += dt;
-            operate(
-                &plan,
-                &self.operator_states,
-                part,
-                points,
-                self.previous_points.as_ref().unwrap_or(points),
-                dt,
-                world,
-                &mut self.rng,
-                t1,
-            );
+        }
+        operate(
+            &plan,
+            &self.operator_states,
+            &mut self.particles,
+            points,
+            dt,
+            world,
+            &mut self.rng,
+            t1,
+            &mut self.particle_op_states,
+            &mut self.lock_states,
+            &mut self.simd_random,
+        );
+        for part in &mut self.particles {
+            part.velocity_snapshot = part.vel;
         }
         if plan.decay_schedule.iter().any(|index| self.operator_states[*index].active()) {
             self.particles.retain(|p| p.age < p.life);
         }
         self.particles.retain(|p| !p.dead && p.pos.iter().all(|c| c.is_finite() && c.abs() < 1.0e6));
         self.time = t1;
+        if dt > 0.0 {
+            self.previous_dt = dt;
+        }
         self.previous_points = Some(points.clone());
         self.previous_models = frame.finish();
     }
@@ -1595,303 +1628,329 @@ fn set_field(p: &mut Particle, field: Field, x: f32, multiply: bool) {
     *slot = if matches!(field, Field::Alpha | Field::Alpha2) { value.clamp(0.0, 1.0) } else { value };
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+struct ParticleOpState {
+    alpha: f32,
+    alpha_written: bool,
+    color: V3,
+    color_written: bool,
+    old: V3,
+    acceleration: V3,
+}
+
 #[allow(clippy::too_many_arguments)]
 fn operate(
     plan: &Plan,
     operator_states: &[common::State],
-    part: &mut Particle,
+    particles: &mut [Particle],
     points: &Points,
-    previous: &Points,
     dt: f32,
     world: &dyn Environment,
     rng: &mut Rng,
     time: f32,
+    particle_states: &mut Vec<ParticleOpState>,
+    lock_states: &mut [control::LockState],
+    simd_random: &mut simd_random::Stream,
 ) {
-    let life = if part.life > 0.0 { part.life } else { 1.0 };
-    let t = (part.age / life).clamp(0.0, 1.0);
-    let mut alpha = part.base_alpha;
-    let mut alpha_written = false;
-    let mut color = part.base_color;
-    let mut color_written = false;
-    let old = part.pos;
-    let mut acceleration = [0.0; 3];
+    particle_states.resize(particles.len(), ParticleOpState::default());
+    for (part, context) in particles.iter().zip(particle_states.iter_mut()) {
+        *context =
+            ParticleOpState { alpha: part.base_alpha, color: part.base_color, old: part.pos, ..Default::default() };
+    }
     for (k, op) in plan.ops.iter().enumerate() {
         let state = operator_states[plan.op_schedule[k]];
         if !state.active() {
             continue;
         }
-        let key = k as u32 * 7;
-        let before_pos = part.pos;
-        let before_vel = part.vel;
-        match op {
-            Op::BoneLock(lock) => model::apply_lock(lock, part, points, dt, world),
-            Op::Scalar(remap) => {
-                if alpha_written {
-                    part.alpha = alpha + part.alpha_add;
+        if let Op::Lock(lock) = op {
+            control::apply_lock(lock, &mut lock_states[k], particles, points, time, dt, state.strength, simd_random);
+            continue;
+        }
+        for (part, context) in particles.iter_mut().zip(particle_states.iter_mut()) {
+            let life = if part.life > 0.0 { part.life } else { 1.0 };
+            let t = (part.age / life).clamp(0.0, 1.0);
+            let mut alpha = context.alpha;
+            let mut alpha_written = context.alpha_written;
+            let mut color = context.color;
+            let mut color_written = context.color_written;
+            let old = context.old;
+            let mut acceleration = context.acceleration;
+            let before_pos = part.pos;
+            let before_vel = part.vel;
+            match op {
+                Op::BoneLock(lock) => model::apply_lock(lock, part, points, dt, world),
+                Op::Scalar(remap) => {
+                    if alpha_written {
+                        part.alpha = alpha + part.alpha_add;
+                    }
+                    part.radius = (part.base_radius * part.radius_scale + part.radius_add).max(0.0);
+                    if let Some(value) = scalar::evaluate(remap, part, points, world, part.born + part.age, true) {
+                        match remap.field {
+                            Field::Alpha => {
+                                alpha = value;
+                                part.alpha_add = 0.0;
+                            }
+                            Field::Radius => {
+                                part.base_radius = value;
+                                part.radius_scale = 1.0;
+                                part.radius_add = 0.0;
+                            }
+                            _ => set_field(part, remap.field, value, false),
+                        }
+                    }
                 }
-                part.radius = (part.base_radius * part.radius_scale + part.radius_add).max(0.0);
-                if let Some(value) = scalar::evaluate(remap, part, points, world, part.born + part.age, true) {
-                    match remap.field {
+                Op::Lock(_) => {}
+                Op::Force(force) => acceleration = add(acceleration, forces::acceleration(force, part, points, rng)),
+                Op::Spatial(op) => spatial::apply(op, part, old, points, dt, world),
+                Op::CullRandom { start, end, exponent, percentage } => {
+                    let chance = rng.next();
+                    let threshold = lerp(*start, *end, rng.next().powf(*exponent));
+                    if chance <= *percentage && t >= *start && t <= *end && t >= threshold {
+                        part.dead = true;
+                    }
+                }
+                Op::Movement { gravity, drag } => {
+                    if dt > 0.0 {
+                        let movement = if part.previous_dt > 0.0 {
+                            scale(sub(part.pos, part.previous_pos), dt / part.previous_dt)
+                        } else {
+                            scale(part.vel, dt)
+                        };
+                        let movement = scale(movement, (1.0 - drag).powf(dt * 30.0));
+                        part.previous_pos = part.pos;
+                        part.previous_dt = dt;
+                        part.pos = add(part.pos, add(movement, scale(add(*gravity, acceleration), dt * dt)));
+                        part.vel = scale(sub(part.pos, part.previous_pos), 1.0 / dt);
+                    }
+                }
+                Op::FadeIn { proportional, ease: smooth, .. } => {
+                    let span = if *proportional { part.fade_in } else { part.fade_in / life };
+                    if span > 0.0 {
+                        let x = (t / span).clamp(0.0, 1.0);
+                        alpha *= if *smooth { ease(x) } else { x };
+                    }
+                }
+                Op::FadeOut { proportional, ease: smooth, .. } => {
+                    let span = if *proportional { part.fade_out } else { part.fade_out / life };
+                    if span > 0.0 {
+                        let x = ((1.0 - t) / span).clamp(0.0, 1.0);
+                        alpha *= if *smooth { ease(x) } else { x };
+                    }
+                }
+                Op::FadeAndDecay { start, end, in0, in1, out0, out1 } => {
+                    let mut a = 1.0;
+                    if t < *in1 && in1 > in0 {
+                        a = lerp(*start, 1.0, ((t - in0) / (in1 - in0)).clamp(0.0, 1.0));
+                    } else if t > *out0 && out1 > out0 {
+                        a = lerp(1.0, *end, ((t - out0) / (out1 - out0)).clamp(0.0, 1.0));
+                    }
+                    alpha *= a.clamp(0.0, 1.0);
+                }
+                Op::RadiusScale { t0, t1, s0, s1, bias: amount, ease: smooth } => {
+                    if t >= *t0 && t <= *t1 {
+                        let mut x = if t1 > t0 { (t - t0) / (t1 - t0) } else { 1.0 };
+                        if *smooth {
+                            x = ease(x);
+                        }
+                        part.radius_scale = lerp(*s0, *s1, bias(x, *amount));
+                    }
+                }
+                Op::ColorFade { color: target, t0, t1, ease: smooth } => {
+                    if t >= *t0 {
+                        let mut x = if t1 > t0 { ((t - t0) / (t1 - t0)).clamp(0.0, 1.0) } else { 1.0 };
+                        if *smooth {
+                            x = ease(x);
+                        }
+                        color = lerp3(color, *target, x);
+                        color_written = true;
+                    }
+                }
+                Op::RotationBasic => part.rotation += part.rotation_speed * dt,
+                Op::Spin { rate, stop, min, yaw } => {
+                    let strength = if *stop > 0.0 { (1.0 - part.age / stop).max(0.0) } else { 1.0 };
+                    let r = (lerp(*min, *rate, strength) + part.rotation_speed) * dt;
+                    if *yaw {
+                        part.yaw += r;
+                    } else {
+                        part.rotation += r;
+                    }
+                }
+                Op::OscScalar { field, wave } => {
+                    let Some(delta) =
+                        wave.delta((time, part.born, part.life), part.seed, state.random_offset, dt * state.strength)
+                    else {
+                        continue;
+                    };
+                    match field {
+                        Field::PositionX => part.pos[0] += delta,
+                        Field::Radius => part.radius_add += delta,
                         Field::Alpha => {
-                            alpha = value;
+                            let current = if alpha_written { alpha + part.alpha_add } else { part.alpha };
+                            alpha = (current + delta).clamp(0.0, 1.0);
                             part.alpha_add = 0.0;
                         }
+                        Field::Alpha2 => part.alpha2 = (part.alpha2 + delta).clamp(0.0, 1.0),
+                        Field::Rotation => part.rotation += delta,
+                        Field::Yaw => part.yaw += delta,
+                        Field::CreationTime => part.born += delta,
+                        _ => {
+                            let value = get_field(part, *field) + delta;
+                            set_field(part, *field, value, false);
+                        }
+                    }
+                }
+                Op::OscVector { field, wave } => {
+                    let Some(delta) =
+                        wave.delta((time, part.born, part.life), part.seed, state.random_offset, dt * state.strength)
+                    else {
+                        continue;
+                    };
+                    match field {
+                        0 => part.pos = add(part.pos, delta),
+                        2 => part.previous_pos = add(part.previous_pos, delta),
+                        6 => {
+                            let current = if color_written { color } else { part.color };
+                            color = add(current, delta).map(|value| value.clamp(0.0, 1.0));
+                            color_written = true;
+                        }
+                        _ => {}
+                    }
+                }
+                Op::NoiseScalar { field, min, max, speed, additive } => {
+                    let x = noise::map(noise::scalar(scale(part.pos, *speed)), *min, *max, additive.then_some(dt));
+                    match field {
+                        Field::Radius => {
+                            let current = part.base_radius * part.radius_scale + part.radius_add;
+                            part.base_radius = (x + if *additive { current } else { 0.0 }).max(0.0);
+                            part.radius_scale = 1.0;
+                            part.radius_add = 0.0;
+                        }
+                        Field::Alpha => {
+                            let current = if alpha_written { alpha } else { part.alpha };
+                            alpha = x + if *additive { current } else { 0.0 };
+                            part.alpha_add = 0.0;
+                        }
+                        _ => {
+                            let value = x + if *additive { get_field(part, *field) } else { 0.0 };
+                            set_field(part, *field, value, false);
+                        }
+                    }
+                }
+                Op::NoiseVector { field, min, max, speed, additive } => {
+                    let n = noise::vector(scale(part.pos, *speed));
+                    let x = std::array::from_fn(|axis| noise::map(n[axis], min[axis], max[axis], None));
+                    if *field == 6 {
+                        let current = if color_written { color } else { part.color };
+                        color = if *additive { add(current, scale(x, dt)) } else { x };
+                        color_written = true;
+                    } else if *field == 0 {
+                        part.pos = if *additive { add(part.pos, scale(x, dt)) } else { x };
+                    } else if *field == 2 {
+                        part.previous_pos = if *additive { add(part.previous_pos, scale(x, dt)) } else { x };
+                    }
+                }
+                Op::Ramp { field, ramp } => {
+                    let current = match field {
+                        Field::Radius => part.base_radius * part.radius_scale + part.radius_add,
+                        Field::Alpha if alpha_written => alpha + part.alpha_add,
+                        Field::Alpha => part.alpha,
+                        _ => get_field(part, *field),
+                    };
+                    let Some(value) = ramp.apply(
+                        (time, part.born, part.life),
+                        part.seed,
+                        state.random_offset,
+                        dt * state.strength,
+                        current,
+                    ) else {
+                        continue;
+                    };
+                    match field {
                         Field::Radius => {
                             part.base_radius = value;
                             part.radius_scale = 1.0;
                             part.radius_add = 0.0;
                         }
-                        _ => set_field(part, remap.field, value, false),
+                        Field::Alpha => {
+                            alpha = value;
+                            part.alpha_add = 0.0;
+                        }
+                        _ => set_field(part, *field, value, false),
                     }
                 }
-            }
-            Op::Lock(lock) => control::apply_lock(lock, part, points, previous, key),
-            Op::Force(force) => acceleration = add(acceleration, forces::acceleration(force, part, points, rng)),
-            Op::Spatial(op) => spatial::apply(op, part, old, points, dt, world),
-            Op::CullRandom { start, end, exponent, percentage } => {
-                let chance = rng.next();
-                let threshold = lerp(*start, *end, rng.next().powf(*exponent));
-                if chance <= *percentage && t >= *start && t <= *end && t >= threshold {
-                    part.dead = true;
-                }
-            }
-            Op::Movement { gravity, drag } => {
-                if dt > 0.0 {
-                    let movement = if part.previous_dt > 0.0 {
-                        scale(sub(part.pos, part.previous_pos), dt / part.previous_dt)
-                    } else {
-                        scale(part.vel, dt)
-                    };
-                    let movement = scale(movement, (1.0 - drag).powf(dt * 30.0));
-                    part.previous_pos = part.pos;
-                    part.previous_dt = dt;
-                    part.pos = add(part.pos, add(movement, scale(add(*gravity, acceleration), dt * dt)));
-                    part.vel = scale(sub(part.pos, part.previous_pos), 1.0 / dt);
-                }
-            }
-            Op::FadeIn { proportional, ease: smooth, .. } => {
-                let span = if *proportional { part.fade_in } else { part.fade_in / life };
-                if span > 0.0 {
-                    let x = (t / span).clamp(0.0, 1.0);
-                    alpha *= if *smooth { ease(x) } else { x };
-                }
-            }
-            Op::FadeOut { proportional, ease: smooth, .. } => {
-                let span = if *proportional { part.fade_out } else { part.fade_out / life };
-                if span > 0.0 {
-                    let x = ((1.0 - t) / span).clamp(0.0, 1.0);
-                    alpha *= if *smooth { ease(x) } else { x };
-                }
-            }
-            Op::FadeAndDecay { start, end, in0, in1, out0, out1 } => {
-                let mut a = 1.0;
-                if t < *in1 && in1 > in0 {
-                    a = lerp(*start, 1.0, ((t - in0) / (in1 - in0)).clamp(0.0, 1.0));
-                } else if t > *out0 && out1 > out0 {
-                    a = lerp(1.0, *end, ((t - out0) / (out1 - out0)).clamp(0.0, 1.0));
-                }
-                alpha *= a.clamp(0.0, 1.0);
-            }
-            Op::RadiusScale { t0, t1, s0, s1, bias: amount, ease: smooth } => {
-                if t >= *t0 && t <= *t1 {
-                    let mut x = if t1 > t0 { (t - t0) / (t1 - t0) } else { 1.0 };
-                    if *smooth {
-                        x = ease(x);
-                    }
-                    part.radius_scale = lerp(*s0, *s1, bias(x, *amount));
-                }
-            }
-            Op::ColorFade { color: target, t0, t1, ease: smooth } => {
-                if t >= *t0 {
-                    let mut x = if t1 > t0 { ((t - t0) / (t1 - t0)).clamp(0.0, 1.0) } else { 1.0 };
-                    if *smooth {
-                        x = ease(x);
-                    }
-                    color = lerp3(color, *target, x);
-                    color_written = true;
-                }
-            }
-            Op::RotationBasic => part.rotation += part.rotation_speed * dt,
-            Op::Spin { rate, stop, min, yaw } => {
-                let strength = if *stop > 0.0 { (1.0 - part.age / stop).max(0.0) } else { 1.0 };
-                let r = (lerp(*min, *rate, strength) + part.rotation_speed) * dt;
-                if *yaw {
-                    part.yaw += r;
-                } else {
-                    part.rotation += r;
-                }
-            }
-            Op::OscScalar { field, wave } => {
-                let Some(delta) =
-                    wave.delta((time, part.born, part.life), part.seed, state.random_offset, dt * state.strength)
-                else {
-                    continue;
-                };
-                match field {
-                    Field::PositionX => part.pos[0] += delta,
-                    Field::Radius => part.radius_add += delta,
-                    Field::Alpha => {
-                        let current = if alpha_written { alpha + part.alpha_add } else { part.alpha };
-                        alpha = (current + delta).clamp(0.0, 1.0);
-                        part.alpha_add = 0.0;
-                    }
-                    Field::Alpha2 => part.alpha2 = (part.alpha2 + delta).clamp(0.0, 1.0),
-                    Field::Rotation => part.rotation += delta,
-                    Field::Yaw => part.yaw += delta,
-                    Field::CreationTime => part.born += delta,
-                    _ => {
-                        let value = get_field(part, *field) + delta;
-                        set_field(part, *field, value, false);
+                Op::MaxVelocity { max } => {
+                    let s = length(part.vel);
+                    if *max > 0.0 && s > *max {
+                        part.vel = scale(part.vel, max / s);
                     }
                 }
-            }
-            Op::OscVector { field, wave } => {
-                let Some(delta) =
-                    wave.delta((time, part.born, part.life), part.seed, state.random_offset, dt * state.strength)
-                else {
-                    continue;
-                };
-                match field {
-                    0 => part.pos = add(part.pos, delta),
-                    2 => part.previous_pos = add(part.previous_pos, delta),
-                    6 => {
-                        let current = if color_written { color } else { part.color };
-                        color = add(current, delta).map(|value| value.clamp(0.0, 1.0));
-                        color_written = true;
-                    }
-                    _ => {}
-                }
-            }
-            Op::NoiseScalar { field, min, max, speed, additive } => {
-                let x = noise::map(noise::scalar(scale(part.pos, *speed)), *min, *max, additive.then_some(dt));
-                match field {
-                    Field::Radius => {
-                        let current = part.base_radius * part.radius_scale + part.radius_add;
-                        part.base_radius = (x + if *additive { current } else { 0.0 }).max(0.0);
-                        part.radius_scale = 1.0;
-                        part.radius_add = 0.0;
-                    }
-                    Field::Alpha => {
-                        let current = if alpha_written { alpha } else { part.alpha };
-                        alpha = x + if *additive { current } else { 0.0 };
-                        part.alpha_add = 0.0;
-                    }
-                    _ => {
-                        let value = x + if *additive { get_field(part, *field) } else { 0.0 };
-                        set_field(part, *field, value, false);
-                    }
-                }
-            }
-            Op::NoiseVector { field, min, max, speed, additive } => {
-                let n = noise::vector(scale(part.pos, *speed));
-                let x = std::array::from_fn(|axis| noise::map(n[axis], min[axis], max[axis], None));
-                if *field == 6 {
-                    let current = if color_written { color } else { part.color };
-                    color = if *additive { add(current, scale(x, dt)) } else { x };
-                    color_written = true;
-                } else if *field == 0 {
-                    part.pos = if *additive { add(part.pos, scale(x, dt)) } else { x };
-                } else if *field == 2 {
-                    part.previous_pos = if *additive { add(part.previous_pos, scale(x, dt)) } else { x };
-                }
-            }
-            Op::Ramp { field, ramp } => {
-                let current = match field {
-                    Field::Radius => part.base_radius * part.radius_scale + part.radius_add,
-                    Field::Alpha if alpha_written => alpha + part.alpha_add,
-                    Field::Alpha => part.alpha,
-                    _ => get_field(part, *field),
-                };
-                let Some(value) = ramp.apply(
-                    (time, part.born, part.life),
-                    part.seed,
-                    state.random_offset,
-                    dt * state.strength,
-                    current,
-                ) else {
-                    continue;
-                };
-                match field {
-                    Field::Radius => {
-                        part.base_radius = value;
-                        part.radius_scale = 1.0;
-                        part.radius_add = 0.0;
-                    }
-                    Field::Alpha => {
-                        alpha = value;
-                        part.alpha_add = 0.0;
-                    }
-                    _ => set_field(part, *field, value, false),
-                }
-            }
-            Op::MaxVelocity { max } => {
-                let s = length(part.vel);
-                if *max > 0.0 && s > *max {
-                    part.vel = scale(part.vel, max / s);
-                }
-            }
-            Op::Constrain { cp, min, max, offset } => {
-                let c = add(points.get(*cp), *offset);
-                let d = sub(part.pos, c);
-                let l = length(d);
-                if l > 1e-4 {
-                    let clamped = l.clamp(*min, max.max(*min));
-                    if (clamped - l).abs() > 1e-4 {
-                        part.pos = add(c, scale(d, clamped / l));
-                    }
-                }
-            }
-            Op::RotateAround { cp, axis, rate } => {
-                let n = length(*axis);
-                if n > 1e-6 {
-                    let a = scale(*axis, 1.0 / n);
-                    let c = points.get(*cp);
+                Op::Constrain { cp, min, max, offset } => {
+                    let c = add(points.get(*cp), *offset);
                     let d = sub(part.pos, c);
-                    let (s, co) = (rate * dt).sin_cos();
-                    let r = add(add(scale(d, co), scale(cross(a, d), s)), scale(a, dot(a, d) * (1.0 - co)));
-                    part.pos = add(c, r);
+                    let l = length(d);
+                    if l > 1e-4 {
+                        let clamped = l.clamp(*min, max.max(*min));
+                        if (clamped - l).abs() > 1e-4 {
+                            part.pos = add(c, scale(d, clamped / l));
+                        }
+                    }
                 }
-            }
-            Op::Dampen { cp, range, factor } => {
-                if *range > 0.0 {
-                    let d = length(sub(part.pos, points.get(*cp)));
-                    if d < *range {
-                        let k = lerp(*factor, 1.0, d / range);
-                        part.vel = scale(part.vel, k.powf(dt * 30.0));
+                Op::RotateAround { cp, axis, rate } => {
+                    let n = length(*axis);
+                    if n > 1e-6 {
+                        let a = scale(*axis, 1.0 / n);
+                        let c = points.get(*cp);
+                        let d = sub(part.pos, c);
+                        let (s, co) = (rate * dt).sin_cos();
+                        let r = add(add(scale(d, co), scale(cross(a, d), s)), scale(a, dot(a, d) * (1.0 - co)));
+                        part.pos = add(c, r);
+                    }
+                }
+                Op::Dampen { cp, range, factor } => {
+                    if *range > 0.0 {
+                        let d = length(sub(part.pos, points.get(*cp)));
+                        if d < *range {
+                            let k = lerp(*factor, 1.0, d / range);
+                            part.vel = scale(part.vel, k.powf(dt * 30.0));
+                        }
                     }
                 }
             }
-        }
-        alpha_written |= match op {
-            Op::FadeIn { .. } | Op::FadeOut { .. } | Op::FadeAndDecay { .. } => true,
-            Op::Scalar(remap) => remap.field == Field::Alpha,
-            Op::NoiseScalar { field, .. } | Op::OscScalar { field, .. } | Op::Ramp { field, .. } => {
-                *field == Field::Alpha
+            alpha_written |= match op {
+                Op::FadeIn { .. } | Op::FadeOut { .. } | Op::FadeAndDecay { .. } => true,
+                Op::Scalar(remap) => remap.field == Field::Alpha,
+                Op::NoiseScalar { field, .. } | Op::OscScalar { field, .. } | Op::Ramp { field, .. } => {
+                    *field == Field::Alpha
+                }
+                _ => false,
+            };
+            if !matches!(
+                op,
+                Op::Movement { .. }
+                    | Op::Spatial(spatial::SpatialOp::Collision { .. })
+                    | Op::NoiseVector { .. }
+                    | Op::OscVector { .. }
+                    | Op::OscScalar { field: Field::PositionX, .. }
+                    | Op::Ramp { field: Field::PositionX, .. }
+            ) {
+                if part.vel != before_vel {
+                    part.previous_pos = sub(part.pos, scale(part.vel, part.previous_dt));
+                } else if part.pos != before_pos {
+                    part.previous_pos = add(part.previous_pos, sub(part.pos, before_pos));
+                }
             }
-            _ => false,
-        };
-        if !matches!(
-            op,
-            Op::Movement { .. }
-                | Op::Spatial(spatial::SpatialOp::Collision { .. })
-                | Op::NoiseVector { .. }
-                | Op::OscVector { .. }
-                | Op::OscScalar { field: Field::PositionX, .. }
-                | Op::Ramp { field: Field::PositionX, .. }
-        ) {
-            if part.vel != before_vel {
-                part.previous_pos = sub(part.pos, scale(part.vel, part.previous_dt));
-            } else if part.pos != before_pos {
-                part.previous_pos = add(part.previous_pos, sub(part.pos, before_pos));
-            }
+
+            *context = ParticleOpState { alpha, alpha_written, color, color_written, old, acceleration };
         }
     }
-    if alpha_written {
-        part.alpha = (alpha + part.alpha_add).clamp(0.0, 1.0);
-    }
-    part.radius = (part.base_radius * part.radius_scale + part.radius_add).max(0.0);
-    if color_written {
-        part.color = color.map(|c| c.clamp(0.0, 1.0));
+    for (part, context) in particles.iter_mut().zip(particle_states.iter()) {
+        if context.alpha_written {
+            part.alpha = (context.alpha + part.alpha_add).clamp(0.0, 1.0);
+        }
+        part.radius = (part.base_radius * part.radius_scale + part.radius_add).max(0.0);
+        if context.color_written {
+            part.color = context.color.map(|c| c.clamp(0.0, 1.0));
+        }
     }
 }
 
