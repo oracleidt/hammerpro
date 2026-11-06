@@ -485,7 +485,7 @@ fn write_entity_body(out: &mut Out, e: &Entity, ind: usize, world_version: Optio
         props = rest;
     }
     for (k, v) in props {
-        if !is_reserved_key(k, is_world) && !(world_particles && k.eq_ignore_ascii_case("origin")) {
+        if !(is_reserved_key(k, is_world) || world_particles && k.eq_ignore_ascii_case("origin")) {
             kv_text(out, i, k, v);
         }
     }

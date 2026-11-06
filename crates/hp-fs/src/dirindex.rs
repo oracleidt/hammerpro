@@ -27,11 +27,14 @@ pub(crate) const PROFILE_GAME: &str = "game";
 
 pub(crate) const PROFILE_MATERIALS: &str = "materials";
 
+type CaseChildren = AHashMap<String, PathBuf>;
+
 #[derive(Debug)]
 pub(crate) struct DirIndex {
     root: PathBuf,
     files: OnceLock<AHashMap<Box<str>, Box<str>>>,
     lookups: Mutex<AHashMap<String, Option<PathBuf>>>,
+    case_dirs: Mutex<AHashMap<PathBuf, CaseChildren>>,
 }
 
 impl DirIndex {
@@ -46,11 +49,21 @@ impl DirIndex {
             let key: Box<str> = normalize_path(&rel).into();
             files.entry(key).or_insert_with(|| rel.into_boxed_str());
         }
-        Self { root: root.to_path_buf(), files: OnceLock::from(files), lookups: Mutex::default() }
+        Self {
+            root: root.to_path_buf(),
+            files: OnceLock::from(files),
+            lookups: Mutex::default(),
+            case_dirs: Mutex::default(),
+        }
     }
 
     pub(crate) fn for_lookup(root: &Path) -> Self {
-        Self { root: root.to_path_buf(), files: OnceLock::new(), lookups: Mutex::default() }
+        Self {
+            root: root.to_path_buf(),
+            files: OnceLock::new(),
+            lookups: Mutex::default(),
+            case_dirs: Mutex::default(),
+        }
     }
 
     pub(crate) fn root(&self) -> &Path {
@@ -92,18 +105,25 @@ impl DirIndex {
         }
         let mut path = self.root.clone();
         for part in parts {
-            let exact = path.join(part);
-            if exact.exists() {
-                path = exact;
-            } else {
-                path = std::fs::read_dir(&path)
-                    .ok()?
-                    .flatten()
-                    .find(|entry| entry.file_name().to_string_lossy().eq_ignore_ascii_case(part))?
-                    .path();
-            }
+            path = self.case_child(&path, part)?;
         }
         path.is_file().then_some(path)
+    }
+
+    fn case_child(&self, directory: &Path, name: &str) -> Option<PathBuf> {
+        let mut directories = self.case_dirs.lock();
+        let children = directories.entry(directory.to_path_buf()).or_insert_with(|| {
+            let mut children = CaseChildren::new();
+            if let Ok(read) = std::fs::read_dir(directory) {
+                for entry in read.flatten() {
+                    if let Ok(name) = entry.file_name().into_string() {
+                        children.entry(name.to_ascii_lowercase()).or_insert_with(|| entry.path());
+                    }
+                }
+            }
+            children
+        });
+        children.get(&name.to_ascii_lowercase()).cloned()
     }
 
     pub(crate) fn for_each_path<'a>(&'a self, prefix: &str, ext: Option<&str>, f: &mut dyn FnMut(&'a str)) {
@@ -171,6 +191,26 @@ mod tests {
         listed.sort();
         assert_eq!(listed, ["materials/mixed/smoke.vmt", "materials/unrelated/nested/unused.vmt"]);
         assert!(index.files.get().is_some(), "enumeration still builds a complete index on demand");
+    }
+
+    #[test]
+    fn different_missing_names_reuse_the_requested_directory_snapshot() {
+        let tmp = TempDir::new("lookup-misses");
+        tmp.write("Materials/Flat/Existing.VMT", b"existing");
+        tmp.write("Materials/Other/Unrelated.VMT", b"unrelated");
+        let index = DirIndex::for_lookup(tmp.path());
+        assert!(!index.contains("materials/flat/missing0.vmt"));
+        tmp.write("Materials/Flat/Added.VMT", b"added after the directory was listed");
+        for i in 1..100 {
+            assert!(!index.contains(&format!("materials/flat/missing{i}.vmt")));
+        }
+        let directories = index.case_dirs.lock();
+        assert_eq!(directories.len(), 3);
+        let flat = directories.get(&tmp.path().join("Materials").join("Flat")).unwrap();
+        assert!(flat.contains_key("existing.vmt"));
+        assert!(!flat.contains_key("added.vmt"), "different misses must not enumerate the directory again");
+        assert!(!directories.contains_key(&tmp.path().join("Materials").join("Other")));
+        assert!(index.files.get().is_none());
     }
 
     #[test]

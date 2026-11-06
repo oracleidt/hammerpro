@@ -205,11 +205,11 @@ pub(crate) fn open_item(item: PlanItem) -> Result<Opened, FsError> {
 fn open_item_for(item: PlanItem, lookup_only: bool) -> Result<Opened, FsError> {
     let mut label = item.label;
     let data = match item.kind {
-        PlanKind::GameDir => SourceData::Dir(if lookup_only {
+        PlanKind::GameDir => SourceData::Dir(Box::new(if lookup_only {
             DirIndex::for_lookup(&item.path)
         } else {
             DirIndex::build_game_dir(&item.path)?
-        }),
+        })),
         PlanKind::Vpk => SourceData::Vpk(Arc::new(hp_vpk::VpkArchive::open(&item.path)?)),
         PlanKind::Gma { label_prefix } => {
             let gma = hp_gma::GmaArchive::open(&item.path)?;

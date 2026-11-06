@@ -96,7 +96,7 @@ pub struct SourceInfo {
 
 #[derive(Debug)]
 pub(crate) enum SourceData {
-    Dir(DirIndex),
+    Dir(Box<DirIndex>),
     Vpk(Arc<VpkArchive>),
     Gma(Arc<GmaArchive>),
     Custom(Box<CustomIndex>),
@@ -232,7 +232,7 @@ impl Source {
     pub(crate) fn reindexed(&self) -> Option<Self> {
         let data = match &self.data {
             SourceData::Dir(d) => match DirIndex::build_game_dir(d.root()) {
-                Ok(index) => SourceData::Dir(index),
+                Ok(index) => SourceData::Dir(Box::new(index)),
                 Err(e) => {
                     log::warn!("cannot refresh {}: {e}", self.label);
                     return None;
