@@ -1546,7 +1546,7 @@ fn spritecard_yaw_geometry_matches_native_coverage_and_remains_independent_of_ro
 }
 
 #[test]
-fn simulated_colors_and_fades_match_native_spritecard_pixels() {
+fn simulated_colors_fades_and_noise_match_native_spritecard_pixels() {
     struct Lighting {
         origin: [f32; 3],
         particle: [f32; 3],
@@ -1611,6 +1611,26 @@ fn simulated_colors_and_fades_match_native_spritecard_pixels() {
             hp_pcf::Sim::new(Arc::new(hp_pcf::Plan::new(definitions.iter().find(|def| def.name == name).unwrap())), 17);
         sim.step_in(0.0, &points, &[], 1, &world);
         check(&sim.particles[0], &case["pixel"], &name);
+    }
+    for (file, reference) in [
+        (
+            include_bytes!("../../hp-pcf/tests/data/noise_scalar_cases.pcf").as_slice(),
+            include_str!("../../hp-pcf/tests/data/noise_scalar_native.json"),
+        ),
+        (
+            include_bytes!("../../hp-pcf/tests/data/noise_vector_cases.pcf").as_slice(),
+            include_str!("../../hp-pcf/tests/data/noise_vector_native.json"),
+        ),
+    ] {
+        let definitions = hp_pcf::parse_file(file).unwrap();
+        let cases: Vec<serde_json::Value> = serde_json::from_str(reference).unwrap();
+        for case in cases {
+            let name = format!("hp_spritecard_{}", case["name"].as_str().unwrap());
+            let definition = definitions.iter().find(|def| def.name == name).unwrap();
+            let mut sim = hp_pcf::Sim::new(Arc::new(hp_pcf::Plan::new(definition)), 17);
+            sim.step(0.0, [0.0; 3], 1);
+            check(&sim.particles[0], &case["pixel"], &name);
+        }
     }
     let definitions = hp_pcf::parse_file(include_bytes!("../../hp-pcf/tests/data/color_fade_cases.pcf")).unwrap();
     let cases: Vec<serde_json::Value> =

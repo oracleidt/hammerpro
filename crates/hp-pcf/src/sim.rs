@@ -7,6 +7,7 @@ mod color;
 mod control;
 mod forces;
 mod model;
+mod noise;
 mod path;
 mod random;
 mod rays;
@@ -456,12 +457,14 @@ enum Op {
         min: f32,
         max: f32,
         speed: f32,
+        additive: bool,
     },
     NoiseVector {
-        color: bool,
+        field: i32,
         min: V3,
         max: V3,
         speed: f32,
+        additive: bool,
     },
     Ramp {
         field: Field,
@@ -967,17 +970,29 @@ impl Plan {
                 mult: f(op, "oscillation multiplier", 2.0),
                 phase: f(op, "oscillation start phase", 0.5),
             },
-            "noise scalar" => Op::NoiseScalar {
-                field: Field::from_index(i(op, "output field", 3)),
-                min: f(op, "output minimum", 0.0),
-                max: f(op, "output maximum", 1.0),
-                speed: f(op, "noise coordinate scale", 0.1).clamp(0.0, 100.0),
-            },
+            "noise scalar" => {
+                let field = Field::from_index(i(op, "output field", 3));
+                let angle = |value: f32| {
+                    if matches!(field, Field::Rotation | Field::Yaw) {
+                        (value as f64 * (std::f64::consts::PI / 180.0)) as f32
+                    } else {
+                        value
+                    }
+                };
+                Op::NoiseScalar {
+                    field,
+                    min: angle(f(op, "output minimum", 0.0)),
+                    max: angle(f(op, "output maximum", 1.0)),
+                    speed: f(op, "noise coordinate scale", 0.1),
+                    additive: b(op, "additive", false),
+                }
+            }
             "noise vector" => Op::NoiseVector {
-                color: i(op, "output field", 0) == 6,
+                field: i(op, "output field", 6),
                 min: v(op, "output minimum", [0.0; 3]),
                 max: v(op, "output maximum", [1.0; 3]),
-                speed: f(op, "noise coordinate scale", 0.1).clamp(0.0, 100.0),
+                speed: f(op, "noise coordinate scale", 0.1),
+                additive: b(op, "additive", false),
             },
             "ramp scalar linear random" | "ramp scalar spline random" => Op::Ramp {
                 field: Field::from_index(i(op, "ramp field", 3)),
@@ -1556,12 +1571,6 @@ fn osc_time(p: &Particle, life: f32, proportional: bool, t0: f32, t1: f32, se_pr
     Some(if proportional { p.age / life } else { p.age })
 }
 
-fn wander(seed: u32, key: u32, t: f32) -> f32 {
-    let a = hash01(seed, key) * std::f32::consts::TAU;
-    let b = hash01(seed, key + 1) * std::f32::consts::TAU;
-    (0.5 + 0.3 * (t * 2.1 + a).sin() + 0.2 * (t * 5.3 + b).sin()).clamp(0.0, 1.0)
-}
-
 #[allow(clippy::too_many_arguments)]
 fn operate(
     plan: &Plan,
@@ -1577,6 +1586,7 @@ fn operate(
     let mut alpha = part.base_alpha;
     let mut alpha_written = false;
     let mut color = part.base_color;
+    let mut color_written = false;
     let old = part.pos;
     let mut acceleration = [0.0; 3];
     for (k, op) in plan.ops.iter().enumerate() {
@@ -1668,6 +1678,7 @@ fn operate(
                         x = ease(x);
                     }
                     color = lerp3(color, *target, x);
+                    color_written = true;
                 }
             }
             Op::RotationBasic => part.rotation += part.rotation_speed * dt,
@@ -1711,26 +1722,37 @@ fn operate(
                     part.pos = add(part.pos, d);
                 }
             }
-            Op::NoiseScalar { field, min, max, speed } => {
-                let x = lerp(*min, *max, wander(part.seed, key, part.age * speed * 10.0));
+            Op::NoiseScalar { field, min, max, speed, additive } => {
+                let x = noise::map(noise::scalar(scale(part.pos, *speed)), *min, *max, additive.then_some(dt));
                 match field {
                     Field::Radius => {
-                        part.base_radius = x.max(0.0);
+                        let current = part.base_radius * part.radius_scale + part.radius_add;
+                        part.base_radius = (x + if *additive { current } else { 0.0 }).max(0.0);
                         part.radius_scale = 1.0;
+                        part.radius_add = 0.0;
                     }
-                    Field::Alpha => alpha = x.clamp(0.0, 1.0),
-                    Field::Rotation => part.rotation = x,
-                    Field::Yaw => part.yaw = x,
-                    _ => {}
+                    Field::Alpha => {
+                        let current = if alpha_written { alpha } else { part.alpha };
+                        alpha = x + if *additive { current } else { 0.0 };
+                        part.alpha_add = 0.0;
+                    }
+                    _ => {
+                        let value = x + if *additive { get_field(part, *field) } else { 0.0 };
+                        set_field(part, *field, value, false);
+                    }
                 }
             }
-            Op::NoiseVector { color: on_color, min, max, speed } => {
-                let n = [0u32, 1, 2].map(|c| wander(part.seed, key + c * 2, part.age * speed * 10.0));
-                let x = [lerp(min[0], max[0], n[0]), lerp(min[1], max[1], n[1]), lerp(min[2], max[2], n[2])];
-                if *on_color {
-                    color = x.map(|c| c.clamp(0.0, 1.0));
-                } else {
-                    part.pos = add(part.pos, scale(sub(x, scale(add(*min, *max), 0.5)), dt));
+            Op::NoiseVector { field, min, max, speed, additive } => {
+                let n = noise::vector(scale(part.pos, *speed));
+                let x = std::array::from_fn(|axis| noise::map(n[axis], min[axis], max[axis], None));
+                if *field == 6 {
+                    let current = if color_written { color } else { part.color };
+                    color = if *additive { add(current, scale(x, dt)) } else { x };
+                    color_written = true;
+                } else if *field == 0 {
+                    part.pos = if *additive { add(part.pos, scale(x, dt)) } else { x };
+                } else if *field == 2 {
+                    part.previous_pos = if *additive { add(part.previous_pos, scale(x, dt)) } else { x };
                 }
             }
             Op::Ramp { field, rate, t0, t1 } => {
@@ -1792,7 +1814,10 @@ fn operate(
             }
             _ => false,
         };
-        if !matches!(op, Op::Movement { .. } | Op::Spatial(spatial::SpatialOp::Collision { .. })) {
+        if !matches!(
+            op,
+            Op::Movement { .. } | Op::Spatial(spatial::SpatialOp::Collision { .. }) | Op::NoiseVector { .. }
+        ) {
             if part.vel != before_vel {
                 part.previous_pos = sub(part.pos, scale(part.vel, part.previous_dt));
             } else if part.pos != before_pos {

@@ -48,6 +48,96 @@ fn run(def: &SystemDef, points: &Points, seconds: f32) -> Sim {
 struct FloorTrace;
 
 #[test]
+fn spatial_noise_matches_native_scalar_and_vector_samples() {
+    for (file, reference, vector) in [
+        (
+            include_bytes!("../tests/data/noise_scalar_cases.pcf").as_slice(),
+            include_str!("../tests/data/noise_scalar_native.json"),
+            false,
+        ),
+        (
+            include_bytes!("../tests/data/noise_vector_cases.pcf").as_slice(),
+            include_str!("../tests/data/noise_vector_native.json"),
+            true,
+        ),
+    ] {
+        let definitions = crate::parse_file(file).unwrap();
+        let cases: Vec<serde_json::Value> = serde_json::from_str(reference).unwrap();
+        for case in cases {
+            let name = format!("hp_spritecard_{}", case["name"].as_str().unwrap());
+            let definition = definitions.iter().find(|def| def.name == name).unwrap();
+            for seed in [0, 17, u32::MAX] {
+                let mut sim = Sim::new(Arc::new(Plan::new(definition)), seed);
+                sim.step(0.0, [0.0; 3], 1);
+                for _ in 0..3 {
+                    let particle = &sim.particles[0];
+                    if vector {
+                        for axis in 0..3 {
+                            let expected = case["color"][axis].as_f64().unwrap() as f32;
+                            assert_eq!(particle.color[axis].to_bits(), expected.to_bits(), "{name} channel {axis}");
+                        }
+                    } else {
+                        let expected = case["alpha"].as_f64().unwrap() as f32;
+                        assert_eq!(particle.alpha.to_bits(), expected.to_bits(), "{name}");
+                    }
+                    // Spatial noise remains stationary when only age and the collection seed change.
+                    sim.step(0.05, [0.0; 3], 1);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn additive_noise_integrates_current_fields_and_vector_defaults_to_color() {
+    let mut definition = system(
+        "additive-noise",
+        vec![burst(1)],
+        vec![],
+        vec![
+            op(
+                "Noise Scalar",
+                vec![
+                    ("output field", Value::Int(7)),
+                    ("output minimum", fl(0.2)),
+                    ("output maximum", fl(0.2)),
+                    ("additive", Value::Bool(true)),
+                ],
+            ),
+            op(
+                "Noise Scalar",
+                vec![
+                    ("output field", Value::Int(3)),
+                    ("output minimum", fl(10.0)),
+                    ("output maximum", fl(10.0)),
+                    ("additive", Value::Bool(true)),
+                ],
+            ),
+            op(
+                "Noise Vector",
+                vec![
+                    ("output minimum", Value::Vec3([0.2; 3])),
+                    ("output maximum", Value::Vec3([0.2; 3])),
+                    ("additive", Value::Bool(true)),
+                ],
+            ),
+        ],
+    );
+    definition.color = [0, 0, 0, 0];
+    definition.radius = 16.0;
+    let mut sim = Sim::new(Arc::new(Plan::new(&definition)), 0);
+    sim.step(0.0, [0.0; 3], 1);
+    for frame in 1..=5 {
+        sim.step(0.05, [0.0; 3], 1);
+        let particle = &sim.particles[0];
+        assert!((particle.alpha - frame as f32 * 0.01).abs() < 1e-6);
+        assert!((particle.radius - (16.0 + frame as f32 * 0.5)).abs() < 1e-6);
+        assert!(particle.color.iter().all(|value| (*value - frame as f32 * 0.01).abs() < 1e-6));
+        assert_eq!(particle.pos, [0.0; 3]);
+    }
+}
+
+#[test]
 fn rotation_initializers_match_native_constants_signs_and_zero_exponents() {
     let mut definitions = crate::parse_file(include_bytes!("../tests/data/rotation_cases.pcf")).unwrap();
     let cases: Vec<serde_json::Value> =
