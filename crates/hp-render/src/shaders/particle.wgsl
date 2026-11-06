@@ -46,6 +46,7 @@ fn vs_particle(
     @location(12) sequence_next_rect: vec4<f32>,
     @location(13) animation_blend: vec2<f32>,
     @location(14) animation_flags: u32,
+    @location(15) yaw: f32,
 ) -> ParticleOut {
     var out: ParticleOut;
     if is_ortho() || hidden_in_view(0u) {
@@ -101,6 +102,7 @@ fn vs_particle(
             }
         }
     }
+    let yaw_axis = dy;
     if mode == P_SCREEN || mode == P_FLAT || mode >= 4u {
         let cr = cos(roll);
         let sr = sin(roll);
@@ -109,7 +111,13 @@ fn vs_particle(
         dx = rx;
         dy = ry;
     }
-    let world = pos + dx * (c.x * half) + dy * (c.y * half_y);
+    var offset = dx * (c.x * half) + dy * (c.y * half_y);
+    if yaw != 0.0 && mode != P_STRETCHED {
+        let cy = cos(yaw);
+        let sy = sin(yaw);
+        offset = offset * cy + cross(yaw_axis, offset) * sy + yaw_axis * dot(offset, yaw_axis) * (1.0 - cy);
+    }
+    let world = pos + offset;
     out.world = world;
     var alpha = color.a;
     let f0 = fade.x * 4.0;

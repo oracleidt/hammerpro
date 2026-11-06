@@ -1,0 +1,62 @@
+[
+  {
+    "name": "c90",
+    "low": 0.0,
+    "high": 1.5707958984375
+  },
+  {
+    "name": "constant_flip",
+    "low": -1.0471978759765626,
+    "high": 1.047197265625
+  },
+  {
+    "name": "constant_no_flip",
+    "low": 0.0,
+    "high": 1.5707958984375
+  },
+  {
+    "name": "default_flip",
+    "low": 0.0,
+    "high": 1.047197265625
+  },
+  {
+    "name": "flip",
+    "low": -1.0471978759765626,
+    "high": 1.047197265625
+  },
+  {
+    "name": "initial_flip",
+    "low": -1.0471978759765626,
+    "high": 1.047197265625
+  },
+  {
+    "name": "negative",
+    "low": -1.5707958984375,
+    "high": 0.0
+  },
+  {
+    "name": "rot180",
+    "low": 0.0,
+    "high": 3.141591796875
+  },
+  {
+    "name": "rotation_exp0",
+    "low": 0.0,
+    "high": 0.698131103515625
+  },
+  {
+    "name": "speed_exp0",
+    "low": 0.0,
+    "high": 0.698131103515625
+  },
+  {
+    "name": "sum75",
+    "low": 0.0,
+    "high": 1.30899658203125
+  },
+  {
+    "name": "zero_offset_flip",
+    "low": 0.0,
+    "high": 0.0
+  }
+]

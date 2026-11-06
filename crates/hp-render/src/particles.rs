@@ -56,6 +56,7 @@ pub struct ParticleInstance {
     pub size: f32,
     pub axis: [f32; 3],
     pub roll: f32,
+    pub yaw: f32,
     pub uv: [f32; 4],
     pub color: [f32; 4],
     pub bright: f32,
@@ -84,9 +85,10 @@ pub(crate) struct ParticleGpu {
     frames: [[f32; 4]; 3],
     animation_blend: [f32; 2],
     animation_flags: u32,
+    yaw: f32,
 }
 
-const ATTRS: [wgpu::VertexAttribute; 15] = [
+const ATTRS: [wgpu::VertexAttribute; 16] = [
     wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x3, offset: 0, shader_location: 0 },
     wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32, offset: 12, shader_location: 1 },
     wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x3, offset: 16, shader_location: 2 },
@@ -102,6 +104,7 @@ const ATTRS: [wgpu::VertexAttribute; 15] = [
     wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x4, offset: 100, shader_location: 12 },
     wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x2, offset: 116, shader_location: 13 },
     wgpu::VertexAttribute { format: wgpu::VertexFormat::Uint32, offset: 124, shader_location: 14 },
+    wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32, offset: 128, shader_location: 15 },
 ];
 
 const BLENDS: [ParticleBlend; 3] = [ParticleBlend::Alpha, ParticleBlend::AddSelf, ParticleBlend::Additive];
@@ -224,6 +227,7 @@ fn pack(particles: &[ParticleInstance]) -> (Vec<ParticleGpu>, Vec<Run>) {
             size: finite(p.size, 0.0).max(0.0),
             axis: finite3(p.axis),
             roll: finite(p.roll, 0.0),
+            yaw: finite(p.yaw, 0.0),
             rect,
             color: crate::pack_rgba(color),
             mode: parameter * 256
@@ -429,6 +433,7 @@ mod tests {
             size: 4.0,
             axis: [0.0; 3],
             roll: 0.0,
+            yaw: 0.0,
             uv: [0.0, 0.0, 1.0, 1.0],
             color: [1.0; 4],
             bright: 1.0,
@@ -481,7 +486,7 @@ mod tests {
         assert_eq!(data[0].mode, 3);
         assert_eq!(data[0].fade, 0xFFFF_0000, "start 0, end clamped to 4");
         assert_eq!(pack_fade([1.0, 2.0]), (16384 | (32768 << 16)));
-        assert_eq!(size_of::<ParticleGpu>(), 128);
+        assert_eq!(size_of::<ParticleGpu>(), 132);
     }
 
     #[test]

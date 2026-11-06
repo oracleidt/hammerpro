@@ -1065,6 +1065,7 @@ fn particles_blend_add_turn_and_show_sheet_frames() {
         size: 60.0,
         axis: [0.0; 3],
         roll: 0.0,
+        yaw: 0.0,
         uv: [0.0, 0.0, 1.0, 1.0],
         color,
         bright: 1.0,
@@ -1164,6 +1165,7 @@ fn particles_refract_the_scene_and_keep_foreground_depth_with_and_without_msaa()
         size: 220.0,
         axis: [0.0; 3],
         roll: 0.0,
+        yaw: 0.0,
         uv: [0.0, 0.0, 1.0, 1.0],
         color: [1.0; 4],
         bright: 1.0,
@@ -1220,6 +1222,7 @@ fn particles_respect_scene_lighting_emissive_and_material_opacity() {
         size: 220.0,
         axis: [0.0; 3],
         roll: 0.0,
+        yaw: 0.0,
         uv: [0.0, 0.0, 1.0, 1.0],
         color: [0.5, 0.5, 0.5, 1.0],
         bright: 1.0,
@@ -1276,6 +1279,7 @@ fn the_particle_preview_view_draws_exactly_like_the_scene_view() {
         size: 70.0,
         axis: [0.0; 3],
         roll: 0.4,
+        yaw: 0.0,
         uv: [0.0, 0.0, 1.0, 1.0],
         color: [1.0, 0.8, 0.6, 0.8],
         bright: 1.0,
@@ -1337,6 +1341,7 @@ fn spritecard_mixes_texture_frames_and_both_sequences_before_alpha_blending() {
         size: 200.0,
         axis: [0.0; 3],
         roll: 0.0,
+        yaw: 0.0,
         uv: red,
         color: [1.0; 4],
         bright: 1.0,
@@ -1453,6 +1458,7 @@ fn spritecard_pixels_match_native_garrys_mod_captures() {
                 size: 32.0,
                 axis: [0.0; 3],
                 roll: 0.0,
+                yaw: 0.0,
                 uv,
                 color: [1.0; 4],
                 bright: 1.0,
@@ -1476,6 +1482,65 @@ fn spritecard_pixels_match_native_garrys_mod_captures() {
                     sample["pixel"]
                 );
             }
+        }
+    }
+}
+
+#[test]
+fn spritecard_yaw_geometry_matches_native_coverage_and_remains_independent_of_roll() {
+    let (device, queue) = gpu_or_skip!();
+    let mut renderer = Renderer::new(&device, &queue);
+    let texture = renderer.create_texture(&TextureUpload {
+        width: 1,
+        height: 1,
+        format: TexFormat::Rgba8Srgb,
+        levels: vec![vec![255, 0, 0, 64]],
+    });
+    renderer.set_material(4, &MaterialDesc { texture: Some(texture), ..Default::default() });
+    let mut view = persp([0.0, -128.0, 0.0], [0.0; 3], [128, 128], RenderMode::Textured);
+    view.game_pixel_grid = true;
+    view.kind = ViewKind::Perspective {
+        eye: [0.0, -128.0, 0.0],
+        forward: [0.0, 1.0, 0.0],
+        up: [0.0, 0.0, 1.0],
+        fov_y_deg: 60.0,
+        near: 1.0,
+        far: 2000.0,
+    };
+    let cases: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../../hp-pcf/tests/data/yaw_native_samples.json")).unwrap();
+    for case in cases {
+        renderer.set_particles(&[ParticleInstance {
+            animation: ParticleAnimation::default(),
+            pos: [0.0; 3],
+            size: 32.0,
+            axis: [0.0; 3],
+            roll: (case["roll"].as_f64().unwrap() as f32).to_radians(),
+            yaw: case["yaw"].as_f64().unwrap() as f32,
+            uv: [0.0, 0.0, 1.0, 1.0],
+            color: [1.0; 4],
+            bright: 1.0,
+            add_self: 0.0,
+            screen_fade: [0.0; 2],
+            refraction_blur: 0.0,
+            no_fog: true,
+            orient: ParticleOrient::Screen,
+            material: 4,
+            blend: ParticleBlend::Alpha,
+        }]);
+        renderer.render_view(1, &view, &Overlay::default());
+        let (_, _, pixels) = renderer.read_view_rgba8(1).unwrap();
+        for row in 0..128 {
+            let mut extent = [128, -1];
+            for column in 0..128 {
+                let pixel = &pixels[(row * 128 + column) * 4..][..3];
+                if pixel.iter().any(|channel| *channel > 3) {
+                    extent[0] = extent[0].min(column as i32);
+                    extent[1] = extent[1].max(column as i32);
+                }
+            }
+            let expected: [i32; 2] = std::array::from_fn(|axis| case["rows"][row][axis].as_i64().unwrap() as i32);
+            assert_eq!(extent, expected, "{} row{row}, yaw{}", case["name"], case["yaw"]);
         }
     }
 }

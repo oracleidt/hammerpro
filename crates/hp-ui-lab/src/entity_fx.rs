@@ -93,6 +93,7 @@ pub struct Pt {
     pub radius: f32,
     pub color: [f32; 4],
     pub roll: f32,
+    pub yaw: f32,
 }
 
 fn num(e: &hp_vmf::Entity, key: &str, default: f32) -> f32 {
@@ -320,6 +321,7 @@ fn smoke_puff(fx: &Fx, i: usize, seed: u64, time: f64, eye: DVec3, rgb: [f32; 3]
         radius: fx.size[0],
         color: [rgb[0], rgb[1], rgb[2], fx.alpha * near],
         roll: rnd(seed, 40) * std::f32::consts::TAU + spin,
+        yaw: 0.0,
     });
 }
 
@@ -356,6 +358,7 @@ fn ember(fx: &Fx, seed: u64, time: f64, ext: DVec3, rgb: [f32; 3], out: &mut Vec
             fx.alpha * fade_out,
         ],
         roll: 0.0,
+        yaw: 0.0,
     });
 }
 
@@ -373,6 +376,7 @@ fn steam(fx: &Fx, seed: u64, time: f64, rgb: [f32; 3], out: &mut Vec<Pt>) {
         radius: lerp(fx.size[0], fx.size[1], age).max(0.0),
         color: [rgb[0], rgb[1], rgb[2], fx.alpha * (phase * std::f32::consts::PI).sin()],
         roll: rnd(seed, 4) * std::f32::consts::TAU + age * fx.spin.to_radians() * (rnd(seed, 5) * 2.0 - 1.0),
+        yaw: 0.0,
     });
 }
 
@@ -404,6 +408,7 @@ fn dust(fx: &Fx, seed: u64, time: f64, ext: DVec3, eye: DVec3, forward: DVec3, r
         radius: dust_radius(fx, rnd(seed, 10), depth),
         color: [rgb[0], rgb[1], rgb[2], (fx.alpha * fade * near).clamp(0.0, 1.0)],
         roll: rnd(seed, 16) * std::f32::consts::TAU,
+        yaw: 0.0,
     });
 }
 
@@ -487,6 +492,7 @@ impl Dust {
                 radius: dust_radius(fx, rnd(particle.seed, 10), depth),
                 color: [fx.color_a[0], fx.color_a[1], fx.color_a[2], fx.alpha * fade * near],
                 roll: rnd(particle.seed, 16) * std::f32::consts::TAU,
+                yaw: 0.0,
             });
         }
     }
@@ -632,6 +638,7 @@ impl EntityFxLayer {
                     size: p.radius * 2.0,
                     axis: [0.0; 3],
                     roll: p.roll,
+                    yaw: p.yaw,
                     uv: hp_pcf::sheet::FULL_UV,
                     color: [p.color[0], p.color[1], p.color[2], p.color[3].clamp(0.0, 1.0)],
                     bright: look.brightness(),

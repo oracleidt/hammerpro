@@ -48,6 +48,39 @@ fn run(def: &SystemDef, points: &Points, seconds: f32) -> Sim {
 struct FloorTrace;
 
 #[test]
+fn rotation_initializers_match_native_constants_signs_and_zero_exponents() {
+    let mut definitions = crate::parse_file(include_bytes!("../tests/data/rotation_cases.pcf")).unwrap();
+    let cases: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/rotation_native_samples.json")).unwrap();
+    for definition in &mut definitions {
+        let name = definition.name.strip_prefix("hp_spritecard_").unwrap();
+        let case = cases.iter().find(|case| case["name"] == name).unwrap();
+        let speed = definition.initializers.iter().any(|op| op.function == "Rotation Speed Random");
+        definition.initializers.retain(|op| op.function != "Remap Scalar to Vector");
+        if speed {
+            definition.operators.push(op("Rotation Basic", vec![]));
+        }
+        let plan = Arc::new(Plan::new(definition));
+        assert!(plan.unsupported.is_empty());
+        let mut sim = Sim::new(plan, 17);
+        sim.step(0.0, [0.0, 0.0, 64.0], 100);
+        assert_eq!(sim.particles.len(), definition.max_particles as usize);
+        if speed {
+            sim.step(0.05, [0.0, 0.0, 64.0], 100);
+        }
+        let mut low = 0.0f32;
+        let mut high = 0.0f32;
+        for particle in &sim.particles {
+            let value = particle.rotation / if speed { 0.05 } else { 1.0 };
+            low = low.min(value);
+            high = high.max(value);
+        }
+        assert!((low - case["low"].as_f64().unwrap() as f32).abs() < 0.00001, "{name}: low{low}");
+        assert!((high - case["high"].as_f64().unwrap() as f32).abs() < 0.00001, "{name}: high{high}");
+    }
+}
+
+#[test]
 fn child_control_point_groups_match_native_matching_and_nonmatching_groups() {
     let definitions = crate::parse_file(include_bytes!("../tests/data/group_cases.pcf")).unwrap();
     let plans: std::collections::HashMap<_, _> =
@@ -607,7 +640,7 @@ fn rotation_spin_sequence_and_flip() {
         let deg = p.rotation.to_degrees();
         assert!(deg > 95.0 && deg < 115.0, "{deg}");
         assert!((2..=4).contains(&p.sequence));
-        flipped += usize::from(p.flip);
+        flipped += usize::from(p.yaw.cos() < 0.0);
     }
     assert!(flipped > 5 && flipped < 45, "{flipped}");
 }
@@ -1102,4 +1135,37 @@ fn imported_numeric_types_are_not_coerced_into_native_boolean_or_integer_fields(
     assert_eq!(wrong.float("spin_rate_degrees"), None);
     let correct = op("Rotation Spin Roll", vec![("spin_rate_degrees", Value::Int(90))]);
     assert_eq!(correct.float("spin_rate_degrees"), Some(90.0));
+}
+
+#[test]
+fn yaw_flipping_adds_half_a_turn_without_losing_the_existing_tilt() {
+    for (chance, expected) in
+        [(0.0, std::f32::consts::FRAC_PI_4), (1.0, std::f32::consts::FRAC_PI_4 + std::f32::consts::PI)]
+    {
+        let def = system(
+            "yaw",
+            vec![burst(1)],
+            vec![
+                op("Rotation Yaw Random", vec![("yaw_offset_min", fl(45.0)), ("yaw_offset_max", fl(45.0))]),
+                op("Rotation Yaw Flip Random", vec![("Flip Percentage", fl(chance))]),
+            ],
+            vec![],
+        );
+        let sim = run(&def, &Points::at([0.0; 3]), 0.0);
+        assert!((sim.particles[0].yaw - expected).abs() < 0.00001);
+        assert!(!sim.particles[0].flip);
+    }
+}
+
+#[test]
+fn yaw_spinning_uses_its_native_rate_keys_without_changing_roll() {
+    let def = system(
+        "yaw",
+        vec![burst(1)],
+        vec![],
+        vec![op("Rotation Spin Yaw", vec![("yaw_rate_degrees", Value::Int(90))])],
+    );
+    let sim = run(&def, &Points::at([0.0; 3]), 0.5);
+    assert!((sim.particles[0].yaw - std::f32::consts::FRAC_PI_4).abs() < 0.00001);
+    assert_eq!(sim.particles[0].rotation, 0.0);
 }

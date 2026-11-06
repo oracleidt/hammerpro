@@ -97,7 +97,7 @@ impl Rng {
 
     fn range_exp(&mut self, a: f32, b: f32, exp: f32) -> f32 {
         let r = self.next();
-        let r = if exp > 0.0 && (exp - 1.0).abs() > 1e-4 { r.powf(exp) } else { r };
+        let r = if exp >= 0.0 && (exp - 1.0).abs() > 1e-4 { r.powf(exp) } else { r };
         lerp(a, b, r)
     }
 
@@ -292,18 +292,21 @@ enum Init {
         initial: f32,
         min: f32,
         max: f32,
+        exp: f32,
         flip: bool,
     },
     RotationSpeed {
         constant: f32,
         min: f32,
         max: f32,
+        exp: f32,
         flip: bool,
     },
     Yaw {
         initial: f32,
         min: f32,
         max: f32,
+        exp: f32,
     },
     YawFlip {
         chance: f32,
@@ -723,18 +726,21 @@ impl Plan {
                 initial: f(op, "rotation_initial", 0.0).to_radians(),
                 min: f(op, "rotation_offset_min", 0.0).to_radians(),
                 max: f(op, "rotation_offset_max", 360.0).to_radians(),
+                exp: f(op, "rotation_random_exponent", 1.0),
                 flip: b(op, "randomly_flip_direction", false),
             },
             "rotation speed random" => Init::RotationSpeed {
-                constant: f(op, "rotationspeed_constant", 0.0).to_radians(),
-                min: f(op, "rotationspeed_random_min", 0.0).to_radians(),
-                max: f(op, "rotationspeed_random_max", 360.0).to_radians(),
-                flip: b(op, "randomly_flip_direction", true),
+                constant: f(op, "rotation_speed_constant", 0.0).to_radians(),
+                min: f(op, "rotation_speed_random_min", 0.0).to_radians(),
+                max: f(op, "rotation_speed_random_max", 360.0).to_radians(),
+                exp: f(op, "rotation_speed_random_exponent", 1.0),
+                flip: b(op, "randomly_flip_direction", false),
             },
             "rotation yaw random" => Init::Yaw {
                 initial: f(op, "yaw_initial", 0.0).to_radians(),
                 min: f(op, "yaw_offset_min", 0.0).to_radians(),
                 max: f(op, "yaw_offset_max", 360.0).to_radians(),
+                exp: f(op, "yaw_random_exponent", 1.0),
             },
             "rotation yaw flip random" => Init::YawFlip { chance: f(op, "Flip Percentage", 0.5).clamp(0.0, 1.0) },
             "sequence random" | "sequence two random" => Init::Sequence {
@@ -861,12 +867,20 @@ impl Plan {
                 ease: b(op, "ease_in_and_out", true),
             },
             "rotation basic" => Op::RotationBasic,
-            "rotation spin roll" | "rotation spin yaw" => Op::Spin {
-                rate: f(op, "spin_rate_degrees", 0.0).to_radians(),
-                stop: f(op, "spin_stop_time", 0.0).max(0.0),
-                min: f(op, "spin_rate_min", 0.0).to_radians(),
-                yaw: name == "rotation spin yaw",
-            },
+            "rotation spin roll" | "rotation spin yaw" => {
+                let yaw = name == "rotation spin yaw";
+                let keys = if yaw {
+                    ["yaw_rate_degrees", "yaw_stop_time", "yaw_rate_min"]
+                } else {
+                    ["spin_rate_degrees", "spin_stop_time", "spin_rate_min"]
+                };
+                Op::Spin {
+                    rate: f(op, keys[0], 0.0).to_radians(),
+                    stop: f(op, keys[1], 0.0).max(0.0),
+                    min: f(op, keys[2], 0.0).to_radians(),
+                    yaw,
+                }
+            }
             "oscillate scalar" => Op::OscScalar {
                 field: Field::from_index(i(op, "oscillation field", 7)),
                 rate: [f(op, "oscillation rate min", 0.0), f(op, "oscillation rate max", 0.0)],
@@ -1036,7 +1050,7 @@ pub struct Particle {
     fade_in: f32,
     fade_out: f32,
     rotation_speed: f32,
-    yaw: f32,
+    pub yaw: f32,
     radius_scale: f32,
     radius_add: f32,
     alpha_add: f32,
@@ -1227,25 +1241,28 @@ impl Sim {
                     part.base_color = lerp3(*a, *b, t);
                 }
                 Init::Alpha { min, max } => part.base_alpha = self.rng.range(*min, *max),
-                Init::Rotation { initial, min, max, flip } => {
-                    let mut r = initial + self.rng.range(*min, *max);
+                Init::Rotation { initial, min, max, exp, flip } => {
+                    let mut r = self.rng.range_exp(*min, *max, *exp);
                     if *flip && self.rng.next() < 0.5 {
                         r = -r;
                     }
-                    part.rotation = r;
+                    part.rotation = if *flip { r } else { initial + r };
                 }
-                Init::RotationSpeed { constant, min, max, flip } => {
-                    let mut s = constant + self.rng.range(*min, *max);
+                Init::RotationSpeed { constant, min, max, exp, flip } => {
+                    let mut s = self.rng.range_exp(*min, *max, *exp);
                     if *flip && self.rng.next() < 0.5 {
                         s = -s;
                     }
-                    part.rotation_speed = s;
+                    part.rotation_speed = if *flip { s } else { constant + s };
                 }
-                Init::Yaw { initial, min, max } => {
-                    part.yaw = initial + self.rng.range(*min, *max);
-                    part.flip = part.yaw.cos() < 0.0;
+                Init::Yaw { initial, min, max, exp } => {
+                    part.yaw = initial + self.rng.range_exp(*min, *max, *exp);
                 }
-                Init::YawFlip { chance } => part.flip = self.rng.next() < *chance,
+                Init::YawFlip { chance } => {
+                    if self.rng.next() < *chance {
+                        part.yaw += std::f32::consts::PI;
+                    }
+                }
                 Init::Sequence { min, max, second } => {
                     let (lo, hi) = (*min.min(max), *min.max(max));
                     let value = (lo + (self.rng.bits() % (hi - lo + 1) as u32) as i32) as u32;
