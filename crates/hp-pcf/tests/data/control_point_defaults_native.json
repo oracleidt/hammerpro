@@ -1,0 +1,108 @@
+[
+  {
+    "unparented": true,
+    "cases": [
+      {
+        "name": "capcp0",
+        "position": [
+          64,
+          128,
+          256
+        ]
+      },
+      {
+        "name": "capcp1",
+        "position": [
+          64,
+          128,
+          256
+        ]
+      },
+      {
+        "name": "capcp2",
+        "position": [
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "name": "capcp3",
+        "position": [
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "name": "capcp62",
+        "position": [
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "name": "capcp63",
+        "position": [
+          0,
+          0,
+          0
+        ]
+      }
+    ]
+  },
+  {
+    "unparented": false,
+    "cases": [
+      {
+        "name": "capcp0",
+        "position": [
+          64,
+          128,
+          256
+        ]
+      },
+      {
+        "name": "capcp1",
+        "position": [
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "name": "capcp2",
+        "position": [
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "name": "capcp3",
+        "position": [
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "name": "capcp62",
+        "position": [
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "name": "capcp63",
+        "position": [
+          0,
+          0,
+          0
+        ]
+      }
+    ]
+  }
+]

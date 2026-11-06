@@ -671,7 +671,7 @@ fn sources_of<'a>(entities: impl Iterator<Item = (Id, &'a hp_vmf::Entity)> + Clo
                 };
                 let Some((object, p, angles)) = named.get(&target) else { continue };
                 if points.pos.len() <= k {
-                    points.pos.resize(k + 1, f3(origin));
+                    points.pos.resize(k + 1, [0.0; 3]);
                 }
                 points.pos[k] = f3(*p);
                 if points.objects.len() <= k {
@@ -1232,11 +1232,12 @@ mod tests {
         let mut map = hp_vmf::Map::new_empty();
         let mut sys = hp_vmf::Entity { id: 5, classname: "info_particle_system".into(), ..Default::default() };
         sys.set("effect_name", " Beam_FX ");
-        sys.set("origin", "0 0 0");
+        sys.set("origin", "10 20 30");
         sys.set("angles", "0 90 0");
         sys.set("cpoint1", "Target");
         sys.set("cpoint1_parent", "2");
-        sys.set("cpoint3", "nobody");
+        sys.set("cpoint3", "Target");
+        sys.set("cpoint4", "nobody");
         let mut target = hp_vmf::Entity { id: 6, classname: "info_target".into(), ..Default::default() };
         target.set("targetname", "target");
         target.set("origin", "100 0 50");
@@ -1249,8 +1250,10 @@ mod tests {
         assert_eq!(s.name, "beam_fx");
         assert_eq!(s.points.get(1), [100.0, 0.0, 50.0]);
         assert_eq!(s.points.parents[1], 2);
-        assert_eq!(s.points.objects, vec![Some(5), Some(6)]);
-        assert_eq!(s.points.get(3), [0.0, 0.0, 0.0]);
+        assert_eq!(s.points.objects, vec![Some(5), Some(6), None, Some(6)]);
+        assert_eq!(s.points.get(2), [0.0; 3]);
+        assert_eq!(s.points.get(3), [100.0, 0.0, 50.0]);
+        assert_eq!(s.points.get(4), [0.0; 3]);
         assert!((s.points.axes[0][1] - 1.0).abs() < 1e-5);
     }
 

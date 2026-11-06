@@ -8,6 +8,7 @@ mod control;
 mod forces;
 mod model;
 mod path;
+mod random;
 mod rays;
 mod scalar;
 mod spatial;
@@ -83,17 +84,14 @@ fn hash01(seed: u32, key: u32) -> f32 {
 struct Rng(u32);
 
 impl Rng {
-    fn bits(&mut self) -> u32 {
-        let mut x = self.0;
-        x ^= x << 13;
-        x ^= x >> 17;
-        x ^= x << 5;
-        self.0 = x;
-        x
+    fn next(&mut self) -> f32 {
+        let value = random::sample(self.0);
+        self.0 = self.0.wrapping_add(1);
+        value
     }
 
-    fn next(&mut self) -> f32 {
-        (self.bits() >> 8) as f32 / (1u32 << 24) as f32
+    fn integer(&mut self, minimum: u32, maximum: u32) -> u32 {
+        minimum + (self.next() * (maximum.saturating_sub(minimum) as f32 + 1.0)) as u32
     }
 
     fn range(&mut self, a: f32, b: f32) -> f32 {
@@ -164,9 +162,13 @@ impl Points {
         }
     }
 
+    /// Unattached effects created by the game's convenience API initialize CP 0 and CP 1.
+    pub fn unparented(origin: V3) -> Points {
+        Points { pos: vec![origin, origin], ..Self::at(origin) }
+    }
+
     pub fn get(&self, i: i32) -> V3 {
-        let i = usize::try_from(i).unwrap_or(0);
-        self.pos.get(i).or_else(|| self.pos.first()).copied().unwrap_or([0.0; 3])
+        self.pos.get(i.clamp(0, MAX_CONTROL_POINTS as i32 - 1) as usize).copied().unwrap_or([0.0; 3])
     }
 
     fn local(&self, v: V3) -> V3 {
@@ -1131,6 +1133,7 @@ pub struct Sim {
     acc: Vec<f32>,
     fired: Vec<bool>,
     rng: Rng,
+    seed: u32,
     born: u32,
     frames: Vec<u32>,
     previous_points: Option<Points>,
@@ -1153,14 +1156,15 @@ impl Sim {
             time: 0.0,
             acc: vec![0.0; n],
             fired: vec![false; n],
-            rng: Rng(seed | 1),
+            rng: Rng(seed),
+            seed,
             born: 0,
             frames: Vec::new(),
             previous_points: None,
             point_traces,
             colors,
             path_steps,
-            path_bulge: Rng(seed | 1).range3([-1.0; 3], [1.0; 3]),
+            path_bulge: Rng(seed).range3([-1.0; 3], [1.0; 3]),
             previous_models: Default::default(),
         }
     }
@@ -1203,7 +1207,7 @@ impl Sim {
             return;
         };
         let center = if *spread && points.highest() > 0 {
-            points.get((self.rng.bits() as usize % (points.highest() + 1)) as i32)
+            points.get((self.rng.integer(0, points.highest() as u32) as usize) as i32)
         } else {
             points.get(*cp)
         };
@@ -1224,7 +1228,7 @@ impl Sim {
     fn spawn(&mut self, points: &Points, parents: &[(V3, V3)], dt: f32, world: &dyn Environment) {
         let plan = self.plan.clone();
         let origin = [0.0; 3];
-        let seed = self.rng.bits();
+        let seed = self.seed.wrapping_add(self.born);
         let mut part = Particle {
             dead: false,
             previous_pos: origin,
@@ -1327,7 +1331,7 @@ impl Sim {
                 }
                 Init::FromParent { inherit } => {
                     if !parents.is_empty() {
-                        let (pos, vel) = parents[self.rng.bits() as usize % parents.len()];
+                        let (pos, vel) = parents[self.rng.integer(0, parents.len() as u32 - 1) as usize];
                         part.pos = pos;
                         part.vel = add(part.vel, scale(vel, *inherit));
                     }
@@ -1366,7 +1370,7 @@ impl Sim {
                 }
                 Init::Sequence { min, max, second } => {
                     let (lo, hi) = (*min.min(max), *min.max(max));
-                    let value = (lo + (self.rng.bits() % (hi - lo + 1) as u32) as i32) as u32;
+                    let value = self.rng.integer(lo as u32, hi as u32);
                     if *second {
                         part.sequence2 = value;
                     } else {
@@ -1435,7 +1439,7 @@ impl Sim {
     }
 
     pub fn step(&mut self, dt: f32, origin: V3, budget: usize) {
-        self.step_at(dt, &Points::at(origin), &[], budget);
+        self.step_at(dt, &Points::unparented(origin), &[], budget);
     }
 
     pub fn step_at(&mut self, dt: f32, points: &Points, parents: &[(V3, V3)], budget: usize) {
@@ -1474,8 +1478,7 @@ impl Sim {
                 Emit::Instant { min, max, start } => {
                     if !self.fired[i] && t1 >= start {
                         self.fired[i] = true;
-                        to_emit +=
-                            if max > min { (min + self.rng.bits() % (max - min + 1)) as usize } else { max as usize };
+                        to_emit += if max > min { self.rng.integer(min, max) as usize } else { max as usize };
                     }
                 }
             }
@@ -1864,7 +1867,7 @@ impl Effect {
     }
 
     pub fn step(&mut self, dt: f32, origin: V3, budget: usize) {
-        self.step_at(dt, &Points::at(origin), budget);
+        self.step_at(dt, &Points::unparented(origin), budget);
     }
 
     pub fn step_at(&mut self, dt: f32, points: &Points, budget: usize) {

@@ -1557,3 +1557,25 @@ fn model_hitbox_positions_and_bone_lock_match_native_centers_and_animated_transf
         }
     }
 }
+
+#[test]
+fn missing_control_points_match_native_parented_and_unparented_effect_defaults() {
+    let definitions = crate::parse_file(include_bytes!("../tests/data/control_point_defaults.pcf")).unwrap();
+    let contexts: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/control_point_defaults_native.json")).unwrap();
+    for context in contexts {
+        let points = if context["unparented"].as_bool().unwrap() {
+            Points::unparented([64.0, 128.0, 256.0])
+        } else {
+            Points::at([64.0, 128.0, 256.0])
+        };
+        for case in context["cases"].as_array().unwrap() {
+            let name = format!("hp_spritecard_{}", case["name"].as_str().unwrap());
+            let mut sim = Sim::new(Arc::new(Plan::new(definitions.iter().find(|d| d.name == name).unwrap())), 17);
+            sim.step_at(0.0, &points, &[], 1);
+            assert_eq!(sim.particles.len(), 1);
+            let expected: [f32; 3] = serde_json::from_value(case["position"].clone()).unwrap();
+            assert_eq!(sim.particles[0].pos, expected, "{name} unparented={}", context["unparented"]);
+        }
+    }
+}
