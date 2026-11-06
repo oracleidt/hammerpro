@@ -2226,6 +2226,7 @@ impl Tool for DisplacementTool {
         }
         Some(match self.interaction {
             Interaction::Select => t!("disp.hint_select").to_owned(),
+            Interaction::Sculpt if self.brush.sculpt.op == sculpt::SculptOp::Relax => t!("disp.hint_relax").to_owned(),
             Interaction::Sculpt => t!("disp.hint_sculpt").to_owned(),
             Interaction::Tag => t!("disp.hint_tag").to_owned(),
             _ => t!("disp.hint_paint").to_owned(),

@@ -450,6 +450,14 @@ Chaque option du panneau a un nom pour les scripts (`tool_option CLÉ VALEUR`, v
 
 **Mon mélange à 4 textures ne montre que sa première texture dans le jeu.** Recompilez avec Hammer Pro : les rangées du mélange sont écrites dans le BSP (voir Mélanges à 4 textures plus haut). Une texture qui reste cachée alors qu'elle est peinte peut aussi venir d'un `$textureN_blendstart` proche de 1 dans le VMT : peignez la texture jusqu'à son poids plein, ou baissez cette valeur.
 
+## Pinceau Relax
+
+Choisissez **Sculpter > Sculpter la géométrie > Relax**. Maintenez le clic gauche pour répartir les sommets sur la surface du displacement, même sans bouger la souris. Relax agit toujours en continu. La **Force** (0 à 1) règle sa vitesse ; le rayon et l'atténuation définissent la zone. Ctrl n'inverse pas ce pinceau ; Shift conserve le lissage temporaire habituel.
+
+Les sommets glissent tangentiellement et sont reprojetés sur la surface prise au début du trait. Les bords, les trous et les reliefs marqués sont protégés, notamment les raccords cousus. Le nombre de sommets et de triangles, les alphas de texture et la topologie sont conservés ; les mouvements qui retourneraient ou écraseraient des triangles sont réduits ou refusés. Le pinceau répartit la grille existante sans ajouter de triangles. Un trait maintenu correspond à une annulation. Une grille déjà régulière ou une force nulle produit peu ou pas de mouvement.
+
+Scripts/MCP : `mode sculpt`, `sculpt relax`, `relax_strength 0.5`.
+
 ## Pages liées
 
 - [Sculpter des displacements (guide)](../guides/sculpt-displacements.md)
@@ -464,11 +472,3 @@ Chaque option du panneau a un nom pour les scripts (`tool_option CLÉ VALEUR`, v
 
 ---
 [Retour à l'index de la documentation](../README.md)
-
-## Pinceau Relax
-
-Choisissez **Sculpter > Sculpter la géométrie > Relax**. Maintenez le clic gauche pour répartir les sommets sur la surface du displacement, même sans bouger la souris. Relax agit toujours en continu. La **Force** (0 à 1) règle sa vitesse ; le rayon et l'atténuation définissent la zone. Ctrl n'inverse pas ce pinceau ; Shift conserve le lissage temporaire habituel.
-
-Les sommets glissent tangentiellement et sont reprojetés sur la surface prise au début du trait. Les bords, les trous et les reliefs marqués sont protégés, notamment les raccords cousus. Le nombre de sommets et de triangles, les alphas de texture et la topologie sont conservés ; les mouvements qui retourneraient ou écraseraient des triangles sont réduits ou refusés. Le pinceau répartit la grille existante sans ajouter de triangles. Un trait maintenu correspond à une annulation. Une grille déjà régulière ou une force nulle produit peu ou pas de mouvement.
-
-Scripts/MCP : `mode sculpt`, `sculpt relax`, `relax_strength 0.5`.

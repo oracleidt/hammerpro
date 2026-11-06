@@ -184,18 +184,6 @@ Les opérations de `particle_editor` comprennent `new`, `open`, `read`, `import`
 
 **Pourquoi le navigateur ne liste rien ?** Le contenu du jeu n'est pas chargé, ou la recherche, le filtre de fichier, les pastilles de source ou **Contenu de Garry's Mod uniquement** masquent tout.
 
-## Pages liées
-
-- [Propriétés des entités](entity-properties.md)
-- [Modes de rendu et affichage](render-modes-display.md)
-- [Vue joueur](player-view.md)
-- [Navigateur de modèles](model-browser.md)
-- [Navigateur de sons](sound-browser.md)
-- [Performances de l'éditeur](../troubleshooting/performance.md)
-
----
-[Retour à l'index de la documentation](../README.md)
-
 ### Lecture du fondu
 
 Sélectionnez un `env_fade` et cliquez sur **Lecture** au-dessus des propriétés. L'aperçu agit sur les vues 3D et utilise `rendercolor`, `renderamt`, `duration`, `holdtime`, **Fade In** et **Modulate**. Fade In maintient d'abord la couleur, puis la dissipe ; Fade Out atteint la couleur, puis la maintient. La lecture s'arrête après la durée et le maintien, même avec **Stay Out**. **Arrêter** retire immédiatement l'aperçu. La map et les sorties ne sont pas modifiées. Changer de map, supprimer ou masquer l'entité retire l'effet visible.
@@ -209,3 +197,15 @@ Un `shadow_control` visible affiche les ombres projetées des modèles dans les 
 `env_steam` et l'ancien `env_steamjet` affichent la vapeur normale selon Start On, les angles, la couleur/alpha, Speed, SpreadSpeed, JetLength, Rate, StartSize, EndSize et RollSpeed. L'ancienne classe conserve son orientation latérale. La réfraction du mode Heat Wave n'est pas reproduite par cet aperçu de sprites. La fumée respecte la largeur et l'opacité demandées et s'estompe près de la caméra. Nuages et motes suivent leurs unités de taille respectives et utilisent `particle/sparkles`. Un débit ou une opacité nuls restent invisibles. La poussière peut quitter le brush avant la fin de sa durée de vie. L'éclairage, les collisions, la distorsion et les entrées/sorties peuvent encore différer du jeu ; vérifiez le résultat compilé en jeu.
 
 Les braises `env_embers` suivent `env_wind` si `AffectedByWind` vaut 1 ; la valeur 0 conserve leur mouvement propre.
+
+## Pages liées
+
+- [Propriétés des entités](entity-properties.md)
+- [Modes de rendu et affichage](render-modes-display.md)
+- [Vue joueur](player-view.md)
+- [Navigateur de modèles](model-browser.md)
+- [Navigateur de sons](sound-browser.md)
+- [Performances de l'éditeur](../troubleshooting/performance.md)
+
+---
+[Retour à l'index de la documentation](../README.md)

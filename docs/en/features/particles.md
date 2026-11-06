@@ -184,18 +184,6 @@ The `particle_editor` operations include `new`, `open`, `read`, `import`, `save`
 
 **Why does the browser list nothing?** The game content is not loaded, or the search, file filter, source chips or **Garry's Mod content only** hide everything.
 
-## Related pages
-
-- [Entity properties](entity-properties.md)
-- [Render modes and display](render-modes-display.md)
-- [Player view](player-view.md)
-- [Model browser](model-browser.md)
-- [Sound browser](sound-browser.md)
-- [Editor performance](../troubleshooting/performance.md)
-
----
-[Back to the documentation index](../README.md)
-
 ### Fade playback
 
 Select one `env_fade` and click **Play** above its entity properties. The preview affects the 3D views, with `rendercolor`, `renderamt`, `duration`, `holdtime`, **Fade In** and **Modulate**. Fade In holds the starting color before clearing it; Fade Out reaches the color before holding it. Playback stops automatically after duration plus hold time, including when **Stay Out** is set. **Stop** clears the preview immediately. This does not change the map or trigger outputs. Switching maps or deleting/hiding the entity clears its visible effect.
@@ -207,3 +195,15 @@ A visible `shadow_control` previews projected model shadows in textured and lit 
 ### Steam jets and accuracy
 
 `env_steam` and legacy `env_steamjet` preview normal steam with Start On, angles, color/alpha, Speed, SpreadSpeed, JetLength, Rate, StartSize, EndSize and RollSpeed. The legacy class uses its sideways orientation. Heat-wave refraction is not reproduced by the sprite preview. Smoke keeps the requested width and opacity and fades near the camera. Cloud and mote sizes follow their different engine units, and both use `particle/sparkles`. Zero emission rates and zero alpha stay invisible. Dust can leave its spawning brush before its lifetime ends. Lighting, collisions, heat distortion and runtime I/O can still differ from a compiled map; the editor is not a substitute for checking the result in game.
+
+## Related pages
+
+- [Entity properties](entity-properties.md)
+- [Render modes and display](render-modes-display.md)
+- [Player view](player-view.md)
+- [Model browser](model-browser.md)
+- [Sound browser](sound-browser.md)
+- [Editor performance](../troubleshooting/performance.md)
+
+---
+[Back to the documentation index](../README.md)
