@@ -47,6 +47,59 @@ fn run(def: &SystemDef, points: &Points, seconds: f32) -> Sim {
 
 struct FloorTrace;
 
+#[test]
+fn child_control_point_groups_match_native_matching_and_nonmatching_groups() {
+    let definitions = crate::parse_file(include_bytes!("../tests/data/group_cases.pcf")).unwrap();
+    let plans: std::collections::HashMap<_, _> =
+        definitions.iter().map(|def| (def.name.clone(), Arc::new(Plan::new(def)))).collect();
+    assert!(plans.values().all(|plan| plan.unsupported.is_empty()));
+    let cases: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/group_native_samples.json")).unwrap();
+    let baseline = &cases.iter().find(|case| case["name"] == "baseline").unwrap()["samples"];
+    for case in &cases {
+        let name = case["name"].as_str().unwrap();
+        let mut effect = Effect::new(&format!("hp_spritecard_{name}"), &|name| plans.get(name).cloned(), 17).unwrap();
+        effect.step(0.0, [0.0, 0.0, 64.0], 10);
+        for (index, sample) in case["samples"].as_array().unwrap().iter().enumerate() {
+            let dt = sample["dt"].as_f64().unwrap() as f32;
+            for _ in 0..if index == 0 { 4 } else { 5 } {
+                effect.step(dt, [0.0, 0.0, 64.0], 10);
+            }
+            let maximum = effect.particles().map(|(_, part)| part.pos[0]).reduce(f32::max).unwrap();
+            let parent = effect.sims[0].1.particles[0].pos[0];
+            let expected = (sample["high"][0].as_f64().unwrap() - baseline[index]["high"][0].as_f64().unwrap()) as f32;
+            let actual = maximum - parent;
+            assert!((actual - expected).abs() < 0.002, "{name} sample{index}: child offset{actual} native{expected}");
+        }
+    }
+}
+
+#[test]
+fn missing_position_initializers_match_native_world_origin_instead_of_control_point() {
+    let cases: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/position_native_samples.json")).unwrap();
+    for case in cases {
+        let vector = |value: &serde_json::Value| std::array::from_fn(|axis| value[axis].as_f64().unwrap() as f32);
+        let cp = vector(&case["control_point"]);
+        let mut initializers = Vec::new();
+        if !case["offset"].is_null() {
+            let offset = vector(&case["offset"]);
+            initializers.push(op(
+                "Position Within Box Random",
+                vec![("min", Value::Vec3(offset)), ("max", Value::Vec3(offset))],
+            ));
+        }
+        let def = system(case["name"].as_str().unwrap(), vec![burst(1)], initializers, vec![]);
+        let mut sim = Sim::new(Arc::new(Plan::new(&def)), 17);
+        sim.step(0.0, cp, 1);
+        assert_eq!(sim.particles.len(), 1);
+        let position = sim.particles[0].pos;
+        let high = vector(&case["bounds_high"]);
+        assert_eq!(position, std::array::from_fn(|axis| cp[axis] + high[axis]), "{}", case["name"]);
+        assert!(case["pixel"][0].as_u64().unwrap() > 100, "native particle was rendered");
+    }
+}
+
 impl crate::environment::Environment for FloorTrace {
     fn trace(&self, start: [f32; 3], end: [f32; 3], radius: f32, _: bool) -> Option<crate::environment::Trace> {
         let a = start[2] - radius;
@@ -120,6 +173,65 @@ fn spatial_culling_removes_particles_even_without_lifespan_decay() {
     sim.step(0.0, [0.0; 3], 10);
     sim.particles[0].vel = [100.0, 0.0, 0.0];
     sim.step(0.1, [0.0; 3], 10);
+    assert!(sim.particles.is_empty());
+}
+
+#[test]
+fn random_culling_matches_native_lifetime_distributions_and_window_limits() {
+    let captures: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/cull_native_samples.json")).unwrap();
+    for case in captures {
+        let def = system(
+            "random cull",
+            vec![burst(1)],
+            vec![op("Lifetime Random", vec![("lifetime_min", fl(2.0)), ("lifetime_max", fl(2.0))])],
+            vec![
+                op(
+                    "Cull Random",
+                    vec![
+                        ("Cull Start Time", fl(case["start"].as_f64().unwrap() as f32)),
+                        ("Cull End Time", fl(case["end"].as_f64().unwrap() as f32)),
+                        ("Cull Time Exponent", fl(case["exponent"].as_f64().unwrap() as f32)),
+                        ("Cull Percentage", fl(case["percentage"].as_f64().unwrap() as f32)),
+                    ],
+                ),
+                op("Lifespan Decay", vec![]),
+            ],
+        );
+        let plan = Arc::new(Plan::new(&def));
+        assert!(plan.unsupported.is_empty());
+        let mut total = 0.0;
+        for seed in 1..=2048 {
+            let mut sim = Sim::new(Arc::clone(&plan), seed);
+            let mut last = 0.0;
+            for _ in 0..81 {
+                sim.step(0.05, [0.0; 3], 1);
+                let Some(particle) = sim.particles.first() else {
+                    break;
+                };
+                last = particle.age / particle.life;
+            }
+            total += last;
+        }
+        let samples = case["normalized_last_visible_ages"].as_array().unwrap();
+        let native = samples.iter().map(|v| v.as_f64().unwrap()).sum::<f64>() / samples.len() as f64;
+        let preview = f64::from(total / 2048.0);
+        assert!((native - preview).abs() < 0.08, "{}: native {native}, preview {preview}", case["name"]);
+    }
+    let def = system(
+        "exact cull endpoint",
+        vec![burst(1)],
+        vec![],
+        vec![op(
+            "Cull Random",
+            vec![("Cull Start Time", fl(0.5)), ("Cull End Time", fl(0.5)), ("Cull Percentage", fl(1.0))],
+        )],
+    );
+    let mut sim = Sim::new(Arc::new(Plan::new(&def)), 17);
+    sim.step(0.0, [0.0; 3], 1);
+    assert_eq!(sim.particles.len(), 1);
+    sim.particles[0].age = 0.5;
+    sim.step(0.0, [0.0; 3], 1);
     assert!(sim.particles.is_empty());
 }
 
@@ -487,7 +599,7 @@ fn rotation_spin_sequence_and_flip() {
             op("Sequence Random", vec![("sequence_min", Value::Int(2)), ("sequence_max", Value::Int(4))]),
             op("Rotation Yaw Flip Random", vec![("Flip Percentage", fl(0.5))]),
         ],
-        vec![op("Rotation Spin Roll", vec![("spin_rate_degrees", fl(90.0))])],
+        vec![op("Rotation Spin Roll", vec![("spin_rate_degrees", Value::Int(90))])],
     );
     let sim = run(&def, &Points::at([0.0; 3]), 1.0);
     let mut flipped = 0;
@@ -687,7 +799,7 @@ fn renderers_lifetimes_from_sequences_and_animation_cycles() {
     assert!((plan.cycle(&p, 40.0) - 0.5).abs() < 1e-5);
     let mut fit = system("g", vec![burst(1)], vec![], vec![]);
     fit.renderers = vec![op("render_animated_sprites", vec![("animation_fit_lifetime", Value::Bool(true))])];
-    assert!((Plan::new(&fit).cycle(&p, 40.0) - 0.4).abs() < 1e-5, "age 1 of a 2.5 s life");
+    assert!((Plan::new(&fit).cycle(&p, 40.0) - 0.1).abs() < 1e-5, "the native sprite renderer ignores fit-lifetime");
     assert!((Plan::new(&seq).cycle(&p, 40.0) - 0.1).abs() < 1e-5, "default rate 0.1");
 }
 
@@ -897,4 +1009,97 @@ fn frame_blend_gives_both_frames_and_the_fraction() {
     let (last, same, f) = clamped.frame_blend(0, 1.0);
     assert_eq!(last, same);
     assert_eq!(f, 0.0);
+}
+
+#[test]
+fn second_sequences_and_field_thirteen_do_not_overwrite_the_first_sequence() {
+    let mut def = system(
+        "two sequences",
+        vec![burst(1)],
+        vec![
+            op("Sequence Random", vec![("sequence_min", Value::Int(3)), ("sequence_max", Value::Int(3))]),
+            op("Sequence Two Random", vec![("sequence_min", Value::Int(7)), ("sequence_max", Value::Int(7))]),
+        ],
+        vec![],
+    );
+    let sim = run(&def, &Points::at([0.0; 3]), 0.05);
+    assert!(sim.plan().unsupported.is_empty());
+    assert_eq!((sim.particles[0].sequence, sim.particles[0].sequence2), (3, 7));
+    def.initializers.push(op(
+        "Remap Control Point to Scalar",
+        vec![("output field", Value::Int(13)), ("output minimum", fl(11.0)), ("output maximum", fl(11.0))],
+    ));
+    let sim = run(&def, &Points::at([0.0; 3]), 0.05);
+    assert_eq!((sim.particles[0].sequence, sim.particles[0].sequence2), (3, 11));
+}
+
+#[test]
+fn trace_requirements_distinguish_brush_only_traces_from_prop_collisions() {
+    let mut def = system("requirements", vec![burst(1)], vec![], vec![op("Movement Basic", vec![])]);
+    assert_eq!(Plan::new(&def).trace_requirement(), None);
+    def.constraints.push(op("Collision via traces", vec![("brush only", Value::Bool(true))]));
+    assert_eq!(Plan::new(&def).trace_requirement(), Some(false));
+    def.constraints.push(op("Collision via traces", vec![]));
+    assert_eq!(Plan::new(&def).trace_requirement(), Some(true));
+    def.constraints.clear();
+    def.operators.push(op("Set Control Point to Impact Point", vec![]));
+    assert_eq!(Plan::new(&def).trace_requirement(), Some(true));
+}
+
+#[test]
+fn sprite_animation_clocks_match_native_rendered_pixels_including_lifetime_and_fps_options() {
+    let cases: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/spritecard_native_samples.json")).unwrap();
+    let srgb = |value: f32| {
+        let value = if value <= 0.0031308 { value * 12.92 } else { 1.055 * value.powf(1.0 / 2.4) - 0.055 };
+        (value.clamp(0.0, 1.0) * 255.0).round() as u8
+    };
+    for case in
+        cases.into_iter().filter(|case| case["sequence"] == 2 && case["dual"] == false && case["maximum"][0] == false)
+    {
+        let mut def = system("clock", vec![burst(1)], vec![], vec![]);
+        def.renderers = vec![op(
+            "render_animated_sprites",
+            vec![
+                ("animation rate", fl(case["rate"].as_f64().unwrap() as f32)),
+                ("second sequence animation rate", fl(case["rate2"].as_f64().unwrap() as f32)),
+                ("animation_fit_lifetime", Value::Bool(case["fit"].as_bool().unwrap())),
+                ("use animation rate as FPS", Value::Bool(case["fps"].as_bool().unwrap())),
+            ],
+        )];
+        let plan = Arc::new(Plan::new(&def));
+        let mut sim = Sim::new(Arc::clone(&plan), 17);
+        sim.step(0.0, [0.0; 3], 1);
+        let mut particle = sim.particles[0];
+        particle.life = case["life"].as_f64().unwrap() as f32;
+        for sample in case["samples"].as_array().unwrap() {
+            particle.age = sample["age"].as_f64().unwrap() as f32;
+            let frame = plan.cycle(&particle, 2.0).rem_euclid(1.0) * 2.0;
+            let blue = if frame < 1.0 { frame } else { 2.0 - frame };
+            let alpha = (64.0 + 128.0 * blue) / 255.0;
+            let actual = [srgb((1.0 - blue) * alpha), 0, srgb(blue * alpha)];
+            for (channel, value) in actual.into_iter().enumerate() {
+                let expected = sample["pixel"][channel].as_u64().unwrap() as u8;
+                assert!(
+                    value.abs_diff(expected) <= 3,
+                    "{} age {}: {actual:?} versus {}",
+                    case["name"],
+                    particle.age,
+                    sample["pixel"]
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn imported_numeric_types_are_not_coerced_into_native_boolean_or_integer_fields() {
+    let wrong = op("render_animated_sprites", vec![("use animation rate as FPS", Value::Int(1))]);
+    assert_eq!(wrong.bool("use animation rate as FPS"), None);
+    let correct = op("render_animated_sprites", vec![("use animation rate as FPS", Value::Bool(true))]);
+    assert_eq!(correct.bool("use animation rate as FPS"), Some(true));
+    let wrong = op("Rotation Spin Roll", vec![("spin_rate_degrees", Value::Float(90.0))]);
+    assert_eq!(wrong.float("spin_rate_degrees"), None);
+    let correct = op("Rotation Spin Roll", vec![("spin_rate_degrees", Value::Int(90))]);
+    assert_eq!(correct.float("spin_rate_degrees"), Some(90.0));
 }

@@ -10,14 +10,17 @@ use hp_pcf::environment::{Environment, Trace, Vector};
 
 use crate::particles::ParticleHandle;
 
+mod build;
 mod tree;
+pub(crate) use build::Preparation;
+pub use build::prepare;
 use tree::SurfaceTree;
 
 #[derive(Clone, Debug)]
 struct Body {
     path: String,
     transform: DMat4,
-    collision: Option<SurfaceTree>,
+    collision: Option<Arc<SurfaceTree>>,
 }
 
 #[derive(Clone, Debug)]
@@ -30,8 +33,9 @@ struct Surface {
 pub struct Physics {
     key: Option<(u64, u64, u64, usize)>,
     models: HashMap<String, Option<CollisionTriangles>>,
+    includes_props: bool,
     bodies: Vec<Body>,
-    compiled: Option<SurfaceTree>,
+    compiled: Option<Arc<SurfaceTree>>,
 }
 
 fn vec(p: Vector) -> DVec3 {
@@ -75,87 +79,6 @@ fn non_solid_material(material: &str) -> bool {
     )
 }
 
-pub fn prepare(state: &mut AppState, handle: &ParticleHandle) {
-    let Ok(mut shared) = handle.lock() else { return };
-    let physics = Arc::make_mut(&mut shared.physics);
-    let compiled = (state.runtime.lab.player.active && !state.runtime.lab.player.editor_world)
-        .then_some(state.runtime.health.world.as_ref())
-        .flatten();
-    let compiled_id = compiled.map_or(0, |world| Arc::as_ptr(world) as usize);
-    let key = (state.sidecar.serial(), state.doc.revision(), state.assets.generation(), compiled_id);
-    if physics.key != Some(key) {
-        if physics.key.is_none_or(|old| old.2 != key.2) {
-            physics.models.clear();
-        }
-        physics.bodies.clear();
-        physics.compiled = compiled.map(|world| {
-            let mut surfaces = Vec::new();
-            for face in world.faces.iter().chain(&world.entity_faces) {
-                if world.materials.get(face.material as usize).is_some_and(|material| non_solid_material(material)) {
-                    continue;
-                }
-                for triangle in hp_editor::limits::world::BspWorld::face_triangles(face).chunks_exact(3) {
-                    let Some(points) = triangle
-                        .iter()
-                        .map(|index| world.vertices.get(face.first as usize + *index as usize).map(|v| vec(v.pos)))
-                        .collect::<Option<Vec<_>>>()
-                    else {
-                        continue;
-                    };
-                    let points = [points[0], points[1], points[2]];
-                    surfaces.push(Surface { bounds: Aabb::from_points(points), points });
-                }
-            }
-            SurfaceTree::new(surfaces)
-        });
-        for node in state.doc.scene().entities().values() {
-            let entity = &node.entity;
-            if !entity.classname.to_ascii_lowercase().starts_with("prop_")
-                || matches!(entity.classname.as_str(), "prop_detail" | "prop_ragdoll")
-                || entity.get("solid").is_some_and(|value| value.trim() == "0")
-            {
-                continue;
-            }
-            let Some(path) =
-                entity.get("model").map(|s| s.trim().replace('\\', "/").to_ascii_lowercase()).filter(|s| !s.is_empty())
-            else {
-                continue;
-            };
-            let Some(origin) = entity.origin().filter(|p| p.is_finite()) else { continue };
-            let angles = entity.angles().filter(|p| p.is_finite()).unwrap_or(DVec3::ZERO);
-            let scale = entity
-                .get("modelscale")
-                .and_then(|s| s.parse::<f64>().ok())
-                .filter(|s| s.is_finite() && *s > 0.0)
-                .unwrap_or(1.0);
-            let transform =
-                DMat4::from_scale_rotation_translation(DVec3::splat(scale), hp_geom::angles_to_quat(angles), origin);
-            physics.bodies.push(Body { path, transform, collision: None });
-        }
-        physics.key = Some(key);
-    }
-    for body in &mut physics.bodies {
-        if !physics.models.contains_key(&body.path)
-            && let Some(model) = state.assets.collision_triangles(&body.path)
-        {
-            physics.models.insert(body.path.clone(), model);
-        }
-        if body.collision.is_none()
-            && let Some(Some(model)) = physics.models.get(&body.path)
-        {
-            body.collision = Some(SurfaceTree::new(
-                model
-                    .iter()
-                    .map(|triangle| {
-                        let points = triangle.map(|point| body.transform.transform_point3(vec(point)));
-                        Surface { bounds: Aabb::from_points(points), points }
-                    })
-                    .collect(),
-            ));
-        }
-    }
-}
-
 pub struct ParticleEnvironment<'a> {
     pub state: &'a AppState,
     pub physics: &'a Physics,
@@ -182,7 +105,8 @@ impl Environment for ParticleEnvironment<'_> {
                 };
                 owner && node.solid.sides.iter().any(|side| !non_solid_material(&side.material))
             };
-            self.state.doc.trace_hull(start, end, half, Some(&filter)).map(|(_, hit)| hit)
+            let flags = if radius == 0.0 { hp_geom::DISP_FLAG_NO_RAY } else { hp_geom::DISP_FLAG_NO_HULL };
+            self.state.doc.trace_hull_with_disp_flags(start, end, half, Some(&filter), flags).map(|(_, hit)| hit)
         };
         if !brush_only {
             for body in &self.physics.bodies {
@@ -215,12 +139,50 @@ mod tests {
     use super::*;
 
     #[test]
+    fn displacement_ray_and_hull_flags_are_respected_independently() {
+        let mut state = hp_app::testing::test_state();
+        state.doc = hp_editor::Document::new_empty();
+        let id = state
+            .doc
+            .create_primitive(
+                &hp_geom::PrimitiveParams {
+                    bounds: Aabb::new(DVec3::new(-64.0, -64.0, -16.0), DVec3::new(64.0, 64.0, 0.0)),
+                    ..Default::default()
+                },
+                Owner::World,
+            )
+            .unwrap()[0];
+        let side =
+            state.doc.scene().solid(id).unwrap().geom.faces.iter().find(|f| f.plane.normal.z > 0.9).unwrap().side_index;
+        let face = hp_editor::FaceRef { solid: id, side };
+        state.doc.create_displacements(&[face], 2).unwrap();
+        for (flag, ray, hull) in [
+            (hp_geom::DISP_FLAG_NO_RAY, false, true),
+            (hp_geom::DISP_FLAG_NO_HULL, true, false),
+            (hp_geom::DISP_FLAG_NO_PHYSICS, true, true),
+        ] {
+            state
+                .doc
+                .set_disp_flags(
+                    &[face],
+                    hp_geom::DISP_FLAG_NO_RAY | hp_geom::DISP_FLAG_NO_HULL | hp_geom::DISP_FLAG_NO_PHYSICS,
+                    false,
+                )
+                .unwrap();
+            state.doc.set_disp_flags(&[face], flag, true).unwrap();
+            let world = ParticleEnvironment { state: &state, physics: &Physics::default() };
+            assert_eq!(world.trace([0.0, 0.0, 64.0], [0.0, 0.0, -64.0], 0.0, true).is_some(), ray);
+            assert_eq!(world.trace([0.0, 0.0, 64.0], [0.0, 0.0, -64.0], 2.0, true).is_some(), hull);
+        }
+    }
+
+    #[test]
     fn brush_hull_traces_match_captured_garrys_mod_results() {
         let mut state = hp_app::testing::test_state();
         state.doc =
             hp_editor::Document::from_map(hp_vmf::parse(include_str!("../tests/data/particle_trace.vmf")).unwrap());
         let handle = crate::particles::new_handle();
-        prepare(&mut state, &handle);
+        prepare(&mut state, &handle, &egui::Context::default());
         let shared = handle.lock().unwrap();
         let world = ParticleEnvironment { state: &state, physics: &shared.physics };
         let captures: Vec<serde_json::Value> =

@@ -40,6 +40,7 @@ New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game s
 | [Terrain](features/terrain.md) | Import and export heightmaps, procedural terrain generation, erosion, automatic texturing. |
 | [Brush operations](features/brush-operations.md) | Carve, hollow, merge, tie to entity, func_detail, nodraw, hint brushes, texture lock. |
 | [Transform and align](features/transform-align.md) | Transform dialog, align, flip, snap, move to floor, physics placement. |
+| [Physics simulator](features/physics-tool.md) | Play, pause, grab, shoot and explode brushes, props and ragdolls; keep their poses with one undo step. |
 | [Clipboard](features/clipboard.md) | Cut, copy, paste, paste special, duplicate, between Hammer Pro windows. |
 | [Grids](features/grids.md) | Global grid, one grid per view, custom grids, grids of objects, grid manager, 3D grid. |
 

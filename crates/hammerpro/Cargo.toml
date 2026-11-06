@@ -20,6 +20,7 @@ hp-ui-viewports = { path = "../hp-ui-viewports" }
 hp-tools-select = { path = "../hp-tools-select" }
 hp-tools-create = { path = "../hp-tools-create" }
 hp-tools-mesh = { path = "../hp-tools-mesh" }
+hp-tools-physics = { path = "../hp-tools-physics" }
 hp-ui-textures = { path = "../hp-ui-textures" }
 hp-shader = { path = "../hp-shader" }
 hp-ui-entities = { path = "../hp-ui-entities" }

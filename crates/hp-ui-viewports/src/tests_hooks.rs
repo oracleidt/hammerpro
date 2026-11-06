@@ -15,6 +15,7 @@ struct HookTool {
     inputs: usize,
     middle_clicks: Vec<usize>,
     wheel_handled: bool,
+    middle_drag: bool,
     wheels: Vec<(usize, f32, Modifiers)>,
     entries: Vec<ToolMenuEntry>,
     commands: Vec<u32>,
@@ -37,6 +38,10 @@ impl Tool for HookTool {
     fn wheel(&mut self, _state: &mut AppState, view: &ViewInfo, notches: f32, modifiers: Modifiers) -> ToolFlow {
         self.wheels.push((view.index, notches, modifiers));
         if self.wheel_handled { ToolFlow::Handled } else { ToolFlow::Ignored }
+    }
+
+    fn takes_middle_drag(&self, kind: ViewKind, _modifiers: Modifiers) -> bool {
+        self.middle_drag && kind == ViewKind::Perspective
     }
 
     fn context_entries(&self, _state: &AppState) -> Vec<ToolMenuEntry> {
@@ -194,6 +199,23 @@ fn the_wheel_goes_to_the_tool_first() {
     h.wheel(q, -2.0);
     assert!(h.state.settings.view.camera_speed < speed, "and back slows it down");
     h.button(q, PointerButton::Secondary, false);
+}
+
+#[test]
+fn a_tool_can_take_middle_mouse_without_panning_or_looking() {
+    for scheme in hp_app::settings::NavScheme::ALL {
+        let mut h = H::new();
+        h.state.settings.workflow.nav_scheme = scheme;
+        h.tool.middle_drag = true;
+        let p = h.rect(0).center();
+        let before = h.state.cameras.cam3d;
+        h.button(p, PointerButton::Middle, true);
+        h.frame(vec![Event::PointerMoved(p + vec2(3.0, 2.0))]);
+        h.button(p + vec2(3.0, 2.0), PointerButton::Middle, false);
+        assert_eq!(h.state.cameras.cam3d, before, "{scheme:?}");
+        assert_eq!(h.tool.middle_clicks, vec![0], "{scheme:?}");
+        assert!(!h.vp.is_context_menu_open());
+    }
 }
 
 #[test]

@@ -72,6 +72,8 @@ pub enum EditError {
     ChildCycle,
     #[error("the value is invalid or has an invalid element reference")]
     InvalidValue,
+    #[error("{function}: parameter {parameter} requires DMX type {expected}")]
+    ParameterType { function: String, parameter: String, expected: &'static str },
     #[error("the file name must be a simple .pcf file name")]
     InvalidFileName,
     #[error("the document is too large to retain an undoable edit")]
@@ -241,7 +243,9 @@ impl Document {
         self.redo.last().map(|s| s.label.as_str())
     }
     pub fn undo(&mut self) -> bool {
-        let Some(snapshot) = self.undo.pop() else { return false };
+        let Some(snapshot) = self.undo.pop() else {
+            return false;
+        };
         let bytes = estimate(&self.data);
         self.redo.push(Snapshot {
             data: std::mem::replace(&mut self.data, snapshot.data),
@@ -252,7 +256,9 @@ impl Document {
         true
     }
     pub fn redo(&mut self) -> bool {
-        let Some(snapshot) = self.redo.pop() else { return false };
+        let Some(snapshot) = self.redo.pop() else {
+            return false;
+        };
         let bytes = estimate(&self.data);
         self.undo.push(Snapshot {
             data: std::mem::replace(&mut self.data, snapshot.data),
@@ -267,6 +273,7 @@ impl Document {
         if key.is_empty() || key.contains('\0') || !valid_value(&value, self.data.elements.len()) {
             return Err(EditError::InvalidValue);
         }
+        let value = normalize_parameter(current.str("functionName"), key, value)?;
         if current.get(key) == Some(&value) {
             return Ok(());
         }
@@ -294,6 +301,21 @@ impl Document {
         }) {
             return Err(EditError::InvalidValue);
         }
+        let function = values
+            .iter()
+            .find_map(|(key, value)| {
+                if key.eq_ignore_ascii_case("functionName")
+                    && let Value::Str(function) = value
+                {
+                    return Some(function.as_str());
+                }
+                None
+            })
+            .or_else(|| current.str("functionName"));
+        let values = values
+            .iter()
+            .map(|(key, value)| normalize_parameter(function, key, value.clone()).map(|value| (key.clone(), value)))
+            .collect::<Result<Vec<_>, _>>()?;
         if values.iter().all(|(key, value)| current.get(key) == Some(value)) {
             return Ok(());
         }
@@ -418,6 +440,10 @@ impl Document {
         if attrs.iter().any(|(key, _)| !keys.insert(key.to_ascii_lowercase())) {
             return Err(EditError::InvalidValue);
         }
+        let attrs = attrs
+            .into_iter()
+            .map(|(key, value)| normalize_parameter(Some(function), &key, value).map(|value| (key, value)))
+            .collect::<Result<Vec<_>, _>>()?;
         self.checkpoint("Add operator")?;
         let mut params = vec![("functionName".into(), Value::Str(function.into()))];
         params.extend(attrs);
@@ -665,6 +691,20 @@ impl Document {
                 if !valid_value(value, self.data.elements.len()) {
                     issue(Severity::Error, id, Some(key), "Invalid parameter value or element reference".into());
                 }
+                if let Some(function) = e.str("functionName")
+                    && let Some(expected) = crate::parameters::expected(function, key)
+                    && !expected.accepts(value)
+                {
+                    issue(
+                        Severity::Warning,
+                        id,
+                        Some(key),
+                        format!(
+                            "Source expects DMX type {} for this parameter; the game may ignore the value",
+                            expected.name()
+                        ),
+                    );
+                }
                 if (key.to_ascii_lowercase().contains("control point")
                     || key.to_ascii_lowercase().contains("control_point"))
                     && let Value::Int(cp) = value
@@ -824,6 +864,20 @@ impl Document {
     }
 }
 
+fn normalize_parameter(function: Option<&str>, key: &str, value: Value) -> Result<Value, EditError> {
+    let Some(function) = function else {
+        return Ok(value);
+    };
+    let Some(expected) = crate::parameters::expected(function, key) else {
+        return Ok(value);
+    };
+    expected.normalize(value).map_err(|kind| EditError::ParameterType {
+        function: function.into(),
+        parameter: key.into(),
+        expected: kind.name(),
+    })
+}
+
 fn put(element: &mut Element, key: &str, value: Value) {
     if let Some((_, current)) = element.attrs.iter_mut().find(|(k, _)| k.eq_ignore_ascii_case(key)) {
         *current = value;
@@ -891,7 +945,9 @@ fn valid_raw(kind: u8, data: &[u8]) -> bool {
                 if len < 0 {
                     return false;
                 }
-                let Some(end) = p.checked_add(4).and_then(|p| p.checked_add(len as usize)) else { return false };
+                let Some(end) = p.checked_add(4).and_then(|p| p.checked_add(len as usize)) else {
+                    return false;
+                };
                 if end > data.len() {
                     return false;
                 }

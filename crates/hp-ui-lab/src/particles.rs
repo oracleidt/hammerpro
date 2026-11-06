@@ -27,6 +27,9 @@ pub struct MaterialLook {
     pub fade_size: [f32; 2],
     pub opacity: f32,
     pub blend_frames: bool,
+    pub dual_sequence: bool,
+    pub sequence_mode: u8,
+    pub max_luminance: [bool; 2],
     pub sheet: Option<Sheet>,
     pub refraction: Option<f32>,
     pub refraction_blur: f32,
@@ -43,6 +46,9 @@ impl Default for MaterialLook {
             fade_size: [0.0; 2],
             opacity: 1.0,
             blend_frames: false,
+            dual_sequence: false,
+            sequence_mode: 0,
+            max_luminance: [false; 2],
             sheet: None,
             refraction: None,
             refraction_blur: 0.0,
@@ -93,6 +99,8 @@ impl EffectStatus {
 #[derive(Debug, Default)]
 pub struct ParticleShared {
     pub physics: Arc<crate::particle_world::Physics>,
+    pub(crate) world_requirement: Option<bool>,
+    pub(crate) world_preparation: crate::particle_world::Preparation,
     pub library: HashMap<String, Arc<Plan>>,
     pub library_gen: u64,
     pub files: HashMap<String, String>,
@@ -111,6 +119,21 @@ pub struct ParticleShared {
 }
 
 impl ParticleShared {
+    fn trace_requirement(&self, name: &str) -> Option<bool> {
+        let mut todo = vec![name.to_ascii_lowercase()];
+        let mut seen = HashSet::new();
+        let mut requirement = None;
+        while let Some(name) = todo.pop() {
+            if !seen.insert(name.clone()) || seen.len() > 256 {
+                continue;
+            }
+            let Some(plan) = self.library.get(&name) else { continue };
+            requirement = requirement.max(plan.trace_requirement());
+            todo.extend(plan.children.iter().map(|(child, _)| child.to_ascii_lowercase()));
+        }
+        requirement
+    }
+
     pub fn status(&self, name: &str) -> EffectStatus {
         let key = name.trim().to_ascii_lowercase();
         if self.library.contains_key(&key) {
@@ -125,6 +148,7 @@ impl ParticleShared {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ParticleSprite {
+    pub animation: hp_render::ParticleAnimation,
     pub pos: [f32; 3],
     pub size: f32,
     pub axis: [f32; 3],
@@ -184,7 +208,8 @@ pub fn read_material_look(fs: &hp_fs::GameFs, material: &str) -> MaterialLook {
         .or_else(|| m.get_f32("$alpha"))
         .filter(|v| v.is_finite())
         .map_or(1.0, |v| v.clamp(0.0, 1.0));
-    let blend_frames = m.shader.eq_ignore_ascii_case("spritecard") && m.get_i32("$blendframes").unwrap_or(1) != 0;
+    let spritecard = m.shader.eq_ignore_ascii_case("spritecard");
+    let blend_frames = spritecard && m.get_i32("$blendframes").unwrap_or(1) != 0;
     MaterialLook {
         found: true,
         additive: m.flag("$additive") || sprite_mode,
@@ -193,6 +218,9 @@ pub fn read_material_look(fs: &hp_fs::GameFs, material: &str) -> MaterialLook {
         fade_size,
         opacity,
         blend_frames,
+        dual_sequence: spritecard && m.flag("$dualsequence"),
+        sequence_mode: m.get_i32("$sequence_blend_mode").unwrap_or(0).clamp(0, 2) as u8,
+        max_luminance: [spritecard && m.flag("$maxlumframeblend1"); 2],
         sheet,
         refraction: m
             .shader
@@ -336,6 +364,7 @@ pub fn append_sprites<'a>(
             let material = material_of(&plan.material);
             let render = plan.render;
             let base = |p: &hp_pcf::Particle| ParticleSprite {
+                animation: hp_render::ParticleAnimation::default(),
                 pos: p.pos,
                 size: p.radius * 2.0,
                 axis: [0.0; 3],
@@ -414,19 +443,24 @@ fn push_blended(
     p: &hp_pcf::Particle,
     look: &MaterialLook,
 ) {
-    let Some(sheet) = look.sheet.as_ref().filter(|_| look.blend_frames) else {
-        sprites.push(s);
-        return;
-    };
-    let (a, b, f) = particle_uv_blend(plan, p, sheet);
-    if f <= 0.01 || a == b {
-        sprites.push(ParticleSprite { uv: a, ..s });
-        return;
+    if let Some(sheet) = &look.sheet {
+        let (a, b, f) = particle_uv_blend(plan, p, sheet);
+        let total = sheet.sequence(p.sequence2).map_or(0.0, |sequence| sequence.total);
+        let cycle = plan.sequence_cycle(p, total, true);
+        let (mut c, mut d, second) = sheet.frame_blend(p.sequence2, cycle);
+        if p.flip {
+            c.swap(0, 2);
+            d.swap(0, 2);
+        }
+        s.uv = a;
+        s.animation = hp_render::ParticleAnimation {
+            frames: [b, c, d],
+            blend: [if look.blend_frames || look.max_luminance[0] { f } else { 0.0 }, second],
+            dual_sequence: look.dual_sequence,
+            sequence_mode: look.sequence_mode,
+            max_luminance: look.max_luminance,
+        };
     }
-    let alpha = s.color[3];
-    sprites.push(ParticleSprite { uv: a, color: [s.color[0], s.color[1], s.color[2], alpha * (1.0 - f)], ..s });
-    s.uv = b;
-    s.color[3] = alpha * f;
     sprites.push(s);
 }
 
@@ -456,6 +490,7 @@ pub fn instances_of(
                 *slot.get_or_insert_with(|| assets.sprite_material_id(&materials[i], additive))
             };
             Some(hp_render::ParticleInstance {
+                animation: p.animation,
                 pos: p.pos,
                 size: p.size,
                 axis: p.axis,
@@ -654,6 +689,7 @@ impl ParticleLayer {
     fn stop_all(&mut self) {
         self.effects.clear();
         if let Ok(mut s) = self.handle.lock() {
+            s.world_requirement = None;
             s.active = false;
             s.playing.clear();
             s.particles = 0;
@@ -670,6 +706,9 @@ impl OverlayLayer for ParticleLayer {
     fn prepare(&mut self, state: &AppState) {
         let settings = &state.settings.lab;
         if !settings.show_particles {
+            if let Ok(mut shared) = self.handle.lock() {
+                shared.world_requirement = None;
+            }
             if !self.effects.is_empty() || self.handle.lock().is_ok_and(|s| s.active || !s.sprites.is_empty()) {
                 self.stop_all();
             }
@@ -693,6 +732,9 @@ impl OverlayLayer for ParticleLayer {
         near.sort_by(|a, b| a.0.total_cmp(&b.0));
         near.truncate(MAX_EFFECTS);
         let Ok(mut shared) = self.handle.lock() else { return };
+        let requirements: HashMap<_, _> =
+            near.iter().map(|(_, source)| (source.id, shared.trace_requirement(&source.name))).collect();
+        shared.world_requirement = requirements.values().copied().flatten().max();
         let physics = Arc::clone(&shared.physics);
         let world = crate::particle_world::ParticleEnvironment { state, physics: &physics };
         let keep: HashSet<Id> = near.iter().map(|(_, s)| s.id).collect();
@@ -701,6 +743,9 @@ impl OverlayLayer for ParticleLayer {
         let mut budget = MAX_PARTICLES;
         let mut starts = 0;
         for (_, s) in &near {
+            if requirements.get(&s.id).copied().flatten().is_some_and(|props| !physics.ready(state, props)) {
+                continue;
+            }
             let stale = self
                 .effects
                 .get(&s.id)
@@ -1146,6 +1191,14 @@ mod tests {
             "Refract { $normalmap particle/heat $refractamount -.007 $bluramount 1 $nofog 1 }",
         )
         .expect("vmt");
+        for (name, shader, flags) in [
+            ("second_only", "SpriteCard", "$dualsequence 1 $maxlumframeblend2 1"),
+            ("both_from_first", "SpriteCard", "$dualsequence 1 $maxlumframeblend1 1 $maxlumframeblend2 0"),
+            ("unlit", "UnlitGeneric", "$dualsequence 1 $maxlumframeblend1 1"),
+        ] {
+            std::fs::write(dir.join(format!("materials/particle/{name}.vmt")), format!("{shader} {{ {flags} }}"))
+                .unwrap();
+        }
         let fs = hp_fs::GameFs::empty();
         assert!(fs.add_game_dir(&dir).is_ok());
         let glow = read_material_look(&fs, "Particle\\Glow.vmt");
@@ -1171,6 +1224,14 @@ mod tests {
         assert_eq!(heat.blend_parameter(), -0.007);
         assert_eq!(heat.refraction_blur, 1.0);
         assert!(heat.no_fog);
+        let second = read_material_look(&fs, "particle/second_only");
+        assert!(second.dual_sequence);
+        assert_eq!(second.max_luminance, [false; 2]);
+        let both = read_material_look(&fs, "particle/both_from_first");
+        assert_eq!(both.max_luminance, [true; 2]);
+        let unlit = read_material_look(&fs, "particle/unlit");
+        assert!(!unlit.dual_sequence);
+        assert_eq!(unlit.max_luminance, [false; 2]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

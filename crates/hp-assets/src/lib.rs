@@ -26,6 +26,7 @@ mod preview;
 mod producer;
 mod projectors;
 mod queue;
+mod ragdolls;
 mod registry;
 mod scene;
 mod shadow_hulls;
@@ -160,10 +161,13 @@ pub struct AssetManager {
     pub(crate) preview: Option<preview::Preview>,
     pub(crate) model_thumbs: model_thumbs::ModelThumbs,
     pub(crate) player: player::PlayerModel,
+    pub(crate) ragdolls: ragdolls::Ragdolls,
     pub(crate) play_world: playworld::PlayWorld,
     pub(crate) detail_preview: detail_preview::DetailPreview,
     pub(crate) play_transforms: AHashMap<hp_vmf::Id, glam::DMat4>,
     pub(crate) play_dirty: Vec<hp_vmf::Id>,
+    pub(crate) physics_transforms: AHashMap<hp_editor::ObjRef, glam::DMat4>,
+    pub(crate) physics_dirty: Vec<hp_editor::ObjRef>,
     pub(crate) game_hidden: AHashSet<u32>,
     pub(crate) game_hidden_dirty: bool,
     pub(crate) play_hidden: AHashSet<u32>,
@@ -216,8 +220,11 @@ impl AssetManager {
             preview: None,
             model_thumbs: model_thumbs::ModelThumbs::default(),
             player: player::PlayerModel::default(),
+            ragdolls: ragdolls::Ragdolls::default(),
             play_transforms: AHashMap::new(),
             play_dirty: Vec::new(),
+            physics_transforms: AHashMap::new(),
+            physics_dirty: Vec::new(),
             game_hidden: AHashSet::new(),
             game_hidden_dirty: false,
             play_hidden: AHashSet::new(),
@@ -346,6 +353,7 @@ impl hp_app::AssetsApi for AssetManager {
             || !self.uploads.is_empty()
             || self.late_sources > 0
             || !self.scene.realize_later.is_empty()
+            || self.ragdolls.loading()
     }
 
     fn late_mount(&self) -> usize {
@@ -504,6 +512,25 @@ impl hp_app::AssetsApi for AssetManager {
             }
         }
         self.play_transforms = next;
+    }
+
+    fn set_physics_transforms(&mut self, transforms: &[(hp_editor::ObjRef, glam::DMat4)]) {
+        let next: AHashMap<_, _> = transforms.iter().copied().filter(|(_, m)| m.is_finite()).collect();
+        for (obj, transform) in &next {
+            if self.physics_transforms.get(obj) != Some(transform) {
+                self.physics_dirty.push(*obj);
+            }
+        }
+        for obj in self.physics_transforms.keys() {
+            if !next.contains_key(obj) {
+                self.physics_dirty.push(*obj);
+            }
+        }
+        self.physics_transforms = next;
+    }
+
+    fn set_physics_bones(&mut self, poses: &[(hp_vmf::Id, hp_app::state::BoneMatrices)]) {
+        self.set_physics_bones_impl(poses);
     }
 
     fn model_preview(

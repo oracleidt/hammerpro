@@ -184,10 +184,14 @@ fn model_triangles(data: &PreparedModel, body: Option<u32>) -> Vec<Tri> {
         None => data.parts.iter().collect(),
         Some(b) => data.parts_for_body(b),
     };
+    parts_triangles(parts.into_iter().map(|part| (part.vertices.as_slice(), part.indices.as_slice())))
+}
+
+pub(crate) fn parts_triangles<'a>(parts: impl Iterator<Item = (&'a [hp_render::Vertex], &'a [u32])>) -> Vec<Tri> {
     let mut tris = Vec::new();
-    for p in parts {
-        for t in p.indices.chunks_exact(3) {
-            let v = |i: u32| p.vertices.get(i as usize);
+    for (vertices, indices) in parts {
+        for t in indices.chunks_exact(3) {
+            let v = |i: u32| vertices.get(i as usize);
             if let (Some(a), Some(b), Some(c)) = (v(t[0]), v(t[1]), v(t[2])) {
                 let shading = Vec3::from_array(a.normal) + Vec3::from_array(b.normal) + Vec3::from_array(c.normal);
                 let pos = [Vec3::from_array(a.pos), Vec3::from_array(b.pos), Vec3::from_array(c.pos)];
@@ -242,6 +246,9 @@ fn box_ray(b: &Aabb, ray: &Ray) -> EntityRay {
 
 impl AssetManager {
     pub(crate) fn entity_ray_impl(&self, e: &hp_vmf::Entity, ray: &Ray) -> EntityRay {
+        if let Some(hit) = self.ragdoll_ray(e.id, ray) {
+            return hit;
+        }
         let Some(s) = self.scene.ents.get(&e.id) else { return EntityRay::Bounds };
         let d = &s.desc;
         let Some((path, _)) = d.model.as_ref().filter(|_| s.model.is_some()) else {

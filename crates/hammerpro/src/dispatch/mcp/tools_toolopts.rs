@@ -26,6 +26,7 @@ const TOOL_NAMES: &[&str] = &[
     "cordon",
     "road",
     "pipe",
+    "physics",
 ];
 
 const MAX_OPTIONS: usize = 64;

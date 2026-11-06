@@ -504,6 +504,11 @@ impl AssetManager {
     }
 
     pub(crate) fn entity_bounds_impl(&self, e: &hp_vmf::Entity) -> Option<hp_geom::Aabb> {
+        if e.classname.eq_ignore_ascii_case("prop_ragdoll")
+            && let Some(bounds) = self.ragdoll_bounds(e.id)
+        {
+            return Some(bounds);
+        }
         let class = class_of(self.fgd.as_deref(), e);
         let origin = e.origin().filter(|o| o.is_finite()).unwrap_or(glam::DVec3::ZERO);
         if let Some(path) = model_path(e, class) {

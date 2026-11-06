@@ -23,10 +23,11 @@ pub enum ToolId {
     Road,
     Pipe,
     Slice,
+    Physics,
 }
 
 impl ToolId {
-    pub const ALL: [ToolId; 20] = [
+    pub const ALL: [ToolId; 21] = [
         ToolId::Select,
         ToolId::Camera,
         ToolId::Entity,
@@ -47,6 +48,7 @@ impl ToolId {
         ToolId::Cordon,
         ToolId::Road,
         ToolId::Pipe,
+        ToolId::Physics,
     ];
 
     pub fn label_key(self) -> &'static str {
@@ -71,6 +73,7 @@ impl ToolId {
             ToolId::Road => "tool.road",
             ToolId::Pipe => "tool.pipe",
             ToolId::Slice => "tool.slice",
+            ToolId::Physics => "tool.physics",
         }
     }
 
@@ -101,6 +104,7 @@ impl ToolId {
             ToolId::Road => Action::ToolRoad,
             ToolId::Pipe => Action::ToolPipe,
             ToolId::Slice => Action::ToolSlice,
+            ToolId::Physics => Action::ToolPhysics,
         }
     }
 
@@ -126,6 +130,7 @@ impl ToolId {
             ToolId::Road => "☰",
             ToolId::Pipe => "⊟",
             ToolId::Slice => "⊞",
+            ToolId::Physics => "⚖",
         }
     }
 }
@@ -155,6 +160,8 @@ pub trait Tool {
     fn id(&self) -> ToolId;
 
     fn activate(&mut self, _state: &mut crate::state::AppState) {}
+
+    fn update(&mut self, _state: &mut crate::state::AppState, _ctx: &egui::Context) {}
 
     fn context_entries(&self, _state: &crate::state::AppState) -> Vec<ToolMenuEntry> {
         Vec::new()
@@ -215,6 +222,10 @@ pub trait Tool {
     fn options_ui(&mut self, _ui: &mut egui::Ui, _state: &mut crate::state::AppState) {}
 
     fn takes_right_drag(&self, _kind: crate::view::ViewKind, _modifiers: egui::Modifiers) -> bool {
+        false
+    }
+
+    fn takes_middle_drag(&self, _kind: crate::view::ViewKind, _modifiers: egui::Modifiers) -> bool {
         false
     }
 

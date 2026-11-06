@@ -517,6 +517,17 @@ impl Document {
         half: DVec3,
         filter: Option<&dyn Fn(&SolidNode) -> bool>,
     ) -> Option<(Id, hp_geom::SweepHit)> {
+        self.trace_hull_with_disp_flags(start, end, half, filter, hp_geom::DISP_FLAG_NO_HULL)
+    }
+
+    pub fn trace_hull_with_disp_flags(
+        &self,
+        start: DVec3,
+        end: DVec3,
+        half: DVec3,
+        filter: Option<&dyn Fn(&SolidNode) -> bool>,
+        skip_displacement_flags: i32,
+    ) -> Option<(Id, hp_geom::SweepHit)> {
         if !start.is_finite() || !end.is_finite() || !half.is_finite() || half.min_element() < 0.0 {
             return None;
         }
@@ -532,7 +543,18 @@ impl Document {
                 }
             };
             if node.has_disp() {
-                for mesh in node.disp.iter().flatten() {
+                for (side, mesh) in
+                    node.disp.iter().enumerate().filter_map(|(side, mesh)| mesh.as_ref().map(|mesh| (side, mesh)))
+                {
+                    if node
+                        .solid
+                        .sides
+                        .get(side)
+                        .and_then(|side| side.disp.as_ref())
+                        .is_some_and(|disp| disp.flags & skip_displacement_flags != 0)
+                    {
+                        continue;
+                    }
                     if !mesh.aabb.expand(half.max_element()).intersects(&bounds) {
                         continue;
                     }

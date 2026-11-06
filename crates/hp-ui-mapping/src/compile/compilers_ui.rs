@@ -1322,7 +1322,7 @@ mod tests {
                 panic!("{} has no flag list markers", path.display())
             };
             let updated = format!("{}{generated}{}", &doc[..a], &doc[b + DOCS_END.len()..]);
-            if updated != doc {
+            if updated.replace("\r\n", "\n") != doc.replace("\r\n", "\n") {
                 if std::env::var_os("HP_UPDATE_COMPILER_DOCS").is_some() {
                     std::fs::write(&path, updated).expect("write the compilers page");
                 } else {

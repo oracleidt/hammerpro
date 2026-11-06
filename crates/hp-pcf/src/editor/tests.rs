@@ -172,16 +172,16 @@ fn operator_templates_add_as_one_undoable_edit() {
 }
 
 #[test]
-fn unsupported_secondary_sequences_and_bone_locks_are_reported() {
+fn supported_sequences_and_unsupported_bone_locks_are_reported() {
     let mut doc = Document::new();
     let system = doc.create_system("unsupported_preview").unwrap();
     doc.add_operator(system, Category::Initializers, "sequence two random").unwrap();
     doc.add_operator(system, Category::Operators, "movement lock to control point").unwrap();
     doc.add_operator(system, Category::Operators, "movement lock to bone").unwrap();
     let plan = crate::Plan::new(&doc.definitions()[0]);
-    assert_eq!(plan.unsupported, vec!["sequence two random", "movement lock to bone"]);
+    assert_eq!(plan.unsupported, vec!["movement lock to bone"]);
     let issues = doc.validate();
-    assert_eq!(issues.iter().filter(|i| i.message.contains("no preview implementation")).count(), 2);
+    assert_eq!(issues.iter().filter(|i| i.message.contains("no preview implementation")).count(), 1);
     assert_eq!(Document::parse(&doc.to_bytes().unwrap()).unwrap().definitions(), doc.definitions());
 }
 
@@ -205,4 +205,61 @@ fn parameter_batches_are_atomic_and_one_undo_step() {
     assert!(
         doc.set_attrs(system, vec![("Start".into(), Value::Float(0.5)), ("start".into(), Value::Float(0.75))]).is_err()
     );
+}
+
+#[test]
+fn authoring_uses_native_parameter_types_and_preserves_undo() {
+    let mut doc = Document::new();
+    let system = doc.create_system("native_types").unwrap();
+    let renderer = doc
+        .add_operator_with_params(
+            system,
+            Category::Renderers,
+            "render_animated_sprites",
+            vec![("animation rate".into(), Value::Int(2)), ("use animation rate as FPS".into(), Value::Int(1))],
+        )
+        .unwrap();
+    assert_eq!(doc.element(renderer).unwrap().get("animation rate"), Some(&Value::Float(2.0)));
+    assert_eq!(doc.element(renderer).unwrap().get("use animation rate as FPS"), Some(&Value::Bool(true)));
+    let sequence = doc
+        .add_operator_with_params(
+            system,
+            Category::Initializers,
+            "Sequence Random",
+            vec![("sequence_min".into(), Value::Float(1.0))],
+        )
+        .unwrap();
+    assert_eq!(doc.element(sequence).unwrap().get("sequence_min"), Some(&Value::Int(1)));
+    let revision = doc.revision();
+    assert!(matches!(
+        doc.set_attrs(
+            renderer,
+            vec![("animation rate".into(), Value::Float(4.0)), ("use animation rate as FPS".into(), Value::Int(2)),]
+        ),
+        Err(EditError::ParameterType { .. })
+    ));
+    assert_eq!(doc.revision(), revision);
+    assert_eq!(doc.element(renderer).unwrap().get("animation rate"), Some(&Value::Float(2.0)));
+    doc.set_attr(renderer, "use animation rate as FPS", Value::Float(0.0)).unwrap();
+    assert_eq!(doc.element(renderer).unwrap().get("use animation rate as FPS"), Some(&Value::Bool(false)));
+    assert!(doc.undo());
+    assert_eq!(doc.element(renderer).unwrap().get("use animation rate as FPS"), Some(&Value::Bool(true)));
+    assert_eq!(Document::parse(&doc.to_bytes().unwrap()).unwrap().dmx(), doc.dmx());
+}
+
+#[test]
+fn incorrect_imported_types_are_reported_without_rewriting_the_file() {
+    let mut doc = Document::new();
+    let system = doc.create_system("imported").unwrap();
+    let renderer = doc.add_operator(system, Category::Renderers, "render_animated_sprites").unwrap();
+    put(&mut doc.data.elements[renderer], "use animation rate as FPS", Value::Int(1));
+    let bytes = doc.to_bytes().unwrap();
+    let parsed = Document::parse(&bytes).unwrap();
+    assert!(parsed.validate().iter().any(|issue| {
+        issue.element == renderer
+            && issue.attribute.as_deref() == Some("use animation rate as FPS")
+            && issue.message.contains("DMX type bool")
+    }));
+    assert_eq!(parsed.to_bytes().unwrap(), bytes);
+    assert!(!parsed.is_modified());
 }

@@ -24,6 +24,8 @@ hp-vtf       VTF texture decoder and encoder
 hp-vmt       VMT material parser and writer
 hp-fgd       FGD entity definition parser and resolver
 hp-mdl       MDL / VVD / VTX studio model loader
+hp-ragdoll   PHY skeleton, constraints, saved poses and skinning
+hp-physics   Rigid bodies, joints, convex water buoyancy and editor interaction
 hp-bsp       BSP reader and writer: lumps, pakfile, cubemaps, game lumps, LZMA
 hp-decompile BSP to VMF decompiler (brushes, displacements, entities, pakfile content)
 hp-nav       Navigation mesh (.nav) reader
@@ -38,7 +40,7 @@ hp-update    Auto update: GitHub release check, download, zip reader, program re
 hp-app       Shared state, settings, actions, i18n, theme, the extension points of the packages
 hp-assets    Asset streaming (materials, models, sprites) and the scene sync of the renderer
 hp-ui-*      User interface: shell, viewports, textures, entities, mapping, lab
-hp-tools-*   Editing tools: create, select, mesh
+hp-tools-*   Editing tools: create, select, mesh, physics
 hammerpro    The application (eframe/egui): packages, dispatch, MCP tools, scripts
 ```
 

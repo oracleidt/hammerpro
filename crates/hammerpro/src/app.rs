@@ -130,6 +130,7 @@ fn register_all_translations() {
     hp_tools_select::register_translations();
     hp_tools_create::register_translations();
     hp_tools_mesh::register_translations();
+    hp_tools_physics::register_translations();
     hp_ui_textures::register_translations();
     hp_ui_entities::register_translations();
     hp_ui_mapping::register_translations();
@@ -146,6 +147,7 @@ fn make_tools() -> (Vec<Box<dyn Tool>>, Vec<ToolId>) {
     available.extend(hp_tools_select::tools());
     available.extend(hp_tools_create::tools());
     available.extend(hp_tools_mesh::tools());
+    available.extend(hp_tools_physics::tools());
     available.push(hp_ui_textures::texture_tool());
     crate::dispatch::package_tools(&mut available);
     let ids: Vec<ToolId> = ToolId::ALL.iter().copied().filter(|id| available.iter().any(|t| t.id() == *id)).collect();
@@ -404,7 +406,12 @@ impl HammerProApp {
 
     pub(crate) fn deactivate_tool(&mut self) {
         let i = tool_index(self.state.tool);
-        self.unrecorded_selection(|app| app.tools[i].deactivate(&mut app.state));
+        self.unrecorded_selection(|app| {
+            if app.state.tool == ToolId::Physics {
+                app.tools[i].cancel(&mut app.state);
+            }
+            app.tools[i].deactivate(&mut app.state);
+        });
     }
 
     pub(crate) fn activate_tool(&mut self) {
@@ -687,6 +694,8 @@ impl HammerProApp {
 
         {
             hp_app::runtime::wind::update(&self.state);
+            let i = tool_index(self.state.tool);
+            self.tools[i].update(&mut self.state, ui.ctx());
             let opts = self.state.scene_options();
             let AppState { assets, doc, gfx, .. } = &mut self.state;
             if let Some(gfx) = gfx.as_mut() {

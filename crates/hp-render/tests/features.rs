@@ -1060,6 +1060,7 @@ fn particles_blend_add_turn_and_show_sheet_frames() {
         r.create_texture(&TextureUpload { width: 4, height: 4, format: TexFormat::Rgba8Srgb, levels: vec![px] });
     r.set_material(5, &MaterialDesc { texture: Some(halves), tex_size: [4.0, 4.0], ..Default::default() });
     let particle = |pos: [f32; 3], material: MaterialId, color: [f32; 4]| ParticleInstance {
+        animation: ParticleAnimation::default(),
         pos,
         size: 60.0,
         axis: [0.0; 3],
@@ -1158,6 +1159,7 @@ fn particles_refract_the_scene_and_keep_foreground_depth_with_and_without_msaa()
     });
     r.set_material(7, &MaterialDesc { texture: Some(normal), ..Default::default() });
     let particle = ParticleInstance {
+        animation: ParticleAnimation::default(),
         pos: [0.0; 3],
         size: 220.0,
         axis: [0.0; 3],
@@ -1213,6 +1215,7 @@ fn particles_respect_scene_lighting_emissive_and_material_opacity() {
     r.set_material(4, &MaterialDesc { texture: Some(TexId::WHITE), ..Default::default() });
     let view = ViewParams { background: [0.0; 3], ..persp([-400.0, 0.0, 0.0], [0.0; 3], [64, 64], RenderMode::Lit) };
     let p = ParticleInstance {
+        animation: ParticleAnimation::default(),
         pos: [0.0; 3],
         size: 220.0,
         axis: [0.0; 3],
@@ -1268,6 +1271,7 @@ fn the_particle_preview_view_draws_exactly_like_the_scene_view() {
     let blob = r.create_texture(&TextureUpload { width: 8, height: 8, format: TexFormat::Rgba8Srgb, levels: vec![px] });
     r.set_material(5, &MaterialDesc { texture: Some(blob), tex_size: [8.0, 8.0], ..Default::default() });
     let particle = |pos: [f32; 3], material: MaterialId, blend: ParticleBlend| ParticleInstance {
+        animation: ParticleAnimation::default(),
         pos,
         size: 70.0,
         axis: [0.0; 3],
@@ -1306,4 +1310,172 @@ fn the_particle_preview_view_draws_exactly_like_the_scene_view() {
     assert!(count_near(&preview, [255, 200, 120], 120) > 200, "the sprites are visible");
     r.render_particle_preview(7, &view, &[]);
     assert_eq!(r.preview_particle_count(), 0);
+}
+
+#[test]
+fn spritecard_mixes_texture_frames_and_both_sequences_before_alpha_blending() {
+    let (device, queue) = gpu_or_skip!();
+    let mut renderer = Renderer::new(&device, &queue);
+    let mut atlas = Vec::new();
+    for _ in 0..4 {
+        for x in 0..4 {
+            atlas.extend_from_slice(if x < 2 { &[255, 0, 0, 64] } else { &[0, 0, 255, 192] });
+        }
+    }
+    let texture = renderer.create_texture(&TextureUpload {
+        width: 4,
+        height: 4,
+        format: TexFormat::Rgba8Linear,
+        levels: vec![atlas],
+    });
+    renderer.set_material(4, &MaterialDesc { texture: Some(texture), tex_size: [4.0, 4.0], ..Default::default() });
+    let red = [0.125, 0.125, 0.375, 0.875];
+    let blue = [0.625, 0.125, 0.875, 0.875];
+    let base = ParticleInstance {
+        animation: ParticleAnimation { frames: [blue, blue, blue], ..Default::default() },
+        pos: [0.0; 3],
+        size: 200.0,
+        axis: [0.0; 3],
+        roll: 0.0,
+        uv: red,
+        color: [1.0; 4],
+        bright: 1.0,
+        add_self: 0.0,
+        screen_fade: [0.0; 2],
+        refraction_blur: 0.0,
+        no_fog: true,
+        orient: ParticleOrient::Screen,
+        material: 4,
+        blend: ParticleBlend::Alpha,
+    };
+    let view = persp([-400.0, 0.0, 0.0], [0.0; 3], [128, 128], RenderMode::Textured);
+    for (name, animation, expected) in [
+        ("frame", ParticleAnimation { blend: [0.25, 0.0], ..base.animation }, [191, 0, 64, 96]),
+        ("average", ParticleAnimation { dual_sequence: true, ..base.animation }, [128, 0, 128, 128]),
+        ("mask", ParticleAnimation { dual_sequence: true, sequence_mode: 1, ..base.animation }, [0, 0, 255, 64]),
+        ("over", ParticleAnimation { dual_sequence: true, sequence_mode: 2, ..base.animation }, [63, 0, 192, 64]),
+        (
+            "max_first",
+            ParticleAnimation { blend: [0.8, 0.0], max_luminance: [true, false], ..base.animation },
+            [0, 0, 255, 192],
+        ),
+        (
+            "max_second",
+            ParticleAnimation {
+                frames: [blue, red, blue],
+                blend: [0.8, 0.0],
+                dual_sequence: true,
+                sequence_mode: 1,
+                max_luminance: [false, true],
+            },
+            [0, 0, 255, 166],
+        ),
+    ] {
+        renderer.set_particles(&[ParticleInstance { animation, ..base }]);
+        renderer.render_view(1, &view, &Overlay::default());
+        let actual = pixel(&save(&renderer, 1, &format!("spritecard_{name}")), 64, 64);
+        let reference = renderer.create_texture(&TextureUpload {
+            width: 1,
+            height: 1,
+            format: TexFormat::Rgba8Linear,
+            levels: vec![expected.to_vec()],
+        });
+        renderer.set_material(5, &MaterialDesc { texture: Some(reference), ..Default::default() });
+        renderer.set_particles(&[ParticleInstance { material: 5, animation: ParticleAnimation::default(), ..base }]);
+        renderer.render_view(1, &view, &Overlay::default());
+        let target = pixel(&save(&renderer, 1, &format!("spritecard_{name}_reference")), 64, 64);
+        for c in 0..3 {
+            assert!(actual[c].abs_diff(target[c]) <= 2, "{name}: {actual:?} versus {target:?}");
+        }
+    }
+}
+
+#[test]
+fn spritecard_pixels_match_native_garrys_mod_captures() {
+    let (device, queue) = gpu_or_skip!();
+    let mut renderer = Renderer::new(&device, &queue);
+    let mut atlas = Vec::new();
+    for y in 0..8 {
+        for x in 0..8 {
+            atlas.extend_from_slice(if y < 4 {
+                if x < 4 { &[255, 0, 0, 64] } else { &[0, 0, 255, 192] }
+            } else if x < 4 {
+                &[128, 128, 128, 128]
+            } else {
+                &[0, 255, 0, 255]
+            });
+        }
+    }
+    let texture = renderer.create_texture(&TextureUpload {
+        width: 8,
+        height: 8,
+        format: TexFormat::Rgba8Srgb,
+        levels: vec![atlas],
+    });
+    renderer.set_material(4, &MaterialDesc { texture: Some(texture), tex_size: [8.0, 8.0], ..Default::default() });
+    let cases: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../../hp-pcf/tests/data/spritecard_native_samples.json")).unwrap();
+    let red = [0.0625, 0.0625, 0.4375, 0.4375];
+    let blue = [0.5625, 0.0625, 0.9375, 0.4375];
+    let gray = [0.0625, 0.5625, 0.4375, 0.9375];
+    let frames = |sequence: u64, age: f32, rate: f32, fps: bool| {
+        let pair = match sequence {
+            0 => (red, red),
+            1 => (blue, blue),
+            3 => (gray, gray),
+            _ => (red, blue),
+        };
+        let count = if sequence == 2 { 2.0 } else { 1.0 };
+        let frame = (age * rate / if fps { count } else { 1.0 }).rem_euclid(1.0) * count;
+        if frame < 1.0 { (pair.0, pair.1, frame) } else { (pair.1, pair.0, frame - 1.0) }
+    };
+    let view = persp([-128.0, 0.0, 0.0], [0.0; 3], [128, 128], RenderMode::Textured);
+    for case in cases {
+        for (index, sample) in case["samples"].as_array().unwrap().iter().enumerate() {
+            if ![0, 2, 6, 12, 20, 28].contains(&index) {
+                continue;
+            }
+            let age = sample["age"].as_f64().unwrap() as f32;
+            let fps = case["fps"].as_bool().unwrap();
+            let (uv, next, first_blend) =
+                frames(case["sequence"].as_u64().unwrap(), age, case["rate"].as_f64().unwrap() as f32, fps);
+            let (second, second_next, second_blend) =
+                frames(case["second"].as_u64().unwrap(), age, case["rate2"].as_f64().unwrap() as f32, fps);
+            renderer.set_particles(&[ParticleInstance {
+                animation: ParticleAnimation {
+                    frames: [next, second, second_next],
+                    blend: [first_blend, second_blend],
+                    dual_sequence: case["dual"].as_bool().unwrap(),
+                    sequence_mode: case["mode"].as_u64().unwrap() as u8,
+                    max_luminance: [case["maximum"][0].as_bool().unwrap(), case["maximum"][1].as_bool().unwrap()],
+                },
+                pos: [0.0; 3],
+                size: 32.0,
+                axis: [0.0; 3],
+                roll: 0.0,
+                uv,
+                color: [1.0; 4],
+                bright: 1.0,
+                add_self: 0.0,
+                screen_fade: [0.0; 2],
+                refraction_blur: 0.0,
+                no_fog: true,
+                orient: ParticleOrient::Screen,
+                material: 4,
+                blend: ParticleBlend::Alpha,
+            }]);
+            renderer.render_view(1, &view, &Overlay::default());
+            let (_, _, pixels) = renderer.read_view_rgba8(1).unwrap();
+            let actual = &pixels[(64 * 128 + 64) * 4..][..3];
+            for (channel, value) in actual.iter().enumerate() {
+                let expected = sample["pixel"][channel].as_u64().unwrap() as u8;
+                assert!(
+                    value.abs_diff(expected) <= 3,
+                    "{} age {age}: {actual:?} versus native {}",
+                    case["name"],
+                    sample["pixel"]
+                );
+            }
+        }
+    }
 }

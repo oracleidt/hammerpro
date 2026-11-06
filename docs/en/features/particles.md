@@ -138,6 +138,8 @@ Select an operator in the tree to edit every stored parameter, including its `fu
 
 Edits to numeric and text controls are committed when the gesture or field edit ends, so undo returns to the value before the edit. Save and document replacement commit pending edits before processing the action. Minimum/maximum inconsistencies, invalid control point indices and other problems appear in **Validation**.
 
+Known Source operators use the parameter types expected by the game. For example, `use animation rate as FPS` is a boolean, while `spin_rate_degrees` is an integer. Numeric edits are converted only when the value fits the required type; ambiguous values are rejected without changing the document. Validation reports incorrect types in imported files, which remain unchanged until edited. Unknown operator parameters are preserved.
+
 The `radius scale` and `alpha fade and decay` operators also have draggable lifetime/value handles that edit their actual Source timing and scale/alpha fields. The `color fade` operator shows a gradient from the system's base color to its fade color. The individual Source parameters remain editable below these controls.
 
 System properties include material, maximum and initial particle counts, radius, color and bounding box. Use **Choose sprite material** beside a material field to search mounted materials and choose from thumbnails. The material's existing Source shader and texture sheet are used for previewing.

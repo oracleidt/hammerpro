@@ -138,6 +138,8 @@ Sélectionnez un opérateur dans l'arbre pour modifier tous ses paramètres enre
 
 Les champs numériques et textuels sont validés à la fin du geste ou de la saisie, pour que l'annulation revienne à la valeur précédente. L'enregistrement et le remplacement d'un document valident les saisies en attente avant de continuer. Les incohérences minimum/maximum, indices de points de contrôle invalides et autres problèmes apparaissent dans **Validation**.
 
+Les opérateurs Source connus utilisent les types de paramètres attendus par le jeu. Par exemple, `use animation rate as FPS` est un booléen et `spin_rate_degrees` un entier. Les valeurs numériques sont converties uniquement si elles correspondent au type demandé ; les valeurs ambiguës sont refusées sans modifier le document. La validation signale les types incorrects des fichiers importés, sans réécrire leurs paramètres. Les paramètres inconnus sont conservés.
+
 Les opérateurs `radius scale` et `alpha fade and decay` proposent aussi des points glissables durée/valeur qui modifient leurs vrais champs Source de temps et de taille/alpha. L'opérateur `color fade` affiche un dégradé entre la couleur de base du système et sa couleur de fondu. Les paramètres Source individuels restent modifiables sous ces contrôles.
 
 Les propriétés du système comprennent le matériau, les nombres maximal et initial de particules, le rayon, la couleur et la boîte englobante. **Choisir le matériau du sprite**, à côté d'un champ de matériau, permet de chercher dans les matériaux montés et leurs vignettes. L'aperçu utilise le shader Source et la planche de sprites existants du matériau.

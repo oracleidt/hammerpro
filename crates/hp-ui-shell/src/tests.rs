@@ -373,6 +373,8 @@ fn shortcut_capture_through_settings_window() {
 
 #[test]
 fn closing_settings_applies_game_changes() {
+    let _guard = lang_guard();
+    hp_app::i18n::set_lang(Lang::En);
     let mut state = state();
     let mut shell = Shell::new();
     shell.open_settings(&mut state, SettingsTab::Game);

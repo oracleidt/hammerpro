@@ -49,7 +49,7 @@ pub fn tool_group(tool: ToolId) -> PaletteGroup {
         | ToolId::Bevel
         | ToolId::Vertex
         | ToolId::Displacement => PaletteGroup::Edit,
-        ToolId::Path | ToolId::Cordon => PaletteGroup::Special,
+        ToolId::Path | ToolId::Cordon | ToolId::Physics => PaletteGroup::Special,
     }
 }
 
@@ -329,6 +329,7 @@ mod tests {
                 S,
                 T(ToolId::Path),
                 T(ToolId::Cordon),
+                T(ToolId::Physics),
                 A(Action::BrushesToProp),
                 A(Action::PropToBrushes),
                 A(Action::SendToBlender),

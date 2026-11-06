@@ -54,7 +54,7 @@ pub use indirect::IndirectVolume;
 pub use lights::MAX_PER_CLUSTER;
 pub use local_shadow::MAX_SHADOWED_LIGHTS;
 pub use park::ParkedScene;
-pub use particles::{ParticleBlend, ParticleInstance, ParticleOrient};
+pub use particles::{ParticleAnimation, ParticleBlend, ParticleInstance, ParticleOrient};
 pub use projector::{MAX_PROJECTORS, PROJECTOR_TEXTURE_SIZE, Projector, ProjectorImage};
 pub use sky::HdrSkyFace;
 pub use sprite_layers::SPRITE_LAYER_PARTICLES;

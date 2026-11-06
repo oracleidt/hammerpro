@@ -61,6 +61,12 @@ pub(crate) const RANGES: &[(&str, f64, f64)] = &[
     ("lab.model_lod.levels", 3.0, 6.0),
     ("lab.model_lod.reduction", 0.2, 0.9),
     ("lab.propper_mass", 0.1, 50_000.0),
+    ("physics.gravity", -10_000.0, 10_000.0),
+    ("physics.air_density", 0.0, 100.0),
+    ("physics.time_scale", 0.01, 4.0),
+    ("physics.shoot_speed", 1.0, 10_000.0),
+    ("physics.explosion_speed", 1.0, 10_000.0),
+    ("physics.explosion_radius", 1.0, 16_384.0),
 ];
 
 const READ_ONLY: &[&str] = &[
@@ -203,7 +209,7 @@ pub(crate) fn settings_json(s: &Settings) -> Value {
         }
         tables!(
             selection, brush, workflow, instances, visibility, helpers, mesh, entities, render, lighting, placement,
-            startup, launch, content, health, lab, mcp, grid, discord, scan, update, sniffer, blender, vtf,
+            physics, startup, launch, content, health, lab, mcp, grid, discord, scan, update, sniffer, blender, vtf,
         );
     }
     v

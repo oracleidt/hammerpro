@@ -7,24 +7,29 @@ pub struct Operator {
 }
 
 impl Operator {
+    fn native_value(&self, name: &str) -> bool {
+        crate::parameters::expected(&self.function, name)
+            .is_none_or(|kind| self.params.get(name).is_some_and(|value| kind.accepts(value)))
+    }
+
     pub fn float(&self, name: &str) -> Option<f32> {
-        self.params.float(name)
+        self.native_value(name).then(|| self.params.float(name)).flatten()
     }
 
     pub fn int(&self, name: &str) -> Option<i32> {
-        self.params.int(name)
+        self.native_value(name).then(|| self.params.int(name)).flatten()
     }
 
     pub fn bool(&self, name: &str) -> Option<bool> {
-        self.params.bool(name)
+        self.native_value(name).then(|| self.params.bool(name)).flatten()
     }
 
     pub fn vec3(&self, name: &str) -> Option<[f32; 3]> {
-        self.params.vec3(name)
+        self.native_value(name).then(|| self.params.vec3(name)).flatten()
     }
 
     pub fn color(&self, name: &str) -> Option<[u8; 4]> {
-        self.params.color(name)
+        self.native_value(name).then(|| self.params.color(name)).flatten()
     }
 }
 
@@ -38,6 +43,7 @@ pub struct Child {
 pub struct SystemDef {
     pub name: String,
     pub material: String,
+    pub group_id: i32,
     pub max_particles: u32,
     pub initial_particles: u32,
     pub radius: f32,
@@ -56,6 +62,7 @@ impl Default for SystemDef {
         Self {
             name: String::new(),
             material: String::new(),
+            group_id: 0,
             max_particles: 1000,
             initial_particles: 0,
             radius: 5.0,
@@ -105,6 +112,10 @@ pub fn systems(dmx: &Dmx) -> Vec<SystemDef> {
         out.push(SystemDef {
             name: e.name.clone(),
             material: e.str("material").unwrap_or("").to_owned(),
+            group_id: match e.get("group id") {
+                Some(crate::dmx::Value::Int(value)) => *value,
+                _ => 0,
+            },
             max_particles: e.int("max_particles").map_or(d.max_particles, |v| v.clamp(0, 100_000) as u32),
             initial_particles: e.int("initial_particles").map_or(0, |v| v.clamp(0, 100_000) as u32),
             radius: e.float("radius").map_or(d.radius, |v| v.clamp(0.0, 100_000.0)),

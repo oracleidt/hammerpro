@@ -40,8 +40,18 @@ pub enum ParticleBlend {
     Refract,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ParticleAnimation {
+    pub frames: [[f32; 4]; 3],
+    pub blend: [f32; 2],
+    pub dual_sequence: bool,
+    pub sequence_mode: u8,
+    pub max_luminance: [bool; 2],
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ParticleInstance {
+    pub animation: ParticleAnimation,
     pub pos: [f32; 3],
     pub size: f32,
     pub axis: [f32; 3],
@@ -71,9 +81,12 @@ pub(crate) struct ParticleGpu {
     bright: f32,
     fade: u32,
     effects: u32,
+    frames: [[f32; 4]; 3],
+    animation_blend: [f32; 2],
+    animation_flags: u32,
 }
 
-const ATTRS: [wgpu::VertexAttribute; 10] = [
+const ATTRS: [wgpu::VertexAttribute; 15] = [
     wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x3, offset: 0, shader_location: 0 },
     wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32, offset: 12, shader_location: 1 },
     wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x3, offset: 16, shader_location: 2 },
@@ -84,6 +97,11 @@ const ATTRS: [wgpu::VertexAttribute; 10] = [
     wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32, offset: 56, shader_location: 7 },
     wgpu::VertexAttribute { format: wgpu::VertexFormat::Unorm16x2, offset: 60, shader_location: 8 },
     wgpu::VertexAttribute { format: wgpu::VertexFormat::Uint32, offset: 64, shader_location: 9 },
+    wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x4, offset: 68, shader_location: 10 },
+    wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x4, offset: 84, shader_location: 11 },
+    wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x4, offset: 100, shader_location: 12 },
+    wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x2, offset: 116, shader_location: 13 },
+    wgpu::VertexAttribute { format: wgpu::VertexFormat::Uint32, offset: 124, shader_location: 14 },
 ];
 
 const BLENDS: [ParticleBlend; 3] = [ParticleBlend::Alpha, ParticleBlend::AddSelf, ParticleBlend::Additive];
@@ -194,7 +212,14 @@ fn pack(particles: &[ParticleInstance]) -> (Vec<ParticleGpu>, Vec<Run>) {
         } else {
             ((finite(p.add_self, 0.0).clamp(0.0, 16.0) * 256.0).round() as u32, 0)
         };
+        let animation = p.animation;
         data.push(ParticleGpu {
+            frames: animation.frames.map(|uv| if uv.iter().all(|v| v.is_finite()) { uv } else { rect }),
+            animation_blend: animation.blend.map(|f| finite(f, 0.0).clamp(0.0, 1.0)),
+            animation_flags: u32::from(animation.dual_sequence)
+                | (u32::from(animation.sequence_mode.min(2)) << 1)
+                | (u32::from(animation.max_luminance[0]) << 3)
+                | (u32::from(animation.max_luminance[1]) << 4),
             pos: p.pos,
             size: finite(p.size, 0.0).max(0.0),
             axis: finite3(p.axis),
@@ -399,6 +424,7 @@ mod tests {
 
     fn p(material: MaterialId, blend: ParticleBlend, x: f32) -> ParticleInstance {
         ParticleInstance {
+            animation: ParticleAnimation::default(),
             pos: [x, 0.0, 0.0],
             size: 4.0,
             axis: [0.0; 3],
@@ -455,7 +481,7 @@ mod tests {
         assert_eq!(data[0].mode, 3);
         assert_eq!(data[0].fade, 0xFFFF_0000, "start 0, end clamped to 4");
         assert_eq!(pack_fade([1.0, 2.0]), (16384 | (32768 << 16)));
-        assert_eq!(size_of::<ParticleGpu>(), 68);
+        assert_eq!(size_of::<ParticleGpu>(), 128);
     }
 
     #[test]

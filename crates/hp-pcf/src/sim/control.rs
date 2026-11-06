@@ -64,25 +64,28 @@ pub(super) fn update_point_trace(
 
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct ChildPoints {
+    group: i32,
     count: usize,
     first: usize,
     particle: usize,
 }
 
 pub(super) fn compile_child_points(op: &Operator) -> Option<ChildPoints> {
-    if !op.function.eq_ignore_ascii_case("Set child control points from particle positions")
-        || i(op, "Group ID to affect", 0) != 0
-    {
+    if !op.function.eq_ignore_ascii_case("Set child control points from particle positions") {
         return None;
     }
     Some(ChildPoints {
+        group: i(op, "Group ID to affect", 0),
         count: i(op, "# of control points to set", 1).clamp(0, MAX_CONTROL_POINTS as i32) as usize,
         first: i(op, "First control point to set", 0).clamp(0, MAX_CONTROL_POINTS as i32 - 1) as usize,
         particle: i(op, "first particle to copy", 0).max(0) as usize,
     })
 }
 
-pub(super) fn copy_child_points(op: &ChildPoints, particles: &[Particle], points: &mut Points) {
+pub(super) fn copy_child_points(op: &ChildPoints, particles: &[Particle], points: &mut Points, group: i32) {
+    if op.group != group {
+        return;
+    }
     for (index, particle) in particles.iter().skip(op.particle).take(op.count).enumerate() {
         let cp = op.first + index;
         if cp >= MAX_CONTROL_POINTS {

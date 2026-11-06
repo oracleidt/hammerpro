@@ -517,6 +517,14 @@ impl AssetManager {
         self.sync_light_styles(renderer);
         self.poll_detail_models();
         let moved = std::mem::take(&mut self.play_dirty);
+        let physics_moved = std::mem::take(&mut self.physics_dirty);
+        if !physics_moved.is_empty() {
+            if !full {
+                let ids = doc.scene().expand_solids(&physics_moved);
+                self.rebuild_solids(doc, renderer, &ids, &display);
+            }
+            self.scene.instances_dirty = true;
+        }
         for id in &moved {
             if let Some(&object) = self.play_world.entity_blocks.get(id) {
                 let m = self.play_transforms.get(id).map(|m| m.as_mat4().to_cols_array_2d());
@@ -919,6 +927,7 @@ impl AssetManager {
         };
         let room = self.scene.env.room.as_ref();
         let play = &self.play_transforms;
+        let physics = &self.physics_transforms;
         let seams = seam_normals(doc, &nodes);
         let assign = self.scene.cube_assign.clone().unwrap_or_else(|| self.editor_cubes.assign());
         let cubes = |side: &hp_vmf::Side, face: &hp_geom::FaceGeom| assign.of_face(side, face);
@@ -935,6 +944,10 @@ impl AssetManager {
             let flags = solid_flags(doc, *id, display, room);
             let mut mesh = solid_mesh_seams(n, &material_of, wire, display.disp_walkable, seams.as_ref(), Some(&cubes));
             if let Some(m) = owner.and_then(|e| play.get(&e)) {
+                transform_mesh(&mut mesh, m);
+            }
+            let obj = owner.map_or(hp_editor::ObjRef::Solid(*id), hp_editor::ObjRef::Entity);
+            if let Some(m) = physics.get(&obj) {
                 transform_mesh(&mut mesh, m);
             }
             BuiltSolid { id: *id, mesh, wire, classic, flags, tint }
@@ -1282,6 +1295,7 @@ impl AssetManager {
     }
 
     fn rebuild_instances(&mut self, doc: &Document, renderer: &mut Renderer) {
+        self.poll_ragdolls(renderer);
         if !self.scene.instances_dirty {
             if !self.scene.instances_streamed {
                 return;
@@ -1312,6 +1326,7 @@ impl AssetManager {
         }
         self.scene.lighting_origin_names = wanted;
         let player = self.player_instance(renderer);
+        let ragdolls = self.ragdoll_models(doc, renderer);
         let details = self.play_detail_instances(renderer);
         let previewed = self.detail_preview_instances(renderer);
         let list: Vec<ModelInstance> = self
@@ -1319,13 +1334,19 @@ impl AssetManager {
             .ents
             .iter()
             .filter_map(|(id, s)| {
-                let model = s.model?;
+                let model = ragdolls.get(id).copied().or(s.model)?;
                 if self.play_hidden.contains(&entity_object(*id)) {
                     return None;
                 }
                 let mut m = entity_matrix(s.desc.origin, s.desc.angles, s.desc.scale);
                 if let Some(t) = self.play_transforms.get(id) {
                     m = *t * m;
+                }
+                if let Some(t) = self.physics_transforms.get(&hp_editor::ObjRef::Entity(*id)) {
+                    m = *t * m;
+                }
+                if ragdolls.contains_key(id) {
+                    m = glam::DMat4::IDENTITY;
                 }
                 Some(ModelInstance {
                     model,

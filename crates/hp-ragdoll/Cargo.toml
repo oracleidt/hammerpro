@@ -1,0 +1,17 @@
+[package]
+name = "hp-ragdoll"
+description = "Source ragdoll collision metadata and skeletal poses."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+hp-mdl.workspace = true
+hp-kv.workspace = true
+hp-geom.workspace = true
+glam.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+hp-vpk.workspace = true

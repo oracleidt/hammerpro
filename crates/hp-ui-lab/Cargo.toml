@@ -20,6 +20,7 @@ hp-nav = { path = "../hp-nav" }
 hp-decompile = { path = "../hp-decompile" }
 hp-pcf = { path = "../hp-pcf" }
 hp-fs.workspace = true
+hp-mdl.workspace = true
 hp-sniffer = { path = "../hp-sniffer" }
 hp-audio = { path = "../hp-audio" }
 hp-colorgrade = { path = "../hp-colorgrade" }

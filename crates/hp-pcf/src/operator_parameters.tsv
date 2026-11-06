@@ -1,0 +1,1177 @@
+*
+3	operator start fadein
+3	operator end fadein
+3	operator start fadeout
+3	operator end fadeout
+3	operator fade oscillate
+2	operator time offset seed
+3	operator time offset min
+3	operator time offset max
+2	operator time scale seed
+3	operator time scale min
+3	operator time scale max
+3	operator time strength random scale max
+2	operator strength scale seed
+3	operator strength random scale min
+3	operator strength random scale max
+2	operator end cap state
+Alpha Fade In Random
+3	fade in time min
+3	fade in time max
+3	fade in time exponent
+4	proportional 0/1
+Alpha Fade In Simple
+3	proportional fade in time
+Alpha Fade Out Random
+3	fade out time min
+3	fade out time max
+3	fade out time exponent
+4	proportional 0/1
+4	ease in and out
+3	fade bias
+Alpha Fade Out Simple
+3	proportional fade out time
+Alpha Fade and Decay
+3	start_alpha
+3	end_alpha
+3	start_fade_in_time
+3	end_fade_in_time
+3	start_fade_out_time
+3	end_fade_out_time
+Alpha Fade and Decay for Tracers
+3	start_alpha
+3	end_alpha
+3	start_fade_in_time
+3	end_fade_in_time
+3	start_fade_out_time
+3	end_fade_out_time
+Alpha Random
+2	alpha_min
+2	alpha_max
+3	alpha_random_exponent
+Clamp Scalar
+2	output field
+3	output minimum
+3	output maximum
+Clamp Vector
+2	output field
+10	output minimum
+10	output maximum
+Collision via traces
+2	collision mode
+3	amount of bounce
+3	amount of slide
+3	radius scale
+4	brush only
+5	collision group
+10	control point offset for fast collisions
+3	control point movement distance tolerance
+4	kill particle on collision
+3	minimum speed to kill on collision
+4	Confirm Collision
+3	trace accuracy tolerance
+Color Fade
+8	color_fade
+3	fade_start_time
+3	fade_end_time
+4	ease_in_and_out
+2	output field
+Color Light from Control Point
+2	Light 1 Control Point
+10	Light 1 Control Point Offset
+4	Light 1 Type 0=Point 1=Spot
+8	Light 1 Color
+4	Light 1 Dynamic Light
+10	Light 1 Direction
+3	Light 1 50% Distance
+3	Light 1 0% Distance
+3	Light 1 Spot Inner Cone
+3	Light 1 Spot Outer Cone
+2	Light 2 Control Point
+10	Light 2 Control Point Offset
+4	Light 2 Type 0=Point 1=Spot
+8	Light 2 Color
+4	Light 2 Dynamic Light
+10	Light 2 Direction
+3	Light 2 50% Distance
+3	Light 2 0% Distance
+3	Light 2 Spot Inner Cone
+3	Light 2 Spot Outer Cone
+2	Light 3 Control Point
+10	Light 3 Control Point Offset
+4	Light 3 Type 0=Point 1=Spot
+8	Light 3 Color
+4	Light 3 Dynamic Light
+10	Light 3 Direction
+3	Light 3 50% Distance
+3	Light 3 0% Distance
+3	Light 3 Spot Inner Cone
+3	Light 3 Spot Outer Cone
+2	Light 4 Control Point
+10	Light 4 Control Point Offset
+4	Light 4 Type 0=Point 1=Spot
+8	Light 4 Color
+4	Light 4 Dynamic Light
+10	Light 4 Direction
+3	Light 4 50% Distance
+3	Light 4 0% Distance
+3	Light 4 Spot Inner Cone
+3	Light 4 Spot Outer Cone
+3	Initial Color Bias
+4	Clamp Minimum Light Value to Initial Color
+4	Clamp Maximum Light Value to Initial Color
+4	Compute Normals From Control Points
+4	Half-Lambert Normals
+Color Lit Per Particle
+8	color1
+8	color2
+3	light bias
+8	tint clamp min
+8	tint clamp max
+2	tint blend mode
+3	light amplification amount
+Color Random
+8	color1
+8	color2
+3	tint_perc
+2	tint control point
+8	tint clamp min
+8	tint clamp max
+3	tint update movement threshold
+2	tint blend mode
+3	light amplification amount
+2	output field
+Constrain distance to control point
+3	minimum distance
+3	maximum distance
+2	control point number
+10	offset of center
+4	global center point
+Constrain distance to path between two control points
+3	minimum distance
+3	maximum distance
+3	maximum distance middle
+3	maximum distance end
+3	travel time
+3	random bulge
+2	start control point number
+2	end control point number
+2	bulge control 0=random 1=orientation of start pnt 2=orientation of end point
+3	mid point position
+Constrain particles to a box
+10	min coords
+10	max coords
+Create vortices from parent particles
+3	amount of force
+10	twist axis
+4	flip twist axis with yaw
+Cull Random
+3	Cull Start Time
+3	Cull End Time
+3	Cull Time Exponent
+3	Cull Percentage
+Cull relative to Ray Trace Environment
+4	cull on miss
+4	velocity test adjust lifespan
+4	use velocity for test direction
+10	test direction
+10	cull normal
+5	ray trace environment name
+Cull relative to model
+2	control_point_number
+4	use only bounding box
+4	cull outside instead of inside
+5	hitbox set
+Cull when crossing plane
+2	Control Point for point on plane
+3	Cull plane offset
+10	Plane Normal
+Cull when crossing sphere
+2	Control Point
+3	Cull Distance
+10	Control Point offset
+4	Cull inside instead of outside
+Force based on distance from plane
+3	Min distance from plane
+10	Force at Min distance
+3	Max Distance from plane
+10	Force at Max distance
+10	Plane Normal
+2	Control point number
+3	Exponent
+Inherit Attribute From Parent Particle
+2	Inherited Field
+3	Scale
+4	Random Parent Particle Distribution
+2	Particle Increment Amount
+Inherit Initial Value From Parent Particle
+2	Inherited Field
+3	Scale
+4	Random Parent Particle Distribution
+2	Particle Increment Amount
+Lerp EndCap Scalar
+3	lerp time
+2	output field
+3	value to lerp to
+Lerp EndCap Vector
+3	lerp time
+2	output field
+10	value to lerp to
+Lerp Initial Scalar
+3	start time
+3	end time
+2	output field
+3	value to lerp to
+Lerp Initial Vector
+3	start time
+3	end time
+2	output field
+10	value to lerp to
+Lifespan Decay
+Lifespan Maintain Count Decay
+2	count to maintain
+3	decay delay
+2	maintain count scale control point
+2	maintain count scale control point field
+Lifespan Minimum Alpha Decay
+3	minimum alpha
+Lifespan Minimum Radius Decay
+3	minimum radius
+Lifespan Minimum Velocity Decay
+3	minimum velocity
+Lifetime From Sequence
+3	Frames Per Second
+Lifetime Pre-Age Noise
+3	time noise coordinate scale
+3	spatial noise coordinate scale
+3	time coordinate offset
+10	spatial coordinate offset
+4	absolute value
+4	invert absolute value
+3	start age minimum
+3	start age maximum
+Lifetime Random
+3	lifetime_min
+3	lifetime_max
+3	lifetime_random_exponent
+Lifetime from Time to Impact
+5	trace collision group
+3	maximum trace length
+3	trace offset
+3	trace recycle tolerance
+2	maximum points to cache
+10	bias distance
+4	collide with water
+Move Particles Between 2 Control Points
+3	minimum speed
+3	maximum speed
+3	end spread
+3	start offset
+3	end offset
+4	bias lifetime by trail length
+2	end control point
+Movement Basic
+10	gravity
+3	drag
+2	max constraint passes
+Movement Dampen Relative to Control Point
+2	control_point_number
+3	falloff range
+3	dampen scale
+Movement Lag Compensation
+2	Desired Velocity CP
+2	Desired Velocity CP Field Override(for speed only)
+2	Latency CP
+2	Latency CP field
+Movement Lock to Bone
+2	control_point_number
+3	lifetime fade start
+3	lifetime fade end
+5	hitbox set
+Movement Lock to Control Point
+2	control_point_number
+3	start_fadeout_min
+3	start_fadeout_max
+3	start_fadeout_exponent
+3	end_fadeout_min
+3	end_fadeout_max
+3	end_fadeout_exponent
+3	distance fade range
+4	lock rotation
+Movement Lock to Saved Position Along Path
+3	bulge
+2	start control point number
+2	end control point number
+2	bulge control 0=random 1=orientation of start pnt 2=orientation of end point
+3	mid point position
+4	Use sequential CP pairs between start and end point
+Movement Maintain Offset
+2	Local Space CP
+10	Desired Offset
+4	Scale by Radius
+Movement Maintain Position Along Path
+3	maximum distance
+3	bulge
+2	start control point number
+2	end control point number
+2	bulge control 0=random 1=orientation of start pnt 2=orientation of end point
+3	mid point position
+3	particles to map from start to end
+4	restart behavior (0 = bounce, 1 = loop )
+3	cohesion strength
+4	use existing particle count
+3	control point movement tolerance
+Movement Match Particle Velocities
+3	Direction Matching Strength
+3	Speed Matching Strength
+2	Control Point to Broadcast Speed and Direction To
+Movement Max Velocity
+3	Maximum Velocity
+2	Override Max Velocity from this CP
+2	Override CP field
+Movement Place On Ground
+3	offset
+4	kill on no collision
+4	include water
+3	max trace length
+3	trace offset
+5	collision group
+2	reference CP 1
+2	reference CP 2
+3	CP movement tolerance
+3	interpolation rate
+2	interploation distance tolerance cp
+Movement Rotate Particle Around Axis
+10	Rotation Axis
+3	Rotation Rate
+2	Control Point
+4	Use Local Space
+Noise Scalar
+3	noise coordinate scale
+2	output field
+3	output minimum
+3	output maximum
+4	additive
+Noise Vector
+3	noise coordinate scale
+2	output field
+10	output minimum
+10	output maximum
+4	additive
+Normal Align to CP
+2	control_point_number
+Normal Lock to Control Point
+2	control_point_number
+Normal Modify Offset Random
+2	control_point_number
+10	offset min
+10	offset max
+4	offset in local space 0/1
+4	normalize output 0/1
+Normalize Vector
+2	output field
+3	scale factor
+Offset Vector to Vector
+2	input field
+2	output field
+10	output offset minimum
+10	output offset maximum
+Oscillate Scalar
+2	oscillation field
+3	oscillation rate min
+3	oscillation rate max
+3	oscillation frequency min
+3	oscillation frequency max
+4	proportional 0/1
+3	start time min
+3	start time max
+3	end time min
+3	end time max
+4	start/end proportional
+3	oscillation multiplier
+3	oscillation start phase
+Oscillate Scalar Simple
+2	oscillation field
+3	oscillation rate
+3	oscillation frequency
+3	oscillation multiplier
+3	oscillation start phase
+Oscillate Vector
+2	oscillation field
+10	oscillation rate min
+10	oscillation rate max
+10	oscillation frequency min
+10	oscillation frequency max
+4	proportional 0/1
+3	start time min
+3	start time max
+3	end time min
+3	end time max
+4	start/end proportional
+3	oscillation multiplier
+3	oscillation start phase
+Oscillate Vector Simple
+2	oscillation field
+10	oscillation rate
+10	oscillation frequency
+3	oscillation multiplier
+3	oscillation start phase
+Position Along Epitrochoid
+2	control point number
+2	first dimension 0-2 (-1 disables)
+2	second dimension 0-2 (-1 disables)
+3	radius 1
+3	radius 2
+3	point offset
+3	particle density
+4	use particle count instead of creation time
+4	local space
+4	offset from existing position
+2	scale from conrol point (radius 1/radius 2/offset)
+Position Along Path Random
+3	maximum distance
+3	bulge
+2	start control point number
+2	end control point number
+2	bulge control 0=random 1=orientation of start pnt 2=orientation of end point
+3	mid point position
+4	randomly select sequential CP pairs between start and end points
+Position Along Path Sequential
+3	maximum distance
+3	bulge
+2	start control point number
+2	end control point number
+2	bulge control 0=random 1=orientation of start pnt 2=orientation of end point
+3	mid point position
+3	particles to map from start to end
+4	restart behavior (0 = bounce, 1 = loop )
+4	Use sequential CP pairs between start and end point
+4	Save Offset
+Position Along Ring
+2	control point number
+3	initial radius
+3	thickness
+3	min initial speed
+3	max initial speed
+3	yaw
+3	roll
+3	pitch
+4	even distribution
+3	even distribution count
+4	XY velocity only
+2	Override CP (X/Y/Z *= Radius/Thickness/Speed)
+2	Override CP 2 (X/Y/Z *= Pitch/Yaw/Roll)
+Position From Chaotic Attractor
+3	Pickover A Parameter
+3	Pickover B Parameter
+3	Pickover C Parameter
+3	Pickover D Parameter
+3	Speed Min
+3	Speed Max
+4	Uniform speed
+2	Relative Control point number
+3	Scale
+Position From Parent Particles
+3	Inherited Velocity Scale
+4	Random Parent Particle Distribution
+2	Particle Increment Amount
+Position In CP Hierarchy
+3	maximum distance
+3	bulge
+2	start control point number
+2	end control point number
+2	bulge control 0=random 1=orientation of start pnt 2=orientation of end point
+3	mid point position
+3	growth time
+4	use highest supplied end point
+10	distance_bias
+10	distance_bias_absolute_value
+Position Modify Offset Random
+2	control_point_number
+10	offset min
+10	offset max
+4	offset in local space 0/1
+4	offset proportional to radius 0/1
+Position Modify Place On Ground
+3	offset
+4	kill on no collision
+4	include water
+4	set normal
+3	max trace length
+5	collision group
+Position Modify Warp Random
+2	control point number
+10	warp min
+10	warp max
+3	warp transition time (treats min/max as start/end sizes)
+3	warp transition start time
+4	reverse warp (0/1)
+4	use particle count instead of time
+Position Within Box Random
+10	min
+10	max
+2	control point number
+4	use local space
+Position Within Sphere Random
+3	distance_min
+3	distance_max
+10	distance_bias
+10	distance_bias_absolute_value
+4	bias in local system
+2	control_point_number
+3	speed_min
+3	speed_max
+3	speed_random_exponent
+10	speed_in_local_coordinate_system_min
+10	speed_in_local_coordinate_system_max
+2	create in model
+4	randomly distribute to highest supplied Control Point
+3	randomly distribution growth time
+2	scale cp (distance/speed/local speed)
+Position from Parent Cache
+10	Local Offset Min
+10	Local Offset Max
+4	Set Normal
+Position on Model Random
+2	control_point_number
+2	force to be inside model
+3	model hitbox scale
+10	direction bias
+2	desired hitbox
+5	hitbox set
+Prevent passing through a plane
+2	control point number
+10	plane point
+10	plane normal
+4	global origin
+4	global normal
+Prevent passing through static part of world
+Pull towards control point
+3	amount of force
+3	falloff power
+2	control point number
+Radius Random
+3	radius_min
+3	radius_max
+3	radius_random_exponent
+Radius Scale
+3	start_time
+3	end_time
+3	radius_start_scale
+3	radius_end_scale
+4	ease_in_and_out
+3	scale_bias
+Ramp Scalar Linear Random
+2	ramp field
+3	ramp rate min
+3	ramp rate max
+3	start time min
+3	start time max
+3	end time min
+3	end time max
+4	start/end proportional
+Ramp Scalar Linear Simple
+2	ramp field
+3	ramp rate
+3	start time
+3	end time
+Ramp Scalar Spline Random
+2	ramp field
+3	ramp rate min
+3	ramp rate max
+3	start time min
+3	start time max
+3	end time min
+3	end time max
+4	start/end proportional
+4	ease out
+3	bias
+Ramp Scalar Spline Simple
+2	ramp field
+3	ramp rate
+3	start time
+3	end time
+4	ease out
+Remap Average Scalar Value to CP
+2	Scalar field
+3	input volume minimum
+3	input volume maximum
+2	output control point
+3	output minimum
+3	output maximum
+Remap CP Orientation to Rotation
+2	control point
+2	rotation field
+2	axis
+3	offset rotation
+Remap CP Speed to CP
+2	input control point
+3	input minimum
+3	input maximum
+2	output control point
+2	Output field 0-2 X/Y/Z
+3	output minimum
+3	output maximum
+Remap CP Velocity to Vector
+2	output field
+2	control point
+4	normalize
+3	scale factor
+Remap Control Point Direction to Vector
+2	output field
+2	control point number
+3	scale factor
+Remap Control Point to Scalar
+3	emitter lifetime start time (seconds)
+3	emitter lifetime end time (seconds)
+2	input control point number
+3	input minimum
+3	input maximum
+2	input field 0-2 X/Y/Z
+2	output field
+3	output minimum
+3	output maximum
+4	output is scalar of initial random range
+Remap Control Point to Vector
+3	emitter lifetime start time (seconds)
+3	emitter lifetime end time (seconds)
+2	input control point number
+10	input minimum
+10	input maximum
+2	output field
+10	output minimum
+10	output maximum
+4	output is scalar of initial random range
+4	offset position
+4	accelerate position
+2	local space CP
+Remap Difference of Sequential Particle Vector to Scalar
+3	difference minimum
+3	difference maximum
+2	input field
+2	output field
+3	output minimum
+3	output maximum
+4	output is scalar of initial random range
+4	only active within specified difference
+4	also set ouput to previous particle
+Remap Direction to CP to Vector
+2	control point
+2	output field
+4	normalize
+10	offset axis
+3	offset rotation
+3	scale factor
+Remap Distance Between Two Control Points to CP
+3	distance minimum
+3	distance maximum
+2	output control point
+2	output control point field
+3	output minimum
+3	output maximum
+2	starting control point
+2	ending control point
+4	ensure line of sight
+5	LOS collision group
+3	Maximum Trace Length
+3	LOS Failure Scale
+Remap Distance Between Two Control Points to Scalar
+3	distance minimum
+3	distance maximum
+2	output field
+3	output minimum
+3	output maximum
+2	starting control point
+2	ending control point
+4	ensure line of sight
+5	LOS collision group
+3	Maximum Trace Length
+3	LOS Failure Scalar
+4	output is scalar of initial random range
+4	output is scalar of current value
+Remap Distance to Control Point to Scalar
+3	distance minimum
+3	distance maximum
+2	output field
+3	output minimum
+3	output maximum
+2	control point
+4	ensure line of sight
+5	LOS collision group
+3	Maximum Trace Length
+3	LOS Failure Scalar
+4	output is scalar of initial random range
+4	output is scalar of current value
+4	only active within specified distance
+Remap Dot Product to Scalar
+4	use particle velocity for first input
+2	first input control point
+2	second input control point
+3	input minimum (-1 to 1)
+3	input maximum (-1 to 1)
+2	output field
+3	output minimum
+3	output maximum
+4	output is scalar of initial random range
+4	output is scalar of current value
+4	only active within specified input range
+Remap Initial Direction to CP to Vector
+2	control point
+2	output field
+4	normalize
+10	offset axis
+3	offset rotation
+3	scale factor
+Remap Initial Distance to Control Point to Scalar
+3	distance minimum
+3	distance maximum
+2	output field
+3	output minimum
+3	output maximum
+2	control point
+4	ensure line of sight
+5	LOS collision group
+3	Maximum Trace Length
+3	LOS Failure Scalar
+4	output is scalar of initial random range
+4	only active within specified distance
+Remap Initial Scalar
+3	emitter lifetime start time (seconds)
+3	emitter lifetime end time (seconds)
+2	input field
+3	input minimum
+3	input maximum
+2	output field
+3	output minimum
+3	output maximum
+4	output is scalar of initial random range
+4	only active within specified input range
+Remap Noise to Scalar
+3	time noise coordinate scale
+3	spatial noise coordinate scale
+2	output field
+3	time coordinate offset
+10	spatial coordinate offset
+4	absolute value
+4	invert absolute value
+3	output minimum
+3	output maximum
+3	world time noise coordinate scale
+Remap Particle BBox Volume to CP
+3	input volume minimum in cubic units
+3	input volume maximum in cubic units
+2	output control point
+3	output minimum
+3	output maximum
+Remap Particle Count to Scalar
+2	input minimum
+2	input maximum
+2	output field
+3	output minimum
+3	output maximum
+4	output is scalar of initial random range
+4	only active within specified input range
+Remap Percentage Between Two Control Points to Scalar
+3	percentage minimum
+3	percentage maximum
+2	output field
+3	output minimum
+3	output maximum
+2	starting control point
+2	ending control point
+4	output is scalar of initial random range
+4	output is scalar of current value
+4	only active within input range
+4	treat distance between points as radius
+Remap Percentage Between Two Control Points to Vector
+3	percentage minimum
+3	percentage maximum
+2	output field
+10	output minimum
+10	output maximum
+2	starting control point
+2	ending control point
+4	output is scalar of initial random range
+4	output is scalar of current value
+4	only active within input range
+4	treat distance between points as radius
+Remap Scalar
+2	input field
+3	input minimum
+3	input maximum
+2	output field
+3	output minimum
+3	output maximum
+Remap Scalar to Vector
+3	emitter lifetime start time (seconds)
+3	emitter lifetime end time (seconds)
+2	input field
+3	input minimum
+3	input maximum
+2	output field
+10	output minimum
+10	output maximum
+4	output is scalar of initial random range
+4	use local system
+2	control_point_number
+Remap Speed to Scalar
+3	emitter lifetime start time (seconds)
+3	emitter lifetime end time (seconds)
+2	control point number (ignored if per particle)
+4	per particle
+3	input minimum
+3	input maximum
+2	output field
+3	output minimum
+3	output maximum
+4	output is scalar of initial random range
+Remap Velocity to Vector
+2	output field
+4	normalize
+3	scale factor
+Render models
+2	Visibility Proxy Input Control Point Number
+3	Visibility Proxy Radius
+3	Visibility input minimum
+3	Visibility input maximum
+3	Visibility input dot minimum
+3	Visibility input dot maximum
+3	Visibility input distance minimum
+3	Visibility input distance maximum
+3	Visibility Alpha Scale minimum
+3	Visibility Alpha Scale maximum
+3	Visibility Radius Scale minimum
+3	Visibility Radius Scale maximum
+3	Visibility Camera Depth Bias
+5	sequence 0 model
+3	animation rate
+4	scale animation rate
+2	animation rate scale field
+4	orient model z to normal
+2	skin number
+5	activity override
+Restart Effect after Duration
+3	Minimum Restart Time
+3	Maximum Restart Time
+2	Control Point to Scale Duration
+2	Control Point Field X/Y/Z
+4	Only Restart Children
+2	Child Group ID
+Rotate Vector Random
+2	output field
+10	Rotation Axis Min
+10	Rotation Axis Max
+3	Rotation Rate Min
+3	Rotation Rate Max
+3	Normalize Ouput
+Rotation Basic
+Rotation Orient Relative to CP
+3	Rotation Offset
+3	Spin Strength
+2	Control Point
+2	rotation field
+Rotation Orient to 2D Direction
+3	Rotation Offset
+3	Spin Strength
+2	rotation field
+Rotation Random
+3	rotation_initial
+3	rotation_offset_min
+3	rotation_offset_max
+3	rotation_random_exponent
+4	randomly_flip_direction
+Rotation Speed Random
+3	rotation_speed_constant
+3	rotation_speed_random_min
+3	rotation_speed_random_max
+3	rotation_speed_random_exponent
+4	randomly_flip_direction
+Rotation Spin Roll
+2	spin_rate_degrees
+3	spin_stop_time
+2	spin_rate_min
+Rotation Spin Yaw
+2	yaw_rate_degrees
+3	yaw_stop_time
+2	yaw_rate_min
+Rotation Yaw Flip Random
+3	Flip Percentage
+Rotation Yaw Random
+3	yaw_initial
+3	yaw_offset_min
+3	yaw_offset_max
+3	yaw_random_exponent
+Scalar Random
+3	min
+3	max
+3	exponent
+2	output field
+Sequence From Control Point
+2	control point
+10	per particle spatial offset
+4	offset propotional to radius
+Sequence Random
+2	sequence_min
+2	sequence_max
+4	shuffle
+4	linear
+Sequence Two Random
+2	sequence_min
+2	sequence_max
+Set CP Offset to CP Percentage Between Two Control Points
+3	percentage minimum
+3	percentage maximum
+3	percentage bias
+2	starting control point
+2	ending control point
+2	offset control point
+2	input control point
+2	output control point
+10	offset amount
+4	treat distance between points as radius
+4	treat offset as scale of total distance
+Set CP Orientation to CP Direction
+2	input control point
+2	output control point
+Set Control Point Positions
+2	First Control Point Number
+2	First Control Point Parent
+10	First Control Point Location
+2	Second Control Point Number
+2	Second Control Point Parent
+10	Second Control Point Location
+2	Third Control Point Number
+2	Third Control Point Parent
+10	Third Control Point Location
+2	Fourth Control Point Number
+2	Fourth Control Point Parent
+10	Fourth Control Point Location
+4	Set positions in world space
+2	Control Point to offset positions from
+Set Control Point Rotation
+10	Rotation Axis
+3	Rotation Rate
+2	Control Point
+2	Local Space Control Point
+Set Control Point To Particles' Center
+2	Control Point Number to Set
+10	Center Offset
+Set Control Point To Player
+2	Control Point Number
+10	Control Point Offset
+4	Use Eye Orientation
+Set Control Point to Impact Point
+2	Control Point to Set
+2	Control Point to Trace From
+10	Trace Direction Override
+3	Trace Update Rate
+3	Max Trace Length
+3	Offset End Point Amount
+5	trace collision group
+Set Hitbox Position on Model
+2	control_point_number
+2	force to be inside model
+3	model hitbox scale
+10	direction bias
+2	desired hitbox
+5	hitbox set
+4	maintain existing hitbox
+Set Hitbox to Closest Hitbox
+2	control_point_number
+3	model hitbox scale
+2	desired hitbox
+5	hitbox set
+Set child control points from particle positions
+2	Group ID to affect
+2	First control point to set
+2	# of control points to set
+2	first particle to copy
+4	set orientation
+Set control points from particle positions
+2	First control point to set
+2	# of control points to set
+2	first particle to copy
+4	set orientation
+Set per child control point from particle positions
+2	Group ID to affect
+2	control point to set
+2	# of children to set
+2	first particle to copy
+4	set orientation
+Stop Effect after Duration
+3	Duration at which to Stop
+2	Control Point to Scale Duration
+2	Control Point Field X/Y/Z
+4	Destroy All Particles Immediately
+Trail Length Random
+3	length_min
+3	length_max
+3	length_random_exponent
+Vector Component Random
+3	min
+3	max
+2	component 0/1/2 X/Y/Z
+2	output field
+Vector Random
+10	min
+10	max
+2	output field
+Velocity Inherit from Control Point
+2	control point number
+3	velocity scale
+Velocity Noise
+2	Control Point Number
+3	Time Noise Coordinate Scale
+3	Spatial Noise Coordinate Scale
+3	Time Coordinate Offset
+10	Spatial Coordinate Offset
+10	Absolute Value
+10	Invert Abs Value
+10	output minimum
+10	output maximum
+4	Apply Velocity in Local Space (0/1)
+Velocity Random
+2	control_point_number
+3	random_speed_min
+3	random_speed_max
+10	speed_in_local_coordinate_system_min
+10	speed_in_local_coordinate_system_max
+Velocity Repulse from World
+10	minimum velocity
+10	maximum velocity
+5	collision group
+2	control_point_number
+4	Per Particle World Collision Tests
+4	Use radius for Per Particle Trace Length
+4	Offset instead of accelerate
+4	Offset proportional to radius 0/1
+3	Trace Length
+4	Inherit from Parent
+2	control points to broadcast to children (n + 1)
+2	Child Group ID to affect
+Velocity Set from Control Point
+2	control point number
+3	velocity scale
+2	comparison control point number
+2	local space control point number
+4	direction only
+emit noise
+3	emission_start_time
+3	emission_duration
+3	scale emission to used control points
+3	time noise coordinate scale
+3	time coordinate offset
+4	absolute value
+4	invert absolute value
+3	emission minimum
+3	emission maximum
+3	world time noise coordinate scale
+emit to maintain count
+3	emission start time
+2	count to maintain
+2	maintain count scale control point
+2	maintain count scale control point field
+emit_continuously
+3	emission_start_time
+3	emission_rate
+3	emission_duration
+3	scale emission to used control points
+4	use parent particles for emission scaling
+2	emission count scale control point
+2	emission count scale control point field
+emit_instantaneously
+3	emission_start_time
+3	emission_start_time max
+2	num_to_emit_minimum
+2	num_to_emit
+2	maximum emission per frame
+2	emission count scale control point
+2	emission count scale control point field
+random force
+10	min force
+10	max force
+render_animated_sprites
+2	Visibility Proxy Input Control Point Number
+3	Visibility Proxy Radius
+3	Visibility input minimum
+3	Visibility input maximum
+3	Visibility input dot minimum
+3	Visibility input dot maximum
+3	Visibility input distance minimum
+3	Visibility input distance maximum
+3	Visibility Alpha Scale minimum
+3	Visibility Alpha Scale maximum
+3	Visibility Radius Scale minimum
+3	Visibility Radius Scale maximum
+3	Visibility Camera Depth Bias
+3	animation rate
+4	animation_fit_lifetime
+2	orientation_type
+2	orientation control point
+3	second sequence animation rate
+4	use animation rate as FPS
+render_rope
+2	subdivision_count
+3	texel_size
+3	texture_scroll_rate
+3	texture_offset
+2	scale CP start
+2	scale CP end
+4	scale texture by CP distance
+4	scale scroll by CP distance
+4	scale offset by CP distance
+render_screen_velocity_rotate
+2	Visibility Proxy Input Control Point Number
+3	Visibility Proxy Radius
+3	Visibility input minimum
+3	Visibility input maximum
+3	Visibility input dot minimum
+3	Visibility input dot maximum
+3	Visibility input distance minimum
+3	Visibility input distance maximum
+3	Visibility Alpha Scale minimum
+3	Visibility Alpha Scale maximum
+3	Visibility Radius Scale minimum
+3	Visibility Radius Scale maximum
+3	Visibility Camera Depth Bias
+3	rotate_rate(dps)
+3	forward_angle
+render_sprite_trail
+2	Visibility Proxy Input Control Point Number
+3	Visibility Proxy Radius
+3	Visibility input minimum
+3	Visibility input maximum
+3	Visibility input dot minimum
+3	Visibility input dot maximum
+3	Visibility input distance minimum
+3	Visibility input distance maximum
+3	Visibility Alpha Scale minimum
+3	Visibility Alpha Scale maximum
+3	Visibility Radius Scale minimum
+3	Visibility Radius Scale maximum
+3	Visibility Camera Depth Bias
+3	animation rate
+3	length fade in time
+3	max length
+3	min length
+4	constrain radius to length
+4	ignore delta time
+11	tail color and alpha scale factor
+time varying force
+3	time to start transition
+10	starting force
+3	time to end transition
+10	ending force
+turbulent force
+3	Noise scale 0
+10	Noise amount 0
+3	Noise scale 1
+10	Noise amount 1
+3	Noise scale 2
+10	Noise amount 2
+3	Noise scale 3
+10	Noise amount 3
+twist around axis
+3	amount of force
+10	twist axis
+4	object local space axis 0/1

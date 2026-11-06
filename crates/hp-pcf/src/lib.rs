@@ -4,6 +4,7 @@ pub mod dmx;
 pub mod editor;
 pub mod environment;
 pub mod model;
+mod parameters;
 pub mod random;
 pub mod sheet;
 pub mod sim;

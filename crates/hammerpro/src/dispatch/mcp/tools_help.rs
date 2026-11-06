@@ -450,7 +450,7 @@ mod tests {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/MCP.md");
         let doc = std::fs::read_to_string(&path).expect("docs/MCP.md");
         let updated = replace_docs_list(&doc, &generated).expect("docs/MCP.md has the tool list markers");
-        if updated != doc {
+        if updated.replace("\r\n", "\n") != doc.replace("\r\n", "\n") {
             if std::env::var_os("HP_UPDATE_MCP_DOCS").is_some() {
                 std::fs::write(&path, updated).expect("write docs/MCP.md");
             } else {

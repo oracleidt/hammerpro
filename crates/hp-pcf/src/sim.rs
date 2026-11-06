@@ -191,6 +191,7 @@ enum Field {
     Alpha,
     CreationTime,
     Sequence,
+    Sequence2,
     TrailLength,
     Yaw,
     Other,
@@ -205,7 +206,8 @@ impl Field {
             5 => Field::RotationSpeed,
             7 | 16 => Field::Alpha,
             8 => Field::CreationTime,
-            9 | 13 => Field::Sequence,
+            9 => Field::Sequence,
+            13 => Field::Sequence2,
             10 => Field::TrailLength,
             12 => Field::Yaw,
             _ => Field::Other,
@@ -307,6 +309,7 @@ enum Init {
         chance: f32,
     },
     Sequence {
+        second: bool,
         min: i32,
         max: i32,
     },
@@ -352,6 +355,12 @@ enum Op {
     Lock(control::Lock),
     Force(forces::Force),
     Spatial(spatial::SpatialOp),
+    CullRandom {
+        start: f32,
+        end: f32,
+        exponent: f32,
+        percentage: f32,
+    },
     Movement {
         gravity: V3,
         drag: f32,
@@ -472,6 +481,7 @@ pub struct Render {
     pub kind: RenderKind,
     pub orient: u8,
     pub rate: f32,
+    pub second_rate: f32,
     pub fit: bool,
     pub fps: bool,
     pub min_len: f32,
@@ -481,6 +491,7 @@ pub struct Render {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Plan {
+    pub group_id: i32,
     pub name: String,
     pub material: String,
     emitters: Vec<Emit>,
@@ -532,8 +543,22 @@ fn bools3(op: &Operator, name: &str) -> [bool; 3] {
 }
 
 impl Plan {
+    pub fn trace_requirement(&self) -> Option<bool> {
+        if !self.point_traces.is_empty() || self.inits.iter().any(|op| matches!(op, Init::Impact(_))) {
+            return Some(true);
+        }
+        self.ops
+            .iter()
+            .filter_map(|op| match op {
+                Op::Spatial(spatial::SpatialOp::Collision { brush_only, .. }) => Some(!brush_only),
+                _ => None,
+            })
+            .max()
+    }
+
     pub fn new(def: &SystemDef) -> Plan {
         let mut p = Plan {
+            group_id: def.group_id,
             name: def.name.clone(),
             material: def.material.clone(),
             emitters: Vec::new(),
@@ -588,6 +613,7 @@ impl Plan {
                 kind,
                 orient: i(op, "orientation_type", 0).clamp(0, 3) as u8,
                 rate: f(op, "animation rate", 0.1).clamp(0.0, 1000.0),
+                second_rate: f(op, "second sequence animation rate", 0.0).clamp(0.0, 1000.0),
                 fit: b(op, "animation_fit_lifetime", false),
                 fps: b(op, "use animation rate as FPS", false),
                 min_len: f(op, "min length", 0.0).clamp(0.0, 100_000.0),
@@ -711,7 +737,8 @@ impl Plan {
                 max: f(op, "yaw_offset_max", 360.0).to_radians(),
             },
             "rotation yaw flip random" => Init::YawFlip { chance: f(op, "Flip Percentage", 0.5).clamp(0.0, 1.0) },
-            "sequence random" => Init::Sequence {
+            "sequence random" | "sequence two random" => Init::Sequence {
+                second: op.function.eq_ignore_ascii_case("Sequence Two Random"),
                 min: i(op, "sequence_min", 0).clamp(0, MAX_SEQUENCES as i32 - 1),
                 max: i(op, "sequence_max", 0).clamp(0, MAX_SEQUENCES as i32 - 1),
             },
@@ -775,6 +802,12 @@ impl Plan {
     fn compile_op(&mut self, op: &Operator) {
         let name = op.function.to_ascii_lowercase();
         let compiled = match name.as_str() {
+            "cull random" => Op::CullRandom {
+                start: f(op, "Cull Start Time", 0.0),
+                end: f(op, "Cull End Time", 1.0),
+                exponent: f(op, "Cull Time Exponent", 1.0),
+                percentage: f(op, "Cull Percentage", 0.5),
+            },
             "movement basic" => {
                 Op::Movement { gravity: v(op, "gravity", [0.0; 3]), drag: f(op, "drag", 0.0).clamp(0.0, 1.0) }
             }
@@ -961,15 +994,20 @@ impl Plan {
     }
 
     pub fn cycle(&self, p: &Particle, total: f32) -> f32 {
+        self.sequence_cycle(p, total, false)
+    }
+
+    pub fn sequence_cycle(&self, p: &Particle, total: f32, second: bool) -> f32 {
         let r = &self.render;
-        if r.fit {
+        if r.fit && r.kind != RenderKind::Sprites {
             let life = if p.life > 0.0 { p.life } else { 1.0 };
             return p.age / life;
         }
+        let rate = if second { r.second_rate } else { r.rate };
         if r.fps {
-            return if total > 0.0 { p.age * r.rate / total } else { 0.0 };
+            return if total > 0.0 { p.age * rate / total } else { 0.0 };
         }
-        p.age * r.rate
+        p.age * rate
     }
 }
 
@@ -988,6 +1026,7 @@ pub struct Particle {
     pub alpha: f32,
     pub rotation: f32,
     pub sequence: u32,
+    pub sequence2: u32,
     pub trail: f32,
     pub flip: bool,
     pub seed: u32,
@@ -1088,7 +1127,7 @@ impl Sim {
 
     fn spawn(&mut self, points: &Points, parents: &[(V3, V3)], dt: f32, world: &dyn Environment) {
         let plan = self.plan.clone();
-        let origin = points.get(0);
+        let origin = [0.0; 3];
         let seed = self.rng.bits();
         let mut part = Particle {
             dead: false,
@@ -1104,6 +1143,7 @@ impl Sim {
             alpha: plan.alpha,
             rotation: plan.rotation,
             sequence: plan.sequence,
+            sequence2: 0,
             trail: 0.1,
             flip: false,
             seed,
@@ -1206,9 +1246,14 @@ impl Sim {
                     part.flip = part.yaw.cos() < 0.0;
                 }
                 Init::YawFlip { chance } => part.flip = self.rng.next() < *chance,
-                Init::Sequence { min, max } => {
+                Init::Sequence { min, max, second } => {
                     let (lo, hi) = (*min.min(max), *min.max(max));
-                    part.sequence = (lo + (self.rng.bits() % (hi - lo + 1) as u32) as i32) as u32;
+                    let value = (lo + (self.rng.bits() % (hi - lo + 1) as u32) as i32) as u32;
+                    if *second {
+                        part.sequence2 = value;
+                    } else {
+                        part.sequence = value;
+                    }
                 }
                 Init::TrailLength { min, max } => part.trail = self.rng.range(*min, *max),
                 Init::Velocity { smin, smax, lmin, lmax } => {
@@ -1261,6 +1306,7 @@ impl Sim {
             Field::Alpha,
             Field::CreationTime,
             Field::Sequence,
+            Field::Sequence2,
             Field::TrailLength,
             Field::Yaw,
         ] {
@@ -1344,6 +1390,7 @@ fn get_field(p: &Particle, field: Field) -> f32 {
         Field::Alpha => p.base_alpha,
         Field::CreationTime => p.born,
         Field::Sequence => p.sequence as f32,
+        Field::Sequence2 => p.sequence2 as f32,
         Field::TrailLength => p.trail,
         Field::Yaw => p.yaw,
         Field::Other => 0.0,
@@ -1362,9 +1409,10 @@ fn set_field(p: &mut Particle, field: Field, x: f32, multiply: bool) {
         Field::Alpha => &mut p.base_alpha,
         Field::TrailLength => &mut p.trail,
         Field::Yaw => &mut p.yaw,
-        Field::Sequence => {
-            let s = if multiply { p.sequence as f32 * x } else { x };
-            p.sequence = s.clamp(0.0, (MAX_SEQUENCES - 1) as f32) as u32;
+        Field::Sequence | Field::Sequence2 => {
+            let slot = if field == Field::Sequence { &mut p.sequence } else { &mut p.sequence2 };
+            let value = if multiply { *slot as f32 * x } else { x };
+            *slot = value.clamp(0.0, (MAX_SEQUENCES - 1) as f32) as u32;
             return;
         }
         Field::CreationTime | Field::Other => return,
@@ -1434,6 +1482,13 @@ fn operate(
             Op::Lock(lock) => control::apply_lock(lock, part, points, previous, key),
             Op::Force(force) => acceleration = add(acceleration, forces::acceleration(force, part, points, rng)),
             Op::Spatial(op) => spatial::apply(op, part, old, points, dt, world),
+            Op::CullRandom { start, end, exponent, percentage } => {
+                let chance = rng.next();
+                let threshold = lerp(*start, *end, rng.next().powf(*exponent));
+                if chance <= *percentage && t >= *start && t <= *end && t >= threshold {
+                    part.dead = true;
+                }
+            }
             Op::Movement { gravity, drag } => {
                 if dt > 0.0 {
                     let movement = if part.previous_dt > 0.0 {
@@ -1706,7 +1761,12 @@ impl Effect {
                 }
                 self.scratch.extend(parent.particles.iter().map(|q| (q.pos, q.vel)));
                 for spec in &parent.plan.child_points {
-                    control::copy_child_points(spec, &parent.particles, child_points.to_mut());
+                    control::copy_child_points(
+                        spec,
+                        &parent.particles,
+                        child_points.to_mut(),
+                        self.sims[i].1.plan.group_id,
+                    );
                 }
             }
             let sim = &mut self.sims[i].1;

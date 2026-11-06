@@ -10,6 +10,7 @@ action_list! { lab_actions {
     ShowLogicalView => "show_logical_view", View, ViewType, None, Ready;
     ToggleNavMesh => "toggle_nav_mesh", View, ViewDisplay, None, Ready;
     PhysicsPlacement => "physics_placement", Tools, ToolsPlacement, None, Ready;
+    ToolPhysics => "tool_physics", Tools, ToolsSwitch, None, Ready;
     BrushesToProp => "brushes_to_prop", Tools, ToolsPlacement, None, Ready;
     PropToBrushes => "prop_to_brushes", Tools, ToolsPlacement, None, Ready;
     GenerateNavMesh => "generate_nav_mesh", Tools, ToolsPlacement, None, Ready;
@@ -97,6 +98,9 @@ pub(super) fn icon(action: Action) -> Option<&'static str> {
 }
 
 pub(super) const TR: TrTable = &[
+    ("action.tool_physics", "Physics simulator", "Simulateur physique"),
+    ("tool.physics", "Physics", "Physique"),
+    ("shell.undo.physics", "Simulate physics", "Simulation physique"),
     ("action.open_bsp", "BSP Decompiler...", "Décompilateur de BSP..."),
     ("action.bsp_sniffer", "BSP Sniffer...", "BSP Sniffer..."),
     ("action.import_model", "Import a model (FBX, OBJ, glTF)...", "Importer un modèle (FBX, OBJ, glTF)..."),

@@ -1,0 +1,33 @@
+pub const TR: hp_app::i18n::TrTable = &[
+    ("physics.select", "Select brushes or props to simulate.", "Sélectionnez des brushes ou des props à simuler."),
+    (
+        "physics.no_bodies",
+        "The selection has no supported collision bodies.",
+        "La sélection ne contient aucun objet de collision pris en charge.",
+    ),
+    ("physics.play", "Play", "Lecture"),
+    ("physics.pause", "Pause", "Pause"),
+    ("physics.step", "Step", "Un pas"),
+    ("physics.keep", "Keep positions", "Conserver les positions"),
+    ("physics.reset", "Reset", "Réinitialiser"),
+    ("physics.loading", "Preparing collision geometry...", "Préparation des géométries de collision..."),
+    ("physics.bodies", "{0} simulated objects", "{0} objets simulés"),
+    ("physics.failed", "Physics simulation failed: {0}", "Échec de la simulation physique : {0}"),
+    (
+        "physics.worker_failed",
+        "Physics preparation stopped unexpectedly.",
+        "La préparation de la physique s'est arrêtée de façon inattendue.",
+    ),
+    ("physics.skipped", "Collision bodies unavailable: {0}", "Objets de collision indisponibles : {0}"),
+    (
+        "physics.hint",
+        "Space: play/pause. Left mouse: grab. Right mouse: shoot. Middle mouse: explosion. Escape: reset. Keep positions: one undo step.",
+        "Espace : lecture/pause. Clic gauche : saisir. Clic droit : tirer. Clic du milieu : explosion. Échap : réinitialiser. Conserver les positions : une opération annulable.",
+    ),
+    ("physics.gravity", "Gravity (units/s²)", "Gravité (unités/s²)"),
+    ("physics.air", "Air density (kg/m³)", "Densité de l'air (kg/m³)"),
+    ("physics.time", "Time scale", "Vitesse de simulation"),
+    ("physics.shoot", "Shot speed (units/s)", "Vitesse de tir (unités/s)"),
+    ("physics.explosion", "Explosion speed (units/s)", "Vitesse d'explosion (unités/s)"),
+    ("physics.radius", "Explosion radius (units)", "Rayon d'explosion (unités)"),
+];

@@ -8,6 +8,10 @@ struct ParticleOut {
     @location(3) addself: f32,
     @location(4) @interpolate(flat) lightmode: u32,
     @location(5) @interpolate(flat) effects: u32,
+    @location(6) next_uv: vec2<f32>,
+    @location(7) sequence_uv: vec4<f32>,
+    @location(8) animation_blend: vec2<f32>,
+    @location(9) @interpolate(flat) animation_flags: u32,
 };
 
 var<private> P_CORNERS: array<vec2<f32>, 6> = array<vec2<f32>, 6>(
@@ -37,6 +41,11 @@ fn vs_particle(
     @location(7) bright: f32,
     @location(8) fade: vec2<f32>,
     @location(9) effects: u32,
+    @location(10) next_rect: vec4<f32>,
+    @location(11) sequence_rect: vec4<f32>,
+    @location(12) sequence_next_rect: vec4<f32>,
+    @location(13) animation_blend: vec2<f32>,
+    @location(14) animation_flags: u32,
 ) -> ParticleOut {
     var out: ParticleOut;
     if is_ortho() || hidden_in_view(0u) {
@@ -51,7 +60,12 @@ fn vs_particle(
         out.addself = f32(mode_bits >> 8u) / 65536.0 - 1.0;
     }
     let c = P_CORNERS[vi % 6u];
-    out.uv = mix(rect.xy, rect.zw, vec2<f32>(c.x * 0.5 + 0.5, 0.5 - c.y * 0.5));
+    let uv = vec2<f32>(c.x * 0.5 + 0.5, 0.5 - c.y * 0.5);
+    out.uv = mix(rect.xy, rect.zw, uv);
+    out.next_uv = mix(next_rect.xy, next_rect.zw, uv);
+    out.sequence_uv = vec4<f32>(mix(sequence_rect.xy, sequence_rect.zw, uv), mix(sequence_next_rect.xy, sequence_next_rect.zw, uv));
+    out.animation_blend = animation_blend;
+    out.animation_flags = animation_flags;
     let half = max(size, 0.0) * 0.5;
     var half_y = half;
     var dx = view.right.xyz;
@@ -138,9 +152,46 @@ fn particle_color(in: ParticleOut) -> vec3<f32> {
     return in.color.rgb * light;
 }
 
+fn particle_frame_mix(a: vec4<f32>, b: vec4<f32>, fraction: f32, maximum: bool, lum_fraction: f32) -> vec4<f32> {
+    if maximum {
+        let weights = vec3<f32>(0.3, 0.59, 0.11);
+        return select(b, a, dot(weights, a.rgb * (1.0 - lum_fraction)) > dot(weights, b.rgb * lum_fraction));
+    }
+    return mix(a, b, fraction);
+}
+
+fn particle_texel(in: ParticleOut) -> vec4<f32> {
+    let first = textureSample(tex, samp_clamp, in.uv);
+    let next_dx = dpdx(in.next_uv);
+    let next_dy = dpdy(in.next_uv);
+    let sequence_dx = dpdx(in.sequence_uv);
+    let sequence_dy = dpdy(in.sequence_uv);
+    var color = first;
+    if in.animation_blend.x > 0.0 || (in.animation_flags & 8u) != 0u {
+        let next = textureSampleGrad(tex, samp_clamp, in.next_uv, next_dx, next_dy);
+        color = particle_frame_mix(first, next, in.animation_blend.x, (in.animation_flags & 8u) != 0u, in.animation_blend.x);
+    }
+    if (in.animation_flags & 1u) != 0u {
+        var other = textureSampleGrad(tex, samp_clamp, in.sequence_uv.xy, sequence_dx.xy, sequence_dy.xy);
+        if in.animation_blend.y > 0.0 || (in.animation_flags & 16u) != 0u {
+            let second_next = textureSampleGrad(tex, samp_clamp, in.sequence_uv.zw, sequence_dx.zw, sequence_dy.zw);
+            other = particle_frame_mix(other, second_next, in.animation_blend.y, (in.animation_flags & 16u) != 0u, in.animation_blend.x);
+        }
+        let mode = (in.animation_flags >> 1u) & 3u;
+        if mode == 0u {
+            color = (color + other) * 0.5;
+        } else if mode == 1u {
+            color = vec4<f32>(other.rgb, color.a);
+        } else {
+            color = vec4<f32>(mix(color.rgb, other.rgb, other.a), color.a);
+        }
+    }
+    return color;
+}
+
 @fragment
 fn fs_particle(in: ParticleOut) -> @location(0) vec4<f32> {
-    let t = textureSample(tex, samp_clamp, in.uv) * material.tint;
+    let t = particle_texel(in) * material.tint;
     let exposure = bitcast<f32>(view.misc.z);
     fog_far_clip(in.world);
     let fog = select(fog_amount(in.world), 0.0, (in.effects & 65536u) != 0u);

@@ -627,6 +627,7 @@ impl EntityFxLayer {
             }
             for p in &pts {
                 fx_sprites.push(ParticleSprite {
+                    animation: hp_render::ParticleAnimation::default(),
                     pos: p.pos,
                     size: p.radius * 2.0,
                     axis: [0.0; 3],

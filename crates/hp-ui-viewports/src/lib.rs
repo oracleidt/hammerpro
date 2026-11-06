@@ -1064,6 +1064,8 @@ impl Viewports {
                     } else if input.pressed[SECONDARY] {
                         self.gesture = Some(look_with(SECONDARY, Click::Menu));
                         self.menu = None;
+                    } else if input.pressed[MIDDLE] && tool.takes_middle_drag(s.kind, input.modifiers) {
+                        self.menu = None;
                     } else if input.pressed[MIDDLE] {
                         if scheme.middle_looks() && s.kind == ViewKind::Perspective {
                             self.gesture = Some(look_with(MIDDLE, Click::Tool));

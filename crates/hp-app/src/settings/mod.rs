@@ -21,6 +21,7 @@ mod launch;
 mod lighting;
 mod mcp;
 mod mesh;
+mod physics;
 mod placement;
 mod render;
 mod scan;
@@ -58,6 +59,7 @@ pub use launch::{LaunchSettings, LaunchTiming};
 pub use lighting::{LightingQuality, LightingSettings};
 pub use mcp::McpSettings;
 pub use mesh::MeshSettings;
+pub use physics::PhysicsSettings;
 pub use placement::{PlacementSettings, SprinkleMode, SprinkleSettings};
 pub use render::{
     DEFAULT_WALK_ANGLE, Disp2dSetting, Disp2dViewSetting, DispWalkMode, MAX_VRAM_BUDGET_MB, MIN_VRAM_BUDGET_MB,
@@ -134,6 +136,8 @@ pub struct Settings {
     #[serde(skip_serializing_if = "is_default")]
     pub placement: PlacementSettings,
     #[serde(skip_serializing_if = "is_default")]
+    pub physics: PhysicsSettings,
+    #[serde(skip_serializing_if = "is_default")]
     pub startup: StartupSettings,
     #[serde(skip_serializing_if = "is_default")]
     pub launch: LaunchSettings,
@@ -185,6 +189,7 @@ impl Default for Settings {
             render: RenderSettings::default(),
             lighting: LightingSettings::default(),
             placement: PlacementSettings::default(),
+            physics: PhysicsSettings::default(),
             startup: StartupSettings::default(),
             launch: LaunchSettings::default(),
             content: ContentSettings::default(),

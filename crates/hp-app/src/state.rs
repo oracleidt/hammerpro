@@ -10,6 +10,8 @@ use crate::settings::{RenderModeSetting, SelectModeSetting, Settings};
 use crate::tool::ToolId;
 use crate::view::{Camera2d, Camera3d, ViewKind};
 
+pub type BoneMatrices = Arc<Vec<[[f32; 4]; 3]>>;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AssetStatus {
     NotConfigured,
@@ -279,6 +281,8 @@ pub trait AssetsApi {
     fn model_info(&mut self, path: &str) -> ModelState;
     fn set_player_model(&mut self, _pose: Option<PlayerModelPose>) {}
     fn set_play_transforms(&mut self, _transforms: &[(hp_vmf::Id, glam::DMat4)]) {}
+    fn set_physics_transforms(&mut self, _transforms: &[(hp_editor::ObjRef, glam::DMat4)]) {}
+    fn set_physics_bones(&mut self, _poses: &[(hp_vmf::Id, BoneMatrices)]) {}
     fn set_game_hidden(&mut self, _objs: &[hp_editor::ObjRef]) {}
     fn set_model_lods(&mut self, _on: bool) {}
     fn set_play_hidden(&mut self, _objs: &[hp_editor::ObjRef]) {}

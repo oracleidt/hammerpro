@@ -1049,9 +1049,7 @@ fn poll_nav_gen(app: &mut HammerProApp) {
 }
 
 fn particles_tick(app: &mut HammerProApp, ctx: &egui::Context) {
-    if app.state.settings.lab.show_particles {
-        hp_ui_lab::particle_world::prepare(&mut app.state, &app.pkg.lab.particles);
-    }
+    hp_ui_lab::particle_world::prepare(&mut app.state, &app.pkg.lab.particles, ctx);
     if app.state.settings.lab.show_entity_fx && app.pkg.lab.particles.lock().is_ok_and(|s| s.fx_active) {
         ctx.request_repaint();
     }

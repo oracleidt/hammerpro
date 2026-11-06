@@ -1,0 +1,25 @@
+[package]
+name = "hp-tools-physics"
+description = "Interactive physics tool for Hammer Pro."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+hp-app = { path = "../hp-app" }
+hp-physics.workspace = true
+hp-ragdoll.workspace = true
+hp-editor.workspace = true
+hp-geom.workspace = true
+hp-vmf.workspace = true
+hp-fs.workspace = true
+hp-mdl.workspace = true
+hp-kv.workspace = true
+hp-render.workspace = true
+glam.workspace = true
+egui.workspace = true
+rayon.workspace = true
+
+[dev-dependencies]
+hp-vpk.workspace = true

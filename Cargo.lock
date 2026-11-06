@@ -1614,6 +1614,7 @@ dependencies = [
  "hp-sniffer",
  "hp-tools-create",
  "hp-tools-mesh",
+ "hp-tools-physics",
  "hp-tools-select",
  "hp-ui-entities",
  "hp-ui-lab",
@@ -1755,6 +1756,7 @@ dependencies = [
  "hp-geom",
  "hp-light",
  "hp-mdl",
+ "hp-ragdoll",
  "hp-render",
  "hp-vmf",
  "hp-vmt",
@@ -1998,6 +2000,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "hp-ragdoll"
+version = "1.1.6"
+dependencies = [
+ "glam 0.34.1",
+ "hp-geom",
+ "hp-kv",
+ "hp-mdl",
+ "hp-vpk",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "hp-render"
 version = "1.1.6"
 dependencies = [
@@ -2008,6 +2022,7 @@ dependencies = [
  "log",
  "pollster 1.0.1",
  "rayon",
+ "serde_json",
  "texpresso",
  "thiserror 2.0.21",
  "wgpu",
@@ -2089,6 +2104,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "hp-tools-physics"
+version = "1.1.6"
+dependencies = [
+ "egui",
+ "glam 0.34.1",
+ "hp-app",
+ "hp-editor",
+ "hp-fs",
+ "hp-geom",
+ "hp-kv",
+ "hp-mdl",
+ "hp-physics",
+ "hp-ragdoll",
+ "hp-render",
+ "hp-vmf",
+ "hp-vpk",
+ "rayon",
+]
+
+[[package]]
 name = "hp-tools-select"
 version = "1.1.6"
 dependencies = [
@@ -2148,6 +2183,7 @@ dependencies = [
  "hp-fgd",
  "hp-fs",
  "hp-geom",
+ "hp-mdl",
  "hp-nav",
  "hp-pcf",
  "hp-render",

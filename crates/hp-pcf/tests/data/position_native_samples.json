@@ -1,0 +1,85 @@
+[
+  {
+    "name": "box_offset",
+    "control_point": [
+      100,
+      0,
+      64
+    ],
+    "offset": [
+      10,
+      0,
+      0
+    ],
+    "bounds_low": [
+      0,
+      0,
+      0
+    ],
+    "bounds_high": [
+      10,
+      0,
+      0
+    ],
+    "pixel": [
+      137,
+      0,
+      0,
+      255
+    ]
+  },
+  {
+    "name": "no_position",
+    "control_point": [
+      100,
+      0,
+      64
+    ],
+    "offset": null,
+    "bounds_low": [
+      -100,
+      0,
+      -64
+    ],
+    "bounds_high": [
+      -100,
+      0,
+      -64
+    ],
+    "pixel": [
+      137,
+      0,
+      0,
+      255
+    ]
+  },
+  {
+    "name": "box_zero",
+    "control_point": [
+      100,
+      0,
+      64
+    ],
+    "offset": [
+      0,
+      0,
+      0
+    ],
+    "bounds_low": [
+      0,
+      0,
+      0
+    ],
+    "bounds_high": [
+      0,
+      0,
+      0
+    ],
+    "pixel": [
+      137,
+      0,
+      0,
+      255
+    ]
+  }
+]

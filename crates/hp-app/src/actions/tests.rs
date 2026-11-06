@@ -355,6 +355,7 @@ fn tools_follow_the_hammer_order_and_keys() {
             T::Cordon,
             T::Road,
             T::Pipe,
+            T::Physics,
         ]
     );
     let hammer_keys = [

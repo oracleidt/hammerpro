@@ -22,6 +22,7 @@ pub struct RenderConfig {
     pub background_2d: [f32; 3],
     pub background_3d: [f32; 3],
     pub selection: [f32; 4],
+    pub tool_selection_fill: bool,
     pub mode: RenderMode,
     pub show_sprites: bool,
     pub show_models: bool,
@@ -142,6 +143,7 @@ impl RenderConfig {
             background_2d: rgb_f32(v.background_2d),
             background_3d: rgb_f32(v.background_3d),
             selection: [sel[0], sel[1], sel[2], SELECTION_TINT],
+            tool_selection_fill: state.tool == hp_app::ToolId::Displacement,
             mode: state.render_mode(),
             show_sprites: v.show_helpers,
             show_models: v.show_models,
@@ -271,7 +273,11 @@ pub fn view_params(view: &ViewInfo, cfg: &RenderConfig) -> ViewParams {
             None
         },
         background: if is_2d { cfg.background_2d } else { cfg.background_3d },
-        selection_color: cfg.selection,
+        selection_color: if !is_2d && cfg.tool_selection_fill {
+            [cfg.selection[0], cfg.selection[1], cfg.selection[2], 0.0]
+        } else {
+            cfg.selection
+        },
         show_sprites: cfg.show_sprites,
         show_models: cfg.show_models,
         msaa: cfg.msaa,
@@ -336,6 +342,26 @@ mod tests {
             Rect::from_min_size(pos2(13.0, 7.0), vec2(512.0, 383.0)),
             Rect::from_min_size(pos2(250.5, 33.25), vec2(640.4, 480.6)),
         ]
+    }
+
+    #[test]
+    fn displacement_overlay_controls_the_fill_without_a_second_mesh_tint() {
+        let mut state = hp_app::testing::test_state();
+        state.tool = hp_app::ToolId::Displacement;
+        state.settings.mesh.disp_selection_opacity = 0.237;
+        let config = RenderConfig::from_state(&state);
+        let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(800.0, 600.0));
+        for kind in [ViewKind::Perspective, ViewKind::Top] {
+            let view = view_info(0, kind, rect, &cameras(), &config, 1.0);
+            assert_eq!(
+                view_params(&view, &config).selection_color[3],
+                if kind == ViewKind::Perspective { 0.0 } else { SELECTION_TINT }
+            );
+        }
+        state.tool = hp_app::ToolId::Select;
+        let config = RenderConfig::from_state(&state);
+        let view = view_info(0, ViewKind::Perspective, rect, &cameras(), &config, 1.0);
+        assert_eq!(view_params(&view, &config).selection_color[3], SELECTION_TINT);
     }
 
     #[test]
