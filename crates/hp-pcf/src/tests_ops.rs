@@ -48,6 +48,42 @@ fn run(def: &SystemDef, points: &Points, seconds: f32) -> Sim {
 struct FloorTrace;
 
 #[test]
+fn velocity_noise_matches_native_trajectories_and_uses_the_selected_control_point() {
+    let definitions = crate::parse_file(include_bytes!("../tests/data/velocity_noise_cases.pcf")).unwrap();
+    let cases: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/velocity_noise_native_samples.json")).unwrap();
+    for case in cases {
+        let name = format!("hp_spritecard_{}", case["name"].as_str().unwrap());
+        let definition = definitions.iter().find(|def| def.name == name).unwrap();
+        let mut sim = Sim::new(Arc::new(Plan::new(definition)), 0);
+        sim.step(0.0, [0.0; 3], 1);
+        for axis in 0..3 {
+            let expected = case["velocity"][axis].as_f64().unwrap() as f32;
+            assert!((sim.particles[0].vel[axis] - expected).abs() < 1e-5, "{name} axis {axis}");
+        }
+    }
+    let definition = system(
+        "local-noise",
+        vec![burst(1)],
+        vec![op(
+            "Velocity Noise",
+            vec![
+                ("Control Point Number", Value::Int(1)),
+                ("Apply Velocity in Local Space (0/1)", Value::Bool(true)),
+                ("output minimum", Value::Vec3([10.0, 20.0, 30.0])),
+                ("output maximum", Value::Vec3([10.0, 20.0, 30.0])),
+            ],
+        )],
+        vec![],
+    );
+    let mut points = Points::at([100.0; 3]);
+    points.orientations = vec![points.axes, [[0.0, 1.0, 0.0], [-1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]];
+    let mut sim = Sim::new(Arc::new(Plan::new(&definition)), 0);
+    sim.step_at(0.0, &points, &[], 1);
+    assert_eq!(sim.particles[0].vel, [-20.0, 10.0, 30.0]);
+}
+
+#[test]
 fn spatial_noise_matches_native_scalar_and_vector_samples() {
     for (file, reference, vector) in [
         (

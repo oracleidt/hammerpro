@@ -1,4 +1,81 @@
-use super::{V3, lerp};
+use super::{Operator, Points, V3, add, b, f, i, lerp, scale, v};
+
+#[derive(Clone, Debug, PartialEq)]
+struct Coordinates {
+    time_scale: f32,
+    spatial_scale: f32,
+    time_offset: f32,
+    spatial_offset: V3,
+}
+
+impl Coordinates {
+    fn compile(op: &Operator, time: f32, spatial: f32) -> Self {
+        Self {
+            time_scale: f(op, "time noise coordinate scale", time),
+            spatial_scale: f(op, "spatial noise coordinate scale", spatial),
+            time_offset: f(op, "time coordinate offset", 0.0),
+            spatial_offset: v(op, "spatial coordinate offset", [0.0; 3]),
+        }
+    }
+
+    fn at(&self, position: V3, born: f32) -> V3 {
+        let time = (born + self.time_offset) * self.time_scale;
+        add(scale(add(position, self.spatial_offset), self.spatial_scale), [time; 3])
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct Velocity {
+    coordinates: Coordinates,
+    min: V3,
+    max: V3,
+    absolute: [bool; 3],
+    invert: [bool; 3],
+    cp: i32,
+    local: bool,
+}
+
+impl Velocity {
+    pub(super) fn compile(op: &Operator) -> Self {
+        Self {
+            coordinates: Coordinates::compile(op, 1.0, 0.01),
+            min: v(op, "output minimum", [0.0; 3]),
+            max: v(op, "output maximum", [1.0; 3]),
+            absolute: v(op, "absolute value", [0.0; 3]).map(|value| value != 0.0),
+            invert: v(op, "invert abs value", [0.0; 3]).map(|value| value != 0.0),
+            cp: i(op, "control point number", 0).clamp(0, 63),
+            local: b(op, "Apply Velocity in Local Space (0/1)", false),
+        }
+    }
+
+    pub(super) fn evaluate(&self, position: V3, born: f32, points: &Points) -> V3 {
+        let position = self.coordinates.at(position, born);
+        // Initializers use independent offsets; the vector operator uses cumulative offsets.
+        let values = [
+            scalar(position),
+            scalar(add(position, [100000.5, 300000.25, 9000001.0])),
+            scalar(add(position, [110000.25, 310000.75, 9100000.0])),
+        ];
+        let velocity = std::array::from_fn(|axis| {
+            let mut value = values[axis];
+            if self.absolute[axis] {
+                value = value.abs();
+            }
+            if self.invert[axis] {
+                value = 1.0 - value;
+            }
+            let factor = if self.absolute[axis] { 1.0 } else { 0.5 };
+            let range = self.max[axis] - self.min[axis];
+            value * (range * factor) + ((1.0 - factor) * range + self.min[axis])
+        });
+        if self.local {
+            let axes = points.orientation(self.cp);
+            add(add(scale(axes[0], velocity[0]), scale(axes[1], velocity[1])), scale(axes[2], velocity[2]))
+        } else {
+            velocity
+        }
+    }
+}
 
 // Three independent lattice permutations followed by the native six-decimal value table.
 const TABLES: &[u8; 1024] = include_bytes!("noise_tables.bin");
@@ -49,6 +126,35 @@ pub(super) fn map(value: f32, min: f32, max: f32, dt: Option<f32>) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn velocity_coordinates_flags_and_ranges_match_native_initializer() {
+        let cases: Vec<serde_json::Value> =
+            serde_json::from_str(include_str!("../../tests/data/velocity_noise_native_math.json")).unwrap();
+        let vector = |value: &serde_json::Value| std::array::from_fn(|axis| value[axis].as_f64().unwrap() as f32);
+        for case in cases {
+            let velocity = Velocity {
+                coordinates: Coordinates {
+                    time_scale: case["time_scale"].as_f64().unwrap() as f32,
+                    spatial_scale: case["spatial_scale"].as_f64().unwrap() as f32,
+                    time_offset: case["time_offset"].as_f64().unwrap() as f32,
+                    spatial_offset: vector(&case["spatial_offset"]),
+                },
+                min: vector(&case["min"]),
+                max: vector(&case["max"]),
+                absolute: vector(&case["absolute"]).map(|value| value != 0.0),
+                invert: vector(&case["invert"]).map(|value| value != 0.0),
+                local: false,
+                cp: 0,
+            };
+            let result = velocity.evaluate(
+                vector(&case["position"]),
+                case["born"].as_f64().unwrap() as f32,
+                &Points::at([0.0; 3]),
+            );
+            assert_eq!(result.map(f32::to_bits), vector(&case["expected"]).map(f32::to_bits));
+        }
+    }
 
     #[test]
     fn native_lattice_interpolation_matches_all_measured_bits() {

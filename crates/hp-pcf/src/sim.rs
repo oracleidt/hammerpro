@@ -346,11 +346,7 @@ enum Init {
         lmin: V3,
         lmax: V3,
     },
-    Noise {
-        min: V3,
-        max: V3,
-        local: bool,
-    },
+    Noise(noise::Velocity),
     NoiseScalar {
         field: Field,
         min: f32,
@@ -825,11 +821,7 @@ impl Plan {
             "velocity inherit from control point" => {
                 Init::InheritVelocity { cp: i(op, "control point number", 0), scale: f(op, "velocity scale", 1.0) }
             }
-            "velocity noise" | "initial velocity noise" => Init::Noise {
-                min: v(op, "output minimum", [0.0; 3]),
-                max: v(op, "output maximum", [0.0; 3]),
-                local: b(op, "Apply Velocity in Local Space (0/1)", false),
-            },
+            "velocity noise" | "initial velocity noise" => Init::Noise(noise::Velocity::compile(op)),
             "remap noise to scalar" => Init::NoiseScalar {
                 field: Field::from_index(i(op, "output field", 3)),
                 min: f(op, "output minimum", 0.0),
@@ -1400,9 +1392,8 @@ impl Sim {
                         add(scale(d, self.rng.range(*smin, *smax)), points.local(self.rng.range3(*lmin, *lmax))),
                     );
                 }
-                Init::Noise { min, max, local } => {
-                    let n = self.rng.range3(*min, *max);
-                    part.vel = add(part.vel, if *local { points.local(n) } else { n });
+                Init::Noise(op) => {
+                    part.vel = add(part.vel, op.evaluate(part.pos, part.born, points));
                 }
                 Init::NoiseScalar { field, min, max } => {
                     let x = self.rng.range(*min, *max);
