@@ -34,6 +34,7 @@ pub enum GeoEffect {
     Lower,
     Smooth,
     Set,
+    Relax,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -247,6 +248,7 @@ pub(crate) fn build_sample(
                 _ => PaintDir::FaceNormal,
             };
             Some(match (effect, dir) {
+                (GeoEffect::Relax, _) => return None,
                 (GeoEffect::Smooth, dir) => {
                     local(LocalOp::Smooth { dir, amount: (s.smooth * dt * SMOOTH_RATE).clamp(0.0, 1.0) })
                 }

@@ -49,6 +49,7 @@ impl DisplacementTool {
             GeoEffect::Lower => "lower",
             GeoEffect::Smooth => "smooth",
             GeoEffect::Set => "set",
+            GeoEffect::Relax => "relax",
         };
         let axis = match b.axis {
             PaintAxis::FaceNormal => "normal",
@@ -111,7 +112,7 @@ impl DisplacementTool {
             ToolOption::new(
                 "effect",
                 effect,
-                "geometry painting: raise, lower, smooth or set (Hammer's Raise to: a target height; raise_to is \
+                "geometry painting: raise, lower, smooth, relax or set (Hammer's Raise to: a target height; raise_to is \
                  also read)",
             ),
             ToolOption::new(
@@ -154,7 +155,7 @@ impl DisplacementTool {
             ),
             ToolOption::new(
                 "continuous",
-                on_off(b.continuous || (self.interaction == Interaction::Sculpt && s.op == SculptOp::Relax)),
+                on_off(b.continuous || self.relaxing()),
                 "on: holding the button still keeps painting (Hammer++ continuous mouse); off: only while moving",
             ),
             ToolOption::new("alpha_effect", alpha, "alpha painting: add, remove, set or smooth"),
@@ -277,6 +278,7 @@ impl DisplacementTool {
                 "raise" => Some(GeoEffect::Raise),
                 "lower" => Some(GeoEffect::Lower),
                 "smooth" => Some(GeoEffect::Smooth),
+                "relax" => Some(GeoEffect::Relax),
                 "set" | "raise_to" => Some(GeoEffect::Set),
                 _ => None,
             }
@@ -497,7 +499,7 @@ impl DisplacementTool {
         if self.interaction == Interaction::Tag && s.smooth {
             return Err("smooth applies to sculpting only".to_owned());
         }
-        let sculpting = self.interaction == Interaction::Sculpt;
+        let sculpting = self.interaction == Interaction::Sculpt || self.relaxing();
         let mods = Modifiers {
             shift: if sculpting { s.smooth } else { s.invert },
             ctrl: sculpting && s.invert,
@@ -535,7 +537,7 @@ impl DisplacementTool {
                 if limited {
                     "nothing changed: the brush did not reach the displacements the stroke is limited to (the \
                      selected ones, or faces)"
-                } else if sculpting && self.brush.sculpt.op == SculptOp::Project {
+                } else if self.interaction == Interaction::Sculpt && self.brush.sculpt.op == SculptOp::Project {
                     "nothing changed: project needs selected brushes to project onto"
                 } else {
                     "nothing changed: no displacement under the brush (radius too small, points away from the \

@@ -452,11 +452,11 @@ Every option of the panel has a name for scripts (`tool_option KEY VALUE`, see [
 
 ## Relax sculpt brush
 
-Choose **Sculpt > Sculpt geometry > Relax**. Hold the left mouse button to even out vertex spacing on the displacement surface, including with a stationary pointer. Relax always paints continuously. Use **Strength** (0 to 1) to control its speed; radius and falloff define the affected region. Ctrl does not reverse this brush; Shift keeps the usual temporary Smooth behavior.
+Choose **Paint geometry > Paint geometry > Relax**. Hold the left mouse button to even out vertex spacing on the displacement surface, including with a stationary pointer. Relax always paints continuously. Use **Strength** (0 to 1) to control its speed; radius and falloff define the affected region. Ctrl does not reverse this brush; Shift keeps the usual temporary Smooth behavior.
 
 The brush moves vertices tangentially and projects them back onto the surface captured at the start of the stroke. Borders, holes and sharp features are pinned, which protects sewn edges. It preserves vertex/triangle counts, texture alpha and topology; steps that would flip or collapse triangles are reduced or rejected. It redistributes the existing grid and does not remesh or add triangles. One held stroke is one undo step. On an already even grid, or with zero strength, little or nothing moves.
 
-Scripts/MCP: `mode sculpt`, `sculpt relax`, `relax_strength 0.5`.
+Scripts/MCP: `mode geometry`, `effect relax`, `relax_strength 0.5`.
 
 ## Related pages
 

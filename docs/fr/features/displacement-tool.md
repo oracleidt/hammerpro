@@ -452,11 +452,11 @@ Chaque option du panneau a un nom pour les scripts (`tool_option CLÉ VALEUR`, v
 
 ## Pinceau Relax
 
-Choisissez **Sculpter > Sculpter la géométrie > Relax**. Maintenez le clic gauche pour répartir les sommets sur la surface du displacement, même sans bouger la souris. Relax agit toujours en continu. La **Force** (0 à 1) règle sa vitesse ; le rayon et l'atténuation définissent la zone. Ctrl n'inverse pas ce pinceau ; Shift conserve le lissage temporaire habituel.
+Choisissez **Sculpter > Sculpter la géométrie > Relax**. Maintenez le clic gauche pour répartir les sommets sur la surface du displacement, même sans bouger la souris. Relax agit toujours en continu. L'**Intensité** (0 à 1) règle sa vitesse ; le rayon et l'atténuation définissent la zone. Ctrl n'inverse pas ce pinceau ; Shift conserve le lissage temporaire habituel.
 
 Les sommets glissent tangentiellement et sont reprojetés sur la surface prise au début du trait. Les bords, les trous et les reliefs marqués sont protégés, notamment les raccords cousus. Le nombre de sommets et de triangles, les alphas de texture et la topologie sont conservés ; les mouvements qui retourneraient ou écraseraient des triangles sont réduits ou refusés. Le pinceau répartit la grille existante sans ajouter de triangles. Un trait maintenu correspond à une annulation. Une grille déjà régulière ou une force nulle produit peu ou pas de mouvement.
 
-Scripts/MCP : `mode sculpt`, `sculpt relax`, `relax_strength 0.5`.
+Scripts/MCP : `mode geometry`, `effect relax`, `relax_strength 0.5`.
 
 ## Pages liées
 

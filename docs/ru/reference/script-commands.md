@@ -263,7 +263,7 @@
 | Клавиша | Ценности |
 |---|---|
 | `mode` | `select`, `geometry` (также `paint`), `alpha`, `sculpt` или `tag`. |
-| `effect` | Геометрическое рисование: `raise`, `lower`, `smooth` или `set` (также `raise_to`). |
+| `effect` | Геометрическое рисование: `raise`, `lower`, `smooth`, `relax` или `set` (также `raise_to`). |
 | `axis` | `normal`, `subdiv`, `center` (также `brush_center`), `view`, `x`, `y`, `z` или `custom`. |
 | `custom_axis` | Направление пользовательской оси: `x,y,z`. |
 | `radius` | Радиус кисти в единицах от 1 до 8192. |
@@ -281,7 +281,7 @@
 | `alpha_strength` | Альфа добавляет и удаляет скорость в секунду, от 0 до 16384. |
 | `blend_channel` | `alpha` (также `none`) для двухтекстурной смеси или от `1` до `4` для текстуры 4-сторонней смеси. |
 | `sculpt` | `push`, `carve`, `project`, `pinch`, `grab`, `inflate`, `flatten`, `relax`. |
-| `relax_strength` | Сила Relax от 0 до 1; вместе с `mode sculpt`, `sculpt relax`. |
+| `relax_strength` | Сила Relax от 0 до 1; вместе с `mode geometry`, `effect relax`. |
 | `push_mode` | `absolute` (единицы) или `adaptive` (процент радиуса). |
 | `sculpt_bounds` | `attenuated` или `additive`. |
 | `falloff_position` | Push: процент радиуса, на который попадает все смещение, от 0 до 100. |

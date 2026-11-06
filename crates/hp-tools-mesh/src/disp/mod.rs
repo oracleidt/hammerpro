@@ -626,7 +626,7 @@ impl DisplacementTool {
 
     #[cfg(test)]
     pub(crate) fn paint_at(&mut self, state: &mut AppState, center: DVec3, invert: bool) -> usize {
-        let mods = if self.interaction == Interaction::Sculpt {
+        let mods = if self.interaction == Interaction::Sculpt || self.relaxing() {
             Modifiers { ctrl: invert, command: invert, ..Modifiers::default() }
         } else {
             Modifiers { shift: invert, ..Modifiers::default() }
@@ -643,10 +643,18 @@ impl DisplacementTool {
     }
 
     fn inverts(&self, mods: Modifiers) -> bool {
+        if self.relaxing() {
+            return false;
+        }
         match self.interaction {
             Interaction::Sculpt => mods.ctrl || mods.command,
             _ => mods.shift,
         }
+    }
+
+    fn relaxing(&self) -> bool {
+        (self.interaction == Interaction::Geometry && self.brush.geo_effect == GeoEffect::Relax)
+            || (self.interaction == Interaction::Sculpt && self.brush.sculpt.op == sculpt::SculptOp::Relax)
     }
 
     fn paint_on(
@@ -669,9 +677,12 @@ impl DisplacementTool {
             }
             None => current,
         };
-        let brush = self.brush.resolved_view(toward_eye, toward_eye_flat, center_normal(&state.doc, face, center));
+        let mut brush = self.brush.resolved_view(toward_eye, toward_eye_flat, center_normal(&state.doc, face, center));
+        if self.relaxing() {
+            brush.sculpt.op = sculpt::SculptOp::Relax;
+        }
         let sample = match self.interaction {
-            Interaction::Sculpt if mods.shift => {
+            _ if mods.shift && (self.interaction == Interaction::Sculpt || self.relaxing()) => {
                 let mut smooth = brush.clone();
                 smooth.geo_effect = GeoEffect::Smooth;
                 build_sample(&smooth, Interaction::Geometry, center, false, state.frame.dt)
@@ -679,7 +690,7 @@ impl DisplacementTool {
             Interaction::Sculpt | Interaction::Tag => None,
             _ => build_sample(&brush, self.interaction, center, invert, state.frame.dt),
         };
-        let own_sample = matches!(self.interaction, Interaction::Sculpt | Interaction::Tag);
+        let own_sample = self.relaxing() || matches!(self.interaction, Interaction::Sculpt | Interaction::Tag);
         if sample.is_none() && !own_sample {
             return 0;
         }
@@ -913,8 +924,7 @@ impl DisplacementTool {
                 (hit.face, hit.point)
             }
         };
-        let continuous = self.brush.continuous
-            || (self.interaction == Interaction::Sculpt && self.brush.sculpt.op == sculpt::SculptOp::Relax);
+        let continuous = self.brush.continuous || self.relaxing();
         let cam = &view.cam3d;
         let spot = (pos, [cam.pos.x, cam.pos.y, cam.pos.z, cam.yaw_deg, cam.pitch_deg].map(f64::to_bits));
         if let Some(s) = self.stroke.as_mut() {
@@ -1363,7 +1373,7 @@ impl DisplacementTool {
             self.brush_ui(ui);
             ui.add_space(4.0);
             let hint = match self.interaction {
-                Interaction::Sculpt if self.brush.sculpt.op == sculpt::SculptOp::Relax => t!("disp.hint_relax"),
+                _ if self.relaxing() => t!("disp.hint_relax"),
                 Interaction::Sculpt => t!("disp.hint_sculpt"),
                 Interaction::Tag => t!("disp.hint_tag"),
                 _ => t!("disp.paint_hint"),
@@ -1480,6 +1490,7 @@ impl DisplacementTool {
                 (GeoEffect::Lower, "disp.effect.lower", "disp.effect.lower_tip"),
                 (GeoEffect::Smooth, "disp.effect.smooth", "disp.effect.smooth_tip"),
                 (GeoEffect::Set, "disp.effect.set", "disp.effect.set_tip"),
+                (GeoEffect::Relax, "disp.sculpt.relax", "disp.sculpt.relax_tip"),
             ];
             for (e, label, tip) in effects {
                 if ui.add(Button::selectable(self.brush.geo_effect == e, t!(label))).on_hover_text(t!(tip)).clicked() {
@@ -1489,6 +1500,12 @@ impl DisplacementTool {
         });
         egui::Grid::new("hp_disp_geo").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
             match self.brush.geo_effect {
+                GeoEffect::Relax => {
+                    grid_row(ui, t!("disp.strength"), |ui| {
+                        ui.add(egui::Slider::new(&mut self.brush.sculpt.relax_strength, 0.0..=1.0).max_decimals(2))
+                            .on_hover_text(t!("disp.sculpt.relax_strength_tip"));
+                    });
+                }
                 GeoEffect::Smooth => {
                     grid_row(ui, t!("disp.strength"), |ui| {
                         ui.add(egui::Slider::new(&mut self.brush.smooth, 0.0..=1.0).max_decimals(2))
@@ -1515,9 +1532,11 @@ impl DisplacementTool {
                     });
                 }
             }
-            self.axis_row(ui, true);
+            if self.brush.geo_effect != GeoEffect::Relax {
+                self.axis_row(ui, true);
+            }
         });
-        if self.brush.axis == PaintAxis::Custom {
+        if self.brush.geo_effect != GeoEffect::Relax && self.brush.axis == PaintAxis::Custom {
             vec3_edit(ui, &mut self.brush.custom_axis, 0.01);
         }
     }
@@ -1794,7 +1813,7 @@ impl DisplacementTool {
         ui.checkbox(&mut self.brush.autosew, t!("disp.autosew")).on_hover_text(t!("disp.autosew_tip"));
         ui.checkbox(&mut self.brush.selected_only, t!("disp.selected_only"))
             .on_hover_text(t!("disp.selected_only_tip"));
-        let relax = self.interaction == Interaction::Sculpt && self.brush.sculpt.op == sculpt::SculptOp::Relax;
+        let relax = self.relaxing();
         let mut continuous = self.brush.continuous || relax;
         if ui
             .add_enabled(!relax, egui::Checkbox::new(&mut continuous, t!("disp.continuous")))
@@ -1945,6 +1964,7 @@ impl DisplacementTool {
                 (GeoEffect::Lower, false) | (GeoEffect::Raise, true) => AXIS_Z,
                 (GeoEffect::Smooth, _) => VIEW_SUCCESS,
                 (GeoEffect::Set, _) => VIEW_WARNING,
+                (GeoEffect::Relax, _) => VIEW_SUCCESS,
             },
             Interaction::Sculpt if mods.shift => VIEW_SUCCESS,
             Interaction::Sculpt => match (self.brush.sculpt.op, invert) {
@@ -1961,11 +1981,13 @@ impl DisplacementTool {
         let invert = self.inverts(mods);
         match self.interaction {
             Interaction::Select => t!("disp.mode.select"),
+            _ if self.relaxing() && mods.shift => t!("disp.effect.smooth"),
             Interaction::Geometry => match (self.brush.geo_effect, invert) {
                 (GeoEffect::Raise, false) | (GeoEffect::Lower, true) => t!("disp.effect.raise"),
                 (GeoEffect::Lower, false) | (GeoEffect::Raise, true) => t!("disp.effect.lower"),
                 (GeoEffect::Smooth, _) => t!("disp.effect.smooth"),
                 (GeoEffect::Set, _) => t!("disp.effect.set"),
+                (GeoEffect::Relax, _) => t!("disp.sculpt.relax"),
             },
             Interaction::Alpha => match (self.brush.alpha_effect, invert) {
                 (AlphaEffect::Add, false) | (AlphaEffect::Remove, true) => t!("disp.alpha.add"),
@@ -2226,7 +2248,7 @@ impl Tool for DisplacementTool {
         }
         Some(match self.interaction {
             Interaction::Select => t!("disp.hint_select").to_owned(),
-            Interaction::Sculpt if self.brush.sculpt.op == sculpt::SculptOp::Relax => t!("disp.hint_relax").to_owned(),
+            _ if self.relaxing() => t!("disp.hint_relax").to_owned(),
             Interaction::Sculpt => t!("disp.hint_sculpt").to_owned(),
             Interaction::Tag => t!("disp.hint_tag").to_owned(),
             _ => t!("disp.hint_paint").to_owned(),

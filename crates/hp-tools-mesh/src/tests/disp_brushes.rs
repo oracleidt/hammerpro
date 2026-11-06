@@ -150,6 +150,11 @@ fn the_new_brushes_are_scriptable_and_the_panel_renders() {
         run_ui(&mut state, |ui, st| tool.options_ui(ui, st));
         assert!(tool.status_hint(&state).is_some());
     }
+    assert!(tool.set_option(&mut state, "mode", "geometry"));
+    assert!(tool.set_option(&mut state, "effect", "relax"));
+    tool.brush.sculpt.op = SculptOp::Push;
+    run_ui(&mut state, |ui, st| tool.options_ui(ui, st));
+    assert!(tool.status_hint(&state).is_some());
 }
 
 fn distorted_surface(state: &mut AppState, face: FaceRef, sloped: bool) {
@@ -190,8 +195,18 @@ fn edge_variance(surface: &hp_geom::DispMesh) -> f64 {
 
 #[test]
 fn relax_redistributes_the_surface_without_changing_borders_topology_or_alpha() {
-    for sloped in [false, true] {
+    for (sloped, mode) in [
+        (false, Interaction::Sculpt),
+        (true, Interaction::Sculpt),
+        (false, Interaction::Geometry),
+        (true, Interaction::Geometry),
+    ] {
         let (mut state, mut tool, face) = setup(SculptOp::Relax);
+        tool.interaction = mode;
+        tool.brush.geo_effect = GeoEffect::Relax;
+        if mode == Interaction::Geometry {
+            tool.brush.sculpt.op = SculptOp::Push;
+        }
         tool.brush.radius = 800.0;
         tool.brush.sculpt.relax_strength = 1.0;
         distorted_surface(&mut state, face, sloped);
@@ -236,25 +251,37 @@ fn relax_redistributes_the_surface_without_changing_borders_topology_or_alpha() 
 
 #[test]
 fn relax_keeps_working_while_the_mouse_is_held_still() {
-    let (mut state, mut tool, face) = setup(SculptOp::Relax);
-    distorted_surface(&mut state, face, false);
-    tool.brush.radius = 800.0;
-    tool.brush.continuous = false;
-    state.frame.dt = 0.05;
-    let view = view3d(DVec3::new(0.0, -300.0, 300.0), 90.0, -45.0);
-    let position = view.world_to_screen(DVec3::ZERO).unwrap();
-    let input =
-        PointerFrame { pos: Some(position), pressed: true, down: true, mods: Modifiers::NONE, ..Default::default() };
-    tool.handle_pointer(&mut state, &view, input);
-    let first = mesh(&state, face);
-    for _ in 0..20 {
-        state.frame.index += 1;
-        state.frame.time += 0.05;
-        tool.handle_pointer(&mut state, &view, PointerFrame { pressed: false, ..input });
+    for mode in [Interaction::Geometry, Interaction::Sculpt] {
+        let (mut state, mut tool, face) = setup(SculptOp::Relax);
+        tool.interaction = mode;
+        tool.brush.geo_effect = GeoEffect::Relax;
+        if mode == Interaction::Geometry {
+            tool.brush.sculpt.op = SculptOp::Push;
+        }
+        distorted_surface(&mut state, face, false);
+        tool.brush.radius = 800.0;
+        tool.brush.continuous = false;
+        state.frame.dt = 0.05;
+        let view = view3d(DVec3::new(0.0, -300.0, 300.0), 90.0, -45.0);
+        let position = view.world_to_screen(DVec3::ZERO).unwrap();
+        let input = PointerFrame {
+            pos: Some(position),
+            pressed: true,
+            down: true,
+            mods: Modifiers::NONE,
+            ..Default::default()
+        };
+        tool.handle_pointer(&mut state, &view, input);
+        let first = mesh(&state, face);
+        for _ in 0..20 {
+            state.frame.index += 1;
+            state.frame.time += 0.05;
+            tool.handle_pointer(&mut state, &view, PointerFrame { pressed: false, ..input });
+        }
+        assert!(tool.is_painting());
+        tool.handle_pointer(&mut state, &view, PointerFrame { pressed: false, down: false, ..input });
+        assert!(edge_variance(&mesh(&state, face)) < edge_variance(&first) * 0.7);
     }
-    assert!(tool.is_painting());
-    tool.handle_pointer(&mut state, &view, PointerFrame { pressed: false, down: false, ..input });
-    assert!(edge_variance(&mesh(&state, face)) < edge_variance(&first) * 0.7);
 }
 
 #[test]
