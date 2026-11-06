@@ -5,6 +5,7 @@ use crate::model::{Operator, SystemDef};
 
 mod color;
 mod control;
+mod emission;
 mod forces;
 mod model;
 mod noise;
@@ -193,11 +194,11 @@ impl Points {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 enum Emit {
-    Continuous { rate: f32, start: f32, duration: f32 },
+    Continuous { rate: f32, start: f32, duration: f32, used: f32, cp: i32, axis: usize, parent: bool },
     Instant { min: u32, max: u32, start: f32 },
-    Noise { min: f32, max: f32, speed: f32, start: f32, duration: f32 },
+    Noise { noise: noise::Scalar, used: f32, start: f32, duration: f32 },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -760,13 +761,17 @@ impl Plan {
     }
 
     fn compile_emitter(&mut self, op: &Operator) {
-        let start = f(op, "emission_start_time", 0.0).clamp(0.0, 600.0);
-        let duration = f(op, "emission_duration", 0.0).clamp(0.0, 600.0);
+        let start = f(op, "emission_start_time", 0.0);
+        let duration = f(op, "emission_duration", 0.0).max(0.0);
         match op.function.to_ascii_lowercase().as_str() {
             "emit_continuously" => self.emitters.push(Emit::Continuous {
-                rate: f(op, "emission_rate", 100.0).clamp(0.0, 10_000.0),
+                rate: f(op, "emission_rate", 100.0).max(0.0),
                 start,
                 duration,
+                used: f(op, "scale emission to used control points", 0.0),
+                cp: i(op, "emission count scale control point", -1).clamp(-1, 63),
+                axis: i(op, "emission count scale control point field", 0).clamp(0, 2) as usize,
+                parent: b(op, "use parent particles for emission scaling", false),
             }),
             "emit_instantaneously" => {
                 let max = i(op, "num_to_emit", 100).clamp(0, 100_000) as u32;
@@ -774,9 +779,8 @@ impl Plan {
                 self.emitters.push(Emit::Instant { min, max, start });
             }
             "emit noise" => self.emitters.push(Emit::Noise {
-                min: f(op, "emission minimum", 0.0).clamp(0.0, 10_000.0),
-                max: f(op, "emission maximum", 100.0).clamp(0.0, 10_000.0),
-                speed: f(op, "time noise coordinate scale", 0.1).clamp(0.0, 100.0),
+                noise: noise::Scalar::emitter(op),
+                used: f(op, "scale emission to used control points", 0.0),
                 start,
                 duration,
             }),
@@ -1214,7 +1218,8 @@ pub struct Sim {
     plan: Arc<Plan>,
     pub particles: Vec<Particle>,
     time: f32,
-    acc: Vec<f32>,
+    emission: Vec<emission::State>,
+    parented: bool,
     fired: Vec<bool>,
     rng: Rng,
     seed: u32,
@@ -1231,6 +1236,7 @@ pub struct Sim {
 impl Sim {
     pub fn new(plan: Arc<Plan>, seed: u32) -> Sim {
         let n = plan.emitters.len();
+        let emission = plan.emitters.iter().map(emission::State::new).collect();
         let colors = vec![None; plan.inits.len()];
         let path_steps = vec![(0.0, false); plan.inits.len()];
         let point_traces = vec![control::PointTraceState::default(); plan.point_traces.len()];
@@ -1238,7 +1244,8 @@ impl Sim {
             plan,
             particles: Vec::new(),
             time: 0.0,
-            acc: vec![0.0; n],
+            emission,
+            parented: false,
             fired: vec![false; n],
             rng: Rng(seed),
             seed,
@@ -1278,7 +1285,9 @@ impl Sim {
         self.colors.fill(None);
         self.path_steps.fill((0.0, false));
         self.previous_models.clear();
-        self.acc.iter_mut().for_each(|a| *a = 0.0);
+        for (state, emitter) in self.emission.iter_mut().zip(&self.plan.emitters) {
+            *state = emission::State::new(emitter);
+        }
         self.fired.iter_mut().for_each(|f| *f = false);
     }
 
@@ -1309,7 +1318,7 @@ impl Sim {
         part.vel = add(scale(dir, speed), points.local(self.rng.range3(*lmin, *lmax)));
     }
 
-    fn spawn(&mut self, points: &Points, parents: &[(V3, V3)], dt: f32, world: &dyn Environment) {
+    fn spawn(&mut self, points: &Points, parents: &[(V3, V3)], dt: f32, world: &dyn Environment, born: f32) {
         let plan = self.plan.clone();
         let origin = [0.0; 3];
         let seed = self.seed.wrapping_add(self.born);
@@ -1344,7 +1353,7 @@ impl Sim {
             radius_add: 0.0,
             alpha_add: 0.0,
             color_add: [0.0; 3],
-            born: self.time,
+            born,
         };
         for (index, init) in plan.inits.iter().enumerate() {
             match init {
@@ -1502,7 +1511,7 @@ impl Sim {
         if !part.life.is_finite() || part.life < 0.0 {
             part.life = 1.0;
         }
-        part.age = (self.time - part.born).max(0.0);
+        part.age = self.time - part.born;
         part.radius = part.base_radius;
         part.color = part.base_color;
         part.alpha = part.base_alpha;
@@ -1537,10 +1546,7 @@ impl Sim {
         let cap = self.plan.max.min(budget);
         let t0 = self.time;
         let t1 = t0 + dt;
-        let mut to_emit = 0usize;
-        if t0 == 0.0 && self.fired.iter().all(|f| !f) && self.born == 0 {
-            to_emit += self.plan.initial;
-        }
+        self.parented |= !parents.is_empty();
         let previous_models = std::mem::take(&mut self.previous_models);
         let frame = model::Frame::new(world, &previous_models);
         let world = &frame;
@@ -1550,33 +1556,27 @@ impl Sim {
             control::update_point_trace(op, state, generated.to_mut(), world, t1);
         }
         let points = &*generated;
-        for (i, e) in plan.emitters.iter().enumerate() {
-            let window = |start: f32, duration: f32| {
-                let end = if duration > 0.0 { start + duration } else { f32::INFINITY };
-                (t1.min(end) - t0.max(start)).max(0.0)
-            };
-            match *e {
-                Emit::Continuous { rate, start, duration } => self.acc[i] += rate * window(start, duration),
-                Emit::Noise { min, max, speed, start, duration } => {
-                    let n = 0.5 + 0.25 * (t1 * speed * 6.1).sin() + 0.25 * (t1 * speed * 2.3 + 1.7).sin();
-                    self.acc[i] += lerp(min, max, n) * window(start, duration);
-                }
-                Emit::Instant { min, max, start } => {
-                    if !self.fired[i] && t1 >= start {
-                        self.fired[i] = true;
-                        to_emit += if max > min { self.rng.integer(min, max) as usize } else { max as usize };
-                    }
-                }
-            }
-            if !matches!(e, Emit::Instant { .. }) {
-                let n = self.acc[i].floor();
-                self.acc[i] -= n;
-                to_emit += n as usize;
+        if t0 == 0.0 && self.fired.iter().all(|f| !f) && self.born == 0 {
+            for _ in 0..plan.initial.min(cap.saturating_sub(self.particles.len())) {
+                self.spawn(points, parents, dt, world, t0);
             }
         }
-        let room = cap.saturating_sub(self.particles.len());
-        for _ in 0..to_emit.min(room) {
-            self.spawn(points, parents, dt, world);
+        for (i, e) in plan.emitters.iter().enumerate() {
+            let room = cap.saturating_sub(self.particles.len());
+            let births = match e {
+                Emit::Instant { min, max, start } => {
+                    let mut count = 0;
+                    if !self.fired[i] && t1 >= *start {
+                        self.fired[i] = true;
+                        count = if max > min { self.rng.integer(*min, *max) as usize } else { *max as usize };
+                    }
+                    emission::Batch::instant(t0, count.min(room))
+                }
+                _ => self.emission[i].births(e, (t1, dt), points, self.parented.then_some(parents.len()), room, world),
+            };
+            for born in births {
+                self.spawn(points, parents, dt, world, born);
+            }
         }
         for part in &mut self.particles {
             part.age += dt;
@@ -1938,7 +1938,9 @@ impl Effect {
                 }
             }
             n = n.wrapping_add(1);
-            sims.push((delay, Sim::new(plan, seed.wrapping_mul(2_654_435_761).wrapping_add(n))));
+            let mut sim = Sim::new(plan, seed.wrapping_mul(2_654_435_761).wrapping_add(n));
+            sim.parented = parent.is_some();
+            sims.push((delay, sim));
             parents.push(parent);
         }
         Some(Effect { sims, parents, missing, time: 0.0, idle: 0.0, scratch: Vec::new() })

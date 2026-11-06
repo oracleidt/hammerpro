@@ -35,6 +35,22 @@ pub(super) struct Scalar {
 }
 
 impl Scalar {
+    pub(super) fn emitter(op: &Operator) -> Self {
+        Self {
+            coordinates: Coordinates {
+                time_scale: f(op, "time noise coordinate scale", 0.1),
+                spatial_scale: 0.0,
+                time_offset: f(op, "time coordinate offset", 0.0),
+                spatial_offset: [0.0; 3],
+            },
+            min: f(op, "emission minimum", 0.0),
+            max: f(op, "emission maximum", 100.0),
+            absolute: b(op, "absolute value", false),
+            invert: b(op, "invert absolute value", false),
+            world_scale: f(op, "world time noise coordinate scale", 0.0),
+        }
+    }
+
     pub(super) fn compile(op: &Operator, field: Field, pre_age: bool) -> Self {
         let angle = |value: f32| {
             if !pre_age && matches!(field, Field::Rotation | Field::Yaw) {
