@@ -449,111 +449,24 @@ enum Op {
     Lock(control::Lock),
     Force(forces::Force),
     Spatial(spatial::SpatialOp),
-    CullRandom {
-        start: f32,
-        end: f32,
-        exponent: f32,
-        percentage: f32,
-    },
-    Movement {
-        gravity: V3,
-        drag: f32,
-    },
-    FadeIn {
-        min: f32,
-        max: f32,
-        proportional: bool,
-        ease: bool,
-    },
-    FadeOut {
-        min: f32,
-        max: f32,
-        proportional: bool,
-        ease: bool,
-    },
-    FadeAndDecay {
-        start: f32,
-        end: f32,
-        in0: f32,
-        in1: f32,
-        out0: f32,
-        out1: f32,
-    },
-    RadiusScale {
-        t0: f32,
-        t1: f32,
-        s0: f32,
-        s1: f32,
-        bias: f32,
-        ease: bool,
-    },
-    ColorFade {
-        color: [f32; 3],
-        t0: f32,
-        t1: f32,
-        ease: bool,
-    },
+    CullRandom { start: f32, end: f32, exponent: f32, percentage: f32 },
+    Movement { gravity: V3, drag: f32 },
+    FadeIn { min: f32, max: f32, proportional: bool, ease: bool },
+    FadeOut { min: f32, max: f32, proportional: bool, ease: bool },
+    FadeAndDecay { start: f32, end: f32, in0: f32, in1: f32, out0: f32, out1: f32 },
+    RadiusScale { t0: f32, t1: f32, s0: f32, s1: f32, bias: f32, ease: bool },
+    ColorFade { color: [f32; 3], t0: f32, t1: f32, ease: bool },
     RotationBasic,
-    Spin {
-        rate: f32,
-        stop: f32,
-        min: f32,
-        yaw: bool,
-    },
-    OscScalar {
-        field: Field,
-        wave: oscillation::Scalar,
-    },
-    OscVector {
-        color: bool,
-        rate: [V3; 2],
-        freq: [V3; 2],
-        proportional: bool,
-        t0: f32,
-        t1: f32,
-        se_prop: bool,
-        mult: f32,
-        phase: f32,
-    },
-    NoiseScalar {
-        field: Field,
-        min: f32,
-        max: f32,
-        speed: f32,
-        additive: bool,
-    },
-    NoiseVector {
-        field: i32,
-        min: V3,
-        max: V3,
-        speed: f32,
-        additive: bool,
-    },
-    Ramp {
-        field: Field,
-        rate: [f32; 2],
-        t0: f32,
-        t1: f32,
-    },
-    MaxVelocity {
-        max: f32,
-    },
-    Constrain {
-        cp: i32,
-        min: f32,
-        max: f32,
-        offset: V3,
-    },
-    RotateAround {
-        cp: i32,
-        axis: V3,
-        rate: f32,
-    },
-    Dampen {
-        cp: i32,
-        range: f32,
-        factor: f32,
-    },
+    Spin { rate: f32, stop: f32, min: f32, yaw: bool },
+    OscScalar { field: Field, wave: oscillation::Scalar },
+    OscVector { field: i32, wave: oscillation::Vector },
+    NoiseScalar { field: Field, min: f32, max: f32, speed: f32, additive: bool },
+    NoiseVector { field: i32, min: V3, max: V3, speed: f32, additive: bool },
+    Ramp { field: Field, rate: [f32; 2], t0: f32, t1: f32 },
+    MaxVelocity { max: f32 },
+    Constrain { cp: i32, min: f32, max: f32, offset: V3 },
+    RotateAround { cp: i32, axis: V3, rate: f32 },
+    Dampen { cp: i32, range: f32, factor: f32 },
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -1035,20 +948,9 @@ impl Plan {
                 field: Field::from_index(i(op, "oscillation field", 7)),
                 wave: oscillation::Scalar::compile(op),
             },
-            "oscillate vector" => Op::OscVector {
-                color: i(op, "oscillation field", 0) == 6,
-                rate: [vec_or(op, "oscillation rate min", [0.0; 3]), vec_or(op, "oscillation rate max", [0.0; 3])],
-                freq: [
-                    vec_or(op, "oscillation frequency min", [1.0; 3]),
-                    vec_or(op, "oscillation frequency max", [1.0; 3]),
-                ],
-                proportional: b(op, "proportional 0/1", true),
-                t0: (f(op, "start time min", 0.0) + f(op, "start time max", 0.0)) * 0.5,
-                t1: (f(op, "end time min", 1.0) + f(op, "end time max", 1.0)) * 0.5,
-                se_prop: b(op, "start/end proportional", true),
-                mult: f(op, "oscillation multiplier", 2.0),
-                phase: f(op, "oscillation start phase", 0.5),
-            },
+            "oscillate vector" => {
+                Op::OscVector { field: i(op, "oscillation field", 0), wave: oscillation::Vector::compile(op) }
+            }
             "noise scalar" => {
                 let field = Field::from_index(i(op, "output field", 3));
                 let angle = |value: f32| {
@@ -1216,7 +1118,6 @@ pub struct Particle {
     radius_scale: f32,
     radius_add: f32,
     alpha_add: f32,
-    color_add: [f32; 3],
     born: f32,
 }
 
@@ -1377,7 +1278,6 @@ impl Sim {
                 radius_scale: 1.0,
                 radius_add: 0.0,
                 alpha_add: 0.0,
-                color_add: [0.0; 3],
                 born,
             };
             self.particles.push(part);
@@ -1673,14 +1573,6 @@ fn set_field(p: &mut Particle, field: Field, x: f32, multiply: bool) {
     *slot = if matches!(field, Field::Alpha | Field::Alpha2) { value.clamp(0.0, 1.0) } else { value };
 }
 
-fn osc_time(p: &Particle, life: f32, proportional: bool, t0: f32, t1: f32, se_prop: bool) -> Option<f32> {
-    let window_t = if se_prop { p.age / life } else { p.age };
-    if window_t < t0 || window_t > t1 {
-        return None;
-    }
-    Some(if proportional { p.age / life } else { p.age })
-}
-
 #[allow(clippy::too_many_arguments)]
 fn operate(
     plan: &Plan,
@@ -1825,20 +1717,20 @@ fn operate(
                     }
                 }
             }
-            Op::OscVector { color: on_color, rate, freq, proportional, t0, t1, se_prop, mult, phase } => {
-                let Some(time) = osc_time(part, life, *proportional, *t0, *t1, *se_prop) else {
+            Op::OscVector { field, wave } => {
+                let Some(delta) = wave.delta((time, part.born, part.life), part.seed, plan.op_random_offsets[k], dt)
+                else {
                     continue;
                 };
-                let mut d = [0.0; 3];
-                for c in 0..3 {
-                    let r = lerp(rate[0][c], rate[1][c], hash01(part.seed, key + c as u32));
-                    let fr = lerp(freq[0][c], freq[1][c], hash01(part.seed, key + 3 + c as u32));
-                    d[c] = ((time * fr * mult + phase) * std::f32::consts::TAU).sin() * r * dt;
-                }
-                if *on_color {
-                    part.color_add = add(part.color_add, d);
-                } else {
-                    part.pos = add(part.pos, d);
+                match field {
+                    0 => part.pos = add(part.pos, delta),
+                    2 => part.previous_pos = add(part.previous_pos, delta),
+                    6 => {
+                        let current = if color_written { color } else { part.color };
+                        color = add(current, delta).map(|value| value.clamp(0.0, 1.0));
+                        color_written = true;
+                    }
+                    _ => {}
                 }
             }
             Op::NoiseScalar { field, min, max, speed, additive } => {
@@ -1936,7 +1828,11 @@ fn operate(
         };
         if !matches!(
             op,
-            Op::Movement { .. } | Op::Spatial(spatial::SpatialOp::Collision { .. }) | Op::NoiseVector { .. }
+            Op::Movement { .. }
+                | Op::Spatial(spatial::SpatialOp::Collision { .. })
+                | Op::NoiseVector { .. }
+                | Op::OscVector { .. }
+                | Op::OscScalar { field: Field::PositionX, .. }
         ) {
             if part.vel != before_vel {
                 part.previous_pos = sub(part.pos, scale(part.vel, part.previous_dt));
@@ -1947,7 +1843,7 @@ fn operate(
     }
     part.alpha = (alpha + part.alpha_add).clamp(0.0, 1.0);
     part.radius = (part.base_radius * part.radius_scale + part.radius_add).max(0.0);
-    part.color = add(color, part.color_add).map(|c| c.clamp(0.0, 1.0));
+    part.color = color.map(|c| c.clamp(0.0, 1.0));
 }
 
 #[derive(Clone, Debug)]

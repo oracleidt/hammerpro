@@ -48,6 +48,52 @@ fn run(def: &SystemDef, points: &Points, seconds: f32) -> Sim {
 struct FloorTrace;
 
 #[test]
+fn scalar_and_vector_oscillation_preserve_native_inertia_with_basic_movement() {
+    let definitions = crate::parse_file(include_bytes!("../tests/data/oscillation_movement_cases.pcf")).unwrap();
+    let frames: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/oscillation_movement_native_samples.json")).unwrap();
+    assert_eq!(frames.len(), 149);
+    for index in 0..12 {
+        let name = format!("hp_spritecard_move{index}");
+        let definition = definitions.iter().find(|def| def.name == name).unwrap();
+        let plan = Arc::new(Plan::new(definition));
+        assert!(plan.unsupported.is_empty());
+        let mut sim = Sim::new(plan, 17);
+        for (frame, sample) in frames.iter().enumerate() {
+            sim.step(sample["dt"].as_f64().unwrap() as f32, [0.0; 3], 1);
+            assert_eq!(sim.particles.len(), 1);
+            for axis in 0..3 {
+                let expected = sample["positions"][index][axis].as_f64().unwrap() as f32;
+                assert_eq!(sim.particles[0].pos[axis].to_bits(), expected.to_bits(), "{name} frame{frame} axis{axis}");
+            }
+        }
+    }
+}
+
+#[test]
+fn vector_oscillation_matches_native_frames_for_all_three_axes() {
+    let definitions = crate::parse_file(include_bytes!("../tests/data/oscillation_vector_live_cases.pcf")).unwrap();
+    let frames: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/oscillation_vector_live_native_samples.json")).unwrap();
+    assert_eq!(frames.len(), 149);
+    for index in 0..6 {
+        let name = format!("hp_spritecard_osc{index}");
+        let definition = definitions.iter().find(|def| def.name == name).unwrap();
+        let plan = Arc::new(Plan::new(definition));
+        assert!(plan.unsupported.is_empty());
+        let mut sim = Sim::new(plan, 17);
+        for (frame, sample) in frames.iter().enumerate() {
+            sim.step(sample["dt"].as_f64().unwrap() as f32, [0.0; 3], 1);
+            assert_eq!(sim.particles.len(), 1);
+            for axis in 0..3 {
+                let expected = sample["positions"][index][axis].as_f64().unwrap() as f32;
+                assert_eq!(sim.particles[0].pos[axis].to_bits(), expected.to_bits(), "{name} frame{frame} axis{axis}");
+            }
+        }
+    }
+}
+
+#[test]
 fn scalar_oscillation_matches_native_frames_for_absolute_and_proportional_time() {
     let definitions = crate::parse_file(include_bytes!("../tests/data/oscillation_live_cases.pcf")).unwrap();
     let frames: Vec<serde_json::Value> =
