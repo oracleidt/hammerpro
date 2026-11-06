@@ -3,6 +3,7 @@
 pub mod dmx;
 pub mod editor;
 pub mod model;
+pub mod random;
 pub mod sheet;
 pub mod sim;
 

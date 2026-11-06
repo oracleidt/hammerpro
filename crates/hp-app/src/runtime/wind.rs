@@ -2,6 +2,7 @@ use std::cell::RefCell;
 
 use glam::DVec3;
 use hp_editor::Id;
+use hp_pcf::random::UniformRandomStream;
 use hp_vmf::Entity;
 
 use crate::AppState;
@@ -50,78 +51,95 @@ impl Config {
 
 struct Controller {
     config: Config,
-    random: u64,
-    yaw: f64,
-    speed: f64,
-    target: f64,
+    random: UniformRandomStream,
+    variation: UniformRandomStream,
+    yaw: f32,
+    speed: f32,
+    target: f32,
     gusting: bool,
-    switch: f64,
-    time: f64,
+    switch: f32,
+    time: f32,
+    variation_time: f32,
+    angle_variation: f32,
+    speed_variation: f32,
     velocity: DVec3,
     visible: bool,
 }
 
+fn angle_mod(degrees: f32) -> f32 {
+    ((degrees * (65536.0 / 360.0)) as i32 & 65535) as f32 * (360.0 / 65536.0)
+}
+
 impl Controller {
     fn new(config: Config, time: f64) -> Self {
-        let yaw = config.yaw;
-        let speed = (config.normal[0] + config.normal[1]) * 0.5;
-        let random = u64::from(config.id).wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let yaw = config.yaw as i32 as f32;
+        let time = time as f32;
         let mut value = Self {
             config,
-            random,
+            random: UniformRandomStream::new(0),
+            variation: UniformRandomStream::new(0),
             yaw,
-            speed,
-            target: speed,
-            gusting: false,
+            speed: 0.0,
+            target: 0.0,
+            gusting: true,
             switch: time,
             time,
+            variation_time: time,
+            angle_variation: 1.0,
+            speed_variation: 1.0,
             velocity: DVec3::ZERO,
             visible: true,
         };
-        value.switch = time + value.choose(value.config.delay).max(0.05);
-        value.advance(time);
+        value.advance(f64::from(time));
         value
     }
 
-    fn choose(&mut self, range: [f64; 2]) -> f64 {
-        self.random = self.random.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-        range[0] + (range[1] - range[0]) * ((self.random >> 11) as f64 / (1u64 << 53) as f64)
-    }
-
-    fn approach(&mut self, duration: f64) {
+    fn approach(&mut self, duration: f32) {
         let rate = if self.target >= self.speed { 150.0 } else { 15.0 };
         let difference = self.target - self.speed;
         self.speed += difference.signum() * difference.abs().min(duration.max(0.0) * rate);
     }
 
     fn advance(&mut self, time: f64) {
+        let time = time as f32;
         if !time.is_finite() || time < self.time {
             return;
         }
-        let mut events = 0;
-        while self.switch <= time && events < 256 {
+        while time >= self.variation_time {
+            self.angle_variation = self.variation.float(-10.0, 10.0);
+            self.speed_variation = 1.0 + self.variation.float(-0.2, 0.2);
+            let next = self.variation_time + 0.1;
+            if next <= self.variation_time {
+                break;
+            }
+            self.variation_time = next;
+        }
+        while time > self.switch {
             self.approach(self.switch - self.time);
             self.time = self.switch;
-            self.gusting = !self.gusting;
             if self.gusting {
-                self.target = self.choose(self.config.gust);
-                self.yaw = (self.yaw + self.choose([-self.config.turn, self.config.turn])).rem_euclid(360.0);
-                self.switch += self.config.duration;
+                self.target = self.random.int(self.config.normal[0] as i32, self.config.normal[1] as i32) as f32;
+                self.gusting = false;
+                self.switch += self.config.delay[0] as f32 + self.random.float(0.0, self.config.delay[1] as f32);
             } else {
-                self.target = self.choose(self.config.normal);
-                self.switch += self.choose(self.config.delay).max(0.05);
+                self.target = self.random.int(self.config.gust[0] as i32, self.config.gust[1] as i32) as f32;
+                let turn = self.config.turn as i32;
+                self.yaw = angle_mod(self.yaw + self.random.int(-turn, turn) as f32);
+                self.gusting = true;
+                self.switch += self.config.duration as f32;
             }
-            events += 1;
-        }
-        if events == 256 && self.switch <= time {
-            self.switch = time + self.config.duration;
+            if self.switch <= self.time {
+                self.switch = self.time + 0.01;
+                if self.switch <= self.time {
+                    break;
+                }
+            }
         }
         self.approach(time - self.time);
         self.time = time;
-        let phase = time * 1.7 + f64::from(self.config.id);
-        let yaw = (self.yaw + phase.sin() * 10.0).to_radians();
-        let speed = self.speed * (1.0 + (phase * 1.31).sin() * 0.2);
-        self.velocity = DVec3::new(yaw.cos(), yaw.sin(), 0.0) * speed;
+        let yaw = (self.yaw + self.angle_variation).to_radians();
+        let speed = self.speed * self.speed_variation;
+        self.velocity = DVec3::new(f64::from(yaw.cos() * speed), f64::from(yaw.sin() * speed), 0.0);
     }
 }
 
@@ -198,4 +216,61 @@ pub fn samples() -> Vec<Sample> {
             .map(|c| Sample { id: c.config.id, origin: c.config.origin, velocity: c.velocity, gusting: c.gusting })
             .collect()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn config() -> Config {
+        Config {
+            id: 1,
+            origin: DVec3::ZERO,
+            radius: -1.0,
+            yaw: 90.0,
+            normal: [400.0; 2],
+            gust: [800.0; 2],
+            delay: [1000.0; 2],
+            duration: 5.0,
+            turn: 20.0,
+        }
+    }
+
+    #[test]
+    fn wind_starts_at_rest_and_matches_native_random_variation_samples() {
+        for [time, x, y] in [
+            [0.0, 0.0, 0.0],
+            [0.05, 0.18399456, 6.2731967],
+            [1.0, -15.4169302, 173.8703308],
+            [2.75, 57.0533257, 396.6413269],
+            [6.0, -45.7830391, 431.1471252],
+        ] {
+            let mut controller = Controller::new(config(), 0.0);
+            controller.advance(time);
+            assert!(controller.velocity.distance(DVec3::new(x, y, 0.0)) < 0.0001, "{time}: {:?}", controller.velocity);
+        }
+    }
+
+    #[test]
+    fn gust_transitions_and_variations_do_not_depend_on_frame_rate_or_entity_id() {
+        let mut config = config();
+        config.normal = [20.0, 50.0];
+        config.gust = [100.0, 250.0];
+        config.delay = [0.5, 1.5];
+        config.duration = 0.75;
+        let mut coarse = Controller::new(config.clone(), 0.0);
+        config.id = 73;
+        let mut fine = Controller::new(config, 0.0);
+        for tick in 1..=3600 {
+            let time = f64::from(tick) / 60.0;
+            fine.advance(time);
+            if tick % 60 == 0 {
+                coarse.advance(time);
+                assert!(fine.velocity.distance(coarse.velocity) < 0.002);
+                assert_eq!(fine.gusting, coarse.gusting);
+                assert_eq!(fine.yaw, coarse.yaw);
+                assert_eq!(fine.switch, coarse.switch);
+            }
+        }
+    }
 }

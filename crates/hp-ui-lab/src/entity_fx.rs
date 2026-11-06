@@ -802,6 +802,8 @@ mod tests {
         state.doc = hp_editor::Document::from_map(map);
         state.frame.time = 1.0;
         wind::update(&state);
+        state.frame.time = 4.0;
+        wind::update(&state);
         let off = build(71, &entity("env_embers", &[("AffectedByWind", "0"), ("speed", "0")]), bounds()).unwrap();
         let on = build(71, &entity("env_embers", &[("AffectedByWind", "1"), ("speed", "0")]), bounds()).unwrap();
         let (mut a, mut b) = (Vec::new(), Vec::new());

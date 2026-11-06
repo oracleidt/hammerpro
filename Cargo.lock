@@ -1632,6 +1632,7 @@ dependencies = [
  "hp-fs",
  "hp-geom",
  "hp-kv",
+ "hp-pcf",
  "hp-render",
  "hp-sniffer",
  "hp-vmf",

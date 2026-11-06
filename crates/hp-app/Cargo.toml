@@ -15,6 +15,7 @@ hp-fs.workspace = true
 hp-render.workspace = true
 hp-editor.workspace = true
 hp-kv.workspace = true
+hp-pcf = { path = "../hp-pcf" }
 hp-sniffer = { path = "../hp-sniffer" }
 hp-colorgrade = { path = "../hp-colorgrade" }
 egui.workspace = true
