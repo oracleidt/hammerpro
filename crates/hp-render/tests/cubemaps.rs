@@ -154,6 +154,56 @@ fn bake(r: &mut Renderer) {
     }
 }
 
+#[test]
+fn named_cubemaps_keep_the_detail_of_their_source_images() {
+    let Some((device, queue)) = gpu() else { return };
+    let mut r = Renderer::new(&device, &queue);
+    room(&mut r, MIRROR, NO_CUBEMAP);
+    let size = 256u32;
+    let face: Vec<[f32; 3]> = (0..size * size)
+        .map(|i| if (i % size / 4).is_multiple_of(2) { [1.0, 0.0, 0.0] } else { [0.0, 1.0, 1.0] })
+        .collect();
+    let strip: Vec<u8> = (0..6)
+        .flat_map(|_| face.iter().flat_map(|c| [(c[0] * 255.0) as u8, (c[1] * 255.0) as u8, (c[2] * 255.0) as u8, 255]))
+        .collect();
+    let texture = r.create_texture(&TextureUpload {
+        width: size,
+        height: size * 6,
+        format: TexFormat::Rgba8Srgb,
+        levels: vec![strip],
+    });
+    mirror(&mut r, EnvmapDesc { texture: Some(texture), ..Default::default() });
+    shot(&mut r, &down(), true, "named_detail_initial");
+    bake(&mut r);
+    let named_resolution = r.cubemap_stats().resolution;
+    let named = shot(&mut r, &down(), true, "named_detail_texture");
+    // Create the reference AFTER capturing the named cube: otherwise its size
+    // would raise the shared atlas resolution and conceal the named-size bug.
+    let image = r.create_cubemap_image(&CubemapImage { size, faces: [&face; 6], origin: None }).unwrap();
+    mirror(&mut r, EnvmapDesc { cubemap: Some(image), ..Default::default() });
+    bake(&mut r);
+    let reference = shot(&mut r, &down(), true, "named_detail_reference");
+    let mut different = 0;
+    let mut min = 255;
+    let mut max = 0;
+    for y in 24..SIZE - 24 {
+        for x in 24..SIZE - 24 {
+            let a = px(&named, x, y);
+            let b = px(&reference, x, y);
+            min = min.min(b[0]);
+            max = max.max(b[0]);
+            if a.iter().zip(b).any(|(a, b)| a.abs_diff(b) > 4) {
+                different += 1;
+            }
+        }
+    }
+    assert!(max - min > 100, "the reference must show the source pattern");
+    assert!(
+        named_resolution >= size && different < 100,
+        "named cube was reduced to {named_resolution}px from {size}px; {different} interior pixels differ from the source-sized image"
+    );
+}
+
 fn texel(faces: &(u32, [Vec<[f32; 4]>; 6]), face: usize, u: f32, v: f32) -> [f32; 3] {
     let size = faces.0;
     let x = ((u * size as f32) as u32).min(size - 1);

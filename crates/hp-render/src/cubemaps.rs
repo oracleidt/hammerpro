@@ -39,7 +39,7 @@ enum Content {
     Sky,
     Probe(CubemapProbe),
     Image { size: u32, texels: Vec<[f32; 3]>, origin: Option<Vec3> },
-    Texture(TexId),
+    Texture { texture: TexId, size: u32 },
 }
 
 #[derive(Clone, Debug)]
@@ -68,7 +68,8 @@ impl Slot {
         match &self.content {
             Content::Probe(p) => probe_size(p.size),
             Content::Image { size, .. } => *size,
-            Content::Texture(_) | Content::Sky => 64,
+            Content::Texture { size, .. } => *size,
+            Content::Sky => 64,
             Content::Free => 0,
         }
     }
@@ -262,17 +263,30 @@ impl Cubes {
         face_cubemap_of(&probes, object, center, normal)
     }
 
-    pub(crate) fn material_cube(&mut self, desc: Option<&crate::MaterialDesc>, live: &dyn Fn(TexId) -> bool) -> u32 {
+    pub(crate) fn material_cube(
+        &mut self,
+        desc: Option<&crate::MaterialDesc>,
+        width: &dyn Fn(TexId) -> Option<u32>,
+    ) -> u32 {
         const SURFACE: u32 = u32::MAX;
         let Some(e) = desc.and_then(|d| d.envmap) else { return SURFACE };
         if let Some(c) = e.cubemap {
             return u32::from(c.0);
         }
-        let Some(t) = e.texture.filter(|t| live(*t)) else { return SURFACE };
+        let Some((t, size)) = e.texture.and_then(|t| width(t).map(|size| (t, size))) else { return SURFACE };
         if let Some(&s) = self.textures.get(&t.0) {
+            if let Some(slot) = self.slots.get_mut(usize::from(s))
+                && let Content::Texture { size: previous, .. } = &mut slot.content
+                && *previous != size
+            {
+                *previous = size;
+                slot.dirty = true;
+                slot.ready = false;
+                self.info_dirty = true;
+            }
             return u32::from(s);
         }
-        match self.alloc(Content::Texture(t)) {
+        match self.alloc(Content::Texture { texture: t, size }) {
             Some(s) => {
                 self.textures.insert(t.0, s);
                 u32::from(s)
@@ -453,7 +467,7 @@ impl Renderer {
         if matches!(slot.content, Content::Free) {
             return;
         }
-        if let Content::Texture(t) = slot.content {
+        if let Content::Texture { texture: t, .. } = slot.content {
             self.cubes.textures.remove(&t.0);
         }
         *slot = Slot::free();
@@ -528,7 +542,7 @@ impl Renderer {
                     }
                 }
                 Content::Image { .. } => s.images += 1,
-                Content::Texture(_) => s.textures += 1,
+                Content::Texture { .. } => s.textures += 1,
                 Content::Sky => {
                     if slot.dirty {
                         s.pending_faces += 6;
@@ -554,8 +568,8 @@ impl Renderer {
 
     pub(crate) fn material_cube(&mut self, desc: Option<&crate::MaterialDesc>) -> u32 {
         let textures = &self.textures;
-        let live = |t: TexId| textures.contains_key(&t.0);
-        self.cubes.material_cube(desc, &live)
+        let width = |t: TexId| textures.get(&t.0).map(|entry| entry.view.texture().width());
+        self.cubes.material_cube(desc, &width)
     }
 
     pub fn step_cubemaps(&mut self, budget: Duration) -> u32 {
@@ -974,7 +988,7 @@ impl Renderer {
         let waiting: Vec<u16> = (0..self.cubes.slots.len())
             .filter(|&i| {
                 let s = &self.cubes.slots[i];
-                s.dirty && matches!(s.content, Content::Image { .. } | Content::Texture(_))
+                s.dirty && matches!(s.content, Content::Image { .. } | Content::Texture { .. })
             })
             .map(|i| i as u16)
             .collect();
@@ -986,7 +1000,7 @@ impl Renderer {
         for slot in waiting {
             match self.cubes.slots[usize::from(slot)].content.clone() {
                 Content::Image { size, texels, .. } => self.upload_image(slot, size, &texels),
-                Content::Texture(t) => self.upload_texture_cube(slot, t),
+                Content::Texture { texture: t, .. } => self.upload_texture_cube(slot, t),
                 _ => {}
             }
         }
