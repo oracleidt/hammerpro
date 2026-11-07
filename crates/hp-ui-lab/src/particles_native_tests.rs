@@ -129,6 +129,13 @@ fn multiple_renderers_reach_the_gpu_with_native_opacity_and_orientation() {
                 enabled: true,
                 origin: hp_fs::SourceOrigin::Custom,
             },
+            hp_fs::SourceMount {
+                kind: hp_fs::SourceMountKind::Gma,
+                label: "Owned native root-rotation reference".into(),
+                path: data.join("native_root_rotation.gma"),
+                enabled: true,
+                origin: hp_fs::SourceOrigin::Custom,
+            },
         ],
     )
     .unwrap();
@@ -141,9 +148,13 @@ fn multiple_renderers_reach_the_gpu_with_native_opacity_and_orientation() {
     let child_definitions = hp_pcf::parse_file(include_bytes!("../tests/data/native_child_render_order.pcf")).unwrap();
     let children: serde_json::Value =
         serde_json::from_str(include_str!("../tests/data/native_child_render_order.json")).unwrap();
+    let rotation_definitions = hp_pcf::parse_file(include_bytes!("../tests/data/native_root_rotation.pcf")).unwrap();
+    let rotation: serde_json::Value =
+        serde_json::from_str(include_str!("../tests/data/native_root_rotation.json")).unwrap();
     assert_eq!(fixture["cases"].as_object().unwrap().len(), 6);
     assert_eq!(ordering["cases"].as_object().unwrap().len(), 2);
     assert_eq!(children["cases"].as_object().unwrap().len(), 10);
+    assert_eq!(rotation["cases"].as_object().unwrap().len(), 9);
     let mut state = hp_app::testing::test_state();
     let mut failures = Vec::new();
     let proof = data.join("../../../../target/hp-ui-lab/multiple-renderers");
@@ -153,6 +164,7 @@ fn multiple_renderers_reach_the_gpu_with_native_opacity_and_orientation() {
         ("hp_multirender117", "native_multiple_renderers", &fixture, definitions, texture),
         ("hp_renderorder117", "native_render_order", &ordering, ordering_definitions, white),
         ("hp_childorder117", "native_child_render_order", &children, child_definitions, white),
+        ("hp_rootrender117", "native_root_rotation", &rotation, rotation_definitions, texture),
     ] {
         renderer.set_material(
             0,
@@ -240,5 +252,5 @@ fn multiple_renderers_reach_the_gpu_with_native_opacity_and_orientation() {
         }
     }
     assert!(failures.is_empty(), "Native multiple-renderer image mismatches:\n{}", failures.join("\n"));
-    eprintln!("Eighteen native renderer/order whole images: maximum RGB delta {maximum}/255");
+    eprintln!("Twenty-seven native renderer/order/root-rotation whole images: maximum RGB delta {maximum}/255");
 }

@@ -47,6 +47,8 @@ pub struct SystemDef {
     pub max_particles: u32,
     pub initial_particles: u32,
     pub radius: f32,
+    /// The native system constant is radians; rotation initializers use degrees.
+    pub rotation: f32,
     pub color: [u8; 4],
     pub emitters: Vec<Operator>,
     pub initializers: Vec<Operator>,
@@ -66,6 +68,7 @@ impl Default for SystemDef {
             max_particles: 1000,
             initial_particles: 0,
             radius: 5.0,
+            rotation: 0.0,
             color: [255, 255, 255, 255],
             emitters: Vec::new(),
             initializers: Vec::new(),
@@ -119,6 +122,10 @@ pub fn systems(dmx: &Dmx) -> Vec<SystemDef> {
             max_particles: e.int("max_particles").map_or(d.max_particles, |v| v.clamp(0, 100_000) as u32),
             initial_particles: e.int("initial_particles").map_or(0, |v| v.clamp(0, 100_000) as u32),
             radius: e.float("radius").map_or(d.radius, |v| v.clamp(0.0, 100_000.0)),
+            rotation: match e.get("rotation") {
+                Some(crate::dmx::Value::Float(value)) if value.is_finite() => *value,
+                _ => d.rotation,
+            },
             color: e.color("color").unwrap_or(d.color),
             emitters: operators(dmx, e, "emitters"),
             initializers: operators(dmx, e, "initializers"),

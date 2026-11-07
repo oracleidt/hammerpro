@@ -611,7 +611,7 @@ impl Plan {
             radius: def.radius,
             color: rgb(def.color),
             alpha: f32::from(def.color[3]) / 255.0,
-            rotation: 0.0,
+            rotation: def.rotation,
             rotation_speed: 0.0,
             sequence: 0,
             draws: false,
