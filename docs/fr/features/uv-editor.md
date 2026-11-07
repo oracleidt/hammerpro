@@ -4,6 +4,8 @@
 
 L'éditeur UV dessine la face sélectionnée sur sa texture (en texels, texture répétée) et permet de la déplacer, la mettre à l'échelle et la tourner à la souris, comme les éditeurs UV des logiciels 3D. Ses modes Arête et Sommet alignent une arête sur un axe, lui donnent un angle, y ajustent des tuiles ou font glisser des sommets sur la texture. Il déplace aussi les autres couches du matériau (bumpmap, détail, seconde texture de blend, masque d'envmap, masque de blend).
 
+Le canevas UV charge une texture détaillée en arrière-plan (jusqu’à 4096 pixels de côté), au lieu d’agrandir la vignette du navigateur. Le zoom conserve des texels nets ; la texture de base et les autres couches ont leurs propres aperçus.
+
 ## Ouvrir l'éditeur
 
 L'éditeur UV est la section **Éditeur UV** du panneau **Édition des faces** de l'[outil de texture](texture-tool.md) (`Maj+A`), ouverte par défaut. Sélectionnez une ou plusieurs faces dans la vue 3D pour la remplir.

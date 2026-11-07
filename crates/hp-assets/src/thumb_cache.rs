@@ -8,7 +8,7 @@ use hp_fs::{GameFs, SourceKind};
 
 use crate::jobs::{THUMB_SIZE, ThumbPixels};
 
-const MAGIC: &[u8; 8] = b"HPTHUMB2";
+const MAGIC: &[u8; 8] = b"HPTHUMB3";
 const HEADER_LEN: usize = 8 + 16;
 const MAX_FILE: u64 = 1 << 20;
 const EXT: &str = "hpthumb";
@@ -53,7 +53,7 @@ impl ThumbDiskCache {
             return None;
         }
         let meta = fs::metadata(&source.path).ok()?;
-        let mut h = fnv1a(FNV_OFFSET, source.path.to_string_lossy().to_lowercase().as_bytes());
+        let mut h = fnv1a(fnv1a(FNV_OFFSET, MAGIC), source.path.to_string_lossy().to_lowercase().as_bytes());
         h = fnv1a(h, &meta.len().to_le_bytes());
         h = fnv1a(h, &secs(meta.modified().ok()).to_le_bytes());
         h = fnv1a(h, &[0]);
@@ -195,7 +195,7 @@ mod tests {
         assert!(decode(&bytes[..bytes.len() / 2]).is_none());
         assert!(decode(b"HPTHUMB2").is_none());
         let mut old = encode(&px).expect("encodes");
-        old[..8].copy_from_slice(b"HPTHUMB1");
+        old[..8].copy_from_slice(b"HPTHUMB2");
         assert!(decode(&old).is_none());
         assert!(decode(&[0u8; 64]).is_none());
         let mut lying = bytes.clone();

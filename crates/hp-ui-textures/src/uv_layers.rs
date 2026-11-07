@@ -589,7 +589,7 @@ type Key = (String, Layer);
 pub struct LayerEditor {
     pending: HashMap<Key, Pending>,
     anchor: Option<(Key, LayerValues)>,
-    textures: HashMap<String, Option<LayerTexture>>,
+    textures: crate::uv_texture::Textures,
     pub(crate) show_base: bool,
     pub(crate) opacity: f32,
     pub(crate) keep_layers: bool,
@@ -600,7 +600,7 @@ impl Default for LayerEditor {
         Self {
             pending: HashMap::new(),
             anchor: None,
-            textures: HashMap::new(),
+            textures: crate::uv_texture::Textures::default(),
             show_base: true,
             opacity: 0.7,
             keep_layers: true,
@@ -697,29 +697,8 @@ impl LayerEditor {
     }
 
     pub(crate) fn texture(&mut self, ctx: &egui::Context, state: &AppState, name: &str) -> Option<LayerTexture> {
-        let key = hp_vmt::normalize_texture_path(name);
-        if let Some(hit) = self.textures.get(&key) {
-            return hit.clone();
-        }
         let fs = state.assets.fs()?;
-        if self.textures.len() > 24 {
-            self.textures.clear();
-        }
-        let loaded = fs.load_texture(&key, Some(512)).ok().and_then(|tex| {
-            let (w, h) = (tex.width as usize, tex.height as usize);
-            if w == 0 || h == 0 || tex.rgba.len() < w * h * 4 {
-                return None;
-            }
-            let mut rgba = tex.rgba;
-            for px in rgba.chunks_exact_mut(4) {
-                px[3] = 255;
-            }
-            let img = egui::ColorImage::from_rgba_unmultiplied([w, h], &rgba);
-            let handle = ctx.load_texture(format!("hp_uv_layer:{key}"), img, egui::TextureOptions::LINEAR_REPEAT);
-            Some(LayerTexture { handle, size: [tex.original_width.max(1), tex.original_height.max(1)] })
-        });
-        self.textures.insert(key, loaded.clone());
-        loaded
+        self.textures.get(ctx, fs, state.assets.generation(), name)
     }
 
     pub(crate) fn panel(
@@ -842,7 +821,7 @@ impl LayerEditor {
 
     fn shown_result(&mut self, baked: bool) {
         if baked {
-            self.textures.retain(|_, t| t.is_some());
+            self.textures.clear();
         }
     }
 }

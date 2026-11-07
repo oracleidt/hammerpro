@@ -4,6 +4,8 @@
 
 Le navigateur de textures est l'onglet **Textures** du dock de droite. Il affiche tous les matériaux du contenu monté (VPK du jeu, addons, Workshop, dossiers de textures personnalisés) dans une grille de vignettes, avec une recherche instantanée, des filtres, des favoris et le matériau actuel : celui que l'outil de texture, l'outil bloc et **Appliquer la texture actuelle** posent sur les faces.
 
+Les vignettes des matériaux blend montrent les deux textures de base avec une transition diagonale ; les blends à quatre couches montrent les quatre textures. Cet aperçu aide à choisir le matériau ; sur la carte, l’alpha peint sur le displacement contrôle toujours le mélange.
+
 ## Ouvrir le navigateur
 
 - Cliquez sur l'onglet **Textures** du dock de droite.

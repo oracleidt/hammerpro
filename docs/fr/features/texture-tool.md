@@ -18,13 +18,14 @@ La sélection se fait dans la vue 3D. La face sous la souris est soulignée ; le
 
 | Souris dans la vue 3D | Résultat |
 |---|---|
-| Clic | Sélectionne la face (remplace la sélection). |
+| Clic | Sélectionne la face (remplace la sélection) et prend son matériau comme matériau courant. |
 | `Ctrl+clic` | Ajoute ou retire la face. |
 | `Maj+clic` | Sélectionne toutes les faces du solide. `Ctrl+Maj+clic` les ajoute. |
 | Bouton gauche maintenu en balayant | Sélectionne les faces survolées l'une après l'autre (`Ctrl` ou `Maj` : ajoutées à la sélection). |
 | Clic dans le vide | Vide la sélection de faces. |
 | `Alt+clic` | Pipette : le matériau de la face devient le matériau actuel. |
 | Clic droit | Applique le matériau actuel à la face. |
+| `Ctrl+clic droit` | Applique `tools/toolsnodraw` à la face cliquée en conservant le matériau courant et la sélection. |
 | `Alt+clic droit` | Enroule : copie le matériau de la première face sélectionnée sur la face cliquée et prolonge sa texture par-dessus l'arête commune. Sélectionnez d'abord la face source. |
 | `Échap` | Vide la sélection de faces. |
 

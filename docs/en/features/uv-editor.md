@@ -4,6 +4,8 @@
 
 The UV editor draws the selected face over its texture (in texels, the texture repeated) and lets you move, scale and rotate it with the mouse, like the UV editors of 3D modelers. Its Edge and Vertex modes align an edge on an axis, give it an angle, fit tiles along it or drag vertices over the texture. It also moves the other layers of the material (bump map, detail, second blend texture, envmap mask, blend mask).
 
+The UV canvas loads a dedicated detailed texture in the background (up to 4096 pixels per side), rather than enlarging the browser thumbnail. Zooming in keeps texel edges sharp; the base and other layers have their own previews.
+
 ## Opening it
 
 The UV editor is the **UV editor** section of the **Face edit** panel of the [texture tool](texture-tool.md) (`Shift+A`), open by default. Select one or more faces in the 3D view to fill it.

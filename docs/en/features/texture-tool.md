@@ -18,13 +18,14 @@ Picking works in the 3D view. The faces under the mouse are outlined; the select
 
 | Mouse in the 3D view | Result |
 |---|---|
-| Click | Selects the face (replaces the selection). |
+| Click | Selects the face (replaces the selection) and makes its material the current material. |
 | `Ctrl+click` | Adds or removes the face. |
 | `Shift+click` | Selects every face of the solid. `Ctrl+Shift+click` adds them. |
 | Hold the left button and sweep | Selects the faces under the mouse one after the other (`Ctrl` or `Shift`: added to the selection). |
 | Click in the void | Clears the face selection. |
 | `Alt+click` | Eyedropper: the face material becomes the current material. |
 | Right click | Applies the current material to the face. |
+| `Ctrl+right click` | Applies `tools/toolsnodraw` to the clicked face, keeping the current material and face selection. |
 | `Alt+right click` | Wraps: copies the material of the first selected face onto the clicked face and continues its texture across the shared edge. Select the source face first. |
 | `Escape` | Clears the face selection. |
 

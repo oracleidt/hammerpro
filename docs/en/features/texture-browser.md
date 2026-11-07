@@ -4,6 +4,8 @@
 
 The texture browser is the **Textures** tab of the right dock. It lists every material of the mounted content (game VPKs, addons, Workshop, custom texture folders) in a thumbnail grid with an instant search, filters, favorites and the current material: the one the texture tool, the block tool and **Apply current texture** put on faces.
 
+Blend material thumbnails show both base textures across a diagonal transition; four-way blend materials show all four layers. This swatch helps choose a material; painted displacement alpha still controls the blend on a map.
+
 ## Opening it
 
 - Click the **Textures** tab of the right dock.

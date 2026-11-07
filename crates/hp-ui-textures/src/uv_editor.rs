@@ -1,6 +1,5 @@
 use egui::{Color32, Pos2, Rect, Sense, Stroke, Ui, Vec2, pos2, vec2};
 use glam::{DVec2, DVec3};
-use hp_app::state::ThumbState;
 use hp_app::{AppState, Severity, t, tf, theme};
 use hp_editor::{FaceEdit, FaceRef};
 use hp_vmf::Side;
@@ -482,14 +481,15 @@ impl UvEditor {
         let (i0, i1) = ((view_lo.x / tex.x).floor() as i64, (view_hi.x / tex.x).ceil() as i64);
         let (j0, j1) = ((view_lo.y / tex.y).floor() as i64, (view_hi.y / tex.y).ceil() as i64);
         let show_base = lv.is_none() || self.layers.show_base;
-        let thumb = state.assets.thumbnail(ui.ctx(), &material);
+        let base_texture = resolved
+            .as_ref()
+            .filter(|_| show_base)
+            .and_then(hp_vmt::Material::preview_texture)
+            .and_then(|name| self.layers.texture(ui.ctx(), state, &name));
         let tiles = (i1 - i0).saturating_mul(j1 - j0);
         if show_base && (0..=MAX_TEXTURE_REPEATS).contains(&tiles) {
             let uv = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
-            let mut mesh = match thumb {
-                ThumbState::Ready { texture, .. } => Some(egui::Mesh::with_texture(texture)),
-                _ => None,
-            };
+            let mut mesh = base_texture.as_ref().map(|texture| egui::Mesh::with_texture(texture.handle.id()));
             let mut outlines = Vec::new();
             for i in i0..i1 {
                 for j in j0..j1 {

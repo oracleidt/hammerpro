@@ -160,12 +160,57 @@ pub(crate) fn thumb_job(fs: &hp_fs::GameFs, name: &str, fresh: bool) -> Result<T
     if tex.width == 0 || tex.height == 0 || expected != Some(tex.rgba.len()) {
         return Err(broken(format!("bad pixel data for {}x{}", tex.width, tex.height)));
     }
+    if mat.is_blend() && mat.tool_kind(name).is_none() && mat.base_texture().as_deref() == Some(&texture) {
+        let count = if mat.shader_kind() == hp_vmt::ShaderKind::Lightmapped4WayBlend { 4 } else { 2 };
+        let usage = mat.alpha_usage(&|t| fs.texture_alpha_flag(t).unwrap_or(false));
+        let table = crate::material::preview_alpha_table(&usage);
+        for layer in 2..=count {
+            let Some(name) = mat.texture(&format!("$basetexture{layer}")) else { continue };
+            let Ok(other) = fs.load_texture(&name, Some(THUMB_SIZE)) else { continue };
+            blend_thumbnail_layer(&mut tex, &other, layer - 1, count, &table);
+        }
+    }
     Ok(ThumbPixels {
         width: tex.width,
         height: tex.height,
         rgba: tex.rgba,
         size: [tex.original_width, tex.original_height],
     })
+}
+
+fn blend_thumbnail_layer(
+    base: &mut hp_fs::LoadedTexture,
+    other: &hp_fs::LoadedTexture,
+    layer: u32,
+    count: u32,
+    alpha: &[u8; 256],
+) {
+    if other.width == 0 || other.height == 0 || other.rgba.len() != other.width as usize * other.height as usize * 4 {
+        return;
+    }
+    for y in 0..base.height {
+        for x in 0..base.width {
+            let (u, v) = ((x as f32 + 0.5) / base.width as f32, (y as f32 + 0.5) / base.height as f32);
+            // A material swatch shows the available layers, independent of a face's painted alpha.
+            let weight = if count == 2 {
+                ((u + v - 0.9) * 5.0).clamp(0.0, 1.0)
+            } else {
+                f32::from(u8::from(u >= 0.5)) + 2.0 * f32::from(u8::from(v >= 0.5))
+            };
+            let weight = if count == 2 { weight } else { f32::from(u8::from(weight as u32 == layer)) };
+            if weight == 0.0 {
+                continue;
+            }
+            let ox = (u64::from(x) * u64::from(other.width) / u64::from(base.width)) as usize;
+            let oy = (u64::from(y) * u64::from(other.height) / u64::from(base.height)) as usize;
+            let source = &other.rgba[(oy * other.width as usize + ox) * 4..][..4];
+            let target = &mut base.rgba[(y as usize * base.width as usize + x as usize) * 4..][..4];
+            for (i, value) in target.iter_mut().enumerate() {
+                let incoming = if i == 3 { alpha[source[3] as usize] } else { source[i] };
+                *value = (f32::from(*value) + (f32::from(incoming) - f32::from(*value)) * weight).round() as u8;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -283,6 +328,49 @@ mod tests {
         assert_eq!(alpha("t/cutout"), Some(0), "100 is below the 0.7 alpha test reference");
         assert_eq!(alpha("t/kept"), Some(255), "above the 0.35 reference: kept, not blended");
         assert_eq!(alpha("t/faded"), Some(50), "$alpha .5 times the texture alpha");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn blend_material_swatches_show_each_layer_and_keep_base_dimensions() {
+        let dir = scratch("blend_swatches");
+        let mats = dir.join("g/materials/t");
+        std::fs::create_dir_all(&mats).unwrap();
+        let colors = [[240, 20, 10, 0], [10, 220, 20, 0], [20, 10, 230, 0], [220, 200, 10, 0]];
+        for (i, color) in colors.iter().enumerate() {
+            let (w, h) = if i == 0 { (16, 8) } else { (4, 16) };
+            let image = hp_vtf::RgbaImage::new(w, h, color.repeat(w as usize * h as usize)).unwrap();
+            let opts =
+                hp_vtf::EncodeOptions { format: hp_vtf::EncodeFormat::Bgra8888, mipmaps: false, ..Default::default() };
+            std::fs::write(mats.join(format!("layer{i}.vtf")), hp_vtf::encode(&image, &opts).unwrap()).unwrap();
+        }
+        for (name, shader, params) in [
+            ("two", "WorldVertexTransition", "$basetexture2 t/layer1"),
+            ("four", "Lightmapped_4WayBlend", "$basetexture2 t/layer1 $basetexture3 t/layer2 $basetexture4 t/layer3"),
+            ("missing", "WorldVertexTransition", "$basetexture2 t/missing"),
+            ("plain", "LightmappedGeneric", "$basetexture2 t/layer1"),
+        ] {
+            std::fs::write(mats.join(format!("{name}.vmt")), format!("{shader} {{ $basetexture t/layer0 {params} }}"))
+                .unwrap();
+        }
+        let fs = hp_fs::GameFs::empty();
+        fs.add_game_dir(&dir.join("g")).unwrap();
+        let pixel = |tex: &ThumbPixels, x: usize, y: usize| -> [u8; 4] {
+            tex.rgba[(y * tex.width as usize + x) * 4..][..4].try_into().unwrap()
+        };
+        let opaque = |i: usize| [colors[i][0], colors[i][1], colors[i][2], 255];
+        let two = thumb_job(&fs, "t/two", false).unwrap();
+        assert_eq!((two.width, two.height, two.size), (16, 8, [16, 8]));
+        assert_eq!(pixel(&two, 0, 0), opaque(0));
+        assert_eq!(pixel(&two, 15, 7), opaque(1));
+        let four = thumb_job(&fs, "t/four", false).unwrap();
+        for (i, (x, y)) in [(0, 0), (15, 0), (0, 7), (15, 7)].into_iter().enumerate() {
+            assert_eq!(pixel(&four, x, y), opaque(i));
+        }
+        for name in ["t/missing", "t/plain"] {
+            let tex = thumb_job(&fs, name, false).unwrap();
+            assert!(tex.rgba.chunks_exact(4).all(|p| p == opaque(0)));
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

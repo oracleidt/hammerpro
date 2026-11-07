@@ -20,6 +20,7 @@ pub mod uv_editor;
 pub mod uv_layers;
 pub mod uv_ops;
 pub(crate) mod uv_select;
+mod uv_texture;
 pub(crate) mod vmt_params;
 pub mod vtfedit;
 

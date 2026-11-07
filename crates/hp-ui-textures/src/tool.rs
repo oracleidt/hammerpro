@@ -36,6 +36,7 @@ pub enum ClickKind {
     SelectSolid { add: bool },
     Eyedropper,
     Apply,
+    Nodraw,
     Wrap,
 }
 
@@ -43,7 +44,8 @@ pub fn click_kind(secondary: bool, m: egui::Modifiers) -> ClickKind {
     let ctrl = m.command || m.ctrl;
     match (secondary, m.alt, m.shift, ctrl) {
         (true, true, _, _) => ClickKind::Wrap,
-        (true, false, _, _) => ClickKind::Apply,
+        (true, false, _, true) => ClickKind::Nodraw,
+        (true, false, _, false) => ClickKind::Apply,
         (false, true, _, _) => ClickKind::Eyedropper,
         (false, false, true, add) => ClickKind::SelectSolid { add },
         (false, false, false, true) => ClickKind::Toggle,
@@ -53,20 +55,19 @@ pub fn click_kind(secondary: bool, m: egui::Modifiers) -> ClickKind {
 
 pub fn click_face(state: &mut AppState, face: FaceRef, kind: ClickKind) {
     match kind {
-        ClickKind::Select => state.doc.select_faces(&[face], SelectOp::Replace),
+        ClickKind::Select => {
+            state.doc.select_faces(&[face], SelectOp::Replace);
+            pick_material(state, face);
+        }
         ClickKind::Toggle => state.doc.select_faces(&[face], SelectOp::Toggle),
         ClickKind::SelectSolid { add } => {
             let all = state.doc.all_faces_of(&[ObjRef::Solid(face.solid)]);
             state.doc.select_faces(&all, if add { SelectOp::Add } else { SelectOp::Replace });
         }
-        ClickKind::Eyedropper => {
-            if let Some(side) = state.doc.face_side(face) {
-                let name = normalize_material(&side.material);
-                state.use_material(&name);
-            }
-        }
-        ClickKind::Apply => {
-            let material = state.current_material.clone();
+        ClickKind::Eyedropper => pick_material(state, face),
+        ClickKind::Apply | ClickKind::Nodraw => {
+            let material =
+                if kind == ClickKind::Nodraw { "tools/toolsnodraw".to_owned() } else { state.current_material.clone() };
             if let Err(e) = state.doc.apply_material(&[face], &material) {
                 state.notify(Severity::Error, tf!("tex.tool.apply_failed", e));
             }
@@ -82,6 +83,13 @@ pub fn click_face(state: &mut AppState, face: FaceRef, kind: ClickKind) {
                 None => state.notify(Severity::Warning, t!("tex.tool.wrap_needs_source")),
             }
         }
+    }
+}
+
+fn pick_material(state: &mut AppState, face: FaceRef) {
+    if let Some(side) = state.doc.face_side(face) {
+        let name = normalize_material(&side.material);
+        state.use_material(&name);
     }
 }
 
@@ -886,15 +894,23 @@ mod tests {
         );
         assert_eq!(click_kind(false, egui::Modifiers::ALT), ClickKind::Eyedropper);
         assert_eq!(click_kind(true, none), ClickKind::Apply);
+        assert_eq!(click_kind(true, egui::Modifiers::CTRL), ClickKind::Nodraw);
+        assert_eq!(click_kind(true, egui::Modifiers::COMMAND), ClickKind::Nodraw);
         assert_eq!(click_kind(true, egui::Modifiers::ALT), ClickKind::Wrap);
+        assert_eq!(click_kind(true, egui::Modifiers { alt: true, ctrl: true, ..none }), ClickKind::Wrap);
     }
 
     #[test]
     fn click_actions() {
         let mut state = hp_app::testing::test_state();
         let f = FaceRef::new(2, 0);
+        let material = state.doc.face_side(f).unwrap().material.to_ascii_lowercase();
+        let before = state.doc.face_side(f).unwrap().clone();
+        state.use_material("tools/toolsnodraw");
         click_face(&mut state, f, ClickKind::Select);
         assert_eq!(state.doc.selected_faces(), [f]);
+        assert_eq!(state.current_material, material);
+        assert_eq!(state.doc.face_side(f), Some(&before));
         click_face(&mut state, FaceRef::new(2, 1), ClickKind::Toggle);
         assert_eq!(state.doc.selected_faces().len(), 2);
         click_face(&mut state, FaceRef::new(2, 1), ClickKind::Toggle);
@@ -916,6 +932,20 @@ mod tests {
         state.doc.select_faces(&[FaceRef::new(2, 0)], SelectOp::Replace);
         click_face(&mut state, FaceRef::new(2, 2), ClickKind::Wrap);
         assert_eq!(state.doc.face_side(FaceRef::new(2, 2)).map(|s| s.material.as_str()), Some("brick/brickwall001a"));
+
+        let before = state.doc.face_side(f).unwrap().clone();
+        let selected = state.doc.selected_faces();
+        let steps = state.doc.history_len().0;
+        click_face(&mut state, f, click_kind(true, egui::Modifiers::CTRL));
+        assert_eq!(state.doc.face_side(f).unwrap().material, "tools/toolsnodraw");
+        assert_eq!(state.current_material, "brick/brickwall001a");
+        assert_eq!(state.doc.selected_faces(), selected);
+        assert_eq!(state.doc.face_side(FaceRef::new(2, 2)).unwrap().material, "brick/brickwall001a");
+        assert_eq!(state.doc.history_len().0, steps + 1);
+        assert!(state.doc.undo());
+        assert_eq!(state.doc.face_side(f), Some(&before));
+        assert!(state.doc.redo());
+        assert_eq!(state.doc.face_side(f).unwrap().material, "tools/toolsnodraw");
     }
 
     #[test]

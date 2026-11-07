@@ -954,8 +954,8 @@ pub const TR: TrTable = &[
     ("tex.face.select_none", "Select none", "Tout désélectionner"),
     (
         "tex.tool.hint",
-        "Click: select face (Ctrl: toggle, Shift: solid, Alt: pick material). Right click: apply. Alt + right click: wrap.",
-        "Clic : sélectionner une face (Ctrl : basculer, Maj : solide, Alt : prendre le matériau). Clic droit : appliquer. Alt + clic droit : enrouler.",
+        "Click: select face and pick its material (Ctrl: toggle, Shift: solid, Alt: pick material). Right click: apply. Ctrl + right click: nodraw. Alt + right click: wrap.",
+        "Clic : sélectionner une face (Ctrl : basculer, Maj : solide, Alt : prendre le matériau). Clic droit : appliquer. Ctrl + clic droit : nodraw. Alt + clic droit : enrouler.",
     ),
     ("tex.tool.apply_failed", "Could not apply the material: {0}", "Impossible d'appliquer le matériau : {0}"),
     ("tex.tool.wrap_failed", "Could not wrap the texture: {0}", "Impossible d'enrouler la texture : {0}"),
