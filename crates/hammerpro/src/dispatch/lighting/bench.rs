@@ -245,6 +245,7 @@ fn job(doc: &Document, gfx: &Gfx, fs: Option<hp_fs::GameFs>, around: Option<(DVe
         keep: quick,
         solids,
         fs,
+        resources_revision: 0,
         hdr: true,
         quality: hp_bspc::rad::RadQuality::Draft,
         bounces: super::bounces(options.bounced),

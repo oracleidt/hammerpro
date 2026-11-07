@@ -14,6 +14,8 @@ use hp_light::atlas::{Atlas, AtlasRect};
 use super::bsp::{self, FlatLightmaps, GeoFace, SideTable, SolidInfo};
 use super::child;
 
+mod geometry_cache;
+
 const BAKE_STACK: usize = 64 << 20;
 
 pub(crate) struct Job {
@@ -23,6 +25,7 @@ pub(crate) struct Job {
     pub keep: bool,
     pub solids: HashMap<u32, SolidInfo>,
     pub fs: Option<hp_fs::GameFs>,
+    pub resources_revision: u64,
     pub hdr: bool,
     pub quality: RadQuality,
     pub bounces: u32,
@@ -86,6 +89,7 @@ struct Cancelled;
 #[derive(Clone)]
 struct Compiled {
     serial: u64,
+    geometry_key: Option<u64>,
     bsp: Arc<hp_bsp::Bsp>,
     sides: Arc<SideTable>,
     leaked: bool,
@@ -236,16 +240,11 @@ fn note_memory(stage: &str) {
     }
 }
 
-fn take_compiled(cache: &std::sync::Mutex<Option<Compiled>>, serial: u64, snapshot: bool) -> Option<Compiled> {
-    let compiled = cache.lock().ok()?.take()?;
-    (!snapshot && compiled.serial == serial).then_some(compiled)
-}
-
-fn retain_compiled(cache: &std::sync::Mutex<Option<Compiled>>, ctx: &Ctx<'_>, compiled: &Compiled) {
+fn retain_compiled(cache: &std::sync::Mutex<Option<Compiled>>, ctx: &Ctx<'_>, compiled: &Compiled, quick: bool) {
     if let Ok(mut cache) = cache.lock()
         && !ctx.cancelled()
     {
-        *cache = Some(compiled.clone());
+        *cache = (quick || geometry_cache::fits_budget(compiled)).then(|| compiled.clone());
     }
 }
 
@@ -257,6 +256,7 @@ fn run(job: Job, ctx: &Ctx<'_>, cache: &std::sync::Mutex<Option<Compiled>>) -> O
         keep,
         solids,
         fs,
+        resources_revision,
         hdr,
         quality,
         bounces,
@@ -273,21 +273,19 @@ fn run(job: Job, ctx: &Ctx<'_>, cache: &std::sync::Mutex<Option<Compiled>>) -> O
     } = job;
     ctx.progress(BakePhase::Preparing, 0.01);
     let fs = fs.unwrap_or_else(hp_fs::GameFs::empty);
-    let reused = take_compiled(cache, serial, map.is_some());
-    let compiled = match (reused, map) {
-        (Some(c), _) => {
-            log::info!("lighting preview: the compiled map of the quick pass is used again");
-            c
-        }
-        (None, Some(map)) => match compile(map, factor, &fs, threads.0, ctx, serial, exe.as_deref()) {
-            Ok(c) => c,
-            Err(o) => return o,
-        },
-        (None, None) => return Outcome::Cancelled,
+    let inputs = geometry_cache::Inputs {
+        factor,
+        resources: resources_revision,
+        hdr,
+        threads: threads.0,
+        serial,
+        exe: exe.as_deref(),
     };
-    if keep {
-        retain_compiled(cache, ctx, &compiled);
-    }
+    let compiled = match geometry_cache::prepare(cache, map, &fs, ctx, inputs) {
+        Ok(compiled) => compiled,
+        Err(outcome) => return outcome,
+    };
+    retain_compiled(cache, ctx, &compiled, keep);
     let Compiled { bsp, sides, leaked, warnings, peak: compile_peak, .. } = compiled;
     let (faces, luxels) = bsp::lit_faces(&bsp);
     let geometry = {
@@ -386,7 +384,7 @@ fn compile(
     })?;
     let bsp = Arc::new(hp_bsp::Bsp::from_vec(out.bsp).map_err(|error| Outcome::Failed(error.to_string()))?);
     log::info!("lighting preview: geometry prepared outside the editor in {:.2} s", started.elapsed().as_secs_f32());
-    Ok(Compiled { serial, bsp, sides, leaked: out.leaked, warnings: out.warnings, peak: out.peak })
+    Ok(Compiled { serial, geometry_key: None, bsp, sides, leaked: out.leaked, warnings: out.warnings, peak: out.peak })
 }
 
 pub(super) fn compile_for_child(
@@ -501,7 +499,7 @@ fn compile_local(
         Ok(b) => Arc::new(b),
         Err(e) => return Err(Outcome::Failed(e.to_string())),
     };
-    Ok(Compiled { serial, bsp, sides: Arc::new(sides), leaked, warnings, peak: None })
+    Ok(Compiled { serial, geometry_key: None, bsp, sides: Arc::new(sides), leaked, warnings, peak: None })
 }
 
 enum LightError {
@@ -793,7 +791,7 @@ mod tests {
         assert!(eased(0.2, 0.8, 1e9, 10.0) <= 0.8 && eased(0.2, 0.8, 0.0, 10.0) == 0.2);
     }
 
-    fn solid(id: u32, side0: u32, lo: [f64; 3], hi: [f64; 3]) -> String {
+    pub(super) fn solid(id: u32, side0: u32, lo: [f64; 3], hi: [f64; 3]) -> String {
         let ([x0, y0, z0], [x1, y1, z1]) = (lo, hi);
         let sides = [
             (format!("({x0} {y1} {z1}) ({x1} {y1} {z1}) ({x1} {y0} {z1})"), "[1 0 0 0] 0.25", "[0 -1 0 0] 0.25"),
@@ -887,6 +885,7 @@ mod tests {
             keep: false,
             solids: solids.clone(),
             fs: None,
+            resources_revision: 0,
             hdr: true,
             quality: RadQuality::Draft,
             bounces: 2,
@@ -914,12 +913,12 @@ mod tests {
         };
         assert!(cache.lock().unwrap().is_some(), "the compiled map waits for the refined pass");
         let saved = cache.lock().unwrap().clone().unwrap();
-        assert!(take_compiled(&cache, 1, true).is_none(), "an explicit snapshot always takes precedence");
+        *cache.lock().unwrap() = None;
         wanted.store(0, Ordering::Release);
-        retain_compiled(&cache, &ctx, &saved);
+        retain_compiled(&cache, &ctx, &saved, false);
         assert!(cache.lock().unwrap().is_none(), "a cancelled document cannot repopulate the cache");
         wanted.store(7, Ordering::Release);
-        retain_compiled(&cache, &ctx, &saved);
+        retain_compiled(&cache, &ctx, &saved, false);
         let refine = |serial: u64| Job {
             id: 7,
             serial,
@@ -927,6 +926,7 @@ mod tests {
             keep: false,
             solids: solids_again.clone(),
             fs: None,
+            resources_revision: 0,
             hdr: true,
             quality: RadQuality::Draft,
             bounces: 2,
@@ -945,7 +945,7 @@ mod tests {
         assert!(matches!(run(job, &ctx, &cache), Outcome::Baked(_)));
         let Outcome::Baked(again) = run(refine(1), &ctx, &cache) else { panic!("the refined pass") };
         assert_eq!(again.faces.len(), baked.faces.len());
-        assert!(cache.lock().unwrap().is_none(), "used once");
+        assert!(cache.lock().unwrap().is_some(), "bounded unlit geometry survives the refined pass");
         assert_eq!(baked.unbound, 0, "every face found its solid");
         assert!(baked.faces.len() >= 6, "{} faces", baked.faces.len());
         assert!(baked.faces.iter().all(|f| (2..8).contains(&f.solid) && f.generation == u64::from(f.solid)));
@@ -982,6 +982,7 @@ mod tests {
             keep: false,
             solids: HashMap::new(),
             fs: None,
+            resources_revision: 0,
             hdr: true,
             quality: RadQuality::Draft,
             bounces: 2,
@@ -1010,6 +1011,7 @@ mod tests {
             keep: false,
             solids: HashMap::new(),
             fs: None,
+            resources_revision: 0,
             hdr: false,
             quality: RadQuality::Draft,
             bounces: 0,
@@ -1063,6 +1065,7 @@ mod tests {
                 keep: false,
                 solids: HashMap::new(),
                 fs: None,
+                resources_revision: 0,
                 hdr,
                 quality: RadQuality::Draft,
                 bounces: 0,
@@ -1164,6 +1167,7 @@ mod tests {
             keep: false,
             solids,
             fs: Some(fs),
+            resources_revision: 0,
             hdr: true,
             quality: RadQuality::Draft,
             bounces: 1,

@@ -76,6 +76,23 @@ pub(crate) struct SideTable {
 }
 
 impl SideTable {
+    pub(super) fn estimated_bytes(&self) -> usize {
+        let entries = self.sides.capacity() * (std::mem::size_of::<(u16, Vec<SideRef>)>() + 1);
+        entries
+            + self
+                .sides
+                .values()
+                .map(|sides| {
+                    sides.capacity() * std::mem::size_of::<SideRef>()
+                        + sides
+                            .iter()
+                            .filter_map(|side| side.blend.as_ref())
+                            .map(|blend| std::mem::size_of_val(&**blend))
+                            .sum::<usize>()
+                })
+                .sum::<usize>()
+    }
+
     pub fn from_map(map: &hp_vmf::Map) -> Self {
         let mut sides: HashMap<u16, Vec<SideRef>> = HashMap::new();
         let world = map.world.solids.iter();

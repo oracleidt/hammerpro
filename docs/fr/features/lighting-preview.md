@@ -62,6 +62,8 @@ Les modifications de géométrie, lumières et matériaux, ainsi que les paramè
 
 Le mode régional est un choix explicite pour l'activation automatique de l'aperçu sur les grandes cartes. La région suit la caméra quand elle quitte sa moitié centrale et reste immobile une seconde ; entrer dans une autre zone peut donc lancer un nouveau calcul. **Précalculer l'éclairage** revient à un résultat global sans suivi de caméra. Les valeurs existantes enregistrées de `lighting.auto_scope` sont conservées ; un champ absent utilise le nouveau défaut, `false`.
 
+Changer seulement la couleur, l’intensité, l’atténuation ou la direction d’une lumière statique existante réutilise la géométrie BSP et recalcule l’éclairage. Cela fonctionne aussi après la passe affinée ; la géométrie conservée est limitée à environ 128 Mio. Déplacer une lumière, modifier les brushes, les displacements ou les matériaux, ou actualiser les ressources montées reconstruit la géométrie. Le premier précalcul et le calcul de la lumière prennent toujours du temps ; ce cache ne rend pas une cuisson complète instantanée.
+
 ## L'onglet Éclairage
 
 **Affichage > Panneaux > Éclairage** affiche l'onglet.

@@ -62,6 +62,8 @@ Geometry, light and material changes, and calculation settings such as quality, 
 
 The regional option is an explicit choice for automatic preview activation on large maps. It follows the camera after it leaves the central half of the region and stays still for one second, so entering a different area can start another calculation. **Bake lighting** returns to a whole-map result with no camera following. Existing saved values of `lighting.auto_scope` are preserved; a missing value uses the new default, `false`.
 
+Changing only the color, intensity, attenuation or direction of an existing static light reuses the unlit BSP geometry and recalculates the lighting. This also works after the refined pass; the retained geometry is limited to approximately 128 MiB. Moving a light, changing brushes, displacements or materials, or updating mounted resources rebuilds the geometry. The first bake and the light calculation itself still take time; this cache does not make a complete lightmap bake instantaneous.
+
 ## The Lighting tab
 
 **View > Panels > Lighting** shows the tab.

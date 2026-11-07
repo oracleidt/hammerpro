@@ -320,6 +320,7 @@ impl Preview {
             keep: quick,
             solids,
             fs: state.assets.fs().cloned(),
+            resources_revision: state.assets.lighting_generation(),
             hdr: if lit { state.settings.render.light_preview_hdr } else { uses_hdr(state.settings.compile.lighting) },
             quality: rad_quality(s.quality),
             bounces: bounces(options.bounced),
