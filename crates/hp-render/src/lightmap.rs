@@ -333,8 +333,12 @@ impl Renderer {
         self.lightmap.ldr
     }
 
+    pub fn has_baked_lightmaps(&self) -> bool {
+        !self.lightmap.blocks.is_empty()
+    }
+
     pub(crate) fn baked_view(&self, cam: &crate::camera::Camera) -> bool {
-        !cam.is_ortho && self.lightmap.display == LightmapDisplay::Baked && !self.lightmap.blocks.is_empty()
+        !cam.is_ortho && self.lightmap.display == LightmapDisplay::Baked && self.has_baked_lightmaps()
     }
 
     pub(crate) fn baked_lit(&self, cam: &crate::camera::Camera, mode: crate::RenderMode) -> bool {

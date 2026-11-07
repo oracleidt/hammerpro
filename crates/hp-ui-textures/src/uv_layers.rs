@@ -610,7 +610,7 @@ impl Default for LayerEditor {
 
 pub(crate) fn resolved_material(state: &AppState, material: &str) -> Option<hp_vmt::Material> {
     let mat = state.assets.fs()?.material(material)?;
-    Some(mat.resolve_fallbacks(hp_vmt::DEFAULT_DX_LEVEL, false))
+    Some(mat.resolve_fallbacks(hp_vmt::DEFAULT_DX_LEVEL, state.assets.material_hdr()))
 }
 
 pub(crate) fn layers_of(mat: &hp_vmt::Material) -> Vec<Layer> {

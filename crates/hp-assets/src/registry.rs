@@ -44,6 +44,8 @@ pub(crate) struct AnaEntry {
 
 #[derive(Default)]
 pub(crate) struct Materials {
+    pub hdr: bool,
+    pub mode_epoch: u64,
     pub records: Vec<MatRecord>,
     pub by_name: [AHashMap<String, MaterialId>; 5],
     pub raw_world: AHashMap<String, MaterialId>,
@@ -319,7 +321,10 @@ impl AssetManager {
             e.loading = true;
             e.queued = true;
         }
-        self.shared.push(lane, Job::Material { name: name.to_owned(), fresh, env });
+        self.shared.push(
+            lane,
+            Job::Material { name: name.to_owned(), fresh, hdr: self.mats.hdr, mode_epoch: self.mats.mode_epoch, env },
+        );
     }
 
     fn material_kind(&self, id: MaterialId) -> MatKind {
@@ -540,8 +545,8 @@ impl AssetManager {
 
     pub(crate) fn handle_result(&mut self, r: JobResult) {
         match r {
-            JobResult::Material { name, epoch, data } => {
-                if epoch == self.mount_gen {
+            JobResult::Material { name, epoch, hdr, mode_epoch, data } => {
+                if epoch == self.mount_gen && hdr == self.mats.hdr && mode_epoch == self.mats.mode_epoch {
                     self.on_material(name, data);
                 }
             }
@@ -858,6 +863,9 @@ impl AssetManager {
     pub(crate) fn begin_frame_impl(&mut self, ctx: &egui::Context, gfx: Option<&mut Gfx>) {
         self.shared.set_ctx(ctx);
         self.shared.frame.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if let Some(gfx) = gfx.as_ref() {
+            self.update_material_hdr(&gfx.renderer);
+        }
         self.poll_results();
         self.check_fs_changes();
         self.update_watch();
@@ -879,6 +887,43 @@ impl AssetManager {
     pub(crate) fn note_gpu(&self, renderer: &Renderer) {
         let v = if renderer.supports_bc() { crate::queue::BC_YES } else { crate::queue::BC_NO };
         self.shared.bc.store(v, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub(crate) fn update_material_hdr(&mut self, renderer: &Renderer) {
+        let baked = (renderer.lightmap_display() == hp_render::lightmap::LightmapDisplay::Baked
+            && renderer.has_baked_lightmaps())
+        .then(|| !renderer.lightmap_ldr());
+        let hdr = self
+            .play_world
+            .material_hdr()
+            .or(baked)
+            .unwrap_or_else(|| hp_app::runtime::render::render_display().light_hdr);
+        self.set_material_hdr(hdr);
+    }
+
+    fn set_material_hdr(&mut self, hdr: bool) {
+        if self.mats.hdr == hdr {
+            return;
+        }
+        self.mats.hdr = hdr;
+        self.mats.mode_epoch = self.mats.mode_epoch.wrapping_add(1);
+        self.mats.infos.clear();
+        let names: Vec<String> = self.mats.analyses.keys().cloned().collect();
+        for name in names {
+            let used = self.mats.users.get(&name).is_some_and(|ids| {
+                ids.iter().any(|id| self.mats.records.get((*id as usize).wrapping_sub(1)).is_some_and(|r| !r.cold))
+            }) || self.preview.as_ref().is_some_and(|p| p.mats.contains_key(&name));
+            if used {
+                if let Some(e) = self.mats.analyses.get_mut(&name) {
+                    e.loading = true;
+                    e.queued = false;
+                }
+                self.queue_analysis(&name, Lane::High);
+            } else {
+                self.mats.analyses.remove(&name);
+            }
+        }
+        self.generation = self.generation.wrapping_add(1);
     }
 
     pub(crate) fn process_uploads(&mut self, gfx: &mut Gfx) {
@@ -912,5 +957,106 @@ impl AssetManager {
             renderer.destroy_texture(old_id);
         }
         self.mats.mark_texture_users(&up.name);
+    }
+}
+
+#[cfg(test)]
+mod hdr_tests {
+    use super::*;
+    use crate::material::material_job;
+
+    #[test]
+    fn material_mode_changes_refresh_used_materials_and_reject_stale_results() {
+        let dir = std::env::temp_dir().join(format!("hp-material-hdr-{}", std::process::id()));
+        let materials = dir.join("materials/hp_hdr");
+        std::fs::create_dir_all(&materials).unwrap();
+        std::fs::write(
+            materials.join("wall.vmt"),
+            r#"LightmappedGeneric {
+            $basetexture hp_hdr/ldr $bumpmap hp_hdr/normal_ldr $envmap env_cubemap
+            $envmaptint "[.8 .7 .6]"
+            LightmappedGeneric_HDR_DX9 {
+                $basetexture hp_hdr/hdr $bumpmap hp_hdr/normal_hdr $envmaptint "[.2 .3 .4]"
+            }
+        }"#,
+        )
+        .unwrap();
+        let fs = hp_fs::GameFs::empty();
+        fs.add_game_dir(&dir).unwrap();
+        let name = "hp_hdr/wall";
+        let mut am = AssetManager::new(&hp_app::settings::Settings::default());
+        am.mount_ticket += 1;
+        am.fgd_ticket += 1;
+        *am.shared.env.write() = None;
+        am.mats.hdr = false;
+        am.asset_material(name, MatKind::World);
+        am.on_material(name.to_owned(), material_job(&fs, name, false, false));
+        let AnaLook::Ready(before) = am.mats.ana_look(name) else { panic!("LDR ready") };
+        assert_eq!(before.texture.as_deref(), Some("hp_hdr/ldr"));
+        let before = before.clone();
+        let generation = am.generation;
+        am.set_material_hdr(true);
+        assert!(am.mats.hdr && am.mats.infos.is_empty());
+        assert_eq!(am.generation, generation + 1);
+        assert!(am.mats.analyses[name].loading);
+        let AnaLook::Ready(visible) = am.mats.ana_look(name) else { panic!("keep displayed material during load") };
+        assert_eq!(&before, visible);
+        am.handle_result(JobResult::Material {
+            name: name.to_owned(),
+            epoch: am.mount_gen,
+            hdr: false,
+            mode_epoch: 0,
+            data: material_job(&fs, name, false, false),
+        });
+        assert!(am.mats.infos.is_empty() && am.mats.analyses[name].loading, "stale LDR cannot finish the HDR request");
+        am.handle_result(JobResult::Material {
+            name: name.to_owned(),
+            epoch: am.mount_gen,
+            hdr: true,
+            mode_epoch: am.mats.mode_epoch,
+            data: material_job(&fs, name, false, true),
+        });
+        let AnaLook::Ready(hdr) = am.mats.ana_look(name) else { panic!("HDR ready") };
+        assert_eq!(hdr.texture.as_deref(), Some("hp_hdr/hdr"));
+        assert_eq!(hdr.bump.as_ref().unwrap().texture, "hp_hdr/normal_hdr");
+        assert_eq!(hdr.envmap.as_ref().unwrap().tint, [0.2, 0.3, 0.4]);
+        assert_eq!(am.mats.infos[name].base_texture.as_deref(), Some("hp_hdr/hdr"));
+        am.set_material_hdr(true);
+        assert!(!am.mats.analyses[name].loading, "unchanged HDR does not reload every frame");
+        am.set_material_hdr(false);
+        am.handle_result(JobResult::Material {
+            name: name.to_owned(),
+            epoch: am.mount_gen,
+            hdr: true,
+            mode_epoch: am.mats.mode_epoch - 1,
+            data: material_job(&fs, name, false, true),
+        });
+        assert!(am.mats.infos.is_empty(), "stale HDR cannot replace the new LDR selection");
+        am.handle_result(JobResult::Material {
+            name: name.to_owned(),
+            epoch: am.mount_gen,
+            hdr: false,
+            mode_epoch: am.mats.mode_epoch,
+            data: material_job(&fs, name, false, false),
+        });
+        let AnaLook::Ready(ldr) = am.mats.ana_look(name) else { panic!("LDR restored") };
+        assert_eq!(ldr.bump.as_ref().unwrap().texture, "hp_hdr/normal_ldr");
+        assert_eq!(ldr.envmap.as_ref().unwrap().tint, [0.8, 0.7, 0.6]);
+        let old_epoch = am.mats.mode_epoch;
+        am.set_material_hdr(true);
+        am.set_material_hdr(false);
+        am.handle_result(JobResult::Material {
+            name: name.to_owned(),
+            epoch: am.mount_gen,
+            hdr: false,
+            mode_epoch: old_epoch,
+            data: material_job(&fs, name, false, false),
+        });
+        assert!(
+            am.mats.infos.is_empty() && am.mats.analyses[name].loading,
+            "LDR from an earlier round cannot complete the new LDR request"
+        );
+        drop(am);
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

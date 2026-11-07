@@ -298,6 +298,9 @@ pub trait AssetsApi {
     fn sounds(&self) -> Arc<Vec<hp_fs::AssetEntry>>;
     fn source_label(&self, source: u32) -> String;
     fn material_info(&mut self, name: &str) -> Option<Arc<MaterialInfo>>;
+    fn material_hdr(&self) -> bool {
+        false
+    }
     fn thumbnail(&mut self, ctx: &egui::Context, name: &str) -> ThumbState;
     fn model_info(&mut self, path: &str) -> ModelState;
     fn set_player_model(&mut self, _pose: Option<PlayerModelPose>) {}

@@ -51,6 +51,12 @@ struct PlayRopes {
     colors: Vec<[u8; 4]>,
 }
 
+impl PlayWorld {
+    pub(crate) fn material_hdr(&self) -> Option<bool> {
+        self.wanted.as_ref().map(|(world, _)| world.light.mode == LightMode::Hdr)
+    }
+}
+
 struct DetailModel {
     path: String,
     transform: glam::DMat4,
@@ -1111,6 +1117,18 @@ fn disp_normals(verts: &[hp_editor::limits::world::WorldVertex], tris: &[u32], f
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn material_mode_comes_from_the_compiled_map() {
+        let mut play = PlayWorld::default();
+        assert_eq!(play.material_hdr(), None);
+        for (mode, hdr) in [(LightMode::Ldr, false), (LightMode::Hdr, true), (LightMode::Fullbright, false)] {
+            let world =
+                BspWorld { light: world_light::WorldLight { mode, ..Default::default() }, ..Default::default() };
+            play.wanted = Some((Arc::new(world), None));
+            assert_eq!(play.material_hdr(), Some(hdr));
+        }
+    }
 
     #[test]
     fn baked_region_holds_its_models() {

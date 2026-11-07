@@ -241,10 +241,15 @@ fn alpha_flags(usage: &hp_vmt::AlphaUsage) -> (MaterialFlags, f32) {
     (flags, usage.alpha_test.unwrap_or(hp_vmt::quantize_alpha_reference(hp_vmt::DEFAULT_ALPHA_TEST_REFERENCE)))
 }
 
+#[cfg(test)]
 pub(crate) fn analyze(name: &str, mat: &Material, texture_flags: &dyn Fn(&str) -> u32) -> MatAnalysis {
+    let mat = mat.resolve_fallbacks(hp_vmt::DEFAULT_DX_LEVEL, false);
+    analyze_resolved(name, &mat, texture_flags)
+}
+
+fn analyze_resolved(name: &str, mat: &Material, texture_flags: &dyn Fn(&str) -> u32) -> MatAnalysis {
     let texture_has_alpha =
         |t: &str| texture_flags(t) & (hp_vtf::flags::ONEBITALPHA | hp_vtf::flags::EIGHTBITALPHA) != 0;
-    let mat = mat.resolve_fallbacks(hp_vmt::DEFAULT_DX_LEVEL, false);
     let tool = mat.tool_kind(name);
     let texture = mat.preview_texture();
     let texture2 = if mat.is_blend() { mat.base_texture2() } else { None };
@@ -252,7 +257,7 @@ pub(crate) fn analyze(name: &str, mat: &Material, texture_flags: &dyn Fn(&str) -
     let (texture3, texture4) =
         if blend4 { (mat.texture("$basetexture3"), mat.texture("$basetexture4")) } else { (None, None) };
     let alpha = mat.get_f32("srgb?$alpha").filter(|v| v.is_finite()).unwrap_or_else(|| mat.alpha()).clamp(0.0, 1.0);
-    let usage = shown_usage(&mat, mat.alpha_usage(&texture_has_alpha), texture.as_deref());
+    let usage = shown_usage(mat, mat.alpha_usage(&texture_has_alpha), texture.as_deref());
     let (mut flags, alpha_ref) = if tool.is_some() {
         let mut f = MaterialFlags::empty();
         if mat.translucent() || alpha < 0.999 {
@@ -287,7 +292,7 @@ pub(crate) fn analyze(name: &str, mat: &Material, texture_flags: &dyn Fn(&str) -
     if mat.is_unlit() {
         flags |= MaterialFlags::UNLIT;
     }
-    let self_illum = self_illum_of(&mat).filter(|s| {
+    let self_illum = self_illum_of(mat).filter(|s| {
         tool.is_none()
             && (s.mask.is_some() || !flags.intersects(MaterialFlags::TRANSLUCENT | MaterialFlags::ALPHA_TEST))
     });
@@ -298,17 +303,17 @@ pub(crate) fn analyze(name: &str, mat: &Material, texture_flags: &dyn Fn(&str) -
     let c = mat.color();
     let tint = [c[0].clamp(0.0, 1.0), c[1].clamp(0.0, 1.0), c[2].clamp(0.0, 1.0), alpha];
     let decal_scale = mat.get_f32("$decalscale").filter(|s| s.is_finite() && *s > 0.0).unwrap_or(1.0);
-    let scroll = texture_scroll(&mat);
-    let uv = texture_transform(&mat);
+    let scroll = texture_scroll(mat);
+    let uv = texture_transform(mat);
     let modulates = flags.intersects(MaterialFlags::MODULATE | MaterialFlags::DECAL_MODULATE);
     let shows_alpha = tool.is_none() && (modulates || usage.is_see_through());
     let detail = (tool.is_none() && !modulates && texture.is_some() && texture == mat.base_texture())
-        .then(|| crate::detail::analyze_detail(&mat, texture_flags))
+        .then(|| crate::detail::analyze_detail(mat, texture_flags))
         .flatten();
-    let water = crate::water::analyze_water(&mat);
-    let bump = (tool.is_none() && !modulates).then(|| crate::bump::analyze_bump(&mat)).flatten();
+    let water = crate::water::analyze_water(mat);
+    let bump = (tool.is_none() && !modulates).then(|| crate::bump::analyze_bump(mat)).flatten();
     let envmap =
-        (tool.is_none() && !modulates && water.is_none()).then(|| crate::envmap::analyze_envmap(&mat)).flatten();
+        (tool.is_none() && !modulates && water.is_none()).then(|| crate::envmap::analyze_envmap(mat)).flatten();
     MatAnalysis {
         texture,
         texture2,
@@ -561,14 +566,15 @@ pub(crate) fn load_fresh(fs: &hp_fs::GameFs, name: &str) -> Option<Material> {
     }
 }
 
-pub(crate) fn material_job(fs: &hp_fs::GameFs, name: &str, fresh: bool) -> MaterialData {
+pub(crate) fn material_job(fs: &hp_fs::GameFs, name: &str, fresh: bool, hdr: bool) -> MaterialData {
     let mat: Option<Arc<Material>> = if fresh { load_fresh(fs, name).map(Arc::new) } else { fs.material(name) };
     match mat {
         None => MaterialData { analysis: None, info: Arc::new(make_info(name, None, None, (0, 0), 0)) },
         Some(m) => {
-            let mut analysis = analyze(name, &m, &|t| fs.texture_flags(t).unwrap_or(0));
+            let m = m.resolve_fallbacks(hp_vmt::DEFAULT_DX_LEVEL, hdr);
+            let mut analysis = analyze_resolved(name, &m, &|t| fs.texture_flags(t).unwrap_or(0));
             if let Some(w) = analysis.water.as_mut() {
-                crate::water::finish(fs, w);
+                crate::water::finish(fs, w, hdr);
             }
             let size = analysis.texture.as_deref().and_then(|t| fs.texture_size(t)).unwrap_or((0, 0));
             let source = fs.material_source(name).unwrap_or(0);
@@ -581,6 +587,40 @@ pub(crate) fn material_job(fs: &hp_fs::GameFs, name: &str, fresh: bool) -> Mater
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn water_jobs_follow_the_native_hdr_and_ldr_parameter_sections() {
+        let dir = std::env::temp_dir().join(format!("hp-water-hdr-job-{}", std::process::id()));
+        let materials = dir.join("materials/hp_hdr");
+        std::fs::create_dir_all(&materials).unwrap();
+        std::fs::write(
+            materials.join("water.vmt"),
+            r#"Water {
+            $normalmap dev/water_normal $reflecttexture _rt_WaterReflection $refracttexture _rt_WaterRefraction
+            $reflectamount .87 $refractamount .91 $bottommaterial hp_hdr/bottom
+            Water_DX9_HDR { $reflectamount .23 $refractamount .63 }
+            Water_DX90 { $reflectamount .31 $refractamount .41 }
+        }"#,
+        )
+        .unwrap();
+        std::fs::write(
+            materials.join("bottom.vmt"),
+            r#"Water {
+            $refractamount .17 Water_DX9_HDR { $refractamount .73 }
+        }"#,
+        )
+        .unwrap();
+        let fs = hp_fs::GameFs::empty();
+        fs.add_game_dir(&dir).unwrap();
+        for (hdr, reflect, refract, bottom) in [(false, 0.31, 0.41, 0.17), (true, 0.23, 0.63, 0.73)] {
+            let job = material_job(&fs, "hp_hdr/water", false, hdr);
+            let water = job.analysis.as_ref().unwrap().water.as_ref().unwrap();
+            assert_eq!(water.desc.reflect_amount.to_bits(), f32::to_bits(reflect));
+            assert_eq!(water.desc.refract_amount.to_bits(), f32::to_bits(refract));
+            assert_eq!(water.desc.bottom.unwrap().refract_amount.to_bits(), f32::to_bits(bottom));
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
 
     fn mat(src: &str) -> Material {
         hp_vmt::parse(src).unwrap_or_default()

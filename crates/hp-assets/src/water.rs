@@ -122,11 +122,11 @@ pub(crate) fn frame_grid(count: u32) -> [u32; 2] {
     [cols, rows]
 }
 
-pub(crate) fn finish(fs: &hp_fs::GameFs, w: &mut WaterAnalysis) {
+pub(crate) fn finish(fs: &hp_fs::GameFs, w: &mut WaterAnalysis, hdr: bool) {
     if let Some(name) = &w.bottom_material
         && let Some(m) = fs.material(name)
     {
-        let m = m.resolve_fallbacks(hp_vmt::DEFAULT_DX_LEVEL, false);
+        let m = m.resolve_fallbacks(hp_vmt::DEFAULT_DX_LEVEL, hdr);
         if m.shader_kind() == hp_vmt::ShaderKind::Water {
             w.desc.bottom = Some(bottom_of(&m));
         }

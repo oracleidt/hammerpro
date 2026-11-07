@@ -397,6 +397,7 @@ fn transform_mesh(mesh: &mut hp_render::ObjectMesh, m: &glam::DMat4) {
 impl AssetManager {
     pub(crate) fn sync_scene_impl(&mut self, doc: &mut Document, renderer: &mut Renderer, opts: &SceneOptions) {
         self.note_gpu(renderer);
+        self.update_material_hdr(renderer);
         self.poll_results();
         let restored =
             (doc.pending_changes().everything || !self.scene.initialized) && self.restore_scene(doc, renderer);

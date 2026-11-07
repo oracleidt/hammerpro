@@ -13,7 +13,7 @@ use crate::thumb_cache::ThumbDiskCache;
 pub(crate) const THUMB_SIZE: u32 = 128;
 
 pub(crate) enum Job {
-    Material { name: String, fresh: bool, env: FsEnv },
+    Material { name: String, fresh: bool, hdr: bool, mode_epoch: u64, env: FsEnv },
     Texture { name: String, target: TexTarget, env: FsEnv },
     Thumb { name: String, fresh: bool, last_seen: Arc<AtomicU64>, env: FsEnv },
     Model { path: String, env: FsEnv },
@@ -70,7 +70,7 @@ pub(crate) enum MountOutcome {
 }
 
 pub(crate) enum JobResult {
-    Material { name: String, epoch: u64, data: MaterialData },
+    Material { name: String, epoch: u64, hdr: bool, mode_epoch: u64, data: MaterialData },
     Texture { name: String, target: TexTarget, epoch: u64, data: Option<PreparedTexture>, held: crate::queue::Held },
     Thumb { name: String, epoch: u64, data: Option<ThumbPixels> },
     ThumbDropped { name: String },
@@ -85,9 +85,9 @@ pub(crate) enum JobResult {
 
 pub(crate) fn run(job: Job, shared: &Shared) -> Option<JobResult> {
     match job {
-        Job::Material { name, fresh, env } => {
-            let data = material_job(&env.fs, &name, fresh);
-            Some(JobResult::Material { name, epoch: env.epoch, data })
+        Job::Material { name, fresh, hdr, mode_epoch, env } => {
+            let data = material_job(&env.fs, &name, fresh, hdr);
+            Some(JobResult::Material { name, epoch: env.epoch, hdr, mode_epoch, data })
         }
         Job::Texture { name, target, env } => {
             shared.inflight.wait_below(INFLIGHT_TEXTURE_BYTES, &shared.shutdown);
@@ -390,7 +390,7 @@ mod mat_fuzz_tmp {
             let name = m.name.clone();
             let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let _ = super::thumb_job(&fs, &name, false);
-                let _ = crate::material::material_job(&fs, &name, false);
+                let _ = crate::material::material_job(&fs, &name, false, false);
             }));
             if r.is_err() {
                 bad.push(name);

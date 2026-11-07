@@ -214,6 +214,48 @@ fn editor_cubemaps_follow_the_env_cubemaps() {
 }
 
 #[test]
+fn switching_hdr_refreshes_the_displayed_material_and_restores_ldr_pixels() {
+    let _serial = serial();
+    let Some(mut gfx) = gfx() else {
+        eprintln!("no GPU adapter available: test skipped");
+        return;
+    };
+    let root = fake_install("material_hdr_gpu");
+    let mats = root.join("garrysmod/materials/test");
+    std::fs::write(
+        mats.join("mirror.vmt"),
+        r#"LightmappedGeneric {
+        $basetexture test/red
+        LightmappedGeneric_HDR_DX9 { $basetexture test/green }
+    }"#,
+    )
+    .unwrap();
+    std::fs::write(mats.join("red.vtf"), vtf(16, [255, 0, 0, 255])).unwrap();
+    std::fs::write(mats.join("green.vtf"), vtf(16, [0, 255, 0, 255])).unwrap();
+    let saved = render_display();
+    publish_render_display(RenderDisplay { light_hdr: false, ..saved });
+    let mut am = AssetManager::new(&fake_settings(&root));
+    assert!(am.wait_until_mounted(Duration::from_secs(30)));
+    let mut doc = Document::from_map(hp_vmf::parse(&vmf(64.0, false)).unwrap());
+    settle(&mut am, &mut doc, &mut gfx);
+    assert!(!am.material_hdr());
+    let ldr = shot(&mut am, &mut doc, &mut gfx, false, "material_ldr");
+    publish_render_display(RenderDisplay { light_hdr: true, ..saved });
+    settle(&mut am, &mut doc, &mut gfx);
+    assert!(am.material_hdr());
+    let hdr = shot(&mut am, &mut doc, &mut gfx, false, "material_hdr");
+    let red = |image: &[u8]| image.chunks_exact(4).filter(|p| p[0] > 80 && p[1] < 20).count();
+    let green = |image: &[u8]| image.chunks_exact(4).filter(|p| p[1] > 80 && p[0] < 20).count();
+    assert!(red(&ldr) > 10_000 && green(&ldr) == 0, "LDR uses the red base texture");
+    assert!(green(&hdr) > 10_000, "HDR uses its green replacement, not the cached LDR descriptor");
+    publish_render_display(RenderDisplay { light_hdr: false, ..saved });
+    settle(&mut am, &mut doc, &mut gfx);
+    let restored = shot(&mut am, &mut doc, &mut gfx, false, "material_ldr_restored");
+    assert_eq!(restored, ldr, "switching back restores the original pixels");
+    publish_render_display(saved);
+}
+
+#[test]
 fn editor_probes_take_the_box_of_their_parallax_obb() {
     let _serial = serial();
     let Some(mut gfx) = gfx() else {

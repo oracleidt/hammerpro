@@ -214,7 +214,7 @@ impl AssetManager {
             lists_pending: false,
             generation: 1,
             lighting_generation: 1,
-            mats: registry::Materials::default(),
+            mats: registry::Materials { hdr: settings.render.light_preview_hdr, ..Default::default() },
             thumbs: thumbs::Thumbs::default(),
             models: models::Models::default(),
             scene: scene::SceneSync::default(),
@@ -403,6 +403,10 @@ impl hp_app::AssetsApi for AssetManager {
 
     fn material_info(&mut self, name: &str) -> Option<Arc<MaterialInfo>> {
         self.material_info_impl(name)
+    }
+
+    fn material_hdr(&self) -> bool {
+        self.mats.hdr
     }
 
     fn thumbnail(&mut self, ctx: &egui::Context, name: &str) -> ThumbState {

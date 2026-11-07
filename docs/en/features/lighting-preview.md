@@ -37,6 +37,8 @@ The `light`, `light_spot`, `light_environment` and `light_dynamic` entities ligh
 - With **Relief (normal maps)** on (default), the normal maps of the materials give the surfaces their relief.
 - A material with `$nodiffusebumplighting 1` keeps a flat diffuse response while its normal map still shapes cubemap reflections. Baked lighting uses a flat lightmap for that material.
 
+Material previews follow the active HDR or LDR mode, including their base texture, normal map and reflection parameters. The player view follows the compiled map, the baked preview follows its bake, and the other editor views follow **HDR light values**. Switching modes refreshes the used materials automatically.
+
 ## Baked lighting preview (Ctrl+F5)
 
 Like Hammer++'s "3D Lighting Preview", but the numbers are the compiler's: the map is compiled in memory by the Hammer Pro compiler (the geometry step) and lit by its lighting step (VRAD's) in a separate process. The compiled faces are drawn with their lightmaps (the four bumped lightmaps of bump mapped faces, for the relief of the normal maps) and shaded exactly like the compiled lighting of the [player view](player-view.md) (the same bump weights, cubemap reflections, self illumination and texture scrolling, the LDR lightmaps of a map compiled without HDR the way the game draws them, the sky seen through the sky faces), so the preview gives the picture of the compiled map in game, and props are lit by the ambient cubes, world lights and static prop vertex lighting of the lit map. The static props follow the compile settings for prop shadows and prop lighting. A prop is lit at its lighting origin like in game: the `lightingorigin` entity when the key names one, else the center of the model.
