@@ -13,6 +13,7 @@ mod jobs;
 mod lights;
 mod lods;
 mod material;
+mod material_uv;
 mod meshes;
 mod model_thumbs;
 mod models;

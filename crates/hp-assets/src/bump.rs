@@ -29,6 +29,9 @@ pub(crate) struct BumpAnalysis {
     pub uv: [f32; 4],
     pub uv_cross: [f32; 2],
     pub scroll: [f32; 2],
+    pub uv2: [f32; 4],
+    pub uv2_cross: [f32; 2],
+    pub scroll2: [f32; 2],
 }
 
 impl BumpAnalysis {
@@ -56,6 +59,9 @@ impl BumpAnalysis {
             uv: self.uv,
             uv_cross: self.uv_cross,
             scroll: self.scroll,
+            uv2: Some(self.uv2),
+            uv2_cross: self.uv2_cross,
+            scroll2: Some(self.scroll2),
         })
     }
 }
@@ -78,6 +84,7 @@ pub(crate) fn analyze_bump(mat: &Material) -> Option<BumpAnalysis> {
     let texture2 = if kind == ShaderKind::WorldVertexTransition || four { mat.texture("$bumpmap2") } else { None };
     let blend4 = four.then(|| four_way_bump_factors(mat));
     let frame = mat.get_i32("$bumpframe").and_then(|f| u32::try_from(f).ok()).unwrap_or(0).min(1023);
+    let (primary, secondary) = crate::material_uv::bump_keys(mat);
     Some(BumpAnalysis {
         texture,
         texture2,
@@ -85,9 +92,12 @@ pub(crate) fn analyze_bump(mat: &Material) -> Option<BumpAnalysis> {
         frame,
         ssbump: mat.flag("$ssbump"),
         diffuse: !mat.flag("$nodiffusebumplighting"),
-        uv: texture_transform_of(mat, "$bumptransform"),
-        uv_cross: texture_transform_cross_of(mat, "$bumptransform"),
-        scroll: texture_scroll_of(mat, "$bumptransform"),
+        uv: texture_transform_of(mat, primary),
+        uv_cross: texture_transform_cross_of(mat, primary),
+        scroll: texture_scroll_of(mat, primary),
+        uv2: texture_transform_of(mat, secondary),
+        uv2_cross: texture_transform_cross_of(mat, secondary),
+        scroll2: texture_scroll_of(mat, secondary),
     })
 }
 
@@ -123,8 +133,9 @@ mod tests {
         assert_eq!(n.texture, "a_n");
         let s = bump(
             r#"LightmappedGeneric { "$basetexture" "c/c" "$bumpmap" "c/c_ssbump" "$ssbump" 1 "$bumpframe" 2
-               "$bumptransform" "center .5 .5 scale 2 4 rotate 0 translate 0 0"
-               Proxies { TextureScroll { texturescrollvar $bumptransform texturescrollrate 1 texturescrollangle 0 } } }"#,
+               "$basetexturetransform" "center .5 .5 scale 2 4 rotate 0 translate 0 0"
+               "$bumptransform" "center .5 .5 scale 8 8 rotate 0 translate 0 0"
+               Proxies { TextureScroll { texturescrollvar $basetexturetransform texturescrollrate 1 texturescrollangle 0 } } }"#,
         )
         .unwrap();
         assert!(s.ssbump);

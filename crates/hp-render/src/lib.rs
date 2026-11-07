@@ -407,6 +407,15 @@ fn material_uniform(desc: Option<&MaterialDesc>, env_cube: u32) -> MaterialUnifo
             [scale(b.uv[0]), scale(b.uv[1]), offset(b.uv[2]), offset(b.uv[3])]
         }),
         bump_scroll: d.bump.map_or([0.0; 2], |b| sanitize_scroll(b.scroll)),
+        bump2_uv: d.bump.map_or([1.0, 1.0, 0.0, 0.0], |b| {
+            let uv = b.uv2.unwrap_or(b.uv);
+            [finite(uv[0], 1.0), finite(uv[1], 1.0), finite(uv[2], 0.0), finite(uv[3], 0.0)]
+        }),
+        bump2_cross_scroll: d.bump.map_or([0.0; 4], |b| {
+            let cross = if b.uv2.is_some() { b.uv2_cross } else { b.uv_cross };
+            let scroll = sanitize_scroll(b.scroll2.unwrap_or(b.scroll));
+            [finite(cross[0], 0.0), finite(cross[1], 0.0), scroll[0], scroll[1]]
+        }),
         bump_flags: d.bump.map_or(0, |b| {
             let four = b.blend4.is_some() && d.texture3.is_some();
             BUMP_ON
@@ -435,6 +444,11 @@ fn material_uniform(desc: Option<&MaterialDesc>, env_cube: u32) -> MaterialUnifo
             let detail = detail.map_or([0.0; 2], |d| d.uv_cross);
             let env = d.envmap.map_or([0.0; 2], |e| e.mask_uv_cross);
             [finite(detail[0], 0.0), finite(detail[1], 0.0), finite(env[0], 0.0), finite(env[1], 0.0)]
+        },
+        detail_env_scroll: {
+            let detail = detail.map_or([0.0; 2], |d| sanitize_scroll(d.scroll));
+            let env = d.envmap.map_or([0.0; 2], |e| sanitize_scroll(e.mask_scroll));
+            [detail[0], detail[1], env[0], env[1]]
         },
         ..four_way_uniform(d.four_way.as_ref(), env_uniform(d, env_cube))
     }
@@ -4398,6 +4412,9 @@ mod tests {
             uv: [f32::NAN, 0.0, f32::INFINITY, 0.25],
             uv_cross: [f32::NAN, -0.5],
             scroll: [f32::NAN, 1000.0],
+            uv2: None,
+            uv2_cross: [0.0; 2],
+            scroll2: None,
         };
         let u = material_uniform(Some(&MaterialDesc { bump: Some(bump), ..Default::default() }), u32::MAX);
         assert_eq!(u.bump_flags, BUMP_ON | BUMP_SS | BUMP_TWO);

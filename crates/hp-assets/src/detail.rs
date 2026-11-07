@@ -11,6 +11,7 @@ pub(crate) struct DetailAnalysis {
     pub sets_alpha: bool,
     pub uv: [f32; 4],
     pub uv_cross: [f32; 2],
+    pub scroll: [f32; 2],
     pub tint_blend: [f32; 4],
 }
 
@@ -23,6 +24,7 @@ impl DetailAnalysis {
             sets_alpha: self.sets_alpha,
             uv: self.uv,
             uv_cross: self.uv_cross,
+            scroll: self.scroll,
             tint_blend: self.tint_blend,
         }
     }
@@ -89,14 +91,13 @@ pub(crate) fn analyze_detail(mat: &Material, texture_flags: &dyn Fn(&str) -> u32
         }
         _ => return None,
     };
+    let key = crate::material_uv::detail_key(mat);
+    let transform = key.map_or(transform, |key| texture_transform_of(mat, key));
     let factor = if kind == ShaderKind::WorldTwoTextureBlend { 1.0 } else { factor };
     let uv = [transform[0] * scale[0], transform[1] * scale[1], transform[2] * scale[0], transform[3] * scale[1]];
-    let cross = if matches!(kind, ShaderKind::VertexLitGeneric | ShaderKind::UnlitGeneric) {
-        crate::material::texture_transform_cross_of(mat, "$detailtexturetransform")
-    } else {
-        [0.0; 2]
-    };
+    let cross = key.map_or([0.0; 2], |key| crate::material::texture_transform_cross_of(mat, key));
     let uv_cross = [cross[0] * scale[0], cross[1] * scale[1]];
+    let scroll = key.map_or([0.0; 2], |key| crate::material::texture_scroll_of(mat, key));
     Some(DetailAnalysis {
         texture,
         mode,
@@ -104,6 +105,7 @@ pub(crate) fn analyze_detail(mat: &Material, texture_flags: &dyn Fn(&str) -> u32
         sets_alpha,
         uv,
         uv_cross,
+        scroll: [scroll[0] * scale[0], scroll[1] * scale[1]],
         tint_blend: [tint[0], tint[1], tint[2], factor],
     })
 }

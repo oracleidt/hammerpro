@@ -295,6 +295,7 @@ pub struct EnvmapDesc {
     pub mask_alpha: bool,
     pub mask_uv: [f32; 4],
     pub mask_uv_cross: [f32; 2],
+    pub mask_scroll: [f32; 2],
     pub alpha_mask: EnvmapAlphaMask,
     pub fresnel: f32,
     pub phong_fresnel: f32,
@@ -316,6 +317,7 @@ impl Default for EnvmapDesc {
             mask_alpha: false,
             mask_uv: [1.0, 1.0, 0.0, 0.0],
             mask_uv_cross: [0.0; 2],
+            mask_scroll: [0.0; 2],
             alpha_mask: EnvmapAlphaMask::None,
             fresnel: 1.0,
             phong_fresnel: 0.0,
@@ -346,6 +348,11 @@ pub struct BumpDesc {
     pub uv: [f32; 4],
     pub uv_cross: [f32; 2],
     pub scroll: [f32; 2],
+    /// Independent secondary normal coordinates; None shares the primary matrix.
+    pub uv2: Option<[f32; 4]>,
+    pub uv2_cross: [f32; 2],
+    /// None shares the primary normal's scroll.
+    pub scroll2: Option<[f32; 2]>,
 }
 
 impl BumpDesc {
@@ -359,6 +366,9 @@ impl BumpDesc {
             uv: [1.0, 1.0, 0.0, 0.0],
             uv_cross: [0.0; 2],
             scroll: [0.0; 2],
+            uv2: None,
+            uv2_cross: [0.0; 2],
+            scroll2: None,
         }
     }
 }
@@ -446,6 +456,7 @@ pub struct DetailDesc {
     pub sets_alpha: bool,
     pub uv: [f32; 4],
     pub uv_cross: [f32; 2],
+    pub scroll: [f32; 2],
     pub tint_blend: [f32; 4],
 }
 

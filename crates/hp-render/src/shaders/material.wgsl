@@ -36,6 +36,9 @@ struct Material {
     base_uv: vec4<f32>,
     base_bump_cross: vec4<f32>,
     detail_env_cross: vec4<f32>,
+    bump2_uv: vec4<f32>,
+    bump2_cross_scroll: vec4<f32>,
+    detail_env_scroll: vec4<f32>,
 };
 
 fn affine_uv(uv: vec2<f32>, diagonal: vec4<f32>, cross_terms: vec2<f32>) -> vec2<f32> {
@@ -43,7 +46,7 @@ fn affine_uv(uv: vec2<f32>, diagonal: vec4<f32>, cross_terms: vec2<f32>) -> vec2
 }
 
 fn base_uv_of(uv: vec2<f32>) -> vec2<f32> {
-    return affine_uv(uv, material.base_uv, material.base_bump_cross.xy);
+    return affine_uv(uv, material.base_uv, material.base_bump_cross.xy) + material.scroll * view.sky.z;
 }
 
 @group(1) @binding(0) var tex: texture_2d<f32>;
@@ -70,7 +73,7 @@ const SI_MASK_ALPHA: f32 = 2.0;
 const DETAIL_NONE: u32 = 0xffffffffu;
 
 fn self_illum_mask(alpha: f32, uv: vec2<f32>) -> vec3<f32> {
-    let m = textureSample(tex_self_illum, samp, uv);
+    let m = textureSample(tex_self_illum, samp, base_uv_of(uv));
     if (material.flags & M_SELF_ILLUM) == 0u {
         return vec3<f32>(0.0);
     }
@@ -189,7 +192,9 @@ fn bump_texel(base_uv: vec2<f32>, alpha: f32, weights: vec4<f32>) -> vec3<f32> {
     let uv = affine_uv(base_uv, material.bump_uv, material.base_bump_cross.zw) + material.bump_scroll * view.sky.z;
     var t = textureSample(tex_bump, samp, uv).rgb;
     if (material.bump_flags & B_TWO) != 0u {
-        t = mix(t, textureSample(tex_bump2, samp, uv).rgb, clamp(bump_mix(alpha, weights), 0.0, 1.0));
+        let uv2 = affine_uv(base_uv, material.bump2_uv, material.bump2_cross_scroll.xy)
+            + material.bump2_cross_scroll.zw * view.sky.z;
+        t = mix(t, textureSample(tex_bump2, samp, uv2).rgb, clamp(bump_mix(alpha, weights), 0.0, 1.0));
     }
     if (material.bump_flags & B_SS) != 0u {
         return t;
@@ -266,7 +271,9 @@ fn env_reflection(
     let el = length(to_eye);
     let v = select(vec3<f32>(0.0, 0.0, 1.0), to_eye / el, el > 1e-5);
     let r = 2.0 * dot(n, v) * n - v;
-    let mask_texel = textureSample(tex_env_mask, samp, affine_uv(base_uv, material.env_mask_uv, material.detail_env_cross.zw));
+    let mask_uv = affine_uv(base_uv, material.env_mask_uv, material.detail_env_cross.zw)
+        + material.detail_env_scroll.zw * view.sky.z;
+    let mask_texel = textureSample(tex_env_mask, samp, mask_uv);
     let f = material.env_flags;
     let at = slot * CUBE_INFO_STRIDE;
     var dir = r;
@@ -356,7 +363,9 @@ fn linear_to_srgb(c: vec3<f32>) -> vec3<f32> {
 }
 
 fn detail_sample(uv: vec2<f32>) -> vec4<f32> {
-    var d = textureSample(tex_detail, samp, affine_uv(uv, material.detail_uv, material.detail_env_cross.xy));
+    let detail_uv = affine_uv(uv, material.detail_uv, material.detail_env_cross.xy)
+        + material.detail_env_scroll.xy * view.sky.z;
+    var d = textureSample(tex_detail, samp, detail_uv);
     if (material.detail_flags & 1u) != 0u {
         d = vec4<f32>(linear_to_srgb(d.rgb), d.a);
     }

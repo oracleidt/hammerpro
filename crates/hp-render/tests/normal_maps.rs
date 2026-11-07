@@ -378,12 +378,16 @@ fn lm_texel(v: f32) -> u32 {
 }
 
 fn wall_lightmap(r: &mut Renderer, light: &[f32], bumped: bool, blend: u32) {
+    wall_lightmap_with_alpha(r, light, bumped, blend, 0.0);
+}
+
+fn wall_lightmap_with_alpha(r: &mut Renderer, light: &[f32], bumped: bool, blend: u32, alpha: f32) {
     use hp_render::lightmap::{LightmapBatch, LightmapFace, LightmapRect, LightmapVertex};
     let generation = r.lightmap_generation(1);
     r.add_lightmap_faces(&[(0, LightmapFace { object: 1, generation, scale: 16.0, flags: 0 })]);
     let verts: Vec<LightmapVertex> = wall_vertices()
         .iter()
-        .map(|v| LightmapVertex { pos: v.pos, uv: v.uv, lm: [0.0, 0.0], alpha: 0.0, face: 0, blend })
+        .map(|v| LightmapVertex { pos: v.pos, uv: v.uv, lm: [0.0, 0.0], alpha, face: 0, blend })
         .collect();
     r.add_lightmap_block(1, &[LightmapBatch { material: WALL, vertices: &verts, indices: &[0, 1, 2, 0, 2, 3] }]);
     assert!(r.ensure_lightmap_layers(64, 1));
@@ -393,6 +397,93 @@ fn wall_lightmap(r: &mut Renderer, light: &[f32], bumped: bool, blend: u32) {
 }
 
 const BUMPED_LIGHT: [f32; 4] = [0.25, 1.0, 0.5, 0.0625];
+
+#[test]
+fn secondary_texture_coordinates_agree_in_mesh_baked_and_compiled_views() {
+    let Some((device, queue)) = gpu() else { return };
+    let mut r = Renderer::new(&device, &queue);
+    r.set_tone_settings(ToneSettings { bloom: 0.0, ..Default::default() });
+    let toward = encode([0.7, 0.0, 0.7]);
+    let away = encode([-0.7, 0.0, 0.7]);
+    let primary = normal_map(&mut r, [128, 128, 255], [128, 128, 255]);
+    let secondary = normal_map(&mut r, toward, away);
+    let secondary_baked = normal_map(&mut r, away, toward);
+    let color_texture = |r: &mut Renderer, mirrored: bool| {
+        let mut pixels = Vec::new();
+        for _ in 0..16 {
+            for x in 0..16 {
+                let color = if (x < 8) ^ mirrored { [180, 80, 40, 255] } else { [40, 120, 180, 255] };
+                pixels.extend_from_slice(&color);
+            }
+        }
+        r.create_texture(&TextureUpload { width: 16, height: 16, format: TexFormat::Rgba8Srgb, levels: vec![pixels] })
+    };
+    let color = color_texture(&mut r, false);
+    let color_baked = color_texture(&mut r, true);
+    let mut mesh = wall_mesh();
+    for v in &mut mesh.batches[0].vertices {
+        v.alpha = 1.0;
+    }
+    let mut compiled_vertices = wall_vertices();
+    for v in &mut compiled_vertices {
+        v.alpha = 1.0;
+    }
+    for mode in 0..3 {
+        r.upsert_object(1, mesh.clone());
+        let options = if mode == 1 {
+            wall_lightmap_with_alpha(&mut r, &BUMPED_LIGHT, true, 0, 1.0);
+            on()
+        } else if mode == 2 {
+            r.set_object_flags(1, ObjectFlags::COMPILED_LIGHT);
+            let texels: Vec<[f32; 3]> = BUMPED_LIGHT.iter().map(|v| [*v; 3]).collect();
+            r.set_compiled_lighting(
+                CompiledLightMode::Hdr,
+                &[CompiledLightmap { width: 1, height: 1, texels: &texels, styles: &[], bumped: true }],
+                &[CompiledBlock {
+                    object: 1,
+                    batches: vec![CompiledBatch {
+                        material: WALL,
+                        vertices: compiled_vertices.clone(),
+                        indices: vec![0, 1, 2, 0, 2, 3],
+                    }],
+                }],
+            );
+            ViewOptions { compiled_lighting: true, ..on() }
+        } else {
+            on()
+        };
+        for normals in [false, true] {
+            let desc = |baked: bool| MaterialDesc {
+                texture: Some(color),
+                texture2: Some(if baked { color_baked } else { color }),
+                tex_size: [200.0; 2],
+                base_uv: if baked { [1.0, 1.0, 0.0, 0.0] } else { [-1.0, 1.0, 1.0, 0.0] },
+                bump: normals.then(|| BumpDesc {
+                    texture2: Some(if baked { secondary_baked } else { secondary }),
+                    uv: [2.0, 3.0, 0.125, 0.375],
+                    uv2: Some(if baked { [1.0, 1.0, 0.0, 0.0] } else { [-1.0, 1.0, 1.0, 0.0] }),
+                    ..BumpDesc::new(primary)
+                }),
+                ..Default::default()
+            };
+            r.set_material(WALL, &desc(false));
+            let actual = shot(&mut r, RenderMode::Textured, options, &format!("secondary_uv_{mode}_{normals}_actual"));
+            r.set_material(WALL, &desc(true));
+            let expected = shot(&mut r, RenderMode::Textured, options, &format!("secondary_uv_{mode}_{normals}_baked"));
+            for y in 12..188 {
+                for x in 12..188 {
+                    for channel in 0..3 {
+                        assert!(
+                            px(&actual, x, y)[channel].abs_diff(px(&expected, x, y)[channel]) <= 3,
+                            "mode{mode} normals{normals} at{x},{y}"
+                        );
+                    }
+                }
+            }
+            assert_ne!(px(&expected, 40, 100), px(&expected, 160, 100), "reference must vary");
+        }
+    }
+}
 
 #[test]
 fn baked_preview_has_the_relief_of_its_bumped_lightmaps() {

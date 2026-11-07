@@ -156,8 +156,8 @@ fn affine_material_uvs_match_geometry_mapped_with_native_source_matrices() {
         } else {
             None
         };
-        for layer in 0..4 {
-            if layer == 3 && baked_normal.is_none() {
+        for layer in 0..6 {
+            if matches!(layer, 3 | 4) && baked_normal.is_none() {
                 continue;
             }
             let mut desc = MaterialDesc {
@@ -180,6 +180,7 @@ fn affine_material_uvs_match_geometry_mapped_with_native_source_matrices() {
                         sets_alpha: false,
                         uv: diagonal,
                         uv_cross: cross,
+                        scroll: [0.0; 2],
                         tint_blend: [1.0; 4],
                     });
                 }
@@ -194,10 +195,27 @@ fn affine_material_uvs_match_geometry_mapped_with_native_source_matrices() {
                         ..Default::default()
                     });
                 }
-                _ => {
+                3 => {
                     desc.texture = Some(white);
                     desc.flags = MaterialFlags::TWO_SIDED;
                     desc.bump = Some(BumpDesc { uv: diagonal, uv_cross: cross, ..BumpDesc::new(normal) });
+                }
+                4 => {
+                    desc.texture = Some(white);
+                    desc.flags = MaterialFlags::TWO_SIDED;
+                    desc.bump = Some(BumpDesc {
+                        texture2: Some(normal),
+                        uv: [3.0, -2.0, 0.3, 0.7],
+                        uv2: Some(diagonal),
+                        uv2_cross: cross,
+                        ..BumpDesc::new(normal)
+                    });
+                }
+                _ => {
+                    desc.texture = Some(white);
+                    desc.texture2 = Some(texture);
+                    desc.base_uv = diagonal;
+                    desc.base_uv_cross = cross;
                 }
             }
             renderer.set_material(1, &desc);
@@ -229,12 +247,19 @@ fn affine_material_uvs_match_geometry_mapped_with_native_source_matrices() {
                     e.mask_uv = [1.0, 1.0, 0.0, 0.0];
                     e.mask_uv_cross = [0.0; 2];
                 }
-                _ => {
+                3 => {
                     desc.bump = Some(BumpDesc::new(baked_normal.unwrap()));
+                }
+                4 => {
+                    desc.bump = Some(BumpDesc { texture2: Some(baked_normal.unwrap()), ..BumpDesc::new(normal) });
+                }
+                _ => {
+                    desc.base_uv = [1.0, 1.0, 0.0, 0.0];
+                    desc.base_uv_cross = [0.0; 2];
                 }
             }
             renderer.set_material(1, &desc);
-            renderer.upsert_object(1, quad(if layer == 3 { identity } else { matrix }));
+            renderer.upsert_object(1, quad(if matches!(layer, 3 | 4) { identity } else { matrix }));
             renderer.render_view(1, &view, &Overlay::default());
             let expected = save(&renderer, 1, &format!("affine_{case}_{layer}_native_geometry"));
             let mut min = 255;

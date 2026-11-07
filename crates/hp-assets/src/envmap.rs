@@ -37,6 +37,7 @@ pub(crate) struct EnvmapAnalysis {
     pub mask: Option<MaskSource>,
     pub mask_uv: [f32; 4],
     pub mask_uv_cross: [f32; 2],
+    pub mask_scroll: [f32; 2],
     pub alpha_mask: EnvmapAlphaMask,
     pub fresnel: f32,
     pub phong_fresnel: f32,
@@ -89,6 +90,7 @@ impl EnvmapAnalysis {
             mask_alpha: matches!(self.mask, Some(MaskSource::NormalAlpha { .. })),
             mask_uv: self.mask_uv,
             mask_uv_cross: self.mask_uv_cross,
+            mask_scroll: self.mask_scroll,
             alpha_mask: self.alpha_mask,
             fresnel: self.fresnel,
             phong_fresnel: self.phong_fresnel,
@@ -132,23 +134,28 @@ pub(crate) fn analyze_envmap(mat: &Material) -> Option<EnvmapAnalysis> {
     let phong = kind == ShaderKind::VertexLitGeneric && mat.flag("$phong") && bump.is_some();
     let mut alpha_mask = EnvmapAlphaMask::None;
     let mut mask = None;
-    let mut mask_uv = texture_transform_of(mat, "$envmapmasktransform");
-    let mut mask_uv_cross = texture_transform_cross_of(mat, "$envmapmasktransform");
+    let mask_key = crate::material_uv::env_mask_key(mat);
+    let normal_key = crate::material_uv::bump_keys(mat).0;
+    let mut mask_uv = texture_transform_of(mat, mask_key);
+    let mut mask_uv_cross = texture_transform_cross_of(mat, mask_key);
+    let mut effective_key = mask_key;
     if phong {
         if mat.flag("$basealphaenvmapmask") || mat.flag("$basemapalphaphongmask") {
             alpha_mask = EnvmapAlphaMask::Base;
         } else if let Some(name) = bump.clone() {
             mask = Some(MaskSource::NormalAlpha { name, frame: bump_frame });
-            mask_uv = texture_transform_of(mat, "$bumptransform");
-            mask_uv_cross = texture_transform_cross_of(mat, "$bumptransform");
+            mask_uv = texture_transform_of(mat, normal_key);
+            mask_uv_cross = texture_transform_cross_of(mat, normal_key);
+            effective_key = normal_key;
         }
     } else {
         if mat.flag("$normalmapalphaenvmapmask")
             && let Some(name) = bump.clone()
         {
             mask = Some(MaskSource::NormalAlpha { name, frame: bump_frame });
-            mask_uv = texture_transform_of(mat, "$bumptransform");
-            mask_uv_cross = texture_transform_cross_of(mat, "$bumptransform");
+            mask_uv = texture_transform_of(mat, normal_key);
+            mask_uv_cross = texture_transform_cross_of(mat, normal_key);
+            effective_key = normal_key;
         } else if let Some(name) = mat.texture("$envmapmask") {
             mask = Some(MaskSource::Texture { name, frame: frame(mat, "$envmapmaskframe") });
         }
@@ -165,6 +172,7 @@ pub(crate) fn analyze_envmap(mat: &Material) -> Option<EnvmapAnalysis> {
         mask,
         mask_uv,
         mask_uv_cross,
+        mask_scroll: crate::material::texture_scroll_of(mat, effective_key),
         alpha_mask,
         fresnel: if lightmapped { num(mat, "$fresnelreflection", 1.0).clamp(0.0, 1.0) } else { 1.0 },
         phong_fresnel: if phong { num(mat, "$envmapfresnel", 0.0).clamp(0.0, 1.0) } else { 0.0 },
@@ -238,7 +246,8 @@ mod tests {
         assert_eq!(base.alpha_mask, EnvmapAlphaMask::InverseBase);
         let normal = env(
             r#"LightmappedGeneric { "$basetexture" "a" "$bumpmap" "a_n" "$envmap" "env_cubemap" "$normalmapalphaenvmapmask" 1
-               "$bumptransform" "center .5 .5 scale 4 4 rotate 0 translate 0 0" }"#,
+               "$basetexturetransform" "center .5 .5 scale 4 4 rotate 0 translate 0 0"
+               "$bumptransform" "center .5 .5 scale 8 8 rotate 0 translate 0 0" }"#,
         )
         .unwrap();
         assert_eq!(normal.mask, Some(MaskSource::NormalAlpha { name: "a_n".into(), frame: 0 }));

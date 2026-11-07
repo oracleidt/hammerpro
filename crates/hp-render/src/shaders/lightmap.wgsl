@@ -131,13 +131,13 @@ fn finish(rgb_in: vec3<f32>, in: LmOut) -> vec4<f32> {
 @fragment
 fn fs_baked(in: LmOut) -> @location(0) vec4<f32> {
     let tuv = in.uv * material.inv_tex_size;
-    let uv = tuv + material.scroll * view.sky.z;
+    let uv = tuv;
     var albedo = textureSample(tex, samp, base_uv_of(uv));
     var cover = vec4<f32>(1.0, 0.0, 0.0, 0.0);
     if material.has_tex2 != 0u {
-        let b = textureSample(tex2, samp, uv);
+        let b = textureSample(tex2, samp, base_uv_of(uv));
         if material.blend4 != 0u {
-            let fw = four_way_blend(uv, blend_layers(in.blend, in.alpha));
+            let fw = four_way_blend(uv + material.scroll * view.sky.z, blend_layers(in.blend, in.alpha));
             albedo = fw.color;
             cover = fw.cover;
         } else {

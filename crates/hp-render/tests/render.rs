@@ -1077,6 +1077,7 @@ fn detail_textures_combine_like_the_game() {
         sets_alpha: false,
         uv: [4.0, 4.0, 0.0, 0.0],
         uv_cross: [0.0; 2],
+        scroll: [0.0; 2],
         tint_blend: [tint, tint, tint, f],
     };
     let cases = [
