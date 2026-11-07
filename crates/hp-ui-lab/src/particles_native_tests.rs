@@ -80,13 +80,13 @@ fn multiple_renderers_reach_the_gpu_with_native_opacity_and_orientation() {
             });
         }
     }
-    let texture = renderer.create_texture(&TextureUpload {
+    let texture = renderer.create_texture_exact(&TextureUpload {
         width: 8,
         height: 8,
         format: TexFormat::Rgba8Srgb,
         levels: vec![texels],
     });
-    let white = renderer.create_texture(&TextureUpload {
+    let white = renderer.create_texture_exact(&TextureUpload {
         width: 8,
         height: 8,
         format: TexFormat::Rgba8Srgb,
@@ -150,6 +150,13 @@ fn multiple_renderers_reach_the_gpu_with_native_opacity_and_orientation() {
                 enabled: true,
                 origin: hp_fs::SourceOrigin::Custom,
             },
+            hp_fs::SourceMount {
+                kind: hp_fs::SourceMountKind::Gma,
+                label: "Owned native initializer-order reference".into(),
+                path: data.join("native_initializer_order.gma"),
+                enabled: true,
+                origin: hp_fs::SourceOrigin::Custom,
+            },
         ],
     )
     .unwrap();
@@ -170,12 +177,17 @@ fn multiple_renderers_reach_the_gpu_with_native_opacity_and_orientation() {
     let sequence_definitions = hp_pcf::parse_file(include_bytes!("../tests/data/native_root_sequence.pcf")).unwrap();
     let sequence: serde_json::Value =
         serde_json::from_str(include_str!("../tests/data/native_root_sequence.json")).unwrap();
+    let initializer_definitions =
+        hp_pcf::parse_file(include_bytes!("../tests/data/native_initializer_order.pcf")).unwrap();
+    let initializers: serde_json::Value =
+        serde_json::from_str(include_str!("../tests/data/native_initializer_order.json")).unwrap();
     assert_eq!(fixture["cases"].as_object().unwrap().len(), 6);
     assert_eq!(ordering["cases"].as_object().unwrap().len(), 2);
     assert_eq!(children["cases"].as_object().unwrap().len(), 10);
     assert_eq!(rotation["cases"].as_object().unwrap().len(), 9);
     assert_eq!(speed["cases"].as_object().unwrap().len(), 9);
     assert_eq!(sequence["cases"].as_object().unwrap().len(), 10);
+    assert_eq!(initializers["cases"].as_object().unwrap().len(), 10);
     let mut state = hp_app::testing::test_state();
     let mut failures = Vec::new();
     let proof = data.join("../../../../target/hp-ui-lab/multiple-renderers");
@@ -189,6 +201,7 @@ fn multiple_renderers_reach_the_gpu_with_native_opacity_and_orientation() {
         ("hp_rootrender117", "native_root_rotation", &rotation, rotation_definitions, texture),
         ("hp_rootspeed117", "native_root_speed", &speed, speed_definitions, texture),
         ("hp_rootseqsheet117", "native_root_sequence", &sequence, sequence_definitions, texture),
+        ("hp_initorder117", "native_initializer_order", &initializers, initializer_definitions, texture),
     ] {
         renderer.set_material(
             0,
@@ -201,22 +214,26 @@ fn multiple_renderers_reach_the_gpu_with_native_opacity_and_orientation() {
         );
         let plans: HashMap<_, _> = definitions
             .into_iter()
-            .map(|mut definition| {
-                if namespace == "hp_renderorder117" {
-                    // Isolate draw ordering from the unimplemented count/vector remap
-                    // initializers. Use their authored native poses/colors below.
-                    definition.initializers.retain(|op| {
-                        !matches!(op.function.as_str(), "Remap Particle Count to Scalar" | "Remap Scalar to Vector")
-                    });
-                }
-                (definition.name.clone(), Arc::new(Plan::new(&definition)))
-            })
+            .map(|definition| (definition.name.clone(), Arc::new(Plan::new(&definition))))
             .collect();
         for (name, case) in fixture["cases"].as_object().unwrap() {
             let plan = &plans[&format!("{namespace}_{name}")];
             assert!(plan.unsupported.is_empty(), "{name}: {:?}", plan.unsupported);
             let mut effect = Effect::new(&plan.name, &|name| plans.get(name).cloned(), 17).unwrap();
             effect.step(0.02, [0.0, 0.0, 64.0], 16);
+            if let Some(target) = case["position_extremes_xz"].as_array() {
+                for (axis, target) in [0, 2].into_iter().zip(target) {
+                    let target = target.as_f64().unwrap() as f32;
+                    let actual = effect.sims[0]
+                        .1
+                        .particles
+                        .iter()
+                        .map(|p| p.pos[axis])
+                        .max_by(|a, b| a.abs().total_cmp(&b.abs()))
+                        .unwrap();
+                    assert_eq!(actual.to_bits(), target.to_bits(), "{name}: position axis {axis}");
+                }
+            }
             if let Some(target) = case["encoded_x"].as_f64() {
                 let target = target as f32;
                 let actual = effect.sims[0].1.particles[0].pos[0];
@@ -227,9 +244,11 @@ fn multiple_renderers_reach_the_gpu_with_native_opacity_and_orientation() {
             }
             if let Some(poses) = case["particles"].as_array() {
                 assert_eq!(effect.sims[0].1.particles.len(), poses.len());
-                for (particle, pose) in effect.sims[0].1.particles.iter_mut().zip(poses) {
-                    particle.pos = std::array::from_fn(|i| pose["position"][i].as_f64().unwrap() as f32);
-                    particle.color = std::array::from_fn(|i| pose["color"][i].as_f64().unwrap() as f32);
+                for (particle, pose) in effect.sims[0].1.particles.iter().zip(poses) {
+                    let position = std::array::from_fn(|i| pose["position"][i].as_f64().unwrap() as f32);
+                    let color = std::array::from_fn(|i| pose["color"][i].as_f64().unwrap() as f32);
+                    assert_eq!(particle.pos, position, "{name}: native initializer position");
+                    assert_eq!(particle.color, color, "{name}: native initializer color");
                 }
             }
             let looks = effect
@@ -300,6 +319,6 @@ fn multiple_renderers_reach_the_gpu_with_native_opacity_and_orientation() {
     assert!(failures.is_empty(), "Native multiple-renderer image mismatches:\n{}", failures.join("\n"));
     assert_eq!(scalar_readouts, 19);
     eprintln!(
-        "Forty-six native particle whole images and nineteen exact scalar readouts: maximum RGB delta {maximum}/255"
+        "Fifty-six native particle whole images, nineteen scalar readouts and ten position-bound readouts: maximum RGB delta {maximum}/255"
     );
 }

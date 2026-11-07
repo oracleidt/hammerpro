@@ -156,10 +156,6 @@ pub(crate) fn prepare_vtf_with(bytes: &[u8], bc: bool, frame: u32, max_dim: u32)
             Err(e) => return Err(e.to_string()),
         }
     }
-    if data.len() == 1 {
-        let single = data.pop().unwrap_or_default();
-        data = build_mips(w, h, single).ok_or("bad pixel data")?;
-    }
     Ok(PreparedTexture {
         upload: TextureUpload { width: w, height: h, format: TexFormat::Rgba8Srgb, levels: data },
         size,
@@ -279,7 +275,7 @@ mod tests {
         let single = vtf(16, 16, hp_vtf::EncodeFormat::Bgra8888, false);
         let p = prepare_vtf(&single, true).unwrap();
         assert_eq!(p.upload.format, TexFormat::Rgba8Srgb);
-        assert_eq!(p.upload.levels.len(), 5, "mips are generated on the worker");
+        assert_eq!(p.upload.levels.len(), 1, "the authored VTF has no mip chain");
         let px = &p.upload.levels[0][..4];
         assert!(px[0].abs_diff(200) < 3 && px[1].abs_diff(100) < 3, "{px:?}");
 

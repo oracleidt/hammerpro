@@ -946,7 +946,7 @@ impl AssetManager {
     fn finish_texture_main(&mut self, renderer: &mut Renderer, up: Upload) {
         let Some(entry) = self.mats.textures.map.get_mut(&up.name) else { return };
         let new = up.data.and_then(|p| {
-            let id = renderer.create_texture(&p.upload);
+            let id = renderer.create_texture_exact(&p.upload);
             (id != TexId::MISSING).then_some((id, p.size))
         });
         entry.loading = false;

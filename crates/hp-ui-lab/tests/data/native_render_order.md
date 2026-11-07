@@ -11,12 +11,13 @@ far blue, near red, then far blue, near red. Globally sorting all four instances
 changes the sequence to blue, blue, red, red and the preview differed by up to
 32 RGB levels. Sorting must happen within each authored renderer pass.
 
-The test uses the real adapter, sorter and GPU. To isolate draw ordering, it
-removes the two unimplemented initializer types from the test definition and
-injects the authored native particle positions/colors. The initializers are
-`Remap Particle Count to Scalar` and `Remap Scalar to Vector`; this test does
-not claim they are supported or validate their general behavior. The six older
-single-particle cases and ten child-order cases use their actual PCF simulation.
+The test parses and simulates the unmodified PCF, including `Remap Particle
+Count to Scalar` and both `Remap Scalar to Vector` initializers. It asserts the
+resulting particle positions and colors against the native values before
+passing them through the real adapter, sorter and GPU. No attributes are
+injected. These initializers also have separate batch arithmetic and live
+precedence references; see `native_initializer_order.md` and the hp-pcf
+initializer-remapping reference notes.
 
 The generator/probe also contain exploratory root sorting-flag variants. Their
 semantics are not asserted here: the committed reference selects only the two

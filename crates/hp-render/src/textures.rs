@@ -24,6 +24,15 @@ fn mip_dim(v: u32, level: u32) -> u32 {
 }
 
 pub(crate) fn prepare<'a>(up: &'a TextureUpload, supports_bc: bool, max_dim: u32) -> Result<Prepared<'a>, RenderError> {
+    prepare_with_mips(up, supports_bc, max_dim, true)
+}
+
+pub(crate) fn prepare_with_mips<'a>(
+    up: &'a TextureUpload,
+    supports_bc: bool,
+    max_dim: u32,
+    generate: bool,
+) -> Result<Prepared<'a>, RenderError> {
     let (w, h) = (up.width, up.height);
     if w == 0 || h == 0 {
         return Err(RenderError::InvalidTexture(format!("empty size {w}x{h}")));
@@ -83,14 +92,14 @@ pub(crate) fn prepare<'a>(up: &'a TextureUpload, supports_bc: bool, max_dim: u32
                 })
                 .collect();
             let mut p = Prepared { format: rgba, width: w, height: h, levels: decoded };
-            if p.levels.len() == 1 {
+            if generate && p.levels.len() == 1 {
                 generate_mips(&mut p, linear);
             }
             Ok(p)
         }
         None => {
             let mut p = Prepared { format: rgba, width: w, height: h, levels };
-            if p.levels.len() == 1 && (w > 1 || h > 1) {
+            if generate && p.levels.len() == 1 && (w > 1 || h > 1) {
                 generate_mips(&mut p, linear);
             }
             Ok(p)
@@ -327,6 +336,17 @@ mod tests {
         let m = &p.levels[1];
         assert!(m[0] > 180 && m[0] < 195, "{}", m[0]);
         assert_eq!(m[3], 255);
+    }
+
+    #[test]
+    fn authored_single_level_textures_are_preserved_in_all_upload_formats() {
+        for format in [TexFormat::Rgba8Srgb, TexFormat::Rgba8Linear, TexFormat::Rgba16Float, TexFormat::Bc1Srgb] {
+            let up = TextureUpload { width: 8, height: 8, format, levels: vec![vec![0; format.level_size(8, 8)]] };
+            for supports_bc in [false, true] {
+                let prepared = prepare_with_mips(&up, supports_bc, 8192, false).unwrap();
+                assert_eq!(prepared.levels.len(), 1, "{format:?}, BC {supports_bc}");
+            }
+        }
     }
 
     #[test]

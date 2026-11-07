@@ -2,6 +2,99 @@ use hp_render::*;
 use std::collections::{HashMap, hash_map::Entry};
 
 #[test]
+fn authored_single_level_particles_keep_native_pixels_through_asset_loading() {
+    let Some((device, queue)) = crate::test_gpu::gpu() else { return };
+    let mut renderer = Renderer::new(&device, &queue);
+    renderer.set_tone_settings(ToneSettings { bloom: 0.0, ..Default::default() });
+    let data = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../hp-ui-lab/tests/data");
+    let fs = hp_fs::GameFs::from_source_mounts(
+        None,
+        None,
+        &[hp_fs::SourceMount {
+            kind: hp_fs::SourceMountKind::Gma,
+            label: "Owned native small-particle reference".into(),
+            path: data.join("native_initializer_order.gma"),
+            enabled: true,
+            origin: hp_fs::SourceOrigin::Custom,
+        }],
+    )
+    .unwrap();
+    let name = "hp_initorder117/quad";
+    let material = fs.material(name).unwrap();
+    let analysis = crate::material::analyze(name, &material, &|t| fs.texture_flags(t).unwrap_or(0));
+    let prepared = crate::texture::prepare_texture(
+        &fs,
+        &crate::material::texture_keys(crate::material::MatKind::Sprite, &analysis)[0],
+        false,
+    )
+    .unwrap();
+    assert_eq!(prepared.upload.levels.len(), 1, "the authored VTF is single-level");
+    let texture = renderer.create_texture_exact(&prepared.upload);
+    let desc = crate::material::asset_desc(
+        crate::material::MatKind::Sprite,
+        name,
+        crate::material::AnaLook::Ready(&analysis),
+        &|_| crate::material::TexLook::Ready(texture, prepared.size),
+        true,
+    );
+    renderer.set_material(0, &desc);
+    let particles: Vec<_> = (1..=4)
+        .map(|radius| ParticleInstance {
+            animation: ParticleAnimation::default(),
+            pos: [radius as f32, 0.0, 0.0],
+            size: radius as f32 * 2.0,
+            axis: [0.0; 3],
+            roll: 0.0,
+            yaw: 0.0,
+            uv: [0.0, 0.0, 1.0, 1.0],
+            color: [1.0; 4],
+            bright: 1.0,
+            add_self: 0.0,
+            screen_fade: [0.0; 2],
+            refraction_blur: 0.0,
+            no_fog: true,
+            orient: ParticleOrient::Screen,
+            material: 0,
+            blend: ParticleBlend::Alpha,
+        })
+        .collect();
+    renderer.set_particles(&particles);
+    renderer.render_view(
+        1,
+        &ViewParams {
+            size: [128; 2],
+            game_pixel_grid: true,
+            kind: ViewKind::Perspective {
+                eye: [4.0, -128.0, 0.0],
+                forward: [0.0, 1.0, 0.0],
+                up: [0.0, 0.0, 1.0],
+                fov_y_deg: 60.0,
+                near: 1.0,
+                far: 2000.0,
+            },
+            mode: RenderMode::Textured,
+            grid: None,
+            background: [0.0; 3],
+            selection_color: [0.0; 4],
+            show_sprites: false,
+            show_models: false,
+            msaa: false,
+        },
+        &Overlay::default(),
+    );
+    let (_, _, pixels) = renderer.read_view_rgba8(1).unwrap();
+    let target = image::open(data.join("native_initializer_order_count.png")).unwrap().to_rgb8();
+    let maximum = pixels
+        .chunks_exact(4)
+        .zip(target.pixels())
+        .flat_map(|(a, b)| (0..3).map(move |c| a[c].abs_diff(b[c])))
+        .max()
+        .unwrap();
+    assert!(maximum <= 3, "small native particle RGB delta {maximum}");
+    eprintln!("Actual VTF/material loading and authored single-level GPU upload: maximum RGB delta {maximum}/255");
+}
+
+#[test]
 fn particle_texture_addressing_survives_material_loading_and_sampler_changes() {
     let Some((device, queue)) = crate::test_gpu::gpu() else {
         eprintln!("no GPU adapter: native particle texture addressing skipped");
@@ -42,7 +135,7 @@ fn particle_texture_addressing_survives_material_loading_and_sampler_changes() {
         } else {
             upload = Some(prepared.upload.levels.clone());
         }
-        let texture = *texture.get_or_insert_with(|| renderer.create_texture(&prepared.upload));
+        let texture = *texture.get_or_insert_with(|| renderer.create_texture_exact(&prepared.upload));
         let desc = crate::material::asset_desc(
             crate::material::MatKind::Sprite,
             "hp_velocity117/quad",
@@ -182,7 +275,7 @@ fn native_particle_colors_survive_material_loading_and_texture_preparation() {
             for key in crate::material::texture_keys(material_kind, &analysis) {
                 if let Entry::Vacant(entry) = textures.entry(key) {
                     let prepared = crate::texture::prepare_texture(&fs, entry.key(), false).unwrap();
-                    entry.insert((renderer.create_texture(&prepared.upload), prepared.size));
+                    entry.insert((renderer.create_texture_exact(&prepared.upload), prepared.size));
                 }
             }
             let lookup = |key: &str| {

@@ -659,7 +659,7 @@ impl AssetManager {
         let Some(p) = self.preview.as_mut() else { return };
         let Some(entry) = p.textures.map.get_mut(&up.name) else { return };
         let new = up.data.and_then(|d| {
-            let id = p.renderer.create_texture(&d.upload);
+            let id = p.renderer.create_texture_exact(&d.upload);
             (id != hp_render::TexId::MISSING).then_some((id, d.size))
         });
         entry.loading = false;

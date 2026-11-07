@@ -1133,7 +1133,22 @@ impl Renderer {
     }
 
     pub fn try_create_texture(&mut self, up: &TextureUpload) -> Result<TexId, RenderError> {
-        let mut p = textures::prepare(up, self.supports_bc, self.max_tex_dim)?;
+        self.try_create_texture_with_mips(up, true)
+    }
+
+    /// Preserve the supplied mip chain, including authored single-level VTFs.
+    pub fn create_texture_exact(&mut self, up: &TextureUpload) -> TexId {
+        match self.try_create_texture_with_mips(up, false) {
+            Ok(id) => id,
+            Err(e) => {
+                log::warn!("hp-render: {e}");
+                TexId::MISSING
+            }
+        }
+    }
+
+    fn try_create_texture_with_mips(&mut self, up: &TextureUpload, generate: bool) -> Result<TexId, RenderError> {
+        let mut p = textures::prepare_with_mips(up, self.supports_bc, self.max_tex_dim, generate)?;
         textures::limit_size(&mut p, self.texture_limit);
         let (entry, oom) =
             memory::guarded(&self.device, || textures::upload(&self.device, &self.queue, &p, "hp-render texture"));

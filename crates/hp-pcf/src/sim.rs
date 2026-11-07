@@ -11,6 +11,7 @@ mod control;
 mod cull;
 mod emission;
 mod forces;
+mod initialize_remap;
 mod model;
 mod noise;
 mod oscillation;
@@ -231,6 +232,8 @@ impl Field {
 
 #[derive(Clone, Debug, PartialEq)]
 enum Init {
+    Count(initialize_remap::Count),
+    Vector(initialize_remap::Vector),
     RayEnvironment(rays::Cull),
     Impact(spatial::Impact),
     Scalar(scalar::Remap),
@@ -382,7 +385,9 @@ impl Init {
             | Self::Sequence { .. }
             | Self::TrailLength { .. }
             | Self::NoiseScalar { .. } => false,
-            Self::RayEnvironment(_)
+            Self::Count(_)
+            | Self::Vector(_)
+            | Self::RayEnvironment(_)
             | Self::Impact(_)
             | Self::Scalar(_)
             | Self::InheritVelocity { .. }
@@ -855,6 +860,20 @@ impl Plan {
                 Init::NoiseScalar { field, noise: noise::Scalar::compile(op, field, false) }
             }
             "lifetime pre-age noise" => Init::PreAge(noise::Scalar::compile(op, Field::Other, true)),
+            "remap particle count to scalar" => {
+                let Some(remap) = initialize_remap::Count::compile(op) else {
+                    self.unsupported.push(op.function.clone());
+                    return;
+                };
+                Init::Count(remap)
+            }
+            "remap scalar to vector" => {
+                let Some(remap) = initialize_remap::Vector::compile(op) else {
+                    self.unsupported.push(op.function.clone());
+                    return;
+                };
+                Init::Vector(remap)
+            }
             "remap initial scalar" => Init::Remap {
                 input: Field::from_index(i(op, "input field", 8)),
                 imin: f(op, "input minimum", 0.0),
@@ -1166,6 +1185,7 @@ pub struct Sim {
     previous_points: Option<Points>,
     point_traces: Vec<control::PointTraceState>,
     colors: Vec<Option<color::Cached>>,
+    counts: Vec<i32>,
     path_steps: Vec<(f32, bool)>,
     path_bulge: V3,
     previous_models: model::Cache,
@@ -1180,6 +1200,7 @@ impl Sim {
         let n = plan.emitters.len();
         let emission = plan.emitters.iter().map(emission::State::new).collect();
         let colors = vec![None; plan.inits.len()];
+        let counts = vec![0; plan.inits.len()];
         let path_steps = vec![(0.0, false); plan.inits.len()];
         let point_traces = vec![control::PointTraceState::default(); plan.point_traces.len()];
         let operator_states = vec![common::State::default(); plan.operator_schedule.len()];
@@ -1200,6 +1221,7 @@ impl Sim {
             previous_points: None,
             point_traces,
             colors,
+            counts,
             path_steps,
             path_bulge: Rng(seed).range3([-1.0; 3], [1.0; 3]),
             previous_models: Default::default(),
@@ -1236,6 +1258,7 @@ impl Sim {
         self.point_traces.fill(control::PointTraceState::default());
         self.colors.fill(None);
         self.path_steps.fill((0.0, false));
+        self.counts.fill(0);
         self.previous_models.clear();
         self.operator_states.fill(common::State::default());
         self.particle_op_states.clear();
@@ -1332,12 +1355,18 @@ impl Sim {
             dt,
         };
         for (index, init) in plan.inits.iter().enumerate() {
+            if let Init::Count(remap) = init {
+                remap.initialize(batch, &mut self.counts[index]);
+                continue;
+            }
             if let Init::NoiseScalar { field, noise } = init {
                 noise.initialize_batch(*field, batch, first, world);
                 continue;
             }
             for (part_index, part) in batch.iter_mut().enumerate() {
                 match init {
+                    Init::Count(_) => unreachable!("count remapping runs on the complete emitter batch"),
+                    Init::Vector(remap) => remap.initialize(part, &positions),
                     Init::RayEnvironment(cull) => rays::initialize(cull, part, dt, world),
                     Init::Impact(impact) => part.life = spatial::impact_lifetime(impact, part, world),
                     Init::Scalar(remap) => {
