@@ -1707,6 +1707,68 @@ fn spritecard_mixes_texture_frames_and_both_sequences_before_alpha_blending() {
 }
 
 #[test]
+fn trail_colors_and_alpha_cutoffs_match_native_cpu_and_spline_pixels() {
+    let (device, queue) = gpu_or_skip!();
+    let mut renderer = Renderer::new(&device, &queue);
+    let texels = [[255; 4], [255, 255, 255, 64], [128, 64, 192, 128], [16, 48, 64, 64]];
+    let textures = texels.map(|rgba| renderer.create_texture(&solid(rgba)));
+    let fixture: serde_json::Value = serde_json::from_str(include_str!("data/native_trail_color.json")).unwrap();
+    let cases = fixture["cases"].as_array().unwrap();
+    assert_eq!(cases.len(), 208);
+    let array3 = |v: &serde_json::Value| std::array::from_fn(|i| v[i].as_f64().unwrap() as f32);
+    for case in cases {
+        let rgba: [u8; 4] = std::array::from_fn(|i| case["texel"][i].as_u64().unwrap() as u8);
+        let texture = textures[texels.iter().position(|v| *v == rgba).unwrap()];
+        renderer.set_material(4, &MaterialDesc { texture: Some(texture), ..Default::default() });
+        let eye = array3(&case["eye"]);
+        let head = array3(&case["head"]);
+        let mut view = persp(eye, [eye[0], 0.0, 64.0], [128, 128], RenderMode::Textured);
+        view.game_pixel_grid = true;
+        view.kind = ViewKind::Perspective {
+            eye,
+            forward: [0.0, 1.0, 0.0],
+            up: [0.0, 0.0, 1.0],
+            fov_y_deg: 60.0,
+            near: 1.0,
+            far: 2000.0,
+        };
+        renderer.set_particles(&[ParticleInstance {
+            animation: ParticleAnimation::default(),
+            pos: head,
+            size: case["width"].as_f64().unwrap() as f32,
+            axis: array3(&case["delta"]),
+            roll: 0.0,
+            yaw: 0.0,
+            uv: [0.0, 0.0, 1.0, 1.0],
+            color: std::array::from_fn(|i| case["color"][i].as_f64().unwrap() as f32 / 255.0),
+            bright: 1.0,
+            add_self: case["addself"].as_f64().unwrap() as f32,
+            screen_fade: [0.0; 2],
+            refraction_blur: 0.0,
+            no_fog: true,
+            orient: if case["path"] == "cpu" { ParticleOrient::TrailCpu } else { ParticleOrient::TrailSpline },
+            material: 4,
+            blend: match case["blend"].as_str().unwrap() {
+                "additive" => ParticleBlend::Additive,
+                "addself" => ParticleBlend::AddSelf,
+                _ => ParticleBlend::Alpha,
+            },
+        }]);
+        renderer.render_view(1, &view, &Overlay::default());
+        let name = case["name"].as_str().unwrap();
+        let actual = save(&renderer, 1, &format!("trail_color_{name}"));
+        for sample in case["samples"].as_array().unwrap() {
+            let x = sample["x"].as_u64().unwrap() as u32;
+            let color = pixel(&actual, x, 64);
+            for (channel, value) in color[..3].iter().enumerate() {
+                let expected = sample["pixel"][channel].as_u64().unwrap() as u8;
+                assert!(value.abs_diff(expected) <= 3, "{name} x{x}: {color:?} versus native {}", sample["pixel"]);
+            }
+        }
+    }
+}
+
+#[test]
 fn spritecard_pixels_match_native_garrys_mod_captures() {
     let (device, queue) = gpu_or_skip!();
     let mut renderer = Renderer::new(&device, &queue);
@@ -1876,8 +1938,8 @@ fn simulated_colors_fades_and_noise_match_native_spritecard_pixels() {
     }
     let (device, queue) = gpu_or_skip!();
     let mut renderer = Renderer::new(&device, &queue);
-    mat(&mut renderer, 4, [128, 128, 128, 128], MaterialFlags::empty());
-    mat(&mut renderer, 5, [0, 255, 0, 255], MaterialFlags::empty());
+    mat(&mut renderer, 4, [128, 128, 128, 128], MaterialFlags::SPRITE_CARD);
+    mat(&mut renderer, 5, [0, 255, 0, 255], MaterialFlags::SPRITE_CARD);
     let view = persp([-128.0, 0.0, 0.0], [0.0; 3], [128, 128], RenderMode::Textured);
     let mut check = |particle: &hp_pcf::Particle, expected: &serde_json::Value, context: &str, material| {
         let sprite = ParticleInstance {
@@ -1898,7 +1960,7 @@ fn simulated_colors_fades_and_noise_match_native_spritecard_pixels() {
             material,
             blend: ParticleBlend::Alpha,
         };
-        renderer.set_particles(if particle.opacity() > 0.01 { std::slice::from_ref(&sprite) } else { &[] });
+        renderer.set_particles(if particle.opacity() > 0.0 { std::slice::from_ref(&sprite) } else { &[] });
         renderer.render_view(1, &view, &Overlay::default());
         let (_, _, pixels) = renderer.read_view_rgba8(1).unwrap();
         let actual = &pixels[(64 * 128 + 64) * 4..][..3];

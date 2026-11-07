@@ -67,6 +67,7 @@ const M_MODULATE: u32 = 512u;
 const M_MODULATE_2X: u32 = 1024u;
 const M_DECAL_MODULATE: u32 = 2048u;
 const M_SELF_ILLUM: u32 = 4096u;
+const M_SPRITE_CARD: u32 = 16384u;
 const SI_BASE_ALPHA: f32 = 0.0;
 const SI_MASK_COLOR: f32 = 1.0;
 const SI_MASK_ALPHA: f32 = 2.0;

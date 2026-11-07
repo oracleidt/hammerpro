@@ -187,6 +187,7 @@ bitflags_u32! {
         DECAL_MODULATE = 1 << 11;
         SELF_ILLUM = 1 << 12;
         LIGHT_BLOCKER = 1 << 13;
+        SPRITE_CARD = 1 << 14;
     }
 }
 

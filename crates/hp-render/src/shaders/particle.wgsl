@@ -29,6 +29,7 @@ const P_FLAT: u32 = 2u;
 const P_STRETCHED: u32 = 3u;
 const P_TRAIL_CPU: u32 = 6u;
 const P_TRAIL_SPLINE: u32 = 7u;
+const P_SPLINE_LINEAR_COLOR: u32 = 131072u;
 
 @vertex
 fn vs_particle(
@@ -57,6 +58,9 @@ fn vs_particle(
     }
     let mode = mode_bits & 127u;
     out.effects = effects;
+    if mode == P_TRAIL_SPLINE {
+        out.effects |= P_SPLINE_LINEAR_COLOR;
+    }
     out.lightmode = select(0u, mode - 3u, mode >= 4u && mode <= 5u);
     out.addself = f32(mode_bits >> 8u) / 256.0;
     if (mode_bits & 128u) != 0u {
@@ -154,7 +158,10 @@ fn vs_particle(
             alpha *= 1.0 - clamp((share - f0) / (f1 - f0), 0.0, 1.0);
         }
     }
-    out.color = vec4<f32>(pow(max(color.rgb, vec3<f32>(0.0)), vec3<f32>(2.2)) * max(bright, 0.0), alpha);
+    // Source's spline-card shader takes the byte vertex color as linear. The
+    // ordinary SpriteCard and CPU ribbon paths instead apply gamma 2.2.
+    let rgb = select(pow(max(color.rgb, vec3<f32>(0.0)), vec3<f32>(2.2)), color.rgb, mode == P_TRAIL_SPLINE);
+    out.color = vec4<f32>(rgb * max(bright, 0.0), alpha);
     out.clip = view.view_proj * vec4<f32>(world, 1.0);
     return out;
 }
@@ -228,22 +235,30 @@ fn fs_particle(in: ParticleOut) -> @location(0) vec4<f32> {
     fog_far_clip(in.world);
     let fog = select(fog_amount(in.world), 0.0, (in.effects & 65536u) != 0u);
     let color = particle_color(in);
+    let spline = (in.effects & P_SPLINE_LINEAR_COLOR) != 0u;
+    let card = spline || (material.flags & M_SPRITE_CARD) != 0u;
+    if card && PARTICLE_BLEND_MODE != 1.0 && t.a * in.color.a <= 0.01 {
+        discard;
+    }
     if PARTICLE_BLEND_MODE > 1.5 {
         let peak = p_linear_to_srgb(max(max(t.r, t.g), t.b));
-        let a = clamp(t.a / max(peak, 1.0 / 255.0), 0.0, 1.0) * in.color.a;
+        let a = select(clamp(t.a / max(peak, 1.0 / 255.0), 0.0, 1.0), t.a, card) * in.color.a;
         let rgb = fog_blend(t.rgb * color * a * exposure, vec3<f32>(0.0), fog);
-        if max(max(rgb.r, rgb.g), rgb.b) < 1.0 / 512.0 {
+        if !card && max(max(rgb.r, rgb.g), rgb.b) < 1.0 / 512.0 {
             discard;
         }
         return vec4<f32>(rgb, 0.0);
     }
     let a = t.a * in.color.a;
-    if a < 1.0 / 255.0 {
+    if a <= 0.0 {
         discard;
     }
     let rgb = t.rgb * color * exposure;
     let fogged = fog_blend(rgb, view.fog_a.rgb, fog);
     if PARTICLE_BLEND_MODE > 0.5 {
+        if card {
+            return vec4<f32>(fogged * a * (1.0 + in.addself * in.color.a), a);
+        }
         return vec4<f32>(fogged * (a + in.addself * t.a * 0.12), a);
     }
     return vec4<f32>(fogged, a);

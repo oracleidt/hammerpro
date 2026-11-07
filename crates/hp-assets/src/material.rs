@@ -16,7 +16,8 @@ pub(crate) enum MatKind {
 pub(crate) const LUM_SUFFIX: &str = "|lum";
 
 fn wants_lum(kind: MatKind, a: &MatAnalysis) -> bool {
-    kind == MatKind::SpriteAdditive || (kind == MatKind::Sprite && a.flags.contains(MaterialFlags::ADDITIVE))
+    !a.flags.contains(MaterialFlags::SPRITE_CARD)
+        && (kind == MatKind::SpriteAdditive || (kind == MatKind::Sprite && a.flags.contains(MaterialFlags::ADDITIVE)))
 }
 
 pub(crate) fn texture_keys(kind: MatKind, a: &MatAnalysis) -> Vec<String> {
@@ -261,6 +262,9 @@ fn analyze_resolved(name: &str, mat: &Material, texture_flags: &dyn Fn(&str) -> 
     }
     if mat.is_unlit() {
         flags |= MaterialFlags::UNLIT;
+    }
+    if mat.shader_kind() == hp_vmt::ShaderKind::SpriteCard {
+        flags |= MaterialFlags::SPRITE_CARD;
     }
     let self_illum = self_illum_of(mat).filter(|s| {
         tool.is_none()
@@ -929,6 +933,14 @@ mod tests {
         assert!(f.flags.contains(MaterialFlags::TRANSLUCENT));
         assert_eq!(f.texture, None);
         assert!(flat_desc([1, 2, 3, 255]).flags.is_empty());
+    }
+
+    #[test]
+    fn spritecard_additive_materials_keep_the_authored_texture_alpha() {
+        let card = analyze("particle/card", &mat(r#"SpriteCard { "$basetexture" "particle/card" "$additive" 1 }"#));
+        for kind in [MatKind::Sprite, MatKind::SpriteAdditive] {
+            assert_eq!(texture_keys(kind, &card), ["particle/card"]);
+        }
     }
 
     #[test]

@@ -424,7 +424,7 @@ pub fn append_sprites<'a>(
                 entity: id,
             };
             let visible =
-                |p: &hp_pcf::Particle| p.opacity() > 0.01 && p.radius > 0.0 && p.pos.iter().all(|v| v.is_finite());
+                |p: &hp_pcf::Particle| p.opacity() > 0.0 && p.radius > 0.0 && p.pos.iter().all(|v| v.is_finite());
             match render.kind {
                 RenderKind::Sprites => {
                     for p in particles.iter().filter(|p| visible(p)) {
@@ -1467,6 +1467,36 @@ mod tests {
     }
 
     #[test]
+    fn sprite_adapter_retains_small_nonzero_opacity_until_native_material_blending() {
+        let definition = hp_pcf::SystemDef {
+            name: "faint".into(),
+            material: "particle/faint".into(),
+            initial_particles: 1,
+            renderers: vec![hp_pcf::Operator { function: "render_animated_sprites".into(), ..Default::default() }],
+            ..Default::default()
+        };
+        let plan = Arc::new(Plan::new(&definition));
+        let mut effect = Effect::new("faint", &|_| Some(plan.clone()), 17).unwrap();
+        effect.step(0.02, [0.0; 3], 10);
+        effect.sims[0].1.particles[0].alpha = 1.0 / 255.0;
+        for (spritecard, add_self) in [(false, 0.0), (true, 0.0), (true, 0.5)] {
+            let looks = HashMap::from([(
+                "particle/faint".into(),
+                Arc::new(MaterialLook { spritecard, add_self, ..Default::default() }),
+            )]);
+            let mut sprites = Vec::new();
+            let mut materials = Vec::new();
+            append_sprites(std::iter::once((73, &effect)), &looks, &mut sprites, &mut materials);
+            assert_eq!(sprites.len(), 1, "the native pixel shader decides whether the combined alpha is visible");
+            assert_eq!(sprites[0].color[3], 1.0 / 255.0);
+        }
+        effect.sims[0].1.particles[0].alpha = 0.0;
+        let mut sprites = Vec::new();
+        append_sprites(std::iter::once((73, &effect)), &HashMap::new(), &mut sprites, &mut Vec::new());
+        assert!(sprites.is_empty());
+    }
+
+    #[test]
     fn trail_adapter_preserves_native_width_history_and_small_nonzero_opacity() {
         let definition = hp_pcf::SystemDef {
             name: "trail".into(),
@@ -1527,7 +1557,7 @@ mod tests {
     }
 
     #[test]
-    fn exported_sprite_opacity_and_visibility_match_native_alpha2_samples() {
+    fn exported_sprite_opacity_matches_native_alpha2_samples_before_pixel_clipping() {
         let definitions = hp_pcf::parse_file(include_bytes!("../../hp-pcf/tests/data/alpha2_cases.pcf")).unwrap();
         let cases: Vec<serde_json::Value> =
             serde_json::from_str(include_str!("../../hp-pcf/tests/data/alpha2_native_samples.json")).unwrap();
@@ -1541,9 +1571,11 @@ mod tests {
             let mut materials = Vec::new();
             let looks = HashMap::from([(plan.material.clone(), Arc::new(MaterialLook::default()))]);
             append_sprites(std::iter::once((1, &effect)), &looks, &mut sprites, &mut materials);
-            let visible = case["pixel"][1].as_u64().unwrap() > 0;
-            assert_eq!(sprites.len(), usize::from(visible), "{name}");
-            if visible {
+            // Retain every positive byte opacity. The native material's pixel
+            // cutoff is covered by the renderer's alpha2 reference test.
+            let submitted = case["opacity"].as_f64().unwrap() > 0.0;
+            assert_eq!(sprites.len(), usize::from(submitted), "{name}");
+            if submitted {
                 assert_eq!(sprites[0].color[3], case["opacity"].as_f64().unwrap() as f32, "{name}");
             }
         }
