@@ -50,7 +50,7 @@ pub(crate) fn prepare<'a>(up: &'a TextureUpload, supports_bc: bool, max_dim: u32
     }
     let linear = up.format.is_linear();
     let bc = match up.format {
-        TexFormat::Rgba8Srgb | TexFormat::Rgba8Linear => None,
+        TexFormat::Rgba8Srgb | TexFormat::Rgba8Linear | TexFormat::Rgba16Float => None,
         TexFormat::Bc1Srgb => Some((texpresso::Format::Bc1, wgpu::TextureFormat::Bc1RgbaUnormSrgb)),
         TexFormat::Bc2Srgb => Some((texpresso::Format::Bc2, wgpu::TextureFormat::Bc2RgbaUnormSrgb)),
         TexFormat::Bc3Srgb => Some((texpresso::Format::Bc3, wgpu::TextureFormat::Bc3RgbaUnormSrgb)),
@@ -58,7 +58,13 @@ pub(crate) fn prepare<'a>(up: &'a TextureUpload, supports_bc: bool, max_dim: u32
         TexFormat::Bc2Linear => Some((texpresso::Format::Bc2, wgpu::TextureFormat::Bc2RgbaUnorm)),
         TexFormat::Bc3Linear => Some((texpresso::Format::Bc3, wgpu::TextureFormat::Bc3RgbaUnorm)),
     };
-    let rgba = if linear { wgpu::TextureFormat::Rgba8Unorm } else { wgpu::TextureFormat::Rgba8UnormSrgb };
+    let rgba = if up.format == TexFormat::Rgba16Float {
+        wgpu::TextureFormat::Rgba16Float
+    } else if linear {
+        wgpu::TextureFormat::Rgba8Unorm
+    } else {
+        wgpu::TextureFormat::Rgba8UnormSrgb
+    };
     match bc {
         Some((_, gpu_format)) if supports_bc && w.is_multiple_of(4) && h.is_multiple_of(4) => {
             Ok(Prepared { format: gpu_format, width: w, height: h, levels })
@@ -122,6 +128,10 @@ fn linear_to_srgb_lut() -> &'static [u8; 4096] {
 }
 
 fn generate_mips(p: &mut Prepared<'_>, linear: bool) {
+    if p.format == wgpu::TextureFormat::Rgba16Float {
+        generate_float_mips(p);
+        return;
+    }
     let to_lin = srgb_to_linear_lut();
     let to_srgb = linear_to_srgb_lut();
     let count = full_mip_count(p.width, p.height);
@@ -158,6 +168,38 @@ fn generate_mips(p: &mut Prepared<'_>, linear: bool) {
             }
         }
         p.levels.push(Cow::Owned(dst));
+        w = nw;
+        h = nh;
+    }
+}
+
+fn generate_float_mips(p: &mut Prepared<'_>) {
+    let (mut w, mut h) = (p.width as usize, p.height as usize);
+    while w > 1 || h > 1 {
+        let Some(src) = p.levels.last() else { return };
+        if src.len() < w * h * 8 {
+            return;
+        }
+        let (nw, nh) = ((w / 2).max(1), (h / 2).max(1));
+        let mut data = Vec::with_capacity(nw * nh * 8);
+        for y in 0..nh {
+            for x in 0..nw {
+                for channel in 0..4 {
+                    let mut sum = 0.0;
+                    for dy in 0..2 {
+                        for dx in 0..2 {
+                            let at = (((y * 2 + dy).min(h - 1) * w + (x * 2 + dx).min(w - 1)) * 4 + channel) * 2;
+                            let v = crate::cubemaps::f16_to_f32(u16::from_le_bytes([src[at], src[at + 1]]));
+                            sum += if v.is_finite() { v } else { 0.0 };
+                        }
+                    }
+                    data.extend_from_slice(
+                        &crate::compiled_light::f16_bits((sum * 0.25).clamp(-65504.0, 65504.0)).to_le_bytes(),
+                    );
+                }
+            }
+        }
+        p.levels.push(Cow::Owned(data));
         w = nw;
         h = nh;
     }
@@ -232,6 +274,32 @@ pub(crate) fn builtin_flat_normal() -> TextureUpload {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn float_uploads_keep_radiance_and_linear_mip_averages() {
+        let up = TextureUpload::rgba16_float(
+            2,
+            2,
+            &[[4.0, -2.0, 0.125, 0.5], [8.0, -2.0, 0.125, 0.5], [12.0, -2.0, 0.125, 0.5], [16.0, -2.0, 0.125, 0.5]],
+        )
+        .unwrap();
+        assert_eq!(up.format.level_size(2, 2), 32);
+        let prepared = prepare(&up, false, 8192).unwrap();
+        assert_eq!(prepared.format, wgpu::TextureFormat::Rgba16Float);
+        assert_eq!(prepared.levels.len(), 2);
+        let values: Vec<f32> = prepared.levels[1]
+            .chunks_exact(2)
+            .map(|p| crate::cubemaps::f16_to_f32(u16::from_le_bytes([p[0], p[1]])))
+            .collect();
+        assert_eq!(values, [10.0, -2.0, 0.125, 0.5]);
+        let finite = TextureUpload::rgba16_float(1, 1, &[[f32::NAN, f32::INFINITY, 1e30, 1.0]]).unwrap();
+        let values: Vec<f32> = finite.levels[0]
+            .chunks_exact(2)
+            .map(|p| crate::cubemaps::f16_to_f32(u16::from_le_bytes([p[0], p[1]])))
+            .collect();
+        assert_eq!(values, [0.0, 0.0, 65504.0, 1.0]);
+        assert!(TextureUpload::rgba16_float(2, 1, &[[1.0; 4]]).is_err());
+    }
 
     #[test]
     fn rejects_malformed() {

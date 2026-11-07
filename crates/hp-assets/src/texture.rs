@@ -47,13 +47,8 @@ pub(crate) fn prepare_texture(fs: &hp_fs::GameFs, key: &str, bc: bool) -> Result
 
 fn prepare_cube(fs: &hp_fs::GameFs, name: &str) -> Result<PreparedTexture, TexFailure> {
     let bytes = fs.load_texture_raw(name).ok_or(TexFailure::Missing)?;
-    let (size, pixels) = crate::envmap::cube_strip(&bytes).map_err(|e| TexFailure::broken(name, e))?;
-    let levels = build_mips(size, size * 6, pixels)
-        .ok_or_else(|| TexFailure::broken(name, format!("bad pixel data for {size}x{}", size * 6)))?;
-    Ok(PreparedTexture {
-        upload: TextureUpload { width: size, height: size * 6, format: TexFormat::Rgba8Srgb, levels },
-        size: [size, size * 6],
-    })
+    let upload = crate::envmap::cube_strip(&bytes).map_err(|e| TexFailure::broken(name, e))?;
+    Ok(PreparedTexture { size: [upload.width, upload.height], upload })
 }
 
 fn prepare_normal(fs: &hp_fs::GameFs, name: &str, frame: u32, bc: bool) -> Result<PreparedTexture, TexFailure> {

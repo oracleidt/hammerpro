@@ -13,6 +13,8 @@ mod jobs;
 mod lights;
 mod lods;
 mod material;
+#[cfg(test)]
+mod material_hdr_tests;
 mod material_uv;
 mod meshes;
 mod model_thumbs;

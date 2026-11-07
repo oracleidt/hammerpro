@@ -13,7 +13,7 @@ pub mod ops;
 mod remap;
 
 pub use compose::{ComposeOptions, ENCODABLE, can_encode, compose};
-pub use decode::convert_to_rgba8;
+pub use decode::{convert_to_rgba8, convert_to_rgba32f};
 pub use document::VtfDocument;
 pub use encode::{
     EncodeFormat, EncodeOptions, EncodeQuality, MAX_POW2_SIZE, MipFilter, encode, encode_frames, load_image_file,
@@ -28,6 +28,14 @@ pub struct RgbaImage {
     pub width: u32,
     pub height: u32,
     pub pixels: Vec<u8>,
+}
+
+/// Numeric texture channels without tone mapping or gamma conversion.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct RgbaFloatImage {
+    pub width: u32,
+    pub height: u32,
+    pub pixels: Vec<[f32; 4]>,
 }
 
 impl RgbaImage {
@@ -81,6 +89,10 @@ pub struct RawLevel<'a> {
 impl RawLevel<'_> {
     pub fn to_rgba8(&self) -> Result<RgbaImage, VtfError> {
         convert_to_rgba8(self.format, self.data, self.width, self.height)
+    }
+
+    pub fn to_rgba32f(&self) -> Result<RgbaFloatImage, VtfError> {
+        convert_to_rgba32f(self.format, self.data, self.width, self.height)
     }
 }
 

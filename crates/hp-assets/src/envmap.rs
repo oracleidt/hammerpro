@@ -1,4 +1,4 @@
-use hp_render::{EnvmapAlphaMask, EnvmapDesc};
+use hp_render::{EnvmapAlphaMask, EnvmapDesc, EnvmapTintSpace, TexFormat, TextureUpload};
 use hp_vmt::{Material, ShaderKind};
 
 use crate::material::{TexLook, texture_transform_cross_of, texture_transform_of};
@@ -32,6 +32,7 @@ pub(crate) enum MaskSource {
 pub(crate) struct EnvmapAnalysis {
     pub texture: Option<String>,
     pub tint: [f32; 3],
+    pub tint_space: EnvmapTintSpace,
     pub contrast: f32,
     pub saturation: [f32; 3],
     pub mask: Option<MaskSource>,
@@ -84,6 +85,7 @@ impl EnvmapAnalysis {
             cubemap: None,
             texture,
             tint: self.tint,
+            tint_space: self.tint_space,
             contrast: self.contrast,
             saturation: self.saturation,
             mask,
@@ -118,10 +120,7 @@ pub(crate) fn analyze_envmap(mat: &Material) -> Option<EnvmapAnalysis> {
     let kind = mat.shader_kind();
     let lightmapped = matches!(
         kind,
-        ShaderKind::LightmappedGeneric
-            | ShaderKind::WorldVertexTransition
-            | ShaderKind::Lightmapped4WayBlend
-            | ShaderKind::WorldTwoTextureBlend
+        ShaderKind::LightmappedGeneric | ShaderKind::WorldVertexTransition | ShaderKind::Lightmapped4WayBlend
     );
     let vertexlit = matches!(kind, ShaderKind::VertexLitGeneric | ShaderKind::UnlitGeneric);
     if !lightmapped && !vertexlit {
@@ -131,7 +130,9 @@ pub(crate) fn analyze_envmap(mat: &Material) -> Option<EnvmapAnalysis> {
     let texture = (!envmap.eq_ignore_ascii_case("env_cubemap")).then_some(envmap);
     let bump = mat.bump_map();
     let bump_frame = frame(mat, "$bumpframe");
-    let phong = kind == ShaderKind::VertexLitGeneric && mat.flag("$phong") && bump.is_some();
+    let phong = kind == ShaderKind::VertexLitGeneric
+        && mat.flag("$phong")
+        && (bump.is_some() || mat.flag("$basemapalphaphongmask"));
     let mut alpha_mask = EnvmapAlphaMask::None;
     let mut mask = None;
     let mask_key = crate::material_uv::env_mask_key(mat);
@@ -167,6 +168,7 @@ pub(crate) fn analyze_envmap(mat: &Material) -> Option<EnvmapAnalysis> {
     Some(EnvmapAnalysis {
         texture,
         tint: vec3(mat, "$envmaptint", [1.0; 3]).map(|v| v.clamp(0.0, 64.0)),
+        tint_space: if vertexlit && !phong { EnvmapTintSpace::Gamma22 } else { EnvmapTintSpace::Linear },
         contrast: num(mat, "$envmapcontrast", 0.0).clamp(0.0, 1.0),
         saturation: vec3(mat, "$envmapsaturation", [1.0; 3]).map(|v| v.clamp(-8.0, 8.0)),
         mask,
@@ -183,24 +185,47 @@ pub(crate) fn analyze_envmap(mat: &Material) -> Option<EnvmapAnalysis> {
     })
 }
 
-pub(crate) fn cube_strip(bytes: &[u8]) -> Result<(u32, Vec<u8>), String> {
+pub(crate) fn cube_strip(bytes: &[u8]) -> Result<TextureUpload, String> {
     let info = hp_vtf::read_info(bytes).map_err(|e| e.to_string())?;
     if !info.is_cubemap() {
         return Err("not a cubemap".to_owned());
     }
-    let mip = info.mip_for_max_dimension(MAX_CUBE_FACE);
+    let first = info.mip_for_max_dimension(MAX_CUBE_FACE);
+    let linear = matches!(info.format, hp_vtf::ImageFormat::Rgba16161616F | hp_vtf::ImageFormat::Rgba16161616);
     let mut size = 0;
-    let mut out = Vec::new();
-    for face in 0..6 {
-        let level = hp_vtf::raw_level(bytes, mip, 0, face).map_err(|e| e.to_string())?;
-        let img = level.to_rgba8().map_err(|e| e.to_string())?;
-        if img.width != img.height || img.width == 0 || (size != 0 && img.width != size) {
-            return Err(format!("face {face} is {}x{}", img.width, img.height));
+    let mut levels = Vec::new();
+    for mip in first..info.mip_count {
+        let mut face_size = 0;
+        let mut out = Vec::new();
+        for face in 0..6 {
+            let level = hp_vtf::raw_level(bytes, mip, 0, face).map_err(|e| e.to_string())?;
+            if level.width != level.height || level.width == 0 || (face_size != 0 && level.width != face_size) {
+                return Err(format!("face {face} is {}x{}", level.width, level.height));
+            }
+            face_size = level.width;
+            if linear {
+                let img = level.to_rgba32f().map_err(|e| e.to_string())?;
+                let packed =
+                    TextureUpload::rgba16_float(img.width, img.height, &img.pixels).map_err(|e| e.to_string())?;
+                out.extend_from_slice(&packed.levels[0]);
+            } else {
+                out.extend_from_slice(&level.to_rgba8().map_err(|e| e.to_string())?.pixels);
+            }
         }
-        size = img.width;
-        out.extend_from_slice(&img.pixels);
+        if size == 0 {
+            size = face_size;
+        }
+        levels.push(out);
     }
-    Ok((size, out))
+    if size == 0 {
+        return Err("cubemap has no image levels".into());
+    }
+    Ok(TextureUpload {
+        width: size,
+        height: size * 6,
+        format: if linear { TexFormat::Rgba16Float } else { TexFormat::Rgba8Srgb },
+        levels,
+    })
 }
 
 #[cfg(test)]

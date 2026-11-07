@@ -210,7 +210,7 @@ fn probes_are_drawn_in_the_layout_of_a_cube_vtf() {
     mirror(&mut r, EnvmapDesc { tint: [0.5; 3], ..Default::default() });
     let tinted = shot(&mut r, &down(), true, "tinted");
     let t = px(&tinted, SIZE / 2, SIZE / 4);
-    assert!(t[0] > 110 && t[0] < 150, "tint 0.5 (gamma): {t:?}");
+    assert!(t[0] > 178 && t[0] < 198, "native world tint 0.5 is linear: {t:?}");
     let black = r.create_texture(&TextureUpload {
         width: 1,
         height: 1,
@@ -249,7 +249,7 @@ fn hdr_images_and_cubemap_textures_are_reflected() {
     let refs: [&[[f32; 3]]; 6] = std::array::from_fn(|i| hdr[i].as_slice());
     let id = r.create_cubemap_image(&CubemapImage { size: 8, faces: refs, origin: None }).expect("image");
     assert!(r.create_cubemap_image(&CubemapImage { size: 8, faces: [&[]; 6], origin: None }).is_none(), "malformed");
-    let tint = 0.537;
+    let tint = 0.25;
     mirror(&mut r, EnvmapDesc { cubemap: Some(id), tint: [tint; 3], ..Default::default() });
     shot(&mut r, &down(), true, "hdr_first");
     bake(&mut r);

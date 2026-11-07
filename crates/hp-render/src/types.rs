@@ -22,6 +22,7 @@ impl TexId {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum TexFormat {
     Rgba8Srgb,
+    Rgba16Float,
     Bc1Srgb,
     Bc2Srgb,
     Bc3Srgb,
@@ -34,18 +35,26 @@ pub enum TexFormat {
 impl TexFormat {
     pub const fn block_bytes(self) -> Option<usize> {
         match self {
-            TexFormat::Rgba8Srgb | TexFormat::Rgba8Linear => None,
+            TexFormat::Rgba8Srgb | TexFormat::Rgba8Linear | TexFormat::Rgba16Float => None,
             TexFormat::Bc1Srgb | TexFormat::Bc1Linear => Some(8),
             TexFormat::Bc2Srgb | TexFormat::Bc3Srgb | TexFormat::Bc2Linear | TexFormat::Bc3Linear => Some(16),
         }
     }
 
     pub const fn is_linear(self) -> bool {
-        matches!(self, TexFormat::Rgba8Linear | TexFormat::Bc1Linear | TexFormat::Bc2Linear | TexFormat::Bc3Linear)
+        matches!(
+            self,
+            TexFormat::Rgba16Float
+                | TexFormat::Rgba8Linear
+                | TexFormat::Bc1Linear
+                | TexFormat::Bc2Linear
+                | TexFormat::Bc3Linear
+        )
     }
 
     pub const fn to_linear(self) -> Self {
         match self {
+            TexFormat::Rgba16Float => TexFormat::Rgba16Float,
             TexFormat::Rgba8Srgb | TexFormat::Rgba8Linear => TexFormat::Rgba8Linear,
             TexFormat::Bc1Srgb | TexFormat::Bc1Linear => TexFormat::Bc1Linear,
             TexFormat::Bc2Srgb | TexFormat::Bc2Linear => TexFormat::Bc2Linear,
@@ -56,7 +65,7 @@ impl TexFormat {
     pub fn level_size(self, width: u32, height: u32) -> usize {
         let (w, h) = (width.max(1) as usize, height.max(1) as usize);
         match self.block_bytes() {
-            None => w.saturating_mul(h).saturating_mul(4),
+            None => w.saturating_mul(h).saturating_mul(if self == Self::Rgba16Float { 8 } else { 4 }),
             Some(b) => w.div_ceil(4).saturating_mul(h.div_ceil(4)).saturating_mul(b),
         }
     }
@@ -68,6 +77,25 @@ pub struct TextureUpload {
     pub height: u32,
     pub format: TexFormat,
     pub levels: Vec<Vec<u8>>,
+}
+
+impl TextureUpload {
+    /// Pack linear texture channels without clipping HDR values to white.
+    pub fn rgba16_float(width: u32, height: u32, pixels: &[[f32; 4]]) -> Result<Self, RenderError> {
+        if width == 0 || height == 0 || u64::from(width) * u64::from(height) != pixels.len() as u64 {
+            return Err(RenderError::InvalidTexture("float texture size does not match its texels".into()));
+        }
+        let data = pixels
+            .iter()
+            .flat_map(|p| {
+                p.iter().flat_map(|v| {
+                    let clean = if v.is_finite() { v.clamp(-65504.0, 65504.0) } else { 0.0 };
+                    crate::compiled_light::f16_bits(clean).to_le_bytes()
+                })
+            })
+            .collect();
+        Ok(Self { width, height, format: TexFormat::Rgba16Float, levels: vec![data] })
+    }
 }
 
 macro_rules! bitflags_u32 {
@@ -284,11 +312,19 @@ pub enum EnvmapAlphaMask {
     Base,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum EnvmapTintSpace {
+    #[default]
+    Linear,
+    Gamma22,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct EnvmapDesc {
     pub cubemap: Option<CubemapId>,
     pub texture: Option<TexId>,
     pub tint: [f32; 3],
+    pub tint_space: EnvmapTintSpace,
     pub contrast: f32,
     pub saturation: [f32; 3],
     pub mask: Option<TexId>,
@@ -311,6 +347,7 @@ impl Default for EnvmapDesc {
             cubemap: None,
             texture: None,
             tint: [1.0; 3],
+            tint_space: EnvmapTintSpace::Linear,
             contrast: 0.0,
             saturation: [1.0; 3],
             mask: None,

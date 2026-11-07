@@ -231,6 +231,7 @@ const E_NO_TEX1: u32 = 64u;
 const E_NO_TEX2: u32 = 128u;
 const E_FRESNEL: u32 = 256u;
 const E_PARALLAX: u32 = 512u;
+const E_TINT_GAMMA22: u32 = 1024u;
 const CUBE_SURFACE: u32 = 0xffffffffu;
 const CUBE_NONE: u32 = 0xffffu;
 const CUBE_INFO_STRIDE: u32 = 5u;
@@ -301,10 +302,8 @@ fn env_reflection(
         mask *= 1.0 - blend;
     }
     var tint = material.env_tint.rgb;
-    if gamma {
-        c = linear_to_srgb(min(c, vec3<f32>(1.0)));
-    } else {
-        tint = srgb_to_linear_ext(tint);
+    if (f & E_TINT_GAMMA22) != 0u {
+        tint = pow(clamp(tint, vec3<f32>(0.0), vec3<f32>(1.0)), vec3<f32>(2.2));
     }
     var spec = c * mask * tint;
     spec = mix(spec, spec * spec, material.env_tint.w);
@@ -319,7 +318,9 @@ fn env_reflection(
         spec = mix(spec, spec * env_fresnel_ranges(n, v), material.env_fresnel.y);
     }
     spec *= mix(vec3<f32>(1.0), clamp(light, vec3<f32>(0.0), vec3<f32>(1.0)), material.env_sat.w);
-    return max(spec, vec3<f32>(0.0));
+    let result = max(spec, vec3<f32>(0.0));
+    // LDR lightmaps accumulate in gamma space; reflection radiance is linear.
+    return select(result, linear_to_srgb(result), gamma);
 }
 
 fn srgb_to_linear_ext(c: vec3<f32>) -> vec3<f32> {

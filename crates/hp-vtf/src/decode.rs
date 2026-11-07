@@ -1,10 +1,56 @@
 use rayon::prelude::*;
 
-use crate::{ImageFormat, RgbaImage, VtfError, bc};
+use crate::{ImageFormat, RgbaFloatImage, RgbaImage, VtfError, bc};
 
 const PARALLEL_PIXELS: usize = 256 * 256;
 
 const PIXELS_PER_JOB: usize = 16 * 1024;
+
+/// Preserve floating point radiance and the precision of 16-bit UNORM textures.
+/// Other encodings return normalized numeric channels in their original space.
+pub fn convert_to_rgba32f(
+    format: ImageFormat,
+    src: &[u8],
+    width: u32,
+    height: u32,
+) -> Result<RgbaFloatImage, VtfError> {
+    use ImageFormat as F;
+    if width == 0 || height == 0 {
+        return Err(VtfError::InvalidDimensions { width, height });
+    }
+    let needed = format.image_size(width, height).ok_or(VtfError::TooLarge)?;
+    let count = usize::try_from(needed).map_err(|_| VtfError::TooLarge)?;
+    let src = src.get(..count).ok_or(VtfError::Truncated { needed, available: src.len() as u64 })?;
+    let float = |p: &[u8], index: usize| {
+        let start = index * 4;
+        f32::from_le_bytes([p[start], p[start + 1], p[start + 2], p[start + 3]])
+    };
+    let pixels = match format {
+        F::Rgba16161616F => src
+            .chunks_exact(8)
+            .map(|p| std::array::from_fn(|i| f16_to_f32(u16::from_le_bytes([p[2 * i], p[2 * i + 1]]))))
+            .collect(),
+        F::Rgba16161616 => src
+            .chunks_exact(8)
+            .map(|p| std::array::from_fn(|i| f32::from(u16::from_le_bytes([p[2 * i], p[2 * i + 1]])) / 65535.0))
+            .collect(),
+        F::Rgba32323232F => src.chunks_exact(16).map(|p| std::array::from_fn(|i| float(p, i))).collect(),
+        F::Rgb323232F => src.chunks_exact(12).map(|p| [float(p, 0), float(p, 1), float(p, 2), 1.0]).collect(),
+        F::R32F => src
+            .chunks_exact(4)
+            .map(|p| {
+                let v = float(p, 0);
+                [v, v, v, 1.0]
+            })
+            .collect(),
+        _ => convert_to_rgba8(format, src, width, height)?
+            .pixels
+            .chunks_exact(4)
+            .map(|p| std::array::from_fn(|i| f32::from(p[i]) / 255.0))
+            .collect(),
+    };
+    Ok(RgbaFloatImage { width, height, pixels })
+}
 
 pub fn convert_to_rgba8(format: ImageFormat, src: &[u8], width: u32, height: u32) -> Result<RgbaImage, VtfError> {
     if width == 0 || height == 0 {
@@ -230,6 +276,25 @@ mod tests {
         assert!(f16_to_f32(0x7C00).is_infinite());
         assert!(f16_to_f32(0x7E00).is_nan());
         assert!((f16_to_f32(0x0001) - 5.960_464_5e-8).abs() < 1e-12);
+    }
+
+    #[test]
+    fn floating_decode_keeps_hdr_and_unorm_precision() {
+        let half: Vec<u8> = [0x4400u16, 0x3800, 0x3000, 0x3c00].into_iter().flat_map(u16::to_le_bytes).collect();
+        assert_eq!(
+            convert_to_rgba32f(ImageFormat::Rgba16161616F, &half, 1, 1).unwrap().pixels,
+            [[4.0, 0.5, 0.125, 1.0]]
+        );
+        let wide: Vec<u8> = [65535u16, 32768, 1, 65535].into_iter().flat_map(u16::to_le_bytes).collect();
+        let image = convert_to_rgba32f(ImageFormat::Rgba16161616, &wide, 1, 1).unwrap();
+        assert_eq!(image.pixels[0], [1.0, 32768.0 / 65535.0, 1.0 / 65535.0, 1.0]);
+        let raw: Vec<u8> = [8.0f32, -2.0, 0.0625, 0.25].into_iter().flat_map(f32::to_le_bytes).collect();
+        assert_eq!(
+            convert_to_rgba32f(ImageFormat::Rgba32323232F, &raw, 1, 1).unwrap().pixels,
+            [[8.0, -2.0, 0.0625, 0.25]]
+        );
+        assert!(convert_to_rgba32f(ImageFormat::Rgba16161616F, &half[..7], 1, 1).is_err());
+        assert!(convert_to_rgba32f(ImageFormat::Rgba16161616F, &half, 0, 1).is_err());
     }
 
     fn one(format: ImageFormat, bytes: &[u8]) -> [u8; 4] {

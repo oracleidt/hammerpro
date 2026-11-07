@@ -495,11 +495,15 @@ const ENV_NO_TEX1: u32 = 64;
 const ENV_NO_TEX2: u32 = 128;
 const ENV_FRESNEL: u32 = 256;
 const ENV_PARALLAX: u32 = 512;
+const ENV_TINT_GAMMA22: u32 = 1024;
 
 fn env_uniform(d: &MaterialDesc, env_cube: u32) -> MaterialUniform {
     let Some(e) = d.envmap.filter(|_| d.water.is_none()) else { return MaterialUniform::default() };
     let finite = |v: f32, default: f32, lo: f32, hi: f32| if v.is_finite() { v.clamp(lo, hi) } else { default };
     let mut flags = ENV_ON;
+    if e.tint_space == EnvmapTintSpace::Gamma22 {
+        flags |= ENV_TINT_GAMMA22;
+    }
     if e.mask.is_some() {
         flags |= if e.mask_alpha { ENV_MASK_ALPHA } else { ENV_MASK_RGB };
     }
