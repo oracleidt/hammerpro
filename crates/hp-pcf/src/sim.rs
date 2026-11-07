@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::environment::{EmptyEnvironment, Environment};
 use crate::model::{Operator, SystemDef};
 
+mod alpha;
 mod batch;
 mod color;
 mod common;
@@ -438,6 +439,7 @@ impl Init {
 
 #[derive(Clone, Debug, PartialEq)]
 enum Op {
+    AlphaSimple(alpha::Simple),
     BoneLock(model::Lock),
     Scalar(scalar::Remap),
     Lock(control::Lock),
@@ -905,12 +907,10 @@ impl Plan {
                 ease: b(op, "ease in and out", true),
             },
             "alpha fade in simple" => {
-                let t = f(op, "proportional fade in time", 0.25).max(0.0);
-                Op::FadeIn { min: t, max: t, proportional: true, ease: false }
+                Op::AlphaSimple(alpha::Simple { out: false, span: f(op, "proportional fade in time", 0.25) })
             }
             "alpha fade out simple" => {
-                let t = f(op, "proportional fade out time", 0.25).max(0.0);
-                Op::FadeOut { min: t, max: t, proportional: true, ease: false }
+                Op::AlphaSimple(alpha::Simple { out: true, span: f(op, "proportional fade out time", 0.25) })
             }
             "alpha fade and decay" | "alpha fade and decay for tracers" => Op::FadeAndDecay {
                 start: f(op, "start_alpha", 1.0),
@@ -1735,6 +1735,16 @@ fn operate(
                         part.previous_dt = dt;
                         part.pos = add(part.pos, add(movement, scale(add(*gravity, acceleration), dt * dt)));
                         part.vel = scale(sub(part.pos, part.previous_pos), 1.0 / dt);
+                    }
+                }
+                Op::AlphaSimple(fade) => {
+                    let current = if alpha_written { alpha + part.alpha_add } else { part.alpha };
+                    if let Some(value) =
+                        fade.value((time, part.born, part.life), part.initial_values[Field::Alpha as usize], current)
+                    {
+                        alpha = value;
+                        part.alpha_add = 0.0;
+                        alpha_written = true;
                     }
                 }
                 Op::FadeIn { proportional, ease: smooth, .. } => {

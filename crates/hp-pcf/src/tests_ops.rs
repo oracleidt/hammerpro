@@ -48,6 +48,30 @@ fn run(def: &SystemDef, points: &Points, seconds: f32) -> Sim {
 struct FloorTrace;
 
 #[test]
+fn simple_alpha_fades_match_native_frames_including_order_gates_and_strength() {
+    let mut definitions = crate::parse_file(include_bytes!("../tests/data/alpha_simple_live_cases.pcf")).unwrap();
+    // Readback resets position X, then copies alpha into it, avoiding cancellation against the previous frame.
+    for definition in &mut definitions {
+        definition.operators.retain(|operator| !operator.function.eq_ignore_ascii_case("Remap Scalar"));
+    }
+    let frames: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/alpha_simple_live_native_samples.json")).unwrap();
+    assert_eq!(frames.len(), 149);
+    for index in 0..12 {
+        let name = format!("hp_spritecard_alpha{index}");
+        let plan = Arc::new(Plan::new(definitions.iter().find(|definition| definition.name == name).unwrap()));
+        assert!(plan.unsupported.is_empty());
+        let mut sim = Sim::new(plan, 17);
+        for (frame, sample) in frames.iter().enumerate() {
+            sim.step_at(sample["dt"].as_f64().unwrap() as f32, &Points::unparented([0.0; 3]), &[], 1);
+            assert_eq!(sim.particles.len(), 1);
+            let expected = sample["alpha"][index].as_f64().unwrap() as f32;
+            assert_eq!(sim.particles[0].alpha.to_bits(), expected.to_bits(), "{name} frame{frame}");
+        }
+    }
+}
+
+#[test]
 fn moving_control_points_sample_each_birth_time_for_box_sphere_ring_and_path() {
     let cases: [(&str, &[u8], &str); 4] = [
         (
@@ -1394,7 +1418,7 @@ fn fades_oscillations_and_ramps() {
     );
     let sim = run(&def, &Points::at([0.0; 3]), 0.25);
     let p = sim.particles[0];
-    assert!((p.alpha - 0.25).abs() < 0.06, "{}", p.alpha);
+    assert!((p.alpha - 0.15625).abs() < 0.001, "the simple fade follows a smoothstep curve: {}", p.alpha);
     let sim = run(&def, &Points::at([0.0; 3]), 1.0);
     let p = sim.particles[0];
     assert!((p.alpha - 1.0).abs() < 1e-3);
