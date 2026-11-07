@@ -2022,6 +2022,7 @@ dependencies = [
  "bytemuck",
  "glam 0.34.1",
  "hp-pcf",
+ "hp-vmt",
  "image",
  "log",
  "pollster 1.0.1",
@@ -2321,6 +2322,7 @@ version = "1.1.6"
 dependencies = [
  "hp-kv",
  "rayon",
+ "serde_json",
  "thiserror 2.0.21",
 ]
 

@@ -253,6 +253,7 @@ fn build_scene(r: &mut Renderer) {
         texture2: None,
         scroll: [0.0; 2],
         base_uv: [1.0, 1.0, 0.0, 0.0],
+        base_uv_cross: [0.0; 2],
         texture3: None,
         texture4: None,
         alpha_ref: 0.5,
@@ -1075,6 +1076,7 @@ fn detail_textures_combine_like_the_game() {
         raw,
         sets_alpha: false,
         uv: [4.0, 4.0, 0.0, 0.0],
+        uv_cross: [0.0; 2],
         tint_blend: [tint, tint, tint, f],
     };
     let cases = [

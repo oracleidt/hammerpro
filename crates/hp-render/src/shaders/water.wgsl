@@ -11,6 +11,7 @@ struct WaterMat {
     bottom_fog: vec4<f32>,
     bottom_ranges: vec4<f32>,
     flags: vec4<u32>,
+    bump_cross: vec4<f32>,
 };
 
 struct WaterView {
@@ -316,7 +317,7 @@ fn fs_water(in: WaterOut, @builtin(front_facing) front: bool) -> @location(0) ve
     let flags = water.flags.x;
     let base_uv = in.uv * water.scroll.zw;
     let time = view.sky.z;
-    let bump = base_uv * water.bump_uv.xy + water.bump_uv.zw + water.scroll.xy * time;
+    let bump = base_uv * water.bump_uv.xy + base_uv.yx * water.bump_cross.xy + water.bump_uv.zw + water.scroll.xy * time;
     let f45 = vec2<f32>(base_uv.x + base_uv.y, base_uv.y - base_uv.x);
     let extra1 = f45 * 0.1 + water.scroll12.xy * time;
     let extra2 = base_uv.yx * 0.45 + water.scroll12.zw * time;

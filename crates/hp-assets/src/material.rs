@@ -87,6 +87,7 @@ pub(crate) struct MatAnalysis {
     pub decal_scale: f32,
     pub scroll: [f32; 2],
     pub uv: [f32; 4],
+    pub uv_cross: [f32; 2],
     pub alpha_ref: f32,
     pub shows_alpha: bool,
     pub detail: Option<crate::detail::DetailAnalysis>,
@@ -113,44 +114,13 @@ pub(crate) fn texture_transform(mat: &Material) -> [f32; 4] {
 }
 
 pub(crate) fn texture_transform_of(mat: &Material, key: &str) -> [f32; 4] {
-    const IDENTITY: [f32; 4] = [1.0, 1.0, 0.0, 0.0];
-    let Some(text) = mat.get(key) else { return IDENTITY };
-    let words: Vec<&str> = text.split_whitespace().collect();
-    let num = |i: usize| words.get(i).and_then(|w| w.parse::<f32>().ok()).filter(|v| v.is_finite());
-    let (mut center, mut scale, mut translate) = ([0.5f32, 0.5], [1.0f32, 1.0], [0.0f32, 0.0]);
-    let mut i = 0;
-    while i < words.len() {
-        let target = match words[i].to_ascii_lowercase().as_str() {
-            "center" => Some(&mut center),
-            "scale" => Some(&mut scale),
-            "translate" => Some(&mut translate),
-            _ => None,
-        };
-        if let Some(target) = target {
-            match (num(i + 1), num(i + 2)) {
-                (Some(a), Some(b)) => {
-                    *target = [a, b];
-                    i += 2;
-                }
-                (Some(a), None) => {
-                    *target = [a, a];
-                    i += 1;
-                }
-                _ => {}
-            }
-        }
-        i += 1;
-    }
-    let ok = |s: f32| s.abs() > 1e-3 && s.abs() < 1e3;
-    if !(ok(scale[0]) && ok(scale[1])) {
-        return IDENTITY;
-    }
-    [
-        scale[0],
-        scale[1],
-        center[0] - scale[0] * center[0] + translate[0],
-        center[1] - scale[1] * center[1] + translate[1],
-    ]
+    let rows = hp_vmt::TextureTransform::parse(mat.get(key).unwrap_or("")).matrix();
+    [rows[0][0], rows[1][1], rows[0][2], rows[1][2]]
+}
+
+pub(crate) fn texture_transform_cross_of(mat: &Material, key: &str) -> [f32; 2] {
+    let rows = hp_vmt::TextureTransform::parse(mat.get(key).unwrap_or("")).matrix();
+    [rows[0][1], rows[1][0]]
 }
 
 pub(crate) fn texture_scroll(mat: &Material) -> [f32; 2] {
@@ -327,6 +297,7 @@ fn analyze_resolved(name: &str, mat: &Material, texture_flags: &dyn Fn(&str) -> 
         decal_scale,
         scroll,
         uv,
+        uv_cross: texture_transform_cross_of(mat, "$basetexturetransform"),
         alpha_ref,
         shows_alpha,
         detail,
@@ -438,6 +409,7 @@ pub(crate) fn asset_desc(
                 texture2: None,
                 scroll: [0.0; 2],
                 base_uv: [1.0, 1.0, 0.0, 0.0],
+                base_uv_cross: [0.0; 2],
                 texture3: None,
                 texture4: None,
                 alpha_ref: hp_vmt::DEFAULT_ALPHA_TEST_REFERENCE,
@@ -502,6 +474,7 @@ pub(crate) fn asset_desc(
                 texture4,
                 scroll: a.scroll,
                 base_uv: a.uv,
+                base_uv_cross: a.uv_cross,
                 alpha_ref: a.alpha_ref,
                 detail,
                 water: a.water.as_ref().filter(|_| kind == MatKind::World).map(|w| crate::water::desc(w, tex)),
@@ -537,6 +510,7 @@ pub(crate) fn flat_desc(rgba: [u8; 4]) -> MaterialDesc {
         texture2: None,
         scroll: [0.0; 2],
         base_uv: [1.0, 1.0, 0.0, 0.0],
+        base_uv_cross: [0.0; 2],
         texture3: None,
         texture4: None,
         alpha_ref: hp_vmt::DEFAULT_ALPHA_TEST_REFERENCE,
@@ -984,6 +958,50 @@ mod tests {
         assert_eq!(d.base_uv, [1.25, 1.25, -0.125, -0.125], "scaled about the center like the engine");
         let plain = super::analyze("x", &mat(r#"LightmappedGeneric { "$basetexture" "x" }"#), &|_| 0);
         assert_eq!(asset_desc(MatKind::World, "x", AnaLook::Ready(&plain), &ready, true).base_uv, [1.0, 1.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn native_affine_rows_reach_each_material_texture_layer() {
+        let report: serde_json::Value =
+            serde_json::from_str(include_str!("../../hp-vmt/tests/data/native_texture_transform.json")).unwrap();
+        let ready = |_: &str| TexLook::Ready(TexId::WHITE, [4, 4]);
+        for case in report["cases"].as_array().unwrap() {
+            let text = case["input"].as_str().unwrap();
+            let source = format!(
+                r#"VertexLitGeneric {{
+                "$basetexture" "x" "$basetexturetransform" "{text}"
+                "$bumpmap" "n" "$bumptransform" "{text}"
+                "$detail" "d" "$detailscale" "1" "$detailtexturetransform" "{text}"
+                "$envmap" "env_cubemap" "$envmapmask" "m" "$envmapmasktransform" "{text}"
+            }}"#
+            );
+            let a = super::analyze("x", &mat(&source), &|_| 0);
+            let check = |uv: [f32; 4], cross: [f32; 2]| {
+                let rows = [[uv[0], cross[0], uv[2]], [cross[1], uv[1], uv[3]]];
+                for row in 0..2 {
+                    for (out, column) in [0, 1, 3].into_iter().enumerate() {
+                        let expected: f32 = case["matrix"][row][column].as_str().unwrap().parse().unwrap();
+                        assert!(
+                            (rows[row][out] - expected).abs() <= 2e-6 * expected.abs().max(1.0),
+                            "{text:?}: {rows:?}"
+                        );
+                    }
+                }
+            };
+            let desc = asset_desc(MatKind::Model, "x", AnaLook::Ready(&a), &ready, true);
+            check(desc.base_uv, desc.base_uv_cross);
+            let bump = a.bump.as_ref().unwrap().desc(&ready).unwrap();
+            check(bump.uv, bump.uv_cross);
+            let detail = a.detail.as_ref().unwrap().desc(TexId::WHITE);
+            check(detail.uv, detail.uv_cross);
+            let env = a.envmap.as_ref().unwrap().desc(&ready, true).unwrap();
+            check(env.mask_uv, env.mask_uv_cross);
+            let water = crate::water::analyze_water(&mat(&format!(
+                r#"Water {{ "$normalmap" "n" "$bumptransform" "{text}" }}"#
+            )))
+            .unwrap();
+            check(water.desc.bump_uv, water.desc.bump_uv_cross);
+        }
     }
 
     #[test]

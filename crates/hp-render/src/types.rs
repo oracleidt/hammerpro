@@ -200,6 +200,7 @@ pub struct MaterialDesc {
     pub texture4: Option<TexId>,
     pub scroll: [f32; 2],
     pub base_uv: [f32; 4],
+    pub base_uv_cross: [f32; 2],
     pub alpha_ref: f32,
     pub detail: Option<DetailDesc>,
     pub water: Option<WaterDesc>,
@@ -293,6 +294,7 @@ pub struct EnvmapDesc {
     pub mask: Option<TexId>,
     pub mask_alpha: bool,
     pub mask_uv: [f32; 4],
+    pub mask_uv_cross: [f32; 2],
     pub alpha_mask: EnvmapAlphaMask,
     pub fresnel: f32,
     pub phong_fresnel: f32,
@@ -313,6 +315,7 @@ impl Default for EnvmapDesc {
             mask: None,
             mask_alpha: false,
             mask_uv: [1.0, 1.0, 0.0, 0.0],
+            mask_uv_cross: [0.0; 2],
             alpha_mask: EnvmapAlphaMask::None,
             fresnel: 1.0,
             phong_fresnel: 0.0,
@@ -341,6 +344,7 @@ pub struct BumpDesc {
     /// Keep the normal for reflections even when diffuse bump lighting is disabled.
     pub diffuse: bool,
     pub uv: [f32; 4],
+    pub uv_cross: [f32; 2],
     pub scroll: [f32; 2],
 }
 
@@ -353,6 +357,7 @@ impl BumpDesc {
             ssbump: false,
             diffuse: true,
             uv: [1.0, 1.0, 0.0, 0.0],
+            uv_cross: [0.0; 2],
             scroll: [0.0; 2],
         }
     }
@@ -364,6 +369,7 @@ pub struct WaterDesc {
     pub frames: [u32; 3],
     pub frame_rate: f32,
     pub bump_uv: [f32; 4],
+    pub bump_uv_cross: [f32; 2],
     pub bump_scroll: [f32; 2],
     pub scroll1: [f32; 2],
     pub scroll2: [f32; 2],
@@ -404,6 +410,7 @@ impl Default for WaterDesc {
             frames: [1, 1, 1],
             frame_rate: 0.0,
             bump_uv: [1.0, 1.0, 0.0, 0.0],
+            bump_uv_cross: [0.0; 2],
             bump_scroll: [0.0; 2],
             scroll1: [0.0; 2],
             scroll2: [0.0; 2],
@@ -438,6 +445,7 @@ pub struct DetailDesc {
     pub raw: bool,
     pub sets_alpha: bool,
     pub uv: [f32; 4],
+    pub uv_cross: [f32; 2],
     pub tint_blend: [f32; 4],
 }
 
@@ -471,6 +479,7 @@ impl Default for MaterialDesc {
             texture4: None,
             scroll: [0.0; 2],
             base_uv: [1.0, 1.0, 0.0, 0.0],
+            base_uv_cross: [0.0; 2],
             alpha_ref: 0.5,
             detail: None,
             water: None,

@@ -70,6 +70,194 @@ fn mat(r: &mut Renderer, id: MaterialId, rgba: [u8; 4], flags: MaterialFlags) {
     r.set_material(id, &MaterialDesc { texture: Some(t), tex_size: [4.0, 4.0], flags, ..Default::default() });
 }
 
+#[test]
+fn affine_material_uvs_match_geometry_mapped_with_native_source_matrices() {
+    let (device, queue) = gpu_or_skip!();
+    let mut renderer = Renderer::new(&device, &queue);
+    renderer.set_view_options(1, ViewOptions { cubemaps: true, normal_maps: true, ..Default::default() });
+    let pattern: Vec<u8> =
+        (0..16).flat_map(|i| [((i % 4) * 80) as u8, ((i / 4) * 80) as u8, ((i * 29) % 256) as u8, 255]).collect();
+    let texture = renderer.create_texture(&TextureUpload {
+        width: 4,
+        height: 4,
+        format: TexFormat::Rgba8Srgb,
+        levels: vec![pattern],
+    });
+    let white = renderer.create_texture(&solid([255; 4]));
+    let black = renderer.create_texture(&solid([0, 0, 0, 255]));
+    let normals: Vec<u8> = (0..16)
+        .flat_map(|i| {
+            let x = ((i % 4) as f32 - 1.5) * 0.35;
+            let y = ((i / 4) as f32 - 1.5) * 0.35;
+            [x, y, (1.0 - x * x - y * y).sqrt()]
+                .map(|v| ((v * 0.5 + 0.5) * 255.0).round() as u8)
+                .into_iter()
+                .chain([255])
+        })
+        .collect();
+    let normal = renderer.create_texture(&TextureUpload {
+        width: 4,
+        height: 4,
+        format: TexFormat::Rgba8Linear,
+        levels: vec![normals.clone()],
+    });
+    let face = [[1.0; 3]];
+    let cube = renderer.create_cubemap_image(&CubemapImage { size: 1, faces: [&face; 6], origin: None }).unwrap();
+    let view = persp([-256.0, 0.0, 0.0], [0.0; 3], [256, 256], RenderMode::Textured);
+    let report: serde_json::Value =
+        serde_json::from_str(include_str!("../../hp-vmt/tests/data/native_texture_transform.json")).unwrap();
+    let quad = |matrix: [[f32; 3]; 2]| {
+        let vertices = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]].map(|p| Vertex {
+            pos: [0.0, p[0] * 128.0 - 64.0, p[1] * 128.0 - 64.0],
+            normal: [-1.0, 0.0, 0.0],
+            uv: matrix.map(|row| (p[0] * row[0] + p[1] * row[1] + row[2]) * 4.0),
+            alpha: 1.0,
+        });
+        ObjectMesh {
+            batches: vec![MeshBatch {
+                material: 1,
+                vertices: vertices.to_vec(),
+                indices: vec![0, 1, 2, 0, 2, 3],
+                blend: Vec::new(),
+                cubemaps: Vec::new(),
+            }],
+            aabb_min: [0.0, -64.0, -64.0],
+            aabb_max: [0.0, 64.0, 64.0],
+            ..Default::default()
+        }
+    };
+    let identity = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+    for case in [14, 15, 16, 28, 29, 32, 38] {
+        let input = &report["cases"][case];
+        let matrix: [[f32; 3]; 2] = std::array::from_fn(|row| {
+            [0, 1, 3].map(|column| input["matrix"][row][column].as_str().unwrap().parse().unwrap())
+        });
+        let target = hp_vmt::TextureTransform::parse(input["input"].as_str().unwrap()).matrix();
+        let diagonal = [target[0][0], target[1][1], target[0][2], target[1][2]];
+        let cross = [target[0][1], target[1][0]];
+        let baked_normal = if case == 29 {
+            let mut texels = Vec::new();
+            for y in 0..8 {
+                for x in 0..4 {
+                    let uv = [(x as f32 + 0.5) / 4.0, (y as f32 + 0.5) / 8.0];
+                    let [u, v] = matrix.map(|row| row[0] * uv[0] + row[1] * uv[1] + row[2]);
+                    let at = (((v * 4.0).floor() as i32).rem_euclid(4) * 4 + ((u * 4.0).floor() as i32).rem_euclid(4))
+                        as usize
+                        * 4;
+                    texels.extend_from_slice(&normals[at..at + 4]);
+                }
+            }
+            Some(renderer.create_texture(&TextureUpload {
+                width: 4,
+                height: 8,
+                format: TexFormat::Rgba8Linear,
+                levels: vec![texels],
+            }))
+        } else {
+            None
+        };
+        for layer in 0..4 {
+            if layer == 3 && baked_normal.is_none() {
+                continue;
+            }
+            let mut desc = MaterialDesc {
+                texture: Some(texture),
+                tex_size: [4.0; 2],
+                flags: MaterialFlags::UNLIT | MaterialFlags::TWO_SIDED,
+                ..Default::default()
+            };
+            match layer {
+                0 => {
+                    desc.base_uv = diagonal;
+                    desc.base_uv_cross = cross;
+                }
+                1 => {
+                    desc.texture = Some(white);
+                    desc.detail = Some(DetailDesc {
+                        texture,
+                        mode: DetailDesc::MODE_DETAIL_OVER_BASE,
+                        raw: false,
+                        sets_alpha: false,
+                        uv: diagonal,
+                        uv_cross: cross,
+                        tint_blend: [1.0; 4],
+                    });
+                }
+                2 => {
+                    desc.texture = Some(black);
+                    desc.flags = MaterialFlags::TWO_SIDED;
+                    desc.envmap = Some(EnvmapDesc {
+                        cubemap: Some(cube),
+                        mask: Some(texture),
+                        mask_uv: diagonal,
+                        mask_uv_cross: cross,
+                        ..Default::default()
+                    });
+                }
+                _ => {
+                    desc.texture = Some(white);
+                    desc.flags = MaterialFlags::TWO_SIDED;
+                    desc.bump = Some(BumpDesc { uv: diagonal, uv_cross: cross, ..BumpDesc::new(normal) });
+                }
+            }
+            renderer.set_material(1, &desc);
+            renderer.upsert_object(1, quad(identity));
+            renderer.render_view(1, &view, &Overlay::default());
+            if layer == 2 && !renderer.cubemap_ready(cube) {
+                renderer.read_view_rgba8(1).unwrap();
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+                while !renderer.cubemap_ready(cube) {
+                    renderer.step_cubemaps(std::time::Duration::from_millis(1));
+                    assert!(std::time::Instant::now() < deadline, "cubemap image upload did not finish");
+                }
+                assert!(renderer.cubemap_ready(cube));
+                renderer.render_view(1, &view, &Overlay::default());
+            }
+            let actual = save(&renderer, 1, &format!("affine_{case}_{layer}_actual"));
+            match layer {
+                0 => {
+                    desc.base_uv = [1.0, 1.0, 0.0, 0.0];
+                    desc.base_uv_cross = [0.0; 2];
+                }
+                1 => {
+                    let d = desc.detail.as_mut().unwrap();
+                    d.uv = [1.0, 1.0, 0.0, 0.0];
+                    d.uv_cross = [0.0; 2];
+                }
+                2 => {
+                    let e = desc.envmap.as_mut().unwrap();
+                    e.mask_uv = [1.0, 1.0, 0.0, 0.0];
+                    e.mask_uv_cross = [0.0; 2];
+                }
+                _ => {
+                    desc.bump = Some(BumpDesc::new(baked_normal.unwrap()));
+                }
+            }
+            renderer.set_material(1, &desc);
+            renderer.upsert_object(1, quad(if layer == 3 { identity } else { matrix }));
+            renderer.render_view(1, &view, &Overlay::default());
+            let expected = save(&renderer, 1, &format!("affine_{case}_{layer}_native_geometry"));
+            let mut min = 255;
+            let mut max = 0;
+            for y in 96..160 {
+                for x in 96..160 {
+                    let a = pixel(&actual, x, y);
+                    let b = pixel(&expected, x, y);
+                    for channel in 0..3 {
+                        min = min.min(b[channel]);
+                        max = max.max(b[channel]);
+                        assert!(
+                            a[channel].abs_diff(b[channel]) <= 3,
+                            "case{case} layer{layer} pixel({x},{y}): {a:?} vs{b:?}"
+                        );
+                    }
+                }
+            }
+            assert!(max - min > 20, "the reference must contain visible texture variation: case{case} layer{layer}");
+        }
+    }
+}
+
 fn box_mesh(min: [f32; 3], max: [f32; 3], material: MaterialId, wire: [u8; 3]) -> ObjectMesh {
     let c = |i: usize| -> [f32; 3] {
         [

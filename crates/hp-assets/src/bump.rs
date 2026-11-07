@@ -1,7 +1,7 @@
 use hp_render::BumpDesc;
 use hp_vmt::{Material, ShaderKind};
 
-use crate::material::{TexLook, texture_scroll_of, texture_transform_of};
+use crate::material::{TexLook, texture_scroll_of, texture_transform_cross_of, texture_transform_of};
 
 pub(crate) const NORMAL_SUFFIX: &str = "|normal";
 
@@ -27,6 +27,7 @@ pub(crate) struct BumpAnalysis {
     pub ssbump: bool,
     pub diffuse: bool,
     pub uv: [f32; 4],
+    pub uv_cross: [f32; 2],
     pub scroll: [f32; 2],
 }
 
@@ -53,6 +54,7 @@ impl BumpAnalysis {
             ssbump: self.ssbump,
             diffuse: self.diffuse,
             uv: self.uv,
+            uv_cross: self.uv_cross,
             scroll: self.scroll,
         })
     }
@@ -84,6 +86,7 @@ pub(crate) fn analyze_bump(mat: &Material) -> Option<BumpAnalysis> {
         ssbump: mat.flag("$ssbump"),
         diffuse: !mat.flag("$nodiffusebumplighting"),
         uv: texture_transform_of(mat, "$bumptransform"),
+        uv_cross: texture_transform_cross_of(mat, "$bumptransform"),
         scroll: texture_scroll_of(mat, "$bumptransform"),
     })
 }

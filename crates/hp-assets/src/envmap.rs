@@ -1,7 +1,7 @@
 use hp_render::{EnvmapAlphaMask, EnvmapDesc};
 use hp_vmt::{Material, ShaderKind};
 
-use crate::material::{TexLook, texture_transform_of};
+use crate::material::{TexLook, texture_transform_cross_of, texture_transform_of};
 
 pub(crate) const MASK_SUFFIX: &str = "|mask";
 pub(crate) const CUBE_SUFFIX: &str = "|cube";
@@ -36,6 +36,7 @@ pub(crate) struct EnvmapAnalysis {
     pub saturation: [f32; 3],
     pub mask: Option<MaskSource>,
     pub mask_uv: [f32; 4],
+    pub mask_uv_cross: [f32; 2],
     pub alpha_mask: EnvmapAlphaMask,
     pub fresnel: f32,
     pub phong_fresnel: f32,
@@ -87,6 +88,7 @@ impl EnvmapAnalysis {
             mask,
             mask_alpha: matches!(self.mask, Some(MaskSource::NormalAlpha { .. })),
             mask_uv: self.mask_uv,
+            mask_uv_cross: self.mask_uv_cross,
             alpha_mask: self.alpha_mask,
             fresnel: self.fresnel,
             phong_fresnel: self.phong_fresnel,
@@ -131,12 +133,14 @@ pub(crate) fn analyze_envmap(mat: &Material) -> Option<EnvmapAnalysis> {
     let mut alpha_mask = EnvmapAlphaMask::None;
     let mut mask = None;
     let mut mask_uv = texture_transform_of(mat, "$envmapmasktransform");
+    let mut mask_uv_cross = texture_transform_cross_of(mat, "$envmapmasktransform");
     if phong {
         if mat.flag("$basealphaenvmapmask") || mat.flag("$basemapalphaphongmask") {
             alpha_mask = EnvmapAlphaMask::Base;
         } else if let Some(name) = bump.clone() {
             mask = Some(MaskSource::NormalAlpha { name, frame: bump_frame });
             mask_uv = texture_transform_of(mat, "$bumptransform");
+            mask_uv_cross = texture_transform_cross_of(mat, "$bumptransform");
         }
     } else {
         if mat.flag("$normalmapalphaenvmapmask")
@@ -144,6 +148,7 @@ pub(crate) fn analyze_envmap(mat: &Material) -> Option<EnvmapAnalysis> {
         {
             mask = Some(MaskSource::NormalAlpha { name, frame: bump_frame });
             mask_uv = texture_transform_of(mat, "$bumptransform");
+            mask_uv_cross = texture_transform_cross_of(mat, "$bumptransform");
         } else if let Some(name) = mat.texture("$envmapmask") {
             mask = Some(MaskSource::Texture { name, frame: frame(mat, "$envmapmaskframe") });
         }
@@ -159,6 +164,7 @@ pub(crate) fn analyze_envmap(mat: &Material) -> Option<EnvmapAnalysis> {
         saturation: vec3(mat, "$envmapsaturation", [1.0; 3]).map(|v| v.clamp(-8.0, 8.0)),
         mask,
         mask_uv,
+        mask_uv_cross,
         alpha_mask,
         fresnel: if lightmapped { num(mat, "$fresnelreflection", 1.0).clamp(0.0, 1.0) } else { 1.0 },
         phong_fresnel: if phong { num(mat, "$envmapfresnel", 0.0).clamp(0.0, 1.0) } else { 0.0 },

@@ -205,6 +205,101 @@ fn opts(water: bool) -> ViewOptions {
 }
 
 #[test]
+fn water_normal_rotation_matches_texels_baked_with_the_native_material_matrix() {
+    let (device, queue) = gpu_or_skip!();
+    let mut r = Renderer::new(&device, &queue);
+    scene(&mut r);
+    let report: serde_json::Value =
+        serde_json::from_str(include_str!("../../hp-vmt/tests/data/native_texture_transform.json")).unwrap();
+    let case = &report["cases"][29];
+    let matrix: [[f32; 3]; 2] = std::array::from_fn(|row| {
+        [0, 1, 3].map(|column| case["matrix"][row][column].as_str().unwrap().parse().unwrap())
+    });
+    let source = hp_vmt::TextureTransform::parse(case["input"].as_str().unwrap()).matrix();
+    let normal: Vec<u8> = (0..16)
+        .flat_map(|i| {
+            let x = ((i % 4) as f32 - 1.5) * 0.35;
+            let y = ((i / 4) as f32 - 1.5) * 0.35;
+            [x, y, (1.0 - x * x - y * y).sqrt()]
+                .map(|v| ((v * 0.5 + 0.5) * 255.0).round() as u8)
+                .into_iter()
+                .chain([255])
+        })
+        .collect();
+    let mut baked = Vec::new();
+    for y in 0..8 {
+        for x in 0..4 {
+            let uv = [(x as f32 + 0.5) / 4.0, (y as f32 + 0.5) / 8.0];
+            let [u, v] = matrix.map(|row| row[0] * uv[0] + row[1] * uv[1] + row[2]);
+            let at =
+                (((v * 4.0).floor() as i32).rem_euclid(4) * 4 + ((u * 4.0).floor() as i32).rem_euclid(4)) as usize * 4;
+            baked.extend_from_slice(&normal[at..at + 4]);
+        }
+    }
+    let normal =
+        r.create_texture(&TextureUpload { width: 4, height: 4, format: TexFormat::Rgba8Linear, levels: vec![normal] });
+    let baked =
+        r.create_texture(&TextureUpload { width: 4, height: 8, format: TexFormat::Rgba8Linear, levels: vec![baked] });
+    let checker: Vec<u8> =
+        (0..16).flat_map(|i| if (i % 4 + i / 4) % 2 == 0 { [240, 40, 30, 255] } else { [30, 220, 70, 255] }).collect();
+    let checker =
+        r.create_texture(&TextureUpload { width: 4, height: 4, format: TexFormat::Rgba8Srgb, levels: vec![checker] });
+    r.set_material(
+        BED,
+        &MaterialDesc {
+            texture: Some(checker),
+            tex_size: [128.0; 2],
+            flags: MaterialFlags::UNLIT,
+            ..Default::default()
+        },
+    );
+    let mut water = WaterDesc {
+        normal_map: Some(normal),
+        bump_uv: [source[0][0], source[1][1], source[0][2], source[1][2]],
+        bump_uv_cross: [source[0][1], source[1][0]],
+        bump_scroll: [0.0; 2],
+        fog_range: [0.0, 4096.0],
+        ..water_desc(normal)
+    };
+    let desc = |water| MaterialDesc {
+        texture: Some(TexId::WHITE),
+        tex_size: [256.0; 2],
+        flags: MaterialFlags::UNLIT | MaterialFlags::OPAQUE_TEXTURE,
+        water: Some(water),
+        ..Default::default()
+    };
+    let view = persp([0.0, -700.0, 400.0], [0.0, 0.0, -100.0], false);
+    r.set_view_options(1, ViewOptions { time: 0.0, ..opts(true) });
+    r.set_material(WATER, &desc(water));
+    r.render_view(1, &view, &Overlay::default());
+    let actual = grab(&r, 1, "affine_native_normal");
+    water.bump_uv = [1.0, 1.0, 0.0, 0.0];
+    water.bump_uv_cross = [0.0; 2];
+    water.normal_map = Some(baked);
+    r.set_material(WATER, &desc(water));
+    r.render_view(1, &view, &Overlay::default());
+    let expected = grab(&r, 1, "affine_native_baked");
+    let mut bad = 0;
+    for y in 60..180 {
+        for x in 20..236 {
+            if dist(pixel(&actual, x, y), pixel(&expected, x, y)) > 6 {
+                bad += 1;
+            }
+        }
+    }
+    assert!(bad <= 12, "native matrix and pre-mapped normal texels disagree at {bad} water pixels");
+    water.normal_map = Some(normal);
+    r.set_material(WATER, &desc(water));
+    r.render_view(1, &view, &Overlay::default());
+    let unchanged = grab(&r, 1, "affine_without_rotation");
+    let changed = (60..180)
+        .flat_map(|y| (20..236).map(move |x| (x, y)))
+        .filter(|&(x, y)| dist(pixel(&actual, x, y), pixel(&unchanged, x, y)) > 12)
+        .count();
+    assert!(changed > 100, "the normal transform must visibly affect the water: {changed} changed pixels");
+}
+
+#[test]
 fn water_refracts_fogs_and_reflects() {
     let (device, queue) = gpu_or_skip!();
     let mut r = Renderer::new(&device, &queue);

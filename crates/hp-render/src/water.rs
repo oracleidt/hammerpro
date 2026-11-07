@@ -40,6 +40,7 @@ pub(crate) struct WaterMatUniform {
     pub bottom_fog: [f32; 4],
     pub bottom_ranges: [f32; 4],
     pub flags: [u32; 4],
+    pub bump_cross: [f32; 4],
 }
 
 #[repr(C)]
@@ -129,6 +130,7 @@ pub(crate) fn water_uniform(desc: &MaterialDesc, w: &WaterDesc) -> WaterMatUnifo
         bottom_fog,
         bottom_ranges: [bottom_start, 0.0, finite(w.reflect_blend, 1.0).clamp(0.0, 1.0), 0.0],
         flags: [flags, 0, 0, 0],
+        bump_cross: [finite(w.bump_uv_cross[0], 0.0), finite(w.bump_uv_cross[1], 0.0), 0.0, 0.0],
     }
 }
 
@@ -777,7 +779,7 @@ mod tests {
             assert_eq!(src.contains("texture_depth_multisampled_2d"), ms);
             assert!(src.contains("struct View"));
         }
-        assert_eq!(size_of::<WaterMatUniform>(), 192);
+        assert_eq!(size_of::<WaterMatUniform>(), 208);
         assert_eq!(size_of::<WaterViewUniform>(), 144);
     }
 

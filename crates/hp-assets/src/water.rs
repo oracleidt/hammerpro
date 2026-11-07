@@ -69,6 +69,7 @@ pub(crate) fn analyze_water(mat: &Material) -> Option<WaterAnalysis> {
         frames: [1, 1, 1],
         frame_rate: 0.0,
         bump_uv: crate::material::texture_transform_of(mat, "$bumptransform"),
+        bump_uv_cross: crate::material::texture_transform_cross_of(mat, "$bumptransform"),
         bump_scroll: crate::material::texture_scroll_of(mat, "$bumptransform"),
         scroll1: vec2(mat, "$scroll1"),
         scroll2: vec2(mat, "$scroll2"),

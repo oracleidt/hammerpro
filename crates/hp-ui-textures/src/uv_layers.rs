@@ -136,40 +136,13 @@ impl Default for Transform {
 
 impl Transform {
     pub fn parse(text: &str) -> Transform {
-        let mut t = Transform::default();
-        let words: Vec<&str> = text.split_whitespace().collect();
-        let num = |i: usize| words.get(i).and_then(|w| w.parse::<f64>().ok()).filter(|v| v.is_finite());
-        let mut i = 0;
-        while i < words.len() {
-            let w = words[i].to_ascii_lowercase();
-            match w.as_str() {
-                "center" | "scale" | "translate" => {
-                    if let (Some(a), Some(b)) = (num(i + 1), num(i + 2)) {
-                        let v = [a, b];
-                        match w.as_str() {
-                            "center" => t.center = v,
-                            "scale" => t.scale = v,
-                            _ => t.translate = v,
-                        }
-                        i += 2;
-                    } else if let Some(a) = num(i + 1) {
-                        if w == "scale" {
-                            t.scale = [a, a];
-                        }
-                        i += 1;
-                    }
-                }
-                "rotate" => {
-                    if let Some(a) = num(i + 1) {
-                        t.rotate = a;
-                        i += 1;
-                    }
-                }
-                _ => {}
-            }
-            i += 1;
+        let source = hp_vmt::TextureTransform::parse(text);
+        Self {
+            center: source.center.map(f64::from),
+            scale: source.scale.map(f64::from),
+            rotate: f64::from(source.rotate),
+            translate: source.translate.map(f64::from),
         }
-        t
     }
 
     pub fn format(&self) -> String {
@@ -1409,7 +1382,15 @@ mod tests {
         let back = t.inverse(q).unwrap();
         assert!(close(back, p));
         assert_eq!(Transform::parse(&t.format()), t);
-        assert_eq!(Transform::parse("scale 3"), Transform { scale: [3.0, 3.0], ..Transform::default() });
+        assert_eq!(
+            Transform::parse("scale 3"),
+            Transform::default(),
+            "the native parser ignores incomplete expressions"
+        );
+        assert_eq!(
+            Transform::parse("center .5 .5 scale 3 3 rotate 0 translate 0 0"),
+            Transform { scale: [3.0, 3.0], ..Transform::default() }
+        );
     }
 
     #[test]

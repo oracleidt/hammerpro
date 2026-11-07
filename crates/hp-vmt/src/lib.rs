@@ -6,6 +6,7 @@ mod four_way;
 mod info;
 mod material;
 mod patch;
+mod texture_transform;
 mod value;
 mod write;
 
@@ -24,5 +25,6 @@ pub use hp_kv::Block;
 pub use info::{CompileFlags, DEFAULT_ALPHA_TEST_REFERENCE, ShaderKind, ToolKind, shader_base_name};
 pub use material::{Material, parse, parse_bytes};
 pub use patch::{MAX_INCLUDE_DEPTH, normalize_include_path, resolve_patch};
+pub use texture_transform::TextureTransform;
 pub use value::{normalize_material_name, normalize_texture_path, parse_bool, parse_f32, parse_i32, parse_vec3};
 pub use write::{DEFAULT_IMAGE_SHADER, ImageMaterialOptions, for_image, write};

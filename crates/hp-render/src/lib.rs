@@ -402,8 +402,8 @@ fn material_uniform(desc: Option<&MaterialDesc>, env_cube: u32) -> MaterialUnifo
         }),
         detail_tint: detail.map_or([1.0; 4], |dd| dd.tint_blend.map(|v| finite(v, 1.0))),
         bump_uv: d.bump.map_or([1.0, 1.0, 0.0, 0.0], |b| {
-            let scale = |v: f32| if v.is_finite() && v.abs() > 1e-4 { v.clamp(-1e4, 1e4) } else { 1.0 };
-            let offset = |v: f32| if v.is_finite() { v.clamp(-1e4, 1e4) } else { 0.0 };
+            let scale = |v: f32| finite(v, 1.0);
+            let offset = |v: f32| finite(v, 0.0);
             [scale(b.uv[0]), scale(b.uv[1]), offset(b.uv[2]), offset(b.uv[3])]
         }),
         bump_scroll: d.bump.map_or([0.0; 2], |b| sanitize_scroll(b.scroll)),
@@ -418,9 +418,23 @@ fn material_uniform(desc: Option<&MaterialDesc>, env_cube: u32) -> MaterialUnifo
         bump_layers: d.bump.and_then(|b| b.blend4).map_or(0, pack_bump_layers),
         self_illum: self_illum_uniform(d.self_illum.as_ref()),
         base_uv: {
-            let scale = |v: f32| if v.is_finite() && v.abs() > 1e-4 { v.clamp(-1e4, 1e4) } else { 1.0 };
-            let offset = |v: f32| if v.is_finite() { v.clamp(-1e4, 1e4) } else { 0.0 };
+            let scale = |v: f32| finite(v, 1.0);
+            let offset = |v: f32| finite(v, 0.0);
             [scale(d.base_uv[0]), scale(d.base_uv[1]), offset(d.base_uv[2]), offset(d.base_uv[3])]
+        },
+        base_bump_cross: {
+            let bump = d.bump.map_or([0.0; 2], |b| b.uv_cross);
+            [
+                finite(d.base_uv_cross[0], 0.0),
+                finite(d.base_uv_cross[1], 0.0),
+                finite(bump[0], 0.0),
+                finite(bump[1], 0.0),
+            ]
+        },
+        detail_env_cross: {
+            let detail = detail.map_or([0.0; 2], |d| d.uv_cross);
+            let env = d.envmap.map_or([0.0; 2], |e| e.mask_uv_cross);
+            [finite(detail[0], 0.0), finite(detail[1], 0.0), finite(env[0], 0.0), finite(env[1], 0.0)]
         },
         ..four_way_uniform(d.four_way.as_ref(), env_uniform(d, env_cube))
     }
@@ -500,8 +514,8 @@ fn env_uniform(d: &MaterialDesc, env_cube: u32) -> MaterialUniform {
     let tint = e.tint.map(|v| finite(v, 1.0, 0.0, 64.0));
     let sat = e.saturation.map(|v| finite(v, 1.0, -8.0, 8.0));
     let uv = e.mask_uv;
-    let scale = |v: f32| if v.is_finite() && v.abs() > 1e-4 { v.clamp(-1e4, 1e4) } else { 1.0 };
-    let offset = |v: f32| if v.is_finite() { v.clamp(-1e4, 1e4) } else { 0.0 };
+    let scale = |v: f32| if v.is_finite() { v } else { 1.0 };
+    let offset = |v: f32| if v.is_finite() { v } else { 0.0 };
     let ranges = e.fresnel_ranges.map(|v| finite(v, 0.5, 0.0, 64.0));
     MaterialUniform {
         env_flags: flags,
@@ -510,6 +524,7 @@ fn env_uniform(d: &MaterialDesc, env_cube: u32) -> MaterialUniform {
         env_tint: [tint[0], tint[1], tint[2], finite(e.contrast, 0.0, 0.0, 1.0)],
         env_sat: [sat[0], sat[1], sat[2], finite(e.light_scale, 0.0, 0.0, 1.0)],
         env_mask_uv: [scale(uv[0]), scale(uv[1]), offset(uv[2]), offset(uv[3])],
+        detail_env_cross: [0.0, 0.0, offset(e.mask_uv_cross[0]), offset(e.mask_uv_cross[1])],
         env_fresnel: [fresnel, phong, 0.0, 0.0],
         env_ranges: [ranges[0], ranges[1], ranges[2], 0.0],
         ..MaterialUniform::default()
@@ -4381,11 +4396,13 @@ mod tests {
             ssbump: true,
             diffuse: true,
             uv: [f32::NAN, 0.0, f32::INFINITY, 0.25],
+            uv_cross: [f32::NAN, -0.5],
             scroll: [f32::NAN, 1000.0],
         };
         let u = material_uniform(Some(&MaterialDesc { bump: Some(bump), ..Default::default() }), u32::MAX);
         assert_eq!(u.bump_flags, BUMP_ON | BUMP_SS | BUMP_TWO);
-        assert_eq!(u.bump_uv, [1.0, 1.0, 0.0, 0.25]);
+        assert_eq!(u.bump_uv, [1.0, 0.0, 0.0, 0.25]);
+        assert_eq!(&u.base_bump_cross[2..], &[0.0, -0.5]);
         assert_eq!(u.bump_scroll, [0.0, 100.0]);
         let plain = material_uniform(
             Some(&MaterialDesc { bump: Some(BumpDesc::new(TexId::WHITE)), ..Default::default() }),

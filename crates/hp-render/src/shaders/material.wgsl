@@ -34,10 +34,16 @@ struct Material {
     fw_uv12: vec4<f32>,
     fw_uv34: vec4<f32>,
     base_uv: vec4<f32>,
+    base_bump_cross: vec4<f32>,
+    detail_env_cross: vec4<f32>,
 };
 
+fn affine_uv(uv: vec2<f32>, diagonal: vec4<f32>, cross_terms: vec2<f32>) -> vec2<f32> {
+    return uv * diagonal.xy + uv.yx * cross_terms + diagonal.zw;
+}
+
 fn base_uv_of(uv: vec2<f32>) -> vec2<f32> {
-    return uv * material.base_uv.xy + material.base_uv.zw;
+    return affine_uv(uv, material.base_uv, material.base_bump_cross.xy);
 }
 
 @group(1) @binding(0) var tex: texture_2d<f32>;
@@ -180,7 +186,7 @@ fn bump_mix(alpha: f32, weights: vec4<f32>) -> f32 {
 }
 
 fn bump_texel(base_uv: vec2<f32>, alpha: f32, weights: vec4<f32>) -> vec3<f32> {
-    let uv = base_uv * material.bump_uv.xy + material.bump_uv.zw + material.bump_scroll * view.sky.z;
+    let uv = affine_uv(base_uv, material.bump_uv, material.base_bump_cross.zw) + material.bump_scroll * view.sky.z;
     var t = textureSample(tex_bump, samp, uv).rgb;
     if (material.bump_flags & B_TWO) != 0u {
         t = mix(t, textureSample(tex_bump2, samp, uv).rgb, clamp(bump_mix(alpha, weights), 0.0, 1.0));
@@ -260,7 +266,7 @@ fn env_reflection(
     let el = length(to_eye);
     let v = select(vec3<f32>(0.0, 0.0, 1.0), to_eye / el, el > 1e-5);
     let r = 2.0 * dot(n, v) * n - v;
-    let mask_texel = textureSample(tex_env_mask, samp, base_uv * material.env_mask_uv.xy + material.env_mask_uv.zw);
+    let mask_texel = textureSample(tex_env_mask, samp, affine_uv(base_uv, material.env_mask_uv, material.detail_env_cross.zw));
     let f = material.env_flags;
     let at = slot * CUBE_INFO_STRIDE;
     var dir = r;
@@ -350,7 +356,7 @@ fn linear_to_srgb(c: vec3<f32>) -> vec3<f32> {
 }
 
 fn detail_sample(uv: vec2<f32>) -> vec4<f32> {
-    var d = textureSample(tex_detail, samp, uv * material.detail_uv.xy + material.detail_uv.zw);
+    var d = textureSample(tex_detail, samp, affine_uv(uv, material.detail_uv, material.detail_env_cross.xy));
     if (material.detail_flags & 1u) != 0u {
         d = vec4<f32>(linear_to_srgb(d.rgb), d.a);
     }
