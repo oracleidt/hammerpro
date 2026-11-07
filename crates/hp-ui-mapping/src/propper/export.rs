@@ -6,7 +6,7 @@ use hp_app::{t, tf};
 use hp_editor::prop_export::PropDirectives;
 use hp_fs::GameFs;
 
-use super::{PreparedProp, bake, creation, prepare_material_files, prop_lods};
+use super::{PreparedProp, bake, creation, materials, prop_lods};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ExportTarget {
@@ -56,7 +56,13 @@ pub fn prepare_creation(fs: &GameFs, request: PropCreationRequest) -> Result<Pre
     }
     let baked = bake::bake_blends(fs, &mut geometry, &format!("models/{model}"), &surface);
     let generated = baked.as_ref().map_or(&[][..], |baked| baked.files.as_slice());
-    let materials = prepare_material_files(fs, &mut geometry, &request.directives.cdmaterials, generated)?;
+    let materials = materials::stage_creation(
+        fs,
+        &mut geometry,
+        &request.directives.cdmaterials,
+        generated,
+        request.reuse_materials,
+    )?;
     let lods = prop_lods(&geometry.tris, request.lod);
     let export = geometry.files_with_directives(&model, &surface, &lods, options, &request.directives);
     let build = hp_app::settings::Settings::cache_dir().join("prop_builds").join(format!(
@@ -75,10 +81,9 @@ pub fn prepare_creation(fs: &GameFs, request: PropCreationRequest) -> Result<Pre
         }
     }
     write(&game.join("gameinfo.txt"), format!("\"GameInfo\" {{ game \"Hammer Pro prop build\" FileSystem {{ SteamAppId 4000 SearchPaths {{ {paths} }} }} }}").as_bytes())?;
-    let mut files = Vec::new();
-    for (path, bytes) in materials {
+    let files = materials.publish;
+    for (path, bytes) in materials.files {
         write(&destination(&game, &path)?, &bytes)?;
-        files.push(path);
     }
     for (path, bytes) in fs.surface_property_files() {
         write(&destination(&game, &path)?, &bytes)?;
@@ -220,6 +225,9 @@ mod tests {
         write(&mounted.join("materials/fixture/color.vtf"), &texture).unwrap();
         let original_vmt = br#"LightmappedGeneric { "$basetexture" "fixture/color" "$surfaceprop" "fixture_foam" }"#;
         write(&mounted.join("materials/fixture/wall.vmt"), original_vmt).unwrap();
+        let reused = "models/hammerpro/arquiten_remake_vis_optim_95c9123f_visual/anderon_metal_prop_metal_prop_004";
+        let reused_vmt = br#"VertexLitGeneric { "$basetexture" "fixture/color" }"#;
+        write(&mounted.join(format!("materials/{reused}.vmt")), reused_vmt).unwrap();
         write(
             &mounted.join("scripts/surfaceproperties_manifest.txt"),
             b"surfaceproperties_manifest { file scripts/surfaceproperties.txt }",
@@ -239,8 +247,9 @@ mod tests {
             tris: collision
                 .triangles()
                 .iter()
-                .map(|&pos| PropTri {
-                    material: "fixture/wall".into(),
+                .enumerate()
+                .map(|(index, &pos)| PropTri {
+                    material: if index % 2 == 0 { "fixture/wall" } else { reused }.into(),
                     pos,
                     normal: [(pos[1] - pos[0]).cross(pos[2] - pos[0]).normalize(); 3],
                     uv: [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]],
@@ -273,6 +282,7 @@ mod tests {
                 source_dir: source.clone(),
                 destination: destination.clone(),
                 surface_prop: "fixture_foam".into(),
+                reuse_materials: true,
                 lod: hp_app::settings::ModelLodSettings { enabled: false, ..Default::default() },
             };
             let mut prepared = prepare_creation(&fs, request).unwrap();
@@ -282,6 +292,8 @@ mod tests {
                 assert!(!destination.exists());
             }
             assert_eq!(prepared.origin, geometry.origin);
+            assert!(prepared.game_dir.join(format!("materials/{reused}.vmt")).is_file());
+            assert_eq!(std::fs::read(prepared.game_dir.join("materials/fixture/color.vtf")).unwrap(), texture);
             let log_path = root.join(format!("studiomdl-{index}.log"));
             let log = std::fs::File::create(&log_path).unwrap();
             let mut command = std::process::Command::new(&exe);
@@ -327,6 +339,12 @@ mod tests {
             )
             .unwrap();
             assert_eq!(model.surface_prop, "fixture_foam");
+            assert!(model.materials.iter().any(|name| name.replace('\\', "/") == reused), "{:?}", model.materials);
+            assert!(
+                model.material_dirs.iter().any(|path| path.trim_matches(['/', '\\']).is_empty()),
+                "root search path: {:?}",
+                model.material_dirs
+            );
             assert!(
                 model
                     .material_dirs
@@ -355,6 +373,9 @@ mod tests {
             let vtf = files.iter().find(|path| path.extension().is_some_and(|ext| ext == "vtf")).unwrap();
             assert_eq!(std::fs::read(vtf).unwrap(), texture);
             assert_eq!(std::fs::read(mounted.join("materials/fixture/wall.vmt")).unwrap(), original_vmt);
+            assert_eq!(std::fs::read(mounted.join(format!("materials/{reused}.vmt"))).unwrap(), reused_vmt);
+            assert!(!destination.join(format!("materials/{reused}.vmt")).exists());
+            assert!(!destination.join("materials/fixture/color.vtf").exists());
             assert!(source.join("native.qc").is_file());
             eprintln!("native mode {index} passed: {}", destination.display());
         }

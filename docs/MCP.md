@@ -839,6 +839,9 @@ Besides the semantic tools, the AI can reach everything you can:
   selected brushes/displacements. Review its integrated 3D preview, model/export
   paths, collision generation/manual pieces, `$illumposition`, `$bbox`,
   `$surfaceprop`, `$staticprop` and `$cdmaterials`, then click Create prop.
+  Collision offers No collision, Box and Precise, with advanced hull/manual
+  editing. Existing VertexLitGeneric material and texture paths are reused by
+  default; disable their reuse checkbox to copy them into `$cdmaterials` too.
   Defaults include `lab.propper_physics`, `lab.propper_static`,
   `lab.propper_collision` and `lab.propper_mass`; physics forces collision on and
   static off. The resulting entity is `prop_static`, `prop_dynamic` or

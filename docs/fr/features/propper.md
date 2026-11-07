@@ -23,9 +23,9 @@ Aucune n'a de raccourci par défaut (attribuez-en un dans **Paramètres > Clavie
 | Onglet | Options |
 |---|---|
 | **Modèle** | Chemin et nom relatifs à `models/` (extension `.mdl` facultative), dossier du contenu exporté, dossier des sources QC/SMD, physique, `$staticprop`, masse et LOD. |
-| **Collision** | Activer la collision ; conserver les pièces des brushes, générer une enveloppe convexe ou une boîte, ou modifier les pièces convexes manuellement. Ajoutez/supprimez des pièces et déplacez leurs sommets avec les champs XYZ ou les poignées 3D. La collision est obligatoire pour les props physiques. |
+| **Collision** | Trois niveaux : **Aucune collision**, **Boîte** (une boîte englobante) et **Précise** (les pièces des brushes/displacements). Les réglages avancés proposent aussi une enveloppe convexe et l’édition manuelle des pièces avec champs XYZ et poignées 3D. La collision est obligatoire pour les props physiques. |
 | **Éclairage et limites** | Régler `$illumposition` avec les champs XYZ ou son marqueur. Choisir les limites automatiques ou un `$bbox` personnalisé : champs minimum/maximum, huit coins et axes colorés dans la vue 3D ; le point central déplace toute la boîte sans changer sa taille. Les coordonnées sont locales à l’origine du modèle, au centre de la sélection. |
-| **Matériaux** | Définir `$cdmaterials`, relatif à `materials/`. Les VMT et leurs dépendances VTF sont copiés dans ce dossier. Choisir `$surfaceprop` dans toutes les surfaces déclarées par le jeu monté, y compris les surfaces personnalisées, ou utiliser automatiquement le matériau dominant. |
+| **Matériaux** | Les matériaux déjà en `VertexLitGeneric` gardent leurs chemins de matériaux et de textures par défaut. Les matériaux convertis/cuits sont exportés sous `$cdmaterials`, relatif à `materials/`. Décochez **Réutiliser les matériaux VertexLitGeneric** pour tout copier dans ce dossier, VMT et dépendances VTF compris. Choisir `$surfaceprop` dans toutes les surfaces déclarées par le jeu monté, y compris les surfaces personnalisées, ou utiliser automatiquement le matériau dominant. |
 
 Glisser avec le clic droit fait tourner la vue, le clic milieu la déplace et la molette zoome. Les surimpressions de collision, de limites et du point d’éclairage sont indépendantes ; **Cadrer** inclut le modèle et les points modifiables. L’aperçu se met à jour pendant les modifications.
 
@@ -88,7 +88,7 @@ Limites : 20000 triangles de rendu au plus pour reconstruire, et 1024 brushes au
 
 ## FAQ
 
-**La conversion écrase-t-elle les VMT source ?** Non. Le modèle utilise des VMT et VTF séparés dans le dossier `$cdmaterials` choisi. Les octets des VTF Source existants sont conservés, avec les mipmaps, l’alpha et les images d’animation. Les shaders de brushes sont adaptés à l’éclairage des modèles ; les matériaux de mélange des displacements sont cuits.
+**La conversion écrase-t-elle les VMT source ?** Non. Les matériaux déjà en `VertexLitGeneric` sont réutilisés à leurs chemins d’origine par défaut ; leurs fichiers ne sont ni écrasés ni dupliqués dans le dossier exporté. Gardez leur contenu de jeu/addon disponible lors de l’installation du prop. Les matériaux convertis/cuits utilisent des VMT et VTF séparés sous `$cdmaterials`. Décochez la réutilisation pour tout copier. Les octets des VTF Source existants sont conservés, avec les mipmaps, l’alpha et les images d’animation. Les shaders de brushes sont adaptés à l’éclairage des modèles ; les matériaux de mélange des displacements sont cuits.
 
 **« studiomdl est introuvable dans le dossier bin du jeu. »** Propper compile avec le studiomdl de Garry's Mod : vérifiez le dossier du jeu dans **Paramètres > Jeu**. L'[import de modèles](model-import.md), lui, n'en a pas besoin.
 

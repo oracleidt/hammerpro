@@ -46,6 +46,7 @@ struct Draft {
     surface: String,
     surfaces: Vec<String>,
     surface_search: String,
+    reuse_materials: bool,
     collision: Collision,
     manual: Option<Vec<EditableCollision>>,
     hull: Option<EditableCollision>,
@@ -170,6 +171,7 @@ impl Draft {
             surface: String::new(),
             surfaces,
             surface_search: String::new(),
+            reuse_materials: true,
             collision: Collision::Brushes,
             manual: None,
             hull: None,
@@ -285,6 +287,7 @@ impl Draft {
             source_dir: PathBuf::from(&self.source),
             destination: PathBuf::from(&self.destination),
             surface_prop: self.surface.clone(),
+            reuse_materials: self.reuse_materials,
             lod: state.settings.lab.model_lod,
         }
     }
@@ -339,28 +342,50 @@ impl Draft {
                 state.settings_dirty |= changed;
             }
             1 => {
+                ui.label(t!("propper.collision_level"));
                 let settings = &mut state.settings.lab;
-                if settings.propper_physics {
-                    settings.propper_collision = true;
+                let previous = if !settings.propper_options().collision {
+                    0
+                } else if self.collision == Collision::Box {
+                    1
+                } else {
+                    2
+                };
+                let mut level = previous;
+                for (value, key) in
+                    [(0, "propper.collision_none"), (1, "propper.collision_box"), (2, "propper.collision_precise")]
+                {
+                    ui.add_enabled_ui(!settings.propper_physics || value != 0, |ui| {
+                        ui.radio_value(&mut level, value, t!(key));
+                    });
                 }
-                ui.add_enabled_ui(!settings.propper_physics, |ui| {
-                    state.settings_dirty |=
-                        ui.checkbox(&mut settings.propper_collision, t!("propper.collision")).changed()
-                });
-                let old = self.collision;
-                let mut next = old;
-                for (mode, key) in [
-                    (Collision::Brushes, "propper.collision_brushes"),
-                    (Collision::Hull, "propper.collision_hull"),
-                    (Collision::Box, "propper.collision_box"),
-                    (Collision::Manual, "propper.collision_manual"),
-                ] {
-                    ui.radio_value(&mut next, mode, t!(key));
+                if level != previous {
+                    settings.propper_collision = level != 0;
+                    state.settings_dirty = true;
+                    if level == 1 {
+                        self.choose_collision(Collision::Box);
+                    }
+                    if level == 2 && self.collision == Collision::Box {
+                        self.choose_collision(Collision::Brushes);
+                    }
                 }
-                if next != old {
-                    self.choose_collision(next);
+                if level == 2 {
+                    let old = self.collision;
+                    let mut next = old;
+                    ui.collapsing(t!("propper.collision_advanced"), |ui| {
+                        for (mode, key) in [
+                            (Collision::Brushes, "propper.collision_brushes"),
+                            (Collision::Hull, "propper.collision_hull"),
+                            (Collision::Manual, "propper.collision_manual"),
+                        ] {
+                            ui.radio_value(&mut next, mode, t!(key));
+                        }
+                    });
+                    if next != old {
+                        self.choose_collision(next);
+                    }
                 }
-                if self.collision == Collision::Manual {
+                if level == 2 && self.collision == Collision::Manual {
                     let count = self.manual.as_ref().map_or(0, Vec::len);
                     self.piece = self.piece.min(count.saturating_sub(1));
                     let previous_piece = self.piece;
@@ -463,6 +488,9 @@ impl Draft {
                 }
             }
             _ => {
+                ui.checkbox(&mut self.reuse_materials, t!("propper.reuse_materials"));
+                ui.label(RichText::new(t!("propper.reuse_materials_tip")).small().weak());
+                ui.separator();
                 ui.label("$cdmaterials");
                 ui.text_edit_singleline(&mut self.material_folder);
                 ui.label(RichText::new(t!("propper.material_export_tip")).weak());
@@ -789,6 +817,7 @@ mod tests {
         assert_eq!(request.directives.illumposition, Some(draft.illum));
         assert_eq!(request.directives.bbox, Some(draft.bbox));
         assert_eq!(request.directives.cdmaterials, "chosen/shared");
+        assert!(request.reuse_materials);
         assert_eq!(request.geometry.pieces[0], draft.manual.as_ref().unwrap()[0].triangles());
         assert_eq!(request.geometry.tris, draft.geometry.tris);
         assert!(!request.options.static_prop);

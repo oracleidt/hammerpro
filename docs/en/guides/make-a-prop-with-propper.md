@@ -39,7 +39,9 @@ The window also reminds you how the model is built:
 4. The console shows the preparation (blend textures, levels of detail, collision), then the `studiomdl` compile.
 5. When compilation and validation finish, the brushes are replaced by the chosen `prop_static`, `prop_dynamic` or `prop_physics`, in one undo step: `Ctrl+Z` brings the brushes back. If the map changed during compilation, the exported files are kept and the brushes remain unchanged.
 
-The selected export content folder contains `models/<chosen path>.mdl` and the material files under `materials/<cdmaterials>/`. It is mounted automatically in the editor. To use an external folder in game, install or mount that content in the game, or package it with **Build and save as content** (see [Collect content for a release](collect-content-for-release.md)).
+Choose **No collision**, **Box** or **Precise** on the Collision tab. Box gives the simplest solid collision; Precise preserves the original brush/displacement pieces and exposes advanced hull/manual editing.
+
+The selected export content folder contains `models/<chosen path>.mdl` and converted/baked material files under `materials/<cdmaterials>/`. Existing `VertexLitGeneric` materials keep their original paths by default; uncheck their reuse option on the Materials tab to copy them too. It is mounted automatically in the editor. To use an external folder in game, install or mount that content and any reused source materials, or package it with **Build and save as content** (see [Collect content for a release](collect-content-for-release.md)).
 
 ## The way back: prop to brushes
 

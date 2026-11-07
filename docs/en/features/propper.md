@@ -23,9 +23,9 @@ None of them has a default shortcut (bind one in **Settings > Keyboard**).
 | Tab | Options |
 |---|---|
 | **Model** | Model path/name relative to `models/` (the `.mdl` suffix is optional), export content folder, QC/SMD source folder, physics, `$staticprop`, mass and LODs. |
-| **Collision** | Enable collision; preserve the original brush pieces, generate one convex hull or a box, or edit convex pieces manually. Add/remove pieces and edit each vertex using XYZ fields or the 3D handles. Physics props require collision. |
+| **Collision** | Three accuracy levels: **No collision**, **Box** (one enclosing box), **Precise** (original brush/displacement pieces). Advanced editing also offers a convex hull and manual convex pieces with XYZ fields and 3D handles. Physics props require collision. |
 | **Lighting and bounds** | Set a custom `$illumposition` with XYZ fields or its marker. Choose automatic bounds or a custom `$bbox`; edit its minimum/maximum coordinates or drag its eight corners and colored axes; use the center handle to move the whole box without resizing it. Coordinates are local to the model origin at the selection center. |
-| **Materials** | Set `$cdmaterials` relative to `materials/`. VMTs and their VTF dependencies are copied into that folder. Choose `$surfaceprop` from the mounted game's complete registered surface catalog, including custom surfaces, or use the dominant material automatically. |
+| **Materials** | Existing `VertexLitGeneric` materials keep their original material and texture paths by default. Converted/baked materials are exported under `$cdmaterials`, relative to `materials/`. Uncheck **Reuse existing VertexLitGeneric materials** to copy every material and its VTF dependencies there. Choose `$surfaceprop` from the mounted game's complete registered surface catalog, including custom surfaces, or use the dominant material automatically. |
 
 Right drag orbits, middle drag pans and the wheel zooms. Toggle the collision, bounds and illumination overlays independently; **Frame** fits the object and editable points. The preview updates while editing.
 
@@ -88,7 +88,7 @@ Limits: at most 20000 render triangles to rebuild from, and at most 1024 brushes
 
 ## FAQ
 
-**Are the source materials overwritten?** No. The exported model uses separate VMTs and VTFs under the chosen `$cdmaterials` folder. Existing Source VTF bytes are preserved, including mipmaps, alpha and animation frames. Brush-lighting shaders are adapted for model lighting; displacement blend materials are baked.
+**Are the source materials overwritten?** No. Existing `VertexLitGeneric` materials are reused at their original paths by default; their files are not overwritten or duplicated in the export folder. Keep their game/addon content available when installing the prop. Converted/baked materials use separate VMTs and VTFs under the chosen `$cdmaterials` folder. Uncheck the reuse option for a complete copied material set. Existing Source VTF bytes are preserved, including mipmaps, alpha and animation frames. Brush-lighting shaders are adapted for model lighting; displacement blend materials are baked.
 
 **"studiomdl was not found in the game's bin folder".** Propper compiles with the studiomdl of Garry's Mod: check the game folder in **Settings > Game**. The [model import](model-import.md) does not need it.
 

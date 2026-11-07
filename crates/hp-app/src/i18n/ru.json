@@ -8277,7 +8277,7 @@
   "propper.invalid_bounds": "Каждая минимальная координата должна быть меньше максимальной.",
   "propper.invalid_surface": "Выберите поверхность из подключённой игры.",
   "propper.local_coordinates": "Локальные координаты: начало модели находится в центре выделения.",
-  "propper.material_export_tip": "VMT и их текстуры VTF копируются сюда, в materials/.",
+  "propper.material_export_tip": "Преобразованные материалы и их текстуры VTF копируются сюда, в materials/.",
   "propper.model_path": "Путь и имя модели (models/… .mdl)",
   "propper.piece": "Часть",
   "propper.preview_collision": "Коллизия",
@@ -8299,5 +8299,11 @@
   "propper.compiled_collision_missing": "Компилятор не создал запрошенную модель коллизии.",
   "propper.exported_map_changed": "Модель экспортирована. Карта изменилась во время компиляции, поэтому исходные браши сохранены.",
   "propper.bounds_center": "Центр (X Y Z)",
-  "propper.move_bounds": "Переместить ограничивающую коробку"
+  "propper.move_bounds": "Переместить ограничивающую коробку",
+  "propper.collision_level": "Точность коллизии",
+  "propper.collision_none": "Без коллизии",
+  "propper.collision_precise": "Точная",
+  "propper.collision_advanced": "Расширенные настройки коллизии",
+  "propper.reuse_materials": "Использовать исходные материалы VertexLitGeneric",
+  "propper.reuse_materials_tip": "Сохраняет исходные пути материалов и текстур. Отключите, чтобы скопировать все материалы в выбранную папку."
 }

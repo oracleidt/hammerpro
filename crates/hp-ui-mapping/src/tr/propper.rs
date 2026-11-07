@@ -203,8 +203,8 @@ pub const TR: TrTable = &[
     ),
     (
         "propper.material_export_tip",
-        "VMTs and their VTF textures are copied here, under materials/.",
-        "Les VMT et leurs textures VTF sont copiés ici, dans materials/.",
+        "Converted materials and their VTF textures are copied here, under materials/.",
+        "Les matériaux convertis et leurs textures VTF sont copiés ici, dans materials/.",
     ),
     ("propper.model_path", "Model path and name (models/… .mdl)", "Chemin et nom du modèle (models/… .mdl)"),
     ("propper.piece", "Piece", "Pièce"),
@@ -245,5 +245,19 @@ pub const TR: TrTable = &[
         "propper.exported_map_changed",
         "The model was exported. The map changed during compilation, so the original brushes were kept.",
         "Le modèle a été exporté. La map a changé pendant la compilation : les brushes d’origine ont été conservés.",
+    ),
+    ("propper.collision_level", "Collision accuracy", "Précision de la collision"),
+    ("propper.collision_none", "No collision", "Aucune collision"),
+    ("propper.collision_precise", "Precise", "Précise"),
+    ("propper.collision_advanced", "Advanced collision editing", "Réglages avancés de collision"),
+    (
+        "propper.reuse_materials",
+        "Reuse existing VertexLitGeneric materials",
+        "Réutiliser les matériaux VertexLitGeneric",
+    ),
+    (
+        "propper.reuse_materials_tip",
+        "Keep their original material and texture paths. Disable this to copy every material into the chosen folder.",
+        "Conserve leurs chemins de matériaux et de textures. Décochez pour tout copier dans le dossier choisi.",
     ),
 ];

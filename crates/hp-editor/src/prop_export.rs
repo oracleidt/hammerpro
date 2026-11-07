@@ -510,11 +510,13 @@ impl PropGeometry {
         }
         let material_path = directives.cdmaterials.trim_matches('/');
         let material_path = if material_path.is_empty() { "/" } else { material_path };
+        let root_materials = if material_path == "/" { "" } else { "$cdmaterials \"/\"\n" };
         let qc = format!(
             "$modelname \"{model}.mdl\"\n\
              {static_prop}\
              $surfaceprop \"{surface}\"\n\
              $cdmaterials \"{material_path}\"\n\
+             {root_materials}\
              {extra}\
              $body \"body\" \"{stem}_ref.smd\"\n\
              {lod_qc}\
@@ -701,6 +703,7 @@ mod tests {
         assert!(export.qc.contains("$illumposition -2.5 -1.25 30\n"));
         assert!(export.qc.contains("$bbox -12 -24 -8 16 32 48\n"));
         assert!(export.qc.contains("$cdmaterials \"models/custom/map_props\""));
+        assert!(export.qc.contains("$cdmaterials \"/\"\n"), "original model materials resolve from their full paths");
         assert!(export.qc.contains("$surfaceprop \"wood\""));
         assert!(!export.qc.contains("$staticprop"));
         let entity = doc.replace_with_prop_options(&[id], "custom/map_props/arch", geometry.origin, options).unwrap();

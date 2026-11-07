@@ -1,6 +1,6 @@
-//! Build a self-contained model material set before any export files are written.
+//! Stage compiler inputs and distinguish copied materials from reused source assets.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use hp_editor::prop_export::PropGeometry;
 use hp_fs::GameFs;
@@ -41,21 +41,23 @@ struct Export<'a> {
     fs: &'a GameFs,
     generated: BTreeMap<String, &'a [u8]>,
     folder: &'a str,
-    textures: HashMap<String, String>,
+    textures: HashMap<(bool, String), String>,
     files: BTreeMap<String, Vec<u8>>,
+    publish: BTreeSet<String>,
+    preserve_paths: bool,
 }
 
 impl Export<'_> {
     fn texture(&mut self, name: &str, normal: bool) -> Result<String, String> {
         let name = hp_vmt::normalize_texture_path(name);
-        if let Some(new) = self.textures.get(&name) {
+        if let Some(new) = self.textures.get(&(self.preserve_paths, name.clone())) {
             return Ok(new.clone());
         }
         let original = format!("materials/{name}.vtf");
-        let bytes = match self.generated.get(&original) {
-            Some(bytes) => bytes.to_vec(),
+        let (bytes, created) = match self.generated.get(&original) {
+            Some(bytes) => (bytes.to_vec(), true),
             None => match self.fs.load_texture_raw(&name) {
-                Some(bytes) => bytes,
+                Some(bytes) => (bytes, false),
                 None => {
                     let image = self.fs.load_texture(&name, None).map_err(|e| format!("{name}: {e}"))?;
                     let image = hp_vtf::RgbaImage::new(image.width, image.height, image.rgba)
@@ -64,13 +66,17 @@ impl Export<'_> {
                         flags: if normal { hp_vtf::flags::NORMAL } else { 0 },
                         ..Default::default()
                     };
-                    hp_vtf::encode(&image, &options).map_err(|e| format!("{name}: {e}"))?
+                    (hp_vtf::encode(&image, &options).map_err(|e| format!("{name}: {e}"))?, true)
                 }
             },
         };
-        let texture = qualified(self.folder, &file_stem(&name, "t"));
-        self.files.insert(format!("materials/{texture}.vtf"), bytes);
-        self.textures.insert(name, texture.clone());
+        let texture = if self.preserve_paths { name.clone() } else { qualified(self.folder, &file_stem(&name, "t")) };
+        let path = format!("materials/{texture}.vtf");
+        if !self.preserve_paths || created {
+            self.publish.insert(path.clone());
+        }
+        self.files.insert(path, bytes);
+        self.textures.insert((self.preserve_paths, name), texture.clone());
         Ok(texture)
     }
 
@@ -106,6 +112,23 @@ pub fn stage(
     folder: &str,
     generated: &[(String, Vec<u8>)],
 ) -> Result<Vec<(String, Vec<u8>)>, String> {
+    Ok(stage_creation(fs, geometry, folder, generated, false)?.files)
+}
+
+pub struct MaterialSet {
+    /// Compiler inputs, including original model materials at their original paths.
+    pub files: Vec<(String, Vec<u8>)>,
+    /// Only converted/copied materials are published; original assets stay untouched.
+    pub publish: Vec<String>,
+}
+
+pub fn stage_creation(
+    fs: &GameFs,
+    geometry: &mut PropGeometry,
+    folder: &str,
+    generated: &[(String, Vec<u8>)],
+    reuse_materials: bool,
+) -> Result<MaterialSet, String> {
     hp_editor::prop_export::PropDirectives { cdmaterials: folder.into(), ..Default::default() }
         .validate()
         .map_err(str::to_owned)?;
@@ -116,6 +139,8 @@ pub fn stage(
         folder,
         textures: HashMap::new(),
         files: BTreeMap::new(),
+        publish: BTreeSet::new(),
+        preserve_paths: false,
     };
     let mut materials: Vec<String> = geometry.tris.iter().map(|tri| tri.material.clone()).collect();
     materials.sort();
@@ -133,6 +158,10 @@ pub fn stage(
         // Brush lighting comes from lightmaps. The exported prop instead receives
         // model lighting while retaining the authored material parameters.
         let shader = hp_vmt::shader_base_name(&material.shader);
+        export.preserve_paths = reuse_materials
+            && shader == "vertexlitgeneric"
+            && !export.generated.contains_key(&path.to_ascii_lowercase())
+            && fs.read(&path).is_some();
         if matches!(shader.as_str(), "lightmappedgeneric" | "worldvertextransition" | "lightmappedtwotexture") {
             material.shader = "VertexLitGeneric".to_owned();
         }
@@ -140,18 +169,23 @@ pub fn stage(
         for block in &mut material.other_blocks {
             export.block(block)?;
         }
-        let stem = file_stem(&name, "m");
-        export
-            .files
-            .insert(format!("materials/{}.vmt", qualified(folder, &stem)), hp_vmt::write(&material).into_bytes());
-        names.insert(name, stem);
+        let (model_name, output) = if export.preserve_paths {
+            (name.clone(), path)
+        } else {
+            let stem = file_stem(&name, "m");
+            let output = format!("materials/{}.vmt", qualified(folder, &stem));
+            export.publish.insert(output.clone());
+            (stem, output)
+        };
+        export.files.insert(output, hp_vmt::write(&material).into_bytes());
+        names.insert(name, model_name);
     }
-    // SMD names are relative to the explicit $cdmaterials search directory.
+    // Copied names use $cdmaterials; reused names use the root search fallback.
     // Update only after every required material and texture has been prepared.
     for triangle in &mut geometry.tris {
         triangle.material = names[&triangle.material].clone();
     }
-    Ok(export.files.into_iter().collect())
+    Ok(MaterialSet { files: export.files.into_iter().collect(), publish: export.publish.into_iter().collect() })
 }
 
 #[cfg(test)]
@@ -255,5 +289,68 @@ mod tests {
         let before = missing.clone();
         assert!(stage(&fs, &mut missing, "models/new_place", &generated).is_err());
         assert_eq!(missing, before);
+    }
+
+    #[test]
+    fn model_material_paths_are_reused_even_when_a_converted_material_shares_the_texture() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/propper/reuse")
+            .join(std::process::id().to_string());
+        let original = "models/hammerpro/arquiten_remake_vis_optim_95c9123f_visual/anderon_metal_prop_metal_prop_004";
+        let source = br#"VertexLitGeneric { "$basetexture" "shared/metal" "$bumpmap" "shared/normal" }"#;
+        let color = vtf([120, 90, 70, 255]);
+        let normal = vtf([128, 128, 255, 255]);
+        let write = |name: &str, bytes: &[u8]| {
+            let path = root.join(name);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, bytes).unwrap();
+        };
+        write(&format!("materials/{original}.vmt"), source);
+        write("materials/shared/metal.vtf", &color);
+        write("materials/shared/normal.vtf", &normal);
+        write("materials/a_brush.vmt", br#"LightmappedGeneric { "$basetexture" "shared/metal" }"#);
+        let fs = GameFs::empty();
+        fs.add_game_dir(&root).unwrap();
+        let mut geo = geometry(&["a_brush", original]);
+        let staged = stage_creation(&fs, &mut geo, "models/new_export", &[], true).unwrap();
+        assert_eq!(geo.tris[1].material, original, "an already valid model material must keep its complete path");
+        assert!(!geo.tris[0].material.contains('/'));
+        assert!(staged.publish.iter().all(|name| name.starts_with("materials/models/new_export/")));
+        let files: BTreeMap<_, _> = staged.files.into_iter().collect();
+        let preserved = hp_vmt::parse_bytes(&files[&format!("materials/{original}.vmt")]).unwrap();
+        assert_eq!(preserved.texture("$basetexture").as_deref(), Some("shared/metal"));
+        assert_eq!(preserved.texture("$bumpmap").as_deref(), Some("shared/normal"));
+        assert_eq!(files["materials/shared/metal.vtf"], color);
+        assert_eq!(files["materials/shared/normal.vtf"], normal);
+        assert_eq!(std::fs::read(root.join(format!("materials/{original}.vmt"))).unwrap(), source);
+        let mut copied = geometry(&[original]);
+        let copied = stage_creation(&fs, &mut copied, "models/new_export", &[], false).unwrap();
+        assert!(copied.files.iter().all(|(name, _)| name.starts_with("materials/models/new_export/")));
+        assert_eq!(copied.publish.len(), 3, "explicit copy mode still exports the VMT and both VTF dependencies");
+    }
+
+    #[test]
+    fn reused_materials_publish_new_vtfs_when_the_source_texture_is_an_editor_image() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/propper/reuse-image")
+            .join(std::process::id().to_string());
+        std::fs::create_dir_all(root.join("materials/models")).unwrap();
+        std::fs::create_dir_all(root.join("images")).unwrap();
+        let source = br#"VertexLitGeneric { "$basetexture" "pictures/color" }"#;
+        std::fs::write(root.join("materials/models/original.vmt"), source).unwrap();
+        image::RgbaImage::from_pixel(8, 8, image::Rgba([120, 90, 70, 255]))
+            .save(root.join("images/color.png"))
+            .unwrap();
+        let fs = GameFs::empty();
+        fs.add_game_dir(&root).unwrap();
+        fs.add_custom_dir(hp_fs::CustomDir::with_prefix(root.join("images"), "pictures")).unwrap();
+        let mut geo = geometry(&["models/original"]);
+        let staged = stage_creation(&fs, &mut geo, "models/copied", &[], true).unwrap();
+        assert_eq!(geo.tris[0].material, "models/original");
+        assert_eq!(staged.publish, ["materials/pictures/color.vtf"]);
+        let files: BTreeMap<_, _> = staged.files.into_iter().collect();
+        assert_eq!(hp_vtf::read_info(&files["materials/pictures/color.vtf"]).unwrap().width, 8);
+        assert_eq!(std::fs::read(root.join("materials/models/original.vmt")).unwrap(), source);
+        assert!(!root.join("materials/pictures/color.vtf").exists());
     }
 }

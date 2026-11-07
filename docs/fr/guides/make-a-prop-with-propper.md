@@ -39,7 +39,9 @@ La fenêtre rappelle aussi comment le modèle est construit :
 4. La console affiche la préparation (textures de mélange, niveaux de détail, collision), puis la compilation `studiomdl`.
 5. Après compilation et vérification, les brushes sont remplacés par le `prop_static`, `prop_dynamic` ou `prop_physics` choisi, en une étape d’annulation : `Ctrl+Z` les restaure. Si la map a changé pendant la compilation, les fichiers sont exportés mais les brushes sont conservés.
 
-Le dossier de contenu exporté contient `models/<chemin choisi>.mdl` et les matériaux sous `materials/<cdmaterials>/`. Il est monté automatiquement dans l’éditeur. Pour utiliser un dossier externe en jeu, installez ou montez ce contenu dans le jeu, ou embarquez-le avec **Construire et enregistrer en contenu** (voir [Rassembler le contenu pour une publication](collect-content-for-release.md)).
+Dans l’onglet Collision, choisissez **Aucune collision**, **Boîte** ou **Précise**. Boîte produit la collision solide la plus simple ; Précise conserve les pièces des brushes/displacements et donne accès aux réglages avancés d’enveloppe et d’édition manuelle.
+
+Le dossier de contenu exporté contient `models/<chemin choisi>.mdl` et les matériaux convertis/cuits sous `materials/<cdmaterials>/`. Les matériaux déjà en `VertexLitGeneric` gardent leurs chemins d’origine par défaut ; décochez leur réutilisation dans l’onglet Matériaux pour les copier également. Le dossier est monté automatiquement dans l’éditeur. Pour utiliser un dossier externe en jeu, installez ou montez ce contenu et les matériaux source réutilisés, ou embarquez-les avec **Construire et enregistrer en contenu** (voir [Rassembler le contenu pour une publication](collect-content-for-release.md)).
 
 ## Le chemin inverse : du prop aux brushes
 

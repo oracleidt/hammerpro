@@ -33,6 +33,7 @@ pub struct PropCreationRequest {
     pub source_dir: PathBuf,
     pub destination: PathBuf,
     pub surface_prop: String,
+    pub reuse_materials: bool,
     pub lod: crate::settings::ModelLodSettings,
 }
 
