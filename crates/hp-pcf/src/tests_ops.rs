@@ -72,6 +72,34 @@ fn simple_alpha_fades_match_native_frames_including_order_gates_and_strength() {
 }
 
 #[test]
+fn radius_scale_matches_native_frames_with_initial_radius_and_ordered_modifiers() {
+    let mut definitions = crate::parse_file(include_bytes!("../tests/data/radius_scale_live_cases.pcf")).unwrap();
+    // Readback resets position X, then copies alpha into it, avoiding cancellation against the previous frame.
+    for definition in &mut definitions {
+        definition.operators.retain(|operator| !operator.function.eq_ignore_ascii_case("Remap Scalar"));
+    }
+    let frames: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/radius_scale_live_native_samples.json")).unwrap();
+    assert_eq!(frames.len(), 149);
+    for index in 0..12 {
+        let name = format!("hp_spritecard_radius{index}");
+        let plan = Arc::new(Plan::new(definitions.iter().find(|definition| definition.name == name).unwrap()));
+        assert!(plan.unsupported.is_empty());
+        let mut sim = Sim::new(plan, 17);
+        for (frame, sample) in frames.iter().enumerate() {
+            sim.step_at(sample["dt"].as_f64().unwrap() as f32, &Points::unparented([0.0; 3]), &[], 1);
+            assert_eq!(sim.particles.len(), 1);
+            let expected = sample["positions"][index].as_f64().unwrap() as f32;
+            let radius = sim.particles[0].radius;
+            // Negative radii use a signed readback range; repeat its float operations exactly.
+            let observed =
+                if matches!(index, 2 | 8) { -64.0 + 128.0 * ((radius + 64.0) / 128.0).clamp(0.0, 1.0) } else { radius };
+            assert_eq!(observed.to_bits(), expected.to_bits(), "{name} frame{frame}");
+        }
+    }
+}
+
+#[test]
 fn random_alpha_fades_match_native_frames_with_absolute_timing_bias_and_operator_order() {
     let mut definitions = crate::parse_file(include_bytes!("../tests/data/alpha_random_live_cases.pcf")).unwrap();
     // Readback resets position X, then copies alpha into it, avoiding cancellation against the previous frame.

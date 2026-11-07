@@ -14,6 +14,7 @@ mod model;
 mod noise;
 mod oscillation;
 mod path;
+mod radius;
 mod ramp;
 mod random;
 mod rays;
@@ -66,13 +67,6 @@ fn lerp(a: f32, b: f32, t: f32) -> f32 {
 
 fn lerp3(a: V3, b: V3, t: f32) -> V3 {
     [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)]
-}
-
-fn bias(x: f32, amount: f32) -> f32 {
-    if !(amount > 0.0 && amount < 1.0) || (amount - 0.5).abs() < 1e-4 {
-        return x;
-    }
-    x.max(0.0).powf(amount.ln() / 0.5f32.ln())
 }
 
 fn ease(t: f32) -> f32 {
@@ -449,7 +443,7 @@ enum Op {
     Movement { gravity: V3, drag: f32 },
     AlphaRandom(alpha::Random),
     FadeAndDecay { start: f32, end: f32, in0: f32, in1: f32, out0: f32, out1: f32 },
-    RadiusScale { t0: f32, t1: f32, s0: f32, s1: f32, bias: f32, ease: bool },
+    RadiusScale(radius::Scale),
     ColorFade { color: [f32; 3], t0: f32, t1: f32, ease: bool },
     RotationBasic,
     Spin { rate: f32, stop: f32, min: f32, yaw: bool },
@@ -909,14 +903,7 @@ impl Plan {
                 out0: f(op, "start_fade_out_time", 0.5),
                 out1: f(op, "end_fade_out_time", 1.0),
             },
-            "radius scale" => Op::RadiusScale {
-                t0: f(op, "start_time", 0.0),
-                t1: f(op, "end_time", 1.0),
-                s0: f(op, "radius_start_scale", 1.0),
-                s1: f(op, "radius_end_scale", 1.0),
-                bias: f(op, "scale_bias", 0.5),
-                ease: b(op, "ease_in_and_out", false),
-            },
+            "radius scale" => Op::RadiusScale(radius::Scale::compile(op)),
             "color fade" => Op::ColorFade {
                 color: rgb(op.color("color_fade").unwrap_or([255; 4])),
                 t0: f(op, "fade_start_time", 0.0),
@@ -1095,13 +1082,10 @@ pub struct Particle {
     pub trail: f32,
     pub flip: bool,
     pub seed: u32,
-    base_radius: f32,
     base_color: [f32; 3],
     base_alpha: f32,
     rotation_speed: f32,
     pub yaw: f32,
-    radius_scale: f32,
-    radius_add: f32,
     alpha_add: f32,
     born: f32,
 }
@@ -1270,13 +1254,10 @@ impl Sim {
                 trail: 0.1,
                 flip: false,
                 seed,
-                base_radius: plan.radius,
                 base_color: plan.color,
                 base_alpha: plan.alpha,
                 rotation_speed: plan.rotation_speed,
                 yaw: 0.0,
-                radius_scale: 1.0,
-                radius_add: 0.0,
                 alpha_add: 0.0,
                 born,
             };
@@ -1324,7 +1305,7 @@ impl Sim {
                     Init::Offset { min, max, local, radius } => {
                         let mut o = self.rng.range3(*min, *max);
                         if *radius {
-                            o = scale(o, part.base_radius);
+                            o = scale(o, part.radius);
                         }
                         if *local {
                             o = points.local(o);
@@ -1393,7 +1374,7 @@ impl Sim {
                         let frames = self.frames.get(part.sequence as usize).copied().unwrap_or(0);
                         part.life = if frames > 0 { frames as f32 / fps } else { 1.0 };
                     }
-                    Init::Radius { min, max, exp } => part.base_radius = self.rng.range_exp(*min, *max, *exp),
+                    Init::Radius { min, max, exp } => part.radius = self.rng.range_exp(*min, *max, *exp),
                     Init::Color(color) => {
                         color::initialize(color, part, points, world, &mut self.rng, &mut self.colors[index]);
                     }
@@ -1470,7 +1451,6 @@ impl Sim {
                 part.life = 1.0;
             }
             part.age = self.time - part.born;
-            part.radius = part.base_radius;
             part.color = part.base_color.map(|value| value.clamp(0.0, 1.0));
             part.alpha = part.base_alpha;
             part.velocity_snapshot = part.vel;
@@ -1580,7 +1560,7 @@ fn get_field(p: &Particle, field: Field) -> f32 {
     match field {
         Field::PositionX => p.pos[0],
         Field::Lifetime => p.life,
-        Field::Radius => p.base_radius,
+        Field::Radius => p.radius,
         Field::Rotation => p.rotation,
         Field::RotationSpeed => p.rotation_speed,
         Field::Alpha => p.base_alpha,
@@ -1601,7 +1581,7 @@ fn set_field(p: &mut Particle, field: Field, x: f32, multiply: bool) {
     let slot = match field {
         Field::PositionX => &mut p.pos[0],
         Field::Lifetime => &mut p.life,
-        Field::Radius => &mut p.base_radius,
+        Field::Radius => &mut p.radius,
         Field::Rotation => &mut p.rotation,
         Field::RotationSpeed => &mut p.rotation_speed,
         Field::Alpha => &mut p.base_alpha,
@@ -1675,7 +1655,6 @@ fn operate(
                     if alpha_written {
                         part.alpha = alpha + part.alpha_add;
                     }
-                    part.radius = (part.base_radius * part.radius_scale + part.radius_add).max(0.0);
                     if let Some(value) = scalar::evaluate(remap, part, points, world, part.born + part.age, true) {
                         match remap.field {
                             Field::Alpha => {
@@ -1683,9 +1662,7 @@ fn operate(
                                 part.alpha_add = 0.0;
                             }
                             Field::Radius => {
-                                part.base_radius = value;
-                                part.radius_scale = 1.0;
-                                part.radius_add = 0.0;
+                                part.radius = value;
                             }
                             _ => set_field(part, remap.field, value, false),
                         }
@@ -1746,13 +1723,11 @@ fn operate(
                     }
                     alpha *= a.clamp(0.0, 1.0);
                 }
-                Op::RadiusScale { t0, t1, s0, s1, bias: amount, ease: smooth } => {
-                    if t >= *t0 && t <= *t1 {
-                        let mut x = if t1 > t0 { (t - t0) / (t1 - t0) } else { 1.0 };
-                        if *smooth {
-                            x = ease(x);
-                        }
-                        part.radius_scale = lerp(*s0, *s1, bias(x, *amount));
+                Op::RadiusScale(scale) => {
+                    if let Some(value) =
+                        scale.value((time, part.born, part.life), part.initial_values[Field::Radius as usize])
+                    {
+                        part.radius = value;
                     }
                 }
                 Op::ColorFade { color: target, t0, t1, ease: smooth } => {
@@ -1783,7 +1758,7 @@ fn operate(
                     };
                     match field {
                         Field::PositionX => part.pos[0] += delta,
-                        Field::Radius => part.radius_add += delta,
+                        Field::Radius => part.radius += delta,
                         Field::Alpha => {
                             let current = if alpha_written { alpha + part.alpha_add } else { part.alpha };
                             alpha = (current + delta).clamp(0.0, 1.0);
@@ -1820,10 +1795,8 @@ fn operate(
                     let x = noise::map(noise::scalar(scale(part.pos, *speed)), *min, *max, additive.then_some(dt));
                     match field {
                         Field::Radius => {
-                            let current = part.base_radius * part.radius_scale + part.radius_add;
-                            part.base_radius = (x + if *additive { current } else { 0.0 }).max(0.0);
-                            part.radius_scale = 1.0;
-                            part.radius_add = 0.0;
+                            let current = part.radius;
+                            part.radius = (x + if *additive { current } else { 0.0 }).max(0.0);
                         }
                         Field::Alpha => {
                             let current = if alpha_written { alpha } else { part.alpha };
@@ -1851,7 +1824,7 @@ fn operate(
                 }
                 Op::Ramp { field, ramp } => {
                     let current = match field {
-                        Field::Radius => part.base_radius * part.radius_scale + part.radius_add,
+                        Field::Radius => part.radius,
                         Field::Alpha if alpha_written => alpha + part.alpha_add,
                         Field::Alpha => part.alpha,
                         _ => get_field(part, *field),
@@ -1867,9 +1840,7 @@ fn operate(
                     };
                     match field {
                         Field::Radius => {
-                            part.base_radius = value;
-                            part.radius_scale = 1.0;
-                            part.radius_add = 0.0;
+                            part.radius = value;
                         }
                         Field::Alpha => {
                             alpha = value;
@@ -1947,7 +1918,6 @@ fn operate(
         if context.alpha_written {
             part.alpha = (context.alpha + part.alpha_add).clamp(0.0, 1.0);
         }
-        part.radius = (part.base_radius * part.radius_scale + part.radius_add).max(0.0);
         if context.color_written {
             part.color = context.color.map(|c| c.clamp(0.0, 1.0));
         }
