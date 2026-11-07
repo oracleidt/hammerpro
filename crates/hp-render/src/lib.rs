@@ -385,8 +385,17 @@ fn material_uniform(desc: Option<&MaterialDesc>, env_cube: u32) -> MaterialUnifo
     let finite = |v: f32, default: f32| if v.is_finite() { v } else { default };
     let detail = d.detail.filter(|dd| dd.mode <= DetailDesc::MODE_TWO_TEXTURE_MASK);
     let inv = |v: f32| if v.is_finite() && v.abs() > 1e-6 { 1.0 / v } else { 1.0 / 512.0 };
+    let tint = if d.flags.contains(MaterialFlags::PARTICLE_TINT_GAMMA22) {
+        let mut rgba = d.tint.map(|v| finite(v, 0.0).clamp(0.0, 1.0));
+        for channel in &mut rgba[..3] {
+            *channel = channel.powf(2.2);
+        }
+        rgba
+    } else {
+        srgba_to_linear(d.tint)
+    };
     MaterialUniform {
-        tint: srgba_to_linear(d.tint),
+        tint,
         inv_tex_size: [inv(d.tex_size[0]), inv(d.tex_size[1])],
         alpha_scale: if d.flags.contains(MaterialFlags::TOOL) { TOOL_ALPHA } else { 1.0 },
         flags: d.flags.0,

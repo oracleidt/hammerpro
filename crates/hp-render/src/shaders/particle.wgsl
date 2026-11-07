@@ -230,13 +230,14 @@ fn particle_texel(in: ParticleOut) -> vec4<f32> {
 
 @fragment
 fn fs_particle(in: ParticleOut) -> @location(0) vec4<f32> {
-    let t = particle_texel(in) * material.tint;
+    let card = (in.effects & P_SPLINE_LINEAR_COLOR) != 0u || (material.flags & M_SPRITE_CARD) != 0u;
+    // SpriteCard uses the particle's vertex modulation and overbright factor;
+    // its native shader does not bind the VMT color or alpha modulation.
+    let t = particle_texel(in) * select(material.tint, vec4<f32>(1.0), card);
     let exposure = bitcast<f32>(view.misc.z);
     fog_far_clip(in.world);
     let fog = select(fog_amount(in.world), 0.0, (in.effects & 65536u) != 0u);
     let color = particle_color(in);
-    let spline = (in.effects & P_SPLINE_LINEAR_COLOR) != 0u;
-    let card = spline || (material.flags & M_SPRITE_CARD) != 0u;
     if card && PARTICLE_BLEND_MODE != 1.0 && t.a * in.color.a <= 0.01 {
         discard;
     }

@@ -85,6 +85,7 @@ pub(crate) struct MatAnalysis {
     pub flags: MaterialFlags,
     pub tool: Option<ToolKind>,
     pub tint: [f32; 4],
+    particle_tint_gamma22: bool,
     pub decal_scale: f32,
     pub scroll: [f32; 2],
     pub uv: [f32; 4],
@@ -298,6 +299,7 @@ fn analyze_resolved(name: &str, mat: &Material, texture_flags: &dyn Fn(&str) -> 
         flags,
         tool,
         tint,
+        particle_tint_gamma22: mat.shader_kind() == hp_vmt::ShaderKind::UnlitGeneric,
         decal_scale,
         scroll,
         uv,
@@ -460,6 +462,7 @@ pub(crate) fn asset_desc(
                 flags |= MaterialFlags::LIGHT_BLOCKER;
             }
             let sprite = matches!(kind, MatKind::Sprite | MatKind::SpriteAdditive | MatKind::SpriteRefract);
+            flags.set(MaterialFlags::PARTICLE_TINT_GAMMA22, sprite && a.particle_tint_gamma22);
             let detail = a.detail.as_ref().filter(|_| !sprite).and_then(|d| match tex(&d.texture) {
                 TexLook::Ready(id, _) => Some(d.desc(id)),
                 TexLook::Loading | TexLook::Missing => None,

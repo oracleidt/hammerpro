@@ -3,15 +3,10 @@ use std::collections::{HashMap, hash_map::Entry};
 
 #[test]
 fn native_particle_colors_survive_material_loading_and_texture_preparation() {
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-    let Ok(adapter) = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())) else {
+    let Some((device, queue)) = crate::test_gpu::gpu() else {
         eprintln!("no GPU adapter: native particle material reference skipped");
         return;
     };
-    let (device, queue) = pollster::block_on(
-        adapter.request_device(&wgpu::DeviceDescriptor { required_limits: adapter.limits(), ..Default::default() }),
-    )
-    .unwrap();
     let mut renderer = Renderer::new(&device, &queue);
     renderer.set_tone_settings(ToneSettings { bloom: 0.0, ..Default::default() });
     let data = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data");
@@ -41,6 +36,7 @@ fn native_particle_colors_survive_material_loading_and_texture_preparation() {
         serde_json::from_str(include_str!("../tests/data/native_card_color.json")).unwrap();
     let trails: serde_json::Value =
         serde_json::from_str(include_str!("../../hp-render/tests/data/native_trail_color.json")).unwrap();
+    let tints: serde_json::Value = serde_json::from_str(include_str!("../tests/data/native_card_tints.json")).unwrap();
     let mut textures = HashMap::new();
     let mut failures = Vec::new();
     let mut checked = 0;
@@ -48,7 +44,7 @@ fn native_particle_colors_survive_material_loading_and_texture_preparation() {
     let mut full_images = 0;
     let proof = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/hp-assets/particle-proof");
     std::fs::create_dir_all(&proof).unwrap();
-    for (trail, report) in [(false, &sprites), (true, &trails)] {
+    for (trail, report) in [(false, &sprites), (true, &trails), (false, &tints)] {
         for case in report["cases"].as_array().unwrap() {
             let name = case["name"].as_str().unwrap();
             let prefix = if trail { "hp_trail117" } else { "hp_cardcolor117" };
@@ -58,6 +54,11 @@ fn native_particle_colors_survive_material_loading_and_texture_preparation() {
             // The native probe changes only the base texture between captures.
             let texture_name = format!("{prefix}/{}", name.split('-').nth(1).unwrap());
             material.set("$basetexture", &texture_name);
+            if let Some(properties) = case["properties"].as_object() {
+                for (key, value) in properties {
+                    material.set(key, value.as_str().unwrap());
+                }
+            }
             let analysis = crate::material::analyze(&material_name, &material, &|t| fs.texture_flags(t).unwrap_or(0));
             let blend = match case["blend"].as_str().unwrap() {
                 "additive" => ParticleBlend::Additive,
@@ -152,7 +153,14 @@ fn native_particle_colors_survive_material_loading_and_texture_preparation() {
                 failures.push(format!("{} {name}: max RGB delta {worst}", if trail { "trail" } else { "sprite" }));
             }
             largest_delta = largest_delta.max(worst);
-            if matches!(name, "spline_default-white" | "splineaddself_default-rgba128" | "splineadd_default-dark64") {
+            if matches!(
+                name,
+                "spline_default-white"
+                    | "splineaddself_default-rgba128"
+                    | "splineadd_default-dark64"
+                    | "cpu_white-white-shadow_tint"
+                    | "spline_default-white-combined"
+            ) {
                 let prefix = if trail { "trail" } else { "sprite" };
                 image::save_buffer(
                     proof.join(format!("{prefix}_{name}.png")),
@@ -178,8 +186,8 @@ fn native_particle_colors_survive_material_loading_and_texture_preparation() {
             checked += 1;
         }
     }
-    assert_eq!(checked, 320);
-    assert_eq!(full_images, 6);
+    assert_eq!(checked, 568);
+    assert_eq!(full_images, 8);
     assert!(failures.is_empty(), "{} native particle material cases failed:\n{}", failures.len(), failures.join("\n"));
     eprintln!(
         "Native material-to-pixel particle reference: {checked} cases and {full_images} whole images, maximum RGB delta {largest_delta}/255"

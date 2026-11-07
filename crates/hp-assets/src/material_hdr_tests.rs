@@ -2,15 +2,10 @@ use hp_render::*;
 
 #[test]
 fn native_hdr_cubemap_colors_survive_loading_and_shader_tint() {
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-    let Ok(adapter) = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())) else {
+    let Some((device, queue)) = crate::test_gpu::gpu() else {
         eprintln!("no GPU adapter: native HDR material test skipped");
         return;
     };
-    let (device, queue) = pollster::block_on(
-        adapter.request_device(&wgpu::DeviceDescriptor { required_limits: adapter.limits(), ..Default::default() }),
-    )
-    .unwrap();
     let mut renderer = Renderer::new(&device, &queue);
     renderer.set_tone_settings(ToneSettings { bloom: 0.0, ..Default::default() });
     renderer.set_view_options(1, ViewOptions { cubemaps: true, ..Default::default() });

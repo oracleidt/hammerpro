@@ -37,6 +37,8 @@ mod ragdolls;
 mod registry;
 mod scene;
 mod shadow_hulls;
+#[cfg(test)]
+mod test_gpu;
 mod texture;
 mod thumb_cache;
 mod thumbs;

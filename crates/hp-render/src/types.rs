@@ -188,6 +188,7 @@ bitflags_u32! {
         SELF_ILLUM = 1 << 12;
         LIGHT_BLOCKER = 1 << 13;
         SPRITE_CARD = 1 << 14;
+        PARTICLE_TINT_GAMMA22 = 1 << 15;
     }
 }
 
