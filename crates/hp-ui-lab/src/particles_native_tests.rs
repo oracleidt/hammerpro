@@ -143,6 +143,13 @@ fn multiple_renderers_reach_the_gpu_with_native_opacity_and_orientation() {
                 enabled: true,
                 origin: hp_fs::SourceOrigin::Custom,
             },
+            hp_fs::SourceMount {
+                kind: hp_fs::SourceMountKind::Gma,
+                label: "Owned native root-sequence reference".into(),
+                path: data.join("native_root_sequence.gma"),
+                enabled: true,
+                origin: hp_fs::SourceOrigin::Custom,
+            },
         ],
     )
     .unwrap();
@@ -160,11 +167,15 @@ fn multiple_renderers_reach_the_gpu_with_native_opacity_and_orientation() {
         serde_json::from_str(include_str!("../tests/data/native_root_rotation.json")).unwrap();
     let speed_definitions = hp_pcf::parse_file(include_bytes!("../tests/data/native_root_speed.pcf")).unwrap();
     let speed: serde_json::Value = serde_json::from_str(include_str!("../tests/data/native_root_speed.json")).unwrap();
+    let sequence_definitions = hp_pcf::parse_file(include_bytes!("../tests/data/native_root_sequence.pcf")).unwrap();
+    let sequence: serde_json::Value =
+        serde_json::from_str(include_str!("../tests/data/native_root_sequence.json")).unwrap();
     assert_eq!(fixture["cases"].as_object().unwrap().len(), 6);
     assert_eq!(ordering["cases"].as_object().unwrap().len(), 2);
     assert_eq!(children["cases"].as_object().unwrap().len(), 10);
     assert_eq!(rotation["cases"].as_object().unwrap().len(), 9);
     assert_eq!(speed["cases"].as_object().unwrap().len(), 9);
+    assert_eq!(sequence["cases"].as_object().unwrap().len(), 10);
     let mut state = hp_app::testing::test_state();
     let mut failures = Vec::new();
     let proof = data.join("../../../../target/hp-ui-lab/multiple-renderers");
@@ -177,6 +188,7 @@ fn multiple_renderers_reach_the_gpu_with_native_opacity_and_orientation() {
         ("hp_childorder117", "native_child_render_order", &children, child_definitions, white),
         ("hp_rootrender117", "native_root_rotation", &rotation, rotation_definitions, texture),
         ("hp_rootspeed117", "native_root_speed", &speed, speed_definitions, texture),
+        ("hp_rootseqsheet117", "native_root_sequence", &sequence, sequence_definitions, texture),
     ] {
         renderer.set_material(
             0,
@@ -286,8 +298,8 @@ fn multiple_renderers_reach_the_gpu_with_native_opacity_and_orientation() {
         }
     }
     assert!(failures.is_empty(), "Native multiple-renderer image mismatches:\n{}", failures.join("\n"));
-    assert_eq!(scalar_readouts, 9);
+    assert_eq!(scalar_readouts, 19);
     eprintln!(
-        "Thirty-six native particle whole images and nine exact scalar readouts: maximum RGB delta {maximum}/255"
+        "Forty-six native particle whole images and nineteen exact scalar readouts: maximum RGB delta {maximum}/255"
     );
 }

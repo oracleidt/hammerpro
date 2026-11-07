@@ -51,6 +51,8 @@ pub struct SystemDef {
     pub rotation: f32,
     /// Native angular speed constant, in radians per second.
     pub rotation_speed: f32,
+    /// Primary and secondary integer animation sequence constants.
+    pub sequences: [i32; 2],
     pub color: [u8; 4],
     pub emitters: Vec<Operator>,
     pub initializers: Vec<Operator>,
@@ -72,6 +74,7 @@ impl Default for SystemDef {
             radius: 5.0,
             rotation: 0.0,
             rotation_speed: 0.0,
+            sequences: [0; 2],
             color: [255, 255, 255, 255],
             emitters: Vec::new(),
             initializers: Vec::new(),
@@ -133,6 +136,10 @@ pub fn systems(dmx: &Dmx) -> Vec<SystemDef> {
                 Some(crate::dmx::Value::Float(value)) if value.is_finite() => *value,
                 _ => d.rotation_speed,
             },
+            sequences: ["sequence_number", "sequence_number 1"].map(|name| match e.get(name) {
+                Some(crate::dmx::Value::Int(value)) => *value,
+                _ => 0,
+            }),
             color: e.color("color").unwrap_or(d.color),
             emitters: operators(dmx, e, "emitters"),
             initializers: operators(dmx, e, "initializers"),
