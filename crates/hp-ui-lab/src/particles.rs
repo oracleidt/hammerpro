@@ -540,6 +540,28 @@ pub fn sort_far_first(sprites: &mut [ParticleSprite], eye: [f32; 3]) {
     });
 }
 
+/// Merge editor entity effects with PCFs before losing their collection/pass
+/// keys. Sorting the GPU instances afterward would destroy child draw order.
+pub fn scene_instances_of(
+    shared: &ParticleShared,
+    eye: [f32; 3],
+    assets: &mut dyn hp_app::state::AssetsApi,
+) -> Vec<hp_render::ParticleInstance> {
+    if shared.fx_sprites.is_empty() {
+        return instances_of(&shared.sprites, &shared.materials, assets);
+    }
+    let mut sprites = Vec::with_capacity(shared.sprites.len() + shared.fx_sprites.len());
+    sprites.extend_from_slice(&shared.sprites);
+    let offset = shared.materials.len() as u32;
+    sprites.extend(
+        shared.fx_sprites.iter().map(|sprite| ParticleSprite { material: sprite.material + offset, ..*sprite }),
+    );
+    let mut materials = shared.materials.clone();
+    materials.extend_from_slice(&shared.fx_materials);
+    sort_far_first(&mut sprites, eye);
+    instances_of(&sprites, &materials, assets)
+}
+
 pub fn instances_of(
     sprites: &[ParticleSprite],
     materials: &[String],

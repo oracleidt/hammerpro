@@ -233,7 +233,14 @@ fn multiple_renderers_reach_the_gpu_with_native_opacity_and_orientation() {
             append_sprites(std::iter::once((17, &effect)), &looks, &mut sprites, &mut materials);
             let eye = std::array::from_fn(|i| case["eye"][i].as_f64().unwrap() as f32);
             sort_far_first(&mut sprites, eye);
-            let instances = instances_of(&sprites, &materials, &mut *state.assets);
+            let mut shared = ParticleShared { sprites, materials, ..Default::default() };
+            if namespace == "hp_childorder117" {
+                // Exercise the viewport's PCF/entity-effects merge as well as
+                // the ordinary PCF path. Both queues retain the authored keys.
+                shared.fx_sprites.push(shared.sprites.remove(0));
+                shared.fx_materials = shared.materials.clone();
+            }
+            let instances = scene_instances_of(&shared, eye, &mut *state.assets);
             renderer.set_particles(&instances);
             let view = ViewParams {
                 size: [128, 128],

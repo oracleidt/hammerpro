@@ -1199,8 +1199,7 @@ fn map_particle_files(app: &HammerProApp) -> Vec<String> {
 
 fn particles_draw(app: &mut HammerProApp) {
     let lab = &mut app.pkg.lab;
-    let eye = app.state.cameras.cam3d.pos.as_vec3();
-    let forward = app.state.cameras.cam3d.forward().as_vec3();
+    let eye = app.state.cameras.cam3d.pos.as_vec3().to_array();
     let AppState { assets, gfx, .. } = &mut app.state;
     let Ok(mut shared) = lab.particles.lock() else { return };
     shared.sprite_layer = gfx.is_some();
@@ -1208,14 +1207,7 @@ fn particles_draw(app: &mut HammerProApp) {
     if shared.sprites.is_empty() && shared.fx_sprites.is_empty() && !lab.particles_shown {
         return;
     }
-    let mut instances = hp_ui_lab::particles::instances_of(&shared.sprites, &shared.materials, &mut **assets);
-    if !shared.fx_sprites.is_empty() {
-        instances.extend(hp_ui_lab::particles::instances_of(&shared.fx_sprites, &shared.fx_materials, &mut **assets));
-    }
-    instances.sort_by(|a, b| {
-        let depth = |p: &hp_render::ParticleInstance| (glam::Vec3::from(p.pos) - eye).dot(forward);
-        depth(b).total_cmp(&depth(a))
-    });
+    let instances = hp_ui_lab::particles::scene_instances_of(&shared, eye, &mut **assets);
     lab.particles_shown = !instances.is_empty();
     gfx.renderer.set_particles(&instances);
 }
