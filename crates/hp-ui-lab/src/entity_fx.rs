@@ -654,6 +654,7 @@ impl EntityFxLayer {
                     no_fog: look.no_fog,
                     material,
                     entity: fx.id,
+                    draw_order: 0,
                 });
             }
         }

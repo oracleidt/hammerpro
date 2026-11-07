@@ -205,6 +205,8 @@ pub struct ParticleSprite {
     pub no_fog: bool,
     pub material: u32,
     pub entity: Id,
+    /// Authored collection/renderer pass within this effect instance.
+    pub draw_order: u32,
 }
 
 pub type ParticleHandle = Arc<Mutex<ParticleShared>>;
@@ -395,6 +397,7 @@ pub fn append_sprites<'a>(
         }
     };
     for (id, effect) in effects {
+        let mut next_draw_order = 0;
         for (plan, particles, dt) in effect.systems_with_dt() {
             if particles.is_empty() {
                 continue;
@@ -413,6 +416,8 @@ pub fn append_sprites<'a>(
             let add_self = look.blend_parameter();
             let material = material_of(&plan.material);
             for render in plan.renderers() {
+                let draw_order = next_draw_order;
+                next_draw_order += 1;
                 let base = |p: &hp_pcf::Particle| ParticleSprite {
                     animation: hp_render::ParticleAnimation::default(),
                     pos: p.pos,
@@ -431,6 +436,7 @@ pub fn append_sprites<'a>(
                     no_fog: look.no_fog,
                     material,
                     entity: id,
+                    draw_order,
                 };
                 let visible =
                     |p: &hp_pcf::Particle| p.opacity() > 0.0 && p.radius > 0.0 && p.pos.iter().all(|v| v.is_finite());
@@ -513,12 +519,25 @@ fn push_blended(
     sprites.push(s);
 }
 
+/// Prioritize independent effects by their farthest submitted particle. Within
+/// an effect, preserve collection/renderer passes and sort each pass separately.
 pub fn sort_far_first(sprites: &mut [ParticleSprite], eye: [f32; 3]) {
     let d2 = |s: &ParticleSprite| {
         let d = [s.pos[0] - eye[0], s.pos[1] - eye[1], s.pos[2] - eye[2]];
         d[0] * d[0] + d[1] * d[1] + d[2] * d[2]
     };
-    sprites.sort_by(|a, b| d2(b).total_cmp(&d2(a)));
+    let mut effect_distance = HashMap::<Id, f32>::new();
+    for sprite in sprites.iter() {
+        let distance = d2(sprite);
+        effect_distance.entry(sprite.entity).and_modify(|d| *d = d.max(distance)).or_insert(distance);
+    }
+    sprites.sort_by(|a, b| {
+        if a.entity == b.entity {
+            a.draw_order.cmp(&b.draw_order).then_with(|| d2(b).total_cmp(&d2(a)))
+        } else {
+            effect_distance[&b.entity].total_cmp(&effect_distance[&a.entity]).then_with(|| a.entity.cmp(&b.entity))
+        }
+    });
 }
 
 pub fn instances_of(
@@ -1230,7 +1249,9 @@ mod tests {
             assert!(s.sprites.iter().all(|p| p.blend == ParticleBlend::Additive));
             let eye = [-200.0f32, 0.0, 0.0];
             let d = |p: &ParticleSprite| (p.pos[0] - eye[0]).powi(2) + p.pos[1].powi(2) + p.pos[2].powi(2);
-            assert!(s.sprites.windows(2).all(|w| d(&w[0]) >= d(&w[1])), "far to near");
+            for pass in s.sprites.chunk_by(|a, b| a.entity == b.entity && a.draw_order == b.draw_order) {
+                assert!(pass.windows(2).all(|w| d(&w[0]) >= d(&w[1])), "far to near within each draw pass");
+            }
         }
         let mut none = Overlay::default();
         layer.add(&state, &view(), &mut none);

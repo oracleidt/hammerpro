@@ -2033,6 +2033,7 @@ fn operate(
 pub struct Effect {
     pub sims: Vec<(f32, Sim)>,
     parents: Vec<Option<usize>>,
+    render_order: Vec<usize>,
     pub missing: Vec<String>,
     time: f32,
     idle: f32,
@@ -2090,7 +2091,21 @@ impl Effect {
             sims.push((delay, sim));
             parents.push(parent);
         }
-        Some(Effect { sims, parents, missing, time: 0.0, idle: 0.0, scratch: Vec::new() })
+        // Keep simulation indices/parent snapshots stable, but draw recursively:
+        // a collection's passes, then each child's entire subtree in link order.
+        let mut render_order = Vec::with_capacity(sims.len());
+        let mut stack = vec![0];
+        while let Some(index) = stack.pop() {
+            render_order.push(index);
+            stack.extend(
+                parents
+                    .iter()
+                    .enumerate()
+                    .rev()
+                    .filter_map(|(child, parent)| (*parent == Some(index)).then_some(child)),
+            );
+        }
+        Some(Effect { sims, parents, render_order, missing, time: 0.0, idle: 0.0, scratch: Vec::new() })
     }
 
     pub fn set_sequence_frames(&mut self, frames: &dyn Fn(&Plan) -> Option<Vec<u32>>) {
@@ -2167,19 +2182,20 @@ impl Effect {
     }
 
     pub fn particles(&self) -> impl Iterator<Item = (&Plan, &Particle)> + '_ {
-        self.sims
-            .iter()
-            .filter(|(_, s)| s.plan.draws)
-            .flat_map(|(_, s)| s.particles.iter().map(move |p| (&**s.plan(), p)))
+        self.drawable_sims().flat_map(|s| s.particles.iter().map(move |p| (&**s.plan(), p)))
+    }
+
+    fn drawable_sims(&self) -> impl Iterator<Item = &Sim> + '_ {
+        self.render_order.iter().map(|&index| &self.sims[index].1).filter(|s| s.plan.draws)
     }
 
     pub fn systems(&self) -> impl Iterator<Item = (&Plan, &[Particle])> + '_ {
-        self.sims.iter().filter(|(_, s)| s.plan.draws).map(|(_, s)| (&**s.plan(), &s.particles[..]))
+        self.drawable_sims().map(|s| (&**s.plan(), &s.particles[..]))
     }
 
     /// Each collection renders with its own current timestep, including zero-DT frames.
     pub fn systems_with_dt(&self) -> impl Iterator<Item = (&Plan, &[Particle], f32)> + '_ {
-        self.sims.iter().filter(|(_, s)| s.plan.draws).map(|(_, s)| (&**s.plan(), &s.particles[..], s.current_dt))
+        self.drawable_sims().map(|s| (&**s.plan(), &s.particles[..], s.current_dt))
     }
 
     pub fn particle_count(&self) -> usize {
