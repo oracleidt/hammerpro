@@ -29,6 +29,9 @@ pub enum ParticleOrient {
     Stretched,
     ScreenLit,
     ScreenEmissive,
+    /// Native trail head and head-to-tail delta, with full ribbon width.
+    TrailCpu,
+    TrailSpline,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -239,6 +242,8 @@ fn pack(particles: &[ParticleInstance]) -> (Vec<ParticleGpu>, Vec<Run>) {
                     ParticleOrient::Stretched => 3,
                     ParticleOrient::ScreenLit => 4,
                     ParticleOrient::ScreenEmissive => 5,
+                    ParticleOrient::TrailCpu => 6,
+                    ParticleOrient::TrailSpline => 7,
                 },
             bright: finite(p.bright, 1.0).clamp(0.0, 16.0),
             fade: pack_fade(p.screen_fade),

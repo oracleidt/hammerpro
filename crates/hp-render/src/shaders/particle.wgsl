@@ -27,6 +27,8 @@ const P_SCREEN: u32 = 0u;
 const P_UPRIGHT: u32 = 1u;
 const P_FLAT: u32 = 2u;
 const P_STRETCHED: u32 = 3u;
+const P_TRAIL_CPU: u32 = 6u;
+const P_TRAIL_SPLINE: u32 = 7u;
 
 @vertex
 fn vs_particle(
@@ -103,7 +105,7 @@ fn vs_particle(
         }
     }
     let yaw_axis = dy;
-    if mode == P_SCREEN || mode == P_FLAT || mode >= 4u {
+    if mode == P_SCREEN || mode == P_FLAT || mode == 4u || mode == 5u {
         let cr = cos(roll);
         let sr = sin(roll);
         let rx = dx * cr + dy * sr;
@@ -112,12 +114,34 @@ fn vs_particle(
         dy = ry;
     }
     var offset = dx * (c.x * half) + dy * (c.y * half_y);
-    if yaw != 0.0 && mode != P_STRETCHED {
+    if yaw != 0.0 && mode != P_STRETCHED && mode != P_TRAIL_CPU && mode != P_TRAIL_SPLINE {
         let cy = cos(yaw);
         let sy = sin(yaw);
         offset = offset * cy + cross(yaw_axis, offset) * sy + yaw_axis * dot(offset, yaw_axis) * (1.0 - cy);
     }
-    let world = pos + offset;
+    var world = pos + offset;
+    if mode == P_TRAIL_CPU || mode == P_TRAIL_SPLINE {
+        // Trail UVs run from V=1 at the head to V=0 at the tail. A native
+        // radius is the FULL ribbon width; ordinary sprites use twice that.
+        let t = c.y * 0.5 + 0.5;
+        var side = cross(pos - view.eye.xyz, axis);
+        var squared = (side.z * side.z + side.y * side.y) + (side.x * side.x + 1e-10);
+        if mode == P_TRAIL_SPLINE {
+            let axis_length = length(axis);
+            if axis_length == 0.0 {
+                out.clip = COLLAPSED;
+                return out;
+            }
+            side = cross((pos + axis * t) - view.eye.xyz, axis / axis_length);
+            squared = dot(side, side);
+        }
+        if squared <= 0.0 {
+            out.clip = COLLAPSED;
+            return out;
+        }
+        side *= inverseSqrt(squared);
+        world = (pos + side * (-c.x * half)) + axis * t;
+    }
     out.world = world;
     var alpha = color.a;
     let f0 = fade.x * 4.0;

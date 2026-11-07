@@ -8,6 +8,7 @@ mod parameters;
 pub mod random;
 pub mod sheet;
 pub mod sim;
+pub mod trail;
 
 pub use model::{Child, Operator, SystemDef};
 pub use sheet::{Sheet, sheet_from_vtf};

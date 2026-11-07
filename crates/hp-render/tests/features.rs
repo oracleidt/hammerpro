@@ -1046,6 +1046,104 @@ fn textured_view_shades_slopes_like_hammer() {
 }
 
 #[test]
+fn native_trails_use_head_tail_uvs_and_full_width_in_each_view() {
+    let (device, queue) = gpu_or_skip!();
+    let mut r = Renderer::new(&device, &queue);
+    let mut texels = Vec::new();
+    for y in 0..4 {
+        for x in 0..4 {
+            let color = match (x < 2, y < 2) {
+                (true, true) => [255, 0, 0, 255],
+                (false, true) => [0, 0, 255, 255],
+                (true, false) => [0, 255, 0, 255],
+                (false, false) => [255, 255, 0, 255],
+            };
+            texels.extend_from_slice(&color);
+        }
+    }
+    let texture =
+        r.create_texture(&TextureUpload { width: 4, height: 4, format: TexFormat::Rgba8Srgb, levels: vec![texels] });
+    r.set_material(4, &MaterialDesc { texture: Some(texture), tex_size: [4.0, 4.0], ..Default::default() });
+    let head = [0.0, 0.0, -80.0];
+    let delta = [0.0, 0.0, 160.0];
+    let width = 80.0;
+    for (index, orient) in [ParticleOrient::TrailCpu, ParticleOrient::TrailSpline].into_iter().enumerate() {
+        r.set_particles(&[ParticleInstance {
+            pos: head,
+            axis: delta,
+            size: width,
+            orient,
+            material: 4,
+            animation: ParticleAnimation::default(),
+            roll: 0.0,
+            yaw: 0.0,
+            uv: [0.0, 0.0, 1.0, 1.0],
+            color: [1.0; 4],
+            bright: 1.0,
+            add_self: 0.0,
+            screen_fade: [0.0; 2],
+            refraction_blur: 0.0,
+            no_fog: true,
+            blend: ParticleBlend::Alpha,
+        }]);
+        for eye in [[-400.0, 0.0, 0.0], [0.0, -400.0, 0.0]] {
+            let mut view = persp(eye, [0.0; 3], [512, 512], RenderMode::Textured);
+            view.background = [0.0; 3];
+            view.msaa = false;
+            r.render_view(1, &view, &Overlay::default());
+            let image = save(&r, 1, &format!("native_trail_{index}_{}", eye[0]));
+            // Native head V=1/tail V=0 and U=0 on the positive cross-product side.
+            let reference = hp_pcf::trail::Segment { head, delta, width };
+            let vertices = reference.cpu_vertices(eye);
+            for (u, v, expected) in [
+                (0.25, 0.75, [0, 255, 0]),
+                (0.75, 0.75, [255, 255, 0]),
+                (0.25, 0.25, [255, 0, 0]),
+                (0.75, 0.25, [0, 0, 255]),
+            ] {
+                let point = std::array::from_fn(|axis| {
+                    let head = vertices[0][axis] * (1.0 - u) + vertices[1][axis] * u;
+                    let tail = vertices[3][axis] * (1.0 - u) + vertices[2][axis] * u;
+                    head * v + tail * (1.0 - v)
+                });
+                let p = view.world_to_screen(point).unwrap();
+                let actual = pixel(&image, p[0] as u32, p[1] as u32);
+                assert!(
+                    (0..3).all(|i| (i32::from(actual[i]) - expected[i]).abs() < 8),
+                    "{orient:?}, eye {eye:?}: {actual:?} vs {expected:?}"
+                );
+            }
+            let mut bounds = [u32::MAX, u32::MAX, 0, 0];
+            for y in 0..512 {
+                for x in 0..512 {
+                    if pixel(&image, x, y)[..3].iter().any(|v| *v > 180) {
+                        bounds[0] = bounds[0].min(x);
+                        bounds[1] = bounds[1].min(y);
+                        bounds[2] = bounds[2].max(x);
+                        bounds[3] = bounds[3].max(y);
+                    }
+                }
+            }
+            let projected = vertices.map(|point| view.world_to_screen(point).unwrap());
+            let expected = [
+                projected.iter().map(|p| p[0]).fold(f32::INFINITY, f32::min),
+                projected.iter().map(|p| p[1]).fold(f32::INFINITY, f32::min),
+                projected.iter().map(|p| p[0]).fold(f32::NEG_INFINITY, f32::max),
+                projected.iter().map(|p| p[1]).fold(f32::NEG_INFINITY, f32::max),
+            ];
+            // Rasterization covers pixel centers, rather than pixel edges.
+            let covered = [
+                (expected[0] - 0.5).ceil() as u32,
+                (expected[1] - 0.5).ceil() as u32,
+                (expected[2] - 0.5).floor() as u32,
+                (expected[3] - 0.5).floor() as u32,
+            ];
+            assert_eq!(bounds, covered, "{orient:?}: native projection {expected:?}");
+        }
+    }
+}
+
+#[test]
 fn particles_blend_add_turn_and_show_sheet_frames() {
     let (device, queue) = gpu_or_skip!();
     let mut r = Renderer::new(&device, &queue);

@@ -482,6 +482,8 @@ pub struct Render {
     pub min_len: f32,
     pub max_len: f32,
     pub len_fade_in: f32,
+    pub constrain_radius: bool,
+    pub ignore_dt: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -678,9 +680,11 @@ impl Plan {
                 second_rate: f(op, "second sequence animation rate", 0.0).clamp(0.0, 1000.0),
                 fit: b(op, "animation_fit_lifetime", false),
                 fps: b(op, "use animation rate as FPS", false),
-                min_len: f(op, "min length", 0.0).clamp(0.0, 100_000.0),
-                max_len: f(op, "max length", 2000.0).clamp(0.0, 100_000.0),
-                len_fade_in: f(op, "length fade in time", 0.0).clamp(0.0, 600.0),
+                min_len: f(op, "min length", 0.0),
+                max_len: f(op, "max length", 2000.0),
+                len_fade_in: f(op, "length fade in time", 0.0),
+                constrain_radius: b(op, "constrain radius to length", true),
+                ignore_dt: b(op, "ignore delta time", false),
             };
         }
         self.draws = self.render.kind != RenderKind::None;
@@ -1089,6 +1093,16 @@ pub struct Particle {
 }
 
 impl Particle {
+    /// The actual previous-position attribute, including control-point and
+    /// collision changes. Preserve compatibility with callers editing velocity.
+    pub fn previous_position(&self) -> V3 {
+        if self.vel != self.velocity_snapshot {
+            sub(self.pos, scale(self.vel, self.previous_dt))
+        } else {
+            self.previous_pos
+        }
+    }
+
     fn sequence_value(&self, second: bool) -> f32 {
         let value = self.sequence_values[usize::from(second)];
         let public = if second { self.sequence2 } else { self.sequence };
@@ -1117,6 +1131,7 @@ pub struct Sim {
     pub particles: Vec<Particle>,
     time: f32,
     previous_dt: f32,
+    current_dt: f32,
     emission: Vec<emission::State>,
     parented: bool,
     fired: Vec<bool>,
@@ -1150,6 +1165,7 @@ impl Sim {
             particles: Vec::new(),
             time: 0.0,
             previous_dt: INITIAL_PREVIOUS_DT,
+            current_dt: 0.0,
             emission,
             parented: false,
             fired: vec![false; n],
@@ -1190,6 +1206,7 @@ impl Sim {
         self.particles.clear();
         self.time = 0.0;
         self.previous_dt = INITIAL_PREVIOUS_DT;
+        self.current_dt = 0.0;
         self.born = 0;
         self.previous_points = None;
         self.point_traces.fill(control::PointTraceState::default());
@@ -1495,6 +1512,7 @@ impl Sim {
 
     pub fn step_in(&mut self, dt: f32, points: &Points, parents: &[(V3, V3)], budget: usize, world: &dyn Environment) {
         let dt = if dt.is_finite() { dt.clamp(0.0, 0.1) } else { 0.0 };
+        self.current_dt = dt;
         let cap = self.plan.max.min(budget);
         let t0 = self.time;
         let t1 = t0 + dt;
@@ -2114,6 +2132,11 @@ impl Effect {
 
     pub fn systems(&self) -> impl Iterator<Item = (&Plan, &[Particle])> + '_ {
         self.sims.iter().filter(|(_, s)| s.plan.draws).map(|(_, s)| (&**s.plan(), &s.particles[..]))
+    }
+
+    /// Each collection renders with its own current timestep, including zero-DT frames.
+    pub fn systems_with_dt(&self) -> impl Iterator<Item = (&Plan, &[Particle], f32)> + '_ {
+        self.sims.iter().filter(|(_, s)| s.plan.draws).map(|(_, s)| (&**s.plan(), &s.particles[..], s.current_dt))
     }
 
     pub fn particle_count(&self) -> usize {

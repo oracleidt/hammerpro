@@ -21,6 +21,7 @@ const BSP_ID_BASE: Id = 0xF000_0000;
 #[derive(Clone, Debug, PartialEq)]
 pub struct MaterialLook {
     pub found: bool,
+    pub spritecard: bool,
     pub additive: bool,
     pub overbright: f32,
     pub add_self: f32,
@@ -40,6 +41,7 @@ impl Default for MaterialLook {
     fn default() -> Self {
         Self {
             found: false,
+            spritecard: false,
             additive: false,
             overbright: 1.0,
             add_self: 0.0,
@@ -250,6 +252,7 @@ pub fn read_material_look(fs: &hp_fs::GameFs, material: &str) -> MaterialLook {
     let blend_frames = spritecard && m.get_i32("$blendframes").unwrap_or(1) != 0;
     MaterialLook {
         found: true,
+        spritecard,
         additive: m.flag("$additive") || sprite_mode,
         overbright,
         add_self,
@@ -383,7 +386,7 @@ pub fn append_sprites<'a>(
         }
     };
     for (id, effect) in effects {
-        for (plan, particles) in effect.systems() {
+        for (plan, particles, dt) in effect.systems_with_dt() {
             if particles.is_empty() {
                 continue;
             }
@@ -433,21 +436,16 @@ pub fn append_sprites<'a>(
                     }
                 }
                 RenderKind::Trail => {
-                    for p in particles.iter().filter(|p| visible(p)) {
-                        let speed = (p.vel[0] * p.vel[0] + p.vel[1] * p.vel[1] + p.vel[2] * p.vel[2]).sqrt();
-                        let mut len = (speed * p.trail).clamp(render.min_len, render.max_len.max(render.min_len));
-                        if render.len_fade_in > 0.0 {
-                            len *= (p.age / render.len_fade_in).clamp(0.0, 1.0);
-                        }
-                        if speed < 1e-3 || len < 0.05 {
-                            continue;
-                        }
-                        let d = p.vel.map(|c| c / speed);
+                    let path = if look.spritecard { hp_pcf::trail::Path::Spline } else { hp_pcf::trail::Path::Cpu };
+                    for p in particles.iter().filter(|p| p.pos.iter().all(|v| v.is_finite())) {
+                        let Some(segment) = render.trail_segment(p, dt, path) else { continue };
                         let mut s = base(p);
-                        s.pos = [p.pos[0] - d[0] * len * 0.5, p.pos[1] - d[1] * len * 0.5, p.pos[2] - d[2] * len * 0.5];
-                        s.axis = d.map(|c| c * len);
-                        s.orient = ParticleOrient::Stretched;
+                        s.pos = segment.head;
+                        s.axis = segment.delta;
+                        s.size = segment.width;
+                        s.orient = if look.spritecard { ParticleOrient::TrailSpline } else { ParticleOrient::TrailCpu };
                         s.roll = 0.0;
+                        s.yaw = 0.0;
                         push_blended(sprites, s, plan, p, look);
                     }
                 }
@@ -1466,6 +1464,53 @@ mod tests {
         let alpha: Vec<_> = effect.particles().map(|(_, p)| p.alpha).collect();
         assert!(!sprites.is_empty());
         assert_eq!(sprites.iter().map(|p| p.color[3]).collect::<Vec<_>>(), alpha);
+    }
+
+    #[test]
+    fn trail_adapter_preserves_native_width_history_and_small_nonzero_opacity() {
+        let definition = hp_pcf::SystemDef {
+            name: "trail".into(),
+            material: "particle/trail".into(),
+            initial_particles: 1,
+            renderers: vec![hp_pcf::Operator { function: "render_sprite_trail".into(), ..Default::default() }],
+            ..Default::default()
+        };
+        let mut plan = Plan::new(&definition);
+        plan.render.constrain_radius = false;
+        plan.render.len_fade_in = 0.0;
+        let plan = Arc::new(plan);
+        let mut effect = Effect::new("trail", &|_| Some(plan.clone()), 17).unwrap();
+        effect.step(0.02, [0.0; 3], 10);
+        let particle = &mut effect.sims[0].1.particles[0];
+        particle.pos = [2.0, 3.0, 4.0];
+        particle.vel = [20.0, 0.0, 0.0];
+        particle.age = 1.0;
+        particle.trail = 3.0;
+        particle.radius = 0.02;
+        particle.alpha = 1.0 / 255.0;
+        particle.rotation = 0.7;
+        particle.yaw = 0.4;
+        for spritecard in [false, true] {
+            let looks =
+                HashMap::from([("particle/trail".into(), Arc::new(MaterialLook { spritecard, ..Default::default() }))]);
+            let mut sprites = Vec::new();
+            let mut materials = Vec::new();
+            append_sprites(std::iter::once((73, &effect)), &looks, &mut sprites, &mut materials);
+            assert_eq!(sprites.len(), 1, "nonzero native byte opacity must survive the adapter");
+            let sprite = &sprites[0];
+            let particle = &effect.sims[0].1.particles[0];
+            let path = if spritecard { hp_pcf::trail::Path::Spline } else { hp_pcf::trail::Path::Cpu };
+            let expected = plan.render.trail_segment(particle, 0.02, path).unwrap();
+            assert_eq!(sprite.pos, particle.pos);
+            assert_eq!(sprite.axis, expected.delta);
+            assert_eq!(sprite.size, particle.radius, "trail radius is its full width");
+            assert_eq!(sprite.color[3], particle.opacity());
+            assert_eq!(sprite.roll, 0.0);
+            assert_eq!(sprite.yaw, 0.0);
+            assert_eq!(sprite.orient, if spritecard { ParticleOrient::TrailSpline } else { ParticleOrient::TrailCpu });
+            assert_eq!(sprite.entity, 73);
+            assert_eq!(materials, ["particle/trail"]);
+        }
     }
 
     #[test]
