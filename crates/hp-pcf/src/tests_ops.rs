@@ -48,19 +48,50 @@ fn run(def: &SystemDef, points: &Points, seconds: f32) -> Sim {
 struct FloorTrace;
 
 #[test]
+fn fractional_sequence_attributes_match_native_initializers_remapping_and_ramps() {
+    let definitions = crate::parse_file(include_bytes!("../tests/data/sequence_scalars_live_cases.pcf")).unwrap();
+    let frames: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/sequence_scalars_live_native_samples.json")).unwrap();
+    assert_eq!(frames.len(), 149);
+    for index in 0..7 {
+        let name = format!("hp_spritecard_sequence{index}");
+        let mut definition = definitions.iter().find(|definition| definition.name == name).unwrap().clone();
+        definition.operators.truncate(definition.operators.len() - 2);
+        let plan = Arc::new(Plan::new(&definition));
+        assert!(plan.unsupported.is_empty());
+        let mut sim = Sim::new(plan, 17);
+        for (frame, sample) in frames.iter().enumerate() {
+            sim.step_at(sample["dt"].as_f64().unwrap() as f32, &Points::unparented([0.0; 3]), &[], 1);
+            assert_eq!(sim.particles.len(), 1);
+            let expected = sample["radius"][index].as_f64().unwrap() as f32;
+            assert_eq!(sim.particles[0].radius.to_bits(), expected.to_bits(), "{name} frame{frame}");
+        }
+        if matches!(index, 3 | 4) {
+            if index == 3 {
+                sim.particles[0].sequence = 3;
+            } else {
+                sim.particles[0].sequence2 = 2;
+            }
+            sim.step_at(0.05, &Points::unparented([0.0; 3]), &[], 1);
+            assert_eq!(sim.particles[0].radius, if index == 3 { 3.0 } else { 2.0 }, "public selection edits");
+        }
+    }
+}
+
+#[test]
 fn scalar_remapping_matches_native_strength_overshoots_and_verlet_history() {
     let definitions = crate::parse_file(include_bytes!("../tests/data/remap_scalar_live_cases.pcf")).unwrap();
     let frames: Vec<serde_json::Value> =
         serde_json::from_str(include_str!("../tests/data/remap_scalar_live_native_samples.json")).unwrap();
     assert_eq!(frames.len(), 149);
-    for index in 0..12 {
+    for index in 0..16 {
         let name = format!("hp_spritecard_remap{index}");
         let mut definition = definitions.iter().find(|definition| definition.name == name).unwrap().clone();
         assert_eq!(
             definition.operators.len(),
             if index < 4 {
                 2
-            } else if matches!(index, 8 | 9) {
+            } else if matches!(index, 8 | 9 | 12 | 14) {
                 4
             } else {
                 3
@@ -80,8 +111,10 @@ fn scalar_remapping_matches_native_strength_overshoots_and_verlet_history() {
             let particle = &sim.particles[0];
             let actual = if index < 4 {
                 particle.pos[0]
-            } else if index < 8 {
+            } else if index < 8 || matches!(index, 12 | 14 | 15) {
                 particle.alpha
+            } else if index == 13 {
+                -64.0 + 128.0 * ((particle.alpha2 + 64.0) / 128.0).clamp(0.0, 1.0)
             } else {
                 -64.0 + 128.0 * ((particle.radius + 64.0) / 128.0).clamp(0.0, 1.0)
             };

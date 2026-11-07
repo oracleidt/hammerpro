@@ -30,7 +30,6 @@ const INITIAL_PREVIOUS_DT: f32 = 0.05;
 const MAX_CHILD_DEPTH: usize = 4;
 const MAX_SYSTEMS: usize = 16;
 pub const MAX_EFFECT_PARTICLES: usize = MAX_PREVIEW_PARTICLES * MAX_SYSTEMS;
-const MAX_SEQUENCES: u32 = 64;
 
 type V3 = [f32; 3];
 
@@ -821,8 +820,8 @@ impl Plan {
             "rotation yaw flip random" => Init::YawFlip { chance: f(op, "Flip Percentage", 0.5).clamp(0.0, 1.0) },
             "sequence random" | "sequence two random" => Init::Sequence {
                 second: op.function.eq_ignore_ascii_case("Sequence Two Random"),
-                min: i(op, "sequence_min", 0).clamp(0, MAX_SEQUENCES as i32 - 1),
-                max: i(op, "sequence_max", 0).clamp(0, MAX_SEQUENCES as i32 - 1),
+                min: i(op, "sequence_min", 0).max(0),
+                max: i(op, "sequence_max", 0).max(0),
             },
             "trail length random" => Init::TrailLength {
                 min: f(op, "length_min", 0.1).clamp(0.0, 100.0),
@@ -1088,6 +1087,7 @@ pub struct Particle {
     pub rotation: f32,
     pub sequence: u32,
     pub sequence2: u32,
+    sequence_values: [f32; 2],
     pub trail: f32,
     pub flip: bool,
     pub seed: u32,
@@ -1100,6 +1100,22 @@ pub struct Particle {
 }
 
 impl Particle {
+    fn sequence_value(&self, second: bool) -> f32 {
+        let value = self.sequence_values[usize::from(second)];
+        let public = if second { self.sequence2 } else { self.sequence };
+        // Preserve the float attribute unless the public integer selection was edited.
+        if value as u32 == public { value } else { public as f32 }
+    }
+
+    fn set_sequence_value(&mut self, second: bool, value: f32) {
+        self.sequence_values[usize::from(second)] = value;
+        if second {
+            self.sequence2 = value as u32;
+        } else {
+            self.sequence = value as u32;
+        }
+    }
+
     /// Source combines both alpha attributes in the byte-sized particle render list.
     pub fn opacity(&self) -> f32 {
         ((self.alpha * self.alpha2).clamp(0.0, 1.0) * 255.0).round_ties_even() / 255.0
@@ -1260,6 +1276,7 @@ impl Sim {
                 rotation: plan.rotation,
                 sequence: plan.sequence,
                 sequence2: 0,
+                sequence_values: [plan.sequence as f32, 0.0],
                 trail: 0.1,
                 flip: false,
                 seed,
@@ -1413,11 +1430,7 @@ impl Sim {
                     Init::Sequence { min, max, second } => {
                         let (lo, hi) = (*min.min(max), *min.max(max));
                         let value = self.rng.integer(lo as u32, hi as u32);
-                        if *second {
-                            part.sequence2 = value;
-                        } else {
-                            part.sequence = value;
-                        }
+                        part.set_sequence_value(*second, value as f32);
                     }
                     Init::TrailLength { min, max } => part.trail = self.rng.range(*min, *max),
                     Init::Velocity { cp, smin, smax, lmin, lmax } => {
@@ -1575,8 +1588,8 @@ fn get_field(p: &Particle, field: Field) -> f32 {
         Field::Alpha => p.base_alpha,
         Field::Alpha2 => p.alpha2,
         Field::CreationTime => p.born,
-        Field::Sequence => p.sequence as f32,
-        Field::Sequence2 => p.sequence2 as f32,
+        Field::Sequence => p.sequence_value(false),
+        Field::Sequence2 => p.sequence_value(true),
         Field::TrailLength => p.trail,
         Field::Yaw => p.yaw,
         Field::Other => 0.0,
@@ -1597,13 +1610,14 @@ fn set_field(p: &mut Particle, field: Field, x: f32, multiply: bool) {
         Field::Alpha2 => &mut p.alpha2,
         Field::TrailLength => &mut p.trail,
         Field::Yaw => &mut p.yaw,
+        Field::CreationTime => &mut p.born,
         Field::Sequence | Field::Sequence2 => {
-            let slot = if field == Field::Sequence { &mut p.sequence } else { &mut p.sequence2 };
-            let value = if multiply { *slot as f32 * x } else { x };
-            *slot = value.clamp(0.0, (MAX_SEQUENCES - 1) as f32) as u32;
+            let second = field == Field::Sequence2;
+            let value = if multiply { p.sequence_value(second) * x } else { x };
+            p.set_sequence_value(second, value);
             return;
         }
-        Field::CreationTime | Field::Other => return,
+        Field::Other => return,
     };
     let value = if multiply { *slot * x } else { x };
     *slot = if matches!(field, Field::Alpha | Field::Alpha2) { value.clamp(0.0, 1.0) } else { value };
@@ -1677,6 +1691,10 @@ fn operate(
                             part.alpha_add = 0.0;
                         }
                         Field::Alpha2 => part.alpha2 = value,
+                        Field::CreationTime => {
+                            set_field(part, Field::CreationTime, value, false);
+                            part.age = time - part.born;
+                        }
                         field => set_field(part, field, value, false),
                     }
                 }

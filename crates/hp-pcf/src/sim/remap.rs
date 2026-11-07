@@ -12,11 +12,7 @@ impl Scalar {
     pub(super) fn compile(op: &Operator) -> Option<Self> {
         let input = Field::from_index(i(op, "input field", 7).clamp(0, 21));
         let output = Field::from_index(i(op, "output field", 3).clamp(0, 21));
-        // Sequence attributes are native floats; their public integer preview fields cannot
-        // retain intermediate fractional values yet.
-        if matches!(input, Field::Other | Field::Sequence | Field::Sequence2)
-            || matches!(output, Field::Other | Field::Sequence | Field::Sequence2)
-        {
+        if input == Field::Other || output == Field::Other {
             return None;
         }
         let mut output_range = [f(op, "output minimum", 0.0), f(op, "output maximum", 1.0)];
