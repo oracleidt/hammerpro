@@ -484,8 +484,6 @@ pub struct Render {
     pub len_fade_in: f32,
     pub constrain_radius: bool,
     pub ignore_dt: bool,
-    /// View-dependent rotation modifier, applied before drawing any renderer.
-    pub screen_velocity_angle: Option<f32>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -513,6 +511,8 @@ pub struct Plan {
     sequence: u32,
     pub draws: bool,
     pub render: Render,
+    extra_renders: Vec<Render>,
+    screen_velocity_angle: Option<f32>,
     pub children: Vec<(String, f32)>,
     pub unsupported: Vec<String>,
 }
@@ -616,6 +616,8 @@ impl Plan {
             sequence: 0,
             draws: false,
             render: Render::default(),
+            extra_renders: Vec::new(),
+            screen_velocity_angle: None,
             children: def.children.iter().map(|c| (c.system.clone(), c.delay)).collect(),
             unsupported: Vec::new(),
         };
@@ -663,7 +665,7 @@ impl Plan {
         for op in &def.renderers {
             let name = op.function.to_ascii_lowercase();
             if name == "render_screen_velocity_rotate" {
-                self.render.screen_velocity_angle =
+                self.screen_velocity_angle =
                     Some(crate::screen_velocity::forward_radians(f(op, "forward_angle", -90.0)));
                 continue;
             }
@@ -677,10 +679,7 @@ impl Plan {
                     continue;
                 }
             };
-            if self.render.kind != RenderKind::None {
-                continue;
-            }
-            self.render = Render {
+            let render = Render {
                 kind,
                 orient: i(op, "orientation_type", 0).clamp(0, 3) as u8,
                 rate: f(op, "animation rate", 0.1).clamp(0.0, 1000.0),
@@ -692,8 +691,12 @@ impl Plan {
                 len_fade_in: f(op, "length fade in time", 0.0),
                 constrain_radius: b(op, "constrain radius to length", true),
                 ignore_dt: b(op, "ignore delta time", false),
-                screen_velocity_angle: self.render.screen_velocity_angle,
             };
+            if self.render.kind == RenderKind::None {
+                self.render = render;
+            } else {
+                self.extra_renders.push(render);
+            }
         }
         self.draws = self.render.kind != RenderKind::None;
     }
@@ -1055,13 +1058,26 @@ impl Plan {
     }
 
     pub fn sequence_cycle(&self, p: &Particle, total: f32, second: bool) -> f32 {
-        let r = &self.render;
-        if r.fit && r.kind != RenderKind::Sprites {
+        self.render.sequence_cycle(p, total, second)
+    }
+
+    /// Draw passes in authored order. The first pass remains publicly editable
+    /// through `render`; subsequent passes retain their own parameters.
+    pub fn renderers(&self) -> impl Iterator<Item = Render> + '_ {
+        std::iter::once(self.render)
+            .chain(self.extra_renders.iter().copied())
+            .filter(|render| render.kind != RenderKind::None)
+    }
+}
+
+impl Render {
+    pub fn sequence_cycle(&self, p: &Particle, total: f32, second: bool) -> f32 {
+        if self.fit && self.kind != RenderKind::Sprites {
             let life = if p.life > 0.0 { p.life } else { 1.0 };
             return p.age / life;
         }
-        let rate = if second { r.second_rate } else { r.rate };
-        if r.fps {
+        let rate = if second { self.second_rate } else { self.rate };
+        if self.fps {
             return if total > 0.0 { p.age * rate / total } else { 0.0 };
         }
         p.age * rate
@@ -2032,7 +2048,7 @@ impl Effect {
             if self.time < *delay {
                 continue;
             }
-            let Some(forward) = sim.plan.render.screen_velocity_angle else { continue };
+            let Some(forward) = sim.plan.screen_velocity_angle else { continue };
             for particle in &mut sim.particles {
                 if let Some(rotation) =
                     crate::screen_velocity::rotation(particle.pos, particle.previous_position(), view, forward)

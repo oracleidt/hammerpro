@@ -5,7 +5,7 @@ use glam::DVec3;
 use hp_app::AppState;
 use hp_app::view::ViewInfo;
 use hp_editor::{Id, ObjRef};
-use hp_pcf::{Effect, Plan, Points, RenderKind, Sheet};
+use hp_pcf::{Effect, Plan, Points, Render, RenderKind, Sheet};
 use hp_render::{Overlay, OverlayTri, ParticleBlend, ParticleOrient};
 use hp_ui_viewports::layers::OverlayLayer;
 
@@ -16,6 +16,7 @@ pub const MAX_DISTANCE: f64 = 4096.0;
 const STARTS_PER_FRAME: usize = 4;
 const WARM_UP: f32 = 1.5;
 const HOVER_PX: f32 = 14.0;
+
 const BSP_ID_BASE: Id = 0xF000_0000;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -339,10 +340,14 @@ pub fn material_tint(material: &str) -> [f32; 3] {
 }
 
 pub fn particle_uv(plan: &Plan, p: &hp_pcf::Particle, sheet: Option<&Sheet>) -> [f32; 4] {
+    particle_uv_for(&plan.render, p, sheet)
+}
+
+fn particle_uv_for(render: &Render, p: &hp_pcf::Particle, sheet: Option<&Sheet>) -> [f32; 4] {
     let mut uv = match sheet {
         Some(sheet) => {
             let total = sheet.sequence(p.sequence).map_or(0.0, |s| s.total);
-            sheet.frame_uv(p.sequence, plan.cycle(p, total))
+            sheet.frame_uv(p.sequence, render.sequence_cycle(p, total, false))
         }
         None => hp_pcf::sheet::FULL_UV,
     };
@@ -353,8 +358,12 @@ pub fn particle_uv(plan: &Plan, p: &hp_pcf::Particle, sheet: Option<&Sheet>) -> 
 }
 
 pub fn particle_uv_blend(plan: &Plan, p: &hp_pcf::Particle, sheet: &Sheet) -> ([f32; 4], [f32; 4], f32) {
+    particle_uv_blend_for(&plan.render, p, sheet)
+}
+
+fn particle_uv_blend_for(render: &Render, p: &hp_pcf::Particle, sheet: &Sheet) -> ([f32; 4], [f32; 4], f32) {
     let total = sheet.sequence(p.sequence).map_or(0.0, |s| s.total);
-    let (mut a, mut b, f) = sheet.frame_blend(p.sequence, plan.cycle(p, total));
+    let (mut a, mut b, f) = sheet.frame_blend(p.sequence, render.sequence_cycle(p, total, false));
     if p.flip {
         a.swap(0, 2);
         b.swap(0, 2);
@@ -403,71 +412,74 @@ pub fn append_sprites<'a>(
             let bright = look.brightness();
             let add_self = look.blend_parameter();
             let material = material_of(&plan.material);
-            let render = plan.render;
-            let base = |p: &hp_pcf::Particle| ParticleSprite {
-                animation: hp_render::ParticleAnimation::default(),
-                pos: p.pos,
-                size: p.radius * 2.0,
-                axis: [0.0; 3],
-                roll: p.rotation,
-                yaw: p.yaw,
-                uv: particle_uv(plan, p, look.sheet.as_ref()),
-                color: [p.color[0], p.color[1], p.color[2], p.opacity()],
-                bright,
-                add_self,
-                orient: orientation(render.orient),
-                blend,
-                screen_fade: look.fade_size,
-                refraction_blur: look.refraction_blur,
-                no_fog: look.no_fog,
-                material,
-                entity: id,
-            };
-            let visible =
-                |p: &hp_pcf::Particle| p.opacity() > 0.0 && p.radius > 0.0 && p.pos.iter().all(|v| v.is_finite());
-            match render.kind {
-                RenderKind::Sprites => {
-                    for p in particles.iter().filter(|p| visible(p)) {
-                        let mut s = base(p);
-                        if render.orient == 3 {
-                            s.axis = [0.0, 0.0, 1.0];
+            for render in plan.renderers() {
+                let base = |p: &hp_pcf::Particle| ParticleSprite {
+                    animation: hp_render::ParticleAnimation::default(),
+                    pos: p.pos,
+                    size: p.radius * 2.0,
+                    axis: [0.0; 3],
+                    roll: p.rotation,
+                    yaw: p.yaw,
+                    uv: particle_uv_for(&render, p, look.sheet.as_ref()),
+                    color: [p.color[0], p.color[1], p.color[2], p.opacity()],
+                    bright,
+                    add_self,
+                    orient: orientation(render.orient),
+                    blend,
+                    screen_fade: look.fade_size,
+                    refraction_blur: look.refraction_blur,
+                    no_fog: look.no_fog,
+                    material,
+                    entity: id,
+                };
+                let visible =
+                    |p: &hp_pcf::Particle| p.opacity() > 0.0 && p.radius > 0.0 && p.pos.iter().all(|v| v.is_finite());
+                match render.kind {
+                    RenderKind::Sprites => {
+                        for p in particles.iter().filter(|p| visible(p)) {
+                            let mut s = base(p);
+                            if render.orient == 3 {
+                                s.axis = [0.0, 0.0, 1.0];
+                            }
+                            push_blended(sprites, s, &render, p, look);
                         }
-                        push_blended(sprites, s, plan, p, look);
                     }
-                }
-                RenderKind::Trail => {
-                    let path = if look.spritecard { hp_pcf::trail::Path::Spline } else { hp_pcf::trail::Path::Cpu };
-                    for p in particles.iter().filter(|p| p.pos.iter().all(|v| v.is_finite())) {
-                        let Some(segment) = render.trail_segment(p, dt, path) else { continue };
-                        let mut s = base(p);
-                        s.pos = segment.head;
-                        s.axis = segment.delta;
-                        s.size = segment.width;
-                        s.orient = if look.spritecard { ParticleOrient::TrailSpline } else { ParticleOrient::TrailCpu };
-                        s.roll = 0.0;
-                        s.yaw = 0.0;
-                        push_blended(sprites, s, plan, p, look);
-                    }
-                }
-                RenderKind::Rope => {
-                    for w in particles.windows(2) {
-                        let (a, b) = (&w[0], &w[1]);
-                        if !visible(a) || !visible(b) {
-                            continue;
+                    RenderKind::Trail => {
+                        let path = if look.spritecard { hp_pcf::trail::Path::Spline } else { hp_pcf::trail::Path::Cpu };
+                        for p in particles.iter().filter(|p| p.pos.iter().all(|v| v.is_finite())) {
+                            let Some(segment) = render.trail_segment(p, dt, path) else { continue };
+                            let mut s = base(p);
+                            s.pos = segment.head;
+                            s.axis = segment.delta;
+                            s.size = segment.width;
+                            s.orient =
+                                if look.spritecard { ParticleOrient::TrailSpline } else { ParticleOrient::TrailCpu };
+                            s.roll = 0.0;
+                            s.yaw = 0.0;
+                            push_blended(sprites, s, &render, p, look);
                         }
-                        let axis = [b.pos[0] - a.pos[0], b.pos[1] - a.pos[1], b.pos[2] - a.pos[2]];
-                        let mut s = base(a);
-                        s.pos = [(a.pos[0] + b.pos[0]) * 0.5, (a.pos[1] + b.pos[1]) * 0.5, (a.pos[2] + b.pos[2]) * 0.5];
-                        s.size = a.radius + b.radius;
-                        s.axis = axis;
-                        s.orient = ParticleOrient::Stretched;
-                        s.roll = 0.0;
-                        s.uv = hp_pcf::sheet::FULL_UV;
-                        s.color[3] = (a.opacity() + b.opacity()) * 0.5;
-                        sprites.push(s);
                     }
+                    RenderKind::Rope => {
+                        for w in particles.windows(2) {
+                            let (a, b) = (&w[0], &w[1]);
+                            if !visible(a) || !visible(b) {
+                                continue;
+                            }
+                            let axis = [b.pos[0] - a.pos[0], b.pos[1] - a.pos[1], b.pos[2] - a.pos[2]];
+                            let mut s = base(a);
+                            s.pos =
+                                [(a.pos[0] + b.pos[0]) * 0.5, (a.pos[1] + b.pos[1]) * 0.5, (a.pos[2] + b.pos[2]) * 0.5];
+                            s.size = a.radius + b.radius;
+                            s.axis = axis;
+                            s.orient = ParticleOrient::Stretched;
+                            s.roll = 0.0;
+                            s.uv = hp_pcf::sheet::FULL_UV;
+                            s.color[3] = (a.opacity() + b.opacity()) * 0.5;
+                            sprites.push(s);
+                        }
+                    }
+                    RenderKind::None => {}
                 }
-                RenderKind::None => {}
             }
         }
     }
@@ -476,14 +488,14 @@ pub fn append_sprites<'a>(
 fn push_blended(
     sprites: &mut Vec<ParticleSprite>,
     mut s: ParticleSprite,
-    plan: &Plan,
+    render: &Render,
     p: &hp_pcf::Particle,
     look: &MaterialLook,
 ) {
     if let Some(sheet) = &look.sheet {
-        let (a, b, f) = particle_uv_blend(plan, p, sheet);
+        let (a, b, f) = particle_uv_blend_for(render, p, sheet);
         let total = sheet.sequence(p.sequence2).map_or(0.0, |sequence| sequence.total);
-        let cycle = plan.sequence_cycle(p, total, true);
+        let cycle = render.sequence_cycle(p, total, true);
         let (mut c, mut d, second) = sheet.frame_blend(p.sequence2, cycle);
         if p.flip {
             c.swap(0, 2);
@@ -1687,3 +1699,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "particles_native_tests.rs"]
+mod native_tests;

@@ -2199,8 +2199,10 @@ dependencies = [
  "hp-vmf",
  "image",
  "log",
+ "pollster 1.0.1",
  "rfd",
  "serde_json",
+ "wgpu",
 ]
 
 [[package]]
