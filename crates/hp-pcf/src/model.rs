@@ -49,6 +49,8 @@ pub struct SystemDef {
     pub radius: f32,
     /// The native system constant is radians; rotation initializers use degrees.
     pub rotation: f32,
+    /// Native angular speed constant, in radians per second.
+    pub rotation_speed: f32,
     pub color: [u8; 4],
     pub emitters: Vec<Operator>,
     pub initializers: Vec<Operator>,
@@ -69,6 +71,7 @@ impl Default for SystemDef {
             initial_particles: 0,
             radius: 5.0,
             rotation: 0.0,
+            rotation_speed: 0.0,
             color: [255, 255, 255, 255],
             emitters: Vec::new(),
             initializers: Vec::new(),
@@ -125,6 +128,10 @@ pub fn systems(dmx: &Dmx) -> Vec<SystemDef> {
             rotation: match e.get("rotation") {
                 Some(crate::dmx::Value::Float(value)) if value.is_finite() => *value,
                 _ => d.rotation,
+            },
+            rotation_speed: match e.get("rotation_speed") {
+                Some(crate::dmx::Value::Float(value)) if value.is_finite() => *value,
+                _ => d.rotation_speed,
             },
             color: e.color("color").unwrap_or(d.color),
             emitters: operators(dmx, e, "emitters"),

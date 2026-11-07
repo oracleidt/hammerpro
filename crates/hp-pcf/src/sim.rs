@@ -612,7 +612,7 @@ impl Plan {
             color: rgb(def.color),
             alpha: f32::from(def.color[3]) / 255.0,
             rotation: def.rotation,
-            rotation_speed: 0.0,
+            rotation_speed: def.rotation_speed,
             sequence: 0,
             draws: false,
             render: Render::default(),

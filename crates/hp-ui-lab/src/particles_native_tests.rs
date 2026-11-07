@@ -136,6 +136,13 @@ fn multiple_renderers_reach_the_gpu_with_native_opacity_and_orientation() {
                 enabled: true,
                 origin: hp_fs::SourceOrigin::Custom,
             },
+            hp_fs::SourceMount {
+                kind: hp_fs::SourceMountKind::Gma,
+                label: "Owned native root-speed reference".into(),
+                path: data.join("native_root_speed.gma"),
+                enabled: true,
+                origin: hp_fs::SourceOrigin::Custom,
+            },
         ],
     )
     .unwrap();
@@ -151,20 +158,25 @@ fn multiple_renderers_reach_the_gpu_with_native_opacity_and_orientation() {
     let rotation_definitions = hp_pcf::parse_file(include_bytes!("../tests/data/native_root_rotation.pcf")).unwrap();
     let rotation: serde_json::Value =
         serde_json::from_str(include_str!("../tests/data/native_root_rotation.json")).unwrap();
+    let speed_definitions = hp_pcf::parse_file(include_bytes!("../tests/data/native_root_speed.pcf")).unwrap();
+    let speed: serde_json::Value = serde_json::from_str(include_str!("../tests/data/native_root_speed.json")).unwrap();
     assert_eq!(fixture["cases"].as_object().unwrap().len(), 6);
     assert_eq!(ordering["cases"].as_object().unwrap().len(), 2);
     assert_eq!(children["cases"].as_object().unwrap().len(), 10);
     assert_eq!(rotation["cases"].as_object().unwrap().len(), 9);
+    assert_eq!(speed["cases"].as_object().unwrap().len(), 9);
     let mut state = hp_app::testing::test_state();
     let mut failures = Vec::new();
     let proof = data.join("../../../../target/hp-ui-lab/multiple-renderers");
     std::fs::create_dir_all(&proof).unwrap();
     let mut maximum = 0;
+    let mut scalar_readouts = 0;
     for (namespace, file_prefix, fixture, definitions, texture) in [
         ("hp_multirender117", "native_multiple_renderers", &fixture, definitions, texture),
         ("hp_renderorder117", "native_render_order", &ordering, ordering_definitions, white),
         ("hp_childorder117", "native_child_render_order", &children, child_definitions, white),
         ("hp_rootrender117", "native_root_rotation", &rotation, rotation_definitions, texture),
+        ("hp_rootspeed117", "native_root_speed", &speed, speed_definitions, texture),
     ] {
         renderer.set_material(
             0,
@@ -193,6 +205,14 @@ fn multiple_renderers_reach_the_gpu_with_native_opacity_and_orientation() {
             assert!(plan.unsupported.is_empty(), "{name}: {:?}", plan.unsupported);
             let mut effect = Effect::new(&plan.name, &|name| plans.get(name).cloned(), 17).unwrap();
             effect.step(0.02, [0.0, 0.0, 64.0], 16);
+            if let Some(target) = case["encoded_x"].as_f64() {
+                let target = target as f32;
+                let actual = effect.sims[0].1.particles[0].pos[0];
+                if actual.to_bits() != target.to_bits() {
+                    failures.push(format!("{name}: scalar X readout {actual}, native {target}"));
+                }
+                scalar_readouts += 1;
+            }
             if let Some(poses) = case["particles"].as_array() {
                 assert_eq!(effect.sims[0].1.particles.len(), poses.len());
                 for (particle, pose) in effect.sims[0].1.particles.iter_mut().zip(poses) {
@@ -236,7 +256,14 @@ fn multiple_renderers_reach_the_gpu_with_native_opacity_and_orientation() {
             };
             renderer.render_view(1, &view, &Overlay::default());
             let (_, _, pixels) = renderer.read_view_rgba8(1).unwrap();
-            image::save_buffer(proof.join(format!("{name}.png")), &pixels, 128, 128, image::ColorType::Rgba8).unwrap();
+            image::save_buffer(
+                proof.join(format!("{file_prefix}_{name}.png")),
+                &pixels,
+                128,
+                128,
+                image::ColorType::Rgba8,
+            )
+            .unwrap();
             let reference = image::open(data.join(format!("{file_prefix}_{name}.png"))).unwrap().to_rgb8();
             assert_eq!(reference.dimensions(), (128, 128));
             let difference = pixels
@@ -252,5 +279,8 @@ fn multiple_renderers_reach_the_gpu_with_native_opacity_and_orientation() {
         }
     }
     assert!(failures.is_empty(), "Native multiple-renderer image mismatches:\n{}", failures.join("\n"));
-    eprintln!("Twenty-seven native renderer/order/root-rotation whole images: maximum RGB delta {maximum}/255");
+    assert_eq!(scalar_readouts, 9);
+    eprintln!(
+        "Thirty-six native particle whole images and nine exact scalar readouts: maximum RGB delta {maximum}/255"
+    );
 }
