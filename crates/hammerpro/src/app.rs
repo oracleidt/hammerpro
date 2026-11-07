@@ -98,6 +98,7 @@ pub struct HammerProApp {
     script: Option<std::collections::VecDeque<Step>>,
     script_command: Option<Command>,
     script_idle: Option<(Instant, u64)>,
+    script_input_frame: Option<u64>,
     pub(crate) persist_settings: bool,
     save_preferences: bool,
     pub(crate) opener: crate::opening::Opener,
@@ -353,6 +354,7 @@ impl HammerProApp {
             }),
             script_command: None,
             script_idle: None,
+            script_input_frame: None,
             persist_settings: !automated,
             save_preferences: !cli.no_save_settings,
             opener: crate::opening::Opener::default(),
@@ -1249,7 +1251,17 @@ impl HammerProApp {
     }
 
     fn inject_script_input(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        // eframe can collect input more than once before the next application
+        // frame (and for secondary viewports). Do not overwrite an app command
+        // or collapse successive pointer/keyboard steps into one rendered frame.
+        if ctx.viewport_id() != egui::ViewportId::ROOT {
+            return;
+        }
         let Some(steps) = self.script.as_mut() else { return };
+        if self.script_command.is_some() || self.script_input_frame == Some(self.state.frame.index) {
+            ctx.request_repaint();
+            return;
+        }
         if let Some((until, first_frame)) = self.script_idle {
             let now = Instant::now();
             if now < until {
@@ -1262,6 +1274,7 @@ impl HammerProApp {
         }
         ctx.request_repaint();
         let Some(step) = steps.pop_front() else { return };
+        self.script_input_frame = Some(self.state.frame.index);
         match step {
             Step::Idle => {}
             Step::Sleep(ms) => {
