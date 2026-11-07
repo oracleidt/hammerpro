@@ -18,6 +18,7 @@ mod radius;
 mod ramp;
 mod random;
 mod rays;
+mod remap;
 mod scalar;
 mod simd_random;
 mod spatial;
@@ -433,6 +434,7 @@ impl Init {
 
 #[derive(Clone, Debug, PartialEq)]
 enum Op {
+    FieldRemap(remap::Scalar),
     AlphaSimple(alpha::Simple),
     BoneLock(model::Lock),
     Scalar(scalar::Remap),
@@ -875,6 +877,13 @@ impl Plan {
     fn compile_op(&mut self, op: &Operator) {
         let name = op.function.to_ascii_lowercase();
         let compiled = match name.as_str() {
+            "remap scalar" => {
+                let Some(remap) = remap::Scalar::compile(op) else {
+                    self.unsupported.push(op.function.clone());
+                    return;
+                };
+                Op::FieldRemap(remap)
+            }
             "cull random" => Op::CullRandom {
                 start: f(op, "Cull Start Time", 0.0),
                 end: f(op, "Cull End Time", 1.0),
@@ -1650,6 +1659,27 @@ fn operate(
             let before_pos = part.pos;
             let before_vel = part.vel;
             match op {
+                Op::FieldRemap(remap) => {
+                    let current = |field| {
+                        if field == Field::Alpha {
+                            if alpha_written { alpha + part.alpha_add } else { part.alpha }
+                        } else {
+                            get_field(part, field)
+                        }
+                    };
+                    let value = remap.value(current(remap.input), current(remap.output), state.strength);
+                    match remap.output {
+                        Field::Alpha => {
+                            // Native strength blending can overshoot the alpha endpoints.
+                            part.alpha = value;
+                            alpha = value;
+                            alpha_written = false;
+                            part.alpha_add = 0.0;
+                        }
+                        Field::Alpha2 => part.alpha2 = value,
+                        field => set_field(part, field, value, false),
+                    }
+                }
                 Op::BoneLock(lock) => model::apply_lock(lock, part, points, dt, world),
                 Op::Scalar(remap) => {
                     if alpha_written {
@@ -1898,6 +1928,7 @@ fn operate(
             if !matches!(
                 op,
                 Op::Movement { .. }
+                    | Op::FieldRemap(remap::Scalar { output: Field::PositionX, .. })
                     | Op::Spatial(spatial::SpatialOp::Collision { .. })
                     | Op::NoiseVector { .. }
                     | Op::OscVector { .. }

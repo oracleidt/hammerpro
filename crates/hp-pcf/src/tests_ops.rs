@@ -48,6 +48,49 @@ fn run(def: &SystemDef, points: &Points, seconds: f32) -> Sim {
 struct FloorTrace;
 
 #[test]
+fn scalar_remapping_matches_native_strength_overshoots_and_verlet_history() {
+    let definitions = crate::parse_file(include_bytes!("../tests/data/remap_scalar_live_cases.pcf")).unwrap();
+    let frames: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/remap_scalar_live_native_samples.json")).unwrap();
+    assert_eq!(frames.len(), 149);
+    for index in 0..12 {
+        let name = format!("hp_spritecard_remap{index}");
+        let mut definition = definitions.iter().find(|definition| definition.name == name).unwrap().clone();
+        assert_eq!(
+            definition.operators.len(),
+            if index < 4 {
+                2
+            } else if matches!(index, 8 | 9) {
+                4
+            } else {
+                3
+            }
+        );
+        if index >= 4 {
+            // Keep the actual remap under test; remove only the two measurement operators.
+            definition.operators.truncate(definition.operators.len() - 2);
+        }
+        let plan = Arc::new(Plan::new(&definition));
+        assert!(plan.unsupported.is_empty());
+        let mut sim = Sim::new(plan, 17);
+        for (frame, sample) in frames.iter().enumerate() {
+            sim.step_at(sample["dt"].as_f64().unwrap() as f32, &Points::unparented([0.0; 3]), &[], 1);
+            assert_eq!(sim.particles.len(), 1);
+            let expected = sample["positions"][index].as_f64().unwrap() as f32;
+            let particle = &sim.particles[0];
+            let actual = if index < 4 {
+                particle.pos[0]
+            } else if index < 8 {
+                particle.alpha
+            } else {
+                -64.0 + 128.0 * ((particle.radius + 64.0) / 128.0).clamp(0.0, 1.0)
+            };
+            assert_eq!(actual.to_bits(), expected.to_bits(), "{name} frame{frame}");
+        }
+    }
+}
+
+#[test]
 fn simple_alpha_fades_match_native_frames_including_order_gates_and_strength() {
     let mut definitions = crate::parse_file(include_bytes!("../tests/data/alpha_simple_live_cases.pcf")).unwrap();
     // Readback resets position X, then copies alpha into it, avoiding cancellation against the previous frame.
