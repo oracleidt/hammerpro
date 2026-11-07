@@ -1,6 +1,22 @@
 use super::*;
 
 #[test]
+fn authored_model_particle_paths_are_relative_but_imports_preserve_original_bytes() {
+    let mut doc = Document::new();
+    let system = doc.create_system("model_particle").unwrap();
+    let render = doc.add_operator(system, Category::Renderers, "Render models").unwrap();
+    doc.set_attr(render, "sequence 0 model", Value::Str("Models\\props\\crate.mdl".into())).unwrap();
+    assert_eq!(doc.element(render).unwrap().str("sequence 0 model"), Some("props/crate.mdl"));
+    let bytes = doc.to_bytes().unwrap();
+    let parsed = Document::parse(&bytes).unwrap();
+    assert_eq!(parsed.to_bytes().unwrap(), bytes);
+    let mut dmx = parsed.dmx().clone();
+    put(&mut dmx.elements[render], "sequence 0 model", Value::Str("models/props/crate.mdl".into()));
+    let imported = Document::parse(&dmx::write(&dmx).unwrap()).unwrap();
+    assert_eq!(imported.element(render).unwrap().str("sequence 0 model"), Some("models/props/crate.mdl"));
+}
+
+#[test]
 fn editing_roundtrip_history_and_stable_ids() {
     let mut doc = Document::new();
     let system = doc.create_system("test_effect").unwrap();

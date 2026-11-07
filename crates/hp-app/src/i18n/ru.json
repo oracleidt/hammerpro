@@ -3676,6 +3676,7 @@
   "pe.add_value": "Добавить ценность",
   "pe.assign": "Назначить выбору",
   "pe.browse_materials": "Выберите материал спрайта",
+  "pe.model_relative_path": "Путь к модели относительно models/",
   "pe.cancel": "Отмена",
   "pe.children": "Дочерние системы",
   "pe.color_gradient": "Градиент выцветания цвета",

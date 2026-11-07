@@ -7,9 +7,7 @@ use hp_app::{AppState, t, tf};
 use hp_pcf::{Effect, Plan, Points};
 
 use super::session::{EditorSession, PreviewOptions};
-use crate::particles::{
-    ParticleHandle, append_sprites, instances_of, material_key, read_material_look, sort_far_first,
-};
+use crate::particles::{ParticleHandle, append_sprites, material_key, read_material_look, sort_far_first};
 
 pub const EDITOR_VIEW_ID: u32 = 0x5043_4645;
 const MAX_PREVIEW_PARTICLES: usize = hp_pcf::sim::MAX_EFFECT_PARTICLES;
@@ -221,9 +219,20 @@ impl Preview {
         sort_far_first(&mut sprites, eye);
         let ppp = ui.ctx().pixels_per_point();
         let size = [(rect.width() * ppp).max(16.0) as u32, (rect.height() * ppp).max(16.0) as u32];
-        let instances = instances_of(&sprites, &materials, &mut *state.assets);
         painter.rect_filled(rect, 3.0, ui.visuals().extreme_bg_color);
         if let Some(gfx) = &mut state.gfx {
+            let mut draws = Vec::new();
+            if let Some(effect) = &self.effect {
+                crate::particles::append_models(std::iter::once((17, effect)), &mut draws);
+            }
+            let draws = crate::particles::prepare_draws(
+                &sprites,
+                &materials,
+                &draws,
+                eye,
+                &mut *state.assets,
+                &mut gfx.renderer,
+            );
             let params = hp_render::ViewParams {
                 size,
                 kind: hp_render::ViewKind::Perspective { eye, forward, up, fov_y_deg: 60.0, near: 1.0, far: 65_536.0 },
@@ -236,7 +245,13 @@ impl Preview {
                 msaa: true,
                 game_pixel_grid: false,
             };
-            gfx.renderer.render_particle_preview(EDITOR_VIEW_ID, &params, &instances);
+            gfx.renderer.render_particle_preview_ordered(
+                EDITOR_VIEW_ID,
+                &params,
+                &draws.sprites,
+                &draws.models,
+                &draws.batches,
+            );
             if let Some(texture) = gfx.view_egui_texture(EDITOR_VIEW_ID) {
                 painter.image(texture, rect, Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)), Color32::WHITE);
             }

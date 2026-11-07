@@ -13,9 +13,13 @@ pub struct MockAssets {
     sounds: Arc<Vec<hp_fs::AssetEntry>>,
     fs: Option<hp_fs::GameFs>,
     fgd: Option<hp_fgd::ResolvedFgd>,
+    particle_model: Option<hp_render::ModelId>,
 }
 
 impl MockAssets {
+    pub fn set_particle_model(&mut self, model: Option<hp_render::ModelId>) {
+        self.particle_model = model;
+    }
     pub fn with_fs(fs: hp_fs::GameFs) -> Self {
         Self { fs: Some(fs), ..Self::default() }
     }
@@ -43,11 +47,29 @@ impl Default for MockAssets {
             sounds: Arc::new(vec![entry("sound/ambient/wind/wind1.wav")]),
             fs: None,
             fgd: None,
+            particle_model: None,
         }
     }
 }
 
 impl AssetsApi for MockAssets {
+    fn particle_draw_models(
+        &mut self,
+        renderer: &mut hp_render::Renderer,
+        draws: &[crate::state::ParticleModelDraw],
+    ) -> Vec<hp_render::ModelInstance> {
+        let Some(model) = self.particle_model.filter(|model| renderer.has_model(*model)) else { return Vec::new() };
+        draws
+            .iter()
+            .map(|draw| hp_render::ModelInstance {
+                model,
+                transform: draw.transform,
+                object: draw.entity,
+                tint: draw.tint,
+                fade: [0.0; 2],
+            })
+            .collect()
+    }
     fn status(&self) -> AssetStatus {
         AssetStatus::Ready
     }

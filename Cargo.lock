@@ -1756,6 +1756,7 @@ dependencies = [
  "hp-geom",
  "hp-light",
  "hp-mdl",
+ "hp-pcf",
  "hp-ragdoll",
  "hp-render",
  "hp-vmf",

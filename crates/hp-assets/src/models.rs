@@ -28,6 +28,7 @@ pub(crate) struct PreparedModel {
     pub particle_sets: Vec<hp_mdl::HitboxSet>,
     pub particle_bones: Vec<hp_mdl::SkinMatrix>,
     pub bind_bones: Vec<hp_mdl::SkinMatrix>,
+    pub particle_animation: Option<Arc<crate::particle_model_draw::AnimationSource>>,
 }
 
 impl PreparedModel {
@@ -41,7 +42,8 @@ impl PreparedModel {
                     + p.tangents.capacity() * size_of::<[f32; 4]>()
                     + p.color_index.capacity() * size_of::<u32>()
             })
-            .sum()
+            .sum::<usize>()
+            + self.particle_animation.as_ref().map_or(0, |source| source.bytes())
     }
 
     pub(crate) fn skin_count(&self) -> usize {
@@ -95,9 +97,17 @@ pub(crate) fn model_job(fs: &hp_fs::GameFs, key: &str) -> Result<PreparedModel, 
         Some((p, a)) => (p, Some(a)),
         None => (key, None),
     };
-    let opts = hp_mdl::LoadOptions { body_groups: hp_mdl::BodyGroupSelect::All, tangents: true, ..Default::default() };
+    let particle = anim == Some(crate::particle_model_draw::ANIMATION_KEY);
+    let opts = hp_mdl::LoadOptions {
+        body_groups: hp_mdl::BodyGroupSelect::All,
+        tangents: true,
+        bone_weights: particle,
+        pose: if particle { hp_mdl::Pose::Bind } else { Default::default() },
+        ..Default::default()
+    };
     let mut model = hp_mdl::load_from(path, |p| fs.read(p), &opts).map_err(|e| e.to_string())?;
-    if let Some(anim) = anim
+    if !particle
+        && let Some(anim) = anim
         && let Some(index) = model.sequences.iter().position(|s| s.name.eq_ignore_ascii_case(anim))
         && model.posed_sequence != Some(index)
     {
@@ -107,6 +117,19 @@ pub(crate) fn model_job(fs: &hp_fs::GameFs, key: &str) -> Result<PreparedModel, 
         }
     }
     let skin_count = model.skin_count();
+    let particle_animation = if particle {
+        fs.read(path).map(|mdl| {
+            Arc::new(crate::particle_model_draw::AnimationSource {
+                ani: hp_mdl::animation_block_path(&mdl).and_then(|path| fs.read(&path)).map(Arc::new),
+                mdl: Arc::new(mdl),
+                bones: model.bones.clone(),
+                meshes: model.meshes.clone(),
+                sequences: model.sequences.clone(),
+            })
+        })
+    } else {
+        None
+    };
     let used_refs: Vec<usize> = {
         let mut seen = AHashSet::new();
         model.meshes.iter().map(|m| m.skin_ref).filter(|r| seen.insert(*r)).collect()
@@ -212,6 +235,7 @@ pub(crate) fn model_job(fs: &hp_fs::GameFs, key: &str) -> Result<PreparedModel, 
         particle_sets: model.hitbox_sets,
         particle_bones: model.bone_matrices,
         bind_bones,
+        particle_animation,
     })
 }
 

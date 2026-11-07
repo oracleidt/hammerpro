@@ -868,6 +868,18 @@ fn normalize_parameter(function: Option<&str>, key: &str, value: Value) -> Resul
     let Some(function) = function else {
         return Ok(value);
     };
+    if function.eq_ignore_ascii_case("Render models")
+        && key.eq_ignore_ascii_case("sequence 0 model")
+        && let Value::Str(path) = &value
+    {
+        let path = path.trim().replace('\\', "/");
+        let path = if path.get(..7).is_some_and(|prefix| prefix.eq_ignore_ascii_case("models/")) {
+            path[7..].to_owned()
+        } else {
+            path
+        };
+        return Ok(Value::Str(path));
+    }
     let Some(expected) = crate::parameters::expected(function, key) else {
         return Ok(value);
     };

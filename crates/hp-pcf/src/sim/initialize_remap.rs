@@ -79,7 +79,7 @@ impl Vector {
     pub(super) fn compile(op: &Operator) -> Option<Self> {
         let input = Field::from_index(i(op, "input field", 8).clamp(0, 21));
         let output = i(op, "output field", 0).clamp(0, 21);
-        if input == Field::Other || !matches!(output, 0 | 2 | 6 | 15) {
+        if input == Field::Other || !matches!(output, 0 | 2 | 6 | 15 | 21) {
             return None;
         }
         Some(Self {
@@ -124,6 +124,7 @@ impl Vector {
                 2 => &mut p.previous_pos,
                 6 => &mut p.base_color,
                 15 => &mut p.hitbox_relative,
+                21 => &mut p.normal,
                 _ => unreachable!(),
             };
             *slot = if self.multiply { mul(*slot, result) } else { result };

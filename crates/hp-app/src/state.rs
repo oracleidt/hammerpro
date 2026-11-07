@@ -19,6 +19,21 @@ pub struct ParticleModelSnapshot {
     pub pending: std::collections::HashSet<u32>,
 }
 
+#[derive(Clone, Debug)]
+pub struct ParticleModelDraw {
+    pub entity: u32,
+    pub draw_order: u32,
+    pub model: Arc<str>,
+    pub skin: i32,
+    pub body_group: i32,
+    pub sequence: i32,
+    pub activity: Arc<str>,
+    pub animation_time: f32,
+    pub animation_rate: f32,
+    pub transform: [[f32; 4]; 4],
+    pub tint: [f32; 4],
+}
+
 impl ParticleModelSnapshot {
     pub fn hitboxes(&self, object: u32, set: &str) -> Option<Arc<[hp_pcf::environment::ModelHitbox]>> {
         let sets = self.models.get(&object)?;
@@ -336,6 +351,13 @@ pub trait AssetsApi {
     }
     fn particle_model_snapshot(&mut self, _entities: &[(u32, hp_vmf::Entity)], _editor: bool) -> ParticleModelSnapshot {
         ParticleModelSnapshot::default()
+    }
+    fn particle_draw_models(
+        &mut self,
+        _renderer: &mut hp_render::Renderer,
+        _models: &[ParticleModelDraw],
+    ) -> Vec<hp_render::ModelInstance> {
+        Vec::new()
     }
     fn set_projector_overrides(&mut self, _overrides: &[ProjectorOverride]) {}
     fn light_preview(&self) -> Option<LightPreviewReport> {

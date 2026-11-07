@@ -443,6 +443,9 @@ impl ParticleEditorWindow {
                 let draft_key = (selected, key.clone());
                 let draft = self.drafts.entry(draft_key).or_insert_with(|| original.clone());
                 properties::named_value_ui(ui, key, draft, session.doc.dmx());
+                if key.eq_ignore_ascii_case("sequence 0 model") {
+                    ui.label(RichText::new(t!("pe.model_relative_path")).small().weak());
+                }
                 let references: Vec<_> = match draft {
                     Value::Element(Some(id)) => vec![*id],
                     Value::Elements(ids) => ids.iter().flatten().copied().collect(),

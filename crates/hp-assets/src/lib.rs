@@ -23,6 +23,7 @@ mod model_thumbs;
 mod models;
 mod mount;
 pub mod parallax;
+mod particle_model_draw;
 mod particle_models;
 pub mod particle_volumes;
 mod particles;
@@ -165,6 +166,7 @@ pub struct AssetManager {
     pub(crate) mats: registry::Materials,
     pub(crate) thumbs: thumbs::Thumbs,
     pub(crate) models: models::Models,
+    pub(crate) particle_draws: particle_model_draw::DrawCache,
     pub(crate) scene: scene::SceneSync,
     pub(crate) parked: Vec<scene::ParkedSync>,
     pub(crate) preview: Option<preview::Preview>,
@@ -224,6 +226,7 @@ impl AssetManager {
             mats: registry::Materials { hdr: settings.render.light_preview_hdr, ..Default::default() },
             thumbs: thumbs::Thumbs::default(),
             models: models::Models::default(),
+            particle_draws: particle_model_draw::DrawCache::default(),
             scene: scene::SceneSync::default(),
             parked: Vec::new(),
             preview: None,
@@ -469,6 +472,14 @@ impl hp_app::AssetsApi for AssetManager {
         editor: bool,
     ) -> hp_app::state::ParticleModelSnapshot {
         self.particle_model_snapshot_impl(entities, editor)
+    }
+
+    fn particle_draw_models(
+        &mut self,
+        renderer: &mut hp_render::Renderer,
+        models: &[hp_app::state::ParticleModelDraw],
+    ) -> Vec<hp_render::ModelInstance> {
+        self.particle_draw_models_impl(renderer, models)
     }
 
     fn set_projector_overrides(&mut self, overrides: &[hp_app::state::ProjectorOverride]) {

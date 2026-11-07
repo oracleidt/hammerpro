@@ -207,6 +207,7 @@ enum Field {
     Sequence2,
     TrailLength,
     Yaw,
+    Pitch,
     Other,
 }
 
@@ -225,6 +226,7 @@ impl Field {
             13 => Field::Sequence2,
             10 => Field::TrailLength,
             12 => Field::Yaw,
+            20 => Field::Pitch,
             _ => Field::Other,
         }
     }
@@ -430,6 +432,7 @@ impl Init {
                 Field::TrailLength => 1 << 10,
                 Field::Yaw => 1 << 12,
                 Field::Sequence2 => 1 << 13,
+                Field::Pitch => 1 << 20,
                 Field::Other => 0,
             },
             _ => 0,
@@ -474,11 +477,13 @@ pub enum RenderKind {
     Sprites,
     Trail,
     Rope,
+    Models,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Render {
     pub kind: RenderKind,
+    pub model: Option<usize>,
     pub orient: u8,
     pub rate: f32,
     pub second_rate: f32,
@@ -514,9 +519,11 @@ pub struct Plan {
     rotation: f32,
     rotation_speed: f32,
     sequences: [f32; 2],
+    normal: V3,
     pub draws: bool,
     pub render: Render,
     extra_renders: Vec<Render>,
+    pub model_renderers: Vec<crate::model_render::ModelRender>,
     screen_velocity_angle: Option<f32>,
     pub children: Vec<(String, f32)>,
     pub unsupported: Vec<String>,
@@ -619,9 +626,11 @@ impl Plan {
             rotation: def.rotation,
             rotation_speed: def.rotation_speed,
             sequences: def.sequences.map(|value| value as f32),
+            normal: def.normal,
             draws: false,
             render: Render::default(),
             extra_renders: Vec::new(),
+            model_renderers: Vec::new(),
             screen_velocity_angle: None,
             children: def.children.iter().map(|c| (c.system.clone(), c.delay)).collect(),
             unsupported: Vec::new(),
@@ -678,7 +687,7 @@ impl Plan {
                 "render_animated_sprites" => RenderKind::Sprites,
                 "render_sprite_trail" => RenderKind::Trail,
                 "render_rope" => RenderKind::Rope,
-                _ if name.contains("sprite") => RenderKind::Sprites,
+                "render models" => RenderKind::Models,
                 _ => {
                     self.unsupported.push(op.function.clone());
                     continue;
@@ -686,6 +695,13 @@ impl Plan {
             };
             let render = Render {
                 kind,
+                model: if kind == RenderKind::Models {
+                    let index = self.model_renderers.len();
+                    self.model_renderers.push(crate::model_render::ModelRender::compile(op));
+                    Some(index)
+                } else {
+                    None
+                },
                 orient: i(op, "orientation_type", 0).clamp(0, 3) as u8,
                 rate: f(op, "animation rate", 0.1).clamp(0.0, 1000.0),
                 second_rate: f(op, "second sequence animation rate", 0.0).clamp(0.0, 1000.0),
@@ -1131,11 +1147,23 @@ pub struct Particle {
     base_alpha: f32,
     rotation_speed: f32,
     pub yaw: f32,
+    pub pitch: f32,
+    pub normal: V3,
     alpha_add: f32,
     born: f32,
 }
 
 impl Particle {
+    pub fn scalar_attribute(&self, index: i32) -> f32 {
+        match index {
+            2 => self.previous_pos[0],
+            6 => self.color[0],
+            7 => self.alpha,
+            15 => self.hitbox_relative[0],
+            21 => self.normal[0],
+            _ => get_field(self, Field::from_index(index)),
+        }
+    }
     /// The actual previous-position attribute, including control-point and
     /// collision changes. Preserve compatibility with callers editing velocity.
     pub fn previous_position(&self) -> V3 {
@@ -1337,6 +1365,8 @@ impl Sim {
                 base_alpha: plan.alpha,
                 rotation_speed: plan.rotation_speed,
                 yaw: 0.0,
+                pitch: 0.0,
+                normal: plan.normal,
                 alpha_add: 0.0,
                 born,
             };
@@ -1650,6 +1680,7 @@ fn get_field(p: &Particle, field: Field) -> f32 {
         Field::Sequence2 => p.sequence_value(true),
         Field::TrailLength => p.trail,
         Field::Yaw => p.yaw,
+        Field::Pitch => p.pitch,
         Field::Other => 0.0,
     }
 }
@@ -1668,6 +1699,7 @@ fn set_field(p: &mut Particle, field: Field, x: f32, multiply: bool) {
         Field::Alpha2 => &mut p.alpha2,
         Field::TrailLength => &mut p.trail,
         Field::Yaw => &mut p.yaw,
+        Field::Pitch => &mut p.pitch,
         Field::CreationTime => &mut p.born,
         Field::Sequence | Field::Sequence2 => {
             let second = field == Field::Sequence2;
@@ -1912,6 +1944,7 @@ fn operate(
                     match field {
                         0 => part.pos = add(part.pos, delta),
                         2 => part.previous_pos = add(part.previous_pos, delta),
+                        21 => part.normal = add(part.normal, delta),
                         6 => {
                             let current = if color_written { color } else { part.color };
                             color = add(current, delta).map(|value| value.clamp(0.0, 1.0));
@@ -1949,6 +1982,8 @@ fn operate(
                         part.pos = if *additive { add(part.pos, scale(x, dt)) } else { x };
                     } else if *field == 2 {
                         part.previous_pos = if *additive { add(part.previous_pos, scale(x, dt)) } else { x };
+                    } else if *field == 21 {
+                        part.normal = if *additive { add(part.normal, scale(x, dt)) } else { x };
                     }
                 }
                 Op::Ramp { field, ramp } => {
@@ -2225,6 +2260,10 @@ impl Effect {
     /// Each collection renders with its own current timestep, including zero-DT frames.
     pub fn systems_with_dt(&self) -> impl Iterator<Item = (&Plan, &[Particle], f32)> + '_ {
         self.drawable_sims().map(|s| (&**s.plan(), &s.particles[..], s.current_dt))
+    }
+
+    pub fn systems_with_clock(&self) -> impl Iterator<Item = (&Plan, &[Particle], f32)> + '_ {
+        self.drawable_sims().map(|s| (&**s.plan(), &s.particles[..], s.time))
     }
 
     pub fn particle_count(&self) -> usize {

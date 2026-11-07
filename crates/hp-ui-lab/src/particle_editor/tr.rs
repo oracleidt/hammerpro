@@ -96,6 +96,7 @@ pub(super) const TR: hp_app::i18n::TrTable = &[
         "Le PCF et le manifeste ont été exportés. Ajoutez ce Lua à votre addon pour enregistrer et précharger ses effets.",
     ),
     ("pe.browse_materials", "Choose sprite material", "Choisir le matériau du sprite"),
+    ("pe.model_relative_path", "Model filename relative to models/", "Chemin du modèle relatif à models/"),
     ("pe.material_search", "Filter mounted materials by path", "Filtrer les matériaux montés par chemin"),
     (
         "pe.orbit_hint",

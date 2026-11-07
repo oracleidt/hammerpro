@@ -43,6 +43,19 @@ pub enum ParticleBlend {
     Refract,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ParticleDrawKind {
+    Sprites,
+    Models,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ParticleDrawBatch {
+    pub kind: ParticleDrawKind,
+    pub first: u32,
+    pub count: u32,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ParticleAnimation {
     pub frames: [[f32; 4]; 3],
@@ -200,13 +213,19 @@ fn pack_fade(f: [f32; 2]) -> u32 {
 }
 
 fn pack(particles: &[ParticleInstance]) -> (Vec<ParticleGpu>, Vec<Run>) {
+    pack_with_order(particles, false)
+}
+
+fn pack_with_order(particles: &[ParticleInstance], preserve: bool) -> (Vec<ParticleGpu>, Vec<Run>) {
     let mut keyed: Vec<(usize, usize)> = particles
         .iter()
         .enumerate()
         .filter(|(_, p)| p.pos.iter().all(|c| c.is_finite()))
         .map(|(i, p)| (blend_index(p.blend), i))
         .collect();
-    keyed.sort_unstable();
+    if !preserve {
+        keyed.sort_unstable();
+    }
     let mut data = Vec::with_capacity(keyed.len());
     let mut runs: Vec<Run> = Vec::new();
     for (_, i) in keyed {
@@ -261,19 +280,32 @@ fn pack(particles: &[ParticleInstance]) -> (Vec<ParticleGpu>, Vec<Run>) {
 
 impl Renderer {
     pub fn set_particles(&mut self, particles: &[ParticleInstance]) {
-        if self.upload_particles(false, particles) {
+        self.particle_draw_batches.clear();
+        if self.upload_particles(false, particles, false) {
             self.content_gen += 1;
         }
     }
 
-    fn upload_particles(&mut self, preview: bool, particles: &[ParticleInstance]) -> bool {
+    pub fn set_particles_ordered(&mut self, particles: &[ParticleInstance]) {
+        self.particle_draw_batches.clear();
+        if self.upload_particles(false, particles, true) {
+            self.content_gen += 1;
+        }
+    }
+
+    pub fn set_particle_draw_batches(&mut self, batches: &[ParticleDrawBatch]) {
+        self.particle_draw_batches.clear();
+        self.particle_draw_batches.extend_from_slice(batches);
+    }
+
+    fn upload_particles(&mut self, preview: bool, particles: &[ParticleInstance], preserve: bool) -> bool {
         let limit = (self.max_buffer / size_of::<ParticleGpu>() as u64) as usize;
         let particles = &particles[..particles.len().min(limit)];
         let mut set = std::mem::take(if preview { &mut self.preview_particles } else { &mut self.particles });
         let label = if preview { "hp-render preview particles" } else { "hp-render particles" };
         let changed = !(particles.is_empty() && set.count == 0);
         if changed {
-            let (data, runs) = pack(particles);
+            let (data, runs) = if preserve { pack_with_order(particles, true) } else { pack(particles) };
             for r in &runs {
                 let _ = self.scene.material_slot(r.material);
             }
@@ -324,6 +356,27 @@ impl Renderer {
         params: &ViewParams,
         particles: &[ParticleInstance],
     ) -> &wgpu::TextureView {
+        self.render_particle_preview_with_models(view_id, params, particles, &[])
+    }
+
+    pub fn render_particle_preview_with_models(
+        &mut self,
+        view_id: u32,
+        params: &ViewParams,
+        particles: &[ParticleInstance],
+        models: &[crate::ModelInstance],
+    ) -> &wgpu::TextureView {
+        self.render_particle_preview_ordered(view_id, params, particles, models, &[])
+    }
+
+    pub fn render_particle_preview_ordered(
+        &mut self,
+        view_id: u32,
+        params: &ViewParams,
+        particles: &[ParticleInstance],
+        models: &[crate::ModelInstance],
+        batches: &[ParticleDrawBatch],
+    ) -> &wgpu::TextureView {
         self.flush();
         let mut params = *params;
         params.size = [params.size[0].clamp(1, self.max_tex_dim), params.size[1].clamp(1, self.max_tex_dim)];
@@ -336,7 +389,9 @@ impl Renderer {
         opts.occlusion_culling = false;
         let cam = Camera::new(&params);
         let samples = if params.msaa { 4 } else { 1 };
-        self.upload_particles(true, particles);
+        self.upload_particles(true, particles, !batches.is_empty());
+        self.upload_particle_models(true, models);
+        let model_pipes = (!models.is_empty()).then(|| self.ensure_pipelines(samples));
         self.ensure_view(view_id, params.size, samples);
         self.prepare_tone(view_id, params.size, params.mode, false);
         if self.preview_particles.count > 0 {
@@ -379,7 +434,32 @@ impl Renderer {
                 multiview_mask: None,
             });
             pass.set_bind_group(0, bind_group, &[]);
-            self.draw_particle_set(&self.preview_particles, &mut pass, samples, &mut counter);
+            if batches.is_empty() {
+                self.draw_particle_set(&self.preview_particles, &mut pass, samples, &mut counter);
+                if let Some(pipes) = model_pipes.and_then(|index| self.pipelines[index].as_ref()) {
+                    self.draw_particle_models(&self.preview_particle_models, &mut pass, pipes, &mut counter);
+                }
+            } else {
+                for batch in batches {
+                    let range = batch.first..batch.first.saturating_add(batch.count);
+                    match batch.kind {
+                        ParticleDrawKind::Sprites => {
+                            self.draw_particle_range(&self.preview_particles, &mut pass, samples, range, &mut counter)
+                        }
+                        ParticleDrawKind::Models => {
+                            if let Some(pipes) = model_pipes.and_then(|index| self.pipelines[index].as_ref()) {
+                                self.draw_particle_models_range(
+                                    &self.preview_particle_models,
+                                    &mut pass,
+                                    pipes,
+                                    range,
+                                    &mut counter,
+                                );
+                            }
+                        }
+                    }
+                }
+            }
         }
         let present = self.views.get(&view_id).map(|v| (v.color.clone(), v.color_view.clone(), v.display_srgb.clone()));
         if let Some((color, color_view, display)) = present {
@@ -402,6 +482,17 @@ impl Renderer {
     }
 
     fn draw_particle_set(&self, d: &Particles, pass: &mut wgpu::RenderPass<'_>, samples: u32, n: &mut FrameCounter) {
+        self.draw_particle_range(d, pass, samples, 0..u32::MAX, n);
+    }
+
+    pub(crate) fn draw_particle_range(
+        &self,
+        d: &Particles,
+        pass: &mut wgpu::RenderPass<'_>,
+        samples: u32,
+        range: std::ops::Range<u32>,
+        n: &mut FrameCounter,
+    ) {
         let (Some(buffer), Some(p)) = (&d.buffer, d.pipes.iter().find(|p| p.samples == samples)) else { return };
         if d.count == 0 {
             return;
@@ -409,6 +500,11 @@ impl Renderer {
         pass.set_vertex_buffer(0, buffer.buffer.slice(..));
         let mut bound = None;
         for r in &d.runs {
+            let first = r.start.max(range.start);
+            let end = (r.start + r.count).min(range.end);
+            if end <= first {
+                continue;
+            }
             if r.blend == ParticleBlend::Refract {
                 continue;
             }
@@ -420,9 +516,9 @@ impl Renderer {
                 bound = Some(r.blend);
             }
             pass.set_bind_group(1, &g.bind_group, &[]);
-            pass.draw(0..6, r.start..r.start + r.count);
-            n.add(u64::from(r.count) * 2);
-            n.counts.sprites += r.count;
+            pass.draw(0..6, first..end);
+            n.add(u64::from(end - first) * 2);
+            n.counts.sprites += end - first;
         }
     }
 }

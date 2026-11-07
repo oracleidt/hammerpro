@@ -254,6 +254,21 @@ pub(crate) fn pack_triangles(
     out_i: &mut Vec<u32>,
     bounds: &mut [Vec3; 2],
 ) {
+    pack_triangles_with_winding(vertices, blend, cubemaps, indices, slot, out_v, out_i, bounds, true);
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn pack_triangles_with_winding(
+    vertices: &[Vertex],
+    blend: &[BlendVertex],
+    cubemaps: &[u16],
+    indices: &[u32],
+    slot: u32,
+    out_v: &mut Vec<GpuVertex>,
+    out_i: &mut Vec<u32>,
+    bounds: &mut [Vec3; 2],
+    fix_winding: bool,
+) {
     let [lo, hi] = bounds;
     let limit = (u32::MAX / 2) as usize;
     if vertices.len() > limit || out_v.len() + vertices.len() > limit {
@@ -288,7 +303,7 @@ pub(crate) fn pack_triangles(
         }
         let geo = (pb - pa).cross(pc - pa);
         let avg = Vec3::from(va.normal) + Vec3::from(vb.normal) + Vec3::from(vc.normal);
-        if geo.dot(avg) < 0.0 {
+        if fix_winding && geo.dot(avg) < 0.0 {
             out_i.extend_from_slice(&[base + tri[0], base + tri[2], base + tri[1]]);
         } else {
             out_i.extend_from_slice(&[base + tri[0], base + tri[1], base + tri[2]]);

@@ -17,6 +17,7 @@ hp-vtf.workspace = true
 hp-fgd.workspace = true
 hp-fs.workspace = true
 hp-mdl.workspace = true
+hp-pcf = { path = "../hp-pcf" }
 hp-render.workspace = true
 hp-light = { path = "../hp-light" }
 egui.workspace = true

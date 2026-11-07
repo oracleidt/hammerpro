@@ -4,6 +4,7 @@ pub mod dmx;
 pub mod editor;
 pub mod environment;
 pub mod model;
+pub mod model_render;
 mod parameters;
 pub mod random;
 pub mod screen_velocity;

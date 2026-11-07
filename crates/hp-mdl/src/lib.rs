@@ -23,6 +23,16 @@ pub use phy::{CollisionModel, CollisionSolid, parse_phy, parse_phy_for_model};
 pub use pose::{
     AnimClip, Pose, SkinMatrix, animation_block_path, animation_clip, pose_vertex, skin_matrices, skin_matrices_with,
 };
+
+pub fn pose_vertex_with_tangent(
+    matrices: &[SkinMatrix],
+    weight: &BoneWeight,
+    pos: [f32; 3],
+    normal: [f32; 3],
+    tangent: Option<[f32; 4]>,
+) -> ([f32; 3], [f32; 3], Option<[f32; 4]>) {
+    pose::skin_vertex(matrices, weight, pos, normal, tangent)
+}
 pub use vvd::BoneWeight;
 
 pub fn load_from(

@@ -870,6 +870,7 @@ impl AssetManager {
         self.check_fs_changes();
         self.update_watch();
         if let Some(gfx) = gfx {
+            self.collect_particle_draw_models(&mut gfx.renderer);
             self.note_gpu(&gfx.renderer);
             self.poll_watcher(&mut gfx.renderer);
             self.process_uploads(gfx);

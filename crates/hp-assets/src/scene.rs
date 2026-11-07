@@ -1127,7 +1127,7 @@ impl AssetManager {
         id
     }
 
-    fn render_model_for(
+    pub(crate) fn render_model_for(
         &mut self,
         renderer: &mut Renderer,
         path: &str,

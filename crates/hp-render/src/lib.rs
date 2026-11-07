@@ -23,6 +23,7 @@ mod outline;
 mod overlay;
 pub mod parallax;
 mod park;
+mod particle_models;
 mod particles;
 pub mod pipeline_cache;
 mod pipelines;
@@ -54,7 +55,9 @@ pub use indirect::IndirectVolume;
 pub use lights::MAX_PER_CLUSTER;
 pub use local_shadow::MAX_SHADOWED_LIGHTS;
 pub use park::ParkedScene;
-pub use particles::{ParticleAnimation, ParticleBlend, ParticleInstance, ParticleOrient};
+pub use particles::{
+    ParticleAnimation, ParticleBlend, ParticleDrawBatch, ParticleDrawKind, ParticleInstance, ParticleOrient,
+};
 pub use projector::{MAX_PROJECTORS, PROJECTOR_TEXTURE_SIZE, Projector, ProjectorImage};
 pub use sky::HdrSkyFace;
 pub use sprite_layers::SPRITE_LAYER_PARTICLES;
@@ -313,6 +316,9 @@ pub struct Renderer {
     detail: detail_sprites::DetailSprites,
     particles: particles::Particles,
     preview_particles: particles::Particles,
+    particle_models: particle_models::ModelParticles,
+    preview_particle_models: particle_models::ModelParticles,
+    particle_draw_batches: Vec<ParticleDrawBatch>,
     cubes: cubemaps::Cubes,
     probing: bool,
     quality: Quality,
@@ -1035,6 +1041,9 @@ impl Renderer {
             detail: detail_sprites::DetailSprites::default(),
             particles: particles::Particles::default(),
             preview_particles: particles::Particles::default(),
+            particle_models: particle_models::ModelParticles::default(),
+            preview_particle_models: particle_models::ModelParticles::default(),
+            particle_draw_batches: Vec::new(),
             cubes: cubemaps::Cubes::new(&device),
             probing: false,
             quality: Quality::default(),
@@ -1593,7 +1602,19 @@ impl Renderer {
                 let first = indices.len() as u32;
                 let v0 = verts.len();
                 let b = if l == 0 { &mut bounds } else { &mut lod_bounds };
-                scene::pack_triangles(&p.vertices, &[], &[], &p.indices, NULL_SLOT, &mut verts, &mut indices, b);
+                // VTX winding is authoritative. Authored shading normals can
+                // point elsewhere, and must not reverse model triangles.
+                scene::pack_triangles_with_winding(
+                    &p.vertices,
+                    &[],
+                    &[],
+                    &p.indices,
+                    NULL_SLOT,
+                    &mut verts,
+                    &mut indices,
+                    b,
+                    false,
+                );
                 for v in &mut verts[v0..] {
                     v.slot = range.0.to_bits();
                     v.blend = range.1.to_bits();
@@ -1820,6 +1841,16 @@ impl Renderer {
     pub fn destroy_model(&mut self, id: ModelId) {
         if self.models.remove(&id.0).is_some() {
             self.shadow_epoch += 1;
+            self.content_gen += 1;
+        }
+    }
+
+    /// Retire geometry owned by transient effects without invalidating the
+    /// static scene's shadow cache every time an animation pose expires.
+    pub fn destroy_transient_model(&mut self, id: ModelId) {
+        if self.instance_list.iter().any(|instance| instance.model == id) {
+            self.destroy_model(id);
+        } else if self.models.remove(&id.0).is_some() {
             self.content_gen += 1;
         }
     }
@@ -4265,7 +4296,25 @@ impl DrawCtx<'_> {
         if self.r.probing {
             return;
         }
-        self.r.draw_particles(pass, self.view.samples, n);
+        if self.r.particle_draw_batches.is_empty() {
+            self.r.draw_particles(pass, self.view.samples, n);
+            if !self.cam.is_ortho {
+                self.r.draw_particle_models(&self.r.particle_models, pass, self.ps, n);
+            }
+        } else {
+            for batch in &self.r.particle_draw_batches {
+                let range = batch.first..batch.first.saturating_add(batch.count);
+                match batch.kind {
+                    ParticleDrawKind::Sprites => {
+                        self.r.draw_particle_range(&self.r.particles, pass, self.view.samples, range, n)
+                    }
+                    ParticleDrawKind::Models if !self.cam.is_ortho => {
+                        self.r.draw_particle_models_range(&self.r.particle_models, pass, self.ps, range, n)
+                    }
+                    ParticleDrawKind::Models => {}
+                }
+            }
+        }
         self.draw_collision(pass, n);
         self.draw_overlay(pass, false, n);
         self.draw_static_lines(pass, false, n);

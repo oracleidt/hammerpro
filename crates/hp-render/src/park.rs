@@ -74,6 +74,8 @@ impl Renderer {
     }
 
     fn swap_scene(&mut self, incoming: ParkedScene) -> ParkedScene {
+        self.set_particle_models(&[]);
+        self.particle_draw_batches.clear();
         let ParkedScene {
             scene,
             arenas,

@@ -7,9 +7,7 @@ use hp_app::state::{ParticleCatalog, ParticleSystemInfo};
 use hp_app::{AppState, Severity, t, tf};
 use hp_pcf::{Effect, Plan, Points};
 
-use crate::particles::{
-    EffectStatus, ParticleHandle, ParticleSprite, append_sprites, instances_of, material_key, sort_far_first,
-};
+use crate::particles::{EffectStatus, ParticleHandle, ParticleSprite, append_sprites, material_key, sort_far_first};
 
 pub const CANVAS: f32 = 300.0;
 pub const MAX_PARTICLES: usize = crate::particles::MAX_PER_EFFECT;
@@ -254,8 +252,13 @@ impl ParticlePreviewWindow {
         let (sprites, materials) = self.sprites();
         let AppState { assets, gfx, .. } = state;
         let gfx = gfx.as_mut()?;
-        let instances = instances_of(&sprites, &materials, &mut **assets);
-        self.rendered = instances.len();
+        let mut draws = Vec::new();
+        if let Some(playing) = &self.playing {
+            crate::particles::append_models(std::iter::once((7, &playing.effect)), &mut draws);
+        }
+        let draws =
+            crate::particles::prepare_draws(&sprites, &materials, &draws, eye, &mut **assets, &mut gfx.renderer);
+        self.rendered = draws.sprites.len() + draws.models.len();
         let params = hp_render::ViewParams {
             size: size_px,
             kind: hp_render::ViewKind::Perspective { eye, forward, up, fov_y_deg: FOV_DEG, near: 1.0, far: 65_536.0 },
@@ -268,7 +271,7 @@ impl ParticlePreviewWindow {
             msaa: true,
             game_pixel_grid: false,
         };
-        gfx.renderer.render_particle_preview(VIEW_ID, &params, &instances);
+        gfx.renderer.render_particle_preview_ordered(VIEW_ID, &params, &draws.sprites, &draws.models, &draws.batches);
         gfx.view_egui_texture(VIEW_ID)
     }
 

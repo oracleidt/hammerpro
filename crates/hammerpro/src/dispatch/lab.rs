@@ -1033,6 +1033,7 @@ fn particles_tick(app: &mut HammerProApp, ctx: &egui::Context) {
             && let Some(gfx) = app.state.gfx.as_mut()
         {
             gfx.renderer.set_particles(&[]);
+            gfx.renderer.set_particle_models(&[]);
         }
         let report = &mut app.state.runtime.lab.particles;
         report.playing.clear();
@@ -1204,18 +1205,28 @@ fn particles_draw(app: &mut HammerProApp) {
     let Ok(mut shared) = lab.particles.lock() else { return };
     shared.sprite_layer = gfx.is_some();
     let Some(gfx) = gfx.as_mut() else { return };
-    if shared.sprites.is_empty() && shared.fx_sprites.is_empty() && !lab.particles_shown {
+    if shared.sprites.is_empty()
+        && shared.fx_sprites.is_empty()
+        && shared.model_draws.is_empty()
+        && !lab.particles_shown
+    {
         return;
     }
-    let instances = hp_ui_lab::particles::scene_instances_of(&shared, eye, &mut **assets);
-    lab.particles_shown = !instances.is_empty();
-    gfx.renderer.set_particles(&instances);
+    let draws = hp_ui_lab::particles::scene_draws_of(&shared, eye, &mut **assets, &mut gfx.renderer);
+    lab.particles_shown = !draws.sprites.is_empty() || !draws.models.is_empty();
+    if draws.batches.is_empty() {
+        gfx.renderer.set_particles(&draws.sprites);
+    } else {
+        gfx.renderer.set_particles_ordered(&draws.sprites);
+    }
+    gfx.renderer.set_particle_models(&draws.models);
+    gfx.renderer.set_particle_draw_batches(&draws.batches);
 }
 
 pub(crate) fn particle_stats(app: &HammerProApp) -> String {
     let lab = &app.pkg.lab;
     let Ok(s) = lab.particles.lock() else { return String::new() };
-    let drawn = app.state.gfx.as_ref().map_or(0, |g| g.renderer.particle_count());
+    let drawn = app.state.gfx.as_ref().map_or(0, |g| g.renderer.particle_count() + g.renderer.particle_model_count());
     format!(
         "on={} effects={} particles={} drawn={} systems_loaded={} missing={} files_read={} reading={}",
         app.state.settings.lab.show_particles,

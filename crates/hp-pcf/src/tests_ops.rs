@@ -1845,6 +1845,20 @@ fn renderers_lifetimes_from_sequences_and_animation_cycles() {
 }
 
 #[test]
+fn unknown_sprite_named_renderers_are_reported_instead_of_drawing_approximate_quads() {
+    let mut definition = system("unsupported", vec![burst(1)], vec![], vec![]);
+    definition.renderers = vec![op("render_unknown_sprite", vec![])];
+    let plan = Plan::new(&definition);
+    assert!(!plan.draws);
+    assert_eq!(plan.unsupported, vec!["render_unknown_sprite"]);
+    definition.renderers.push(op("render_animated_sprites", vec![]));
+    let plan = Plan::new(&definition);
+    assert!(plan.draws);
+    assert_eq!(plan.renderers().count(), 1);
+    assert_eq!(plan.unsupported, vec!["render_unknown_sprite"]);
+}
+
+#[test]
 fn noise_emitters_remaps_and_warm_up() {
     let def = system(
         "n",

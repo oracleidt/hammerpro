@@ -53,6 +53,8 @@ pub struct SystemDef {
     pub rotation_speed: f32,
     /// Primary and secondary integer animation sequence constants.
     pub sequences: [i32; 2],
+    /// Default direction used by model-particle renderers (attribute 21).
+    pub normal: [f32; 3],
     pub color: [u8; 4],
     pub emitters: Vec<Operator>,
     pub initializers: Vec<Operator>,
@@ -75,6 +77,7 @@ impl Default for SystemDef {
             rotation: 0.0,
             rotation_speed: 0.0,
             sequences: [0; 2],
+            normal: [0.0, 0.0, 1.0],
             color: [255, 255, 255, 255],
             emitters: Vec::new(),
             initializers: Vec::new(),
@@ -140,6 +143,10 @@ pub fn systems(dmx: &Dmx) -> Vec<SystemDef> {
                 Some(crate::dmx::Value::Int(value)) => *value,
                 _ => 0,
             }),
+            normal: match e.get("normal") {
+                Some(crate::dmx::Value::Vec3(value)) if value.iter().all(|v| v.is_finite()) => *value,
+                _ => d.normal,
+            },
             color: e.color("color").unwrap_or(d.color),
             emitters: operators(dmx, e, "emitters"),
             initializers: operators(dmx, e, "initializers"),

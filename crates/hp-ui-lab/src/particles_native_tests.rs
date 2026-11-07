@@ -2,6 +2,276 @@ use super::*;
 use hp_render::{MaterialDesc, MaterialFlags, RenderMode, Renderer, TexFormat, TextureUpload, ViewKind, ViewParams};
 
 #[test]
+fn mixed_model_and_sprite_passes_keep_native_authored_order_through_scene_merge() {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+    let Ok(adapter) = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())) else {
+        return;
+    };
+    let (device, queue) = pollster::block_on(
+        adapter.request_device(&wgpu::DeviceDescriptor { required_limits: adapter.limits(), ..Default::default() }),
+    )
+    .unwrap();
+    let mut renderer = Renderer::new(&device, &queue);
+    renderer.set_tone_settings(hp_render::ToneSettings { bloom: 0.0, ..Default::default() });
+    let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data");
+    let fs = hp_fs::GameFs::from_source_mounts(
+        None,
+        None,
+        &[hp_fs::SourceMount {
+            kind: hp_fs::SourceMountKind::Gma,
+            label: "Owned native mixed model/sprite reference".into(),
+            path: folder.join("native_mixed_model_particles.gma"),
+            enabled: true,
+            origin: hp_fs::SourceOrigin::Custom,
+        }],
+    )
+    .unwrap();
+    let model =
+        hp_mdl::load_from("models/hp_modelmix117/probe.mdl", |path| fs.read(path), &Default::default()).unwrap();
+    let parts: Vec<_> = model
+        .meshes
+        .iter()
+        .map(|mesh| hp_render::ModelPart {
+            material: 1,
+            vertices: mesh
+                .vertices
+                .iter()
+                .map(|v| hp_render::Vertex { pos: v.pos, normal: v.normal, uv: v.uv, alpha: 1.0 })
+                .collect(),
+            indices: mesh.indices.clone(),
+            tangents: mesh.tangents.clone(),
+        })
+        .collect();
+    let model = renderer.create_model(&parts);
+    for (id, name) in [(0, "hp_modelmix117/blue"), (1, "hp_modelmix117/white")] {
+        let texture = fs.load_texture(name, None).unwrap();
+        let tex = renderer.create_texture_exact(&TextureUpload {
+            width: texture.width,
+            height: texture.height,
+            format: TexFormat::Rgba8Srgb,
+            levels: vec![texture.rgba],
+        });
+        renderer.set_material(
+            id,
+            &MaterialDesc {
+                texture: Some(tex),
+                tex_size: [8.0; 2],
+                flags: if id == 0 { MaterialFlags::SPRITE_CARD } else { MaterialFlags::default() },
+                ..Default::default()
+            },
+        );
+    }
+    let definitions = hp_pcf::parse_file(include_bytes!("../tests/data/native_mixed_model_particles.pcf")).unwrap();
+    let report: serde_json::Value =
+        serde_json::from_str(include_str!("../tests/data/native_mixed_model_particles.json")).unwrap();
+    let proof = folder.join("../../../../target/hp-ui-lab/mixed-model-particles");
+    std::fs::create_dir_all(&proof).unwrap();
+    let mut assets = hp_app::testing::MockAssets::default();
+    let mut maximum = 0;
+    let mut checked = 0;
+    for definition in definitions {
+        let name = definition.name.strip_prefix("hp_modelmix117_").unwrap();
+        let plan = Arc::new(Plan::new(&definition));
+        assert!(plan.unsupported.is_empty());
+        let mut effect = Effect::new(&definition.name, &|_| Some(plan.clone()), 17).unwrap();
+        effect.step(0.02, [0.0, 0.0, 64.0], 1);
+        let looks = HashMap::from([(material_key(&plan.material), Arc::new(read_material_look(&fs, &plan.material)))]);
+        let (mut sprites, mut materials, mut models) = (Vec::new(), Vec::new(), Vec::new());
+        append_sprites(std::iter::once((17, &effect)), &looks, &mut sprites, &mut materials);
+        append_models(std::iter::once((17, &effect)), &mut models);
+        let eye = std::array::from_fn(|i| report["cases"][name]["eye"][i].as_f64().unwrap() as f32);
+        sort_far_first(&mut sprites, eye);
+        let mut shared = ParticleShared { sprites, materials, model_draws: models, ..Default::default() };
+        if !shared.sprites.is_empty() {
+            shared.fx_sprites.push(shared.sprites.remove(0));
+            shared.fx_materials = shared.materials.clone();
+        }
+        assets.set_particle_model(None);
+        let pending = scene_draws_of(&shared, eye, &mut assets, &mut renderer);
+        assert!(pending.models.is_empty() && pending.batches.is_empty());
+        assets.set_particle_model(Some(model));
+        let draws = scene_draws_of(&shared, eye, &mut assets, &mut renderer);
+        let params = ViewParams {
+            size: [128; 2],
+            game_pixel_grid: true,
+            kind: ViewKind::Perspective {
+                eye,
+                forward: [0.0, 1.0, 0.0],
+                up: [0.0, 0.0, 1.0],
+                fov_y_deg: 60.0,
+                near: 1.0,
+                far: 2000.0,
+            },
+            mode: RenderMode::Unshaded,
+            grid: None,
+            background: [0.0; 3],
+            selection_color: [0.0; 4],
+            show_sprites: false,
+            show_models: false,
+            msaa: false,
+        };
+        let target = image::open(folder.join(format!("native_mixed_model_particles_{name}.png"))).unwrap().to_rgb8();
+        for preview in [false, true] {
+            if preview {
+                renderer.render_particle_preview_ordered(1, &params, &draws.sprites, &draws.models, &draws.batches);
+            } else {
+                if draws.batches.is_empty() {
+                    renderer.set_particles(&draws.sprites);
+                } else {
+                    renderer.set_particles_ordered(&draws.sprites);
+                }
+                renderer.set_particle_models(&draws.models);
+                renderer.set_particle_draw_batches(&draws.batches);
+                renderer.render_view(1, &params, &hp_render::Overlay::default());
+            }
+            let (_, _, pixels) = renderer.read_view_rgba8(1).unwrap();
+            image::save_buffer(proof.join(format!("{name}_{preview}.png")), &pixels, 128, 128, image::ColorType::Rgba8)
+                .unwrap();
+            let delta = pixels
+                .chunks_exact(4)
+                .zip(target.pixels())
+                .flat_map(|(a, b)| (0..3).map(move |c| a[c].abs_diff(b[c])))
+                .max()
+                .unwrap();
+            assert!(delta <= 3, "{name} preview={preview}: native mixed-pass RGB delta {delta}");
+            maximum = maximum.max(delta);
+            checked += 1;
+        }
+    }
+    assert_eq!(checked, 8);
+    eprintln!("8 native mixed-pass images after viewport merge; maximum RGB delta {maximum}/255");
+}
+
+#[test]
+fn model_particles_match_native_geometry_angles_normals_color_and_alpha() {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+    let Ok(adapter) = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())) else {
+        eprintln!("no GPU adapter: native model-particle references skipped");
+        return;
+    };
+    let (device, queue) = pollster::block_on(
+        adapter.request_device(&wgpu::DeviceDescriptor { required_limits: adapter.limits(), ..Default::default() }),
+    )
+    .unwrap();
+    let mut renderer = Renderer::new(&device, &queue);
+    renderer.set_tone_settings(hp_render::ToneSettings { bloom: 0.0, ..Default::default() });
+    let data = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data");
+    let fs = hp_fs::GameFs::from_source_mounts(
+        None,
+        None,
+        &[hp_fs::SourceMount {
+            kind: hp_fs::SourceMountKind::Gma,
+            label: "Owned model-particle native reference".into(),
+            path: data.join("native_model_particles.gma"),
+            enabled: true,
+            origin: hp_fs::SourceOrigin::Custom,
+        }],
+    )
+    .unwrap();
+    let model = hp_mdl::load_from("models/hp_model117/probe.mdl", |p| fs.read(p), &Default::default()).unwrap();
+    let parts: Vec<_> = model
+        .meshes
+        .iter()
+        .map(|mesh| hp_render::ModelPart {
+            material: 0,
+            vertices: mesh
+                .vertices
+                .iter()
+                .map(|v| hp_render::Vertex { pos: v.pos, normal: v.normal, uv: v.uv, alpha: 1.0 })
+                .collect(),
+            indices: mesh.indices.clone(),
+            tangents: mesh.tangents.clone(),
+        })
+        .collect();
+    let model = renderer.create_model(&parts);
+    let white = renderer.create_texture_exact(&TextureUpload {
+        width: 8,
+        height: 8,
+        format: TexFormat::Rgba8Srgb,
+        levels: vec![[255; 4].repeat(64)],
+    });
+    renderer.set_material(0, &MaterialDesc { texture: Some(white), tex_size: [8.0; 2], ..Default::default() });
+    let reference: serde_json::Value =
+        serde_json::from_str(include_str!("../tests/data/native_model_particles.json")).unwrap();
+    let definitions = hp_pcf::parse_file(include_bytes!("../tests/data/native_model_particles.pcf")).unwrap();
+    let proof = data.join("../../../../target/hp-ui-lab/model-particles");
+    std::fs::create_dir_all(&proof).unwrap();
+    let mut failures = Vec::new();
+    let mut maximum = 0;
+    let mut checked = 0;
+    for definition in definitions {
+        let name = definition.name.strip_prefix("hp_modeldyn117_").unwrap();
+        if matches!(name, "error" | "stock") {
+            continue;
+        }
+        let plan = Arc::new(Plan::new(&definition));
+        assert!(plan.unsupported.is_empty(), "{name}: {:?}", plan.unsupported);
+        assert_eq!(plan.model_renderers[0].path(), "models/hp_model117/probe.mdl");
+        let mut effect = Effect::new(&definition.name, &|_| Some(plan.clone()), 17).unwrap();
+        effect.step(0.02, [0.0, 0.0, 64.0], 1);
+        let mut draws = Vec::new();
+        append_models(std::iter::once((17, &effect)), &mut draws);
+        assert_eq!(draws.len(), 1);
+        let draws: Vec<_> = draws
+            .into_iter()
+            .map(|draw| hp_render::ModelInstance {
+                model,
+                transform: draw.transform,
+                tint: draw.tint,
+                object: 0,
+                fade: [0.0; 2],
+            })
+            .collect();
+        let eye = std::array::from_fn(|i| reference["cases"][name]["eye"][i].as_f64().unwrap() as f32);
+        let view = ViewParams {
+            size: [128; 2],
+            game_pixel_grid: true,
+            kind: ViewKind::Perspective {
+                eye,
+                forward: [0.0, 1.0, 0.0],
+                up: [0.0, 0.0, 1.0],
+                fov_y_deg: 60.0,
+                near: 1.0,
+                far: 2000.0,
+            },
+            mode: RenderMode::Unshaded,
+            grid: None,
+            background: [0.0; 3],
+            selection_color: [0.0; 4],
+            show_sprites: false,
+            show_models: false,
+            msaa: false,
+        };
+        let target = image::open(data.join(format!("native_model_particles_{name}.png"))).unwrap().to_rgb8();
+        for preview in [false, true] {
+            if preview {
+                renderer.render_particle_preview_with_models(1, &view, &[], &draws);
+            } else {
+                renderer.set_particle_models(&draws);
+                renderer.render_view(1, &view, &hp_render::Overlay::default());
+            }
+            let (_, _, pixels) = renderer.read_view_rgba8(1).unwrap();
+            image::save_buffer(proof.join(format!("{name}_{preview}.png")), &pixels, 128, 128, image::ColorType::Rgba8)
+                .unwrap();
+            let delta = pixels
+                .chunks_exact(4)
+                .zip(target.pixels())
+                .flat_map(|(a, b)| (0..3).map(move |c| a[c].abs_diff(b[c])))
+                .max()
+                .unwrap();
+            maximum = maximum.max(delta);
+            if delta > 3 {
+                failures.push(format!("{name} preview={preview}: RGB delta {delta}"));
+            }
+            checked += 1;
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+    assert_eq!(checked, 22);
+    eprintln!("22 native model-particle whole-image comparisons; maximum RGB delta {maximum}/255");
+}
+
+#[test]
 fn each_renderer_keeps_its_primary_and_secondary_animation_clock() {
     use hp_pcf::dmx::Value;
     use hp_pcf::sheet::{SheetFrame, SheetSequence};

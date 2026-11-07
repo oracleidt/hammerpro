@@ -1,0 +1,171 @@
+{
+  "errors": [],
+  "version": "2000.00.01",
+  "model": {
+    "exists": true,
+    "high": [
+      15.999996185302734,
+      31.99997901916504,
+      47.99998474121094
+    ],
+    "vertices": 36,
+    "low": [
+      -31.999990463256836,
+      -23.999988555908203,
+      -7.999997138977051
+    ],
+    "materials": [
+      "hp_modelanim117/gray",
+      "hp_modelanim117/red"
+    ]
+  },
+  "mounted": true,
+  "cases": {
+    "cycle_999": {
+      "eye": [
+        10,
+        -256,
+        64
+      ],
+      "high": [
+        0,
+        0,
+        0
+      ],
+      "low": [
+        0,
+        0,
+        0
+      ],
+      "count": 325,
+      "cycle": 0.999,
+      "head": [
+        10,
+        0,
+        64
+      ]
+    },
+    "cycle_000": {
+      "eye": [
+        10,
+        -256,
+        64
+      ],
+      "high": [
+        0,
+        0,
+        0
+      ],
+      "low": [
+        0,
+        0,
+        0
+      ],
+      "count": 325,
+      "cycle": 0,
+      "head": [
+        10,
+        0,
+        64
+      ]
+    },
+    "cycle_500": {
+      "eye": [
+        10,
+        -256,
+        64
+      ],
+      "high": [
+        0,
+        0,
+        0
+      ],
+      "low": [
+        0,
+        0,
+        0
+      ],
+      "count": 335,
+      "cycle": 0.5,
+      "head": [
+        10,
+        0,
+        64
+      ]
+    },
+    "cycle_125": {
+      "eye": [
+        10,
+        -256,
+        64
+      ],
+      "high": [
+        0,
+        0,
+        0
+      ],
+      "low": [
+        0,
+        0,
+        0
+      ],
+      "count": 325,
+      "cycle": 0.125,
+      "head": [
+        10,
+        0,
+        64
+      ]
+    },
+    "cycle_875": {
+      "eye": [
+        10,
+        -256,
+        64
+      ],
+      "high": [
+        0,
+        0,
+        0
+      ],
+      "low": [
+        0,
+        0,
+        0
+      ],
+      "count": 325,
+      "cycle": 0.875,
+      "head": [
+        10,
+        0,
+        64
+      ]
+    },
+    "cycle_250": {
+      "eye": [
+        10,
+        -256,
+        64
+      ],
+      "high": [
+        0,
+        0,
+        0
+      ],
+      "low": [
+        0,
+        0,
+        0
+      ],
+      "count": 338,
+      "cycle": 0.25,
+      "head": [
+        10,
+        0,
+        64
+      ]
+    }
+  },
+  "source_sha256": "d6a468ab5ff462d17f7f6a4f6ae10910f1513b17cc1d0c5d1ae4712d88180c35",
+  "method": "Owned ClientsideModel, sequence 1, bodygroup 0 value 1, playback rate 0, SetCycle and SetupBones; fixed RenderMultiply normal basis; white ambient cube. Cycle 0 matched actual PCF seq1 image with max RGB delta 0."
+}

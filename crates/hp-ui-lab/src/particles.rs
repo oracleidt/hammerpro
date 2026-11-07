@@ -119,6 +119,7 @@ pub struct ParticleShared {
     pub fx_active: bool,
     pub sprite_layer: bool,
     pub sprites: Vec<ParticleSprite>,
+    pub model_draws: Vec<hp_app::state::ParticleModelDraw>,
     pub materials: Vec<String>,
     pub fx_sprites: Vec<ParticleSprite>,
     pub fx_materials: Vec<String>,
@@ -381,6 +382,54 @@ pub fn orientation(orient: u8) -> ParticleOrient {
     }
 }
 
+pub fn append_models<'a>(
+    effects: impl Iterator<Item = (Id, &'a Effect)>,
+    models: &mut Vec<hp_app::state::ParticleModelDraw>,
+) {
+    // Model color modulation takes the truncated byte, then GammaToLinear(2.2).
+    // ModelInstance's existing shader takes sRGB input, so encode that linear
+    // value without changing the tint contract for ordinary map entities.
+    let tint = |v: f32| {
+        let value = f32::from((v * 255.0) as i32 as u8) / 255.0;
+        let linear = value.powf(2.2);
+        if linear <= 0.0031308 { linear * 12.92 } else { 1.055 * linear.powf(1.0 / 2.4) - 0.055 }
+    };
+    for (entity, effect) in effects {
+        let mut next_draw_order = 0;
+        for (plan, particles, time) in effect.systems_with_clock() {
+            if particles.is_empty() {
+                continue;
+            }
+            for render in plan.renderers() {
+                let draw_order = next_draw_order;
+                next_draw_order += 1;
+                let Some(model) = render.model.and_then(|index| plan.model_renderers.get(index)) else { continue };
+                let path: Arc<str> = model.path().into();
+                let activity: Arc<str> = model.activity.as_str().into();
+                for p in particles {
+                    let alpha = f32::from((p.alpha * p.alpha2 * 255.0) as i32 as u8) / 255.0;
+                    if alpha <= 0.0 || p.radius == 0.0 || !p.pos.iter().all(|v| v.is_finite()) {
+                        continue;
+                    }
+                    models.push(hp_app::state::ParticleModelDraw {
+                        entity,
+                        draw_order,
+                        model: Arc::clone(&path),
+                        skin: model.skin,
+                        body_group: p.sequence as i32,
+                        sequence: p.sequence2 as i32,
+                        activity: Arc::clone(&activity),
+                        animation_time: time,
+                        animation_rate: model.rate(p),
+                        transform: model.transform(p),
+                        tint: [tint(p.color[0]), tint(p.color[1]), tint(p.color[2]), alpha],
+                    });
+                }
+            }
+        }
+    }
+}
+
 pub fn append_sprites<'a>(
     effects: impl Iterator<Item = (Id, &'a Effect)>,
     looks: &HashMap<String, Arc<MaterialLook>>,
@@ -484,7 +533,7 @@ pub fn append_sprites<'a>(
                             sprites.push(s);
                         }
                     }
-                    RenderKind::None => {}
+                    RenderKind::None | RenderKind::Models => {}
                 }
             }
         }
@@ -547,8 +596,16 @@ pub fn scene_instances_of(
     eye: [f32; 3],
     assets: &mut dyn hp_app::state::AssetsApi,
 ) -> Vec<hp_render::ParticleInstance> {
+    let (sprites, materials) = merged_scene_sprites(shared, eye);
+    instances_of(&sprites, &materials, assets)
+}
+
+fn merged_scene_sprites(
+    shared: &ParticleShared,
+    eye: [f32; 3],
+) -> (std::borrow::Cow<'_, [ParticleSprite]>, std::borrow::Cow<'_, [String]>) {
     if shared.fx_sprites.is_empty() {
-        return instances_of(&shared.sprites, &shared.materials, assets);
+        return (std::borrow::Cow::Borrowed(&shared.sprites), std::borrow::Cow::Borrowed(&shared.materials));
     }
     let mut sprites = Vec::with_capacity(shared.sprites.len() + shared.fx_sprites.len());
     sprites.extend_from_slice(&shared.sprites);
@@ -559,7 +616,93 @@ pub fn scene_instances_of(
     let mut materials = shared.materials.clone();
     materials.extend_from_slice(&shared.fx_materials);
     sort_far_first(&mut sprites, eye);
-    instances_of(&sprites, &materials, assets)
+    (std::borrow::Cow::Owned(sprites), std::borrow::Cow::Owned(materials))
+}
+
+#[derive(Default)]
+pub struct ParticleDraws {
+    pub sprites: Vec<hp_render::ParticleInstance>,
+    pub models: Vec<hp_render::ModelInstance>,
+    pub batches: Vec<hp_render::ParticleDrawBatch>,
+}
+
+pub fn scene_draws_of(
+    shared: &ParticleShared,
+    eye: [f32; 3],
+    assets: &mut dyn hp_app::state::AssetsApi,
+    renderer: &mut hp_render::Renderer,
+) -> ParticleDraws {
+    let (sprites, materials) = merged_scene_sprites(shared, eye);
+    prepare_draws(&sprites, &materials, &shared.model_draws, eye, assets, renderer)
+}
+
+/// Resolve each collection/pass before erasing its authored key. Missing or
+/// still-loading models contribute zero instances rather than shifting ranges.
+pub fn prepare_draws(
+    sprites: &[ParticleSprite],
+    materials: &[String],
+    models: &[hp_app::state::ParticleModelDraw],
+    eye: [f32; 3],
+    assets: &mut dyn hp_app::state::AssetsApi,
+    renderer: &mut hp_render::Renderer,
+) -> ParticleDraws {
+    if models.is_empty() {
+        return ParticleDraws { sprites: instances_of(sprites, materials, assets), ..Default::default() };
+    }
+    #[derive(Default)]
+    struct Group {
+        sprites: Vec<ParticleSprite>,
+        models: Vec<hp_app::state::ParticleModelDraw>,
+    }
+    let distance = |p: [f32; 3]| p.iter().zip(eye).map(|(p, eye)| (p - eye) * (p - eye)).sum::<f32>();
+    let mut groups = std::collections::BTreeMap::<(Id, u32), Group>::new();
+    let mut distances = HashMap::<Id, f32>::new();
+    let mut note = |entity: Id, pos: [f32; 3]| {
+        let d = distance(pos);
+        distances.entry(entity).and_modify(|old| *old = old.max(d)).or_insert(d);
+    };
+    for sprite in sprites.iter().filter(|p| p.pos.iter().all(|v| v.is_finite())) {
+        note(sprite.entity, sprite.pos);
+        groups.entry((sprite.entity, sprite.draw_order)).or_default().sprites.push(*sprite);
+    }
+    for model in models {
+        let p = model.transform[3];
+        note(model.entity, [p[0], p[1], p[2]]);
+        groups.entry((model.entity, model.draw_order)).or_default().models.push(model.clone());
+    }
+    let mut groups: Vec<_> = groups.into_iter().collect();
+    groups.sort_by(|(a, _), (b, _)| {
+        if a.0 == b.0 { a.1.cmp(&b.1) } else { distances[&b.0].total_cmp(&distances[&a.0]).then_with(|| a.0.cmp(&b.0)) }
+    });
+    let mut out = ParticleDraws::default();
+    for (_, group) in groups {
+        let first = out.sprites.len() as u32;
+        out.sprites.extend(instances_of(&group.sprites, materials, assets));
+        if out.sprites.len() as u32 > first {
+            out.batches.push(hp_render::ParticleDrawBatch {
+                kind: hp_render::ParticleDrawKind::Sprites,
+                first,
+                count: out.sprites.len() as u32 - first,
+            });
+        }
+        let first = out.models.len() as u32;
+        out.models.extend(assets.particle_draw_models(renderer, &group.models).into_iter().filter(|model| {
+            renderer.has_model(model.model)
+                && model.transform.iter().flatten().chain(&model.tint).all(|v| v.is_finite())
+                && model.tint[3] > 0.0
+        }));
+        if out.models.len() as u32 > first {
+            out.batches.push(hp_render::ParticleDrawBatch {
+                kind: hp_render::ParticleDrawKind::Models,
+                first,
+                count: out.models.len() as u32 - first,
+            });
+        }
+    }
+    if out.models.is_empty() {
+        out.batches.clear();
+    }
+    out
 }
 
 pub fn instances_of(
@@ -825,10 +968,12 @@ impl ParticleLayer {
     }
 
     fn fill_sprites(&self, shared: &mut ParticleShared, eye: [f32; 3]) {
-        let ParticleShared { sprites, materials, looks, .. } = shared;
+        let ParticleShared { sprites, materials, model_draws, looks, .. } = shared;
         sprites.clear();
         materials.clear();
         append_sprites(self.effects.iter().map(|(id, p)| (*id, &p.effect)), looks, sprites, materials);
+        model_draws.clear();
+        append_models(self.effects.iter().map(|(id, p)| (*id, &p.effect)), model_draws);
         sort_far_first(sprites, eye);
     }
 
@@ -843,6 +988,7 @@ impl ParticleLayer {
             s.playing.clear();
             s.particles = 0;
             s.sprites.clear();
+            s.model_draws.clear();
         }
     }
 }

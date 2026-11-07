@@ -451,7 +451,18 @@ pub(super) fn templates(category: Category) -> Vec<(&'static str, Vec<(&'static 
                 ],
             ),
             ("render_rope", vec![("texel_size", Value::Float(4.0)), ("subdivision_count", Value::Int(3))]),
-            ("render_models", vec![("model", Value::Str(String::new()))]),
+            (
+                "Render models",
+                vec![
+                    ("sequence 0 model", Value::Str("NONE".into())),
+                    ("animation rate", Value::Float(30.0)),
+                    ("scale animation rate", Value::Bool(false)),
+                    ("animation rate scale field", Value::Int(10)),
+                    ("orient model z to normal", Value::Bool(false)),
+                    ("skin number", Value::Int(0)),
+                    ("activity override", Value::Str(String::new())),
+                ],
+            ),
             ("render_screen_velocity_rotate", Vec::new()),
         ],
         Category::Forces => vec![
