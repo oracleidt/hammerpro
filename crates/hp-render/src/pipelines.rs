@@ -190,6 +190,7 @@ impl Shared {
                 texture_entry(7),
                 texture_entry(8),
                 texture_entry(9),
+                sampler_entry(10),
             ],
         });
         let wide_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {

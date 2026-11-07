@@ -484,6 +484,8 @@ pub struct Render {
     pub len_fade_in: f32,
     pub constrain_radius: bool,
     pub ignore_dt: bool,
+    /// View-dependent rotation modifier, applied before drawing any renderer.
+    pub screen_velocity_angle: Option<f32>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -660,8 +662,13 @@ impl Plan {
     fn compile_renderers(&mut self, def: &SystemDef) {
         for op in &def.renderers {
             let name = op.function.to_ascii_lowercase();
+            if name == "render_screen_velocity_rotate" {
+                self.render.screen_velocity_angle =
+                    Some(crate::screen_velocity::forward_radians(f(op, "forward_angle", -90.0)));
+                continue;
+            }
             let kind = match name.as_str() {
-                "render_animated_sprites" | "render_screen_velocity_rotate" => RenderKind::Sprites,
+                "render_animated_sprites" => RenderKind::Sprites,
                 "render_sprite_trail" => RenderKind::Trail,
                 "render_rope" => RenderKind::Rope,
                 _ if name.contains("sprite") => RenderKind::Sprites,
@@ -685,6 +692,7 @@ impl Plan {
                 len_fade_in: f(op, "length fade in time", 0.0),
                 constrain_radius: b(op, "constrain radius to length", true),
                 ignore_dt: b(op, "ignore delta time", false),
+                screen_velocity_angle: self.render.screen_velocity_angle,
             };
         }
         self.draws = self.render.kind != RenderKind::None;
@@ -2016,6 +2024,25 @@ pub struct Effect {
 }
 
 impl Effect {
+    /// Apply view-dependent particle attributes after simulation and before
+    /// collecting draw instances. Source writes rotation back to the simulation;
+    /// later operators must observe it, including while playback is paused.
+    pub fn prepare_render(&mut self, view: [[f32; 4]; 2]) {
+        for (delay, sim) in &mut self.sims {
+            if self.time < *delay {
+                continue;
+            }
+            let Some(forward) = sim.plan.render.screen_velocity_angle else { continue };
+            for particle in &mut sim.particles {
+                if let Some(rotation) =
+                    crate::screen_velocity::rotation(particle.pos, particle.previous_position(), view, forward)
+                {
+                    particle.rotation = rotation;
+                }
+            }
+        }
+    }
+
     pub fn new(name: &str, lookup: &dyn Fn(&str) -> Option<Arc<Plan>>, seed: u32) -> Option<Effect> {
         let root = lookup(name)?;
         let mut sims: Vec<(f32, Sim)> = Vec::new();

@@ -189,6 +189,8 @@ bitflags_u32! {
         LIGHT_BLOCKER = 1 << 13;
         SPRITE_CARD = 1 << 14;
         PARTICLE_TINT_GAMMA22 = 1 << 15;
+        PARTICLE_CLAMP_U = 1 << 16;
+        PARTICLE_CLAMP_V = 1 << 17;
     }
 }
 

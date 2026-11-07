@@ -209,6 +209,9 @@ impl Preview {
     fn paint(&mut self, ui: &mut Ui, state: &mut AppState, session: &mut EditorSession, rect: Rect) {
         let painter = ui.painter_at(rect);
         let (eye, forward, right, up) = self.basis(&session.preview);
+        if let Some(effect) = &mut self.effect {
+            effect.prepare_render(hp_pcf::screen_velocity::view(eye, right, up));
+        }
         let (mut sprites, mut materials) = (Vec::new(), Vec::new());
         if let Some(effect) = &self.effect
             && let Ok(shared) = self.handle.lock()

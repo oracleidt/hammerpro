@@ -1,4 +1,5 @@
 override PARTICLE_BLEND_MODE: f32 = 0.0;
+@group(1) @binding(10) var particle_sampler: sampler;
 
 struct ParticleOut {
     @builtin(position) clip: vec4<f32>,
@@ -200,20 +201,20 @@ fn particle_frame_mix(a: vec4<f32>, b: vec4<f32>, fraction: f32, maximum: bool, 
 }
 
 fn particle_texel(in: ParticleOut) -> vec4<f32> {
-    let first = textureSample(tex, samp_clamp, in.uv);
+    let first = textureSample(tex, particle_sampler, in.uv);
     let next_dx = dpdx(in.next_uv);
     let next_dy = dpdy(in.next_uv);
     let sequence_dx = dpdx(in.sequence_uv);
     let sequence_dy = dpdy(in.sequence_uv);
     var color = first;
     if in.animation_blend.x > 0.0 || (in.animation_flags & 8u) != 0u {
-        let next = textureSampleGrad(tex, samp_clamp, in.next_uv, next_dx, next_dy);
+        let next = textureSampleGrad(tex, particle_sampler, in.next_uv, next_dx, next_dy);
         color = particle_frame_mix(first, next, in.animation_blend.x, (in.animation_flags & 8u) != 0u, in.animation_blend.x);
     }
     if (in.animation_flags & 1u) != 0u {
-        var other = textureSampleGrad(tex, samp_clamp, in.sequence_uv.xy, sequence_dx.xy, sequence_dy.xy);
+        var other = textureSampleGrad(tex, particle_sampler, in.sequence_uv.xy, sequence_dx.xy, sequence_dy.xy);
         if in.animation_blend.y > 0.0 || (in.animation_flags & 16u) != 0u {
-            let second_next = textureSampleGrad(tex, samp_clamp, in.sequence_uv.zw, sequence_dx.zw, sequence_dy.zw);
+            let second_next = textureSampleGrad(tex, particle_sampler, in.sequence_uv.zw, sequence_dx.zw, sequence_dy.zw);
             other = particle_frame_mix(other, second_next, in.animation_blend.y, (in.animation_flags & 16u) != 0u, in.animation_blend.x);
         }
         let mode = (in.animation_flags >> 1u) & 3u;

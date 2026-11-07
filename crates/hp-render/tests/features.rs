@@ -1259,6 +1259,104 @@ fn textured_view_shades_slopes_like_hammer() {
 }
 
 #[test]
+fn screen_velocity_modifier_matches_native_sprite_images_in_either_renderer_order() {
+    let (device, queue) = gpu_or_skip!();
+    let mut renderer = Renderer::new(&device, &queue);
+    let mut texels = Vec::new();
+    for y in 0..8 {
+        for x in 0..8 {
+            texels.extend_from_slice(match (x < 4, y < 4) {
+                (true, true) => &[255, 0, 0, 255],
+                (false, true) => &[0, 0, 255, 255],
+                (true, false) => &[0, 255, 0, 255],
+                (false, false) => &[255, 255, 0, 255],
+            });
+        }
+    }
+    let texture = renderer.create_texture(&TextureUpload {
+        width: 8,
+        height: 8,
+        format: TexFormat::Rgba8Srgb,
+        levels: vec![texels],
+    });
+    renderer.set_material(
+        4,
+        &MaterialDesc {
+            texture: Some(texture),
+            tex_size: [8.0; 2],
+            flags: MaterialFlags::SPRITE_CARD,
+            ..Default::default()
+        },
+    );
+    let definitions = hp_pcf::parse_file(include_bytes!("../../hp-pcf/tests/data/native_screen_velocity.pcf")).unwrap();
+    let fixture: serde_json::Value = serde_json::from_str(include_str!("data/native_screen_velocity.json")).unwrap();
+    let cases = fixture["cases"].as_object().unwrap();
+    assert_eq!(cases.len(), 11);
+    let array3 = |v: &serde_json::Value| std::array::from_fn(|i| v[i].as_f64().unwrap() as f32);
+    for (name, case) in cases {
+        let definition = definitions.iter().find(|d| d.name == format!("hp_velocity117_{name}")).unwrap();
+        let plan = Arc::new(hp_pcf::Plan::new(definition));
+        let mut effect = hp_pcf::Effect::new(&definition.name, &|_| Some(plan.clone()), 17).unwrap();
+        effect.step(0.02, [0.0, 0.0, 64.0], 1);
+        let particle = &mut effect.sims[0].1.particles[0];
+        particle.pos = array3(&case["position"]);
+        // The captured frame time varies. Public velocity edits reconstruct
+        // history with the same direction, independently of our earlier tick.
+        particle.vel = array3(&case["velocity"]).map(|v| v * 2.0);
+        let eye = array3(&case["eye"]);
+        effect.prepare_render(hp_pcf::screen_velocity::view(eye, [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]));
+        let particle = &effect.sims[0].1.particles[0];
+        let instance = ParticleInstance {
+            pos: particle.pos,
+            size: particle.radius * 2.0,
+            axis: [0.0; 3],
+            roll: particle.rotation,
+            yaw: particle.yaw,
+            animation: ParticleAnimation::default(),
+            uv: [0.0, 0.0, 1.0, 1.0],
+            color: [1.0; 4],
+            bright: 1.0,
+            add_self: 0.0,
+            screen_fade: [0.0; 2],
+            refraction_blur: 0.0,
+            no_fog: true,
+            orient: ParticleOrient::Screen,
+            material: 4,
+            blend: ParticleBlend::Alpha,
+        };
+        renderer.set_particles(if plan.draws { std::slice::from_ref(&instance) } else { &[] });
+        let mut view = persp(eye, [eye[0], 0.0, eye[2]], [128, 128], RenderMode::Textured);
+        view.kind = ViewKind::Perspective {
+            eye,
+            forward: [0.0, 1.0, 0.0],
+            up: [0.0, 0.0, 1.0],
+            fov_y_deg: 60.0,
+            near: 1.0,
+            far: 2000.0,
+        };
+        view.game_pixel_grid = true;
+        view.msaa = false;
+        view.background = [0.0; 3];
+        renderer.render_view(1, &view, &Overlay::default());
+        let actual = save(&renderer, 1, &format!("screen_velocity_{name}"));
+        let reference = image::open(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("tests/data/native_screen_velocity_{name}.png")),
+        )
+        .unwrap()
+        .to_rgba8();
+        assert_eq!(reference.dimensions(), (128, 128));
+        let max_difference = actual
+            .2
+            .chunks_exact(4)
+            .zip(reference.pixels())
+            .flat_map(|(a, b)| (0..3).map(move |c| a[c].abs_diff(b[c])))
+            .max()
+            .unwrap();
+        assert!(max_difference <= 3, "native {name}: RGB max difference {max_difference}");
+    }
+}
+
+#[test]
 fn native_trails_use_head_tail_uvs_and_full_width_in_each_view() {
     let (device, queue) = gpu_or_skip!();
     let mut r = Renderer::new(&device, &queue);

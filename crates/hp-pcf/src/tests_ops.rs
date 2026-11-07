@@ -48,6 +48,49 @@ fn run(def: &SystemDef, points: &Points, seconds: f32) -> Sim {
 struct FloorTrace;
 
 #[test]
+fn native_screen_velocity_rotation_is_a_modifier_in_either_renderer_order() {
+    let definitions = crate::parse_file(include_bytes!("../tests/data/native_screen_velocity.pcf")).unwrap();
+    for definition in &definitions {
+        let plan = Plan::new(definition);
+        assert!(plan.unsupported.is_empty(), "{}: {:?}", definition.name, plan.unsupported);
+        assert_eq!(plan.draws, definition.name != "hp_velocity117_only", "{}", definition.name);
+    }
+}
+
+#[test]
+fn screen_velocity_rotation_overwrites_the_attribute_and_survives_into_simulation() {
+    let definitions = crate::parse_file(include_bytes!("../tests/data/native_screen_velocity.pcf")).unwrap();
+    let mut definition = definitions.iter().find(|d| d.name == "hp_velocity117_initial30").unwrap().clone();
+    definition.initializers.push(op(
+        "Rotation Speed Random",
+        vec![
+            ("rotation_speed_random_min", fl(0.0)),
+            ("rotation_speed_random_max", fl(0.0)),
+            ("rotation_speed_constant", fl(180.0)),
+        ],
+    ));
+    definition.operators.push(op("Rotation Basic", vec![]));
+    let plan = Arc::new(Plan::new(&definition));
+    assert!(plan.unsupported.is_empty(), "{:?}", plan.unsupported);
+    let mut effect = Effect::new(&definition.name, &|_| Some(plan.clone()), 17).unwrap();
+    effect.step(0.05, [0.0; 3], 1);
+    let front = crate::screen_velocity::view([0.0, -128.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]);
+    effect.prepare_render(front);
+    let first = effect.sims[0].1.particles[0].rotation;
+    assert!((first - std::f32::consts::FRAC_PI_4).abs() < 0.0001);
+    effect.step(0.05, [0.0; 3], 1);
+    let advanced = effect.sims[0].1.particles[0].rotation;
+    assert!((advanced - (first + std::f32::consts::PI * 0.05)).abs() < 0.0001);
+    // Changing the camera while paused changes the actual attribute, with no
+    // simulation step or accumulated initial/spin rotation added to the result.
+    let back = crate::screen_velocity::view([0.0, 128.0, 0.0], [-1.0, 0.0, 0.0], [0.0, 0.0, 1.0]);
+    effect.prepare_render(back);
+    assert!((effect.sims[0].1.particles[0].rotation - std::f32::consts::FRAC_PI_4 * 3.0).abs() < 0.0001);
+    effect.prepare_render(front);
+    assert!((effect.sims[0].1.particles[0].rotation - first).abs() < 0.0001);
+}
+
+#[test]
 fn tracer_final_positions_trail_lengths_and_completion_match_native_frames() {
     let definitions = crate::parse_file(include_bytes!("../tests/data/tracer_fade_live_cases.pcf")).unwrap();
     let frames: Vec<serde_json::Value> =

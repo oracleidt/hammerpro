@@ -86,6 +86,7 @@ pub(crate) struct MatAnalysis {
     pub tool: Option<ToolKind>,
     pub tint: [f32; 4],
     particle_tint_gamma22: bool,
+    particle_clamp: [bool; 2],
     pub decal_scale: f32,
     pub scroll: [f32; 2],
     pub uv: [f32; 4],
@@ -290,6 +291,10 @@ fn analyze_resolved(name: &str, mat: &Material, texture_flags: &dyn Fn(&str) -> 
     let envmap =
         (tool.is_none() && !modulates && water.is_none()).then(|| crate::envmap::analyze_envmap(mat)).flatten();
     MatAnalysis {
+        particle_clamp: {
+            let flags = texture.as_deref().map_or(0, texture_flags);
+            [flags & hp_vtf::flags::CLAMPS != 0, flags & hp_vtf::flags::CLAMPT != 0]
+        },
         texture,
         texture2,
         blend4,
@@ -463,6 +468,8 @@ pub(crate) fn asset_desc(
             }
             let sprite = matches!(kind, MatKind::Sprite | MatKind::SpriteAdditive | MatKind::SpriteRefract);
             flags.set(MaterialFlags::PARTICLE_TINT_GAMMA22, sprite && a.particle_tint_gamma22);
+            flags.set(MaterialFlags::PARTICLE_CLAMP_U, sprite && a.particle_clamp[0]);
+            flags.set(MaterialFlags::PARTICLE_CLAMP_V, sprite && a.particle_clamp[1]);
             let detail = a.detail.as_ref().filter(|_| !sprite).and_then(|d| match tex(&d.texture) {
                 TexLook::Ready(id, _) => Some(d.desc(id)),
                 TexLook::Loading | TexLook::Missing => None,

@@ -890,6 +890,7 @@ impl OverlayLayer for ParticleLayer {
         let keep: HashSet<Id> = near.iter().map(|(_, s)| s.id).collect();
         self.effects.retain(|id, _| keep.contains(id));
         let dt = state.frame.dt.clamp(0.0, 0.1);
+        let particle_view = hp_pcf::screen_velocity::view(f3(cam.pos), f3(cam.right()), f3(cam.up()));
         let mut budget = MAX_PARTICLES;
         let mut starts = 0;
         for (_, s) in &near {
@@ -924,6 +925,7 @@ impl OverlayLayer for ParticleLayer {
             }
             if let Some(p) = self.effects.get_mut(&s.id) {
                 p.effect.step_in(dt, &s.points, budget.min(MAX_PER_EFFECT), &world);
+                p.effect.prepare_render(particle_view);
                 budget = budget.saturating_sub(p.effect.particle_count());
             }
         }
@@ -1074,6 +1076,43 @@ mod tests {
         state.cameras.cam3d.pitch_deg = 0.0;
         state.frame.dt = 1.0 / 30.0;
         state
+    }
+
+    #[test]
+    fn screen_velocity_updates_the_viewport_rotation_when_the_camera_turns() {
+        let definitions =
+            hp_pcf::parse_file(include_bytes!("../../hp-pcf/tests/data/native_screen_velocity.pcf")).unwrap();
+        for (name, draws) in [("after", true), ("before", true), ("only", false)] {
+            let mut definition =
+                definitions.iter().find(|d| d.name == format!("hp_velocity117_{name}")).unwrap().clone();
+            definition.name = "fire_small".into();
+            let handle = new_handle();
+            {
+                let mut shared = handle.lock().unwrap();
+                shared.library.insert("fire_small".into(), Arc::new(Plan::new(&definition)));
+                shared.sprite_layer = true;
+            }
+            let mut layer = ParticleLayer::new(handle.clone());
+            let mut state = state_with_particles(1);
+            state.cameras.cam3d.pos = DVec3::new(0.0, -128.0, 64.0);
+            state.cameras.cam3d.yaw_deg = 90.0;
+            layer.prepare(&state);
+            let shared = handle.lock().unwrap();
+            assert_eq!(shared.sprites.len(), usize::from(draws), "{name}");
+            if draws {
+                assert!((shared.sprites[0].roll - std::f32::consts::FRAC_PI_4).abs() < 0.0001, "{name}");
+            }
+            drop(shared);
+            state.frame.dt = 0.0;
+            state.cameras.cam3d.pos.y = 128.0;
+            state.cameras.cam3d.yaw_deg = 270.0;
+            layer.prepare(&state);
+            let shared = handle.lock().unwrap();
+            assert_eq!(shared.sprites.len(), usize::from(draws), "{name}");
+            if draws {
+                assert!((shared.sprites[0].roll - std::f32::consts::FRAC_PI_4 * 3.0).abs() < 0.0001, "{name}");
+            }
+        }
     }
 
     #[test]

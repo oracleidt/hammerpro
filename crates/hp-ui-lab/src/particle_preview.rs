@@ -247,8 +247,11 @@ impl ParticlePreviewWindow {
     }
 
     fn render_gpu(&mut self, state: &mut AppState, size_px: [u32; 2]) -> Option<egui::TextureId> {
+        let (eye, forward, right, up) = self.eye_basis();
+        if let Some(playing) = &mut self.playing {
+            playing.effect.prepare_render(hp_pcf::screen_velocity::view(eye, right, up));
+        }
         let (sprites, materials) = self.sprites();
-        let (eye, forward, _, up) = self.eye_basis();
         let AppState { assets, gfx, .. } = state;
         let gfx = gfx.as_mut()?;
         let instances = instances_of(&sprites, &materials, &mut **assets);

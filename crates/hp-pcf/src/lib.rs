@@ -6,6 +6,7 @@ pub mod environment;
 pub mod model;
 mod parameters;
 pub mod random;
+pub mod screen_velocity;
 pub mod sheet;
 pub mod sim;
 pub mod trail;

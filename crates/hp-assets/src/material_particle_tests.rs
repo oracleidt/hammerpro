@@ -2,6 +2,115 @@ use hp_render::*;
 use std::collections::{HashMap, hash_map::Entry};
 
 #[test]
+fn particle_texture_addressing_survives_material_loading_and_sampler_changes() {
+    let Some((device, queue)) = crate::test_gpu::gpu() else {
+        eprintln!("no GPU adapter: native particle texture addressing skipped");
+        return;
+    };
+    let mut renderer = Renderer::new(&device, &queue);
+    renderer.set_tone_settings(ToneSettings { bloom: 0.0, ..Default::default() });
+    let data = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data");
+    let fs = hp_fs::GameFs::from_source_mounts(
+        None,
+        None,
+        &[hp_fs::SourceMount {
+            kind: hp_fs::SourceMountKind::Gma,
+            label: "Owned particle addressing reference".into(),
+            path: data.join("native_particle_address.gma"),
+            enabled: true,
+            origin: hp_fs::SourceOrigin::Custom,
+        }],
+    )
+    .unwrap();
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../tests/data/native_particle_address.json")).unwrap();
+    let mut texture = None;
+    let mut upload = None;
+    let mut max_delta = 0;
+    // All four source textures contain identical pixels. Reusing their uploaded
+    // image also verifies rebinding when only addressing changes on a material.
+    for mode in [0, 3, 1, 2, 0] {
+        let mut material = (*fs.material("hp_velocity117/quad").unwrap()).clone();
+        material.set("$basetexture", format!("hp_velocity117/quad_{mode}"));
+        let analysis =
+            crate::material::analyze("hp_velocity117/quad", &material, &|t| fs.texture_flags(t).unwrap_or(0));
+        let keys = crate::material::texture_keys(crate::material::MatKind::Sprite, &analysis);
+        assert_eq!(keys.len(), 1);
+        let prepared = crate::texture::prepare_texture(&fs, &keys[0], false).unwrap();
+        if let Some(pixels) = &upload {
+            assert_eq!(pixels, &prepared.upload.levels);
+        } else {
+            upload = Some(prepared.upload.levels.clone());
+        }
+        let texture = *texture.get_or_insert_with(|| renderer.create_texture(&prepared.upload));
+        let desc = crate::material::asset_desc(
+            crate::material::MatKind::Sprite,
+            "hp_velocity117/quad",
+            crate::material::AnaLook::Ready(&analysis),
+            &|_| crate::material::TexLook::Ready(texture, prepared.size),
+            true,
+        );
+        renderer.set_material(1, &desc);
+        let case = &fixture["cases"][mode];
+        let array3 = |v: &serde_json::Value| std::array::from_fn(|i| v[i].as_f64().unwrap() as f32);
+        renderer.set_particles(&[ParticleInstance {
+            animation: ParticleAnimation::default(),
+            pos: array3(&case["position"]),
+            size: 48.0,
+            axis: [0.0; 3],
+            roll: std::f32::consts::FRAC_PI_4,
+            yaw: 0.0,
+            uv: [0.0, 0.0, 1.0, 1.0],
+            color: [1.0; 4],
+            bright: 1.0,
+            add_self: 0.0,
+            screen_fade: [0.0; 2],
+            refraction_blur: 0.0,
+            no_fog: true,
+            orient: ParticleOrient::Screen,
+            material: 1,
+            blend: ParticleBlend::Alpha,
+        }]);
+        let view = ViewParams {
+            size: [128, 128],
+            game_pixel_grid: true,
+            kind: ViewKind::Perspective {
+                eye: array3(&case["eye"]),
+                forward: [0.0, 1.0, 0.0],
+                up: [0.0, 0.0, 1.0],
+                fov_y_deg: 60.0,
+                near: 1.0,
+                far: 2000.0,
+            },
+            mode: RenderMode::Textured,
+            grid: None,
+            background: [0.0; 3],
+            selection_color: [0.0; 4],
+            show_sprites: false,
+            show_models: false,
+            msaa: false,
+        };
+        renderer.render_view(1, &view, &Overlay::default());
+        let (_, _, pixels) = renderer.read_view_rgba8(1).unwrap();
+        let proof = data.join("../../../../target/hp-assets/particle-proof");
+        std::fs::create_dir_all(&proof).unwrap();
+        image::save_buffer(proof.join(format!("addressing_{mode}.png")), &pixels, 128, 128, image::ColorType::Rgba8)
+            .unwrap();
+        let reference = image::open(data.join(format!("native_particle_address_{mode}.png"))).unwrap().to_rgb8();
+        assert_eq!(reference.dimensions(), (128, 128));
+        let difference = pixels
+            .chunks_exact(4)
+            .zip(reference.pixels())
+            .flat_map(|(a, b)| (0..3).map(move |c| a[c].abs_diff(b[c])))
+            .max()
+            .unwrap();
+        assert!(difference <= 3, "native addressing mode {mode}: RGB delta {difference}");
+        max_delta = max_delta.max(difference);
+    }
+    eprintln!("Native particle addressing: four whole images and sampler updates, maximum RGB delta {max_delta}/255");
+}
+
+#[test]
 fn native_particle_colors_survive_material_loading_and_texture_preparation() {
     let Some((device, queue)) = crate::test_gpu::gpu() else {
         eprintln!("no GPU adapter: native particle material reference skipped");

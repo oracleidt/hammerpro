@@ -225,6 +225,7 @@ pub struct Renderer {
     pipelines: [Option<PipelineSet>; 2],
     sampler: wgpu::Sampler,
     sampler_clamp: wgpu::Sampler,
+    particle_samplers: [wgpu::Sampler; 4],
     textures: HashMap<u32, TexEntry>,
     next_tex: u32,
     mat_gpu: Vec<MaterialGpu>,
@@ -870,6 +871,20 @@ impl Renderer {
             ..Default::default()
         });
         let max_buffer = limits.max_buffer_size;
+        let particle_samplers = std::array::from_fn(|mode| {
+            let address =
+                |bit| if mode & bit != 0 { wgpu::AddressMode::ClampToEdge } else { wgpu::AddressMode::Repeat };
+            device.create_sampler(&wgpu::SamplerDescriptor {
+                label: Some("hp-render particle texture addressing"),
+                address_mode_u: address(1),
+                address_mode_v: address(2),
+                mag_filter: wgpu::FilterMode::Linear,
+                min_filter: wgpu::FilterMode::Linear,
+                mipmap_filter: wgpu::MipmapFilterMode::Linear,
+                anisotropy_clamp: 8,
+                ..Default::default()
+            })
+        });
         let max_storage = limits.max_storage_buffer_binding_size.min(max_buffer);
         let elems = |size: u64| (max_buffer / size).min(u64::from(u32::MAX)) as u32;
         let scene = Scene::new([elems(ARENA_ELEM[0]), elems(ARENA_ELEM[1]), elems(ARENA_ELEM[2])]);
@@ -932,6 +947,7 @@ impl Renderer {
             pipelines: [None, None],
             sampler,
             sampler_clamp,
+            particle_samplers,
             textures: HashMap::new(),
             next_tex: 3,
             mat_gpu: Vec::new(),
@@ -1218,12 +1234,19 @@ impl Renderer {
         }
     }
 
-    fn material_bind_group(&self, uniform: &wgpu::Buffer, texs: &MatTextures) -> Option<wgpu::BindGroup> {
+    fn material_bind_group(
+        &self,
+        uniform: &wgpu::Buffer,
+        texs: &MatTextures,
+        flags: MaterialFlags,
+    ) -> Option<wgpu::BindGroup> {
         let view = |i: usize| self.texture_view_or_missing(texs[i].unwrap_or(TexId::WHITE));
         let normal = |i: usize| self.texture_view_or_missing(texs[i].unwrap_or(TexId::FLAT_NORMAL));
         let (v1, v2, v3, v4, v5) = (view(0)?, view(1)?, view(2)?, view(3)?, view(4)?);
         let (v6, v7) = (normal(5)?, normal(6)?);
         let (v8, v9) = (view(7)?, view(8)?);
+        let addressing = usize::from(flags.contains(MaterialFlags::PARTICLE_CLAMP_U))
+            | (usize::from(flags.contains(MaterialFlags::PARTICLE_CLAMP_V)) << 1);
         Some(self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("hp-render material"),
             layout: &self.shared.material_bgl,
@@ -1238,6 +1261,10 @@ impl Renderer {
                 wgpu::BindGroupEntry { binding: 7, resource: wgpu::BindingResource::TextureView(v7) },
                 wgpu::BindGroupEntry { binding: 8, resource: wgpu::BindingResource::TextureView(v8) },
                 wgpu::BindGroupEntry { binding: 9, resource: wgpu::BindingResource::TextureView(v9) },
+                wgpu::BindGroupEntry {
+                    binding: 10,
+                    resource: wgpu::BindingResource::Sampler(&self.particle_samplers[addressing]),
+                },
             ],
         }))
     }
@@ -1246,7 +1273,7 @@ impl Renderer {
         let desc = self.scene.materials.get(i).and_then(|m| m.desc);
         let texs = self.resolve_textures(desc.as_ref());
         let Some(g) = self.mat_gpu.get(i) else { return };
-        if let Some(bg) = self.material_bind_group(&g.uniform, &texs)
+        if let Some(bg) = self.material_bind_group(&g.uniform, &texs, desc.map_or(MaterialFlags::empty(), |d| d.flags))
             && let Some(g) = self.mat_gpu.get_mut(i)
         {
             g.bind_group = bg;
@@ -1267,7 +1294,9 @@ impl Renderer {
             let cube = self.material_cube(desc.as_ref());
             self.queue.write_buffer(&uniform, 0, bytemuck::bytes_of(&material_uniform(desc.as_ref(), cube)));
             let texs = self.resolve_textures(desc.as_ref());
-            let Some(bind_group) = self.material_bind_group(&uniform, &texs) else {
+            let Some(bind_group) =
+                self.material_bind_group(&uniform, &texs, desc.map_or(MaterialFlags::empty(), |d| d.flags))
+            else {
                 log::error!("hp-render: built-in textures are missing");
                 return;
             };
@@ -1292,7 +1321,8 @@ impl Renderer {
         let cube = self.material_cube(Some(desc));
         let Some(g) = self.mat_gpu.get(i) else { return };
         self.queue.write_buffer(&g.uniform, 0, bytemuck::bytes_of(&material_uniform(Some(desc), cube)));
-        if g.texs != texs {
+        let addressing = MaterialFlags::PARTICLE_CLAMP_U | MaterialFlags::PARTICLE_CLAMP_V;
+        if g.texs != texs || old.map(|d| d.flags & addressing) != Some(desc.flags & addressing) {
             self.refresh_material_bind_group(i);
         }
     }
