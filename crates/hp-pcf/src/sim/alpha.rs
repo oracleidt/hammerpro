@@ -11,6 +11,60 @@ pub(super) struct Simple {
     pub span: f32,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct FadeDecay {
+    window: [f32; 4],
+    inverses: [f32; 2],
+    ends: [f32; 2],
+}
+
+impl FadeDecay {
+    pub(super) fn compile(op: &Operator) -> Self {
+        let mut window = [
+            f(op, "start_fade_in_time", 0.0),
+            f(op, "end_fade_in_time", 0.5),
+            f(op, "start_fade_out_time", 0.5),
+            f(op, "end_fade_out_time", 1.0),
+        ];
+        if window[1] < window[0] {
+            window[1] = window[0];
+        }
+        if window[3] < window[2] {
+            window[3] = window[2];
+        }
+        if window[2] < window[0] {
+            window.swap(0, 2);
+        }
+        if window[3] < window[1] {
+            window.swap(1, 3);
+        }
+        let inverses = [window[1] - window[0], window[3] - window[2]]
+            .map(|span| if span == 0.0 { 0.0 } else { wide::f32x4::splat(span).recip().to_array()[0] });
+        Self { window, inverses, ends: [f(op, "start_alpha", 1.0), f(op, "end_alpha", 0.0)] }
+    }
+
+    pub(super) fn sample(&self, clock: (f32, f32, f32), initial: f32) -> (Option<f32>, bool) {
+        let (time, born, life) = clock;
+        let age = time - born;
+        if life <= age {
+            return (None, true);
+        }
+        let normalized = age * wide::f32x4::splat(life).recip().to_array()[0];
+        let mut value = None;
+        if self.window[0] <= normalized && normalized < self.window[1] {
+            let progress = ((normalized - self.window[0]) * self.inverses[0]).clamp(0.0, 1.0);
+            let start = initial * self.ends[0];
+            value = Some(start + smooth(progress) * (initial - start));
+        }
+        if self.window[2] <= normalized && normalized < self.window[3] {
+            let progress = ((normalized - self.window[2]) * self.inverses[1]).clamp(0.0, 1.0);
+            let delta = initial * self.ends[1] - initial;
+            value = Some(initial + smooth(progress) * delta);
+        }
+        (value, false)
+    }
+}
+
 impl Simple {
     pub(super) fn value(&self, clock: (f32, f32, f32), initial: f32, current: f32) -> Option<f32> {
         let (time, born, life) = clock;
@@ -98,6 +152,51 @@ impl Random {
 mod tests {
     use super::*;
     use crate::dmx::{Element, Value};
+
+    #[test]
+    fn fade_and_decay_matches_native_normalization_curves_and_both_death_rules() {
+        let cases: Vec<serde_json::Value> =
+            serde_json::from_str(include_str!("../../tests/data/alpha_fade_decay_native_samples.json")).unwrap();
+        assert_eq!(cases.len(), 480);
+        for (index, case) in cases.iter().enumerate() {
+            let keys = ["start_fade_in_time", "end_fade_in_time", "start_fade_out_time", "end_fade_out_time"];
+            let mut attrs: Vec<_> = keys
+                .iter()
+                .enumerate()
+                .map(|(i, key)| ((*key).into(), Value::Float(case["window"][i].as_f64().unwrap() as f32)))
+                .collect();
+            attrs.push(("start_alpha".into(), Value::Float(case["ends"][0].as_f64().unwrap() as f32)));
+            attrs.push(("end_alpha".into(), Value::Float(case["ends"][1].as_f64().unwrap() as f32)));
+            let operator =
+                Operator { function: "Alpha Fade and Decay".into(), params: Element { attrs, ..Default::default() } };
+            let fade = FadeDecay::compile(&operator);
+            for (i, actual) in fade.window.iter().enumerate() {
+                assert_eq!(actual.to_bits(), (case["normalized_window"][i].as_f64().unwrap() as f32).to_bits());
+            }
+            for lane in 0..4 {
+                let clock = (
+                    case["time"].as_f64().unwrap() as f32,
+                    case["births"][lane].as_f64().unwrap() as f32,
+                    case["lifetimes"][lane].as_f64().unwrap() as f32,
+                );
+                let (value, dead) = fade.sample(clock, case["initial"][lane].as_f64().unwrap() as f32);
+                let value = value.unwrap_or(case["current"][lane].as_f64().unwrap() as f32);
+                assert_eq!(
+                    value.to_bits(),
+                    (case["expected"][lane].as_f64().unwrap() as f32).to_bits(),
+                    "case{index} lane{lane}"
+                );
+                let marked =
+                    |key: &str| case[key].as_array().unwrap().iter().any(|v| v.as_u64().unwrap() as usize == lane);
+                assert_eq!(dead, marked("killed"), "fade death case{index} lane{lane}");
+                assert_eq!(
+                    crate::sim::cull::lifespan_expired(clock),
+                    marked("lifespan_killed"),
+                    "lifespan case{index} lane{lane}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn random_fades_match_native_quarter_powers_bias_and_active_random_slots() {

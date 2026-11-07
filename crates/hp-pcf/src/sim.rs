@@ -8,6 +8,7 @@ mod batch;
 mod color;
 mod common;
 mod control;
+mod cull;
 mod emission;
 mod forces;
 mod model;
@@ -433,6 +434,7 @@ impl Init {
 
 #[derive(Clone, Debug, PartialEq)]
 enum Op {
+    Decay,
     FieldRemap(remap::Scalar),
     AlphaSimple(alpha::Simple),
     BoneLock(model::Lock),
@@ -443,7 +445,8 @@ enum Op {
     CullRandom { start: f32, end: f32, exponent: f32, percentage: f32 },
     Movement { gravity: V3, drag: f32 },
     AlphaRandom(alpha::Random),
-    FadeAndDecay { start: f32, end: f32, in0: f32, in1: f32, out0: f32, out1: f32 },
+    FadeAndDecay(alpha::FadeDecay),
+    FadeTracer { start: f32, end: f32, in0: f32, in1: f32, out0: f32, out1: f32 },
     RadiusScale(radius::Scale),
     ColorFade { color: [f32; 3], t0: f32, t1: f32, ease: bool },
     RotationBasic,
@@ -494,6 +497,7 @@ pub struct Plan {
     trace_schedule: Vec<usize>,
     child_schedule: Vec<usize>,
     decay_schedule: Vec<usize>,
+    requires_order_invariance: bool,
     child_points: Vec<control::ChildPoints>,
     point_traces: Vec<control::PointTrace>,
     max: usize,
@@ -597,6 +601,7 @@ impl Plan {
             trace_schedule: Vec::new(),
             child_schedule: Vec::new(),
             decay_schedule: Vec::new(),
+            requires_order_invariance: def.renderers.iter().any(|op| op.function.eq_ignore_ascii_case("render_rope")),
             child_points: Vec::new(),
             point_traces: Vec::new(),
             max: (def.max_particles as usize).min(MAX_PREVIEW_PARTICLES),
@@ -647,10 +652,7 @@ impl Plan {
                 p.op_schedule.extend(std::iter::repeat_n(schedule, p.ops.len() - first));
                 p.trace_schedule.extend(std::iter::repeat_n(schedule, p.point_traces.len() - traces));
                 p.child_schedule.extend(std::iter::repeat_n(schedule, p.child_points.len() - children));
-                if matches!(
-                    op.function.to_ascii_lowercase().as_str(),
-                    "lifespan decay" | "alpha fade and decay" | "alpha fade and decay for tracers"
-                ) {
+                if op.function.eq_ignore_ascii_case("alpha fade and decay for tracers") {
                     p.decay_schedule.push(schedule);
                 }
             }
@@ -892,9 +894,7 @@ impl Plan {
             "movement basic" => {
                 Op::Movement { gravity: v(op, "gravity", [0.0; 3]), drag: f(op, "drag", 0.0).clamp(0.0, 1.0) }
             }
-            "lifespan decay" => {
-                return;
-            }
+            "lifespan decay" => Op::Decay,
             "alpha fade in random" => Op::AlphaRandom(alpha::Random::compile(op, false)),
             "alpha fade out random" => Op::AlphaRandom(alpha::Random::compile(op, true)),
             "alpha fade in simple" => {
@@ -903,7 +903,8 @@ impl Plan {
             "alpha fade out simple" => {
                 Op::AlphaSimple(alpha::Simple { out: true, span: f(op, "proportional fade out time", 0.25) })
             }
-            "alpha fade and decay" | "alpha fade and decay for tracers" => Op::FadeAndDecay {
+            "alpha fade and decay" => Op::FadeAndDecay(alpha::FadeDecay::compile(op)),
+            "alpha fade and decay for tracers" => Op::FadeTracer {
                 start: f(op, "start_alpha", 1.0),
                 end: f(op, "end_alpha", 0.0),
                 in0: f(op, "start_fade_in_time", 0.0),
@@ -1637,7 +1638,7 @@ struct ParticleOpState {
 fn operate(
     plan: &Plan,
     operator_states: &[common::State],
-    particles: &mut [Particle],
+    particles: &mut Vec<Particle>,
     points: &Points,
     dt: f32,
     world: &dyn Environment,
@@ -1652,7 +1653,13 @@ fn operate(
         *context =
             ParticleOpState { alpha: part.base_alpha, color: part.base_color, old: part.pos, ..Default::default() };
     }
+    if particles.iter().any(|particle| particle.dead) {
+        cull::compact(particles, particle_states, plan.requires_order_invariance, |particle| particle.dead);
+    }
     for (k, op) in plan.ops.iter().enumerate() {
+        if particles.is_empty() {
+            break;
+        }
         let state = operator_states[plan.op_schedule[k]];
         if !state.active() {
             continue;
@@ -1661,6 +1668,7 @@ fn operate(
             control::apply_lock(lock, &mut lock_states[k], particles, points, time, dt, state.strength, simd_random);
             continue;
         }
+        let mut has_dead = false;
         for (part, context) in particles.iter_mut().zip(particle_states.iter_mut()) {
             let life = if part.life > 0.0 { part.life } else { 1.0 };
             let t = (part.age / life).clamp(0.0, 1.0);
@@ -1673,6 +1681,7 @@ fn operate(
             let before_pos = part.pos;
             let before_vel = part.vel;
             match op {
+                Op::Decay => part.dead |= cull::lifespan_expired((time, part.born, part.life)),
                 Op::FieldRemap(remap) => {
                     let current = |field| {
                         if field == Field::Alpha {
@@ -1762,7 +1771,18 @@ fn operate(
                         alpha_written = true;
                     }
                 }
-                Op::FadeAndDecay { start, end, in0, in1, out0, out1 } => {
+                Op::FadeAndDecay(fade) => {
+                    let (value, dead) =
+                        fade.sample((time, part.born, part.life), part.initial_values[Field::Alpha as usize]);
+                    part.dead |= dead;
+                    if let Some(value) = value {
+                        part.alpha = value;
+                        alpha = value;
+                        alpha_written = false;
+                        part.alpha_add = 0.0;
+                    }
+                }
+                Op::FadeTracer { start, end, in0, in1, out0, out1 } => {
                     let mut a = 1.0;
                     if t < *in1 && in1 > in0 {
                         a = lerp(*start, 1.0, ((t - in0) / (in1 - in0)).clamp(0.0, 1.0));
@@ -1936,7 +1956,7 @@ fn operate(
                 }
             }
             alpha_written |= match op {
-                Op::FadeAndDecay { .. } => true,
+                Op::FadeTracer { .. } => true,
                 Op::Scalar(remap) => remap.field == Field::Alpha,
                 Op::NoiseScalar { field, .. } | Op::OscScalar { field, .. } | Op::Ramp { field, .. } => {
                     *field == Field::Alpha
@@ -1960,7 +1980,11 @@ fn operate(
                 }
             }
 
+            has_dead |= part.dead;
             *context = ParticleOpState { alpha, alpha_written, color, color_written, old, acceleration };
+        }
+        if has_dead {
+            cull::compact(particles, particle_states, plan.requires_order_invariance, |particle| particle.dead);
         }
     }
     for (part, context) in particles.iter_mut().zip(particle_states.iter()) {

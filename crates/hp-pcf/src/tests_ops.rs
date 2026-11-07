@@ -48,6 +48,62 @@ fn run(def: &SystemDef, points: &Points, seconds: f32) -> Sim {
 struct FloorTrace;
 
 #[test]
+fn decay_compacts_at_its_operator_slot_and_ropes_keep_emission_order() {
+    for (renderer, expected) in [("render_animated_sprites", [13.0, 11.0]), ("render_rope", [11.0, 13.0])] {
+        let mut definition = system(
+            "ordered-culling",
+            vec![burst(4)],
+            vec![],
+            vec![
+                op("Lifespan Decay", vec![]),
+                op(
+                    "Remap Scalar",
+                    vec![
+                        ("input field", Value::Int(3)),
+                        ("output field", Value::Int(0)),
+                        ("input minimum", fl(0.0)),
+                        ("input maximum", fl(16.0)),
+                        ("output minimum", fl(0.0)),
+                        ("output maximum", fl(16.0)),
+                    ],
+                ),
+            ],
+        );
+        definition.renderers = vec![op(renderer, vec![])];
+        let mut sim = Sim::new(Arc::new(Plan::new(&definition)), 17);
+        sim.step_at(0.0, &Points::at([0.0; 3]), &[], 4);
+        for (index, particle) in sim.particles.iter_mut().enumerate() {
+            particle.radius = 10.0 + index as f32;
+            particle.life = if index % 2 == 0 { 0.0 } else { 1.0 };
+        }
+        sim.step_at(0.1, &Points::at([0.0; 3]), &[], 4);
+        assert_eq!(sim.particles.iter().map(|p| p.pos[0]).collect::<Vec<_>>(), expected, "{renderer}");
+    }
+}
+
+#[test]
+fn fade_and_decay_matches_native_frames_with_overlaps_gates_and_previous_alpha_writes() {
+    let definitions = crate::parse_file(include_bytes!("../tests/data/alpha_fade_decay_live_cases.pcf")).unwrap();
+    let frames: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/alpha_fade_decay_live_native_samples.json")).unwrap();
+    assert_eq!(frames.len(), 49);
+    for index in 0..12 {
+        let name = format!("hp_spritecard_fade{index}");
+        let mut definition = definitions.iter().find(|d| d.name == name).unwrap().clone();
+        definition.operators.truncate(definition.operators.len() - 2);
+        let plan = Arc::new(Plan::new(&definition));
+        assert!(plan.unsupported.is_empty());
+        let mut sim = Sim::new(plan, 17);
+        for (frame, sample) in frames.iter().enumerate() {
+            sim.step_at(sample["dt"].as_f64().unwrap() as f32, &Points::unparented([0.0; 3]), &[], 1);
+            assert_eq!(sim.particles.len(), 1);
+            let expected = sample["alpha"][index].as_f64().unwrap() as f32;
+            assert_eq!(sim.particles[0].alpha.to_bits(), expected.to_bits(), "{name} frame{frame}");
+        }
+    }
+}
+
+#[test]
 fn fractional_sequence_attributes_match_native_initializers_remapping_and_ramps() {
     let definitions = crate::parse_file(include_bytes!("../tests/data/sequence_scalars_live_cases.pcf")).unwrap();
     let frames: Vec<serde_json::Value> =
