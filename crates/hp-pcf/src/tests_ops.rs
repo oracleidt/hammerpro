@@ -72,6 +72,58 @@ fn simple_alpha_fades_match_native_frames_including_order_gates_and_strength() {
 }
 
 #[test]
+fn random_alpha_fades_match_native_frames_with_absolute_timing_bias_and_operator_order() {
+    let mut definitions = crate::parse_file(include_bytes!("../tests/data/alpha_random_live_cases.pcf")).unwrap();
+    // Readback resets position X, then copies alpha into it, avoiding cancellation against the previous frame.
+    for definition in &mut definitions {
+        definition.operators.retain(|operator| !operator.function.eq_ignore_ascii_case("Remap Scalar"));
+    }
+    let frames: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/alpha_random_live_native_samples.json")).unwrap();
+    assert_eq!(frames.len(), 149);
+    for index in 0..12 {
+        let name = format!("hp_spritecard_randomalpha{index}");
+        let plan = Arc::new(Plan::new(definitions.iter().find(|definition| definition.name == name).unwrap()));
+        assert!(plan.unsupported.is_empty());
+        let mut sim = Sim::new(plan, 17);
+        for (frame, sample) in frames.iter().enumerate() {
+            sim.step_at(sample["dt"].as_f64().unwrap() as f32, &Points::unparented([0.0; 3]), &[], 1);
+            assert_eq!(sim.particles.len(), 1);
+            let expected = sample["alpha"][index].as_f64().unwrap() as f32;
+            assert_eq!(sim.particles[0].alpha.to_bits(), expected.to_bits(), "{name} frame{frame}");
+        }
+    }
+}
+
+#[test]
+fn random_alpha_distributions_match_native_frames_across_every_random_stratum() {
+    let mut definitions = crate::parse_file(include_bytes!("../tests/data/alpha_random_pool_cases.pcf")).unwrap();
+    // Readback resets position X, then copies alpha into it, avoiding cancellation against the previous frame.
+    for definition in &mut definitions {
+        definition.operators.retain(|operator| !operator.function.eq_ignore_ascii_case("Remap Scalar"));
+    }
+    let frames: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/alpha_random_pool_native_samples.json")).unwrap();
+    assert_eq!(frames.len(), 149);
+    for index in 0..6 {
+        let name = format!("hp_spritecard_poolalpha{index}");
+        let plan = Arc::new(Plan::new(definitions.iter().find(|definition| definition.name == name).unwrap()));
+        assert!(plan.unsupported.is_empty());
+        let mut sim = Sim::new(plan, 17);
+        for (frame, sample) in frames.iter().enumerate() {
+            sim.step_at(sample["dt"].as_f64().unwrap() as f32, &Points::unparented([0.0; 3]), &[], 4096);
+            assert_eq!(sim.particles.len(), 4096);
+            let expected = sample["max_alpha"][index].as_f64().unwrap() as f32;
+            assert_eq!(
+                sim.particles.iter().map(|particle| particle.alpha).max_by(f32::total_cmp).unwrap().to_bits(),
+                expected.to_bits(),
+                "{name} frame{frame}"
+            );
+        }
+    }
+}
+
+#[test]
 fn moving_control_points_sample_each_birth_time_for_box_sphere_ring_and_path() {
     let cases: [(&str, &[u8], &str); 4] = [
         (
@@ -1695,7 +1747,7 @@ fn pre_aged_particles_start_part_way_through_their_life() {
 }
 
 #[test]
-fn random_fades_and_color_fades_ease_in_and_out_by_default() {
+fn random_fade_in_always_uses_the_native_smooth_curve_and_color_fades_ease_by_default() {
     let fade = |ease: Option<bool>| {
         let mut attrs = vec![
             ("fade in time min", fl(1.0)),
@@ -1713,7 +1765,7 @@ fn random_fades_and_color_fades_ease_in_and_out_by_default() {
         )
     };
     let quarter = |ease| run(&fade(ease), &Points::at([0.0; 3]), 0.25).particles[0].alpha;
-    assert!((quarter(Some(false)) - 0.25).abs() < 0.03, "linear");
+    assert_eq!(quarter(Some(false)).to_bits(), quarter(None).to_bits(), "fade-in has no native ease toggle");
     assert!((quarter(None) - 0.156).abs() < 0.03, "eased by default: {}", quarter(None));
     assert!((quarter(Some(true)) - quarter(None)).abs() < 1e-4);
     let def = system(

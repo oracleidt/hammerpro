@@ -34,7 +34,7 @@ impl Stream {
     }
 }
 
-fn quarter_power(mut value: f32, quarters: i32) -> f32 {
+pub(super) fn quarter_power(mut value: f32, quarters: i32) -> f32 {
     let powers = quarters.unsigned_abs();
     let mut result = 1.0;
     if powers & 3 != 0 {

@@ -447,8 +447,7 @@ enum Op {
     Spatial(spatial::SpatialOp),
     CullRandom { start: f32, end: f32, exponent: f32, percentage: f32 },
     Movement { gravity: V3, drag: f32 },
-    FadeIn { min: f32, max: f32, proportional: bool, ease: bool },
-    FadeOut { min: f32, max: f32, proportional: bool, ease: bool },
+    AlphaRandom(alpha::Random),
     FadeAndDecay { start: f32, end: f32, in0: f32, in1: f32, out0: f32, out1: f32 },
     RadiusScale { t0: f32, t1: f32, s0: f32, s1: f32, bias: f32, ease: bool },
     ColorFade { color: [f32; 3], t0: f32, t1: f32, ease: bool },
@@ -894,18 +893,8 @@ impl Plan {
             "lifespan decay" => {
                 return;
             }
-            "alpha fade in random" => Op::FadeIn {
-                min: f(op, "fade in time min", 0.25).max(0.0),
-                max: f(op, "fade in time max", 0.25).max(0.0),
-                proportional: b(op, "proportional 0/1", true),
-                ease: b(op, "ease in and out", true),
-            },
-            "alpha fade out random" => Op::FadeOut {
-                min: f(op, "fade out time min", 0.25).max(0.0),
-                max: f(op, "fade out time max", 0.25).max(0.0),
-                proportional: b(op, "proportional 0/1", true),
-                ease: b(op, "ease in and out", true),
-            },
+            "alpha fade in random" => Op::AlphaRandom(alpha::Random::compile(op, false)),
+            "alpha fade out random" => Op::AlphaRandom(alpha::Random::compile(op, true)),
             "alpha fade in simple" => {
                 Op::AlphaSimple(alpha::Simple { out: false, span: f(op, "proportional fade in time", 0.25) })
             }
@@ -1109,8 +1098,6 @@ pub struct Particle {
     base_radius: f32,
     base_color: [f32; 3],
     base_alpha: f32,
-    fade_in: f32,
-    fade_out: f32,
     rotation_speed: f32,
     pub yaw: f32,
     radius_scale: f32,
@@ -1286,8 +1273,6 @@ impl Sim {
                 base_radius: plan.radius,
                 base_color: plan.color,
                 base_alpha: plan.alpha,
-                fade_in: 0.0,
-                fade_out: 0.0,
                 rotation_speed: plan.rotation_speed,
                 yaw: 0.0,
                 radius_scale: 1.0,
@@ -1481,13 +1466,6 @@ impl Sim {
             }
         }
         for part in batch.iter_mut() {
-            for op in &plan.ops {
-                match op {
-                    Op::FadeIn { min, max, .. } => part.fade_in = self.rng.range(*min, *max),
-                    Op::FadeOut { min, max, .. } => part.fade_out = self.rng.range(*min, *max),
-                    _ => {}
-                }
-            }
             if !part.life.is_finite() || part.life < 0.0 {
                 part.life = 1.0;
             }
@@ -1747,18 +1725,16 @@ fn operate(
                         alpha_written = true;
                     }
                 }
-                Op::FadeIn { proportional, ease: smooth, .. } => {
-                    let span = if *proportional { part.fade_in } else { part.fade_in / life };
-                    if span > 0.0 {
-                        let x = (t / span).clamp(0.0, 1.0);
-                        alpha *= if *smooth { ease(x) } else { x };
-                    }
-                }
-                Op::FadeOut { proportional, ease: smooth, .. } => {
-                    let span = if *proportional { part.fade_out } else { part.fade_out / life };
-                    if span > 0.0 {
-                        let x = ((1.0 - t) / span).clamp(0.0, 1.0);
-                        alpha *= if *smooth { ease(x) } else { x };
+                Op::AlphaRandom(fade) => {
+                    if let Some(value) = fade.value(
+                        (time, part.born, part.life),
+                        part.seed,
+                        state.random_offset,
+                        part.initial_values[Field::Alpha as usize],
+                    ) {
+                        alpha = value;
+                        part.alpha_add = 0.0;
+                        alpha_written = true;
                     }
                 }
                 Op::FadeAndDecay { start, end, in0, in1, out0, out1 } => {
@@ -1941,7 +1917,7 @@ fn operate(
                 }
             }
             alpha_written |= match op {
-                Op::FadeIn { .. } | Op::FadeOut { .. } | Op::FadeAndDecay { .. } => true,
+                Op::FadeAndDecay { .. } => true,
                 Op::Scalar(remap) => remap.field == Field::Alpha,
                 Op::NoiseScalar { field, .. } | Op::OscScalar { field, .. } | Op::Ramp { field, .. } => {
                     *field == Field::Alpha

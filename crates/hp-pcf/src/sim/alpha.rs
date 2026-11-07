@@ -1,3 +1,10 @@
+use super::{Operator, b, f, lerp, random, simd_random};
+
+fn smooth(progress: f32) -> f32 {
+    let square = progress * progress;
+    square * 3.0 - (progress * 2.0) * square
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct Simple {
     pub out: bool,
@@ -17,15 +24,126 @@ impl Simple {
         }
         let inverse = wide::f32x4::splat(self.span).recip().to_array()[0];
         let progress = ((if self.out { age - threshold } else { age }) * inverse).clamp(0.0, 1.0);
-        let square = progress * progress;
-        let smooth = square * 3.0 - (progress * 2.0) * square;
-        Some(if self.out { ((1.0 - smooth) * initial).min(current) } else { smooth * initial })
+        let factor = smooth(progress);
+        Some(if self.out { ((1.0 - factor) * initial).min(current) } else { factor * initial })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct Random {
+    out: bool,
+    spans: [f32; 2],
+    quarters: i32,
+    proportional: bool,
+    ease: bool,
+    coefficient: f32,
+}
+
+impl Random {
+    pub(super) fn compile(op: &Operator, out: bool) -> Self {
+        let (minimum, maximum, exponent) = if out {
+            ("fade out time min", "fade out time max", "fade out time exponent")
+        } else {
+            ("fade in time min", "fade in time max", "fade in time exponent")
+        };
+        let mut spans = [f(op, minimum, 0.25), f(op, maximum, 0.25)];
+        if out && spans == [0.0; 2] {
+            spans = [f32::EPSILON; 2];
+        }
+        let bias = f(op, "fade bias", 0.5);
+        let bias = if bias == 0.0 { 0.5 } else { bias };
+        let inverse = wide::f32x4::splat(bias).recip().to_array()[0];
+        Self {
+            out,
+            spans,
+            quarters: (f(op, exponent, 1.0) * 4.0) as i32,
+            proportional: b(op, "proportional 0/1", true),
+            ease: b(op, "ease in and out", true),
+            coefficient: ((inverse + inverse) - (inverse * inverse) * bias) - 2.0,
+        }
+    }
+
+    pub(super) fn value(&self, clock: (f32, f32, f32), seed: u32, offset: u32, initial: f32) -> Option<f32> {
+        let (time, born, life) = clock;
+        let random = simd_random::quarter_power(random::sample(seed.wrapping_add(offset)), self.quarters);
+        let span = lerp(self.spans[0], self.spans[1], random);
+        let age = time - born;
+        let age = if self.proportional {
+            let normalized = age * wide::f32x4::splat(life).recip().to_array()[0];
+            if self.out { normalized } else { normalized.clamp(0.0, 1.0) }
+        } else {
+            age
+        };
+        let endpoint = if self.proportional { 1.0 } else { life };
+        let threshold = if self.out { endpoint - span } else { span };
+        let active = if self.out { age > threshold } else { age < threshold };
+        if !active {
+            return None;
+        }
+        let denominator = if self.out { endpoint - threshold } else { span };
+        let inverse = wide::f32x4::splat(denominator).recip().to_array()[0];
+        let progress = ((if self.out { age - threshold } else { age }) * inverse).clamp(0.0, 1.0);
+        Some(if !self.out {
+            smooth(progress) * initial
+        } else if self.ease {
+            (initial + smooth(progress) * (0.0 - initial)).max(0.0)
+        } else {
+            let factor = progress / (self.coefficient * (1.0 - progress) + 1.0);
+            (1.0 - factor) * initial
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dmx::{Element, Value};
+
+    #[test]
+    fn random_fades_match_native_quarter_powers_bias_and_active_random_slots() {
+        let cases: Vec<serde_json::Value> =
+            serde_json::from_str(include_str!("../../tests/data/alpha_random_operator_native_samples.json")).unwrap();
+        assert_eq!(cases.len(), 480);
+        for (index, case) in cases.iter().enumerate() {
+            let out = case["out"].as_bool().unwrap();
+            let name = if out { "Alpha Fade Out Random" } else { "Alpha Fade In Random" };
+            let key = if out { "fade out time" } else { "fade in time" };
+            let operator = Operator {
+                function: name.into(),
+                params: Element {
+                    kind: "DmeParticleOperator".into(),
+                    name: name.into(),
+                    attrs: vec![
+                        (format!("{key} min"), Value::Float(case["span"][0].as_f64().unwrap() as f32)),
+                        (format!("{key} max"), Value::Float(case["span"][1].as_f64().unwrap() as f32)),
+                        (format!("{key} exponent"), Value::Float(case["exponent"].as_f64().unwrap() as f32)),
+                        ("proportional 0/1".into(), Value::Bool(case["proportional"].as_bool().unwrap())),
+                        ("ease in and out".into(), Value::Bool(case["ease"].as_bool().unwrap())),
+                        ("fade bias".into(), Value::Float(case["bias"].as_f64().unwrap() as f32)),
+                    ],
+                },
+            };
+            let fade = Random::compile(&operator, out);
+            for lane in 0..4 {
+                let current = case["current"][lane].as_f64().unwrap() as f32;
+                let actual = fade
+                    .value(
+                        (
+                            case["time"].as_f64().unwrap() as f32,
+                            case["births"][lane].as_f64().unwrap() as f32,
+                            case["lifetimes"][lane].as_f64().unwrap() as f32,
+                        ),
+                        (case["seed"].as_u64().unwrap() as u32)
+                            .wrapping_add(case["ids"][lane].as_u64().unwrap() as u32),
+                        case["offset"].as_u64().unwrap() as u32,
+                        case["initial"][lane].as_f64().unwrap() as f32,
+                    )
+                    .unwrap_or(current);
+                let expected = case["expected"][lane].as_f64().unwrap() as f32;
+                assert_eq!(actual.to_bits(), expected.to_bits(), "case{index} lane{lane}");
+            }
+        }
+    }
 
     #[test]
     fn simple_fades_match_native_curves_windows_and_initial_alpha() {
