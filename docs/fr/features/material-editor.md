@@ -48,6 +48,8 @@ Chaque matériau a un emplacement :
 | **Tous les paramètres** | Montre aussi les paramètres que lisent les autres shaders. Désactivé par défaut : seulement les paramètres de la famille du shader actuel. |
 | **Chercher un paramètre** | Filtre les paramètres de la page par clé ou par description. |
 
+Les matériaux qui utilisent le shader `Water_DX9_HDR` sont aussi reconnus comme de l’eau.
+
 La colonne de gauche liste les pages : **Texture de base**, **Transparence**, **Relief (bump)**, **Détail**, **Reflets**, **Phong**, **Lumière de contour**, **Auto-illumination**, **Éclairage et surface**, **Balancement (arbres)**, **Eau**, **Réfraction**, **Sprite**, **Options de compilation**, **Autres paramètres**. Les pages qui ont des paramètres définis affichent leur nombre en gras ; les pages sans rien pour ce shader sont masquées.
 
 Avec Lightmapped_4WayBlend, **Texture de base** liste aussi les paramètres du mélange à 4 textures : `$basetexture3`, `$basetexture4`, `$textureN_lumstart` et `$textureN_lumend`, `$textureN_blendstart` et `$textureN_blendend`, `$lumblendfactorN`, `$textureN_uvscale` et `$textureN_blendmode` ; **Relief (bump)** liste `$textureN_bumpblendfactor`. Les vues 3D les suivent (voir [Mélanges à 4 textures](displacement-tool.md#mélanges-à-4-textures-lightmapped_4wayblend)).

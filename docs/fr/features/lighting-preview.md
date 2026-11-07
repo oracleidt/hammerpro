@@ -35,6 +35,7 @@ Les entités `light`, `light_spot`, `light_environment` et `light_dynamic` écla
 - **Ombres des lumières** : toutes les lumières ponctuelles et spots en vue projettent des ombres, les plus brillantes d'abord, si bien qu'une lumière n'éclaire jamais à travers un mur (VRAD fait l'ombre de chaque lumière). **Outils > Options... > Rendu > Lumières avec ombres** (`render.light_shadows`) en fixe le nombre : de 0 à 64, 16 par défaut, 0 pour le soleil seul ; au-delà de 8 lumières les cartes d'ombre sont plus grossières (256 pixels par face au lieu de 512). Une lumière qui attend ses cartes d'ombre reste noire au lieu de fuir. Les cartes d'ombre ne sont redessinées que quand une lumière ou la scène change. Les faces de brush des textures d'outil qui bloquent la lumière (nodraw, `toolsblocklight`) projettent des ombres même masquées.
 - Les props sont éclairés par les mêmes lumières, le même soleil et la même lumière du ciel que les brushes, au pixel près.
 - Avec **Relief (normal maps)** activé (par défaut), les normal maps des matériaux donnent leur relief aux surfaces.
+- Un matériau avec `$nodiffusebumplighting 1` conserve un éclairage diffus plat, tandis que sa normal map déforme toujours les reflets des cubemaps. Son éclairage précalculé utilise une lightmap plate.
 
 ## Aperçu de l'éclairage précalculé (Ctrl+F5)
 

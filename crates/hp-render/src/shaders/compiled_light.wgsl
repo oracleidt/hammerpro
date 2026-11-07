@@ -187,12 +187,12 @@ fn fs_compiled(in: ClOut) -> @location(0) vec4<f32> {
     }
     let unlit = (material.flags & M_UNLIT) != 0u;
     var light = vec3<f32>(1.0);
-    if bumped && cl_bumped(in) {
+    if bumped && bump_diffuse() && cl_bumped(in) {
         light = cl_light_bumped(in, bump, detail.rgb);
     } else {
         light = cl_light(in);
     }
-    let projected = projector_light(in.world, en);
+    let projected = projector_light(in.world, select(n, en, bump_diffuse()));
     if cl.mode == 1u {
         light += pow(projected, vec3<f32>(1.0 / 2.2));
     } else {

@@ -413,6 +413,7 @@ fn material_uniform(desc: Option<&MaterialDesc>, env_cube: u32) -> MaterialUnifo
                 | if b.ssbump { BUMP_SS } else { 0 }
                 | if b.texture2.is_some() { BUMP_TWO } else { 0 }
                 | if four { BUMP_FOUR } else { 0 }
+                | if b.diffuse { 0 } else { BUMP_NO_DIFFUSE }
         }),
         bump_layers: d.bump.and_then(|b| b.blend4).map_or(0, pack_bump_layers),
         self_illum: self_illum_uniform(d.self_illum.as_ref()),
@@ -519,6 +520,7 @@ const BUMP_ON: u32 = 1;
 const BUMP_SS: u32 = 2;
 const BUMP_TWO: u32 = 4;
 const BUMP_FOUR: u32 = 8;
+const BUMP_NO_DIFFUSE: u32 = 16;
 
 fn pack_bump_layers(f: [f32; 4]) -> u32 {
     f.iter().enumerate().fold(0, |acc, (i, v)| {
@@ -4377,6 +4379,7 @@ mod tests {
             texture2: Some(TexId::WHITE),
             blend4: None,
             ssbump: true,
+            diffuse: true,
             uv: [f32::NAN, 0.0, f32::INFINITY, 0.25],
             scroll: [f32::NAN, 1000.0],
         };
@@ -4390,6 +4393,11 @@ mod tests {
         );
         assert_eq!(plain.bump_flags, BUMP_ON);
         assert_eq!(plain.bump_layers, 0);
+        let reflection_only = material_uniform(
+            Some(&MaterialDesc { bump: Some(BumpDesc { diffuse: false, ..bump }), ..Default::default() }),
+            u32::MAX,
+        );
+        assert_eq!(reflection_only.bump_flags, BUMP_ON | BUMP_SS | BUMP_TWO | BUMP_NO_DIFFUSE);
     }
 
     #[test]

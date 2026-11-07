@@ -259,6 +259,8 @@ mod tests {
         assert_eq!(w.bottom_material.as_deref(), Some("gm_construct/water_13_beneath"));
         assert_eq!(w.animated, None);
         assert_eq!(w.base_texture, None);
+        let alias = CONSTRUCT.replacen("\"Water\"", "\"Water_DX9_HDR\"", 1);
+        assert_eq!(analyze_water(&mat(&alias)), Some(w), "the game's HDR shader alias is still water");
     }
 
     #[test]

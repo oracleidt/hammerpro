@@ -48,6 +48,8 @@ Each material has a location:
 | **Every parameter** | Also shows the parameters other shaders read. Off by default: only the parameters of the current shader family. |
 | **Search a parameter** | Filters the parameters of the page by key or description. |
 
+Water materials using the `Water_DX9_HDR` shader name are recognized as water too.
+
 The left column lists the pages: **Base texture**, **Transparency**, **Bump map**, **Detail**, **Reflections**, **Phong**, **Rim light**, **Self-illumination**, **Lighting and surface**, **Tree sway**, **Water**, **Refraction**, **Sprite**, **Compile flags**, **Other parameters**. Pages with parameters set show their count in bold; pages the shader has nothing for are hidden.
 
 With Lightmapped_4WayBlend, **Base texture** also lists the 4-way blend parameters: `$basetexture3`, `$basetexture4`, `$textureN_lumstart` and `$textureN_lumend`, `$textureN_blendstart` and `$textureN_blendend`, `$lumblendfactorN`, `$textureN_uvscale` and `$textureN_blendmode`; **Bump map** lists `$textureN_bumpblendfactor`. The 3D views follow them (see [4-way blends](displacement-tool.md#4-way-blends-lightmapped_4wayblend)).

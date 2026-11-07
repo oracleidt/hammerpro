@@ -237,6 +237,9 @@ fn normal_maps_light_the_preview_lights() {
     assert!(px(&bumped, 40, 100)[0] > px(&plain, 40, 100)[0] + 5, "toward the light");
     assert!(px(&bumped, 160, 100)[0] + 5 < px(&plain, 160, 100)[0], "away from the light");
     assert_eq!(px(&off, 40, 100), px(&plain, 40, 100));
+    wall_material(&mut r, Some(BumpDesc { diffuse: false, ..BumpDesc::new(n) }));
+    let reflection_only = shot(&mut r, RenderMode::Lit, on(), "lit_no_diffuse_bump");
+    assert_eq!(reflection_only.2, plain.2, "disabling diffuse bump keeps the original lighting");
 }
 
 #[test]

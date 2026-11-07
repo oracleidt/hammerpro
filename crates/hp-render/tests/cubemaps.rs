@@ -310,6 +310,58 @@ fn models_reflect_the_nearest_probe() {
     assert_eq!(e, a);
 }
 
+#[test]
+fn disabling_diffuse_bump_keeps_the_normal_mapped_reflection() {
+    let Some((device, queue)) = gpu() else {
+        eprintln!("no GPU adapter available: test skipped");
+        return;
+    };
+    let mut r = Renderer::new(&device, &queue);
+    room(&mut r, MIRROR, NO_CUBEMAP);
+    let faces = faces_of(
+        8,
+        [[1.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0]],
+    );
+    let cube = r
+        .create_cubemap_image(&CubemapImage {
+            size: 8,
+            faces: std::array::from_fn(|i| faces[i].as_slice()),
+            origin: None,
+        })
+        .unwrap();
+    let normal = r.create_texture(&TextureUpload {
+        width: 2,
+        height: 2,
+        format: TexFormat::Rgba8Linear,
+        levels: vec![[255u8, 128, 128, 255].repeat(4)],
+    });
+    let mut capture = |bump, name| {
+        r.set_material(
+            MIRROR,
+            &MaterialDesc {
+                texture: Some(TexId::WHITE),
+                tint: [0.0, 0.0, 0.0, 1.0],
+                bump,
+                envmap: Some(EnvmapDesc { cubemap: Some(cube), ..Default::default() }),
+                ..Default::default()
+            },
+        );
+        r.set_view_options(1, ViewOptions { cubemaps: true, normal_maps: true, ..Default::default() });
+        let view = ViewParams { mode: RenderMode::Lit, ..down() };
+        r.render_view(1, &view, &Overlay::default());
+        bake(&mut r);
+        r.render_view(1, &view, &Overlay::default());
+        save(&r, name)
+    };
+    let flat = capture(None, "reflection_flat_normal");
+    let bumped = capture(Some(BumpDesc::new(normal)), "reflection_bumped_normal");
+    let reflection_only = capture(Some(BumpDesc { diffuse: false, ..BumpDesc::new(normal) }), "reflection_only_normal");
+    let (f, b) = (px(&flat, SIZE / 2, SIZE / 2), px(&bumped, SIZE / 2, SIZE / 2));
+    assert!(f[1] > 150 && f[0] < 30, "flat normal reflects the green ceiling: {f:?}");
+    assert!(b[0] > 150 && b[1] < 30, "tilted normal changes the reflected face: {b:?}");
+    assert_eq!(reflection_only.2, bumped.2, "the diffuse flag must not flatten reflections");
+}
+
 fn compiled_floor(r: &mut Renderer, cube: u16) {
     let v = |x: f32, y: f32| CompiledVertex {
         pos: [x, y, -100.0],

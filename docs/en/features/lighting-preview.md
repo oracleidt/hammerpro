@@ -35,6 +35,7 @@ The `light`, `light_spot`, `light_environment` and `light_dynamic` entities ligh
 - **Light shadows**: every point and spot light in view casts shadows, the brightest first, so a light never shines through a wall (VRAD shadows every light). **Tools > Options... > Rendering > Shadowed lights** (`render.light_shadows`) sets how many: 0 to 64, 16 by default, 0 for the sun only; past 8 lights the shadow maps are coarser (256 pixels a face instead of 512). A light still waiting for its shadow maps stays dark instead of leaking. Shadow maps are drawn again only when a light or the scene changes. Brush faces of tool textures that block the light (nodraw, `toolsblocklight`) cast shadows even when hidden.
 - Props are lit by the same lights, sun and sky light as the brushes, per pixel.
 - With **Relief (normal maps)** on (default), the normal maps of the materials give the surfaces their relief.
+- A material with `$nodiffusebumplighting 1` keeps a flat diffuse response while its normal map still shapes cubemap reflections. Baked lighting uses a flat lightmap for that material.
 
 ## Baked lighting preview (Ctrl+F5)
 

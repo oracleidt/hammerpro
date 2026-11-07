@@ -414,7 +414,7 @@ impl ShaderKind {
 
 pub fn shader_base_name(name: &str) -> String {
     const SUFFIXES: &[&str] =
-        &["_hdr_dx9", "_dx90", "_dx95", "_dx9", "_dx81", "_dx80", "_dx8", "_dx70", "_dx7", "_dx60", "_dx6"];
+        &["_hdr_dx9", "_dx9_hdr", "_dx90", "_dx95", "_dx9", "_dx81", "_dx80", "_dx8", "_dx70", "_dx7", "_dx60", "_dx6"];
     let lower = name.trim().to_ascii_lowercase();
     let mut base = lower.as_str();
     base = base.strip_prefix("sdk_").unwrap_or(base);

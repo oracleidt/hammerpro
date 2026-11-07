@@ -47,7 +47,11 @@ fn classify(name: &str, base: &str, dx_level: u32, hdr: bool) -> Section {
     else {
         return Section::Unrelated;
     };
-    if let Some(level) = suffix.strip_prefix("hdr_").and_then(parse_dx_level) {
+    if let Some(level) = suffix
+        .strip_prefix("hdr_")
+        .and_then(parse_dx_level)
+        .or_else(|| suffix.strip_suffix("_hdr").and_then(parse_dx_level))
+    {
         return if hdr && level >= 90 && dx_level >= 90 {
             Section::ActiveShader { hdr: true }
         } else {
@@ -201,5 +205,30 @@ mod tests {
         assert_eq!(parse_dx_level("dx9"), Some(90));
         assert_eq!(parse_dx_level("dx81"), Some(81));
         assert_eq!(parse_dx_level("dx99999999999"), None);
+    }
+
+    #[test]
+    fn water_dx9_hdr_alias_and_sections_match_the_native_fallback_chain() {
+        let alias = parse(r#"Water_DX9_HDR { $normalmap dev/water_normal }"#).unwrap();
+        assert_eq!(alias.shader_kind(), crate::ShaderKind::Water);
+        assert!(alias.is_water());
+        let water = parse(
+            r#"Water {
+                $reflectamount .87 $refractamount .91
+                Water_DX9_HDR { $reflectamount .23 $refractamount .63 }
+                Water_DX90 { $reflectamount .31 $refractamount .41 }
+            }"#,
+        )
+        .unwrap();
+        let ldr = water.resolve_fallbacks(95, false);
+        // Actual Garry's Mod file-material readback: the DX90 section wins in LDR.
+        assert_eq!(ldr.get_f32("$reflectamount"), Some(0.31));
+        assert_eq!(ldr.get_f32("$refractamount"), Some(0.41));
+        assert!(ldr.other_blocks.is_empty());
+        let hdr = water.resolve_fallbacks(95, true);
+        assert_eq!(hdr.get_f32("$reflectamount"), Some(0.23));
+        assert_eq!(hdr.get_f32("$refractamount"), Some(0.63));
+        let dx8 = water.resolve_fallbacks(81, true);
+        assert_eq!(dx8.get_f32("$reflectamount"), Some(0.87));
     }
 }

@@ -185,6 +185,7 @@ pub fn facts_from_vmt_with(
         if opts.bump_all
             || (lightmapped
                 && !shader.starts_with("water")
+                && !flag("$nodiffusebumplighting")
                 && (key("$bumpmap").is_some() || key("$normalmap").is_some()))
         {
             s |= surf::BUMPLIGHT;
@@ -342,6 +343,13 @@ mod tests {
         let bump = facts_from_vmt("LightmappedGeneric", &vmt(&[("$bumpmap", "x")]), Some((512, 256)), None);
         assert!(bump.surf & surf::BUMPLIGHT != 0);
         assert_eq!((bump.width, bump.height), (512, 256));
+        let reflection_only = facts_from_vmt(
+            "LightmappedGeneric",
+            &vmt(&[("$bumpmap", "x"), ("$nodiffusebumplighting", "1")]),
+            None,
+            None,
+        );
+        assert_eq!(reflection_only.surf & (surf::BUMPLIGHT | surf::NOLIGHT), 0);
         let glass = facts_from_vmt("LightmappedGeneric", &vmt(&[("$translucent", "1")]), None, None);
         assert!(glass.contents == contents::WINDOW && glass.surf & surf::TRANS != 0);
         assert_eq!(

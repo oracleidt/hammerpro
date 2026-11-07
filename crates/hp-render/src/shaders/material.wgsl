@@ -81,6 +81,7 @@ const B_ON: u32 = 1u;
 const B_SS: u32 = 2u;
 const B_TWO: u32 = 4u;
 const B_FOUR: u32 = 8u;
+const B_NO_DIFFUSE: u32 = 16u;
 
 const BUMP_BASIS_0: vec3<f32> = vec3<f32>(0.81649661, 0.0, 0.57735026);
 const BUMP_BASIS_1: vec3<f32> = vec3<f32>(-0.40824834, 0.70710677, 0.57735026);
@@ -96,6 +97,10 @@ fn material_tint() -> vec4<f32> {
 fn bump_on() -> bool {
     return (material.bump_flags & B_ON) != 0u && (view.opts.x & OPT_NORMAL_MAPS) != 0u
         && (material.flags & M_UNLIT) == 0u;
+}
+
+fn bump_diffuse() -> bool {
+    return (material.bump_flags & B_NO_DIFFUSE) == 0u;
 }
 
 const BLEND_PAINTED: u32 = 0x40000000u;

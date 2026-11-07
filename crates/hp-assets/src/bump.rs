@@ -25,6 +25,7 @@ pub(crate) struct BumpAnalysis {
     pub blend4: Option<[f32; 4]>,
     pub frame: u32,
     pub ssbump: bool,
+    pub diffuse: bool,
     pub uv: [f32; 4],
     pub scroll: [f32; 2],
 }
@@ -45,7 +46,15 @@ impl BumpAnalysis {
         };
         let texture = ready(&self.texture)?;
         let texture2 = self.texture2.as_deref().and_then(ready);
-        Some(BumpDesc { texture, texture2, blend4: self.blend4, ssbump: self.ssbump, uv: self.uv, scroll: self.scroll })
+        Some(BumpDesc {
+            texture,
+            texture2,
+            blend4: self.blend4,
+            ssbump: self.ssbump,
+            diffuse: self.diffuse,
+            uv: self.uv,
+            scroll: self.scroll,
+        })
     }
 }
 
@@ -59,7 +68,7 @@ pub(crate) fn analyze_bump(mat: &Material) -> Option<BumpAnalysis> {
             | ShaderKind::WorldTwoTextureBlend
             | ShaderKind::VertexLitGeneric
     );
-    if !lit || mat.flag("$nodiffusebumplighting") {
+    if !lit {
         return None;
     }
     let texture = mat.bump_map()?;
@@ -73,6 +82,7 @@ pub(crate) fn analyze_bump(mat: &Material) -> Option<BumpAnalysis> {
         blend4,
         frame,
         ssbump: mat.flag("$ssbump"),
+        diffuse: !mat.flag("$nodiffusebumplighting"),
         uv: texture_transform_of(mat, "$bumptransform"),
         scroll: texture_scroll_of(mat, "$bumptransform"),
     })
@@ -119,9 +129,11 @@ mod tests {
         assert_eq!(s.uv, [2.0, 4.0, -0.5, -1.5]);
         assert!((s.scroll[0] - 1.0).abs() < 1e-6 && s.scroll[1].abs() < 1e-6);
         assert_eq!(s.keys(), ["c/c_ssbump|normal2"]);
-        assert!(
-            bump(r#"LightmappedGeneric { "$basetexture" "a" "$bumpmap" "n" "$nodiffusebumplighting" 1 }"#).is_none()
-        );
+        let reflection_only =
+            bump(r#"LightmappedGeneric { "$basetexture" "a" "$bumpmap" "n" "$nodiffusebumplighting" 1 }"#).unwrap();
+        assert!(!reflection_only.diffuse);
+        assert_eq!(reflection_only.texture, "n");
+        assert!(b.diffuse);
         assert!(bump(r#"UnlitGeneric { "$basetexture" "a" "$bumpmap" "n" }"#).is_none());
         assert!(bump(r#"Water { "$normalmap" "n" }"#).is_none());
         assert!(bump(r#"LightmappedGeneric { "$basetexture" "a" }"#).is_none());

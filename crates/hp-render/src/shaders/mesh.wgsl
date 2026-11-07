@@ -830,8 +830,9 @@ fn fs_mesh(in: VsOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f
     let shaded = mode == MODE_TEXTURED || mode == MODE_TEXTURED_WIRE || mode == MODE_LIT
         || (view.opts.x & OPT_COMPILED_LIGHT) != 0u;
     var bn = n;
-    let bumped = shaded && bump_on();
-    if bumped {
+    let mapped = shaded && bump_on();
+    let bumped = mapped && bump_diffuse();
+    if mapped {
         let base_uv = in.uv * material.inv_tex_size;
         let texel = bump_texel(base_uv, in.alpha, cover);
         var frame = uv_frame(n, in.world, base_uv);
@@ -852,11 +853,15 @@ fn fs_mesh(in: VsOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f
         }
         bn = bump_to_world(v, frame, n);
     }
+    let reflection_normal = bn;
+    if !bumped {
+        bn = n;
+    }
     var env = vec3<f32>(0.0);
     let reflects = shaded && BLEND_MODE != 3u;
     if reflects && env_on() {
-        let bl = length(bn);
-        let en = select(n, bn / bl, bl > 1e-5);
+        let bl = length(reflection_normal);
+        let en = select(n, reflection_normal / bl, bl > 1e-5);
         env = env_reflection(in.world, en, in.cube, in.uv * material.inv_tex_size, albedo.a, in.alpha, vec3<f32>(1.0), false);
     }
     let glow = self_illum_mask(albedo.a, in.uv * material.inv_tex_size);

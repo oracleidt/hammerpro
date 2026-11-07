@@ -338,13 +338,23 @@ pub struct BumpDesc {
     pub texture2: Option<TexId>,
     pub blend4: Option<[f32; 4]>,
     pub ssbump: bool,
+    /// Keep the normal for reflections even when diffuse bump lighting is disabled.
+    pub diffuse: bool,
     pub uv: [f32; 4],
     pub scroll: [f32; 2],
 }
 
 impl BumpDesc {
     pub fn new(texture: TexId) -> Self {
-        Self { texture, texture2: None, blend4: None, ssbump: false, uv: [1.0, 1.0, 0.0, 0.0], scroll: [0.0; 2] }
+        Self {
+            texture,
+            texture2: None,
+            blend4: None,
+            ssbump: false,
+            diffuse: true,
+            uv: [1.0, 1.0, 0.0, 0.0],
+            scroll: [0.0; 2],
+        }
     }
 }
 

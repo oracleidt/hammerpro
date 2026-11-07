@@ -175,7 +175,7 @@ fn fs_baked(in: LmOut) -> @location(0) vec4<f32> {
     }
     let f = lm_face(in.face);
     var light: vec3<f32>;
-    if bumped && (f.flags & LM_BUMPED) != 0u {
+    if bumped && bump_diffuse() && (f.flags & LM_BUMPED) != 0u {
         light = baked_light_bumped(f, in.lm, bump, detail.rgb);
     } else {
         light = baked_light(f, in.lm);
