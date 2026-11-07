@@ -97,7 +97,7 @@ pub(super) fn icon(action: Action) -> Option<&'static str> {
         Action::ToggleGrid3d => Some("⊞"),
         Action::ToggleSkyPreview | Action::ToggleSkybox3d => Some("☁"),
         Action::ToggleDispMesh2d => Some("#"),
-        Action::ToggleDispWalkable => Some("🗻"),
+        Action::ToggleDispWalkable => Some("🚶"),
         Action::ToggleNodraw => Some("🚫"),
         Action::ToggleCollisionOnly => Some("🔲"),
         _ => None,

@@ -24,10 +24,7 @@ pub fn action_check(state: &AppState, action: Action) -> Check {
 }
 
 pub fn tool_icon(tool: hp_app::ToolId) -> &'static str {
-    match tool {
-        hp_app::ToolId::Displacement => "🗻",
-        other => other.icon(),
-    }
+    tool.icon()
 }
 
 pub fn action_icon(action: Action) -> Option<&'static str> {
