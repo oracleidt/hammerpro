@@ -1129,12 +1129,11 @@ fn material_core(
         params.extend(baked);
         wrote = w;
     }
-    let texture_key = model.texture_key.filter(|_| model.bakes());
+    let resolved = state.assets.fs().and_then(|fs| fs.material(material));
     for (k, v) in &params {
-        let set = if texture_key.is_some_and(|t| t.eq_ignore_ascii_case(k)) {
-            hp_vmt::set_param_everywhere_in_text(&text, k, v)
-        } else {
-            hp_vmt::set_param_in_text(&text, k, v)
+        let set = match &resolved {
+            Some(resolved) => hp_vmt::set_param_with_fallbacks_in_text(&text, k, v, resolved),
+            None => hp_vmt::set_param_everywhere_in_text(&text, k, v),
         };
         text = set.map_err(|e| tf!("tex.me.failed", material, e))?;
     }
@@ -1437,6 +1436,83 @@ mod tests {
         assert_eq!(parse_detail_scale(None), [4.0, 4.0]);
         assert_eq!(format_detail_scale([4.0, 4.0]), "4");
         assert_eq!(format_detail_scale([2.0, 3.5]), "[2 3.5]");
+    }
+
+    #[test]
+    fn editing_material_uvs_updates_dx_hdr_overrides_and_preserves_the_source_backup() {
+        let _lang = hp_app::testing::lang_lock();
+        crate::register_translations();
+        let root =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/uv-layer-overrides").join(format!(
+                "{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+            ));
+        std::fs::create_dir_all(root.join("materials/fixture")).unwrap();
+        let source = r#"// authored UVs
+VertexLitGeneric {
+    "$basetexture" "fixture/color" "$detail" "fixture/detail"
+    "$basetexturetransform" "scale 1 1" "$detailtexturetransform" "scale 1 1" "$detailscale" "4"
+    VertexLitGeneric_DX8 { "$basetexturetransform" "scale 2 2" "$detailtexturetransform" "scale 2 2" "$detailscale" "8" }
+    VertexLitGeneric_DX9 { // preserve this comment
+        "$basetexturetransform" "scale 3 3" "$detailtexturetransform" "scale 3 3" "$detailscale" "12"
+    }
+    VertexLitGeneric_DX9_HDR { "$basetexturetransform" "scale 5 5" "$detailtexturetransform" "scale 5 5" "$detailscale" "20" }
+    Proxies { TextureScroll { textureScrollVar "$basetexturetransform" textureScrollRate 0.2 } }
+}"#;
+        for (index, (layer, patch)) in
+            [(Layer::Base, false), (Layer::Detail, false), (Layer::Base, true), (Layer::Detail, true)]
+                .into_iter()
+                .enumerate()
+        {
+            let name = format!("fixture/edited{index}");
+            let path = root.join(format!("materials/{name}.vmt"));
+            let base = root.join(format!("materials/fixture/base{index}.vmt"));
+            let authored = if patch {
+                std::fs::write(&base, source).unwrap();
+                format!(
+                    r#"// authored UVs
+Patch {{
+    include "materials/fixture/base{index}.vmt"
+    replace {{ // preserve this comment
+        "$basetexturetransform" "scale 11 11"
+        VertexLitGeneric_DX9 {{ "$detailtexturetransform" "scale 13 13" "$detailscale" "24" }}
+    }}
+}}"#
+                )
+            } else {
+                source.to_owned()
+            };
+            std::fs::write(&path, &authored).unwrap();
+            let fs = hp_fs::GameFs::empty();
+            fs.add_game_dir(&root).unwrap();
+            let mut state = hp_app::testing::test_state();
+            state.assets = Box::new(hp_app::testing::MockAssets::with_fs(fs));
+            let model = LayerModel::of(&resolved_material(&state, &name).unwrap(), layer);
+            assert!(!model.bakes());
+            let edit = LayerValues {
+                tr: Transform { scale: [7.0, 9.0], translate: [0.25, -0.5], ..Default::default() },
+                detail_scale: [16.0, 16.0],
+            };
+            let changes = changes(&model.values, &edit, layer, model.key);
+            let done = material_core(&mut state, &name, &model, &edit, &changes).unwrap();
+            let material = state.assets.fs().unwrap().material(&name).unwrap();
+            for (dx, hdr) in [(80, false), (95, false), (95, true)] {
+                let effective = material.resolve_fallbacks(dx, hdr);
+                for (key, value) in &changes {
+                    assert_eq!(effective.get(key), Some(value.as_str()), "{layer:?} DX{dx} HDR{hdr}: {key}");
+                }
+            }
+            assert_eq!(std::fs::read_to_string(done.backup.unwrap()).unwrap(), authored);
+            let saved = std::fs::read_to_string(path).unwrap();
+            assert!(saved.contains("// authored UVs") && saved.contains("// preserve this comment"));
+            assert!(material.proxies.is_some());
+            if patch {
+                assert_eq!(std::fs::read_to_string(base).unwrap(), source, "included materials are never edited");
+            } else {
+                assert!(saved.contains("textureScrollRate 0.2"));
+            }
+        }
     }
 
     fn mat(text: &str) -> hp_vmt::Material {

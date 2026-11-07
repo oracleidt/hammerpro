@@ -409,9 +409,9 @@ pub fn set_param_in_text(vmt_text: &str, key: &str, value: &str) -> Result<Strin
 pub fn set_param_everywhere_in_text(vmt_text: &str, key: &str, value: &str) -> Result<String, VmtError> {
     validate(key, Some(value))?;
     let original = parse(vmt_text)?;
-    if original.is_patch() {
-        return set_param_in_text(vmt_text, key, value);
-    }
+    let seeded = original.is_patch().then(|| set_param_in_text(vmt_text, key, value)).transpose()?;
+    let vmt_text = seeded.as_deref().unwrap_or(vmt_text);
+    let original = parse(vmt_text)?;
     fn set_nested(block: &mut hp_kv::Block, key: &str, value: &str) -> bool {
         let mut found = false;
         if block.get(key).is_some() {
@@ -436,7 +436,7 @@ pub fn set_param_everywhere_in_text(vmt_text: &str, key: &str, value: &str) -> R
     for block in expected.other_blocks.iter_mut().chain(expected.proxies.as_mut()) {
         nested |= set_nested(block, key, value);
     }
-    let top = original.has(key) || !nested;
+    let top = !original.is_patch() && (original.has(key) || !nested);
     if top {
         expected.set(key, value);
     }
@@ -446,6 +446,89 @@ pub fn set_param_everywhere_in_text(vmt_text: &str, key: &str, value: &str) -> R
     };
     let mut edits = if top { set_edits(vmt_text, shader, key, value) } else { Vec::new() };
     nested_edits(vmt_text, shader, key, value, &mut edits);
+    Ok(finish(apply_edits(vmt_text, edits), &expected).text)
+}
+
+/// Set a material parameter and its overrides, including sections inherited by a
+/// Patch. `resolved` must retain the DX/HDR sections (resolve includes, not fallbacks).
+/// Only the edited VMT is changed; included source materials remain untouched.
+pub fn set_param_with_fallbacks_in_text(
+    vmt_text: &str,
+    key: &str,
+    value: &str,
+    resolved: &Material,
+) -> Result<String, VmtError> {
+    let mut text = set_param_everywhere_in_text(vmt_text, key, value)?;
+    if !parse(vmt_text)?.is_patch() {
+        return Ok(text);
+    }
+    fn paths<'a>(block: &'a hp_kv::Block, key: &str, mut path: Vec<&'a str>, out: &mut Vec<Vec<&'a str>>) {
+        if block.name.eq_ignore_ascii_case("proxies") {
+            return;
+        }
+        path.push(&block.name);
+        if block.get(key).is_some() {
+            out.push(path.clone());
+        }
+        for child in &block.children {
+            paths(child, key, path.clone(), out);
+        }
+    }
+    let mut overrides = Vec::new();
+    for block in &resolved.other_blocks {
+        paths(block, key, Vec::new(), &mut overrides);
+    }
+    for path in overrides {
+        let path: Vec<_> = std::iter::once("insert").chain(path).collect();
+        text = set_param_at_path(&text, &path, key, value)?;
+    }
+    Ok(text)
+}
+
+fn set_param_at_path(vmt_text: &str, path: &[&str], key: &str, value: &str) -> Result<String, VmtError> {
+    let mut expected = parse(vmt_text)?.to_block();
+    let mut target = &mut expected;
+    for name in path {
+        let index = match target.children.iter().position(|child| child.name.eq_ignore_ascii_case(name)) {
+            Some(index) => index,
+            None => {
+                target.children.push(hp_kv::Block::new(*name));
+                target.children.len() - 1
+            }
+        };
+        target = &mut target.children[index];
+    }
+    crate::material::set_unique(&mut target.props, key, value);
+    let expected = Material::from_block(expected);
+    let tree = build_tree(vmt_text);
+    let Some(mut block) = tree.children.first() else {
+        return Ok(finish(None, &expected).text);
+    };
+    let mut missing = None;
+    for (index, name) in path.iter().enumerate() {
+        match block.children.iter().find(|child| child.name(vmt_text).eq_ignore_ascii_case(name)) {
+            Some(child) => block = child,
+            None => {
+                missing = Some(index);
+                break;
+            }
+        }
+    }
+    let edits = if let Some(index) = missing {
+        let mut child = hp_kv::Block::new(*path.last().unwrap());
+        child.props.push((key.to_owned(), value.to_owned()));
+        for name in path[index..path.len() - 1].iter().rev() {
+            let mut parent = hp_kv::Block::new(*name);
+            parent.children.push(child);
+            child = parent;
+        }
+        let text = write(&Material::from_block(child));
+        let indent = indent_for(vmt_text, block);
+        let lines: Vec<_> = text.trim_end().lines().map(|line| format!("{indent}{line}")).collect();
+        vec![insert_lines(vmt_text, block.content_end(), &lines, text.trim_end())]
+    } else {
+        set_edits(vmt_text, block, key, value)
+    };
     Ok(finish(apply_edits(vmt_text, edits), &expected).text)
 }
 
@@ -475,6 +558,32 @@ mod tests {
         assert_eq!(m.block("LightmappedGeneric_DX9").unwrap().get("$bumpmap"), Some("v/baked"));
         let out = set_param_everywhere_in_text(text, "%hpbumpsource", "a/b_normal").unwrap();
         assert_eq!(parse(&out).unwrap().get("%hpbumpsource"), Some("a/b_normal"));
+    }
+
+    #[test]
+    fn patch_edits_update_inherited_and_explicit_fallback_overrides_without_touching_the_include() {
+        let base = r#"VertexLitGeneric {
+            "$detailscale" "4"
+            VertexLitGeneric_DX9 { "$detailscale" "8" "$detail" "original/detail" }
+            VertexLitGeneric_DX9_HDR { "$detailscale" "12" }
+        }"#;
+        for text in [
+            "// keep\nPatch { include base }",
+            "// keep\nPatch { include base insert { VertexLitGeneric_DX9 { \"$detailscale\" \"20\" } } replace { \"$detailscale\" \"24\" } }",
+            "// keep\nPatch\r\n{\r\n\tinclude base\r\n\treplace { VertexLitGeneric_DX9_HDR { \"$detailscale\" \"28\" } }\r\n}\r\n",
+        ] {
+            let load = |_: &str| Some(base.to_owned());
+            let resolved = crate::resolve_patch(&parse(text).unwrap(), &load).unwrap();
+            let out = set_param_with_fallbacks_in_text(text, "$detailscale", "16", &resolved).unwrap();
+            assert!(out.starts_with("// keep"), "{out}");
+            assert_eq!(parse(&out).unwrap().get("include"), Some("base"));
+            let result = crate::resolve_patch(&parse(&out).unwrap(), &load).unwrap();
+            for hdr in [false, true] {
+                let result = result.resolve_fallbacks(95, hdr);
+                assert_eq!(result.get("$detailscale"), Some("16"), "HDR{hdr}: {out}");
+                assert_eq!(result.get("$detail"), Some("original/detail"), "unrelated branch data stays intact");
+            }
+        }
     }
 
     const SRC: &str = "// Header comment\r\n\"LightmappedGeneric\"\r\n{\r\n\t\"$basetexture\" \"concrete/floor01\" // the base\r\n\t$surfaceprop concrete\r\n\t\"$envmap\" \"env_cubemap\" [!$X360]\r\n\r\n\t\"Proxies\"\r\n\t{\r\n\t\t\"Sine\" { \"resultvar\" \"$alpha\" }\r\n\t}\r\n}\r\n";

@@ -15,7 +15,7 @@ mod real_data_tests;
 pub use alpha::{AlphaUsage, BlendMode, quantize_alpha_reference};
 pub use edit::{
     EditOutcome, remove_param_in_text, remove_param_in_text_detailed, set_param_everywhere_in_text, set_param_in_text,
-    set_param_in_text_detailed,
+    set_param_in_text_detailed, set_param_with_fallbacks_in_text,
 };
 pub use error::VmtError;
 pub use fallback::DEFAULT_DX_LEVEL;
