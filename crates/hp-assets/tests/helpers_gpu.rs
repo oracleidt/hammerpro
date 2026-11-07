@@ -244,3 +244,168 @@ fn overlays_and_ropes_follow_the_document() {
     am.sync_scene(&mut doc, gfx, &o);
     assert_eq!(objects(gfx), all, "the sun entity box only");
 }
+
+#[test]
+fn prop_geometry_preview_is_textured_editable_and_keeps_the_model_browser_image() {
+    use hp_app::state::{PreviewCamera, PropPreviewRequest};
+    use hp_editor::prop_export::{PropGeometry, PropTri};
+    let Some(mut gfx) = gfx() else {
+        eprintln!("no GPU: skipped");
+        return;
+    };
+    let root = fake_install("prop_geometry_gpu");
+    let models = root.join("garrysmod/models/hp_parity");
+    let materials = root.join("garrysmod/materials/hp_parity");
+    std::fs::create_dir_all(&models).unwrap();
+    std::fs::create_dir_all(&materials).unwrap();
+    for (name, bytes) in [
+        ("hitboxes.mdl", include_bytes!("../../hp-mdl/tests/data/hitboxes.mdl").as_slice()),
+        ("hitboxes.vvd", include_bytes!("../../hp-mdl/tests/data/hitboxes.vvd").as_slice()),
+        ("hitboxes.dx90.vtx", include_bytes!("../../hp-mdl/tests/data/hitboxes.dx90.vtx").as_slice()),
+    ] {
+        std::fs::write(models.join(name), bytes).unwrap();
+    }
+    std::fs::write(materials.join("gray.vmt"), br#"VertexLitGeneric { "$basetexture" "hp_parity/green" }"#).unwrap();
+    std::fs::write(materials.join("green.vtf"), common::vtf(32, [10, 240, 10, 255])).unwrap();
+    let mut assets = AssetManager::new(&fake_settings(&root));
+    assert!(assets.wait_until_mounted(Duration::from_secs(10)));
+    let ctx = egui::Context::default();
+    let model = "models/hp_parity/hitboxes.mdl";
+    let camera = PreviewCamera { yaw_deg: -90.0, pitch_deg: 50.0, ..Default::default() };
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let model_texture = loop {
+        assets.begin_frame(&ctx, Some(&mut gfx));
+        let texture = assets.model_preview(&mut gfx, model, &camera, [320, 240]);
+        let stats = assets.stats();
+        if let Some(texture) = texture
+            && stats.queued_jobs == 0
+            && stats.pending_uploads == 0
+            && stats.materials_loading == 0
+            && assets.preview_texture_counts().0 >= 1
+            && assets.preview_texture_counts().1 == 0
+        {
+            break texture;
+        }
+        assert!(Instant::now() < deadline, "model preview did not load");
+        std::thread::sleep(Duration::from_millis(2));
+    };
+    assets.model_preview(&mut gfx, model, &camera, [320, 240]);
+    let model_before = assets.read_preview_rgba8().unwrap();
+    image::save_buffer(
+        scratch("png").join("prop_browser_fixture.png"),
+        &model_before.2,
+        model_before.0,
+        model_before.1,
+        image::ColorType::Rgba8,
+    )
+    .unwrap();
+    assert!(
+        model_before.2.chunks_exact(4).filter(|p| u16::from(p[1]) > u16::from(p[0]) + 30).count() > 20,
+        "the model-browser fixture must really be drawn"
+    );
+    let vertices = [
+        DVec3::new(-64.0, 0.0, -64.0),
+        DVec3::new(64.0, 0.0, -64.0),
+        DVec3::new(64.0, 0.0, 64.0),
+        DVec3::new(-64.0, 0.0, 64.0),
+    ];
+    let geometry = Arc::new(PropGeometry {
+        tris: [[0, 1, 2], [0, 2, 3]]
+            .map(|indices| PropTri {
+                material: "test/brick".into(),
+                pos: indices.map(|i| vertices[i]),
+                normal: [DVec3::NEG_Y; 3],
+                uv: indices.map(|i| [if i == 0 || i == 3 { 0.0 } else { 1.0 }, if i < 2 { 1.0 } else { 0.0 }]),
+                disp: None,
+            })
+            .to_vec(),
+        disps: Vec::new(),
+        pieces: Vec::new(),
+        origin: DVec3::ZERO,
+    });
+    let mut params = view(DVec3::new(0.0, -240.0, 20.0), DVec3::ZERO);
+    params.size = [320, 240];
+    let overlay = Overlay::default();
+    let request = PropPreviewRequest { geometry: &geometry, params: &params, overlay: &overlay, revision: 1 };
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let texture = loop {
+        assets.begin_frame(&ctx, Some(&mut gfx));
+        let texture = assets.prop_preview(&mut gfx, &request).unwrap();
+        if assets.stats().queued_jobs == 0
+            && assets.stats().pending_uploads == 0
+            && assets.stats().materials_loading == 0
+            && assets.preview_texture_counts().0 >= 2
+            && assets.preview_texture_counts().1 == 0
+        {
+            break texture;
+        }
+        assert!(Instant::now() < deadline, "prop preview did not load");
+        std::thread::sleep(Duration::from_millis(2));
+    };
+    assert_ne!(texture, model_texture, "two independent render targets");
+    let prop_before = assets.read_prop_preview_rgba8().unwrap();
+    image::save_buffer(
+        scratch("png").join("prop_geometry_base.png"),
+        &prop_before.2,
+        prop_before.0,
+        prop_before.1,
+        image::ColorType::Rgba8,
+    )
+    .unwrap();
+    assert!(
+        prop_before.2.chunks_exact(4).filter(|p| u16::from(p[0]) > u16::from(p[1]) + 30).count() > 1000,
+        "textured red geometry must be visible"
+    );
+    assert_eq!(assets.read_preview_rgba8().unwrap(), model_before, "the model-browser image is untouched");
+    assert_eq!(assets.model_preview(&mut gfx, model, &camera, [320, 240]), Some(model_texture));
+    assert_eq!(assets.read_preview_rgba8().unwrap(), model_before, "the original model scene was restored too");
+    let mut overlay = Overlay::default();
+    overlay.lines_on_top.push(hp_render::OverlayLine {
+        a: [-50.0, -1.0, 0.0],
+        b: [50.0, -1.0, 0.0],
+        color: [1.0, 1.0, 0.0, 1.0],
+    });
+    assets.prop_preview(&mut gfx, &PropPreviewRequest { overlay: &overlay, revision: 2, ..request }).unwrap();
+    let changed = assets.read_prop_preview_rgba8().unwrap();
+    assert_ne!(changed.2, prop_before.2, "editing the overlay updates the preview without rebuilding the model");
+    assert_eq!(assets.read_preview_rgba8().unwrap(), model_before);
+    image::save_buffer(
+        scratch("png").join("prop_geometry_preview.png"),
+        &changed.2,
+        changed.0,
+        changed.1,
+        image::ColorType::Rgba8,
+    )
+    .unwrap();
+    assert_eq!(gfx.renderer.stats().objects, 0, "the map renderer receives no preview geometry");
+
+    // Loading a changed prop material through the browser first must not consume
+    // the prop target's invalidation while its geometry/camera/revision stay equal.
+    assets.prop_preview(&mut gfx, &request).unwrap();
+    std::fs::write(
+        root.join("garrysmod/materials/test/brick.vmt"),
+        br#"LightmappedGeneric { "$basetexture" "hp_parity/green" }"#,
+    )
+    .unwrap();
+    assets.invalidate_material("test/brick");
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        assets.begin_frame(&ctx, Some(&mut gfx));
+        assets.model_preview(&mut gfx, model, &camera, [320, 240]);
+        assets.prop_preview(&mut gfx, &request).unwrap();
+        if assets.stats().queued_jobs == 0
+            && assets.stats().pending_uploads == 0
+            && assets.stats().materials_loading == 0
+        {
+            break;
+        }
+        assert!(Instant::now() < deadline, "changed prop material did not load");
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    let updated = assets.read_prop_preview_rgba8().unwrap();
+    assert!(
+        updated.2.chunks_exact(4).filter(|p| u16::from(p[1]) > u16::from(p[0]) + 30).count() > 1000,
+        "the prop target must redraw after the browser applied its material changes"
+    );
+    assert_eq!(assets.read_preview_rgba8().unwrap(), model_before);
+}

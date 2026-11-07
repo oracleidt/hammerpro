@@ -12,9 +12,16 @@ use crate::dialogs::MapDialog;
 use crate::util::{enter_pressed, escape_pressed, icon_title, plural};
 
 pub mod bake;
+mod creation;
+mod export;
+mod viewport;
+use creation::CreateDialog;
+mod materials;
+pub use export::prepare_creation;
+pub use materials::stage as prepare_material_files;
 
 pub(crate) fn dialogs() -> Vec<Box<dyn MapDialog>> {
-    vec![Box::new(UnpropDialog::default()), Box::new(OptionsDialog), Box::new(CreateDialog)]
+    vec![Box::new(UnpropDialog::default()), Box::new(OptionsDialog), Box::new(CreateDialog::default())]
 }
 
 pub fn lod_options(s: hp_app::settings::ModelLodSettings) -> hp_meshio::lod::LodOptions {
@@ -33,6 +40,7 @@ pub struct PreparedProp {
     pub baked: Option<(usize, (u32, u32), bool)>,
     pub options: hp_editor::prop_export::PropOptions,
     pub game_dir: std::path::PathBuf,
+    pub target: Option<export::ExportTarget>,
 }
 
 impl PreparedProp {
@@ -108,6 +116,7 @@ pub fn prepare_prop(
         baked,
         options,
         game_dir: game_dir.to_path_buf(),
+        target: None,
     })
 }
 
@@ -163,6 +172,13 @@ fn creation_options(ui: &mut egui::Ui, state: &mut AppState) {
         s.propper_collision = true;
         changed = true;
     }
+    if s.propper_physics && s.propper_static {
+        s.propper_static = false;
+        changed = true;
+    }
+    ui.add_enabled_ui(!s.propper_physics, |ui| {
+        changed |= ui.checkbox(&mut s.propper_static, "$staticprop").changed();
+    });
     ui.add_enabled_ui(!s.propper_physics, |ui| {
         changed |= ui.checkbox(&mut s.propper_collision, t!("propper.collision")).changed();
     });
@@ -177,38 +193,6 @@ fn creation_options(ui: &mut egui::Ui, state: &mut AppState) {
     changed |= hp_app::widgets::model_lod_ui(ui, &mut s.model_lod);
     if changed {
         state.settings_dirty = true;
-    }
-}
-
-struct CreateDialog;
-
-impl MapDialog for CreateDialog {
-    fn show(&mut self, ctx: &egui::Context, state: &mut AppState) {
-        if !state.runtime.lab.propper_create_open {
-            return;
-        }
-        let mut create = false;
-        let mut cancel = false;
-        let ready = !state.doc.selected_solid_ids().is_empty();
-        let modal = egui::Modal::new(egui::Id::unique("hp_propper_create")).show(ctx, |ui| {
-            ui.set_width(420.0);
-            ui.heading(t!("propper.create_title"));
-            creation_options(ui, state);
-            if !ready {
-                ui.label(RichText::new(t!("propper.create_select")).color(theme::warning()));
-            }
-            ui.separator();
-            ui.horizontal(|ui| {
-                create = ui.add_enabled(ready, egui::Button::new(t!("propper.create"))).clicked();
-                cancel = ui.button(t!("common.cancel")).clicked();
-            });
-        });
-        create |= ready && enter_pressed(ctx, &modal.response);
-        cancel |= modal.should_close();
-        if create || cancel {
-            state.runtime.lab.propper_create_open = false;
-            state.runtime.lab.propper_create_confirmed = create && !cancel;
-        }
     }
 }
 

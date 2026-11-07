@@ -535,6 +535,7 @@ La fenêtre **Construire et enregistrer en contenu** et l'onglet Ressources de l
 | `model_lod.levels` | `4` | Niveaux sous le modèle complet, de 3 à 6. |
 | `model_lod.reduction` | `0.5` | Part des triangles gardée à chaque niveau, de 0,2 à 0,9. |
 | `propper_physics` | `false` | Crée un prop physique mobile depuis des brushes. |
+| `propper_static` | `true` | Compile `$staticprop` et crée un `prop_static` ; décoché, crée un `prop_dynamic`. Désactivé pour les props physiques. |
 | `propper_collision` | `true` | Génère la collision, obligatoire pour les props physiques. |
 | `propper_mass` | `10.0` | Masse physique en kg, de 0,1 à 50000. |
 | `model_keep_params` | `true` | L'import de modèles écrit la normal map, le brillant, l'auto-illumination et le tiling des textures du fichier dans les VMT. |

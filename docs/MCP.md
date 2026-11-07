@@ -835,10 +835,14 @@ Besides the semantic tools, the AI can reach everything you can:
 - `get_settings` and `set_setting` read and change any setting by path
   (`view.fov_deg`, `ui.theme`), validated like the Settings window;
   `list_keybindings` and `set_keybinding` the shortcuts.
-- Propper: `run_action brushes_to_prop` converts the selected brushes and
-  displacements into a static prop (displacements collide through slabs
-  under their surface, blend materials are baked into a texture of the
-  model), `prop_to_brushes` goes back. The levels of detail of every model
+- Propper: `run_action brushes_to_prop` opens the creation window for the
+  selected brushes/displacements. Review its integrated 3D preview, model/export
+  paths, collision generation/manual pieces, `$illumposition`, `$bbox`,
+  `$surfaceprop`, `$staticprop` and `$cdmaterials`, then click Create prop.
+  Defaults include `lab.propper_physics`, `lab.propper_static`,
+  `lab.propper_collision` and `lab.propper_mass`; physics forces collision on and
+  static off. The resulting entity is `prop_static`, `prop_dynamic` or
+  `prop_physics`. `prop_to_brushes` goes back. The levels of detail of every model
   Hammer Pro makes (Propper and the FBX, OBJ, glTF import) are the settings
   `lab.model_lod.enabled`, `lab.model_lod.levels` (3 to 6, default 4) and
   `lab.model_lod.reduction` (0.2 to 0.9, default 0.5); `run_action

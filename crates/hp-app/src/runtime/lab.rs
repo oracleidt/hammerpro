@@ -13,11 +13,27 @@ pub struct LabRuntime {
     pub propper_options_open: bool,
     pub propper_create_open: bool,
     pub propper_create_confirmed: bool,
+    pub propper_create_request: Option<Box<PropCreationRequest>>,
     pub particles: ParticleReport,
     pub particle_preview: ParticlePreviewRuntime,
     pub fly_texture: FlyTextureRuntime,
     pub sniffer: SnifferRuntime,
     pub sound_color: super::soundcolor::SoundColorRuntime,
+}
+
+/// The exact geometry and settings accepted in the prop creation preview.
+#[derive(Clone, Debug)]
+pub struct PropCreationRequest {
+    pub source_serial: u64,
+    pub solid_ids: Vec<hp_editor::Id>,
+    pub geometry: hp_editor::prop_export::PropGeometry,
+    pub options: hp_editor::prop_export::PropOptions,
+    pub directives: hp_editor::prop_export::PropDirectives,
+    pub model: String,
+    pub source_dir: PathBuf,
+    pub destination: PathBuf,
+    pub surface_prop: String,
+    pub lod: crate::settings::ModelLodSettings,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]

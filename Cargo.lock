@@ -2220,6 +2220,7 @@ dependencies = [
  "hp-gma",
  "hp-mdl",
  "hp-meshio",
+ "hp-render",
  "hp-vmf",
  "hp-vmt",
  "hp-vpk",

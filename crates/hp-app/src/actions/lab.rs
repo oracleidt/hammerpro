@@ -187,6 +187,7 @@ pub(super) const TR: TrTable = &[
         "Le modèle a compilé mais les brushes n'ont pas pu être remplacés : {0}",
     ),
     ("shell.undo.convert_to_static_prop", "Convert to static prop", "Conversion en prop statique"),
+    ("shell.undo.convert_to_dynamic_prop", "Convert to dynamic prop", "Conversion en prop dynamique"),
     ("shell.undo.convert_to_physics_prop", "Convert to physics prop", "Conversion en prop physique"),
     ("action.prop_to_brushes", "Convert prop to brushes...", "Convertir le prop en brushes..."),
     ("shell.undo.convert_prop_to_brushes", "Convert prop to brushes", "Conversion du prop en brushes"),

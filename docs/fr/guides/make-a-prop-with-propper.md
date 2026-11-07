@@ -7,7 +7,7 @@ Propper transforme des brushes (et des displacements) en modèle `.mdl`, avec ni
 ## Avant de commencer
 
 - Le dossier du jeu est configuré (**Outils > Options...**, page **Jeu**). Propper compile le modèle avec le `studiomdl` du jeu, trouvé dans son dossier `bin`.
-- Enregistrez votre map une fois : le modèle prend le nom du fichier de la map.
+- Enregistrer la map donne un nom de modèle par défaut ; vous pouvez le modifier dans la fenêtre de création.
 - Les exécutions automatisées (`--script`) ne compilent jamais de modèle, car `studiomdl` écrit dans le jeu.
 
 ## Étape 1 : construire la forme
@@ -35,11 +35,11 @@ La fenêtre rappelle aussi comment le modèle est construit :
 
 1. Sélectionnez les brushes (et displacements) de l'objet.
 2. Choisissez **Outils > Convertir les brushes en prop**.
-3. Dans la fenêtre de création, choisissez le type statique ou physique mobile, la collision, la masse et les LOD, puis **Créer le prop**.
+3. Dans la fenêtre de création, choisissez le chemin/nom du modèle et le dossier exporté. Les onglets Collision, Éclairage et limites et Matériaux permettent de régler les pièces de collision, `$illumposition`, `$bbox`, `$surfaceprop` et `$cdmaterials`. Ajustez leurs poignées dans l’aperçu 3D intégré, choisissez la physique/`$staticprop` et les LOD, puis cliquez sur **Créer le prop**.
 4. La console affiche la préparation (textures de mélange, niveaux de détail, collision), puis la compilation `studiomdl`.
-5. Une fois terminé, les brushes sont remplacés par un `prop_static` ou un `prop_physics` qui utilise `models/hammerpro/<map>_<id>.mdl`, en une seule étape d'annulation : `Ctrl+Z` fait revenir les brushes.
+5. Après compilation et vérification, les brushes sont remplacés par le `prop_static`, `prop_dynamic` ou `prop_physics` choisi, en une étape d’annulation : `Ctrl+Z` les restaure. Si la map a changé pendant la compilation, les fichiers sont exportés mais les brushes sont conservés.
 
-Le modèle est écrit dans le dossier `models\hammerpro\` du jeu, vous pouvez donc tester la map tout de suite. Au moment de publier, **Construire et enregistrer en contenu** le rassemble avec la map (voir [Rassembler le contenu pour une publication](collect-content-for-release.md)).
+Le dossier de contenu exporté contient `models/<chemin choisi>.mdl` et les matériaux sous `materials/<cdmaterials>/`. Il est monté automatiquement dans l’éditeur. Pour utiliser un dossier externe en jeu, installez ou montez ce contenu dans le jeu, ou embarquez-le avec **Construire et enregistrer en contenu** (voir [Rassembler le contenu pour une publication](collect-content-for-release.md)).
 
 ## Le chemin inverse : du prop aux brushes
 

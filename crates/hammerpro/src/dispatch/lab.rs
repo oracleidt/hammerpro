@@ -786,9 +786,11 @@ fn place_imported(app: &mut HammerProApp, imported: &hp_ui_entities::model_impor
 enum PropJob {
     Preparing(Receiver<Result<hp_ui_mapping::propper::PreparedProp, String>>, Vec<hp_editor::Id>),
     Compiling(CompileHandle, Vec<hp_editor::Id>, Box<hp_ui_mapping::propper::PreparedProp>),
+    Exporting(Receiver<Result<hp_ui_mapping::propper::PreparedProp, String>>, Vec<hp_editor::Id>),
 }
 
 fn start_brushes_to_prop(app: &mut HammerProApp, ctx: &egui::Context) {
+    let Some(request) = app.state.runtime.lab.propper_create_request.take() else { return };
     if app.pkg.lab.prop_job.is_some() {
         return;
     }
@@ -796,14 +798,11 @@ fn start_brushes_to_prop(app: &mut HammerProApp, ctx: &egui::Context) {
         app.state.notify(Severity::Warning, t!("lab.prop.sandboxed"));
         return;
     }
-    let solids: Vec<hp_editor::Id> = app
-        .selected()
-        .into_iter()
-        .filter_map(|o| match o {
-            hp_editor::ObjRef::Solid(id) => Some(id),
-            hp_editor::ObjRef::Entity(_) => None,
-        })
-        .collect();
+    if request.source_serial != app.state.doc.revision() {
+        app.state.notify(Severity::Warning, t!("propper.source_changed"));
+        return;
+    }
+    let solids = request.solid_ids.clone();
     if solids.is_empty() {
         app.state.notify(Severity::Warning, t!("lab.prop.select"));
         return;
@@ -816,75 +815,19 @@ fn start_brushes_to_prop(app: &mut HammerProApp, ctx: &egui::Context) {
         app.state.notify(Severity::Warning, t!("lab.prop.no_studiomdl"));
         return;
     }
-    let game_dir = app
-        .state
-        .assets
-        .fs()
-        .and_then(|f| f.game_dir().map(std::path::Path::to_path_buf))
-        .unwrap_or_else(|| root.join("garrysmod"));
-    let stem = app
-        .state
-        .doc
-        .path()
-        .and_then(|p| p.file_stem())
-        .map(|s| s.to_string_lossy().to_ascii_lowercase())
-        .unwrap_or_else(|| "map".to_owned());
-    let mut sorted = solids.clone();
-    sorted.sort_unstable();
-    let mut h: u32 = 0x811c_9dc5;
-    for id in &sorted {
-        for b in id.to_le_bytes() {
-            h = (h ^ u32::from(b)).wrapping_mul(0x0100_0193);
-        }
-    }
-    let clean: String = stem.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_').take(40).collect();
-    let options = app.state.settings.lab.propper_options();
-    let suffix = if options.physics {
-        "_physics"
-    } else if !options.collision {
-        "_visual"
-    } else {
-        ""
-    };
-    let model = format!("hammerpro/{clean}_{h:08x}{suffix}");
-    let mut sizes: std::collections::HashMap<String, (u32, u32)> = std::collections::HashMap::new();
-    let materials: Vec<String> = {
-        let scene = app.state.doc.scene();
-        solids
-            .iter()
-            .filter_map(|id| scene.solid(*id))
-            .flat_map(|n| n.solid.sides.iter().map(|s| s.material.clone()))
-            .collect()
-    };
-    for m in materials {
-        let key = m.replace('\\', "/").to_ascii_lowercase();
-        if sizes.contains_key(&key) {
-            continue;
-        }
-        let size = app
-            .state
-            .assets
-            .material_info(&m)
-            .filter(|i| i.width > 0 && i.height > 0)
-            .map(|i| (i.width, i.height))
-            .unwrap_or((512, 512));
-        sizes.insert(key, size);
-    }
-    let Some(geometry) = hp_editor::prop_export::collect_prop(&app.state.doc, &solids, &|m| {
-        sizes.get(&m.replace('\\', "/").to_ascii_lowercase()).copied().unwrap_or((512, 512))
-    }) else {
-        app.state.notify(Severity::Warning, t!("lab.prop.empty"));
+    let Some(fs) = app.state.assets.fs().cloned() else {
+        app.state.notify(Severity::Warning, t!("lab.prop.no_game"));
         return;
     };
-    let dir = hp_app::settings::Settings::cache_dir().join("propsrc");
-    let fs = app.state.assets.fs().cloned();
-    let lod = app.state.settings.lab.model_lod;
     let (tx, rx) = crossbeam_channel::bounded(1);
     let repaint = ctx.clone();
-    app.state.console.info(tf!("lab.prop.preparing", geometry.tris.len(), format!("models/{model}.mdl")));
+    app.state.console.info(tf!(
+        "lab.prop.preparing",
+        request.geometry.tris.len(),
+        format!("models/{}.mdl", request.model)
+    ));
     std::thread::spawn(move || {
-        let _ =
-            tx.send(hp_ui_mapping::propper::prepare_prop(fs.as_ref(), geometry, &model, lod, options, &dir, &game_dir));
+        let _ = tx.send(hp_ui_mapping::propper::prepare_creation(&fs, *request));
         repaint.request_repaint();
     });
     app.pkg.lab.prop_job = Some(PropJob::Preparing(rx, solids));
@@ -946,16 +889,44 @@ fn poll_prop_job(app: &mut HammerProApp, ctx: &egui::Context) {
                 app.state.notify(Severity::Error, t!("lab.prop.compile_failed"));
                 return;
             }
-            if prepared.pieces == 0 {
-                let path = prepared.game_dir.join(format!("models/{}.phy", prepared.model));
-                if let Err(error) = std::fs::remove_file(&path)
-                    && error.kind() != std::io::ErrorKind::NotFound
-                {
-                    app.state.notify(Severity::Error, tf!("propper.write_failed", error));
+            let (tx, rx) = crossbeam_channel::bounded(1);
+            let repaint = ctx.clone();
+            std::thread::spawn(move || {
+                let mut prepared = *prepared;
+                let result = prepared.finish_creation().map(|()| prepared);
+                let _ = tx.send(result);
+                repaint.request_repaint();
+            });
+            app.pkg.lab.prop_job = Some(PropJob::Exporting(rx, solids));
+        }
+        Some(PropJob::Exporting(rx, solids)) => {
+            let prepared = match rx.try_recv() {
+                Err(crossbeam_channel::TryRecvError::Empty) => {
+                    app.pkg.lab.prop_job = Some(PropJob::Exporting(rx, solids));
                     return;
                 }
+                Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                    app.state.notify(Severity::Error, t!("lab.prop.failed"));
+                    return;
+                }
+                Ok(Err(error)) => {
+                    app.state.notify(Severity::Error, error);
+                    return;
+                }
+                Ok(Ok(prepared)) => prepared,
+            };
+            let game = app.state.assets.fs().and_then(|fs| fs.game_dir());
+            if game != Some(prepared.game_dir.as_path())
+                && !app.state.settings.game.extra_game_dirs.contains(&prepared.game_dir)
+            {
+                app.state.settings.game.extra_game_dirs.push(prepared.game_dir.clone());
+                app.state.settings_dirty = true;
             }
             app.state.assets.remount(&app.state.settings);
+            if prepared.target.as_ref().is_some_and(|target| target.source_serial != app.state.doc.revision()) {
+                app.state.notify(Severity::Warning, t!("propper.exported_map_changed"));
+                return;
+            }
             match app.state.doc.replace_with_prop_options(&solids, &prepared.model, prepared.origin, prepared.options) {
                 Ok(_) => {
                     let done = tf!("lab.prop.done", format!("models/{}.mdl", prepared.model));

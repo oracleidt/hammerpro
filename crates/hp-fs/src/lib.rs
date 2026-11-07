@@ -19,6 +19,7 @@ mod progress;
 mod scan;
 mod scanfmt;
 mod source;
+mod surfaces;
 mod texture;
 
 #[cfg(test)]

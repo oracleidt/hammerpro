@@ -303,6 +303,10 @@ impl AssetManager {
         self.preview.as_ref()?.renderer.read_view_rgba8(0).ok()
     }
 
+    pub fn read_prop_preview_rgba8(&self) -> Option<(u32, u32, Vec<u8>)> {
+        self.preview.as_ref()?.renderer.read_view_rgba8(1).ok()
+    }
+
     pub fn wait_until_mounted(&mut self, timeout: std::time::Duration) -> bool {
         let deadline = std::time::Instant::now() + timeout;
         loop {
@@ -558,6 +562,14 @@ impl hp_app::AssetsApi for AssetManager {
         size_px: [u32; 2],
     ) -> Option<egui::TextureId> {
         self.model_preview_impl(gfx, path, camera, size_px)
+    }
+
+    fn prop_preview(
+        &mut self,
+        gfx: &mut Gfx,
+        request: &hp_app::state::PropPreviewRequest<'_>,
+    ) -> Option<egui::TextureId> {
+        self.prop_preview_impl(gfx, request)
     }
 
     fn entity_bounds(&self, entity: &hp_vmf::Entity) -> Option<hp_geom::Aabb> {

@@ -7,7 +7,7 @@ Propper turns brushes (and displacements) into a real `.mdl` model with levels o
 ## Before you start
 
 - The game folder is set (**Tools > Options...**, page **Game**). Propper compiles the model with the game's own `studiomdl`, found in its `bin` folder.
-- Save your map once: the model is named after the map file.
+- Saving the map gives a useful default model name; you can edit it in the creation window.
 - Automated runs (`--script`) never compile models, because `studiomdl` writes into the game.
 
 ## Step 1: build the shape
@@ -35,11 +35,11 @@ The window also reminds you how the model is built:
 
 1. Select the brushes (and displacements) of the object.
 2. Choose **Tools > Convert brushes to a prop**.
-3. In the creation window, choose Movable physics prop, collision, mass and LOD options, then click Create prop.
+3. In the creation window, choose the model path/name and export folder. Use the Collision, Lighting and bounds, and Materials tabs to configure the collision pieces, `$illumposition`, `$bbox`, `$surfaceprop` and `$cdmaterials`. Adjust their handles in the integrated 3D preview, choose physics/`$staticprop` and LODs, then click **Create prop**.
 4. The console shows the preparation (blend textures, levels of detail, collision), then the `studiomdl` compile.
-5. When it is done, the brushes are replaced by a `prop_static` or `prop_physics` using `models/hammerpro/<map>_<id>.mdl`, in one undo step: `Ctrl+Z` brings the brushes back.
+5. When compilation and validation finish, the brushes are replaced by the chosen `prop_static`, `prop_dynamic` or `prop_physics`, in one undo step: `Ctrl+Z` brings the brushes back. If the map changed during compilation, the exported files are kept and the brushes remain unchanged.
 
-The model is written into the game's `models\hammerpro\` folder, so you can test the map right away. When you publish, **Build and save as content** collects it with the map (see [Collect content for a release](collect-content-for-release.md)).
+The selected export content folder contains `models/<chosen path>.mdl` and the material files under `materials/<cdmaterials>/`. It is mounted automatically in the editor. To use an external folder in game, install or mount that content in the game, or package it with **Build and save as content** (see [Collect content for a release](collect-content-for-release.md)).
 
 ## The way back: prop to brushes
 

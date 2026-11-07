@@ -47,7 +47,7 @@ pub use helpers::HelpersRuntime;
 pub use instances::InstancesRuntime;
 pub use lab::{
     DEFAULT_CAMERA_DISTANCE, DEFAULT_PLAYER_MODEL, FlyTextureOp, FlyTextureRuntime, LabRuntime, LightStyleReport,
-    ParticlePreviewRuntime, PlayerPlace, PlayerState, TrainReport,
+    ParticlePreviewRuntime, PlayerPlace, PlayerState, PropCreationRequest, TrainReport,
 };
 pub use launch::{ContentUse, GameState, LaunchRuntime, MapLoadReport, content_use};
 pub use lighting::{

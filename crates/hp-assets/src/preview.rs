@@ -16,6 +16,8 @@ use crate::queue::Lane;
 use crate::texture::{TexRegistry, TexTarget};
 use crate::util::model_key;
 
+mod geometry;
+
 const VIEW: u32 = 0;
 const MODEL_OBJECT: u32 = 1;
 const WIRE_OBJECT: u32 = 2;
@@ -67,6 +69,7 @@ pub(crate) struct Preview {
     last: Option<(String, PreviewCamera, [u32; 2])>,
     pub needs_render: bool,
     normal_maps: bool,
+    geometry: geometry::GeometryPreview,
 }
 
 impl Preview {
@@ -90,6 +93,7 @@ impl Preview {
             last: None,
             needs_render: true,
             normal_maps: hp_app::runtime::render::render_display().normal_maps,
+            geometry: geometry::GeometryPreview::default(),
         }
     }
 
@@ -174,6 +178,7 @@ impl Preview {
     }
 
     fn reset_materials(&mut self) {
+        self.geometry.invalidate();
         for e in self.textures.map.values() {
             if let Some((id, _)) = e.current {
                 self.renderer.destroy_texture(id);
@@ -682,6 +687,9 @@ impl AssetManager {
             let desc = hp_render::MaterialDesc { envmap: None, ..desc };
             p.renderer.set_material(id, &desc);
         }
+        // Each render target must keep its own invalidation. The model browser
+        // may render first and consume the shared needs_render flag this frame.
+        p.geometry.redraw();
         p.needs_render = true;
     }
 }

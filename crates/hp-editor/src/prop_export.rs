@@ -5,6 +5,9 @@ use hp_geom::{Aabb, DISP_FLAG_NO_PHYSICS, DispMesh};
 
 use crate::{Document, Id, ObjRef};
 
+mod collision;
+pub use collision::EditableCollision;
+
 pub const DISP_THICKNESS: f64 = 8.0;
 const DISP_FLAT_TOLERANCE: f64 = 0.5;
 const MAX_DISP_PIECES: usize = 2048;
@@ -63,13 +66,14 @@ pub struct PropExport {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PropOptions {
     pub physics: bool,
+    pub static_prop: bool,
     pub collision: bool,
     pub mass: f64,
 }
 
 impl Default for PropOptions {
     fn default() -> Self {
-        Self { physics: false, collision: true, mass: 10.0 }
+        Self { physics: false, static_prop: true, collision: true, mass: 10.0 }
     }
 }
 
@@ -77,9 +81,47 @@ impl PropOptions {
     pub fn clamped(self) -> Self {
         Self {
             physics: self.physics,
+            static_prop: self.static_prop && !self.physics,
             collision: self.collision || self.physics,
             mass: if self.mass.is_finite() { self.mass.clamp(0.1, 50_000.0) } else { 10.0 },
         }
+    }
+}
+
+/// QC settings in model-local Source coordinates, shared by the preview and export.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PropDirectives {
+    pub illumposition: Option<DVec3>,
+    pub bbox: Option<Aabb>,
+    pub cdmaterials: String,
+}
+
+impl Default for PropDirectives {
+    fn default() -> Self {
+        Self { illumposition: None, bbox: None, cdmaterials: "/".to_owned() }
+    }
+}
+
+impl PropDirectives {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if self.illumposition.is_some_and(|p| !p.is_finite()) {
+            return Err("The illumination position must contain finite coordinates.");
+        }
+        if self.bbox.is_some_and(|b| !b.min.is_finite() || !b.max.is_finite() || !b.min.cmplt(b.max).all()) {
+            return Err("Each minimum bound must be smaller than its maximum bound.");
+        }
+        let path = self.cdmaterials.trim_matches('/');
+        if !path.is_empty()
+            && path.split('/').any(|part| {
+                part.is_empty()
+                    || part == "."
+                    || part == ".."
+                    || !part.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+            })
+        {
+            return Err("The material path must be relative to the materials folder.");
+        }
+        Ok(())
     }
 }
 
@@ -416,6 +458,17 @@ impl PropGeometry {
         lods: &[PropLod],
         options: PropOptions,
     ) -> PropExport {
+        self.files_with_directives(model_path, surface_prop, lods, options, &PropDirectives::default())
+    }
+
+    pub fn files_with_directives(
+        &self,
+        model_path: &str,
+        surface_prop: &str,
+        lods: &[PropLod],
+        options: PropOptions,
+        directives: &PropDirectives,
+    ) -> PropExport {
         let options = options.clamped();
         let mut materials: Vec<String> = self.tris.iter().map(|t| t.material.clone()).collect();
         materials.sort();
@@ -443,12 +496,26 @@ impl PropGeometry {
             ));
             lod_smds.push(smd_text(&lod.tris));
         }
-        let static_prop = if options.physics { "" } else { "$staticprop\n" };
+        let static_prop = if options.static_prop { "$staticprop\n" } else { "" };
+        let mut extra = String::new();
+        if let Some(p) = directives.illumposition.filter(|p| p.is_finite()) {
+            // studiomdl rotates $illumposition like SMD coordinates. $bbox, in
+            // contrast, is already in the final model coordinate system.
+            let (x, y, z) = conv(p);
+            extra.push_str(&format!("$illumposition {x} {y} {z}\n"));
+        }
+        if let Some(b) = directives.bbox.filter(|b| b.min.is_finite() && b.max.is_finite() && b.min.cmplt(b.max).all())
+        {
+            extra.push_str(&format!("$bbox {} {} {} {} {} {}\n", b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z));
+        }
+        let material_path = directives.cdmaterials.trim_matches('/');
+        let material_path = if material_path.is_empty() { "/" } else { material_path };
         let qc = format!(
             "$modelname \"{model}.mdl\"\n\
              {static_prop}\
              $surfaceprop \"{surface}\"\n\
-             $cdmaterials \"/\"\n\
+             $cdmaterials \"{material_path}\"\n\
+             {extra}\
              $body \"body\" \"{stem}_ref.smd\"\n\
              {lod_qc}\
              $sequence \"idle\" \"{stem}_ref.smd\" fps 1\n\
@@ -498,13 +565,25 @@ impl Document {
         if existing.is_empty() {
             return Err(crate::EditError::Invalid("no solid to convert".to_owned()));
         }
-        let label = if options.physics { "Convert to physics prop" } else { "Convert to static prop" };
+        let label = if options.physics {
+            "Convert to physics prop"
+        } else if options.static_prop {
+            "Convert to static prop"
+        } else {
+            "Convert to dynamic prop"
+        };
         self.tx(label, |doc| {
             doc.delete(&existing.iter().map(|id| ObjRef::Solid(*id)).collect::<Vec<_>>())?;
             let origin = format!("{} {} {}", origin.x.round(), origin.y.round(), origin.z.round());
             let model = format!("models/{}.mdl", model.trim_start_matches('/').trim_end_matches(".mdl"));
             doc.create_point_entity(
-                if options.physics { "prop_physics" } else { "prop_static" },
+                if options.physics {
+                    "prop_physics"
+                } else if options.static_prop {
+                    "prop_static"
+                } else {
+                    "prop_dynamic"
+                },
                 hp_vmf::parse_vec3(&origin).unwrap_or(DVec3::ZERO),
                 &[
                     ("model".to_owned(), model),
@@ -603,6 +682,49 @@ mod tests {
         assert_eq!(e.origin(), Some(DVec3::new(0.0, 0.0, 16.0)));
         assert!(doc.undo(), "one step back restores the box");
         assert!(doc.scene().solid(b).is_some());
+    }
+
+    #[test]
+    fn custom_qc_positions_bounds_material_path_and_static_flag_are_exported() {
+        let mut doc = Document::new_empty();
+        let id = doc.create_solid(box_sides(DVec3::ZERO, DVec3::splat(64.0), "brick/wall"), Owner::World).unwrap();
+        let geometry = collect_prop(&doc, &[id], &|_| (256, 256)).unwrap();
+        let directives = PropDirectives {
+            illumposition: Some(DVec3::new(1.25, -2.5, 30.0)),
+            bbox: Some(Aabb::new(DVec3::new(-12.0, -24.0, -8.0), DVec3::new(16.0, 32.0, 48.0))),
+            cdmaterials: "models/custom/map_props".to_owned(),
+        };
+        assert!(directives.validate().is_ok());
+        let options = PropOptions { static_prop: false, ..Default::default() };
+        let export = geometry.files_with_directives("custom/map_props/arch", "wood", &[], options, &directives);
+        assert!(export.qc.contains("$modelname \"custom/map_props/arch.mdl\""));
+        assert!(export.qc.contains("$illumposition -2.5 -1.25 30\n"));
+        assert!(export.qc.contains("$bbox -12 -24 -8 16 32 48\n"));
+        assert!(export.qc.contains("$cdmaterials \"models/custom/map_props\""));
+        assert!(export.qc.contains("$surfaceprop \"wood\""));
+        assert!(!export.qc.contains("$staticprop"));
+        let entity = doc.replace_with_prop_options(&[id], "custom/map_props/arch", geometry.origin, options).unwrap();
+        assert_eq!(doc.scene().entity(entity).unwrap().entity.classname, "prop_dynamic");
+        assert!(doc.undo());
+        assert!(doc.scene().solid(id).is_some());
+        assert!(doc.scene().entity(entity).is_none());
+        let physics = PropOptions { physics: true, collision: false, ..Default::default() }.clamped();
+        assert!(physics.collision && !physics.static_prop);
+    }
+
+    #[test]
+    fn invalid_manual_prop_directives_are_rejected() {
+        for path in ["../elsewhere", "models/../outside", "a//b", "a\"\n$staticprop", "C:/absolute"] {
+            assert!(PropDirectives { cdmaterials: path.into(), ..Default::default() }.validate().is_err(), "{path}");
+        }
+        assert!(
+            PropDirectives { illumposition: Some(DVec3::splat(f64::NAN)), ..Default::default() }.validate().is_err()
+        );
+        assert!(
+            PropDirectives { bbox: Some(Aabb { min: DVec3::ONE, max: DVec3::ZERO }), ..Default::default() }
+                .validate()
+                .is_err()
+        );
     }
 
     fn hill(doc: &mut Document) -> Id {

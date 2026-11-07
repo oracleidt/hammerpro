@@ -14,6 +14,7 @@ pub struct LabSettings {
     pub unprop_shape: UnpropShape,
     pub model_lod: ModelLodSettings,
     pub propper_physics: bool,
+    pub propper_static: bool,
     pub propper_collision: bool,
     pub propper_mass: f32,
     pub model_keep_params: bool,
@@ -70,6 +71,7 @@ impl Default for LabSettings {
             unprop_shape: UnpropShape::Auto,
             model_lod: ModelLodSettings::default(),
             propper_physics: false,
+            propper_static: true,
             propper_collision: true,
             propper_mass: 10.0,
             model_keep_params: true,
@@ -82,6 +84,7 @@ impl LabSettings {
     pub fn propper_options(&self) -> hp_editor::prop_export::PropOptions {
         hp_editor::prop_export::PropOptions {
             physics: self.propper_physics,
+            static_prop: self.propper_static,
             collision: self.propper_collision,
             mass: f64::from(self.propper_mass),
         }

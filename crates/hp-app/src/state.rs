@@ -203,6 +203,13 @@ pub struct PreviewCamera {
     pub anim_time: f32,
 }
 
+pub struct PropPreviewRequest<'a> {
+    pub geometry: &'a Arc<hp_editor::prop_export::PropGeometry>,
+    pub params: &'a hp_render::ViewParams,
+    pub overlay: &'a hp_render::Overlay,
+    pub revision: u64,
+}
+
 impl PreviewCamera {
     pub fn shows(&self, overlay: u32) -> bool {
         self.overlays & overlay != 0
@@ -353,6 +360,9 @@ pub trait AssetsApi {
         camera: &PreviewCamera,
         size_px: [u32; 2],
     ) -> Option<egui::TextureId>;
+    fn prop_preview(&mut self, _gfx: &mut Gfx, _request: &PropPreviewRequest<'_>) -> Option<egui::TextureId> {
+        None
+    }
     fn entity_bounds(&self, entity: &hp_vmf::Entity) -> Option<hp_geom::Aabb>;
     fn entity_ray(&self, entity: &hp_vmf::Entity, ray: &hp_geom::Ray) -> hp_editor::EntityRay {
         let _ = (entity, ray);
