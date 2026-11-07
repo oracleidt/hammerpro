@@ -48,6 +48,47 @@ fn run(def: &SystemDef, points: &Points, seconds: f32) -> Sim {
 struct FloorTrace;
 
 #[test]
+fn tracer_final_positions_trail_lengths_and_completion_match_native_frames() {
+    let definitions = crate::parse_file(include_bytes!("../tests/data/tracer_fade_live_cases.pcf")).unwrap();
+    let frames: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("../tests/data/tracer_fade_live_native_samples.json")).unwrap();
+    assert_eq!(frames.len(), 59);
+    for index in 0..8 {
+        let name = format!("hp_spritecard_tracer{index}");
+        let mut definition = definitions.iter().find(|d| d.name == name).unwrap().clone();
+        if index >= 6 {
+            // X readback does not affect the Y movement, lifetime fraction or trail length.
+            definition.operators.truncate(definition.operators.len() - 2);
+        }
+        let plan = Arc::new(Plan::new(&definition));
+        assert!(plan.unsupported.is_empty());
+        let mut sim = Sim::new(plan, 17);
+        for (frame, sample) in frames.iter().enumerate() {
+            sim.step_at(sample["dt"].as_f64().unwrap() as f32, &Points::unparented([0.0; 3]), &[], 1);
+            let expected = &sample["values"][index];
+            if expected.is_null() {
+                assert!(sim.particles.is_empty(), "{name} frame{frame} finished");
+            } else {
+                assert_eq!(sim.particles.len(), 1, "{name} frame{frame} alive");
+                if index < 6 {
+                    for axis in 0..3 {
+                        let target = expected[axis].as_f64().unwrap() as f32;
+                        assert_eq!(
+                            sim.particles[0].pos[axis].to_bits(),
+                            target.to_bits(),
+                            "{name} frame{frame} axis{axis}"
+                        );
+                    }
+                } else {
+                    let target = expected.as_f64().unwrap() as f32;
+                    assert_eq!(sim.particles[0].trail.to_bits(), target.to_bits(), "{name} frame{frame} trail");
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn decay_compacts_at_its_operator_slot_and_ropes_keep_emission_order() {
     for (renderer, expected) in [("render_animated_sprites", [13.0, 11.0]), ("render_rope", [11.0, 13.0])] {
         let mut definition = system(

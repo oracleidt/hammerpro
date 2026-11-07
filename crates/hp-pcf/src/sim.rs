@@ -446,7 +446,7 @@ enum Op {
     Movement { gravity: V3, drag: f32 },
     AlphaRandom(alpha::Random),
     FadeAndDecay(alpha::FadeDecay),
-    FadeTracer { start: f32, end: f32, in0: f32, in1: f32, out0: f32, out1: f32 },
+    FadeTracer(alpha::FadeDecay),
     RadiusScale(radius::Scale),
     ColorFade { color: [f32; 3], t0: f32, t1: f32, ease: bool },
     RotationBasic,
@@ -496,7 +496,6 @@ pub struct Plan {
     op_schedule: Vec<usize>,
     trace_schedule: Vec<usize>,
     child_schedule: Vec<usize>,
-    decay_schedule: Vec<usize>,
     requires_order_invariance: bool,
     child_points: Vec<control::ChildPoints>,
     point_traces: Vec<control::PointTrace>,
@@ -600,7 +599,6 @@ impl Plan {
             op_schedule: Vec::new(),
             trace_schedule: Vec::new(),
             child_schedule: Vec::new(),
-            decay_schedule: Vec::new(),
             requires_order_invariance: def.renderers.iter().any(|op| op.function.eq_ignore_ascii_case("render_rope")),
             child_points: Vec::new(),
             point_traces: Vec::new(),
@@ -652,9 +650,6 @@ impl Plan {
                 p.op_schedule.extend(std::iter::repeat_n(schedule, p.ops.len() - first));
                 p.trace_schedule.extend(std::iter::repeat_n(schedule, p.point_traces.len() - traces));
                 p.child_schedule.extend(std::iter::repeat_n(schedule, p.child_points.len() - children));
-                if op.function.eq_ignore_ascii_case("alpha fade and decay for tracers") {
-                    p.decay_schedule.push(schedule);
-                }
             }
         }
         p
@@ -904,14 +899,7 @@ impl Plan {
                 Op::AlphaSimple(alpha::Simple { out: true, span: f(op, "proportional fade out time", 0.25) })
             }
             "alpha fade and decay" => Op::FadeAndDecay(alpha::FadeDecay::compile(op)),
-            "alpha fade and decay for tracers" => Op::FadeTracer {
-                start: f(op, "start_alpha", 1.0),
-                end: f(op, "end_alpha", 0.0),
-                in0: f(op, "start_fade_in_time", 0.0),
-                in1: f(op, "end_fade_in_time", 0.5),
-                out0: f(op, "start_fade_out_time", 0.5),
-                out1: f(op, "end_fade_out_time", 1.0),
-            },
+            "alpha fade and decay for tracers" => Op::FadeTracer(alpha::FadeDecay::compile(op)),
             "radius scale" => Op::RadiusScale(radius::Scale::compile(op)),
             "color fade" => Op::ColorFade {
                 color: rgb(op.color("color_fade").unwrap_or([255; 4])),
@@ -1566,9 +1554,7 @@ impl Sim {
         for part in &mut self.particles {
             part.velocity_snapshot = part.vel;
         }
-        if plan.decay_schedule.iter().any(|index| self.operator_states[*index].active()) {
-            self.particles.retain(|p| p.age < p.life);
-        }
+
         self.particles.retain(|p| !p.dead && p.pos.iter().all(|c| c.is_finite() && c.abs() < 1.0e6));
         self.time = t1;
         if dt > 0.0 {
@@ -1771,25 +1757,29 @@ fn operate(
                         alpha_written = true;
                     }
                 }
-                Op::FadeAndDecay(fade) => {
+                Op::FadeAndDecay(fade) | Op::FadeTracer(fade) => {
                     let (value, dead) =
                         fade.sample((time, part.born, part.life), part.initial_values[Field::Alpha as usize]);
-                    part.dead |= dead;
+                    if matches!(op, Op::FadeTracer(_)) {
+                        let (position, trail, expired) = alpha::tracer_lifetime(
+                            (time, part.born, part.life),
+                            dt,
+                            part.pos,
+                            part.previous_pos,
+                            part.trail,
+                        );
+                        part.pos = position;
+                        part.trail = trail;
+                        part.dead |= expired;
+                    } else {
+                        part.dead |= dead;
+                    }
                     if let Some(value) = value {
                         part.alpha = value;
                         alpha = value;
                         alpha_written = false;
                         part.alpha_add = 0.0;
                     }
-                }
-                Op::FadeTracer { start, end, in0, in1, out0, out1 } => {
-                    let mut a = 1.0;
-                    if t < *in1 && in1 > in0 {
-                        a = lerp(*start, 1.0, ((t - in0) / (in1 - in0)).clamp(0.0, 1.0));
-                    } else if t > *out0 && out1 > out0 {
-                        a = lerp(1.0, *end, ((t - out0) / (out1 - out0)).clamp(0.0, 1.0));
-                    }
-                    alpha *= a.clamp(0.0, 1.0);
                 }
                 Op::RadiusScale(scale) => {
                     if let Some(value) =
@@ -1956,7 +1946,6 @@ fn operate(
                 }
             }
             alpha_written |= match op {
-                Op::FadeTracer { .. } => true,
                 Op::Scalar(remap) => remap.field == Field::Alpha,
                 Op::NoiseScalar { field, .. } | Op::OscScalar { field, .. } | Op::Ramp { field, .. } => {
                     *field == Field::Alpha
@@ -1966,6 +1955,7 @@ fn operate(
             if !matches!(
                 op,
                 Op::Movement { .. }
+                    | Op::FadeTracer(_)
                     | Op::FieldRemap(remap::Scalar { output: Field::PositionX, .. })
                     | Op::Spatial(spatial::SpatialOp::Collision { .. })
                     | Op::NoiseVector { .. }

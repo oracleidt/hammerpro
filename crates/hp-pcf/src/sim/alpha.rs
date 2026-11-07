@@ -1,4 +1,23 @@
-use super::{Operator, b, f, lerp, random, simd_random};
+use super::{Operator, V3, b, f, lerp, lerp3, random, simd_random};
+
+pub(super) fn tracer_lifetime(
+    clock: (f32, f32, f32),
+    dt: f32,
+    position: V3,
+    previous: V3,
+    trail: f32,
+) -> (V3, f32, bool) {
+    let (time, born, life) = clock;
+    if life <= time - born {
+        let previous_age = (time - dt) - born;
+        if life <= previous_age {
+            return (position, trail, true);
+        }
+        let fraction = (life - previous_age) / dt;
+        return (lerp3(previous, position, fraction), trail * fraction, false);
+    }
+    (position, trail, false)
+}
 
 fn smooth(progress: f32) -> f32 {
     let square = progress * progress;
@@ -152,6 +171,38 @@ impl Random {
 mod tests {
     use super::*;
     use crate::dmx::{Element, Value};
+
+    #[test]
+    fn tracer_endpoints_trail_lengths_and_delayed_death_match_native_float_bits() {
+        let cases: Vec<serde_json::Value> =
+            serde_json::from_str(include_str!("../../tests/data/alpha_tracer_fade_native_samples.json")).unwrap();
+        assert_eq!(cases.len(), 480);
+        for (index, case) in cases.iter().enumerate() {
+            for lane in 0..4 {
+                let vector = |key: &str| std::array::from_fn(|axis| case[key][lane][axis].as_f64().unwrap() as f32);
+                let (position, trail, dead) = tracer_lifetime(
+                    (
+                        case["time"].as_f64().unwrap() as f32,
+                        case["births"][lane].as_f64().unwrap() as f32,
+                        case["lifetimes"][lane].as_f64().unwrap() as f32,
+                    ),
+                    case["dt"].as_f64().unwrap() as f32,
+                    vector("positions"),
+                    vector("previous"),
+                    case["trail"][lane].as_f64().unwrap() as f32,
+                );
+                let expected = vector("tracer_expected_positions");
+                for axis in 0..3 {
+                    assert_eq!(position[axis].to_bits(), expected[axis].to_bits(), "case{index} lane{lane} axis{axis}");
+                }
+                assert_eq!(trail.to_bits(), (case["tracer_expected_trail"][lane].as_f64().unwrap() as f32).to_bits());
+                assert_eq!(
+                    dead,
+                    case["tracer_killed"].as_array().unwrap().iter().any(|v| v.as_u64().unwrap() as usize == lane)
+                );
+            }
+        }
+    }
 
     #[test]
     fn fade_and_decay_matches_native_normalization_curves_and_both_death_rules() {

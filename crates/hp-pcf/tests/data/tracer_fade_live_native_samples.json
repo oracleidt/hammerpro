@@ -1,0 +1,929 @@
+[
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      [
+        10.266666412353516,
+        20,
+        30
+      ],
+      [
+        10.266666412353516,
+        20,
+        30
+      ],
+      [
+        10.266666412353516,
+        20,
+        30
+      ],
+      [
+        10.266666412353516,
+        20,
+        30
+      ],
+      [
+        10.266666412353516,
+        20,
+        30
+      ],
+      [
+        10,
+        20,
+        30
+      ],
+      0.20000000298023224,
+      0.20000000298023224
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      [
+        10.533332824707031,
+        20,
+        30
+      ],
+      [
+        10.533332824707031,
+        20,
+        30
+      ],
+      [
+        10.533332824707031,
+        20,
+        30
+      ],
+      [
+        10.533332824707031,
+        20,
+        30
+      ],
+      [
+        10.533332824707031,
+        20,
+        30
+      ],
+      [
+        10,
+        20,
+        30
+      ],
+      0.20000000298023224,
+      0.20000000298023224
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      [
+        10.799999237060547,
+        20,
+        30
+      ],
+      [
+        10.799999237060547,
+        20,
+        30
+      ],
+      [
+        10.799999237060547,
+        20,
+        30
+      ],
+      [
+        10.799999237060547,
+        20,
+        30
+      ],
+      [
+        10.799999237060547,
+        20,
+        30
+      ],
+      [
+        10,
+        20,
+        30
+      ],
+      0.20000000298023224,
+      0.20000000298023224
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      [
+        10.799999237060547,
+        20,
+        30
+      ],
+      [
+        11.066665649414062,
+        20,
+        30
+      ],
+      [
+        11.066665649414062,
+        20,
+        30
+      ],
+      [
+        11.066665649414062,
+        20,
+        30
+      ],
+      [
+        11.066665649414062,
+        20,
+        30
+      ],
+      [
+        10,
+        20,
+        30
+      ],
+      0.20000000298023224,
+      0.20000000298023224
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      [
+        11.19999885559082,
+        20,
+        30
+      ],
+      [
+        11.255998611450195,
+        20,
+        30
+      ],
+      [
+        11.333332061767578,
+        20,
+        30
+      ],
+      [
+        11.066665649414062,
+        20,
+        30
+      ],
+      [
+        9.800000190734863,
+        20,
+        30
+      ],
+      0.14200009405612946,
+      0.20000000298023224
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      [
+        11.599998474121094,
+        20,
+        30
+      ],
+      null,
+      null,
+      null,
+      0.20000000298023224
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      [
+        11.86666488647461,
+        20,
+        30
+      ],
+      null,
+      null,
+      null,
+      0.20000000298023224
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      [
+        12.133331298828125,
+        20,
+        30
+      ],
+      null,
+      null,
+      null,
+      0.20000000298023224
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      [
+        12.39999771118164,
+        20,
+        30
+      ],
+      null,
+      null,
+      null,
+      0.20000000298023224
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      [
+        12.666664123535156,
+        20,
+        30
+      ],
+      null,
+      null,
+      null,
+      0.20000000298023224
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      [
+        12.933330535888672,
+        20,
+        30
+      ],
+      null,
+      null,
+      null,
+      0.20000000298023224
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      [
+        13.199996948242188,
+        20,
+        30
+      ],
+      null,
+      null,
+      null,
+      0.20000000298023224
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      [
+        13.466663360595703,
+        20,
+        30
+      ],
+      null,
+      null,
+      null,
+      0.20000000298023224
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      [
+        13.733329772949219,
+        20,
+        30
+      ],
+      null,
+      null,
+      null,
+      0.20000000298023224
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      [
+        13.999996185302734,
+        20,
+        30
+      ],
+      null,
+      null,
+      null,
+      0.20000000298023224
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      [
+        13.999996185302734,
+        20,
+        30
+      ],
+      null,
+      null,
+      null,
+      1.788139485370266e-07
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  {
+    "dt": 0.03333333134651184,
+    "values": [
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  }
+]
