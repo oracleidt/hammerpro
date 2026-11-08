@@ -121,7 +121,7 @@ impl RenderDisplay {
             normal_maps: r.normal_maps && plan.normal_maps,
             cubemaps: r.cubemaps && plan.cubemaps,
             cubemaps_auto: r.cubemaps_auto,
-            light_hdr: r.light_preview_hdr,
+            light_hdr: r.lighting_hdr(s.view.render_mode, s.compile.lighting),
             projected_textures: r.projected_textures,
             sky_occlusion: r.sky_occlusion && plan.sky_occlusion,
             sun_glow: r.sun_glow && plan.sun_glow,

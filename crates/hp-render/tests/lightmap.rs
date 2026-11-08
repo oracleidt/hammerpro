@@ -346,7 +346,7 @@ fn local_light_delta_updates_baked_faces_without_replacing_the_atlas() {
         falloff: Some(LightFalloff { constant: 1.0, ..Default::default() }),
     };
     r.set_lights(&[light], [0.0; 3]);
-    r.capture_baked_lights();
+    let pending_baseline = r.snapshot_baked_lights();
     r.set_view_options(0, ViewOptions { light_shadows: 16, ..Default::default() });
     r.set_lightmap_display(LightmapDisplay::Baked, 1.0);
     r.render_view(0, &params(RenderMode::Lit), &Overlay::default());
@@ -354,6 +354,7 @@ fn local_light_delta_updates_baked_faces_without_replacing_the_atlas() {
     assert!(original[0] > 80 && original[0].abs_diff(original[1]) <= 1, "{original:?}");
     assert_eq!(r.stats().shadowed_lights, 0);
     r.set_lights(&[PreviewLight { color: [1.0, 0.0, 0.0], ..light }], [0.0; 3]);
+    r.restore_baked_lights(&pending_baseline);
     r.render_view(0, &params(RenderMode::Lit), &Overlay::default());
     let red = pixel(&r, 64, 64);
     assert!(

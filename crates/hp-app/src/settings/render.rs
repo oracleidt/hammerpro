@@ -171,6 +171,7 @@ pub struct RenderSettings {
     pub cubemaps_auto: bool,
     pub light_shadows: u32,
     pub light_preview_hdr: bool,
+    pub light_preview_match_compile: bool,
     pub projected_textures: bool,
     pub lit_indirect: bool,
     pub model_lods: bool,
@@ -259,6 +260,7 @@ impl Default for RenderSettings {
             cubemaps_auto: true,
             light_shadows: 16,
             light_preview_hdr: true,
+            light_preview_match_compile: true,
             projected_textures: true,
             lit_indirect: true,
             model_lods: true,
@@ -310,6 +312,22 @@ impl Default for RenderSettings {
 }
 
 impl RenderSettings {
+    pub fn lighting_hdr(&self, mode: super::RenderModeSetting, lighting: super::LightingSetting) -> bool {
+        if matches!(mode, super::RenderModeSetting::Baked | super::RenderModeSetting::LightmapGrid) {
+            matches!(lighting, super::LightingSetting::Hdr | super::LightingSetting::Both)
+        } else {
+            self.preview_hdr(lighting)
+        }
+    }
+
+    pub fn preview_hdr(&self, lighting: super::LightingSetting) -> bool {
+        if self.light_preview_match_compile {
+            matches!(lighting, super::LightingSetting::Hdr | super::LightingSetting::Both)
+        } else {
+            self.light_preview_hdr
+        }
+    }
+
     pub fn tone(&self) -> hp_render::ToneSettings {
         hp_render::ToneSettings {
             mode: self.tone_mapping.mode(),
@@ -345,6 +363,24 @@ impl RenderSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lighting_range_follows_compilation_and_preserves_manual_comparisons() {
+        use crate::settings::LightingSetting;
+        let mut settings: RenderSettings = toml::from_str("light_preview_hdr = true").unwrap();
+        assert!(!settings.preview_hdr(LightingSetting::Ldr));
+        assert!(settings.preview_hdr(LightingSetting::Hdr));
+        assert!(settings.preview_hdr(LightingSetting::Both));
+        settings.light_preview_match_compile = false;
+        assert!(settings.preview_hdr(LightingSetting::Ldr));
+        assert!(!settings.lighting_hdr(crate::settings::RenderModeSetting::Baked, LightingSetting::Ldr));
+        assert!(settings.lighting_hdr(crate::settings::RenderModeSetting::Lit, LightingSetting::Ldr));
+        settings.light_preview_hdr = false;
+        let restored: RenderSettings = toml::from_str(&toml::to_string(&settings).unwrap()).unwrap();
+        assert!(!restored.preview_hdr(LightingSetting::Hdr));
+        assert!(restored.lighting_hdr(crate::settings::RenderModeSetting::Baked, LightingSetting::Hdr));
+        assert!(!restored.light_preview_match_compile);
+    }
 
     #[test]
     fn old_files_load_with_defaults() {

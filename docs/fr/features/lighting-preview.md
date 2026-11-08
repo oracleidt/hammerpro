@@ -174,6 +174,12 @@ En aperçu éclairé HDR, le ciel utilise aussi ses textures HDR lorsqu’elles 
 
 ## Configuration VRAD et conservation du bake
 
+Par défaut, le mode éclairé suit le choix HDR/LDR de la compilation pour utiliser les mêmes valeurs de light_environment, la même plage lumineuse et les matériaux correspondants. Dans Paramètres > Rendu, modifier Valeurs de lumière HDR désactive ce suivi pour permettre une comparaison manuelle. Réactivez Suivre le HDR/LDR de la compilation pour revenir au comportement automatique.
+
 L'onglet VRAD du panneau Éclairage règle les rebonds, l'éclairage et les ombres des props statiques, les ombres selon leur maillage ou l'alpha des textures, la désactivation des ombres des displacements, l'échantillonnage ambiant rapide et les échantillons du soleil et de l'ambiance. Des cases sélectionnent les light_environment, shadow_control et env_tonemap_controller détectés pour l'aperçu. Ces choix sont conservés avec la map ; Précalculer l'éclairage reste le calcul de toute la map.
 
 Conserver le bake global pendant l'édition des lumières locales est activé par défaut. Une lumière locale ajoutée, déplacée, supprimée ou recolorée contribue par une différence signée d'éclairage direct aux lightmaps et à l'éclairage précalculé des props. Une lumière inchangée n'ajoute aucun éclairage supplémentaire. Les rebonds du dernier bake sont conservés. Un changement d'environnement, de géométrie, de matériau ou de paramètre physique nécessite encore un calcul. Précalculer l'éclairage actualise l'illumination globale ; la différence dynamique ne calcule pas de nouveaux rebonds.
+
+Cette conservation s'applique aussi aux rebonds du mode éclairé : modifier une lumière locale actualise immédiatement sa contribution directe et conserve le dernier volume d'éclairage indirect. Ces rebonds restent signalés comme anciens jusqu'au prochain calcul global.
+
+Les modifications locales peuvent aussi laisser le premier calcul se terminer lorsque la géométrie et les réglages de calcul restent inchangés. Le résultat conserve les valeurs lumineuses utilisées au départ et l'étape finale de qualité reste exécutée.

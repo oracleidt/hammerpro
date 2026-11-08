@@ -371,7 +371,7 @@ fn set_setting(state: &AppState, v: &Value) -> R<Outcome> {
     let range = RANGES.iter().find(|(p, _, _)| *p == path).map(|(_, min, max)| (*min, *max));
     check_value(path, value, range, 0)?;
     *slot = value.clone();
-    let new: Settings = serde_json::from_value(all).map_err(|e| {
+    let mut new: Settings = serde_json::from_value(all).map_err(|e| {
         match serde_json::from_value::<Settings>(settings_json(&state.settings)) {
             Ok(_) => format!("invalid value for {path}: {e}"),
             Err(other) => {
@@ -379,6 +379,9 @@ fn set_setting(state: &AppState, v: &Value) -> R<Outcome> {
             }
         }
     })?;
+    if path == "render.light_preview_hdr" {
+        new.render.light_preview_match_compile = false;
+    }
     let back = settings_json(&new);
     let stored = lookup(&back, &segs).cloned().unwrap_or(Value::Null);
     if !values_match(&stored, value) {
@@ -784,6 +787,12 @@ mod tests {
         assert_eq!(r["value"], 95.0);
         assert_eq!(state.settings.view.fov_deg, 95.0);
         assert!(state.settings_dirty);
+        assert!(state.settings.render.light_preview_match_compile);
+        set(&mut state, "render.light_preview_hdr", json!(false));
+        assert!(!state.settings.render.light_preview_match_compile);
+        assert!(!state.settings.render.preview_hdr(hp_app::settings::LightingSetting::Hdr));
+        set(&mut state, "render.light_preview_match_compile", json!(true));
+        assert!(state.settings.render.preview_hdr(hp_app::settings::LightingSetting::Hdr));
         set(&mut state, "edit.snap_to_grid", json!(false));
         assert!(!state.settings.edit.snap_to_grid);
         set(&mut state, "selection.stretch_handles", json!(false));

@@ -46,6 +46,7 @@ impl SettingsPage for RenderPage {
     fn ui(&mut self, ui: &mut egui::Ui, state: &mut AppState) {
         let mut changed = false;
         let compiled = state.settings.compile.static_prop_shadows();
+        let compiled_range = state.settings.compile.lighting;
         let r = &mut state.settings.render;
         heading(ui, t!("shell.render.view_3d"));
         egui::Grid::new("hp_shell_render_3d").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
@@ -107,10 +108,16 @@ impl SettingsPage for RenderPage {
         changed |= check(ui, &mut r.normal_maps, t!("shell.render.normal_maps"), t!("shell.render.normal_maps_tip"));
         changed |= check(
             ui,
-            &mut r.light_preview_hdr,
-            t!("shell.render.light_preview_hdr"),
-            t!("shell.render.light_preview_hdr_tip"),
+            &mut r.light_preview_match_compile,
+            t!("shell.render.light_preview_match_compile"),
+            t!("shell.render.light_preview_match_compile_tip"),
         );
+        let mut hdr = r.preview_hdr(compiled_range);
+        if check(ui, &mut hdr, t!("shell.render.light_preview_hdr"), t!("shell.render.light_preview_hdr_tip")) {
+            r.light_preview_hdr = hdr;
+            r.light_preview_match_compile = false;
+            changed = true;
+        }
         changed |= check(
             ui,
             &mut r.projected_textures,
@@ -531,6 +538,12 @@ pub(crate) const TR: TrTable = &[
     ("shell.render.radius_culling", "Radius culling", "Limite de distance circulaire"),
     ("shell.render.light_shadows", "Shadowed lights", "Lumières avec ombres"),
     ("shell.render.light_preview_hdr", "HDR light values", "Valeurs de lumière HDR"),
+    ("shell.render.light_preview_match_compile", "Match compilation HDR/LDR", "Suivre le HDR/LDR de la compilation"),
+    (
+        "shell.render.light_preview_match_compile_tip",
+        "Preview the lighting range selected for compilation. Changing HDR light values selects a manual comparison instead.",
+        "Utilise la plage lumineuse choisie pour la compilation. Modifier les valeurs HDR active une comparaison manuelle.",
+    ),
     ("shell.render.projected_textures", "Projected textures", "Textures projetées"),
     (
         "shell.render.projected_textures_tip",

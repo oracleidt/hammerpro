@@ -2050,8 +2050,12 @@ impl Renderer {
         self.upload_lights(live_lighting::combine(packed, self.live_light_baseline()), ambient);
     }
 
+    pub fn snapshot_baked_lights(&self) -> std::sync::Arc<BakedLightBaseline> {
+        std::sync::Arc::new(BakedLightBaseline { lights: live_lighting::current(&self.lights_cpu) })
+    }
+
     pub fn capture_baked_lights(&mut self) -> std::sync::Arc<BakedLightBaseline> {
-        let baseline = std::sync::Arc::new(BakedLightBaseline { lights: live_lighting::current(&self.lights_cpu) });
+        let baseline = self.snapshot_baked_lights();
         self.restore_baked_lights(&baseline);
         baseline
     }

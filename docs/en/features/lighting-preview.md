@@ -174,6 +174,12 @@ In the lit HDR preview, the sky also uses its HDR textures when available, inclu
 
 ## VRAD configuration and retained bake
 
+By default, Lit mode follows compilation HDR/LDR so light_environment values, lighting range and materials use the same range. Changing HDR light values in Settings > Rendering selects a manual comparison. Enable Match compilation HDR/LDR to return to automatic selection.
+
 The VRAD tab inside the Lighting panel configures bounce count, static-prop lighting and shadows, mesh-based prop shadows, texture alpha shadows, displacement shadow disabling, fast ambient sampling and the existing sun/ambient sample settings. Checkboxes select detected light_environment, shadow_control and env_tonemap_controller entities for the preview. Choices are preserved with the map; Bake lighting remains the full-map calculation.
 
 Keep the global bake while editing local lights is enabled by default. Added, moved, removed or recolored local lights contribute a signed live direct-light difference to the existing lightmaps and baked prop lighting. Unchanged lights contribute no extra light. The last baked bounce lighting stays in place. Environment-light changes, geometry/material changes and physical calculation settings still require a calculation. A full Bake lighting refreshes global illumination; the live difference does not calculate new light bounces.
+
+This retention also applies to bounced lighting in Lit mode: editing a local light updates its direct contribution immediately and keeps the last indirect-light volume. These bounces are marked stale until the next global calculation.
+
+Local-light edits can also keep the initial calculation running when its geometry and calculation settings remain unchanged. The result keeps its original light snapshot, and the final quality pass still runs.

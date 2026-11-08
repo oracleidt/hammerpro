@@ -71,6 +71,9 @@ struct Running {
     scope: Scope,
     lit: bool,
     quick: bool,
+    scene_key: (u64, bool),
+    baseline: Option<std::sync::Arc<hp_render::BakedLightBaseline>>,
+    content: u64,
 }
 
 struct Upload {
@@ -81,10 +84,13 @@ struct Upload {
     written: usize,
     lit: bool,
     quick: bool,
+    scene_key: (u64, bool),
+    baseline: Option<std::sync::Arc<hp_render::BakedLightBaseline>>,
 }
 
 struct Preview {
     baseline: Option<std::sync::Arc<hp_render::BakedLightBaseline>>,
+    rendered_scene: Option<(u64, bool)>,
     baseline_key: Option<u64>,
     worker: bake::Worker,
     next_id: u64,
@@ -107,6 +113,7 @@ struct Preview {
     atlas_warned: bool,
     triangles: usize,
     indirect_serial: Option<u64>,
+    indirect_scene: Option<(u64, bool)>,
     indirect_failed: Option<u64>,
 }
 
@@ -261,6 +268,7 @@ impl Preview {
         let worker = bake::Worker::start(Box::new(move || ctx.request_repaint())).ok()?;
         Some(Self {
             baseline: None,
+            rendered_scene: None,
             baseline_key: None,
             worker,
             next_id: 1,
@@ -283,6 +291,7 @@ impl Preview {
             atlas_warned: false,
             triangles: 0,
             indirect_serial: None,
+            indirect_scene: None,
             indirect_failed: None,
         })
     }
@@ -297,8 +306,22 @@ impl Preview {
         self.no_lights = set.lights.is_empty() && set.sky.sun.is_none() && set.sky.ambient.max_element() <= 0.0;
     }
 
+    fn scene_key(&mut self, state: &AppState, lit: bool) -> (u64, bool) {
+        let hdr = if lit {
+            state.settings.render.preview_hdr(state.settings.compile.lighting)
+        } else {
+            uses_hdr(state.settings.compile.lighting)
+        };
+        (self.cache.geometry_key(state), hdr)
+    }
+
     fn bake(&mut self, state: &mut AppState, scope: Scope, kind: BakeKind, lit: bool) {
         let serial = self.cache.resolve(state, lit, 0.0, true).expect("forced lighting cache key");
+        let scene_key = self.scene_key(state, lit);
+        let content = state.doc.content_serial();
+        let baseline = (!lit && self.rendered_scene == Some((content, scene_key.1)))
+            .then(|| state.gfx.as_ref().map(|gfx| gfx.renderer.snapshot_baked_lights()))
+            .flatten();
         let quick = !lit && kind != BakeKind::Refine;
         if quick {
             self.refine = None;
@@ -308,7 +331,7 @@ impl Preview {
         self.upload = None;
         let t = std::time::Instant::now();
         let export = hp_editor::compile_export::CompileExport::default();
-        let mut map = (kind != BakeKind::Refine).then(|| match &scope {
+        let mut map = (kind != BakeKind::Refine || self.shown_serial != Some(serial)).then(|| match &scope {
             Scope::All => state.doc.compile_snapshot(&export).map,
             Scope::Around { center, radius } => {
                 let r = DVec3::splat(radius.max(64.0));
@@ -353,7 +376,11 @@ impl Preview {
             solids,
             fs: state.assets.fs().cloned(),
             resources_revision: state.assets.lighting_generation(),
-            hdr: if lit { state.settings.render.light_preview_hdr } else { uses_hdr(state.settings.compile.lighting) },
+            hdr: if lit {
+                state.settings.render.preview_hdr(state.settings.compile.lighting)
+            } else {
+                uses_hdr(state.settings.compile.lighting)
+            },
             quality: rad_quality(s.quality),
             bounces: if options.bounced { options.bounce_count.min(bounces(true)) } else { bounces(false) },
             prop_shadows: state.settings.compile.static_prop_shadows,
@@ -371,7 +398,8 @@ impl Preview {
             if lit { ", for the Lit mode" } else { "" },
             t.elapsed().as_millis()
         );
-        self.running = Some(Running { id, kind, serial, scope: scope.clone(), lit, quick });
+        self.running =
+            Some(Running { id, kind, serial, scope: scope.clone(), lit, quick, scene_key, baseline, content });
         self.last_scope = Some(scope);
         state.runtime.lighting.stale = false;
         state.runtime.lighting.progress =
@@ -447,6 +475,8 @@ impl Preview {
                                 written: 0,
                                 lit: r.lit,
                                 quick: r.quick,
+                                scene_key: r.scene_key,
+                                baseline: r.baseline,
                             });
                         }
                         bake::Outcome::Cancelled => {
@@ -478,12 +508,14 @@ impl Preview {
     }
 
     fn upload_indirect(&mut self, state: &mut AppState, up: Upload) {
+        let geometry_key = self.cache.geometry_key(state);
         let Some(gfx) = state.gfx.as_mut() else { return };
         let b = up.baked;
         gfx.renderer.set_indirect_volume(b.indirect.clone());
         let rt = &mut state.runtime.lighting;
         rt.progress = self.running.as_ref().and(rt.progress);
         self.indirect_serial = b.indirect.as_ref().map(|_| up.serial);
+        self.indirect_scene = b.indirect.as_ref().map(|_| (geometry_key, b.hdr));
         self.triangles = b.triangles;
         log::info!(
             "lighting preview: {} indirect light cells ({} in the air) in {:.2} s",
@@ -497,12 +529,15 @@ impl Preview {
     fn upload(&mut self, state: &mut AppState) {
         let Some(mut up) = self.upload.take() else { return };
         let delay = f64::from(state.doc.light_plus().incremental_delay).max(MIN_UPDATE_DELAY);
-        match self.cache.resolve(state, up.lit, delay, false) {
+        let retained = state.doc.light_plus().keep_bake
+            && (up.lit || up.baseline.is_some())
+            && up.scene_key == self.scene_key(state, up.lit);
+        match self.cache.resolve(state, up.lit, delay, retained) {
             None => {
                 self.upload = Some(up);
                 return;
             }
-            Some(serial) if serial != up.serial => {
+            Some(serial) if serial != up.serial && !retained => {
                 state.runtime.lighting.progress = None;
                 state.runtime.lighting.stale = self.has_bake;
                 if !up.lit {
@@ -520,6 +555,10 @@ impl Preview {
         let Some(gfx) = gfx.as_mut() else { return };
         let r = &mut gfx.renderer;
         if up.written == 0 {
+            if let Some(baseline) = up.baseline.as_ref() {
+                r.restore_baked_lights(baseline);
+                self.baseline = Some(baseline.clone());
+            }
             self.shown_serial = None;
             let fits = show_geometry(r, assets.as_mut(), &up.baked, (self.shown_faces, self.shown_blocks));
             if !fits && !self.atlas_warned {
@@ -552,7 +591,7 @@ impl Preview {
             }
         };
         assets.set_baked_prop_lighting(b.props.clone(), region);
-        if b.indirect.is_some() && b.hdr == state.settings.render.light_preview_hdr {
+        if b.indirect.is_some() && b.hdr == state.settings.render.preview_hdr(state.settings.compile.lighting) {
             r.set_indirect_volume(b.indirect.clone());
         }
         rt.progress = self.running.as_ref().and(rt.progress);
@@ -587,12 +626,17 @@ impl Preview {
             scope_auto: self.auto_scoped,
         };
         self.has_bake = true;
-        self.baseline = Some(r.capture_baked_lights());
-        self.baseline_key = Some(self.cache.geometry_key(state));
+        self.baseline = Some(up.baseline.unwrap_or_else(|| r.capture_baked_lights()));
+        self.baseline_key = Some(up.scene_key.0);
         self.shown_serial = Some(up.serial);
         self.refine = up.quick.then(|| (up.scope.clone(), up.serial));
-        if b.indirect.is_some() && b.hdr == state.settings.render.light_preview_hdr {
-            self.indirect_serial = self.cache.resolve(state, true, 0.0, true);
+        if b.indirect.is_some() && b.hdr == state.settings.render.preview_hdr(state.settings.compile.lighting) {
+            self.indirect_serial = if self.cache.current(state, false, Some(up.serial)) {
+                self.cache.resolve(state, true, 0.0, true)
+            } else {
+                None
+            };
+            self.indirect_scene = Some((self.cache.geometry_key(state), b.hdr));
         }
         if !matches!(up.kind, BakeKind::Update | BakeKind::Refine) {
             let text = tf!(
@@ -610,7 +654,8 @@ impl Preview {
             return;
         }
         let options = state.doc.light_plus();
-        let geometry_key = self.has_bake.then(|| self.cache.geometry_key(state));
+        let geometry_key =
+            (self.has_bake || (options.keep_bake && self.running.is_some())).then(|| self.cache.geometry_key(state));
         let delay = f64::from(options.incremental_delay).max(MIN_UPDATE_DELAY);
         let Some(serial) = self.cache.resolve(state, false, delay, false) else {
             return;
@@ -646,6 +691,17 @@ impl Preview {
             self.follow_camera(state, now);
             return;
         }
+        if options.keep_bake
+            && self.running.as_ref().is_some_and(|running| {
+                !running.lit
+                    && running.baseline.is_some()
+                    && Some(running.scene_key.0) == geometry_key
+                    && running.scene_key.1 == uses_hdr(state.settings.compile.lighting)
+            })
+        {
+            state.runtime.lighting.stale = self.has_bake;
+            return;
+        }
         if !options.incremental {
             state.runtime.lighting.stale = self.has_bake && self.running.is_none();
             return;
@@ -655,6 +711,13 @@ impl Preview {
             && self.baseline_key.is_some()
             && self.baseline_key == geometry_key
         {
+            if self.running.is_none()
+                && self.upload.is_none()
+                && let Some((scope, _)) = self.refine.take()
+            {
+                self.bake(state, scope, BakeKind::Refine, false);
+                return;
+            }
             if self.running.as_ref().is_some_and(|running| !running.lit && running.serial != serial) {
                 self.worker.stop();
                 self.running = None;
@@ -668,6 +731,7 @@ impl Preview {
                 state.runtime.lighting.progress = None;
             }
             state.runtime.lighting.stale = true;
+            self.follow_camera(state, now);
             return;
         }
         if !self.cancelling && self.running.as_ref().is_some_and(|r| !r.lit && r.serial != serial) {
@@ -742,6 +806,16 @@ impl Preview {
         }
         let options = state.doc.light_plus();
         if shown && !options.incremental {
+            return;
+        }
+        if shown
+            && options.keep_bake
+            && self.indirect_scene
+                == Some((
+                    self.cache.geometry_key(state),
+                    state.settings.render.preview_hdr(state.settings.compile.lighting),
+                ))
+        {
             return;
         }
         let delay = if shown { f64::from(options.incremental_delay).max(MIN_UPDATE_DELAY) } else { MIN_UPDATE_DELAY };
@@ -849,6 +923,20 @@ fn revalidate_cached_faces(app: &mut HammerProApp) {
 }
 
 pub(crate) fn scene_synced(app: &mut HammerProApp) {
+    if let Some(preview) = app.pkg.lighting.preview.as_mut() {
+        let content = app.state.doc.content_serial();
+        let hdr = hp_app::runtime::render::render_display().light_hdr;
+        preview.rendered_scene = Some((content, hdr));
+        if let Some(running) = preview.running.as_mut()
+            && !running.lit
+            && running.baseline.is_none()
+            && running.content == content
+            && running.scene_key.1 == hdr
+            && let Some(gfx) = app.state.gfx.as_ref()
+        {
+            running.baseline = Some(gfx.renderer.snapshot_baked_lights());
+        }
+    }
     if let Some(baseline) = app.pkg.lighting.preview.as_ref().and_then(|preview| preview.baseline.as_ref())
         && let Some(gfx) = app.state.gfx.as_mut()
     {
@@ -1202,6 +1290,7 @@ impl Package for Lighting {
         }
         if let Some(p) = app.pkg.lighting.preview.as_mut() {
             p.indirect_serial = None;
+            p.indirect_scene = None;
         }
         app.state.runtime.lighting.indirect = IndirectStatus::default();
     }
@@ -1397,6 +1486,8 @@ mod tests {
             written: 0,
             lit: false,
             quick: false,
+            scene_key: preview.scene_key(&state, false),
+            baseline: None,
         });
         state.runtime.lighting.progress = Some(BakeProgress {
             kind: BakeKind::Full,
@@ -1405,7 +1496,7 @@ mod tests {
             elapsed_s: 1.0,
             faces: 0,
         });
-        state.doc.create_point_entity("light", DVec3::ZERO, &[]).unwrap();
+        state.doc.create_point_entity("light_environment", DVec3::ZERO, &[]).unwrap();
         state.frame.time = 10.0;
         preview.upload(&mut state);
         assert!(preview.upload.is_some(), "validation waits until the edit settles");
@@ -1473,8 +1564,17 @@ mod tests {
         preview.shown_serial = Some(serial);
         state.doc.create_point_entity("light", DVec3::ZERO, &[]).unwrap();
         let edited = preview.cache.resolve(&state, false, 0.0, true).unwrap();
-        preview.running =
-            Some(Running { id: 1, kind: BakeKind::Update, serial: edited, scope: Scope::All, lit: false, quick: true });
+        preview.running = Some(Running {
+            id: 1,
+            kind: BakeKind::Update,
+            serial: edited,
+            scope: Scope::All,
+            lit: false,
+            quick: true,
+            scene_key: preview.scene_key(&state, false),
+            baseline: Some(std::sync::Arc::default()),
+            content: state.doc.content_serial(),
+        });
         assert!(state.doc.undo());
         preview.cache.resolve(&state, false, 0.0, true).unwrap();
         preview.schedule(&mut state, 0.0);
@@ -1482,5 +1582,42 @@ mod tests {
         assert!(preview.upload.is_none());
         assert_eq!(preview.shown_serial, Some(serial));
         assert!(preview.can_revalidate(&state));
+    }
+
+    #[test]
+    fn local_edits_keep_the_initial_bake_in_flight() {
+        let mut state = hp_app::testing::test_state();
+        let mut preview = Preview::start(&egui::Context::default()).unwrap();
+        let serial = preview.cache.resolve(&state, false, 0.0, true).unwrap();
+        preview.running = Some(Running {
+            id: 44,
+            kind: BakeKind::Full,
+            serial,
+            scope: Scope::All,
+            lit: false,
+            quick: true,
+            scene_key: preview.scene_key(&state, false),
+            baseline: Some(std::sync::Arc::default()),
+            content: state.doc.content_serial(),
+        });
+        state.doc.create_point_entity("light", DVec3::ZERO, &[]).unwrap();
+        state.frame.time = 12.0;
+        preview.cache.resolve(&state, false, 0.0, true).unwrap();
+        preview.schedule(&mut state, 12.0);
+        assert_eq!(preview.running.as_ref().map(|running| running.id), Some(44));
+        assert_eq!(preview.next_id, 1);
+        assert!(!preview.cancelling);
+    }
+
+    #[test]
+    fn local_edits_do_not_restart_a_retained_indirect_volume() {
+        let mut state = hp_app::testing::test_state();
+        let mut preview = Preview::start(&egui::Context::default()).unwrap();
+        preview.indirect_scene = Some(preview.scene_key(&state, true));
+        state.doc.create_point_entity("light", DVec3::ZERO, &[]).unwrap();
+        state.frame.time = 12.0;
+        preview.schedule_lit(&mut state, true);
+        assert!(preview.running.is_none());
+        assert_eq!(preview.next_id, 1);
     }
 }

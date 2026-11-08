@@ -229,7 +229,10 @@ impl AssetManager {
             generation: 1,
             lighting_generation: 1,
             memory_generation: 1,
-            mats: registry::Materials { hdr: settings.render.light_preview_hdr, ..Default::default() },
+            mats: registry::Materials {
+                hdr: settings.render.lighting_hdr(settings.view.render_mode, settings.compile.lighting),
+                ..Default::default()
+            },
             thumbs: thumbs::Thumbs::default(),
             models: models::Models::default(),
             particle_draws: particle_model_draw::DrawCache::default(),

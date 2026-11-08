@@ -433,8 +433,14 @@ fn render_mode_dropdown(ui: &mut Ui, state: &mut AppState) {
     let current = state.settings.view.render_mode;
     let current_label = RENDER_MODES.iter().find(|(m, _)| *m == current).map(|(_, a)| a.label()).unwrap_or("");
     let mut chosen = None;
+    let label = egui::WidgetText::from(format!("🎨 {current_label}")).into_galley(
+        ui,
+        Some(egui::TextWrapMode::Truncate),
+        110.0,
+        egui::TextStyle::Button,
+    );
     egui::ComboBox::from_id_salt("hp_shell_render_mode")
-        .selected_text(format!("🎨 {current_label}"))
+        .selected_text(label)
         .width(130.0)
         .wrap_mode(egui::TextWrapMode::Truncate)
         .show_ui(ui, |ui| {

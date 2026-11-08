@@ -83,7 +83,11 @@ fn physical_options(options: LightPlus) -> LightPlus {
 fn settings_fingerprint(state: &AppState, lit: bool) -> u64 {
     let mut hash = Fingerprint(DefaultHasher::new());
     let s = state.settings.lighting.sanitized();
-    let hdr = if lit { state.settings.render.light_preview_hdr } else { uses_hdr(state.settings.compile.lighting) };
+    let hdr = if lit {
+        state.settings.render.preview_hdr(state.settings.compile.lighting)
+    } else {
+        uses_hdr(state.settings.compile.lighting)
+    };
     hash_debug(
         &mut hash,
         &(
@@ -321,6 +325,7 @@ mod tests {
         let budget = ready(&mut cache, &state, false);
         assert_ne!(props, budget);
         let indirect = ready(&mut cache, &state, true);
+        state.settings.render.light_preview_match_compile = false;
         state.settings.render.light_preview_hdr = !state.settings.render.light_preview_hdr;
         assert_ne!(indirect, ready(&mut cache, &state, true));
         assert_eq!(budget, ready(&mut cache, &state, false));

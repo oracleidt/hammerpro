@@ -1,4 +1,6 @@
 {
+  "shell.render.light_preview_match_compile": "Следовать режиму HDR/LDR компиляции",
+  "shell.render.light_preview_match_compile_tip": "Использовать диапазон освещения, выбранный для компиляции. Изменение значений HDR включает ручное сравнение.",
   "action.tool_physics": "Симулятор физики",
   "tool.physics": "Физика",
   "physics.select": "Выберите браши или пропы для симуляции.",
