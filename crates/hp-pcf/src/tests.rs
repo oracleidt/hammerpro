@@ -286,6 +286,61 @@ fn hostile_files_never_panic() {
 }
 
 #[test]
+fn native_children_depth_and_particle_capacity_are_preserved() {
+    let defs = parse_file(include_bytes!("../tests/data/capacity_native/hp_capacity117.pcf")).unwrap();
+    let plans: Vec<_> = defs.iter().map(|d| Arc::new(Plan::new(d))).collect();
+    assert!(plans.iter().all(|p| p.unsupported.is_empty()));
+    let lookup = |name: &str| plans.iter().find(|p| p.name == name).cloned();
+    for (name, collections, particles) in [("children", 21, 21), ("deep", 7, 2)] {
+        let mut effect = Effect::new(&format!("hp_capacity117_{name}"), &lookup, 17).unwrap();
+        assert_eq!(effect.sims.len(), collections);
+        assert!(!effect.hierarchy_limited);
+        for _ in 0..8 {
+            effect.step(0.05, [0.0, 0.0, 64.0], 80_000);
+        }
+        assert_eq!(effect.particle_count(), particles);
+    }
+    for count in [6000, 10000] {
+        let mut effect = Effect::new(&format!("hp_capacity117_count{count}"), &lookup, 17).unwrap();
+        effect.step(0.05, [0.0, 0.0, 64.0], 80_000);
+        assert_eq!(effect.particle_count(), 5000, "retain the native per-collection cap");
+        let high = effect.particles().map(|(_, p)| p.pos[0]).fold(0.0f32, f32::max);
+        assert_eq!(high.to_bits(), 4999.0f32.to_bits(), "native count-to-alpha-to-position readback");
+    }
+}
+
+#[test]
+fn child_expansion_preserves_siblings_and_bounds_cycles_and_large_graphs() {
+    let leaf = Arc::new(Plan::new(&SystemDef { name: "leaf".into(), ..Default::default() }));
+    let root = |count| {
+        Arc::new(Plan::new(&SystemDef {
+            name: "root".into(),
+            children: (0..count).map(|_| Child { system: "leaf".into(), delay: 0.0 }).collect(),
+            ..Default::default()
+        }))
+    };
+    for (count, expected, limited) in [(2, 3, false), (1000, sim::MAX_SYSTEMS, true)] {
+        let root = root(count);
+        let effect =
+            Effect::new("root", &|name| Some(if name == "root" { root.clone() } else { leaf.clone() }), 1).unwrap();
+        assert_eq!(effect.sims.len(), expected);
+        assert_eq!(effect.hierarchy_limited, limited);
+    }
+    let cycle = Arc::new(Plan::new(&SystemDef {
+        name: "cycle".into(),
+        children: vec![Child { system: "cycle".into(), delay: 0.0 }],
+        ..Default::default()
+    }));
+    let effect = Effect::new("cycle", &|_| Some(cycle.clone()), 1).unwrap();
+    assert_eq!(effect.sims.len(), 1);
+    assert!(effect.hierarchy_limited);
+    // A loader returning fresh allocations must also terminate named cycles.
+    let effect = Effect::new("cycle", &|_| Some(Arc::new((*cycle).clone())), 1).unwrap();
+    assert_eq!(effect.sims.len(), 1);
+    assert!(effect.hierarchy_limited);
+}
+
+#[test]
 fn real_particle_files() {
     let dirs = [
         "D:/SteamLibrary/steamapps/common/GarrysMod/garrysmod/particles",

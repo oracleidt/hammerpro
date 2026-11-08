@@ -118,9 +118,17 @@ impl Preview {
         });
         ui.label(tf!("pe.preview_stats", session.preview.particles, format!("{:.3}", session.preview.cpu_ms)));
         if session.preview.particles >= MAX_PREVIEW_PARTICLES {
-            ui.label(egui::RichText::new(t!("pe.preview_limit")).color(hp_app::theme::warning()));
+            ui.label(
+                egui::RichText::new(tf!("pe.preview_limit", MAX_PREVIEW_PARTICLES)).color(hp_app::theme::warning()),
+            );
         }
         if let Some(effect) = &self.effect {
+            if effect.hierarchy_limited {
+                ui.label(
+                    egui::RichText::new(tf!("lab.pp.hierarchy_limit", hp_pcf::sim::MAX_SYSTEMS))
+                        .color(hp_app::theme::warning()),
+                );
+            }
             let mut unsupported: Vec<&str> =
                 effect.systems().flat_map(|(p, _)| p.unsupported.iter().map(String::as_str)).collect();
             unsupported.sort_unstable();

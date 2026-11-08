@@ -1,0 +1,65 @@
+{
+  "errors": [],
+  "version": "2000.00.01",
+  "cases": [
+    {
+      "colored_pixels": 216,
+      "low": [
+        -80,
+        0,
+        0
+      ],
+      "name": "children",
+      "high": [
+        64,
+        0,
+        96
+      ]
+    },
+    {
+      "colored_pixels": 24,
+      "low": [
+        -80,
+        0,
+        0
+      ],
+      "name": "deep",
+      "high": [
+        80,
+        0,
+        96
+      ]
+    },
+    {
+      "low": [
+        0,
+        0,
+        0
+      ],
+      "name": "count6000",
+      "high": [
+        4999,
+        0,
+        0
+      ]
+    },
+    {
+      "low": [
+        0,
+        0,
+        0
+      ],
+      "name": "count10000",
+      "high": [
+        4999,
+        0,
+        0
+      ]
+    }
+  ],
+  "provenance": {
+    "owned_pid": 6320,
+    "client_sha256": "d6a468ab5ff462d17f7f6a4f6ae10910f1513b17cc1d0c5d1ae4712d88180c35",
+    "kind": "installed Garrys Mod, unchanged authored PCF, explicit identity CP0 orientation, no particle attribute injection; owned child closed and Lua restored"
+  }
+}

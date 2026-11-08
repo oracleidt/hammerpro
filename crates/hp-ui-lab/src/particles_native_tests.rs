@@ -2,6 +2,98 @@ use super::*;
 use hp_render::{MaterialDesc, MaterialFlags, RenderMode, Renderer, TexFormat, TextureUpload, ViewKind, ViewParams};
 
 #[test]
+fn complete_child_graphs_match_the_native_particle_render() {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+    let Ok(adapter) = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())) else {
+        return;
+    };
+    let (device, queue) = pollster::block_on(
+        adapter.request_device(&wgpu::DeviceDescriptor { required_limits: adapter.limits(), ..Default::default() }),
+    )
+    .unwrap();
+    let mut renderer = Renderer::new(&device, &queue);
+    renderer.set_tone_settings(hp_render::ToneSettings { bloom: 0.0, ..Default::default() });
+    let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../hp-pcf/tests/data/capacity_native");
+    let fs = hp_fs::GameFs::from_source_mounts(
+        None,
+        None,
+        &[hp_fs::SourceMount {
+            kind: hp_fs::SourceMountKind::Gma,
+            label: "Owned child hierarchy reference".into(),
+            path: folder.join("hp_capacity117.gma"),
+            enabled: true,
+            origin: hp_fs::SourceOrigin::Custom,
+        }],
+    )
+    .unwrap();
+    let texture = fs.load_texture("hp_capacity117/white", None).unwrap();
+    let tex = renderer.create_texture_exact(&TextureUpload {
+        width: texture.width,
+        height: texture.height,
+        format: TexFormat::Rgba8Srgb,
+        levels: vec![texture.rgba],
+    });
+    renderer.set_material(0, &MaterialDesc { texture: Some(tex), tex_size: [8.0; 2], ..Default::default() });
+    let definitions =
+        hp_pcf::parse_file(include_bytes!("../../hp-pcf/tests/data/capacity_native/hp_capacity117.pcf")).unwrap();
+    let plans: HashMap<_, _> = definitions.iter().map(|d| (d.name.clone(), Arc::new(Plan::new(d)))).collect();
+    let looks = HashMap::from([(
+        material_key("hp_capacity117/white"),
+        Arc::new(read_material_look(&fs, "hp_capacity117/white")),
+    )]);
+    let params = ViewParams {
+        size: [128; 2],
+        game_pixel_grid: true,
+        kind: ViewKind::Perspective {
+            eye: [0.0, -256.0, 112.0],
+            forward: [0.0, 1.0, 0.0],
+            up: [0.0, 0.0, 1.0],
+            fov_y_deg: 60.0,
+            near: 1.0,
+            far: 2000.0,
+        },
+        mode: RenderMode::Unshaded,
+        grid: None,
+        background: [0.0; 3],
+        selection_color: [0.0; 4],
+        show_sprites: false,
+        show_models: false,
+        msaa: false,
+    };
+    for (name, count) in [("children", 21), ("deep", 2)] {
+        let mut effect = Effect::new(&format!("hp_capacity117_{name}"), &|name| plans.get(name).cloned(), 17).unwrap();
+        for _ in 0..8 {
+            effect.step(0.05, [0.0, 0.0, 64.0], 80_000);
+        }
+        let (mut sprites, mut materials) = (Vec::new(), Vec::new());
+        append_sprites(std::iter::once((17, &effect)), &looks, &mut sprites, &mut materials);
+        assert_eq!(sprites.len(), count);
+        let mut assets = hp_app::testing::MockAssets::default();
+        let mut draws = instances_of(&sprites, &materials, &mut assets);
+        for draw in &mut draws {
+            draw.material = 0;
+        }
+        let reference = image::open(folder.join(format!("hp_capacity117_{name}.png"))).unwrap().to_rgb8();
+        for preview in [false, true] {
+            if preview {
+                renderer.render_particle_preview(1, &params, &draws);
+            } else {
+                renderer.set_particles(&draws);
+                renderer.render_view(1, &params, &hp_render::Overlay::default());
+            }
+            let (_, _, pixels) = renderer.read_view_rgba8(1).unwrap();
+            let delta = pixels
+                .chunks_exact(4)
+                .zip(reference.pixels())
+                .flat_map(|(a, b)| (0..3).map(move |c| a[c].abs_diff(b[c])))
+                .max()
+                .unwrap();
+            assert!(delta <= 3, "native {name}, preview={preview}: maximum RGB delta {delta}");
+        }
+    }
+}
+
+#[test]
 fn rope_particles_match_native_subdivision_texture_coordinates_and_endpoint_attributes() {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let Ok(adapter) = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())) else {

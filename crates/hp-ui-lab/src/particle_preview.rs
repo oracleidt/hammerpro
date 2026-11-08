@@ -474,6 +474,13 @@ impl ParticlePreviewWindow {
             }
             ui.label(RichText::new(tf!("lab.pp.particles", self.particle_count())).small().weak());
             self.unsupported_ui(ui, sel);
+            if self.playing.as_ref().is_some_and(|p| p.effect.hierarchy_limited) {
+                ui.label(
+                    RichText::new(tf!("lab.pp.hierarchy_limit", hp_pcf::sim::MAX_SYSTEMS))
+                        .small()
+                        .color(hp_app::theme::warning()),
+                );
+            }
         }
         let pick_waiting = state
             .runtime
@@ -574,6 +581,11 @@ pub(crate) const TR: hp_app::i18n::TrTable = &[
     ),
     ("lab.pp.particles", "{0} particles", "{0} particules"),
     ("lab.pp.unsupported", "Not simulated: {0}", "Non simulé : {0}"),
+    (
+        "lab.pp.hierarchy_limit",
+        "The effect contains a child cycle or exceeds {0} collections. Its preview is incomplete.",
+        "L'effet contient un cycle d'enfants ou dépasse {0} collections. Son aperçu est incomplet.",
+    ),
     ("lab.pp.assign", "Assign to {0} entities", "Assigner à {0} entités"),
     ("lab.pp.assign_field", "Use for this field", "Utiliser pour ce champ"),
     (

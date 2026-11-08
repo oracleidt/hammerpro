@@ -108,8 +108,8 @@ pub(super) const TR: hp_app::i18n::TrTable = &[
     ("pe.preview_stats", "{0} particles · simulation {1} ms", "{0} particules · simulation {1} ms"),
     (
         "pe.preview_limit",
-        "The preview particle budget is reached (30000)",
-        "Le budget de particules de l'aperçu est atteint (30000)",
+        "The preview particle budget is reached ({0})",
+        "Le budget de particules de l'aperçu est atteint ({0})",
     ),
     ("pe.control_points", "Control points", "Points de contrôle"),
     ("pe.add_control_point", "Add control point", "Ajouter un point de contrôle"),

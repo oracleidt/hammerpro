@@ -29,9 +29,9 @@ pub const MAX_PREVIEW_PARTICLES: usize = 5000;
 pub const MAX_CONTROL_POINTS: usize = 64;
 const LOOP_PAUSE: f32 = 0.6;
 const INITIAL_PREVIOUS_DT: f32 = 0.05;
-const MAX_CHILD_DEPTH: usize = 4;
-const MAX_SYSTEMS: usize = 16;
-pub const MAX_EFFECT_PARTICLES: usize = MAX_PREVIEW_PARTICLES * MAX_SYSTEMS;
+pub const MAX_SYSTEMS: usize = 256;
+// A shared editing budget, independent of the number of child collections.
+pub const MAX_EFFECT_PARTICLES: usize = 80_000;
 
 type V3 = [f32; 3];
 
@@ -2109,6 +2109,8 @@ pub struct Effect {
     parents: Vec<Option<usize>>,
     render_order: Vec<usize>,
     pub missing: Vec<String>,
+    /// A cycle or the collection resource guard prevented complete expansion.
+    pub hierarchy_limited: bool,
     time: f32,
     idle: f32,
     scratch: Vec<(V3, V3)>,
@@ -2139,22 +2141,40 @@ impl Effect {
         let mut sims: Vec<(f32, Sim)> = Vec::new();
         let mut parents = Vec::new();
         let mut missing = Vec::new();
-        let mut queue: std::collections::VecDeque<(Arc<Plan>, f32, usize, Option<usize>)> =
-            std::collections::VecDeque::from([(root, 0.0, 0, None)]);
+        let mut hierarchy_limited = false;
+        let mut queue: std::collections::VecDeque<(Arc<Plan>, f32, Option<usize>)> =
+            std::collections::VecDeque::from([(root, 0.0, None)]);
         let mut n = 0u32;
-        while let Some((plan, delay, depth, parent)) = queue.pop_front() {
-            if sims.len() >= MAX_SYSTEMS {
-                break;
-            }
+        while let Some((plan, delay, parent)) = queue.pop_front() {
             let index = sims.len();
-            if depth < MAX_CHILD_DEPTH {
-                for (child, d) in &plan.children {
-                    match lookup(child) {
-                        Some(c) => queue.push_back((c, delay + d, depth + 1, Some(index))),
-                        None => {
-                            if !missing.iter().any(|m: &String| m.eq_ignore_ascii_case(child)) {
-                                missing.push(child.clone());
-                            }
+            for (child, d) in &plan.children {
+                if sims.len() + queue.len() + 1 >= MAX_SYSTEMS {
+                    hierarchy_limited = true;
+                    break;
+                }
+                match lookup(child) {
+                    Some(c) => {
+                        // Repeated siblings are distinct collections. Only an
+                        // ancestor reference is recursive, including lookups
+                        // that return a freshly allocated plan for the same name.
+                        let same = |p: &Arc<Plan>| {
+                            Arc::ptr_eq(p, &c) || (!p.name.is_empty() && p.name.eq_ignore_ascii_case(&c.name))
+                        };
+                        let mut cycle = same(&plan);
+                        let mut ancestor = parent;
+                        while !cycle && let Some(p) = ancestor {
+                            cycle = same(&sims[p].1.plan);
+                            ancestor = parents[p];
+                        }
+                        if cycle {
+                            hierarchy_limited = true;
+                        } else {
+                            queue.push_back((c, delay + d, Some(index)));
+                        }
+                    }
+                    None => {
+                        if !missing.iter().any(|m: &String| m.eq_ignore_ascii_case(child)) {
+                            missing.push(child.clone());
                         }
                     }
                 }
@@ -2179,7 +2199,16 @@ impl Effect {
                     .filter_map(|(child, parent)| (*parent == Some(index)).then_some(child)),
             );
         }
-        Some(Effect { sims, parents, render_order, missing, time: 0.0, idle: 0.0, scratch: Vec::new() })
+        Some(Effect {
+            sims,
+            parents,
+            render_order,
+            missing,
+            hierarchy_limited,
+            time: 0.0,
+            idle: 0.0,
+            scratch: Vec::new(),
+        })
     }
 
     pub fn set_sequence_frames(&mut self, frames: &dyn Fn(&Plan) -> Option<Vec<u32>>) {
