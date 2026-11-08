@@ -878,6 +878,11 @@ pub const TR: TrTable = &[
     ("entities.ss_position", "Position", "Position"),
     ("entities.ss_soundlevel", "Sound level", "Niveau sonore"),
     ("entities.ss_name", "Soundscape", "Soundscape"),
+    (
+        "entities.pick_soundscape",
+        "Choose a soundscape or type a custom name",
+        "Choisir un soundscape ou saisir un nom personnalisé",
+    ),
     ("entities.ss_wave", "Wave", "Son"),
     ("entities.ss_add_wave", "+ wave", "+ son"),
     ("entities.ss_remove_wave", "Remove this wave", "Retirer ce son"),

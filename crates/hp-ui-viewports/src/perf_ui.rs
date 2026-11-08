@@ -17,6 +17,11 @@ pub const TR: TrTable = &[
     ("primitives.loading", "Measuring resource allocations...", "Mesure des allocations des ressources..."),
     ("primitives.models", "Models pending: {0}, missing: {1}", "Modèles en attente : {0}, manquants : {1}"),
     (
+        "primitives.instances",
+        "Instances pending: {0}, unresolved: {1}",
+        "Instances en attente : {0}, non résolues : {1}",
+    ),
+    (
         "primitives.partial",
         "Some references are outside the measured heap",
         "Certaines références sont hors du heap mesuré",
@@ -84,6 +89,9 @@ pub fn primitive_lines(state: &AppState) -> Vec<String> {
     lines.push(tf!("primitives.process", if resident > 0 { memory_text(resident) } else { "-".to_owned() }));
     if stats.models_loading > 0 || stats.models_missing > 0 {
         lines.push(tf!("primitives.models", stats.models_loading, stats.models_missing));
+    }
+    if stats.instances_loading > 0 || stats.instances_missing > 0 {
+        lines.push(tf!("primitives.instances", stats.instances_loading, stats.instances_missing));
     }
     if stats.collecting {
         lines.push(t!("primitives.loading").to_owned());

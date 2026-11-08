@@ -391,6 +391,27 @@ impl SmartEdit {
         };
 
         match kind {
+            PropertyType::Choices | PropertyType::String if row.key.eq_ignore_ascii_case("soundscape") => {
+                let text_w = (w - BUTTON_W - spacing).max(40.0);
+                self.buffers.field(ui, id, display, FieldOpts { hint, width: text_w, ..FieldOpts::default() }, set_key);
+                let btn = side_button(ui, icon("▾"), false).on_hover_text(t!("entities.pick_soundscape"));
+                if picker_is_open(&btn) {
+                    let mut values: Vec<String> = prop
+                        .into_iter()
+                        .flat_map(|property| property.choices.iter().map(|choice| choice.value.clone()))
+                        .collect();
+                    if let Some(names) = crate::catalog::soundscape_names(ui.ctx(), cx.assets) {
+                        values.extend(names.iter().cloned());
+                    }
+                    values.sort_unstable_by_key(|name| name.to_ascii_lowercase());
+                    values.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+                    if let Some(value) =
+                        picker_popup(&btn, true, values.len(), |index| PickerItem { name: &values[index], detail: "" })
+                    {
+                        push_set(ops, value, false);
+                    }
+                }
+            }
             PropertyType::Boolean => {
                 let tri = match effective {
                     Some(v) => {

@@ -125,6 +125,8 @@ pub struct PrimitiveStats {
     pub prop_materials: usize,
     pub models_loading: usize,
     pub models_missing: usize,
+    pub instances_loading: usize,
+    pub instances_missing: usize,
     pub lights: usize,
     pub memory: Option<PrimitiveMemory>,
     pub memory_error: Option<String>,

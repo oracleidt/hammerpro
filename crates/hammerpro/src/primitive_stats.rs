@@ -5,7 +5,7 @@ use hp_app::AppState;
 use hp_app::runtime::primitives::{PrimitiveClass, PrimitiveMemory, PrimitiveStats, ResourceProbes};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-struct Stamp(u64, u64, u64);
+struct Stamp(u64, u64, u64, u64);
 
 struct Pending {
     stamp: Stamp,
@@ -35,6 +35,7 @@ impl Monitor {
             state.doc.revision(),
             state.assets.resource_memory_generation(),
             crate::dispatch::lighting::primitive_resource_stamp(lighting),
+            hp_app::runtime::instances::InstanceCache::shared().generation(),
         );
         let now = state.frame.time;
         if self.observed.is_none_or(|(seen, _)| seen != stamp) {
@@ -87,6 +88,12 @@ impl Monitor {
         stats.prop_materials = props.prop_materials;
         stats.models_loading = props.models_loading;
         stats.models_missing = props.models_missing;
+        if stats.instances_loading > 0 {
+            stats.collecting = true;
+            state.runtime.primitives.stats = Some(stats);
+            ctx.request_repaint_after(Duration::from_millis(100));
+            return;
+        }
         if !crate::dispatch::lighting::primitive_resource_probes(lighting, &mut probes) {
             ctx.request_repaint_after(Duration::from_millis(100));
             return;

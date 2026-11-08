@@ -56,20 +56,51 @@ impl AssetManager {
             .chain(self.models.variants.values().map(|(model, _)| model))
             .filter_map(|model| model.id.map(|id| (id, &model.materials)))
             .collect();
-        for node in doc.scene().entities().values() {
-            let entity = &node.entity;
+        let cache = hp_app::runtime::instances::InstanceCache::shared();
+        let mut instance_entities = Vec::new();
+        let mut world_materials: BTreeSet<String> = doc
+            .scene()
+            .solids()
+            .values()
+            .flat_map(|node| node.solid.sides.iter().map(|side| side.material.clone()))
+            .collect();
+        let fgd = self.fgd.as_deref();
+        let kinds = |class: &str, key: &str| fgd.and_then(|fgd| hp_app::runtime::instances::key_fixup(fgd, class, key));
+        for root in doc.scene().entities().values().filter(|node| hp_editor::instances::is_instance(&node.entity)) {
+            let expansion =
+                hp_app::runtime::instances::expand_one(&cache, &root.entity, doc.path(), self.fgd.as_deref(), false);
+            for piece in expansion.pieces {
+                if let Some(file) = cache.file(&piece.path) {
+                    world_materials.extend(
+                        file.solids
+                            .iter()
+                            .flat_map(|brush| brush.node.solid.sides.iter().map(|side| side.material.clone())),
+                    );
+                }
+                instance_entities.extend(piece.point_entities(Some(&kinds), false));
+            }
+        }
+        for (entity, instanced) in doc
+            .scene()
+            .entities()
+            .values()
+            .map(|node| (&node.entity, false))
+            .chain(instance_entities.iter().map(|entity| (entity, true)))
+        {
             if !entity.classname.to_ascii_lowercase().starts_with("prop_") {
                 continue;
             }
-            let Some(path) = entity.get("model").filter(|path| path.to_ascii_lowercase().ends_with(".mdl")) else {
+            let desc = crate::entities::entity_desc(entity, self.fgd.as_deref());
+            let Some((path, skin)) =
+                desc.model.as_ref().filter(|(path, _)| path.to_ascii_lowercase().ends_with(".mdl"))
+            else {
                 continue;
             };
             stats.props += 1;
-            let desc = crate::entities::entity_desc(entity, self.fgd.as_deref());
             let path = crate::util::model_key(path);
-            let path = crate::models::model_data_key(&path, desc.anim.as_deref());
-            let skin = entity.get("skin").and_then(|v| v.parse::<usize>().ok()).unwrap_or(0);
-            let body = desc.body;
+            let path = crate::models::model_data_key(&path, if instanced { None } else { desc.anim.as_deref() });
+            let skin = *skin as usize;
+            let body = if instanced { 0 } else { desc.body };
             if !seen.insert((path.clone(), skin, body)) {
                 continue;
             }
@@ -92,10 +123,26 @@ impl AssetManager {
                         .scene
                         .ents
                         .get(&entity.id)
+                        .filter(|_| !instanced)
                         .and_then(|state| state.model)
                         .and_then(|model| render_materials.get(&model))
+                        .copied()
+                        .or_else(|| {
+                            self.models
+                                .variants
+                                .get(&(path.clone(), skin as u32, body))
+                                .map(|(model, _)| &model.materials)
+                        })
+                        .or_else(|| {
+                            (body == 0)
+                                .then(|| {
+                                    self.models.render.get(&(path.clone(), skin as u32)).map(|model| &model.materials)
+                                })
+                                .flatten()
+                        })
                     {
-                        for id in *ids {
+                        probes.vec(ids, PrimitiveClass::Props);
+                        for id in ids {
                             if let Some(crate::registry::MatRecord {
                                 source: crate::registry::MatSource::Asset { name, .. },
                                 ..
@@ -115,14 +162,8 @@ impl AssetManager {
         for name in &materials {
             self.primitive_material_probes(name, PrimitiveClass::Props, probes);
         }
-        let world_materials: BTreeSet<&str> = doc
-            .scene()
-            .solids()
-            .values()
-            .flat_map(|node| node.solid.sides.iter().map(|side| side.material.as_str()))
-            .collect();
         for material in world_materials {
-            self.primitive_material_probes(material, PrimitiveClass::World, probes);
+            self.primitive_material_probes(&material, PrimitiveClass::World, probes);
         }
         stats.prop_materials = materials.len();
         stats

@@ -79,3 +79,7 @@ Keys left empty (a rule added without its wave yet) are not written to the file,
 
 ---
 [Back to the documentation index](../README.md)
+
+## Assigning a custom soundscape
+
+For `env_soundscape` and `env_soundscape_triggerable`, type the script entry name directly in the **Soundscape** field, for example `sunless_cavesound_entree`, then press Enter. The adjacent button offers FGD choices and names from mounted soundscape scripts. Custom names are preserved when saving the VMF and support Undo/Redo.

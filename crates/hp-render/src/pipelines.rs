@@ -1147,6 +1147,7 @@ mod tests {
     fn shaders_parse_and_validate() {
         let modules = [
             ("mesh", MESH_WGSL),
+            ("particles", crate::particles::PARTICLE_WGSL),
             ("lightmap", crate::lightmap::SHADER),
             ("lines", LINES_WGSL),
             ("sprite", SPRITE_WGSL),

@@ -1804,3 +1804,55 @@ fn dock_tabs_never_grow_a_resizable_panel() {
     }
     hp_app::i18n::set_lang(hp_app::i18n::Lang::En);
 }
+
+#[test]
+fn soundscape_choices_accept_custom_names_with_undo_and_vmf_roundtrip() {
+    let fgd = hp_fgd::Fgd::parse(
+        &format!(
+            "{}{}",
+            crate::test_fgd::TEST_FGD,
+            r#"
+@PointClass = env_soundscape
+[
+    soundscape(*choices) : "Soundscape" : "Automatic" = [ "Automatic" : "Automatic" "Nothing" : "Nothing" ]
+]
+@PointClass base(env_soundscape) = env_soundscape_triggerable []
+"#
+        ),
+        None,
+    )
+    .resolve();
+    for class in ["env_soundscape", "env_soundscape_triggerable"] {
+        let mut state = setup();
+        let entity = state
+            .doc
+            .create_point_entity(class, glam::DVec3::ZERO, &[("soundscape".into(), "Automatic".into())])
+            .unwrap();
+        state.doc.clear_history();
+        state.doc.set_selection(&[ObjRef::Entity(entity)]);
+        let mut panel = EntityPanel::new();
+        let id = panel.field_id("soundscape");
+        type_then_keys(
+            &mut state,
+            &fgd,
+            &mut panel,
+            id,
+            true,
+            "sunless_cavesound_entree",
+            &[(egui::Key::Enter, egui::Modifiers::NONE)],
+        );
+        assert_eq!(
+            state.doc.scene().entity(entity).unwrap().entity.get("soundscape"),
+            Some("sunless_cavesound_entree")
+        );
+        assert_eq!(state.doc.history_len().0, 1);
+        assert!(state.doc.undo());
+        assert_eq!(state.doc.scene().entity(entity).unwrap().entity.get("soundscape"), Some("Automatic"));
+        assert!(state.doc.redo());
+        let map = hp_vmf::parse(&hp_vmf::write(&state.doc.to_map())).unwrap();
+        assert_eq!(
+            map.entities.iter().find(|value| value.id == entity).unwrap().get("soundscape"),
+            Some("sunless_cavesound_entree")
+        );
+    }
+}

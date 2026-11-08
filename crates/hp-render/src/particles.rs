@@ -15,6 +15,8 @@ pub(crate) const PARTICLE_WGSL: &str = concat!(
     "\n",
     include_str!("shaders/parallax.wgsl"),
     "\n",
+    include_str!("shaders/lighting.wgsl"),
+    "\n",
     include_str!("shaders/mesh.wgsl"),
     "\n",
     include_str!("shaders/particle.wgsl")

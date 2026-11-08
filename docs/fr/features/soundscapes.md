@@ -79,3 +79,7 @@ Les clés laissées vides (une règle ajoutée sans son pour l'instant) ne sont 
 
 ---
 [Retour à l'index de la documentation](../README.md)
+
+## Assigner un soundscape personnalisé
+
+Pour `env_soundscape` et `env_soundscape_triggerable`, saisissez directement le nom de l’entrée du script dans **Soundscape**, par exemple `sunless_cavesound_entree`, puis validez avec Entrée. Le bouton voisin propose les choix du FGD et les noms des scripts de soundscapes montés. Les noms personnalisés sont conservés dans le VMF et prennent en charge Annuler/Rétablir.
