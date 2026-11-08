@@ -88,6 +88,12 @@ pub const ROAD_TR: TrTable = &[
         "Afficher la fenêtre de tous les réglages : matériaux, lignes, dévers, terrain, jonctions",
     ),
     ("road.lanes", "Lanes", "Voies"),
+    ("road.optimize", "Reduce brushes", "Réduire les brushes"),
+    (
+        "road.optimize_tip",
+        "Merge compatible straight sections and neighboring coplanar bands with the same material without changing the road, its texture coordinates or markings. Existing roads can be edited and rebuilt with this option.",
+        "Fusionne les portions droites compatibles et les bandes voisines coplanaires de même matériau sans changer la route, ses coordonnées de texture ou ses marquages. Les routes existantes peuvent être éditées et reconstruites avec cette option.",
+    ),
     ("road.lanes_tip", "Number of lanes (1 to 8)", "Nombre de voies (1 à 8)"),
     ("road.lane_width", "Lane width", "Largeur de voie"),
     (

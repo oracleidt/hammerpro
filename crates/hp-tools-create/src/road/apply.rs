@@ -231,6 +231,15 @@ pub fn piece_solid(
 ) -> Result<Vec<Side>, GeomError> {
     let mut sides = hull_solid(&piece.corners, &piece.material, tex_scale, lightmap, next)?;
     for s in &mut sides {
+        let plane = hp_geom::Plane { normal: s.normal(), dist: s.plane_distance() };
+        let points: Vec<_> =
+            piece.corners.iter().copied().filter(|p| plane.distance(*p).abs() < hp_geom::CLIP_EPS).collect();
+        let anchor = if points.is_empty() {
+            s.plane.iter().sum::<DVec3>() / 3.0
+        } else {
+            points.iter().sum::<DVec3>() / points.len() as f64
+        };
+        s.plane = plane.to_points_at(anchor);
         if s.normal().z > 0.5 {
             s.uaxis = TexAxis { axis: piece.uv.u_axis, shift: piece.uv.u_shift, scale: tex_scale };
             s.vaxis = TexAxis { axis: piece.uv.v_axis, shift: piece.uv.v_shift, scale: tex_scale };

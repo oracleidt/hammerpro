@@ -294,7 +294,7 @@ impl Document {
 
     pub fn to_map(&self) -> Map {
         let mut map = self.scene.to_map();
-        crate::curve_meta::prepare_road_contents(&mut map);
+        crate::curve_meta::prepare_road_contents(&mut map, &self.scene);
         map
     }
 

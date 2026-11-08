@@ -4,6 +4,14 @@
 
 The displacement tool creates, destroys, selects, sculpts and paints displacements (terrain made from brush faces). It covers everything of the Hammer displacement panels (paint geometry, paint alpha, sculpt, tags, sew, subdivide, noise, masks) plus Hammer++ features (4-way blends, continuous painting) and some of its own (live sewing, line of sight, project onto brushes, cast shadows).
 
+## Full blocks and sphere subdivision
+
+Enable **Full Displacement** before choosing power **2**, **3** or **4** to create displacements on every quad face of the selected blocks. Explicit face selections still take priority. To round a cube, select its six displacement faces or its whole solid, choose **Sphere** in **Tools**, set **Amount** to **1**, and click **Subdivide**. Each connected selection uses its own center and a sphere fitted to its shortest dimension. Separate blocks remain independent, including blocks touching only at a corner.
+
+**Smooth surface** smooths the connected surface and includes three-way corners of closed blocks. Open outer borders stay fixed. **Amount** blends the original shape with the result from 0 to 1. The operation keeps displacement power, materials, blend alpha and collision flags, sews connected faces, and is one undo step. Changing power remains a separate control for increasing or decreasing grid resolution.
+
+The displacement tool exposes `full_displacement`, `subdivision_shape` (`smooth` or `sphere`) and `subdivision_amount` to scripts and tool settings. MCP `subdivide_displacements` accepts `shape` and `amount` with the same values.
+
 ## Opening it
 
 - **Tools > Displacement tool**, the tool palette, or `Shift+P`.

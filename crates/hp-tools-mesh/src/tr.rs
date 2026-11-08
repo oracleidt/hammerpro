@@ -507,6 +507,25 @@ pub const TR: TrTable = &[
         "Échange les deux textures du mélange : chaque valeur d'alpha a devient 255 - a",
     ),
     ("disp.subdivide", "Subdivide", "Subdiviser"),
+    ("disp.full_displacement", "Full Displacement", "Full Displacement"),
+    (
+        "disp.full_displacement_tip",
+        "Create displacements on all quad faces of the selected blocks. Choose a power, then Sphere and Subdivide to round a whole block.",
+        "Crée des displacements sur toutes les faces quadrangulaires des blocs sélectionnés. Choisissez une puissance, puis Sphère et Subdiviser pour arrondir un bloc complet.",
+    ),
+    ("disp.subdivision_smooth", "Smooth surface", "Lisser la surface"),
+    ("disp.subdivision_sphere", "Sphere", "Sphère"),
+    ("disp.subdivision_amount", "Amount", "Intensité"),
+    (
+        "disp.subdivision_amount_tip",
+        "Blend between the current shape (0) and the result (1).",
+        "Mélange entre la forme actuelle (0) et le résultat (1).",
+    ),
+    (
+        "disp.subdivision_shape_tip",
+        "Smooth the selected surface, or project each connected selection onto a sphere inside its bounds. Select all six displacement faces of a block to turn it into a sphere.",
+        "Lisse la surface sélectionnée ou projette chaque ensemble connecté sur une sphère inscrite dans ses dimensions. Sélectionnez les six faces en displacement d'un bloc pour le transformer en sphère.",
+    ),
     (
         "disp.subdivide_tip",
         "Smooth the displacements as one subdivision surface, then sew them. The outer borders stay in place",

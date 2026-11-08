@@ -6,6 +6,7 @@ use hp_geom::{DISP_FLAG_NO_HULL, DISP_FLAG_NO_PHYSICS, DISP_FLAG_NO_RAY};
 use super::paint::destroy_targets;
 use super::seams::{UNDO_SEW, plan_sew};
 use super::smooth::{SmoothPart, subdivide_parts};
+use super::subdivision::{SubdivisionShape, connected_parts, sphere_parts};
 use crate::common::edit_error_text;
 
 pub(crate) const UNDO_SUBDIVIDE: &str = "Subdivide displacements";
@@ -74,6 +75,16 @@ pub(crate) fn reshape_doc(
     label: &'static str,
     run: impl FnOnce(&mut [SmoothPart<'_>]) -> Vec<usize>,
 ) -> Result<usize, EditError> {
+    reshape_doc_components(doc, faces, label, false, run)
+}
+
+fn reshape_doc_components(
+    doc: &mut Document,
+    faces: &[FaceRef],
+    label: &'static str,
+    separate: bool,
+    run: impl FnOnce(&mut [SmoothPart<'_>]) -> Vec<usize>,
+) -> Result<usize, EditError> {
     let mut work: Vec<(FaceRef, hp_geom::DispMesh, hp_vmf::DispInfo)> = Vec::new();
     for f in faces {
         let Some(node) = doc.scene().solid(f.solid) else { continue };
@@ -84,11 +95,16 @@ pub(crate) fn reshape_doc(
         };
         work.push((*f, (**mesh).clone(), disp.clone()));
     }
-    let counts = {
+    let (counts, groups) = {
         let mut parts: Vec<SmoothPart<'_>> =
             work.iter_mut().map(|(_, mesh, disp)| SmoothPart { mesh, disp, pinned: false }).collect();
-        run(&mut parts)
+        let groups = separate.then(|| connected_parts(&parts));
+        (run(&mut parts), groups)
     };
+    let groups: Vec<Vec<FaceRef>> = groups.map_or_else(
+        || vec![faces.to_vec()],
+        |groups| groups.into_iter().map(|group| group.into_iter().map(|i| work[i].0).collect()).collect(),
+    );
     let mut updates = Vec::new();
     let mut moved = 0;
     for ((f, _, mut d), n) in work.into_iter().zip(counts) {
@@ -106,8 +122,10 @@ pub(crate) fn reshape_doc(
     }
     doc.transaction(label, |doc| {
         doc.set_disp_data(label, updates)?;
-        let plan = plan_sew(doc, faces, &[]);
-        doc.set_disp_data(UNDO_SEW, plan.updates)?;
+        for group in &groups {
+            let plan = plan_sew(doc, group, &[]);
+            doc.set_disp_data(UNDO_SEW, plan.updates)?;
+        }
         Ok::<(), EditError>(())
     })?;
     Ok(moved)
@@ -118,11 +136,20 @@ pub(crate) fn reshape(
     label: &'static str,
     run: impl FnOnce(&mut [SmoothPart<'_>]) -> Vec<usize>,
 ) -> Option<(usize, usize)> {
+    reshape_components(state, label, false, run)
+}
+
+fn reshape_components(
+    state: &mut AppState,
+    label: &'static str,
+    separate: bool,
+    run: impl FnOnce(&mut [SmoothPart<'_>]) -> Vec<usize>,
+) -> Option<(usize, usize)> {
     let faces = targets(&state.doc);
     if !require(state, &faces) {
         return None;
     }
-    match reshape_doc(&mut state.doc, &faces, label, run) {
+    match reshape_doc_components(&mut state.doc, &faces, label, separate, run) {
         Ok(moved) => Some((faces.len(), moved)),
         Err(e) => {
             failed(state, &e);
@@ -132,7 +159,14 @@ pub(crate) fn reshape(
 }
 
 pub fn subdivide(state: &mut AppState) -> usize {
-    match reshape(state, UNDO_SUBDIVIDE, subdivide_parts) {
+    subdivide_with_shape(state, SubdivisionShape::Smooth, 1.0)
+}
+
+pub fn subdivide_with_shape(state: &mut AppState, shape: SubdivisionShape, amount: f64) -> usize {
+    match reshape_components(state, UNDO_SUBDIVIDE, shape == SubdivisionShape::Sphere, |parts| match shape {
+        SubdivisionShape::Smooth => subdivide_parts(parts, amount),
+        SubdivisionShape::Sphere => sphere_parts(parts, amount),
+    }) {
         Some((faces, moved)) if moved > 0 => {
             state.notify(Severity::Success, tf!("disp.subdivided", faces));
             moved

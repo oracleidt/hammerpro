@@ -20,3 +20,6 @@ hp-fgd.workspace = true
 hp-kv.workspace = true
 hp-fs.workspace = true
 hp-mdl.workspace = true
+
+[dev-dependencies]
+hp-bspc = { path = "../hp-bspc" }

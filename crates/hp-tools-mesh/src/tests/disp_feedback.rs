@@ -225,6 +225,9 @@ fn every_brush_option_reads_back() {
     let mut state = state_with(&[FLOOR]);
     let mut tool = DisplacementTool::new();
     let changes = [
+        ("full_displacement", "on"),
+        ("subdivision_shape", "sphere"),
+        ("subdivision_amount", "0.5"),
         ("mode", "alpha"),
         ("effect", "set"),
         ("axis", "view"),

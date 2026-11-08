@@ -168,6 +168,7 @@ pub struct RoadMeta {
     pub shoulder: f64,
     pub thickness: f64,
     pub step: f64,
+    pub optimize: bool,
     pub tex_scale: f64,
     pub material: String,
     pub shoulder_material: String,
@@ -202,6 +203,7 @@ impl Default for RoadMeta {
             shoulder: 16.0,
             thickness: 8.0,
             step: 64.0,
+            optimize: false,
             tex_scale: hp_geom::DEFAULT_TEXTURE_SCALE,
             material: DEFAULT_MATERIAL.to_owned(),
             shoulder_material: String::new(),
@@ -331,7 +333,7 @@ impl RoadMeta {
             .junction
             .map_or(String::new(), |j| format!("{},{},{},{}", j.end.name(), j.target, j.flare, j.attach.name()));
         let mut out = format!(
-            "{VERSION};uid={};lanes={};lw={};sh={};th={};step={};tex={};mat={};smat={};lmat={};cmat={};cl={};el={};dl={};lwid={};dash={};gap={};r0={};r1={};ab={};al={};ft={};lift={};sd={};ed={};ss={};es={};u0={};junc={};layout={};radius={};pts=",
+            "{VERSION};uid={};lanes={};lw={};sh={};th={};step={};tex={};mat={};smat={};lmat={};cmat={};cl={};el={};dl={};lwid={};dash={};gap={};r0={};r1={};ab={};al={};ft={};lift={};sd={};ed={};ss={};es={};u0={};junc={};layout={};radius={};opt={};pts=",
             self.uid,
             self.lanes,
             self.lane_width,
@@ -363,6 +365,7 @@ impl RoadMeta {
             junction,
             self.layout.name(),
             self.radius,
+            u8::from(self.optimize),
         );
         for (i, p) in self.points.iter().enumerate() {
             if i > 0 {
@@ -405,6 +408,13 @@ impl RoadMeta {
                 "sh" => m.shoulder = num()?,
                 "th" => m.thickness = num()?,
                 "step" => m.step = num()?,
+                "opt" => {
+                    m.optimize = match v {
+                        "0" => false,
+                        "1" => true,
+                        _ => return None,
+                    }
+                }
                 "tex" => m.tex_scale = num()?,
                 "mat" => m.material = unescape(v)?,
                 "smat" => m.shoulder_material = unescape(v)?,

@@ -6,6 +6,14 @@ The road tool builds a whole road along a spline: lanes of a chosen width, shoul
 
 It is built on the [curve tool](curve-tool.md): same smooth spline, same way of remembering the road in the `hammerpro_curve` keys of the brushes (Hammer and Hammer++ ignore them and keep them), same mitred joints with no gap and no overlap.
 
+## Fewer brushes and compiled joints
+
+**Reduce brushes** merges compatible straight road sections and neighboring coplanar bands with the same material. It preserves the road shape, texture coordinates, slopes, banking and line pattern. It is enabled for new roads. Existing roads keep their previous setting; open **Edit road**, enable the option and apply to rebuild them with fewer brushes. The setting is saved with the road and named presets. Benefits are greatest on straight roads; curved or warped sections are retained when merging would change their surface.
+
+Road faces use stable plane points when created and exported for compilation. Existing tagged roads receive the same correction during saving or compilation, including roads in brush entities. Their materials, texture axes and ownership are retained. Road surfaces remain detail geometry and need structural ground or other sealing brushes beneath them.
+
+MCP `create_road` and `edit_road` accept `optimize`; `get_road` reports it. The road tool exposes the same `optimize` option to scripts.
+
 ## Opening it
 
 - **Tools > Road tool** or the tool palette (creation group, after the sprinkle tool). It has no default shortcut; you can give it one in **Settings > Keyboard**.

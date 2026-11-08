@@ -6,6 +6,14 @@ L'outil route construit une route entière le long d'une spline : des voies d'un
 
 Il s'appuie sur l'[outil courbe](curve-tool.md) : la même spline lisse, la même façon de mémoriser la route dans les clés `hammerpro_curve` des brushes (Hammer et Hammer++ les ignorent et les conservent), les mêmes joints en onglet sans trou ni chevauchement.
 
+## Réduire les brushes et préserver les raccords compilés
+
+**Réduire les brushes** fusionne les portions droites compatibles et les bandes voisines coplanaires utilisant le même matériau. La forme de la route, les coordonnées de texture, les pentes, le dévers et les marquages sont conservés. L'option est activée pour les nouvelles routes. Les anciennes conservent leur réglage : ouvrez **Modifier la route**, activez l'option et appliquez pour les reconstruire avec moins de brushes. Le réglage est enregistré avec la route et ses préréglages nommés. Le gain est surtout important sur les portions droites ; les portions courbes ou gauchies sont conservées lorsque les fusionner changerait leur surface.
+
+Les faces des routes utilisent des points de plan stables à la création et à l'export pour la compilation. Les anciennes routes identifiées par l'outil reçoivent la même correction à l'enregistrement ou à la compilation, y compris dans les entités brush. Les matériaux, les axes de texture et l'appartenance des brushes sont conservés. Les routes restent une géométrie de détail : gardez un sol structurel ou d'autres brushes fermant la carte sous celles-ci.
+
+Les outils MCP `create_road` et `edit_road` acceptent `optimize`, et `get_road` indique sa valeur. L'outil route expose le même réglage `optimize` aux scripts.
+
 ## L'ouvrir
 
 - **Outils > Outil route** ou la palette d'outils (groupe création, après l'outil sprinkle). Il n'a pas de raccourci par défaut ; vous pouvez lui en donner un dans **Paramètres > Clavier**.

@@ -15,6 +15,7 @@ pub(crate) mod seams;
 pub mod slope;
 pub(crate) mod slope_ui;
 pub(crate) mod smooth;
+pub mod subdivision;
 pub mod tags;
 pub mod terrain_windows;
 
@@ -34,13 +35,14 @@ use hp_geom::{Falloff, Ray};
 use crate::common::{DocKey, edit_error_text, line_on_top, point, rgba, view_axis};
 pub use paint::{AlphaEffect, BrushSettings, GeoEffect, Interaction, PaintAxis};
 use paint::{
-    ELEVATION_TAG, Sample, UNDO_ELEVATION, UNDO_STROKE, UP_FACING_Z, build_sample, count_disp_faces, create_targets,
-    destroy_targets, mesh_border, pick_disp, selected_disp_faces, surface_ring, visible_from,
+    ELEVATION_TAG, Sample, UNDO_ELEVATION, UNDO_STROKE, UP_FACING_Z, build_sample, count_disp_faces, destroy_targets,
+    mesh_border, pick_disp, selected_disp_faces, surface_ring, visible_from,
 };
 pub use sculpt::BoundsLimit;
 #[cfg(test)]
 use seams::nearest_disp_face;
 use seams::{UNDO_SEW, brush_faces, edge_neighbours, plan_live_sew, plan_sew};
+pub use subdivision::SubdivisionShape;
 pub use tags::{TagKind, TagSettings, TagValue};
 
 const DRAG_START_PX: f32 = 3.0;
@@ -164,6 +166,9 @@ pub struct DisplacementTool {
     press: Option<Press>,
     radius_drag: Option<RadiusDrag>,
     scale_factor: f64,
+    subdivision_shape: SubdivisionShape,
+    subdivision_amount: f64,
+    full_displacement: bool,
     pub terrain: erode::TerrainOptions,
     pub blend: blend::BlendOptions,
     pub slope: slope::SlopeOptions,
@@ -194,6 +199,9 @@ impl Default for DisplacementTool {
             press: None,
             radius_drag: None,
             scale_factor: 2.0,
+            subdivision_shape: SubdivisionShape::Smooth,
+            subdivision_amount: 1.0,
+            full_displacement: false,
             terrain: erode::TerrainOptions::default(),
             blend: blend::BlendOptions::default(),
             slope: slope::SlopeOptions::default(),
@@ -263,7 +271,7 @@ impl DisplacementTool {
     }
 
     pub fn create(&mut self, state: &mut AppState, power: u32) -> usize {
-        let targets = create_targets(&state.doc);
+        let targets = paint::create_targets_mode(&state.doc, self.full_displacement);
         if targets.faces.is_empty() {
             let text = if targets.skipped > 0 {
                 tf!("disp.skipped", targets.skipped)
@@ -1220,10 +1228,12 @@ impl DisplacementTool {
         });
 
         section(ui, t!("disp.create"));
-        let targets = create_targets(&state.doc);
+        ui.checkbox(&mut self.full_displacement, t!("disp.full_displacement"))
+            .on_hover_text(t!("disp.full_displacement_tip"));
+        let targets = paint::create_targets_mode(&state.doc, self.full_displacement);
         let target_text = if targets.faces.is_empty() {
             t!("disp.target_none").to_owned()
-        } else if targets.from_faces {
+        } else if targets.from_faces || self.full_displacement {
             tf!("disp.target_faces", targets.faces.len())
         } else {
             tf!("disp.target_up", targets.faces.len())
@@ -1442,7 +1452,33 @@ impl DisplacementTool {
             {
                 actions.push(PanelAction::InvertAlpha);
             }
-            if ui.add_enabled(any, Button::new(t!("disp.subdivide"))).on_hover_text(t!("disp.subdivide_tip")).clicked()
+        });
+        ui.horizontal_wrapped(|ui| {
+            egui::ComboBox::from_id_salt("hp_disp_subdivision_shape")
+                .selected_text(match self.subdivision_shape {
+                    SubdivisionShape::Smooth => t!("disp.subdivision_smooth"),
+                    SubdivisionShape::Sphere => t!("disp.subdivision_sphere"),
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut self.subdivision_shape,
+                        SubdivisionShape::Smooth,
+                        t!("disp.subdivision_smooth"),
+                    );
+                    ui.selectable_value(
+                        &mut self.subdivision_shape,
+                        SubdivisionShape::Sphere,
+                        t!("disp.subdivision_sphere"),
+                    );
+                })
+                .response
+                .on_hover_text(t!("disp.subdivision_shape_tip"));
+            ui.add(egui::Slider::new(&mut self.subdivision_amount, 0.0..=1.0).text(t!("disp.subdivision_amount")))
+                .on_hover_text(t!("disp.subdivision_amount_tip"));
+            if ui
+                .add_enabled(any && self.subdivision_amount > 0.0, Button::new(t!("disp.subdivide")))
+                .on_hover_text(t!("disp.subdivide_tip"))
+                .clicked()
             {
                 actions.push(PanelAction::Subdivide);
             }
@@ -1915,7 +1951,7 @@ impl DisplacementTool {
                 commands::invert_alpha(state);
             }
             PanelAction::Subdivide => {
-                commands::subdivide(state);
+                commands::subdivide_with_shape(state, self.subdivision_shape, self.subdivision_amount);
             }
             PanelAction::Noise => {
                 erode::apply(state, erode::TerrainOp::Noise, &self.terrain);

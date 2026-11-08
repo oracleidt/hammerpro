@@ -47,9 +47,9 @@ fn editor_curve_data(editor: &EditorInfo) -> String {
     parts.into_iter().map(|(_, v)| v).collect()
 }
 
-pub(crate) fn prepare_road_contents(map: &mut hp_vmf::Map) {
+pub(crate) fn prepare_road_contents(map: &mut hp_vmf::Map, scene: &crate::Scene) {
     let mut roads = std::collections::HashSet::new();
-    for solid in &map.world.solids {
+    for solid in map.world.solids.iter().chain(map.entities.iter().flat_map(|entity| &entity.solids)) {
         let Some(tag) = editor_curve_tag(&solid.editor) else { continue };
         if !roads.contains(tag) && editor_curve_data(&solid.editor).starts_with("r1;uid=") {
             roads.insert(tag.to_owned());
@@ -62,11 +62,40 @@ pub(crate) fn prepare_road_contents(map: &mut hp_vmf::Map) {
         if !editor_curve_tag(&solid.editor).is_some_and(|tag| roads.contains(tag)) {
             continue;
         }
-        for side in &mut solid.sides {
+        for (index, side) in solid.sides.iter_mut().enumerate() {
+            let anchor = scene
+                .solid(solid.id)
+                .and_then(|node| node.geom.face_for_side(index))
+                .map(|f| hp_geom::polygon_center(&f.vertices));
+            stabilize_road_plane(side, anchor);
             if !side.extra_props.iter().any(|(key, _)| key.eq_ignore_ascii_case("contents")) {
                 side.add_compile_contents(hp_vmf::CONTENTS_DETAIL);
             }
         }
+    }
+    for solid in map.entities.iter_mut().flat_map(|entity| &mut entity.solids) {
+        if editor_curve_tag(&solid.editor).is_some_and(|tag| roads.contains(tag)) {
+            for (index, side) in solid.sides.iter_mut().enumerate() {
+                let anchor = scene
+                    .solid(solid.id)
+                    .and_then(|node| node.geom.face_for_side(index))
+                    .map(|f| hp_geom::polygon_center(&f.vertices));
+                stabilize_road_plane(side, anchor);
+            }
+        }
+    }
+}
+
+fn stabilize_road_plane(side: &mut hp_vmf::Side, anchor: Option<glam::DVec3>) {
+    let normal = side.normal();
+    let dist = side.plane_distance();
+    if side.disp.is_some() || !normal.is_finite() || normal.length_squared() < 0.5 || !dist.is_finite() {
+        return;
+    }
+    let anchor = anchor.unwrap_or_else(|| side.plane.iter().sum::<glam::DVec3>() / 3.0);
+    let plane = hp_geom::Plane { normal, dist }.to_points_at(anchor);
+    if plane.map(|p| p.as_vec3()) != side.plane.map(|p| p.as_vec3()) {
+        side.plane = plane;
     }
 }
 

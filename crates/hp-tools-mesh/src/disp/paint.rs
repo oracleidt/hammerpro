@@ -529,7 +529,12 @@ pub(crate) struct CreateTargets {
     pub skipped: usize,
 }
 
+#[cfg(test)]
 pub(crate) fn create_targets(doc: &Document) -> CreateTargets {
+    create_targets_mode(doc, false)
+}
+
+pub(crate) fn create_targets_mode(doc: &Document, full: bool) -> CreateTargets {
     let is_disp = |f: &FaceRef| doc.face_side(*f).is_some_and(|s| s.disp.is_some());
     let selected: Vec<FaceRef> = doc.selection().faces.iter().copied().filter(|f| !is_disp(f)).collect();
     let from_faces = !selected.is_empty();
@@ -541,7 +546,7 @@ pub(crate) fn create_targets(doc: &Document) -> CreateTargets {
             let Some(node) = doc.scene().solid(id) else { continue };
             for f in &node.geom.faces {
                 let face = FaceRef::new(id, f.side_index);
-                if f.normal().z > UP_FACING_Z && !is_disp(&face) {
+                if (full || f.normal().z > UP_FACING_Z) && !is_disp(&face) {
                     out.push(face);
                 }
             }

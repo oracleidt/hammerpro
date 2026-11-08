@@ -389,20 +389,45 @@ pub(crate) fn smooth_values(parts: &mut [SmoothPart<'_>], brush: &LocalBrush, am
     changed
 }
 
-pub(crate) fn subdivide_parts(parts: &mut [SmoothPart<'_>]) -> Vec<usize> {
+pub(crate) fn subdivide_parts(parts: &mut [SmoothPart<'_>], amount: f64) -> Vec<usize> {
     let mut changed = vec![0usize; parts.len()];
+    if !amount.is_finite() || amount <= 0.0 {
+        return changed;
+    }
+    let amount = amount.min(1.0);
     let surface = Surface::build(parts, |mesh, _| mesh.face_normal, |_, _| 1.0, None);
     let junctions = find_junctions(parts, &surface);
     let nodes = &surface.nodes;
     let mut new_pos: Vec<DVec3> = nodes.iter().map(|n| n.pos).collect();
     for (ni, node) in nodes.iter().enumerate() {
         let edges = surface.neighbours(parts, ni, false);
-        let diagonals = surface.neighbours(parts, ni, true);
-        if edges.len() != 4 || diagonals.len() != 4 {
+        let mut faces = Vec::new();
+        let mut diagonals = Vec::new();
+        for &(pi, k) in &node.members {
+            let n = parts[pi].mesh.row_len;
+            let (row, col) = (k / n, k % n);
+            for r in row.saturating_sub(1)..=row.min(n - 2) {
+                for c in col.saturating_sub(1)..=col.min(n - 2) {
+                    let corners = [r * n + c, r * n + c + 1, (r + 1) * n + c + 1, (r + 1) * n + c];
+                    let ids = corners.map(|k| surface.node(pi, k).unwrap_or(usize::MAX));
+                    let Some(corner) = ids.iter().position(|id| *id == ni) else { continue };
+                    let mut key = ids;
+                    key.sort_unstable();
+                    if !faces.contains(&key) {
+                        faces.push(key);
+                        diagonals.push(ids[(corner + 2) % 4]);
+                    }
+                }
+            }
+        }
+        let n = edges.len();
+        if n < 3 || faces.len() != n {
             continue;
         }
         let sum = |list: &[usize]| list.iter().filter_map(|m| nodes.get(*m)).map(|m| m.pos).sum::<DVec3>();
-        let p = (node.pos * 16.0 + sum(&edges) * 4.0 + sum(&diagonals)) / 36.0;
+        let n = n as f64;
+        let limit = (node.pos * n * n + sum(&edges) * 4.0 + sum(&diagonals)) / (n * (n + 5.0));
+        let p = node.pos.lerp(limit, amount);
         if let Some(slot) = new_pos.get_mut(ni)
             && p.is_finite()
         {

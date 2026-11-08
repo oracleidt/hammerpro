@@ -12,20 +12,20 @@ pub const MIN_BAND: f64 = 1.0;
 const SMOOTH_PASSES: usize = 2;
 const MIN_POINT_GAP: f64 = 1e-3;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum LateralSide {
     Right,
     Left,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum LineRole {
     Edge(LateralSide),
     Divider(u32),
     Center,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PieceRole {
     Lane(u32),
     Shoulder(LateralSide),
@@ -466,7 +466,7 @@ pub fn build(meta: &RoadMeta, env: &RoadEnv<'_>) -> Result<Road, RoadError> {
     let off = ((meta.gap / seg_len).round() as i64).max(1);
     let phase = (meta.u0 / seg_len).round() as i64;
     let total = band_list.len() * count;
-    if total > MAX_PIECES {
+    if total > MAX_PIECES && !meta.optimize {
         return Err(RoadError::TooManyPieces(total));
     }
     let mut pieces = Vec::with_capacity(total + 16);
@@ -566,6 +566,12 @@ pub fn build(meta: &RoadMeta, env: &RoadEnv<'_>) -> Result<Road, RoadError> {
     {
         let extra = junction::flare_pieces(&road, plan, &frames);
         road.pieces.extend(extra);
+    }
+    if road.meta.optimize {
+        super::optimize::coalesce(&mut road.pieces);
+    }
+    if road.pieces.len() > MAX_PIECES {
+        return Err(RoadError::TooManyPieces(road.pieces.len()));
     }
     Ok(road)
 }

@@ -51,7 +51,12 @@ pub struct RoadOptions {
 
 impl Default for RoadOptions {
     fn default() -> Self {
-        Self { meta: RoadMeta::default(), base_z: 0.0, create_as: CreateAs::World, keep_active: true }
+        Self {
+            meta: RoadMeta { optimize: true, ..RoadMeta::default() },
+            base_z: 0.0,
+            create_as: CreateAs::World,
+            keep_active: true,
+        }
     }
 }
 
@@ -912,6 +917,10 @@ impl RoadTool {
                     ui.label(t!("road.step")).on_hover_text(t!("road.step_tip"));
                     Self::number(ui, &mut m.step, MIN_STEP..=MAX_STEP, t!("road.step_tip"));
                     ui.end_row();
+                    ui.label(t!("road.optimize"));
+                    ui.add_enabled(m.layout == RoadLayout::Path, egui::Checkbox::without_text(&mut m.optimize))
+                        .on_hover_text(t!("road.optimize_tip"));
+                    ui.end_row();
                     ui.label(t!("create.block.tex_scale")).on_hover_text(t!("create.block.tex_scale_tip"));
                     ui.add(egui::DragValue::new(&mut m.tex_scale).speed(0.01).range(0.01..=64.0).max_decimals(3))
                         .on_hover_text(t!("create.block.tex_scale_tip"));
@@ -1489,6 +1498,7 @@ impl Tool for RoadTool {
             "shoulder" => ranged(0.0, MAX_SHOULDER).map(|x| m.shoulder = x).is_some(),
             "thickness" => ranged(MIN_THICKNESS, MAX_THICKNESS).map(|x| m.thickness = x).is_some(),
             "step" => ranged(MIN_STEP, MAX_STEP).map(|x| m.step = x).is_some(),
+            "optimize" => flag.map(|enabled| m.optimize = enabled).is_some(),
             "tex_scale" => ranged(0.01, 64.0).map(|x| m.tex_scale = x).is_some(),
             "material" => name(v).map(|s| m.material = s).is_some_and(|_| {
                 self.follow_material = false;
@@ -1584,6 +1594,11 @@ impl Tool for RoadTool {
                 "depth of the road slab under the surface in units (2 to 128)",
             ),
             ToolOption::new("step", num(m.step), "target length of one road segment in units (16 to 512)"),
+            ToolOption::new(
+                "optimize",
+                if m.optimize { "on" } else { "off" },
+                "merge compatible straight brushes without changing markings or texture mapping",
+            ),
             ToolOption::new("tex_scale", num(m.tex_scale), "texture scale of the road faces (0.01 to 64)"),
             ToolOption::new("material", m.material.clone(), "material of the lanes"),
             ToolOption::new(

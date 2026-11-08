@@ -133,8 +133,8 @@ domain! { "displacements";
             "remove_multiblend": boolean("Drop the multiblend rows."),
         }, ["face"];
     subdivide_displacements: Edit, "Subdivide displacements",
-        "Smooth the surface formed by displacements like a subdivision surface, then sew it (Hammer's Subdivide).",
-        { "faces": faces("Faces (default: the selected displacements)."), "ids": target_ids(), "solid_ids": target_solid_ids() }, [];
+        "Smooth the selected displacement surface or reshape each connected selection into an inscribed sphere, then sew it. Select all six displacement faces of a block for a complete sphere.",
+        { "faces": faces("Faces (default: the selected displacements)."), "ids": target_ids(), "solid_ids": target_solid_ids(), "shape": choice("Shape (default smooth).", &["smooth", "sphere"]), "amount": number("Blend strength (default 1).", 0.0, 1.0) }, [];
     sew_displacements: Edit, "Sew displacements",
         "Make the shared edges and corners of neighbouring displacements identical (Hammer's Sew).",
         { "faces": faces("Faces (default: the selected displacements)."), "ids": target_ids(), "solid_ids": target_solid_ids() }, [];
@@ -737,8 +737,17 @@ fn displacement_to_mesh(state: &mut AppState, a: &Args<'_>) -> R<Outcome> {
 
 fn subdivide_displacements(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let faces = disp_targets(state, a, false)?;
-    let n = with_faces_selected(state, "subdivide_displacements", &faces, hp_tools_mesh::disp::commands::subdivide)?;
-    Ok(ToolResult::json(json!({ "faces": faces.len(), "vertices_moved": n })))
+    let shape = a.opt_enum("shape", &["smooth", "sphere"])?.unwrap_or_else(|| "smooth".to_owned());
+    let mode = if shape == "sphere" {
+        hp_tools_mesh::disp::SubdivisionShape::Sphere
+    } else {
+        hp_tools_mesh::disp::SubdivisionShape::Smooth
+    };
+    let amount = a.opt_f64("amount", 0.0, 1.0)?.unwrap_or(1.0);
+    let n = with_faces_selected(state, "subdivide_displacements", &faces, |state| {
+        hp_tools_mesh::disp::commands::subdivide_with_shape(state, mode, amount)
+    })?;
+    Ok(ToolResult::json(json!({ "faces": faces.len(), "vertices_moved": n, "shape": shape, "amount": amount })))
 }
 
 fn sew_displacements(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
@@ -894,6 +903,29 @@ mod tests {
 
     fn positions(s: &hp_app::AppState, solid: u32, side: usize) -> Vec<glam::DVec3> {
         s.doc.scene().solid(solid).and_then(|n| n.disp_mesh(side)).map(|m| m.positions.clone()).expect("displacement")
+    }
+
+    #[test]
+    fn sphere_subdivision_arguments_shape_a_complete_block_and_undo() {
+        let mut state = hp_app::testing::test_state();
+        let created = ok(&mut state, "create_brush", json!({ "min": [448, -832, 96], "max": [576, -704, 224] }));
+        let id = created["solid_ids"][0].as_u64().unwrap() as u32;
+        let made = ok(&mut state, "create_displacements", json!({ "ids": [id], "power": 3 }));
+        assert_eq!(made["created"], 6);
+        let before = state.doc.to_vmf_string();
+        let steps = state.doc.history_len().0;
+        let shaped = ok(&mut state, "subdivide_displacements", json!({ "ids": [id], "shape": "sphere", "amount": 1 }));
+        assert_eq!(shaped["shape"], "sphere");
+        assert!(shaped["vertices_moved"].as_u64().unwrap() > 0);
+        assert_eq!(state.doc.history_len().0, steps + 1);
+        let center = glam::DVec3::new(512.0, -768.0, 160.0);
+        for side in 0..6 {
+            assert!(positions(&state, id, side).iter().all(|p| (p.distance(center) - 64.0).abs() < 1e-7));
+        }
+        assert!(state.doc.undo());
+        assert_eq!(state.doc.to_vmf_string(), before);
+        err(&mut state, "subdivide_displacements", json!({ "ids": [id], "shape": "cube" }));
+        err(&mut state, "subdivide_displacements", json!({ "ids": [id], "amount": 2 }));
     }
 
     fn two_tiles(s: &mut hp_app::AppState) -> (u32, usize) {

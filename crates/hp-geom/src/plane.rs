@@ -120,6 +120,33 @@ impl Plane {
         p.is_finite().then_some(p)
     }
 
+    pub fn to_points_at(&self, anchor: DVec3) -> [DVec3; 3] {
+        let k = self.dominant_axis();
+        let j = (0..3)
+            .filter(|i| *i != k)
+            .min_by(|a, b| self.normal[*a].abs().total_cmp(&self.normal[*b].abs()))
+            .unwrap_or((k + 2) % 3);
+        let i = 3 - k - j;
+        let (n, dist) = if self.normal[k] < 0.0 { (-self.normal, -self.dist) } else { (self.normal, self.dist) };
+        if !anchor.is_finite() || !n.is_finite() || n[k].abs() <= 1e-12 || !dist.is_finite() {
+            return self.to_points();
+        }
+        let anchor = self.project(anchor);
+        let make = |a: f64, b: f64| {
+            let mut p = anchor;
+            p[i] += a;
+            p[j] += b;
+            p[k] = (dist - n[i] * p[i] - n[j] * p[j]) / n[k];
+            p
+        };
+        let points = [make(128.0, 128.0), make(128.0, -128.0), make(-256.0, 0.0)];
+        if (points[0] - points[1]).cross(points[2] - points[1]).dot(self.normal) >= 0.0 {
+            points
+        } else {
+            [points[1], points[0], points[2]]
+        }
+    }
+
     pub fn to_points(&self) -> [DVec3; 3] {
         const SPREAD: f64 = 128.0;
         let n = self.normal;
@@ -152,6 +179,22 @@ impl Plane {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn anchored_plane_points_preserve_the_center_and_reverse_consistently() {
+        let anchor = DVec3::new(12000.25, -11999.75, 320.125);
+        for normal in [DVec3::new(0.001, 1.0, 0.0), DVec3::new(0.002, -0.001, 1.0)] {
+            let normal = normal.normalize();
+            let plane = Plane { normal, dist: normal.dot(anchor) };
+            let points = plane.to_points_at(anchor);
+            assert!((points.iter().sum::<DVec3>() / 3.0).distance(anchor) < 1e-9);
+            let restored = Plane::from_points(points[0], points[1], points[2]).unwrap();
+            assert!(restored.normal.distance(normal) < 1e-10);
+            assert!(points.iter().all(|p| plane.distance(*p).abs() < 1e-9));
+            let inverse = Plane { normal: -normal, dist: -plane.dist }.to_points_at(anchor);
+            assert_eq!(points, [inverse[1], inverse[0], inverse[2]]);
+        }
+    }
 
     fn v(x: f64, y: f64, z: f64) -> DVec3 {
         DVec3::new(x, y, z)

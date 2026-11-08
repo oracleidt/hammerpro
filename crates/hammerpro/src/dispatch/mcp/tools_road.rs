@@ -39,6 +39,7 @@ domain! { "roads";
             "shoulder": number("Width of the shoulder on each side in units (default 16; 0 for none, else at least 1).", 0.0, 256.0),
             "thickness": number("How far the brushes go down under the surface (default 8).", 2.0, 128.0),
             "step": number("Target length of a segment in units (default 64).", 16.0, 512.0),
+            "optimize": boolean("Merge compatible straight brushes (default true for new roads)."),
             "tex_scale": number("Texture scale of the faces (default: the editor's).", 0.01, 64.0),
             "material": string("Material of the lanes (default: the current material)."),
             "shoulder_material": string("Material of the shoulders (default: same as the lanes)."),
@@ -89,6 +90,7 @@ domain! { "roads";
             "shoulder": number("Width of the shoulder on each side (0, or 1 to 256).", 0.0, 256.0),
             "thickness": number("How far the brushes go down under the surface.", 2.0, 128.0),
             "step": number("Target length of a segment in units.", 16.0, 512.0),
+            "optimize": boolean("Merge compatible straight brushes without changing the road surface or markings."),
             "tex_scale": number("Texture scale of the faces.", 0.01, 64.0),
             "material": string("Material of the lanes."),
             "shoulder_material": string("Material of the shoulders, empty for the same as the lanes."),
@@ -232,6 +234,9 @@ fn apply_fields(state: &AppState, a: &Args<'_>, m: &mut RoadMeta) -> R<()> {
     if let Some(v) = a.opt_f64("step", MIN_STEP, MAX_STEP)? {
         m.step = v;
     }
+    if let Some(v) = a.opt_bool("optimize")? {
+        m.optimize = v;
+    }
     if let Some(v) = a.opt_f64("tex_scale", 0.01, 64.0)? {
         m.tex_scale = v;
     }
@@ -301,6 +306,7 @@ fn meta_json(m: &RoadMeta) -> Value {
         "total_width": m.total_width(),
         "thickness": m.thickness,
         "step": m.step,
+        "optimize": m.optimize,
         "tex_scale": m.tex_scale,
         "material": m.material,
         "shoulder_material": m.shoulder_material_name(),
@@ -357,7 +363,7 @@ fn finish(state: &mut AppState, meta: &RoadMeta, made: &RoadCreated) -> R<ToolRe
 }
 
 fn create_road(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
-    let mut meta = RoadMeta { material: state.current_material.clone(), ..RoadMeta::default() };
+    let mut meta = RoadMeta { material: state.current_material.clone(), optimize: true, ..RoadMeta::default() };
     let s = state.settings.edit.default_texture_scale;
     if s.is_finite() && s.abs() > 1e-6 {
         meta.tex_scale = s;
@@ -607,6 +613,24 @@ mod tests {
         assert!(s.doc.stats().solids < solids);
         assert!(s.doc.undo());
         assert_eq!(s.doc.stats().solids, solids);
+    }
+
+    #[test]
+    fn road_optimization_is_exposed_and_can_rebuild_existing_roads() {
+        let mut state = hp_app::testing::test_state();
+        let made = ok(
+            &mut state,
+            "create_road",
+            json!({ "points": [[0, 0, 32], [4096, 0, 32]], "snap": false, "optimize": false }),
+        );
+        let uid = made["road_uid"].as_u64().unwrap();
+        let before = made["count"].as_u64().unwrap();
+        assert_eq!(made["optimize"], false);
+        let reduced = ok(&mut state, "edit_road", json!({ "road_uid": uid, "optimize": true }));
+        assert!(reduced["count"].as_u64().unwrap() < before / 4);
+        assert_eq!(ok(&mut state, "get_road", json!({ "road_uid": uid }))["optimize"], true);
+        assert!(state.doc.undo());
+        assert_eq!(ok(&mut state, "get_road", json!({ "road_uid": uid }))["optimize"], false);
     }
 
     #[test]

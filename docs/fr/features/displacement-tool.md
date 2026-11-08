@@ -4,6 +4,14 @@
 
 L'outil displacement crée, détruit, sélectionne, sculpte et peint les displacements (le terrain fait à partir de faces de brush). Il reprend tout ce que proposent les panneaux displacement de Hammer (sculpter, peindre l'alpha, modeler, marquages, couture, subdivision, bruit, masques), les ajouts de Hammer++ (mélanges à 4 textures, peinture continue) et quelques fonctions en plus (couture en direct, ligne de vue, projection sur des brushes, ombres projetées).
 
+## Bloc complet et subdivision en sphère
+
+Activez **Full Displacement** avant de choisir la puissance **2**, **3** ou **4** pour créer des displacements sur toutes les faces quadrangulaires des blocs sélectionnés. Une sélection explicite de faces reste prioritaire. Pour arrondir un cube, sélectionnez ses six faces en displacement ou le solide complet, choisissez **Sphère** dans **Outils**, réglez **Intensité** sur **1**, puis cliquez sur **Subdiviser**. Chaque ensemble connecté utilise son propre centre et une sphère inscrite dans sa plus petite dimension. Les blocs séparés restent indépendants, même s'ils se touchent seulement par un coin.
+
+**Lisser la surface** lisse la surface connectée et prend en charge les coins à trois faces des blocs fermés. Les bords extérieurs ouverts restent fixes. **Intensité** mélange la forme d'origine et le résultat de 0 à 1. L'opération conserve la puissance, les matériaux, l'alpha de mélange et les drapeaux de collision, coud les faces connectées et ne crée qu'une étape d'annulation. La puissance reste le réglage séparé pour augmenter ou diminuer la résolution de la grille.
+
+Les scripts et réglages de l'outil displacement exposent `full_displacement`, `subdivision_shape` (`smooth` ou `sphere`) et `subdivision_amount`. L'outil MCP `subdivide_displacements` accepte `shape` et `amount` avec les mêmes valeurs.
+
 ## Ouvrir l'outil
 
 - **Outils > Outil displacement**, la palette d'outils, ou `Maj+P`.

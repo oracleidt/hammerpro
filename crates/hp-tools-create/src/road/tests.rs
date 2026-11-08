@@ -26,6 +26,187 @@ fn solids(road: &Road) -> Vec<Vec<hp_vmf::Side>> {
     apply::road_solids(road, 16, 1000).unwrap()
 }
 
+fn assert_compiled_caps(road: &Road, brushes: &[Vec<hp_vmf::Side>], direction: DVec3, offset: f64, angle: f64) {
+    let mut planes = hp_bspc::planes::PlaneSet::new();
+    for (i, piece) in road.pieces.iter().enumerate() {
+        let Some((j, next)) = road.pieces.iter().enumerate().find(|(_, next)| {
+            next.segment == piece.segment + 1 && next.role == piece.role && next.lateral == piece.lateral
+        }) else {
+            continue;
+        };
+        let joint = (piece.corners[2] + piece.corners[3] + piece.corners[6] + piece.corners[7]) * 0.25;
+        let boundary = |sides: &[hp_vmf::Side], sign: f64| {
+            sides
+                .iter()
+                .find(|side| {
+                    let n = side.normal();
+                    n.dot(direction) * sign > 0.99 && (n.dot(joint) - side.plane_distance()).abs() < hp_geom::CLIP_EPS
+                })
+                .expect("shared road cross section")
+                .plane
+        };
+        assert!(piece.corners[2].distance(next.corners[0]) < 1e-8);
+        let a = boundary(&brushes[i], 1.0);
+        let b = boundary(&brushes[j], -1.0);
+        let ai = planes.from_points(a[0], a[1], a[2]).unwrap();
+        let bi = planes.from_points(b[0], b[1], b[2]).unwrap();
+        assert!(
+            planes.get(ai).distance(joint).abs()
+                < hp_geom::PLANE_EPS + joint.abs().max_element() * f64::from(f32::EPSILON) * 4.0,
+            "compiled joint moved away from its road: {joint}, distance {}, plane {:?}, points {a:?}, offset {offset}, angle {angle}",
+            planes.get(ai).distance(joint),
+            planes.get(ai)
+        );
+        assert_eq!(
+            ai ^ 1,
+            bi,
+            "compiled road crack at offset {offset}, angle {angle}, segment {}, role {:?}, A {:?} from {a:?}, B {:?} from {b:?}, joint {joint}",
+            piece.segment,
+            piece.role,
+            planes.get(ai),
+            planes.get(bi)
+        );
+    }
+}
+
+#[test]
+fn source_compilation_keeps_adjacent_road_boundary_planes_identical() {
+    for offset in [-12000.0, 0.0, 12000.0] {
+        for angle in [0.0001f64, 0.001, 0.003, 0.005, 0.01, 0.31] {
+            let start = DVec3::new(offset, offset, 64.0);
+            let direction = DVec3::new(angle.cos(), angle.sin(), 0.0);
+            let end = start + direction * 1024.0;
+            let mut m = meta(&[p(start.x, start.y, start.z), p(end.x, end.y, end.z)]);
+            m.line_width = 1.0;
+            let road = built(&m);
+            let brushes = solids(&road);
+            assert_compiled_caps(&road, &brushes, direction, offset, angle);
+        }
+    }
+}
+
+#[test]
+fn optimized_roads_preserve_geometry_markings_and_texture_coordinates() {
+    for points in [
+        vec![p(0.0, 0.0, 32.0), p(4096.0, 0.0, 32.0)],
+        vec![p(0.0, 0.0, 32.0), p(512.0, 128.0, 32.0), p(1024.0, -256.0, 32.0)],
+        vec![p(0.0, 0.0, 32.0), p(2048.0, 512.0, 160.0)],
+        vec![p(0.0, 0.0, 32.0), p(512.0, 128.0, 96.0), p(1024.0, -256.0, 32.0)],
+    ] {
+        let m = RoadMeta { points, ..RoadMeta::default() };
+        let original = built(&m);
+        let reduced = built(&RoadMeta { optimize: true, ..m.clone() });
+        assert_eq!(original.samples, reduced.samples);
+        assert!(reduced.pieces.len() <= original.pieces.len());
+        if m.points.len() == 2 {
+            assert!(reduced.pieces.len() < original.pieces.len() / 4);
+        }
+        if m.points.len() == 3 && m.points.iter().all(|p| p.z == m.points[0].z) {
+            assert!(reduced.pieces.len() < original.pieces.len());
+        }
+        let geometries: Vec<_> = solids(&reduced).iter().map(|s| hp_geom::validate_solid(s).unwrap()).collect();
+        let volume: f64 = solids(&original).iter().map(|s| hp_geom::validate_solid(s).unwrap().volume()).sum();
+        let new_volume: f64 = geometries.iter().map(|g| g.volume()).sum();
+        assert!((volume - new_volume).abs() < volume * 1e-8);
+        for piece in &original.pieces {
+            let center = piece.corners.iter().sum::<DVec3>() / piece.corners.len() as f64;
+            let (new, _) = reduced
+                .pieces
+                .iter()
+                .zip(&geometries)
+                .find(|(p, g)| p.material == piece.material && g.faces.iter().all(|f| f.plane.distance(center) <= 1e-5))
+                .expect("same material covers the original road point");
+            for uv in [piece.uv, new.uv] {
+                let u = center.dot(uv.u_axis) / m.tex_scale + uv.u_shift;
+                let v = center.dot(uv.v_axis) / m.tex_scale + uv.v_shift;
+                let expected_u = center.dot(piece.uv.u_axis) / m.tex_scale + piece.uv.u_shift;
+                let expected_v = center.dot(piece.uv.v_axis) / m.tex_scale + piece.uv.v_shift;
+                assert!((u - expected_u).abs() < 1e-6 && (v - expected_v).abs() < 1e-6);
+            }
+        }
+    }
+}
+
+#[test]
+fn source_compilation_preserves_shallow_slopes_at_large_coordinates() {
+    let m = meta(&[p(12000.0, 12000.0, 64.0), p(13024.0, 12001.024, 66.048)]);
+    let road = built(&m);
+    let mut planes = hp_bspc::planes::PlaneSet::new();
+    for (piece, sides) in road.pieces.iter().zip(solids(&road)) {
+        for side in sides.iter().filter(|s| s.normal().z.abs() > 0.99) {
+            let center = if side.normal().z > 0.0 { &piece.corners[4..] } else { &piece.corners[..4] };
+            let center = center.iter().sum::<DVec3>() / 4.0;
+            let p = side.plane;
+            let index = planes.from_points(p[0], p[1], p[2]).unwrap();
+            assert!(
+                planes.get(index).distance(center).abs() < hp_geom::PLANE_EPS,
+                "shallow road surface moved at {center}"
+            );
+        }
+    }
+}
+
+#[test]
+fn exporting_existing_world_and_entity_roads_stabilizes_compiler_planes() {
+    let angle = 0.001f64;
+    let direction = DVec3::new(angle.cos(), angle.sin(), 0.0);
+    let start = DVec3::new(12000.0, 12000.0, 64.0);
+    let end = start + direction * 1024.0;
+    let mut m = meta(&[p(start.x, start.y, start.z), p(end.x, end.y, end.z)]);
+    m.line_width = 1.0;
+    let road = built(&m);
+    for target in [Target::World, Target::NewEntity { class: "func_brush", keyvalues: &[] }] {
+        let mut doc = hp_editor::Document::new_empty();
+        let created = apply::create_road(&mut doc, &m, 16, target).unwrap();
+        for (id, piece) in created.ids.iter().zip(&road.pieces) {
+            let mut next = || 0;
+            let original = hp_geom::hull_solid(&piece.corners, &piece.material, m.tex_scale, 16, &mut next).unwrap();
+            doc.edit_solid(*id, |solid| {
+                for (side, raw) in solid.sides.iter_mut().zip(original) {
+                    side.plane = raw.plane;
+                }
+            })
+            .unwrap();
+        }
+        let before = hp_vmf::write(&doc.scene().to_map());
+        let exported = hp_vmf::parse(&doc.to_vmf_string()).unwrap();
+        let exported_solids: Vec<_> =
+            exported.world.solids.iter().chain(exported.entities.iter().flat_map(|e| &e.solids)).collect();
+        let brushes: Vec<_> =
+            created.ids.iter().map(|id| exported_solids.iter().find(|s| s.id == *id).unwrap().sides.clone()).collect();
+        assert_compiled_caps(&road, &brushes, direction, 12000.0, angle);
+        assert_eq!(hp_vmf::write(&doc.scene().to_map()), before);
+    }
+}
+
+#[test]
+fn optimized_straight_roads_are_limited_by_the_final_brush_count() {
+    let mut m = meta(&[p(-14000.0, 0.0, 32.0), p(14000.0, 0.0, 32.0)]);
+    m.step = 16.0;
+    assert!(matches!(build(&m, &RoadEnv::default()), Err(RoadError::TooManyPieces(_))));
+    m.optimize = true;
+    let reduced = built(&m);
+    assert!(reduced.pieces.len() < 1000);
+    assert_eq!(solids(&reduced).len(), reduced.pieces.len());
+}
+
+#[test]
+fn optimization_is_saved_and_existing_roads_can_be_rebuilt_with_fewer_brushes() {
+    let m = meta(&[p(0.0, 0.0, 32.0), p(4096.0, 0.0, 32.0)]);
+    let mut doc = hp_editor::Document::new_empty();
+    let made = apply::create_road(&mut doc, &m, 16, Target::World).unwrap();
+    let (record, mut loaded) = apply::read_road(&doc, made.ids[0]).unwrap();
+    assert!(!loaded.optimize);
+    loaded.optimize = true;
+    assert_eq!(RoadMeta::decode(&loaded.encode()), Some(loaded.clone()));
+    assert!(!RoadMeta::decode("r1;pts=0,0,32 4096,0,32").unwrap().optimize);
+    let changed = apply::replace_road(&mut doc, &record, &loaded, 16).unwrap();
+    assert!(changed.ids.len() < made.ids.len() / 4);
+    assert!(apply::read_road(&doc, changed.ids[0]).unwrap().1.optimize);
+    assert!(doc.undo());
+    assert_eq!(doc.curve_record(made.ids[0]).unwrap(), record);
+}
+
 #[test]
 fn world_roads_compile_as_detail_without_extra_brushes_or_changing_entity_roads() {
     let m = meta(&[p(0.0, 0.0, 16.0), p(256.0, 128.0, 64.0), p(768.0, -128.0, 32.0)]);

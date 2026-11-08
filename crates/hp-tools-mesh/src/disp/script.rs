@@ -8,7 +8,7 @@ use super::paint::selected_disp_faces;
 use super::sculpt::{BoundsLimit, PROFILE_FLAT, PROFILE_U, PROFILE_V, PushMode, SculptOp};
 use super::seams::nearest_disp_face;
 use super::tags::{TagKind, TagValue};
-use super::{AlphaEffect, DisplacementTool, GeoEffect, Interaction, PaintAxis};
+use super::{AlphaEffect, DisplacementTool, GeoEffect, Interaction, PaintAxis, SubdivisionShape};
 
 pub const MAX_STROKE_POINTS: usize = 4096;
 
@@ -103,6 +103,24 @@ impl DisplacementTool {
         };
         let c = b.custom_axis;
         let mut options = vec![
+            ToolOption::new(
+                "full_displacement",
+                on_off(self.full_displacement),
+                "on: create all quad faces of selected blocks; off: create only upward faces unless faces are selected",
+            ),
+            ToolOption::new(
+                "subdivision_shape",
+                match self.subdivision_shape {
+                    SubdivisionShape::Smooth => "smooth",
+                    SubdivisionShape::Sphere => "sphere",
+                },
+                "subdivision shape: smooth or sphere; sphere treats connected selections separately",
+            ),
+            ToolOption::new(
+                "subdivision_amount",
+                num(self.subdivision_amount),
+                "subdivision or sphere strength (0 to 1)",
+            ),
             ToolOption::new(
                 "mode",
                 mode,
@@ -264,6 +282,15 @@ impl DisplacementTool {
         let within = |lo: f64, hi: f64| number.filter(|n| (lo..=hi).contains(n));
         let b = &mut self.brush;
         let done = match key {
+            "full_displacement" => flag.map(|full| self.full_displacement = full).is_some(),
+            "subdivision_shape" => match v.as_str() {
+                "smooth" => Some(SubdivisionShape::Smooth),
+                "sphere" => Some(SubdivisionShape::Sphere),
+                _ => None,
+            }
+            .map(|shape| self.subdivision_shape = shape)
+            .is_some(),
+            "subdivision_amount" => within(0.0, 1.0).map(|amount| self.subdivision_amount = amount).is_some(),
             "mode" => match v.as_str() {
                 "select" => Some(Interaction::Select),
                 "geometry" | "paint" => Some(Interaction::Geometry),

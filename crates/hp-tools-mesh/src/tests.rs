@@ -26,6 +26,7 @@ mod disp_erode;
 mod disp_feedback;
 mod disp_live;
 mod disp_options;
+mod disp_subdivision;
 mod edge_loops;
 mod edit_tools;
 mod roadblend;
