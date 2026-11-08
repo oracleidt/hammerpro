@@ -474,6 +474,7 @@ mod tests {
 #[cfg(test)]
 mod model_fuzz_tmp {
     #[test]
+    #[ignore = "manual installed-model corpus diagnostic; machine-specific and memory intensive"]
     fn every_model_loads_without_panic() {
         let root = std::path::Path::new(r"D:\SteamLibrary\steamapps\common\GarrysMod");
         if !root.join("garrysmod").is_dir() {
