@@ -158,6 +158,7 @@ fn place_mesh(groups: &mut Vec<WireGroup>, local: &LocalMesh, m: &DMat4, cubes: 
 
 #[derive(Default)]
 struct Shown {
+    loading: bool,
     keys: Vec<u64>,
     signature: u64,
     models: Vec<ModelInstance>,
@@ -212,7 +213,11 @@ impl InstanceProducer {
         let files: Vec<Option<Arc<InstanceFile>>> = exp.pieces.iter().map(|p| self.cache.file(&p.path)).collect();
         let walk = walk_marks();
         let signature = signature(&exp, &files, scene, cx, walk);
-        if self.shown.get(&id).is_some_and(|s| s.signature == signature && s.waiting.is_empty()) {
+        if self
+            .shown
+            .get(&id)
+            .is_some_and(|s| s.signature == signature && s.waiting.is_empty() && s.loading == exp.is_pending())
+        {
             return;
         }
         let mut groups: Vec<WireGroup> = Vec::new();
@@ -285,7 +290,7 @@ impl InstanceProducer {
         if old.models != models || old.lights != lights {
             self.lists_dirty = true;
         }
-        self.shown.insert(id, Shown { keys, signature, models, lights, waiting });
+        self.shown.insert(id, Shown { loading: exp.is_pending(), keys, signature, models, lights, waiting });
     }
 
     fn forget(&mut self, id: Id, out: &mut DerivedBuild) {
@@ -299,6 +304,9 @@ impl InstanceProducer {
 }
 
 impl DerivedProducer for InstanceProducer {
+    fn preparing(&self) -> bool {
+        self.shown.values().any(|shown| shown.loading || !shown.waiting.is_empty()) || !self.dirty.is_empty()
+    }
     fn name(&self) -> &'static str {
         "instances"
     }

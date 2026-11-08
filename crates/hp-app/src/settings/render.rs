@@ -216,6 +216,7 @@ pub struct RenderSettings {
     pub performance_mode: PerformanceMode,
     pub render_scale: f32,
     pub perf_hud: bool,
+    pub primitive_stats: bool,
 }
 
 impl Default for RenderSettings {
@@ -303,6 +304,7 @@ impl Default for RenderSettings {
             performance_mode: PerformanceMode::Auto,
             render_scale: 1.0,
             perf_hud: false,
+            primitive_stats: false,
         }
     }
 }

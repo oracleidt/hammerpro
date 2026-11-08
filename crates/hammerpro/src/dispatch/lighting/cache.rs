@@ -74,6 +74,7 @@ fn physical_options(options: LightPlus) -> LightPlus {
         incremental_delay: 0.0,
         bake_dist: 1024.0,
         incremental: true,
+        keep_bake: true,
         debug: false,
         ..options
     }
@@ -117,10 +118,62 @@ struct Input {
 #[derive(Default)]
 pub(super) struct BakeCache {
     scene: Option<(u64, u64)>,
+    geometry: Option<(u64, u64)>,
     input: [Input; 2],
 }
 
 impl BakeCache {
+    pub(super) fn current_geometry_key(&self, state: &AppState) -> Option<u64> {
+        let (_, geometry) = self.geometry.filter(|(serial, _)| *serial == state.doc.content_serial())?;
+        let mut hash = Fingerprint(DefaultHasher::new());
+        geometry.hash(&mut hash.0);
+        settings_fingerprint(state, false).hash(&mut hash.0);
+        Some(hash.0.finish())
+    }
+    pub(super) fn geometry_key(&mut self, state: &AppState) -> u64 {
+        let doc = &state.doc;
+        let serial = doc.content_serial();
+        let geometry = if let Some((_, key)) = self.geometry.filter(|(revision, _)| *revision == serial) {
+            key
+        } else {
+            let mut hash = Fingerprint(DefaultHasher::new());
+            let scene = doc.scene();
+            hash_debug(&mut hash, &(scene.world(), scene.cordons()));
+            let mut solids: Vec<_> = scene.solids().iter().collect();
+            solids.sort_unstable_by_key(|(id, _)| **id);
+            for (id, node) in solids {
+                hash_debug(&mut hash, &(id, node.owner, &node.solid));
+                doc.is_solid_visible(*id).hash(&mut hash.0);
+            }
+            let mut entities: Vec<_> = scene
+                .entities()
+                .iter()
+                .filter(|(_, node)| {
+                    let entity = &node.entity;
+                    !entity.solids.is_empty()
+                        || entity.get("model").is_some_and(|name| name.to_ascii_lowercase().ends_with(".mdl"))
+                        || entity.classname.eq_ignore_ascii_case("func_instance")
+                        || entity.classname.eq_ignore_ascii_case("light_environment")
+                })
+                .collect();
+            entities.sort_unstable_by_key(|(id, _)| **id);
+            for (id, node) in entities {
+                let entity = &node.entity;
+                hash_debug(&mut hash, &(id, &entity.classname, entity.hidden));
+                for property in entity.props.iter().filter(|(name, _)| !name.eq_ignore_ascii_case("lightingorigin")) {
+                    hash_debug(&mut hash, property);
+                }
+                doc.is_entity_visible(*id).hash(&mut hash.0);
+            }
+            let key = hash.0.finish();
+            self.geometry = Some((serial, key));
+            key
+        };
+        let mut hash = Fingerprint(DefaultHasher::new());
+        geometry.hash(&mut hash.0);
+        settings_fingerprint(state, false).hash(&mut hash.0);
+        hash.0.finish()
+    }
     pub(super) fn resolve(&mut self, state: &AppState, lit: bool, delay: f64, force: bool) -> Option<u64> {
         let stamp = Stamp { content: state.doc.content_serial(), settings: settings_fingerprint(state, lit) };
         self.resolve_with(&state.doc, lit, stamp, state.frame.time, delay, force)
@@ -184,6 +237,29 @@ pub(super) fn scope_serial(serial: u64, scope: &Scope) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn local_light_changes_and_prop_lighting_origins_keep_the_geometry_bake_key() {
+        let mut state = hp_app::testing::test_state();
+        let mut cache = BakeCache::default();
+        let initial = cache.geometry_key(&state);
+        let id = state
+            .doc
+            .create_point_entity(
+                "light",
+                glam::DVec3::new(32.0, 0.0, 128.0),
+                &[("_light".into(), "255 128 64 200".into())],
+            )
+            .unwrap();
+        assert_eq!(cache.geometry_key(&state), initial);
+        state.doc.set_entity_key(&[id], "_light", "32 64 255 600").unwrap();
+        assert_eq!(cache.geometry_key(&state), initial);
+        state
+            .doc
+            .create_point_entity("light_environment", glam::DVec3::ZERO, &[("_light".into(), "255 255 255 300".into())])
+            .unwrap();
+        assert_ne!(cache.geometry_key(&state), initial);
+    }
     use hp_app::settings::{LightingQuality, LightingSetting};
     use hp_editor::luxels::{ColorCorrectionPlus, ColorCorrectionSlot};
 

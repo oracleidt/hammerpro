@@ -13,6 +13,7 @@ pub(crate) struct SingleEditor {
     new_key: String,
     new_value: String,
     pub error: Option<String>,
+    pub file_preview: Option<crate::matedit_preview::FilePreview>,
 }
 
 impl Default for SingleEditor {
@@ -27,6 +28,7 @@ impl Default for SingleEditor {
             new_key: String::new(),
             new_value: String::new(),
             error: None,
+            file_preview: None,
         }
     }
 }
@@ -187,7 +189,11 @@ impl SingleEditor {
                 let size = ui.available_width().min(220.0);
                 let (rect, _) = ui.allocate_exact_size(egui::vec2(size, size), egui::Sense::hover());
                 ui.painter().rect_filled(rect, 3.0, ui.visuals().extreme_bg_color);
-                let thumb = state.assets.thumbnail(ui.ctx(), name);
+                let thumb = if let Some(preview) = &mut self.file_preview {
+                    preview.thumbnail(ui.ctx(), &self.saved, state.assets.fs())
+                } else {
+                    state.assets.thumbnail(ui.ctx(), name)
+                };
                 crate::browser::paint_thumbnail(ui.painter(), rect, thumb, false);
                 ui.label(RichText::new(t!("tex.me1.preview_note")).small().weak());
             }

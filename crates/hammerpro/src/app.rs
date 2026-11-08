@@ -120,6 +120,7 @@ pub struct HammerProApp {
     dropped_maps: Vec<PathBuf>,
     vram: crate::vram::VramMonitor,
     perf: crate::perf::PerfMonitor,
+    primitives: crate::primitive_stats::Monitor,
     perf_bench: crate::perf::BenchDriver,
 }
 
@@ -376,6 +377,7 @@ impl HammerProApp {
             dropped_maps: Vec::new(),
             vram,
             perf: crate::perf::PerfMonitor::default(),
+            primitives: crate::primitive_stats::Monitor::default(),
             perf_bench: crate::perf::BenchDriver::new(),
         };
         if let Some(bench) = &app.bench {
@@ -486,7 +488,9 @@ impl HammerProApp {
 
     fn app_capture(&self) -> AppCapture {
         AppCapture {
-            dialog: self.shell.dialog_open(&self.state) || self.modal_open(),
+            dialog: self.shell.dialog_open(&self.state)
+                || self.modal_open()
+                || self.state.runtime.startup.resources.is_some(),
             keyboard: self.viewports.captures_keyboard() || self.shell.capturing_shortcut(),
             context_menu: self.viewports.is_context_menu_open(),
         }
@@ -530,6 +534,7 @@ impl HammerProApp {
         self.vram.tick(&mut self.state, now);
         let busy = self.state.assets.busy();
         self.perf.tick(&mut self.state, elapsed, self.avg_frame_time * 1000.0, busy, now);
+        self.primitives.tick(&mut self.state, &self.pkg.lighting, ctx);
         self.perf_bench.tick(&mut self.state, ctx, elapsed);
         if self.state.runtime.gpu.pressure >= hp_app::runtime::VramPressure::High
             && crate::dispatch::lighting::release_hidden(self)
@@ -634,8 +639,12 @@ impl HammerProApp {
             chrome.set_title_left(x);
         }
         let in_title = menus_end.is_some();
-        chrome.body(ui, |ui| self.layout(ui, !in_title));
+        chrome.body(ui, |ui| {
+            let enabled = self.state.runtime.startup.resources.is_none();
+            ui.add_enabled_ui(enabled, |ui| self.layout(ui, !in_title));
+        });
         chrome.end(ui);
+        self.shell.loading_overlay(ui, &mut self.state);
     }
 
     fn layout(&mut self, ui: &mut egui::Ui, menu_bar: bool) {
@@ -697,7 +706,9 @@ impl HammerProApp {
         {
             hp_app::runtime::wind::update(&self.state);
             let i = tool_index(self.state.tool);
-            self.tools[i].update(&mut self.state, ui.ctx());
+            if self.state.runtime.startup.resources.is_none() {
+                self.tools[i].update(&mut self.state, ui.ctx());
+            }
             let opts = self.state.scene_options();
             let AppState { assets, doc, gfx, .. } = &mut self.state;
             if let Some(gfx) = gfx.as_mut() {
@@ -721,6 +732,10 @@ impl HammerProApp {
 
         egui::CentralPanel::no_frame().show(ui, |ui| {
             self.central_size = ui.available_size();
+            if self.state.runtime.startup.resources.as_ref().is_some_and(|progress| !progress.installing) {
+                ui.painter().rect_filled(ui.max_rect(), 0.0, ui.visuals().panel_fill);
+                return;
+            }
             let i = tool_index(self.state.tool);
             let (state, tools) = (&mut self.state, &mut self.tools);
             match self.pkg.brush.inset_modal.as_mut() {
@@ -730,7 +745,6 @@ impl HammerProApp {
                 }
                 None => self.viewports.ui(ui, state, tools[i].as_mut()),
             }
-            self.shell.loading_overlay(ui, &mut self.state);
         });
     }
 

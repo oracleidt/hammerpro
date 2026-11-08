@@ -43,6 +43,9 @@ pub(crate) struct DerivedBuild {
 }
 
 pub(crate) trait DerivedProducer {
+    fn preparing(&self) -> bool {
+        false
+    }
     fn name(&self) -> &'static str;
 
     fn changed(&mut self, changes: &ProducerChanges<'_>, cx: &ProducerCx<'_>) -> bool;
@@ -94,6 +97,9 @@ fn object_flags(doc: &Document, info: &ObjInfo) -> Option<ObjectFlags> {
 }
 
 impl Derived {
+    pub(crate) fn preparing(&self) -> bool {
+        self.slots.iter().any(|slot| slot.producer.preparing())
+    }
     fn ensure_producers(&mut self) {
         if self.ready {
             return;

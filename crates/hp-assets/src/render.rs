@@ -46,6 +46,22 @@ pub(crate) struct HdrSkyState {
     rx: Option<crossbeam_channel::Receiver<Option<Vec<HdrFace>>>>,
 }
 
+impl HdrSkyState {
+    pub(crate) fn loading(&self) -> bool {
+        self.rx.is_some()
+    }
+
+    fn take_ready(&mut self) -> Option<Option<Vec<HdrFace>>> {
+        let faces = match self.rx.as_ref()?.try_recv() {
+            Ok(faces) => faces,
+            Err(crossbeam_channel::TryRecvError::Empty) => return None,
+            Err(crossbeam_channel::TryRecvError::Disconnected) => None,
+        };
+        self.rx = None;
+        Some(faces)
+    }
+}
+
 pub(crate) struct HdrFace {
     width: u32,
     height: u32,
@@ -208,10 +224,7 @@ impl AssetManager {
     fn sync_hdr_sky(&mut self, renderer: &mut Renderer, want: Option<String>) {
         let generation = self.fs.as_ref().map_or(0, hp_fs::GameFs::generation);
         let state = &mut self.scene.env.hdr_sky;
-        if let Some(rx) = &state.rx
-            && let Ok(faces) = rx.try_recv()
-        {
-            state.rx = None;
+        if let Some(faces) = state.take_ready() {
             let faces: Option<[hp_render::HdrSkyFace<'_>; 6]> = faces.as_ref().and_then(|f| {
                 let list: Vec<hp_render::HdrSkyFace<'_>> = f
                     .iter()
@@ -635,6 +648,22 @@ mod tests {
             ],
         ));
         Document::from_map(m)
+    }
+
+    #[test]
+    fn hdr_sky_preload_waits_for_its_worker_and_handles_a_stopped_worker() {
+        use hp_app::AssetsApi;
+        let mut assets = AssetManager::new(&hp_app::settings::Settings::default());
+        assets.fs = Some(hp_fs::GameFs::empty());
+        assets.scene.initialized = true;
+        assert!(assets.scene_prepared());
+        let (sender, receiver) = crossbeam_channel::bounded(1);
+        assets.scene.env.hdr_sky.rx = Some(receiver);
+        assert!(!assets.scene_prepared());
+        assert!(assets.scene.env.hdr_sky.take_ready().is_none());
+        drop(sender);
+        assert!(matches!(assets.scene.env.hdr_sky.take_ready(), Some(None)));
+        assert!(assets.scene_prepared());
     }
 
     #[test]

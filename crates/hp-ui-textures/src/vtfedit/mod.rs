@@ -45,6 +45,7 @@ pub(crate) enum PickKind {
     Import,
     NewFromImage,
     SaveVtf,
+    SaveTexturePath,
     ExportImage,
     ExportAll,
     AlphaMask,
@@ -52,11 +53,18 @@ pub(crate) enum PickKind {
 }
 
 struct SaveJob {
-    rx: Receiver<Result<Vec<u8>, String>>,
+    rx: Receiver<Result<SavedTexture, String>>,
     target: Target,
     texture: Option<String>,
-    plan: Option<MaterialPlan>,
     to_file: bool,
+    serial: u64,
+    revision: u64,
+}
+
+struct SavedTexture {
+    bytes: Vec<u8>,
+    outcome: crate::matedit::WriteOutcome,
+    material: Result<Option<(PathBuf, String, bool)>, String>,
 }
 
 #[derive(Clone, Debug)]
@@ -64,6 +72,7 @@ pub(crate) struct SaveForm {
     pub open: bool,
     pub dest: usize,
     pub name: String,
+    pub path: String,
     pub create_vmt: bool,
     pub shader: String,
     pub overwrite: bool,
@@ -75,6 +84,7 @@ impl Default for SaveForm {
             open: false,
             dest: 0,
             name: String::new(),
+            path: String::new(),
             create_vmt: true,
             shader: "LightmappedGeneric".to_owned(),
             overwrite: false,
@@ -179,6 +189,9 @@ pub struct VtfEditor {
     pub(crate) view: ViewState,
     last_poll: Option<Instant>,
     was_open: bool,
+    material_editors: Vec<(PathBuf, crate::matedit_single::SingleEditor)>,
+    material_tab: Option<usize>,
+    loaded_serial: u64,
 }
 
 pub fn external_editor(state: &AppState) -> Option<ExternalEditor> {
@@ -397,7 +410,10 @@ impl VtfEditor {
         self.ops.height = loaded.doc.height();
         self.ops.new_format = loaded.doc.format;
         self.view = ViewState { checker: self.view.checker.take(), ..ViewState::default() };
+        self.material_tab = None;
+        self.loaded_serial = self.loaded_serial.wrapping_add(1);
         self.save.open = false;
+        self.save.path.clear();
         self.loaded = Some(loaded);
     }
 
@@ -438,7 +454,7 @@ impl VtfEditor {
                     rfd::FileDialog::new().add_filter("Images", &IMAGES).pick_file().map(|f| vec![f])
                 })
             }
-            PickKind::SaveVtf => {
+            PickKind::SaveVtf | PickKind::SaveTexturePath => {
                 let name = suggested.unwrap_or_else(|| "texture.vtf".to_owned());
                 PendingPick::spawn(ctx, move || {
                     rfd::FileDialog::new().add_filter("VTF", &["vtf"]).set_file_name(name).save_file().map(|f| vec![f])
@@ -486,6 +502,7 @@ impl VtfEditor {
             PickKind::Import => self.import_into_current(state, &path),
             PickKind::NewFromImage => self.new_from_image(state, &path),
             PickKind::SaveVtf => self.save_to_file(ctx, state, path),
+            PickKind::SaveTexturePath => self.save.path = path.to_string_lossy().into_owned(),
             PickKind::ExportImage => self.export_current(&path),
             PickKind::ExportAll => self.export_all(&path),
             PickKind::AlphaMask => self.alpha_from_file(&path),
@@ -624,7 +641,7 @@ impl VtfEditor {
                 let name = crate::matedit_single::texture_path_of(path).unwrap_or_default();
                 (Target { path: path.clone(), name: name.clone() }, Some(name).filter(|n| !n.is_empty()), None)
             }
-            Origin::New => match store::custom_target(state, self.save.dest, &self.save.name) {
+            Origin::New => match store::chosen_target(state, self.save.dest, &self.save.name, &self.save.path) {
                 Ok(t) => {
                     if t.path.is_file() && !self.save.overwrite {
                         return self.set_status(Severity::Warning, tf!("vtf.err.exists", t.path.display()));
@@ -635,20 +652,22 @@ impl VtfEditor {
                 Err(e) => return self.set_status(Severity::Error, e),
             },
         };
-        self.spawn_save(ctx, target, texture, plan, false);
+        let to_file = matches!(l.origin, Origin::New) && !self.save.path.trim().is_empty();
+        self.spawn_save(ctx, target, texture, plan, to_file);
     }
 
     pub(crate) fn start_save_as_texture(&mut self, ctx: &egui::Context, state: &mut AppState) {
         if self.job.is_some() {
             return;
         }
-        match store::custom_target(state, self.save.dest, &self.save.name) {
+        match store::chosen_target(state, self.save.dest, &self.save.name, &self.save.path) {
             Ok(t) => {
                 if t.path.is_file() && !self.save.overwrite {
                     return self.set_status(Severity::Warning, tf!("vtf.err.exists", t.path.display()));
                 }
                 let plan = self.save.create_vmt.then(|| self.plan_for());
-                self.spawn_save(ctx, t.clone(), Some(t.name), plan, false);
+                let to_file = !self.save.path.trim().is_empty();
+                self.spawn_save(ctx, t.clone(), Some(t.name), plan, to_file);
             }
             Err(e) => self.set_status(Severity::Error, e),
         }
@@ -659,7 +678,11 @@ impl VtfEditor {
             path.set_extension("vtf");
         }
         let name = crate::matedit_single::texture_path_of(&path).unwrap_or_default();
-        self.spawn_save(ctx, Target { path, name }, None, None, true);
+        let new = self.loaded.as_ref().is_some_and(|l| matches!(l.origin, Origin::New));
+        let name =
+            if name.is_empty() { path.file_stem().unwrap_or_default().to_string_lossy().into_owned() } else { name };
+        let plan = (new && self.save.create_vmt).then(|| self.plan_for());
+        self.spawn_save(ctx, Target { path, name }, None, plan, true);
     }
 
     fn spawn_save(
@@ -670,18 +693,43 @@ impl VtfEditor {
         plan: Option<MaterialPlan>,
         to_file: bool,
     ) {
+        if self.job.is_some() {
+            return;
+        }
         let Some(l) = self.loaded.as_ref() else { return };
         let doc = l.doc.clone();
+        let revision = l.rev;
+        let serial = self.loaded_serial;
+        let worker_target = target.clone();
         let (tx, rx) = std::sync::mpsc::channel();
         let ctx2 = ctx.clone();
         let spawned = std::thread::Builder::new().name("hp-vtf-save".into()).spawn(move || {
-            let result = doc.to_bytes().map_err(|e| e.to_string());
+            let result = (|| {
+                let bytes = doc.to_bytes().map_err(|e| e.to_string())?;
+                let outcome = store::write_bytes_with_backup(&worker_target.path, &bytes).map_err(|e| e.to_string())?;
+                let material = match plan {
+                    None => Ok(None),
+                    Some(mut plan) => {
+                        if let Ok(info) = hp_vtf::read_info(&bytes) {
+                            plan.alphatest = info.flags & hp_vtf::flags::ONEBITALPHA != 0;
+                            plan.translucent = info.flags & hp_vtf::flags::EIGHTBITALPHA != 0 && !plan.alphatest;
+                        }
+                        store::create_vmt(&worker_target, &plan, false).and_then(|created| {
+                            let path = worker_target.path.with_extension("vmt");
+                            std::fs::read_to_string(&path)
+                                .map(|text| Some((path, text, created.is_some())))
+                                .map_err(|e| e.to_string())
+                        })
+                    }
+                };
+                Ok(SavedTexture { bytes, outcome, material })
+            })();
             let _ = tx.send(result);
             ctx2.request_repaint();
         });
         match spawned {
             Ok(_) => {
-                self.job = Some(SaveJob { rx, target, texture, plan, to_file });
+                self.job = Some(SaveJob { rx, target, texture, to_file, serial, revision });
                 self.set_status(Severity::Info, t!("vtf.status.saving"));
             }
             Err(e) => self.set_status(Severity::Error, e.to_string()),
@@ -703,40 +751,28 @@ impl VtfEditor {
             Err(TryRecvError::Disconnected) => Err("the save worker stopped".to_owned()),
         };
         let Some(job) = self.job.take() else { return };
-        let bytes = match result {
-            Ok(b) => b,
+        let saved = match result {
+            Ok(saved) => saved,
             Err(e) => return self.set_status(Severity::Error, tf!("vtf.err.save", job.target.path.display(), e)),
         };
-        let outcome = store::write_bytes_with_backup(&job.target.path, &bytes);
-        let written = match outcome {
-            Ok(w) => w,
-            Err(e) => {
-                return self.set_status(Severity::Error, tf!("vtf.err.save", job.target.path.display(), e));
-            }
-        };
+        let SavedTexture { bytes, outcome: written, material } = saved;
         if let Some(b) = &written.backup {
             state.log(Severity::Info, tf!("tex.me.backup_made", b.display()));
         }
         let mut vmt_note = String::new();
         let mut vmt_created = false;
-        if let Some(plan) = &job.plan {
-            let mut plan = MaterialPlan {
-                shader: plan.shader.clone(),
-                surface_prop: plan.surface_prop.clone(),
-                translucent: plan.translucent,
-                alphatest: plan.alphatest,
-            };
-            if let Ok(info) = hp_vtf::read_info(&bytes) {
-                plan.alphatest = info.flags & hp_vtf::flags::ONEBITALPHA != 0;
-                plan.translucent = info.flags & hp_vtf::flags::EIGHTBITALPHA != 0 && !plan.alphatest;
+        let mut material_failed = false;
+        match material {
+            Ok(Some((p, text, created))) => {
+                vmt_created = created;
+                vmt_note =
+                    if created { tf!("vtf.status.vmt_created", p.display()) } else { format!("VMT: {}", p.display()) };
+                self.open_material(p, text);
             }
-            match store::create_vmt(&job.target, &plan, false) {
-                Ok(Some(p)) => {
-                    vmt_created = true;
-                    vmt_note = tf!("vtf.status.vmt_created", p.display());
-                }
-                Ok(None) => {}
-                Err(e) => vmt_note = e,
+            Ok(None) => {}
+            Err(e) => {
+                material_failed = true;
+                vmt_note = e;
             }
         }
         let materials = self.loaded.as_ref().map(|l| l.materials.clone()).unwrap_or_default();
@@ -747,9 +783,17 @@ impl VtfEditor {
             state.assets.remount(&state.settings);
         }
         let mut link: Option<(String, String)> = None;
-        if let Some(l) = self.loaded.as_mut() {
+        if let Some(l) = self.loaded.as_mut()
+            && job.serial == self.loaded_serial
+            && l.rev == job.revision
+        {
             let _ = l.doc.mark_saved(bytes);
             l.rev += 1;
+            if job.to_file {
+                l.origin = Origin::File(job.target.path.clone());
+                l.label = job.target.path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+                l.located = None;
+            }
             if !job.to_file
                 && let Some(texture) = &job.texture
             {
@@ -779,15 +823,61 @@ impl VtfEditor {
         if let Some((param, texture)) = link {
             crate::shared::post_texture_link(ctx, &param, &texture);
         }
-        self.save.open = false;
+        if job.serial == self.loaded_serial {
+            self.save.open = false;
+        }
         if let Some(texture) = &job.texture
             && !job.to_file
+            && job.serial == self.loaded_serial
         {
             self.load_text = texture.clone();
         }
         let text = format!("{} {vmt_note}", tf!("vtf.status.saved", job.target.path.display()));
-        state.notify(Severity::Success, text.trim().to_owned());
-        self.set_status(Severity::Success, text.trim().to_owned());
+        let severity = if material_failed { Severity::Warning } else { Severity::Success };
+        state.notify(severity, text.trim().to_owned());
+        self.set_status(severity, text.trim().to_owned());
+    }
+
+    fn open_material(&mut self, path: PathBuf, text: String) {
+        let index = self.material_editors.iter().position(|(p, _)| *p == path).unwrap_or_else(|| {
+            let mut editor = crate::matedit_single::SingleEditor::default();
+            let name = texture_name_of(&path).unwrap_or_else(|| path.display().to_string());
+            editor.load(&name, Some(&text));
+            editor.file_preview = Some(crate::matedit_preview::FilePreview::new(path.clone()));
+            self.material_editors.push((path, editor));
+            self.material_editors.len() - 1
+        });
+        let editor = &mut self.material_editors[index].1;
+        if let Some(preview) = &mut editor.file_preview {
+            preview.invalidate();
+        }
+        if !editor.is_dirty() {
+            let name = editor.name.clone().unwrap_or_default();
+            editor.load(&name, Some(&text));
+        }
+        self.material_tab = Some(index);
+    }
+
+    fn save_material(&mut self, state: &mut AppState) {
+        let Some(index) = self.material_tab else { return };
+        let Some((path, editor)) = self.material_editors.get_mut(index) else { return };
+        if !editor.is_dirty() {
+            return;
+        }
+        if let Err(e) = hp_vmt::parse(&editor.text) {
+            editor.error = Some(e.to_string());
+            return;
+        }
+        match crate::matedit::write_with_backup(path, &editor.text) {
+            Ok(_) => {
+                editor.saved = editor.text.clone();
+                if let Some(name) = texture_name_of(path) {
+                    state.assets.invalidate_material(&name);
+                }
+                state.notify(Severity::Success, tf!("tex.me1.saved", path.display()));
+            }
+            Err(e) => editor.error = Some(e.to_string()),
+        }
     }
 
     pub fn open_external(

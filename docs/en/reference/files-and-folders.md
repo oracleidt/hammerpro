@@ -109,3 +109,9 @@ When you run `hammerpro --bspc` yourself, the `.bsp`, `.log`, `.lin` and `.prt` 
 
 ---
 [Back to the documentation index](../README.md)
+
+## Map resource preload
+
+Opening a VMF prepares the materials, model skins and body groups, entity sprites, sky faces and particle material references before the map is shown. Each completed resource contributes one unit to the displayed count; the percentage describes completed resources, not elapsed time or bytes. Model resources include the materials selected by their skin and body group. The last loading operations appear below the progress bar. Missing resources finish with a warning and remain in the console.
+
+You can cancel during preparation and keep the previous map. The final upload phase hides the map while its geometry and active rendering dependencies finish uploading. Multiple file opens keep their order and the unsaved-changes prompt remains active.

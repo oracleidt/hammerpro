@@ -805,6 +805,7 @@ impl AssetManager {
             let colors = self.play_world.ropes.as_ref().map(|r| r.colors.clone()).unwrap_or_default();
             return ModelLighting {
                 object: inst.object,
+                sample_origin: None,
                 model: Some(inst.model),
                 vertex_colors: colors,
                 ambient: [[0.0; 3]; 6],
@@ -869,6 +870,7 @@ impl AssetManager {
         });
         ModelLighting {
             object: inst.object,
+            sample_origin: Some(lighting_origin),
             model: colors.as_ref().map(|_| inst.model),
             vertex_colors: colors.unwrap_or_default(),
             ambient: lit.ambient,

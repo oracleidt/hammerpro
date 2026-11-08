@@ -28,6 +28,10 @@ fn slot(k0: u32, k1: u32) -> u32 {
 }
 
 impl IndirectVolume {
+    pub fn cpu_words(&self) -> &[u32] {
+        &self.words
+    }
+
     pub fn new(origin: [f32; 3], spacing: f32, coords: &[[i32; 3]], cubes: &[[[f32; 3]; 6]]) -> Option<Self> {
         let n = coords.len();
         if n == 0

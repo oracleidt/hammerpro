@@ -76,6 +76,20 @@ pub(crate) struct SideTable {
 }
 
 impl SideTable {
+    pub(super) fn resource_probes(&self, probes: &mut hp_app::runtime::primitives::ResourceProbes) {
+        use hp_app::runtime::primitives::PrimitiveClass;
+        let class = PrimitiveClass::Lighting;
+        for sides in self.sides.values() {
+            probes.point((sides as *const Vec<SideRef>) as usize, class);
+            probes.vec(sides, class);
+            for side in sides {
+                if let Some(blend) = &side.blend {
+                    probes.point(blend.as_ptr() as usize, class);
+                }
+            }
+        }
+    }
+
     pub(super) fn estimated_bytes(&self) -> usize {
         let entries = self.sides.capacity() * (std::mem::size_of::<(u16, Vec<SideRef>)>() + 1);
         entries

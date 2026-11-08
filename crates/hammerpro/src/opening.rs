@@ -84,6 +84,13 @@ pub struct Opener {
     next_ticket: u64,
     job: Option<Job>,
     held: Option<Loaded>,
+    preparing: Option<Preparing>,
+}
+
+struct Preparing {
+    loaded: Loaded,
+    remaining: Option<std::collections::VecDeque<hp_app::runtime::PreloadResource>>,
+    approved: bool,
 }
 
 pub fn is_map_file(path: &Path) -> bool {
@@ -161,11 +168,14 @@ fn warm_picking(doc: &Document) {
 
 impl Opener {
     pub fn is_loading(&self) -> bool {
-        self.job.is_some()
+        self.job.is_some() || self.preparing.is_some()
     }
 
     pub fn loading(&self) -> Option<(&Path, Duration)> {
-        self.job.as_ref().map(|j| (j.path.as_path(), j.requested.elapsed()))
+        self.job
+            .as_ref()
+            .map(|j| (j.path.as_path(), j.requested.elapsed()))
+            .or_else(|| self.preparing.as_ref().map(|p| (p.loaded.path.as_path(), p.loaded.requested.elapsed())))
     }
 
     pub fn start(&mut self, path: &Path, kind: OpenKind, mark: EditMark, ctx: Option<&egui::Context>) -> bool {
@@ -235,6 +245,11 @@ impl Opener {
 
     pub fn cancel(&mut self) {
         self.job = None;
+        if let Some(preparing) = self.preparing.take()
+            && let Ok(doc) = preparing.loaded.result
+        {
+            crate::files::drop_in_background(doc);
+        }
     }
 
     pub fn poll(&mut self) -> Option<Loaded> {
@@ -303,6 +318,27 @@ mod tests {
         fn assert_send<T: Send>() {}
         assert_send::<Document>();
         assert_send::<Loaded>();
+    }
+
+    #[test]
+    fn cancelling_resource_preload_does_not_replace_the_current_document() {
+        let dir = scratch("preload_cancel");
+        let path = dir.join("next.vmf");
+        std::fs::write(&path, hp_app::testing::TEST_VMF).unwrap();
+        let current = Document::new_empty();
+        let revision = current.revision();
+        let mut opener = Opener::default();
+        opener.start(&path, OpenKind::Map, EditMark::of(&current), None);
+        let loaded = opener.wait(Duration::from_secs(30)).unwrap();
+        opener.preparing = Some(Preparing { loaded, remaining: Some(Default::default()), approved: false });
+        assert!(opener.is_loading());
+        assert_eq!(opener.loading().map(|(path, _)| path.to_owned()), Some(path));
+        opener.cancel();
+        assert!(!opener.is_loading());
+        assert!(opener.loading().is_none());
+        assert_eq!(current.revision(), revision);
+        assert!(current.scene().solids().is_empty());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -440,8 +476,15 @@ const MAX_OPEN_QUEUE: usize = 32;
 impl crate::app::HammerProApp {
     pub(crate) fn start_open(&mut self, ctx: &egui::Context, path: &Path, kind: OpenKind, target: OpenTarget) {
         if let Some(held) = self.opener.take_held(path, &kind) {
-            self.enter_open_target(target);
-            self.install_open(held);
+            self.opener.preparing = Some(Preparing { loaded: held, remaining: None, approved: true });
+            self.open_target = Some(target);
+            self.update_open_status();
+            return;
+        }
+        if self.state.runtime.startup.resources.is_some() && !self.opener.is_loading() {
+            if self.open_queue.len() < MAX_OPEN_QUEUE {
+                self.open_queue.push_back((path.to_path_buf(), kind, target));
+            }
             return;
         }
         if let Some((loading, _)) = self.opener.loading()
@@ -461,15 +504,35 @@ impl crate::app::HammerProApp {
     }
 
     pub(crate) fn poll_open(&mut self, ctx: &egui::Context) {
+        if self
+            .state
+            .runtime
+            .startup
+            .resources
+            .as_ref()
+            .is_some_and(|p| p.installing && self.state.frame.index > p.installed_frame.saturating_add(1))
+            && self.state.assets.scene_prepared()
+        {
+            self.state.runtime.startup.resources = None;
+        }
         if std::mem::take(&mut self.state.runtime.startup.cancel_open) {
-            self.opener.cancel();
-            self.open_queue.clear();
-            self.open_target = None;
+            if !self.state.runtime.startup.resources.as_ref().is_some_and(|p| p.installing) {
+                self.opener.cancel();
+                self.open_queue.clear();
+                self.open_target = None;
+                self.state.runtime.startup.resources = None;
+            }
         }
         if let Some(loaded) = self.opener.poll() {
-            self.finish_open(loaded);
+            if loaded.result.is_err() {
+                self.finish_open(loaded);
+            } else {
+                self.opener.preparing = Some(Preparing { loaded, remaining: None, approved: false });
+            }
         }
+        self.poll_resource_preload(ctx);
         if !self.opener.is_loading()
+            && self.state.runtime.startup.resources.is_none()
             && self.pending.is_none()
             && let Some((path, kind, target)) = self.open_queue.pop_front()
         {
@@ -479,6 +542,67 @@ impl crate::app::HammerProApp {
             }
         }
         self.update_open_status();
+    }
+
+    fn poll_resource_preload(&mut self, ctx: &egui::Context) {
+        use hp_app::runtime::{PreloadResult, ResourceLoading};
+        let Some(preparing) = self.opener.preparing.as_mut() else { return };
+        if !self.state.assets.preload_manifest_ready() {
+            ctx.request_repaint_after(Duration::from_millis(25));
+            return;
+        }
+        let remaining = preparing.remaining.get_or_insert_with(|| {
+            let doc = preparing.loaded.result.as_ref().expect("a parsed document is prepared");
+            let resources = self.state.assets.preload_resources(doc);
+            self.state.runtime.startup.resources =
+                Some(ResourceLoading { total: resources.len().saturating_add(1), ..Default::default() });
+            resources.into()
+        });
+        let progress = self.state.runtime.startup.resources.as_mut().expect("resource progress");
+        let started = Instant::now();
+        let attempts = remaining.len();
+        if let Some(gfx) = self.state.gfx.as_mut() {
+            for _ in 0..attempts {
+                let Some(resource) = remaining.pop_front() else { break };
+                let result = self.state.assets.preload_resource(&resource, gfx);
+                progress.current = resource.name().to_owned();
+                match result {
+                    PreloadResult::Pending => remaining.push_back(resource),
+                    PreloadResult::Ready | PreloadResult::Missing => {
+                        progress.done += 1;
+                        if result == PreloadResult::Missing {
+                            self.state
+                                .console
+                                .push(hp_app::Severity::Warning, hp_app::tf!("shell.loading.missing", resource.name()));
+                        }
+                        if progress.log.len() == 6 {
+                            progress.log.remove(0);
+                        }
+                        progress.log.push((resource.name().to_owned(), result == PreloadResult::Missing));
+                    }
+                }
+                if started.elapsed() >= Duration::from_millis(4) {
+                    break;
+                }
+            }
+        }
+        if remaining.is_empty() {
+            progress.installing = true;
+            progress.installed_frame = self.state.frame.index;
+            let preparing = self.opener.preparing.take().expect("prepared document");
+            if preparing.approved {
+                let target = self.open_target.take().unwrap_or(OpenTarget::NewTab);
+                self.enter_open_target(target);
+                self.install_open(preparing.loaded);
+            } else {
+                self.finish_open(preparing.loaded);
+            }
+            if self.pending.is_some() {
+                self.state.runtime.startup.resources = None;
+            }
+        } else {
+            ctx.request_repaint_after(Duration::from_millis(16));
+        }
     }
 
     fn update_open_status(&mut self) {

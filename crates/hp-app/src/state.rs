@@ -296,6 +296,32 @@ pub struct FgdReport {
 }
 
 pub trait AssetsApi {
+    fn preload_manifest_ready(&self) -> bool {
+        self.status() != AssetStatus::Mounting
+    }
+    fn preload_resources(&self, _doc: &hp_editor::Document) -> Vec<crate::runtime::PreloadResource> {
+        Vec::new()
+    }
+    fn preload_resource(
+        &mut self,
+        _resource: &crate::runtime::PreloadResource,
+        _gfx: &mut Gfx,
+    ) -> crate::runtime::PreloadResult {
+        crate::runtime::PreloadResult::Ready
+    }
+    fn scene_prepared(&self) -> bool {
+        true
+    }
+    fn resource_memory_generation(&self) -> u64 {
+        self.generation()
+    }
+    fn primitive_resources(
+        &self,
+        _doc: &hp_editor::Document,
+        _probes: &mut crate::runtime::primitives::ResourceProbes,
+    ) -> crate::runtime::primitives::PrimitiveStats {
+        crate::runtime::primitives::PrimitiveStats::default()
+    }
     fn status(&self) -> AssetStatus;
     fn fs(&self) -> Option<&hp_fs::GameFs>;
     fn fgd(&self) -> Option<&hp_fgd::ResolvedFgd>;

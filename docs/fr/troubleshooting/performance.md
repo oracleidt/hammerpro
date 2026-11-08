@@ -133,3 +133,11 @@ Les vérifications en direct (**Vérifier la map pendant l'édition**, **Cherche
 
 ---
 [Retour à l'index de la documentation](../README.md)
+
+## Overlay des primitives de la map
+
+Le toggle Σ à côté de Vérifier les problèmes affiche dans la vue 3D les nombres de solides, matériaux du monde, matériaux des props et lumières de la map active. Les variantes des modèles utilisent leurs matériaux réellement sélectionnés. Les modèles en attente ou manquants sont indiqués séparément.
+
+Sous Windows, les allocations CPU par catégorie sont mesurées dans les blocs du heap qui possèdent les ressources suivies de la map, avec la surcharge rapportée par Windows. Les blocs partagés sont comptés une seule fois dans une ligne distincte. Ces valeurs sont des octets alloués, pas une répartition de la RAM résidente. Le pilote, l'interface et l'historique d'annulation sont hors de cette répartition. La RAM résidente totale de l'éditeur est mesurée séparément par le système. Une mesure indisponible est signalée. L'instantané est actualisé lorsque les ressources changent ; laisser l'overlay actif ne parcourt pas continuellement le heap.
+
+L'éviction des caches libère les données inutilisées. Le vidage forcé du working set Windows au repos ne sert plus à faire baisser la RAM affichée et provoquer ensuite des défauts de page. Les valeurs de 2 Go de RAM et 1 Go de VRAM sont des objectifs, pas des limites fixes ; la consommation dépend de la map. Une carte limitée à DirectX 9 ne satisfait pas les exigences de l'API graphique du moteur de rendu.

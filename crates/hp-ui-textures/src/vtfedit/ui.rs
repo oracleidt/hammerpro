@@ -15,8 +15,12 @@ impl VtfEditor {
         let save_key = crate::util::is_top_dialog(&ctx, ui.layer_id())
             && ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::S));
         self.top_bar(ui, state, &ctx);
-        if save_key && self.can_save() {
-            self.save_clicked(&ctx, state);
+        if save_key {
+            if self.material_tab.is_some() {
+                self.save_material(state);
+            } else if self.can_save() {
+                self.save_clicked(&ctx, state);
+            }
         }
         if self.save.open {
             self.save_form_ui(ui, state, &ctx);
@@ -28,6 +32,43 @@ impl VtfEditor {
         });
         if self.loaded.is_none() {
             self.empty_ui(ui, &ctx);
+            return;
+        }
+        if !self.material_editors.is_empty() {
+            ui.horizontal_wrapped(|ui| {
+                if ui.selectable_label(self.material_tab.is_none(), t!("vtf.tab.texture")).clicked() {
+                    self.material_tab = None;
+                }
+                for (index, (path, editor)) in self.material_editors.iter().enumerate() {
+                    let name = path.file_name().unwrap_or_default().to_string_lossy();
+                    let label = if editor.is_dirty() { format!("{name} *") } else { name.into_owned() };
+                    if ui
+                        .selectable_label(self.material_tab == Some(index), label)
+                        .on_hover_text(path.display().to_string())
+                        .clicked()
+                    {
+                        self.material_tab = Some(index);
+                    }
+                }
+            });
+            ui.separator();
+        }
+        if let Some(index) = self.material_tab {
+            let names: Vec<String> = self.material_editors.iter().map(|(p, _)| p.display().to_string()).collect();
+            let action = ui
+                .push_id("hp_vtf_associated_vmt", |ui| {
+                    let (path, editor) = &mut self.material_editors[index];
+                    let mut location = |ui: &mut Ui| {
+                        ui.weak(path.display().to_string());
+                    };
+                    editor.ui(ui, state, &names, index, &mut location)
+                })
+                .inner;
+            match action {
+                Some(crate::matedit_single::SingleAction::Save) => self.save_material(state),
+                Some(crate::matedit_single::SingleAction::Select(index)) => self.material_tab = Some(index),
+                None => {}
+            }
             return;
         }
         egui::Panel::right("hp_vtf_side").resizable(true).default_size(350.0).min_size(280.0).show(ui, |ui| {
@@ -167,9 +208,21 @@ impl VtfEditor {
         let archive = matches!(kind, Some(Kind::Archive | Kind::Generated));
         egui::Frame::group(ui.style()).show(ui, |ui| {
             ui.label(RichText::new(t!("vtf.save_form.title")).strong());
-            if dirs.is_empty() {
-                ui.colored_label(theme::warning(), t!("vtf.err.no_custom"));
+            if dirs.is_empty() && self.save.path.trim().is_empty() {
+                ui.weak(t!("vtf.save_form.destination_hint"));
             }
+            ui.horizontal_wrapped(|ui| {
+                ui.label(t!("vtf.save_form.path"));
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.save.path)
+                        .desired_width(340.0)
+                        .hint_text(t!("vtf.save_form.path_hint")),
+                );
+                if ui.button(t!("common.browse")).clicked() {
+                    let name = format!("{}.vtf", leaf(&self.save.name));
+                    self.request_pick(ctx, PickKind::SaveTexturePath, Some(name));
+                }
+            });
             ui.horizontal_wrapped(|ui| {
                 ui.label(t!("vtf.save_form.folder"));
                 if !dirs.is_empty() {
@@ -203,7 +256,9 @@ impl VtfEditor {
                     );
                 }
                 ui.checkbox(&mut self.save.overwrite, t!("vtf.save_form.overwrite"));
-                let ok = !dirs.is_empty() && !self.save.name.trim().is_empty() && !self.is_saving();
+                let destination =
+                    !self.save.path.trim().is_empty() || (!dirs.is_empty() && !self.save.name.trim().is_empty());
+                let ok = destination && !self.is_saving();
                 if ui.add_enabled(ok, egui::Button::new(RichText::new(t!("vtf.save_form.save")).strong())).clicked() {
                     self.start_save_as_texture(ctx, state);
                 }

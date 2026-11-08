@@ -65,6 +65,7 @@ pub(crate) struct LocalShadows {
     lights_gen: u64,
     written: Vec<bool>,
     dirty: bool,
+    baked: bool,
     size: u32,
 }
 
@@ -96,6 +97,7 @@ impl LocalShadows {
             lights_gen: 0,
             written: Vec::new(),
             dirty: false,
+            baked: false,
             size: LOCAL_SHADOW_SIZE,
         }
     }
@@ -192,6 +194,7 @@ pub(crate) fn choose(
     cam: &Camera,
     count: usize,
     kept: &[usize],
+    delta_only: bool,
 ) -> Vec<usize> {
     if count == 0 {
         return Vec::new();
@@ -202,13 +205,20 @@ pub(crate) fn choose(
         .enumerate()
         .skip(first_local)
         .filter_map(|(i, l)| {
+            if delta_only && !crate::live_lighting::has_delta(l) {
+                return None;
+            }
             let pos = Vec3::new(l.pos_range[0], l.pos_range[1], l.pos_range[2]);
             let r = l.pos_range[3];
             let inside = planes[..5].iter().all(|p| p.dot(pos.extend(1.0)) >= -r);
             if !inside || pos.distance(cam.eye) > r + VIEW_MARGIN + cam.far.min(16384.0) {
                 return None;
             }
-            let mut s = score(l, cam.eye);
+            let mut scored = *l;
+            if delta_only {
+                scored.color = l.delta_color.map(f32::abs);
+            }
+            let mut s = score(&scored, cam.eye);
             if kept.contains(&i) {
                 s *= 1.5;
             }
@@ -220,7 +230,13 @@ pub(crate) fn choose(
 }
 
 impl Renderer {
-    pub(crate) fn prepare_local_shadows(&mut self, view_id: u32, cam: &Camera, count: u32) -> Vec<usize> {
+    pub(crate) fn prepare_local_shadows(
+        &mut self,
+        view_id: u32,
+        cam: &Camera,
+        count: u32,
+        delta_only: bool,
+    ) -> Vec<usize> {
         let count = count.min(MAX_SHADOWED_LIGHTS) as usize;
         let ls = &mut self.local_shadows;
         if !self.probing {
@@ -235,6 +251,13 @@ impl Renderer {
             }
         }
         let owner = ls.owner == Some(view_id) && !self.probing;
+        if owner && ls.baked != delta_only {
+            ls.baked = delta_only;
+            ls.dirty = true;
+            for slot in ls.slots.iter_mut().flatten() {
+                slot.drawn.fill(None);
+            }
+        }
         if ls.lights_gen != self.lights_gen {
             ls.lights_gen = self.lights_gen;
             for slot in ls.slots.iter_mut() {
@@ -262,7 +285,7 @@ impl Renderer {
                 self.scene_gen += 1;
             }
             let kept: Vec<usize> = ls.slots.iter().flatten().map(|s| s.index).collect();
-            let chosen = choose(&self.lights_cpu, self.dir_lights as usize, cam, count, &kept);
+            let chosen = choose(&self.lights_cpu, self.dir_lights as usize, cam, count, &kept, delta_only);
             for slot in ls.slots.iter_mut() {
                 if slot.as_ref().is_some_and(|s| !chosen.contains(&s.index)) {
                     *slot = None;
@@ -352,6 +375,7 @@ impl Renderer {
                 && let Some(light) = out.get_mut(s.index)
             {
                 light.color = [0.0, 0.0, 0.0, light.color[3]];
+                light.delta_color = [0.0, 0.0, 0.0, light.delta_color[3]];
             }
             let Some(s) = slot.as_ref().filter(|_| ready[k]) else { continue };
             let Some(light) = out.get_mut(s.index) else { continue };
@@ -368,6 +392,7 @@ impl Renderer {
                     cone: c[3],
                     atten: [(k * 6 + f) as f32, s.texel, NEAR, far],
                     extra: [0.0; 4],
+                    delta_color: [0.0; 4],
                 });
             }
         }
@@ -412,7 +437,12 @@ impl Renderer {
                 view_proj: m.to_cols_array_2d(),
                 eye: [0.0; 4],
                 viewport: [1.0; 4],
-                opts: [crate::OPT_SHADOW_PASS, 0, 0, 0],
+                opts: [
+                    crate::OPT_SHADOW_PASS | if self.local_shadows.baked { crate::OPT_BAKED_SHADOW_PASS } else { 0 },
+                    0,
+                    0,
+                    0,
+                ],
                 ..Default::default()
             };
             let lg = &self.local_shadows.layers[layer];
@@ -501,6 +531,7 @@ mod tests {
             cone: [0.9, 0.8, 0.0, 0.0],
             atten: [0.0, 0.0, 1.0e-4, 1.0e9],
             extra: [0.0; 4],
+            delta_color: [0.0; 4],
         }
     }
 
@@ -513,14 +544,27 @@ mod tests {
             light([200.0, 50.0, 0.0], 500.0, KIND_SPOT, 0.2),
         ];
         let c = cam();
-        assert_eq!(choose(&lights, 0, &c, 2, &[]), vec![2, 0]);
-        assert_eq!(choose(&lights, 0, &c, 8, &[]).len(), 3, "the light behind is out of the view");
-        assert!(choose(&lights, 0, &c, 0, &[]).is_empty());
-        assert_eq!(choose(&lights, 1, &c, 8, &[]), vec![2, 3]);
+        assert_eq!(choose(&lights, 0, &c, 2, &[], false), vec![2, 0]);
+        assert_eq!(choose(&lights, 0, &c, 8, &[], false).len(), 3, "the light behind is out of the view");
+        assert!(choose(&lights, 0, &c, 0, &[], false).is_empty());
+        assert_eq!(choose(&lights, 1, &c, 8, &[], false), vec![2, 3]);
         let close =
             [light([300.0, 0.0, 0.0], 500.0, KIND_POINT, 1.0), light([300.0, 1.0, 0.0], 500.0, KIND_POINT, 1.2)];
-        assert_eq!(choose(&close, 0, &c, 1, &[0]), vec![0]);
-        assert_eq!(choose(&close, 0, &c, 1, &[]), vec![1]);
+        assert_eq!(choose(&close, 0, &c, 1, &[0], false), vec![0]);
+        assert_eq!(choose(&close, 0, &c, 1, &[], false), vec![1]);
+    }
+
+    #[test]
+    fn retained_bake_shadow_slots_prioritize_changed_lights_including_lights_dimmed_to_black() {
+        let unchanged = light([300.0, 0.0, 0.0], 500.0, KIND_POINT, 1000.0);
+        let mut dimmed = light([300.0, 0.0, 0.0], 500.0, KIND_POINT, 0.0);
+        dimmed.delta_color = [-1.0, -1.0, -1.0, 0.0];
+        let mut added = light([300.0, 0.0, 0.0], 500.0, KIND_POINT, 0.2);
+        added.delta_color = [0.2, 0.2, 0.2, 0.0];
+        let lights = [unchanged, dimmed, added];
+        assert_eq!(choose(&lights, 0, &cam(), 1, &[], true), [1]);
+        assert_eq!(choose(&lights, 0, &cam(), 8, &[], true), [1, 2]);
+        assert_eq!(choose(&lights, 0, &cam(), 1, &[], false), [0]);
     }
 
     #[test]

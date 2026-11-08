@@ -79,3 +79,9 @@ Tout ce que fait la fenêtre est aussi accessible aux clients [MCP](../../MCP.md
 - [Dossiers de textures personnalisés et import d'images](custom-texture-folders.md)
 - [Éditeur de shaders](shader-editor.md)
 - [Fenêtre des paramètres](settings-dialog.md)
+
+## Destination de création et VMT associé
+
+Lors de la création, choisissez le chemin complet du fichier VTF avec Parcourir, ou utilisez un dossier personnalisé configuré et un nom relatif. Le VTF et son VMT associé sont écrits en arrière-plan. Un VMT existant est conservé.
+
+Le VMT associé s’ouvre automatiquement dans son propre onglet de l’éditeur VTF. Il reprend le sélecteur de shader, les paramètres groupés, les contrôles de textures et le texte VMT de l’éditeur de matériaux. Chaque onglet conserve ses modifications non enregistrées lorsque vous changez d’onglet ou créez une autre texture. Ctrl+S enregistre le matériau actif avec une sauvegarde. Revenez dans Texture pour modifier l’image.

@@ -109,3 +109,9 @@ Quand vous lancez vous-même `hammerpro --bspc`, les fichiers `.bsp`, `.log`, `.
 
 ---
 [Retour à l'index de la documentation](../README.md)
+
+## Préchargement des ressources de la map
+
+L'ouverture d'un VMF prépare les matériaux, skins et groupes de corps des modèles, sprites des entités, faces du ciel et références de matériaux des particules avant d'afficher la map. Chaque ressource terminée représente une unité du compteur ; le pourcentage indique les ressources terminées, pas le temps écoulé ni les octets. Une ressource modèle comprend les matériaux utilisés par son skin et son groupe de corps. Les dernières opérations figurent sous la barre. Une ressource manquante termine avec un avertissement conservé dans la console.
+
+L'annulation pendant la préparation conserve la map précédente. La phase finale masque la map pendant le transfert de sa géométrie et des dépendances actives du rendu. Les ouvertures multiples conservent leur ordre et la protection des modifications non sauvegardées reste active.

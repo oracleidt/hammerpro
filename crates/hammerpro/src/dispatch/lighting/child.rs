@@ -7,6 +7,10 @@ use super::bsp::{self, FlatLightmaps};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Tuning {
+    pub prop_polys: bool,
+    pub texture_shadows: bool,
+    pub no_disp_shadows: bool,
+    pub fast_ambient: bool,
     pub sun_samples: usize,
     pub ambient_samples: usize,
     pub supersample: bool,
@@ -15,7 +19,16 @@ pub(crate) struct Tuning {
 
 impl Default for Tuning {
     fn default() -> Self {
-        Self { sun_samples: 6, ambient_samples: 40, supersample: false, quick: false }
+        Self {
+            sun_samples: 6,
+            ambient_samples: 40,
+            supersample: false,
+            quick: false,
+            prop_polys: false,
+            texture_shadows: false,
+            no_disp_shadows: false,
+            fast_ambient: false,
+        }
     }
 }
 
@@ -26,6 +39,10 @@ const MAX_AMBIENT_SAMPLES: usize = 162 * 32;
 impl Tuning {
     pub fn of(o: &hp_editor::luxels::LightPlus) -> Self {
         Self {
+            prop_polys: o.prop_polys,
+            texture_shadows: o.texture_shadows,
+            no_disp_shadows: o.no_disp_shadows,
+            fast_ambient: o.fast_ambient,
             sun_samples: (o.samples_sun as usize).clamp(1, MAX_SAMPLES),
             ambient_samples: (o.samples_ambient as usize).clamp(MIN_AMBIENT_SAMPLES, MAX_AMBIENT_SAMPLES),
             supersample: o.supersample,
@@ -38,7 +55,17 @@ impl Tuning {
     }
 
     pub(crate) fn arg(self) -> String {
-        format!("{},{},{},{}", self.sun_samples, self.ambient_samples, u8::from(self.supersample), u8::from(self.quick))
+        format!(
+            "{},{},{},{},{},{},{},{}",
+            self.sun_samples,
+            self.ambient_samples,
+            u8::from(self.supersample),
+            u8::from(self.quick),
+            u8::from(self.prop_polys),
+            u8::from(self.texture_shadows),
+            u8::from(self.no_disp_shadows),
+            u8::from(self.fast_ambient)
+        )
     }
 
     fn parse(s: &str) -> Self {
@@ -51,7 +78,16 @@ impl Tuning {
         let ambient_samples = number(d.ambient_samples, MIN_AMBIENT_SAMPLES, MAX_AMBIENT_SAMPLES);
         let supersample = number(0, 0, 1) == 1;
         let quick = number(0, 0, 1) == 1;
-        Self { sun_samples, ambient_samples, supersample, quick }
+        Self {
+            sun_samples,
+            ambient_samples,
+            supersample,
+            quick,
+            prop_polys: number(u8::from(d.prop_polys) as usize, 0, 1) == 1,
+            texture_shadows: number(u8::from(d.texture_shadows) as usize, 0, 1) == 1,
+            no_disp_shadows: number(u8::from(d.no_disp_shadows) as usize, 0, 1) == 1,
+            fast_ambient: number(u8::from(d.fast_ambient) as usize, 0, 1) == 1,
+        }
     }
 }
 
@@ -89,6 +125,10 @@ pub(crate) fn options(
 ) -> RadOptions {
     let mut opts = RadOptions { hdr, ldr: !hdr, bounces, quality, threads, ..RadOptions::default() };
     opts.props.shadows = prop_shadows;
+    opts.props.polys = tuning.prop_polys;
+    opts.props.texture_shadows = tuning.texture_shadows;
+    opts.no_disp_shadows = tuning.no_disp_shadows;
+    opts.fast_ambient = tuning.fast_ambient;
     opts.min_sun_samples = tuning.sun_samples;
     if tuning.quick {
         opts.quality = RadQuality::Draft;
@@ -300,7 +340,7 @@ mod tests {
 
     #[test]
     fn tuning_follows_the_lighting_options() {
-        let t = Tuning { sun_samples: 12, ambient_samples: 40, supersample: true, quick: false };
+        let t = Tuning { sun_samples: 12, ambient_samples: 40, supersample: true, quick: false, ..Default::default() };
         assert_eq!(Tuning::parse(&t.arg()), t);
         assert_eq!(Tuning::parse(&t.quick().arg()), t.quick());
         assert_eq!(Tuning::parse("x"), Tuning::default());
@@ -308,6 +348,13 @@ mod tests {
         assert_eq!(options(true, RadQuality::Normal, 1, None, true, true, t).min_sun_samples, 12);
         let plus = hp_editor::luxels::LightPlus { samples_ambient: 3, ..Default::default() };
         assert_eq!(Tuning::of(&plus).ambient_samples, MIN_AMBIENT_SAMPLES);
+        let advanced =
+            Tuning { prop_polys: true, texture_shadows: true, no_disp_shadows: true, fast_ambient: true, ..t };
+        assert_eq!(Tuning::parse(&advanced.arg()), advanced);
+        let mapped = options(true, RadQuality::Normal, 3, None, true, true, advanced);
+        assert!(mapped.props.polys && mapped.props.texture_shadows && mapped.no_disp_shadows && mapped.fast_ambient);
+        assert_eq!(mapped.bounces, 3);
+        assert_eq!(Tuning::parse("12,40,1,0"), t);
     }
 
     #[test]

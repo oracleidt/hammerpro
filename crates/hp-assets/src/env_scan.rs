@@ -243,7 +243,8 @@ pub(crate) fn scan_entities<'a>(entities: impl Iterator<Item = &'a Entity> + Clo
 }
 
 pub(crate) fn scan(doc: &Document) -> EnvScan {
-    scan_entities(doc.scene().entities().values().map(|n| &n.entity))
+    let options = doc.light_plus();
+    scan_entities(doc.scene().entities().values().filter(|node| options.uses_entity(node.entity.id)).map(|n| &n.entity))
 }
 
 #[cfg(test)]

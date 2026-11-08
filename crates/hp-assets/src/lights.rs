@@ -91,11 +91,11 @@ pub(crate) fn light_direction(e: &Entity) -> DVec3 {
         DVec3::NEG_Z
     } else {
         let yaw = if angle != 0.0 { angle } else { angles.y };
-        let (sy, cy) = yaw.to_radians().sin_cos();
+        let (sy, cy) = hp_light::lights::sin_cos_degrees(yaw);
         DVec3::new(cy, sy, 0.0)
     };
     let pitch = key_f(e, "pitch").filter(|p| *p != 0.0).unwrap_or(angles.x);
-    let (sp, cp) = pitch.to_radians().sin_cos();
+    let (sp, cp) = hp_light::lights::sin_cos_degrees(pitch);
     out = DVec3::new(out.x * cp, out.y * cp, sp);
     out.try_normalize().unwrap_or(DVec3::ZERO)
 }
@@ -316,7 +316,7 @@ fn dynamic_direction(e: &Entity) -> DVec3 {
     let angles = e.angles().filter(|a| a.is_finite()).unwrap_or(DVec3::ZERO);
     let key = e.get("pitch").and_then(|s| s.trim().parse::<f64>().ok()).filter(|v| v.is_finite() && *v != 0.0);
     let pitch = key.map_or(angles.x, |p| -p);
-    let (sp, cp) = pitch.to_radians().sin_cos();
+    let (sp, cp) = hp_light::lights::sin_cos_degrees(pitch);
     let (sy, cy) = angles.y.to_radians().sin_cos();
     DVec3::new(cp * cy, cp * sy, -sp)
 }

@@ -59,6 +59,7 @@ pub fn budget_color(fraction: f64) -> egui::Color32 {
 #[derive(Debug, Default)]
 pub struct LightingTab {
     cc_edit: [Option<String>; 4],
+    vrad: bool,
 }
 
 impl LightingTab {
@@ -67,7 +68,15 @@ impl LightingTab {
         egui::ScrollArea::vertical().id_salt("hp_lighting_scroll").auto_shrink([false, false]).show(ui, |ui| {
             self.bake_section(ui, state);
             ui.add_space(6.0);
-            self.options_section(ui, state);
+            ui.horizontal(|ui| {
+                ui.selectable_value(&mut self.vrad, false, t!("lighting.preview"));
+                ui.selectable_value(&mut self.vrad, true, "VRAD");
+            });
+            if self.vrad {
+                self.vrad_section(ui, state);
+                self.options_section(ui, state);
+                return;
+            }
             ui.add_space(6.0);
             color_correction_section(ui, state, &mut self.cc_edit);
             ui.add_space(6.0);
@@ -201,6 +210,65 @@ impl LightingTab {
             && let Err(e) = state.doc.set_light_plus(&o)
         {
             state.notify(Severity::Warning, tf!("lighting.options_failed", e));
+        }
+    }
+
+    fn vrad_section(&mut self, ui: &mut Ui, state: &mut AppState) {
+        let current = state.doc.light_plus();
+        let mut options = current.clone();
+        ui.label(egui::RichText::new(t!("lighting.vrad_parameters")).strong());
+        ui.checkbox(&mut options.keep_bake, t!("lighting.keep_bake")).on_hover_text(t!("lighting.keep_bake_tip"));
+        ui.horizontal(|ui| {
+            ui.label(t!("lighting.vrad_bounces"));
+            ui.add_enabled(options.bounced, egui::DragValue::new(&mut options.bounce_count).range(0..=100));
+        });
+        let compile = &mut state.settings.compile;
+        let mut changed = ui.checkbox(&mut compile.static_prop_shadows, t!("lighting.vrad_prop_shadows")).changed();
+        changed |= ui.checkbox(&mut compile.static_prop_lighting, t!("lighting.vrad_prop_lighting")).changed();
+        if changed {
+            state.settings_dirty = true;
+        }
+        ui.checkbox(&mut options.prop_polys, t!("lighting.vrad_prop_polys"));
+        ui.checkbox(&mut options.texture_shadows, t!("lighting.vrad_texture_shadows"));
+        ui.checkbox(&mut options.no_disp_shadows, t!("lighting.vrad_no_disp_shadows"));
+        ui.checkbox(&mut options.fast_ambient, t!("lighting.vrad_fast_ambient"));
+        ui.separator();
+        ui.label(egui::RichText::new(t!("lighting.vrad_entities")).strong());
+        let mut entities: Vec<_> = state
+            .doc
+            .scene()
+            .entities()
+            .values()
+            .map(|node| &node.entity)
+            .filter(|entity| {
+                matches!(
+                    entity.classname.to_ascii_lowercase().as_str(),
+                    "light_environment" | "shadow_control" | "env_tonemap_controller"
+                )
+            })
+            .collect();
+        entities.sort_unstable_by_key(|entity| entity.id);
+        if entities.is_empty() {
+            ui.label(egui::RichText::new(t!("lighting.vrad_no_entities")).weak());
+        }
+        for entity in entities {
+            let mut enabled = options.uses_entity(entity.id);
+            let label = format!("{} #{} {}", entity.classname, entity.id, entity.get("targetname").unwrap_or(""));
+            if ui.checkbox(&mut enabled, label).changed() {
+                if enabled {
+                    options.excluded_entities.retain(|id| *id != entity.id);
+                } else {
+                    options.excluded_entities.push(entity.id);
+                }
+                options.excluded_entities.sort_unstable();
+                options.excluded_entities.dedup();
+            }
+        }
+        ui.label(egui::RichText::new(t!("lighting.vrad_geometry")).weak().small());
+        if options != current
+            && let Err(error) = state.doc.set_light_plus(&options)
+        {
+            state.notify(Severity::Warning, tf!("lighting.options_failed", error));
         }
     }
 }

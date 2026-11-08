@@ -15,6 +15,7 @@ mod indirect;
 mod instance_cull;
 pub mod lightmap;
 mod lights;
+mod live_lighting;
 mod local_shadow;
 pub mod memory;
 mod occlusion;
@@ -64,6 +65,17 @@ pub use sky::HdrSkyFace;
 pub use sprite_layers::SPRITE_LAYER_PARTICLES;
 pub use tangents::compute_tangents;
 pub use types::*;
+
+#[derive(Default)]
+pub struct BakedLightBaseline {
+    lights: Vec<gpu::LightGpu>,
+}
+
+impl BakedLightBaseline {
+    pub fn allocation_address(&self) -> Option<usize> {
+        (self.lights.capacity() > 0).then(|| self.lights.as_ptr() as usize)
+    }
+}
 
 use ahash::{HashMap, HashMapExt};
 use glam::{Mat4, Vec3};
@@ -142,6 +154,7 @@ struct ClusterKey {
     view_proj: [f32; 16],
     size: [u32; 2],
     lights_gen: u64,
+    delta_only: bool,
 }
 
 struct ViewState {
@@ -250,6 +263,7 @@ pub struct Renderer {
     sprite_layers: std::collections::BTreeMap<u32, sprite_layers::SpriteLayer>,
     lights_buf: GrowBuffer,
     lights_cpu: Vec<LightGpu>,
+    baked_lights: Option<std::sync::Arc<BakedLightBaseline>>,
     dir_lights: u32,
     lights_left_out: u32,
     crowded_clusters: u32,
@@ -673,6 +687,7 @@ const OPT_LIGHT_BACKGROUND: u32 = 1 << 25;
 const OPT_SKY_PAINT: u32 = 1 << 26;
 const OPT_HDR_TINT: u32 = 1 << 27;
 const OPT_MODEL_LODS: u32 = 1 << 28;
+pub(crate) const OPT_BAKED_SHADOW_PASS: u32 = 1 << 29;
 const VERTEX_DOT_PX: u32 = 3;
 
 struct OptionsUniform {
@@ -979,6 +994,7 @@ impl Renderer {
             sprite_layers: std::collections::BTreeMap::new(),
             lights_buf: GrowBuffer::new(&device, "hp-render lights", storage, size_of::<LightGpu>() as u64),
             lights_cpu: Vec::new(),
+            baked_lights: None,
             dir_lights: 0,
             lights_left_out: 0,
             crowded_clusters: 0,
@@ -2026,11 +2042,46 @@ impl Renderer {
     }
 
     pub fn light_count(&self) -> usize {
-        self.lights_cpu.len()
+        self.lights_cpu.iter().filter(|light| light.delta_color[3] < 0.5).count()
     }
 
     pub fn set_lights(&mut self, lights: &[PreviewLight], ambient: [f32; 3]) {
-        let lights::Packed { lights: packed, n_dir, left_out } = lights::pack_lights(lights);
+        let packed = lights::pack_lights(lights);
+        self.upload_lights(live_lighting::combine(packed, self.live_light_baseline()), ambient);
+    }
+
+    pub fn capture_baked_lights(&mut self) -> std::sync::Arc<BakedLightBaseline> {
+        let baseline = std::sync::Arc::new(BakedLightBaseline { lights: live_lighting::current(&self.lights_cpu) });
+        self.restore_baked_lights(&baseline);
+        baseline
+    }
+
+    pub fn restore_baked_lights(&mut self, baseline: &std::sync::Arc<BakedLightBaseline>) {
+        if self.baked_lights.as_ref().is_some_and(|previous| std::sync::Arc::ptr_eq(previous, baseline)) {
+            return;
+        }
+        self.baked_lights = Some(baseline.clone());
+        self.refresh_baked_light_delta();
+    }
+
+    pub fn clear_baked_lights(&mut self) {
+        self.baked_lights = None;
+        self.refresh_baked_light_delta();
+    }
+
+    fn live_light_baseline(&self) -> Option<&[LightGpu]> {
+        (self.lightmap_display() == lightmap::LightmapDisplay::Baked).then_some(())?;
+        self.baked_lights.as_ref().map(|baseline| baseline.lights.as_slice())
+    }
+
+    fn refresh_baked_light_delta(&mut self) {
+        let current = live_lighting::current(&self.lights_cpu);
+        let packed = lights::Packed { lights: current, n_dir: self.dir_lights, left_out: self.lights_left_out };
+        self.upload_lights(live_lighting::combine(packed, self.live_light_baseline()), self.ambient);
+    }
+
+    fn upload_lights(&mut self, packed: lights::Packed, ambient: [f32; 3]) {
+        let lights::Packed { lights: packed, n_dir, left_out } = packed;
         if left_out > 0 {
             log::warn!(
                 "hp-render: {left_out} preview lights left out (at most {} lights and {} suns)",
@@ -2067,7 +2118,7 @@ impl Renderer {
 
     pub fn light_stats(&self) -> LightStats {
         LightStats {
-            lights: self.lights_cpu.len() as u32,
+            lights: self.light_count() as u32,
             directional: self.dir_lights,
             left_out: self.lights_left_out,
             crowded_clusters: self.crowded_clusters,
@@ -2199,19 +2250,20 @@ impl Renderer {
         self.views.insert(id, view);
     }
 
-    fn update_clusters(&mut self, id: u32, cam: &Camera) -> ClusterGrid {
+    fn update_clusters(&mut self, id: u32, cam: &Camera, delta_only: bool) -> ClusterGrid {
         let grid = ClusterGrid::new(cam);
         let key = ClusterKey {
             view_proj: cam.view_proj.to_cols_array(),
             size: [cam.width as u32, cam.height as u32],
             lights_gen: self.lights_gen,
+            delta_only,
         };
         let Some(view) = self.views.get_mut(&id) else { return grid };
         if view.cluster_key == Some(key) {
             return grid;
         }
         let lights::Clusters { table, list, crowded } =
-            lights::build_clusters(cam, &grid, &self.lights_cpu, self.dir_lights);
+            lights::build_clusters(cam, &grid, &self.lights_cpu, self.dir_lights, delta_only);
         if crowded > 0 && self.crowded_logged != self.lights_gen {
             self.crowded_logged = self.lights_gen;
             log::info!(
@@ -2554,6 +2606,10 @@ impl Renderer {
         self.prepare_tone(view_id, params.size, params.mode, chain);
         let tone = reflecting.map_or_else(|| self.tone_scale_for(view_id, chain), |r| r.tone);
         let lit = params.mode == RenderMode::Lit && !cam.is_ortho && !self.baked_lit(&cam, params.mode);
+        let local_lighting = lit
+            || (self.baked_lit(&cam, params.mode)
+                && self.live_light_baseline().is_some()
+                && self.lights_cpu.iter().any(live_lighting::has_delta));
         if !cam.is_ortho && opts.cubemaps && reflecting.is_none() {
             self.cubes.note_view(view_id, &params, &opts);
         }
@@ -2570,7 +2626,7 @@ impl Renderer {
         self.water_reflect = reflect;
         let _ = lap.take();
         let fit_cam = reflecting.map_or(cam, |r| r.main_cam);
-        let grid = lit.then(|| self.update_clusters(view_id, &cam));
+        let grid = local_lighting.then(|| self.update_clusters(view_id, &cam, !lit));
         let clusters_ms = lap.take();
         let control = if !cam.is_ortho
             && matches!(params.mode, RenderMode::Textured | RenderMode::TexturedWire | RenderMode::Lit)
@@ -2583,8 +2639,8 @@ impl Renderer {
         let sky_map = if lit && self.sun.sky_ambient { self.prepare_sky_map(&fit_cam) } else { None };
         let local_layers = if reflecting.is_some() {
             Vec::new()
-        } else if lit {
-            self.prepare_local_shadows(view_id, &cam, opts.light_shadows)
+        } else if local_lighting {
+            self.prepare_local_shadows(view_id, &cam, opts.light_shadows, !lit)
         } else {
             self.local_shadows.release(view_id);
             Vec::new()

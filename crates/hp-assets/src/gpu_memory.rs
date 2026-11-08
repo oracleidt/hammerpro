@@ -64,6 +64,7 @@ impl AssetManager {
             {
                 bytes = bytes.saturating_sub(model.geometry_bytes());
                 *entry = crate::models::ModelEntry::Cached(std::sync::Arc::clone(&model.info));
+                self.memory_generation = self.memory_generation.wrapping_add(1);
                 if let Some((_, lods)) = self.lods.data.remove(&key) {
                     bytes = bytes.saturating_sub(lods.geometry_bytes());
                 }

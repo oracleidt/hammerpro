@@ -317,3 +317,138 @@ fn the_baked_view_draws_the_lightmaps_without_real_time_light() {
     let stale = pixel(&r, 64, 64);
     assert!(stale[0] > 60 && stale[0].abs_diff(stale[1]) < 30, "an edited face waits, lit by the sun alone: {stale:?}");
 }
+
+#[test]
+fn local_light_delta_updates_baked_faces_without_replacing_the_atlas() {
+    let Some((device, queue)) = gpu() else { return };
+    let mut r = Renderer::new(&device, &queue);
+    r.set_material(MAT, &MaterialDesc { texture: None, tint: [1.0; 4], ..Default::default() });
+    r.set_lightmap_tracking(true);
+    r.upsert_object(FLOOR, floor_mesh());
+    r.add_lightmap_faces(&[(
+        0,
+        LightmapFace { object: FLOOR, generation: r.lightmap_generation(FLOOR), scale: 16.0, flags: 0 },
+    )]);
+    let vertices = floor_lm(0);
+    r.add_lightmap_block(1, &[LightmapBatch { material: MAT, vertices: &vertices, indices: &[0, 1, 2, 0, 2, 3] }]);
+    assert!(r.ensure_lightmap_layers(64, 1));
+    r.write_lightmap(
+        0,
+        LightmapRect { layer: 0, x: 0, y: 0, w: 33, h: 33, density: 1.0, bumped: false },
+        &vec![texel(0.2, 0.2, 0.2); 33 * 33],
+    );
+    let light = PreviewLight {
+        kind: LightKind::Point,
+        pos: [0.0, 0.0, 128.0],
+        color: [1.0; 3],
+        intensity: 0.2,
+        range: 4096.0,
+        falloff: Some(LightFalloff { constant: 1.0, ..Default::default() }),
+    };
+    r.set_lights(&[light], [0.0; 3]);
+    r.capture_baked_lights();
+    r.set_view_options(0, ViewOptions { light_shadows: 16, ..Default::default() });
+    r.set_lightmap_display(LightmapDisplay::Baked, 1.0);
+    r.render_view(0, &params(RenderMode::Lit), &Overlay::default());
+    let original = pixel(&r, 64, 64);
+    assert!(original[0] > 80 && original[0].abs_diff(original[1]) <= 1, "{original:?}");
+    assert_eq!(r.stats().shadowed_lights, 0);
+    r.set_lights(&[PreviewLight { color: [1.0, 0.0, 0.0], ..light }], [0.0; 3]);
+    r.render_view(0, &params(RenderMode::Lit), &Overlay::default());
+    let red = pixel(&r, 64, 64);
+    assert!(
+        red[0] > red[1] + 60 && red[1] < 30 && red[2] < 30,
+        "the edited local light must recolor the retained atlas: {original:?} -> {red:?}"
+    );
+    let reference = pixel(&r, 32, 64);
+    let mut occluder = floor_mesh();
+    for vertex in &mut occluder.batches[0].vertices {
+        vertex.pos = [vertex.pos[0] / 8.0 - 80.0, vertex.pos[1] / 6.0, 64.0];
+    }
+    occluder.aabb_min = [-112.0, -43.0, 64.0];
+    occluder.aabb_max = [-48.0, 43.0, 64.0];
+    r.upsert_object(2, occluder);
+    r.set_object_flags(2, ObjectFlags::NO_BAKED_SHADOW);
+    r.render_view(0, &params(RenderMode::Lit), &Overlay::default());
+    let under_dynamic_caster = pixel(&r, 32, 64);
+    assert!(
+        reference.iter().zip(under_dynamic_caster).all(|(a, b)| a.abs_diff(b) <= 2),
+        "a caster absent from VRAD must not hide the subtraction: {reference:?} -> {under_dynamic_caster:?}"
+    );
+    r.remove_object(2);
+    assert_eq!(r.lightmap_stats().baked_faces, 1);
+    r.set_lights(&[], [0.0; 3]);
+    r.render_view(0, &params(RenderMode::Lit), &Overlay::default());
+    let removed = pixel(&r, 64, 64);
+    assert!(removed[..3].iter().all(|v| *v < 30), "the removed direct contribution must be subtracted: {removed:?}");
+    r.set_lights(&[light], [0.0; 3]);
+    r.render_view(0, &params(RenderMode::Lit), &Overlay::default());
+    assert_eq!(pixel(&r, 64, 64), original);
+    r.clear_baked_lights();
+    let mut crowded = vec![PreviewLight { intensity: 1.0, ..light }; 128];
+    r.set_lights(&crowded, [0.0; 3]);
+    r.capture_baked_lights();
+    crowded.push(PreviewLight { color: [1.0, 0.0, 0.0], ..light });
+    r.set_lights(&crowded, [0.0; 3]);
+    r.render_view(0, &params(RenderMode::Lit), &Overlay::default());
+    let added = pixel(&r, 64, 64);
+    assert!(
+        added[0] > original[0] + 20,
+        "unchanged lights must not crowd out the new local contribution: {original:?} -> {added:?}"
+    );
+    assert!(r.stats().shadowed_lights <= 1, "only the changed light needs a dynamic shadow");
+}
+
+#[test]
+fn retained_model_light_changes_test_visibility_at_the_lighting_origin() {
+    let Some((device, queue)) = gpu() else { return };
+    let mut r = Renderer::new(&device, &queue);
+    r.set_material(MAT, &MaterialDesc { texture: None, tint: [1.0; 4], ..Default::default() });
+    let face = floor_mesh().batches.remove(0);
+    let model = r.create_model(&[ModelPart {
+        material: MAT,
+        vertices: face.vertices,
+        indices: face.indices,
+        tangents: Vec::new(),
+    }]);
+    r.set_model_instances(&[ModelInstance { model, object: 100, ..Default::default() }]);
+    r.set_object_flags(100, ObjectFlags::NO_BAKED_SHADOW);
+    let mut wall = floor_mesh();
+    for vertex in &mut wall.batches[0].vertices {
+        vertex.pos = [256.0, vertex.pos[1], vertex.pos[0]];
+        vertex.normal = [-1.0, 0.0, 0.0];
+    }
+    wall.aabb_min = [256.0, -256.0, -256.0];
+    wall.aabb_max = [256.0, 256.0, 256.0];
+    r.upsert_object(2, wall);
+    r.set_model_lighting(&[ModelLighting {
+        object: 100,
+        sample_origin: Some([512.0, 0.0, 0.0]),
+        ..Default::default()
+    }]);
+    r.capture_baked_lights();
+    r.set_lightmap_display(LightmapDisplay::Baked, 1.0);
+    r.set_view_options(0, ViewOptions { light_shadows: 16, ..Default::default() });
+    r.set_lights(
+        &[PreviewLight {
+            kind: LightKind::Point,
+            pos: [0.0, 0.0, 128.0],
+            color: [0.0, 1.0, 0.0],
+            intensity: 0.4,
+            range: 4096.0,
+            falloff: Some(LightFalloff { constant: 1.0, ..Default::default() }),
+        }],
+        [0.0; 3],
+    );
+    r.render_view(0, &params(RenderMode::Lit), &Overlay::default());
+    let blocked = pixel(&r, 64, 64);
+    assert!(blocked[..3].iter().all(|v| *v < 10), "the lighting origin is behind the wall: {blocked:?}");
+    assert_eq!(r.stats().shadowed_lights, 1);
+    r.set_model_lighting(&[ModelLighting { object: 100, sample_origin: Some([0.0, 0.0, 1.0]), ..Default::default() }]);
+    r.render_view(0, &params(RenderMode::Lit), &Overlay::default());
+    let visible = pixel(&r, 64, 64);
+    assert!(
+        visible[1] > 80 && visible[0] < 10 && visible[2] < 10,
+        "the moved lighting origin sees the light: {visible:?}"
+    );
+}

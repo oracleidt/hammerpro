@@ -48,17 +48,6 @@ pub(crate) fn of_child(_child: &std::process::Child) -> Option<Usage> {
 }
 
 #[cfg(windows)]
-pub(crate) fn trim_self() -> bool {
-    use windows_sys::Win32::System::ProcessStatus::K32EmptyWorkingSet;
-    unsafe { K32EmptyWorkingSet(windows_sys::Win32::System::Threading::GetCurrentProcess()) != 0 }
-}
-
-#[cfg(not(windows))]
-pub(crate) fn trim_self() -> bool {
-    false
-}
-
-#[cfg(windows)]
 pub(crate) fn of_self() -> Option<Usage> {
     of_handle(unsafe { windows_sys::Win32::System::Threading::GetCurrentProcess() })
 }

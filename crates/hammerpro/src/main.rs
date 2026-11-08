@@ -60,6 +60,8 @@ mod opening;
 mod panel_layout;
 mod particle_exit;
 mod perf;
+mod primitive_memory;
+mod primitive_stats;
 mod prompts;
 mod restart;
 mod script;

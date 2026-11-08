@@ -126,6 +126,7 @@ pub(crate) struct LightGpu {
     pub cone: [f32; 4],
     pub atten: [f32; 4],
     pub extra: [f32; 4],
+    pub delta_color: [f32; 4],
 }
 
 #[repr(C)]
@@ -230,7 +231,7 @@ mod tests {
         assert_eq!(size_of::<InstanceGpu>(), 124);
         assert_eq!(size_of::<ObjState>(), 16);
         assert_eq!(size_of::<MaterialUniform>(), 464);
-        assert_eq!(size_of::<LightGpu>(), 96);
+        assert_eq!(size_of::<LightGpu>(), 112);
         assert_eq!(size_of::<ViewUniform>(), 64 * 3 + 16 * 59);
         assert_eq!(std::mem::offset_of!(ViewUniform, sky_march), 752);
     }

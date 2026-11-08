@@ -477,6 +477,7 @@ fn light_styles_scale_their_lightmaps_and_lights() {
         object: 50,
         model: Some(model),
         vertex_colors: vec![[c, c, c, 255]; 4],
+        sample_origin: None,
         ambient,
         lights: vec![light],
         styled_lights: vec![light],

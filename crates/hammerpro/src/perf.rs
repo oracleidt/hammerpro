@@ -2,7 +2,6 @@ use hp_app::runtime::PerfSample;
 use hp_app::{AppState, Severity, t, tf};
 
 const MEMORY_EVERY: f64 = 0.5;
-const TRIM_AFTER: f64 = 4.0;
 
 pub(crate) const TR: hp_app::i18n::TrTable = &[
     (
@@ -22,8 +21,6 @@ pub(crate) struct PerfMonitor {
     seen_rendered: u64,
     next_memory: f64,
     last_mode: Option<hp_app::settings::PerformanceMode>,
-    idle_since: Option<f64>,
-    trimmed: bool,
 }
 
 impl PerfMonitor {
@@ -40,26 +37,6 @@ impl PerfMonitor {
                 state.runtime.render.perf.unlock();
             }
             self.last_mode = Some(mode);
-        }
-        if busy {
-            self.idle_since = None;
-            self.trimmed = false;
-        } else if self.idle_since.is_none() {
-            self.idle_since = Some(now);
-        } else if !self.trimmed
-            && self.idle_since.is_some_and(|t| now - t > TRIM_AFTER)
-            && state.runtime.lighting.progress.is_none()
-        {
-            self.trimmed = true;
-            let before = crate::dispatch::lighting::memory::of_self().map_or(0, |u| u.working_set);
-            if crate::dispatch::lighting::memory::trim_self() {
-                let after = crate::dispatch::lighting::memory::of_self().map_or(0, |u| u.working_set);
-                log::info!(
-                    "memory: working set {} MB trimmed to {} MB once loading settled",
-                    before >> 20,
-                    after >> 20
-                );
-            }
         }
         let rendered = state.runtime.render.views_rendered != self.seen_rendered;
         self.seen_rendered = state.runtime.render.views_rendered;

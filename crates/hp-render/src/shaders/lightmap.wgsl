@@ -184,6 +184,14 @@ fn fs_baked(in: LmOut) -> @location(0) vec4<f32> {
     let scale = select(lm.exposure * bitcast<f32>(view.misc.w), lm.exposure, ldr);
     var pn = normalize(cross(dpdy(in.world), dpdx(in.world)) + vec3<f32>(0.0, 0.0, 1e-9));
     pn = select(pn, -pn, dot(pn, view.eye.xyz - in.world) < 0.0);
+    var dynamic_normal = pn;
+    if bumped { dynamic_normal = bump_to_world(bump_vector(bump), uv_frame(pn, in.world, tuv), pn); }
+    let delta = direct_lighting(in.world, pn, dynamic_normal, in.clip.xy, in.state.x, false, true);
+    if ldr {
+        light = pow(max(pow(max(light, vec3<f32>(0.0)), vec3<f32>(2.2)) + delta, vec3<f32>(0.0)), vec3<f32>(1.0 / 2.2));
+    } else {
+        light = max(light + delta, vec3<f32>(0.0));
+    }
     let projected = projector_light(in.world, pn);
     if ldr {
         light += pow(projected, vec3<f32>(1.0 / 2.2));

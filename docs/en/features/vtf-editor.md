@@ -79,3 +79,9 @@ Everything the window does is also available to [MCP](../../MCP.md) clients: `ge
 - [Custom texture folders and image import](custom-texture-folders.md)
 - [Shader editor](shader-editor.md)
 - [Settings window](settings-dialog.md)
+
+## Creation destination and associated VMT
+
+When creating a texture, choose a full VTF file path with Browse, or use a configured custom folder and a relative name. The VTF and its associated VMT are written in the background. An existing VMT is kept.
+
+The associated VMT opens automatically in its own tab inside the VTF editor. It provides the material editor's shader selector, grouped parameters, texture controls and VMT text. Each material tab keeps its own unsaved changes when switching tabs or creating another texture. Ctrl+S saves the active material and keeps a backup. Return to Texture to edit the image.

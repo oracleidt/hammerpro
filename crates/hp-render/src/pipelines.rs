@@ -14,7 +14,7 @@ macro_rules! shader_source {
     };
 }
 
-pub(crate) const MESH_WGSL: &str = shader_source!("material.wgsl", "parallax.wgsl", "mesh.wgsl");
+pub(crate) const MESH_WGSL: &str = shader_source!("material.wgsl", "parallax.wgsl", "lighting.wgsl", "mesh.wgsl");
 pub(crate) const LINES_WGSL: &str = shader_source!("lines.wgsl");
 pub(crate) const SPRITE_WGSL: &str = shader_source!("material.wgsl", "parallax.wgsl", "sprite.wgsl");
 pub(crate) const GRID_WGSL: &str = shader_source!("grid.wgsl");
@@ -1147,6 +1147,7 @@ mod tests {
     fn shaders_parse_and_validate() {
         let modules = [
             ("mesh", MESH_WGSL),
+            ("lightmap", crate::lightmap::SHADER),
             ("lines", LINES_WGSL),
             ("sprite", SPRITE_WGSL),
             ("grid", GRID_WGSL),
@@ -1155,6 +1156,14 @@ mod tests {
         for (name, src) in modules {
             assert!(!src.contains('\u{2014}') && !src.contains('\u{2013}'), "{name} contains a dash character");
             assert!(src.contains("struct View"), "{name} misses the common block");
+            let module = wgpu::naga::front::wgsl::parse_str(src)
+                .unwrap_or_else(|error| panic!("{name}: {}", error.emit_to_string(src)));
+            wgpu::naga::valid::Validator::new(
+                wgpu::naga::valid::ValidationFlags::all(),
+                wgpu::naga::valid::Capabilities::all(),
+            )
+            .validate(&module)
+            .unwrap_or_else(|error| panic!("{name}: {}", error.emit_to_string(src)));
         }
     }
 }

@@ -67,6 +67,7 @@ pub(crate) struct SceneSync {
     pub realize_later: AHashSet<String>,
     pub sprites_dirty: bool,
     pub lights_dirty: bool,
+    pub light_exclusions: Vec<Id>,
     pub projector_overrides: Vec<hp_app::state::ProjectorOverride>,
     pub force_entities: bool,
     pub initialized: bool,
@@ -250,6 +251,8 @@ fn point_entity_flags(doc: &Document, id: Id, room: Option<&SkyRoom>, props: Sta
                 StaticPropShadows::Collision => f |= ObjectFlags::HULL_SHADOW,
                 StaticPropShadows::Mesh => {}
             }
+        } else {
+            f |= ObjectFlags::NO_BAKED_SHADOW;
         }
         if hp_app::runtime::helpers::fish::is_fish_pool(&n.entity.classname) {
             f |= ObjectFlags::NO_PROBE;
@@ -1458,6 +1461,12 @@ impl AssetManager {
     }
 
     fn rebuild_lights(&mut self, doc: &Document, renderer: &mut Renderer, opts: &SceneOptions, d: &RenderDisplay) {
+        let lighting = doc.light_plus();
+        if self.scene.light_exclusions != lighting.excluded_entities {
+            self.scene.light_exclusions = lighting.excluded_entities.clone();
+            self.scene.lights_dirty = true;
+            self.scene.env.scan = None;
+        }
         renderer.set_lit_hdr(d.light_hdr);
         let mode = (d.light_hdr, d.sky_occlusion);
         if self.scene.light_mode != Some(mode) {
@@ -1494,7 +1503,7 @@ impl AssetManager {
         let mut sun: Option<(u8, crate::lights::SceneLight)> = None;
         for id in ids {
             let Some(mut light) = self.scene.ents.get(&id).and_then(|s| s.desc.light) else { continue };
-            if !doc.is_entity_visible(id) {
+            if !doc.is_entity_visible(id) || !lighting.uses_entity(id) {
                 continue;
             }
             let node = doc.scene().entity(id);
@@ -1574,6 +1583,24 @@ fn target_origins(doc: &Document) -> AHashMap<String, glam::DVec3> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dynamic_models_keep_game_shadows_but_do_not_occlude_baked_light_changes() {
+        let doc = Document::from_map(
+            hp_vmf::parse(
+                r#"world { "id" "1" }
+                entity { "id" "2" "classname" "prop_dynamic" "model" "models/test.mdl" }
+                entity { "id" "3" "classname" "prop_static" "model" "models/test.mdl" }"#,
+            )
+            .unwrap(),
+        );
+        let dynamic = point_entity_flags(&doc, 2, None, StaticPropShadows::Collision);
+        assert!(dynamic.contains(ObjectFlags::NO_BAKED_SHADOW));
+        assert!(!dynamic.contains(ObjectFlags::NO_SHADOW));
+        let fixed = point_entity_flags(&doc, 3, None, StaticPropShadows::Collision);
+        assert!(!fixed.contains(ObjectFlags::NO_BAKED_SHADOW));
+        assert!(fixed.contains(ObjectFlags::HULL_SHADOW));
+    }
 
     #[test]
     fn solids_get_an_object_color_and_a_classic_color() {

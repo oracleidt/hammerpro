@@ -32,7 +32,9 @@ mod particles;
 mod pick;
 mod player;
 mod playworld;
+mod preload;
 mod preview;
+mod primitives;
 mod producer;
 mod projectors;
 mod queue;
@@ -165,6 +167,7 @@ pub struct AssetManager {
     pub(crate) lists_pending: bool,
     pub(crate) generation: u64,
     pub(crate) lighting_generation: u64,
+    pub(crate) memory_generation: u64,
     pub(crate) mats: registry::Materials,
     pub(crate) thumbs: thumbs::Thumbs,
     pub(crate) models: models::Models,
@@ -225,6 +228,7 @@ impl AssetManager {
             lists_pending: false,
             generation: 1,
             lighting_generation: 1,
+            memory_generation: 1,
             mats: registry::Materials { hdr: settings.render.light_preview_hdr, ..Default::default() },
             thumbs: thumbs::Thumbs::default(),
             models: models::Models::default(),
@@ -345,6 +349,59 @@ impl Drop for AssetManager {
 }
 
 impl hp_app::AssetsApi for AssetManager {
+    fn preload_manifest_ready(&self) -> bool {
+        self.status != AssetStatus::Mounting && self.fgd_ticket == self.fgd_done
+    }
+    fn preload_resources(&self, doc: &hp_editor::Document) -> Vec<hp_app::runtime::PreloadResource> {
+        self.preload_resources_impl(doc)
+    }
+    fn preload_resource(
+        &mut self,
+        resource: &hp_app::runtime::PreloadResource,
+        gfx: &mut Gfx,
+    ) -> hp_app::runtime::PreloadResult {
+        self.preload_resource_impl(resource, gfx)
+    }
+    fn scene_prepared(&self) -> bool {
+        if !self.scene.initialized || self.scene.prep.is_some() || !self.scene.upload_pending.is_empty() {
+            return false;
+        }
+        if self.fs.is_none() {
+            return true;
+        }
+        self.scene.realize_later.is_empty()
+            && !self.scene.env.hdr_sky.loading()
+            && !self.scene.derived.preparing()
+            && self.mats.records.iter().all(|record| {
+                if record.cold || record.epoch < self.scene.epoch_floor {
+                    return true;
+                }
+                let crate::registry::MatSource::Asset { name, kind } = &record.source else { return true };
+                match self.mats.ana_look(name) {
+                    crate::material::AnaLook::Loading => false,
+                    crate::material::AnaLook::Missing => true,
+                    crate::material::AnaLook::Ready(analysis) => {
+                        crate::material::texture_keys(*kind, analysis).iter().all(|key| {
+                            self.mats
+                                .textures
+                                .map
+                                .get(key)
+                                .is_some_and(|entry| !entry.loading && (entry.current.is_some() || entry.missing))
+                        })
+                    }
+                }
+            })
+    }
+    fn resource_memory_generation(&self) -> u64 {
+        self.generation.wrapping_add(self.memory_generation)
+    }
+    fn primitive_resources(
+        &self,
+        doc: &hp_editor::Document,
+        probes: &mut hp_app::runtime::primitives::ResourceProbes,
+    ) -> hp_app::runtime::primitives::PrimitiveStats {
+        self.primitive_resources_impl(doc, probes)
+    }
     fn status(&self) -> AssetStatus {
         self.status.clone()
     }

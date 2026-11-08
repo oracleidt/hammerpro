@@ -212,3 +212,7 @@ Les images sont enregistrées dans la map (bloc `bgimages_plus` du VMF) et voyag
 
 ---
 [Retour à l'index de la documentation](../README.md)
+
+## Une grille bleue à la place du ciel
+
+Dans la vue éclairée ou texturée, une grille bleue sur une face de ciel correspond à la texture d'édition `tools/toolsskybox` lorsque **Voir le ciel à travers toolsskybox** est désactivé. Activez cette option dans **Paramètres > Rendu** (`render.sky_see_through`) pour voir le ciel à travers ces faces. L'aperçu précalculé affiche automatiquement les ouvertures de ciel.

@@ -1,6 +1,39 @@
 use hp_app::i18n::TrTable;
 
 pub const TR: TrTable = &[
+    (
+        "lighting.vrad_prop_polys",
+        "Use model meshes for prop shadows",
+        "Utiliser les maillages des modèles pour les ombres des props",
+    ),
+    ("lighting.vrad_texture_shadows", "Texture alpha shadows", "Ombres selon l'alpha des textures"),
+    ("lighting.vrad_no_disp_shadows", "Disable displacement shadows", "Désactiver les ombres des displacements"),
+    ("lighting.vrad_fast_ambient", "Fast ambient sampling", "Échantillonnage ambiant rapide"),
+    (
+        "lighting.keep_bake",
+        "Keep the global bake while editing local lights",
+        "Conserver le bake global pendant l'édition des lumières locales",
+    ),
+    (
+        "lighting.keep_bake_tip",
+        "Added, moved and edited point lights use a live direct-light difference over the last bake. A full bake updates bounced light and environment lighting.",
+        "Les lumières ponctuelles ajoutées, déplacées ou modifiées utilisent une différence d'éclairage direct sur le dernier bake. Un bake complet actualise les rebonds et l'éclairage d'environnement.",
+    ),
+    ("lighting.vrad_parameters", "VRAD parameters", "Paramètres VRAD"),
+    ("lighting.vrad_bounces", "Light bounces", "Rebonds de lumière"),
+    ("lighting.vrad_prop_shadows", "Static prop shadows", "Ombres des props statiques"),
+    ("lighting.vrad_prop_lighting", "Static prop lighting", "Éclairage des props statiques"),
+    ("lighting.vrad_entities", "Detected lighting entities", "Entités d'éclairage détectées"),
+    (
+        "lighting.vrad_no_entities",
+        "No environment light or lighting controller",
+        "Aucune lumière d'environnement ni contrôleur d'éclairage",
+    ),
+    (
+        "lighting.vrad_geometry",
+        "World brushes, brush entities, displacements and props occlude light together. Ceilings and openings determine lighting on each floor. Water uses its Source material shader. Prop lighting origins are read from the map.",
+        "Les brushes du monde, entités brush, displacements et props occultent ensemble la lumière. Les plafonds et ouvertures déterminent l'éclairage de chaque étage. L'eau utilise son shader Source. Les origines lumineuses des props sont lues dans la map.",
+    ),
     ("lighting.megabytes", "{0} MB", "{0} Mo"),
     ("lighting.phase_preparing", "Preparing", "Préparation"),
     ("lighting.phase_compiling", "Compiling the map", "Compilation de la carte"),

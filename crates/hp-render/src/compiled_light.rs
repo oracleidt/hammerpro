@@ -78,6 +78,7 @@ pub struct ModelLocalLight {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ModelLighting {
     pub object: ObjectId,
+    pub sample_origin: Option<[f32; 3]>,
     pub model: Option<ModelId>,
     pub vertex_colors: Vec<[u8; 4]>,
     pub ambient: [[f32; 3]; 6],
@@ -890,6 +891,9 @@ fn record(l: &ModelLighting, offset: usize, count: usize) -> [[f32; 4]; RECORD_V
     let list = if count > 0 { &l.styled_lights } else { &l.lights };
     let lights: Vec<&ModelLocalLight> = list.iter().take(RECORD_LIGHTS).collect();
     r[6] = [offset as f32, count as f32, lights.len() as f32, 0.0];
+    if let Some(origin) = l.sample_origin.filter(|origin| origin.iter().all(|v| v.is_finite())) {
+        r[7] = [origin[0], origin[1], origin[2], 1.0];
+    }
     for (k, li) in lights.iter().enumerate() {
         let at = 8 + k * 5;
         let v = |a: [f32; 3], w: f32| [clean(a[0]), clean(a[1]), clean(a[2]), clean(w)];

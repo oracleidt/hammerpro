@@ -133,3 +133,11 @@ The live checks (**Check the map as I edit**, **Look for leaks as I edit**, Sett
 
 ---
 [Back to the documentation index](../README.md)
+
+## Map primitive overlay
+
+The Σ toggle beside Check Problems shows the active map's solid, world-material, prop-material and light counts over the 3D view. Model variants use their actual selected materials. Pending and missing models are listed separately.
+
+On Windows, category CPU allocations are measured from live heap blocks that own the map's tracked resources, including the overhead reported by Windows. Shared blocks are counted once in a separate row. These values are allocated bytes, not a partition of resident RAM. Driver allocations, the UI framework and undo history are outside the category breakdown. The total resident editor RAM is measured separately by the operating system. An unavailable measurement is shown explicitly. The snapshot updates when map resources change; leaving the overlay enabled does not continuously enumerate the heap.
+
+Cache eviction frees unused data. Idle Windows working-set trimming is no longer used to force the displayed RAM down and cause later page faults. The 2 GB RAM and 1 GB VRAM figures are optimization targets, not fixed limits; usage depends on map content. A DirectX 9-only graphics card does not satisfy the renderer's graphics API requirements.

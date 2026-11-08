@@ -178,12 +178,14 @@ pub(crate) struct Lightmaps {
     module: OnceLock<wgpu::ShaderModule>,
 }
 
-const SHADER: &str = concat!(
+pub(crate) const SHADER: &str = concat!(
     include_str!("shaders/common.wgsl"),
     "\n",
     include_str!("shaders/material.wgsl"),
     "\n",
     include_str!("shaders/parallax.wgsl"),
+    "\n",
+    include_str!("shaders/lighting.wgsl"),
     "\n",
     include_str!("shaders/lightmap.wgsl")
 );
@@ -309,14 +311,45 @@ impl Lightmaps {
 }
 
 impl Renderer {
+    pub fn lightmap_cpu_allocation_addresses(&self) -> Vec<usize> {
+        let map = &self.lightmap;
+        let mut addresses = Vec::new();
+        if map.faces.capacity() > 0 {
+            addresses.push(map.faces.as_ptr() as usize);
+        }
+        if let Some(value) = map.generations.values().next() {
+            addresses.push((value as *const u64) as usize);
+        }
+        for value in map.geo.values().take(1) {
+            addresses.push((value as *const FaceGeo) as usize);
+        }
+        for values in map.by_object.values() {
+            addresses.push((values as *const Vec<u32>) as usize);
+            if values.capacity() > 0 {
+                addresses.push(values.as_ptr() as usize);
+            }
+        }
+        for block in map.blocks.values() {
+            addresses.push((block as *const BlockGpu) as usize);
+            if block.draws.capacity() > 0 {
+                addresses.push(block.draws.as_ptr() as usize);
+            }
+        }
+        addresses
+    }
+
     pub fn set_lightmap_display(&mut self, display: LightmapDisplay, exposure: f32) {
         let exposure = if exposure.is_finite() { exposure.clamp(0.0, 64.0) } else { 1.0 };
+        let display_changed = self.lightmap.display != display;
         let lm = &mut self.lightmap;
         if lm.display != display || lm.exposure != exposure {
             lm.display = display;
             lm.exposure = exposure;
             self.write_lightmap_params();
             self.content_gen += 1;
+        }
+        if display_changed {
+            self.refresh_baked_light_delta();
         }
         self.ensure_lightmap_resources();
     }
@@ -772,6 +805,7 @@ impl Renderer {
     }
 
     pub fn clear_lightmaps(&mut self) {
+        self.clear_baked_lights();
         let objects: Vec<ObjectId> = self.lightmap.faces.iter().filter(|f| f.live).map(|f| f.object).collect();
         for o in objects {
             self.scene.release_ref(o);

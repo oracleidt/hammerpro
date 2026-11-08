@@ -64,6 +64,20 @@ pub fn custom_target(state: &AppState, dest: usize, name: &str) -> Result<Target
     Ok(Target { path, name: virtual_name })
 }
 
+pub fn chosen_target(state: &AppState, dest: usize, name: &str, file: &str) -> Result<Target, String> {
+    if file.trim().is_empty() {
+        return custom_target(state, dest, name);
+    }
+    let mut path = PathBuf::from(file.trim());
+    if !path.is_absolute() || path.file_name().is_none() || path.is_dir() {
+        return Err(hp_app::t!("vtf.err.bad_path").to_owned());
+    }
+    path.set_extension("vtf");
+    let name = crate::matedit_single::texture_path_of(&path)
+        .unwrap_or_else(|| path.file_stem().unwrap_or_default().to_string_lossy().into_owned());
+    Ok(Target { path, name: clean_name(&name)? })
+}
+
 pub fn clean_name(name: &str) -> Result<String, String> {
     let n = name.trim().trim_end_matches(".vtf").replace('\\', "/").to_ascii_lowercase();
     let parts: Vec<&str> = n.split('/').filter(|p| !p.is_empty()).collect();
@@ -134,6 +148,7 @@ pub fn refresh(state: &mut AppState, written: &Path, texture: &str, materials: &
     }
 }
 
+#[derive(Clone)]
 pub struct MaterialPlan {
     pub shader: String,
     pub surface_prop: Option<String>,

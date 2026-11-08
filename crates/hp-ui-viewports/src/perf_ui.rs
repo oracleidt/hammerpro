@@ -7,6 +7,25 @@ use hp_app::{t, tf};
 use crate::paint;
 
 pub const TR: TrTable = &[
+    ("primitives.memory_error", "RAM measurement unavailable (error {0})", "Mesure RAM indisponible (erreur {0})"),
+    ("primitives.title", "Map primitives (editor)", "Primitives de la map (éditeur)"),
+    ("primitives.world", "World: {0} solids, {1} materials, RAM {2}", "World : {0} solides, {1} matériaux, RAM {2}"),
+    ("primitives.props", "Props: {0} materials, RAM {1}", "Props : {0} matériaux, RAM {1}"),
+    ("primitives.lighting", "Lighting: {0} lights, RAM {1}", "Lighting : {0} lumières, RAM {1}"),
+    ("primitives.shared", "Shared allocations: {0}", "Allocations partagées : {0}"),
+    ("primitives.process", "Editor resident RAM: {0}", "RAM résidente de l'éditeur : {0}"),
+    ("primitives.loading", "Measuring resource allocations...", "Mesure des allocations des ressources..."),
+    ("primitives.models", "Models pending: {0}, missing: {1}", "Modèles en attente : {0}, manquants : {1}"),
+    (
+        "primitives.partial",
+        "Some references are outside the measured heap",
+        "Certaines références sont hors du heap mesuré",
+    ),
+    (
+        "primitives.tip",
+        "CPU allocations of the active map resources, measured from allocated Windows heap blocks including their reported overhead. Shared blocks are counted once. These are allocation sizes, not per-category resident pages. Driver, framework and undo-history memory are outside this breakdown. The total resident RAM is measured separately by the OS.",
+        "Allocations CPU des ressources de la map active, mesurées dans les blocs alloués du heap Windows, avec leur surcharge rapportée. Les blocs partagés sont comptés une seule fois. Ce sont des tailles d'allocation, pas les pages résidentes par catégorie. La mémoire du pilote, de l'interface et de l'historique est hors de cette répartition. La RAM résidente totale est mesurée séparément par le système.",
+    ),
     ("perf.hud_fps", "{0} FPS  {1} ms", "{0} i/s  {1} ms"),
     (
         "perf.hud_cpu",
@@ -40,6 +59,40 @@ pub const TR: TrTable = &[
 
 fn ms(v: f32) -> String {
     format!("{v:.1}")
+}
+
+fn memory_text(bytes: u64) -> String {
+    match bytes {
+        0..1024 => format!("{bytes} B"),
+        1024..1048576 => format!("{:.2} KiB", bytes as f64 / 1024.0),
+        _ => format!("{:.2} MiB", bytes as f64 / (1024.0 * 1024.0)),
+    }
+}
+
+pub fn primitive_lines(state: &AppState) -> Vec<String> {
+    let mut lines = vec![t!("primitives.title").to_owned()];
+    let Some(stats) = state.runtime.primitives.stats.as_ref() else {
+        lines.push(t!("primitives.loading").to_owned());
+        return lines;
+    };
+    let ram = |index: usize| stats.memory.map_or_else(|| "-".to_owned(), |memory| memory_text(memory.bytes[index]));
+    lines.push(tf!("primitives.world", stats.solids, stats.world_materials, ram(0)));
+    lines.push(tf!("primitives.props", stats.prop_materials, ram(1)));
+    lines.push(tf!("primitives.lighting", stats.lights, ram(2)));
+    lines.push(tf!("primitives.shared", ram(3)));
+    let resident = state.runtime.render.perf.sample.working_set;
+    lines.push(tf!("primitives.process", if resident > 0 { memory_text(resident) } else { "-".to_owned() }));
+    if stats.models_loading > 0 || stats.models_missing > 0 {
+        lines.push(tf!("primitives.models", stats.models_loading, stats.models_missing));
+    }
+    if stats.collecting {
+        lines.push(t!("primitives.loading").to_owned());
+    } else if let Some(error) = &stats.memory_error {
+        lines.push(tf!("primitives.memory_error", error));
+    } else if stats.memory.is_some_and(|memory| memory.matched_probes < memory.total_probes) {
+        lines.push(t!("primitives.partial").to_owned());
+    }
+    lines
 }
 
 pub fn hud_lines(state: &AppState) -> Vec<String> {
@@ -83,6 +136,18 @@ pub fn show(ui: &mut egui::Ui, state: &mut AppState, rect: Rect, top: f32, index
         painter.rect_filled(r, 4, paint::PILL_BG);
         painter.galley(r.min + vec2(5.0, 3.0), galley, paint::TEXT);
         taken = r;
+    }
+    if state.settings.render.primitive_stats {
+        ui.ctx().request_repaint_after(std::time::Duration::from_secs(1));
+        let y = if taken.is_positive() { taken.bottom() + 6.0 } else { top };
+        let galley =
+            painter.layout_no_wrap(primitive_lines(state).join("\n"), egui::FontId::monospace(11.0), paint::TEXT);
+        let r = Align2::LEFT_TOP.anchor_size(Pos2::new(rect.left() + 6.0, y), galley.size() + vec2(10.0, 6.0));
+        painter.rect_filled(r, 4, paint::PILL_BG);
+        painter.galley(r.min + vec2(5.0, 3.0), galley, paint::TEXT);
+        ui.interact(r, ui.scope_id().with(("hp_primitives_hud", index)), Sense::HOVER)
+            .on_hover_text(t!("primitives.tip"));
+        taken = if taken.is_positive() { taken.union(r) } else { r };
     }
     let mode = state.settings.render.performance_mode;
     let perf = &state.runtime.render.perf;

@@ -7,6 +7,7 @@ pub mod import;
 pub(crate) mod indexes;
 mod mask;
 pub mod matedit;
+mod matedit_preview;
 mod matedit_single;
 pub mod picker;
 pub mod replace;

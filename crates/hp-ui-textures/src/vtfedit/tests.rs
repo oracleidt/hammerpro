@@ -202,6 +202,93 @@ fn new_textures_come_from_images_with_a_material() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+fn wait_for_save(editor: &mut VtfEditor, state: &mut AppState, ctx: &egui::Context) {
+    for _ in 0..400 {
+        if !editor.is_saving() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+        editor.poll_job(ctx, state);
+    }
+    panic!("VTF save did not finish");
+}
+
+#[test]
+fn free_destination_opens_a_full_vmt_tab_and_preserves_its_draft() {
+    let dir = crate::tests::scratch("vtfedit_free_destination");
+    let png = dir.join("image.png");
+    std::fs::write(&png, hp_vtf::ops::encode_image_file(&gradient(16, 16), ImageFileFormat::Png).unwrap()).unwrap();
+    let target = dir.join("materials/custom/created.vtf");
+    let mut state = state();
+    let mut editor = VtfEditor::new();
+    editor.new_from_image(&mut state, &png);
+    editor.save.path = target.display().to_string();
+    let ctx = egui::Context::default();
+    editor.start_save(&ctx, &mut state);
+    wait_for_save(&mut editor, &mut state, &ctx);
+    assert!(target.is_file());
+    assert!(matches!(&editor.loaded.as_ref().unwrap().origin, Origin::File(p) if p == &target));
+    assert_eq!(editor.material_tab, Some(0));
+    assert!(editor.material_editors[0].1.text.contains("custom/created"));
+    editor.material_editors[0].1.set("$surfaceprop", Some("metal"));
+    editor.open_material(dir.join("other.vmt"), "UnlitGeneric { $basetexture other }".to_owned());
+    assert!(editor.material_editors[0].1.is_dirty());
+    editor.material_tab = Some(0);
+    editor.save_material(&mut state);
+    assert!(!editor.material_editors[0].1.is_dirty());
+    let text = std::fs::read_to_string(target.with_extension("vmt")).unwrap();
+    assert_eq!(hp_vmt::parse(&text).unwrap().get("$surfaceprop"), Some("metal"));
+    assert!(crate::matedit::backup_path(&target.with_extension("vmt")).is_file());
+    pump(&mut editor, &mut state);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn background_save_cannot_replace_a_different_texture_opened_while_it_runs() {
+    let dir = crate::tests::scratch("vtfedit_save_race");
+    let first = dir.join("first.png");
+    let second = dir.join("second.png");
+    for (path, width) in [(&first, 16), (&second, 32)] {
+        std::fs::write(path, hp_vtf::ops::encode_image_file(&gradient(width, 16), ImageFileFormat::Png).unwrap())
+            .unwrap();
+    }
+    let target = dir.join("first.vtf");
+    let mut state = state();
+    let mut editor = VtfEditor::new();
+    editor.new_from_image(&mut state, &first);
+    editor.save.path = target.display().to_string();
+    let ctx = egui::Context::default();
+    editor.start_save(&ctx, &mut state);
+    editor.new_from_image(&mut state, &second);
+    wait_for_save(&mut editor, &mut state, &ctx);
+    let loaded = editor.loaded.as_ref().unwrap();
+    assert_eq!(loaded.doc.width(), 32);
+    assert!(matches!(loaded.origin, Origin::New));
+    assert!(loaded.doc.is_dirty());
+    assert_eq!(hp_vtf::read_info(&std::fs::read(&target).unwrap()).unwrap().width, 16);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn creating_a_texture_keeps_an_existing_vmt_and_opens_it() {
+    let dir = crate::tests::scratch("vtfedit_existing_vmt");
+    let png = dir.join("image.png");
+    std::fs::write(&png, hp_vtf::ops::encode_image_file(&gradient(16, 16), ImageFileFormat::Png).unwrap()).unwrap();
+    let target = dir.join("image.vtf");
+    let original = "VertexLitGeneric { $basetexture custom/preserved $surfaceprop wood }";
+    std::fs::write(target.with_extension("vmt"), original).unwrap();
+    let mut state = state();
+    let mut editor = VtfEditor::new();
+    editor.new_from_image(&mut state, &png);
+    editor.save.path = target.display().to_string();
+    let ctx = egui::Context::default();
+    editor.start_save(&ctx, &mut state);
+    wait_for_save(&mut editor, &mut state, &ctx);
+    assert_eq!(std::fs::read_to_string(target.with_extension("vmt")).unwrap(), original);
+    assert_eq!(editor.material_editors[0].1.text, original);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn external_sessions_copy_back_and_reload() {
     let dir = crate::tests::scratch("vtfedit_session");

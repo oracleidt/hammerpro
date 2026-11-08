@@ -212,3 +212,7 @@ The images are stored in the map (`bgimages_plus` block of the VMF), so they tra
 
 ---
 [Back to the documentation index](../README.md)
+
+## A blue grid instead of the sky
+
+In the lit or textured view, a blue grid on a sky face is the `tools/toolsskybox` editor texture when **See the sky through toolsskybox** is disabled. Enable that option in **Settings > Rendering** (`render.sky_see_through`) to see the sky through those faces. The baked preview shows sky openings automatically.

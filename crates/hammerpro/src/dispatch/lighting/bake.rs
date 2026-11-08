@@ -107,6 +107,24 @@ pub(crate) struct Worker {
 }
 
 impl Worker {
+    pub(super) fn resource_probes(&self, probes: &mut hp_app::runtime::primitives::ResourceProbes) -> bool {
+        use hp_app::runtime::primitives::PrimitiveClass;
+        let Ok(cache) = self.cache.try_lock() else { return false };
+        let Some(compiled) = cache.as_ref() else { return true };
+        let bsp = compiled.bsp.clone();
+        let sides = compiled.sides.clone();
+        drop(cache);
+        let class = PrimitiveClass::Lighting;
+        probes.hold(&self.cache, class);
+        probes.hold(&bsp, class);
+        if !bsp.bytes().is_empty() {
+            probes.point(bsp.bytes().as_ptr() as usize, class);
+        }
+        probes.hold(&sides, class);
+        sides.resource_probes(probes);
+        true
+    }
+
     pub fn start(wake: Box<dyn Fn() + Send + Sync>) -> std::io::Result<Self> {
         let (tx, jobs) = crossbeam_channel::unbounded::<Job>();
         let (out, rx) = crossbeam_channel::unbounded();

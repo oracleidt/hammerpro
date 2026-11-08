@@ -50,6 +50,7 @@ struct Light {
     cone: vec4<f32>,
     atten: vec4<f32>,
     extra: vec4<f32>,
+    delta_color: vec4<f32>,
 };
 
 fn spot_cone(l: Light, s: f32) -> f32 {
@@ -189,6 +190,7 @@ const F_BRUSH_ENTITY: u32 = 16384u;
 const F_COMPILED_LIGHT: u32 = 32768u;
 const F_NO_PROBE: u32 = 65536u;
 const F_NO_SHADOW: u32 = 131072u;
+const F_NO_BAKED_SHADOW: u32 = 524288u;
 
 const OPT_WALKABLE: u32 = 1u;
 const OPT_FOG: u32 = 2u;
@@ -218,6 +220,7 @@ const OPT_LIGHT_BACKGROUND: u32 = 33554432u;
 const OPT_SKY_PAINT: u32 = 67108864u;
 const OPT_HDR_TINT: u32 = 134217728u;
 const OPT_MODEL_LODS: u32 = 268435456u;
+const OPT_BAKED_SHADOW_PASS: u32 = 536870912u;
 
 const EDGE_DETAIL_BIT: u32 = 0x80000000u;
 const EDGE_SOURCE_BIT: u32 = 0x40000000u;
@@ -273,8 +276,10 @@ fn hidden_in_view(flags: u32) -> bool {
     let shadow_pass = (view.opts.x & OPT_SHADOW_PASS) != 0u;
     let sun_pass = (view.opts.x & OPT_SUN_PASS) != 0u;
     let sky_faces = (view.opts.x & OPT_SKY_FACES) != 0u;
+    let baked_shadow_pass = (view.opts.x & OPT_BAKED_SHADOW_PASS) != 0u;
     let hidden = select(F_HIDDEN, 0u, probe) | select(0u, F_NO_PROBE, probing) | select(0u, F_NO_SHADOW | F_ROPE, shadow_pass)
-        | select(0u, F_SKY_3D, sun_pass) | select(0u, F_BRUSH_ENTITY, sky_faces || (view.opts.x & OPT_REFLECT_WORLD) != 0u);
+        | select(0u, F_SKY_3D, sun_pass) | select(0u, F_BRUSH_ENTITY, sky_faces || (view.opts.x & OPT_REFLECT_WORLD) != 0u)
+        | select(0u, F_NO_BAKED_SHADOW, baked_shadow_pass);
     if (flags & (hidden | mask)) != 0u {
         return true;
     }

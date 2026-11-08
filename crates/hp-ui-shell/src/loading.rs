@@ -95,6 +95,46 @@ impl LoadingOverlay {
     }
 
     pub fn ui(&mut self, ui: &mut Ui, state: &mut AppState) {
+        if let Some(progress) = state.runtime.startup.resources.as_ref() {
+            let progress = progress.clone();
+            egui::Modal::new(Id::unique("hp_resource_preload")).backdrop_color(ui.visuals().panel_fill).show(
+                ui.ctx(),
+                |ui| {
+                    ui.set_width(420.0);
+                    ui.heading(t!("shell.loading.resources"));
+                    let fraction = if progress.total == 0 { 1.0 } else { progress.done as f32 / progress.total as f32 };
+                    let percentage =
+                        if progress.total == 0 { 100.0 } else { 100.0 * progress.done as f64 / progress.total as f64 };
+                    ui.add(
+                        hp_app::widgets::progress_bar(fraction)
+                            .text(format!("{percentage:.2} %  ({}/{})", progress.done, progress.total)),
+                    );
+                    if progress.installing {
+                        ui.horizontal(|ui| {
+                            ui.spinner();
+                            ui.label(t!("shell.loading.geometry"));
+                        });
+                    } else {
+                        ui.label(egui::RichText::new(&progress.current).small());
+                    }
+                    ui.separator();
+                    for (name, missing) in &progress.log {
+                        let text = if *missing {
+                            tf!("shell.loading.missing", name)
+                        } else {
+                            tf!("shell.loading.ready", name)
+                        };
+                        let color = if *missing { theme::warning() } else { theme::palette().text_weak };
+                        ui.label(egui::RichText::new(text).color(color).small());
+                    }
+                    if !progress.installing && ui.button(t!("shell.loading.cancel")).clicked() {
+                        state.runtime.startup.cancel_open = true;
+                    }
+                },
+            );
+            ui.ctx().request_repaint_after(std::time::Duration::from_millis(16));
+            return;
+        }
         let now = ui.input(|i| i.time);
         let show = self.update(now, LoadingInfo::from_state(state));
         let alpha = ui.ctx().animate_bool_with_time(Id::unique("hp_loading_overlay"), show, FADE_TIME);
@@ -325,6 +365,10 @@ fn paint_bar(painter: &egui::Painter, bar: Rect, fraction: Option<f32>, time: f6
 }
 
 pub const TR: TrTable = &[
+    ("shell.loading.resources", "Preparing map resources", "Préchargement des ressources de la map"),
+    ("shell.loading.geometry", "Uploading map geometry", "Chargement de la géométrie"),
+    ("shell.loading.ready", "Loaded: {0}", "Chargé : {0}"),
+    ("shell.loading.missing", "Missing or unreadable: {0}", "Manquant ou illisible : {0}"),
     ("shell.loading.planning", "Looking for the game content...", "Recherche du contenu du jeu..."),
     ("shell.loading.sources", "Archives and addons: {0} / {1}", "Archives et addons : {0} / {1}"),
     ("shell.loading.indexing", "Listing materials, models and sounds...", "Liste des matériaux, modèles et sons..."),
@@ -473,6 +517,42 @@ mod tests {
 
     fn has(texts: &[(String, Rect)], needle: &str) -> bool {
         texts.iter().any(|(t, _)| t.contains(needle))
+    }
+
+    #[test]
+    fn resource_preload_displays_completed_work_and_keeps_cancel_available() {
+        let _lang = lang_lock();
+        let mut state = state_with(AssetStatus::Ready, None);
+        state.runtime.startup.resources = Some(hp_app::runtime::ResourceLoading {
+            done: 2,
+            total: 3,
+            current: "models/test.mdl".into(),
+            log: vec![("test/wall".into(), false), ("test/missing".into(), true)],
+            ..Default::default()
+        });
+        let ctx = egui::Context::default();
+        let mut overlay = LoadingOverlay::default();
+        let mut texts = Vec::new();
+        for frame_no in 0..4 {
+            texts = frame(&ctx, &mut overlay, &mut state, f64::from(frame_no) * 0.05, Vec::new()).0;
+        }
+        assert!(has(&texts, "66.67 %  (2/3)"), "{texts:?}");
+        assert!(has(&texts, "models/test.mdl") && has(&texts, "Missing or unreadable: test/missing"));
+        let at = texts.iter().find(|(text, _)| text == "Cancel").unwrap().1.center();
+        let click = |pressed| Event::PointerButton {
+            pos: at,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Default::default(),
+        };
+        frame(&ctx, &mut overlay, &mut state, 0.3, vec![Event::PointerMoved(at)]);
+        frame(&ctx, &mut overlay, &mut state, 0.35, vec![click(true)]);
+        frame(&ctx, &mut overlay, &mut state, 0.4, vec![click(false)]);
+        assert!(state.runtime.startup.cancel_open);
+        state.runtime.startup.resources.as_mut().unwrap().installing = true;
+        let texts = frame(&ctx, &mut overlay, &mut state, 0.45, Vec::new()).0;
+        assert!(!has(&texts, "Cancel"));
+        assert!(has(&texts, "Uploading map geometry"));
     }
 
     #[test]

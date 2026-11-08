@@ -35,18 +35,28 @@ fn key_f(e: &Entity, key: &str) -> Option<f64> {
         .filter(|v| v.is_finite())
 }
 
+pub fn sin_cos_degrees(angle: f64) -> (f64, f64) {
+    match angle.rem_euclid(360.0) {
+        0.0 => (0.0, 1.0),
+        90.0 => (1.0, 0.0),
+        180.0 => (0.0, -1.0),
+        270.0 => (-1.0, 0.0),
+        _ => angle.to_radians().sin_cos(),
+    }
+}
+
 pub fn light_normal(e: &Entity) -> DVec3 {
     let angles = e.angles().filter(|a| a.is_finite()).unwrap_or(DVec3::ZERO);
     let angle = key_f(e, "angle").unwrap_or(0.0);
     let pitch = key_f(e, "pitch").filter(|p| *p != 0.0).unwrap_or(angles.x);
-    let (sp, cp) = pitch.to_radians().sin_cos();
+    let (sp, cp) = sin_cos_degrees(pitch);
     let out = if angle == -1.0 {
         DVec3::Z
     } else if angle == -2.0 {
         DVec3::NEG_Z
     } else {
         let yaw = if angle != 0.0 { angle } else { angles.y };
-        let (sy, cy) = yaw.to_radians().sin_cos();
+        let (sy, cy) = sin_cos_degrees(yaw);
         DVec3::new(cp * cy, cp * sy, sp)
     };
     out.try_normalize().unwrap_or(DVec3::NEG_Z)
@@ -380,6 +390,20 @@ mod tests {
             e.set(k, *v);
         }
         e
+    }
+
+    #[test]
+    fn cardinal_light_directions_have_no_sideways_component() {
+        for yaw in [0.0, 37.0, 90.0, 180.0, 270.0, -90.0] {
+            let angles = format!("0 {yaw} 0");
+            let e = ent("light_environment", &[("angles", &angles), ("pitch", "-90")]);
+            assert_eq!(light_normal(&e), DVec3::NEG_Z);
+        }
+        assert_eq!(sin_cos_degrees(450.0), (1.0, 0.0));
+        assert_eq!(sin_cos_degrees(-180.0), (0.0, -1.0));
+        let near = -90.0 + 1e-10;
+        assert_eq!(sin_cos_degrees(near), near.to_radians().sin_cos());
+        assert_ne!(sin_cos_degrees(near).1, 0.0);
     }
 
     #[test]

@@ -20,6 +20,8 @@ mod mesh;
 mod mesh_disp;
 pub mod perf;
 mod placement;
+pub mod primitive_scene;
+pub mod primitives;
 pub mod render;
 mod roadside;
 mod selection;
@@ -65,7 +67,7 @@ pub use render::RenderRuntime;
 pub use roadside::{PreviewLine, PreviewTri, RoadPreview, RoadsideRuntime};
 pub use selection::SelectionRuntime;
 pub use shader::{LiveGraph, ShaderRequest, ShaderRuntime};
-pub use startup::{OpeningStatus, StartupRuntime};
+pub use startup::{OpeningStatus, PreloadMaterial, PreloadResource, PreloadResult, ResourceLoading, StartupRuntime};
 pub use update::{UpdateFailure, UpdateInfo, UpdateRuntime, UpdateStatus};
 pub use visibility::VisibilityRuntime;
 pub use vtf::{VtfRequest, VtfRuntime};
@@ -73,6 +75,7 @@ pub use workflow::{MAX_DROPPED, MapTabInfo, TabRequest, WorkflowMapMemory, Workf
 
 #[derive(Debug, Default)]
 pub struct Runtime {
+    pub primitives: primitives::PrimitivesRuntime,
     pub fade: fade::FadePreview,
     pub selection: SelectionRuntime,
     pub brush: BrushRuntime,

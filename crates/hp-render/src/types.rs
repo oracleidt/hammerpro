@@ -214,6 +214,7 @@ bitflags_u32! {
         NO_PROBE = 1 << 16;
         NO_SHADOW = 1 << 17;
         HULL_SHADOW = 1 << 18;
+        NO_BAKED_SHADOW = 1 << 19;
     }
 }
 

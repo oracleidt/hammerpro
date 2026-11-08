@@ -84,6 +84,8 @@ struct Upload {
 }
 
 struct Preview {
+    baseline: Option<std::sync::Arc<hp_render::BakedLightBaseline>>,
+    baseline_key: Option<u64>,
     worker: bake::Worker,
     next_id: u64,
     running: Option<Running>,
@@ -114,6 +116,26 @@ fn rad_quality(q: LightingQuality) -> hp_bspc::rad::RadQuality {
         LightingQuality::Normal => hp_bspc::rad::RadQuality::Normal,
         LightingQuality::Final => hp_bspc::rad::RadQuality::Final,
     }
+}
+
+pub(crate) fn primitive_resource_stamp(state: &State) -> u64 {
+    state.preview.as_ref().map_or(0, |preview| preview.next_id)
+}
+
+pub(crate) fn primitive_resource_probes(
+    state: &State,
+    probes: &mut hp_app::runtime::primitives::ResourceProbes,
+) -> bool {
+    state.preview.as_ref().is_none_or(|preview| {
+        if let Some(baseline) = &preview.baseline {
+            let class = hp_app::runtime::primitives::PrimitiveClass::Lighting;
+            probes.hold(baseline, class);
+            if let Some(address) = baseline.allocation_address() {
+                probes.point(address, class);
+            }
+        }
+        preview.worker.resource_probes(probes)
+    })
 }
 
 fn uses_hdr(l: LightingSetting) -> bool {
@@ -226,13 +248,20 @@ fn map_luxels(state: &mut AppState) -> u64 {
 
 impl Preview {
     fn can_revalidate(&self, state: &AppState) -> bool {
-        self.has_bake && self.shown_serial.is_some() && self.cache.current(state, false, self.shown_serial)
+        self.has_bake
+            && self.shown_serial.is_some()
+            && (self.cache.current(state, false, self.shown_serial)
+                || (state.doc.light_plus().keep_bake
+                    && self.baseline_key.is_some()
+                    && self.baseline_key == self.cache.current_geometry_key(state)))
     }
 
     fn start(ctx: &egui::Context) -> Option<Self> {
         let ctx = ctx.clone();
         let worker = bake::Worker::start(Box::new(move || ctx.request_repaint())).ok()?;
         Some(Self {
+            baseline: None,
+            baseline_key: None,
             worker,
             next_id: 1,
             running: None,
@@ -279,7 +308,7 @@ impl Preview {
         self.upload = None;
         let t = std::time::Instant::now();
         let export = hp_editor::compile_export::CompileExport::default();
-        let map = (kind != BakeKind::Refine).then(|| match &scope {
+        let mut map = (kind != BakeKind::Refine).then(|| match &scope {
             Scope::All => state.doc.compile_snapshot(&export).map,
             Scope::Around { center, radius } => {
                 let r = DVec3::splat(radius.max(64.0));
@@ -305,6 +334,9 @@ impl Preview {
         };
         let s = state.settings.lighting.sanitized();
         let options = state.doc.light_plus();
+        if let Some(map) = &mut map {
+            map.entities.retain(|entity| options.uses_entity(entity.id));
+        }
         let budget = u64::from(s.max_luxels_millions) * 1_000_000;
         let factor = coarsen_factor(map_luxels(state), budget);
         let (layer_size, max_layers) = state.gfx.as_ref().map_or((LAYER_SIZE, 16), |g| {
@@ -323,7 +355,7 @@ impl Preview {
             resources_revision: state.assets.lighting_generation(),
             hdr: if lit { state.settings.render.light_preview_hdr } else { uses_hdr(state.settings.compile.lighting) },
             quality: rad_quality(s.quality),
-            bounces: bounces(options.bounced),
+            bounces: if options.bounced { options.bounce_count.min(bounces(true)) } else { bounces(false) },
             prop_shadows: state.settings.compile.static_prop_shadows,
             prop_lighting: state.settings.compile.static_prop_lighting,
             threads: bake_threads(s.threads),
@@ -555,6 +587,8 @@ impl Preview {
             scope_auto: self.auto_scoped,
         };
         self.has_bake = true;
+        self.baseline = Some(r.capture_baked_lights());
+        self.baseline_key = Some(self.cache.geometry_key(state));
         self.shown_serial = Some(up.serial);
         self.refine = up.quick.then(|| (up.scope.clone(), up.serial));
         if b.indirect.is_some() && b.hdr == state.settings.render.light_preview_hdr {
@@ -576,6 +610,7 @@ impl Preview {
             return;
         }
         let options = state.doc.light_plus();
+        let geometry_key = self.has_bake.then(|| self.cache.geometry_key(state));
         let delay = f64::from(options.incremental_delay).max(MIN_UPDATE_DELAY);
         let Some(serial) = self.cache.resolve(state, false, delay, false) else {
             return;
@@ -613,6 +648,26 @@ impl Preview {
         }
         if !options.incremental {
             state.runtime.lighting.stale = self.has_bake && self.running.is_none();
+            return;
+        }
+        if options.keep_bake
+            && self.shown_serial.is_some()
+            && self.baseline_key.is_some()
+            && self.baseline_key == geometry_key
+        {
+            if self.running.as_ref().is_some_and(|running| !running.lit && running.serial != serial) {
+                self.worker.stop();
+                self.running = None;
+            }
+            self.refine = None;
+            self.restart = None;
+            if self.upload.as_ref().is_some_and(|upload| !upload.lit && upload.serial != serial) {
+                self.upload = None;
+            }
+            if self.running.is_none() {
+                state.runtime.lighting.progress = None;
+            }
+            state.runtime.lighting.stale = true;
             return;
         }
         if !self.cancelling && self.running.as_ref().is_some_and(|r| !r.lit && r.serial != serial) {
@@ -794,6 +849,11 @@ fn revalidate_cached_faces(app: &mut HammerProApp) {
 }
 
 pub(crate) fn scene_synced(app: &mut HammerProApp) {
+    if let Some(baseline) = app.pkg.lighting.preview.as_ref().and_then(|preview| preview.baseline.as_ref())
+        && let Some(gfx) = app.state.gfx.as_mut()
+    {
+        gfx.renderer.restore_baked_lights(baseline);
+    }
     if let Some(gfx) = app.state.gfx.as_mut() {
         app.pkg.lighting.note_lightmap_changes(gfx.renderer.take_lightmap_changes());
     }
@@ -1036,6 +1096,8 @@ fn forget(app: &mut HammerProApp) {
         p.shown_faces = 0;
         p.shown_blocks = 0;
         p.has_bake = false;
+        p.baseline = None;
+        p.baseline_key = None;
         p.last_scope = None;
         p.lights_revision = 0;
         p.cache = cache::BakeCache::default();
@@ -1277,6 +1339,28 @@ mod tests {
         assert_eq!(bake_threads(3), (3, 3));
         let (compile, light) = bake_threads(0);
         assert!(compile >= 1 && light >= compile);
+    }
+
+    #[test]
+    fn local_light_edits_keep_the_global_bake_and_its_face_bindings() {
+        let mut state = hp_app::testing::test_state();
+        let mut preview = Preview::start(&egui::Context::default()).unwrap();
+        let serial = preview.cache.resolve(&state, false, 0.0, true).unwrap();
+        preview.has_bake = true;
+        preview.shown_serial = Some(serial);
+        preview.baseline_key = Some(preview.cache.geometry_key(&state));
+        state
+            .doc
+            .create_point_entity("light", DVec3::new(0.0, 0.0, 128.0), &[("_light".into(), "255 255 255 400".into())])
+            .unwrap();
+        state.frame.time = 2.0;
+        preview.schedule(&mut state, 2.0);
+        state.frame.time = 4.0;
+        preview.schedule(&mut state, 4.0);
+        assert!(preview.has_bake && preview.running.is_none() && preview.upload.is_none());
+        assert_eq!(preview.shown_serial, Some(serial));
+        assert!(preview.can_revalidate(&state));
+        assert!(state.runtime.lighting.stale);
     }
 
     #[test]

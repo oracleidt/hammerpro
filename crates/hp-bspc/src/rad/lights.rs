@@ -230,11 +230,11 @@ pub(crate) fn light_normal(angles: DVec3, angle: f64, pitch: f64) -> DVec3 {
         DVec3::NEG_Z
     } else {
         let yaw = if angle == 0.0 { angles.y } else { angle };
-        let (s, c) = yaw.to_radians().sin_cos();
+        let (s, c) = hp_light::lights::sin_cos_degrees(yaw);
         DVec3::new(c, s, 0.0)
     };
     let pitch = if pitch == 0.0 { angles.x } else { pitch };
-    let (s, c) = pitch.to_radians().sin_cos();
+    let (s, c) = hp_light::lights::sin_cos_degrees(pitch);
     out.z = s;
     out.x *= c;
     out.y *= c;

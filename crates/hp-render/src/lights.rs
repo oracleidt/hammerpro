@@ -79,6 +79,7 @@ pub(crate) fn pack_lights(lights: &[PreviewLight]) -> Packed {
                 cone: [-1.0, -1.0, fade[0], fade[1]],
                 atten,
                 extra,
+                delta_color: [0.0; 4],
             }),
             LightKind::Spot { dir: d, inner_deg, outer_deg } => {
                 let d = Vec3::from(finite3(d, [0.0, 0.0, -1.0])).normalize_or(Vec3::NEG_Z);
@@ -93,6 +94,7 @@ pub(crate) fn pack_lights(lights: &[PreviewLight]) -> Packed {
                     cone: [ci, co, fade[0], fade[1]],
                     atten,
                     extra,
+                    delta_color: [0.0; 4],
                 });
             }
             LightKind::Directional { dir: d } => {
@@ -104,6 +106,7 @@ pub(crate) fn pack_lights(lights: &[PreviewLight]) -> Packed {
                     cone: [0.0; 4],
                     atten: DEFAULT_ATTEN,
                     extra: [0.0; 4],
+                    delta_color: [0.0; 4],
                 });
             }
         }
@@ -193,11 +196,20 @@ fn slab(grid: &ClusterGrid, slice: u32) -> (f32, f32) {
     (z0, z1)
 }
 
-fn cluster_cells(cam: &Camera, grid: &ClusterGrid, lights: &[LightGpu], first_local: u32) -> Vec<Cell> {
+fn cluster_cells(
+    cam: &Camera,
+    grid: &ClusterGrid,
+    lights: &[LightGpu],
+    first_local: u32,
+    delta_only: bool,
+) -> Vec<Cell> {
     let aspect = cam.width / cam.height;
     let (tx, ty) = (cam.tan_half_fov * aspect, cam.tan_half_fov);
     let mut cells: Vec<Cell> = Vec::new();
     for (i, l) in lights.iter().enumerate().skip(first_local as usize) {
+        if delta_only && !crate::live_lighting::has_delta(l) {
+            continue;
+        }
         let p = Vec3::new(l.pos_range[0], l.pos_range[1], l.pos_range[2]);
         let r = l.pos_range[3];
         let d = p - cam.eye;
@@ -257,10 +269,16 @@ fn cell_refs(cells: &[Cell]) -> usize {
         .sum()
 }
 
-pub(crate) fn build_clusters(cam: &Camera, grid: &ClusterGrid, lights: &[LightGpu], first_local: u32) -> Clusters {
-    let cells = cluster_cells(cam, grid, lights, first_local);
+pub(crate) fn build_clusters(
+    cam: &Camera,
+    grid: &ClusterGrid,
+    lights: &[LightGpu],
+    first_local: u32,
+    delta_only: bool,
+) -> Clusters {
+    let cells = cluster_cells(cam, grid, lights, first_local, delta_only);
     if cell_refs(&cells) > MAX_REFS || crate::profile::baseline("clusters") {
-        return build_serial(cam, grid, lights, &cells);
+        return build_serial(cam, grid, lights, &cells, delta_only);
     }
     let (tx, plane) = (grid.tiles_x as usize, (grid.tiles_x * grid.tiles_y) as usize);
     let mut by_slice: Vec<Vec<Cell>> = vec![Vec::new(); grid.slices as usize];
@@ -311,10 +329,10 @@ pub(crate) fn build_clusters(cam: &Camera, grid: &ClusterGrid, lights: &[LightGp
         }
         list.extend_from_slice(part);
     }
-    finish_clusters(cam, grid, lights, table, list)
+    finish_clusters(cam, grid, lights, table, list, delta_only)
 }
 
-fn build_serial(cam: &Camera, grid: &ClusterGrid, lights: &[LightGpu], cells: &[Cell]) -> Clusters {
+fn build_serial(cam: &Camera, grid: &ClusterGrid, lights: &[LightGpu], cells: &[Cell], delta_only: bool) -> Clusters {
     let n = grid.count();
     let mut counts = vec![0u32; n];
     let idx = |x: u32, y: u32, s: u32| ((s * grid.tiles_y + y) * grid.tiles_x + x) as usize;
@@ -354,7 +372,7 @@ fn build_serial(cam: &Camera, grid: &ClusterGrid, lights: &[LightGpu], cells: &[
             }
         }
     }
-    finish_clusters(cam, grid, lights, table, list)
+    finish_clusters(cam, grid, lights, table, list, delta_only)
 }
 
 fn finish_clusters(
@@ -363,6 +381,7 @@ fn finish_clusters(
     lights: &[LightGpu],
     mut table: Vec<[u32; 2]>,
     mut list: Vec<u32>,
+    delta_only: bool,
 ) -> Clusters {
     let plane = grid.tiles_x * grid.tiles_y;
     let mut jobs: Vec<(u32, &mut [u32], &mut [u32; 2])> = Vec::new();
@@ -393,8 +412,21 @@ fn finish_clusters(
         let (x, y) = (rest % grid.tiles_x, rest / grid.tiles_x);
         if t[1] > MAX_PER_CLUSTER {
             let center = grid.center(cam, x, y, s);
-            let mut scored: Vec<(f32, u32)> =
-                slice.iter().map(|&i| (lights.get(i as usize).map_or(0.0, |l| light_score(l, center)), i)).collect();
+            let mut scored: Vec<(f32, u32)> = slice
+                .iter()
+                .map(|&i| {
+                    (
+                        lights.get(i as usize).map_or(0.0, |l| {
+                            let mut scored = *l;
+                            if delta_only {
+                                scored.color = l.delta_color.map(f32::abs);
+                            }
+                            light_score(&scored, center)
+                        }),
+                        i,
+                    )
+                })
+                .collect();
             let keep = MAX_PER_CLUSTER as usize;
             let order = |a: &(f32, u32), b: &(f32, u32)| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1));
             scored.select_nth_unstable_by(keep - 1, order);
@@ -536,7 +568,7 @@ mod tests {
             .collect();
         lights.push(PreviewLight { intensity: 50.0, ..point([500.0, 0.0, 0.0], 400.0) });
         let p = pack_lights(&lights);
-        let c = build_clusters(&cam, &grid, &p.lights, p.n_dir);
+        let c = build_clusters(&cam, &grid, &p.lights, p.n_dir, false);
         assert!(c.crowded > 0, "the clusters around the lights are crowded");
         assert!(c.table.iter().all(|t| t[1] <= MAX_PER_CLUSTER));
         let strong = (lights.len() - 1) as u32;
@@ -546,7 +578,7 @@ mod tests {
         assert_eq!(t[1], MAX_PER_CLUSTER);
         assert!(c.list[t[0] as usize..(t[0] + t[1]) as usize].contains(&strong), "the brightest light is kept");
         let few = pack_lights(&lights[..10]);
-        assert_eq!(build_clusters(&cam, &grid, &few.lights, few.n_dir).crowded, 0);
+        assert_eq!(build_clusters(&cam, &grid, &few.lights, few.n_dir, false).crowded, 0);
     }
 
     #[test]
@@ -554,7 +586,7 @@ mod tests {
         let cam = cam();
         let grid = ClusterGrid::new(&cam);
         let p = pack_lights(&[point([500.0, 0.0, 0.0], 50.0), point([-500.0, 0.0, 0.0], 50.0)]);
-        let Clusters { table, list, .. } = build_clusters(&cam, &grid, &p.lights, p.n_dir);
+        let Clusters { table, list, .. } = build_clusters(&cam, &grid, &p.lights, p.n_dir, false);
         assert_eq!(table.len(), grid.count());
         assert!(!list.is_empty());
         assert!(list.iter().all(|&i| i == 0));
@@ -569,7 +601,7 @@ mod tests {
         let cam = cam();
         let grid = ClusterGrid::new(&cam);
         let p = pack_lights(&[point([0.0; 3], 200.0)]);
-        let table = build_clusters(&cam, &grid, &p.lights, p.n_dir).table;
+        let table = build_clusters(&cam, &grid, &p.lights, p.n_dir, false).table;
         assert_eq!(table[0][1], 1);
         assert_eq!(table[(grid.tiles_x * grid.tiles_y - 1) as usize][1], 1);
     }
@@ -588,7 +620,7 @@ mod tests {
         }];
         let p = pack_lights(&lights);
         assert!(p.lights.iter().all(|l| l.pos_range.iter().all(|v| v.is_finite())));
-        let _ = build_clusters(&cam, &grid, &p.lights, p.n_dir);
+        let _ = build_clusters(&cam, &grid, &p.lights, p.n_dir, false);
     }
 
     #[test]
@@ -648,9 +680,9 @@ mod tests {
         let grid = ClusterGrid::new(&c);
         let packed = scattered(400);
         let first = packed.n_dir;
-        let fast = build_clusters(&c, &grid, &packed.lights, first);
-        let cells = cluster_cells(&c, &grid, &packed.lights, first);
-        let serial = build_serial(&c, &grid, &packed.lights, &cells);
+        let fast = build_clusters(&c, &grid, &packed.lights, first, false);
+        let cells = cluster_cells(&c, &grid, &packed.lights, first, false);
+        let serial = build_serial(&c, &grid, &packed.lights, &cells, false);
         assert_eq!(fast.crowded, serial.crowded);
         assert_eq!(fast.table, serial.table);
         assert_eq!(fast.list, serial.list);
@@ -663,7 +695,7 @@ mod tests {
         let grid = ClusterGrid::new(&c);
         let packed = scattered(60);
         let first = packed.n_dir;
-        let built = build_clusters(&c, &grid, &packed.lights, first);
+        let built = build_clusters(&c, &grid, &packed.lights, first, false);
         assert_eq!(built.crowded, 0);
         let mut seed = 777u32;
         let mut next = || {

@@ -15,11 +15,12 @@ pub enum ToolbarItem {
     Compile,
     RenderMode,
     Props2d,
+    PrimitiveStats,
 }
 
 pub const TOOLBAR: &[&[ToolbarItem]] = {
     use Action as A;
-    use ToolbarItem::{Action as I, Compile, GridSize, Props2d, RenderMode};
+    use ToolbarItem::{Action as I, Compile, GridSize, PrimitiveStats, Props2d, RenderMode};
     &[
         &[I(A::NewMap), I(A::OpenMap), I(A::SaveMap)],
         &[I(A::ToggleGrid), I(A::ToggleGrid3d), GridSize, I(A::ToggleSnap)],
@@ -50,7 +51,7 @@ pub const TOOLBAR: &[&[ToolbarItem]] = {
             I(A::ToggleParticles),
             I(A::SimulateRopes),
         ],
-        &[RenderMode, I(A::TogglePlayerView), I(A::CheckProblems)],
+        &[RenderMode, I(A::TogglePlayerView), I(A::CheckProblems), PrimitiveStats],
     ]
 };
 
@@ -230,6 +231,17 @@ pub fn toolbar(ui: &mut Ui, state: &mut AppState) {
                     ToolbarItem::RenderMode => render_mode_dropdown(ui, state),
                     ToolbarItem::Props2d => {
                         props_2d_button(ui, state);
+                    }
+                    ToolbarItem::PrimitiveStats => {
+                        let on = state.settings.render.primitive_stats;
+                        if ui
+                            .add(egui::Button::selectable(on, "Σ").min_size(BUTTON_SIZE))
+                            .on_hover_text(t!("shell.toolbar.primitives_tip"))
+                            .clicked()
+                        {
+                            state.settings.render.primitive_stats = !on;
+                            state.settings_dirty = true;
+                        }
                     }
                 }
             }
@@ -424,6 +436,7 @@ fn render_mode_dropdown(ui: &mut Ui, state: &mut AppState) {
     egui::ComboBox::from_id_salt("hp_shell_render_mode")
         .selected_text(format!("🎨 {current_label}"))
         .width(130.0)
+        .wrap_mode(egui::TextWrapMode::Truncate)
         .show_ui(ui, |ui| {
             ui.set_min_width(220.0);
             for (mode, action) in RENDER_MODES {
@@ -438,7 +451,7 @@ fn render_mode_dropdown(ui: &mut Ui, state: &mut AppState) {
             close_on_escape(ui);
         })
         .response
-        .on_hover_text(t!("menu.render_mode"));
+        .on_hover_text(format!("{}\n{current_label}", t!("menu.render_mode")));
     if let Some(action) = chosen {
         state.request(action);
     }
@@ -520,6 +533,11 @@ fn paint_icon(painter: &egui::Painter, c: egui::Pos2, color: egui::Color32, icon
 }
 
 pub(crate) const TR: hp_app::i18n::TrTable = &[
+    (
+        "shell.toolbar.primitives_tip",
+        "Map primitives and measured editor CPU allocations",
+        "Primitives de la map et allocations CPU mesurées de l'éditeur",
+    ),
     ("shell.toolbar.compile", "Compile", "Compiler"),
     (
         "shell.toolbar.props_2d_tip",

@@ -356,6 +356,13 @@ const LIGHT_PLUS_LABEL: &str = "Edit lighting options";
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct LightPlus {
+    pub prop_polys: bool,
+    pub texture_shadows: bool,
+    pub no_disp_shadows: bool,
+    pub fast_ambient: bool,
+    pub keep_bake: bool,
+    pub excluded_entities: Vec<u32>,
+    pub bounce_count: u32,
     pub samples_sun: u32,
     pub samples_ambient: u32,
     pub samples_vis: u32,
@@ -377,6 +384,13 @@ pub struct LightPlus {
 impl Default for LightPlus {
     fn default() -> Self {
         Self {
+            prop_polys: false,
+            texture_shadows: false,
+            no_disp_shadows: false,
+            fast_ambient: false,
+            excluded_entities: Vec::new(),
+            keep_bake: true,
+            bounce_count: 100,
             samples_sun: 6,
             samples_ambient: 40,
             samples_vis: 256,
@@ -401,6 +415,10 @@ const MAX_SAMPLES: u32 = 1024;
 const MAX_TEXLIGHT_LEN: usize = 260;
 
 impl LightPlus {
+    pub fn uses_entity(&self, id: u32) -> bool {
+        !self.excluded_entities.contains(&id)
+    }
+
     pub fn from_block(b: &hp_kv::Block) -> Self {
         let d = Self::default();
         let int = |k: &str, def: u32, max: u32| {
@@ -417,7 +435,22 @@ impl LightPlus {
         };
         let flag = |k: &str, def: bool| b.get(k).and_then(|v| v.trim().parse::<f64>().ok()).map_or(def, |v| v != 0.0);
         let texlight = b.get("texlight").unwrap_or("").trim();
+        let mut excluded_entities: Vec<u32> = b
+            .get("excluded_entities")
+            .unwrap_or("")
+            .split_ascii_whitespace()
+            .filter_map(|value| value.parse().ok())
+            .collect();
+        excluded_entities.sort_unstable();
+        excluded_entities.dedup();
         Self {
+            excluded_entities,
+            prop_polys: flag("prop_polys", d.prop_polys),
+            texture_shadows: flag("texture_shadows", d.texture_shadows),
+            no_disp_shadows: flag("no_disp_shadows", d.no_disp_shadows),
+            fast_ambient: flag("fast_ambient", d.fast_ambient),
+            keep_bake: flag("keep_bake", d.keep_bake),
+            bounce_count: int("bounce_count", d.bounce_count, 100),
             samples_sun: int("samples_sun", d.samples_sun, MAX_SAMPLES).max(1),
             samples_ambient: int("samples_ambient", d.samples_ambient, MAX_SAMPLES),
             samples_vis: int("samples_vis", d.samples_vis, 4096),
@@ -445,6 +478,13 @@ impl LightPlus {
             s
         };
         b.set("samples_sun", self.samples_sun.to_string());
+        b.set("prop_polys", flag(self.prop_polys));
+        b.set("texture_shadows", flag(self.texture_shadows));
+        b.set("no_disp_shadows", flag(self.no_disp_shadows));
+        b.set("fast_ambient", flag(self.fast_ambient));
+        b.set("keep_bake", flag(self.keep_bake));
+        b.set("excluded_entities", self.excluded_entities.iter().map(u32::to_string).collect::<Vec<_>>().join(" "));
+        b.set("bounce_count", self.bounce_count.min(100).to_string());
         b.set("samples_ambient", self.samples_ambient.to_string());
         b.set("samples_vis", self.samples_vis.to_string());
         b.set("texlight", self.texlight.replace('"', ""));
@@ -625,6 +665,26 @@ mod tests {
         assert_eq!(lp.radius_scale, 1.0);
         assert_eq!(lp.bake_dist, 64.0);
         assert!(lp.texlight.is_empty());
+    }
+
+    #[test]
+    fn preview_entity_selection_and_bounce_count_survive_a_vmf_round_trip() {
+        let mut block = hp_kv::Block::new(LIGHT_PLUS);
+        block.set("excluded_entities", "42 bad 7 42 -1");
+        block.set("bounce_count", "9999");
+        block.set("keep_bake", "0");
+        let options = LightPlus::from_block(&block);
+        assert_eq!(options.excluded_entities, [7, 42]);
+        assert_eq!(options.bounce_count, 100);
+        assert!(!options.keep_bake);
+        assert!(!options.uses_entity(42));
+        assert!(options.uses_entity(43));
+        options.write_to(&mut block);
+        assert_eq!(LightPlus::from_block(&block), options);
+        let mut doc = Document::new_empty();
+        doc.set_light_plus(&options).unwrap();
+        let reopened = Document::from_map(hp_vmf::parse(&hp_vmf::write(&doc.to_map())).unwrap());
+        assert_eq!(reopened.light_plus(), options);
     }
 
     fn side(u: DVec3, v: DVec3, uscale: f64, ushift: f64, lm: i32) -> Side {

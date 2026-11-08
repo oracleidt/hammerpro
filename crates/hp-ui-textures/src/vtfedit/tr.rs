@@ -1,6 +1,19 @@
 use hp_app::i18n::TrTable;
 
 pub const TR: TrTable = &[
+    (
+        "vtf.save_form.destination_hint",
+        "Choose a VTF file, or configure a custom folder",
+        "Choisissez un fichier VTF, ou configurez un dossier personnalisé",
+    ),
+    ("vtf.tab.texture", "Texture", "Texture"),
+    ("vtf.save_form.path", "VTF file", "Fichier VTF"),
+    (
+        "vtf.save_form.path_hint",
+        "Optional full path, or use the custom folder below",
+        "Chemin complet facultatif, ou dossier personnalisé ci-dessous",
+    ),
+    ("vtf.err.bad_path", "Choose a full path to a VTF file", "Choisissez un chemin complet vers un fichier VTF"),
     ("vtf.title", "VTF editor", "Éditeur de VTF"),
     (
         "vtf.hint",

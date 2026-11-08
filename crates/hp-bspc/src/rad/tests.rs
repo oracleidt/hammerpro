@@ -1056,6 +1056,25 @@ fn sun_yard(sun_keys: &[(&str, &str)]) -> Vec<u8> {
 }
 
 #[test]
+fn vertical_sun_matches_an_exactly_vertical_target_without_dark_wall_edges() {
+    let lighting = |target: bool| {
+        let aim = if target { "\"target\" \"sun_target\"" } else { "" };
+        let entities = format!(
+            "entity {{ \"id\" \"600\" \"classname\" \"light_environment\" \"origin\" \"128 32 220\" \"pitch\" \"-90\" \"_light\" \"255 240 220 500\" \"_ambient\" \"0 0 0 0\" {aim} }}\nentity {{ \"id\" \"601\" \"classname\" \"info_target\" \"targetname\" \"sun_target\" \"origin\" \"128 32 64\" }}"
+        );
+        let bsp = compile_vmf(&room_with("DEV/DEV_MEASUREGENERIC01B", "TOOLS/TOOLSSKYBOX", &entities));
+        let lit = light_bsp(&bsp, &RadOptions { bounces: 0, ..quick() }, &mut |_| {}).unwrap();
+        assert!(luxel_at(&lit, DVec3::new(16.0, 16.0, 0.0), DVec3::Z, true).unwrap().x > 400.0);
+        hp_bsp::Bsp::from_vec(lit).unwrap()
+    };
+    let angular = lighting(false);
+    let targeted = lighting(true);
+    for id in [lump::LIGHTING, lump::LIGHTING_HDR] {
+        assert_eq!(angular.lump(id).unwrap().as_ref(), targeted.lump(id).unwrap().as_ref());
+    }
+}
+
+#[test]
 fn sun_direction_from_angles_and_pitch() {
     let floor = |bsp: &[u8], x: f64, y: f64| luxel_at(bsp, DVec3::new(x, y, 0.0), DVec3::Z, false).expect("floor").x;
     let yaw0 = sun_yard(&[("angles", "-45 0 0")]);
