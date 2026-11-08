@@ -164,20 +164,7 @@ impl ZoneDriver {
         let preview_key = preview.as_ref().map_or(0, |lut| Arc::as_ptr(lut) as usize);
         let want = Applied::Zones(key, luts_key.0, luts_key.1, preview_key, preview_entity);
         if self.applied != want {
-            let blended = {
-                let refs: Vec<(&[u8], f32)> = live
-                    .iter()
-                    .filter_map(|c| {
-                        let lut = if preview_entity == Some(c.id) {
-                            preview.as_ref()
-                        } else {
-                            self.luts.get(&c.filename).and_then(|l| l.as_ref())
-                        };
-                        lut.map(|l| (l.as_slice(), c.weight))
-                    })
-                    .collect();
-                hp_colorgrade::blend_rgba(&refs)
-            };
+            let blended = self.blend(&live, preview.as_deref().map(Vec::as_slice), preview_entity);
             if let Some(gfx) = state.gfx.as_mut() {
                 gfx.renderer.set_color_zone(blended.as_deref());
             }
@@ -193,6 +180,22 @@ impl ZoneDriver {
         if !self.fader.settled(&self.zones, eye) {
             ctx.request_repaint();
         }
+    }
+
+    fn blend(&self, live: &[Contribution], preview: Option<&[u8]>, preview_entity: Option<u32>) -> Option<Vec<u8>> {
+        let preview = preview.and_then(hp_colorgrade::from_rgba);
+        let refs: Vec<(&[u8], f32)> = live
+            .iter()
+            .filter_map(|c| {
+                let lut = if preview_entity == Some(c.id) {
+                    preview.as_deref()
+                } else {
+                    self.luts.get(&c.filename).and_then(|l| l.as_ref()).map(|l| l.as_slice())
+                };
+                lut.map(|l| (l, c.weight))
+            })
+            .collect();
+        hp_colorgrade::blend_rgba(&refs)
     }
 
     fn refresh_zones(&mut self, state: &AppState) {
@@ -211,6 +214,72 @@ impl ZoneDriver {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn edited_rgba_lut_blends_with_raw_map_tables_in_rendered_views() {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else { return };
+        let (device, queue) = pollster::block_on(
+            adapter.request_device(&wgpu::DeviceDescriptor { required_limits: adapter.limits(), ..Default::default() }),
+        )
+        .unwrap();
+        let mut renderer = hp_render::Renderer::new(&device, &queue);
+        renderer.set_tone_settings(hp_render::ToneSettings { mode: hp_render::ToneMode::Off, ..Default::default() });
+        let mut driver = ZoneDriver::default();
+        driver.luts.insert("map.raw".into(), Some(Arc::new(hp_colorgrade::identity_raw())));
+        let grade = hp_colorgrade::Grade { saturation: 0.0, ..Default::default() };
+        let preview = hp_colorgrade::to_rgba(&hp_colorgrade::generate(&grade, None)).unwrap();
+        let view = hp_render::ViewParams {
+            size: [32; 2],
+            kind: hp_render::ViewKind::Perspective {
+                eye: [0.0, -200.0, 64.0],
+                forward: [0.0, 1.0, 0.0],
+                up: [0.0, 0.0, 1.0],
+                fov_y_deg: 90.0,
+                near: 1.0,
+                far: 1000.0,
+            },
+            mode: hp_render::RenderMode::Textured,
+            background: [0.8, 0.3, 0.1],
+            grid: None,
+            msaa: false,
+            selection_color: [0.0; 4],
+            show_sprites: false,
+            show_models: false,
+            game_pixel_grid: true,
+        };
+        let mut pixels = Vec::new();
+        for weight in [1.0, 0.5, 0.0] {
+            let live = hp_colorgrade::resolve(&[
+                Contribution { id: 1, filename: "preview/1".into(), weight, exclusive: false },
+                Contribution { id: 2, filename: "map.raw".into(), weight: 0.25, exclusive: false },
+            ]);
+            let lut = driver.blend(&live, Some(&preview), Some(1));
+            assert!(lut.is_some());
+            renderer.set_color_zone(lut.as_deref());
+            renderer.render_view(118, &view, &hp_render::Overlay::default());
+            let (_, _, rgba) = renderer.read_view_rgba8(118).unwrap();
+            pixels.push([rgba[0], rgba[1], rgba[2]]);
+        }
+        let chroma = |p: [u8; 3]| p.into_iter().max().unwrap() - p.into_iter().min().unwrap();
+        assert!(chroma(pixels[0]) < chroma(pixels[1]) && chroma(pixels[1]) < chroma(pixels[2]), "{pixels:?}");
+        for weight in [1.0, 0.5] {
+            let lut = driver.blend(
+                &[Contribution { id: 1, filename: "preview/1".into(), weight, exclusive: false }],
+                Some(&preview),
+                Some(1),
+            );
+            assert!(lut.is_some());
+            renderer.set_color_zone(lut.as_deref());
+            renderer.render_view(118, &view, &hp_render::Overlay::default());
+            let (_, _, rgba) = renderer.read_view_rgba8(118).unwrap();
+            if weight == 1.0 {
+                assert!(rgba[0].abs_diff(rgba[1]) <= 1 && rgba[1].abs_diff(rgba[2]) <= 1);
+            } else {
+                assert!(rgba[0] > rgba[1] && rgba[1] > rgba[2]);
+            }
+        }
+    }
 
     #[test]
     fn edited_correction_respects_falloff_disabled_state_and_global_override() {
