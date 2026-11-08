@@ -70,7 +70,10 @@ fn entity_sprites_match_native_source_size_color_and_render_modes() {
             mode: RenderMode::Textured,
             grid: None,
             background: if c["bg"].as_bool().unwrap_or(false) {
-                [32.0 / 255.0, 64.0 / 255.0, 128.0 / 255.0]
+                [32.0f32, 64.0, 128.0].map(|v| {
+                    let v = v / 255.0;
+                    if v <= 0.0031308 { v * 12.92 } else { 1.055 * v.powf(1.0 / 2.4) - 0.055 }
+                })
             } else {
                 [0.0; 3]
             },

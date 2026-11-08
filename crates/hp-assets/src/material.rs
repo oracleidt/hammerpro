@@ -318,7 +318,7 @@ fn analyze_resolved(name: &str, mat: &Material, texture_flags: &dyn Fn(&str) -> 
         (tool.is_none() && !modulates && water.is_none()).then(|| crate::envmap::analyze_envmap(mat)).flatten();
     MatAnalysis {
         sprite_origin: sprite_origin(mat),
-        sprite_srgb: mat.shader_kind() != hp_vmt::ShaderKind::Sprite || mat.get_i32("$nosrgb") == Some(0),
+        sprite_srgb: mat.shader_kind() != hp_vmt::ShaderKind::Sprite || mat.get_bool("$nosrgb") == Some(false),
         sprite_material_mode: (mat.shader_kind() != hp_vmt::ShaderKind::Sprite).then_some(if mat.additive() {
             5
         } else {
@@ -822,6 +822,7 @@ mod tests {
         );
         assert_eq!(corrected.sprite_origin, [0.25, 0.75]);
         assert!(corrected.sprite_srgb);
+        assert!(analyze("sprites/glow", &mat(r#"Sprite { $nosrgb false }"#)).sprite_srgb);
         let generic = analyze("sprites/glow", &mat(r#"UnlitGeneric { $basetexture sprites/glow }"#));
         assert_eq!(generic.sprite_origin, [0.5; 2]);
         assert_eq!(generic.sprite_orientation, 2);
