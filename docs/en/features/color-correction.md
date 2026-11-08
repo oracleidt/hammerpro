@@ -47,7 +47,7 @@ Right click a slider to reset it. The order of the operations is: exposure, temp
 
 **Before** and **After** show a built-in test pattern (sky, a hue bar, a gray ramp, skin tones, color swatches) or any image you load with **Use an image...**. The line under the images tells how far the table moves colors.
 
-**Preview in the 3D views** applies the table to every 3D view while the window is open, at full weight, whatever the entities of the map say. It stops when you untick it or close the window.
+**Preview in the 3D views** starts automatically when the editor opens and updates as you change a control. Select one `color_correction` or `color_correction_volume` before opening the editor to preview the draft through that entity: its distance falloff, maximum weight, enabled state and volume limits still apply. Other map corrections keep their own tables. With no selected correction, the draft applies globally at full weight. Closing the window or unticking the option restores the map preview.
 
 ### Importing a .raw
 

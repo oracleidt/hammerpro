@@ -111,3 +111,5 @@ The footer shows **Files: N, from images: N, in archives: N, missing: N**. With 
 
 ---
 [Back to the documentation index](../README.md)
+
+WorldVertexTransition materials support different resolutions for their two base textures. Texture loading uses the Source mip range, stopping when either dimension reaches 32 pixels; NOMIP keeps one level. This prevents unused authored tail mips from tinting distant custom blend materials. The VTF editor still retains the complete authored mip chain.

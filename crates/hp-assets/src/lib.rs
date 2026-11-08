@@ -16,6 +16,8 @@ mod material;
 #[cfg(test)]
 mod material_hdr_tests;
 #[cfg(test)]
+mod material_mip_tests;
+#[cfg(test)]
 mod material_particle_tests;
 mod material_uv;
 mod meshes;

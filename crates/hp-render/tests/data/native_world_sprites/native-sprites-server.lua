@@ -1,0 +1,10 @@
+game.MountGMA("data/hp_sprite118.gma")
+hook.Add("InitPostEntity","hp_render118_sprites",function()
+ local ids={}
+ for _,case in ipairs({{["name"]="glow_d100",["mode"]=3,["distance"]=100},{["name"]="glow_d200",["mode"]=3,["distance"]=200},{["name"]="glow_d400",["mode"]=3,["distance"]=400},{["name"]="glow_d2400",["mode"]=3,["distance"]=2400},{["name"]="world_d200",["mode"]=9,["distance"]=200},{["name"]="world_d400",["mode"]=9,["distance"]=400},{["name"]="no_diss_d400",["mode"]=3,["fx"]=14,["distance"]=400},{["name"]="alpha_d200",["mode"]=2,["distance"]=200},{["name"]="add_d200",["mode"]=5,["distance"]=200},{["name"]="add_half_d200",["mode"]=5,["amount"]=128,["distance"]=200},{["name"]="frameblend_d200",["mode"]=7,["distance"]=200},{["name"]="plain_d200",["mode"]=0,["distance"]=200},{["name"]="legacy_d200",["mode"]=3,["legacy"]=true,["distance"]=200},{["name"]="roll_d200",["mode"]=3,["roll"]=30,["distance"]=200},{["name"]="scaled_d200",["mode"]=3,["scale"]=0.25,["distance"]=200},{["name"]="alphaadd_d200",["mode"]=8,["distance"]=200},{["name"]="hdr_d200",["mode"]=3,["hdr"]=0.7,["distance"]=200},{["name"]="legacy_hdr_d200",["mode"]=3,["hdr"]=0.7,["legacy"]=true,["distance"]=200},{["name"]="centered_d200",["mode"]=3,["material"]="centered",["origin"]={0.5,0.5},["distance"]=200},{["name"]="default_add_d200",["mode"]=5,["material"]="default",["distance"]=200}})do
+  local e=ents.Create("env_sprite");e:SetPos(Vector(0,0,64));e:SetAngles(Angle(0,0,case.roll or 0))
+  for key,value in pairs({targetname="hp_render118_"..case.name,model="sprites/hp_render118_"..(case.material or(case.legacy and"legacy"or"srgb"))..".vmt",rendermode=case.mode,renderfx=case.fx or 0,renderamt=case.amount or 255,rendercolor="255 128 64",scale=case.scale or 1,spawnflags=1,HDRColorScale=case.hdr or 1,GlowProxySize=2})do e:SetKeyValue(key,tostring(value))end
+  e:Spawn();e:Activate();e:Fire("ShowSprite");ids[case.name]=e:EntIndex()
+ end
+ file.Write("hp_sprite118_entities.json",util.TableToJSON(ids,true))
+end)

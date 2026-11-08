@@ -34,6 +34,8 @@ pub struct ColorEditorWindow {
     curves_tab: usize,
     curve_drag: Option<usize>,
     live: bool,
+    was_open: bool,
+    target: Option<u32>,
     import_name: String,
     pick_raw: Option<Receiver<Option<PathBuf>>>,
     pick_image: Option<Receiver<Option<PathBuf>>>,
@@ -63,13 +65,30 @@ impl Default for ColorEditorWindow {
             levels_tab: 0,
             curves_tab: 0,
             curve_drag: None,
-            live: false,
+            live: true,
+            was_open: false,
+            target: None,
             import_name: String::new(),
             pick_raw: None,
             pick_image: None,
             pick_dir: None,
         }
     }
+}
+
+fn selected_zone(state: &AppState) -> Option<u32> {
+    let ids: Vec<_> = state
+        .doc
+        .selected_entity_ids()
+        .into_iter()
+        .filter(|id| {
+            state.doc.scene().entity(*id).is_some_and(|node| {
+                node.entity.classname.eq_ignore_ascii_case("color_correction")
+                    || node.entity.classname.eq_ignore_ascii_case("color_correction_volume")
+            })
+        })
+        .collect();
+    (ids.len() == 1).then(|| ids[0])
 }
 
 const CHANNEL_NAMES: [&str; 4] = ["cc.master", "cc.red", "cc.green", "cc.blue"];
@@ -165,6 +184,7 @@ impl ColorEditorWindow {
     fn push_live(&self, state: &mut AppState) {
         let rgba = hp_colorgrade::to_rgba(&self.lut);
         state.runtime.lab.sound_color.set_preview(rgba, &self.name);
+        state.runtime.lab.sound_color.preview_entity = self.target;
     }
 
     fn textures(&mut self, ctx: &egui::Context) {
@@ -191,11 +211,17 @@ impl ColorEditorWindow {
     pub fn show(&mut self, ctx: &egui::Context, state: &mut AppState) {
         self.poll(state);
         if !state.runtime.lab.sound_color.color_open {
-            if self.live {
-                self.live = false;
+            if self.was_open {
+                self.was_open = false;
                 state.runtime.lab.sound_color.set_preview(None, "");
             }
             return;
+        }
+        if !self.was_open {
+            self.was_open = true;
+            self.live = true;
+            self.target = selected_zone(state);
+            self.dirty = true;
         }
         self.refresh(state);
         self.textures(ctx);
@@ -229,6 +255,12 @@ impl ColorEditorWindow {
             });
         if !open {
             state.runtime.lab.sound_color.color_open = false;
+            state.runtime.lab.sound_color.set_preview(None, "");
+            self.was_open = false;
+        }
+        if self.dirty {
+            self.refresh(state);
+            ctx.request_repaint();
         }
     }
 
@@ -658,8 +690,8 @@ pub const TR: hp_app::i18n::TrTable = &[
     ("cc.live", "Preview in the 3D views", "Aperçu dans les vues 3D"),
     (
         "cc.live_tip",
-        "Applies this correction to every 3D view while this window is open, whatever the map holds.",
-        "Applique cette correction à toutes les vues 3D tant que cette fenêtre est ouverte, quoi que contienne la map.",
+        "Updates the 3D views live. A selected color correction keeps its distance falloff and volume limits.",
+        "Actualise les vues 3D en direct. Une correction sélectionnée conserve son atténuation avec la distance et les limites de son volume.",
     ),
     ("cc.identity", "No change: the table is the identity.", "Aucun changement : la table est l'identité."),
     ("cc.stats", "Average shift {0} of 255, strongest shift {1}.", "Écart moyen {0} sur 255, écart maximal {1}."),
@@ -692,3 +724,33 @@ pub const TR: hp_app::i18n::TrTable = &[
     ("cc.save_raw", "Save the .raw", "Enregistrer le .raw"),
     ("cc.saved", "Saved {0} (Lookup Filename: {1})", "Enregistré : {0} (Lookup Filename : {1})"),
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn selected_correction_previews_on_open_updates_and_restores_on_close() {
+        crate::register_translations();
+        let mut state = hp_app::testing::test_state();
+        state.doc.set_entity_class(&[5], "color_correction").unwrap();
+        state.doc.set_selection(&[hp_editor::ObjRef::Entity(5)]);
+        let mut window = ColorEditorWindow::default();
+        state.runtime.lab.sound_color.color_open = true;
+        hp_app::testing::run_ctx(&mut state, |ctx, st| window.show(ctx, st));
+        assert_eq!(state.runtime.lab.sound_color.preview_entity, Some(5));
+        let original = state.runtime.lab.sound_color.preview_lut.clone().unwrap();
+        window.grade.saturation = 0.0;
+        window.dirty = true;
+        hp_app::testing::run_ctx(&mut state, |ctx, st| window.show(ctx, st));
+        let changed = state.runtime.lab.sound_color.preview_lut.clone().unwrap();
+        assert_ne!(original.as_slice(), changed.as_slice());
+        state.runtime.lab.sound_color.color_open = false;
+        hp_app::testing::run_ctx(&mut state, |ctx, st| window.show(ctx, st));
+        assert!(state.runtime.lab.sound_color.preview_lut.is_none());
+        state.runtime.lab.sound_color.color_open = true;
+        hp_app::testing::run_ctx(&mut state, |ctx, st| window.show(ctx, st));
+        assert!(state.runtime.lab.sound_color.preview_lut.is_some());
+        assert_eq!(state.runtime.lab.sound_color.preview_entity, Some(5));
+    }
+}

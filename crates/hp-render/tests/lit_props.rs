@@ -930,3 +930,78 @@ fn hull_shadow_flag_casts_the_shadow_hull() {
     let img = shot(&mut r, 10, &view, "hull_back_to_mesh");
     assert!(i32::from(lit) > i32::from(px(&img, under.0, under.1)[0]) + 80, "the mesh casts again");
 }
+
+#[test]
+fn sealed_room_receives_no_direct_sky_ambient() {
+    let (device, queue) = gpu_or_skip!();
+    let mut r = Renderer::new(&device, &queue);
+    mat(&mut r, WORLD, [200, 200, 200, 255], MaterialFlags::empty());
+    mat(&mut r, SKY, [120, 160, 255, 255], MaterialFlags::SKY);
+    r.upsert_object(1, box_mesh([-512.0, -512.0, -16.0], [512.0, 512.0, 0.0], WORLD));
+    r.upsert_object(2, box_mesh([-512.0, 256.0, 0.0], [512.0, 272.0, 160.0], WORLD));
+    r.upsert_object(3, box_mesh([-272.0, -272.0, 0.0], [-256.0, 256.0, 160.0], WORLD));
+    r.upsert_object(4, box_mesh([256.0, -272.0, 0.0], [272.0, 256.0, 160.0], WORLD));
+    r.upsert_object(5, box_mesh([-256.0, -272.0, 0.0], [256.0, -256.0, 160.0], WORLD));
+    r.upsert_object(6, box_mesh([-272.0, -272.0, 160.0], [272.0, 272.0, 176.0], WORLD));
+    r.upsert_object(7, sky_brush([-2048.0, -2048.0, 2000.0], [2048.0, 2048.0, 2016.0], WORLD));
+    r.set_object_flags(7, ObjectFlags::NO_SHADOW);
+    r.set_lights(&[down_sun(0.0)], [0.5; 3]);
+    r.set_sun(SunParams { spread_deg: 0.0, sky_ambient: true });
+    r.set_tone_settings(ToneSettings { mode: ToneMode::Off, ..Default::default() });
+    let view = ViewParams {
+        kind: ViewKind::Perspective {
+            eye: [0.0, 0.0, 64.0],
+            forward: [0.0, 1.0, 0.0],
+            up: [0.0, 0.0, 1.0],
+            fov_y_deg: 90.0,
+            near: 1.0,
+            far: 10000.0,
+        },
+        ..front_view()
+    };
+    let image = shot(&mut r, 118, &view, "sealed_room_ambient118");
+    let center = px(&image, SIZE / 2, SIZE / 2);
+    assert!(center.iter().all(|c| *c <= 3), "sealed room has no light sources or open sky: {center:?}");
+}
+
+#[test]
+fn deep_open_terrain_cave_blocks_direct_sky_ambient() {
+    let (device, queue) = gpu_or_skip!();
+    let mut r = Renderer::new(&device, &queue);
+    mat(&mut r, WORLD, [200, 200, 200, 255], MaterialFlags::empty());
+    mat(&mut r, SKY, [120, 160, 255, 255], MaterialFlags::SKY);
+    r.upsert_object(1, box_mesh([-1024.0, -2048.0, -16.0], [1024.0, 2048.0, 0.0], WORLD));
+    let sections = [(-160.0, 0.0), (-160.0, 80.0), (-100.0, 160.0), (100.0, 160.0), (160.0, 80.0), (160.0, 0.0)];
+    let mut batches = Vec::new();
+    for pair in sections.windows(2) {
+        let a = glam::Vec3::new(pair[0].0, -2048.0, pair[0].1);
+        let b = glam::Vec3::new(pair[1].0, -2048.0, pair[1].1);
+        let c = glam::Vec3::new(pair[1].0, 2048.0, pair[1].1);
+        let d = glam::Vec3::new(pair[0].0, 2048.0, pair[0].1);
+        let n = (b - a).cross(c - a).normalize().to_array();
+        batches.push(MeshBatch {
+            material: WORLD,
+            vertices: [a, b, c, d].map(|p| Vertex { pos: p.to_array(), normal: n, uv: [0.0; 2], alpha: 1.0 }).to_vec(),
+            indices: vec![0, 1, 2, 0, 2, 3],
+            blend: Vec::new(),
+            cubemaps: Vec::new(),
+        });
+    }
+    r.upsert_object(
+        2,
+        ObjectMesh {
+            batches,
+            aabb_min: [-160.0, -2048.0, 0.0],
+            aabb_max: [160.0, 2048.0, 160.0],
+            ..Default::default()
+        },
+    );
+    r.upsert_object(3, sky_brush([-4096.0, -4096.0, 2000.0], [4096.0, 4096.0, 2016.0], WORLD));
+    r.set_object_flags(3, ObjectFlags::NO_SHADOW);
+    r.set_lights(&[down_sun(0.0)], [0.5; 3]);
+    r.set_sun(SunParams { spread_deg: 0.0, sky_ambient: true });
+    r.set_tone_settings(ToneSettings { mode: ToneMode::Off, ..Default::default() });
+    let image = shot(&mut r, 119, &looking_down([0.0, 0.0, 100.0]), "terrain_cave_ambient118");
+    let center = px(&image, image.0 / 2, image.1 / 2);
+    assert!(center.iter().all(|c| *c <= 8), "deep terrain cave receives no direct overhead skylight: {center:?}");
+}

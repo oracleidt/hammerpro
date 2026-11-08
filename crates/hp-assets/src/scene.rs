@@ -1068,7 +1068,13 @@ impl AssetManager {
         let editor_objects = self.scene.editor_objects.unwrap_or(true);
         let sprite = match (&desc.sprite, opts.show_helpers && (editor_objects || !desc.sprite_is_icon)) {
             (Some(s), true) => {
-                let kind = if desc.sprite_additive { MatKind::SpriteAdditive } else { MatKind::Sprite };
+                let kind = if desc.sprite_is_icon {
+                    MatKind::Sprite
+                } else if desc.sprite_additive {
+                    MatKind::EntitySpriteAdditive
+                } else {
+                    MatKind::EntitySprite
+                };
                 Some(self.asset_material(s, kind))
             }
             _ => None,
@@ -1385,7 +1391,7 @@ impl AssetManager {
                 let pos = self.play_transforms.get(id).map_or(s.desc.origin, |m| m.transform_point3(s.desc.origin));
                 Some(SpriteInstance {
                     pos: pos.as_vec3().to_array(),
-                    size: s.desc.sprite_size,
+                    size: if s.desc.sprite_is_icon { s.desc.sprite_size } else { 0.0 },
                     material: s.sprite?,
                     color: s.desc.sprite_color,
                     object: entity_object(*id),
@@ -1400,6 +1406,52 @@ impl AssetManager {
             }))
             .collect();
         renderer.set_sprites(&list);
+        let world: Vec<_> = self
+            .scene
+            .ents
+            .iter()
+            .filter_map(|(id, s)| {
+                if s.desc.sprite_is_icon {
+                    return None;
+                }
+                let material = s.sprite?;
+                let name = s.desc.sprite.as_deref()?;
+                let crate::material::AnaLook::Ready(a) = self.mats.ana_look(name) else {
+                    return None;
+                };
+                let size = a
+                    .texture
+                    .as_deref()
+                    .and_then(|t| {
+                        match self.mats.textures.look(&if a.sprite_srgb {
+                            t.to_owned()
+                        } else {
+                            format!("{t}{}", crate::material::LINEAR_SUFFIX)
+                        }) {
+                            crate::material::TexLook::Ready(_, size) => Some(size),
+                            _ => None,
+                        }
+                    })
+                    .unwrap_or([64, 64]);
+                let pos = self.play_transforms.get(id).map_or(s.desc.origin, |m| m.transform_point3(s.desc.origin));
+                Some(hp_render::WorldSprite {
+                    object: entity_object(*id),
+                    pos: pos.as_vec3().to_array(),
+                    size: size.map(|v| v as f32 * s.desc.sprite_size),
+                    material,
+                    color: s.desc.sprite_color,
+                    mode: s.desc.sprite_mode,
+                    render_fx: s.desc.sprite_fx,
+                    orientation: a.sprite_orientation,
+                    origin: a.sprite_origin,
+                    srgb_color: a.sprite_srgb,
+                    angles: s.desc.angles.as_vec3().to_array(),
+                    hdr_scale: s.desc.sprite_hdr_scale,
+                    glow_proxy: s.desc.sprite_glow_proxy,
+                })
+            })
+            .collect();
+        renderer.set_world_sprites(&world);
     }
 
     fn rebuild_lights(&mut self, doc: &Document, renderer: &mut Renderer, opts: &SceneOptions, d: &RenderDisplay) {

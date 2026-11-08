@@ -111,3 +111,5 @@ Le pied de fenêtre affiche **Fichiers : N, issus d'images : N, dans des archive
 
 ---
 [Retour à l'index de la documentation](../README.md)
+
+Les matériaux WorldVertexTransition acceptent deux textures de base de résolutions différentes. Le chargement suit la plage de mipmaps de Source et s’arrête dès qu’une dimension atteint 32 pixels ; NOMIP conserve un seul niveau. Les derniers niveaux inutilisés ne teintent ainsi plus les matériaux blend personnalisés à distance. L’éditeur VTF conserve toute la chaîne de mipmaps du fichier.

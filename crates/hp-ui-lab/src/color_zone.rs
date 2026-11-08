@@ -13,7 +13,7 @@ const CLASS_VOLUME: &str = "color_correction_volume";
 enum Applied {
     None,
     Preview(usize),
-    Zones(Vec<(u32, u16)>, u64),
+    Zones(Vec<(u32, u16)>, u64, u64, usize, Option<u32>),
 }
 
 pub struct ZoneDriver {
@@ -62,18 +62,20 @@ pub fn collect_zones(state: &AppState) -> Vec<(Zone, &'static str)> {
 impl ZoneDriver {
     pub fn update(&mut self, state: &mut AppState, ctx: &egui::Context) {
         let preview = state.runtime.lab.sound_color.preview_lut.clone();
-        if let Some(lut) = preview {
-            let ptr = Arc::as_ptr(&lut) as usize;
+        let preview_entity = state.runtime.lab.sound_color.preview_entity;
+        if let Some(lut) = preview.as_ref().filter(|_| preview_entity.is_none()) {
+            let ptr = Arc::as_ptr(lut) as usize;
             if self.applied != Applied::Preview(ptr) {
                 if let Some(gfx) = state.gfx.as_mut() {
-                    gfx.renderer.set_color_zone(Some(&lut));
+                    gfx.renderer.set_color_zone(Some(lut));
                 }
                 self.applied = Applied::Preview(ptr);
                 state.runtime.lab.sound_color.zone_applied = true;
             }
             return;
         }
-        if !(state.settings.lab.color_correction_preview
+        if !(preview.is_some()
+            || state.settings.lab.color_correction_preview
             || state.settings.view.render_mode == hp_app::settings::RenderModeSetting::ColorCorrected)
         {
             if self.applied != Applied::None {
@@ -106,8 +108,9 @@ impl ZoneDriver {
                 let bytes = media::read_lut(state, &zone.filename).map(Arc::new);
                 self.luts.insert(zone.filename.clone(), bytes);
             }
-            let loaded = self.luts.get(&zone.filename).is_some_and(Option::is_some);
-            let status = if zone.filename.is_empty() {
+            let editing = preview_entity == Some(zone.id) && preview.is_some();
+            let loaded = editing || self.luts.get(&zone.filename).is_some_and(Option::is_some);
+            let status = if zone.filename.is_empty() && !editing {
                 "no_file"
             } else if !loaded {
                 "file_not_found"
@@ -123,7 +126,11 @@ impl ZoneDriver {
             if loaded {
                 contributions.push(Contribution {
                     id: zone.id,
-                    filename: zone.filename.clone(),
+                    filename: if editing && zone.filename.is_empty() {
+                        format!("preview/{}", zone.id)
+                    } else {
+                        zone.filename.clone()
+                    },
                     weight,
                     exclusive: zone.exclusive,
                 });
@@ -154,13 +161,19 @@ impl ZoneDriver {
         }
         let key: Vec<(u32, u16)> =
             live.iter().map(|c| (c.id, (c.weight.clamp(0.0, 1.0) * 255.0).round() as u16)).collect();
-        let want = Applied::Zones(key, luts_key.0 ^ luts_key.1.rotate_left(17));
+        let preview_key = preview.as_ref().map_or(0, |lut| Arc::as_ptr(lut) as usize);
+        let want = Applied::Zones(key, luts_key.0, luts_key.1, preview_key, preview_entity);
         if self.applied != want {
             let blended = {
                 let refs: Vec<(&[u8], f32)> = live
                     .iter()
                     .filter_map(|c| {
-                        self.luts.get(&c.filename).and_then(|l| l.as_ref()).map(|l| (l.as_slice(), c.weight))
+                        let lut = if preview_entity == Some(c.id) {
+                            preview.as_ref()
+                        } else {
+                            self.luts.get(&c.filename).and_then(|l| l.as_ref())
+                        };
+                        lut.map(|l| (l.as_slice(), c.weight))
                     })
                     .collect();
                 hp_colorgrade::blend_rgba(&refs)
@@ -192,5 +205,44 @@ impl ZoneDriver {
         self.zones = zones;
         self.classes = classes;
         self.fader.retain(&self.zones);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn edited_correction_respects_falloff_disabled_state_and_global_override() {
+        let mut state = hp_app::testing::test_state();
+        state.doc.set_entity_class(&[5], "color_correction").unwrap();
+        for (key, value) in
+            [("origin", "0 0 0"), ("minfalloff", "100"), ("maxfalloff", "300"), ("maxweight", "0.8"), ("filename", "")]
+        {
+            state.doc.set_entity_key(&[5], key, value).unwrap();
+        }
+        state.runtime.lab.sound_color.set_preview(hp_colorgrade::to_rgba(&hp_colorgrade::identity_raw()), "draft");
+        state.runtime.lab.sound_color.preview_entity = Some(5);
+        state.settings.lab.color_correction_preview = false;
+        let mut driver = ZoneDriver::default();
+        for (distance, expected) in [(0.0, 0.8), (200.0, 0.4), (400.0, 0.0)] {
+            state.cameras.cam3d.pos = glam::DVec3::new(distance, 0.0, 0.0);
+            hp_app::testing::run_ctx(&mut state, |ctx, st| driver.update(st, ctx));
+            let report = &state.runtime.lab.sound_color.zones[0];
+            assert!((report.weight - expected).abs() < 1e-5);
+            assert_eq!(report.applied, expected > 0.0);
+        }
+        state.cameras.cam3d.pos = glam::DVec3::ZERO;
+        state.doc.set_entity_key(&[5], "startdisabled", "1").unwrap();
+        hp_app::testing::run_ctx(&mut state, |ctx, st| driver.update(st, ctx));
+        assert!(!state.runtime.lab.sound_color.zone_applied);
+        assert_eq!(state.runtime.lab.sound_color.zones[0].status, "disabled");
+        state.runtime.lab.sound_color.set_preview(hp_colorgrade::to_rgba(&hp_colorgrade::identity_raw()), "global");
+        hp_app::testing::run_ctx(&mut state, |ctx, st| driver.update(st, ctx));
+        assert!(state.runtime.lab.sound_color.zone_applied);
+        assert!(matches!(driver.applied, Applied::Preview(_)));
+        state.runtime.lab.sound_color.set_preview(None, "");
+        hp_app::testing::run_ctx(&mut state, |ctx, st| driver.update(st, ctx));
+        assert!(!state.runtime.lab.sound_color.zone_applied);
     }
 }

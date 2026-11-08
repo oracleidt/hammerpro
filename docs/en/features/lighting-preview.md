@@ -169,3 +169,5 @@ Rendering options used here: **Shadowed lights** (`render.light_shadows`, 16), *
 
 ---
 [Back to the documentation index](../README.md)
+
+In the lit HDR preview, the sky also uses its HDR textures when available, including HDR parameters stored in the ordinary sky material files. LDR and ordinary textured views keep the LDR sky. The real-time sky occlusion includes the overhead surface at the shaded point, preventing the near sampling gap from lighting covered cave floors. The indirect lighting preview continues to provide light entering through openings and reflected light.

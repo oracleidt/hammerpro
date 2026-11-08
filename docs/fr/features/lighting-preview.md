@@ -169,3 +169,5 @@ Réglages de rendu utilisés ici : **Lumières avec ombres** (`render.light_shad
 
 ---
 [Retour à l'index de la documentation](../README.md)
+
+En aperçu éclairé HDR, le ciel utilise aussi ses textures HDR lorsqu’elles existent, y compris les paramètres HDR placés dans les fichiers de matériau ordinaires du ciel. Les vues LDR et texturées ordinaires conservent le ciel LDR. L’occlusion du ciel en temps réel prend en compte la surface directement au-dessus du point éclairé, pour éviter la fuite due à l’intervalle entre les premiers échantillons sous les plafonds des grottes. L’aperçu de l’éclairage indirect continue de fournir la lumière passant par les ouvertures et les rebonds.

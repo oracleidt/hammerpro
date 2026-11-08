@@ -734,6 +734,23 @@ pub struct SunGlow {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WorldSprite {
+    pub object: ObjectId,
+    pub origin: [f32; 2],
+    pub srgb_color: bool,
+    pub pos: [f32; 3],
+    pub size: [f32; 2],
+    pub color: [f32; 4],
+    pub material: MaterialId,
+    pub mode: u32,
+    pub render_fx: u32,
+    pub orientation: u32,
+    pub angles: [f32; 3],
+    pub hdr_scale: f32,
+    pub glow_proxy: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SpriteInstance {
     pub pos: [f32; 3],
     pub size: f32,

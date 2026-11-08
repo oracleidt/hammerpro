@@ -47,7 +47,7 @@ Clic droit sur un curseur pour le réinitialiser. L'ordre des opérations est : 
 
 **Avant** et **Après** montrent une mire intégrée (ciel, barre de teintes, dégradé de gris, tons chair, pastilles de couleur) ou n'importe quelle image chargée avec **Utiliser une image...**. La ligne sous les images indique de combien la table déplace les couleurs.
 
-**Aperçu dans les vues 3D** applique la table à toutes les vues 3D tant que la fenêtre est ouverte, à poids plein, quoi que disent les entités de la map. Il s'arrête quand vous le décochez ou fermez la fenêtre.
+**Aperçu dans les vues 3D** démarre automatiquement à l’ouverture et suit les réglages en direct. Sélectionnez une seule entité `color_correction` ou `color_correction_volume` avant d’ouvrir l’éditeur pour appliquer le brouillon à travers cette entité : sa décroissance avec la distance, son poids maximal, son état et les limites de son volume restent pris en compte. Les autres corrections conservent leurs tables. Sans correction sélectionnée, le brouillon s’applique globalement à poids plein. Fermer la fenêtre ou décocher l’option rétablit l’aperçu de la map.
 
 ### Importer un .raw
 

@@ -47,7 +47,7 @@ pub(crate) struct Materials {
     pub hdr: bool,
     pub mode_epoch: u64,
     pub records: Vec<MatRecord>,
-    pub by_name: [AHashMap<String, MaterialId>; 5],
+    pub by_name: [AHashMap<String, MaterialId>; 7],
     pub raw_world: AHashMap<String, MaterialId>,
     pub flat: AHashMap<[u8; 4], MaterialId>,
     pub dirty: Vec<MaterialId>,
@@ -68,6 +68,8 @@ fn kind_index(kind: MatKind) -> usize {
         MatKind::Sprite => 2,
         MatKind::SpriteAdditive => 3,
         MatKind::SpriteRefract => 4,
+        MatKind::EntitySprite => 5,
+        MatKind::EntitySpriteAdditive => 6,
     }
 }
 
@@ -622,6 +624,7 @@ impl AssetManager {
     }
 
     fn on_material(&mut self, name: String, data: crate::material::MaterialData) {
+        self.scene.sprites_dirty = true;
         let force = self.mats.force_tex.remove(&name);
         self.mats.infos.insert(name.clone(), data.info);
         let entry = self.mats.analyses.entry(name.clone()).or_default();
@@ -958,6 +961,7 @@ impl AssetManager {
             renderer.destroy_texture(old_id);
         }
         self.mats.mark_texture_users(&up.name);
+        self.scene.sprites_dirty = true;
     }
 }
 

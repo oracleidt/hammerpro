@@ -3,7 +3,7 @@ use glam::{Vec3, Vec4};
 
 use crate::camera::Camera;
 use crate::pipelines::{self, Blend, Desc};
-use crate::types::{RenderMode, SunGlow, ViewOptions, ViewParams};
+use crate::types::{RenderMode, SunGlow, ViewOptions, ViewParams, WorldSprite};
 use crate::{DrawCtx, FrameCounter, Renderer};
 
 pub(crate) const RANGE: f32 = 0.766_044_4;
@@ -11,7 +11,6 @@ const OVERLAY_DISTANCE: f32 = 100.0;
 const SIZE_AT_RANGE: f32 = 150.0;
 const SIZE_AT_ONE: f32 = 70.0;
 const PROXY_SCREEN: f32 = 0.025;
-const MAX_SPRITES: usize = 2;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
@@ -21,6 +20,7 @@ pub(crate) struct SunGlowUniform {
     up: [f32; 4],
     color: [f32; 4],
     proxy: [f32; 4],
+    params: [f32; 4],
 }
 
 pub(crate) fn applies(params: &ViewParams, opts: &ViewOptions, is_ortho: bool) -> bool {
@@ -78,10 +78,76 @@ fn uniforms(glow: &SunGlow, cam: &Camera) -> Vec<(u32, SunGlowUniform)> {
                 up: [up.x, up.y, up.z, 0.0],
                 color: [c[0], c[1], c[2], radius],
                 proxy: [proxy[0], proxy[1], 0.0, 0.0],
+                params: [0.0; 4],
             },
         ));
     }
     out
+}
+
+fn world_uniform(sprite: &WorldSprite, cam: &Camera, hdr: bool) -> Option<(u32, SunGlowUniform)> {
+    let pos = Vec3::from(sprite.pos);
+    if !pos.is_finite()
+        || matches!(sprite.mode, 6 | 10)
+        || !sprite.size.iter().all(|v| v.is_finite() && *v > 0.0)
+        || !sprite.origin.iter().all(|v| v.is_finite())
+    {
+        return None;
+    }
+    let clip = cam.view_proj * pos.extend(1.0);
+    if clip.w <= 0.0 {
+        return None;
+    }
+    let distance = (pos - cam.eye).length().max(1e-6);
+    let glow = matches!(sprite.mode, 3 | 9);
+    let scale = if glow && sprite.mode != 9 && sprite.render_fx != 14 { distance / 200.0 } else { 1.0 };
+    let fade = if !glow {
+        1.0
+    } else if sprite.render_fx == 14 {
+        sprite.color[3]
+    } else {
+        (1200.0 / distance).powi(2).min(1.0)
+    };
+    let (mut right, mut up);
+    let [pitch, yaw, roll] = sprite.angles.map(f32::to_radians);
+    match sprite.orientation {
+        0 | 1 => {
+            let dir = if sprite.orientation == 1 { (pos - cam.eye).normalize() } else { cam.forward };
+            right = dir.cross(Vec3::Z).try_normalize()?;
+            up = Vec3::Z;
+        }
+        3 => {
+            let (sp, cp) = pitch.sin_cos();
+            let (sy, cy) = yaw.sin_cos();
+            let (sr, cr) = roll.sin_cos();
+            right = Vec3::new(-sr * sp * cy + cr * sy, -sr * sp * sy - cr * cy, -sr * cp);
+            up = Vec3::new(cr * sp * cy + sr * sy, cr * sp * sy - sr * cy, cr * cp);
+        }
+        _ => {
+            let (s, c) = roll.sin_cos();
+            right = cam.right * c + cam.up * s;
+            up = cam.up * c - cam.right * s;
+        }
+    }
+    right *= sprite.size[0] * 0.5 * scale;
+    up *= sprite.size[1] * 0.5 * scale;
+    let radius = sprite.glow_proxy * cam.height / (2.0 * distance * cam.tan_half_fov);
+    let exposure = if hdr { sprite.hdr_scale } else { 1.0 };
+    let color = sprite.color.map(|v| v.clamp(0.0, 1.0));
+    let rgb = [color[0], color[1], color[2]].map(|v| v * fade);
+    let center = screen_of(cam, pos);
+    let anchor = pos + right * (1.0 - 2.0 * sprite.origin[0]) + up * (2.0 * sprite.origin[1] - 1.0);
+    Some((
+        sprite.material,
+        SunGlowUniform {
+            base: [anchor.x, anchor.y, anchor.z, clip.z / clip.w],
+            right: [right.x, right.y, right.z, color[3]],
+            up: [up.x, up.y, up.z, f32::from(sprite.srgb_color)],
+            color: [rgb[0], rgb[1], rgb[2], radius],
+            proxy: [center[0], center[1], 1.0, sprite.mode as f32],
+            params: [exposure, 0.0, 0.0, 0.0],
+        },
+    ))
 }
 
 fn screen_of(cam: &Camera, p: Vec3) -> [f32; 2] {
@@ -95,10 +161,12 @@ fn screen_of(cam: &Camera, p: Vec3) -> [f32; 2] {
 
 pub(crate) struct SunGlowFrame {
     pub materials: Vec<u32>,
+    pub blends: Vec<usize>,
 }
 
 struct SunViewGpu {
     generation: u64,
+    capacity: usize,
     buffer: wgpu::Buffer,
     bind: wgpu::BindGroup,
 }
@@ -107,7 +175,7 @@ pub(crate) struct SunGlowState {
     bgl: [wgpu::BindGroupLayout; 2],
     layouts: [wgpu::PipelineLayout; 2],
     modules: [wgpu::ShaderModule; 2],
-    pipes: [Option<wgpu::RenderPipeline>; 2],
+    pipes: [[Option<wgpu::RenderPipeline>; 4]; 2],
     views: HashMap<u32, SunViewGpu>,
     stride: u64,
 }
@@ -167,36 +235,54 @@ impl SunGlowState {
         });
         let align = u64::from(device.limits().min_uniform_buffer_offset_alignment.max(1));
         let stride = (size_of::<SunGlowUniform>() as u64).div_ceil(align) * align;
-        Self { bgl, layouts, modules, pipes: [None, None], views: HashMap::new(), stride }
+        Self {
+            bgl,
+            layouts,
+            modules,
+            pipes: std::array::from_fn(|_| Default::default()),
+            views: HashMap::new(),
+            stride,
+        }
     }
 
     fn ensure_pipe(&mut self, device: &wgpu::Device, samples: u32) {
         let i = usize::from(samples > 1);
-        if self.pipes[i].is_some() {
-            return;
+        for (k, blend) in [Blend::Additive, Blend::Alpha, Blend::Replace, Blend::Premultiplied].into_iter().enumerate()
+        {
+            if self.pipes[i][k].is_some() {
+                continue;
+            }
+            self.pipes[i][k] = Some(pipelines::build(
+                device,
+                samples,
+                Desc {
+                    label: "hp-render sprite glow",
+                    module: &self.modules[i],
+                    vs: "vs_sun_glow",
+                    fs: "fs_sun_glow",
+                    layout: &self.layouts[i],
+                    buffers: &[],
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    cull: None,
+                    depth_test: false,
+                    depth_write: false,
+                    blend,
+                    constants: &[],
+                },
+            ));
         }
-        self.pipes[i] = Some(pipelines::build(
-            device,
-            samples,
-            Desc {
-                label: "hp-render sun glow",
-                module: &self.modules[i],
-                vs: "vs_sun_glow",
-                fs: "fs_sun_glow",
-                layout: &self.layouts[i],
-                buffers: &[],
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                cull: None,
-                depth_test: false,
-                depth_write: false,
-                blend: Blend::Additive,
-                constants: &[],
-            },
-        ));
     }
 }
 
 impl Renderer {
+    pub fn set_world_sprites(&mut self, sprites: &[WorldSprite]) {
+        if self.world_sprites != sprites {
+            self.world_sprites.clear();
+            self.world_sprites.extend_from_slice(sprites);
+            self.content_gen += 1;
+        }
+    }
+
     pub fn set_sun_glow(&mut self, glow: Option<SunGlow>) {
         if self.sun_glow != glow {
             self.sun_glow = glow;
@@ -215,11 +301,34 @@ impl Renderer {
         params: &ViewParams,
         opts: &ViewOptions,
     ) -> Option<SunGlowFrame> {
-        if !applies(params, opts, cam.is_ortho) {
-            return None;
+        let mut list = if applies(params, opts, cam.is_ortho) {
+            self.sun_glow.map_or_else(Vec::new, |glow| uniforms(&glow, cam))
+        } else {
+            Vec::new()
+        };
+        if !cam.is_ortho && params.show_sprites && !matches!(params.mode, RenderMode::Wireframe | RenderMode::Flat) {
+            let hdr = self.hdr_lit(opts, params.mode, false);
+            let mut visible: Vec<_> = self
+                .world_sprites
+                .iter()
+                .filter(|sprite| {
+                    !self
+                        .scene
+                        .flags(sprite.object)
+                        .unwrap_or_default()
+                        .intersects(crate::ObjectFlags::HIDDEN | crate::ObjectFlags::NO_3D)
+                })
+                .collect();
+            visible.sort_by(|a, b| {
+                let distance = |sprite: &WorldSprite| (Vec3::from(sprite.pos) - cam.eye).length_squared();
+                distance(b).total_cmp(&distance(a)).then_with(|| a.object.cmp(&b.object))
+            });
+            list.extend(visible.into_iter().filter_map(|sprite| world_uniform(sprite, cam, hdr)));
         }
-        let glow = self.sun_glow?;
-        let mut list = uniforms(&glow, cam);
+        let align = u64::from(self.device.limits().min_uniform_buffer_offset_alignment.max(1));
+        let stride = (size_of::<SunGlowUniform>() as u64).div_ceil(align) * align;
+        let capacity = (self.max_buffer / stride).min(u64::from(u32::MAX) / stride) as usize;
+        list.truncate(capacity);
         if list.is_empty() {
             return None;
         }
@@ -237,11 +346,11 @@ impl Renderer {
         let state = self.sun_glow_gpu.as_mut()?;
         state.ensure_pipe(&self.device, samples);
         let stride = state.stride;
-        if state.views.get(&view_id).is_none_or(|v| v.generation != generation) {
+        if state.views.get(&view_id).is_none_or(|v| v.generation != generation || v.capacity < list.len()) {
             let view = self.views.get(&view_id)?;
             let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("hp-render sun glow uniforms"),
-                size: stride * MAX_SPRITES as u64,
+                size: stride * list.len() as u64,
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
@@ -260,7 +369,7 @@ impl Renderer {
                     wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&view.depth_view) },
                 ],
             });
-            state.views.insert(view_id, SunViewGpu { generation, buffer, bind });
+            state.views.insert(view_id, SunViewGpu { generation, capacity: list.len(), buffer, bind });
         }
         let gpu = state.views.get(&view_id)?;
         let mut bytes = vec![0u8; stride as usize * list.len()];
@@ -269,7 +378,22 @@ impl Renderer {
             bytes[at..at + size_of::<SunGlowUniform>()].copy_from_slice(bytemuck::bytes_of(u));
         }
         self.queue.write_buffer(&gpu.buffer, 0, &bytes);
-        Some(SunGlowFrame { materials: list.into_iter().map(|(m, _)| m).collect() })
+        let blends = list
+            .iter()
+            .map(|(_, u)| {
+                if u.proxy[2] < 0.5 {
+                    0
+                } else {
+                    match u.proxy[3] as u32 {
+                        0 => 2,
+                        1 | 2 | 4 => 1,
+                        8 => 3,
+                        _ => 0,
+                    }
+                }
+            })
+            .collect();
+        Some(SunGlowFrame { materials: list.into_iter().map(|(m, _)| m).collect(), blends })
     }
 
     pub(crate) fn forget_sun_glow_view(&mut self, view_id: u32) {
@@ -289,10 +413,7 @@ impl DrawCtx<'_> {
     ) {
         let view = self.view;
         let Some(state) = self.r.sun_glow_gpu.as_ref() else { return };
-        let (Some(pipe), Some(gpu)) = (state.pipes[usize::from(view.samples > 1)].as_ref(), state.views.get(&view_id))
-        else {
-            return;
-        };
+        let Some(gpu) = state.views.get(&view_id) else { return };
         let (target, resolve) = match &view.msaa_view {
             Some(m) => (m, Some(&view.color_view)),
             None => (&view.color_view, None),
@@ -317,10 +438,11 @@ impl DrawCtx<'_> {
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        pass.set_pipeline(pipe);
         pass.set_bind_group(0, self.bind_group, &[]);
         for (k, material) in frame.materials.iter().enumerate() {
             let Some(mg) = self.r.mat_gpu.get(*material as usize) else { continue };
+            let Some(pipe) = state.pipes[usize::from(view.samples > 1)][frame.blends[k]].as_ref() else { continue };
+            pass.set_pipeline(pipe);
             pass.set_bind_group(1, &mg.bind_group, &[]);
             pass.set_bind_group(2, &gpu.bind, &[(k as u64 * state.stride) as u32]);
             pass.draw(0..6, 0..1);

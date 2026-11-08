@@ -4,6 +4,7 @@ struct SunGlowU {
     up: vec4<f32>,
     color: vec4<f32>,
     proxy: vec4<f32>,
+    params: vec4<f32>,
 };
 
 @group(2) @binding(0) var<uniform> glow: SunGlowU;
@@ -66,12 +67,30 @@ fn sun_visible_fraction() -> f32 {
 @fragment
 fn fs_sun_glow(in: SunGlowOut) -> @location(0) vec4<f32> {
     let t = textureSample(tex, samp_clamp, in.uv) * material.tint;
-    if t.a < 0.02 {
+    if glow.proxy.z < 0.5 && t.a < 0.02 {
         discard;
     }
-    let vis = sun_visible_fraction();
+    var vis = 1.0;
+    let entity = glow.proxy.z > 0.5;
+    let mode = u32(glow.proxy.w);
+    if !entity || mode == 3u || mode == 9u {
+        vis = sun_visible_fraction();
+    } else {
+        let px = vec2<i32>(in.clip.xy);
+        if textureLoad(scene_depth, px, 0) > in.clip.z + 1e-6 { discard; }
+    }
     if vis <= 0.0 {
         discard;
+    }
+    if entity {
+        let alpha = t.a * glow.right.w;
+        let color = floor(glow.color.rgb * vis * 255.0 + vec3<f32>(1e-4)) / 255.0;
+        let tint = select(color, pow(color, vec3<f32>(2.2)), glow.up.w > 0.5);
+        let exposure = select(glow.params.x, pow(glow.params.x, 2.2), glow.up.w > 0.5);
+        var rgb = t.rgb * tint * exposure;
+        if mode == 0u { return vec4<f32>(t.rgb, 1.0); }
+        if mode == 3u || mode == 5u || mode == 7u || mode == 9u { rgb *= alpha; }
+        return vec4<f32>(rgb, alpha);
     }
     return vec4<f32>(t.rgb * glow.color.rgb * vis, t.a);
 }

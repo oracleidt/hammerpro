@@ -215,3 +215,36 @@ fn the_compiled_skybox_is_drawn_from_the_sky_camera() {
     r.set_compiled_sky(&[]);
     assert_eq!(shot(&mut r, "cleared"), 0);
 }
+
+#[test]
+fn lit_editor_uses_hdr_sky_while_textured_and_ldr_keep_their_sky() {
+    let Some((device, queue)) = gpu() else { return };
+    let mut r = Renderer::new(&device, &queue);
+    let texture = r.create_texture(&TextureUpload {
+        width: 4,
+        height: 4,
+        format: TexFormat::Rgba8Srgb,
+        levels: vec![[100, 100, 100, 255].repeat(16)],
+    });
+    r.set_environment(Environment { sky: Some(SkyView::new([Some(texture); 6], 0.0)), ..Default::default() });
+    let texels = vec![[0.7, 0.3, 0.1]; 16];
+    let face = HdrSkyFace { width: 4, height: 4, texels: &texels };
+    r.set_hdr_sky(Some(&[face; 6]));
+    r.set_tone_settings(ToneSettings { mode: ToneMode::Off, ..Default::default() });
+    let mut params = view();
+    r.set_view_options(118, ViewOptions { show_sky: true, ..Default::default() });
+    for (hdr, mode, expected) in
+        [(true, RenderMode::Lit, srgb(0.7)), (false, RenderMode::Lit, 100.0), (true, RenderMode::Textured, 100.0)]
+    {
+        r.set_lit_hdr(hdr);
+        params.mode = mode;
+        r.render_view(118, &params, &Overlay::default());
+        let (width, height, pixels) = r.read_view_rgba8(118).unwrap();
+        close(
+            pixels[(((height / 2) * width + width / 2) * 4) as usize],
+            expected,
+            2.0,
+            "editor sky follows selected lighting range",
+        );
+    }
+}

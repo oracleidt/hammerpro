@@ -61,6 +61,22 @@ impl VtfInfo {
     }
 
     #[must_use]
+    pub fn source_mip_count(&self) -> u32 {
+        if self.has_flag(flags::NOMIP) {
+            return 1;
+        }
+        let mut count = 1;
+        while count < self.mip_count {
+            let (w, h, _) = self.mip_dimensions(count - 1);
+            if w <= 32 || h <= 32 {
+                break;
+            }
+            count += 1;
+        }
+        count
+    }
+
+    #[must_use]
     pub fn slice_size(&self, mip: u32) -> Option<u64> {
         let (w, h, _) = self.mip_dimensions(mip);
         self.format.image_size(w, h)

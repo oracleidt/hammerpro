@@ -11,9 +11,12 @@ pub(crate) enum MatKind {
     Sprite,
     SpriteAdditive,
     SpriteRefract,
+    EntitySprite,
+    EntitySpriteAdditive,
 }
 
 pub(crate) const LUM_SUFFIX: &str = "|lum";
+pub(crate) const LINEAR_SUFFIX: &str = "|linear";
 
 fn wants_lum(kind: MatKind, a: &MatAnalysis) -> bool {
     !a.flags.contains(MaterialFlags::SPRITE_CARD)
@@ -29,6 +32,8 @@ pub(crate) fn texture_keys(kind: MatKind, a: &MatAnalysis) -> Vec<String> {
             .map(|t| {
                 if kind == MatKind::SpriteRefract {
                     format!("{t}{}", crate::bump::NORMAL_SUFFIX)
+                } else if matches!(kind, MatKind::EntitySprite | MatKind::EntitySpriteAdditive) && !a.sprite_srgb {
+                    format!("{t}{LINEAR_SUFFIX}")
                 } else if lum {
                     format!("{t}{LUM_SUFFIX}")
                 } else {
@@ -40,7 +45,10 @@ pub(crate) fn texture_keys(kind: MatKind, a: &MatAnalysis) -> Vec<String> {
         keys.extend(crate::water::texture_keys(w).filter(|k| !keys.contains(k)).collect::<Vec<_>>());
     }
     if let Some(d) = &a.detail
-        && !matches!(kind, MatKind::Sprite | MatKind::SpriteAdditive)
+        && !matches!(
+            kind,
+            MatKind::Sprite | MatKind::SpriteAdditive | MatKind::EntitySprite | MatKind::EntitySpriteAdditive
+        )
     {
         keys.push(d.texture.clone());
     }
@@ -77,6 +85,9 @@ fn normal_maps_loaded(kind: MatKind, a: &MatAnalysis) -> bool {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct MatAnalysis {
     pub texture: Option<String>,
+    pub sprite_orientation: u32,
+    pub sprite_origin: [f32; 2],
+    pub sprite_srgb: bool,
     pub texture2: Option<String>,
     pub blend4: bool,
     pub four_way: Option<hp_vmt::FourWayBlend>,
@@ -220,6 +231,17 @@ pub(crate) fn analyze(name: &str, mat: &Material, texture_flags: &dyn Fn(&str) -
     analyze_resolved(name, &mat, texture_flags)
 }
 
+fn sprite_origin(mat: &Material) -> [f32; 2] {
+    let Some(value) = mat.get("$spriteorigin") else { return [0.0; 2] };
+    let mut parts =
+        value.trim_matches(|c: char| c.is_ascii_whitespace() || c == '[' || c == ']').split_ascii_whitespace();
+    let pair = [parts.next(), parts.next()].map(|v| v.and_then(|v| v.parse::<f32>().ok()).filter(|v| v.is_finite()));
+    match pair {
+        [Some(x), Some(y)] => [x, y],
+        _ => [0.0; 2],
+    }
+}
+
 fn analyze_resolved(name: &str, mat: &Material, texture_flags: &dyn Fn(&str) -> u32) -> MatAnalysis {
     let texture_has_alpha =
         |t: &str| texture_flags(t) & (hp_vtf::flags::ONEBITALPHA | hp_vtf::flags::EIGHTBITALPHA) != 0;
@@ -291,6 +313,15 @@ fn analyze_resolved(name: &str, mat: &Material, texture_flags: &dyn Fn(&str) -> 
     let envmap =
         (tool.is_none() && !modulates && water.is_none()).then(|| crate::envmap::analyze_envmap(mat)).flatten();
     MatAnalysis {
+        sprite_origin: sprite_origin(mat),
+        sprite_srgb: mat.get_i32("$nosrgb") == Some(0),
+        sprite_orientation: match mat.get("$spriteorientation").unwrap_or("").to_ascii_lowercase().as_str() {
+            "facing_upright" | "1" => 1,
+            "vp_parallel" | "2" => 2,
+            "oriented" | "3" => 3,
+            "vp_parallel_oriented" | "4" => 4,
+            _ => 0,
+        },
         particle_clamp: {
             let flags = texture.as_deref().map_or(0, texture_flags);
             [flags & hp_vtf::flags::CLAMPS != 0, flags & hp_vtf::flags::CLAMPT != 0]
@@ -398,7 +429,12 @@ pub(crate) fn asset_desc(
     show_tools: bool,
 ) -> MaterialDesc {
     let fit = |size: [u32; 2]| match kind {
-        MatKind::Model | MatKind::Sprite | MatKind::SpriteAdditive | MatKind::SpriteRefract => [1.0, 1.0],
+        MatKind::Model
+        | MatKind::Sprite
+        | MatKind::SpriteAdditive
+        | MatKind::SpriteRefract
+        | MatKind::EntitySprite
+        | MatKind::EntitySpriteAdditive => [1.0, 1.0],
         MatKind::World => [size[0].max(1) as f32, size[1].max(1) as f32],
     };
     let resolve = |look: TexLook| match look {
@@ -436,6 +472,8 @@ pub(crate) fn asset_desc(
             let look = |t: &str| {
                 if kind == MatKind::SpriteRefract {
                     tex(&format!("{t}{}", crate::bump::NORMAL_SUFFIX))
+                } else if matches!(kind, MatKind::EntitySprite | MatKind::EntitySpriteAdditive) && !a.sprite_srgb {
+                    tex(&format!("{t}{LINEAR_SUFFIX}"))
                 } else if lum {
                     tex(&format!("{t}{LUM_SUFFIX}"))
                 } else {
@@ -449,6 +487,9 @@ pub(crate) fn asset_desc(
             let (texture3, texture4) = (blend_tex(&a.texture3), blend_tex(&a.texture4));
             let texture2 = if a.blend4 { Some(texture2.unwrap_or(TexId::WHITE)) } else { texture2 };
             let mut flags = a.flags;
+            if kind == MatKind::EntitySpriteAdditive {
+                flags |= MaterialFlags::ADDITIVE;
+            }
             let self_illum = a.self_illum.as_ref().and_then(|s| {
                 let mask = match s.mask_key().map(|k| tex(&k)) {
                     None => None,
@@ -466,7 +507,14 @@ pub(crate) fn asset_desc(
             if a.tool.is_some_and(blocks_light) {
                 flags |= MaterialFlags::LIGHT_BLOCKER;
             }
-            let sprite = matches!(kind, MatKind::Sprite | MatKind::SpriteAdditive | MatKind::SpriteRefract);
+            let sprite = matches!(
+                kind,
+                MatKind::Sprite
+                    | MatKind::SpriteAdditive
+                    | MatKind::SpriteRefract
+                    | MatKind::EntitySprite
+                    | MatKind::EntitySpriteAdditive
+            );
             flags.set(MaterialFlags::PARTICLE_TINT_GAMMA22, sprite && a.particle_tint_gamma22);
             flags.set(MaterialFlags::PARTICLE_CLAMP_U, sprite && a.particle_clamp[0]);
             flags.set(MaterialFlags::PARTICLE_CLAMP_V, sprite && a.particle_clamp[1]);
@@ -739,6 +787,26 @@ mod tests {
             assert_eq!(d.alpha_ref, a.alpha_ref);
             assert_eq!(d.flags & (with | without), a.flags & (with | without));
         }
+    }
+
+    #[test]
+    fn entity_sprite_materials_keep_origin_orientation_and_native_color_space() {
+        let legacy = analyze(
+            "sprites/glow",
+            &mat(r#"Sprite { $basetexture sprites/glow $spriteorigin "[0.5 0.5]" $spriteorientation vp_parallel }"#),
+        );
+        assert_eq!(legacy.sprite_origin, [0.5; 2]);
+        assert_eq!(legacy.sprite_orientation, 2);
+        assert!(!legacy.sprite_srgb);
+        assert_eq!(texture_keys(MatKind::EntitySpriteAdditive, &legacy), ["sprites/glow|linear"]);
+        let corrected = analyze(
+            "sprites/glow",
+            &mat(r#"Sprite { $basetexture sprites/glow $nosrgb 0 $spriteorigin "[0.25 0.75 0]" }"#),
+        );
+        assert_eq!(corrected.sprite_origin, [0.25, 0.75]);
+        assert!(corrected.sprite_srgb);
+        assert_eq!(texture_keys(MatKind::EntitySprite, &corrected), ["sprites/glow"]);
+        assert_eq!(analyze("sprites/glow", &mat(r#"Sprite { $spriteorigin "[NaN 0.5]" }"#)).sprite_origin, [0.0; 2]);
     }
 
     #[test]

@@ -245,3 +245,5 @@ Les braises diminuent en couleur, alpha et taille, sans rotation et avec un rale
 
 ---
 [Retour à l'index de la documentation](../README.md)
+
+L’aperçu env_sprite utilise les dimensions du matériau, l’échelle de l’entité, l’origine et l’orientation du sprite. Glow grandit avec la distance pour conserver sa taille à l’écran ; World Glow et No Dissipation gardent leur taille dans le monde. Le mode de rendu, le traitement des couleurs et la visibilité de l’origine contrôlent le halo. Masquer une entité masque aussi son aperçu.

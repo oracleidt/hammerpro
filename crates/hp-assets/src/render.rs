@@ -117,7 +117,13 @@ fn load_hdr_face(fs: &hp_fs::GameFs, material: &str) -> Option<HdrFace> {
 }
 
 fn load_hdr_sky(fs: &hp_fs::GameFs, key: &str) -> Option<Vec<HdrFace>> {
-    SKY_SUFFIXES.iter().map(|s| load_hdr_face(fs, &format!("skybox/{key}_hdr{s}"))).collect()
+    SKY_SUFFIXES
+        .iter()
+        .map(|s| {
+            load_hdr_face(fs, &format!("skybox/{key}_hdr{s}"))
+                .or_else(|| load_hdr_face(fs, &format!("skybox/{key}{s}")))
+        })
+        .collect()
 }
 
 fn previewed_camera(doc: &Document, chosen: Option<Id>) -> Option<hp_editor::sky::SkyCamera> {
@@ -216,9 +222,9 @@ impl AssetManager {
             renderer.set_hdr_sky(faces.as_ref());
             let name = state.key.as_ref().map_or("", |k| k.0.as_str());
             if renderer.has_hdr_sky() {
-                log::info!("player view: HDR sky {name} loaded");
+                log::info!("preview: HDR sky {name} loaded");
             } else {
-                log::info!("player view: sky {name} has no HDR faces, the LDR ones are drawn");
+                log::info!("preview: sky {name} has no HDR faces, the LDR ones are drawn");
             }
         }
         let key = want.map(|name| (name, generation));
@@ -290,8 +296,8 @@ impl AssetManager {
             let paint = scan.sky_paint.as_ref().map_or(hp_render::SkyPaint::BLACK, |s| s.paint);
             hp_render::SkyPaint { star_texture, ..paint }
         });
-        let sky = match (display.sky && !painted, skyname) {
-            (true, Some(name)) => self.sky_faces(renderer, &name),
+        let sky = match (display.sky && !painted, skyname.as_deref()) {
+            (true, Some(name)) => self.sky_faces(renderer, name),
             _ => None,
         };
         let sky_3d =
@@ -302,7 +308,7 @@ impl AssetManager {
             .and(self.scene.env.room.as_ref())
             .and_then(|r| doc.scene().entity(r.camera))
             .and_then(|n| hp_app::runtime::fog::sky_camera_fog(&n.entity));
-        self.sync_hdr_sky(renderer, None);
+        self.sync_hdr_sky(renderer, skyname.filter(|_| display.sky && !painted && display.light_hdr));
         renderer.set_environment(Environment { sky, sky_paint, sky_3d, fog, sky_fog });
         renderer.set_tone_env(scan.tone);
         self.sync_sun_glow(renderer, scan.sun_glow.as_ref(), display);
@@ -682,5 +688,31 @@ mod tests {
         let i = hdr_texels(&level(hp_vtf::ImageFormat::Rgba16161616, &[255, 255, 0, 0, 0, 0, 0, 0]), false);
         assert_eq!(i, Some(vec![[16.0, 0.0, 0.0]]));
         assert!(hdr_texels(&level(hp_vtf::ImageFormat::Rgba16161616F, &[0, 0]), false).is_none());
+    }
+    #[test]
+    fn hdr_sky_loads_hdr_parameters_from_both_native_material_naming_conventions() {
+        let dir = std::env::temp_dir().join(format!("hp-hdr-sky-materials-{}", std::process::id()));
+        let materials = dir.join("materials/skybox");
+        std::fs::create_dir_all(&materials).unwrap();
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/native_mips/tail_rgb.vtf");
+        std::fs::copy(fixture, materials.join("color.vtf")).unwrap();
+        for (i, suffix) in SKY_SUFFIXES.iter().enumerate() {
+            let prefix = if i % 2 == 0 { "_hdr" } else { "" };
+            std::fs::write(
+                materials.join(format!("test{prefix}{suffix}.vmt")),
+                r#"Sky { $hdrbasetexture skybox/color }"#,
+            )
+            .unwrap();
+        }
+        let fs = hp_fs::GameFs::empty();
+        fs.add_game_dir(&dir).unwrap();
+        let faces = load_hdr_sky(&fs, "test").unwrap();
+        assert_eq!(faces.len(), 6);
+        assert!(faces.iter().all(|f| f.width == 64 && f.height == 64 && f.texels.len() == 4096));
+        std::fs::remove_file(materials.join("testdn.vmt")).unwrap();
+        let fs = hp_fs::GameFs::empty();
+        fs.add_game_dir(&dir).unwrap();
+        assert!(load_hdr_sky(&fs, "test").is_none());
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

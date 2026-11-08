@@ -245,3 +245,5 @@ Embers fade in color, alpha and size with zero roll and gradual slowdown. Smoke 
 
 ---
 [Back to the documentation index](../README.md)
+
+The env_sprite preview uses the material dimensions, entity scale, sprite origin and orientation. Glow grows with distance to keep its screen size, while World Glow and No Dissipation retain their world size. Render modes, legacy color handling and visibility at the glow origin control the halo. Hiding an entity also hides its preview.

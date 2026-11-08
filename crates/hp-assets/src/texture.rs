@@ -28,6 +28,11 @@ pub(crate) fn prepare_texture(fs: &hp_fs::GameFs, key: &str, bc: bool) -> Result
         let bytes = fs.load_texture_raw(name).ok_or(TexFailure::Missing)?;
         return crate::water::pack_frames(&bytes).map_err(|e| TexFailure::broken(name, e));
     }
+    if let Some(name) = key.strip_suffix(crate::material::LINEAR_SUFFIX) {
+        let mut p = prepare_plain(fs, name, bc)?;
+        p.upload.format = p.upload.format.to_linear();
+        return Ok(p);
+    }
     if let Some(name) = key.strip_suffix(crate::material::LUM_SUFFIX) {
         let mut p = prepare_plain(fs, name, false)?;
         luminance_alpha(&mut p.upload);
@@ -130,7 +135,8 @@ pub(crate) fn prepare_vtf_with(bytes: &[u8], bc: bool, frame: u32, max_dim: u32)
         .iter()
         .position(|l| l.width.max(l.height) <= max_dim)
         .ok_or_else(|| format!("no mip level of at most {max_dim} pixels"))?;
-    let levels = mips.get(first..).unwrap_or_default();
+    let end = (info.source_mip_count() as usize).max(first + 1).min(mips.len());
+    let levels = mips.get(first..end).unwrap_or_default();
     let top = levels.first().ok_or("no mip level")?;
     let (w, h) = (top.width, top.height);
     let bc_format = match top.format.bc_format() {
@@ -264,13 +270,13 @@ mod tests {
         let p = prepare_vtf(&bytes, true).unwrap();
         assert_eq!(p.upload.format, TexFormat::Bc1Srgb);
         assert_eq!((p.upload.width, p.upload.height), (64, 32));
-        assert_eq!(p.upload.levels.len(), 7);
+        assert_eq!(p.upload.levels.len(), 1);
         assert_eq!(p.size, [64, 32]);
 
         let p = prepare_vtf(&bytes, false).unwrap();
         assert_eq!(p.upload.format, TexFormat::Rgba8Srgb);
         assert_eq!(p.upload.levels[0].len(), 64 * 32 * 4);
-        assert_eq!(p.upload.levels.len(), 7);
+        assert_eq!(p.upload.levels.len(), 1);
 
         let single = vtf(16, 16, hp_vtf::EncodeFormat::Bgra8888, false);
         let p = prepare_vtf(&single, true).unwrap();
@@ -334,5 +340,40 @@ mod tests {
             e.current = Some((TexId::WHITE, [4, 4]));
         }
         assert_eq!(r.look("a"), TexLook::Ready(TexId::WHITE, [4, 4]));
+    }
+}
+
+#[cfg(test)]
+mod source_mip_limits {
+    #[test]
+    fn native_texture_flags_and_aspect_preserve_the_sampled_mip_range() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/native_mips");
+        for (name, expected) in [
+            ("levels_bc", 2),
+            ("levels_1024", 6),
+            ("levels_all", 2),
+            ("levels_nomip", 1),
+            ("levels_wide", 1),
+            ("tail_rgb", 2),
+            ("tail_rgb_wide", 1),
+        ] {
+            let bytes = std::fs::read(root.join(format!("{name}.vtf"))).unwrap();
+            let info = hp_vtf::read_info(&bytes).unwrap();
+            assert_eq!(info.source_mip_count(), expected);
+            for compressed in [false, true] {
+                let prepared = super::prepare_vtf(&bytes, compressed).unwrap();
+                assert_eq!(prepared.upload.levels.len(), expected as usize, "{name}");
+            }
+        }
+    }
+    #[test]
+    fn quality_limits_keep_a_texture_when_the_requested_size_is_below_its_native_mip_tail() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/native_mips");
+        for name in ["levels_1024", "levels_wide", "levels_nomip"] {
+            let bytes = std::fs::read(root.join(format!("{name}.vtf"))).unwrap();
+            let prepared = super::prepare_vtf_with(&bytes, false, 0, 16).unwrap();
+            assert_eq!(prepared.upload.width, 16);
+            assert_eq!(prepared.upload.levels.len(), 1);
+        }
     }
 }

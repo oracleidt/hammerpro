@@ -485,7 +485,7 @@ fn sky_height_lod(xy: vec2<f32>, layer: u32, level: u32) -> f32 {
 
 fn sky_horizon(xy: vec2<f32>, dir: vec2<f32>, z: f32, layer: u32) -> f32 {
     let texel = max(view.sky_vis_b.z, 1.0);
-    var horizon = -1.0e9;
+    var horizon = (sky_height(xy, layer) - z) / max(texel * 0.5, 0.25);
     var r = 10.0;
     for (var i = 0u; i < SKY_MARCH_STEPS; i++) {
         var level: f32;

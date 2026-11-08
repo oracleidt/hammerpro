@@ -41,6 +41,10 @@ pub(crate) struct EntityDesc {
     pub sprite_is_icon: bool,
     pub sprite_additive: bool,
     pub sprite_size: f32,
+    pub sprite_mode: u32,
+    pub sprite_fx: u32,
+    pub sprite_hdr_scale: f32,
+    pub sprite_glow_proxy: f32,
     pub sprite_color: [f32; 4],
     pub light: Option<crate::lights::SceneLight>,
     pub decal: Option<String>,
@@ -149,6 +153,11 @@ pub(crate) fn entity_desc(e: &Entity, fgd: Option<&ResolvedFgd>) -> EntityDesc {
         Some(c) if c.has_helper("sprite") => {
             (c.sprite().map(str::to_owned).or_else(|| e.get("model").map(str::to_owned)), true)
         }
+        _ if e.classname.eq_ignore_ascii_case("env_sprite")
+            || e.classname.eq_ignore_ascii_case("env_sprite_oriented") =>
+        {
+            (e.get("model").map(str::to_owned), true)
+        }
         _ => (None, false),
     };
     let sprite = sprite.and_then(|s| sprite_material(&s));
@@ -158,7 +167,7 @@ pub(crate) fn entity_desc(e: &Entity, fgd: Option<&ResolvedFgd>) -> EntityDesc {
     let extent = (bounds.1 - bounds.0).max_element();
     let sprite_size = if world_sprite {
         let scale = e.get("scale").and_then(|s| s.trim().parse::<f64>().ok()).filter(|s| s.is_finite() && *s > 0.0);
-        (32.0 * scale.unwrap_or(1.0)).clamp(16.0, 64.0) as f32
+        scale.unwrap_or(1.0).min(1.0e6) as f32
     } else if extent.is_finite() {
         extent.clamp(16.0, 32.0) as f32
     } else {
@@ -198,6 +207,20 @@ pub(crate) fn entity_desc(e: &Entity, fgd: Option<&ResolvedFgd>) -> EntityDesc {
         sprite_is_icon,
         sprite_additive,
         sprite_size,
+        sprite_mode: render_mode.clamp(0, 10) as u32,
+        sprite_fx: int_key(e, "renderfx").unwrap_or(0).clamp(0, 255) as u32,
+        sprite_hdr_scale: e
+            .get("HDRColorScale")
+            .and_then(|v| v.parse::<f32>().ok())
+            .filter(|v| v.is_finite())
+            .unwrap_or(1.0)
+            .max(0.0),
+        sprite_glow_proxy: e
+            .get("GlowProxySize")
+            .and_then(|v| v.parse::<f32>().ok())
+            .filter(|v| v.is_finite())
+            .unwrap_or(2.0)
+            .max(0.0),
         sprite_color,
         light,
         decal,
@@ -291,7 +314,7 @@ mod tests {
         let d = entity_desc(&spr, Some(&f));
         assert_eq!(d.sprite.as_deref(), Some("sprites/glow01"));
         assert!(d.sprite_additive);
-        assert_eq!(d.sprite_size, 16.0);
+        assert_eq!(d.sprite_size, 0.25);
         assert_eq!(d.sprite_color, [0.0, 1.0, 0.0, 128.0 / 255.0]);
         assert!(!entity_desc(&ent("env_sprite", &[("model", "sprites/glow01.vmt")]), Some(&f)).sprite_additive);
 

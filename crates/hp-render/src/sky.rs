@@ -97,7 +97,7 @@ impl Renderer {
             && crate::compiled_light::textured_mode(mode)
             && self.compiled.mode() == Some(CompiledLightMode::Hdr);
         let baked = self.lightmap_display() == crate::lightmap::LightmapDisplay::Baked && !self.lightmap_ldr();
-        let hdr = !ortho && (compiled || baked);
+        let hdr = !ortho && (compiled || baked || self.hdr_lit(opts, mode, ortho));
         self.hdr_sky.as_ref().filter(|_| hdr).map(|s| &s.bind)
     }
 
