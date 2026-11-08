@@ -176,6 +176,8 @@ The PCF editor can preserve and edit more operators than the simulation implemen
 
 `Render models` draws mounted MDL geometry in the map, particle browser and PCF editor. Enter `sequence 0 model` relative to `models/`, for example `props_junk/wood_crate001a.mdl`. Authoring strips a pasted leading `models/`; importing preserves the original PCF. It uses particle radius, normal, roll/yaw/pitch, color and alpha, model skin, bodygroups and animation. `sequence_number` selects a bodygroup to set to value 1; `sequence_number 1` selects animation. `activity override` refers to an activity such as `ACT_IDLE`, rather than a sequence label. Animation rate is frames per second and uses the collection clock; an optional scalar field scales the rate. Models and sprites retain their authored renderer order. Model particles do not become selectable map props or appear on the 2D grid.
 
+`render_rope` connects particles in their collection order with subdivided Catmull-Rom curves. It uses particle width, color and alpha, continuous texture coordinates, scrolling/offset and the two control points for texture scaling. CPU materials and SpriteCard materials follow their respective game rendering paths. The editor exposes these rope parameters; subdivision is limited to 256 for preview resource usage.
+
 ### Templates, importing and addon export
 
 The **Fire**, **Smoke**, **Sparks**, **Rain** and **Explosion** templates add editable systems to the current document. Repeated imports use unique system names. **Import systems** reads another PCF, copies its systems and remaps their graph references.

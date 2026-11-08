@@ -1,5 +1,6 @@
 override PARTICLE_BLEND_MODE: f32 = 0.0;
 @group(1) @binding(10) var particle_sampler: sampler;
+@group(1) @binding(11) var rope_sampler: sampler;
 
 struct ParticleOut {
     @builtin(position) clip: vec4<f32>,
@@ -24,13 +25,35 @@ var<private> P_CORNERS: array<vec2<f32>, 6> = array<vec2<f32>, 6>(
     vec2<f32>(-1.0, 1.0),
 );
 
+var<private> P_ROPE_CORNERS: array<vec2<f32>, 6> = array<vec2<f32>, 6>(
+    vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0), vec2<f32>(-1.0, 1.0),
+    vec2<f32>(1.0, -1.0), vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0),
+);
+
 const P_SCREEN: u32 = 0u;
 const P_UPRIGHT: u32 = 1u;
 const P_FLAT: u32 = 2u;
 const P_STRETCHED: u32 = 3u;
 const P_TRAIL_CPU: u32 = 6u;
 const P_TRAIL_SPLINE: u32 = 7u;
+const P_ROPE_CPU: u32 = 8u;
+const P_ROPE_SPLINE: u32 = 9u;
 const P_SPLINE_LINEAR_COLOR: u32 = 131072u;
+const P_ROPE_TEXTURE: u32 = 262144u;
+
+fn rope_side(a: vec3<f32>, b: vec3<f32>) -> vec3<f32> {
+    let s = cross(view.eye.xyz - a, a - b);
+    return s * inverseSqrt(dot(s, s) + 1e-10);
+}
+
+fn rope_curve(a: vec4<f32>, b: vec4<f32>, c: vec4<f32>, d: vec4<f32>, t: f32) -> vec4<f32> {
+    return b + 0.5 * t * (c - a + t * (2.0 * a - 5.0 * b + 4.0 * c - d + t * (-a + 3.0 * b - 3.0 * c + d)));
+}
+
+fn rope_tangent(a: vec3<f32>, b: vec3<f32>, c: vec3<f32>, d: vec3<f32>, t: f32) -> vec3<f32> {
+    return 0.5 * (c - a + t * (2.0 * a - 5.0 * b + 4.0 * c - d + t * (3.0 * b - a - 3.0 * c + d))
+        + t * (2.0 * a - 5.0 * b + 4.0 * c - d + 2.0 * (t * (3.0 * b - a - 3.0 * c + d))));
+}
 
 @vertex
 fn vs_particle(
@@ -59,15 +82,16 @@ fn vs_particle(
     }
     let mode = mode_bits & 127u;
     out.effects = effects;
-    if mode == P_TRAIL_SPLINE {
+    if mode == P_TRAIL_SPLINE || mode == P_ROPE_SPLINE {
         out.effects |= P_SPLINE_LINEAR_COLOR;
     }
+    if mode == P_ROPE_CPU || mode == P_ROPE_SPLINE { out.effects |= P_ROPE_TEXTURE; }
     out.lightmode = select(0u, mode - 3u, mode >= 4u && mode <= 5u);
     out.addself = f32(mode_bits >> 8u) / 256.0;
     if (mode_bits & 128u) != 0u {
         out.addself = f32(mode_bits >> 8u) / 65536.0 - 1.0;
     }
-    let c = P_CORNERS[vi % 6u];
+    let c = select(P_CORNERS[vi % 6u], P_ROPE_CORNERS[vi % 6u], mode == P_ROPE_CPU);
     let uv = vec2<f32>(c.x * 0.5 + 0.5, 0.5 - c.y * 0.5);
     out.uv = mix(rect.xy, rect.zw, uv);
     out.next_uv = mix(next_rect.xy, next_rect.zw, uv);
@@ -119,12 +143,52 @@ fn vs_particle(
         dy = ry;
     }
     var offset = dx * (c.x * half) + dy * (c.y * half_y);
-    if yaw != 0.0 && mode != P_STRETCHED && mode != P_TRAIL_CPU && mode != P_TRAIL_SPLINE {
+    if yaw != 0.0 && mode != P_STRETCHED && mode != P_TRAIL_CPU && mode != P_TRAIL_SPLINE && mode != P_ROPE_CPU && mode != P_ROPE_SPLINE {
         let cy = cos(yaw);
         let sy = sin(yaw);
         offset = offset * cy + cross(yaw_axis, offset) * sy + yaw_axis * dot(offset, yaw_axis) * (1.0 - cy);
     }
     var world = pos + offset;
+    var vertex_color = color;
+    if mode == P_ROPE_CPU {
+        let t = c.y * 0.5 + 0.5;
+        let tail = pos + axis;
+        let side = rope_side(pos, tail);
+        var head_side = side;
+        var tail_side = side;
+        if distance(next_rect.xyz, pos) > 1e-6 {
+            let average = rope_side(next_rect.xyz, pos) + side;
+            head_side = average * inverseSqrt(dot(average, average) + 1e-10);
+        }
+        if distance(sequence_rect.xyz, tail) > 1e-6 {
+            let average = rope_side(tail, sequence_rect.xyz) + side;
+            tail_side = average * inverseSqrt(dot(average, average) + 1e-10);
+        }
+        let width = mix(size, next_rect.w, t);
+        world = mix(pos, tail, t) - mix(head_side, tail_side, t) * (c.x * width * 0.5);
+        vertex_color = mix(color, vec4<f32>(sequence_rect.w, sequence_next_rect.xyz), t);
+        out.uv = vec2<f32>(uv.x, mix(rect.y, rect.w, t));
+        out.animation_blend = vec2<f32>(0.0);
+        out.animation_flags = 0u;
+    }
+    if mode == P_ROPE_SPLINE {
+        let t = c.y * 0.5 + 0.5;
+        let parameter = mix(yaw, animation_blend.x, t);
+        let a = vec4<f32>(pos, size);
+        let b = vec4<f32>(axis, roll);
+        let center = rope_curve(a, b, next_rect, sequence_rect, parameter);
+        let tangent = rope_tangent(a.xyz, b.xyz, next_rect.xyz, sequence_rect.xyz, parameter);
+        let squared = dot(tangent, tangent);
+        if squared <= 0.0 { out.clip = COLLAPSED; return out; }
+        let normal = cross(center.xyz - view.eye.xyz, tangent * inverseSqrt(squared));
+        let normal_squared = dot(normal, normal);
+        if normal_squared <= 0.0 { out.clip = COLLAPSED; return out; }
+        world = center.xyz - normal * inverseSqrt(normal_squared) * (center.w * (c.x * 0.5));
+        vertex_color = mix(color, sequence_next_rect, t);
+        out.uv = vec2<f32>(uv.x, mix(rect.y, rect.w, t));
+        out.animation_blend = vec2<f32>(0.0);
+        out.animation_flags = 0u;
+    }
     if mode == P_TRAIL_CPU || mode == P_TRAIL_SPLINE {
         // Trail UVs run from V=1 at the head to V=0 at the tail. A native
         // radius is the FULL ribbon width; ordinary sprites use twice that.
@@ -148,7 +212,7 @@ fn vs_particle(
         world = (pos + side * (-c.x * half)) + axis * t;
     }
     out.world = world;
-    var alpha = color.a;
+    var alpha = vertex_color.a;
     let f0 = fade.x * 4.0;
     let f1 = fade.y * 4.0;
     if f1 > f0 {
@@ -161,7 +225,7 @@ fn vs_particle(
     }
     // Source's spline-card shader takes the byte vertex color as linear. The
     // ordinary SpriteCard and CPU ribbon paths instead apply gamma 2.2.
-    let rgb = select(pow(max(color.rgb, vec3<f32>(0.0)), vec3<f32>(2.2)), color.rgb, mode == P_TRAIL_SPLINE);
+    let rgb = select(pow(max(vertex_color.rgb, vec3<f32>(0.0)), vec3<f32>(2.2)), vertex_color.rgb, mode == P_TRAIL_SPLINE || mode == P_ROPE_SPLINE);
     out.color = vec4<f32>(rgb * max(bright, 0.0), alpha);
     out.clip = view.view_proj * vec4<f32>(world, 1.0);
     return out;
@@ -201,7 +265,8 @@ fn particle_frame_mix(a: vec4<f32>, b: vec4<f32>, fraction: f32, maximum: bool, 
 }
 
 fn particle_texel(in: ParticleOut) -> vec4<f32> {
-    let first = textureSample(tex, particle_sampler, in.uv);
+    var first = textureSample(tex, particle_sampler, in.uv);
+    if (in.effects & P_ROPE_TEXTURE) != 0u { first = textureSample(tex, rope_sampler, in.uv); }
     let next_dx = dpdx(in.next_uv);
     let next_dy = dpdy(in.next_uv);
     let sequence_dx = dpdx(in.sequence_uv);

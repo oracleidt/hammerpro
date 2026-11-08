@@ -2,6 +2,157 @@ use super::*;
 use hp_render::{MaterialDesc, MaterialFlags, RenderMode, Renderer, TexFormat, TextureUpload, ViewKind, ViewParams};
 
 #[test]
+fn rope_particles_match_native_subdivision_texture_coordinates_and_endpoint_attributes() {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+    let Ok(adapter) = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())) else {
+        return;
+    };
+    let (device, queue) = pollster::block_on(
+        adapter.request_device(&wgpu::DeviceDescriptor { required_limits: adapter.limits(), ..Default::default() }),
+    )
+    .unwrap();
+    let mut renderer = Renderer::new(&device, &queue);
+    renderer.set_tone_settings(hp_render::ToneSettings { bloom: 0.0, ..Default::default() });
+    let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data");
+    let fs = hp_fs::GameFs::from_source_mounts(
+        None,
+        None,
+        &[hp_fs::SourceMount {
+            kind: hp_fs::SourceMountKind::Gma,
+            label: "Owned native rope reference".into(),
+            path: folder.join("native_rope_particles.gma"),
+            enabled: true,
+            origin: hp_fs::SourceOrigin::Custom,
+        }],
+    )
+    .unwrap();
+    let definitions = hp_pcf::parse_file(include_bytes!("../tests/data/native_rope_particles.pcf")).unwrap();
+    let report: serde_json::Value =
+        serde_json::from_str(include_str!("../tests/data/native_rope_particles.json")).unwrap();
+    let proof = folder.join("../../../../target/hp-ui-lab/rope-particles");
+    std::fs::create_dir_all(&proof).unwrap();
+    let mut failures = Vec::new();
+    let mut checked = 0;
+    let mut maximum = 0;
+    let mut maximum_linear = 0.0f32;
+    let linear = |byte: u8| {
+        let value = f32::from(byte) / 255.0;
+        if value <= 0.04045 { value / 12.92 } else { ((value + 0.055) / 1.055).powf(2.4) }
+    };
+    for definition in definitions {
+        let name = definition.name.strip_prefix("hp_rope117_").unwrap();
+        let plan = Arc::new(Plan::new(&definition));
+        assert!(plan.unsupported.is_empty(), "{name}: {:?}", plan.unsupported);
+        let look = read_material_look(&fs, &plan.material);
+        let texture_name = if name.ends_with("gradient") || name.ends_with("taper") { "white" } else { "quad" };
+        let texture = fs.load_texture(&format!("hp_rope117/{texture_name}"), None).unwrap();
+        let tex = renderer.create_texture_exact(&TextureUpload {
+            width: texture.width,
+            height: texture.height,
+            format: TexFormat::Rgba8Srgb,
+            levels: vec![texture.rgba],
+        });
+        renderer.set_material(
+            0,
+            &MaterialDesc {
+                texture: Some(tex),
+                tex_size: [16.0; 2],
+                flags: if look.spritecard { MaterialFlags::SPRITE_CARD } else { MaterialFlags::default() },
+                ..Default::default()
+            },
+        );
+        let mut effect = Effect::new(&definition.name, &|_| Some(plan.clone()), 17).unwrap();
+        let points = Points {
+            pos: vec![[-60.0, 0.0, 64.0], [60.0, 0.0, 64.0]],
+            axes: [[0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            ..Points::at([-60.0, 0.0, 64.0])
+        };
+        for _ in 0..8 {
+            effect.step_at(0.05, &points, 3);
+        }
+        let simulated: Vec<_> = effect.particles().map(|(_, p)| p.pos).collect();
+        assert_eq!(simulated.len(), 3, "{name}: {simulated:?}");
+        let looks = HashMap::from([(material_key(&plan.material), Arc::new(look))]);
+        let (mut sprites, mut materials) = (Vec::new(), Vec::new());
+        append_sprites(std::iter::once((17, &effect)), &looks, &mut sprites, &mut materials);
+        sort_far_first(&mut sprites, [0.0, -256.0, 64.0]);
+        let mut assets = hp_app::testing::MockAssets::default();
+        let mut draws = instances_of(&sprites, &materials, &mut assets);
+        for draw in &mut draws {
+            draw.material = 0;
+        }
+        let eye = std::array::from_fn(|i| report["cases"][name]["eye"][i].as_f64().unwrap() as f32);
+        let params = ViewParams {
+            size: [128; 2],
+            game_pixel_grid: true,
+            kind: ViewKind::Perspective {
+                eye,
+                forward: [0.0, 1.0, 0.0],
+                up: [0.0, 0.0, 1.0],
+                fov_y_deg: 60.0,
+                near: 1.0,
+                far: 2000.0,
+            },
+            mode: RenderMode::Unshaded,
+            grid: None,
+            background: [0.0; 3],
+            selection_color: [0.0; 4],
+            show_sprites: false,
+            show_models: false,
+            msaa: false,
+        };
+        let target = image::open(folder.join(format!("native_rope_particles_{name}.png"))).unwrap().to_rgb8();
+        for preview in [false, true] {
+            if preview {
+                renderer.render_particle_preview(1, &params, &draws);
+            } else {
+                renderer.set_particles(&draws);
+                renderer.render_view(1, &params, &hp_render::Overlay::default());
+            }
+            let (_, _, pixels) = renderer.read_view_rgba8(1).unwrap();
+            image::save_buffer(proof.join(format!("{name}_{preview}.png")), &pixels, 128, 128, image::ColorType::Rgba8)
+                .unwrap();
+            let delta = pixels
+                .chunks_exact(4)
+                .zip(target.pixels())
+                .flat_map(|(a, b)| (0..3).map(move |c| a[c].abs_diff(b[c])))
+                .max()
+                .unwrap();
+            maximum = maximum.max(delta);
+            let linear_delta = pixels
+                .chunks_exact(4)
+                .zip(target.pixels())
+                .flat_map(|(a, b)| (0..3).map(|c| (linear(a[c]) - linear(b[c])).abs()))
+                .fold(0.0f32, f32::max);
+            maximum_linear = maximum_linear.max(linear_delta);
+            let differing = pixels
+                .chunks_exact(4)
+                .zip(target.pixels())
+                .filter(|(a, b)| (0..3).any(|c| a[c].abs_diff(b[c]) > 3))
+                .count();
+            let coverage = pixels
+                .chunks_exact(4)
+                .zip(target.pixels())
+                .filter(|(a, b)| (a[..3].iter().any(|v| *v > 4)) != b.0.iter().any(|v| *v > 4))
+                .count();
+            // D3D9 and WGPU differ at a few zero-crossings of the highly
+            // minified repeated texture. Check linear-light error as well as
+            // encoded RGB, with exact coverage and a two-pixel limit.
+            let repeated_spline = name.starts_with("spline_") && texture_name == "quad";
+            let acceptable =
+                delta <= 3 || (repeated_spline && differing <= 2 && delta <= 16 && linear_delta <= 3.0 / 255.0);
+            if !acceptable || coverage != 0 {
+                failures.push(format!("{name} preview={preview}: RGB {delta}, linear {linear_delta}, outliers {differing}, coverage {coverage}"));
+            }
+            checked += 1;
+        }
+    }
+    assert_eq!(checked, 32);
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+    eprintln!("32 native rope images; maximum encoded RGB delta {maximum}/255, linear RGB delta {maximum_linear}");
+}
+
+#[test]
 fn mixed_model_and_sprite_passes_keep_native_authored_order_through_scene_merge() {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let Ok(adapter) = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())) else {

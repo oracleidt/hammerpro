@@ -7,6 +7,7 @@ pub mod model;
 pub mod model_render;
 mod parameters;
 pub mod random;
+pub mod rope;
 pub mod screen_velocity;
 pub mod sheet;
 pub mod sim;

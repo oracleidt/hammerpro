@@ -40,6 +40,7 @@ fn authored_single_level_particles_keep_native_pixels_through_asset_loading() {
     renderer.set_material(0, &desc);
     let particles: Vec<_> = (1..=4)
         .map(|radius| ParticleInstance {
+            ribbon: None,
             animation: ParticleAnimation::default(),
             pos: [radius as f32, 0.0, 0.0],
             size: radius as f32 * 2.0,
@@ -147,6 +148,7 @@ fn particle_texture_addressing_survives_material_loading_and_sampler_changes() {
         let case = &fixture["cases"][mode];
         let array3 = |v: &serde_json::Value| std::array::from_fn(|i| v[i].as_f64().unwrap() as f32);
         renderer.set_particles(&[ParticleInstance {
+            ribbon: None,
             animation: ParticleAnimation::default(),
             pos: array3(&case["position"]),
             size: 48.0,
@@ -295,6 +297,7 @@ fn native_particle_colors_survive_material_loading_and_texture_preparation() {
             renderer.set_material(1, &desc);
             let array3 = |v: &serde_json::Value| std::array::from_fn(|i| v[i].as_f64().unwrap() as f32);
             renderer.set_particles(&[ParticleInstance {
+                ribbon: None,
                 animation: ParticleAnimation::default(),
                 pos: array3(&case["head"]),
                 size: if trail {

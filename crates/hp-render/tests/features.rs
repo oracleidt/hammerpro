@@ -693,7 +693,8 @@ fn model_distance_fade_and_hidden_chunks() {
     let part = ModelPart {
         material: GREY,
         vertices: vec![v([0.0, -64.0, -64.0]), v([0.0, 64.0, -64.0]), v([0.0, 64.0, 64.0]), v([0.0, -64.0, 64.0])],
-        indices: vec![0, 1, 2, 0, 2, 3],
+        // Face the camera at -X. Model normals do not rewrite triangle winding.
+        indices: vec![0, 2, 1, 0, 3, 2],
         tangents: Vec::new(),
     };
     let model = r.create_model(&[part]);
@@ -1307,6 +1308,7 @@ fn screen_velocity_modifier_matches_native_sprite_images_in_either_renderer_orde
         effect.prepare_render(hp_pcf::screen_velocity::view(eye, [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]));
         let particle = &effect.sims[0].1.particles[0];
         let instance = ParticleInstance {
+            ribbon: None,
             pos: particle.pos,
             size: particle.radius * 2.0,
             axis: [0.0; 3],
@@ -1380,6 +1382,7 @@ fn native_trails_use_head_tail_uvs_and_full_width_in_each_view() {
     let width = 80.0;
     for (index, orient) in [ParticleOrient::TrailCpu, ParticleOrient::TrailSpline].into_iter().enumerate() {
         r.set_particles(&[ParticleInstance {
+            ribbon: None,
             pos: head,
             axis: delta,
             size: width,
@@ -1469,6 +1472,7 @@ fn particles_blend_add_turn_and_show_sheet_frames() {
         r.create_texture(&TextureUpload { width: 4, height: 4, format: TexFormat::Rgba8Srgb, levels: vec![px] });
     r.set_material(5, &MaterialDesc { texture: Some(halves), tex_size: [4.0, 4.0], ..Default::default() });
     let particle = |pos: [f32; 3], material: MaterialId, color: [f32; 4]| ParticleInstance {
+        ribbon: None,
         animation: ParticleAnimation::default(),
         pos,
         size: 60.0,
@@ -1569,6 +1573,7 @@ fn particles_refract_the_scene_and_keep_foreground_depth_with_and_without_msaa()
     });
     r.set_material(7, &MaterialDesc { texture: Some(normal), ..Default::default() });
     let particle = ParticleInstance {
+        ribbon: None,
         animation: ParticleAnimation::default(),
         pos: [0.0; 3],
         size: 220.0,
@@ -1626,6 +1631,7 @@ fn particles_respect_scene_lighting_emissive_and_material_opacity() {
     r.set_material(4, &MaterialDesc { texture: Some(TexId::WHITE), ..Default::default() });
     let view = ViewParams { background: [0.0; 3], ..persp([-400.0, 0.0, 0.0], [0.0; 3], [64, 64], RenderMode::Lit) };
     let p = ParticleInstance {
+        ribbon: None,
         animation: ParticleAnimation::default(),
         pos: [0.0; 3],
         size: 220.0,
@@ -1683,6 +1689,7 @@ fn the_particle_preview_view_draws_exactly_like_the_scene_view() {
     let blob = r.create_texture(&TextureUpload { width: 8, height: 8, format: TexFormat::Rgba8Srgb, levels: vec![px] });
     r.set_material(5, &MaterialDesc { texture: Some(blob), tex_size: [8.0, 8.0], ..Default::default() });
     let particle = |pos: [f32; 3], material: MaterialId, blend: ParticleBlend| ParticleInstance {
+        ribbon: None,
         animation: ParticleAnimation::default(),
         pos,
         size: 70.0,
@@ -1745,6 +1752,7 @@ fn spritecard_mixes_texture_frames_and_both_sequences_before_alpha_blending() {
     let red = [0.125, 0.125, 0.375, 0.875];
     let blue = [0.625, 0.125, 0.875, 0.875];
     let base = ParticleInstance {
+        ribbon: None,
         animation: ParticleAnimation { frames: [blue, blue, blue], ..Default::default() },
         pos: [0.0; 3],
         size: 200.0,
@@ -1831,6 +1839,7 @@ fn trail_colors_and_alpha_cutoffs_match_native_cpu_and_spline_pixels() {
             far: 2000.0,
         };
         renderer.set_particles(&[ParticleInstance {
+            ribbon: None,
             animation: ParticleAnimation::default(),
             pos: head,
             size: case["width"].as_f64().unwrap() as f32,
@@ -1918,6 +1927,7 @@ fn spritecard_pixels_match_native_garrys_mod_captures() {
             let (second, second_next, second_blend) =
                 frames(case["second"].as_u64().unwrap(), age, case["rate2"].as_f64().unwrap() as f32, fps);
             renderer.set_particles(&[ParticleInstance {
+                ribbon: None,
                 animation: ParticleAnimation {
                     frames: [next, second, second_next],
                     blend: [first_blend, second_blend],
@@ -1982,6 +1992,7 @@ fn spritecard_yaw_geometry_matches_native_coverage_and_remains_independent_of_ro
         serde_json::from_str(include_str!("../../hp-pcf/tests/data/yaw_native_samples.json")).unwrap();
     for case in cases {
         renderer.set_particles(&[ParticleInstance {
+            ribbon: None,
             animation: ParticleAnimation::default(),
             pos: [0.0; 3],
             size: 32.0,
@@ -2041,6 +2052,7 @@ fn simulated_colors_fades_and_noise_match_native_spritecard_pixels() {
     let view = persp([-128.0, 0.0, 0.0], [0.0; 3], [128, 128], RenderMode::Textured);
     let mut check = |particle: &hp_pcf::Particle, expected: &serde_json::Value, context: &str, material| {
         let sprite = ParticleInstance {
+            ribbon: None,
             animation: ParticleAnimation::default(),
             pos: [0.0; 3],
             size: particle.radius * 2.0,

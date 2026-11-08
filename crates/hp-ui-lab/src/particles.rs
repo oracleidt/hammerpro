@@ -33,6 +33,7 @@ pub struct MaterialLook {
     pub sequence_mode: u8,
     pub max_luminance: [bool; 2],
     pub sheet: Option<Sheet>,
+    pub texture_height: f32,
     pub refraction: Option<f32>,
     pub refraction_blur: f32,
     pub no_fog: bool,
@@ -53,6 +54,7 @@ impl Default for MaterialLook {
             sequence_mode: 0,
             max_luminance: [false; 2],
             sheet: None,
+            texture_height: 1.0,
             refraction: None,
             refraction_blur: 0.0,
             no_fog: false,
@@ -189,6 +191,7 @@ impl ParticleShared {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ParticleSprite {
+    pub ribbon: Option<hp_render::ParticleRibbon>,
     pub animation: hp_render::ParticleAnimation,
     pub pos: [f32; 3],
     pub size: f32,
@@ -238,6 +241,7 @@ pub fn read_material_look(fs: &hp_fs::GameFs, material: &str) -> MaterialLook {
     };
     let sprite_mode = m.shader.eq_ignore_ascii_case("sprite") && matches!(m.get_i32("$spriterendermode"), Some(3 | 5));
     let overbright = m.get_f32("$overbrightfactor").filter(|v| v.is_finite() && *v > 0.0).unwrap_or(1.0).min(16.0);
+    let texture_height = m.get("$basetexture").and_then(|t| fs.texture_size(t)).map_or(1.0, |(_, h)| h as f32);
     let sheet = m
         .get("$basetexture")
         .and_then(|t| fs.load_texture_raw(t))
@@ -267,6 +271,7 @@ pub fn read_material_look(fs: &hp_fs::GameFs, material: &str) -> MaterialLook {
         sequence_mode: m.get_i32("$sequence_blend_mode").unwrap_or(0).clamp(0, 2) as u8,
         max_luminance: [spritecard && m.flag("$maxlumframeblend1"); 2],
         sheet,
+        texture_height,
         refraction: m
             .shader
             .eq_ignore_ascii_case("refract")
@@ -447,7 +452,10 @@ pub fn append_sprites<'a>(
     };
     for (id, effect) in effects {
         let mut next_draw_order = 0;
-        for (plan, particles, dt) in effect.systems_with_dt() {
+        for sim in effect.drawable_sims() {
+            let plan = sim.plan();
+            let particles = &sim.particles;
+            let dt = sim.render_dt();
             if particles.is_empty() {
                 continue;
             }
@@ -468,6 +476,7 @@ pub fn append_sprites<'a>(
                 let draw_order = next_draw_order;
                 next_draw_order += 1;
                 let base = |p: &hp_pcf::Particle| ParticleSprite {
+                    ribbon: None,
                     animation: hp_render::ParticleAnimation::default(),
                     pos: p.pos,
                     size: p.radius * 2.0,
@@ -515,21 +524,67 @@ pub fn append_sprites<'a>(
                         }
                     }
                     RenderKind::Rope => {
-                        for w in particles.windows(2) {
-                            let (a, b) = (&w[0], &w[1]);
-                            if !visible(a) || !visible(b) {
+                        let Some(rope) = render.rope else { continue };
+                        let points = rope.points(
+                            particles,
+                            look.texture_height,
+                            sim.time(),
+                            sim.render_points(),
+                            look.spritecard,
+                        );
+                        for (index, pair) in points.windows(2).enumerate() {
+                            let [a, b] = [pair[0], pair[1]];
+                            if !a.position.iter().chain(b.position.iter()).all(|v| v.is_finite()) {
                                 continue;
                             }
-                            let axis = [b.pos[0] - a.pos[0], b.pos[1] - a.pos[1], b.pos[2] - a.pos[2]];
-                            let mut s = base(a);
-                            s.pos =
-                                [(a.pos[0] + b.pos[0]) * 0.5, (a.pos[1] + b.pos[1]) * 0.5, (a.pos[2] + b.pos[2]) * 0.5];
-                            s.size = a.radius + b.radius;
-                            s.axis = axis;
-                            s.orient = ParticleOrient::Stretched;
+                            let mut s = base(&particles[0]);
+                            s.pos = a.position;
+                            s.axis = std::array::from_fn(|i| b.position[i] - a.position[i]);
+                            s.size = a.width;
+                            let color = if look.spritecard {
+                                points[(index / rope.subdivisions) * rope.subdivisions].color
+                            } else {
+                                a.color
+                            };
+                            s.color = color;
                             s.roll = 0.0;
-                            s.uv = hp_pcf::sheet::FULL_UV;
-                            s.color[3] = (a.opacity() + b.opacity()) * 0.5;
+                            s.yaw = 0.0;
+                            s.uv = [0.0, a.v, 1.0, b.v];
+                            s.orient =
+                                if look.spritecard { ParticleOrient::RopeSpline } else { ParticleOrient::RopeCpu };
+                            s.ribbon = Some(hp_render::ParticleRibbon {
+                                neighbors: if look.spritecard {
+                                    [a.tangent, b.tangent]
+                                } else {
+                                    [
+                                        points[index.saturating_sub(1)].position,
+                                        points[(index + 2).min(points.len() - 1)].position,
+                                    ]
+                                },
+                                end_width: b.width,
+                                spline: look.spritecard.then(|| {
+                                    let step = index % rope.subdivisions;
+                                    let increment = (rope.subdivisions as f32).recip();
+                                    let mut t = 0.0;
+                                    for _ in 0..step {
+                                        t += increment;
+                                    }
+                                    hp_render::ParticleSpline {
+                                        controls: hp_pcf::rope::Rope::spline_controls(
+                                            particles,
+                                            index / rope.subdivisions,
+                                        ),
+                                        interval: [t, if step + 1 == rope.subdivisions { 1.0 } else { t + increment }],
+                                    }
+                                }),
+                                end_color: if look.spritecard
+                                    && ((index + 1) % rope.subdivisions != 0 || index + 2 == points.len())
+                                {
+                                    color
+                                } else {
+                                    b.color
+                                },
+                            });
                             sprites.push(s);
                         }
                     }
@@ -582,7 +637,13 @@ pub fn sort_far_first(sprites: &mut [ParticleSprite], eye: [f32; 3]) {
     }
     sprites.sort_by(|a, b| {
         if a.entity == b.entity {
-            a.draw_order.cmp(&b.draw_order).then_with(|| d2(b).total_cmp(&d2(a)))
+            a.draw_order.cmp(&b.draw_order).then_with(|| {
+                if a.ribbon.is_some() && b.ribbon.is_some() {
+                    std::cmp::Ordering::Equal
+                } else {
+                    d2(b).total_cmp(&d2(a))
+                }
+            })
         } else {
             effect_distance[&b.entity].total_cmp(&effect_distance[&a.entity]).then_with(|| a.entity.cmp(&b.entity))
         }
@@ -723,6 +784,7 @@ pub fn instances_of(
                 *slot.get_or_insert_with(|| assets.sprite_material_id(&materials[i], additive))
             };
             Some(hp_render::ParticleInstance {
+                ribbon: p.ribbon,
                 animation: p.animation,
                 pos: p.pos,
                 size: p.size,

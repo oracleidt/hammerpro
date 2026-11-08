@@ -484,6 +484,7 @@ pub enum RenderKind {
 pub struct Render {
     pub kind: RenderKind,
     pub model: Option<usize>,
+    pub rope: Option<crate::rope::Rope>,
     pub orient: u8,
     pub rate: f32,
     pub second_rate: f32,
@@ -702,6 +703,7 @@ impl Plan {
                 } else {
                     None
                 },
+                rope: (kind == RenderKind::Rope).then(|| crate::rope::Rope::compile(op)),
                 orient: i(op, "orientation_type", 0).clamp(0, 3) as u8,
                 rate: f(op, "animation rate", 0.1).clamp(0.0, 1000.0),
                 second_rate: f(op, "second sequence animation rate", 0.0).clamp(0.0, 1000.0),
@@ -1262,6 +1264,14 @@ impl Sim {
 
     pub fn plan(&self) -> &Arc<Plan> {
         &self.plan
+    }
+
+    pub fn render_points(&self) -> Option<&Points> {
+        self.previous_points.as_ref()
+    }
+
+    pub fn render_dt(&self) -> f32 {
+        self.current_dt
     }
 
     pub fn time(&self) -> f32 {
@@ -2249,7 +2259,7 @@ impl Effect {
         self.drawable_sims().flat_map(|s| s.particles.iter().map(move |p| (&**s.plan(), p)))
     }
 
-    fn drawable_sims(&self) -> impl Iterator<Item = &Sim> + '_ {
+    pub fn drawable_sims(&self) -> impl Iterator<Item = &Sim> + '_ {
         self.render_order.iter().map(|&index| &self.sims[index].1).filter(|s| s.plan.draws)
     }
 

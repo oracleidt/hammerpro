@@ -32,6 +32,23 @@ pub enum ParticleOrient {
     /// Native trail head and head-to-tail delta, with full ribbon width.
     TrailCpu,
     TrailSpline,
+    RopeCpu,
+    RopeSpline,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ParticleRibbon {
+    /// Adjacent points before the head and after the tail join their widths.
+    pub neighbors: [[f32; 3]; 2],
+    pub end_width: f32,
+    pub end_color: [f32; 4],
+    pub spline: Option<ParticleSpline>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ParticleSpline {
+    pub controls: [[f32; 4]; 4],
+    pub interval: [f32; 2],
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -67,6 +84,7 @@ pub struct ParticleAnimation {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ParticleInstance {
+    pub ribbon: Option<ParticleRibbon>,
     pub animation: ParticleAnimation,
     pub pos: [f32; 3],
     pub size: f32,
@@ -238,18 +256,34 @@ fn pack_with_order(particles: &[ParticleInstance], preserve: bool) -> (Vec<Parti
             ((finite(p.add_self, 0.0).clamp(0.0, 16.0) * 256.0).round() as u32, 0)
         };
         let animation = p.animation;
+        let spline = p.ribbon.and_then(|ribbon| ribbon.spline);
+        let frames = if let Some(curve) = spline {
+            [curve.controls[2], curve.controls[3], p.ribbon.unwrap().end_color]
+        } else if let Some(ribbon) = p.ribbon {
+            let [a, b] = ribbon.neighbors.map(finite3);
+            let c = ribbon.end_color.map(|v| finite(v, 0.0).clamp(0.0, 1.0));
+            [[a[0], a[1], a[2], finite(ribbon.end_width, 0.0)], [b[0], b[1], b[2], c[0]], [c[1], c[2], c[3], 0.0]]
+        } else {
+            animation.frames.map(|uv| if uv.iter().all(|v| v.is_finite()) { uv } else { rect })
+        };
         data.push(ParticleGpu {
-            frames: animation.frames.map(|uv| if uv.iter().all(|v| v.is_finite()) { uv } else { rect }),
-            animation_blend: animation.blend.map(|f| finite(f, 0.0).clamp(0.0, 1.0)),
+            frames,
+            animation_blend: spline.map_or_else(
+                || animation.blend.map(|f| finite(f, 0.0).clamp(0.0, 1.0)),
+                |curve| [curve.interval[1], 0.0],
+            ),
             animation_flags: u32::from(animation.dual_sequence)
                 | (u32::from(animation.sequence_mode.min(2)) << 1)
                 | (u32::from(animation.max_luminance[0]) << 3)
                 | (u32::from(animation.max_luminance[1]) << 4),
-            pos: p.pos,
-            size: finite(p.size, 0.0).max(0.0),
-            axis: finite3(p.axis),
-            roll: finite(p.roll, 0.0),
-            yaw: finite(p.yaw, 0.0),
+            pos: spline.map_or(p.pos, |curve| curve.controls[0][..3].try_into().unwrap()),
+            size: spline.map_or_else(
+                || if p.ribbon.is_some() { finite(p.size, 0.0) } else { finite(p.size, 0.0).max(0.0) },
+                |curve| curve.controls[0][3],
+            ),
+            axis: spline.map_or_else(|| finite3(p.axis), |curve| curve.controls[1][..3].try_into().unwrap()),
+            roll: spline.map_or_else(|| finite(p.roll, 0.0), |curve| curve.controls[1][3]),
+            yaw: spline.map_or_else(|| finite(p.yaw, 0.0), |curve| curve.interval[0]),
             rect,
             color: crate::pack_rgba(color),
             mode: parameter * 256
@@ -263,6 +297,8 @@ fn pack_with_order(particles: &[ParticleInstance], preserve: bool) -> (Vec<Parti
                     ParticleOrient::ScreenEmissive => 5,
                     ParticleOrient::TrailCpu => 6,
                     ParticleOrient::TrailSpline => 7,
+                    ParticleOrient::RopeCpu => 8,
+                    ParticleOrient::RopeSpline => 9,
                 },
             bright: finite(p.bright, 1.0).clamp(0.0, 16.0),
             fade: pack_fade(p.screen_fade),
@@ -529,6 +565,7 @@ mod tests {
 
     fn p(material: MaterialId, blend: ParticleBlend, x: f32) -> ParticleInstance {
         ParticleInstance {
+            ribbon: None,
             animation: ParticleAnimation::default(),
             pos: [x, 0.0, 0.0],
             size: 4.0,

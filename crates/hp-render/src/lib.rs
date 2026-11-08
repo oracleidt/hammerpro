@@ -57,6 +57,7 @@ pub use local_shadow::MAX_SHADOWED_LIGHTS;
 pub use park::ParkedScene;
 pub use particles::{
     ParticleAnimation, ParticleBlend, ParticleDrawBatch, ParticleDrawKind, ParticleInstance, ParticleOrient,
+    ParticleRibbon, ParticleSpline,
 };
 pub use projector::{MAX_PROJECTORS, PROJECTOR_TEXTURE_SIZE, Projector, ProjectorImage};
 pub use sky::HdrSkyFace;
@@ -229,6 +230,7 @@ pub struct Renderer {
     sampler: wgpu::Sampler,
     sampler_clamp: wgpu::Sampler,
     particle_samplers: [wgpu::Sampler; 4],
+    rope_samplers: [wgpu::Sampler; 4],
     textures: HashMap<u32, TexEntry>,
     next_tex: u32,
     mat_gpu: Vec<MaterialGpu>,
@@ -877,7 +879,7 @@ impl Renderer {
             ..Default::default()
         });
         let max_buffer = limits.max_buffer_size;
-        let particle_samplers = std::array::from_fn(|mode| {
+        let particle_sampler = |mode, anisotropy_clamp| {
             let address =
                 |bit| if mode & bit != 0 { wgpu::AddressMode::ClampToEdge } else { wgpu::AddressMode::Repeat };
             device.create_sampler(&wgpu::SamplerDescriptor {
@@ -887,10 +889,12 @@ impl Renderer {
                 mag_filter: wgpu::FilterMode::Linear,
                 min_filter: wgpu::FilterMode::Linear,
                 mipmap_filter: wgpu::MipmapFilterMode::Linear,
-                anisotropy_clamp: 8,
+                anisotropy_clamp,
                 ..Default::default()
             })
-        });
+        };
+        let particle_samplers = std::array::from_fn(|mode| particle_sampler(mode, 8));
+        let rope_samplers = std::array::from_fn(|mode| particle_sampler(mode, 1));
         let max_storage = limits.max_storage_buffer_binding_size.min(max_buffer);
         let elems = |size: u64| (max_buffer / size).min(u64::from(u32::MAX)) as u32;
         let scene = Scene::new([elems(ARENA_ELEM[0]), elems(ARENA_ELEM[1]), elems(ARENA_ELEM[2])]);
@@ -954,6 +958,7 @@ impl Renderer {
             sampler,
             sampler_clamp,
             particle_samplers,
+            rope_samplers,
             textures: HashMap::new(),
             next_tex: 3,
             mat_gpu: Vec::new(),
@@ -1288,6 +1293,10 @@ impl Renderer {
                 wgpu::BindGroupEntry {
                     binding: 10,
                     resource: wgpu::BindingResource::Sampler(&self.particle_samplers[addressing]),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 11,
+                    resource: wgpu::BindingResource::Sampler(&self.rope_samplers[addressing]),
                 },
             ],
         }))

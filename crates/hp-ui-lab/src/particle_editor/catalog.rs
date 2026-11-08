@@ -450,7 +450,20 @@ pub(super) fn templates(category: Category) -> Vec<(&'static str, Vec<(&'static 
                     ("length fade in time", Value::Float(0.0)),
                 ],
             ),
-            ("render_rope", vec![("texel_size", Value::Float(4.0)), ("subdivision_count", Value::Int(3))]),
+            (
+                "render_rope",
+                vec![
+                    ("texel_size", Value::Float(4.0)),
+                    ("subdivision_count", Value::Int(3)),
+                    ("texture_scroll_rate", Value::Float(0.0)),
+                    ("texture_offset", Value::Float(0.0)),
+                    ("scale CP start", Value::Int(-1)),
+                    ("scale CP end", Value::Int(-1)),
+                    ("scale texture by CP distance", Value::Bool(false)),
+                    ("scale scroll by CP distance", Value::Bool(false)),
+                    ("scale offset by CP distance", Value::Bool(false)),
+                ],
+            ),
             (
                 "Render models",
                 vec![
