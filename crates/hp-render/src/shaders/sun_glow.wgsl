@@ -84,12 +84,13 @@ fn fs_sun_glow(in: SunGlowOut) -> @location(0) vec4<f32> {
     }
     if entity {
         let alpha = t.a * glow.right.w;
-        let color = floor(glow.color.rgb * vis * 255.0 + vec3<f32>(1e-4)) / 255.0;
+        let color = floor(glow.color.rgb * select(1.0, vis, glow.params.z > 0.5) * 255.0 + vec3<f32>(1e-4)) / 255.0;
         let tint = select(color, pow(color, vec3<f32>(2.2)), glow.up.w > 0.5);
         let exposure = select(glow.params.x, pow(glow.params.x, 2.2), glow.up.w > 0.5);
         var rgb = t.rgb * tint * exposure;
-        if mode == 0u { return vec4<f32>(t.rgb, 1.0); }
-        if mode == 3u || mode == 5u || mode == 7u || mode == 9u { rgb *= alpha; }
+        let shader_mode = u32(glow.params.y);
+        if shader_mode == 0u { return vec4<f32>(t.rgb, 1.0); }
+        if shader_mode == 3u || shader_mode == 5u || shader_mode == 7u || shader_mode == 9u { rgb *= alpha; }
         return vec4<f32>(rgb, alpha);
     }
     return vec4<f32>(t.rgb * glow.color.rgb * vis, t.a);

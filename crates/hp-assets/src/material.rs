@@ -88,6 +88,9 @@ pub(crate) struct MatAnalysis {
     pub sprite_orientation: u32,
     pub sprite_origin: [f32; 2],
     pub sprite_srgb: bool,
+    pub sprite_material_mode: Option<u32>,
+    pub sprite_vertex_color: bool,
+    pub sprite_vertex_alpha: bool,
     pub texture2: Option<String>,
     pub blend4: bool,
     pub four_way: Option<hp_vmt::FourWayBlend>,
@@ -232,7 +235,8 @@ pub(crate) fn analyze(name: &str, mat: &Material, texture_flags: &dyn Fn(&str) -
 }
 
 fn sprite_origin(mat: &Material) -> [f32; 2] {
-    let Some(value) = mat.get("$spriteorigin") else { return [0.0; 2] };
+    let fallback = if mat.shader_kind() == hp_vmt::ShaderKind::Sprite { [0.0; 2] } else { [0.5; 2] };
+    let Some(value) = mat.get("$spriteorigin") else { return fallback };
     let mut parts =
         value.trim_matches(|c: char| c.is_ascii_whitespace() || c == '[' || c == ']').split_ascii_whitespace();
     let pair = [parts.next(), parts.next()].map(|v| v.and_then(|v| v.parse::<f32>().ok()).filter(|v| v.is_finite()));
@@ -314,13 +318,26 @@ fn analyze_resolved(name: &str, mat: &Material, texture_flags: &dyn Fn(&str) -> 
         (tool.is_none() && !modulates && water.is_none()).then(|| crate::envmap::analyze_envmap(mat)).flatten();
     MatAnalysis {
         sprite_origin: sprite_origin(mat),
-        sprite_srgb: mat.get_i32("$nosrgb") == Some(0),
+        sprite_srgb: mat.shader_kind() != hp_vmt::ShaderKind::Sprite || mat.get_i32("$nosrgb") == Some(0),
+        sprite_material_mode: (mat.shader_kind() != hp_vmt::ShaderKind::Sprite).then_some(if mat.additive() {
+            5
+        } else {
+            2
+        }),
+        sprite_vertex_color: mat.shader_kind() == hp_vmt::ShaderKind::Sprite || mat.vertex_color(),
+        sprite_vertex_alpha: mat.shader_kind() == hp_vmt::ShaderKind::Sprite || mat.vertex_alpha(),
         sprite_orientation: match mat.get("$spriteorientation").unwrap_or("").to_ascii_lowercase().as_str() {
             "facing_upright" | "1" => 1,
             "vp_parallel" | "2" => 2,
             "oriented" | "3" => 3,
             "vp_parallel_oriented" | "4" => 4,
-            _ => 0,
+            _ => {
+                if mat.shader_kind() == hp_vmt::ShaderKind::Sprite {
+                    0
+                } else {
+                    2
+                }
+            }
         },
         particle_clamp: {
             let flags = texture.as_deref().map_or(0, texture_flags);
@@ -805,6 +822,13 @@ mod tests {
         );
         assert_eq!(corrected.sprite_origin, [0.25, 0.75]);
         assert!(corrected.sprite_srgb);
+        let generic = analyze("sprites/glow", &mat(r#"UnlitGeneric { $basetexture sprites/glow }"#));
+        assert_eq!(generic.sprite_origin, [0.5; 2]);
+        assert_eq!(generic.sprite_orientation, 2);
+        assert!(generic.sprite_srgb);
+        assert_eq!(generic.sprite_material_mode, Some(2));
+        assert!(!generic.sprite_vertex_color);
+        assert!(!generic.sprite_vertex_alpha);
         assert_eq!(texture_keys(MatKind::EntitySprite, &corrected), ["sprites/glow"]);
         assert_eq!(analyze("sprites/glow", &mat(r#"Sprite { $spriteorigin "[NaN 0.5]" }"#)).sprite_origin, [0.0; 2]);
     }

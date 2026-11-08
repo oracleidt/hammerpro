@@ -134,18 +134,18 @@ fn world_uniform(sprite: &WorldSprite, cam: &Camera, hdr: bool) -> Option<(u32, 
     let radius = sprite.glow_proxy * cam.height / (2.0 * distance * cam.tan_half_fov);
     let exposure = if hdr { sprite.hdr_scale } else { 1.0 };
     let color = sprite.color.map(|v| v.clamp(0.0, 1.0));
-    let rgb = [color[0], color[1], color[2]].map(|v| v * fade);
+    let rgb = if sprite.vertex_color { [color[0], color[1], color[2]].map(|v| v * fade) } else { [1.0; 3] };
     let center = screen_of(cam, pos);
     let anchor = pos + right * (1.0 - 2.0 * sprite.origin[0]) + up * (2.0 * sprite.origin[1] - 1.0);
     Some((
         sprite.material,
         SunGlowUniform {
             base: [anchor.x, anchor.y, anchor.z, clip.z / clip.w],
-            right: [right.x, right.y, right.z, color[3]],
+            right: [right.x, right.y, right.z, if sprite.vertex_alpha { color[3] } else { 1.0 }],
             up: [up.x, up.y, up.z, f32::from(sprite.srgb_color)],
             color: [rgb[0], rgb[1], rgb[2], radius],
             proxy: [center[0], center[1], 1.0, sprite.mode as f32],
-            params: [exposure, 0.0, 0.0, 0.0],
+            params: [exposure, sprite.material_mode.unwrap_or(sprite.mode) as f32, f32::from(sprite.vertex_color), 0.0],
         },
     ))
 }
@@ -384,7 +384,7 @@ impl Renderer {
                 if u.proxy[2] < 0.5 {
                     0
                 } else {
-                    match u.proxy[3] as u32 {
+                    match u.params[1] as u32 {
                         0 => 2,
                         1 | 2 | 4 => 1,
                         8 => 3,

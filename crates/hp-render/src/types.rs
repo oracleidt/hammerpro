@@ -735,6 +735,9 @@ pub struct SunGlow {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct WorldSprite {
+    pub vertex_color: bool,
+    pub vertex_alpha: bool,
+    pub material_mode: Option<u32>,
     pub object: ObjectId,
     pub origin: [f32; 2],
     pub srgb_color: bool,

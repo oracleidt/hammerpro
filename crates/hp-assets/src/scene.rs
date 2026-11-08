@@ -1435,6 +1435,9 @@ impl AssetManager {
                     .unwrap_or([64, 64]);
                 let pos = self.play_transforms.get(id).map_or(s.desc.origin, |m| m.transform_point3(s.desc.origin));
                 Some(hp_render::WorldSprite {
+                    vertex_color: a.sprite_vertex_color,
+                    vertex_alpha: a.sprite_vertex_alpha,
+                    material_mode: a.sprite_material_mode,
                     object: entity_object(*id),
                     pos: pos.as_vec3().to_array(),
                     size: size.map(|v| v as f32 * s.desc.sprite_size),

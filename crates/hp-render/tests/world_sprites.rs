@@ -18,6 +18,8 @@ fn entity_sprites_match_native_source_size_color_and_render_modes() {
     for c in cases.as_array().unwrap() {
         let name = c["name"].as_str().unwrap();
         let legacy = c["legacy"].as_bool().unwrap_or(false);
+        let generic = c["material"].as_str().unwrap_or("").starts_with("unlit");
+        let no_vertex = c["material"].as_str() == Some("unlit_novertex");
         let texture = r.create_texture_exact(&TextureUpload {
             width: 64,
             height: 32,
@@ -38,10 +40,13 @@ fn entity_sprites_match_native_source_size_color_and_render_modes() {
             object: 1,
             pos: [0.0, 0.0, 64.0],
             size: [64.0 * scale, 32.0 * scale],
-            origin: c["origin"]
-                .as_array()
-                .map_or([0.0; 2], |v| [v[0].as_f64().unwrap() as f32, v[1].as_f64().unwrap() as f32]),
+            origin: c["origin"].as_array().map_or(if generic { [0.5; 2] } else { [0.0; 2] }, |v| {
+                [v[0].as_f64().unwrap() as f32, v[1].as_f64().unwrap() as f32]
+            }),
             srgb_color: !legacy,
+            vertex_color: !no_vertex,
+            vertex_alpha: !no_vertex,
+            material_mode: generic.then_some(if c["material"].as_str() == Some("unlit_add") { 5 } else { 2 }),
             material: 1,
             color: [1.0, 128.0 / 255.0, 64.0 / 255.0, c["amount"].as_f64().unwrap_or(255.0) as f32 / 255.0],
             mode: c["mode"].as_u64().unwrap() as u32,
@@ -64,7 +69,11 @@ fn entity_sprites_match_native_source_size_color_and_render_modes() {
             },
             mode: RenderMode::Textured,
             grid: None,
-            background: [0.0; 3],
+            background: if c["bg"].as_bool().unwrap_or(false) {
+                [32.0 / 255.0, 64.0 / 255.0, 128.0 / 255.0]
+            } else {
+                [0.0; 3]
+            },
             selection_color: [0.0; 4],
             show_models: false,
             show_sprites: true,
@@ -120,6 +129,9 @@ fn glow_uses_origin_visibility_while_alpha_sprites_follow_scene_depth() {
         },
     );
     let sprite = WorldSprite {
+        vertex_color: true,
+        vertex_alpha: true,
+        material_mode: None,
         object: 10,
         pos: [0.0, 0.0, 64.0],
         size: [128.0; 2],
