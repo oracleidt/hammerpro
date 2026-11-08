@@ -37,6 +37,63 @@ fn texture_parameter(key: &str, value: &str) -> bool {
         && !value.to_ascii_lowercase().starts_with("_rt_")
 }
 
+const IDENTITY: &str = "center .5 .5 scale 1 1 rotate 0 translate 0 0";
+
+fn model_parameters(pairs: &mut Vec<(String, String)>, inherited_base: &str) -> String {
+    let base = pairs
+        .iter()
+        .find(|(key, _)| key.eq_ignore_ascii_case("$basetexturetransform"))
+        .map(|(_, value)| value.clone())
+        .unwrap_or_else(|| inherited_base.to_owned());
+    // These brush shaders ignore Phong and use linear envmap tint. Merely
+    // changing their name activates Phong or applies GammaToLinear a second time.
+    for (key, value) in pairs.iter_mut() {
+        let parameter = key.rsplit('?').next().unwrap_or(key);
+        if parameter.eq_ignore_ascii_case("$phong") {
+            *value = "0".into();
+        } else if parameter.eq_ignore_ascii_case("$envmaptint")
+            && let Some(tint) = hp_vmt::parse_vec3(value)
+            && tint.iter().all(|v| v.is_finite())
+        {
+            let [r, g, b] = tint.map(|v| v.max(0.0).powf(1.0 / 2.2));
+            *value = format!("[{r} {g} {b}]");
+        }
+    }
+    // Source samples brush detail with the base matrix; the model shader uses
+    // its separate detail matrix. Preserve the effective matrix in each scope.
+    pairs.retain(|(key, _)| !key.eq_ignore_ascii_case("$detailtexturetransform"));
+    pairs.push(("$detailtexturetransform".into(), base.clone()));
+    let conditional: Vec<_> = pairs
+        .iter()
+        .filter_map(|(key, value)| {
+            let (condition, parameter) = key.rsplit_once('?')?;
+            parameter
+                .eq_ignore_ascii_case("$basetexturetransform")
+                .then(|| (format!("{condition}?$detailtexturetransform"), value.clone()))
+        })
+        .collect();
+    for (key, value) in conditional {
+        pairs.retain(|(old, _)| !old.eq_ignore_ascii_case(&key));
+        pairs.push((key, value));
+    }
+    base
+}
+
+fn model_block(block: &mut hp_vmt::Block, base: &str, shader: &str) {
+    if block.name.eq_ignore_ascii_case("proxies") {
+        return;
+    }
+    let lower = block.name.to_ascii_lowercase();
+    let lower = lower.strip_prefix("sdk_").unwrap_or(&lower);
+    if let Some(suffix) = lower.strip_prefix(shader).filter(|s| s.starts_with('_')) {
+        block.name = format!("VertexLitGeneric{suffix}");
+    }
+    let base = model_parameters(&mut block.props, base);
+    for child in &mut block.children {
+        model_block(child, &base, shader);
+    }
+}
+
 struct Export<'a> {
     fs: &'a GameFs,
     generated: BTreeMap<String, &'a [u8]>,
@@ -164,6 +221,10 @@ pub fn stage_creation(
             && fs.read(&path).is_some();
         if matches!(shader.as_str(), "lightmappedgeneric" | "worldvertextransition" | "lightmappedtwotexture") {
             material.shader = "VertexLitGeneric".to_owned();
+            let base = model_parameters(&mut material.params, IDENTITY);
+            for block in &mut material.other_blocks {
+                model_block(block, &base, &shader);
+            }
         }
         export.parameters(&mut material.params)?;
         for block in &mut material.other_blocks {
@@ -216,6 +277,82 @@ mod tests {
     fn vtf(rgba: [u8; 4]) -> Vec<u8> {
         let image = hp_vtf::RgbaImage::new(8, 8, rgba.repeat(64)).unwrap();
         hp_vtf::encode(&image, &hp_vtf::EncodeOptions::default()).unwrap()
+    }
+
+    #[test]
+    fn converted_brush_materials_preserve_linear_reflections_and_detail_uv_in_shader_overrides() {
+        let transform = "center .5 .5 scale 2 3 rotate 30 translate .25 -.5";
+        let source = format!(
+            r#"LightmappedGeneric {{
+                "$envmap" "env_cubemap" "$envmaptint" "[.1 .025 4]"
+                "$phong" "1" "$basetexturetransform" "{transform}"
+                "$detailtexturetransform" "ignored by the brush shader"
+                LightmappedGeneric_DX9 {{ "$envmaptint" "{{128 64 255}}" }}
+                ">=DX90" {{ "$phong" "1" }}
+                Proxies {{ Equals {{ srcVar1 "$alpha" resultVar "$alpha" }} }}
+            }}"#
+        );
+        let fs = GameFs::empty();
+        let mut geo = geometry(&["source"]);
+        let staged =
+            stage(&fs, &mut geo, "models/test", &[("materials/source.vmt".into(), source.into_bytes())]).unwrap();
+        let (_, bytes) = staged.iter().find(|(name, _)| name.ends_with(".vmt")).unwrap();
+        let material = hp_vmt::parse_bytes(bytes).unwrap();
+        assert_eq!(material.shader, "VertexLitGeneric");
+        assert_eq!(material.get("$phong"), Some("0"));
+        assert_eq!(material.get("$detailtexturetransform"), Some(transform));
+        let linear = material.get_vec3("$envmaptint").unwrap().map(|v| v.powf(2.2));
+        for (actual, expected) in linear.into_iter().zip([0.1, 0.025, 4.0]) {
+            assert!((actual - expected).abs() < 1e-6, "{actual} != {expected}");
+        }
+        assert_eq!(material.other_blocks[0].name, "VertexLitGeneric_dx9");
+        let resolved = material.resolve_fallbacks(95, false);
+        assert_eq!(resolved.get("$phong"), Some("0"));
+        assert_eq!(resolved.get("$detailtexturetransform"), Some(transform));
+        let linear = resolved.get_vec3("$envmaptint").unwrap().map(|v| v.powf(2.2));
+        for (actual, expected) in linear.into_iter().zip([128.0 / 255.0, 64.0 / 255.0, 1.0]) {
+            assert!((actual - expected).abs() < 1e-6);
+        }
+        assert_eq!(material.proxies.unwrap().children[0].name, "Equals");
+    }
+
+    #[test]
+    fn staged_reflective_prop_matches_the_material_captured_in_the_native_renderer() {
+        let assets = [
+            (
+                "materials/hp_conv117/reflection.vmt".into(),
+                include_bytes!("../../tests/data/prop_material_native/source.vmt").to_vec(),
+            ),
+            (
+                "materials/hp_conv117/black.vtf".into(),
+                include_bytes!("../../tests/data/prop_material_native/black.vtf").to_vec(),
+            ),
+            (
+                "materials/hp_conv117/half.vtf".into(),
+                include_bytes!("../../tests/data/prop_material_native/half.vtf").to_vec(),
+            ),
+        ];
+        let mut geo = geometry(&["hp_conv117/reflection"]);
+        let files = stage(&GameFs::empty(), &mut geo, "models/hp_conv117/probe", &assets).unwrap();
+        let (_, vmt) = files.iter().find(|(path, _)| path.ends_with(".vmt")).unwrap();
+        assert_eq!(vmt, include_bytes!("../../tests/data/prop_material_native/converted.vmt"));
+        let original = image::load_from_memory(include_bytes!("../../tests/data/prop_material_native/original.png"))
+            .unwrap()
+            .to_rgb8();
+        let before = image::load_from_memory(include_bytes!("../../tests/data/prop_material_native/before.png"))
+            .unwrap()
+            .to_rgb8();
+        let after = image::load_from_memory(include_bytes!("../../tests/data/prop_material_native/after.png"))
+            .unwrap()
+            .to_rgb8();
+        assert_eq!(original.dimensions(), (128, 128));
+        assert_eq!(original.dimensions(), before.dimensions());
+        assert_eq!(original.dimensions(), after.dimensions());
+        let difference = |image: &image::RgbImage| {
+            original.as_raw().iter().zip(image.as_raw()).map(|(a, b)| a.abs_diff(*b)).max().unwrap()
+        };
+        assert_eq!(difference(&before), 125, "the original conversion regression must be visible");
+        assert!(difference(&after) <= 1, "native converted material must preserve reflection radiance");
     }
 
     #[test]

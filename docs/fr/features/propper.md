@@ -29,6 +29,8 @@ Aucune n'a de raccourci par défaut (attribuez-en un dans **Paramètres > Clavie
 
 Glisser avec le clic droit fait tourner la vue, le clic milieu la déplace et la molette zoome. Les surimpressions de collision, de limites et du point d’éclairage sont indépendantes ; **Cadrer** inclut le modèle et les points modifiables. L’aperçu se met à jour pendant les modifications.
 
+Lors de l’adaptation des matériaux de brushes aux modèles, le convertisseur adapte aussi la teinte statique des reflets à l’espace colorimétrique du shader de modèle, conserve l’alignement du détail sur la transformation de base et transfère les variantes de shader vers VertexLitGeneric. Les matériaux de modèles existants conservent leurs paramètres. Les shaders de brushes et de modèles ont des fonctions différentes : vérifiez en jeu les proxies personnalisés et les transformations indépendantes de masque de reflet.
+
 La case `$staticprop` crée un `prop_static` lorsqu’elle est cochée, un `prop_dynamic` lorsqu’elle est décochée ; elle est désactivée pour un `prop_physics` mobile. Par défaut : collision activée, masse de 10 kg, quatre LOD à 50 %. **Options des props (Propper)...** conserve les valeurs par défaut du type, de la collision, de la masse et des LOD (`lab.propper_physics`, `lab.propper_static`, `lab.propper_collision`, `lab.propper_mass`, `lab.model_lod`). Les chemins et la géométrie manuelle se règlent dans la fenêtre de création.
 
 Via MCP, réglez les valeurs par défaut avec `set_setting`, sélectionnez les brushes puis lancez `brushes_to_prop`. Vérifiez la fenêtre et cliquez sur **Créer le prop**. Entrée valide lorsqu’aucun champ de texte n’a le focus clavier.

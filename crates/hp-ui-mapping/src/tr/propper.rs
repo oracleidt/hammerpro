@@ -5,6 +5,11 @@ pub const TR: TrTable = &[
     ("propper.create_title", "Create prop from brushes", "Créer un prop à partir des brushes"),
     ("propper.create", "Create prop", "Créer le prop"),
     (
+        "propper.empty",
+        "The selection has no visible faces to turn into a prop.",
+        "La sélection n'a aucune face visible à convertir en prop.",
+    ),
+    (
         "propper.create_select",
         "Select brushes or displacements to turn into a prop.",
         "Sélectionnez des brushes ou des displacements à convertir en prop.",

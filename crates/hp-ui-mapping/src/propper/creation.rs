@@ -139,7 +139,7 @@ impl Draft {
             collect_prop(&state.doc, &ids, &|name| {
                 sizes.get(&name.to_ascii_lowercase()).copied().unwrap_or((512, 512))
             })
-            .ok_or_else(|| t!("lab.prop.empty").to_owned())?,
+            .ok_or_else(|| t!("propper.empty").to_owned())?,
         );
         let bounds = Aabb::from_points(geometry.tris.iter().flat_map(|tri| tri.pos));
         let mut hash = 0x811c_9dc5u32;

@@ -29,6 +29,8 @@ None of them has a default shortcut (bind one in **Settings > Keyboard**).
 
 Right drag orbits, middle drag pans and the wheel zooms. Toggle the collision, bounds and illumination overlays independently; **Frame** fits the object and editable points. The preview updates while editing.
 
+When adapting brush materials to model lighting, the converter also adapts static reflection tint to the model shader color space, keeps detail aligned to the original base transform, and carries shader override sections over to VertexLitGeneric. Existing model materials retain their authored parameters. Brush and model shaders have different features; custom proxies and independent reflection-mask transforms still need an in-game check.
+
 `$staticprop` creates a `prop_static` when checked, a `prop_dynamic` when unchecked, and is disabled for a movable `prop_physics`. Collision defaults to on, mass to 10 kg and LODs to four levels at 50%. The global **Prop options (Propper)...** window stores the type/collision/mass/LOD defaults (`lab.propper_physics`, `lab.propper_static`, `lab.propper_collision`, `lab.propper_mass`, `lab.model_lod`). Paths and manual geometry are configured in the creation window.
 
 Through MCP, set defaults with `set_setting`, select the brushes and run `brushes_to_prop`. Review the creation window and click **Create prop**. Enter confirms when no text field has keyboard focus.

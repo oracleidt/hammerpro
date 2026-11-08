@@ -1,0 +1,7 @@
+"VertexLitGeneric"
+{
+	"$basetexture" "models/hp_conv117/probe/t_black_652d41071ed7a9f3"
+	"$envmap" "models/hp_conv117/probe/t_half_c7e77b8f7fce9c29"
+	"$envmaptint" "[0.3511192 0.3511192 0.3511192]"
+	"$detailtexturetransform" "center .5 .5 scale 1 1 rotate 0 translate 0 0"
+}
