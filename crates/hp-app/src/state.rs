@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 use glam::{DVec2, DVec3};
 
@@ -21,6 +21,8 @@ pub struct ParticleModelSnapshot {
 
 #[derive(Clone, Debug)]
 pub struct ParticleModelDraw {
+    pub definition: Weak<hp_pcf::Plan>,
+    pub renderer_index: u32,
     pub entity: u32,
     pub draw_order: u32,
     pub model: Arc<str>,

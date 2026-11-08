@@ -24,6 +24,196 @@ mod tests {
     use hp_render::*;
 
     #[test]
+    fn weighted_activity_selection_matches_native_tickets_and_random_stream() {
+        let report: serde_json::Value =
+            serde_json::from_str(include_str!("../tests/data/native_weighted_model/native-selection.json")).unwrap();
+        let mut checked = 0;
+        for case in report["cases"].as_array().unwrap() {
+            let mut sequences = vec![hp_mdl::Sequence::default()];
+            sequences.extend(case["weights"].as_array().unwrap().iter().map(|weight| hp_mdl::Sequence {
+                activity: "ACT_IDLE".into(),
+                activity_weight: weight.as_i64().unwrap() as i32,
+                ..Default::default()
+            }));
+            let mut random = hp_pcf::random::UniformRandomStream::new(case["seed"].as_i64().unwrap() as i32);
+            for expected in case["expected"].as_array().unwrap() {
+                let selected =
+                    hp_mdl::select_weighted_activity(&sequences, "act_idle", |total| random.int(0, total - 1));
+                assert_eq!(selected, Some(expected.as_u64().unwrap() as usize));
+                checked += 1;
+            }
+            assert_eq!(
+                hp_mdl::select_weighted_activity(&sequences, "", |_| panic!("no random draw for no activity")),
+                None
+            );
+            assert_eq!(
+                hp_mdl::select_weighted_activity(&sequences, "missing", |_| panic!(
+                    "no random draw for missing activity"
+                )),
+                None
+            );
+        }
+        assert_eq!(checked, 3072);
+    }
+
+    #[test]
+    fn weighted_model_poses_match_native_images_and_stay_fixed_per_definition() {
+        let Some((device, queue)) = crate::test_gpu::gpu() else { return };
+        let mut renderer = Renderer::new(&device, &queue);
+        renderer.set_tone_settings(ToneSettings { bloom: 0.0, ..Default::default() });
+        let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/native_weighted_model");
+        let fs = hp_fs::GameFs::from_source_mounts(
+            None,
+            None,
+            &[hp_fs::SourceMount {
+                kind: hp_fs::SourceMountKind::Gma,
+                label: "Owned weighted model activity reference".into(),
+                path: folder.join("hp_weighted117.gma"),
+                enabled: true,
+                origin: hp_fs::SourceOrigin::Custom,
+            }],
+        )
+        .unwrap();
+        let path = "models/hp_modelweight117/probe.mdl";
+        let normal = Arc::new(crate::models::model_job(&fs, path).unwrap());
+        let bind_key = model_data_key(path, Some(ANIMATION_KEY));
+        let animated = Arc::new(crate::models::model_job(&fs, &bind_key).unwrap());
+        let sequences = &animated.particle_animation.as_ref().unwrap().sequences;
+        assert_eq!(sequences.iter().map(|s| s.activity_weight).collect::<Vec<_>>(), vec![0, 1, 3, 6]);
+        let mut assets = AssetManager::new(&hp_app::settings::Settings::default());
+        assets.models.map.insert(path.into(), ModelEntry::Ready(normal));
+        assets.models.map.insert(bind_key, ModelEntry::Ready(animated));
+        let material = "hp_modelanim117/gray";
+        let analysis = crate::material::analyze(material, &fs.material(material).unwrap(), &|name| {
+            fs.texture_flags(name).unwrap_or(0)
+        });
+        for key in crate::material::texture_keys(MatKind::Model, &analysis) {
+            let texture = crate::texture::prepare_texture(&fs, &key, false).unwrap();
+            let id = renderer.create_texture_exact(&texture.upload);
+            assets.mats.textures.map.insert(
+                key,
+                crate::texture::TexEntry {
+                    current: Some((id, texture.size)),
+                    loading: false,
+                    queued: false,
+                    missing: false,
+                },
+            );
+        }
+        assets.mats.analyses.insert(
+            material.into(),
+            crate::registry::AnaEntry { value: Some(Some(Arc::new(analysis))), ..Default::default() },
+        );
+        assets.fs = Some(fs);
+        let report: serde_json::Value =
+            serde_json::from_str(include_str!("../tests/data/native_weighted_model/native-selection.json")).unwrap();
+        let expected = report["cases"][0]["expected"].as_array().unwrap();
+        let definitions =
+            hp_pcf::parse_file(include_bytes!("../tests/data/native_weighted_model/hp_weighted117.pcf")).unwrap();
+        let params = ViewParams {
+            size: [128; 2],
+            game_pixel_grid: true,
+            kind: ViewKind::Perspective {
+                eye: [10.0, -256.0, 64.0],
+                forward: [0.0, 1.0, 0.0],
+                up: [0.0, 0.0, 1.0],
+                fov_y_deg: 60.0,
+                near: 1.0,
+                far: 2000.0,
+            },
+            mode: RenderMode::Unshaded,
+            grid: None,
+            background: [0.0; 3],
+            selection_color: [0.0; 4],
+            show_sprites: false,
+            show_models: false,
+            msaa: false,
+        };
+        let mut held_plans = Vec::new();
+        let mut weighted = 0;
+        let mut compared = 0;
+        let mut maximum = 0;
+        for definition in definitions {
+            let name = definition.name.strip_prefix("hp_weighted117_").unwrap().to_owned();
+            let plan = Arc::new(hp_pcf::Plan::new(&definition));
+            let mut effect = hp_pcf::Effect::new(&definition.name, &|_| Some(plan.clone()), 17).unwrap();
+            effect.step(0.02, [0.0, 0.0, 64.0], 1);
+            let p = &effect.sims[0].1.particles[0];
+            let model = &plan.model_renderers[0];
+            let draw = ParticleModelDraw {
+                definition: Arc::downgrade(&plan),
+                renderer_index: 0,
+                entity: 17,
+                draw_order: 0,
+                model: model.path().into(),
+                skin: 0,
+                body_group: 0,
+                sequence: p.sequence2 as i32,
+                activity: model.activity.as_str().into(),
+                animation_time: 0.0,
+                animation_rate: 0.0,
+                transform: model.transform(p),
+                tint: [1.0; 4],
+            };
+            let instances = assets.particle_draw_models_impl(&mut renderer, std::slice::from_ref(&draw));
+            assert_eq!(instances.len(), 1, "{name}");
+            let reference_name = if name.starts_with("weighted") {
+                let expected = expected[weighted].as_u64().unwrap() as usize;
+                weighted += 1;
+                let choice = assets
+                    .particle_draws
+                    .activities
+                    .iter()
+                    .find(|(key, _)| key.definition == Arc::as_ptr(&plan) as usize)
+                    .unwrap()
+                    .1;
+                assert_eq!(choice.sequence, Some(expected), "{name}");
+                format!("sequence{expected}")
+            } else {
+                name.clone()
+            };
+            // Another entity and another frame share the renderer definition's
+            // choice, without consuming another global integer draw.
+            let next_random = assets.particle_draws.activity_random.clone().next_int();
+            let repeated = assets.particle_draw_models_impl(
+                &mut renderer,
+                &[ParticleModelDraw { entity: 99, animation_time: 1.0, ..draw }],
+            );
+            assert_eq!(instances[0].model, repeated[0].model, "{name}");
+            assert_eq!(next_random, assets.particle_draws.activity_random.clone().next_int());
+            assets.mats.apply_dirty(&mut renderer);
+            let target = image::open(folder.join(format!("native_{reference_name}.png"))).unwrap().to_rgb8();
+            for preview in [false, true] {
+                if preview {
+                    renderer.render_particle_preview_with_models(1, &params, &[], &instances);
+                } else {
+                    renderer.set_particles(&[]);
+                    renderer.set_particle_models(&instances);
+                    renderer.render_view(1, &params, &Overlay::default());
+                }
+                let (_, _, pixels) = renderer.read_view_rgba8(1).unwrap();
+                let delta = pixels
+                    .chunks_exact(4)
+                    .zip(target.pixels())
+                    .flat_map(|(a, b)| (0..3).map(move |c| a[c].abs_diff(b[c])))
+                    .max()
+                    .unwrap();
+                maximum = maximum.max(delta);
+                assert!(delta <= 3, "{name} uses {reference_name}, preview={preview}: maximum RGB delta {delta}");
+                compared += 1;
+            }
+            held_plans.push(plan);
+        }
+        assert_eq!(weighted, 32);
+        assert_eq!(compared, 70);
+        assert_eq!(assets.particle_draws.activities.len(), 32);
+        drop(held_plans);
+        assets.collect_particle_draw_models(&mut renderer);
+        assert!(assets.particle_draws.activities.is_empty(), "discarded definitions must not leak cached choices");
+        eprintln!("70 weighted model pose comparisons against native sequence images; maximum RGB delta {maximum}/255");
+    }
+
+    #[test]
     fn native_model_bodygroups_skins_sequences_and_activities_survive_asset_loading() {
         let Some((device, queue)) = crate::test_gpu::gpu() else { return };
         let mut renderer = Renderer::new(&device, &queue);
@@ -95,6 +285,8 @@ mod tests {
             let p = &effect.sims[0].1.particles[0];
             let model = &plan.model_renderers[0];
             let draw = ParticleModelDraw {
+                definition: Arc::downgrade(&plan),
+                renderer_index: 0,
                 entity: 17,
                 draw_order: 0,
                 model: model.path().into(),
@@ -174,6 +366,8 @@ mod tests {
             let draws = assets.particle_draw_models_impl(
                 &mut renderer,
                 &[ParticleModelDraw {
+                    definition: Weak::new(),
+                    renderer_index: 0,
                     entity: 17,
                     draw_order: 0,
                     model: path.into(),
@@ -284,10 +478,36 @@ struct Posed {
     used: u64,
 }
 
-#[derive(Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct ActivityKey {
+    definition: usize,
+    renderer: u32,
+    model: Arc<str>,
+    activity: Arc<str>,
+}
+
+struct ActivityChoice {
+    definition: Weak<hp_pcf::Plan>,
+    source: Weak<PreparedModel>,
+    sequence: Option<usize>,
+}
+
 pub(crate) struct DrawCache {
     mount: u64,
     poses: AHashMap<PoseKey, Posed>,
+    activities: AHashMap<ActivityKey, ActivityChoice>,
+    activity_random: hp_pcf::random::UniformRandomStream,
+}
+
+impl Default for DrawCache {
+    fn default() -> Self {
+        Self {
+            mount: 0,
+            poses: AHashMap::default(),
+            activities: AHashMap::default(),
+            activity_random: hp_pcf::random::UniformRandomStream::new(1),
+        }
+    }
 }
 
 impl AssetManager {
@@ -302,6 +522,9 @@ impl AssetManager {
                 false
             }
         });
+        self.particle_draws
+            .activities
+            .retain(|_, choice| same_mount && choice.definition.strong_count() > 0 && choice.source.strong_count() > 0);
         self.particle_draws.mount = self.mount_gen;
     }
 
@@ -351,10 +574,33 @@ impl AssetManager {
         let key = model_data_key(path, Some(ANIMATION_KEY));
         let data = self.model_data(&key)?;
         let source = data.particle_animation.as_ref()?;
-        let sequence = source
-            .sequences
-            .iter()
-            .position(|sequence| !draw.activity.is_empty() && sequence.activity.eq_ignore_ascii_case(&draw.activity))
+        let activity = if draw.activity.is_empty() {
+            None
+        } else {
+            let key = ActivityKey {
+                definition: draw.definition.as_ptr() as usize,
+                renderer: draw.renderer_index,
+                model: Arc::clone(&draw.model),
+                activity: Arc::clone(&draw.activity),
+            };
+            if let Some(choice) = self.particle_draws.activities.get(&key)
+                && choice.source.as_ptr() == Arc::as_ptr(&data)
+            {
+                choice.sequence
+            } else {
+                // Native picks once in the renderer's InitParams, shared by
+                // all particles and instances of the same definition/pass.
+                let sequence = hp_mdl::select_weighted_activity(&source.sequences, &draw.activity, |total| {
+                    self.particle_draws.activity_random.int(0, total - 1)
+                });
+                self.particle_draws.activities.insert(
+                    key,
+                    ActivityChoice { definition: draw.definition.clone(), source: Arc::downgrade(&data), sequence },
+                );
+                sequence
+            }
+        };
+        let sequence = activity
             .or_else(|| usize::try_from(draw.sequence).ok().filter(|index| *index < source.sequences.len()))
             .unwrap_or(0);
         let clip = hp_mdl::animation_clip(&source.mdl, sequence)?;

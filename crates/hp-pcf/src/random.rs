@@ -43,7 +43,7 @@ impl UniformRandomStream {
 
     pub fn int(&mut self, min: i32, max: i32) -> i32 {
         let span = i64::from(max) - i64::from(min) + 1;
-        if span <= 0 || span > i64::from(i32::MAX) {
+        if span <= 1 || span > i64::from(i32::MAX) {
             return min;
         }
         let span = span as u32;
@@ -98,6 +98,21 @@ mod tests {
                 assert!((-10..=10).contains(&stream.int(-10, 10)));
             }
             assert_eq!(stream.int(5, 2), 5);
+        }
+    }
+
+    #[test]
+    fn singleton_integer_ranges_do_not_advance_the_native_random_stream() {
+        let report: serde_json::Value =
+            serde_json::from_str(include_str!("../tests/data/native_random_degenerate.json")).unwrap();
+        for case in report["cases"].as_array().unwrap() {
+            let mut stream = UniformRandomStream::new(1);
+            let min = case["bounds"][0].as_i64().unwrap() as i32;
+            let max = case["bounds"][1].as_i64().unwrap() as i32;
+            assert_eq!(stream.int(min, max), case["first"].as_i64().unwrap() as i32);
+            for expected in case["after"].as_array().unwrap() {
+                assert_eq!(stream.int(0, 9), expected.as_i64().unwrap() as i32, "native range [{min}, {max}]");
+            }
         }
     }
 }

@@ -401,11 +401,14 @@ pub fn append_models<'a>(
     };
     for (entity, effect) in effects {
         let mut next_draw_order = 0;
-        for (plan, particles, time) in effect.systems_with_clock() {
+        for sim in effect.drawable_sims() {
+            let plan = sim.plan();
+            let particles = &sim.particles;
+            let time = sim.time();
             if particles.is_empty() {
                 continue;
             }
-            for render in plan.renderers() {
+            for (renderer_index, render) in plan.renderers().enumerate() {
                 let draw_order = next_draw_order;
                 next_draw_order += 1;
                 let Some(model) = render.model.and_then(|index| plan.model_renderers.get(index)) else { continue };
@@ -417,6 +420,8 @@ pub fn append_models<'a>(
                         continue;
                     }
                     models.push(hp_app::state::ParticleModelDraw {
+                        definition: Arc::downgrade(plan),
+                        renderer_index: renderer_index as u32,
                         entity,
                         draw_order,
                         model: Arc::clone(&path),

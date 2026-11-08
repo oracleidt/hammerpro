@@ -15,7 +15,7 @@ pub use deps::{MdlDependencies, gib_models, read_dependencies};
 pub use error::{FileKind, MdlError};
 pub use mdl::{
     Attachment, BodyPart, Bone, FLAG_HAS_SHADOW_LOD, FLAG_OBSOLETE, FLAG_STATIC_PROP, Hitbox, HitboxSet, MAX_VERSION,
-    MIN_VERSION, MdlHeaderInfo, Sequence, SubModel,
+    MIN_VERSION, MdlHeaderInfo, Sequence, SubModel, select_weighted_activity,
 };
 pub use model::{BodyGroupSelect, LoadOptions, Model, ModelMesh, ModelVertex, load};
 pub use paths::{normalize_material_name, sibling_paths};

@@ -171,9 +171,41 @@ pub struct SubModel {
 pub struct Sequence {
     pub name: String,
     pub activity: String,
+    pub activity_weight: i32,
     pub flags: u32,
     pub bbox_min: [f32; 3],
     pub bbox_max: [f32; 3],
+}
+
+/// Select an activity's initial sequence. Particle renderers pass no current
+/// sequence, so negative weights participate by magnitude rather than sticking.
+/// The callback receives the native total weight and supplies its random ticket.
+pub fn select_weighted_activity(
+    sequences: &[Sequence],
+    activity: &str,
+    draw: impl FnOnce(i32) -> i32,
+) -> Option<usize> {
+    if activity.is_empty() {
+        return None;
+    }
+    let matching = || sequences.iter().enumerate().filter(|(_, s)| s.activity.eq_ignore_ascii_case(activity));
+    let total: u64 = matching().map(|(_, s)| u64::from(s.activity_weight.unsigned_abs())).sum();
+    if matching().next().is_none() || total > i32::MAX as u64 {
+        return None;
+    }
+    let mut ticket = draw(total as i32).clamp(0, (total as i32 - 1).max(0)) as u32;
+    let mut last = None;
+    for (index, sequence) in matching() {
+        last = Some(index);
+        // Source totals the original weights, but stores zero tuple weights as
+        // one. Preserve that distinction instead of silently renormalizing.
+        let weight = sequence.activity_weight.unsigned_abs().max(1);
+        if ticket < weight {
+            return Some(index);
+        }
+        ticket -= weight;
+    }
+    last
 }
 
 #[derive(Clone, Debug, Default)]
@@ -515,6 +547,7 @@ fn parse_sequences(r: &Reader<'_>) -> Result<Vec<Sequence>> {
         out.push(Sequence {
             name: rel_str(r, s, r.i32(s + 4)?, "sequence name")?,
             activity: rel_str(r, s, r.i32(s + 8)?, "activity name")?,
+            activity_weight: r.i32(s + 20)?,
             flags: r.u32(s + 12)?,
             bbox_min: r.floats(s + 32)?,
             bbox_max: r.floats(s + 44)?,
