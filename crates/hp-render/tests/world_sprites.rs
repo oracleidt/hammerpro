@@ -105,6 +105,23 @@ fn entity_sprites_match_native_source_size_color_and_render_modes() {
                 assert!(hidden.chunks_exact(4).all(|p| p[..3] == [0; 3]));
             }
             r.set_object_flags(1, ObjectFlags::default());
+            let parked = r.park_scene();
+            r.set_world_sprites(&[]);
+            r.render_view(118, &view, &Overlay::default());
+            let (_, _, empty) = r.read_view_rgba8(118).unwrap();
+            assert!(empty.chunks_exact(4).all(|p| p[..3] == [0; 3]));
+            r.restore_scene(parked).drop_in_background();
+            r.render_view(118, &view, &Overlay::default());
+            let (_, _, restored) = r.read_view_rgba8(118).unwrap();
+            image::save_buffer(dir.join("restored.png"), &restored, 128, 128, image::ColorType::Rgba8).unwrap();
+            let differences = restored.chunks_exact(4).zip(actual.chunks_exact(4)).filter(|(a, b)| a != b).count();
+            let maximum = restored.iter().zip(&actual).map(|(a, b)| a.abs_diff(*b)).max().unwrap();
+            assert!(
+                restored == actual,
+                "restoring a map restores its own entity sprites: {differences} different pixels, maximum {maximum}, center {:?}, expected {:?}",
+                &restored[(64 * 128 + 64) * 4..(64 * 128 + 64) * 4 + 4],
+                &actual[(64 * 128 + 64) * 4..(64 * 128 + 64) * 4 + 4]
+            );
         }
         r.destroy_texture(texture);
     }
