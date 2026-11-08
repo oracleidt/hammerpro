@@ -227,9 +227,6 @@ fn rope_particles_match_native_subdivision_texture_coordinates_and_endpoint_attr
                 .zip(target.pixels())
                 .filter(|(a, b)| (a[..3].iter().any(|v| *v > 4)) != b.0.iter().any(|v| *v > 4))
                 .count();
-            // D3D9 and WGPU differ at a few zero-crossings of the highly
-            // minified repeated texture. Check linear-light error as well as
-            // encoded RGB, with exact coverage and a two-pixel limit.
             let repeated_spline = name.starts_with("spline_") && texture_name == "quad";
             let acceptable =
                 delta <= 3 || (repeated_spline && differing <= 2 && delta <= 16 && linear_delta <= 3.0 / 255.0);
@@ -605,8 +602,6 @@ fn multiple_renderers_reach_the_gpu_with_native_opacity_and_orientation() {
         format: TexFormat::Rgba8Srgb,
         levels: vec![[255; 4].repeat(64)],
     });
-    // MockAssets resolves material names to ID 0. Texture pixels match the
-    // authored GMA; material behavior is loaded through the real look reader.
     renderer.set_material(
         0,
         &MaterialDesc {
@@ -779,8 +774,6 @@ fn multiple_renderers_reach_the_gpu_with_native_opacity_and_orientation() {
             sort_far_first(&mut sprites, eye);
             let mut shared = ParticleShared { sprites, materials, ..Default::default() };
             if namespace == "hp_childorder117" {
-                // Exercise the viewport's PCF/entity-effects merge as well as
-                // the ordinary PCF path. Both queues retain the authored keys.
                 shared.fx_sprites.push(shared.sprites.remove(0));
                 shared.fx_materials = shared.materials.clone();
             }

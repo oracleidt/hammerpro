@@ -57,7 +57,6 @@ impl State {
         self.total += span * rate;
         let made = self.total.floor() as u64;
         let requested = made.saturating_sub(self.made);
-        // Native emitters discard births when their collection is full, without accumulating a backlog.
         self.made = made;
         let count = requested.min(room as u64) as usize;
         let step = if count > 0 { span / count as f32 } else { 0.0 };

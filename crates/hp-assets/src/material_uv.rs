@@ -1,13 +1,9 @@
-//! Which material matrix the native shader actually samples for each layer.
-//! A declared `$bumptransform` is not necessarily the primary normal's UV.
-//! See tests/data/native_uv_routing.json and its native render probe.
 use hp_vmt::{Material, ShaderKind};
 
 pub(crate) const BASE: &str = "$basetexturetransform";
 
 pub(crate) fn bump_keys(mat: &Material) -> (&'static str, &'static str) {
     if mat.shader_kind() == ShaderKind::Lightmapped4WayBlend {
-        // This shader has its own normal coordinates, unlike LightmappedGeneric.
         return ("$bumptransform", "$bumptransform");
     }
     let has = |key| mat.texture(key).is_some();

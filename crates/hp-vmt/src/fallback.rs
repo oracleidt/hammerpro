@@ -221,7 +221,6 @@ mod tests {
         )
         .unwrap();
         let ldr = water.resolve_fallbacks(95, false);
-        // Actual Garry's Mod file-material readback: the DX90 section wins in LDR.
         assert_eq!(ldr.get_f32("$reflectamount"), Some(0.31));
         assert_eq!(ldr.get_f32("$refractamount"), Some(0.41));
         assert!(ldr.other_blocks.is_empty());

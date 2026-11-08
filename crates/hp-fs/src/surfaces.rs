@@ -3,7 +3,6 @@ use std::collections::BTreeSet;
 use crate::GameFs;
 
 impl GameFs {
-    /// The mounted manifest and its scripts, suitable for an isolated model build.
     pub fn surface_property_files(&self) -> Vec<(String, Vec<u8>)> {
         let manifest_path = "scripts/surfaceproperties_manifest.txt";
         let mut manifest = self.read(manifest_path);
@@ -17,8 +16,6 @@ impl GameFs {
                 }
             }
         }
-        // The permissive KV reader can accept truncated input with no entries.
-        // Such a manifest must not suppress the standard surface definition file.
         if paths.is_empty() {
             manifest = None;
             paths.insert("scripts/surfaceproperties.txt".to_owned());
@@ -33,7 +30,6 @@ impl GameFs {
         files
     }
 
-    /// Surface names registered by the mounted game's surface-properties manifest.
     pub fn surface_properties(&self) -> Vec<String> {
         let mut names = BTreeSet::from(["default".to_owned()]);
         for (path, bytes) in self.surface_property_files() {

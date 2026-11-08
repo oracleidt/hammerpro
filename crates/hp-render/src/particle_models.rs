@@ -1,5 +1,3 @@
-//! Transient model-particle buffers, separate from selectable scene models.
-
 use crate::arena::GrowBuffer;
 use crate::gpu::InstanceGpu;
 use crate::pipelines::{MeshPass, PipelineSet};
@@ -94,7 +92,6 @@ impl Renderer {
     ) {
         let Some(buffer) = set.buffer.as_ref().filter(|_| set.count > 0) else { return };
         pass.set_vertex_buffer(1, buffer.buffer.slice(..));
-        // Keep authored order. Only adjacent instances of the same model merge.
         for &(id, first, count, faded) in &set.runs {
             let end = (first + count).min(range.end);
             let first = first.max(range.start);

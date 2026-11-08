@@ -6,8 +6,6 @@ const PARALLEL_PIXELS: usize = 256 * 256;
 
 const PIXELS_PER_JOB: usize = 16 * 1024;
 
-/// Preserve floating point radiance and the precision of 16-bit UNORM textures.
-/// Other encodings return normalized numeric channels in their original space.
 pub fn convert_to_rgba32f(
     format: ImageFormat,
     src: &[u8],

@@ -159,8 +159,6 @@ impl Draft {
         let source = hp_app::settings::Settings::cache_dir().join("propsrc");
         let surfaces = state.assets.fs().map_or_else(|| vec!["default".into()], |fs| fs.surface_properties());
         Ok(Self {
-            // History serials are local to a map and can collide after a tab switch.
-            // The global revision also identifies a newly loaded document safely.
             source_serial: state.doc.revision(),
             ids,
             geometry,
@@ -572,7 +570,6 @@ impl Draft {
     }
 
     fn overlay(&mut self, collision: bool) -> Arc<Overlay> {
-        // The collision checkbox also affects the preview, even when changed on another tab.
         let revision = self.revision * 2 + u64::from(collision);
         if let Some((old, overlay)) = &self.overlay
             && *old == revision

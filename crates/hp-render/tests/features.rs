@@ -693,7 +693,6 @@ fn model_distance_fade_and_hidden_chunks() {
     let part = ModelPart {
         material: GREY,
         vertices: vec![v([0.0, -64.0, -64.0]), v([0.0, 64.0, -64.0]), v([0.0, 64.0, 64.0]), v([0.0, -64.0, 64.0])],
-        // Face the camera at -X. Model normals do not rewrite triangle winding.
         indices: vec![0, 2, 1, 0, 3, 2],
         tangents: Vec::new(),
     };
@@ -1301,8 +1300,6 @@ fn screen_velocity_modifier_matches_native_sprite_images_in_either_renderer_orde
         effect.step(0.02, [0.0, 0.0, 64.0], 1);
         let particle = &mut effect.sims[0].1.particles[0];
         particle.pos = array3(&case["position"]);
-        // The captured frame time varies. Public velocity edits reconstruct
-        // history with the same direction, independently of our earlier tick.
         particle.vel = array3(&case["velocity"]).map(|v| v * 2.0);
         let eye = array3(&case["eye"]);
         effect.prepare_render(hp_pcf::screen_velocity::view(eye, [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]));
@@ -1406,7 +1403,6 @@ fn native_trails_use_head_tail_uvs_and_full_width_in_each_view() {
             view.msaa = false;
             r.render_view(1, &view, &Overlay::default());
             let image = save(&r, 1, &format!("native_trail_{index}_{}", eye[0]));
-            // Native head V=1/tail V=0 and U=0 on the positive cross-product side.
             let reference = hp_pcf::trail::Segment { head, delta, width };
             let vertices = reference.cpu_vertices(eye);
             for (u, v, expected) in [
@@ -1445,7 +1441,6 @@ fn native_trails_use_head_tail_uvs_and_full_width_in_each_view() {
                 projected.iter().map(|p| p[0]).fold(f32::NEG_INFINITY, f32::max),
                 projected.iter().map(|p| p[1]).fold(f32::NEG_INFINITY, f32::max),
             ];
-            // Rasterization covers pixel centers, rather than pixel edges.
             let covered = [
                 (expected[0] - 0.5).ceil() as u32,
                 (expected[1] - 0.5).ceil() as u32,

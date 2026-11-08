@@ -379,8 +379,6 @@ fn prop_geometry_preview_is_textured_editable_and_keeps_the_model_browser_image(
     .unwrap();
     assert_eq!(gfx.renderer.stats().objects, 0, "the map renderer receives no preview geometry");
 
-    // Loading a changed prop material through the browser first must not consume
-    // the prop target's invalidation while its geometry/camera/revision stay equal.
     assets.prop_preview(&mut gfx, &request).unwrap();
     std::fs::write(
         root.join("garrysmod/materials/test/brick.vmt"),

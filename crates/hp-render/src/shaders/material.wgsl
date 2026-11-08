@@ -320,7 +320,6 @@ fn env_reflection(
     }
     spec *= mix(vec3<f32>(1.0), clamp(light, vec3<f32>(0.0), vec3<f32>(1.0)), material.env_sat.w);
     let result = max(spec, vec3<f32>(0.0));
-    // LDR lightmaps accumulate in gamma space; reflection radiance is linear.
     return select(result, linear_to_srgb(result), gamma);
 }
 

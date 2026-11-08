@@ -32,8 +32,6 @@ fn destination(root: &Path, relative: &str) -> Result<PathBuf, String> {
     Ok(root.join(path))
 }
 
-/// Prepare exactly the geometry accepted in the creation preview. studiomdl writes
-/// only into this private build tree; the selected export folder is filled on success.
 pub fn prepare_creation(fs: &GameFs, request: PropCreationRequest) -> Result<PreparedProp, String> {
     static NEXT: AtomicU64 = AtomicU64::new(1);
     let model = creation::model_path(&request.model).ok_or_else(|| t!("propper.invalid_model_path").to_owned())?;
@@ -122,7 +120,6 @@ pub fn prepare_creation(fs: &GameFs, request: PropCreationRequest) -> Result<Pre
 }
 
 impl PreparedProp {
-    /// Called on a worker after successful compilation, before replacing any brushes.
     pub fn finish_creation(&mut self) -> Result<(), String> {
         let Some(target) = &self.target else { return Ok(()) };
         let base = format!("models/{}", self.model);
@@ -150,7 +147,6 @@ impl PreparedProp {
                 files.push(name);
             }
         }
-        // Read back the complete model before publishing its files to the chosen folder.
         let model_name = format!("{base}.mdl");
         hp_mdl::load_from(
             &model_name,
@@ -165,8 +161,6 @@ impl PreparedProp {
             std::fs::metadata(destination(&self.game_dir, name)?)
                 .map_err(|error| tf!("propper.write_failed", error))?;
         }
-        // Stream large VTFs instead of collecting the whole material set in RAM.
-        // Publish the MDL after its vertex data and materials are in place.
         files.sort_by_key(|name| name.ends_with(".mdl"));
         for name in &files {
             let source = destination(&self.game_dir, name)?;
@@ -202,8 +196,6 @@ mod tests {
     use hp_editor::prop_export::{EditableCollision, PropGeometry, PropOptions, PropTri};
     use hp_geom::Aabb;
 
-    /// Run explicitly with HP_TEST_STUDIOMDL pointing to an installed Source compiler.
-    /// Every output stays in this test's own tree or the private prop-build cache.
     #[test]
     #[ignore = "requires an installed native studiomdl; set HP_TEST_STUDIOMDL"]
     fn native_creation_exports_the_accepted_settings_and_self_contained_materials() {

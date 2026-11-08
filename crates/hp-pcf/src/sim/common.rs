@@ -65,7 +65,6 @@ impl Timing {
             clock = inverse * (clock - start_in) + start_in;
         }
         if self.period > 0.0 {
-            // The native periodic branch uses raw collection time, replacing offset/scaled time.
             clock = (f64::from(time / self.period) % 1.0) as f32;
         }
         let mut strength = 0.0;

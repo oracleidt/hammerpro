@@ -177,8 +177,6 @@ fn named_cubemaps_keep_the_detail_of_their_source_images() {
     bake(&mut r);
     let named_resolution = r.cubemap_stats().resolution;
     let named = shot(&mut r, &down(), true, "named_detail_texture");
-    // Create the reference AFTER capturing the named cube: otherwise its size
-    // would raise the shared atlas resolution and conceal the named-size bug.
     let image = r.create_cubemap_image(&CubemapImage { size, faces: [&face; 6], origin: None }).unwrap();
     mirror(&mut r, EnvmapDesc { cubemap: Some(image), ..Default::default() });
     bake(&mut r);

@@ -37,7 +37,6 @@ impl Timing {
     }
 
     fn cycles(&self, clock: (f32, f32), frequency: f32) -> f32 {
-        // Source applies phase before frequency only in the non-proportional path.
         if self.proportional {
             clock.1 * frequency * self.multiplier + self.phase
         } else {
@@ -104,7 +103,6 @@ impl Vector {
     }
 }
 
-// Source's SinSIMD is a signed parabolic wave with period two, rather than std::sin.
 fn sine(value: f32) -> f32 {
     let mut phase = value.abs();
     let rounded = f32::from_bits((phase + 8388608.0).to_bits() & !1) - 8388608.0;

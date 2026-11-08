@@ -687,8 +687,6 @@ impl AssetManager {
             let desc = hp_render::MaterialDesc { envmap: None, ..desc };
             p.renderer.set_material(id, &desc);
         }
-        // Each render target must keep its own invalidation. The model browser
-        // may render first and consume the shared needs_render flag this frame.
         p.geometry.redraw();
         p.needs_render = true;
     }

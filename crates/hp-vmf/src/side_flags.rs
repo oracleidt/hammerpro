@@ -1,6 +1,5 @@
 use crate::Side;
 
-// VMF side overrides use the decimal integer syntax consumed by VBSP's atoi.
 fn decimal_bits(text: &str) -> u32 {
     let text = text.trim_start().as_bytes();
     let (negative, digits) = match text.first() {
@@ -23,12 +22,10 @@ impl Side {
             .fold(0, |bits, (_, value)| bits | decimal_bits(value))
     }
 
-    /// Additional brush contents, combined with the material's contents by VBSP.
     pub fn compile_contents(&self) -> u32 {
         self.compile_bits("contents")
     }
 
-    /// Additional surface flags, combined with the material's flags by VBSP.
     pub fn compile_surface_flags(&self) -> u32 {
         self.compile_bits("flags")
     }

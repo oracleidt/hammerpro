@@ -48,8 +48,6 @@ fn editor_curve_data(editor: &EditorInfo) -> String {
 }
 
 pub(crate) fn prepare_road_contents(map: &mut hp_vmf::Map) {
-    // Legacy r1 roads stored their shared definition on the first/last brush only when large.
-    // Normalize the exported copy so saving, external compilers and compile snapshots all agree.
     let mut roads = std::collections::HashSet::new();
     for solid in &map.world.solids {
         let Some(tag) = editor_curve_tag(&solid.editor) else { continue };
@@ -65,7 +63,6 @@ pub(crate) fn prepare_road_contents(map: &mut hp_vmf::Map) {
             continue;
         }
         for side in &mut solid.sides {
-            // An explicit override belongs to the author, including contents=0 for structural use.
             if !side.extra_props.iter().any(|(key, _)| key.eq_ignore_ascii_case("contents")) {
                 side.add_compile_contents(hp_vmf::CONTENTS_DETAIL);
             }

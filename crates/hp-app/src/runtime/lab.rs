@@ -21,7 +21,6 @@ pub struct LabRuntime {
     pub sound_color: super::soundcolor::SoundColorRuntime,
 }
 
-/// The exact geometry and settings accepted in the prop creation preview.
 #[derive(Clone, Debug)]
 pub struct PropCreationRequest {
     pub source_serial: u64,

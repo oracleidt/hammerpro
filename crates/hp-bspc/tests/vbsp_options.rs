@@ -146,7 +146,6 @@ fn inline_world_detail_contents_matches_func_detail_with_all_detail_switches() {
         };
         let reference = compile(&original);
         let result = compile(&inline);
-        // IDs/order differ, but structural cuts, render faces and collision contents must agree.
         assert_eq!(result.nodes().len(), reference.nodes().len());
         assert_eq!(result.faces().len(), reference.faces().len());
         let mut expected: Vec<_> = reference.brushes().iter().map(|b| b.contents).collect();

@@ -1,10 +1,7 @@
-//! Native model-particle parameters and the model-to-world transform.
-
 use crate::{Operator, Particle};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ModelRender {
-    /// Native filenames are relative to `models/`; the engine always adds it.
     pub model: String,
     pub skin: i32,
     pub animation_rate: f32,
@@ -15,8 +12,6 @@ pub struct ModelRender {
 }
 
 impl ModelRender {
-    /// Native model animation uses collection time and Studio_MaxFrame,
-    /// independently of particle age and of the sequence's looping flag.
     pub fn animation_cycle(time: f32, rate: f32, max_frame: usize) -> f32 {
         let value = (time * rate) / max_frame.max(1) as f32;
         let integer =
@@ -36,8 +31,6 @@ impl ModelRender {
     }
 
     pub fn path(&self) -> String {
-        // Do not strip an existing prefix on import: Source also adds another
-        // `models/` in that case. The model picker authors a relative filename.
         format!("models/{}", self.model.replace('\\', "/"))
     }
 
@@ -46,7 +39,6 @@ impl ModelRender {
             * if self.scale_animation_rate { particle.scalar_attribute(self.animation_rate_field) } else { 1.0 }
     }
 
-    /// Column-major matrix, with Source's normal basis and three radian angles.
     pub fn transform(&self, particle: &Particle) -> [[f32; 4]; 4] {
         let n = normalized(particle.normal);
         let reference = || {
@@ -60,7 +52,6 @@ impl ModelRender {
         }
         let cross = [u[2] * n[1] - u[1] * n[2], u[0] * n[2] - u[2] * n[0], u[1] * n[0] - u[0] * n[1]];
         let basis = if self.orient_z_to_normal { [cross, u.map(|v| -v), n] } else { [n, u, cross] };
-        // Native converts radians to degrees before AngleMatrix converts back.
         let angle = |v: f32| (v * 57.29578) * 0.017453292;
         let (sp, cp) = angle(particle.pitch).sin_cos();
         let (sy, cy) = angle(particle.yaw).sin_cos();

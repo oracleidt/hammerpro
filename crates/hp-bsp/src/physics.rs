@@ -1,4 +1,3 @@
-/// Wrap one BSP physics model in the standalone PHY container used by model readers.
 pub fn model_as_phy(data: &[u8], wanted: u32) -> Option<Vec<u8>> {
     let read =
         |offset: usize| data.get(offset..offset.checked_add(4)?).map(|v| i32::from_le_bytes(v.try_into().unwrap()));

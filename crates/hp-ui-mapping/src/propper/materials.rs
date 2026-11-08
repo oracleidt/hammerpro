@@ -1,5 +1,3 @@
-//! Stage compiler inputs and distinguish copied materials from reused source assets.
-
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use hp_editor::prop_export::PropGeometry;
@@ -45,8 +43,6 @@ fn model_parameters(pairs: &mut Vec<(String, String)>, inherited_base: &str) -> 
         .find(|(key, _)| key.eq_ignore_ascii_case("$basetexturetransform"))
         .map(|(_, value)| value.clone())
         .unwrap_or_else(|| inherited_base.to_owned());
-    // These brush shaders ignore Phong and use linear envmap tint. Merely
-    // changing their name activates Phong or applies GammaToLinear a second time.
     for (key, value) in pairs.iter_mut() {
         let parameter = key.rsplit('?').next().unwrap_or(key);
         if parameter.eq_ignore_ascii_case("$phong") {
@@ -59,8 +55,6 @@ fn model_parameters(pairs: &mut Vec<(String, String)>, inherited_base: &str) -> 
             *value = format!("[{r} {g} {b}]");
         }
     }
-    // Source samples brush detail with the base matrix; the model shader uses
-    // its separate detail matrix. Preserve the effective matrix in each scope.
     pairs.retain(|(key, _)| !key.eq_ignore_ascii_case("$detailtexturetransform"));
     pairs.push(("$detailtexturetransform".into(), base.clone()));
     let conditional: Vec<_> = pairs
@@ -140,8 +134,6 @@ impl Export<'_> {
     fn parameters(&mut self, pairs: &mut [(String, String)]) -> Result<(), String> {
         for (key, value) in pairs {
             if texture_parameter(key, value) {
-                // The exact Source VTF is copied when present, including its mipmaps,
-                // alpha, format, normal-map flags, animation frames and cubemap faces.
                 *value = self.texture(
                     value,
                     key.to_ascii_lowercase().contains("bump") || key.eq_ignore_ascii_case("$normalmap"),
@@ -173,9 +165,7 @@ pub fn stage(
 }
 
 pub struct MaterialSet {
-    /// Compiler inputs, including original model materials at their original paths.
     pub files: Vec<(String, Vec<u8>)>,
-    /// Only converted/copied materials are published; original assets stay untouched.
     pub publish: Vec<String>,
 }
 
@@ -212,8 +202,6 @@ pub fn stage_creation(
                 .map(|material| (*material).clone())
                 .ok_or_else(|| format!("{name}: material not found"))?,
         };
-        // Brush lighting comes from lightmaps. The exported prop instead receives
-        // model lighting while retaining the authored material parameters.
         let shader = hp_vmt::shader_base_name(&material.shader);
         export.preserve_paths = reuse_materials
             && shader == "vertexlitgeneric"
@@ -241,8 +229,6 @@ pub fn stage_creation(
         export.files.insert(output, hp_vmt::write(&material).into_bytes());
         names.insert(name, model_name);
     }
-    // Copied names use $cdmaterials; reused names use the root search fallback.
-    // Update only after every required material and texture has been prepared.
     for triangle in &mut geometry.tris {
         triangle.material = names[&triangle.material].clone();
     }

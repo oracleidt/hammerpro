@@ -103,8 +103,6 @@ impl AssetManager {
             preview.renderer.set_model_instances(&[]);
             preview.renderer.set_object_flags(OBJECT, ObjectFlags::NO_2D | ObjectFlags::NO_SHADOW);
             preview.renderer.render_view(VIEW, request.params, request.overlay);
-            // Restore the shared model-browser scene immediately. Each preview has
-            // its own render target, so opening both cannot replace either image.
             preview.renderer.set_object_flags(OBJECT, ObjectFlags::HIDDEN);
             if let Some(flags) = wire {
                 preview.renderer.set_object_flags(WIRE_OBJECT, flags);

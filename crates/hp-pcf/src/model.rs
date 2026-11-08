@@ -47,13 +47,9 @@ pub struct SystemDef {
     pub max_particles: u32,
     pub initial_particles: u32,
     pub radius: f32,
-    /// The native system constant is radians; rotation initializers use degrees.
     pub rotation: f32,
-    /// Native angular speed constant, in radians per second.
     pub rotation_speed: f32,
-    /// Primary and secondary integer animation sequence constants.
     pub sequences: [i32; 2],
-    /// Default direction used by model-particle renderers (attribute 21).
     pub normal: [f32; 3],
     pub color: [u8; 4],
     pub emitters: Vec<Operator>,

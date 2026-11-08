@@ -1150,7 +1150,6 @@ impl Renderer {
         self.try_create_texture_with_mips(up, true)
     }
 
-    /// Preserve the supplied mip chain, including authored single-level VTFs.
     pub fn create_texture_exact(&mut self, up: &TextureUpload) -> TexId {
         match self.try_create_texture_with_mips(up, false) {
             Ok(id) => id,
@@ -1611,8 +1610,6 @@ impl Renderer {
                 let first = indices.len() as u32;
                 let v0 = verts.len();
                 let b = if l == 0 { &mut bounds } else { &mut lod_bounds };
-                // VTX winding is authoritative. Authored shading normals can
-                // point elsewhere, and must not reverse model triangles.
                 scene::pack_triangles_with_winding(
                     &p.vertices,
                     &[],
@@ -1854,8 +1851,6 @@ impl Renderer {
         }
     }
 
-    /// Retire geometry owned by transient effects without invalidating the
-    /// static scene's shadow cache every time an animation pose expires.
     pub fn destroy_transient_model(&mut self, id: ModelId) {
         if self.instance_list.iter().any(|instance| instance.model == id) {
             self.destroy_model(id);

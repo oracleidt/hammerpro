@@ -1,6 +1,3 @@
-//! Reuse unlit geometry only when edits cannot affect BSP construction or flood filling.
-//! Fingerprinting runs on the bake worker, never on the editor thread.
-
 use std::fmt::{Debug, Write};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::Path;
@@ -25,8 +22,6 @@ fn hash_debug(hash: &mut Fingerprint, value: &impl Debug) {
 }
 
 fn photometric(key: &str) -> bool {
-    // Origin is deliberately excluded: point entities seed the compiler's flood fill.
-    // Unknown keys, connections and all non-light entities must invalidate geometry.
     [
         "_light",
         "_lighthdr",
@@ -255,8 +250,6 @@ mod tests {
         for lump in 0..64 {
             assert_eq!(a.lump_info(lump).unwrap().version, b.lump_info(lump).unwrap().version);
             if lump == hp_bsp::lump::GAME_LUMP {
-                // The container may lay out lumps at different file offsets. Game-lump
-                // directory offsets are absolute; compare their complete parsed payloads.
                 assert_eq!(a.game_lumps().unwrap(), b.game_lumps().unwrap());
             } else {
                 assert_eq!(a.lump(lump).unwrap(), b.lump(lump).unwrap(), "lump {lump}");
@@ -295,7 +288,6 @@ mod tests {
         let fresh = expect_compiled(prepare(&Mutex::default(), Some(edited.clone()), &fs, &ctx, inputs(2)));
         assert_same_map(&changed.bsp, &fresh.bsp);
 
-        // Moving a light can change leak detection and outside-face removal. It must compile again.
         super::super::retain_compiled(&cache, &ctx, &changed, false);
         edited.entities[0].set("origin", "144 128 128");
         let moved = expect_compiled(prepare(&cache, Some(edited), &fs, &ctx, inputs(3)));

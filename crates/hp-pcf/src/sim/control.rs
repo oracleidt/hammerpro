@@ -13,7 +13,6 @@ impl Positions<'_> {
         if self.dt == 0.0 {
             return current;
         }
-        // Source clamps past samples, but permits extrapolation past this frame.
         let amount = ((self.dt - (self.time - requested)) / self.dt).max(0.0);
         lerp3(self.previous.get(cp), current, amount)
     }

@@ -30,7 +30,6 @@ pub const MAX_CONTROL_POINTS: usize = 64;
 const LOOP_PAUSE: f32 = 0.6;
 const INITIAL_PREVIOUS_DT: f32 = 0.05;
 pub const MAX_SYSTEMS: usize = 256;
-// A shared editing budget, independent of the number of child collections.
 pub const MAX_EFFECT_PARTICLES: usize = 80_000;
 
 type V3 = [f32; 3];
@@ -130,7 +129,6 @@ pub struct Points {
 }
 
 impl Points {
-    /// Native frame of a secondary control point whose orientation has never been set.
     pub const UNSET_AXES: [V3; 3] = [[0.0, 1.0, 0.0], [-1.0, 0.0, 0.0], [0.0, 0.0, 1.0]];
 
     pub fn at(origin: V3) -> Points {
@@ -160,7 +158,6 @@ impl Points {
         }
     }
 
-    /// Unattached effects created by the game's convenience API initialize CP 0 and CP 1.
     pub fn unparented(origin: V3) -> Points {
         Points { pos: vec![origin, origin], ..Self::at(origin) }
     }
@@ -644,8 +641,6 @@ impl Plan {
             p.compile_init(op);
         }
         let mut modifiers = Vec::new();
-        // Source initializes each base attribute once, then runs modifiers in their authored order.
-        // Emitters have already assigned creation time and the particle identifier.
         let mut initialized = (1u32 << 8) | (1 << 11);
         p.inits.retain(|init| {
             if init.modifier() {
@@ -1098,8 +1093,6 @@ impl Plan {
         self.render.sequence_cycle(p, total, second)
     }
 
-    /// Draw passes in authored order. The first pass remains publicly editable
-    /// through `render`; subsequent passes retain their own parameters.
     pub fn renderers(&self) -> impl Iterator<Item = Render> + '_ {
         std::iter::once(self.render)
             .chain(self.extra_renders.iter().copied())
@@ -1166,8 +1159,6 @@ impl Particle {
             _ => get_field(self, Field::from_index(index)),
         }
     }
-    /// The actual previous-position attribute, including control-point and
-    /// collision changes. Preserve compatibility with callers editing velocity.
     pub fn previous_position(&self) -> V3 {
         if self.vel != self.velocity_snapshot {
             sub(self.pos, scale(self.vel, self.previous_dt))
@@ -1179,7 +1170,6 @@ impl Particle {
     fn sequence_value(&self, second: bool) -> f32 {
         let value = self.sequence_values[usize::from(second)];
         let public = if second { self.sequence2 } else { self.sequence };
-        // Preserve the float attribute unless the public integer selection was edited.
         if value as u32 == public { value } else { public as f32 }
     }
 
@@ -1192,7 +1182,6 @@ impl Particle {
         }
     }
 
-    /// Source combines both alpha attributes in the byte-sized particle render list.
     pub fn opacity(&self) -> f32 {
         ((self.alpha * self.alpha2).clamp(0.0, 1.0) * 255.0).round_ties_even() / 255.0
     }
@@ -1387,7 +1376,6 @@ impl Sim {
         if count == 0 {
             return;
         }
-        // Initialize the whole emitter batch before advancing to the next initializer.
         let positions = control::Positions {
             current: points,
             previous: self.previous_points.as_ref().unwrap_or(points),
@@ -1548,7 +1536,7 @@ impl Sim {
                         part.vel = add(part.vel, velocity);
                         part.previous_pos = sub(part.previous_pos, scale(velocity, part.previous_dt));
                     }
-                    Init::NoiseScalar { .. } => {} // Handled once for the complete batch above.
+                    Init::NoiseScalar { .. } => {}
                     Init::Remap { input, imin, imax, output, omin, omax, multiply, within } => {
                         let x = get_field(part, *input);
                         if *within && (x < imin.min(*imax) || x > imin.max(*imax)) {
@@ -1643,7 +1631,6 @@ impl Sim {
             self.spawn_batch(points, parents, dt, world, births);
         }
         for part in &mut self.particles {
-            // Public velocity edits must update the native previous-position representation.
             if part.vel != part.velocity_snapshot {
                 part.previous_pos = sub(part.pos, scale(part.vel, part.previous_dt));
             }
@@ -1792,7 +1779,6 @@ fn operate(
                     let value = remap.value(current(remap.input), current(remap.output), state.strength);
                     match remap.output {
                         Field::Alpha => {
-                            // Native strength blending can overshoot the alpha endpoints.
                             part.alpha = value;
                             alpha = value;
                             alpha_written = false;
@@ -2109,7 +2095,6 @@ pub struct Effect {
     parents: Vec<Option<usize>>,
     render_order: Vec<usize>,
     pub missing: Vec<String>,
-    /// A cycle or the collection resource guard prevented complete expansion.
     pub hierarchy_limited: bool,
     time: f32,
     idle: f32,
@@ -2117,9 +2102,6 @@ pub struct Effect {
 }
 
 impl Effect {
-    /// Apply view-dependent particle attributes after simulation and before
-    /// collecting draw instances. Source writes rotation back to the simulation;
-    /// later operators must observe it, including while playback is paused.
     pub fn prepare_render(&mut self, view: [[f32; 4]; 2]) {
         for (delay, sim) in &mut self.sims {
             if self.time < *delay {
@@ -2154,9 +2136,6 @@ impl Effect {
                 }
                 match lookup(child) {
                     Some(c) => {
-                        // Repeated siblings are distinct collections. Only an
-                        // ancestor reference is recursive, including lookups
-                        // that return a freshly allocated plan for the same name.
                         let same = |p: &Arc<Plan>| {
                             Arc::ptr_eq(p, &c) || (!p.name.is_empty() && p.name.eq_ignore_ascii_case(&c.name))
                         };
@@ -2185,8 +2164,6 @@ impl Effect {
             sims.push((delay, sim));
             parents.push(parent);
         }
-        // Keep simulation indices/parent snapshots stable, but draw recursively:
-        // a collection's passes, then each child's entire subtree in link order.
         let mut render_order = Vec::with_capacity(sims.len());
         let mut stack = vec![0];
         while let Some(index) = stack.pop() {
@@ -2296,7 +2273,6 @@ impl Effect {
         self.drawable_sims().map(|s| (&**s.plan(), &s.particles[..]))
     }
 
-    /// Each collection renders with its own current timestep, including zero-DT frames.
     pub fn systems_with_dt(&self) -> impl Iterator<Item = (&Plan, &[Particle], f32)> + '_ {
         self.drawable_sims().map(|s| (&**s.plan(), &s.particles[..], s.current_dt))
     }

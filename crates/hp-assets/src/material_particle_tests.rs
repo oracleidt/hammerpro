@@ -121,8 +121,6 @@ fn particle_texture_addressing_survives_material_loading_and_sampler_changes() {
     let mut texture = None;
     let mut upload = None;
     let mut max_delta = 0;
-    // All four source textures contain identical pixels. Reusing their uploaded
-    // image also verifies rebinding when only addressing changes on a material.
     for mode in [0, 3, 1, 2, 0] {
         let mut material = (*fs.material("hp_velocity117/quad").unwrap()).clone();
         material.set("$basetexture", format!("hp_velocity117/quad_{mode}"));
@@ -255,7 +253,6 @@ fn native_particle_colors_survive_material_loading_and_texture_preparation() {
             let kind = name.split('_').next().unwrap();
             let material_name = format!("{prefix}/{kind}");
             let mut material = (*fs.material(&material_name).unwrap()).clone();
-            // The native probe changes only the base texture between captures.
             let texture_name = format!("{prefix}/{}", name.split('-').nth(1).unwrap());
             material.set("$basetexture", &texture_name);
             if let Some(properties) = case["properties"].as_object() {

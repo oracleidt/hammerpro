@@ -1,6 +1,3 @@
-//! Source trail geometry. Keep the CPU and SpriteCard arithmetic paths separate:
-//! they differ in normalization, fade-at-zero handling and operation order.
-
 use crate::sim::{Particle, Render};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -13,7 +10,6 @@ pub enum Path {
 pub struct Segment {
     pub head: [f32; 3],
     pub delta: [f32; 3],
-    /// Full ribbon width, unlike the radius of an animated sprite.
     pub width: f32,
 }
 
@@ -62,8 +58,6 @@ fn segment(render: &Render, input: Input, dt_scale: f32, path: Path) -> Option<S
             (inverse, (inverse * input.trail) * ((dt_scale * fade) * squared))
         }
     };
-    // Source tests before applying minimum length: a stopped particle must not
-    // acquire an artificial trail merely because the minimum length is nonzero.
     if input.alpha == 0.0 || raw <= 0.0 || raw.is_nan() {
         return None;
     }
@@ -74,7 +68,6 @@ fn segment(render: &Render, input: Input, dt_scale: f32, path: Path) -> Option<S
 }
 
 impl Segment {
-    /// Four Catmull-Rom control points. The visible segment runs between 1 and 2.
     pub fn controls(self) -> [[f32; 4]; 4] {
         let positions = [
             std::array::from_fn(|i| self.head[i] - self.delta[i]),
@@ -85,7 +78,6 @@ impl Segment {
         positions.map(|p| [p[0], p[1], p[2], self.width])
     }
 
-    /// Native CPU ribbon vertices, useful to project bounds for any camera.
     pub fn cpu_vertices(self, eye: [f32; 3]) -> [[f32; 3]; 4] {
         let v: [f32; 3] = std::array::from_fn(|i| self.head[i] - eye[i]);
         let d = self.delta;

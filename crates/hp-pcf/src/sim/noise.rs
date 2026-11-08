@@ -109,8 +109,6 @@ impl Scalar {
         world: &dyn Environment,
     ) {
         for span in batch::spans(first, particles.len()) {
-            // Source freezes one birth time for a scalar span, or the first four lane times
-            // for an entire vector span. Its vector initializer does not apply world time.
             let times = if span.vectorized {
                 std::array::from_fn(|lane| self.time_coordinates(particles[span.range.start + lane].born, world, false))
             } else {
@@ -154,7 +152,6 @@ impl Velocity {
 
     pub(super) fn evaluate(&self, position: V3, born: f32, points: &Points) -> V3 {
         let position = self.coordinates.at(position, born);
-        // Initializers use independent offsets; the vector operator uses cumulative offsets.
         let values = [
             scalar(position),
             scalar(add(position, [100000.5, 300000.25, 9000001.0])),
@@ -181,7 +178,6 @@ impl Velocity {
     }
 }
 
-// Three independent lattice permutations followed by the native six-decimal value table.
 const TABLES: &[u8; 1024] = include_bytes!("noise_tables.bin");
 
 fn corner(x: usize, y: usize, z: usize) -> f32 {
@@ -192,8 +188,6 @@ fn corner(x: usize, y: usize, z: usize) -> f32 {
 }
 
 pub(super) fn scalar(position: V3) -> f32 {
-    // Source rounds coordinates through the mantissa of (32768 + coordinate).
-    // This also preserves its wrapping and reduced precision at large coordinates.
     let bits = position.map(|value| (32768.0 + value).to_bits() & 65535);
     let lattice = bits.map(|value| (value >> 8) as usize);
     let fraction = bits.map(|value| (value & 255) as f32 / 256.0);

@@ -81,8 +81,6 @@ fn screen_velocity_rotation_overwrites_the_attribute_and_survives_into_simulatio
     effect.step(0.05, [0.0; 3], 1);
     let advanced = effect.sims[0].1.particles[0].rotation;
     assert!((advanced - (first + std::f32::consts::PI * 0.05)).abs() < 0.0001);
-    // Changing the camera while paused changes the actual attribute, with no
-    // simulation step or accumulated initial/spin rotation added to the result.
     let back = crate::screen_velocity::view([0.0, 128.0, 0.0], [-1.0, 0.0, 0.0], [0.0, 0.0, 1.0]);
     effect.prepare_render(back);
     assert!((effect.sims[0].1.particles[0].rotation - std::f32::consts::FRAC_PI_4 * 3.0).abs() < 0.0001);
@@ -100,7 +98,6 @@ fn tracer_final_positions_trail_lengths_and_completion_match_native_frames() {
         let name = format!("hp_spritecard_tracer{index}");
         let mut definition = definitions.iter().find(|d| d.name == name).unwrap().clone();
         if index >= 6 {
-            // X readback does not affect the Y movement, lifetime fraction or trail length.
             definition.operators.truncate(definition.operators.len() - 2);
         }
         let plan = Arc::new(Plan::new(&definition));
@@ -238,7 +235,6 @@ fn scalar_remapping_matches_native_strength_overshoots_and_verlet_history() {
             }
         );
         if index >= 4 {
-            // Keep the actual remap under test; remove only the two measurement operators.
             definition.operators.truncate(definition.operators.len() - 2);
         }
         let plan = Arc::new(Plan::new(&definition));
@@ -266,7 +262,6 @@ fn scalar_remapping_matches_native_strength_overshoots_and_verlet_history() {
 #[test]
 fn simple_alpha_fades_match_native_frames_including_order_gates_and_strength() {
     let mut definitions = crate::parse_file(include_bytes!("../tests/data/alpha_simple_live_cases.pcf")).unwrap();
-    // Readback resets position X, then copies alpha into it, avoiding cancellation against the previous frame.
     for definition in &mut definitions {
         definition.operators.retain(|operator| !operator.function.eq_ignore_ascii_case("Remap Scalar"));
     }
@@ -290,7 +285,6 @@ fn simple_alpha_fades_match_native_frames_including_order_gates_and_strength() {
 #[test]
 fn radius_scale_matches_native_frames_with_initial_radius_and_ordered_modifiers() {
     let mut definitions = crate::parse_file(include_bytes!("../tests/data/radius_scale_live_cases.pcf")).unwrap();
-    // Readback resets position X, then copies alpha into it, avoiding cancellation against the previous frame.
     for definition in &mut definitions {
         definition.operators.retain(|operator| !operator.function.eq_ignore_ascii_case("Remap Scalar"));
     }
@@ -307,7 +301,6 @@ fn radius_scale_matches_native_frames_with_initial_radius_and_ordered_modifiers(
             assert_eq!(sim.particles.len(), 1);
             let expected = sample["positions"][index].as_f64().unwrap() as f32;
             let radius = sim.particles[0].radius;
-            // Negative radii use a signed readback range; repeat its float operations exactly.
             let observed =
                 if matches!(index, 2 | 8) { -64.0 + 128.0 * ((radius + 64.0) / 128.0).clamp(0.0, 1.0) } else { radius };
             assert_eq!(observed.to_bits(), expected.to_bits(), "{name} frame{frame}");
@@ -318,7 +311,6 @@ fn radius_scale_matches_native_frames_with_initial_radius_and_ordered_modifiers(
 #[test]
 fn random_alpha_fades_match_native_frames_with_absolute_timing_bias_and_operator_order() {
     let mut definitions = crate::parse_file(include_bytes!("../tests/data/alpha_random_live_cases.pcf")).unwrap();
-    // Readback resets position X, then copies alpha into it, avoiding cancellation against the previous frame.
     for definition in &mut definitions {
         definition.operators.retain(|operator| !operator.function.eq_ignore_ascii_case("Remap Scalar"));
     }
@@ -342,7 +334,6 @@ fn random_alpha_fades_match_native_frames_with_absolute_timing_bias_and_operator
 #[test]
 fn random_alpha_distributions_match_native_frames_across_every_random_stratum() {
     let mut definitions = crate::parse_file(include_bytes!("../tests/data/alpha_random_pool_cases.pcf")).unwrap();
-    // Readback resets position X, then copies alpha into it, avoiding cancellation against the previous frame.
     for definition in &mut definitions {
         definition.operators.retain(|operator| !operator.function.eq_ignore_ascii_case("Remap Scalar"));
     }
@@ -998,7 +989,6 @@ fn spatial_noise_matches_native_scalar_and_vector_samples() {
                         let expected = case["alpha"].as_f64().unwrap() as f32;
                         assert_eq!(particle.alpha.to_bits(), expected.to_bits(), "{name}");
                     }
-                    // Spatial noise remains stationary when only age and the collection seed change.
                     sim.step(0.05, [0.0; 3], 1);
                 }
             }
@@ -2236,7 +2226,6 @@ fn color_lighting_matches_native_pixels_for_each_tint_and_blend_mode() {
 }
 
 fn gray_sprite_pixel(color: [f32; 3]) -> [u8; 3] {
-    // Native SpriteCard vertex colors use gamma 2.2; the texture uses sRGB.
     let texture = ((128.0f32 / 255.0 + 0.055) / 1.055).powf(2.4);
     color.map(|channel| {
         let linear = channel.max(0.0).powf(2.2) * texture * (128.0 / 255.0);
@@ -2436,7 +2425,6 @@ fn sequential_path_curves_match_native_bulge_orientation_and_unclamped_midpoints
     let mut points = Points::at([0.0; 3]);
     points.pos.push([100.0, 0.0, 0.0]);
     points.axes = [[0.0, 1.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]];
-    // The native probe explicitly sets CP 1's forward vector to +X.
     points.orientations = vec![Points::UNSET_AXES, Points::at([0.0; 3]).axes];
     for case in cases {
         let name = format!("hp_spritecard_{}", case["name"].as_str().unwrap());
@@ -2488,7 +2476,6 @@ fn cp_hierarchy_parents_highest_point_and_biased_volume_match_native_distributio
             let high = sim.particles.iter().map(|p| p.pos[axis]).fold(0.0, f32::max);
             let expected_low = case["minimum"][axis].as_f64().unwrap() as f32;
             let expected_high = case["maximum"][axis].as_f64().unwrap() as f32;
-            // A different collection seed changes the extrema within the same uniform volume.
             assert!((low - expected_low).abs() < 0.15, "{name} axis{axis}: {low} vs {expected_low}");
             assert!((high - expected_high).abs() < 0.15, "{name} axis{axis}: {high} vs {expected_high}");
         }

@@ -1,8 +1,6 @@
 use glam::DVec3;
 use hp_geom::{Aabb, GeomError, convex_hull};
 
-/// Editable collision control points and the validated convex surface they generate.
-/// Keep control-point order stable while dragging; hull reconstruction may reorder its own vertices.
 #[derive(Clone, Debug, PartialEq)]
 pub struct EditableCollision {
     pub points: Vec<DVec3>,

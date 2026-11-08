@@ -1,13 +1,7 @@
-//! Source's render_screen_velocity_rotate is a pre-render attribute modifier,
-//! not a sprite renderer. It uses affine view coordinates of current/previous
-//! positions (no perspective division), overwrites rotation and ignores rate.
-
 pub(crate) fn forward_radians(degrees: f32) -> f32 {
     (f64::from(degrees) * (std::f64::consts::PI / 180.0)) as f32
 }
 
-/// The first two rows of the world-to-view matrix, retaining translation and
-/// native f32 operation order for large world coordinates.
 pub fn view(eye: [f32; 3], right: [f32; 3], up: [f32; 3]) -> [[f32; 4]; 2] {
     [right, up].map(|v| [v[0], v[1], v[2], -((eye[0] * v[0] + eye[1] * v[1]) + eye[2] * v[2])])
 }

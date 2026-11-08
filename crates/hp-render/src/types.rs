@@ -80,7 +80,6 @@ pub struct TextureUpload {
 }
 
 impl TextureUpload {
-    /// Pack linear texture channels without clipping HDR values to white.
     pub fn rgba16_float(width: u32, height: u32, pixels: &[[f32; 4]]) -> Result<Self, RenderError> {
         if width == 0 || height == 0 || u64::from(width) * u64::from(height) != pixels.len() as u64 {
             return Err(RenderError::InvalidTexture("float texture size does not match its texels".into()));
@@ -384,15 +383,12 @@ pub struct BumpDesc {
     pub texture2: Option<TexId>,
     pub blend4: Option<[f32; 4]>,
     pub ssbump: bool,
-    /// Keep the normal for reflections even when diffuse bump lighting is disabled.
     pub diffuse: bool,
     pub uv: [f32; 4],
     pub uv_cross: [f32; 2],
     pub scroll: [f32; 2],
-    /// Independent secondary normal coordinates; None shares the primary matrix.
     pub uv2: Option<[f32; 4]>,
     pub uv2_cross: [f32; 2],
-    /// None shares the primary normal's scroll.
     pub scroll2: Option<[f32; 2]>,
 }
 

@@ -190,8 +190,6 @@ fn vs_particle(
         out.animation_flags = 0u;
     }
     if mode == P_TRAIL_CPU || mode == P_TRAIL_SPLINE {
-        // Trail UVs run from V=1 at the head to V=0 at the tail. A native
-        // radius is the FULL ribbon width; ordinary sprites use twice that.
         let t = c.y * 0.5 + 0.5;
         var side = cross(pos - view.eye.xyz, axis);
         var squared = (side.z * side.z + side.y * side.y) + (side.x * side.x + 1e-10);
@@ -223,8 +221,6 @@ fn vs_particle(
             alpha *= 1.0 - clamp((share - f0) / (f1 - f0), 0.0, 1.0);
         }
     }
-    // Source's spline-card shader takes the byte vertex color as linear. The
-    // ordinary SpriteCard and CPU ribbon paths instead apply gamma 2.2.
     let rgb = select(pow(max(vertex_color.rgb, vec3<f32>(0.0)), vec3<f32>(2.2)), vertex_color.rgb, mode == P_TRAIL_SPLINE || mode == P_ROPE_SPLINE);
     out.color = vec4<f32>(rgb * max(bright, 0.0), alpha);
     out.clip = view.view_proj * vec4<f32>(world, 1.0);
@@ -297,8 +293,6 @@ fn particle_texel(in: ParticleOut) -> vec4<f32> {
 @fragment
 fn fs_particle(in: ParticleOut) -> @location(0) vec4<f32> {
     let card = (in.effects & P_SPLINE_LINEAR_COLOR) != 0u || (material.flags & M_SPRITE_CARD) != 0u;
-    // SpriteCard uses the particle's vertex modulation and overbright factor;
-    // its native shader does not bind the VMT color or alpha modulation.
     let t = particle_texel(in) * select(material.tint, vec4<f32>(1.0), card);
     let exposure = bitcast<f32>(view.misc.z);
     fog_far_clip(in.world);

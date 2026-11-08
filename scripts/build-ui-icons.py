@@ -31,7 +31,6 @@ resolved = {}
 missing = []
 for name, chars in groups.items():
     if name == "mesh":
-        # Tabler Icons 3.50.0: the warped surface is distinct from Texture's image.
         for char in chars:
             resolved[char] = (name, "tabler", tabler.getBestCmap()[0x10201])
         continue

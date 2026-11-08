@@ -9,7 +9,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut gma=GmaWriter::new(AddonJson { title:"Own screen-velocity renderer reference".into(), ..Default::default() });
     let pixels=(0..64).flat_map(|i| if i/8<4 { if i%8<4 {[255,0,0,255]}else{[0,0,255,255]} }else if i%8<4 {[0,255,0,255]}else{[255,255,0,255]}).collect();
     let mut image=hp_vtf::compose(&[vec![hp_vtf::RgbaImage{width:8,height:8,pixels}]],&hp_vtf::ComposeOptions{format:hp_vtf::ImageFormat::Rgba8888,mipmaps:false,version_minor:3,..Default::default()})?;
-    // Authored three one-frame sequences, each inside one solid-color quadrant.
     let mut sheet=Vec::new();
     sheet.extend_from_slice(&0u32.to_le_bytes());sheet.extend_from_slice(&3u32.to_le_bytes());
     for (number,uv) in [(0u32,[1./16.,1./16.,7./16.,7./16.]),(1,[9./16.,1./16.,15./16.,7./16.]),(2,[1./16.,9./16.,7./16.,15./16.])] {

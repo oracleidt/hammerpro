@@ -1,4 +1,3 @@
-/// The authored Source texture transform, before shader-specific UV routing.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TextureTransform {
     pub center: [f32; 2],
@@ -14,8 +13,6 @@ impl Default for TextureTransform {
 }
 
 impl TextureTransform {
-    /// Source requires the full, case-sensitive center/scale/rotate/translate
-    /// sequence. An incomplete expression leaves the native matrix at identity.
     pub fn parse(text: &str) -> Self {
         let mut input = Input(text);
         let Some(parsed) = (|| {
@@ -34,7 +31,6 @@ impl TextureTransform {
         parsed
     }
 
-    /// Two affine rows, including translation. Singular transforms are valid.
     pub fn matrix(self) -> [[f32; 3]; 2] {
         let (sin, cos) = self.rotate.to_radians().sin_cos();
         let a = cos * self.scale[0];

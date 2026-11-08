@@ -21,7 +21,6 @@ pub(super) struct SurfaceTree {
 }
 
 impl SurfaceTree {
-    /// Named particle environments preserve the triangle normal on either side.
     pub(super) fn ray(&self, start: Vector, direction: Vector, maximum: f32) -> Option<hp_pcf::environment::RayHit> {
         if !start.iter().chain(&direction).all(|v| v.is_finite()) || maximum.is_nan() || maximum < 0.0 {
             return None;

@@ -259,8 +259,6 @@ fn place(
 ) -> Result<(Vec<Id>, Option<Id>), EditError> {
     match target {
         Target::World => {
-            // Small spline segments must not split the structural world BSP: VBSP can otherwise
-            // emit cracks and oversized portal faces along their nearly coplanar surfaces.
             for side in solids.iter_mut().flatten() {
                 side.add_compile_contents(hp_vmf::CONTENTS_DETAIL);
             }

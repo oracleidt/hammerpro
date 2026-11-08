@@ -75,13 +75,11 @@ pub(in crate::sim) fn apply(
     let current = matrix(points, op.cp);
     let position = points.get(op.cp);
     if dt <= 0.0 {
-        // A zero-time preview step establishes the starting frame without integrating particles.
         if state.position == [0.0; 3] {
             *state = State { position, matrix: current };
         }
         return;
     }
-    // The native context uses a zero position as its initialization sentinel.
     let initialize = state.position == [0.0; 3];
     if initialize {
         *state = State { position, matrix: current };
@@ -124,7 +122,6 @@ pub(in crate::sim) fn apply(
                 let normal = (distance * (1.0 / op.distance)).min(1.0);
                 let biased = normal / ((1.0 - normal) * coefficient + 1.0);
                 delta = delta.map(|value| value * (1.0 - biased));
-                // Source uses this distinct blend for rotation, rather than scaling the translation blend.
                 rotation_weight = 1.0 - biased * rotation_weight;
             }
             if op.rotation {

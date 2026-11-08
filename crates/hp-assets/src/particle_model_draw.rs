@@ -172,8 +172,6 @@ mod tests {
             } else {
                 name.clone()
             };
-            // Another entity and another frame share the renderer definition's
-            // choice, without consuming another global integer draw.
             let next_random = assets.particle_draws.activity_random.clone().next_int();
             let repeated = assets.particle_draw_models_impl(
                 &mut renderer,
@@ -558,8 +556,6 @@ impl AssetManager {
         let data = self.model_data(path)?;
         let skin = u32::try_from(draw.skin).unwrap_or(0);
         let skin = if (skin as usize) < data.skin_count() { skin } else { 0 };
-        // Source sets bodygroup `sequence_number` to value 1; sequence_number 1
-        // independently selects the model animation.
         let body = usize::try_from(draw.body_group)
             .ok()
             .and_then(|index| data.body_parts.get(index))
@@ -588,8 +584,6 @@ impl AssetManager {
             {
                 choice.sequence
             } else {
-                // Native picks once in the renderer's InitParams, shared by
-                // all particles and instances of the same definition/pass.
                 let sequence = hp_mdl::select_weighted_activity(&source.sequences, &draw.activity, |total| {
                     self.particle_draws.activity_random.int(0, total - 1)
                 });

@@ -37,8 +37,6 @@ impl Count {
     }
 
     pub(super) fn initialize(&self, particles: &mut [Particle], counter: &mut i32) {
-        // Native stops advancing an already-exhausted restricted counter at
-        // the next batch, but still counts skipped particles in this batch.
         if self.within && *counter > self.input[1] {
             return;
         }
@@ -52,8 +50,6 @@ impl Count {
             if self.multiply {
                 result *= get_field(p, self.output);
             }
-            // The endpoints were clamped during compilation. Native does not
-            // clamp again after multiplying by the existing alpha attribute.
             match self.output {
                 Field::Alpha => p.base_alpha = result,
                 Field::Alpha2 => p.alpha2 = result,
@@ -98,8 +94,6 @@ impl Vector {
     }
 
     pub(super) fn initialize(&self, p: &mut Particle, positions: &control::Positions<'_>) {
-        // This window uses creation time, with an exclusive end. Either
-        // unspecified bound disables the window in the native initializer.
         if self.window[0] != -1.0 && self.window[1] != -1.0 && !(p.born >= self.window[0] && p.born < self.window[1]) {
             return;
         }
@@ -111,7 +105,6 @@ impl Vector {
             if self.local {
                 let axes = positions.current.orientation(self.cp);
                 result = std::array::from_fn(|axis| {
-                    // Keep the native matrix helper's grouping of operations.
                     (result[1] * axes[1][axis] + result[0] * axes[0][axis]) + (result[2] * axes[2][axis] + origin[axis])
                 });
             } else {

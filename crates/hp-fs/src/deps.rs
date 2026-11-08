@@ -320,7 +320,6 @@ const TEXTURE_KEYS: &[&str] = &[
     "$basetexturenormal",
 ];
 
-/// Known VMT texture variables, excluding similarly named scalar and transform variables.
 pub fn is_material_texture_key(key: &str) -> bool {
     let key = key.rsplit('?').next().unwrap_or(key);
     key.eq_ignore_ascii_case("$envmap") || TEXTURE_KEYS.iter().any(|known| key.eq_ignore_ascii_case(known))

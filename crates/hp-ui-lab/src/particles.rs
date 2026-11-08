@@ -209,7 +209,6 @@ pub struct ParticleSprite {
     pub no_fog: bool,
     pub material: u32,
     pub entity: Id,
-    /// Authored collection/renderer pass within this effect instance.
     pub draw_order: u32,
 }
 
@@ -391,9 +390,6 @@ pub fn append_models<'a>(
     effects: impl Iterator<Item = (Id, &'a Effect)>,
     models: &mut Vec<hp_app::state::ParticleModelDraw>,
 ) {
-    // Model color modulation takes the truncated byte, then GammaToLinear(2.2).
-    // ModelInstance's existing shader takes sRGB input, so encode that linear
-    // value without changing the tint contract for ordinary map entities.
     let tint = |v: f32| {
         let value = f32::from((v * 255.0) as i32 as u8) / 255.0;
         let linear = value.powf(2.2);
@@ -628,8 +624,6 @@ fn push_blended(
     sprites.push(s);
 }
 
-/// Prioritize independent effects by their farthest submitted particle. Within
-/// an effect, preserve collection/renderer passes and sort each pass separately.
 pub fn sort_far_first(sprites: &mut [ParticleSprite], eye: [f32; 3]) {
     let d2 = |s: &ParticleSprite| {
         let d = [s.pos[0] - eye[0], s.pos[1] - eye[1], s.pos[2] - eye[2]];
@@ -655,8 +649,6 @@ pub fn sort_far_first(sprites: &mut [ParticleSprite], eye: [f32; 3]) {
     });
 }
 
-/// Merge editor entity effects with PCFs before losing their collection/pass
-/// keys. Sorting the GPU instances afterward would destroy child draw order.
 pub fn scene_instances_of(
     shared: &ParticleShared,
     eye: [f32; 3],
@@ -702,8 +694,6 @@ pub fn scene_draws_of(
     prepare_draws(&sprites, &materials, &shared.model_draws, eye, assets, renderer)
 }
 
-/// Resolve each collection/pass before erasing its authored key. Missing or
-/// still-loading models contribute zero instances rather than shifting ranges.
 pub fn prepare_draws(
     sprites: &[ParticleSprite],
     materials: &[String],
@@ -1878,8 +1868,6 @@ mod tests {
             let mut materials = Vec::new();
             let looks = HashMap::from([(plan.material.clone(), Arc::new(MaterialLook::default()))]);
             append_sprites(std::iter::once((1, &effect)), &looks, &mut sprites, &mut materials);
-            // Retain every positive byte opacity. The native material's pixel
-            // cutoff is covered by the renderer's alpha2 reference test.
             let submitted = case["opacity"].as_f64().unwrap() > 0.0;
             assert_eq!(sprites.len(), usize::from(submitted), "{name}");
             if submitted {
@@ -1942,7 +1930,6 @@ mod tests {
                 effects: HashMap::from([(1, playing)]),
             };
             let mut peak_sprites = 0;
-            // Short bursts can finish fading before one second; verify their rendered lifetime.
             for _ in 0..20 {
                 layer.effects.get_mut(&1).unwrap().effect.step_at(0.05, &s.points, MAX_PER_EFFECT);
                 layer.fill_sprites(&mut shared, [-300.0, 0.0, 0.0]);

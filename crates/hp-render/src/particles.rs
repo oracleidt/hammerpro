@@ -29,7 +29,6 @@ pub enum ParticleOrient {
     Stretched,
     ScreenLit,
     ScreenEmissive,
-    /// Native trail head and head-to-tail delta, with full ribbon width.
     TrailCpu,
     TrailSpline,
     RopeCpu,
@@ -38,7 +37,6 @@ pub enum ParticleOrient {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ParticleRibbon {
-    /// Adjacent points before the head and after the tail join their widths.
     pub neighbors: [[f32; 3]; 2],
     pub end_width: f32,
     pub end_color: [f32; 4],

@@ -191,7 +191,6 @@ fn blend_thumbnail_layer(
     for y in 0..base.height {
         for x in 0..base.width {
             let (u, v) = ((x as f32 + 0.5) / base.width as f32, (y as f32 + 0.5) / base.height as f32);
-            // A material swatch shows the available layers, independent of a face's painted alpha.
             let weight = if count == 2 {
                 ((u + v - 0.9) * 5.0).clamp(0.0, 1.0)
             } else {

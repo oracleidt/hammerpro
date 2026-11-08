@@ -177,9 +177,6 @@ pub struct Sequence {
     pub bbox_max: [f32; 3],
 }
 
-/// Select an activity's initial sequence. Particle renderers pass no current
-/// sequence, so negative weights participate by magnitude rather than sticking.
-/// The callback receives the native total weight and supplies its random ticket.
 pub fn select_weighted_activity(
     sequences: &[Sequence],
     activity: &str,
@@ -197,8 +194,6 @@ pub fn select_weighted_activity(
     let mut last = None;
     for (index, sequence) in matching() {
         last = Some(index);
-        // Source totals the original weights, but stores zero tuple weights as
-        // one. Preserve that distinction instead of silently renormalizing.
         let weight = sequence.activity_weight.unsigned_abs().max(1);
         if ticket < weight {
             return Some(index);

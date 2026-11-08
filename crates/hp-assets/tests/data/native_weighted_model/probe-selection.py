@@ -10,7 +10,7 @@ wi=lambda at,v:u.mem_write(at,struct.pack('<I',v&0xffffffff));wq=lambda at,v:u.m
 def ret(value):
  u.reg_write(UC_X86_REG_RAX,value&0xffffffffffffffff);rsp=u.reg_read(UC_X86_REG_RSP);u.reg_write(UC_X86_REG_RIP,struct.unpack('<Q',u.mem_read(rsp,8))[0]);u.reg_write(UC_X86_REG_RSP,rsp+8)
 def hook(u,address,size,data):
- if address==base+0x2d2b80:ret(1) # Already-loaded model/cache identity validation only.
+ if address==base+0x2d2b80:ret(1)
  elif address==callback:ret(dll.RandomInt(c.c_int(u.reg_read(UC_X86_REG_ECX)).value,c.c_int(u.reg_read(UC_X86_REG_EDX)).value))
 u.hook_add(unicorn.UC_HOOK_CODE,hook)
 wq(base+0x632990,callback);wi(base+0x876510,-1)

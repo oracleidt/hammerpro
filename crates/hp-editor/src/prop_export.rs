@@ -88,7 +88,6 @@ impl PropOptions {
     }
 }
 
-/// QC settings in model-local Source coordinates, shared by the preview and export.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PropDirectives {
     pub illumposition: Option<DVec3>,
@@ -499,8 +498,6 @@ impl PropGeometry {
         let static_prop = if options.static_prop { "$staticprop\n" } else { "" };
         let mut extra = String::new();
         if let Some(p) = directives.illumposition.filter(|p| p.is_finite()) {
-            // studiomdl rotates $illumposition like SMD coordinates. $bbox, in
-            // contrast, is already in the final model coordinate system.
             let (x, y, z) = conv(p);
             extra.push_str(&format!("$illumposition {x} {y} {z}\n"));
         }

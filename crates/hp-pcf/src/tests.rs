@@ -334,7 +334,6 @@ fn child_expansion_preserves_siblings_and_bounds_cycles_and_large_graphs() {
     let effect = Effect::new("cycle", &|_| Some(cycle.clone()), 1).unwrap();
     assert_eq!(effect.sims.len(), 1);
     assert!(effect.hierarchy_limited);
-    // A loader returning fresh allocations must also terminate named cycles.
     let effect = Effect::new("cycle", &|_| Some(Arc::new((*cycle).clone())), 1).unwrap();
     assert_eq!(effect.sims.len(), 1);
     assert!(effect.hierarchy_limited);

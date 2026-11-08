@@ -1251,9 +1251,6 @@ impl HammerProApp {
     }
 
     fn inject_script_input(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
-        // eframe can collect input more than once before the next application
-        // frame (and for secondary viewports). Do not overwrite an app command
-        // or collapse successive pointer/keyboard steps into one rendered frame.
         if ctx.viewport_id() != egui::ViewportId::ROOT {
             return;
         }

@@ -30,7 +30,6 @@ pub struct RgbaImage {
     pub pixels: Vec<u8>,
 }
 
-/// Numeric texture channels without tone mapping or gamma conversion.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct RgbaFloatImage {
     pub width: u32,

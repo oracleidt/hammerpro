@@ -449,9 +449,6 @@ pub fn set_param_everywhere_in_text(vmt_text: &str, key: &str, value: &str) -> R
     Ok(finish(apply_edits(vmt_text, edits), &expected).text)
 }
 
-/// Set a material parameter and its overrides, including sections inherited by a
-/// Patch. `resolved` must retain the DX/HDR sections (resolve includes, not fallbacks).
-/// Only the edited VMT is changed; included source materials remain untouched.
 pub fn set_param_with_fallbacks_in_text(
     vmt_text: &str,
     key: &str,

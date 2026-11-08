@@ -1,4 +1,3 @@
-// Source uses a stratified 4,096-value particle table, indexed by collection seed and query count.
 const ORDER: &[u8; 8192] = include_bytes!("random_order.bin");
 
 const fn table() -> [f32; 4096] {
