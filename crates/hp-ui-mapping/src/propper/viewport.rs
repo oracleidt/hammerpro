@@ -301,7 +301,7 @@ impl Viewport {
                 egui::Color32::WHITE,
             );
         } else {
-            ui.painter().rect_filled(rect, 4.0, egui::Color32::from_rgb(38, 41, 46));
+            ui.painter().rect_filled(rect, 4.0, ui.visuals().extreme_bg_color);
         }
         edit
     }
