@@ -73,7 +73,7 @@ pub struct BakedLightBaseline {
 
 impl BakedLightBaseline {
     pub fn allocation_address(&self) -> Option<usize> {
-        (self.lights.capacity() > 0).then(|| self.lights.as_ptr() as usize)
+        (self.lights.capacity() > 0).then_some(self.lights.as_ptr() as usize)
     }
 }
 

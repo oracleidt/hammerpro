@@ -515,13 +515,13 @@ impl crate::app::HammerProApp {
         {
             self.state.runtime.startup.resources = None;
         }
-        if std::mem::take(&mut self.state.runtime.startup.cancel_open) {
-            if !self.state.runtime.startup.resources.as_ref().is_some_and(|p| p.installing) {
-                self.opener.cancel();
-                self.open_queue.clear();
-                self.open_target = None;
-                self.state.runtime.startup.resources = None;
-            }
+        if std::mem::take(&mut self.state.runtime.startup.cancel_open)
+            && !self.state.runtime.startup.resources.as_ref().is_some_and(|p| p.installing)
+        {
+            self.opener.cancel();
+            self.open_queue.clear();
+            self.open_target = None;
+            self.state.runtime.startup.resources = None;
         }
         if let Some(loaded) = self.opener.poll() {
             if loaded.result.is_err() {
