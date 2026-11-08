@@ -197,6 +197,7 @@ pub struct Viewports {
     gesture: Option<Gesture>,
     mouselook: Option<Mouselook>,
     warp: warp::CursorWarp,
+    cursor_confined: bool,
     player_view: Option<usize>,
     player_props: player::PropBodies,
     player_doors: player::Doors,
@@ -254,6 +255,7 @@ impl Viewports {
             gesture: None,
             mouselook: None,
             warp: warp::CursorWarp::default(),
+            cursor_confined: false,
             player_view: None,
             player_props: player::PropBodies::default(),
             player_doors: player::Doors::default(),
@@ -419,6 +421,15 @@ impl Viewports {
 
         let tool_id = tool.id();
         let nav_view = self.navigate(&ctx, state, &input, &slots, hovered, &cfg, ppp, dnd_active, tool);
+        let confine = input.focused
+            && (self.mouselook.is_some()
+                || self.player_view.is_some()
+                || matches!(self.gesture, Some(Gesture::Look { looking: true, .. })));
+        if confine != self.cursor_confined {
+            self.cursor_confined = confine;
+            let mode = if confine { egui::CursorGrab::Confined } else { egui::CursorGrab::None };
+            ctx.send_viewport_cmd(egui::ViewportCommand::CursorGrab(mode));
+        }
         if nav_view.is_none() && !dnd_active && !menus_were_open {
             self.key_navigation(&ctx, state, &input, &slots, hovered);
         }
