@@ -47,7 +47,7 @@ Directly in the **View** menu:
 | **Show connections** | Input/output lines: off, selected, all (each use goes to the next). See [I/O and logical view](io-logical-view.md). | Selected |
 | **Show editor objects** | Entity icons and helper geometry that only exist in the editor. | On |
 | **Show point entities** | Every point entity. | On |
-| **Show entity names** | Names next to point entities in the 2D views. | On |
+| **Show entity labels in 2D** | Class names and target names next to point entities in 2D. The **Aa** toolbar button next to **2D** toggles them without hiding the entities or changing 3D rendering. | On |
 | **Helpers of every entity** | Helpers of every entity instead of the selected ones only. | Off |
 | **Show ropes** / **Simulate ropes** | Ropes as they hang in game; simulated ropes settle and respond to env_wind unless Disable Wind is on. | On / Off |
 | **Render effects** | Render amount, mode and color, body groups, default animation and scale of entities. | On |

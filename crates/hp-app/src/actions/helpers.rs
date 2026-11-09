@@ -51,7 +51,7 @@ pub(super) const TR: TrTable = &[
     ("action.toggle_connections", "Show connections", "Afficher les connexions"),
     ("action.toggle_editor_objects", "Show editor objects", "Afficher les objets d'éditeur"),
     ("action.toggle_point_entities", "Show point entities", "Afficher les entités ponctuelles"),
-    ("action.toggle_entity_names", "Show entity names", "Afficher les noms des entités"),
+    ("action.toggle_entity_names", "Show entity labels in 2D", "Afficher les noms des entités en 2D"),
     ("action.simulate_ropes", "Simulate ropes", "Simuler les cordes"),
     ("action.toggle_helpers_all", "Helpers of every entity", "Aides de toutes les entités"),
     ("action.toggle_ropes", "Show ropes", "Afficher les cordes"),

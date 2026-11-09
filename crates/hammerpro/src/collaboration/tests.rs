@@ -162,7 +162,15 @@ fn synchronize(
 
 #[test]
 fn two_editor_documents_converge_over_real_transport_and_keep_personal_undo_and_paths() {
-    let (_, mut host_state, map) = fixture();
+    let (_, mut host_state, _) = fixture();
+    let visgroups = vec![
+        hp_vmf::VisGroup { id: 10, name: "Building".into(), ..Default::default() },
+        hp_vmf::VisGroup { id: 20, name: "Structure".into(), ..Default::default() },
+    ];
+    let mut host_map = host_state.doc.to_map();
+    host_map.visgroups = visgroups.clone();
+    host_state.doc = hp_editor::Document::from_map(host_map);
+    let map = Controller::current(&host_state).unwrap();
     host_state.doc.set_path(Some("host-only.vmf".into()));
     let password = Zeroizing::new("editor-integration-password".to_owned());
     let session = Session::host(
@@ -217,4 +225,72 @@ fn two_editor_documents_converge_over_real_transport_and_keep_personal_undo_and_
     assert_eq!(host_state.doc.scene().entity(2).unwrap().entity.get("_light"), Some("255 0 0 200"));
     assert!(host_state.doc.scene().entity(3).unwrap().entity.get("targetname").is_none());
     assert!(host.conflict.is_none() && guest.conflict.is_none());
+
+    let mut building_map = hp_vmf::parse("world {\"id\" \"1\" \"classname\" \"worldspawn\"}").unwrap();
+    building_map.visgroups = visgroups;
+    let mut next_side = 100;
+    let mut make_solid = |id| {
+        let mut sides = hp_geom::make_primitive(&hp_geom::PrimitiveParams::default(), &mut || {
+            next_side += 1;
+            next_side
+        })
+        .unwrap()
+        .remove(0);
+        for face in hp_geom::build_solid(&sides).faces {
+            sides[face.side_index].vertices_plus = Some(face.vertices);
+        }
+        hp_vmf::Solid {
+            id,
+            sides,
+            editor: hp_vmf::EditorInfo { visgroup_ids: vec![10, 20], ..Default::default() },
+            ..Default::default()
+        }
+    };
+    building_map.world.solids.push(make_solid(2));
+    building_map.entities.push(hp_vmf::Entity {
+        id: 3,
+        classname: "func_detail".into(),
+        solids: vec![make_solid(4)],
+        ..Default::default()
+    });
+    let mut building = hp_editor::Document::from_map(building_map);
+    let objects = [hp_editor::ObjRef::Solid(2), hp_editor::ObjRef::Entity(3)];
+    building.group(&objects).unwrap();
+    let clipboard = building.copy(&objects);
+    guest_state.doc.paste(&clipboard, glam::DVec3::new(256.0, 0.0, 0.0)).unwrap();
+    synchronize(&mut host, &mut host_state, &mut guest, &mut guest_state, |h, g| {
+        h.canonical == g.canonical
+            && h.canonical.as_ref().is_some_and(|map| map.0.keys().filter(|key| key.starts_with("solid:")).count() == 2)
+    });
+    assert_eq!(Controller::current(&host_state).unwrap(), Controller::current(&guest_state).unwrap());
+    assert_eq!(host_state.doc.scene().solids().len(), 2);
+    assert!(host_state.doc.scene().solids().values().all(|node| node.solid.editor.visgroup_ids.len() == 2));
+    assert!(host_state.doc.scene().solids().values().all(|node| {
+        node.solid.sides.iter().all(|side| side.vertices_plus.as_ref().is_some_and(|vertices| vertices.len() == 4))
+    }));
+    assert!(host.conflict.is_none() && guest.conflict.is_none());
+}
+
+#[test]
+fn teleport_matches_the_contributor_camera_without_editing_the_map() {
+    let (_, mut state, before) = fixture();
+    state.ui.maximized_view = Some(1);
+    let zoom = state.cameras.top.zoom;
+    let position = [128.0, -256.0, 64.0];
+    let direction = glam::DVec3::new(1.0, 2.0, 0.5).normalize();
+    teleport_camera(&mut state, position, direction.to_array());
+    assert_eq!(state.cameras.cam3d.pos.to_array(), position);
+    assert!(state.cameras.cam3d.forward().abs_diff_eq(direction, 1e-9));
+    assert_eq!(state.cameras.top.center.to_array(), [128.0, -256.0]);
+    assert_eq!(state.cameras.front.center.to_array(), [-256.0, 64.0]);
+    assert_eq!(state.cameras.side.center.to_array(), [128.0, 64.0]);
+    assert_eq!(state.cameras.top.zoom, zoom);
+    assert_eq!(state.ui.maximized_view, Some(0));
+    assert_eq!(state.ui.focused_view, Some(0));
+    assert_eq!(Controller::current(&state).unwrap(), before);
+    let camera = state.cameras.cam3d;
+    teleport_camera(&mut state, [f64::NAN, 0.0, 0.0], [1.0, 0.0, 0.0]);
+    assert_eq!(state.cameras.cam3d, camera);
+    teleport_camera(&mut state, position, [0.0; 3]);
+    assert_eq!(state.cameras.cam3d, camera);
 }

@@ -2,6 +2,8 @@
 
 # Team Mapping
 
+Tous les participants doivent utiliser Hammer Pro 1.2.1 ou une version plus récente pour partager des maps de plus de 64 MiB, les données de sommets Hammer++, des brushes appartenant à plusieurs visgroups et des brushes mobiles dont le paramètre `startposition` est un nombre.
+
 Team Mapping partage un VMF entre l'éditeur de l'hôte et ses invités. Le menu **Team Mapping** se trouve en haut, juste avant **MCP**.
 
 ## Créer une session
@@ -23,6 +25,8 @@ Saisis l'invitation, le nom exact de la session, ton pseudo et le mot de passe. 
 Choisis le même mode de connexion que l'hôte. En mode direct, ajoute son `IP:port` ; pour IPv6, utilise `[adresse]:port`. Le port UDP proposé à l'hôte est 41840. Les adresses affichées dans son panneau sont locales et ne sont pas forcément accessibles depuis Internet : une IP publique et une redirection de port sur le routeur ou le pare-feu peuvent être nécessaires. Hammer Pro ne modifie pas automatiquement ces règles. Le mode direct n'utilise ni relais ni découverte publique et ne bascule pas vers un relais.
 
 Les participants voient le nom de session, les pseudos et la latence aller-retour mesurée. Des points colorés indiquent les positions des caméras, avec un repère de direction. Les objets sélectionnés par une autre personne ont un contour de sa couleur. Le bouton **Repérer** oriente ta caméra vers elle.
+
+Le bouton **Téléporter**, à côté d'un participant, ouvre la map partagée et place ta caméra à sa position avec sa direction de vue. Les vues 2D sont également recentrées. **Repérer** conserve ta position actuelle et regarde vers la personne. Ces boutons modifient uniquement ta vue locale.
 
 ## Modifications, conflits et annulation
 
@@ -67,7 +71,7 @@ Les textures, modèles, scripts et contenus montés ne sont pas téléchargés o
 ## Protections et limites actuelles
 
 - Huit participants maximum, hôte compris. L'hôte transmet les changements acceptés à chaque invité ; son débit montant dépend du nombre d'invités et de la géométrie modifiée.
-- Les données partagées du VMF sont limitées à 64 MiB et 200 000 unités d'objets. Une modification peut concerner au maximum 8 192 unités et occuper 8 MiB de données sérialisées.
+- Les données partagées du VMF sont limitées à 500 MiB et 200 000 unités d'objets. Une modification peut concerner au maximum 8 192 unités et occuper 8 MiB de données sérialisées.
 - Les messages, la profondeur des blocs, les tailles de propriétés, les coordonnées, les identifiants et le trafic par participant sont contrôlés. Le réseau expose des modifications de map et des informations de présence, sans accès au MCP ni à des opérations arbitraires sur les fichiers.
 - Les chemins de ressources dangereux et les entités de script ou de commande comme `lua_run`, `logic_script`, `point_servercommand` et `point_clientcommand` sont refusés. Adapte les maps qui en dépendent avant d'héberger.
 - Les chemins de sauvegarde, paramètres de vue, positions de caméra enregistrées et paramètres de compilation restent locaux.

@@ -170,7 +170,7 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Options d'affichage > Afficher les connexions | `toggle_connections` |  |  |  |
 | Options d'affichage > Afficher les objets d'éditeur | `toggle_editor_objects` |  |  | `Alt+O` |
 | Options d'affichage > Afficher les entités ponctuelles | `toggle_point_entities` |  |  |  |
-| Options d'affichage > Afficher les noms des entités | `toggle_entity_names` |  |  |  |
+| Options d'affichage > Afficher les noms des entités en 2D | `toggle_entity_names` |  |  |  |
 | Options d'affichage > Aides de toutes les entités | `toggle_helpers_all` |  |  |  |
 | Options d'affichage > Afficher les cordes | `toggle_ropes` |  |  |  |
 | Options d'affichage > Simuler les cordes | `simulate_ropes` |  |  |  |

@@ -293,3 +293,59 @@ fn direct_connection_uses_explicit_address_and_same_authenticated_protocol() {
     sessions[0].send(Command::Stop).unwrap();
     until(&sessions, &mut observed, "direct shutdown", |rows| rows.get(&1).is_some_and(|row| row.closed));
 }
+
+#[test]
+#[ignore = "allocates and transfers an 84 MiB map"]
+fn large_map_can_be_hosted_transferred_and_restored_above_the_previous_limits() {
+    let payload = "x".repeat(16_384);
+    let mut text = String::from(
+        "world {\"id\" \"1\" \"classname\" \"worldspawn\"} entity {\"id\" \"2\" \"classname\" \"info_target\"",
+    );
+    for index in 0..5376 {
+        text.push_str(&format!("\"field{index}\" \"{payload}\"\n"));
+    }
+    text.push('}');
+    assert!(text.len() > 80 * 1024 * 1024);
+    let map = Snapshot::from_vmf(&text).unwrap();
+    drop(text);
+    assert_eq!(hp_collab::document::MAX_MAP_BYTES, 500 * 1024 * 1024);
+    let host = Session::host(
+        map.clone(),
+        "Host".into(),
+        Zeroizing::new("large-map-password".into()),
+        HostOptions { room: Room { name: "Large map".into() }, mode: ConnectionMode::Direct, port: 0 },
+    )
+    .unwrap();
+    let mut sessions = vec![host];
+    let mut observed = BTreeMap::<usize, Observed>::new();
+    until(&sessions, &mut observed, "large host ready", |rows| rows.get(&0).is_some_and(|row| row.ready));
+    let invitation = Invitation::decode(observed[&0].invitation.as_ref().unwrap()).unwrap();
+    let port = observed[&0].direct_addresses.iter().find(|address| address.is_ipv4()).unwrap().port();
+    sessions.push(
+        Session::join(
+            invitation,
+            "Guest".into(),
+            Zeroizing::new("large-map-password".into()),
+            JoinOptions {
+                identity: Zeroizing::new(hp_collab::protocol::random_secret().unwrap()),
+                session_name: "Large map".into(),
+                direct_address: Some(([127, 0, 0, 1], port).into()),
+            },
+        )
+        .unwrap(),
+    );
+    until(&sessions, &mut observed, "large map transferred", |rows| rows.get(&1).is_some_and(|row| row.ready));
+    assert_eq!(observed[&1].map.as_ref(), Some(&map));
+    let root = std::env::temp_dir().join(format!("hp-collab-large-snapshot-{}", std::process::id()));
+    let store = hp_collab::snapshots::SnapshotStore::new(root.clone());
+    let saved = store.save(&map, "Large map", 0).unwrap();
+    assert_eq!(store.load(&saved.filename).unwrap(), map);
+    std::fs::remove_file(root.join(saved.filename)).unwrap();
+    std::fs::remove_file(root.join("snapshots.lock")).unwrap();
+    std::fs::remove_dir(root).unwrap();
+    drop(sessions);
+    drop(observed);
+    drop(map);
+    let too_large = " ".repeat(hp_collab::document::MAX_MAP_BYTES + 1);
+    assert!(Snapshot::from_vmf(&too_large).unwrap_err().to_string().contains("size limit"));
+}

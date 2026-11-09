@@ -292,7 +292,7 @@
   "action.toggle_displacements": "Показать дисплейсменты",
   "action.toggle_editor_objects": "Показать объекты редактора",
   "action.toggle_entity_fx": "Предварительный просмотр эффектов громкости",
-  "action.toggle_entity_names": "Показать имена объектов",
+  "action.toggle_entity_names": "Показать подписи объектов в 2D",
   "action.toggle_fish_preview": "Предварительный просмотр рыбы",
   "action.toggle_fish_swim": "Плавающая рыба",
   "action.toggle_fog_preview": "Предварительный просмотр тумана",

@@ -170,7 +170,7 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Display options > Show connections | `toggle_connections` |  |  |  |
 | Display options > Show editor objects | `toggle_editor_objects` |  |  | `Alt+O` |
 | Display options > Show point entities | `toggle_point_entities` |  |  |  |
-| Display options > Show entity names | `toggle_entity_names` |  |  |  |
+| Display options > Show entity labels in 2D | `toggle_entity_names` |  |  |  |
 | Display options > Helpers of every entity | `toggle_helpers_all` |  |  |  |
 | Display options > Show ropes | `toggle_ropes` |  |  |  |
 | Display options > Simulate ropes | `simulate_ropes` |  |  |  |

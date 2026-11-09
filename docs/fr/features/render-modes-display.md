@@ -47,7 +47,7 @@ Directement dans le menu **Affichage** :
 | **Afficher les connexions** | Lignes des entrées/sorties : aucune, sélection, toutes (chaque clic passe à la suivante). Voir [E/S et vue logique](io-logical-view.md). | Sélection |
 | **Afficher les objets d'éditeur** | Icônes d'entités et aides qui n'existent que dans l'éditeur. | Activé |
 | **Afficher les entités ponctuelles** | Toutes les entités ponctuelles. | Activé |
-| **Afficher les noms des entités** | Noms à côté des entités ponctuelles dans les vues 2D. | Activé |
+| **Afficher les noms des entités en 2D** | Noms de classe et de cible à côté des entités ponctuelles en 2D. Le bouton **Aa**, à côté de **2D** dans la barre d'outils, les masque sans cacher les entités ni modifier le rendu 3D. | Activé |
 | **Aides de toutes les entités** | Les aides de toutes les entités au lieu de la sélection seulement. | Désactivé |
 | **Afficher les cordes** / **Simuler les cordes** | Les cordes telles qu'elles pendent en jeu ; simulées, elles se stabilisent et réagissent à env_wind sauf si Disable Wind est activé. | Activé / Désactivé |
 | **Effets de rendu** | Opacité, mode et couleur de rendu, groupes de corps, animation par défaut et échelle des entités. | Activé |

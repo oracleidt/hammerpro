@@ -20,9 +20,13 @@ The invitation is a credential, not a public room listing. It contains a random 
 
 Enter the invitation, exact session name, your nickname and the password. Select **Join in a new local tab**. Your previously open document is kept in its own tab. The shared map has no inherited host filesystem path. Save your own copy with **Save As** before compiling if requested.
 
+Every participant should update to Hammer Pro 1.2.1 or newer to share maps above 64 MiB, Hammer++ vertex loops, brushwork belonging to multiple visgroups and moving brushes with scalar `startposition` settings.
+
 Choose the same connection mode as the host. In direct mode, also enter the host's `IP:port`; IPv6 addresses use `[address]:port`. The host chooses a UDP listen port, initially 41840. The host panel lists local listen addresses. Those are not necessarily reachable over the Internet: the host may need its public IP and a matching router/firewall port-forwarding rule. Hammer Pro does not change router or firewall rules automatically. Direct mode uses no relay or public endpoint discovery and does not fall back to a relay.
 
 All participants see the session name, participant nicknames and measured connection round-trip latency. Other participants' camera positions appear as colored points with a direction marker. Their selected objects are outlined in the same color. The Participants panel can point your camera toward a participant.
+
+Select **Teleport** next to a participant to switch to the shared map, move your editor camera to their position and match their viewing direction. The 2D views are centered there too. **Locate** points toward their position while keeping your current camera location. Both controls affect your local view.
 
 ## Editing and conflicts
 
@@ -67,7 +71,7 @@ Textures, models, scripts and mounted content are not automatically downloaded o
 ## Security boundaries and current limits
 
 - Up to eight participants including the host. The host uploads accepted changes to each guest, so bandwidth grows with the number of guests and the amount of edited geometry.
-- The shared VMF is limited to 64 MiB of session data and 200,000 object units. An edit can affect at most 8,192 units and use at most 8 MiB of serialized change data.
+- The shared VMF is limited to 500 MiB of session data and 200,000 object units. An edit can affect at most 8,192 units and use at most 8 MiB of serialized change data.
 - Incoming frames, nesting, property lengths, coordinates, duplicate IDs and per-peer traffic are bounded. The network protocol exposes map changes and presence, not the editor MCP API or arbitrary file operations.
 - Unsafe resource paths and script/command entities such as `lua_run`, `logic_script`, `point_servercommand` and `point_clientcommand` cannot be shared. Maps using these features must be adapted before starting a session.
 - Local save paths, view settings, camera bookmarks and compile settings are not shared.

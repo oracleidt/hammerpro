@@ -4,7 +4,7 @@ use anyhow::{Result, bail, ensure};
 use hp_kv::Block;
 use serde::{Deserialize, Serialize};
 
-pub const MAX_MAP_BYTES: usize = 64 * 1024 * 1024;
+pub const MAX_MAP_BYTES: usize = 500 * 1024 * 1024;
 pub const MAX_CHANGE_BYTES: usize = 8 * 1024 * 1024;
 pub const MAX_UNITS: usize = 200_000;
 pub const ID_STRIDE: u32 = 1_000_000;
@@ -56,12 +56,30 @@ fn validate_block(block: &Block, depth: usize) -> Result<()> {
     for (key, value) in &block.props {
         ensure!(key.len() <= 512 && value.len() <= 16_384 && !value.contains('\0'), "Map field limit exceeded");
         let key = key.to_ascii_lowercase();
-        ensure!(block.name.eq_ignore_ascii_case("connections") || keys.insert(key.clone()), "Duplicate map property");
-        if matches!(key.as_str(), "origin" | "angles" | "mins" | "maxs" | "startposition") && !value.trim().is_empty() {
+        let repeated = block.name.eq_ignore_ascii_case("connections")
+            || (block.name.eq_ignore_ascii_case("editor") && key == "visgroupid")
+            || (block.name.eq_ignore_ascii_case("vertices_plus") && key == "v");
+        ensure!(repeated || keys.insert(key.clone()), "Duplicate map property '{key}' in '{}'", block.name);
+        if block.name.eq_ignore_ascii_case("vertices_plus") && key == "v" {
+            let mut components = 0;
+            let valid = value
+                .split(|character: char| character.is_ascii_whitespace() || matches!(character, '(' | ')' | '[' | ']'))
+                .filter(|part| !part.is_empty())
+                .all(|part| {
+                    components += 1;
+                    part.parse::<f64>()
+                        .is_ok_and(|coordinate| coordinate.is_finite() && coordinate.abs() <= 1_000_000.0)
+                });
+            ensure!(valid && components == 3, "Invalid Hammer++ vertex coordinates");
+        }
+        let vector = matches!(key.as_str(), "origin" | "angles" | "mins" | "maxs")
+            || (block.name.eq_ignore_ascii_case("dispinfo") && key == "startposition");
+        if vector && !value.trim().is_empty() {
             ensure!(
                 hp_vmf::parse_vec3(value)
                     .is_some_and(|vector| vector.is_finite() && vector.abs().max_element() <= 1_000_000.0),
-                "Invalid vector property"
+                "Invalid vector property '{key}' in '{}'",
+                block.name
             );
         }
         if block.name.eq_ignore_ascii_case("connections") {
@@ -414,5 +432,91 @@ mod tests {
         assert!(Snapshot::from_vmf(&oversized).is_err());
         let nested = format!("world {{\"id\" \"1\" {} {} }}", "x {".repeat(130), "}".repeat(130));
         assert!(Snapshot::from_vmf(&nested).is_err());
+    }
+
+    #[test]
+    fn multiple_visgroup_memberships_can_be_hosted_and_shared() {
+        let text = "world {\"id\" \"1\" solid {\"id\" \"5\" editor {\"visgroupid\" \"10\" \"visgroupid\" \"20\"}}} entity {\"id\" \"2\" \"classname\" \"func_detail\" solid {\"id\" \"6\" editor {\"visgroupid\" \"10\" \"VISGROUPID\" \"20\"}}}";
+        let hosted = Snapshot::from_vmf(text).unwrap();
+        let parsed = hp_vmf::parse(&hosted.to_vmf().unwrap()).unwrap();
+        assert_eq!(parsed.world.solids[0].editor.visgroup_ids, [10, 20]);
+        assert_eq!(parsed.entities[0].solids[0].editor.visgroup_ids, [10, 20]);
+        let mut remote = map();
+        remote.apply(&remote.diff(&hosted)).unwrap();
+        assert_eq!(remote, hosted);
+    }
+
+    #[test]
+    fn ambiguous_single_value_properties_are_still_rejected() {
+        for text in [
+            "world {\"id\" \"1\" \"ID\" \"2\"}",
+            "world {\"id\" \"1\" editor {\"color\" \"1 2 3\" \"COLOR\" \"4 5 6\"}}",
+            "world {\"id\" \"1\"} entity {\"id\" \"2\" \"classname\" \"light\" \"CLASSNAME\" \"lua_run\"}",
+        ] {
+            assert!(Snapshot::from_vmf(text).unwrap_err().to_string().contains("Duplicate map property"));
+        }
+    }
+
+    #[test]
+    fn hammerplusplus_vertex_loops_can_be_hosted_and_shared() {
+        let text = "world {\"id\" \"1\" solid {\"id\" \"5\" side {\"id\" \"6\" \"plane\" \"(0 0 64) (64 0 64) (64 64 64)\" vertices_plus {\"v\" \"0 0 64\" \"v\" \"64 0 64\" \"v\" \"64 64 64\" \"v\" \"0 64 64\"}}}}";
+        let hosted = Snapshot::from_vmf(text).unwrap();
+        let parsed = hp_vmf::parse(&hosted.to_vmf().unwrap()).unwrap();
+        let vertices = parsed.world.solids[0].sides[0].vertices_plus.as_ref().unwrap();
+        assert_eq!(vertices.len(), 4);
+        assert_eq!(vertices[3].to_array(), [0.0, 64.0, 64.0]);
+        let mut remote = map();
+        remote.apply(&remote.diff(&hosted)).unwrap();
+        assert_eq!(remote, hosted);
+        for value in ["NaN 0 0", "inf 0 0", "1000001 0 0", "1 2", "1 2 3 4"] {
+            assert!(Snapshot::from_vmf(&text.replace("0 64 64", value)).is_err());
+        }
+    }
+
+    #[test]
+    fn scalar_entity_start_positions_can_be_hosted_and_shared() {
+        for class in ["func_movelinear", "func_water_analog", "momentary_door"] {
+            for value in ["0", "0.5", "1"] {
+                let text = format!(
+                    "world {{\"id\" \"1\"}} entity {{\"id\" \"2\" \"classname\" \"{class}\" \"origin\" \"32 0 0\" \"startposition\" \"{value}\"}}"
+                );
+                let hosted = Snapshot::from_vmf(&text).unwrap();
+                let parsed = hp_vmf::parse(&hosted.to_vmf().unwrap()).unwrap();
+                assert_eq!(parsed.entities[0].get("startposition"), Some(value));
+                let mut remote = map();
+                remote.apply(&remote.diff(&hosted)).unwrap();
+                assert_eq!(remote, hosted);
+            }
+        }
+    }
+
+    #[test]
+    fn malformed_vectors_are_rejected_with_property_and_block_names() {
+        for key in ["origin", "angles", "mins", "maxs"] {
+            for value in ["1 2", "NaN 0 0", "1000001 0 0"] {
+                let mut host = map();
+                let original = host.clone();
+                let unit = Unit {
+                    owner: 0,
+                    hidden: false,
+                    vmf: format!("entity {{\"id\" \"2\" \"classname\" \"info_target\" \"{key}\" \"{value}\"}}"),
+                };
+                let change =
+                    Change { key: "entity:2".into(), before: host.0.get("entity:2").map(digest), after: Some(unit) };
+                assert_eq!(
+                    host.apply(&[change]).unwrap_err().to_string(),
+                    format!("Invalid vector property '{key}' in 'entity'")
+                );
+                assert_eq!(host, original);
+            }
+        }
+        for value in ["0", "1 2", "NaN 0 0", "1000001 0 0"] {
+            let text = format!("world {{\"id\" \"1\" dispinfo {{\"startposition\" \"{value}\"}}}}");
+            assert_eq!(
+                Snapshot::from_vmf(&text).unwrap_err().to_string(),
+                "Invalid vector property 'startposition' in 'dispinfo'"
+            );
+        }
+        assert!(Snapshot::from_vmf("world {\"id\" \"1\" dispinfo {\"startposition\" \"[0 0 64]\"}}").is_ok());
     }
 }

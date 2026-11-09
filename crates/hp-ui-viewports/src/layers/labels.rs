@@ -305,6 +305,13 @@ mod tests {
         let zoomed = shapes(&state, &layer, &view(ViewKind::Top, 2.0));
         assert!(zoomed > out, "{zoomed} {out}");
         assert_eq!(shapes(&state, &layer, &view(ViewKind::Perspective, 1.0)), 1, "only the note in 3D");
+        let entity_count = state.doc.scene().entities().len();
+        state.settings.helpers.show_entity_names = false;
+        layer.prepare(&state);
+        assert_eq!(shapes(&state, &layer, &view(ViewKind::Top, 0.5)), 1, "the map note remains visible");
+        assert_eq!(shapes(&state, &layer, &view(ViewKind::Perspective, 1.0)), 1, "3D text is unchanged");
+        assert_eq!(state.doc.scene().entities().len(), entity_count);
+        state.settings.helpers.show_entity_names = true;
         let mut behind = view(ViewKind::Perspective, 1.0);
         behind.cam3d =
             Camera3d { pos: DVec3::new(32.0, -200.0, 64.0), yaw_deg: 90.0, pitch_deg: 0.0, ..Camera3d::default() };

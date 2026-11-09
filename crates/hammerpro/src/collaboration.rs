@@ -18,6 +18,24 @@ pub(crate) fn tr(en: &'static str, fr: &'static str, ru: &'static str) -> &'stat
     }
 }
 
+fn teleport_camera(state: &mut AppState, position: [f64; 3], direction: [f64; 3]) {
+    let position = glam::DVec3::from_array(position);
+    if !position.is_finite() || position.abs().max_element() > 1_000_000.0 {
+        return;
+    }
+    state.cameras.cam3d.pos = position;
+    if let Some(direction) = glam::DVec3::from_array(direction).try_normalize() {
+        state.cameras.cam3d.look_at(position + direction);
+    }
+    state.cameras.center_2d(position);
+    if let Some(view) = state.settings.ui.quadrants.iter().position(|kind| *kind == 0) {
+        state.ui.focused_view = Some(view);
+        if state.ui.maximized_view.is_some() {
+            state.ui.maximized_view = Some(view);
+        }
+    }
+}
+
 struct Submitted {
     sequence: u64,
     before: Snapshot,
@@ -59,6 +77,7 @@ pub(crate) struct Controller {
     pending_host: Option<u64>,
     pending_switch: Option<u64>,
     pending_look: Option<[f64; 3]>,
+    pending_teleport: Option<([f64; 3], [f64; 3])>,
     participant: u32,
     id_start: u32,
     revision: u64,
@@ -96,6 +115,9 @@ impl Controller {
         self.redo.clear();
         self.bans.clear();
         self.last_presence = None;
+        self.pending_look = None;
+        self.pending_teleport = None;
+        self.pending_switch = None;
         self.snapshots = snapshots::Tasks::default();
         self.invitation.clear();
         self.participant = 0;
@@ -377,6 +399,9 @@ impl Controller {
         if let Some(position) = self.pending_look.take() {
             state.cameras.cam3d.look_at(glam::DVec3::from_array(position));
         }
+        if let Some((position, direction)) = self.pending_teleport.take() {
+            teleport_camera(state, position, direction);
+        }
         if let Err(error) = self.finish_transaction(state) {
             self.stop(state);
             self.message(state, error);
@@ -607,10 +632,11 @@ impl Controller {
                     ui.heading(tr("Participants", "Participants", "Участники"));
                     let rows = state.runtime.collaboration.participants.clone();
                     for row in rows {
-                        ui.horizontal(|ui| {
+                        ui.horizontal_wrapped(|ui| {
                             let role = if row.id == 1 { tr("Host", "Hôte", "Хост") } else { tr("Guest", "Invité", "Гость") };
                             ui.label(format!("{} | {} | {} ms", row.name, role, row.latency_ms));
                             if row.id != self.participant && ui.small_button(tr("Locate", "Repérer", "Найти")).clicked() { self.pending_switch = Some(self.bound_tab); self.pending_look = Some(row.position); }
+                            if row.id != self.participant && ui.small_button(tr("Teleport", "Téléporter", "Перейти")).clicked() { self.pending_switch = Some(self.bound_tab); self.pending_teleport = Some((row.position, row.direction)); }
                             if self.host && row.id != 1 && ui.small_button(tr("Remove", "Exclure", "Исключить")).clicked() { let _ = self.session.as_ref().unwrap().send(Command::Kick(row.id)); }
                             if self.host && row.id != 1 && ui.small_button(tr("Ban", "Bannir", "Заблокировать")).clicked() { self.ban_target = Some(row.id); }
                         });
