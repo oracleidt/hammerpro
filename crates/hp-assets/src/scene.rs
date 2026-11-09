@@ -67,6 +67,9 @@ pub(crate) struct SceneSync {
     pub realize_later: AHashSet<String>,
     pub sprites_dirty: bool,
     pub lights_dirty: bool,
+    pub light_time: f64,
+    pub light_frame: u64,
+    pub animated_lights: bool,
     pub light_exclusions: Vec<Id>,
     pub projector_overrides: Vec<hp_app::state::ProjectorOverride>,
     pub force_entities: bool,
@@ -1500,6 +1503,8 @@ impl AssetManager {
         let mut names: Option<AHashMap<String, glam::DVec3>> = None;
         let mut targets: AHashSet<String> = AHashSet::new();
         let mut lights: Vec<PreviewLight> = Vec::with_capacity(ids.len());
+        let mut patterns = Vec::with_capacity(ids.len());
+        self.scene.animated_lights = false;
         let mut sun: Option<(u8, crate::lights::SceneLight)> = None;
         for id in ids {
             let Some(mut light) = self.scene.ents.get(&id).and_then(|s| s.desc.light) else { continue };
@@ -1532,7 +1537,12 @@ impl AssetManager {
             if let Some(m) = self.play_transforms.get(&id) {
                 light = light.moved(m);
             }
-            lights.extend(light.pick(hdr));
+            if let Some(light) = light.pick(hdr) {
+                let pattern = node.map(|n| crate::lights::appearance(&n.entity)).unwrap_or_default();
+                self.scene.animated_lights |= pattern.bytes().any(|value| Some(value) != pattern.bytes().next());
+                patterns.push(pattern);
+                lights.push(light);
+            }
         }
         for light in self.scene.derived.lights() {
             if light.sun.is_some() {
@@ -1541,17 +1551,21 @@ impl AssetManager {
                 }
                 continue;
             }
-            lights.extend(light.pick(hdr));
+            if let Some(light) = light.pick(hdr) {
+                lights.push(light);
+                patterns.push(String::new());
+            }
         }
         let sun = sun.map(|(_, s)| s);
         let ambient = sun.and_then(|s| s.ambient(hdr));
         let sun_light = sun.and_then(|s| s.pick(hdr)).filter(|l| l.intensity > 0.0 && l.color.iter().any(|c| *c > 0.0));
         if let Some(l) = sun_light {
             lights.insert(0, l);
+            patterns.insert(0, String::new());
         }
         let spread = sun.and_then(|s| s.sun).map_or(0.0, |s| s.spread_deg);
         let none = if lights.is_empty() { DEFAULT_AMBIENT } else { [0.0; 3] };
-        renderer.set_lights(&lights, ambient.unwrap_or(none));
+        renderer.set_animated_lights(&lights, &patterns, ambient.unwrap_or(none), self.scene.light_time);
         renderer.set_sun(SunParams { spread_deg: spread, sky_ambient: d.sky_occlusion && ambient.is_some() });
         self.scene.light_targets = targets;
         let report = sun.map(|s| SunReport {

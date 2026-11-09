@@ -12,6 +12,23 @@ use crate::producer::{DerivedBuild, DerivedProducer, ProducerChanges, ProducerCx
 
 use crate::util::parse_floats;
 
+pub(crate) fn appearance(entity: &Entity) -> String {
+    let named = entity.get("targetname").is_some_and(|name| !name.trim().is_empty());
+    let flags = entity.get("spawnflags").and_then(|v| v.trim().parse::<u32>().ok()).unwrap_or(0);
+    if named && flags & 1 != 0 {
+        return "a".into();
+    }
+    if let Some(pattern) = entity
+        .get("pattern")
+        .map(str::trim)
+        .filter(|p| !p.is_empty() && p.len() <= 256 && p.bytes().all(|c| c.is_ascii_lowercase()))
+    {
+        return pattern.into();
+    }
+    let style = entity.get("style").and_then(|s| s.trim().parse::<usize>().ok()).unwrap_or(0);
+    if style == 0 { String::new() } else { hp_editor::limits::world_light::default_pattern(style).into() }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct LightValue {
     pub rgb: [f64; 3],

@@ -542,7 +542,7 @@ impl FlatLightmaps {
     }
 }
 
-fn styles_on(entities: &[hp_bsp::Entity]) -> [bool; 256] {
+pub(super) fn styles_on(entities: &[hp_bsp::Entity]) -> [bool; 256] {
     let mut on = [true; 256];
     let mut seen_lit = [false; 256];
     let mut seen_dark = [false; 256];

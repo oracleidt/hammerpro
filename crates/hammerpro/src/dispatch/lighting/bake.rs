@@ -42,6 +42,7 @@ pub(crate) struct Job {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct FaceRecord {
+    pub bsp: u32,
     pub solid: u32,
     pub generation: u64,
     pub scale: f32,
@@ -71,6 +72,7 @@ pub(crate) struct Baked {
     pub indirect: Option<Arc<hp_render::IndirectVolume>>,
     pub hdr: bool,
     pub child_peak: Option<super::memory::Usage>,
+    pub animations: Vec<super::style_maps::AnimatedFace>,
 }
 
 pub(crate) enum Outcome {
@@ -343,9 +345,12 @@ fn run(job: Job, ctx: &Ctx<'_>, cache: &std::sync::Mutex<Option<Compiled>>) -> O
         (a, b) => a.or(b),
     };
     note_memory("result read");
-    let (props, indirect) = model_lighting(lit_bsp, hdr);
+    let lit_bsp = hp_bsp::Bsp::from_vec(lit_bsp).ok();
+    let animated = lit_bsp.as_ref().map(|b| super::style_maps::read(b, hdr)).unwrap_or_default();
+    let (props, indirect) = lit_bsp.as_ref().map(|b| model_lighting(b, hdr)).unwrap_or_default();
     note_memory("models");
     let mut baked = if indirect_only { Baked::default() } else { assemble(&mut geo, flat, layer_size, max_layers) };
+    baked.animations = bind_animations(animated, &baked, hdr);
     note_memory("assembled");
     baked.props = props;
     baked.indirect = indirect;
@@ -554,15 +559,11 @@ fn line_phase(line: &str, triangles: &mut usize) -> Option<(BakePhase, f32)> {
 
 type ModelLight = (Option<Arc<hp_editor::limits::world_light::PropLighting>>, Option<Arc<hp_render::IndirectVolume>>);
 
-fn model_lighting(bytes: Vec<u8>, hdr: bool) -> ModelLight {
-    let Some(bsp) = hp_bsp::Bsp::from_vec(bytes).map_err(|e| log::warn!("lighting preview: the lit map: {e}")).ok()
-    else {
-        return (None, None);
-    };
-    let props = crate::dispatch::health::portals::bake_prop_lighting(&bsp, hdr)
+fn model_lighting(bsp: &hp_bsp::Bsp, hdr: bool) -> ModelLight {
+    let props = crate::dispatch::health::portals::bake_prop_lighting(bsp, hdr)
         .filter(hp_editor::limits::world_light::PropLighting::has_data)
         .map(Arc::new);
-    (props, indirect_volume(&bsp))
+    (props, indirect_volume(bsp))
 }
 
 fn indirect_volume(bsp: &hp_bsp::Bsp) -> Option<Arc<hp_render::IndirectVolume>> {
@@ -765,6 +766,7 @@ fn assemble(geo: &mut bsp::Geometry, flat: FlatLightmaps, layer_size: u32, max_l
         .zip(&rects)
         .zip(&images)
         .map(|((f, rect), &(texels, images))| FaceRecord {
+            bsp: f.bsp,
             solid: f.solid,
             generation: f.generation,
             scale: f.scale,
@@ -787,6 +789,35 @@ fn assemble(geo: &mut bsp::Geometry, flat: FlatLightmaps, layer_size: u32, max_l
         atlas_full,
         ..Baked::default()
     }
+}
+
+fn bind_animations(
+    mut sources: HashMap<u32, super::style_maps::SourceFace>,
+    baked: &Baked,
+    hdr: bool,
+) -> Vec<super::style_maps::AnimatedFace> {
+    baked
+        .faces
+        .iter()
+        .enumerate()
+        .filter_map(|(index, face)| {
+            let rect = face.rect?;
+            let source = sources.remove(&face.bsp)?;
+            Some(source.bind(
+                index as u32,
+                hp_render::lightmap::LightmapRect {
+                    layer: rect.layer,
+                    x: rect.x,
+                    y: rect.y,
+                    w: rect.w / face.images.max(1),
+                    h: rect.h,
+                    density: 1.0,
+                    bumped: face.images == 4,
+                },
+                hdr,
+            ))
+        })
+        .collect()
 }
 
 #[cfg(test)]

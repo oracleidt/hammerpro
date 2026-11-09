@@ -274,6 +274,9 @@ impl MapBrush {
                             continue;
                         }
                         let p = planes.find_f32(normal, dist);
+                        if planes.get(p).kind <= crate::planes::PLANE_Z {
+                            continue;
+                        }
                         let s = template(p, &self.sides);
                         self.sides.push(s);
                         fw.push(None);
@@ -418,5 +421,25 @@ mod tests {
         w.add_bevels(&mut planes);
         assert!(w.sides.len() > before, "the top of the wedge is a bevel");
         assert!(w.sides.iter().skip(6).any(|s| !s.bevel));
+    }
+
+    #[test]
+    fn shallow_sloped_thin_brush_has_no_snapped_axial_edge_bevels() {
+        let mut planes = PlaneSet::new();
+        let mut brush = cube(&mut planes, DVec3::ZERO, DVec3::splat(64.0));
+        let source = [
+            [0.30073991417884827, -0.9537061452865601, 0.0, -7652.36328125],
+            [-0.30073991417884827, 0.9537061452865601, 0.0, 7658.3642578125],
+            [0.007729232311248779, 0.0024272450245916843, -0.9999672174453735, 74.98281860351562],
+            [-0.007729227188974619, -0.0024272301234304905, 0.9999672174453735, -66.98250579833984],
+            [-0.956061840057373, -0.2931649684906006, 0.0, -16283.2099609375],
+            [0.952019214630127, 0.3060379922389984, 0.0, 16448.54296875],
+        ];
+        for (side, plane) in brush.sides.iter_mut().zip(source) {
+            side.plane = planes.find_f32(Vec3::new(plane[0] as f32, plane[1] as f32, plane[2] as f32), plane[3] as f32);
+        }
+        assert!(brush.make_windings(&planes));
+        brush.add_bevels(&mut planes);
+        assert!(brush.sides.iter().skip(6).all(|side| planes.get(side.plane).kind > crate::planes::PLANE_Z));
     }
 }

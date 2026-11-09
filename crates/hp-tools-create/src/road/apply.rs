@@ -229,17 +229,33 @@ pub fn piece_solid(
     lightmap: i32,
     next: &mut dyn FnMut() -> u32,
 ) -> Result<Vec<Side>, GeomError> {
+    let anchor = piece.corners.iter().sum::<DVec3>() / piece.corners.len().max(1) as f64;
+    piece_solid_at(piece, tex_scale, lightmap, next, anchor, &mut hp_geom::PlanePointCache::default())
+}
+
+fn piece_solid_at(
+    piece: &RoadPiece,
+    tex_scale: f64,
+    lightmap: i32,
+    next: &mut dyn FnMut() -> u32,
+    anchor: DVec3,
+    cache: &mut hp_geom::PlanePointCache,
+) -> Result<Vec<Side>, GeomError> {
     let mut sides = hull_solid(&piece.corners, &piece.material, tex_scale, lightmap, next)?;
     for s in &mut sides {
         let plane = hp_geom::Plane { normal: s.normal(), dist: s.plane_distance() };
-        let points: Vec<_> =
-            piece.corners.iter().copied().filter(|p| plane.distance(*p).abs() < hp_geom::CLIP_EPS).collect();
-        let anchor = if points.is_empty() {
-            s.plane.iter().sum::<DVec3>() / 3.0
+        let surface_anchor = if plane.normal.z.abs() > 0.5 {
+            let points: Vec<_> =
+                piece.corners.iter().copied().filter(|p| plane.distance(*p).abs() < hp_geom::CLIP_EPS).collect();
+            points.iter().sum::<DVec3>() / points.len().max(1) as f64
         } else {
-            points.iter().sum::<DVec3>() / points.len() as f64
+            anchor
         };
-        s.plane = plane.to_points_at(anchor);
+        s.plane = if plane.normal.z.abs() > 0.5 {
+            plane.to_points_at(surface_anchor)
+        } else {
+            cache.points_at(plane, surface_anchor)
+        };
         if s.normal().z > 0.5 {
             s.uaxis = TexAxis { axis: piece.uv.u_axis, shift: piece.uv.u_shift, scale: tex_scale };
             s.vaxis = TexAxis { axis: piece.uv.v_axis, shift: piece.uv.v_shift, scale: tex_scale };
@@ -249,6 +265,15 @@ pub fn piece_solid(
 }
 
 pub fn road_solids(road: &Road, lightmap: i32, first_side_id: u32) -> Result<Vec<Vec<Side>>, ApplyError> {
+    let (lo, hi) = road
+        .pieces
+        .iter()
+        .flat_map(|piece| &piece.corners)
+        .fold((DVec3::splat(f64::INFINITY), DVec3::splat(f64::NEG_INFINITY)), |(lo, hi), point| {
+            (lo.min(*point), hi.max(*point))
+        });
+    let anchor = (lo + hi) * 0.5;
+    let mut cache = hp_geom::PlanePointCache::default();
     let mut id = first_side_id;
     let mut next = || {
         let v = id;
@@ -257,7 +282,9 @@ pub fn road_solids(road: &Road, lightmap: i32, first_side_id: u32) -> Result<Vec
     };
     road.pieces
         .iter()
-        .map(|p| piece_solid(p, road.meta.tex_scale, lightmap, &mut next).map_err(ApplyError::Geom))
+        .map(|p| {
+            piece_solid_at(p, road.meta.tex_scale, lightmap, &mut next, anchor, &mut cache).map_err(ApplyError::Geom)
+        })
         .collect()
 }
 

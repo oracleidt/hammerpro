@@ -4,6 +4,12 @@
 
 Hammer Pro shows lighting in the editor in two ways: the **Lit** mode, real-time preview lights with shadows, and the **baked lighting preview**, the map compiled and lit by the built-in compiler so you see the lighting the game will have, without leaving the editor. The **Lighting** tab, the lightmap grid and the lightmap budget help you keep the lightmaps in check, and the 3D view draws cubemap reflections.
 
+## Light Appearance
+
+The **Appearance** property of a `light` or `light_spot` previews Source flicker and pulse styles at ten steps per second. A custom **Pattern** uses the same letter values as Source: `a` is dark, `m` is normal and `z` is brighter. Named lights retain their appearance when compilation assigns a switchable style number. **Initially dark** keeps a named light off in the initial preview.
+
+A bake retains its separate light style layers, including bumped lightmaps. Those layers animate without running VRAD again. HDR layers mix in linear space; LDR conversion follows the mix. Animation does not rebuild static cubemaps every frame. With **Keep the global bake**, editing a light updates its direct preview while keeping the previous baked bounce. Run **Bake** to update that stored indirect result after changing the light configuration.
+
 ## Opening it
 
 | Action | Menu | Default shortcut |

@@ -865,6 +865,15 @@ impl AssetManager {
 
     pub(crate) fn begin_frame_impl(&mut self, ctx: &egui::Context, gfx: Option<&mut Gfx>) {
         self.shared.set_ctx(ctx);
+        self.scene.light_time = ctx.input(|input| input.time);
+        let light_frame = (self.scene.light_time.max(0.0) * 10.0) as u64;
+        if self.scene.animated_lights {
+            if self.scene.light_frame != light_frame {
+                self.scene.lights_dirty = true;
+            }
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        }
+        self.scene.light_frame = light_frame;
         self.shared.frame.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         if let Some(gfx) = gfx.as_ref() {
             self.update_material_hdr(&gfx.renderer);

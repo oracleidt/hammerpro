@@ -74,6 +74,22 @@ impl Tabs {
         self.active
     }
 
+    pub(crate) fn with_document(&mut self, state: &mut AppState, id: TabId, f: impl FnOnce(&mut AppState)) -> bool {
+        if id == self.active {
+            f(state);
+            return true;
+        }
+        let Some(parked) = self.tabs.iter_mut().find(|tab| tab.id == id).and_then(|tab| tab.parked.as_mut()) else {
+            return false;
+        };
+        std::mem::swap(&mut state.doc, &mut parked.doc);
+        std::mem::swap(&mut state.cameras, &mut parked.cameras);
+        f(state);
+        std::mem::swap(&mut state.doc, &mut parked.doc);
+        std::mem::swap(&mut state.cameras, &mut parked.cameras);
+        true
+    }
+
     pub fn version(&self) -> u64 {
         self.version
     }
@@ -578,6 +594,32 @@ mod tests {
         hp_app::i18n::register(crate::app::TR);
         hp_app::i18n::register(TR);
         hp_app::testing::test_state()
+    }
+
+    #[test]
+    fn collaboration_background_updates_only_the_chosen_parked_map() {
+        let mut state = state();
+        let mut tabs = Tabs::default();
+        let shared = tabs.active_id();
+        state.doc.set_path(Some("shared.vmf".into()));
+        let local = tabs.open_new(&mut state, Sidecar::in_memory());
+        state.doc.set_path(Some("local.vmf".into()));
+        state.doc.set_world_key("message", "local only").unwrap();
+        let local_vmf = state.doc.to_vmf_string();
+        let camera = state.cameras.cam3d.pos;
+        assert!(tabs.with_document(&mut state, shared, |state| {
+            state.doc.set_world_key("message", "remote edit").unwrap();
+            state.cameras.cam3d.pos = DVec3::splat(123.0);
+        }));
+        assert_eq!(tabs.active_id(), local);
+        assert_eq!(state.doc.to_vmf_string(), local_vmf);
+        assert_eq!(state.cameras.cam3d.pos, camera);
+        assert_eq!(state.doc.path().unwrap().to_str(), Some("local.vmf"));
+        assert!(tabs.doc(&state, shared).unwrap().to_vmf_string().contains("remote edit"));
+        assert!(!tabs.with_document(&mut state, 9999, |_| panic!("unknown tab callback")));
+        tabs.activate(&mut state, shared);
+        assert_eq!(state.doc.path().unwrap().to_str(), Some("shared.vmf"));
+        assert_eq!(state.cameras.cam3d.pos, DVec3::splat(123.0));
     }
 
     #[test]

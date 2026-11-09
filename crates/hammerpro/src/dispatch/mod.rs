@@ -173,6 +173,9 @@ pub(crate) fn dock_ui(app: &mut HammerProApp, ui: &mut egui::Ui, id: &'static st
 
 impl HammerProApp {
     pub(crate) fn execute(&mut self, ctx: &egui::Context, action: Action) {
+        if self.state.runtime.collaboration.active_map && self.collaboration.history(&mut self.state, action) {
+            return;
+        }
         if let Some(tool) = action.tool()
             && self.has_tool(tool)
         {

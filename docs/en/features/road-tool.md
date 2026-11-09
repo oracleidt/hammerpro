@@ -147,6 +147,8 @@ The junction is remembered. When you edit or split the other road, the roads joi
 - Keep the segment length at 64 or more for long roads to keep the brush count and compile time low. **Create as** still supports `func_detail` and other brush entities.
 - A road compiles as plain convex brushes; with banking the top of a segment can be slightly twisted, which the compiler splits into a few more faces.
 
+Existing maps need a full geometry recompile to receive the fix for collision gaps on thin sloped brushes. Hammer Pro prevents invalid extra axial collision planes in its compiler and repairs them after Valve or Hammer++ geometry compilation launched from Hammer Pro, including the affected world collision references.
+
 ## Related pages
 
 - [Curve tool](curve-tool.md)

@@ -116,6 +116,81 @@ impl Document {
         }
     }
 
+    pub fn apply_shared_map(&mut self, mut map: Map, id_start: Id, id_end: Id) -> EditResult<()> {
+        if self.in_transaction() {
+            return Err(EditError::TransactionOpen);
+        }
+        map.cameras = self.scene.cameras.clone();
+        map.view_settings = self.scene.view_settings.clone();
+        map.cordons = self.scene.cordons.clone();
+        let (scene, info) = Scene::from_map_reusing(map, Some(&self.scene));
+        if !info.renumbered.is_empty() {
+            return Err(EditError::Invalid("Shared map has duplicate identifiers".into()));
+        }
+        for (id, old) in &self.scene.solids {
+            if !scene.solids.contains_key(id) {
+                self.changes.solid_removed(*id);
+            } else if scene.solids.get(id).is_some_and(|new| new.solid != old.solid || new.owner != old.owner) {
+                self.changes.solid_changed(*id);
+            }
+        }
+        for id in scene.solids.keys() {
+            if !self.scene.solids.contains_key(id) {
+                self.changes.solid_changed(*id);
+            }
+        }
+        for (id, old) in &self.scene.entities {
+            if !scene.entities.contains_key(id) {
+                self.changes.entity_removed(*id);
+            } else if scene.entities.get(id).is_some_and(|new| new.entity != old.entity) {
+                self.changes.entity_changed(*id);
+            }
+        }
+        for id in scene.entities.keys() {
+            if !self.scene.entities.contains_key(id) {
+                self.changes.entity_changed(*id);
+            }
+        }
+        self.changes.world_changed |= self.scene.world != scene.world;
+        self.changes.visgroups_changed |= self.scene.visgroups != scene.visgroups;
+        self.changes.groups_changed |= self.scene.groups.len() != scene.groups.len()
+            || self.scene.groups.iter().any(|(id, old)| scene.groups.get(id).is_none_or(|new| old.group != new.group));
+        self.changes.extra_blocks_changed |= self.scene.extra_blocks != scene.extra_blocks;
+        self.changes.visibility_changed |= self.changes.groups_changed || self.changes.visgroups_changed;
+        self.scene = scene;
+        self.pick = Mutex::new(PickCache::default());
+        self.clear_history();
+        self.prune_selection();
+        self.extra_dirty = true;
+        self.bump();
+        self.configure_shared_ids(id_start, id_end)
+    }
+
+    pub fn configure_shared_ids(&mut self, start: Id, end: Id) -> EditResult<()> {
+        if start == 0 || end <= start {
+            return Err(EditError::Invalid("Invalid shared identifier range".into()));
+        }
+        let owned = |id: Id| (start..end).contains(&id);
+        let next = self
+            .scene
+            .solids
+            .values()
+            .flat_map(|node| std::iter::once(node.solid.id).chain(node.solid.sides.iter().map(|side| side.id)))
+            .chain(self.scene.entities.keys().copied())
+            .chain(self.scene.groups.keys().copied())
+            .filter(|id| owned(*id))
+            .max()
+            .map_or(start, |id| id.saturating_add(1));
+        if next >= end {
+            return Err(EditError::Invalid("Participant identifier range exhausted".into()));
+        }
+        let keep = |current| if owned(current) { current.max(next) } else { next };
+        self.next_object_id = keep(self.next_object_id);
+        self.next_side_id = keep(self.next_side_id);
+        self.next_visgroup_id = keep(self.next_visgroup_id);
+        Ok(())
+    }
+
     pub fn load_warnings(&self) -> &[String] {
         &self.load_warnings
     }

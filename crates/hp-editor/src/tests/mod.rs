@@ -2,6 +2,7 @@
 
 mod changes;
 mod clipboard;
+mod collaboration;
 mod display_color;
 mod fixes;
 mod ops;

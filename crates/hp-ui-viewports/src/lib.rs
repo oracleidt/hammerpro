@@ -1,4 +1,5 @@
 pub mod camera;
+mod collaboration;
 pub mod fly_texture;
 pub mod input;
 pub mod io;
@@ -1565,6 +1566,7 @@ impl Viewports {
         drop_label: Option<String>,
     ) {
         let rect = view.rect;
+        collaboration::paint(state, view, painter);
         paint::axis_gizmo(painter, rect.left_bottom() + vec2(30.0, -30.0), view);
         if walk_legend_shown(state, view) {
             let r = &state.settings.render;

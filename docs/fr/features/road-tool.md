@@ -147,6 +147,8 @@ La jonction est mémorisée. Quand vous modifiez ou coupez l'autre route, les ro
 - Gardez une longueur de segment de 64 ou plus pour les longues routes afin de limiter le nombre de brushes et le temps de compilation. **Créer en tant que** accepte toujours `func_detail` et les autres entités brush.
 - Une route compile comme de simples brushes convexes ; avec du dévers le dessus d'un segment peut être légèrement gauchi, ce que le compilateur découpe en quelques faces de plus.
 
+Les cartes existantes nécessitent une recompilation complète de la géométrie pour recevoir le correctif des trous de collision sur les brushes fins et inclinés. Hammer Pro empêche la création de plans de collision axiaux supplémentaires invalides dans son compilateur et les corrige après une compilation de géométrie Valve ou Hammer++ lancée depuis Hammer Pro, avec les références de collision du monde concernées.
+
 ## Pages liées
 
 - [Outil courbe](curve-tool.md)

@@ -1,3 +1,4 @@
+pub mod bevels;
 mod bsp;
 pub mod cubemaps;
 mod edit;

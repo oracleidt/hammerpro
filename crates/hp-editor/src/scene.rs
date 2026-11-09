@@ -170,6 +170,10 @@ impl Default for Scene {
 
 impl Scene {
     pub(crate) fn from_map(map: Map) -> (Scene, LoadInfo) {
+        Self::from_map_reusing(map, None)
+    }
+
+    pub(crate) fn from_map_reusing(map: Map, previous: Option<&Scene>) -> (Scene, LoadInfo) {
         let Map { version_info, visgroups, view_settings, mut world, entities, cameras, cordons, extra_blocks, format } =
             map;
         let mut max_id = world.id;
@@ -237,7 +241,24 @@ impl Scene {
         let nodes: Vec<SolidNode> = raw_solids
             .into_par_iter()
             .enumerate()
-            .map(|(i, (owner, solid))| SolidNode::build(solid, owner, i as u64))
+            .map(|(i, (owner, solid))| {
+                if let Some(node) = previous.and_then(|scene| scene.solids.get(&solid.id)).filter(|node| {
+                    node.solid.sides.len() == solid.sides.len()
+                        && node
+                            .solid
+                            .sides
+                            .iter()
+                            .zip(&solid.sides)
+                            .all(|(old, new)| old.vertices_plus == new.vertices_plus)
+                }) {
+                    let mut node = node.with_solid(solid);
+                    node.owner = owner;
+                    node.order = i as u64;
+                    node
+                } else {
+                    SolidNode::build(solid, owner, i as u64)
+                }
+            })
             .collect();
         let mut solids = id_map(nodes.len());
         let mut entity_solids: IdMap<IdSet> = id_map(entity_list.len() / 4 + 1);

@@ -202,6 +202,36 @@ pub fn parse(src: &str) -> Result<Block, KvError> {
     Ok(parse_with_issues(src).0)
 }
 
+pub fn parse_bounded(src: &str, max_depth: usize) -> Result<Block, KvError> {
+    let mut lexer = Lexer::new(src);
+    let mut depth = 0usize;
+    while let Some((token, _)) = lexer.next() {
+        match token {
+            Tok::Open => {
+                depth += 1;
+                if depth > max_depth {
+                    return Err(KvError::Invalid("nesting limit exceeded".into()));
+                }
+            }
+            Tok::Close => {
+                if depth == 0 {
+                    return Err(KvError::Invalid("unexpected closing brace".into()));
+                }
+                depth -= 1;
+            }
+            Tok::Str(_) => {}
+        }
+    }
+    if depth != 0 || lexer.unterminated {
+        return Err(KvError::Invalid("incomplete input".into()));
+    }
+    let (root, issues) = parse_with_issues(src);
+    if !issues.is_clean() {
+        return Err(KvError::Invalid("malformed properties".into()));
+    }
+    Ok(root)
+}
+
 pub fn parse_with_issues(src: &str) -> (Block, ParseIssues) {
     let mut lexer = Lexer::new(src);
     let mut stack: Vec<Block> = vec![Block::new("")];
@@ -310,6 +340,17 @@ pub fn fmt_num(out: &mut String, v: f64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bounded_parser_checks_nesting_before_constructing_recursive_blocks() {
+        let deep = "a {".repeat(10000) + &"}".repeat(10000);
+        assert!(parse_bounded(&deep, 128).is_err());
+        assert!(parse_bounded("a { b { c { } } }", 2).is_err());
+        assert!(parse_bounded("a { b { } }", 2).is_ok());
+        let quoted = "a {\"value\" \"{{{{}}}}\" // {{{\n}";
+        assert_eq!(parse_bounded(quoted, 1).unwrap().child("a").unwrap().get("value"), Some("{{{{}}}}"));
+        assert!(parse_bounded("a {\"key\"", 128).is_err());
+    }
 
     #[test]
     fn parses_vmf_like_text() {

@@ -119,6 +119,12 @@ pub(super) fn enabled(state: &AppState, action: Action) -> Option<bool> {
     let has_objects = !sel.objects.is_empty();
     let has_any = !sel.is_empty();
     Some(match action {
+        Action::Undo if state.runtime.collaboration.connected && state.runtime.collaboration.active_map => {
+            state.runtime.collaboration.can_undo
+        }
+        Action::Redo if state.runtime.collaboration.connected && state.runtime.collaboration.active_map => {
+            state.runtime.collaboration.can_redo
+        }
         Action::Undo => state
             .runtime
             .brush

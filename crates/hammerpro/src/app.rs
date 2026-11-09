@@ -46,6 +46,7 @@ const MAX_DROPPED_MAPS: usize = 16;
 const IDLE_GAP: f32 = 0.1;
 
 pub struct HammerProApp {
+    pub(crate) collaboration: crate::collaboration::Controller,
     pub(crate) state: AppState,
     pub(crate) tools: Vec<Box<dyn Tool>>,
     tools_available: Vec<ToolId>,
@@ -378,6 +379,7 @@ impl HammerProApp {
             vram,
             perf: crate::perf::PerfMonitor::default(),
             primitives: crate::primitive_stats::Monitor::default(),
+            collaboration: crate::collaboration::Controller::default(),
             perf_bench: crate::perf::BenchDriver::new(),
         };
         if let Some(bench) = &app.bench {
@@ -546,6 +548,14 @@ impl HammerProApp {
         assets.begin_frame(ctx, gfx.as_mut());
         self.report_assets();
         self.poll_open(ctx);
+        let shared = self.collaboration.bound_tab();
+        if self.collaboration.active() {
+            let controller = &mut self.collaboration;
+            if !self.tabs.with_document(&mut self.state, shared, |state| controller.tick(state, ctx, shared)) {
+                self.collaboration.stop(&mut self.state);
+            }
+        }
+        self.state.runtime.collaboration.active_map = self.collaboration.active() && shared == self.tabs.active_id();
 
         let openable = |e: &std::ffi::OsStr| ["vmf", "vmx", "vmm", "map"].iter().any(|x| e.eq_ignore_ascii_case(x));
         self.dropped_maps = ctx.input(|i| {
@@ -871,6 +881,19 @@ impl HammerProApp {
     }
 
     fn dialogs(&mut self, ctx: &egui::Context) {
+        if self.collaboration.ui(&mut self.state, ctx, self.tabs.active_id(), self.persist_settings) {
+            self.new_tab();
+            self.collaboration.bind_tab(self.tabs.active_id());
+        }
+        if let Some(tab) = self.collaboration.take_host_request()
+            && self.tabs.contains(tab)
+        {
+            self.switch_to_tab(tab);
+            self.collaboration.start_host(&mut self.state, tab, self.persist_settings);
+        }
+        if let Some(tab) = self.collaboration.take_switch_request() {
+            self.switch_to_tab(tab);
+        }
         self.shell.dialogs(ctx, &mut self.state);
         self.texture_dialogs.show(ctx, &mut self.state);
         self.entity_dialogs.show(ctx, &mut self.state);

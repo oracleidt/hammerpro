@@ -10,7 +10,7 @@
 
 Hammer Pro ouvre et enregistre des fichiers `.vmf` standard : vous pouvez l'utiliser en parallèle de Hammer et de Hammer++. Il est écrit en Rust, dessine avec la carte graphique grâce à wgpu, reste fluide sur les très grandes maps et compile les maps avec son propre compilateur intégré : ni VBSP, ni VVIS, ni VRAD.
 
-Version **1.1.5**.
+Version **1.2.0**.
 
 Le russe est disponible pour l'interface et la [documentation](docs/ru/README.md). Les options VBSP, VVIS et VRAD du compilateur externe sélectionné sont accessibles dans la fenêtre de compilation. Les modèles physiques peuvent servir de décors statiques par défaut ; les ciels absents ont un remplacement signalé et les lightmaps noires un diagnostic distinct.
 
@@ -87,6 +87,9 @@ cargo build --release -p hammerpro
 L'exécutable est `target/release/hammerpro.exe`. Il faut Rust 1.95 ou plus récent. Lancez les tests avec `cargo test --workspace` (les tests qui ont besoin de Garry's Mod se désactivent s'il n'est pas installé). Voir [Compiler depuis les sources](docs/fr/development/building.md) pour les profils de compilation et [Architecture](docs/fr/development/architecture.md) pour les crates.
 
 ## Documentation
+
+- [Team Mapping](docs/fr/features/team-mapping.md) : sessions, invitations, participants, sécurité et limites. [English](docs/en/features/team-mapping.md) | [Русский](docs/ru/features/team-mapping.md).
+- [Documentation en russe](docs/ru/README.md).
 
 - [Documentation en français](docs/fr/README.md) : prise en main, une page par fonctionnalité, le compilateur, les références (paramètres, raccourcis, ligne de commande, scripts, MCP), des guides, le dépannage et le développement.
 - [English documentation](docs/en/README.md).

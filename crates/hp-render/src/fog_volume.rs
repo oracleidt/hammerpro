@@ -284,10 +284,7 @@ impl DrawCtx<'_> {
                 view: target,
                 depth_slice: None,
                 resolve_target: resolve,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Load,
-                    store: if resolve.is_some() { wgpu::StoreOp::Discard } else { wgpu::StoreOp::Store },
-                },
+                ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store },
             })],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                 view: &view.depth_view,

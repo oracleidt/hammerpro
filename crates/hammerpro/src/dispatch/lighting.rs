@@ -7,6 +7,7 @@ pub(crate) mod child;
 mod grid;
 pub(crate) mod memory;
 mod prepare;
+mod style_maps;
 
 use std::collections::{HashMap, HashSet};
 
@@ -89,6 +90,7 @@ struct Upload {
 }
 
 struct Preview {
+    animations: Vec<style_maps::AnimatedFace>,
     baseline: Option<std::sync::Arc<hp_render::BakedLightBaseline>>,
     rendered_scene: Option<(u64, bool)>,
     baseline_key: Option<u64>,
@@ -134,10 +136,14 @@ pub(crate) fn primitive_resource_probes(
     probes: &mut hp_app::runtime::primitives::ResourceProbes,
 ) -> bool {
     state.preview.as_ref().is_none_or(|preview| {
+        let class = hp_app::runtime::primitives::PrimitiveClass::Lighting;
+        probes.vec(&preview.animations, class);
+        for face in &preview.animations {
+            face.resource_probes(probes);
+        }
         if let Some(baseline) = &preview.baseline {
-            let class = hp_app::runtime::primitives::PrimitiveClass::Lighting;
             probes.hold(baseline, class);
-            if let Some(address) = baseline.allocation_address() {
+            for address in baseline.allocation_addresses() {
                 probes.point(address, class);
             }
         }
@@ -267,6 +273,7 @@ impl Preview {
         let ctx = ctx.clone();
         let worker = bake::Worker::start(Box::new(move || ctx.request_repaint())).ok()?;
         Some(Self {
+            animations: Vec::new(),
             baseline: None,
             rendered_scene: None,
             baseline_key: None,
@@ -555,6 +562,7 @@ impl Preview {
         let Some(gfx) = gfx.as_mut() else { return };
         let r = &mut gfx.renderer;
         if up.written == 0 {
+            self.animations.clear();
             if let Some(baseline) = up.baseline.as_ref() {
                 r.restore_baked_lights(baseline);
                 self.baseline = Some(baseline.clone());
@@ -647,6 +655,7 @@ impl Preview {
             );
             state.log(Severity::Info, text);
         }
+        self.animations = b.animations;
     }
 
     fn schedule(&mut self, state: &mut AppState, now: f64) {
@@ -1268,6 +1277,19 @@ impl Package for Lighting {
                 app.pkg.lighting.grid.clear(&mut gfx.renderer);
             }
             p.upload(&mut app.state);
+            if active && p.upload.is_none() && !p.animations.is_empty() {
+                let changed: Vec<_> =
+                    p.animations.iter_mut().filter_map(|face| face.sample(now).then_some(face)).collect();
+                if let Some(gfx) = app.state.gfx.as_mut() {
+                    let writes: Vec<_> = changed.iter().map(|face| face.write()).collect();
+                    if !writes.is_empty() {
+                        gfx.renderer.write_animated_lightmaps(&writes);
+                    }
+                }
+                if p.animations.iter().any(style_maps::AnimatedFace::animated) {
+                    ctx.request_repaint_after(std::time::Duration::from_millis(100));
+                }
+            }
             if p.running.is_some()
                 || p.upload.is_some()
                 || ((active || lit_wanted)

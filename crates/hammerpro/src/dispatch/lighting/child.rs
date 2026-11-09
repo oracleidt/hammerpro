@@ -182,10 +182,16 @@ pub(crate) fn light(
 
 fn for_models(bsp: hp_bsp::Bsp) -> Result<Vec<u8>, String> {
     use hp_bsp::lump;
+    let animated = super::style_maps::has_animation(&bsp);
     let keep = |i: usize| {
         matches!(i, lump::ENTITIES | lump::GAME_LUMP | lump::PAKFILE)
             || i == hp_light::probes::LUMP
             || crate::dispatch::health::portals::PROP_LIGHTING_LUMPS.contains(&i)
+            || (animated
+                && matches!(
+                    i,
+                    lump::FACES | lump::FACES_HDR | lump::LIGHTING | lump::LIGHTING_HDR | super::bsp::lump::TEXINFO
+                ))
     };
     let mut edit = bsp.edit();
     for i in (0..hp_bsp::LUMP_COUNT).filter(|i| !keep(*i)) {

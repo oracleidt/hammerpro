@@ -4,6 +4,12 @@
 
 Hammer Pro montre l'éclairage dans l'éditeur de deux façons : le mode **éclairé**, des lumières d'aperçu en temps réel avec ombres, et l'**aperçu de l'éclairage précalculé**, la map compilée et éclairée par le compilateur intégré pour voir l'éclairage que le jeu aura, sans quitter l'éditeur. L'onglet **Éclairage**, la grille de lightmap et le budget des lightmaps vous aident à garder les lightmaps sous contrôle, et la vue 3D dessine les reflets des cubemaps.
 
+## Apparence des lumières
+
+La propriété **Appearance** des entités `light` et `light_spot` anime les clignotements et pulsations de Source à dix étapes par seconde. Le champ **Pattern** utilise les mêmes lettres que Source : `a` éteint la lumière, `m` correspond à son intensité normale et `z` l'augmente. Une lumière nommée conserve son apparence lorsque la compilation lui attribue un numéro de style commutable. **Initially dark** garde une lumière nommée éteinte dans l'état initial.
+
+Le bake conserve les couches de styles séparées, y compris pour les lightmaps avec bump. Elles s'animent sans relancer VRAD. Les couches HDR sont additionnées dans l'espace linéaire ; la conversion LDR intervient après le mélange. L'animation ne recalcule pas les cubemaps statiques à chaque image. Avec **Conserver le bake global**, une modification actualise l'aperçu direct de la lumière et conserve les rebonds déjà précalculés. Relance **Précalculer** pour mettre à jour ce résultat indirect après une modification des paramètres lumineux.
+
 ## Accès
 
 | Action | Menu | Raccourci par défaut |

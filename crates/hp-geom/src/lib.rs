@@ -15,6 +15,7 @@ mod hull;
 mod inset;
 mod pick;
 mod plane;
+mod plane_points;
 mod primitive;
 pub mod roadside;
 mod slope;
@@ -74,6 +75,7 @@ pub use inset::{
 };
 pub use pick::{ViewAxis, point_segment_distance, point_segment_distance_2d, ray_aabb, ray_solid, ray_triangle};
 pub use plane::{Plane, PlaneSide};
+pub use plane_points::PlanePointCache;
 pub use primitive::{
     MAX_DOOR_ARCH_SEGMENTS, MAX_PRIMITIVE_SIDES, MAX_SPIRAL_ARC, MAX_STAIR_ANGLE, MAX_STAIR_STEPS, Primitive,
     PrimitiveParams, RiseDirection, hull_solid, make_primitive, step_count,

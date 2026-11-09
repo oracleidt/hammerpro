@@ -335,6 +335,10 @@ impl Renderer {
                 addresses.push(block.draws.as_ptr() as usize);
             }
         }
+        for baseline in [&self.baked_lights, &self.unanimated_lights].into_iter().flatten() {
+            addresses.push(std::sync::Arc::as_ptr(baseline) as usize);
+            addresses.extend(baseline.allocation_addresses());
+        }
         addresses
     }
 
@@ -681,7 +685,17 @@ impl Renderer {
     }
 
     pub fn write_lightmaps(&mut self, writes: &[(u32, LightmapRect, &[u32])]) {
-        self.cubes.epoch += 1;
+        self.write_lightmap_batch(writes, true);
+    }
+
+    pub fn write_animated_lightmaps(&mut self, writes: &[(u32, LightmapRect, &[u32])]) {
+        self.write_lightmap_batch(writes, false);
+    }
+
+    fn write_lightmap_batch(&mut self, writes: &[(u32, LightmapRect, &[u32])], invalidate_cubemaps: bool) {
+        if invalidate_cubemaps {
+            self.cubes.epoch += 1;
+        }
         let Some(atlas) = &self.lightmap.atlas else { return };
         let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
         let mut ok: Vec<(u32, LightmapRect, &[u32], u64, u32)> = Vec::with_capacity(writes.len());

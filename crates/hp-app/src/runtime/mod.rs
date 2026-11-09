@@ -1,5 +1,6 @@
 mod blender;
 mod brush;
+pub mod collaboration;
 mod compile;
 mod content;
 mod discord;
@@ -75,6 +76,7 @@ pub use workflow::{MAX_DROPPED, MapTabInfo, TabRequest, WorkflowMapMemory, Workf
 
 #[derive(Debug, Default)]
 pub struct Runtime {
+    pub collaboration: collaboration::CollaborationRuntime,
     pub primitives: primitives::PrimitivesRuntime,
     pub fade: fade::FadePreview,
     pub selection: SelectionRuntime,

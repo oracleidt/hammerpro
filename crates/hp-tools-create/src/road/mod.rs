@@ -11,6 +11,8 @@ mod tool;
 mod tr;
 
 #[cfg(test)]
+mod compile_tests;
+#[cfg(test)]
 mod tests;
 
 pub use api::{RoadSummary, summarize};

@@ -58,16 +58,32 @@ pub(crate) fn prepare_road_contents(map: &mut hp_vmf::Map, scene: &crate::Scene)
     if roads.is_empty() {
         return;
     }
+    let mut bounds: std::collections::HashMap<String, hp_geom::Aabb> = std::collections::HashMap::new();
+    let mut planes: std::collections::HashMap<String, hp_geom::PlanePointCache> = std::collections::HashMap::new();
+    for solid in map.world.solids.iter().chain(map.entities.iter().flat_map(|entity| &entity.solids)) {
+        if let Some(tag) = editor_curve_tag(&solid.editor).filter(|tag| roads.contains(*tag))
+            && let Some(node) = scene.solid(solid.id)
+        {
+            let entry = bounds.entry(tag.to_owned()).or_insert_with(hp_geom::Aabb::empty);
+            *entry = entry.union(&node.bounds);
+        }
+    }
     for solid in &mut map.world.solids {
         if !editor_curve_tag(&solid.editor).is_some_and(|tag| roads.contains(tag)) {
             continue;
         }
+        let anchor = editor_curve_tag(&solid.editor).and_then(|tag| bounds.get(tag)).map(|b| b.center());
+        let cache = planes.entry(editor_curve_tag(&solid.editor).unwrap_or_default().to_owned()).or_default();
         for (index, side) in solid.sides.iter_mut().enumerate() {
-            let anchor = scene
-                .solid(solid.id)
-                .and_then(|node| node.geom.face_for_side(index))
-                .map(|f| hp_geom::polygon_center(&f.vertices));
-            stabilize_road_plane(side, anchor);
+            let surface_anchor = if side.normal().z.abs() > 0.5 {
+                scene
+                    .solid(solid.id)
+                    .and_then(|node| node.geom.face_for_side(index))
+                    .map(|face| hp_geom::polygon_center(&face.vertices))
+            } else {
+                anchor
+            };
+            stabilize_road_plane(side, surface_anchor, cache);
             if !side.extra_props.iter().any(|(key, _)| key.eq_ignore_ascii_case("contents")) {
                 side.add_compile_contents(hp_vmf::CONTENTS_DETAIL);
             }
@@ -75,25 +91,32 @@ pub(crate) fn prepare_road_contents(map: &mut hp_vmf::Map, scene: &crate::Scene)
     }
     for solid in map.entities.iter_mut().flat_map(|entity| &mut entity.solids) {
         if editor_curve_tag(&solid.editor).is_some_and(|tag| roads.contains(tag)) {
+            let anchor = editor_curve_tag(&solid.editor).and_then(|tag| bounds.get(tag)).map(|b| b.center());
+            let cache = planes.entry(editor_curve_tag(&solid.editor).unwrap_or_default().to_owned()).or_default();
             for (index, side) in solid.sides.iter_mut().enumerate() {
-                let anchor = scene
-                    .solid(solid.id)
-                    .and_then(|node| node.geom.face_for_side(index))
-                    .map(|f| hp_geom::polygon_center(&f.vertices));
-                stabilize_road_plane(side, anchor);
+                let surface_anchor = if side.normal().z.abs() > 0.5 {
+                    scene
+                        .solid(solid.id)
+                        .and_then(|node| node.geom.face_for_side(index))
+                        .map(|face| hp_geom::polygon_center(&face.vertices))
+                } else {
+                    anchor
+                };
+                stabilize_road_plane(side, surface_anchor, cache);
             }
         }
     }
 }
 
-fn stabilize_road_plane(side: &mut hp_vmf::Side, anchor: Option<glam::DVec3>) {
+fn stabilize_road_plane(side: &mut hp_vmf::Side, anchor: Option<glam::DVec3>, cache: &mut hp_geom::PlanePointCache) {
     let normal = side.normal();
     let dist = side.plane_distance();
     if side.disp.is_some() || !normal.is_finite() || normal.length_squared() < 0.5 || !dist.is_finite() {
         return;
     }
     let anchor = anchor.unwrap_or_else(|| side.plane.iter().sum::<glam::DVec3>() / 3.0);
-    let plane = hp_geom::Plane { normal, dist }.to_points_at(anchor);
+    let equation = hp_geom::Plane { normal, dist };
+    let plane = if normal.z.abs() > 0.5 { equation.to_points_at(anchor) } else { cache.points_at(equation, anchor) };
     if plane.map(|p| p.as_vec3()) != side.plane.map(|p| p.as_vec3()) {
         side.plane = plane;
     }

@@ -143,6 +143,41 @@ const RED: Fog = Fog {
     far_z: 0.0,
 };
 
+#[test]
+fn fog_and_sun_passes_preserve_the_scene_across_msaa_and_lighting_transitions() {
+    let (device, queue) = gpu_or_skip!();
+    let mut r = Renderer::new(&device, &queue);
+    material(&mut r, 1, [180, 180, 180, 255]);
+    wall_at(&mut r, 256.0);
+    r.set_fog_volumes(&[FogVolume {
+        min: [64.0, -1000.0, -1000.0],
+        max: [200.0, 1000.0, 1000.0],
+        fog: Some(RED),
+        preview: RED,
+        active: true,
+    }]);
+    let sprite = SunGlowSprite { material: 1, size: 8.0, color: [0.0; 3], modulate: false };
+    r.set_sun_glow(Some(SunGlow { direction: [1.0, 0.0, 0.0], core: sprite, overlay: sprite, hdr_scale: 1.0 }));
+    r.set_view_options(1, ViewOptions { fog_volumes: true, sun_glow: true, ..Default::default() });
+    let mut reference = None;
+    for msaa in [false, true] {
+        for iteration in 0..8 {
+            r.set_lightmap_display(if iteration % 2 == 0 { LightmapDisplay::Baked } else { LightmapDisplay::Off }, 1.0);
+            let mut params = look([1.0, 0.0, 0.0], RenderMode::Textured);
+            params.msaa = msaa;
+            r.render_view(1, &params, &Overlay::default());
+            let image = grab(&r, &format!("multipass_{msaa}_{iteration}"));
+            let sample = center(&image);
+            assert!(sample.iter().sum::<i32>() > 100, "scene vanished: {sample:?}, msaa {msaa}, frame {iteration}");
+            if let Some(expected) = reference {
+                assert!(near(sample, expected, 6), "scene changed: {sample:?} versus {expected:?}, msaa {msaa}");
+            } else {
+                reference = Some(sample);
+            }
+        }
+    }
+}
+
 fn shot(r: &mut Renderer, fog: Fog, name: &str) -> [i32; 3] {
     r.set_environment(Environment { fog: Some(fog), ..Default::default() });
     r.render_view(1, &look([1.0, 0.0, 0.0], RenderMode::Unshaded), &Overlay::default());

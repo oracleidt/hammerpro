@@ -1,14 +1,23 @@
 use hp_render::*;
 use std::path::Path;
+use std::sync::OnceLock;
+
+fn gpu() -> Option<(wgpu::Device, wgpu::Queue)> {
+    static GPU: OnceLock<Option<(wgpu::Device, wgpu::Queue)>> = OnceLock::new();
+    GPU.get_or_init(|| {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let adapter = pollster::block_on(instance.request_adapter(&Default::default())).ok()?;
+        pollster::block_on(
+            adapter.request_device(&wgpu::DeviceDescriptor { required_limits: adapter.limits(), ..Default::default() }),
+        )
+        .ok()
+    })
+    .clone()
+}
 
 #[test]
 fn entity_sprites_match_native_source_size_color_and_render_modes() {
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-    let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else { return };
-    let (device, queue) = pollster::block_on(
-        adapter.request_device(&wgpu::DeviceDescriptor { required_limits: adapter.limits(), ..Default::default() }),
-    )
-    .unwrap();
+    let Some((device, queue)) = gpu() else { return };
     let mut r = Renderer::new(&device, &queue);
     r.set_tone_settings(ToneSettings { mode: ToneMode::Off, ..Default::default() });
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data/native_world_sprites");
@@ -130,12 +139,7 @@ fn entity_sprites_match_native_source_size_color_and_render_modes() {
 
 #[test]
 fn glow_uses_origin_visibility_while_alpha_sprites_follow_scene_depth() {
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-    let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else { return };
-    let (device, queue) = pollster::block_on(
-        adapter.request_device(&wgpu::DeviceDescriptor { required_limits: adapter.limits(), ..Default::default() }),
-    )
-    .unwrap();
+    let Some((device, queue)) = gpu() else { return };
     let mut r = Renderer::new(&device, &queue);
     r.set_tone_settings(ToneSettings { mode: ToneMode::Off, ..Default::default() });
     r.set_material(1, &MaterialDesc { texture: Some(TexId::WHITE), flags: MaterialFlags::UNLIT, ..Default::default() });

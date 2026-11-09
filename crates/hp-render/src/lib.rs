@@ -13,6 +13,7 @@ pub mod hdr;
 pub mod hooks;
 mod indirect;
 mod instance_cull;
+mod light_animation;
 pub mod lightmap;
 mod lights;
 mod live_lighting;
@@ -53,6 +54,7 @@ pub use cubemaps::{
 pub use hdr::{ToneEnv, ToneMode, ToneSettings};
 pub use hooks::{HookContext, PassHook};
 pub use indirect::IndirectVolume;
+pub use light_animation::light_pattern_value;
 pub use lights::MAX_PER_CLUSTER;
 pub use local_shadow::MAX_SHADOWED_LIGHTS;
 pub use park::ParkedScene;
@@ -69,11 +71,23 @@ pub use types::*;
 #[derive(Default)]
 pub struct BakedLightBaseline {
     lights: Vec<gpu::LightGpu>,
+    patterns: Vec<String>,
 }
 
 impl BakedLightBaseline {
     pub fn allocation_address(&self) -> Option<usize> {
         (self.lights.capacity() > 0).then_some(self.lights.as_ptr() as usize)
+    }
+
+    pub fn allocation_addresses(&self) -> Vec<usize> {
+        let mut addresses: Vec<_> = self.allocation_address().into_iter().collect();
+        if self.patterns.capacity() > 0 {
+            addresses.push(self.patterns.as_ptr() as usize);
+        }
+        addresses.extend(
+            self.patterns.iter().filter(|pattern| pattern.capacity() > 0).map(|pattern| pattern.as_ptr() as usize),
+        );
+        addresses
     }
 }
 
@@ -264,6 +278,8 @@ pub struct Renderer {
     lights_buf: GrowBuffer,
     lights_cpu: Vec<LightGpu>,
     baked_lights: Option<std::sync::Arc<BakedLightBaseline>>,
+    unanimated_lights: Option<std::sync::Arc<BakedLightBaseline>>,
+    light_time: f64,
     dir_lights: u32,
     lights_left_out: u32,
     crowded_clusters: u32,
@@ -995,6 +1011,8 @@ impl Renderer {
             lights_buf: GrowBuffer::new(&device, "hp-render lights", storage, size_of::<LightGpu>() as u64),
             lights_cpu: Vec::new(),
             baked_lights: None,
+            unanimated_lights: None,
+            light_time: 0.0,
             dir_lights: 0,
             lights_left_out: 0,
             crowded_clusters: 0,
@@ -2046,12 +2064,19 @@ impl Renderer {
     }
 
     pub fn set_lights(&mut self, lights: &[PreviewLight], ambient: [f32; 3]) {
+        self.unanimated_lights = None;
         let packed = lights::pack_lights(lights);
-        self.upload_lights(live_lighting::combine(packed, self.live_light_baseline()), ambient);
+        let baseline = self.live_light_baseline().map(|b| b.at_time(self.light_time));
+        self.upload_lights(live_lighting::combine(packed, baseline.as_deref()), ambient);
     }
 
     pub fn snapshot_baked_lights(&self) -> std::sync::Arc<BakedLightBaseline> {
-        std::sync::Arc::new(BakedLightBaseline { lights: live_lighting::current(&self.lights_cpu) })
+        self.unanimated_lights.clone().unwrap_or_else(|| {
+            std::sync::Arc::new(BakedLightBaseline {
+                lights: live_lighting::current(&self.lights_cpu),
+                patterns: Vec::new(),
+            })
+        })
     }
 
     pub fn capture_baked_lights(&mut self) -> std::sync::Arc<BakedLightBaseline> {
@@ -2073,15 +2098,16 @@ impl Renderer {
         self.refresh_baked_light_delta();
     }
 
-    fn live_light_baseline(&self) -> Option<&[LightGpu]> {
+    fn live_light_baseline(&self) -> Option<&BakedLightBaseline> {
         (self.lightmap_display() == lightmap::LightmapDisplay::Baked).then_some(())?;
-        self.baked_lights.as_ref().map(|baseline| baseline.lights.as_slice())
+        self.baked_lights.as_deref()
     }
 
     fn refresh_baked_light_delta(&mut self) {
         let current = live_lighting::current(&self.lights_cpu);
         let packed = lights::Packed { lights: current, n_dir: self.dir_lights, left_out: self.lights_left_out };
-        self.upload_lights(live_lighting::combine(packed, self.live_light_baseline()), self.ambient);
+        let baseline = self.live_light_baseline().map(|b| b.at_time(self.light_time));
+        self.upload_lights(live_lighting::combine(packed, baseline.as_deref()), self.ambient);
     }
 
     fn upload_lights(&mut self, packed: lights::Packed, ambient: [f32; 3]) {

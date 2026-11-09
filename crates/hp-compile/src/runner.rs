@@ -241,6 +241,9 @@ impl Worker {
         let from = cache.restore(stage, key, &self.plan.bsp_path(), &self.plan.prt_path())?;
         if kind == StepKind::Bsp {
             let _ = std::fs::remove_file(self.plan.lin_path());
+            if self.repair_collision(index, &self.plan.bsp_path()).is_err() {
+                return None;
+            }
         }
         self.notice(index, Notice::FromCache { from });
         for line in cache.stats(stage, key) {
@@ -326,8 +329,39 @@ impl Worker {
         if outcome.success && !bsp.is_file() {
             outcome.success = false;
             self.notice(index, Notice::BspNotWritten { bsp });
+        } else if outcome.success
+            && let Err(error) = self.repair_collision(index, &bsp)
+        {
+            outcome.success = false;
+            self.emit(CompileEvent::Log {
+                step: index,
+                line: format!("Collision repair failed: {error}"),
+                severity: Severity::Error,
+                location: None,
+            });
         }
         outcome
+    }
+
+    fn repair_collision(&self, index: usize, path: &Path) -> Result<(), String> {
+        let source = match hp_bsp::Bsp::open(path) {
+            Ok(source) => source,
+            Err(hp_bsp::BspError::NotBsp | hp_bsp::BspError::UnsupportedVersion(_)) => return Ok(()),
+            Err(error) => return Err(error.to_string()),
+        };
+        if let Some((edit, report)) = hp_bsp::bevels::repair_axial_bevels(source).map_err(|error| error.to_string())? {
+            edit.save(path).map_err(|error| error.to_string())?;
+            self.emit(CompileEvent::Log {
+                step: index,
+                line: format!(
+                    "Fixed {} invalid axial collision bevels in {} brushes; restored {} leaf references",
+                    report.sides, report.brushes, report.leaf_references
+                ),
+                severity: Severity::Info,
+                location: None,
+            });
+        }
+        Ok(())
     }
 
     fn wait_deferred(&self, index: usize, files: &crate::plan::DeferredFiles) -> Option<Vec<(String, PathBuf)>> {

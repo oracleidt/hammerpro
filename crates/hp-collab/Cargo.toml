@@ -1,0 +1,20 @@
+[package]
+name = "hp-collab"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+hp-vmf.workspace = true
+hp-kv.workspace = true
+serde.workspace = true
+serde_json = "1"
+flate2 = "1"
+blake3 = "1"
+base64 = "0.22"
+getrandom = "0.4"
+subtle = "2"
+zeroize = "1"
+iroh = { version = "1.4.1", default-features = false, features = ["tls-ring"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros", "io-util"] }

@@ -4,11 +4,11 @@
 
 **A modern, fast level editor for Source engine maps, built for Garry's Mod first.**
 
-[Lire en français](README.fr.md) | [Русский](README.ru.md) | [Documentation](docs/en/README.md) | [Documentation en français](docs/fr/README.md) | [Discord](https://discord.gg/eAEWWKRNAe)
+[Lire en français](README.fr.md) | [Русский](README.ru.md) | [Documentation](docs/en/README.md) | [Documentation en français](docs/fr/README.md) | [Документация на русском](docs/ru/README.md) | [Discord](https://discord.gg/eAEWWKRNAe)
 
 Hammer Pro opens and saves standard `.vmf` files, so you can use it side by side with Hammer and Hammer++. It is written in Rust, renders with the GPU through wgpu, stays smooth on huge maps and compiles maps with its own built in compiler: no VBSP, VVIS or VRAD needed.
 
-Version **1.1.5**.
+Version **1.2.0**.
 
 Russian is available for the interface and the [documentation](docs/ru/README.md). Compile settings now expose the selected external compiler's VBSP, VVIS and VRAD options. Static scenery can use physics-capable models by default; missing skies have a reported fallback and black lightmaps have a separate diagnostic.
 
@@ -86,8 +86,11 @@ The executable is `target/release/hammerpro.exe`. Rust 1.95 or newer is required
 
 ## Documentation
 
+- [Team Mapping](docs/en/features/team-mapping.md): sessions, invitations, participants, security and limitations. [Français](docs/fr/features/team-mapping.md) | [Русский](docs/ru/features/team-mapping.md).
+
 - [English documentation](docs/en/README.md): getting started, one page per feature, the compiler, references (settings, shortcuts, command line, scripts, MCP), guides, troubleshooting and development.
 - [Documentation en français](docs/fr/README.md).
+- [Документация на русском](docs/ru/README.md).
 - [MCP tool reference](docs/MCP.md) (generated) and [developer guide to extending Hammer Pro](docs/EXTENDING.md).
 
 ## Community and contact

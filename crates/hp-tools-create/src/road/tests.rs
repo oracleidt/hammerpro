@@ -50,9 +50,11 @@ fn assert_compiled_caps(road: &Road, brushes: &[Vec<hp_vmf::Side>], direction: D
         let b = boundary(&brushes[j], -1.0);
         let ai = planes.from_points(a[0], a[1], a[2]).unwrap();
         let bi = planes.from_points(b[0], b[1], b[2]).unwrap();
+        let exact = hp_geom::Plane::from_points(a[0], a[1], a[2]).unwrap();
+        let snap_error = (planes.get(ai).normal - exact.normal).length() * road.half_width;
         assert!(
             planes.get(ai).distance(joint).abs()
-                < hp_geom::PLANE_EPS + joint.abs().max_element() * f64::from(f32::EPSILON) * 4.0,
+                < hp_geom::PLANE_EPS + snap_error + joint.abs().max_element() * f64::from(f32::EPSILON) * 4.0,
             "compiled joint moved away from its road: {joint}, distance {}, plane {:?}, points {a:?}, offset {offset}, angle {angle}",
             planes.get(ai).distance(joint),
             planes.get(ai)
@@ -81,6 +83,40 @@ fn source_compilation_keeps_adjacent_road_boundary_planes_identical() {
             let road = built(&m);
             let brushes = solids(&road);
             assert_compiled_caps(&road, &brushes, direction, offset, angle);
+        }
+    }
+}
+
+#[test]
+fn source_compilation_keeps_partial_marking_and_lane_boundaries_coplanar() {
+    for offset in [0.0, 12000.0] {
+        for angle in [0.0001f64, 0.001, 0.003, 0.005, 0.01] {
+            let start = DVec3::new(offset, offset, 64.0);
+            let end = start + DVec3::new(angle.cos(), angle.sin(), 0.0) * 1024.0;
+            let m = meta(&[p(start.x, start.y, start.z), p(end.x, end.y, end.z)]);
+            let road = built(&m);
+            let brushes = solids(&road);
+            let mut planes = hp_bspc::planes::PlaneSet::new();
+            let mut previous: Vec<(DVec3, f64, usize)> = Vec::new();
+            for side in brushes.iter().flatten() {
+                let normal = side.normal();
+                let dist = side.plane_distance();
+                let points = side.plane;
+                let index = planes.from_points(points[0], points[1], points[2]).unwrap();
+                for (old_normal, old_dist, old_index) in &previous {
+                    let sign = if normal.dot(*old_normal) > 0.0 { 1.0 } else { -1.0 };
+                    if (normal - *old_normal * sign).length() < 1e-8 && (dist - old_dist * sign).abs() < 1e-5 {
+                        assert_eq!(
+                            index & !1,
+                            old_index & !1,
+                            "coplanar road faces separate after Source plane snapping at offset {offset}, angle {angle}: {normal} {dist}, compiled {:?} versus {:?}",
+                            planes.get(index),
+                            planes.get(*old_index)
+                        );
+                    }
+                }
+                previous.push((normal, dist, index));
+            }
         }
     }
 }

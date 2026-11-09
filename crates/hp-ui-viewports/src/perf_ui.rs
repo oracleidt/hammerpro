@@ -13,6 +13,7 @@ pub const TR: TrTable = &[
     ("primitives.props", "Props: {0} materials, RAM {1}", "Props : {0} matériaux, RAM {1}"),
     ("primitives.lighting", "Lighting: {0} lights, RAM {1}", "Lighting : {0} lumières, RAM {1}"),
     ("primitives.shared", "Shared allocations: {0}", "Allocations partagées : {0}"),
+    ("primitives.total", "Map total (measured CPU allocations): {0}", "Total map (allocations CPU mesurées) : {0}"),
     ("primitives.process", "Editor resident RAM: {0}", "RAM résidente de l'éditeur : {0}"),
     ("primitives.loading", "Measuring resource allocations...", "Mesure des allocations des ressources..."),
     ("primitives.models", "Models pending: {0}, missing: {1}", "Modèles en attente : {0}, manquants : {1}"),
@@ -85,6 +86,10 @@ pub fn primitive_lines(state: &AppState) -> Vec<String> {
     lines.push(tf!("primitives.props", stats.prop_materials, ram(1)));
     lines.push(tf!("primitives.lighting", stats.lights, ram(2)));
     lines.push(tf!("primitives.shared", ram(3)));
+    lines.push(tf!(
+        "primitives.total",
+        stats.memory.map_or_else(|| "-".to_owned(), |memory| memory_text(memory.bytes.iter().copied().sum()))
+    ));
     let resident = state.runtime.render.perf.sample.working_set;
     lines.push(tf!("primitives.process", if resident > 0 { memory_text(resident) } else { "-".to_owned() }));
     if stats.models_loading > 0 || stats.models_missing > 0 {

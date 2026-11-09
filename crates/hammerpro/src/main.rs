@@ -46,6 +46,7 @@ mod blender;
 mod bspc_cli;
 mod bspc_game;
 mod bspc_instances;
+mod collaboration;
 mod crash;
 mod discord;
 mod dispatch;

@@ -2,7 +2,9 @@
 
 # Hammer Pro documentation
 
-Welcome to the knowledge base of Hammer Pro 1.1.5, the level editor for Source engine maps built for Garry's Mod first. Every feature has its own page: what it is, how to open it, every option with its default, tips and a short FAQ. Pages link to each other, so start anywhere.
+[Team Mapping: collaborative editing, security and limitations](features/team-mapping.md)
+
+Welcome to the knowledge base of Hammer Pro 1.2.0, the level editor for Source engine maps built for Garry's Mod first. Every feature has its own page: what it is, how to open it, every option with its default, tips and a short FAQ. Pages link to each other, so start anywhere.
 
 New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game setup](getting-started/game-setup.md) and [Your first map](getting-started/first-map.md), in that order.
 

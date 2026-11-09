@@ -201,6 +201,45 @@ fn baked_faces_draw_over_the_world() {
 }
 
 #[test]
+fn animated_bake_baseline_captured_during_dark_phase_does_not_add_the_light_twice() {
+    let Some((device, queue)) = gpu() else { return };
+    let mut r = Renderer::new(&device, &queue);
+    r.set_material(MAT, &MaterialDesc { tint: [1.0; 4], ..Default::default() });
+    r.upsert_object(FLOOR, floor_mesh());
+    r.add_lightmap_faces(&[(
+        0,
+        LightmapFace { object: FLOOR, generation: r.lightmap_generation(FLOOR), scale: 16.0, flags: 0 },
+    )]);
+    let vertices = floor_lm(0);
+    r.add_lightmap_block(1, &[LightmapBatch { material: MAT, vertices: &vertices, indices: &[0, 1, 2, 0, 2, 3] }]);
+    assert!(r.ensure_lightmap_layers(64, 1));
+    r.write_lightmap(
+        0,
+        LightmapRect { layer: 0, x: 0, y: 0, w: 33, h: 33, density: 1.0, bumped: false },
+        &vec![texel(0.25, 0.25, 0.25); 33 * 33],
+    );
+    r.set_lightmap_display(LightmapDisplay::Baked, 1.0);
+    let light = PreviewLight {
+        kind: LightKind::Point,
+        pos: [0.0, 0.0, 128.0],
+        color: [1.0; 3],
+        intensity: 20.0,
+        range: 400.0,
+        falloff: None,
+    };
+    let patterns = ["az".to_owned()];
+    r.set_animated_lights(&[light], &patterns, [0.0; 3], 0.0);
+    r.capture_baked_lights();
+    r.render_view(0, &params(RenderMode::Lit), &Overlay::default());
+    let reference = pixel(&r, 64, 64);
+    for time in [0.1, 0.2, 0.3, 0.4] {
+        r.set_animated_lights(&[light], &patterns, [0.0; 3], time);
+        r.render_view(0, &params(RenderMode::Lit), &Overlay::default());
+        assert_eq!(pixel(&r, 64, 64), reference, "baked direct delta changed during style phase {time}");
+    }
+}
+
+#[test]
 fn baked_faces_survive_display_remeshing_with_tracking_disabled() {
     let Some((device, queue)) = gpu() else {
         eprintln!("no GPU adapter: test skipped");

@@ -12,6 +12,10 @@ name = "hammerpro"
 path = "src/main.rs"
 
 [dependencies]
+hp-collab = { path = "../hp-collab" }
+anyhow.workspace = true
+chrono = "0.4"
+zeroize = "1"
 hp-app = { path = "../hp-app" }
 hp-assets = { path = "../hp-assets" }
 hp-nav = { path = "../hp-nav" }

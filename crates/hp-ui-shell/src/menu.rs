@@ -250,6 +250,20 @@ fn menus(ui: &mut Ui, state: &mut AppState, extensions: &mut [MenuExtension]) ->
             close_on_escape(ui);
         });
     }
+    ui.menu_button("Team Mapping", |ui| {
+        ui.set_min_width(MENU_MIN_WIDTH);
+        if ui.button("Team Mapping / Participants").clicked() {
+            state.runtime.collaboration.show = true;
+            ui.close();
+        }
+        if state.runtime.collaboration.connected {
+            ui.separator();
+            for participant in &state.runtime.collaboration.participants {
+                ui.label(format!("{} | {} ms", participant.name, participant.latency_ms));
+            }
+        }
+        close_on_escape(ui);
+    });
     mcp_menu(ui, state);
     ui.cursor().left()
 }
