@@ -2,12 +2,12 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
-use anyhow::{Result, bail, ensure};
+use anyhow::{Context, Result, bail, ensure};
 use iroh::{
     Endpoint, EndpointAddr, EndpointId,
     endpoint::{Connection, RecvStream, SendStream, presets},
 };
-use tokio::sync::{Semaphore, mpsc as channel};
+use tokio::sync::{Notify, Semaphore, mpsc as channel, watch};
 use zeroize::Zeroizing;
 
 use crate::document::{Change, ID_STRIDE, MAX_CHANGE_BYTES, MAX_MAP_BYTES, Snapshot};
@@ -16,6 +16,7 @@ use crate::protocol::{self, ConnectionMode, Invitation, Participant, Presence, R
 
 const MAX_FRAME: usize = MAX_MAP_BYTES + 16 * 1024 * 1024;
 const DEADLINE: Duration = Duration::from_secs(30);
+const INITIAL_JOIN_DEADLINE: Duration = Duration::from_secs(300);
 
 pub enum Command {
     Restore { map: Snapshot, store: crate::snapshots::SnapshotStore },
@@ -71,7 +72,39 @@ pub enum Event {
 
 pub struct Session {
     commands: channel::Sender<Command>,
-    pub events: mpsc::Receiver<Event>,
+    pub events: SessionEvents,
+}
+
+pub struct SessionEvents {
+    reliable: mpsc::Receiver<Event>,
+    latest: Arc<Mutex<BTreeMap<u8, Event>>>,
+}
+
+impl SessionEvents {
+    pub fn try_iter(&self) -> impl Iterator<Item = Event> + '_ {
+        std::iter::from_fn(|| self.try_recv().ok())
+    }
+
+    pub fn try_recv(&self) -> std::result::Result<Event, mpsc::TryRecvError> {
+        match self.reliable.try_recv() {
+            Ok(Event::Closed) => {
+                if let Ok(mut latest) = self.latest.lock() {
+                    latest.clear();
+                }
+                Ok(Event::Closed)
+            }
+            Ok(event) => Ok(event),
+            Err(error) => {
+                self.latest.lock().ok().and_then(|mut latest| latest.pop_first()).map(|(_, event)| event).ok_or(error)
+            }
+        }
+    }
+}
+
+#[derive(Clone)]
+struct Editor {
+    reliable: mpsc::SyncSender<Event>,
+    latest: Arc<Mutex<BTreeMap<u8, Event>>>,
 }
 
 pub struct HostOptions {
@@ -114,25 +147,28 @@ impl Session {
     where
         F: FnOnce(
                 channel::Receiver<Command>,
-                mpsc::SyncSender<Event>,
+                Editor,
             ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send>>
             + Send
             + 'static,
     {
         let (commands, rx) = channel::channel(32);
-        let (tx, events) = mpsc::sync_channel(64);
+        let (reliable, receiver) = mpsc::sync_channel(64);
+        let latest = Arc::new(Mutex::new(BTreeMap::new()));
+        let tx = Editor { reliable, latest: latest.clone() };
+        let events = SessionEvents { reliable: receiver, latest };
         std::thread::Builder::new().name("map-collaboration".into()).spawn(move || {
             match tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build() {
                 Ok(runtime) => {
                     if let Err(error) = runtime.block_on(run(rx, tx.clone())) {
-                        let _ = tx.try_send(Event::Error(error.to_string()));
+                        let _ = event(&tx, Event::Error(format!("{error:#}")));
                     }
                 }
                 Err(error) => {
-                    let _ = tx.try_send(Event::Error(error.to_string()));
+                    let _ = event(&tx, Event::Error(error.to_string()));
                 }
             }
-            let _ = tx.try_send(Event::Closed);
+            let _ = event(&tx, Event::Closed);
         })?;
         Ok(Self { commands, events })
     }
@@ -154,23 +190,71 @@ impl Drop for Session {
 async fn write(stream: &mut SendStream, message: &Wire) -> Result<u64> {
     let bytes = serde_json::to_vec(message)?;
     ensure!(bytes.len() <= MAX_FRAME, "Outgoing message too large");
-    stream.write_all(&(bytes.len() as u32).to_be_bytes()).await?;
-    tokio::time::timeout(DEADLINE, stream.write_all(&bytes)).await??;
+    tokio::time::timeout(DEADLINE, stream.write_all(&(bytes.len() as u32).to_be_bytes()))
+        .await
+        .context("Session header send stalled")??;
+    let mut remaining = bytes.as_slice();
+    while !remaining.is_empty() {
+        let sent =
+            tokio::time::timeout(DEADLINE, stream.write(remaining)).await.context("Session payload send stalled")??;
+        ensure!(sent > 0, "Session stream closed while sending data");
+        remaining = &remaining[sent..];
+    }
     Ok(bytes.len() as u64 + 4)
 }
 
 async fn read(stream: &mut RecvStream, limit: usize) -> Result<(Wire, u64)> {
+    read_with_header_timeout(stream, limit, DEADLINE).await
+}
+
+async fn read_with_header_timeout(
+    stream: &mut RecvStream,
+    limit: usize,
+    header_timeout: Duration,
+) -> Result<(Wire, u64)> {
+    read_with_timeouts(stream, limit, header_timeout, DEADLINE).await
+}
+
+async fn read_with_timeouts(
+    stream: &mut RecvStream,
+    limit: usize,
+    header_timeout: Duration,
+    payload_timeout: Duration,
+) -> Result<(Wire, u64)> {
     let mut size = [0; 4];
-    tokio::time::timeout(DEADLINE, stream.read_exact(&mut size)).await??;
+    tokio::time::timeout(header_timeout, stream.read_exact(&mut size))
+        .await
+        .context("Session header receive stalled")??;
     let size = u32::from_be_bytes(size) as usize;
     ensure!(size > 0 && size <= limit, "Incoming message too large");
     let mut bytes = vec![0; size];
-    tokio::time::timeout(DEADLINE, stream.read_exact(&mut bytes)).await??;
+    let mut offset = 0;
+    while offset < bytes.len() {
+        let count = tokio::time::timeout(payload_timeout, stream.read(&mut bytes[offset..]))
+            .await
+            .context("Session payload receive stalled")??;
+        let count =
+            count.ok_or_else(|| anyhow::anyhow!("Session stream closed before the complete message was received"))?;
+        ensure!(count > 0, "Session stream stopped receiving data");
+        offset += count;
+    }
     Ok((serde_json::from_slice(&bytes)?, size as u64 + 4))
 }
 
-fn event(tx: &mpsc::SyncSender<Event>, value: Event) -> Result<()> {
-    tx.try_send(value).map_err(|_| anyhow::anyhow!("Editor is not consuming session updates"))
+fn event(tx: &Editor, value: Event) -> Result<()> {
+    let key = match &value {
+        Event::Participants(_) => Some(0),
+        Event::Traffic { .. } => Some(1),
+        Event::Bans(_) => Some(2),
+        Event::NetworkPrivacy { .. } => Some(3),
+        _ => None,
+    };
+    if let Some(key) = key {
+        tx.latest.lock().map_err(|_| anyhow::anyhow!("Session updates unavailable"))?.insert(key, value);
+        Ok(())
+    } else {
+        tx.reliable.try_send(value).map_err(|_| anyhow::anyhow!("Editor is not consuming map changes"))
+    }
 }
 
 struct Authentication {
@@ -187,6 +271,8 @@ enum Network {
         epoch: u64,
         connection: Connection,
         outgoing: channel::Sender<Wire>,
+        participants: watch::Sender<Option<Vec<Participant>>>,
+        pong: watch::Sender<Option<u64>>,
     },
     Message {
         id: String,
@@ -235,14 +321,30 @@ async fn serve_peer(
         auth.epoch
     };
     let (outgoing, mut outgoing_rx) = channel::channel(8);
+    let (participants, mut participant_updates) = watch::channel(None);
+    let (pong, mut pong_updates) = watch::channel(None);
+    let welcome_sent = Notify::new();
     network
-        .send(Network::Joined { id: id.clone(), device, name, epoch, connection: connection.clone(), outgoing })
+        .send(Network::Joined {
+            id: id.clone(),
+            device,
+            name,
+            epoch,
+            connection: connection.clone(),
+            outgoing,
+            participants,
+            pong,
+        })
         .await?;
     let reader = async {
+        welcome_sent.notified().await;
+        let mut first = true;
         let mut window = Instant::now();
         let (mut messages, mut bytes) = (0, 0);
         loop {
-            let (message, size) = read(&mut recv, MAX_CHANGE_BYTES + 64 * 1024).await?;
+            let timeout = if first { INITIAL_JOIN_DEADLINE } else { DEADLINE };
+            let (message, size) = read_with_header_timeout(&mut recv, MAX_CHANGE_BYTES + 64 * 1024, timeout).await?;
+            first = false;
             if window.elapsed() >= Duration::from_secs(1) {
                 window = Instant::now();
                 messages = 0;
@@ -257,9 +359,27 @@ async fn serve_peer(
         Ok::<(), anyhow::Error>(())
     };
     let writer = async {
-        while let Some(message) = outgoing_rx.recv().await {
+        loop {
+            let message = tokio::select! {
+                biased;
+                message = outgoing_rx.recv() => match message { Some(message) => message, None => break },
+                changed = participant_updates.changed() => {
+                    if changed.is_err() { break; }
+                    let Some(rows) = participant_updates.borrow_and_update().clone() else { continue };
+                    Wire::Participants(rows)
+                }
+                changed = pong_updates.changed() => {
+                    if changed.is_err() { break; }
+                    let Some(value) = *pong_updates.borrow_and_update() else { continue };
+                    Wire::Pong(value)
+                }
+            };
             let closing = matches!(message, Wire::Closed(_));
+            let welcoming = matches!(message, Wire::Welcome { .. });
             let bytes = write(&mut send, &message).await?;
+            if welcoming {
+                welcome_sent.notify_one();
+            }
             network.send(Network::Sent(bytes)).await?;
             if closing {
                 send.finish()?;
@@ -280,6 +400,8 @@ struct Peer {
     participant: Participant,
     connection: Connection,
     outgoing: channel::Sender<Wire>,
+    participants: watch::Sender<Option<Vec<Participant>>>,
+    pong: watch::Sender<Option<u64>>,
     id_start: u32,
     sequence: u64,
 }
@@ -353,7 +475,7 @@ async fn host(
     password: Zeroizing<String>,
     options: HostOptions,
     mut commands: channel::Receiver<Command>,
-    editor: mpsc::SyncSender<Event>,
+    editor: Editor,
 ) -> Result<()> {
     let builder = match options.mode {
         ConnectionMode::Relay => Endpoint::builder(presets::N0).clear_ip_transports(),
@@ -372,9 +494,15 @@ async fn host(
     let endpoint = builder.bind().await?;
     if options.mode == ConnectionMode::Relay {
         ensure!(endpoint.addr().ip_addrs().next().is_none(), "Direct address publication is disabled");
-        let _ = tokio::time::timeout(Duration::from_secs(10), endpoint.online()).await;
+        tokio::time::timeout(DEADLINE, endpoint.online())
+            .await
+            .context("Relay unavailable: cannot create a session until a relay is reachable")?;
     }
     let relay = endpoint.addr().relay_urls().next().map(ToString::to_string);
+    ensure!(
+        options.mode != ConnectionMode::Relay || relay.is_some(),
+        "Relay unavailable: no relay address was assigned"
+    );
     let invitation = Invitation {
         version: protocol::VERSION,
         endpoint: endpoint.id().to_string(),
@@ -478,7 +606,7 @@ async fn host(
                     }
                 },
                 message = network_rx.recv() => match message {
-                    Some(Network::Joined { id, device, name, epoch, connection, outgoing }) => {
+                    Some(Network::Joined { id, device, name, epoch, connection, outgoing, participants, pong }) => {
                         let current_epoch = auth.lock().map_err(|_| anyhow::anyhow!("Session unavailable"))?.epoch;
                         if let Some(reason) = bans.denied(&device, observed_ip(&connection), Instant::now()) { let _ = outgoing.try_send(Wire::Closed(reason)); continue; }
                         if peers.len() >= protocol::MAX_PARTICIPANTS - 1 || peers.contains_key(&id) || epoch != current_epoch || next_range >= 1_990_000_000 { let _ = outgoing.try_send(Wire::Closed("Session full or access revoked".into())); continue; }
@@ -486,7 +614,7 @@ async fn host(
                         let participant = next_participant; next_participant += 1;
                         let id_start = next_range; next_range += ID_STRIDE;
                         outgoing.try_send(Wire::Welcome { participant, id_start, revision, map: map.clone() })?;
-                        peers.insert(id, Peer { device, participant: Participant { id: participant, name, presence: Presence::default(), latency_ms: 0 }, connection, outgoing, id_start, sequence: 0 });
+                        peers.insert(id, Peer { device, participant: Participant { id: participant, name, presence: Presence::default(), latency_ms: 0 }, connection, outgoing, participants, pong, id_start, sequence: 0 });
                     }
                     Some(Network::Left { id, generation }) => { if peers.get(&id).is_some_and(|peer| peer.connection.stable_id() == generation) { peers.remove(&id); } }
                     Some(Network::Sent(bytes)) => sent += bytes,
@@ -496,7 +624,7 @@ async fn host(
                         if peer.connection.stable_id() != generation { continue; }
                         match message {
                             Wire::Presence(presence) if presence.validate() => { peer.participant.presence = presence; }
-                            Wire::Ping(value) => { let _ = peer.outgoing.try_send(Wire::Pong(value)); }
+                            Wire::Ping(value) => { peer.pong.send_replace(Some(value)); }
                             Wire::Edit { sequence, changes } => {
                                 if sequence <= peer.sequence { peer.connection.close(1u32.into(), b"Invalid sequence"); continue; }
                                 peer.sequence = sequence;
@@ -517,7 +645,7 @@ async fn host(
                     if options.mode == ConnectionMode::Relay { ensure!(direct_path_count == 0 && endpoint.addr().ip_addrs().next().is_none(), "Direct path detected in relay-only session"); }
                     let participants = rows(&host_row, &peers);
                     if participants != last_participants {
-                        broadcast(&mut peers, || Wire::Participants(participants.clone()));
+                        for peer in peers.values() { peer.participants.send_replace(Some(participants.clone())); }
                         event(&editor, Event::Participants(participants.clone()))?;
                         last_participants = participants;
                     }
@@ -546,7 +674,7 @@ async fn join(
     password: Zeroizing<String>,
     options: JoinOptions,
     mut commands: channel::Receiver<Command>,
-    editor: mpsc::SyncSender<Event>,
+    editor: Editor,
 ) -> Result<()> {
     let builder = match invitation.mode {
         ConnectionMode::Relay => Endpoint::builder(presets::N0).clear_ip_transports(),
@@ -571,7 +699,10 @@ async fn join(
     if let Some(relay) = &invitation.relay {
         address = address.with_relay_url(relay.parse()?);
     }
-    let connection = tokio::time::timeout(DEADLINE, endpoint.connect(address, protocol::ALPN)).await??;
+    let connection = tokio::time::timeout(DEADLINE, endpoint.connect(address, protocol::ALPN))
+        .await
+        .context("Connecting to the session timed out")?
+        .context("Could not connect to the session")?;
     let (mut send, mut recv) = connection.open_bi().await?;
     if invitation.mode == ConnectionMode::Relay {
         ensure!(
@@ -685,3 +816,6 @@ fn observed_ip(connection: &Connection) -> Option<std::net::IpAddr> {
         _ => None,
     })
 }
+
+#[cfg(test)]
+mod tests;

@@ -82,6 +82,30 @@ fn plans_three_levels_at_least() {
 }
 
 #[test]
+fn custom_lod_distances_keep_fractions_and_automatic_levels() {
+    let defaults = LodOptions::default();
+    let automatic = plan(&defaults, 5000, 64.0);
+    let custom = LodOptions { distances: [Some(37.5), None, Some(700.0), Some(2000.0), None, None], ..defaults };
+    let levels = plan(&custom, 5000, 64.0);
+    assert_eq!(
+        levels.iter().map(|level| level.fraction).collect::<Vec<_>>(),
+        automatic.iter().map(|level| level.fraction).collect::<Vec<_>>()
+    );
+    assert_eq!(levels.iter().map(|level| level.switch).collect::<Vec<_>>(), [37.5, automatic[1].switch, 700.0, 2000.0]);
+    let large = plan(
+        &LodOptions {
+            distances: [Some(20.0), Some(10.0), Some(f64::NAN), None, Some(5000.0), Some(9000.0)],
+            ..defaults
+        },
+        100_000,
+        64.0,
+    );
+    assert_eq!(large.len(), 6);
+    assert!(large.windows(2).all(|pair| pair[0].switch < pair[1].switch));
+    assert_eq!(large[5].switch, 9000.0);
+}
+
+#[test]
 fn a_closed_sphere_stays_closed() {
     let s = sphere(64.0, 4);
     assert_eq!(s.len(), 2048);

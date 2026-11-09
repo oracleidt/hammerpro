@@ -62,7 +62,9 @@ This window holds the options of "Convert brushes to a prop". The [model import]
 | **Levels** | Levels below the full model, 3 to 6. Big models get one or two more. | 4 |
 | **Each keeps** | Part of the triangles of the level above each level keeps, 20 to 90 %. Small models are reduced more gently. | 50 % |
 
-The levels switch at distances that double each level. The simplification keeps texture seams, material borders, holes and the silhouette: flat areas are reduced first. The window also recalls how collision and blend materials are handled. **Close** or `Escape` closes it.
+Each LOD from 1 to 6 has an **Automatic distance** checkbox. Disable it to enter its own switch value, including decimals, or enable it to restore automatic sizing. The last levels can be used when a complex model generates extra LODs. Values are saved in `lab.model_lod.distances` (`0` means automatic), shared with model import, and exported in increasing order. A lower or equal threshold is raised above the previous one. These are Source `$lod` thresholds; the actual camera distance also depends on FOV and screen resolution.
+
+Automatic thresholds double at each level. The simplification keeps texture seams, material borders, holes and the silhouette: flat areas are reduced first. The window also recalls how collision and blend materials are handled. **Close** or `Escape` closes it.
 
 ## Convert prop to brushes (Unpropper)
 

@@ -15,11 +15,12 @@ pub struct LodOptions {
     pub enabled: bool,
     pub levels: usize,
     pub reduction: f64,
+    pub distances: [Option<f64>; MAX_LEVELS],
 }
 
 impl Default for LodOptions {
     fn default() -> Self {
-        Self { enabled: true, levels: DEFAULT_LEVELS, reduction: DEFAULT_REDUCTION }
+        Self { enabled: true, levels: DEFAULT_LEVELS, reduction: DEFAULT_REDUCTION, distances: [None; MAX_LEVELS] }
     }
 }
 
@@ -49,10 +50,14 @@ pub fn plan(opts: &LodOptions, triangles: usize, radius: f64) -> Vec<LodLevel> {
         reduction = reduction.max(SMALL_REDUCTION);
     }
     let radius = if radius.is_finite() { radius.max(8.0) } else { 64.0 };
+    let mut previous = 0.0;
     (1..=levels)
-        .map(|i| LodLevel {
-            fraction: reduction.powi(i as i32),
-            switch: (radius * 6.0 / 4.8 * f64::from(1u32 << (i - 1))).round().max(4.0),
+        .map(|i| {
+            let automatic = (radius * 6.0 / 4.8 * f64::from(1u32 << (i - 1))).round().max(4.0);
+            let distance = opts.distances[i - 1].filter(|v| v.is_finite() && *v > 0.0).unwrap_or(automatic);
+            let switch = distance.min(1_000_000.0).max(previous + 0.01);
+            previous = switch;
+            LodLevel { fraction: reduction.powi(i as i32), switch }
         })
         .collect()
 }

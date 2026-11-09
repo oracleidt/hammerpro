@@ -490,7 +490,7 @@ impl PropGeometry {
         for (i, lod) in lods.iter().filter(|l| !l.tris.is_empty()).enumerate() {
             lod_qc.push_str(&format!(
                 "$lod {}\n{{\n\treplacemodel \"{stem}_ref.smd\" \"{stem}_lod{}.smd\"\n}}\n",
-                lod.switch.max(1.0).round(),
+                lod.switch.max(0.01),
                 i + 1
             ));
             lod_smds.push(smd_text(&lod.tris));

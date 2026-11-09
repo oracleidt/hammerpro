@@ -80,3 +80,11 @@ Textures, models, scripts and mounted content are not automatically downloaded o
 - Server validation protects the shared document from malformed or stale messages. It does not make an invited editor trustworthy: someone allowed to edit the map can still propose unwanted map changes. Use moderation and backups.
 
 See also [game setup](../getting-started/game-setup.md), [compilation](../compiler/compile-window.md) and [VMF compatibility](../getting-started/vmf-compatibility.md).
+
+## Connection troubleshooting in 1.2.2
+
+Update the host and every guest to 1.2.2. The fixes for valid Hammer++ vertex loops, repeated visgroup memberships and scalar moving-brush `startposition` settings remain included. A genuinely malformed map is still rejected with its property and block name.
+
+Presence, ping and editor statistics now retain their latest values while a map is loading, instead of filling the queue for ordered map changes. A guest downloading slowly is not disconnected merely because camera positions changed during the initial transfer. Transfer timeouts measure stalled progress rather than the total duration of an actively progressing message. After the initial map is sent, the guest has up to five minutes to validate it and begin sending session messages.
+
+A relay session is not advertised as ready until a relay is reachable. If a host cannot reach one, creation reports a relay error. Connection errors retain their underlying cause instead of showing only `connection lost`. Relays still depend on the operator and local network access; this does not bypass a blocked network or add automatic reconnection.

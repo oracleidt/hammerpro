@@ -62,7 +62,9 @@ Cette fenêtre regroupe les options de création ci-dessus. L'[import de modèle
 | **Niveaux** | Niveaux sous le modèle complet, de 3 à 6. Les gros modèles en ont un ou deux de plus. | 4 |
 | **Chacun garde** | Part des triangles du niveau précédent que garde chaque niveau, de 20 à 90 %. Les petits modèles sont réduits plus doucement. | 50 % |
 
-Les niveaux basculent à des distances qui doublent à chaque niveau. La simplification préserve les coutures de texture, les bords entre matériaux, les trous et la silhouette : les zones plates sont réduites en premier. La fenêtre rappelle aussi comment la collision et les matériaux de mélange sont traités. **Fermer** ou `Échap` la ferme.
+Chaque LOD de 1 à 6 possède une case **Distance automatique**. Décochez-la pour saisir son propre seuil, avec des décimales si nécessaire, ou cochez-la pour retrouver le calcul automatique. Les derniers niveaux servent aussi aux LOD supplémentaires des modèles complexes. Les valeurs sont conservées dans `lab.model_lod.distances` (`0` signifie automatique), partagées avec l’import de modèles et exportées dans l’ordre croissant. Un seuil inférieur ou égal au précédent est relevé au-dessus de celui-ci. Ce sont les seuils Source `$lod` : la distance réelle dépend aussi du FOV et de la résolution.
+
+Les seuils automatiques doublent à chaque niveau. La simplification préserve les coutures de texture, les bords entre matériaux, les trous et la silhouette : les zones plates sont réduites en premier. La fenêtre rappelle aussi comment la collision et les matériaux de mélange sont traités. **Fermer** ou `Échap` la ferme.
 
 ## Convertir le prop en brushes (Unpropper)
 

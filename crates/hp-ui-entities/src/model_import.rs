@@ -456,7 +456,12 @@ pub fn remount_after_write(state: &mut AppState) {
 
 pub fn lod_options(s: hp_app::settings::ModelLodSettings) -> hp_meshio::lod::LodOptions {
     let s = s.clamped();
-    hp_meshio::lod::LodOptions { enabled: s.enabled, levels: s.levels as usize, reduction: f64::from(s.reduction) }
+    hp_meshio::lod::LodOptions {
+        enabled: s.enabled,
+        levels: s.levels as usize,
+        reduction: f64::from(s.reduction),
+        distances: s.distances,
+    }
 }
 
 pub fn content_root(state: &AppState) -> Option<PathBuf> {

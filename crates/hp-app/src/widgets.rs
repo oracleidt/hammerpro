@@ -352,6 +352,23 @@ pub fn model_lod_ui(ui: &mut Ui, lod: &mut crate::settings::ModelLodSettings) ->
                 changed = true;
             }
         });
+        ui.label(t!("lab.lod.distances_tip"));
+        for (index, distance) in lod.distances.iter_mut().enumerate() {
+            ui.horizontal(|ui| {
+                ui.label(format!("LOD {}", index + 1));
+                let mut automatic = distance.is_none();
+                if ui.checkbox(&mut automatic, t!("lab.lod.automatic")).changed() {
+                    *distance = (!automatic).then_some(64.0 * f64::from(1u32 << index));
+                    changed = true;
+                }
+                if let Some(value) = distance {
+                    changed |= ui
+                        .add(egui::DragValue::new(value).speed(1.0).range(0.01..=1_000_000.0))
+                        .on_hover_text(t!("lab.lod.metric_tip"))
+                        .changed();
+                }
+            });
+        }
     });
     if changed {
         *lod = lod.clamped();

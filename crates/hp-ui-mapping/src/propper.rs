@@ -26,7 +26,12 @@ pub(crate) fn dialogs() -> Vec<Box<dyn MapDialog>> {
 
 pub fn lod_options(s: hp_app::settings::ModelLodSettings) -> hp_meshio::lod::LodOptions {
     let s = s.clamped();
-    hp_meshio::lod::LodOptions { enabled: s.enabled, levels: s.levels as usize, reduction: f64::from(s.reduction) }
+    hp_meshio::lod::LodOptions {
+        enabled: s.enabled,
+        levels: s.levels as usize,
+        reduction: f64::from(s.reduction),
+        distances: s.distances,
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -567,6 +572,38 @@ impl MapDialog for UnpropDialog {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn custom_lod_distances_reach_the_prop_qc_without_rounding() {
+        let mut tris = Vec::new();
+        for x in 0..8 {
+            for y in 0..8 {
+                let p = |dx: i32, dy: i32| DVec3::new(f64::from(x + dx) * 16.0, f64::from(y + dy) * 16.0, 0.0);
+                for pos in [[p(0, 0), p(1, 0), p(1, 1)], [p(0, 0), p(1, 1), p(0, 1)]] {
+                    tris.push(hp_editor::prop_export::PropTri {
+                        material: "dev/reflectivity_50".into(),
+                        pos,
+                        normal: [DVec3::Z; 3],
+                        uv: [[0.0; 2]; 3],
+                        disp: None,
+                    });
+                }
+            }
+        }
+        let settings = hp_app::settings::ModelLodSettings {
+            distances: [Some(37.5), Some(123.25), Some(800.0), Some(1600.0), None, None],
+            ..Default::default()
+        };
+        let lods = prop_lods(&tris, settings);
+        assert_eq!(lods.len(), 4);
+        let geometry =
+            hp_editor::prop_export::PropGeometry { tris, disps: Vec::new(), pieces: Vec::new(), origin: DVec3::ZERO };
+        let files = geometry.files("hammerpro/custom_lod", "default", &lods);
+        for distance in [37.5, 123.25, 800.0, 1600.0] {
+            assert!(files.qc.contains(&format!("$lod {distance}\n")), "{}", files.qc);
+        }
+        assert_eq!(files.lod_smds.len(), 4);
+    }
 
     #[test]
     fn collision_ledges_become_world_pieces() {

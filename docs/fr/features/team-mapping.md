@@ -82,3 +82,11 @@ Les textures, modèles, scripts et contenus montés ne sont pas téléchargés o
 Voir aussi la [configuration du jeu](../getting-started/game-setup.md) et la [compatibilité VMF](../getting-started/vmf-compatibility.md).
 
 Les caméras et sélections sont actualisées pendant un déplacement. Les changements de géométrie sont envoyés à la validation de l'opération de l'outil. Les modifications reçues continuent à se synchroniser en arrière-plan et sont fusionnées dans le document visible une fois l'opération locale terminée.
+
+## Problèmes de connexion en 1.2.2
+
+Mettez l’hôte et tous les invités en 1.2.2. Les corrections des sommets Hammer++, des appartenances à plusieurs visgroups et du paramètre numérique `startposition` des brushes mobiles sont incluses. Une map réellement malformée reste refusée avec le nom de la propriété et du bloc concernés.
+
+Pendant le chargement, la présence, le ping et les statistiques de l’éditeur conservent leurs dernières valeurs au lieu de remplir la file des modifications ordonnées de la map. Un invité qui télécharge lentement n’est plus déconnecté simplement parce que les caméras bougent pendant le transfert initial. Le délai de transfert surveille l’absence de progression, pas la durée totale d’un message qui continue d’arriver. Après l’envoi initial, l’invité dispose de cinq minutes pour valider la map et commencer ses messages de session.
+
+Une session par relais n’est annoncée comme prête que lorsqu’un relais est accessible. Sinon, la création indique une erreur de relais. Les erreurs de connexion conservent leur cause détaillée au lieu du seul message `connection lost`. La disponibilité dépend toujours du relais et du réseau local ; ce changement ne contourne pas un réseau bloqué et n’ajoute pas de reconnexion automatique.

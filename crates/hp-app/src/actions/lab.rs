@@ -137,6 +137,17 @@ pub(super) const TR: TrTable = &[
         "Niveaux sous le modèle complet (3 au moins ; les gros modèles en ont un ou deux de plus).",
     ),
     ("lab.lod.reduction", "Each keeps", "Chacun garde"),
+    ("lab.lod.automatic", "Automatic distance", "Distance automatique"),
+    (
+        "lab.lod.metric_tip",
+        "Source LOD switch value ($lod). Larger values keep the previous level longer. The actual camera distance also depends on FOV and screen resolution.",
+        "Seuil de bascule Source ($lod). Une valeur plus élevée conserve le niveau précédent plus longtemps. La distance réelle dépend aussi du FOV et de la résolution.",
+    ),
+    (
+        "lab.lod.distances_tip",
+        "Set each LOD switch distance. Large models may use extra levels. Distances are kept in increasing order when exported.",
+        "Réglez la distance de chaque LOD. Les gros modèles peuvent utiliser des niveaux supplémentaires. Les distances sont exportées dans l'ordre croissant.",
+    ),
     (
         "lab.lod.reduction_tip",
         "Part of the triangles of the level above each level keeps (small models are reduced more gently).",
