@@ -193,6 +193,7 @@ pub struct Viewports {
     picker: Picker,
     retained: [Option<RetainedKey>; 4],
     retained_overlay: Overlay,
+    layer_version_scratch: Vec<Option<u64>>,
     keys: FlyKeys,
     velocity: DVec3,
     gesture: Option<Gesture>,
@@ -251,6 +252,7 @@ impl Viewports {
             picker: Picker::default(),
             retained: [None, None, None, None],
             retained_overlay: Overlay::default(),
+            layer_version_scratch: Vec::new(),
             keys: FlyKeys::default(),
             velocity: DVec3::ZERO,
             gesture: None,
@@ -1508,27 +1510,30 @@ impl Viewports {
     fn refill_retained(&mut self, state: &AppState, tool: &dyn Tool, view: &ViewInfo) -> bool {
         let Some(slot) = self.retained.get_mut(view.index) else { return false };
         let tool_part = tool.retained_overlay_version(state, view).map(|version| (tool.id(), version));
-        let layer_parts: Vec<Option<u64>> = self.layers.iter().map(|l| l.retained_version(state, view)).collect();
-        let wanted = (tool_part.is_some() || layer_parts.iter().any(Option::is_some)).then_some(RetainedKey {
-            kind: view.kind,
-            tool: tool_part,
-            layers: layer_parts,
-        });
-        if wanted == *slot {
+        let parts = &mut self.layer_version_scratch;
+        parts.clear();
+        parts.extend(self.layers.iter().map(|l| l.retained_version(state, view)));
+        let wanted = tool_part.is_some() || parts.iter().any(Option::is_some);
+        if (!wanted && slot.is_none())
+            || (wanted
+                && slot
+                    .as_ref()
+                    .is_some_and(|key| key.kind == view.kind && key.tool == tool_part && key.layers == *parts))
+        {
             return false;
         }
         self.retained_overlay.clear();
-        if let Some(key) = &wanted {
-            if key.tool.is_some() {
+        if wanted {
+            if tool_part.is_some() {
                 tool.retained_overlay(state, view, &mut self.retained_overlay);
             }
-            for (layer, version) in self.layers.iter().zip(&key.layers) {
+            for (layer, version) in self.layers.iter().zip(parts.iter()) {
                 if version.is_some() {
                     layer.retained(state, view, &mut self.retained_overlay);
                 }
             }
         }
-        *slot = wanted;
+        *slot = wanted.then(|| RetainedKey { kind: view.kind, tool: tool_part, layers: parts.clone() });
         true
     }
 

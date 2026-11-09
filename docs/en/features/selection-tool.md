@@ -4,6 +4,12 @@
 
 The Selection tool picks objects in the 2D and 3D views and transforms them: Hammer style handles in the 2D views, a transform gizmo and stretch arrows in the 3D view, Blender style G/R/E keys, arrow key nudging and clone dragging.
 
+## Brush centers
+
+A small **x** marks the center of every visible brush in the Top, Front and Side views. It is enabled by default, including with older settings. World brushes and brushes belonging to entities use the center of their axis-aligned bounds. The marker follows edits, hidden objects and cordons; selected brushes use the selection color. Its screen size stays constant while zooming.
+
+Toggle **View > Display options > Show brush centers in 2D**, or **Settings > Helpers**. The saved setting is `helpers.show_brush_centers`. This affects the editor display only.
+
 ## Opening it
 
 - Shortcut `Shift+S`, or **Tools > Selection tool**, or its button in the tool palette.

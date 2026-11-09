@@ -130,6 +130,13 @@ impl IndexCache {
         let now = unix_secs();
         let stale = previous_use.is_none_or(|u| now.saturating_sub(u) >= REFRESH_SECS);
         let mut st = self.inner.lock();
+        if let Some(path) = key.strip_prefix("custom-assets|") {
+            for profile in ["materials", "models"] {
+                if st.entries.remove(&format!("{profile}|{path}")).is_some() {
+                    st.dirty = true;
+                }
+            }
+        }
         st.entries.insert(key, Entry { last_used: now, root });
         if changed || stale {
             st.dirty = true;
@@ -296,12 +303,11 @@ struct Cand {
 fn scan_children(ctx: &Ctx, abs: &Path, depth: u32, cands: Vec<Cand>) -> Vec<Node> {
     let run = |c: Cand| {
         let path = abs.join(&*c.name);
-        let name = c.name.clone();
         match scan_dir(ctx, &path, &c.name, c.link, depth + 1, c.links, c.old) {
             Ok(node) => node,
             Err(e) => {
                 log::debug!("cannot list {}: {e}", path.display());
-                Some(Node { name, link: c.link, ..Node::default() })
+                Some(Node { name: c.name, link: c.link, ..Node::default() })
             }
         }
     };
@@ -459,4 +465,45 @@ pub(crate) fn walk_in(
     }
     files.par_sort_unstable();
     Ok((files, report))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_util::TempDir;
+
+    #[test]
+    fn combined_custom_assets_retire_only_their_legacy_indexes_in_memory_and_on_disk() {
+        let tmp = TempDir::new("combined-index-migration");
+        let path = tmp.path().join("index.bin");
+        let cache = IndexCache::new(Some(path.clone()));
+        cache.ensure_loaded(&mut cache.inner.lock());
+        let keys = ["materials|pack", "models|pack", "game|pack", "materials|other", "models|other"];
+        for key in keys {
+            cache.put(key.to_owned(), Node::default(), true, None);
+        }
+        cache.flush();
+        assert!(!cache.inner.lock().dirty);
+        cache.put("custom-assets|pack".to_owned(), Node::default(), false, Some(unix_secs()));
+        {
+            let state = cache.inner.lock();
+            assert!(state.dirty);
+            assert_eq!(state.entries.len(), 4);
+            assert!(!state.entries.contains_key("materials|pack"));
+            assert!(!state.entries.contains_key("models|pack"));
+            for key in ["custom-assets|pack", "game|pack", "materials|other", "models|other"] {
+                assert!(state.entries.contains_key(key));
+            }
+        }
+        cache.flush();
+        let restored = IndexCache::new(Some(path));
+        let mut state = restored.inner.lock();
+        restored.ensure_loaded(&mut state);
+        assert_eq!(state.entries.len(), 4);
+        assert!(!state.entries.contains_key("materials|pack"));
+        assert!(!state.entries.contains_key("models|pack"));
+        for key in ["custom-assets|pack", "game|pack", "materials|other", "models|other"] {
+            assert!(state.entries.contains_key(key));
+        }
+    }
 }

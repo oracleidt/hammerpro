@@ -1085,8 +1085,12 @@ fn retained_overlays_refill_only_when_the_version_changes() {
     assert!(h.vp.refill_retained(&h.state, &tool, &v3d), "first version uploads");
     assert_eq!(tool.fills.get(), 1);
     assert_eq!(h.vp.retained_overlay.lines.len(), 1);
-    for _ in 0..5 {
+    let scratch = h.vp.layer_version_scratch.as_ptr();
+    let retained = h.vp.retained[0].as_ref().unwrap().layers.as_ptr();
+    for _ in 0..100 {
         assert!(!h.vp.refill_retained(&h.state, &tool, &v3d));
+        assert_eq!(h.vp.layer_version_scratch.as_ptr(), scratch);
+        assert_eq!(h.vp.retained[0].as_ref().unwrap().layers.as_ptr(), retained);
     }
     assert_eq!(tool.fills.get(), 1);
     assert!(h.vp.refill_retained(&h.state, &tool, &other));

@@ -284,6 +284,7 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `show_overlays` | `true` | Draw `info_overlay` on their faces. |
 | `show_editor_objects` | `true` | Entity icons and helper geometry. |
 | `show_entity_names` | `true` | Names of point entities in 2D views. |
+| `show_brush_centers` | `true` | Small x at each visible brush center in 2D; constant screen size. |
 | `show_ropes` | `true` | Draw ropes as they hang in game. |
 | `simulate_ropes` | `false` | Animate ropes while they settle and respond to env_wind unless NoWind is enabled. |
 

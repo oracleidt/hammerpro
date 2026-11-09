@@ -19,6 +19,7 @@ const HANDLED: &[Action] = &[
     Action::ToggleEditorObjects,
     Action::TogglePointEntities,
     Action::ToggleEntityNames,
+    Action::ToggleBrushCenters,
     Action::SimulateRopes,
     Action::ToggleHelpersAll,
     Action::ToggleRopes,
@@ -69,6 +70,7 @@ impl Package for Helpers {
             }
             Action::ToggleEditorObjects => h.show_editor_objects = !h.show_editor_objects,
             Action::ToggleEntityNames => h.show_entity_names = !h.show_entity_names,
+            Action::ToggleBrushCenters => h.show_brush_centers = !h.show_brush_centers,
             Action::SimulateRopes => h.simulate_ropes = !h.simulate_ropes,
             Action::ToggleRopes => h.show_ropes = !h.show_ropes,
             Action::ToggleHelpersAll => {

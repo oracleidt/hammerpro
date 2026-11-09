@@ -78,6 +78,7 @@ impl SettingsPage for HelpersPage {
                 .changed();
         });
         heading(ui, t!("shell.helpers.names"));
+        changed |= ui.checkbox(&mut s.show_brush_centers, t!("action.toggle_brush_centers")).changed();
         changed |= ui
             .checkbox(&mut s.show_entity_names, t!("action.toggle_entity_names"))
             .on_hover_text(t!("shell.helpers.names_tip"))

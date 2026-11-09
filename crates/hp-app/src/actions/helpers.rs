@@ -9,6 +9,7 @@ action_list! { helpers_actions {
     ToggleEditorObjects => "toggle_editor_objects", View, ViewDisplay, None, Ready;
     TogglePointEntities => "toggle_point_entities", View, ViewDisplay, None, Ready;
     ToggleEntityNames => "toggle_entity_names", View, ViewDisplay, None, Ready;
+    ToggleBrushCenters => "toggle_brush_centers", View, ViewDisplay, None, Ready;
     ToggleHelpersAll => "toggle_helpers_all", View, ViewDisplay, None, Ready;
     ToggleRopes => "toggle_ropes", View, ViewDisplay, None, Ready;
     SimulateRopes => "simulate_ropes", View, ViewDisplay, None, Ready;
@@ -32,6 +33,7 @@ pub(super) fn check(state: &AppState, action: Action) -> Option<Check> {
         Action::ToggleEditorObjects => Check::Toggle(h.show_editor_objects),
         Action::TogglePointEntities => Check::Toggle(!state.runtime.helpers.point_entities_hidden(&state.doc)),
         Action::ToggleEntityNames => Check::Toggle(h.show_entity_names),
+        Action::ToggleBrushCenters => Check::Toggle(h.show_brush_centers),
         Action::SimulateRopes => Check::Toggle(h.simulate_ropes),
         Action::ToggleHelpersAll => Check::Toggle(h.helper_scope == HelperScope::All),
         Action::ToggleRopes => Check::Toggle(h.show_ropes),
@@ -52,6 +54,7 @@ pub(super) const TR: TrTable = &[
     ("action.toggle_editor_objects", "Show editor objects", "Afficher les objets d'éditeur"),
     ("action.toggle_point_entities", "Show point entities", "Afficher les entités ponctuelles"),
     ("action.toggle_entity_names", "Show entity labels in 2D", "Afficher les noms des entités en 2D"),
+    ("action.toggle_brush_centers", "Show brush centers in 2D", "Afficher le centre des brushes en 2D"),
     ("action.simulate_ropes", "Simulate ropes", "Simuler les cordes"),
     ("action.toggle_helpers_all", "Helpers of every entity", "Aides de toutes les entités"),
     ("action.toggle_ropes", "Show ropes", "Afficher les cordes"),

@@ -133,7 +133,7 @@ pub fn is_auto_prefix(dir: &CustomDir) -> bool {
     prefix.is_empty() || prefix == suggest_prefix(&dir.path)
 }
 
-fn layout_with(dir: &CustomDir, list: impl FnOnce() -> Vec<String>) -> CustomLayout {
+fn layout_with<T: AsRef<[String]>>(dir: &CustomDir, list: impl FnOnce() -> T) -> CustomLayout {
     if has_asset_subdir(&dir.path) {
         return CustomLayout { mode: CustomMode::GameFolder, prefix: String::new() };
     }
@@ -141,7 +141,7 @@ fn layout_with(dir: &CustomDir, list: impl FnOnce() -> Vec<String>) -> CustomLay
         return CustomLayout { mode: CustomMode::InsideMaterials, prefix };
     }
     if is_auto_prefix(dir) {
-        if let Some(prefix) = detect_prefix(&dir.path, &list()) {
+        if let Some(prefix) = detect_prefix(&dir.path, list().as_ref()) {
             return CustomLayout { mode: CustomMode::Detected, prefix };
         }
         return CustomLayout { mode: CustomMode::Prefixed, prefix: suggest_prefix(&dir.path) };
@@ -222,7 +222,8 @@ fn model_prefix(path: &Path) -> Option<String> {
 }
 
 fn is_model_file(name: &str) -> bool {
-    matches!(extension(name).to_ascii_lowercase().as_str(), "mdl" | "vvd" | "vtx" | "phy" | "ani")
+    let ext = extension(name);
+    ["mdl", "vvd", "vtx", "phy", "ani"].iter().any(|candidate| ext.eq_ignore_ascii_case(candidate))
 }
 
 fn prefix_inside_materials(path: &Path) -> Option<String> {
@@ -239,8 +240,10 @@ fn prefix_inside_materials(path: &Path) -> Option<String> {
 }
 
 fn is_material_file(name: &str) -> bool {
-    let ext = extension(name).to_ascii_lowercase();
-    ext == "vmt" || ext == "vtf" || IMAGE_EXTENSIONS.contains(&ext.as_str())
+    let ext = extension(name);
+    ext.eq_ignore_ascii_case("vmt")
+        || ext.eq_ignore_ascii_case("vtf")
+        || IMAGE_EXTENSIONS.iter().any(|candidate| ext.eq_ignore_ascii_case(candidate))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -372,27 +375,23 @@ impl CustomIndex {
             }
             CustomLayout { mode: CustomMode::GameFolder, prefix: String::new() }
         } else {
-            let listed = walk_files(&dir.path, None, &is_material_file, Some(PROFILE_MATERIALS))?;
-            let layout = layout_with(dir, || listed.clone());
+            let keep = |name: &str| is_material_file(name) || (dir.include_models && is_model_file(name));
+            let profile = if dir.include_models { "custom-assets" } else { PROFILE_MATERIALS };
+            let listed = walk_files(&dir.path, None, &keep, Some(profile))?;
+            let layout = layout_with(dir, || listed.as_slice());
             let base = if layout.prefix.is_empty() {
                 "materials".to_owned()
             } else {
                 join_virtual("materials", &layout.prefix)
             };
+            let models = model_prefix(&dir.path).unwrap_or_else(|| "models".to_owned());
             for rel in listed {
-                let key: Box<str> = join_virtual(&base, &normalize_path(&rel)).into();
+                let prefix = if is_model_file(&rel) { &models } else { &base };
+                let key: Box<str> = join_virtual(prefix, &normalize_path(&rel)).into();
                 files.entry(key).or_insert_with(|| Entry::File(rel.into_boxed_str()));
             }
             layout
         };
-
-        if dir.include_models && layout.mode != CustomMode::GameFolder {
-            let base = model_prefix(&dir.path).unwrap_or_else(|| "models".to_owned());
-            for rel in walk_files(&dir.path, None, &is_model_file, Some("models"))? {
-                let key: Box<str> = join_virtual(&base, &normalize_path(&rel)).into();
-                files.entry(key).or_insert_with(|| Entry::File(rel.into_boxed_str()));
-            }
-        }
 
         let mut found: Vec<(String, usize, Box<str>, String)> = files
             .iter()
@@ -640,6 +639,54 @@ mod tests {
         assert!(!index.contains("lua/x.lua"));
         let header = index.image_for_texture("pack/stone").unwrap().header(index.root()).unwrap();
         assert_eq!((header.width, header.height), (8, 8));
+    }
+
+    #[test]
+    fn a_mixed_loose_folder_indexes_materials_models_and_companions_together() {
+        let tmp = TempDir::new("mixed-custom-assets");
+        tmp.write("rock.vmt", b"VertexLitGeneric { $basetexture pack/rock }");
+        tmp.write("rock.vtf", b"VTF\0");
+        tmp.write("props/rock.mdl", b"IDST");
+        tmp.write("props/rock.vvd", b"vertices");
+        tmp.write("props/rock.dx90.vtx", b"indices");
+        let index = CustomIndex::build(&CustomDir::new(tmp.path())).unwrap();
+        assert_eq!(index.layout.prefix, "pack");
+        for key in [
+            "materials/pack/rock.vmt",
+            "materials/pack/rock.vtf",
+            "models/props/rock.mdl",
+            "models/props/rock.vvd",
+            "models/props/rock.dx90.vtx",
+        ] {
+            assert!(index.contains(key), "{key}");
+        }
+        assert!(!index.contains("materials/pack/props/rock.mdl"));
+        assert!(!index.contains("models/rock.vmt"));
+    }
+
+    #[test]
+    #[ignore = "measures scan counters in an isolated process"]
+    fn custom_assets_scan_a_mixed_directory_tree_once() {
+        let tmp = TempDir::new("single-custom-scan");
+        for i in 0..32 {
+            tmp.write(&format!("pack_{i}/rock.vmt"), b"VertexLitGeneric { $basetexture pack/rock }");
+            tmp.write(&format!("pack_{i}/rock.vtf"), b"VTF\0");
+            tmp.write(&format!("props_{i}/rock.MDL"), b"IDST");
+            tmp.write(&format!("props_{i}/rock.VVD"), b"mesh");
+        }
+        let before = crate::scan::scan_stats();
+        let started = std::time::Instant::now();
+        let index = CustomIndex::build(&CustomDir::with_prefix(tmp.path(), "pack")).unwrap();
+        let after = crate::scan::scan_stats();
+        assert_eq!(after.walks - before.walks, 1);
+        assert!(index.contains("models/props_0/rock.mdl"));
+        assert!(index.contains("materials/pack/pack_0/rock.vmt"));
+        eprintln!(
+            "128 mixed assets: {} directory walk, {} checked directories, {:?}",
+            after.walks - before.walks,
+            after.dirs_checked - before.dirs_checked,
+            started.elapsed()
+        );
     }
 
     #[test]

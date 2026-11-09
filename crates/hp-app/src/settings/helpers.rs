@@ -33,6 +33,7 @@ pub struct HelpersSettings {
     pub show_overlays: bool,
     pub show_editor_objects: bool,
     pub show_entity_names: bool,
+    pub show_brush_centers: bool,
     pub show_ropes: bool,
     pub simulate_ropes: bool,
 }
@@ -45,6 +46,7 @@ impl Default for HelpersSettings {
             show_overlays: true,
             show_editor_objects: true,
             show_entity_names: true,
+            show_brush_centers: true,
             show_ropes: true,
             simulate_ropes: false,
         }
@@ -62,7 +64,10 @@ mod tests {
         assert_eq!(ConnectionsMode::All.next(), ConnectionsMode::Off);
         let s: HelpersSettings = toml::from_str("connections = \"All\"\nunknown = 3\n").expect("parse");
         assert_eq!(s.connections, ConnectionsMode::All);
-        assert!(s.show_overlays && s.show_entity_names);
+        assert!(s.show_overlays && s.show_entity_names && s.show_brush_centers);
+        let disabled = HelpersSettings { show_brush_centers: false, ..s };
+        let saved: HelpersSettings = toml::from_str(&toml::to_string(&disabled).expect("write")).expect("read");
+        assert!(!saved.show_brush_centers);
         let back: HelpersSettings = toml::from_str(&toml::to_string(&s).expect("write")).expect("read");
         assert_eq!(back, s);
     }

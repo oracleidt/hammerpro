@@ -4,6 +4,12 @@
 
 L'outil de sélection sert à prendre des objets dans les vues 2D et 3D et à les transformer : poignées à la Hammer dans les vues 2D, gizmo de transformation et flèches d'étirement dans la vue 3D, touches G/R/E à la Blender, décalage aux flèches et clonage en glissant.
 
+## Centre des brushes
+
+Un petit **x** indique le centre de chaque brush visible dans les vues Dessus, Face et Côté. Il est activé par défaut, y compris avec les anciennes configurations. Les brushes World et ceux des entités utilisent le centre de leur boîte englobante alignée sur les axes. Le repère suit les modifications, la visibilité et les cordons. Les brushes sélectionnés utilisent la couleur de sélection. Sa taille à l’écran reste constante pendant le zoom.
+
+Utilisez **Affichage > Options d’affichage > Afficher le centre des brushes en 2D**, ou **Paramètres > Aides**. Le réglage sauvegardé est `helpers.show_brush_centers`. Il concerne uniquement l’affichage dans l’éditeur.
+
 ## Ouvrir l'outil
 
 - Raccourci `Maj+S`, ou **Outils > Outil de sélection**, ou son bouton dans la palette d'outils.

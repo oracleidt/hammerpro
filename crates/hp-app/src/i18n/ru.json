@@ -1,4 +1,5 @@
 {
+  "action.toggle_brush_centers": "Показывать центры брашей в 2D",
   "tex.folders.models": "Моделей: {0}",
   "common.load_models_tip": "Загружать MDL и связанные VVD, VTX, PHY и ANI. Выберите набор ресурсов, папку models или ее подпапку. Пути моделей сохраняются. Каждый участник должен иметь ресурсы локально: Team Mapping не передает файлы.",
   "common.load_models": "Загружать модели (MDL)",

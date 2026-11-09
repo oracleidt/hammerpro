@@ -284,6 +284,7 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `show_overlays` | `true` | Dessine les `info_overlay` sur leurs faces. |
 | `show_editor_objects` | `true` | Icônes des entités et géométrie des aides. |
 | `show_entity_names` | `true` | Noms des entités ponctuelles dans les vues 2D. |
+| `show_brush_centers` | `true` | Petit x au centre des brushes visibles en 2D, de taille constante à l’écran. |
 | `show_ropes` | `true` | Dessine les cordes comme elles pendent en jeu. |
 | `simulate_ropes` | `false` | Anime les cordes pendant leur stabilisation et sous env_wind, sauf si NoWind est activé. |
 
