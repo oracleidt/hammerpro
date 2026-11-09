@@ -159,6 +159,12 @@ pub const TR: TrTable = &[
     ("common.reset", "Reset", "Réinitialiser"),
     ("common.default", "Default", "Par défaut"),
     ("common.enabled", "Enabled", "Activé"),
+    ("common.load_models", "Load models (MDL)", "Charger les modèles (MDL)"),
+    (
+        "common.load_models_tip",
+        "Load MDL models and their VVD, VTX, PHY and ANI files. Choose an asset pack, a models folder or a folder inside models. Model paths stay unchanged. Each teammate needs the same assets locally; files are not transferred by Team Mapping.",
+        "Charger les modèles MDL et leurs fichiers VVD, VTX, PHY et ANI. Choisissez un pack, un dossier models ou un dossier dans models. Les chemins des modèles sont conservés. Chaque participant doit disposer des mêmes ressources localement ; Team Mapping ne transfère pas les fichiers.",
+    ),
     ("common.disabled", "Disabled", "Désactivé"),
     ("common.name", "Name", "Nom"),
     ("common.value", "Value", "Valeur"),

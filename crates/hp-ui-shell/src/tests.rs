@@ -265,6 +265,7 @@ fn every_dialog_opens_without_panicking() {
             path: "C:/Art/Bricks".into(),
             prefix: "custom/bricks".into(),
             enabled: true,
+            include_models: true,
         });
         state.settings.game.extra_fgds.push("C:/fgd/extra.fgd".into());
         state.settings.compile.threads = Some(8);
@@ -1064,6 +1065,7 @@ fn settings_custom_folders_show_the_detected_layout() {
             path: path.clone(),
             prefix,
             enabled: true,
+            include_models: true,
         });
     }
     let mut state = AppState::new(settings, Box::new(FsAssets { inner: Default::default(), fs }));

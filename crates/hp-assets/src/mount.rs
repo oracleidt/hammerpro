@@ -47,7 +47,7 @@ impl MountRequest {
                 } else {
                     d.prefix.trim().to_owned()
                 };
-                CustomDir { path: d.path.clone(), prefix, enabled: d.enabled }
+                CustomDir { path: d.path.clone(), prefix, enabled: d.enabled, include_models: d.include_models }
             })
             .collect();
         Self {
@@ -354,11 +354,13 @@ mod tests {
             path: PathBuf::from("C:/Art/My Bricks"),
             prefix: String::new(),
             enabled: false,
+            include_models: true,
         });
         s.game.custom_texture_dirs.push(CustomDirSetting {
             path: PathBuf::from("C:/Art/b"),
             prefix: "custom/b".into(),
             enabled: true,
+            include_models: false,
         });
         let r = MountRequest::from_settings(&s);
         assert_eq!(r.root.as_deref(), Some(Path::new("C:/Games/GarrysMod")));
@@ -367,6 +369,8 @@ mod tests {
         assert_eq!(r.opts.custom_dirs[0].prefix, "custom/my_bricks");
         assert!(!r.opts.custom_dirs[0].enabled);
         assert_eq!(r.opts.custom_dirs[1].prefix, "custom/b");
+        assert!(r.opts.custom_dirs[0].include_models);
+        assert!(!r.opts.custom_dirs[1].include_models);
         assert!(r.opts.app_ids.is_empty());
         s.game.mount_app_ids = vec![240, 0, 440];
         assert_eq!(MountRequest::from_settings(&s).opts.app_ids, [240, 440]);

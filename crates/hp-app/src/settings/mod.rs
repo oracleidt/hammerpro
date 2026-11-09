@@ -285,11 +285,24 @@ mod tests {
             path: PathBuf::from("C:/textures"),
             prefix: "custom/textures".into(),
             enabled: true,
+            include_models: true,
         });
         s.keybindings.insert("save_map".into(), "Ctrl+S".into());
         let text = toml::to_string_pretty(&s).unwrap();
         let back: Settings = toml::from_str(&text).unwrap();
         assert_eq!(back, s);
+    }
+
+    #[test]
+    fn custom_model_setting_preserves_old_folders_and_texture_only_choice() {
+        let old = "[[game.custom_texture_dirs]]\npath = 'C:/assets/models'\nprefix = ''\nenabled = true\n";
+        let mut settings: Settings = toml::from_str(old).unwrap();
+        assert!(settings.game.custom_texture_dirs[0].include_models);
+        settings.game.custom_texture_dirs[0].include_models = false;
+        let saved = toml::to_string_pretty(&settings).unwrap();
+        let restored: Settings = toml::from_str(&saved).unwrap();
+        assert!(!restored.game.custom_texture_dirs[0].include_models);
+        assert_eq!(restored.game.custom_texture_dirs[0].path, PathBuf::from("C:/assets/models"));
     }
 
     #[test]

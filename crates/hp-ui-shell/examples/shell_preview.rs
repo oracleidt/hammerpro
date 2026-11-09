@@ -59,6 +59,7 @@ impl Preview {
                     path: PathBuf::from(r"C:\Users\me\Pictures\Textures Été"),
                     prefix: "custom/textures_ete".into(),
                     enabled: true,
+                    include_models: true,
                 });
                 shell.open_settings(&mut state, tab);
             }

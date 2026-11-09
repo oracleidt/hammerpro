@@ -838,7 +838,6 @@ fn custom_folder_without_materials_shows_zero() {
     let _lang = hp_app::testing::lang_lock();
     hp_app::i18n::set_lang(hp_app::i18n::Lang::En);
     let (mut state, folder) = custom_state("folder_no_materials", "mdlonly", &[("models/fuzz/a.mdl", b"IDST")], false);
-    let _ = std::fs::create_dir_all(folder.join("materials"));
     state.assets.remount(&state.settings);
     let mut b = TextureBrowser::new();
     let ctx = egui::Context::default();
@@ -877,6 +876,8 @@ fn custom_folder_without_materials_shows_zero() {
     let zero = hp_app::tf!("tex.folders.count", 0);
     let not_loaded = hp_app::t!("tex.folders.not_mounted");
     assert!(texts.iter().any(|t| t == &zero), "{texts:?}");
+    assert!(texts.iter().any(|t| t == &hp_app::tf!("tex.folders.models", 1)), "{texts:?}");
+    assert!(texts.iter().any(|t| t == hp_app::t!("common.load_models")), "{texts:?}");
     assert!(!texts.iter().any(|t| t == not_loaded), "{texts:?}");
     state.settings.game.custom_texture_dirs[0].enabled = false;
     let texts = painted_texts(&ctx, &mut state, |ui, s| b.ui(ui, s));

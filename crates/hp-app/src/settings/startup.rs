@@ -9,11 +9,12 @@ pub struct CustomDirSetting {
     pub path: PathBuf,
     pub prefix: String,
     pub enabled: bool,
+    pub include_models: bool,
 }
 
 impl Default for CustomDirSetting {
     fn default() -> Self {
-        Self { path: PathBuf::new(), prefix: String::new(), enabled: true }
+        Self { path: PathBuf::new(), prefix: String::new(), enabled: true, include_models: true }
     }
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

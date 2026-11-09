@@ -7,10 +7,29 @@ A custom texture folder is any folder on your disk whose textures Hammer Pro sho
 ## Adding a folder
 
 - In the **Textures** tab, open **Custom folders (n)** and click **Add folder...**.
-- Or **Settings > Game > Custom texture folders > Add folder...** (several folders can be picked at once).
+- Or **Settings > Game > Custom asset folders > Add folder...** (several folders can be picked at once).
 - Or **New folder...** in the **Import images** window.
 
-Adding a folder that is already in the list enables it again instead of adding it twice. The folders are saved in `custom_texture_dirs` of `[game]` in `settings.toml` (path, prefix, enabled).
+Adding a folder that is already in the list enables it again instead of adding it twice. The folders are saved in `custom_texture_dirs` of `[game]` in `settings.toml` (path, prefix, enabled, include_models).
+
+## Models in custom folders
+
+Enable **Load models (MDL)** for a folder in **Textures > Custom folders**, or in **Settings > Game > Custom asset folders**. It is enabled by default, including when an older configuration is loaded. The folder shows its indexed model count. Models appear in the **Models** browser and can be placed as props.
+
+Select one of these layouts:
+
+| Selected folder | File on disk | Model path in the map |
+|---|---|---|
+| Asset pack root | `pack/models/props/rock.mdl` | `models/props/rock.mdl` |
+| The `models` folder | `pack/models/props/rock.mdl` | `models/props/rock.mdl` |
+| A folder inside `models` | `pack/models/props/rock.mdl`, selecting `pack/models/props` | `models/props/rock.mdl` |
+| A loose export folder | `export/props/rock.mdl`, selecting `export` | `models/props/rock.mdl` |
+
+Keep the model's `.vvd`, `.vtx` (including `.dx90.vtx`), `.phy` and `.ani` companions beside its `.mdl`, as applicable. Hammer Pro loads them without renaming the model or applying the material prefix. Put its VMT/VTF dependencies in the pack's `materials` tree, or add that material folder separately. Included models remain available to the compiler and content packing through the same mounted source.
+
+Disable **Load models (MDL)** to keep that folder's materials while excluding its models. **Rescan** picks up added or changed files. Disabling or removing the entire folder also removes its models from the mount; files on disk are kept.
+
+For Team Mapping, each participant must add the same assets locally. A folder synchronized by your own file synchronization software can be mounted on every PC; absolute disk paths may differ, but virtual `models/...` and `materials/...` paths must match. Team Mapping sends map edits, not model or texture files. Synchronize complete model files and companions before rescanning. See [Team Mapping](team-mapping.md).
 
 ## How material names are made
 
@@ -57,7 +76,7 @@ Below the list:
 | **Rescan** | Reloads the game content and the custom folders, to pick up new or changed files. |
 | **Import images...** | Converts images into VTF and VMT files in a custom folder (see below). |
 
-The same folders are listed in **Settings > Game > Custom texture folders**, with **Enabled**, **Path** and **Prefix** columns and a remove button.
+The same folders are listed in **Settings > Game > Custom asset folders**, with **Enabled**, **Path**, **Prefix** and **Load models (MDL)** columns and a remove button.
 
 ## Plain images as materials
 

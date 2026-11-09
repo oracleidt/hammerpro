@@ -47,7 +47,15 @@ pub enum SourceMountKind {
     Dir,
     Vpk,
     Gma,
-    Custom { prefix: String },
+    Custom {
+        prefix: String,
+        #[serde(default = "custom_models_default")]
+        include_models: bool,
+    },
+}
+
+fn custom_models_default() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -65,7 +73,9 @@ impl SourceInfo {
             SourceKind::Dir => SourceMountKind::Dir,
             SourceKind::Vpk(_) => SourceMountKind::Vpk,
             SourceKind::Gma(_) => SourceMountKind::Gma,
-            SourceKind::Custom(dir) => SourceMountKind::Custom { prefix: dir.prefix.clone() },
+            SourceKind::Custom(dir) => {
+                SourceMountKind::Custom { prefix: dir.prefix.clone(), include_models: dir.include_models }
+            }
         };
         SourceMount {
             kind,

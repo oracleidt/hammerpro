@@ -1412,6 +1412,7 @@ impl HammerProApp {
                     path,
                     prefix,
                     enabled: true,
+                    include_models: true,
                 });
                 self.state.assets.remount(&self.state.settings);
             }

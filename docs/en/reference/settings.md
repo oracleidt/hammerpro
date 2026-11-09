@@ -119,7 +119,7 @@ Mostly on **Settings > Viewports**; the `show_*` toggles are also in the **View*
 | `mount_server_content` | `true` | Mount the content downloaded from servers (`garrysmod/download`, `garrysmod/cache/workshop`). |
 | `extra_game_dirs` | `[]` | More game folders to mount. |
 | `mount_app_ids` | `[]` | Steam games whose content is mounted, by AppID, in priority order (for example `[240, 440]`). Each is found in the Steam libraries and mounted from its `gameinfo.txt`. See [Game setup](../getting-started/game-setup.md#steam-games-by-appid). |
-| `custom_texture_dirs` | `[]` | Custom texture folders: tables with `path`, `prefix` (material name prefix when the folder is not inside a `materials` tree) and `enabled`. See [Custom texture folders](../features/custom-texture-folders.md). |
+| `custom_texture_dirs` | `[]` | Custom texture folders: tables with `path`, `prefix` (material name prefix when the folder is not inside a `materials` tree) and `enabled`, `include_models`. See [Custom texture folders](../features/custom-texture-folders.md). |
 | `extra_fgds` | `[]` | Extra FGD files loaded after the game FGD. |
 | `fgd_override` | none | Replaces the main FGD of the game. |
 | `map_dir` | none | Default folder of new maps and of the open dialog. |

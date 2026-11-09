@@ -509,7 +509,7 @@ fn custom_folders(state: &AppState) -> Vec<Value> {
         .custom_texture_dirs
         .iter()
         .enumerate()
-        .map(|(i, d)| json!({ "index": i, "path": d.path.display().to_string(), "prefix": d.prefix, "enabled": d.enabled }))
+        .map(|(i, d)| json!({ "index": i, "path": d.path.display().to_string(), "prefix": d.prefix, "enabled": d.enabled, "include_models": d.include_models }))
         .collect()
 }
 

@@ -7,10 +7,27 @@ Un dossier de textures personnalisé est n'importe quel dossier de votre disque 
 ## Ajouter un dossier
 
 - Dans l'onglet **Textures**, ouvrez **Dossiers personnalisés (n)** et cliquez sur **Ajouter un dossier...**.
-- Ou **Paramètres > Jeu > Dossiers de textures personnalisés > Ajouter un dossier...** (plusieurs dossiers d'un coup).
+- Ou **Paramètres > Jeu > Dossiers de ressources personnalisés > Ajouter un dossier...** (plusieurs dossiers d'un coup).
 - Ou **Nouveau dossier...** dans la fenêtre **Importer des images**.
 
 Ajouter un dossier déjà présent dans la liste le réactive au lieu de l'ajouter deux fois. Les dossiers sont enregistrés dans `custom_texture_dirs` de `[game]` dans `settings.toml` (chemin, préfixe, activé).
+
+## Modèles dans les dossiers personnalisés
+
+Activez **Charger les modèles (MDL)** pour un dossier dans **Textures > Dossiers personnalisés**, ou dans **Paramètres > Jeu > Dossiers de ressources personnalisés**. Cette option est activée par défaut, y compris avec les anciennes configurations. Le dossier affiche son nombre de modèles indexés. Ils apparaissent dans le navigateur **Modèles** et peuvent être placés comme props.
+
+| Dossier sélectionné | Fichier sur disque | Chemin dans la map |
+|---|---|---|
+| Racine du pack | `pack/models/props/rock.mdl` | `models/props/rock.mdl` |
+| Dossier `models` | `pack/models/props/rock.mdl` | `models/props/rock.mdl` |
+| Sous-dossier de `models` | `pack/models/props/rock.mdl`, en choisissant `pack/models/props` | `models/props/rock.mdl` |
+| Dossier d'export libre | `export/props/rock.mdl`, en choisissant `export` | `models/props/rock.mdl` |
+
+Conservez les fichiers associés `.vvd`, `.vtx` (dont `.dx90.vtx`), `.phy` et `.ani` à côté du `.mdl`, selon le modèle. Les modèles ne sont pas renommés et le préfixe des matériaux ne leur est pas appliqué. Placez les VMT/VTF dans l'arborescence `materials` du pack ou ajoutez ce dossier séparément. Le compilateur et l'empaquetage utilisent la même source montée.
+
+Désactivez **Charger les modèles (MDL)** pour conserver les matériaux du dossier tout en excluant ses modèles. **Actualiser** prend en compte les fichiers ajoutés ou modifiés. Désactiver ou retirer le dossier entier retire aussi ses modèles du montage, sans supprimer les fichiers.
+
+Avec Team Mapping, chaque participant doit ajouter les mêmes ressources localement. Un dossier synchronisé par votre logiciel de synchronisation peut être monté sur chaque PC. Les chemins absolus peuvent différer, mais les chemins virtuels `models/...` et `materials/...` doivent correspondre. Team Mapping transmet les modifications de la map, pas les fichiers des modèles ou textures. Synchronisez tous les fichiers associés avant d'actualiser. Voir [Team Mapping](team-mapping.md).
 
 ## Comment les noms de matériaux sont formés
 
@@ -57,7 +74,7 @@ Sous la liste :
 | **Actualiser** | Recharge le contenu du jeu et les dossiers personnalisés, pour prendre en compte les fichiers nouveaux ou modifiés. |
 | **Importer des images...** | Convertit des images en fichiers VTF et VMT dans un dossier personnalisé (voir plus bas). |
 
-Les mêmes dossiers sont listés dans **Paramètres > Jeu > Dossiers de textures personnalisés**, avec les colonnes **Activé**, **Chemin** et **Préfixe** et un bouton pour retirer.
+Les mêmes dossiers sont listés dans **Paramètres > Jeu > Dossiers de ressources personnalisés**, avec les colonnes **Activé**, **Chemin** et **Préfixe** et un bouton pour retirer.
 
 ## Des images comme matériaux
 

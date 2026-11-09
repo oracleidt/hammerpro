@@ -651,7 +651,7 @@ mod tests {
         let mut s = state_in(&dir);
         let out = dir.join("materials");
         std::fs::create_dir_all(&out).unwrap();
-        let custom = CustomDirSetting { path: out, prefix: "custom/test".into(), enabled: true };
+        let custom = CustomDirSetting { path: out, prefix: "custom/test".into(), enabled: true, include_models: true };
         s.settings.game.custom_texture_dirs.push(custom);
         ok(
             &mut s,

@@ -91,10 +91,11 @@ impl GameFs {
                 crate::SourceMountKind::Dir => PlanKind::GameDir,
                 crate::SourceMountKind::Vpk => PlanKind::Vpk,
                 crate::SourceMountKind::Gma => PlanKind::Gma { label_prefix: "Addon" },
-                crate::SourceMountKind::Custom { prefix } => PlanKind::Custom(CustomDir {
+                crate::SourceMountKind::Custom { prefix, include_models } => PlanKind::Custom(CustomDir {
                     path: mount.path.clone(),
                     prefix: prefix.clone(),
                     enabled: mount.enabled,
+                    include_models: *include_models,
                 }),
             };
             let item = PlanItem {
@@ -746,6 +747,76 @@ mod tests {
         let layout = fs.custom_layout_of_path(&tmp.path().join("c/")).unwrap();
         assert_eq!(layout.prefix, "mine");
         assert!(fs.custom_layout_of_path(&tmp.path().join("g")).is_none());
+    }
+
+    #[test]
+    fn custom_model_folders_preserve_paths_companions_and_worker_mounts() {
+        let tmp = TempDir::new("custom-model-paths");
+        let models = ["Rock.MDL", "Rock.VVD", "Rock.dx90.VTX", "Rock.PHY", "Rock.ANI"];
+        for name in models {
+            tmp.write(&format!("pack/Models/Props/{name}"), name.as_bytes());
+        }
+        tmp.write("pack/Models/Props/notes.txt", b"not an asset");
+        for root in ["pack", "pack/Models", "pack/Models/Props"] {
+            let fs = GameFs::empty();
+            let path = tmp.path().join(root);
+            fs.add_custom_dir(CustomDir::with_prefix(&path, "ignored-material-prefix")).unwrap();
+            let listed = fs.models();
+            assert_eq!(listed.len(), 1, "{root}");
+            assert_eq!(listed[0].name, "models/props/rock.mdl");
+            for name in models {
+                let key = format!("models/props/{}", name.to_ascii_lowercase());
+                assert_eq!(fs.read(&key).unwrap(), name.as_bytes(), "{root}: {key}");
+            }
+            let mounts: Vec<_> = fs.sources().iter().map(|source| source.mount()).collect();
+            let worker = GameFs::from_source_mounts(None, None, &mounts).unwrap();
+            assert_eq!(worker.read("models/props/rock.dx90.vtx").unwrap(), b"Rock.dx90.VTX");
+        }
+    }
+
+    #[test]
+    fn custom_models_can_be_disabled_without_hiding_materials_or_other_sources() {
+        let tmp = TempDir::new("custom-model-toggle");
+        tmp.write("pack/materials/pack/rock.vmt", b"VertexLitGeneric { $basetexture pack/rock }");
+        tmp.write("pack/models/props/rock.mdl", b"IDST");
+        tmp.write("base/models/props/base.mdl", b"base model");
+        for include_models in [false, true, false] {
+            let fs = GameFs::empty();
+            fs.add_game_dir(&tmp.path().join("base")).unwrap();
+            let mut dir = CustomDir::new(tmp.path().join("pack"));
+            dir.include_models = include_models;
+            fs.add_custom_dir(dir).unwrap();
+            assert!(fs.exists("materials/pack/rock.vmt"));
+            assert!(fs.exists("models/props/base.mdl"));
+            assert_eq!(fs.exists("models/props/rock.mdl"), include_models);
+            let mounts: Vec<_> = fs.sources().iter().map(|source| source.mount()).collect();
+            let worker = GameFs::from_source_mounts(None, None, &mounts).unwrap();
+            assert_eq!(worker.exists("models/props/rock.mdl"), include_models);
+        }
+    }
+
+    #[test]
+    fn loose_custom_models_refresh_with_their_mesh_and_collision_files() {
+        let tmp = TempDir::new("loose-custom-models");
+        let folder = tmp.mkdir("loose");
+        tmp.write("loose/props/rock.mdl", b"IDST");
+        tmp.write("loose/props/rock.vvd", b"vertices");
+        tmp.write("loose/props/rock.dx90.vtx", b"indices");
+        tmp.write("loose/unrelated.exe", b"ignored");
+        let fs = GameFs::empty();
+        let id = fs.add_custom_dir(CustomDir::with_prefix(&folder, "materials-only")).unwrap();
+        assert_eq!(fs.models()[0].name, "models/props/rock.mdl");
+        assert!(!fs.exists("models/unrelated.exe"));
+        assert!(!fs.exists("models/props/rock.phy"));
+        tmp.write("loose/props/rock.phy", b"collision");
+        fs.refresh_sources(&[id]);
+        assert_eq!(fs.read("models/props/rock.phy").unwrap(), b"collision");
+        assert_eq!(fs.watch_path("models/props/rock.mdl").unwrap().1, folder.join("props/rock.mdl"));
+        assert!(!fs.exists("models/../unrelated.exe"));
+        fs.set_source_enabled(id, false);
+        assert!(!fs.exists("models/props/rock.mdl"));
+        fs.set_source_enabled(id, true);
+        assert!(fs.exists("models/props/rock.mdl"));
     }
 
     #[test]

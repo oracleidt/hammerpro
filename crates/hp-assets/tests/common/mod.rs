@@ -114,6 +114,7 @@ pub fn fake_settings(root: &Path) -> Settings {
         path: root.join("custom_art"),
         prefix: "custom/art".into(),
         enabled: true,
+        include_models: true,
     });
     s
 }

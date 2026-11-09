@@ -18,17 +18,18 @@ pub struct CustomDir {
     pub path: PathBuf,
     pub prefix: String,
     pub enabled: bool,
+    pub include_models: bool,
 }
 
 impl CustomDir {
     pub fn new(path: impl Into<PathBuf>) -> Self {
         let path = path.into();
         let prefix = suggest_prefix(&path);
-        Self { path, prefix, enabled: true }
+        Self { path, prefix, enabled: true, include_models: true }
     }
 
     pub fn with_prefix(path: impl Into<PathBuf>, prefix: impl Into<String>) -> Self {
-        Self { path: path.into(), prefix: prefix.into(), enabled: true }
+        Self { path: path.into(), prefix: prefix.into(), enabled: true, include_models: true }
     }
 }
 
@@ -133,7 +134,7 @@ pub fn is_auto_prefix(dir: &CustomDir) -> bool {
 }
 
 fn layout_with(dir: &CustomDir, list: impl FnOnce() -> Vec<String>) -> CustomLayout {
-    if has_materials_subdir(&dir.path) {
+    if has_asset_subdir(&dir.path) {
         return CustomLayout { mode: CustomMode::GameFolder, prefix: String::new() };
     }
     if let Some(prefix) = prefix_inside_materials(&dir.path) {
@@ -195,14 +196,33 @@ fn detect_prefix(root: &Path, files: &[String]) -> Option<String> {
         .map(|(prefix, _)| prefix)
 }
 
-fn has_materials_subdir(path: &Path) -> bool {
+fn has_asset_subdir(path: &Path) -> bool {
     let Ok(read) = std::fs::read_dir(path) else {
         return false;
     };
     read.flatten().any(|entry| {
-        entry.file_name().to_str().is_some_and(|n| n.eq_ignore_ascii_case("materials"))
+        entry
+            .file_name()
+            .to_str()
+            .is_some_and(|n| n.eq_ignore_ascii_case("materials") || n.eq_ignore_ascii_case("models"))
             && std::fs::metadata(entry.path()).is_ok_and(|m| m.is_dir())
     })
+}
+
+fn model_prefix(path: &Path) -> Option<String> {
+    let parts: Vec<_> = path
+        .components()
+        .filter_map(|c| match c {
+            Component::Normal(s) => Some(s.to_string_lossy().into_owned()),
+            _ => None,
+        })
+        .collect();
+    let at = parts.iter().rposition(|p| p.eq_ignore_ascii_case("models"))?;
+    Some(normalize_path(&parts[at..].join("/")).into_owned())
+}
+
+fn is_model_file(name: &str) -> bool {
+    matches!(extension(name).to_ascii_lowercase().as_str(), "mdl" | "vvd" | "vtx" | "phy" | "ani")
 }
 
 fn prefix_inside_materials(path: &Path) -> Option<String> {
@@ -343,8 +363,10 @@ impl CustomIndex {
             return Err(FsError::NotADirectory(dir.path.clone()));
         }
         let mut files: AHashMap<Box<str>, Entry> = AHashMap::new();
-        let layout = if has_materials_subdir(&dir.path) {
-            for rel in walk_files(&dir.path, Some(ASSET_DIRS), &|_| true, Some(PROFILE_GAME))? {
+        let layout = if has_asset_subdir(&dir.path) {
+            let dirs: Vec<_> = ASSET_DIRS.iter().copied().filter(|d| dir.include_models || *d != "models").collect();
+            let profile = if dir.include_models { PROFILE_GAME } else { "game-no-models" };
+            for rel in walk_files(&dir.path, Some(&dirs), &|_| true, Some(profile))? {
                 let key: Box<str> = normalize_path(&rel).into();
                 files.entry(key).or_insert_with(|| Entry::File(rel.into_boxed_str()));
             }
@@ -363,6 +385,14 @@ impl CustomIndex {
             }
             layout
         };
+
+        if dir.include_models && layout.mode != CustomMode::GameFolder {
+            let base = model_prefix(&dir.path).unwrap_or_else(|| "models".to_owned());
+            for rel in walk_files(&dir.path, None, &is_model_file, Some("models"))? {
+                let key: Box<str> = join_virtual(&base, &normalize_path(&rel)).into();
+                files.entry(key).or_insert_with(|| Entry::File(rel.into_boxed_str()));
+            }
+        }
 
         let mut found: Vec<(String, usize, Box<str>, String)> = files
             .iter()

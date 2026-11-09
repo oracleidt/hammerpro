@@ -119,7 +119,7 @@ Surtout sur **Paramètres > Vues** ; les clés `show_*` sont aussi dans le menu 
 | `mount_server_content` | `true` | Monte le contenu téléchargé depuis les serveurs (`garrysmod/download`, `garrysmod/cache/workshop`). |
 | `extra_game_dirs` | `[]` | Autres dossiers de jeu à monter. |
 | `mount_app_ids` | `[]` | Jeux Steam dont le contenu est monté, par AppID, par ordre de priorité (par exemple `[240, 440]`). Chacun est trouvé dans les bibliothèques Steam et monté d'après son `gameinfo.txt`. Voir [Configuration du jeu](../getting-started/game-setup.md#jeux-steam-par-appid). |
-| `custom_texture_dirs` | `[]` | Dossiers de textures personnalisés : tables avec `path`, `prefix` (préfixe des noms de matériaux quand le dossier n'est pas dans une arborescence `materials`) et `enabled`. Voir [Dossiers de textures personnalisés](../features/custom-texture-folders.md). |
+| `custom_texture_dirs` | `[]` | Dossiers de textures personnalisés : tables avec `path`, `prefix` (préfixe des noms de matériaux quand le dossier n'est pas dans une arborescence `materials`) et `enabled`, `include_models`. Voir [Dossiers de textures personnalisés](../features/custom-texture-folders.md). |
 | `extra_fgds` | `[]` | Fichiers FGD supplémentaires, chargés après celui du jeu. |
 | `fgd_override` | absente | Remplace le FGD principal du jeu. |
 | `map_dir` | absente | Dossier par défaut des nouvelles maps et de la fenêtre d'ouverture. |

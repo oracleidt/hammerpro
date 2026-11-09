@@ -192,6 +192,7 @@ struct CustomSource {
     id: u32,
     path: PathBuf,
     layout: Option<CustomLayout>,
+    models: usize,
 }
 
 #[derive(Default)]
@@ -228,6 +229,7 @@ enum CellAction {
 
 enum FolderAction {
     Enable(usize, bool),
+    Models(usize, bool),
     Prefix(usize, String),
     Remove(usize),
     ShowOnly(u32),
@@ -381,6 +383,10 @@ impl TextureBrowser {
         let mut c = SourcesCache { key: Some(key), ..SourcesCache::default() };
         match state.assets.fs() {
             Some(fs) => {
+                let mut model_counts: HashMap<u32, usize> = HashMap::new();
+                for model in state.assets.models().iter() {
+                    *model_counts.entry(model.source).or_default() += 1;
+                }
                 for s in fs.sources() {
                     let group = SourceGroup::of(s.origin);
                     c.table.insert(s.id, Some(group), &s.label);
@@ -393,6 +399,7 @@ impl TextureBrowser {
                             id: s.id,
                             path: s.path.clone(),
                             layout: fs.custom_dir_layout(s.id),
+                            models: model_counts.get(&s.id).copied().unwrap_or(0),
                         }),
                     }
                 }
@@ -743,6 +750,7 @@ impl TextureBrowser {
                 path: d.path.clone(),
                 prefix: d.prefix.clone(),
                 enabled: true,
+                include_models: true,
             });
             if layout.prefix.is_empty() { "materials/".to_owned() } else { layout.prefix }
         });
@@ -1084,6 +1092,20 @@ impl TextureBrowser {
                         });
                         ui.horizontal(|ui| {
                             ui.add_space(24.0);
+                            let mut include_models = dir.include_models;
+                            if ui
+                                .checkbox(&mut include_models, t!("common.load_models"))
+                                .on_hover_text(t!("common.load_models_tip"))
+                                .changed()
+                            {
+                                action = Some(FolderAction::Models(i, include_models));
+                            }
+                            if let Some(source) = &mounted {
+                                ui.label(RichText::new(tf!("tex.folders.models", source.models)).small().weak());
+                            }
+                        });
+                        ui.horizontal(|ui| {
+                            ui.add_space(24.0);
                             let layout = mounted.as_ref().and_then(|m| m.layout.clone());
                             let fixed = layout
                                 .clone()
@@ -1183,6 +1205,15 @@ impl TextureBrowser {
 
     fn apply_folder_action(&mut self, state: &mut AppState, action: FolderAction) {
         match action {
+            FolderAction::Models(i, on) => {
+                if let Some(dir) = state.settings.game.custom_texture_dirs.get_mut(i)
+                    && dir.include_models != on
+                {
+                    dir.include_models = on;
+                    state.settings_dirty = true;
+                    state.assets.remount(&state.settings);
+                }
+            }
             FolderAction::Enable(i, on) => {
                 if crate::folders::set_custom_enabled(&mut state.settings, i, on) {
                     state.settings_dirty = true;

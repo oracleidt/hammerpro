@@ -448,7 +448,12 @@ pub fn remount_after_write(state: &mut AppState) {
         let dir = sandbox_content_dir();
         let dirs = &mut state.settings.game.custom_texture_dirs;
         if !dirs.iter().any(|d| d.path == dir) {
-            dirs.push(hp_app::settings::CustomDirSetting { path: dir, prefix: String::new(), enabled: true });
+            dirs.push(hp_app::settings::CustomDirSetting {
+                path: dir,
+                prefix: String::new(),
+                enabled: true,
+                include_models: true,
+            });
         }
     }
     state.assets.remount(&state.settings);

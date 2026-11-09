@@ -36,7 +36,12 @@ pub fn add_custom_dir(settings: &mut Settings, path: &Path) -> AddOutcome {
         }
         return AddOutcome::AlreadyPresent(i);
     }
-    dirs.push(CustomDirSetting { path: path.to_path_buf(), prefix: hp_fs::suggest_prefix(path), enabled: true });
+    dirs.push(CustomDirSetting {
+        path: path.to_path_buf(),
+        prefix: hp_fs::suggest_prefix(path),
+        enabled: true,
+        include_models: true,
+    });
     AddOutcome::Added(dirs.len() - 1)
 }
 
@@ -88,7 +93,12 @@ pub fn layout_of(state: &hp_app::AppState, dir: &CustomDirSetting) -> CustomLayo
     if let Some(layout) = state.assets.fs().and_then(|fs| fs.custom_layout_of_path(&dir.path)) {
         return layout;
     }
-    hp_fs::custom_layout(&hp_fs::CustomDir { path: dir.path.clone(), prefix: dir.prefix.clone(), enabled: dir.enabled })
+    hp_fs::custom_layout(&hp_fs::CustomDir {
+        path: dir.path.clone(),
+        prefix: dir.prefix.clone(),
+        enabled: dir.enabled,
+        include_models: dir.include_models,
+    })
 }
 
 pub fn vmt_target(dir: &Path, layout: &CustomLayout, name: &str) -> (PathBuf, String) {

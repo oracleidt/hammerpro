@@ -288,17 +288,17 @@ pub(crate) const TR: TrTable = &[
         "Load what servers made the game download (garrysmod/download and garrysmod/cache/workshop). Players may not have it: the release checks pack what the map uses.",
         "Charger ce que les serveurs ont fait télécharger au jeu (garrysmod/download et garrysmod/cache/workshop). Les joueurs ne l'ont pas forcément : les vérifications de publication empaquettent ce que la map utilise.",
     ),
-    ("shell.game.custom_dirs", "Custom texture folders", "Dossiers de textures personnalisés"),
+    ("shell.game.custom_dirs", "Custom asset folders", "Dossiers de ressources personnalisés"),
     (
         "shell.game.custom_empty",
-        "No custom folder. Add folders of VTF/VMT files or plain images (PNG, JPG, TGA, BMP).",
-        "Aucun dossier personnalisé. Ajoutez des dossiers de fichiers VTF/VMT ou d'images (PNG, JPG, TGA, BMP).",
+        "No custom folder. Add VTF/VMT files, images or MDL models with their companion files.",
+        "Aucun dossier personnalisé. Ajoutez des VTF/VMT, des images ou des modèles MDL avec leurs fichiers associés.",
     ),
     ("shell.game.add_custom", "Add folder...", "Ajouter un dossier..."),
     (
         "shell.game.custom_tip",
-        "Images become materials named prefix/file.",
-        "Les images deviennent des matériaux nommés préfixe/fichier.",
+        "The prefix applies to materials only. Model paths are preserved.",
+        "Le préfixe concerne uniquement les matériaux. Les chemins des modèles sont conservés.",
     ),
     ("shell.game.prefix", "Prefix", "Préfixe"),
     (

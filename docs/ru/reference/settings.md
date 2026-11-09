@@ -127,7 +127,7 @@
 | `mount_server_content` | `true` | Смонтируйте контент, загруженный с серверов (`garrysmod/download`, `garrysmod/cache/workshop`). |
 | `extra_game_dirs` | `[]` | Больше папок с игрой для монтирования. |
 | `mount_app_ids` | `[]` | Игры Steam, контент которых монтируется по AppID в порядке приоритета (например, `[240, 440]`). Каждый из них можно найти в библиотеках Steam и смонтировать со своего `gameinfo.txt`. См. [Настройка игры](../getting-started/game-setup.md#steam-games-by-appid). |
-| `custom_texture_dirs` | `[]` | Папки с пользовательскими текстурами: таблицы с `path`, `prefix` (префикс имени материала, если папка не находится внутри дерева `materials`) и `enabled`. См. [Папки с пользовательскими текстурами](../features/custom-texture-folders.md). |
+| `custom_texture_dirs` | `[]` | Папки с пользовательскими текстурами: таблицы с `path`, `prefix` (префикс имени материала, если папка не находится внутри дерева `materials`) и `enabled`, `include_models`. См. [Папки с пользовательскими текстурами](../features/custom-texture-folders.md). |
 | `extra_fgds` | `[]` | Дополнительные файлы FGD, загружаемые после игры FGD. |
 | `fgd_override` | нет | Заменяет основной FGD игры. |
 | `map_dir` | нет | Папка по умолчанию новых карт и открытого диалога. |

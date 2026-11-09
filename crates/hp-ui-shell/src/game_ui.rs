@@ -134,7 +134,12 @@ pub fn apply_pick(state: &mut AppState, target: PickTarget, paths: Vec<PathBuf>)
             for p in paths {
                 if !game.custom_texture_dirs.iter().any(|d| d.path == p) {
                     let prefix = hp_fs::suggest_prefix(&p);
-                    game.custom_texture_dirs.push(CustomDirSetting { path: p, prefix, enabled: true });
+                    game.custom_texture_dirs.push(CustomDirSetting {
+                        path: p,
+                        prefix,
+                        enabled: true,
+                        include_models: true,
+                    });
                 }
             }
         }
@@ -411,6 +416,7 @@ fn is_auto_prefix(dir: &CustomDirSetting) -> bool {
         path: dir.path.clone(),
         prefix: dir.prefix.clone(),
         enabled: dir.enabled,
+        include_models: dir.include_models,
     })
 }
 
@@ -488,11 +494,13 @@ pub fn custom_dirs_list(ui: &mut Ui, state: &mut AppState, jobs: &mut GameJobs) 
     } else {
         let cells: Vec<PrefixCell> =
             dirs.iter().map(|d| prefix_cell(d, fs.and_then(|fs| fs.custom_layout_of_path(&d.path)).as_ref())).collect();
-        egui::Grid::new("hp_shell_custom_dirs").num_columns(4).striped(true).spacing([8.0, 4.0]).show(ui, |ui| {
+        egui::Grid::new("hp_shell_custom_dirs").num_columns(5).striped(true).spacing([8.0, 4.0]).show(ui, |ui| {
             ui.label(RichText::new(t!("common.enabled")).small().strong());
             ui.label(RichText::new(t!("common.path")).small().strong());
             ui.label(RichText::new(t!("shell.game.prefix")).small().strong())
                 .on_hover_text(t!("shell.game.prefix_tip"));
+            ui.label(RichText::new(t!("common.load_models")).small().strong())
+                .on_hover_text(t!("common.load_models_tip"));
             ui.label("");
             ui.end_row();
             for (i, (dir, cell)) in dirs.iter_mut().zip(&cells).enumerate() {
@@ -501,6 +509,8 @@ pub fn custom_dirs_list(ui: &mut Ui, state: &mut AppState, jobs: &mut GameJobs) 
                 crate::common::fixed_label(ui, 260.0, 18.0, RichText::new(&text).monospace().small())
                     .on_hover_text(&text);
                 changed |= prefix_cell_ui(ui, dir, cell);
+                changed |=
+                    ui.checkbox(&mut dir.include_models, "").on_hover_text(t!("common.load_models_tip")).changed();
                 if ui.small_button("✖").on_hover_text(t!("common.remove")).clicked() {
                     remove = Some(i);
                 }
@@ -719,8 +729,12 @@ mod tests {
 
     #[test]
     fn prefix_cell_shows_the_effective_layout() {
-        let dir =
-            |prefix: &str| CustomDirSetting { path: "C:/Art/My Pack".into(), prefix: prefix.into(), enabled: true };
+        let dir = |prefix: &str| CustomDirSetting {
+            path: "C:/Art/My Pack".into(),
+            prefix: prefix.into(),
+            enabled: true,
+            include_models: true,
+        };
         let layout = |mode, prefix: &str| CustomLayout { mode, prefix: prefix.into() };
         let detected = layout(CustomMode::Detected, "mypack");
         let edit = |text: &str, detected| PrefixCell::Edit { text: text.into(), detected };
