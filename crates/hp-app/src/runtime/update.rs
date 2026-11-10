@@ -1,5 +1,19 @@
 use crate::i18n::TrTable;
 
+pub const PREBUILT_PLATFORM: bool = cfg!(windows);
+
+pub const SOURCE_UPDATE_COMMANDS: &str = "git pull
+cargo build --release -p hammerpro";
+
+pub fn platform_name() -> &'static str {
+    match std::env::consts::OS {
+        "macos" => "macOS",
+        "linux" => "Linux",
+        "windows" => "Windows",
+        other => other,
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum UpdateStatus {
     #[default]
@@ -73,6 +87,10 @@ impl UpdateRuntime {
     }
 
     pub fn can_install(&self) -> bool {
+        PREBUILT_PLATFORM && self.can_install_archive()
+    }
+
+    pub fn can_install_archive(&self) -> bool {
         matches!(self.status, UpdateStatus::Available | UpdateStatus::Failed)
             && self.latest.as_ref().is_some_and(|l| l.asset_name.is_some())
     }
@@ -150,6 +168,30 @@ pub const TR: TrTable = &[
         "l'archive téléchargée n'est pas utilisable ({0})",
     ),
     ("update.err_io", "a file could not be written ({0})", "un fichier n'a pas pu être écrit ({0})"),
+    ("update.source_title", "Update from the source on {0}", "Mise à jour depuis les sources sur {0}"),
+    (
+        "update.source_body",
+        "Ready made builds of Hammer Pro are published for Windows only, so this version cannot install itself on {0}. Your copy was built from the source: get the new version by updating your clone and building it again for your system.",
+        "Les versions prêtes à l'emploi de Hammer Pro ne sont publiées que pour Windows, cette version ne peut donc pas s'installer seule sur {0}. Votre copie a été compilée depuis les sources : récupérez la nouvelle version en mettant à jour votre clone puis en la compilant à nouveau pour votre système.",
+    ),
+    ("update.source_steps", "In the folder of your clone, run:", "Dans le dossier de votre clone, lancez :"),
+    (
+        "update.source_after",
+        "Then start the new build from target/release. A fresh clone works too if your copy is old or changed.",
+        "Puis lancez la nouvelle version depuis target/release. Un nouveau clone fonctionne aussi si votre copie est ancienne ou modifiée.",
+    ),
+    ("update.btn_copy", "Copy the commands", "Copier les commandes"),
+    ("update.copied", "Copied", "Copié"),
+    (
+        "update.status_source",
+        "Version {0} is available. Update your clone and build it again (Windows only gets ready made builds).",
+        "La version {0} est disponible. Mettez à jour votre clone et compilez-le à nouveau (seul Windows a des versions prêtes à l'emploi).",
+    ),
+    (
+        "update.err_source_only",
+        "ready made builds are for Windows only: on {0}, update the source (git pull) and build again with cargo build --release -p hammerpro",
+        "les versions prêtes à l'emploi sont pour Windows uniquement : sur {0}, mettez à jour les sources (git pull) et compilez à nouveau avec cargo build --release -p hammerpro",
+    ),
     ("update.err_cancelled", "the download was cancelled", "le téléchargement a été annulé"),
     ("update.err_other", "{0}", "{0}"),
     ("update.toast_up_to_date", "Hammer Pro is up to date (version {0}).", "Hammer Pro est à jour (version {0})."),

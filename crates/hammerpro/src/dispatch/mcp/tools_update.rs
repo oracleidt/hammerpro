@@ -24,7 +24,7 @@ domain! { "updates";
         "Download the available update, then close Hammer Pro, replace the program and start it again. It \
         interrupts the session (the user is asked to save unsaved maps first) and the connection to this MCP \
         server ends: run it only when the user explicitly asked to update now. Needs confirm: true, a found \
-        update (check_for_updates, get_update_status shows status available) and no running compile.",
+        update (check_for_updates, get_update_status shows status available) and no running compile. Ready made         builds exist for Windows only: on Linux and macOS it refuses and get_update_status gives the commands to         update the clone and build again (self_install false, source_update).",
         { "confirm": boolean("Must be true; only when the user explicitly asked to install the update now.") },
         ["confirm"];
 }
@@ -55,6 +55,12 @@ fn info_json(state: &AppState) -> serde_json::Value {
         "error": rt.failure.as_ref().map(|f| tf!(f.key, f.detail)),
         "dialog_open": rt.dialog_open,
         "can_install": rt.can_install(),
+        "self_install": hp_app::runtime::update::PREBUILT_PLATFORM,
+        "platform": hp_app::runtime::update::platform_name(),
+        "source_update": (!hp_app::runtime::update::PREBUILT_PLATFORM).then(|| json!({
+            "message": tf!("update.source_body", hp_app::runtime::update::platform_name()),
+            "commands": hp_app::runtime::update::SOURCE_UPDATE_COMMANDS.lines().collect::<Vec<_>>(),
+        })),
         "check_on_startup": state.settings.update.check_on_startup,
         "show_dialog": state.settings.update.show_dialog,
         "skipped_version": state.settings.update.skipped_version,
@@ -93,6 +99,9 @@ fn apply_update(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
         return Err(t!("update.busy_automated").to_owned());
     }
     let rt = &mut state.runtime.update;
+    if !hp_app::runtime::update::PREBUILT_PLATFORM {
+        return Err(tf!("update.err_source_only", hp_app::runtime::update::platform_name()));
+    }
     if !rt.can_install() {
         return Err(match rt.status {
             UpdateStatus::Downloading => "the update is already downloading".to_owned(),
@@ -157,7 +166,9 @@ mod tests {
         assert_eq!(v["latest"]["skipped"], true);
         assert_eq!(v["latest"]["archive"], "HammerPro-1.0.3-windows.zip");
         assert_eq!(v["latest"]["archive_sha256"], "ab".repeat(32));
-        assert_eq!(v["can_install"], true);
+        assert_eq!(v["can_install"], hp_app::runtime::update::PREBUILT_PLATFORM);
+        assert_eq!(v["self_install"], hp_app::runtime::update::PREBUILT_PLATFORM);
+        assert_eq!(v["source_update"].is_null(), hp_app::runtime::update::PREBUILT_PLATFORM);
         s.runtime.update.status = UpdateStatus::Failed;
         s.runtime.update.failure = Some(UpdateFailure { key: "update.err_http", detail: "404".into() });
         let v = ok(&mut s, "get_update_status", json!({}));
@@ -187,6 +198,11 @@ mod tests {
         let e = err(&mut s, "apply_update", json!({ "confirm": false }));
         assert!(e.contains("confirm must be true"), "{e}");
         let e = err(&mut s, "apply_update", json!({ "confirm": true }));
+        if !hp_app::runtime::update::PREBUILT_PLATFORM {
+            assert!(e.contains("git pull") && e.contains("Windows"), "{e}");
+            assert!(!s.runtime.update.install_requested);
+            return;
+        }
         assert!(e.contains("no update is available"), "{e}");
         assert!(!s.runtime.update.install_requested);
         available(&mut s, false);
@@ -203,5 +219,24 @@ mod tests {
         assert_eq!(v["started"], true);
         assert_eq!(v["version"], "1.0.3");
         assert!(s.runtime.update.install_requested);
+    }
+
+    #[test]
+    fn source_builds_get_clone_and_build_instructions() {
+        hp_app::register_translations();
+        let _lang = hp_app::testing::lang_lock();
+        let mut s = hp_app::testing::test_state();
+        available(&mut s, true);
+        assert!(s.runtime.update.can_install_archive());
+        let text = tf!("update.err_source_only", "Linux");
+        assert!(text.contains("Windows") && text.contains("git pull") && text.contains("cargo build"), "{text}");
+        let body = tf!("update.source_body", "macOS");
+        assert!(body.contains("macOS") && body.contains("Windows only"), "{body}");
+        assert!(hp_app::runtime::update::SOURCE_UPDATE_COMMANDS.starts_with("git pull"));
+        if !hp_app::runtime::update::PREBUILT_PLATFORM {
+            let v = ok(&mut s, "get_update_status", json!({}));
+            assert_eq!(v["can_install"], false);
+            assert!(v["source_update"]["commands"][0] == "git pull");
+        }
     }
 }

@@ -8558,5 +8558,13 @@
   "team.edit_refusal.document": "Изменение карты отклонено",
   "team.access.share_scripts": "Передавать скриптовые и командные сущности",
   "team.access.share_scripts_hint": "lua_run, logic_script, point_servercommand, point_clientcommand и входы Command, RunScriptCode, RunScriptFile и RunPassedCode выполняются только в игре, никогда в редакторе. Выключено: хост оставляет свои на этом ПК и отклоняет те, что другие добавляют или изменяют.",
-  "team.access.script_notice": "{0} добавил или изменил скриптовую или командную сущность: {1}"
+  "team.access.script_notice": "{0} добавил или изменил скриптовую или командную сущность: {1}",
+  "update.source_title": "Обновление из исходного кода на {0}",
+  "update.source_body": "Готовые сборки Hammer Pro публикуются только для Windows, поэтому эта версия не может установиться сама на {0}. Ваша копия собрана из исходного кода: получите новую версию, обновив свой клон и собрав его заново для вашей системы.",
+  "update.source_steps": "В папке вашего клона выполните:",
+  "update.source_after": "Затем запустите новую сборку из target/release. Новый клон тоже подойдёт, если ваша копия старая или изменена.",
+  "update.btn_copy": "Скопировать команды",
+  "update.copied": "Скопировано",
+  "update.status_source": "Доступна версия {0}. Обновите клон и соберите его заново (готовые сборки есть только для Windows).",
+  "update.err_source_only": "готовые сборки есть только для Windows: на {0} обновите исходный код (git pull) и соберите заново командой cargo build --release -p hammerpro"
 }

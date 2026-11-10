@@ -10,7 +10,7 @@
 
 Hammer Pro ouvre et enregistre des fichiers `.vmf` standard : vous pouvez l'utiliser en parallèle de Hammer et de Hammer++. Il est écrit en Rust, dessine avec la carte graphique grâce à wgpu, reste fluide sur les très grandes maps et compile les maps avec son propre compilateur intégré : ni VBSP, ni VVIS, ni VRAD.
 
-Version **2.0.0**.
+Version **2.0.1**.
 
 Le russe est disponible pour l'interface et la [documentation](docs/ru/README.md). Les options VBSP, VVIS et VRAD du compilateur externe sélectionné sont accessibles dans la fenêtre de compilation. Les modèles physiques peuvent servir de décors statiques par défaut ; les ciels absents ont un remplacement signalé et les lightmaps noires un diagnostic distinct.
 
@@ -42,7 +42,7 @@ Chaque fonctionnalité a sa propre page dans la [documentation](docs/fr/README.m
 
 ## Configuration requise
 
-- Windows 10 ou 11 (64 bits). Hammer Pro se compile aussi sous Linux depuis les sources.
+- Windows 10 ou 11 (64 bits) pour les versions prêtes à l'emploi. **Les versions compilées ne sont fournies que pour Windows** : pour utiliser Hammer Pro sous Linux ou macOS, compilez-le vous-même pour votre système depuis les sources. Ces copies se mettent à jour avec `git pull` et une nouvelle compilation, pas avec la mise à jour intégrée.
 - Une carte graphique compatible Vulkan, DirectX 12 ou Metal.
 - Garry's Mod installé par Steam (trouvé automatiquement). D'autres jeux Source sont pris en charge comme cibles.
 

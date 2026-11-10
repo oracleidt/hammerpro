@@ -121,7 +121,7 @@ impl ViewPicks {
                 let PickPurpose::Aim { negative_pitch } = p.purpose else { return };
                 let values = aim_values(doc, &p.target, &p.key, point, negative_pitch);
                 if !values.is_empty() {
-                    ops.push(Op::SetPerEntity { key: p.key, values });
+                    ops.push(Op::SetPerEntity { values });
                 }
             }
         }
@@ -163,21 +163,46 @@ pub(crate) fn suggest_name(doc: &Document, class: &str) -> String {
     (1..=used.len() + 1).map(|i| format!("{base}_{i}")).find(|n| !used.contains(n)).unwrap_or(base)
 }
 
-fn aim_values(doc: &Document, target: &Target, key: &str, point: DVec3, negative_pitch: bool) -> Vec<(Id, String)> {
+fn aim_values(
+    doc: &Document,
+    target: &Target,
+    key: &str,
+    point: DVec3,
+    negative_pitch: bool,
+) -> Vec<(Id, Vec<(String, String)>)> {
     let Target::Entities(ids) = target else { return Vec::new() };
     ids.iter()
         .filter_map(|id| {
             let e = &doc.scene().entity(*id)?.entity;
-            let (pitch, yaw) = aim_angles(e.origin()?, point)?;
-            let value = if negative_pitch {
-                fmt_num_rounded(-pitch, 2)
-            } else {
-                let roll = e.get(key).and_then(parse_angles).map_or(0.0, |a| a.z);
-                format_angles(DVec3::new(pitch, yaw, roll))
-            };
-            Some((*id, value))
+            let keys = aim_keys(e, key, point, negative_pitch)?;
+            Some((*id, keys))
         })
         .collect()
+}
+
+pub fn is_vrad_light(class: &str) -> bool {
+    ["light_spot", "light_environment", "light_directional"].iter().any(|c| class.trim().eq_ignore_ascii_case(c))
+}
+
+pub fn aim_keys(e: &hp_vmf::Entity, key: &str, point: DVec3, negative_pitch: bool) -> Option<Vec<(String, String)>> {
+    let (pitch, yaw) = aim_angles(e.origin()?, point)?;
+    let up = -pitch + 0.0;
+    let vrad = is_vrad_light(&e.classname);
+    let angles_key = if negative_pitch { "angles" } else { key };
+    let roll = e.get(angles_key).and_then(parse_angles).map_or(0.0, |a| a.z);
+    let angles_pitch = if vrad { up } else { pitch };
+    let mut out = vec![(angles_key.to_owned(), format_angles(DVec3::new(angles_pitch, yaw, roll)))];
+    let has_pitch_key = e.get("pitch").is_some_and(|v| !v.trim().is_empty());
+    if negative_pitch {
+        out.push((key.to_owned(), fmt_num_rounded(up, 2)));
+    } else if vrad || has_pitch_key {
+        out.push(("pitch".to_owned(), fmt_num_rounded(up, 2)));
+    }
+    let angle_override = e.get("angle").and_then(|v| v.trim().parse::<f64>().ok()).is_some_and(|v| v != 0.0);
+    if angle_override {
+        out.push(("angle".to_owned(), fmt_num_rounded(yaw, 2)));
+    }
+    Some(out)
 }
 
 pub(crate) fn aim_angles(from: DVec3, to: DVec3) -> Option<(f64, f64)> {
@@ -365,11 +390,87 @@ mod tests {
         }
         let mut ops = Vec::new();
         picks.poll(&s.doc, &mut s.pick, &mut ops);
-        let Some(Op::SetPerEntity { values, .. }) = ops.first() else { panic!("{ops:?}") };
-        assert_eq!(values[0], (5, "90 0 0".to_owned()), "straight down");
-        assert_eq!(values[1], (4, "0 90 0".to_owned()), "toward +Y");
+        let Some(Op::SetPerEntity { values }) = ops.first() else { panic!("{ops:?}") };
+        let angles_of = |i: usize| values[i].1.iter().find(|(k, _)| k == "angles").map(|(_, v)| v.clone());
+        assert_eq!(angles_of(0).as_deref(), Some("90 0 0"), "straight down");
+        assert_eq!(angles_of(1).as_deref(), Some("0 90 0"), "toward +Y");
         assert_eq!(aim_angles(DVec3::ZERO, DVec3::new(-1.0, 0.0, 1.0)), Some((-45.0, 180.0)));
         assert_eq!(aim_angles(DVec3::ZERO, DVec3::ZERO), None);
+    }
+
+    #[test]
+    fn aiming_lights_uses_the_vrad_pitch() {
+        let mut spot = hp_vmf::Entity { classname: "light_spot".into(), ..Default::default() };
+        spot.set("origin", "0 0 0");
+        spot.set("angles", "0 0 0");
+        spot.set("pitch", "-30");
+        let keys = |e: &hp_vmf::Entity, key: &str, neg: bool, p: DVec3| aim_keys(e, key, p, neg).unwrap();
+        let down = keys(&spot, "angles", false, DVec3::new(0.0, 0.0, -100.0));
+        assert!(down.contains(&("angles".into(), "-90 0 0".into())), "{down:?}");
+        assert!(down.contains(&("pitch".into(), "-90".into())), "{down:?}");
+        let side = keys(&spot, "pitch", true, DVec3::new(0.0, 100.0, 100.0));
+        assert!(side.contains(&("angles".into(), "45 90 0".into())), "{side:?}");
+        assert!(side.contains(&("pitch".into(), "45".into())), "{side:?}");
+        let dir = |kv: &[(String, String)]| {
+            let mut e = spot.clone();
+            for (k, v) in kv {
+                e.set(k, v);
+            }
+            let a = e.angles().unwrap_or_default();
+            let pitch = e.get("pitch").and_then(|v| v.parse::<f64>().ok()).filter(|p| *p != 0.0).unwrap_or(a.x);
+            let (sp, cp) = pitch.to_radians().sin_cos();
+            let (sy, cy) = a.y.to_radians().sin_cos();
+            DVec3::new(cp * cy, cp * sy, sp)
+        };
+        assert!((dir(&down) - DVec3::NEG_Z).length() < 1e-6);
+        assert!((dir(&side) - DVec3::new(0.0, 1.0, 1.0).normalize()).length() < 1e-6);
+        let mut prop = hp_vmf::Entity { classname: "prop_dynamic".into(), ..Default::default() };
+        prop.set("origin", "0 0 0");
+        prop.set("angles", "0 0 15");
+        let up = keys(&prop, "angles", false, DVec3::new(-100.0, 0.0, 100.0));
+        assert_eq!(up, vec![("angles".to_owned(), "-45 180 15".to_owned())]);
+        let mut overridden = spot.clone();
+        overridden.set("angle", "-2");
+        let k = keys(&overridden, "angles", false, DVec3::new(100.0, 0.0, 0.0));
+        assert!(k.contains(&("angle".into(), "0".into())), "{k:?}");
+    }
+
+    #[test]
+    fn point_at_from_the_panel_turns_entities_toward_the_click() {
+        use hp_app::runtime::helpers::geometry::light_direction;
+        let mut s = state();
+        s.doc.set_entity_class(&[5], "light_spot").unwrap();
+        let cases = [
+            ("angles", false, DVec3::new(0.0, 0.0, 0.0)),
+            ("angles", false, DVec3::new(200.0, 200.0, 96.0)),
+            ("pitch", true, DVec3::new(-100.0, 0.0, 196.0)),
+            ("angles", false, DVec3::new(0.0, -300.0, -204.0)),
+        ];
+        for (key, neg, point) in cases {
+            let mut picks = ViewPicks::new("t");
+            picks.start(&mut s.pick, Target::Entities(vec![5, 4]), key, PickPurpose::Aim { negative_pitch: neg });
+            if let Some(p) = s.pick.as_mut() {
+                p.result = Some(PickResult::Point(point));
+            }
+            let mut ops = Vec::new();
+            picks.poll(&s.doc, &mut s.pick, &mut ops);
+            for op in ops {
+                apply(&mut s.doc, None, op).unwrap();
+            }
+            let light = &s.doc.scene().entity(5).unwrap().entity;
+            let want = (point - light.origin().unwrap()).normalize();
+            let got = light_direction(light);
+            assert!((got - want).length() < 1e-3, "{key} {point:?}: light points {got:?}, wanted {want:?}");
+            let player = &s.doc.scene().entity(4).unwrap().entity;
+            let want = (point - player.origin().unwrap()).normalize();
+            let a = player.angles().unwrap();
+            let (sp, cp) = a.x.to_radians().sin_cos();
+            let (sy, cy) = a.y.to_radians().sin_cos();
+            let got = DVec3::new(cp * cy, cp * sy, -sp);
+            if key == "angles" {
+                assert!((got - want).length() < 1e-3, "{point:?}: entity faces {got:?}, wanted {want:?}");
+            }
+        }
     }
 
     #[test]

@@ -8,7 +8,7 @@ Hammer Pro 1.0.2 is a single program, `hammerpro.exe`, with no installer. It bri
 
 | What | Needed |
 |---|---|
-| System | Windows 10 or 11, 64-bit. Linux builds compile from source too. |
+| System | Windows 10 or 11, 64-bit, for the ready made builds. On Linux and macOS, build it yourself from the source. |
 | Graphics card | Vulkan, DirectX 12 or Metal support. |
 | Game | Garry's Mod installed through Steam (found automatically). Other Source games are supported as compile targets, see [Game setup](game-setup.md). |
 
@@ -27,7 +27,7 @@ Hammer Pro 1.0.2 is a single program, `hammerpro.exe`, with no installer. It bri
 
 ## Updating
 
-Replace `hammerpro.exe` with the new one. Your settings, autosaves and per map data stay where they are: unknown or missing settings keys are tolerated, so old and new versions can share one settings file.
+On Windows, Hammer Pro updates itself (see [Updates](../features/updates.md)), or replace `hammerpro.exe` with the new one by hand. Ready made builds are published for Windows only: on Linux and macOS, update your clone with `git pull` and build again with `cargo build --release -p hammerpro`. Your settings, autosaves and per map data stay where they are: unknown or missing settings keys are tolerated, so old and new versions can share one settings file.
 
 ## Where files go
 

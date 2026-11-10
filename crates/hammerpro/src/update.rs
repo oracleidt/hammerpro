@@ -2,7 +2,8 @@ use std::sync::atomic::Ordering;
 use std::sync::mpsc::{Receiver, TryRecvError};
 use std::time::Duration;
 
-use hp_app::runtime::{UpdateFailure, UpdateInfo, UpdateStatus, update::megabytes};
+use hp_app::runtime::update::{PREBUILT_PLATFORM, SOURCE_UPDATE_COMMANDS, megabytes, platform_name};
+use hp_app::runtime::{UpdateFailure, UpdateInfo, UpdateStatus};
 use hp_app::{AppState, Severity, t, tf};
 use hp_update::{CheckResult, Download, Downloaded, Release, UpdateError};
 
@@ -287,6 +288,20 @@ impl UpdateController {
                         }
                     });
                 }
+                _ if !PREBUILT_PLATFORM => {
+                    source_update_ui(ui, ctx);
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        if ui.button(t!("update.btn_page")).clicked() {
+                            ctx.open_url(egui::OpenUrl::new_tab(&info.page_url));
+                        }
+                        if ui.button(t!("update.btn_ignore")).clicked() {
+                            ignore = true;
+                        }
+                    });
+                    ui.add_space(4.0);
+                    ui.checkbox(&mut dont_show, t!("update.dont_show")).on_hover_text(t!("update.dont_show_tip"));
+                }
                 _ => {
                     if let Some(failure) = &rt.failure {
                         let text = tf!("update.failed", tf!(failure.key, failure.detail));
@@ -344,6 +359,36 @@ impl UpdateController {
             state.runtime.update.dialog_open = false;
         }
     }
+}
+
+fn source_update_ui(ui: &mut egui::Ui, ctx: &egui::Context) {
+    let platform = platform_name();
+    egui::Frame::group(ui.style()).inner_margin(egui::Margin::same(10)).show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        ui.label(egui::RichText::new(tf!("update.source_title", platform)).strong());
+        ui.add_space(4.0);
+        ui.label(tf!("update.source_body", platform));
+        ui.add_space(6.0);
+        ui.label(t!("update.source_steps"));
+        egui::Frame::new()
+            .fill(ui.visuals().extreme_bg_color)
+            .corner_radius(4.0)
+            .inner_margin(egui::Margin::same(8))
+            .show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.label(egui::RichText::new(SOURCE_UPDATE_COMMANDS).monospace());
+            });
+        ui.add_space(4.0);
+        let copied_id = ui.make_persistent_id("hp_update_source_copied");
+        let copied = ctx.data(|d| d.get_temp::<bool>(copied_id)).unwrap_or(false);
+        let label = if copied { t!("update.copied") } else { t!("update.btn_copy") };
+        if ui.button(label).clicked() {
+            ctx.copy_text(SOURCE_UPDATE_COMMANDS.to_owned());
+            ctx.data_mut(|d| d.insert_temp(copied_id, true));
+        }
+        ui.add_space(4.0);
+        ui.label(egui::RichText::new(t!("update.source_after")).small().weak());
+    });
 }
 
 pub fn run_helper(args: &[String]) -> i32 {
@@ -491,7 +536,8 @@ mod tests {
             let rt = &state.runtime.update;
             assert_eq!(rt.status, UpdateStatus::Failed);
             assert!(rt.failure.is_some() && !rt.restart_requested);
-            assert!(rt.can_install(), "the user can try again");
+            assert!(rt.can_install_archive(), "the user can try again");
+            assert_eq!(rt.can_install(), PREBUILT_PLATFORM);
             assert!(controller.download.is_none() && controller.ready.is_none());
             assert!(!controller.arm(), "no helper without a verified download");
             controller.spawn_on_exit();

@@ -82,6 +82,29 @@ pub fn point_at(state: &AppState, view: &ViewInfo, pos: Pos2, depth_2d: f64) -> 
     }
 }
 
+const AIM_FAR: f64 = 16384.0;
+
+pub fn aim_point_at(state: &AppState, view: &ViewInfo, pos: Pos2, depth_2d: f64) -> Option<DVec3> {
+    let origin_of = |id: Id| state.doc.scene().entity(id).and_then(|n| n.entity.origin()).filter(|p| p.is_finite());
+    if view.is_2d() {
+        let p = placement::point_2d(state, view, pos, depth_2d);
+        return Some(entity_at(state, view, pos).and_then(origin_of).unwrap_or(p));
+    }
+    match placement::pick_surface(state, view, pos) {
+        Some(hit) => {
+            let entity = match hit.obj {
+                ObjRef::Entity(id) => origin_of(id),
+                ObjRef::Solid(_) => None,
+            };
+            entity.or(Some(hit.point).filter(|p| p.is_finite()))
+        }
+        None => {
+            let ray = placement::view_ray(view, pos);
+            Some(ray.origin + ray.dir.normalize_or_zero() * AIM_FAR).filter(|p| p.is_finite())
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct Picker {
     owner: Option<String>,
@@ -140,7 +163,9 @@ impl Picker {
                 faces.push(face);
             }
             Some(PickResult::Faces(faces.into_iter().map(|f| (f.solid, f.side)).collect()))
-        } else if matches!(kind, PickKind::Point | PickKind::Angles) {
+        } else if kind == PickKind::Angles {
+            aim_point_at(state, view, pos, depth_2d).map(PickResult::Point)
+        } else if kind == PickKind::Point {
             point_at(state, view, pos, depth_2d).map(PickResult::Point)
         } else {
             None

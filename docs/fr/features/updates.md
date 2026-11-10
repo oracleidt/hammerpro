@@ -24,6 +24,19 @@ La recherche ne bloque jamais l'éditeur et n'affiche jamais d'erreur : sans con
 
 Quand une version n'a pas d'archive Windows, la fenêtre propose **Ouvrir la page de la version** à la place de **Mettre à jour**.
 
+## Linux et macOS
+
+Les versions prêtes à l'emploi de Hammer Pro ne sont publiées que pour **Windows**. Sous Linux, macOS ou tout autre système, compilez Hammer Pro vous-même pour votre distribution ou votre Mac (voir [Compiler depuis les sources](../development/building.md)).
+
+Une version compilée depuis les sources ne s'installe jamais seule, car l'archive de la version contient le programme Windows. Elle cherche quand même les nouvelles versions : quand il y en a une, la fenêtre le dit et affiche les commandes de mise à jour à la place du bouton **Mettre à jour**. Dans le dossier de votre clone, lancez :
+
+```bash
+git pull
+cargo build --release -p hammerpro
+```
+
+Puis lancez la nouvelle version depuis `target/release`. Un nouveau clone fonctionne aussi si votre copie est ancienne ou modifiée. Par MCP, `get_update_status` renvoie `self_install: false` avec ces commandes, et `apply_update` refuse avec le même conseil.
+
 ## L'installation
 
 1. **Mettre à jour** télécharge `HammerPro-<version>-windows.zip` dans un dossier temporaire, avec une barre de progression et un bouton **Annuler**. Le téléchargement est vérifié avant que quoi que ce soit ne soit fermé : sa taille, sa somme de contrôle SHA-256 comparée à celle que GitHub publie avec la version (quand la version en a une), et l'archive doit contenir `hammerpro.exe`. Un téléchargement qui ne correspond pas est supprimé et refusé.

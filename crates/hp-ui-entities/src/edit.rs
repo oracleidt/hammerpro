@@ -61,7 +61,7 @@ pub enum Op {
     Tie { objs: Vec<ObjRef>, class: String },
     MoveToWorld { ids: Vec<Id> },
     PasteKeys { ids: Vec<Id>, keys: Vec<(String, String)> },
-    SetPerEntity { key: String, values: Vec<(Id, String)> },
+    SetPerEntity { values: Vec<(Id, Vec<(String, String)>)> },
     Visgroup { ids: Vec<Id>, group: Id, add: bool },
     ReplaceAllUses { key: String, old: String, new: String },
     NameAndSet { named: Id, name: String, target: Target, key: String },
@@ -82,7 +82,7 @@ impl Op {
             Op::ConnPaste { conns, .. } => conns.iter().any(conn_has_quote),
             Op::ConnEdit { field, .. } => field.text().is_some_and(q),
             Op::NameAndSet { name, key, .. } => q(name) || q(key),
-            Op::SetPerEntity { key, values } => q(key) || values.iter().any(|(_, v)| q(v)),
+            Op::SetPerEntity { values } => values.iter().flat_map(|(_, kv)| kv).any(|(k, v)| q(k) || q(v)),
             Op::ReplaceAllUses { key, new, .. } => q(key) || q(new),
             Op::RemoveKey { .. }
             | Op::SetFlag { .. }
@@ -251,10 +251,12 @@ pub fn apply(doc: &mut Document, fgd: Option<&ResolvedFgd>, op: Op) -> EditResul
             }
             in_tx(doc, LABEL_REPLACE_USES, None, |doc| Ok(doc.set_entity_key(&ids, &key, new.trim())? > 0)).map(changed)
         }
-        Op::SetPerEntity { key, values } => in_tx(doc, LABEL_ENTITY, None, |doc| {
+        Op::SetPerEntity { values } => in_tx(doc, LABEL_ENTITY, None, |doc| {
             let mut any = false;
-            for (id, value) in &values {
-                any |= doc.set_entity_key(&[*id], &key, value)? > 0;
+            for (id, keys) in &values {
+                for (key, value) in keys {
+                    any |= doc.set_entity_key(&[*id], key, value)? > 0;
+                }
             }
             Ok(any)
         })

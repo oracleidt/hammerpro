@@ -103,7 +103,7 @@ Complétion des noms : dans les champs de cible, `Tab` complète avec le premier
 |---|---|
 | Pipette d'entité (clés de cible) | Cliquez une entité dans les vues : son nom est écrit dans la clé. Si elle n'a pas de nom, une invite propose un nom libre (`classe_1`, `classe_2`...), la nomme et règle la clé en une seule étape. `Échap` annule ; recliquer le bouton annule aussi. |
 | Pipette de faces (clés `sidelist`) | Cliquez des faces dans la vue 3D (`Ctrl+clic` pour plusieurs, `Entrée` pour finir). `Ctrl+clic` sur le bouton ajoute les faces à la liste au lieu de la remplacer. |
-| Pipette de visée (angles) | Cliquez un point dans les vues : chaque entité sélectionnée se tourne vers lui (le roulis est conservé). |
+| Pipette de visée (angles) | Cliquez un point dans les vues : chaque entité sélectionnée se tourne vers lui (le roulis est conservé). Cliquer une entité vise son origine, cliquer le ciel vise dans l'axe de la vue, et dans une vue 2D le point garde la profondeur de la sélection. Pour `light_spot` et `light_environment`, les angles et la clé **Tangage** sont écrits ensemble dans la convention des lumières (-90 vers le bas), donc la lumière pointe exactement là où vous avez cliqué. |
 | **Marquer** | Sélectionne les entités désignées par la valeur (noms, jokers `*`, noms de classe) et centre les vues dessus. L'infobulle donne leur nombre. |
 
 ## Onglet Indicateurs

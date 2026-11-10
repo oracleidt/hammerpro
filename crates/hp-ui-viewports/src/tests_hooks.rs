@@ -350,6 +350,43 @@ fn pick_points_and_angles() {
     assert!(q.z.abs() < 1e-6, "{q:?}");
 }
 
+#[test]
+fn point_at_aims_at_entity_origins_surfaces_and_the_sky() {
+    let mut h = H::new();
+    let c = h.rect(0).center();
+    h.request(PickKind::Angles);
+    assert!(pick::hint(&h.state, 0).is_some());
+    h.look_down_at(0.0, 0.0);
+    h.click(c, PointerButton::Primary);
+    assert_eq!(h.result(), Some(PickResult::Point(DVec3::new(0.0, 0.0, 96.0))), "a clicked entity gives its origin");
+
+    h.request(PickKind::Angles);
+    h.look_down_at(-128.0, -200.0);
+    h.click(c, PointerButton::Primary);
+    let Some(PickResult::Point(floor)) = h.result() else { panic!("a surface point") };
+    assert!((floor.x + 128.0).abs() < 8.0 && (floor.y + 200.0).abs() < 8.0 && floor.z.abs() < 1e-6, "{floor:?}");
+
+    h.request(PickKind::Angles);
+    h.state.cameras.cam3d =
+        Camera3d { pos: DVec3::new(0.0, 0.0, 300.0), yaw_deg: 0.0, pitch_deg: 89.0, ..Camera3d::default() };
+    h.click(c, PointerButton::Primary);
+    let Some(PickResult::Point(sky)) = h.result() else { panic!("the void still aims along the view ray") };
+    assert!(sky.z > 10000.0 && sky.x.abs() < 1000.0 && sky.y.abs() < 1000.0, "{sky:?}");
+
+    let top = h.view(1);
+    h.request(PickKind::Angles);
+    let Some(start) = top.world_to_screen(DVec3::new(0.0, -128.0, 0.0)) else { panic!("visible") };
+    h.click(start, PointerButton::Primary);
+    assert_eq!(h.result(), Some(PickResult::Point(DVec3::new(0.0, -128.0, 0.0))), "2D entity click: its origin");
+
+    h.request(PickKind::Angles);
+    let Some(empty) = top.world_to_screen(DVec3::new(-192.0, 160.0, 0.0)) else { panic!("visible") };
+    h.click(empty, PointerButton::Primary);
+    let Some(PickResult::Point(q)) = h.result() else { panic!("a 2D point") };
+    assert!((q.x + 192.0).abs() < 1e-6 && (q.y - 160.0).abs() < 1e-6, "{q:?}");
+    assert_eq!(h.state.pick.as_ref().map(|p| p.kind.clone()), Some(PickKind::Angles));
+}
+
 #[derive(Default)]
 struct CountingLayer {
     adds: Rc<Cell<usize>>,

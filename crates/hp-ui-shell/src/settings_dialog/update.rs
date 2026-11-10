@@ -93,6 +93,9 @@ fn status_line(ui: &mut egui::Ui, state: &AppState) {
         UpdateStatus::Idle => (t!("update.status_idle").to_owned(), false),
         UpdateStatus::Checking => (t!("update.status_checking").to_owned(), false),
         UpdateStatus::UpToDate => (tf!("update.status_up_to_date", rt.latest_seen), false),
+        UpdateStatus::Available if !hp_app::runtime::update::PREBUILT_PLATFORM => {
+            (tf!("update.status_source", version), false)
+        }
         UpdateStatus::Available => (tf!("update.status_available", version), false),
         UpdateStatus::Downloading => (tf!("update.status_downloading", version), false),
         UpdateStatus::Ready => (tf!("update.status_ready", version), false),

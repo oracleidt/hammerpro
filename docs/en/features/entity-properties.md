@@ -103,7 +103,7 @@ Name completion: in target fields, `Tab` completes with the first name, the arro
 |---|---|
 | Entity eyedropper (target keys) | Click an entity in the views: its name is written to the key. If it has no name, a prompt suggests a free one (`class_1`, `class_2`...), names it and sets the key in one step. `Escape` cancels; clicking the button again also cancels. |
 | Face eyedropper (`sidelist` keys) | Click faces in the 3D view (`Ctrl+click` for several, `Enter` to finish). `Ctrl+click` the button to add faces to the list instead of replacing it. |
-| Aim eyedropper (angles) | Click a point in the views: each selected entity turns toward it (roll is kept). |
+| Aim eyedropper (angles) | Click a point in the views: each selected entity turns toward it (roll is kept). Clicking an entity aims at its origin, clicking the sky aims along the view, and in a 2D view the point keeps the depth of the selection. For `light_spot` and `light_environment` the angles and the **Pitch** key are written together in the light convention (-90 is straight down), so the light points exactly where you clicked. |
 | **Mark** | Selects the entities the value names (names, `*` wildcards, class names) and centers the views on them. The tooltip gives their count. |
 
 ## Flags tab

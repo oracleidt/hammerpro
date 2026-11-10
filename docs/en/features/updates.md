@@ -24,6 +24,19 @@ The check never blocks the editor and never shows an error: without a network co
 
 When a release has no Windows archive, the window offers **Open the release page** instead of **Update**.
 
+## Linux and macOS
+
+Ready made builds of Hammer Pro are published for **Windows only**. On Linux, macOS or any other system, build Hammer Pro yourself for your distribution or Mac (see [Building from source](../development/building.md)).
+
+A source build never installs a release by itself, since the release archive holds the Windows program. It still checks for new versions: when one is out, the window says so and shows the commands to update instead of an **Update** button. In the folder of your clone, run:
+
+```bash
+git pull
+cargo build --release -p hammerpro
+```
+
+Then start the new build from `target/release`. A fresh clone works too if your copy is old or changed. Through MCP, `get_update_status` reports `self_install: false` with these commands, and `apply_update` refuses with the same advice.
+
 ## Installing
 
 1. **Update** downloads `HammerPro-<version>-windows.zip` to a temporary folder, with a progress bar and a **Cancel** button. The download is checked before anything is closed: its size, its SHA-256 checksum against the one GitHub publishes with the release (when the release has one), and the archive must contain `hammerpro.exe`. A download that does not match is deleted and refused.
