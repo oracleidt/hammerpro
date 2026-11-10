@@ -147,6 +147,7 @@ fn tools_are_registered() {
 #[test]
 fn rubber_band_selects_the_wall_from_the_top_view() {
     let mut state = state();
+    state.settings.selection.box_confirm = false;
     let mut tool = SelectTool::new();
     let v = view2d(ViewKind::Top);
     let from = scr(&v, DVec3::new(-300.0, 300.0, 0.0));
@@ -426,6 +427,81 @@ fn arrow_nudges_merge_into_one_undo_step() {
     state.doc.set_selection(&[WALL]);
     state.settings.edit.arrow_key_nudge = false;
     assert!(!key_frame(&ctx, &mut state, &mut tool, vec![key(Key::ArrowLeft, Modifiers::NONE)]));
+}
+
+#[test]
+fn pending_box_waits_for_enter_and_can_be_resized_and_moved() {
+    let mut state = state();
+    let mut tool = SelectTool::new();
+    let ctx = egui::Context::default();
+    assert!(state.settings.selection.box_confirm);
+    let v = view2d(ViewKind::Top);
+    let pt = |x: f64, y: f64| scr(&v, DVec3::new(x, y, 0.0));
+    let near = |a: DVec2, b: DVec2| (a - b).abs().max_element() < 1.0;
+
+    drag(&mut tool, &mut state, &v, pt(-300.0, 600.0), pt(300.0, 400.0), Modifiers::NONE);
+    assert!(state.doc.selected_objects().is_empty());
+    assert!(!tool.is_dragging());
+    let (kind, a, b) = tool.pending_box().expect("the box waits for Enter");
+    assert_eq!(kind, ViewKind::Top);
+    assert!(near(a, DVec2::new(-300.0, 400.0)) && near(b, DVec2::new(300.0, 600.0)), "{a:?} {b:?}");
+    assert!(tool.status_hint(&state).is_some_and(|h| h.contains("Enter")));
+
+    let rect = Rect::from_two_pos(pt(-300.0, 400.0), pt(300.0, 600.0));
+    let size = state.settings.selection.handle_points();
+    let bottom = crate::math::handle_pos_sized(rect, Handle::new(0, -1), size);
+    drag(&mut tool, &mut state, &v, bottom, bottom + (pt(0.0, 264.0) - pt(0.0, 400.0)), Modifiers::ALT);
+    let (_, a, b) = tool.pending_box().expect("still waiting after a resize");
+    assert!(near(a, DVec2::new(-300.0, 264.0)) && near(b, DVec2::new(300.0, 600.0)), "{a:?} {b:?}");
+    assert!(state.doc.selected_objects().is_empty());
+
+    assert!(key_frame(&ctx, &mut state, &mut tool, vec![key(Key::Enter, Modifiers::NONE)]));
+    assert_eq!(state.doc.selected_objects(), vec![WALL]);
+    assert!(tool.pending_box().is_none());
+
+    state.doc.clear_selection();
+    drag(&mut tool, &mut state, &v, pt(-300.0, 600.0), pt(300.0, 400.0), Modifiers::NONE);
+    drag(&mut tool, &mut state, &v, pt(0.0, 500.0), pt(0.0, 340.0), Modifiers::NONE);
+    assert!(state.doc.selected_objects().is_empty());
+    let (_, a, b) = tool.pending_box().expect("still waiting after a move");
+    assert!(near(a, DVec2::new(-304.0, 240.0)) && near(b, DVec2::new(296.0, 440.0)), "{a:?} {b:?}");
+    assert!(key_frame(&ctx, &mut state, &mut tool, vec![key(Key::Escape, Modifiers::NONE)]));
+    assert!(tool.pending_box().is_none());
+    assert!(state.doc.selected_objects().is_empty());
+
+    drag(&mut tool, &mut state, &v, pt(-300.0, 300.0), pt(300.0, 260.0), Modifiers::NONE);
+    click(&mut tool, &mut state, &v, pt(0.0, 300.0), Modifiers::NONE);
+    assert!(tool.pending_box().is_some(), "a click inside the box keeps it");
+    click(&mut tool, &mut state, &v, pt(700.0, -500.0), Modifiers::NONE);
+    assert!(tool.pending_box().is_none(), "a click outside drops it");
+    assert!(state.doc.selected_objects().is_empty());
+
+    state.doc.set_selection(&[FLOOR]);
+    drag(&mut tool, &mut state, &v, pt(-300.0, 300.0), pt(300.0, 260.0), Modifiers::NONE);
+    assert_eq!(state.doc.selected_objects(), vec![FLOOR]);
+    assert!(key_frame(&ctx, &mut state, &mut tool, vec![key(Key::Enter, Modifiers::COMMAND)]));
+    let mut got = state.doc.selected_objects();
+    got.sort();
+    assert_eq!(got, {
+        let mut want = vec![FLOOR, WALL];
+        want.sort();
+        want
+    });
+
+    state.doc.clear_selection();
+    state.ui.hovered_view = Some(1);
+    assert!(tool.set_option(&mut state, "pending_box", "-300 300 300 260"));
+    assert!(tool.option_values().iter().any(|o| o.key == "pending_box" && o.value.starts_with("top ")));
+    assert!(tool.set_option(&mut state, "pending_box", "confirm"));
+    assert_eq!(state.doc.selected_objects(), vec![WALL]);
+    assert!(!tool.set_option(&mut state, "pending_box", "confirm"));
+
+    assert!(tool.set_option(&mut state, "box_confirm", "off"));
+    assert!(!state.settings.selection.box_confirm);
+    state.doc.clear_selection();
+    drag(&mut tool, &mut state, &v, pt(-300.0, 300.0), pt(300.0, 260.0), Modifiers::NONE);
+    assert_eq!(state.doc.selected_objects(), vec![WALL]);
+    assert!(tool.pending_box().is_none());
 }
 
 #[test]
@@ -884,6 +960,7 @@ impl Harness {
 #[test]
 fn real_egui_input_drives_the_selection_tool() {
     let mut state = state();
+    state.settings.selection.box_confirm = false;
     let mut tool = SelectTool::new();
     let mut h = Harness::new();
     h.frame(&mut state, &mut tool, ViewKind::Top, vec![]);

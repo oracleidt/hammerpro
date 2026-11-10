@@ -122,9 +122,16 @@ impl SelectTool {
         if self.drag.as_ref().is_some_and(Drag::is_modal) {
             return self.modal_keys(state, ctx) || handled;
         }
-        let wants_escape = self.drag.is_some() || !state.doc.selection().is_empty();
+        let wants_escape = self.drag.is_some() || self.pending.is_some() || !state.doc.selection().is_empty();
         if wants_escape && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
             handled |= hp_app::Tool::cancel(self, state);
+        }
+        if self.drag.is_none() && self.pending.is_some() {
+            let plain = ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Enter));
+            let add = !plain && ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::Enter));
+            if plain || add {
+                handled |= self.confirm_pending_box(state, add);
+            }
         }
         if self.drag.is_none() {
             handled |= self.start_modal_keys(state, ctx);

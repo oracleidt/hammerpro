@@ -49,6 +49,7 @@ pub enum QueryKind {
 #[derive(Clone, Debug, PartialEq)]
 enum DragOp {
     Band { start: DVec2, current: DVec2 },
+    BoxEdit { handle: Option<Handle>, start: DVec2, min: DVec2, max: DVec2 },
     Move { start: DVec2, delta: DVec3 },
     Scale { handle: Handle, start: DVec2, new_bounds: Aabb },
     Rotate { start_angle: f64, angle: f64 },
@@ -85,7 +86,14 @@ struct Drag {
 
 impl Drag {
     fn transforms(&self) -> bool {
-        !matches!(self.op, DragOp::Band { .. } | DragOp::Paint { .. } | DragOp::Pivot { .. } | DragOp::Helper { .. })
+        !matches!(
+            self.op,
+            DragOp::Band { .. }
+                | DragOp::BoxEdit { .. }
+                | DragOp::Paint { .. }
+                | DragOp::Pivot { .. }
+                | DragOp::Helper { .. }
+        )
     }
 
     fn edits(&self) -> bool {
@@ -112,9 +120,11 @@ impl Drag {
 
     fn matrix(&self) -> DMat4 {
         match &self.op {
-            DragOp::Band { .. } | DragOp::Paint { .. } | DragOp::Pivot { .. } | DragOp::Helper { .. } => {
-                DMat4::IDENTITY
-            }
+            DragOp::Band { .. }
+            | DragOp::BoxEdit { .. }
+            | DragOp::Paint { .. }
+            | DragOp::Pivot { .. }
+            | DragOp::Helper { .. } => DMat4::IDENTITY,
             DragOp::Move { delta, .. } | DragOp::GizmoMove { delta, .. } => DMat4::from_translation(*delta),
             DragOp::Scale { new_bounds, .. } | DragOp::FaceStretch { new_bounds, .. } => {
                 crate::math::box_to_box(self.bounds.min, self.bounds.max, new_bounds.min, new_bounds.max)
@@ -135,7 +145,11 @@ impl Drag {
             DragOp::Skew { amount, .. } => amount.abs() <= 1e-9,
             DragOp::GizmoScale { scale, .. } => (*scale - DVec3::ONE).abs().max_element() <= 1e-9,
             DragOp::Modal(m) => m.is_identity(),
-            DragOp::Band { .. } | DragOp::Paint { .. } | DragOp::Pivot { .. } | DragOp::Helper { .. } => true,
+            DragOp::Band { .. }
+            | DragOp::BoxEdit { .. }
+            | DragOp::Paint { .. }
+            | DragOp::Pivot { .. }
+            | DragOp::Helper { .. } => true,
         }
     }
 
@@ -145,6 +159,30 @@ impl Drag {
         let max = DVec2::new(self.bounds.max[r], self.bounds.max[u]);
         skew_matrix(r, u, handle, min, max, amount)
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct PendingBox {
+    pub(crate) view: usize,
+    pub(crate) kind: ViewKind,
+    pub(crate) min: DVec2,
+    pub(crate) max: DVec2,
+    pub(crate) add: bool,
+    pub(crate) alt: bool,
+}
+
+impl PendingBox {
+    pub(crate) fn screen_rect(&self, view: &ViewInfo) -> Option<Rect> {
+        let a = view.world_to_screen(self.kind.from_2d(self.min, 0.0))?;
+        let b = view.world_to_screen(self.kind.from_2d(self.max, 0.0))?;
+        Some(Rect::from_two_pos(a, b))
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum BoxHit {
+    Handle(Handle),
+    Inside,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -209,6 +247,7 @@ pub struct SelectTool {
     pub(crate) gizmo_visible: bool,
     gizmo_mode: GizmoMode,
     drag: Option<Drag>,
+    pending: Option<PendingBox>,
     hover: Hover,
     cycle: Option<ClickCycle>,
     mode_before_click: Option<HandleMode>,
@@ -241,6 +280,7 @@ impl SelectTool {
             gizmo_visible: true,
             gizmo_mode: GizmoMode::Move,
             drag: None,
+            pending: None,
             hover: Hover::default(),
             cycle: None,
             mode_before_click: None,
@@ -269,6 +309,61 @@ impl SelectTool {
         self.drag.is_some()
     }
 
+    pub fn pending_box(&self) -> Option<(ViewKind, DVec2, DVec2)> {
+        self.pending.map(|p| (p.kind, p.min, p.max))
+    }
+
+    pub(crate) fn pending_hit(&self, state: &AppState, view: &ViewInfo, pos: Pos2) -> Option<BoxHit> {
+        let pb = self.pending.filter(|p| p.view == view.index)?;
+        let rect = pb.screen_rect(view)?;
+        if let Some(h) = hit_handle_sized(rect, HandleMode::Scale, pos, Self::handle_size(state)) {
+            return Some(BoxHit::Handle(h));
+        }
+        rect.contains(pos).then_some(BoxHit::Inside)
+    }
+
+    fn select_box(&mut self, state: &mut AppState, kind: ViewKind, a: DVec2, b: DVec2, alt: bool, add: bool) {
+        let Some(axis) = view_axis(kind) else { return };
+        let inside = self.box_inside ^ alt;
+        let mode = if self.centers_only {
+            RectMode::Center
+        } else if inside {
+            RectMode::Inside
+        } else {
+            RectMode::Touching
+        };
+        let found = state.doc.objects_in_rect_2d(axis, a, b, mode, &|e| state.entity_bounds(e));
+        let objs = if inside && !self.centers_only {
+            units_fully_inside(state, &found, state.select_mode())
+        } else {
+            state.doc.resolve_many(&found, state.select_mode())
+        };
+        if add {
+            state.doc.select(&objs, SelectOp::Add);
+        } else {
+            state.doc.select(&objs, SelectOp::Replace);
+            self.handle_mode = HandleMode::Scale;
+        }
+    }
+
+    pub fn confirm_pending_box(&mut self, state: &mut AppState, add: bool) -> bool {
+        let Some(pb) = self.pending.take() else { return false };
+        self.select_box(state, pb.kind, pb.min, pb.max, pb.alt, pb.add || add);
+        true
+    }
+
+    pub fn cancel_pending_box(&mut self) -> bool {
+        self.pending.take().is_some()
+    }
+
+    pub fn set_pending_box(&mut self, view: usize, kind: ViewKind, a: DVec2, b: DVec2) -> bool {
+        if kind.axes_2d().is_none() || !a.is_finite() || !b.is_finite() {
+            return false;
+        }
+        self.pending = Some(PendingBox { view, kind, min: a.min(b), max: a.max(b), add: false, alt: false });
+        true
+    }
+
     pub fn set_box_inside(&mut self, inside: bool) {
         self.box_inside = inside;
     }
@@ -292,6 +387,15 @@ impl SelectTool {
             }
             self.views[view.index] = Some(*view);
         }
+    }
+
+    pub(crate) fn box_view(&self, state: &AppState) -> Option<(usize, ViewKind)> {
+        let two_d = |i: usize| self.kind_of(state, i).filter(|k| k.is_2d()).map(|k| (i, k));
+        state
+            .ui
+            .hovered_view
+            .and_then(two_d)
+            .or_else(|| (0..state.settings.ui.quadrants.len().max(self.views.len())).find_map(two_d))
     }
 
     fn kind_of(&self, state: &AppState, index: usize) -> Option<ViewKind> {
@@ -479,6 +583,10 @@ impl SelectTool {
             }
             PointerEvent::Click(p) => {
                 if self.drag.is_none() {
+                    if view.is_2d() && self.pending_hit(state, view, p).is_some() {
+                        return ToolFlow::Handled;
+                    }
+                    self.pending = None;
                     if view.is_2d() {
                         self.click_2d(state, view, p, mods);
                     } else {
@@ -512,6 +620,12 @@ impl SelectTool {
             self.hover.key = None;
             self.hover.gizmo = None;
             self.hover.stretch = None;
+            if self.pending_hit(state, view, pos).is_some() {
+                self.hover.pivot = false;
+                self.hover.helper = None;
+                self.hover.handle = None;
+                return;
+            }
             self.hover.pivot = self.pivot_hit(state, view, pos);
             let size = Self::handle_size(state);
             self.hover.handle = if self.hover.pivot || self.hover.helper.is_some() {
@@ -719,6 +833,23 @@ impl SelectTool {
         let Some(axis) = view_axis(view.kind) else { return };
         let p2 = view.screen_to_2d(origin);
         let ctrl = ctrl(mods);
+        if let Some(hit) = self.pending_hit(state, view, origin)
+            && let Some(pb) = self.pending
+        {
+            let handle = match hit {
+                BoxHit::Handle(h) => Some(h),
+                BoxHit::Inside => None,
+            };
+            self.begin_plain(
+                state,
+                view,
+                DragOp::BoxEdit { handle, start: p2, min: pb.min, max: pb.max },
+                origin,
+                mods,
+            );
+            return;
+        }
+        self.pending = None;
         if let Some(p) = self.active_pivot(state)
             && self.pivot_hit(state, view, origin)
         {
@@ -942,6 +1073,22 @@ impl SelectTool {
         let extent = d.extent;
         match &mut d.op {
             DragOp::Band { current, .. } => *current = p2,
+            DragOp::BoxEdit { handle, start, min, max } => {
+                if let (Some((r, u, _)), Some(pb)) = (axes2d, self.pending.as_mut()) {
+                    let raw = p2 - *start;
+                    let (lo, hi) = match handle {
+                        Some(h) => scale_rect_on(*min, *max, *h, raw, [frame.axis(r), frame.axis(u)], snap_on, false),
+                        None => {
+                            let d2 = if snap_on { frame.snap_delta_2d(kind, *min, raw) } else { raw };
+                            (*min + d2, *max + d2)
+                        }
+                    };
+                    if lo.is_finite() && hi.is_finite() {
+                        pb.min = lo.min(hi);
+                        pb.max = lo.max(hi);
+                    }
+                }
+            }
             DragOp::Paint { .. } => {}
             DragOp::Helper { handle, pos: p, .. } => {
                 let start = handle.pos;
@@ -1175,29 +1322,21 @@ impl SelectTool {
         }
         match &d.op {
             DragOp::Band { start, current } => {
-                let Some(axis) = view_axis(d.kind) else { return };
-                let inside = self.box_inside ^ d.mods.alt;
-                let mode = if self.centers_only {
-                    RectMode::Center
-                } else if inside {
-                    RectMode::Inside
+                if state.settings.selection.box_confirm {
+                    self.pending = Some(PendingBox {
+                        view: d.view,
+                        kind: d.kind,
+                        min: start.min(*current),
+                        max: start.max(*current),
+                        add: ctrl(d.mods),
+                        alt: d.mods.alt,
+                    });
                 } else {
-                    RectMode::Touching
-                };
-                let found = state.doc.objects_in_rect_2d(axis, *start, *current, mode, &|e| state.entity_bounds(e));
-                let objs = if inside && !self.centers_only {
-                    units_fully_inside(state, &found, state.select_mode())
-                } else {
-                    state.doc.resolve_many(&found, state.select_mode())
-                };
-                if ctrl(d.mods) {
-                    state.doc.select(&objs, SelectOp::Add);
-                } else {
-                    state.doc.select(&objs, SelectOp::Replace);
-                    self.handle_mode = HandleMode::Scale;
+                    self.select_box(state, d.kind, *start, *current, d.mods.alt, ctrl(d.mods));
                 }
                 return;
             }
+            DragOp::BoxEdit { .. } => return,
             DragOp::Paint { .. } => return,
             DragOp::Helper { entity, handle, pos } => {
                 if (*pos - handle.pos).length_squared() > 1e-12
@@ -1656,6 +1795,7 @@ impl Tool for SelectTool {
 
     fn deactivate(&mut self, state: &mut AppState) {
         self.drag = None;
+        self.pending = None;
         self.hover = Hover::default();
         self.cycle = None;
         self.pick_click = None;
@@ -1791,6 +1931,8 @@ impl Tool for SelectTool {
         if let Some(d) = &self.drag {
             return Some(match &d.op {
                 DragOp::Band { .. } | DragOp::Paint { .. } => CursorIcon::Crosshair,
+                DragOp::BoxEdit { handle: Some(h), .. } => h.cursor(HandleMode::Scale),
+                DragOp::BoxEdit { handle: None, .. } => CursorIcon::Grabbing,
                 DragOp::Pivot { .. } | DragOp::Helper { .. } => CursorIcon::Grabbing,
                 DragOp::Move { .. } | DragOp::GizmoMove { .. } => {
                     if d.is_clone() {
@@ -1829,6 +1971,11 @@ impl Tool for SelectTool {
             return Some(h.cursor());
         }
         if view.is_2d() {
+            match self.pending_hit(state, view, pos) {
+                Some(BoxHit::Handle(h)) => return Some(h.cursor(HandleMode::Scale)),
+                Some(BoxHit::Inside) => return Some(CursorIcon::Move),
+                None => {}
+            }
             if self.pivot_hit(state, view, pos) {
                 return Some(CursorIcon::Grab);
             }
@@ -1859,6 +2006,9 @@ impl Tool for SelectTool {
             if d.is_modal() {
                 state.runtime.selection.modal_transform = false;
             }
+            return true;
+        }
+        if self.pending.take().is_some() {
             return true;
         }
         if !state.doc.selection().is_empty() {

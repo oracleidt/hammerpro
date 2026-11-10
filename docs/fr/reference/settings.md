@@ -210,6 +210,7 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `gizmo_local` | `false` | Le gizmo d'une seule entité ponctuelle suit ses angles (`Ctrl+J`). |
 | `click_to_zoom` | `false` | L'outil caméra zoome les vues 2D au clic (`Ctrl` + clic dézoome). |
 | `stretch_handles` | `true` | Des flèches sur les faces de la sélection, dans la vue 3D, l'étirent. |
+| `box_confirm` | `true` | Un cadre tracé dans une vue 2D attend `Entrée` (comme Hammer++) : ses poignées le redimensionnent, un glisser à l'intérieur le déplace, `Échap` l'abandonne. `false` sélectionne au relâchement. |
 | `random_yaw_min` | `0.0` | **Rotation Z aléatoire** : plus petite rotation, en degrés (-360 à 360). |
 | `random_yaw_max` | `360.0` | **Rotation Z aléatoire** : plus grande rotation, en degrés (au plus 360 au-dessus de la plus petite). |
 | `random_yaw_snap` | `0.0` | **Rotation Z aléatoire** : pas de la rotation, en degrés (0 : libre, jusqu'à 180). |

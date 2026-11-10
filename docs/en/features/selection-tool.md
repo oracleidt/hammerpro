@@ -34,7 +34,15 @@ A plain click on the gizmo or on a stretch arrow does not select (it only starts
 
 ### Box selection (2D views)
 
-Drag on empty space in a 2D view to draw a box. On release:
+Drag on empty space in a 2D view to draw a box. Like Hammer++, the box stays after you release the mouse so you can adjust it before anything is selected:
+
+- Drag one of its 8 handles to resize it, or drag inside it to move it (both snap to the grid, `Alt`: no snap).
+- Press `Enter` to select what the box takes, `Ctrl+Enter` to add it to the selection.
+- Press `Esc` to drop the box. A click outside it or a new drag also drops it.
+
+Turn off **Enter** in the options bar (or **Enter confirms box selection** in the settings) to select as soon as you release, the old behavior.
+
+What the box takes:
 
 | Box mode | What it takes |
 |---|---|
@@ -196,6 +204,7 @@ With a selection, a right click in a view adds at the top: **Move to floor**, **
 |---|---|---|
 | **Pick:** Object / Vertex / Edge / Face | What a click in a 3D view selects (see above) | Object |
 | **Box:** Touching / Inside / Centers | What a box selection takes (see above) | Touching |
+| **Enter** | The box waits for `Enter` and can be resized and moved first (saved in the settings) | On |
 | **Handles:** Scale / Rotate / Skew | What the 2D handles do | Scale |
 | **3D stretch** | Arrows on the faces of the selected brushes in the 3D view (saved in the settings) | On |
 | **Gizmo:** Show | Shows the transform gizmo in the 3D view | On |
@@ -204,7 +213,7 @@ With a selection, a right click in a view adds at the top: **Move to floor**, **
 | **Pivot** | Shows the movable pivot | Off |
 | **Class** / **Material**, field, **Select** | Select by class or material | Class |
 
-The box, handle and gizmo choices last for the session. These options are also reachable by name through scripts (`tool_option`) and the MCP tools `get_tool_options` / `set_tool_options` (`handles`, `box`, `gizmo`, `gizmo_mode`, `gizmo_local`, `stretch_handles`).
+The box, handle and gizmo choices last for the session. These options are also reachable by name through scripts (`tool_option`) and the MCP tools `get_tool_options` / `set_tool_options` (`handles`, `box`, `gizmo`, `gizmo_mode`, `gizmo_local`, `stretch_handles`, `box_confirm`, `pending_box`). `pending_box` reads the waiting box, takes `x1 y1 x2 y2` to draw one in a 2D view, `confirm`, `add` or `cancel`.
 
 ## Settings
 
@@ -217,6 +226,7 @@ In **Tools > Options...**, page **Selection** (`[selection]` in `settings.toml`)
 | **Handle size** | Size of the 2D handles, 4 to 16 points | 7 |
 | **Keep visgroups when cloning** | Copies made by clone drags and Shift+arrows stay in the visgroups of their originals | On |
 | **Shift+arrows clone** | Shift+arrows copies the selection one grid step away, Alt+arrows then nudges by one unit | On |
+| **Enter confirms box selection** | Same as the **Enter** checkbox of the options bar | On |
 | **3D stretch handles** | Same as the options bar checkbox | On |
 | **Gizmo in local space** | Same as the Local button | Off |
 

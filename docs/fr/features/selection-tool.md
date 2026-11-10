@@ -34,7 +34,15 @@ Un simple clic sur le gizmo ou sur une flèche d'étirement ne sélectionne rien
 
 ### Sélection par cadre (vues 2D)
 
-Glissez dans le vide d'une vue 2D pour tracer un cadre. Au relâchement :
+Glissez dans le vide d'une vue 2D pour tracer un cadre. Comme dans Hammer++, le cadre reste après le relâchement de la souris pour l'ajuster avant que rien ne soit sélectionné :
+
+- Glissez une de ses 8 poignées pour le redimensionner, ou glissez à l'intérieur pour le déplacer (les deux suivent la grille, `Alt` : sans magnétisme).
+- Appuyez sur `Entrée` pour sélectionner ce que prend le cadre, `Ctrl+Entrée` pour l'ajouter à la sélection.
+- Appuyez sur `Échap` pour abandonner le cadre. Un clic en dehors ou un nouveau glisser l'abandonne aussi.
+
+Décochez **Entrée** dans la barre d'options (ou **Entrée valide la sélection par cadre** dans les paramètres) pour sélectionner dès le relâchement, l'ancien comportement.
+
+Ce que prend le cadre :
 
 | Mode du cadre | Ce qu'il prend |
 |---|---|
@@ -196,6 +204,7 @@ Avec une sélection, un clic droit dans une vue ajoute en haut du menu : **Poser
 |---|---|---|
 | **Choisir :** Objet / Sommet / Arête / Face | Ce qu'un clic dans une vue 3D sélectionne (voir plus haut) | Objet |
 | **Cadre :** Touchés / Contenus / Centres | Ce que prend une sélection par cadre (voir plus haut) | Touchés |
+| **Entrée** | Le cadre attend `Entrée` et peut d'abord être redimensionné et déplacé (enregistré dans les paramètres) | Activé |
 | **Poignées :** Échelle / Rotation / Inclinaison | Rôle des poignées 2D | Échelle |
 | **Étirement 3D** | Flèches sur les faces des brushes sélectionnés dans la vue 3D (enregistré dans les paramètres) | Activé |
 | **Gizmo :** Afficher | Affiche le gizmo de transformation dans la vue 3D | Activé |
@@ -204,7 +213,7 @@ Avec une sélection, un clic droit dans une vue ajoute en haut du menu : **Poser
 | **Pivot** | Affiche le pivot déplaçable | Désactivé |
 | **Classe** / **Matériau**, champ, **Sélectionner** | Sélection par classe ou par matériau | Classe |
 
-Les choix du cadre, des poignées et du gizmo durent le temps de la session. Ces options sont aussi accessibles par leur nom dans les scripts (`tool_option`) et via les outils MCP `get_tool_options` / `set_tool_options` (`handles`, `box`, `gizmo`, `gizmo_mode`, `gizmo_local`, `stretch_handles`).
+Les choix du cadre, des poignées et du gizmo durent le temps de la session. Ces options sont aussi accessibles par leur nom dans les scripts (`tool_option`) et via les outils MCP `get_tool_options` / `set_tool_options` (`handles`, `box`, `gizmo`, `gizmo_mode`, `gizmo_local`, `stretch_handles`, `box_confirm`, `pending_box`). `pending_box` lit le cadre en attente, prend `x1 y1 x2 y2` pour en tracer un dans une vue 2D, `confirm`, `add` ou `cancel`.
 
 ## Paramètres
 
@@ -217,6 +226,7 @@ Dans **Outils > Options...**, page **Sélection** (`[selection]` dans `settings.
 | **Taille des poignées** | Taille des poignées 2D, de 4 à 16 points | 7 |
 | **Garder les groupes de visibilité au clonage** | Les copies faites en glissant ou avec Maj+flèches restent dans les visgroups de leurs originaux | Activé |
 | **Maj+flèches clone** | Maj+flèches copie la sélection à un pas de grille, Alt+flèches décale alors d'une unité | Activé |
+| **Entrée valide la sélection par cadre** | Comme la case **Entrée** de la barre d'options | Activé |
 | **Poignées d'étirement 3D** | Comme la case de la barre d'options | Activé |
 | **Gizmo en repère local** | Comme le bouton Local | Désactivé |
 

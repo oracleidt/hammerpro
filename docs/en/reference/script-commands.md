@@ -119,6 +119,8 @@
 | `gizmo_mode` | `move`, `rotate` or `scale`. |
 | `gizmo_local` | on/off: the gizmo of a single point entity follows its angles (saved in the settings). |
 | `stretch_handles` | on/off: stretch arrows on the faces of the selected brushes in the 3D view (saved in the settings). |
+| `box_confirm` | on/off: a box drawn in a 2D view waits for Enter and can be resized and moved first (saved in the settings). |
+| `pending_box` | `none` or the waiting box; `x1 y1 x2 y2` draws one in a 2D view, `confirm`, `add` or `cancel` act on it. |
 
 ### Block tool (`tool block`)
 

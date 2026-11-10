@@ -463,6 +463,7 @@ fn context_menu_offers_floor_ceiling_and_pivot() {
 #[test]
 fn centers_only_selection() {
     let mut state = state();
+    state.settings.selection.box_confirm = false;
     let mut tool = SelectTool::new();
     tool.set_centers_only(true);
     let v = view2d(ViewKind::Top);

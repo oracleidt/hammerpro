@@ -46,6 +46,34 @@ impl SelectTool {
             let text = format!("{} x {}", fmt_len(size.x), fmt_len(size.y));
             label(painter, rect.right_bottom() + egui::vec2(4.0, 4.0), Align2::LEFT_TOP, &text);
         }
+        if let Some(pb) = self.pending.filter(|p| p.view == view.index)
+            && let Some(rect) = pb.screen_rect(view)
+        {
+            if let Some(fill) = visible_part(rect, clip) {
+                painter.rect_filled(fill, 0.0, VIEW_ACCENT.gamma_multiply(0.12));
+            }
+            let stroke = Stroke::new(1.5, VIEW_ACCENT);
+            if self.box_inside ^ pb.alt || self.centers_only {
+                paint_rect_outline(painter, clip, rect, stroke);
+            } else {
+                paint_dashed_rect(painter, clip, rect, stroke, 5.0, 3.0);
+            }
+            let pointer = painter.ctx().input(|i| i.pointer.hover_pos());
+            let hovered = pointer.and_then(|p| match self.pending_hit(state, view, p) {
+                Some(super::BoxHit::Handle(h)) => Some(h),
+                _ => None,
+            });
+            for &h in HandleMode::Scale.handles() {
+                let p = handle_pos_sized(rect, h, hsize);
+                if clip.contains(p) {
+                    paint_handle(painter, p, HandleMode::Scale, hovered == Some(h), hsize);
+                }
+            }
+            let size = pb.max - pb.min;
+            let text = format!("{} x {}", fmt_len(size.x), fmt_len(size.y));
+            let below = rect.center_bottom() + egui::vec2(0.0, HANDLE_GAP + hsize + 3.0);
+            label(painter, below, Align2::CENTER_TOP, &format!("{text}  {}", t!("seltool.box.enter")));
+        }
         let Some(bounds) = self.selection_bounds(state) else { return };
         let sel_color = hp_app::theme::rgb(state.settings.view.selection_color);
         match &self.drag {
@@ -415,6 +443,18 @@ impl SelectTool {
             {
                 self.centers_only = !self.centers_only;
             }
+            let mut confirm = state.settings.selection.box_confirm;
+            if ui
+                .checkbox(&mut confirm, t!("seltool.box.confirm"))
+                .on_hover_text(t!("seltool.box.confirm_tip"))
+                .changed()
+            {
+                state.settings.selection.box_confirm = confirm;
+                state.settings_dirty = true;
+                if !confirm {
+                    self.pending = None;
+                }
+            }
             hp_app::widgets::vsep(ui);
             ui.label(t!("seltool.handles")).on_hover_text(t!("seltool.handles_tip"));
             for mode in HandleMode::ALL {
@@ -526,6 +566,7 @@ impl SelectTool {
                         t!("seltool.hint.band_touching").to_owned()
                     }
                 }
+                DragOp::BoxEdit { .. } => t!("seltool.hint.box_edit").to_owned(),
                 DragOp::Paint { remove, .. } => {
                     if *remove {
                         t!("seltool.hint.paint_remove").to_owned()
@@ -571,6 +612,9 @@ impl SelectTool {
             && state.frame.time - time < 2.0
         {
             return Some(text.clone());
+        }
+        if self.pending.is_some() {
+            return Some(t!("seltool.hint.box_pending").to_owned());
         }
         if self.hover.pivot {
             return Some(t!("seltool.hint.pivot").to_owned());

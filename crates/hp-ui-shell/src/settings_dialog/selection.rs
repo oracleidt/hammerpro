@@ -63,6 +63,10 @@ impl SettingsPage for SelectionPage {
             .on_hover_text(t!("shell.selection.shift_arrow_clones_tip"))
             .changed();
         changed |= ui
+            .checkbox(&mut s.box_confirm, t!("shell.selection.box_confirm"))
+            .on_hover_text(t!("shell.selection.box_confirm_tip"))
+            .changed();
+        changed |= ui
             .checkbox(&mut s.stretch_handles, t!("shell.selection.stretch_handles"))
             .on_hover_text(t!("shell.selection.stretch_handles_tip"))
             .changed();
@@ -119,6 +123,12 @@ pub(crate) const TR: TrTable = &[
         "shell.selection.shift_arrow_clones_tip",
         "Shift+arrow keys copy the selection one grid step away, like Hammer. Alt+arrows then nudge by one unit.",
         "Maj+flèches copie la sélection à un pas de grille, comme Hammer. Alt+flèches décale alors d'une unité.",
+    ),
+    ("shell.selection.box_confirm", "Enter confirms box selection", "Entrée valide la sélection par cadre"),
+    (
+        "shell.selection.box_confirm_tip",
+        "Like Hammer++: a box drawn in a 2D view stays after the mouse is released, its handles resize it and dragging inside moves it, Enter selects (Ctrl+Enter adds), Esc cancels. Off: the selection happens on release.",
+        "Comme Hammer++ : un cadre tracé dans une vue 2D reste après le relâchement de la souris, ses poignées le redimensionnent et un glisser à l'intérieur le déplace, Entrée sélectionne (Ctrl+Entrée ajoute), Échap annule. Désactivé : la sélection se fait au relâchement.",
     ),
     ("shell.selection.stretch_handles", "3D stretch handles", "Poignées d'étirement 3D"),
     (

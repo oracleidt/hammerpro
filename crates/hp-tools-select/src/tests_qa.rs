@@ -315,6 +315,7 @@ fn hover_outline_follows_select_mode_changes() {
 #[test]
 fn inside_box_selection_takes_only_whole_units() {
     let mut state = state_from(&boxes_vmf());
+    state.settings.selection.box_confirm = false;
     let mut tool = SelectTool::new();
     tool.set_box_inside(true);
     let v = top(0.5, DVec2::new(128.0, 96.0));

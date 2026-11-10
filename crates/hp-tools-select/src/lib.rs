@@ -58,6 +58,23 @@ pub const TR: hp_app::i18n::TrTable = &[
         "La sélection par cadre dans les vues 2D prend les objets touchés par le cadre, ou seulement ceux entièrement contenus. Maintenez Alt pendant le glisser pour l'autre mode.",
     ),
     ("seltool.box.centers", "Centers", "Centres"),
+    ("seltool.box.confirm", "Enter", "Entrée"),
+    (
+        "seltool.box.confirm_tip",
+        "Like Hammer++: the box stays after release, drag its handles to resize it or drag inside to move it, then Enter selects (Ctrl+Enter adds) and Esc cancels. Off: the selection happens on release.",
+        "Comme Hammer++ : le cadre reste après le relâchement, glissez ses poignées pour le redimensionner ou glissez à l'intérieur pour le déplacer, puis Entrée sélectionne (Ctrl+Entrée ajoute) et Échap annule. Désactivé : la sélection se fait au relâchement.",
+    ),
+    ("seltool.box.enter", "Enter: select", "Entrée : sélectionner"),
+    (
+        "seltool.hint.box_pending",
+        "Enter: select the objects in the box (Ctrl+Enter: add). Drag a handle to resize it, drag inside to move it, Esc: cancel.",
+        "Entrée : sélectionner les objets du cadre (Ctrl+Entrée : ajouter). Glissez une poignée pour le redimensionner, glissez à l'intérieur pour le déplacer, Échap : annuler.",
+    ),
+    (
+        "seltool.hint.box_edit",
+        "Release to keep the box, then Enter to select. Alt: no snap.",
+        "Relâchez pour garder le cadre, puis Entrée pour sélectionner. Alt : sans magnétisme.",
+    ),
     (
         "seltool.box.centers_tip",
         "Box and click selection in 2D views only take objects by their center (drawn as small crosses), handy in crowded areas.",
@@ -139,18 +156,18 @@ pub const TR: hp_app::i18n::TrTable = &[
     ),
     (
         "seltool.hint.band_touching",
-        "Release to select the objects touching the box. Ctrl: add, Alt: inside only.",
-        "Relâchez pour sélectionner les objets touchés par le cadre. Ctrl : ajouter, Alt : objets contenus.",
+        "Box of the objects touching it. Ctrl: add, Alt: inside only.",
+        "Cadre des objets qu'il touche. Ctrl : ajouter, Alt : objets contenus.",
     ),
     (
         "seltool.hint.band_inside",
-        "Release to select the objects inside the box. Ctrl: add, Alt: touching.",
-        "Relâchez pour sélectionner les objets contenus dans le cadre. Ctrl : ajouter, Alt : objets touchés.",
+        "Box of the objects fully inside it. Ctrl: add, Alt: touching.",
+        "Cadre des objets entièrement contenus. Ctrl : ajouter, Alt : objets touchés.",
     ),
     (
         "seltool.hint.band_centers",
-        "Release to select the objects whose center is in the box. Ctrl: add.",
-        "Relâchez pour sélectionner les objets dont le centre est dans le cadre. Ctrl : ajouter.",
+        "Box of the objects whose center is in it. Ctrl: add.",
+        "Cadre des objets dont le centre y est. Ctrl : ajouter.",
     ),
     (
         "seltool.hint.paint_add",

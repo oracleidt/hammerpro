@@ -119,6 +119,8 @@
 | `gizmo_mode` | `move`, `rotate` ou `scale`. |
 | `gizmo_local` | on/off : le gizmo d'une seule entité ponctuelle suit ses angles (enregistré dans les paramètres). |
 | `stretch_handles` | on/off : flèches d'étirement sur les faces des brushes sélectionnés dans la vue 3D (enregistré dans les paramètres). |
+| `box_confirm` | on/off : un cadre tracé dans une vue 2D attend Entrée et peut d'abord être redimensionné et déplacé (enregistré dans les paramètres). |
+| `pending_box` | `none` ou le cadre en attente ; `x1 y1 x2 y2` en trace un dans une vue 2D, `confirm`, `add` ou `cancel` agissent dessus. |
 
 ### Outil bloc (`tool block`)
 

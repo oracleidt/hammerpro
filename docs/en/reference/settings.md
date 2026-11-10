@@ -210,6 +210,7 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `gizmo_local` | `false` | The gizmo of a single point entity follows its angles (`Ctrl+J`). |
 | `click_to_zoom` | `false` | The camera tool zooms 2D views on click (`Ctrl` + click zooms out). |
 | `stretch_handles` | `true` | Arrows on the faces of the selection in the 3D view stretch it. |
+| `box_confirm` | `true` | A box drawn in a 2D view waits for `Enter` (Hammer++ style): its handles resize it, a drag inside moves it, `Esc` drops it. `false` selects on release. |
 | `random_yaw_min` | `0.0` | **Random Z rotation**: smallest turn, degrees (-360 to 360). |
 | `random_yaw_max` | `360.0` | **Random Z rotation**: largest turn, degrees (at most 360 above the smallest). |
 | `random_yaw_snap` | `0.0` | **Random Z rotation**: step of the turn, degrees (0: free, up to 180). |
