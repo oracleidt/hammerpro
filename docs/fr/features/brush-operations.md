@@ -34,6 +34,7 @@ Quand une commande demande des brushes et qu'aucun n'est sélectionné, l'avis *
 - Les brushes sélectionnés (ceux qui creusent) ne sont pas modifiés. Gardez-les ou supprimez-les ensuite.
 - Seuls les brushes du monde visibles sont découpés : les brushes d'entités et les brushes masqués ne sont pas touchés.
 - Les brushes découpés sont divisés en plusieurs morceaux convexes avec de nouveaux ids de faces. Les listes de faces des overlays et des `env_cubemap` suivent : une face découpée en morceaux est remplacée par tous ses morceaux, une face entièrement creusée est retirée de la liste.
+- Les brushes sont découpés en parallèle sur tous les cœurs du processeur : creuser à travers des centaines de brushes d'un coup reste rapide.
 
 Le carve crée beaucoup de petits brushes. Pour une simple ouverture, l'[outil extruder / creuser](extrude-tool.md) (un contour cliqué sur une face, creusé dans ce seul brush, avec le moins de morceaux possible), l'[outil de découpe](clip-tool.md) ou quelques blocs donnent souvent une géométrie plus propre.
 
@@ -53,7 +54,7 @@ Le champ d'épaisseur a le focus clavier à l'ouverture : tapez la valeur puis `
 
 **Outils > Fusionner les brushes** (`Ctrl+Maj+M`) réunit les brushes sélectionnés en un seul, uniquement si leur union est déjà convexe (le « Merge brushes » de Hammer++). Chaque face garde la texture de la face dont elle vient.
 
-- Si l'union n'est pas convexe, rien ne change et un avertissement propose **Fusionner en un solide convexe**.
+- Si l'union n'est pas convexe, rien ne change et un avertissement propose **Fusionner en un solide convexe**. Le contrôle est exact à 0,02 unité près : une marche ou une encoche, même d'une seule unité, n'est jamais comblée.
 - Les brushes doivent tous être des brushes du monde ou appartenir à la même entité, sinon l'avertissement **Les brushes doivent tous être des brushes du monde ou appartenir à la même entité** s'affiche.
 
 ## Fusionner en un solide convexe
@@ -73,9 +74,9 @@ Le champ d'épaisseur a le focus clavier à l'ouverture : tapez la valeur puis `
 **Outils > Union de brushes** réunit les brushes sélectionnés en le moins possible de brushes convexes qui couvrent exactement leur union, sans ajouter de volume (contrairement à **Fusionner en un solide convexe**).
 
 1. Les brushes qui se chevauchent sont découpés pour ne plus se recouvrir, et les parties cachées à l'intérieur d'un autre brush sont retirées.
-2. Les voisins en contact sont refusionnés en un seul brush dès que leur union est convexe.
+2. Les voisins en contact sont refusionnés en un seul brush dès que leur union est convexe (exactement, comme pour **Fusionner les brushes** : une marche d'une unité est conservée).
 
-Deux boîtes qui se chevauchent dans l'axe donnent donc une seule boîte, tandis qu'un L reste deux brushes qui se touchent sans se chevaucher. Chaque brush garde son id tant qu'il a encore un morceau ; ceux entièrement à l'intérieur d'autres brushes sont supprimés. Les nouveaux morceaux gardent le propriétaire et les données d'éditeur du brush dont ils viennent, et sont sélectionnés si lui l'était. Quand rien ne peut être joint, l'avertissement **Rien à joindre** s'affiche. La même règle de propriétaire que **Fusionner les brushes** s'applique. Une seule étape d'annulation.
+Deux boîtes qui se chevauchent dans l'axe donnent donc une seule boîte, tandis qu'un L reste deux brushes qui se touchent sans se chevaucher. Chaque brush garde son id tant qu'il a encore un morceau ; ceux entièrement à l'intérieur d'autres brushes sont supprimés. Les nouveaux morceaux gardent le propriétaire et les données d'éditeur du brush dont ils viennent, et sont sélectionnés si lui l'était. Quand rien ne peut être joint, l'avertissement **Rien à joindre** s'affiche. La même règle de propriétaire que **Fusionner les brushes** s'applique. Une seule étape d'annulation. Le découpage tourne sur tous les cœurs du processeur et les paires qui ne peuvent jamais former un brush convexe sont écartées tout de suite : l'union de plusieurs centaines de brushes prend une fraction de seconde.
 
 ## Lier à une entité
 

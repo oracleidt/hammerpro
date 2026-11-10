@@ -107,6 +107,7 @@ pub struct CurveTool {
     last_bounds: Option<Aabb>,
     initialized: bool,
     picker: ClassPicker,
+    wheel: f32,
 }
 
 impl Default for CurveTool {
@@ -140,6 +141,7 @@ impl CurveTool {
             last_bounds: None,
             initialized: false,
             picker: ClassPicker::default(),
+            wheel: 0.0,
         }
     }
 
@@ -826,6 +828,23 @@ impl Tool for CurveTool {
         self.handle_mouse(state, input.view, &m)
     }
 
+    fn wheel(&mut self, _state: &mut AppState, _view: &ViewInfo, notches: f32, mods: egui::Modifiers) -> ToolFlow {
+        if self.stroke.is_none() || !mods.shift || mods.ctrl || mods.command || mods.alt || !notches.is_finite() {
+            self.wheel = 0.0;
+            return ToolFlow::Ignored;
+        }
+        self.wheel += notches;
+        while self.wheel.abs() >= 1.0 {
+            let up = self.wheel > 0.0;
+            self.wheel -= if up { 1.0 } else { -1.0 };
+            let n = self.options.subdivisions;
+            let step = (n / 8).max(1);
+            let next = if up { n.saturating_add(step) } else { n.saturating_sub(step) };
+            self.options.subdivisions = next.clamp(MIN_SUBDIVISIONS, MAX_SUBDIVISIONS);
+        }
+        ToolFlow::Handled
+    }
+
     fn key_input(&mut self, state: &mut AppState, ctx: &egui::Context) -> bool {
         if self.stroke.is_none() {
             return false;
@@ -1076,10 +1095,12 @@ impl Tool for CurveTool {
             (Some(_), CurvePhase::Drawing) if self.is_ready() => tf!("curve.hint_ready", enter, back, escape),
             (Some(_), CurvePhase::Drawing) => tf!("curve.hint_points", back, escape),
         })
+        .map(|hint| if self.stroke.is_some() { format!("{hint} {}", t!("curve.hint_wheel")) } else { hint })
     }
 
     fn cancel(&mut self, _state: &mut AppState) -> bool {
         let had = self.stroke.is_some() || self.drag.is_some();
+        self.wheel = 0.0;
         self.finish_edit();
         self.stroke = None;
         self.phase = CurvePhase::Drawing;

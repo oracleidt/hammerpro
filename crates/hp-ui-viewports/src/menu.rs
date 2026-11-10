@@ -9,6 +9,7 @@ pub enum MenuEntry {
     Submenu(MenuGroup),
     CenterHere,
     CreateHere,
+    PingHere,
     Separator,
 }
 
@@ -42,6 +43,7 @@ pub const ENTRIES: &[MenuEntry] = &[
     MenuEntry::Separator,
     MenuEntry::CenterHere,
     MenuEntry::CreateHere,
+    MenuEntry::PingHere,
     MenuEntry::Separator,
     MenuEntry::Action(Action::Properties),
 ];
@@ -58,6 +60,7 @@ pub fn submenu_title(group: MenuGroup) -> &'static str {
 pub struct MenuContext {
     pub has_point: bool,
     pub has_entity_class: bool,
+    pub team: bool,
 }
 
 pub fn entry_enabled(entry: MenuEntry, cx: MenuContext, action_enabled: impl Fn(Action) -> bool) -> bool {
@@ -66,6 +69,7 @@ pub fn entry_enabled(entry: MenuEntry, cx: MenuContext, action_enabled: impl Fn(
         MenuEntry::Submenu(group) => submenu_actions(group).into_iter().any(action_enabled),
         MenuEntry::CenterHere => cx.has_point,
         MenuEntry::CreateHere => cx.has_point && cx.has_entity_class,
+        MenuEntry::PingHere => cx.has_point && cx.team,
         MenuEntry::Separator => false,
     }
 }
@@ -84,6 +88,7 @@ pub enum MenuChoice {
     Action(Action),
     CenterHere,
     CreateHere,
+    PingHere,
     Tool(u32),
 }
 
@@ -123,6 +128,10 @@ mod tests {
         }
         assert!(ENTRIES.contains(&MenuEntry::CenterHere));
         assert!(ENTRIES.contains(&MenuEntry::CreateHere));
+        assert!(ENTRIES.contains(&MenuEntry::PingHere));
+        let point = MenuContext { has_point: true, ..MenuContext::default() };
+        assert!(!entry_enabled(MenuEntry::PingHere, point, |_| true), "ping needs a Team Mapping session");
+        assert!(entry_enabled(MenuEntry::PingHere, MenuContext { team: true, ..point }, |_| true));
         let align = submenu_actions(MenuGroup::ToolsAlign);
         assert!(align.starts_with(&[Action::AlignLeft, Action::AlignRight, Action::AlignTop, Action::AlignBottom]));
         let flip = submenu_actions(MenuGroup::ToolsFlip);
@@ -144,7 +153,7 @@ mod tests {
         let pt = MenuContext { has_point: true, ..none };
         assert!(entry_enabled(MenuEntry::CenterHere, pt, selected));
         assert!(!entry_enabled(MenuEntry::CreateHere, pt, selected));
-        let all = MenuContext { has_point: true, has_entity_class: true };
+        let all = MenuContext { has_point: true, has_entity_class: true, team: false };
         assert!(entry_enabled(MenuEntry::CreateHere, all, selected));
         assert!(!entry_enabled(MenuEntry::Separator, all, selected));
         let state = hp_app::testing::test_state();

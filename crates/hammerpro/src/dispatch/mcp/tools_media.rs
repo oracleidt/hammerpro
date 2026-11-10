@@ -139,8 +139,24 @@ fn num(a: &Args<'_>, key: &str, lo: f64, hi: f64) -> R<Option<f32>> {
     Ok(a.opt_f64(key, lo, hi)?.map(|v| v as f32))
 }
 
+fn external_ok(path: &str) -> R<()> {
+    if media::is_external(path) {
+        super::semantic::local_path(path)?;
+    }
+    Ok(())
+}
+
+fn root_arg<'a>(a: &'a Args<'_>) -> R<Option<&'a str>> {
+    let root = a.opt_str("root", MAX_PATH)?;
+    if let Some(r) = root.filter(|r| !r.trim().is_empty()) {
+        super::semantic::local_path(r)?;
+    }
+    Ok(root)
+}
+
 fn load_sound(state: &AppState, a: &Args<'_>) -> R<(Sound, String)> {
     let path = a.str("path", MAX_PATH)?;
+    external_ok(path)?;
     let (bytes, label) = media::read_source(state, path, media::game_sound_path)?;
     let sound = hp_audio::decode(&bytes, &label).map_err(|e| format!("{label}: {e}"))?;
     Ok((sound, label))
@@ -239,7 +255,7 @@ fn sound_edit(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let out = hp_audio::apply(&sound, &edit);
     let wanted = a.opt_str("output", MAX_PATH)?.map_or_else(|| default_output(&label), str::to_owned);
     let rel = media::clean_rel(&wanted, media::SOUND_PREFIX, "wav")?;
-    let root = media::resolve_root(state, a.opt_str("root", MAX_PATH)?)?;
+    let root = media::resolve_root(state, root_arg(a)?)?;
     let target = root.join(&rel);
     let overwrite = a.opt_bool("overwrite")?.unwrap_or(false);
     let dry = a.opt_bool("dry_run")?.unwrap_or(false);
@@ -330,9 +346,22 @@ fn color_correction_presets(_state: &mut AppState, _a: &Args<'_>) -> R<ToolResul
 
 fn read_raw(state: &AppState, path: &str) -> R<Vec<u8>> {
     let bytes = if media::is_external(path) {
-        std::fs::read(path.trim()).map_err(|e| format!("cannot read {path}: {e}"))?
+        let file = super::semantic::local_path(path)?;
+        let len = std::fs::metadata(&file).map_err(|e| format!("cannot read {path}: {e}"))?.len();
+        if len != hp_colorgrade::RAW_BYTES as u64 {
+            return Err(format!(
+                "{path} is {len} bytes: a color lookup table is exactly {} bytes (32x32x32 RGB)",
+                hp_colorgrade::RAW_BYTES
+            ));
+        }
+        std::fs::read(&file).map_err(|e| format!("cannot read {path}: {e}"))?
     } else {
-        media::read_game(state, path.trim().replace('\\', "/").trim_start_matches('/'))
+        let rel = path.trim().replace('\\', "/");
+        let rel = rel.trim_start_matches('/');
+        if rel.split('/').any(|part| part == "..") || rel.contains(':') {
+            return Err(format!("\"{path}\" must stay inside the game content (no \"..\")"));
+        }
+        media::read_game(state, rel)
             .ok_or_else(|| format!("\"{path}\" was not found in the game content or the project folders"))?
     };
     if !hp_colorgrade::is_raw(&bytes) {
@@ -383,7 +412,7 @@ fn color_correction_generate(state: &mut AppState, a: &Args<'_>) -> R<ToolResult
     let (lut, grade) = build_table(state, a)?;
     let folder = a.opt_str("folder", MAX_PATH)?.unwrap_or(hp_colorgrade::DEFAULT_FOLDER).trim_matches('/').to_owned();
     let rel = media::clean_rel(a.str("name", MAX_PATH)?, &folder, "raw")?;
-    let root = media::resolve_root(state, a.opt_str("root", MAX_PATH)?)?;
+    let root = media::resolve_root(state, root_arg(a)?)?;
     let target = root.join(&rel);
     let overwrite = a.opt_bool("overwrite")?.unwrap_or(false);
     let mut result = json!({
@@ -496,6 +525,9 @@ fn color_correction_zones(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> 
 fn open_media_editor(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let editor = a.opt_enum("editor", &["sound", "color"])?.ok_or("editor is required")?;
     let path = a.opt_str("path", MAX_PATH)?.map(str::to_owned);
+    if let Some(p) = &path {
+        external_ok(p)?;
+    }
     let rt = &mut state.runtime.lab.sound_color;
     if editor == "sound" {
         rt.sound_open = true;
@@ -517,7 +549,12 @@ mod tests {
     }
 
     fn scratch(name: &str) -> std::path::PathBuf {
-        let dir = std::path::PathBuf::from("E:/hp-scratch/sndcc").join(format!("{name}-{}", std::process::id()));
+        let base = if std::path::Path::new("E:/hp-scratch").is_dir() {
+            std::path::PathBuf::from("E:/hp-scratch/sndcc")
+        } else {
+            std::env::temp_dir().join("hp-sndcc")
+        };
+        let dir = base.join(format!("{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir

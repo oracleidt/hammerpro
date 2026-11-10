@@ -1,3 +1,9 @@
+mod patch;
+mod units;
+mod validated;
+pub use patch::{apply_patch, encode_patch, expand_changes, is_patch, patch_changes};
+pub use validated::{OutsideRange, Sizes, ValidatedSnapshot, check_units};
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::{Result, bail, ensure};
@@ -44,17 +50,174 @@ fn object_id(block: &Block) -> Result<u32> {
     Ok(id)
 }
 
-fn safe_reference(value: &str) -> bool {
-    !value.contains([':', '\0', '\\']) && !value.starts_with('/') && !value.split('/').any(|part| part == "..")
+const PATH_KEYS: [&str; 8] =
+    ["file", "model", "material", "texture", "detailmaterial", "skyname", "vscripts", "vscript_init_code"];
+const SCRIPT_CLASSES: [&str; 4] = ["lua_run", "logic_script", "point_servercommand", "point_clientcommand"];
+const SCRIPT_INPUTS: [&str; 4] = ["command", "runscriptcode", "runscriptfile", "runpassedcode"];
+
+pub fn reference_problem(value: &str, instance: bool) -> Option<&'static str> {
+    if value.contains('\0') {
+        return Some("contains a null character");
+    }
+    let path = value.trim().replace('\\', "/");
+    if path.starts_with("//") {
+        return Some("network paths cannot be shared");
+    }
+    if instance && path.starts_with('/') {
+        return Some("absolute paths cannot be shared");
+    }
+    let path = path.trim_start_matches('/');
+    let parent_levels = if instance { 2 } else { 0 };
+    if path.contains(':') {
+        return Some("drive letters and other absolute locations cannot be shared");
+    }
+    let mut depth = 0isize;
+    for part in path.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                depth -= 1;
+                if depth < -(parent_levels as isize) {
+                    return Some("the path leaves its content folder");
+                }
+            }
+            _ => depth += 1,
+        }
+    }
+    None
+}
+
+pub fn script_class(classname: &str) -> bool {
+    SCRIPT_CLASSES.iter().any(|class| classname.trim().eq_ignore_ascii_case(class))
+}
+
+pub fn script_input(output: &str, value: &str) -> bool {
+    let input = hp_vmf::Connection::parse(output, value).input;
+    SCRIPT_INPUTS.iter().any(|name| input.trim().eq_ignore_ascii_case(name))
+}
+
+pub fn script_problem(block: &str, key: &str, value: &str) -> Option<String> {
+    if block.eq_ignore_ascii_case("connections") {
+        return script_input(key, value)
+            .then(|| format!("output \"{key}\" \"{value}\" refused: script and command inputs cannot be shared"));
+    }
+    (key.eq_ignore_ascii_case("classname") && script_class(value))
+        .then(|| format!("class \"{value}\" refused: script and command entities cannot be shared"))
+}
+
+fn contains_ignore_case(text: &str, needle: &str) -> bool {
+    text.as_bytes().windows(needle.len()).any(|window| window.eq_ignore_ascii_case(needle.as_bytes()))
+}
+
+fn scan_scripts(key: &str, unit: &Unit, mut found: impl FnMut(&str, &str, &str)) {
+    if !key.starts_with("entity:")
+        || !SCRIPT_CLASSES.iter().chain(&SCRIPT_INPUTS).any(|name| contains_ignore_case(&unit.vmf, name))
+    {
+        return;
+    }
+    let Ok(root) = hp_kv::parse_bounded(&unit.vmf, 128) else { return };
+    for entity in &root.children {
+        let classname = entity.get("classname").unwrap_or_default();
+        found(classname, "classname", classname);
+        for connections in entity.children.iter().filter(|child| child.name.eq_ignore_ascii_case("connections")) {
+            for (output, value) in &connections.props {
+                found(classname, output, value);
+            }
+        }
+    }
+}
+
+pub fn unit_scripts(key: &str, unit: &Unit) -> Vec<String> {
+    let mut uses = Vec::new();
+    scan_scripts(key, unit, |classname, field, value| {
+        if field == "classname" {
+            if script_class(value) {
+                uses.push(format!("{value} ({key})"));
+            }
+        } else if script_input(field, value) {
+            let input = hp_vmf::Connection::parse(field, value).input;
+            let owner = if classname.is_empty() { "entity" } else { classname };
+            uses.push(format!("{field} > {input} ({owner}, {key})"));
+        }
+    });
+    uses
+}
+
+pub fn script_refusal(changes: &[Change]) -> Option<String> {
+    changes.iter().find_map(|change| {
+        let unit = change.after.as_ref()?;
+        let mut problem = None;
+        scan_scripts(&change.key, unit, |_, field, value| {
+            if problem.is_none() {
+                let block = if field == "classname" { "entity" } else { "connections" };
+                problem = script_problem(block, field, value);
+            }
+        });
+        problem.map(|problem| format!("{}: {problem}", change.key))
+    })
+}
+
+pub fn property_problem(classname: Option<&str>, key: &str, value: &str) -> Option<String> {
+    let lower = key.to_ascii_lowercase();
+    let class = |name: &str| classname.is_some_and(|class| class.trim().eq_ignore_ascii_case(name));
+    let instance = class("func_instance") && lower == "file";
+    if instance && !value.trim().to_ascii_lowercase().ends_with(".vmf") {
+        return Some(format!("key \"{key}\" value \"{value}\" refused: instances must reference VMF files"));
+    }
+    let path = PATH_KEYS.contains(&lower.as_str()) || (class("ambient_generic") && lower == "message");
+    if path && let Some(reason) = reference_problem(value, instance) {
+        return Some(format!("key \"{key}\" value \"{value}\" refused: {reason}"));
+    }
+    None
+}
+
+pub fn sanitize_entity(entity: &mut hp_vmf::Entity, scripts: bool) -> std::result::Result<Vec<String>, String> {
+    let label = if entity.classname.is_empty() { "entity".to_owned() } else { entity.classname.clone() };
+    if !scripts && script_class(&entity.classname) {
+        return Err(format!(
+            "{label} {}: class \"{}\" refused: script and command entities cannot be shared, it stays on this PC",
+            entity.id, entity.classname
+        ));
+    }
+    let mut problems = Vec::new();
+    let classname = entity.classname.clone();
+    let id = entity.id;
+    entity.props.retain(|(key, value)| match property_problem(Some(&classname), key, value) {
+        Some(problem) => {
+            problems.push(format!("{label} {id}: {problem}, it stays on this PC"));
+            false
+        }
+        None => true,
+    });
+    entity.connections.retain(|connection| {
+        let refused = !scripts && SCRIPT_INPUTS.iter().any(|name| connection.input.trim().eq_ignore_ascii_case(name));
+        if refused {
+            problems.push(format!(
+                "{label} {id}: output \"{}\" to \"{}\" input \"{}\" refused: script and command inputs cannot be shared, it stays on this PC",
+                connection.output, connection.target, connection.input
+            ));
+        }
+        !refused
+    });
+    Ok(problems)
 }
 
 fn validate_block(block: &Block, depth: usize) -> Result<()> {
     ensure!(depth < 128, "Map nesting limit exceeded");
     ensure!(block.name.len() <= 128, "Map block name limit exceeded");
+    ensure!(
+        depth == 0
+            || !block.name.is_empty()
+                && !block.name.starts_with('[')
+                && !block.name.contains("//")
+                && !block.name.bytes().any(|byte| byte.is_ascii_whitespace() || matches!(byte, b'"' | b'{' | b'}')),
+        "Invalid map block name"
+    );
     ensure!(block.props.len() <= 8192 && block.children.len() <= MAX_UNITS, "Map block limit exceeded");
     let mut keys = BTreeSet::new();
     for (key, value) in &block.props {
         ensure!(key.len() <= 512 && value.len() <= 16_384 && !value.contains('\0'), "Map field limit exceeded");
+        ensure!(!key.contains('"') && !value.contains('"'), "Invalid map field");
         let key = key.to_ascii_lowercase();
         let repeated = block.name.eq_ignore_ascii_case("connections")
             || (block.name.eq_ignore_ascii_case("editor") && key == "visgroupid")
@@ -82,34 +245,10 @@ fn validate_block(block: &Block, depth: usize) -> Result<()> {
                 block.name
             );
         }
-        if block.name.eq_ignore_ascii_case("connections") {
-            let input = hp_vmf::Connection::parse(&key, value).input.to_ascii_lowercase();
-            ensure!(
-                !matches!(input.as_str(), "command" | "runscriptcode" | "runscriptfile" | "runpassedcode"),
-                "Script and command inputs cannot be shared"
-            );
-        }
-        if block.get("classname").is_some_and(|class| class.eq_ignore_ascii_case("ambient_generic")) && key == "message"
+        if !block.name.eq_ignore_ascii_case("connections")
+            && let Some(problem) = property_problem(block.get("classname"), &key, value)
         {
-            ensure!(safe_reference(value), "Unsafe sound resource path");
-        }
-        if block.get("classname").is_some_and(|class| class.eq_ignore_ascii_case("func_instance")) && key == "file" {
-            ensure!(value.to_ascii_lowercase().ends_with(".vmf"), "Instances must reference VMF files");
-        }
-        if matches!(
-            key.as_str(),
-            "file" | "model" | "material" | "texture" | "detailmaterial" | "skyname" | "vscripts" | "vscript_init_code"
-        ) {
-            ensure!(safe_reference(value), "Unsafe resource path");
-        }
-        if key == "classname" {
-            ensure!(
-                !matches!(
-                    value.to_ascii_lowercase().as_str(),
-                    "lua_run" | "logic_script" | "point_servercommand" | "point_clientcommand"
-                ),
-                "Script and command entities cannot be shared"
-            );
+            bail!("{problem}");
         }
     }
     for child in &block.children {
@@ -137,6 +276,12 @@ fn wrap_hidden(block: Block, hidden: bool) -> Block {
 
 impl Snapshot {
     pub fn from_vmf(text: &str) -> Result<Self> {
+        let snapshot = Self::split(text)?;
+        snapshot.validate()?;
+        Ok(snapshot)
+    }
+
+    fn split(text: &str) -> Result<Self> {
         ensure!(text.len() <= MAX_MAP_BYTES, "Map exceeds the session size limit");
         let root = hp_kv::parse_bounded(text, 128)?;
         validate_block(&root, 0)?;
@@ -180,9 +325,7 @@ impl Snapshot {
         }
         units.insert("metadata".to_owned(), Unit { owner: 0, hidden: false, vmf: hp_kv::write(&metadata) });
         ensure!(units.contains_key("world") && units.len() <= MAX_UNITS, "Invalid shared map");
-        let snapshot = Self(units);
-        snapshot.validate()?;
-        Ok(snapshot)
+        Ok(Self(units))
     }
 
     pub fn to_vmf(&self) -> Result<String> {
@@ -254,10 +397,16 @@ impl Snapshot {
     }
 
     pub fn validate(&self) -> Result<()> {
+        validated::check_snapshot(self)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn reference_sizes(&self) -> Result<(usize, usize, usize)> {
         ensure!(self.0.len() <= MAX_UNITS, "Map object limit exceeded");
         let bytes: usize = self.0.iter().map(|(key, unit)| key.len() + unit.vmf.len() + 4).sum();
         ensure!(bytes <= MAX_MAP_BYTES, "Map exceeds the session size limit");
-        ensure!(serde_json::to_vec(self)?.len() <= MAX_MAP_BYTES, "Encoded map exceeds the session size limit");
+        let encoded_bytes = serde_json::to_vec(self)?.len();
+        ensure!(encoded_bytes <= MAX_MAP_BYTES, "Encoded map exceeds the session size limit");
         let text = self.to_vmf()?;
         ensure!(text.len() <= MAX_MAP_BYTES, "Map exceeds the session size limit");
         validate_block(&hp_kv::parse_bounded(&text, 128)?, 0)?;
@@ -307,7 +456,7 @@ impl Snapshot {
                 }
             }
         }
-        Ok(())
+        Ok((bytes, encoded_bytes, text.len()))
     }
 
     pub fn diff(&self, other: &Self) -> Vec<Change> {
@@ -325,28 +474,7 @@ impl Snapshot {
     }
 
     pub fn apply(&mut self, changes: &[Change]) -> Result<()> {
-        ensure!(!changes.is_empty() && changes.len() <= 8192, "Invalid change count");
-        ensure!(serde_json::to_vec(changes)?.len() <= MAX_CHANGE_BYTES, "Change exceeds the session size limit");
-        let mut seen = BTreeSet::new();
-        for change in changes {
-            ensure!(change.key.len() <= 64 && seen.insert(&change.key), "Duplicate or invalid change key");
-            ensure!(
-                self.0.get(&change.key).map(digest) == change.before,
-                "An object changed on another participant: {}",
-                change.key
-            );
-        }
-        let mut updated = self.clone();
-        for change in changes {
-            if let Some(unit) = &change.after {
-                updated.0.insert(change.key.clone(), unit.clone());
-            } else {
-                updated.0.remove(&change.key);
-            }
-        }
-        updated.validate()?;
-        *self = updated;
-        Ok(())
+        validated::apply_to(self, changes)
     }
 }
 
@@ -376,18 +504,122 @@ mod tests {
     }
 
     #[test]
-    fn untrusted_map_cannot_request_local_paths_or_script_execution() {
+    fn untrusted_maps_cannot_request_local_paths_and_script_entities_are_shared() {
         for (class, key, value) in [
-            ("func_instance", "file", "../private.vmf"),
+            ("func_instance", "file", "../../../private.vmf"),
             ("prop_dynamic", "model", "C:/secret.mdl"),
-            ("lua_run", "code", "print(1)"),
-            ("logic_script", "vscripts", "x.nut"),
+            ("logic_script", "vscripts", "C:/x.nut"),
         ] {
             let text = format!(
                 "world {{\"id\" \"1\"}} entity {{\"id\" \"2\" \"classname\" \"{class}\" \"{key}\" \"{value}\"}}"
             );
-            assert!(Snapshot::from_vmf(&text).is_err());
+            assert!(Snapshot::from_vmf(&text).is_err(), "{class}");
         }
+        for (class, key, value) in [
+            ("lua_run", "Code", "print(1)"),
+            ("logic_script", "vscripts", "x.nut"),
+            ("point_servercommand", "targetname", "commands"),
+            ("point_clientcommand", "targetname", "client"),
+        ] {
+            let text = format!(
+                "world {{\"id\" \"1\"}} entity {{\"id\" \"2\" \"classname\" \"{class}\" \"{key}\" \"{value}\"}}"
+            );
+            let snapshot = Snapshot::from_vmf(&text).unwrap();
+            assert_eq!(unit_scripts("entity:2", &snapshot.0["entity:2"]), vec![format!("{class} (entity:2)")]);
+        }
+    }
+
+    #[test]
+    fn script_uses_are_found_and_refused_with_a_precise_message_when_the_host_asks() {
+        let relay = Unit {
+            owner: 0,
+            hidden: false,
+            vmf: "entity {\"id\" \"2\" \"classname\" \"logic_relay\" connections {\"OnTrigger\" \"!player,Command,say hi,0,-1\" \"OnTrigger\" \"door,Open,,0,-1\"}}".into(),
+        };
+        assert_eq!(unit_scripts("entity:2", &relay), vec!["OnTrigger > Command (logic_relay, entity:2)".to_owned()]);
+        let lua = Unit {
+            owner: 0,
+            hidden: false,
+            vmf: "entity {\"id\" \"3\" \"classname\" \"LUA_RUN\" \"Code\" \"print(1)\"}".into(),
+        };
+        let plain = Unit { owner: 0, hidden: false, vmf: "entity {\"id\" \"4\" \"classname\" \"light\"}".into() };
+        assert!(unit_scripts("entity:4", &plain).is_empty());
+        assert!(unit_scripts("solid:3", &lua).is_empty(), "only entity units carry scripts");
+        let change = |key: &str, unit: &Unit| Change { key: key.into(), before: None, after: Some(unit.clone()) };
+        assert_eq!(script_refusal(&[change("entity:4", &plain)]), None);
+        assert_eq!(script_refusal(&[Change { key: "entity:3".into(), before: None, after: None }]), None);
+        assert_eq!(
+            script_refusal(&[change("entity:4", &plain), change("entity:3", &lua)]).as_deref(),
+            Some("entity:3: class \"LUA_RUN\" refused: script and command entities cannot be shared")
+        );
+        assert_eq!(
+            script_refusal(&[change("entity:2", &relay)]).as_deref(),
+            Some(
+                "entity:2: output \"OnTrigger\" \"!player,Command,say hi,0,-1\" refused: script and command inputs cannot be shared"
+            )
+        );
+    }
+
+    #[test]
+    fn legitimate_references_are_shared_and_refusals_name_the_entity_key_and_value() {
+        for (class, key, value) in [
+            ("prop_static", "model", "models\\props_c17\\oildrum001.mdl"),
+            ("func_instance", "file", "..\\instances\\door.vmf"),
+            ("func_instance", "file", "../../instances/door.vmf"),
+            ("infodecal", "texture", "decals/../decals/lambdaspray_2a"),
+            ("ambient_generic", "message", "#music\\hl2_song1.mp3"),
+            ("infodecal", "texture", "/OP_FORGE"),
+            ("info_overlay", "material", "\\decals\\graffiti01"),
+        ] {
+            let text = format!(
+                "world {{\"id\" \"1\"}} entity {{\"id\" \"2\" \"classname\" \"{class}\" \"{key}\" \"{value}\"}}"
+            );
+            assert!(Snapshot::from_vmf(&text).is_ok(), "{class} {key} {value}");
+        }
+        for (class, key, value, reason) in [
+            ("prop_static", "model", "C:\\models\\x.mdl", "drive letters"),
+            ("prop_static", "model", "\\\\server\\share\\x.mdl", "network paths"),
+            ("func_instance", "file", "/instances/door.vmf", "absolute paths"),
+            ("prop_static", "model", "../models/x.mdl", "leaves its content folder"),
+            ("func_instance", "file", "../../../x.vmf", "leaves its content folder"),
+            ("func_instance", "file", "door.txt", "VMF files"),
+        ] {
+            let mut host = map();
+            let unit = Unit {
+                owner: 0,
+                hidden: false,
+                vmf: format!("entity {{\"id\" \"2\" \"classname\" \"{class}\" \"{key}\" \"{value}\"}}"),
+            };
+            let change =
+                Change { key: "entity:2".into(), before: host.0.get("entity:2").map(digest), after: Some(unit) };
+            let error = host.apply(&[change]).unwrap_err().to_string();
+            assert!(
+                error.starts_with(&format!("entity 2 ({class}): key \"{key}\" value \"{value}\" refused")),
+                "{error}"
+            );
+            assert!(error.contains(reason), "{error}");
+        }
+        let mut entity = hp_vmf::Entity { id: 7, classname: "prop_static".into(), ..Default::default() };
+        entity.set("model", "C:/x.mdl");
+        entity.set("skin", "1");
+        entity.connections.push(hp_vmf::Connection::parse("OnTrigger", "!self,RunScriptCode,x,0,-1"));
+        entity.connections.push(hp_vmf::Connection::parse("OnTrigger", "door,Open,,0,-1"));
+        let mut kept = entity.clone();
+        let problems = sanitize_entity(&mut entity, false).unwrap();
+        assert_eq!(problems.len(), 2);
+        assert!(problems[0].contains("prop_static 7") && problems[0].contains("C:/x.mdl"));
+        assert_eq!(entity.get("model"), None);
+        assert_eq!(entity.get("skin"), Some("1"));
+        assert_eq!(entity.connections.len(), 1);
+        assert_eq!(
+            sanitize_entity(&mut kept, true).unwrap().len(),
+            1,
+            "only the path is refused when scripts are shared"
+        );
+        assert_eq!(kept.connections.len(), 2);
+        let mut script = hp_vmf::Entity { id: 8, classname: "lua_run".into(), ..Default::default() };
+        assert!(sanitize_entity(&mut script.clone(), false).unwrap_err().contains("lua_run"));
+        assert_eq!(sanitize_entity(&mut script, true), Ok(Vec::new()));
     }
 
     #[test]
@@ -397,10 +629,23 @@ mod tests {
         for (key, unit) in [
             ("metadata", Unit { owner: 0, hidden: false, vmf: "world {\"id\" \"100\"}".into() }),
             ("metadata", Unit { owner: 0, hidden: false, vmf: "WORLD {\"id\" \"100\"}".into() }),
-            ("metadata", Unit { owner: 0, hidden: false, vmf: "Hidden {entity {\"id\" \"100\" \"classname\" \"light\"}}".into() }),
-            ("entity:2", Unit { owner: 0, hidden: false, vmf: "entity {\"id\" \"2\" \"classname\" \"ambient_generic\" \"message\" \"C:/private.wav\"}".into() }),
-            ("entity:2", Unit { owner: 0, hidden: false, vmf: "entity {\"id\" \"2\" \"classname\" \"logic_relay\" connections {\"OnTrigger\" \"!player,Command,quit,0,-1\"}}".into() }),
-            ("entity:2", Unit { owner: 0, hidden: false, vmf: "entity {\"id\" \"2\" \"classname\" \"logic_relay\" Connections {\"OnTrigger\" \"light,RunScriptCode,x,0,-1\"}}".into() }),
+            (
+                "metadata",
+                Unit {
+                    owner: 0,
+                    hidden: false,
+                    vmf: "Hidden {entity {\"id\" \"100\" \"classname\" \"light\"}}".into(),
+                },
+            ),
+            (
+                "entity:2",
+                Unit {
+                    owner: 0,
+                    hidden: false,
+                    vmf: "entity {\"id\" \"2\" \"classname\" \"ambient_generic\" \"message\" \"C:/private.wav\"}"
+                        .into(),
+                },
+            ),
         ] {
             let change = Change { key: key.into(), before: original.0.get(key).map(digest), after: Some(unit) };
             assert!(host.apply(&[change]).is_err());
@@ -505,7 +750,7 @@ mod tests {
                     Change { key: "entity:2".into(), before: host.0.get("entity:2").map(digest), after: Some(unit) };
                 assert_eq!(
                     host.apply(&[change]).unwrap_err().to_string(),
-                    format!("Invalid vector property '{key}' in 'entity'")
+                    format!("entity 2 (info_target): Invalid vector property '{key}' in 'entity'")
                 );
                 assert_eq!(host, original);
             }

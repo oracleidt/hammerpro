@@ -26,6 +26,7 @@ mod tools_blender;
 mod tools_compile;
 mod tools_compilers;
 mod tools_content;
+mod tools_crash;
 mod tools_curve;
 mod tools_detail;
 mod tools_discord;
@@ -59,6 +60,8 @@ mod tools_slice;
 mod tools_slope;
 mod tools_sniffer;
 mod tools_storage;
+mod tools_team;
+mod tools_team_access;
 mod tools_terrain;
 mod tools_toolopts;
 mod tools_ui;
@@ -67,6 +70,8 @@ mod tools_views;
 mod tools_vtf;
 mod tools_weld;
 mod window;
+
+pub(crate) use semantic::local_path;
 
 pub(crate) fn script_setting(
     state: &mut hp_app::AppState,
@@ -96,6 +101,7 @@ pub(crate) fn inject_input(app: &mut HammerProApp, ctx: &egui::Context, raw: &mu
 }
 
 const CALLS_PER_FRAME: usize = 8;
+const WORKER_FALLBACK: Duration = Duration::from_millis(250);
 const RECORD_INTERVAL: Duration = Duration::from_millis(500);
 
 #[derive(Debug)]
@@ -168,6 +174,7 @@ impl HammerProApp {
         if self.pkg.mcp.server.is_some() {
             return;
         }
+        tools::set_worker_waker(ctx);
         let mut config = ServerConfig::new(self.state.map_title());
         config.tools = tools::all_definitions();
         let waker = ctx.clone();
@@ -276,7 +283,7 @@ impl HammerProApp {
             }
         }
         if !self.pkg.mcp.workers.is_empty() {
-            ctx.request_repaint_after(Duration::from_millis(15));
+            ctx.request_repaint_after(WORKER_FALLBACK);
         }
     }
 

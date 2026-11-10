@@ -18,6 +18,8 @@ Dans la vue 3D, un clic sur une surface de brush place uniquement le point de d�
 3. L'aperçu montre le tuyau fini dans toutes les vues, avec une étiquette donnant la longueur du segment, les coudes et le nombre de brushes. Un segment rouge dit pourquoi le parcours est refusé (un tronçon trop court pour ses coudes, un demi-tour).
 4. `Entrée` ou un double clic crée le tuyau. `Retour arrière` retire le dernier point, `Échap` annule.
 
+Pendant le placement du parcours, `Maj` + molette change les **Côtés** d'un tuyau rond (5 à 48) ou les **Tranches** par coude d'un tuyau carré (1 à 32), un par cran ; l'aperçu et une étiquette près du curseur suivent, et la valeur reste pour le tuyau suivant. La molette seule zoome toujours, car un long parcours en a souvent besoin.
+
 Un tuyau tourne d'exactement 90 degrés : un demi-tour ou un coin oblique est refusé.
 
 ## Saisir un parcours

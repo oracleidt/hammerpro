@@ -217,13 +217,13 @@ domain! { "editing";
             "shape": choice("Shape.", &["block", "wedge", "cylinder", "spike", "sphere", "arch", "torus", "stairs", "spiral_stairs", "ramp", "pillar", "doorway"]),
             "min": vec3("Box minimum."), "max": vec3("Box maximum."),
             "material": string("Material (default: the current material)."),
-            "sides": integer("Sides of round shapes.", 3, 64),
+            "sides": integer("Sides of round shapes.", 3, 128),
             "arch_wall_width": number("Arch wall width.", 1.0, 65536.0),
             "arch_arc": number("Arch arc in degrees.", 1.0, 360.0),
             "arch_start_angle": number("Arch start angle in degrees.", -360.0, 360.0),
             "arch_add_height": number("Arch height added along the arc.", -65536.0, 65536.0),
             "torus_ring_width": number("Torus ring width.", 1.0, 65536.0),
-            "torus_tube_sides": integer("Torus tube sides.", 3, 64),
+            "torus_tube_sides": integer("Torus tube sides.", 3, 128),
             "torus_arc": number("Torus rotation arc in degrees (over 360 only with torus_rise: a spiral).", 1.0, 3600.0),
             "torus_start_angle": number("Torus rotation start in degrees.", -360.0, 360.0),
             "torus_rise": number("Height gained over the torus arc (spiral ramps, helical pipes).", -16384.0, 16384.0),
@@ -1312,7 +1312,7 @@ fn make_shape(state: &mut AppState, a: &Args<'_>, label: &str, group: bool) -> R
     }
     let material = opt_material(state, a, "material")?;
     let d = hp_geom::PrimitiveParams::default();
-    let max_sides = u64::from(hp_geom::MAX_PRIMITIVE_SIDES).min(64);
+    let max_sides = u64::from(hp_geom::MAX_PRIMITIVE_SIDES);
     let rise = a.opt_f64("torus_rise", -16384.0, 16384.0)?.unwrap_or(0.0);
     let torus_arc = a.opt_f64("torus_arc", 1.0, hp_geom::MAX_SPIRAL_ARC)?;
     if rise == 0.0 && torus_arc.is_some_and(|t| t > 360.0) {

@@ -44,7 +44,7 @@ Il n'y a pas de fichier de map à configurer par défaut : toute la map est reco
 
 | Réglage | Ce qu'il fait | Défaut |
 | --- | --- | --- |
-| **Dossier de sortie** (`output_dir`) | Où vont les fichiers. Vide : `%LOCALAPPDATA%\HammerPro\sniffer` (le dossier listé par le panneau Stockage). | vide |
+| **Dossier de sortie** (`output_dir`) | Où vont les fichiers. Vide : `%LOCALAPPDATA%\HammerPro\sniffer` (le dossier listé par le panneau Stockage). Sinon le chemin complet d'un dossier de cet ordinateur : les partages réseau (`\\serveur\partage`), les chemins relatifs et `..` sont refusés. | vide |
 | **Nom du fichier** (`file_name_template`) | Nom du VMF sans extension. Jetons : `{map}` `{ip}` `{port}` `{date}` `{time}` `{datetime}`. Les caractères dangereux sont remplacés ; un fichier existant n'est jamais écrasé (un numéro est ajouté). | `{map}_sniffed` |
 | **Dossier de Garry's Mod** (`gmod_dir`) | Le dossier qui contient `garrysmod`. Vide : détecté via Steam. La branche 64 bits (`bin\win64\gmod.exe`) et la branche 32 bits (`bin\gmod.exe`, ou l'exécutable à la racine d'une installation 32 bits seule) sont gérées, voir **Version du jeu**. | automatique |
 | **Options de lancement** (`launch_options`) | Ajoutées au lancement Steam. L'adresse du serveur (`+connect`), `-condebug` et `-insecure` sont gérés pour vous : ce texte ne peut pas rediriger la connexion. | `-windowed -w 800 -h 450 -novid -nojoy -nosplash -console +mat_picmip 4 +fps_max 30 +volume 0` |

@@ -19,6 +19,12 @@ pub(crate) struct ShadowHulls {
     applied: AHashSet<ModelId>,
 }
 
+impl ShadowHulls {
+    pub(crate) fn settled(&self, key: &str, ids: &[ModelId]) -> bool {
+        !self.pending.contains(key) && ids.iter().all(|id| self.applied.contains(id))
+    }
+}
+
 impl Default for ShadowHulls {
     fn default() -> Self {
         let (tx, rx) = crossbeam_channel::unbounded();
@@ -98,9 +104,15 @@ pub(crate) fn shadow_hull(
 impl AssetManager {
     pub(crate) fn sync_shadow_hulls(&mut self, renderer: &mut Renderer, display: &RenderDisplay) {
         let h = &mut self.scene.shadow_hulls;
+        let mut received = false;
         while let Ok((key, tris)) = h.rx.try_recv() {
             h.pending.remove(&key);
             h.loaded.insert(key, tris);
+            received = true;
+        }
+        if received {
+            self.models.settled = None;
+            self.shared.request_repaint();
         }
         if display.prop_shadows != StaticPropShadows::Collision {
             return;
@@ -132,12 +144,14 @@ impl AssetManager {
             }
             let tx = h.tx.clone();
             let fs = self.fs.clone();
+            let shared = Arc::clone(&self.shared);
             rayon::spawn(move || {
                 let tris = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     shadow_hull(fs.as_ref(), &key, prepared.as_deref())
                 }))
                 .unwrap_or_default();
                 let _ = tx.send((key, tris));
+                shared.request_repaint();
             });
         }
     }

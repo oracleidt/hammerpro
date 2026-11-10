@@ -36,6 +36,7 @@ pub struct EntityPanel {
     io: IoEditor,
     tab: EntityTab,
     names: MapNames,
+    names_pending: bool,
     summary: SelectionSummary,
     summary_rev: Option<DocStamp>,
     view: EntityView,
@@ -66,6 +67,7 @@ impl EntityPanel {
             io: IoEditor::new(),
             tab: EntityTab::Properties,
             names: MapNames::default(),
+            names_pending: false,
             summary: SelectionSummary::default(),
             summary_rev: None,
             view: EntityView::empty(),
@@ -108,6 +110,9 @@ impl EntityPanel {
 
     pub fn ui_with_fgd(&mut self, ui: &mut Ui, state: &mut AppState, fgd: Option<&ResolvedFgd>) {
         self.refresh(state, fgd);
+        if self.names_pending {
+            ui.ctx().request_repaint_after(std::time::Duration::from_secs_f64(crate::names::REFRESH_INTERVAL_S));
+        }
         if let [id] = self.summary.entities.as_slice()
             && let Some(entity) = state.doc.scene().entity(*id).map(|n| &n.entity)
             && entity.classname.eq_ignore_ascii_case("env_fade")
@@ -304,10 +309,14 @@ impl EntityPanel {
         let rev = DocStamp::of(doc);
         let fgd = fgd_override.or_else(|| state.assets.fgd());
         let fgd_key = fgd.map_or(0, |f| f as *const ResolvedFgd as usize);
-        if self.view_key.as_ref().is_some_and(|(r, f, _)| *r == rev && *f == fgd_key) {
+        if !self.names_pending && self.view_key.as_ref().is_some_and(|(r, f, _)| *r == rev && *f == fgd_key) {
             return;
         }
-        self.names.refresh(doc);
+        let was_pending = self.names_pending;
+        self.names_pending = self.names.refresh_at(doc, state.frame.time);
+        if was_pending && !self.names_pending {
+            self.view_key = None;
+        }
         if self.summary_rev != Some(rev) {
             self.summary = SelectionSummary::of(doc);
             self.summary_rev = Some(rev);

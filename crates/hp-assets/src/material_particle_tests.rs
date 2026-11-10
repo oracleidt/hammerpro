@@ -26,6 +26,7 @@ fn authored_single_level_particles_keep_native_pixels_through_asset_loading() {
         &fs,
         &crate::material::texture_keys(crate::material::MatKind::Sprite, &analysis)[0],
         false,
+        crate::texture::MAX_TEXTURE_DIM,
     )
     .unwrap();
     assert_eq!(prepared.upload.levels.len(), 1, "the authored VTF is single-level");
@@ -128,7 +129,7 @@ fn particle_texture_addressing_survives_material_loading_and_sampler_changes() {
             crate::material::analyze("hp_velocity117/quad", &material, &|t| fs.texture_flags(t).unwrap_or(0));
         let keys = crate::material::texture_keys(crate::material::MatKind::Sprite, &analysis);
         assert_eq!(keys.len(), 1);
-        let prepared = crate::texture::prepare_texture(&fs, &keys[0], false).unwrap();
+        let prepared = crate::texture::prepare_texture(&fs, &keys[0], false, crate::texture::MAX_TEXTURE_DIM).unwrap();
         if let Some(pixels) = &upload {
             assert_eq!(pixels, &prepared.upload.levels);
         } else {
@@ -273,7 +274,9 @@ fn native_particle_colors_survive_material_loading_and_texture_preparation() {
             };
             for key in crate::material::texture_keys(material_kind, &analysis) {
                 if let Entry::Vacant(entry) = textures.entry(key) {
-                    let prepared = crate::texture::prepare_texture(&fs, entry.key(), false).unwrap();
+                    let prepared =
+                        crate::texture::prepare_texture(&fs, entry.key(), false, crate::texture::MAX_TEXTURE_DIM)
+                            .unwrap();
                     entry.insert((renderer.create_texture_exact(&prepared.upload), prepared.size));
                 }
             }

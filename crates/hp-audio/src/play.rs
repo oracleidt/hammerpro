@@ -103,11 +103,38 @@ mod imp {
         Some(c.from + t)
     }
 
+    const END_CHECK: Duration = Duration::from_millis(50);
+    const RELEASE_DEVICE_AFTER: Duration = Duration::from_secs(10);
+
+    pub(super) fn wait_for(playing: bool, device_open: bool, idle_since: Option<Instant>) -> Option<Duration> {
+        if playing {
+            return Some(END_CHECK);
+        }
+        if !device_open {
+            return None;
+        }
+        let idle = idle_since.map_or(Duration::ZERO, |t| t.elapsed());
+        Some(RELEASE_DEVICE_AFTER.saturating_sub(idle))
+    }
+
     fn run(rx: Receiver<Cmd>) {
         let mut output: Option<rodio::MixerDeviceSink> = None;
         let mut sink: Option<rodio::Player> = None;
+        let mut idle_since: Option<Instant> = None;
         loop {
-            match rx.recv_timeout(Duration::from_millis(50)) {
+            let received = match wait_for(sink.is_some(), output.is_some(), idle_since) {
+                None => rx.recv().map_err(|_| RecvTimeoutError::Disconnected),
+                Some(wait) => rx.recv_timeout(wait),
+            };
+            if matches!(received, Err(RecvTimeoutError::Timeout))
+                && sink.is_none()
+                && idle_since.is_some_and(|t| t.elapsed() >= RELEASE_DEVICE_AFTER)
+            {
+                output = None;
+                idle_since = None;
+                continue;
+            }
+            match received {
                 Ok(Cmd::Play { rate, channels, samples, looped, volume }) => {
                     if let Some(s) = sink.take() {
                         s.stop();
@@ -152,6 +179,11 @@ mod imp {
                 sink = None;
                 PLAYING.store(false, Ordering::Relaxed);
             }
+            if sink.is_some() {
+                idle_since = None;
+            } else if idle_since.is_none() {
+                idle_since = Some(Instant::now());
+            }
         }
     }
 }
@@ -172,5 +204,22 @@ mod imp {
 
     pub(super) fn position() -> Option<f64> {
         None
+    }
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use std::time::{Duration, Instant};
+
+    use super::imp::wait_for;
+
+    #[test]
+    fn the_playback_thread_sleeps_when_nothing_plays() {
+        assert_eq!(wait_for(true, true, None), Some(Duration::from_millis(50)));
+        assert_eq!(wait_for(false, false, None), None, "no device, nothing playing: block until a command");
+        let just_now = wait_for(false, true, Some(Instant::now())).unwrap();
+        assert!(just_now > Duration::from_secs(9) && just_now <= Duration::from_secs(10));
+        let long_ago = Instant::now().checked_sub(Duration::from_secs(30)).unwrap();
+        assert_eq!(wait_for(false, true, Some(long_ago)), Some(Duration::ZERO), "the device is released");
     }
 }

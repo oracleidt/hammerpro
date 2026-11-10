@@ -321,7 +321,10 @@ mod tests {
         let mut geo = geometry(&["hp_conv117/reflection"]);
         let files = stage(&GameFs::empty(), &mut geo, "models/hp_conv117/probe", &assets).unwrap();
         let (_, vmt) = files.iter().find(|(path, _)| path.ends_with(".vmt")).unwrap();
-        assert_eq!(vmt, include_bytes!("../../tests/data/prop_material_native/converted.vmt"));
+        let expected = String::from_utf8_lossy(include_bytes!("../../tests/data/prop_material_native/converted.vmt"))
+            .replace("\r\n", "\n")
+            .into_bytes();
+        assert_eq!(&vmt[..], &expected[..]);
         let original = image::load_from_memory(include_bytes!("../../tests/data/prop_material_native/original.png"))
             .unwrap()
             .to_rgb8();

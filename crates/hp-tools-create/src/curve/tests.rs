@@ -522,3 +522,25 @@ fn curb_and_banked_curves_build_valid_brushes() {
         }
     }
 }
+
+#[test]
+fn shift_wheel_changes_the_subdivisions_while_a_curve_is_drawn() {
+    let mut state = settle();
+    let mut tool = CurveTool::new();
+    let top = info_2d(ViewKind::Top, 1.0);
+    let shift = egui::Modifiers::SHIFT;
+    let n = tool.options.subdivisions;
+    assert_eq!(tool.wheel(&mut state, &top, 1.0, shift), ToolFlow::Ignored, "no curve: the view zooms");
+    let p = top.world_to_screen(DVec3::new(0.0, 0.0, 0.0)).expect("p");
+    tool.handle_mouse(&mut state, &top, &Mouse::click(p));
+    assert_eq!(tool.wheel(&mut state, &top, 1.0, egui::Modifiers::NONE), ToolFlow::Ignored, "plain wheel zooms");
+    assert_eq!(tool.wheel(&mut state, &top, 1.0, shift), ToolFlow::Handled);
+    assert_eq!(tool.options.subdivisions, n + (n / 8).max(1));
+    tool.wheel(&mut state, &top, -1000.0, shift);
+    assert_eq!(tool.options.subdivisions, MIN_SUBDIVISIONS);
+    tool.wheel(&mut state, &top, 1000.0, shift);
+    assert_eq!(tool.options.subdivisions, MAX_SUBDIVISIONS);
+    assert!(tool.status_hint(&state).is_some_and(|h| h.contains("Shift")));
+    assert!(tool.cancel(&mut state));
+    assert_eq!(tool.wheel(&mut state, &top, 1.0, shift), ToolFlow::Ignored);
+}

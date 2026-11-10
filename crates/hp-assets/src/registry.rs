@@ -21,6 +21,7 @@ const UPLOAD_BUDGET: Duration = Duration::from_millis(4);
 const UPLOAD_BUDGET_BULK: Duration = Duration::from_millis(14);
 const BULK_UPLOADS: usize = 24;
 const FGD_NOTES_SHOWN: usize = 20;
+const MAX_ANALYSES: usize = 4096;
 const MOUNT_SOURCES_SHOWN: usize = 40;
 
 pub(crate) enum MatSource {
@@ -343,6 +344,10 @@ impl AssetManager {
                 users.push(id);
             }
             if self.mats.textures.request(&key) {
+                let cap = self.first_cap(&key, id, a);
+                if let Some(entry) = self.mats.textures.map.get_mut(&key) {
+                    entry.stream.cap = cap;
+                }
                 self.queue_texture(&key, TexTarget::Main);
             }
         }
@@ -423,8 +428,21 @@ impl AssetManager {
         let Some(entry) = reg.and_then(|r| r.map.get_mut(name)) else { return };
         entry.loading = true;
         entry.queued = true;
+        let cap = if entry.stream.cap > 0 { entry.stream.cap } else { crate::texture::MAX_TEXTURE_DIM };
         let lane = if target == TexTarget::Preview { Lane::Thumb } else { Lane::High };
-        self.shared.push(lane, Job::Texture { name: name.to_owned(), target, env });
+        self.shared.push(lane, Job::Texture { name: name.to_owned(), target, cap, stream: false, env });
+    }
+
+    pub(crate) fn queue_stream(&mut self, name: &str, cap: u32, lane: Lane) -> bool {
+        let Some(env) = self.shared.env() else { return false };
+        let Some(entry) = self.mats.textures.map.get_mut(name) else { return false };
+        if entry.loading || entry.stream.pending {
+            return false;
+        }
+        entry.stream.pending = true;
+        entry.stream.lower_since = None;
+        self.shared.push(lane, Job::Texture { name: name.to_owned(), target: TexTarget::Main, cap, stream: true, env });
+        true
     }
 
     pub(crate) fn material_info_impl(&mut self, name: &str) -> Option<Arc<MaterialInfo>> {
@@ -552,9 +570,11 @@ impl AssetManager {
                     self.on_material(name, data);
                 }
             }
-            JobResult::Texture { name, target, epoch, data, held } => {
+            JobResult::Texture { name, target, epoch, cap, stream, data, held } => {
                 if epoch == self.mount_gen {
-                    self.uploads.push_back(Upload { name, target, epoch, data, _held: held });
+                    self.uploads.push_back(Upload { name, target, epoch, cap, stream, data, _held: held });
+                } else if stream && let Some(entry) = self.mats.textures.map.get_mut(&name) {
+                    entry.stream.pending = false;
                 }
             }
             JobResult::Thumb { name, epoch, data } => self.on_thumb(name, epoch, data),
@@ -623,8 +643,27 @@ impl AssetManager {
         }
     }
 
+    fn trim_material_analyses(&mut self) {
+        let preview = self.preview.as_ref();
+        let users = &self.mats.users;
+        let keep = |name: &str, e: &AnaEntry| {
+            e.loading || users.contains_key(name) || preview.is_some_and(|p| p.mats.contains_key(name))
+        };
+        self.mats.analyses.retain(|name, e| keep(name, e));
+        let analyses = &self.mats.analyses;
+        self.mats.infos.retain(|name, _| analyses.contains_key(name));
+    }
+
+    #[cfg(test)]
+    pub(crate) fn on_material_for_tests(&mut self, name: &str, data: crate::material::MaterialData) {
+        self.on_material(name.to_owned(), data);
+    }
+
     fn on_material(&mut self, name: String, data: crate::material::MaterialData) {
         self.scene.sprites_dirty = true;
+        if self.mats.analyses.len() >= MAX_ANALYSES {
+            self.trim_material_analyses();
+        }
         let force = self.mats.force_tex.remove(&name);
         self.mats.infos.insert(name.clone(), data.info);
         let entry = self.mats.analyses.entry(name.clone()).or_default();
@@ -655,6 +694,12 @@ impl AssetManager {
         match data {
             Ok(m) => {
                 self.models.last_used.insert(path.clone(), self.shared.current_frame());
+                self.models.pick.remove(&path);
+                for ((key, _, _), (_, made_from)) in &mut self.models.variants {
+                    if *key == path && made_from.strong_count() == 0 {
+                        *made_from = Arc::downgrade(&m);
+                    }
+                }
                 self.models.map.insert(path.clone(), ModelEntry::Ready(m));
                 self.models.newly_ready.insert(path.clone());
             }
@@ -867,11 +912,8 @@ impl AssetManager {
         self.shared.set_ctx(ctx);
         self.scene.light_time = ctx.input(|input| input.time);
         let light_frame = (self.scene.light_time.max(0.0) * 10.0) as u64;
-        if self.scene.animated_lights {
-            if self.scene.light_frame != light_frame {
-                self.scene.lights_dirty = true;
-            }
-            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        if self.scene.animated_lights && self.scene.light_frame != light_frame {
+            self.scene.lights_dirty = true;
         }
         self.scene.light_frame = light_frame;
         self.shared.frame.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -886,6 +928,7 @@ impl AssetManager {
             self.note_gpu(&gfx.renderer);
             self.poll_watcher(&mut gfx.renderer);
             self.process_uploads(gfx);
+            self.update_residency();
             self.mats.apply_dirty(&mut gfx.renderer);
             self.preview_apply_dirty();
             self.process_model_thumbs(gfx);
@@ -943,6 +986,11 @@ impl AssetManager {
         let budget = Budget::new(if self.uploads.len() > BULK_UPLOADS { UPLOAD_BUDGET_BULK } else { UPLOAD_BUDGET });
         while let Some(up) = self.uploads.pop_front() {
             if up.epoch != self.mount_gen {
+                if up.stream
+                    && let Some(entry) = self.mats.textures.map.get_mut(&up.name)
+                {
+                    entry.stream.pending = false;
+                }
                 continue;
             }
             let heavy = up.data.is_some();
@@ -956,12 +1004,32 @@ impl AssetManager {
         }
     }
 
-    fn finish_texture_main(&mut self, renderer: &mut Renderer, up: Upload) {
+    pub(crate) fn finish_texture_main(&mut self, renderer: &mut Renderer, up: Upload) {
         let Some(entry) = self.mats.textures.map.get_mut(&up.name) else { return };
+        if up.stream {
+            if !std::mem::take(&mut entry.stream.pending) || entry.loading {
+                return;
+            }
+            let Some(p) = up.data else { return };
+            let id = renderer.create_texture_exact(&p.upload);
+            if id == TexId::MISSING {
+                return;
+            }
+            entry.stream = crate::texture::StreamState::uploaded(up.cap, &p.upload);
+            if let Some((old_id, _)) = entry.current.replace((id, p.size)) {
+                renderer.destroy_texture(old_id);
+            }
+            self.mats.mark_texture_users(&up.name);
+            return;
+        }
         let new = up.data.and_then(|p| {
             let id = renderer.create_texture_exact(&p.upload);
-            (id != TexId::MISSING).then_some((id, p.size))
+            (id != TexId::MISSING).then(|| (id, p.size, crate::texture::StreamState::uploaded(up.cap, &p.upload)))
         });
+        let pending = entry.stream.pending;
+        entry.stream = new.map(|n| n.2).unwrap_or_default();
+        entry.stream.pending = pending;
+        let new = new.map(|(id, size, _)| (id, size));
         entry.loading = false;
         entry.queued = false;
         entry.missing = new.is_none();
@@ -1072,5 +1140,26 @@ mod hdr_tests {
         );
         drop(am);
         let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+#[cfg(test)]
+mod cache_tests {
+    use super::*;
+
+    #[test]
+    fn browsed_material_analyses_are_bounded_and_used_ones_stay() {
+        let mut am = AssetManager::new(&hp_app::settings::Settings::default());
+        let used = am.asset_material("used/wall", crate::material::MatKind::World);
+        assert!(used > 0);
+        for i in 0..MAX_ANALYSES + 5 {
+            let name = format!("browsed/{i}");
+            let info = Arc::new(crate::material::make_info(&name, None, None, (0, 0), 0));
+            am.on_material(name, crate::material::MaterialData { analysis: None, info });
+        }
+        assert!(am.mats.analyses.len() <= MAX_ANALYSES);
+        assert!(am.mats.analyses.contains_key("used/wall"), "materials of the map are kept");
+        assert!(am.mats.infos.len() <= am.mats.analyses.len());
+        assert!(am.material_info_impl("browsed/0").is_none(), "a trimmed material is analysed again on demand");
     }
 }

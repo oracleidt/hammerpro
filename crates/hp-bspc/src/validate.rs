@@ -283,6 +283,30 @@ pub fn validate(bytes: &[u8]) -> Vec<String> {
             }
         }
     }
+    for (lump_id, size, most, name) in
+        [(lump::OVERLAYS, 352usize, 64usize, "overlay"), (lump::WATEROVERLAYS, 1120, 256, "water overlay")]
+    {
+        let data = get(lump_id);
+        if data.len() % size != 0 {
+            err(format!("{name}s: {} bytes is not a whole number of records", data.len()));
+            continue;
+        }
+        for i in 0..data.len() / size {
+            let o = i * size;
+            let ti = i16_at(&data, o + 4).unwrap_or(-1);
+            let count = usize::from(u16_at(&data, o + 6).unwrap_or(0) & 0x3fff);
+            if ti < 0 || ti as usize >= nti {
+                err(format!("{name} {i}: bad texture info {ti}"));
+            }
+            if count > most {
+                err(format!("{name} {i}: {count} faces of {most}"));
+                continue;
+            }
+            if (0..count).any(|k| i32_at(&data, o + 8 + k * 4).is_none_or(|f| f < 0 || f as usize >= nf)) {
+                err(format!("{name} {i}: a face out of range"));
+            }
+        }
+    }
     let areaportals = get(lump::AREAPORTALS);
     let clipverts = get(lump::CLIPPORTALVERTS);
     let (nap, ncv) = (areaportals.len() / 12, clipverts.len() / 12);

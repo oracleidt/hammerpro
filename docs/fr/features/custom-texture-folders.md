@@ -105,8 +105,8 @@ La conversion tourne en arrière-plan avec une barre de progression (**Importati
 
 Le compilateur voit toujours les matériaux personnalisés. Pour le jeu :
 
-- **Empaqueter le contenu personnalisé** (option de la fenêtre de compilation ; **Intégrer le contenu personnalisé au BSP** dans les paramètres) met dans le BSP les matériaux et modèles personnalisés utilisés par la map ; les images sont converties en VTF (DXT1 ou DXT5 avec mipmaps) et leur VMT est écrit.
-- Les compilations qui n'intègrent pas le contenu copient les matériaux personnalisés dans `garrysmod/addons/hammerpro_dev` (**Addon de développement**), que le jeu charge.
+- **Empaqueter le contenu personnalisé** (option de la fenêtre de compilation ; **Intégrer le contenu personnalisé au BSP** dans les paramètres) met dans le BSP les matériaux, modèles, sons, fichiers de particules (avec le manifeste `maps/<map>_particles.txt` dont le jeu a besoin pour les charger), les scripts de soundscapes et de sons propres à la map, le ciel et les autres fichiers personnalisés utilisés par la map ; les images sont converties en VTF (DXT1 ou DXT5 avec mipmaps) et leur VMT est écrit.
+- Les compilations qui n'intègrent pas le contenu copient le même contenu personnalisé (matériaux, modèles, sons, fichiers de particules avec leur manifeste, scripts de la map) dans `garrysmod/addons/hammerpro_dev` (**Addon de développement**), que le jeu charge : un `prop_static` personnalisé est donc affiché et solide aussi dans une compilation Brouillon ou Normal.
 - **Exporter les matériaux personnalisés** (**Exporter les matériaux personnalisés vers le jeu** dans les paramètres) les copie aussi dans le dossier du jeu (désactivé par défaut).
 
 Voir [Fenêtre de compilation](../compiler/compile-window.md).

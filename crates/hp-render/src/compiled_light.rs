@@ -58,6 +58,7 @@ pub struct CompiledLightStats {
     pub dropped: u32,
     pub animated: u32,
     pub atlas_size: u32,
+    pub atlas_height: u32,
     pub atlas_layers: u32,
     pub blocks: u32,
     pub bytes: u64,
@@ -175,8 +176,8 @@ fn face_runs(vertices: &[CompiledVertex], indices: &[u32]) -> Vec<(u32, u32, Vec
     let mut out: Vec<(u32, u32, Vec3)> = Vec::new();
     let (mut start, mut top) = (0u32, None::<u32>);
     let (mut lo, mut hi) = (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY));
-    let tris: Vec<&[u32]> = indices.chunks_exact(3).collect();
-    for (i, t) in tris.iter().enumerate() {
+    let tris = indices.len() / 3;
+    for (i, t) in indices.chunks_exact(3).enumerate() {
         let (min, max) = (t.iter().copied().min().unwrap_or(0), t.iter().copied().max().unwrap_or(0));
         if top.is_some_and(|top| min > top) {
             out.push((start, i as u32 - start, (lo + hi) * 0.5));
@@ -193,8 +194,8 @@ fn face_runs(vertices: &[CompiledVertex], indices: &[u32]) -> Vec<(u32, u32, Vec
             }
         }
     }
-    if (start as usize) < tris.len() {
-        out.push((start, tris.len() as u32 - start, (lo + hi) * 0.5));
+    if (start as usize) < tris {
+        out.push((start, tris as u32 - start, (lo + hi) * 0.5));
     }
     for f in &mut out {
         if !f.2.is_finite() {
@@ -204,11 +205,16 @@ fn face_runs(vertices: &[CompiledVertex], indices: &[u32]) -> Vec<(u32, u32, Vec
     out
 }
 
+struct Segment {
+    vbuf: wgpu::Buffer,
+    ibuf: wgpu::Buffer,
+}
+
 struct BlockGpu {
     object: ObjectId,
     moved: bool,
-    vbuf: wgpu::Buffer,
-    ibuf: wgpu::Buffer,
+    segment: u32,
+    base_vertex: i32,
     draws: Vec<Draw>,
     lo: Vec3,
     hi: Vec3,
@@ -224,8 +230,15 @@ struct Pipelines {
 #[derive(Default)]
 pub(crate) struct CompiledLight {
     mode: CompiledLightMode,
-    present: bool,
+    pub(crate) present: bool,
     blocks: Vec<BlockGpu>,
+    segments: Vec<Segment>,
+    order: Vec<(u32, u32, u32)>,
+    blocks_gen: u64,
+    states: Vec<(crate::ObjectFlags, f32)>,
+    states_key: (u64, u64),
+    visible: Vec<bool>,
+    visible_for: Option<[f32; 16]>,
     transforms: Vec<[[f32; 4]; 4]>,
     transform_buf: Option<wgpu::Buffer>,
     atlas: Option<(wgpu::Texture, u32, u32)>,
@@ -249,8 +262,8 @@ const SHADER: &str = concat!(
     include_str!("shaders/compiled_light.wgsl")
 );
 
-const ATLAS_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
-const TEXEL_BYTES: u32 = 8;
+const ATLAS_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgb9e5Ufloat;
+const TEXEL_BYTES: u32 = 4;
 const UPLOAD_BAND_BYTES: usize = 32 << 20;
 const MAX_PAGE: u32 = 4096;
 const PAD: u32 = 1;
@@ -287,23 +300,63 @@ pub(crate) fn f16_bits(v: f32) -> u16 {
 
 pub(crate) type Place = (u32, u32, u32);
 
-pub(crate) fn pack_atlas(sizes: &[(u32, u32)], page: u32, max_layers: u32) -> (Vec<Option<Place>>, u32) {
+pub(crate) fn rgb9e5(c: [f32; 3]) -> u32 {
+    const MAX: f32 = 65408.0;
+    let clean = |v: f32| if v.is_finite() { v.clamp(0.0, MAX) } else { 0.0 };
+    let [r, g, b] = c.map(clean);
+    let top = r.max(g).max(b);
+    if top <= 0.0 {
+        return 0;
+    }
+    let pow2 = |e: i32| f32::from_bits(((e + 127).clamp(1, 254) as u32) << 23);
+    let floor_log2 = ((top.to_bits() >> 23) & 0xff) as i32 - 127;
+    let mut exp = floor_log2.max(-16) + 16;
+    if (top / pow2(exp - 24) + 0.5).floor() >= 512.0 {
+        exp += 1;
+    }
+    let inv = 1.0 / pow2(exp - 24);
+    let q = |v: f32| ((v * inv + 0.5) as u32).min(511);
+    q(r) | (q(g) << 9) | (q(b) << 18) | ((exp.clamp(0, 31) as u32) << 27)
+}
+
+#[cfg(test)]
+pub(crate) fn rgb9e5_value(v: u32) -> [f32; 3] {
+    let scale = 2f32.powi((v >> 27) as i32 - 24);
+    [(v & 511) as f32 * scale, ((v >> 9) & 511) as f32 * scale, ((v >> 18) & 511) as f32 * scale]
+}
+
+pub(crate) struct Shelf {
+    pub layer: u32,
+    pub y: u32,
+    pub height: u32,
+    pub members: Vec<usize>,
+}
+
+pub(crate) struct Packing {
+    pub places: Vec<Option<Place>>,
+    pub shelves: Vec<Shelf>,
+    pub layers: u32,
+    pub height: u32,
+}
+
+pub(crate) fn pack_atlas(sizes: &[(u32, u32)], width: u32, height: u32, max_layers: u32) -> Packing {
     let mut order: Vec<usize> = (0..sizes.len()).collect();
     order.sort_by(|&a, &b| sizes[b].1.cmp(&sizes[a].1).then(sizes[b].0.cmp(&sizes[a].0)).then(a.cmp(&b)));
-    let mut out = vec![None; sizes.len()];
+    let mut places = vec![None; sizes.len()];
+    let mut shelves: Vec<Shelf> = Vec::new();
     let (mut layer, mut x, mut y, mut shelf) = (0u32, 0u32, 0u32, 0u32);
-    let mut used_layers = 0;
+    let (mut used_layers, mut used_height) = (0, 0);
     for i in order {
         let (w, h) = (sizes[i].0 + 2 * PAD, sizes[i].1 + 2 * PAD);
-        if w > page || h > page || sizes[i].0 == 0 || sizes[i].1 == 0 {
+        if w > width || h > height || sizes[i].0 == 0 || sizes[i].1 == 0 {
             continue;
         }
-        if x + w > page {
+        if x + w > width {
             y += shelf;
             x = 0;
             shelf = 0;
         }
-        if y + h > page {
+        if y + h > height {
             layer += 1;
             x = 0;
             y = 0;
@@ -312,22 +365,209 @@ pub(crate) fn pack_atlas(sizes: &[(u32, u32)], page: u32, max_layers: u32) -> (V
         if layer >= max_layers {
             break;
         }
-        out[i] = Some((layer, x + PAD, y + PAD));
+        if x == 0 {
+            shelves.push(Shelf { layer, y, height: 0, members: Vec::new() });
+        }
+        if let Some(s) = shelves.last_mut() {
+            s.height = s.height.max(h);
+            s.members.push(i);
+        }
+        places[i] = Some((layer, x + PAD, y + PAD));
         used_layers = layer + 1;
+        used_height = used_height.max(y + h);
         x += w;
         shelf = shelf.max(h);
     }
-    (out, used_layers)
+    Packing { places, shelves, layers: used_layers, height: used_height }
 }
 
-fn page_size(sizes: &[(u32, u32)], max_dim: u32) -> u32 {
-    let area: u64 = sizes.iter().map(|&(w, h)| u64::from(w + 2 * PAD) * u64::from(h + 2 * PAD)).sum();
-    let largest = sizes.iter().map(|&(w, h)| w.max(h) + 2 * PAD).max().unwrap_or(1);
-    let side = ((area as f64 * 1.25).sqrt().ceil() as u32).max(largest).max(16);
-    side.next_power_of_two().min(MAX_PAGE.min(max_dim))
+pub(crate) fn atlas_layout(sizes: &[(u32, u32)], max_dim: u32, max_layers: u32) -> (Packing, u32) {
+    let fits = |&&(w, h): &&(u32, u32)| w > 0 && h > 0 && w + 2 * PAD <= max_dim && h + 2 * PAD <= max_dim;
+    let area: u64 = sizes.iter().filter(fits).map(|&(w, h)| u64::from(w + 2 * PAD) * u64::from(h + 2 * PAD)).sum();
+    let widest = sizes.iter().filter(fits).map(|&(w, _)| w + 2 * PAD).max().unwrap_or(1);
+    let side = ((area as f64 * 1.15).sqrt().ceil() as u32).max(widest).max(16).next_multiple_of(16).min(max_dim);
+    let packing = pack_atlas(sizes, side, max_dim, max_layers);
+    if packing.layers <= 1 || side >= max_dim {
+        return (packing, side);
+    }
+    (pack_atlas(sizes, max_dim, max_dim, max_layers), max_dim)
+}
+
+struct BuiltBlock {
+    verts: Vec<VertexGpu>,
+    indices: Vec<u32>,
+    draws: Vec<Draw>,
+    lo: Vec3,
+    hi: Vec3,
+}
+
+struct AtlasRef<'a> {
+    places: &'a [Option<Place>],
+    style_of: &'a [(u32, f32, u32)],
+    inv: [f32; 2],
+    limit: usize,
+}
+
+fn build_block(
+    block: &CompiledBlock,
+    slot: u32,
+    materials: &[(MaterialId, u32)],
+    atlas: &AtlasRef<'_>,
+) -> Option<BuiltBlock> {
+    let total_v: usize = block.batches.iter().map(|b| b.vertices.len()).sum();
+    let total_i: usize = block.batches.iter().map(|b| b.indices.len()).sum();
+    let mut verts: Vec<VertexGpu> = Vec::with_capacity(total_v.min(atlas.limit));
+    let mut indices: Vec<u32> = Vec::with_capacity(total_i);
+    let mut draws = Vec::with_capacity(block.batches.len());
+    let mut kept: Vec<u32> = Vec::new();
+    let (mut lo, mut hi) = (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY));
+    let mut batches: Vec<&CompiledBatch> = block.batches.iter().collect();
+    batches.sort_by_key(|b| b.material);
+    for b in batches {
+        if verts.len() + b.vertices.len() > atlas.limit {
+            log::warn!("hp-render: compiled lighting block too large, truncated");
+            break;
+        }
+        let base = verts.len() as u32;
+        let first = indices.len() as u32;
+        for v in &b.vertices {
+            let p = Vec3::from(v.pos);
+            let ok = p.is_finite() && v.uv.iter().chain(&v.lm).all(|c| c.is_finite()) && v.alpha.is_finite();
+            if ok {
+                lo = lo.min(p);
+                hi = hi.max(p);
+            }
+            let place = atlas.places.get(v.lightmap as usize).copied().flatten();
+            let (layer, lm) = match place {
+                Some((layer, x, y)) => {
+                    (layer, [(x as f32 + v.lm[0]) * atlas.inv[0], (y as f32 + v.lm[1]) * atlas.inv[1]])
+                }
+                None => (NO_COMPILED_LIGHTMAP, [0.0; 2]),
+            };
+            let (styles, stride, bump) = match place {
+                Some(_) => atlas.style_of[v.lightmap as usize],
+                None => (STATIC_STYLES, 0.0, 0),
+            };
+            let layer = if layer == NO_COMPILED_LIGHTMAP { layer } else { layer | bump };
+            verts.push(if ok {
+                VertexGpu {
+                    pos: v.pos,
+                    uv: v.uv,
+                    lm,
+                    alpha: v.alpha,
+                    slot,
+                    layer,
+                    styles,
+                    stride,
+                    cube: u32::from(v.cubemap),
+                    normal: if Vec3::from(v.normal).is_finite() { v.normal } else { [0.0, 0.0, 1.0] },
+                    blend: crate::gpu::pack_blend_vertex(&v.blend),
+                }
+            } else {
+                VertexGpu {
+                    slot,
+                    layer: NO_COMPILED_LIGHTMAP,
+                    styles: STATIC_STYLES,
+                    cube: u32::from(crate::NO_CUBEMAP),
+                    ..Default::default()
+                }
+            });
+        }
+        let n = b.vertices.len() as u32;
+        kept.clear();
+        for t in b.indices.chunks_exact(3) {
+            if !t.iter().all(|i| *i < n) {
+                continue;
+            }
+            let [a, bb, c] = [t[0], t[1], t[2]].map(|i| &b.vertices[i as usize]);
+            let (pa, pb, pc) = (Vec3::from(a.pos), Vec3::from(bb.pos), Vec3::from(c.pos));
+            if !(pa.is_finite() && pb.is_finite() && pc.is_finite()) {
+                continue;
+            }
+            let geo = (pb - pa).cross(pc - pa);
+            let avg = Vec3::from(a.normal) + Vec3::from(bb.normal) + Vec3::from(c.normal);
+            if geo.dot(avg) < 0.0 {
+                indices.extend_from_slice(&[base + t[0], base + t[2], base + t[1]]);
+            } else {
+                indices.extend_from_slice(&[base + t[0], base + t[1], base + t[2]]);
+            }
+            kept.extend_from_slice(t);
+        }
+        let count = indices.len() as u32 - first;
+        if count > 0 {
+            let faces = face_runs(&b.vertices, &kept)
+                .into_iter()
+                .map(|(tri, tris, center)| (first + 3 * tri, 3 * tris, center))
+                .collect();
+            let material = materials.iter().find(|(m, _)| *m == b.material).map_or(0, |(_, s)| *s);
+            draws.push(Draw { material, first, count, faces });
+        }
+    }
+    (!draws.is_empty() && lo.cmple(hi).all()).then_some(BuiltBlock { verts, indices, draws, lo, hi })
+}
+
+fn fill_shelf(
+    band: &mut [u32],
+    shelf: &Shelf,
+    width: u32,
+    lightmaps: &[CompiledLightmap<'_>],
+    images: &[usize],
+    places: &[Option<Place>],
+) {
+    let pad = PAD as usize;
+    let width = width as usize;
+    let mut line: Vec<u32> = Vec::new();
+    for &i in &shelf.members {
+        let (Some(l), Some(&n), Some(Some((_, x0, y0)))) = (lightmaps.get(i), images.get(i), places.get(i)) else {
+            continue;
+        };
+        let (w, h) = (l.width as usize, l.height as usize);
+        let top = *y0 as usize - pad - shelf.y as usize;
+        for k in 0..n {
+            let first = k * w * h;
+            let left = *x0 as usize + k * (w + 2 * pad) - pad;
+            for y in 0..h {
+                let src = &l.texels[first + y * w..first + (y + 1) * w];
+                line.clear();
+                line.extend(std::iter::repeat_n(rgb9e5(src[0]), pad));
+                line.extend(src.iter().map(|t| rgb9e5(*t)));
+                line.extend(std::iter::repeat_n(rgb9e5(src[w - 1]), pad));
+                let rows: &[usize] = match (y == 0, y + 1 == h) {
+                    (true, true) => &[0, 1, 2],
+                    (true, false) => &[0, 1],
+                    (false, true) => &[1, 2],
+                    (false, false) => &[1],
+                };
+                for &r in rows {
+                    let row = top + y + r;
+                    let at = row * width + left;
+                    band[at..at + line.len()].copy_from_slice(&line);
+                }
+            }
+        }
+    }
 }
 
 impl CompiledLight {
+    fn state(&self, r: &Renderer, i: usize, b: &BlockGpu) -> (crate::ObjectFlags, f32) {
+        match self.states.get(i).filter(|_| self.states_key == (r.scene.state_gen, self.blocks_gen)) {
+            Some(&s) => s,
+            None => (r.object_flags(b.object).unwrap_or_default(), r.object_tint(b.object).map_or(1.0, |t| t[3])),
+        }
+    }
+
+    fn framed(&self, view_proj: &Mat4) -> Option<&[bool]> {
+        let same = self.visible_for == Some(view_proj.to_cols_array()) && self.visible.len() == self.blocks.len();
+        same.then_some(&self.visible[..])
+    }
+
+    fn bind_block(&self, pass: &mut wgpu::RenderPass<'_>, block: &BlockGpu) {
+        if let Some(seg) = self.segments.get(block.segment as usize) {
+            pass.set_vertex_buffer(0, seg.vbuf.slice(..));
+            pass.set_index_buffer(seg.ibuf.slice(..), wgpu::IndexFormat::Uint32);
+        }
+    }
+
     fn bind_layout(&self, device: &wgpu::Device) -> &wgpu::BindGroupLayout {
         self.layout.get_or_init(|| {
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -370,6 +610,7 @@ impl Renderer {
         lightmaps: &[CompiledLightmap<'_>],
         blocks: &[CompiledBlock],
     ) -> CompiledLightStats {
+        use rayon::prelude::*;
         self.clear_compiled_lighting();
         self.cubes.epoch += 1;
         let limits = self.device.limits();
@@ -388,45 +629,48 @@ impl Renderer {
                 }
             })
             .collect();
-        let page = page_size(&sizes, self.max_tex_dim);
+        let max_dim = MAX_PAGE.min(self.max_tex_dim);
         let max_layers = limits.max_texture_array_layers.min(256);
-        let (places, layers) = pack_atlas(&sizes, page, max_layers);
-        let layers = layers.max(1);
+        let (packing, width) = atlas_layout(&sizes, max_dim, max_layers);
+        let layers = packing.layers.max(1);
+        let height = if packing.layers > 1 { max_dim } else { packing.height.max(1) };
+        let places = &packing.places;
         let mut stats = CompiledLightStats {
             mode,
             lightmaps: places.iter().filter(|p| p.is_some()).count() as u32,
-            dropped: sizes.iter().zip(&places).filter(|(s, p)| s.0 > 0 && p.is_none()).count() as u32,
-            atlas_size: page,
+            dropped: sizes.iter().zip(places).filter(|(s, p)| s.0 > 0 && p.is_none()).count() as u32,
+            atlas_size: width,
+            atlas_height: height,
             atlas_layers: layers,
-            animated: lightmaps.iter().zip(&places).filter(|(l, p)| p.is_some() && !l.styles.is_empty()).count() as u32,
+            animated: lightmaps.iter().zip(places).filter(|(l, p)| p.is_some() && !l.styles.is_empty()).count() as u32,
             ..Default::default()
         };
-        let layer_texels = (page as usize) * (page as usize);
-        let mut data = vec![0u16; layer_texels * layers as usize * 4];
-        for ((l, place), &n) in lightmaps.iter().zip(&places).zip(&images) {
-            let Some((layer, x0, y0)) = *place else { continue };
-            let (w, h) = (l.width as i64, l.height as i64);
-            for (k, y) in (0..n as i64).flat_map(|k| (-i64::from(PAD)..h + i64::from(PAD)).map(move |y| (k, y))) {
-                let first = (k * w * h) as usize;
-                let left = i64::from(x0) + k * (w + 2 * i64::from(PAD));
-                for x in -i64::from(PAD)..w + i64::from(PAD) {
-                    let src = l.texels[first + (y.clamp(0, h - 1) * w + x.clamp(0, w - 1)) as usize];
-                    let (tx, ty) = (left + x, i64::from(y0) + y);
-                    let at = layer as usize * layer_texels + ty as usize * page as usize + tx as usize;
-                    let finite = |v: f32| if v.is_finite() { v.max(0.0) } else { 0.0 };
-                    data[at * 4..at * 4 + 4].copy_from_slice(&[
-                        f16_bits(finite(src[0])),
-                        f16_bits(finite(src[1])),
-                        f16_bits(finite(src[2])),
-                        f16_bits(1.0),
-                    ]);
-                }
+        let layer_texels = (width as usize) * (height as usize);
+        let mut data = vec![0u32; layer_texels * layers as usize];
+        {
+            let mut bands: Vec<(&mut [u32], &Shelf)> = Vec::with_capacity(packing.shelves.len());
+            let mut rest: &mut [u32] = &mut data;
+            let mut at = 0usize;
+            for shelf in &packing.shelves {
+                let start = shelf.layer as usize * layer_texels + shelf.y as usize * width as usize;
+                let rows = (shelf.height.min(height.saturating_sub(shelf.y))) as usize;
+                let (_, tail) = std::mem::take(&mut rest).split_at_mut(start.saturating_sub(at).min(rest.len()));
+                let take = (rows * width as usize).min(tail.len());
+                let (band, tail) = tail.split_at_mut(take);
+                rest = tail;
+                at = start + take;
+                bands.push((band, shelf));
             }
+            crate::pool::run(|| {
+                bands
+                    .into_par_iter()
+                    .for_each(|(band, shelf)| fill_shelf(band, shelf, width, lightmaps, &images, places));
+            });
         }
         let (texture, oom) = crate::memory::guarded(&self.device, || {
             self.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("hp-render compiled lightmaps"),
-                size: wgpu::Extent3d { width: page, height: page, depth_or_array_layers: layers },
+                size: wgpu::Extent3d { width, height, depth_or_array_layers: layers },
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
@@ -438,14 +682,14 @@ impl Renderer {
         if oom {
             return CompiledLightStats { lightmaps: 0, dropped: stats.lightmaps + stats.dropped, ..stats };
         }
-        let row_bytes = page as usize * TEXEL_BYTES as usize;
-        let band = ((UPLOAD_BAND_BYTES / row_bytes.max(1)).max(1) as u32).min(page);
+        let row_bytes = width as usize * TEXEL_BYTES as usize;
+        let band = ((UPLOAD_BAND_BYTES / row_bytes.max(1)).max(1) as u32).min(height);
         let all: &[u8] = bytemuck::cast_slice(&data);
         for layer in 0..layers {
             let mut y = 0;
-            while y < page {
-                let rows = band.min(page - y);
-                let start = (layer as usize * page as usize + y as usize) * row_bytes;
+            while y < height {
+                let rows = band.min(height - y);
+                let start = (layer as usize * height as usize + y as usize) * row_bytes;
                 let Some(chunk) = all.get(start..start + rows as usize * row_bytes) else { break };
                 self.queue.write_texture(
                     wgpu::TexelCopyTextureInfo {
@@ -457,139 +701,108 @@ impl Renderer {
                     chunk,
                     wgpu::TexelCopyBufferLayout {
                         offset: 0,
-                        bytes_per_row: Some(page * TEXEL_BYTES),
+                        bytes_per_row: Some(width * TEXEL_BYTES),
                         rows_per_image: Some(rows),
                     },
-                    wgpu::Extent3d { width: page, height: rows, depth_or_array_layers: 1 },
+                    wgpu::Extent3d { width, height: rows, depth_or_array_layers: 1 },
                 );
                 self.queue.submit([]);
                 y += rows;
             }
         }
         drop(data);
-        let atlas_bytes = u64::from(page) * u64::from(page) * u64::from(layers) * u64::from(TEXEL_BYTES);
-        let inv = 1.0 / page as f32;
+        let atlas_bytes = u64::from(width) * u64::from(height) * u64::from(layers) * u64::from(TEXEL_BYTES);
+        let inv = [1.0 / width as f32, 1.0 / height as f32];
         let style_of: Vec<(u32, f32, u32)> = lightmaps
             .iter()
             .map(|l| {
                 let bump = if l.bumped { LAYER_BUMPED } else { 0 };
-                (pack_styles(l.styles).0, (l.width + 2 * PAD) as f32 * inv, bump)
+                (pack_styles(l.styles).0, (l.width + 2 * PAD) as f32 * inv[0], bump)
             })
             .collect();
-        let limit = (self.max_buffer / size_of::<VertexGpu>() as u64).min(u64::from(u32::MAX / 2)) as usize;
+        let vertex_size = size_of::<VertexGpu>() as u64;
+        let limit = (self.max_buffer / vertex_size).min(u64::from(u32::MAX / 2)) as usize;
+        let index_limit = (self.max_buffer / 4).min(u64::from(u32::MAX / 2)) as usize;
+        let slots: Vec<u32> = blocks.iter().map(|b| self.scene.acquire_ref(b.object)).collect();
+        let materials: Vec<Vec<(MaterialId, u32)>> = blocks
+            .iter()
+            .map(|b| b.batches.iter().map(|x| (x.material, self.scene.material_slot(x.material))).collect())
+            .collect();
+        let atlas = AtlasRef { places, style_of: &style_of, inv, limit };
+        let built: Vec<Option<BuiltBlock>> = crate::pool::run(|| {
+            blocks
+                .par_iter()
+                .zip(slots.par_iter())
+                .zip(materials.par_iter())
+                .map(|((block, &slot), mats)| build_block(block, slot, mats, &atlas))
+                .collect()
+        });
         let mut gpu_blocks = Vec::with_capacity(blocks.len());
-        for block in blocks {
-            let slot = self.scene.acquire_ref(block.object);
-            let mut verts: Vec<VertexGpu> = Vec::new();
-            let mut indices: Vec<u32> = Vec::new();
-            let mut draws = Vec::new();
-            let (mut lo, mut hi) = (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY));
-            let mut batches: Vec<&CompiledBatch> = block.batches.iter().collect();
-            batches.sort_by_key(|b| b.material);
-            for b in batches {
-                if verts.len() + b.vertices.len() > limit {
-                    log::warn!("hp-render: compiled lighting block too large, truncated");
-                    break;
-                }
-                let base = verts.len() as u32;
-                let first = indices.len() as u32;
-                for v in &b.vertices {
-                    let p = Vec3::from(v.pos);
-                    let ok = p.is_finite() && v.uv.iter().chain(&v.lm).all(|c| c.is_finite()) && v.alpha.is_finite();
-                    if ok {
-                        lo = lo.min(p);
-                        hi = hi.max(p);
-                    }
-                    let place = places.get(v.lightmap as usize).copied().flatten();
-                    let (layer, lm) = match place {
-                        Some((layer, x, y)) => (layer, [(x as f32 + v.lm[0]) * inv, (y as f32 + v.lm[1]) * inv]),
-                        None => (NO_COMPILED_LIGHTMAP, [0.0; 2]),
-                    };
-                    let (styles, stride, bump) = match place {
-                        Some(_) => style_of[v.lightmap as usize],
-                        None => (STATIC_STYLES, 0.0, 0),
-                    };
-                    let layer = if layer == NO_COMPILED_LIGHTMAP { layer } else { layer | bump };
-                    verts.push(if ok {
-                        VertexGpu {
-                            pos: v.pos,
-                            uv: v.uv,
-                            lm,
-                            alpha: v.alpha,
-                            slot,
-                            layer,
-                            styles,
-                            stride,
-                            cube: u32::from(v.cubemap),
-                            normal: if Vec3::from(v.normal).is_finite() { v.normal } else { [0.0, 0.0, 1.0] },
-                            blend: crate::gpu::pack_blend_vertex(&v.blend),
-                        }
-                    } else {
-                        VertexGpu {
-                            slot,
-                            layer: NO_COMPILED_LIGHTMAP,
-                            styles: STATIC_STYLES,
-                            cube: u32::from(crate::NO_CUBEMAP),
-                            ..Default::default()
-                        }
-                    });
-                }
-                let n = b.vertices.len() as u32;
-                let mut kept: Vec<u32> = Vec::with_capacity(b.indices.len());
-                for t in b.indices.chunks_exact(3) {
-                    if !t.iter().all(|i| *i < n) {
-                        continue;
-                    }
-                    let [a, bb, c] = [t[0], t[1], t[2]].map(|i| &b.vertices[i as usize]);
-                    let (pa, pb, pc) = (Vec3::from(a.pos), Vec3::from(bb.pos), Vec3::from(c.pos));
-                    if !(pa.is_finite() && pb.is_finite() && pc.is_finite()) {
-                        continue;
-                    }
-                    let geo = (pb - pa).cross(pc - pa);
-                    let avg = Vec3::from(a.normal) + Vec3::from(bb.normal) + Vec3::from(c.normal);
-                    if geo.dot(avg) < 0.0 {
-                        indices.extend_from_slice(&[base + t[0], base + t[2], base + t[1]]);
-                    } else {
-                        indices.extend_from_slice(&[base + t[0], base + t[1], base + t[2]]);
-                    }
-                    kept.extend_from_slice(t);
-                }
-                let count = indices.len() as u32 - first;
-                if count > 0 {
-                    let faces = face_runs(&b.vertices, &kept)
-                        .into_iter()
-                        .map(|(tri, tris, center)| (first + 3 * tri, 3 * tris, center))
-                        .collect();
-                    draws.push(Draw { material: self.scene.material_slot(b.material), first, count, faces });
-                }
+        let mut segments: Vec<Segment> = Vec::new();
+        let (mut seg_v, mut seg_i): (Vec<VertexGpu>, Vec<u32>) = (Vec::new(), Vec::new());
+        let make = |label: &str, data: &[u8], usage: wgpu::BufferUsages| {
+            let buf = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(label),
+                size: (data.len() as u64).next_multiple_of(wgpu::COPY_BUFFER_ALIGNMENT).max(16),
+                usage: usage | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            self.queue.write_buffer(&buf, 0, data);
+            buf
+        };
+        let flush = |seg_v: &mut Vec<VertexGpu>, seg_i: &mut Vec<u32>, segments: &mut Vec<Segment>| {
+            if seg_v.is_empty() {
+                return;
             }
-            if draws.is_empty() || !lo.cmple(hi).all() {
+            let vdata: &[u8] = bytemuck::cast_slice(seg_v);
+            let idata: &[u8] = bytemuck::cast_slice(seg_i);
+            segments.push(Segment {
+                vbuf: make("hp-render compiled vertices", vdata, wgpu::BufferUsages::VERTEX),
+                ibuf: make("hp-render compiled indices", idata, wgpu::BufferUsages::INDEX),
+            });
+            seg_v.clear();
+            seg_i.clear();
+        };
+        for (block, b) in blocks.iter().zip(built) {
+            let Some(mut b) = b else {
                 self.scene.release_ref(block.object);
                 continue;
-            }
-            let make = |label: &str, data: &[u8], usage: wgpu::BufferUsages| {
-                let buf = self.device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some(label),
-                    size: (data.len() as u64).next_multiple_of(wgpu::COPY_BUFFER_ALIGNMENT).max(16),
-                    usage: usage | wgpu::BufferUsages::COPY_DST,
-                    mapped_at_creation: false,
-                });
-                self.queue.write_buffer(&buf, 0, data);
-                buf
             };
-            let vdata: &[u8] = bytemuck::cast_slice(&verts);
-            let idata: &[u8] = bytemuck::cast_slice(&indices);
+            if seg_v.len() + b.verts.len() > limit || seg_i.len() + b.indices.len() > index_limit {
+                flush(&mut seg_v, &mut seg_i, &mut segments);
+            }
+            let first_index = seg_i.len() as u32;
+            for d in &mut b.draws {
+                d.first += first_index;
+                for f in &mut d.faces {
+                    f.0 += first_index;
+                }
+            }
+            let bytes = (b.verts.len() as u64) * vertex_size + (b.indices.len() as u64) * 4;
             gpu_blocks.push(BlockGpu {
                 object: block.object,
                 moved: false,
-                vbuf: make("hp-render compiled vertices", vdata, wgpu::BufferUsages::VERTEX),
-                ibuf: make("hp-render compiled indices", idata, wgpu::BufferUsages::INDEX),
-                draws,
-                lo,
-                hi,
-                bytes: (vdata.len() + idata.len()) as u64,
+                segment: segments.len() as u32,
+                base_vertex: seg_v.len() as i32,
+                draws: b.draws,
+                lo: b.lo,
+                hi: b.hi,
+                bytes,
             });
+            seg_v.append(&mut b.verts);
+            seg_i.append(&mut b.indices);
         }
+        flush(&mut seg_v, &mut seg_i, &mut segments);
+        drop((seg_v, seg_i));
+        let mut order: Vec<(u32, u32, u32)> = Vec::new();
+        for (k, b) in gpu_blocks.iter().enumerate() {
+            for (d, draw) in b.draws.iter().enumerate() {
+                order.push((draw.material, k as u32, d as u32));
+            }
+        }
+        order.sort_unstable_by_key(|&(material, block, draw)| {
+            (material, gpu_blocks[block as usize].segment, block, draw)
+        });
         self.sync_materials();
         let params = ParamsGpu {
             mode: match mode {
@@ -634,7 +847,11 @@ impl Renderer {
         cl.transform_buf = Some(tbuf);
         stats.bytes = atlas_bytes + gpu_blocks.iter().map(|b| b.bytes).sum::<u64>();
         cl.blocks = gpu_blocks;
-        cl.atlas = Some((texture, page, layers));
+        cl.segments = segments;
+        cl.order = order;
+        cl.blocks_gen += 1;
+        cl.visible_for = None;
+        cl.atlas = Some((texture, width, layers));
         cl.params = Some(pbuf);
         cl.bind_group = Some(bg);
         cl.mode = mode;
@@ -651,6 +868,12 @@ impl Renderer {
         }
         let had = self.compiled.present;
         let c = &mut self.compiled;
+        c.segments.clear();
+        c.order.clear();
+        c.blocks_gen += 1;
+        c.states.clear();
+        c.visible.clear();
+        c.visible_for = None;
         c.transforms.clear();
         c.transform_buf = None;
         c.atlas = None;
@@ -682,6 +905,30 @@ impl Renderer {
         if changed {
             self.content_gen += 1;
         }
+    }
+
+    pub(crate) fn prepare_compiled_frame(&mut self, view_proj: &Mat4) {
+        let cl = &mut self.compiled;
+        if cl.blocks.is_empty() {
+            return;
+        }
+        let key = (self.scene.state_gen, cl.blocks_gen);
+        if cl.states_key != key || cl.states.len() != cl.blocks.len() {
+            let scene = &self.scene;
+            cl.states = cl
+                .blocks
+                .iter()
+                .map(|b| {
+                    let flags = scene.flags(b.object).unwrap_or_default();
+                    let alpha = scene.tint(b.object).map_or(1.0, |t| (t >> 24) as f32 / 255.0);
+                    (flags, alpha)
+                })
+                .collect();
+            cl.states_key = key;
+        }
+        let vp = view_proj.to_cols_array();
+        cl.visible = cl.blocks.iter().map(|b| b.moved || box_visible(view_proj, b.lo, b.hi)).collect();
+        cl.visible_for = Some(vp);
     }
 
     pub fn compiled_lighting(&self) -> Option<CompiledLightStats> {
@@ -1003,12 +1250,6 @@ impl CompiledLightPass {
         pass.set_bind_group(0, cx.view_bind_group, &[]);
         pass.set_bind_group(2, bind_group, &[]);
         pass.set_vertex_buffer(1, transforms.slice(..));
-        let order = cl
-            .blocks
-            .iter()
-            .enumerate()
-            .filter(|(_, b)| b.moved || box_visible(&view_proj, b.lo, b.hi))
-            .map(|(i, b)| (i as u32, b));
         type Key = (usize, usize, usize);
         let set = |key: Key| match key.0 {
             0 => &pipes.opaque[key.1][key.2],
@@ -1016,49 +1257,80 @@ impl CompiledLightPass {
             _ => &pipes.faded[key.1][key.2],
         };
         if !translucent {
+            let framed = cl.framed(&view_proj);
+            let visible: Vec<bool> = cl
+                .blocks
+                .iter()
+                .enumerate()
+                .map(|(i, b)| {
+                    let (flags, alpha) = cl.state(r, i, b);
+                    let hidden = flags.contains(crate::ObjectFlags::NO_3D)
+                        || (flags.contains(crate::ObjectFlags::HIDDEN) && !r.probing);
+                    let seen = match framed {
+                        Some(v) => v.get(i).copied().unwrap_or(false),
+                        None => b.moved || box_visible(&view_proj, b.lo, b.hi),
+                    };
+                    !hidden && alpha >= 0.999 && seen
+                })
+                .collect();
+            let mut keys: Vec<Option<Option<Key>>> = vec![None; r.scene.materials.len()];
             let mut current: Option<Key> = None;
             let mut material = u32::MAX;
-            for (index, block) in order {
-                let mut bound = false;
-                for d in &block.draws {
-                    let desc = r.scene.materials.get(d.material as usize).and_then(|m| m.desc);
-                    if by_water(desc.as_ref()) {
-                        continue;
-                    }
-                    let Some((kind, two_sided)) = classify_with(desc.as_ref(), cx.options.force_opaque, false) else {
-                        continue;
-                    };
-                    let key = match kind {
-                        MeshPass::Opaque => (0, 0, usize::from(two_sided)),
-                        MeshPass::AlphaTest => (0, 1, usize::from(two_sided)),
-                        _ => continue,
-                    };
-                    let Some(mg) = r.mat_gpu.get(d.material as usize) else { continue };
-                    if current != Some(key) {
-                        pass.set_pipeline(set(key));
-                        current = Some(key);
-                    }
-                    if material != d.material {
-                        pass.set_bind_group(1, &mg.bind_group, &[]);
-                        material = d.material;
-                    }
-                    if !bound {
-                        pass.set_vertex_buffer(0, block.vbuf.slice(..));
-                        pass.set_index_buffer(block.ibuf.slice(..), wgpu::IndexFormat::Uint32);
-                        bound = true;
-                    }
-                    pass.draw_indexed(d.first..d.first + d.count, 0, index..index + 1);
+            let mut segment = u32::MAX;
+            for &(mat, index, draw) in &cl.order {
+                if !visible.get(index as usize).copied().unwrap_or(false) {
+                    continue;
                 }
+                let Some(slot) = keys.get_mut(mat as usize) else { continue };
+                let key = *slot.get_or_insert_with(|| {
+                    let desc = r.scene.materials.get(mat as usize).and_then(|m| m.desc);
+                    if by_water(desc.as_ref()) {
+                        return None;
+                    }
+                    match classify_with(desc.as_ref(), cx.options.force_opaque, false)? {
+                        (MeshPass::Opaque, two_sided) => Some((0, 0, usize::from(two_sided))),
+                        (MeshPass::AlphaTest, two_sided) => Some((0, 1, usize::from(two_sided))),
+                        _ => None,
+                    }
+                });
+                let Some(key) = key else { continue };
+                let Some(mg) = r.mat_gpu.get(mat as usize) else { continue };
+                let block = &cl.blocks[index as usize];
+                let Some(d) = block.draws.get(draw as usize) else { continue };
+                if current != Some(key) {
+                    pass.set_pipeline(set(key));
+                    current = Some(key);
+                }
+                if material != mat {
+                    pass.set_bind_group(1, &mg.bind_group, &[]);
+                    material = mat;
+                }
+                if segment != block.segment {
+                    cl.bind_block(pass, block);
+                    segment = block.segment;
+                }
+                pass.draw_indexed(d.first..d.first + d.count, block.base_vertex, index..index + 1);
             }
             return;
         }
+        let framed = cl.framed(&view_proj);
+        let order = cl
+            .blocks
+            .iter()
+            .enumerate()
+            .filter(|(i, b)| match framed {
+                Some(v) => v.get(*i).copied().unwrap_or(false),
+                None => b.moved || box_visible(&view_proj, b.lo, b.hi),
+            })
+            .map(|(i, b)| (i as u32, b));
         let mut faces: Vec<(f32, u32, &BlockGpu, u32, u32, u32, Key)> = Vec::new();
         for (index, block) in order {
-            let ours = r.object_flags(block.object).is_some_and(|f| f.contains(crate::ObjectFlags::COMPILED_LIGHT));
-            if !ours {
+            let (flags, alpha) = cl.state(r, index as usize, block);
+            let hidden =
+                flags.contains(crate::ObjectFlags::NO_3D) || (flags.contains(crate::ObjectFlags::HIDDEN) && !r.probing);
+            if !flags.contains(crate::ObjectFlags::COMPILED_LIGHT) || hidden {
                 continue;
             }
-            let alpha = r.object_tint(block.object).map_or(1.0, |t| t[3]);
             if alpha <= 0.0 {
                 continue;
             }
@@ -1099,12 +1371,11 @@ impl CompiledLightPass {
                 pass.set_bind_group(1, &mg.bind_group, &[]);
                 material = mat;
             }
-            if bound != Some(index) {
-                pass.set_vertex_buffer(0, block.vbuf.slice(..));
-                pass.set_index_buffer(block.ibuf.slice(..), wgpu::IndexFormat::Uint32);
-                bound = Some(index);
+            if bound != Some(block.segment) {
+                cl.bind_block(pass, block);
+                bound = Some(block.segment);
             }
-            pass.draw_indexed(first..first + count, 0, index..index + 1);
+            pass.draw_indexed(first..first + count, block.base_vertex, index..index + 1);
         }
     }
 }
@@ -1141,8 +1412,8 @@ mod tests {
         assert_eq!(pack_styles(&[0, 10]), (u32::from_le_bytes([0, 10, 255, 255]), 2));
         assert_eq!(pack_styles(&[0, 32, 33, 34, 35]), (u32::from_le_bytes([0, 32, 33, 34]), 4), "four at most");
         let across = 2 * (3 + 2 * PAD) - 2 * PAD;
-        let (places, _) = pack_atlas(&[(across, 2)], 16, 1);
-        let (_, x, _) = places[0].expect("placed");
+        let packing = pack_atlas(&[(across, 2)], 16, 16, 1);
+        let (_, x, _) = packing.places[0].expect("placed");
         assert!(x + across + PAD <= 16);
     }
 
@@ -1165,7 +1436,8 @@ mod tests {
     #[test]
     fn atlas_packing_keeps_lightmaps_apart() {
         let sizes = [(4, 4), (10, 2), (3, 7), (1, 1), (0, 0), (40, 40), (17, 5)];
-        let (places, layers) = pack_atlas(&sizes, 32, 8);
+        let packing = pack_atlas(&sizes, 32, 32, 8);
+        let (places, layers) = (&packing.places, packing.layers);
         assert!(places[4].is_none(), "empty lightmap");
         assert!(places[5].is_none(), "larger than a layer");
         let mut rects = Vec::new();
@@ -1176,6 +1448,7 @@ mod tests {
             let (layer, x, y) = p.expect("placed");
             let (w, h) = sizes[i];
             assert!(layer < layers && x >= PAD && y >= PAD && x + w + PAD <= 32 && y + h + PAD <= 32);
+            assert!(y + h + PAD <= packing.height, "inside the used height");
             rects.push((layer, x - PAD, y - PAD, w + 2 * PAD, h + 2 * PAD));
         }
         for (a, ra) in rects.iter().enumerate() {
@@ -1188,12 +1461,54 @@ mod tests {
                 assert!(apart, "{ra:?} {rb:?}");
             }
         }
+        let placed: usize = packing.shelves.iter().map(|s| s.members.len()).sum();
+        assert_eq!(placed, places.iter().filter(|p| p.is_some()).count(), "every placed lightmap is on a shelf");
+        for shelf in &packing.shelves {
+            for &i in &shelf.members {
+                let (layer, _, y) = places[i].expect("placed");
+                assert!(layer == shelf.layer && y - PAD >= shelf.y && y + sizes[i].1 + PAD <= shelf.y + shelf.height);
+            }
+        }
         let many = vec![(14, 14); 9];
-        let (p, l) = pack_atlas(&many, 32, 2);
-        assert_eq!(l, 2);
-        assert_eq!(p.iter().filter(|x| x.is_some()).count(), 8, "4 per layer");
-        assert_eq!(page_size(&[(4, 4); 100], 8192), 128);
-        assert_eq!(page_size(&[(600, 10)], 8192), 1024);
-        assert_eq!(page_size(&[(100, 100); 10000], 2048), 2048);
+        let p = pack_atlas(&many, 32, 32, 2);
+        assert_eq!(p.layers, 2);
+        assert_eq!(p.places.iter().filter(|x| x.is_some()).count(), 8, "4 per layer");
+    }
+
+    #[test]
+    fn the_atlas_is_only_as_large_as_its_lightmaps() {
+        let (p, width) = atlas_layout(&[(4, 4); 100], 4096, 64);
+        assert_eq!(p.layers, 1);
+        assert!(width <= 80 && p.height <= 80, "{width} x {}", p.height);
+        let (p, width) = atlas_layout(&[(600, 10)], 4096, 64);
+        assert_eq!((width, p.height), (608, 12));
+        let (p, width) = atlas_layout(&[(30, 30); 7000], 2048, 64);
+        assert_eq!(width, 2048);
+        assert!(p.layers >= 2 && p.places.iter().all(Option::is_some));
+        let sizes: Vec<(u32, u32)> = (0..5000u32).map(|i| (1 + i % 31, 1 + (i * 7) % 29)).collect();
+        let (p, width) = atlas_layout(&sizes, 4096, 64);
+        let area: u64 = sizes.iter().map(|&(w, h)| u64::from(w + 2) * u64::from(h + 2)).sum();
+        let used = u64::from(width) * u64::from(p.height) * u64::from(p.layers);
+        assert!(used < area * 3 / 2, "packed {area} texels into {used}");
+    }
+
+    #[test]
+    fn shared_exponent_texels_keep_the_lightmap_values() {
+        assert_eq!(rgb9e5([0.0; 3]), 0);
+        assert_eq!(rgb9e5([f32::NAN, -1.0, f32::NEG_INFINITY]), 0);
+        for c in [[1.0, 0.5, 0.25], [0.003, 0.002, 0.001], [100.0, 3.0, 0.0], [65000.0, 1.0, 9.0], [1.0e-7, 0.0, 0.0]] {
+            let back = rgb9e5_value(rgb9e5(c));
+            let top = c.iter().copied().fold(0.0f32, f32::max);
+            for (a, b) in c.iter().zip(back) {
+                assert!((a - b).abs() <= top / 256.0 + 1.0e-7, "{c:?} -> {back:?}");
+            }
+        }
+        let back = rgb9e5_value(rgb9e5([1.0e9, 1.0, 1.0]));
+        assert!((back[0] - 65408.0).abs() < 1.0, "the brightest value is clamped like a half float: {back:?}");
+        for e in -8..8 {
+            let v = 2f32.powi(e) * 0.75;
+            let back = rgb9e5_value(rgb9e5([v, v, v]));
+            assert!((back[0] - v).abs() <= v / 512.0, "{v} -> {back:?}");
+        }
     }
 }

@@ -34,6 +34,7 @@ pub struct RenderConfig {
     pub disp_2d: [Detail2d; 4],
     pub plan: PerfPlan,
     pub render_scale: f32,
+    pub adaptive: bool,
 }
 
 pub fn detail_2d(mode: Disp2dSetting) -> Detail2d {
@@ -155,6 +156,8 @@ impl RenderConfig {
             disp_2d: std::array::from_fn(|i| detail_2d(r.displacements_2d_of(i))),
             plan,
             render_scale: r.scale().min(plan.scale),
+            adaptive: r.performance_mode == hp_app::settings::PerformanceMode::Auto
+                && !state.runtime.render.perf.auto_locked,
         }
     }
 }
@@ -225,8 +228,8 @@ pub fn tone_for(r: &hp_app::settings::RenderSettings, plan: &PerfPlan) -> hp_ren
     if plan.bloom { tone } else { hp_render::ToneSettings { bloom: 0.0, ..tone } }
 }
 
-pub fn quality_for(plan: &PerfPlan) -> hp_render::Quality {
-    hp_render::Quality { sun_shadow_size: plan.sun_shadow_size, local_shadow_size: plan.local_shadow_size }
+pub fn quality_for(plan: &PerfPlan, adaptive: bool) -> hp_render::Quality {
+    hp_render::Quality { sun_shadow_size: plan.sun_shadow_size, local_shadow_size: plan.local_shadow_size, adaptive }
 }
 
 pub fn view_params(view: &ViewInfo, cfg: &RenderConfig) -> ViewParams {
@@ -531,8 +534,13 @@ mod tests {
         assert!(very.options_3d.model_distance > 0.0);
         assert_eq!(tone_for(&state.settings.render, &very.plan).bloom, 0.0);
         assert_eq!(tone_for(&state.settings.render, &full.plan).bloom, state.settings.render.bloom);
-        assert_eq!(quality_for(&very.plan).sun_shadow_size, 1024);
-        assert_eq!(quality_for(&full.plan), hp_render::Quality::default());
+        assert_eq!(quality_for(&very.plan, very.adaptive).sun_shadow_size, 1024);
+        assert!(!very.adaptive, "only Auto adapts the lighting cost");
+        assert_eq!(quality_for(&full.plan, false), hp_render::Quality::default());
+        state.settings.render.performance_mode = PerformanceMode::Auto;
+        assert!(RenderConfig::from_state(&state).adaptive, "Auto adapts the lighting cost to the graphics card");
+        state.runtime.render.perf.restore();
+        assert!(!RenderConfig::from_state(&state).adaptive, "restoring full quality also stops the fine adaptation");
     }
 
     #[test]

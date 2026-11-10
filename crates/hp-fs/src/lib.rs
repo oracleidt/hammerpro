@@ -1,5 +1,6 @@
 mod apps;
 mod assets;
+mod change_gate;
 pub mod collect;
 mod custom;
 pub mod deps;
@@ -36,6 +37,7 @@ pub use apps::{
     refresh_steam_apps, steam_app_name,
 };
 pub use assets::AssetEntry;
+pub use change_gate::{ChangeGate, GateWait, MAX_WATCHED_ROOTS, WakeEvent};
 pub use custom::{
     CustomDir, CustomLayout, CustomMode, IMAGE_EXTENSIONS, custom_layout, game_texture_size, is_auto_prefix,
     is_safe_material_name, safe_material_name, suggest_prefix,

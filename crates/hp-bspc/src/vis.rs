@@ -58,6 +58,10 @@ impl Default for VisOptions {
 mod simd;
 pub use simd::{Isa, isa};
 
+#[path = "vis_cache.rs"]
+pub mod cache;
+pub use cache::VisCache;
+
 #[derive(Clone, Copy, Debug)]
 struct Plane {
     n: DVec3,

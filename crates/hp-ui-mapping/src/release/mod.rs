@@ -399,6 +399,7 @@ impl ReleaseWindow {
                 fs: Some(fs.clone()),
                 materials,
                 models: Vec::new(),
+                roots: Vec::new(),
                 cache_dir: Settings::cache_dir().join("pack"),
                 content_dir: Settings::cache_dir().join("compile_content"),
             }

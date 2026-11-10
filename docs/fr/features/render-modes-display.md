@@ -168,6 +168,9 @@ Les images sont enregistrées dans la map (bloc `bgimages_plus` du VMF) et voyag
 | --- | --- | --- |
 | **Limite d'images par seconde** (`render.max_fps`) | Nombre maximal d'images par seconde (0 : aucune limite ; avec la synchronisation verticale, l'écran la limite). | 0 |
 | **En arrière-plan** (`render.unfocused_fps`) | Limite quand la fenêtre n'est pas active (0 : aucune limite). | 30 |
+| **Animations** (`render.animation_fps`) | Images par seconde des matériaux animés, des effets de particules et des lumières qui clignotent quand rien d'autre ne bouge (0 : chaque image). | 30 |
+| **Mettre les animations en pause après** (`render.animation_idle_pause_s`) | Les animations s'arrêtent après ce nombre de secondes sans souris ni clavier (0 : jamais). | 120 s |
+| **Animer en arrière-plan** (`render.animate_in_background`) | Continuer les animations quand une autre fenêtre est active. | Désactivé |
 | **Synchronisation verticale** (`render.vsync`) | Attend le rafraîchissement de l'écran (s'applique immédiatement). | Activé |
 
 ## Autres réglages de rendu

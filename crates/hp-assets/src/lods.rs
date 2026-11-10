@@ -41,15 +41,16 @@ pub(crate) fn lod_job(fs: &hp_fs::GameFs, key: &str) -> Result<PreparedLods, Str
         Some((p, a)) => (p, Some(a)),
         None => (key, None),
     };
+    let files = hp_mdl::read_files(path, |p| fs.read(p)).map_err(|e| e.to_string())?;
     let load = |lod: u32| -> Result<hp_mdl::Model, String> {
         let opts = hp_mdl::LoadOptions { lod, body_groups: hp_mdl::BodyGroupSelect::All, ..Default::default() };
-        let model = hp_mdl::load_from(path, |p| fs.read(p), &opts).map_err(|e| e.to_string())?;
+        let model = files.load(&opts).map_err(|e| e.to_string())?;
         if let Some(anim) = anim
             && let Some(index) = model.sequences.iter().position(|s| s.name.eq_ignore_ascii_case(anim))
             && model.posed_sequence != Some(index)
         {
             let posed = hp_mdl::LoadOptions { pose: hp_mdl::Pose::Sequence(index), ..opts };
-            if let Ok(m) = hp_mdl::load_from(path, |p| fs.read(p), &posed) {
+            if let Ok(m) = files.load(&posed) {
                 return Ok(m);
             }
         }
@@ -181,10 +182,15 @@ impl AssetManager {
         body: Option<u32>,
         parts: Vec<ModelPart>,
     ) -> ModelId {
-        match self.render_lods(key, data, skin, body, parts) {
+        let meta = crate::residency::model_meta(&parts);
+        let id = match self.render_lods(key, data, skin, body, parts) {
             Ok(lods) => renderer.create_model_lods(&lods),
             Err(parts) => renderer.create_model(&parts),
+        };
+        if let Some(meta) = meta {
+            self.residency.models.insert(id, meta);
         }
+        id
     }
 
     pub(crate) fn apply_model_lods(&mut self, renderer: &mut Renderer) {
@@ -192,6 +198,7 @@ impl AssetManager {
             return;
         }
         let ready = std::mem::take(&mut self.lods.ready);
+        self.shared.request_repaint();
         for key in ready {
             let Some(ModelEntry::Ready(data)) = self.models.map.get(&key) else { continue };
             let data = Arc::clone(data);

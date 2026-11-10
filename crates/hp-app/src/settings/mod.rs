@@ -62,8 +62,9 @@ pub use mesh::MeshSettings;
 pub use physics::PhysicsSettings;
 pub use placement::{PlacementSettings, SprinkleMode, SprinkleSettings};
 pub use render::{
-    DEFAULT_WALK_ANGLE, Disp2dSetting, Disp2dViewSetting, DispWalkMode, MAX_VRAM_BUDGET_MB, MIN_VRAM_BUDGET_MB,
-    Models2dSetting, PerformanceMode, PropShadowSetting, RenderSettings, ToneModeSetting, WaterDetailSetting,
+    DEFAULT_WALK_ANGLE, Disp2dSetting, Disp2dViewSetting, DispWalkMode, MAX_ANIMATION_FPS, MAX_VRAM_BUDGET_MB,
+    MIN_VRAM_BUDGET_MB, Models2dSetting, PerformanceMode, PropShadowSetting, RenderSettings, ToneModeSetting,
+    WaterDetailSetting,
 };
 pub use scan::{ScanModeSetting, ScanSettings};
 pub use selection::{SelectElement, SelectionSettings};

@@ -1,10 +1,11 @@
 use glam::DVec3;
 use hp_vmf::{Side, TexAxis};
+use rayon::prelude::*;
 
 use crate::brush::{BASE_POLYGON_HALF_SIZE, base_polygon, validate_solid};
 use crate::texture::{effective_scale, world_axes};
 use crate::util::{clean_vec, dedupe_ring, plane_points_from_polygon};
-use crate::{CLIP_EPS, GeomError, PLANE_EPS, Plane, SolidGeom, WELD_EPS, build_solid, rebuild_from_points};
+use crate::{Aabb, CLIP_EPS, GeomError, PLANE_EPS, Plane, SolidGeom, WELD_EPS, build_solid, rebuild_from_points};
 
 type SplitResult = (Option<Vec<Side>>, Option<Vec<Side>>);
 
@@ -190,8 +191,18 @@ pub(crate) fn carve_impl(
     cap_from_carver: bool,
     next_side_id: &mut dyn FnMut() -> u32,
 ) -> Result<Vec<ClipPiece>, GeomError> {
-    let tg = validate_solid(target)?;
     let cg = validate_solid(carver)?;
+    carve_with_geom(target, carver, &cg, cap_from_carver, next_side_id)
+}
+
+pub(crate) fn carve_with_geom(
+    target: &[Side],
+    carver: &[Side],
+    cg: &SolidGeom,
+    cap_from_carver: bool,
+    next_side_id: &mut dyn FnMut() -> u32,
+) -> Result<Vec<ClipPiece>, GeomError> {
+    let tg = validate_solid(target)?;
     let overlap = tg.aabb.intersection(&cg.aabb);
     let size = overlap.size();
     if overlap.is_empty() || size.min_element() <= PLANE_EPS {
@@ -217,6 +228,68 @@ pub(crate) fn carve_impl(
         }
     }
     Ok(pieces)
+}
+
+pub fn carve_many(
+    targets: &[(&[Side], Aabb)],
+    carvers: &[(&[Side], Aabb)],
+    next_side_id: &mut dyn FnMut() -> u32,
+) -> Vec<Option<Vec<ClipPiece>>> {
+    let cutters: Vec<(&[Side], Aabb, SolidGeom)> =
+        carvers.par_iter().filter_map(|(sides, b)| validate_solid(sides).ok().map(|g| (*sides, *b, g))).collect();
+    let base = targets
+        .iter()
+        .flat_map(|(s, _)| s.iter())
+        .chain(cutters.iter().flat_map(|(s, _, _)| s.iter()))
+        .map(|s| s.id)
+        .max()
+        .map_or(1, |m| m.saturating_add(1));
+    let carved: Vec<Option<Vec<ClipPiece>>> = targets
+        .par_iter()
+        .map(|(original, tb)| {
+            let mut local = base;
+            let mut fresh = || {
+                let id = local;
+                local = local.saturating_add(1);
+                id
+            };
+            let mut pieces = vec![ClipPiece::whole(original)];
+            let mut touched = false;
+            for (cs, cb, cg) in &cutters {
+                let overlap = tb.intersection(cb);
+                if overlap.is_empty() || overlap.size().min_element() <= PLANE_EPS {
+                    continue;
+                }
+                let mut next_pieces = Vec::with_capacity(pieces.len() + 4);
+                for p in pieces {
+                    match carve_with_geom(&p.sides, cs, cg, false, &mut fresh) {
+                        Ok(v) => {
+                            if v.len() != 1 || v.first().map(|q| &q.sides) != Some(&p.sides) {
+                                touched = true;
+                            }
+                            next_pieces.extend(v.into_iter().map(|q| q.compose(&p.origins)));
+                        }
+                        Err(_) => next_pieces.push(p),
+                    }
+                }
+                pieces = next_pieces;
+            }
+            touched.then_some(pieces)
+        })
+        .collect();
+    carved
+        .into_iter()
+        .map(|pieces| {
+            pieces.map(|mut pieces| {
+                for s in pieces.iter_mut().flat_map(|p| p.sides.iter_mut()) {
+                    if s.id >= base {
+                        s.id = next_side_id();
+                    }
+                }
+                pieces
+            })
+        })
+        .collect()
 }
 
 pub fn offset_side(side: &Side, offset: f64) -> Option<Side> {
@@ -337,8 +410,37 @@ pub fn merge_exact(
     if hull_volume - sum > tolerance {
         return Ok(None);
     }
+    let geoms: Vec<SolidGeom> = solids.iter().map(|s| build_solid(s)).collect();
+    if !hull_is_covered(&hull, &geoms) {
+        return Ok(None);
+    }
     let union = union_volume(solids)?;
     Ok((hull_volume - union <= tolerance).then_some(merged))
+}
+
+const COVER_EPS: f64 = PLANE_EPS * 2.0;
+
+fn outside(geom: &SolidGeom, p: DVec3) -> f64 {
+    geom.faces.iter().map(|f| f.plane.distance(p)).fold(f64::NEG_INFINITY, f64::max)
+}
+
+fn hull_is_covered(hull: &SolidGeom, parts: &[SolidGeom]) -> bool {
+    let covered = |p: DVec3| parts.iter().any(|g| g.valid && outside(g, p) <= COVER_EPS);
+    hull.faces.iter().all(|f| {
+        let n = f.vertices.len();
+        if n < 3 {
+            return true;
+        }
+        let c = f.vertices.iter().copied().sum::<DVec3>() / n as f64;
+        if !covered(c) {
+            return false;
+        }
+        (0..n).all(|i| {
+            let a = f.vertices[i];
+            let b = f.vertices[(i + 1) % n];
+            covered((a + b) * 0.5) && covered((a + b + c) / 3.0) && covered((a * 2.0 + c) / 3.0)
+        })
+    })
 }
 
 #[cfg(test)]

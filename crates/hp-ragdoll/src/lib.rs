@@ -343,6 +343,68 @@ mod tests {
     }
 
     #[test]
+    fn hostile_saved_poses_and_damaged_physics_files_never_panic() {
+        let Some(rig) = installed_rig() else { return };
+        for overrides in [
+            "",
+            ",,,,",
+            "0",
+            "0,",
+            "99999999999,0 0 0",
+            "-1,0 0 0",
+            "0,nan 0 0",
+            "0,inf -inf 0",
+            "0,1e308 1e308 1e308",
+            "0,1 2,1,3 4 5 6",
+            "14,0 0 0,15,0 0 0,0,0 0 0,0,90 0 0",
+        ] {
+            for entity in [DMat4::IDENTITY, DMat4::from_scale(DVec3::splat(0.0)), DMat4::from_scale(DVec3::splat(-2.0))]
+            {
+                let poses = rig.body_poses(entity, overrides);
+                assert_eq!(poses.len(), rig.bodies.len(), "{overrides:?}");
+                let _ = rig.skin(entity, &poses);
+                let _ = rig.skin(entity, &poses[..poses.len() / 2]);
+            }
+        }
+        let game = std::env::var_os("HAMMERPRO_GMOD_DIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| "D:/SteamLibrary/steamapps/common/GarrysMod".into());
+        let archive = hp_vpk::VpkArchive::open(game.join("sourceengine/hl2_misc_dir.vpk")).unwrap();
+        let model = "models/humans/group01/male_07.mdl";
+        let phy = archive.read(&hp_mdl::phy_path(model)).unwrap().unwrap();
+        let mut seed = 0x9e37_79b9_u64;
+        for round in 0..300 {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            let mut damaged = phy.clone();
+            match round % 3 {
+                0 => damaged.truncate((seed % phy.len() as u64) as usize),
+                1 => {
+                    for k in 0..8 {
+                        let i = ((seed >> (k * 5)) % damaged.len() as u64) as usize;
+                        damaged[i] = (seed >> k) as u8;
+                    }
+                }
+                _ => {
+                    let text = String::from_utf8_lossy(&phy).replace("\"index\" \"1\"", "\"index\" \"0\"");
+                    damaged = text.into_bytes();
+                }
+            }
+            let phy_name = hp_mdl::phy_path(model);
+            let loaded = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                Rig::load(
+                    model,
+                    |path| if path == phy_name { Some(damaged.clone()) } else { archive.read(path).ok().flatten() },
+                    0,
+                )
+                .ok()
+            }));
+            assert!(loaded.is_ok(), "round {round}: loading a damaged .phy panicked");
+        }
+    }
+
+    #[test]
     fn world_angle_overrides_reconstruct_joint_origins_and_animated_skin() {
         let Some(rig) = installed_rig() else { return };
         let entity = DMat4::from_translation(DVec3::new(100.0, 200.0, 300.0));

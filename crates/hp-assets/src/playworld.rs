@@ -229,6 +229,7 @@ impl AssetManager {
         let materials: Vec<hp_render::MaterialId> =
             world.materials.iter().map(|name| self.world_material(name)).collect();
         self.world_cubemaps(renderer, world);
+        let prepared = start.elapsed();
         let cubes = &self.play_world.cubes;
         let material_cubes: Vec<u16> = world
             .material_cubemaps
@@ -239,91 +240,32 @@ impl AssetManager {
         let count = world.groups.len().min(MAX_GROUPS);
         let mut objects = vec![0u8; count];
         let mut blocks: Vec<CompiledBlock> = Vec::new();
-        for (i, group) in world.groups.iter().take(count).enumerate() {
-            for disp in [false, true] {
-                let mut lit: Vec<CompiledBatch> = Vec::new();
-                let mut batches: Vec<MeshBatch> = Vec::new();
-                let mut edges: Vec<[f32; 3]> = Vec::new();
-                let (mut min, mut max) = ([f32::MAX; 3], [f32::MIN; 3]);
-                for &f in &group.faces {
-                    let Some(face) = world.faces.get(f as usize) else { continue };
-                    if face.is_disp() != disp {
-                        continue;
-                    }
-                    let Some(&material) = materials.get(face.material as usize) else { continue };
-                    let verts = world.face_vertices(face);
-                    if verts.is_empty() {
-                        continue;
-                    }
-                    let tris = BspWorld::face_triangles(face);
-                    let batch = match batches.iter().position(|b| b.material == material) {
-                        Some(b) => &mut batches[b],
-                        None => {
-                            batches.push(MeshBatch { material, ..Default::default() });
-                            batches.last_mut().expect("just pushed")
-                        }
-                    };
-                    let base = batch.vertices.len() as u32;
-                    let normals =
-                        if disp { disp_normals(verts, &tris, face.normal) } else { vec![face.normal; verts.len()] };
-                    batch.vertices.extend(verts.iter().zip(normals).map(|(v, normal)| Vertex {
-                        pos: v.pos,
-                        normal,
-                        uv: v.uv,
-                        alpha: v.alpha,
-                    }));
-                    let cube = cube_of(face.material);
-                    batch.cubemaps.resize(base as usize, NO_CUBEMAP);
-                    batch.cubemaps.resize(batch.vertices.len(), cube);
-                    if verts.iter().any(|v| v.multiblend.is_some()) {
-                        batch.blend.resize(base as usize, hp_render::BlendVertex::default());
-                        batch.blend.extend(verts.iter().map(|v| {
-                            v.multiblend.map_or_else(hp_render::BlendVertex::default, hp_render::BlendVertex::painted)
-                        }));
-                    }
-                    batch.indices.extend(tris.iter().map(|t| base + t));
-                    let lit_batch = match lit.iter().position(|b| b.material == material) {
-                        Some(b) => &mut lit[b],
-                        None => {
-                            lit.push(CompiledBatch { material, ..Default::default() });
-                            lit.last_mut().expect("just pushed")
-                        }
-                    };
-                    let lit_base = lit_batch.vertices.len() as u32;
-                    let first = batch.vertices.len() - verts.len();
-                    lit_batch.vertices.extend(
-                        verts
-                            .iter()
-                            .zip(&batch.vertices[first..])
-                            .map(|(v, r)| compiled_vertex(v, r.normal, face.light, cube)),
-                    );
-                    lit_batch.indices.extend(tris.iter().map(|t| lit_base + t));
-                    for v in verts {
-                        for k in 0..3 {
-                            min[k] = min[k].min(v.pos[k]);
-                            max[k] = max[k].max(v.pos[k]);
-                        }
-                    }
-                    if !disp {
-                        for k in 0..verts.len() {
-                            edges.push(verts[k].pos);
-                            edges.push(verts[(k + 1) % verts.len()].pos);
-                        }
-                    }
+        let work: Vec<(usize, &[u32])> = world.groups[..count]
+            .iter()
+            .enumerate()
+            .flat_map(|(i, group)| group.faces.chunks(FACES_PER_TASK).map(move |faces| (i, faces)))
+            .collect();
+        let parts: Vec<(usize, [Option<GroupMesh>; 2])> = hp_render::pool::run(|| {
+            use rayon::prelude::*;
+            work.par_iter()
+                .map(|&(i, faces)| (i, [false, true].map(|disp| group_mesh(world, faces, disp, &materials, &cube_of))))
+                .collect()
+        });
+        let mut built: Vec<[Option<GroupMesh>; 2]> = (0..count).map(|_| [None, None]).collect();
+        for (i, pair) in parts {
+            for (slot, part) in built[i].iter_mut().zip(pair) {
+                match (slot.as_mut(), part) {
+                    (Some(acc), Some(part)) => acc.append(part),
+                    (None, Some(part)) => *slot = Some(part),
+                    _ => {}
                 }
+            }
+        }
+        for (i, pair) in built.into_iter().enumerate() {
+            for (disp, mesh) in [false, true].into_iter().zip(pair) {
+                let Some(GroupMesh { mesh, lit }) = mesh else { continue };
                 let id = if disp { disp_object(i) } else { face_object(i) };
-                if batches.is_empty() {
-                    continue;
-                }
                 objects[i] |= if disp { 2 } else { 1 };
-                let mesh = ObjectMesh {
-                    batches,
-                    edges,
-                    aabb_min: min,
-                    aabb_max: max,
-                    wire_color: WIRE_COLOR,
-                    ..Default::default()
-                };
                 renderer.upsert_object(id, mesh);
                 renderer.set_object_flags(id, object_flags(disp, false));
                 blocks.push(CompiledBlock { object: id, batches: lit });
@@ -390,15 +332,18 @@ impl AssetManager {
                 bumped: m.bumped,
             })
             .collect();
+        let meshes = start.elapsed();
         let stats = renderer.set_compiled_lighting(mode, &maps, &blocks);
+        let lighting = start.elapsed();
         log::info!(
-            "player view: compiled lighting {} ({} lightmaps, {} dropped, atlas {} x {} x {})",
+            "player view: compiled lighting {} ({} lightmaps, {} dropped, atlas {} x {} x {}, {} MB)",
             world.light.mode.name(),
             stats.lightmaps,
             stats.dropped,
             stats.atlas_size,
-            stats.atlas_size,
-            stats.atlas_layers
+            stats.atlas_height,
+            stats.atlas_layers,
+            stats.bytes >> 20
         );
         self.play_world.static_props = world_light::static_prop_index(&world.light.props.static_props);
         for (id, object) in &self.play_world.entity_blocks {
@@ -462,14 +407,149 @@ impl AssetManager {
             }
         }
         log::info!(
-            "player view: compiled world uploaded in {:?} ({} faces, {} groups, {} materials)",
+            "player view: compiled world uploaded in {:?} ({} faces, {} groups, {} materials; materials and cubemaps {:?}, meshes {:?}, lightmaps {:?})",
             start.elapsed(),
             world.faces.len(),
             count,
-            world.materials.len()
+            world.materials.len(),
+            prepared,
+            meshes.saturating_sub(prepared),
+            lighting.saturating_sub(meshes)
         );
         objects
     }
+}
+
+const FACES_PER_TASK: usize = 512;
+
+struct GroupMesh {
+    mesh: ObjectMesh,
+    lit: Vec<CompiledBatch>,
+}
+
+impl GroupMesh {
+    fn append(&mut self, part: GroupMesh) {
+        for b in part.mesh.batches {
+            let at = match self.mesh.batches.iter().position(|a| a.material == b.material) {
+                Some(at) => at,
+                None => {
+                    self.mesh.batches.push(MeshBatch { material: b.material, ..Default::default() });
+                    self.mesh.batches.len() - 1
+                }
+            };
+            let acc = &mut self.mesh.batches[at];
+            let base = acc.vertices.len() as u32;
+            acc.cubemaps.resize(base as usize, NO_CUBEMAP);
+            acc.cubemaps.extend(b.cubemaps);
+            if !b.blend.is_empty() {
+                acc.blend.resize(base as usize, hp_render::BlendVertex::default());
+                acc.blend.extend(b.blend);
+            }
+            acc.vertices.extend(b.vertices);
+            acc.indices.extend(b.indices.iter().map(|i| base + i));
+        }
+        for b in part.lit {
+            let at = match self.lit.iter().position(|a| a.material == b.material) {
+                Some(at) => at,
+                None => {
+                    self.lit.push(CompiledBatch { material: b.material, ..Default::default() });
+                    self.lit.len() - 1
+                }
+            };
+            let acc = &mut self.lit[at];
+            let base = acc.vertices.len() as u32;
+            acc.vertices.extend(b.vertices);
+            acc.indices.extend(b.indices.iter().map(|i| base + i));
+        }
+        self.mesh.edges.extend(part.mesh.edges);
+        for k in 0..3 {
+            self.mesh.aabb_min[k] = self.mesh.aabb_min[k].min(part.mesh.aabb_min[k]);
+            self.mesh.aabb_max[k] = self.mesh.aabb_max[k].max(part.mesh.aabb_max[k]);
+        }
+    }
+}
+
+fn group_mesh(
+    world: &BspWorld,
+    faces: &[u32],
+    disp: bool,
+    materials: &[hp_render::MaterialId],
+    cube_of: &(dyn Fn(u32) -> u16 + Sync),
+) -> Option<GroupMesh> {
+    let mut lit: Vec<CompiledBatch> = Vec::new();
+    let mut batches: Vec<MeshBatch> = Vec::new();
+    let mut edges: Vec<[f32; 3]> = Vec::new();
+    let (mut min, mut max) = ([f32::MAX; 3], [f32::MIN; 3]);
+    for &f in faces {
+        let Some(face) = world.faces.get(f as usize) else { continue };
+        if face.is_disp() != disp {
+            continue;
+        }
+        let Some(&material) = materials.get(face.material as usize) else { continue };
+        let verts = world.face_vertices(face);
+        if verts.is_empty() {
+            continue;
+        }
+        let tris = BspWorld::face_triangles(face);
+        let batch = match batches.iter().position(|b| b.material == material) {
+            Some(b) => &mut batches[b],
+            None => {
+                batches.push(MeshBatch { material, ..Default::default() });
+                batches.last_mut().expect("just pushed")
+            }
+        };
+        let base = batch.vertices.len() as u32;
+        let smooth = disp.then(|| disp_normals(verts, &tris, face.normal));
+        batch.vertices.extend(verts.iter().enumerate().map(|(k, v)| Vertex {
+            pos: v.pos,
+            normal: smooth.as_ref().and_then(|n| n.get(k).copied()).unwrap_or(face.normal),
+            uv: v.uv,
+            alpha: v.alpha,
+        }));
+        let cube = cube_of(face.material);
+        batch.cubemaps.resize(base as usize, NO_CUBEMAP);
+        batch.cubemaps.resize(batch.vertices.len(), cube);
+        if verts.iter().any(|v| v.multiblend.is_some()) {
+            batch.blend.resize(base as usize, hp_render::BlendVertex::default());
+            batch.blend.extend(
+                verts.iter().map(|v| {
+                    v.multiblend.map_or_else(hp_render::BlendVertex::default, hp_render::BlendVertex::painted)
+                }),
+            );
+        }
+        batch.indices.extend(tris.iter().map(|t| base + t));
+        let lit_batch = match lit.iter().position(|b| b.material == material) {
+            Some(b) => &mut lit[b],
+            None => {
+                lit.push(CompiledBatch { material, ..Default::default() });
+                lit.last_mut().expect("just pushed")
+            }
+        };
+        let lit_base = lit_batch.vertices.len() as u32;
+        let first = batch.vertices.len() - verts.len();
+        lit_batch.vertices.extend(
+            verts.iter().zip(&batch.vertices[first..]).map(|(v, r)| compiled_vertex(v, r.normal, face.light, cube)),
+        );
+        lit_batch.indices.extend(tris.iter().map(|t| lit_base + t));
+        for v in verts {
+            for k in 0..3 {
+                min[k] = min[k].min(v.pos[k]);
+                max[k] = max[k].max(v.pos[k]);
+            }
+        }
+        if !disp {
+            for k in 0..verts.len() {
+                edges.push(verts[k].pos);
+                edges.push(verts[(k + 1) % verts.len()].pos);
+            }
+        }
+    }
+    if batches.is_empty() {
+        return None;
+    }
+    let mesh =
+        ObjectMesh { batches, edges, aabb_min: min, aabb_max: max, wire_color: WIRE_COLOR, ..Default::default() };
+    Some(GroupMesh { mesh, lit })
 }
 
 const DETAIL_MATERIAL: &str = "detail/detailsprites";

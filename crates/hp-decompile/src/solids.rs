@@ -304,7 +304,11 @@ pub(crate) fn build_from_planes(
         for face in &geom.faces {
             let polygon: Vec<DVec3> =
                 if snapped { face.vertices.iter().map(|&v| snap_vec(v)).collect() } else { face.vertices.clone() };
-            let Some(points) = plane_points(&polygon, face.plane.normal) else { continue };
+            let Some(mut points) = plane_points(&polygon, face.plane.normal) else { continue };
+            let n = face.plane.normal;
+            if n.abs().max_element() < 1.0 - 1e-9 {
+                points = points.map(|p| p - n * (n.dot(p) - face.plane.dist));
+            }
             let tex = texs.get(face.side_index).copied().unwrap_or(SideTex::Named("TOOLS/TOOLSNODRAW"));
             let (side, renamed) = make_side(l, points, face.plane.normal, tex, offset, map_name);
             renamed_materials += usize::from(renamed);

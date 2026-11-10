@@ -21,6 +21,8 @@ When the graphics card refuses an allocation, Hammer Pro keeps the old buffer in
 
 Leaving the player view frees the compiled world, its lightmaps and its sky. Baking the lighting again replaces the previous bake instead of adding to it, and the bake is sent to the graphics card in pieces of 32 MB.
 
+Before any of this, **Load texture detail by distance** (`render.texture_streaming`, on by default) keeps textures used only far from every view at a smaller size that looks the same at that distance, so big maps need less graphics memory in the first place. Textures may use 60% of the budget; when they would use more, the farthest ones are reduced one more level before the steps above lower every texture. See [Editor performance](performance.md#texture-detail-by-distance).
+
 ### The budget
 
 **Settings > Render > Graphics memory**:

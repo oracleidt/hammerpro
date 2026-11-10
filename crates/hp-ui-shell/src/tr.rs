@@ -38,6 +38,7 @@ pub const TR: TrTable = &[
     ("shell.undo.edit_vertices", "Edit vertices", "Modification des sommets"),
     ("shell.undo.edit_solid", "Edit solid", "Modification du solide"),
     ("shell.undo.edit_entity", "Edit entity", "Modification de l'entité"),
+    ("shell.undo.team_mapping_update", "Team Mapping update", "Mise à jour Team Mapping"),
     ("shell.undo.edit_map_properties", "Edit map properties", "Modification des propriétés de la map"),
     ("shell.undo.edit_outputs", "Edit outputs", "Modification des sorties"),
     ("shell.undo.edit_output", "Edit output", "Modification de la sortie"),

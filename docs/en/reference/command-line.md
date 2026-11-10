@@ -45,7 +45,7 @@ An unknown argument starting with `--` prints `unknown argument: ...` on stderr 
 | `--rad [options] <map>` | The Hammer Pro lighting, with the arguments of VRAD (`-ldr`, `-hdr`, `-both`, `-final`, `-fast`, `-bounce N`...) plus Hammer Pro's own options (`-nostaticpropshadows`, `-nodispshadows`...). It lights `<map>.bsp` in place. |
 | `--import-models FILE_OR_DIR... --out DIR [options]` | Batch conversion of OBJ, FBX, glTF and GLB files into Garry's Mod models, with no window and no game (see "Batch import" in [Model import](../features/model-import.md#batch-import)). |
 | `--light-preview ...` | Internal: the lighting of the baked lighting preview, started by the editor itself. You never need to run it. |
-| `--apply-update <zip> <program> <pid>` | Internal: the update helper that the editor starts from a copy of itself when you click **Update**. It has no window: it waits for the process `<pid>` to end, extracts `hammerpro.exe` from `<zip>`, replaces `<program>` (keeping `<program>.old`, rolling back on failure) and starts it. See [Updates](../features/updates.md). |
+| `--apply-update <zip> <program> <pid> [<sha256>]` | Internal: the update helper that the editor starts from a copy of itself when you click **Update**. It has no window: it waits for the process `<pid>` to end, checks that `<zip>` still has the SHA-256 checksum `<sha256>` of the verified download (when given), extracts `hammerpro.exe` from `<zip>`, replaces `<program>` (keeping `<program>.old`, rolling back on failure) and starts it. See [Updates](../features/updates.md). |
 
 Every flag of `--bspc` and `--rad`, with its effect and default, is documented in [Compiler command line](../compiler/command-line.md).
 

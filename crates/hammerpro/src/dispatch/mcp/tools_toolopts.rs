@@ -37,7 +37,7 @@ domain! { "tool options";
         tool (element: object, face, edge, vertex, what a click in a 3D view selects; handles: scale, rotate, skew; box: touching, inside, centers; gizmo on/off and gizmo_mode: move, \
         rotate, scale; gizmo_local; stretch_handles: the arrows on the faces of the selected brushes in the 3D \
         view that stretch the selection along an axis, saved with the settings), the block tool (primitive incl. stairs, spiral_stairs, ramp, pillar, doorway, sides, arch wall, arc, start, rise, torus, steps, step_height, open, inner, spiral_angle, spiral_start, slope, direction, base, capital, inset, door_width, door_height, thickness, door_arch, door_arch_radius, door_arch_segments, reorient, the shape preview window, texture scale, \
-        create as, keep active), the curve tool (subdivisions 2 to 4096, thickness 1 to 1024, height or auto, \
+        create as, keep active; while a shape is drawn the mouse wheel steps sides, steps or door_arch_segments), the polygon tool (tex_scale, create_as, keep_active), the entity tool (class, model, skin, align: the next point entity or prop), the decal and overlay tools (snap), the curve tool (subdivisions 2 to 4096, thickness 1 to 1024, height or auto, \
         tex_scale, create_as, keep_active), the road tool (lanes, lane_width, shoulder, thickness, step, \
         tex_scale, material, shoulder_material, line_material, center_material, center_line, edge_line, \
         divider_line (none, solid, dashed, double), line_width, dash, gap, roll_start, roll_end, auto_bank, \
@@ -45,7 +45,7 @@ domain! { "tool options";
         Shift+click cut in the 3D view: auto, x, y, z; the cut face material follows the \
         brush.clip_current_material setting), the slice tool (orientation: left_right or top_bottom; segments 1 to 64, the number of cuts; slice_brushes slices without the tool), the path tool (class, base_name, loop, relink, offset; saved with the settings), the extrude / carve \
         tool (mode: carve, extrude; depth; through; new_faces: face, current), the bevel tool (radius, segments, \
-        inverse, new_faces: face, current), the vertex tool (merge_distance 0 to 16, weld_distance 0.001 to 64 and weld_target: center, first, last, for the weld_brush_vertices tool and the weld actions) and the displacement tool's brush (mode: select, geometry, alpha, sculpt, tag; \
+        inverse, new_faces: face, current), the vertex tool (merge_distance 0 to 16, weld_distance 0.001 to 64 and weld_target: center, first, last, for the weld_brush_vertices tool and the weld actions), the physics simulator (simulate: run that many seconds of physics on the selected brushes, props and ragdolls at once, paused afterwards; paused; keep: apply the positions and ragdoll poses in one undo step; reset; simulated and bodies, read only; gravity and the other values are the physics.* settings) and the displacement tool's brush (mode: select, geometry, alpha, sculpt, tag; \
         effect; axis: normal, subdiv, center, view, view_flat (toward the camera on X and Y only), x, y, z, \
         custom; radius, strength (intensity), smooth, \
         target height, falloff, spatial, line of sight, autosew (live sewing), selected only, continuous, alpha \
@@ -122,7 +122,7 @@ pub(crate) fn set_tool_options_on(
     let known = tool.option_values();
     if known.is_empty() {
         return ToolResult::error(format!(
-            "set_tool_options: the {} tool has no options to set (the selection, block, curve, road, clip, extrude, bevel, vertex, path and displacement tools have)",
+            "set_tool_options: the {} tool has no options to set (the selection, block, polygon, entity, decal, overlay, curve, road, pipe, clip, slice, extrude, bevel, vertex, path, physics and displacement tools have)",
             tool_name(id)
         ));
     }
@@ -153,6 +153,9 @@ pub(crate) fn set_tool_options_on(
 fn get_tool_options(_state: &mut AppState, a: &Args<'_>) -> R<Outcome> {
     let which = a.opt_enum("tool", TOOL_NAMES)?.and_then(|n| tool_of(&n));
     Ok(Outcome::AppFn(AppFn(Box::new(move |app, _ctx| {
+        for tool in &mut app.tools {
+            tool.refresh_options(&app.state);
+        }
         ToolResult::json(tool_options_json(&app.tools, app.state.tool, which))
     }))))
 }
@@ -173,7 +176,8 @@ fn set_tool_options(state: &mut AppState, a: &Args<'_>) -> R<Outcome> {
         }
         options.push((k.clone(), option_text(k, v)?));
     }
-    let activate = a.opt_bool("activate")?.unwrap_or(false);
+    let simulating = id == ToolId::Physics && options.iter().any(|(k, _)| k == "simulate");
+    let activate = a.opt_bool("activate")?.unwrap_or(false) || simulating;
     if activate && !id.is_ready() {
         return Err(format!("the {} tool is not available", tool_name(id)));
     }

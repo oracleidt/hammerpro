@@ -302,9 +302,16 @@ impl Scene {
     }
 
     pub fn to_map(&self) -> Map {
+        let (solids, entities) = rayon::join(
+            || self.solids.par_values().map(|n| (n.owner, n.solid.clone())).collect(),
+            || self.entities.par_values().map(|n| n.entity.clone()).collect(),
+        );
+        self.assemble_map(solids, entities)
+    }
+
+    pub(crate) fn assemble_map(&self, solids: Vec<(Owner, Solid)>, mut entities: Vec<Entity>) -> Map {
         let mut world = self.world.clone();
         world.groups = self.groups.values().map(|g| g.group.clone()).collect();
-        let mut entities: Vec<Entity> = self.entities.values().map(|n| n.entity.clone()).collect();
         let positions: IdMap<usize> = {
             let mut m = id_map(self.entities.len());
             for (i, id) in self.entities.keys().enumerate() {
@@ -312,7 +319,6 @@ impl Scene {
             }
             m
         };
-        let solids: Vec<(Owner, Solid)> = self.solids.par_values().map(|n| (n.owner, n.solid.clone())).collect();
         for (owner, solid) in solids {
             let slot = match owner {
                 Owner::World => None,

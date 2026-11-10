@@ -1,5 +1,4 @@
 pub mod camera;
-mod collaboration;
 pub mod fly_texture;
 pub mod input;
 pub mod io;
@@ -45,7 +44,7 @@ use crate::menu::{
 use crate::params::{RenderConfig, view_info, view_options, view_params};
 use crate::pick::Picker;
 use crate::placement::Target;
-use crate::render_cache::{RenderCache, ViewKey};
+use crate::render_cache::{ContentClock, RenderCache, ViewKey};
 
 pub use tr::TR;
 
@@ -232,6 +231,21 @@ pub struct Viewports {
     perf_rects: [Rect; 4],
     stats: Option<(f64, RenderStats)>,
     render_cache: RenderCache,
+    content_clock: ContentClock,
+    anim_time: [f32; 4],
+    arrow_look_frame: u64,
+}
+
+pub fn next_light_frame(time: f64) -> std::time::Duration {
+    let t = if time.is_finite() { time.max(0.0) } else { 0.0 };
+    let next = ((t * 10.0).floor() + 1.0) / 10.0 - t;
+    std::time::Duration::from_secs_f64(next.clamp(0.001, 0.1))
+}
+
+pub fn animation_time(time: f64, fps: u32) -> f32 {
+    let t = time.rem_euclid(3600.0);
+    let t = if fps == 0 { t } else { (t * f64::from(fps)).floor() / f64::from(fps) };
+    t as f32
 }
 
 impl Default for Viewports {
@@ -291,6 +305,9 @@ impl Viewports {
             perf_rects: [Rect::NOTHING; 4],
             stats: None,
             render_cache: RenderCache::default(),
+            content_clock: ContentClock::default(),
+            anim_time: [0.0; 4],
+            arrow_look_frame: 0,
         }
     }
 
@@ -468,9 +485,14 @@ impl Viewports {
             self.capture_view = None;
             self.swallow = false;
         }
-        if self.is_navigating() {
+        if self.wants_frames() {
             ctx.request_repaint();
         }
+    }
+
+    pub fn wants_frames(&self) -> bool {
+        let flying = self.mouselook.is_some() || self.gesture.is_some_and(|g| g.flies());
+        self.player_view.is_some() || self.velocity != DVec3::ZERO || (flying && !self.keys.is_empty())
     }
 
     fn player_frame(
@@ -1109,9 +1131,10 @@ impl Viewports {
         let fast = f64::from(state.settings.view.camera_fast_multiplier);
         let target = camera::fly_target_velocity(&state.cameras.cam3d, &fly, speed, fast);
         let response = state.settings.workflow.fly_response_secs();
-        self.velocity = camera::smooth_velocity_with(self.velocity, target, dt, response);
+        let step = camera::motion_step(dt, self.velocity == DVec3::ZERO);
+        self.velocity = camera::smooth_velocity_with(self.velocity, target, step, response);
         if self.velocity != DVec3::ZERO {
-            camera::integrate(&mut state.cameras.cam3d, self.velocity, dt);
+            camera::integrate(&mut state.cameras.cam3d, self.velocity, step);
         }
 
         if input.wheel != 0.0 && flying {
@@ -1207,8 +1230,10 @@ impl Viewports {
             } else if state.settings.workflow.nav_scheme.hammer_gestures() {
                 let [l, r, u, d] = input.arrows_down.map(|b| f64::from(u8::from(b)));
                 if l + r + u + d > 0.0 {
-                    let dt = f64::from(state.frame.dt.max(0.0));
+                    let resting = self.arrow_look_frame.wrapping_add(1) != state.frame.index;
+                    let dt = camera::motion_step(f64::from(state.frame.dt.max(0.0)), resting);
                     camera::arrow_look(&mut state.cameras.cam3d, r - l, u - d, dt);
+                    self.arrow_look_frame = state.frame.index;
                     ctx.request_repaint();
                 }
                 input::consume_arrows(ctx);
@@ -1359,6 +1384,7 @@ impl Viewports {
             }
         }
 
+        let costs = std::time::Instant::now();
         self.overlay.clear();
         for layer in &self.layers {
             layer.add(state, &view, &mut self.overlay);
@@ -1383,11 +1409,19 @@ impl Viewports {
         tool.overlay(state, &view, &mut self.overlay);
         if state.gfx.is_some() && self.refill_retained(state, tool, &view) {
             if let Some(gfx) = state.gfx.as_mut() {
-                gfx.renderer.set_retained_overlay(i as u32, &self.retained_overlay);
+                self.content_clock.set_retained(&mut gfx.renderer, i as u32, &self.retained_overlay);
             }
             self.trim_retained_scratch();
         }
 
+        let overlay_ms = costs.elapsed().as_secs_f32() * 1000.0;
+        let overlay_items = (self.overlay.lines.len()
+            + self.overlay.lines_on_top.len()
+            + self.overlay.triangles.len()
+            + self.overlay.triangles_on_top.len()
+            + self.overlay.points.len()) as u32;
+        let costs = std::time::Instant::now();
+        let mut rendered = false;
         let painter = ui.painter_at(slot.rect);
         let bg = if view.is_2d() { cfg.background_2d } else { cfg.background_3d };
         let bg = Color32::from_rgb((bg[0] * 255.0) as u8, (bg[1] * 255.0) as u8, (bg[2] * 255.0) as u8);
@@ -1400,6 +1434,7 @@ impl Viewports {
             if !view.is_2d() {
                 params.size = params::scaled_size(params.size, cfg.render_scale);
             }
+            state.assets.note_view(i as u32, &params);
             let mut options = view_options(&view, cfg);
             let animate = state.settings.render.animate_materials && state.tool != ToolId::Texture;
             let shows = gfx.renderer.view_shows_animation(i as u32) || gfx.renderer.view_texture(i as u32).is_none();
@@ -1408,8 +1443,13 @@ impl Viewports {
                 && shows
                 && (gfx.renderer.has_animated_materials() || gfx.renderer.detail_sprites_sway())
             {
-                options.time = (state.frame.time % 3600.0) as f32;
-                ctx.request_repaint();
+                if state.runtime.render.request_animation_frame(ctx) {
+                    self.anim_time[i] = animation_time(state.frame.time, state.settings.render.animation_fps);
+                }
+                options.time = self.anim_time[i];
+            }
+            if !view.is_2d() && state.runtime.render.animation.is_some() && state.assets.animated_lights() {
+                ctx.request_repaint_after(next_light_frame(ctx.input(|i| i.time)));
             }
             options.compiled_lighting = self.player_view == Some(i)
                 && self.player_world.is_some()
@@ -1419,17 +1459,20 @@ impl Viewports {
                 options.fog_volumes = false;
             }
             gfx.renderer.set_tone_settings(params::tone_for(&state.settings.render, &cfg.plan));
-            gfx.renderer.set_quality(params::quality_for(&cfg.plan));
+            gfx.renderer.set_quality(params::quality_for(&cfg.plan, cfg.adaptive));
             gfx.renderer.set_lazy_exposure(true);
-            gfx.renderer.set_view_options(i as u32, options);
+            self.content_clock.set_options(&mut gfx.renderer, i as u32, options);
             let key = ViewKey {
                 params,
-                content: gfx.renderer.content_generation(),
+                options,
+                content: self.content_clock.content(&gfx.renderer),
+                retained: self.content_clock.retained(i),
                 overlay: render_cache::overlay_hash(&self.overlay),
             };
             let has_image = gfx.renderer.view_texture(i as u32).is_some();
             if self.render_cache.needs_render(i, &key, has_image) {
                 gfx.renderer.render_view(i as u32, &params, &self.overlay);
+                rendered = true;
                 self.render_cache.rendered(i, key);
                 if gfx.renderer.wants_another_frame() {
                     ctx.request_repaint();
@@ -1451,6 +1494,8 @@ impl Viewports {
         if !drawn {
             paint::placeholder(&painter, slot.rect, bg, t!(slot.kind.label_key()), t!("viewport.starting"));
         }
+        let render_ms = costs.elapsed().as_secs_f32() * 1000.0;
+        let costs = std::time::Instant::now();
 
         tool.paint(state, &view, &painter);
         self.paint_overlays(&painter, state, &view, input, drop_label);
@@ -1472,6 +1517,15 @@ impl Viewports {
         } else {
             perf_ui::show(ui, state, slot.rect, slot.rect.top() + HEADER_HEIGHT + 10.0, i)
         };
+        if let Some(cost) = state.runtime.render.perf.views.get_mut(i) {
+            *cost = hp_app::runtime::ViewCost {
+                overlay_ms,
+                render_ms,
+                paint_ms: costs.elapsed().as_secs_f32() * 1000.0,
+                overlay_items,
+                rendered,
+            };
+        }
         hover_set
     }
 
@@ -1556,7 +1610,7 @@ impl Viewports {
         for (i, key) in self.retained.iter_mut().enumerate() {
             let shown = slots.iter().any(|s| s.index == i);
             if !shown && key.as_ref().is_some_and(|k| k.tool.is_some_and(|(t, _)| t != tool)) {
-                gfx.renderer.clear_retained_overlay(i as u32);
+                self.content_clock.clear_retained(&mut gfx.renderer, i as u32);
                 *key = None;
             }
         }
@@ -1571,7 +1625,6 @@ impl Viewports {
         drop_label: Option<String>,
     ) {
         let rect = view.rect;
-        collaboration::paint(state, view, painter);
         paint::axis_gizmo(painter, rect.left_bottom() + vec2(30.0, -30.0), view);
         if walk_legend_shown(state, view) {
             let r = &state.settings.render;
@@ -1779,6 +1832,12 @@ impl Viewports {
                                 choice = Some(MenuChoice::CreateHere);
                             }
                         }
+                        MenuEntry::PingHere => {
+                            if cx.team && ui.add_enabled(enabled, egui::Button::new(t!("viewport.team_ping"))).clicked()
+                            {
+                                choice = Some(MenuChoice::PingHere);
+                            }
+                        }
                     }
                 }
             });
@@ -1798,6 +1857,13 @@ impl Viewports {
         match choice {
             MenuChoice::Tool(_) => {}
             MenuChoice::Action(a) => state.request(a),
+            MenuChoice::PingHere => {
+                if let Some(point) = menu.point.filter(|point| point.is_finite()) {
+                    state.runtime.collaboration.requests.push(
+                        hp_app::runtime::collaboration::CollaborationRequest::Ping { position: Some(point.to_array()) },
+                    );
+                }
+            }
             MenuChoice::CenterHere => {
                 let Some(mut p) = menu.point else { return };
                 match menu.view.kind {
@@ -2008,7 +2074,11 @@ impl Viewports {
 }
 
 fn menu_context(state: &AppState, menu: &OpenMenu) -> MenuContext {
-    MenuContext { has_point: menu.point.is_some(), has_entity_class: !state.current_entity_class.trim().is_empty() }
+    MenuContext {
+        has_point: menu.point.is_some(),
+        has_entity_class: !state.current_entity_class.trim().is_empty(),
+        team: state.runtime.collaboration.connected && state.runtime.collaboration.active_map,
+    }
 }
 
 const ZOOM_STEP_FACTOR: f64 = camera::ZOOM_STEP;

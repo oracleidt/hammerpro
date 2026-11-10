@@ -279,6 +279,70 @@ pub fn parse_with_issues(src: &str) -> (Block, ParseIssues) {
     (stack.pop().expect("root"), issues)
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct BlockRef<'a> {
+    pub name: &'a str,
+    pub props: Vec<(&'a str, &'a str)>,
+    pub children: Vec<BlockRef<'a>>,
+}
+
+impl<'a> BlockRef<'a> {
+    pub fn get(&self, key: &str) -> Option<&'a str> {
+        self.props.iter().find(|(k, _)| k.eq_ignore_ascii_case(key)).map(|(_, v)| *v)
+    }
+
+    pub fn to_block(&self) -> Block {
+        Block {
+            name: self.name.to_owned(),
+            props: self.props.iter().map(|(k, v)| ((*k).to_owned(), (*v).to_owned())).collect(),
+            children: self.children.iter().map(BlockRef::to_block).collect(),
+        }
+    }
+}
+
+impl Block {
+    pub fn as_ref(&self) -> BlockRef<'_> {
+        BlockRef {
+            name: &self.name,
+            props: self.props.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect(),
+            children: self.children.iter().map(Block::as_ref).collect(),
+        }
+    }
+}
+
+pub fn parse_ref(src: &str) -> BlockRef<'_> {
+    let mut lexer = Lexer::new(src);
+    let mut stack: Vec<BlockRef<'_>> = vec![BlockRef::default()];
+    let mut pending_key: Option<&str> = None;
+    while let Some((tok, is_cond)) = lexer.next() {
+        if is_cond {
+            continue;
+        }
+        match tok {
+            Tok::Open => {
+                let name = pending_key.take().unwrap_or("");
+                stack.push(BlockRef { name, ..BlockRef::default() });
+            }
+            Tok::Close => {
+                pending_key = None;
+                if stack.len() > 1 {
+                    let done = stack.pop().expect("len > 1");
+                    stack.last_mut().expect("root").children.push(done);
+                }
+            }
+            Tok::Str(s) => match pending_key.take() {
+                None => pending_key = Some(s),
+                Some(key) => stack.last_mut().expect("root").props.push((key, s)),
+            },
+        }
+    }
+    while stack.len() > 1 {
+        let done = stack.pop().expect("len > 1");
+        stack.last_mut().expect("root").children.push(done);
+    }
+    stack.pop().expect("root")
+}
+
 pub fn parse_bytes(bytes: &[u8]) -> Result<Block, KvError> {
     let (text, _) = decode(bytes);
     parse(&text)
@@ -453,6 +517,29 @@ world
         b.push_prop("key", "3");
         assert_eq!(b.remove("key"), Some("2".into()));
         assert!(b.props.is_empty());
+    }
+
+    #[test]
+    fn borrowed_blocks_match_owned_blocks() {
+        let sources = [
+            r#"a { "k" "v" b { "x" "1 2 3" } "k" "w" }"#,
+            r#"// c
+"LightmappedGeneric"
+{
+ $basetexture a/b [$X360] "$k" "v" $dangling }
+ } extra"#,
+            r#"a { b { "plane" "(161 -1"#,
+            r#"} a { "k" } } z { }"#,
+            "\u{feff}side { id 1 dispinfo { normals { row0 \"0 0 1\" } } }",
+        ];
+        for src in sources {
+            let owned = parse(src).unwrap();
+            let borrowed = parse_ref(src);
+            assert_eq!(borrowed.to_block(), owned, "{src}");
+            assert_eq!(owned.as_ref(), borrowed, "{src}");
+        }
+        let r = parse_ref(r#"x { "Key" "1" }"#);
+        assert_eq!(r.children[0].get("key"), Some("1"));
     }
 
     #[test]

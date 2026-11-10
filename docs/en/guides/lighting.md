@@ -33,6 +33,7 @@ For the real look of the compiled map (bounced light, lightmaps, props lit like 
    - **Dynamic updates** with an **Update delay**: bakes again once changes affecting lighting stop.
    - **Lightmap budget**: the estimated size of the lightmaps against the 2 GB a face can address in them, with the most expensive faces.
 4. Wait for the quick and refined passes, then navigate using the calculated result. Camera movement and selection do not invalidate a global bake. The preview follows the dynamic range of the compile settings (LDR or HDR).
+5. Edit the lights: moving a light or changing its color, brightness or cone relights only that light and the bounced light, usually in a fraction of a second, without compiling again. **Map > Lighting > Solo the selected lights** and **Mute the selected lights** compare lights one by one; **Measure the cost of each light** finds the lights that cost the most. On big maps the area around the camera is baked first (setting **Bake the visible area first**). Dragging a light with the selection tool relights it live while the mouse button is held, and the map is prepared in the background when edits pause, so turning the baked preview on shows it at once (setting **Prepare the baked preview in the background**).
 
 The baking threads and the luxel budget of the preview are on the **Lighting** page of the settings. Automatic activation uses the whole map by default. **Bake only around the camera on big maps** is an opt-in regional mode for automatic activation whose region follows the camera; existing saved choices are preserved. Preview brightness, color correction and the update delay do not restart the lighting calculation. Details: [Lighting preview](../features/lighting-preview.md).
 
@@ -60,6 +61,26 @@ In the **Static props** section of the compile window:
 - **Static prop shadows**: props cast shadows in the lighting. Off: no prop shadow at all, and their models are not even loaded (`-nostaticpropshadows`), much faster on maps with many props.
 
 You can also force `-StaticPropLighting` with a Normal compile through the lighting options menu. Each flag is described in [Compile options](../compiler/compile-options.md).
+
+## How the lighting compares with VRAD
+
+The lighting compiler follows the VRAD rules, so a map lit by Hammer Pro looks like the same map lit by Valve's VRAD in Garry's Mod. It is checked feature by feature against the VRAD of Garry's Mod on test maps (lightmaps, light styles, bump maps, ambient light, static prop vertex colors, detail props, world lights) and in game:
+
+- `light`, `light_spot` and `light_environment`: colors and brightness, the HDR keys (`_lightHDR`, `_lightscaleHDR`, `_ambientHDR`, `_AmbientScaleHDR`), constant, linear and quadratic attenuation, `_fifty_percent_distance`, `_zero_percent_distance`, `_hardfalloff`, `_distance`, spot cones and `_exponent`, `target`, `SunSpreadAngle`, the 3D skybox. Same light within about 1%.
+- Named lights and light styles: the same switchable styles (32 and up) and the same extra lightmaps.
+- Texture lights from `lights.rad`, from the map's own `.rad` file and from `-lights`. The worldspawn key `_lightsrad` is a Hammer Pro addition that VRAD ignores.
+- Bump mapped surfaces, displacements, `func_detail`, the lightmap scale of each face, `_minlight`, `vrad_brush_cast_shadows`, static prop shadows and vertex lighting (`-StaticPropLighting`, `-textureshadows`), detail props, `-final`, `-extrasky`, `-noextra`, `-softsun`, `-noskyboxrecurse`, `-fastambient`, `-bounce`.
+- Translucent glass, alpha tested grates (`CONTENTS_WINDOW`, `CONTENTS_GRATE`) and water cast no shadow, like in VRAD.
+
+Details and deliberate differences:
+
+- Bounced light and the ambient light of props and players go through water, glass and grates, like the direct light. Before 2.0 a water surface stopped them: floors under water and the ambient light above a pool were too dark.
+- Light bounced off a small, very bright spot (a light a few units from a wall) is spread over a patch of about 4 luxels, like a VRAD patch, so it leaves no bright speckles on the surfaces around it.
+- The bounced light is smoothed over 4 to 8 luxels (wider when fewer rays are traced, so Draft and Normal look as smooth as Final), like VRAD's patches: no blotches in places lit only by bounced light, such as shadows under a low sun.
+- Luxels on the edge of a face that no light sample reaches (often on brush entities such as doors) take the light of their neighbours instead of staying black, so the face has no dark rim.
+- `-fast` keeps the normal light levels; VRAD's `-fast` makes the bounced light about 8% darker.
+- In open places (yards, streets) the bounced light is about 10% darker than VRAD's, which overestimates the light bounced between surfaces close to each other; the direct light and the sky light are the same. Rooms with water get about 10% more bounced light than VRAD, which dims the light crossing a water surface.
+- A map without visibility (a leak) still gets bounced light, where VRAD computes the direct light only.
 
 ## FAQ
 

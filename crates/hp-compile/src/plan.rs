@@ -488,6 +488,20 @@ impl CompilePlan {
         }
         let map_key: String =
             map_key.chars().map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' }).collect();
+        if self.modes.vis != VisMode::Off && !map_key.is_empty() {
+            let vis_dir = dir.join(&map_key).to_string_lossy().into_owned();
+            for step in self
+                .steps
+                .iter_mut()
+                .filter(|s| s.kind == StepKind::Bsp && s.args.first().is_some_and(|a| a == BSPC_ARG))
+            {
+                if step.args.iter().any(|a| a.eq_ignore_ascii_case(crate::cache::VIS_CACHE_ARG)) {
+                    continue;
+                }
+                let at = step.args.len().saturating_sub(1).max(1);
+                step.args.splice(at..at, [crate::cache::VIS_CACHE_ARG.to_owned(), vis_dir.clone()]);
+            }
+        }
         self.cache = Some(crate::cache::PlanCache { dir, map_key, steps, max_bytes });
         self
     }

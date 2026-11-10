@@ -433,7 +433,7 @@ fn disp_edges(n: usize) -> ([usize; 4], [Vec<usize>; 4]) {
     (corners, edges)
 }
 
-type VertexCells = std::collections::HashMap<(i64, i64, i64), Vec<(usize, usize, bool)>>;
+type VertexCells = ahash::AHashMap<(i64, i64, i64), Vec<(usize, usize, bool)>>;
 
 pub(crate) fn smooth_disp_normals(faces: &mut [Option<LitFace>]) {
     let ids: Vec<usize> = (0..faces.len()).filter(|&i| faces[i].as_ref().is_some_and(|f| f.disp.is_some())).collect();
@@ -441,7 +441,7 @@ pub(crate) fn smooth_disp_normals(faces: &mut [Option<LitFace>]) {
         return;
     }
     let key = |p: DVec3| (p.x.round() as i64, p.y.round() as i64, p.z.round() as i64);
-    let mut cells: VertexCells = std::collections::HashMap::new();
+    let mut cells: VertexCells = ahash::AHashMap::new();
     for &i in &ids {
         let d = faces[i].as_ref().and_then(|f| f.disp.as_ref()).expect("displacement");
         let (corners, edges) = disp_edges(d.n);
@@ -809,6 +809,47 @@ pub(crate) enum SurfTri {
     Disp(u32, [[f32; 2]; 3]),
 }
 
+pub(crate) const OPAQUE_SURFACES: u8 = 1;
+pub(crate) const CLEAR_SURFACES: u8 = 2;
+
+pub(crate) fn see_through_faces(map: &MapData) -> Vec<bool> {
+    let mut out = vec![false; map.faces.len()];
+    let Some(m) = map.models.first() else { return out };
+    let mut brushes = Vec::new();
+    brushes_under(map, m.head, &mut brushes);
+    brushes.retain(|&b| map.brushes.get(b).is_some_and(|b| b.contents != 0 && b.contents & MASK_OPAQUE == 0));
+    if brushes.is_empty() {
+        return out;
+    }
+    let mut by_plane: ahash::AHashMap<usize, Vec<usize>> = ahash::AHashMap::new();
+    for f in m.first_face..m.first_face.saturating_add(m.num_faces).min(map.faces.len()) {
+        by_plane.entry(map.faces[f].plane & !1).or_default().push(f);
+    }
+    let warp = |texinfo: i32| {
+        usize::try_from(texinfo).ok().and_then(|t| map.texinfo.get(t)).is_some_and(|t| t.flags & surf::WARP != 0)
+    };
+    for b in brushes {
+        let brush = &map.brushes[b];
+        let Some(sides) = map.sides.get(brush.first_side..brush.first_side + brush.num_sides) else { continue };
+        let planes: Vec<_> = sides.iter().filter(|s| !s.bevel).filter_map(|s| map.planes.get(s.plane)).collect();
+        for side in sides.iter().filter(|s| !s.bevel && s.texinfo >= 0) {
+            for &f in by_plane.get(&(side.plane & !1)).into_iter().flatten() {
+                let face = &map.faces[f];
+                if out[f] || !(face.texinfo == side.texinfo || (warp(face.texinfo) && warp(side.texinfo))) {
+                    continue;
+                }
+                let pts = map.face_points(face);
+                if pts.is_empty() {
+                    continue;
+                }
+                let c = pts.iter().copied().sum::<DVec3>() / pts.len() as f64;
+                out[f] = planes.iter().all(|p| c.dot(p.normal) - p.dist <= 0.1);
+            }
+        }
+    }
+    out
+}
+
 pub(crate) fn surface_scene(
     map: &MapData,
     faces: &[Option<LitFace>],
@@ -816,7 +857,9 @@ pub(crate) fn surface_scene(
 ) -> (Bvh, Vec<SurfTri>) {
     let mut tris = Vec::new();
     let mut info = Vec::new();
+    let mut classes: Vec<u8> = Vec::new();
     let Some(m) = map.models.first() else { return (Bvh::new(&[]), info) };
+    let clear = see_through_faces(map);
     for f in m.first_face..m.first_face.saturating_add(m.num_faces).min(map.faces.len()) {
         let face = &map.faces[f];
         let flags = map.face_flags(face);
@@ -824,6 +867,11 @@ pub(crate) fn surface_scene(
             continue;
         }
         let li = lit_index.get(f).copied().flatten();
+        let class = match (clear.get(f).copied().unwrap_or(false), li) {
+            (true, None) => continue,
+            (true, Some(_)) => CLEAR_SURFACES,
+            (false, _) => OPAQUE_SURFACES,
+        };
         if let Some(lf) = faces.get(f).and_then(Option::as_ref)
             && li.is_some()
             && let Some(d) = &lf.disp
@@ -831,6 +879,7 @@ pub(crate) fn surface_scene(
             for (t, uv) in d.triangles() {
                 tris.push(Triangle { p: t.map(|v| v.as_vec3a()), payload: info.len() as u32 });
                 info.push(SurfTri::Disp(li.unwrap_or(0), uv.map(|c| [c.x as f32, c.y as f32])));
+                classes.push(OPAQUE_SURFACES);
             }
             continue;
         }
@@ -846,9 +895,11 @@ pub(crate) fn surface_scene(
         for k in 2..pts.len() {
             tris.push(Triangle { p: [pts[0], pts[k - 1], pts[k]].map(|v| v.as_vec3a()), payload: info.len() as u32 });
             info.push(kind);
+            classes.push(class);
         }
     }
-    (Bvh::from_vec(tris), info)
+    let class_of = |p: u32| classes.get(p as usize).copied().unwrap_or(OPAQUE_SURFACES);
+    (Bvh::from_vec_groups(tris, class_of, &[CLEAR_SURFACES]), info)
 }
 
 pub(crate) fn sky_clusters(map: &MapData) -> Vec<i32> {

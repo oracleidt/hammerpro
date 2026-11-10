@@ -188,7 +188,14 @@ domain! { "compile and play";
         (cancel) the bake, with a quality: draft (fast), normal or final (like the compile presets; saved as the \
         preview quality). A bake shows a quick pass first (the Sun Samples, Ambient Samples and Supersample of the \
         map's light_plus options), then a refined pass at the quality (kind refine in get_lighting_status) replaces \
-        it unless the lighting inputs changed. Read the progress with get_lighting_status; set_render_mode baked shows the result. The start action always bakes the whole map and keeps the result while navigating or switching render modes. The around_camera action explicitly limits the bake to a region. Automatic entry into baked mode can use a camera-following region only when lighting.auto_scope is enabled (default false), above lighting.auto_scope_luxels_millions million luxels (default 2), within lighting.auto_scope_radius units (default 3072). get_lighting_status preview.scope tells which.",
+        it unless the lighting inputs changed. The lighting runs in a background process that stays warm: light \
+        edits (move, color, brightness, cone, sun, mute or solo) relight only the changed lights plus their bounce \
+        light in a fraction of a second without compiling the map again, and brush edits compile the geometry \
+        again. On big maps (setting lighting.visible_first, default true) the area around the camera is baked \
+        first, then the whole map replaces it. With lighting.prepare (default true) the whole map is compiled and \
+        lit at low priority in the background once the map is open and edits pause, so turning the baked mode on \
+        shows it at once (get_lighting_status prepared). A light edit stops a running refined pass, is shown \
+        first and the refined pass starts again after it. get_lighting_status relight tells the last update. Read the progress with get_lighting_status; set_render_mode baked shows the result. The start action always bakes the whole map and keeps the result while navigating or switching render modes. The around_camera action explicitly limits the bake to a region. Automatic entry into baked mode can use a camera-following region only when lighting.auto_scope is enabled (default false), above lighting.auto_scope_luxels_millions million luxels (default 2), within lighting.auto_scope_radius units (default 3072). get_lighting_status preview.scope tells which.",
         {
             "action": choice("start (default), around_camera or stop.", &["start", "around_camera", "stop"]),
             "quality": choice("Bake quality (default: the saved one).", &["draft", "normal", "final"]),
@@ -198,7 +205,9 @@ domain! { "compile and play";
         get_lighting_status in options): brightness (0 to 4), bounced light, dynamic updates (bake again once edits \
         stop) and their delay (0 to 60 s), the radius of a bake around the camera (64 to 65536), and the sampling of \
         the quick pass every bake shows first: sun_samples (1 to 256), ambient_samples (sky light directions, 16 to \
-        5184) and supersample. The refined pass that follows uses the bake quality. Answers the options.",
+        5184) and supersample. The refined pass that follows uses the bake quality. keep_bake chooses incremental \
+        light edits. mute, unmute, solo and unmute_all leave lights out of the preview (saved as the Hammer++ \
+        excluded entities, one undo step); the preview relights at once. Answers the options.",
         {
             "brightness": number("Brightness of the preview.", 0.0, 4.0),
             "bounced": boolean("Bounced light."),
@@ -208,6 +217,11 @@ domain! { "compile and play";
             "sun_samples": integer("Sun samples of the quick pass (Hammer++ Sun Samples).", 1, 256),
             "ambient_samples": integer("Sky light directions of the quick pass (Hammer++ Ambient Samples).", 16, 5184),
             "supersample": boolean("Supersample the shadow edges in the quick pass (Hammer++ Supersample)."),
+            "keep_bake": boolean("Light edits update the shown bake incrementally (true, default, near instant) or relight every light again (false)."),
+            "mute": ids("Light entity ids left out of the preview (added to the muted list)."),
+            "unmute": ids("Light entity ids brought back into the preview."),
+            "solo": ids("Keep only these light entities in the preview (every other light is muted)."),
+            "unmute_all": boolean("Bring every muted light back."),
         }, [];
     get_lighting_status: Read, "Lighting preview status",
         "The lighting bake: options (the map's lighting preview options, see set_lighting_options), quality, progress, last result (time, faces, luxels, density), preview statistics (with \
@@ -217,11 +231,16 @@ domain! { "compile and play";
         lightmap budget, and while the lit mode is on the realtime preview: lights drawn, suns, lights left out, \
         crowded spots keeping only their strongest lights, HDR or LDR values, sky light occlusion, projectors (the env_projectedtexture entities drawn, setting render.projected_textures), sky_layers (how \
         many skies lie one above the other toward the sun and straight up: each point is shadowed only by what lies \
-        between it and the sky it reaches, like VRAD), prop_shadows (what static props cast shadows with: mesh, \
+        between it and the sky it reaches, like VRAD), relight (the last lighting update: full or incremental, \
+        lights and changed lights, faces relit and faces sent, seconds of the lighting with its direct and bounce \
+        parts, the turnaround from the edit to the picture, and the warm lighting process: pid, MB and the MB of \
+        its kept scene), muted (the light entities left out), light_costs (with costs: true the faces and luxels \
+        each light reaches, the most expensive first; measured in the lighting process, read again once ready), \
+        prop_shadows (what static props cast shadows with: mesh, \
         collision or none, from the setting render.prop_shadows: auto follows the compile options, \
         -StaticPropPolys for mesh), and the sun (direction it shines along, color, _ambient sky color, \
         SunSpreadAngle, its light_environment) and indirect (the background bake that gives the Lit mode its sky light and bounced light: the setting render.lit_indirect, state off, no_lights, waiting, baking, ready, stale or failed, the probe cells, their spacing, the GPU bytes and the bake time).",
-        {}, [];
+        { "costs": boolean("Measure the cost of every light (faces and luxels it reaches) in the lighting process.") }, [];
     launch_game: Editor, "Start the game",
         "Start Garry's Mod on the compiled map, or reload it in the running game (reload: true). Only when the user \
         asked for it: set confirm to true. Refused in sandboxed (automated) runs.",
@@ -653,7 +672,7 @@ fn set_compile_options(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
                     "the BSP would be copied to another folder: only when the user asked (confirm: true)".to_owned()
                 );
             }
-            let path = std::path::PathBuf::from(dir);
+            let path = super::semantic::local_path(dir)?;
             if !path.is_absolute() || !path.is_dir() {
                 return Err(format!("\"{dir}\" is not an existing absolute folder"));
             }
@@ -1186,6 +1205,23 @@ fn set_lighting_options(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     if let Some(v) = a.opt_bool("supersample")? {
         o.supersample = v;
     }
+    if let Some(v) = a.opt_bool("keep_bake")? {
+        o.keep_bake = v;
+    }
+    let (mute, unmute, solo) = (a.ids("mute")?, a.ids("unmute")?, a.ids("solo")?);
+    if a.opt_bool("unmute_all")? == Some(true) {
+        o.excluded_entities.clear();
+    }
+    o.excluded_entities.extend(mute);
+    o.excluded_entities.retain(|id| !unmute.contains(id));
+    if !solo.is_empty() {
+        let scene = state.doc.scene();
+        let lights =
+            scene.entities().iter().filter(|(_, n)| n.entity.classname.to_ascii_lowercase().starts_with("light"));
+        o.excluded_entities = lights.map(|(id, _)| *id).filter(|id| !solo.contains(id)).collect();
+    }
+    o.excluded_entities.sort_unstable();
+    o.excluded_entities.dedup();
     state.doc.set_light_plus(&o).map_err(|e| e.to_string())?;
     Ok(ToolResult::json(lighting_options(&state.doc.light_plus())))
 }
@@ -1194,7 +1230,8 @@ fn lighting_options(o: &hp_editor::luxels::LightPlus) -> Value {
     json!({
         "brightness": o.brightness_scale, "bounced": o.bounced, "dynamic_updates": o.incremental,
         "update_delay": o.incremental_delay, "bake_radius": o.bake_dist, "sun_samples": o.samples_sun,
-        "ambient_samples": o.samples_ambient, "supersample": o.supersample,
+        "ambient_samples": o.samples_ambient, "supersample": o.supersample, "keep_bake": o.keep_bake,
+        "muted": o.excluded_entities,
     })
 }
 
@@ -1214,8 +1251,14 @@ fn prop_shadows_name(p: hp_app::settings::StaticPropShadows) -> &'static str {
     }
 }
 
-fn get_lighting_status(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
+fn get_lighting_status(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
+    if a.opt_bool("costs")? == Some(true) {
+        state.runtime.lighting.costs = None;
+        state.runtime.lighting.costs_wanted = true;
+        state.request(Action::MeasureLightCosts);
+    }
     let l = &state.runtime.lighting;
+    let r = &l.relight;
     let lower = |v: String| v.to_ascii_lowercase();
     Ok(ToolResult::json(json!({
         "options": lighting_options(&state.doc.light_plus()),
@@ -1231,6 +1274,28 @@ fn get_lighting_status(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
         })),
         "has_bake": l.has_bake,
         "stale": l.stale,
+        "visible_first": state.settings.lighting.visible_first,
+        "prepared": {
+            "setting": state.settings.lighting.prepare, "preparing": l.prepared.preparing, "ready": l.prepared.ready,
+            "jobs": l.prepared.jobs, "seconds": l.prepared.seconds,
+        },
+        "streamed_faces": l.prepared.streamed_faces,
+        "relight": (r.jobs > 0).then(|| json!({
+            "updates": r.jobs, "full": r.full, "lights": r.lights, "changed_lights": r.changed_lights,
+            "relit_faces": r.relit_faces, "faces_sent": r.updated_faces, "seconds": r.seconds,
+            "direct_seconds": r.direct_seconds, "bounce_seconds": r.bounce_seconds, "scene_seconds": r.scene_seconds,
+            "turnaround_seconds": r.turnaround_seconds,
+            "process": { "pid": r.host_pid, "mb": r.host_mb, "scene_mb": r.session_mb, "warm": r.warm },
+        })),
+        "muted": state.doc.light_plus().excluded_entities,
+        "light_costs": l.costs.as_ref().map(|c| {
+            let mut sorted: Vec<_> = c.iter().collect();
+            sorted.sort_by_key(|c| std::cmp::Reverse(c.luxels));
+            sorted.iter().take(64).map(|e| json!({
+                "entity": e.entity, "classname": e.classname, "origin": e.origin, "faces": e.faces, "luxels": e.luxels,
+            })).collect::<Vec<_>>()
+        }),
+        "light_costs_pending": l.costs_wanted && l.costs.is_none(),
         "no_lights": l.no_lights,
         "preview": {
             "faces": l.stats.faces, "baked_faces": l.stats.baked_faces, "luxels": l.stats.luxels,

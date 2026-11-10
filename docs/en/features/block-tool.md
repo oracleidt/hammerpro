@@ -32,6 +32,22 @@ The right click menu also offers **Create as cylinder** and **Create as arch**: 
 
 Drawn on a wall, the box grows away from the wall; drawn under a ceiling, it grows downward. A small marker shows the snapped surface point under the cursor before you start, and the size `x x y x z` is shown above the box while drawing.
 
+## Changing the count with the mouse wheel
+
+Like adding a cylinder in Blender, the mouse wheel changes the count of the shape while you create it: during the drag in a 2D view, while the box is pending (before `Enter`), and during the base and height steps in the 3D view.
+
+| Primitive | What the wheel changes | Range |
+|---|---|---|
+| Cylinder, spike (cone), sphere, arch, torus, pillar | **Sides** | 3 to 128 |
+| Stairs, spiral stairs | **Steps** | 1 to 256 |
+| Doorway with **Arch** on | **Arch segments** | 2 to 64 |
+
+- Wheel up adds one, wheel down removes one. `Shift` + wheel steps by 4. The value stops at the ends of the range.
+- The wireframe in the 2D and 3D views and the preview window follow at once, and a label under the box (2D) or above it (3D) shows the current count (**Sides: 12**, **Steps: 8**...).
+- While such a shape is being created the wheel does not zoom or move the view; it zooms again as soon as the shape is created or cancelled, and always for the block, wedge, ramp and a doorway without arch. `Ctrl` + wheel keeps its 2D grid or zoom action.
+- The value stays in the options for the next shape. For stairs that use **Step height**, the wheel switches them to a step count starting from the current number of steps (**Step height** goes back to 0).
+- The status bar recalls it whenever the chosen primitive has a count.
+
 ## Primitives
 
 The primitive buttons are at the left of the options bar.
@@ -59,7 +75,7 @@ The parameters shown depend on the primitive. Angles use Hammer's convention: 0 
 
 | Option | Primitives | What it does | Default |
 |---|---|---|---|
-| **Sides** | cylinder, spike, sphere, arch, torus, pillar | Number of sides of round shapes (3 to 128). | 8 |
+| **Sides** | cylinder, spike, sphere, arch, torus, pillar | Number of sides of round shapes (3 to 128). The mouse wheel changes it while the shape is created. | 8 |
 | **Wall** | arch | Wall width of the arch (1 to 16384 units). | 16 |
 | **Arc** | arch | Angle covered by the arch, 1 to 360 degrees (360 for a full ring). | 360 |
 | **Start** | arch | Start angle, -360 to 360 degrees. | 0 |
@@ -69,7 +85,7 @@ The parameters shown depend on the primitive. Angles use Hammer's convention: 0 
 | **Arc** | torus | Angle swept by the ring: 1 to 360 degrees, or up to 3600 (ten turns) when **Rise** is not 0. | 360 |
 | **Start** | torus | Start angle of the sweep, -360 to 360 degrees. | 0 |
 | **Rise** | torus | Height gained over the whole sweep, -16384 to 16384 units (spiral ramps and pipes). | 0 |
-| **Steps** | stairs, spiral stairs | Number of steps (1 to 256). The box height is divided evenly. | 8 |
+| **Steps** | stairs, spiral stairs | Number of steps (1 to 256). The box height is divided evenly. The mouse wheel changes it while the shape is created. | 8 |
 | **Step height** | stairs, spiral stairs | Height of one step in units (0 to 1024). When above 0 it replaces **Steps**: the step count is the box height divided by it, rounded. | 0 |
 | **Open** | stairs, spiral stairs | Open steps: slabs two steps thick instead of solid columns down to the bottom of the box. Needed for a spiral above 360 degrees. | off |
 | **Inner radius** | spiral stairs | Inner radius of the steps, 0 for pie shaped steps. It must stay smaller than the box. | 16 |
@@ -85,7 +101,7 @@ The parameters shown depend on the primitive. Angles use Hammer's convention: 0 
 | **Thickness** | doorway | Thickness of the wall, centered in the box depth. 0 fills the whole depth of the box. | 0 |
 | **Arch** | doorway | Gives the opening a round top. The top of the opening is at **Opening H**; the arch must fit under it. | off |
 | **Arch radius** | doorway | Radius of the round top. At least half the opening; 0 is exactly half (a semicircle). A larger radius gives a flatter, segmental arch. | 0 |
-| **Arch segments** | doorway | Number of straight pieces that make the round top (2 to 64). | 8 |
+| **Arch segments** | doorway | Number of straight pieces that make the round top (2 to 64). The mouse wheel changes it while the shape is created. | 8 |
 | **Orient to view** | every primitive but the block | Shapes drawn in the Front or Side view (or on a wall in 3D) stand along the depth axis of that view: a cylinder drawn in the Front view lies along X. Saved as the setting `reorient_primitives`. | on |
 | **Scale** | all | Texture scale of the new faces (world units per texel, 0.01 to 64). | **Default texture scale** setting (0.25) |
 | Create as | all | **World brush**, **func_detail** or any brush entity class of the FGD (searchable list, a typed class name is accepted). With a class, every solid of the primitive goes into one new brush entity with the FGD default keyvalues. World primitives made of several solids are grouped. | World brush |
@@ -123,7 +139,9 @@ The Settings window opens with **Tools > Options...** (`Ctrl+,`).
 
 **Why does my box have the wrong height?** In a 2D view the depth comes from the selection, else from the last created object. Clear the selection (`Ctrl+Shift+A`) or resize the box in another 2D view with its handles.
 
-**Why does the view say "Invalid parameters for this size"?** The box is too small for the parameters: for example a torus ring wider than the box, or an arc too large for the number of sides (each segment must cover less than 180 degrees). Change the parameters or enlarge the box.
+**Why does the view say "Invalid parameters for this size"?** The box is too small for the parameters: for example a torus ring wider than the box, or an arc too large for the number of sides (each segment must cover less than 180 degrees), or more sides or steps than the box can hold (64 sides in half a unit, one spiral step turning almost 180 degrees: such shapes would be flat slivers, so they are refused instead of creating broken brushes). Change the parameters (the mouse wheel lowers the count while you draw) or enlarge the box.
+
+**Why does the wheel not zoom while I draw a cylinder?** While a shape with sides, steps or arch segments is being created, the wheel changes that count. Press `Enter` to create it or `Escape` to cancel, and the wheel zooms again. `Ctrl` + wheel still changes the grid or zooms every 2D view.
 
 **How do I make a trigger directly?** Choose `trigger_multiple` (or any brush entity class) in the create as list. The current material is used, so pick the trigger tool texture first.
 

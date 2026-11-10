@@ -228,3 +228,42 @@ fn installed_ragdoll_simulates_and_keeps_a_source_pose_in_one_undo_step() {
     state.doc.undo();
     assert_eq!(state.doc.scene().entity(id).unwrap().entity, original);
 }
+
+#[test]
+fn scripted_simulation_drops_the_selection_and_keeps_it_in_one_undo_step() {
+    let (mut state, id) = setup();
+    let original = state.doc.scene().solid(id).unwrap().solid.clone();
+    let mut tool = PhysicsTool::default();
+    assert!(tool.set_option(&mut state, "simulate", "0"), "0 does nothing");
+    assert!(!tool.is_running());
+    assert!(!tool.set_option(&mut state, "simulate", "-1"));
+    assert!(!tool.set_option(&mut state, "simulate", "1e9"));
+    assert!(!tool.set_option(&mut state, "simulate", "nan"));
+    assert!(!tool.set_option(&mut state, "bodies", "3"), "read only");
+    assert!(tool.set_option(&mut state, "bodies", "0"), "its own value is accepted");
+    assert!(tool.set_option(&mut state, "simulate", "2.5"));
+    assert!(tool.is_running());
+    let values = tool.option_values();
+    let value = |k: &str| values.iter().find(|o| o.key == k).map(|o| o.value.clone()).unwrap();
+    assert_eq!((value("simulated"), value("paused"), value("bodies")), ("2.5".into(), "on".into(), "1".into()));
+    for o in &values {
+        assert!(tool.set_option(&mut state, o.key, &o.value), "{} takes back {}", o.key, o.value);
+    }
+    assert!(tool.is_running(), "reading the options back changes nothing");
+    assert_eq!(state.doc.scene().solid(id).unwrap().solid, original, "the map waits for keep");
+    assert!(tool.set_option(&mut state, "simulate", "2.5"));
+    let (undo, _) = state.doc.history_len();
+    assert!(tool.set_option(&mut state, "keep", "on"));
+    assert!(!tool.is_running());
+    assert_eq!(state.doc.history_len().0, undo + 1);
+    let result = state.doc.scene().solid(id).unwrap().bounds;
+    assert!(result.min.z.abs() < 1.0 && (result.max.z - 32.0).abs() < 1.0, "{result:?}");
+    state.doc.undo();
+    assert_eq!(state.doc.scene().solid(id).unwrap().solid, original);
+    assert!(tool.set_option(&mut state, "simulate", "1"));
+    assert!(tool.set_option(&mut state, "reset", "on"));
+    assert!(!tool.is_running());
+    assert_eq!(state.doc.scene().solid(id).unwrap().solid, original);
+    state.doc.clear_selection();
+    assert!(!tool.set_option(&mut state, "simulate", "1"), "nothing selected");
+}

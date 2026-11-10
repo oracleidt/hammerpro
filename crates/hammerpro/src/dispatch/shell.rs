@@ -84,9 +84,7 @@ impl Package for Shell {
                     app.request_open(ctx, path);
                 }
             }
-            Action::SaveMap => {
-                files::save_map(&mut app.state);
-            }
+            Action::SaveMap => app.save_in_background(ctx),
             Action::SaveMapAs => {
                 files::save_map_as(&mut app.state);
             }

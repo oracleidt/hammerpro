@@ -56,6 +56,7 @@ pub mod lump {
     pub const TEXDATA_STRING_DATA: usize = 43;
     pub const TEXDATA_STRING_TABLE: usize = 44;
     pub const OVERLAYS: usize = 45;
+    pub const WATEROVERLAYS: usize = 50;
     pub const LEAFMINDISTTOWATER: usize = 46;
     pub const FACE_MACRO_TEXTURE_INFO: usize = 47;
     pub const DISP_TRIS: usize = 48;
@@ -128,8 +129,13 @@ pub fn face_macro_textures(
     };
     let mut out = Buf::default();
     let mut added = false;
+    let mut known: AHashMap<i16, u16> = AHashMap::new();
     for rec in faces.chunks_exact(56) {
         let ti = i16::from_le_bytes([rec[10], rec[11]]);
+        if let Some(id) = known.get(&ti) {
+            out.u16(*id);
+            continue;
+        }
         let td = if ti >= 0 { i32_at(&texinfo, ti as usize * 72 + 68) } else { -1 };
         let name_id = if td >= 0 { i32_at(&texdata, td as usize * 32 + 12) } else { -1 };
         let name = if name_id >= 0 {
@@ -152,6 +158,7 @@ pub fn face_macro_textures(
             }
             None => 0xFFFF,
         };
+        known.insert(ti, id);
         out.u16(id);
     }
     if added {
@@ -1012,23 +1019,31 @@ impl Lumps {
                 .map(|d| d.has_surfaceprop.then_some(d.surfaceprop.as_str()))
         };
         if let Some((sides, _)) = self.data.get_mut(&lump::BRUSHSIDES) {
+            let mut first_of: AHashMap<(u32, Option<Option<&str>>), usize> = AHashMap::new();
+            for j in (0..n).filter(|&j| refs[j] > 0) {
+                first_of.entry((tex.infos[j].flags, surfaceprop(j))).or_insert(j);
+            }
             for rec in sides.chunks_exact_mut(8) {
                 let mut t = i16_at(rec, 2);
                 if t < 0 || t as usize >= n || refs[t as usize] > 0 {
                     continue;
                 }
-                let (flags, prop) = (tex.infos[t as usize].flags, surfaceprop(t as usize));
-                if let Some(j) = (0..n).find(|&j| refs[j] > 0 && tex.infos[j].flags == flags && surfaceprop(j) == prop)
-                {
-                    t = j as i16;
-                    rec[2..4].copy_from_slice(&t.to_le_bytes());
+                let key = (tex.infos[t as usize].flags, surfaceprop(t as usize));
+                match first_of.get(&key) {
+                    Some(&j) => {
+                        t = j as i16;
+                        rec[2..4].copy_from_slice(&t.to_le_bytes());
+                    }
+                    None => {
+                        first_of.insert(key, t as usize);
+                    }
                 }
                 if refs[t as usize] == 0 {
                     refs[t as usize] += 1;
                 }
             }
         }
-        for (l, size, at) in [(lump::OVERLAYS, 352, 4), (lump::LEAFWATERDATA, 12, 8)] {
+        for (l, size, at) in [(lump::OVERLAYS, 352, 4), (lump::WATEROVERLAYS, 1120, 4), (lump::LEAFWATERDATA, 12, 8)] {
             for rec in self.data.get(&l).map_or(&[][..], |(d, _)| d.as_slice()).chunks_exact(size) {
                 let t = i16_at(rec, at);
                 if t >= 0 && (t as usize) < n {
@@ -1069,7 +1084,7 @@ impl Lumps {
         }
         let mut data_remap = vec![-1i32; tex.data.len()];
         let (mut d, mut table, mut strings) = (Buf::default(), Buf::default(), Vec::new());
-        let mut names: Vec<(String, usize)> = Vec::new();
+        let mut names: AHashMap<String, usize> = AHashMap::new();
         let mut data_count = 0;
         for (i, t) in tex.data.iter().enumerate() {
             if !data_used[i] {
@@ -1078,16 +1093,13 @@ impl Lumps {
             data_remap[i] = data_count;
             data_count += 1;
             let key = t.name.to_ascii_lowercase();
-            let string = match names.iter().position(|(k, _)| *k == key) {
-                Some(s) => s,
-                None => {
-                    table.i32(strings.len() as i32);
-                    strings.extend_from_slice(t.name.as_bytes());
-                    strings.push(0);
-                    names.push((key, names.len()));
-                    names.len() - 1
-                }
-            };
+            let count = names.len();
+            let string = *names.entry(key).or_insert_with(|| {
+                table.i32(strings.len() as i32);
+                strings.extend_from_slice(t.name.as_bytes());
+                strings.push(0);
+                count
+            });
             d.f32(t.reflectivity[0]);
             d.f32(t.reflectivity[1]);
             d.f32(t.reflectivity[2]);
@@ -1114,6 +1126,7 @@ impl Lumps {
             (None, 56, 10),
             (Some(lump::BRUSHSIDES), 8, 2),
             (Some(lump::OVERLAYS), 352, 4),
+            (Some(lump::WATEROVERLAYS), 1120, 4),
             (Some(lump::LEAFWATERDATA), 12, 8),
         ] {
             let data = match which {

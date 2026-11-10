@@ -18,6 +18,8 @@ In the 3D view, clicking an existing brush surface places only the starting poin
 3. The preview shows the finished pipe in every view, with a label giving the segment length, the bends and the brush count. A red segment says why the route is refused (a run too short for its bends, a U-turn).
 4. `Enter` or a double click creates the pipe. `Backspace` removes the last point, `Escape` cancels.
 
+While the route is placed, `Shift` + mouse wheel changes the **Sides** of a round pipe (5 to 48) or the **Slices** per bend of a square pipe (1 to 32), one per notch; the preview and a label next to the cursor follow, and the value stays for the next pipe. The plain wheel keeps zooming, since a long route often needs it.
+
 A pipe turns by exactly 90 degrees: a U-turn or a slanted corner is refused.
 
 ## Typing a route

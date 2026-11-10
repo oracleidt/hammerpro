@@ -1,7 +1,6 @@
 use std::collections::HashMap;
-use std::io::BufRead;
 use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
@@ -11,21 +10,23 @@ use hp_app::runtime::BakePhase;
 use hp_bspc::rad::RadQuality;
 use hp_light::atlas::{Atlas, AtlasRect};
 
-use super::bsp::{self, FlatLightmaps, GeoFace, SideTable, SolidInfo};
+use super::bsp::{self, GeoFace, SideTable, SolidInfo};
 use super::child;
-
-mod geometry_cache;
+use super::host::client::{Gone, Link};
+use super::host::{self, FaceTexels, LightOptions, LitStats, Mounts, Reply, Request};
 
 const BAKE_STACK: usize = 64 << 20;
+const REPLY_WAIT: Duration = Duration::from_millis(50);
+const CANCEL_GRACE: Duration = Duration::from_secs(30);
+const MODELS_IDLE: Duration = Duration::from_millis(1000);
 
 pub(crate) struct Job {
     pub id: u64,
-    pub serial: u64,
+    pub geometry_key: u64,
     pub map: Option<hp_vmf::Map>,
-    pub keep: bool,
+    pub points: Option<Vec<hp_vmf::Entity>>,
     pub solids: HashMap<u32, SolidInfo>,
     pub fs: Option<hp_fs::GameFs>,
-    pub resources_revision: u64,
     pub hdr: bool,
     pub quality: RadQuality,
     pub bounces: u32,
@@ -38,10 +39,18 @@ pub(crate) struct Job {
     pub lit: bool,
     pub tuning: child::Tuning,
     pub exe: Option<PathBuf>,
+    pub focus: Option<[f32; 3]>,
+    pub stream: bool,
+    pub shown: Option<u64>,
+    pub models: bool,
+    pub exact: bool,
+    pub quiet: bool,
+    pub urgent: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct FaceRecord {
+    pub id: u32,
     pub bsp: u32,
     pub solid: u32,
     pub generation: u64,
@@ -54,6 +63,8 @@ pub(crate) struct FaceRecord {
 
 #[derive(Debug, Default)]
 pub(crate) struct Baked {
+    pub layout: u64,
+    pub patch: bool,
     pub faces: Vec<FaceRecord>,
     pub blocks: Vec<bsp::Block>,
     pub materials: Vec<String>,
@@ -68,105 +79,253 @@ pub(crate) struct Baked {
     pub seconds: f32,
     pub coarsen: f64,
     pub warnings: Vec<String>,
-    pub props: Option<Arc<hp_editor::limits::world_light::PropLighting>>,
-    pub indirect: Option<Arc<hp_render::IndirectVolume>>,
     pub hdr: bool,
     pub child_peak: Option<super::memory::Usage>,
     pub animations: Vec<super::style_maps::AnimatedFace>,
+    pub stats: LitStats,
 }
 
 pub(crate) enum Outcome {
     Baked(Box<Baked>),
     Cancelled,
     Failed(String),
+    NeedsMap,
+}
+
+pub(crate) struct ModelLight {
+    pub props: Option<Arc<hp_editor::limits::world_light::PropLighting>>,
+    pub indirect: Option<Arc<hp_render::IndirectVolume>>,
+    pub seconds: f32,
+    pub hdr: bool,
+    pub failed: bool,
 }
 
 pub(crate) enum Msg {
     Progress { job: u64, phase: BakePhase, fraction: f32, elapsed: f32, faces: usize },
+    Partial { job: u64, baked: Box<Baked> },
     Done { job: u64, outcome: Outcome },
+    Models { job: u64, models: Box<ModelLight> },
+    Costs { job: u64, costs: Vec<host::CostEntry> },
 }
 
 struct Cancelled;
 
-#[derive(Clone)]
-struct Compiled {
-    serial: u64,
-    geometry_key: Option<u64>,
-    bsp: Arc<hp_bsp::Bsp>,
-    sides: Arc<SideTable>,
-    leaked: bool,
-    warnings: Vec<String>,
-    peak: Option<super::memory::Usage>,
+struct Shown {
+    layout: u64,
+    records: Vec<FaceRecord>,
+    by_bsp: HashMap<u32, usize>,
+    layer_size: u32,
+    layers: u32,
 }
 
-type Cache = Arc<std::sync::Mutex<Option<Compiled>>>;
+struct GeometryState {
+    key: u64,
+    factor: f64,
+    sides: Arc<SideTable>,
+    solids: HashMap<u32, SolidInfo>,
+    leaked: bool,
+    warnings: Vec<String>,
+    shown: Option<Shown>,
+}
+
+type Stash = Vec<(Reply, Vec<u8>)>;
+
+#[derive(Default)]
+pub(crate) struct Pipeline {
+    link: Option<Link>,
+    setup: Option<(Mounts, usize)>,
+    geometry: Option<GeometryState>,
+    points: HashMap<u32, hp_vmf::Entity>,
+    next_layout: u64,
+    last: Option<(u64, LightOptions)>,
+    models: Option<(u64, bool)>,
+    stash: Stash,
+}
+
+impl Pipeline {
+    fn reset(&mut self) {
+        self.link = None;
+        self.setup = None;
+        self.geometry = None;
+        self.points.clear();
+        self.last = None;
+        self.models = None;
+        self.stash.clear();
+    }
+
+    fn link(&mut self, exe: Option<&std::path::Path>, threads: usize) -> Result<&mut Link, String> {
+        if self.link.as_mut().is_some_and(|l| !l.alive()) {
+            log::warn!("lighting preview: the lighting process stopped, starting it again");
+            self.reset();
+        }
+        if self.link.is_none() {
+            let link = match exe {
+                Some(exe) => Link::spawn(exe, threads).map_err(|e| format!("cannot start the lighting: {e}"))?,
+                None => Link::local(),
+            };
+            self.link = Some(link);
+        }
+        self.link.as_mut().ok_or_else(|| "no lighting process".to_owned())
+    }
+
+    pub(crate) fn pid(&self) -> Option<u32> {
+        self.link.as_ref().and_then(Link::pid)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct HostInfo {
+    pub pid: Option<u32>,
+    pub working_mb: u64,
+    pub peak_mb: u64,
+    pub warm: bool,
+    pub uptime_s: f32,
+}
 
 pub(crate) struct Worker {
-    tx: Option<Sender<Job>>,
+    tx: Option<Sender<Command>>,
     rx: Receiver<Msg>,
     wanted: Arc<AtomicU64>,
-    cache: Cache,
+    info: Arc<std::sync::Mutex<HostInfo>>,
+}
+
+enum Command {
+    Bake(Box<Job>),
+    Costs { id: u64, options: LightOptions },
+    Release,
 }
 
 impl Worker {
     pub(super) fn resource_probes(&self, probes: &mut hp_app::runtime::primitives::ResourceProbes) -> bool {
-        use hp_app::runtime::primitives::PrimitiveClass;
-        let Ok(cache) = self.cache.try_lock() else { return false };
-        let Some(compiled) = cache.as_ref() else { return true };
-        let bsp = compiled.bsp.clone();
-        let sides = compiled.sides.clone();
-        drop(cache);
-        let class = PrimitiveClass::Lighting;
-        probes.hold(&self.cache, class);
-        probes.hold(&bsp, class);
-        if !bsp.bytes().is_empty() {
-            probes.point(bsp.bytes().as_ptr() as usize, class);
-        }
-        probes.hold(&sides, class);
-        sides.resource_probes(probes);
+        let class = hp_app::runtime::primitives::PrimitiveClass::Lighting;
+        probes.hold(&self.info, class);
         true
     }
 
     pub fn start(wake: Box<dyn Fn() + Send + Sync>) -> std::io::Result<Self> {
-        let (tx, jobs) = crossbeam_channel::unbounded::<Job>();
+        let (tx, jobs) = crossbeam_channel::unbounded::<Command>();
         let (out, rx) = crossbeam_channel::unbounded();
         let wanted = Arc::new(AtomicU64::new(0));
         let w = wanted.clone();
-        let cache: Cache = Arc::default();
-        let kept = cache.clone();
-        std::thread::Builder::new().name("hp-light-bake".to_owned()).spawn(move || {
-            lower_thread_priority();
-            for job in jobs {
+        let info: Arc<std::sync::Mutex<HostInfo>> = Arc::default();
+        let shared = info.clone();
+        std::thread::Builder::new().name("hp-light-bake".to_owned()).stack_size(BAKE_STACK).spawn(move || {
+            super::memory::lower_thread_memory_priority();
+            let mut pipe = Pipeline::default();
+            let mut due: Option<(Instant, u64)> = None;
+            loop {
+                let timeout = match (&due, &pipe.models) {
+                    (Some((at, _)), _) => at.saturating_duration_since(Instant::now()),
+                    (None, Some(_)) => REPLY_WAIT,
+                    (None, None) => Duration::from_secs(3600),
+                };
+                let command = match jobs.recv_timeout(timeout) {
+                    Ok(command) => Some(command),
+                    Err(crossbeam_channel::RecvTimeoutError::Timeout) => None,
+                    Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
+                };
+                pump(&mut pipe, &out, &*wake);
+                let Some(command) = command else {
+                    if let Some((at, id)) = due
+                        && Instant::now() >= at
+                    {
+                        due = None;
+                        if w.load(Ordering::Acquire) == id {
+                            start_models(&mut pipe, id);
+                        }
+                    }
+                    continue;
+                };
+                let job = match command {
+                    Command::Bake(job) => {
+                        due = None;
+                        job
+                    }
+                    Command::Costs { id, options } => {
+                        let costs = costs(&mut pipe, id, options);
+                        let _ = out.send(Msg::Costs { job: id, costs });
+                        wake();
+                        continue;
+                    }
+                    Command::Release => {
+                        if let Some(link) = pipe.link.as_mut() {
+                            let never = || false;
+                            let _ = link.send(Request::Release, &[], &never);
+                        }
+                        pipe.reset();
+                        if let Ok(mut i) = shared.lock() {
+                            *i = HostInfo::default();
+                        }
+                        continue;
+                    }
+                };
                 if w.load(Ordering::Acquire) != job.id {
+                    let _ = out.send(Msg::Done { job: job.id, outcome: Outcome::Cancelled });
+                    wake();
                     continue;
                 }
                 let id = job.id;
-                let ctx = Ctx { id, wanted: &w, out: &out, wake: &*wake, start: Instant::now(), faces: 0, game: None };
-                let task = || hp_editor::background::run(|| run(job, &ctx, &kept));
+                let models = job.models;
+                let lit_only = job.lit;
+                let quiet = job.quiet;
+                let ctx = Ctx { id, wanted: &w, out: &out, wake: &*wake, start: Instant::now(), faces: 0, quiet };
+                let task = || hp_editor::background::run(|| run(*job, &ctx, &mut pipe));
                 let outcome = match catch_unwind(AssertUnwindSafe(task)) {
                     Ok(o) => o,
                     Err(_) if ctx.cancelled() => Outcome::Cancelled,
-                    Err(_) => Outcome::Failed("the compiler stopped on an error".to_owned()),
+                    Err(_) => {
+                        pipe.reset();
+                        Outcome::Failed("the lighting stopped on an error".to_owned())
+                    }
                 };
+                let lit = matches!(outcome, Outcome::Baked(_));
                 let _ = out.send(Msg::Done { job: id, outcome });
                 wake();
+                if lit && models && !ctx.cancelled() {
+                    let wait = if lit_only { Duration::ZERO } else { MODELS_IDLE };
+                    due = Some((Instant::now() + wait, id));
+                }
+                if let Ok(mut i) = shared.lock() {
+                    let usage = pipe.link.as_ref().and_then(Link::memory);
+                    *i = HostInfo {
+                        pid: pipe.pid(),
+                        working_mb: usage.map_or(0, |u| u.working_set >> 20),
+                        peak_mb: usage.map_or(0, |u| u.peak_working_set >> 20),
+                        warm: pipe.geometry.is_some(),
+                        uptime_s: pipe.link.as_ref().and_then(Link::uptime).map_or(0.0, |d| d.as_secs_f32()),
+                    };
+                }
             }
         })?;
-        Ok(Self { tx: Some(tx), rx, wanted, cache })
+        Ok(Self { tx: Some(tx), rx, wanted, info })
     }
 
     pub fn submit(&self, job: Job) {
         self.wanted.store(job.id, Ordering::Release);
         if let Some(tx) = &self.tx {
-            let _ = tx.send(job);
+            let _ = tx.send(Command::Bake(Box::new(job)));
+        }
+    }
+
+    pub fn costs(&self, id: u64, options: LightOptions) {
+        if let Some(tx) = &self.tx {
+            let _ = tx.send(Command::Costs { id, options });
         }
     }
 
     pub fn stop(&self) {
         self.wanted.store(0, Ordering::Release);
-        if let Ok(mut c) = self.cache.lock() {
-            *c = None;
+    }
+
+    pub fn release(&self) {
+        self.stop();
+        if let Some(tx) = &self.tx {
+            let _ = tx.send(Command::Release);
         }
+    }
+
+    pub fn info(&self) -> HostInfo {
+        self.info.lock().map(|i| *i).unwrap_or_default()
     }
 
     pub fn poll(&self) -> Vec<Msg> {
@@ -188,7 +347,7 @@ struct Ctx<'a> {
     wake: &'a (dyn Fn() + Send + Sync),
     start: Instant,
     faces: usize,
-    game: Option<&'a Path>,
+    quiet: bool,
 }
 
 impl Ctx<'_> {
@@ -204,23 +363,18 @@ impl Ctx<'_> {
             elapsed: self.start.elapsed().as_secs_f32(),
             faces: self.faces,
         });
+        if !self.quiet {
+            (self.wake)();
+        }
+    }
+
+    fn send(&self, msg: Msg) {
+        let _ = self.out.send(msg);
         (self.wake)();
     }
 }
 
-fn eased(from: f32, to: f32, t: f32, tau: f32) -> f32 {
-    from + (to - from) * (1.0 - (-t / tau.max(0.1)).exp())
-}
-
-fn seconds_per_luxel(q: RadQuality) -> f32 {
-    match q {
-        RadQuality::Draft => 1.0 / 70_000.0,
-        RadQuality::Normal => 1.0 / 23_000.0,
-        RadQuality::Final => 1.0 / 8_000.0,
-    }
-}
-
-fn coarsen(map: &mut hp_vmf::Map, factor: f64) {
+pub(super) fn coarsen(map: &mut hp_vmf::Map, factor: f64) {
     if factor <= 1.0 {
         return;
     }
@@ -232,7 +386,7 @@ fn coarsen(map: &mut hp_vmf::Map, factor: f64) {
     }
 }
 
-fn strip_hidden(map: &mut hp_vmf::Map) {
+pub(super) fn strip_hidden(map: &mut hp_vmf::Map) {
     map.entities.retain(|e| !e.hidden);
     for e in std::iter::once(&mut map.world).chain(map.entities.iter_mut()) {
         e.solids.retain(|s| !s.hidden);
@@ -243,224 +397,36 @@ fn strip_hidden(map: &mut hp_vmf::Map) {
     map.extra_blocks.clear();
 }
 
-fn lower_thread_priority() {
-    #[cfg(windows)]
-    unsafe {
-        use windows_sys::Win32::System::Threading::{
-            GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_BELOW_NORMAL,
-        };
-        SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
-    }
-    super::memory::lower_thread_memory_priority();
+pub(super) struct MapBuild {
+    pub bsp: Vec<u8>,
+    pub leaked: bool,
+    pub warnings: Vec<String>,
 }
 
-fn note_memory(stage: &str) {
-    if let Some(u) = super::memory::of_self() {
-        log::debug!("lighting preview memory: {stage}: {} MB", u.working_set >> 20);
-    }
-}
-
-fn retain_compiled(cache: &std::sync::Mutex<Option<Compiled>>, ctx: &Ctx<'_>, compiled: &Compiled, quick: bool) {
-    if let Ok(mut cache) = cache.lock()
-        && !ctx.cancelled()
-    {
-        *cache = (quick || geometry_cache::fits_budget(compiled)).then(|| compiled.clone());
-    }
-}
-
-fn run(job: Job, ctx: &Ctx<'_>, cache: &std::sync::Mutex<Option<Compiled>>) -> Outcome {
-    note_memory("start");
-    let Job {
-        serial,
-        map,
-        keep,
-        solids,
-        fs,
-        resources_revision,
-        hdr,
-        quality,
-        bounces,
-        prop_shadows,
-        prop_lighting,
-        threads,
-        layer_size,
-        max_layers,
-        coarsen: factor,
-        lit: indirect_only,
-        tuning,
-        exe,
-        ..
-    } = job;
-    ctx.progress(BakePhase::Preparing, 0.01);
-    let fs = fs.unwrap_or_else(hp_fs::GameFs::empty);
-    let inputs = geometry_cache::Inputs {
-        factor,
-        resources: resources_revision,
-        hdr,
-        threads: threads.0,
-        serial,
-        exe: exe.as_deref(),
-    };
-    let compiled = match geometry_cache::prepare(cache, map, &fs, ctx, inputs) {
-        Ok(compiled) => compiled,
-        Err(outcome) => return outcome,
-    };
-    retain_compiled(cache, ctx, &compiled, keep);
-    let Compiled { bsp, sides, leaked, warnings, peak: compile_peak, .. } = compiled;
-    let (faces, luxels) = bsp::lit_faces(&bsp);
-    let geometry = {
-        let bsp = bsp.clone();
-        let task = move || {
-            lower_thread_priority();
-            if indirect_only { bsp::Geometry::default() } else { bsp::geometry(&bsp, &sides, &solids) }
-        };
-        std::thread::Builder::new().name("hp-light-geometry".to_owned()).spawn(task)
-    };
-    let ctx = Ctx { faces, game: fs.game_dir(), ..*ctx };
-    ctx.progress(BakePhase::Direct, 0.15);
-
-    let tau = 2.0 + luxels as f32 * seconds_per_luxel(quality);
-    let args = LightArgs { hdr, quality, bounces, threads: threads.1, prop_shadows, prop_lighting, tuning };
-    let lit = light(bsp, exe.as_deref(), args, &ctx, tau);
-    note_memory("lit");
-    let mut geo = match geometry.map(std::thread::JoinHandle::join) {
-        Ok(Ok(g)) => g,
-        _ => return Outcome::Failed("the preview geometry could not be read".to_owned()),
-    };
-    let (lit, triangles) = match lit {
-        Ok(f) => f,
-        Err(LightError::Cancelled) => return Outcome::Cancelled,
-        Err(LightError::Failed(e)) => return Outcome::Failed(e),
-    };
-    let luxels: u64 = geo.faces.iter().map(|f| u64::from(f.w) * u64::from(f.h)).sum();
-    ctx.progress(BakePhase::Finishing, 0.95);
-    let child::LitResult { flat, bsp: lit_bsp, peak } = lit;
-    let peak = match (compile_peak, peak) {
-        (Some(a), Some(b)) => Some(super::memory::Usage {
-            peak_working_set: a.peak_working_set.max(b.peak_working_set),
-            peak_committed: a.peak_committed.max(b.peak_committed),
-            working_set: a.working_set.max(b.working_set),
-            committed: a.committed.max(b.committed),
-        }),
-        (a, b) => a.or(b),
-    };
-    note_memory("result read");
-    let lit_bsp = hp_bsp::Bsp::from_vec(lit_bsp).ok();
-    let animated = lit_bsp.as_ref().map(|b| super::style_maps::read(b, hdr)).unwrap_or_default();
-    let (props, indirect) = lit_bsp.as_ref().map(|b| model_lighting(b, hdr)).unwrap_or_default();
-    note_memory("models");
-    let mut baked = if indirect_only { Baked::default() } else { assemble(&mut geo, flat, layer_size, max_layers) };
-    baked.animations = bind_animations(animated, &baked, hdr);
-    note_memory("assembled");
-    baked.props = props;
-    baked.indirect = indirect;
-    baked.hdr = hdr;
-    baked.luxels = luxels;
-    baked.triangles = triangles;
-    baked.child_peak = peak;
-    baked.unbound = geo.unbound;
-    baked.leaked = leaked;
-    baked.coarsen = factor;
-    baked.warnings = warnings;
-    baked.seconds = ctx.start.elapsed().as_secs_f32();
-    Outcome::Baked(Box::new(baked))
-}
-
-fn compile(
-    mut map: hp_vmf::Map,
-    factor: f64,
+pub(super) fn compile_map(
+    map: &hp_vmf::Map,
     fs: &hp_fs::GameFs,
     threads: usize,
-    ctx: &Ctx<'_>,
-    serial: u64,
-    exe: Option<&Path>,
-) -> Result<Compiled, Outcome> {
-    #[cfg(test)]
-    if std::env::var_os("HP_BENCH_GEOMETRY_IN_EDITOR").is_some() {
-        return compile_local(map, factor, fs, threads, ctx, serial, false);
-    }
-    let Some(exe) = exe else {
-        #[cfg(test)]
-        return compile_local(map, factor, fs, threads, ctx, serial, false);
-        #[cfg(not(test))]
-        return Err(Outcome::Failed("the preview geometry process executable could not be located".to_owned()));
-    };
-    coarsen(&mut map, factor);
-    let sides = Arc::new(SideTable::from_map(&map));
-    strip_hidden(&mut map);
-    let started = Instant::now();
-    ctx.progress(BakePhase::Compiling, 0.02);
-    let out = super::prepare::compile(
-        map,
-        fs,
-        exe,
-        threads,
-        ctx.id,
-        || ctx.cancelled(),
-        || {
-            ctx.progress(BakePhase::Compiling, eased(0.02, 0.12, started.elapsed().as_secs_f32(), 2.0));
-        },
-    )
-    .map_err(|error| match error {
-        super::prepare::Error::Cancelled => Outcome::Cancelled,
-        super::prepare::Error::Failed(message) => Outcome::Failed(message),
-    })?;
-    let bsp = Arc::new(hp_bsp::Bsp::from_vec(out.bsp).map_err(|error| Outcome::Failed(error.to_string()))?);
-    log::info!("lighting preview: geometry prepared outside the editor in {:.2} s", started.elapsed().as_secs_f32());
-    Ok(Compiled { serial, geometry_key: None, bsp, sides, leaked: out.leaked, warnings: out.warnings, peak: out.peak })
-}
-
-pub(super) fn compile_for_child(
-    map: hp_vmf::Map,
-    fs: &hp_fs::GameFs,
-    threads: usize,
-) -> Result<super::prepare::Output, String> {
-    let wanted = AtomicU64::new(1);
-    let (out, _) = crossbeam_channel::unbounded();
-    let wake = || {};
-    let ctx =
-        Ctx { id: 1, wanted: &wanted, out: &out, wake: &wake, start: Instant::now(), faces: 0, game: fs.game_dir() };
-    let compiled = compile_local(map, 1.0, fs, threads, &ctx, 0, true).map_err(|outcome| match outcome {
-        Outcome::Failed(message) => message,
-        _ => "the preview preparation was cancelled".to_owned(),
-    })?;
-    let bsp = Arc::try_unwrap(compiled.bsp).map(hp_bsp::Bsp::into_vec).unwrap_or_else(|bsp| bsp.bytes().to_vec());
-    Ok(super::prepare::Output { bsp, leaked: compiled.leaked, warnings: compiled.warnings, peak: None })
-}
-
-fn compile_local(
-    mut map: hp_vmf::Map,
-    factor: f64,
-    fs: &hp_fs::GameFs,
-    threads: usize,
-    ctx: &Ctx<'_>,
-    serial: u64,
+    cancelled: &(dyn Fn() -> bool + Sync),
+    progress: &mut (dyn FnMut(f32) + Send),
     stdout: bool,
-) -> Result<Compiled, Outcome> {
-    coarsen(&mut map, factor);
-    let sides = SideTable::from_map(&map);
+) -> Result<MapBuild, Outcome> {
     let solid_count = map.world.solids.len() + map.entities.iter().map(|e| e.solids.len()).sum::<usize>();
-    strip_hidden(&mut map);
     let materials = crate::bspc_cli::GameMaterials { fs: fs.clone(), opts: Default::default() };
     let models = crate::bspc_cli::GameModels { fs, allow_dynamic: true };
-    let builder = || {
-        rayon::ThreadPoolBuilder::new()
-            .num_threads(threads.max(1))
-            .thread_name(|i| format!("hp-light-{i}"))
-            .start_handler(|_| lower_thread_priority())
-    };
+    let builder =
+        || rayon::ThreadPoolBuilder::new().num_threads(threads.max(1)).thread_name(|i| format!("hp-light-{i}"));
     let pool = match builder().stack_size(BAKE_STACK).build().or_else(|_| builder().build()) {
         Ok(p) => p,
         Err(e) => return Err(Outcome::Failed(format!("cannot start the threads: {e}"))),
     };
-
     let t = Instant::now();
     let tau = 1.0 + solid_count as f32 / 25_000.0;
     let mut last = Instant::now();
     let mut leaked = false;
     let mut warnings: Vec<String> = Vec::new();
     let mut log = |line: &str| {
-        if ctx.cancelled() {
+        if cancelled() {
             resume_unwind(Box::new(Cancelled));
         }
         leaked |= line.contains("leaked");
@@ -478,10 +444,9 @@ fn compile_local(
         }
         if last.elapsed() > Duration::from_millis(200) {
             last = Instant::now();
-            ctx.progress(BakePhase::Compiling, eased(0.02, 0.12, t.elapsed().as_secs_f32(), tau));
+            progress(eased(0.0, 0.9, t.elapsed().as_secs_f32(), tau));
         }
     };
-    ctx.progress(BakePhase::Compiling, 0.02);
     let opts = hp_bspc::CompileOptions {
         vis: hp_bspc::VisLevel::Fast,
         relaxed_limits: true,
@@ -489,7 +454,7 @@ fn compile_local(
         preview: true,
         ..Default::default()
     };
-    let mut compiled = pool.install(|| hp_bspc::compile(&map, &materials, &models, &opts, &mut log));
+    let mut compiled = pool.install(|| hp_bspc::compile(map, &materials, &models, &opts, &mut log));
     let mut retried = None;
     if let Err(hp_bspc::CompileError::Failed(e)) = &compiled
         && e.contains("exceeded")
@@ -500,9 +465,8 @@ fn compile_local(
         );
         retried = Some(e.lines().filter(|l| l.contains("exceeded")).collect::<Vec<_>>().join(", "));
         let opts = hp_bspc::CompileOptions { max_lightmap_dim: hp_bspc::compile::MAX_LIGHTMAP_DIM_LIMIT, ..opts };
-        compiled = pool.install(|| hp_bspc::compile(&map, &materials, &models, &opts, &mut log));
+        compiled = pool.install(|| hp_bspc::compile(map, &materials, &models, &opts, &mut log));
     }
-    drop(map);
     if let Some(e) = retried {
         warnings.push(format!("{e}: the faces were cut at {} luxels", hp_bspc::compile::MAX_LIGHTMAP_DIM_LIMIT));
     }
@@ -512,54 +476,484 @@ fn compile_local(
         Err(e) => return Err(Outcome::Failed(e.to_string())),
     };
     log::info!("lighting preview: compiled in {:.2} s", t.elapsed().as_secs_f32());
-    note_memory("compiled");
-    if ctx.cancelled() {
+    if cancelled() {
         return Err(Outcome::Cancelled);
     }
-    let bytes = std::mem::take(&mut out.bsp);
-    drop(out);
-    let bsp = match hp_bsp::Bsp::from_vec(bytes) {
-        Ok(b) => Arc::new(b),
-        Err(e) => return Err(Outcome::Failed(e.to_string())),
-    };
-    Ok(Compiled { serial, geometry_key: None, bsp, sides: Arc::new(sides), leaked, warnings, peak: None })
+    Ok(MapBuild { bsp: std::mem::take(&mut out.bsp), leaked, warnings })
 }
 
-enum LightError {
+fn eased(from: f32, to: f32, t: f32, tau: f32) -> f32 {
+    from + (to - from) * (1.0 - (-t / tau.max(0.1)).exp())
+}
+
+pub(super) fn mounts_of(fs: &hp_fs::GameFs) -> Mounts {
+    Mounts {
+        root: fs.root().map(std::path::Path::to_path_buf),
+        game_dir: fs.game_dir().map(std::path::Path::to_path_buf),
+        mounts: fs.sources().iter().map(hp_fs::SourceInfo::mount).collect(),
+        generation: fs.generation(),
+    }
+}
+
+pub(super) fn options_of(job: &Job) -> LightOptions {
+    LightOptions {
+        hdr: job.hdr,
+        quality: child::quality_arg(job.quality).to_owned(),
+        bounces: job.bounces,
+        prop_shadows: job.prop_shadows,
+        prop_lighting: job.prop_lighting,
+        tuning: job.tuning.arg(),
+        threads: job.threads.1.max(1),
+    }
+}
+
+pub(super) fn lighting_entity(e: &hp_vmf::Entity) -> bool {
+    e.solids.is_empty() && e.classname.get(..5).is_some_and(|p| p.eq_ignore_ascii_case("light"))
+}
+
+pub(super) fn point_entities(map: &hp_vmf::Map) -> Vec<hp_vmf::Entity> {
+    let targets: std::collections::HashSet<String> = map
+        .entities
+        .iter()
+        .filter(|e| lighting_entity(e))
+        .filter_map(|e| e.get("target").map(|t| t.trim().to_ascii_lowercase()))
+        .filter(|t| !t.is_empty())
+        .collect();
+    map.entities
+        .iter()
+        .filter(|e| {
+            e.solids.is_empty()
+                && (lighting_entity(e)
+                    || e.get("targetname").is_some_and(|n| targets.contains(&n.trim().to_ascii_lowercase())))
+        })
+        .cloned()
+        .collect()
+}
+
+fn entity_text(entities: &[hp_vmf::Entity]) -> Vec<u8> {
+    if entities.is_empty() {
+        return Vec::new();
+    }
+    let map = hp_vmf::Map { entities: entities.to_vec(), ..Default::default() };
+    hp_vmf::write(&map).into_bytes()
+}
+
+enum Wait {
+    Reply(Reply, Vec<u8>),
     Cancelled,
-    Failed(String),
+    Gone,
 }
 
-struct TempFiles(Vec<PathBuf>);
-
-impl Drop for TempFiles {
-    fn drop(&mut self) {
-        for p in &self.0 {
-            let _ = std::fs::remove_file(p);
+fn wait(link: &mut Link, stash: &mut Stash, job: u64, ctx: &Ctx<'_>, phases: &mut dyn FnMut(&Reply, &[u8])) -> Wait {
+    let mut cancel_sent: Option<Instant> = None;
+    loop {
+        if cancel_sent.is_none() && ctx.cancelled() {
+            if !link.is_process() {
+                return Wait::Cancelled;
+            }
+            link.cancel(job);
+            cancel_sent = Some(Instant::now());
+        }
+        if cancel_sent.is_some_and(|t| t.elapsed() > CANCEL_GRACE) {
+            return Wait::Gone;
+        }
+        match link.recv(REPLY_WAIT) {
+            Ok(Some((Reply::Log { line }, _))) => log::info!("lighting process: {line}"),
+            Ok(Some((reply, blob))) => {
+                if reply.job() != job && !matches!(reply, Reply::Failed { job: 0, .. }) {
+                    if stash.len() < 64 {
+                        stash.push((reply, blob));
+                    }
+                    continue;
+                }
+                match reply {
+                    Reply::Progress { .. } | Reply::Partial { .. } => {
+                        if cancel_sent.is_none() {
+                            phases(&reply, &blob);
+                        }
+                    }
+                    Reply::Failed { cancelled: true, .. } if cancel_sent.is_some() || ctx.cancelled() => {
+                        return Wait::Cancelled;
+                    }
+                    _ if cancel_sent.is_some() => return Wait::Cancelled,
+                    _ => return Wait::Reply(reply, blob),
+                }
+            }
+            Ok(None) if !link.is_process() => return Wait::Gone,
+            Ok(None) => {}
+            Err(Gone::Exited) => return Wait::Gone,
         }
     }
 }
 
-fn line_phase(line: &str, triangles: &mut usize) -> Option<(BakePhase, f32)> {
-    if let Some(i) = line.find(" shadow triangles") {
-        let head = &line[..i];
-        let n = head.rsplit(|c: char| !c.is_ascii_digit()).next().unwrap_or("");
-        *triangles = n.parse().unwrap_or(*triangles);
-    }
-    if line.starts_with("scene built") {
-        Some((BakePhase::Direct, 0.2))
-    } else if line.starts_with("direct light in") {
-        Some((BakePhase::Bounce, 0.8))
-    } else if line.starts_with("bounced light in") || line.starts_with("leaf ambient") {
-        Some((BakePhase::Finishing, 0.9))
-    } else {
-        None
+fn phase_of(code: u8) -> BakePhase {
+    match code {
+        host::PHASE_COMPILE => BakePhase::Compiling,
+        host::PHASE_SCENE => BakePhase::Preparing,
+        host::PHASE_DIRECT => BakePhase::Direct,
+        host::PHASE_BOUNCE => BakePhase::Bounce,
+        _ => BakePhase::Finishing,
     }
 }
 
-type ModelLight = (Option<Arc<hp_editor::limits::world_light::PropLighting>>, Option<Arc<hp_render::IndirectVolume>>);
+fn fraction_of(code: u8, f: f32) -> f32 {
+    match code {
+        host::PHASE_COMPILE => 0.02 + 0.13 * f,
+        host::PHASE_SCENE => 0.15 + 0.05 * f,
+        host::PHASE_DIRECT => 0.2 + 0.6 * f,
+        host::PHASE_BOUNCE => 0.8 + 0.1 * f,
+        _ => 0.9 + 0.05 * f,
+    }
+}
 
-fn model_lighting(bsp: &hp_bsp::Bsp, hdr: bool) -> ModelLight {
+fn run(job: Job, ctx: &Ctx<'_>, pipe: &mut Pipeline) -> Outcome {
+    let mut stash = std::mem::take(&mut pipe.stash);
+    pipe.models = None;
+    let outcome = run_inner(job, ctx, pipe, &mut stash);
+    pipe.stash.extend(stash);
+    outcome
+}
+
+fn run_inner(job: Job, ctx: &Ctx<'_>, pipe: &mut Pipeline, stash: &mut Stash) -> Outcome {
+    ctx.progress(BakePhase::Preparing, 0.01);
+    let fs = job.fs.clone().unwrap_or_else(hp_fs::GameFs::empty);
+    let options = options_of(&job);
+    let mounts = mounts_of(&fs);
+    let threads = job.threads.1.max(1);
+    if let Err(e) = pipe.link(job.exe.as_deref(), threads) {
+        return Outcome::Failed(e);
+    }
+    let never_cancel = || false;
+    let cancelled = || ctx.cancelled();
+    if pipe.setup.as_ref() != Some(&(mounts.clone(), threads)) {
+        let Some(link) = pipe.link.as_mut() else { return Outcome::Failed("no lighting process".to_owned()) };
+        if link.send(Request::Setup { mounts: mounts.clone(), threads }, &[], &never_cancel).is_err() {
+            pipe.reset();
+            return Outcome::Failed("the lighting process stopped".to_owned());
+        }
+        pipe.setup = Some((mounts, threads));
+        pipe.geometry = None;
+        pipe.points.clear();
+    }
+    let job_exact = job.exact;
+    if let Some(link) = pipe.link.as_mut() {
+        link.set_urgent(job.urgent);
+    }
+    let Job {
+        id, map, points, solids, hdr, layer_size, max_layers, coarsen: factor, lit, focus, stream, shown, ..
+    } = job;
+    let geometry_key = job.geometry_key;
+    let mut compiled_bsp: Option<Arc<hp_bsp::Bsp>> = None;
+    let same_geometry = pipe.geometry.as_ref().is_some_and(|g| g.key == geometry_key && g.factor == factor);
+    let wanted_points = match (&map, points) {
+        (Some(map), _) => Some(point_entities(map)),
+        (None, Some(points)) => Some(points),
+        (None, None) => None,
+    };
+    if let Some(map) = map.filter(|_| !same_geometry) {
+        ctx.progress(BakePhase::Compiling, 0.02);
+        let sides = Arc::new(SideTable::from_map(&map));
+        let host_points = point_entities(&map);
+        let text = hp_vmf::write(&map).into_bytes();
+        drop(map);
+        pipe.geometry = None;
+        let link = match pipe.link.as_mut() {
+            Some(l) => l,
+            None => return Outcome::Failed("no lighting process".to_owned()),
+        };
+        let req = Request::Compile { job: id, key: geometry_key, factor, threads: job.threads.0.max(1) };
+        if link.send(req, &text, &cancelled).is_err() {
+            pipe.reset();
+            return Outcome::Failed("the lighting process stopped".to_owned());
+        }
+        drop(text);
+        let mut forward = |reply: &Reply, _: &[u8]| {
+            if let Reply::Progress { phase, fraction, .. } = reply {
+                ctx.progress(phase_of(*phase), fraction_of(*phase, *fraction));
+            }
+        };
+        match wait(link, stash, id, ctx, &mut forward) {
+            Wait::Reply(Reply::Compiled { leaked, warnings, seconds, .. }, blob) => {
+                log::info!("lighting preview: geometry prepared by the lighting process in {seconds:.2} s");
+                let bsp = match hp_bsp::Bsp::from_vec(blob) {
+                    Ok(b) => Arc::new(b),
+                    Err(e) => return Outcome::Failed(e.to_string()),
+                };
+                compiled_bsp = Some(bsp);
+                pipe.points = host_points.into_iter().map(|e| (e.id, e)).collect();
+                pipe.geometry =
+                    Some(GeometryState { key: geometry_key, factor, sides, solids, leaked, warnings, shown: None });
+            }
+            Wait::Reply(Reply::Failed { message, .. }, _) => return Outcome::Failed(message),
+            Wait::Reply(..) => return Outcome::Failed("unexpected lighting reply".to_owned()),
+            Wait::Cancelled => return Outcome::Cancelled,
+            Wait::Gone => {
+                pipe.reset();
+                return Outcome::Failed("the lighting process stopped".to_owned());
+            }
+        }
+    }
+    let Some(state) = pipe.geometry.as_mut().filter(|g| g.key == geometry_key && g.factor == factor) else {
+        return Outcome::NeedsMap;
+    };
+    let mut removed = Vec::new();
+    let mut upserts = Vec::new();
+    if let Some(points) = wanted_points {
+        let mut seen = std::collections::HashSet::new();
+        for e in points {
+            seen.insert(e.id);
+            if pipe.points.get(&e.id) != Some(&e) {
+                pipe.points.insert(e.id, e.clone());
+                upserts.push(e);
+            }
+        }
+        pipe.points.retain(|id, _| {
+            let keep = seen.contains(id);
+            if !keep {
+                removed.push(*id);
+            }
+            keep
+        });
+    }
+    let all = lit || state.shown.as_ref().is_none_or(|s| Some(s.layout) != shown);
+    let link = match pipe.link.as_mut() {
+        Some(l) => l,
+        None => return Outcome::Failed("no lighting process".to_owned()),
+    };
+    if all && !lit && compiled_bsp.is_none() {
+        if link.send(Request::Geometry { job: id }, &[], &cancelled).is_err() {
+            pipe.reset();
+            return Outcome::Failed("the lighting process stopped".to_owned());
+        }
+        let mut ignore = |_: &Reply, _: &[u8]| {};
+        match wait(link, stash, id, ctx, &mut ignore) {
+            Wait::Reply(Reply::Compiled { .. }, blob) => match hp_bsp::Bsp::from_vec(blob) {
+                Ok(b) => compiled_bsp = Some(Arc::new(b)),
+                Err(e) => return Outcome::Failed(e.to_string()),
+            },
+            Wait::Reply(Reply::Failed { .. }, _) => {
+                pipe.geometry = None;
+                return Outcome::NeedsMap;
+            }
+            Wait::Reply(..) => return Outcome::Failed("unexpected lighting reply".to_owned()),
+            Wait::Cancelled => return Outcome::Cancelled,
+            Wait::Gone => {
+                pipe.reset();
+                return Outcome::Failed("the lighting process stopped".to_owned());
+            }
+        }
+    }
+    let Some(state) = pipe.geometry.as_mut() else { return Outcome::NeedsMap };
+    let Some(link) = pipe.link.as_mut() else { return Outcome::Failed("no lighting process".to_owned()) };
+    let mut geometry_task = {
+        let need = !lit && all;
+        let bsp = compiled_bsp.clone();
+        let sides = state.sides.clone();
+        let solids = state.solids.clone();
+        need.then(|| {
+            std::thread::Builder::new().name("hp-light-geometry".to_owned()).spawn(move || {
+                super::memory::lower_thread_memory_priority();
+                bsp.map(|bsp| bsp::geometry(&bsp, &sides, &solids))
+            })
+        })
+    };
+    let req = Request::Relight {
+        job: id,
+        removed,
+        options: options.clone(),
+        focus,
+        stream: stream && !lit,
+        all: all && !lit,
+        exact: job_exact,
+    };
+    if link.send(req, &entity_text(&upserts), &cancelled).is_err() {
+        pipe.reset();
+        return Outcome::Failed("the lighting process stopped".to_owned());
+    }
+    drop(upserts);
+    let mut early: Option<(Shown, usize)> = None;
+    let next_layout = &mut pipe.next_layout;
+    let mut forward = |reply: &Reply, blob: &[u8]| match reply {
+        Reply::Progress { phase, fraction, .. } => ctx.progress(phase_of(*phase), fraction_of(*phase, *fraction)),
+        Reply::Partial { .. } if !all => {
+            if let (Ok(faces), Some(shown)) = (host::decode_faces(blob), state.shown.as_ref()) {
+                let baked = patch(shown, &faces, hdr);
+                ctx.send(Msg::Partial { job: id, baked: Box::new(baked) });
+            }
+        }
+        Reply::Partial { .. } if !lit => {
+            if early.is_none()
+                && let Some(Ok(handle)) = geometry_task.take()
+                && let Ok(Some(mut geo)) = handle.join()
+            {
+                *next_layout += 1;
+                let (mut baked, shown) = assemble(&mut geo, &[], layer_size, max_layers, *next_layout);
+                pending_texels(&mut baked, hdr);
+                baked.hdr = hdr;
+                baked.unbound = geo.unbound;
+                baked.coarsen = factor;
+                ctx.send(Msg::Partial { job: id, baked: Box::new(baked) });
+                early = Some((shown, geo.unbound));
+            }
+            if let (Ok(faces), Some((shown, _))) = (host::decode_faces(blob), early.as_ref()) {
+                ctx.send(Msg::Partial { job: id, baked: Box::new(patch(shown, &faces, hdr)) });
+            }
+        }
+        _ => {}
+    };
+    let (stats, blob) = match wait(link, stash, id, ctx, &mut forward) {
+        Wait::Reply(Reply::Lit { stats, .. }, blob) => (stats, blob),
+        Wait::Reply(Reply::Failed { message, .. }, _) => {
+            if message == "no geometry" {
+                pipe.geometry = None;
+                return Outcome::NeedsMap;
+            }
+            return Outcome::Failed(message);
+        }
+        Wait::Reply(..) => return Outcome::Failed("unexpected lighting reply".to_owned()),
+        Wait::Cancelled => return Outcome::Cancelled,
+        Wait::Gone => {
+            pipe.reset();
+            return Outcome::Failed("the lighting process stopped".to_owned());
+        }
+    };
+    pipe.last = Some((id, options));
+    ctx.progress(BakePhase::Finishing, 0.95);
+    let faces = match host::decode_faces(&blob) {
+        Ok(f) => f,
+        Err(e) => return Outcome::Failed(e),
+    };
+    drop(blob);
+    let peak = pipe.link.as_ref().and_then(Link::memory);
+    let Some(state) = pipe.geometry.as_mut() else { return Outcome::NeedsMap };
+    if lit {
+        let mut baked = Baked { hdr, stats, seconds: ctx.start.elapsed().as_secs_f32(), ..Baked::default() };
+        baked.triangles = stats.triangles;
+        baked.child_peak = peak;
+        return Outcome::Baked(Box::new(baked));
+    }
+    let mut baked = if let Some((shown, unbound)) = early {
+        let mut baked = patch(&shown, &faces, hdr);
+        baked.unbound = unbound;
+        state.shown = Some(shown);
+        baked
+    } else if all {
+        let geometry = match geometry_task {
+            Some(Ok(handle)) => handle.join().ok().flatten(),
+            _ => None,
+        };
+        let Some(mut geo) = geometry else {
+            return Outcome::Failed("the preview geometry could not be read".to_owned());
+        };
+        pipe.next_layout += 1;
+        let layout_id = pipe.next_layout;
+        let (mut baked, shown) = assemble(&mut geo, &faces, layer_size, max_layers, layout_id);
+        baked.unbound = geo.unbound;
+        state.shown = Some(shown);
+        baked
+    } else {
+        match state.shown.as_ref() {
+            Some(shown) => patch(shown, &faces, hdr),
+            None => return Outcome::NeedsMap,
+        }
+    };
+    let state = pipe.geometry.as_ref();
+    baked.hdr = hdr;
+    baked.luxels = stats.luxels;
+    baked.triangles = stats.triangles;
+    baked.child_peak = peak;
+    baked.leaked = state.is_some_and(|s| s.leaked);
+    baked.coarsen = factor;
+    baked.warnings = state.map(|s| s.warnings.clone()).unwrap_or_default();
+    baked.seconds = ctx.start.elapsed().as_secs_f32();
+    baked.stats = stats;
+    Outcome::Baked(Box::new(baked))
+}
+
+fn start_models(pipe: &mut Pipeline, id: u64) {
+    let Some((last, options)) = pipe.last.clone() else { return };
+    if last != id {
+        return;
+    }
+    let Some(link) = pipe.link.as_mut() else { return };
+    link.set_urgent(false);
+    let hdr = options.hdr;
+    let never = || false;
+    if link.send(Request::Models { job: id, options }, &[], &never).is_err() {
+        pipe.reset();
+        return;
+    }
+    pipe.models = Some((id, hdr));
+}
+
+fn pump(pipe: &mut Pipeline, out: &Sender<Msg>, wake: &(dyn Fn() + Send + Sync)) {
+    let mut replies = std::mem::take(&mut pipe.stash);
+    if let Some(link) = pipe.link.as_mut() {
+        while let Ok(Some(reply)) = link.recv(Duration::ZERO) {
+            replies.push(reply);
+        }
+    }
+    for (reply, blob) in replies {
+        if let Reply::Log { line } = &reply {
+            log::info!("lighting process: {line}");
+            continue;
+        }
+        let Some((id, hdr)) = pipe.models else { continue };
+        if reply.job() != id {
+            continue;
+        }
+        match reply {
+            Reply::Models { seconds, .. } => {
+                pipe.models = None;
+                let lit = hp_bsp::Bsp::from_vec(blob).ok();
+                let (props, indirect) = lit.as_ref().map(|b| model_lighting(b, hdr)).unwrap_or_default();
+                let models = ModelLight { props, indirect, seconds, hdr, failed: false };
+                let _ = out.send(Msg::Models { job: id, models: Box::new(models) });
+                wake();
+            }
+            Reply::Partial { .. } => {
+                let shown = pipe.geometry.as_ref().and_then(|g| g.shown.as_ref());
+                if let (Some(shown), Ok(faces)) = (shown, host::decode_faces(&blob)) {
+                    let _ = out.send(Msg::Partial { job: id, baked: Box::new(patch(shown, &faces, hdr)) });
+                    wake();
+                }
+            }
+            Reply::Failed { .. } => {
+                pipe.models = None;
+                let models = ModelLight { props: None, indirect: None, seconds: 0.0, hdr, failed: true };
+                let _ = out.send(Msg::Models { job: id, models: Box::new(models) });
+                wake();
+            }
+            _ => {}
+        }
+    }
+}
+
+fn costs(pipe: &mut Pipeline, id: u64, options: LightOptions) -> Vec<host::CostEntry> {
+    let Some(link) = pipe.link.as_mut() else { return Vec::new() };
+    let never = || false;
+    if link.send(Request::Costs { job: id, options }, &[], &never).is_err() {
+        return Vec::new();
+    }
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while Instant::now() < deadline {
+        match link.recv(REPLY_WAIT) {
+            Ok(Some((Reply::Costs { job, costs }, _))) if job == id => return costs,
+            Ok(Some((Reply::Log { line }, _))) => log::info!("lighting process: {line}"),
+            Ok(Some((Reply::Failed { job, .. }, _))) if job == id => return Vec::new(),
+            Ok(Some(_)) => {}
+            Ok(None) if !link.is_process() => return Vec::new(),
+            Ok(None) => {}
+            Err(_) => return Vec::new(),
+        }
+    }
+    Vec::new()
+}
+
+type ModelLighting =
+    (Option<Arc<hp_editor::limits::world_light::PropLighting>>, Option<Arc<hp_render::IndirectVolume>>);
+
+fn model_lighting(bsp: &hp_bsp::Bsp, hdr: bool) -> ModelLighting {
     let props = crate::dispatch::health::portals::bake_prop_lighting(bsp, hdr)
         .filter(hp_editor::limits::world_light::PropLighting::has_data)
         .map(Arc::new);
@@ -572,166 +966,10 @@ fn indirect_volume(bsp: &hp_bsp::Bsp) -> Option<Arc<hp_render::IndirectVolume>> 
     hp_render::IndirectVolume::new(v.origin, v.spacing, &v.coords, &v.cubes).map(Arc::new)
 }
 
-#[derive(Clone, Copy, Debug)]
-struct LightArgs {
-    hdr: bool,
-    quality: RadQuality,
-    bounces: u32,
-    threads: usize,
-    prop_shadows: bool,
-    prop_lighting: bool,
-    tuning: child::Tuning,
-}
-
 pub(crate) fn child_exe() -> Option<PathBuf> {
     std::env::current_exe()
         .ok()
         .filter(|p| !cfg!(test) || p.file_stem().is_some_and(|s| s.to_string_lossy().eq_ignore_ascii_case("hammerpro")))
-}
-
-fn light(
-    bsp: Arc<hp_bsp::Bsp>,
-    exe: Option<&Path>,
-    la: LightArgs,
-    ctx: &Ctx<'_>,
-    tau: f32,
-) -> Result<(child::LitResult, usize), LightError> {
-    let LightArgs { hdr, quality, bounces, threads, prop_shadows, prop_lighting, tuning } = la;
-    let dir = std::env::temp_dir();
-    let stem = format!("hammerpro-light-{}-{}", std::process::id(), ctx.id);
-    let (input, output) = (dir.join(format!("{stem}.bsp")), dir.join(format!("{stem}.lit")));
-    let temp = TempFiles(vec![input.clone(), output.clone()]);
-    if let Some(exe) = exe
-        && std::fs::write(&input, bsp.bytes()).is_ok()
-    {
-        drop(bsp);
-        let r = light_child(exe, &input, &output, la, ctx, tau);
-        drop(temp);
-        return r;
-    }
-    let mut triangles = 0;
-    let mut phase = (BakePhase::Direct, 0.15);
-    let mut log = |l: &str| {
-        if let Some(p) = line_phase(l, &mut triangles) {
-            phase = p;
-            ctx.progress(p.0, p.1);
-        }
-    };
-    let lit = child::light(
-        bsp.bytes().to_vec(),
-        hdr,
-        quality,
-        bounces,
-        Some(threads.max(1)),
-        ctx.game,
-        prop_shadows,
-        prop_lighting,
-        tuning,
-        &mut log,
-    );
-    drop(bsp);
-    if ctx.cancelled() {
-        return Err(LightError::Cancelled);
-    }
-    lit.map(|f| (f, triangles)).map_err(LightError::Failed)
-}
-
-fn light_child(
-    exe: &Path,
-    input: &Path,
-    output: &Path,
-    la: LightArgs,
-    ctx: &Ctx<'_>,
-    tau: f32,
-) -> Result<(child::LitResult, usize), LightError> {
-    use std::process::{Command, Stdio};
-    let LightArgs { hdr, quality, bounces, threads, prop_shadows, prop_lighting, tuning } = la;
-    let mut cmd = Command::new(exe);
-    cmd.arg(child::LIGHT_ARG)
-        .arg(input)
-        .arg(output)
-        .arg(if hdr { "1" } else { "0" })
-        .arg(child::quality_arg(quality))
-        .arg(bounces.to_string())
-        .arg(threads.max(1).to_string())
-        .arg(ctx.game.map(|g| g.as_os_str().to_owned()).unwrap_or_default())
-        .arg(if prop_shadows { "1" } else { "0" })
-        .arg(if prop_lighting { "1" } else { "0" })
-        .arg(tuning.arg())
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null());
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        use windows_sys::Win32::System::Threading::{BELOW_NORMAL_PRIORITY_CLASS, CREATE_NO_WINDOW};
-        cmd.creation_flags(CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS);
-    }
-    let mut proc = cmd.spawn().map_err(|e| LightError::Failed(format!("cannot start the lighting: {e}")))?;
-    let _stdin = proc.stdin.take();
-    let (tx, lines) = crossbeam_channel::unbounded::<String>();
-    if let Some(out) = proc.stdout.take() {
-        let _ = std::thread::Builder::new().name("hp-light-out".to_owned()).spawn(move || {
-            for line in std::io::BufReader::new(out).lines() {
-                let Ok(line) = line else { break };
-                if tx.send(line).is_err() {
-                    break;
-                }
-            }
-        });
-    }
-    let mut triangles = 0;
-    let mut phase = (BakePhase::Direct, 0.15f32);
-    let mut phase_start = Instant::now();
-    let mut last_lines: Vec<String> = Vec::new();
-    let mut last_report = Instant::now();
-    let status = loop {
-        if ctx.cancelled() {
-            let _ = proc.kill();
-            let _ = proc.wait();
-            return Err(LightError::Cancelled);
-        }
-        match lines.recv_timeout(Duration::from_millis(50)) {
-            Ok(line) => {
-                log::debug!("preview lighting: {line}");
-                if let Some(p) = line_phase(&line, &mut triangles) {
-                    phase = p;
-                    phase_start = Instant::now();
-                    ctx.progress(p.0, p.1);
-                }
-                last_lines.push(line);
-                if last_lines.len() > 8 {
-                    last_lines.remove(0);
-                }
-                continue;
-            }
-            Err(crossbeam_channel::RecvTimeoutError::Timeout) => {}
-            Err(crossbeam_channel::RecvTimeoutError::Disconnected) => match proc.wait() {
-                Ok(s) => break s,
-                Err(e) => return Err(LightError::Failed(e.to_string())),
-            },
-        }
-        if last_report.elapsed() > Duration::from_millis(250) {
-            last_report = Instant::now();
-            let t = phase_start.elapsed().as_secs_f32();
-            let fraction = match phase.0 {
-                BakePhase::Direct => eased(phase.1, 0.8, t, tau),
-                BakePhase::Bounce => eased(phase.1, 0.9, t, tau * 0.2),
-                _ => eased(phase.1, 0.95, t, 2.0),
-            };
-            ctx.progress(phase.0, fraction);
-        }
-        if let Ok(Some(s)) = proc.try_wait() {
-            break s;
-        }
-    };
-    if !status.success() {
-        let why = last_lines.iter().rev().find(|l| l.starts_with("Error")).cloned();
-        return Err(LightError::Failed(why.unwrap_or_else(|| format!("the lighting stopped ({status})"))));
-    }
-    let mut lit = child::read_result(output).map_err(LightError::Failed)?;
-    lit.peak = super::memory::of_child(&proc);
-    Ok((lit, triangles))
 }
 
 const MIN_ATLAS: u32 = 256;
@@ -743,581 +981,118 @@ fn atlas_size(sizes: &[(u32, u32)], most: u32) -> u32 {
     side.checked_next_power_of_two().unwrap_or(most).min(most.max(1))
 }
 
-fn assemble(geo: &mut bsp::Geometry, flat: FlatLightmaps, layer_size: u32, max_layers: u32) -> Baked {
-    let lit = |f: &GeoFace| {
-        flat.face(f.bsp as usize).filter(|&(o, n)| (o as usize) + (f.w * f.h * n) as usize <= flat.texels.len())
-    };
-    geo.faces.retain(|f| lit(f).is_some());
-    let images: Vec<(u32, u32)> = geo
-        .faces
-        .iter()
-        .map(|f| {
-            let (o, n) = lit(f).unwrap_or((0, 1));
-            (o, if n == 4 && f.w * 4 <= layer_size { 4 } else { 1 })
-        })
-        .collect();
-    let sizes: Vec<(u32, u32)> = geo.faces.iter().zip(&images).map(|(f, (_, n))| (f.w * n, f.h)).collect();
+fn images_of(f: &GeoFace, layer_size: u32) -> u32 {
+    if f.bumped && f.w * 4 <= layer_size { 4 } else { 1 }
+}
+
+fn assemble(
+    geo: &mut bsp::Geometry,
+    lightmaps: &[FaceTexels],
+    layer_size: u32,
+    max_layers: u32,
+    layout: u64,
+) -> (Baked, Shown) {
+    let images: Vec<u32> = geo.faces.iter().map(|f| images_of(f, layer_size)).collect();
+    let sizes: Vec<(u32, u32)> = geo.faces.iter().zip(&images).map(|(f, n)| (f.w * n, f.h)).collect();
     let mut atlas = Atlas::new(atlas_size(&sizes, layer_size), max_layers);
     let rects = atlas.alloc_many(&sizes);
     let atlas_full = rects.iter().filter(|r| r.is_none()).count();
-    let faces: Vec<FaceRecord> = geo
+    let records: Vec<FaceRecord> = geo
         .faces
         .iter()
         .zip(&rects)
         .zip(&images)
-        .map(|((f, rect), &(texels, images))| FaceRecord {
+        .enumerate()
+        .map(|(i, ((f, rect), &images))| FaceRecord {
+            id: i as u32,
             bsp: f.bsp,
             solid: f.solid,
             generation: f.generation,
             scale: f.scale,
             flags: f.flags,
             rect: *rect,
-            texels,
+            texels: u32::MAX,
             images,
         })
         .collect();
-    let texels = flat.texels;
-    let blocks = bsp::blocks(&mut geo.faces);
+    let by_bsp: HashMap<u32, usize> = records.iter().enumerate().map(|(i, r)| (r.bsp, i)).collect();
+    let shown = Shown { layout, records, by_bsp, layer_size: atlas.size(), layers: atlas.layers() };
+    let mut baked = patch(&shown, lightmaps, true);
+    let mut faces = shown.records.clone();
+    for f in &baked.faces {
+        if let Some(slot) = faces.get_mut(f.id as usize) {
+            slot.texels = f.texels;
+        }
+    }
+    baked.faces = faces;
+    baked.patch = false;
+    baked.blocks = bsp::blocks(&mut geo.faces);
     geo.faces = Vec::new();
-    Baked {
-        faces,
-        blocks,
-        materials: std::mem::take(&mut geo.materials),
-        layer_size: atlas.size(),
-        layers: atlas.layers(),
-        texels,
-        atlas_full,
-        ..Baked::default()
+    baked.materials = std::mem::take(&mut geo.materials);
+    baked.layer_size = shown.layer_size;
+    baked.layers = shown.layers;
+    baked.atlas_full = atlas_full;
+    (baked, shown)
+}
+
+fn pending_texels(baked: &mut Baked, hdr: bool) {
+    let unlit = if hdr { [1.0; 3] } else { hp_editor::limits::world_light::ldr_lightmap([1.0; 3]) };
+    let value = hp_light::pack::pack_rg11b10(unlit);
+    for f in &mut baked.faces {
+        let Some(rect) = f.rect else { continue };
+        f.texels = baked.texels.len() as u32;
+        baked.texels.extend(std::iter::repeat_n(value, (rect.w * rect.h) as usize));
     }
 }
 
-fn bind_animations(
-    mut sources: HashMap<u32, super::style_maps::SourceFace>,
-    baked: &Baked,
-    hdr: bool,
-) -> Vec<super::style_maps::AnimatedFace> {
-    baked
-        .faces
-        .iter()
-        .enumerate()
-        .filter_map(|(index, face)| {
-            let rect = face.rect?;
-            let source = sources.remove(&face.bsp)?;
-            Some(source.bind(
-                index as u32,
+fn patch(shown: &Shown, lightmaps: &[FaceTexels], hdr: bool) -> Baked {
+    let mut faces = Vec::with_capacity(lightmaps.len());
+    let mut texels = Vec::with_capacity(lightmaps.iter().map(|f| f.texels.len()).sum());
+    let mut animations = Vec::new();
+    for lm in lightmaps {
+        let Some(&index) = shown.by_bsp.get(&lm.face) else { continue };
+        let mut record = shown.records[index];
+        let n = (lm.width * lm.height) as usize;
+        let wanted = n * record.images as usize;
+        if record.rect.is_none() || lm.texels.len() < wanted {
+            continue;
+        }
+        record.texels = texels.len() as u32;
+        texels.extend_from_slice(&lm.texels[..wanted]);
+        if let Some(rect) = record.rect
+            && !lm.layers.is_empty()
+        {
+            let images = record.images.max(1);
+            let layers: Vec<(String, Vec<[f32; 3]>)> =
+                lm.layers.iter().map(|l| (l.pattern.clone(), l.image.iter().take(wanted).copied().collect())).collect();
+            let source = super::style_maps::SourceFace::new(layers);
+            animations.push(source.bind(
+                record.id,
                 hp_render::lightmap::LightmapRect {
                     layer: rect.layer,
                     x: rect.x,
                     y: rect.y,
-                    w: rect.w / face.images.max(1),
+                    w: rect.w / images,
                     h: rect.h,
                     density: 1.0,
-                    bumped: face.images == 4,
+                    bumped: images == 4,
                 },
                 hdr,
-            ))
-        })
-        .collect()
+            ));
+        }
+        faces.push(record);
+    }
+    Baked {
+        layout: shown.layout,
+        patch: true,
+        faces,
+        texels,
+        animations,
+        layer_size: shown.layer_size,
+        layers: shown.layers,
+        ..Baked::default()
+    }
 }
 
 #[cfg(test)]
-mod tests {
-    use std::collections::HashSet;
-
-    use hp_render::lightmap::face_flags;
-
-    use super::*;
-
-    #[test]
-    fn lines_give_phases() {
-        let mut tris = 0;
-        let l = "29243 faces, 27422 with lightmaps (9536925 luxels), 1002 lights, 211295 shadow triangles, passes: HDR";
-        assert_eq!(line_phase(l, &mut tris), None);
-        assert_eq!(tris, 211295);
-        assert_eq!(line_phase("scene built in 503 ms", &mut tris), Some((BakePhase::Direct, 0.2)));
-        assert_eq!(line_phase("direct light in 4 ms", &mut tris).map(|p| p.0), Some(BakePhase::Bounce));
-        assert_eq!(line_phase("leaf ambient: 3 samples in 1 ms", &mut tris).map(|p| p.0), Some(BakePhase::Finishing));
-        assert!(eased(0.2, 0.8, 1e9, 10.0) <= 0.8 && eased(0.2, 0.8, 0.0, 10.0) == 0.2);
-    }
-
-    pub(super) fn solid(id: u32, side0: u32, lo: [f64; 3], hi: [f64; 3]) -> String {
-        let ([x0, y0, z0], [x1, y1, z1]) = (lo, hi);
-        let sides = [
-            (format!("({x0} {y1} {z1}) ({x1} {y1} {z1}) ({x1} {y0} {z1})"), "[1 0 0 0] 0.25", "[0 -1 0 0] 0.25"),
-            (format!("({x0} {y0} {z0}) ({x1} {y0} {z0}) ({x1} {y1} {z0})"), "[1 0 0 0] 0.25", "[0 -1 0 0] 0.25"),
-            (format!("({x0} {y1} {z1}) ({x0} {y0} {z1}) ({x0} {y0} {z0})"), "[0 1 0 0] 0.25", "[0 0 -1 0] 0.25"),
-            (format!("({x1} {y1} {z0}) ({x1} {y0} {z0}) ({x1} {y0} {z1})"), "[0 1 0 0] 0.25", "[0 0 -1 0] 0.25"),
-            (format!("({x1} {y1} {z1}) ({x0} {y1} {z1}) ({x0} {y1} {z0})"), "[1 0 0 0] 0.25", "[0 0 -1 0] 0.25"),
-            (format!("({x1} {y0} {z0}) ({x0} {y0} {z0}) ({x0} {y0} {z1})"), "[1 0 0 0] 0.25", "[0 0 -1 0] 0.25"),
-        ];
-        let mut out = format!(
-            "solid {{ \"id\" \"{id}\"
-"
-        );
-        for (k, (plane, u, v)) in sides.iter().enumerate() {
-            out += &format!(
-                "side {{ \"id\" \"{}\" \"plane\" \"{plane}\" \"material\" \"DEV/DEV_MEASUREGENERIC01B\" \"uaxis\" \"{u}\" \"vaxis\" \"{v}\" \"lightmapscale\" \"16\" }}
-",
-                side0 + k as u32
-            );
-        }
-        out + "}
-"
-    }
-
-    #[test]
-    fn serialized_preparation_preserves_geometry_and_mount_resolution() {
-        let walls = [
-            ([-16.0, -16.0, -16.0], [272.0, 272.0, 0.0]),
-            ([-16.0, -16.0, 256.0], [272.0, 272.0, 272.0]),
-            ([-16.0, -16.0, 0.0], [0.0, 272.0, 256.0]),
-            ([256.0, -16.0, 0.0], [272.0, 272.0, 256.0]),
-            ([0.0, -16.0, 0.0], [256.0, 0.0, 256.0]),
-            ([0.0, 256.0, 0.0], [256.0, 272.0, 256.0]),
-        ];
-        let mut text = String::from("world { \"id\" \"1\" \"classname\" \"worldspawn\" ");
-        for (index, (lo, hi)) in walls.into_iter().enumerate() {
-            text += &solid(2 + index as u32, 10 + index as u32 * 6, lo, hi);
-        }
-        text += "} entity { \"id\" \"100\" \"classname\" \"info_player_start\" \"origin\" \"128 128 64\" }";
-        let map = hp_vmf::parse(&text).expect("map");
-        let fs = hp_fs::GameFs::empty();
-        let local = compile_for_child(map.clone(), &fs, 2).expect("local");
-        let serialized = hp_vmf::write(&map);
-        let restored_map = hp_vmf::parse(&serialized).expect("restore map");
-        let mounts: Vec<_> = fs.sources().iter().map(hp_fs::SourceInfo::mount).collect();
-        let restored_fs = hp_fs::GameFs::from_source_mounts(None, None, &mounts).expect("restore mounts");
-        let restored = compile_for_child(restored_map, &restored_fs, 2).expect("restored");
-        assert_eq!(restored.bsp, local.bsp, "the child receives identical compile inputs");
-        assert_eq!(restored.leaked, local.leaked);
-        assert_eq!(restored.warnings, local.warnings);
-    }
-
-    #[test]
-    fn a_room_is_compiled_lit_and_bound_to_its_solids() {
-        let walls = [
-            ([-16.0, -16.0, -16.0], [272.0, 272.0, 0.0]),
-            ([-16.0, -16.0, 256.0], [272.0, 272.0, 272.0]),
-            ([-16.0, -16.0, 0.0], [0.0, 272.0, 256.0]),
-            ([256.0, -16.0, 0.0], [272.0, 272.0, 256.0]),
-            ([0.0, -16.0, 0.0], [256.0, 0.0, 256.0]),
-            ([0.0, 256.0, 0.0], [256.0, 272.0, 256.0]),
-        ];
-        let mut text = String::from(
-            "world { \"id\" \"1\" \"classname\" \"worldspawn\"
-",
-        );
-        let mut solids = HashMap::new();
-        for (i, (lo, hi)) in walls.iter().enumerate() {
-            let id = 2 + i as u32;
-            let side0 = if i < 3 { 10 + 6 * i as u32 } else { 65_536 + 10 + 6 * (i as u32 - 3) };
-            text += &solid(id, side0, *lo, *hi);
-            let info = SolidInfo {
-                lo: glam::Vec3::from_array(lo.map(|v| v as f32)),
-                hi: glam::Vec3::from_array(hi.map(|v| v as f32)),
-                generation: u64::from(id),
-            };
-            solids.insert(id, info);
-        }
-        text += "}
-";
-        text +=
-            "entity { \"id\" \"20\" \"classname\" \"light\" \"origin\" \"128 128 128\" \"_light\" \"255 255 255 300\" }
-";
-        text += "entity { \"id\" \"21\" \"classname\" \"info_player_start\" \"origin\" \"128 128 32\" }
-";
-        let map = hp_vmf::parse(&text).expect("parse");
-        let job = Job {
-            id: 7,
-            serial: 1,
-            map: Some(map),
-            keep: false,
-            solids: solids.clone(),
-            fs: None,
-            resources_revision: 0,
-            hdr: true,
-            quality: RadQuality::Draft,
-            bounces: 2,
-            prop_shadows: true,
-            prop_lighting: true,
-            threads: (2, 2),
-            layer_size: 256,
-            max_layers: 4,
-            coarsen: 1.0,
-            lit: false,
-            tuning: child::Tuning::default(),
-            exe: None,
-        };
-        let wanted = AtomicU64::new(7);
-        let (out, rx) = crossbeam_channel::unbounded();
-        let wake = || {};
-        let ctx = Ctx { id: 7, wanted: &wanted, out: &out, wake: &wake, start: Instant::now(), faces: 0, game: None };
-        let cache = std::sync::Mutex::new(None);
-        let solids_again = solids;
-        let job = Job { keep: true, ..job };
-        let baked = match run(job, &ctx, &cache) {
-            Outcome::Baked(b) => b,
-            Outcome::Cancelled => panic!("cancelled"),
-            Outcome::Failed(e) => panic!("failed: {e}"),
-        };
-        assert!(cache.lock().unwrap().is_some(), "the compiled map waits for the refined pass");
-        let saved = cache.lock().unwrap().clone().unwrap();
-        *cache.lock().unwrap() = None;
-        wanted.store(0, Ordering::Release);
-        retain_compiled(&cache, &ctx, &saved, false);
-        assert!(cache.lock().unwrap().is_none(), "a cancelled document cannot repopulate the cache");
-        wanted.store(7, Ordering::Release);
-        retain_compiled(&cache, &ctx, &saved, false);
-        let refine = |serial: u64| Job {
-            id: 7,
-            serial,
-            map: None,
-            keep: false,
-            solids: solids_again.clone(),
-            fs: None,
-            resources_revision: 0,
-            hdr: true,
-            quality: RadQuality::Draft,
-            bounces: 2,
-            prop_shadows: true,
-            prop_lighting: true,
-            threads: (2, 2),
-            layer_size: 256,
-            max_layers: 4,
-            coarsen: 1.0,
-            lit: false,
-            tuning: child::Tuning::default(),
-            exe: None,
-        };
-        assert!(matches!(run(refine(2), &ctx, &cache), Outcome::Cancelled), "another serial cannot use it");
-        let job = Job { keep: true, map: Some(hp_vmf::parse(&text).expect("parse")), ..refine(1) };
-        assert!(matches!(run(job, &ctx, &cache), Outcome::Baked(_)));
-        let Outcome::Baked(again) = run(refine(1), &ctx, &cache) else { panic!("the refined pass") };
-        assert_eq!(again.faces.len(), baked.faces.len());
-        assert!(cache.lock().unwrap().is_some(), "bounded unlit geometry survives the refined pass");
-        assert_eq!(baked.unbound, 0, "every face found its solid");
-        assert!(baked.faces.len() >= 6, "{} faces", baked.faces.len());
-        assert!(baked.faces.iter().all(|f| (2..8).contains(&f.solid) && f.generation == u64::from(f.solid)));
-        assert!(baked.faces.iter().all(|f| f.rect.is_some()));
-        let walls_seen: HashSet<u32> = baked.faces.iter().map(|f| f.solid).collect();
-        assert_eq!(walls_seen.len(), 6, "the inner face of every wall");
-        let light: Vec<f32> = baked.texels.iter().map(|t| hp_light::pack::unpack_rg11b10(*t)[0]).collect();
-        let max = light.iter().copied().fold(0.0f32, f32::max);
-        assert!(max > 0.1 && max < 100.0, "{max}");
-        assert!(light.iter().all(|v| v.is_finite()));
-        let props = baked.props.as_ref().expect("model lighting");
-        let lit = props.model_lighting([128.0, 128.0, 64.0]);
-        assert!(lit.lights.iter().any(|l| l.origin == [128.0, 128.0, 128.0]), "{:?}", lit.lights);
-        assert!(lit.ambient.iter().flatten().any(|v| *v > 0.0), "ambient cube {:?}", lit.ambient);
-        let verts: Vec<_> = baked.blocks.iter().flat_map(|b| b.batches.iter().flat_map(|x| x.1.iter())).collect();
-        assert!(!verts.is_empty());
-        assert!(verts.iter().all(|v| v.pos.iter().all(|c| (-0.5..=256.5).contains(c))));
-        assert!(verts.iter().all(|v| (v.face as usize) < baked.faces.len()));
-        let phases: Vec<BakePhase> = rx
-            .try_iter()
-            .filter_map(|m| if let Msg::Progress { phase, .. } = m { Some(phase) } else { None })
-            .collect();
-        assert!(phases.contains(&BakePhase::Compiling) && phases.contains(&BakePhase::Direct), "{phases:?}");
-        let volume = baked.indirect.as_ref().expect("the light probes of the bake");
-        assert!(volume.cells() > 20 && volume.spacing >= 32.0, "{} cells of {}", volume.cells(), volume.spacing);
-
-        let wanted = AtomicU64::new(9);
-        let ctx = Ctx { id: 9, wanted: &wanted, out: &out, wake: &wake, start: Instant::now(), faces: 0, game: None };
-        let map = hp_vmf::parse(&text).expect("parse");
-        let lit_job = Job {
-            id: 9,
-            serial: 1,
-            map: Some(map),
-            keep: false,
-            solids: HashMap::new(),
-            fs: None,
-            resources_revision: 0,
-            hdr: true,
-            quality: RadQuality::Draft,
-            bounces: 2,
-            prop_shadows: true,
-            prop_lighting: true,
-            threads: (2, 2),
-            layer_size: 256,
-            max_layers: 4,
-            coarsen: 1.0,
-            lit: true,
-            tuning: child::Tuning::default(),
-            exe: None,
-        };
-        let Outcome::Baked(lit) = run(lit_job, &ctx, &Default::default()) else { panic!("the Lit mode bake failed") };
-        assert!(lit.faces.is_empty() && lit.texels.is_empty() && lit.blocks.is_empty(), "no atlas for the Lit mode");
-        let own = lit.indirect.as_ref().expect("the light probes");
-        assert_eq!(own.cells(), volume.cells(), "the same probes as the full bake");
-
-        let wanted = AtomicU64::new(0);
-        let ctx = Ctx { id: 8, wanted: &wanted, out: &out, wake: &wake, start: Instant::now(), faces: 0, game: None };
-        let map = hp_vmf::parse(&text).expect("parse");
-        let job = Job {
-            id: 8,
-            serial: 1,
-            map: Some(map),
-            keep: false,
-            solids: HashMap::new(),
-            fs: None,
-            resources_revision: 0,
-            hdr: false,
-            quality: RadQuality::Draft,
-            bounces: 0,
-            prop_shadows: true,
-            prop_lighting: true,
-            threads: (1, 1),
-            layer_size: 256,
-            max_layers: 1,
-            coarsen: 1.0,
-            lit: false,
-            tuning: child::Tuning::default(),
-            exe: None,
-        };
-        let r = catch_unwind(AssertUnwindSafe(|| run(job, &ctx, &Default::default())));
-        assert!(matches!(r, Err(_) | Ok(Outcome::Cancelled)));
-    }
-
-    #[test]
-    fn baked_light_matches_the_lit_preview() {
-        let walls = [
-            ([-16.0, -16.0, -16.0], [528.0, 528.0, 0.0]),
-            ([-16.0, -16.0, 512.0], [528.0, 528.0, 528.0]),
-            ([-16.0, -16.0, 0.0], [0.0, 528.0, 512.0]),
-            ([512.0, -16.0, 0.0], [528.0, 528.0, 512.0]),
-            ([0.0, -16.0, 0.0], [512.0, 0.0, 512.0]),
-            ([0.0, 512.0, 0.0], [512.0, 528.0, 512.0]),
-        ];
-        let room = |sky: bool| {
-            let mut text = String::from(
-                "world { \"id\" \"1\" \"classname\" \"worldspawn\"
-",
-            );
-            for (i, (lo, hi)) in walls.iter().enumerate() {
-                let s = solid(2 + i as u32, 10 + 6 * i as u32, *lo, *hi);
-                text += &if sky && i == 1 { s.replace("DEV/DEV_MEASUREGENERIC01B", "TOOLS/TOOLSSKYBOX") } else { s };
-            }
-            text + "}
-"
-        };
-        let point = room(false)
-            + "entity { \"id\" \"20\" \"classname\" \"light\" \"origin\" \"256 256 100\" \"_light\" \"255 255 255 255\" \"_quadratic_attn\" \"1\" }
-";
-        let sun = room(true)
-            + "entity { \"id\" \"20\" \"classname\" \"light_environment\" \"origin\" \"256 256 100\" \"_light\" \"255 255 255 255\" \"_ambient\" \"0 0 0 0\" \"pitch\" \"-90\" \"angles\" \"-90 0 0\" }
-";
-        for (text, hdr) in [(&point, true), (&point, false), (&sun, true), (&sun, false)] {
-            let job = Job {
-                id: 3,
-                serial: 1,
-                map: Some(hp_vmf::parse(text).expect("parse")),
-                keep: false,
-                solids: HashMap::new(),
-                fs: None,
-                resources_revision: 0,
-                hdr,
-                quality: RadQuality::Draft,
-                bounces: 0,
-                prop_shadows: false,
-                prop_lighting: false,
-                threads: (2, 2),
-                layer_size: 512,
-                max_layers: 4,
-                coarsen: 1.0,
-                lit: false,
-                tuning: child::Tuning::default(),
-                exe: None,
-            };
-            let wanted = AtomicU64::new(3);
-            let (out, _rx) = crossbeam_channel::unbounded();
-            let wake = || {};
-            let ctx =
-                Ctx { id: 3, wanted: &wanted, out: &out, wake: &wake, start: Instant::now(), faces: 0, game: None };
-            let baked = match run(job, &ctx, &Default::default()) {
-                Outcome::Baked(b) => b,
-                Outcome::Cancelled => panic!("cancelled"),
-                Outcome::Failed(e) => panic!("failed: {e}"),
-            };
-            let max = baked.texels.iter().map(|t| hp_light::pack::unpack_rg11b10(*t)[0]).fold(0.0f32, f32::max);
-            let what = if std::ptr::eq(text, &sun) { "sun" } else { "point light" };
-            assert!((max - 1.0).abs() < 0.12, "{what}, hdr {hdr}: the floor at {max}, the Lit preview at 1");
-        }
-    }
-
-    #[test]
-    fn bumped_faces_bring_their_bumped_lightmaps_and_blends_their_weights() {
-        let dir = std::env::temp_dir().join(format!("hp-light-bump-{}", std::process::id()));
-        let mats = dir.join("materials/test");
-        std::fs::create_dir_all(&mats).expect("dir");
-        std::fs::write(
-            mats.join("bumpy.vmt"),
-            r#"LightmappedGeneric { "$basetexture" "test/bumpy" "$bumpmap" "test/bumpy_normal" }"#,
-        )
-        .expect("vmt");
-        std::fs::write(
-            mats.join("blend4.vmt"),
-            r#"Lightmapped_4WayBlend { "$basetexture" "test/a" "$basetexture2" "test/b" "$basetexture3" "test/c"
-               "$basetexture4" "test/d" "$bumpmap" "test/a_normal" "$bumpmap2" "test/b_normal" }"#,
-        )
-        .expect("vmt");
-        let fs = hp_fs::GameFs::empty();
-        fs.add_game_dir(&dir).expect("game folder");
-        let walls = [
-            ([-16.0, -16.0, -16.0], [272.0, 272.0, 0.0]),
-            ([-16.0, -16.0, 256.0], [272.0, 272.0, 272.0]),
-            ([-16.0, -16.0, 0.0], [0.0, 272.0, 256.0]),
-            ([256.0, -16.0, 0.0], [272.0, 272.0, 256.0]),
-            ([0.0, -16.0, 0.0], [256.0, 0.0, 256.0]),
-            ([0.0, 256.0, 0.0], [256.0, 272.0, 256.0]),
-            ([64.0, 64.0, 0.0], [192.0, 192.0, 8.0]),
-        ];
-        let mut text = String::from("world { \"id\" \"1\" \"classname\" \"worldspawn\"\n");
-        let mut solids = HashMap::new();
-        for (i, (lo, hi)) in walls.iter().enumerate() {
-            let id = 2 + i as u32;
-            let mut s = solid(id, 10 + 6 * i as u32, *lo, *hi);
-            if i == 0 {
-                s = s.replace("DEV/DEV_MEASUREGENERIC01B", "TEST/BUMPY");
-            }
-            if i == 6 {
-                s = s.replace("DEV/DEV_MEASUREGENERIC01B", "TEST/BLEND4").replacen(
-                    "\"lightmapscale\" \"16\" }",
-                    "\"lightmapscale\" \"16\" dispinfo { \"power\" \"2\" \"startposition\" \"[64 64 8]\" } }",
-                    1,
-                );
-            }
-            text += &s;
-            let info = SolidInfo {
-                lo: glam::Vec3::from_array(lo.map(|v| v as f32)),
-                hi: glam::Vec3::from_array(hi.map(|v| v as f32)),
-                generation: u64::from(id),
-            };
-            solids.insert(id, info);
-        }
-        text += "}\n";
-        text += "entity { \"id\" \"30\" \"classname\" \"light\" \"origin\" \"128 40 128\" \"_light\" \"255 255 255 300\" }\n";
-        text += "entity { \"id\" \"31\" \"classname\" \"info_player_start\" \"origin\" \"128 128 32\" }\n";
-        let mut map = hp_vmf::parse(&text).expect("parse");
-        let disp_solid = map.world.solids.iter_mut().find(|s| s.id == 8).expect("block");
-        let disp = disp_solid.sides[0].disp.as_deref_mut().expect("displacement");
-        let mut mb = hp_vmf::multiblend::MultiBlend::new(25);
-        for (i, w) in mb.weights.iter_mut().enumerate() {
-            let t = i as f64 / 24.0;
-            *w = [1.0 - t, t, 0.0, 0.0];
-        }
-        assert!(mb.write_to(disp));
-        let editor = hp_editor::Document::from_map(map.clone());
-        let positions: Vec<glam::DVec3> =
-            editor.scene().solid(8).and_then(|n| n.disp_mesh(0)).expect("editor displacement").positions.clone();
-        let job = Job {
-            id: 9,
-            serial: 1,
-            map: Some(map),
-            keep: false,
-            solids,
-            fs: Some(fs),
-            resources_revision: 0,
-            hdr: true,
-            quality: RadQuality::Draft,
-            bounces: 1,
-            prop_shadows: false,
-            prop_lighting: false,
-            threads: (2, 2),
-            layer_size: 512,
-            max_layers: 4,
-            coarsen: 1.0,
-            lit: false,
-            tuning: child::Tuning::default(),
-            exe: None,
-        };
-        let wanted = AtomicU64::new(9);
-        let (out, _rx) = crossbeam_channel::unbounded();
-        let wake = || {};
-        let ctx = Ctx { id: 9, wanted: &wanted, out: &out, wake: &wake, start: Instant::now(), faces: 0, game: None };
-        let baked = match run(job, &ctx, &Default::default()) {
-            Outcome::Baked(b) => b,
-            Outcome::Cancelled => panic!("cancelled"),
-            Outcome::Failed(e) => panic!("failed: {e}"),
-        };
-        let _ = std::fs::remove_dir_all(&dir);
-        let of = |solid: u32| baked.faces.iter().filter(move |f| f.solid == solid);
-        for solid in [2, 8] {
-            let f = of(solid).find(|f| f.rect.is_some()).expect("lit face");
-            assert_eq!(f.images, 4, "solid {solid}");
-            let r = f.rect.expect("rect");
-            assert_eq!(r.w % 4, 0);
-            let n = (r.w * r.h) as usize;
-            let texels = &baked.texels[f.texels as usize..f.texels as usize + n];
-            let lum = |k: usize| -> f32 {
-                let per = n / 4;
-                texels[k * per..(k + 1) * per].iter().map(|t| hp_light::pack::unpack_rg11b10(*t)[0]).sum::<f32>()
-            };
-            assert!((1..4).all(|k| lum(k) > 0.0), "lit along every bump direction");
-            let average = (lum(1) + lum(2) + lum(3)) / 3.0;
-            assert!(
-                (average - lum(0)).abs() <= 0.03 * lum(0),
-                "bump lightmaps scaled to the flat one like the compiled view: {average} vs {}",
-                lum(0)
-            );
-        }
-        assert!(of(4).all(|f| f.images == 1), "plain walls keep one lightmap");
-        let face = baked.faces.iter().position(|f| f.solid == 8 && f.flags & face_flags::DISP != 0).expect("disp face");
-        let verts: Vec<_> = baked
-            .blocks
-            .iter()
-            .flat_map(|b| b.batches.iter().flat_map(|x| x.1.iter()))
-            .filter(|v| v.face as usize == face)
-            .collect();
-        assert_eq!(verts.len(), 25);
-        for v in verts {
-            let p = glam::DVec3::new(f64::from(v.pos[0]), f64::from(v.pos[1]), f64::from(v.pos[2]));
-            let i = positions.iter().position(|q| q.distance(p) < 0.1).expect("editor vertex");
-            let t = ((i as f64 / 24.0) * 1e6).round() as f32 / 1e6;
-            let want = hp_render::lightmap::pack_blend([1.0 - t, t, 0.0, 0.0]);
-            assert_eq!(v.blend, want, "vertex {i} at {p}");
-        }
-    }
-
-    #[test]
-    fn the_atlas_is_as_small_as_the_lightmaps() {
-        assert_eq!(atlas_size(&[], 2048), MIN_ATLAS);
-        assert_eq!(atlas_size(&[(16, 16); 4], 2048), MIN_ATLAS);
-        assert_eq!(atlas_size(&[(300, 20)], 2048), 512, "as wide as the widest face");
-        assert_eq!(atlas_size(&[(32, 32); 2000], 2048), 2048);
-        assert_eq!(atlas_size(&[(32, 32); 100_000], 2048), 2048, "more layers past the largest size");
-        let sizes = [(40, 30); 700];
-        let mut atlas = Atlas::new(atlas_size(&sizes, 2048), 64);
-        assert!(atlas.alloc_many(&sizes).iter().all(Option::is_some));
-        assert!(atlas.layers() <= 2, "{} layers of {}", atlas.layers(), atlas.size());
-    }
-
-    #[test]
-    fn hidden_objects_are_left_out_of_the_compiled_copy() {
-        let text = r#"world { "id" "1" "classname" "worldspawn"
-  solid { "id" "2" side { "id" "1" "plane" "(0 64 64) (64 64 64) (64 0 64)" "material" "A" } }
-  solid { "id" "3" side { "id" "2" "plane" "(0 0 0) (64 0 0) (64 64 0)" "material" "A" } }
-}
-entity { "id" "5" "classname" "light" "origin" "0 0 0" }
-entity { "id" "6" "classname" "light" "origin" "9 9 9" }"#;
-        let mut map = hp_vmf::parse(text).expect("parse");
-        map.world.solids[1].hidden = true;
-        map.entities[1].hidden = true;
-        map.visgroups.push(Default::default());
-        strip_hidden(&mut map);
-        let ids: Vec<u32> = map.world.solids.iter().map(|s| s.id).collect();
-        assert_eq!(ids, [2]);
-        assert_eq!(map.entities.iter().map(|e| e.id).collect::<Vec<_>>(), [5]);
-        assert!(map.visgroups.is_empty());
-    }
-
-    #[test]
-    fn coarser_lightmaps() {
-        let text = r#"world { "id" "1" "classname" "worldspawn"
-  solid { "id" "2" side { "id" "1" "plane" "(0 64 64) (64 64 64) (64 0 64)" "material" "A" "lightmapscale" "16" } side { "id" "2" "plane" "(0 0 0) (64 0 0) (64 64 0)" "material" "A" "lightmapscale" "0" } }
-}"#;
-        let mut map = hp_vmf::parse(text).expect("parse");
-        coarsen(&mut map, 1.5);
-        let scales: Vec<i32> = map.world.solids[0].sides.iter().map(|s| s.lightmap_scale).collect();
-        assert_eq!(scales, [24, 24]);
-    }
-}
+mod tests;

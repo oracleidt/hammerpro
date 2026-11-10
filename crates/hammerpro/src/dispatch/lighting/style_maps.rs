@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use super::bsp::lump;
 use hp_bsp::Bsp;
 use hp_render::lightmap::LightmapRect;
 
@@ -67,63 +66,19 @@ pub(super) fn has_animation(bsp: &Bsp) -> bool {
     })
 }
 
-fn needs_preview(pattern: &str) -> bool {
+pub(super) fn needs_preview(pattern: &str) -> bool {
     pattern.bytes().any(|value| value != b'm')
 }
 
-fn i32_at(data: &[u8], offset: usize) -> Option<i32> {
-    Some(i32::from_le_bytes(data.get(offset..offset + 4)?.try_into().ok()?))
-}
-
-pub(super) fn read(bsp: &Bsp, hdr: bool) -> HashMap<u32, SourceFace> {
-    let mut result = HashMap::new();
-    let (faces, lighting) = if hdr { (lump::FACES_HDR, lump::LIGHTING_HDR) } else { (lump::FACES, lump::LIGHTING) };
-    let faces =
-        bsp.lump(faces).ok().filter(|f| !f.is_empty()).or_else(|| bsp.lump(lump::FACES).ok()).unwrap_or_default();
-    let lighting = bsp.lump(lighting).unwrap_or_default();
-    let texinfo = bsp.lump(lump::TEXINFO).unwrap_or_default();
-    let patterns = patterns(bsp);
-    let on = super::bsp::styles_on(&bsp.entities().unwrap_or_default());
-    for (index, face) in faces.chunks_exact(56).enumerate() {
-        let styles: Vec<_> = face[16..20].iter().copied().take_while(|s| *s != 255).collect();
-        if !styles.iter().any(|style| on[*style as usize] && patterns.get(style).is_some_and(|p| needs_preview(p))) {
-            continue;
-        }
-        let Some(offset) = i32_at(face, 20).and_then(|v| usize::try_from(v).ok()) else { continue };
-        let Some(w) = i32_at(face, 36).filter(|v| (0..=256).contains(v)).map(|v| v as usize + 1) else { continue };
-        let Some(h) = i32_at(face, 40).filter(|v| (0..=256).contains(v)).map(|v| v as usize + 1) else { continue };
-        let info = i16::from_le_bytes([face[10], face[11]]);
-        let bumped =
-            usize::try_from(info).ok().and_then(|i| i32_at(&texinfo, i * 72 + 64)).is_some_and(|f| f & 0x800 != 0);
-        let pixels = w * h;
-        let count = pixels * if bumped { 4 } else { 1 };
-        let mut layers = Vec::new();
-        for (layer, style) in styles.iter().enumerate() {
-            if !on[*style as usize] {
-                continue;
-            }
-            let start = offset + layer * count * 4;
-            let Some(bytes) = lighting.get(start..start + count * 4) else {
-                layers.clear();
-                break;
-            };
-            let mut image: Vec<_> = bytes
-                .chunks_exact(4)
-                .map(|c| hp_editor::limits::world_light::rgbe_to_linear([c[0], c[1], c[2], c[3]]))
-                .collect();
-            if bumped {
-                hp_editor::limits::world_light::normalize_bumped(&mut image, pixels);
-            }
-            layers.push((patterns.get(style).cloned().unwrap_or_default(), image));
-        }
-        if !layers.is_empty() {
-            result.insert(index as u32, SourceFace { layers });
-        }
-    }
-    result
+pub(super) fn patterns_of(entities: &[hp_bsp::Entity]) -> HashMap<u8, String> {
+    entity_patterns(entities)
 }
 
 impl SourceFace {
+    pub(super) fn new(layers: Vec<(String, Vec<[f32; 3]>)>) -> Self {
+        Self { layers }
+    }
+
     pub(super) fn bind(self, face: u32, rect: LightmapRect, hdr: bool) -> AnimatedFace {
         let count = (rect.w * rect.h * if rect.bumped { 4 } else { 1 }) as usize;
         AnimatedFace { face, rect, layers: self.layers, last: Vec::new(), packed: vec![0; count], hdr }
@@ -140,6 +95,10 @@ impl AnimatedFace {
             probes.string(pattern, class);
             probes.vec(image, class);
         }
+    }
+
+    pub(super) fn face_id(&self) -> u32 {
+        self.face
     }
 
     pub(super) fn animated(&self) -> bool {

@@ -31,15 +31,14 @@ impl StatusSegment for GameBadge {
             GameState::NotRunning | GameState::Unknown => return,
         };
         ui.separator();
-        let tip = match &launch.pending_map {
+        let r = ui.label(RichText::new(format!("🎮 {text}")).small().color(color));
+        crate::common::lazy_hover_text(r, || match &launch.pending_map {
             Some(map) => tf!("shell.launch.pending_tip", map),
             None if launch.game == GameState::Ready => t!("shell.launch.ready_tip").to_owned(),
             None => t!("shell.launch.starting_tip").to_owned(),
-        };
-        let r = ui.label(RichText::new(format!("🎮 {text}")).small().color(color));
-        r.on_hover_text(tip);
+        });
         if launch.game == GameState::Starting {
-            ui.add(egui::Spinner::new().size(10.0));
+            hp_app::widgets::paced_spinner(ui, 10.0);
         }
     }
 }

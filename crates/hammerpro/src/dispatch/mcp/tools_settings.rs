@@ -39,6 +39,8 @@ pub(crate) const RANGES: &[(&str, f64, f64)] = &[
     ("render.max_fps", 0.0, 1000.0),
     ("render.light_shadows", 0.0, hp_render::MAX_SHADOWED_LIGHTS as f64),
     ("render.unfocused_fps", 0.0, 1000.0),
+    ("render.animation_fps", 0.0, hp_app::settings::MAX_ANIMATION_FPS as f64),
+    ("render.animation_idle_pause_s", 0.0, 86_400.0),
     ("render.render_scale", 0.25, 1.0),
     ("render.vram_budget_mb", 0.0, hp_app::settings::MAX_VRAM_BUDGET_MB as f64),
     ("selection.rotation_snap_deg", 1.0, 90.0),

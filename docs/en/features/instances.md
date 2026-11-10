@@ -26,7 +26,8 @@ The rules are VBSP's, used by the views, by **Collapse** and by the compiler:
 - every key value and output value gets the replacements of the instance (`replace01`... keys holding `$variable value`, every occurrence, case insensitive);
 - entity names, targets and output targets are fixed up with the instance name: `name-x` (prefix, the default), `x-name` (postfix) or left alone (none). Names starting with `@` (global) or `!` (like `!activator`) are never changed; an unnamed instance uses `InstanceAuto<n>`;
 - `func_instance_parms` entities are dropped;
-- nested instances are merged too, with a guard against an instance that contains itself, a depth limit and a size limit.
+- a parameter declared with a default value in the `func_instance_parms` of the file (`$name type default`) and not set on the `func_instance` gets its default;
+- nested instances are merged too, with a guard against an instance that contains itself, a depth limit and a size limit. A nested `func_instance` gets the fix up of its parent like any entity (so its content is named `outer-inner-lamp` with prefixes and `inner-outer-lamp` when the outer instance uses a postfix, like VBSP), except that only the value of its `replaceNN` keys is replaced, never the variable name: a nested instance can pass a parameter on (`replace01` `$color $color`). The variables of the parent also reach the content of the nested file. VBSP replaces the variable name too, which turns such a key into garbage (measured: a `$color $color` key passing `0 255 0` replaced every `0` of the nested file, model names included).
 
 Instance files are looked for from the folder of the map (the `file` key is relative to it), then in the game content (read only).
 

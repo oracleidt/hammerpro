@@ -326,8 +326,46 @@ pub(super) fn relative_file(path: &str, ext: &str) -> R<String> {
     if p.split('/').any(|c| c.is_empty() || c == "." || c == ".." || c.ends_with(' ') || c.ends_with('.')) {
         return bad("empty, \".\" or \"..\" parts are not allowed");
     }
+    if p.split('/').any(reserved_device_name) {
+        return bad("a Windows device name (CON, NUL, COM1...) cannot be a file or folder name");
+    }
     let lower = p.to_ascii_lowercase();
     if lower.ends_with(&format!(".{ext}")) { Ok(p) } else { Ok(format!("{p}.{ext}")) }
+}
+
+pub(crate) fn reserved_device_name(part: &str) -> bool {
+    let stem = part.split('.').next().unwrap_or(part).trim_end().to_ascii_uppercase();
+    let numbered = |prefix: &str| {
+        stem.strip_prefix(prefix)
+            .is_some_and(|n| n.len() == 1 && n.chars().all(|c| c.is_ascii_digit() || "¹²³".contains(c)))
+    };
+    matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$") || numbered("COM") || numbered("LPT")
+}
+
+pub(crate) fn local_path(text: &str) -> R<std::path::PathBuf> {
+    let raw = text.trim();
+    let bad = |why: &str| Err(format!("invalid path \"{raw}\": {why}"));
+    if raw.is_empty() {
+        return bad("it is empty");
+    }
+    if raw.chars().any(|c| c.is_control() || matches!(c, '"' | '<' | '>' | '|' | '?' | '*')) {
+        return bad("forbidden character");
+    }
+    let slashed = raw.replace('\\', "/");
+    if slashed.starts_with("//") {
+        return bad("network (UNC) and device paths are refused: use a folder on this computer");
+    }
+    let drive = slashed.as_bytes().get(1) == Some(&b':') && slashed.as_bytes()[0].is_ascii_alphabetic();
+    if slashed.char_indices().any(|(i, c)| c == ':' && !(drive && i == 1)) {
+        return bad("a colon is only allowed after the drive letter");
+    }
+    if drive && slashed.as_bytes().get(2) != Some(&b'/') {
+        return bad("give the full path after the drive letter (C:/...)");
+    }
+    if slashed.split('/').any(reserved_device_name) {
+        return bad("a Windows device name (CON, NUL, COM1...) cannot be a file or folder name");
+    }
+    Ok(std::path::PathBuf::from(raw))
 }
 
 pub(super) fn map_dir(state: &AppState) -> R<std::path::PathBuf> {

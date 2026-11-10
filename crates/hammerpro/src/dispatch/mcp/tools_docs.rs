@@ -47,8 +47,15 @@ domain! { "documents";
         Mod server you join, use the BSP Sniffer tools (sniffer_start).",
         { "file": string("BSP file, relative to the map folder.") }, ["file"];
     nav_mesh: Editor, "Navigation mesh",
-        "The navigation mesh shown with the map (file, areas, isolated areas), or load a .nav file of the map folder.",
-        { "load": string("A .nav file to show, relative to the map folder.") }, [];
+        "The navigation mesh shown with the map (file, areas, isolated areas), show or hide it, load a .nav file \
+        of the map folder, or generate one (like Map > Generate nav mesh: walkable areas grown from the player \
+        spawns, written as <map>.nav next to the saved map, then shown). Generation runs in the background: call \
+        nav_mesh again to read generating and the last result.",
+        {
+            "load": string("A .nav file to show, relative to the map folder."),
+            "show": boolean("Show (true) or hide (false) the navigation mesh in the views (setting lab.show_nav_mesh)."),
+            "generate": boolean("Generate the navigation mesh of the saved map now."),
+        }, [];
     get_map_properties: Read, "Map properties",
         "The worldspawn keyvalues (skyname, detail material, light settings...), the map file, its format version \
         and the editor version that saved it, and compiler_keys: the worldspawn keys Hammer Pro's lighting compiler \
@@ -230,7 +237,38 @@ fn decompile_bsp(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     Ok(ToolResult::json(json!({ "decompiling": rel, "note": "list_tabs shows the decompiled map when done." })))
 }
 
-fn nav_mesh(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
+fn nav_json(state: &AppState) -> Value {
+    let lab = &state.runtime.lab;
+    json!({
+        "visible": state.settings.lab.show_nav_mesh,
+        "shown": lab.nav_summary.as_ref().map(|(p, areas, isolated)| json!({
+            "file": p.display().to_string(), "areas": areas, "isolated_areas": isolated,
+        })),
+        "chosen_file": lab.nav_file.as_ref().map(|p| p.display().to_string()),
+        "generating": lab.nav_generating,
+        "last_generation": lab.nav_generated.as_ref().map(|r| match r {
+            Ok((path, areas, ms)) => json!({ "ok": true, "file": path.display().to_string(), "areas": areas, "ms": ms }),
+            Err(e) => json!({ "ok": false, "error": e }),
+        }),
+        "note": "A mesh being loaded or generated shows up in a moment.",
+    })
+}
+
+fn nav_mesh(state: &mut AppState, a: &Args<'_>) -> R<Outcome> {
+    let show = a.opt_bool("show")?;
+    let generate = a.opt_bool("generate")?.unwrap_or(false);
+    if generate && a.get("load").is_some() {
+        return Err("give load or generate, not both".to_owned());
+    }
+    if generate {
+        if state.doc.path().is_none() {
+            return Err("save the map first: the .nav file is written next to it".to_owned());
+        }
+        if state.runtime.lab.nav_generating {
+            return Err("a navigation mesh is being generated already: call nav_mesh to follow it".to_owned());
+        }
+    }
+    let mut want_visible = show;
     if let Some(f) = a.opt_str("load", 255)? {
         let rel = relative_file(f, "nav")?;
         let path = map_dir(state)?.join(&rel);
@@ -238,15 +276,23 @@ fn nav_mesh(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
             return Err(format!("no file {rel} in the map folder"));
         }
         state.runtime.lab.nav_file = Some(path);
+        want_visible = Some(show.unwrap_or(true));
     }
-    let lab = &state.runtime.lab;
-    Ok(ToolResult::json(json!({
-        "shown": lab.nav_summary.as_ref().map(|(p, areas, isolated)| json!({
-            "file": p.display().to_string(), "areas": areas, "isolated_areas": isolated,
-        })),
-        "chosen_file": lab.nav_file.as_ref().map(|p| p.display().to_string()),
-        "note": "A mesh being loaded shows up in a moment.",
-    })))
+    if let Some(v) = want_visible
+        && state.settings.lab.show_nav_mesh != v
+    {
+        state.settings.lab.show_nav_mesh = v;
+        state.settings_dirty = true;
+    }
+    if !generate {
+        return Ok(Outcome::Done(ToolResult::json(nav_json(state))));
+    }
+    Ok(Outcome::AppFn(AppFn(Box::new(|app, ctx| {
+        crate::dispatch::lab::start_nav_gen(app, ctx);
+        let mut out = nav_json(&app.state);
+        out["started"] = json!(app.state.runtime.lab.nav_generating);
+        ToolResult::json(out)
+    }))))
 }
 
 fn get_map_properties(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
@@ -333,7 +379,20 @@ mod tests {
         err(&mut s, "decompile_bsp", json!({ "file": "x" }));
         let n = ok(&mut s, "nav_mesh", json!({}));
         assert!(n["shown"].is_null());
+        assert_eq!(n["generating"], false);
         err(&mut s, "nav_mesh", json!({ "load": "x.nav" }));
+        let v = ok(&mut s, "nav_mesh", json!({ "show": true }));
+        assert_eq!(v["visible"], true);
+        assert!(s.settings.lab.show_nav_mesh);
+        ok(&mut s, "nav_mesh", json!({ "show": false }));
+        assert!(!s.settings.lab.show_nav_mesh);
+        let e = err(&mut s, "nav_mesh", json!({ "generate": true }));
+        assert!(e.contains("save the map first"), "{e}");
+        err(&mut s, "nav_mesh", json!({ "generate": true, "load": "x" }));
+        s.runtime.lab.nav_generated = Some(Ok((std::path::PathBuf::from("m.nav"), 12, 40)));
+        let v = ok(&mut s, "nav_mesh", json!({}));
+        assert_eq!(v["last_generation"]["areas"], 12);
+        assert_eq!(v["last_generation"]["ok"], true);
     }
 
     #[test]
@@ -361,6 +420,10 @@ mod tests {
         std::fs::write(dir.join("main.nav"), b"x").unwrap();
         ok(&mut s, "nav_mesh", json!({ "load": "main" }));
         assert!(s.runtime.lab.nav_file.is_some());
+        assert!(s.settings.lab.show_nav_mesh, "loading a mesh shows it");
+        s.runtime.lab.nav_generating = true;
+        let e = err(&mut s, "nav_mesh", json!({ "generate": true }));
+        assert!(e.contains("already"), "{e}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

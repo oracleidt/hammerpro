@@ -34,6 +34,7 @@ When a command needs brushes and none are selected, the notice **Select one or m
 - The selected (carving) brushes are not changed. Keep them or delete them afterwards.
 - Only visible world brushes are cut: brushes of entities and hidden brushes are left alone.
 - The cut brushes are split into several convex pieces with new face ids. Overlays and `env_cubemap` face lists follow: a face cut into pieces is replaced by all of them, a face carved away entirely is removed from the list.
+- The brushes are cut in parallel on every processor core, so carving through hundreds of brushes at once stays quick.
 
 Carve makes many small brushes. For simple openings, the [extrude / carve tool](extrude-tool.md) (an outline clicked on one face, carved into that brush only, with as few pieces as possible), the [clipping tool](clip-tool.md) or several block brushes often give cleaner geometry.
 
@@ -53,7 +54,7 @@ The thickness field has the keyboard focus when the window opens, so you can typ
 
 **Tools > Merge brushes** (`Ctrl+Shift+M`) joins the selected brushes into one brush, only when their union is already convex (Hammer++'s "Merge brushes"). Every face keeps the texture of the face it comes from.
 
-- If the union is not convex, nothing changes and a warning suggests **Merge into convex solid**.
+- If the union is not convex, nothing changes and a warning suggests **Merge into convex solid**. The check is exact up to 0.02 units: a step or a notch, even one unit deep, is never filled in.
 - The brushes must all be world brushes or all belong to the same entity, else the warning **The brushes must all be world brushes or belong to the same entity** shows.
 
 ## Merge into convex solid
@@ -73,9 +74,9 @@ The thickness field has the keyboard focus when the window opens, so you can typ
 **Tools > Union of brushes** joins the selected brushes into the fewest convex brushes that cover exactly their union, without adding any volume (unlike **Merge into convex solid**).
 
 1. Overlapping brushes are cut so that they no longer overlap, and the parts hidden inside another brush are removed.
-2. Touching neighbors are merged back into one brush whenever their union is convex.
+2. Touching neighbors are merged back into one brush whenever their union is convex (exactly, as for **Merge brushes**: a one unit step is kept).
 
-So two overlapping boxes in line become one box, while an L shape stays two brushes that touch without overlapping. Each brush keeps its id when it still has a piece; brushes entirely inside others are deleted. The new pieces keep the owner and editor data of the brush they come from and are selected when it was. When nothing can be joined, the warning **Nothing to join** shows. The same owner rule as **Merge brushes** applies. One undo step.
+So two overlapping boxes in line become one box, while an L shape stays two brushes that touch without overlapping. Each brush keeps its id when it still has a piece; brushes entirely inside others are deleted. The new pieces keep the owner and editor data of the brush they come from and are selected when it was. When nothing can be joined, the warning **Nothing to join** shows. The same owner rule as **Merge brushes** applies. One undo step. The cutting runs on every processor core and pairs that can never form a convex brush are skipped at once, so a union of several hundred brushes takes a fraction of a second.
 
 ## Tie to entity
 

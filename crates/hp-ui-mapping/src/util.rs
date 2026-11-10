@@ -249,6 +249,65 @@ pub(crate) fn dialog_body<R>(ui: &mut egui::Ui, body: impl FnOnce(&mut egui::Ui)
     egui::CentralPanel::no_frame().show(ui, body).inner
 }
 
+pub(crate) fn wrap_group<R>(ui: &mut egui::Ui, salt: &'static str, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    let id = ui.scope_id().with(("hp_wrap_group", salt));
+    let width = ui.ctx().data(|d| d.get_temp::<f32>(id)).unwrap_or(0.0);
+    let size = egui::vec2(width, ui.spacing().interact_size.y);
+    let r = ui.allocate_ui_with_layout(size, egui::Layout::left_to_right(egui::Align::Center), add);
+    let used = r.response.rect.width();
+    if (used - width).abs() > 0.5 {
+        ui.ctx().data_mut(|d| d.insert_temp(id, used));
+        ui.ctx().request_discard("hp wrap group size");
+    }
+    r.inner
+}
+
+pub(crate) fn lazy_hover_text(r: egui::Response, text: impl FnOnce() -> String) -> egui::Response {
+    if r.hovered() || r.ctx.has_accesskit_node(r.id) { r.on_hover_text(text()) } else { r }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Form {
+    label_width: f32,
+}
+
+impl Form {
+    pub(crate) fn new(ui: &egui::Ui, labels: &[&str], min: f32, max: f32) -> Self {
+        let font = egui::TextStyle::Body.resolve(ui.style());
+        let painter = ui.painter();
+        let widest = labels
+            .iter()
+            .map(|l| painter.layout_no_wrap((*l).to_owned(), font.clone(), egui::Color32::WHITE).size().x)
+            .fold(0.0f32, f32::max);
+        Self { label_width: (widest + 10.0).clamp(min, max) }
+    }
+
+    pub(crate) fn label_width(&self) -> f32 {
+        self.label_width
+    }
+
+    pub(crate) fn row<R>(
+        &self,
+        ui: &mut egui::Ui,
+        label: impl Into<egui::WidgetText>,
+        add: impl FnOnce(&mut egui::Ui) -> R,
+    ) -> R {
+        let height = ui.spacing().interact_size.y;
+        ui.horizontal_top(|ui| {
+            ui.allocate_ui_with_layout(
+                egui::vec2(self.label_width, height),
+                egui::Layout::left_to_right(egui::Align::Center),
+                |ui| {
+                    ui.set_min_size(egui::vec2(self.label_width, height));
+                    ui.add(egui::Label::new(label).wrap());
+                },
+            );
+            ui.vertical(|ui| ui.horizontal_wrapped(add).inner).inner
+        })
+        .inner
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

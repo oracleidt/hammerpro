@@ -18,7 +18,7 @@ pub enum ToolbarItem {
     PrimitiveStats,
 }
 
-pub const TOOLBAR: &[&[ToolbarItem]] = {
+pub const TOOLBAR: &[&[ToolbarItem]; GROUPS] = {
     use Action as A;
     use ToolbarItem::{Action as I, Compile, GridSize, PrimitiveStats, Props2d, RenderMode};
     &[
@@ -213,42 +213,175 @@ fn grid_edit_id() -> egui::Id {
     egui::Id::unique("hp_shell_grid_edit")
 }
 
+pub const GROUPS: usize = 11;
+pub const HIDE_ORDER: [usize; GROUPS] = [9, 7, 6, 5, 4, 3, 10, 2, 1, 0, 8];
+const OVERFLOW_WIDTH: f32 = 28.0;
+const SEPARATOR_ESTIMATE: f32 = 8.0;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct ToolbarWidths {
+    key: (hp_app::i18n::Lang, u32),
+    groups: [Option<f32>; GROUPS],
+    separator: Option<f32>,
+}
+
+impl ToolbarWidths {
+    fn new(key: (hp_app::i18n::Lang, u32)) -> Self {
+        Self { key, groups: [None; GROUPS], separator: None }
+    }
+
+    fn widths(&self) -> [f32; GROUPS] {
+        std::array::from_fn(|i| self.groups[i].unwrap_or_else(|| estimate_width(TOOLBAR[i])))
+    }
+}
+
+fn estimate_width(group: &[ToolbarItem]) -> f32 {
+    group
+        .iter()
+        .map(|item| match item {
+            ToolbarItem::GridSize => 160.0,
+            ToolbarItem::Compile => 80.0,
+            ToolbarItem::RenderMode => 150.0,
+            _ => BUTTON_SIZE.x + 1.0,
+        })
+        .sum()
+}
+
+fn shown_width(widths: &[f32], shown: &[bool], separator: f32) -> f32 {
+    let mut sum = 0.0;
+    let mut first = true;
+    for (w, on) in widths.iter().zip(shown) {
+        if *on {
+            if !first {
+                sum += separator;
+            }
+            first = false;
+            sum += w;
+        }
+    }
+    sum
+}
+
+pub fn fit_groups(
+    widths: &[f32],
+    hide_order: &[usize],
+    separator: f32,
+    available: f32,
+    overflow: f32,
+    shown: &mut [bool],
+) {
+    shown.fill(true);
+    if shown_width(widths, shown, separator) <= available {
+        return;
+    }
+    for &i in hide_order {
+        if shown_width(widths, shown, separator) + overflow <= available {
+            break;
+        }
+        if shown.iter().filter(|s| **s).count() <= 1 {
+            break;
+        }
+        if let Some(s) = shown.get_mut(i) {
+            *s = false;
+        }
+    }
+}
+
+fn toolbar_spacing(ui: &mut Ui) {
+    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+    ui.spacing_mut().item_spacing.x = 1.0;
+    ui.spacing_mut().button_padding.x = 3.0;
+}
+
+fn group_items(ui: &mut Ui, state: &mut AppState, group: &[ToolbarItem], nested: bool) {
+    for item in group {
+        match *item {
+            ToolbarItem::Action(a) => action_icon_button(ui, state, a),
+            ToolbarItem::GridSize => grid_controls(ui, state, nested),
+            ToolbarItem::Compile => run_button(ui, state),
+            ToolbarItem::RenderMode if nested => render_mode_submenu(ui, state),
+            ToolbarItem::RenderMode => render_mode_dropdown(ui, state),
+            ToolbarItem::Props2d if nested => props_2d_submenu(ui, state),
+            ToolbarItem::Props2d => {
+                props_2d_button(ui, state);
+            }
+            ToolbarItem::PrimitiveStats => {
+                let on = state.settings.render.primitive_stats;
+                if ui
+                    .add(egui::Button::selectable(on, "Σ").min_size(BUTTON_SIZE))
+                    .on_hover_text(t!("shell.toolbar.primitives_tip"))
+                    .clicked()
+                {
+                    state.settings.render.primitive_stats = !on;
+                    state.settings_dirty = true;
+                }
+            }
+        }
+    }
+}
+
+fn measured_group(ui: &mut Ui, state: &mut AppState, group: &[ToolbarItem], nested: bool) -> f32 {
+    let start = ui.cursor().min.x;
+    group_items(ui, state, group, nested);
+    ui.cursor().min.x - start
+}
+
+fn toolbar_widths_id() -> egui::Id {
+    egui::Id::unique("hp_shell_toolbar_widths")
+}
+
+pub fn toolbar_overflow_id() -> egui::Id {
+    egui::Id::unique("hp_shell_toolbar_overflow")
+}
+
 pub fn toolbar(ui: &mut Ui, state: &mut AppState) {
     if !state.settings.workflow.show_toolbar {
         return;
     }
-    ui.horizontal_wrapped(|ui| {
-        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-        ui.spacing_mut().item_spacing.x = 1.0;
-        ui.spacing_mut().button_padding.x = 3.0;
+    let memo_id = toolbar_widths_id();
+    let key = (hp_app::i18n::lang(), ui.ctx().pixels_per_point().to_bits());
+    let mut memo: ToolbarWidths =
+        ui.data(|d| d.get_temp::<ToolbarWidths>(memo_id)).filter(|m| m.key == key).unwrap_or(ToolbarWidths::new(key));
+    ui.horizontal(|ui| {
+        toolbar_spacing(ui);
+        let separator = memo.separator.unwrap_or(SEPARATOR_ESTIMATE);
+        let mut shown = [true; GROUPS];
+        fit_groups(&memo.widths(), &HIDE_ORDER, separator, ui.available_width(), OVERFLOW_WIDTH, &mut shown);
+        let mut first = true;
         for (i, group) in TOOLBAR.iter().enumerate() {
-            if i > 0 {
+            if !shown[i] {
+                continue;
+            }
+            if !first {
+                let start = ui.cursor().min.x;
                 group_separator(ui);
+                memo.separator = Some(ui.cursor().min.x - start);
             }
-            for item in *group {
-                match *item {
-                    ToolbarItem::Action(a) => action_icon_button(ui, state, a),
-                    ToolbarItem::GridSize => grid_controls(ui, state),
-                    ToolbarItem::Compile => run_button(ui, state),
-                    ToolbarItem::RenderMode => render_mode_dropdown(ui, state),
-                    ToolbarItem::Props2d => {
-                        props_2d_button(ui, state);
-                    }
-                    ToolbarItem::PrimitiveStats => {
-                        let on = state.settings.render.primitive_stats;
-                        if ui
-                            .add(egui::Button::selectable(on, "Σ").min_size(BUTTON_SIZE))
-                            .on_hover_text(t!("shell.toolbar.primitives_tip"))
-                            .clicked()
-                        {
-                            state.settings.render.primitive_stats = !on;
-                            state.settings_dirty = true;
-                        }
-                    }
-                }
-            }
+            first = false;
+            memo.groups[i] = Some(measured_group(ui, state, group, false));
         }
+        if shown.iter().all(|s| *s) {
+            return;
+        }
+        let button = ui.add(egui::Button::new(RichText::new("»").size(15.0).strong()).min_size(BUTTON_SIZE));
+        let button = crate::common::lazy_hover_text(button, || {
+            let count: usize = (0..GROUPS).filter(|i| !shown[*i]).map(|i| TOOLBAR[i].len()).sum();
+            tf!("shell.toolbar.more_tip", count)
+        });
+        egui::Popup::menu(&button)
+            .id(toolbar_overflow_id())
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+            .show(|ui| {
+                for i in (0..GROUPS).filter(|i| !shown[*i]) {
+                    ui.horizontal(|ui| {
+                        toolbar_spacing(ui);
+                        memo.groups[i] = Some(measured_group(ui, state, TOOLBAR[i], true));
+                    });
+                }
+                close_on_escape(ui);
+            });
     });
+    ui.data_mut(|d| *d.get_temp_mut_or_insert_with(memo_id, || memo) = memo);
 }
 
 fn props_2d_button(ui: &mut Ui, state: &mut AppState) -> egui::Response {
@@ -338,23 +471,33 @@ pub fn mcp_pill(ui: &mut Ui, state: &mut AppState) -> egui::Response {
     r
 }
 
-fn grid_controls(ui: &mut Ui, state: &mut AppState) {
+fn grid_controls(ui: &mut Ui, state: &mut AppState, nested: bool) {
     let target = state.target_grid();
     let label = crate::grids::source_label(&target);
     let custom = matches!(target.source, hp_app::grid::GridSource::Map(_) | hp_app::grid::GridSource::Preset(_));
     let text = RichText::new(label);
     let text = if custom { text.strong() } else { text.color(ui.visuals().weak_text_color()) };
-    let button = ui
-        .scope(|ui| {
-            ui.spacing_mut().button_padding.x = 2.0;
-            ui.add(egui::Button::new(text).frame_when_inactive(false).min_size(egui::vec2(0.0, 24.0)))
-        })
-        .inner;
-    egui::Popup::menu(&button).show(|ui| {
-        crate::grids::grid_menu(ui, state);
-        close_on_escape(ui);
-    });
-    button.on_hover_text(crate::grids::source_tip(state, &target));
+    if nested {
+        let button = ui
+            .menu_button(text, |ui| {
+                crate::grids::grid_menu(ui, state);
+                close_on_escape(ui);
+            })
+            .response;
+        crate::common::lazy_hover_text(button, || crate::grids::source_tip(state, &target));
+    } else {
+        let button = ui
+            .scope(|ui| {
+                ui.spacing_mut().button_padding.x = 2.0;
+                ui.add(egui::Button::new(text).frame_when_inactive(false).min_size(egui::vec2(0.0, 24.0)))
+            })
+            .inner;
+        egui::Popup::menu(&button).show(|ui| {
+            crate::grids::grid_menu(ui, state);
+            close_on_escape(ui);
+        });
+        crate::common::lazy_hover_text(button, || crate::grids::source_tip(state, &target));
+    }
     let smaller = ui.add_enabled(
         state.grid_size() > GRID_MIN + 1e-9,
         egui::Button::new(RichText::new("−").strong()).min_size(egui::vec2(20.0, 24.0)),
@@ -379,12 +522,13 @@ fn grid_controls(ui: &mut Ui, state: &mut AppState) {
         }
         ui.data_mut(|d| d.remove::<String>(id));
     }
-    field.on_hover_text(format!(
-        "{}
-{}",
-        t!("shell.toolbar.grid_size_tip"),
-        tf!("shell.grid.tip_steps", crate::grids::steps_text(target.frame.step.to_array()))
-    ));
+    crate::common::lazy_hover_text(field, || {
+        format!(
+            "{}\n{}",
+            t!("shell.toolbar.grid_size_tip"),
+            tf!("shell.grid.tip_steps", crate::grids::steps_text(target.frame.step.to_array()))
+        )
+    });
     let mut chosen = None;
     ui.menu_button(RichText::new("⏷").small(), |ui| {
         ui.set_min_width(70.0);
@@ -459,10 +603,60 @@ fn render_mode_dropdown(ui: &mut Ui, state: &mut AppState) {
             close_on_escape(ui);
         })
         .response
-        .on_hover_text(format!("{}\n{current_label}", t!("menu.render_mode")));
+        .on_hover_text(t!("menu.render_mode"));
     if let Some(action) = chosen {
         state.request(action);
     }
+}
+
+fn render_mode_submenu(ui: &mut Ui, state: &mut AppState) {
+    let current = state.settings.view.render_mode;
+    let current_label = RENDER_MODES.iter().find(|(m, _)| *m == current).map(|(_, a)| a.label()).unwrap_or("");
+    let mut chosen = None;
+    ui.menu_button(format!("🎨 {current_label}"), |ui| {
+        for (mode, action) in RENDER_MODES {
+            let mut b = egui::Button::selectable(mode == current, action.label());
+            if let Some(sc) = state.keys.shortcut(action) {
+                b = b.shortcut_text(hp_app::actions::shortcut_label(&sc));
+            }
+            if ui.add(b).clicked() {
+                chosen = Some(action);
+                ui.close();
+            }
+        }
+        close_on_escape(ui);
+    })
+    .response
+    .on_hover_text(t!("menu.render_mode"));
+    if let Some(action) = chosen {
+        state.request(action);
+    }
+}
+
+fn props_2d_submenu(ui: &mut Ui, state: &mut AppState) {
+    let on = state.settings.render.models_in_2d != Models2dSetting::Boxes;
+    ui.menu_button(
+        RichText::new("2D").strong().color(if on {
+            ui.visuals().selection.stroke.color
+        } else {
+            ui.visuals().text_color()
+        }),
+        |ui| {
+            for (mode, key) in [
+                (Models2dSetting::Boxes, "shell.render.models_boxes"),
+                (Models2dSetting::Wireframe, "shell.render.models_wire"),
+                (Models2dSetting::SelectedOnly, "shell.render.models_selected"),
+            ] {
+                if ui.selectable_label(state.settings.render.models_in_2d == mode, t!(key)).clicked() {
+                    state.settings.render.models_in_2d = mode;
+                    state.settings_dirty = true;
+                    ui.close();
+                }
+            }
+        },
+    )
+    .response
+    .on_hover_text(t!("shell.toolbar.props_2d_tip"));
 }
 
 fn run_button(ui: &mut Ui, state: &mut AppState) {
@@ -547,6 +741,11 @@ pub(crate) const TR: hp_app::i18n::TrTable = &[
         "Primitives de la map et allocations CPU mesurées de l'éditeur",
     ),
     ("shell.toolbar.compile", "Compile", "Compiler"),
+    (
+        "shell.toolbar.more_tip",
+        "More buttons ({0}): the toolbar is too narrow to show them all",
+        "Autres boutons ({0}) : la barre d'outils est trop étroite pour tous les afficher",
+    ),
     (
         "shell.toolbar.props_2d_tip",
         "Prop wireframes in 2D: show or hide model edges. When hidden, bounding boxes remain selectable. Right-click to show wireframes only for selected props.",
@@ -878,6 +1077,67 @@ mod tests {
             let unique: std::collections::HashSet<&Icon> = icons.iter().collect();
             assert_eq!(unique.len(), icons.len(), "{group:?}");
         }
+    }
+
+    #[test]
+    fn fit_groups_hides_the_least_useful_groups_first() {
+        let widths = [100.0; GROUPS];
+        let mut shown = [false; GROUPS];
+        fit_groups(&widths, &HIDE_ORDER, 8.0, 5000.0, 28.0, &mut shown);
+        assert!(shown.iter().all(|s| *s));
+        let full = shown_width(&widths, &shown, 8.0);
+        fit_groups(&widths, &HIDE_ORDER, 8.0, full - 1.0, 28.0, &mut shown);
+        assert!(!shown[HIDE_ORDER[0]] && shown.iter().filter(|s| !**s).count() == 1, "{shown:?}");
+        assert!(shown_width(&widths, &shown, 8.0) + 28.0 <= full - 1.0);
+        fit_groups(&widths, &HIDE_ORDER, 8.0, 10.0, 28.0, &mut shown);
+        assert_eq!(shown.iter().filter(|s| **s).count(), 1);
+        assert!(shown[HIDE_ORDER[GROUPS - 1]], "the Compile button is the last to go");
+        let mut sorted = HIDE_ORDER;
+        sorted.sort_unstable();
+        assert_eq!(sorted, std::array::from_fn(|i| i), "every group is in the hide order once");
+        assert!(TOOLBAR[HIDE_ORDER[GROUPS - 1]].contains(&ToolbarItem::Compile));
+    }
+
+    #[test]
+    fn toolbar_never_wraps_and_keeps_every_button() {
+        let _lang = hp_app::testing::lang_lock();
+        crate::register_translations();
+        let mut state = hp_app::testing::test_state();
+        let items: usize = TOOLBAR.iter().map(|g| g.len()).sum();
+        for lang in hp_app::i18n::Lang::ALL {
+            hp_app::i18n::set_lang(lang);
+            for width in [640.0f32, 900.0, 1024.0, 1280.0, 1600.0, 2400.0] {
+                let ctx = egui::Context::default();
+                let mut row = egui::Rect::NOTHING;
+                let mut overflow = false;
+                for frame in 0..4 {
+                    if frame == 3 {
+                        egui::Popup::open_id(&ctx, toolbar_overflow_id());
+                    }
+                    let input = egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(width, 600.0))),
+                        ..Default::default()
+                    };
+                    let mut out = ctx.run_ui(input, |ui| {
+                        let r = egui::Panel::top("bar").show(ui, |ui| toolbar(ui, &mut state));
+                        row = r.response.rect;
+                    });
+                    out.textures_delta.clear();
+                    overflow = egui::Popup::is_id_open(&ctx, toolbar_overflow_id());
+                }
+                assert!(row.height() < BUTTON_SIZE.y * 2.0, "{lang:?} {width}: the toolbar wraps ({row:?})");
+                let memo: ToolbarWidths = ctx.data(|d| d.get_temp(toolbar_widths_id())).expect("widths are remembered");
+                let measured = memo.groups.iter().filter(|g| g.is_some()).count();
+                let total = shown_width(&memo.widths(), &[true; GROUPS], memo.separator.unwrap_or(0.0));
+                if total <= width - 20.0 {
+                    assert!(!overflow || measured == GROUPS, "{lang:?} {width}");
+                } else {
+                    assert!(overflow, "{lang:?} {width}: the hidden buttons are in the overflow menu");
+                }
+                assert_eq!(measured, GROUPS, "{lang:?} {width}: every group of the {items} buttons was drawn");
+            }
+        }
+        hp_app::i18n::set_lang(hp_app::i18n::Lang::En);
     }
 
     #[test]

@@ -150,6 +150,10 @@ pub fn recent_models(ctx: &egui::Context) -> Vec<String> {
     ctx.data(|d| d.get_temp::<Vec<String>>(recent_id())).unwrap_or_default()
 }
 
+pub fn recent_models_len(ctx: &egui::Context) -> usize {
+    ctx.data_mut(|d| d.get_temp_mut_or_default::<Vec<String>>(recent_id()).len())
+}
+
 pub const MAX_RECENT_MODELS: usize = 16;
 
 pub fn push_recent_model(ctx: &egui::Context, path: &str) {

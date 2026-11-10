@@ -165,8 +165,8 @@ pub const TR: TrTable = &[
     ),
     (
         "release.opt_protect_header_tip",
-        "Random map revision, random versions of lumps whose version the game ignores, random offset, version and marker of unused directory entries.",
-        "Révision de carte aléatoire, versions aléatoires des lumps dont le jeu ignore la version, décalage, version et marqueur aléatoires des entrées de répertoire inutilisées.",
+        "Random map revision, random versions of lumps whose version the game ignores, random offset of unused directory entries.",
+        "Révision de carte aléatoire, versions aléatoires des lumps dont le jeu ignore la version, décalage aléatoire des entrées de répertoire inutilisées.",
     ),
     ("release.opt_protect_gamelumps", "Shuffle the game lump directory", "Mélanger le répertoire des game lumps"),
     (

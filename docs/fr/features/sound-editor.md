@@ -37,6 +37,8 @@ La ligne sous le nom donne la fréquence d'échantillonnage, les canaux, la dur�
 | **Canaux** | **Mixer en mono** pour un son stéréo (un son mono est positionné en 3D par les effets `snd_*`, pas un son stéréo). |
 | **Fréquence d'échantillonnage** | **Conserver**, 11025, 22050 ou 44100 Hz (rééchantillonnage linéaire). |
 
+La lecture ne coûte rien quand elle ne sert pas : le fil de lecture dort jusqu'à ce que vous appuyiez sur **Lire**, et la sortie audio est refermée 10 secondes après la fin du son (la lecture suivante la rouvre en quelques millisecondes) ; Windows ne garde donc pas de flux audio de Hammer Pro ouvert.
+
 ## Enregistrer
 
 - **Dossier** est la racine sous laquelle le fichier est écrit. Par défaut c'est le dossier au-dessus du dossier `maps` de la map enregistrée (votre addon ou projet), sinon le dossier du jeu. **Parcourir...** choisit un autre dossier.

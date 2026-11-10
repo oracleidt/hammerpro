@@ -39,6 +39,7 @@ pub struct UpdateInfo {
     pub page_url: String,
     pub asset_name: Option<String>,
     pub asset_size: u64,
+    pub asset_sha256: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

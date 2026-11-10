@@ -680,7 +680,7 @@ fn mesh_path(state: &AppState, a: &Args<'_>) -> R<std::path::PathBuf> {
         let stem = stem.ok_or_else(|| "save the map first or give a path".to_owned())?;
         return Ok(super::semantic::map_dir(state)?.join(format!("{stem}_displacements.obj")));
     };
-    let path = std::path::Path::new(given);
+    let path = &super::semantic::local_path(given)?;
     if path.is_absolute() {
         let named = path.file_name().is_some_and(|n| !n.is_empty());
         if !named || path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {

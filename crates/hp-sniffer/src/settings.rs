@@ -443,7 +443,8 @@ impl SnifferSettings {
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        Ok(())
+        local_folder("output_dir", &self.output_dir)?;
+        local_folder("gmod_dir", &self.gmod_dir)
     }
 
     pub fn file_allowed(&self) -> bool {
@@ -586,6 +587,21 @@ pub fn unique_path(dir: &Path, stem: &str, ext: &str) -> PathBuf {
     first
 }
 
+fn local_folder(key: &str, value: &str) -> Result<(), String> {
+    let dir = value.trim();
+    if dir.is_empty() {
+        return Ok(());
+    }
+    let slashed = dir.replace(char::from(92), "/");
+    if slashed.starts_with("//") {
+        return Err(format!("{key}: network (UNC) and device paths are not allowed, use a folder of this computer"));
+    }
+    if !Path::new(dir).is_absolute() || slashed.split('/').any(|part| part == "..") {
+        return Err(format!("{key} must be the full path of a folder (C:/...), without \"..\""));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -699,5 +715,21 @@ mod tests {
         assert_eq!(back.map_file_mode(), MapFileMode::Compare, "the mode follows the saved switch, not a hidden field");
         let old: SnifferSettings = toml::from_str("address = \"x:1\"").expect("old file");
         assert!(!old.file_allowed(), "settings saved before the switch existed do not read map files");
+    }
+
+    #[test]
+    fn the_output_folder_is_a_local_absolute_folder() {
+        let bs = char::from(92);
+        let mut s = SnifferSettings::default();
+        assert!(s.validate().is_ok(), "empty means the default folder");
+        for good in ["C:/Users/me/sniffed", "D:/out"] {
+            s.output_dir = good.into();
+            assert!(s.validate().is_ok(), "{good}");
+        }
+        let unc = format!("{bs}{bs}server{bs}share");
+        for bad in [unc.as_str(), "//server/share", "relative/out", "C:/out/../../Windows"] {
+            s.output_dir = bad.into();
+            assert!(s.validate().is_err(), "{bad}");
+        }
     }
 }

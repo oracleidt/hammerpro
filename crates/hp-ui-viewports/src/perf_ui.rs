@@ -51,6 +51,11 @@ pub const TR: TrTable = &[
     ("perf.hud_mem", "RAM {0} MB  VRAM {1} / {2} MB", "RAM {0} Mo  VRAM {1} / {2} Mo"),
     ("perf.hud_gpu_name", "{0}  quality: {1}", "{0}  qualité : {1}"),
     (
+        "perf.hud_adaptive",
+        "lighting adapted to the graphics card: level {0} of {1}",
+        "éclairage adapté à la carte graphique : niveau {0} sur {1}",
+    ),
+    (
         "perf.banner",
         "Quality lowered automatically ({0}, {1} FPS measured)",
         "Qualité baissée automatiquement ({0}, {1} i/s mesurées)",
@@ -137,6 +142,9 @@ pub fn hud_lines(state: &AppState) -> Vec<String> {
     lines.push(tf!("perf.hud_mem", s.working_set >> 20, rt.gpu.usage >> 20, rt.gpu.budget >> 20));
     let level = p.level(state.settings.render.performance_mode);
     lines.push(tf!("perf.hud_gpu_name", p.adapter, level.id()));
+    if let Some(a) = state.gfx.as_ref().map(|g| g.renderer.adaptive_stats()).filter(|a| a.enabled && a.level > 0) {
+        lines.push(tf!("perf.hud_adaptive", a.level, a.max_level));
+    }
     lines
 }
 

@@ -393,6 +393,10 @@ impl MapData {
         self.point_leaf(head, p).and_then(|l| self.leafs.get(l)).map_or(-1, |l| l.cluster)
     }
 
+    pub fn vis_cluster_at(&self, p: DVec3) -> i32 {
+        if self.vis.clusters == 0 { -1 } else { self.cluster_at(p) }
+    }
+
     pub fn area_at(&self, p: DVec3) -> Option<usize> {
         let head = self.models.first()?.head;
         self.point_leaf(head, p).and_then(|l| self.leafs.get(l)).map(|l| l.area)

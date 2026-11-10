@@ -442,32 +442,6 @@ impl TransitionShape {
     }
 }
 
-fn plane_section(poly: &[DVec3], normal: DVec3, dist: f64) -> Option<(DVec3, DVec3)> {
-    let mut pts: Vec<DVec3> = Vec::with_capacity(2);
-    let n = poly.len();
-    for i in 0..n {
-        let (a, b) = (poly[i], poly[(i + 1) % n]);
-        let (da, db) = (normal.dot(a) - dist, normal.dot(b) - dist);
-        if da.abs() < 1e-6 {
-            pts.push(a);
-        } else if (da < 0.0) != (db < 0.0) && db.abs() >= 1e-6 {
-            pts.push(a + (b - a) * (da / (da - db)));
-        }
-    }
-    pts.dedup_by(|a, b| (*a - *b).length_squared() < 1e-10);
-    let (first, last) = (*pts.first()?, *pts.last()?);
-    let mut best = (first, last, (last - first).length_squared());
-    for i in 0..pts.len() {
-        for j in i + 1..pts.len() {
-            let d = (pts[j] - pts[i]).length_squared();
-            if d > best.2 {
-                best = (pts[i], pts[j], d);
-            }
-        }
-    }
-    (best.2 > 1e-6).then_some((best.0, best.1))
-}
-
 pub fn transition_fragments(
     doc: &Document,
     shape: &TransitionShape,
@@ -486,15 +460,9 @@ pub fn transition_fragments(
     for &water_side in &shape.water {
         let Some((wface, wpoly, wn)) = polygon(water_side) else { continue };
         let wd = wn.dot(wpoly[0]);
-        let segments: Vec<(DVec3, DVec3, DVec3)> = lands
-            .iter()
-            .filter_map(|(_, poly, ln)| {
-                let (a, b) = plane_section(poly, wn, wd)?;
-                let flat = (*ln - wn * ln.dot(wn)).try_normalize()?;
-                Some((a, b, flat))
-            })
-            .collect();
-        let total: f64 = segments.iter().map(|(a, b, _)| (*b - *a).length()).sum();
+        let shore: Vec<(&[DVec3], DVec3)> = lands.iter().map(|(_, poly, ln)| (poly.as_slice(), *ln)).collect();
+        let strips = hp_geom::shoreline::shore_strips(&shore, wn, wd);
+        let total: f64 = strips.iter().map(hp_geom::shoreline::ShoreStrip::length).sum();
         if total <= 1e-6 {
             continue;
         }
@@ -507,9 +475,9 @@ pub fn transition_fragments(
         }
         let to2 = |p: DVec3| DVec2::new((p - wpoly[0]).dot(u_axis), (p - wpoly[0]).dot(v_axis));
         let to3 = |p: DVec2| wpoly[0] + u_axis * p.x + v_axis * p.y;
-        let mut along = 0.0;
-        for (a, b, toward_water) in segments {
-            let len = (b - a).length();
+        for strip in strips {
+            let (a, b, toward_water, along) = (strip.start, strip.end, strip.toward_water, strip.along);
+            let len = strip.length();
             let land_off = -toward_water * shape.width_land;
             let water_off = toward_water * shape.width_water;
             let quad3 = [a + land_off, b + land_off, b + water_off, a + water_off];
@@ -520,7 +488,6 @@ pub fn transition_fragments(
                 )
             };
             let quad_tex = [tex(along, 0.0), tex(along + len, 0.0), tex(along + len, 1.0), tex(along, 1.0)];
-            along += len;
             let mut quad2: Vec<DVec2> = quad3.iter().map(|p| to2(*p)).collect();
             let mut texs = quad_tex.to_vec();
             if signed_area2(&quad2) < 0.0 {

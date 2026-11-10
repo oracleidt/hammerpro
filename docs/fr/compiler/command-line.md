@@ -65,6 +65,7 @@ Géométrie et visibilité. Les valeurs par défaut sont celles de la ligne de c
 | `-dxlevel` | niveau | Retire les entités exclues par leur `mindxlevel`/`maxdxlevel`. | aucun |
 | `-radius_override` | unités | Rayon de visibilité. | `farz` du brouillard, sinon aucun |
 | `-nosort` | | Visibilité sans trier les portails. | désactivé |
+| `-viscache` | dossier | Garde la visibilité dans ce dossier et la reprend quand une compilation suivante a les mêmes portails et options de visibilité (l'éditeur passe son cache des étapes). | aucun |
 | `-trace` | cluster cluster | Écrit la ligne de vue entre deux clusters dans `<map>.lin`. | aucun |
 | `-nomerge`, `-nosubdiv`, `-notjunc`, `-noprune` | | Options de débogage, voir [Options de compilation](compile-options.md). | désactivé |
 | `-novirtualmesh` | | Collision des displacements en soupes de triangles. | désactivé |
@@ -128,7 +129,13 @@ Pendant l'éclairage, `--rad` annonce ses étapes (`Lighting stages: direct ligh
 Lighting 41%: direct lighting 60% (stage 2 of 7), 27 s elapsed, about 17 s left
 ```
 
-Le premier pourcentage est celui de tout l'éclairage, le second celui de l'étape. Une ligne arrive tous les 5 % et au moins toutes les 30 secondes. Une étape qui n'a pas avancé depuis une minute écrit `Warning: the lighting stage "..." has not advanced for ...` avec ce qui rend cette étape lente, et une étape qui dure plus de dix minutes écrit `Warning: the lighting stage "..." has run for ...`. L'éditeur lit ces lignes pour sa barre de progression. Les problèmes trouvés par la vérification finale qui étaient déjà dans le BSP avant l'éclairage (une map compilée par d'autres outils) sont des avertissements ; seuls les nouveaux empêchent l'écriture.
+Le premier pourcentage est celui de tout l'éclairage, le second celui de l'étape. Une ligne arrive tous les 5 % et au moins toutes les 30 secondes. Une étape qui n'a pas avancé depuis une minute écrit `Warning: the lighting stage "..." has not advanced for ...` avec ce qui rend cette étape lente, et une étape qui dure plus de dix minutes écrit `Warning: the lighting stage "..." has run for ...`. L'éditeur lit ces lignes pour sa barre de progression. À la fin, `--rad` indique où est passé le temps, en secondes réelles (une phase qui n'a pas tourné affiche 0.00 s) :
+
+```
+Light phase times: setup 0.15 s, faces 0.63 s, static prop models 0.41 s, shadow tree 1.56 s, surface tree 0.19 s, blocker tree 0.04 s, direct light 13.50 s, displacement blend 1.24 s, displacement bounce blend 1.00 s, bounce rays 3.23 s, bounce passes 3.02 s, seams 0.31 s, leaf ambient 0.45 s, write 0.77 s
+```
+
+`direct light` comprend les lumières, le soleil et le ciel, `static prop models` la lecture des modèles des props (seuls les modèles des props qui projettent une ombre ou reçoivent l'éclairage par sommet sont lus), `seams` le raccord des luxels partagés par des faces voisines ; `light probes` et `detail props` apparaissent quand ils tournent. Les problèmes trouvés par la vérification finale qui étaient déjà dans le BSP avant l'éclairage (une map compilée par d'autres outils) sont des avertissements ; seuls les nouveaux empêchent l'écriture.
 
 ## Exemples
 

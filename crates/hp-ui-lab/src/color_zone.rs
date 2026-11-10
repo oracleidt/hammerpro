@@ -217,6 +217,7 @@ mod tests {
 
     #[test]
     fn edited_rgba_lut_blends_with_raw_map_tables_in_rendered_views() {
+        let _gpu = crate::gpu_lock();
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
         let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else { return };
         let (device, queue) = pollster::block_on(

@@ -26,6 +26,11 @@ fn check(ui: &mut egui::Ui, value: &mut bool, label: &str, tip: &str) -> bool {
     ui.checkbox(value, label).on_hover_text(tip).changed()
 }
 
+fn subheading(ui: &mut egui::Ui, text: &str) {
+    ui.add_space(6.0);
+    ui.label(egui::RichText::new(text).small().strong().color(ui.visuals().weak_text_color()));
+}
+
 impl SettingsPage for RenderPage {
     fn id(&self) -> &'static str {
         "render"
@@ -82,6 +87,7 @@ impl SettingsPage for RenderPage {
         changed |=
             check(ui, &mut r.radius_culling, t!("shell.render.radius_culling"), t!("shell.render.cull_radius_tip"));
         changed |= check(ui, &mut r.occlusion_culling, t!("shell.render.occlusion"), t!("shell.render.occlusion_tip"));
+        subheading(ui, t!("shell.render.group_sky_water"));
         changed |= check(ui, &mut r.sky_preview, t!("shell.render.sky"), t!("shell.render.sky_tip"));
         changed |= check(ui, &mut r.skybox_3d, t!("shell.render.skybox_3d"), t!("shell.render.skybox_3d_tip"));
         changed |= check(
@@ -105,6 +111,7 @@ impl SettingsPage for RenderPage {
                     }
                 });
         });
+        subheading(ui, t!("shell.render.group_lighting"));
         changed |= check(ui, &mut r.normal_maps, t!("shell.render.normal_maps"), t!("shell.render.normal_maps_tip"));
         changed |= check(
             ui,
@@ -205,6 +212,7 @@ impl SettingsPage for RenderPage {
             changed |=
                 check(ui, &mut r.cubemaps_auto, t!("shell.render.cubemaps_auto"), t!("shell.render.cubemaps_auto_tip"));
         });
+        subheading(ui, t!("shell.render.group_fog"));
         changed |= check(ui, &mut r.fog_preview, t!("shell.render.fog"), t!("shell.render.fog_tip"));
         changed |=
             check(ui, &mut r.fog_volume_preview, t!("shell.render.fog_volumes"), t!("shell.render.fog_volumes_tip"));
@@ -218,6 +226,7 @@ impl SettingsPage for RenderPage {
         ui.add_enabled_ui(r.fish_preview, |ui| {
             changed |= check(ui, &mut r.fish_swim, t!("shell.render.fish_swim"), t!("shell.render.fish_swim_tip"));
         });
+        subheading(ui, t!("shell.render.group_display"));
         changed |= check(
             ui,
             &mut r.player_compiled_lighting,
@@ -356,7 +365,25 @@ impl SettingsPage for RenderPage {
                 .on_hover_text(t!("shell.render.unfocused_fps_tip"))
                 .changed();
             ui.end_row();
+            ui.label(t!("shell.render.animation_fps"));
+            changed |= ui
+                .add(egui::DragValue::new(&mut r.animation_fps).range(0..=hp_app::settings::MAX_ANIMATION_FPS))
+                .on_hover_text(t!("shell.render.animation_fps_tip"))
+                .changed();
+            ui.end_row();
+            ui.label(t!("shell.render.animation_idle"));
+            changed |= ui
+                .add(egui::DragValue::new(&mut r.animation_idle_pause_s).range(0..=86_400).suffix(" s"))
+                .on_hover_text(t!("shell.render.animation_idle_tip"))
+                .changed();
+            ui.end_row();
         });
+        changed |= check(
+            ui,
+            &mut r.animate_in_background,
+            t!("shell.render.animate_in_background"),
+            t!("shell.render.animate_in_background_tip"),
+        );
         changed |= check(ui, &mut r.vsync, t!("shell.render.vsync"), t!("shell.render.vsync_tip"));
 
         heading(ui, t!("shell.render.vram"));
@@ -381,6 +408,12 @@ impl SettingsPage for RenderPage {
             &mut r.keep_background_maps_on_gpu,
             t!("shell.render.vram_keep_tabs"),
             t!("shell.render.vram_keep_tabs_tip"),
+        );
+        changed |= check(
+            ui,
+            &mut r.texture_streaming,
+            t!("shell.render.texture_streaming"),
+            t!("shell.render.texture_streaming_tip"),
         );
         let g = &state.runtime.gpu;
         if g.budget > 0 {
@@ -509,6 +542,10 @@ fn models_2d_label(m: Models2dSetting) -> &'static str {
 
 pub(crate) const TR: TrTable = &[
     ("shell.render.page", "Rendering", "Rendu"),
+    ("shell.render.group_sky_water", "Sky, water and details", "Ciel, eau et détails"),
+    ("shell.render.group_lighting", "Lighting and materials", "Éclairage et matériaux"),
+    ("shell.render.group_fog", "Fog and fish", "Brouillard et poissons"),
+    ("shell.render.group_display", "Display", "Affichage"),
     ("shell.render.view_3d", "3D view", "Vue 3D"),
     ("shell.render.near_plane", "Near plane", "Plan proche"),
     (
@@ -971,6 +1008,24 @@ pub(crate) const TR: TrTable = &[
         "Frame rate limit while the window is not active (0: no limit)",
         "Limite d'images par seconde quand la fenêtre n'est pas active (0 : aucune limite)",
     ),
+    ("shell.render.animation_fps", "Animations", "Animations"),
+    (
+        "shell.render.animation_fps_tip",
+        "Frames per second of animated materials, particle effects and flickering lights while nothing else moves (0: every frame)",
+        "Images par seconde des matériaux animés, des effets de particules et des lumières qui clignotent quand rien d'autre ne bouge (0 : chaque image)",
+    ),
+    ("shell.render.animation_idle", "Pause animations after", "Mettre les animations en pause après"),
+    (
+        "shell.render.animation_idle_tip",
+        "Animations stop after this many seconds without mouse or keyboard input and start again at the next input (0: never)",
+        "Les animations s'arrêtent après ce nombre de secondes sans souris ni clavier et reprennent à la prochaine action (0 : jamais)",
+    ),
+    ("shell.render.animate_in_background", "Animate in the background", "Animer en arrière-plan"),
+    (
+        "shell.render.animate_in_background_tip",
+        "Keep animated materials, particle effects and flickering lights moving while another window is active (uses processor time)",
+        "Continuer d'animer les matériaux, les effets de particules et les lumières qui clignotent quand une autre fenêtre est active (utilise le processeur)",
+    ),
     ("shell.render.vsync", "Vertical sync", "Synchronisation verticale"),
     (
         "shell.render.vsync_tip",
@@ -994,6 +1049,16 @@ pub(crate) const TR: TrTable = &[
         "shell.render.vram_keep_tabs_tip",
         "Switching tabs is instant, but each open map uses graphics memory. Off: a map is loaded again on the graphics card when you show its tab.",
         "Le changement d'onglet est instantané, mais chaque map ouverte utilise de la mémoire graphique. Désactivé : une map est rechargée sur la carte graphique quand vous affichez son onglet.",
+    ),
+    (
+        "shell.render.texture_streaming",
+        "Load texture detail by distance",
+        "Charger le détail des textures selon la distance",
+    ),
+    (
+        "shell.render.texture_streaming_tip",
+        "Textures used only far from every view are kept at a smaller size that looks the same at that distance, and come back to full size before the camera gets close. Saves graphics memory on big maps. The loading screen of a map stays until every texture close to the camera is at full size.",
+        "Les textures utilisées seulement loin de toutes les vues sont gardées à une taille réduite qui rend pareil à cette distance, et reviennent en pleine taille avant que la caméra ne s'approche. Économise la mémoire graphique sur les grandes maps. L'écran de chargement d'une map reste jusqu'à ce que chaque texture proche de la caméra soit en pleine taille.",
     ),
     ("shell.render.vram_now", "In use: {0} MB of {1} MB ({2})", "Utilisée : {0} Mo sur {1} Mo ({2})"),
     ("shell.render.vram_driver", "measured by the driver", "mesurée par le pilote"),

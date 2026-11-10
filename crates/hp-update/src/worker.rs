@@ -4,10 +4,10 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, channel};
 
 use crate::apply::Helper;
-use crate::config::{PROGRAM_NAME, allowed_download_url, api_url, current_version};
+use crate::config::{PROGRAM_NAME, allowed_download_url, api_url, current_version, safe_page_url, trusted_url};
 use crate::error::UpdateError;
 use crate::http;
-use crate::release::{Release, parse_release};
+use crate::release::{Release, parse_release, valid_sha256};
 use crate::version::Version;
 use crate::zip::Archive;
 
@@ -22,7 +22,13 @@ pub enum CheckResult {
 }
 
 pub fn check(api_url: &str, current: &Version) -> CheckResult {
-    match http::get_text(api_url, MAX_API_ANSWER).and_then(|text| parse_release(&text)) {
+    let trusted = |url: &http::Url| trusted_url(url, api_url);
+    let answer =
+        http::get_text(api_url, MAX_API_ANSWER, &trusted).and_then(|text| parse_release(&text)).map(|mut r| {
+            r.page_url = safe_page_url(&r.page_url, api_url);
+            r
+        });
+    match answer {
         Ok(release) if release.is_newer_than(current) => CheckResult::Available(release),
         Ok(release) => CheckResult::UpToDate { latest: release.version },
         Err(e) => CheckResult::Failed(e),
@@ -61,7 +67,15 @@ impl Progress {
 #[derive(Debug)]
 pub struct Downloaded {
     pub zip: PathBuf,
+    pub sha256: String,
+    pub verified_digest: bool,
     pub helper: Helper,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Expected<'a> {
+    pub size: u64,
+    pub sha256: Option<&'a str>,
 }
 
 pub struct Download {
@@ -82,6 +96,9 @@ pub fn spawn_download(release: &Release) -> Result<Download, UpdateError> {
     if !allowed_download_url(&asset.url, &api) {
         return Err(UpdateError::BadRelease(format!("the download address is not trusted: {}", asset.url)));
     }
+    if asset.size > MAX_DOWNLOAD {
+        return Err(UpdateError::BadRelease(format!("the archive is too large ({} bytes)", asset.size)));
+    }
     let dir =
         std::env::temp_dir().join(format!("HammerPro-update-{}-{}", std::process::id(), safe_file_name(&release.tag)));
     let zip = dir.join(safe_file_name(&asset.name));
@@ -92,7 +109,8 @@ pub fn spawn_download(release: &Release) -> Result<Download, UpdateError> {
     std::thread::Builder::new()
         .name("hp-update-download".into())
         .spawn(move || {
-            let _ = tx.send(download_and_verify(&asset.url, asset.size, &zip, &shared));
+            let expected = Expected { size: asset.size, sha256: asset.sha256.as_deref() };
+            let _ = tx.send(download_and_verify(&asset.url, &expected, &api, &zip, &shared));
         })
         .map_err(|e| UpdateError::Network(format!("cannot start the download: {e}")))?;
     Ok(Download { progress, rx })
@@ -100,33 +118,56 @@ pub fn spawn_download(release: &Release) -> Result<Download, UpdateError> {
 
 pub fn download_and_verify(
     url: &str,
-    expected_size: u64,
+    expected: &Expected<'_>,
+    api_url: &str,
     zip: &std::path::Path,
     progress: &Progress,
 ) -> Result<Downloaded, UpdateError> {
-    let size = http::download_to(url, zip, &progress.cancel, &mut |done, total| {
+    let trusted = |u: &http::Url| trusted_url(u, api_url);
+    let limits = http::Limits { max_bytes: MAX_DOWNLOAD, cancel: &progress.cancel, trusted: &trusted };
+    let fetched = http::download_to(url, zip, &limits, &mut |done, total| {
         progress.done.store(done, Ordering::Relaxed);
         if let Some(total) = total {
             progress.total.store(total, Ordering::Relaxed);
         }
-        if done > MAX_DOWNLOAD {
-            progress.cancel.store(true, Ordering::Relaxed);
-        }
     })?;
-    if expected_size > 0 && size != expected_size {
-        return Err(UpdateError::Network(format!("the file has {size} bytes, {expected_size} expected")));
+    let refuse = |e: UpdateError| {
+        let _ = std::fs::remove_file(zip);
+        Err(e)
+    };
+    if expected.size > 0 && fetched.bytes != expected.size {
+        return refuse(UpdateError::Network(format!(
+            "the file has {} bytes, {} expected",
+            fetched.bytes, expected.size
+        )));
+    }
+    if let Some(want) = expected.sha256
+        && (!valid_sha256(want) || !want.eq_ignore_ascii_case(&fetched.sha256))
+    {
+        return refuse(UpdateError::BadZip(
+            "the download does not match the SHA-256 checksum published with the release".into(),
+        ));
     }
     let file = std::fs::File::open(zip)?;
-    let archive = Archive::open(std::io::BufReader::new(file))?;
-    if archive.find_file(PROGRAM_NAME).is_none() {
-        return Err(UpdateError::BadZip(format!("{PROGRAM_NAME} is not in the archive")));
+    let archive = Archive::open(std::io::BufReader::new(file));
+    let found = archive.map(|a| a.find_file(PROGRAM_NAME).is_some());
+    match found {
+        Ok(true) => {}
+        Ok(false) => return refuse(UpdateError::BadZip(format!("{PROGRAM_NAME} is not in the archive"))),
+        Err(e) => return refuse(e),
     }
     let helper = Helper::prepare()?;
-    Ok(Downloaded { zip: zip.to_path_buf(), helper })
+    Ok(Downloaded {
+        zip: zip.to_path_buf(),
+        sha256: fetched.sha256,
+        verified_digest: expected.sha256.is_some(),
+        helper,
+    })
 }
 
 #[cfg(test)]
 mod tests {
+    static HELPER: std::sync::Mutex<()> = std::sync::Mutex::new(());
     use std::io::{Read, Write};
     use std::net::TcpListener;
 
@@ -161,7 +202,13 @@ mod tests {
                 let n = conn.read(&mut request).unwrap_or(0);
                 let head = String::from_utf8_lossy(&request[..n]).into_owned();
                 let path = head.split_whitespace().nth(1).unwrap_or("/").to_owned();
+                let mut location = String::new();
                 let (status, kind, body) = match routes.iter().find(|(p, _, _)| *p == path) {
+                    Some((_, "redirect", body)) => {
+                        let to = String::from_utf8_lossy(body).replace("{BASE}", &served);
+                        location = format!("Location: {to}\r\n");
+                        ("302 Found", "text/plain", Vec::new())
+                    }
                     Some((_, kind, body)) if kind.contains("json") => {
                         ("200 OK", *kind, String::from_utf8_lossy(body).replace("{BASE}", &served).into_bytes())
                     }
@@ -169,7 +216,7 @@ mod tests {
                     None => ("404 Not Found", "text/plain", b"nope".to_vec()),
                 };
                 let header = format!(
-                    "HTTP/1.1 {status}\r\nContent-Type: {kind}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    "HTTP/1.1 {status}\r\nContent-Type: {kind}\r\n{location}Content-Length: {}\r\nConnection: close\r\n\r\n",
                     body.len()
                 );
                 let _ = conn.write_all(header.as_bytes());
@@ -179,7 +226,26 @@ mod tests {
         Fake { base, stop }
     }
 
+    fn api_of(url: &str) -> String {
+        let rest = url.trim_start_matches("http://");
+        let host = rest.split('/').next().unwrap_or(rest);
+        format!("http://{host}/latest")
+    }
+
+    fn dl(url: &str, size: u64, zip: &std::path::Path, progress: &Progress) -> Result<Downloaded, UpdateError> {
+        download_and_verify(url, &Expected { size, sha256: None }, &api_of(url), zip, progress)
+    }
+
+    fn sha(data: &[u8]) -> String {
+        use sha2::Digest;
+        http::hex(&sha2::Sha256::digest(data))
+    }
+
     fn release_json(base: &str, tag: &str, zip_len: usize) -> Vec<u8> {
+        release_json_with(base, tag, zip_len, None)
+    }
+
+    fn release_json_with(base: &str, tag: &str, zip_len: usize, digest: Option<String>) -> Vec<u8> {
         serde_json::json!({
             "tag_name": tag,
             "name": format!("Hammer Pro {tag}"),
@@ -189,6 +255,7 @@ mod tests {
                 "name": format!("HammerPro-{}-windows.zip", tag.trim_start_matches('v')),
                 "browser_download_url": format!("{base}/asset.zip"),
                 "size": zip_len,
+                "digest": digest.map(|d| format!("sha256:{d}")),
             }],
         })
         .to_string()
@@ -228,6 +295,7 @@ mod tests {
 
     #[test]
     fn downloads_verifies_and_applies_end_to_end() {
+        let _helper = HELPER.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let big: Vec<u8> = std::iter::once(b'M')
             .chain(std::iter::once(b'Z'))
             .chain((0..400_000u32).map(|i| (i % 253) as u8))
@@ -237,7 +305,7 @@ mod tests {
             Item { name: "HammerPro-1.0.3-windows/hammerpro.exe", data: &big, deflate: true },
         ]);
         let fake = serve(vec![
-            ("/latest", "application/json", release_json("{BASE}", "v1.0.3", zip.len())),
+            ("/latest", "application/json", release_json_with("{BASE}", "v1.0.3", zip.len(), Some(sha(&zip)))),
             ("/asset.zip", "application/zip", zip.clone()),
         ]);
         let release = match check(&format!("{}/latest", fake.base), &Version::parse("1.0.2").unwrap()) {
@@ -252,8 +320,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let zip_path = dir.join("dl").join("update.zip");
         let progress = Progress::default();
-        let done = download_and_verify(&asset.url, asset.size, &zip_path, &progress).unwrap();
+        let expected = Expected { size: asset.size, sha256: asset.sha256.as_deref() };
+        let done = download_and_verify(&asset.url, &expected, &api_of(&asset.url), &zip_path, &progress).unwrap();
         assert_eq!(std::fs::read(&done.zip).unwrap(), zip);
+        assert!(done.verified_digest);
+        assert_eq!(done.sha256, sha(&zip));
         assert_eq!(progress.done.load(Ordering::Relaxed), zip.len() as u64);
         assert_eq!(progress.fraction(), Some(1.0));
         assert!(done.helper.exe.exists());
@@ -263,7 +334,7 @@ mod tests {
         std::fs::create_dir_all(target.parent().unwrap()).unwrap();
         std::fs::write(&target, b"MZ-old").unwrap();
         let mut job = crate::apply::ApplyJob::new(zip_path, target.clone(), 0);
-        job.kill_by_name = false;
+        job.sha256 = Some(done.sha256.clone());
         crate::apply::apply(&job, &mut |_| {}).unwrap();
         assert_eq!(std::fs::read(&target).unwrap(), big);
         assert_eq!(std::fs::read(job.backup_path()).unwrap(), b"MZ-old");
@@ -280,13 +351,13 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("hp_update_refuse_{}", std::process::id()));
         let progress = Progress::default();
         let url = format!("{}/asset.zip", fake.base);
-        let wrong_size = download_and_verify(&url, zip.len() as u64 + 5, &dir.join("a.zip"), &progress);
+        let wrong_size = dl(&url, zip.len() as u64 + 5, &dir.join("a.zip"), &progress);
         assert!(matches!(wrong_size, Err(UpdateError::Network(m)) if m.contains("expected")));
-        let no_exe = download_and_verify(&url, zip.len() as u64, &dir.join("b.zip"), &progress);
+        let no_exe = dl(&url, zip.len() as u64, &dir.join("b.zip"), &progress);
         assert!(matches!(no_exe, Err(UpdateError::BadZip(_))));
-        let junk = download_and_verify(&format!("{}/junk.zip", fake.base), 0, &dir.join("c.zip"), &progress);
+        let junk = dl(&format!("{}/junk.zip", fake.base), 0, &dir.join("c.zip"), &progress);
         assert!(matches!(junk, Err(UpdateError::BadZip(_))));
-        let missing = download_and_verify(&format!("{}/none.zip", fake.base), 0, &dir.join("d.zip"), &progress);
+        let missing = dl(&format!("{}/none.zip", fake.base), 0, &dir.join("d.zip"), &progress);
         assert!(matches!(missing, Err(UpdateError::Http(404))));
         assert!(!dir.join("d.part").exists() && !dir.join("d.zip").exists());
         let _ = std::fs::remove_dir_all(&dir);
@@ -299,7 +370,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("hp_update_cancel_{}", std::process::id()));
         let progress = Progress::default();
         progress.cancel.store(true, Ordering::Relaxed);
-        let err = download_and_verify(&format!("{}/big", fake.base), 0, &dir.join("big.zip"), &progress).unwrap_err();
+        let err = dl(&format!("{}/big", fake.base), 0, &dir.join("big.zip"), &progress).unwrap_err();
         assert_eq!(err, UpdateError::Cancelled);
         assert!(!dir.join("big.zip").exists() && !dir.join("big.part").exists());
         let _ = std::fs::remove_dir_all(&dir);
@@ -317,6 +388,7 @@ mod tests {
                 name: "HammerPro-1.0.3-windows.zip".into(),
                 url: "https://evil.example/HammerPro.zip".into(),
                 size: 1,
+                sha256: None,
             }],
         };
         assert!(matches!(spawn_download(&release), Err(UpdateError::BadRelease(m)) if m.contains("not trusted")));
@@ -351,7 +423,7 @@ mod tests {
         });
         let dir = scratch("cut");
         let progress = Progress::default();
-        let err = download_and_verify(&url, 500_000, &dir.join("cut.zip"), &progress).unwrap_err();
+        let err = dl(&url, 500_000, &dir.join("cut.zip"), &progress).unwrap_err();
         assert!(matches!(err, UpdateError::Network(_)), "{err:?}");
         assert!(!dir.join("cut.zip").exists() && !dir.join("cut.part").exists());
         let _ = std::fs::remove_dir_all(&dir);
@@ -363,7 +435,9 @@ mod tests {
         let dir = scratch("cancel_mid");
         let cancel = AtomicBool::new(false);
         let mut seen = 0u64;
-        let err = http::download_to(&format!("{}/big", fake.base), &dir.join("big.zip"), &cancel, &mut |done, _| {
+        let trusted = |_: &http::Url| true;
+        let limits = http::Limits { max_bytes: MAX_DOWNLOAD, cancel: &cancel, trusted: &trusted };
+        let err = http::download_to(&format!("{}/big", fake.base), &dir.join("big.zip"), &limits, &mut |done, _| {
             seen = done;
             if done > 100_000 {
                 cancel.store(true, Ordering::Relaxed);
@@ -383,8 +457,7 @@ mod tests {
         let fake = serve(vec![("/t.zip", "application/zip", cut.clone())]);
         let dir = scratch("trunc");
         let progress = Progress::default();
-        let err = download_and_verify(&format!("{}/t.zip", fake.base), cut.len() as u64, &dir.join("t.zip"), &progress)
-            .unwrap_err();
+        let err = dl(&format!("{}/t.zip", fake.base), cut.len() as u64, &dir.join("t.zip"), &progress).unwrap_err();
         assert!(matches!(err, UpdateError::BadZip(_)), "{err:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -406,8 +479,7 @@ mod tests {
             std::fs::write(&target, b"MZ-old").unwrap();
             let zip_path = dir.join(format!("{name}.zip"));
             std::fs::write(&zip_path, zip).unwrap();
-            let mut job = crate::apply::ApplyJob::new(zip_path, target.clone(), 0);
-            job.kill_by_name = false;
+            let job = crate::apply::ApplyJob::new(zip_path, target.clone(), 0);
             assert!(crate::apply::apply(&job, &mut |_| {}).is_err(), "{name}");
             assert_eq!(std::fs::read(&target).unwrap(), b"MZ-old", "{name}");
             assert!(!job.staged_path().exists() && !job.backup_path().exists(), "{name}");
@@ -421,10 +493,109 @@ mod tests {
         let fake = serve(vec![("/a.zip", "application/zip", zip.clone())]);
         let dir = scratch("absent");
         let progress = Progress::default();
-        let gone = download_and_verify(&format!("{}/nothing.zip", fake.base), 0, &dir.join("g.zip"), &progress);
+        let gone = dl(&format!("{}/nothing.zip", fake.base), 0, &dir.join("g.zip"), &progress);
         assert_eq!(gone.unwrap_err(), UpdateError::Http(404));
-        let no_exe = download_and_verify(&format!("{}/a.zip", fake.base), 0, &dir.join("n.zip"), &progress);
+        let no_exe = dl(&format!("{}/a.zip", fake.base), 0, &dir.join("n.zip"), &progress);
         assert!(matches!(no_exe, Err(UpdateError::BadZip(m)) if m.contains("hammerpro.exe")));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_checksum_mismatch_is_refused_and_nothing_is_kept() {
+        let _helper = HELPER.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let zip = build(&[Item { name: "hammerpro.exe", data: b"MZ-program", deflate: false }]);
+        let fake = serve(vec![("/a.zip", "application/zip", zip.clone())]);
+        let dir = scratch("digest");
+        let url = format!("{}/a.zip", fake.base);
+        let progress = Progress::default();
+        let wrong = "0".repeat(64);
+        for digest in [wrong.as_str(), "not-hex"] {
+            let expected = Expected { size: zip.len() as u64, sha256: Some(digest) };
+            let err = download_and_verify(&url, &expected, &api_of(&url), &dir.join("a.zip"), &progress).unwrap_err();
+            assert!(matches!(&err, UpdateError::BadZip(m) if m.contains("SHA-256")), "{err:?}");
+            assert!(!dir.join("a.zip").exists() && !dir.join("a.part").exists());
+        }
+        let good = sha(&zip).to_ascii_uppercase();
+        let expected = Expected { size: zip.len() as u64, sha256: Some(&good) };
+        let done = download_and_verify(&url, &expected, &api_of(&url), &dir.join("a.zip"), &progress).unwrap();
+        assert!(done.verified_digest);
+        let _ = std::fs::remove_dir_all(done.helper.exe.parent().unwrap());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn redirections_are_followed_only_to_trusted_hosts() {
+        let _helper = HELPER.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let zip = build(&[Item { name: "hammerpro.exe", data: b"MZ-program", deflate: false }]);
+        let fake = serve(vec![
+            ("/hop", "redirect", b"/a.zip".to_vec()),
+            ("/full", "redirect", b"{BASE}/a.zip".to_vec()),
+            ("/evil", "redirect", b"https://evil.example/a.zip".to_vec()),
+            ("/plain", "redirect", b"http://objects.githubusercontent.com/a.zip".to_vec()),
+            ("/loop", "redirect", b"/loop".to_vec()),
+            ("/a.zip", "application/zip", zip.clone()),
+        ]);
+        let dir = scratch("redirect");
+        let progress = Progress::default();
+        for ok in ["/hop", "/full"] {
+            let done = dl(&format!("{}{ok}", fake.base), zip.len() as u64, &dir.join("ok.zip"), &progress).unwrap();
+            assert_eq!(std::fs::read(&done.zip).unwrap(), zip);
+            let _ = std::fs::remove_dir_all(done.helper.exe.parent().unwrap());
+        }
+        for bad in ["/evil", "/plain"] {
+            let err = dl(&format!("{}{bad}", fake.base), 0, &dir.join("bad.zip"), &progress).unwrap_err();
+            assert!(matches!(&err, UpdateError::Network(m) if m.contains("not trusted")), "{bad}: {err:?}");
+            assert!(!dir.join("bad.zip").exists() && !dir.join("bad.part").exists());
+        }
+        let err = dl(&format!("{}/loop", fake.base), 0, &dir.join("loop.zip"), &progress).unwrap_err();
+        assert!(matches!(&err, UpdateError::Network(m) if m.contains("redirections")), "{err:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn oversized_downloads_stop_with_an_error() {
+        let fake = serve(vec![("/big", "application/octet-stream", vec![5u8; 200_000])]);
+        let dir = scratch("oversized");
+        let cancel = AtomicBool::new(false);
+        let trusted = |_: &http::Url| true;
+        let limits = http::Limits { max_bytes: 50_000, cancel: &cancel, trusted: &trusted };
+        let err = http::download_to(&format!("{}/big", fake.base), &dir.join("big.zip"), &limits, &mut |_, _| {})
+            .unwrap_err();
+        assert!(matches!(&err, UpdateError::Network(m) if m.contains("too large")), "{err:?}");
+        assert!(!dir.join("big.zip").exists() && !dir.join("big.part").exists());
+        let release = Release {
+            tag: "v9.0.0".into(),
+            version: Version::parse("9.0.0").unwrap(),
+            title: String::new(),
+            notes: String::new(),
+            page_url: String::new(),
+            assets: vec![crate::release::Asset {
+                name: "HammerPro-9.0.0-windows.zip".into(),
+                url: "https://github.com/oracleidt/hammerpro/releases/download/v9.0.0/a.zip".into(),
+                size: MAX_DOWNLOAD + 1,
+                sha256: None,
+            }],
+        };
+        assert!(matches!(spawn_download(&release), Err(UpdateError::BadRelease(m)) if m.contains("too large")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_plain_http_api_is_refused_unless_it_is_local() {
+        let old = Version::parse("1.0.0").unwrap();
+        let far = check("http://example.invalid:9/latest", &old);
+        assert!(matches!(&far, CheckResult::Failed(UpdateError::Network(m)) if m.contains("not trusted")), "{far:?}");
+        let fake = serve(vec![("/latest", "application/json", release_json("{BASE}", "v1.0.3", 10))]);
+        let json = String::from_utf8(release_json("{BASE}", "v1.0.3", 10)).unwrap();
+        let json = json.replace("{BASE}/release", "javascript:alert(1)");
+        let evil = serve(vec![("/latest", "application/json", json.into_bytes())]);
+        match check(&format!("{}/latest", fake.base), &old) {
+            CheckResult::Available(r) => assert_eq!(r.page_url, format!("{}/release", fake.base)),
+            other => panic!("{other:?}"),
+        }
+        match check(&format!("{}/latest", evil.base), &old) {
+            CheckResult::Available(r) => assert_eq!(r.page_url, crate::config::RELEASES_PAGE),
+            other => panic!("{other:?}"),
+        }
     }
 }

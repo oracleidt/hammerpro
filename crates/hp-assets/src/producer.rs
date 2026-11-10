@@ -57,6 +57,11 @@ pub(crate) trait DerivedProducer {
     }
 }
 
+pub(crate) struct ObjectSink<'a> {
+    pub selected: &'a mut ahash::AHashSet<u32>,
+    pub placements: &'a mut crate::residency::ScenePlacements,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct ObjInfo {
     owner: Option<Id>,
@@ -207,9 +212,10 @@ impl Derived {
         }
     }
 
-    fn remove_object(&mut self, renderer: &mut Renderer, selected: &mut ahash::AHashSet<u32>, rid: u32) {
+    fn remove_object(&mut self, renderer: &mut Renderer, sink: &mut ObjectSink<'_>, rid: u32) {
         renderer.remove_object(rid);
-        selected.remove(&rid);
+        sink.selected.remove(&rid);
+        sink.placements.forget(rid);
         self.forget(rid);
     }
 
@@ -219,18 +225,18 @@ impl Derived {
         build: DerivedBuild,
         doc: &Document,
         renderer: &mut Renderer,
-        selected: &mut ahash::AHashSet<u32>,
+        sink: &mut ObjectSink<'_>,
     ) -> ListsDirty {
         let DerivedBuild { clear, upsert, remove, sprites, models, lights } = build;
         if clear {
             let rids: Vec<u32> = self.slots[index].objects.drain().map(|(_, rid)| rid).collect();
             for rid in rids {
-                self.remove_object(renderer, selected, rid);
+                self.remove_object(renderer, sink, rid);
             }
         }
         for key in remove {
             if let Some(rid) = self.slots[index].objects.remove(&key) {
-                self.remove_object(renderer, selected, rid);
+                self.remove_object(renderer, sink, rid);
             }
         }
         for obj in upsert {
@@ -264,13 +270,21 @@ impl Derived {
             }
             let info = ObjInfo { owner: obj.owner, flags: obj.flags, allocated: old.allocated };
             self.info.insert(rid, info);
+            sink.placements.set_object(
+                rid,
+                crate::residency::Placement {
+                    min: obj.mesh.aabb_min,
+                    max: obj.mesh.aabb_max,
+                    mats: obj.mesh.batches.iter().map(|b| (b.material, crate::residency::Density::Unknown)).collect(),
+                },
+            );
             renderer.upsert_object(rid, obj.mesh);
             let flags = object_flags(doc, &info).unwrap_or(info.flags);
             renderer.set_object_flags(rid, flags);
             if flags.contains(ObjectFlags::SELECTED) {
-                selected.insert(rid);
+                sink.selected.insert(rid);
             } else {
-                selected.remove(&rid);
+                sink.selected.remove(&rid);
             }
         }
         let slot = &mut self.slots[index];
@@ -311,7 +325,8 @@ impl AssetManager {
                 }
                 producer.build(&mut cx)
             };
-            let d = derived.apply(index, build, doc, renderer, &mut self.scene.selected);
+            let mut sink = ObjectSink { selected: &mut self.scene.selected, placements: &mut self.scene.placements };
+            let d = derived.apply(index, build, doc, renderer, &mut sink);
             dirty.sprites |= d.sprites;
             dirty.models |= d.models;
             dirty.lights |= d.lights;

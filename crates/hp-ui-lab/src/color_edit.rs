@@ -435,7 +435,7 @@ impl ColorEditorWindow {
         ui.label(RichText::new(t!("cc.save")).strong());
         let root = self.root.clone().or_else(|| media::default_root(state));
         ui.horizontal(|ui| {
-            ui.label(t!("snd.root"));
+            ui.label(t!("cc.root")).on_hover_text(t!("cc.root_tip"));
             let text = root.as_ref().map_or_else(|| t!("snd.no_root").to_owned(), |r| r.display().to_string());
             ui.label(RichText::new(text).weak());
             if ui.button(t!("snd.browse")).clicked() && self.pick_dir.is_none() {
@@ -443,7 +443,7 @@ impl ColorEditorWindow {
             }
         });
         ui.horizontal(|ui| {
-            ui.label(t!("cc.folder"));
+            ui.label(t!("cc.folder")).on_hover_text(t!("cc.folder_tip"));
             egui::ComboBox::from_id_salt("cc_folder").selected_text(FOLDERS[self.folder]).show_ui(ui, |ui| {
                 for (i, f) in FOLDERS.iter().enumerate() {
                     ui.selectable_value(&mut self.folder, i, *f);
@@ -712,7 +712,18 @@ pub const TR: hp_app::i18n::TrTable = &[
     ("cc.base", "Based on {0}", "Basé sur {0}"),
     ("cc.base_remove", "Remove", "Retirer"),
     ("cc.save", "Save", "Enregistrer"),
-    ("cc.folder", "Folder:", "Dossier :"),
+    ("cc.folder", "Subfolder:", "Sous-dossier :"),
+    ("cc.root", "Game or addon folder:", "Dossier du jeu ou de l'addon :"),
+    (
+        "cc.root_tip",
+        "The .raw file is written under this folder (the game folder or an addon)",
+        "Le fichier .raw est écrit sous ce dossier (le dossier du jeu ou un addon)",
+    ),
+    (
+        "cc.folder_tip",
+        "Folder of the .raw file inside the game or addon folder",
+        "Dossier du fichier .raw dans le dossier du jeu ou de l'addon",
+    ),
     ("cc.name", "Name:", "Nom :"),
     ("cc.reference", "Lookup Filename: {0}", "Lookup Filename : {0}"),
     ("cc.copy", "Copy", "Copier"),

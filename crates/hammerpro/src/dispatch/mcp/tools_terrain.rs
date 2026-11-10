@@ -118,8 +118,8 @@ domain! { "terrain";
 }
 
 fn safe_path(text: &str) -> R<()> {
-    let p = std::path::Path::new(text.trim());
-    if text.trim().is_empty() || p.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+    let p = super::semantic::local_path(text)?;
+    if p.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
         return Err(format!("invalid path \"{text}\""));
     }
     Ok(())

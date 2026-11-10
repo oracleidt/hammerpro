@@ -57,6 +57,38 @@ pub const TR: TrTable = &[
     ("tex.browser.cat_favorites", "Favorites ({0})", "Favoris ({0})"),
     ("tex.browser.cat_recent", "Recent", "Récents"),
     ("tex.browser.cat_tools", "Tools", "Outils"),
+    ("tex.browser.cat_favorites_short", "Favorites", "Favoris"),
+    ("tex.browser.cat_all_tip", "Every material of the game content", "Tous les matériaux du contenu du jeu"),
+    ("tex.browser.cat_used_tip", "Materials used by this map", "Matériaux utilisés par cette map"),
+    (
+        "tex.browser.cat_favorites_tip",
+        "Materials marked with the star (right click a material or click the star of the current one)",
+        "Matériaux marqués de l'étoile (clic droit sur un matériau ou clic sur l'étoile du matériau courant)",
+    ),
+    ("tex.browser.cat_recent_tip", "Materials used recently", "Matériaux utilisés récemment"),
+    (
+        "tex.browser.cat_tools_tip",
+        "Tool textures: nodraw, clip, trigger, skybox, hint...",
+        "Textures outils : nodraw, clip, trigger, skybox, hint...",
+    ),
+    ("tex.browser.src_all", "Every source", "Toutes les sources"),
+    (
+        "tex.browser.source_tip",
+        "Where the materials come from: the game, addons, the workshop or one of your folders",
+        "Provenance des matériaux : le jeu, les addons, le workshop ou un de vos dossiers",
+    ),
+    ("tex.browser.filters", "Filters and display", "Filtres et affichage"),
+    ("tex.browser.filters_active", "Filters and display ({0} active)", "Filtres et affichage ({0} actifs)"),
+    (
+        "tex.browser.filters_tip",
+        "Material kinds (translucent, alpha, blend...), shader, tool textures, thumbnail size and alpha preview",
+        "Types de matériaux (translucide, alpha, mélange...), shader, textures outils, taille des vignettes et aperçu alpha",
+    ),
+    (
+        "tex.browser.hide_tools_tip",
+        "Hide nodraw, clip, trigger and the other tool textures from the list",
+        "Masquer nodraw, clip, trigger et les autres textures outils de la liste",
+    ),
     ("tex.browser.hide_tools", "Hide tool textures", "Masquer les textures outils"),
     ("tex.me1.mode_single", "One material", "Un matériau"),
     (

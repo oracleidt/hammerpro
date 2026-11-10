@@ -6,7 +6,9 @@ use hp_app::actions::key_label;
 use hp_app::state::AppState;
 use hp_app::{Severity, Tool, ToolFlow, ToolId, ToolMenuEntry, ViewInfo, ViewInput, ViewKind, t, tf};
 use hp_editor::{EditError, ObjRef, Owner};
-use hp_geom::{Aabb, MAX_PRIMITIVE_SIDES, PrimitiveParams, make_primitive};
+use hp_geom::{
+    Aabb, MAX_DOOR_ARCH_SEGMENTS, MAX_PRIMITIVE_SIDES, MAX_STAIR_STEPS, PrimitiveParams, make_primitive, step_count,
+};
 use hp_render::Overlay;
 
 pub use hp_geom::Primitive;
@@ -20,6 +22,7 @@ use crate::common::{
 use crate::picker::{ClassPicker, PickerSource};
 
 pub const DEFAULT_DEPTH: f64 = 64.0;
+pub const WHEEL_FAST_STEP: u32 = 4;
 const WORLD_ID: &str = "@world";
 const CTX_CREATE: u32 = 1;
 const CTX_CYLINDER: u32 = 2;
@@ -123,6 +126,50 @@ pub fn new_depth_range(state: &AppState, last: Option<Aabb>, d: usize) -> (f64, 
     }
     let base = selection.map_or(0.0, |b| clean(b.max[d]));
     (base, base + DEFAULT_DEPTH)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ShapeCount {
+    Sides,
+    Steps,
+    ArchSegments,
+}
+
+impl ShapeCount {
+    pub fn of(o: &BlockOptions) -> Option<Self> {
+        if is_round(o.kind) {
+            return Some(Self::Sides);
+        }
+        match o.kind {
+            Primitive::Stairs | Primitive::SpiralStairs => Some(Self::Steps),
+            Primitive::Doorway if o.door_arch => Some(Self::ArchSegments),
+            _ => None,
+        }
+    }
+
+    pub fn range(self) -> (u32, u32) {
+        match self {
+            Self::Sides => (3, MAX_PRIMITIVE_SIDES),
+            Self::Steps => (1, MAX_STAIR_STEPS),
+            Self::ArchSegments => (2, MAX_DOOR_ARCH_SEGMENTS),
+        }
+    }
+
+    fn label_key(self) -> &'static str {
+        match self {
+            Self::Sides => "create.block.count_sides",
+            Self::Steps => "create.block.count_steps",
+            Self::ArchSegments => "create.block.count_segments",
+        }
+    }
+
+    fn hint_key(self) -> &'static str {
+        match self {
+            Self::Sides => "create.block.wheel_sides",
+            Self::Steps => "create.block.wheel_steps",
+            Self::ArchSegments => "create.block.wheel_segments",
+        }
+    }
 }
 
 pub(crate) fn primitive_key(kind: Primitive) -> &'static str {
@@ -271,6 +318,7 @@ pub struct BlockTool {
     picker: ClassPicker,
     shape: RefCell<ShapePreview>,
     preview_open: bool,
+    wheel: f32,
 }
 
 impl Default for BlockTool {
@@ -295,7 +343,46 @@ impl BlockTool {
             picker: ClassPicker::default(),
             shape: RefCell::new(ShapePreview::default()),
             preview_open: false,
+            wheel: 0.0,
         }
+    }
+
+    pub fn is_drawing(&self) -> bool {
+        self.pending.is_some()
+            || self.draw3d.is_some()
+            || matches!(self.drag, Some(Drag::New { .. } | Drag::Edit { .. }))
+    }
+
+    pub fn shape_count(&self) -> Option<(ShapeCount, u32)> {
+        let count = ShapeCount::of(&self.options)?;
+        let o = &self.options;
+        let value = match count {
+            ShapeCount::Sides => o.sides,
+            ShapeCount::Steps => match self.current_box() {
+                Some(b) if o.stair_step_height > 0.0 => {
+                    step_count(b.size()[self.up_axis()], o.stair_steps, o.stair_step_height).unwrap_or(o.stair_steps)
+                }
+                _ => o.stair_steps,
+            },
+            ShapeCount::ArchSegments => o.door_arch_segments,
+        };
+        Some((count, value))
+    }
+
+    pub fn step_shape_count(&mut self, delta: i64) -> Option<u32> {
+        let (count, value) = self.shape_count()?;
+        let (lo, hi) = count.range();
+        let next = (i64::from(value) + delta).clamp(i64::from(lo), i64::from(hi)) as u32;
+        let o = &mut self.options;
+        match count {
+            ShapeCount::Sides => o.sides = next,
+            ShapeCount::Steps => {
+                o.stair_steps = next;
+                o.stair_step_height = 0.0;
+            }
+            ShapeCount::ArchSegments => o.door_arch_segments = next,
+        }
+        Some(next)
     }
 
     pub fn pending_box(&self) -> Option<Aabb> {
@@ -741,15 +828,25 @@ impl BlockTool {
                 paint_handle(painter, h.screen_pos(rect), hovered == Some(h));
             }
         }
+        let mut below = rect.bottom() + 6.0;
+        if let Some(text) = self.count_label() {
+            paint_label(painter, Pos2::new(rect.center().x, below), Align2::CENTER_TOP, &text, COLOR_SHAPE);
+            below += 20.0;
+        }
         if self.options.kind != Primitive::Block && self.with_shape(b, |s| s.error.is_some()).unwrap_or(false) {
             paint_label(
                 painter,
-                Pos2::new(rect.center().x, rect.bottom() + 6.0),
+                Pos2::new(rect.center().x, below),
                 Align2::CENTER_TOP,
                 t!("create.block.invalid"),
                 hp_app::theme::VIEW_ERROR,
             );
         }
+    }
+
+    fn count_label(&self) -> Option<String> {
+        let (count, value) = self.shape_count()?;
+        Some(tf!(count.label_key(), value))
     }
 
     fn paint_3d(&self, state: &AppState, view: &ViewInfo, painter: &egui::Painter) {
@@ -769,6 +866,9 @@ impl BlockTool {
             && view.rect.contains(s)
         {
             paint_label(painter, s - Vec2::new(0.0, 8.0), Align2::CENTER_BOTTOM, &fmt_size(&b), COLOR_PENDING);
+            if let Some(text) = self.count_label() {
+                paint_label(painter, s - Vec2::new(0.0, 28.0), Align2::CENTER_BOTTOM, &text, COLOR_SHAPE);
+            }
         }
     }
 }
@@ -819,6 +919,31 @@ impl Tool for BlockTool {
         }
         let m = Mouse::from_input(input);
         self.handle_mouse(state, input.view, &m)
+    }
+
+    fn wheel(&mut self, _state: &mut AppState, _view: &ViewInfo, notches: f32, mods: egui::Modifiers) -> ToolFlow {
+        if !notches.is_finite() || mods.ctrl || mods.command || mods.alt {
+            return ToolFlow::Ignored;
+        }
+        if !self.is_drawing() || ShapeCount::of(&self.options).is_none() {
+            self.wheel = 0.0;
+            return ToolFlow::Ignored;
+        }
+        self.wheel += notches;
+        let mut delta = 0i64;
+        while self.wheel >= 1.0 {
+            self.wheel -= 1.0;
+            delta += 1;
+        }
+        while self.wheel <= -1.0 {
+            self.wheel += 1.0;
+            delta -= 1;
+        }
+        if delta != 0 {
+            let step = if mods.shift { i64::from(WHEEL_FAST_STEP) } else { 1 };
+            self.step_shape_count(delta * step);
+        }
+        ToolFlow::Handled
     }
 
     fn key_input(&mut self, state: &mut AppState, ctx: &egui::Context) -> bool {
@@ -970,7 +1095,10 @@ impl Tool for BlockTool {
             ),
             None => t!("create.block.hint_idle").to_owned(),
         };
-        Some(hint)
+        match ShapeCount::of(&self.options) {
+            Some(count) => Some(format!("{hint} {}", tf!(count.hint_key(), WHEEL_FAST_STEP))),
+            None => Some(hint),
+        }
     }
 
     fn cancel(&mut self, _state: &mut AppState) -> bool {
@@ -980,6 +1108,7 @@ impl Tool for BlockTool {
         self.drag = None;
         self.hover = None;
         self.hover_3d = None;
+        self.wheel = 0.0;
         had
     }
 
@@ -1058,12 +1187,16 @@ impl Tool for BlockTool {
                 format!("{:?}", o.kind).to_ascii_lowercase(),
                 "primitive: block, wedge, cylinder, spike, sphere, arch, torus, stairs, spiral_stairs, ramp, pillar or doorway",
             ),
-            ToolOption::new("sides", o.sides.to_string(), "sides of round primitives (3 to 64)"),
+            ToolOption::new(
+                "sides",
+                o.sides.to_string(),
+                "sides of round primitives (3 to 128; the mouse wheel changes it while a shape is drawn)",
+            ),
             ToolOption::new("wall", num(o.arch_wall_width), "arch wall width in units (1 or more)"),
             ToolOption::new("arc", num(o.arch_arc), "arch arc in degrees (1 to 360)"),
             ToolOption::new("start", num(o.arch_start_angle), "arch start angle in degrees"),
             ToolOption::new("rise", num(o.arch_add_height), "arch added height in units"),
-            ToolOption::new("tube_sides", o.torus_tube_sides.to_string(), "torus tube sides (3 to 64)"),
+            ToolOption::new("tube_sides", o.torus_tube_sides.to_string(), "torus tube sides (3 to 128)"),
             ToolOption::new("ring", num(o.torus_ring_width), "torus ring width in units (1 or more)"),
             ToolOption::new(
                 "torus_arc",
@@ -1692,6 +1825,116 @@ mod tests {
         *tool.picker.search_mut() = "trig".to_owned();
         hp_app::testing::run_ui(&mut state, |ui, state| tool.options_ui(ui, state));
         assert_eq!(tool.picker.filtered_len(), 1);
+    }
+
+    #[test]
+    fn the_wheel_changes_the_count_only_while_a_countable_shape_is_drawn() {
+        let mut state = settle();
+        let mut tool = BlockTool::new();
+        let top = info_2d(ViewKind::Top, 1.0);
+        let none = egui::Modifiers::NONE;
+        tool.options.kind = Primitive::Cylinder;
+        assert_eq!(tool.wheel(&mut state, &top, 1.0, none), ToolFlow::Ignored, "nothing drawn: the view zooms");
+        assert_eq!(tool.options.sides, 8);
+        tool.set_pending_box(Some(b([0.0, 0.0, 0.0], [128.0, 128.0, 64.0])));
+        assert_eq!(tool.wheel(&mut state, &top, 1.0, none), ToolFlow::Handled);
+        assert_eq!(tool.options.sides, 9);
+        assert_eq!(tool.wheel(&mut state, &top, -2.0, none), ToolFlow::Handled);
+        assert_eq!(tool.options.sides, 7);
+        assert_eq!(tool.wheel(&mut state, &top, 1.0, egui::Modifiers::SHIFT), ToolFlow::Handled);
+        assert_eq!(tool.options.sides, 7 + WHEEL_FAST_STEP);
+        tool.wheel(&mut state, &top, 0.5, none);
+        assert_eq!(tool.options.sides, 11, "half a notch waits for the other half");
+        tool.wheel(&mut state, &top, 0.5, none);
+        assert_eq!(tool.options.sides, 12);
+        tool.wheel(&mut state, &top, -100.0, egui::Modifiers::SHIFT);
+        assert_eq!(tool.options.sides, 3, "clamped to the smallest valid count");
+        tool.wheel(&mut state, &top, 100.0, egui::Modifiers::SHIFT);
+        assert_eq!(tool.options.sides, MAX_PRIMITIVE_SIDES, "clamped to the largest valid count");
+        assert_eq!(tool.wheel(&mut state, &top, 1.0, egui::Modifiers::CTRL), ToolFlow::Ignored, "grid size");
+        assert_eq!(tool.wheel(&mut state, &top, 1.0, egui::Modifiers::ALT), ToolFlow::Ignored);
+        assert_eq!(tool.wheel(&mut state, &top, f32::NAN, none), ToolFlow::Ignored);
+        tool.options.sides = 8;
+        for kind in [Primitive::Block, Primitive::Wedge, Primitive::Ramp, Primitive::Doorway] {
+            tool.options.kind = kind;
+            assert_eq!(tool.wheel(&mut state, &top, 1.0, none), ToolFlow::Ignored, "{kind:?} has no count");
+        }
+        tool.options.door_arch = true;
+        assert_eq!(tool.wheel(&mut state, &top, 3.0, none), ToolFlow::Handled);
+        assert_eq!(tool.options.door_arch_segments, 11);
+        for kind in [Primitive::Spike, Primitive::Sphere, Primitive::Arch, Primitive::Torus, Primitive::Pillar] {
+            tool.options.kind = kind;
+            tool.options.sides = 8;
+            assert_eq!(tool.wheel(&mut state, &top, 1.0, none), ToolFlow::Handled, "{kind:?}");
+            assert_eq!(tool.options.sides, 9, "{kind:?}");
+        }
+        tool.options.kind = Primitive::Cylinder;
+        tool.options.sides = 10;
+        assert!(tool.confirm(&mut state));
+        assert_eq!(axis_faces(&state, 2), 2);
+        let id = state.doc.selected_solid_ids()[0];
+        assert_eq!(state.doc.scene().solid(id).expect("solid").geom.faces.len(), 12, "10 sides and two caps");
+        assert_eq!(tool.wheel(&mut state, &top, 1.0, none), ToolFlow::Ignored, "created: the wheel zooms again");
+        assert_eq!(tool.options.sides, 10, "the count stays for the next shape");
+        assert_eq!(tool.option_values().iter().find(|o| o.key == "sides").map(|o| o.value.clone()), Some("10".into()));
+    }
+
+    #[test]
+    fn the_wheel_switches_stairs_from_step_height_to_a_step_count() {
+        let mut state = settle();
+        let mut tool = BlockTool::new();
+        let top = info_2d(ViewKind::Top, 1.0);
+        tool.options.kind = Primitive::Stairs;
+        tool.options.stair_step_height = 16.0;
+        tool.set_pending_box(Some(b([0.0, 0.0, 0.0], [64.0, 256.0, 96.0])));
+        assert_eq!(tool.shape_count(), Some((ShapeCount::Steps, 6)), "96 high in 16 unit steps");
+        assert_eq!(tool.wheel(&mut state, &top, 1.0, egui::Modifiers::NONE), ToolFlow::Handled);
+        assert_eq!((tool.options.stair_steps, tool.options.stair_step_height), (7, 0.0));
+        tool.wheel(&mut state, &top, -50.0, egui::Modifiers::NONE);
+        assert_eq!(tool.options.stair_steps, 1);
+        tool.wheel(&mut state, &top, 300.0, egui::Modifiers::SHIFT);
+        assert_eq!(tool.options.stair_steps, MAX_STAIR_STEPS);
+        tool.options.stair_steps = 5;
+        let n = tool.create(&mut state, b([0.0, 0.0, 0.0], [64.0, 256.0, 96.0])).expect("stairs");
+        assert_eq!(n, 5);
+        tool.options.kind = Primitive::SpiralStairs;
+        tool.set_pending_box(Some(b([0.0, 0.0, 0.0], [256.0, 256.0, 96.0])));
+        assert_eq!(tool.wheel(&mut state, &top, 2.0, egui::Modifiers::NONE), ToolFlow::Handled);
+        assert_eq!(tool.options.stair_steps, 7);
+    }
+
+    #[test]
+    fn the_wheel_works_during_the_drag_and_the_3d_height_phase() {
+        let mut state = settle();
+        state.doc.clear_selection();
+        let mut tool = BlockTool::new();
+        tool.options.kind = Primitive::Sphere;
+        let top = info_2d(ViewKind::Top, 1.0);
+        let a = top.world_to_screen(DVec3::new(0.0, 0.0, 0.0)).expect("a");
+        let c = top.world_to_screen(DVec3::new(64.0, 64.0, 0.0)).expect("c");
+        tool.handle_mouse(&mut state, &top, &Mouse::drag_start(a, a));
+        assert!(tool.is_drawing());
+        assert_eq!(tool.wheel(&mut state, &top, 1.0, egui::Modifiers::NONE), ToolFlow::Handled, "before any motion");
+        tool.handle_mouse(&mut state, &top, &Mouse::drag(a, c));
+        assert_eq!(tool.wheel(&mut state, &top, 1.0, egui::Modifiers::NONE), ToolFlow::Handled);
+        assert_eq!(tool.options.sides, 10);
+        tool.handle_mouse(&mut state, &top, &Mouse::drag_end(a, c));
+        assert!(tool.count_label().is_some_and(|l| l.contains("10")));
+        assert!(tool.status_hint(&state).is_some_and(|h| h.contains(&WHEEL_FAST_STEP.to_string())));
+        tool.cancel(&mut state);
+        let view = info_3d_looking_down(DVec3::new(0.0, 0.0, 512.0));
+        let a = view.world_to_screen(DVec3::new(-30.0, -30.0, 0.0)).expect("a");
+        let c = view.world_to_screen(DVec3::new(33.0, 15.0, 0.0)).expect("c");
+        assert_eq!(tool.wheel(&mut state, &view, 1.0, egui::Modifiers::NONE), ToolFlow::Ignored, "3D dolly");
+        tool.handle_mouse(&mut state, &view, &Mouse::drag_start(a, a));
+        tool.handle_mouse(&mut state, &view, &Mouse::drag(a, c));
+        tool.handle_mouse(&mut state, &view, &Mouse::drag_end(a, c));
+        assert!(matches!(tool.draw3d.map(|d| d.phase), Some(Phase3d::Height { .. })));
+        assert_eq!(tool.wheel(&mut state, &view, -1.0, egui::Modifiers::NONE), ToolFlow::Handled);
+        assert_eq!(tool.options.sides, 9);
+        tool.options.kind = Primitive::Block;
+        assert!(tool.count_label().is_none());
+        assert!(tool.status_hint(&state).is_some_and(|h| !h.contains(&WHEEL_FAST_STEP.to_string())));
     }
 
     #[test]

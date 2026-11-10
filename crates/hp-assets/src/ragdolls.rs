@@ -53,6 +53,10 @@ impl Default for Ragdolls {
 }
 
 impl Ragdolls {
+    pub(crate) fn live_models(&self) -> impl Iterator<Item = ModelId> + '_ {
+        self.posed.values().map(|p| p.model)
+    }
+
     pub(crate) fn loading(&self) -> bool {
         !self.pending.is_empty() || self.posed.values().any(|pose| pose.pick_pending)
     }
@@ -171,6 +175,9 @@ impl AssetManager {
                     parts.push(ModelPart { material, vertices, indices: mesh.indices.clone(), tangents: Vec::new() });
                 }
                 let model = renderer.create_model(&parts);
+                if let Some(meta) = crate::residency::model_meta(&parts) {
+                    self.residency.models.insert(model, meta);
+                }
                 let posed = Posed { stamp, model, bounds, pick: None, pick_pending: false, pick_parts: Some(parts) };
                 if let Some(old) = self.ragdolls.posed.insert(id, posed) {
                     renderer.destroy_model(old.model);

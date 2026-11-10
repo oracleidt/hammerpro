@@ -61,6 +61,14 @@ pub const PIPE_TR: TrTable = &[
     ("pipe.count", "{0} points", "{0} points"),
     ("pipe.summary", "{0} brushes, {1} bends, {2} long", "{0} brushes, {1} coudes, {2} de long"),
     ("pipe.label", "{0}, {1} bends, {2} brushes", "{0}, {1} coudes, {2} brushes"),
+    ("pipe.count_sides", "Sides: {0}", "Côtés : {0}"),
+    ("pipe.count_slices", "Slices per bend: {0}", "Tranches par coude : {0}"),
+    ("pipe.hint_wheel_sides", "Shift+wheel: more or fewer sides.", "Maj+molette : plus ou moins de côtés."),
+    (
+        "pipe.hint_wheel_slices",
+        "Shift+wheel: more or fewer slices per bend.",
+        "Maj+molette : plus ou moins de tranches par coude.",
+    ),
     (
         "pipe.created",
         "Pipe created: {0} brushes, {1} bends, {2} long",

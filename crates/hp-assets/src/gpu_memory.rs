@@ -6,14 +6,112 @@ use crate::texture::TexTarget;
 
 pub(crate) const DEFAULT_PARKED_LIMIT: u64 = 3 << 30;
 const MODEL_CPU_BUDGET: usize = 128 << 20;
+pub(crate) const RESIDENT_IDLE_FRAMES: u64 = 120;
+pub(crate) const RESIDENT_IDLE: std::time::Duration = std::time::Duration::from_secs(5);
 
 impl AssetManager {
     pub(crate) fn trim_model_geometry(&mut self) {
         let frame = self.shared.current_frame();
-        if !frame.is_multiple_of(60) {
-            return;
+        if frame.is_multiple_of(60) {
+            self.trim_model_geometry_to(MODEL_CPU_BUDGET, frame);
         }
-        self.trim_model_geometry_to(MODEL_CPU_BUDGET, frame);
+        self.trim_resident_models(frame);
+    }
+
+    fn models_settled(&self) -> bool {
+        self.scene.initialized
+            && self.scene.prep.is_none()
+            && self.scene.upload_pending.is_empty()
+            && self.scene.realize_later.is_empty()
+            && self.lods.ready.is_empty()
+            && self.shared.queued() == 0
+            && !self.models.map.values().any(|m| matches!(m, crate::models::ModelEntry::Loading))
+    }
+
+    pub(crate) fn trim_resident_models(&mut self, frame: u64) -> usize {
+        use crate::models::{ModelEntry, PickGeometry};
+        use std::sync::Arc;
+        if !self.models_settled() {
+            self.models.settled = None;
+            self.models.trim_waiting = false;
+            return 0;
+        }
+        let now = std::time::Instant::now();
+        let first = self.models.settled.is_none();
+        let (since_frame, since) = *self.models.settled.get_or_insert((frame, now));
+        let aged = now.duration_since(since) >= RESIDENT_IDLE;
+        if !first && !aged && !frame.is_multiple_of(60) {
+            if self.models.trim_waiting
+                && let Some(ctx) = self.shared.ctx()
+            {
+                ctx.request_repaint_after(RESIDENT_IDLE.saturating_sub(now.duration_since(since)));
+            }
+            return 0;
+        }
+        let mut waiting = false;
+        let collision =
+            hp_app::runtime::render::render_display().prop_shadows == hp_app::settings::StaticPropShadows::Collision;
+        let mut ids: ahash::AHashMap<&str, Vec<hp_render::ModelId>> = ahash::AHashMap::new();
+        for ((path, _), m) in &self.models.render {
+            ids.entry(path.as_str()).or_default().extend(m.id);
+        }
+        for ((key, _, _), (m, _)) in &self.models.variants {
+            ids.entry(key.as_str()).or_default().extend(m.id);
+        }
+        let lods_on = self.lods.on;
+        let picked: Vec<(String, bool)> = self
+            .models
+            .map
+            .iter()
+            .filter_map(|(key, entry)| {
+                let ModelEntry::Ready(model) = entry else { return None };
+                let used = self.models.last_used.get(key).copied().unwrap_or(0);
+                if Arc::strong_count(model) != 1 {
+                    return None;
+                }
+                let own = ids.get(key.as_str());
+                let made_from = Arc::downgrade(model);
+                let lods_done = !lods_on
+                    || model.lod_switch.len() <= 1
+                    || self.lods.data.get(key).is_some_and(|(w, _)| w.ptr_eq(&made_from))
+                    || self.lods.requested.get(key).is_some_and(|w| w.ptr_eq(&made_from));
+                let hulls_done = !collision || self.scene.shadow_hulls.settled(key, own.map_or(&[][..], Vec::as_slice));
+                let idle = frame.saturating_sub(used) >= RESIDENT_IDLE_FRAMES || (aged && used <= since_frame);
+                if !lods_done || !hulls_done || !idle {
+                    waiting |= used <= since_frame;
+                    return None;
+                }
+                Some((key.clone(), own.is_some()))
+            })
+            .collect();
+        let count = picked.len();
+        for (key, used_by_map) in picked {
+            if let Some(ModelEntry::Ready(model)) = self.models.map.get(&key) {
+                let info = Arc::clone(&model.info);
+                let pick = used_by_map.then(|| PickGeometry::of(model));
+                self.models.map.insert(key.clone(), ModelEntry::Cached(info));
+                match pick {
+                    Some(geo) => {
+                        self.models.pick.insert(key, Arc::new(geo));
+                    }
+                    None => {
+                        self.models.pick.remove(&key);
+                    }
+                }
+            }
+        }
+        if count > 0 {
+            self.memory_generation = self.memory_generation.wrapping_add(1);
+            self.lods.data.retain(|_, (source, _)| source.strong_count() > 0);
+            self.lods.requested.retain(|_, source| source.strong_count() > 0);
+        }
+        self.models.trim_waiting = waiting && !aged;
+        if aged {
+            self.models.settled = Some((frame, now));
+        } else if waiting && let Some(ctx) = self.shared.ctx() {
+            ctx.request_repaint_after(RESIDENT_IDLE.saturating_sub(now.duration_since(since)));
+        }
+        count
     }
 
     fn trim_model_geometry_to(&mut self, budget: usize, frame: u64) {
@@ -178,6 +276,62 @@ mod tests {
             lod_switch: Vec::new(),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn idle_models_of_the_map_keep_only_pick_geometry_until_needed() {
+        let mut assets = AssetManager::new(&hp_app::settings::Settings::default());
+        assets.scene.initialized = true;
+        assets.mats.scene_epoch = 1;
+        let mut lod_model = model();
+        lod_model.lod_switch = vec![0.0, 40.0];
+        for (key, data, used) in [("busy", model(), 200), ("idle", model(), 1), ("lods", lod_model, 1)] {
+            assets.models.map.insert(key.into(), ModelEntry::Ready(Arc::new(data)));
+            assets.models.last_used.insert(key.into(), used);
+            assets.models.render.insert((key.into(), 0), RenderModel { id: None, materials: Vec::new(), epoch: 1 });
+        }
+        assets.models.map.insert("other".into(), ModelEntry::Ready(Arc::new(model())));
+        assets.lods.on = true;
+        let frame = 1 + RESIDENT_IDLE_FRAMES + 50;
+        assert_eq!(assets.trim_resident_models(frame), 2);
+        assert!(matches!(assets.models.map.get("idle"), Some(ModelEntry::Cached(_))));
+        assert!(assets.models.pick.contains_key("idle"), "used by the map: precise picking is kept");
+        assert!(matches!(assets.models.map.get("other"), Some(ModelEntry::Cached(_))));
+        assert!(!assets.models.pick.contains_key("other"), "not used by the map: nothing kept");
+        assert!(matches!(assets.models.map.get("busy"), Some(ModelEntry::Ready(_))), "used a moment ago");
+        assert!(matches!(assets.models.map.get("lods"), Some(ModelEntry::Ready(_))), "levels of detail not built yet");
+        let geo = Arc::clone(&assets.models.pick["idle"]);
+        assert_eq!(geo.parts.len(), 1);
+        assert_eq!(geo.parts[0].positions.len(), 16);
+        assets.models.map.insert("busy".into(), ModelEntry::Loading);
+        assert_eq!(assets.trim_resident_models(frame + 1000), 0, "nothing is trimmed while models load");
+        assert!(assets.models.settled.is_none());
+    }
+
+    #[test]
+    fn a_still_editor_trims_idle_models_after_a_few_seconds_without_new_frames() {
+        let mut assets = AssetManager::new(&hp_app::settings::Settings::default());
+        assets.scene.initialized = true;
+        assets.mats.scene_epoch = 1;
+        for (key, used) in [("placed", 10), ("later", 12)] {
+            assets.models.map.insert(key.into(), ModelEntry::Ready(Arc::new(model())));
+            assets.models.last_used.insert(key.into(), used);
+            assets.models.render.insert((key.into(), 0), RenderModel { id: None, materials: Vec::new(), epoch: 1 });
+        }
+        assert_eq!(assets.trim_resident_models(11), 0, "a few frames after loading: kept");
+        let (since_frame, _) = assets.models.settled.expect("the settle time is noted");
+        assert_eq!(since_frame, 11);
+        assert!(assets.models.trim_waiting, "a repaint stays requested until the models can be trimmed");
+        assert_eq!(assets.trim_resident_models(12), 0, "not idle long enough yet");
+        assets.models.settled = Some((11, std::time::Instant::now() - RESIDENT_IDLE));
+        assert_eq!(assets.trim_resident_models(13), 1);
+        assert!(matches!(assets.models.map.get("placed"), Some(ModelEntry::Cached(_))));
+        assert!(assets.models.pick.contains_key("placed"));
+        assert!(matches!(assets.models.map.get("later"), Some(ModelEntry::Ready(_))), "used after things settled");
+        assert!(!assets.models.trim_waiting);
+        let (frame, at) = assets.models.settled.unwrap();
+        assert_eq!(frame, 13, "the next check waits a full delay again");
+        assert!(at.elapsed() < RESIDENT_IDLE);
     }
 
     #[test]

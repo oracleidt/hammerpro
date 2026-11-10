@@ -154,7 +154,8 @@ fn world_lumps(seed: u64) -> Vec<(usize, Vec<u8>)> {
     let mut disps = Vec::new();
     for map_face in [5usize, 9] {
         let mut d = vec![0u8; 176];
-        d[32..34].copy_from_slice(&(map_face as u16).to_le_bytes());
+        d[32..36].copy_from_slice(&1i32.to_le_bytes());
+        d[36..38].copy_from_slice(&(map_face as u16).to_le_bytes());
         disps.extend(d);
     }
     let mut overlays = Vec::new();
@@ -400,7 +401,8 @@ impl View {
         }
         let disps = self.l(26);
         for d in 0..disps.len() / 176 {
-            out.push(vec![self.face_all(u16_at(&disps, d * 176 + 32) as usize)]);
+            let contents = i32_at(&disps, d * 176 + 32);
+            out.push(vec![contents.to_le_bytes().to_vec(), self.face_all(u16_at(&disps, d * 176 + 36) as usize)]);
         }
         let ov = self.l(45);
         for o in 0..ov.len() / 352 {
@@ -608,6 +610,12 @@ fn header_tricks_only_touch_what_the_engine_ignores() {
         if a.len > 0 {
             assert_eq!(a.four_cc, b.four_cc, "lump {i} compression marker");
             assert!(matches!(i, 0..=6 | 12..=14 | 16..=21 | 40 | 43 | 44) || a.version == b.version, "lump {i}");
+        } else {
+            assert_eq!(
+                (b.version, b.four_cc),
+                (0, [0; 4]),
+                "empty lump {i}: the game reads a marker as a compressed size"
+            );
         }
     }
     assert!(!got.any_compressed());

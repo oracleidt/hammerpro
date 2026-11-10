@@ -70,6 +70,21 @@ pub const TR: TrTable = &[
         "Ouvrir la map avec un lien steam:// au lieu de lancer l'exécutable du jeu",
     ),
     ("compile.load_pointfile", "Load the leak path on leak", "Charger le chemin de fuite en cas de fuite"),
+    (
+        "compile.load_pointfile_tip",
+        "When the map leaks, load the leak path (.lin) into the views to find the hole",
+        "Quand la map fuit, charger le chemin de fuite (.lin) dans les vues pour trouver le trou",
+    ),
+    (
+        "compile.copy_to_maps_tip",
+        "Copy the compiled BSP into garrysmod/maps so the game can load it",
+        "Copier le BSP compilé dans garrysmod/maps pour que le jeu puisse le charger",
+    ),
+    (
+        "compile.launch_game_tip",
+        "Start Garry's Mod on the map when the compile succeeds",
+        "Lancer Garry's Mod sur la map quand la compilation réussit",
+    ),
     ("compile.game_args", "Game arguments", "Arguments du jeu"),
     (
         "compile.game_args_tip",
@@ -479,8 +494,8 @@ pub const TR: TrTable = &[
     ("compile.dev_addon_option", "Development addon", "Addon de développement"),
     (
         "compile.dev_addon_tip",
-        "Builds that do not pack copy your custom materials into garrysmod/addons/hammerpro_dev, which the game loads (restart it once after the first copy).",
-        "Les compilations qui n'empaquettent pas copient vos matériaux personnalisés dans garrysmod/addons/hammerpro_dev, que le jeu charge (redémarrez-le une fois après la première copie).",
+        "Builds that do not pack copy your custom content (materials, models, sounds, particles) into garrysmod/addons/hammerpro_dev, which the game loads (restart it once after the first copy).",
+        "Les compilations qui n'empaquettent pas copient votre contenu personnalisé (matériaux, modèles, sons, particules) dans garrysmod/addons/hammerpro_dev, que le jeu charge (redémarrez-le une fois après la première copie).",
     ),
     (
         "compile.dev_addon",

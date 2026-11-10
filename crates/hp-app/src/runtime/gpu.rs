@@ -32,6 +32,19 @@ impl VramPressure {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TextureStreaming {
+    pub enabled: bool,
+    pub active: bool,
+    pub textures: usize,
+    pub reduced: usize,
+    pub pending: usize,
+    pub bytes: u64,
+    pub full_bytes: u64,
+    pub budget: u64,
+    pub aggression: u32,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GpuRelease {
     BackgroundMaps,

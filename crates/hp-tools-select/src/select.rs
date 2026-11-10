@@ -1150,7 +1150,22 @@ impl SelectTool {
         }
     }
 
+    fn publish_drag(&self, state: &mut AppState) {
+        let live = self.drag.as_ref().filter(|d| d.transforms() && !d.elements && !d.is_clone());
+        let Some(d) = live else {
+            state.runtime.selection.drag = None;
+            return;
+        };
+        let matrix = d.matrix();
+        let slot = &mut state.runtime.selection.drag;
+        match slot {
+            Some(t) if t.objs.len() == d.objs.len() && t.objs.first() == d.objs.first() => t.matrix = matrix,
+            _ => *slot = Some(hp_app::runtime::DragTransform { objs: d.objs.clone().into(), matrix }),
+        }
+    }
+
     fn finish_drag(&mut self, state: &mut AppState) {
+        state.runtime.selection.drag = None;
         let Some(d) = self.drag.take() else { return };
         if d.is_modal() {
             state.runtime.selection.modal_transform = false;
@@ -1645,6 +1660,7 @@ impl Tool for SelectTool {
         self.cycle = None;
         self.pick_click = None;
         state.runtime.selection.modal_transform = false;
+        state.runtime.selection.drag = None;
     }
 
     fn view_input(&mut self, state: &mut AppState, input: &ViewInput<'_>) -> ToolFlow {
@@ -1671,6 +1687,7 @@ impl Tool for SelectTool {
             self.finish_drag(state);
             flow = ToolFlow::Handled;
         }
+        self.publish_drag(state);
         flow
     }
 
@@ -1692,7 +1709,9 @@ impl Tool for SelectTool {
     }
 
     fn key_input(&mut self, state: &mut AppState, ctx: &egui::Context) -> bool {
-        self.keys(state, ctx)
+        let used = self.keys(state, ctx);
+        self.publish_drag(state);
+        used
     }
 
     fn wheel(&mut self, state: &mut AppState, view: &ViewInfo, notches: f32, modifiers: Modifiers) -> ToolFlow {
@@ -1835,6 +1854,7 @@ impl Tool for SelectTool {
     }
 
     fn cancel(&mut self, state: &mut AppState) -> bool {
+        state.runtime.selection.drag = None;
         if let Some(d) = self.drag.take() {
             if d.is_modal() {
                 state.runtime.selection.modal_transform = false;

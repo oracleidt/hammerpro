@@ -54,6 +54,7 @@ pub struct PipeTool {
     points: Vec<DVec3>,
     hover: Option<Hover>,
     initialized: bool,
+    wheel: f32,
 }
 
 impl Default for PipeTool {
@@ -90,11 +91,40 @@ fn constrain(frame: &GridFrame, kind: ViewKind, last: DVec3, raw: DVec3, snap: b
 
 impl PipeTool {
     pub fn new() -> Self {
-        Self { options: PipeOptions::default(), kind: None, points: Vec::new(), hover: None, initialized: false }
+        Self {
+            options: PipeOptions::default(),
+            kind: None,
+            points: Vec::new(),
+            hover: None,
+            initialized: false,
+            wheel: 0.0,
+        }
     }
 
     pub fn points(&self) -> &[DVec3] {
         &self.points
+    }
+
+    pub fn spec(&self) -> &PipeSpec {
+        &self.options.spec
+    }
+
+    pub fn wheel_count(&self) -> (&'static str, u32) {
+        let s = &self.options.spec;
+        match s.shape {
+            Shape::Round => ("sides", s.sides),
+            Shape::Square => ("bend_slices", s.bend_slices),
+        }
+    }
+
+    pub fn step_wheel_count(&mut self, delta: i64) -> u32 {
+        let s = &mut self.options.spec;
+        let (slot, lo, hi) = match s.shape {
+            Shape::Round => (&mut s.sides, MIN_SIDES, MAX_SIDES),
+            Shape::Square => (&mut s.bend_slices, 1, MAX_SLICES),
+        };
+        *slot = (i64::from(*slot) + delta).clamp(i64::from(lo), i64::from(hi)) as u32;
+        *slot
     }
 
     fn ensure_init(&mut self, state: &AppState) {
@@ -298,6 +328,27 @@ impl Tool for PipeTool {
         self.handle_mouse(state, input.view, &m)
     }
 
+    fn wheel(&mut self, _state: &mut AppState, _view: &ViewInfo, notches: f32, mods: egui::Modifiers) -> ToolFlow {
+        if self.points.is_empty() || !mods.shift || mods.ctrl || mods.command || mods.alt || !notches.is_finite() {
+            self.wheel = 0.0;
+            return ToolFlow::Ignored;
+        }
+        self.wheel += notches;
+        let mut delta = 0i64;
+        while self.wheel >= 1.0 {
+            self.wheel -= 1.0;
+            delta += 1;
+        }
+        while self.wheel <= -1.0 {
+            self.wheel += 1.0;
+            delta -= 1;
+        }
+        if delta != 0 {
+            self.step_wheel_count(delta);
+        }
+        ToolFlow::Handled
+    }
+
     fn key_input(&mut self, state: &mut AppState, ctx: &egui::Context) -> bool {
         if !self.points.is_empty() && self.is_ready(state) && consume_plain_key(ctx, Key::Enter) {
             self.create(state);
@@ -362,6 +413,11 @@ impl Tool for PipeTool {
                 if let Some(last) = self.points.last() {
                     let text = tf!("pipe.label", fmt_len(last.distance(h.point)), p.bends, p.pieces.len());
                     paint_label(&painter, at, Align2::LEFT_TOP, &text, COLOR_PENDING);
+                    let count = match self.wheel_count() {
+                        ("sides", n) => tf!("pipe.count_sides", n),
+                        (_, n) => tf!("pipe.count_slices", n),
+                    };
+                    paint_label(&painter, at + Vec2::new(0.0, 20.0), Align2::LEFT_TOP, &count, COLOR_PENDING);
                 }
             }
             Err(e) => paint_label(&painter, at, Align2::LEFT_TOP, &e.to_string(), hp_app::theme::VIEW_ERROR),
@@ -480,7 +536,11 @@ impl Tool for PipeTool {
         Some(if self.points.is_empty() {
             t!("pipe.hint_idle").to_owned()
         } else {
-            tf!("pipe.hint_points", key_label(Key::Enter), back, escape)
+            let wheel = match self.options.spec.shape {
+                Shape::Round => t!("pipe.hint_wheel_sides"),
+                Shape::Square => t!("pipe.hint_wheel_slices"),
+            };
+            format!("{} {wheel}", tf!("pipe.hint_points", key_label(Key::Enter), back, escape))
         })
     }
 
@@ -489,6 +549,7 @@ impl Tool for PipeTool {
         self.points.clear();
         self.kind = None;
         self.hover = None;
+        self.wheel = 0.0;
         had
     }
 
@@ -541,7 +602,11 @@ impl Tool for PipeTool {
         let flag = |b: bool| if b { "on" } else { "off" }.to_owned();
         vec![
             ToolOption::new("shape", s.shape.name(), "square or round"),
-            ToolOption::new("sides", s.sides.to_string(), "side count of a round profile (5 to 48)"),
+            ToolOption::new(
+                "sides",
+                s.sides.to_string(),
+                "side count of a round profile (5 to 48; Shift+wheel changes it while a path is drawn)",
+            ),
             ToolOption::new(
                 "radius",
                 fmt_num(s.radius),
@@ -560,7 +625,11 @@ impl Tool for PipeTool {
                 fmt_num(s.bend_radius),
                 "radius of the 90 degree bends at the centerline, snapped to the grid",
             ),
-            ToolOption::new("bend_slices", s.bend_slices.to_string(), "brush slices per 90 degree bend (1 to 32)"),
+            ToolOption::new(
+                "bend_slices",
+                s.bend_slices.to_string(),
+                "brush slices per 90 degree bend (1 to 32; Shift+wheel changes it while a square pipe is drawn)",
+            ),
             ToolOption::new("collar_every", s.collar_every.to_string(), "a collar every N brushes of a run (0: none)"),
             ToolOption::new(
                 "collar_size",

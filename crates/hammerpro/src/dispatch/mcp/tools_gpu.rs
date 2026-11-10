@@ -11,10 +11,29 @@ domain! { "graphics memory";
         it, else an estimate), budget (render.vram_budget_mb, 0 means automatic: 90% of what the system gives \
         the process), pressure (normal, high above 85%, critical when over the budget or after an out of memory \
         error), the estimated split (geometry, textures, models, lightmaps, compiled world, other, maps parked \
-        in background tabs), the texture size limit applied under pressure, and what was freed so far.",
+        in background tabs), the texture size limit applied under pressure, what was freed so far, and \
+        texture_streaming (render.texture_streaming): how many textures far from every view are held at a smaller \
+        size, the graphics memory they use now against their full size, the texture budget (60% of the budget) \
+        and the reduction level used to stay under it (1 when the budget is not reached).",
         {}, [];
     get_performance: Read, "Frame time and quality",
-        "Frame time and quality of the 3D view: FPS, frame time, CPU time of the last 3D render (prepare, record,         submit), GPU time from timestamp queries when the graphics card supports them (shadows, scene, post         effects, water reflection), working set RAM, the graphics card, whether it is integrated, the performance         mode (render.performance_mode: Auto, Off, Low or VeryLow), the quality level in force (full, low, very_low),         whether Auto lowered it and at how many FPS, render.render_scale and render.perf_hud (the on-screen readout).         Auto only lowers the quality after the 3D view stays under 20 FPS for several seconds. Drive the camera         (set_camera, wait_frames) before reading to measure a view.",
+        "Frame time and quality of the 3D view: FPS, frame time, CPU time of the last 3D render (prepare, record, \
+        submit), GPU time from timestamp queries when the graphics card supports them (shadows, scene, post \
+        effects, water reflection), working set RAM, the graphics card, whether it is integrated, the performance \
+        mode (render.performance_mode: Auto, Off, Low or VeryLow), the quality level in force (full, low, very_low), \
+        whether Auto lowered it and at how many FPS, render.render_scale and render.perf_hud (the on-screen readout). \
+        Auto only lowers the quality after the 3D view stays under 20 FPS for several seconds while it draws continuously (frames spaced out on purpose while idle do not count). Drive the camera \
+        (set_camera, wait_frames) before reading to measure a view. Idle diagnostics: window_focused, animations_running (animated materials, sprite sway and \
+        light styles are drawn: false in the background unless render.animate_in_background is on, and after \
+        render.animation_idle_pause_s without input), frame_index (frames drawn so far), \
+        frames_from_events (frames drawn for input or window events), continuous_frames (frames drawn right after \
+        a request for an immediate repaint) and repaint_causes (source locations that asked for a repaint, with \
+        their counts since the start, most frequent first): an idle window draws no frame, so they stay still. frame_phases_ms splits the CPU time of the last \
+        frame of the window (begin, panels, tool, sync, lighting, views, chrome, dialogs, end) and worst_frame_ms \
+        holds the slowest frame since the previous get_performance call, average_frame_ms the average of the \
+        frames_since_last_read frames drawn since that call. views_ms gives, for each of the four \
+        views in the last frame, the CPU time spent building its overlay (layers, grid, tool), drawing it (or reusing \
+        its last image when nothing changed: rendered false) and painting its labels, with its overlay item count.",
         {}, [];
     run_benchmark: Editor, "Benchmark the 3D view",
         "Turn the 3D camera through a full circle around its position over a number of frames (the camera is         put back afterwards) and measure the frame time of the real window: average FPS, frame time average,         95th percentile and worst, CPU render time, GPU time per stage when the card supports timestamp         queries, and the working set RAM at the start, end and peak. It starts at once; call wait_frames, then         get_performance: its benchmark field is running while it runs, then holds the result. vsync caps the         FPS at the refresh rate, so compare the CPU and GPU milliseconds as well.",
@@ -72,7 +91,24 @@ fn get_gpu_memory(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
         },
         "last_release": g.last_release,
         "warning": g.warning,
+        "texture_streaming": texture_streaming_json(state),
     })))
+}
+
+fn texture_streaming_json(state: &AppState) -> serde_json::Value {
+    let t = state.assets.texture_streaming();
+    json!({
+        "enabled": state.settings.render.texture_streaming,
+        "active": t.active,
+        "textures": t.textures,
+        "reduced": t.reduced,
+        "loading": t.pending,
+        "texture_mb": mb(t.bytes),
+        "full_size_mb": mb(t.full_bytes),
+        "saved_mb": mb(t.full_bytes.saturating_sub(t.bytes)),
+        "budget_mb": mb(t.budget),
+        "reduction_level": t.aggression,
+    })
 }
 
 fn bench_json(p: &hp_app::runtime::PerfRuntime) -> serde_json::Value {
@@ -104,7 +140,7 @@ fn get_performance(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
     let p = &state.runtime.render.perf;
     let s = &p.sample;
     let level = p.level(r.performance_mode);
-    Ok(ToolResult::json(json!({
+    let out = json!({
         "fps": state.frame.fps,
         "frame_ms": s.frame_ms,
         "cpu_ms": {
@@ -150,7 +186,50 @@ fn get_performance(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
         "benchmark": bench_json(p),
         "views_rendered": state.runtime.render.views_rendered,
         "views_reused": state.runtime.render.views_reused,
-    })))
+        "window_focused": state.runtime.render.focused,
+        "animations_running": state.runtime.render.animation.is_some(),
+        "frame_index": state.frame.index,
+        "frames_from_events": p.frames_from_events,
+        "continuous_frames": p.continuous_frames,
+        "repaint_causes": p.repaint_causes.iter().map(|c| json!({ "at": c.at, "count": c.count })).collect::<Vec<_>>(),
+        "frame_phases_ms": phases_json(&p.frame_phases),
+        "views_ms": p.views.iter().map(|v| json!({
+            "overlay": v.overlay_ms,
+            "render": v.render_ms,
+            "paint": v.paint_ms,
+            "overlay_items": v.overlay_items,
+            "rendered": v.rendered,
+        })).collect::<Vec<_>>(),
+        "worst_frame_ms": phases_json(&p.worst_frame),
+        "average_frame_ms": phases_json(&p.phase_sum.divided(p.phase_frames)),
+        "frames_since_last_read": p.phase_frames,
+        "adaptive_lighting": state.gfx.as_ref().map(|g| {
+            let a = g.renderer.adaptive_stats();
+            json!({
+                "enabled": a.enabled,
+                "level": a.level,
+                "max_level": a.max_level,
+                "gpu_ms": a.gpu_ms,
+                "target_ms": a.target_ms,
+                "changes": a.changes,
+                "gpu_timestamps": a.timestamps,
+            })
+        }),
+    });
+    let p = &mut state.runtime.render.perf;
+    p.worst_frame = hp_app::runtime::FramePhases::default();
+    p.phase_sum = hp_app::runtime::FramePhases::default();
+    p.phase_frames = 0;
+    Ok(ToolResult::json(out))
+}
+
+fn phases_json(f: &hp_app::runtime::FramePhases) -> serde_json::Value {
+    let mut out = serde_json::Map::new();
+    out.insert("total".to_owned(), json!(f.total_ms));
+    for (name, ms) in hp_app::runtime::FRAME_PHASES.iter().zip(f.ms) {
+        out.insert((*name).to_owned(), json!(ms));
+    }
+    serde_json::Value::Object(out)
 }
 
 fn run_benchmark(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
@@ -187,6 +266,8 @@ mod tests {
         assert_eq!(m["budget_mb"], 4096);
         assert_eq!(m["pressure"], "normal");
         assert!(m["estimate_mb"]["total"].is_number());
+        assert_eq!(m["texture_streaming"]["enabled"], true);
+        assert_eq!(m["texture_streaming"]["reduced"], 0);
         ok(&mut s, "free_gpu_memory", json!({ "lower_textures": true }));
         assert_eq!(s.runtime.gpu.release_request, Some(true));
         ok(&mut s, "free_gpu_memory", json!({}));

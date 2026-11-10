@@ -19,6 +19,8 @@ The **Target game** row at the top tells which game the open map is for (kept in
 
 ## Settings
 
+Each row has its label on the left, aligned with the others, and its options on the right. When the window is narrow or the labels are longer (French, Russian), a row continues on the next line instead of cutting its options off, and the steps keep each label next to its list. Hover an option to read what it does.
+
 | Option | What it does | Default |
 |---|---|---|
 | **Compiler** | The compiler of the game of the map: **Hammer Pro (built-in)**, the Valve tools found next to the game, or one of yours. **Edit compilers...** opens the **Compilers** tab. With another compiler, the window shows **Compiled by ...**: the preset, the modes and the dynamic range become its flags, and the option menus, the extra arguments and the smart recompile (which belong to Hammer Pro's compiler) are greyed out. See [Choosing a compiler](compilers.md). | Hammer Pro (built-in) |
@@ -35,8 +37,8 @@ The **Target game** row at the top tells which game the open map is for (kept in
 | **Before: Save the map first** | Also saves your work. The compile itself uses a copy and never needs a save. | off |
 | **Before: Compile hidden objects** | Like Hammer, objects hidden in the editor (visgroups, Hide) are left out unless this is checked. Hidden lights get a warning. | off |
 | **Before: Compile leaking maps anyway** | Off: the compile stops right after the geometry when the map leaks (`-leaktest`). | off |
-| **Content: Pack custom content** | Packs the custom materials and models the map uses into the BSP, with a policy: **Release builds only** (Final compiles and releases) or **Always**. | on, Release builds only |
-| **Content: Development addon** | Builds that do not pack copy your custom materials into `garrysmod/addons/hammerpro_dev`, which the game loads (restart the game once after the first copy). Also holds the script of `point_hammerpro_skybox`. | on |
+| **Content: Pack custom content** | Packs the custom materials, models, sounds, particle files (with the `maps/<map>_particles.txt` manifest the game needs to load them), the map's own soundscape and level sound scripts, sky, projected textures and other files the map uses into the BSP, with a policy: **Release builds only** (Final compiles and releases) or **Always**. | on, Release builds only |
+| **Content: Development addon** | Builds that do not pack copy the same custom content (materials, models, sounds, particle files with their manifest, map scripts) into `garrysmod/addons/hammerpro_dev`, which the game loads (restart the game once after the first copy). Also holds the script of `point_hammerpro_skybox`. | on |
 | **Content: Export custom materials** | Also copies the used materials of your custom texture folders into the game folder. Not needed to compile: the compiler always sees them. | off |
 | **After: Copy to the maps folder** | Copies the BSP to `garrysmod/maps` (or the **Maps folder** of Advanced). | on |
 | **After: Launch the game** | Starts the game on the map. **Through Steam** opens it with a `steam://` link instead of the game executable. | on, off |

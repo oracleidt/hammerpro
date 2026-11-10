@@ -8,7 +8,7 @@ use parking_lot::Mutex;
 
 use crate::AssetManager;
 use crate::material::guess_tool;
-use crate::models::{PreparedModel, entity_matrix, model_data_key};
+use crate::models::{PickGeometry, PreparedModel, SIDE_BACK, SIDE_BOTH, entity_matrix, model_data_key};
 use crate::registry::AnaEntry;
 
 const LEAF: usize = 4;
@@ -167,10 +167,30 @@ impl TriBvh {
 
 type MeshKey = (String, u32);
 type CachedMesh = (Weak<PreparedModel>, Arc<TriBvh>);
+type CachedCompact = (Weak<PickGeometry>, Arc<TriBvh>);
 
 #[derive(Default)]
 pub(crate) struct PickMeshes {
     map: Mutex<AHashMap<MeshKey, CachedMesh>>,
+    compact: Mutex<AHashMap<MeshKey, CachedCompact>>,
+}
+
+pub(crate) fn compact_triangles(geo: &PickGeometry, body: Option<u32>) -> Vec<Tri> {
+    let mut tris = Vec::new();
+    for part in geo.parts_for(body) {
+        for (t, side) in part.indices.chunks_exact(3).zip(&part.sides) {
+            let v = |i: u32| part.positions.get(i as usize).map(|p| Vec3::from_array(*p));
+            let (Some(a), Some(b), Some(c)) = (v(t[0]), v(t[1]), v(t[2])) else { continue };
+            let face = (b - a).cross(c - a);
+            let n = match *side {
+                SIDE_BOTH => Vec3::ZERO,
+                SIDE_BACK => -face,
+                _ => face,
+            };
+            tris.push(Tri { p: [a, b, c], n });
+        }
+    }
+    tris
 }
 
 fn oriented(p: [Vec3; 3], shading: Vec3) -> Tri {
@@ -220,6 +240,24 @@ impl PickMeshes {
         map.insert(key, (Arc::downgrade(data), Arc::clone(&bvh)));
         bvh
     }
+
+    fn get_compact(&self, key: MeshKey, geo: &Arc<PickGeometry>, body: Option<u32>) -> Arc<TriBvh> {
+        let mut map = self.compact.lock();
+        if let Some((made_from, bvh)) = map.get(&key)
+            && made_from.ptr_eq(&Arc::downgrade(geo))
+        {
+            return Arc::clone(bvh);
+        }
+        if map.len() >= MAX_CACHED {
+            map.retain(|_, (w, _)| w.strong_count() > 0);
+            if map.len() >= MAX_CACHED {
+                map.clear();
+            }
+        }
+        let bvh = Arc::new(TriBvh::build(compact_triangles(geo, body)));
+        map.insert(key, (Arc::downgrade(geo), Arc::clone(&bvh)));
+        bvh
+    }
 }
 
 fn box_ray(b: &Aabb, ray: &Ray) -> EntityRay {
@@ -257,11 +295,17 @@ impl AssetManager {
         };
         let plain = d.body == 0 && d.anim.is_none();
         let key = if plain { path.clone() } else { model_data_key(path, d.anim.as_deref()) };
-        let Some(crate::models::ModelEntry::Ready(data)) = self.models.map.get(&key) else {
-            return EntityRay::Bounds;
+        let bvh = match (self.models.map.get(&key), self.models.pick.get(&key)) {
+            (Some(crate::models::ModelEntry::Ready(data)), _) => {
+                let body = (!plain).then(|| data.body_key(d.body));
+                self.pick_meshes.get((key, body.unwrap_or(0)), data, body)
+            }
+            (_, Some(geo)) => {
+                let body = (!plain).then(|| crate::models::body_key(&geo.body_parts, d.body));
+                self.pick_meshes.get_compact((key, body.unwrap_or(0)), geo, body)
+            }
+            _ => return EntityRay::Bounds,
         };
-        let body = (!plain).then(|| data.body_key(d.body));
-        let bvh = self.pick_meshes.get((key, body.unwrap_or(0)), data, body);
         if bvh.is_empty() {
             return EntityRay::Bounds;
         }
@@ -332,6 +376,48 @@ mod tests {
         assert!(open.ray(DVec3::new(0.2, 0.2, -5.0), DVec3::Z).is_some(), "no shading normal: both sides");
         assert!(b.ray(DVec3::NAN, DVec3::Z).is_none());
         assert!(TriBvh::build(vec![Tri { p: [Vec3::ZERO; 3], n: Vec3::Z }]).is_empty());
+    }
+
+    #[test]
+    fn compact_pick_geometry_hits_exactly_like_the_full_model() {
+        use crate::models::{PreparedModel, PreparedPart};
+        let v =
+            |x: f32, y: f32, z: f32, n: [f32; 3]| hp_render::Vertex { pos: [x, y, z], normal: n, ..Default::default() };
+        let up = [0.0, 0.0, 1.0];
+        let quad = |z: f32, choice: usize, normal: [f32; 3]| PreparedPart {
+            skin_ref: 0,
+            body_part: 0,
+            choice,
+            vertices: vec![
+                v(-8.0, -8.0, z, normal),
+                v(8.0, -8.0, z, normal),
+                v(8.0, 8.0, z, normal),
+                v(-8.0, 8.0, z, normal),
+            ],
+            indices: vec![0, 1, 2, 0, 2, 3, 0, 2, 1],
+            tangents: Vec::new(),
+            color_index: Vec::new(),
+        };
+        let model = PreparedModel {
+            parts: vec![quad(0.0, 0, up)],
+            variant_parts: vec![quad(16.0, 1, [0.0; 3])],
+            body_parts: vec![(1, 2)],
+            ..Default::default()
+        };
+        let geo = PickGeometry::of(&model);
+        assert!(geo.bytes() < model.geometry_bytes() / 2, "{} vs {}", geo.bytes(), model.geometry_bytes());
+        for body in [None, Some(0), Some(1)] {
+            let full = TriBvh::build(model_triangles(&model, body));
+            let compact = TriBvh::build(compact_triangles(&geo, body));
+            for (o, d) in [
+                (DVec3::new(1.0, 2.0, 50.0), DVec3::NEG_Z),
+                (DVec3::new(1.0, 2.0, -50.0), DVec3::Z),
+                (DVec3::new(3.0, -1.0, 8.0), DVec3::Z),
+                (DVec3::new(30.0, 0.0, 50.0), DVec3::NEG_Z),
+            ] {
+                assert_eq!(full.ray(o, d), compact.ray(o, d), "body {body:?} from {o:?}");
+            }
+        }
     }
 
     #[test]

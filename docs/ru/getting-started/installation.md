@@ -47,7 +47,7 @@ Hammer Pro 1.0.2 : это одна программа, `hammerpro.exe`, без �
 | Автосохранение и экстренное сохранение | `%LOCALAPPDATA%\HammerPro\autosave\` |
 | Кэши (миниатюры, данные редактора карт в формате `maps\`) | `%LOCALAPPDATA%\HammerPro\` |
 
-Hammer Pro также может записывать в игру: скомпилированные карты : в `garrysmod/maps` (опция **Копировать в папку карт** окна компиляции), пользовательские материалы тестовых сборок : в аддон `garrysmod/addons/hammerpro_dev`, а дополнительный мост : в `garrysmod/addons/hammerpro_bridge`. Полный список находится в [Файлы и папки](../reference/files-and-folders.md).
+Hammer Pro также может записывать в игру: скомпилированные карты : в `garrysmod/maps` (опция **Копировать в папку карт** окна компиляции), пользовательский контент тестовых сборок : в аддон `garrysmod/addons/hammerpro_dev`, а дополнительный мост : в `garrysmod/addons/hammerpro_bridge`. Полный список находится в [Файлы и папки](../reference/files-and-folders.md).
 
 <a id="uninstalling"></a>
 ## Удаление

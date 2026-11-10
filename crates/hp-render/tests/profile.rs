@@ -1,5 +1,7 @@
 use hp_render::*;
 
+static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn gpu() -> Option<(wgpu::Device, wgpu::Queue)> {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
@@ -50,6 +52,7 @@ fn view(ortho: bool) -> ViewParams {
 
 #[test]
 fn the_3d_render_reports_cpu_and_gpu_times() {
+    let _serial = SERIAL.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let Some((device, queue)) = gpu() else {
         eprintln!("no GPU adapter available: test skipped");
         return;
@@ -74,16 +77,23 @@ fn the_3d_render_reports_cpu_and_gpu_times() {
 
 #[test]
 fn quality_caps_resize_the_shadow_maps_and_back() {
+    let _serial = SERIAL.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     let Some((device, queue)) = gpu() else {
         eprintln!("no GPU adapter available: test skipped");
         return;
     };
     let mut r = Renderer::new(&device, &queue);
     assert_eq!(r.quality(), Quality::default());
-    let low = Quality { sun_shadow_size: 1024, local_shadow_size: 128 };
+    let low = Quality { sun_shadow_size: 1024, local_shadow_size: 128, adaptive: false };
     r.set_quality(low);
     assert_eq!(r.quality(), low);
     r.set_quality(low);
     r.set_quality(Quality::default());
     assert_eq!(r.quality(), Quality::default());
+    assert!(!r.adaptive_stats().enabled, "a fixed quality never adapts");
+    let auto = Quality { adaptive: true, ..Quality::default() };
+    r.set_quality(auto);
+    let stats = r.adaptive_stats();
+    assert!(stats.enabled && stats.level == 0 && stats.max_level == 3, "{stats:?}");
+    assert_eq!(r.applied_quality(), auto, "nothing is lowered before the card is measured");
 }

@@ -68,6 +68,21 @@ impl AssetManager {
     }
 
     fn preload_model_materials(&mut self, key: &str, skin: u32, body: u32) -> Result<Vec<String>, PreloadResult> {
+        if body == 0
+            && matches!(self.models.map.get(key), Some(ModelEntry::Cached(_)))
+            && let Some(render) = self.models.render.get(&(key.to_owned(), skin))
+            && render.id.is_some()
+        {
+            let names = render
+                .materials
+                .iter()
+                .filter_map(|id| match &self.mats.records.get((*id as usize).wrapping_sub(1))?.source {
+                    crate::registry::MatSource::Asset { name, .. } => Some(name.clone()),
+                    crate::registry::MatSource::Flat(_) => None,
+                })
+                .collect();
+            return Ok(names);
+        }
         let Some(model) = self.model_data(key) else {
             return Err(if matches!(self.models.map.get(key), Some(ModelEntry::Failed(_))) {
                 PreloadResult::Missing
@@ -86,6 +101,7 @@ impl AssetManager {
         if self.fs.is_none() {
             return PreloadResult::Missing;
         }
+        self.hold_streaming_for_preload();
         match resource {
             PreloadResource::Material { name, context } => {
                 let kind = match context {

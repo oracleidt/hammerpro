@@ -37,6 +37,7 @@ pub struct RenderDisplay {
     pub sky_occlusion: bool,
     pub sun_glow: bool,
     pub prop_shadows: StaticPropShadows,
+    pub texture_streaming: bool,
 }
 
 pub const HIDE_NODRAW: u8 = 1;
@@ -78,6 +79,7 @@ impl Default for RenderDisplay {
             sky_occlusion: true,
             sun_glow: true,
             prop_shadows: StaticPropShadows::Collision,
+            texture_streaming: true,
         }
     }
 }
@@ -126,6 +128,7 @@ impl RenderDisplay {
             sky_occlusion: r.sky_occlusion && plan.sky_occlusion,
             sun_glow: r.sun_glow && plan.sun_glow,
             prop_shadows: prop_shadows(s),
+            texture_streaming: r.texture_streaming,
         }
     }
 }
@@ -203,11 +206,71 @@ pub struct RenderRuntime {
     pub views_rendered: u64,
     pub views_reused: u64,
     pub perf: super::perf::PerfRuntime,
+    pub animation: Option<std::time::Duration>,
+    pub focused: bool,
+    pub last_input: f64,
+}
+
+static ANIMATIONS_RUNNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+pub fn animations_running() -> bool {
+    ANIMATIONS_RUNNING.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+impl RenderRuntime {
+    pub fn update_animation(
+        &mut self,
+        settings: &crate::settings::RenderSettings,
+        focused: bool,
+        input: bool,
+        now: f64,
+    ) {
+        if input {
+            self.last_input = now;
+        }
+        self.focused = focused;
+        self.animation = settings.animation_interval(focused, (now - self.last_input).max(0.0));
+        ANIMATIONS_RUNNING.store(self.animation.is_some(), std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn request_animation_frame(&self, ctx: &egui::Context) -> bool {
+        match self.animation {
+            Some(wait) if wait.is_zero() => {
+                ctx.request_repaint();
+                true
+            }
+            Some(wait) => {
+                ctx.request_repaint_after(wait);
+                true
+            }
+            None => false,
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn animation_clock_follows_focus_and_input() {
+        let settings = crate::settings::RenderSettings::default();
+        let mut rt = RenderRuntime::default();
+        rt.update_animation(&settings, true, true, 10.0);
+        assert!(rt.animation.is_some() && rt.focused);
+        rt.update_animation(&settings, true, false, 129.0);
+        assert!(rt.animation.is_some(), "119 s without input");
+        rt.update_animation(&settings, true, false, 131.0);
+        assert!(rt.animation.is_none(), "idle for more than two minutes");
+        rt.update_animation(&settings, true, true, 132.0);
+        assert!(rt.animation.is_some(), "any input wakes it");
+        rt.update_animation(&settings, false, true, 133.0);
+        assert!(rt.animation.is_none() && !rt.focused, "background");
+        let ctx = egui::Context::default();
+        assert!(!rt.request_animation_frame(&ctx));
+        rt.update_animation(&settings, true, true, 134.0);
+        assert!(rt.request_animation_frame(&ctx));
+    }
 
     #[test]
     fn display_follows_settings_and_is_per_thread() {

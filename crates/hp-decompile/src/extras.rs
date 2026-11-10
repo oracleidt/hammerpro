@@ -315,41 +315,96 @@ pub(crate) fn overlays(
     let mut lost = 0;
     let mut out = Vec::with_capacity(l.overlays.len());
     for o in &l.overlays {
-        let mut ids: Vec<Id> = Vec::new();
-        for &f in &o.faces {
-            let Ok(f) = usize::try_from(f) else { continue };
-            let offset =
-                models.get(f).copied().flatten().and_then(|m| model_offsets.get(&m)).copied().unwrap_or_default();
-            if let Some(id) = sides.side_of_face(l, f, offset)
-                && !ids.contains(&id)
-            {
-                ids.push(id);
-            }
-        }
+        let ids = overlay_side_ids(l, sides, &models, model_offsets, &o.faces);
         if ids.is_empty() {
             lost += 1;
         }
-        let (material, _) = crate::solids::side_material(l, i32::from(o.texinfo), map_name);
-        let basis_u = DVec3::new(o.uv_points[0].z, o.uv_points[1].z, o.uv_points[2].z);
-        let normal = o.normal;
-        let basis_v = normal.cross(basis_u);
         let mut e = Entity { classname: "info_overlay".to_owned(), ..Entity::default() };
         e.set("angles", "0 0 0");
-        e.set("BasisNormal", fmt_vec3(round_dir(normal)));
-        e.set("BasisOrigin", fmt_vec3(snap_vec(o.origin)));
-        e.set("BasisU", fmt_vec3(round_dir(basis_u)));
-        e.set("BasisV", fmt_vec3(round_dir(basis_v)));
-        e.set("EndU", num(o.u[1]));
-        e.set("EndV", num(o.v[1]));
-        e.set("material", material);
+        e.props.extend(overlay_keys(l, o, &ids, map_name));
         e.set("RenderOrder", o.render_order.to_string());
-        e.set("sides", ids.iter().map(Id::to_string).collect::<Vec<_>>().join(" "));
-        e.set("StartU", num(o.u[0]));
-        e.set("StartV", num(o.v[0]));
-        for (k, p) in o.uv_points.iter().enumerate() {
-            e.set(&format!("uv{k}"), fmt_vec3(DVec3::new(snap(p.x), snap(p.y), 0.0)));
-        }
         e.set("origin", fmt_vec3(snap_vec(o.origin)));
+        out.push(e);
+    }
+    (out, lost)
+}
+
+fn overlay_side_ids(
+    l: &Lumps,
+    sides: &SideIndex,
+    models: &[Option<usize>],
+    model_offsets: &HashMap<usize, DVec3>,
+    faces: &[i32],
+) -> Vec<Id> {
+    let mut ids: Vec<Id> = Vec::new();
+    for &f in faces {
+        let Ok(f) = usize::try_from(f) else { continue };
+        let offset = models.get(f).copied().flatten().and_then(|m| model_offsets.get(&m)).copied().unwrap_or_default();
+        if let Some(id) = sides.side_of_face(l, f, offset)
+            && !ids.contains(&id)
+        {
+            ids.push(id);
+        }
+    }
+    ids
+}
+
+fn overlay_keys(l: &Lumps, o: &crate::lumps::Overlay, ids: &[Id], map_name: &str) -> Vec<(String, String)> {
+    let (material, _) = crate::solids::side_material(l, i32::from(o.texinfo), map_name);
+    let basis_u = DVec3::new(o.uv_points[0].z, o.uv_points[1].z, o.uv_points[2].z);
+    let normal = o.normal;
+    let basis_v = if o.uv_points[3].z != 0.0 { -normal.cross(basis_u) } else { normal.cross(basis_u) };
+    let mut keys = vec![
+        ("material".to_owned(), material),
+        ("sides".to_owned(), ids.iter().map(Id::to_string).collect::<Vec<_>>().join(" ")),
+        ("StartU".to_owned(), num(o.u[0])),
+        ("EndU".to_owned(), num(o.u[1])),
+        ("StartV".to_owned(), num(o.v[0])),
+        ("EndV".to_owned(), num(o.v[1])),
+        ("BasisOrigin".to_owned(), fmt_vec3(snap_vec(o.origin))),
+        ("BasisU".to_owned(), fmt_vec3(round_dir(basis_u))),
+        ("BasisV".to_owned(), fmt_vec3(round_dir(basis_v))),
+        ("BasisNormal".to_owned(), fmt_vec3(round_dir(normal))),
+    ];
+    for (k, p) in o.uv_points.iter().enumerate() {
+        keys.push((format!("uv{k}"), fmt_vec3(DVec3::new(snap(p.x), snap(p.y), 0.0))));
+    }
+    keys
+}
+
+pub(crate) fn water_overlays(
+    l: &Lumps,
+    sides: &SideIndex,
+    model_offsets: &HashMap<usize, DVec3>,
+    map_name: &str,
+) -> (Vec<Entity>, usize) {
+    let models = face_models(l);
+    let mut lost = 0;
+    let mut out = Vec::with_capacity(l.water_overlays.len());
+    for o in &l.water_overlays {
+        let ids = overlay_side_ids(l, sides, &models, model_offsets, &o.faces);
+        if ids.is_empty() {
+            lost += 1;
+        }
+        let keys = overlay_keys(l, o, &ids, map_name);
+        let mut data = hp_kv::Block::new("overlaydata");
+        for (k, v) in &keys {
+            data.push_prop(k.as_str(), v.as_str());
+        }
+        let mut block = hp_kv::Block::new("overlaytransition");
+        block.push_child(data);
+        let mut e = Entity { classname: "info_overlay_transition".to_owned(), ..Entity::default() };
+        for (k, v) in keys.iter().filter(|(k, _)| k == "material") {
+            e.set(k, v.as_str());
+        }
+        e.set("sides", "");
+        e.set("sides2", ids.iter().map(Id::to_string).collect::<Vec<_>>().join(" "));
+        e.set("LengthTexcoordStart", num(o.u[0]));
+        e.set("LengthTexcoordEnd", num(o.u[1]));
+        e.set("WidthTexcoordStart", num(o.v[0]));
+        e.set("WidthTexcoordEnd", num(o.v[1]));
+        e.set("origin", fmt_vec3(snap_vec(o.origin)));
+        e.extra_blocks.push(block);
         out.push(e);
     }
     (out, lost)

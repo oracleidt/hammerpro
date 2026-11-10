@@ -98,7 +98,7 @@ Groupe **Contenu** (étape de géométrie ; l'étape d'éclairage lit les mêmes
 | `-keepstalezip` | Garde les fichiers empaquetés dans le BSP précédent (le reste est reconstruit). | désactivé |
 | `-embed <dossier>` | Dossier ajouté au contenu et empaqueté en entier dans le BSP. Compilations complètes seulement. | non utilisé |
 
-La compilation de l'éditeur transmet les sources de contenu que l'éditeur affiche, donc un matériau visible dans l'éditeur n'est jamais compilé comme manquant. Vos dossiers de textures personnalisés sont toujours visibles par le compilateur.
+La compilation de l'éditeur transmet les sources de contenu que l'éditeur affiche, donc un matériau visible dans l'éditeur n'est jamais compilé comme manquant. Vos dossiers de textures personnalisés sont toujours visibles par le compilateur : les matériaux et les modèles personnalisés utilisés par la map sont copiés pour lui dans un dossier de jeu généré, donc un `prop_static` avec un modèle d'un dossier personnalisé garde son prop.
 
 ## Qualité de l'éclairage
 

@@ -15,6 +15,7 @@ use super::background::{ContentKey, snapshot_is_cheap};
 use super::plan::{self, PlanExtras, effective_modes};
 use super::snapshot::{self, CompileSidecar, SnapshotInput, SnapshotOutput};
 use super::{CompileDialog, ToolProbe, game_root, history_file, is_iteration_preset};
+use crate::util::{Form, lazy_hover_text, wrap_group};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum BrowseTarget {
@@ -326,19 +327,40 @@ impl CompileDialog {
         }
     }
 
+    fn form(&mut self, ui: &Ui) -> Form {
+        let key = (hp_app::i18n::lang(), ui.ctx().pixels_per_point().to_bits());
+        if let Some((k, form)) = self.form
+            && k == key
+        {
+            return form;
+        }
+        let labels = [
+            t!("compilers.label"),
+            t!("compile.preset"),
+            t!("compile.steps"),
+            t!("compile.cordon"),
+            t!("compile.static_props"),
+            t!("compile.before"),
+            t!("compile.content"),
+            t!("compile.after"),
+            t!("compile.game_args"),
+            t!("compile.threads"),
+        ];
+        let form = Form::new(ui, &labels, 90.0, 190.0);
+        self.form = Some((key, form));
+        form
+    }
+
     fn main_grid(&mut self, ui: &mut Ui, state: &mut AppState, cordons: usize) {
-        let lines = self.preview.lines.clone();
+        let form = self.form(ui);
         let (_, detected) = super::compilers_ui::detection(ui.ctx(), state);
         let mut open_compilers = false;
-        egui::Grid::new("hp_compile_compiler_grid").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
-            ui.label(t!("compilers.label")).on_hover_text(t!("compilers.label_tip"));
-            ui.horizontal(|ui| {
-                super::compilers_ui::picker(ui, state, &detected, "dialog");
-                if ui.button(t!("compilers.edit")).clicked() {
-                    open_compilers = true;
-                }
-            });
-            ui.end_row();
+        ui.spacing_mut().item_spacing.y = 6.0;
+        form.row(ui, egui::WidgetText::from(t!("compilers.label")), |ui| {
+            super::compilers_ui::picker(ui, state, &detected, "dialog");
+            if ui.button(t!("compilers.edit")).on_hover_text(t!("compilers.label_tip")).clicked() {
+                open_compilers = true;
+            }
         });
         if open_compilers {
             self.tab = super::Tab::Compilers;
@@ -352,32 +374,29 @@ impl CompileDialog {
         let external = self.external_name.is_some();
         let s = &mut state.settings.compile;
         normalize_steps(s);
-        egui::Grid::new("hp_compile_grid").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
-            ui.label(t!("compile.preset"));
-            ui.horizontal(|ui| {
-                for (p, key, tip) in [
-                    (CompilePresetSetting::Draft, "compile.preset.draft", "compile.preset.draft_tip"),
-                    (CompilePresetSetting::Normal, "compile.preset.normal", "compile.preset.normal_tip"),
-                    (CompilePresetSetting::Final, "compile.preset.final", "compile.preset.final_tip"),
-                    (CompilePresetSetting::Custom, "compile.preset.custom", "compile.preset.custom_tip"),
-                ] {
-                    if ui.add(egui::Button::selectable(s.preset == p, t!(key))).on_hover_text(t!(tip)).clicked() {
-                        plan::apply_preset(s, p);
-                    }
+        form.row(ui, t!("compile.preset"), |ui| {
+            for (p, key, tip) in [
+                (CompilePresetSetting::Draft, "compile.preset.draft", "compile.preset.draft_tip"),
+                (CompilePresetSetting::Normal, "compile.preset.normal", "compile.preset.normal_tip"),
+                (CompilePresetSetting::Final, "compile.preset.final", "compile.preset.final_tip"),
+                (CompilePresetSetting::Custom, "compile.preset.custom", "compile.preset.custom_tip"),
+            ] {
+                if ui.add(egui::Button::selectable(s.preset == p, t!(key))).on_hover_text(t!(tip)).clicked() {
+                    plan::apply_preset(s, p);
                 }
-                ui.separator();
-                ui.add_enabled(
-                    is_iteration_preset(s.preset) && !external,
-                    egui::Checkbox::new(&mut s.smart_recompile, t!("compile.smart")),
-                )
-                .on_hover_text(t!("compile.smart_tip"));
-            });
-            ui.end_row();
+            }
+            ui.separator();
+            ui.add_enabled(
+                is_iteration_preset(s.preset) && !external,
+                egui::Checkbox::new(&mut s.smart_recompile, t!("compile.smart")),
+            )
+            .on_hover_text(t!("compile.smart_tip"));
+        });
 
-            ui.label(t!("compile.steps"));
+        form.row(ui, t!("compile.steps"), |ui| {
             ui.add_enabled_ui(!s.expert || external, |ui| {
-                ui.horizontal(|ui| {
-                    let mut changed = false;
+                let mut changed = false;
+                wrap_group(ui, "bsp", |ui| {
                     ui.label(t!("compile.step.bsp"));
                     egui::ComboBox::from_id_salt("hp_compile_bsp")
                         .selected_text(bsp_label(s.run_bsp, s.bsp_mode))
@@ -402,6 +421,8 @@ impl CompileDialog {
                         })
                         .response
                         .on_hover_text(t!("compile.bsp_tip"));
+                });
+                wrap_group(ui, "vis", |ui| {
                     ui.label(t!("compile.visibility"));
                     egui::ComboBox::from_id_salt("hp_compile_vis")
                         .selected_text(vis_label(s.run_vis, s.vis_mode))
@@ -425,6 +446,8 @@ impl CompileDialog {
                         })
                         .response
                         .on_hover_text(t!("compile.vis_tip"));
+                });
+                wrap_group(ui, "rad", |ui| {
                     ui.label(t!("compile.step.rad"));
                     egui::ComboBox::from_id_salt("hp_compile_rad")
                         .selected_text(rad_label(s.run_rad, s.rad_mode))
@@ -447,6 +470,8 @@ impl CompileDialog {
                             pick(ui, true, RadModeSetting::Normal);
                             pick(ui, true, RadModeSetting::Final);
                         });
+                });
+                wrap_group(ui, "lighting", |ui| {
                     ui.label(t!("compile.lighting"));
                     egui::ComboBox::from_id_salt("hp_compile_lighting")
                         .selected_text(match s.lighting {
@@ -465,27 +490,31 @@ impl CompileDialog {
                         })
                         .response
                         .on_hover_text(t!("compile.lighting_tip"));
-                    if changed {
-                        settle_preset(s);
-                    }
-                })
+                });
+                if changed {
+                    settle_preset(s);
+                }
             });
-            ui.end_row();
-            if s.expert && self.external_name.is_none() {
-                ui.label("");
+        });
+        if s.expert && self.external_name.is_none() {
+            form.row(ui, "", |ui| {
                 ui.label(RichText::new(t!("compile.expert.active")).color(theme::warning()).small());
-                ui.end_row();
-            }
+            });
+        }
 
-            ui.label("");
+        let lines = &self.preview.lines;
+        ui.horizontal_top(|ui| {
+            ui.add_space(form.label_width() + ui.spacing().item_spacing.x);
             ui.vertical(|ui| {
-                for line in &lines {
+                for line in lines {
                     let text = RichText::new(&line.line).monospace().small().weak();
-                    let mut tip = super::step_name(line.kind).to_owned();
-                    for (flag, explanation) in &line.flags {
-                        tip.push_str(&format!("\n{flag}: {explanation}"));
-                    }
-                    let resp = ui.add(egui::Label::new(text).truncate()).on_hover_text(tip);
+                    let resp = lazy_hover_text(ui.add(egui::Label::new(text).truncate()), || {
+                        let mut tip = super::step_name(line.kind).to_owned();
+                        for (flag, explanation) in &line.flags {
+                            tip.push_str(&format!("\n{flag}: {explanation}"));
+                        }
+                        tip
+                    });
                     resp.context_menu(|ui| {
                         if ui.button(t!("compile.copy_command")).clicked() {
                             ui.ctx().copy_text(line.line.clone());
@@ -494,46 +523,40 @@ impl CompileDialog {
                     });
                 }
             });
-            ui.end_row();
+        });
 
-            if cordons > 0 {
-                ui.label(RichText::new(format!("⚠ {}", t!("compile.cordon"))).color(theme::warning()));
-                ui.horizontal_wrapped(|ui| {
-                    ui.checkbox(&mut s.compile_cordon_only, tf!("compile.cordon_only", cordons))
-                        .on_hover_text(t!("compile.cordon_only_tip"));
-                });
-                ui.end_row();
-            }
-
-            if !external {
-                ui.label(t!("compile.static_props"));
-                ui.add_enabled_ui(!s.expert, |ui| {
-                    ui.horizontal_wrapped(|ui| super::options_ui::prop_toggles(ui, s));
-                });
-                ui.end_row();
-            }
-
-            ui.label(t!("compile.before"));
-            ui.horizontal_wrapped(|ui| {
-                ui.checkbox(&mut s.save_before_compile, t!("compile.save_before"))
-                    .on_hover_text(t!("compile.save_before_tip"));
-                ui.checkbox(&mut s.compile_hidden, t!("compile.compile_hidden"))
-                    .on_hover_text(t!("compile.compile_hidden_tip"));
-                let mut anyway = !s.stop_on_leak;
-                if ui
-                    .checkbox(&mut anyway, t!("compile.leaking_anyway"))
-                    .on_hover_text(t!("compile.leaking_anyway_tip"))
-                    .changed()
-                {
-                    s.stop_on_leak = !anyway;
-                }
+        if cordons > 0 {
+            form.row(ui, RichText::new(format!("⚠ {}", t!("compile.cordon"))).color(theme::warning()), |ui| {
+                ui.checkbox(&mut s.compile_cordon_only, tf!("compile.cordon_only", cordons))
+                    .on_hover_text(t!("compile.cordon_only_tip"));
             });
-            ui.end_row();
+        }
 
-            ui.label(t!("compile.content"));
-            ui.horizontal_wrapped(|ui| {
-                ui.checkbox(&mut s.pack_custom_content, t!("compile.pack_content"))
-                    .on_hover_text(t!("compile.pack_content_tip"));
+        if !external {
+            form.row(ui, t!("compile.static_props"), |ui| {
+                ui.add_enabled_ui(!s.expert, |ui| super::options_ui::prop_toggles(ui, s));
+            });
+        }
+
+        form.row(ui, t!("compile.before"), |ui| {
+            ui.checkbox(&mut s.save_before_compile, t!("compile.save_before"))
+                .on_hover_text(t!("compile.save_before_tip"));
+            ui.checkbox(&mut s.compile_hidden, t!("compile.compile_hidden"))
+                .on_hover_text(t!("compile.compile_hidden_tip"));
+            let mut anyway = !s.stop_on_leak;
+            if ui
+                .checkbox(&mut anyway, t!("compile.leaking_anyway"))
+                .on_hover_text(t!("compile.leaking_anyway_tip"))
+                .changed()
+            {
+                s.stop_on_leak = !anyway;
+            }
+        });
+
+        form.row(ui, t!("compile.content"), |ui| {
+            ui.checkbox(&mut s.pack_custom_content, t!("compile.pack_content"))
+                .on_hover_text(t!("compile.pack_content_tip"));
+            wrap_group(ui, "pack_policy", |ui| {
                 ui.add_enabled_ui(s.pack_custom_content, |ui| {
                     egui::ComboBox::from_id_salt("hp_compile_pack_policy")
                         .selected_text(match s.pack_policy {
@@ -549,38 +572,38 @@ impl CompileDialog {
                             ui.selectable_value(&mut s.pack_policy, PackPolicy::Always, t!("compile.pack_always"));
                         });
                 });
-                ui.checkbox(&mut s.dev_addon, t!("compile.dev_addon_option"))
-                    .on_hover_text(t!("compile.dev_addon_tip"));
-                ui.checkbox(&mut s.export_custom_materials, t!("compile.export_materials"))
-                    .on_hover_text(t!("compile.export_materials_tip"));
             });
-            ui.end_row();
+            ui.checkbox(&mut s.dev_addon, t!("compile.dev_addon_option")).on_hover_text(t!("compile.dev_addon_tip"));
+            ui.checkbox(&mut s.export_custom_materials, t!("compile.export_materials"))
+                .on_hover_text(t!("compile.export_materials_tip"));
+        });
 
-            ui.label(t!("compile.after"));
-            ui.horizontal_wrapped(|ui| {
-                ui.checkbox(&mut s.copy_to_maps, t!("compile.copy_to_maps"));
-                ui.checkbox(&mut s.bsp_beside_vmf, t!("compile.bsp_beside_vmf"))
-                    .on_hover_text(t!("compile.bsp_beside_vmf_tip"));
-                ui.checkbox(&mut s.launch_game, t!("compile.launch_game"));
+        form.row(ui, t!("compile.after"), |ui| {
+            ui.checkbox(&mut s.copy_to_maps, t!("compile.copy_to_maps")).on_hover_text(t!("compile.copy_to_maps_tip"));
+            ui.checkbox(&mut s.bsp_beside_vmf, t!("compile.bsp_beside_vmf"))
+                .on_hover_text(t!("compile.bsp_beside_vmf_tip"));
+            wrap_group(ui, "launch", |ui| {
+                ui.checkbox(&mut s.launch_game, t!("compile.launch_game")).on_hover_text(t!("compile.launch_game_tip"));
                 ui.add_enabled(s.launch_game, egui::Checkbox::new(&mut s.launch_via_steam, t!("compile.via_steam")))
                     .on_hover_text(t!("compile.via_steam_tip"));
-                ui.checkbox(&mut s.load_pointfile_on_leak, t!("compile.load_pointfile"));
             });
-            ui.end_row();
+            ui.checkbox(&mut s.load_pointfile_on_leak, t!("compile.load_pointfile"))
+                .on_hover_text(t!("compile.load_pointfile_tip"));
+        });
 
-            ui.label(t!("compile.game_args"));
+        form.row(ui, t!("compile.game_args"), |ui| {
             ui.add_enabled(
                 s.launch_game && !s.launch_via_steam,
-                egui::TextEdit::singleline(&mut s.game_args).desired_width(f32::INFINITY),
+                egui::TextEdit::singleline(&mut s.game_args).desired_width(ui.available_width().max(120.0)),
             )
             .on_hover_text(t!("compile.game_args_tip"));
-            ui.end_row();
+        });
 
-            ui.label(t!("compile.threads"));
-            ui.horizontal(|ui| {
-                let mut auto = s.threads.is_none();
-                let auto_n =
-                    hp_compile::flags::auto_threads(s.low_priority).unwrap_or_else(hp_compile::flags::logical_cores);
+        form.row(ui, t!("compile.threads"), |ui| {
+            let mut auto = s.threads.is_none();
+            let auto_n =
+                hp_compile::flags::auto_threads(s.low_priority).unwrap_or_else(hp_compile::flags::logical_cores);
+            wrap_group(ui, "threads", |ui| {
                 if ui
                     .checkbox(&mut auto, tf!("compile.threads_auto_n", auto_n))
                     .on_hover_text(t!("compile.threads_tip"))
@@ -591,10 +614,8 @@ impl CompileDialog {
                 if let Some(t) = &mut s.threads {
                     ui.add(egui::DragValue::new(t).range(1..=256).speed(0.2));
                 }
-                ui.checkbox(&mut s.low_priority, t!("compile.low_priority"))
-                    .on_hover_text(t!("compile.low_priority_tip"));
             });
-            ui.end_row();
+            ui.checkbox(&mut s.low_priority, t!("compile.low_priority")).on_hover_text(t!("compile.low_priority_tip"));
         });
     }
 
@@ -746,6 +767,42 @@ mod tests {
         assert!(smart_applies(&n));
         n.smart_recompile = false;
         assert!(!smart_applies(&n));
+    }
+
+    #[test]
+    fn settings_rows_wrap_instead_of_overflowing() {
+        let _lang = crate::lang_lock();
+        crate::register_translations();
+        let mut state = hp_app::testing::test_state();
+        let mut d = CompileDialog::new();
+        for lang in hp_app::i18n::Lang::ALL {
+            hp_app::i18n::set_lang(lang);
+            for width in [460.0f32, 640.0, 900.0] {
+                let ctx = egui::Context::default();
+                let mut used = egui::Rect::NOTHING;
+                for _ in 0..3 {
+                    let input = egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 1200.0))),
+                        ..Default::default()
+                    };
+                    let mut out = ctx.run_ui(input, |ui| {
+                        let r = ui.allocate_ui(egui::vec2(width, 1100.0), |ui| {
+                            ui.set_max_width(width);
+                            d.main_grid(ui, &mut state, 1);
+                        });
+                        used = r.response.rect;
+                    });
+                    out.textures_delta.clear();
+                }
+                if used.width() > width + 1.0 {
+                    hp_app::i18n::set_lang(hp_app::i18n::Lang::En);
+                    panic!("{lang:?} {width}: the compile settings use {} points", used.width());
+                }
+                let form = d.form.map(|(_, f)| f.label_width()).unwrap_or_default();
+                assert!((90.0..=190.0).contains(&form), "{lang:?}: label column {form}");
+            }
+        }
+        hp_app::i18n::set_lang(hp_app::i18n::Lang::En);
     }
 
     #[test]

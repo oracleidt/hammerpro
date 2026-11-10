@@ -141,6 +141,8 @@ pub struct WorkflowSettings {
     pub show_history: bool,
     pub layouts: BTreeMap<String, SavedLayout>,
     pub open_in_new_tab: bool,
+    pub team_live_edits: bool,
+    pub team_share_scripts: bool,
 }
 
 impl Default for WorkflowSettings {
@@ -163,6 +165,8 @@ impl Default for WorkflowSettings {
             show_history: false,
             layouts: BTreeMap::new(),
             open_in_new_tab: true,
+            team_live_edits: true,
+            team_share_scripts: true,
         }
     }
 }

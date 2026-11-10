@@ -49,7 +49,7 @@ fn fgd_path(a: &Args<'_>, key: &str) -> R<PathBuf> {
     if raw.chars().any(char::is_control) {
         return Err(format!("{key} holds control characters"));
     }
-    let path = PathBuf::from(raw);
+    let path = super::semantic::local_path(raw)?;
     if !path.is_absolute() {
         return Err(format!("{key} must be an absolute path"));
     }

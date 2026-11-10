@@ -53,7 +53,7 @@ domain! { "content and release";
         structure scrambler makes the shipped BSP hard to parse: shuffle_lumps puts the lump blocks in a random \
         physical order, junk_gaps fills random gaps between them with random bytes, decoys adds unreferenced blocks \
         (random data and stale altered copies of lumps), scramble_header randomizes the map revision, the version of \
-        lumps the game ignores and the unused directory entries, shuffle_game_lumps shuffles the game lump directory, \
+        lumps the game ignores and the offset of the unused directory entries, shuffle_game_lumps shuffles the game lump directory, \
         random_pak puts the pakfile anywhere, reorder_tables permutes planes, vertexes, edges, texinfo and texdata and \
         renumbers every reference, reorder_world permutes brushes and faces the same way (the face and brush lists of the leaves are kept in order: shuffling them crashed the game). The map \
         loads and plays the same. layout_seed fixes the randomness (empty: new at each compile). preset strongest \
@@ -244,8 +244,11 @@ fn groups_arg(a: &Args<'_>) -> R<Vec<Group>> {
 
 fn folder_arg(a: &Args<'_>, key: &str) -> R<PathBuf> {
     let raw = a.str(key, 1024)?.trim();
-    let path = PathBuf::from(raw);
-    if raw.is_empty() || !path.is_absolute() {
+    if raw.is_empty() {
+        return Err(format!("{key} must be an absolute folder path"));
+    }
+    let path = super::semantic::local_path(raw)?;
+    if !path.is_absolute() {
         return Err(format!("{key} must be an absolute folder path"));
     }
     Ok(path)

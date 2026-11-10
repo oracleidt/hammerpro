@@ -37,7 +37,7 @@ The open map is never saved by a compile. Hammer Pro takes a snapshot of the doc
 | `<map>.log` | `.hammerpro_build/` | every compile: each line of the compiler, appended, CRLF line ends like Valve's tools |
 | `<map>_cordon.bsp` | as above | with **Compile only the cordoned area**: the full map is never overwritten |
 
-Hammer Pro also keeps, in its cache folder (`%LOCALAPPDATA%\HammerPro` on Windows): the stage build cache (`builds`, 2 GB at most, oldest first), the background pre-compiles (`spec`), the timing history (`compile_history/<map>.jsonl`) and the progressive lighting builds (`progressive`).
+Hammer Pro also keeps, in its cache folder (`%LOCALAPPDATA%\HammerPro` on Windows): the stage build cache (`builds`, with the kept visibilities `vis-*.hpvis` of each map, 2 GB at most, oldest first), the background pre-compiles (`spec`), the timing history (`compile_history/<map>.jsonl`) and the progressive lighting builds (`progressive`).
 
 ## Differences from VBSP, VVIS and VRAD
 
@@ -53,6 +53,9 @@ What the code and its comments state:
 - **Content like the editor.** The compile mounts the same content sources the editor shows (Workshop items, server downloads), so a material visible in the editor is never compiled as missing.
 - **Other games.** One compiler writes the BSP formats of several Source branches (`-target`), see [Target games](target-games.md).
 - **Trains without an origin.** A `func_tracktrain`, `func_tanktrain` or `func_train` with no `origin` key and no origin brush gets the center of its brushes as origin, with a warning in the log (`has no origin key nor origin brush`). VBSP leaves such a train at the world origin, and the game then draws it far from its path. Maps saved by Hammer always have the key.
+- **Nested instance parameters.** A nested `func_instance` that passes a parameter on (`replace01` `$color $color`) works: only the value of its replace key gets the parent's value, and a parameter declared with a default in the `func_instance_parms` of a file and not set gets that default. VBSP also replaces the variable name and mangles the nested file (see [Instances](../features/instances.md)).
+- **Shorelines.** An `info_overlay_transition` becomes water overlays (lump 50) computed from its shore and water faces, as the editor draws it: one upright strip per shore face, chained along the shore with seamless texture coordinates (the game draws no water overlay with a mirrored axis). Garry's Mod's VBSP only writes the strips that Valve's Hammer saved in the VMF, and without their position (measured: a zero origin, normal and corners), so the game does not draw them. The decompiler reads the water overlays back.
+- **Displacements in a func_detail.** A displacement whose brush is tied to a `func_detail` is compiled like a world displacement (the same faces, collision and lighting), with a warning in the log (`displacement found on a(n) func_detail entity ... compiled as a world displacement`). VBSP stops the compile on it. A displacement in any other brush entity still stops the compile, as the game draws displacements only in the world.
 - **4-way blends.** The 4-way blend rows of displacements (Hammer++ `multiblend`, `alphablend`, `multiblend_color_N`) go to the displacement multiblend lump (63) with the multiblend flag of each displacement, byte for byte like Garry's Mod's VBSP, for Garry's Mod, Source 2013 and CS:GO targets. A Lightmapped_4WayBlend displacement without rows gets rows made from its vertex alpha (texture 2 where painted), as the editor shows it; VBSP writes none for it. The decompiler reads the lump back into the rows.
 - **Not written.** The displacement lightmap sample positions lump (only VRAD reads it) and the per texel lightmaps of props with `generatelightmaps`.
 

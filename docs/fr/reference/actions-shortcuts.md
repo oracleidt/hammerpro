@@ -442,6 +442,45 @@ Quand l'outil tranche est actif, ces entrées vont d'abord à l'outil :
 
 Voir [Outil tranche](../features/slice-tool.md).
 
+## Touches dans l'outil bloc
+
+Pendant la création d'une forme (glissement, boîte en attente, ou étapes de base et de hauteur en 3D) :
+
+| Touche | Rôle |
+|---|---|
+| Molette | Un côté de plus ou de moins (cylindre, pointe, sphère, arche, tore, pilier), une marche (escalier, escalier en colimaçon) ou un segment d'arc (encadrement de porte avec arche). La vue ne zoome pas pendant ce temps. |
+| `Maj` + molette | Le même nombre par 4. |
+| `Ctrl` + molette | Inchangé : taille de la grille ou zoom de toutes les vues 2D. |
+| `Entrée` | Créer la forme en attente. |
+| `Échap` | L'annuler (la molette zoome de nouveau). |
+| `Alt` (maintenu) | Sans magnétisme. |
+
+Voir [Outil bloc](../features/block-tool.md#changer-le-nombre-avec-la-molette).
+
+## Touches dans l'outil tuyau
+
+Pendant le placement du tracé d'un tuyau :
+
+| Touche | Rôle |
+|---|---|
+| `Maj` + molette | Un côté de plus ou de moins sur un tuyau rond (5 à 48), une tranche par coude de plus ou de moins sur un tuyau carré (1 à 32). La molette seule zoome toujours. |
+| `Entrée`, double clic | Créer le tuyau. |
+| `Retour arrière` | Retirer le dernier point. |
+| `Échap` | Annuler le tracé. |
+
+Voir [Outil tuyau](../features/pipe-tool.md).
+
+## Touches dans l'outil courbe
+
+| Touche | Rôle |
+|---|---|
+| `Maj` + molette | Plus ou moins de subdivisions pendant le tracé ou l'ajustement de la courbe (2 à 4096). La molette seule zoome toujours. |
+| `Entrée` | Valider, puis créer. |
+| `Retour arrière` | Retirer le dernier point. |
+| `Échap` | Annuler la courbe. |
+
+Voir [Outil courbe](../features/curve-tool.md).
+
 ## Pages liées
 
 - [Raccourcis clavier](../features/keyboard-shortcuts.md)

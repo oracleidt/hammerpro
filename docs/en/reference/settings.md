@@ -247,6 +247,8 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `show_history` | `false` | Undo history tab. |
 | `layouts` | `{}` | Saved layouts (**Window > Layout > Save layout...**), 32 at most: `quadrants`, `split_x`, `split_y`, `maximized`, `panels`. |
 | `open_in_new_tab` | `true` | Opened maps get their own tab (off: they replace the current map). |
+| `team_live_edits` | `true` | Team Mapping: send strokes and drags to the other participants while they happen (off: only when they end). See [Team Mapping](../features/team-mapping.md). |
+| `team_share_scripts` | `true` | Team Mapping host: share script and command entities and inputs (`lua_run`, `logic_script`, `point_servercommand`, `point_clientcommand`, `Command`, `RunScriptCode`, `RunScriptFile`, `RunPassedCode`). Off: the host keeps its own on its PC and refuses the ones the others add or change. See [Team Mapping](../features/team-mapping.md). |
 
 ## `[instances]`
 
@@ -399,10 +401,14 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `hide_nodraw`, `hide_clips`, `hide_triggers`, `hide_hints` | `false` | Tool texture groups hidden in the 3D view. |
 | `max_fps` | `0` | Frame rate cap (0: none). |
 | `unfocused_fps` | `30` | Frame rate when the window is not focused (0: no cap). |
+| `animation_fps` | `30` | Frames per second of animated materials, swaying detail sprites, particle effects and flickering lights while nothing else moves (0: every frame, at most 240). |
+| `animation_idle_pause_s` | `120` | Seconds without mouse or keyboard input after which animations stop until the next input (0: never). |
+| `animate_in_background` | `false` | Keep animations running while another window is active. |
 | `vsync` | `true` | Wait for the display refresh (applies immediately). |
 | `vram_budget_mb` | `0` | Graphics memory Hammer Pro may use, in MB (0: automatic, 90% of what the system gives the program). Above 85% the maps of other tabs are freed from the graphics card, above the budget textures are shown at a lower resolution. See [Out of memory](../troubleshooting/out-of-memory.md). |
 | `keep_background_maps_on_gpu` | `true` | Keep the maps of other tabs on the graphics card while there is room, for instant tab switches. |
-| `performance_mode` | `Auto` | `Auto` and `Off` draw the preview at full quality. `Auto` lowers the quality one step (with a notice and a Restore full quality button over the 3D view) only when the 3D view stays under 20 FPS for several seconds. `Low` (75% resolution, no MSAA or bloom, 4 shadowed lights, 2048 sun shadow, textures up to 1024 pixels) and `VeryLow` (50% resolution, no shadows from lights, reflections, normal maps or fog volumes, textures up to 512 pixels) always lower it. **Settings > Rendering > Performance**, `set_setting render.performance_mode`. See [Editor performance](../troubleshooting/performance.md). |
+| `texture_streaming` | `true` | Texture detail by distance: textures used only far from every view are kept at a smaller size that looks the same at that distance (whole mip levels, never below 128 pixels), and come back to full size before the camera gets close. The loading screen of a map stays until every texture close to the camera is at full size. Off: every texture stays at full size. See [Editor performance](../troubleshooting/performance.md#texture-detail-by-distance). |
+| `performance_mode` | `Auto` | `Auto` and `Off` draw the preview at full quality. `Auto` lowers the quality one step (with a notice and a Restore full quality button over the 3D view) only when the 3D view stays under 20 FPS for several seconds. Before that, `Auto` also adapts the cost of the lighting previews to a slow graphics card one level at a time and back (see [Editor performance](../troubleshooting/performance.md#fine-adaptation-of-the-lighting-auto)); a card that keeps up always gets the full look. `Low` (75% resolution, no MSAA or bloom, 4 shadowed lights, 2048 sun shadow, textures up to 1024 pixels) and `VeryLow` (50% resolution, no shadows from lights, reflections, normal maps or fog volumes, textures up to 512 pixels) always lower it. **Settings > Rendering > Performance**, `set_setting render.performance_mode`. See [Editor performance](../troubleshooting/performance.md). |
 | `render_scale` | `1.0` | Draws the 3D view at this share of its size (0.25 to 1) and stretches it over the window. 1.0 is full quality. |
 | `perf_hud` | `false` | Shows FPS, frame time, CPU and GPU time per stage, memory and the quality level in the 3D view. |
 
@@ -418,6 +424,8 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `auto_scope` | `false` | Opt-in regional mode for automatic preview activation on big maps. Its region follows the camera; explicit **Bake lighting** always calculates the whole map. |
 | `auto_scope_luxels_millions` | `2` | Threshold for the optional automatic regional mode, 1 to 64 million luxels. |
 | `auto_scope_radius` | `3072` | Radius of the optional automatic region, 256 to 32768 units. Separate from the manual camera radius in the Lighting tab. |
+| `visible_first` | `true` | On maps of 6000 solids and more, the area around the camera is baked first, then the whole map is baked in the background and replaces it. |
+| `prepare` | `true` | Once the map is open and edits pause, the whole map is compiled and lit at low priority without drawing it, so the baked preview shows at once when it is turned on. Needs `auto_bake`. |
 | `tiny_scale` | `4` | Lightmap scale at or under which a face is tiny, 1 to 64. |
 | `budget_styles` | `1` | Light styles counted by the lightmap budget, 1 to 4. |
 | `show_budget` | `true` | Lightmap budget gauge in the status bar. |
@@ -425,7 +433,7 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 
 Existing saved `auto_scope` values are preserved. If the field is absent, the default is `false`. **Bake around the camera** remains a manual bake of a fixed region; the automatic regional mode follows the camera after it leaves the central half and stays still for a second.
 
-A whole-map result is reused while navigating. Geometry, lights, materials and calculation settings affect its validity; camera movement, selection, preview brightness, color correction and the update delay do not invalidate it. Dynamic updates schedule a new bake after relevant changes; otherwise the Lighting tab marks the result stale and offers **Bake again**.
+A whole-map result is reused while navigating. Geometry, lights, materials and calculation settings affect its validity; camera movement, selection, preview brightness, color correction and the update delay do not invalidate it. Light edits are relit incrementally in the warm lighting process (only the changed lights and the bounced light); dynamic updates schedule a new bake after other relevant changes; otherwise the Lighting tab marks the result stale and offers **Bake again**.
 
 ## `[placement]`
 

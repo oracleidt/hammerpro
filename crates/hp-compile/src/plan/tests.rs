@@ -452,3 +452,38 @@ fn another_game_gets_its_target_and_no_gmod_root() {
         b.steps.iter().map(|s| s.args.clone()).collect::<Vec<_>>()
     );
 }
+
+#[test]
+#[cfg(windows)]
+fn the_cache_keeps_the_visibility_of_the_builtin_compiler() {
+    let builds = PathBuf::from(r"C:\cache\builds");
+    let plan = CompilePlan::preset(Preset::Normal, &tools(), &vmf(), &PlanOptions::default()).unwrap();
+    let keys = plan.clone().with_cache(3, builds.clone(), "gm test", 0);
+    let bsp = args(&keys, StepKind::Bsp);
+    let at = bsp.iter().position(|a| a == crate::cache::VIS_CACHE_ARG).expect("the visibility cache folder is given");
+    assert_eq!(bsp[at + 1], builds.join("gm_test").to_string_lossy());
+    assert_eq!(bsp.last().map(String::as_str), Some(r"C:\My Maps\gm_test"));
+    assert!(!args(&keys, StepKind::Rad).iter().any(|a| a == crate::cache::VIS_CACHE_ARG));
+    let mut moved = plan.clone();
+    for step in &mut moved.steps {
+        step.args.retain(|a| a != "-threads");
+    }
+    let other = moved.with_cache(3, PathBuf::from(r"D:\elsewhere"), "gm test", 0);
+    assert_eq!(keys.cache.as_ref().map(|c| c.steps.clone()), other.cache.as_ref().map(|c| c.steps.clone()));
+    let again = keys.clone().with_cache(3, builds.clone(), "gm test", 0);
+    assert_eq!(args(&again, StepKind::Bsp).iter().filter(|a| *a == crate::cache::VIS_CACHE_ARG).count(), 1);
+
+    let modes = StepModes::new(BspMode::Full, VisMode::Off, RadMode::Normal);
+    let opts = PlanOptions { modes: Some(modes), ..PlanOptions::default() };
+    let no_vis =
+        CompilePlan::preset(Preset::Normal, &tools(), &vmf(), &opts).unwrap().with_cache(3, builds.clone(), "m", 0);
+    assert!(!args(&no_vis, StepKind::Bsp).iter().any(|a| a == crate::cache::VIS_CACHE_ARG));
+
+    let mut external = plan;
+    if let Some(step) = external.step_mut(StepKind::Bsp) {
+        step.exe = PathBuf::from(r"C:\sdk\vbsp.exe");
+        step.args.retain(|a| a != BSPC_ARG);
+    }
+    let external = external.with_cache(3, builds, "m", 0);
+    assert!(!args(&external, StepKind::Bsp).iter().any(|a| a == crate::cache::VIS_CACHE_ARG));
+}

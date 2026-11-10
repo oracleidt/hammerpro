@@ -39,7 +39,7 @@ Replace `hammerpro.exe` with the new one. Your settings, autosaves and per map d
 | Autosaves and emergency saves | `%LOCALAPPDATA%\HammerPro\autosave\` |
 | Caches (thumbnails, per map editor data in `maps\`) | `%LOCALAPPDATA%\HammerPro\` |
 
-Hammer Pro may also write into the game: compiled maps go to `garrysmod/maps` (option **Copy to the maps folder** of the compile window), custom materials of test builds to the `garrysmod/addons/hammerpro_dev` addon, and the optional bridge addon to `garrysmod/addons/hammerpro_bridge`. The full list is in [Files and folders](../reference/files-and-folders.md).
+Hammer Pro may also write into the game: compiled maps go to `garrysmod/maps` (option **Copy to the maps folder** of the compile window), custom content of test builds to the `garrysmod/addons/hammerpro_dev` addon, and the optional bridge addon to `garrysmod/addons/hammerpro_bridge`. The full list is in [Files and folders](../reference/files-and-folders.md).
 
 ## Uninstalling
 

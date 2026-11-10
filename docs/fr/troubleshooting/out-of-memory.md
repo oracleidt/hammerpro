@@ -21,6 +21,8 @@ Quand la carte graphique refuse une allocation, Hammer Pro garde l'ancien tampon
 
 Quitter la vue joueur libère le monde compilé, ses lightmaps et son ciel. Relancer un calcul de l'éclairage remplace le précédent au lieu de s'y ajouter, et le résultat est envoyé à la carte graphique par morceaux de 32 Mo.
 
+Avant tout cela, **Charger le détail des textures selon la distance** (`render.texture_streaming`, activé par défaut) garde les textures utilisées seulement loin de toutes les vues à une taille réduite qui rend pareil à cette distance, pour que les grandes maps demandent moins de mémoire graphique dès le départ. Les textures peuvent utiliser 60 % du budget ; si elles en demandent plus, les plus lointaines sont réduites d'un niveau de plus avant que les étapes ci-dessus ne baissent toutes les textures. Voir [Performances de l'éditeur](performance.md#détail-des-textures-selon-la-distance).
+
 ### Le budget
 
 **Paramètres > Rendu > Mémoire graphique** :

@@ -479,6 +479,12 @@ fn context_menu_choices() {
     let Some(node) = sel.first().and_then(|id| h.state.doc.scene().entity(*id)) else { panic!("new entity selected") };
     assert_eq!(node.entity.classname, "info_target");
     assert_eq!(node.entity.origin(), Some(DVec3::new(128.0, 64.0, 0.0)));
+    h.vp.run_menu_choice(&mut h.state, &menu, MenuChoice::PingHere);
+    assert_eq!(
+        h.state.runtime.collaboration.requests,
+        vec![hp_app::runtime::collaboration::CollaborationRequest::Ping { position: Some([128.0, 64.0, 0.0]) }],
+        "ping here asks Team Mapping to show a marker at the clicked point"
+    );
 }
 
 #[test]
@@ -518,6 +524,38 @@ fn mouselook_toggle() {
     h.move_to(q);
     h.key(Key::Z, Some(Key::Z), true);
     assert!(!h.vp.is_mouselook());
+}
+
+#[test]
+fn mouselook_asks_for_frames_only_while_moving() {
+    let mut h = Harness::new();
+    let p = h.rect(0).center();
+    h.move_to(p);
+    h.key(Key::Z, Some(Key::Z), true);
+    h.key(Key::Z, Some(Key::Z), false);
+    assert!(h.vp.is_mouselook());
+    h.frame(vec![]);
+    assert!(!h.vp.wants_frames(), "resting in mouselook draws nothing more");
+    h.key(Key::W, Some(Key::W), true);
+    assert!(h.vp.wants_frames(), "a held fly key keeps drawing");
+    h.frame(vec![]);
+    assert!(h.vp.wants_frames());
+    h.key(Key::W, Some(Key::W), false);
+    for _ in 0..600 {
+        h.frame(vec![]);
+    }
+    assert!(h.vp.is_mouselook());
+    assert!(!h.vp.wants_frames(), "stops once the camera has settled");
+}
+
+#[test]
+fn animation_time_steps_at_the_animation_rate() {
+    assert_eq!(crate::animation_time(1.0 / 30.0 + 0.001, 30), 1.0 / 30.0);
+    assert_eq!(crate::animation_time(0.02, 30), 0.0);
+    assert_eq!(crate::animation_time(3601.5, 0), 1.5);
+    let d = crate::next_light_frame(12.34);
+    assert!((d.as_secs_f64() - 0.06).abs() < 1e-6, "{d:?}");
+    assert!(crate::next_light_frame(f64::NAN) <= std::time::Duration::from_millis(100));
 }
 
 #[test]
@@ -1073,8 +1111,32 @@ impl Tool for RetainedTool {
 }
 
 #[test]
+fn brush_centers_ride_the_retained_overlay_of_the_2d_views() {
+    let mut h = Harness::new();
+    let cfg = RenderConfig::from_state(&h.state);
+    let tool = RetainedTool { id: ToolId::Select, ..Default::default() };
+    let mut top = view_info(1, ViewKind::Top, h.rect(1), &h.state.cameras, &cfg, 1.0);
+    let v3d = view_info(0, ViewKind::Perspective, h.rect(0), &h.state.cameras, &cfg, 1.0);
+    assert!(!h.vp.refill_retained(&h.state, &tool, &v3d), "no crosses in 3D");
+    assert!(h.vp.refill_retained(&h.state, &tool, &top));
+    let solids = h.state.doc.scene().solids().len();
+    assert!(solids > 0);
+    assert_eq!(h.vp.retained_overlay.lines_on_top.len(), 2 * solids);
+    top.cam2d.center.x += 100.0;
+    assert!(!h.vp.refill_retained(&h.state, &tool, &top), "panning keeps the uploaded crosses");
+    top.cam2d.zoom *= 2.0;
+    assert!(h.vp.refill_retained(&h.state, &tool, &top), "a zoom prepares them again");
+    h.state.doc.select_all();
+    assert!(h.vp.refill_retained(&h.state, &tool, &top), "so does a selection");
+    h.state.settings.helpers.show_brush_centers = false;
+    assert!(h.vp.refill_retained(&h.state, &tool, &top));
+    assert!(h.vp.retained_overlay.is_empty());
+}
+
+#[test]
 fn retained_overlays_refill_only_when_the_version_changes() {
     let mut h = Harness::new();
+    h.state.settings.helpers.show_brush_centers = false;
     let cfg = RenderConfig::from_state(&h.state);
     let v3d = view_info(0, ViewKind::Perspective, h.rect(0), &h.state.cameras, &cfg, 1.0);
     let top = view_info(0, ViewKind::Top, h.rect(0), &h.state.cameras, &cfg, 1.0);

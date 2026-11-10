@@ -57,6 +57,20 @@ struct Watched {
 struct Resolved {
     list: WatchList,
     files: Vec<Watched>,
+    gate: Option<hp_fs::ChangeGate>,
+}
+
+fn watch_roots(list: &WatchList) -> Vec<PathBuf> {
+    let mut roots: Vec<PathBuf> = Vec::new();
+    for source in list.fs.sources() {
+        if !source.enabled || !matches!(source.kind, SourceKind::Dir | SourceKind::Custom(_)) {
+            continue;
+        }
+        if !roots.contains(&source.path) {
+            roots.push(source.path);
+        }
+    }
+    roots
 }
 
 fn material_files(fs: &GameFs, name: &str) -> Vec<String> {
@@ -81,6 +95,7 @@ fn model_files(path: &str) -> Vec<String> {
 }
 
 fn resolve(list: WatchList) -> Resolved {
+    let gate = hp_fs::ChangeGate::watch(&watch_roots(&list));
     let mut by_path: AHashMap<PathBuf, usize> = AHashMap::new();
     let mut files: Vec<Watched> = Vec::new();
     let mut add = |vpath: &str, owner: Owner, files: &mut Vec<Watched>| {
@@ -110,7 +125,10 @@ fn resolve(list: WatchList) -> Resolved {
             add(&vpath, Owner::Model(i), &mut files);
         }
     }
-    Resolved { list, files }
+    if files.is_empty() {
+        return Resolved { list, files, gate: None };
+    }
+    Resolved { list, files, gate }
 }
 
 fn check(resolved: &mut Resolved) -> Option<Changes> {
@@ -147,6 +165,48 @@ fn check(resolved: &mut Resolved) -> Option<Changes> {
     Some(out)
 }
 
+fn run_waiting(lists: &Receiver<WatchList>, changes: &Sender<Changes>, shared: &Shared, wake: &hp_fs::WakeEvent) {
+    use hp_fs::GateWait;
+    let mut current: Option<Resolved> = None;
+    loop {
+        loop {
+            match lists.try_recv() {
+                Ok(list) => current = Some(resolve(list)),
+                Err(crossbeam_channel::TryRecvError::Empty) => break,
+                Err(crossbeam_channel::TryRecvError::Disconnected) => return,
+            }
+        }
+        let event = match current.as_mut() {
+            Some(r) if !r.files.is_empty() => match r.gate.as_mut() {
+                Some(gate) => gate.wait(wake, None),
+                None => match wake.wait(Some(POLL_INTERVAL)) {
+                    GateWait::TimedOut => GateWait::Changed,
+                    other => other,
+                },
+            },
+            _ => wake.wait(None),
+        };
+        match event {
+            GateWait::Changed => {
+                if let Some(resolved) = &mut current
+                    && let Some(found) = check(resolved)
+                {
+                    if changes.send(found).is_err() {
+                        return;
+                    }
+                    shared.request_repaint();
+                }
+            }
+            GateWait::Failed => {
+                if let Some(resolved) = &mut current {
+                    resolved.gate = None;
+                }
+            }
+            GateWait::Woken | GateWait::TimedOut => {}
+        }
+    }
+}
+
 fn run(lists: &Receiver<WatchList>, changes: &Sender<Changes>, shared: &Shared) {
     let mut current: Option<Resolved> = None;
     let mut next_poll = Instant::now() + POLL_INTERVAL;
@@ -162,6 +222,8 @@ fn run(lists: &Receiver<WatchList>, changes: &Sender<Changes>, shared: &Shared) 
         }
         next_poll = Instant::now() + POLL_INTERVAL;
         if let Some(resolved) = &mut current
+            && !resolved.files.is_empty()
+            && resolved.gate.as_mut().is_none_or(hp_fs::ChangeGate::changed)
             && let Some(found) = check(resolved)
         {
             if changes.send(found).is_err() {
@@ -173,21 +235,45 @@ fn run(lists: &Receiver<WatchList>, changes: &Sender<Changes>, shared: &Shared) 
 }
 
 pub(crate) struct Watcher {
-    tx: Sender<WatchList>,
+    tx: Option<Sender<WatchList>>,
     rx: Receiver<Changes>,
     last: Option<(Instant, u64)>,
+    wake: Option<Arc<hp_fs::WakeEvent>>,
 }
 
 impl Watcher {
     pub(crate) fn start(shared: Arc<Shared>) -> Option<Self> {
         let (tx, lists) = crossbeam_channel::unbounded();
         let (changes, rx) = crossbeam_channel::unbounded();
+        let wake = hp_fs::WakeEvent::new().map(Arc::new);
+        let thread_wake = wake.clone();
         std::thread::Builder::new()
             .name("hp-assets-watch".to_owned())
-            .spawn(move || run(&lists, &changes, &shared))
+            .spawn(move || match thread_wake {
+                Some(wake) => run_waiting(&lists, &changes, &shared, &wake),
+                None => run(&lists, &changes, &shared),
+            })
             .map_err(|e| log::warn!("cannot start the content watcher: {e}"))
             .ok()?;
-        Some(Self { tx, rx, last: None })
+        Some(Self { tx: Some(tx), rx, last: None, wake })
+    }
+
+    fn send(&self, list: WatchList) {
+        if let Some(tx) = &self.tx {
+            let _ = tx.send(list);
+        }
+        if let Some(wake) = &self.wake {
+            wake.set();
+        }
+    }
+}
+
+impl Drop for Watcher {
+    fn drop(&mut self) {
+        self.tx = None;
+        if let Some(wake) = &self.wake {
+            wake.set();
+        }
     }
 }
 
@@ -227,7 +313,7 @@ impl AssetManager {
             materials: self.mats.users.keys().cloned().collect(),
             models: self.models.map.keys().filter(ready).cloned().collect(),
         };
-        let _ = watcher.tx.send(list);
+        watcher.send(list);
     }
 
     pub(crate) fn poll_watcher(&mut self, renderer: &mut Renderer) {
@@ -260,7 +346,18 @@ impl AssetManager {
 
     pub(crate) fn reload_model(&mut self, renderer: &mut Renderer, path: &str) {
         self.models.map.remove(path);
+        self.models.pick.remove(path);
         self.shared.bounds.write().remove(path);
+        let stem = format!("{path}{}", crate::models::ANIM_SEPARATOR);
+        let variants: Vec<crate::models::VariantKey> =
+            self.models.variants.keys().filter(|(key, _, _)| key == path || key.starts_with(&stem)).cloned().collect();
+        for key in variants {
+            if let Some((m, _)) = self.models.variants.remove(&key)
+                && let Some(id) = m.id
+            {
+                renderer.destroy_model(id);
+            }
+        }
         let keys: Vec<(String, u32)> = self.models.render.keys().filter(|(p, _)| p == path).cloned().collect();
         for key in keys {
             if let Some(m) = self.models.render.remove(&key)
@@ -299,6 +396,27 @@ mod tests {
     }
 
     #[test]
+    fn the_watch_thread_reports_edits_without_polling_and_stops_with_its_owner() {
+        let dir = scratch("watch-thread");
+        let game = dir.join("game");
+        std::fs::create_dir_all(game.join("materials/brick")).unwrap();
+        std::fs::write(game.join("materials/brick/wall.vmt"), "LightmappedGeneric { $basetexture brick/wall }")
+            .unwrap();
+        let fs = GameFs::empty();
+        fs.add_game_dir(&game).unwrap();
+        let (tx, _rx) = crossbeam_channel::unbounded();
+        let watcher = Watcher::start(Arc::new(Shared::new(tx))).unwrap();
+        assert_eq!(cfg!(windows), watcher.wake.is_some());
+        watcher.send(WatchList { epoch: 3, fs, materials: vec!["brick/wall".to_owned()], models: Vec::new() });
+        std::thread::sleep(Duration::from_millis(300));
+        rewrite(&game.join("materials/brick/wall.vmt"), b"LightmappedGeneric { $basetexture brick/other }");
+        let found = watcher.rx.recv_timeout(Duration::from_secs(10)).expect("the edit is reported");
+        assert_eq!((found.epoch, found.materials), (3, vec!["brick/wall".to_owned()]));
+        drop(watcher);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn edited_materials_and_models_are_found() {
         let dir = scratch("watcher");
         let game = dir.join("game");
@@ -320,8 +438,19 @@ mod tests {
         let mut resolved = resolve(list);
         assert_eq!(resolved.files.len(), 4, "two VMTs, one texture, one model (the missing ones are skipped)");
         assert_eq!(check(&mut resolved), None, "nothing changed");
+        assert_eq!(cfg!(windows), resolved.gate.is_some(), "the folder is watched by the system, not polled");
+        if let Some(gate) = resolved.gate.as_mut() {
+            assert!(!gate.changed(), "no stat pass while nothing changes");
+        }
         rewrite(&game.join("materials/brick/wall.vtf"), b"vtf2 longer");
         rewrite(&game.join("models/props/crate.mdl"), b"mdl2 longer");
+        if let Some(gate) = resolved.gate.as_mut() {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while !gate.changed() {
+                assert!(Instant::now() < deadline, "the edit opens the gate");
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        }
         let changes = check(&mut resolved).expect("changes");
         assert_eq!(changes.epoch, 7);
         assert_eq!(changes.materials, vec!["brick/wall".to_owned()]);

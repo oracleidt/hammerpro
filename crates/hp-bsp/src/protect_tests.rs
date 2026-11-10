@@ -622,3 +622,83 @@ fn protection_can_be_turned_off_piece_by_piece() {
     assert_eq!(door.get("OnFullyOpen"), Some("counter,Add,1,0,-1"));
     assert_eq!(door.get("hammerid"), None, "the editor keys always go");
 }
+
+fn face_lines(bsp: &Bsp) -> Vec<String> {
+    let faces = bsp.lump(lump::FACES).expect("faces").into_owned();
+    let all: Vec<String> = resolved_faces(bsp).into_iter().collect();
+    let one = |f: usize| -> String {
+        let single = &faces[f * 56..f * 56 + 56];
+        let plane = u16::from_le_bytes(single[0..2].try_into().expect("2 bytes")) as usize;
+        let texinfo = i16::from_le_bytes(single[10..12].try_into().expect("2 bytes")) as i32;
+        let prefix = format!("{} {} ", plane_of(bsp, plane), material_of_texinfo(bsp, texinfo));
+        let first = i32::from_le_bytes(single[4..8].try_into().expect("4 bytes"));
+        all.iter().filter(|l| l.starts_with(&prefix)).map(|l| format!("{l}#{}", first % 4)).next().unwrap_or_default()
+    };
+    (0..faces.len() / 56).map(one).collect()
+}
+
+fn water_overlay_targets(bsp: &Bsp) -> Vec<(String, Vec<String>)> {
+    let data = bsp.lump(lump::WATEROVERLAYS).expect("water overlays").into_owned();
+    let faces = bsp.lump(lump::FACES).expect("faces").into_owned();
+    let resolved: Vec<String> = (0..faces.len() / 56)
+        .map(|f| {
+            let rec = &faces[f * 56..f * 56 + 56];
+            let plane = u16::from_le_bytes(rec[0..2].try_into().expect("2 bytes")) as usize;
+            let texinfo = i16::from_le_bytes(rec[10..12].try_into().expect("2 bytes")) as i32;
+            let light = i32::from_le_bytes(rec[20..24].try_into().expect("4 bytes"));
+            format!("{} {} {light}", plane_of(bsp, plane), material_of_texinfo(bsp, texinfo))
+        })
+        .collect();
+    data.chunks_exact(1120)
+        .map(|rec| {
+            let texinfo = i16::from_le_bytes(rec[4..6].try_into().expect("2 bytes")) as i32;
+            let count = usize::from(u16::from_le_bytes(rec[6..8].try_into().expect("2 bytes")) & 0x3fff);
+            let mut list: Vec<String> = (0..count)
+                .map(|k| {
+                    let f = i32::from_le_bytes(rec[8 + k * 4..12 + k * 4].try_into().expect("4 bytes")) as usize;
+                    resolved[f].clone()
+                })
+                .collect();
+            list.sort();
+            (material_of_texinfo(bsp, texinfo), list)
+        })
+        .collect()
+}
+
+#[test]
+fn water_overlays_follow_the_reordered_faces_and_texture_infos() {
+    let mut lumps = sample_lumps();
+    let mut water = Vec::new();
+    for (texinfo, faces) in [(1i64, vec![3i64, 7]), (4, vec![11])] {
+        let at = water.len();
+        push32(&mut water, 8193);
+        push16(&mut water, texinfo);
+        push16(&mut water, faces.len() as i64);
+        for f in &faces {
+            push32(&mut water, *f);
+        }
+        water.resize(at + 8 + 1024, 0);
+        for v in [
+            0.0f32, 1.0, 0.0, 1.0, -8.0, -8.0, 0.0, -8.0, 8.0, 1.0, 8.0, 8.0, 0.0, 8.0, -8.0, 0.0, 0.0, 0.0, 16.0, 0.0,
+            0.0, 1.0,
+        ] {
+            pushf(&mut water, v);
+        }
+        assert_eq!(water.len(), at + 1120);
+    }
+    lumps.push((lump::WATEROVERLAYS, water));
+    let full = Bsp::from_vec(crate::synthetic_bsp(20, &lumps)).expect("sample with water overlays");
+    let opts = ProtectOptions {
+        reorder: ReorderOptions { tables: true, world: true },
+        layout: LayoutOptions::strongest(),
+        randomize_materials: false,
+        strip_original_faces: false,
+        layout_seed: "water".into(),
+        ..Default::default()
+    };
+    let (bytes, report) = protect(&full, &opts).expect("protect");
+    let out = Bsp::from_vec(bytes).expect("the protected map reads back");
+    assert_eq!(water_overlay_targets(&out), water_overlay_targets(&full));
+    assert!(report.reordered.len() >= 2, "the tables and the world are still reordered: {:?}", report.reordered);
+    let _ = face_lines;
+}

@@ -214,7 +214,7 @@ fn leaking_map_is_detected() {
     assert!(events.iter().any(|(_, e)| matches!(
         e,
         CompileEvent::Log { severity: Severity::Error, location: Some(loc), .. }
-            if loc.entity_class.as_deref() == Some("info_player_start")
+            if matches!(loc.entity_class.as_deref(), Some("info_player_start" | "light"))
     )));
     assert!(!dir.join("maps").join("hp_leaktest.bsp").exists());
 }
@@ -251,4 +251,58 @@ fn only_entities_and_stage_cache() {
     assert_eq!(plan.steps.len(), 1);
     let events = run(plan, &dir);
     assert!(finished(&events).0, "-onlyents works on the earlier BSP");
+}
+
+#[test]
+#[ignore = "needs Garry's Mod and a built hammerpro; run with --ignored"]
+fn visibility_is_kept_between_compiles() {
+    let Some(mut tools) = tools() else { return };
+    let dir = scratch("viscache");
+    tools.maps_dir = dir.join("maps");
+    let vmf = dir.join("vc.vmf");
+    std::fs::write(&vmf, room_vmf(false)).expect("write vmf");
+    let builds = dir.join("builds");
+    let modes =
+        hp_compile::StepModes::new(hp_compile::BspMode::Full, hp_compile::VisMode::Full, hp_compile::RadMode::Off);
+    let opts = PlanOptions { copy_to_maps: false, modes: Some(modes), ..PlanOptions::default() };
+    let plan_for = |input: u64| {
+        CompilePlan::preset(Preset::Normal, &tools, &vmf, &opts).expect("plan").with_cache(
+            input,
+            builds.clone(),
+            "vc",
+            0,
+        )
+    };
+    let reused = |events: &[(Duration, CompileEvent)]| {
+        events.iter().any(|(_, e)| matches!(e, CompileEvent::Log { line, .. } if line.contains("visibility reused")))
+    };
+    let vis_stats = |events: &[(Duration, CompileEvent)]| {
+        let lines: Vec<&str> = events
+            .iter()
+            .filter_map(|(_, e)| match e {
+                CompileEvent::Log { line, .. } => Some(line.as_str()),
+                _ => None,
+            })
+            .collect();
+        hp_compile::stats::parse_text(&lines.join("\n")).vis.expect("visibility statistics")
+    };
+    let kept = || {
+        std::fs::read_dir(builds.join("vc"))
+            .map(|r| r.flatten().filter(|e| e.path().extension().is_some_and(|x| x == "hpvis")).count())
+            .unwrap_or(0)
+    };
+    let first = run(plan_for(1), &dir);
+    assert!(finished(&first).0);
+    assert!(!reused(&first), "nothing kept yet");
+    let v = vis_stats(&first);
+    assert_eq!((v.mode.as_str(), v.reused), ("full", false));
+    assert_eq!(kept(), 1, "the visibility is kept in the build cache of the map");
+    let bsp = std::fs::read(dir.join("vc.bsp")).expect("bsp");
+    let second = run(plan_for(2), &dir);
+    assert!(finished(&second).0);
+    assert!(reused(&second), "a new input with the same portals reuses the visibility");
+    let v = vis_stats(&second);
+    assert_eq!((v.mode.as_str(), v.reused), ("full", true), "the statistics read a full visibility, reused");
+    assert_eq!(v.times.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(), ["reused"]);
+    assert_eq!(std::fs::read(dir.join("vc.bsp")).expect("bsp"), bsp, "the same map");
 }

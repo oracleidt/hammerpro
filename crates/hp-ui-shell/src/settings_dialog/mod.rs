@@ -118,6 +118,137 @@ impl SettingsTab {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum PageSection {
+    Application,
+    Game,
+    Views,
+    Editing,
+    Compile,
+    Integrations,
+    Other,
+}
+
+impl PageSection {
+    pub fn label(self) -> &'static str {
+        match self {
+            PageSection::Application => t!("shell.settings.section.application"),
+            PageSection::Game => t!("shell.settings.section.game"),
+            PageSection::Views => t!("shell.settings.section.views"),
+            PageSection::Editing => t!("shell.settings.section.editing"),
+            PageSection::Compile => t!("shell.settings.section.compile"),
+            PageSection::Integrations => t!("shell.settings.section.integrations"),
+            PageSection::Other => t!("shell.settings.section.other"),
+        }
+    }
+}
+
+pub fn page_section(id: &str) -> PageSection {
+    match id {
+        "general" | "keyboard" | "updates" | "storage" => PageSection::Application,
+        "game" | "entities" => PageSection::Game,
+        "viewport" | "render" | "lighting" | "helpers" | "lab" => PageSection::Views,
+        "editing" | "selection" | "brush" | "mesh" | "instances" | "visibility" | "placement" => PageSection::Editing,
+        "compile" | "health" => PageSection::Compile,
+        "mcp" | "discord" | "blender" | "vtf" => PageSection::Integrations,
+        _ => PageSection::Other,
+    }
+}
+
+fn page_tables(id: &str) -> &'static [TrTable] {
+    match id {
+        "general" => &[general::TR],
+        "game" => &[game::TR],
+        "viewport" => &[viewport::TR],
+        "editing" => &[editing::TR],
+        "compile" => &[compile::TR],
+        "keyboard" => &[keyboard::TR],
+        "selection" => &[selection::TR],
+        "brush" => &[brush::TR],
+        "instances" => &[instances::TR],
+        "visibility" => &[visibility::TR],
+        "helpers" => &[helpers::TR],
+        "mesh" => &[mesh::TR],
+        "entities" => &[entities::TR],
+        "render" => &[render::TR],
+        "lighting" => &[lighting::TR],
+        "placement" => &[placement::TR],
+        "health" => &[health::TR],
+        "lab" => &[lab::TR],
+        "mcp" => &[mcp::TR],
+        "discord" => &[discord::TR],
+        "blender" => &[blender::TR],
+        "vtf" => &[vtf::TR],
+        _ => &[],
+    }
+}
+
+type PageTexts = Vec<(String, String, bool)>;
+type PageMatches = (String, hp_app::i18n::Lang, Vec<(SettingsTab, String)>);
+
+#[derive(Default)]
+struct PageIndex {
+    lang: Option<hp_app::i18n::Lang>,
+    pages: Vec<(SettingsTab, PageTexts)>,
+}
+
+impl PageIndex {
+    fn build(&mut self, tabs: &[(SettingsTab, String)]) {
+        let lang = hp_app::i18n::lang();
+        if self.lang == Some(lang) && self.pages.len() == tabs.len() {
+            return;
+        }
+        self.lang = Some(lang);
+        self.pages = tabs
+            .iter()
+            .map(|(tab, label)| {
+                let mut texts: PageTexts = vec![(crate::fuzzy::fold(label), label.clone(), false)];
+                let mut keys: Vec<String> = Vec::new();
+                for table in page_tables(tab.id()) {
+                    keys.extend(table.iter().map(|(key, _, _)| (*key).to_owned()));
+                }
+                if *tab == SettingsTab::Keyboard {
+                    keys.extend(Action::ALL.iter().map(|a| a.label_key()));
+                }
+                let english = hp_app::i18n::Lang::En;
+                for key in &keys {
+                    let text = hp_app::i18n::tr_in(key, lang);
+                    texts.push((crate::fuzzy::fold(text), text.to_owned(), false));
+                }
+                if lang != english {
+                    for key in &keys {
+                        let text = hp_app::i18n::tr_in(key, english);
+                        texts.push((crate::fuzzy::fold(text), text.to_owned(), true));
+                    }
+                }
+                (*tab, texts)
+            })
+            .collect();
+    }
+
+    fn matches(&self, query: &str) -> Vec<(SettingsTab, String)> {
+        let needle = crate::fuzzy::fold(query.trim());
+        if needle.is_empty() {
+            return Vec::new();
+        }
+        let word_start = |folded: &str| {
+            folded
+                .match_indices(needle.as_str())
+                .any(|(i, _)| i == 0 || !folded.as_bytes()[i - 1].is_ascii_alphanumeric())
+        };
+        self.pages
+            .iter()
+            .filter_map(|(tab, texts)| {
+                texts
+                    .iter()
+                    .filter(|(folded, _, _)| folded.contains(&needle))
+                    .min_by_key(|(folded, text, english)| (*english, !word_start(folded), text.chars().count()))
+                    .map(|(_, text, _)| (*tab, text.clone()))
+            })
+            .collect()
+    }
+}
+
 fn package_pages() -> Vec<Box<dyn SettingsPage>> {
     let mut pages = Vec::new();
     pages.extend(selection::pages());
@@ -190,6 +321,10 @@ pub struct SettingsDialog {
     escape: EscapeGuard,
     pub focus_key_search: bool,
     pages: Vec<Box<dyn SettingsPage>>,
+    page_search: String,
+    page_index: PageIndex,
+    page_matches: Option<PageMatches>,
+    tab_titles: Option<(hp_app::i18n::Lang, Vec<(SettingsTab, String)>)>,
 }
 
 impl Default for SettingsDialog {
@@ -206,6 +341,10 @@ impl Default for SettingsDialog {
             escape: EscapeGuard::default(),
             focus_key_search: false,
             pages: package_pages(),
+            page_search: String::new(),
+            page_index: PageIndex::default(),
+            page_matches: None,
+            tab_titles: None,
         }
     }
 }
@@ -233,7 +372,7 @@ pub fn default_size(screen: egui::Vec2) -> [f32; 2] {
         (screen.y * 0.85).clamp(DEFAULT_SIZE[1], 900.0).min(screen.y - 40.0),
     ]
 }
-const PAGE_LIST_WIDTH: f32 = 168.0;
+const PAGE_LIST_WIDTH: f32 = 184.0;
 
 impl SettingsDialog {
     pub fn capturing(&self) -> bool {
@@ -247,6 +386,9 @@ impl SettingsDialog {
     pub fn add_page(&mut self, page: Box<dyn SettingsPage>) {
         if !self.pages.iter().any(|p| p.id() == page.id()) {
             self.pages.push(page);
+            self.tab_titles = None;
+            self.page_index = PageIndex::default();
+            self.page_matches = None;
         }
     }
 
@@ -368,6 +510,92 @@ impl SettingsDialog {
         }
     }
 
+    fn tab_label(&self, tab: SettingsTab) -> String {
+        match tab {
+            SettingsTab::Package(id) => self.pages.iter().find(|p| p.id() == id).map_or(id.to_owned(), |p| p.label()),
+            _ => tab.label().to_owned(),
+        }
+    }
+
+    fn titles(&mut self) -> &[(SettingsTab, String)] {
+        let lang = hp_app::i18n::lang();
+        if self.tab_titles.as_ref().is_none_or(|(l, _)| *l != lang) {
+            let mut tabs = self.tabs();
+            tabs.sort_by_key(|t| page_section(t.id()));
+            let titles = tabs.into_iter().map(|t| (t, self.tab_title(t))).collect();
+            self.tab_titles = Some((lang, titles));
+        }
+        self.tab_titles.as_ref().map_or(&[], |(_, t)| t.as_slice())
+    }
+
+    pub fn search_pages(&mut self, query: &str) -> Vec<(SettingsTab, String)> {
+        let tabs: Vec<SettingsTab> = self.titles().iter().map(|(t, _)| *t).collect();
+        let labels: Vec<(SettingsTab, String)> = tabs.into_iter().map(|t| (t, self.tab_label(t))).collect();
+        self.page_index.build(&labels);
+        self.page_index.matches(query)
+    }
+
+    fn page_list(&mut self, ui: &mut Ui) {
+        if hp_app::widgets::search_box(ui, &mut self.page_search, t!("shell.settings.search_hint")) {
+            self.page_matches = None;
+        }
+        ui.add_space(4.0);
+        let searching = !self.page_search.trim().is_empty();
+        let lang = hp_app::i18n::lang();
+        if searching
+            && self.page_matches.as_ref().is_none_or(|(q, l, _)| q.as_str() != self.page_search.trim() || *l != lang)
+        {
+            let query = self.page_search.trim().to_owned();
+            let found = self.search_pages(&query);
+            self.page_matches = Some((query, lang, found));
+        }
+        let mut chosen = None;
+        let current = self.tab;
+        let weak = ui.visuals().weak_text_color();
+        let titles = self.titles().to_vec();
+        egui::ScrollArea::vertical().id_salt("hp_shell_settings_page_list").auto_shrink([false, false]).show(
+            ui,
+            |ui| {
+                let width = ui.available_width();
+                if !searching {
+                    let mut section = None;
+                    for (tab, title) in &titles {
+                        let s = page_section(tab.id());
+                        if section != Some(s) {
+                            if section.is_some() {
+                                ui.add_space(4.0);
+                            }
+                            section = Some(s);
+                            ui.label(RichText::new(s.label()).small().strong().color(weak));
+                        }
+                        let b =
+                            egui::Button::selectable(current == *tab, title.as_str()).min_size(egui::vec2(width, 24.0));
+                        if ui.add(b).clicked() {
+                            chosen = Some(*tab);
+                        }
+                    }
+                    return;
+                }
+                let matches = self.page_matches.as_ref().map(|(_, _, m)| m.as_slice()).unwrap_or_default();
+                if matches.is_empty() {
+                    ui.label(RichText::new(t!("shell.settings.search_none")).weak().italics());
+                }
+                for (tab, text) in matches {
+                    let title = titles.iter().find(|(t, _)| t == tab).map_or("", |(_, title)| title.as_str());
+                    let b = egui::Button::selectable(current == *tab, title).min_size(egui::vec2(width, 24.0));
+                    if ui.add(b).on_hover_text(text.as_str()).clicked() {
+                        chosen = Some(*tab);
+                    }
+                    ui.add(egui::Label::new(RichText::new(text.as_str()).small().color(weak)).truncate());
+                }
+            },
+        );
+        if let Some(tab) = chosen {
+            self.tab = tab;
+            self.capture = None;
+        }
+    }
+
     fn contents(&mut self, ui: &mut Ui, state: &mut AppState, jobs: &mut GameJobs) {
         egui::Panel::bottom("hp_shell_settings_footer")
             .resizable(false)
@@ -377,22 +605,7 @@ impl SettingsDialog {
             .resizable(false)
             .exact_size(PAGE_LIST_WIDTH)
             .frame(egui::Frame::NONE.inner_margin(egui::Margin { right: 6, top: 2, ..Default::default() }))
-            .show(ui, |ui| {
-                egui::ScrollArea::vertical().id_salt("hp_shell_settings_page_list").auto_shrink([false, false]).show(
-                    ui,
-                    |ui| {
-                        for tab in self.tabs() {
-                            let text = self.tab_title(tab);
-                            let width = ui.available_width();
-                            let b = egui::Button::selectable(self.tab == tab, text).min_size(egui::vec2(width, 26.0));
-                            if ui.add(b).clicked() {
-                                self.tab = tab;
-                                self.capture = None;
-                            }
-                        }
-                    },
-                );
-            });
+            .show(ui, |ui| self.page_list(ui));
         egui::CentralPanel::no_frame().show(ui, |ui| {
             egui::ScrollArea::both().id_salt(("hp_shell_settings_page", self.tab)).auto_shrink([false, false]).show(
                 ui,
@@ -509,6 +722,15 @@ pub(crate) const TR: TrTable = &[
     ("shell.settings.compile", "Compile", "Compilation"),
     ("shell.settings.keyboard", "Keyboard", "Clavier"),
     ("shell.settings.restore_defaults", "Restore defaults", "Valeurs par défaut"),
+    ("shell.settings.section.application", "Application", "Application"),
+    ("shell.settings.section.game", "Game and content", "Jeu et contenu"),
+    ("shell.settings.section.views", "Views and rendering", "Vues et rendu"),
+    ("shell.settings.section.editing", "Editing", "Édition"),
+    ("shell.settings.section.compile", "Compile and check", "Compilation et vérification"),
+    ("shell.settings.section.integrations", "Integrations", "Intégrations"),
+    ("shell.settings.section.other", "Other", "Autres"),
+    ("shell.settings.search_hint", "Find a setting", "Chercher un paramètre"),
+    ("shell.settings.search_none", "No setting matches", "Aucun paramètre ne correspond"),
     ("shell.settings.confirm_reset", "Click again to confirm", "Cliquez à nouveau pour confirmer"),
     ("shell.settings.restore_tip", "Reset every option of this page", "Réinitialiser toutes les options de cette page"),
     ("shell.settings.apply_reload", "Apply and reload content", "Appliquer et recharger le contenu"),

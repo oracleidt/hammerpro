@@ -98,7 +98,7 @@ Menu group **Content** (geometry step; the lighting step reads the same mounting
 | `-keepstalezip` | Keeps the files packed in the previous BSP (the rest is rebuilt). | off |
 | `-embed <folder>` | Folder added to the content and packed whole into the BSP. Full compiles only. | not used |
 
-The editor's compile passes the content sources the editor itself shows, so a material visible in the editor is never compiled as missing. Your custom texture folders are always visible to the compiler.
+The editor's compile passes the content sources the editor itself shows, so a material visible in the editor is never compiled as missing. Your custom texture folders are always visible to the compiler: the custom materials and the custom models the map uses are copied into a generated game folder for it, so a `prop_static` with a model of a custom folder keeps its prop.
 
 ## Lighting quality
 

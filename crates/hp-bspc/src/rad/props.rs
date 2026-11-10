@@ -3,7 +3,7 @@ mod alpha;
 mod box_tests;
 mod model;
 
-use std::collections::HashMap;
+use ahash::AHashMap as HashMap;
 
 use glam::Vec3A;
 use hp_light::bvh::{Blocker, Bvh, Hit, Triangle};
@@ -321,6 +321,18 @@ pub(crate) struct ShadowRules<'a> {
 pub(crate) struct ReadWhat {
     pub collision: bool,
     pub texture_shadows: bool,
+    pub lighting: bool,
+}
+
+fn models_needed(names: usize, props: &[Prop], what: ReadWhat) -> Vec<(bool, bool)> {
+    let mut needed = vec![(false, false); names];
+    for p in props {
+        if let Some(slot) = needed.get_mut(p.model) {
+            slot.0 |= what.collision && p.flags & NO_SHADOW == 0;
+            slot.1 |= what.lighting && p.flags & NO_PER_VERTEX_LIGHTING == 0;
+        }
+    }
+    needed
 }
 
 fn read_model(
@@ -403,12 +415,22 @@ impl StaticProps {
         rules: &ShadowRules<'_>,
     ) -> Result<(StaticProps, Vec<String>), String> {
         let (names, props) = read_sprp(src)?;
-        if let Some(n) = names.first() {
+        let needed = models_needed(names.len(), &props, what);
+        if let Some(n) = names.iter().zip(&needed).find(|(_, w)| w.0 || w.1).map(|(n, _)| n) {
             let _ = models.read_file(&n.replace('\\', "/"));
         }
         let mut lines: Vec<Vec<String>> = vec![Vec::new(); names.len()];
-        let dicts: Vec<Dict> =
-            names.par_iter().zip(lines.par_iter_mut()).map(|(n, l)| read_model(n, models, what, rules, l)).collect();
+        let dicts: Vec<Dict> = names
+            .par_iter()
+            .zip(&needed)
+            .zip(lines.par_iter_mut())
+            .map(|((n, &(shadow, lit)), l)| {
+                if !(shadow || lit) {
+                    return Dict::default();
+                }
+                read_model(n, models, ReadWhat { collision: shadow, ..what }, rules, l)
+            })
+            .collect();
         Ok((StaticProps { names, props, dicts }, lines.into_iter().flatten().collect()))
     }
 
@@ -592,10 +614,19 @@ fn samples(scale: f32) -> usize {
     usize::try_from((162.0 * scale) as i32).unwrap_or(0)
 }
 
+fn sphere_table(opts: &PropOptions) -> Vec<Vec3A> {
+    let n = [FAST_SAMPLES, SUN_SAMPLES, samples(opts.sky_sample_scale), samples(opts.sample_scale)]
+        .into_iter()
+        .max()
+        .unwrap_or(0);
+    let mut sampler = Sampler::new();
+    (0..n).map(|_| sampler.next()).collect()
+}
+
 #[allow(clippy::too_many_arguments)]
 fn direct_at(
     ctx: &Ctx<'_>,
-    opts: &PropOptions,
+    (opts, sphere): (&PropOptions, &[Vec3A]),
     cand: &[usize],
     pos: Vec3A,
     normal: Vec3A,
@@ -603,7 +634,7 @@ fn direct_at(
     (ignore_normals, part): (bool, Part),
     out: &mut [Vec3A],
 ) {
-    let cluster = ctx.map.cluster_at(pos.as_dvec3());
+    let cluster = ctx.map.vis_cluster_at(pos.as_dvec3());
     for &li in cand {
         let Some(l) = ctx.lights.list.get(li) else { continue };
         let ambient = l.kind == Kind::SkyAmbient;
@@ -648,12 +679,11 @@ fn direct_at(
                     (true, false) => SUN_SAMPLES,
                     (true, true) => SUN_SAMPLES / 4,
                 };
-                let mut sampler = Sampler::new();
                 let mut seen = 0.0f32;
                 for d in 0..n {
                     let mut dir = -l.normal;
                     if d > 0 {
-                        dir = (dir + sampler.next() * ctx.lights.sun_extent).normalize_or(dir);
+                        dir = (dir + sphere[d - 1] * ctx.lights.sun_extent).normalize_or(dir);
                     }
                     seen += ctx.sees_sky_skip(pos, dir, skip);
                 }
@@ -662,10 +692,8 @@ fn direct_at(
             Kind::SkyAmbient => {
                 let pos = pos + normal * 4.0;
                 let n = if opts.fast { FAST_SAMPLES } else { samples(opts.sky_sample_scale) };
-                let mut sampler = Sampler::new();
                 let (mut sum, mut sumdot) = (0.0f32, 0.0f32);
-                for _ in 0..n {
-                    let a = sampler.next();
+                for &a in &sphere[..n] {
                     let dot = if ignore_normals { CONSTANT_DOT } else { -normal.dot(a) };
                     if dot <= EQUAL_EPSILON {
                         continue;
@@ -707,7 +735,7 @@ fn candidate_lights(ctx: &Ctx<'_>, bounds: Option<(Vec3A, Vec3A)>) -> Vec<usize>
 fn indirect_at(
     ctx: &Ctx<'_>,
     light: &[FaceLight],
-    opts: &PropOptions,
+    (opts, sphere): (&PropOptions, &[Vec3A]),
     pos: Vec3A,
     normal: Vec3A,
     ignore_normals: bool,
@@ -715,18 +743,20 @@ fn indirect_at(
     out: &mut [Vec3A],
 ) {
     let n = if opts.fast || force_fast { FAST_SAMPLES } else { samples(opts.sample_scale) };
-    let mut sampler = Sampler::new();
     let mut total_dot = 0.0f32;
     let mut sum = vec![Vec3A::ZERO; out.len()];
-    for _ in 0..n {
-        let dir = sampler.next();
+    for &dir in &sphere[..n] {
         let dot = if ignore_normals { INDIRECT_CONSTANT_DOT } else { normal.dot(dir) };
         if dot <= EQUAL_EPSILON {
             continue;
         }
         total_dot += dot;
         let start = if force_fast { pos } else { pos - dir * 0.001 };
-        let blocked = |t: f32| t > 1.0 && ctx.blockers.closest(start, dir, t - 0.5, |_| true).is_some_and(|h| !h.front);
+        let blocked = |t: f32| {
+            t > 1.0
+                && ctx.blockers.occluded(start, dir, t - 0.5, |_| true)
+                && ctx.blockers.closest(start, dir, t - 0.5, |_| true).is_some_and(|h| !h.front)
+        };
         let SurfHit::Face(fi, s, t, _) = ctx.trace_surface_if(start, dir, &blocked) else { continue };
         let (Some(f), Some(l)) = (ctx.faces.get(fi as usize), light.get(fi as usize)) else { continue };
         if l.styles.is_empty() {
@@ -737,8 +767,8 @@ fn indirect_at(
         let lux = f.luxels();
         let weight = if force_fast { 1.0 } else { dot };
         for (p, o) in sum.iter_mut().enumerate() {
-            let c = encode(finish(l.values[l.index(p, 0, 0, lux) + y * f.w + x], f.minlight));
-            let scale = 2f32.powi(i32::from(c[3] as i8));
+            let c = encode(finish(Vec3A::from(l.values[l.index(p, 0, 0, lux) + y * f.w + x]), f.minlight));
+            let scale = super::output::pow2(i32::from(c[3] as i8));
             let v = Vec3A::new(f32::from(c[0]), f32::from(c[1]), f32::from(c[2])) * scale;
             *o += v * f.reflectivity * weight;
         }
@@ -755,7 +785,7 @@ fn light_prop(
     light: &[FaceLight],
     sp: &StaticProps,
     pi: usize,
-    opts: &PropOptions,
+    (opts, sphere): (&PropOptions, &[Vec3A]),
     bounces: bool,
 ) -> Option<Vec<Vec<u8>>> {
     let prop = &sp.props[pi];
@@ -824,10 +854,10 @@ fn light_prop(
                     .map(|&i| {
                         let (pos, normal) = verts[i];
                         let mut sky = vec![Vec3A::ZERO; np];
-                        direct_at(ctx, opts, &near, pos, normal, skip, (ignore, Part::Ambient), &mut sky);
+                        direct_at(ctx, (opts, sphere), &near, pos, normal, skip, (ignore, Part::Ambient), &mut sky);
                         let mut ind = vec![Vec3A::ZERO; np];
                         if bounces {
-                            indirect_at(ctx, light, opts, pos, normal, ignore, opts.fast, &mut ind);
+                            indirect_at(ctx, light, (opts, sphere), pos, normal, ignore, opts.fast, &mut ind);
                         }
                         (sky, ind)
                     })
@@ -843,7 +873,7 @@ fn light_prop(
                 if opts.show_normals {
                     c.fill((normal + Vec3A::ONE) * 50.0);
                 } else {
-                    direct_at(ctx, opts, &near, pos, normal, skip, (ignore, Part::Direct), &mut c);
+                    direct_at(ctx, (opts, sphere), &near, pos, normal, skip, (ignore, Part::Direct), &mut c);
                     let (sky, ind) = &soft[g];
                     for ((o, s), v) in c.iter_mut().zip(sky).zip(ind) {
                         *o += *s + *v;
@@ -899,7 +929,7 @@ fn light_prop(
                     let mut c = vec![Vec3A::ZERO; np];
                     direct_at(
                         ctx,
-                        opts,
+                        (opts, sphere),
                         all.get_or_init(|| candidate_lights(ctx, None)),
                         best,
                         *bnormal,
@@ -907,7 +937,7 @@ fn light_prop(
                         (false, Part::All),
                         &mut c,
                     );
-                    indirect_at(ctx, light, opts, best, *bnormal, false, true, &mut c);
+                    indirect_at(ctx, light, (opts, sphere), best, *bnormal, false, true, &mut c);
                     colors[*k].0 = c;
                     colors[*k].1 = best;
                 }
@@ -961,11 +991,12 @@ pub(crate) fn light(
     passes: &[bool],
 ) -> (Vec<(String, Vec<u8>)>, usize, usize) {
     let weights: Vec<u64> = (0..sp.props.len()).map(|i| prop_vertices(sp, i)).collect();
+    let sphere = sphere_table(opts);
     ctx.work.begin(super::progress::Stage::StaticProps, weights.iter().sum());
     let per_prop: Vec<Option<Vec<Vec<u8>>>> = (0..sp.props.len())
         .into_par_iter()
         .map(|i| {
-            let r = light_prop(ctx, light, sp, i, opts, bounces);
+            let r = light_prop(ctx, light, sp, i, (opts, &sphere), bounces);
             if r.is_none() {
                 ctx.work.add(weights[i]);
             }
@@ -1039,6 +1070,50 @@ mod tests {
         let bvh = Bvh::with_groups(&roofed, shadow_class, SHADOW_GROUPS);
         assert_eq!(occ.sky_visible(&bvh, Vec3A::ZERO, Vec3A::Z, NO_PROP), 0.0, "a roof under the sky blocks it");
         assert_eq!(occ.sky_visible(&bvh, Vec3A::new(0.0, 0.0, 300.0), Vec3A::Z, NO_PROP), 1.0);
+    }
+
+    #[test]
+    fn the_direction_table_repeats_the_sampler() {
+        for opts in [
+            PropOptions::default(),
+            PropOptions { fast: true, ..PropOptions::default() },
+            PropOptions { sample_scale: 4.0, sky_sample_scale: 2.0, ..PropOptions::default() },
+        ] {
+            let table = sphere_table(&opts);
+            assert_eq!(table.len(), samples(opts.sample_scale).max(samples(opts.sky_sample_scale)).max(FAST_SAMPLES));
+            let mut s = Sampler::new();
+            for d in &table {
+                assert_eq!(d.to_array().map(f32::to_bits), s.next().to_array().map(f32::to_bits));
+            }
+        }
+    }
+
+    #[test]
+    fn only_models_that_shadow_or_get_lit_are_read() {
+        let prop = |model: usize, flags: u32| Prop {
+            origin: Vec3A::ZERO,
+            angles: [0.0; 3],
+            model,
+            flags,
+            lighting_origin: Vec3A::ZERO,
+        };
+        let props = [
+            prop(0, NO_SHADOW),
+            prop(1, 0),
+            prop(2, NO_SHADOW | NO_PER_VERTEX_LIGHTING),
+            prop(0, NO_SHADOW),
+            prop(9, 0),
+        ];
+        let what = |collision: bool, lighting: bool| ReadWhat { collision, texture_shadows: false, lighting };
+        assert_eq!(
+            models_needed(4, &props, what(true, false)),
+            vec![(false, false), (true, false), (false, false), (false, false)]
+        );
+        assert_eq!(
+            models_needed(4, &props, what(true, true)),
+            vec![(false, true), (true, true), (false, false), (false, false)]
+        );
+        assert_eq!(models_needed(3, &props, what(false, false)), vec![(false, false); 3]);
     }
 
     #[test]

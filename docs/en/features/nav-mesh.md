@@ -28,7 +28,7 @@ Warnings in the console: player starts with no ground under them are skipped, an
 
 ## Showing a nav mesh
 
-**Show nav mesh** draws the mesh in every view. The file is the one chosen with **Map > Load nav mesh...**, else the `.nav` next to the map, else the one in the game's `maps` folder (also next to a decompiled BSP). It is read again when it changes on disk. Hammer Pro reads nav versions 1 to 16 (Garry's Mod writes version 16).
+**Show nav mesh** draws the mesh in every view. The file is the one chosen with **Map > Load nav mesh...**, else the `.nav` next to the map, else the one in the game's `maps` folder (also next to a decompiled BSP). It is read again when it changes on disk (a background thread looks at the candidate files every 1.5 seconds and wakes the editor only when one changes or appears, so showing the nav mesh costs no redraw while nothing changes). Hammer Pro reads nav versions 1 to 16 (Garry's Mod writes version 16).
 
 | Drawing | Meaning |
 | --- | --- |
@@ -58,7 +58,7 @@ Areas are filled in the 3D view and outlined in the 2D views. The status bar sho
 
 - Magenta areas are the ones bots never reach: fix the gap that cuts them off, or remove them in game (the Valve wiki's `nav_flood_select` tip finds them).
 - The [release window](build-content-release.md) can also build the nav mesh in a game session, and its checklist checks that the map has one.
-- MCP tool: `nav_mesh` (the mesh shown, or load a `.nav` file of the map folder; see the [MCP tool reference](../../MCP.md)).
+- MCP tool: `nav_mesh` (the mesh shown, `show` to show or hide it, `load` a `.nav` file of the map folder, `generate` to run **Generate nav mesh** in the background, then `generating` and `last_generation` with the areas and time or the error; see the [MCP tool reference](../../MCP.md)).
 
 ## FAQ
 

@@ -1,6 +1,6 @@
 use glam::DVec3;
 use hp_geom::{
-    Aabb, ClipPiece, Plane, carve_traced, clip_solid_traced, hollow_traced, merge_convex, merge_exact,
+    Aabb, ClipPiece, Plane, carve_many, clip_solid_traced, hollow_traced, merge_convex, merge_exact,
     rebuild_from_points, unique_vertices, validate_solid,
 };
 use hp_vmf::{Group, Side, Solid};
@@ -220,35 +220,18 @@ impl Document {
         };
         let mut results: Vec<(Id, Vec<ClipPiece>)> = Vec::new();
         let mut side_ids: IdMap<Vec<Id>> = id_map(0);
-        for (_, t) in targets {
-            let Some(n) = self.scene.solids.get(&t) else { continue };
-            let tb = n.geom.aabb;
-            let original = &n.solid.sides;
-            let mut pieces = vec![ClipPiece::whole(original)];
-            let mut touched = false;
-            for (cs, cb) in &cutters {
-                let overlap = tb.intersection(cb);
-                if overlap.is_empty() || overlap.size().min_element() <= hp_geom::PLANE_EPS {
-                    continue;
-                }
-                let mut next_pieces = Vec::with_capacity(pieces.len() + 4);
-                for p in pieces {
-                    match carve_traced(&p.sides, cs, &mut gen_side) {
-                        Ok(v) => {
-                            if v.len() != 1 || v.first().map(|q| &q.sides) != Some(&p.sides) {
-                                touched = true;
-                            }
-                            next_pieces.extend(v.into_iter().map(|q| q.compose(&p.origins)));
-                        }
-                        Err(_) => next_pieces.push(p),
-                    }
-                }
-                pieces = next_pieces;
-            }
-            if touched {
+        let jobs: Vec<(Id, &[Side], Aabb)> = targets
+            .iter()
+            .filter_map(|(_, t)| self.scene.solids.get(t).map(|n| (*t, n.solid.sides.as_slice(), n.geom.aabb)))
+            .collect();
+        let target_refs: Vec<(&[Side], Aabb)> = jobs.iter().map(|(_, s, b)| (*s, *b)).collect();
+        let cutter_refs: Vec<(&[Side], Aabb)> = cutters.iter().map(|(s, b)| (s.as_slice(), *b)).collect();
+        let carved = carve_many(&target_refs, &cutter_refs, &mut gen_side);
+        for ((t, original, _), pieces) in jobs.iter().zip(carved) {
+            if let Some(pieces) = pieces {
                 let refs: Vec<&ClipPiece> = pieces.iter().collect();
                 record_side_ids(original, &refs, &mut side_ids);
-                results.push((t, pieces));
+                results.push((*t, pieces));
             }
         }
         self.next_side_id = next;

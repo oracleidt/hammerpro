@@ -62,7 +62,7 @@ A new overlay gets the keys Hammer writes so the compiler builds it: `material`,
 ## Display in the views
 
 - Decals (`infodecal` and any class with the FGD `decal()` helper) are projected on the brush faces under their origin, like static decals in game. They are drawn again when the entity or a brush under it changes. In the player view a named `infodecal` stays hidden until an `Activate` input reaches it, like in game (an unnamed one is applied when the map loads).
-- Overlays (`info_overlay`, `info_overlay_transition` and any class with the FGD `overlay()` or `overlay_transition()` helper) are drawn with their material, projected on every face of their `sides` list (displacements included) and clipped to them. The 2D views show the clipped outline. An overlay is selected and hidden together with its entity.
+- Overlays (`info_overlay`, `info_overlay_transition` and any class with the FGD `overlay()` or `overlay_transition()` helper) are drawn with their material, projected on every face of their `sides` list (displacements included) and clipped to them. The 2D views show the clipped outline. An overlay is selected and hidden together with its entity. An `info_overlay_transition` (a shoreline) is compiled into the water overlays of the map, drawn by the game on the water surface: one strip per shore face (`sides`) that crosses the plane of a water face (`sides2`), `Width1` units onto the land side and `Width2` units over the water. The strips follow each other along the shore whatever the order of the faces in `sides`, so the length texture coordinates run on without a seam from one end of the shore to the other, and the editor draws exactly these strips. Every strip is written upright, its length axis keeping the water on its left: the game builds nothing for a water overlay with a mirrored axis (measured, even with `r_overlaywireframe 1`), so a mirrored strip saved by Valve's Hammer is turned upright with the same corners and texture coordinates, and a saved strip without axes is skipped with a warning. A transition saved by Valve's Hammer also carries the strips Hammer computed (its `overlaytransition` block): they are used when the shore faces give no strip, for example in a decompiled map. A transition whose shore does not cross its water gets a warning in the log.
 - **View > Display options > Show overlays** turns the overlays on or off (on by default, no default shortcut). The same switch is in **Settings > Helpers > Overlays and ropes**, saved as `show_overlays` in the `[helpers]` table of `settings.toml`.
 
 ## Overlays follow your edits
@@ -77,6 +77,7 @@ To edit the face list by hand, use the eyedropper button next to the `sides` key
 - [Check for problems](check-problems.md) finds overlays whose faces no longer exist (with a fix that removes them from the lists) and overlays on more than 64 faces. A map is limited to 8192 overlays.
 - The auto visgroup **Overlays and decals** holds every `info_overlay` and `infodecal` (see [Visgroups](visgroups.md)).
 - MCP tools: `list_decals`, `create_decal`, `list_overlays`, `create_overlay`, `set_overlay`. See the [MCP tool reference](../../MCP.md).
+- `set_tool_options` with tool `decal` or `overlay` and the option `snap` (`on` or `off`) switches the grid snapping of the tool, like its checkbox.
 
 ## FAQ
 

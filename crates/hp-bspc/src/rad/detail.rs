@@ -231,7 +231,8 @@ pub(crate) fn light(
                     (0..l.styles.len())
                         .map(|slot| {
                             let at = l.index(p, slot, 0, lux);
-                            let v: Vec<Vec3A> = l.values[at..at + lux].iter().map(|v| finish(*v, f.minlight)).collect();
+                            let v: Vec<Vec3A> =
+                                l.values[at..at + lux].iter().map(|v| finish(Vec3A::from(*v), f.minlight)).collect();
                             median(&v)
                         })
                         .collect()
@@ -272,7 +273,7 @@ pub(crate) fn light(
                 _ => Vec3A::ZERO,
             };
             let center = Vec3A::from(o.origin) + forward * offset.x - right * offset.y + up * offset.z;
-            (center.is_finite() && up.is_finite()).then(|| (center, up, ctx.map.cluster_at(center.as_dvec3())))
+            (center.is_finite() && up.is_finite()).then(|| (center, up, ctx.map.vis_cluster_at(center.as_dvec3())))
         })
         .collect();
     let mut clusters: Vec<i32> = placed.iter().flatten().map(|p| p.2).collect();
@@ -326,7 +327,10 @@ pub(crate) fn light(
                                         continue;
                                     }
                                     let avg = averages[fi as usize][p][slot];
-                                    let point = finish(l.values[l.index(p, slot, 0, lux) + y * f.w + x], f.minlight);
+                                    let point = finish(
+                                        Vec3A::from(l.values[l.index(p, slot, 0, lux) + y * f.w + x]),
+                                        f.minlight,
+                                    );
                                     ambient[p * STYLES + style] +=
                                         (avg * scale_avg + point * (1.0 - scale_avg)) / 255.0 * f.reflectivity;
                                 }

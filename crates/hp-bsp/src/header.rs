@@ -22,6 +22,7 @@ pub mod lump {
     pub const TEXDATA_STRING_DATA: usize = 43;
     pub const TEXDATA_STRING_TABLE: usize = 44;
     pub const OVERLAYS: usize = 45;
+    pub const WATEROVERLAYS: usize = 50;
     pub const LIGHTING_HDR: usize = 53;
     pub const WORLDLIGHTS_HDR: usize = 54;
     pub const FACES_HDR: usize = 58;

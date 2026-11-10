@@ -45,6 +45,7 @@ The new brush becomes the selection; the creation is one undo step.
 - Select the floor first: the outline takes the height range of the selection, so walls and pillars drawn in the Top view get the right height at once.
 - After creating, use the [Vertex tool](vertex-tool.md) if you need to tilt or bend the brush.
 - The MCP tool `create_polygon_brush` builds the same kind of brush from a list of points (see [MCP tool reference](../../MCP.md)).
+- `set_tool_options` with tool `polygon` sets the options of the tool itself: `tex_scale`, `create_as` (`world` or a brush entity class) and `keep_active`.
 
 ## FAQ
 

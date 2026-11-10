@@ -208,17 +208,6 @@ impl hp_bspc::props::ModelSource for LazyModels {
 }
 
 impl LazyModels {
-    pub(crate) fn of_game(game: Option<PathBuf>) -> LazyModels {
-        LazyModels {
-            gmod: None,
-            game,
-            profile: None,
-            mount: hp_fs::MountOptions::default(),
-            search_paths: Vec::new(),
-            fs: std::sync::OnceLock::new(),
-        }
-    }
-
     fn game_fs(&self) -> Option<&hp_fs::GameFs> {
         self.fs
             .get_or_init(|| {
@@ -392,6 +381,15 @@ pub(crate) fn app_ids_arg(value: &str) -> Result<Vec<u32>, String> {
     Ok(ids)
 }
 
+fn exe_salt() -> u64 {
+    let stamp = std::env::current_exe().and_then(std::fs::metadata).ok().map(|m| {
+        let mtime = m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok());
+        (m.len(), mtime.map_or(0, |d| d.as_nanos() as u64))
+    });
+    let (size, mtime) = stamp.unwrap_or((0, 0));
+    size.rotate_left(32) ^ mtime
+}
+
 pub(crate) fn parse_bspc_args(args: &[String]) -> Result<BspcArgs, String> {
     let mut a = BspcArgs {
         opts: hp_bspc::CompileOptions::default(),
@@ -522,6 +520,11 @@ pub(crate) fn parse_bspc_args(args: &[String]) -> Result<BspcArgs, String> {
             }
             "-radius_override" => {
                 a.opts.radius_override = Some(number(i, arg)?);
+                i += 1;
+            }
+            "-viscache" => {
+                a.opts.vis_cache =
+                    Some(hp_bspc::vis::VisCache { dir: PathBuf::from(value(i, arg)?), salt: exe_salt() });
                 i += 1;
             }
             "-trace" => {
@@ -1288,7 +1291,7 @@ mod tests {
             "-game g -threads 3 -low -nodetail -nowater -fulldetail -forceskyvis -micro 2.5 -luxelscale 2 -minluxelscale 0.5 \
              -defaultluxelsize 8 -maxlightmapdim 64 -nomerge -nosubdiv -notjunc -noprune -novirtualmesh -bumpall -lightifmissing \
              -nodrawtriggers -AllowDynamicPropsAsStatic -replacematerials -keepstalezip -dxlevel 90 -embed e -vis -fast \
-             -radius_override 512 -nosort -trace 1 2 -noaddons -insert_search_path p map",
+             -radius_override 512 -nosort -trace 1 2 -noaddons -insert_search_path p -viscache vc map",
         ))
         .expect("parsed");
         let o = &a.opts;
@@ -1305,6 +1308,7 @@ mod tests {
         assert_eq!((a.dx_level, a.embed.as_deref()), (Some(90), Some(Path::new("e"))));
         assert_eq!(o.vis, hp_bspc::VisLevel::Fast, "-vis -fast");
         assert_eq!((o.radius_override, o.vis_sort, o.vis_trace), (Some(512.0), false, Some((1, 2))));
+        assert_eq!(o.vis_cache.as_ref().map(|c| c.dir.as_path()), Some(Path::new("vc")));
         assert!(!a.mount.mount_addons && !a.mount.mount_workshop);
         assert_eq!(a.search_paths, [PathBuf::from("p")]);
         assert_eq!(a.map.as_deref(), Some(Path::new("map")));

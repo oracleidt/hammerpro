@@ -236,12 +236,11 @@ impl crate::DrawCtx<'_> {
                 pass.set_bind_group(1, &mg.bind_group, &[]);
                 material = mat;
             }
-            if bound != Some(index) {
-                pass.set_vertex_buffer(0, block.vbuf.slice(..));
-                pass.set_index_buffer(block.ibuf.slice(..), wgpu::IndexFormat::Uint32);
-                bound = Some(index);
+            if bound != Some(block.segment) {
+                cl.bind_block(pass, block);
+                bound = Some(block.segment);
             }
-            pass.draw_indexed(first..first + count, 0, index..index + 1);
+            pass.draw_indexed(first..first + count, block.base_vertex, index..index + 1);
             n.add(u64::from(count / 3));
         }
     }

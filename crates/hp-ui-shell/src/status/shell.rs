@@ -192,11 +192,14 @@ impl StatusSegment for Selection {
         let sense = if description.is_some() { egui::Sense::click() } else { egui::Sense::hover() };
         let r = ui.add(egui::Label::new(RichText::new(text).small()).truncate().sense(sense));
         let r = match bounds {
-            Some(b) => r.on_hover_text(tf!("shell.status.bounds_tip", fmt_point(b.min), fmt_point(b.max))),
+            Some(b) => {
+                crate::common::lazy_hover_text(r, || tf!("shell.status.bounds_tip", fmt_point(b.min), fmt_point(b.max)))
+            }
             None => r,
         };
         if let Some(d) = &description {
-            let r = r.on_hover_text(tf!("shell.status.copy_id_tip", d.id));
+            let id = d.id;
+            let r = crate::common::lazy_hover_text(r, || tf!("shell.status.copy_id_tip", id));
             if r.hovered() {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
             }

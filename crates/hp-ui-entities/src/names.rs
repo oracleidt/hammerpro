@@ -9,10 +9,15 @@ use crate::view::DocStamp;
 pub const SPECIAL_TARGETS: [&str; 7] =
     ["!self", "!activator", "!caller", "!player", "!pvsplayer", "!speechtarget", "!picker"];
 
+pub const SLOW_REFRESH_MS: f64 = 1.0;
+pub const REFRESH_INTERVAL_S: f64 = 0.25;
+
 #[derive(Clone, Debug, Default)]
 pub struct MapNames {
     stamp: Option<DocStamp>,
     fingerprint: u64,
+    checked_at: Option<f64>,
+    check_ms: f64,
     names: Vec<String>,
     by_name: HashMap<String, Vec<(Id, u32)>>,
     classes: HashMap<String, u32>,
@@ -67,6 +72,23 @@ impl MapNames {
             return;
         }
         *self = MapNames::build(doc);
+    }
+
+    pub fn refresh_at(&mut self, doc: &Document, now: f64) -> bool {
+        if self.stamp == Some(DocStamp::of(doc)) {
+            return false;
+        }
+        if self.check_ms > SLOW_REFRESH_MS
+            && let Some(at) = self.checked_at
+            && (0.0..REFRESH_INTERVAL_S).contains(&(now - at))
+        {
+            return true;
+        }
+        let start = std::time::Instant::now();
+        self.refresh(doc);
+        self.check_ms = start.elapsed().as_secs_f64() * 1000.0;
+        self.checked_at = Some(now);
+        false
     }
 
     pub fn names(&self) -> &[String] {
@@ -220,6 +242,25 @@ pub struct WordSearch {
     pub excluded: Vec<String>,
 }
 
+pub fn contains_lower(haystack: &str, needle_lower: &str) -> bool {
+    let (h, n) = (haystack.as_bytes(), needle_lower.as_bytes());
+    let Some((&first, rest)) = n.split_first() else { return true };
+    if n.len() > h.len() {
+        return false;
+    }
+    let last = h.len() - n.len();
+    let mut i = 0;
+    while i <= last {
+        if h[i].to_ascii_lowercase() == first
+            && h[i + 1..i + n.len()].iter().zip(rest).all(|(a, b)| a.to_ascii_lowercase() == *b)
+        {
+            return true;
+        }
+        i += 1;
+    }
+    false
+}
+
 impl WordSearch {
     pub fn parse(text: &str) -> WordSearch {
         let mut out = WordSearch::default();
@@ -242,18 +283,15 @@ impl WordSearch {
         if self.is_empty() {
             return true;
         }
-        let lower = text.to_ascii_lowercase();
-        self.terms.iter().all(|t| lower.contains(t.as_str()))
-            && !self.excluded.iter().any(|t| lower.contains(t.as_str()))
+        self.terms.iter().all(|t| contains_lower(text, t)) && !self.excluded.iter().any(|t| contains_lower(text, t))
     }
 
     pub fn matches2(&self, a: &str, b: &str) -> bool {
         if self.is_empty() {
             return true;
         }
-        let (a, b) = (a.to_ascii_lowercase(), b.to_ascii_lowercase());
-        self.terms.iter().all(|t| a.contains(t.as_str()) || b.contains(t.as_str()))
-            && !self.excluded.iter().any(|t| a.contains(t.as_str()) || b.contains(t.as_str()))
+        self.terms.iter().all(|t| contains_lower(a, t) || contains_lower(b, t))
+            && !self.excluded.iter().any(|t| contains_lower(a, t) || contains_lower(b, t))
     }
 }
 

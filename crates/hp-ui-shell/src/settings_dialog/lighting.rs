@@ -40,6 +40,14 @@ impl SettingsPage for LightingPage {
             .checkbox(&mut s.auto_scope, t!("shell.lighting.auto_scope"))
             .on_hover_text(t!("shell.lighting.auto_scope_tip"))
             .changed();
+        changed |= ui
+            .checkbox(&mut s.visible_first, t!("shell.lighting.visible_first"))
+            .on_hover_text(t!("shell.lighting.visible_first_tip"))
+            .changed();
+        changed |= ui
+            .checkbox(&mut s.prepare, t!("shell.lighting.prepare"))
+            .on_hover_text(t!("shell.lighting.prepare_tip"))
+            .changed();
         egui::Grid::new("hp_shell_lighting").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
             ui.label(t!("shell.lighting.threads"));
             changed |= ui
@@ -123,6 +131,22 @@ pub(crate) const TR: TrTable = &[
         "Seuil du précalcul régional optionnel à l'activation automatique de l'aperçu. Précalculer l'éclairage conserve un calcul de toute la carte.",
     ),
     ("shell.lighting.auto_scope_radius", "Big map radius", "Rayon des grandes cartes"),
+    ("shell.lighting.visible_first", "Bake the visible area first", "Précalculer d'abord la zone visible"),
+    (
+        "shell.lighting.prepare",
+        "Prepare the baked preview in the background",
+        "Préparer l'aperçu précalculé en arrière-plan",
+    ),
+    (
+        "shell.lighting.prepare_tip",
+        "Once the map is open and edits pause, the lighting is compiled and lit at low priority so the baked preview shows at once when you turn it on. Turn it off on a slow computer to keep its processor and memory free.",
+        "Une fois la carte ouverte et les modifications en pause, l'éclairage est compilé et calculé en priorité basse pour que l'aperçu précalculé s'affiche aussitôt quand vous l'activez. Désactivez-le sur un ordinateur lent pour garder son processeur et sa mémoire libres.",
+    ),
+    (
+        "shell.lighting.visible_first_tip",
+        "On big maps the area around the camera is baked first so lighting shows in seconds, then the whole map is baked in the background and replaces it.",
+        "Sur les grandes cartes, la zone autour de la caméra est précalculée d'abord pour que l'éclairage apparaisse en quelques secondes, puis toute la carte est précalculée en arrière-plan et la remplace.",
+    ),
     (
         "shell.lighting.auto_scope_radius_tip",
         "Radius of the optional automatic regional preview. Bake around the camera uses its separate radius in the Lighting tab. Used by the next automatic regional bake.",

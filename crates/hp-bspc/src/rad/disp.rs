@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use ahash::AHashMap as HashMap;
 
 use glam::{DVec2, DVec3, Vec3A};
 use rayon::prelude::*;
@@ -10,6 +10,7 @@ const MAX_SAMPLE_RADIUS: f64 = 512.0;
 const MAX_PATCH_RADIUS: f64 = 1500.0;
 const DISPCHOP: f64 = 8.0;
 const MIN_ANGLE: f64 = 0.15;
+const MAX_SLOTS: usize = 4;
 
 pub(crate) fn sample_coord(f: &LitFace, s: usize, t: usize) -> DVec2 {
     let c = |i: usize, n: usize| if n > 1 { (i as f64 + 0.5) / n as f64 * (n - 1) as f64 } else { 0.0 };
@@ -53,25 +54,25 @@ fn luxels_of(f: &LitFace) -> Vec<(DVec3, DVec3)> {
     out
 }
 
-struct Grid {
+struct Grid<T> {
     size: f64,
-    cells: HashMap<(i64, i64, i64), Vec<(u32, u32)>>,
+    cells: HashMap<(i64, i64, i64), Vec<T>>,
 }
 
-impl Grid {
+impl<T: Copy> Grid<T> {
     fn key(&self, p: DVec3) -> (i64, i64, i64) {
         let k = |v: f64| (v / self.size).floor() as i64;
         (k(p.x), k(p.y), k(p.z))
     }
 
-    fn near(&self, p: DVec3, out: &mut Vec<(u32, u32)>) {
+    fn near<'a>(&'a self, p: DVec3, out: &mut Vec<&'a [T]>) {
         out.clear();
         let (x, y, z) = self.key(p);
         for dx in -1..=1 {
             for dy in -1..=1 {
                 for dz in -1..=1 {
                     if let Some(v) = self.cells.get(&(x + dx, y + dy, z + dz)) {
-                        out.extend_from_slice(v);
+                        out.push(v);
                     }
                 }
             }
@@ -131,7 +132,7 @@ pub(crate) fn radial(ctx: &Ctx<'_>, light: &mut [FaceLight]) {
     let samples: Vec<Vec<(DVec3, DVec3)>> =
         (0..faces.len()).into_par_iter().map(|i| if needed[i] { samples_of(&faces[i]) } else { Vec::new() }).collect();
     let passes = ctx.passes;
-    let blended: Vec<(usize, Vec<Vec3A>)> = disps
+    let blended: Vec<(usize, Vec<glam::Vec3>)> = disps
         .par_iter()
         .zip(&near)
         .map(|(&di, list)| {
@@ -139,26 +140,45 @@ pub(crate) fn radial(ctx: &Ctx<'_>, light: &mut [FaceLight]) {
             let size = sample_size(f);
             let radius = ((size * size * 2.0).sqrt() * 2.2).min(MAX_SAMPLE_RADIUS);
             let r2 = radius * radius;
-            let mut grid = Grid { size: radius, cells: HashMap::new() };
-            for &ni in list {
-                for (k, (p, _)) in samples[ni].iter().enumerate() {
-                    let key = grid.key(*p);
-                    grid.cells.entry(key).or_default().push((ni as u32, k as u32));
-                }
-            }
             let own = &light[di];
             let lux = f.luxels();
             let nn = own.normals;
-            let mut values = vec![Vec3A::ZERO; own.values.len()];
+            let width = passes * nn;
+            let mut vals: Vec<Vec3A> = Vec::new();
+            let mut grid: Grid<(DVec3, DVec3, bool, [u32; MAX_SLOTS])> = Grid { size: radius, cells: HashMap::new() };
+            for &ni in list {
+                let nb = &light[ni];
+                let nlux = faces[ni].luxels();
+                let bumped = nb.normals > 1;
+                for (k, &(p, n)) in samples[ni].iter().enumerate() {
+                    let mut at = [u32::MAX; MAX_SLOTS];
+                    for (slot, &style) in own.styles.iter().enumerate().take(MAX_SLOTS) {
+                        let Some(nslot) = nb.styles.iter().position(|s| *s == style) else { continue };
+                        at[slot] = vals.len() as u32;
+                        for pass in 0..passes {
+                            for j in 0..nn {
+                                let from = if bumped { j.min(nb.normals - 1) } else { 0 };
+                                vals.push(
+                                    nb.values
+                                        .get(nb.index(pass, nslot, from, nlux) + k)
+                                        .map_or(Vec3A::ZERO, |v| Vec3A::from(*v)),
+                                );
+                            }
+                        }
+                    }
+                    let key = grid.key(p);
+                    grid.cells.entry(key).or_default().push((p, n, bumped, at));
+                }
+            }
+            let mut values = vec![glam::Vec3::ZERO; own.values.len()];
             let mut found = Vec::new();
+            let mut acc = vec![Vec3A::ZERO; passes * nn];
             for (li, (lp, ln)) in luxels_of(f).into_iter().enumerate() {
                 grid.near(lp, &mut found);
-                for (slot, &style) in own.styles.iter().enumerate() {
+                for slot in 0..own.styles.len() {
                     let mut weight = 0.0f64;
-                    let mut acc = vec![Vec3A::ZERO; passes * nn];
-                    for &(ni, k) in &found {
-                        let (ni, k) = (ni as usize, k as usize);
-                        let (sp, sn) = samples[ni][k];
+                    acc.fill(Vec3A::ZERO);
+                    for &(sp, sn, bumped, at) in found.iter().copied().flatten() {
                         let angle = sn.dot(ln);
                         if angle < MIN_ANGLE {
                             continue;
@@ -167,28 +187,21 @@ pub(crate) fn radial(ctx: &Ctx<'_>, light: &mut [FaceLight]) {
                         if infl <= 0.0 {
                             continue;
                         }
-                        let nb = &light[ni];
-                        let Some(nslot) = nb.styles.iter().position(|s| *s == style) else { continue };
-                        let nlux = faces[ni].luxels();
+                        let Some(at) = at.get(slot).copied().filter(|a| *a != u32::MAX) else { continue };
                         let mut infl = infl * angle;
-                        let bumped = nb.normals > 1;
                         if nn > 1 && !bumped {
                             infl *= 0.05;
                         }
-                        for p in 0..passes {
-                            for n in 0..nn {
-                                let from = if bumped { n.min(nb.normals - 1) } else { 0 };
-                                let v =
-                                    nb.values.get(nb.index(p, nslot, from, nlux) + k).copied().unwrap_or(Vec3A::ZERO);
-                                acc[p * nn + n] += v * infl as f32;
-                            }
+                        let at = at as usize;
+                        for (a, v) in acc.iter_mut().zip(&vals[at..at + width]) {
+                            *a += *v * infl as f32;
                         }
                         weight += infl;
                     }
                     if weight > 0.0 {
                         for p in 0..passes {
                             for n in 0..nn {
-                                values[own.index(p, slot, n, lux) + li] = acc[p * nn + n] / weight as f32;
+                                values[own.index(p, slot, n, lux) + li] = (acc[p * nn + n] / weight as f32).into();
                             }
                         }
                     }
@@ -205,10 +218,10 @@ pub(crate) fn radial(ctx: &Ctx<'_>, light: &mut [FaceLight]) {
 pub(crate) struct Unbounced {
     near: Vec<Vec<usize>>,
     disps: Vec<usize>,
-    before: Vec<Vec<Vec3A>>,
+    before: Vec<Vec<glam::Vec3>>,
 }
 
-fn style0(fl: &FaceLight, passes: usize, lux: usize) -> Vec<Vec3A> {
+fn style0(fl: &FaceLight, passes: usize, lux: usize) -> Vec<glam::Vec3> {
     let mut out = Vec::with_capacity(passes * fl.normals * lux);
     for p in 0..passes {
         for n in 0..fl.normals {
@@ -233,6 +246,7 @@ pub(crate) fn before_bounce(ctx: &Ctx<'_>, light: &[FaceLight]) -> Option<Unboun
         }
     }
     let before = (0..faces.len())
+        .into_par_iter()
         .map(|i| if needed[i] { style0(&light[i], ctx.passes, faces[i].luxels()) } else { Vec::new() })
         .collect();
     Some(Unbounced { near, disps, before })
@@ -242,38 +256,16 @@ pub(crate) fn after_bounce(ctx: &Ctx<'_>, light: &mut [FaceLight], saved: Unboun
     let faces = ctx.faces;
     let passes = ctx.passes;
     let Unbounced { near, disps, before } = saved;
-    let bounced: Vec<Vec<Vec3A>> = (0..faces.len())
-        .into_par_iter()
-        .map(|i| {
-            if before[i].is_empty() {
-                return Vec::new();
-            }
-            let now = style0(&light[i], passes, faces[i].luxels());
-            now.iter().zip(&before[i]).map(|(a, b)| *a - *b).collect()
-        })
-        .collect();
-    let points: Vec<Vec<(DVec3, DVec3)>> = (0..faces.len())
-        .into_par_iter()
-        .map(|i| {
-            if before[i].is_empty() {
-                return Vec::new();
-            }
-            let f = &faces[i];
-            if f.disp.is_some() {
-                return luxels_of(f);
-            }
-            let mut out = Vec::with_capacity(f.luxels());
-            for t in 0..f.h {
-                for s in 0..f.w {
-                    let c = f.flat_sample(s, t).0;
-                    let p = f.plane_point(c.x, c.y);
-                    out.push((p, f.phong(p)));
-                }
-            }
-            out
-        })
-        .collect();
     let normals: Vec<usize> = light.iter().map(|l| l.normals).collect();
+    let view: &[FaceLight] = light;
+    let bounced = |ni: usize, p: usize, from: usize, k: usize| -> Vec3A {
+        let (nlux, nbn) = (faces[ni].luxels(), normals[ni]);
+        let l = &view[ni];
+        match (l.values.get(l.index(p, 0, from, nlux) + k), before[ni].get((p * nbn + from) * nlux + k)) {
+            (Some(now), Some(then)) => Vec3A::from(*now) - Vec3A::from(*then),
+            _ => Vec3A::ZERO,
+        }
+    };
     let blended: Vec<(usize, Vec<Vec3A>)> = disps
         .par_iter()
         .zip(&near)
@@ -281,31 +273,54 @@ pub(crate) fn after_bounce(ctx: &Ctx<'_>, light: &mut [FaceLight], saved: Unboun
             let f = &faces[di];
             let radius = (sample_size(f) * DISPCHOP * 2.2).min(MAX_PATCH_RADIUS);
             let r2 = radius * radius;
-            let mut grid = Grid { size: radius, cells: HashMap::new() };
+            let nn = normals[di];
+            let mut vals: Vec<Vec3A> = Vec::new();
+            let mut grid: Grid<(DVec3, DVec3, bool, u32)> = Grid { size: radius, cells: HashMap::new() };
             let stride = ((radius / sample_size(f)) / 4.0).floor().clamp(1.0, 4.0) as usize;
             let on = |x: usize, n: usize| x.is_multiple_of(stride) || x + 1 == n;
             for &ni in list {
-                let (nw, nh) = (faces[ni].w.max(1), faces[ni].h);
-                for (k, (p, _)) in points[ni].iter().enumerate() {
-                    if !(on(k % nw, nw) && on(k / nw, nh)) {
-                        continue;
+                if before[ni].is_empty() {
+                    continue;
+                }
+                let nf = &faces[ni];
+                let (nw, nh) = (nf.w.max(1), nf.h);
+                let disp_points = nf.disp.is_some().then(|| luxels_of(nf));
+                for t in (0..nh).filter(|&t| on(t, nh)) {
+                    for s in (0..nw).filter(|&s| on(s, nw)) {
+                        let k = t * nw + s;
+                        let (p, n) = match &disp_points {
+                            Some(points) => match points.get(k) {
+                                Some(pn) => *pn,
+                                None => continue,
+                            },
+                            None => {
+                                let c = nf.flat_sample(s, t).0;
+                                let p = nf.plane_point(c.x, c.y);
+                                (p, nf.phong(p))
+                            }
+                        };
+                        let nbn = normals[ni];
+                        let at = vals.len() as u32;
+                        for pass in 0..passes {
+                            for j in 0..nn {
+                                vals.push(bounced(ni, pass, if nbn > 1 { j.min(nbn - 1) } else { 0 }, k));
+                            }
+                        }
+                        let key = grid.key(p);
+                        grid.cells.entry(key).or_default().push((p, n, nbn == 1, at));
                     }
-                    let key = grid.key(*p);
-                    grid.cells.entry(key).or_default().push((ni as u32, k as u32));
                 }
             }
             let lux = f.luxels();
-            let nn = normals[di];
-            let mut out = vec![Vec3A::ZERO; passes * nn * lux];
+            let width = passes * nn;
+            let mut out = vec![Vec3A::ZERO; width * lux];
             let mut found = Vec::new();
-            let mut acc = vec![Vec3A::ZERO; passes * nn];
-            for (li, (lp, ln)) in points[di].iter().enumerate() {
+            let mut acc = vec![Vec3A::ZERO; width];
+            for (li, (lp, ln)) in luxels_of(f).iter().enumerate() {
                 grid.near(*lp, &mut found);
                 let mut weight = 0.0f64;
                 acc.fill(Vec3A::ZERO);
-                for &(ni, k) in &found {
-                    let (ni, k) = (ni as usize, k as usize);
-                    let (pp, pn) = points[ni][k];
+                for &(pp, pn, flat, at) in found.iter().copied().flatten() {
                     let infl = 1.0 - pp.distance_squared(*lp) / r2;
                     if infl <= 0.0 {
                         continue;
@@ -314,16 +329,12 @@ pub(crate) fn after_bounce(ctx: &Ctx<'_>, light: &mut [FaceLight], saved: Unboun
                     if infl <= 0.0 {
                         continue;
                     }
-                    let (nlux, nbn) = (faces[ni].luxels(), normals[ni]);
-                    if nn > 1 && nbn == 1 {
+                    if nn > 1 && flat {
                         infl *= 0.05;
                     }
-                    for p in 0..passes {
-                        for n in 0..nn {
-                            let from = if nbn > 1 { n.min(nbn - 1) } else { 0 };
-                            let v = bounced[ni].get((p * nbn + from) * nlux + k).copied().unwrap_or(Vec3A::ZERO);
-                            acc[p * nn + n] += v * infl as f32;
-                        }
+                    let at = at as usize;
+                    for (a, v) in acc.iter_mut().zip(&vals[at..at + width]) {
+                        *a += *v * infl as f32;
                     }
                     weight += infl;
                 }
@@ -345,7 +356,7 @@ pub(crate) fn after_bounce(ctx: &Ctx<'_>, light: &mut [FaceLight], saved: Unboun
                 let at = fl.index(p, 0, n, lux);
                 let base = &before[di][(p * nn + n) * lux..(p * nn + n + 1) * lux];
                 for k in 0..lux {
-                    fl.values[at + k] = base[k] + blend[(p * nn + n) * lux + k];
+                    fl.values[at + k] = (Vec3A::from(base[k]) + blend[(p * nn + n) * lux + k]).into();
                 }
             }
         }

@@ -40,8 +40,10 @@ mod projectors;
 mod queue;
 mod ragdolls;
 mod registry;
+mod residency;
 mod scene;
 mod shadow_hulls;
+mod streaming;
 #[cfg(test)]
 mod test_gpu;
 mod texture;
@@ -124,6 +126,8 @@ pub(crate) struct Upload {
     pub name: String,
     pub target: texture::TexTarget,
     pub epoch: u64,
+    pub cap: u32,
+    pub stream: bool,
     pub data: Option<texture::PreparedTexture>,
     pub _held: queue::Held,
 }
@@ -197,6 +201,7 @@ pub struct AssetManager {
     pub(crate) editor_cubes: cubemaps::EditorCubes,
     pub(crate) pick_meshes: pick::PickMeshes,
     pub(crate) parked_limit: u64,
+    pub(crate) residency: residency::Residency,
 }
 
 impl AssetManager {
@@ -261,6 +266,7 @@ impl AssetManager {
             editor_cubes: cubemaps::EditorCubes::default(),
             pick_meshes: pick::PickMeshes::default(),
             parked_limit: gpu_memory::DEFAULT_PARKED_LIMIT,
+            residency: residency::Residency::default(),
         };
         m.start_mount(settings);
         m.start_fgd(settings);
@@ -367,6 +373,9 @@ impl hp_app::AssetsApi for AssetManager {
     }
     fn scene_prepared(&self) -> bool {
         if !self.scene.initialized || self.scene.prep.is_some() || !self.scene.upload_pending.is_empty() {
+            return false;
+        }
+        if !self.fresh_scene_ready() {
             return false;
         }
         if self.fs.is_none() {
@@ -541,7 +550,9 @@ impl hp_app::AssetsApi for AssetManager {
         renderer: &mut hp_render::Renderer,
         models: &[hp_app::state::ParticleModelDraw],
     ) -> Vec<hp_render::ModelInstance> {
-        self.particle_draw_models_impl(renderer, models)
+        let list = self.particle_draw_models_impl(renderer, models);
+        self.escape_models(list.iter().map(|i| i.model));
+        list
     }
 
     fn set_projector_overrides(&mut self, overrides: &[hp_app::state::ProjectorOverride]) {
@@ -553,6 +564,10 @@ impl hp_app::AssetsApi for AssetManager {
 
     fn light_preview(&self) -> Option<hp_app::state::LightPreviewReport> {
         self.scene.opts.is_some_and(|o| o.lighting_preview).then_some(self.scene.light_report)
+    }
+
+    fn animated_lights(&self) -> bool {
+        self.scene.animated_lights && self.scene.opts.is_some_and(|o| o.lighting_preview)
     }
 
     fn play_cubemap_sources(&self) -> Option<(usize, usize)> {
@@ -715,6 +730,19 @@ impl hp_app::AssetsApi for AssetManager {
 
     fn apply_texture_limit(&mut self, gfx: &mut Gfx, size: u32) -> usize {
         self.apply_texture_limit(&mut gfx.renderer, size)
+    }
+
+    fn note_view(&mut self, view: u32, params: &hp_render::ViewParams) {
+        let frame = self.shared.current_frame();
+        self.residency.note_view(view, params, frame);
+    }
+
+    fn set_texture_budget(&mut self, bytes: u64) {
+        self.residency.budget = bytes;
+    }
+
+    fn texture_streaming(&self) -> hp_app::runtime::TextureStreaming {
+        self.residency.report
     }
 
     fn sprite_material_id(&mut self, name: &str, additive: bool) -> hp_render::MaterialId {

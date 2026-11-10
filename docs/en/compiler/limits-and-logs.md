@@ -79,7 +79,7 @@ The compiler prints VBSP's wording on purpose, so the same rules work on logs of
 | `microbrush` | A brush is too small or too thin to be built. | Delete it or make it at least 1 unit thick on the grid. |
 | `texture axis perpendicular` | A texture is projected along its own face. | Reset the face alignment (Check for problems fixes it). |
 | `mixed face contents` | One brush mixes contents (water and solid, nodraw and clip...). | Use one kind of material on every face. |
-| `displacement found on a(n)` | A displacement inside a brush entity. | Move the displacement brush back to the world. |
+| `displacement found on a(n)` | A displacement inside a brush entity. In a `func_detail` it is only a warning: the displacement is compiled as a world one. | Move the displacement brush back to the world. |
 | `too many switched lights` | More than 96 named lights (32 outside Garry's Mod). | Give lights that switch together the same name; remove names that never switch. |
 | `must be used on a dynamic entity` | A `prop_static` model has `prop_data`. | Use `prop_physics` or `prop_dynamic`, or `-AllowDynamicPropsAsStatic`. |
 | `must be compiled with $staticprop` | The model is not a static prop model. | Use `prop_dynamic`. |
@@ -103,7 +103,7 @@ The **Statistics** tab (also the **Statistics: N hints** button of the log) read
 - **Optimization hints**: limits at 75% or more (over 90% they read as warnings, over 100% the game may refuse the map), a map compiled without visibility (critical when it has water: the game then draws the water black, without refraction, so compile with at least the fast visibility), clusters that see 50% of the map or more, a weak average visibility, a big map without areaportals, small structural brushes that could be `func_detail` (the smallest named), static props without fade distance, power 4 displacements, lightmaps taking 90% or more of the 2 GB a face can address, very fine lightmap scales, switchable styles nearly used up.
 - **Engine limits**: Valve's vbspinfo table (used, maximum, bytes, fullness), the fullest first.
 - **Geometry**: map size, brushes (structural, detail, water, tool, in brush entities), entities by class, faces by material, displacements by power, areas, the small structural brushes and the props without fade distance.
-- **Visibility**: mode (fast, full, not computed, or skipped because the map leaks), clusters, portals, leaves, visible clusters on average and at most, the vis radius, the clusters that see the most.
+- **Visibility**: mode (fast, full, reused from an earlier compile with the same portals, not computed, or skipped because the map leaks), clusters, portals, leaves, visible clusters on average and at most, the vis radius, the clusters that see the most.
 - **Lighting**: lightmap bytes of each pass against the 2 GB a face can address, luxels, lights by type, switchable styles, texture lights, static and detail props lit, leaf ambient samples, bounces, the faces and materials with the most luxels with their lightmap scale.
 - **Stage times** and **Step times**.
 

@@ -92,6 +92,36 @@ impl Mouse {
     }
 }
 
+pub(crate) fn option_flag(value: &str) -> Option<bool> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "on" | "true" | "1" => Some(true),
+        "off" | "false" | "0" => Some(false),
+        _ => None,
+    }
+}
+
+pub(crate) fn on_off(b: bool) -> &'static str {
+    if b { "on" } else { "off" }
+}
+
+pub(crate) fn parse_create_as(value: &str) -> Option<crate::block::CreateAs> {
+    let v = value.trim();
+    if v.eq_ignore_ascii_case("world") {
+        Some(crate::block::CreateAs::World)
+    } else if crate::picker::is_valid_class_name(v) && v.len() <= 64 {
+        Some(crate::block::CreateAs::Entity(v.to_ascii_lowercase()))
+    } else {
+        None
+    }
+}
+
+pub(crate) fn create_as_text(c: &crate::block::CreateAs) -> String {
+    match c {
+        crate::block::CreateAs::World => "world".to_owned(),
+        crate::block::CreateAs::Entity(class) => class.clone(),
+    }
+}
+
 pub(crate) fn consume_plain_key(ctx: &egui::Context, key: Key) -> bool {
     ctx.input_mut(|i| {
         if i.modifiers.alt || i.modifiers.ctrl || i.modifiers.command || i.modifiers.mac_cmd {

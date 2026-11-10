@@ -41,6 +41,10 @@ Le journal contient les diagnostics en anglais des bibliothèques (durées de mo
 
 Un message répété en rafale est écrit au plus 5 fois toutes les 10 secondes ; le suivant indique combien de messages semblables ont été masqués. Écrire dans le journal n'arrête jamais Hammer Pro, même quand sa sortie est fermée.
 
+## Rapports et journal par MCP
+
+Un assistant IA connecté par [MCP](../reference/mcp-server.md) peut les lire pour vous : `get_crash_reports` liste les rapports du dossier crash (du plus récent au plus ancien, avec leur type : plantage, fil de travail ou exécution précédente terminée de façon inattendue, et la ligne du message) et en lit un quand on lui donne son nom de fichier ; `get_app_log` renvoie les dernières lignes du journal de cette session, filtrées avec `contains`. Les deux ne font que lire : ils n'écrivent jamais, et `get_crash_reports` ne lit rien en dehors du dossier crash.
+
 ## Problèmes graphiques
 
 ### Erreurs graphiques et périphérique perdu

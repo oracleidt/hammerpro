@@ -8,6 +8,10 @@ use crate::stable_hash::StableHasher;
 pub const DEFAULT_MAX_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 pub const MAX_ENTRY_BYTES: u64 = 768 * 1024 * 1024;
 
+pub const VIS_CACHE_ARG: &str = "-viscache";
+
+const VIS_EXT: &str = "hpvis";
+
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PlanCache {
@@ -115,9 +119,9 @@ pub fn prune(dir: &Path, max_bytes: u64) {
         let Ok(entries) = std::fs::read_dir(map.path()) else { continue };
         for e in entries.flatten().take(10_000) {
             let p = e.path();
-            let ext_ok = p.extension().is_some_and(|x| {
-                x.eq_ignore_ascii_case("bsp") || x.eq_ignore_ascii_case("prt") || x.eq_ignore_ascii_case("stats")
-            });
+            let ext_ok = p
+                .extension()
+                .is_some_and(|x| ["bsp", "prt", "stats", VIS_EXT].iter().any(|e| x.eq_ignore_ascii_case(e)));
             let Ok(meta) = e.metadata() else { continue };
             if ext_ok && meta.is_file() {
                 files.push((meta.modified().unwrap_or(SystemTime::UNIX_EPOCH), meta.len(), p));
@@ -146,7 +150,7 @@ pub fn key_args(args: &[String], map_arg: &str, game_dir: &str) -> Vec<String> {
         let lower = a.to_ascii_lowercase();
         match lower.as_str() {
             "-low" | "-leaktest" => {}
-            "-threads" => i += 1,
+            "-threads" | VIS_CACHE_ARG => i += 1,
             _ if a == map_arg => out.push("$map".to_owned()),
             _ if a == game_dir => out.push("$game".to_owned()),
             _ => out.push(a.clone()),
@@ -217,10 +221,11 @@ mod tests {
 
     #[test]
     fn keys_ignore_speed_flags_and_paths() {
-        let a: Vec<String> = ["-leaktest", "-low", "-threads", "8", "-game", "C:/g", "C:/maps/.b/m"]
-            .iter()
-            .map(|s| (*s).to_owned())
-            .collect();
+        let a: Vec<String> =
+            ["-leaktest", "-low", "-threads", "8", "-viscache", "C:/c/m", "-game", "C:/g", "C:/maps/.b/m"]
+                .iter()
+                .map(|s| (*s).to_owned())
+                .collect();
         let b: Vec<String> = ["-game", "D:/other", "D:/cache/spec/m"].iter().map(|s| (*s).to_owned()).collect();
         assert_eq!(key_args(&a, "C:/maps/.b/m", "C:/g"), key_args(&b, "D:/cache/spec/m", "D:/other"));
         assert_eq!(key_args(&a, "C:/maps/.b/m", "C:/g"), ["-game", "$game", "$map"]);

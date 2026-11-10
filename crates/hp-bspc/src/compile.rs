@@ -38,9 +38,14 @@ pub struct CompileOptions {
     pub block_size: u32,
     pub prop_debug: bool,
     pub format: hp_bsp::BspFormat,
+    pub vis_cache: Option<crate::vis::VisCache>,
 }
 
 pub const RELAXED_NOTE: &str = "the game would refuse this map; this compile goes on";
+
+fn planes_need_leaning(errors: &[String], opts: &CompileOptions, displacements: bool) -> bool {
+    !opts.lean_planes && displacements && errors.iter().any(|e| e.contains("MAX_MAP_PLANES") && e.contains("exceeded"))
+}
 
 fn relaxable_limit(e: &str) -> bool {
     e.starts_with("Bad surface extents")
@@ -77,6 +82,7 @@ impl Default for CompileOptions {
             block_size: crate::tree::BLOCK_SIZE as u32,
             prop_debug: false,
             format: hp_bsp::BspFormat::default(),
+            vis_cache: None,
         }
     }
 }
@@ -330,6 +336,25 @@ pub fn compile(
     opts: &CompileOptions,
     log: &mut dyn FnMut(&str),
 ) -> Result<CompileOutput, CompileError> {
+    let mut over = None;
+    let first = compile_once(map, materials, model_files, opts, log, &mut over);
+    let Some(planes) = over else { return first };
+    log(&format!(
+        "{planes} planes, over the engine limit of {}: the planes only displacement brushes use are left out and the geometry is built again",
+        hp_bsp::limits::PLANES.max_in(opts.format.limits)
+    ));
+    let lean = CompileOptions { lean_planes: true, ..opts.clone() };
+    compile_once(map, materials, model_files, &lean, log, &mut None)
+}
+
+fn compile_once(
+    map: &hp_vmf::Map,
+    materials: &dyn MaterialSource,
+    model_files: &dyn crate::props::ModelSource,
+    opts: &CompileOptions,
+    log: &mut dyn FnMut(&str),
+    planes_over: &mut Option<usize>,
+) -> Result<CompileOutput, CompileError> {
     let visible = without_hidden(map);
     let map = visible.as_ref().unwrap_or(map);
     let start = std::time::Instant::now();
@@ -360,11 +385,16 @@ pub fn compile(
     let mut prefetched: ahash::AHashMap<String, crate::materials::MaterialFacts> = {
         use rayon::prelude::*;
         let mut seen = ahash::AHashSet::new();
+        let overlays = entities
+            .iter()
+            .filter(|e| e.classname.eq_ignore_ascii_case("info_overlay"))
+            .filter_map(|e| key(e, "material"));
         let names: Vec<&str> = entities
             .iter()
             .flat_map(|e| e.solids.iter())
             .flat_map(|s| s.sides.iter())
             .map(|s| s.material.as_str())
+            .chain(overlays)
             .filter(|m| seen.insert(m.to_ascii_lowercase()))
             .collect();
         log(&format!("Resolving {} unique materials", names.len()));
@@ -501,9 +531,15 @@ pub fn compile(
         let entity_sides = side_texes.len();
         for (brush_num, (solid, is_origin)) in list.into_iter().enumerate() {
             if ei != 0 && solid.sides.iter().any(|s| s.disp.is_some()) {
-                return Err(CompileError::Failed(format!(
-                    "Error: displacement found on a(n) {class} entity - not supported (entity {ei}, brush {brush_num})"
-                )));
+                if !into_world {
+                    return Err(CompileError::Failed(format!(
+                        "Error: displacement found on a(n) {class} entity - not supported (entity {ei}, brush {brush_num})"
+                    )));
+                }
+                log(&format!(
+                    "Warning: displacement found on a(n) {class} entity (entity {ei}, brush {brush_num}): compiled as a \
+                     world displacement (VBSP refuses it)"
+                ));
             }
             if is_origin {
                 for s in &solid.sides {
@@ -948,56 +984,6 @@ Probably too many areaportals"
     }
     let mut water = crate::water::WaterData::default();
     water.add_model(0, &mut tree, &portals, &planes, &brushes);
-    let mut vis_portals = Vec::new();
-    if !opts.preview || (opts.vis != VisLevel::Off && !leaked) {
-        let mut prt_tree = Tree {
-            nodes: tree
-                .nodes
-                .iter()
-                .map(|n| crate::tree::Node {
-                    plane: n.plane,
-                    children: n.children,
-                    parent: n.parent,
-                    contents: n.contents,
-                    cluster: n.cluster,
-                    ..Default::default()
-                })
-                .collect(),
-            head: tree.head,
-            outside: tree.outside,
-            mins: tree.mins,
-            maxs: tree.maxs,
-        };
-        let prt_portals = Portals::make(&mut prt_tree, &planes);
-        let mut stack = vec![prt_tree.head];
-        while let Some(n) = stack.pop() {
-            if !prt_tree.nodes[n].is_leaf() {
-                let [f, b] = prt_tree.nodes[n].children;
-                stack.push(b);
-                stack.push(f);
-                continue;
-            }
-            for &pid in &prt_tree.nodes[n].portals {
-                let p = &prt_portals.list[pid];
-                if p.nodes[0] != n || p.on_node.is_none() || p.winding.points.len() < 3 {
-                    continue;
-                }
-                let [a, b] = p.nodes;
-                let (ca, cb) = (prt_tree.nodes[a].cluster, prt_tree.nodes[b].cluster);
-                if ca < 0 || cb < 0 || ca == cb || !prt_tree.nodes[a].is_leaf() || !prt_tree.nodes[b].is_leaf() {
-                    continue;
-                }
-                let clusters = if winding_faces_away(&p.winding.points, p.plane.normal) {
-                    [cb as u32, ca as u32]
-                } else {
-                    [ca as u32, cb as u32]
-                };
-                vis_portals.push(ClusterPortal { points: p.winding.points.clone(), clusters });
-            }
-        }
-        drop((prt_tree, prt_portals));
-    }
-    let prt = if opts.preview { String::new() } else { prt_text(clusters, &vis_portals) };
     stage("occluders, clusters, water");
     if leaked {
         log(&format!(
@@ -1010,35 +996,40 @@ Probably too many areaportals"
     }
 
     let model_planes = (!models.is_empty()).then(|| crate::brushbsp::model_planes(&mut planes));
-    let built: Vec<(Tree, Portals, Faces)> = {
-        use rayon::prelude::*;
-        let planes = &planes;
-        models
-            .par_iter()
-            .map(|m| {
-                let mp = model_planes.expect("planes found when there are brush entities");
-                let mut t0 = crate::brushbsp::model_tree_with(planes, mp, &brushes, &contents_list, &m.brushes);
-                let mut p0 = Portals::make(&mut t0, planes);
-                let mut tight = ahash::AHashMap::new();
-                loop {
-                    let (mut t, mut p) = if could_overflow {
-                        (t0.clone(), p0.clone())
-                    } else {
-                        (std::mem::take(&mut t0), std::mem::take(&mut p0))
-                    };
-                    let mut f = Faces::make_with(&mut t, &mut p, planes, &brushes, &tex, false, true, face_options);
-                    f.tight = tight.clone();
-                    f.merge(&mut t, planes, &brushes);
-                    f.subdivide(&mut t, planes, &tex);
-                    f.fix_tjuncs(&mut t, false);
-                    let bad = if could_overflow { f.oversized(&tex) } else { Vec::new() };
-                    if bad.is_empty() || !f.tighten(&bad, &mut tight) {
-                        break (t, p, f);
+    let wants_portals = !opts.preview || (opts.vis != VisLevel::Off && !leaked);
+    let (vis_portals, built): (Vec<ClusterPortal>, Vec<(Tree, Portals, Faces)>) = rayon::join(
+        || if wants_portals { cluster_portals(&tree, &planes) } else { Vec::new() },
+        || {
+            use rayon::prelude::*;
+            let planes = &planes;
+            models
+                .par_iter()
+                .map(|m| {
+                    let mp = model_planes.expect("planes found when there are brush entities");
+                    let mut t0 = crate::brushbsp::model_tree_with(planes, mp, &brushes, &contents_list, &m.brushes);
+                    let mut p0 = Portals::make(&mut t0, planes);
+                    let mut tight = ahash::AHashMap::new();
+                    loop {
+                        let (mut t, mut p) = if could_overflow {
+                            (t0.clone(), p0.clone())
+                        } else {
+                            (std::mem::take(&mut t0), std::mem::take(&mut p0))
+                        };
+                        let mut f = Faces::make_with(&mut t, &mut p, planes, &brushes, &tex, false, true, face_options);
+                        f.tight = tight.clone();
+                        f.merge(&mut t, planes, &brushes);
+                        f.subdivide(&mut t, planes, &tex);
+                        f.fix_tjuncs(&mut t, false);
+                        let bad = if could_overflow { f.oversized(&tex) } else { Vec::new() };
+                        if bad.is_empty() || !f.tighten(&bad, &mut tight) {
+                            break (t, p, f);
+                        }
                     }
-                }
-            })
-            .collect()
-    };
+                })
+                .collect()
+        },
+    );
+    let prt = if opts.preview { String::new() } else { prt_text(clusters, &vis_portals) };
     let mut model_trees: Vec<(Tree, Portals, Faces, DVec3, usize)> = Vec::with_capacity(models.len());
     for (m, (mut t, p, f)) in models.iter().zip(built) {
         water.add_model(model_trees.len() + 1, &mut t, &p, &planes, &brushes);
@@ -1260,12 +1251,32 @@ Probably too many areaportals"
     stage("physics");
     lumps.data.insert(crate::emit::lump::LEAFWATERDATA, (water.lump(), 0));
     let max_overlays = hp_bsp::limits::OVERLAYS.max_usize_in(opts.format.limits);
-    let overlays = overlay_lumps(&entities, &lumps.side_faces, &mut tex, materials, max_overlays, log)?;
+    let mut overlay_facts = |name: &str| {
+        let k = name.to_ascii_lowercase();
+        if let Some(f) = facts_cache.get(&k) {
+            return f.clone();
+        }
+        let f = prefetched.remove(&k).unwrap_or_else(|| materials.facts(name));
+        facts_cache.insert(k, f.clone());
+        f
+    };
+    let overlays = overlay_lumps(&entities, &lumps.side_faces, &mut tex, &mut overlay_facts, max_overlays, log)?;
     if opts.format.overlay_system_levels {
         lumps.data.insert(crate::emit::lump::OVERLAY_SYSTEM_LEVELS, (vec![0; overlays.0.len() / 352 * 4], 0));
     }
+    let max_water = hp_bsp::limits::WATEROVERLAYS.max_usize_in(opts.format.limits);
+    let water_overlays = crate::water_overlays::lump(
+        &entities,
+        &lumps.side_faces,
+        &mut tex,
+        materials,
+        max_overlays + 1,
+        max_water,
+        log,
+    )?;
     lumps.data.insert(crate::emit::lump::OVERLAYS, (overlays.0, 0));
     lumps.data.insert(crate::emit::lump::OVERLAY_FADES, (overlays.1, 0));
+    lumps.data.insert(crate::emit::lump::WATEROVERLAYS, (water_overlays, 0));
     if opts.format.worldlights_version != 0 {
         for l in [crate::emit::lump::WORLDLIGHTS, crate::emit::lump::WORLDLIGHTS_HDR] {
             lumps.data.insert(l, (Vec::new(), opts.format.worldlights_version));
@@ -1315,6 +1326,31 @@ Probably too many areaportals"
     let brush_count = brushes.len();
     if opts.preview {
         brushes = Vec::new();
+    }
+    if !lumps.errors.is_empty() {
+        let fatal = |e: &str| {
+            (e.contains("exceeded") || e.starts_with("Bad surface extents"))
+                && !(opts.relaxed_limits && relaxable_limit(e))
+        };
+        if planes_need_leaning(&lumps.errors, opts, !disps.is_empty()) {
+            *planes_over = Some(planes.len());
+            return Err(CompileError::Failed("MAX_MAP_PLANES".to_owned()));
+        }
+        for e in &lumps.errors {
+            if fatal(e) || !opts.relaxed_limits {
+                log(e);
+            } else {
+                log(&format!("Warning: {e} ({RELAXED_NOTE})"));
+            }
+        }
+        if lumps.errors.iter().any(|e| fatal(e)) {
+            if let Ok(file) = hp_bsp::Bsp::from_vec(lumps.file(map.version_info.map_version)) {
+                for l in crate::stats::limit_lines_in(&file, opts.format.limits) {
+                    log(&l);
+                }
+            }
+            return Err(CompileError::Failed(lumps.errors.join("\n")));
+        }
     }
     stage("overlays, finish");
     let mut computed = false;
@@ -1382,47 +1418,88 @@ Probably too many areaportals"
             lump_of(crate::emit::lump::TEXINFO),
             clusters as usize,
         );
-        let pvs = crate::vis::compute_pvs_for_sky(clusters as usize, &portals, &vopts, radius, &sky, &mut |f| {
-            if base_secs.is_none() && f >= share {
-                base_secs = Some(t_pvs.elapsed().as_secs_f64());
-            }
-            let percent = (f.clamp(0.0, 1.0) * 100.0) as u32;
-            if last_percent.is_none()
-                || last_progress.elapsed().as_secs() >= 2
-                || (percent == 100 && last_percent != Some(100))
-            {
-                log(&format!(
-                    "Visibility {percent}%: {clusters} clusters, {} portals, {:.0} s elapsed",
-                    portals.len(),
-                    t_pvs.elapsed().as_secs_f64()
-                ));
-                last_percent = Some(percent);
-                last_progress = std::time::Instant::now();
-            }
+        let cache = opts.vis_cache.as_ref().map(|c| {
+            let input = crate::vis::cache::VisInput {
+                clusters: clusters as usize,
+                portals: &portals,
+                fast: vopts.fast,
+                sort: vopts.sort,
+                radius_override: opts.radius_override,
+                fog_radius: radius,
+                sky: &sky,
+            };
+            (c, crate::vis::cache::key(&input, c.salt))
         });
-        let pvs_secs = t_pvs.elapsed().as_secs_f64();
-        if pvs.is_empty() {
-            log("Warning: too many clusters for the visibility, everything is drawn");
-            vis_run.mode = "off".to_owned();
-        } else {
-            let t_pas = std::time::Instant::now();
-            let pas = crate::vis::compute_pas_with(&pvs, &vopts);
-            let base = base_secs.unwrap_or(pvs_secs).min(pvs_secs);
-            vis_run.times = vec![
-                ("base".to_owned(), base),
-                ((if vopts.fast { "cluster merge" } else { "flow" }).to_owned(), pvs_secs - base),
-                ("pas".to_owned(), t_pas.elapsed().as_secs_f64()),
-            ];
-            let seen: usize = pvs.iter().map(|r| r.iter().map(|b| b.count_ones() as usize).sum::<usize>()).sum();
+        let reused = cache.as_ref().and_then(|(c, k)| {
+            let lump = crate::vis::cache::load(&c.dir, *k, clusters as usize)?;
+            let rows = crate::stats::pvs_rows(&lump);
+            (rows.len() == clusters as usize).then_some((lump, rows))
+        });
+        let visible = if let Some((lump, pvs)) = reused {
+            let secs = t_pvs.elapsed().as_secs_f64();
+            vis_run.mode = format!("{} (reused)", vis_run.mode);
+            vis_run.times = vec![("reused".to_owned(), secs)];
             log(&format!(
-                "{} visibility: {} clusters, {} portals, average {:.1} visible clusters, {:.2} s",
+                "{} visibility reused: the portals are the same as in an earlier compile, {} clusters, {} portals, average {:.1} visible clusters, {:.2} s",
                 if vopts.fast { "Fast" } else { "Full" },
                 clusters,
                 portals.len(),
-                seen as f64 / clusters as f64,
-                start_vis.elapsed().as_secs_f64()
+                visible_clusters(&pvs) as f64 / clusters as f64,
+                secs
             ));
-            lumps.data.insert(crate::emit::lump::VISIBILITY, (crate::vis::vis_lump(&pvs, &pas), 0));
+            Some((lump, pvs))
+        } else {
+            let pvs = crate::vis::compute_pvs_for_sky(clusters as usize, &portals, &vopts, radius, &sky, &mut |f| {
+                if base_secs.is_none() && f >= share {
+                    base_secs = Some(t_pvs.elapsed().as_secs_f64());
+                }
+                let percent = (f.clamp(0.0, 1.0) * 100.0) as u32;
+                if last_percent.is_none()
+                    || last_progress.elapsed().as_secs() >= 2
+                    || (percent == 100 && last_percent != Some(100))
+                {
+                    log(&format!(
+                        "Visibility {percent}%: {clusters} clusters, {} portals, {:.0} s elapsed",
+                        portals.len(),
+                        t_pvs.elapsed().as_secs_f64()
+                    ));
+                    last_percent = Some(percent);
+                    last_progress = std::time::Instant::now();
+                }
+            });
+            let pvs_secs = t_pvs.elapsed().as_secs_f64();
+            if pvs.is_empty() {
+                log("Warning: too many clusters for the visibility, everything is drawn");
+                vis_run.mode = "off".to_owned();
+                None
+            } else {
+                let t_pas = std::time::Instant::now();
+                let pas = crate::vis::compute_pas_with(&pvs, &vopts);
+                let base = base_secs.unwrap_or(pvs_secs).min(pvs_secs);
+                vis_run.times = vec![
+                    ("base".to_owned(), base),
+                    ((if vopts.fast { "cluster merge" } else { "flow" }).to_owned(), pvs_secs - base),
+                    ("pas".to_owned(), t_pas.elapsed().as_secs_f64()),
+                ];
+                log(&format!(
+                    "{} visibility: {} clusters, {} portals, average {:.1} visible clusters, {:.2} s",
+                    if vopts.fast { "Fast" } else { "Full" },
+                    clusters,
+                    portals.len(),
+                    visible_clusters(&pvs) as f64 / clusters as f64,
+                    start_vis.elapsed().as_secs_f64()
+                ));
+                let lump = crate::vis::vis_lump(&pvs, &pas);
+                if let Some((c, k)) = &cache
+                    && let Err(e) = crate::vis::cache::store(&c.dir, *k, clusters as usize, &lump)
+                {
+                    log(&format!("Warning: the visibility could not be kept for the next compile ({e})"));
+                }
+                Some((lump, pvs))
+            }
+        };
+        if let Some((lump, pvs)) = visible {
+            lumps.data.insert(crate::emit::lump::VISIBILITY, (lump, 0));
             if (radius.is_some() || opts.radius_override.is_some())
                 && let Some((leafs, _)) = lumps.data.get_mut(&crate::emit::lump::LEAFS)
             {
@@ -1446,28 +1523,6 @@ Probably too many areaportals"
     } else {
         lumps.data.insert(crate::emit::lump::LEAFMINDISTTOWATER, (vec![0; lumps.leaf_count() * 2], 0));
     }
-    if !lumps.errors.is_empty() {
-        let fatal = |e: &str| {
-            (e.contains("exceeded") || e.starts_with("Bad surface extents"))
-                && !(opts.relaxed_limits && relaxable_limit(e))
-        };
-        for e in &lumps.errors {
-            if fatal(e) || !opts.relaxed_limits {
-                log(e);
-            } else {
-                log(&format!("Warning: {e} ({RELAXED_NOTE})"));
-            }
-        }
-        if lumps.errors.iter().any(|e| fatal(e)) {
-            if let Ok(file) = hp_bsp::Bsp::from_vec(lumps.file(map.version_info.map_version)) {
-                for l in crate::stats::limit_lines_in(&file, opts.format.limits) {
-                    log(&l);
-                }
-            }
-            return Err(CompileError::Failed(lumps.errors.join("\n")));
-        }
-    }
-
     let world_box = bounds_no_skybox(&lumps.data, &disps, &sky_areas).unwrap_or((wmins, wmaxs));
     let mut out_ents = entity_list(
         &entities,
@@ -1590,6 +1645,60 @@ Probably too many areaportals"
         prt,
         trace: trace_text,
     })
+}
+
+fn cluster_portals(tree: &Tree, planes: &PlaneSet) -> Vec<ClusterPortal> {
+    let mut vis_portals = Vec::new();
+    let mut prt_tree = Tree {
+        nodes: tree
+            .nodes
+            .iter()
+            .map(|n| crate::tree::Node {
+                plane: n.plane,
+                children: n.children,
+                parent: n.parent,
+                contents: n.contents,
+                cluster: n.cluster,
+                ..Default::default()
+            })
+            .collect(),
+        head: tree.head,
+        outside: tree.outside,
+        mins: tree.mins,
+        maxs: tree.maxs,
+    };
+    let prt_portals = Portals::make(&mut prt_tree, planes);
+    let mut stack = vec![prt_tree.head];
+    while let Some(n) = stack.pop() {
+        if !prt_tree.nodes[n].is_leaf() {
+            let [f, b] = prt_tree.nodes[n].children;
+            stack.push(b);
+            stack.push(f);
+            continue;
+        }
+        for &pid in &prt_tree.nodes[n].portals {
+            let p = &prt_portals.list[pid];
+            if p.nodes[0] != n || p.on_node.is_none() || p.winding.points.len() < 3 {
+                continue;
+            }
+            let [a, b] = p.nodes;
+            let (ca, cb) = (prt_tree.nodes[a].cluster, prt_tree.nodes[b].cluster);
+            if ca < 0 || cb < 0 || ca == cb || !prt_tree.nodes[a].is_leaf() || !prt_tree.nodes[b].is_leaf() {
+                continue;
+            }
+            let clusters = if winding_faces_away(&p.winding.points, p.plane.normal) {
+                [cb as u32, ca as u32]
+            } else {
+                [ca as u32, cb as u32]
+            };
+            vis_portals.push(ClusterPortal { points: p.winding.points.clone(), clusters });
+        }
+    }
+    vis_portals
+}
+
+fn visible_clusters(pvs: &[Vec<u8>]) -> usize {
+    pvs.iter().map(|r| r.iter().map(|b| b.count_ones() as usize).sum::<usize>()).sum()
 }
 
 fn terrain_soups(disps: &[crate::disp::DispFace]) -> Vec<Vec<crate::phys::SoupTriangle>> {
@@ -2266,7 +2375,7 @@ fn overlay_lumps(
     entities: &[&hp_vmf::Entity],
     side_faces: &ahash::AHashMap<u32, Vec<u32>>,
     tex: &mut TexInfos,
-    materials: &dyn MaterialSource,
+    facts_of: &mut dyn FnMut(&str) -> crate::materials::MaterialFacts,
     max_overlays: usize,
     log: &mut dyn FnMut(&str),
 ) -> Result<(Vec<u8>, Vec<u8>), CompileError> {
@@ -2310,7 +2419,7 @@ Overlay {material} at {:.1} {:.1} {:.1}",
                 o.z
             )));
         }
-        let facts = materials.facts(&material);
+        let facts = facts_of(&material);
         let texdata = tex.texdata(&material, &facts);
         let none = [0.0, 0.0, 0.0, -99999.0];
         let texinfo = tex.add(crate::texinfo::TexInfo { texture: [none; 2], lightmap: [none; 2], flags: 0, texdata });
@@ -2724,4 +2833,22 @@ fn brush_volume(b: &MapBrush) -> f64 {
 
 fn hp_limit() -> f64 {
     16384.0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_displacement_maps_over_the_plane_limit_are_built_again_with_lean_planes() {
+        let max = hp_bsp::limits::PLANES.max_usize();
+        let over = vec![format!("Error! {} exceeded: {} of {max}", hp_bsp::limits::PLANES.valve, max + 10)];
+        let other = vec![format!("Error! {} exceeded: 70000 of 65536", hp_bsp::limits::VERTEXES.valve)];
+        let opts = CompileOptions::default();
+        assert!(planes_need_leaning(&over, &opts, true));
+        assert!(!planes_need_leaning(&over, &opts, false), "nothing to leave out without displacements");
+        assert!(!planes_need_leaning(&other, &opts, true));
+        assert!(!planes_need_leaning(&[], &opts, true));
+        assert!(!planes_need_leaning(&over, &CompileOptions { lean_planes: true, ..opts }, true), "a single retry");
+    }
 }

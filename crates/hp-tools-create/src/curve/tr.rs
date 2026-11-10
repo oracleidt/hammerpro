@@ -41,6 +41,7 @@ pub const CURVE_TR: TrTable = &[
     ("curve.window_title", "Curve", "Courbe"),
     ("curve.count", "{0} point(s)", "{0} point(s)"),
     ("curve.summary", "{0} brushes, length {1}", "{0} brushes, longueur {1}"),
+    ("curve.hint_wheel", "Shift+wheel: more or fewer subdivisions.", "Maj+molette : plus ou moins de subdivisions."),
     ("curve.full", "Too many points", "Trop de points"),
     ("curve.short_folded", "{0} folded segment(s)", "{0} segment(s) replié(s)"),
     ("curve.short_short", "Segments under 1 unit", "Segments de moins d'une unité"),

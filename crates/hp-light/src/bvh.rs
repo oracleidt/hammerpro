@@ -405,6 +405,9 @@ impl Ray {
 
 #[inline(always)]
 fn class_bits(p: &Pack, mask: u8) -> u32 {
+    if mask == ALL_CLASSES {
+        return 0xf;
+    }
     let mut bits = 0;
     for lane in 0..4 {
         if p.class[lane] & mask != 0 {
@@ -421,22 +424,33 @@ fn inverse_dir(d: Vec3A) -> Vec3A {
 
 #[inline(always)]
 fn far_to_near(bits: u32, near: Vec4) -> ([u8; 4], usize) {
-    let mut order = [0u8; 4];
-    let mut n = 0;
     let t = near.to_array();
-    let mut b = bits;
-    while b != 0 {
-        let lane = b.trailing_zeros() as u8;
-        b &= b - 1;
-        let mut i = n;
-        while i > 0 && t[order[i - 1] as usize] < t[lane as usize] {
-            order[i] = order[i - 1];
-            i -= 1;
+    match bits.count_ones() {
+        0 => ([0; 4], 0),
+        1 => ([bits.trailing_zeros() as u8, 0, 0, 0], 1),
+        2 => {
+            let a = bits.trailing_zeros() as usize;
+            let b = (bits & (bits - 1)).trailing_zeros() as usize;
+            if t[a] < t[b] { ([b as u8, a as u8, 0, 0], 2) } else { ([a as u8, b as u8, 0, 0], 2) }
         }
-        order[i] = lane;
-        n += 1;
+        n => {
+            let key = |l: usize| if bits & (1 << l) != 0 { t[l] } else { f32::NEG_INFINITY };
+            let mut k = [(key(0), 0u8), (key(1), 1u8), (key(2), 2u8), (key(3), 3u8)];
+            let mut cswap = |i: usize, j: usize| {
+                let (a, b) = (k[i], k[j]);
+                if b.0 > a.0 || (b.0 == a.0 && b.1 < a.1) {
+                    k[i] = b;
+                    k[j] = a;
+                }
+            };
+            cswap(0, 1);
+            cswap(2, 3);
+            cswap(0, 2);
+            cswap(1, 3);
+            cswap(1, 2);
+            ([k[0].1, k[1].1, k[2].1, k[3].1], n as usize)
+        }
     }
-    (order, n)
 }
 
 impl Bvh {
@@ -662,13 +676,10 @@ impl Tree {
         while sp > 0 {
             sp -= 1;
             let node = &self.nodes[stack[sp] as usize];
-            let (bits, near) = ray.boxes(node, tmax, mask);
-            if bits == 0 {
-                continue;
-            }
-            let (order, n) = far_to_near(bits, near);
-            for &lane in &order[..n] {
-                let lane = lane as usize;
+            let (mut bits, _) = ray.boxes(node, tmax, mask);
+            while bits != 0 {
+                let lane = bits.trailing_zeros() as usize;
+                bits &= bits - 1;
                 let count = node.meta[lane] & COUNT_MASK;
                 if count == 0 {
                     if sp < STACK {
@@ -844,6 +855,37 @@ mod tests {
             }
         }
         best
+    }
+
+    fn insertion_order(bits: u32, near: Vec4) -> Vec<u8> {
+        let t = near.to_array();
+        let mut order: Vec<u8> = Vec::new();
+        for lane in (0..4u8).filter(|l| bits & (1 << l) != 0) {
+            let at = order.iter().position(|&o| t[o as usize] < t[lane as usize]).unwrap_or(order.len());
+            order.insert(at, lane);
+        }
+        order
+    }
+
+    #[test]
+    fn child_order_is_far_to_near_with_stable_ties() {
+        let values = [0.0f32, 1.0, 1.0, 2.5, 7.0, f32::INFINITY];
+        let mut checked = 0;
+        for bits in 0u32..16 {
+            for a in values {
+                for b in values {
+                    for c in values {
+                        for d in values {
+                            let near = Vec4::new(a, b, c, d);
+                            let (order, n) = far_to_near(bits, near);
+                            assert_eq!(order[..n].to_vec(), insertion_order(bits, near), "{bits:04b} {near}");
+                            checked += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(checked, 16 * 6usize.pow(4));
     }
 
     #[test]

@@ -45,6 +45,7 @@ Le nouveau brush devient la sélection ; la création est une seule étape d'ann
 - Sélectionnez d'abord le sol : le contour reprend la plage de hauteur de la sélection, donc les murs et piliers tracés en vue de dessus ont tout de suite la bonne hauteur.
 - Après la création, passez à l'[Outil vertex](vertex-tool.md) si vous devez incliner ou tordre le brush.
 - L'outil MCP `create_polygon_brush` construit le même type de brush à partir d'une liste de points (voir la [référence des outils MCP](../../MCP.md)).
+- `set_tool_options` avec l'outil `polygon` règle les options de l'outil lui-même : `tex_scale`, `create_as` (`world` ou une classe d'entité brush) et `keep_active`.
 
 ## FAQ
 

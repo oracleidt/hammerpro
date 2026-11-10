@@ -209,9 +209,7 @@ pub fn relayout(bytes: &[u8], opts: &LayoutOptions, rng: &mut Rng) -> Result<(Ve
         for (i, info) in lumps.iter_mut().enumerate() {
             if info.len == 0 {
                 let o = (HEADER_LEN + 4 * rng.below(slots)) as u32;
-                let v = (rng.next_u64() & 0xffff) as u32;
-                let f = (rng.next_u64() as u32 | 1).to_le_bytes();
-                *info = LumpInfo { offset: o, len: 0, version: v, four_cc: f };
+                *info = LumpInfo { offset: o, len: 0, version: 0, four_cc: [0; 4] };
             } else if VERSION_FREE_LUMPS.contains(&i) {
                 info.version = (rng.next_u64() & 7) as u32;
             }

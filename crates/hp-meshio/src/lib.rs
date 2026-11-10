@@ -5,6 +5,8 @@ use glam::{DMat4, DVec2, DVec3};
 pub mod export;
 mod extras;
 mod fbx;
+#[cfg(test)]
+mod fuzz;
 mod gltf;
 pub mod lod;
 mod obj;

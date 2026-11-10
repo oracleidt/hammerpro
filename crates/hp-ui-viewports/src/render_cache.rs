@@ -1,10 +1,54 @@
-use hp_render::{Overlay, ViewParams};
+use hp_render::{Overlay, ViewOptions, ViewParams};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ViewKey {
     pub params: ViewParams,
+    pub options: ViewOptions,
     pub content: u64,
+    pub retained: u64,
     pub overlay: u64,
+}
+
+#[derive(Debug, Default)]
+pub struct ContentClock {
+    own_bumps: u64,
+    retained: [u64; 4],
+}
+
+impl ContentClock {
+    fn own(&mut self, renderer: &mut hp_render::Renderer, change: impl FnOnce(&mut hp_render::Renderer)) {
+        let before = renderer.content_generation();
+        change(renderer);
+        self.own_bumps = self.own_bumps.wrapping_add(renderer.content_generation().wrapping_sub(before));
+    }
+
+    pub fn set_options(&mut self, renderer: &mut hp_render::Renderer, view: u32, options: ViewOptions) {
+        self.own(renderer, |r| r.set_view_options(view, options));
+    }
+
+    pub fn set_retained(&mut self, renderer: &mut hp_render::Renderer, view: u32, overlay: &Overlay) {
+        self.own(renderer, |r| r.set_retained_overlay(view, overlay));
+        self.bump_retained(view);
+    }
+
+    pub fn clear_retained(&mut self, renderer: &mut hp_render::Renderer, view: u32) {
+        self.own(renderer, |r| r.clear_retained_overlay(view));
+        self.bump_retained(view);
+    }
+
+    fn bump_retained(&mut self, view: u32) {
+        if let Some(serial) = self.retained.get_mut(view as usize) {
+            *serial = serial.wrapping_add(1);
+        }
+    }
+
+    pub fn retained(&self, view: usize) -> u64 {
+        self.retained.get(view).copied().unwrap_or(0)
+    }
+
+    pub fn content(&self, renderer: &hp_render::Renderer) -> u64 {
+        renderer.content_generation().wrapping_sub(self.own_bumps)
+    }
 }
 
 #[derive(Debug, Default)]
@@ -112,7 +156,13 @@ mod tests {
     #[test]
     fn unchanged_views_are_reused() {
         let mut cache = RenderCache::default();
-        let key = ViewKey { params: params(), content: 7, overlay: overlay_hash(&Overlay::default()) };
+        let key = ViewKey {
+            params: params(),
+            options: ViewOptions::default(),
+            content: 7,
+            retained: 0,
+            overlay: overlay_hash(&Overlay::default()),
+        };
         assert!(cache.needs_render(0, &key, true), "never rendered");
         cache.rendered(0, key);
         assert!(!cache.needs_render(0, &key, true));

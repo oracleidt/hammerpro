@@ -10,10 +10,25 @@ Comment garder des compilations rapides pendant que vous itérez, et ce qui pren
 
 - **Recompilation intelligente** (Brouillon et Normal) : seul ce qui a changé est reconstruit. Déplacer une entité lance `-onlyents` (quelques secondes), modifier une lumière lance `-onlyents` plus l'éclairage (visibilité conservée), modifier des props statiques lance `-onlyprops` ; les brushes, displacements, overlays, entités de brushes, les réglages ou le jeu relancent toute la chaîne. Rien n'a changé : copie et lancement seulement.
 - **Cache des étapes** : une étape de géométrie ou d'éclairage dont les entrées sont identiques à une précédente (une annulation puis une recompilation, la même map recompilée) est restaurée au lieu d'être relancée (« Mêmes entrées qu'une compilation précédente : résultat réutilisé »).
+- **Visibilité conservée entre les compilations** : chaque visibilité est gardée dans le cache des étapes avec les portails dont elle vient. Quand une compilation suivante de la map a les mêmes portails (seuls des brushes de détail, des textures, des entités, des lumières ou des props ont changé : pas les brushes structurels, les areaportals, le ciel ni le rayon de visibilité), elle est reprise aussitôt au lieu d'être recalculée : « Full visibility reused: the portals are the same as in an earlier compile » dans le journal, `Vis mode: full (reused)` dans les statistiques du journal, « complète, reprise d'une compilation précédente aux mêmes portails » comme mode de visibilité de l'onglet Statistiques. La map est identique octet pour octet à celle d'un calcul complet. Six visibilités sont gardées par map, dans les 2 Go du cache des étapes.
+- **Limites vérifiées avant la visibilité** : une map qui dépasse une limite du moteur s'arrête juste après la géométrie, pas après une longue visibilité.
 - **Compiler pendant les pauses** : à partir de 8 threads processeur, la géométrie et la visibilité sont construites en arrière-plan 3 secondes après votre dernière modification ; F9 les réutilise et les fuites apparaissent avant même que vous compiliez. En pause sur batterie.
 - **Une visibilité rapide par défaut** : le flux des portails de VVIS est borné (résultat identique ou plus prudent), et tourne sur tous les threads.
-- **Un éclairage rapide** : la lumière du ciel est tracée une fois par luxel, le suréchantillonnage ne trace que les lumières qui changent sur un luxel, les échantillons d'ambiance des feuilles utilisent environ trois fois moins de rayons que VRAD.
+- **Un éclairage rapide** : la lumière du ciel est tracée une fois par luxel, le suréchantillonnage ne trace que les lumières qui changent sur un luxel, les échantillons d'ambiance des feuilles utilisent environ trois fois moins de rayons que VRAD. Depuis la 2.0, l'éclairage trace aussi ses rayons d'ombre plus vite (ordre des enfants moins coûteux dans l'arbre des rayons), saute les modèles de props dont aucun prop éclairé ou projetant une ombre n'a besoin (une map dont tous les props ont l'ombre coupée et pas d'éclairage par sommet n'en charge aucun), lit ses directions aléatoires dans des tables calculées une seule fois, raccorde les faces voisines et lisse les déplacements sans copier toute la lightmap, fait tourner les passes de rebond et les tests de ciel des feuilles sur tous les threads, range les luxels sur 12 octets au lieu de 16 et libère les arbres de rayons avant d'écrire le BSP. Sur les maps de test, l'éclairage prend en général 15 à 30 % de temps processeur en moins (jusqu'à 45 % sur les maps avec beaucoup de props sans ombre) et jusqu'à un tiers de mémoire en moins que la 1.2.4. Les lightmaps, les échantillons d'ambiance et les couleurs des props sont identiques, octet pour octet, à ceux d'avant ces changements.
 - **Pas d'enregistrement, pas d'attente** : la compilation travaille sur une copie, la liste des fichiers à empaqueter se calcule pendant que le compilateur tourne, et le jeu peut démarrer pendant la compilation (**Démarrer le jeu : au début de la compilation**, voir [Lancer le jeu](../features/game-launch.md)).
+
+## Gains mesurés de la 2.0
+
+`hammerpro --bspc` de la version 1.2.4 contre la 2.0 sur le même ordinateur à 6 cœurs, occupé par d'autres travaux pendant les mesures (les temps sont plus courts sur un ordinateur au repos ; temps processeur entre parenthèses) :
+
+| Map | Compilation | 1.2.4 | 2.0 |
+|---|---|---|---|
+| rp_archipel_v1 (4246 clusters) | `-vis` de nouveau après la suppression de trois `func_detail` | 434 s (1831 s) : toute la visibilité de nouveau | 14 s (4 s) : la visibilité est reprise en 0,01 s |
+| gmc_op_v2 (5711 clusters) | `-vis` de nouveau après la suppression de trois `func_detail` | 54 s (177 s) | 18 s (10 s) |
+| gmc_op_v2 | construction des portails (monde et fichier de portails) et écriture des lumps d'une compilation `-fastvis` | 0,91 s de temps processeur | 0,71 s |
+| hokai_d (5850 displacements) | toutes | arrêt : MAX_MAP_PLANES dépassé, 67374 plans | la géométrie est reconstruite avec 46864 plans |
+
+Les fichiers BSP sont identiques octet pour octet à ceux de la 1.2.4 (vérifié sur gm_construct, rp_archipel_v1 et gmc_op_v2, en visibilité rapide et complète), et une visibilité reprise donne les mêmes octets qu'un calcul complet.
 
 ## Pendant l'itération
 
@@ -31,7 +46,7 @@ Comment garder des compilations rapides pendant que vous itérez, et ce qui pren
 
 - **Threads : Automatique** utilise tous les cœurs, ou tous sauf un avec **Garder un cœur pour l'éditeur** (activé par défaut). Vous pouvez indiquer un nombre de 1 à 256.
 - `-low` (menu d'options, Vitesse) lance le compilateur en priorité basse : le reste de l'ordinateur reste réactif, la compilation peut durer plus longtemps si d'autres programmes travaillent.
-- La visibilité et l'éclairage donnent le même résultat quel que soit le nombre de threads.
+- La visibilité et l'éclairage donnent le même résultat quel que soit le nombre de threads (les tests éclairent la même map sur 1, 3 et 7 threads et comparent chaque octet).
 - Mémoire insuffisante sur une très grande map : baissez le nombre de threads (le journal l'explique).
 
 ## Ce qui coûte du temps dans une version finale
@@ -51,8 +66,13 @@ Comment garder des compilations rapides pendant que vous itérez, et ce qui pren
 - L'onglet **Historique** montre la durée de chaque étape de chaque compilation de la map ; une étape bien plus lente que d'habitude donne un avertissement dans le journal.
 - L'onglet **Statistiques** montre la durée des phases de chaque étape (premier arbre, portails, flux, lumière directe, lumière rebondie...) et des conseils qui indiquent quoi optimiser.
 - `-verbose` affiche les options réellement utilisées.
+- `--rad` se termine par une ligne `Light phase times:` qui découpe l'éclairage en phases (arbres de la scène, lumière directe, déplacements, rayons et passes de rebond, raccords, ambiance des feuilles, props, écriture), voir [Ligne de commande du compilateur](command-line.md).
 
 ## FAQ
+
+**Le journal dit que les plans dépassent la limite et que la géométrie est reconstruite.** Une map avec beaucoup de displacements peut dépasser MAX_MAP_PLANES (65536) avec les plans des brushes de displacements, qui ne vont jamais dans le BSP. Le compilateur reconstruit alors la géométrie sans eux : la map compile et la ligne du journal donne le nombre de plans.
+
+**Pourquoi la deuxième compilation est si rapide quand je n'ai déplacé que des brushes de détail ?** Ses portails n'ont pas changé, la visibilité de la compilation précédente est donc reprise (voir Visibilité conservée entre les compilations).
 
 **Pourquoi le deuxième F9 est-il bien plus rapide ?** La recompilation intelligente, le cache des étapes ou la précompilation en arrière-plan ont réutilisé le travail déjà fait.
 

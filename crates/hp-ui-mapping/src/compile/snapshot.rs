@@ -99,6 +99,8 @@ pub(crate) struct PackJob {
     pub sender: DeferredSender,
     pub materials: Vec<String>,
     pub models: Vec<String>,
+    pub roots: Vec<hp_fs::deps::DepRoot>,
+    pub map: String,
     pub fs: hp_fs::GameFs,
     pub cache_dir: PathBuf,
 }
@@ -155,6 +157,20 @@ pub(crate) fn used_assets(map: &Map) -> (Vec<String>, Vec<String>) {
     models.sort_unstable();
     models.dedup();
     (materials, models)
+}
+
+pub(crate) fn pack_roots(map: &Map) -> Vec<hp_fs::deps::DepRoot> {
+    use hp_editor::deps_roots::RootKind as E;
+    let classify = |_: &str, _: &str| None;
+    let entities = std::iter::once(&map.world).chain(map.entities.iter().filter(|e| !e.hidden));
+    hp_editor::deps_roots::entity_asset_roots(entities, &classify)
+        .into_iter()
+        .filter(|r| !matches!(r.kind, E::Material | E::Sprite))
+        .filter_map(|r| {
+            let kind = crate::release::root_kind(r.kind)?;
+            Some(hp_fs::deps::DepRoot { kind, name: r.name, why: String::new() })
+        })
+        .collect()
 }
 
 pub(crate) fn mode_name(kind: StepKind, modes: &StepModes) -> &'static str {
@@ -322,8 +338,14 @@ pub(crate) fn prepare_snapshot(mut input: SnapshotInput) -> SnapshotOutput {
 
     let t_mat = Instant::now();
     let vmf = input.target.vmf();
-    let (compile_game_dir, staged) =
-        plan::stage_for_compilers(s, input.fs.as_ref(), &tools, &materials, &input.content_dir, &mut messages);
+    let (compile_game_dir, staged) = plan::stage_for_compilers(
+        s,
+        input.fs.as_ref(),
+        &tools,
+        (&materials, &models),
+        &input.content_dir,
+        &mut messages,
+    );
     let base = if input.release { preset_of(CompilePresetSetting::Final).modes() } else { effective_modes(s) };
     let content_args = plan::content_args(input.fs.as_ref());
     let context = context_hash(s, base, &tools, &staged, &tools.game_dir, &content_args, signature.as_deref());
@@ -357,12 +379,18 @@ pub(crate) fn prepare_snapshot(mut input: SnapshotInput) -> SnapshotOutput {
         && gmod
         && s.dev_addon
         && !input.background
-        && !s.export_custom_materials
-        && !staged.is_empty()
         && let Some(fs) = &input.fs
+        && super::devaddon::has_custom_content(fs)
     {
         {
-            match super::devaddon::export(fs, &tools.game_dir, &materials) {
+            let roots = pack_roots(&input.snapshot.map);
+            let content = super::devaddon::DevContent {
+                materials: if s.export_custom_materials { &[] } else { &materials },
+                models: &models,
+                roots: &roots,
+                map: &input.target.name,
+            };
+            match super::devaddon::export(fs, &tools.game_dir, &content) {
                 Ok(r) => {
                     if r.written > 0 {
                         messages
@@ -475,6 +503,8 @@ pub(crate) fn prepare_snapshot(mut input: SnapshotInput) -> SnapshotOutput {
                     sender,
                     materials: materials.clone(),
                     models: models.clone(),
+                    roots: pack_roots(&input.snapshot.map),
+                    map: input.target.name.clone(),
                     fs: fs.clone(),
                     cache_dir: input.cache_dir.clone(),
                 };
@@ -603,7 +633,7 @@ fn estimate_modes(entries: &[HistoryEntry], modes: &StepModes) -> Option<u64> {
 }
 
 pub(crate) fn run_pack_job(job: PackJob) -> usize {
-    let files = job.fs.pack_list(&job.materials, &job.models, &job.cache_dir);
+    let files = job.fs.pack_list_with(&job.materials, &job.models, &job.roots, &job.map, &job.cache_dir);
     let files: Vec<(String, PathBuf)> = files
         .into_iter()
         .filter(|(_, disk)| !disk.components().any(|c| c.as_os_str().eq_ignore_ascii_case(super::devaddon::DEV_ADDON)))
@@ -695,6 +725,38 @@ hidden { entity { "id" "6" "classname" "prop_static" "model" "models/hidden.mdl"
         let (mats, models) = used_assets(&map);
         assert_eq!(mats, vec!["custom/brick".to_owned(), "decals/graffiti".to_owned()]);
         assert_eq!(models, vec!["models/props/box.mdl".to_owned()]);
+    }
+
+    #[test]
+    fn pack_roots_cover_every_file_kind_of_the_shown_entities() {
+        use hp_fs::deps::RootKind as K;
+        let map = hp_vmf::parse(
+            r#"world { "id" "1" "classname" "worldspawn" "skyname" "sky_w10" }
+entity { "id" "2" "classname" "env_projectedtexture" "texturename" "effects/w10_flash" }
+entity { "id" "3" "classname" "info_particle_system" "effect_name" "w10_fire" }
+entity { "id" "4" "classname" "env_soundscape" "soundscape" "W10.Cave" }
+entity { "id" "5" "classname" "ambient_generic" "message" "W10.Beep" }
+entity { "id" "6" "classname" "color_correction" "filename" "materials/correction/w10.raw" }
+entity { "id" "7" "classname" "prop_physics" "model" "models/w10/cube.mdl" "gibmodel" "models/w10/gib.mdl" }
+entity { "id" "8" "classname" "env_sprite" "model" "sprites/glow01.vmt" }
+hidden { entity { "id" "9" "classname" "ambient_generic" "message" "W10.Hidden" } }
+"#,
+        )
+        .unwrap();
+        let mut roots: Vec<(K, String)> = pack_roots(&map).into_iter().map(|r| (r.kind, r.name)).collect();
+        roots.sort();
+        let want = [
+            (K::Texture, "effects/w10_flash"),
+            (K::Model, "models/w10/cube.mdl"),
+            (K::Model, "models/w10/gib.mdl"),
+            (K::Sound, "W10.Beep"),
+            (K::Particle, "w10_fire"),
+            (K::Soundscape, "W10.Cave"),
+            (K::Skybox, "sky_w10"),
+            (K::File, "materials/correction/w10.raw"),
+        ];
+        let want: Vec<(K, String)> = want.iter().map(|(k, n)| (*k, (*n).to_owned())).collect();
+        assert_eq!(roots, want);
     }
 
     #[test]

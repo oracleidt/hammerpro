@@ -44,7 +44,7 @@ Cliquez sur une ligne pour y revenir ou y avancer (« Cliquez sur une étape pou
 | **Niveaux d'annulation** (`edit.undo_levels`) | **Outils > Options... > Édition** | Nombre maximal d'étapes gardées, de 10 à 10000. | 500 |
 | **Annuler restaure la sélection** (`edit.undo_restores_selection`) | **Outils > Options... > Édition** | Les changements de sélection sont des étapes d'annulation. | Activé |
 
-L'historique garde aussi sa mémoire sous environ 512 Mo : les plus anciennes étapes sont supprimées d'abord, la plus récente est toujours gardée.
+L'historique garde aussi sa mémoire sous environ 512 Mo : les plus anciennes étapes sont supprimées d'abord, la plus récente est toujours gardée. Les étapes ne gardent que ce qui a changé : la dernière garde les objets entiers pour que son annulation reste immédiate, et dès qu'une autre étape la suit elle ne garde que les champs modifiés de chaque face et de chaque clé (les étapes de sélection intercalées ne comptent pas) (l'annuler plus tard reconstruit la géométrie de ses objets). Sur hokai_d, un ancien déplacement des 26 419 objets prend 31 Mo d'historique au lieu de 171.
 
 ## Astuces
 

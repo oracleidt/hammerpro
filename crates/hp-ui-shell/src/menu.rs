@@ -250,7 +250,9 @@ fn menus(ui: &mut Ui, state: &mut AppState, extensions: &mut [MenuExtension]) ->
             close_on_escape(ui);
         });
     }
-    ui.menu_button("Team Mapping", |ui| {
+    let unread = state.runtime.collaboration.unread;
+    let team = if unread > 0 { format!("Team Mapping ({unread})") } else { "Team Mapping".to_owned() };
+    ui.menu_button(team, |ui| {
         ui.set_min_width(MENU_MIN_WIDTH);
         if ui.button("Team Mapping / Participants").clicked() {
             state.runtime.collaboration.show = true;
@@ -259,7 +261,10 @@ fn menus(ui: &mut Ui, state: &mut AppState, extensions: &mut [MenuExtension]) ->
         if state.runtime.collaboration.connected {
             ui.separator();
             for participant in &state.runtime.collaboration.participants {
-                ui.label(format!("{} | {} ms", participant.name, participant.latency_ms));
+                ui.colored_label(
+                    hp_app::theme::rgb(participant.color),
+                    format!("{} | {} ms", participant.name, participant.latency_ms),
+                );
             }
         }
         close_on_escape(ui);

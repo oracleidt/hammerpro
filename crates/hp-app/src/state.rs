@@ -391,6 +391,9 @@ pub trait AssetsApi {
     fn light_preview(&self) -> Option<LightPreviewReport> {
         None
     }
+    fn animated_lights(&self) -> bool {
+        false
+    }
     fn play_cubemap_sources(&self) -> Option<(usize, usize)> {
         None
     }
@@ -467,6 +470,15 @@ pub trait AssetsApi {
     fn apply_texture_limit(&mut self, gfx: &mut Gfx, size: u32) -> usize {
         let _ = (gfx, size);
         0
+    }
+    fn note_view(&mut self, view: u32, params: &hp_render::ViewParams) {
+        let _ = (view, params);
+    }
+    fn set_texture_budget(&mut self, bytes: u64) {
+        let _ = bytes;
+    }
+    fn texture_streaming(&self) -> crate::runtime::TextureStreaming {
+        crate::runtime::TextureStreaming::default()
     }
     fn sprite_material_id(&mut self, name: &str, additive: bool) -> hp_render::MaterialId {
         let _ = additive;

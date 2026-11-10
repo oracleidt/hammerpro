@@ -55,7 +55,7 @@ Right click a slider to reset it. The order of the operations is: exposure, temp
 
 ### Saving
 
-Pick the folder (root), the folder under it, and the name, then **Save the .raw**. The root is by default the folder above the `maps` folder of the saved map, otherwise the game folder. An existing file is replaced only if you tick **Replace the existing file**.
+Pick the **Game or addon folder** (the root, with **Browse...**), the **Subfolder** under it, and the **Name**, then **Save the .raw**. The root is by default the folder above the `maps` folder of the saved map, otherwise the game folder. An existing file is replaced only if you tick **Replace the existing file**.
 
 ## Previewing the color_correction entities in the 3D views
 

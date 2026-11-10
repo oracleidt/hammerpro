@@ -10,7 +10,7 @@ use hp_app::{AppState, Severity, t, tf};
 use hp_compile::CompileEvent;
 
 use super::plan::{self, PrepInput};
-use super::snapshot::used_assets;
+use super::snapshot::{self, used_assets};
 
 const COPY_WAIT: Duration = Duration::from_secs(300);
 const COPY_RETRY: Duration = Duration::from_secs(2);
@@ -135,6 +135,7 @@ fn run(
         fs,
         materials,
         models,
+        roots: snapshot::pack_roots(&map),
         cache_dir: Settings::cache_dir().join("pack"),
         content_dir: Settings::cache_dir().join("compile_content"),
     });

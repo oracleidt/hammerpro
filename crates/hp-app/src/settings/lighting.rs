@@ -21,6 +21,8 @@ pub struct LightingSettings {
     pub auto_scope: bool,
     pub auto_scope_luxels_millions: u32,
     pub auto_scope_radius: u32,
+    pub visible_first: bool,
+    pub prepare: bool,
 }
 
 impl Default for LightingSettings {
@@ -36,6 +38,8 @@ impl Default for LightingSettings {
             auto_scope: false,
             auto_scope_luxels_millions: 2,
             auto_scope_radius: 3072,
+            visible_first: true,
+            prepare: true,
         }
     }
 }
@@ -59,6 +63,8 @@ impl LightingSettings {
                 .auto_scope_luxels_millions
                 .clamp(*Self::LUXELS_RANGE.start(), *Self::LUXELS_RANGE.end()),
             auto_scope_radius: self.auto_scope_radius.clamp(*Self::RADIUS_RANGE.start(), *Self::RADIUS_RANGE.end()),
+            visible_first: self.visible_first,
+            prepare: self.prepare,
         }
     }
 }
@@ -77,6 +83,7 @@ mod tests {
         let wild = LightingSettings { auto_scope_luxels_millions: 0, auto_scope_radius: 1, ..d };
         assert_eq!((wild.sanitized().auto_scope_luxels_millions, wild.sanitized().auto_scope_radius), (1, 256));
         assert!(!d.auto_scope);
+        assert!(d.prepare && d.visible_first);
         let parsed: LightingSettings = toml::from_str("").unwrap();
         assert_eq!(parsed, d);
     }

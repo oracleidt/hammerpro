@@ -319,16 +319,29 @@ impl GameFs {
         used_models: &[String],
         cache_dir: &Path,
     ) -> Vec<(String, PathBuf)> {
+        self.pack_list_with(used_materials, used_models, &[], "", cache_dir)
+    }
+
+    pub fn pack_list_with(
+        &self,
+        used_materials: &[String],
+        used_models: &[String],
+        other_roots: &[crate::deps::DepRoot],
+        map_name: &str,
+        cache_dir: &Path,
+    ) -> Vec<(String, PathBuf)> {
         use crate::deps::{DepRoot, DepsCache, PackPolicy, ResolveOptions, RootKind};
         let root = |kind, name: &String| DepRoot { kind, name: name.clone(), why: String::new() };
         let roots: Vec<DepRoot> = used_materials
             .iter()
             .map(|m| root(RootKind::Material, m))
             .chain(used_models.iter().map(|m| root(RootKind::Model, m)))
+            .chain(other_roots.iter().cloned())
             .collect();
-        let graph = self.resolve_dependencies(&roots, &ResolveOptions::default(), &DepsCache::new());
+        let opts = ResolveOptions { map_name, ..ResolveOptions::default() };
+        let graph = self.resolve_dependencies(&roots, &opts, &DepsCache::new());
         let policy = PackPolicy { workshop: true, mounted: false };
-        let nodes: Vec<&crate::deps::DepNode> = graph.shipped(policy).filter(|n| n.generated.is_none()).collect();
+        let nodes: Vec<&crate::deps::DepNode> = graph.shipped(policy).collect();
         nodes
             .into_par_iter()
             .filter_map(|node| match self.materialize_dependency(node, cache_dir) {
@@ -339,6 +352,72 @@ impl GameFs {
                 }
             })
             .collect()
+    }
+
+    pub fn export_custom_dependencies(
+        &self,
+        roots: &[crate::deps::DepRoot],
+        map_name: &str,
+        dest: &Path,
+        cache: &crate::deps::DepsCache,
+    ) -> ExportReport {
+        use crate::deps::RootKind;
+        let snapshot = self.snapshot();
+        let custom: Vec<&Source> =
+            snapshot.iter().filter(|s| s.is_enabled() && s.origin == SourceOrigin::Custom).map(|s| &**s).collect();
+        let holds = |prefix: &str| {
+            custom.iter().any(|s| {
+                let mut found = false;
+                s.for_each_path(prefix, None, &mut |_| found = true);
+                found
+            })
+        };
+        let sounds = holds("sound") || holds("scripts") || holds("maps");
+        let mut systems: HashSet<String> = HashSet::new();
+        for source in &custom {
+            let mut files: Vec<&str> = Vec::new();
+            source.for_each_path("particles", Some("pcf"), &mut |p| files.push(p));
+            for file in files {
+                if let Some(pcf) = source.read_cow(file).and_then(|b| crate::deps::parse_pcf(&b)) {
+                    systems.extend(pcf.systems.iter().map(|(name, _)| name.to_ascii_lowercase()));
+                }
+            }
+        }
+        let custom_model = |name: &str| {
+            let mut vpath = crate::path::normalize_path(name.trim()).into_owned();
+            if !vpath.starts_with("models/") {
+                vpath.insert_str(0, "models/");
+            }
+            custom.iter().any(|s| s.contains(&vpath))
+        };
+        let roots: Vec<crate::deps::DepRoot> = roots
+            .iter()
+            .filter(|r| match r.kind {
+                RootKind::Model => custom_model(&r.name),
+                RootKind::Sound | RootKind::Soundscape => sounds,
+                RootKind::Particle => systems.contains(&r.name.trim().to_ascii_lowercase()),
+                _ => true,
+            })
+            .cloned()
+            .collect();
+        if custom.is_empty() || roots.is_empty() {
+            return ExportReport::default();
+        }
+        let opts = crate::deps::ResolveOptions { map_name, ..crate::deps::ResolveOptions::default() };
+        let graph = self.resolve_dependencies(&roots, &opts, cache);
+        let nodes: Vec<&crate::deps::DepNode> =
+            graph.nodes.iter().filter(|n| n.generated.is_some() || n.origin == Some(SourceOrigin::Custom)).collect();
+        let results: Vec<(String, Result<Outcome, FsError>)> =
+            nodes.into_par_iter().map(|n| (n.vpath.clone(), self.write_dependency(n, dest, true))).collect();
+        let mut report = ExportReport::default();
+        for (path, result) in results {
+            match result {
+                Ok(Outcome::Written(p)) => report.written.push(p),
+                Ok(Outcome::UpToDate(p)) => report.up_to_date.push(p),
+                Err(e) => report.failed.push(ExportFailure { path, error: e.to_string() }),
+            }
+        }
+        report
     }
 }
 

@@ -10,8 +10,8 @@ domain! { "updates";
     get_update_status: Read, "Update status",
         "The state of the auto update: installed version, status (idle, checking, up_to_date, available, \
         downloading, ready, failed), the newest release found (version, tag, title, release notes, page, \
-        archive name and size), the download progress, the last error, and the preferences \
-        update.check_on_startup (check in the background at startup), update.show_dialog (show the update \
+        archive name, size and published SHA-256 checksum), the download progress, the last error, and the \
+        preferences update.check_on_startup (check in the background at startup), update.show_dialog (show the update \
         window at all) and update.skipped_version (the version the user chose not to be asked about). The \
         preferences are changed with set_setting on the update.* keys.",
         {}, [];
@@ -43,6 +43,7 @@ fn info_json(state: &AppState) -> serde_json::Value {
             "release_page": l.page_url,
             "archive": l.asset_name,
             "archive_bytes": l.asset_size,
+            "archive_sha256": l.asset_sha256,
             "skipped": state.settings.update.skips(&l.tag),
         })),
         "latest_checked_version": (!rt.latest_seen.is_empty()).then(|| rt.latest_seen.clone()),
@@ -131,6 +132,7 @@ mod tests {
             page_url: "https://github.com/oracleidt/hammerpro/releases/tag/v1.0.3".into(),
             asset_name: asset.then(|| "HammerPro-1.0.3-windows.zip".to_owned()),
             asset_size: 1234,
+            asset_sha256: Some("ab".repeat(32)),
         });
     }
 
@@ -154,6 +156,7 @@ mod tests {
         assert_eq!(v["latest"]["notes"], "- auto update");
         assert_eq!(v["latest"]["skipped"], true);
         assert_eq!(v["latest"]["archive"], "HammerPro-1.0.3-windows.zip");
+        assert_eq!(v["latest"]["archive_sha256"], "ab".repeat(32));
         assert_eq!(v["can_install"], true);
         s.runtime.update.status = UpdateStatus::Failed;
         s.runtime.update.failure = Some(UpdateFailure { key: "update.err_http", detail: "404".into() });

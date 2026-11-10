@@ -42,6 +42,7 @@ pub fn info_of(release: &Release) -> UpdateInfo {
         page_url: release.page_url.clone(),
         asset_name: asset.map(|a| a.name.clone()),
         asset_size: asset.map_or(0, |a| a.size),
+        asset_sha256: asset.and_then(|a| a.sha256.clone()),
     }
 }
 
@@ -224,7 +225,7 @@ impl UpdateController {
         }
         self.armed = false;
         let Some(done) = self.ready.take() else { return };
-        match done.helper.spawn(&done.zip) {
+        match done.helper.spawn(&done.zip, Some(&done.sha256)) {
             Ok(pid) => log::info!("update helper started (process {pid})"),
             Err(e) => log::error!("cannot start the update helper: {e}"),
         }
@@ -412,6 +413,7 @@ mod tests {
                     name: "HammerPro-1.0.3-windows.zip".into(),
                     url: "https://github.com/x.zip".into(),
                     size: 99,
+                    sha256: None,
                 }]
             } else {
                 Vec::new()

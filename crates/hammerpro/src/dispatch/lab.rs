@@ -36,6 +36,7 @@ pub(crate) struct State {
     nav: NavHandle,
     nav_job: Option<NavJob>,
     nav_check: Option<Instant>,
+    nav_watch: Option<super::file_watch::FileWatch>,
     nav_map: Option<u64>,
     nav_failed: Option<(PathBuf, Option<std::time::SystemTime>)>,
     nav_announce: bool,
@@ -698,19 +699,31 @@ fn nav_tick(app: &mut HammerProApp, ctx: &egui::Context) {
     }
     let lab = &mut app.pkg.lab;
     if !app.state.settings.lab.show_nav_mesh {
+        lab.nav_watch = None;
         return;
     }
     if lab.nav_job.is_some() {
-        ctx.request_repaint_after(Duration::from_millis(100));
         return;
     }
+    let candidates = nav_candidates(&app.state);
+    if lab.nav_watch.as_ref().is_none_or(|w| w.paths() != candidates.as_slice()) {
+        let wake = ctx.clone();
+        lab.nav_watch =
+            super::file_watch::FileWatch::start(candidates, NAV_CHECK_EVERY, move || wake.request_repaint());
+        lab.nav_check = None;
+    }
+    let changed = lab.nav_watch.as_ref().is_none_or(super::file_watch::FileWatch::take_changed);
     let now = Instant::now();
-    if lab.nav_check.is_some_and(|t| now < t) {
+    if lab.nav_watch.is_none() {
+        if lab.nav_check.is_some_and(|t| now < t) {
+            ctx.request_repaint_after(NAV_CHECK_EVERY);
+            return;
+        }
         ctx.request_repaint_after(NAV_CHECK_EVERY);
+    } else if lab.nav_check.is_some() && !changed {
         return;
     }
     lab.nav_check = Some(now + NAV_CHECK_EVERY);
-    ctx.request_repaint_after(NAV_CHECK_EVERY);
     let Some(path) = hp_ui_lab::nav::find_nav_file(&app.state) else {
         if hp_ui_lab::nav::current(&lab.nav).is_some() {
             hp_ui_lab::nav::set_current(&lab.nav, None);
@@ -733,6 +746,19 @@ fn nav_tick(app: &mut HammerProApp, ctx: &egui::Context) {
     lab.nav_serial += 1;
     let spawns = hp_ui_lab::nav::spawn_points(&app.state.doc);
     lab.nav_job = NavJob::start(path, lab.nav_serial, spawns, Some(ctx.clone()));
+}
+
+fn nav_candidates(state: &hp_app::AppState) -> Vec<PathBuf> {
+    if let Some(p) = &state.runtime.lab.nav_file {
+        return vec![p.clone()];
+    }
+    let Some(source) = state.doc.path().or(state.runtime.lab.decompiled_from.as_deref()) else { return Vec::new() };
+    let Some(stem) = source.file_stem().map(|s| s.to_string_lossy().into_owned()) else { return Vec::new() };
+    let mut out = vec![source.with_file_name(format!("{stem}.nav"))];
+    if let Some(game) = state.assets.fs().and_then(|fs| fs.game_dir().map(std::path::Path::to_path_buf)) {
+        out.push(game.join("maps").join(format!("{stem}.nav")));
+    }
+    out
 }
 
 pub(crate) fn import_model_file(
@@ -947,16 +973,18 @@ fn compile_severity(s: hp_compile::Severity) -> Severity {
     }
 }
 
-fn start_nav_gen(app: &mut HammerProApp, ctx: &egui::Context) {
+pub(crate) fn start_nav_gen(app: &mut HammerProApp, ctx: &egui::Context) {
     if app.pkg.lab.nav_gen.is_some() {
         return;
     }
     let Some(path) = app.state.doc.path().map(|p| p.with_extension("nav")) else {
+        app.state.runtime.lab.nav_generated = Some(Err(t!("lab.navgen.save_first").to_owned()));
         app.state.notify(Severity::Warning, t!("lab.navgen.save_first"));
         return;
     };
     let input = hp_ui_lab::nav_gen::input_from_doc(&mut app.state);
     if input.seeds.is_empty() {
+        app.state.runtime.lab.nav_generated = Some(Err(t!("lab.navgen.no_spawn").to_owned()));
         app.state.notify(Severity::Warning, t!("lab.navgen.no_spawn"));
         return;
     }
@@ -984,9 +1012,13 @@ fn start_nav_gen(app: &mut HammerProApp, ctx: &egui::Context) {
     match spawned {
         Ok(_) => {
             app.pkg.lab.nav_gen = Some(rx);
+            app.state.runtime.lab.nav_generating = true;
             app.state.log(Severity::Info, t!("lab.navgen.working"));
         }
-        Err(e) => app.state.notify(Severity::Error, e.to_string()),
+        Err(e) => {
+            app.state.runtime.lab.nav_generated = Some(Err(e.to_string()));
+            app.state.notify(Severity::Error, e.to_string());
+        }
     }
 }
 
@@ -998,6 +1030,11 @@ fn poll_nav_gen(app: &mut HammerProApp) {
         Err(crossbeam_channel::TryRecvError::Disconnected) => Err(t!("lab.navgen.crashed").to_owned()),
     };
     app.pkg.lab.nav_gen = None;
+    app.state.runtime.lab.nav_generating = false;
+    app.state.runtime.lab.nav_generated = Some(match &answer {
+        Ok((path, _, areas, ms)) => Ok((path.clone(), *areas, *ms)),
+        Err(e) => Err(e.clone()),
+    });
     match answer {
         Ok((path, report, areas, ms)) => {
             app.state.runtime.lab.nav_file = Some(path);
@@ -1022,7 +1059,7 @@ fn poll_nav_gen(app: &mut HammerProApp) {
 fn particles_tick(app: &mut HammerProApp, ctx: &egui::Context) {
     hp_ui_lab::particle_world::prepare(&mut app.state, &app.pkg.lab.particles, ctx);
     if app.state.settings.lab.show_entity_fx && app.pkg.lab.particles.lock().is_ok_and(|s| s.fx_active) {
-        ctx.request_repaint();
+        app.state.runtime.render.request_animation_frame(ctx);
     }
     if !app.state.settings.lab.show_particles && !app.state.runtime.lab.particle_preview.open {
         let fx_on = app.state.settings.lab.show_entity_fx

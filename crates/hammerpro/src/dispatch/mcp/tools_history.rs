@@ -16,10 +16,11 @@ domain! { "history and clipboard";
         modified.",
         {}, [];
     undo_steps: Editor, "Undo several steps",
-        "Undo several steps at once (stops when there is nothing left to undo).",
+        "Undo several steps at once (stops when there is nothing left to undo). In a Team Mapping session the \
+        steps are the shared history of this participant, applied one per call (call again for the next one).",
         { "count": integer("Steps to undo.", 1, 1000) }, ["count"];
     redo_steps: Editor, "Redo several steps",
-        "Redo several steps at once.",
+        "Redo several steps at once. In a Team Mapping session: one shared step per call, like undo_steps.",
         { "count": integer("Steps to redo.", 1, 1000) }, ["count"];
     copy_objects: Editor, "Copy",
         "Copy objects (default: the selection) to the system clipboard as VMF text, like Ctrl+C (Hammer and \
@@ -71,8 +72,46 @@ fn get_history(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
     })))
 }
 
-fn steps(state: &mut AppState, a: &Args<'_>, undo: bool) -> R<ToolResult> {
+pub(super) fn team_history(state: &AppState) -> bool {
+    let collab = &state.runtime.collaboration;
+    collab.connected && collab.active_map
+}
+
+pub(super) fn team_step(undo: bool, asked: usize) -> Outcome {
+    Outcome::AppFn(AppFn(Box::new(move |app, ctx| {
+        let action = if undo { hp_app::Action::Undo } else { hp_app::Action::Redo };
+        let before = app.state.console.revision;
+        let revision = app.state.doc.revision();
+        app.execute(ctx, action);
+        let state = &app.state;
+        let fresh = (state.console.revision.saturating_sub(before) as usize).min(state.console.len());
+        let messages: Vec<&str> =
+            state.console.lines().rev().take(fresh.min(20)).rev().map(|l| l.text.as_str()).collect();
+        let applied = state.doc.revision() != revision;
+        if !applied {
+            let why = messages.last().copied().unwrap_or(if undo { "nothing to undo" } else { "nothing to redo" });
+            return ToolResult::error(format!("{}: {why}", if undo { "undo" } else { "redo" }));
+        }
+        let mut out = json!({
+            if undo { "undone" } else { "redone" }: 1,
+            "count": 1,
+            "team_mapping": true,
+            "can_undo": state.runtime.collaboration.can_undo,
+            "can_redo": state.runtime.collaboration.can_redo,
+            "messages": messages,
+        });
+        if asked > 1 {
+            out["note"] = json!("Team Mapping applies one shared step per call: call again for the next step");
+        }
+        ToolResult::json(out)
+    })))
+}
+
+fn steps(state: &mut AppState, a: &Args<'_>, undo: bool) -> R<Outcome> {
     let count = a.opt_u64("count", 1, 1000)?.ok_or("count is required")? as usize;
+    if team_history(state) {
+        return Ok(team_step(undo, count));
+    }
     if state.doc.in_transaction() {
         return Err("Hammer Pro is in the middle of another edit; try again".to_owned());
     }
@@ -85,14 +124,16 @@ fn steps(state: &mut AppState, a: &Args<'_>, undo: bool) -> R<ToolResult> {
         }
         labels.push(label.unwrap_or_default());
     }
-    Ok(ToolResult::json(json!({ if undo { "undone" } else { "redone" }: labels, "count": labels.len() })))
+    Ok(Outcome::Done(ToolResult::json(
+        json!({ if undo { "undone" } else { "redone" }: labels, "count": labels.len() }),
+    )))
 }
 
-fn undo_steps(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
+fn undo_steps(state: &mut AppState, a: &Args<'_>) -> R<Outcome> {
     steps(state, a, true)
 }
 
-fn redo_steps(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
+fn redo_steps(state: &mut AppState, a: &Args<'_>) -> R<Outcome> {
     steps(state, a, false)
 }
 

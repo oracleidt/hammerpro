@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use glam::DVec3;
-use hp_kv::Block;
+use hp_kv::{Block, BlockRef};
 use rayon::prelude::*;
 
 use crate::num::{
@@ -186,7 +186,7 @@ pub(crate) fn build_fragment(tops: Vec<Top<'_>>) -> Result<Fragment, VmfError> {
         .map(|job| -> Result<Part, VmfError> {
             Ok(match job {
                 Job::SolidTop(top) => (vec![solid_from_block(top.into_block()?, false)], None, Vec::new()),
-                Job::Solid(child, hidden) => (vec![solid_from_block(child.into_block()?, hidden)], None, Vec::new()),
+                Job::Solid(child, hidden) => (vec![solid_from_child(child, hidden)?], None, Vec::new()),
                 Job::Entity(job) => (Vec::new(), Some(job.build()?), Vec::new()),
                 Job::World(top) => {
                     let world = entity_from_top(top, true, false)?;
@@ -204,35 +204,59 @@ pub(crate) fn build_fragment(tops: Vec<Top<'_>>) -> Result<Fragment, VmfError> {
     Ok(frag)
 }
 
-enum Item {
+enum Item<'a> {
     Solid(Solid),
     Hidden(Vec<Solid>, Option<Block>),
-    Block(Block),
+    Child(Child<'a>),
 }
 
-fn classify(child: Child<'_>) -> Result<Item, VmfError> {
+fn classify(child: Child<'_>) -> Result<Item<'_>, VmfError> {
     let name = child.name();
     if is(name, "solid") {
-        Ok(Item::Solid(solid_from_block(child.into_block()?, false)))
+        Ok(Item::Solid(solid_from_child(child, false)?))
     } else if is(name, "hidden") {
-        Ok(hidden_solids(child.into_block()?))
+        Ok(match child {
+            Child::Span { name, text } => {
+                let root = hp_kv::parse_ref(text);
+                let mut block = root.children.into_iter().next().unwrap_or_default();
+                block.name = name;
+                hidden_solids(&block)
+            }
+            Child::Parsed(b) => hidden_solids(&b.as_ref()),
+        })
     } else {
-        Ok(Item::Block(child.into_block()?))
+        Ok(Item::Child(child))
     }
 }
 
-fn hidden_solids(b: Block) -> Item {
-    let Block { name, props, children } = b;
+fn solid_from_child(child: Child<'_>, hidden: bool) -> Result<Solid, VmfError> {
+    Ok(match child {
+        Child::Span { text, .. } => {
+            let root = hp_kv::parse_ref(text);
+            match root.children.first() {
+                Some(block) => solid_from_ref(block, hidden),
+                None => solid_from_ref(&BlockRef::default(), hidden),
+            }
+        }
+        Child::Parsed(b) => solid_from_block(b, hidden),
+    })
+}
+
+fn hidden_solids<'a>(b: &BlockRef<'_>) -> Item<'a> {
     let mut solids = Vec::new();
     let mut rest = Vec::new();
-    for c in children {
-        if is(&c.name, "solid") {
-            solids.push(solid_from_block(c, true));
+    for c in &b.children {
+        if is(c.name, "solid") {
+            solids.push(solid_from_ref(c, true));
         } else {
-            rest.push(c);
+            rest.push(c.to_block());
         }
     }
-    let residual = (!props.is_empty() || !rest.is_empty()).then_some(Block { name, props, children: rest });
+    let residual = (!b.props.is_empty() || !rest.is_empty()).then(|| Block {
+        name: b.name.to_owned(),
+        props: b.props.iter().map(|(k, v)| ((*k).to_owned(), (*v).to_owned())).collect(),
+        children: rest,
+    });
     Item::Hidden(solids, residual)
 }
 
@@ -243,10 +267,15 @@ fn entity_from_top(top: Top<'_>, is_world: bool, hidden: bool) -> Result<Entity,
     } else {
         children.into_iter().map(classify).collect::<Result<_, _>>()?
     };
-    Ok(assemble_entity(props, items, is_world, hidden))
+    assemble_entity(props, items, is_world, hidden)
 }
 
-fn assemble_entity(props: Vec<(String, String)>, items: Vec<Item>, is_world: bool, hidden: bool) -> Entity {
+fn assemble_entity(
+    props: Vec<(String, String)>,
+    items: Vec<Item<'_>>,
+    is_world: bool,
+    hidden: bool,
+) -> Result<Entity, VmfError> {
     let mut e = Entity { hidden, ..Entity::default() };
     e.props.reserve(props.len());
     for (k, v) in props {
@@ -266,7 +295,7 @@ fn assemble_entity(props: Vec<(String, String)>, items: Vec<Item>, is_world: boo
         .map(|i| match i {
             Item::Solid(_) => 1,
             Item::Hidden(s, _) => s.len(),
-            Item::Block(_) => 0,
+            Item::Child(_) => 0,
         })
         .sum();
     e.solids.reserve_exact(solid_count);
@@ -278,22 +307,37 @@ fn assemble_entity(props: Vec<(String, String)>, items: Vec<Item>, is_world: boo
                 e.solids.extend(solids);
                 e.extra_blocks.extend(residual);
             }
-            Item::Block(b) => {
-                let name = b.name.as_str();
+            Item::Child(child) => {
+                let name = child.name();
                 if is(name, "connections") {
-                    e.connections.extend(b.props.into_iter().map(|(k, v)| parse_connection(k, &v)));
+                    with_ref(&child, |b| {
+                        e.connections.extend(b.props.iter().map(|(k, v)| parse_connection((*k).to_owned(), v)));
+                    });
                 } else if is(name, "group") {
-                    e.groups.push(group_from_block(b));
+                    e.groups.push(with_ref(&child, group_from_ref));
                 } else if is(name, "editor") && !have_editor {
-                    e.editor = editor_from_block(b);
+                    e.editor = with_ref(&child, editor_from_ref);
                     have_editor = true;
                 } else {
-                    e.extra_blocks.push(b);
+                    e.extra_blocks.push(child.into_block()?);
                 }
             }
         }
     }
-    e
+    Ok(e)
+}
+
+fn with_ref<R>(child: &Child<'_>, f: impl FnOnce(&BlockRef<'_>) -> R) -> R {
+    match child {
+        Child::Span { text, .. } => {
+            let root = hp_kv::parse_ref(text);
+            match root.children.first() {
+                Some(block) => f(block),
+                None => f(&BlockRef::default()),
+            }
+        }
+        Child::Parsed(b) => f(&b.as_ref()),
+    }
 }
 
 pub(crate) fn parse_connection(output: String, value: &str) -> Connection {
@@ -318,13 +362,13 @@ pub(crate) fn parse_connection(output: String, value: &str) -> Connection {
     c
 }
 
-fn group_from_block(b: Block) -> Group {
+fn group_from_ref(b: &BlockRef<'_>) -> Group {
     let mut g = Group::default();
     if let Some(id) = b.get("id").and_then(parse_u32) {
         g.id = id;
     }
-    if let Some(editor) = b.children.into_iter().find(|c| is(&c.name, "editor")) {
-        g.editor = editor_from_block(editor);
+    if let Some(editor) = b.children.iter().find(|c| is(c.name, "editor")) {
+        g.editor = editor_from_ref(editor);
     }
     g
 }
@@ -339,66 +383,74 @@ fn parse_color(s: &str) -> Option<[u8; 3]> {
     it.next().is_none().then_some(out)
 }
 
+#[cfg(test)]
 pub(crate) fn editor_from_block(b: Block) -> EditorInfo {
+    editor_from_ref(&b.as_ref())
+}
+
+fn editor_from_ref(b: &BlockRef<'_>) -> EditorInfo {
     let mut e = EditorInfo::default();
-    for (k, v) in b.props {
+    for &(k, v) in &b.props {
         let ok = match k.len() {
-            5 if is(&k, "color") => set(&mut e.color, parse_color(&v)),
-            7 if is(&k, "groupid") => set(&mut e.group_id, parse_u32(&v).map(Some)),
-            8 if is(&k, "comments") => {
-                e.comments = Some(v);
+            5 if is(k, "color") => set(&mut e.color, parse_color(v)),
+            7 if is(k, "groupid") => set(&mut e.group_id, parse_u32(v).map(Some)),
+            8 if is(k, "comments") => {
+                e.comments = Some(v.to_owned());
                 continue;
             }
-            10 if is(&k, "visgroupid") => match parse_u32(&v) {
+            10 if is(k, "visgroupid") => match parse_u32(v) {
                 Some(id) => {
                     e.visgroup_ids.push(id);
                     true
                 }
                 None => false,
             },
-            10 if is(&k, "logicalpos") => {
-                e.logical_pos = Some(v);
+            10 if is(k, "logicalpos") => {
+                e.logical_pos = Some(v.to_owned());
                 continue;
             }
-            13 if is(&k, "visgroupshown") => set(&mut e.visgroup_shown, parse_bool(&v)),
-            17 if is(&k, "visgroupautoshown") => set(&mut e.visgroup_auto_shown, parse_bool(&v)),
+            13 if is(k, "visgroupshown") => set(&mut e.visgroup_shown, parse_bool(v)),
+            17 if is(k, "visgroupautoshown") => set(&mut e.visgroup_auto_shown, parse_bool(v)),
             _ => false,
         };
         if !ok {
-            e.extra_props.push((k, v));
+            e.extra_props.push((k.to_owned(), v.to_owned()));
         }
     }
     e
 }
 
 pub(crate) fn solid_from_block(b: Block, hidden: bool) -> Solid {
-    let Block { props, children, .. } = b;
+    solid_from_ref(&b.as_ref(), hidden)
+}
+
+fn solid_from_ref(b: &BlockRef<'_>, hidden: bool) -> Solid {
     let mut s = Solid {
         id: 0,
-        sides: Vec::with_capacity(children.len()),
+        sides: Vec::with_capacity(b.children.len()),
         editor: EditorInfo::default(),
         hidden,
         extra_props: Vec::new(),
         extra_blocks: Vec::new(),
     };
-    for (k, v) in props {
-        if is(&k, "id") {
-            if let Some(id) = parse_u32(&v) {
+    for &(k, v) in &b.props {
+        if is(k, "id") {
+            if let Some(id) = parse_u32(v) {
                 s.id = id;
             }
             continue;
         }
-        s.extra_props.push((k, v));
+        s.extra_props.push((k.to_owned(), v.to_owned()));
     }
     let mut have_editor = false;
-    for c in children {
-        if is(&c.name, "side") {
-            s.sides.push(side_from_block(c));
-        } else if is(&c.name, "editor") && !have_editor {
-            s.editor = editor_from_block(c);
+    for c in &b.children {
+        if is(c.name, "side") {
+            s.sides.push(side_from_ref(c));
+        } else if is(c.name, "editor") && !have_editor {
+            s.editor = editor_from_ref(c);
             have_editor = true;
         } else {
-            s.extra_blocks.push(c);
+            s.extra_blocks.push(c.to_block());
         }
     }
     s
@@ -421,8 +473,12 @@ fn set_or<T>(slot: &mut T, value: Option<T>, unread: T) -> bool {
     ok
 }
 
+#[cfg(test)]
 pub(crate) fn side_from_block(b: Block) -> Side {
-    let Block { props, children, .. } = b;
+    side_from_ref(&b.as_ref())
+}
+
+fn side_from_ref(b: &BlockRef<'_>) -> Side {
     let mut side = Side {
         id: 0,
         plane: Side::UNREADABLE_PLANE,
@@ -437,58 +493,58 @@ pub(crate) fn side_from_block(b: Block) -> Side {
         extra_props: Vec::new(),
         extra_blocks: Vec::new(),
     };
-    for (k, v) in props {
+    for &(k, v) in &b.props {
         let ok = match k.len() {
-            2 if is(&k, "id") => {
-                set(&mut side.id, parse_u32(&v));
+            2 if is(k, "id") => {
+                set(&mut side.id, parse_u32(v));
                 continue;
             }
-            5 if is(&k, "plane") => set_or(&mut side.plane, parse_plane(&v), Side::UNREADABLE_PLANE),
-            5 if is(&k, "uaxis") => set_or(&mut side.uaxis, parse_axis(&v), UNREADABLE_AXIS),
-            5 if is(&k, "vaxis") => set_or(&mut side.vaxis, parse_axis(&v), UNREADABLE_AXIS),
-            8 if is(&k, "material") => {
-                side.material = v;
+            5 if is(k, "plane") => set_or(&mut side.plane, parse_plane(v), Side::UNREADABLE_PLANE),
+            5 if is(k, "uaxis") => set_or(&mut side.uaxis, parse_axis(v), UNREADABLE_AXIS),
+            5 if is(k, "vaxis") => set_or(&mut side.vaxis, parse_axis(v), UNREADABLE_AXIS),
+            8 if is(k, "material") => {
+                v.clone_into(&mut side.material);
                 continue;
             }
-            8 if is(&k, "rotation") => set(&mut side.rotation, parse_f64(&v)),
-            13 if is(&k, "lightmapscale") => set(&mut side.lightmap_scale, parse_i32(&v)),
-            16 if is(&k, "smoothing_groups") => set(&mut side.smoothing_groups, parse_u32(&v)),
+            8 if is(k, "rotation") => set(&mut side.rotation, parse_f64(v)),
+            13 if is(k, "lightmapscale") => set(&mut side.lightmap_scale, parse_i32(v)),
+            16 if is(k, "smoothing_groups") => set(&mut side.smoothing_groups, parse_u32(v)),
             _ => false,
         };
         if !ok {
-            side.extra_props.push((k, v));
+            side.extra_props.push((k.to_owned(), v.to_owned()));
         }
     }
-    for c in children {
-        if is(&c.name, "dispinfo") && side.disp.is_none() {
-            match disp_from_block(c, side.normal()) {
-                Ok(d) => side.disp = Some(Box::new(d)),
-                Err(raw) => side.extra_blocks.push(raw),
+    for c in &b.children {
+        if is(c.name, "dispinfo") && side.disp.is_none() {
+            match disp_from_ref(c, side.normal()) {
+                Some(d) => side.disp = Some(Box::new(d)),
+                None => side.extra_blocks.push(c.to_block()),
             }
-        } else if is(&c.name, "vertices_plus") && side.vertices_plus.is_none() {
-            match vertices_plus_from_block(c) {
-                Ok(v) => side.vertices_plus = Some(v),
-                Err(raw) => side.extra_blocks.push(raw),
+        } else if is(c.name, "vertices_plus") && side.vertices_plus.is_none() {
+            match vertices_plus_from_ref(c) {
+                Some(v) => side.vertices_plus = Some(v),
+                None => side.extra_blocks.push(c.to_block()),
             }
         } else {
-            side.extra_blocks.push(c);
+            side.extra_blocks.push(c.to_block());
         }
     }
     side
 }
 
-fn vertices_plus_from_block(b: Block) -> Result<Vec<DVec3>, Block> {
+fn vertices_plus_from_ref(b: &BlockRef<'_>) -> Option<Vec<DVec3>> {
     if !b.children.is_empty() {
-        return Err(b);
+        return None;
     }
     let mut verts = Vec::with_capacity(b.props.len());
-    for (k, v) in &b.props {
+    for &(k, v) in &b.props {
         match parse_vec3_strict(v) {
             Some(p) if is(k, "v") => verts.push(p),
-            _ => return Err(b),
+            _ => return None,
         }
     }
-    Ok(verts)
+    Some(verts)
 }
 
 fn row_index(key: &str) -> Option<usize> {
@@ -499,8 +555,8 @@ fn row_index(key: &str) -> Option<usize> {
     key.get(3..)?.parse().ok()
 }
 
-fn fill_f64_grid(grid: &mut [f64], b: &Block, rows: usize, cols: usize) {
-    for (k, v) in &b.props {
+fn fill_f64_grid(grid: &mut [f64], b: &BlockRef<'_>, rows: usize, cols: usize) {
+    for &(k, v) in &b.props {
         let Some(r) = row_index(k).filter(|r| *r < rows) else { continue };
         let row = grid.iter_mut().skip(r * cols).take(cols);
         for (slot, tok) in row.zip(num_tokens(v)) {
@@ -511,8 +567,8 @@ fn fill_f64_grid(grid: &mut [f64], b: &Block, rows: usize, cols: usize) {
     }
 }
 
-fn fill_i32_grid(grid: &mut [i32], b: &Block, rows: usize, cols: usize) {
-    for (k, v) in &b.props {
+fn fill_i32_grid(grid: &mut [i32], b: &BlockRef<'_>, rows: usize, cols: usize) {
+    for &(k, v) in &b.props {
         let Some(r) = row_index(k).filter(|r| *r < rows) else { continue };
         let row = grid.iter_mut().skip(r * cols).take(cols);
         for (slot, tok) in row.zip(num_tokens(v)) {
@@ -523,8 +579,8 @@ fn fill_i32_grid(grid: &mut [i32], b: &Block, rows: usize, cols: usize) {
     }
 }
 
-fn fill_vec3_grid(grid: &mut [DVec3], b: &Block, rows: usize, cols: usize) {
-    for (k, v) in &b.props {
+fn fill_vec3_grid(grid: &mut [DVec3], b: &BlockRef<'_>, rows: usize, cols: usize) {
+    for &(k, v) in &b.props {
         let Some(r) = row_index(k).filter(|r| *r < rows) else { continue };
         let mut toks = num_tokens(v);
         'row: for slot in grid.iter_mut().skip(r * cols).take(cols) {
@@ -543,15 +599,14 @@ fn fill_vec3_grid(grid: &mut [DVec3], b: &Block, rows: usize, cols: usize) {
     }
 }
 
-pub(crate) fn disp_from_block(b: Block, face_normal: DVec3) -> Result<DispInfo, Block> {
+fn disp_from_ref(b: &BlockRef<'_>, face_normal: DVec3) -> Option<DispInfo> {
     let power = match b.get("power").and_then(parse_u32) {
         Some(p) if p <= MAX_DISP_POWER => p,
-        _ => return Err(b),
+        _ => return None,
     };
     let n = 1usize << power;
     let w = n + 1;
     let count = w * w;
-    let Block { props, children, .. } = b;
     let mut d = DispInfo {
         power,
         start_position: DVec3::ZERO,
@@ -569,52 +624,52 @@ pub(crate) fn disp_from_block(b: Block, face_normal: DVec3) -> Result<DispInfo, 
         extra_blocks: Vec::new(),
     };
     let mut seen_power = false;
-    for (k, v) in props {
-        let ok = if is(&k, "power") {
-            let first = !seen_power && parse_u32(&v) == Some(power);
+    for &(k, v) in &b.props {
+        let ok = if is(k, "power") {
+            let first = !seen_power && parse_u32(v) == Some(power);
             seen_power |= first;
             first
-        } else if is(&k, "startposition") {
-            set(&mut d.start_position, parse_vec3_strict(&v))
-        } else if is(&k, "flags") {
-            set(&mut d.flags, parse_i32(&v))
-        } else if is(&k, "elevation") {
-            set(&mut d.elevation, parse_f64(&v))
-        } else if is(&k, "subdiv") {
-            set(&mut d.subdiv, parse_bool(&v))
+        } else if is(k, "startposition") {
+            set(&mut d.start_position, parse_vec3_strict(v))
+        } else if is(k, "flags") {
+            set(&mut d.flags, parse_i32(v))
+        } else if is(k, "elevation") {
+            set(&mut d.elevation, parse_f64(v))
+        } else if is(k, "subdiv") {
+            set(&mut d.subdiv, parse_bool(v))
         } else {
             false
         };
         if !ok {
-            d.extra_props.push((k, v));
+            d.extra_props.push((k.to_owned(), v.to_owned()));
         }
     }
-    for c in children {
-        let name = c.name.as_str();
+    for c in &b.children {
+        let name = c.name;
         if is(name, "normals") {
-            fill_vec3_grid(&mut d.normals, &c, w, w);
+            fill_vec3_grid(&mut d.normals, c, w, w);
         } else if is(name, "distances") {
-            fill_f64_grid(&mut d.distances, &c, w, w);
+            fill_f64_grid(&mut d.distances, c, w, w);
         } else if is(name, "offsets") {
-            fill_vec3_grid(&mut d.offsets, &c, w, w);
+            fill_vec3_grid(&mut d.offsets, c, w, w);
         } else if is(name, "offset_normals") {
-            fill_vec3_grid(&mut d.offset_normals, &c, w, w);
+            fill_vec3_grid(&mut d.offset_normals, c, w, w);
         } else if is(name, "alphas") {
-            fill_f64_grid(&mut d.alphas, &c, w, w);
+            fill_f64_grid(&mut d.alphas, c, w, w);
         } else if is(name, "triangle_tags") {
-            fill_i32_grid(&mut d.triangle_tags, &c, n, 2 * n);
+            fill_i32_grid(&mut d.triangle_tags, c, n, 2 * n);
         } else if is(name, "allowed_verts") {
-            let value = c.get("10").or_else(|| c.props.first().map(|(_, v)| v.as_str())).unwrap_or("");
+            let value = c.get("10").or_else(|| c.props.first().map(|(_, v)| *v)).unwrap_or("");
             for (slot, tok) in d.allowed_verts.iter_mut().zip(num_tokens(value)) {
                 if let Some(x) = parse_i32(tok) {
                     *slot = x;
                 }
             }
         } else {
-            d.extra_blocks.push(c);
+            d.extra_blocks.push(c.to_block());
         }
     }
-    Ok(d)
+    Some(d)
 }
 
 fn version_info_from_block(b: Block) -> VersionInfo {

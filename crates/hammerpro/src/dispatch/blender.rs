@@ -6,6 +6,7 @@ use hp_app::{Action, Severity, t, tf};
 use hp_ui_entities::model_import::ModelBatchDialog;
 
 use super::Package;
+use super::file_watch::FileWatch;
 use crate::app::HammerProApp;
 use crate::blender::{self, SendOptions, pull};
 
@@ -18,6 +19,7 @@ pub(crate) struct State {
     batch: ModelBatchDialog,
     pull: Option<Receiver<PullAnswer>>,
     browse: Option<Receiver<Option<PathBuf>>>,
+    watch: Option<FileWatch>,
 }
 
 const HANDLED: &[Action] = &[
@@ -230,11 +232,23 @@ impl Package for Bridge {
                 Err(TryRecvError::Empty) => {}
             }
         }
-        if app.state.runtime.blender.link.is_some() {
+        let live = app.state.runtime.blender.link.as_ref().filter(|l| l.live).map(|l| l.file.clone());
+        let Some(file) = live else {
+            app.pkg.blender.watch = None;
+            return;
+        };
+        if !app.pkg.blender.watch.as_ref().is_some_and(|w| w.watches(&file)) {
+            let wake = ctx.clone();
+            app.pkg.blender.watch = FileWatch::start(vec![file], blender::CHECK_EVERY, move || wake.request_repaint());
+        }
+        let changed = app.pkg.blender.watch.as_ref().is_none_or(FileWatch::take_changed);
+        if app.pkg.blender.pull.is_none() && blender::watch_due(&mut app.state, std::time::Instant::now()) {
+            start_pull(app, ctx);
+            return;
+        }
+        let settling = app.state.runtime.blender.link.as_ref().is_some_and(|l| l.candidate.is_some());
+        if settling || changed {
             ctx.request_repaint_after(blender::CHECK_EVERY);
-            if app.pkg.blender.pull.is_none() && blender::watch_due(&mut app.state, std::time::Instant::now()) {
-                start_pull(app, ctx);
-            }
         }
     }
 

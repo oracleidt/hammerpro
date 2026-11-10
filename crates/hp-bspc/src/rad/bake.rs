@@ -1,11 +1,13 @@
+pub(super) mod incremental;
+
 use glam::{DVec2, Vec3A};
-use hp_light::bvh::Bvh;
+use hp_light::bvh::{ALL_CLASSES, Bvh};
 use rayon::prelude::*;
 
 use super::RadQuality;
 use super::data::MapData;
 use super::lights::{Kind, Lights};
-use super::surface::{LitFace, SurfTri, bump_normals, inside};
+use super::surface::{LitFace, OPAQUE_SURFACES, SurfTri, bump_normals, inside};
 
 pub(crate) const MAX_TRACE: f32 = 56_755.84;
 const EQUAL_EPSILON: f32 = 0.001;
@@ -147,7 +149,7 @@ pub(crate) enum Part {
 pub(crate) struct FaceLight {
     pub styles: Vec<u8>,
     pub normals: usize,
-    pub values: Vec<Vec3A>,
+    pub values: Vec<glam::Vec3>,
     pub dark: Vec<bool>,
 }
 
@@ -281,7 +283,7 @@ impl Ctx<'_> {
     }
 
     pub fn trace_sky_kind(&self, from: Vec3A, dir: Vec3A) -> Option<bool> {
-        let h = self.surf.closest(from, dir, MAX_TRACE, |_| true)?;
+        let h = self.surf.closest_in(OPAQUE_SURFACES, from, dir, MAX_TRACE, |_| true)?;
         if h.t > 1.0 && self.blocked(from, dir, h.t - 0.5, true) {
             return None;
         }
@@ -293,7 +295,16 @@ impl Ctx<'_> {
     }
 
     pub fn trace_surface_if(&self, from: Vec3A, dir: Vec3A, blocked: &dyn Fn(f32) -> bool) -> SurfHit {
-        let Some(h) = self.surf.closest(from, dir, MAX_TRACE, |_| true) else { return SurfHit::None };
+        self.trace_surface_in(ALL_CLASSES, from, dir, blocked)
+    }
+
+    fn trace_bounce(&self, from: Vec3A, dir: Vec3A, props_block: bool) -> SurfHit {
+        let blocked = |t: f32| t > 1.0 && self.blocked(from, dir, t - 0.5, props_block);
+        self.trace_surface_in(OPAQUE_SURFACES, from, dir, &blocked)
+    }
+
+    fn trace_surface_in(&self, mask: u8, from: Vec3A, dir: Vec3A, blocked: &dyn Fn(f32) -> bool) -> SurfHit {
+        let Some(h) = self.surf.closest_in(mask, from, dir, MAX_TRACE, |_| true) else { return SurfHit::None };
         if blocked(h.t) {
             return SurfHit::None;
         }
@@ -344,7 +355,7 @@ impl Ctx<'_> {
                 normals[k + 1] = b[k].as_vec3a();
             }
         }
-        Sample { pos: pos.as_vec3a(), normals, cluster: self.map.cluster_at(pos) }
+        Sample { pos: pos.as_vec3a(), normals, cluster: self.map.vis_cluster_at(pos) }
     }
 
     fn candidates(&self, f: &LitFace, clusters: &[i32]) -> (Vec<(usize, usize)>, Vec<u8>) {
@@ -601,7 +612,7 @@ impl Ctx<'_> {
         let samples: Vec<Option<Sample>> =
             (0..lux).map(|i| if dark[i] { None } else { Some(self.sample(f, centers[i].x, centers[i].y)) }).collect();
         let mut clusters: Vec<i32> = samples.iter().flatten().map(|sp| sp.cluster).collect();
-        clusters.extend(f.poly.iter().map(|v| self.map.cluster_at(*v + f.normal)));
+        clusters.extend(f.poly.iter().map(|v| self.map.vis_cluster_at(*v + f.normal)));
         clusters.sort_unstable();
         clusters.dedup();
         clusters.retain(|c| *c >= 0);
@@ -637,14 +648,14 @@ impl Ctx<'_> {
             .take(MAX_STYLES)
             .collect();
         let kept = keep.len();
-        let mut values = vec![Vec3A::ZERO; self.passes * kept * nn * lux];
+        let mut values = vec![glam::Vec3::ZERO; self.passes * kept * nn * lux];
         for p in 0..self.passes {
             for (ks, &slot) in keep.iter().enumerate() {
                 for n in 0..nn {
                     let dst = ((p * kept + ks) * nn + n) * lux;
                     let src = (p * slots + slot) * nn + n;
                     for i in 0..lux {
-                        values[dst + i] = acc[i * stride + src];
+                        values[dst + i] = acc[i * stride + src].into();
                     }
                 }
             }
@@ -887,7 +898,81 @@ impl Ctx<'_> {
     }
 }
 
-pub(crate) fn lookup(buf: &[Vec3A], w: usize, h: usize, s: f32, t: f32) -> Vec3A {
+const PATCH_WEIGHTS: [f32; 5] = [0.5, 1.0, 1.0, 1.0, 0.5];
+const BLUR_RAYS: f32 = 576.0;
+
+fn blur_radius(rays: usize, step: usize) -> usize {
+    let density = rays.max(1) as f32 / (step.max(1) * step.max(1)) as f32;
+    ((BLUR_RAYS / density).sqrt().round() as usize).clamp(4, 8)
+}
+
+fn blur_weights(points: &[usize], radius: usize) -> Vec<Vec<(usize, f32)>> {
+    points
+        .iter()
+        .map(|&p| {
+            let mut row: Vec<(usize, f32)> = points
+                .iter()
+                .enumerate()
+                .filter_map(|(k, &q)| {
+                    let d = p.abs_diff(q);
+                    (d <= radius).then(|| (k, (radius + 1 - d) as f32))
+                })
+                .collect();
+            let total: f32 = row.iter().map(|r| r.1).sum();
+            for r in &mut row {
+                r.1 /= total;
+            }
+            row
+        })
+        .collect()
+}
+
+type BlurRow = Vec<(usize, f32)>;
+
+fn blur_grid(plane: &mut [Vec3A], keep: &[bool], (wx, wy): (&[BlurRow], &[BlurRow]), tmp: &mut Vec<(Vec3A, f32)>) {
+    let gw = wx.len();
+    if gw == 0 || plane.len() != gw * wy.len() || keep.len() != plane.len() {
+        return;
+    }
+    tmp.clear();
+    for (row, kept) in plane.chunks_exact(gw).zip(keep.chunks_exact(gw)) {
+        tmp.extend(wx.iter().map(|ws| {
+            ws.iter().filter(|&&(k, _)| kept[k]).fold((Vec3A::ZERO, 0.0), |(v, t), &(k, w)| (v + row[k] * w, t + w))
+        }));
+    }
+    for (y, ws) in wy.iter().enumerate() {
+        for x in 0..gw {
+            let (v, t) = ws
+                .iter()
+                .fold((Vec3A::ZERO, 0.0), |(v, t), &(k, w)| (v + tmp[k * gw + x].0 * w, t + tmp[k * gw + x].1 * w));
+            if t > 0.0 {
+                plane[y * gw + x] = v / t;
+            }
+        }
+    }
+}
+
+fn patch_light(src: &[glam::Vec3], w: usize, h: usize, g: &Gather, out: &mut [Vec3A]) {
+    for (gy, &y) in g.ys.iter().enumerate() {
+        for (gx, &x) in g.xs.iter().enumerate() {
+            let (mut sum, mut total) = (Vec3A::ZERO, 0.0f32);
+            for (dy, wy) in PATCH_WEIGHTS.iter().enumerate() {
+                let Some(yy) = (y + dy).checked_sub(2).filter(|v| *v < h) else { continue };
+                for (dx, wx) in PATCH_WEIGHTS.iter().enumerate() {
+                    let Some(xx) = (x + dx).checked_sub(2).filter(|v| *v < w) else { continue };
+                    let Some(v) = src.get(yy * w + xx) else { continue };
+                    sum += Vec3A::from(*v) * (wx * wy);
+                    total += wx * wy;
+                }
+            }
+            if let Some(o) = out.get_mut(gy * g.gw + gx) {
+                *o = if total > 0.0 { sum / total } else { Vec3A::ZERO };
+            }
+        }
+    }
+}
+
+pub(crate) fn lookup(buf: &[glam::Vec3], w: usize, h: usize, s: f32, t: f32) -> Vec3A {
     if buf.len() < w * h || w == 0 || h == 0 || !(s.is_finite() && t.is_finite()) {
         return Vec3A::ZERO;
     }
@@ -896,7 +981,7 @@ pub(crate) fn lookup(buf: &[Vec3A], w: usize, h: usize, s: f32, t: f32) -> Vec3A
     let (x0, y0) = (x as usize, y as usize);
     let (x1, y1) = ((x0 + 1).min(w - 1), (y0 + 1).min(h - 1));
     let (fx, fy) = (x - x0 as f32, y - y0 as f32);
-    let at = |x: usize, y: usize| buf[y * w + x];
+    let at = |x: usize, y: usize| Vec3A::from(buf[y * w + x]);
     let top = at(x0, y0).lerp(at(x1, y0), fx);
     let bottom = at(x0, y1).lerp(at(x1, y1), fx);
     top.lerp(bottom, fy)
@@ -922,13 +1007,17 @@ fn axis_points(n: usize, step: usize) -> Vec<usize> {
 }
 
 fn cosine_dir(n: Vec3A, k: usize, count: usize, seed: u32) -> Vec3A {
+    let (t, b) = basis(n);
+    cosine_dir_in(&[t, b, n], k, count, seed)
+}
+
+fn cosine_dir_in(&[t, b, n]: &[Vec3A; 3], k: usize, count: usize, seed: u32) -> Vec3A {
     let side = (count as f32).sqrt().ceil().max(1.0) as usize;
     let (gx, gy) = (k % side, k / side);
     let r1 = unit(hash(seed, k as u32, 1));
     let r2 = unit(hash(seed, k as u32, 2));
     let u1 = ((gx as f32 + r1) / side as f32).min(0.9999);
     let u2 = ((gy as f32 + r2) / (count.div_ceil(side)) as f32).min(0.9999);
-    let (t, b) = basis(n);
     let r = u1.sqrt();
     let phi = std::f32::consts::TAU * u2;
     let z = (1.0 - u1).max(0.0).sqrt();
@@ -944,7 +1033,7 @@ impl Ctx<'_> {
         let ys = axis_points(f.h, step);
         let (gw, gh) = (xs.len(), ys.len());
         let mut normals = Vec::with_capacity(gw * gh);
-        let mut hits = Vec::with_capacity(gw * gh * rays);
+        let mut points = Vec::with_capacity(gw * gh);
         for (gy, &t) in ys.iter().enumerate() {
             for (gx, &s) in xs.iter().enumerate() {
                 let c = if f.disp.is_some() {
@@ -957,16 +1046,17 @@ impl Ctx<'_> {
                 normals.push(sp.normals);
                 let seed = hash(fi as u32, (gy * gw + gx) as u32, 0x5eed);
                 let props_block = !self.props.inside_prop(self.shadow, sp.pos, sp.normals[0]);
-                for k in 0..rays {
-                    let dir = cosine_dir(sp.normals[0], k, rays, seed);
-                    let hit = match self.trace_surface_with(sp.pos, dir, props_block) {
-                        SurfHit::Face(i, s, t, _) => {
-                            let q = |v: f32| (v.max(0.0) * Q).min(65535.0) as u16;
-                            (i, q(s), q(t))
-                        }
-                        _ => (u32::MAX, 0, 0),
-                    };
-                    hits.push(hit);
+                let (t, b) = basis(sp.normals[0]);
+                points.push((sp.pos, [t, b, sp.normals[0]], seed, props_block));
+            }
+        }
+        let mut hits = vec![(u32::MAX, 0, 0); points.len() * rays];
+        for k in 0..rays {
+            for (p, (pos, frame, seed, props_block)) in points.iter().enumerate() {
+                let dir = cosine_dir_in(frame, k, rays, *seed);
+                if let SurfHit::Face(i, s, t, _) = self.trace_bounce(*pos, dir, *props_block) {
+                    let q = |v: f32| (v.max(0.0) * Q).min(65535.0) as u16;
+                    hits[p * rays + k] = (i, q(s), q(t));
                 }
             }
         }
@@ -999,6 +1089,8 @@ impl Ctx<'_> {
                     self.work.add(g.luxels as u64);
                 }
             })
+            .collect::<Vec<Result<Gather, String>>>()
+            .into_iter()
             .collect::<Result<Vec<_>, _>>()?;
         let (memory, disk) = store.usage();
         if disk > 0 {
@@ -1009,16 +1101,46 @@ impl Ctx<'_> {
         log(&format!("bounce: {points} gather points, {rays} rays each, traced in {} ms", clock.elapsed().as_millis()));
         let clock = std::time::Instant::now();
         let passes = self.passes;
-        let direct: Vec<Vec<&[Vec3A]>> = lights
+        let normals: Vec<usize> = lights.iter().map(|l| l.normals).collect();
+        let mut emit_at = Vec::with_capacity(grids.len());
+        let mut size = 0usize;
+        for g in &grids {
+            emit_at.push(size);
+            size += passes * g.gw * g.gh;
+        }
+        let targets: Vec<Target> = grids
             .iter()
             .zip(self.faces)
-            .map(|(l, f)| {
-                let lux = f.luxels();
-                (0..passes).map(|p| &l.values[l.index(p, 0, 0, lux)..l.index(p, 0, 0, lux) + lux]).collect()
+            .zip(&emit_at)
+            .map(|((g, f), &emit)| Target {
+                emit,
+                npts: g.gw * g.gh,
+                gw: g.gw,
+                x: Axis::of(&g.xs, g.step),
+                y: Axis::of(&g.ys, g.step),
+                reflectivity: f.reflectivity,
             })
             .collect();
-        let normals: Vec<usize> = lights.iter().map(|l| l.normals).collect();
-        let mut emit: Vec<Vec<Vec<Vec3A>>> = Vec::new();
+        let mut emit: Vec<Vec3A> = vec![Vec3A::ZERO; size];
+        {
+            let mut parts: Vec<&mut [Vec3A]> = Vec::with_capacity(grids.len());
+            let mut rest = emit.as_mut_slice();
+            for g in &grids {
+                let (head, tail) = rest.split_at_mut(passes * g.gw * g.gh);
+                parts.push(head);
+                rest = tail;
+            }
+            let faces = self.faces;
+            let lit: &[FaceLight] = lights;
+            parts.into_par_iter().enumerate().for_each(|(fi, out)| {
+                let (g, f, l) = (&grids[fi], &faces[fi], &lit[fi]);
+                let (lux, npts) = (f.luxels(), g.gw * g.gh);
+                for p in 0..passes {
+                    let at = l.index(p, 0, 0, lux);
+                    patch_light(&l.values[at..at + lux], f.w, f.h, g, &mut out[p * npts..(p + 1) * npts]);
+                }
+            });
+        }
         let mut total: Vec<Vec<Vec3A>> =
             grids.iter().zip(&normals).map(|(g, nn)| vec![Vec3A::ZERO; passes * nn * g.gw * g.gh]).collect();
         let mut last_added = 0.0f32;
@@ -1038,25 +1160,26 @@ impl Ctx<'_> {
                             let gp = start / rays + point;
                             let seed = hash(fi as u32, gp as u32, 0x5eed);
                             let normals = &g.normals[gp];
+                            let frame = (nn > 1).then(|| {
+                                let (t, b) = basis(normals[0]);
+                                [t, b, normals[0]]
+                            });
                             for k in 0..rays {
                                 let (hi, s, t) = hits[point * rays + k];
-                                let hi = hi as usize;
-                                let Some(hf) = self.faces.get(hi) else { continue };
+                                let Some(hf) = targets.get(hi as usize) else { continue };
                                 let (s, t) = (f32::from(s) / Q, f32::from(t) / Q);
                                 let mut wts = [1.0f32; 4];
-                                if nn > 1 {
-                                    let dir = cosine_dir(normals[0], k, rays, seed);
+                                if let Some(frame) = &frame {
+                                    let dir = cosine_dir_in(frame, k, rays, seed);
                                     let d0 = dir.dot(normals[0]).max(1e-4);
                                     for n in 1..nn {
                                         wts[n] = dir.dot(normals[n]).max(0.0) / d0;
                                     }
                                 }
-                                let cell = if b == 0 { None } else { Some(grid_cell(&grids[hi], s, t)) };
+                                let cell = hf.cell(s, t);
                                 for p in 0..passes {
-                                    let v = match cell {
-                                        None => lookup(direct[hi][p], hf.w, hf.h, s, t),
-                                        Some(c) => c.sample(&emit[hi][p], grids[hi].gw),
-                                    } * hf.reflectivity;
+                                    let at = hf.emit + p * hf.npts;
+                                    let v = cell.sample(&emit[at..at + hf.npts], hf.gw) * hf.reflectivity;
                                     for n in 0..nn {
                                         pts[(p * nn + n) * npts + gp] += v * wts[n];
                                     }
@@ -1069,16 +1192,16 @@ impl Ctx<'_> {
                     }
                     Ok(pts)
                 })
+                .collect::<Vec<Result<Vec<Vec3A>, String>>>()
+                .into_iter()
                 .collect::<Result<Vec<_>, String>>()?;
             let mut added = 0.0f32;
-            emit = recv
-                .iter()
-                .zip(&normals)
-                .map(|(r, nn)| {
-                    let npts = r.len() / (passes * nn);
-                    (0..passes).map(|p| r[p * nn * npts..p * nn * npts + npts].to_vec()).collect()
-                })
-                .collect();
+            for ((r, nn), t) in recv.iter().zip(&normals).zip(&targets) {
+                for p in 0..passes {
+                    emit[t.emit + p * t.npts..t.emit + (p + 1) * t.npts]
+                        .copy_from_slice(&r[p * nn * t.npts..p * nn * t.npts + t.npts]);
+                }
+            }
             for (t, r) in total.iter_mut().zip(&recv) {
                 for (a, v) in t.iter_mut().zip(r) {
                     *a += *v;
@@ -1103,7 +1226,18 @@ impl Ctx<'_> {
             }
             last_added = added;
         }
-        drop(direct);
+        let radius = blur_radius(rays, step);
+        total.par_iter_mut().zip(&grids).zip(lights.par_iter()).zip(self.faces).for_each(|(((planes, g), fl), f)| {
+            let (wx, wy) = (blur_weights(&g.xs, radius), blur_weights(&g.ys, radius));
+            let keep: Vec<bool> =
+                g.ys.iter()
+                    .flat_map(|&y| g.xs.iter().map(move |&x| !fl.dark.get(y * f.w + x).copied().unwrap_or(false)))
+                    .collect();
+            let mut tmp = Vec::new();
+            for plane in planes.chunks_exact_mut(g.gw * g.gh) {
+                blur_grid(plane, &keep, (&wx, &wy), &mut tmp);
+            }
+        });
         lights.par_iter_mut().enumerate().for_each(|(fi, fl)| {
             let f = &self.faces[fi];
             let g = &grids[fi];
@@ -1120,7 +1254,8 @@ impl Ctx<'_> {
                             let at = |x: usize, y: usize| src[y * g.gw + x];
                             let top = at(x0, y0).lerp(at(x1, y0), fx);
                             let bottom = at(x0, y1).lerp(at(x1, y1), fx);
-                            fl.values[base + t * f.w + s] += top.lerp(bottom, fy);
+                            let v = &mut fl.values[base + t * f.w + s];
+                            *v = (Vec3A::from(*v) + top.lerp(bottom, fy)).into();
                         }
                     }
                 }
@@ -1146,13 +1281,73 @@ impl Cell {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+struct Axis {
+    step: usize,
+    last: usize,
+    end: usize,
+}
+
+impl Axis {
+    fn of(points: &[usize], step: usize) -> Axis {
+        Axis { step: step.max(1), last: points.len() - 1, end: points[points.len() - 1] }
+    }
+
+    fn point(&self, k: usize) -> usize {
+        if k == self.last { self.end } else { k * self.step }
+    }
+
+    fn span(&self, x: f32) -> (usize, usize, f32) {
+        if self.last == 0 || !x.is_finite() {
+            return (0, 0, 0.0);
+        }
+        let x = x.clamp(0.0, self.end as f32);
+        let k = ((x / self.step as f32) as usize).min(self.last - 1);
+        let (a, b) = (self.point(k) as f32, self.point(k + 1) as f32);
+        (k, k + 1, if b > a { ((x - a) / (b - a)).clamp(0.0, 1.0) } else { 0.0 })
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Target {
+    emit: usize,
+    npts: usize,
+    gw: usize,
+    x: Axis,
+    y: Axis,
+    reflectivity: Vec3A,
+}
+
+impl Target {
+    fn cell(&self, s: f32, t: f32) -> Cell {
+        let (x0, x1, fx) = self.x.span(s);
+        let (y0, y1, fy) = self.y.span(t);
+        Cell { x: [x0, x1], y: [y0, y1], f: [fx, fy] }
+    }
+}
+
+pub(crate) fn lookup_a(buf: &[Vec3A], w: usize, h: usize, s: f32, t: f32) -> Vec3A {
+    if buf.len() < w * h || w == 0 || h == 0 || !(s.is_finite() && t.is_finite()) {
+        return Vec3A::ZERO;
+    }
+    let x = s.clamp(0.0, (w - 1) as f32);
+    let y = t.clamp(0.0, (h - 1) as f32);
+    let (x0, y0) = (x as usize, y as usize);
+    let (x1, y1) = ((x0 + 1).min(w - 1), (y0 + 1).min(h - 1));
+    let (fx, fy) = (x - x0 as f32, y - y0 as f32);
+    let at = |x: usize, y: usize| buf[y * w + x];
+    let top = at(x0, y0).lerp(at(x1, y0), fx);
+    let bottom = at(x0, y1).lerp(at(x1, y1), fx);
+    top.lerp(bottom, fy)
+}
+
 fn grid_cell(g: &Gather, s: f32, t: f32) -> Cell {
-    let (x0, x1, fx) = span_f(&g.xs, g.step, s);
-    let (y0, y1, fy) = span_f(&g.ys, g.step, t);
+    let (x0, x1, fx) = grid_span(&g.xs, g.step, s);
+    let (y0, y1, fy) = grid_span(&g.ys, g.step, t);
     Cell { x: [x0, x1], y: [y0, y1], f: [fx, fy] }
 }
 
-fn span_f(points: &[usize], step: usize, x: f32) -> (usize, usize, f32) {
+fn grid_span(points: &[usize], step: usize, x: f32) -> (usize, usize, f32) {
     let last = points.len() - 1;
     if last == 0 || !x.is_finite() {
         return (0, 0, 0.0);
@@ -1174,8 +1369,48 @@ fn span(points: &[usize], x: usize) -> (usize, usize, f32) {
 
 type GridPoint = (i64, i64, i64);
 
+pub(crate) fn fill_dark(faces: &[LitFace], lights: &mut [FaceLight]) {
+    lights.par_iter_mut().zip(faces).for_each(|(l, f)| {
+        let lux = f.luxels();
+        if l.dark.len() != lux || !l.dark.contains(&true) || !l.dark.contains(&false) {
+            return;
+        }
+        let (w, h) = (f.w, f.h);
+        let planes = l.values.len() / lux;
+        let mut filled: Vec<bool> = l.dark.iter().map(|d| !d).collect();
+        loop {
+            let mut next: Vec<(usize, Vec<glam::Vec3>)> = Vec::new();
+            for i in (0..lux).filter(|&i| !filled[i]) {
+                let (x, y) = ((i % w) as isize, (i / w) as isize);
+                let near: Vec<usize> = (-1..=1isize)
+                    .flat_map(|dy| (-1..=1isize).map(move |dx| (x + dx, y + dy)))
+                    .filter(|&(nx, ny)| nx >= 0 && ny >= 0 && (nx as usize) < w && (ny as usize) < h)
+                    .map(|(nx, ny)| ny as usize * w + nx as usize)
+                    .filter(|&k| filled[k])
+                    .collect();
+                if near.is_empty() {
+                    continue;
+                }
+                let avg = (0..planes)
+                    .map(|p| near.iter().map(|&k| l.values[p * lux + k]).sum::<glam::Vec3>() / near.len() as f32)
+                    .collect();
+                next.push((i, avg));
+            }
+            if next.is_empty() {
+                break;
+            }
+            for (i, avg) in next {
+                for (p, v) in avg.into_iter().enumerate() {
+                    l.values[p * lux + i] = v;
+                }
+                filled[i] = true;
+            }
+        }
+    });
+}
+
 pub(crate) fn stitch(faces: &[LitFace], lights: &mut [FaceLight]) {
-    use std::collections::HashMap;
+    use ahash::AHashMap as HashMap;
     let q = |v: f64, k: f64| (v * k).round() as i64;
     let mut groups: HashMap<Vec<i64>, Vec<usize>> = HashMap::new();
     for (i, f) in faces.iter().enumerate() {
@@ -1192,73 +1427,115 @@ pub(crate) fn stitch(faces: &[LitFace], lights: &mut [FaceLight]) {
         key.extend([q(f.offset.x, 100.0), q(f.offset.y, 100.0), q(f.offset.z, 100.0)]);
         groups.entry(key).or_default().push(i);
     }
-    let point = |p: glam::DVec3| (q(p.x, 8.0), q(p.y, 8.0), q(p.z, 8.0));
-    for list in groups.values().filter(|l| l.len() > 1) {
-        let mut parent: Vec<usize> = (0..list.len()).collect();
-        fn root(parent: &mut [usize], mut i: usize) -> usize {
-            while parent[i] != i {
-                parent[i] = parent[parent[i]];
-                i = parent[i];
-            }
-            i
+    let lists: Vec<Vec<usize>> = groups.into_values().filter(|l| l.len() > 1).collect();
+    let cells: Vec<Vec<(usize, usize)>> = lists.par_iter().flat_map_iter(|list| shared_cells(faces, list)).collect();
+    for shared in &cells {
+        if shared.iter().any(|&(fi, i)| lights[fi].dark[i]) {
+            continue;
         }
-        let mut edges: HashMap<(GridPoint, GridPoint), usize> = HashMap::new();
-        for (k, &fi) in list.iter().enumerate() {
-            let poly = &faces[fi].poly;
-            for e in 0..poly.len() {
-                let (a, b) = (point(poly[e]), point(poly[(e + 1) % poly.len()]));
-                let key = if a < b { (a, b) } else { (b, a) };
-                if let Some(&other) = edges.get(&key) {
-                    let (ra, rb) = (root(&mut parent, k), root(&mut parent, other));
-                    parent[ra] = rb;
-                } else {
-                    edges.insert(key, k);
-                }
-            }
+        let (f0, _) = shared[0];
+        let nn = lights[f0].normals;
+        if shared.iter().any(|&(fi, _)| lights[fi].normals != nn) {
+            continue;
         }
-        let mut cells: HashMap<(usize, i32, i32), Vec<(usize, usize)>> = HashMap::new();
-        for (k, &fi) in list.iter().enumerate() {
-            let r = root(&mut parent, k);
-            let f = &faces[fi];
-            for t in 0..f.h {
-                for s in 0..f.w {
-                    cells.entry((r, f.mins[0] + s as i32, f.mins[1] + t as i32)).or_default().push((fi, t * f.w + s));
-                }
-            }
-        }
-        for shared in cells.values().filter(|c| c.len() > 1) {
-            if shared.iter().any(|&(fi, i)| lights[fi].dark[i]) {
+        let passes = lights[f0].values.len() / (lights[f0].styles.len() * nn * faces[f0].luxels()).max(1);
+        for style in lights[f0].styles.clone() {
+            let slots: Vec<Option<usize>> =
+                shared.iter().map(|&(fi, _)| lights[fi].styles.iter().position(|s| *s == style)).collect();
+            if slots.iter().any(Option::is_none) {
                 continue;
             }
-            let (f0, _) = shared[0];
-            let nn = lights[f0].normals;
-            if shared.iter().any(|&(fi, _)| lights[fi].normals != nn) {
-                continue;
-            }
-            let passes = lights[f0].values.len() / (lights[f0].styles.len() * nn * faces[f0].luxels()).max(1);
-            for style in lights[f0].styles.clone() {
-                let slots: Vec<Option<usize>> =
-                    shared.iter().map(|&(fi, _)| lights[fi].styles.iter().position(|s| *s == style)).collect();
-                if slots.iter().any(Option::is_none) {
-                    continue;
-                }
-                for p in 0..passes {
-                    for n in 0..nn {
-                        let ks: Vec<usize> = shared
-                            .iter()
-                            .zip(&slots)
-                            .map(|(&(fi, i), slot)| lights[fi].index(p, slot.unwrap_or(0), n, faces[fi].luxels()) + i)
-                            .collect();
-                        let sum: Vec3A = shared.iter().zip(&ks).map(|(&(fi, _), &k)| lights[fi].values[k]).sum();
-                        let mean = sum / shared.len() as f32;
-                        for (&(fi, _), &k) in shared.iter().zip(&ks) {
-                            lights[fi].values[k] = mean;
-                        }
+            for p in 0..passes {
+                for n in 0..nn {
+                    let ks: Vec<usize> = shared
+                        .iter()
+                        .zip(&slots)
+                        .map(|(&(fi, i), slot)| lights[fi].index(p, slot.unwrap_or(0), n, faces[fi].luxels()) + i)
+                        .collect();
+                    let sum: Vec3A =
+                        shared.iter().zip(&ks).map(|(&(fi, _), &k)| Vec3A::from(lights[fi].values[k])).sum();
+                    let mean = sum / shared.len() as f32;
+                    for (&(fi, _), &k) in shared.iter().zip(&ks) {
+                        lights[fi].values[k] = mean.into();
                     }
                 }
             }
         }
     }
+}
+
+fn shared_cells(faces: &[LitFace], list: &[usize]) -> Vec<Vec<(usize, usize)>> {
+    use ahash::AHashMap as HashMap;
+    let q = |v: f64| (v * 8.0).round() as i64;
+    let point = |p: glam::DVec3| (q(p.x), q(p.y), q(p.z));
+    let mut parent: Vec<usize> = (0..list.len()).collect();
+    fn root(parent: &mut [usize], mut i: usize) -> usize {
+        while parent[i] != i {
+            parent[i] = parent[parent[i]];
+            i = parent[i];
+        }
+        i
+    }
+    let mut edges: HashMap<(GridPoint, GridPoint), usize> = HashMap::new();
+    for (k, &fi) in list.iter().enumerate() {
+        let poly = &faces[fi].poly;
+        for e in 0..poly.len() {
+            let (a, b) = (point(poly[e]), point(poly[(e + 1) % poly.len()]));
+            let key = if a < b { (a, b) } else { (b, a) };
+            if let Some(&other) = edges.get(&key) {
+                let (ra, rb) = (root(&mut parent, k), root(&mut parent, other));
+                parent[ra] = rb;
+            } else {
+                edges.insert(key, k);
+            }
+        }
+    }
+    let rect = |k: usize| {
+        let f = &faces[list[k]];
+        (f.mins[0], f.mins[1], f.mins[0] + f.w as i32, f.mins[1] + f.h as i32)
+    };
+    let roots: Vec<usize> = (0..list.len()).map(|k| root(&mut parent, k)).collect();
+    let mut order: Vec<usize> = (0..list.len()).collect();
+    order.sort_unstable_by_key(|&k| (roots[k], rect(k).0, k));
+    let mut hits: Vec<(usize, i32, i32, usize)> = Vec::new();
+    for (i, &a) in order.iter().enumerate() {
+        let (ax0, ay0, ax1, ay1) = rect(a);
+        for &b in &order[i + 1..] {
+            let (bx0, by0, bx1, by1) = rect(b);
+            if roots[b] != roots[a] || bx0 >= ax1 {
+                break;
+            }
+            let (y0, y1) = (ay0.max(by0), ay1.min(by1));
+            let (x0, x1) = (ax0.max(bx0), ax1.min(bx1));
+            for y in y0..y1 {
+                for x in x0..x1 {
+                    hits.push((roots[a], x, y, a));
+                    hits.push((roots[a], x, y, b));
+                }
+            }
+        }
+    }
+    hits.sort_unstable();
+    hits.dedup();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < hits.len() {
+        let (r, x, y, _) = hits[i];
+        let mut j = i;
+        let mut cell = Vec::new();
+        while j < hits.len() && (hits[j].0, hits[j].1, hits[j].2) == (r, x, y) {
+            let k = hits[j].3;
+            let f = &faces[list[k]];
+            let idx = (y - f.mins[1]) as usize * f.w + (x - f.mins[0]) as usize;
+            cell.push((list[k], idx));
+            j += 1;
+        }
+        if cell.len() > 1 {
+            out.push(cell);
+        }
+        i = j;
+    }
+    out
 }
 
 pub(crate) fn lit_index<'a>(n_faces: usize, faces: impl Iterator<Item = &'a LitFace>) -> Vec<Option<u32>> {
@@ -1274,6 +1551,174 @@ pub(crate) fn lit_index<'a>(n_faces: usize, faces: impl Iterator<Item = &'a LitF
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn reference_stitch(faces: &[LitFace], lights: &mut [FaceLight]) {
+        use std::collections::HashMap;
+        let q = |v: f64, k: f64| (v * k).round() as i64;
+        let mut groups: HashMap<Vec<i64>, Vec<usize>> = HashMap::new();
+        for (i, f) in faces.iter().enumerate() {
+            if f.disp.is_some()
+                || f.frame.is_none()
+                || f.poly.len() < 3
+                || lights.get(i).is_none_or(|l| l.dark.len() != f.luxels())
+            {
+                continue;
+            }
+            let d = f.poly[0].dot(f.normal);
+            let mut key = vec![q(f.normal.x, 1e4), q(f.normal.y, 1e4), q(f.normal.z, 1e4), q(d, 100.0)];
+            key.extend(f.lm.iter().flatten().map(|v| q(*v, 1e5)));
+            key.extend([q(f.offset.x, 100.0), q(f.offset.y, 100.0), q(f.offset.z, 100.0)]);
+            groups.entry(key).or_default().push(i);
+        }
+        let point = |p: glam::DVec3| (q(p.x, 8.0), q(p.y, 8.0), q(p.z, 8.0));
+        for list in groups.values().filter(|l| l.len() > 1) {
+            let mut parent: Vec<usize> = (0..list.len()).collect();
+            fn root(parent: &mut [usize], mut i: usize) -> usize {
+                while parent[i] != i {
+                    parent[i] = parent[parent[i]];
+                    i = parent[i];
+                }
+                i
+            }
+            let mut edges: HashMap<(GridPoint, GridPoint), usize> = HashMap::new();
+            for (k, &fi) in list.iter().enumerate() {
+                let poly = &faces[fi].poly;
+                for e in 0..poly.len() {
+                    let (a, b) = (point(poly[e]), point(poly[(e + 1) % poly.len()]));
+                    let key = if a < b { (a, b) } else { (b, a) };
+                    if let Some(&other) = edges.get(&key) {
+                        let (ra, rb) = (root(&mut parent, k), root(&mut parent, other));
+                        parent[ra] = rb;
+                    } else {
+                        edges.insert(key, k);
+                    }
+                }
+            }
+            let mut cells: HashMap<(usize, i32, i32), Vec<(usize, usize)>> = HashMap::new();
+            for (k, &fi) in list.iter().enumerate() {
+                let r = root(&mut parent, k);
+                let f = &faces[fi];
+                for t in 0..f.h {
+                    for s in 0..f.w {
+                        cells
+                            .entry((r, f.mins[0] + s as i32, f.mins[1] + t as i32))
+                            .or_default()
+                            .push((fi, t * f.w + s));
+                    }
+                }
+            }
+            for shared in cells.values().filter(|c| c.len() > 1) {
+                if shared.iter().any(|&(fi, i)| lights[fi].dark[i]) {
+                    continue;
+                }
+                let (f0, _) = shared[0];
+                let nn = lights[f0].normals;
+                if shared.iter().any(|&(fi, _)| lights[fi].normals != nn) {
+                    continue;
+                }
+                let passes = lights[f0].values.len() / (lights[f0].styles.len() * nn * faces[f0].luxels()).max(1);
+                for style in lights[f0].styles.clone() {
+                    let slots: Vec<Option<usize>> =
+                        shared.iter().map(|&(fi, _)| lights[fi].styles.iter().position(|s| *s == style)).collect();
+                    if slots.iter().any(Option::is_none) {
+                        continue;
+                    }
+                    for p in 0..passes {
+                        for n in 0..nn {
+                            let ks: Vec<usize> = shared
+                                .iter()
+                                .zip(&slots)
+                                .map(|(&(fi, i), slot)| {
+                                    lights[fi].index(p, slot.unwrap_or(0), n, faces[fi].luxels()) + i
+                                })
+                                .collect();
+                            let sum: Vec3A =
+                                shared.iter().zip(&ks).map(|(&(fi, _), &k)| Vec3A::from(lights[fi].values[k])).sum();
+                            let mean = sum / shared.len() as f32;
+                            for (&(fi, _), &k) in shared.iter().zip(&ks) {
+                                lights[fi].values[k] = mean.into();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn square(face: usize, x0: f64, y0: f64, size: f64, z: f64) -> LitFace {
+        let poly = vec![
+            glam::DVec3::new(x0, y0, z),
+            glam::DVec3::new(x0 + size, y0, z),
+            glam::DVec3::new(x0 + size, y0 + size, z),
+            glam::DVec3::new(x0, y0 + size, z),
+        ];
+        let mins = [(x0 / 16.0).floor() as i32, (y0 / 16.0).floor() as i32];
+        let w = (size / 16.0) as usize + 1;
+        LitFace {
+            face,
+            w,
+            h: w,
+            bump: false,
+            normal: glam::DVec3::Z,
+            tex: [glam::DVec3::X, glam::DVec3::Y],
+            frame: Some((glam::DVec3::new(0.0, 0.0, z), glam::DVec3::X * 16.0, glam::DVec3::Y * 16.0)),
+            mins,
+            poly2: poly
+                .iter()
+                .map(|p| DVec2::new(p.x / 16.0 - f64::from(mins[0]), p.y / 16.0 - f64::from(mins[1])))
+                .collect(),
+            bounds: (poly[0], poly[2]),
+            poly,
+            disp: None,
+            reflectivity: Vec3A::splat(0.5),
+            minlight: 0.0,
+            lm: [[1.0 / 16.0, 0.0, 0.0, 0.0], [0.0, 1.0 / 16.0, 0.0, 0.0]],
+            offset: glam::DVec3::ZERO,
+            vnormals: None,
+        }
+    }
+
+    #[test]
+    fn stitching_matches_the_reference_on_shared_and_overlapping_edges() {
+        let mut faces = Vec::new();
+        for gy in 0..3 {
+            for gx in 0..4 {
+                faces.push(square(faces.len(), gx as f64 * 64.0, gy as f64 * 64.0, 64.0, 0.0));
+            }
+        }
+        faces.push(square(faces.len(), 32.0, 32.0, 64.0, 0.0));
+        faces.push(square(faces.len(), 0.0, 0.0, 128.0, 64.0));
+        faces.push(square(faces.len(), 128.0, 0.0, 128.0, 64.0));
+        faces.push(square(faces.len(), 256.0, 256.0, 32.0, 0.0));
+        let mut seed = 99u32;
+        let mut rnd = || {
+            seed = hash(seed, 3, 7);
+            unit(seed)
+        };
+        let lights: Vec<FaceLight> = faces
+            .iter()
+            .enumerate()
+            .map(|(i, f)| {
+                let lux = f.luxels();
+                let styles = if i % 5 == 3 { vec![0, 32] } else { vec![0] };
+                let normals = if i % 7 == 2 { 4 } else { 1 };
+                let passes = 2;
+                let values = (0..passes * styles.len() * normals * lux)
+                    .map(|_| glam::Vec3::new(rnd() * 300.0, rnd() * 300.0, rnd() * 300.0))
+                    .collect();
+                let dark = (0..lux).map(|_| rnd() < 0.05).collect();
+                FaceLight { styles, normals, values, dark }
+            })
+            .collect();
+        let mut want = lights.clone();
+        reference_stitch(&faces, &mut want);
+        let mut got = lights.clone();
+        stitch(&faces, &mut got);
+        let changed = want.iter().zip(&lights).filter(|(a, b)| a.values != b.values).count();
+        assert!(changed > 6, "the seams were stitched ({changed} faces changed)");
+        for (i, (a, b)) in want.iter().zip(&got).enumerate() {
+            assert!(a.values == b.values, "face {i} differs");
+        }
+    }
 
     #[test]
     fn supersample_order_covers_the_grid() {
@@ -1284,6 +1729,130 @@ mod tests {
         }
         assert!(seen.iter().all(|s| *s));
         assert_eq!(SUPERSAMPLE_ORDER[..PROBES], [(0, 0), (4, 0), (0, 4), (4, 4), (2, 2)]);
+    }
+
+    fn span_f(points: &[usize], step: usize, x: f32) -> (usize, usize, f32) {
+        let last = points.len() - 1;
+        if last == 0 || !x.is_finite() {
+            return (0, 0, 0.0);
+        }
+        let x = x.clamp(0.0, points[last] as f32);
+        let k = ((x / step.max(1) as f32) as usize).min(last - 1);
+        let (a, b) = (points[k] as f32, points[k + 1] as f32);
+        (k, k + 1, if b > a { ((x - a) / (b - a)).clamp(0.0, 1.0) } else { 0.0 })
+    }
+
+    #[test]
+    fn axis_spans_match_the_point_lists() {
+        for n in 1..40 {
+            for step in [1usize, 2, 3, 4, 8, 16] {
+                let pts = axis_points(n, step);
+                let axis = Axis::of(&pts, step);
+                for (k, point) in pts.iter().enumerate() {
+                    assert_eq!(axis.point(k), *point);
+                }
+                for i in -8..(n as i32 * 8 + 16) {
+                    let x = i as f32 / 8.0 + 0.03;
+                    assert_eq!(axis.span(x), span_f(&pts, step, x), "n {n} step {step} x {x}");
+                }
+                assert_eq!(axis.span(f32::NAN), span_f(&pts, step, f32::NAN));
+                assert_eq!(axis.span(f32::INFINITY), span_f(&pts, step, f32::INFINITY));
+            }
+        }
+    }
+
+    #[test]
+    fn dark_luxels_take_the_light_of_their_neighbours() {
+        let f = square(0, 0.0, 0.0, 64.0, 0.0);
+        let lux = f.luxels();
+        let mut dark = vec![false; lux];
+        for i in 0..f.w {
+            dark[i] = true;
+            dark[i * f.w + f.w - 1] = true;
+        }
+        let values: Vec<glam::Vec3> = (0..2 * lux)
+            .map(|i| if dark[i % lux] { glam::Vec3::ZERO } else { glam::Vec3::splat(10.0 + (i / lux) as f32) })
+            .collect();
+        let mut lights = vec![FaceLight { styles: vec![0, 32], normals: 1, values, dark: dark.clone() }];
+        fill_dark(std::slice::from_ref(&f), &mut lights);
+        for (i, v) in lights[0].values.iter().enumerate() {
+            assert_eq!(*v, glam::Vec3::splat(10.0 + (i / lux) as f32), "luxel {i}");
+        }
+        assert_eq!(lights[0].dark, dark);
+        let all = vec![true; lux];
+        let mut black = vec![FaceLight { styles: vec![0], normals: 1, values: vec![glam::Vec3::ZERO; lux], dark: all }];
+        fill_dark(std::slice::from_ref(&f), &mut black);
+        assert!(black[0].values.iter().all(|v| *v == glam::Vec3::ZERO));
+    }
+
+    #[test]
+    fn bounce_sources_spread_hot_spots_over_a_patch_and_keep_flat_light() {
+        let (w, h) = (9usize, 9usize);
+        let grid = |step: usize| {
+            let (xs, ys) = (axis_points(w, step), axis_points(h, step));
+            Gather {
+                step,
+                gw: xs.len(),
+                gh: ys.len(),
+                xs,
+                ys,
+                normals: Vec::new(),
+                hits: super::super::tiles::Store::new(1 << 20).keep(Vec::new()).expect("empty hits"),
+                luxels: w * h,
+            }
+        };
+        let flat = vec![glam::Vec3::splat(7.0); w * h];
+        let g = grid(2);
+        let mut out = vec![Vec3A::ZERO; g.gw * g.gh];
+        patch_light(&flat, w, h, &g, &mut out);
+        assert!(out.iter().all(|v| (*v - Vec3A::splat(7.0)).abs().max_element() < 1e-5));
+        let mut spot = vec![glam::Vec3::ZERO; w * h];
+        spot[4 * w + 4] = glam::Vec3::splat(1600.0);
+        let g = grid(1);
+        let mut out = vec![Vec3A::ZERO; g.gw * g.gh];
+        patch_light(&spot, w, h, &g, &mut out);
+        assert!((out[4 * w + 4].x - 100.0).abs() < 1e-3, "{}", out[4 * w + 4].x);
+        assert!((out[4 * w + 6].x - 50.0).abs() < 1e-3);
+        assert!((out[6 * w + 6].x - 25.0).abs() < 1e-3);
+        assert_eq!(out[4 * w + 7].x, 0.0);
+        let total: f32 = out.iter().map(|v| v.x).sum();
+        assert!((total - 1600.0).abs() < 1e-2, "{total}");
+    }
+
+    #[test]
+    fn bounce_smoothing_scales_with_the_ray_density_and_keeps_flat_light() {
+        assert_eq!(blur_radius(64, 2), 6);
+        assert_eq!(blur_radius(128, 1), 4);
+        assert_eq!(blur_radius(32, 4), 8);
+        assert_eq!(blur_radius(64, 1), 4);
+        let points = axis_points(17, 2);
+        let weights = blur_weights(&points, 4);
+        for row in &weights {
+            assert!((row.iter().map(|r| r.1).sum::<f32>() - 1.0).abs() < 1e-5);
+        }
+        assert_eq!(weights[4].iter().map(|r| r.0).collect::<Vec<_>>(), vec![2, 3, 4, 5, 6]);
+        let gw = points.len();
+        let all = vec![true; gw * gw];
+        let mut flat = vec![Vec3A::splat(3.0); gw * gw];
+        let mut tmp = Vec::new();
+        blur_grid(&mut flat, &all, (&weights, &weights), &mut tmp);
+        assert!(flat.iter().all(|v| (*v - Vec3A::splat(3.0)).abs().max_element() < 1e-5));
+        let mut holed = vec![Vec3A::splat(3.0); gw * gw];
+        let mut keep = all.clone();
+        for k in [0, 4 * gw + 4, 4 * gw + 5, gw * gw - 1] {
+            holed[k] = Vec3A::ZERO;
+            keep[k] = false;
+        }
+        blur_grid(&mut holed, &keep, (&weights, &weights), &mut tmp);
+        assert!(holed.iter().all(|v| (*v - Vec3A::splat(3.0)).abs().max_element() < 1e-5), "blind points are skipped");
+        let mut spot = vec![Vec3A::ZERO; gw * gw];
+        spot[4 * gw + 4] = Vec3A::splat(169.0);
+        blur_grid(&mut spot, &all, (&weights, &weights), &mut tmp);
+        assert!((spot[4 * gw + 4].x - 25.0).abs() < 1e-3, "{}", spot[4 * gw + 4].x);
+        assert!((spot[4 * gw + 5].x - 15.0).abs() < 1e-3);
+        assert_eq!(spot[4 * gw + 7].x, 0.0);
+        let sum: f32 = spot.iter().map(|v| v.x).sum();
+        assert!((sum - 169.0).abs() < 1e-2, "{sum}");
     }
 
     #[test]
@@ -1299,7 +1868,7 @@ mod tests {
         assert_eq!(span_f(&pts, 4, 0.0), (0, 1, 0.0));
         assert_eq!(span_f(&[0], 4, 3.0), (0, 0, 0.0));
         assert_eq!(span_f(&pts, 4, f32::NAN), (0, 0, 0.0));
-        let buf = vec![Vec3A::ZERO, Vec3A::ONE, Vec3A::ONE * 2.0, Vec3A::ONE * 3.0];
+        let buf = vec![glam::Vec3::ZERO, glam::Vec3::ONE, glam::Vec3::ONE * 2.0, glam::Vec3::ONE * 3.0];
         assert!((lookup(&buf, 2, 2, 0.5, 0.5).x - 1.5).abs() < 1e-6);
         assert_eq!(lookup(&buf, 2, 2, f32::NAN, 0.0), Vec3A::ZERO);
         let dirs = sphere_dirs(162);

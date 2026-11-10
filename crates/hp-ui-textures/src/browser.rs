@@ -269,6 +269,8 @@ pub struct TextureBrowser {
     select_new_folder: Option<PathBuf>,
     grid_hovered: bool,
     grid_rect: Option<Rect>,
+    count_text: ((usize, usize), hp_app::i18n::Lang, String),
+    favorites: (Vec<String>, HashSet<String>),
 }
 
 impl Default for TextureBrowser {
@@ -304,6 +306,8 @@ impl Default for TextureBrowser {
             select_new_folder: None,
             grid_hovered: false,
             grid_rect: None,
+            count_text: ((usize::MAX, 0), hp_app::i18n::Lang::En, String::new()),
+            favorites: (Vec::new(), HashSet::new()),
         }
     }
 }
@@ -687,8 +691,9 @@ impl TextureBrowser {
         self.header_ui(ui, state);
         ui.separator();
         self.search_ui(ui, state);
-        self.chips_ui(ui, state);
-        self.options_ui(ui, state);
+        self.category_row(ui, state);
+        self.filters_ui(ui, state);
+        self.count_row(ui);
         self.folders_ui(ui, state);
         self.status_ui(ui, state);
         ui.separator();
@@ -705,7 +710,7 @@ impl TextureBrowser {
             .inner_margin(egui::Margin::same(6))
             .show(ui, |ui| {
                 ui.add(egui::Label::new(RichText::new(tf!("tex.pick.banner", label)).color(theme::accent())).wrap());
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     let current = state.current_material.clone();
                     let use_btn = ui.add_enabled(!current.is_empty(), egui::Button::new(t!("tex.pick.use")));
                     if use_btn.on_hover_text(current.as_str()).clicked() {
@@ -916,88 +921,154 @@ impl TextureBrowser {
         });
     }
 
-    fn chips_ui(&mut self, ui: &mut egui::Ui, state: &mut AppState) {
+    fn source_text(&self, source: SourceFilter) -> String {
+        match source {
+            SourceFilter::All => t!("tex.browser.src_all").to_owned(),
+            SourceFilter::Game => t!("tex.browser.src_game").to_owned(),
+            SourceFilter::Addons => t!("tex.browser.src_addons").to_owned(),
+            SourceFilter::Workshop => t!("tex.browser.src_workshop").to_owned(),
+            SourceFilter::Source(id) => self
+                .sources
+                .customs
+                .iter()
+                .find(|c| c.id == id)
+                .map_or_else(|| t!("tex.browser.src_all").to_owned(), |c| folder_label(&c.path)),
+        }
+    }
+
+    fn category_row(&mut self, ui: &mut egui::Ui, state: &mut AppState) {
         let chip = |ui: &mut egui::Ui, selected: bool, text: &str| {
             ui.add(egui::Button::selectable(selected, RichText::new(text).small()))
         };
+        let mut new_cat = None;
         let mut new_source = None;
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing.x = 3.0;
-            if chip(ui, self.source == SourceFilter::All, t!("common.all")).clicked() {
-                new_source = Some(SourceFilter::All);
-            }
-            if (self.sources.has_game || self.source == SourceFilter::Game)
-                && chip(ui, self.source == SourceFilter::Game, t!("tex.browser.src_game")).clicked()
-            {
-                new_source = Some(SourceFilter::Game);
-            }
-            if (self.sources.has_addons || self.source == SourceFilter::Addons)
-                && chip(ui, self.source == SourceFilter::Addons, t!("tex.browser.src_addons")).clicked()
-            {
-                new_source = Some(SourceFilter::Addons);
-            }
-            if (self.sources.has_workshop || self.source == SourceFilter::Workshop)
-                && chip(ui, self.source == SourceFilter::Workshop, t!("tex.browser.src_workshop")).clicked()
-            {
-                new_source = Some(SourceFilter::Workshop);
-            }
-            for cs in &self.sources.customs {
-                let label = folder_label(&cs.path);
-                let count = self.list.counts.get(&cs.id).copied().unwrap_or(0);
-                if chip(ui, self.source == SourceFilter::Source(cs.id), &label)
-                    .on_hover_text(tf!("tex.browser.src_custom_tip", cs.path.display(), count))
-                    .clicked()
-                {
-                    new_source = Some(SourceFilter::Source(cs.id));
-                }
-            }
-        });
-        if let Some(s) = new_source {
-            self.set_source_filter(s);
-        }
-        let mut new_cat = None;
-        ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing.x = 3.0;
+            let favorites = state.settings.browser.favorites.len();
             let cats = [
-                (Category::All, t!("common.all").to_owned()),
-                (Category::Used, t!("tex.browser.cat_used").to_owned()),
-                (Category::Favorites, tf!("tex.browser.cat_favorites", state.settings.browser.favorites.len())),
-                (Category::Recent, t!("tex.browser.cat_recent").to_owned()),
-                (Category::Tools, t!("tex.browser.cat_tools").to_owned()),
+                (Category::All, t!("common.all"), "tex.browser.cat_all_tip"),
+                (Category::Used, t!("tex.browser.cat_used"), "tex.browser.cat_used_tip"),
+                (Category::Favorites, t!("tex.browser.cat_favorites_short"), "tex.browser.cat_favorites_tip"),
+                (Category::Recent, t!("tex.browser.cat_recent"), "tex.browser.cat_recent_tip"),
+                (Category::Tools, t!("tex.browser.cat_tools"), "tex.browser.cat_tools_tip"),
             ];
-            for (cat, label) in cats {
-                if chip(ui, self.category == cat, &label).clicked() {
+            for (cat, label, tip) in cats {
+                let r = lazy_hover_text(chip(ui, self.category == cat, label), || {
+                    if cat == Category::Favorites {
+                        format!("{}\n{}", t!(tip), tf!("tex.browser.cat_favorites", favorites))
+                    } else {
+                        t!(tip).to_owned()
+                    }
+                });
+                if r.clicked() {
                     new_cat = Some(cat);
                 }
             }
+            let sources = [
+                (SourceFilter::Game, self.sources.has_game),
+                (SourceFilter::Addons, self.sources.has_addons),
+                (SourceFilter::Workshop, self.sources.has_workshop),
+            ];
+            let any_source = sources.iter().any(|(_, has)| *has) || !self.sources.customs.is_empty();
+            if !any_source && self.source == SourceFilter::All {
+                return;
+            }
+            ui.separator();
+            let current = self.source_text(self.source);
+            egui::ComboBox::from_id_salt("hp_tex_source_filter")
+                .selected_text(RichText::new(current).small())
+                .width(110.0)
+                .truncate()
+                .height(360.0)
+                .show_ui(ui, |ui| {
+                    if ui.selectable_label(self.source == SourceFilter::All, t!("tex.browser.src_all")).clicked() {
+                        new_source = Some(SourceFilter::All);
+                    }
+                    for (src, has) in sources {
+                        if (has || self.source == src)
+                            && ui.selectable_label(self.source == src, self.source_text(src)).clicked()
+                        {
+                            new_source = Some(src);
+                        }
+                    }
+                    for cs in &self.sources.customs {
+                        let count = self.list.counts.get(&cs.id).copied().unwrap_or(0);
+                        let on = self.source == SourceFilter::Source(cs.id);
+                        let item = ui.selectable_label(on, folder_label(&cs.path));
+                        if lazy_hover_text(item, || tf!("tex.browser.src_custom_tip", cs.path.display(), count))
+                            .clicked()
+                        {
+                            new_source = Some(SourceFilter::Source(cs.id));
+                        }
+                    }
+                })
+                .response
+                .on_hover_text(t!("tex.browser.source_tip"));
         });
         if let Some(c) = new_cat {
             self.set_category(c);
         }
-        let mut toggled = None;
-        ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing.x = 3.0;
-            for flag in MatFlag::ALL {
-                let on = self.query.flags.contains(&flag);
-                let label = flag_label(flag);
-                let tip = tf!("tex.browser.flag_tip", flag.word());
-                if chip(ui, on, label).on_hover_text(tip).clicked() {
-                    toggled = Some(flag);
-                }
-            }
-        });
-        if let Some(flag) = toggled {
-            self.search = toggle_flag_word(&self.search, flag);
-            self.scroll_top = true;
+        if let Some(s) = new_source {
+            self.set_source_filter(s);
         }
     }
 
-    fn options_ui(&mut self, ui: &mut egui::Ui, state: &mut AppState) {
-        self.shader_ui(ui, state);
+    fn active_filters(&self, state: &AppState) -> usize {
+        self.query.flags.len()
+            + usize::from(!self.query.shaders.is_empty())
+            + usize::from(!state.settings.browser.hidden_shaders.is_empty())
+            + usize::from(state.settings.browser.hide_tool_textures)
+    }
+
+    fn filters_ui(&mut self, ui: &mut egui::Ui, state: &mut AppState) {
+        let active = self.active_filters(state);
+        let title = if active == 0 {
+            RichText::new(t!("tex.browser.filters")).strong()
+        } else {
+            RichText::new(tf!("tex.browser.filters_active", active)).strong().color(theme::accent())
+        };
+        egui::CollapsingHeader::new(title)
+            .id_salt("hp_tex_filters")
+            .default_open(false)
+            .show(ui, |ui| {
+                let mut toggled = None;
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing.x = 3.0;
+                    for flag in MatFlag::ALL {
+                        let on = self.query.flags.contains(&flag);
+                        let r = ui.add(egui::Button::selectable(on, RichText::new(flag_label(flag)).small()));
+                        let r = lazy_hover_text(r, || tf!("tex.browser.flag_tip", flag.word()));
+                        if r.clicked() {
+                            toggled = Some(flag);
+                        }
+                    }
+                });
+                if let Some(flag) = toggled {
+                    self.search = toggle_flag_word(&self.search, flag);
+                    self.scroll_top = true;
+                }
+                self.shader_ui(ui, state);
+                self.display_ui(ui, state);
+            })
+            .header_response
+            .on_hover_text(t!("tex.browser.filters_tip"));
+    }
+
+    fn display_ui(&mut self, ui: &mut egui::Ui, state: &mut AppState) {
         ui.horizontal_wrapped(|ui| {
             let mut hide = state.settings.browser.hide_tool_textures;
-            if ui.checkbox(&mut hide, RichText::new(t!("tex.browser.hide_tools")).small()).changed() {
+            if ui
+                .checkbox(&mut hide, RichText::new(t!("tex.browser.hide_tools")).small())
+                .on_hover_text(t!("tex.browser.hide_tools_tip"))
+                .changed()
+            {
                 state.settings.browser.hide_tool_textures = hide;
+                state.settings_dirty = true;
+            }
+            let mut alpha = state.settings.browser.show_alpha;
+            let resp = ui.checkbox(&mut alpha, RichText::new(t!("tex.browser.show_alpha")).small());
+            if resp.on_hover_text(t!("tex.browser.show_alpha_tip")).changed() {
+                state.settings.browser.show_alpha = alpha;
                 state.settings_dirty = true;
             }
             let mut size = state.settings.ui.thumbnail_size.clamp(48.0, 256.0);
@@ -1018,15 +1089,16 @@ impl TextureBrowser {
                 state.settings.ui.thumbnail_size = size;
                 state.settings_dirty = true;
             }
-            let mut alpha = state.settings.browser.show_alpha;
-            let resp = ui.checkbox(&mut alpha, RichText::new(t!("tex.browser.show_alpha")).small());
-            if resp.on_hover_text(t!("tex.browser.show_alpha_tip")).changed() {
-                state.settings.browser.show_alpha = alpha;
-                state.settings_dirty = true;
-            }
         });
+    }
+
+    fn count_row(&mut self, ui: &mut egui::Ui) {
+        let counts = (self.filtered.len(), self.list.list.len());
+        if self.count_text.0 != counts || self.count_text.1 != hp_app::i18n::lang() {
+            self.count_text = (counts, hp_app::i18n::lang(), tf!("tex.browser.count", counts.0, counts.1));
+        }
         ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new(tf!("tex.browser.count", self.filtered.len(), self.list.list.len())).small().weak());
+            ui.label(RichText::new(self.count_text.2.as_str()).small().weak());
             if self.indexing_keywords() {
                 ui.spinner();
                 ui.label(RichText::new(t!("tex.browser.kw_index")).small().weak());
@@ -1340,9 +1412,12 @@ impl TextureBrowser {
         let mut actions: Vec<CellAction> = Vec::new();
         let mut any_loading = false;
         let list = self.list.list.clone();
-        let favorites: HashSet<String> = state.settings.browser.favorites.iter().cloned().collect();
+        if self.favorites.0 != state.settings.browser.favorites {
+            self.favorites.0.clone_from(&state.settings.browser.favorites);
+            self.favorites.1 = self.favorites.0.iter().cloned().collect();
+        }
+        let favorites = std::mem::take(&mut self.favorites.1);
         let marked: HashSet<&str> = self.marked.iter().map(String::as_str).collect();
-        let current = state.current_material.clone();
         let mut visible_names: Vec<String> = Vec::new();
         let show_alpha = state.settings.browser.show_alpha;
 
@@ -1359,7 +1434,7 @@ impl TextureBrowser {
                     let id = egui::Id::unique(("hp_tex_cell", entry.name.as_str()));
                     let resp = ui.interact(rect, id, Sense::CLICK | Sense::DRAG);
                     let missing = entry.source == MISSING_SOURCE;
-                    let is_current = entry.name == current;
+                    let is_current = entry.name == state.current_material;
                     let is_marked = marked.contains(entry.name.as_str());
                     let painter = ui.painter_at(rect.expand(1.0));
                     if is_current {
@@ -1461,6 +1536,7 @@ impl TextureBrowser {
                 }
             }
         });
+        self.favorites.1 = favorites;
         self.scroll_offset = out.state.clamped_offset().y;
         self.viewport_height = out.inner_rect.height();
         self.grid_rect = Some(out.inner_rect);
@@ -1804,6 +1880,10 @@ fn flag_label(flag: MatFlag) -> &'static str {
     }
 }
 
+fn lazy_hover_text(r: egui::Response, text: impl FnOnce() -> String) -> egui::Response {
+    if r.hovered() || r.ctx.has_accesskit_node(r.id) { r.on_hover_text(text()) } else { r }
+}
+
 pub(crate) fn excluded_folders(state: &AppState) -> Vec<String> {
     let b = &state.settings.browser;
     let user = b.excluded_folders.iter().map(String::as_str);
@@ -1854,7 +1934,7 @@ mod tests {
         });
         let mut b = TextureBrowser::new();
         b.set_search("is:translucent");
-        for lang in [hp_app::i18n::Lang::En, hp_app::i18n::Lang::Fr] {
+        for lang in hp_app::i18n::Lang::ALL {
             hp_app::i18n::set_lang(lang);
             for width in [260.0f32, 380.0] {
                 let mut used = 0.0f32;

@@ -105,9 +105,24 @@ struct Probe {
 pub(crate) struct EditorCubes {
     probes: AHashMap<Id, Probe>,
     assign: Arc<CubeAssign>,
+    revision: u64,
 }
 
 impl EditorCubes {
+    pub(crate) fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    pub(crate) fn probe_views(&self) -> Vec<([f32; 3], u32)> {
+        self.probes
+            .values()
+            .map(|p| {
+                let size = if p.def.size == 0 { hp_render::DEFAULT_PROBE_SIZE } else { p.def.size };
+                (p.def.origin.map(|v| v as f32), size.clamp(1, hp_render::MAX_CUBEMAP_RESOLUTION))
+            })
+            .collect()
+    }
+
     pub(crate) fn assign(&self) -> Arc<CubeAssign> {
         Arc::clone(&self.assign)
     }
@@ -179,6 +194,7 @@ impl EditorCubes {
         if !changed {
             return false;
         }
+        self.revision = self.revision.wrapping_add(1);
         let sides = if need_sides || self.probes.values().any(|p| !p.def.sides.is_empty()) {
             side_planes(doc, self.probes.values().flat_map(|p| p.def.sides.iter().copied()).collect())
         } else {

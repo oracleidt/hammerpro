@@ -1,9 +1,4 @@
-use std::io::{Read, Write};
-use std::path::Path;
-
 use hp_bspc::rad::{RadOptions, RadQuality};
-
-use super::bsp::{self, FlatLightmaps};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Tuning {
@@ -68,7 +63,7 @@ impl Tuning {
         )
     }
 
-    fn parse(s: &str) -> Self {
+    pub(crate) fn parse(s: &str) -> Self {
         let d = Self::default();
         let mut parts = s.split(',').map(str::trim);
         let mut number = |default: usize, lo: usize, hi: usize| {
@@ -95,9 +90,6 @@ pub(crate) const LIGHT_ARG: &str = "--light-preview";
 
 const PREVIEW_BOUNCE_BUDGET: usize = 192 << 20;
 
-const MAGIC: &[u8; 4] = b"HPLP";
-const VERSION: u32 = 3;
-
 pub(crate) fn quality_arg(q: RadQuality) -> &'static str {
     match q {
         RadQuality::Draft => "draft",
@@ -106,7 +98,7 @@ pub(crate) fn quality_arg(q: RadQuality) -> &'static str {
     }
 }
 
-fn parse_quality(s: &str) -> RadQuality {
+pub(crate) fn parse_quality(s: &str) -> RadQuality {
     match s {
         "draft" => RadQuality::Draft,
         "final" => RadQuality::Final,
@@ -143,44 +135,7 @@ pub(crate) fn options(
     opts
 }
 
-pub(crate) struct LitResult {
-    pub flat: FlatLightmaps,
-    pub bsp: Vec<u8>,
-    pub peak: Option<super::memory::Usage>,
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn light(
-    bytes: Vec<u8>,
-    hdr: bool,
-    quality: RadQuality,
-    bounces: u32,
-    threads: Option<usize>,
-    game: Option<&Path>,
-    prop_shadows: bool,
-    prop_lighting: bool,
-    tuning: Tuning,
-    log: &mut dyn FnMut(&str),
-) -> Result<LitResult, String> {
-    let mut opts = options(hdr, quality, bounces, threads, prop_shadows, prop_lighting, tuning);
-    let src = hp_bsp::Bsp::from_vec(bytes).map_err(|e| format!("not a BSP file: {e}"))?;
-    let world = src.entities().ok().and_then(|e| {
-        e.first().and_then(|w| w.get("_lightsrad").map(str::trim).filter(|v| !v.is_empty()).map(str::to_owned))
-    });
-    let bytes = src.into_vec();
-    opts.texlights.files = crate::bspc_cli::light_files(game, None, None, world.as_deref(), None, log);
-    let lit = if prop_shadows || prop_lighting {
-        let models = crate::bspc_cli::LazyModels::of_game(game.map(Path::to_path_buf));
-        hp_bspc::rad::light_bsp_owned(bytes, &opts, &models, log)?
-    } else {
-        hp_bspc::rad::light_bsp_owned(bytes, &opts, &hp_bspc::props::NoModels, log)?
-    };
-    let bsp = hp_bsp::Bsp::from_vec(lit).map_err(|e| e.to_string())?;
-    let flat = bsp::flat_lightmaps(&bsp, hdr)?;
-    Ok(LitResult { flat, bsp: for_models(bsp)?, peak: None })
-}
-
-fn for_models(bsp: hp_bsp::Bsp) -> Result<Vec<u8>, String> {
+pub(crate) fn for_models(bsp: hp_bsp::Bsp) -> Result<Vec<u8>, String> {
     use hp_bsp::lump;
     let animated = super::style_maps::has_animation(&bsp);
     let keep = |i: usize| {
@@ -200,149 +155,17 @@ fn for_models(bsp: hp_bsp::Bsp) -> Result<Vec<u8>, String> {
     edit.to_vec().map_err(|e| e.to_string())
 }
 
-pub(crate) fn write_result(path: &Path, lit: &LitResult) -> std::io::Result<()> {
-    let flat = &lit.flat;
-    let bsp_len = u32::try_from(lit.bsp.len()).map_err(|_| std::io::Error::other("the lit map is too large"))?;
-    let mut out = std::io::BufWriter::new(std::fs::File::create(path)?);
-    out.write_all(MAGIC)?;
-    for v in [VERSION, flat.offsets.len() as u32, flat.texels.len() as u32, bsp_len] {
-        out.write_all(&v.to_le_bytes())?;
-    }
-    for v in flat.offsets.iter().chain(&flat.texels) {
-        out.write_all(&v.to_le_bytes())?;
-    }
-    out.write_all(&lit.bsp)?;
-    out.flush()
-}
-
-pub(crate) fn read_result(path: &Path) -> Result<LitResult, String> {
-    let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
-    let mut head = [0u8; 20];
-    file.read_exact(&mut head).map_err(|e| e.to_string())?;
-    let word = |i: usize| u32::from_le_bytes([head[i], head[i + 1], head[i + 2], head[i + 3]]);
-    if &head[..4] != MAGIC || word(4) != VERSION {
-        return Err("not a lighting preview result".to_owned());
-    }
-    let (faces, texels, bsp_len) = (word(8) as usize, word(12) as usize, word(16) as usize);
-    let len = file.metadata().map_err(|e| e.to_string())?.len();
-    if len != 20 + 4 * (faces as u64 + texels as u64) + bsp_len as u64 {
-        return Err("truncated lighting preview result".to_owned());
-    }
-    let mut read = |n: usize| -> Result<Vec<u32>, String> {
-        const CHUNK: usize = 1 << 16;
-        let mut out: Vec<u32> = Vec::with_capacity(n);
-        let mut bytes = vec![0u8; CHUNK.min(n.max(1)) * 4];
-        while out.len() < n {
-            let take = CHUNK.min(n - out.len());
-            let buf = &mut bytes[..take * 4];
-            file.read_exact(buf).map_err(|e| e.to_string())?;
-            out.extend(buf.chunks_exact(4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]])));
-        }
-        Ok(out)
-    };
-    let offsets = read(faces)?;
-    let texels = read(texels)?;
-    let mut bsp = vec![0u8; bsp_len];
-    file.read_exact(&mut bsp).map_err(|e| e.to_string())?;
-    Ok(LitResult { flat: FlatLightmaps { offsets, texels }, bsp, peak: None })
-}
-
 pub(crate) fn run(args: &[String]) -> i32 {
-    if args.first().is_some_and(|argument| argument == "prepare") {
-        return super::prepare::run(&args[1..]);
+    if args.first().is_some_and(|argument| argument == super::host::SERVE_ARG) {
+        return super::host::server::run(&args[1..]);
     }
-    let (Some(args), extra) = (args.get(..6), args.get(6..).unwrap_or_default()) else {
-        println!(
-            "Error: usage: hammerpro {LIGHT_ARG} <in.bsp> <out> <hdr 0|1> <draft|normal|final> <bounces> <threads> [game] [prop shadows 0|1] [prop lighting 0|1] [sun samples,ambient samples,supersample 0|1,quick 0|1]"
-        );
-        return 1;
-    };
-    let [input, output, hdr, quality, bounces, threads] = args else { return 1 };
-    let game = extra.first().map(String::as_str).filter(|g| !g.is_empty());
-    let prop_shadows = extra.get(1).is_none_or(|v| v != "0");
-    let prop_lighting = extra.get(2).is_none_or(|v| v != "0");
-    let tuning = extra.get(3).map_or_else(Tuning::default, |t| Tuning::parse(t));
-    super::memory::lower_process_memory_priority();
-    watch_parent();
-    let data = match std::fs::read(input) {
-        Ok(d) => d,
-        Err(e) => {
-            println!("Error: cannot read {input}: {e}");
-            return 1;
-        }
-    };
-    let threads = threads.parse::<usize>().ok().filter(|n| *n > 0);
-    let mut log = |l: &str| {
-        let mut out = std::io::stdout().lock();
-        let _ = writeln!(out, "{l}");
-        let _ = out.flush();
-    };
-    let lit = light(
-        data,
-        hdr == "1",
-        parse_quality(quality),
-        bounces.parse().unwrap_or(100),
-        threads,
-        game.map(Path::new),
-        prop_shadows,
-        prop_lighting,
-        tuning,
-        &mut log,
-    );
-    let lit = match lit {
-        Ok(f) => f,
-        Err(e) => {
-            println!("Error: {e}");
-            return 1;
-        }
-    };
-    if let Err(e) = write_result(Path::new(output), &lit) {
-        println!("Error: cannot write {output}: {e}");
-        return 1;
-    }
-    println!("done");
-    0
-}
-
-pub(super) fn watch_parent() {
-    let _ = std::thread::Builder::new().name("hp-light-watch".to_owned()).spawn(|| {
-        let mut buf = [0u8; 64];
-        let mut stdin = std::io::stdin();
-        loop {
-            match stdin.read(&mut buf) {
-                Ok(0) | Err(_) => std::process::exit(3),
-                Ok(_) => {}
-            }
-        }
-    });
+    println!("Error: usage: hammerpro {LIGHT_ARG} {} [threads]", super::host::SERVE_ARG);
+    1
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn result_round_trip() {
-        let dir = std::env::temp_dir().join(format!("hp-light-child-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("dir");
-        let path = dir.join("r.bin");
-        let flat = FlatLightmaps {
-            offsets: vec![0, u32::MAX, 4 | FlatLightmaps::BUMPED],
-            texels: vec![1, 2, 3, 4, 5, 6, 7, 8],
-        };
-        let lit = LitResult { flat: flat.clone(), bsp: b"VBSP and the rest".to_vec(), peak: None };
-        write_result(&path, &lit).expect("write");
-        let read = read_result(&path).expect("read");
-        assert_eq!(read.bsp, lit.bsp);
-        let back = read.flat;
-        assert_eq!(back, flat);
-        assert_eq!((back.face(0), back.face(1), back.face(2), back.face(3)), (Some((0, 1)), None, Some((4, 4)), None));
-        std::fs::write(&path, b"HPLP\x03\0\0\0\x05\0\0\0\0\0\0\0\0\0\0\0").expect("write");
-        assert!(read_result(&path).is_err(), "truncated");
-        let _ = std::fs::remove_dir_all(&dir);
-        assert_eq!(parse_quality(quality_arg(RadQuality::Final)), RadQuality::Final);
-        assert_eq!(parse_quality(quality_arg(RadQuality::Draft)), RadQuality::Draft);
-    }
 
     #[test]
     fn tuning_follows_the_lighting_options() {

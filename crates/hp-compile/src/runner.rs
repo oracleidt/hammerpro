@@ -1145,11 +1145,18 @@ mod tests {
             }
         }
         assert!(first_done);
-        std::thread::sleep(Duration::from_millis(200));
+        let mut waiting = false;
+        while !waiting && t0.elapsed() < Duration::from_secs(20) {
+            if let Ok(CompileEvent::Notice { notice: Notice::PackWaiting, .. }) =
+                handle.events.recv_timeout(Duration::from_millis(100))
+            {
+                waiting = true;
+            }
+        }
+        assert!(waiting, "the pack step says it waits for its list");
         sender.send(vec![("materials/x/a.vmt".into(), src.clone())]);
         let events = collect(handle);
         assert_eq!(finished(&events), (true, false, false), "{:?}", notices(&events));
-        assert!(notices(&events).iter().any(|(_, n)| *n == Notice::PackWaiting));
         assert_eq!(pack::pak_entries(&bsp).unwrap(), ["materials/x/a.vmt"]);
 
         let (files, sender) = crate::plan::DeferredFiles::new();

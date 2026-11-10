@@ -182,6 +182,7 @@ pub(crate) struct Lumps {
     pub disptris: Vec<u16>,
     pub dispmultiblend: Vec<[f32; 20]>,
     pub overlays: Vec<Overlay>,
+    pub water_overlays: Vec<Overlay>,
     pub areaportals: Vec<AreaPortal>,
     pub clipportalverts: Vec<DVec3>,
     pub occluders: Vec<Occluder>,
@@ -349,6 +350,27 @@ impl Lumps {
                 uv_points,
                 origin: vec_at(b, 328),
                 normal: vec_at(b, 340),
+            }
+        });
+        let water_overlays = lump_bytes(bsp, lump::WATEROVERLAYS, false, warnings)?;
+        l.water_overlays = records(&water_overlays, 1120, |b| {
+            let count_order = u16_at(b, 6);
+            let count = usize::from(count_order & 0x3FFF).min(256);
+            let faces = (0..count).map(|k| i32_at(b, 8 + k * 4)).collect();
+            let mut uv_points = [DVec3::ZERO; 4];
+            for (k, p) in uv_points.iter_mut().enumerate() {
+                *p = vec_at(b, 1048 + k * 12);
+            }
+            Overlay {
+                id: i32_at(b, 0),
+                texinfo: i16_at(b, 4),
+                render_order: count_order >> 14,
+                faces,
+                u: [f64::from(f32_at(b, 1032)), f64::from(f32_at(b, 1036))],
+                v: [f64::from(f32_at(b, 1040)), f64::from(f32_at(b, 1044))],
+                uv_points,
+                origin: vec_at(b, 1096),
+                normal: vec_at(b, 1108),
             }
         });
         let portals = lump_bytes(bsp, idx::AREAPORTALS, false, warnings)?;

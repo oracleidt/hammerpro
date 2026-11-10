@@ -420,13 +420,35 @@ pub fn make_primitive(
             point_sets = structures::point_sets(params, &b)?;
         }
     }
+    let mut reach = wb;
+    let lift = finite_or_zero(params.arch_add_height).abs() * f64::from(params.sides)
+        + finite_or_zero(params.torus_rotation_height).abs();
+    reach.min[up] -= lift;
+    reach.max[up] += lift;
+    let reach = reach.expand(0.5);
     point_sets
         .iter()
         .map(|pts| {
             let world: Vec<DVec3> = pts.iter().map(|p| local_to_world(frame, *p)).collect();
-            hull_solid(&world, &params.material, params.tex_scale, params.lightmap_scale, next_side_id)
+            let sides = hull_solid(&world, &params.material, params.tex_scale, params.lightmap_scale, next_side_id)?;
+            let geom = crate::build_solid(&sides);
+            if !geom.valid
+                || geom.faces.len() != sides.len()
+                || geom.volume() <= 0.0
+                || !reach.contains_aabb(&geom.aabb)
+            {
+                return Err(GeomError::InvalidInput(
+                    "the shape is too small or too thin for its box: use fewer sides or steps, or a larger box"
+                        .to_owned(),
+                ));
+            }
+            Ok(sides)
         })
         .collect()
+}
+
+fn finite_or_zero(v: f64) -> f64 {
+    if v.is_finite() { v } else { 0.0 }
 }
 
 fn arc_and_step(params: &PrimitiveParams) -> Result<(f64, f64), GeomError> {

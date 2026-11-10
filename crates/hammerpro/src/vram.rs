@@ -5,6 +5,7 @@ use hp_render::memory::VramProbe;
 const CHECK_EVERY: f64 = 0.5;
 const HIGH: f64 = 0.85;
 const PARKED_SHARE: f64 = 0.75;
+const TEXTURE_SHARE: f64 = 0.6;
 const RAISE_BELOW: f64 = 0.5;
 const RAISE_AFTER: f64 = 20.0;
 const RELEASE_GAP: f64 = 5.0;
@@ -168,6 +169,7 @@ impl VramMonitor {
         let plan_cap = state.runtime.render.perf.plan(state.settings.render.performance_mode).texture_limit;
         let max_texture = gfx.renderer.max_texture_size().min(plan_cap).max(MIN_TEXTURE_LIMIT);
         state.assets.set_parked_gpu_limit(parked_limit(budget, usage, parked, keep && level == VramPressure::Normal));
+        state.assets.set_texture_budget((budget as f64 * TEXTURE_SHARE) as u64);
         let mut released = GpuReleased::default();
         let worth = new_oom || usage > self.released_at.saturating_add(budget / 20) || parked > 0;
         let what = decide(Decision {

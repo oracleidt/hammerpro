@@ -27,6 +27,18 @@ impl MockAssets {
     pub fn with_fgd(text: &str) -> Self {
         Self { fgd: Some(hp_fgd::Fgd::parse(text, None).resolve()), ..Self::default() }
     }
+
+    pub fn with_lists(
+        materials: Vec<hp_fs::AssetEntry>,
+        models: Vec<hp_fs::AssetEntry>,
+        sounds: Vec<hp_fs::AssetEntry>,
+    ) -> Self {
+        Self { materials: Arc::new(materials), models: Arc::new(models), sounds: Arc::new(sounds), ..Self::default() }
+    }
+
+    pub fn set_fgd(&mut self, fgd: hp_fgd::ResolvedFgd) {
+        self.fgd = Some(fgd);
+    }
 }
 
 impl Default for MockAssets {
@@ -277,6 +289,10 @@ pub fn test_state() -> AppState {
 
 pub fn test_state_with_fgd(fgd: &str) -> AppState {
     test_state_with(MockAssets::with_fgd(fgd))
+}
+
+pub fn test_state_with_assets(assets: MockAssets) -> AppState {
+    test_state_with(assets)
 }
 
 fn test_state_with(assets: MockAssets) -> AppState {

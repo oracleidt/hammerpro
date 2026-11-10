@@ -20,7 +20,28 @@ pub(crate) struct DevAddonReport {
     pub failed: Vec<(String, String)>,
 }
 
-pub(crate) fn export(fs: &hp_fs::GameFs, game_dir: &Path, materials: &[String]) -> Result<DevAddonReport, String> {
+pub(crate) struct DevContent<'a> {
+    pub materials: &'a [String],
+    pub models: &'a [String],
+    pub roots: &'a [hp_fs::deps::DepRoot],
+    pub map: &'a str,
+}
+
+pub(crate) fn has_custom_content(fs: &hp_fs::GameFs) -> bool {
+    fs.sources().iter().any(|s| s.enabled && s.origin == hp_fs::SourceOrigin::Custom)
+}
+
+fn dependency_roots(content: &DevContent<'_>) -> Vec<hp_fs::deps::DepRoot> {
+    use hp_fs::deps::{DepRoot, RootKind};
+    content
+        .models
+        .iter()
+        .map(|name| DepRoot { kind: RootKind::Model, name: name.clone(), why: String::new() })
+        .chain(content.roots.iter().filter(|r| !matches!(r.kind, RootKind::Material | RootKind::Sprite)).cloned())
+        .collect()
+}
+
+pub(crate) fn export(fs: &hp_fs::GameFs, game_dir: &Path, content: &DevContent<'_>) -> Result<DevAddonReport, String> {
     if hp_compile::sandbox::is_sandboxed() {
         return Err(hp_compile::sandbox::REFUSED.to_owned());
     }
@@ -28,9 +49,28 @@ pub(crate) fn export(fs: &hp_fs::GameFs, game_dir: &Path, materials: &[String]) 
     if !game_dir.is_dir() {
         return Err(format!("{}: not a folder", game_dir.display()));
     }
-    let safe: Vec<String> = materials.iter().filter(|m| is_safe_material(m)).cloned().collect();
+    if !has_custom_content(fs) {
+        return Ok(DevAddonReport::default());
+    }
+    let safe: Vec<String> = content.materials.iter().filter(|m| is_safe_material(m)).cloned().collect();
+    let roots = dependency_roots(content);
+    if safe.is_empty() && roots.is_empty() {
+        return Ok(DevAddonReport::default());
+    }
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    let report = fs.export_custom_materials(&safe, &dir).map_err(|e| e.to_string())?;
+    let mut report = if safe.is_empty() {
+        hp_fs::ExportReport::default()
+    } else {
+        fs.export_custom_materials(&safe, &dir).map_err(|e| e.to_string())?
+    };
+    if !roots.is_empty() {
+        let map = content.map.trim();
+        let map = if is_safe_material(map) && !map.contains(['/', '\\']) { map } else { "" };
+        let more = fs.export_custom_dependencies(&roots, map, &dir, &hp_fs::deps::DepsCache::new());
+        report.written.extend(more.written);
+        report.up_to_date.extend(more.up_to_date);
+        report.failed.extend(more.failed);
+    }
     if report.written.is_empty() && report.up_to_date.is_empty() && report.failed.is_empty() {
         let _ = std::fs::remove_dir(&dir);
     }
@@ -121,17 +161,69 @@ mod tests {
         let fs = hp_fs::GameFs::empty();
         fs.add_custom_dir(hp_fs::CustomDir::with_prefix(&pics, "pics")).expect("custom dir");
         let used = vec!["pics/wall".to_owned(), "concrete/floor".to_owned(), "../../escape".to_owned()];
-        let r = export(&fs, &game, &used).expect("export");
+        let r = export(&fs, &game, &materials_only(&used)).expect("export");
         assert!(r.written >= 1, "{r:?}");
         let addon = dev_addon_dir(&game);
         assert!(addon.join("materials/pics/wall.vmt").is_file());
         assert!(addon.join("materials/pics/wall.vtf").is_file());
-        let again = export(&fs, &game, &used).expect("export");
+        let again = export(&fs, &game, &materials_only(&used)).expect("export");
         assert_eq!(again.written, 0, "up to date");
         let other = dir.join("other_game");
         std::fs::create_dir_all(&other).expect("other");
-        export(&fs, &other, &["concrete/floor".to_owned()]).expect("export");
+        export(&fs, &other, &materials_only(&["concrete/floor".to_owned()])).expect("export");
         assert!(!dev_addon_dir(&other).exists());
-        assert!(export(&fs, &dir.join("missing"), &used).is_err());
+        assert!(export(&fs, &dir.join("missing"), &materials_only(&used)).is_err());
+    }
+
+    fn materials_only(materials: &[String]) -> DevContent<'_> {
+        DevContent { materials, models: &[], roots: &[], map: "gm_w" }
+    }
+
+    #[test]
+    fn custom_models_sounds_and_map_scripts_go_to_the_dev_addon() {
+        use hp_fs::deps::{DepRoot, RootKind};
+        let dir = crate::test_scratch("dev_addon_content");
+        let mine = dir.join("mine");
+        let files: [(&str, &[u8]); 9] = [
+            ("models/w10/cube.mdl", b"IDST"),
+            ("models/w10/cube.vvd", b"IDSV"),
+            ("models/w10/cube.dx90.vtx", b"vtx"),
+            ("models/w10/cube.phy", b"phy"),
+            ("sound/w10/hum.wav", b"RIFF0001"),
+            ("sound/w10/beep.wav", b"RIFF0002"),
+            ("scripts/soundscapes_gm_w.txt", b"\"W10.Cave\" { \"playlooping\" { \"wave\" \"w10/hum.wav\" } }"),
+            ("maps/gm_w_level_sounds.txt", b"\"W10.Beep\" { \"wave\" \"w10/beep.wav\" }"),
+            ("materials/correction/w10.raw", &[7; 64]),
+        ];
+        for (rel, bytes) in files {
+            let path = mine.join(rel);
+            std::fs::create_dir_all(path.parent().expect("parent")).expect("dir");
+            std::fs::write(path, bytes).expect("file");
+        }
+        let game = dir.join("garrysmod");
+        std::fs::create_dir_all(&game).expect("game");
+        let fs = hp_fs::GameFs::empty();
+        let root = |kind, name: &str| DepRoot { kind, name: name.to_owned(), why: String::new() };
+        let roots = vec![
+            root(RootKind::Soundscape, "W10.Cave"),
+            root(RootKind::Sound, "W10.Beep"),
+            root(RootKind::File, "materials/correction/w10.raw"),
+            root(RootKind::Model, "models/props_c17/oildrum001.mdl"),
+        ];
+        let models = vec!["models/w10/cube.mdl".to_owned()];
+        let content = DevContent { materials: &[], models: &models, roots: &roots, map: "gm_w" };
+        assert_eq!(export(&fs, &game, &content).expect("export").written, 0, "no custom folder, nothing to copy");
+        assert!(!dev_addon_dir(&game).exists());
+        fs.add_custom_dir(hp_fs::CustomDir::new(&mine)).expect("custom dir");
+        let r = export(&fs, &game, &content).expect("export");
+        assert!(r.failed.is_empty(), "{:?}", r.failed);
+        assert_eq!(r.written, files.len(), "{r:?}");
+        let addon = dev_addon_dir(&game);
+        for (rel, bytes) in files {
+            assert_eq!(std::fs::read(addon.join(rel)).expect(rel), bytes, "{rel}");
+        }
+        assert!(!addon.join("models/props_c17").exists(), "game models stay in the game");
+        assert_eq!(export(&fs, &game, &content).expect("export").written, 0, "up to date");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -1,7 +1,9 @@
-use hp_app::runtime::PerfSample;
+use hp_app::runtime::{FramePhases, PerfSample, RepaintCount};
 use hp_app::{AppState, Severity, t, tf};
 
 const MEMORY_EVERY: f64 = 0.5;
+const CAUSES_EVERY: f64 = 0.25;
+const CAUSES_SHOWN: usize = 24;
 
 pub(crate) const TR: hp_app::i18n::TrTable = &[
     (
@@ -21,6 +23,71 @@ pub(crate) struct PerfMonitor {
     seen_rendered: u64,
     next_memory: f64,
     last_mode: Option<hp_app::settings::PerformanceMode>,
+    causes: Vec<((&'static str, u32), u64)>,
+    causes_dirty: bool,
+    next_causes: f64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Phase {
+    Begin,
+    Panels,
+    Tool,
+    Sync,
+    Lighting,
+    Views,
+    Chrome,
+    Dialogs,
+    End,
+}
+
+pub(crate) struct PhaseClock {
+    started: std::time::Instant,
+    last: std::time::Instant,
+    ms: [f32; 9],
+}
+
+impl Default for PhaseClock {
+    fn default() -> Self {
+        let now = std::time::Instant::now();
+        Self { started: now, last: now, ms: [0.0; 9] }
+    }
+}
+
+impl PhaseClock {
+    pub(crate) fn start(&mut self, now: std::time::Instant) {
+        self.started = now;
+        self.last = now;
+        self.ms = [0.0; 9];
+    }
+
+    pub(crate) fn mark(&mut self, phase: Phase) {
+        let now = std::time::Instant::now();
+        self.ms[phase as usize] += now.duration_since(self.last).as_secs_f32() * 1000.0;
+        self.last = now;
+    }
+
+    pub(crate) fn publish(&self, state: &mut AppState) {
+        let frame = FramePhases { total_ms: self.started.elapsed().as_secs_f32() * 1000.0, ms: self.ms };
+        let p = &mut state.runtime.render.perf;
+        if frame.total_ms >= p.worst_frame.total_ms {
+            p.worst_frame = frame;
+        }
+        p.phase_sum.add(&frame);
+        p.phase_frames = p.phase_frames.saturating_add(1);
+        p.frame_phases = frame;
+    }
+}
+
+fn short_source(file: &str) -> &str {
+    if let Some(at) = file.find("crates") {
+        return &file[at..];
+    }
+    let seps: Vec<usize> = file.match_indices(['/', '\\']).map(|(i, _)| i).collect();
+    match seps.len() {
+        n if n >= 3 => &file[seps[n - 3] + 1..],
+        _ => file,
+    }
 }
 
 impl PerfMonitor {
@@ -30,7 +97,50 @@ impl PerfMonitor {
         p.integrated = matches!(info.device_type, wgpu::DeviceType::IntegratedGpu | wgpu::DeviceType::Cpu);
     }
 
-    pub(crate) fn tick(&mut self, state: &mut AppState, dt: f32, frame_ms: f32, busy: bool, now: f64) {
+    pub(crate) fn note_repaints(&mut self, state: &mut AppState, ctx: &egui::Context, now: f64) -> bool {
+        let causes = ctx.repaint_causes();
+        let continuous = ctx.requested_repaint_last_pass();
+        let p = &mut state.runtime.render.perf;
+        if causes.is_empty() {
+            p.frames_from_events += 1;
+        }
+        if continuous {
+            p.continuous_frames += 1;
+        }
+        for c in causes {
+            let key = (c.file, c.line);
+            match self.causes.iter_mut().find(|(k, _)| *k == key) {
+                Some((_, n)) => *n += 1,
+                None => self.causes.push((key, 1)),
+            }
+            self.causes_dirty = true;
+        }
+        if self.causes_dirty && now >= self.next_causes {
+            self.next_causes = now + CAUSES_EVERY;
+            self.causes_dirty = false;
+            self.causes.sort_by_key(|c| std::cmp::Reverse(c.1));
+            p.repaint_causes = self
+                .causes
+                .iter()
+                .take(CAUSES_SHOWN)
+                .map(|((file, line), count)| RepaintCount {
+                    at: format!("{}:{line}", short_source(file)),
+                    count: *count,
+                })
+                .collect();
+        }
+        continuous
+    }
+
+    pub(crate) fn tick(
+        &mut self,
+        state: &mut AppState,
+        dt: f32,
+        frame_ms: f32,
+        busy: bool,
+        continuous: bool,
+        now: f64,
+    ) {
         let mode = state.settings.render.performance_mode;
         if self.last_mode != Some(mode) {
             if self.last_mode.is_some() {
@@ -46,7 +156,7 @@ impl PerfMonitor {
             state.notify(Severity::Info, t!("perf.restored"));
         }
         let perf = &mut state.runtime.render.perf;
-        if let Some(level) = perf.observe(mode, rendered, busy, dt) {
+        if let Some(level) = perf.observe_frame(mode, rendered, continuous, busy, dt) {
             let fps = perf.auto_fps;
             log::warn!("performance: {:.1} FPS measured, quality lowered to {}", fps, level.id());
             state.notify(Severity::Warning, tf!("perf.reduced", format!("{fps:.0}"), level.id().replace('_', " ")));

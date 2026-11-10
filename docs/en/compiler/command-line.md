@@ -65,6 +65,7 @@ Geometry and visibility. Defaults are those of the command line alone; the edito
 | `-dxlevel` | level | Drops entities excluded by their `mindxlevel`/`maxdxlevel`. | none |
 | `-radius_override` | units | Visibility radius. | fog `farz`, else none |
 | `-nosort` | | Visibility without sorting the portals. | off |
+| `-viscache` | folder | Keeps the visibility in this folder and uses it again when a later compile has the same portals and visibility options (the editor passes its build cache). | none |
 | `-trace` | cluster cluster | Writes the line of sight between two clusters to `<map>.lin`. | none |
 | `-nomerge`, `-nosubdiv`, `-notjunc`, `-noprune` | | Debug switches, see [Compile options](compile-options.md). | off |
 | `-novirtualmesh` | | Displacement collision as triangle soups. | off |
@@ -128,7 +129,13 @@ While it lights, `--rad` lists its stages (`Lighting stages: direct lighting, bo
 Lighting 41%: direct lighting 60% (stage 2 of 7), 27 s elapsed, about 17 s left
 ```
 
-The first percentage is the whole lighting, the second the stage. A line comes every 5% and at least every 30 seconds. A stage that has not advanced for a minute prints `Warning: the lighting stage "..." has not advanced for ...` with what makes that stage slow, and one that runs past ten minutes prints `Warning: the lighting stage "..." has run for ...`. The editor reads these lines for its progress bar. Problems found by the final check that were already in the BSP before the lighting (a map compiled by other tools) are warnings; only new ones stop the write.
+The first percentage is the whole lighting, the second the stage. A line comes every 5% and at least every 30 seconds. A stage that has not advanced for a minute prints `Warning: the lighting stage "..." has not advanced for ...` with what makes that stage slow, and one that runs past ten minutes prints `Warning: the lighting stage "..." has run for ...`. The editor reads these lines for its progress bar. At the end `--rad` prints where the time went, in wall clock seconds (a phase that did not run shows 0.00 s):
+
+```
+Light phase times: setup 0.15 s, faces 0.63 s, static prop models 0.41 s, shadow tree 1.56 s, surface tree 0.19 s, blocker tree 0.04 s, direct light 13.50 s, displacement blend 1.24 s, displacement bounce blend 1.00 s, bounce rays 3.23 s, bounce passes 3.02 s, seams 0.31 s, leaf ambient 0.45 s, write 0.77 s
+```
+
+`direct light` holds the lights, the sun and the sky, `static prop models` the reading of the prop models (only the models of props that cast shadows or get vertex lighting are read), `seams` the matching of the luxels shared by neighbor faces; `light probes` and `detail props` appear when they run. Problems found by the final check that were already in the BSP before the lighting (a map compiled by other tools) are warnings; only new ones stop the write.
 
 ## Examples
 

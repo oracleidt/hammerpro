@@ -62,6 +62,7 @@ pub mod tree;
 pub mod validate;
 pub mod vis;
 pub mod water;
+pub mod water_overlays;
 pub mod winding;
 
 #[cfg(test)]

@@ -21,7 +21,7 @@ use crate::solids::{BuiltSolid, IdGen};
 pub const LIMITS: &[&str] = &[
     "func_instance contents are merged into the map",
     "visgroups, groups, hidden objects and comments are not in compiled maps",
-    "hint, skip and origin brushes and func_viscluster are removed by the compiler",
+    "hint, skip and origin brushes are removed by the compiler",
     "brush faces keep their textures, but texture locks and smoothing groups are lost",
 ];
 
@@ -93,6 +93,8 @@ pub struct Report {
     pub areaportals: usize,
     pub entities: usize,
     pub orphan_models: usize,
+    pub visclusters: usize,
+    pub unused_brushes: usize,
     pub empty_brush_entities: usize,
     pub renamed_materials: usize,
     pub warnings: Vec<String>,
@@ -184,6 +186,8 @@ pub fn decompile(bsp: &Bsp, options: &Options) -> Result<Decompiled, DecompileEr
     let mut world_solids = Vec::new();
     let mut detail = Vec::new();
     let mut portals = Vec::new();
+    let mut visclusters = Vec::new();
+    let owned_any = owner.iter().any(Option::is_some);
     let mut model_solids: HashMap<usize, Vec<hp_vmf::Solid>> = HashMap::new();
     for (b, built) in built.into_iter().enumerate() {
         let Some(mut built) = built else {
@@ -208,6 +212,13 @@ pub fn decompile(bsp: &Bsp, options: &Options) -> Result<Decompiled, DecompileEr
                 model_solids.entry(m).or_default().push(built.solid);
             }
             _ if brush_contents & contents::AREAPORTAL != 0 => portals.push(built.solid),
+            None if owned_any => {
+                if built.solid.sides.iter().all(|s| s.material.eq_ignore_ascii_case("tools/toolstrigger")) {
+                    visclusters.push(built.solid);
+                } else {
+                    report.unused_brushes += 1;
+                }
+            }
             _ if brush_contents & contents::DETAIL != 0 => detail.push(built.solid),
             _ => world_solids.push(built.solid),
         }
@@ -303,6 +314,13 @@ pub fn decompile(bsp: &Bsp, options: &Options) -> Result<Decompiled, DecompileEr
         entities.push(e);
     }
 
+    report.visclusters = visclusters.len();
+    for solid in visclusters {
+        let mut e = Entity { id: ids.object(), classname: "func_viscluster".to_owned(), ..Entity::default() };
+        e.solids.push(solid);
+        entities.push(e);
+    }
+
     for (ei, n) in occluder_entities {
         if !toggles.occluders {
             break;
@@ -354,6 +372,14 @@ pub fn decompile(bsp: &Bsp, options: &Options) -> Result<Decompiled, DecompileEr
     report.overlays = overlays.len();
     report.overlays_without_sides = lost;
     for mut e in overlays {
+        e.id = ids.object();
+        entities.push(e);
+    }
+    let (water, lost) =
+        if toggles.overlays { extras::water_overlays(&l, &sides, &model_offsets, map_name) } else { (Vec::new(), 0) };
+    report.overlays += water.len();
+    report.overlays_without_sides += lost;
+    for mut e in water {
         e.id = ids.object();
         entities.push(e);
     }

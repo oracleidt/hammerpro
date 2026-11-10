@@ -15,6 +15,7 @@ L'outil courbe construit des murs courbes, des rambardes, des bordures, des tuya
 2. La courbe est dans le plan de cette vue : tracée dans la vue de dessus elle est horizontale, tracée dans la vue de face ou de côté elle est verticale.
 3. Pendant le tracé, l'aperçu montre déjà les brushes avec les subdivisions et l'épaisseur actuelles : dans la vue du tracé sous forme de contours le long de la courbe lissée, dans les autres vues 2D et dans la vue 3D sous forme de brushes.
 4. **Faites glisser un point** pour le déplacer. `Retour arrière` (ou **Retirer le point**) retire le dernier point, `Échap` annule la courbe. Une courbe compte au plus 1024 points.
+5. Pendant le tracé ou l'ajustement de la courbe, `Maj` + molette change les **Subdivisions** (d'un huitième de la valeur par cran, au moins 1, de 2 à 4096) ; le nombre de brushes de l'étiquette suit. La molette seule zoome toujours.
 
 ## Valider et choisir les morceaux
 

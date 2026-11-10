@@ -51,21 +51,11 @@ impl PreparedModel {
     }
 
     pub(crate) fn body_choices(&self, body: u32) -> Vec<u32> {
-        self.body_parts
-            .iter()
-            .map(|&(base, count)| {
-                let base = u32::try_from(base).unwrap_or(1).max(1);
-                if count == 0 { 0 } else { (body / base) % count }
-            })
-            .collect()
+        body_choices(&self.body_parts, body)
     }
 
     pub(crate) fn body_key(&self, body: u32) -> u32 {
-        self.body_choices(body)
-            .iter()
-            .zip(&self.body_parts)
-            .map(|(c, &(base, _))| c.saturating_mul(u32::try_from(base).unwrap_or(1).max(1)))
-            .fold(0u32, u32::saturating_add)
+        body_key(&self.body_parts, body)
     }
 
     pub(crate) fn parts_for_body(&self, body: u32) -> Vec<&PreparedPart> {
@@ -80,6 +70,99 @@ impl PreparedModel {
             .or_else(|| self.skin_materials.first())
             .and_then(|row| row.get(skin_ref))
             .map_or("", String::as_str)
+    }
+}
+
+pub(crate) fn body_choices(parts: &[(i32, u32)], body: u32) -> Vec<u32> {
+    parts
+        .iter()
+        .map(|&(base, count)| {
+            let base = u32::try_from(base).unwrap_or(1).max(1);
+            if count == 0 { 0 } else { (body / base) % count }
+        })
+        .collect()
+}
+
+pub(crate) fn body_key(parts: &[(i32, u32)], body: u32) -> u32 {
+    body_choices(parts, body)
+        .iter()
+        .zip(parts)
+        .map(|(c, &(base, _))| c.saturating_mul(u32::try_from(base).unwrap_or(1).max(1)))
+        .fold(0u32, u32::saturating_add)
+}
+
+pub(crate) fn info_body_parts(info: &ModelInfo) -> Vec<(i32, u32)> {
+    info.body_groups.iter().map(|b| (b.base, u32::try_from(b.choices.len()).unwrap_or(u32::MAX))).collect()
+}
+
+pub(crate) const SIDE_BOTH: u8 = 0;
+pub(crate) const SIDE_FRONT: u8 = 1;
+pub(crate) const SIDE_BACK: u8 = 2;
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct PickPart {
+    pub body_part: usize,
+    pub choice: usize,
+    pub positions: Vec<[f32; 3]>,
+    pub indices: Vec<u32>,
+    pub sides: Vec<u8>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct PickGeometry {
+    pub parts: Vec<PickPart>,
+    pub body_parts: Vec<(i32, u32)>,
+}
+
+impl PickGeometry {
+    pub(crate) fn of(model: &PreparedModel) -> Self {
+        let parts = model
+            .parts
+            .iter()
+            .chain(&model.variant_parts)
+            .map(|p| {
+                let sides = p
+                    .indices
+                    .chunks_exact(3)
+                    .map(|t| {
+                        let v = |i: u32| p.vertices.get(i as usize);
+                        let (Some(a), Some(b), Some(c)) = (v(t[0]), v(t[1]), v(t[2])) else { return SIDE_BOTH };
+                        let n = |x: &hp_render::Vertex| glam::Vec3::from_array(x.normal);
+                        let shading = n(a) + n(b) + n(c);
+                        if shading.length_squared() <= 1e-12 {
+                            return SIDE_BOTH;
+                        }
+                        let (pa, pb, pc) = (
+                            glam::Vec3::from_array(a.pos),
+                            glam::Vec3::from_array(b.pos),
+                            glam::Vec3::from_array(c.pos),
+                        );
+                        if shading.dot((pb - pa).cross(pc - pa)) < 0.0 { SIDE_BACK } else { SIDE_FRONT }
+                    })
+                    .collect();
+                PickPart {
+                    body_part: p.body_part,
+                    choice: p.choice,
+                    positions: p.vertices.iter().map(|v| v.pos).collect(),
+                    indices: p.indices.clone(),
+                    sides,
+                }
+            })
+            .collect();
+        Self { parts, body_parts: model.body_parts.clone() }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn bytes(&self) -> usize {
+        self.parts.iter().map(|p| p.positions.capacity() * 12 + p.indices.capacity() * 4 + p.sides.capacity()).sum()
+    }
+
+    pub(crate) fn parts_for(&self, body: Option<u32>) -> impl Iterator<Item = &PickPart> {
+        let choices = body.map(|b| body_choices(&self.body_parts, b));
+        self.parts.iter().filter(move |p| match &choices {
+            Some(c) => c.get(p.body_part).copied().unwrap_or(0) as usize == p.choice,
+            None => p.choice == 0,
+        })
     }
 }
 
@@ -105,31 +188,30 @@ pub(crate) fn model_job(fs: &hp_fs::GameFs, key: &str) -> Result<PreparedModel, 
         pose: if particle { hp_mdl::Pose::Bind } else { Default::default() },
         ..Default::default()
     };
-    let mut model = hp_mdl::load_from(path, |p| fs.read(p), &opts).map_err(|e| e.to_string())?;
+    let files = hp_mdl::read_files(path, |p| fs.read(p)).map_err(|e| e.to_string())?;
+    let mut model = files.load(&opts).map_err(|e| e.to_string())?;
     if !particle
         && let Some(anim) = anim
         && let Some(index) = model.sequences.iter().position(|s| s.name.eq_ignore_ascii_case(anim))
         && model.posed_sequence != Some(index)
     {
         let posed = hp_mdl::LoadOptions { pose: hp_mdl::Pose::Sequence(index), ..opts };
-        if let Ok(m) = hp_mdl::load_from(path, |p| fs.read(p), &posed) {
+        if let Ok(m) = files.load(&posed) {
             model = m;
         }
     }
     let skin_count = model.skin_count();
-    let particle_animation = if particle {
-        fs.read(path).map(|mdl| {
-            Arc::new(crate::particle_model_draw::AnimationSource {
-                ani: hp_mdl::animation_block_path(&mdl).and_then(|path| fs.read(&path)).map(Arc::new),
-                mdl: Arc::new(mdl),
-                bones: model.bones.clone(),
-                meshes: model.meshes.clone(),
-                sequences: model.sequences.clone(),
-            })
+    let sequence_frames = sequence_frames(&files.mdl, model.sequences.len().min(MAX_LISTED));
+    let hp_mdl::ModelFiles { mdl, .. } = files;
+    let particle_animation = particle.then(|| {
+        Arc::new(crate::particle_model_draw::AnimationSource {
+            ani: hp_mdl::animation_block_path(&mdl).and_then(|path| fs.read(&path)).map(Arc::new),
+            mdl: Arc::new(mdl),
+            bones: model.bones.clone(),
+            meshes: model.meshes.clone(),
+            sequences: model.sequences.clone(),
         })
-    } else {
-        None
-    };
+    });
     let used_refs: Vec<usize> = {
         let mut seen = AHashSet::new();
         model.meshes.iter().map(|m| m.skin_ref).filter(|r| seen.insert(*r)).collect()
@@ -198,7 +280,7 @@ pub(crate) fn model_job(fs: &hp_fs::GameFs, key: &str) -> Result<PreparedModel, 
         hull_max: valid_hull(model.hull_min, model.hull_max).map(|(_, max)| max),
         body_groups: body_groups(&model),
         sequences: model.sequences.iter().take(MAX_LISTED).map(|s| s.name.clone()).collect(),
-        sequence_frames: sequence_frames(fs, path, model.sequences.len().min(MAX_LISTED)),
+        sequence_frames,
         stats: hp_app::state::ModelStats {
             vertices: count(parts.iter().map(|p| p.vertices.len()).sum()),
             meshes: count(parts.len()),
@@ -311,9 +393,8 @@ pub(crate) fn box_edges(lo: [f32; 3], hi: [f32; 3]) -> impl Iterator<Item = ([f3
     })
 }
 
-fn sequence_frames(fs: &hp_fs::GameFs, path: &str, n: usize) -> Vec<u32> {
-    let Some(mdl) = fs.read(path) else { return vec![1; n] };
-    (0..n).map(|i| hp_mdl::animation_clip(&mdl, i).map_or(1, |c| count(c.frames).max(1))).collect()
+fn sequence_frames(mdl: &[u8], n: usize) -> Vec<u32> {
+    (0..n).map(|i| hp_mdl::animation_clip(mdl, i).map_or(1, |c| count(c.frames).max(1))).collect()
 }
 
 fn count(n: usize) -> u32 {
@@ -377,6 +458,9 @@ pub(crate) struct Models {
     pub variants: AHashMap<VariantKey, (RenderModel, std::sync::Weak<PreparedModel>)>,
     pub newly_ready: AHashSet<String>,
     pub last_used: AHashMap<String, u64>,
+    pub pick: AHashMap<String, Arc<PickGeometry>>,
+    pub settled: Option<(u64, std::time::Instant)>,
+    pub trim_waiting: bool,
 }
 
 pub(crate) fn entity_matrix(origin: DVec3, angles: DVec3, scale: f64) -> DMat4 {

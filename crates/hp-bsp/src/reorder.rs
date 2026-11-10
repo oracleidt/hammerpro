@@ -39,6 +39,7 @@ const SIDE_LEN: usize = 8;
 const MODEL_LEN: usize = 48;
 const DISP_LEN: usize = 176;
 const OVERLAY_LEN: usize = 352;
+const WATER_OVERLAY_LEN: usize = 1120;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ReorderOptions {
@@ -247,13 +248,14 @@ fn planes(w: &mut Work<'_>, rng: &mut Rng) -> Result<bool> {
 fn texinfo(w: &mut Work<'_>, rng: &mut Rng) -> Result<bool> {
     let data = w.get(TEXINFO)?;
     let Some(n) = count(&data, TEXINFO_LEN) else { return Ok(false) };
-    if n < 3 || !w.get(WATEROVERLAYS)?.is_empty() {
+    if n < 3 {
         return Ok(false);
     }
     let new_to_old = shuffled_identity(n, 0, rng);
     let map = inverse(&new_to_old);
     let mut sides = w.get(BRUSHSIDES)?;
     let mut overlays = w.get(lump::OVERLAYS)?;
+    let mut water_overlays = w.get(WATEROVERLAYS)?;
     let mut water = w.get(LEAFWATERDATA)?;
     let mut faces: Vec<(usize, Vec<u8>)> = Vec::new();
     for l in FACE_LUMPS {
@@ -261,6 +263,7 @@ fn texinfo(w: &mut Work<'_>, rng: &mut Rng) -> Result<bool> {
     }
     if count(&sides, SIDE_LEN).is_none()
         || count(&overlays, OVERLAY_LEN).is_none()
+        || count(&water_overlays, WATER_OVERLAY_LEN).is_none()
         || count(&water, 12).is_none()
         || faces.iter().any(|(_, f)| count(f, FACE_LEN).is_none())
     {
@@ -268,6 +271,7 @@ fn texinfo(w: &mut Work<'_>, rng: &mut Rng) -> Result<bool> {
     }
     let mut ok = remap_u16_field(&mut sides, SIDE_LEN, 2, &map, true)
         && remap_u16_field(&mut overlays, OVERLAY_LEN, 4, &map, true)
+        && remap_u16_field(&mut water_overlays, WATER_OVERLAY_LEN, 4, &map, true)
         && remap_i32_field(&mut water, 12, 8, &map);
     for (l, f) in faces.iter_mut() {
         ok &= remap_u16(f, FACE_LEN, 10, &map, true, *l == lump::ORIGINAL_FACES);
@@ -278,6 +282,9 @@ fn texinfo(w: &mut Work<'_>, rng: &mut Rng) -> Result<bool> {
     w.set(TEXINFO, permute_records(&data, TEXINFO_LEN, &new_to_old));
     w.set(BRUSHSIDES, sides);
     w.set(lump::OVERLAYS, overlays);
+    if !water_overlays.is_empty() {
+        w.set(WATEROVERLAYS, water_overlays);
+    }
     w.set(LEAFWATERDATA, water);
     for (l, f) in faces {
         w.set(l, f);
@@ -407,14 +414,15 @@ fn faces(w: &mut Work<'_>, rng: &mut Rng) -> Result<bool> {
     let normal_indices = w.get(VERTNORMALINDICES)?;
     let mut leaf_faces = w.get(LEAFFACES)?;
     let mut overlays = w.get(lump::OVERLAYS)?;
+    let mut water_overlays = w.get(WATEROVERLAYS)?;
     let mut disps = w.get(DISPINFO)?;
     if !(4..=65_535).contains(&n)
         || count(&nodes, NODE_LEN).is_none()
         || count(&models, MODEL_LEN).is_none()
         || count(&overlays, OVERLAY_LEN).is_none()
+        || count(&water_overlays, WATER_OVERLAY_LEN).is_none()
         || count(&disps, DISP_LEN).is_none()
         || leaf_faces.len() % 2 != 0
-        || !w.get(WATEROVERLAYS)?.is_empty()
         || !(hdr.is_empty() || hdr.len() == data.len())
         || !(ids.is_empty() || ids.len() == n * 2)
         || !(macro_info.is_empty() || macro_info.len() == n * 2)
@@ -464,20 +472,22 @@ fn faces(w: &mut Work<'_>, rng: &mut Rng) -> Result<bool> {
         rng.shuffle(&mut new_to_old[first..first + num]);
     }
     let map = inverse(&new_to_old);
-    if !remap_u16_field(&mut leaf_faces, 2, 0, &map, false) || !remap_u16_field(&mut disps, DISP_LEN, 32, &map, false) {
+    if !remap_u16_field(&mut leaf_faces, 2, 0, &map, false) || !remap_u16_field(&mut disps, DISP_LEN, 36, &map, false) {
         return Ok(false);
     }
-    for o in 0..overlays.len() / OVERLAY_LEN {
-        let base = o * OVERLAY_LEN;
-        let cnt = (u16_at(&overlays, base + 6) & 0x3fff) as usize;
-        if cnt > 64 {
-            return Ok(false);
-        }
-        for k in 0..cnt {
-            let p = base + 8 + k * 4;
-            let v = i32_at(&overlays, p);
-            let Some(&m) = usize::try_from(v).ok().and_then(|v| map.get(v)) else { return Ok(false) };
-            put32(&mut overlays, p, m as i32);
+    for (list, len, most) in [(&mut overlays, OVERLAY_LEN, 64), (&mut water_overlays, WATER_OVERLAY_LEN, 256)] {
+        for o in 0..list.len() / len {
+            let base = o * len;
+            let cnt = (u16_at(list, base + 6) & 0x3fff) as usize;
+            if cnt > most {
+                return Ok(false);
+            }
+            for k in 0..cnt {
+                let p = base + 8 + k * 4;
+                let v = i32_at(list, p);
+                let Some(&m) = usize::try_from(v).ok().and_then(|v| map.get(v)) else { return Ok(false) };
+                put32(list, p, m as i32);
+            }
         }
     }
     w.set(lump::FACES, permute_records(&data, FACE_LEN, &new_to_old));
@@ -505,6 +515,9 @@ fn faces(w: &mut Work<'_>, rng: &mut Rng) -> Result<bool> {
     }
     w.set(LEAFFACES, leaf_faces);
     w.set(lump::OVERLAYS, overlays);
+    if !water_overlays.is_empty() {
+        w.set(WATEROVERLAYS, water_overlays);
+    }
     w.set(DISPINFO, disps);
     Ok(true)
 }

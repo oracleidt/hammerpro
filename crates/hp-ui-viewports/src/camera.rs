@@ -55,6 +55,12 @@ pub fn smooth_velocity(current: DVec3, target: DVec3, dt: f64) -> DVec3 {
     smooth_velocity_with(current, target, dt, FLY_RESPONSE)
 }
 
+pub const FIRST_STEP: f64 = 1.0 / 60.0;
+
+pub fn motion_step(dt: f64, from_rest: bool) -> f64 {
+    if from_rest && dt.is_finite() { dt.min(FIRST_STEP) } else { dt }
+}
+
 pub fn smooth_velocity_with(current: DVec3, target: DVec3, dt: f64, response: f64) -> DVec3 {
     if dt.is_nan() || dt <= 0.0 || !current.is_finite() || !target.is_finite() {
         return if target.is_finite() { target } else { DVec3::ZERO };
@@ -135,6 +141,20 @@ pub fn dolly_step(camera_speed: f64, fast: bool, fast_multiplier: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn motion_after_rest_starts_with_one_frame_step() {
+        assert_eq!(motion_step(0.25, true), FIRST_STEP);
+        assert_eq!(motion_step(0.005, true), 0.005);
+        assert_eq!(motion_step(0.05, false), 0.05);
+        let mut cam = Camera3d::default();
+        let start = cam.pos;
+        let target = DVec3::new(800.0, 0.0, 0.0);
+        let step = motion_step(0.25, true);
+        let v = smooth_velocity_with(DVec3::ZERO, target, step, 0.1);
+        integrate(&mut cam, v, step);
+        assert!((cam.pos - start).length() < 800.0 * FIRST_STEP, "no jump after an idle gap");
+    }
 
     fn cam() -> Camera3d {
         Camera3d { pos: DVec3::ZERO, yaw_deg: 0.0, pitch_deg: 0.0, ..Camera3d::default() }

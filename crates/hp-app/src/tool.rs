@@ -266,6 +266,8 @@ pub trait Tool {
         Vec::new()
     }
 
+    fn refresh_options(&mut self, _state: &crate::state::AppState) {}
+
     fn scripted_stroke(
         &mut self,
         _state: &mut crate::state::AppState,

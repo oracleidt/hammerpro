@@ -596,7 +596,7 @@ fn player_view(state: &mut AppState, v: &Value) -> R<ToolResult> {
         "range": mode.map(LightMode::name),
         "fullbright": mode == Some(LightMode::Fullbright),
         "lightmaps": stats.map(|s| s.lightmaps),
-        "atlas": stats.map(|s| json!({ "size": s.atlas_size, "layers": s.atlas_layers, "bytes": s.bytes })),
+        "atlas": stats.map(|s| json!({ "size": s.atlas_size, "height": s.atlas_height, "layers": s.atlas_layers, "bytes": s.bytes })),
         "static_props_vertex_lit": rt.world.as_ref().map(|w| w.light.props.static_props.iter().filter(|p| p.colors.is_some()).count()),
         "world_lights": rt.world.as_ref().map(|w| w.light.props.lights.len()),
         "animated_lightmaps": stats.map(|s| s.animated),

@@ -26,7 +26,7 @@ Automated runs (`--script`, `--screenshot`, `--bench-open`) write none of the pe
 | `thumbs\` | Thumbnails of materials and models that are slow to make, kept between sessions. |
 | `prefab_thumbs\` | Thumbnails of the prefab library. |
 | `pack\` | Cache of the files packed into compiled maps (converted images, extracted files). |
-| `compile_content\` | Generated game folder that makes your custom materials (custom texture folders, plain images) visible to the compiler. |
+| `compile_content\` | Generated game folder that makes your custom materials (custom texture folders, plain images) and the custom models the map uses visible to the compiler. |
 | `builds\` | Stage cache of the compiler: an identical geometry or lighting step is restored instead of run again. |
 | `content_index.bin` | The saved index of the game, custom and mounted folders, so launches only scan what changed (see [Content index and scan](../features/content-index.md)). |
 | `compile_history\<map key>.jsonl` | Timing history of the compiles of each map (History tab of the compile window). |
@@ -84,7 +84,7 @@ When you run `hammerpro --bspc` yourself, the `.bsp`, `.log`, `.lin` and `.prt` 
 | Path | What it is |
 |---|---|
 | `garrysmod\maps\<map>.bsp` | The compiled map, copied there after a compile (option `compile.copy_to_maps`, on by default; another folder can be set in `compile.maps_dir_override`). |
-| `garrysmod\addons\hammerpro_dev\` | The development addon: Draft and Normal compiles do not pack your custom materials into the BSP, they are copied into this folder addon instead so the map looks right in game. The copy is incremental and never writes outside this folder. With the default pack policy, Final compiles and releases pack. Setting `compile.dev_addon`, on by default. |
+| `garrysmod\addons\hammerpro_dev\` | The development addon: Draft and Normal compiles do not pack your custom content (materials, models, sounds, particle files with the map's particle manifest, map scripts) into the BSP, it is copied into this folder addon instead so the map looks right in game. The copy is incremental and never writes outside this folder. With the default pack policy, Final compiles and releases pack. Setting `compile.dev_addon`, on by default. |
 | `garrysmod\addons\hammerpro_bridge\` | The HammerPro bridge addon, a small Lua file installed only on request (never packed into a map). It places the player at the camera once the map loads, fires inputs and sends back the props you placed in game for **Import props from the game**. |
 | `garrysmod\data\hammerpro\` | Files the editor and the game exchange through the bridge: `cmd.json` (written by the editor), `ack.json` and `props.json` (written by the game). |
 | `garrysmod\console.log` | Written by the game when the `-condebug` fast start option is on; Hammer Pro reads it for the map load report. |

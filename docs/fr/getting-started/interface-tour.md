@@ -42,6 +42,8 @@ La barre d'outils sous les menus reprend les barres Map View et Map Operations d
 
 Tout à droite de la barre du haut, la pastille **MCP** indique si le serveur MCP de cette fenêtre est actif, et son menu installe Hammer Pro dans les applications d'IA (voir [Serveur MCP](../reference/mcp-server.md)).
 
+La barre d'outils reste toujours sur une seule ligne. Quand la fenêtre est trop étroite pour tous les groupes (petit écran, grande échelle d'interface, libellés plus longs en français ou en russe), les groupes les moins utilisés passent dans le bouton **»** au bout de la ligne, dans cet ordre : les bascules d'affichage (10), les bascules de displacement et de verrou de texture (8), le groupe des cordons (7), Couper, Copier, Coller (6), les boutons de masquage et de groupe (5 et 4), puis le groupe du mode de rendu (11). Les groupes restants gardent leur ordre, et le menu **»** montre les groupes cachés avec les mêmes boutons, infobulles et raccourcis ; il reste ouvert pendant que vous cliquez sur ses boutons. **Compiler** est toujours le dernier à partir.
+
 Sous la barre d'outils, la **ligne d'options** affiche le nom de l'outil actif et ses options. Les outils aux options volumineuses (Application de texture, Displacement...) les affichent plutôt dans l'onglet de l'outil du panneau de droite (« Les options de l'outil sont dans le panneau de droite. »).
 
 ## Palette d'outils

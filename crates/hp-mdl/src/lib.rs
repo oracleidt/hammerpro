@@ -37,9 +37,26 @@ pub use vvd::BoneWeight;
 
 pub fn load_from(
     mdl_path: &str,
-    mut read: impl FnMut(&str) -> Option<Vec<u8>>,
+    read: impl FnMut(&str) -> Option<Vec<u8>>,
     opts: &LoadOptions,
 ) -> Result<Model, MdlError> {
+    read_files(mdl_path, read)?.load(opts)
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ModelFiles {
+    pub mdl: Vec<u8>,
+    pub vvd: Vec<u8>,
+    pub vtx: Vec<u8>,
+}
+
+impl ModelFiles {
+    pub fn load(&self, opts: &LoadOptions) -> Result<Model, MdlError> {
+        load(&self.mdl, &self.vvd, &self.vtx, opts)
+    }
+}
+
+pub fn read_files(mdl_path: &str, mut read: impl FnMut(&str) -> Option<Vec<u8>>) -> Result<ModelFiles, MdlError> {
     let missing = |file, path: &str| MdlError::MissingFile { file, path: path.to_string() };
     let (vvd_path, vtx_paths) = sibling_paths(mdl_path);
     let mdl = read(mdl_path).ok_or_else(|| missing(FileKind::Mdl, mdl_path))?;
@@ -48,7 +65,7 @@ pub fn load_from(
         .iter()
         .find_map(|p| read(p))
         .ok_or_else(|| missing(FileKind::Vtx, vtx_paths.last().map_or("", String::as_str)))?;
-    load(&mdl, &vvd, &vtx, opts)
+    Ok(ModelFiles { mdl, vvd, vtx })
 }
 
 pub fn raw_mesh_positions(mdl: &[u8], vvd: &[u8]) -> Result<Vec<Vec<[f32; 3]>>, MdlError> {

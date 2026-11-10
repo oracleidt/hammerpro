@@ -11,6 +11,10 @@ action_list! { lighting_actions {
     StopBake => "stop_bake", Map, MapLighting, None, Ready;
     SelectTinyLightmapFaces => "select_tiny_lightmap_faces", Map, MapLighting, None, Ready;
     ShowLighting => "show_lighting", View, ViewPanels, None, Ready;
+    SoloSelectedLights => "solo_selected_lights", Map, MapLighting, None, Ready;
+    MuteSelectedLights => "mute_selected_lights", Map, MapLighting, None, Ready;
+    UnmuteAllLights => "unmute_all_lights", Map, MapLighting, None, Ready;
+    MeasureLightCosts => "measure_light_costs", Map, MapLighting, None, Ready;
 }}
 
 pub(super) const REPEATS: &[Action] = &[];
@@ -18,6 +22,7 @@ pub(super) const REPEATS: &[Action] = &[];
 pub(super) fn enabled(state: &AppState, action: Action) -> Option<bool> {
     match action {
         Action::StopBake => Some(state.runtime.lighting.progress.is_some()),
+        Action::UnmuteAllLights => Some(!state.doc.light_plus().excluded_entities.is_empty()),
         _ => None,
     }
 }
@@ -54,6 +59,10 @@ pub(super) const TR: TrTable = &[
         "Sélectionner les faces à petite échelle de lightmap",
     ),
     ("action.show_lighting", "Lighting", "Éclairage"),
+    ("action.solo_selected_lights", "Solo the selected lights", "Isoler les lumières sélectionnées"),
+    ("action.mute_selected_lights", "Mute the selected lights", "Couper les lumières sélectionnées"),
+    ("action.unmute_all_lights", "Unmute all lights", "Réactiver toutes les lumières"),
+    ("action.measure_light_costs", "Measure the cost of each light", "Mesurer le coût de chaque lumière"),
     ("shell.undo.edit_lighting_options", "Edit lighting options", "Modifier les options d'éclairage"),
     ("shell.undo.edit_color_correction", "Edit color correction", "Modifier la correction des couleurs"),
 ];

@@ -73,6 +73,7 @@ Offsets snap to the grid, so prefabs built on the grid stay on it. Each insertio
 - Use `Shift` + click to place a row of lights without losing the selection you are working on.
 - To edit keyvalues after placing, open the [Entity properties](entity-properties.md) (`Alt+Enter`).
 - The MCP tools `create_entity` and `set_current_entity_class` do the same from an AI assistant (see [MCP tool reference](../../MCP.md)).
+- `set_tool_options` with tool `entity` sets what the next click places: `class`, `model` (an `.mdl` path, empty for none), `skin` (0 to 255) and `align` (props follow the slope of the surface).
 
 ## FAQ
 

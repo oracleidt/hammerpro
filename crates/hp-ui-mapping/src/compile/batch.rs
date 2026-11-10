@@ -333,6 +333,7 @@ fn compile_one(
         fs,
         materials,
         models,
+        roots: snapshot::pack_roots(&map),
         cache_dir: Settings::cache_dir().join("pack"),
         content_dir: Settings::cache_dir().join("compile_content"),
     });

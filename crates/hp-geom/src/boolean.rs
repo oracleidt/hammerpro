@@ -1,8 +1,11 @@
+use std::collections::HashSet;
+
 use hp_vmf::Side;
+use rayon::prelude::*;
 
 use crate::brush::validate_solid;
-use crate::csg::{ClipPiece, carve_impl, clip_geom};
-use crate::{GeomError, PLANE_EPS, Plane, build_solid, merge_exact};
+use crate::csg::{ClipPiece, carve_with_geom, clip_geom};
+use crate::{Aabb, GeomError, PLANE_EPS, Plane, SolidGeom, build_solid, merge_exact};
 
 const MIN_VOLUME: f64 = 1e-3;
 
@@ -43,35 +46,67 @@ pub struct UnionPart {
     pub sources: Vec<Vec<u32>>,
 }
 
+fn carved_by_earlier(
+    k: usize,
+    solids: &[Vec<Side>],
+    geoms: &[SolidGeom],
+    next_side_id: &mut dyn FnMut() -> u32,
+) -> Result<Vec<ClipPiece>, GeomError> {
+    let (sides, geom) = (&solids[k], &geoms[k]);
+    let mut pieces: Vec<ClipPiece> = vec![ClipPiece::whole(sides)];
+    for (earlier, eg) in solids.iter().zip(geoms).take(k) {
+        if pieces.is_empty() {
+            break;
+        }
+        let overlap = geom.aabb.intersection(&eg.aabb);
+        if overlap.is_empty() || overlap.size().min_element() <= PLANE_EPS {
+            continue;
+        }
+        let mut rest = Vec::with_capacity(pieces.len() + 4);
+        for p in pieces {
+            rest.extend(
+                carve_with_geom(&p.sides, earlier, eg, false, next_side_id)?.into_iter().map(|c| c.compose(&p.origins)),
+            );
+        }
+        pieces = rest;
+    }
+    Ok(pieces)
+}
+
 pub fn union_pieces(solids: &[Vec<Side>], next_side_id: &mut dyn FnMut() -> u32) -> Result<Vec<UnionPart>, GeomError> {
     let geoms = solids.iter().map(|s| validate_solid(s)).collect::<Result<Vec<_>, _>>()?;
+    let base = solids.iter().flatten().map(|s| s.id).max().map_or(1, |m| m.saturating_add(1));
+    let carved: Vec<Result<Vec<ClipPiece>, GeomError>> = (0..solids.len())
+        .into_par_iter()
+        .map(|k| {
+            let mut local = base;
+            let mut fresh = || {
+                let id = local;
+                local = local.saturating_add(1);
+                id
+            };
+            carved_by_earlier(k, solids, &geoms, &mut fresh)
+        })
+        .collect();
     let mut parts: Vec<UnionPart> = Vec::new();
-    for (k, (sides, geom)) in solids.iter().zip(&geoms).enumerate() {
-        let mut pieces: Vec<ClipPiece> = vec![ClipPiece::whole(sides)];
-        for (earlier, eg) in solids.iter().zip(&geoms).take(k) {
-            if pieces.is_empty() {
-                break;
-            }
-            let overlap = geom.aabb.intersection(&eg.aabb);
-            if overlap.is_empty() || overlap.size().min_element() <= PLANE_EPS {
+    for (k, pieces) in carved.into_iter().enumerate() {
+        let sides = &solids[k];
+        for mut p in pieces? {
+            if build_solid(&p.sides).volume() <= MIN_VOLUME {
                 continue;
             }
-            let mut rest = Vec::with_capacity(pieces.len() + 4);
-            for p in pieces {
-                rest.extend(
-                    carve_impl(&p.sides, earlier, false, next_side_id)?.into_iter().map(|c| c.compose(&p.origins)),
-                );
+            for s in &mut p.sides {
+                if s.id >= base {
+                    s.id = next_side_id();
+                }
             }
-            pieces = rest;
-        }
-        parts.extend(pieces.into_iter().filter(|p| build_solid(&p.sides).volume() > MIN_VOLUME).map(|p| {
             let sources = p
                 .origins
                 .iter()
                 .map(|o| o.and_then(|j| sides.get(j)).map(|s| vec![s.id]).unwrap_or_default())
                 .collect();
-            UnionPart { origin: k, sides: p.sides, sources }
-        }));
+            parts.push(UnionPart { origin: k, sides: p.sides, sources });
+        }
     }
     join_touching(&mut parts, next_side_id);
     Ok(parts)
@@ -97,22 +132,58 @@ fn coplanar_sources(merged: &[Side], from: &[&UnionPart]) -> Vec<Vec<u32>> {
         .collect()
 }
 
+const STRADDLE: f64 = 1.0;
+
+fn straddles(a: &SolidGeom, b: &SolidGeom) -> bool {
+    a.faces.iter().any(|f| {
+        let (mut front, mut back) = (false, false);
+        for v in b.vertices() {
+            let d = f.plane.distance(v);
+            front |= d > STRADDLE;
+            back |= d < -STRADDLE;
+            if front && back {
+                return true;
+            }
+        }
+        false
+    })
+}
+
+fn never_convex(a: &SolidGeom, b: &SolidGeom) -> bool {
+    !a.valid || !b.valid || straddles(a, b) || straddles(b, a)
+}
+
 fn join_touching(parts: &mut Vec<UnionPart>, next_side_id: &mut dyn FnMut() -> u32) {
+    let mut geoms: Vec<SolidGeom> = parts.par_iter().map(|p| build_solid(&p.sides)).collect();
+    let reach = |g: &SolidGeom| -> Aabb { g.aabb.expand(PLANE_EPS * 2.0) };
+    let mut boxes: Vec<Aabb> = geoms.iter().map(reach).collect();
+    let mut keys: Vec<usize> = (0..parts.len()).collect();
+    let mut next_key = parts.len();
+    let mut failed: HashSet<(usize, usize)> = HashSet::new();
     'again: loop {
-        let boxes: Vec<_> = parts.iter().map(|p| build_solid(&p.sides).aabb.expand(PLANE_EPS * 2.0)).collect();
         for i in 0..parts.len() {
             for j in (i + 1)..parts.len() {
-                if !boxes[i].intersects(&boxes[j]) {
+                if !boxes[i].intersects(&boxes[j]) || failed.contains(&(keys[i], keys[j])) {
                     continue;
                 }
-                let pair = [parts[i].sides.clone(), parts[j].sides.clone()];
-                if let Ok(Some(merged)) = merge_exact(&pair, next_side_id) {
-                    let sources = coplanar_sources(&merged, &[&parts[i], &parts[j]]);
-                    let origin = parts[i].origin.min(parts[j].origin);
-                    parts[i] = UnionPart { origin, sides: merged, sources };
-                    parts.remove(j);
-                    continue 'again;
+                if !never_convex(&geoms[i], &geoms[j]) {
+                    let pair = [parts[i].sides.clone(), parts[j].sides.clone()];
+                    if let Ok(Some(merged)) = merge_exact(&pair, next_side_id) {
+                        let sources = coplanar_sources(&merged, &[&parts[i], &parts[j]]);
+                        let origin = parts[i].origin.min(parts[j].origin);
+                        parts[i] = UnionPart { origin, sides: merged, sources };
+                        geoms[i] = build_solid(&parts[i].sides);
+                        boxes[i] = reach(&geoms[i]);
+                        keys[i] = next_key;
+                        next_key += 1;
+                        parts.remove(j);
+                        geoms.remove(j);
+                        boxes.remove(j);
+                        keys.remove(j);
+                        continue 'again;
+                    }
                 }
+                failed.insert((keys[i], keys[j]));
             }
         }
         return;

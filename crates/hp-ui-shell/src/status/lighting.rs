@@ -69,14 +69,17 @@ impl StatusSegment for LightingStatus {
         };
         let mb = |v: u64| decimal(v as f64 / (1024.0 * 1024.0), 1);
         let text = tf!("shell.lighting.budget", mb(b.bytes), mb(b.limit));
-        let mut tip = tf!("shell.lighting.budget_tip", (fraction * 100.0).round(), b.faces);
-        if b.tiny_faces > 0 {
-            tip.push('\n');
-            tip.push_str(&tf!("shell.lighting.tiny_tip", b.tiny_faces));
-        }
+        let (faces, tiny) = (b.faces, b.tiny_faces);
         ui.separator();
         let r = ui.add(egui::Button::new(RichText::new(format!("💡 {text}")).small().color(color)).frame(false));
-        let r = r.on_hover_text(tip);
+        let r = crate::common::lazy_hover_text(r, || {
+            let mut tip = tf!("shell.lighting.budget_tip", (fraction * 100.0).round(), faces);
+            if tiny > 0 {
+                tip.push('\n');
+                tip.push_str(&tf!("shell.lighting.tiny_tip", tiny));
+            }
+            tip
+        });
         if r.clicked() {
             state.request(Action::ShowLighting);
         }

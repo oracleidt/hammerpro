@@ -26,7 +26,7 @@ Les exécutions automatisées (`--script`, `--screenshot`, `--bench-open`) n'éc
 | `thumbs\` | Miniatures des matériaux et modèles longues à produire, gardées d'une session à l'autre. |
 | `prefab_thumbs\` | Miniatures de la bibliothèque de prefabs. |
 | `pack\` | Cache des fichiers intégrés aux maps compilées (images converties, fichiers extraits). |
-| `compile_content\` | Dossier de jeu généré qui rend vos matériaux personnalisés (dossiers de textures personnalisés, images simples) visibles du compilateur. |
+| `compile_content\` | Dossier de jeu généré qui rend vos matériaux personnalisés (dossiers de textures personnalisés, images simples) et les modèles personnalisés de la map visibles du compilateur. |
 | `builds\` | Cache d'étapes du compilateur : une étape de géométrie ou d'éclairage identique est restaurée au lieu d'être relancée. |
 | `content_index.bin` | L'index enregistré des dossiers du jeu, personnalisés et montés, pour que les lancements n'analysent que ce qui a changé (voir [Index et analyse du contenu](../features/content-index.md)). |
 | `compile_history\<clé de la map>.jsonl` | Historique des temps de compilation de chaque map (onglet Historique de la fenêtre de compilation). |
@@ -84,7 +84,7 @@ Quand vous lancez vous-même `hammerpro --bspc`, les fichiers `.bsp`, `.log`, `.
 | Chemin | Contenu |
 |---|---|
 | `garrysmod\maps\<map>.bsp` | La map compilée, copiée là après une compilation (option `compile.copy_to_maps`, activée par défaut ; un autre dossier peut être réglé dans `compile.maps_dir_override`). |
-| `garrysmod\addons\hammerpro_dev\` | L'addon de développement : les compilations Draft et Normal n'intègrent pas vos matériaux personnalisés au BSP, ils sont copiés dans cet addon dossier pour que la map s'affiche correctement en jeu. La copie est incrémentale et n'écrit jamais en dehors de ce dossier. Avec la politique d'intégration par défaut, les compilations Final et les versions de publication intègrent le contenu. Paramètre `compile.dev_addon`, activé par défaut. |
+| `garrysmod\addons\hammerpro_dev\` | L'addon de développement : les compilations Draft et Normal n'intègrent pas votre contenu personnalisé (matériaux, modèles, sons, fichiers de particules avec le manifeste de particules de la map, scripts de la map) au BSP, il est copié dans cet addon dossier pour que la map s'affiche correctement en jeu. La copie est incrémentale et n'écrit jamais en dehors de ce dossier. Avec la politique d'intégration par défaut, les compilations Final et les versions de publication intègrent le contenu. Paramètre `compile.dev_addon`, activé par défaut. |
 | `garrysmod\addons\hammerpro_bridge\` | L'addon pont HammerPro, un petit fichier Lua installé seulement à la demande (jamais intégré à une map). Il place le joueur à la caméra quand la map se charge, déclenche des inputs et renvoie les props que vous avez placés en jeu pour **Importer les props depuis le jeu**. |
 | `garrysmod\data\hammerpro\` | Fichiers échangés entre l'éditeur et le jeu via le pont : `cmd.json` (écrit par l'éditeur), `ack.json` et `props.json` (écrits par le jeu). |
 | `garrysmod\console.log` | Écrit par le jeu quand l'option de démarrage rapide `-condebug` est active ; Hammer Pro le lit pour le rapport de chargement de la map. |

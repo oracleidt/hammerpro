@@ -48,6 +48,19 @@ pub(crate) fn of_child(_child: &std::process::Child) -> Option<Usage> {
 }
 
 #[cfg(windows)]
+pub(crate) fn set_child_urgent(child: &std::process::Child, urgent: bool) {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::System::Threading::{BELOW_NORMAL_PRIORITY_CLASS, NORMAL_PRIORITY_CLASS, SetPriorityClass};
+    let class = if urgent { NORMAL_PRIORITY_CLASS } else { BELOW_NORMAL_PRIORITY_CLASS };
+    unsafe {
+        SetPriorityClass(child.as_raw_handle(), class);
+    }
+}
+
+#[cfg(not(windows))]
+pub(crate) fn set_child_urgent(_child: &std::process::Child, _urgent: bool) {}
+
+#[cfg(windows)]
 pub(crate) fn of_self() -> Option<Usage> {
     of_handle(unsafe { windows_sys::Win32::System::Threading::GetCurrentProcess() })
 }

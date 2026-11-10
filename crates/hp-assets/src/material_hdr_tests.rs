@@ -117,7 +117,7 @@ fn native_hdr_cubemap_colors_survive_loading_and_shader_tint() {
         let material = hp_vmt::parse(&format!("{} {{ {body} }}", case["shader"].as_str().unwrap())).unwrap();
         let env = crate::envmap::analyze_envmap(&material).unwrap();
         let key = crate::envmap::cube_key(env.texture.as_deref().unwrap());
-        let prepared = crate::texture::prepare_texture(&fs, &key, false).unwrap();
+        let prepared = crate::texture::prepare_texture(&fs, &key, false, crate::texture::MAX_TEXTURE_DIM).unwrap();
         let texture = renderer.create_texture_exact(&prepared.upload);
         let lookup =
             |key: &str| crate::material::TexLook::Ready(if key.ends_with("|cube") { texture } else { flat }, [4, 24]);

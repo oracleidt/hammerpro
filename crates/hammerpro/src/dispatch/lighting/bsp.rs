@@ -10,7 +10,6 @@ pub(crate) mod lump {
     pub const VERTEXES: usize = 3;
     pub const TEXINFO: usize = 6;
     pub const FACES: usize = 7;
-    pub const LIGHTING: usize = 8;
     pub const FACEIDS: usize = 11;
     pub const EDGES: usize = 12;
     pub const SURFEDGES: usize = 13;
@@ -19,8 +18,6 @@ pub(crate) mod lump {
     pub const DISP_VERTS: usize = 33;
     pub const STRING_DATA: usize = 43;
     pub const STRING_TABLE: usize = 44;
-    pub const LIGHTING_HDR: usize = 53;
-    pub const FACES_HDR: usize = 58;
 }
 
 const FACE_SIZE: usize = 56;
@@ -76,37 +73,6 @@ pub(crate) struct SideTable {
 }
 
 impl SideTable {
-    pub(super) fn resource_probes(&self, probes: &mut hp_app::runtime::primitives::ResourceProbes) {
-        use hp_app::runtime::primitives::PrimitiveClass;
-        let class = PrimitiveClass::Lighting;
-        for sides in self.sides.values() {
-            probes.point((sides as *const Vec<SideRef>) as usize, class);
-            probes.vec(sides, class);
-            for side in sides {
-                if let Some(blend) = &side.blend {
-                    probes.point(blend.as_ptr() as usize, class);
-                }
-            }
-        }
-    }
-
-    pub(super) fn estimated_bytes(&self) -> usize {
-        let entries = self.sides.capacity() * (std::mem::size_of::<(u16, Vec<SideRef>)>() + 1);
-        entries
-            + self
-                .sides
-                .values()
-                .map(|sides| {
-                    sides.capacity() * std::mem::size_of::<SideRef>()
-                        + sides
-                            .iter()
-                            .filter_map(|side| side.blend.as_ref())
-                            .map(|blend| std::mem::size_of_val(&**blend))
-                            .sum::<usize>()
-                })
-                .sum::<usize>()
-    }
-
     pub fn from_map(map: &hp_vmf::Map) -> Self {
         let mut sides: HashMap<u16, Vec<SideRef>> = HashMap::new();
         let world = map.world.solids.iter();
@@ -157,6 +123,7 @@ pub(crate) struct GeoFace {
     pub h: u32,
     pub scale: f32,
     pub flags: u32,
+    pub bumped: bool,
     pub vertices: Vec<Vert>,
     pub indices: Vec<u32>,
 }
@@ -327,23 +294,6 @@ fn orient(indices: &mut [u32], flat: &[DVec3], normal: DVec3) {
     }
 }
 
-pub(crate) fn lit_faces(bsp: &hp_bsp::Bsp) -> (usize, u64) {
-    let (faces, texinfo) = (bsp.lump(lump::FACES).unwrap_or_default(), bsp.lump(lump::TEXINFO).unwrap_or_default());
-    let mut out = (0usize, 0u64);
-    for f in (0..faces.len() / FACE_SIZE).map(|i| i * FACE_SIZE) {
-        let flags = i16_at(&faces, f + 10)
-            .and_then(|t| usize::try_from(t).ok())
-            .and_then(|t| i32_at(&texinfo, t * TEXINFO_SIZE + 64))
-            .unwrap_or(UNLIT);
-        let (Some(w), Some(h)) = (i32_at(&faces, f + 36), i32_at(&faces, f + 40)) else { continue };
-        let (Ok(w), Ok(h)) = (u64::try_from(w), u64::try_from(h)) else { continue };
-        if flags & UNLIT == 0 {
-            out = (out.0 + 1, out.1 + (w + 1) * (h + 1));
-        }
-    }
-    out
-}
-
 pub(crate) fn geometry(bsp: &hp_bsp::Bsp, sides: &SideTable, solids: &HashMap<u32, SolidInfo>) -> Geometry {
     let get = |i: usize| bsp.lump(i).unwrap_or(std::borrow::Cow::Borrowed(&[] as &[u8]));
     let (planes, vertexes, edges, surfedges, faces, texinfo, texdata, string_table, string_data, models, dispinfo) = (
@@ -464,6 +414,7 @@ fn read_face(
         h,
         scale: proj.scale(),
         flags: render_flags,
+        bumped: flags & BUMPLIGHT != 0,
         vertices,
         indices,
     })
@@ -527,21 +478,6 @@ fn disp_mesh(
     Some((vertices, indices, flags))
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct FlatLightmaps {
-    pub offsets: Vec<u32>,
-    pub texels: Vec<u32>,
-}
-
-impl FlatLightmaps {
-    pub const BUMPED: u32 = 1 << 31;
-
-    pub fn face(&self, face: usize) -> Option<(u32, u32)> {
-        let o = *self.offsets.get(face)?;
-        (o != u32::MAX).then_some((o & !Self::BUMPED, if o & Self::BUMPED != 0 { 4 } else { 1 }))
-    }
-}
-
 pub(super) fn styles_on(entities: &[hp_bsp::Entity]) -> [bool; 256] {
     let mut on = [true; 256];
     let mut seen_lit = [false; 256];
@@ -567,70 +503,6 @@ pub(super) fn styles_on(entities: &[hp_bsp::Entity]) -> [bool; 256] {
     }
     on[255] = false;
     on
-}
-
-pub(crate) fn flat_lightmaps(bsp: &hp_bsp::Bsp, hdr: bool) -> Result<FlatLightmaps, String> {
-    let get = |i: usize| bsp.lump(i).map_err(|e| e.to_string());
-    let (faces_i, light_i) = if hdr { (lump::FACES_HDR, lump::LIGHTING_HDR) } else { (lump::FACES, lump::LIGHTING) };
-    let mut faces = get(faces_i)?;
-    if faces.is_empty() {
-        faces = get(lump::FACES)?;
-    }
-    let lighting = get(light_i)?;
-    if lighting.is_empty() {
-        return Err(format!("the map has no {} lighting", if hdr { "HDR" } else { "LDR" }));
-    }
-    let texinfo = get(lump::TEXINFO)?;
-    let on = styles_on(&bsp.entities().unwrap_or_default());
-    let count = faces.len() / FACE_SIZE;
-    let mut out = FlatLightmaps { offsets: vec![u32::MAX; count], texels: Vec::new() };
-    for (face, slot) in out.offsets.iter_mut().enumerate() {
-        let f = face * FACE_SIZE;
-        let Some(ofs) = i32_at(&faces, f + 20).and_then(|o| usize::try_from(o).ok()) else { continue };
-        let (Some(sw), Some(sh)) = (i32_at(&faces, f + 36), i32_at(&faces, f + 40)) else { continue };
-        let (Ok(w), Ok(h)) = (u32::try_from(sw), u32::try_from(sh)) else { continue };
-        let (w, h) = (w + 1, h + 1);
-        if w > MAX_SIDE || h > MAX_SIDE {
-            continue;
-        }
-        let lux = (w * h) as usize;
-        let flags = i16_at(&faces, f + 10)
-            .and_then(|t| usize::try_from(t).ok())
-            .and_then(|t| i32_at(&texinfo, t * TEXINFO_SIZE + 64))
-            .unwrap_or(0);
-        let normals = if flags & BUMPLIGHT != 0 { 4 } else { 1 };
-        let styles: Vec<u8> = (0..4).filter_map(|k| faces.get(f + 16 + k).copied()).take_while(|s| *s != 255).collect();
-        if styles.is_empty() {
-            continue;
-        }
-        let mut sum = vec![[0f32; 3]; lux * normals];
-        for (k, style) in styles.iter().enumerate() {
-            if !on[usize::from(*style)] {
-                continue;
-            }
-            let base = ofs + k * normals * lux * 4;
-            let Some(data) = lighting.get(base..base + normals * lux * 4) else { break };
-            let mut image: Vec<[f32; 3]> = data
-                .chunks_exact(4)
-                .map(|c| hp_editor::limits::world_light::rgbe_to_linear([c[0], c[1], c[2], c[3]]))
-                .collect();
-            if normals == 4 {
-                hp_editor::limits::world_light::normalize_bumped(&mut image, lux);
-            }
-            for (acc, c) in sum.iter_mut().zip(&image) {
-                for ch in 0..3 {
-                    acc[ch] += c[ch];
-                }
-            }
-        }
-        if out.texels.len() + sum.len() >= FlatLightmaps::BUMPED as usize {
-            break;
-        }
-        *slot = out.texels.len() as u32 | if normals == 4 { FlatLightmaps::BUMPED } else { 0 };
-        let shown = |c: [f32; 3]| if hdr { c } else { hp_editor::limits::world_light::ldr_lightmap(c) };
-        out.texels.extend(sum.into_iter().map(|c| hp_light::pack::pack_rg11b10(shown(c))));
-    }
-    Ok(out)
 }
 
 #[derive(Debug, Default)]
@@ -781,6 +653,7 @@ mod tests {
             h: 2,
             scale: 16.0,
             flags: 0,
+            bumped: false,
             vertices: vec![
                 Vert { pos: [x, 0.0, 0.0], ..Default::default() },
                 Vert { pos: [x + 1.0, 0.0, 0.0], ..Default::default() },

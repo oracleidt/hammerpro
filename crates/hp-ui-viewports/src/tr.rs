@@ -41,6 +41,7 @@ pub const TR: TrTable = &[
     ("viewport.center_here", "Center views here", "Centrer les vues ici"),
     ("viewport.create_here", "Create {0} here", "Créer {0} ici"),
     ("viewport.create_entity_here", "Create entity here", "Créer une entité ici"),
+    ("viewport.team_ping", "Ping here for the team", "Signaler ici à l'équipe"),
     ("viewport.drop_apply_face", "Apply {0} to this face", "Appliquer {0} à cette face"),
     ("viewport.drop_apply_selection", "Apply {0} to the selection", "Appliquer {0} à la sélection"),
     ("viewport.drop_no_face", "Drop the material on a face", "Déposez le matériau sur une face"),

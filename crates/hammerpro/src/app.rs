@@ -14,6 +14,7 @@ use crate::autosave::{self, Autosaver};
 use crate::crash::{self, PendingCrash};
 use crate::files::{self, PendingOp};
 use crate::keyboard::{AppCapture, KeyRouter};
+use crate::perf::Phase;
 use crate::script::{self, Command, ScriptPos, Step};
 use crate::tabs::{OpenTarget, TabAction, TabId, Tabs};
 
@@ -63,6 +64,7 @@ pub struct HammerProApp {
     pub(crate) map_dialogs: hp_ui_mapping::MapDialogs,
     log_rx: Receiver<(Severity, String)>,
     autosaver: Autosaver,
+    saves: autosave::BackgroundSaves,
     discord: crate::discord::DiscordPresence,
     pub(crate) update: crate::update::UpdateController,
     pub(crate) pending: Option<PendingOp>,
@@ -121,6 +123,7 @@ pub struct HammerProApp {
     dropped_maps: Vec<PathBuf>,
     vram: crate::vram::VramMonitor,
     perf: crate::perf::PerfMonitor,
+    phases: crate::perf::PhaseClock,
     primitives: crate::primitive_stats::Monitor,
     perf_bench: crate::perf::BenchDriver,
 }
@@ -142,6 +145,8 @@ fn register_all_translations() {
     hp_app::i18n::register(crate::vram::TR);
     hp_app::i18n::register(crate::perf::TR);
     hp_app::i18n::register(crate::particle_exit::TR);
+    hp_app::i18n::register(crate::collaboration::TR);
+    hp_app::i18n::register(crate::collaboration::access::TR);
     crate::dispatch::register_translations();
 }
 
@@ -308,6 +313,7 @@ impl HammerProApp {
             map_dialogs: hp_ui_mapping::MapDialogs::new(),
             log_rx,
             autosaver: Autosaver::new(),
+            saves: autosave::BackgroundSaves::default(),
             discord: crate::discord::DiscordPresence::new(!automated),
             update: crate::update::UpdateController::new(automated),
             pending: None,
@@ -378,6 +384,7 @@ impl HammerProApp {
             dropped_maps: Vec::new(),
             vram,
             perf: crate::perf::PerfMonitor::default(),
+            phases: crate::perf::PhaseClock::default(),
             primitives: crate::primitive_stats::Monitor::default(),
             collaboration: crate::collaboration::Controller::default(),
             perf_bench: crate::perf::BenchDriver::new(),
@@ -388,6 +395,7 @@ impl HammerProApp {
         if let Some(list) = cli_restore {
             app.restore_session(&list);
         }
+        app.viewports.add_layer(Box::new(crate::collaboration::TeamLayer));
         crate::dispatch::init(&mut app);
         app.startup.mark("app");
         app
@@ -535,7 +543,17 @@ impl HammerProApp {
         let now = self.state.frame.time;
         self.vram.tick(&mut self.state, now);
         let busy = self.state.assets.busy();
-        self.perf.tick(&mut self.state, elapsed, self.avg_frame_time * 1000.0, busy, now);
+        let (focused, input) = ctx.input(|i| {
+            let focused =
+                i.viewport().focused.unwrap_or(true) || i.raw.viewports.values().any(|v| v.focused == Some(true));
+            let input = i.events.iter().any(|e| !matches!(e, egui::Event::WindowFocused(_)))
+                || i.pointer.any_down()
+                || !i.keys_down.is_empty();
+            (focused, input)
+        });
+        self.state.runtime.render.update_animation(&self.state.settings.render, focused, input, now);
+        let continuous = self.perf.note_repaints(&mut self.state, ctx, now);
+        self.perf.tick(&mut self.state, elapsed, self.avg_frame_time * 1000.0, busy, continuous, now);
         self.primitives.tick(&mut self.state, &self.pkg.lighting, ctx);
         self.perf_bench.tick(&mut self.state, ctx, elapsed);
         if self.state.runtime.gpu.pressure >= hp_app::runtime::VramPressure::High
@@ -713,12 +731,14 @@ impl HammerProApp {
             self.map_tabs_ui(ui);
         });
 
+        self.phases.mark(Phase::Panels);
         {
             hp_app::runtime::wind::update(&self.state);
             let i = tool_index(self.state.tool);
             if self.state.runtime.startup.resources.is_none() {
                 self.tools[i].update(&mut self.state, ui.ctx());
             }
+            self.phases.mark(Phase::Tool);
             let opts = self.state.scene_options();
             let AppState { assets, doc, gfx, .. } = &mut self.state;
             if let Some(gfx) = gfx.as_mut() {
@@ -728,6 +748,7 @@ impl HammerProApp {
                 self.sync_count += 1;
             }
         }
+        self.phases.mark(Phase::Sync);
         {
             let request = hp_app::runtime::render::DetailPreviewRequest {
                 enabled: self.state.settings.render.detail_preview,
@@ -739,6 +760,7 @@ impl HammerProApp {
             }
         }
         crate::dispatch::lighting::scene_synced(self);
+        self.phases.mark(Phase::Lighting);
 
         egui::CentralPanel::no_frame().show(ui, |ui| {
             self.central_size = ui.available_size();
@@ -756,6 +778,7 @@ impl HammerProApp {
                 None => self.viewports.ui(ui, state, tools[i].as_mut()),
             }
         });
+        self.phases.mark(Phase::Views);
     }
 
     fn dock_tabs(&self) -> Vec<(RightTab, String)> {
@@ -943,7 +966,55 @@ impl HammerProApp {
         }
     }
 
+    pub(crate) fn save_in_background(&mut self, ctx: &egui::Context) {
+        let Some(path) = self.state.doc.path().map(Path::to_path_buf) else {
+            files::save_map_as(&mut self.state);
+            return;
+        };
+        if !self.state.doc.can_save_in_background(&path) {
+            files::save_map_to(&mut self.state, &path);
+            return;
+        }
+        files::store_view_in_doc(&mut self.state);
+        files::remember_view(&mut self.state);
+        match self.state.doc.begin_save(&path) {
+            Ok((map, ticket)) => {
+                if let Err(e) = self.state.sidecar.save_as(&path) {
+                    self.state.log(Severity::Warning, tf!("app.sidecar_failed", e));
+                }
+                self.state.settings.add_recent(&path);
+                self.state.settings_dirty = true;
+                self.saves.start(self.tabs.active_id(), map, ticket, Some(ctx.clone()));
+            }
+            Err(e) => {
+                self.state.notify(Severity::Error, tf!("dialog.save_failed", crate::dispatch::edit_error_text(&e)));
+            }
+        }
+    }
+
+    pub(crate) fn apply_finished_saves(&mut self, wait: bool) {
+        if self.saves.is_empty() {
+            return;
+        }
+        for done in self.saves.take_finished(wait) {
+            let autosave::FinishedSave { tab, ticket, outcome } = done;
+            let name = ticket.path().file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            match outcome {
+                autosave::SaveOutcome::Saved => {
+                    self.tabs.with_document(&mut self.state, tab, |state| state.doc.finish_save(ticket, true));
+                    self.state.notify(Severity::Success, tf!("status.saved", name));
+                }
+                autosave::SaveOutcome::Failed(e) => {
+                    self.tabs.with_document(&mut self.state, tab, |state| state.doc.finish_save(ticket, false));
+                    self.state.notify(Severity::Error, tf!("dialog.save_failed", crate::dispatch::edit_error_text(&e)));
+                }
+                autosave::SaveOutcome::Superseded => {}
+            }
+        }
+    }
+
     pub(crate) fn guard_unsaved(&mut self, ctx: &egui::Context, op: PendingOp) {
+        self.apply_finished_saves(true);
         if op == PendingOp::Exit {
             self.exit_answered.clear();
             self.continue_exit(ctx);
@@ -958,6 +1029,7 @@ impl HammerProApp {
         if !ctx.input(|i| i.viewport().close_requested()) || self.allow_close {
             return;
         }
+        self.apply_finished_saves(true);
         self.flush_particle_edits();
         if self.compile.is_running() {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
@@ -1035,7 +1107,8 @@ impl HammerProApp {
             self.title = title;
         }
 
-        self.autosaver.tick(&mut self.state, &self.tabs);
+        self.autosaver.tick(&mut self.state, &self.tabs, ctx);
+        self.apply_finished_saves(false);
         self.discord.tick(&mut self.state);
         self.update.tick(&mut self.state, ctx);
         if std::mem::take(&mut self.state.runtime.update.restart_requested) {
@@ -1250,15 +1323,21 @@ impl HammerProApp {
 
     fn frame(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let frame_start = Instant::now();
+        self.phases.start(frame_start);
         let ctx = ui.ctx().clone();
         self.begin_frame(&ctx, frame);
+        self.phases.mark(Phase::Begin);
         self.window(ui);
+        self.phases.mark(Phase::Chrome);
         self.dialogs(&ctx);
+        self.phases.mark(Phase::Dialogs);
         self.route_keys(&ctx);
         self.end_frame(&ctx);
         self.run_script_command(&ctx);
         self.keep_script_running(&ctx);
         self.after_frame(&ctx, frame_start.elapsed());
+        self.phases.mark(Phase::End);
+        self.phases.publish(&mut self.state);
     }
 }
 
@@ -1306,8 +1385,8 @@ impl HammerProApp {
             eprintln!("script: idle over, {frames} frame(s) drawn meanwhile");
             self.script_idle = None;
         }
-        ctx.request_repaint();
         let Some(step) = steps.pop_front() else { return };
+        ctx.request_repaint();
         self.script_input_frame = Some(self.state.frame.index);
         match step {
             Step::Idle => {}
@@ -1591,6 +1670,7 @@ impl eframe::App for HammerProApp {
     }
 
     fn on_exit(&mut self) {
+        self.apply_finished_saves(true);
         if self.persist_settings {
             crash::end_session(&Settings::crash_dir(), std::process::id());
         }

@@ -8,6 +8,16 @@ pub struct Asset {
     pub name: String,
     pub url: String,
     pub size: u64,
+    pub sha256: Option<String>,
+}
+
+pub fn parse_digest(digest: &str) -> Option<String> {
+    let (algorithm, value) = digest.trim().split_once(':')?;
+    algorithm.eq_ignore_ascii_case("sha256").then(|| value.trim().to_ascii_lowercase())
+}
+
+pub fn valid_sha256(hex: &str) -> bool {
+    hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -52,7 +62,8 @@ pub fn parse_release(json: &str) -> Result<Release, UpdateError> {
                     let name = a.get("name")?.as_str()?.to_owned();
                     let url = a.get("browser_download_url")?.as_str()?.to_owned();
                     let size = a.get("size").and_then(Value::as_u64).unwrap_or(0);
-                    Some(Asset { name, url, size })
+                    let sha256 = a.get("digest").and_then(Value::as_str).and_then(parse_digest);
+                    Some(Asset { name, url, size, sha256 })
                 })
                 .collect()
         })
@@ -91,7 +102,8 @@ mod tests {
         "assets": [
             {"name": "notes.txt", "browser_download_url": "https://github.com/x/notes.txt", "size": 10},
             {"name": "HammerPro-1.0.3-linux.zip", "browser_download_url": "https://github.com/x/linux.zip", "size": 20},
-            {"name": "HammerPro-1.0.3-windows.zip", "browser_download_url": "https://github.com/x/win.zip", "size": 30},
+            {"name": "HammerPro-1.0.3-windows.zip", "browser_download_url": "https://github.com/x/win.zip", "size": 30,
+             "digest": "sha256:5F4BF7B83510BAAA7055BDF88DBAD3C112BD1E7B966E3A933B970C942EFADB8A"},
             {"name": "broken"}
         ]
     }"###;
@@ -110,6 +122,17 @@ mod tests {
             (a.name.as_str(), a.size, a.url.as_str()),
             ("HammerPro-1.0.3-windows.zip", 30, "https://github.com/x/win.zip")
         );
+        assert_eq!(a.sha256.as_deref(), Some("5f4bf7b83510baaa7055bdf88dbad3c112bd1e7b966e3a933b970c942efadb8a"));
+        assert!(r.assets[0].sha256.is_none());
+    }
+
+    #[test]
+    fn digests_are_read_only_for_sha256() {
+        assert_eq!(parse_digest("sha256:AB"), Some("ab".to_owned()));
+        assert_eq!(parse_digest("SHA256: ab "), Some("ab".to_owned()));
+        assert_eq!(parse_digest("sha512:ab"), None);
+        assert_eq!(parse_digest("ab"), None);
+        assert!(valid_sha256(&"a".repeat(64)) && !valid_sha256(&"g".repeat(64)) && !valid_sha256("ab"));
     }
 
     #[test]

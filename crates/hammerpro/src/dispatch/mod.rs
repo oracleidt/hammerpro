@@ -9,6 +9,7 @@ mod brush;
 mod compile;
 mod content;
 mod entities;
+mod file_watch;
 mod health;
 mod helpers;
 mod inset;

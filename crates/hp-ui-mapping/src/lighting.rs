@@ -161,6 +161,18 @@ impl LightingTab {
                 }
             });
         }
+        let r = state.runtime.lighting.relight;
+        if r.jobs > 0 && !r.full {
+            let text = tf!(
+                "lighting.relight_stats",
+                r.changed_lights,
+                fmt_count(r.relit_faces as u64),
+                fmt_decimal(f64::from(r.seconds) * 1000.0, 0),
+                fmt_decimal(f64::from(r.turnaround_seconds) * 1000.0, 0)
+            );
+            ui.label(RichText::new(text).weak().small());
+        }
+        lights_section(ui, state);
     }
 
     fn options_section(&mut self, ui: &mut Ui, state: &mut AppState) {
@@ -271,6 +283,49 @@ impl LightingTab {
             state.notify(Severity::Warning, tf!("lighting.options_failed", error));
         }
     }
+}
+
+fn lights_section(ui: &mut Ui, state: &mut AppState) {
+    egui::CollapsingHeader::new(t!("lighting.lights_heading")).id_salt("hp_lighting_lights").show(ui, |ui| {
+        ui.horizontal_wrapped(|ui| {
+            for action in [Action::SoloSelectedLights, Action::MuteSelectedLights, Action::UnmuteAllLights] {
+                if ui.add_enabled(action.enabled(state), egui::Button::new(action.label())).clicked() {
+                    state.request(action);
+                }
+            }
+        });
+        let muted = state.doc.light_plus().excluded_entities.len();
+        if muted > 0 {
+            ui.label(RichText::new(tf!("lighting.muted_count", muted)).color(theme::warning()).small());
+        }
+        if ui.button(Action::MeasureLightCosts.label()).clicked() {
+            state.runtime.lighting.costs = None;
+            state.request(Action::MeasureLightCosts);
+        }
+        if state.runtime.lighting.costs_wanted && state.runtime.lighting.costs.is_none() {
+            ui.label(RichText::new(t!("lighting.costs_pending")).weak().small());
+        }
+        let Some(mut sorted) = state.runtime.lighting.costs.clone() else { return };
+        sorted.sort_by_key(|c| std::cmp::Reverse(c.luxels));
+        let mut pick = None;
+        egui::Grid::new("hp_lighting_costs").num_columns(3).spacing([8.0, 2.0]).show(ui, |ui| {
+            for c in sorted.iter().take(12) {
+                let name = match c.entity {
+                    Some(id) => format!("{} #{id}", c.classname),
+                    None => c.classname.clone(),
+                };
+                if ui.small_button(name).clicked() {
+                    pick = c.entity;
+                }
+                ui.label(RichText::new(tf!("lighting.cost_luxels", fmt_count(c.luxels))).small());
+                ui.label(RichText::new(tf!("lighting.cost_faces", fmt_count(c.faces as u64))).weak().small());
+                ui.end_row();
+            }
+        });
+        if let Some(id) = pick {
+            state.doc.select(&[hp_editor::ObjRef::Entity(id)], SelectOp::Replace);
+        }
+    });
 }
 
 fn quality_row(ui: &mut Ui, state: &mut AppState) {

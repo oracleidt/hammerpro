@@ -179,6 +179,21 @@ impl Tool for DecalTool {
         Some(t!("create.decal.hint").to_owned())
     }
 
+    fn set_option(&mut self, _state: &mut AppState, key: &str, value: &str) -> bool {
+        match key {
+            "snap" => crate::common::option_flag(value).map(|b| self.snap_to_grid = b).is_some(),
+            _ => false,
+        }
+    }
+
+    fn option_values(&self) -> Vec<hp_app::tool::ToolOption> {
+        vec![hp_app::tool::ToolOption::new(
+            "snap",
+            crate::common::on_off(self.snap_to_grid),
+            "on: the decal snaps to the grid of the face, off: it follows the cursor freely",
+        )]
+    }
+
     fn cancel(&mut self, _state: &mut AppState) -> bool {
         self.preview = None;
         false

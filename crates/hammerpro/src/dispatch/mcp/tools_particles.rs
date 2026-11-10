@@ -275,7 +275,7 @@ fn index(a: &Args<'_>, key: &str) -> R<usize> {
 }
 
 fn output_path(a: &Args<'_>, pcf: bool) -> R<PathBuf> {
-    let path = PathBuf::from(a.str("path", 32768)?);
+    let path = super::semantic::local_path(a.str("path", 32768)?)?;
     if !path.is_absolute() || (pcf && !path.extension().is_some_and(|e| e.eq_ignore_ascii_case("pcf"))) {
         return Err("output path must be absolute and a PCF output must end in .pcf".into());
     }
@@ -287,6 +287,7 @@ fn read_pcf(state: &AppState, file: &str) -> R<Vec<u8>> {
         return Err("the input must be a .pcf file".into());
     }
     let bytes = if Path::new(file).is_absolute() {
+        super::semantic::local_path(file)?;
         let meta = std::fs::metadata(file).map_err(|e| e.to_string())?;
         if !meta.is_file() || meta.len() > hp_pcf::MAX_FILE_SIZE as u64 {
             return Err("the PCF must be a file no larger than 64 MB".into());
@@ -822,7 +823,12 @@ mod tests {
 
     #[test]
     fn particle_files_save_replace_import_and_export() {
-        let directory = PathBuf::from(format!("E:/hp-scratch/pcf111/mcp-files-{}", std::process::id()));
+        let base = if Path::new("E:/hp-scratch").is_dir() {
+            PathBuf::from("E:/hp-scratch/pcf111")
+        } else {
+            std::env::temp_dir().join("hp-pcf111")
+        };
+        let directory = base.join(format!("mcp-files-{}", std::process::id()));
         std::fs::create_dir_all(&directory).unwrap();
         let path = directory.join("effect.pcf");
         let mut state = hp_app::testing::test_state();

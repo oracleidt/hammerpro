@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 
 use hp_app::AppState;
@@ -89,6 +88,8 @@ domain! { "blender";
             "mass": number("Mass in kg of physics props, 0.1 to 50000 (default 20).", 0.1, 50000.0),
             "collision": choice("Collision model (default pieces).", &["pieces", "box", "none"]),
             "lod": boolean("Make levels of detail (default the saved lab.model_lod.enabled)."),
+            "lod_levels": integer("Number of levels of detail, 3 to 6 (default the saved lab.model_lod.levels).", 3, 6),
+            "lod_keep": number("Percent of the triangles each level keeps from the previous one, 20 to 90.", 20.0, 90.0),
             "keep_params": boolean("Write material parameters into the VMTs (default the saved lab.model_keep_params)."),
             "overwrite": boolean("Replace models that exist (default false: they are skipped)."),
             "threads": integer("Models converted at the same time, 1 to 16 (default 2 to 4 from the processor).", 1, 16),
@@ -172,6 +173,7 @@ fn blender_setup(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
         if path.is_empty() {
             state.settings.blender.path.clear();
         } else {
+            super::semantic::local_path(path)?;
             let exe = find::resolve(path).ok_or_else(|| {
                 format!(
                     "{path} is not a Blender program: give blender.exe (a file named blender...) or the Blender folder"
@@ -219,7 +221,7 @@ fn blender_setup(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
 fn spec_from(state: &AppState, a: &Args<'_>) -> R<Spec> {
     let mut spec = Spec::from_settings(&state.settings);
     for p in a.strings("paths", 2000)? {
-        spec.inputs.push(PathBuf::from(p));
+        spec.inputs.push(super::semantic::local_path(&p)?);
     }
     if spec.inputs.is_empty() {
         return Err("paths needs at least one file or folder".to_owned());
@@ -261,6 +263,12 @@ fn spec_from(state: &AppState, a: &Args<'_>) -> R<Spec> {
     }
     if let Some(b) = a.opt_bool("lod")? {
         o.convert.lod.enabled = b;
+    }
+    if let Some(n) = a.opt_u64("lod_levels", 3, 6)? {
+        o.convert.lod.levels = n as usize;
+    }
+    if let Some(pct) = a.opt_f64("lod_keep", 20.0, 90.0)? {
+        o.convert.lod.reduction = pct / 100.0;
     }
     if let Some(b) = a.opt_bool("keep_params")? {
         o.convert.keep_params = b;
@@ -424,6 +432,14 @@ mod tests {
         let none =
             call(&mut state, "import_models_batch", json!({ "paths": [dir.join("missing").display().to_string()] }));
         assert!(none.is_error);
+        let v = json!({ "paths": [dir.display().to_string()], "lod_levels": 5, "lod_keep": 40 });
+        let a = super::super::tools::args(&v, &["paths", "lod_levels", "lod_keep"]).unwrap();
+        let spec = spec_from(&state, &a).unwrap();
+        assert_eq!(spec.opts.convert.lod.levels, 5);
+        assert!((spec.opts.convert.lod.reduction - 0.4).abs() < 1e-9);
+        let bad =
+            call(&mut state, "import_models_batch", json!({ "paths": [dir.display().to_string()], "lod_levels": 9 }));
+        assert!(bad.is_error);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

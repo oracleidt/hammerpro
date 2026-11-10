@@ -42,6 +42,7 @@ pub(crate) struct EntState {
     pub desc: EntityDesc,
     pub model: Option<ModelId>,
     pub sprite: Option<MaterialId>,
+    pub stand_in: bool,
 }
 
 pub(crate) fn producers() -> Vec<Box<dyn DerivedProducer>> {
@@ -94,6 +95,7 @@ pub(crate) struct SceneSync {
     pub lighting_origin_names: AHashSet<String>,
     pub light_mode: Option<(bool, bool)>,
     pub light_report: LightPreviewReport,
+    pub placements: crate::residency::ScenePlacements,
 }
 
 fn light_report(stats: LightStats, hdr: bool, sun: Option<SunReport>) -> LightPreviewReport {
@@ -371,6 +373,54 @@ struct BuiltSolid {
     classic: [u8; 3],
     flags: ObjectFlags,
     tint: [f32; 4],
+    placement: crate::residency::Placement,
+}
+
+fn side_density(side: &hp_vmf::Side) -> crate::residency::Density {
+    let texel = |a: &hp_vmf::TexAxis| {
+        let len = a.axis.length();
+        (a.scale.abs() / len) as f32
+    };
+    let size = texel(&side.uaxis).max(texel(&side.vaxis));
+    if size.is_finite() && size > 0.0 {
+        crate::residency::Density::Scale(size)
+    } else {
+        crate::residency::Density::Unknown
+    }
+}
+
+fn merge_density(a: crate::residency::Density, b: crate::residency::Density) -> crate::residency::Density {
+    use crate::residency::Density;
+    match (a, b) {
+        (Density::Scale(a), Density::Scale(b)) => Density::Scale(a.max(b)),
+        _ => Density::Unknown,
+    }
+}
+
+fn solid_placement(
+    node: &SolidNode,
+    mesh: &ObjectMesh,
+    material_of: &dyn Fn(&hp_vmf::Side) -> MaterialId,
+) -> crate::residency::Placement {
+    use crate::residency::Density;
+    let mut mats: Vec<(MaterialId, Density)> = Vec::with_capacity(mesh.batches.len());
+    for side in &node.solid.sides {
+        let id = material_of(side);
+        if id == 0 {
+            continue;
+        }
+        let density = side_density(side);
+        match mats.iter_mut().find(|(m, _)| *m == id) {
+            Some(slot) => slot.1 = merge_density(slot.1, density),
+            None => mats.push((id, density)),
+        }
+    }
+    for batch in &mesh.batches {
+        if !mats.iter().any(|(m, _)| *m == batch.material) {
+            mats.push((batch.material, Density::Unknown));
+        }
+    }
+    crate::residency::Placement { min: mesh.aabb_min, max: mesh.aabb_max, mats }
 }
 
 fn transform_mesh(mesh: &mut hp_render::ObjectMesh, m: &glam::DMat4) {
@@ -478,6 +528,7 @@ impl AssetManager {
                 renderer.remove_object(id);
                 self.scene.selected.remove(&id);
                 self.scene.upload_pending.remove(&id);
+                self.scene.placements.forget(id);
             }
             if remesh {
                 let ids: Vec<Id> = doc.scene().solids().keys().copied().collect();
@@ -698,6 +749,7 @@ impl AssetManager {
         std::mem::swap(&mut self.scene.collision, &mut live.collision);
         self.scene.no_progressive = live.no_progressive;
         renderer.restore_scene(render).drop_in_background();
+        self.residency.last = None;
         let model_gone = self.scene.ents.values().any(|e| e.model.is_some_and(|m| !renderer.has_model(m)));
         if generation != self.generation || model_gone || live.force_entities {
             self.scene.force_entities = true;
@@ -745,6 +797,11 @@ impl AssetManager {
         self.mats.scene_epoch += 1;
         self.scene.epoch_floor = self.mats.scene_epoch;
         renderer.park_scene().drop_in_background();
+        self.scene.placements.clear();
+        self.begin_fresh_scene();
+        if !display.smoothing_groups {
+            self.place_document_solids(doc);
+        }
         self.scene.selected.clear();
         self.scene.ents.clear();
         self.scene.derived.clear();
@@ -957,7 +1014,8 @@ impl AssetManager {
             if let Some(m) = physics.get(&obj) {
                 transform_mesh(&mut mesh, m);
             }
-            BuiltSolid { id: *id, mesh, wire, classic, flags, tint }
+            let placement = solid_placement(n, &mesh, &material_of);
+            BuiltSolid { id: *id, mesh, wire, classic, flags, tint, placement }
         };
         if parallel && nodes.len() >= PARALLEL_SOLIDS {
             nodes.par_iter().map(build).collect()
@@ -966,8 +1024,38 @@ impl AssetManager {
         }
     }
 
+    fn place_document_solids(&mut self, doc: &Document) {
+        let scene = doc.scene();
+        let mut placed: Vec<(Id, crate::residency::Placement)> = Vec::with_capacity(scene.solids().len());
+        for (id, n) in scene.solids() {
+            if n.bounds.is_empty() || !n.bounds.min.is_finite() || !n.bounds.max.is_finite() {
+                continue;
+            }
+            let mut mats: Vec<(MaterialId, crate::residency::Density)> = Vec::new();
+            for side in &n.solid.sides {
+                let known =
+                    self.mats.raw_world.get(side.material.as_str()).copied().or_else(|| {
+                        self.mats.by_name[0].get(crate::util::material_key(&side.material).as_str()).copied()
+                    });
+                let Some(material) = known else { continue };
+                let density = side_density(side);
+                match mats.iter_mut().find(|(m, _)| *m == material) {
+                    Some(slot) => slot.1 = merge_density(slot.1, density),
+                    None => mats.push((material, density)),
+                }
+            }
+            let min = n.bounds.min.as_vec3().to_array();
+            let max = n.bounds.max.as_vec3().to_array();
+            placed.push((*id, crate::residency::Placement { min, max, mats }));
+        }
+        for (id, placement) in placed {
+            self.scene.placements.set_object(id, placement);
+        }
+    }
+
     fn upload_solids(&mut self, renderer: &mut Renderer, built: Vec<BuiltSolid>) {
         for b in built {
+            self.scene.placements.set_object(b.id, b.placement);
             renderer.upsert_object(b.id, b.mesh);
             renderer.set_object_wire_colors(b.id, b.wire, b.classic);
             renderer.set_object_flags(b.id, b.flags);
@@ -1071,6 +1159,19 @@ impl AssetManager {
             (Some((path, skin)), true) => self.render_model_for(renderer, path, *skin, desc.body, desc.anim.as_deref()),
             _ => None,
         };
+        let stand_in_for = match (&desc.model, model, opts.show_models) {
+            (Some((path, _)), None, true) => {
+                let key = model_data_key(path, desc.anim.as_deref());
+                let reloading = matches!(self.models.map.get(&key), Some(crate::models::ModelEntry::Loading));
+                let previous = self.scene.ents.get(&id).filter(|s| s.desc.model.as_ref().map(|m| &m.0) == Some(path));
+                previous.and_then(|s| s.model).filter(|_| reloading)
+            }
+            _ => None,
+        };
+        let (model, stand_in) = match stand_in_for {
+            Some(previous) => (Some(previous), true),
+            None => (model, false),
+        };
         let editor_objects = self.scene.editor_objects.unwrap_or(true);
         let sprite = match (&desc.sprite, opts.show_helpers && (editor_objects || !desc.sprite_is_icon)) {
             (Some(s), true) => {
@@ -1102,7 +1203,7 @@ impl AssetManager {
             self.scene.selected.remove(&obj);
         }
         let lit = desc.light.is_some();
-        let old = self.scene.ents.insert(id, EntState { desc, model, sprite });
+        let old = self.scene.ents.insert(id, EntState { desc, model, sprite, stand_in });
         let (old_model, old_sprite, old_lit) =
             old.map_or((false, false, false), |o| (o.model.is_some(), o.sprite.is_some(), o.desc.light.is_some()));
         self.scene.instances_dirty |= old_model || model.is_some();
@@ -1151,6 +1252,9 @@ impl AssetManager {
             return self.render_model(renderer, path, skin);
         }
         let key = model_data_key(path, anim);
+        if let Some(id) = self.resident_variant(&key, path, skin, body) {
+            return id;
+        }
         let data = self.model_data(&key)?;
         let body = data.body_key(body);
         if body == 0 && key == path {
@@ -1207,6 +1311,24 @@ impl AssetManager {
         });
     }
 
+    fn resident_variant(&mut self, key: &str, path: &str, skin: u32, body: u32) -> Option<Option<ModelId>> {
+        let Some(crate::models::ModelEntry::Cached(info)) = self.models.map.get(key) else { return None };
+        let parts = crate::models::info_body_parts(info);
+        let skin = if skin < info.skins.max(1) { skin } else { 0 };
+        let body = crate::models::body_key(&parts, body);
+        if body == 0 && key == path {
+            return self.reuse_render_model(&(path.to_owned(), skin));
+        }
+        let epoch = self.mats.scene_epoch;
+        let (m, _) = self.models.variants.get_mut(&(key.to_owned(), skin, body))?;
+        m.epoch = epoch;
+        let (id, materials) = (m.id, m.materials.clone());
+        for mat in materials {
+            self.touch_material(mat);
+        }
+        Some(id)
+    }
+
     fn reuse_render_model(&mut self, key: &(String, u32)) -> Option<Option<ModelId>> {
         let epoch = self.mats.scene_epoch;
         let m = self.models.render.get_mut(key)?;
@@ -1234,7 +1356,7 @@ impl AssetManager {
             return;
         }
         let waits = |s: &EntState| {
-            s.model.is_none()
+            (s.model.is_none() || s.stand_in)
                 && s.desc
                     .model
                     .as_ref()
@@ -1381,6 +1503,7 @@ impl AssetManager {
             .chain(previewed)
             .collect();
         self.play_model_lighting(renderer, &list, &origins);
+        self.scene.placements.set_instances(&self.residency.models, &list);
         renderer.set_model_instances(&list);
     }
 
@@ -1491,6 +1614,7 @@ impl AssetManager {
         renderer.set_projectors(&projected);
         let hdr = d.light_hdr;
         if !opts.lighting_preview {
+            self.scene.animated_lights = false;
             renderer.set_lights(&[], [0.0; 3]);
             renderer.set_sun(SunParams::default());
             self.scene.light_targets.clear();
@@ -1649,5 +1773,28 @@ mod tests {
         assert!(colors.len() >= 30, "{} distinct colors", colors.len());
         assert!(colors.iter().all(|c| c[3] == 255));
         assert_eq!(smoothing_color(u32::MAX)[3], 255);
+    }
+}
+
+#[cfg(test)]
+mod residency_tests {
+    use super::*;
+    use crate::residency::Density;
+
+    #[test]
+    fn brush_faces_report_their_largest_texel() {
+        let side = hp_vmf::Side {
+            uaxis: hp_vmf::TexAxis { axis: glam::DVec3::X, shift: 0.0, scale: 0.25 },
+            vaxis: hp_vmf::TexAxis { axis: glam::DVec3::NEG_Y * 2.0, shift: 0.0, scale: 1.0 },
+            ..hp_vmf::Side::default()
+        };
+        assert_eq!(side_density(&side), Density::Scale(0.5), "1 unit per texel over an axis of length 2");
+        assert_eq!(merge_density(Density::Scale(0.25), Density::Scale(2.0)), Density::Scale(2.0));
+        assert_eq!(merge_density(Density::Scale(0.25), Density::Unknown), Density::Unknown);
+        let broken = hp_vmf::Side {
+            uaxis: hp_vmf::TexAxis { axis: glam::DVec3::ZERO, shift: 0.0, scale: 0.25 },
+            ..hp_vmf::Side::default()
+        };
+        assert_eq!(side_density(&broken), Density::Unknown);
     }
 }

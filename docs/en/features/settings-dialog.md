@@ -12,7 +12,9 @@ The **Settings** window holds every option of Hammer Pro, sorted in pages. Chang
 
 ## The window
 
-The list of pages is on the left, the selected page on the right. The footer holds:
+The list of pages is on the left, grouped in sections: **Application** (General, Updates, Storage, Keyboard), **Game and content** (Game, Entities and browsers), **Views and rendering** (Viewports, Helpers, Rendering, Lighting, Nav mesh and particles), **Editing** (Editing, Selection, Brushes, Vertices and displacements, Instances, Cordons and visgroups, Prefabs), **Compile and check** (Compile, Map health) and **Integrations** (Discord, Blender, VTF editor, MCP). The selected page is on the right.
+
+**Find a setting**, the field above the list, finds an option by its name: type a few letters and the list shows only the pages that contain a matching option, each with the matching text under its name (hover it to read it whole). Case and accents are ignored; the search uses the language of the interface and, in French or Russian, the English names too. The text shown under a page prefers an option name that starts with what you typed. Clear the field to see every page again. The footer holds:
 
 | Control | What it does |
 | --- | --- |
@@ -23,11 +25,11 @@ The list of pages is on the left, the selected page on the right. The footer hol
 
 Settings are saved in `settings.toml`, in `%APPDATA%\HammerPro` on Windows (see [Files and folders](../reference/files-and-folders.md)). The file is written atomically; if it cannot be read, Hammer Pro starts with the defaults and logs a warning. Theme and language apply immediately.
 
-Only the **Keyboard** page has a search field (**Search actions or shortcuts**). To find an option by name, use the [Settings reference](../reference/settings.md), or the `get_settings` MCP tool.
+**Find a setting** searches the options, explanations and messages of every page except **Updates** and **Storage** (open those two directly); searching an action name finds the **Keyboard** page, which has its own field (**Search actions or shortcuts**) to find the shortcut itself. The [Settings reference](../reference/settings.md) and the `get_settings` MCP tool list every key.
 
 ## The pages
 
-In the order of the list:
+What each page contains:
 
 | Page | What it contains |
 | --- | --- |
@@ -40,8 +42,8 @@ In the order of the list:
 | **Game** | The game maps are made for (with **Search again**), the **Garry's Mod folder**, **Content** (mounting options, content downloaded from servers), **Content scan** (the saved index, the scan mode, **Rebuild index**; see [Content index and scan](content-index.md)), **Custom texture folders**, **Extra game folders**, **Steam games by AppID**, **Entity definitions (FGD)** (main FGD and extra FGD files), **Maps** (map folder), **Testing in game** (the Hammer Pro bridge and **Spawn at the editor camera**). See [Game setup](../getting-started/game-setup.md) and [Game launch](game-launch.md). |
 | **Viewports** | **Controls**: camera controls (Hammer Pro, Hammer, Hammer++), invert mouse X, camera acceleration time, Ctrl + mouse wheel in 2D (grid size or zoom), zoom the 2D views together, grid size step, size units. **Camera**: field of view, speed, fast multiplier, mouse sensitivity, invert mouse Y, camera keys (Auto, AZERTY, QWERTY), view distance, zoom toward the cursor, outline objects under the mouse. **Rendering**: antialiasing (MSAA), grid in the 3D view, highlight grid lines every N, 1024 unit lines. **Colors**: 2D background, 3D background, selection. See [Camera and navigation](camera-navigation.md). |
 | **Helpers** | Entity helpers (show, draw for selected or every entity), editor objects, input/output connections (hidden, valid, missing target, unknown output colors), overlays and ropes (show, simulate), entity names. See [Render modes and display](render-modes-display.md). |
-| **Rendering** | 3D view (near plane, model distance, grid opacity, culling radius, shadowed lights, HDR light values, sky light only under the sky, static prop shadows, 3D grid on faces, radius culling, skip hidden geometry, sky, 3D skybox, water, normal maps, cubemap reflections, fog, fog volumes and their texture, fish and swimming fish, player view lighting, render effects, model fade, opaque materials, walkable slopes, selection outline, collision models), 2D views (models, fill opacity, icon size, grid density, vertex dots, entity icons, dotted grid, visgroup colors, object colors in 2D and in 3D wireframe...), tool textures hidden in 3D, displacements in 2D, frame rate limits and vertical sync. See [Render modes and display](render-modes-display.md) and [Performance](../troubleshooting/performance.md). |
-| **Lighting** | Baked lighting preview (bake when turned on, baking threads, full resolution luxels), lightmap budget (and its status bar gauge), tiny lightmap scale, light styles. See [Lighting preview](lighting-preview.md). |
+| **Rendering** | 3D view (near plane, model distance, grid opacity, culling radius, shadowed lights, HDR light values, sky light only under the sky, static prop shadows, 3D grid on faces, radius culling, skip hidden geometry, sky, 3D skybox, water, normal maps, cubemap reflections, fog, fog volumes and their texture, fish and swimming fish, player view lighting, render effects, model fade, opaque materials, walkable slopes, selection outline, collision models), 2D views (models, fill opacity, icon size, grid density, vertex dots, entity icons, dotted grid, visgroup colors, object colors in 2D and in 3D wireframe...), tool textures hidden in 3D, displacements in 2D, frame rate limits and vertical sync, graphics memory (budget, keep other tabs on the graphics card, load texture detail by distance). See [Render modes and display](render-modes-display.md) and [Performance](../troubleshooting/performance.md). |
+| **Lighting** | Baked lighting preview (bake when turned on, bake the visible area first, prepare it in the background, baking threads, full resolution luxels), lightmap budget (and its status bar gauge), tiny lightmap scale, light styles. See [Lighting preview](lighting-preview.md). |
 | **Nav mesh and particles** | Navigation mesh display (show, fill areas, connections) and particles (show, selection only). See [Navigation mesh](nav-mesh.md) and [Particles](particles.md). |
 | **Editing** | **New objects**: default material (with **Use current**), texture scale, lightmap scale, point entity, brush entity, color of new brushes. **Behavior**: undo levels, texture lock, texture scale lock, nudge with arrow keys, offset pasted objects, undo restores the selection. |
 | **Selection** | Transforms (rotation step, free rotation key, handle size) and behavior (keep visgroups when cloning, Shift+arrows clone, 3D stretch handles, gizmo in local space, camera tool click to zoom). See [Selection tool](selection-tool.md). |

@@ -3,6 +3,7 @@ use hp_render::{MaterialDesc, MaterialFlags, RenderMode, Renderer, TexFormat, Te
 
 #[test]
 fn complete_child_graphs_match_the_native_particle_render() {
+    let _gpu = crate::gpu_lock();
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let Ok(adapter) = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())) else {
         return;
@@ -95,6 +96,7 @@ fn complete_child_graphs_match_the_native_particle_render() {
 
 #[test]
 fn rope_particles_match_native_subdivision_texture_coordinates_and_endpoint_attributes() {
+    let _gpu = crate::gpu_lock();
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let Ok(adapter) = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())) else {
         return;
@@ -243,6 +245,7 @@ fn rope_particles_match_native_subdivision_texture_coordinates_and_endpoint_attr
 
 #[test]
 fn mixed_model_and_sprite_passes_keep_native_authored_order_through_scene_merge() {
+    let _gpu = crate::gpu_lock();
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let Ok(adapter) = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())) else {
         return;
@@ -384,6 +387,7 @@ fn mixed_model_and_sprite_passes_keep_native_authored_order_through_scene_merge(
 
 #[test]
 fn model_particles_match_native_geometry_angles_normals_color_and_alpha() {
+    let _gpu = crate::gpu_lock();
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let Ok(adapter) = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())) else {
         eprintln!("no GPU adapter: native model-particle references skipped");
@@ -561,6 +565,7 @@ fn each_renderer_keeps_its_primary_and_secondary_animation_clock() {
 
 #[test]
 fn multiple_renderers_reach_the_gpu_with_native_opacity_and_orientation() {
+    let _gpu = crate::gpu_lock();
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let Ok(adapter) = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
         power_preference: wgpu::PowerPreference::HighPerformance,

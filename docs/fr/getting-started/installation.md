@@ -39,7 +39,7 @@ Remplacez `hammerpro.exe` par le nouveau. Vos paramètres, sauvegardes automatiq
 | Sauvegardes automatiques et sauvegardes d'urgence | `%LOCALAPPDATA%\HammerPro\autosave\` |
 | Caches (miniatures, données d'édition par map dans `maps\`) | `%LOCALAPPDATA%\HammerPro\` |
 
-Hammer Pro peut aussi écrire dans le jeu : les maps compilées vont dans `garrysmod/maps` (option **Copier dans le dossier maps** de la fenêtre de compilation), les matériaux personnalisés des compilations de test dans l'addon `garrysmod/addons/hammerpro_dev`, et l'addon pont facultatif dans `garrysmod/addons/hammerpro_bridge`. La liste complète se trouve dans [Fichiers et dossiers](../reference/files-and-folders.md).
+Hammer Pro peut aussi écrire dans le jeu : les maps compilées vont dans `garrysmod/maps` (option **Copier dans le dossier maps** de la fenêtre de compilation), le contenu personnalisé des compilations de test dans l'addon `garrysmod/addons/hammerpro_dev`, et l'addon pont facultatif dans `garrysmod/addons/hammerpro_bridge`. La liste complète se trouve dans [Fichiers et dossiers](../reference/files-and-folders.md).
 
 ## Désinstallation
 

@@ -442,7 +442,13 @@ pub struct Outliner {
     scroll_to: Option<usize>,
     counts: (usize, usize),
     list_rect: egui::Rect,
+    pending: bool,
+    build_ms: f64,
+    built_at: f64,
 }
+
+const SLOW_BUILD_MS: f64 = 2.0;
+const REBUILD_INTERVAL_S: f64 = 0.25;
 
 impl Default for Outliner {
     fn default() -> Self {
@@ -470,13 +476,26 @@ impl Outliner {
             scroll_to: None,
             counts: (0, 0),
             list_rect: egui::Rect::NOTHING,
+            pending: false,
+            build_ms: 0.0,
+            built_at: 0.0,
         }
     }
 
     fn refresh(&mut self, state: &AppState) {
         let key = DocKey::of(&state.doc);
-        if self.tree_key != Some(key) {
+        self.pending = false;
+        if self.tree_key.is_some()
+            && self.tree_key != Some(key)
+            && self.build_ms > SLOW_BUILD_MS
+            && (0.0..REBUILD_INTERVAL_S).contains(&(state.frame.time - self.built_at))
+        {
+            self.pending = true;
+        } else if self.tree_key != Some(key) {
+            let start = std::time::Instant::now();
             self.tree = build_tree(&state.doc, &mut self.classes);
+            self.build_ms = start.elapsed().as_secs_f64() * 1000.0;
+            self.built_at = state.frame.time;
             self.tree_key = Some(key);
             let scene = state.doc.scene();
             self.counts = (scene.solids().values().filter(|n| n.owner == Owner::World).count(), scene.entities().len());
@@ -513,6 +532,9 @@ impl Outliner {
 
     pub fn ui(&mut self, ui: &mut Ui, state: &mut AppState) {
         self.refresh(state);
+        if self.pending {
+            ui.ctx().request_repaint_after(std::time::Duration::from_secs_f64(REBUILD_INTERVAL_S));
+        }
 
         ui.horizontal(|ui| {
             let width = (ui.available_width() - 64.0).max(80.0);

@@ -23,10 +23,15 @@ impl TexFailure {
     }
 }
 
-pub(crate) fn prepare_texture(fs: &hp_fs::GameFs, key: &str, bc: bool) -> Result<PreparedTexture, TexFailure> {
+pub(crate) fn prepare_texture(
+    fs: &hp_fs::GameFs,
+    key: &str,
+    bc: bool,
+    cap: u32,
+) -> Result<PreparedTexture, TexFailure> {
     if let Some(name) = key.strip_suffix(crate::water::FRAMES_SUFFIX) {
-        let bytes = fs.load_texture_raw(name).ok_or(TexFailure::Missing)?;
-        return crate::water::pack_frames(&bytes).map_err(|e| TexFailure::broken(name, e));
+        let packed = fs.with_texture_raw(name, crate::water::pack_frames).ok_or(TexFailure::Missing)?;
+        return packed.map_err(|e| TexFailure::broken(name, e));
     }
     if let Some(name) = key.strip_suffix(crate::material::LINEAR_SUFFIX) {
         let mut p = prepare_plain(fs, name, bc)?;
@@ -47,22 +52,25 @@ pub(crate) fn prepare_texture(fs: &hp_fs::GameFs, key: &str, bc: bool) -> Result
     if let Some(name) = key.strip_suffix(crate::envmap::CUBE_SUFFIX) {
         return prepare_cube(fs, name);
     }
-    prepare_plain(fs, key, bc)
+    prepare_capped(fs, key, bc, cap.clamp(1, MAX_TEXTURE_DIM))
 }
 
 fn prepare_cube(fs: &hp_fs::GameFs, name: &str) -> Result<PreparedTexture, TexFailure> {
-    let bytes = fs.load_texture_raw(name).ok_or(TexFailure::Missing)?;
-    let upload = crate::envmap::cube_strip(&bytes).map_err(|e| TexFailure::broken(name, e))?;
+    let strip = fs.with_texture_raw(name, crate::envmap::cube_strip).ok_or(TexFailure::Missing)?;
+    let upload = strip.map_err(|e| TexFailure::broken(name, e))?;
     Ok(PreparedTexture { size: [upload.width, upload.height], upload })
 }
 
 fn prepare_normal(fs: &hp_fs::GameFs, name: &str, frame: u32, bc: bool) -> Result<PreparedTexture, TexFailure> {
     let max = crate::bump::MAX_NORMAL_DIM;
     let mut vtf_error = None;
-    if let Some(bytes) = fs.load_texture_raw(name) {
-        let frames = hp_vtf::read_info(&bytes).map(|i| i.frames.max(1)).unwrap_or(1);
+    let prepared = fs.with_texture_raw(name, |bytes| {
+        let frames = hp_vtf::read_info(bytes).map(|i| i.frames.max(1)).unwrap_or(1);
         let frame = if frame < frames { frame } else { 0 };
-        match prepare_vtf_with(&bytes, bc, frame, max) {
+        prepare_vtf_with(bytes, bc, frame, max)
+    });
+    if let Some(prepared) = prepared {
+        match prepared {
             Ok(mut p) => {
                 p.upload.format = p.upload.format.to_linear();
                 return Ok(p);
@@ -98,9 +106,13 @@ pub(crate) fn luminance_alpha(up: &mut TextureUpload) {
 }
 
 fn prepare_plain(fs: &hp_fs::GameFs, name: &str, bc: bool) -> Result<PreparedTexture, TexFailure> {
+    prepare_capped(fs, name, bc, MAX_TEXTURE_DIM)
+}
+
+fn prepare_capped(fs: &hp_fs::GameFs, name: &str, bc: bool, cap: u32) -> Result<PreparedTexture, TexFailure> {
     let mut vtf_error = None;
-    if let Some(bytes) = fs.load_texture_raw(name) {
-        match prepare_vtf(&bytes, bc) {
+    if let Some(prepared) = fs.with_texture_raw(name, |bytes| prepare_vtf_with(bytes, bc, 0, cap)) {
+        match prepared {
             Ok(p) => return Ok(p),
             Err(e) => {
                 log::debug!("texture {name}: {e}, decoding a single level");
@@ -108,7 +120,7 @@ fn prepare_plain(fs: &hp_fs::GameFs, name: &str, bc: bool) -> Result<PreparedTex
             }
         }
     }
-    let tex = match fs.load_texture(name, Some(MAX_TEXTURE_DIM)) {
+    let tex = match fs.load_texture(name, Some(cap)) {
         Ok(tex) => tex,
         Err(hp_fs::FsError::NotFound(_)) => {
             return Err(vtf_error.map_or(TexFailure::Missing, |e| TexFailure::broken(name, e)));
@@ -123,6 +135,7 @@ fn prepare_plain(fs: &hp_fs::GameFs, name: &str, bc: bool) -> Result<PreparedTex
     })
 }
 
+#[cfg(test)]
 pub(crate) fn prepare_vtf(bytes: &[u8], bc: bool) -> Result<PreparedTexture, String> {
     prepare_vtf_with(bytes, bc, 0, MAX_TEXTURE_DIM)
 }
@@ -212,6 +225,30 @@ pub(crate) struct TexEntry {
     pub loading: bool,
     pub queued: bool,
     pub missing: bool,
+    pub stream: StreamState,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct StreamState {
+    pub cap: u32,
+    pub top: u32,
+    pub levels: u32,
+    pub bytes: u64,
+    pub pending: bool,
+    pub lower_since: Option<std::time::Instant>,
+}
+
+impl StreamState {
+    pub(crate) fn uploaded(cap: u32, upload: &TextureUpload) -> Self {
+        Self {
+            cap,
+            top: upload.width.max(upload.height),
+            levels: upload.levels.len() as u32,
+            bytes: upload.levels.iter().map(|l| l.len() as u64).sum(),
+            pending: false,
+            lower_since: None,
+        }
+    }
 }
 
 #[derive(Default)]

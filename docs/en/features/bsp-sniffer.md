@@ -44,7 +44,7 @@ There is no map file to configure by default: the whole map is rebuilt from the 
 
 | Setting | What it does | Default |
 | --- | --- | --- |
-| **Output folder** (`output_dir`) | Where the files go. Empty: `%LOCALAPPDATA%\HammerPro\sniffer` (the folder the Storage panel lists). | empty |
+| **Output folder** (`output_dir`) | Where the files go. Empty: `%LOCALAPPDATA%\HammerPro\sniffer` (the folder the Storage panel lists). Otherwise the full path of a folder of this computer: network shares (`\\server\share`), relative paths and `..` are refused. | empty |
 | **File name** (`file_name_template`) | Name of the VMF without extension. Tokens: `{map}` `{ip}` `{port}` `{date}` `{time}` `{datetime}`. Unsafe characters are replaced; an existing file is never overwritten (a number is added). | `{map}_sniffed` |
 | **Garry's Mod folder** (`gmod_dir`) | The folder that holds `garrysmod`. Empty: detected from Steam. Both the 64 bit branch (`bin\win64\gmod.exe`) and the 32 bit one (`bin\gmod.exe`, or the executable at the root of a 32 bit only install) are handled, see **Game version**. | automatic |
 | **Launch options** (`launch_options`) | Added to the Steam launch. The server address (`+connect`), `-condebug` and `-insecure` are managed for you: the connection cannot be redirected by this text. | `-windowed -w 800 -h 450 -novid -nojoy -nosplash -console +mat_picmip 4 +fps_max 30 +volume 0` |

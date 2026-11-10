@@ -296,10 +296,13 @@ fn run_action(host: &mut dyn UiHost, ctx: &egui::Context, action: Action) -> Too
         return ToolResult::error("run_action: Hammer Pro is in the middle of another edit; try again");
     }
     let before = state.console.revision;
-    state.doc.begin(super::tools::undo_label("run_action"));
+    let history = matches!(action, Action::Undo | Action::Redo);
+    if !history {
+        state.doc.begin(super::tools::undo_label("run_action"));
+    }
     host.execute(ctx, action);
     let state = host.state();
-    let recorded = state.doc.in_transaction() && state.doc.commit();
+    let recorded = !history && state.doc.in_transaction() && state.doc.commit();
     let new = (state.console.revision.saturating_sub(before) as usize).min(state.console.len());
     let messages: Vec<&str> = state.console.lines().rev().take(new.min(50)).rev().map(|l| l.text.as_str()).collect();
     let checked = match action.check(state) {

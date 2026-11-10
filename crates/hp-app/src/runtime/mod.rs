@@ -44,7 +44,7 @@ pub use content::{
 };
 pub use discord::{DiscordRuntime, DiscordStatus};
 pub use entities::{AssetKind, AssetPick, EntitiesRuntime, KeyvalueClip};
-pub use gpu::{GpuRelease, GpuReleased, GpuRuntime, VramBreakdown, VramPressure, VramSource};
+pub use gpu::{GpuRelease, GpuReleased, GpuRuntime, TextureStreaming, VramBreakdown, VramPressure, VramSource};
 pub use health::{HealthRuntime, LeakResult};
 pub use helpers::HelpersRuntime;
 pub use instances::InstancesRuntime;
@@ -55,18 +55,21 @@ pub use lab::{
 pub use launch::{ContentUse, GameState, LaunchRuntime, MapLoadReport, content_use};
 pub use lighting::{
     BakeKind, BakePhase, BakeProgress, BakeSummary, BudgetEntry, BudgetSummary, IndirectPhase, IndirectStatus,
-    LightingRuntime, PreviewStats,
+    LightCostEntry, LightingRuntime, PreparedStatus, PreviewStats, RelightStats,
 };
 pub use mcp::{McpClientRow, McpRuntime};
 pub use mesh::{DispLoopRequest, EdgeRequest, ErosionDialog, MeshRuntime, TerrainPreview};
 pub use mesh_disp::MeshDispRuntime;
-pub use perf::{BenchRequest, BenchResult, PerfLevel, PerfPlan, PerfRuntime, PerfSample, Reflections};
+pub use perf::{
+    BenchRequest, BenchResult, FRAME_PHASES, FramePhases, PerfLevel, PerfPlan, PerfRuntime, PerfSample, Reflections,
+    RepaintCount, ViewCost,
+};
 pub use placement::{
     CreatePrefabRequest, FileStamp, PlacementRuntime, PrefabCache, PrefabLoad, PrefabTokens, file_stamp,
 };
 pub use render::RenderRuntime;
 pub use roadside::{PreviewLine, PreviewTri, RoadPreview, RoadsideRuntime};
-pub use selection::SelectionRuntime;
+pub use selection::{DragTransform, SelectionRuntime};
 pub use shader::{LiveGraph, ShaderRequest, ShaderRuntime};
 pub use startup::{OpeningStatus, PreloadMaterial, PreloadResource, PreloadResult, ResourceLoading, StartupRuntime};
 pub use update::{UpdateFailure, UpdateInfo, UpdateRuntime, UpdateStatus};

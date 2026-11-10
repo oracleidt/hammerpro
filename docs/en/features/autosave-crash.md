@@ -6,7 +6,7 @@ Hammer Pro saves copies of your modified maps in the background, saves them agai
 
 ## Autosave
 
-Every few minutes, each open map with unsaved changes is written to a new autosave file, in the background (the console says **Autosaved**). The map file itself is never touched. The copy includes the cameras of the map.
+Every few minutes, each open map with unsaved changes is written to a new autosave file, in the background (the console says **Autosaved**). The map file itself is never touched. The copy includes the cameras of the map. The map is copied a few milliseconds at a time between frames, so even a huge map autosaves without a hitch; an edit made during the copy starts it again (selecting objects does not). **Save** (`Ctrl+S`) writes the map file in the background too: closing the map or Hammer Pro waits for that write to finish, and a **Save As...** made meanwhile keeps the new file.
 
 Set it in **Settings > General**, section **Autosave**:
 

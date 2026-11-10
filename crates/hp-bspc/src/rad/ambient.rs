@@ -18,9 +18,19 @@ struct AmbientSample {
     cube: [Vec3A; 6],
 }
 
-pub(crate) struct FaceColors {
-    pub luxels: Vec<Vec<Vec<Vec3A>>>,
+pub(crate) struct FaceColors<'a> {
+    pub light: &'a [super::bake::FaceLight],
     pub average: Vec<Vec<Vec3A>>,
+}
+
+impl FaceColors<'_> {
+    fn luxel(&self, f: &super::surface::LitFace, fi: usize, pass: usize, i: usize) -> Option<Vec3A> {
+        let l = self.light.get(fi)?;
+        let lux = f.luxels();
+        (i < lux).then(|| {
+            l.values.get(l.index(pass, 0, 0, lux) + i).map(|v| super::output::finish(Vec3A::from(*v), f.minlight))
+        })?
+    }
 }
 
 fn leaf_planes(map: &MapData, leaf: usize, leaf_parent: &[i32], node_parent: &[i32]) -> Vec<(DVec3, f64)> {
@@ -128,13 +138,13 @@ fn fraction(v: f64, lo: f64, hi: f64) -> u8 {
 
 struct Sampler<'a> {
     ctx: &'a Ctx<'a>,
-    colors: &'a FaceColors,
+    colors: &'a FaceColors<'a>,
     sky: Vec<Vec3A>,
     tan_theta: f32,
 }
 
 impl<'a> Sampler<'a> {
-    fn new(ctx: &'a Ctx<'a>, colors: &'a FaceColors) -> Self {
+    fn new(ctx: &'a Ctx<'a>, colors: &'a FaceColors<'a>) -> Self {
         let sky = (0..ctx.passes)
             .map(|p| {
                 ctx.lights
@@ -166,7 +176,7 @@ impl<'a> Sampler<'a> {
                     let (x, y) = ((s.round() as usize).min(f.w - 1), (t.round() as usize).min(f.h - 1));
                     for p in 0..passes {
                         let avg = self.colors.average[fi as usize][p];
-                        let point = self.colors.luxels[fi as usize][p].get(y * f.w + x).copied().unwrap_or(avg);
+                        let point = self.colors.luxel(f, fi as usize, p, y * f.w + x).unwrap_or(avg);
                         rad[p * set.len() + k] = (avg * scale_avg + point * (1.0 - scale_avg)) / 255.0 * f.reflectivity;
                     }
                 }
@@ -261,7 +271,7 @@ fn marked_cells(ctx: &Ctx<'_>, spacing: f32) -> Vec<[i32; 3]> {
 
 pub(crate) fn probe_volume(
     ctx: &Ctx<'_>,
-    colors: &FaceColors,
+    colors: &FaceColors<'_>,
     opts: &ProbeOptions,
 ) -> Option<hp_light::probes::ProbeVolume> {
     let map = ctx.map;
@@ -297,7 +307,7 @@ pub(crate) fn probe_volume(
     volume.is_consistent().then_some(volume)
 }
 
-pub(crate) fn leaf_ambient(ctx: &Ctx<'_>, colors: &FaceColors) -> Vec<(Vec<u8>, Vec<u8>)> {
+pub(crate) fn leaf_ambient(ctx: &Ctx<'_>, colors: &FaceColors<'_>) -> Vec<(Vec<u8>, Vec<u8>)> {
     let map = ctx.map;
     let passes = ctx.passes;
     let mut leaf_parent = vec![-1i32; map.leafs.len()];
@@ -468,19 +478,33 @@ fn buried(ctx: &Ctx<'_>, p: Vec3A) -> bool {
         Vec3A::new(k, -k, -k),
         Vec3A::new(-k, -k, -k),
     ];
-    let back = dirs
-        .iter()
-        .filter(|d| {
-            let Some(h) = ctx.surf.closest(p, **d, super::bake::MAX_TRACE, |_| true) else { return false };
-            match ctx.surf_info.get(h.payload as usize) {
-                Some(SurfTri::Flat(i) | SurfTri::Disp(i, _)) => {
-                    ctx.faces.get(*i as usize).is_some_and(|f| d.dot(f.normal.as_vec3a()) > 0.0)
-                }
-                _ => false,
+    most(dirs.len(), |i| {
+        let d = dirs[i];
+        let Some(h) = ctx.surf.closest(p, d, super::bake::MAX_TRACE, |_| true) else { return false };
+        match ctx.surf_info.get(h.payload as usize) {
+            Some(SurfTri::Flat(i) | SurfTri::Disp(i, _)) => {
+                ctx.faces.get(*i as usize).is_some_and(|f| d.dot(f.normal.as_vec3a()) > 0.0)
             }
-        })
-        .count();
-    back * 2 > dirs.len()
+            _ => false,
+        }
+    })
+}
+
+fn most(n: usize, mut test: impl FnMut(usize) -> bool) -> bool {
+    let need = n / 2 + 1;
+    let mut yes = 0;
+    for i in 0..n {
+        if yes + (n - i) < need {
+            return false;
+        }
+        if test(i) {
+            yes += 1;
+            if yes >= need {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 fn add_emit_surface(ctx: &Ctx<'_>, from: Vec3A, pass: usize, lights: &[&Light], cube: &mut [Vec3A; 6]) {
@@ -559,6 +583,27 @@ fn nearest_with_light(map: &MapData, leaf: usize, has: &[bool]) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn majority_stops_early_with_the_counted_answer() {
+        for n in 0..12usize {
+            for bits in 0u32..(1 << n) {
+                let mut asked = 0;
+                let got = most(n, |i| {
+                    asked += 1;
+                    bits & (1 << i) != 0
+                });
+                assert_eq!(got, bits.count_ones() as usize * 2 > n, "n {n} bits {bits:b}");
+                assert!(asked <= n);
+            }
+        }
+        let mut asked = 0;
+        assert!(most(14, |_| {
+            asked += 1;
+            true
+        }));
+        assert_eq!(asked, 8);
+    }
 
     #[test]
     fn sample_lists() {

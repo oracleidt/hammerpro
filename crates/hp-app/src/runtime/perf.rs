@@ -185,8 +185,54 @@ pub struct BenchResult {
     pub views_rendered: u64,
 }
 
+pub const FRAME_PHASES: [&str; 9] =
+    ["begin", "panels", "tool", "sync", "lighting", "views", "chrome", "dialogs", "end"];
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct FramePhases {
+    pub total_ms: f32,
+    pub ms: [f32; 9],
+}
+
+impl FramePhases {
+    pub fn add(&mut self, other: &FramePhases) {
+        self.total_ms += other.total_ms;
+        for (a, b) in self.ms.iter_mut().zip(other.ms) {
+            *a += b;
+        }
+    }
+
+    pub fn divided(&self, count: u32) -> FramePhases {
+        let n = count.max(1) as f32;
+        FramePhases { total_ms: self.total_ms / n, ms: self.ms.map(|m| m / n) }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ViewCost {
+    pub overlay_ms: f32,
+    pub render_ms: f32,
+    pub paint_ms: f32,
+    pub overlay_items: u32,
+    pub rendered: bool,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RepaintCount {
+    pub at: String,
+    pub count: u64,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct PerfRuntime {
+    pub views: [ViewCost; 4],
+    pub frame_phases: FramePhases,
+    pub worst_frame: FramePhases,
+    pub phase_sum: FramePhases,
+    pub phase_frames: u32,
+    pub repaint_causes: Vec<RepaintCount>,
+    pub frames_from_events: u64,
+    pub continuous_frames: u64,
     pub bench_request: Option<BenchRequest>,
     pub bench_running: bool,
     pub bench_result: Option<BenchResult>,
@@ -238,6 +284,17 @@ impl PerfRuntime {
         self.slow = 0.0;
         self.frames = 0;
         self.slow_frames = 0;
+    }
+
+    pub fn observe_frame(
+        &mut self,
+        mode: PerformanceMode,
+        rendered: bool,
+        continuous: bool,
+        busy: bool,
+        dt: f32,
+    ) -> Option<PerfLevel> {
+        self.observe(mode, rendered && continuous, busy, dt)
     }
 
     pub fn observe(&mut self, mode: PerformanceMode, rendered: bool, busy: bool, dt: f32) -> Option<PerfLevel> {
@@ -324,6 +381,20 @@ mod tests {
         }
         assert_eq!(run(&mut rt, PerformanceMode::Auto, 30.0, 0.7), None);
         assert_eq!(rt.auto_level, PerfLevel::Full);
+    }
+
+    #[test]
+    fn frames_spaced_out_on_purpose_never_lower_the_quality() {
+        let mut rt = PerfRuntime::default();
+        for _ in 0..600 {
+            assert_eq!(rt.observe_frame(PerformanceMode::Auto, true, false, false, 0.1), None);
+        }
+        assert_eq!(rt.auto_level, PerfLevel::Full, "a 10 Hz light animation is not a slow machine");
+        let mut lowered = None;
+        for _ in 0..200 {
+            lowered = lowered.or(rt.observe_frame(PerformanceMode::Auto, true, true, false, 0.1));
+        }
+        assert_eq!(lowered, Some(PerfLevel::Low), "continuous drawing at 10 FPS still counts");
     }
 
     #[test]

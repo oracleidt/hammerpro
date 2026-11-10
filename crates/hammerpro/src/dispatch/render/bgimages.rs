@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 use hp_app::{AppState, Severity, t, tf};
@@ -115,17 +115,67 @@ fn axis(view: u8) -> OrthoAxis {
     }
 }
 
-fn decode(path: &str) -> Result<TextureUpload, String> {
-    let p = PathBuf::from(path);
+pub(crate) struct Roots {
+    map_dir: Option<PathBuf>,
+    shared: Option<Vec<PathBuf>>,
+}
+
+impl Roots {
+    pub(crate) fn of(state: &AppState) -> Self {
+        let map_dir = state.doc.path().and_then(Path::parent).map(Path::to_path_buf);
+        let collab = &state.runtime.collaboration;
+        let shared = (collab.connected && collab.active_map).then(|| {
+            let mut roots: Vec<PathBuf> = map_dir.iter().cloned().collect();
+            roots.extend(state.settings.game.custom_texture_dirs.iter().filter(|d| d.enabled).map(|d| d.path.clone()));
+            if let Some(game) = state.assets.fs().and_then(|fs| fs.game_dir().map(Path::to_path_buf)) {
+                roots.push(game);
+            }
+            roots
+        });
+        Self { map_dir, shared }
+    }
+}
+
+fn canonical(p: &Path) -> PathBuf {
+    std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf())
+}
+
+pub(crate) fn resolve_image(path: &str, roots: &Roots) -> Result<PathBuf, String> {
+    let refused = || t!("render.bg_refused_path").to_owned();
+    super::super::mcp::local_path(path).map_err(|_| refused())?;
+    let given = PathBuf::from(path.trim());
+    if given.components().any(|c| matches!(c, Component::ParentDir)) {
+        return Err(refused());
+    }
+    let full = if given.is_absolute() {
+        given
+    } else if given.has_root() || matches!(given.components().next(), Some(Component::Prefix(_))) {
+        return Err(refused());
+    } else {
+        roots.map_dir.as_ref().ok_or_else(refused)?.join(given)
+    };
+    if let Some(shared) = &roots.shared {
+        let target = canonical(&full);
+        if !shared.iter().map(|r| canonical(r)).any(|r| target.starts_with(&r) && target != r) {
+            return Err(refused());
+        }
+    }
+    Ok(full)
+}
+
+fn decode(p: &Path) -> Result<TextureUpload, String> {
     let ext = p.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).unwrap_or_default();
     if !EXTENSIONS.contains(&ext.as_str()) {
         return Err(t!("render.bg_not_image").to_owned());
     }
-    let len = std::fs::metadata(&p).map_err(|e| e.to_string())?.len();
-    if len > MAX_FILE {
+    let meta = std::fs::metadata(p).map_err(|e| e.to_string())?;
+    if !meta.is_file() {
+        return Err(t!("render.bg_not_image").to_owned());
+    }
+    if meta.len() > MAX_FILE {
         return Err(t!("render.bg_too_large").to_owned());
     }
-    let bytes = std::fs::read(&p).map_err(|e| e.to_string())?;
+    let bytes = std::fs::read(p).map_err(|e| e.to_string())?;
     let mut reader =
         image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format().map_err(|e| e.to_string())?;
     let mut limits = image::Limits::default();
@@ -196,6 +246,7 @@ impl BgImages {
         }
         self.synced = Some(key);
         let entries = read_entries(&state.doc);
+        let roots = Roots::of(state);
         let mut images = Vec::new();
         for e in &entries {
             match self.loaded.get(&e.path) {
@@ -206,14 +257,22 @@ impl BgImages {
                     opacity: e.opacity,
                 }),
                 Some(_) => {}
-                None => {
-                    self.loaded.insert(e.path.clone(), Loaded::Loading);
-                    let (tx, path) = (self.tx.clone(), e.path.clone());
-                    std::thread::spawn(move || {
-                        let result = decode(&path);
-                        let _ = tx.send((path, result));
-                    });
-                }
+                None => match resolve_image(&e.path, &roots) {
+                    Ok(file) => {
+                        self.loaded.insert(e.path.clone(), Loaded::Loading);
+                        let (tx, path) = (self.tx.clone(), e.path.clone());
+                        let spawned = std::thread::Builder::new().name("hp-bg-image".into()).spawn(move || {
+                            let result = decode(&file);
+                            let _ = tx.send((path, result));
+                        });
+                        if spawned.is_err() {
+                            self.loaded.insert(e.path.clone(), Loaded::Failed(String::new()));
+                        }
+                    }
+                    Err(why) => {
+                        self.loaded.insert(e.path.clone(), Loaded::Failed(why));
+                    }
+                },
             }
         }
         let used: Vec<&str> = entries.iter().map(|e| e.path.as_str()).collect();
@@ -348,6 +407,11 @@ pub(crate) const TR: &[(&str, &str, &str)] = &[
     ("render.bg_not_image", "not a PNG, JPEG, BMP or TGA image", "ce n'est pas une image PNG, JPEG, BMP ou TGA"),
     ("render.bg_too_large", "the file is too large", "le fichier est trop gros"),
     (
+        "render.bg_refused_path",
+        "this path is not opened (network or device path, or outside the map and content folders during Team Mapping)",
+        "ce chemin n'est pas ouvert (chemin réseau ou de périphérique, ou hors des dossiers de la map et du contenu pendant le Team Mapping)",
+    ),
+    (
         "render.bg_edit_failed",
         "Cannot change the background images: {0}",
         "Impossible de modifier les images de fond : {0}",
@@ -408,8 +472,38 @@ mod tests {
             (entries[0].scale, entries[0].center, entries[0].opacity, entries[0].view),
             (1.0, [0.0, 0.0], 1.0, 0)
         );
-        assert!(decode("C:/definitely/missing.png").is_err());
-        assert!(decode("C:/Windows/notepad.exe").is_err(), "only images are read");
+        assert!(decode(Path::new("C:/definitely/missing.png")).is_err());
+        assert!(decode(Path::new("C:/Windows/notepad.exe")).is_err(), "only images are read");
+    }
+
+    #[test]
+    fn shared_maps_never_open_network_device_or_outside_paths() {
+        let _lang = hp_app::testing::lang_lock();
+        hp_app::register_translations();
+        let dir = std::env::temp_dir().join(format!("hp_bgimages_{}", std::process::id()));
+        let maps = dir.join("maps");
+        std::fs::create_dir_all(maps.join("refs")).unwrap();
+        std::fs::write(maps.join("refs").join("plan.png"), b"x").unwrap();
+        let bs = char::from(92);
+        let unc = format!("{bs}{bs}attacker{bs}share{bs}plan.png");
+        let device = format!("{bs}{bs}.{bs}pipe{bs}x.png");
+        let local = Roots { map_dir: Some(maps.clone()), shared: None };
+        let shared = Roots { map_dir: Some(maps.clone()), shared: Some(vec![maps.clone()]) };
+        for roots in [&local, &shared] {
+            assert!(resolve_image(&unc, roots).is_err(), "UNC is never opened");
+            assert!(resolve_image("//attacker/share/plan.png", roots).is_err());
+            assert!(resolve_image(&device, roots).is_err());
+            assert!(resolve_image("refs/../../secret.png", roots).is_err());
+            assert!(resolve_image("C:/maps/plan.png:hidden", roots).is_err());
+            assert_eq!(resolve_image("refs/plan.png", roots).unwrap(), maps.join("refs").join("plan.png"));
+        }
+        let elsewhere = "C:/Users/someone/Desktop/plan.png";
+        assert_eq!(resolve_image(elsewhere, &local).unwrap(), PathBuf::from(elsewhere), "own maps keep any local path");
+        assert!(resolve_image(elsewhere, &shared).is_err(), "a shared map only opens its own folders");
+        let inside = maps.join("refs").join("plan.png");
+        assert!(resolve_image(&inside.to_string_lossy(), &shared).is_ok());
+        assert!(resolve_image("refs/plan.png", &Roots { map_dir: None, shared: None }).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

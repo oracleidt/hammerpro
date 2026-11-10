@@ -32,6 +32,22 @@ Le menu du clic droit propose aussi **Créer en cylindre** et **Créer en arche*
 
 Tracée sur un mur, la boîte s'éloigne du mur ; tracée sous un plafond, elle pousse vers le bas. Avant de commencer, un petit repère montre le point de surface aligné sous le curseur, et la taille `x x y x z` s'affiche au-dessus de la boîte pendant le tracé.
 
+## Changer le nombre avec la molette
+
+Comme pour l'ajout d'un cylindre dans Blender, la molette change le nombre de la forme pendant sa création : pendant le glissement dans une vue 2D, tant que la boîte est en attente (avant `Entrée`), et pendant les étapes de base et de hauteur dans la vue 3D.
+
+| Primitive | Ce que change la molette | Plage |
+|---|---|---|
+| Cylindre, pointe (cône), sphère, arche, tore, pilier | **Côtés** | 3 à 128 |
+| Escalier, escalier en colimaçon | **Marches** | 1 à 256 |
+| Encadrement de porte avec **Arche** cochée | **Segments de l'arc** | 2 à 64 |
+
+- Molette vers le haut : un de plus, vers le bas : un de moins. `Maj` + molette avance de 4. La valeur s'arrête aux bornes de la plage.
+- Le fil de fer des vues 2D et 3D et la fenêtre d'aperçu suivent aussitôt, et une étiquette sous la boîte (2D) ou au-dessus (3D) affiche le nombre actuel (**Côtés : 12**, **Marches : 8**...).
+- Pendant la création d'une telle forme, la molette ne zoome pas et ne déplace pas la vue ; elle zoome de nouveau dès que la forme est créée ou annulée, et toujours pour le bloc, le coin, la rampe et un encadrement de porte sans arche. `Ctrl` + molette garde son action de grille ou de zoom 2D.
+- La valeur reste dans les options pour la forme suivante. Pour un escalier réglé par **Hauteur de marche**, la molette passe à un nombre de marches en partant du nombre actuel (**Hauteur de marche** revient à 0).
+- La barre d'état le rappelle dès que la primitive choisie a un nombre.
+
 ## Primitives
 
 Les boutons des primitives sont à gauche de la barre d'options.
@@ -59,7 +75,7 @@ Les paramètres affichés dépendent de la primitive. Les angles suivent la conv
 
 | Option | Primitives | Rôle | Par défaut |
 |---|---|---|---|
-| **Côtés** | cylindre, pointe, sphère, arche, tore | Nombre de côtés des formes rondes (3 à 128). | 8 |
+| **Côtés** | cylindre, pointe, sphère, arche, tore | Nombre de côtés des formes rondes (3 à 128). La molette le change pendant la création de la forme. | 8 |
 | **Mur** | arche | Épaisseur du mur de l'arche (1 à 16384 unités). | 16 |
 | **Arc** | arche | Angle couvert par l'arche, de 1 à 360 degrés (360 pour un anneau complet). | 360 |
 | **Départ** | arche | Angle de départ, de -360 à 360 degrés. | 0 |
@@ -123,7 +139,7 @@ La fenêtre Paramètres s'ouvre avec **Outils > Options...** (`Ctrl+,`).
 
 **Pourquoi ma boîte n'a pas la bonne hauteur ?** Dans une vue 2D, la profondeur vient de la sélection, sinon du dernier objet créé. Videz la sélection (`Ctrl+Maj+A`) ou redimensionnez la boîte dans une autre vue 2D avec ses poignées.
 
-**Pourquoi la vue affiche « Paramètres invalides pour cette taille » ?** La boîte est trop petite pour les paramètres : par exemple un anneau de tore plus large que la boîte, ou un arc trop grand pour le nombre de côtés (chaque segment doit couvrir moins de 180 degrés). Changez les paramètres ou agrandissez la boîte.
+**Pourquoi la vue affiche « Paramètres invalides pour cette taille » ?** La boîte est trop petite pour les paramètres : par exemple un anneau de tore plus large que la boîte, ou un arc trop grand pour le nombre de côtés (chaque segment doit couvrir moins de 180 degrés), ou plus de côtés ou de marches que la boîte ne peut en contenir (64 côtés dans une demi-unité, une seule marche de colimaçon tournant de presque 180 degrés : ces formes seraient des lamelles plates, elles sont donc refusées au lieu de créer des brushes cassés). Changez les paramètres (la molette baisse le nombre pendant le tracé) ou agrandissez la boîte.
 
 **Comment créer directement un trigger ?** Choisissez `trigger_multiple` (ou une autre classe d'entité brush) dans la liste « créer comme ». Le matériau actuel est utilisé, choisissez donc d'abord la texture outil trigger.
 

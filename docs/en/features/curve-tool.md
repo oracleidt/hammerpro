@@ -15,6 +15,7 @@ The curve tool builds curved walls, rails, kerbs, pipes seen from above or ramps
 2. The curve lies in the plane of that view: drawn in the Top view it is horizontal, drawn in the Front or Side view it is vertical.
 3. While drawing, the preview already shows the brushes with the current subdivisions and thickness: in the drawing view as outlines along the smoothed curve, in the other 2D views and in the 3D view as the brushes themselves.
 4. **Drag a point** to move it. `Backspace` (or **Remove point**) removes the last point, `Escape` cancels the curve. A curve holds at most 1024 points.
+5. While the curve is drawn or adjusted, `Shift` + mouse wheel changes the **Subdivisions** (by one eighth of the value per notch, at least 1, from 2 to 4096); the brush count in the label follows. The plain wheel keeps zooming.
 
 ## Validating and choosing the pieces
 

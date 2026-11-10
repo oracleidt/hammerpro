@@ -1291,3 +1291,173 @@ fn light_probes_hold_the_ambient_light_near_the_surfaces() {
     let none = light_bsp(&bsp, &RadOptions { probes: None, ..opts }, &mut |_| {}).expect("light");
     assert!(hp_bsp::Bsp::from_vec(none).unwrap().lump(hp_light::probes::LUMP).map_or(true, |l| l.is_empty()));
 }
+
+fn yard_with_everything() -> Vec<u8> {
+    let mut id = 1;
+    let (w, sky) = ("DEV/DEV_MEASUREGENERIC01B", "TOOLS/TOOLSSKYBOX");
+    let b = |id: &mut u32, lo: [f64; 3], hi: [f64; 3], m: &str| {
+        block(id, DVec3::from_array(lo), DVec3::from_array(hi), m, m)
+    };
+    let mut s = String::new();
+    s += &b(&mut id, [-528.0, -528.0, -16.0], [528.0, 528.0, 0.0], w);
+    s += &b(&mut id, [-528.0, -528.0, 512.0], [528.0, 528.0, 528.0], sky);
+    s += &b(&mut id, [-528.0, -528.0, 0.0], [-512.0, 528.0, 512.0], sky);
+    s += &b(&mut id, [512.0, -528.0, 0.0], [528.0, 528.0, 512.0], sky);
+    s += &b(&mut id, [-512.0, -528.0, 0.0], [512.0, -512.0, 512.0], sky);
+    s += &b(&mut id, [-512.0, 512.0, 0.0], [512.0, 528.0, 512.0], sky);
+    s += &b(&mut id, [-16.0, -16.0, 0.0], [16.0, 16.0, 128.0], w);
+    s += &b(&mut id, [100.0, 100.0, 0.0], [228.0, 228.0, 40.0], w);
+    s += &b(&mut id, [-300.0, 100.0, 200.0], [-100.0, 300.0, 216.0], w);
+    let text = format!(
+        "versioninfo\n{{\n\t\"editorversion\" \"400\"\n}}\nworld\n{{\n\t\"id\" \"1\"\n\t\"classname\" \"worldspawn\"\n\t\"skyname\" \"sky_day01_01\"\n{s}}}\n\
+         entity\n{{\n\t\"id\" \"600\"\n\t\"classname\" \"light_environment\"\n\t\"origin\" \"200 200 200\"\n\t\"_light\" \"255 240 220 300\"\n\t\"_ambient\" \"120 140 200 60\"\n\t\"pitch\" \"-50\"\n\t\"angles\" \"0 30 0\"\n\t\"SunSpreadAngle\" \"5\"\n}}\n\
+         {}\
+         entity\n{{\n\t\"id\" \"601\"\n\t\"classname\" \"info_player_start\"\n\t\"origin\" \"256 256 16\"\n}}\n",
+        light_entity(602, "-200 200 150", "")
+    );
+    let mut map = hp_vmf::parse(&text).expect("vmf");
+    let solid = map
+        .world
+        .solids
+        .iter_mut()
+        .find(|s| s.sides.iter().any(|d| d.plane.iter().all(|p| p.z == 40.0)))
+        .expect("the box");
+    let top = solid.sides.iter_mut().find(|d| d.plane.iter().all(|p| p.z == 40.0)).expect("its top");
+    top.disp = Some(Box::new(hp_vmf::DispInfo::new_flat(3, DVec3::new(100.0, 100.0, 40.0), DVec3::Z)));
+    crate::compile(&map, &Mats, &crate::props::NoModels, &crate::CompileOptions::default(), &mut |_| {})
+        .expect("compile")
+        .bsp
+}
+
+#[test]
+fn results_do_not_depend_on_the_thread_count() {
+    let bsp = yard_with_everything();
+    let run = |threads: usize, quality: RadQuality| {
+        let opts = RadOptions { threads: Some(threads), quality, bounces: 4, ..RadOptions::default() };
+        light_bsp(&bsp, &opts, &mut |_| {}).expect("light")
+    };
+    for quality in [RadQuality::Draft, RadQuality::Normal] {
+        let one = run(1, quality);
+        assert!(luxel_at(&one, DVec3::new(300.0, -300.0, 0.0), DVec3::Z, true).expect("open ground").x > 0.0);
+        for threads in [3, 7] {
+            assert!(run(threads, quality) == one, "{threads} threads changed the {quality:?} result");
+        }
+    }
+}
+
+#[test]
+fn lighting_logs_its_phase_times_and_reports_disjoint_stages() {
+    let bsp = yard_with_everything();
+    let mut lines = Vec::new();
+    let (_, report) =
+        light_bsp_report(&bsp, &quick(), &crate::props::NoModels, &mut |l| lines.push(l.to_owned())).expect("light");
+    let phases = lines.iter().find(|l| l.starts_with("Light phase times: ")).expect("the phase line");
+    for phase in ["setup", "faces", "shadow tree", "direct light", "displacement blend", "bounce rays", "write"] {
+        assert!(phases.contains(&format!("{phase} ")), "{phase} in {phases}");
+    }
+    let done = lines.iter().position(|l| l.starts_with("lighting: ")).expect("done line");
+    let at = lines.iter().position(|l| l.starts_with("Light phase times: ")).expect("phase line");
+    assert!(at < done);
+    let names: Vec<&str> = report.stages.iter().map(|s| s.0.as_str()).collect();
+    assert!(names.iter().all(|n| !n.contains(':')), "no stage nested in another: {names:?}");
+    assert!(names.contains(&"bounced light") && names.contains(&"direct light"), "{names:?}");
+}
+
+struct ClearMats;
+
+impl MaterialSource for ClearMats {
+    fn facts(&self, name: &str) -> MaterialFacts {
+        let low = name.to_ascii_lowercase();
+        let opts = crate::materials::MaterialOptions::default();
+        let with = |shader: &str, key: &'static str| {
+            crate::materials::facts_from_vmt_with(
+                shader,
+                &|k| (k == key).then(|| "1".to_owned()),
+                Some((512, 512)),
+                Some([0.5; 3]),
+                &opts,
+            )
+        };
+        let mut f = if low.contains("water") {
+            with("Water", "%compilewater")
+        } else if low.contains("glass") {
+            with("LightmappedGeneric", "$translucent")
+        } else {
+            facts_by_name(name)
+        };
+        f.reflectivity = [0.5; 3];
+        f
+    }
+}
+
+fn pool_room(fill: Option<&str>) -> Vec<u8> {
+    let mut id = 1;
+    let w = "DEV/DEV_MEASUREGENERIC01B";
+    let t = 16.0;
+    let hi = DVec3::new(512.0, 512.0, 384.0);
+    let mut solids = String::new();
+    for (a, b) in [
+        (DVec3::new(-t, -t, -t), DVec3::new(hi.x + t, hi.y + t, 0.0)),
+        (DVec3::new(-t, -t, hi.z), DVec3::new(hi.x + t, hi.y + t, hi.z + t)),
+        (DVec3::new(-t, -t, 0.0), DVec3::new(0.0, hi.y + t, hi.z)),
+        (DVec3::new(hi.x, -t, 0.0), DVec3::new(hi.x + t, hi.y + t, hi.z)),
+        (DVec3::new(0.0, -t, 0.0), DVec3::new(hi.x, 0.0, hi.z)),
+        (DVec3::new(0.0, hi.y, 0.0), DVec3::new(hi.x, hi.y + t, hi.z)),
+    ] {
+        solids += &block(&mut id, a, b, w, w);
+    }
+    if let Some(m) = fill {
+        let top = if m.contains("glass") { 104.0 } else { 96.0 };
+        let bottom = if m.contains("glass") { 96.0 } else { 0.0 };
+        solids += &block(&mut id, DVec3::new(0.0, 0.0, bottom), DVec3::new(hi.x, hi.y, top), m, m);
+    }
+    let text = format!(
+        "versioninfo\n{{\n\t\"editorversion\" \"400\"\n\t\"mapversion\" \"1\"\n}}\nworld\n{{\n\t\"id\" \"1\"\n\t\"mapversion\" \"1\"\n\t\"classname\" \"worldspawn\"\n\t\"skyname\" \"sky_day01_01\"\n{solids}}}\n\
+         entity\n{{\n\t\"id\" \"500\"\n\t\"classname\" \"light_spot\"\n\t\"origin\" \"256 256 300\"\n\t\"_light\" \"255 255 255 3000\"\n\t\"_quadratic_attn\" \"1\"\n\t\"pitch\" \"-90\"\n\t\"angles\" \"-90 0 0\"\n\t\"_inner_cone\" \"20\"\n\t\"_cone\" \"25\"\n}}\n\
+         entity\n{{\n\t\"id\" \"9000\"\n\t\"classname\" \"info_player_start\"\n\t\"origin\" \"400 400 200\"\n}}\n"
+    );
+    let map = hp_vmf::parse(&text).expect("vmf");
+    let out = crate::compile(&map, &ClearMats, &crate::props::NoModels, &crate::CompileOptions::default(), &mut |_| {})
+        .expect("compile");
+    assert!(out.leak.is_none(), "the pool room leaks");
+    light_bsp(&out.bsp, &RadOptions { bounces: 4, ..quick() }, &mut |_| {}).expect("light")
+}
+
+fn ambient_below(bsp: &[u8], p: DVec3) -> f32 {
+    let src = hp_bsp::Bsp::from_vec(bsp.to_vec()).expect("bsp");
+    let map = MapData::read(&src).expect("map");
+    let head = map.models.first().map_or(-1, |m| m.head);
+    let leaf = map.point_leaf(head, p).expect("leaf");
+    let index = src.lump(lump::LEAF_AMBIENT_INDEX).expect("index").into_owned();
+    let samples = src.lump(lump::LEAF_AMBIENT_LIGHTING).expect("samples").into_owned();
+    let count = usize::from(u16::from_le_bytes([index[leaf * 4], index[leaf * 4 + 1]]));
+    let first = usize::from(u16::from_le_bytes([index[leaf * 4 + 2], index[leaf * 4 + 3]]));
+    assert!(count > 0, "leaf {leaf} has ambient samples");
+    (first..first + count)
+        .map(|k| {
+            let b = &samples[k * 28 + 20..k * 28 + 24];
+            decode([b[0], b[1], b[2], b[3]]).x
+        })
+        .sum::<f32>()
+        / count as f32
+}
+
+#[test]
+fn bounced_and_ambient_light_pass_through_water_and_glass() {
+    let dry = pool_room(None);
+    let ceiling = |bsp: &[u8]| {
+        [DVec3::new(64.0, 64.0, 384.0), DVec3::new(448.0, 256.0, 384.0)]
+            .iter()
+            .map(|p| luxel_at(bsp, *p, DVec3::NEG_Z, false).expect("ceiling luxel").x)
+            .sum::<f32>()
+    };
+    let above = DVec3::new(128.0, 128.0, 250.0);
+    let (dry_ceiling, dry_ambient) = (ceiling(&dry), ambient_below(&dry, above));
+    assert!(dry_ceiling > 0.0 && dry_ambient > 0.0);
+    for fill in ["NATURE/WATER_TEST", "GLASS/GLASS_TEST"] {
+        let bsp = pool_room(Some(fill));
+        let (c, a) = (ceiling(&bsp), ambient_below(&bsp, above));
+        assert!((0.75..1.35).contains(&(c / dry_ceiling)), "{fill}: ceiling {c} dry {dry_ceiling}");
+        assert!((0.75..1.35).contains(&(a / dry_ambient)), "{fill}: ambient {a} dry {dry_ambient}");
+    }
+}

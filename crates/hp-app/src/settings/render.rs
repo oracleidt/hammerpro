@@ -128,6 +128,8 @@ impl PerformanceMode {
 
 pub const MIN_RENDER_SCALE: f32 = 0.25;
 
+pub const MAX_ANIMATION_FPS: u32 = 240;
+
 pub const MIN_VRAM_BUDGET_MB: u32 = 256;
 pub const MAX_VRAM_BUDGET_MB: u32 = 262_144;
 
@@ -186,6 +188,9 @@ pub struct RenderSettings {
     pub sky_occlusion: bool,
     pub prop_shadows: PropShadowSetting,
     pub animate_materials: bool,
+    pub animation_fps: u32,
+    pub animate_in_background: bool,
+    pub animation_idle_pause_s: u32,
     pub model_fade: bool,
     pub force_opaque: bool,
     pub walkable: bool,
@@ -214,6 +219,7 @@ pub struct RenderSettings {
     pub vsync: bool,
     pub vram_budget_mb: u32,
     pub keep_background_maps_on_gpu: bool,
+    pub texture_streaming: bool,
     pub performance_mode: PerformanceMode,
     pub render_scale: f32,
     pub perf_hud: bool,
@@ -275,6 +281,9 @@ impl Default for RenderSettings {
             sky_occlusion: true,
             prop_shadows: PropShadowSetting::Auto,
             animate_materials: true,
+            animation_fps: 30,
+            animate_in_background: false,
+            animation_idle_pause_s: 120,
             model_fade: false,
             force_opaque: false,
             walkable: false,
@@ -303,6 +312,7 @@ impl Default for RenderSettings {
             vsync: true,
             vram_budget_mb: 0,
             keep_background_maps_on_gpu: true,
+            texture_streaming: true,
             performance_mode: PerformanceMode::Auto,
             render_scale: 1.0,
             perf_hud: false,
@@ -312,6 +322,19 @@ impl Default for RenderSettings {
 }
 
 impl RenderSettings {
+    pub fn animation_interval(&self, focused: bool, idle_secs: f64) -> Option<std::time::Duration> {
+        if !focused && !self.animate_in_background {
+            return None;
+        }
+        if self.animation_idle_pause_s > 0 && idle_secs >= f64::from(self.animation_idle_pause_s) {
+            return None;
+        }
+        match self.animation_fps {
+            0 => Some(std::time::Duration::ZERO),
+            fps => Some(std::time::Duration::from_secs_f64(1.0 / f64::from(fps.min(MAX_ANIMATION_FPS)))),
+        }
+    }
+
     pub fn lighting_hdr(&self, mode: super::RenderModeSetting, lighting: super::LightingSetting) -> bool {
         if matches!(mode, super::RenderModeSetting::Baked | super::RenderModeSetting::LightmapGrid) {
             matches!(lighting, super::LightingSetting::Hdr | super::LightingSetting::Both)
@@ -363,6 +386,22 @@ impl RenderSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn animations_pace_and_pause() {
+        use std::time::Duration;
+        let s = RenderSettings::default();
+        assert_eq!(s.animation_interval(true, 0.0), Some(Duration::from_secs_f64(1.0 / 30.0)));
+        assert_eq!(s.animation_interval(false, 0.0), None, "paused in the background");
+        assert_eq!(s.animation_interval(true, 119.0), Some(Duration::from_secs_f64(1.0 / 30.0)));
+        assert_eq!(s.animation_interval(true, 120.0), None, "paused after two minutes without input");
+        let every = RenderSettings { animation_fps: 0, animate_in_background: true, animation_idle_pause_s: 0, ..s };
+        assert_eq!(every.animation_interval(false, 1e9), Some(Duration::ZERO));
+        let fast = RenderSettings { animation_fps: 100_000, ..RenderSettings::default() };
+        assert_eq!(fast.animation_interval(true, 0.0), Some(Duration::from_secs_f64(1.0 / 240.0)));
+        let old: RenderSettings = toml::from_str("animate_materials = true").expect("parse");
+        assert_eq!((old.animation_fps, old.animate_in_background, old.animation_idle_pause_s), (30, false, 120));
+    }
 
     #[test]
     fn lighting_range_follows_compilation_and_preserves_manual_comparisons() {

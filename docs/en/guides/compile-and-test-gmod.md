@@ -52,7 +52,7 @@ To start in game where your editor camera is, install the Hammer Pro bridge addo
 - Use **Draft** while you build, **Normal** to check the look, **Final** for a release.
 - **File > Reload the map in game** loads the map again in the running game.
 - **Play now, finish the lighting later**: compiles a Draft, starts the game, then compiles the chosen quality in the background. When you leave the map in game, the fully lit BSP replaces the quick one.
-- Custom materials: Draft and Normal builds do not pack them into the BSP. With **Development addon** on (the default), they are copied to `garrysmod\addons\hammerpro_dev` so the map looks right in game. Restart the game once after the first copy.
+- Custom content (materials, models, sounds, particles): Draft and Normal builds do not pack it into the BSP. With **Development addon** on (the default), it is copied to `garrysmod\addons\hammerpro_dev` so the map looks right in game. Restart the game once after the first copy.
 
 ## If the map leaks
 

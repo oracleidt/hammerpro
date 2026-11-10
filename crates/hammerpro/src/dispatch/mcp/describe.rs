@@ -16,6 +16,8 @@ struct Capture {
     want: bool,
     ours: bool,
     others: bool,
+    settling: bool,
+    pass_viewport: Option<egui::ViewportId>,
     tree: Option<TreeUpdate>,
 }
 
@@ -27,14 +29,23 @@ impl egui::Plugin for AccessPlugin {
         "hammerpro_mcp_describe"
     }
 
+    fn on_end_pass(&mut self, ui: &mut egui::Ui) {
+        lock(&self.0).pass_viewport = Some(ui.ctx().viewport_id());
+    }
+
     fn output_hook(&mut self, _ctx: &egui::Context, output: &mut egui::FullOutput) {
         let mut c = lock(&self.0);
+        if c.pass_viewport.take().is_some_and(|v| v != egui::ViewportId::ROOT) {
+            return;
+        }
         let update = output.platform_output.accesskit_update.as_ref();
         if c.want {
             if let Some(u) = update {
                 c.tree = Some(u.clone());
                 c.want = false;
             }
+        } else if c.settling {
+            c.settling = false;
         } else if !c.ours {
             c.others = update.is_some();
         }
@@ -77,6 +88,7 @@ pub(super) fn take_tree(ctx: &egui::Context) -> Option<TreeUpdate> {
         let disable = c.ours && !c.want;
         if disable {
             c.ours = false;
+            c.settling = true;
         }
         (c.tree.clone(), disable)
     };
@@ -91,6 +103,7 @@ pub(super) fn cancel(ctx: &egui::Context) {
     let disable = {
         let mut c = lock(&cap);
         c.want = false;
+        c.settling = c.ours;
         std::mem::take(&mut c.ours)
     };
     if disable {
@@ -131,6 +144,7 @@ fn control_role(role: Role) -> Option<&'static str> {
         Role::TextInput | Role::MultilineTextInput | Role::SearchInput => "text field",
         Role::SpinButton => "number field",
         Role::Slider => "slider",
+        Role::DisclosureTriangle => "section",
         _ => return None,
     })
 }
@@ -457,6 +471,36 @@ fn title_bar(ctx: &egui::Context, state: &hp_app::AppState) -> Value {
 mod tests {
     use super::*;
 
+    fn frame(ctx: &egui::Context) -> Option<TreeUpdate> {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(400.0, 300.0))),
+            ..Default::default()
+        };
+        let mut taken = None;
+        let _ = ctx.run_ui(input, |ui| {
+            ui.label("main window");
+            if tree_ready(ui.ctx()) {
+                taken = take_tree(ui.ctx());
+            }
+        });
+        taken
+    }
+
+    #[test]
+    fn every_capture_answers() {
+        let ctx = egui::Context::default();
+        ctx.add_plugin(AccessPlugin::default());
+        frame(&ctx);
+        for round in 0..4 {
+            request_tree(&ctx);
+            let tree = (0..4).find_map(|_| frame(&ctx));
+            let tree = tree.unwrap_or_else(|| panic!("capture {round} never got a tree"));
+            let texts: Vec<String> =
+                tree.nodes.iter().filter_map(|(_, n)| n.label().or(n.value()).map(str::to_owned)).collect();
+            assert!(texts.iter().any(|t| t == "main window"), "{round}: {texts:?}");
+        }
+    }
+
     #[test]
     fn texts_of_widgets() {
         let mut n = Node::new(Role::CheckBox);
@@ -519,6 +563,7 @@ mod tests {
         assert!(containers[0].controls.is_empty());
         assert_eq!(control_role(Role::Button), Some("button"));
         assert_eq!(control_role(Role::Label), None);
+        assert_eq!(control_role(Role::DisclosureTriangle), Some("section"));
         assert_eq!(focused["label"], "Grid size");
     }
 }

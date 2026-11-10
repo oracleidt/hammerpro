@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt::{Debug, Write};
 use std::hash::{DefaultHasher, Hash, Hasher};
 
@@ -20,52 +21,38 @@ fn hash_debug(hash: &mut Fingerprint, value: &impl Debug) {
     write!(hash, "{value:?}").expect("fingerprint formatting");
 }
 
-fn scene_fingerprint(doc: &Document) -> u64 {
-    let scene = doc.scene();
-    let mut hash = Fingerprint(DefaultHasher::new());
-    let entity = |hash: &mut Fingerprint, e: &hp_vmf::Entity| {
-        hash_debug(hash, &(e.id, &e.classname, &e.props, &e.connections, e.hidden, &e.extra_blocks));
-    };
-    entity(&mut hash, scene.world());
-    let mut solids: Vec<_> = scene.solids().iter().collect();
-    solids.sort_unstable_by_key(|(id, _)| **id);
-    solids.len().hash(&mut hash.0);
-    for (id, node) in solids {
-        let solid = &node.solid;
-        hash_debug(
-            &mut hash,
-            &(
-                id,
-                node.owner,
-                &solid.sides,
-                solid.hidden,
-                doc.is_solid_visible(*id),
-                &solid.extra_props,
-                &solid.extra_blocks,
-            ),
-        );
+const PRESENTATION: [&str; 5] = [
+    hp_editor::luxels::LIGHT_PLUS,
+    hp_editor::luxels::COLORCORRECTION_PLUS,
+    "postprocess_plus",
+    "palette_plus",
+    "bgimages_plus",
+];
+
+fn entity_hash(e: &hp_vmf::Entity, visible: bool, connections: bool, skip: &dyn Fn(&str) -> bool) -> u64 {
+    let mut h = DefaultHasher::new();
+    (e.id, e.classname.as_str(), e.hidden, visible).hash(&mut h);
+    for (k, v) in e.props.iter().filter(|(k, _)| !skip(k)) {
+        (k.as_str(), v.as_str()).hash(&mut h);
     }
-    let mut entities: Vec<_> = scene.entities().iter().collect();
-    entities.sort_unstable_by_key(|(id, _)| **id);
-    entities.len().hash(&mut hash.0);
-    for (id, node) in entities {
-        doc.is_entity_visible(*id).hash(&mut hash.0);
-        entity(&mut hash, &node.entity);
-    }
-    hash_debug(&mut hash, scene.cordons());
-    for block in scene.extra_blocks() {
-        let presentation = [
-            hp_editor::luxels::LIGHT_PLUS,
-            hp_editor::luxels::COLORCORRECTION_PLUS,
-            "postprocess_plus",
-            "palette_plus",
-            "bgimages_plus",
-        ];
-        if !presentation.iter().any(|name| block.name.eq_ignore_ascii_case(name)) {
-            hash_debug(&mut hash, block);
+    if connections {
+        e.connections.len().hash(&mut h);
+        for c in &e.connections {
+            (c.output.as_str(), c.target.as_str(), c.input.as_str(), c.param.as_str()).hash(&mut h);
+            (c.delay.to_bits(), c.times, c.separator).hash(&mut h);
         }
     }
-    hash.0.finish()
+    if e.extra_blocks.is_empty() {
+        return h.finish();
+    }
+    let mut f = Fingerprint(h);
+    hash_debug(&mut f, &e.extra_blocks);
+    f.0.finish()
+}
+
+#[cfg(test)]
+fn scene_fingerprint(doc: &Document) -> u64 {
+    BakeCache::default().scene_key(doc)
 }
 
 fn physical_options(options: LightPlus) -> LightPlus {
@@ -123,61 +110,116 @@ struct Input {
 pub(super) struct BakeCache {
     scene: Option<(u64, u64)>,
     geometry: Option<(u64, u64)>,
+    solids: HashMap<u32, (usize, usize, u64)>,
     input: [Input; 2],
+}
+
+fn mix(parts: &[u64]) -> u64 {
+    let mut hash = DefaultHasher::new();
+    parts.hash(&mut hash);
+    hash.finish()
+}
+
+pub(super) fn geometry_entity(entity: &hp_vmf::Entity) -> bool {
+    entity.get("model").is_some_and(|name| name.to_ascii_lowercase().ends_with(".mdl"))
+        || entity.classname.eq_ignore_ascii_case("func_instance")
+        || entity.classname.eq_ignore_ascii_case("sky_camera")
+}
+
+fn compile_settings(state: &AppState) -> u64 {
+    let mut hash = Fingerprint(DefaultHasher::new());
+    hash_debug(
+        &mut hash,
+        &(state.settings.lighting.sanitized().max_luxels_millions, state.assets.lighting_generation()),
+    );
+    if let Some(fs) = state.assets.fs() {
+        hash_debug(&mut hash, &(fs.root(), fs.game_dir(), fs.generation()));
+    }
+    hash.0.finish()
 }
 
 impl BakeCache {
     pub(super) fn current_geometry_key(&self, state: &AppState) -> Option<u64> {
         let (_, geometry) = self.geometry.filter(|(serial, _)| *serial == state.doc.content_serial())?;
-        let mut hash = Fingerprint(DefaultHasher::new());
-        geometry.hash(&mut hash.0);
-        settings_fingerprint(state, false).hash(&mut hash.0);
-        Some(hash.0.finish())
+        Some(mix(&[geometry, compile_settings(state)]))
     }
-    pub(super) fn geometry_key(&mut self, state: &AppState) -> u64 {
-        let doc = &state.doc;
-        let serial = doc.content_serial();
-        let geometry = if let Some((_, key)) = self.geometry.filter(|(revision, _)| *revision == serial) {
-            key
-        } else {
-            let mut hash = Fingerprint(DefaultHasher::new());
-            let scene = doc.scene();
-            hash_debug(&mut hash, &(scene.world(), scene.cordons()));
-            let mut solids: Vec<_> = scene.solids().iter().collect();
-            solids.sort_unstable_by_key(|(id, _)| **id);
-            for (id, node) in solids {
-                hash_debug(&mut hash, &(id, node.owner, &node.solid));
-                doc.is_solid_visible(*id).hash(&mut hash.0);
-            }
-            let mut entities: Vec<_> = scene
-                .entities()
-                .iter()
-                .filter(|(_, node)| {
-                    let entity = &node.entity;
-                    !entity.solids.is_empty()
-                        || entity.get("model").is_some_and(|name| name.to_ascii_lowercase().ends_with(".mdl"))
-                        || entity.classname.eq_ignore_ascii_case("func_instance")
-                        || entity.classname.eq_ignore_ascii_case("light_environment")
-                })
-                .collect();
-            entities.sort_unstable_by_key(|(id, _)| **id);
-            for (id, node) in entities {
-                let entity = &node.entity;
-                hash_debug(&mut hash, &(id, &entity.classname, entity.hidden));
-                for property in entity.props.iter().filter(|(name, _)| !name.eq_ignore_ascii_case("lightingorigin")) {
-                    hash_debug(&mut hash, property);
+
+    fn scene_geometry(&mut self, doc: &Document) -> u64 {
+        let scene = doc.scene();
+        let mut world = Fingerprint(DefaultHasher::new());
+        hash_debug(&mut world, &(scene.world(), scene.cordons()));
+        let mut total = world.0.finish();
+        let mut owners = std::collections::HashSet::new();
+        for (id, node) in scene.solids().iter() {
+            let ptr = node.solid.sides.as_ptr() as usize;
+            let len = node.solid.sides.len();
+            let solid = match self.solids.get(id) {
+                Some(&(p, l, h)) if p == ptr && l == len => h,
+                _ => {
+                    let mut hash = Fingerprint(DefaultHasher::new());
+                    hash_debug(&mut hash, &node.solid);
+                    let h = hash.0.finish();
+                    self.solids.insert(*id, (ptr, len, h));
+                    h
                 }
-                doc.is_entity_visible(*id).hash(&mut hash.0);
+            };
+            let owner = match node.owner {
+                hp_editor::Owner::World => 0,
+                hp_editor::Owner::Entity(e) => {
+                    owners.insert(e);
+                    u64::from(e) + 1
+                }
+            };
+            let flags = u64::from(node.solid.hidden) | (u64::from(doc.is_solid_visible(*id)) << 1);
+            total = total.wrapping_add(mix(&[u64::from(*id), solid, owner, flags]));
+        }
+        if self.solids.len() > scene.solids().len() * 2 + 64 {
+            self.solids.retain(|id, _| scene.solid(*id).is_some());
+        }
+        let lighting_origin = |k: &str| k.eq_ignore_ascii_case("lightingorigin");
+        for (id, node) in scene.entities().iter() {
+            let entity = &node.entity;
+            if !owners.contains(id) && !geometry_entity(entity) {
+                continue;
             }
-            let key = hash.0.finish();
-            self.geometry = Some((serial, key));
-            key
-        };
-        let mut hash = Fingerprint(DefaultHasher::new());
-        geometry.hash(&mut hash.0);
-        settings_fingerprint(state, false).hash(&mut hash.0);
-        hash.0.finish()
+            total = total.wrapping_add(entity_hash(entity, doc.is_entity_visible(*id), false, &lighting_origin));
+        }
+        total
     }
+
+    fn raw_geometry(&mut self, doc: &Document) -> u64 {
+        let serial = doc.content_serial();
+        match self.geometry.filter(|(revision, _)| *revision == serial) {
+            Some((_, key)) => key,
+            None => {
+                let key = self.scene_geometry(doc);
+                self.geometry = Some((serial, key));
+                key
+            }
+        }
+    }
+
+    fn scene_key(&mut self, doc: &Document) -> u64 {
+        let geometry = self.raw_geometry(doc);
+        let scene = doc.scene();
+        let all = |_: &str| false;
+        let entities = scene.entities().iter().fold(scene.entities().len() as u64, |total, (id, node)| {
+            total.wrapping_add(entity_hash(&node.entity, doc.is_entity_visible(*id), true, &all))
+        });
+        let mut blocks = Fingerprint(DefaultHasher::new());
+        for block in scene.extra_blocks() {
+            if !PRESENTATION.iter().any(|name| block.name.eq_ignore_ascii_case(name)) {
+                hash_debug(&mut blocks, block);
+            }
+        }
+        mix(&[geometry, entities, blocks.0.finish()])
+    }
+
+    pub(super) fn geometry_key(&mut self, state: &AppState) -> u64 {
+        let geometry = self.raw_geometry(&state.doc);
+        mix(&[geometry, compile_settings(state)])
+    }
+
     pub(super) fn resolve(&mut self, state: &AppState, lit: bool, delay: f64, force: bool) -> Option<u64> {
         let stamp = Stamp { content: state.doc.content_serial(), settings: settings_fingerprint(state, lit) };
         self.resolve_with(&state.doc, lit, stamp, state.frame.time, delay, force)
@@ -207,7 +249,7 @@ impl BakeCache {
         let scene = match self.scene {
             Some((content, key)) if content == stamp.content => key,
             _ => {
-                let key = scene_fingerprint(doc);
+                let key = self.scene_key(doc);
                 self.scene = Some((stamp.content, key));
                 key
             }
@@ -216,7 +258,7 @@ impl BakeCache {
         let mut hash = DefaultHasher::new();
         key.hash(&mut hash);
         let serial = hash.finish();
-        input.resolved = Some((stamp, serial));
+        self.input[usize::from(lit)].resolved = Some((stamp, serial));
         Some(serial)
     }
 
@@ -262,7 +304,18 @@ mod tests {
             .doc
             .create_point_entity("light_environment", glam::DVec3::ZERO, &[("_light".into(), "255 255 255 300".into())])
             .unwrap();
-        assert_ne!(cache.geometry_key(&state), initial);
+        assert_eq!(cache.geometry_key(&state), initial, "the sun is relit without compiling");
+        state
+            .doc
+            .create_point_entity("prop_static", glam::DVec3::ZERO, &[("model".into(), "models/a.mdl".into())])
+            .unwrap();
+        let prop = cache.geometry_key(&state);
+        assert_ne!(prop, initial, "props cast shadows");
+        let solid = *state.doc.scene().solids().keys().next().unwrap();
+        state.doc.apply_material_to_objects(&[hp_editor::ObjRef::Solid(solid)], "lights/white").unwrap();
+        assert_ne!(cache.geometry_key(&state), prop, "materials are part of the geometry");
+        assert!(state.doc.undo());
+        assert_eq!(cache.geometry_key(&state), prop, "undo restores the key");
     }
     use hp_app::settings::{LightingQuality, LightingSetting};
     use hp_editor::luxels::{ColorCorrectionPlus, ColorCorrectionSlot};

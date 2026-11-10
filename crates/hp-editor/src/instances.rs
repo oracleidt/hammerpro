@@ -238,6 +238,21 @@ impl Fixup {
         }
     }
 
+    fn with_defaults(mut self, parms: &[InstanceParm]) -> Fixup {
+        for p in parms {
+            let Some(default) = &p.default else { continue };
+            if !self.replaces.iter().any(|(var, _)| var.eq_ignore_ascii_case(&p.name)) {
+                self.replaces.push((p.name.clone(), default.clone()));
+            }
+        }
+        self
+    }
+
+    fn within(mut self, outer: &Fixup) -> Fixup {
+        self.replaces.extend(outer.replaces.iter().cloned());
+        self
+    }
+
     pub fn translation(delta: DVec3) -> Fixup {
         let delta = if delta.is_finite() { delta } else { DVec3::ZERO };
         Fixup {
@@ -292,7 +307,16 @@ impl Fixup {
             if let Cow::Owned(c) = self.replace(&e.classname) {
                 e.classname = c;
             }
-            for (_, v) in &mut e.props {
+            let instance = is_instance(e);
+            for (k, v) in &mut e.props {
+                if instance && is_replace_key(k) {
+                    if let Some((var, value)) = v.split_once(' ')
+                        && let Cow::Owned(s) = self.replace(value)
+                    {
+                        *v = format!("{var} {s}");
+                    }
+                    continue;
+                }
                 if let Cow::Owned(s) = self.replace(v) {
                     *v = s;
                 }
@@ -625,6 +649,7 @@ struct Queued {
     depth: usize,
     containing: Option<Arc<Path>>,
     chain: Arc<Vec<String>>,
+    outer: Option<Arc<Fixup>>,
 }
 
 pub fn expand(roots: &[&Entity], source: &mut dyn InstanceSource, opts: &ExpandOptions<'_>) -> Vec<Expansion> {
@@ -639,6 +664,7 @@ pub fn expand(roots: &[&Entity], source: &mut dyn InstanceSource, opts: &ExpandO
             depth: 0,
             containing: None,
             chain: Arc::clone(&main_chain),
+            outer: None,
         })
         .collect();
     let mut auto = opts.first_auto_index.max(1);
@@ -687,7 +713,11 @@ pub fn expand(roots: &[&Entity], source: &mut dyn InstanceSource, opts: &ExpandO
             keep(exp, InstanceIssue::Cycle { file: spec.file.clone() }, q.entity, q.depth);
             continue;
         }
-        let fixup = Arc::new(Fixup::new(&spec, auto));
+        let mut own = Fixup::new(&spec, auto).with_defaults(&map_parms(&map));
+        if let Some(outer) = &q.outer {
+            own = own.within(outer);
+        }
+        let fixup = Arc::new(own);
         auto = auto.saturating_add(1);
         placed += 1;
         let chain = {
@@ -708,6 +738,7 @@ pub fn expand(roots: &[&Entity], source: &mut dyn InstanceSource, opts: &ExpandO
                 depth: q.depth + 1,
                 containing: Some(Arc::clone(&path)),
                 chain: Arc::clone(&chain),
+                outer: Some(Arc::clone(&fixup)),
             });
         }
         exp.pieces.push(Piece { path, map, fixup, depth: q.depth });
@@ -1185,6 +1216,57 @@ mod tests {
         assert!(expand(&[&root], &mut pending, &opts)[0].is_pending());
         let no_file = inst(&[]);
         assert_eq!(expand(&[&no_file], &mut pending, &opts)[0].issues, vec![InstanceIssue::NoFile]);
+    }
+
+    #[test]
+    fn nested_parameters_pass_through() {
+        let mut a = Map::new_empty();
+        a.entities.push(inst(&[("targetname", "inner"), ("file", "b.vmf"), ("replace01", "$color $color")]));
+        a.entities.push(ent("func_instance_parms", &[("parm1", "$color color255"), ("parm2", "$speed integer 75")]));
+        let mut b = Map::new_empty();
+        b.entities.push(ent(
+            "prop_static",
+            &[("targetname", "crate"), ("model", "models/props_junk/wood_crate001a.mdl"), ("skin", "$speed")],
+        ));
+        b.entities.push(ent("light", &[("targetname", "lamp"), ("_light", "$color 200")]));
+        let (a, b) = (Arc::new(a), Arc::new(b));
+        let mut source = |req: &LoadRequest<'_>| match req.file {
+            "a.vmf" => Loaded::Ready { path: Arc::from(Path::new("/m/a.vmf")), map: Arc::clone(&a) },
+            "b.vmf" => Loaded::Ready { path: Arc::from(Path::new("/m/b.vmf")), map: Arc::clone(&b) },
+            _ => Loaded::Missing,
+        };
+        let opts = ExpandOptions::default();
+        let cases = [
+            ("0", "0 255 0", "ia-inner-lamp", "75"),
+            ("1", "0 0 255", "inner-ia-lamp", "75"),
+            ("2", "255 0 0", "inner-lamp", "75"),
+        ];
+        for (style, color, lamp_name, skin) in cases {
+            let root = inst(&[
+                ("targetname", "ia"),
+                ("file", "a.vmf"),
+                ("fixup_style", style),
+                ("replace01", &format!("$color {color}")),
+            ]);
+            let exp = expand(&[&root], &mut source, &opts).pop().unwrap();
+            let frag = fragment_of(&exp, &opts);
+            let prop = frag.entities.iter().find(|e| e.classname == "prop_static").unwrap();
+            assert_eq!(prop.get("model"), Some("models/props_junk/wood_crate001a.mdl"));
+            assert_eq!(prop.get("skin"), Some(skin), "parameter default of the instance file");
+            let light = frag.entities.iter().find(|e| e.classname == "light").unwrap();
+            assert_eq!(light.get("_light"), Some(format!("{color} 200").as_str()));
+            assert_eq!(light.get("targetname"), Some(lamp_name));
+        }
+        let root =
+            inst(&[("targetname", "ib"), ("file", "a.vmf"), ("replace01", "$color 1 2 3"), ("replace02", "$speed 9")]);
+        let exp = expand(&[&root], &mut source, &opts).pop().unwrap();
+        let frag = fragment_of(&exp, &opts);
+        let prop = frag.entities.iter().find(|e| e.classname == "prop_static").unwrap();
+        assert_eq!(prop.get("skin"), Some("9"), "an outer variable reaches the nested file");
+        assert_eq!(prop.get("targetname"), Some("ib-inner-crate"));
+        let mut kept = inst(&[("targetname", "x"), ("file", "missing.vmf"), ("replace01", "$color $color")]);
+        Fixup::new(&InstanceSpec::of(&root).unwrap(), 1).fix_entity(&mut kept, None);
+        assert_eq!(kept.get("replace01"), Some("$color 1 2 3"), "only the value of a replace key is substituted");
     }
 
     #[test]

@@ -49,12 +49,11 @@ impl StatusSegment for CompileStatus {
         }
         if let Some(p) = c.background.clone() {
             ui.separator();
-            let r = ui
-                .add(
-                    egui::Label::new(RichText::new(format!("⏳ {}", t!("shell.status.compile_background"))).small())
-                        .sense(egui::Sense::click()),
-                )
-                .on_hover_text(tf!("shell.status.compile_background_tip", secs(p.elapsed_s)));
+            let r = ui.add(
+                egui::Label::new(RichText::new(format!("⏳ {}", t!("shell.status.compile_background"))).small())
+                    .sense(egui::Sense::click()),
+            );
+            let r = crate::common::lazy_hover_text(r, || tf!("shell.status.compile_background_tip", secs(p.elapsed_s)));
             if r.clicked() {
                 state.request(Action::CancelCompile);
             }

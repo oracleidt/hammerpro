@@ -50,7 +50,20 @@ pub(crate) struct FlushOutput {
     pub rebuilt: Vec<u32>,
     pub state_ranges: Vec<(u32, u32)>,
     pub states_len: u32,
+    pub shadow_states: bool,
+    pub casters: bool,
 }
+
+pub(crate) const NO_CASTER: u32 =
+    ObjectFlags::HIDDEN.0 | ObjectFlags::NO_3D.0 | ObjectFlags::NO_SHADOW.0 | ObjectFlags::ROPE.0;
+
+pub(crate) const SHADOW_NEUTRAL: u32 = ObjectFlags::SELECTED.0
+    | ObjectFlags::HOVERED.0
+    | ObjectFlags::DIMMED.0
+    | ObjectFlags::INVALID.0
+    | ObjectFlags::ALWAYS_EDGES.0
+    | ObjectFlags::NO_2D.0
+    | ObjectFlags::NO_GAME_WIRE.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct ChunkKey {
@@ -83,6 +96,7 @@ pub(crate) struct Chunk {
     pub rebuilt_epoch: u64,
     pub list_pos: u32,
     pub all_hidden: bool,
+    pub all_compiled: bool,
 }
 
 impl Chunk {
@@ -205,6 +219,8 @@ pub(crate) struct Scene {
     pub brush_entities: u32,
     pub selected: ahash::HashSet<ObjectId>,
     pub selected_gen: u64,
+    pub state_gen: u64,
+    shadow_states: bool,
     pub membership_gen: u64,
     pub bulk: bool,
 }
@@ -396,6 +412,8 @@ impl Scene {
             brush_entities: 0,
             selected: ahash::HashSet::default(),
             selected_gen: 1,
+            state_gen: 1,
+            shadow_states: false,
             membership_gen: 1,
             bulk: false,
         }
@@ -422,6 +440,7 @@ impl Scene {
     }
 
     fn write_state(&mut self, slot: u32, flags: u32, color: u32, tint: u32) {
+        self.state_gen += 1;
         if let Some(s) = self.states.get_mut(slot as usize) {
             *s = ObjState { flags, color, tint, classic: s.classic };
         }
@@ -429,6 +448,7 @@ impl Scene {
     }
 
     fn clear_state(&mut self, slot: u32) {
+        self.state_gen += 1;
         if let Some(s) = self.states.get_mut(slot as usize) {
             *s = ObjState { flags: 0, color: WHITE, tint: WHITE, classic: 0 };
         }
@@ -459,6 +479,7 @@ impl Scene {
             return;
         }
         let (slot, translucent, flags) = (e.slot, e.tint >> 24 != 0xff, e.flags);
+        self.shadow_states |= flags & NO_CASTER == 0;
         self.objects.remove(&id);
         self.count_flags(id, flags, 0);
         if translucent {
@@ -523,6 +544,7 @@ impl Scene {
         self.pending.clear();
         self.translucent.clear();
         self.translucent_gen += 1;
+        self.shadow_states = true;
         self.hidden_dirty.clear();
         self.chunks.clear();
         self.free_chunks.clear();
@@ -550,7 +572,10 @@ impl Scene {
             return;
         }
         let old = e.flags;
-        let hidden_changed = (old ^ flags.0) & ObjectFlags::HIDDEN.0 != 0;
+        let drawn = e.stored.is_some() || e.ext_refs > 0;
+        let hidden_changed = (old ^ flags.0) & (ObjectFlags::HIDDEN.0 | ObjectFlags::COMPILED_LIGHT.0) != 0;
+        self.shadow_states |= drawn && (old ^ flags.0) & !SHADOW_NEUTRAL != 0;
+        let Some(e) = self.objects.get_mut(&id) else { return };
         e.flags = flags.0;
         self.count_flags(id, old, flags.0);
         let Some(e) = self.objects.get(&id) else { return };
@@ -571,8 +596,10 @@ impl Scene {
         }
         let was = e.tint >> 24 != 0xff;
         let is = tint >> 24 != 0xff;
+        let alpha_changed = (e.stored.is_some() || e.ext_refs > 0) && (e.tint ^ tint) >> 24 != 0;
         e.tint = tint;
         let (slot, flags, color) = (e.slot, e.flags, e.color);
+        self.shadow_states |= alpha_changed;
         self.write_state(slot, flags, color, tint);
         if was != is {
             if is {
@@ -782,6 +809,7 @@ impl Scene {
         for (id, &i) in &live.material_index {
             self.material_index.insert(*id, i);
         }
+        self.shadow_states = true;
         self.state_dirty_all = true;
         self.state_dirty.clear();
     }
@@ -826,6 +854,7 @@ impl Scene {
             rebuilt_epoch: 0,
             list_pos,
             all_hidden: false,
+            all_compiled: false,
         };
         if (idx as usize) < self.chunks.len() {
             self.chunks[idx as usize] = Some(chunk);
@@ -1175,11 +1204,13 @@ impl Scene {
                 continue;
             }
             e.in_pending = false;
+            let caster = e.flags & NO_CASTER == 0;
             match std::mem::replace(&mut e.pending, Pending::None) {
                 Pending::Upsert(mesh) => jobs.push((id, e.slot, Some(mesh))),
                 Pending::Remove => jobs.push((id, e.slot, None)),
-                Pending::None => {}
+                Pending::None => continue,
             }
+            out.casters |= caster;
         }
 
         let packed: Vec<(ObjectId, Option<Packed>)> = if parallel && jobs.len() > 64 {
@@ -1268,6 +1299,7 @@ impl Scene {
         }
         self.state_dirty_all = false;
         self.state_dirty.clear();
+        out.shadow_states = std::mem::take(&mut self.shadow_states);
 
         self.refresh_hidden_chunks();
         out
@@ -1280,13 +1312,17 @@ impl Scene {
         let mut dirty = std::mem::take(&mut self.hidden_dirty);
         dirty.sort_unstable();
         dirty.dedup();
-        let hidden = ObjectFlags::HIDDEN.0;
+        let all_have = |chunk: &Chunk, flag: u32| {
+            !chunk.members.is_empty()
+                && chunk.members.keys().all(|id| self.objects.get(id).is_some_and(|e| e.flags & flag != 0))
+        };
         for c in dirty {
             let Some(Some(chunk)) = self.chunks.get(c as usize) else { continue };
-            let all = !chunk.members.is_empty()
-                && chunk.members.keys().all(|id| self.objects.get(id).is_some_and(|e| e.flags & hidden != 0));
+            let hidden = all_have(chunk, ObjectFlags::HIDDEN.0);
+            let compiled = all_have(chunk, ObjectFlags::COMPILED_LIGHT.0);
             if let Some(Some(chunk)) = self.chunks.get_mut(c as usize) {
-                chunk.all_hidden = all;
+                chunk.all_hidden = hidden;
+                chunk.all_compiled = compiled;
             }
         }
     }

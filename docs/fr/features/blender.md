@@ -94,6 +94,8 @@ L'add-on trouve le fichier surveillé grâce à la variable d'environnement `HAM
 
 Après un envoi, Hammer Pro surveille le fichier exporté (paramètre `blender.live_link`, activé par défaut). Quand Blender l'écrit et que le fichier ne change plus pendant un court instant, Hammer Pro le lit en arrière-plan et l'applique. Avec le lien direct désactivé, utilisez **Mettre à jour depuis Blender** (ou `blender_pull`) quand vous voulez le changement. **Arrêter le lien direct avec Blender** met fin à la surveillance.
 
+La surveillance ne coûte rien tant que le fichier ne change pas : un petit fil en arrière-plan regarde la date et la taille du fichier quatre fois par seconde et ne réveille l'éditeur que quand elles changent ; Hammer Pro au repos ne redessine donc pas pendant que le lien est actif.
+
 ## MCP
 
 | Outil | Ce qu'il fait |

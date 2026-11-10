@@ -295,6 +295,16 @@ fn load_from_resolves_companions() {
     };
     let err = crate::load_from("models/quad.mdl", no_vtx, &LoadOptions::default());
     assert!(matches!(err, Err(MdlError::MissingFile { file: crate::FileKind::Vtx, .. })));
+    let mut reads = 0;
+    let files = crate::read_files("models/quad.mdl", |p| {
+        reads += 1;
+        read(p)
+    })
+    .expect("read once");
+    assert_eq!(reads, 5, "the MDL, the VVD, then the VTX names up to the first one that exists");
+    assert_eq!((&files.mdl, &files.vvd, &files.vtx), (&mdl, &vvd, &vtx));
+    let all = LoadOptions { body_groups: BodyGroupSelect::All, ..LoadOptions::default() };
+    assert_eq!(files.load(&all).unwrap(), load(&mdl, &vvd, &vtx, &all).unwrap(), "loads again without reading");
 }
 
 pub(crate) struct Rng(pub u64);

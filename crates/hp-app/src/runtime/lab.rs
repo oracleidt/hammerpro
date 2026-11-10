@@ -7,6 +7,8 @@ pub struct LabRuntime {
     pub decompiled_from: Option<PathBuf>,
     pub nav_file: Option<PathBuf>,
     pub nav_summary: Option<(PathBuf, usize, usize)>,
+    pub nav_generating: bool,
+    pub nav_generated: Option<Result<(PathBuf, usize, u128), String>>,
     pub decompiling: Option<String>,
     pub player: PlayerState,
     pub unprop_open: bool,

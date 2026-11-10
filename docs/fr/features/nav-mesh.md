@@ -28,7 +28,7 @@ Avertissements dans la console : les points d'apparition sans sol en dessous son
 
 ## Afficher un nav mesh
 
-**Afficher le nav mesh** dessine le maillage dans toutes les vues. Le fichier est celui choisi avec **Map > Charger un nav mesh...**, sinon le `.nav` à côté de la map, sinon celui du dossier `maps` du jeu (aussi à côté d'un BSP décompilé). Il est relu quand il change sur le disque. Hammer Pro lit les versions de nav 1 à 16 (Garry's Mod écrit la version 16).
+**Afficher le nav mesh** dessine le maillage dans toutes les vues. Le fichier est celui choisi avec **Map > Charger un nav mesh...**, sinon le `.nav` à côté de la map, sinon celui du dossier `maps` du jeu (aussi à côté d'un BSP décompilé). Il est relu quand il change sur le disque (un fil en arrière-plan regarde les fichiers possibles toutes les 1,5 seconde et ne réveille l'éditeur que quand l'un d'eux change ou apparaît : afficher le nav mesh ne coûte aucun rafraîchissement tant que rien ne change). Hammer Pro lit les versions de nav 1 à 16 (Garry's Mod écrit la version 16).
 
 | Dessin | Sens |
 | --- | --- |
@@ -58,7 +58,7 @@ Les zones sont remplies dans la vue 3D et en contour dans les vues 2D. La barre 
 
 - Les zones magenta sont coupées de là où les joueurs apparaissent : comblez l'écart qui les isole, ou retirez-les en jeu (l'astuce `nav_flood_select` du wiki Valve les trouve).
 - La [fenêtre de publication](build-content-release.md) peut aussi construire le nav mesh dans une session de jeu, et sa liste de vérification contrôle que la map en a un.
-- Outil MCP : `nav_mesh` (le maillage affiché, ou charger un fichier `.nav` du dossier de la map ; voir la [référence des outils MCP](../../MCP.md), en anglais).
+- Outil MCP : `nav_mesh` (le maillage affiché, `show` pour l'afficher ou le masquer, `load` pour charger un fichier `.nav` du dossier de la map, `generate` pour lancer **Générer le nav mesh** en arrière-plan, puis `generating` et `last_generation` avec les zones et la durée ou l'erreur ; voir la [référence des outils MCP](../../MCP.md), en anglais).
 
 ## FAQ
 

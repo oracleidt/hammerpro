@@ -33,6 +33,7 @@ Pour le vrai rendu de la map compilée (lumière rebondie, lightmaps, props écl
    - **Mises à jour dynamiques** avec un **Délai de mise à jour** : relance le précalcul quand les modifications affectant l'éclairage s'arrêtent.
    - **Budget des lightmaps** : la taille estimée des lightmaps face aux 2 Go qu'une face peut y adresser, avec les faces les plus coûteuses.
 4. Attendez les passes rapide et affinée, puis naviguez avec le résultat calculé. Les déplacements de caméra et la sélection n'invalident pas un précalcul global. L'aperçu suit la plage dynamique des réglages de compilation (LDR ou HDR).
+5. Modifiez les lumières : déplacer une lumière ou changer sa couleur, sa luminosité ou son cône ne recalcule que cette lumière et la lumière rebondie, en général en une fraction de seconde, sans recompiler. **Map > Éclairage > Isoler les lumières sélectionnées** et **Couper les lumières sélectionnées** comparent les lumières une à une ; **Mesurer le coût de chaque lumière** trouve les lumières les plus coûteuses. Sur les grandes maps, la zone autour de la caméra est précalculée d'abord (réglage **Précalculer d'abord la zone visible**). Déplacer une lumière avec l'outil de sélection la recalcule en direct tant que le bouton de la souris est enfoncé, et la map est préparée en arrière-plan quand les modifications marquent une pause, si bien qu'activer l'aperçu précalculé l'affiche aussitôt (réglage **Préparer l'aperçu précalculé en arrière-plan**).
 
 Les fils de calcul et le budget de luxels de l'aperçu se règlent dans la page **Éclairage** des paramètres. L'activation automatique utilise toute la carte par défaut. **Précalculer autour de la caméra sur les grandes cartes** est un mode régional optionnel pour l'activation automatique dont la région suit la caméra ; les choix existants enregistrés sont conservés. La luminosité de l'aperçu, la correction colorimétrique et le délai de mise à jour ne relancent pas le calcul d'éclairage. Détails : [Aperçu de l'éclairage](../features/lighting-preview.md).
 
@@ -60,6 +61,26 @@ Dans la section **Props statiques** de la fenêtre de compilation :
 - **Ombres des props statiques** : les props projettent des ombres dans l'éclairage. Décoché : aucune ombre de prop, et leurs modèles ne sont même pas chargés (`-nostaticpropshadows`), bien plus rapide sur les maps avec beaucoup de props.
 
 Vous pouvez aussi forcer `-StaticPropLighting` avec une compilation Normal via le menu des options d'éclairage. Chaque option est décrite dans [Options de compilation](../compiler/compile-options.md).
+
+## Comparaison avec VRAD
+
+Le compilateur d'éclairage suit les règles de VRAD : une map éclairée par Hammer Pro ressemble à la même map éclairée par le VRAD de Valve dans Garry's Mod. Il est vérifié fonction par fonction face au VRAD de Garry's Mod sur des maps de test (lightmaps, styles de lumière, bump maps, lumière ambiante, couleurs par sommet des props statiques, props de détail, lumières du monde) et en jeu :
+
+- `light`, `light_spot` et `light_environment` : couleurs et intensité, clés HDR (`_lightHDR`, `_lightscaleHDR`, `_ambientHDR`, `_AmbientScaleHDR`), atténuation constante, linéaire et quadratique, `_fifty_percent_distance`, `_zero_percent_distance`, `_hardfalloff`, `_distance`, cônes des spots et `_exponent`, `target`, `SunSpreadAngle`, la skybox 3D. Même lumière à environ 1 % près.
+- Lumières nommées et styles de lumière : les mêmes styles commutables (32 et plus) et les mêmes lightmaps supplémentaires.
+- Lumières de texture de `lights.rad`, du fichier `.rad` propre à la map et de `-lights`. La clé worldspawn `_lightsrad` est un ajout de Hammer Pro que VRAD ignore.
+- Surfaces avec bump map, displacements, `func_detail`, échelle de lightmap de chaque face, `_minlight`, `vrad_brush_cast_shadows`, ombres et éclairage par sommet des props statiques (`-StaticPropLighting`, `-textureshadows`), props de détail, `-final`, `-extrasky`, `-noextra`, `-softsun`, `-noskyboxrecurse`, `-fastambient`, `-bounce`.
+- Le verre translucide, les grilles en alpha test (`CONTENTS_WINDOW`, `CONTENTS_GRATE`) et l'eau ne projettent pas d'ombre, comme dans VRAD.
+
+Détails et différences voulues :
+
+- La lumière rebondie et la lumière ambiante des props et des joueurs traversent l'eau, le verre et les grilles, comme la lumière directe. Avant la 2.0 une surface d'eau les arrêtait : les sols sous l'eau et la lumière ambiante au dessus d'un bassin étaient trop sombres.
+- La lumière renvoyée par une petite tache très vive (une lumière à quelques unités d'un mur) est étalée sur une zone d'environ 4 luxels, comme un patch de VRAD, et ne laisse pas de points brillants sur les surfaces autour.
+- La lumière rebondie est lissée sur 4 à 8 luxels (plus large quand moins de rayons sont tracés, pour que Brouillon et Normal soient aussi lisses que Final), comme les patchs de VRAD : pas de taches dans les endroits éclairés seulement par la lumière rebondie, comme les ombres sous un soleil bas.
+- Les luxels du bord d'une face qu'aucun échantillon de lumière n'atteint (souvent sur les entités de brush comme les portes) prennent la lumière de leurs voisins au lieu de rester noirs : la face n'a pas de bord sombre.
+- `-fast` garde les niveaux de lumière normaux ; le `-fast` de VRAD rend la lumière rebondie environ 8 % plus sombre.
+- Dans les lieux ouverts (cours, rues) la lumière rebondie est environ 10 % plus sombre que celle de VRAD, qui surestime la lumière échangée entre surfaces proches ; la lumière directe et la lumière du ciel sont les mêmes. Les pièces avec de l'eau reçoivent environ 10 % de lumière rebondie en plus que dans VRAD, qui atténue la lumière qui traverse une surface d'eau.
+- Une map sans visibilité (une fuite) reçoit quand même la lumière rebondie, là où VRAD ne calcule que la lumière directe.
 
 ## FAQ
 

@@ -11,7 +11,7 @@
 - Arguments are separated by spaces. The commands that take a path or a text (`open`, `save`, `screenshot`, `type`, `log`...) read the rest of the line, spaces included.
 - A line that cannot be read stops the run before it starts with `script line N: cannot parse ...` and exit code 2.
 - Each command prints `script: ...` on stderr when it runs, which makes the output easy to follow.
-- The run does not close the window at the end of the script: finish with `exit`.
+- The run does not close the window at the end of the script: finish with `exit`. After the last command the window behaves like a normal session and only redraws when something changes, so a window left open by a script (for example to be driven over MCP) costs no CPU while nothing happens.
 
 ## Positions (POS)
 

@@ -6,7 +6,7 @@ Hammer Pro enregistre en arrière-plan des copies de vos maps modifiées, les sa
 
 ## Sauvegarde automatique
 
-Toutes les quelques minutes, chaque map ouverte avec des modifications non enregistrées est écrite dans un nouveau fichier de sauvegarde, en arrière-plan (la console affiche **Sauvegarde automatique effectuée**). Le fichier de la map n'est jamais touché. La copie contient aussi les caméras de la map.
+Toutes les quelques minutes, chaque map ouverte avec des modifications non enregistrées est écrite dans un nouveau fichier de sauvegarde, en arrière-plan (la console affiche **Sauvegarde automatique effectuée**). Le fichier de la map n'est jamais touché. La copie contient aussi les caméras de la map. La map est copiée quelques millisecondes à la fois entre les images : même une map énorme est sauvegardée sans à-coup ; une modification faite pendant la copie la fait recommencer (une sélection ne la fait pas recommencer). **Enregistrer** (`Ctrl+S`) écrit aussi le fichier de la map en arrière-plan : fermer la map ou Hammer Pro attend la fin de cette écriture, et un **Enregistrer sous...** fait pendant ce temps garde le nouveau fichier.
 
 Réglez-la dans **Paramètres > Général**, section **Sauvegarde automatique** :
 

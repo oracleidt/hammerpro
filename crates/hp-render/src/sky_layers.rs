@@ -8,13 +8,13 @@ const MIN_SPACING: f32 = 16.0;
 const MAX_TESTS: u64 = 4_000_000;
 pub(crate) const REGION_MARGIN: f32 = 64.0;
 
-pub(crate) fn march_steps(texel: f32) -> [[f32; 4]; 18] {
+pub(crate) fn march_steps_with(texel: f32, growth: f32) -> [[f32; 4]; 18] {
     let texel = texel.max(1.0);
     let mut radius = 10.0f32;
     std::array::from_fn(|_| {
         let level = (0.2 * radius / texel).max(1.0).log2().round_ties_even().clamp(0.0, 7.0);
         let step = [radius, level, 1.0, 0.0];
-        radius += texel * level.exp2() * 1.6;
+        radius += texel * level.exp2() * growth;
         step
     })
 }

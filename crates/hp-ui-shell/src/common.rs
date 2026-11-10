@@ -207,6 +207,10 @@ pub fn pill(ui: &mut Ui, text: &str, on: bool) -> egui::Response {
     ui.add(button)
 }
 
+pub fn lazy_hover_text(r: egui::Response, text: impl FnOnce() -> String) -> egui::Response {
+    if r.hovered() || r.ctx.has_accesskit_node(r.id) { r.on_hover_text(text()) } else { r }
+}
+
 pub fn heading(ui: &mut Ui, text: &str) {
     ui.add_space(6.0);
     ui.label(RichText::new(text).strong().color(ui.visuals().strong_text_color()));

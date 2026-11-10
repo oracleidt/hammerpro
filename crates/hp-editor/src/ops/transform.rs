@@ -144,24 +144,19 @@ impl Document {
         for r in results {
             updates.push(r?);
         }
-        let mut ent_updates: Vec<(Id, Entity)> = Vec::new();
-        let mut overlays: Vec<Id> = Vec::new();
-        for eid in entity_ids {
-            let Some(n) = scene.entities.get(&eid) else { continue };
-            let mut e = n.entity.clone();
-            if transform_entity(&mut e, xf, scene.is_brush_entity(eid), scale_lock) {
-                if overlay::is_overlay(&e) {
-                    overlays.push(eid);
-                }
-                ent_updates.push((eid, e));
-            }
-        }
+        let ent_updates: Vec<(Id, Entity)> = entity_ids
+            .par_iter()
+            .filter_map(|eid| {
+                let n = scene.entities.get(eid)?;
+                let mut e = n.entity.clone();
+                transform_entity(&mut e, xf, scene.is_brush_entity(*eid), scale_lock).then_some((*eid, e))
+            })
+            .collect();
+        let overlays: Vec<Id> = ent_updates.iter().filter(|(_, e)| overlay::is_overlay(e)).map(|(id, _)| *id).collect();
         let moved: IdSet = if overlays.is_empty() { id_set(0) } else { solid_ids.iter().copied().collect() };
         let run = move |doc: &mut Self| -> EditResult<()> {
             doc.update_solids(updates);
-            for (id, e) in ent_updates {
-                doc.update_entity(id, |x| *x = e);
-            }
+            doc.update_entities(ent_updates);
             if !overlays.is_empty() {
                 doc.fix_overlay_sides(&overlays, &moved);
             }

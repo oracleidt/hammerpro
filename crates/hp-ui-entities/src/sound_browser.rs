@@ -22,7 +22,7 @@ pub enum SoundMode {
     Files,
 }
 
-type RowsKey = (SoundMode, String, SourceFilter, bool, usize, usize, usize, usize);
+type RowsKey = (SoundMode, SourceFilter, bool, usize, usize, usize, usize);
 
 pub struct SoundBrowser {
     mode: SoundMode,
@@ -33,6 +33,8 @@ pub struct SoundBrowser {
     files: Arc<Vec<AssetEntry>>,
     rows: Vec<u32>,
     rows_key: Option<RowsKey>,
+    rows_search: String,
+    detail: String,
     selected: Option<String>,
     scroll_to_selected: bool,
     list_view: (f32, f32),
@@ -58,6 +60,8 @@ impl SoundBrowser {
             files: Arc::new(Vec::new()),
             rows: Vec::new(),
             rows_key: None,
+            rows_search: String::new(),
+            detail: String::new(),
             selected: None,
             scroll_to_selected: false,
             list_view: (0.0, 0.0),
@@ -113,7 +117,6 @@ impl SoundBrowser {
         let game_ptr = self.game.as_ref().map_or(0, |g| Arc::as_ptr(g) as usize);
         let key: RowsKey = (
             self.mode,
-            self.search.clone(),
             self.source,
             gmod_only,
             game_ptr,
@@ -121,7 +124,26 @@ impl SoundBrowser {
             Arc::as_ptr(&self.files) as usize,
             self.files.len(),
         );
-        if self.rows_key.as_ref() == Some(&key) {
+        if self.rows_key.as_ref() == Some(&key) && self.rows_search == self.search {
+            return;
+        }
+        let refine = self.rows_key.as_ref() == Some(&key)
+            && !self.search.contains('!')
+            && !self.rows_search.contains('!')
+            && self.search.starts_with(self.rows_search.as_str());
+        self.rows_search.clone_from(&self.search);
+        if refine {
+            let search = WordSearch::parse(&self.search);
+            let mut rows = std::mem::take(&mut self.rows);
+            rows.retain(|&i| match self.mode {
+                SoundMode::GameSounds => self
+                    .game
+                    .as_ref()
+                    .and_then(|g| g.get(i as usize))
+                    .is_some_and(|g| search.matches2(&g.name, &g.wave)),
+                SoundMode::Files => self.files.get(i as usize).is_some_and(|f| search.matches(sound_key_name(&f.name))),
+            });
+            self.rows = rows;
             return;
         }
         let search = WordSearch::parse(&self.search);
@@ -234,11 +256,17 @@ impl SoundBrowser {
         let mut activated: Option<String> = None;
         let mut preview: Option<String> = None;
         let playing = sounds::now_playing();
+        let mut detail = std::mem::take(&mut self.detail);
         let out = area.show_rows(ui, ROW_HEIGHT, self.rows.len(), |ui, range| {
             for i in range {
                 let Some((name, wave, source)) = self.row(i) else { continue };
-                let badge = self.sources.badge_text(source);
-                let detail = if wave.is_empty() { badge.clone() } else { format!("{wave}  ·  {badge}") };
+                let badge = self.sources.badge_str(source);
+                detail.clear();
+                if !wave.is_empty() {
+                    detail.push_str(wave);
+                    detail.push_str("  ·  ");
+                }
+                detail.push_str(badge);
                 let selected = self.selected.as_deref().is_some_and(|s| s.eq_ignore_ascii_case(name));
                 let is_playing = playing.as_deref().is_some_and(|p| p.eq_ignore_ascii_case(name));
                 let look = RowLook { main: name, detail: &detail, selected, strong: is_playing, ..RowLook::default() };
@@ -255,6 +283,7 @@ impl SoundBrowser {
                 }
             }
         });
+        self.detail = detail;
         self.list_view = (out.state.clamped_offset().y, out.inner_rect.height());
         let hovered = ui.rect_contains_pointer(out.inner_rect);
         if self.rows.is_empty() && !loading {

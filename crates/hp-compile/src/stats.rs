@@ -158,6 +158,7 @@ pub struct VisStats {
     pub portals: u64,
     pub leaves: u64,
     pub mode: String,
+    pub reused: bool,
     pub radius: Option<f64>,
     pub radius_source: Option<String>,
     pub average: f64,
@@ -575,7 +576,10 @@ fn parse_vis_line(v: &mut VisStats, t: &str) {
         v.portals = int(after(s, "portals:"));
         v.leaves = int(after(s, "leaves:"));
     } else if let Some(s) = t.strip_prefix("Vis mode:") {
-        v.mode = s.trim().to_owned();
+        let s = s.trim();
+        let (mode, reused) = s.strip_suffix("(reused)").map_or((s, false), |m| (m.trim_end(), true));
+        v.mode = mode.to_owned();
+        v.reused = reused;
     } else if let Some(s) = t.strip_prefix("Vis radius:") {
         let s = s.trim();
         v.radius = s.split_whitespace().next().and_then(number);
@@ -1185,6 +1189,34 @@ Materials with the most luxels (top 1 of 3):
             assert_eq!(crate::parse_log_line(l), (Severity::Info, None), "{l}");
         }
         assert!(lines.iter().any(|l| l.ends_with("(at 10 20 30)")));
+    }
+
+    #[test]
+    fn a_reused_visibility_keeps_its_mode_and_is_flagged() {
+        let text = |mode: &str| {
+            format!(
+                "---- Visibility statistics ----\nClusters: 120, portals: 340, leaves: 800 (500 empty)\n\
+                 Vis mode: {mode}\nVis radius: none\nVis times: reused 0.045 s, total 0.045 s\n\
+                 Visible clusters: average 48.0 (40.0%), max 90 (75.0%) in cluster 7\n"
+            )
+        };
+        for (line, mode, reused) in [
+            ("full (reused)", "full", true),
+            ("fast (reused)", "fast", true),
+            ("full", "full", false),
+            ("fast", "fast", false),
+            ("off", "off", false),
+            ("skipped (leak)", "skipped (leak)", false),
+        ] {
+            let st = parse_text(&text(line));
+            let v = st.vis.as_ref().expect("vis");
+            assert_eq!((v.mode.as_str(), v.reused), (mode, reused), "{line}");
+            assert_eq!(v.times, [Timing { name: "reused".into(), secs: 0.045 }]);
+            let no_vis = hints(&st).iter().any(|h| h.key().starts_with("compilestats.hint.no_vis"));
+            assert_eq!(no_vis, mode == "off", "{line}");
+        }
+        let json = serde_json::to_value(parse_text(&text("full (reused)"))).expect("json");
+        assert_eq!((json["vis"]["mode"].as_str(), json["vis"]["reused"].as_bool()), (Some("full"), Some(true)));
     }
 
     #[test]

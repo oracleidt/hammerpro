@@ -44,7 +44,7 @@ Click a row to go back or forward to it ("Click a step to go back or forward to 
 | **Undo levels** (`edit.undo_levels`) | **Tools > Options... > Editing** | Most undo steps kept, 10 to 10000. | 500 |
 | **Undo restores the selection** (`edit.undo_restores_selection`) | **Tools > Options... > Editing** | Selection changes are undo steps. | On |
 
-The history also keeps its memory under about 512 MB: the oldest steps are dropped first, the most recent step is always kept.
+The history also keeps its memory under about 512 MB: the oldest steps are dropped first, the most recent step is always kept. Steps keep only what changed: the latest step keeps whole objects so that undoing it stays immediate, and once another step follows it keeps only the changed fields of each face and keyvalue (selection steps in between do not count) (undoing it later rebuilds the geometry of its objects). On hokai_d, an older move of all 26,419 objects takes 31 MB of history instead of 171 MB.
 
 ## Tips
 

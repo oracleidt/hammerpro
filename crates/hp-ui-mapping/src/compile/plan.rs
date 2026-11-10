@@ -235,6 +235,7 @@ pub(crate) struct PrepInput {
     pub fs: Option<hp_fs::GameFs>,
     pub materials: Vec<String>,
     pub models: Vec<String>,
+    pub roots: Vec<hp_fs::deps::DepRoot>,
     pub cache_dir: PathBuf,
     pub content_dir: PathBuf,
 }
@@ -244,11 +245,40 @@ pub(crate) struct PrepOutput {
     pub messages: Vec<(LogSeverity, String)>,
 }
 
+pub(crate) fn stage_custom_models(
+    fs: &hp_fs::GameFs,
+    models: &[String],
+    content_dir: &Path,
+) -> Result<Vec<PathBuf>, String> {
+    const PARTS: [&str; 7] = [".mdl", ".vvd", ".dx90.vtx", ".dx80.vtx", ".sw.vtx", ".phy", ".ani"];
+    let custom = |vpath: &str| {
+        fs.which_source(vpath).and_then(|id| fs.source(id)).is_some_and(|s| s.origin == hp_fs::SourceOrigin::Custom)
+    };
+    let mut out = Vec::new();
+    for model in models {
+        let model = model.trim().replace('\\', "/").to_ascii_lowercase();
+        let Some(base) = model.strip_suffix(".mdl").filter(|b| !b.contains("..") && custom(&model)) else { continue };
+        for part in PARTS {
+            let vpath = format!("{base}{part}");
+            let Some(bytes) = fs.read(&vpath) else { continue };
+            let dest = content_dir.join(&vpath);
+            if std::fs::read(&dest).ok().as_deref() != Some(bytes.as_slice()) {
+                if let Some(dir) = dest.parent() {
+                    std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+                }
+                std::fs::write(&dest, &bytes).map_err(|e| format!("{}: {e}", dest.display()))?;
+            }
+            out.push(dest);
+        }
+    }
+    Ok(out)
+}
+
 pub(crate) fn stage_for_compilers(
     s: &CompileSettings,
     fs: Option<&hp_fs::GameFs>,
     tools: &ToolPaths,
-    materials: &[String],
+    (materials, models): (&[String], &[String]),
     content_dir: &Path,
     messages: &mut Vec<(LogSeverity, String)>,
 ) -> (Option<PathBuf>, Vec<PathBuf>) {
@@ -297,6 +327,12 @@ pub(crate) fn stage_for_compilers(
             Err(e) => messages.push((LogSeverity::Warning, tf!("compile.stage_failed", e))),
         }
     }
+    if let (Some(fs), Some(dir)) = (fs, compile_game_dir.as_deref()) {
+        match stage_custom_models(fs, models, dir) {
+            Ok(files) => staged_files.extend(files),
+            Err(e) => messages.push((LogSeverity::Warning, tf!("compile.stage_failed", e))),
+        }
+    }
     (compile_game_dir, staged_files)
 }
 
@@ -321,8 +357,14 @@ pub(crate) fn prepare(input: PrepInput) -> PrepOutput {
     messages.push((LogSeverity::Info, super::tools::tools_text(&tools)));
 
     let s = &input.settings;
-    let (compile_game_dir, _) =
-        stage_for_compilers(s, input.fs.as_ref(), &tools, &input.materials, &input.content_dir, &mut messages);
+    let (compile_game_dir, _) = stage_for_compilers(
+        s,
+        input.fs.as_ref(),
+        &tools,
+        (&input.materials, &input.models),
+        &input.content_dir,
+        &mut messages,
+    );
     if let Some(fs) = &input.fs {
         messages.extend(resized_image_messages(fs, &input.materials));
     }
@@ -330,7 +372,8 @@ pub(crate) fn prepare(input: PrepInput) -> PrepOutput {
     if s.pack_custom_content {
         match &input.fs {
             Some(fs) => {
-                pack_files = fs.pack_list(&input.materials, &input.models, &input.cache_dir);
+                let map = input.vmf.file_stem().and_then(|n| n.to_str()).unwrap_or_default();
+                pack_files = fs.pack_list_with(&input.materials, &input.models, &input.roots, map, &input.cache_dir);
                 let n = pack_files.len();
                 messages.push((LogSeverity::Info, tf!(plural(n, "compile.pack_count_one", "compile.pack_count"), n)));
             }
@@ -743,6 +786,7 @@ mod tests {
             fs: None,
             materials: Vec::new(),
             models: Vec::new(),
+            roots: Vec::new(),
             cache_dir: dir.join("cache"),
             content_dir: dir.join("content"),
         };
@@ -848,6 +892,31 @@ mod tests {
         );
         assert!(fr[0].1.starts_with("pics/npot : l'image de 100x60 est redimensionnée en 128x64"), "{fr:?}");
         assert!(resized_image_messages(&fs, &["concrete/concretefloor001a".to_owned()]).is_empty());
+    }
+
+    #[test]
+    fn custom_models_are_staged_for_the_compiler() {
+        let dir = crate::test_scratch("custom_models_staged");
+        let custom = dir.join("mine");
+        std::fs::create_dir_all(custom.join("models/props")).expect("models dir");
+        std::fs::create_dir_all(custom.join("materials/props")).expect("materials dir");
+        for (name, text) in
+            [("crate.mdl", "IDST"), ("crate.vvd", "IDSV"), ("crate.dx90.vtx", "vtx"), ("crate.phy", "phy")]
+        {
+            std::fs::write(custom.join("models/props").join(name), text).expect("model file");
+        }
+        std::fs::write(custom.join("materials/props/crate.vmt"), "VertexLitGeneric {}").expect("vmt");
+        let fs = hp_fs::GameFs::empty();
+        fs.add_custom_dir(hp_fs::CustomDir::new(&custom)).expect("custom dir");
+        let content = dir.join("content");
+        let used = vec!["models/props/crate.mdl".to_owned(), "models/props_c17/oildrum001.mdl".to_owned()];
+        let staged = stage_custom_models(&fs, &used, &content).expect("staged");
+        assert_eq!(staged.len(), 4, "{staged:?}");
+        assert_eq!(std::fs::read(content.join("models/props/crate.mdl")).expect("mdl"), b"IDST");
+        assert_eq!(std::fs::read(content.join("models/props/crate.phy")).expect("phy"), b"phy");
+        assert!(!content.join("models/props_c17").exists(), "game models are not copied");
+        let again = stage_custom_models(&fs, &used, &content).expect("staged again");
+        assert_eq!(again, staged);
     }
 
     #[test]

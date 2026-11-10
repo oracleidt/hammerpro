@@ -41,6 +41,10 @@ The log holds the English diagnostics of the libraries (mount timings, file coun
 
 A message repeated in a burst is written 5 times per 10 seconds at most; the next one written says how many similar messages were hidden. Writing to the log never stops Hammer Pro, even when its output is closed.
 
+## Reports and log through MCP
+
+An AI assistant connected through [MCP](../reference/mcp-server.md) can read them for you: `get_crash_reports` lists the reports of the crash folder (newest first, with their kind: crash, worker thread or a previous run that ended unexpectedly, and the message line) and reads one when given its file name; `get_app_log` returns the last lines of the log of this session, filtered with `contains`. Both only read: they never write, and `get_crash_reports` reads nothing outside the crash folder.
+
 ## Graphics problems
 
 ### Graphics errors and lost device

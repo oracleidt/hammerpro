@@ -31,3 +31,9 @@ pub fn register_translations() {
     hp_app::i18n::register(particle_preview::TR);
     hp_app::i18n::register(particle_editor::TR);
 }
+
+#[cfg(test)]
+pub(crate) fn gpu_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}

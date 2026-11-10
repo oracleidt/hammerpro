@@ -657,3 +657,48 @@ fn detail_sprites_follow_the_detail_distances() {
     r.set_detail_fade(None);
     assert!(shot(&mut r, 600.0, "sprite_back") > 200, "the default distance again");
 }
+
+#[test]
+fn the_nearest_compiled_face_wins_whatever_the_draw_order() {
+    let Some((device, queue)) = gpu() else {
+        eprintln!("no GPU adapter available: test skipped");
+        return;
+    };
+    let mut r = Renderer::new(&device, &queue);
+    mat(&mut r, WORLD, [128, 128, 128, 255], MaterialFlags::empty());
+    mat(&mut r, PROP, [255, 255, 255, 255], MaterialFlags::empty());
+    let near = face(-40.0, 40.0, -40.0, 40.0, 60.0, 0, [0.5, 0.5]);
+    let far = face(-100.0, 100.0, -100.0, 100.0, 100.0, 1, [0.5, 0.5]);
+    r.upsert_object(1, mesh(&far, WORLD));
+    r.upsert_object(2, mesh(&near, PROP));
+    for id in [1, 2] {
+        r.set_object_flags(id, ObjectFlags::COMPILED_LIGHT);
+    }
+    let dark = [[0.25f32; 3]];
+    let bright = [[1.0f32; 3]];
+    let maps = [
+        CompiledLightmap { width: 1, height: 1, texels: &dark, styles: &[], bumped: false },
+        CompiledLightmap { width: 1, height: 1, texels: &bright, styles: &[], bumped: false },
+    ];
+    let block = |object, material, verts: &[CompiledVertex], lightmap| CompiledBlock {
+        object,
+        batches: vec![CompiledBatch {
+            material,
+            vertices: verts.iter().map(|v| CompiledVertex { lightmap, ..*v }).collect(),
+            indices: vec![0, 1, 2, 0, 2, 3],
+        }],
+    };
+    r.set_tone_settings(ToneSettings { bloom: 0.0, ..ToneSettings::default() });
+    r.set_view_options(1, ViewOptions { compiled_lighting: true, ..ViewOptions::default() });
+    for (name, order) in [("near_first", [2u32, 1]), ("far_first", [1, 2])] {
+        let blocks: Vec<CompiledBlock> =
+            order.iter().map(|&o| if o == 2 { block(2, PROP, &near, 0) } else { block(1, WORLD, &far, 1) }).collect();
+        r.set_compiled_lighting(CompiledLightMode::Hdr, &maps, &blocks);
+        r.render_view(1, &view(RenderMode::Textured), &Overlay::default());
+        let img = save(&r, name);
+        close(px(&img, 100, 100)[0], srgb(0.25), 2.0, "the near face in front");
+        close(px(&img, 10, 100)[0], srgb(linear(128)), 2.0, "the far face around it");
+    }
+    let stats = r.compiled_lighting().expect("compiled");
+    assert!(stats.atlas_size <= 16 && stats.atlas_height <= 16, "a tiny atlas: {stats:?}");
+}

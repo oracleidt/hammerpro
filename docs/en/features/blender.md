@@ -94,6 +94,8 @@ The add-on finds the watched file through the environment variable `HAMMERPRO_LI
 
 After a send, Hammer Pro watches the exported file (setting `blender.live_link`, on by default). When Blender writes it and the file stops changing for a short moment, Hammer Pro reads it in the background and applies it. With the live link off, use **Update from Blender** (or `blender_pull`) when you want the change. **Stop the Blender live link** ends the watching.
 
+The watching costs nothing while the file does not change: a small background thread looks at the file's date and size four times a second and wakes the editor only when they change, so an idle Hammer Pro does not redraw while the link is on.
+
 ## MCP
 
 | Tool | What it does |

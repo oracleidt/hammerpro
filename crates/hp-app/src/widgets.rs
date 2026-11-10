@@ -387,9 +387,71 @@ pub fn vsep(ui: &mut Ui) {
     }
 }
 
+pub const SPINNER_STEP: f64 = 1.0 / 12.0;
+
+pub fn paced_spinner(ui: &mut Ui, size: f32) -> Response {
+    spinner_with(ui, size, crate::runtime::render::animations_running())
+}
+
+fn spinner_with(ui: &mut Ui, size: f32, running: bool) -> Response {
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(size, size), egui::Sense::hover());
+    if !ui.is_rect_visible(rect) {
+        return response;
+    }
+    let now = ui.input(|i| i.time);
+    let time = (now / SPINNER_STEP).floor() * SPINNER_STEP;
+    if running {
+        let wait = (time + SPINNER_STEP - now).max(0.001);
+        ui.ctx().request_repaint_after(std::time::Duration::from_secs_f64(wait));
+    }
+    let color = ui.visuals().strong_text_color();
+    let radius = rect.height().min(rect.width()) * 0.5 - 2.0;
+    let count = (radius.round() as u32).clamp(8, 128);
+    let start = time * std::f64::consts::TAU;
+    let end = start + 240f64.to_radians() * time.sin();
+    let points: Vec<egui::Pos2> = (0..count)
+        .map(|i| {
+            let angle = egui::emath::lerp(start..=end, f64::from(i) / f64::from(count));
+            let (sin, cos) = angle.sin_cos();
+            rect.center() + radius * egui::vec2(cos as f32, sin as f32)
+        })
+        .collect();
+    ui.painter().add(egui::Shape::line(points, egui::Stroke::new(3.0, color)));
+    response
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn spinner_repaint_delay(running: bool, time: f64) -> std::time::Duration {
+        let ctx = egui::Context::default();
+        let mut delay = std::time::Duration::MAX;
+        for at in [time - 2.0, time - 1.0, time] {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(400.0, 300.0))),
+                time: Some(at),
+                ..Default::default()
+            };
+            let out = ctx.run_ui(input, |ui| {
+                egui::CentralPanel::default().show(ui, |ui| {
+                    spinner_with(ui, 16.0, running);
+                });
+            });
+            delay = out.viewport_output.values().map(|v| v.repaint_delay).min().unwrap_or(std::time::Duration::MAX);
+        }
+        delay
+    }
+
+    #[test]
+    fn the_spinner_turns_a_dozen_times_a_second_and_stops_with_the_animations() {
+        let delay = spinner_repaint_delay(true, 10.0);
+        assert!(delay > std::time::Duration::from_millis(20), "not every frame: {delay:?}");
+        assert!(delay <= std::time::Duration::from_secs_f64(SPINNER_STEP), "{delay:?}");
+        let mid = spinner_repaint_delay(true, 10.0 + SPINNER_STEP * 0.5);
+        assert!(mid < delay, "the next step is on the clock: {mid:?} {delay:?}");
+        assert_eq!(spinner_repaint_delay(false, 10.0), std::time::Duration::MAX, "paused like the other animations");
+    }
 
     #[test]
     fn coordinates_stay_readable() {

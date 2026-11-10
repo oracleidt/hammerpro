@@ -213,11 +213,7 @@ fn build_rows_where(
 }
 
 fn contains_ignore_case(haystack: &str, needle: &str) -> bool {
-    if needle.is_empty() {
-        return true;
-    }
-    let (h, n) = (haystack.as_bytes(), needle.as_bytes());
-    h.windows(n.len()).any(|w| w.iter().zip(n).all(|(a, b)| a.to_ascii_lowercase() == *b))
+    crate::names::contains_lower(haystack, needle)
 }
 
 pub(crate) fn prop_entities(doc: &Document, fgd: Option<&ResolvedFgd>, ids: &[EntityId]) -> Vec<EntityId> {
@@ -247,6 +243,8 @@ pub struct ModelBrowser {
     indexing: Option<(usize, usize, Receiver<ModelIndex>)>,
     rows: Vec<Row>,
     rows_dirty: bool,
+    grid_rows: Vec<u32>,
+    count_text: (usize, hp_app::i18n::Lang, String),
     selected: Option<String>,
     scroll_to_selected: Option<ScrollTo>,
     list_view: (f32, f32),
@@ -286,6 +284,8 @@ impl ModelBrowser {
             indexing: None,
             rows: Vec::new(),
             rows_dirty: true,
+            grid_rows: Vec::new(),
+            count_text: (usize::MAX, hp_app::i18n::Lang::En, String::new()),
             selected: None,
             scroll_to_selected: None,
             list_view: (0.0, 0.0),
@@ -426,8 +426,12 @@ impl ModelBrowser {
                 state.settings.browser.model_grid = !grid;
                 state.settings_dirty = true;
             }
-            let count = self.rows.iter().filter(|r| matches!(r, Row::Model(_))).count();
-            ui.label(RichText::new(tf!("entities.models_count", count)).weak().small());
+            let count = self.grid_rows.len();
+            let lang = hp_app::i18n::lang();
+            if self.count_text.0 != count || self.count_text.1 != lang {
+                self.count_text = (count, lang, tf!("entities.models_count", count));
+            }
+            ui.label(RichText::new(self.count_text.2.as_str()).weak().small());
             let folder_text = self.folder.clone().unwrap_or_else(|| t!("entities.all_folders").to_owned());
             let width = (ui.available_width() - 2.0).max(40.0);
             egui::ComboBox::from_id_salt("hp_ui_entities.model_folder")
@@ -463,15 +467,21 @@ impl ModelBrowser {
                 &self.collapsed,
                 &pass,
             );
+            self.grid_rows.clear();
+            self.grid_rows.extend(self.rows.iter().filter_map(|r| match r {
+                Row::Model(i) => Some(*i),
+                Row::Folder { .. } => None,
+            }));
             self.rows_dirty = false;
         }
 
-        let recent = recent_models(ui.ctx());
-        if !recent.is_empty() {
-            let header = egui::CollapsingHeader::new(tf!("entities.recent_count", recent.len()))
+        let recent_len = crate::cx::recent_models_len(ui.ctx());
+        if recent_len > 0 {
+            let header = egui::CollapsingHeader::new(tf!("entities.recent_count", recent_len))
                 .id_salt("hp_ui_entities.recent_models")
                 .default_open(self.show_recent)
                 .show(ui, |ui| {
+                    let recent = recent_models(ui.ctx());
                     for m in recent.iter().take(8) {
                         let resp = list_row(ui, model_file_stem(m), m, self.selected.as_deref() == Some(m), false);
                         if resp.clicked() {
@@ -556,6 +566,7 @@ impl ModelBrowser {
             self.models = models;
             self.index = None;
             self.rows.clear();
+            self.grid_rows.clear();
             self.rows_dirty = true;
             let (tx, rx) = channel();
             let list = Arc::clone(&self.models);
@@ -591,14 +602,7 @@ impl ModelBrowser {
 
     fn grid(&mut self, ui: &mut Ui, state: &mut AppState, height: f32, pick: Option<&crate::cx::ModelPick>) -> bool {
         self.tiles.sync(state.assets.as_ref());
-        let models: Vec<u32> = self
-            .rows
-            .iter()
-            .filter_map(|r| match r {
-                Row::Model(i) => Some(*i),
-                Row::Folder { .. } => None,
-            })
-            .collect();
+        let models = std::mem::take(&mut self.grid_rows);
         let tile = state.settings.browser.tile();
         let (gap, label_h) = (4.0, 15.0);
         let width = ui.available_width().max(tile);
@@ -670,8 +674,12 @@ impl ModelBrowser {
                         );
                         push_recent_model(ui.ctx(), path);
                     }
-                    let badge = self.sources.badge_text(Some(entry.source));
-                    let resp = resp.on_hover_text(format!("{path}\n{badge}"));
+                    let sources = &self.sources;
+                    let resp = if resp.hovered() || resp.ctx.has_accesskit_node(resp.id) {
+                        resp.on_hover_text(format!("{path}\n{}", sources.badge_str(Some(entry.source))))
+                    } else {
+                        resp
+                    };
                     if resp.clicked() {
                         clicked = Some(path.to_owned());
                     }
@@ -681,6 +689,7 @@ impl ModelBrowser {
                 }
             }
         });
+        self.grid_rows = models;
         if let Some(p) = clicked {
             self.select_with(&p, ScrollTo::Visible);
             self.scroll_to_selected = None;
@@ -738,8 +747,8 @@ impl ModelBrowser {
                     let Some(m) = models.get(i as usize) else { continue };
                     let path = m.name.as_str();
                     let selected = self.selected.as_deref() == Some(path);
-                    let badge = self.sources.badge_text(Some(m.source));
-                    let detail = if self.sources.table.is_empty() { "" } else { badge.as_str() };
+                    let detail =
+                        if self.sources.table.is_empty() { "" } else { self.sources.badge_str(Some(m.source)) };
                     let look =
                         RowLook { main: model_file_stem(path), detail, selected, indent: 12.0, ..RowLook::default() };
                     let resp = list_row_look(ui, look, CLICK | Sense::DRAG);

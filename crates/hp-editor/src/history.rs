@@ -11,6 +11,10 @@ use crate::ids::{IdMap, IdSet, id_map};
 use crate::scene::{EntityNode, GroupNode, SolidNode};
 use crate::selection::{FaceRef, ObjRef, Selection};
 
+mod patch;
+
+pub(crate) use patch::Bases;
+
 pub const SELECTION_STEP: &str = "Selection";
 pub const FACE_SELECTION_STEP: &str = "Face selection";
 
@@ -78,15 +82,25 @@ pub(crate) struct Snapshot {
     pub selection: Option<SelSnap>,
     pub misc: Option<Misc>,
     pub extra_blocks: Option<Vec<Block>>,
+    pub solid_patches: patch::SolidPatches,
+    pub entity_patches: patch::EntityPatches,
 }
 
 impl Snapshot {
     pub fn new() -> Self {
-        Self { solids: id_map(0), entities: id_map(0), groups: id_map(0), ..Self::default() }
+        Self {
+            solids: id_map(0),
+            entities: id_map(0),
+            groups: id_map(0),
+            solid_patches: id_map(0),
+            entity_patches: id_map(0),
+            ..Self::default()
+        }
     }
 
     pub fn has_no_document_change(&self) -> bool {
         self.solids.is_empty()
+            && !self.has_patches()
             && self.entities.is_empty()
             && self.groups.is_empty()
             && self.world.is_none()
@@ -118,7 +132,7 @@ impl Snapshot {
         if let Some(x) = &self.extra_blocks {
             b += blocks_bytes(x);
         }
-        b
+        b + self.patch_bytes()
     }
 
     pub fn absorb(&mut self, newer: Snapshot) {

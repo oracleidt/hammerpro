@@ -14,7 +14,7 @@ pub(crate) const THUMB_SIZE: u32 = 128;
 
 pub(crate) enum Job {
     Material { name: String, fresh: bool, hdr: bool, mode_epoch: u64, env: FsEnv },
-    Texture { name: String, target: TexTarget, env: FsEnv },
+    Texture { name: String, target: TexTarget, cap: u32, stream: bool, env: FsEnv },
     Thumb { name: String, fresh: bool, last_seen: Arc<AtomicU64>, env: FsEnv },
     Model { path: String, env: FsEnv },
     ModelLods { key: String, env: FsEnv },
@@ -70,17 +70,59 @@ pub(crate) enum MountOutcome {
 }
 
 pub(crate) enum JobResult {
-    Material { name: String, epoch: u64, hdr: bool, mode_epoch: u64, data: MaterialData },
-    Texture { name: String, target: TexTarget, epoch: u64, data: Option<PreparedTexture>, held: crate::queue::Held },
-    Thumb { name: String, epoch: u64, data: Option<ThumbPixels> },
-    ThumbDropped { name: String },
-    Model { path: String, epoch: u64, data: Result<Arc<PreparedModel>, String> },
-    ModelLods { key: String, epoch: u64, data: Result<Arc<crate::lods::PreparedLods>, String> },
-    Mounted { ticket: u64, outcome: MountOutcome },
-    MountedLate { ticket: u64, added: usize },
-    FgdLoaded { ticket: u64, outcome: crate::mount::FgdOutcome },
-    Lists { epoch: u64, lists: AssetLists },
-    Refreshed { names: Vec<String> },
+    Material {
+        name: String,
+        epoch: u64,
+        hdr: bool,
+        mode_epoch: u64,
+        data: MaterialData,
+    },
+    Texture {
+        name: String,
+        target: TexTarget,
+        epoch: u64,
+        cap: u32,
+        stream: bool,
+        data: Option<PreparedTexture>,
+        held: crate::queue::Held,
+    },
+    Thumb {
+        name: String,
+        epoch: u64,
+        data: Option<ThumbPixels>,
+    },
+    ThumbDropped {
+        name: String,
+    },
+    Model {
+        path: String,
+        epoch: u64,
+        data: Result<Arc<PreparedModel>, String>,
+    },
+    ModelLods {
+        key: String,
+        epoch: u64,
+        data: Result<Arc<crate::lods::PreparedLods>, String>,
+    },
+    Mounted {
+        ticket: u64,
+        outcome: MountOutcome,
+    },
+    MountedLate {
+        ticket: u64,
+        added: usize,
+    },
+    FgdLoaded {
+        ticket: u64,
+        outcome: crate::mount::FgdOutcome,
+    },
+    Lists {
+        epoch: u64,
+        lists: AssetLists,
+    },
+    Refreshed {
+        names: Vec<String>,
+    },
 }
 
 pub(crate) fn run(job: Job, shared: &Shared) -> Option<JobResult> {
@@ -89,13 +131,13 @@ pub(crate) fn run(job: Job, shared: &Shared) -> Option<JobResult> {
             let data = material_job(&env.fs, &name, fresh, hdr);
             Some(JobResult::Material { name, epoch: env.epoch, hdr, mode_epoch, data })
         }
-        Job::Texture { name, target, env } => {
+        Job::Texture { name, target, cap, stream, env } => {
             shared.inflight.wait_below(INFLIGHT_TEXTURE_BYTES, &shared.shutdown);
             let bc = shared.bc.load(Ordering::Relaxed) == BC_YES;
-            let data = prepare_texture(&env.fs, &name, bc).map_err(|f| shared.report_texture(env.epoch, f)).ok();
+            let data = prepare_texture(&env.fs, &name, bc, cap).map_err(|f| shared.report_texture(env.epoch, f)).ok();
             let bytes = data.as_ref().map_or(0, |p| p.upload.levels.iter().map(|l| l.len() as u64).sum());
             let held = shared.inflight.hold(bytes);
-            Some(JobResult::Texture { name, target, epoch: env.epoch, data, held })
+            Some(JobResult::Texture { name, target, epoch: env.epoch, cap, stream, data, held })
         }
         Job::Thumb { name, fresh, last_seen, env } => {
             let frame = shared.current_frame();
@@ -254,7 +296,13 @@ mod tests {
         let shared = Shared::new(tx);
         let env = |epoch| FsEnv { fs: fs.clone(), epoch };
         let texture = |name: &str, epoch| {
-            let job = Job::Texture { name: name.to_owned(), target: TexTarget::Main, env: env(epoch) };
+            let job = Job::Texture {
+                name: name.to_owned(),
+                target: TexTarget::Main,
+                cap: crate::texture::MAX_TEXTURE_DIM,
+                stream: false,
+                env: env(epoch),
+            };
             match run(job, &shared) {
                 Some(JobResult::Texture { data, .. }) => data.is_some(),
                 _ => panic!("texture result expected"),

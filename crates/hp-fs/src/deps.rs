@@ -1006,11 +1006,15 @@ impl GameFs {
     }
 
     pub fn materialize_dependency(&self, node: &DepNode, cache_dir: &Path) -> Result<PathBuf, FsError> {
+        match self.write_dependency(node, cache_dir, false)? {
+            Outcome::Written(p) | Outcome::UpToDate(p) => Ok(p),
+        }
+    }
+
+    pub(crate) fn write_dependency(&self, node: &DepNode, dir: &Path, copy_disk: bool) -> Result<Outcome, FsError> {
         if let Some(bytes) = &node.generated {
-            let dest = safe_join(cache_dir, &node.vpath).ok_or_else(|| FsError::InvalidPath(node.vpath.clone()))?;
-            return match write_if_changed(dest, bytes)? {
-                Outcome::Written(p) | Outcome::UpToDate(p) => Ok(p),
-            };
+            let dest = safe_join(dir, &node.vpath).ok_or_else(|| FsError::InvalidPath(node.vpath.clone()))?;
+            return write_if_changed(dest, bytes);
         }
         let snapshot = self.snapshot();
         let source =
@@ -1023,9 +1027,7 @@ impl GameFs {
             }
             _ => payload_of(source, &node.vpath).ok_or_else(|| FsError::NotFound(node.vpath.clone()))?,
         };
-        match materialize(&node.vpath, &payload, cache_dir, false)? {
-            Outcome::Written(p) | Outcome::UpToDate(p) => Ok(p),
-        }
+        materialize(&node.vpath, &payload, dir, copy_disk)
     }
 }
 
@@ -1185,5 +1187,105 @@ mod tests {
             &cache,
         );
         assert!(g.cancelled && g.nodes.is_empty());
+    }
+
+    fn custom_content(tmp: &TempDir) -> GameFs {
+        tmp.write(
+            "gmod/garrysmod/gameinfo.txt",
+            b"GameInfo { FileSystem { SearchPaths { game garrysmod game |all_source_engine_paths|sourceengine } } }",
+        );
+        tmp.write(
+            "gmod/sourceengine/scripts/game_sounds_manifest.txt",
+            b"game_sounds_manifest { \"precache_file\" \"scripts/game_sounds.txt\" }",
+        );
+        tmp.write("gmod/sourceengine/scripts/game_sounds.txt", b"\"Base.Door\" { \"wave\" \"doors/base.wav\" }");
+        tmp.write("gmod/sourceengine/sound/doors/base.wav", b"RIFF");
+        tmp.write(
+            "gmod/sourceengine/particles/particles_manifest.txt",
+            b"particles_manifest { \"file\" \"particles/base.pcf\" }",
+        );
+        tmp.write("gmod/sourceengine/particles/base.pcf", &pcf::tests::build_pcf(&[("base_fire", "base/wall")]));
+        tmp.write("mine/particles/w10_fx.pcf", &pcf::tests::build_pcf(&[("w10_fire", "w10/flame")]));
+        tmp.write("mine/materials/w10/flame.vmt", b"\"UnlitGeneric\" { \"$basetexture\" \"w10/flame\" }");
+        tmp.write("mine/materials/w10/flame.vtf", &vtf(4, 4, [200, 90, 10, 255]));
+        tmp.write(
+            "mine/scripts/soundscapes_gm_w.txt",
+            b"\"W10.Cave\" { \"playlooping\" { \"volume\" \"1\" \"wave\" \"w10/hum.wav\" } }",
+        );
+        tmp.write("mine/sound/w10/hum.wav", b"RIFF0001");
+        tmp.write("mine/maps/gm_w_level_sounds.txt", b"\"W10.Beep\" { \"wave\" \"w10/beep.wav\" }");
+        tmp.write("mine/sound/w10/beep.wav", b"RIFF0002");
+        tmp.write("mine/materials/correction/w10.raw", &[7u8; 64]);
+        tmp.write("mine/materials/effects/w10_flash.vtf", &vtf(4, 4, [255, 255, 255, 255]));
+        let opts = MountOptions {
+            mount_workshop: false,
+            mount_cfg: false,
+            custom_dirs: vec![CustomDir::new(tmp.path().join("mine"))],
+            ..MountOptions::default()
+        };
+        GameFs::for_gmod(&tmp.path().join("gmod"), &opts).unwrap()
+    }
+
+    fn custom_roots() -> Vec<DepRoot> {
+        vec![
+            root(RootKind::Particle, "w10_fire"),
+            root(RootKind::Particle, "base_fire"),
+            root(RootKind::Soundscape, "W10.Cave"),
+            root(RootKind::Sound, "W10.Beep"),
+            root(RootKind::Sound, "Base.Door"),
+            root(RootKind::File, "materials/correction/w10.raw"),
+            root(RootKind::Texture, "effects/w10_flash"),
+        ]
+    }
+
+    const CUSTOM_FILES: [&str; 10] = [
+        "maps/gm_w_level_sounds.txt",
+        "maps/gm_w_particles.txt",
+        "materials/correction/w10.raw",
+        "materials/effects/w10_flash.vtf",
+        "materials/w10/flame.vmt",
+        "materials/w10/flame.vtf",
+        "particles/w10_fx.pcf",
+        "scripts/soundscapes_gm_w.txt",
+        "sound/w10/beep.wav",
+        "sound/w10/hum.wav",
+    ];
+
+    #[test]
+    fn the_pack_list_ships_map_scripts_and_the_particle_manifest() {
+        let tmp = TempDir::new("deps-pack-map");
+        let fs = custom_content(&tmp);
+        let cache = tmp.mkdir("cache");
+        let mut list = fs.pack_list_with(&[], &[], &custom_roots(), "gm_w", &cache);
+        list.sort();
+        let names: Vec<&str> = list.iter().map(|(v, _)| v.as_str()).collect();
+        assert_eq!(names, CUSTOM_FILES);
+        let manifest = &list.iter().find(|(v, _)| v == "maps/gm_w_particles.txt").unwrap().1;
+        let text = std::fs::read_to_string(manifest).unwrap();
+        assert!(text.contains("\"!particles/w10_fx.pcf\""), "{text}");
+        assert!(!text.contains("base.pcf"), "{text}");
+        let unnamed: Vec<String> =
+            fs.pack_list_with(&[], &[], &custom_roots(), "", &cache).into_iter().map(|(v, _)| v).collect();
+        assert!(!unnamed.iter().any(|v| v.contains("soundscapes_") || v.contains("level_sounds")), "{unnamed:?}");
+    }
+
+    #[test]
+    fn custom_dependencies_are_copied_for_the_game() {
+        let tmp = TempDir::new("deps-dev-addon");
+        let fs = custom_content(&tmp);
+        let addon = tmp.mkdir("addon");
+        let cache = DepsCache::new();
+        let r = fs.export_custom_dependencies(&custom_roots(), "gm_w", &addon, &cache);
+        assert!(r.failed.is_empty(), "{:?}", r.failed);
+        assert_eq!(r.written.len(), CUSTOM_FILES.len(), "{:?}", r.written);
+        for f in CUSTOM_FILES {
+            assert!(addon.join(f).is_file(), "{f}");
+        }
+        assert_eq!(std::fs::read(addon.join("sound/w10/beep.wav")).unwrap(), b"RIFF0002");
+        assert!(!addon.join("sound/doors/base.wav").exists(), "game files stay in the game");
+        assert!(!addon.join("particles/base.pcf").exists());
+        let again = fs.export_custom_dependencies(&custom_roots(), "gm_w", &addon, &cache);
+        assert!(again.written.is_empty(), "{:?}", again.written);
+        assert_eq!(again.up_to_date.len(), CUSTOM_FILES.len());
     }
 }

@@ -146,6 +146,7 @@ pub(crate) fn resolve_path(state: &AppState, given: &str) -> Result<PathBuf, Str
     if given.trim().is_empty() || given.contains('\0') {
         return Err("path is empty".to_owned());
     }
+    super::super::mcp::local_path(given)?;
     if path.is_absolute() {
         return Ok(path.to_path_buf());
     }

@@ -40,6 +40,8 @@ The toolbar row under the menus follows Hammer's Map View and Map Operations too
 10. Show helpers and sprites, Show models, Show tool textures, Show editor objects, 3D skybox, Show particles, Simulate ropes.
 11. The 3D render mode list, Player view, Check for problems.
 
+The toolbar always stays on one row. When the window is too narrow for every group (a small screen, a large interface scale, the longer French or Russian labels), the least used groups go into the **»** button at the end of the row, in this order: the view toggles (10), the displacement and texture lock toggles (8), the cordon group (7), Cut, Copy, Paste (6), the hide and group buttons (5 and 4), then the render mode group (11). The groups that remain keep their order, and the **»** menu shows the hidden ones with the same buttons, tooltips and shortcuts; it stays open while you click its buttons. **Compile** is always the last to go.
+
 At the right end of the top bar, the **MCP** pill shows whether the MCP server of this window is on, and its menu installs Hammer Pro in AI apps (see [MCP server](../reference/mcp-server.md)).
 
 Under the toolbar, the **options row** shows the name of the active tool and its options. Tools with large options (Texture application, Displacement...) show them in the **Tool** tab of the right dock instead ("Tool options are in the right panel.").

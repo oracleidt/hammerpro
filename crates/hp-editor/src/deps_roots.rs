@@ -90,47 +90,73 @@ fn ext(value: &str) -> &str {
 }
 
 fn kind_by_extension(value: &str) -> Option<RootKind> {
-    match ext(value).to_ascii_lowercase().as_str() {
-        "mdl" => Some(RootKind::Model),
-        "vmt" | "spr" => Some(RootKind::Sprite),
-        "wav" | "mp3" | "ogg" => Some(RootKind::Sound),
-        "vtf" => Some(RootKind::Texture),
-        "raw" | "pcf" => Some(RootKind::File),
-        _ => None,
+    let e = ext(value);
+    let is = |x: &str| e.eq_ignore_ascii_case(x);
+    if is("mdl") {
+        Some(RootKind::Model)
+    } else if is("vmt") || is("spr") {
+        Some(RootKind::Sprite)
+    } else if is("wav") || is("mp3") || is("ogg") {
+        Some(RootKind::Sound)
+    } else if is("vtf") {
+        Some(RootKind::Texture)
+    } else if is("raw") || is("pcf") {
+        Some(RootKind::File)
+    } else {
+        None
     }
 }
 
+fn one_of(list: &[&str], s: &str) -> bool {
+    list.iter().any(|x| x.eq_ignore_ascii_case(s))
+}
+
+fn starts_with_ignore_case(s: &str, prefix: &str) -> bool {
+    s.get(..prefix.len()).is_some_and(|p| p.eq_ignore_ascii_case(prefix))
+}
+
 pub fn fallback_kind(class: &str, key: &str, value: &str) -> Option<RootKind> {
-    let class = class.to_ascii_lowercase();
-    let key = key.to_ascii_lowercase();
     let value = value.trim();
     if value.is_empty() || value.starts_with('*') {
         return None;
     }
-    match (class.as_str(), key.as_str()) {
-        ("worldspawn", "skyname") => return Some(RootKind::Skybox),
-        ("worldspawn", "detailvbsp") => return None,
-        ("info_particle_system", "effect_name") => return Some(RootKind::Particle),
-        (c, "soundscape") if c.starts_with("env_soundscape") => return Some(RootKind::Soundscape),
-        ("color_correction", "filename") => return Some(RootKind::File),
-        ("func_instance", "file") => return Some(RootKind::Instance),
-        ("env_projectedtexture", "texturename") => return Some(RootKind::Texture),
-        (c, "message") if !SOUND_MESSAGE_CLASSES.contains(&c) => {
-            return kind_by_extension(value).filter(|k| *k == RootKind::Sound);
-        }
-        _ => {}
+    let is = |a: &str, b: &str| a.eq_ignore_ascii_case(b);
+    let pair = |c: &str, k: &str| is(class, c) && is(key, k);
+    if pair("worldspawn", "skyname") {
+        return Some(RootKind::Skybox);
+    }
+    if pair("worldspawn", "detailvbsp") {
+        return None;
+    }
+    if pair("info_particle_system", "effect_name") {
+        return Some(RootKind::Particle);
+    }
+    if is(key, "soundscape") && starts_with_ignore_case(class, "env_soundscape") {
+        return Some(RootKind::Soundscape);
+    }
+    if pair("color_correction", "filename") {
+        return Some(RootKind::File);
+    }
+    if pair("func_instance", "file") {
+        return Some(RootKind::Instance);
+    }
+    if pair("env_projectedtexture", "texturename") {
+        return Some(RootKind::Texture);
+    }
+    if is(key, "message") && !one_of(SOUND_MESSAGE_CLASSES, class) {
+        return kind_by_extension(value).filter(|k| *k == RootKind::Sound);
     }
     if let Some(kind) = kind_by_extension(value) {
         return Some(kind);
     }
-    if MODEL_KEYS.contains(&key.as_str()) {
-        return value.to_ascii_lowercase().starts_with("sprites/").then_some(RootKind::Sprite);
+    if one_of(MODEL_KEYS, key) {
+        return starts_with_ignore_case(value, "sprites/").then_some(RootKind::Sprite);
     }
     let digits_trimmed = key.trim_end_matches(|c: char| c.is_ascii_digit());
-    if MATERIAL_KEYS.contains(&digits_trimmed) && value.parse::<f64>().is_err() {
+    if one_of(MATERIAL_KEYS, digits_trimmed) && value.parse::<f64>().is_err() {
         return Some(RootKind::Material);
     }
-    if SOUND_KEYS.contains(&key.as_str()) && value.parse::<f64>().is_err() {
+    if one_of(SOUND_KEYS, key) && value.parse::<f64>().is_err() {
         return Some(RootKind::Sound);
     }
     None
@@ -227,6 +253,17 @@ impl Document {
         }
         finish(c)
     }
+}
+
+pub fn entity_asset_roots<'a>(
+    entities: impl IntoIterator<Item = &'a Entity>,
+    classify: &KeyClassifier<'_>,
+) -> Vec<AssetRoot> {
+    let mut c = Collector::default();
+    for e in entities {
+        c.entity(e, classify);
+    }
+    finish(c)
 }
 
 pub fn map_asset_roots(map: &Map, classify: &KeyClassifier<'_>) -> Vec<AssetRoot> {
@@ -367,5 +404,24 @@ entity
         assert_eq!(button_sound("func_button", "speed", "3"), None);
         assert_eq!(output_assets("model models/a.mdl"), vec![(RootKind::Model, "models/a.mdl".to_owned())]);
         assert!(output_assets("Kill").is_empty());
+    }
+
+    #[test]
+    fn fallback_rules_ignore_case() {
+        assert_eq!(fallback_kind("WorldSpawn", "SkyName", "sky_day01_01"), Some(RootKind::Skybox));
+        assert_eq!(fallback_kind("WORLDSPAWN", "DetailVBSP", "detail.vbsp"), None);
+        assert_eq!(fallback_kind("Info_Particle_System", "Effect_Name", "fire"), Some(RootKind::Particle));
+        assert_eq!(fallback_kind("ENV_SOUNDSCAPE_PROXY", "SoundScape", "Cave"), Some(RootKind::Soundscape));
+        assert_eq!(fallback_kind("env_sound", "soundscape", "Cave"), None);
+        assert_eq!(fallback_kind("Func_Instance", "File", "a.vmf"), Some(RootKind::Instance));
+        assert_eq!(fallback_kind("Env_ProjectedTexture", "TextureName", "effects/flash"), Some(RootKind::Texture));
+        assert_eq!(fallback_kind("Ambient_Generic", "Message", "a.WAV"), Some(RootKind::Sound));
+        assert_eq!(fallback_kind("logic_relay", "MESSAGE", "x.vmt"), None);
+        assert_eq!(fallback_kind("env_sprite", "MODEL", "models/A.MDL"), Some(RootKind::Model));
+        assert_eq!(fallback_kind("x", "GibModel", "SPRITES/glow"), Some(RootKind::Sprite));
+        assert_eq!(fallback_kind("x", "GibModel", "spr"), None);
+        assert_eq!(fallback_kind("x", "Material2", "Concrete/Floor"), Some(RootKind::Material));
+        assert_eq!(fallback_kind("x", "NOISE1", "Doors.Move1"), Some(RootKind::Sound));
+        assert_eq!(fallback_kind("x", "model", "\u{e9}t\u{e9}/abcdef"), None);
     }
 }

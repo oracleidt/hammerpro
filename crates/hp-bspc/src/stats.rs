@@ -627,7 +627,7 @@ pub struct VisRun {
     pub times: Vec<(String, f64)>,
 }
 
-fn pvs_rows(vis: &[u8]) -> Vec<Vec<u8>> {
+pub(crate) fn pvs_rows(vis: &[u8]) -> Vec<Vec<u8>> {
     let n = usize::try_from(i32_at(vis, 0)).unwrap_or(0);
     if vis.len() < 4 + n * 8 {
         return Vec::new();

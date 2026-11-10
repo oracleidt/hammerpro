@@ -13,9 +13,16 @@ pub struct PickSnapshot {
     pub vertices: Vec<DVec3>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct DragTransform {
+    pub objs: std::sync::Arc<[hp_editor::ObjRef]>,
+    pub matrix: glam::DMat4,
+}
+
 #[derive(Debug, Default)]
 pub struct SelectionRuntime {
     pub modal_transform: bool,
+    pub drag: Option<DragTransform>,
     pub edges: Vec<EdgeRef>,
     pub vertices: Vec<(Id, DVec3)>,
     pub element_revision: u64,

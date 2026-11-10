@@ -54,16 +54,18 @@ The `X` button at the end of the search box clears it.
 
 ## Filters
 
+Below the search box, one row holds the categories and the source; everything else is in the **Filters and display** section, closed by default. Its title turns into **Filters and display (n active)** when property chips, a shader, **Hide VertexLitGeneric** or **Hide tool textures** filter the list, so a hidden filter is never forgotten. Every chip and option has a tooltip.
+
 | Filter | What it does | Default |
 |---|---|---|
-| Source chips **All**, **Game**, **Addons**, **Workshop** and one chip per custom folder | Shows only the materials of that source. A chip appears only when the content has that kind of source. Hover a folder chip for its path and material count. | **All** |
-| Category chips **All**, **Used in map**, **Favorites (n)**, **Recent**, **Tools** | **Used in map**: the materials of the open map (including missing ones). **Favorites**: your starred materials. **Recent**: the last used, most recent first. **Tools**: tool textures only. | **All** |
-| Property chips **Translucent**, **Alpha**, **Self-illum**, **Reflective**, **Blend**, **Missing** | Each chip adds or removes the matching `is:` word in the search box. | none |
-| **Shader:** dropdown | **All**, or one shader with its material count (most used first). Writes `shader:name` in the search. | **All** |
-| **Hide VertexLitGeneric** | Hides the model materials (VertexLitGeneric shader): they do not go on brushes. Tool textures stay. Saved in `hidden_shaders` of `[browser]`. | off |
-| **Hide tool textures** | Hides the tool textures (except in the **Tools** category). Saved as `hide_tool_textures`. | off |
-| Thumbnail size slider | Thumbnail size, 48 to 256 points by steps of 8. Saved as `thumbnail_size` in `[ui]`. | 96 |
-| **Show alpha** | Draws the materials whose alpha is see-through in game over a checkerboard. Saved as `show_alpha`. | off |
+| Category chips **All**, **Used in map**, **Favorites**, **Recent**, **Tools** | **Used in map**: the materials of the open map (including missing ones). **Favorites**: your starred materials (hover the chip for their number). **Recent**: the last used, most recent first. **Tools**: tool textures only. | **All** |
+| **Source** dropdown, next to the categories: **Every source**, **Game**, **Addons**, **Workshop** and one entry per custom folder | Shows only the materials of that source. An entry appears only when the content has that kind of source. Hover a folder entry for its path and material count. | **Every source** |
+| In **Filters and display**: property chips **Translucent**, **Alpha**, **Self-illum**, **Reflective**, **Blend**, **Missing** | Each chip adds or removes the matching `is:` word in the search box. | none |
+| In **Filters and display**: **Shader:** dropdown | **All**, or one shader with its material count (most used first). Writes `shader:name` in the search. | **All** |
+| In **Filters and display**: **Hide VertexLitGeneric** | Hides the model materials (VertexLitGeneric shader): they do not go on brushes. Tool textures stay. Saved in `hidden_shaders` of `[browser]`. | off |
+| In **Filters and display**: **Hide tool textures** | Hides the tool textures (except in the **Tools** category). Saved as `hide_tool_textures`. | off |
+| In **Filters and display**: thumbnail size slider | Thumbnail size, 48 to 256 points by steps of 8. Saved as `thumbnail_size` in `[ui]`. | 96 |
+| In **Filters and display**: **Show alpha** | Draws the materials whose alpha is see-through in game over a checkerboard. Saved as `show_alpha`. | off |
 
 The line below the filters shows **N of M materials**, and **N selected** with an `X` to clear the multiple selection.
 

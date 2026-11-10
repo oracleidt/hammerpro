@@ -223,6 +223,24 @@ pub const TR: TrTable = &[
         "Move the mouse up or down to set the height, click to create. {0}: cancel.",
         "Déplacez la souris vers le haut ou le bas pour régler la hauteur, cliquez pour créer. {0} : annuler.",
     ),
+    ("create.block.count_sides", "Sides: {0}", "Côtés : {0}"),
+    ("create.block.count_steps", "Steps: {0}", "Marches : {0}"),
+    ("create.block.count_segments", "Arch segments: {0}", "Segments de l'arc : {0}"),
+    (
+        "create.block.wheel_sides",
+        "While drawing, the mouse wheel changes the sides (Shift: {0} at a time).",
+        "Pendant le tracé, la molette change le nombre de côtés (Maj : {0} à la fois).",
+    ),
+    (
+        "create.block.wheel_steps",
+        "While drawing, the mouse wheel changes the steps (Shift: {0} at a time).",
+        "Pendant le tracé, la molette change le nombre de marches (Maj : {0} à la fois).",
+    ),
+    (
+        "create.block.wheel_segments",
+        "While drawing, the mouse wheel changes the arch segments (Shift: {0} at a time).",
+        "Pendant le tracé, la molette change le nombre de segments de l'arc (Maj : {0} à la fois).",
+    ),
     (
         "create.poly.hint_idle",
         "Click in a 2D view to place the points of a convex outline. Alt: no snapping.",

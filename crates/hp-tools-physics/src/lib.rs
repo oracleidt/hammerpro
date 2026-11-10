@@ -122,15 +122,88 @@ impl Drop for Pending {
     }
 }
 
+pub const MAX_SIMULATE_SECONDS: f64 = 120.0;
+
 #[derive(Default)]
 pub struct PhysicsTool {
     session: Option<Session>,
     pending: Option<Pending>,
     key: Option<DocumentKey>,
     drag: Option<(usize, f64)>,
+    simulated: f64,
 }
 
 impl PhysicsTool {
+    pub fn simulate(&mut self, state: &mut AppState, seconds: f64) -> Result<usize, String> {
+        if !(seconds.is_finite() && seconds > 0.0 && seconds <= MAX_SIMULATE_SECONDS) {
+            return Err(format!("simulate takes 0 to {MAX_SIMULATE_SECONDS} seconds"));
+        }
+        if self.key.is_some_and(|key| key != document_key(state)) {
+            self.reset(state);
+        }
+        if let Some(pending) = self.pending.take() {
+            let result = pending.result.recv().map_err(|_| t!("physics.worker_failed").to_owned())?;
+            self.adopt(state, result)?;
+        }
+        if self.session.is_none() {
+            if state.doc.selection().objects.is_empty() {
+                return Err(t!("physics.select").to_owned());
+            }
+            state.runtime.lab.player.active = false;
+            let snapshot = scene::Snapshot::capture(state);
+            self.key = Some(document_key(state));
+            let result = snapshot.build(&AtomicBool::new(false));
+            self.adopt(state, result)?;
+        }
+        let Some(session) = self.session.as_mut() else { return Err(t!("physics.no_bodies").to_owned()) };
+        session.simulation.settings = engine_settings(state.settings.physics);
+        let scaled = seconds * session.simulation.settings.time_scale;
+        let steps = (scaled / hp_physics::STEP).round().max(1.0) as usize;
+        session.simulation.end_drag();
+        self.drag = None;
+        for _ in 0..steps {
+            session.simulation.step();
+        }
+        session.simulation.paused = true;
+        self.simulated += seconds;
+        state.assets.set_physics_transforms(&session.transforms());
+        state.assets.set_physics_bones(&session.bone_poses());
+        Ok(session.object_count())
+    }
+
+    fn adopt(&mut self, state: &mut AppState, result: Result<Session, String>) -> Result<(), String> {
+        match result {
+            Ok(session) if session.object_count() == 0 => {
+                self.reset(state);
+                Err(t!("physics.no_bodies").to_owned())
+            }
+            Ok(session) => {
+                if !session.skipped.is_empty() {
+                    state.notify(Severity::Warning, tf!("physics.skipped", session.skipped.join(", ")));
+                }
+                self.session = Some(session);
+                self.simulated = 0.0;
+                Ok(())
+            }
+            Err(error) => {
+                self.reset(state);
+                Err(if error.is_empty() { t!("physics.worker_failed").to_owned() } else { error })
+            }
+        }
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.session.is_some() || self.pending.is_some()
+    }
+
+    fn simulated_text(&self) -> String {
+        format!("{}", (self.simulated * 1000.0).round() / 1000.0)
+    }
+
+    fn body_count(&self) -> usize {
+        self.session.as_ref().map_or(0, Session::object_count)
+    }
+
     fn start(&mut self, state: &mut AppState, ctx: &egui::Context) {
         if self.pending.is_some() {
             return;
@@ -164,6 +237,7 @@ impl PhysicsTool {
         self.session = None;
         self.key = None;
         self.drag = None;
+        self.simulated = 0.0;
         state.assets.set_physics_transforms(&[]);
         state.assets.set_physics_bones(&[]);
     }
@@ -444,6 +518,87 @@ impl Tool for PhysicsTool {
 
     fn status_hint(&self, _state: &AppState) -> Option<String> {
         Some(t!("physics.hint").to_owned())
+    }
+
+    fn set_option(&mut self, state: &mut AppState, key: &str, value: &str) -> bool {
+        let flag = match value.trim().to_ascii_lowercase().as_str() {
+            "on" | "true" | "1" => Some(true),
+            "off" | "false" | "0" => Some(false),
+            _ => None,
+        };
+        let unchanged = |current: String| value.trim().parse::<f64>().ok() == current.parse::<f64>().ok();
+        match key {
+            "simulate" if value.trim().parse::<f64>() == Ok(0.0) => true,
+            "simulated" => unchanged(self.simulated_text()),
+            "bodies" => unchanged(self.body_count().to_string()),
+            "simulate" => match value.trim().parse::<f64>() {
+                Ok(seconds) => match self.simulate(state, seconds) {
+                    Ok(_) => true,
+                    Err(error) => {
+                        state.notify(Severity::Warning, error);
+                        false
+                    }
+                },
+                Err(_) => false,
+            },
+            "paused" => match (flag, self.session.as_mut()) {
+                (Some(paused), Some(session)) => {
+                    session.simulation.paused = paused;
+                    session.simulation.end_drag();
+                    self.drag = None;
+                    true
+                }
+                (Some(true), None) => true,
+                _ => false,
+            },
+            "keep" => match flag {
+                Some(true) => {
+                    self.save(state);
+                    true
+                }
+                Some(false) => true,
+                None => false,
+            },
+            "reset" => match flag {
+                Some(true) => {
+                    self.reset(state);
+                    true
+                }
+                Some(false) => true,
+                None => false,
+            },
+            _ => false,
+        }
+    }
+
+    fn option_values(&self) -> Vec<hp_app::tool::ToolOption> {
+        use hp_app::tool::ToolOption;
+        let on = |b: bool| if b { "on" } else { "off" };
+        let paused = self.session.as_ref().is_none_or(|s| s.simulation.paused);
+        vec![
+            ToolOption::new(
+                "simulate",
+                "0",
+                "seconds of physics to run now on the selected brushes, props and ragdolls (0.01 to 120, 0 does nothing), then paused; the map is unchanged until keep",
+            ),
+            ToolOption::new("simulated", self.simulated_text(), "read only: seconds simulated so far"),
+            ToolOption::new(
+                "paused",
+                on(paused),
+                "on: freeze the running simulation, off: let it play in the editor (the tool must be active)",
+            ),
+            ToolOption::new(
+                "keep",
+                "off",
+                "on: apply the simulated positions, rotations and ragdoll poses to the map in one undo step",
+            ),
+            ToolOption::new("reset", "off", "on: discard the simulation and restore the original positions"),
+            ToolOption::new(
+                "bodies",
+                self.body_count().to_string(),
+                "read only: number of simulated objects (gravity, air density and time scale are the physics.* settings)",
+            ),
+        ]
     }
 }
 

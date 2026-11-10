@@ -105,6 +105,16 @@ pub const TR: TrTable = &[
     ("compilestats.mode_off", "not computed (everything is drawn)", "non calculée (tout est dessiné)"),
     ("compilestats.mode_skipped", "skipped: the map leaks", "sautée : la carte fuit"),
     (
+        "compilestats.mode_full_reused",
+        "full, reused from an earlier compile with the same portals",
+        "complète, reprise d'une compilation précédente aux mêmes portails",
+    ),
+    (
+        "compilestats.mode_fast_reused",
+        "fast, reused from an earlier compile with the same portals",
+        "rapide, reprise d'une compilation précédente aux mêmes portails",
+    ),
+    (
         "compilestats.clusters_value",
         "{0} clusters, {1} portals, {2} leaves",
         "{0} clusters, {1} portails, {2} feuilles",
@@ -254,6 +264,7 @@ pub const TR: TrTable = &[
     ("compilestats.stage.flow", "portal flow", "flux des portails"),
     ("compilestats.stage.cluster_merge", "cluster merge", "fusion des clusters"),
     ("compilestats.stage.pas", "sound (PAS)", "son (PAS)"),
+    ("compilestats.stage.reused", "kept visibility reused", "visibilité conservée reprise"),
     ("compilestats.stage.texture_lights", "texture lights", "textures lumineuses"),
     ("compilestats.stage.scene", "scene", "scène"),
     ("compilestats.stage.direct_light", "direct light", "lumière directe"),

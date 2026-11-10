@@ -168,6 +168,9 @@ The images are stored in the map (`bgimages_plus` block of the VMF), so they tra
 | --- | --- | --- |
 | **Frame rate limit** (`render.max_fps`) | Most frames per second (0: no limit; with vertical sync the display limits it). | 0 |
 | **In the background** (`render.unfocused_fps`) | Limit while the window is not active (0: no limit). | 30 |
+| **Animations** (`render.animation_fps`) | Frames per second of animated materials, particle effects and flickering lights while nothing else moves (0: every frame). | 30 |
+| **Pause animations after** (`render.animation_idle_pause_s`) | Animations stop after this many seconds without mouse or keyboard input (0: never). | 120 s |
+| **Animate in the background** (`render.animate_in_background`) | Keep animations running while another window is active. | Off |
 | **Vertical sync** (`render.vsync`) | Waits for the screen refresh (applies immediately). | On |
 
 ## Other Rendering settings

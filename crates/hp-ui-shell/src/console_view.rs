@@ -55,11 +55,21 @@ pub struct ConsoleView {
     filtered: Vec<usize>,
     counts: [usize; 4],
     cache_key: Option<(u64, [bool; 4], String)>,
+    labels: Option<HeaderLabels>,
 }
+
+type HeaderLabels = ([usize; 4], usize, hp_app::i18n::Lang, [String; 4], String);
 
 impl Default for ConsoleView {
     fn default() -> Self {
-        Self { show: [true; 4], search: String::new(), filtered: Vec::new(), counts: [0; 4], cache_key: None }
+        Self {
+            show: [true; 4],
+            search: String::new(),
+            filtered: Vec::new(),
+            counts: [0; 4],
+            cache_key: None,
+            labels: None,
+        }
     }
 }
 
@@ -141,20 +151,32 @@ impl ConsoleView {
         }
     }
 
+    fn update_labels(&mut self) {
+        let lang = hp_app::i18n::lang();
+        let lines = self.filtered.len();
+        if self.labels.as_ref().is_some_and(|(c, l, g, _, _)| *c == self.counts && *l == lines && *g == lang) {
+            return;
+        }
+        let counts = self.counts;
+        let chips = std::array::from_fn(|i| format!("{} {}", SEVERITIES[i].icon(), counts[i]));
+        self.labels = Some((counts, lines, lang, chips, tf!("shell.console.lines", lines)));
+    }
+
     fn header(&mut self, ui: &mut Ui, state: &mut AppState) {
+        self.update_labels();
+        let labels = self.labels.take();
+        let (chips, lines) = labels.as_ref().map_or((None, ""), |(_, _, _, c, l)| (Some(c), l.as_str()));
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 3.0;
             for (i, sev) in SEVERITIES.into_iter().enumerate() {
-                let count = self.counts[i];
-                let text = RichText::new(format!("{} {count}", sev.icon())).color(if self.show[i] {
+                let label = chips.map_or("", |c| c[i].as_str());
+                let text = RichText::new(label).color(if self.show[i] {
                     severity_color(ui.visuals(), sev)
                 } else {
                     ui.visuals().weak_text_color()
                 });
-                let tip = tf!("shell.console.filter_tip", severity_label(sev));
-                if ui
-                    .add(egui::Button::selectable(self.show[i], text).min_size(egui::vec2(44.0, 20.0)))
-                    .on_hover_text(tip)
+                let chip = ui.add(egui::Button::selectable(self.show[i], text).min_size(egui::vec2(44.0, 20.0)));
+                if crate::common::lazy_hover_text(chip, || tf!("shell.console.filter_tip", severity_label(sev)))
                     .clicked()
                 {
                     self.show[i] = !self.show[i];
@@ -169,11 +191,7 @@ impl ConsoleView {
                     let text = self.visible_text(&state.console);
                     ui.ctx().copy_text(text);
                 }
-                ui.label(
-                    RichText::new(tf!("shell.console.lines", self.filtered.len()))
-                        .small()
-                        .color(ui.visuals().weak_text_color()),
-                );
+                ui.label(RichText::new(lines).small().color(ui.visuals().weak_text_color()));
                 let width = ui.available_width().clamp(120.0, 320.0);
                 ui.allocate_ui_with_layout(
                     egui::vec2(width, ui.available_height()),
@@ -184,6 +202,7 @@ impl ConsoleView {
                 );
             });
         });
+        self.labels = labels;
     }
 }
 

@@ -527,7 +527,9 @@ pub fn open_recovered(state: &mut AppState, autosave: &Path, original: Option<&P
 pub fn save_map_to(state: &mut AppState, path: &Path) -> bool {
     store_view_in_doc(state);
     remember_view(state);
-    match state.doc.save(path) {
+    let seq = crate::autosave::next_save_seq();
+    let saved = crate::autosave::write_in_order(path, seq, || state.doc.save(path)).unwrap_or(Ok(()));
+    match saved {
         Ok(()) => {
             if let Err(e) = state.sidecar.save_as(path) {
                 state.log(Severity::Warning, tf!("app.sidecar_failed", e));

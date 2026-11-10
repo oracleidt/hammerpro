@@ -54,16 +54,18 @@ Le bouton `X` au bout du champ efface la recherche.
 
 ## Filtres
 
+Sous la recherche, une ligne porte les catégories et la source ; le reste est dans la section **Filtres et affichage**, fermée par défaut. Son titre devient **Filtres et affichage (n actifs)** quand des puces de propriétés, un shader, **Masquer VertexLitGeneric** ou **Masquer les textures outils** filtrent la liste : un filtre caché ne passe jamais inaperçu. Chaque puce et chaque option a une infobulle.
+
 | Filtre | Effet | Par défaut |
 |---|---|---|
-| Puces de source **Tous**, **Jeu**, **Addons**, **Workshop** et une puce par dossier personnalisé | N'affiche que les matériaux de cette source. Une puce n'apparaît que si le contenu a ce type de source. Survolez la puce d'un dossier pour son chemin et son nombre de matériaux. | **Tous** |
-| Puces de catégorie **Tous**, **Utilisés dans la map**, **Favoris (n)**, **Récents**, **Outils** | **Utilisés dans la map** : les matériaux de la map ouverte (y compris les manquants). **Favoris** : vos matériaux étoilés. **Récents** : les derniers utilisés, le plus récent en premier. **Outils** : les textures outils seulement. | **Tous** |
-| Puces de propriétés **Translucide**, **Alpha**, **Auto-illuminé**, **Réfléchissant**, **Mélange**, **Manquant** | Chaque puce ajoute ou retire le mot `is:` correspondant dans la recherche. | aucune |
-| Liste **Shader :** | **Tous**, ou un shader avec son nombre de matériaux (les plus utilisés en premier). Écrit `shader:nom` dans la recherche. | **Tous** |
-| **Masquer VertexLitGeneric** | Masque les matériaux de modèles (shader VertexLitGeneric) : ils ne vont pas sur les brushes. Les textures outils restent. Enregistré dans `hidden_shaders` de `[browser]`. | désactivé |
-| **Masquer les textures outils** | Masque les textures outils (sauf dans la catégorie **Outils**). Enregistré dans `hide_tool_textures`. | désactivé |
-| Curseur de taille des vignettes | Taille des vignettes, de 48 à 256 points par pas de 8. Enregistré dans `thumbnail_size` de `[ui]`. | 96 |
-| **Afficher l'alpha** | Dessine sur un damier les matériaux dont l'alpha est transparent en jeu. Enregistré dans `show_alpha`. | désactivé |
+| Puces de catégorie **Tous**, **Utilisés dans la map**, **Favoris**, **Récents**, **Outils** | **Utilisés dans la map** : les matériaux de la map ouverte (y compris les manquants). **Favoris** : vos matériaux étoilés (survolez la puce pour leur nombre). **Récents** : les derniers utilisés, le plus récent en premier. **Outils** : les textures outils seulement. | **Tous** |
+| Liste **Source**, à côté des catégories : **Toutes les sources**, **Jeu**, **Addons**, **Workshop** et une entrée par dossier personnalisé | N'affiche que les matériaux de cette source. Une entrée n'apparaît que si le contenu a ce type de source. Survolez l'entrée d'un dossier pour son chemin et son nombre de matériaux. | **Toutes les sources** |
+| Dans **Filtres et affichage** : puces de propriétés **Translucide**, **Alpha**, **Auto-illuminé**, **Réfléchissant**, **Mélange**, **Manquant** | Chaque puce ajoute ou retire le mot `is:` correspondant dans la recherche. | aucune |
+| Dans **Filtres et affichage** : liste **Shader :** | **Tous**, ou un shader avec son nombre de matériaux (les plus utilisés en premier). Écrit `shader:nom` dans la recherche. | **Tous** |
+| Dans **Filtres et affichage** : **Masquer VertexLitGeneric** | Masque les matériaux de modèles (shader VertexLitGeneric) : ils ne vont pas sur les brushes. Les textures outils restent. Enregistré dans `hidden_shaders` de `[browser]`. | désactivé |
+| Dans **Filtres et affichage** : **Masquer les textures outils** | Masque les textures outils (sauf dans la catégorie **Outils**). Enregistré dans `hide_tool_textures`. | désactivé |
+| Dans **Filtres et affichage** : curseur de taille des vignettes | Taille des vignettes, de 48 à 256 points par pas de 8. Enregistré dans `thumbnail_size` de `[ui]`. | 96 |
+| Dans **Filtres et affichage** : **Afficher l'alpha** | Dessine sur un damier les matériaux dont l'alpha est transparent en jeu. Enregistré dans `show_alpha`. | désactivé |
 
 La ligne sous les filtres indique **N sur M matériaux**, et **N sélectionnés** avec un `X` pour vider la sélection multiple.
 

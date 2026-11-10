@@ -34,6 +34,7 @@ struct View {
     control_vp: mat4x4<f32>,
     control_params: vec4<f32>,
     control_color: vec4<f32>,
+    quality: vec4<u32>,
 };
 
 struct ObjState {

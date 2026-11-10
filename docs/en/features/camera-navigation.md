@@ -125,7 +125,7 @@ Options bar of the tool:
 | **Reset view splits** | none | Puts the view splitters back in the middle |
 | **3D view information** | `O` | Frame rate, camera position and angles, renderer statistics in the 3D view. A click copies `setpos` and `setang` for the game console |
 
-They are in the **View** menu. The right click context menu of a view also has **Center views here**.
+They are in the **View** menu. The right click context menu of a view also has **Center views here**, and during a [Team Mapping](team-mapping.md) session **Ping here for the team**.
 
 Each view has a header: click the view name to pick another view type (and, in 3D, the render mode), double click it to maximize the view, or use the maximize button at its right. Drag the splitters between the views to resize them, double click a splitter to reset it.
 

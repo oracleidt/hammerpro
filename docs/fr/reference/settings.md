@@ -247,6 +247,8 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `show_history` | `false` | Onglet de l'historique des modifications. |
 | `layouts` | `{}` | Dispositions enregistrées (**Fenêtre > Disposition > Enregistrer la disposition...**), 32 au plus : `quadrants`, `split_x`, `split_y`, `maximized`, `panels`. |
 | `open_in_new_tab` | `true` | Les maps ouvertes ont leur propre onglet (désactivé : elles remplacent la map actuelle). |
+| `team_live_edits` | `true` | Team Mapping : envoyer les coups de pinceau et déplacements aux autres participants pendant qu'ils se font (désactivé : seulement à la fin). Voir [Team Mapping](../features/team-mapping.md). |
+| `team_share_scripts` | `true` | Hôte Team Mapping : partager les entités et entrées de script et de commande (`lua_run`, `logic_script`, `point_servercommand`, `point_clientcommand`, `Command`, `RunScriptCode`, `RunScriptFile`, `RunPassedCode`). Désactivé : l'hôte garde les siennes sur son PC et refuse celles que les autres ajoutent ou modifient. Voir [Team Mapping](../features/team-mapping.md). |
 
 ## `[instances]`
 
@@ -399,10 +401,14 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `hide_nodraw`, `hide_clips`, `hide_triggers`, `hide_hints` | `false` | Groupes de textures outils masqués dans la vue 3D. |
 | `max_fps` | `0` | Limite d'images par seconde (0 : aucune). |
 | `unfocused_fps` | `30` | Images par seconde quand la fenêtre n'a pas le focus (0 : sans limite). |
+| `animation_fps` | `30` | Images par seconde des matériaux animés, des sprites de détail qui ondulent, des effets de particules et des lumières qui clignotent quand rien d'autre ne bouge (0 : chaque image, 240 au plus). |
+| `animation_idle_pause_s` | `120` | Secondes sans souris ni clavier après lesquelles les animations s'arrêtent jusqu'à la prochaine action (0 : jamais). |
+| `animate_in_background` | `false` | Continuer les animations quand une autre fenêtre est active. |
 | `vsync` | `true` | Attend le rafraîchissement de l'écran (s'applique immédiatement). |
 | `vram_budget_mb` | `0` | Mémoire graphique que Hammer Pro peut utiliser, en Mo (0 : automatique, 90 % de ce que le système donne au programme). Au-delà de 85 %, les maps des autres onglets sont retirées de la carte graphique, au-delà du budget les textures sont affichées en plus basse résolution. Voir [Mémoire insuffisante](../troubleshooting/out-of-memory.md). |
 | `keep_background_maps_on_gpu` | `true` | Garde les maps des autres onglets sur la carte graphique tant qu'il y a de la place, pour un changement d'onglet instantané. |
-| `performance_mode` | `Auto` | `Auto` et `Off` dessinent l'aperçu en pleine qualité. `Auto` baisse la qualité d'un cran (avec un avis et un bouton Rétablir la qualité maximale sur la vue 3D) seulement quand la vue 3D reste sous 20 images par seconde pendant plusieurs secondes. `Low` (résolution à 75 %, sans MSAA ni bloom, 4 lumières avec ombres, ombre du soleil en 2048, textures jusqu'à 1024 pixels) et `VeryLow` (résolution à 50 %, sans ombres des lumières, reflets, normal maps ni volumes de brouillard, textures jusqu'à 512 pixels) la baissent toujours. **Paramètres > Rendu > Performance**, `set_setting render.performance_mode`. Voir [Performance de l'éditeur](../troubleshooting/performance.md). |
+| `texture_streaming` | `true` | Détail des textures selon la distance : les textures utilisées seulement loin de toutes les vues sont gardées à une taille réduite qui rend pareil à cette distance (des niveaux de mip entiers, jamais moins de 128 pixels), et reviennent en pleine taille avant que la caméra ne s'approche. L'écran de chargement d'une map reste jusqu'à ce que chaque texture proche de la caméra soit en pleine taille. Désactivé : toutes les textures restent en pleine taille. Voir [Performances de l'éditeur](../troubleshooting/performance.md#détail-des-textures-selon-la-distance). |
+| `performance_mode` | `Auto` | `Auto` et `Off` dessinent l'aperçu en pleine qualité. `Auto` baisse la qualité d'un cran (avec un avis et un bouton Rétablir la qualité maximale sur la vue 3D) seulement quand la vue 3D reste sous 20 images par seconde pendant plusieurs secondes. Avant cela, `Auto` adapte aussi le coût des aperçus d'éclairage à une carte graphique lente, un niveau à la fois et dans les deux sens (voir [Performances de l'éditeur](../troubleshooting/performance.md#adaptation-fine-de-léclairage-auto)) ; une carte qui suit garde toujours le rendu complet. `Low` (résolution à 75 %, sans MSAA ni bloom, 4 lumières avec ombres, ombre du soleil en 2048, textures jusqu'à 1024 pixels) et `VeryLow` (résolution à 50 %, sans ombres des lumières, reflets, normal maps ni volumes de brouillard, textures jusqu'à 512 pixels) la baissent toujours. **Paramètres > Rendu > Performance**, `set_setting render.performance_mode`. Voir [Performance de l'éditeur](../troubleshooting/performance.md). |
 | `render_scale` | `1.0` | Dessine la vue 3D à cette part de sa taille (0,25 à 1) puis l'étire sur la fenêtre. 1.0 est la qualité maximale. |
 | `perf_hud` | `false` | Affiche dans la vue 3D les images par seconde, le temps d'image, le temps CPU et GPU par étape, la mémoire et le niveau de qualité. |
 
@@ -418,6 +424,8 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `auto_scope` | `false` | Mode régional optionnel au démarrage automatique de l'aperçu sur les grandes cartes. Sa région suit la caméra ; **Précalculer l'éclairage** calcule toujours toute la carte. |
 | `auto_scope_luxels_millions` | `2` | Seuil du mode régional automatique optionnel, de 1 à 64 millions de luxels. |
 | `auto_scope_radius` | `3072` | Rayon de la région automatique optionnelle, de 256 à 32768 unités. Distinct du rayon manuel de l'onglet Éclairage. |
+| `visible_first` | `true` | Sur les maps de 6000 solides ou plus, la zone autour de la caméra est précalculée d'abord, puis toute la map est précalculée en arrière-plan et la remplace. |
+| `prepare` | `true` | Une fois la map ouverte et les modifications en pause, toute la map est compilée et éclairée en priorité basse sans être dessinée, pour que l'aperçu précalculé s'affiche aussitôt à l'activation. Demande `auto_bake`. |
 | `tiny_scale` | `4` | Échelle de lightmap à partir de laquelle (ou en dessous) une face est jugée minuscule, de 1 à 64. |
 | `budget_styles` | `1` | Styles de lumière comptés par le budget de lightmap, de 1 à 4. |
 | `show_budget` | `true` | Jauge du budget de lightmap dans la barre d'état. |
@@ -425,7 +433,7 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 
 Les valeurs existantes enregistrées de `auto_scope` sont conservées. Si le champ est absent, le défaut est `false`. **Précalculer autour de la caméra** reste un précalcul manuel d'une région fixe ; le mode régional automatique suit la caméra quand elle quitte la moitié centrale et reste immobile une seconde.
 
-Le résultat global est réutilisé pendant la navigation. La géométrie, les lumières, les matériaux et les paramètres de calcul affectent sa validité ; les déplacements de caméra, la sélection, la luminosité de l'aperçu, la correction colorimétrique et le délai de mise à jour ne l'invalident pas. Les mises à jour dynamiques planifient un nouveau précalcul après les changements pertinents ; sinon l'onglet Éclairage indique que le résultat est périmé et propose **Précalculer à nouveau**.
+Le résultat global est réutilisé pendant la navigation. La géométrie, les lumières, les matériaux et les paramètres de calcul affectent sa validité ; les déplacements de caméra, la sélection, la luminosité de l'aperçu, la correction colorimétrique et le délai de mise à jour ne l'invalident pas. Les modifications de lumières sont recalculées de façon incrémentale dans le processus d'éclairage prêt (seules les lumières modifiées et la lumière rebondie) ; les mises à jour dynamiques planifient un nouveau précalcul après les autres changements pertinents ; sinon l'onglet Éclairage indique que le résultat est périmé et propose **Précalculer à nouveau**.
 
 ## `[placement]`
 

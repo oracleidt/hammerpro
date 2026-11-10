@@ -17,7 +17,7 @@ Ce qui revient :
 
 Les matériaux et modèles du pakfile de la map sont copiés dans un dossier de cache monté tant que la map est ouverte, pour que son propre contenu s'affiche (*Fichiers du contenu propre à la map, affichés tant qu'elle est ouverte*).
 
-Une map compilée ne rend pas tout : les instances sont fusionnées, les visgroups, groupes et objets cachés ont disparu, et les brushes hint, skip et origin ont été retirés par le compilateur. La console liste les brushes, displacements et occluders impossibles à reconstruire, les overlays qui ont perdu leurs faces, et les brushes sans faces (map protégée contre la décompilation, voir [Protect your BSP](bsp-protection.md)).
+Une map compilée ne rend pas tout : les instances sont fusionnées, les visgroups, groupes et objets cachés ont disparu, et les brushes hint, skip et origin ont été retirés par le compilateur. Les brushes que le compilateur laisse dans le fichier sans s'en servir (le volume d'un `func_occluder`, qui revient plutôt depuis les données des occulteurs) sont ignorés, et les brushes `tools/toolstrigger` inutilisés des entités `func_viscluster` reviennent chacun en un `func_viscluster`. Les overlays d'eau (lignes de rivage) reviennent en entités `info_overlay_transition` avec les bandes de la map. La console liste les brushes, displacements et occluders impossibles à reconstruire, les overlays qui ont perdu leurs faces, et les brushes sans faces (map protégée contre la décompilation, voir [Protect your BSP](bsp-protection.md)).
 
 Le Décompilateur de BSP travaille sur un fichier `.bsp` que vous avez déjà. Pour récupérer une map depuis un serveur Garry's Mod que vous rejoignez, voir le [BSP Sniffer](bsp-sniffer.md).
 

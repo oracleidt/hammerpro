@@ -465,3 +465,63 @@ fn classic_colors_live_in_the_object_state() {
     assert!(!s.objects.contains_key(&1));
     assert_eq!(s.states[slot].classic, 0, "a freed slot forgets it");
 }
+
+#[test]
+fn moving_a_helper_that_casts_no_shadow_keeps_the_shadows() {
+    let mut s = scene();
+    s.upsert(1, cube([0.0; 3], 64.0, [10, 11]));
+    s.upsert(2, cube([100.0, 0.0, 0.0], 64.0, [10, 10]));
+    s.set_flags(2, ObjectFlags::NO_SHADOW);
+    let out = s.flush(true);
+    assert!(out.casters);
+    s.upsert(2, cube([300.0, 0.0, 0.0], 32.0, [10, 10]));
+    let out = s.flush(true);
+    assert!(!out.writes.is_empty(), "the helper moved");
+    assert!(!out.casters && !out.shadow_states, "no shadow sees it");
+    s.upsert(1, cube([0.0, 50.0, 0.0], 64.0, [10, 11]));
+    assert!(s.flush(true).casters, "a caster moved");
+    s.remove(2);
+    let out = s.flush(true);
+    assert!(!out.casters && !out.shadow_states, "removing the helper");
+    s.remove(1);
+    let out = s.flush(true);
+    assert!(out.casters || out.shadow_states, "removing a caster");
+}
+
+#[test]
+fn only_changes_that_shadows_see_redraw_them() {
+    let mut s = scene();
+    s.upsert(1, cube([0.0; 3], 64.0, [10, 11]));
+    s.upsert(2, cube([100.0, 0.0, 0.0], 64.0, [10, 10]));
+    assert!(s.flush(true).casters, "new objects");
+    let out = s.flush(true);
+    assert!(!out.shadow_states && !out.casters);
+    for flags in [ObjectFlags::SELECTED, ObjectFlags::SELECTED | ObjectFlags::HOVERED, ObjectFlags::DIMMED] {
+        s.set_flags(1, flags);
+        let out = s.flush(true);
+        assert!(!out.state_ranges.is_empty(), "the state still reaches the GPU");
+        assert!(!out.shadow_states && !out.casters, "{flags:?} does not change a shadow");
+    }
+    s.set_wire_color(1, [1, 2, 3]);
+    s.set_tint(1, pack_rgb8([10, 20, 30]) | 0xff00_0000);
+    assert!(!s.flush(true).shadow_states, "colors do not change a shadow");
+    s.set_tint(1, (pack_rgb8([10, 20, 30]) & 0x00ff_ffff) | 0x8000_0000);
+    assert!(s.flush(true).shadow_states, "transparency does");
+    for flags in [ObjectFlags::HIDDEN, ObjectFlags::NO_SHADOW, ObjectFlags::NO_3D] {
+        s.set_flags(2, flags);
+        assert!(s.flush(true).shadow_states, "{flags:?} changes what casts");
+        s.set_flags(2, ObjectFlags::default());
+        assert!(s.flush(true).shadow_states);
+    }
+}
+
+#[test]
+fn instance_flags_still_reach_the_shadows() {
+    let mut s = scene();
+    s.acquire_ref(7);
+    s.flush(true);
+    s.set_flags(7, ObjectFlags::NO_SHADOW);
+    assert!(s.flush(true).shadow_states, "a model drawn through its state slot");
+    s.set_tint(7, 0x80ff_ffff);
+    assert!(s.flush(true).shadow_states);
+}

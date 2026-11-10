@@ -11,7 +11,7 @@
 - Les arguments sont séparés par des espaces. Les commandes qui prennent un chemin ou un texte (`open`, `save`, `screenshot`, `type`, `log`...) lisent tout le reste de la ligne, espaces compris.
 - Une ligne illisible arrête l'exécution avant son début avec `script line N: cannot parse ...` et le code de sortie 2.
 - Chaque commande affiche `script: ...` sur stderr quand elle s'exécute, ce qui rend la sortie facile à suivre.
-- La fenêtre ne se ferme pas à la fin du script : terminez par `exit`.
+- La fenêtre ne se ferme pas à la fin du script : terminez par `exit`. Après la dernière commande, la fenêtre se comporte comme une session normale et ne se redessine que quand quelque chose change : une fenêtre laissée ouverte par un script (par exemple pour être pilotée par MCP) ne consomme pas de processeur tant que rien ne se passe.
 
 ## Positions (POS)
 

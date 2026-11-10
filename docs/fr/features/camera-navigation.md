@@ -125,7 +125,7 @@ Barre d'options de l'outil :
 | **Réinitialiser le partage des vues** | aucun | Remet les séparateurs des vues au milieu |
 | **Informations de la vue 3D** | `O` | Images par seconde, position et angles de la caméra, statistiques du rendu dans la vue 3D. Un clic copie `setpos` et `setang` pour la console du jeu |
 
-Elles se trouvent dans le menu **Affichage**. Le menu du clic droit d'une vue propose aussi **Centrer les vues ici**.
+Elles se trouvent dans le menu **Affichage**. Le menu du clic droit d'une vue propose aussi **Centrer les vues ici**, et pendant une session [Team Mapping](team-mapping.md) **Signaler ici à l'équipe**.
 
 Chaque vue a un en-tête : cliquez sur le nom de la vue pour choisir un autre type de vue (et, en 3D, le mode de rendu), double-cliquez dessus pour agrandir la vue, ou utilisez le bouton d'agrandissement à sa droite. Glissez les séparateurs entre les vues pour les redimensionner, double-cliquez sur un séparateur pour le remettre en place.
 

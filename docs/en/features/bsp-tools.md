@@ -17,7 +17,7 @@ What comes back:
 
 The materials and models of the map's pakfile are copied to a cache folder that is mounted while the map is open, so its own content displays (*Files of the map's own content, shown while it is open*).
 
-A compiled map cannot give everything back: instances are merged, visgroups, groups and hidden objects are gone, and hint, skip and origin brushes were removed by the compiler. The console lists brushes, displacements and occluders that could not be rebuilt, overlays that lost their faces, and brushes without faces (a map protected against decompiling, see [Protect your BSP](bsp-protection.md)).
+A compiled map cannot give everything back: instances are merged, visgroups, groups and hidden objects are gone, and hint, skip and origin brushes were removed by the compiler. Brushes the compiler leaves in the file without using them (the volume of a `func_occluder`, which comes back from the occluder data instead) are skipped, and the unused `tools/toolstrigger` brushes of `func_viscluster` entities come back as one `func_viscluster` each. Water overlays (shorelines) come back as `info_overlay_transition` entities with the strips of the map. The console lists brushes, displacements and occluders that could not be rebuilt, overlays that lost their faces, and brushes without faces (a map protected against decompiling, see [Protect your BSP](bsp-protection.md)).
 
 The BSP Decompiler works on a `.bsp` file you already have. To recover a map from a Garry's Mod server you join, see the [BSP Sniffer](bsp-sniffer.md).
 

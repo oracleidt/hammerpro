@@ -190,7 +190,14 @@ impl McpServer {
                 let _ = s.shutdown(Shutdown::Both);
             }
         }
-        if let Some(handle) = self.accept.take() {
+        let woke = TcpStream::connect_timeout(
+            &std::net::SocketAddr::from((Ipv4Addr::LOCALHOST, self.record.port)),
+            Duration::from_millis(500),
+        )
+        .is_ok();
+        if let Some(handle) = self.accept.take()
+            && woke
+        {
             let _ = handle.join();
         }
         registry::remove_record(&self.dir, self.record.pid);
@@ -204,7 +211,7 @@ impl Drop for McpServer {
     }
 }
 
-const ACCEPT_POLL: Duration = Duration::from_millis(50);
+const ACCEPT_RETRY: Duration = Duration::from_millis(50);
 
 fn accept_loop(
     listener: TcpListener,
@@ -213,25 +220,19 @@ fn accept_loop(
     shared: Arc<Shared>,
     tx: Sender<ToolRequest>,
 ) {
-    if let Err(e) = listener.set_nonblocking(true) {
-        log::warn!("MCP server: {e}");
-    }
     while !shared.stop.load(Ordering::SeqCst) {
         let stream = match listener.accept() {
             Ok((stream, _)) => stream,
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                std::thread::sleep(ACCEPT_POLL);
-                continue;
-            }
             Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
             Err(e) => {
                 log::warn!("MCP server: accept failed: {e}");
-                std::thread::sleep(ACCEPT_POLL);
+                std::thread::sleep(ACCEPT_RETRY);
                 continue;
             }
         };
-        if stream.set_nonblocking(false).is_err() {
-            continue;
+        if shared.stop.load(Ordering::SeqCst) {
+            let _ = stream.shutdown(Shutdown::Both);
+            break;
         }
         if !stream.peer_addr().is_ok_and(|a| a.ip().is_loopback()) {
             let _ = stream.shutdown(Shutdown::Both);

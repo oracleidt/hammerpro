@@ -16,8 +16,8 @@ pub const TR: TrTable = &[
     ),
     (
         "lighting.keep_bake_tip",
-        "Added, moved and edited point lights use a live direct-light difference over the last bake. A full bake updates bounced light and environment lighting.",
-        "Les lumières ponctuelles ajoutées, déplacées ou modifiées utilisent une différence d'éclairage direct sur le dernier bake. Un bake complet actualise les rebonds et l'éclairage d'environnement.",
+        "Light edits relight only the changed lights and their bounced light on the shown bake, usually in a fraction of a second; a live direct-light difference shows them meanwhile. Off: every light edit relights every light again.",
+        "Les modifications de lumières ne recalculent que les lumières modifiées et leur lumière rebondie sur le bake affiché, en général en une fraction de seconde ; une différence d'éclairage direct en temps réel les montre en attendant. Désactivé : chaque modification recalcule toutes les lumières.",
     ),
     ("lighting.vrad_parameters", "VRAD parameters", "Paramètres VRAD"),
     ("lighting.vrad_bounces", "Light bounces", "Rebonds de lumière"),
@@ -85,6 +85,16 @@ pub const TR: TrTable = &[
     ),
     ("lighting.not_baked", "Not baked yet", "Pas encore précalculé"),
     ("lighting.stale", "Lighting is out of date", "L'éclairage n'est plus à jour"),
+    (
+        "lighting.relight_stats",
+        "Last update: {0} lights changed, {1} faces relit in {2} ms ({3} ms from the edit)",
+        "Dernière mise à jour : {0} lumières modifiées, {1} faces recalculées en {2} ms ({3} ms depuis la modification)",
+    ),
+    ("lighting.lights_heading", "Lights in the preview", "Lumières de l'aperçu"),
+    ("lighting.muted_count", "{0} lights muted", "{0} lumières coupées"),
+    ("lighting.costs_pending", "Measuring the lights...", "Mesure des lumières..."),
+    ("lighting.cost_luxels", "{0} luxels", "{0} luxels"),
+    ("lighting.cost_faces", "{0} faces", "{0} faces"),
     (
         "lighting.no_lights",
         "The map has no light entity (light, light_spot, light_environment)",

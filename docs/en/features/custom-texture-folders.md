@@ -107,8 +107,8 @@ The conversion runs in the background with a progress bar (**Importing N of M...
 
 The compiler always sees the custom materials. For the game:
 
-- **Pack custom content** (Compile window option; **Pack custom content into the BSP** in the settings) packs the custom materials and models the map uses into the BSP; images are converted to VTF (DXT1 or DXT5 with mipmaps) and their VMT is written.
-- Builds that do not pack copy the custom materials into `garrysmod/addons/hammerpro_dev` (**Development addon**), which the game loads.
+- **Pack custom content** (Compile window option; **Pack custom content into the BSP** in the settings) packs the custom materials, models, sounds, particle files (with the `maps/<map>_particles.txt` manifest the game needs to load them), the map's own soundscape and level sound scripts, sky and other files the map uses into the BSP; images are converted to VTF (DXT1 or DXT5 with mipmaps) and their VMT is written.
+- Builds that do not pack copy the same custom content (materials, models, sounds, particle files with their manifest, map scripts) into `garrysmod/addons/hammerpro_dev` (**Development addon**), which the game loads, so a custom `prop_static` is drawn and solid in a Draft or Normal build too.
 - **Export custom materials** (**Export custom materials to the game** in the settings) also copies them into the game folder (off by default).
 
 See [Compile window](../compiler/compile-window.md).

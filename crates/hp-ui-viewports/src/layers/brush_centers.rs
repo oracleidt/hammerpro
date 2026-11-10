@@ -1,11 +1,15 @@
 use std::cell::RefCell;
 
-use egui::{Color32, Stroke, vec2};
 use glam::DVec3;
 use hp_app::{AppState, view::ViewInfo};
 use hp_editor::{Id, ObjRef, Owner};
+use hp_render::{Overlay, OverlayLine};
 
 use super::OverlayLayer;
+use crate::overlay::{pixel_world_size, screen_axes};
+
+const ARM_PX: f64 = 3.0;
+const IDLE_GRAY: f32 = 185.0 / 255.0;
 
 pub(crate) fn layers() -> Vec<Box<dyn OverlayLayer>> {
     vec![Box::new(BrushCenters::default())]
@@ -14,7 +18,7 @@ pub(crate) fn layers() -> Vec<Box<dyn OverlayLayer>> {
 #[derive(Default)]
 struct Centers {
     revision: Option<u64>,
-    entries: Vec<(Id, DVec3, Owner)>,
+    entries: Vec<(Id, DVec3, bool)>,
 }
 
 #[derive(Default)]
@@ -28,17 +32,26 @@ impl Centers {
         if self.revision == Some(revision) {
             return;
         }
+        let doc = &state.doc;
         self.entries.clear();
-        self.entries.extend(state.doc.scene().solids().iter().filter_map(|(id, node)| {
-            (!node.bounds.is_empty())
-                .then(|| (*id, node.bounds.center(), node.owner))
-                .filter(|(_, center, _)| center.is_finite())
+        self.entries.extend(doc.scene().solids().iter().filter_map(|(id, node)| {
+            let center = node.bounds.center();
+            if node.bounds.is_empty() || !center.is_finite() || !doc.is_solid_pickable(*id) {
+                return None;
+            }
+            let chosen = doc.is_selected(ObjRef::Solid(*id))
+                || matches!(node.owner, Owner::Entity(entity) if doc.is_selected(ObjRef::Entity(entity)));
+            Some((*id, center, chosen))
         }));
         if self.entries.capacity() > 4096 && self.entries.len() < self.entries.capacity() / 4 {
             self.entries.shrink_to_fit();
         }
         self.revision = Some(revision);
     }
+}
+
+fn shown(state: &AppState, view: &ViewInfo) -> bool {
+    view.is_2d() && state.settings.helpers.show_brush_centers && !state.runtime.lab.player.active
 }
 
 impl OverlayLayer for BrushCenters {
@@ -52,28 +65,43 @@ impl OverlayLayer for BrushCenters {
         }
     }
 
-    fn paint(&self, state: &AppState, view: &ViewInfo, painter: &egui::Painter) {
-        if !view.is_2d() || !state.settings.helpers.show_brush_centers || state.runtime.lab.player.active {
+    fn retained_version(&self, state: &AppState, view: &ViewInfo) -> Option<u64> {
+        if !shown(state, view) {
+            return None;
+        }
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        std::hash::Hash::hash(
+            &(
+                state.doc.revision(),
+                view.kind as u8,
+                view.cam2d.zoom.to_bits(),
+                view.pixels_per_point.to_bits(),
+                state.settings.view.selection_color,
+            ),
+            &mut h,
+        );
+        Some(std::hash::Hasher::finish(&h))
+    }
+
+    fn retained(&self, state: &AppState, view: &ViewInfo, out: &mut Overlay) {
+        if !shown(state, view) {
             return;
         }
         let mut centers = self.centers.borrow_mut();
         centers.sync(state);
-        let painter = painter.with_clip_rect(view.rect.intersect(painter.clip_rect()));
-        let selected = state.settings.view.selection_color;
-        for &(id, center, owner) in &centers.entries {
-            let Some(point) = view.world_to_screen(center) else { continue };
-            if !view.rect.expand(4.0).contains(point) || !state.doc.is_solid_pickable(id) {
-                continue;
-            }
-            let chosen = state.doc.is_selected(ObjRef::Solid(id))
-                || matches!(owner, Owner::Entity(entity) if state.doc.is_selected(ObjRef::Entity(entity)));
-            let color =
-                if chosen { Color32::from_rgb(selected[0], selected[1], selected[2]) } else { Color32::from_gray(185) };
-            let stroke = Stroke::new(1.0, color);
-            let a = vec2(3.0, 3.0);
-            let b = vec2(3.0, -3.0);
-            painter.line_segment([point - a, point + a], stroke);
-            painter.line_segment([point - b, point + b], stroke);
+        let (right, up) = screen_axes(view);
+        let px = pixel_world_size(view, DVec3::ZERO) * f64::from(view.pixels_per_point.max(0.1)) * ARM_PX;
+        let a = (right + up) * px;
+        let b = (right - up) * px;
+        let s = state.settings.view.selection_color;
+        let selected = [f32::from(s[0]) / 255.0, f32::from(s[1]) / 255.0, f32::from(s[2]) / 255.0, 1.0];
+        let idle = [IDLE_GRAY, IDLE_GRAY, IDLE_GRAY, 1.0];
+        let f = |v: DVec3| v.as_vec3().to_array();
+        out.lines_on_top.reserve(centers.entries.len() * 2);
+        for &(_, center, chosen) in &centers.entries {
+            let color = if chosen { selected } else { idle };
+            out.lines_on_top.push(OverlayLine { a: f(center - a), b: f(center + a), color });
+            out.lines_on_top.push(OverlayLine { a: f(center - b), b: f(center + b), color });
         }
     }
 }
@@ -81,7 +109,7 @@ impl OverlayLayer for BrushCenters {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use egui::{Rect, Shape, pos2, vec2};
+    use egui::{Pos2, Rect, pos2, vec2};
     use hp_app::view::{Camera2d, Camera3d, ViewKind};
     use hp_editor::Document;
 
@@ -108,12 +136,17 @@ mod tests {
         }
     }
 
-    fn drawn(layer: &BrushCenters, state: &AppState, view: &ViewInfo) -> Vec<Shape> {
-        let ctx = egui::Context::default();
-        let output = ctx.run_ui(egui::RawInput { screen_rect: Some(view.rect), ..Default::default() }, |ui| {
-            layer.paint(state, view, ui.painter());
-        });
-        output.shapes.into_iter().map(|s| s.shape).collect()
+    fn drawn(layer: &BrushCenters, state: &AppState, view: &ViewInfo) -> Vec<OverlayLine> {
+        let mut out = Overlay::default();
+        if layer.retained_version(state, view).is_some() {
+            layer.retained(state, view, &mut out);
+        }
+        assert!(out.lines.is_empty() && out.triangles.is_empty() && out.points.is_empty());
+        out.lines_on_top
+    }
+
+    fn on_screen(view: &ViewInfo, line: &OverlayLine) -> [Pos2; 2] {
+        [line.a, line.b].map(|p| view.world_to_screen(glam::Vec3::from(p).as_dvec3()).unwrap())
     }
 
     #[test]
@@ -125,8 +158,8 @@ mod tests {
         assert!(layer.centers.borrow().entries.is_empty());
         for kind in [ViewKind::Top, ViewKind::Front, ViewKind::Side] {
             let view = view(kind);
-            let shapes = drawn(&layer, &state, &view);
-            assert_eq!(shapes.len(), 4);
+            let lines = drawn(&layer, &state, &view);
+            assert_eq!(lines.len(), 4);
             let centers: Vec<_> = state
                 .doc
                 .scene()
@@ -134,22 +167,25 @@ mod tests {
                 .values()
                 .map(|node| view.world_to_screen(node.bounds.center()).unwrap())
                 .collect();
-            for shape in shapes {
-                let Shape::LineSegment { points, .. } = shape else { panic!("a center is a line segment") };
+            for line in &lines {
+                let points = on_screen(&view, line);
                 let midpoint = points[0] + (points[1] - points[0]) * 0.5;
-                assert!(centers.iter().any(|center| center.distance(midpoint) < 0.001));
-                assert!((points[0].distance(points[1]) - 72f32.sqrt()).abs() < 0.001);
+                assert!(centers.iter().any(|center| center.distance(midpoint) < 0.01));
+                assert!((points[0].distance(points[1]) - 72f32.sqrt()).abs() < 0.01);
+                assert!((line.color[0] - 185.0 / 255.0).abs() < 1e-6, "unselected crosses are light gray");
             }
         }
     }
 
     #[test]
-    fn brush_centers_follow_visibility_edits_undo_zoom_and_the_saved_toggle() {
+    fn brush_centers_follow_visibility_edits_undo_zoom_selection_and_the_saved_toggle() {
         let (mut state, world, entity) = state();
         let mut layer = BrushCenters::default();
         let mut view = view(ViewKind::Top);
+        let first = layer.retained_version(&state, &view);
         assert_eq!(drawn(&layer, &state, &view).len(), 4);
         state.doc.set_hidden(&[ObjRef::Solid(world)], true);
+        assert_ne!(layer.retained_version(&state, &view), first, "an edit refills the overlay");
         assert_eq!(drawn(&layer, &state, &view).len(), 2);
         assert!(state.doc.undo());
         assert_eq!(drawn(&layer, &state, &view).len(), 4);
@@ -157,17 +193,32 @@ mod tests {
         assert_eq!(drawn(&layer, &state, &view).len(), 2);
         assert!(state.doc.undo());
         state.doc.translate(&[ObjRef::Solid(world)], DVec3::new(64.0, 0.0, 0.0)).unwrap();
-        let shapes = drawn(&layer, &state, &view);
+        let lines = drawn(&layer, &state, &view);
         let actual = state.doc.scene().solid(world).unwrap().bounds.center();
         assert!(layer.centers.borrow().entries.iter().any(|&(id, p, _)| id == world && p == actual));
-        assert_eq!(shapes.len(), 4);
-        view.cam2d.zoom = 0.25;
-        for shape in drawn(&layer, &state, &view) {
-            let Shape::LineSegment { points, .. } = shape else { panic!("a center is a line segment") };
-            assert!((points[0].distance(points[1]) - 72f32.sqrt()).abs() < 0.001);
+        assert_eq!(lines.len(), 4);
+        let before_pan = layer.retained_version(&state, &view);
+        view.cam2d.center += glam::DVec2::new(300.0, -40.0);
+        assert_eq!(layer.retained_version(&state, &view), before_pan, "panning reuses the uploaded crosses");
+        view.cam2d.zoom *= 0.5;
+        assert_ne!(layer.retained_version(&state, &view), before_pan, "zooming prepares them again");
+        for line in drawn(&layer, &state, &view) {
+            let points = on_screen(&view, &line);
+            assert!((points[0].distance(points[1]) - 72f32.sqrt()).abs() < 0.01, "the same size at every zoom");
         }
+        state.doc.select(&[ObjRef::Entity(entity)], hp_editor::SelectOp::Replace);
+        let s = state.settings.view.selection_color;
+        let lit = drawn(&layer, &state, &view)
+            .iter()
+            .filter(|l| {
+                (l.color[0] - f32::from(s[0]) / 255.0).abs() < 1e-6
+                    && (l.color[1] - f32::from(s[1]) / 255.0).abs() < 1e-6
+            })
+            .count();
+        assert_eq!(lit, 2, "the selected brush entity's cross takes the selection color");
         state.settings.helpers.show_brush_centers = false;
         layer.prepare(&state);
+        assert!(layer.retained_version(&state, &view).is_none());
         assert!(drawn(&layer, &state, &view).is_empty());
         assert_eq!(layer.centers.borrow().entries.capacity(), 0);
     }

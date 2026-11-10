@@ -81,7 +81,7 @@ Les messages du compilateur sont en anglais, comme ceux de Valve.
 | `microbrush` | Une brush est trop petite ou trop fine pour être construite. | Supprimez-la ou donnez-lui au moins 1 unité d'épaisseur sur la grille. |
 | `texture axis perpendicular` | Une texture est projetée dans le plan de sa propre face. | Réinitialisez l'alignement de la face (Vérifier les problèmes le corrige). |
 | `mixed face contents` | Une brush mélange des contenus (eau et solide, nodraw et clip...). | Un seul type de matériau sur toutes les faces. |
-| `displacement found on a(n)` | Un displacement dans une entité de brushes. | Remettez la brush à displacement dans le monde. |
+| `displacement found on a(n)` | Un displacement dans une entité de brushes. Dans un `func_detail` ce n'est qu'un avertissement : le displacement est compilé comme un displacement du monde. | Remettez la brush à displacement dans le monde. |
 | `too many switched lights` | Plus de 96 lumières nommées (32 hors Garry's Mod). | Même nom pour les lumières qui s'allument ensemble ; retirez le nom de celles qui ne changent jamais. |
 | `must be used on a dynamic entity` | Le modèle d'un `prop_static` a un `prop_data`. | Utilisez `prop_physics` ou `prop_dynamic`, ou `-AllowDynamicPropsAsStatic`. |
 | `must be compiled with $staticprop` | Le modèle n'est pas un modèle de prop statique. | Utilisez `prop_dynamic`. |
@@ -105,7 +105,7 @@ L'onglet **Statistiques** (aussi le bouton **Statistiques : N conseils** du jour
 - **Conseils d'optimisation** : limites à 75 % ou plus (au-delà de 90 % ce sont des avertissements, au-delà de 100 % le jeu peut refuser la map), une map compilée sans visibilité (critique quand elle a de l'eau : le jeu dessine alors l'eau en noir, sans réfraction, donc compilez au moins avec la visibilité rapide), des clusters qui voient 50 % de la map ou plus, une visibilité moyenne faible, une grande map sans areaportals, de petites brushes structurelles qui pourraient être des `func_detail` (la plus petite est nommée), des props statiques sans distance de disparition, des displacements de puissance 4, des lightmaps qui prennent 90 % ou plus des 2 Go qu'une face peut adresser, des échelles de lightmap très fines, des styles commutables presque tous utilisés.
 - **Limites du moteur** : le tableau de vbspinfo de Valve (utilisé, maximum, octets, remplissage), les plus pleines d'abord.
 - **Géométrie** : taille de la map, brushes (structurelles, de détail, d'eau, outils, dans des entités de brushes), entités par classe, faces par matériau, displacements par puissance, zones, les petites brushes structurelles et les props sans distance de disparition.
-- **Visibilité** : mode (rapide, complète, non calculée, ou sautée parce que la map fuit), clusters, portails, feuilles, clusters visibles en moyenne et au plus, le rayon de visibilité, les clusters qui voient le plus.
+- **Visibilité** : mode (rapide, complète, reprise d'une compilation précédente aux mêmes portails, non calculée, ou sautée parce que la map fuit), clusters, portails, feuilles, clusters visibles en moyenne et au plus, le rayon de visibilité, les clusters qui voient le plus.
 - **Éclairage** : octets de lightmap de chaque passe sur les 2 Go qu'une face peut adresser, luxels, lumières par type, styles commutables, textures lumineuses, props statiques et de détail éclairés, échantillons d'ambiance, rebonds, les faces et matériaux avec le plus de luxels avec leur échelle de lightmap.
 - **Durée des phases** et **Durée des étapes**.
 

@@ -116,7 +116,7 @@ pub(crate) fn pack_lights(lights: &[PreviewLight]) -> Packed {
     Packed { lights: dir, n_dir, left_out }
 }
 
-fn luminance(c: [f32; 4]) -> f32 {
+pub(crate) fn luminance(c: [f32; 4]) -> f32 {
     c[0] * 0.3 + c[1] * 0.59 + c[2] * 0.11
 }
 
@@ -164,7 +164,11 @@ impl ClusterGrid {
         ((depth / self.near).ln() * self.scale).max(0.0).min((self.slices - 1) as f32) as u32
     }
 
-    fn center(&self, cam: &Camera, x: u32, y: u32, s: u32) -> Vec3 {
+    pub(crate) fn slice_of(&self, depth: f32) -> u32 {
+        if depth.is_nan() { 0 } else { self.slice(depth) }
+    }
+
+    pub(crate) fn center(&self, cam: &Camera, x: u32, y: u32, s: u32) -> Vec3 {
         let depth = if self.scale > 0.0 { self.near * ((s as f32 + 0.5) / self.scale).exp() } else { self.near };
         let px = ((x as f32 + 0.5) * TILE_PX as f32).min(cam.width);
         let py = ((y as f32 + 0.5) * TILE_PX as f32).min(cam.height);
@@ -174,6 +178,10 @@ impl ClusterGrid {
         let (tx, ty) = (cam.tan_half_fov * aspect, cam.tan_half_fov);
         cam.eye + cam.forward * depth + cam.right * (nx * tx * depth) + cam.up * (ny * ty * depth)
     }
+}
+
+pub(crate) fn pack_indices(list: &[u32]) -> Vec<u32> {
+    list.chunks(2).map(|pair| (pair[0] & 0xffff) | (pair.get(1).map_or(0, |v| v & 0xffff) << 16)).collect()
 }
 
 pub(crate) struct Clusters {
@@ -468,7 +476,7 @@ fn finish_clusters(
     Clusters { table, list, crowded }
 }
 
-struct ClusterBounds {
+pub(crate) struct ClusterBounds {
     x: [f32; 2],
     y: [f32; 2],
     z: [f32; 2],
@@ -476,7 +484,7 @@ struct ClusterBounds {
 }
 
 impl ClusterBounds {
-    fn new(cam: &Camera, grid: &ClusterGrid, x: u32, y: u32, slice: u32) -> Self {
+    pub(crate) fn new(cam: &Camera, grid: &ClusterGrid, x: u32, y: u32, slice: u32) -> Self {
         let tx = cam.tan_half_fov * cam.width / cam.height;
         let ty = cam.tan_half_fov;
         let px = |p: f32| (p / cam.width * 2.0 - 1.0) * tx;
@@ -488,7 +496,7 @@ impl ClusterBounds {
         Self { x, y, z: [z0, z1], lengths }
     }
 
-    fn intersects(&self, p: Vec3, radius: f32) -> bool {
+    pub(crate) fn intersects(&self, p: Vec3, radius: f32) -> bool {
         let radius = radius + radius.abs() * 1e-5 + 0.01;
         p.z + radius >= self.z[0]
             && p.z - radius <= self.z[1]

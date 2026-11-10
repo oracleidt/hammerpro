@@ -31,6 +31,22 @@ fn stage_text(name: &str) -> String {
     if hp_app::i18n::has_key(&key) { hp_app::i18n::tr(&key).to_owned() } else { name.to_owned() }
 }
 
+fn vis_mode_key(v: &stats::VisStats) -> Option<&'static str> {
+    match (v.mode.as_str(), v.reused) {
+        ("full", false) => Some("compilestats.mode_full"),
+        ("fast", false) => Some("compilestats.mode_fast"),
+        ("full", true) => Some("compilestats.mode_full_reused"),
+        ("fast", true) => Some("compilestats.mode_fast_reused"),
+        ("off", _) => Some("compilestats.mode_off"),
+        (m, _) if m.starts_with("skipped") => Some("compilestats.mode_skipped"),
+        _ => None,
+    }
+}
+
+fn vis_mode_text(v: &stats::VisStats) -> String {
+    vis_mode_key(v).map_or_else(|| v.mode.clone(), |key| hp_app::i18n::tr(key).to_owned())
+}
+
 fn n(v: u64) -> String {
     let s = v.to_string();
     let mut out = String::with_capacity(s.len() + s.len() / 3);
@@ -512,13 +528,10 @@ impl StatsView {
         let Some(v) = &self.stats.vis else { return };
         section(ui, "vis", run_id, t!("compilestats.vis").to_owned(), true, |ui| {
             egui::Grid::new(("hp_compile_stats_vis", run_id)).num_columns(2).spacing([12.0, 3.0]).show(ui, |ui| {
-                let mode = match v.mode.as_str() {
-                    "full" => t!("compilestats.mode_full"),
-                    "fast" => t!("compilestats.mode_fast"),
-                    "off" => t!("compilestats.mode_off"),
-                    _ => t!("compilestats.mode_skipped"),
-                };
-                kv(ui, t!("compilestats.vis_mode"), mode.to_owned());
+                let mode = vis_mode_text(v);
+                if !mode.is_empty() {
+                    kv(ui, t!("compilestats.vis_mode"), mode);
+                }
                 kv(
                     ui,
                     t!("compilestats.clusters"),
@@ -824,6 +837,51 @@ mod tests {
         assert_eq!(stage_text("something new"), "something new");
         assert_eq!(n(1_234_567), "1\u{202f}234\u{202f}567");
         assert_eq!(n(12), "12");
+    }
+
+    #[test]
+    fn a_reused_visibility_is_not_shown_as_skipped() {
+        crate::register_translations();
+        let mut run = RunState::preparing("gm_x");
+        for l in [
+            "---- Visibility statistics ----",
+            "Clusters: 120, portals: 340, leaves: 800 (500 empty)",
+            "Vis mode: full (reused)",
+            "Vis radius: none",
+            "Vis times: reused 0.045 s, total 0.045 s",
+            "Visible clusters: average 48.0 (40.0%), max 90 (75.0%) in cluster 7",
+        ] {
+            run.push_log(Some(0), hp_compile::Severity::Info, l.to_owned(), None);
+        }
+        let mut view = StatsView::default();
+        view.update(&run, 1, false);
+        let v = view.stats.vis.clone().expect("vis");
+        assert_eq!((v.mode.as_str(), v.reused), ("full", true));
+        assert_eq!(vis_mode_key(&v), Some("compilestats.mode_full_reused"));
+        let fast = stats::VisStats { mode: "fast".into(), reused: true, ..stats::VisStats::default() };
+        assert_eq!(vis_mode_key(&fast), Some("compilestats.mode_fast_reused"));
+        let leak = stats::VisStats { mode: "skipped (leak)".into(), ..stats::VisStats::default() };
+        assert_eq!(vis_mode_key(&leak), Some("compilestats.mode_skipped"));
+        assert_eq!(vis_mode_text(&stats::VisStats::default()), "");
+        let unknown = stats::VisStats { mode: "custom".into(), ..stats::VisStats::default() };
+        assert_eq!(vis_mode_text(&unknown), "custom");
+        for lang in hp_app::i18n::Lang::ALL {
+            let tr = |key: &str| hp_app::i18n::tr_in(key, lang);
+            for key in ["compilestats.mode_full_reused", "compilestats.mode_fast_reused", "compilestats.stage.reused"] {
+                assert!(hp_app::i18n::has_translation(key, lang), "{key} {lang:?}");
+            }
+            let reused = tr("compilestats.mode_full_reused");
+            for other in ["compilestats.mode_skipped", "compilestats.mode_full", "compilestats.mode_fast_reused"] {
+                assert_ne!(reused, tr(other), "{other} {lang:?}");
+            }
+            for name in ["base", "flow", "cluster merge", "pas", "reused"] {
+                let key = format!("compilestats.stage.{}", name.replace(' ', "_"));
+                assert!(hp_app::i18n::has_translation(&key, lang), "{key} {lang:?}");
+            }
+        }
+        assert_ne!(stage_text("reused"), "reused");
+        let mut state = hp_app::testing::test_state();
+        hp_app::testing::run_ui(&mut state, |ui, state| view.ui(ui, state, &run, 1, true));
     }
 
     #[test]

@@ -52,7 +52,7 @@ Pour apparaître en jeu à l'endroit de votre caméra d'éditeur, installez l'ad
 - Utilisez **Brouillon** pendant la construction, **Normal** pour vérifier le rendu, **Final** pour publier.
 - **Fichier > Recharger la map dans le jeu** recharge la map dans le jeu déjà lancé.
 - **Jouer tout de suite, finir l'éclairage ensuite** : compile un Brouillon, lance le jeu, puis compile la qualité choisie en arrière-plan. Quand vous quittez la map en jeu, le BSP entièrement éclairé remplace la version rapide.
-- Matériaux personnalisés : les compilations Brouillon et Normal ne les intègrent pas au BSP. Avec **Addon de développement** activé (par défaut), ils sont copiés dans `garrysmod\addons\hammerpro_dev` pour que la map s'affiche correctement en jeu. Redémarrez le jeu une fois après la première copie.
+- Contenu personnalisé (matériaux, modèles, sons, particules) : les compilations Brouillon et Normal ne l'intègrent pas au BSP. Avec **Addon de développement** activé (par défaut), il est copié dans `garrysmod\addons\hammerpro_dev` pour que la map s'affiche correctement en jeu. Redémarrez le jeu une fois après la première copie.
 
 ## Si la map fuit
 

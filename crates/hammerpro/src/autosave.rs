@@ -79,46 +79,176 @@ pub fn save_doc_now(
     Ok(path)
 }
 
+static NEXT_SAVE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+static WRITTEN: std::sync::Mutex<Option<std::collections::HashMap<String, u64>>> = std::sync::Mutex::new(None);
+
+pub fn next_save_seq() -> u64 {
+    NEXT_SAVE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+pub fn write_in_order<T, E>(path: &Path, seq: u64, write: impl FnOnce() -> Result<T, E>) -> Option<Result<T, E>> {
+    let mut written = WRITTEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let key = map_key(Some(path));
+    if written.as_ref().and_then(|w| w.get(&key)).is_some_and(|&newer| newer > seq) {
+        return None;
+    }
+    let result = write();
+    if result.is_ok() {
+        written.get_or_insert_with(Default::default).insert(key, seq);
+    }
+    Some(result)
+}
+
+pub enum SaveOutcome {
+    Saved,
+    Failed(hp_editor::EditError),
+    Superseded,
+}
+
+pub struct FinishedSave {
+    pub tab: crate::tabs::TabId,
+    pub ticket: hp_editor::SaveTicket,
+    pub outcome: SaveOutcome,
+}
+
+struct RunningSave {
+    tab: crate::tabs::TabId,
+    ticket: hp_editor::SaveTicket,
+    rx: crossbeam_channel::Receiver<SaveOutcome>,
+}
+
+#[derive(Default)]
+pub struct BackgroundSaves {
+    running: Vec<RunningSave>,
+}
+
+impl BackgroundSaves {
+    pub fn start(
+        &mut self,
+        tab: crate::tabs::TabId,
+        map: hp_vmf::Map,
+        ticket: hp_editor::SaveTicket,
+        ctx: Option<egui::Context>,
+    ) {
+        let seq = next_save_seq();
+        let path = ticket.path().to_path_buf();
+        let (tx, rx) = crossbeam_channel::bounded(1);
+        let job = move || {
+            let written =
+                write_in_order(&path, seq, || hp_vmf::save_with(&map, &path, &hp_vmf::SaveOptions::default()));
+            drop(map);
+            let outcome = match written {
+                None => SaveOutcome::Superseded,
+                Some(Ok(_)) => SaveOutcome::Saved,
+                Some(Err(e)) => SaveOutcome::Failed(e.into()),
+            };
+            let _ = tx.send(outcome);
+            if let Some(ctx) = ctx {
+                ctx.request_repaint();
+            }
+        };
+        let job = std::sync::Arc::new(std::sync::Mutex::new(Some(job)));
+        let thread_job = job.clone();
+        let spawned = std::thread::Builder::new().name("hp-save".to_owned()).spawn(move || {
+            if let Some(job) = thread_job.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take() {
+                job();
+            }
+        });
+        if spawned.is_err()
+            && let Some(job) = job.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take()
+        {
+            job();
+        }
+        self.running.push(RunningSave { tab, ticket, rx });
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.running.is_empty()
+    }
+
+    pub fn take_finished(&mut self, wait: bool) -> Vec<FinishedSave> {
+        let mut done = Vec::new();
+        let mut keep = Vec::new();
+        for job in std::mem::take(&mut self.running) {
+            let outcome = if wait { job.rx.recv().ok() } else { job.rx.try_recv().ok() };
+            match outcome {
+                Some(outcome) => done.push(FinishedSave { tab: job.tab, ticket: job.ticket, outcome }),
+                None if wait => done.push(FinishedSave {
+                    tab: job.tab,
+                    ticket: job.ticket,
+                    outcome: SaveOutcome::Failed(hp_editor::EditError::Invalid("the save stopped".to_owned())),
+                }),
+                None => keep.push(job),
+            }
+        }
+        self.running = keep;
+        done
+    }
+}
+
+const SLICE_BUSY: Duration = Duration::from_millis(4);
+const SLICE_IDLE: Duration = Duration::from_millis(25);
+const IDLE_AFTER: f64 = 1.0;
+
 pub struct Autosaver {
     last: Instant,
     saved: Vec<u64>,
     due: Vec<crate::tabs::TabId>,
+    job: Option<(crate::tabs::TabId, hp_editor::SnapshotJob)>,
 }
 
 impl Autosaver {
     pub fn new() -> Self {
-        Self { last: Instant::now(), saved: Vec::new(), due: Vec::new() }
+        Self { last: Instant::now(), saved: Vec::new(), due: Vec::new(), job: None }
     }
 
-    pub fn tick(&mut self, state: &mut AppState, tabs: &crate::tabs::Tabs) {
+    pub fn tick(&mut self, state: &mut AppState, tabs: &crate::tabs::Tabs, ctx: &egui::Context) {
         let minutes = state.settings.edit.autosave_minutes;
         if minutes == 0 {
             self.due.clear();
+            self.job = None;
             return;
         }
-        if self.due.is_empty() {
-            if self.last.elapsed() < Duration::from_secs(u64::from(minutes) * 60) {
+        let every = Duration::from_secs(u64::from(minutes) * 60);
+        if self.due.is_empty() && self.job.is_none() {
+            let elapsed = self.last.elapsed();
+            if elapsed < every {
+                ctx.request_repaint_after(every - elapsed);
                 return;
             }
             self.last = Instant::now();
+            ctx.request_repaint_after(every);
             let mut open = Vec::new();
             for id in tabs.ids() {
                 let Some(doc) = tabs.doc(state, id) else { continue };
-                open.push(doc.revision());
-                if doc.is_dirty() && !self.saved.contains(&doc.revision()) {
+                open.push(doc.scene_revision());
+                if doc.is_dirty() && !self.saved.contains(&doc.scene_revision()) {
                     self.due.push(id);
                 }
             }
             self.saved.retain(|r| open.contains(r));
             self.due.reverse();
         }
-        let Some(id) = self.due.pop() else { return };
-        let Some((doc, cameras)) = tabs.map_view(state, id) else { return };
-        if !doc.is_dirty() {
-            return;
+        if self.job.is_none() {
+            let Some(id) = self.due.pop() else { return };
+            let Some(doc) = tabs.doc(state, id) else { return };
+            if !doc.is_dirty() {
+                return;
+            }
+            self.job = Some((id, doc.start_snapshot()));
         }
-        self.saved.push(doc.revision());
-        let mut map = doc.to_map();
+        let Some((id, job)) = self.job.as_mut() else { return };
+        let Some((doc, cameras)) = tabs.map_view(state, *id) else {
+            self.job = None;
+            return;
+        };
+        let idle = state.frame.time - state.runtime.render.last_input >= IDLE_AFTER;
+        let Some(mut map) = doc.step_snapshot(job, if idle { SLICE_IDLE } else { SLICE_BUSY }) else {
+            ctx.request_repaint();
+            return;
+        };
+        self.job = None;
+        self.saved.push(doc.scene_revision());
         crate::files::store_view_with(cameras, &state.settings, &mut map);
         let dir = Settings::autosave_dir();
         let key = map_key(doc.path());
@@ -149,6 +279,68 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn older_saves_never_overwrite_newer_ones() {
+        let path = Path::new("C:/maps/write_order_check.vmf");
+        let older = next_save_seq();
+        let newer = next_save_seq();
+        assert_eq!(write_in_order(path, newer, || Ok::<u8, ()>(1)), Some(Ok(1)));
+        assert_eq!(write_in_order(path, older, || Ok::<u8, ()>(2)), None, "an older snapshot is dropped");
+        let failing = next_save_seq();
+        assert_eq!(write_in_order(path, failing, || Err::<u8, ()>(())), Some(Err(())));
+        assert_eq!(write_in_order(path, failing - 1, || Ok::<u8, ()>(3)), Some(Ok(3)), "a failed write does not count");
+        let other = Path::new("C:/maps/write_order_other.vmf");
+        assert_eq!(write_in_order(other, older, || Ok::<u8, ()>(4)), Some(Ok(4)), "files are ordered one by one");
+    }
+
+    #[test]
+    fn background_saves_write_and_report() {
+        let dir = scratch("background");
+        let path = dir.join("room.vmf");
+        let mut doc = hp_editor::Document::from_map(hp_vmf::parse(hp_app::testing::TEST_VMF).unwrap());
+        doc.mark_dirty();
+        let (map, ticket) = doc.begin_save(&path).unwrap();
+        let mut saves = BackgroundSaves::default();
+        saves.start(7, map, ticket, None);
+        assert!(!saves.is_empty());
+        let done = saves.take_finished(true);
+        assert!(saves.is_empty());
+        assert_eq!(done.len(), 1);
+        assert_eq!(done[0].tab, 7);
+        assert!(matches!(done[0].outcome, SaveOutcome::Saved));
+        let FinishedSave { ticket, .. } = done.into_iter().next().unwrap();
+        doc.finish_save(ticket, true);
+        assert!(!doc.is_dirty());
+        assert_eq!(doc.path(), Some(path.as_path()));
+        assert!(hp_vmf::load(&path).is_ok());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_save_as_during_a_background_save_keeps_the_new_file() {
+        hp_app::register_translations();
+        hp_app::i18n::register(crate::app::TR);
+        let dir = scratch("save_as_race");
+        let (original, copy) = (dir.join("original.vmf"), dir.join("copy.vmf"));
+        let mut state = hp_app::testing::test_state();
+        assert!(crate::files::save_map_to(&mut state, &original));
+        state.doc.mark_dirty();
+        let (map, ticket) = state.doc.begin_save(&original).unwrap();
+        let mut saves = BackgroundSaves::default();
+        saves.start(1, map, ticket, None);
+        assert!(crate::files::save_map_to(&mut state, &copy));
+        for FinishedSave { ticket, outcome, .. } in saves.take_finished(true) {
+            match outcome {
+                SaveOutcome::Saved => state.doc.finish_save(ticket, true),
+                SaveOutcome::Failed(_) => state.doc.finish_save(ticket, false),
+                SaveOutcome::Superseded => {}
+            }
+        }
+        assert_eq!(state.doc.path(), Some(copy.as_path()), "the map keeps the Save As file");
+        assert!(!state.doc.is_dirty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

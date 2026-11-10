@@ -253,8 +253,10 @@ impl AssetManager {
         state.rx = Some(rx);
         let name = key.0.clone();
         state.key = Some(key);
+        let shared = Arc::clone(&self.shared);
         rayon::spawn(move || {
             let _ = tx.send(load_hdr_sky(&fs, &name));
+            shared.request_repaint();
         });
     }
 
@@ -492,9 +494,11 @@ impl AssetManager {
         {
             let tx = c.tris_tx.clone();
             let path = path.to_owned();
+            let shared = Arc::clone(&self.shared);
             rayon::spawn(move || {
                 let tris = load_collision_triangles(&fs, &path);
                 let _ = tx.send((path, tris));
+                shared.request_repaint();
             });
         }
         None
@@ -519,9 +523,11 @@ impl AssetManager {
         {
             let tx = c.tx.clone();
             let key = key.to_owned();
+            let shared = Arc::clone(&self.shared);
             rayon::spawn(move || {
                 let lines = load_collision(&fs, &key);
                 let _ = tx.send((key, lines));
+                shared.request_repaint();
             });
         }
         None

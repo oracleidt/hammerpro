@@ -86,6 +86,7 @@ impl Ghost {
 
 pub struct EntityTool {
     pub align_to_normal: bool,
+    seen: (String, String, u32),
     recent: Vec<String>,
     picker: ClassPicker,
     ghost: Option<Ghost>,
@@ -107,6 +108,7 @@ impl EntityTool {
     pub fn new() -> Self {
         Self {
             align_to_normal: false,
+            seen: (String::new(), String::new(), 0),
             recent: Vec::new(),
             picker: ClassPicker::default(),
             ghost: None,
@@ -506,6 +508,70 @@ impl Tool for EntityTool {
     fn cancel(&mut self, state: &mut AppState) -> bool {
         self.ghost = None;
         self.prefab.cancel(state)
+    }
+
+    fn update(&mut self, state: &mut AppState, _ctx: &egui::Context) {
+        self.remember(state);
+    }
+
+    fn set_option(&mut self, state: &mut AppState, key: &str, value: &str) -> bool {
+        let v = value.trim();
+        let done = match key {
+            "class" => {
+                if v.is_empty() || is_valid_class_name(v) {
+                    state.current_entity_class = v.to_owned();
+                    true
+                } else {
+                    false
+                }
+            }
+            "model" => {
+                let path = v.replace('\\', "/");
+                if path.is_empty() {
+                    state.current_model = None;
+                    true
+                } else if path.len() <= 260 && path.to_ascii_lowercase().ends_with(".mdl") && !path.contains("..") {
+                    state.current_model = Some(path);
+                    true
+                } else {
+                    false
+                }
+            }
+            "skin" => v.parse::<u32>().ok().filter(|s| *s <= 255).map(|s| state.current_model_skin = s).is_some(),
+            "align" => crate::common::option_flag(v).map(|b| self.align_to_normal = b).is_some(),
+            _ => false,
+        };
+        self.remember(state);
+        done
+    }
+
+    fn refresh_options(&mut self, state: &AppState) {
+        self.remember(state);
+    }
+
+    fn option_values(&self) -> Vec<hp_app::tool::ToolOption> {
+        use hp_app::tool::ToolOption;
+        let (class, model, skin) = &self.seen;
+        vec![
+            ToolOption::new(
+                "class",
+                class.clone(),
+                "class of the next point entity, empty for the default one (also set_current_entity_class)",
+            ),
+            ToolOption::new("model", model.clone(), "model of the next prop (.mdl path, empty for none)"),
+            ToolOption::new("skin", skin.to_string(), "skin of the next prop (0 to 255)"),
+            ToolOption::new(
+                "align",
+                crate::common::on_off(self.align_to_normal),
+                "on: props placed on a surface turn to follow its slope",
+            ),
+        ]
+    }
+}
+
+impl EntityTool {
+    fn remember(&mut self, state: &AppState) {
+        self.seen = (Self::class(state), state.current_model.clone().unwrap_or_default(), state.current_model_skin);
     }
 }
 

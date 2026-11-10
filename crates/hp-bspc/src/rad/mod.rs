@@ -7,6 +7,7 @@ mod lights;
 mod output;
 pub mod progress;
 mod props;
+pub mod session;
 mod sky;
 mod surface;
 #[cfg(test)]
@@ -159,6 +160,42 @@ impl Runner<'_> {
     }
 }
 
+struct Phases {
+    at: Instant,
+    list: Vec<(&'static str, f64)>,
+}
+
+impl Phases {
+    fn new() -> Phases {
+        Phases { at: Instant::now(), list: Vec::new() }
+    }
+
+    fn add(&mut self, name: &'static str, secs: f64) {
+        match self.list.iter_mut().find(|e| e.0 == name) {
+            Some(e) => e.1 += secs,
+            None => self.list.push((name, secs)),
+        }
+    }
+
+    fn mark(&mut self, name: &'static str) {
+        let secs = self.at.elapsed().as_secs_f64();
+        self.at = Instant::now();
+        self.add(name, secs);
+    }
+
+    fn split(&mut self, first: &'static str, first_secs: f64, rest: &'static str) {
+        let secs = self.at.elapsed().as_secs_f64();
+        self.at = Instant::now();
+        self.add(first, first_secs.min(secs));
+        self.add(rest, (secs - first_secs).max(0.0));
+    }
+
+    fn line(&self) -> String {
+        let parts: Vec<String> = self.list.iter().map(|(n, s)| format!("{n} {s:.2} s")).collect();
+        format!("Light phase times: {}", parts.join(", "))
+    }
+}
+
 fn ms(t: Instant) -> u128 {
     t.elapsed().as_millis()
 }
@@ -180,6 +217,7 @@ fn run_with(
 ) -> Result<Vec<u8>, String> {
     use progress::Stage;
     let start = Instant::now();
+    let mut phases = Phases::new();
     work.begin(Stage::Scene, 8);
     let mut src = hp_bsp::Bsp::from_vec(bytes.into_owned()).map_err(|e| format!("not a BSP file: {e}"))?;
     if opts.luxel_density > 0.0 && opts.luxel_density < 1.0 {
@@ -218,6 +256,7 @@ fn run_with(
         ));
     }
     stage(report, "texture lights", t);
+    phases.mark("setup");
     report.texture_light_faces = emission.faces;
     lights.list.extend(std::mem::take(&mut emission.lights));
     work.add(1);
@@ -239,13 +278,18 @@ fn run_with(
     let t = Instant::now();
     let all = runner.par(|| surface::lit_faces(&map, opts.smooth_angle));
     let lit_index = bake::lit_index(map.faces.len(), all.iter().flatten());
+    phases.mark("faces");
     work.add(1);
     let rules_table = tables.first();
     let no_shadow = |m: &str| rules_table.is_some_and(|t| t.casts_no_shadow(m));
     let forced = |m: &str| rules_table.is_some_and(|t| t.texture_shadow_forced(m));
     let rules = props::ShadowRules { no_shadow: &no_shadow, forced: &forced };
     let shadows = opts.props.shadows;
-    let what = props::ReadWhat { collision: shadows, texture_shadows: opts.props.texture_shadows };
+    let what = props::ReadWhat {
+        collision: shadows,
+        texture_shadows: opts.props.texture_shadows,
+        lighting: opts.props.lighting,
+    };
     let (mut static_props, mut prop_lines) = if shadows || opts.props.lighting {
         runner.par(|| props::StaticProps::read(&src, models, what, &rules))?
     } else {
@@ -258,6 +302,7 @@ fn run_with(
         (Vec::new(), props::Occluders::default())
     };
     work.add(1);
+    phases.mark("static prop models");
     for l in &prop_lines {
         log(l);
     }
@@ -273,10 +318,13 @@ fn run_with(
         log(&format!("{no_shadow_disps} displacement(s) cast no shadow (their cast shadows option is off)"));
     }
     let (shadow, _) = runner.par(|| surface::shadow_scene(&map, &all, prop_tris, !opts.no_disp_shadows));
+    phases.mark("shadow tree");
     work.add(1);
     let (surf, surf_info) = runner.par(|| surface::surface_scene(&map, &all, &lit_index));
+    phases.mark("surface tree");
     work.add(1);
     let blockers = runner.par(|| surface::blocker_scene(&map));
+    phases.mark("blocker tree");
     work.add(1);
     let faces: Vec<surface::LitFace> = all.into_iter().flatten().collect();
     let sky_clusters = surface::sky_clusters(&map);
@@ -350,25 +398,28 @@ fn run_with(
             })
             .collect()
     });
+    runner.par(|| bake::fill_dark(&faces, &mut light));
+    phases.mark("direct light");
     runner.par(|| disp::radial(&ctx, &mut light));
+    phases.mark("displacement blend");
     log(&format!("direct light in {} ms", ms(t)));
     stage(report, "direct light", t);
     let t = Instant::now();
     {
         let unbounced = (opts.bounces > 0).then(|| runner.par(|| disp::before_bounce(&ctx, &light))).flatten();
+        phases.mark("displacement bounce blend");
         let mut lines = Vec::new();
-        let (gather, bounce_passes) =
-            runner.par(|| ctx.bounce(&mut light, opts.bounces, &mut |l| lines.push(l.to_owned())))?;
+        let (gather, _) = runner.par(|| ctx.bounce(&mut light, opts.bounces, &mut |l| lines.push(l.to_owned())))?;
+        if opts.bounces > 0 {
+            phases.split("bounce rays", gather, "bounce passes");
+        }
         for l in &lines {
             log(l);
-        }
-        if opts.bounces > 0 {
-            report.stages.push(("bounced light: gather rays".to_owned(), gather));
-            report.stages.push(("bounced light: passes".to_owned(), bounce_passes));
         }
         report.bounces = lines.iter().filter(|l| l.starts_with("Bounce #")).count() as u32;
         if let Some(saved) = unbounced {
             runner.par(|| disp::after_bounce(&ctx, &mut light, saved));
+            phases.mark("displacement bounce blend");
         }
     }
     if opts.bounces > 0 {
@@ -376,7 +427,9 @@ fn run_with(
         stage(report, "bounced light", t);
     }
 
+    runner.par(|| bake::fill_dark(&faces, &mut light));
     runner.par(|| bake::stitch(&faces, &mut light));
+    phases.mark("seams");
 
     if !faces.is_empty() {
         for (pass, &hdr) in passes.iter().enumerate() {
@@ -396,29 +449,34 @@ fn run_with(
 
     let t = Instant::now();
     work.begin(Stage::LeafAmbient, map.leafs.len() as u64);
-    let per_face: Vec<(Vec<Vec<glam::Vec3A>>, Vec<glam::Vec3A>)> = runner.par(|| {
+    let average: Vec<Vec<glam::Vec3A>> = runner.par(|| {
         faces
             .par_iter()
             .zip(&light)
             .map(|(f, l)| {
                 let lux = f.luxels();
-                let luxels: Vec<Vec<glam::Vec3A>> = (0..passes.len())
+                let mut finished = Vec::with_capacity(lux);
+                (0..passes.len())
                     .map(|p| {
-                        l.values[l.index(p, 0, 0, lux)..l.index(p, 0, 0, lux) + lux]
-                            .iter()
-                            .map(|v| output::finish(*v, f.minlight))
-                            .collect()
+                        finished.clear();
+                        finished.extend(
+                            l.values[l.index(p, 0, 0, lux)..l.index(p, 0, 0, lux) + lux]
+                                .iter()
+                                .map(|v| output::finish(glam::Vec3A::from(*v), f.minlight)),
+                        );
+                        output::median(&finished)
                     })
-                    .collect();
-                let average = luxels.iter().map(|v| output::median(v)).collect();
-                (luxels, average)
+                    .collect()
             })
             .collect()
     });
-    let (luxels, average) = per_face.into_iter().unzip();
-    let colors = ambient::FaceColors { luxels, average };
+    let colors = ambient::FaceColors { light: &light, average };
     let ambient = runner.par(|| ambient::leaf_ambient(&ctx, &colors));
+    phases.mark("leaf ambient");
     let probes = opts.probes.as_ref().and_then(|po| runner.par(|| ambient::probe_volume(&ctx, &colors, po)));
+    if probes.is_some() {
+        phases.mark("light probes");
+    }
     if let Some(v) = &probes {
         log(&format!("light probes: {} cells of {} units", v.cell_count(), v.spacing));
     }
@@ -428,6 +486,7 @@ fn run_with(
     let t = Instant::now();
     let detail = runner.par(|| detail::light(&src, &ctx, &light, models, &passes))?;
     if let Some((_, n)) = &detail {
+        phases.mark("detail props");
         log(&format!("detail props: {n} lit in {} ms", ms(t)));
         stage(report, "detail props", t);
         report.detail_lit = *n;
@@ -439,6 +498,7 @@ fn run_with(
             runner.par(|| props::light(&ctx, &light, &static_props, &opts.props, bounced, &passes));
         log(&format!("static props: {n} with vertex lighting ({vertices} vertices) in {} ms", ms(t)));
         stage(report, "static prop vertex lighting", t);
+        phases.mark("static props");
         report.props_vertex_lit = n;
         files
     } else {
@@ -453,9 +513,6 @@ fn run_with(
 
     let t = Instant::now();
     work.begin(Stage::Write, 1);
-    let layout = output::layout(&faces, &light);
-    lightmap_room(layout.size as u64, hp_bsp::limits::LIGHTING.max_in(opts.limits))?;
-    let faces_lump = output::patch_faces(&map.faces_raw, &layout);
     let leaf_flags = {
         let raw = src.lump(lump::LEAFS).map(|c| c.into_owned()).unwrap_or_default();
         let size = if src.lump_info(lump::LEAFS).map_or(1, |l| l.version) == 0 { 56 } else { 32 };
@@ -478,8 +535,17 @@ fn run_with(
             }
             seen
         };
-        (leaf_sky_flags(&raw, size, &map, &sees_sky), src.lump_info(lump::LEAFS).map_or(1, |l| l.version))
+        (
+            runner.par(|| leaf_sky_flags(&raw, size, &map, &sees_sky)),
+            src.lump_info(lump::LEAFS).map_or(1, |l| l.version),
+        )
     };
+    drop(colors);
+    drop(ctx);
+    drop((shadow, surf, surf_info, blockers, occluders, static_props));
+    let layout = output::layout(&faces, &light);
+    lightmap_room(layout.size as u64, hp_bsp::limits::LIGHTING.max_in(opts.limits))?;
+    let faces_lump = output::patch_faces(&map.faces_raw, &layout);
     let raw = |i: usize| src.lump(i).map(|c| c.into_owned()).unwrap_or_default();
     let (vert_normals, vert_indices) =
         crate::emit::vertex_normals(&raw(lump::PLANES), &raw(lump::FACES), &raw(lump::SURFEDGES), &raw(lump::EDGES));
@@ -505,7 +571,7 @@ fn run_with(
     let (leafs, leafs_version) = leaf_flags;
     edit.replace_lump_with_version(lump::LEAFS, leafs, leafs_version).map_err(fail)?;
     for (p, &hdr) in passes.iter().enumerate() {
-        let data = output::lighting(&faces, &light, &layout, p);
+        let data = runner.par(|| output::lighting(&faces, &light, &layout, p));
         let (faces_i, light_i, wl_i, idx_i, amb_i) = if hdr {
             (lump::FACES_HDR, lump::LIGHTING_HDR, 54, lump::LEAF_AMBIENT_INDEX_HDR, lump::LEAF_AMBIENT_LIGHTING_HDR)
         } else {
@@ -521,6 +587,7 @@ fn run_with(
         edit.replace_lump_with_version(idx_i, index, 0).map_err(fail)?;
         edit.replace_lump_with_version(amb_i, samples, 1).map_err(fail)?;
     }
+    drop((light, faces));
     if let [only] = passes[..] {
         let (index, samples) = ambient.first().cloned().unwrap_or_default();
         let (idx_i, amb_i) = if only {
@@ -550,6 +617,8 @@ fn run_with(
     let out = edit.to_vec().map_err(fail)?;
     work.finish();
     stage(report, "write", t);
+    phases.mark("write");
+    log(&phases.line());
     log(&format!("lighting: {} bytes per pass, done in {} ms", layout.size, ms(start)));
     Ok(out)
 }
@@ -575,7 +644,12 @@ struct SkySeen {
     sky2d: bool,
 }
 
-fn leaf_sky_flags(raw: &[u8], size: usize, map: &data::MapData, sees_sky: &dyn Fn(&data::Leaf) -> SkySeen) -> Vec<u8> {
+fn leaf_sky_flags(
+    raw: &[u8],
+    size: usize,
+    map: &data::MapData,
+    sees_sky: &(dyn Fn(&data::Leaf) -> SkySeen + Sync),
+) -> Vec<u8> {
     let mut out = raw.to_vec();
     let n = map.leafs.len().min(raw.len() / size);
     let get = |out: &[u8], i: usize| u16::from_le_bytes([out[i * size + 6], out[i * size + 7]]);
@@ -639,6 +713,15 @@ fn leaf_sky_flags(raw: &[u8], size: usize, map: &data::MapData, sees_sky: &dyn F
         bits3d[i] = sky3d;
         bits2d[i] = sky2d;
     }
+    let traced: Vec<SkySeen> = (0..n)
+        .into_par_iter()
+        .map(|i| {
+            let leaf = &map.leafs[i];
+            let f = flags_of(get(&out, i));
+            let open = f & LEAF_FLAGS_SKY == 0 && leaf.contents & contents::SOLID as i32 == 0;
+            if open && !bits3d[i] && f & LEAF_FLAGS_RADIAL != 0 { sees_sky(leaf) } else { SkySeen::default() }
+        })
+        .collect();
     for i in 0..n {
         let leaf = &map.leafs[i];
         let mut f = flags_of(get(&out, i));
@@ -651,7 +734,7 @@ fn leaf_sky_flags(raw: &[u8], size: usize, map: &data::MapData, sees_sky: &dyn F
         if bits3d[i] {
             f = (f | LEAF_FLAGS_SKY) & !LEAF_FLAGS_SKY2D;
         } else if f & LEAF_FLAGS_RADIAL != 0 {
-            let seen = sees_sky(leaf);
+            let seen = traced[i];
             if seen.sky3d {
                 f = (f | LEAF_FLAGS_SKY) & !LEAF_FLAGS_SKY2D;
             } else if seen.sky2d {

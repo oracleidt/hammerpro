@@ -801,11 +801,12 @@ pub struct SunParams {
 pub struct Quality {
     pub sun_shadow_size: u32,
     pub local_shadow_size: u32,
+    pub adaptive: bool,
 }
 
 impl Default for Quality {
     fn default() -> Self {
-        Self { sun_shadow_size: u32::MAX, local_shadow_size: u32::MAX }
+        Self { sun_shadow_size: u32::MAX, local_shadow_size: u32::MAX, adaptive: false }
     }
 }
 

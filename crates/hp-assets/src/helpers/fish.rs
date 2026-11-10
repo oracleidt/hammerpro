@@ -127,7 +127,9 @@ impl DerivedProducer for FishProducer {
         if since >= FRAME {
             return true;
         }
-        if let Some(ctx) = cx.assets.shared.ctx() {
+        if hp_app::runtime::render::animations_running()
+            && let Some(ctx) = cx.assets.shared.ctx()
+        {
             ctx.request_repaint_after(FRAME - since);
         }
         false
@@ -223,7 +225,7 @@ impl DerivedProducer for FishProducer {
                 });
             }
         }
-        if self.swims() {
+        if self.swims() && hp_app::runtime::render::animations_running() {
             cx.assets.shared.request_repaint();
         }
         out.models = Some(models);

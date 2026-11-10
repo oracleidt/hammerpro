@@ -116,8 +116,49 @@ pub struct IndirectStatus {
     pub seconds: f32,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct RelightStats {
+    pub jobs: u64,
+    pub full: bool,
+    pub lights: usize,
+    pub changed_lights: usize,
+    pub relit_faces: usize,
+    pub updated_faces: usize,
+    pub seconds: f32,
+    pub direct_seconds: f32,
+    pub bounce_seconds: f32,
+    pub scene_seconds: f32,
+    pub turnaround_seconds: f32,
+    pub host_pid: Option<u32>,
+    pub host_mb: u64,
+    pub session_mb: u64,
+    pub warm: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct PreparedStatus {
+    pub preparing: bool,
+    pub ready: bool,
+    pub jobs: u64,
+    pub seconds: f32,
+    pub streamed_faces: usize,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct LightCostEntry {
+    pub entity: Option<u32>,
+    pub classname: String,
+    pub origin: [f32; 3],
+    pub faces: usize,
+    pub luxels: u64,
+}
+
 #[derive(Debug, Default)]
 pub struct LightingRuntime {
+    pub relight: RelightStats,
+    pub prepared: PreparedStatus,
+    pub costs: Option<Vec<LightCostEntry>>,
+    pub costs_wanted: bool,
     pub progress: Option<BakeProgress>,
     pub last: Option<BakeSummary>,
     pub has_bake: bool,

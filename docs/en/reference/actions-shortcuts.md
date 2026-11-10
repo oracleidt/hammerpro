@@ -442,6 +442,45 @@ While the slice tool is active, these inputs go to the tool first:
 
 See [Slice tool](../features/slice-tool.md).
 
+## Keys inside the block tool
+
+While a shape is being created (drag, pending box, or the base and height steps in 3D):
+
+| Key | What it does |
+|---|---|
+| Wheel | One side more or less (cylinder, spike, sphere, arch, torus, pillar), one step (stairs, spiral stairs) or one arch segment (doorway with arch). The view does not zoom meanwhile. |
+| `Shift` + wheel | The same count by 4. |
+| `Ctrl` + wheel | Unchanged: grid size or zoom of every 2D view. |
+| `Enter` | Create the pending shape. |
+| `Escape` | Cancel it (the wheel zooms again). |
+| `Alt` (held) | No snapping. |
+
+See [Block tool](../features/block-tool.md#changing-the-count-with-the-mouse-wheel).
+
+## Keys inside the pipe tool
+
+While a pipe path is being placed:
+
+| Key | What it does |
+|---|---|
+| `Shift` + wheel | One side more or less on a round pipe (5 to 48), one slice per bend more or less on a square pipe (1 to 32). The plain wheel keeps zooming. |
+| `Enter`, double click | Create the pipe. |
+| `Backspace` | Remove the last point. |
+| `Escape` | Cancel the path. |
+
+See [Pipe tool](../features/pipe-tool.md).
+
+## Keys inside the curve tool
+
+| Key | What it does |
+|---|---|
+| `Shift` + wheel | More or fewer subdivisions while the curve is drawn or adjusted (2 to 4096). The plain wheel keeps zooming. |
+| `Enter` | Validate, then create. |
+| `Backspace` | Remove the last point. |
+| `Escape` | Cancel the curve. |
+
+See [Curve tool](../features/curve-tool.md).
+
 ## Related pages
 
 - [Keyboard shortcuts](../features/keyboard-shortcuts.md)

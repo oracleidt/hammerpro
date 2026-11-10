@@ -44,8 +44,21 @@ struct TextEntry {
     color: [u8; 3],
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct NamesKey {
+    stamp: (u64, u64, bool),
+    kind: u8,
+    center: [u64; 2],
+    zoom: u64,
+    rect: [u32; 4],
+    pixels_per_point: u32,
+}
+
+type NamesCache = [Option<(NamesKey, Vec<egui::Shape>)>; 4];
+
 #[derive(Default)]
 struct LabelsLayer {
+    names_cache: RefCell<NamesCache>,
     stamp: Option<(u64, u64, bool)>,
     names: Vec<NameEntry>,
     texts: Vec<TextEntry>,
@@ -127,7 +140,42 @@ impl LabelsLayer {
         }
     }
 
+    fn names_key(&self, view: &ViewInfo) -> Option<NamesKey> {
+        let r = view.rect;
+        Some(NamesKey {
+            stamp: self.stamp?,
+            kind: view.kind as u8,
+            center: [view.cam2d.center.x.to_bits(), view.cam2d.center.y.to_bits()],
+            zoom: view.cam2d.zoom.to_bits(),
+            rect: [r.min.x.to_bits(), r.min.y.to_bits(), r.max.x.to_bits(), r.max.y.to_bits()],
+            pixels_per_point: view.pixels_per_point.to_bits(),
+        })
+    }
+
     fn paint_names(&self, state: &AppState, view: &ViewInfo, painter: &egui::Painter) {
+        let key = self.names_key(view);
+        let mut cache = self.names_cache.borrow_mut();
+        let slot = cache.get_mut(view.index);
+        if let (Some(key), Some(Some((cached, shapes)))) = (key, slot.as_deref())
+            && *cached == key
+        {
+            painter.extend(shapes.iter().cloned());
+            return;
+        }
+        let Some(shapes) = self.layout_names(state, view, painter) else {
+            if let Some(slot) = cache.get_mut(view.index) {
+                *slot = None;
+            }
+            return;
+        };
+        painter.extend(shapes.iter().cloned());
+        if let (Some(key), Some(slot)) = (key, cache.get_mut(view.index)) {
+            *slot = Some((key, shapes));
+        }
+    }
+
+    fn layout_names(&self, state: &AppState, view: &ViewInfo, painter: &egui::Painter) -> Option<Vec<egui::Shape>> {
+        let mut shapes = Vec::new();
         let rect = view.rect.expand(40.0);
         let mut visible = self.scratch.borrow_mut();
         visible.clear();
@@ -150,7 +198,7 @@ impl LabelsLayer {
         if visible.len() > MAX_NAMES {
             let pos = view.rect.left_bottom() + vec2(8.0, -8.0);
             text_pill(painter, pos, Align2::LEFT_BOTTOM, tf!("viewport.names_hidden", visible.len()), TEXT_WEAK);
-            return;
+            return None;
         }
         let font = small_font();
         let offset = (8.0 * view.cam2d.zoom).clamp(2.0, 64.0) as f32 + 3.0;
@@ -171,10 +219,11 @@ impl LabelsLayer {
             let galley = painter.layout_no_wrap(text, font.clone(), color);
             let r = Align2::LEFT_CENTER.anchor_size(at, galley.size());
             if selected {
-                painter.rect_filled(r.expand(2.0), 3, PILL_BG);
+                shapes.push(egui::Shape::rect_filled(r.expand(2.0), 3, PILL_BG));
             }
-            painter.galley(r.min, galley, color);
+            shapes.push(egui::Shape::galley(r.min, galley, color));
         }
+        Some(shapes)
     }
 
     fn paint_texts(&self, state: &AppState, view: &ViewInfo, painter: &egui::Painter) {
@@ -278,6 +327,28 @@ mod tests {
         });
         out.textures_delta.clear();
         out.shapes.len()
+    }
+
+    #[test]
+    fn names_are_laid_out_once_while_the_view_stays_still() {
+        let mut state = hp_app::testing::test_state();
+        let mut layer = LabelsLayer::default();
+        layer.prepare(&state);
+        let v = view(ViewKind::Top, 2.0);
+        let first = shapes(&state, &layer, &v);
+        assert!(first > 0);
+        assert!(layer.names_cache.borrow()[0].is_some(), "the laid out names are kept");
+        let key = layer.names_cache.borrow()[0].as_ref().map(|(k, _)| *k);
+        assert_eq!(shapes(&state, &layer, &v), first);
+        assert_eq!(layer.names_cache.borrow()[0].as_ref().map(|(k, _)| *k), key);
+        let mut moved = v;
+        moved.cam2d.center.x += 16.0;
+        assert_eq!(shapes(&state, &layer, &moved), first);
+        assert_ne!(layer.names_cache.borrow()[0].as_ref().map(|(k, _)| *k), key, "panning lays them out again");
+        let ids: Vec<Id> = state.doc.scene().entities().keys().copied().collect();
+        state.doc.set_entity_key(&ids, "targetname", "renamed").expect("rename");
+        layer.prepare(&state);
+        assert_eq!(shapes(&state, &layer, &moved), first, "an edit refreshes the names");
     }
 
     fn layer_note(state: &AppState) -> Id {

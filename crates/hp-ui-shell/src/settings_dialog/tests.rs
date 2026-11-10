@@ -6,6 +6,45 @@ use super::*;
 use crate::keys::{conflicts, is_customized};
 
 #[test]
+fn every_page_has_a_section() {
+    let d = SettingsDialog::default();
+    let tabs = d.tabs();
+    assert!(tabs.len() >= 20, "{tabs:?}");
+    for tab in &tabs {
+        assert_ne!(page_section(tab.id()), PageSection::Other, "{tab:?} has no section");
+    }
+    assert_eq!(page_section("my_extension"), PageSection::Other);
+}
+
+#[test]
+fn finding_a_setting_lists_its_pages() {
+    let _lang = hp_app::testing::lang_lock();
+    crate::register_translations();
+    let mut d = SettingsDialog::default();
+    let found = d.search_pages("vertical sync");
+    assert!(found.iter().any(|(t, _)| *t == SettingsTab::Package("render")), "{found:?}");
+    let found = d.search_pages("sync");
+    let render = found.iter().find(|(t, _)| *t == SettingsTab::Package("render")).expect("render page");
+    assert_eq!(render.1, "Vertical sync", "the shortest text that starts with the word is shown");
+    let found = d.search_pages("UNDO");
+    assert!(found.iter().any(|(t, _)| *t == SettingsTab::Keyboard), "{found:?}");
+    assert!(found.iter().any(|(t, _)| *t == SettingsTab::Editing), "undo levels: {found:?}");
+    assert!(d.search_pages("zzzz no such option").is_empty());
+    assert!(d.search_pages("   ").is_empty());
+    hp_app::i18n::set_lang(hp_app::i18n::Lang::Fr);
+    let found = d.search_pages("synchronisation verticale");
+    assert!(found.iter().any(|(t, _)| *t == SettingsTab::Package("render")), "{found:?}");
+    let found = d.search_pages("edition");
+    assert!(found.iter().any(|(t, _)| *t == SettingsTab::Editing), "accents are ignored: {found:?}");
+    hp_app::i18n::set_lang(hp_app::i18n::Lang::Ru);
+    let found = d.search_pages("потоки");
+    assert!(found.iter().any(|(t, _)| *t == SettingsTab::Compile), "{found:?}");
+    let found = d.search_pages("vertical sync");
+    assert!(found.iter().any(|(t, _)| *t == SettingsTab::Package("render")), "English names work too: {found:?}");
+    hp_app::i18n::set_lang(hp_app::i18n::Lang::En);
+}
+
+#[test]
 fn capture_stores_binding_and_cancels_triggered_actions() {
     let mut state = hp_app::testing::test_state();
     state.request(Action::SaveMap);

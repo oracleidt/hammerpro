@@ -51,7 +51,7 @@ impl StatusSegment for McpSegment {
         let text = format!("MCP · {}", clients_text(state.runtime.mcp.clients));
         let color = ui.visuals().strong_text_color();
         let r = ui.add(egui::Label::new(RichText::new(text).small().color(color)).sense(egui::Sense::click()));
-        if r.on_hover_text(tooltip(state)).clicked() {
+        if crate::common::lazy_hover_text(r, || tooltip(state)).clicked() {
             state.request(Action::McpPanel);
         }
     }

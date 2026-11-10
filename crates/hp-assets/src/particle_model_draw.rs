@@ -88,17 +88,13 @@ mod tests {
             fs.texture_flags(name).unwrap_or(0)
         });
         for key in crate::material::texture_keys(MatKind::Model, &analysis) {
-            let texture = crate::texture::prepare_texture(&fs, &key, false).unwrap();
+            let texture = crate::texture::prepare_texture(&fs, &key, false, crate::texture::MAX_TEXTURE_DIM).unwrap();
             let id = renderer.create_texture_exact(&texture.upload);
-            assets.mats.textures.map.insert(
-                key,
-                crate::texture::TexEntry {
-                    current: Some((id, texture.size)),
-                    loading: false,
-                    queued: false,
-                    missing: false,
-                },
-            );
+            assets
+                .mats
+                .textures
+                .map
+                .insert(key, crate::texture::TexEntry { current: Some((id, texture.size)), ..Default::default() });
         }
         assets.mats.analyses.insert(
             material.into(),
@@ -245,17 +241,14 @@ mod tests {
                 if assets.mats.textures.map.contains_key(&key) {
                     continue;
                 }
-                let texture = crate::texture::prepare_texture(&fs, &key, false).unwrap();
+                let texture =
+                    crate::texture::prepare_texture(&fs, &key, false, crate::texture::MAX_TEXTURE_DIM).unwrap();
                 let id = renderer.create_texture_exact(&texture.upload);
-                assets.mats.textures.map.insert(
-                    key,
-                    crate::texture::TexEntry {
-                        current: Some((id, texture.size)),
-                        loading: false,
-                        queued: false,
-                        missing: false,
-                    },
-                );
+                assets
+                    .mats
+                    .textures
+                    .map
+                    .insert(key, crate::texture::TexEntry { current: Some((id, texture.size)), ..Default::default() });
             }
             assets.mats.analyses.insert(
                 name.into(),
@@ -497,6 +490,12 @@ pub(crate) struct DrawCache {
     activity_random: hp_pcf::random::UniformRandomStream,
 }
 
+impl DrawCache {
+    pub(crate) fn live_models(&self) -> impl Iterator<Item = ModelId> + '_ {
+        self.poses.values().map(|p| p.id)
+    }
+}
+
 impl Default for DrawCache {
     fn default() -> Self {
         Self {
@@ -658,6 +657,9 @@ impl AssetManager {
         }
         let materials = parts.iter().map(|part| part.material).collect();
         let id = renderer.create_model(&parts);
+        if let Some(meta) = crate::residency::model_meta(&parts) {
+            self.residency.models.insert(id, meta);
+        }
         self.particle_draws.poses.insert(
             pose_key,
             Posed { id, source: Arc::downgrade(&data), materials, used: self.shared.current_frame() },

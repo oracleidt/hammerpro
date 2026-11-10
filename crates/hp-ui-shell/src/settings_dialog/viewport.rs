@@ -20,81 +20,84 @@ fn units_label_key(units: DisplayUnits) -> &'static str {
 fn workflow_section(ui: &mut Ui, w: &mut WorkflowSettings) -> bool {
     let mut changed = false;
     heading(ui, t!("shell.view.controls"));
-    egui::Grid::new("hp_shell_view_controls").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
-        ui.label(t!("shell.view.scheme")).on_hover_text(t!("shell.view.scheme_tip"));
-        egui::ComboBox::from_id_salt("hp_shell_view_scheme")
-            .selected_text(t!(scheme_label_key(w.nav_scheme)))
-            .width(180.0)
-            .show_ui(ui, |ui| {
-                for s in NavScheme::ALL {
-                    changed |= ui.selectable_value(&mut w.nav_scheme, s, t!(scheme_label_key(s))).changed();
+    egui::Grid::new("hp_shell_view_controls").num_columns(2).spacing([16.0, 8.0]).min_col_width(LABEL_COLUMN).show(
+        ui,
+        |ui| {
+            ui.label(t!("shell.view.scheme")).on_hover_text(t!("shell.view.scheme_tip"));
+            egui::ComboBox::from_id_salt("hp_shell_view_scheme")
+                .selected_text(t!(scheme_label_key(w.nav_scheme)))
+                .width(180.0)
+                .show_ui(ui, |ui| {
+                    for s in NavScheme::ALL {
+                        changed |= ui.selectable_value(&mut w.nav_scheme, s, t!(scheme_label_key(s))).changed();
+                    }
+                });
+            ui.end_row();
+            ui.label("");
+            ui.vertical(|ui| {
+                let weak = ui.visuals().weak_text_color();
+                for (input, desc) in scheme_controls(w.nav_scheme) {
+                    ui.label(RichText::new(tf!("shell.view.control_line", t!(input), t!(desc))).small().color(weak));
                 }
             });
-        ui.end_row();
-        ui.label("");
-        ui.vertical(|ui| {
-            let weak = ui.visuals().weak_text_color();
-            for (input, desc) in scheme_controls(w.nav_scheme) {
-                ui.label(RichText::new(tf!("shell.view.control_line", t!(input), t!(desc))).small().color(weak));
-            }
-        });
-        ui.end_row();
-        ui.label(t!("shell.view.invert_x"));
-        changed |= ui.checkbox(&mut w.invert_mouse_x, "").changed();
-        ui.end_row();
-        ui.label(t!("shell.view.camera_smoothing")).on_hover_text(t!("shell.view.camera_smoothing_tip"));
-        changed |=
-            ui.checkbox(&mut w.camera_smoothing, "").on_hover_text(t!("shell.view.camera_smoothing_tip")).changed();
-        ui.end_row();
-        ui.label(t!("shell.view.fly_response")).on_hover_text(t!("shell.view.fly_response_tip"));
-        changed |= ui
-            .add_enabled(
-                w.camera_smoothing,
-                egui::Slider::new(&mut w.fly_response, 0.0..=FLY_RESPONSE_MAX).fixed_decimals(2).suffix(" s"),
-            )
-            .changed();
-        ui.end_row();
-        ui.label(t!("shell.view.ctrl_wheel"));
-        egui::ComboBox::from_id_salt("hp_shell_view_ctrl_wheel")
-            .selected_text(match w.ctrl_wheel {
-                CtrlWheel::GridSize => t!("shell.view.ctrl_wheel_grid"),
-                CtrlWheel::ZoomAll2d => t!("shell.view.ctrl_wheel_zoom"),
-            })
-            .width(180.0)
-            .show_ui(ui, |ui| {
-                changed |= ui
-                    .selectable_value(&mut w.ctrl_wheel, CtrlWheel::GridSize, t!("shell.view.ctrl_wheel_grid"))
-                    .changed();
-                changed |= ui
-                    .selectable_value(&mut w.ctrl_wheel, CtrlWheel::ZoomAll2d, t!("shell.view.ctrl_wheel_zoom"))
-                    .changed();
-            });
-        ui.end_row();
-        ui.label(t!("shell.view.link_zoom"));
-        changed |= ui.checkbox(&mut w.link_2d_zoom, "").changed();
-        ui.end_row();
-        ui.label(t!("shell.view.grid_step")).on_hover_text(t!("shell.view.grid_step_tip"));
-        changed |= ui
-            .add(
-                egui::DragValue::new(&mut w.grid_step_factor)
-                    .range(GRID_STEP_MIN..=GRID_STEP_MAX)
-                    .speed(0.05)
-                    .max_decimals(2)
-                    .prefix("× "),
-            )
-            .changed();
-        ui.end_row();
-        ui.label(t!("shell.view.units"));
-        egui::ComboBox::from_id_salt("hp_shell_view_units")
-            .selected_text(t!(units_label_key(w.units)))
-            .width(180.0)
-            .show_ui(ui, |ui| {
-                for u in DisplayUnits::ALL {
-                    changed |= ui.selectable_value(&mut w.units, u, t!(units_label_key(u))).changed();
-                }
-            });
-        ui.end_row();
-    });
+            ui.end_row();
+            ui.label(t!("shell.view.invert_x"));
+            changed |= ui.checkbox(&mut w.invert_mouse_x, "").changed();
+            ui.end_row();
+            ui.label(t!("shell.view.camera_smoothing")).on_hover_text(t!("shell.view.camera_smoothing_tip"));
+            changed |=
+                ui.checkbox(&mut w.camera_smoothing, "").on_hover_text(t!("shell.view.camera_smoothing_tip")).changed();
+            ui.end_row();
+            ui.label(t!("shell.view.fly_response")).on_hover_text(t!("shell.view.fly_response_tip"));
+            changed |= ui
+                .add_enabled(
+                    w.camera_smoothing,
+                    egui::Slider::new(&mut w.fly_response, 0.0..=FLY_RESPONSE_MAX).fixed_decimals(2).suffix(" s"),
+                )
+                .changed();
+            ui.end_row();
+            ui.label(t!("shell.view.ctrl_wheel"));
+            egui::ComboBox::from_id_salt("hp_shell_view_ctrl_wheel")
+                .selected_text(match w.ctrl_wheel {
+                    CtrlWheel::GridSize => t!("shell.view.ctrl_wheel_grid"),
+                    CtrlWheel::ZoomAll2d => t!("shell.view.ctrl_wheel_zoom"),
+                })
+                .width(180.0)
+                .show_ui(ui, |ui| {
+                    changed |= ui
+                        .selectable_value(&mut w.ctrl_wheel, CtrlWheel::GridSize, t!("shell.view.ctrl_wheel_grid"))
+                        .changed();
+                    changed |= ui
+                        .selectable_value(&mut w.ctrl_wheel, CtrlWheel::ZoomAll2d, t!("shell.view.ctrl_wheel_zoom"))
+                        .changed();
+                });
+            ui.end_row();
+            ui.label(t!("shell.view.link_zoom"));
+            changed |= ui.checkbox(&mut w.link_2d_zoom, "").changed();
+            ui.end_row();
+            ui.label(t!("shell.view.grid_step")).on_hover_text(t!("shell.view.grid_step_tip"));
+            changed |= ui
+                .add(
+                    egui::DragValue::new(&mut w.grid_step_factor)
+                        .range(GRID_STEP_MIN..=GRID_STEP_MAX)
+                        .speed(0.05)
+                        .max_decimals(2)
+                        .prefix("× "),
+                )
+                .changed();
+            ui.end_row();
+            ui.label(t!("shell.view.units"));
+            egui::ComboBox::from_id_salt("hp_shell_view_units")
+                .selected_text(t!(units_label_key(w.units)))
+                .width(180.0)
+                .show_ui(ui, |ui| {
+                    for u in DisplayUnits::ALL {
+                        changed |= ui.selectable_value(&mut w.units, u, t!(units_label_key(u))).changed();
+                    }
+                });
+            ui.end_row();
+        },
+    );
     changed
 }
 
@@ -106,111 +109,128 @@ fn grid_mode_row(ui: &mut Ui, state: &mut AppState) {
         (hp_app::settings::GridMode::Custom, Action::GridModeCustom),
         (hp_app::settings::GridMode::Selection, Action::GridModeSelection),
     ];
-    egui::Grid::new("hp_shell_view_grid_mode").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
-        ui.label(t!("shell.view.grid_mode")).on_hover_text(t!("shell.view.grid_mode_tip"));
-        ui.horizontal(|ui| {
-            let current = state.settings.grid.mode;
-            let label = modes.iter().find(|(m, _)| *m == current).map_or("", |(_, a)| a.label());
-            egui::ComboBox::from_id_salt("hp_shell_view_grid_mode_combo").selected_text(label).width(180.0).show_ui(
-                ui,
-                |ui| {
-                    for (mode, action) in modes {
-                        let enabled = action.enabled(state);
-                        if ui.add_enabled(enabled, egui::Button::selectable(current == mode, action.label())).clicked()
-                        {
-                            crate::grids::run_grid_action(state, action);
+    egui::Grid::new("hp_shell_view_grid_mode").num_columns(2).spacing([16.0, 8.0]).min_col_width(LABEL_COLUMN).show(
+        ui,
+        |ui| {
+            ui.label(t!("shell.view.grid_mode")).on_hover_text(t!("shell.view.grid_mode_tip"));
+            ui.horizontal(|ui| {
+                let current = state.settings.grid.mode;
+                let label = modes.iter().find(|(m, _)| *m == current).map_or("", |(_, a)| a.label());
+                egui::ComboBox::from_id_salt("hp_shell_view_grid_mode_combo")
+                    .selected_text(label)
+                    .width(180.0)
+                    .show_ui(ui, |ui| {
+                        for (mode, action) in modes {
+                            let enabled = action.enabled(state);
+                            if ui
+                                .add_enabled(enabled, egui::Button::selectable(current == mode, action.label()))
+                                .clicked()
+                            {
+                                crate::grids::run_grid_action(state, action);
+                            }
                         }
-                    }
-                },
-            );
-            if ui.button(Action::GridManager.label()).clicked() {
-                state.ui.show_grid_manager = true;
-            }
-        });
-        ui.end_row();
-    });
+                    });
+                if ui.button(Action::GridManager.label()).clicked() {
+                    state.ui.show_grid_manager = true;
+                }
+            });
+            ui.end_row();
+        },
+    );
 }
+
+const LABEL_COLUMN: f32 = 200.0;
 
 pub(super) fn page(ui: &mut Ui, state: &mut AppState) {
     let mut changed = workflow_section(ui, &mut state.settings.workflow);
     grid_mode_row(ui, state);
     let v = &mut state.settings.view;
     heading(ui, t!("shell.view.camera"));
-    egui::Grid::new("hp_shell_view_camera").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
-        ui.label(t!("shell.view.fov"));
-        changed |= ui.add(egui::Slider::new(&mut v.fov_deg, 40.0..=120.0).suffix("°").fixed_decimals(0)).changed();
-        ui.end_row();
-        ui.label(t!("shell.view.camera_speed"));
-        changed |= ui
-            .add(egui::DragValue::new(&mut v.camera_speed).range(50.0..=20000.0).speed(10.0).suffix(" u/s"))
-            .changed();
-        ui.end_row();
-        ui.label(t!("shell.view.fast_multiplier"))
-            .on_hover_text(tf!("shell.view.fast_multiplier_tip", hp_app::i18n::tr("key.shift")));
-        changed |= ui
-            .add(egui::DragValue::new(&mut v.camera_fast_multiplier).range(1.0..=20.0).speed(0.1).suffix("×"))
-            .changed();
-        ui.end_row();
-        ui.label(t!("shell.view.mouse_sensitivity"));
-        changed |= ui.add(egui::Slider::new(&mut v.mouse_sensitivity, 0.02..=1.0).fixed_decimals(2)).changed();
-        ui.end_row();
-        ui.label(t!("shell.view.invert_y"));
-        changed |= ui.checkbox(&mut v.invert_mouse_y, "").changed();
-        ui.end_row();
-        ui.label(t!("shell.view.keyboard_layout")).on_hover_text(t!("shell.view.keyboard_layout_tip"));
-        egui::ComboBox::from_id_salt("keyboard_layout")
-            .selected_text(match v.keyboard_layout {
-                hp_app::settings::KeyboardLayout::Auto => t!("shell.view.layout_auto"),
-                hp_app::settings::KeyboardLayout::Azerty => "AZERTY",
-                hp_app::settings::KeyboardLayout::Qwerty => "QWERTY",
-            })
-            .show_ui(ui, |ui| {
-                for (l, label) in [
-                    (hp_app::settings::KeyboardLayout::Auto, t!("shell.view.layout_auto")),
-                    (hp_app::settings::KeyboardLayout::Azerty, "AZERTY"),
-                    (hp_app::settings::KeyboardLayout::Qwerty, "QWERTY"),
-                ] {
-                    changed |= ui.selectable_value(&mut v.keyboard_layout, l, label).changed();
-                }
-            });
-        ui.end_row();
-        ui.label(t!("shell.view.far_plane"));
-        changed |= ui.add(egui::DragValue::new(&mut v.far_plane).range(2048.0..=262144.0).speed(64.0)).changed();
-        ui.end_row();
-        ui.label(t!("shell.view.zoom_to_cursor"));
-        changed |= ui.checkbox(&mut v.zoom_to_cursor, "").changed();
-        ui.end_row();
-        ui.label(t!("shell.view.hover_outline"));
-        changed |= ui.checkbox(&mut v.hover_outline, "").on_hover_text(t!("shell.view.hover_outline_tip")).changed();
-        ui.end_row();
-    });
+    egui::Grid::new("hp_shell_view_camera").num_columns(2).spacing([16.0, 8.0]).min_col_width(LABEL_COLUMN).show(
+        ui,
+        |ui| {
+            ui.label(t!("shell.view.fov"));
+            changed |= ui.add(egui::Slider::new(&mut v.fov_deg, 40.0..=120.0).suffix("°").fixed_decimals(0)).changed();
+            ui.end_row();
+            ui.label(t!("shell.view.camera_speed"));
+            changed |= ui
+                .add(egui::DragValue::new(&mut v.camera_speed).range(50.0..=20000.0).speed(10.0).suffix(" u/s"))
+                .changed();
+            ui.end_row();
+            ui.label(t!("shell.view.fast_multiplier"))
+                .on_hover_text(tf!("shell.view.fast_multiplier_tip", hp_app::i18n::tr("key.shift")));
+            changed |= ui
+                .add(egui::DragValue::new(&mut v.camera_fast_multiplier).range(1.0..=20.0).speed(0.1).suffix("×"))
+                .changed();
+            ui.end_row();
+            ui.label(t!("shell.view.mouse_sensitivity"));
+            changed |= ui.add(egui::Slider::new(&mut v.mouse_sensitivity, 0.02..=1.0).fixed_decimals(2)).changed();
+            ui.end_row();
+            ui.label(t!("shell.view.invert_y"));
+            changed |= ui.checkbox(&mut v.invert_mouse_y, "").changed();
+            ui.end_row();
+            ui.label(t!("shell.view.keyboard_layout")).on_hover_text(t!("shell.view.keyboard_layout_tip"));
+            egui::ComboBox::from_id_salt("keyboard_layout")
+                .selected_text(match v.keyboard_layout {
+                    hp_app::settings::KeyboardLayout::Auto => t!("shell.view.layout_auto"),
+                    hp_app::settings::KeyboardLayout::Azerty => "AZERTY",
+                    hp_app::settings::KeyboardLayout::Qwerty => "QWERTY",
+                })
+                .show_ui(ui, |ui| {
+                    for (l, label) in [
+                        (hp_app::settings::KeyboardLayout::Auto, t!("shell.view.layout_auto")),
+                        (hp_app::settings::KeyboardLayout::Azerty, "AZERTY"),
+                        (hp_app::settings::KeyboardLayout::Qwerty, "QWERTY"),
+                    ] {
+                        changed |= ui.selectable_value(&mut v.keyboard_layout, l, label).changed();
+                    }
+                });
+            ui.end_row();
+            ui.label(t!("shell.view.far_plane"));
+            changed |= ui.add(egui::DragValue::new(&mut v.far_plane).range(2048.0..=262144.0).speed(64.0)).changed();
+            ui.end_row();
+            ui.label(t!("shell.view.zoom_to_cursor"));
+            changed |= ui.checkbox(&mut v.zoom_to_cursor, "").changed();
+            ui.end_row();
+            ui.label(t!("shell.view.hover_outline"));
+            changed |=
+                ui.checkbox(&mut v.hover_outline, "").on_hover_text(t!("shell.view.hover_outline_tip")).changed();
+            ui.end_row();
+        },
+    );
     heading(ui, t!("shell.view.rendering"));
-    egui::Grid::new("hp_shell_view_render").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
-        ui.label(t!("shell.view.msaa")).on_hover_text(t!("shell.view.msaa_tip"));
-        changed |= ui.checkbox(&mut v.msaa, "").changed();
-        ui.end_row();
-        ui.label(t!("shell.view.show_3d_grid"));
-        changed |= ui.checkbox(&mut v.show_3d_grid, "").changed();
-        ui.end_row();
-        ui.label(t!("shell.view.grid_highlight"));
-        changed |= ui.add(egui::DragValue::new(&mut v.grid_highlight_every).range(2..=64)).changed();
-        ui.end_row();
-        ui.label(t!("shell.view.grid_1024"));
-        changed |= ui.checkbox(&mut v.show_1024_grid, "").changed();
-        ui.end_row();
-    });
+    egui::Grid::new("hp_shell_view_render").num_columns(2).spacing([16.0, 8.0]).min_col_width(LABEL_COLUMN).show(
+        ui,
+        |ui| {
+            ui.label(t!("shell.view.msaa")).on_hover_text(t!("shell.view.msaa_tip"));
+            changed |= ui.checkbox(&mut v.msaa, "").changed();
+            ui.end_row();
+            ui.label(t!("shell.view.show_3d_grid"));
+            changed |= ui.checkbox(&mut v.show_3d_grid, "").changed();
+            ui.end_row();
+            ui.label(t!("shell.view.grid_highlight"));
+            changed |= ui.add(egui::DragValue::new(&mut v.grid_highlight_every).range(2..=64)).changed();
+            ui.end_row();
+            ui.label(t!("shell.view.grid_1024"));
+            changed |= ui.checkbox(&mut v.show_1024_grid, "").changed();
+            ui.end_row();
+        },
+    );
     heading(ui, t!("shell.view.colors"));
-    egui::Grid::new("hp_shell_view_colors").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
-        ui.label(t!("shell.view.background_2d"));
-        changed |= ui.color_edit_button_srgb(&mut v.background_2d).changed();
-        ui.end_row();
-        ui.label(t!("shell.view.background_3d"));
-        changed |= ui.color_edit_button_srgb(&mut v.background_3d).changed();
-        ui.end_row();
-        ui.label(t!("shell.view.selection_color"));
-        changed |= ui.color_edit_button_srgb(&mut v.selection_color).changed();
-        ui.end_row();
-    });
+    egui::Grid::new("hp_shell_view_colors").num_columns(2).spacing([16.0, 8.0]).min_col_width(LABEL_COLUMN).show(
+        ui,
+        |ui| {
+            ui.label(t!("shell.view.background_2d"));
+            changed |= ui.color_edit_button_srgb(&mut v.background_2d).changed();
+            ui.end_row();
+            ui.label(t!("shell.view.background_3d"));
+            changed |= ui.color_edit_button_srgb(&mut v.background_3d).changed();
+            ui.end_row();
+            ui.label(t!("shell.view.selection_color"));
+            changed |= ui.color_edit_button_srgb(&mut v.selection_color).changed();
+            ui.end_row();
+        },
+    );
     if changed {
         state.settings_dirty = true;
     }

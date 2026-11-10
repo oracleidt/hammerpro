@@ -679,6 +679,9 @@ pub(super) fn inside(path: &Path, dirs: &[PathBuf]) -> bool {
     if path.components().any(|c| matches!(c, Component::ParentDir)) || !path.is_absolute() {
         return false;
     }
+    if path.to_str().is_none_or(|text| super::semantic::local_path(text).is_err()) {
+        return false;
+    }
     let p = resolved(path);
     dirs.iter().filter(|d| d.is_absolute()).map(|d| resolved(d)).any(|d| p.starts_with(&d) && p != d)
 }
@@ -769,7 +772,7 @@ fn edit_material(state: &mut AppState, a: &Args<'_>) -> R<Outcome> {
 }
 
 fn image_path(state: &AppState, f: &str) -> R<PathBuf> {
-    let p = PathBuf::from(f.trim());
+    let p = super::semantic::local_path(f)?;
     let p = if p.is_absolute() {
         p
     } else {

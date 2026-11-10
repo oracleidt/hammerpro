@@ -496,3 +496,50 @@ fn check_real_map(path: &std::path::Path) {
         assert_eq!(e.get("sides"), Some(hit.side_id.to_string().as_str()));
     }
 }
+
+#[test]
+fn polygon_entity_decal_and_overlay_options_are_scriptable() {
+    let mut state = settle();
+    let mut poly = crate::PolygonTool::new();
+    assert!(poly.set_option(&mut state, "tex_scale", "0.5"));
+    assert!(!poly.set_option(&mut state, "tex_scale", "100"));
+    assert!(poly.set_option(&mut state, "create_as", "func_detail"));
+    assert!(!poly.set_option(&mut state, "create_as", "bad class!"));
+    assert!(poly.set_option(&mut state, "keep_active", "off"));
+    let values = poly.option_values();
+    let value = |k: &str| values.iter().find(|o| o.key == k).map(|o| o.value.clone());
+    assert_eq!(value("tex_scale").as_deref(), Some("0.5"));
+    assert_eq!(value("create_as").as_deref(), Some("func_detail"));
+    assert_eq!(value("keep_active").as_deref(), Some("off"));
+    let mut decal = DecalTool::new();
+    assert!(decal.set_option(&mut state, "snap", "off"));
+    assert!(!decal.snap_to_grid);
+    assert!(!decal.set_option(&mut state, "snap", "maybe"));
+    let mut overlay = OverlayTool::new();
+    assert!(overlay.set_option(&mut state, "snap", "on"));
+    assert_eq!(overlay.option_values()[0].value, "on");
+    let mut entity = EntityTool::new();
+    assert!(entity.set_option(&mut state, "class", "prop_physics"));
+    assert_eq!(state.current_entity_class, "prop_physics");
+    assert!(!entity.set_option(&mut state, "class", "prop physics"));
+    assert!(entity.set_option(&mut state, "model", r"models\props_c17\oildrum001.mdl"));
+    assert_eq!(state.current_model.as_deref(), Some("models/props_c17/oildrum001.mdl"));
+    assert!(!entity.set_option(&mut state, "model", "../../secret.mdl"));
+    assert!(!entity.set_option(&mut state, "model", "models/a.txt"));
+    assert!(entity.set_option(&mut state, "skin", "2"));
+    assert!(entity.set_option(&mut state, "align", "on"));
+    let values = entity.option_values();
+    let value = |k: &str| values.iter().find(|o| o.key == k).map(|o| o.value.clone());
+    assert_eq!(value("class").as_deref(), Some("prop_physics"));
+    assert_eq!(value("model").as_deref(), Some("models/props_c17/oildrum001.mdl"));
+    assert_eq!(value("skin").as_deref(), Some("2"));
+    assert_eq!(value("align").as_deref(), Some("on"));
+    assert!(entity.set_option(&mut state, "model", ""));
+    assert_eq!(state.current_model, None);
+    assert!(entity.set_option(&mut state, "class", ""), "empty is the default point entity");
+    for tool in [&mut entity as &mut dyn hp_app::Tool, &mut poly, &mut decal, &mut overlay] {
+        for o in tool.option_values() {
+            assert!(tool.set_option(&mut state, o.key, &o.value), "{} takes back {}", o.key, o.value);
+        }
+    }
+}

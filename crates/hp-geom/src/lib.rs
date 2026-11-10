@@ -18,6 +18,7 @@ mod plane;
 mod plane_points;
 mod primitive;
 pub mod roadside;
+pub mod shoreline;
 mod slope;
 mod sweep;
 mod terrain;
@@ -49,8 +50,8 @@ pub use brush::{
 };
 pub use coverage::{CoverageSolid, HiddenFace, hidden_faces};
 pub use csg::{
-    ClipPiece, MIN_CLIP_PIECE, carve, carve_traced, clip_solid, clip_solid_traced, hollow, hollow_traced, merge_convex,
-    merge_exact, offset_side, plane_splits, union_volume,
+    ClipPiece, MIN_CLIP_PIECE, carve, carve_many, carve_traced, clip_solid, clip_solid_traced, hollow, hollow_traced,
+    merge_convex, merge_exact, offset_side, plane_splits, union_volume,
 };
 pub use disp::{
     DISP_FLAG_NO_HULL, DISP_FLAG_NO_PHYSICS, DISP_FLAG_NO_RAY, DISP_TAG_BUILDABLE, DISP_TAG_FORCE_BUILDABLE_BIT,

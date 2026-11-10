@@ -662,6 +662,40 @@ impl Tool for PolygonTool {
         Some(CursorIcon::Crosshair)
     }
 
+    fn set_option(&mut self, _state: &mut AppState, key: &str, value: &str) -> bool {
+        let o = &mut self.options;
+        match key {
+            "tex_scale" => value
+                .trim()
+                .parse::<f64>()
+                .ok()
+                .filter(|v| (0.01..=64.0).contains(v))
+                .map(|v| o.tex_scale = v)
+                .is_some(),
+            "create_as" => crate::common::parse_create_as(value).map(|c| o.create_as = c).is_some(),
+            "keep_active" => crate::common::option_flag(value).map(|b| o.keep_active = b).is_some(),
+            _ => false,
+        }
+    }
+
+    fn option_values(&self) -> Vec<hp_app::tool::ToolOption> {
+        use hp_app::tool::ToolOption;
+        let o = &self.options;
+        vec![
+            ToolOption::new("tex_scale", format!("{}", o.tex_scale), "texture scale of the new faces (0.01 to 64)"),
+            ToolOption::new(
+                "create_as",
+                crate::common::create_as_text(&o.create_as),
+                "world, or a brush entity class (func_detail, trigger_multiple...)",
+            ),
+            ToolOption::new(
+                "keep_active",
+                crate::common::on_off(o.keep_active),
+                "on: stay in the polygon tool after creating",
+            ),
+        ]
+    }
+
     fn status_hint(&self, _state: &AppState) -> Option<String> {
         let back = key_label(Key::Backspace);
         let escape = key_label(Key::Escape);

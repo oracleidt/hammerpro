@@ -96,19 +96,41 @@ impl Links {
 
     fn list_of(&self, list: &[Portal], node: usize) -> Vec<usize> {
         let mut out = Vec::new();
+        self.fill(list, node, &mut out);
+        out
+    }
+
+    fn fill(&self, list: &[Portal], node: usize, out: &mut Vec<usize>) {
+        out.clear();
         let mut p = self.head[node];
         while p != NONE {
             out.push(p as usize);
             p = self.next[p as usize][Self::slot(list, p as usize, node)];
         }
-        out
     }
 }
 
+fn node_bounds(fws: &[FWinding], tree: &mut Tree, n: usize, around: &[usize]) {
+    let mut lo = DVec3::splat(99999.0);
+    let mut hi = DVec3::splat(-99999.0);
+    for &p in around {
+        for q in &fws[p] {
+            let q = q.as_dvec3();
+            lo = lo.min(q);
+            hi = hi.max(q);
+        }
+    }
+    tree.nodes[n].mins = lo;
+    tree.nodes[n].maxs = hi;
+}
+
+type FWinding = Vec<glam::Vec3>;
+
 impl Portals {
-    fn add(&mut self, links: &mut Links, p: Portal) -> usize {
+    fn add(&mut self, links: &mut Links, fws: &mut Vec<FWinding>, p: Portal, w: FWinding) -> usize {
         let id = self.list.len();
         self.list.push(p);
+        fws.push(w);
         links.link(&self.list, id);
         id
     }
@@ -122,6 +144,7 @@ impl Portals {
         use crate::brushbsp::{base_winding, chop_in_place};
         use glam::Vec3;
         let mut ps = Portals::default();
+        let mut fws: Vec<FWinding> = Vec::new();
         let mut links = Links::new(tree.nodes.len());
         let side = SIDESPACE as f32;
         let lo = tree.mins.as_vec3() - Vec3::splat(side);
@@ -149,15 +172,23 @@ impl Portals {
                 let k = j * 3 + i;
                 let (n, d) = bplanes[k];
                 let plane = MapPlane { normal: n.as_dvec3(), dist: f64::from(d), kind: i as i32 };
-                let w = dw(base_winding(n, d));
                 ids[k] = ps.add(
                     &mut links,
-                    Portal { plane, on_node: None, nodes: [head, outside], winding: w, side: None, face: [None; 2] },
+                    &mut fws,
+                    Portal {
+                        plane,
+                        on_node: None,
+                        nodes: [head, outside],
+                        winding: Winding::default(),
+                        side: None,
+                        face: [None; 2],
+                    },
+                    base_winding(n, d),
                 );
             }
         }
         for (i, &id) in ids.iter().enumerate() {
-            let mut w = Some(fw(&ps.list[id].winding));
+            let mut w = Some(std::mem::take(&mut fws[id]));
             for (j, &(n, d)) in bplanes.iter().enumerate() {
                 if j == i {
                     continue;
@@ -165,20 +196,24 @@ impl Portals {
                 let Some(cur) = w.take() else { break };
                 w = chop_in_place(cur, n, d, 0.1);
             }
-            ps.list[id].winding = w.map(dw).unwrap_or_default();
+            fws[id] = w.unwrap_or_default();
         }
         let mut stack = vec![head];
+        let mut around = Vec::new();
         while let Some(n) = stack.pop() {
-            let around = links.list_of(&ps.list, n);
-            ps.node_bounds(tree, n, &around);
+            links.fill(&ps.list, n, &mut around);
+            node_bounds(&fws, tree, n, &around);
             if tree.nodes[n].is_leaf() {
                 continue;
             }
-            ps.make_node_portal(tree, planes, &mut links, n, &around);
-            ps.split_node_portals(tree, planes, &mut links, n, &around);
+            ps.make_node_portal(tree, planes, &mut links, &mut fws, n, &around);
+            ps.split_node_portals(tree, planes, &mut links, &mut fws, n, &around);
             let [f, b] = tree.nodes[n].children;
             stack.push(b);
             stack.push(f);
+        }
+        for (p, w) in ps.list.iter_mut().zip(fws) {
+            p.winding = dw(w);
         }
         for (n, node) in tree.nodes.iter_mut().enumerate() {
             node.portals = links.list_of(&ps.list, n);
@@ -186,20 +221,15 @@ impl Portals {
         ps
     }
 
-    fn node_bounds(&self, tree: &mut Tree, n: usize, around: &[usize]) {
-        let mut lo = DVec3::splat(99999.0);
-        let mut hi = DVec3::splat(-99999.0);
-        for &p in around {
-            for q in &self.list[p].winding.points {
-                lo = lo.min(*q);
-                hi = hi.max(*q);
-            }
-        }
-        tree.nodes[n].mins = lo;
-        tree.nodes[n].maxs = hi;
-    }
-
-    fn make_node_portal(&mut self, tree: &Tree, planes: &PlaneSet, links: &mut Links, n: usize, around: &[usize]) {
+    fn make_node_portal(
+        &mut self,
+        tree: &Tree,
+        planes: &PlaneSet,
+        links: &mut Links,
+        fws: &mut Vec<FWinding>,
+        n: usize,
+        around: &[usize],
+    ) {
         use crate::brushbsp::{base_winding, chop_in_place, is_tiny};
         let Some(pnum) = tree.nodes[n].plane else { return };
         let (pn, pd) = planes.getf(pnum);
@@ -229,10 +259,20 @@ impl Portals {
         }
         let plane = *planes.get(pnum);
         let [f, b] = tree.nodes[n].children;
-        self.add(links, Portal { plane, on_node: Some(n), nodes: [f, b], winding: dw(w), side: None, face: [None; 2] });
+        let portal =
+            Portal { plane, on_node: Some(n), nodes: [f, b], winding: Winding::default(), side: None, face: [None; 2] };
+        self.add(links, fws, portal, w);
     }
 
-    fn split_node_portals(&mut self, tree: &Tree, planes: &PlaneSet, links: &mut Links, n: usize, around: &[usize]) {
+    fn split_node_portals(
+        &mut self,
+        tree: &Tree,
+        planes: &PlaneSet,
+        links: &mut Links,
+        fws: &mut Vec<FWinding>,
+        n: usize,
+        around: &[usize],
+    ) {
         use crate::brushbsp::{clip_epsilon, is_tiny};
         let Some(pnum) = tree.nodes[n].plane else { return };
         let (pn, pd) = planes.getf(pnum);
@@ -241,7 +281,7 @@ impl Portals {
             let side = if self.list[pid].nodes[0] == n { 0 } else { 1 };
             let other = self.list[pid].nodes[1 - side];
             links.unlink(&self.list, pid);
-            let (front, back) = clip_epsilon(&fw(&self.list[pid].winding), pn, pd, 0.001);
+            let (front, back) = clip_epsilon(&fws[pid], pn, pd, 0.001);
             let front = front.filter(|w| !is_tiny(w));
             let back = back.filter(|w| !is_tiny(w));
             match (front, back) {
@@ -261,11 +301,11 @@ impl Portals {
                     }
                 }
                 (Some(fwd), Some(bwd)) => {
-                    let mut copy = self.list[pid].clone();
-                    copy.winding = dw(bwd);
-                    self.list[pid].winding = dw(fwd);
+                    let copy = self.list[pid].clone();
+                    fws[pid] = fwd;
                     let new = self.list.len();
                     self.list.push(copy);
+                    fws.push(bwd);
                     if side == 0 {
                         self.relink(links, pid, f, other);
                         self.relink(links, new, b, other);

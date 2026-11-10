@@ -37,6 +37,8 @@ The line under the name gives the sample rate, the channels, the duration, the p
 | **Channels** | **Mix down to mono** for a stereo sound (a mono sound plays in 3D positions with `snd_*` effects, a stereo one does not). |
 | **Sample rate** | **Keep**, 11025, 22050 or 44100 Hz (linear resampling). |
 
+Playback costs nothing when it is not used: the playback thread sleeps until you press **Play**, and the audio output is closed again 10 seconds after the sound ends (the next **Play** opens it again in a few milliseconds), so Windows does not keep an audio stream of Hammer Pro running.
+
 ## Saving
 
 - **Folder** is the root the file is written under. The default is the folder above the `maps` folder of the saved map (your addon or project), otherwise the game folder. **Browse...** picks another folder.

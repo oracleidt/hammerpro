@@ -66,6 +66,7 @@ pub(crate) struct GpuProfiler {
     active: Option<usize>,
     pub latest: Option<GpuTimes>,
     pub latest_reflection: f32,
+    pub finished: u64,
 }
 
 pub fn wanted_features(adapter: &wgpu::Adapter) -> wgpu::Features {
@@ -111,6 +112,7 @@ impl GpuProfiler {
             active: None,
             latest: None,
             latest_reflection: 0.0,
+            finished: 0,
         })
     }
 
@@ -136,6 +138,7 @@ impl GpuProfiler {
                     if s.reflection {
                         self.latest_reflection = ms(0, MARKS - 1);
                     } else {
+                        self.finished += 1;
                         self.latest = Some(GpuTimes {
                             shadows_ms: ms(0, 1),
                             scene_ms: ms(1, 2),

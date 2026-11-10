@@ -168,13 +168,17 @@ impl GameFs {
     }
 
     pub fn load_texture_raw(&self, texture_name: &str) -> Option<Vec<u8>> {
+        self.with_texture_raw(texture_name, <[u8]>::to_vec)
+    }
+
+    pub fn with_texture_raw<R>(&self, texture_name: &str, f: impl FnOnce(&[u8]) -> R) -> Option<R> {
         let name = hp_vmt::normalize_texture_path(texture_name);
         if name.is_empty() {
             return None;
         }
         let snapshot = self.snapshot();
         match find_texture(&snapshot, &name)? {
-            TextureHit::Vtf { source, path } => source.read(&path),
+            TextureHit::Vtf { source, path } => source.read_cow(&path).map(|bytes| f(&bytes)),
             TextureHit::Image { .. } => None,
         }
     }

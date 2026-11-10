@@ -71,6 +71,7 @@ Les décalages s'alignent sur la grille, donc un prefab construit sur la grille 
 - Utilisez `Maj` + clic pour poser une rangée de lumières sans perdre la sélection sur laquelle vous travaillez.
 - Pour modifier les keyvalues après le placement, ouvrez les [Propriétés de l'entité](entity-properties.md) (`Alt+Enter`).
 - Les outils MCP `create_entity` et `set_current_entity_class` font la même chose depuis un assistant IA (voir la [référence des outils MCP](../../MCP.md)).
+- `set_tool_options` avec l'outil `entity` règle ce que le prochain clic pose : `class`, `model` (un chemin `.mdl`, vide pour aucun), `skin` (0 à 255) et `align` (les props suivent la pente de la surface).
 
 ## FAQ
 

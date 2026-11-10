@@ -11,10 +11,10 @@ use crate::common::Mouse;
 use crate::tests_support::{info_2d, info_3d, settle};
 use crate::{ClipTool, ExtrudeTool};
 
-struct Rng(u64);
+pub(crate) struct Rng(pub(crate) u64);
 
 impl Rng {
-    fn next(&mut self) -> u64 {
+    pub(crate) fn next(&mut self) -> u64 {
         let mut x = self.0;
         x ^= x << 13;
         x ^= x >> 7;
@@ -23,19 +23,19 @@ impl Rng {
         x
     }
 
-    fn below(&mut self, n: usize) -> usize {
+    pub(crate) fn below(&mut self, n: usize) -> usize {
         (self.next() % n.max(1) as u64) as usize
     }
 
-    fn unit(&mut self) -> f64 {
+    pub(crate) fn unit(&mut self) -> f64 {
         (self.next() >> 11) as f64 / (1u64 << 53) as f64
     }
 
-    fn range(&mut self, lo: f64, hi: f64) -> f64 {
+    pub(crate) fn range(&mut self, lo: f64, hi: f64) -> f64 {
         lo + (hi - lo) * self.unit()
     }
 
-    fn chance(&mut self, p: f64) -> bool {
+    pub(crate) fn chance(&mut self, p: f64) -> bool {
         self.unit() < p
     }
 }
@@ -114,7 +114,7 @@ pub(crate) fn varied_state() -> AppState {
     state
 }
 
-fn random_view(state: &AppState, rng: &mut Rng) -> ViewInfo {
+pub(crate) fn random_view(state: &AppState, rng: &mut Rng) -> ViewInfo {
     match rng.below(6) {
         0 => info_2d(ViewKind::Top, rng.range(0.05, 4.0)),
         1 => info_2d(ViewKind::Front, rng.range(0.05, 4.0)),
@@ -154,7 +154,7 @@ fn surface_point(state: &AppState, rng: &mut Rng) -> Option<DVec3> {
     })
 }
 
-fn random_pos(state: &AppState, view: &ViewInfo, rng: &mut Rng) -> Pos2 {
+pub(crate) fn random_pos(state: &AppState, view: &ViewInfo, rng: &mut Rng) -> Pos2 {
     if rng.chance(0.75)
         && let Some(p) = surface_point(state, rng)
         && let Some(s) = view.world_to_screen(p)
@@ -169,7 +169,7 @@ fn random_pos(state: &AppState, view: &ViewInfo, rng: &mut Rng) -> Pos2 {
     )
 }
 
-fn random_mods(rng: &mut Rng) -> Modifiers {
+pub(crate) fn random_mods(rng: &mut Rng) -> Modifiers {
     Modifiers { shift: rng.chance(0.2), ctrl: rng.chance(0.15), alt: rng.chance(0.1), ..Modifiers::NONE }
 }
 
@@ -213,7 +213,7 @@ impl FuzzTool for ClipTool {
     }
 }
 
-fn bad_solids(state: &AppState) -> Vec<u32> {
+pub(crate) fn bad_solids(state: &AppState) -> Vec<u32> {
     let mut bad = Vec::new();
     for n in state.doc.scene().solids().values() {
         if n.solid.sides.iter().any(|s| s.disp.is_some()) {

@@ -241,6 +241,7 @@ pub(crate) struct ProblemsDialog {
     pub(crate) show_ignored: bool,
     pub(crate) rows: Vec<usize>,
     rows_key: Option<RowsKey>,
+    fixable: Option<((u64, usize, usize), usize)>,
     selected: Option<String>,
     detail: detail::DetailWindow,
 }
@@ -255,6 +256,7 @@ impl Default for ProblemsDialog {
             show_ignored: false,
             rows: Vec::new(),
             rows_key: None,
+            fixable: None,
             selected: None,
             detail: detail::DetailWindow::default(),
         }
@@ -291,6 +293,19 @@ impl ProblemsDialog {
             .filter(|(_, p)| !visible_only || HealthRuntime::on_visible(&state.doc, p))
             .map(|(i, _)| i)
             .collect();
+    }
+
+    pub(crate) fn fixable_count(&mut self, state: &AppState) -> usize {
+        let rt = &state.runtime.health;
+        let key = (rt.revision, rt.problems.as_ptr() as usize, rt.problems.len());
+        if let Some((cached, n)) = self.fixable
+            && cached == key
+        {
+            return n;
+        }
+        let n = rt.problems.iter().filter(|p| p.fixable && !rt.is_ignored(p)).count();
+        self.fixable = Some((key, n));
+        n
     }
 
     pub(crate) fn fix(&mut self, state: &mut AppState, index: usize) {
@@ -356,10 +371,7 @@ impl ProblemsDialog {
 
     fn header_ui(&mut self, ui: &mut Ui, state: &mut AppState) {
         let counts = state.runtime.health.counts;
-        let fixable = {
-            let rt = &state.runtime.health;
-            rt.problems.iter().filter(|p| p.fixable && !rt.is_ignored(p)).count()
-        };
+        let fixable = self.fixable_count(state);
         let mut refresh = false;
         let mut fix_all = false;
         ui.horizontal(|ui| {
@@ -431,10 +443,10 @@ impl ProblemsDialog {
         self.update_rows(state);
         let ignored = state.runtime.health.counts.ignored;
         let mut clear_ignored = false;
+        let fixable = self.fixable_count(state);
         dialog_bottom_bar(ui, "hp_problems_bottom", |ui| {
             let rt = &state.runtime.health;
             let shown = rt.problems.len() - rt.counts.ignored;
-            let fixable = rt.problems.iter().filter(|p| p.fixable && !rt.is_ignored(p)).count();
             ui.label(RichText::new(summary_text(shown, fixable)).weak());
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button(t!("common.close")).on_hover_text(key_label(egui::Key::Escape)).clicked() {

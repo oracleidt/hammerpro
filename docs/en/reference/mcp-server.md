@@ -107,6 +107,8 @@ Any other MCP app: a stdio server with the command `hammerpro.exe` and the argum
 - **Local only**: the server listens on `127.0.0.1`, never on the network, and refuses any connection that is not from this computer.
 - **Secret token**: each time a server starts it makes a random 32 byte token. Every connection must send it first or is closed. The token is only written in the window's instance record, `%LOCALAPPDATA%\HammerPro\mcp\instances\<pid>.json`, in your own profile. The record is removed when the server stops or Hammer Pro closes; records of crashed windows are ignored and cleaned up.
 - **Limits**: messages up to 8 MB, 8 connections at a time per window, a timeout on every tool call.
+- **No idle cost**: the server thread sleeps until a connection arrives (no polling), so a window with MCP on and no AI connected costs no CPU. A long tool call that runs in the background (a batch import, a texture conversion) wakes the window when it ends instead of keeping it redrawing meanwhile.
+- **File paths**: a tool that takes a file or folder refuses network (UNC, `\\server\share`) and device paths (`\\?\`, `\\.\`, `CON`, `NUL`, `COM1`...), so a path in a prompt cannot make Windows send your credentials to another computer. Relative paths stay inside their folder (no `..`), and the tools that write next to the map (shader graphs, textures, images, sounds, color tables) only accept the map folder and the custom texture folders.
 - **No programs unless you ask, no arbitrary files**: the tools run no command of their own. Maps are opened and saved as `.vmf` only; saving over another existing file needs an explicit `overwrite`. The game is started only when the AI explicitly asks for it. Compiles use the compiler chosen for the game (Hammer Pro's own by default); creating or changing a compiler that runs other programs (`create_compiler`, `set_compiler` with steps) needs `confirm: true`. See [Choosing a compiler](../compiler/compilers.md).
 - **Confirmation**: `run_action` runs any menu command except a few that need `confirm: true`, which the AI passes only when you asked for exactly that: Exit, switching MCP off, installing MCP in other apps, publishing, starting or talking to the game, compiling with the game, editing an instance in another window, opening the web browser and the commands that show a file dialog.
 - **Settings**: `set_setting` never changes file paths, folders, programs, command lines, the game content folders or the MCP settings: you change those in the Settings window. Adding or removing an extra FGD file (`.fgd` only) needs `confirm: true`.
@@ -119,7 +121,7 @@ With several Hammer Pro windows, the bridge uses the one with MCP on that you fo
 
 ## Undo
 
-Every change the AI makes is **one undo step** named "MCP:" followed by what was done (for example **MCP: apply material**), in the **Edit** menu and the undo history. `Ctrl+Z` takes it back like any of your own edits. The AI can also undo and redo (`undo`, `redo`, `undo_steps`, `redo_steps`) and read the history (`get_history`).
+Every change the AI makes is **one undo step** named "MCP:" followed by what was done (for example **MCP: apply material**), in the **Edit** menu and the undo history. `Ctrl+Z` takes it back like any of your own edits. The AI can also undo and redo (`undo`, `redo`, `undo_steps`, `redo_steps`, or `run_action` with `undo` and `redo`) and read the history (`get_history`). In a Team Mapping session these go through the shared history of the session exactly like `Ctrl+Z` and `Ctrl+Y`, one step per call, so the other participants see the change.
 
 ## Tool categories
 
@@ -159,6 +161,7 @@ Every change the AI makes is **one undo step** named "MCP:" followed by what was
 | Skybox | Sky cameras, preview, skybox switch. |
 | Entity definitions | FGD information, add, remove, reload, validate FGD files. |
 | Games | List the supported games, read and change the game of the map. |
+| Diagnostics | The crash reports of the crash folder (list and read one) and the last lines of Hammer Pro's own log. See [Crashes and logs](../troubleshooting/crashes-and-logs.md). |
 | Tool options | Read and change the options of the editing tools. |
 
 The full list of every tool with its description and arguments is in [docs/MCP.md](../../MCP.md) (English).

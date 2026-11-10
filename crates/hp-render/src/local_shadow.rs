@@ -277,7 +277,7 @@ impl Renderer {
         }
         if owner {
             if ls.slots.len() != count {
-                ls.size = shadow_size(count).min(self.quality.local_shadow_size);
+                ls.size = shadow_size(count).min(self.applied.local_shadow_size);
                 ls.slots = vec![None; count];
                 ls.texture = None;
                 ls.layers.clear();
@@ -348,7 +348,8 @@ impl Renderer {
             }
         }
         todo.sort_by_key(|t| t.0);
-        let layers: Vec<usize> = todo.into_iter().take(LAYERS_PER_FRAME).map(|t| t.1).collect();
+        let per_frame = if self.governor.level() >= 1 { LAYERS_PER_FRAME / 3 } else { LAYERS_PER_FRAME };
+        let layers: Vec<usize> = todo.into_iter().take(per_frame).map(|t| t.1).collect();
         self.write_local_shadow_lights(&layers);
         layers
     }

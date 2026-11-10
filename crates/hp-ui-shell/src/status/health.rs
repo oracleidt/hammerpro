@@ -66,12 +66,15 @@ impl StatusSegment for ProblemBadge {
         if rt.checking {
             text.push_str(" ...");
         }
-        let tip = format!(
-            "{}\n{}",
-            tf!("shell.health.counts_tip", c.errors, c.warnings, c.infos),
-            if rt.checking { t!("shell.health.checking") } else { t!("shell.health.open_problems") }
-        );
-        let r = ui.add(egui::Button::new(RichText::new(text).small().color(color)).frame(false)).on_hover_text(tip);
+        let checking = rt.checking;
+        let r = ui.add(egui::Button::new(RichText::new(text).small().color(color)).frame(false));
+        let r = crate::common::lazy_hover_text(r, || {
+            format!(
+                "{}\n{}",
+                tf!("shell.health.counts_tip", c.errors, c.warnings, c.infos),
+                if checking { t!("shell.health.checking") } else { t!("shell.health.open_problems") }
+            )
+        });
         if r.clicked() {
             state.request(Action::CheckProblems);
         }
@@ -106,19 +109,22 @@ impl StatusSegment for LimitGauge {
         };
         ui.separator();
         let edicts = rt.checks.as_ref().map(|c| (c.edicts.used, c.edicts.left()));
-        let mut tip =
-            tf!("shell.health.limit_tip", worst.limit.id(), worst.used, worst.max, format!("{:.0}", f * 100.0));
-        if let Some((used, left)) = edicts {
+        let tip = || {
+            let mut tip =
+                tf!("shell.health.limit_tip", worst.limit.id(), worst.used, worst.max, format!("{:.0}", f * 100.0));
+            if let Some((used, left)) = edicts {
+                tip.push('\n');
+                tip.push_str(&tf!("shell.health.edicts_tip", used, left));
+            }
             tip.push('\n');
-            tip.push_str(&tf!("shell.health.edicts_tip", used, left));
-        }
-        tip.push('\n');
-        tip.push_str(t!("shell.health.open_info"));
+            tip.push_str(t!("shell.health.open_info"));
+            tip
+        };
         let bar = hp_app::widgets::progress_bar(f.clamp(0.0, 1.0) as f32)
             .text(RichText::new(format!("{:.0}%", f * 100.0)).small())
             .fill(hp_app::theme::bar_fill(severity))
             .desired_width(56.0);
-        let r = ui.add(bar).interact(egui::Sense::click()).on_hover_text(tip);
+        let r = crate::common::lazy_hover_text(ui.add(bar).interact(egui::Sense::click()), tip);
         if r.clicked() {
             state.request(Action::MapInfo);
         }

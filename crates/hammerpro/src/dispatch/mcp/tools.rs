@@ -44,6 +44,22 @@ pub(crate) type ApplyFn = Box<dyn FnOnce(&mut AppState) -> Option<ToolResult> + 
 
 pub(crate) struct Worker(std::sync::mpsc::Receiver<(ToolResult, Option<ApplyFn>)>);
 
+static WORKER_WAKER: std::sync::Mutex<Option<egui::Context>> = std::sync::Mutex::new(None);
+
+pub(crate) fn set_worker_waker(ctx: &egui::Context) {
+    if let Ok(mut waker) = WORKER_WAKER.lock() {
+        *waker = Some(ctx.clone());
+    }
+}
+
+fn wake_after_worker() {
+    if let Ok(waker) = WORKER_WAKER.lock()
+        && let Some(ctx) = waker.as_ref()
+    {
+        ctx.request_repaint();
+    }
+}
+
 impl std::fmt::Debug for Worker {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("Worker")
@@ -65,6 +81,7 @@ impl Worker {
                 (ToolResult::error(format!("{tool}: internal error (see the Hammer Pro log)")), None)
             });
             let _ = tx.send(r);
+            wake_after_worker();
         });
         match spawned {
             Ok(_) => Outcome::Worker(Worker(rx)),
@@ -134,6 +151,8 @@ pub(crate) const DOMAINS: &[&Domain] = &[
     &super::tools_games::DOMAIN,
     &super::tools_discord::DOMAIN,
     &super::tools_update::DOMAIN,
+    &super::tools_team::DOMAIN,
+    &super::tools_crash::DOMAIN,
     &super::tools_blender::DOMAIN,
     &super::tools_toolopts::DOMAIN,
     &super::tools_actions::DOMAIN,
@@ -142,6 +161,7 @@ pub(crate) const DOMAINS: &[&Domain] = &[
     &super::tools_views::DOMAIN,
     &super::tools_gpu::DOMAIN,
     &super::tools_storage::DOMAIN,
+    &super::tools_team_access::DOMAIN,
     &super::tools_sniffer::DOMAIN,
     &super::tools_shader::DOMAIN,
     &super::tools_vtf::DOMAIN,
@@ -203,6 +223,12 @@ fn run_tool(state: &mut AppState, name: &str, args: &Value) -> Outcome {
         "get_compile_status" => no_args(args).map(|()| compile_status(state)),
         "save_map" => save_map(state, args),
         "open_map" => return open_map(args).unwrap_or_else(|e| ToolResult::error(format!("{name}: {e}")).into()),
+        "undo" | "redo" if super::tools_history::team_history(state) => {
+            return match no_args(args) {
+                Ok(()) => super::tools_history::team_step(name == "undo", 1),
+                Err(e) => ToolResult::error(format!("{name}: {e}")).into(),
+            };
+        }
         "undo" => no_args(args).and_then(|()| undo_redo(state, true)),
         "redo" => no_args(args).and_then(|()| undo_redo(state, false)),
         "set_camera" => set_camera(state, args),
@@ -1130,7 +1156,7 @@ pub(super) fn vmf_file_name(name: &str, folder: &Path) -> R<String> {
 
 fn open_map(v: &Value) -> R<Outcome> {
     let a = args(v, &["path"])?;
-    let path = PathBuf::from(a.str("path", 1024)?.trim());
+    let path = super::semantic::local_path(a.str("path", 1024)?)?;
     if !path.is_absolute() {
         return Err("give the full path of the .vmf file".to_owned());
     }

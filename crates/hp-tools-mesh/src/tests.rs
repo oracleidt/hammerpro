@@ -29,6 +29,7 @@ mod disp_options;
 mod disp_subdivision;
 mod edge_loops;
 mod edit_tools;
+mod fuzz;
 mod roadblend;
 mod weld;
 

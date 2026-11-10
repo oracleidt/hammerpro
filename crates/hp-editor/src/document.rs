@@ -8,7 +8,7 @@ use rayon::prelude::*;
 
 use crate::changes::Changes;
 use crate::history::{
-    Burst, FACE_SELECTION_STEP, History, Misc, SELECTION_STEP, SelSnap, Snapshot, Tx, UndoEntry, UndoLimits,
+    Bases, Burst, FACE_SELECTION_STEP, History, Misc, SELECTION_STEP, SelSnap, Snapshot, Tx, UndoEntry, UndoLimits,
     apply_states,
 };
 use crate::ids::{IdSet, id_set};
@@ -16,6 +16,10 @@ use crate::pick::PickCache;
 use crate::scene::{EntityNode, GroupNode, Owner, Renumbered, Scene, SolidNode};
 use crate::selection::{ObjRef, Selection};
 use crate::{EditError, EditResult, Id};
+
+mod save_job;
+
+pub use save_job::{SaveTicket, SnapshotJob};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct EditOptions {
@@ -44,8 +48,12 @@ pub struct Document {
     pub(crate) options: EditOptions,
     path: Option<PathBuf>,
     revision: u64,
+    scene_revision: u64,
     saved_serial: u64,
     extra_dirty: bool,
+    dirty_epoch: u64,
+    save_order: u64,
+    saved_order: u64,
     pub(crate) next_object_id: Id,
     pub(crate) next_side_id: Id,
     pub(crate) next_visgroup_id: Id,
@@ -93,6 +101,7 @@ impl Document {
         let (scene, info) = Scene::from_map(map);
         let changes = Changes { everything: true, ..Changes::default() };
         let extra_dirty = !info.renumbered.is_empty();
+        let revision = next_revision();
         Self {
             scene,
             selection: Selection::default(),
@@ -100,9 +109,13 @@ impl Document {
             changes,
             options: EditOptions::default(),
             path: None,
-            revision: next_revision(),
+            revision,
+            scene_revision: revision,
             saved_serial: 0,
             extra_dirty,
+            dirty_epoch: 0,
+            save_order: 0,
+            saved_order: 0,
             next_object_id: info.next_object_id,
             next_side_id: info.next_side_id,
             next_visgroup_id: info.next_visgroup_id,
@@ -161,7 +174,7 @@ impl Document {
         self.pick = Mutex::new(PickCache::default());
         self.clear_history();
         self.prune_selection();
-        self.extra_dirty = true;
+        self.set_extra_dirty();
         self.bump();
         self.configure_shared_ids(id_start, id_end)
     }
@@ -212,7 +225,7 @@ impl Document {
         doc.opened_from = Some(path.to_path_buf());
         doc.load_warnings = report.warnings();
         if report.is_damaged() {
-            doc.extra_dirty = true;
+            doc.set_extra_dirty();
             doc.load_warnings.push(
                 "The map was opened as a new document so that saving does not overwrite the damaged file: use Save As"
                     .to_owned(),
@@ -324,9 +337,7 @@ impl Document {
             self.scene.version_info.map_version = previous;
             return Err(EditError::Invalid(format!("cannot write manifest: {e}")));
         }
-        self.path = Some(vmm);
-        self.saved_serial = self.history.state_serial();
-        self.extra_dirty = false;
+        self.mark_saved_now(vmm);
         Ok(first.unwrap_or_default())
     }
 
@@ -350,9 +361,7 @@ impl Document {
         let map = self.to_map();
         match hp_vmf::save_with(&map, path, options) {
             Ok(report) => {
-                self.path = Some(path.to_path_buf());
-                self.saved_serial = self.history.state_serial();
-                self.extra_dirty = false;
+                self.mark_saved_now(path.to_path_buf());
                 Ok(report)
             }
             Err(e) => {
@@ -398,11 +407,15 @@ impl Document {
     }
 
     pub fn mark_dirty(&mut self) {
-        self.extra_dirty = true;
+        self.set_extra_dirty();
     }
 
     pub fn revision(&self) -> u64 {
         self.revision
+    }
+
+    pub fn scene_revision(&self) -> u64 {
+        self.scene_revision
     }
 
     pub fn options(&self) -> &EditOptions {
@@ -458,7 +471,12 @@ impl Document {
         }
     }
 
-    fn bump(&mut self) {
+    pub(crate) fn bump(&mut self) {
+        self.revision = next_revision();
+        self.scene_revision = self.revision;
+    }
+
+    fn bump_selection(&mut self) {
         self.revision = next_revision();
     }
 
@@ -466,7 +484,7 @@ impl Document {
         self.pick.get_mut().unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn apply_solids_raw(&mut self, states: Vec<(Id, Option<SolidNode>)>) -> Vec<(Id, Option<SolidNode>)> {
+    pub(crate) fn apply_solids_raw(&mut self, states: Vec<(Id, Option<SolidNode>)>) -> Vec<(Id, Option<SolidNode>)> {
         if states.is_empty() {
             return Vec::new();
         }
@@ -514,7 +532,10 @@ impl Document {
         old
     }
 
-    fn apply_entities_raw(&mut self, states: Vec<(Id, Option<EntityNode>)>) -> Vec<(Id, Option<EntityNode>)> {
+    pub(crate) fn apply_entities_raw(
+        &mut self,
+        states: Vec<(Id, Option<EntityNode>)>,
+    ) -> Vec<(Id, Option<EntityNode>)> {
         if states.is_empty() {
             return Vec::new();
         }
@@ -548,7 +569,7 @@ impl Document {
         old
     }
 
-    fn apply_groups_raw(&mut self, states: Vec<(Id, Option<GroupNode>)>) -> Vec<(Id, Option<GroupNode>)> {
+    pub(crate) fn apply_groups_raw(&mut self, states: Vec<(Id, Option<GroupNode>)>) -> Vec<(Id, Option<GroupNode>)> {
         if states.is_empty() {
             return Vec::new();
         }
@@ -645,7 +666,7 @@ impl Document {
             }
         }
         self.changes.selection_changed = true;
-        self.bump();
+        self.bump_selection();
         &mut self.selection
     }
 
@@ -696,6 +717,19 @@ impl Document {
         let order = self.scene.alloc_order();
         self.write_entities(vec![(id, Some(EntityNode { entity, order }))]);
         id
+    }
+
+    pub(crate) fn update_entities(&mut self, updates: Vec<(Id, Entity)>) {
+        let scene = &self.scene;
+        let nodes: Vec<(Id, Option<EntityNode>)> = updates
+            .into_par_iter()
+            .filter_map(|(id, mut entity)| {
+                let node = scene.entities.get(&id)?;
+                entity.solids.clear();
+                (node.entity != entity).then_some((id, Some(EntityNode { entity, order: node.order })))
+            })
+            .collect();
+        self.write_entities(nodes);
     }
 
     pub(crate) fn update_entity(&mut self, id: Id, f: impl FnOnce(&mut Entity)) -> bool {
@@ -840,6 +874,18 @@ impl Document {
             });
         if can_merge && let Some(mut top) = self.history.undo.pop_back() {
             self.history.bytes = self.history.bytes.saturating_sub(top.bytes);
+            if top.snap.has_patches() {
+                let scene = &self.scene;
+                let solids = |id: Id| match snap.solids.get(&id) {
+                    Some(before) => before.as_ref(),
+                    None => scene.solids.get(&id),
+                };
+                let entities = |id: Id| match snap.entities.get(&id) {
+                    Some(before) => before.as_ref(),
+                    None => scene.entities.get(&id),
+                };
+                top.snap.expand(&Bases { solids: &solids, entities: &entities });
+            }
             top.snap.absorb(snap);
             self.prune_noops(&mut top.snap);
             if top.snap.has_no_document_change() {
@@ -856,6 +902,7 @@ impl Document {
         let bytes = snap.bytes();
         let serial = self.history.alloc_serial();
         self.history.clear_redo();
+        self.compact_top(&snap);
         self.history.undo.push_back(UndoEntry {
             label,
             merge_tag,
@@ -868,6 +915,39 @@ impl Document {
         self.history.bytes += bytes;
         self.history.enforce_limits();
         true
+    }
+
+    fn compact_top(&mut self, newer: &Snapshot) {
+        let Some(top) = self.history.undo.iter_mut().rev().find(|e| !e.selection_only) else { return };
+        let scene = &self.scene;
+        let solids = |id: Id| match newer.solids.get(&id) {
+            Some(before) => before.as_ref(),
+            None => scene.solids.get(&id),
+        };
+        let entities = |id: Id| match newer.entities.get(&id) {
+            Some(before) => before.as_ref(),
+            None => scene.entities.get(&id),
+        };
+        let dropped = top.snap.compact(&Bases { solids: &solids, entities: &entities });
+        if dropped.is_empty() && !top.snap.has_patches() {
+            return;
+        }
+        let before = top.bytes;
+        top.bytes = top.snap.bytes();
+        self.history.bytes = self.history.bytes.saturating_sub(before) + top.bytes;
+        if dropped.len() > 256 {
+            rayon::spawn(move || drop(dropped));
+        }
+    }
+
+    fn expand_patches(&mut self, snap: &mut Snapshot) {
+        if !snap.has_patches() {
+            return;
+        }
+        let scene = &self.scene;
+        let solids = |id: Id| scene.solids.get(&id);
+        let entities = |id: Id| scene.entities.get(&id);
+        snap.expand(&Bases { solids: &solids, entities: &entities });
     }
 
     fn prune_noops(&self, snap: &mut Snapshot) {
@@ -938,7 +1018,11 @@ impl Document {
             std::mem::swap(x, &mut self.scene.extra_blocks);
             self.changes.extra_blocks_changed = true;
         }
-        self.bump();
+        if snap.has_no_document_change() {
+            self.bump_selection();
+        } else {
+            self.bump();
+        }
     }
 
     pub(crate) fn prune_selection(&mut self) {
@@ -963,7 +1047,7 @@ impl Document {
         self.selection.objects = objects.into_iter().collect();
         self.selection.faces = faces.into_iter().collect();
         self.changes.selection_changed = true;
-        self.bump();
+        self.bump_selection();
     }
 
     pub fn undo(&mut self) -> bool {
@@ -984,6 +1068,7 @@ impl Document {
             let popped = if undo { self.history.undo.pop_back() } else { self.history.redo.pop() };
             let Some(mut e) = popped else { break };
             moved = true;
+            self.expand_patches(&mut e.snap);
             self.swap_in(&mut e.snap);
             self.history.bytes = self.history.bytes.saturating_sub(e.bytes);
             e.bytes = e.snap.bytes();
@@ -1151,7 +1236,7 @@ impl Document {
         self.history.base_serial = self.history.alloc_serial();
         self.saved_serial = if dirty { 0 } else { self.history.base_serial };
         if dirty {
-            self.extra_dirty = true;
+            self.set_extra_dirty();
         }
     }
 

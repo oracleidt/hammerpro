@@ -339,8 +339,8 @@ pub(crate) const TR: TrTable = &[
     ("shell.compile.dev_addon", "Development addon", "Addon de développement"),
     (
         "shell.compile.dev_addon_tip",
-        "Builds that do not pack copy the custom materials into garrysmod/addons/hammerpro_dev for the game.",
-        "Les compilations qui n'empaquettent pas copient les matériaux personnalisés dans garrysmod/addons/hammerpro_dev pour le jeu.",
+        "Builds that do not pack copy the custom content (materials, models, sounds, particles) into garrysmod/addons/hammerpro_dev for the game.",
+        "Les compilations qui n'empaquettent pas copient le contenu personnalisé (matériaux, modèles, sons, particules) dans garrysmod/addons/hammerpro_dev pour le jeu.",
     ),
     (
         "shell.compile.export_materials",

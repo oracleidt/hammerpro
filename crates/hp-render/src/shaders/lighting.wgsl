@@ -91,11 +91,12 @@ fn sun_visibility(world: vec3<f32>, n: vec3<f32>, frag: vec2<f32>, sky3d: bool) 
     let rot = mat2x2<f32>(cos(a), sin(a), -sin(a), cos(a));
     var disk = SUN_DISK;
     var radius = 1.0;
+    let tap_step = select(1u, 2u, view.quality.x >= 2u);
     if spread > 0.0 {
         let search = clamp(2048.0 * spread / texel_world, 1.0, MAX_PENUMBRA_TEXELS);
         var blockers = 0.0;
         var depth_sum = 0.0;
-        for (var i = 0u; i < SUN_TAPS; i++) {
+        for (var i = 0u; i < SUN_TAPS; i += tap_step) {
             let o = rot * disk[i] * (search * view.shadow.z);
             let z = shadow_depth_at(uv + o, layer);
             let dt = d + dot(slope, o);
@@ -112,13 +113,15 @@ fn sun_visibility(world: vec3<f32>, n: vec3<f32>, frag: vec2<f32>, sky3d: bool) 
     }
     let rot2 = mat2x2<f32>(cos(a + 1.0472), sin(a + 1.0472), -sin(a + 1.0472), cos(a + 1.0472));
     var sum = 0.0;
-    for (var i = 0u; i < SUN_TAPS; i++) {
+    var taps = 0.0;
+    for (var i = 0u; i < SUN_TAPS; i += tap_step) {
         let o = rot * disk[i] * (radius * view.shadow.z);
         sum += textureSampleCompareLevel(shadow_map, shadow_samp, uv + o, layer, d + dot(slope, o));
         let o2 = rot2 * disk[i] * (radius * 0.55 * view.shadow.z);
         sum += textureSampleCompareLevel(shadow_map, shadow_samp, uv + o2, layer, d + dot(slope, o2));
+        taps += 2.0;
     }
-    return sum / f32(SUN_TAPS * 2u);
+    return sum / taps;
 }
 
 const SKY_LEVELS: f32 = 7.0;
@@ -280,6 +283,14 @@ fn local_visibility(l: Light, world: vec3<f32>, n: vec3<f32>) -> f32 {
     }
     let layer = i32(r.atten.x + 0.5);
     let step = 1.0 / f32(textureDimensions(local_shadow_maps).x);
+    if view.quality.x >= 2u {
+        var quad = 0.0;
+        for (var k = 0u; k < 4u; k++) {
+            let o = (vec2<f32>(f32(k & 1u), f32(k >> 1u)) - vec2<f32>(0.5)) * step;
+            quad += textureSampleCompareLevel(local_shadow_maps, shadow_samp, uv + o, layer, c.z);
+        }
+        return quad / 4.0;
+    }
     var sum = 0.0;
     for (var y = -1; y <= 1; y++) {
         for (var x = -1; x <= 1; x++) {
@@ -427,10 +438,10 @@ fn direct_lighting_from(world: vec3<f32>, n: vec3<f32>, ln: vec3<f32>, frag: vec
     let n_lights = arrayLength(&lights);
     for (var k = 0u; k < range.y; k++) {
         let idx = range.x + k;
-        if idx >= n_idx {
+        if (idx >> 1u) >= n_idx {
             break;
         }
-        let li = light_indices[idx];
+        let li = (light_indices[idx >> 1u] >> ((idx & 1u) * 16u)) & 0xffffu;
         if li >= n_lights {
             continue;
         }

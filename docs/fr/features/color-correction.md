@@ -55,7 +55,7 @@ Clic droit sur un curseur pour le réinitialiser. L'ordre des opérations est : 
 
 ### Enregistrer
 
-Choisissez le dossier racine, le dossier dessous et le nom, puis **Enregistrer le .raw**. La racine est par défaut le dossier au-dessus du dossier `maps` de la map enregistrée, sinon le dossier du jeu. Un fichier existant n'est remplacé que si vous cochez **Remplacer le fichier existant**.
+Choisissez le **Dossier du jeu ou de l'addon** (la racine, avec **Parcourir...**), le **Sous-dossier** dessous et le **Nom**, puis **Enregistrer le .raw**. La racine est par défaut le dossier au-dessus du dossier `maps` de la map enregistrée, sinon le dossier du jeu. Un fichier existant n'est remplacé que si vous cochez **Remplacer le fichier existant**.
 
 ## Prévisualiser les entités color_correction dans les vues 3D
 

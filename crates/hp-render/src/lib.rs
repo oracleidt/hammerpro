@@ -1,3 +1,4 @@
+mod adaptive;
 mod arena;
 mod bgimages;
 mod camera;
@@ -14,6 +15,7 @@ pub mod hooks;
 mod indirect;
 mod instance_cull;
 mod light_animation;
+mod light_cull;
 pub mod lightmap;
 mod lights;
 mod live_lighting;
@@ -29,6 +31,7 @@ mod particle_models;
 mod particles;
 pub mod pipeline_cache;
 mod pipelines;
+pub mod pool;
 pub mod profile;
 mod projector;
 mod reflection;
@@ -44,6 +47,7 @@ mod textures;
 pub mod types;
 mod water;
 
+pub use adaptive::AdaptiveStats;
 pub use compiled_light::{
     CompiledBatch, CompiledBlock, CompiledLightMode, CompiledLightStats, CompiledLightmap, CompiledVertex,
     LIGHT_STYLES, ModelLighting, ModelLocalLight, NO_COMPILED_LIGHTMAP,
@@ -107,6 +111,9 @@ use scene::{ARENA_ELEM, ArenaKind, NULL_SLOT, Scene};
 use textures::TexEntry;
 
 const UNKNOWN_MODEL_HALF: f32 = 8.0;
+const ADAPTIVE_SUN_SHADOW: u32 = 2048;
+const ADAPTIVE_LOCAL_SHADOW: u32 = 256;
+const ADAPTIVE_SKY_GROWTH: f32 = 2.6;
 const TOOL_ALPHA: f32 = 0.55;
 
 struct MaterialGpu {
@@ -198,6 +205,7 @@ struct ViewState {
     chunks_seen: u32,
     chunks_skipped: u32,
     occ: Option<occlusion::OcclusionView>,
+    cull: Option<light_cull::CullView>,
     outline: Option<outline::OutlineTarget>,
     animated: bool,
 }
@@ -336,6 +344,8 @@ pub struct Renderer {
     translucent_instances: bool,
     instance_list: Vec<ModelInstance>,
     occ_pipes: Option<occlusion::OcclusionPipelines>,
+    light_cull: Option<light_cull::LightCullPipeline>,
+    gpu_clusters: bool,
     outline_pipes: Option<outline::OutlinePipelines>,
     bg_pipes: Option<bgimages::BgPipelines>,
     bg_images: Vec<bgimages::BgImageGpu>,
@@ -355,6 +365,10 @@ pub struct Renderer {
     cubes: cubemaps::Cubes,
     probing: bool,
     quality: Quality,
+    applied: Quality,
+    governor: adaptive::Governor,
+    governor_seen: u64,
+    submit_timer: adaptive::SubmitTimer,
     profiler: Option<profile::GpuProfiler>,
     frame_cpu: profile::CpuTimes,
     reflection_cpu_ms: f32,
@@ -1069,6 +1083,8 @@ impl Renderer {
             translucent_instances: false,
             instance_list: Vec::new(),
             occ_pipes: None,
+            light_cull: None,
+            gpu_clusters: light_cull::supported(&device) && !profile::baseline("gpuclusters"),
             outline_pipes: None,
             bg_pipes: None,
             bg_images: Vec::new(),
@@ -1088,6 +1104,10 @@ impl Renderer {
             cubes: cubemaps::Cubes::new(&device),
             probing: false,
             quality: Quality::default(),
+            applied: Quality::default(),
+            governor: adaptive::Governor::default(),
+            governor_seen: 0,
+            submit_timer: adaptive::SubmitTimer::default(),
             profiler: profile::GpuProfiler::new(&device, &queue),
             frame_cpu: profile::CpuTimes::default(),
             reflection_cpu_ms: 0.0,
@@ -1485,7 +1505,13 @@ impl Renderer {
 
     pub fn set_object_tint(&mut self, id: ObjectId, rgba: [f32; 4]) {
         let packed = pack_rgba(rgba.map(|c| if c.is_finite() { c } else { 1.0 }));
-        if self.scene.tint(id) != Some(packed) {
+        if let Some(old) = self.scene.tint(id).filter(|t| *t != packed) {
+            self.content_gen += 1;
+            self.cubes.epoch += 1;
+            if (old ^ packed) >> 24 != 0 {
+                self.shadow_epoch += 1;
+            }
+        } else if self.scene.tint(id).is_none() {
             self.content_gen += 1;
             self.shadow_epoch += 1;
             self.cubes.epoch += 1;
@@ -1546,7 +1572,9 @@ impl Renderer {
         }
         let mut out = self.scene.flush_deferred(parallel);
         let rebuilt = std::mem::take(&mut out.rebuilt);
-        if !out.writes.is_empty() || !rebuilt.is_empty() || !out.state_ranges.is_empty() {
+        let geometry =
+            if profile::baseline("casters") { !out.writes.is_empty() || !rebuilt.is_empty() } else { out.casters };
+        if geometry || out.shadow_states {
             self.shadow_epoch += 1;
         }
         self.sync_materials();
@@ -2274,6 +2302,7 @@ impl Renderer {
             chunks_seen: 0,
             chunks_skipped: 0,
             occ: None,
+            cull: None,
             outline: None,
             animated: false,
         };
@@ -2289,22 +2318,39 @@ impl Renderer {
             delta_only,
         };
         let Some(view) = self.views.get_mut(&id) else { return grid };
+        if let Some(crowded) = view.cull.as_mut().and_then(light_cull::CullView::poll) {
+            self.note_crowded(crowded);
+        }
+        let Some(view) = self.views.get_mut(&id) else { return grid };
         if view.cluster_key == Some(key) {
+            return grid;
+        }
+        if self.gpu_clusters {
+            let prepared = light_cull::prepare(cam, &grid, &self.lights_cpu, self.dir_lights, delta_only);
+            let table = grid.count() as u64 * 8;
+            let list = light_cull::index_bytes(&grid);
+            let g1 = view.clusters.ensure(&self.device, &self.queue, table, self.max_storage, false);
+            let g2 = view.light_indices.ensure(&self.device, &self.queue, list, self.max_storage, false);
+            if g1 == Grow::Grown || g2 == Grow::Grown {
+                view.cluster_gen += 1;
+            }
+            if g1 == Grow::TooLarge || g2 == Grow::TooLarge {
+                return ClusterGrid::default();
+            }
+            let cull = view.cull.get_or_insert_with(|| light_cull::CullView::new(&self.device));
+            if !cull.upload(&self.device, &self.queue, &prepared, self.max_storage) {
+                return ClusterGrid::default();
+            }
+            view.cluster_key = Some(key);
             return grid;
         }
         let lights::Clusters { table, list, crowded } =
             lights::build_clusters(cam, &grid, &self.lights_cpu, self.dir_lights, delta_only);
-        if crowded > 0 && self.crowded_logged != self.lights_gen {
-            self.crowded_logged = self.lights_gen;
-            log::info!(
-                "hp-render: {crowded} light clusters reach more than {} lights: the weakest there are left out",
-                lights::MAX_PER_CLUSTER
-            );
-        }
-        self.crowded_clusters = crowded;
+        self.note_crowded(crowded);
+        let packed = lights::pack_indices(&list);
         let Some(view) = self.views.get_mut(&id) else { return grid };
         let tbytes: &[u8] = bytemuck::cast_slice(&table);
-        let lbytes: &[u8] = bytemuck::cast_slice(&list);
+        let lbytes: &[u8] = bytemuck::cast_slice(&packed);
         let g1 = view.clusters.ensure(&self.device, &self.queue, tbytes.len() as u64, self.max_storage, false);
         let g2 = view.light_indices.ensure(&self.device, &self.queue, lbytes.len() as u64, self.max_storage, false);
         if g1 == Grow::Grown || g2 == Grow::Grown {
@@ -2321,6 +2367,38 @@ impl Renderer {
         }
         view.cluster_key = Some(key);
         grid
+    }
+
+    fn note_crowded(&mut self, crowded: u32) {
+        if crowded > 0 && self.crowded_logged != self.lights_gen {
+            self.crowded_logged = self.lights_gen;
+            log::info!(
+                "hp-render: {crowded} light clusters reach more than {} lights: the weakest there are left out",
+                lights::MAX_PER_CLUSTER
+            );
+        }
+        self.crowded_clusters = crowded;
+    }
+
+    fn record_light_cull(&mut self, id: u32, enc: &mut wgpu::CommandEncoder) -> bool {
+        if !self.gpu_clusters {
+            return false;
+        }
+        let Some(view) = self.views.get_mut(&id) else { return false };
+        let Some(cull) = view.cull.as_mut().filter(|c| c.has_pending()) else { return false };
+        if cull.reading() {
+            let _ = self.device.poll(wgpu::PollType::Poll);
+        }
+        let pipe = self.light_cull.get_or_insert_with(|| light_cull::LightCullPipeline::new(&self.device));
+        cull.record(
+            &self.device,
+            &self.queue,
+            pipe,
+            enc,
+            &view.clusters.buffer,
+            &view.light_indices.buffer,
+            view.cluster_gen,
+        )
     }
 
     fn ensure_view_bind_group(&mut self, id: u32) {
@@ -2529,6 +2607,7 @@ impl Renderer {
             control_vp: Mat4::IDENTITY.to_cols_array_2d(),
             control_params: [0.0; 4],
             control_color: [0.0; 4],
+            quality: [u32::from(self.governor.level()), 0, 0, 0],
         }
     }
 
@@ -2614,6 +2693,9 @@ impl Renderer {
         {
             p.collect(&self.device);
         }
+        if profiled && !is_reflection {
+            self.observe_gpu_time();
+        }
         self.flush();
         self.write_cube_info();
         let mut params = *params;
@@ -2690,7 +2772,8 @@ impl Renderer {
             (uniform.sky_vis_a, uniform.sky_vis_b) = fit.params();
             uniform.sky_vis_b[3] = self.layer_count(shadow::Layers::Sky) as f32;
             if !profile::baseline("skymarch") {
-                uniform.sky_march = sky_layers::march_steps(uniform.sky_vis_b[2]);
+                let growth = if self.governor.level() >= 1 { ADAPTIVE_SKY_GROWTH } else { 1.6 };
+                uniform.sky_march = sky_layers::march_steps_with(uniform.sky_vis_b[2], growth);
             }
         }
         (uniform.indirect_a, uniform.indirect_b) = self.indirect_uniform(lit && opts.indirect_light);
@@ -2764,8 +2847,12 @@ impl Renderer {
         };
         let models_ms = lap.take();
 
+        if !cam.is_ortho && opts.compiled_lighting {
+            self.prepare_compiled_frame(&cam.view_proj);
+        }
         let mut enc =
             self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("hp-render view") });
+        let cull_read = self.record_light_cull(view_id, &mut enc);
         let mut counter = FrameCounter::default();
         let recording = std::time::Instant::now();
         if profiled && let Some(p) = self.profiler.as_mut() {
@@ -3029,6 +3116,12 @@ impl Renderer {
         self.queue.submit([enc.finish()]);
         if let (Some(p), Some(i)) = (self.profiler.as_ref(), sample) {
             p.after_submit(i);
+        }
+        if cull_read && let Some(cull) = self.views.get(&view_id).and_then(|v| v.cull.as_ref()) {
+            cull.after_submit();
+        }
+        if profiled && !is_reflection && self.profiler.is_none() && self.quality.adaptive {
+            self.submit_timer.after_submit(&self.queue);
         }
         let ms = |a: std::time::Instant, b: std::time::Instant| b.duration_since(a).as_secs_f32() * 1000.0;
         if is_reflection {
@@ -3362,9 +3455,41 @@ impl Renderer {
         if self.quality == quality {
             return;
         }
-        let sun_changed = self.quality.sun_shadow_size != quality.sun_shadow_size;
-        let local_changed = self.quality.local_shadow_size != quality.local_shadow_size;
         self.quality = quality;
+        self.governor.set_enabled(quality.adaptive);
+        self.apply_quality();
+    }
+
+    pub fn adaptive_stats(&self) -> AdaptiveStats {
+        self.governor.stats(self.profiler.is_some())
+    }
+
+    fn observe_gpu_time(&mut self) {
+        let sample = match self.profiler.as_ref() {
+            Some(p) if p.finished != self.governor_seen => {
+                self.governor_seen = p.finished;
+                p.latest.map(|t| t.total_ms + p.latest_reflection)
+            }
+            Some(_) => None,
+            None => self.submit_timer.take(),
+        };
+        if let Some(ms) = sample
+            && self.governor.observe(ms, std::time::Instant::now())
+        {
+            log::info!("hp-render: adaptive quality level {} (GPU {ms:.1} ms a frame)", self.governor.level());
+            self.apply_quality();
+        }
+    }
+
+    fn apply_quality(&mut self) {
+        let mut quality = self.quality;
+        if self.governor.level() >= 3 {
+            quality.sun_shadow_size = quality.sun_shadow_size.min(ADAPTIVE_SUN_SHADOW);
+            quality.local_shadow_size = quality.local_shadow_size.min(ADAPTIVE_LOCAL_SHADOW);
+        }
+        let sun_changed = self.applied.sun_shadow_size != quality.sun_shadow_size;
+        let local_changed = self.applied.local_shadow_size != quality.local_shadow_size;
+        self.applied = quality;
         if sun_changed {
             self.shadow = None;
             self.scene_gen += 1;
@@ -3373,7 +3498,9 @@ impl Renderer {
             self.local_shadows.reset_size();
             self.scene_gen += 1;
         }
-        self.shadow_epoch += 1;
+        if sun_changed || local_changed {
+            self.shadow_epoch += 1;
+        }
         self.content_gen += 1;
     }
 
@@ -3383,6 +3510,10 @@ impl Renderer {
 
     pub fn quality(&self) -> Quality {
         self.quality
+    }
+
+    pub fn applied_quality(&self) -> Quality {
+        self.applied
     }
 
     pub fn frame_times(&self) -> profile::FrameTimes {
@@ -3420,7 +3551,7 @@ impl Renderer {
             + self.models.values().map(|m| m.bytes).sum::<u64>()
             + self.mat_gpu.len() as u64 * size_of::<MaterialUniform>() as u64;
         if let Some(t) = &self.shadow {
-            bytes += shadow::Layers::Sun.bytes(t.layers, self.quality.sun_shadow_size);
+            bytes += shadow::Layers::Sun.bytes(t.layers, self.applied.sun_shadow_size);
         }
         if let Some(t) = &self.sky_map {
             bytes += shadow::Layers::Sky.bytes(t.layers, u32::MAX);
@@ -3435,7 +3566,11 @@ impl Renderer {
             s.triangles += v.triangles;
             s.chunks_in_frustum += v.chunks_seen;
             s.chunks_occluded += v.chunks_skipped;
-            bytes += v.target_bytes + v.overlay.size + v.clusters.size + v.light_indices.size;
+            bytes += v.target_bytes
+                + v.overlay.size
+                + v.clusters.size
+                + v.light_indices.size
+                + v.cull.as_ref().map_or(0, light_cull::CullView::bytes);
         }
         s.retained_overlay_bytes = self.retained.values().map(|r| r.size).sum();
         s.static_lines = self.static_lines.values().map(|l| u64::from(l.count)).sum();
@@ -3896,9 +4031,13 @@ impl DrawCtx<'_> {
                 continue;
             }
             let translucent = matches!(pass, MeshPass::Translucent | MeshPass::Additive);
+            let compiled = self.compiled_world();
             for &c in &m.chunks {
                 let Some(Some(ch)) = scene.chunks.get(c as usize) else { continue };
                 if ch.used_i == 0 || ch.idx.len == 0 || !self.chunk_visible(ch, n) {
+                    continue;
+                }
+                if compiled && translucent && ch.all_compiled {
                     continue;
                 }
                 let dist =
@@ -3917,6 +4056,13 @@ impl DrawCtx<'_> {
             }
         }
         lists
+    }
+
+    fn compiled_world(&self) -> bool {
+        !self.cam.is_ortho
+            && self.opts.compiled_lighting
+            && self.r.compiled.present
+            && compiled_light::textured_mode(self.params.mode)
     }
 
     fn editor_only(&self, desc: Option<&MaterialDesc>) -> bool {

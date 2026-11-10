@@ -469,6 +469,7 @@ fn compile(ctx: &Ctx<'_>, prep: &crate::compile::PrepInput, graph: &DependencyGr
         fs: prep.fs.clone(),
         materials: prep.materials.clone(),
         models: Vec::new(),
+        roots: Vec::new(),
         cache_dir: prep.cache_dir.clone(),
         content_dir: prep.content_dir.clone(),
     };
@@ -478,7 +479,12 @@ fn compile(ctx: &Ctx<'_>, prep: &crate::compile::PrepInput, graph: &DependencyGr
         {
             input.materials.push(name.to_owned());
         }
+        if n.kind == DepKind::Model && n.vpath.ends_with(".mdl") {
+            input.models.push(n.vpath.clone());
+        }
     }
+    input.models.sort_unstable();
+    input.models.dedup();
     input.materials.sort_unstable();
     input.materials.dedup();
     let out = crate::compile::prepare(input);

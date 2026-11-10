@@ -2,6 +2,8 @@ use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use sha2::{Digest, Sha256};
+
 use crate::error::UpdateError;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -44,45 +46,123 @@ impl Url {
     }
 }
 
+pub const MAX_REDIRECTS: usize = 5;
+
 pub fn user_agent() -> String {
     format!("HammerPro/{} (auto update)", env!("CARGO_PKG_VERSION"))
 }
 
-pub fn get_text(url: &str, max_bytes: u64) -> Result<String, UpdateError> {
-    let mut stream = open(url, "application/vnd.github+json, application/json")?;
+pub enum Reply {
+    Body(Stream),
+    Redirect(String),
+}
+
+pub fn resolve_location(base: &Url, location: &str) -> Option<String> {
+    let location = location.trim();
+    if location.is_empty() || location.chars().any(char::is_control) {
+        return None;
+    }
+    let lower = location.to_ascii_lowercase();
+    if lower.starts_with("https://") || lower.starts_with("http://") {
+        return Some(location.to_owned());
+    }
+    let scheme = if base.secure { "https" } else { "http" };
+    if let Some(rest) = location.strip_prefix("//") {
+        return Some(format!("{scheme}://{rest}"));
+    }
+    if location.starts_with('/') {
+        let default = if base.secure { 443 } else { 80 };
+        let authority = if base.port == default { base.host.clone() } else { format!("{}:{}", base.host, base.port) };
+        return Some(format!("{scheme}://{authority}{location}"));
+    }
+    None
+}
+
+pub fn open(url: &str, accept: &str, trusted: &dyn Fn(&Url) -> bool) -> Result<Stream, UpdateError> {
+    let mut current = url.trim().to_owned();
+    for _ in 0..=MAX_REDIRECTS {
+        let parsed =
+            Url::parse(&current).ok_or_else(|| UpdateError::Network(format!("not an http(s) address: {current}")))?;
+        if !trusted(&parsed) {
+            return Err(UpdateError::Network(format!("the address is not trusted: {}", parsed.host)));
+        }
+        match Stream::connect(&parsed, accept)? {
+            Reply::Body(stream) => return Ok(stream),
+            Reply::Redirect(location) => {
+                current = resolve_location(&parsed, &location)
+                    .ok_or_else(|| UpdateError::Network("the server sent an unusable redirection".into()))?;
+            }
+        }
+    }
+    Err(UpdateError::Network(format!("more than {MAX_REDIRECTS} redirections")))
+}
+
+fn check_final(stream: &mut Stream, trusted: &dyn Fn(&Url) -> bool) -> Result<(), UpdateError> {
+    match stream.finish()? {
+        Some(last) => match Url::parse(&last) {
+            Some(url) if trusted(&url) => Ok(()),
+            _ => Err(UpdateError::Network(format!("the address is not trusted: {last}"))),
+        },
+        None => Ok(()),
+    }
+}
+
+pub fn get_text(url: &str, max_bytes: u64, trusted: &dyn Fn(&Url) -> bool) -> Result<String, UpdateError> {
+    let mut stream = open(url, "application/vnd.github+json, application/json", trusted)?;
+    if stream.length().is_some_and(|n| n > max_bytes) {
+        return Err(UpdateError::Network("the answer is too large".into()));
+    }
     let mut data = Vec::new();
     (&mut stream).take(max_bytes + 1).read_to_end(&mut data).map_err(net)?;
     if data.len() as u64 > max_bytes {
         return Err(UpdateError::Network("the answer is too large".into()));
     }
-    stream.finish()?;
+    check_final(&mut stream, trusted)?;
     String::from_utf8(data).map_err(|_| UpdateError::Network("the answer is not text".into()))
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Fetched {
+    pub bytes: u64,
+    pub sha256: String,
+}
+
+pub struct Limits<'a> {
+    pub max_bytes: u64,
+    pub cancel: &'a AtomicBool,
+    pub trusted: &'a dyn Fn(&Url) -> bool,
 }
 
 pub fn download_to(
     url: &str,
     dest: &Path,
-    cancel: &AtomicBool,
+    limits: &Limits<'_>,
     progress: &mut dyn FnMut(u64, Option<u64>),
-) -> Result<u64, UpdateError> {
-    let mut stream = open(url, "application/octet-stream")?;
+) -> Result<Fetched, UpdateError> {
+    let mut stream = open(url, "application/octet-stream", limits.trusted)?;
     let total = stream.length();
+    if let Some(total) = total
+        && total > limits.max_bytes
+    {
+        return Err(UpdateError::Network(format!("the file is too large ({total} bytes)")));
+    }
     if let Some(dir) = dest.parent() {
         std::fs::create_dir_all(dir)?;
     }
     let part = dest.with_extension("part");
-    let result = copy_stream(&mut stream, &part, total, cancel, progress);
+    let result = copy_stream(&mut stream, &part, total, limits, progress)
+        .and_then(|fetched| check_final(&mut stream, limits.trusted).map(|()| fetched));
     match result {
-        Ok(done) => {
+        Ok(fetched) => {
             if let Some(total) = total
-                && total != done
+                && total != fetched.bytes
             {
                 let _ = std::fs::remove_file(&part);
-                return Err(UpdateError::Network(format!("incomplete download ({done} of {total} bytes)")));
+                return Err(UpdateError::Network(format!("incomplete download ({} of {total} bytes)", fetched.bytes)));
             }
             let _ = std::fs::remove_file(dest);
             std::fs::rename(&part, dest)?;
-            Ok(done)
+            Ok(fetched)
         }
         Err(e) => {
             let _ = std::fs::remove_file(&part);
@@ -95,37 +175,54 @@ fn copy_stream(
     stream: &mut Stream,
     part: &Path,
     total: Option<u64>,
-    cancel: &AtomicBool,
+    limits: &Limits<'_>,
     progress: &mut dyn FnMut(u64, Option<u64>),
-) -> Result<u64, UpdateError> {
+) -> Result<Fetched, UpdateError> {
     let mut file = std::fs::File::create(part)?;
+    let mut hasher = Sha256::new();
     let mut buf = vec![0u8; 64 * 1024];
     let mut done = 0u64;
     progress(0, total);
     loop {
-        if cancel.load(Ordering::Relaxed) {
+        if limits.cancel.load(Ordering::Relaxed) {
             return Err(UpdateError::Cancelled);
         }
         let n = stream.read(&mut buf).map_err(net)?;
         if n == 0 {
             break;
         }
-        file.write_all(&buf[..n])?;
         done += n as u64;
+        if done > limits.max_bytes {
+            return Err(UpdateError::Network(format!("the file is larger than {} bytes", limits.max_bytes)));
+        }
+        hasher.update(&buf[..n]);
+        file.write_all(&buf[..n])?;
         progress(done, total);
     }
     file.flush()?;
-    stream.finish()?;
-    Ok(done)
+    Ok(Fetched { bytes: done, sha256: hex(&hasher.finalize()) })
+}
+
+pub fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+pub fn sha256_file(path: &Path) -> Result<String, UpdateError> {
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        let n = file.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(hex(&hasher.finalize()))
 }
 
 fn net(e: std::io::Error) -> UpdateError {
     UpdateError::Network(e.to_string())
-}
-
-pub fn open(url: &str, accept: &str) -> Result<Stream, UpdateError> {
-    let parsed = Url::parse(url).ok_or_else(|| UpdateError::Network(format!("not an http(s) address: {url}")))?;
-    Stream::connect(&parsed, accept)
 }
 
 #[cfg(windows)]
@@ -141,13 +238,14 @@ mod win {
     use std::ptr::{null, null_mut};
 
     use windows_sys::Win32::Networking::WinHttp::{
-        WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_FLAG_SECURE, WINHTTP_OPTION_SECURE_PROTOCOLS,
-        WINHTTP_QUERY_CONTENT_LENGTH, WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_QUERY_STATUS_CODE, WinHttpAddRequestHeaders,
+        WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_FLAG_SECURE, WINHTTP_OPTION_REDIRECT_POLICY,
+        WINHTTP_OPTION_REDIRECT_POLICY_NEVER, WINHTTP_OPTION_SECURE_PROTOCOLS, WINHTTP_QUERY_CONTENT_LENGTH,
+        WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_QUERY_LOCATION, WINHTTP_QUERY_STATUS_CODE, WinHttpAddRequestHeaders,
         WinHttpCloseHandle, WinHttpConnect, WinHttpOpen, WinHttpOpenRequest, WinHttpQueryHeaders, WinHttpReadData,
         WinHttpReceiveResponse, WinHttpSendRequest, WinHttpSetOption, WinHttpSetTimeouts,
     };
 
-    use super::{Url, user_agent};
+    use super::{Reply, Url, user_agent};
     use crate::error::UpdateError;
 
     const ADD_HEADER: u32 = 0x2000_0000;
@@ -185,7 +283,7 @@ mod win {
     }
 
     impl Stream {
-        pub fn connect(url: &Url, accept: &str) -> Result<Stream, UpdateError> {
+        pub fn connect(url: &Url, accept: &str) -> Result<Reply, UpdateError> {
             unsafe {
                 let agent = wide(&user_agent());
                 let session =
@@ -214,6 +312,16 @@ mod win {
                 if request.0.is_null() {
                     return Err(last_error("WinHttpOpenRequest"));
                 }
+                let never = WINHTTP_OPTION_REDIRECT_POLICY_NEVER;
+                if WinHttpSetOption(
+                    request.0,
+                    WINHTTP_OPTION_REDIRECT_POLICY,
+                    (&raw const never).cast(),
+                    size_of::<u32>() as u32,
+                ) == 0
+                {
+                    return Err(last_error("WinHttpSetOption"));
+                }
                 let header = wide(&format!("Accept: {accept}"));
                 WinHttpAddRequestHeaders(request.0, header.as_ptr(), u32::MAX, ADD_HEADER);
                 if WinHttpSendRequest(request.0, null(), 0, null(), 0, 0, 0) == 0 {
@@ -224,10 +332,15 @@ mod win {
                 }
                 let status = query_number(request.0, WINHTTP_QUERY_STATUS_CODE).unwrap_or(0) as u32;
                 let length = query_number(request.0, WINHTTP_QUERY_CONTENT_LENGTH);
+                if matches!(status, 301 | 302 | 303 | 307 | 308) {
+                    return query_text(request.0, WINHTTP_QUERY_LOCATION)
+                        .map(Reply::Redirect)
+                        .ok_or_else(|| UpdateError::Network("a redirection without a location".into()));
+                }
                 if status != 200 {
                     return Err(UpdateError::Http(status));
                 }
-                Ok(Stream { request, _connect: connect, _session: session, status, length })
+                Ok(Reply::Body(Stream { request, _connect: connect, _session: session, status, length }))
             }
         }
 
@@ -239,9 +352,21 @@ mod win {
             self.length
         }
 
-        pub fn finish(&mut self) -> Result<(), UpdateError> {
-            Ok(())
+        pub fn finish(&mut self) -> Result<Option<String>, UpdateError> {
+            Ok(None)
         }
+    }
+
+    unsafe fn query_text(request: *mut c_void, what: u32) -> Option<String> {
+        let mut buf = vec![0u16; 16 * 1024];
+        let mut size = (buf.len() * 2) as u32;
+        let ok =
+            unsafe { WinHttpQueryHeaders(request, what, null(), buf.as_mut_ptr().cast(), &raw mut size, null_mut()) };
+        if ok == 0 {
+            return None;
+        }
+        let len = (size as usize / 2).min(buf.len());
+        String::from_utf16(&buf[..len]).ok()
     }
 
     unsafe fn query_number(request: *mut c_void, what: u32) -> Option<u64> {
@@ -278,26 +403,37 @@ mod curl {
     use std::io::Read;
     use std::process::{Child, Command, Stdio};
 
-    use super::{Url, user_agent};
+    use super::{Reply, Url, user_agent};
     use crate::error::UpdateError;
 
     pub struct Stream {
         child: Child,
         stdout: std::process::ChildStdout,
+        stderr: Option<std::process::ChildStderr>,
     }
 
     impl Stream {
-        pub fn connect(url: &Url, accept: &str) -> Result<Stream, UpdateError> {
+        pub fn connect(url: &Url, accept: &str) -> Result<Reply, UpdateError> {
             let full = format!("{}://{}:{}{}", if url.secure { "https" } else { "http" }, url.host, url.port, url.path);
-            let mut child = Command::new("curl")
-                .args(["-sS", "-L", "-f", "--max-time", "600", "-A", &user_agent(), "-H", &format!("Accept: {accept}")])
+            let mut cmd = Command::new("curl");
+            cmd.args(["-sS", "-L", "-f", "--max-redirs", "5", "--max-time", "600", "-A", &user_agent()]).args([
+                "-H",
+                &format!("Accept: {accept}"),
+                "-w",
+                "%{stderr}\n%{url_effective}\n",
+            ]);
+            if url.secure {
+                cmd.args(["--proto", "=https", "--proto-redir", "=https"]);
+            }
+            let mut child = cmd
                 .arg(full)
                 .stdout(Stdio::piped())
-                .stderr(Stdio::null())
+                .stderr(Stdio::piped())
                 .spawn()
                 .map_err(|e| UpdateError::Network(format!("curl: {e}")))?;
             let stdout = child.stdout.take().ok_or_else(|| UpdateError::Network("curl: no output".into()))?;
-            Ok(Stream { child, stdout })
+            let stderr = child.stderr.take();
+            Ok(Reply::Body(Stream { child, stdout, stderr }))
         }
 
         pub fn status(&self) -> u32 {
@@ -308,9 +444,16 @@ mod curl {
             None
         }
 
-        pub fn finish(&mut self) -> Result<(), UpdateError> {
+        pub fn finish(&mut self) -> Result<Option<String>, UpdateError> {
+            let mut text = String::new();
+            if let Some(mut err) = self.stderr.take() {
+                let _ = (&mut err).take(64 * 1024).read_to_string(&mut text);
+            }
             let status = self.child.wait().map_err(|e| UpdateError::Network(e.to_string()))?;
-            if status.success() { Ok(()) } else { Err(UpdateError::Network(format!("curl failed ({status})"))) }
+            if !status.success() {
+                return Err(UpdateError::Network(format!("curl failed ({status})")));
+            }
+            Ok(text.lines().rev().find(|l| !l.trim().is_empty()).map(|l| l.trim().to_owned()))
         }
     }
 

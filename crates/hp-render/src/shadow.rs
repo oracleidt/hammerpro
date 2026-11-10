@@ -470,7 +470,7 @@ impl Renderer {
     }
 
     fn create_layers(&self, which: Layers, layers: u32) -> ShadowGpu {
-        let (size, cut_size) = which.sizes_capped(layers, self.quality.sun_shadow_size);
+        let (size, cut_size) = which.sizes_capped(layers, self.applied.sun_shadow_size);
         let label = match which {
             Layers::Sun => "hp-render shadow map",
             Layers::Sky => "hp-render sky visibility map",
@@ -576,7 +576,7 @@ impl Renderer {
         let dir = Vec3::new(sun.dir[0], sun.dir[1], sun.dir[2]).normalize_or(Vec3::NEG_Z);
         let (lo, hi) = self.scene_bounds();
         let layers = self.analyze_sky(Layers::Sun, dir);
-        let fresh = fit(cam, dir, lo, hi, Layers::Sun.sizes_capped(layers, self.quality.sun_shadow_size).0)?;
+        let fresh = fit(cam, dir, lo, hi, Layers::Sun.sizes_capped(layers, self.applied.sun_shadow_size).0)?;
         let serial = self.render_serial;
         let resting = match self.sun_cam {
             Some((vp, first)) if vp == cam.view_proj => first != serial,

@@ -42,8 +42,15 @@ impl UiHost for TestHost {
 
     fn execute(&mut self, _ctx: &egui::Context, action: Action) {
         self.executed.push(action);
-        if action == Action::SelectAll {
-            self.state.doc.select_all();
+        match action {
+            Action::SelectAll => self.state.doc.select_all(),
+            Action::Undo => {
+                self.state.doc.undo();
+            }
+            Action::Redo => {
+                self.state.doc.redo();
+            }
+            _ => {}
         }
     }
 
@@ -284,6 +291,38 @@ fn every_tool_through_the_protocol() {
     assert!(problems.is_empty(), "{} problems:\n{}", problems.len(), problems.join("\n"));
     assert!(host.executed.contains(&Action::SelectAll), "run_action ran select_all");
     assert!(!host.state.doc.selected_objects().is_empty());
+}
+
+#[test]
+fn run_action_undo_and_redo_really_step_the_history() {
+    let ctx = egui::Context::default();
+    let mut host = TestHost::new();
+    let mut ui = UiAutomation::default();
+    frame(&ctx, &mut host, &mut ui);
+    let answers: Arc<std::sync::Mutex<Vec<ToolResult>>> = Arc::default();
+    let call = |host: &mut TestHost, ui: &mut UiAutomation, name: &str, args: Value| {
+        let sink = answers.clone();
+        let before = answers.lock().unwrap().len();
+        dispatch(&ctx, host, ui, name, &args, Box::new(move |r| sink.lock().unwrap().push(r)));
+        for _ in 0..50 {
+            if answers.lock().unwrap().len() > before {
+                break;
+            }
+            frame(&ctx, host, ui);
+        }
+        let r = answers.lock().unwrap().get(before).cloned().unwrap_or_else(|| panic!("{name} was answered"));
+        assert!(!r.is_error, "{name}: {}", r.first_text());
+        r.structured.unwrap_or_default()
+    };
+    let solids = host.state.doc.stats().solids;
+    call(&mut host, &mut ui, "delete_objects", json!({ "solid_ids": [3] }));
+    assert_eq!(host.state.doc.stats().solids, solids - 1);
+    let undone = call(&mut host, &mut ui, "run_action", json!({ "action": "undo" }));
+    assert_eq!(undone["undo_step"], false, "undo is not an undo step itself");
+    assert_eq!(host.state.doc.stats().solids, solids, "run_action undo restored the solid");
+    call(&mut host, &mut ui, "run_action", json!({ "action": "redo" }));
+    assert_eq!(host.state.doc.stats().solids, solids - 1, "run_action redo deleted it again");
+    assert!(!host.state.doc.in_transaction());
 }
 
 #[test]

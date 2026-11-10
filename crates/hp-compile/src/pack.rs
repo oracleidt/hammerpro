@@ -35,13 +35,13 @@ pub(crate) fn pack_into(
     }
     let zip = writer.finish_with(PakOptions { compression, level: 6 }, cancel, progress).map_err(|e| e.to_string())?;
     let pak_bytes = zip.len() as u64;
+    let missing = {
+        let pak = hp_bsp::PakArchive::parse(zip.as_slice()).map_err(|e| e.to_string())?;
+        files.iter().filter(|(inner, _)| !pak.contains(&pak_key(inner))).map(|(inner, _)| inner.clone()).collect()
+    };
     let mut edit = source.edit();
     edit.set_pakfile(zip).map_err(|e| e.to_string())?;
     edit.save(bsp).map_err(|e| e.to_string())?;
-    let written = Bsp::read(bsp).map_err(|e| e.to_string())?;
-    let pak = written.pakfile().map_err(|e| e.to_string())?;
-    let missing =
-        files.iter().filter(|(inner, _)| !pak.contains(&pak_key(inner))).map(|(inner, _)| inner.clone()).collect();
     Ok(PackReport { packed: files.len(), pak_bytes, missing })
 }
 

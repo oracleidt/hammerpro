@@ -12,7 +12,8 @@ use hp_editor::Document;
 use hp_render::lightmap::LightmapDisplay;
 use hp_render::{Overlay, RenderMode, ViewKind, ViewParams};
 
-use super::{bake, bsp, child, memory, show_geometry, write_texels};
+use super::preview::{MAX_TEXELS_PER_FRAME, show_geometry, write_texels};
+use super::{bake, bsp, child, memory};
 
 const GMOD: &str = r"D:\SteamLibrary\steamapps\common\GarrysMod";
 
@@ -238,14 +239,14 @@ fn job(doc: &Document, gfx: &Gfx, fs: Option<hp_fs::GameFs>, around: Option<(DVe
         .and_then(|v| v.parse::<usize>().ok())
         .map_or_else(|| super::bake_threads(0), |n| (n.max(1), n.max(1)));
     let exe = std::env::var_os("HP_BENCH_EXE").map(PathBuf::from).filter(|p| p.is_file());
+    let reuse = !quick && std::env::var_os("HP_BENCH_NO_REUSE").is_none();
     bake::Job {
         id: if quick { 1 } else { 2 },
-        serial: 1,
-        map: (quick || std::env::var_os("HP_BENCH_NO_REUSE").is_some()).then_some(snap.map),
-        keep: quick,
+        geometry_key: 1,
+        points: reuse.then(|| bake::point_entities(&snap.map)),
+        map: (!reuse).then_some(snap.map),
         solids,
         fs,
-        resources_revision: 0,
         hdr: true,
         quality: hp_bspc::rad::RadQuality::Draft,
         bounces: super::bounces(options.bounced),
@@ -258,6 +259,13 @@ fn job(doc: &Document, gfx: &Gfx, fs: Option<hp_fs::GameFs>, around: Option<(DVe
         lit: false,
         tuning: if quick { child::Tuning::of(&options).quick() } else { child::Tuning::of(&options) },
         exe,
+        focus: None,
+        stream: false,
+        shown: None,
+        models: true,
+        exact: false,
+        quiet: false,
+        urgent: false,
     }
 }
 
@@ -437,7 +445,7 @@ fn run_bake(
                 bake::Msg::Done { outcome: bake::Outcome::Baked(b), .. } => done = Some(b),
                 bake::Msg::Done { outcome: bake::Outcome::Failed(e), .. } => panic!("bake failed: {e}"),
                 bake::Msg::Done { .. } => panic!("cancelled"),
-                bake::Msg::Progress { .. } => {}
+                _ => {}
             }
         }
         if let Some(b) = done {
@@ -483,7 +491,7 @@ fn show(gfx: &mut Gfx, am: &mut AssetManager, baked: &bake::Baked) {
     show_geometry(&mut gfx.renderer, am, baked, (shown.faces.max(baked.faces.len() as u32), shown.blocks));
     let mut written = 0;
     while written < baked.faces.len() {
-        written = write_texels(&mut gfx.renderer, baked, written, super::MAX_TEXELS_PER_FRAME);
+        written = write_texels(&mut gfx.renderer, baked, written, MAX_TEXELS_PER_FRAME);
     }
     let _ = gfx.device.poll(wgpu::PollType::wait_indefinitely());
     gfx.renderer.set_lightmap_display(LightmapDisplay::Baked, 1.0);

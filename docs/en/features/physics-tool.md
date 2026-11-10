@@ -35,3 +35,18 @@ Settings are saved between sessions. Physics positions are continuous and do not
 Models without a usable collision file are reported and skipped. Selectable displacements remain collision surfaces rather than moving rigid bodies.
 
 For a quick placement without interactive playback, [Physics placement (drop and settle)](transform-align.md#physics-placement) remains available.
+
+## MCP and scripts
+
+`set_tool_options` with tool `physics` drives the simulator without the mouse (also from `--script` files: `tool physics`, then `tool_option simulate 3`):
+
+| Option | Effect |
+| --- | --- |
+| `simulate` | Run that many seconds of physics (0.01 to 120, times the time scale) on the selected brushes, props and ragdolls at once, then pause. The first call builds the simulation from the selection; later calls continue it. 0 does nothing (it is the value read back). The map is unchanged. |
+| `simulated` | Read only: the seconds simulated so far. |
+| `paused` | `off` lets the simulation play in the editor (the tool must be active), `on` freezes it. |
+| `keep` | `on` applies the positions, rotations and ragdoll poses to the map in one undo step, like **Keep positions**. |
+| `reset` | `on` discards the simulation, like **Reset**. |
+| `bodies` | Read only: the number of simulated objects. |
+
+Gravity, air density, time scale and the shot and explosion values are the settings `physics.gravity`, `physics.air_density`, `physics.time_scale`, `physics.shoot_speed`, `physics.explosion_speed` and `physics.explosion_radius` (`set_setting`). Example: select a few props, then `set_tool_options` `{"tool": "physics", "options": {"simulate": 3}}` and `{"tool": "physics", "options": {"keep": true}}` drops them on the floor in one undo step.

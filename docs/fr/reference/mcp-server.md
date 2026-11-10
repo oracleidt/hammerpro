@@ -107,6 +107,8 @@ Toute autre application MCP : un serveur stdio avec la commande `hammerpro.exe` 
 - **Local uniquement** : le serveur écoute sur `127.0.0.1`, jamais sur le réseau, et refuse toute connexion qui ne vient pas de cet ordinateur.
 - **Jeton secret** : chaque fois qu'un serveur démarre, il génère un jeton aléatoire de 32 octets. Chaque connexion doit l'envoyer en premier, sinon elle est fermée. Le jeton n'est écrit que dans la fiche d'instance de la fenêtre, `%LOCALAPPDATA%\HammerPro\mcp\instances\<pid>.json`, dans votre propre profil. La fiche est supprimée quand le serveur s'arrête ou que Hammer Pro se ferme ; les fiches des fenêtres plantées sont ignorées puis nettoyées.
 - **Limites** : messages de 8 Mo au maximum, 8 connexions simultanées par fenêtre, un délai maximal sur chaque appel d'outil.
+- **Aucun coût au repos** : le fil du serveur dort jusqu'à l'arrivée d'une connexion (sans interrogation périodique) ; une fenêtre avec MCP actif et aucune IA connectée ne consomme pas de processeur. Un long appel d'outil qui tourne en arrière-plan (import par lot, conversion de texture) réveille la fenêtre quand il se termine au lieu de la faire redessiner pendant ce temps.
+- **Chemins de fichiers** : un outil qui prend un fichier ou un dossier refuse les chemins réseau (UNC, `\\serveur\partage`) et les chemins de périphérique (`\\?\`, `\\.\`, `CON`, `NUL`, `COM1`...), pour qu'un chemin glissé dans une consigne ne puisse pas faire envoyer vos identifiants Windows à un autre ordinateur. Les chemins relatifs restent dans leur dossier (pas de `..`), et les outils qui écrivent à côté de la map (graphes de shader, textures, images, sons, tables de couleurs) n'acceptent que le dossier de la map et les dossiers de textures personnalisés.
 - **Aucun programme sans votre demande, aucun fichier arbitraire** : les outils ne lancent aucune commande d'eux-mêmes. Les maps ne sont ouvertes et enregistrées qu'en `.vmf` ; écraser un autre fichier existant exige un `overwrite` explicite. Le jeu n'est lancé que si l'IA le demande explicitement. Les compilations utilisent le compilateur choisi pour le jeu (celui de Hammer Pro par défaut) ; créer ou changer un compilateur qui lance d'autres programmes (`create_compiler`, `set_compiler` avec des étapes) exige `confirm: true`. Voir [Choisir un compilateur](../compiler/compilers.md).
 - **Confirmation** : `run_action` lance n'importe quelle commande des menus, sauf quelques-unes qui exigent `confirm: true`, que l'IA ne transmet que si vous avez demandé exactement cela : Quitter, désactiver MCP, installer MCP dans d'autres applications, publier, lancer le jeu ou lui parler, compiler avec le jeu, éditer une instance dans une autre fenêtre, ouvrir le navigateur web et les commandes qui affichent une boîte de dialogue de fichier.
 - **Paramètres** : `set_setting` ne change jamais les chemins de fichiers, dossiers, programmes, lignes de commande, dossiers de contenu du jeu ni les paramètres MCP : vous les changez dans la fenêtre Paramètres. Ajouter ou retirer un FGD supplémentaire (`.fgd` uniquement) exige `confirm: true`.
@@ -119,7 +121,7 @@ Avec plusieurs fenêtres Hammer Pro, le pont utilise celle avec MCP actif qui a 
 
 ## Annulation
 
-Chaque modification faite par l'IA est **une étape d'annulation** nommée "MCP :" suivi de ce qui a été fait (par exemple **MCP : application de matériau**), visible dans le menu **Édition** et l'historique d'annulation. `Ctrl+Z` l'annule comme n'importe laquelle de vos modifications. L'IA peut aussi annuler et rétablir (`undo`, `redo`, `undo_steps`, `redo_steps`) et lire l'historique (`get_history`).
+Chaque modification faite par l'IA est **une étape d'annulation** nommée "MCP :" suivi de ce qui a été fait (par exemple **MCP : application de matériau**), visible dans le menu **Édition** et l'historique d'annulation. `Ctrl+Z` l'annule comme n'importe laquelle de vos modifications. L'IA peut aussi annuler et rétablir (`undo`, `redo`, `undo_steps`, `redo_steps`, ou `run_action` avec `undo` et `redo`) et lire l'historique (`get_history`). Dans une session de Team Mapping, ils passent par l'historique partagé de la session exactement comme `Ctrl+Z` et `Ctrl+Y`, une étape par appel, pour que les autres participants voient le changement.
 
 ## Catégories d'outils
 
@@ -159,6 +161,7 @@ Chaque modification faite par l'IA est **une étape d'annulation** nommée "MCP 
 | Skybox | Sky cameras, aperçu, interrupteur de skybox. |
 | Entity definitions | Infos FGD, ajouter, retirer, recharger, valider des fichiers FGD. |
 | Games | Lister les jeux pris en charge, lire et changer le jeu de la map. |
+| Diagnostics | Les rapports de plantage du dossier crash (liste et lecture de l'un d'eux) et les dernières lignes du journal de Hammer Pro. Voir [Plantages et journaux](../troubleshooting/crashes-and-logs.md). |
 | Tool options | Lire et changer les options des outils d'édition. |
 
 Les noms de catégories sont ceux de la référence, en anglais. La liste complète de chaque outil avec sa description et ses arguments se trouve dans [docs/MCP.md](../../MCP.md) (en anglais uniquement).

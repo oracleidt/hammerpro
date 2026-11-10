@@ -113,6 +113,375 @@ fn a_displacement_on_a_brush_entity_is_fatal() {
     );
 }
 
+#[test]
+fn a_displacement_on_func_detail_compiles_like_a_world_displacement() {
+    let patch = || {
+        let mut patch = block(v(-64.0, -64.0, 0.0), v(64.0, 64.0, 16.0), WALL);
+        patch.sides[0].disp = Some(disp_block(3, v(-64.0, -64.0, 16.0), 1.0));
+        patch
+    };
+    let mut world = small_room();
+    world.world.push(patch());
+    let mut detail = small_room();
+    detail.brush_entity("func_detail", &[], vec![patch()]);
+    let (in_world, world_log) = compiled(&world, &CompileOptions::default());
+    let (in_detail, detail_log) = compiled(&detail, &CompileOptions::default());
+    assert!(!world_log.iter().any(|l| l.contains("displacement found")), "{world_log:?}");
+    assert!(
+        detail_log.iter().any(|l| l.starts_with("Warning: displacement found on a(n) func_detail entity")),
+        "{detail_log:?}"
+    );
+    const DISPINFO: usize = 26;
+    const DISP_VERTS: usize = 33;
+    assert_eq!(in_detail.raw(DISPINFO).len(), 176);
+    assert_eq!(in_detail.raw(DISPINFO), in_world.raw(DISPINFO));
+    assert_eq!(in_detail.raw(DISP_VERTS), in_world.raw(DISP_VERTS));
+    assert_eq!(in_detail.faces().len(), in_world.faces().len());
+}
+
+fn shoreline(transition_keys: &[(&str, &str)], saved: Option<&str>) -> (Lumps, Vec<String>, Vec<u8>) {
+    shoreline_along(&[(-256.0, 256.0)], transition_keys, saved)
+}
+
+fn shoreline_along(
+    walls: &[(f64, f64)],
+    transition_keys: &[(&str, &str)],
+    saved: Option<&str>,
+) -> (Lumps, Vec<String>, Vec<u8>) {
+    let mut m = small_room();
+    m.world.push(common::block_sides(
+        v(-256.0, -256.0, 0.0),
+        v(0.0, 256.0, 64.0),
+        [
+            WATER,
+            "tools/toolsnodraw",
+            "tools/toolsnodraw",
+            "tools/toolsnodraw",
+            "tools/toolsnodraw",
+            "tools/toolsnodraw",
+        ],
+    ));
+    for (y0, y1) in walls {
+        m.world.push(block(v(0.0, *y0, 0.0), v(256.0, *y1, 96.0), WALL));
+    }
+    let mut map = hp_vmf::parse(&m.text()).expect("the VMF parses");
+    let sides = |map: &hp_vmf::Map, f: &dyn Fn(&hp_vmf::Side) -> bool| -> Vec<u32> {
+        map.world.solids.iter().flat_map(|s| s.sides.iter()).filter(|s| f(s)).map(|s| s.id).collect()
+    };
+    let water = sides(&map, &|s| s.material == WATER)[0];
+    let mut lands = sides(&map, &|s| {
+        s.material == WALL && s.plane.iter().all(|p| p.x == 0.0) && s.plane.iter().any(|p| p.z == 96.0)
+    });
+    lands.reverse();
+    let land: Vec<String> = lands.iter().map(u32::to_string).collect();
+    let land = land.join(" ");
+    let mut e =
+        hp_vmf::Entity { id: 9000, classname: "info_overlay_transition".to_owned(), ..hp_vmf::Entity::default() };
+    e.set("origin", "0 0 64");
+    e.set("material", "overlays/shorewave001a");
+    e.set("sides", land);
+    e.set("sides2", water.to_string());
+    for (k, val) in transition_keys {
+        e.set(k, *val);
+    }
+    if let Some(block) = saved {
+        let text = block.replace("WATER_SIDE", &water.to_string());
+        e.extra_blocks.push(hp_kv::parse(&text).expect("block").children.remove(0));
+    }
+    map.entities.push(e);
+    let mut log = Vec::new();
+    let out = hp_bspc::compile(&map, &GameMats, &hp_bspc::props::NoModels, &CompileOptions::default(), &mut |l| {
+        log.push(l.to_owned())
+    })
+    .unwrap_or_else(|e| panic!("compile failed: {e}"));
+    (Lumps::from_bytes(&out.bsp), log, out.bsp)
+}
+
+fn f32s(b: &[u8], at: usize, n: usize) -> Vec<f32> {
+    (0..n).map(|k| f32::from_le_bytes(b[at + k * 4..at + k * 4 + 4].try_into().unwrap())).collect()
+}
+
+#[test]
+fn an_overlay_transition_becomes_a_water_overlay_along_the_shore() {
+    let (lumps, log, _) = shoreline(
+        &[("Width1", "16"), ("Width2", "32"), ("LengthTexcoordStart", "0"), ("LengthTexcoordEnd", "4")],
+        None,
+    );
+    assert!(!log.iter().any(|l| l.starts_with("Warning") && l.contains("info_overlay_transition")), "{log:?}");
+    let raw = lumps.raw(50);
+    assert_eq!(raw.len(), 1120, "one water overlay");
+    assert!(lumps.raw(45).is_empty(), "no regular overlay");
+    assert!(lumps.entities().iter().all(|e| !e.iter().any(|(_, v)| v == "info_overlay_transition")));
+    let texinfo = i16::from_le_bytes([raw[4], raw[5]]);
+    let names = lumps.texdata_names();
+    let infos = lumps.texinfos();
+    assert_eq!(names[infos[texinfo as usize].texdata as usize].to_ascii_lowercase(), "overlays/shorewave001a");
+    let count = usize::from(u16::from_le_bytes([raw[6], raw[7]]) & 0x3fff);
+    assert!(count >= 1);
+    let faces = lumps.faces();
+    for k in 0..count {
+        let f = i32::from_le_bytes(raw[8 + k * 4..12 + k * 4].try_into().unwrap()) as usize;
+        let name = &names[infos[faces[f].texinfo as usize].texdata as usize];
+        assert!(name.to_ascii_lowercase().contains("water"), "face {f} is {name}");
+    }
+    assert_eq!(f32s(raw, 1032, 4), vec![0.0, 4.0, 0.0, 1.0]);
+    let uv = f32s(raw, 1048, 12);
+    assert_eq!(
+        [uv[0], uv[1], uv[3], uv[4], uv[6], uv[7], uv[9], uv[10]],
+        [-256.0, -16.0, -256.0, 32.0, 256.0, 32.0, 256.0, -16.0]
+    );
+    assert_eq!(
+        [uv[2], uv[5], uv[8], uv[11]],
+        [0.0, 1.0, 0.0, 0.0],
+        "U runs along the shore with the water (-x) on its left, so V = normal x U needs no flip"
+    );
+    assert_eq!(f32s(raw, 1096, 6), vec![0.0, 0.0, 64.0, 0.0, 0.0, 1.0]);
+}
+
+#[test]
+fn shoreline_strips_follow_each_other_without_flip() {
+    let (lumps, log, _) = shoreline_along(
+        &[(-256.0, -64.0), (-64.0, 128.0), (128.0, 256.0)],
+        &[("LengthTexcoordStart", "0"), ("LengthTexcoordEnd", "8")],
+        None,
+    );
+    assert!(!log.iter().any(|l| l.starts_with("Warning") && l.contains("overlay")), "{log:?}");
+    let raw = lumps.raw(50);
+    assert_eq!(raw.len(), 3 * 1120, "one water overlay per shore face");
+    let strips: Vec<(Vec<f32>, Vec<f32>, Vec<f32>)> =
+        raw.chunks(1120).map(|r| (f32s(r, 1032, 2), f32s(r, 1048, 12), f32s(r, 1096, 3))).collect();
+    let mut y_end = -256.0;
+    let mut u_end = 0.0;
+    for (u, uv, origin) in &strips {
+        assert_eq!([uv[2], uv[5], uv[8], uv[11]], [0.0, 1.0, 0.0, 0.0], "upright, never flipped");
+        let half = uv[6];
+        assert_eq!(uv[0], -half);
+        assert_eq!(origin[1] - half, y_end, "each strip starts where the previous one ends");
+        assert_eq!(u[0], u_end, "the texture runs on without a seam");
+        y_end = origin[1] + half;
+        u_end = u[1];
+        assert!((u[1] - u[0] - 8.0 * (2.0 * half) / 512.0).abs() < 1e-5, "{u:?}");
+    }
+    assert_eq!((y_end, u_end), (256.0, 8.0));
+}
+
+#[test]
+fn a_saved_overlay_transition_block_is_compiled_as_written() {
+    let block = "overlaytransition
+{
+	overlaydata
+	{
+		\"material\" \"overlays/shorewave002a\"
+		\"StartU\" \"0.25\"
+		\"EndU\" \"0.75\"
+		\"StartV\" \"0\"
+		\"EndV\" \"1\"
+		\"BasisOrigin\" \"-64 0 64\"
+		\"BasisU\" \"0 1 0\"
+		\"BasisV\" \"-1 0 0\"
+		\"BasisNormal\" \"0 0 1\"
+		\"uv0\" \"-32 -8 0\"
+		\"uv1\" \"-32 8 0\"
+		\"uv2\" \"32 8 0\"
+		\"uv3\" \"32 -8 0\"
+		\"sides\" \"WATER_SIDE\"
+	}
+}
+";
+    let (lumps, _, bytes) = shoreline(&[("sides", "")], Some(block));
+    let raw = lumps.raw(50);
+    assert_eq!(raw.len(), 1120);
+    assert_eq!(f32s(raw, 1032, 4), vec![0.25, 0.75, 0.0, 1.0]);
+    assert_eq!(f32s(raw, 1096, 6), vec![-64.0, 0.0, 64.0, 0.0, 0.0, 1.0]);
+    let uv = f32s(raw, 1048, 12);
+    assert_eq!([uv[2], uv[5], uv[8], uv[11]], [0.0, 1.0, 0.0, 0.0], "basis U, and V = normal x U needs no flip");
+    let decompiled = hp_decompile::decompile(&hp_bsp::Bsp::from_vec(bytes).unwrap(), &hp_decompile::Options::default())
+        .expect("decompile");
+    let t = decompiled.map.entities.iter().find(|e| e.classname == "info_overlay_transition").expect("transition back");
+    let data = &t.extra_blocks[0].children[0];
+    assert_eq!(data.get("BasisV"), Some("-1 0 0"));
+    assert_eq!(data.get("material").map(str::to_ascii_lowercase).as_deref(), Some("overlays/shorewave002a"));
+    assert!(!data.get("sides").unwrap_or("").is_empty());
+    let mut again = decompiled.map.clone();
+    let text = hp_vmf::write(&again);
+    again = hp_vmf::parse(&text).expect("the decompiled VMF parses");
+    let out = hp_bspc::compile(&again, &GameMats, &hp_bspc::props::NoModels, &CompileOptions::default(), &mut |_| {})
+        .expect("the decompiled map compiles");
+    let back = Lumps::from_bytes(&out.bsp);
+    assert_eq!(back.raw(50).len(), 1120);
+    assert_eq!(f32s(back.raw(50), 1032, 4), vec![0.25, 0.75, 0.0, 1.0]);
+    assert_eq!(f32s(back.raw(50), 1048, 12), uv);
+}
+
+#[test]
+fn a_saved_mirrored_strip_is_written_upright() {
+    let block = "overlaytransition
+{
+	overlaydata
+	{
+		\"material\" \"overlays/shorewave002a\"
+		\"StartU\" \"0.25\"
+		\"EndU\" \"0.75\"
+		\"StartV\" \"0\"
+		\"EndV\" \"1\"
+		\"BasisOrigin\" \"-64 0 64\"
+		\"BasisU\" \"0 -1 0\"
+		\"BasisV\" \"-1 0 0\"
+		\"BasisNormal\" \"0 0 1\"
+		\"uv0\" \"-32 -8 0\"
+		\"uv1\" \"-32 16 0\"
+		\"uv2\" \"48 16 0\"
+		\"uv3\" \"48 -8 0\"
+		\"sides\" \"WATER_SIDE\"
+	}
+}
+";
+    let (lumps, _, _) = shoreline(&[("sides", "")], Some(block));
+    let raw = lumps.raw(50);
+    assert_eq!(raw.len(), 1120);
+    assert_eq!(f32s(raw, 1032, 4), vec![0.75, 0.25, 0.0, 1.0], "U is swapped with the mirrored axis");
+    assert_eq!(
+        f32s(raw, 1048, 12),
+        vec![-48.0, -8.0, 0.0, -48.0, 16.0, 1.0, 32.0, 16.0, 0.0, 32.0, -8.0, 0.0],
+        "the same corners and texture coordinates on an upright basis, flip 0"
+    );
+    let bare = block.replace("\t\t\"BasisU\" \"0 -1 0\"\n", "");
+    let (lumps, log, _) = shoreline(&[("sides", "")], Some(&bare));
+    assert!(lumps.raw(50).is_empty(), "the game refuses a water overlay without axes");
+    assert!(log.iter().any(|l| l.starts_with("Warning: water overlay") && l.contains("no basis")), "{log:?}");
+}
+
+#[test]
+fn a_mirrored_overlay_keeps_its_basis_through_a_decompile() {
+    let m = small_room();
+    let mut map = hp_vmf::parse(&m.text()).expect("the VMF parses");
+    let floor = map
+        .world
+        .solids
+        .iter()
+        .flat_map(|s| s.sides.iter())
+        .find(|s| s.plane.iter().all(|p| p.z == 0.0))
+        .map(|s| s.id)
+        .expect("floor");
+    let floor = floor.to_string();
+    let mut e = hp_vmf::Entity { id: 9100, classname: "info_overlay".to_owned(), ..hp_vmf::Entity::default() };
+    for (k, val) in [
+        ("material", "overlays/ep2_graffiti01"),
+        ("sides", floor.as_str()),
+        ("BasisOrigin", "0 0 0"),
+        ("BasisU", "1 0 0"),
+        ("BasisV", "0 -1 0"),
+        ("BasisNormal", "0 0 1"),
+        ("uv0", "-32 -16 0"),
+        ("uv1", "-32 16 0"),
+        ("uv2", "32 16 0"),
+        ("uv3", "32 -16 0"),
+        ("StartU", "0"),
+        ("EndU", "1"),
+        ("StartV", "0"),
+        ("EndV", "1"),
+        ("origin", "0 0 0"),
+    ] {
+        e.set(k, val);
+    }
+    map.entities.push(e);
+    let out = hp_bspc::compile(&map, &GameMats, &hp_bspc::props::NoModels, &CompileOptions::default(), &mut |_| {})
+        .expect("compile");
+    let d = hp_decompile::decompile(&hp_bsp::Bsp::from_vec(out.bsp).unwrap(), &hp_decompile::Options::default())
+        .expect("decompile");
+    let o = d.map.entities.iter().find(|e| e.classname == "info_overlay").expect("overlay");
+    assert_eq!(o.get("BasisU"), Some("1 0 0"));
+    assert_eq!(o.get("BasisV"), Some("0 -1 0"), "the mirrored V axis comes back");
+    assert_eq!(o.get("BasisNormal"), Some("0 0 1"));
+}
+
+#[test]
+fn occluder_and_viscluster_volumes_come_back_as_their_entities() {
+    let mut m = small_room();
+    m.brush_entity(
+        "func_occluder",
+        &[("StartActive", "1")],
+        vec![block(v(-32.0, -128.0, 0.0), v(32.0, 128.0, 128.0), "tools/toolsoccluder")],
+    );
+    m.brush_entity(
+        "func_viscluster",
+        &[],
+        vec![block(v(64.0, 64.0, 0.0), v(192.0, 192.0, 128.0), "tools/toolstrigger")],
+    );
+    let map = hp_vmf::parse(&m.text()).expect("the VMF parses");
+    let out = hp_bspc::compile(&map, &GameMats, &hp_bspc::props::NoModels, &CompileOptions::default(), &mut |_| {})
+        .expect("compile");
+    let first = Lumps::from_bytes(&out.bsp);
+    let d = hp_decompile::decompile(&hp_bsp::Bsp::from_vec(out.bsp).unwrap(), &hp_decompile::Options::default())
+        .expect("decompile");
+    assert_eq!(d.report.visclusters, 1);
+    assert_eq!(d.report.unused_brushes, 1, "the occluder volume");
+    assert_eq!(d.report.occluders, 1);
+    let class =
+        |c: &str| d.map.entities.iter().filter(|e| e.classname == c).map(|e| e.solids.len()).collect::<Vec<_>>();
+    assert_eq!(class("func_viscluster"), vec![1]);
+    assert_eq!(class("func_occluder"), vec![1]);
+    assert!(
+        d.map.world.solids.iter().all(|s| s.sides.iter().all(|x| !x
+            .material
+            .to_ascii_lowercase()
+            .starts_with("tools/toolstrigger")
+            && !x.material.to_ascii_lowercase().starts_with("tools/toolsareaportal"))),
+        "no leftover volume in the world"
+    );
+    let again = hp_vmf::parse(&hp_vmf::write(&d.map)).expect("the decompiled VMF parses");
+    let out = hp_bspc::compile(&again, &GameMats, &hp_bspc::props::NoModels, &CompileOptions::default(), &mut |_| {})
+        .expect("the decompiled map compiles");
+    let back = Lumps::from_bytes(&out.bsp);
+    assert_eq!(back.brushes().len(), first.brushes().len());
+    assert_eq!(
+        back.brushes().iter().filter(|b| b.contents == 1).count(),
+        first.brushes().iter().filter(|b| b.contents == 1).count()
+    );
+}
+
+#[test]
+fn decompiled_coplanar_slopes_keep_one_plane() {
+    let mut m = small_room();
+    let ramp = |x0: f64, x1: f64| {
+        common::convex(
+            &[
+                [v(x0, -64.0, 0.0), v(x0, 64.0, 0.0), v(x0, 64.0, 45.0)],
+                [v(x1, 64.0, 0.0), v(x1, -64.0, 0.0), v(x1, -64.0, 45.0)],
+                [v(x0, -64.0, 0.0), v(x1, -64.0, 0.0), v(x1, -64.0, 45.0)],
+                [v(x1, 64.0, 0.0), v(x0, 64.0, 0.0), v(x0, 64.0, 45.0)],
+                [v(x0, -64.0, 0.0), v(x0, 64.0, 0.0), v(x1, 64.0, 0.0)],
+                [v(-128.0, -64.0, 5.0), v(-128.0, 64.0, 5.0), v(127.0, 64.0, 40.0)],
+            ],
+            v((x0 + x1) * 0.5, 0.0, 2.0),
+            WALL,
+        )
+    };
+    m.world.push(ramp(-128.0, -21.0));
+    m.world.push(ramp(-21.0, 128.0));
+    let map = hp_vmf::parse(&m.text()).expect("the VMF parses");
+    let out = hp_bspc::compile(&map, &GameMats, &hp_bspc::props::NoModels, &CompileOptions::default(), &mut |_| {})
+        .expect("compile");
+    let first = Lumps::from_bytes(&out.bsp);
+    let d = hp_decompile::decompile(&hp_bsp::Bsp::from_vec(out.bsp).unwrap(), &hp_decompile::Options::default())
+        .expect("decompile");
+    let slopes: Vec<(glam::DVec3, f64)> = d
+        .map
+        .world
+        .solids
+        .iter()
+        .flat_map(|s| s.sides.iter())
+        .map(|s| (s.normal(), s.plane_distance()))
+        .filter(|(n, _)| n.z > 0.1 && n.z < 0.999)
+        .collect();
+    assert_eq!(slopes.len(), 2, "{slopes:?}");
+    assert!((slopes[0].0 - slopes[1].0).length() < 1e-9 && (slopes[0].1 - slopes[1].1).abs() < 1e-9, "{slopes:?}");
+    let again = hp_vmf::parse(&hp_vmf::write(&d.map)).expect("the decompiled VMF parses");
+    let out = hp_bspc::compile(&again, &GameMats, &hp_bspc::props::NoModels, &CompileOptions::default(), &mut |_| {})
+        .expect("the decompiled map compiles");
+    assert_eq!(Lumps::from_bytes(&out.bsp).faces().len(), first.faces().len());
+}
+
 fn detail_and_water() -> Vmf {
     let mut m = small_room();
     m.brush_entity("func_detail", &[], vec![block(v(-64.0, -64.0, 0.0), v(0.0, 0.0, 64.0), WALL)]);

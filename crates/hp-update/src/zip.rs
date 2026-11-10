@@ -103,7 +103,10 @@ impl<R: Read + Seek> Archive<R> {
     }
 
     pub fn find_file(&self, file_name: &str) -> Option<&Entry> {
-        self.entries.iter().find(|e| !e.is_dir() && e.file_name().eq_ignore_ascii_case(file_name))
+        self.entries
+            .iter()
+            .filter(|e| !e.is_dir() && e.file_name().eq_ignore_ascii_case(file_name))
+            .min_by_key(|e| e.name.matches(['/', '\\']).count())
     }
 
     pub fn extract_to(&mut self, entry: &Entry, dest: &Path, max_size: u64) -> Result<u64, UpdateError> {

@@ -6,6 +6,14 @@ use super::surface::LitFace;
 use crate::emit::lump;
 use crate::materials::surf;
 
+pub(crate) fn pow2(k: i32) -> f32 {
+    if (-126..=127).contains(&k) { f32::from_bits(((k + 127) as u32) << 23) } else { 2f32.powi(k) }
+}
+
+fn pow2_f64(k: i32) -> f64 {
+    if (-1022..=1023).contains(&k) { f64::from_bits(((k + 1023) as u64) << 52) } else { 2f64.powi(k) }
+}
+
 pub(crate) fn encode(v: Vec3A) -> [u8; 4] {
     let clean = |c: f32| if c.is_finite() { c.max(0.0) } else { 0.0 };
     let (x, y, z) = (clean(v.x), clean(v.y), clean(v.z));
@@ -21,7 +29,7 @@ pub(crate) fn encode(v: Vec3A) -> [u8; 4] {
     }
     let biased = ((max.to_bits() & 0x7F80_0000) >> 23) as i32;
     let exponent = if biased == 0 { -128 } else { (biased - 134).clamp(-128, 127) };
-    let scalar = 2f64.powi(-exponent);
+    let scalar = pow2_f64(-exponent);
     let m = |c: f32| (f64::from(c) * scalar).clamp(0.0, 255.0) as u8;
     [m(x), m(y), m(z), exponent as i8 as u8]
 }
@@ -82,7 +90,8 @@ pub(crate) fn lighting(faces: &[LitFace], lights: &[FaceLight], layout: &Layout,
             let ofs = slots * 4;
             for slot in 0..slots {
                 let flat = l.index(pass, slot, 0, lux);
-                let vals: Vec<Vec3A> = l.values[flat..flat + lux].iter().map(|v| finish(*v, f.minlight)).collect();
+                let vals: Vec<Vec3A> =
+                    l.values[flat..flat + lux].iter().map(|v| finish(Vec3A::from(*v), f.minlight)).collect();
                 let at = ofs - 4 * (slot + 1);
                 out[at..at + 4].copy_from_slice(&encode(median(&vals)));
                 for n in 0..l.normals {
@@ -90,7 +99,7 @@ pub(crate) fn lighting(faces: &[LitFace], lights: &[FaceLight], layout: &Layout,
                     let dst = ofs + ((slot * l.normals + n) * lux) * 4;
                     for i in 0..lux {
                         out[dst + i * 4..dst + i * 4 + 4]
-                            .copy_from_slice(&encode(finish(l.values[src + i], f.minlight)));
+                            .copy_from_slice(&encode(finish(Vec3A::from(l.values[src + i]), f.minlight)));
                     }
                 }
             }
@@ -272,6 +281,14 @@ pub fn check_lighting(bytes: &[u8]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn powers_of_two_are_exact() {
+        for k in -200..200 {
+            assert_eq!(pow2(k).to_bits(), 2f32.powi(k).to_bits(), "{k}");
+            assert_eq!(pow2_f64(k).to_bits(), 2f64.powi(k).to_bits(), "{k}");
+        }
+    }
 
     #[test]
     fn rgbe_like_vrad() {

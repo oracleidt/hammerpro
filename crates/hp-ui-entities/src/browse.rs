@@ -10,12 +10,16 @@ pub(crate) struct Sources {
     key: Option<(u64, u64)>,
     pub table: SourceTable,
     labels: HashMap<u32, String>,
+    badges: HashMap<u32, String>,
+    badge_lang: Option<hp_app::i18n::Lang>,
+    missing: String,
 }
 
 impl Sources {
     pub fn refresh(&mut self, assets: &dyn AssetsApi) {
         let key = (assets.generation(), assets.fs().map_or(0, |f| f.generation()));
-        if self.key == Some(key) {
+        let lang = hp_app::i18n::lang();
+        if self.key == Some(key) && self.badge_lang == Some(lang) {
             return;
         }
         self.key = Some(key);
@@ -28,6 +32,17 @@ impl Sources {
                 }
             }
             None => self.table = SourceTable::default(),
+        }
+        self.badge_lang = Some(lang);
+        self.missing = t!("entities.badge_missing").to_owned();
+        let ids: Vec<u32> = self.labels.keys().copied().collect();
+        self.badges = ids.into_iter().map(|id| (id, self.badge_text(Some(id)))).collect();
+    }
+
+    pub fn badge_str(&self, source: Option<u32>) -> &str {
+        match source {
+            None => self.missing.as_str(),
+            Some(s) => self.badges.get(&s).map_or("", String::as_str),
         }
     }
 

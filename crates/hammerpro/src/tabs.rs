@@ -452,6 +452,7 @@ impl HammerProApp {
     }
 
     pub(crate) fn process_close_queue(&mut self) {
+        self.apply_finished_saves(true);
         while self.pending.is_none() {
             let Some(id) = self.close_queue.pop_front() else {
                 if let Some(keep) = self.close_keep.take() {

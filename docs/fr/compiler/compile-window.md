@@ -19,6 +19,8 @@ La ligne **Jeu cible** en haut indique pour quel jeu est la map ouverte (retenu 
 
 ## Paramètres
 
+Chaque ligne a son libellé à gauche, aligné avec les autres, et ses options à droite. Quand la fenêtre est étroite ou les libellés plus longs (français, russe), une ligne continue sur la ligne suivante au lieu de couper ses options, et les étapes gardent chaque libellé à côté de sa liste. Survolez une option pour lire ce qu'elle fait.
+
 | Option | Effet | Par défaut |
 |---|---|---|
 | **Compilateur** | Le compilateur du jeu de la map : **Hammer Pro (intégré)**, les outils de Valve trouvés à côté du jeu, ou l'un des vôtres. **Modifier les compilateurs...** ouvre l'onglet **Compilateurs**. Avec un autre compilateur, la fenêtre affiche **Compilé par ...** : le préréglage, les modes et la plage dynamique deviennent ses options, et les menus d'options, les arguments supplémentaires et la recompilation intelligente (qui appartiennent au compilateur de Hammer Pro) sont grisés. Voir [Choisir un compilateur](compilers.md). | Hammer Pro (intégré) |
@@ -35,8 +37,8 @@ La ligne **Jeu cible** en haut indique pour quel jeu est la map ouverte (retenu 
 | **Avant : Enregistrer d'abord la map** | Enregistre aussi votre travail. La compilation utilise une copie et n'a jamais besoin d'enregistrer. | désactivée |
 | **Avant : Compiler les objets masqués** | Comme dans Hammer, les objets masqués dans l'éditeur (visgroups, Masquer) sont exclus sauf si cette case est cochée. Les lumières masquées donnent un avertissement. | désactivée |
 | **Avant : Compiler quand même les maps qui fuient** | Décoché : la compilation s'arrête juste après la géométrie quand la map fuit (`-leaktest`). | désactivée |
-| **Contenu : Empaqueter le contenu personnalisé** | Intègre au BSP les matériaux et modèles personnalisés de la map, selon une règle : **Versions finales uniquement** (compilations Final et sorties) ou **Toujours**. | activée, Versions finales uniquement |
-| **Contenu : Addon de développement** | Les compilations qui n'empaquettent pas copient vos matériaux personnalisés dans `garrysmod/addons/hammerpro_dev`, que le jeu charge (redémarrez le jeu une fois après la première copie). Contient aussi le script de `point_hammerpro_skybox`. | activée |
+| **Contenu : Empaqueter le contenu personnalisé** | Intègre au BSP les matériaux, modèles, sons, fichiers de particules (avec le manifeste `maps/<map>_particles.txt` dont le jeu a besoin pour les charger), les scripts de soundscapes et de sons propres à la map, le ciel, les textures projetées et les autres fichiers personnalisés de la map, selon une règle : **Versions finales uniquement** (compilations Final et sorties) ou **Toujours**. | activée, Versions finales uniquement |
+| **Contenu : Addon de développement** | Les compilations qui n'empaquettent pas copient le même contenu personnalisé (matériaux, modèles, sons, fichiers de particules avec leur manifeste, scripts de la map) dans `garrysmod/addons/hammerpro_dev`, que le jeu charge (redémarrez le jeu une fois après la première copie). Contient aussi le script de `point_hammerpro_skybox`. | activée |
 | **Contenu : Exporter les matériaux personnalisés** | Copie aussi les matériaux utilisés de vos dossiers de textures personnalisés dans le dossier du jeu. Inutile pour compiler : le compilateur les voit toujours. | désactivée |
 | **Après : Copier dans le dossier maps** | Copie le BSP dans `garrysmod/maps` (ou le **Dossier des maps** de la section Avancé). | activée |
 | **Après : Lancer le jeu** | Lance le jeu sur la map. **Via Steam** l'ouvre avec un lien `steam://` au lieu de l'exécutable du jeu. | activée, désactivée |

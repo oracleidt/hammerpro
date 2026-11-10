@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
+use hp_collab::moderation::AccessPolicy;
 use hp_collab::transport::{HostOptions, JoinOptions};
-use hp_collab::{Command, ConnectionMode, Event, Invitation, Presence, Room, Session, Snapshot};
+use hp_collab::{Change, Command, ConnectionMode, Event, Invitation, Presence, Room, Session, Snapshot};
 use zeroize::Zeroizing;
 
 #[derive(Default)]
@@ -21,6 +22,19 @@ struct Observed {
     received: u64,
     direct_addresses: Vec<std::net::SocketAddr>,
     privacy_samples: usize,
+    pending: BTreeMap<u64, Vec<Change>>,
+    progress: u64,
+}
+
+fn edit(
+    sessions: &[Session],
+    observed: &mut BTreeMap<usize, Observed>,
+    index: usize,
+    sequence: u64,
+    changes: Vec<Change>,
+) {
+    observed.entry(index).or_default().pending.insert(sequence, changes.clone());
+    sessions[index].send(Command::Edit { sequence, changes }).unwrap();
 }
 
 fn pump(sessions: &[Session], observed: &mut BTreeMap<usize, Observed>) {
@@ -28,24 +42,35 @@ fn pump(sessions: &[Session], observed: &mut BTreeMap<usize, Observed>) {
         let state = observed.entry(index).or_default();
         while let Ok(event) = session.events.try_recv() {
             match event {
-                Event::Reset { map, .. } => state.map = Some(map),
+                Event::Reset { map, .. } | Event::Resync { map, .. } => state.map = Some(map.into_snapshot()),
                 Event::Ready { invitation, participant, id_start, map, direct_addresses, .. } => {
                     state.ready = true;
                     state.participant = participant;
                     state.id_start = id_start;
                     state.invitation = invitation;
-                    state.map = Some(map);
+                    state.map = Some(map.into_snapshot());
                     state.direct_addresses = direct_addresses;
                 }
-                Event::Applied { changes, .. } => state.map.as_mut().unwrap().apply(&changes).unwrap(),
-                Event::Rejected { map, .. } => {
-                    state.rejected += 1;
-                    state.map = Some(map);
+                Event::Applied { author, sequence, mut changes, .. } => {
+                    let own = if author == state.participant { state.pending.remove(&sequence) } else { None };
+                    if changes.is_empty() {
+                        changes = own.expect("acknowledged changes");
+                    }
+                    let map = state.map.as_mut().unwrap();
+                    hp_collab::document::expand_changes(&mut changes, map).unwrap();
+                    map.apply(&changes).unwrap();
                 }
+                Event::Rejected { sequence, .. } => {
+                    state.rejected += 1;
+                    state.pending.remove(&sequence);
+                }
+                Event::JoinProgress { units, .. } => state.progress = units,
                 Event::Participants(rows) => state.participants = rows.len(),
                 Event::Bans(rows) => state.bans = rows.len(),
                 Event::Invitation(invitation) => state.invitation = Some(invitation),
                 Event::Error(error) => state.errors.push(error),
+                Event::Denied(refused) => state.errors.push(refused.to_string()),
+                Event::Access(_) | Event::Waiting => {}
                 Event::Closed => state.closed = true,
                 Event::Traffic { sent, received } => {
                     state.sent = sent;
@@ -137,7 +162,12 @@ fn five_participants_over_public_relay_edits_locks_moderation_rotation_and_revoc
         map.clone(),
         "Host".into(),
         Zeroizing::new(password.into()),
-        HostOptions { room: Room { name: "Five Mapper Test".into() }, mode: ConnectionMode::Relay, port: 0 },
+        HostOptions {
+            room: Room { name: "Five Mapper Test".into() },
+            mode: ConnectionMode::Relay,
+            port: 0,
+            policy: AccessPolicy::default(),
+        },
     )
     .unwrap();
     let mut sessions = vec![host];
@@ -159,6 +189,7 @@ fn five_participants_over_public_relay_edits_locks_moderation_rotation_and_revoc
             position: [64.0, 32.0, 16.0],
             direction: [1.0, 0.0, 0.0],
             selected: vec!["entity:2".into()],
+            ..Presence::default()
         }))
         .unwrap();
     let wait = Instant::now();
@@ -168,12 +199,12 @@ fn five_participants_over_public_relay_edits_locks_moderation_rotation_and_revoc
     }
     let mut changed = map.clone();
     changed.0.get_mut("entity:2").unwrap().vmf = changed.0["entity:2"].vmf.replace("0 0 0", "64 0 0");
-    sessions[2].send(Command::Edit { sequence: 1, changes: map.diff(&changed) }).unwrap();
+    edit(&sessions, &mut observed, 2, 1, map.diff(&changed));
     until(&sessions, &mut observed, "selection lock enforced", |rows| {
         rows.get(&2).is_some_and(|row| row.rejected == 1)
     });
     let start = Instant::now();
-    sessions[1].send(Command::Edit { sequence: 1, changes: map.diff(&changed) }).unwrap();
+    edit(&sessions, &mut observed, 1, 1, map.diff(&changed));
     until(&sessions, &mut observed, "all maps converge", |rows| {
         (0..5).all(|index| rows.get(&index).and_then(|row| row.map.as_ref()) == Some(&changed))
     });
@@ -182,8 +213,8 @@ fn five_participants_over_public_relay_edits_locks_moderation_rotation_and_revoc
     let displacement = add_box(&changed, observed[&2].id_start, true);
     let changes_a = changed.diff(&brush);
     let changes_b = changed.diff(&displacement);
-    sessions[1].send(Command::Edit { sequence: 2, changes: changes_a.clone() }).unwrap();
-    sessions[2].send(Command::Edit { sequence: 2, changes: changes_b.clone() }).unwrap();
+    edit(&sessions, &mut observed, 1, 2, changes_a.clone());
+    edit(&sessions, &mut observed, 2, 2, changes_b.clone());
     changed.apply(&changes_a).unwrap();
     changed.apply(&changes_b).unwrap();
     until(&sessions, &mut observed, "simultaneous brush and displacement creations converge", |rows| {
@@ -265,7 +296,12 @@ fn direct_connection_uses_explicit_address_and_same_authenticated_protocol() {
         map.clone(),
         "Host".into(),
         Zeroizing::new("local-test-password".into()),
-        HostOptions { room: Room { name: "Local".into() }, mode: ConnectionMode::Direct, port: 0 },
+        HostOptions {
+            room: Room { name: "Local".into() },
+            mode: ConnectionMode::Direct,
+            port: 0,
+            policy: AccessPolicy::default(),
+        },
     )
     .unwrap();
     let mut sessions = vec![host];
@@ -295,6 +331,59 @@ fn direct_connection_uses_explicit_address_and_same_authenticated_protocol() {
 }
 
 #[test]
+fn a_participant_rejoining_from_the_same_installation_replaces_its_stale_connection_and_keeps_its_range() {
+    let map = Snapshot::from_vmf("world {\"id\" \"1\" \"classname\" \"worldspawn\"}").unwrap();
+    let host = Session::host(
+        map,
+        "Host".into(),
+        Zeroizing::new("rejoin-test-password".into()),
+        HostOptions {
+            room: Room { name: "Rejoin".into() },
+            mode: ConnectionMode::Direct,
+            port: 0,
+            policy: AccessPolicy::default(),
+        },
+    )
+    .unwrap();
+    let mut sessions = vec![host];
+    let mut observed = BTreeMap::<usize, Observed>::new();
+    until(&sessions, &mut observed, "host ready", |rows| rows.get(&0).is_some_and(|row| row.ready));
+    let invitation = observed[&0].invitation.clone().unwrap();
+    let port = observed[&0].direct_addresses.iter().find(|address| address.is_ipv4()).unwrap().port();
+    let join = |key: [u8; 32]| {
+        Session::join(
+            Invitation::decode(&invitation).unwrap(),
+            "Guest".into(),
+            Zeroizing::new("rejoin-test-password".into()),
+            JoinOptions {
+                identity: Zeroizing::new(key),
+                session_name: "Rejoin".into(),
+                direct_address: Some(([127, 0, 0, 1], port).into()),
+            },
+        )
+        .unwrap()
+    };
+    sessions.push(join([31; 32]));
+    until(&sessions, &mut observed, "first connection ready", |rows| rows.get(&1).is_some_and(|row| row.ready));
+    let first_range = observed[&1].id_start;
+    sessions.push(join([31; 32]));
+    until(&sessions, &mut observed, "second connection from the same installation", |rows| {
+        rows.get(&2).is_some_and(|row| row.ready) && rows.get(&1).is_some_and(|row| row.closed)
+    });
+    assert_eq!(observed[&2].id_start, first_range, "the rejoining installation keeps its identifier range");
+    assert_ne!(observed[&2].participant, observed[&1].participant);
+    sessions.push(join([32; 32]));
+    until(&sessions, &mut observed, "another installation with the same nickname", |rows| {
+        rows.get(&3).is_some_and(|row| row.closed)
+    });
+    assert!(!observed[&3].ready, "a different installation cannot take a nickname in use");
+    assert!(observed[&3].errors.iter().any(|error| error.contains("Nickname already in use")));
+    until(&sessions, &mut observed, "participants after rejoin", |rows| {
+        rows.get(&0).is_some_and(|row| row.participants == 2)
+    });
+}
+
+#[test]
 #[ignore = "allocates and transfers an 84 MiB map"]
 fn large_map_can_be_hosted_transferred_and_restored_above_the_previous_limits() {
     let payload = "x".repeat(16_384);
@@ -313,7 +402,12 @@ fn large_map_can_be_hosted_transferred_and_restored_above_the_previous_limits() 
         map.clone(),
         "Host".into(),
         Zeroizing::new("large-map-password".into()),
-        HostOptions { room: Room { name: "Large map".into() }, mode: ConnectionMode::Direct, port: 0 },
+        HostOptions {
+            room: Room { name: "Large map".into() },
+            mode: ConnectionMode::Direct,
+            port: 0,
+            policy: AccessPolicy::default(),
+        },
     )
     .unwrap();
     let mut sessions = vec![host];
@@ -336,6 +430,7 @@ fn large_map_can_be_hosted_transferred_and_restored_above_the_previous_limits() 
     );
     until(&sessions, &mut observed, "large map transferred", |rows| rows.get(&1).is_some_and(|row| row.ready));
     assert_eq!(observed[&1].map.as_ref(), Some(&map));
+    assert_eq!(observed[&1].progress, map.0.len() as u64);
     let root = std::env::temp_dir().join(format!("hp-collab-large-snapshot-{}", std::process::id()));
     let store = hp_collab::snapshots::SnapshotStore::new(root.clone());
     let saved = store.save(&map, "Large map", 0).unwrap();

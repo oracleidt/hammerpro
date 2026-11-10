@@ -409,6 +409,7 @@ pub struct CompileDialog {
     stats: stats_ui::StatsView,
     native: native_window::NativeWindow,
     os_builder: Option<egui::ViewportBuilder>,
+    form: Option<((hp_app::i18n::Lang, u32), crate::util::Form)>,
 }
 
 impl CompileDialog {
