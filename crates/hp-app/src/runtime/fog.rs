@@ -409,18 +409,18 @@ pub const TR: TrTable = &[
     ),
     (
         "fog.controller_previewed",
-        "The 3D view previews this fog (View > Fog preview)",
-        "La vue 3D affiche ce brouillard (Affichage > Aperçu du brouillard)",
+        "The 3D view previews this fog (View > Environment preview > Previewed fog controller)",
+        "La vue 3D affiche ce brouillard (Affichage > Aperçu de l'environnement > Contrôleur de brouillard prévisualisé)",
     ),
     (
         "fog.controller_other",
-        "The 3D view previews another env_fog_controller (View > Fog preview)",
-        "La vue 3D affiche un autre env_fog_controller (Affichage > Aperçu du brouillard)",
+        "The 3D view previews another env_fog_controller (View > Environment preview > Previewed fog controller)",
+        "La vue 3D affiche un autre env_fog_controller (Affichage > Aperçu de l'environnement > Contrôleur de brouillard prévisualisé)",
     ),
     (
         "fog.controller_preview_off",
-        "Fog preview is off (View > Fog preview)",
-        "L'aperçu du brouillard est désactivé (Affichage > Aperçu du brouillard)",
+        "Fog preview is off (View > Environment preview > Fog preview)",
+        "L'aperçu du brouillard est désactivé (Affichage > Aperçu de l'environnement > Aperçu du brouillard)",
     ),
     ("fog.controller_users", "Used by {0} fog_volume", "Utilisé par {0} fog_volume"),
     (

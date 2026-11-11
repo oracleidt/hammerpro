@@ -32,7 +32,7 @@ impl SettingsPage for InstancesPage {
         let mut changed = false;
         let s = &mut state.settings.instances;
         heading(ui, t!("shell.instances.display"));
-        ui.horizontal(|ui| {
+        hp_app::widgets::choice_row(ui, |ui| {
             for (value, key) in [
                 (InstanceDisplay::Hidden, "shell.instances.hidden"),
                 (InstanceDisplay::Tinted, "shell.instances.tinted"),
@@ -50,7 +50,7 @@ impl SettingsPage for InstancesPage {
             .on_hover_text(t!("shell.instances.context_tip"))
             .changed();
         heading(ui, t!("shell.instances.create"));
-        egui::Grid::new("hp_shell_instances_create").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
+        super::form_grid(ui, "hp_shell_instances_create").show(ui, |ui| {
             ui.label(t!("shell.instances.folder"));
             let r = ui
                 .add(egui::TextEdit::singleline(&mut s.folder).desired_width(260.0))

@@ -53,7 +53,7 @@ pub fn submenu_actions(group: MenuGroup) -> Vec<Action> {
 }
 
 pub fn submenu_title(group: MenuGroup) -> &'static str {
-    group.info().and_then(|g| g.submenu).unwrap_or("menu.view")
+    group.title().unwrap_or("menu.view")
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

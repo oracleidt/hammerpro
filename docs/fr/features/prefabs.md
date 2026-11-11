@@ -9,8 +9,8 @@ Un prefab est un morceau de map enregistré dans un fichier VMF (un escalier, un
 | Action | Menu | Raccourci par défaut |
 | --- | --- | --- |
 | Onglet Prefabs | **Affichage > Panneaux > Prefabs** | aucun |
-| **Créer un prefab...** | **Outils > Créer un prefab...** | `Ctrl+R` |
-| **Insérer le prefab à sa taille d'origine** | **Outils > Insérer le prefab à sa taille d'origine** | `Alt+Maj+C` |
+| **Créer un prefab...** | **Outils > Placement et props > Créer un prefab...** | `Ctrl+R` |
+| **Insérer le prefab à sa taille d'origine** | **Outils > Placement et props > Insérer le prefab à sa taille d'origine** | `Alt+Maj+C` |
 
 ## La bibliothèque
 

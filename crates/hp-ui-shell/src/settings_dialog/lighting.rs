@@ -48,7 +48,7 @@ impl SettingsPage for LightingPage {
             .checkbox(&mut s.prepare, t!("shell.lighting.prepare"))
             .on_hover_text(t!("shell.lighting.prepare_tip"))
             .changed();
-        egui::Grid::new("hp_shell_lighting").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
+        super::form_grid(ui, "hp_shell_lighting").show(ui, |ui| {
             ui.label(t!("shell.lighting.threads"));
             changed |= ui
                 .add(egui::DragValue::new(&mut s.threads).range(0..=LightingSettings::MAX_THREADS))
@@ -76,7 +76,7 @@ impl SettingsPage for LightingPage {
         });
         heading(ui, t!("shell.lighting.budget_heading"));
         changed |= ui.checkbox(&mut s.show_budget, t!("shell.lighting.show_budget")).changed();
-        egui::Grid::new("hp_shell_lighting_budget").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
+        super::form_grid(ui, "hp_shell_lighting_budget").show(ui, |ui| {
             ui.label(t!("shell.lighting.tiny_scale"));
             changed |= ui
                 .add(egui::DragValue::new(&mut s.tiny_scale).range(1..=64))

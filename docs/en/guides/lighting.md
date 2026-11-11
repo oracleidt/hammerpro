@@ -15,7 +15,7 @@ Place light entities with the entity tool:
 | `light_environment` | The sun and the sky light, through the faces with the sky texture. One per map. |
 | `light_dynamic` | A light computed by the game at run time (not baked). |
 
-Texture lights (materials that emit light, listed in `lights.rad`) also light the map at compile time. The color and brightness of a light are its `_light` key: select the light and press `C` (**Edit > Edit color...**) to pick the color.
+Texture lights (materials that emit light, listed in `lights.rad`) also light the map at compile time. The color and brightness of a light are its `_light` key: select the light and press `C` (**Edit > Display colors > Edit color...**) to pick the color.
 
 ## Step 2: real time preview (Lit mode)
 
@@ -43,7 +43,7 @@ The lightmap scale of a face is its number of units per luxel: lower is finer li
 
 ## Step 5: compile with LDR and HDR
 
-In **File > Compile and run...** (`Ctrl+F9`), the **Dynamic range** row sets what the lighting computes:
+In **File > Compile > Compile and run...** (`Ctrl+F9`), the **Dynamic range** row sets what the lighting computes:
 
 | Choice | Effect |
 |---|---|

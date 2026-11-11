@@ -12,7 +12,7 @@ This guide makes a piece of terrain: turn brush faces into displacements, sculpt
 ## Step 2: create the displacements
 
 1. Select the brushes (or only the faces you want with the texture tool).
-2. Press `Shift+P` (**Tools > Displacement tool**). The **Tool** panel of the right dock shows the displacement options.
+2. Press `Shift+P` (**Tools > Active tool > Displacement tool**). The **Tool** panel of the right dock shows the displacement options.
 3. In the **Create** section, the line under it tells what is used: the selected faces, or the top faces of the selected solids. Only 4 sided faces can become displacements.
 4. Click a **Power** button: **2** (5 x 5 vertices), **3** (9 x 9) or **4** (17 x 17). Power 3 is a good start; use 4 for detailed ground.
 
@@ -59,12 +59,12 @@ The **Sculpt** mode shapes the ground from where it was when the stroke started:
 
 In the **Tools** section of the panel:
 
-- **Add noise**: a random height between a minimum and a maximum on every vertex (also **Tools > Add noise to displacements...**).
+- **Add noise**: a random height between a minimum and a maximum on every vertex (also **Tools > Displacements > Add noise to displacements...**).
 - **Subdivide**: smooths the selected displacements as one surface, then sews them.
 - **Scale**: multiplies the heights (a negative factor turns them over).
 - **Cast shadows**, **Lightmap scale** and the collision flags (**No hull collision**, **No physics collision**, **No ray collision**) apply to the selected displacements.
 
-Check where players can walk with **View > Display options > Displacement walkability**, and paint the **Tags** mode (walkable, buildable, removed) where the slope gives the wrong answer.
+Check where players can walk with **View > Diagnostics > Displacement walkability**, and paint the **Tags** mode (walkable, buildable, removed) where the slope gives the wrong answer.
 
 ## FAQ
 

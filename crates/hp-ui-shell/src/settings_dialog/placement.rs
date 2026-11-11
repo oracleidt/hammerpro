@@ -184,8 +184,8 @@ pub(crate) const TR: TrTable = &[
     ("shell.placement.library", "Library folder:", "Dossier de la bibliothèque :"),
     (
         "shell.placement.library_tip",
-        "New prefabs are saved here (Tools > Create prefab)",
-        "Les nouveaux prefabs sont enregistrés ici (Outils > Créer un prefab)",
+        "New prefabs are saved here (Tools > Placement and props > Create prefab)",
+        "Les nouveaux prefabs sont enregistrés ici (Outils > Placement et props > Créer un prefab)",
     ),
     ("shell.placement.browse", "Browse...", "Parcourir..."),
     ("shell.placement.default", "Use the default folder", "Utiliser le dossier par défaut"),

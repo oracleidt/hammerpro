@@ -3,12 +3,12 @@ use crate::i18n::TrTable;
 use crate::state::AppState;
 
 action_list! { startup_actions {
-    ExportCopy => "export_copy", File, FileImport, None, Ready;
-    ExportAgain => "export_again", File, FileImport, sc(ALT, Key::B), Ready;
-    ExportObj => "export_obj", File, FileImport, None, Ready;
-    ReloadContent => "reload_content", Tools, ToolsContent, None, Ready;
-    RebuildContentIndex => "rebuild_content_index", Tools, ToolsContent, None, Ready;
-    CheckForUpdates => "check_for_updates", Help, HelpDocs, None, Ready;
+    ExportCopy => "export_copy", File, FileExport, None, Ready;
+    ExportAgain => "export_again", File, FileExport, sc(ALT, Key::B), Ready;
+    ExportObj => "export_obj", File, FileExport, None, Ready;
+    ReloadContent => "reload_content", Tools, ToolsContentIndex, None, Ready;
+    RebuildContentIndex => "rebuild_content_index", Tools, ToolsContentIndex, None, Ready;
+    CheckForUpdates => "check_for_updates", Help, HelpSupport, None, Ready;
     InstallUpdate => "install_update", Help, Hidden, None, Ready;
 }}
 

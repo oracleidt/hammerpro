@@ -12,7 +12,7 @@ Ce guide emmène une map de l'éditeur jusqu'à Garry's Mod : la compiler avec l
 
 ## Étape 1 : compiler avec F9
 
-1. Appuyez sur `F9` (**Fichier > Compiler maintenant**). La map est compilée tout de suite avec les derniers réglages, sans ouvrir de fenêtre. La barre d'état affiche la progression.
+1. Appuyez sur `F9` (**Fichier > Compiler > Compiler maintenant**). La map est compilée tout de suite avec les derniers réglages, sans ouvrir de fenêtre. La barre d'état affiche la progression.
 2. La compilation travaille sur une copie de la map écrite dans `.hammerpro_build\` à côté d'elle : votre `.vmf` n'est jamais enregistré ni modifié par une compilation.
 3. Avec les réglages par défaut, le BSP est copié dans `garrysmod\maps` et Garry's Mod démarre sur la map avec `-console -dev`.
 
@@ -20,7 +20,7 @@ Si la map n'a jamais été enregistrée, Hammer Pro vous demande d'abord où l'e
 
 ## Étape 2 : la fenêtre Compiler et lancer
 
-Appuyez sur `Ctrl+F9` (**Fichier > Compiler et lancer...**) pour choisir les réglages. La fenêtre s'ouvre à part (**Fenêtre séparée**).
+Appuyez sur `Ctrl+F9` (**Fichier > Compiler > Compiler et lancer...**) pour choisir les réglages. La fenêtre s'ouvre à part (**Fenêtre séparée**).
 
 1. **Jeu cible** : le jeu pour lequel la map est faite. Gardez Garry's Mod (voir [Porter une map vers un autre jeu](port-to-another-game.md) pour les autres).
 2. **Préréglage** :
@@ -50,7 +50,7 @@ Pour apparaître en jeu à l'endroit de votre caméra d'éditeur, installez l'ad
 
 - Gardez **Recompilation intelligente** activée (par défaut) : les compilations Brouillon et Normal ne relancent que ce qui a changé depuis la dernière compilation (entités seules, éclairage seul, props seuls, ou tout).
 - Utilisez **Brouillon** pendant la construction, **Normal** pour vérifier le rendu, **Final** pour publier.
-- **Fichier > Recharger la map dans le jeu** recharge la map dans le jeu déjà lancé.
+- **Fichier > Compiler > Recharger la map dans le jeu** recharge la map dans le jeu déjà lancé.
 - **Jouer tout de suite, finir l'éclairage ensuite** : compile un Brouillon, lance le jeu, puis compile la qualité choisie en arrière-plan. Quand vous quittez la map en jeu, le BSP entièrement éclairé remplace la version rapide.
 - Contenu personnalisé (matériaux, modèles, sons, particules) : les compilations Brouillon et Normal ne l'intègrent pas au BSP. Avec **Addon de développement** activé (par défaut), il est copié dans `garrysmod\addons\hammerpro_dev` pour que la map s'affiche correctement en jeu. Redémarrez le jeu une fois après la première copie.
 

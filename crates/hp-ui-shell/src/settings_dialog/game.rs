@@ -438,6 +438,6 @@ fn scan_section(ui: &mut Ui, state: &mut AppState) {
             stats.last_walk_ms,
             drives.len()
         );
-        ui.label(RichText::new(line).small().weak());
+        ui.add(egui::Label::new(RichText::new(line).small().weak()).wrap());
     });
 }

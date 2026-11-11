@@ -240,6 +240,9 @@ impl Document {
             SelectOp::Toggle => objs.is_empty(),
         };
         if unchanged {
+            if matches!(op, SelectOp::Replace | SelectOp::Add) && !objs.is_empty() {
+                self.objects_selected_at = crate::document::next_revision();
+            }
             return;
         }
         let sel = self.sel_mut();
@@ -252,6 +255,7 @@ impl Document {
             SelectOp::Remove => remove_all(&mut sel.objects, &objs),
             SelectOp::Toggle => toggle_all(&mut sel.objects, objs),
         }
+        self.objects_selected_at = crate::document::next_revision();
         self.refresh_selection_step();
     }
 
@@ -282,6 +286,8 @@ impl Document {
         let sel = self.sel_mut();
         sel.objects.clear();
         sel.faces.clear();
+        self.objects_selected_at = crate::document::next_revision();
+        self.faces_selected_at = self.objects_selected_at;
         self.refresh_selection_step();
     }
 
@@ -307,6 +313,7 @@ impl Document {
         let sel = self.sel_mut();
         sel.faces.clear();
         sel.faces.extend(faces);
+        self.faces_selected_at = crate::document::next_revision();
         self.refresh_selection_step();
     }
 
@@ -374,6 +381,7 @@ impl Document {
         }
         if self.selection.faces != before {
             self.remember_faces(before.into_iter().collect());
+            self.faces_selected_at = crate::document::next_revision();
         }
         self.refresh_selection_step();
     }
@@ -382,6 +390,7 @@ impl Document {
         if !self.selection.faces.is_empty() {
             self.remember_faces(self.selection.faces.iter().copied().collect());
             self.sel_mut().faces.clear();
+            self.faces_selected_at = crate::document::next_revision();
             self.refresh_selection_step();
         }
     }
@@ -419,6 +428,65 @@ impl Document {
     pub fn selected_solid_ids(&self) -> Vec<Id> {
         let objs: Vec<ObjRef> = self.selection.objects.iter().copied().collect();
         self.scene.expand_solids(&objs)
+    }
+
+    pub fn faces_selected_last(&self) -> bool {
+        self.faces_selected_at >= self.objects_selected_at
+    }
+
+    pub fn disp_faces_of_solids(&self, ids: &[Id]) -> Vec<FaceRef> {
+        let mut out = Vec::new();
+        for id in ids {
+            let Some(n) = self.scene.solids.get(id) else { continue };
+            for (i, s) in n.solid.sides.iter().enumerate() {
+                if s.disp.is_some() {
+                    out.push(FaceRef::new(*id, i));
+                }
+            }
+        }
+        out
+    }
+
+    pub fn selected_disp_faces_only(&self) -> Vec<FaceRef> {
+        self.selection
+            .faces
+            .iter()
+            .copied()
+            .filter(|f| {
+                self.scene
+                    .solids
+                    .get(&f.solid)
+                    .and_then(|n| n.solid.sides.get(f.side))
+                    .is_some_and(|s| s.disp.is_some())
+            })
+            .collect()
+    }
+
+    pub fn selected_object_disp_faces(&self) -> Vec<FaceRef> {
+        self.disp_faces_of_solids(&self.selected_solid_ids())
+    }
+
+    pub fn object_disp_targets_win(&self) -> bool {
+        !self.faces_selected_last() && !self.selected_object_disp_faces().is_empty()
+    }
+
+    pub fn selected_disp_targets(&self) -> Vec<FaceRef> {
+        if self.object_disp_targets_win() { self.selected_object_disp_faces() } else { self.selected_disp_faces_only() }
+    }
+
+    pub fn group_disp_faces(&self, solid: Id) -> Vec<FaceRef> {
+        let Some(g) = self.scene.object_group(self.scene.object_of_solid(solid)) else {
+            return self.disp_faces_of_solids(&[solid]);
+        };
+        let members = self.scene.group_members(self.scene.group_root(g));
+        let ids: Vec<Id> = self
+            .scene
+            .expand_solids(&members)
+            .into_iter()
+            .filter(|id| *id == solid || self.is_solid_visible(*id))
+            .collect();
+        let out = self.disp_faces_of_solids(&ids);
+        if out.is_empty() { self.disp_faces_of_solids(&[solid]) } else { out }
     }
 
     pub fn selected_entity_ids(&self) -> Vec<Id> {

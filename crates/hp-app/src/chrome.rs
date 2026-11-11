@@ -756,7 +756,9 @@ impl<'open> Window<'open> {
         }
         let closable = open.is_some();
         let mut close = false;
+        let mut content = None;
         let response = inner.show(ctx, |ui| {
+            content = Some(ui.unique_id());
             let galley =
                 title.clone().into_galley(ui, Some(egui::TextWrapMode::Extend), f32::INFINITY, egui::TextStyle::Body);
             let close_w = if closable { FLOATING_CLOSE.x + 8.0 } else { 0.0 };
@@ -774,6 +776,9 @@ impl<'open> Window<'open> {
             close = floating_title_row(ui, row, galley, closable);
             r
         });
+        if let (Some(r), Some(content)) = (&response, content) {
+            crate::dialog_keys::window_shown(ctx, r.response.layer_id, content);
+        }
         if close && let Some(open) = open {
             *open = false;
         }

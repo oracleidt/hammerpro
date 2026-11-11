@@ -6,7 +6,7 @@ Tools to work with compiled maps and archives: decompile a BSP back into an edit
 
 ## BSP Decompiler
 
-**File > BSP Decompiler...** asks for a `.bsp` and rebuilds an editable map from it, in the spirit of BSPSource. The work runs in the background (*Decompiling map...*) and the result opens in a new tab (*map decompiled in N ms (brushes: N, entities: N). Save it as a VMF to keep it.*).
+**File > Import > BSP Decompiler...** asks for a `.bsp` and rebuilds an editable map from it, in the spirit of BSPSource. The work runs in the background (*Decompiling map...*) and the result opens in a new tab (*map decompiled in N ms (brushes: N, entities: N). Save it as a VMF to keep it.*).
 
 What comes back:
 
@@ -23,7 +23,7 @@ The BSP Decompiler works on a `.bsp` file you already have. To recover a map fro
 
 ## Open an archive (pack inspector)
 
-**File > Open archive...** opens the **Pack inspector** window on a `.bsp`, `.gma` or `.vpk` (**Open...** in the window picks another one). Dropping one of these files on the Hammer Pro window opens it there too.
+**File > Import > Open archive...** opens the **Pack inspector** window on a `.bsp`, `.gma` or `.vpk` (**Open...** in the window picks another one). Dropping one of these files on the Hammer Pro window opens it there too.
 
 The header shows what the archive is: for a BSP its **Version**, **Revision**, number of **Entities**, **Pakfile** size and **Compressed lumps**; for a GMA its **Title**, **Type**, **Tags** and **Version**; for a VPK its **Version**.
 
@@ -42,7 +42,7 @@ Select an entry to preview it: text files (VMT, TXT, Lua, RES, CFG, JSON, VMF, R
 
 ## Export OBJ
 
-**File > Export OBJ...** writes the brush and displacement geometry of the map with texture coordinates to an `.obj` file and its `.mtl` material library next to it, for 3D tools (Blender, a model viewer...). Faces with `tools/` textures are left out. To round trip a selection with Blender and get it back in the map, use the [Blender link](blender.md) instead. Coordinates are turned from Source's Z up to the Y up most 3D tools expect. Texture sizes come from the game content when known (512 otherwise). Files are written atomically.
+**File > Export > Export OBJ...** writes the brush and displacement geometry of the map with texture coordinates to an `.obj` file and its `.mtl` material library next to it, for 3D tools (Blender, a model viewer...). Faces with `tools/` textures are left out. To round trip a selection with Blender and get it back in the map, use the [Blender link](blender.md) instead. Coordinates are turned from Source's Z up to the Y up most 3D tools expect. Texture sizes come from the game content when known (512 otherwise). Files are written atomically.
 
 ## Compare two maps
 

@@ -23,8 +23,8 @@ When a compile finds a leak, the compiler writes a pointfile (`<map>.lin`). With
 
 | Command | What it does |
 | --- | --- |
-| **Map > Load leak pointfile...** | Loads `<map>.lin`, else `<map>.pts`, next to the map or in its build folder (`.hammerpro_build`). Without one, asks for a file (filter **Leak pointfile**, `.lin` and `.pts`). |
-| **Map > Unload pointfile** | Removes the path from the views. |
+| **Map > Leaks and visibility > Load leak pointfile...** | Loads `<map>.lin`, else `<map>.pts`, next to the map or in its build folder (`.hammerpro_build`). Without one, asks for a file (filter **Leak pointfile**, `.lin` and `.pts`). |
+| **Map > Leaks and visibility > Unload pointfile** | Removes the path from the views. |
 | Drop a `.lin` or `.pts` file on the window | Loads it. |
 
 A loaded pointfile replaces the path of the instant check in the views. When the leaking entity is deleted, the path is unloaded (*The leaking entity is gone: leak path unloaded. Compile again to check the map is sealed.*).
@@ -49,11 +49,11 @@ A portal file (`<map>.prt`) holds the portals between the visibility clusters th
 
 | Command | Default key | What it does |
 | --- | --- | --- |
-| **Map > Load portal file...** | | Loads the `.prt` of the map (or asks for one). Dropping a `.prt` on the window works too. |
-| **Map > Unload portal file** | | Removes the portals. |
-| **Map > Build portals (geometry only)** | `Ctrl+Shift+P` | Builds only the geometry of the current map (seconds, into its build folder) and loads its portals: see the effect of hints and `func_detail` right away. |
-| **Map > Portals and visibility...** | | Opens the window below. |
-| **View > Show visible clusters** | | Colors the portals of the clusters visible from the camera (needs a map compiled with visibility). |
+| **Map > Leaks and visibility > Load portal file...** | | Loads the `.prt` of the map (or asks for one). Dropping a `.prt` on the window works too. |
+| **Map > Leaks and visibility > Unload portal file** | | Removes the portals. |
+| **Map > Leaks and visibility > Build portals (geometry only)** | `Ctrl+Shift+P` | Builds only the geometry of the current map (seconds, into its build folder) and loads its portals: see the effect of hints and `func_detail` right away. |
+| **Map > Leaks and visibility > Portals and visibility...** | | Opens the window below. |
+| **View > Diagnostics > Show visible clusters** | | Colors the portals of the clusters visible from the camera (needs a map compiled with visibility). |
 
 After a compile that wrote a new portal file, Hammer Pro offers it (*The compile wrote a new portal file.* **Load it** / **Not now**), unless you turned off **Offer the new portal file after a compile**. Portals already shown are reloaded automatically.
 
@@ -74,7 +74,7 @@ After a compile that wrote a new portal file, Hammer Pro offers it (*The compile
 
 ## Seal an opening with an areaportal
 
-Select a door (`func_door`, `func_door_rotating`, `prop_door_rotating`, `func_movelinear`, or a brush of one) and run **Map > Seal the opening with an areaportal**. Hammer Pro fits a `func_areaportal` brush to the doorway, links it to the door (the door gets the name `door_<id>` when it has none), makes it start open or closed like the door, and selects it. One undo step. Without a door selected you get *Select a door (func_door, prop_door_rotating...) to seal its doorway*.
+Select a door (`func_door`, `func_door_rotating`, `prop_door_rotating`, `func_movelinear`, or a brush of one) and run **Map > Leaks and visibility > Seal the opening with an areaportal**. Hammer Pro fits a `func_areaportal` brush to the doorway, links it to the door (the door gets the name `door_<id>` when it has none), makes it start open or closed like the door, and selects it. One undo step. Without a door selected you get *Select a door (func_door, prop_door_rotating...) to seal its doorway*.
 
 The areaportal checks of [Check for problems](check-problems.md) tell you when an areaportal and its door are out of step, cross water or an occluder, or have more than one brush.
 

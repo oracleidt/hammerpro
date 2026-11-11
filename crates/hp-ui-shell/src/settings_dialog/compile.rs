@@ -42,7 +42,7 @@ pub(super) fn page(ui: &mut Ui, state: &mut AppState, _jobs: &mut GameJobs) {
 
 fn defaults(ui: &mut Ui, c: &mut CompileSettings) {
     heading(ui, t!("shell.compile.defaults"));
-    egui::Grid::new("hp_shell_compile_defaults").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
+    super::form_grid(ui, "hp_shell_compile_defaults").show(ui, |ui| {
         ui.label(t!("shell.compile.preset"));
         ui.horizontal(|ui| {
             for p in [
@@ -109,7 +109,7 @@ fn hp_app_threads(low_priority: bool) -> u32 {
 fn speed(ui: &mut Ui, c: &mut CompileSettings, seal: &mut String) -> bool {
     let mut seal_changed = false;
     heading(ui, t!("shell.compile.speed"));
-    egui::Grid::new("hp_shell_compile_speed").num_columns(2).spacing([16.0, 6.0]).show(ui, |ui| {
+    super::form_grid(ui, "hp_shell_compile_speed").spacing([16.0, 6.0]).show(ui, |ui| {
         ui.label(t!("shell.compile.smart"));
         ui.checkbox(&mut c.smart_recompile, "").on_hover_text(t!("shell.compile.smart_tip"));
         ui.end_row();
@@ -167,7 +167,7 @@ fn speed(ui: &mut Ui, c: &mut CompileSettings, seal: &mut String) -> bool {
 
 fn after(ui: &mut Ui, c: &mut CompileSettings) {
     heading(ui, t!("shell.compile.after"));
-    egui::Grid::new("hp_shell_compile_after").num_columns(2).spacing([16.0, 6.0]).show(ui, |ui| {
+    super::form_grid(ui, "hp_shell_compile_after").spacing([16.0, 6.0]).show(ui, |ui| {
         for (value, key) in [
             (&mut c.save_before_compile, "shell.compile.save_before"),
             (&mut c.copy_to_maps, "shell.compile.copy_to_maps"),
@@ -189,7 +189,7 @@ fn after(ui: &mut Ui, c: &mut CompileSettings) {
         ui.end_row();
     });
     heading(ui, t!("shell.compile.extra_args"));
-    egui::Grid::new("hp_shell_compile_args").num_columns(2).spacing([16.0, 6.0]).show(ui, |ui| {
+    super::form_grid(ui, "hp_shell_compile_args").spacing([16.0, 6.0]).show(ui, |ui| {
         for (value, name, tip) in [
             (&mut c.extra_bsp_args, "shell.compile.step_bsp", "shell.compile.extra_bsp_tip"),
             (&mut c.extra_rad_args, "shell.compile.step_rad", "shell.compile.extra_rad_tip"),

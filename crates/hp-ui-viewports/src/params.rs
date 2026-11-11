@@ -510,6 +510,8 @@ mod tests {
     fn full_quality_changes_nothing_and_the_lower_modes_only_lower() {
         use hp_app::settings::PerformanceMode;
         let mut state = hp_app::testing::test_state();
+        assert!(!RenderConfig::from_state(&state).options_3d.cubemaps, "reflections are off by default");
+        state.settings.render.cubemaps = true;
         let full = RenderConfig::from_state(&state);
         assert!(full.plan.is_full() && full.render_scale == 1.0);
         assert!(full.msaa && full.options_3d.sun_glow && full.options_3d.normal_maps && full.options_3d.cubemaps);

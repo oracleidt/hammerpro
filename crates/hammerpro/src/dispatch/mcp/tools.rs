@@ -134,6 +134,7 @@ pub(crate) const DOMAINS: &[&Domain] = &[
     &super::tools_meshdisp::DOMAIN,
     &super::tools_instances::DOMAIN,
     &super::tools_entities::DOMAIN,
+    &super::tools_place::DOMAIN,
     &super::tools_assets::DOMAIN,
     &super::tools_compile::DOMAIN,
     &super::tools_compilers::DOMAIN,
@@ -722,9 +723,13 @@ fn get_vmf_text(state: &AppState, v: &Value) -> R<ToolResult> {
 }
 
 fn check_problems(state: &mut AppState, v: &Value) -> R<ToolResult> {
-    let a = args(v, &["limit"])?;
+    let a = args(v, &["limit", "category"])?;
     let limit = a.opt_u64("limit", 1, MAX_LIST)?.unwrap_or(100) as usize;
-    let (problems, _) = super::tools_health::current_problems(state);
+    let redundant = a.opt_enum("category", &["all", "redundant"])?.as_deref() == Some("redundant");
+    let (mut problems, _) = super::tools_health::current_problems(state);
+    if redundant {
+        problems.retain(|p| hp_editor::duplicates::CODES.contains(&p.code));
+    }
     let list: Vec<Value> = problems
         .iter()
         .take(limit)

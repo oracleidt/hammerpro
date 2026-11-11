@@ -38,9 +38,10 @@ Des messages en haut indiquent quand la map est en cours de vérification, quand
 | Ids et références | id d'objet en double, id de face en double, ids renumérotés au chargement, groupe manquant, visgroup manquant |
 | Entités | classe inconnue, cible manquante, cible de sortie manquante, entrée inconnue, entité dans un brush, entité hors limites, entité hors de la map (risque de fuite), entité de brush vide, entité unique en double, clé trop longue (31 et 1023 caractères), mauvais chemin de contenu (espaces ou caractères spéciaux), pas de point d'apparition, map vide |
 | Contenu | matériau manquant, modèle manquant, son manquant, système de particules manquant, mauvais nom de matériau |
-| Displacements et overlays | displacement cassé (face sans exactement 4 coins), displacement sur une entité de brush, faces d'overlay manquantes, overlay sur trop de faces (64 au maximum) |
+| Displacements et overlays | displacement cassé (face sans exactement 4 coins, ou puissance hors de 1 à 4, ou bloc dispinfo que Hammer Pro ne sait pas lire et garde tel quel pour Hammer, donc la brush compilée reste entière ; la correction le retire : le compilateur et le jeu suppriment toute la brush, donc la vue joueur la cache et la laisse traverser aussi), displacement sur une entité de brush, faces d'overlay manquantes, overlay sur trop de faces (64 au maximum) |
 | Éclairage et ciel | ciel sans soleil (faces de ciel mais pas de `light_environment`), trop de lumières nommées, plusieurs sky_camera, mauvaise échelle de sky_camera, changement de skybox sans sky_camera, skybox par joueur |
 | Areaportals | brushes d'areaportal (un seul permis), areaportal sans porte, areaportal et porte désaccordés, areaportal à travers l'eau, areaportal à travers un occluder |
+| Objets redondants | brush en double, brush dans un brush, entité empilée en double (voir [Objets redondants](#objets-redondants)) |
 | Limites et fuites | limite proche, limite dépassée (la compilation échouera), budget d'edicts, fuite, vérification des fuites incomplète, candidat func_detail |
 
 ### Corrections automatiques
@@ -61,12 +62,31 @@ Des messages en haut indiquent quand la map est en cours de vérification, quand
 | brush d'origine dans le monde | Supprimer les brushes d'origine du monde |
 | candidat func_detail | Les lier à un func_detail (une seule étape d'annulation) |
 | areaportal et porte désaccordés | Faire démarrer l'areaportal comme sa porte |
+| brush en double, brush dans un brush, entité empilée en double | Supprimer les copies redondantes et garder les originaux |
 
 Chaque correction est une étape d'annulation : `Ctrl+Z` remet la map comme avant.
 
+## Objets redondants
+
+Les vérifications trouvent aussi ce que vous avez fait deux fois par accident :
+
+| Problème | Ce qui est trouvé | Correction |
+| --- | --- | --- |
+| **brush en double** (avertissement) | Un brush copie exacte d'un autre brush de la même entité : mêmes sommets à 1/16 d'unité près, quels que soient l'ordre de ses faces et ses textures. Les copies de displacements doivent aussi avoir la même surface. Le monde compte comme une seule entité, de même que toutes les entités `func_detail` (elles sont fusionnées à la compilation). | Supprime les copies et garde le brush le plus ancien (plus petit id) |
+| **brush dans un brush** (information) | Un brush plein entièrement dans un autre brush plein de la même entité (tous deux en matériaux opaques, nodraw et ciel compris, ou tous deux de la même texture clip). Les brushes avec displacements, faces hint, skip, trigger, areaportal ou eau ne sont jamais signalés. | Supprime les brushes intérieurs |
+| **entité empilée en double** (avertissement) | Une entité ponctuelle sur une autre au même origin avec la même classe, le même modèle, skin, échelle, angles, nom, parent et sorties (les entités sans modèle doivent avoir tous leurs keyvalues égaux, deux lumières de couleurs différentes sont donc gardées), ou une entité de brush identique à une autre avec les mêmes brushes. | Supprime les copies et garde l'entité la plus ancienne |
+
+**Corriger** (ou **Tout corriger**) supprime les copies en une seule étape d'annulation, après avoir vérifié que chacune est toujours redondante. **Aller à** sélectionne les copies pour les regarder avant.
+
+La recherche calcule une seule fois l'empreinte des sommets arrondis et triés de chaque brush (gardée tant que le brush ne change pas) et cherche les brushes inclus dans d'autres avec une grille : elle reste rapide sur les grandes maps.
+
+**Avertissement immédiat** : quand un nouveau brush ou une nouvelle entité (créé, collé, dupliqué, cloné, fait par un outil MCP) est exactement sur un objet identique, un message le signale tout de suite, par exemple « Le brush 812 est une copie exacte du brush 640 au même endroit ». Le paramètre **Avertir quand un nouveau brush ou une nouvelle entité est une copie exacte d'un autre** (`health.warn_duplicates`, activé par défaut) le désactive.
+
+MCP : `check_problems` avec `category` `redundant` ne liste que ces problèmes, et `find_duplicate_brushes` liste chaque copie avec l'objet qu'elle double (`kinds` : `brushes`, `contained`, `entities`), avec `select` pour sélectionner les copies ou `delete` pour les supprimer en une seule étape d'annulation.
+
 ## Suggestions de func_detail
 
-**Map > Suggestions de func_detail...** liste les brushes du monde qui pourraient être des `func_detail` : brushes petits ou complexes, éloignés de l'enveloppe de la map, vérifiés pour que la map reste étanche. La visibilité ignore les brushes de détail, la map compile donc plus vite. Les suggestions viennent de la vérification instantanée des fuites : la map doit être étanche (*La map fuit : les suggestions demandent une map étanche*, avec **Afficher la fuite**).
+**Map > Fuites et visibilité > Suggestions de func_detail...** liste les brushes du monde qui pourraient être des `func_detail` : brushes petits ou complexes, éloignés de l'enveloppe de la map, vérifiés pour que la map reste étanche. La visibilité ignore les brushes de détail, la map compile donc plus vite. Les suggestions viennent de la vérification instantanée des fuites : la map doit être étanche (*La map fuit : les suggestions demandent une map étanche*, avec **Afficher la fuite**).
 
 Chaque ligne (**Solide N**, son nombre de faces, *petit* ou *complexe*) sélectionne le brush et centre les vues dessus. Utilisez **Tout cocher**, **Tout décocher**, **Sélectionner les cochés**, puis **Convertir N en func_detail** pour lier les brushes cochés à un `func_detail` en une seule étape d'annulation. Le bouton **Liste** du problème « candidat func_detail » ouvre la même fenêtre.
 
@@ -117,6 +137,7 @@ Les limites changent selon les versions de Source. **Limites de :** (dans la fen
 | **Chercher les fuites pendant l'édition** | activé |
 | **Tracer le chemin de la fuite trouvée** | activé |
 | **Vérifier les problèmes ne liste que les objets visibles** | désactivé |
+| **Avertir quand un nouveau brush ou une nouvelle entité est une copie exacte d'un autre** | activé |
 | **Limites de :** | Automatique |
 | Options des portails | voir [Fuites et pointfiles](leaks-pointfiles.md) |
 

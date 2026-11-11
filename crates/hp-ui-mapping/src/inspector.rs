@@ -599,7 +599,11 @@ impl Inspector {
             let r = egui::ScrollArea::vertical().id_salt("hp_inspector_entities").auto_shrink([false, false]).show(
                 ui,
                 |ui| {
-                    ui.add(egui::TextEdit::multiline(&mut self.entity_text).code_editor().desired_width(f32::INFINITY))
+                    let r = ui.add(
+                        egui::TextEdit::multiline(&mut self.entity_text).code_editor().desired_width(f32::INFINITY),
+                    );
+                    hp_app::dialog_keys::keep_tab_for(ui.ctx(), r.id);
+                    r
                 },
             );
             if r.inner.changed() {

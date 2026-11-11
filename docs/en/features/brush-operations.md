@@ -52,18 +52,18 @@ The thickness field has the keyboard focus when the window opens, so you can typ
 
 ## Merge brushes
 
-**Tools > Merge brushes** (`Ctrl+Shift+M`) joins the selected brushes into one brush, only when their union is already convex (Hammer++'s "Merge brushes"). Every face keeps the texture of the face it comes from.
+**Tools > Brush operations > Merge brushes** (`Ctrl+Shift+M`) joins the selected brushes into one brush, only when their union is already convex (Hammer++'s "Merge brushes"). Every face keeps the texture of the face it comes from.
 
 - If the union is not convex, nothing changes and a warning suggests **Merge into convex solid**. The check is exact up to 0.02 units: a step or a notch, even one unit deep, is never filled in.
 - The brushes must all be world brushes or all belong to the same entity, else the warning **The brushes must all be world brushes or belong to the same entity** shows.
 
 ## Merge into convex solid
 
-**Tools > Merge into convex solid** wraps the selected brushes in their convex hull, even when that adds volume. The result replaces the first brush (same id, owner and editor data) and the others are deleted.
+**Tools > Brush operations > Merge into convex solid** wraps the selected brushes in their convex hull, even when that adds volume. The result replaces the first brush (same id, owner and editor data) and the others are deleted.
 
 ## Intersect brushes
 
-**Tools > Intersect brushes** (`Ctrl+Shift+K`) keeps only the volume shared by all the selected brushes. The result is one convex brush that replaces the first selected brush (same id, owner and editor data); the others are deleted.
+**Tools > Brush operations > Intersect brushes** (`Ctrl+Shift+K`) keeps only the volume shared by all the selected brushes. The result is one convex brush that replaces the first selected brush (same id, owner and editor data); the others are deleted.
 
 - Faces that survive keep their texture. The new cut faces take the texture of the face that cut them, like Carve.
 - If the brushes do not overlap (touching is not enough), nothing changes and the warning **The brushes do not overlap: there is no shared volume to keep** shows.
@@ -71,7 +71,7 @@ The thickness field has the keyboard focus when the window opens, so you can typ
 
 ## Union of brushes
 
-**Tools > Union of brushes** joins the selected brushes into the fewest convex brushes that cover exactly their union, without adding any volume (unlike **Merge into convex solid**).
+**Tools > Brush operations > Union of brushes** joins the selected brushes into the fewest convex brushes that cover exactly their union, without adding any volume (unlike **Merge into convex solid**).
 
 1. Overlapping brushes are cut so that they no longer overlap, and the parts hidden inside another brush are removed.
 2. Touching neighbors are merged back into one brush whenever their union is convex (exactly, as for **Merge brushes**: a one unit step is kept).
@@ -85,13 +85,13 @@ So two overlapping boxes in line become one box, while an L shape stays two brus
 - With exactly one brush entity among the selection plus other brushes, those brushes are added to that entity, which keeps its class and keys.
 - With a single brush entity selected alone, its properties open.
 - Otherwise the selection is tied to a new brush entity of the **Default brush entity** class (setting `default_brush_entity`, default `func_detail`, in **Settings > Editing > New objects**), with the default keyvalues of that class from the FGD.
-- When the FGD class has an `origin` key (`func_tracktrain`, `func_tanktrain`, `func_rotating`, `func_door_rotating`...), the new entity gets it at the center of its brushes, like Hammer. The game moves and turns the entity around that point: a train puts it on its `path_track` nodes (raised by its `height` key). **Tools > Center origins** moves it back to the center later.
+- When the FGD class has an `origin` key (`func_tracktrain`, `func_tanktrain`, `func_rotating`, `func_door_rotating`...), the new entity gets it at the center of its brushes, like Hammer. The game moves and turns the entity around that point: a train puts it on its `path_track` nodes (raised by its `height` key). **Tools > Arrange > Center origins** moves it back to the center later.
 
 Brushes taken from other brush entities move to the entity, and brush entities left without brushes are deleted. The entity is selected and the **Entity properties** panel opens (see [Entity properties](entity-properties.md)).
 
 ## Tie each to its own entity
 
-**Tools > Tie each to its own entity** (`Ctrl+Shift+T`, Hammer++) puts every selected world brush into its own new entity of the default brush entity class. Brushes that already belong to an entity are left alone. The new entities are selected and the entity panel opens.
+**Tools > Brush operations > Tie each to its own entity** (`Ctrl+Shift+T`, Hammer++) puts every selected world brush into its own new entity of the default brush entity class. Brushes that already belong to an entity are left alone. The new entities are selected and the entity panel opens.
 
 ## Move to world
 
@@ -99,11 +99,11 @@ Brushes taken from other brush entities move to the entity, and brush entities l
 
 ## Convert to func_detail
 
-**Tools > Convert to func_detail** ties the selection to one new `func_detail`, whatever the default brush entity class is. If the selection is already a single `func_detail`, the notice **The selection is already a func_detail** shows. To find brushes worth converting, see **Map > func_detail suggestions...** in [Check for problems](check-problems.md).
+**Tools > Brush operations > Convert to func_detail** ties the selection to one new `func_detail`, whatever the default brush entity class is. If the selection is already a single `func_detail`, the notice **The selection is already a func_detail** shows. To find brushes worth converting, see **Map > Leaks and visibility > func_detail suggestions...** in [Check for problems](check-problems.md).
 
 ## Nodraw on hidden faces
 
-**Tools > Nodraw on hidden faces...** searches the whole map for brush faces entirely covered by other brushes, which can never be seen.
+**Tools > Brush operations > Nodraw on hidden faces...** searches the whole map for brush faces entirely covered by other brushes, which can never be seen.
 
 1. The search runs in the background (**Searching for hidden faces...** in the console).
 2. The faces found are selected and the [texture application tool](texture-tool.md) becomes active so you can check them in the views.

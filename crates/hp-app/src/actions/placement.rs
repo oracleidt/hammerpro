@@ -7,7 +7,7 @@ action_list! { placement_actions {
     CreatePrefab => "create_prefab", Tools, ToolsPlacement, sc(CTRL, Key::R), Ready;
     InsertOriginalPrefab => "insert_original_prefab", Tools, ToolsPlacement, sc(ALT_SHIFT, Key::C), Ready;
     ShowPrefabs => "show_prefabs", View, ViewPanels, None, Ready;
-    ScatterByMaterial => "scatter_by_material", Tools, ToolsPlacement, None, Ready;
+    ScatterByMaterial => "scatter_by_material", Tools, ToolsScatter, None, Ready;
 }}
 
 pub(super) const REPEATS: &[Action] = &[];

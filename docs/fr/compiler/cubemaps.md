@@ -37,7 +37,7 @@ Une cubemap compte comme construite quand son fichier diffère de la cubemap pro
 
 ## Les cubemaps dans les vues de l'éditeur
 
-- **Affichage > Options d'affichage > Reflets des cubemaps** : les matériaux avec `$envmap` reflètent leur cubemap dans la vue 3D (modes texturé, éclairé et précalculé) et la vue joueur. L'éditeur dessine une cubemap à chaque `env_cubemap` (le ciel s'il n'y en a aucun) ; chaque face prend l'`env_cubemap` le plus proche devant elle comme le compilateur, les props le plus proche. La vue joueur utilise les cubemaps construites en jeu quand la map compilée en a.
+- **Affichage > Aperçu de l'environnement > Reflets des cubemaps** : les matériaux avec `$envmap` reflètent leur cubemap dans la vue 3D (modes texturé, éclairé et précalculé) et la vue joueur. L'éditeur dessine une cubemap à chaque `env_cubemap` (le ciel s'il n'y en a aucun) ; chaque face prend l'`env_cubemap` le plus proche devant elle comme le compilateur, les props le plus proche. La vue joueur utilise les cubemaps construites en jeu quand la map compilée en a.
 - **Redessiner les cubemaps après les modifications** (`[render] cubemaps_auto`, activé par défaut) les redessine un instant après un changement de la map, de son éclairage ou du mode de la vue, quelques faces par image. Désactivé : seulement avec **Map > Éclairage > Reconstruire les cubemaps** (les `env_cubemap` nouveaux ou déplacés ont quand même la leur).
 
 Voir [Aperçu de l'éclairage](../features/lighting-preview.md) pour la partie aperçu.

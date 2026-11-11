@@ -6,7 +6,7 @@ A cordon is a named box that limits the part of the map you work on. While cordo
 
 ## Opening it
 
-- **Tools > Cordon tool** (or its button in the tool palette) draws and edits the boxes in the 2D views. It has no default shortcut: give it one in **Settings > Keyboard** (see [Keyboard shortcuts](keyboard-shortcuts.md)).
+- **Tools > Active tool > Cordon tool** (or its button in the tool palette) draws and edits the boxes in the 2D views. It has no default shortcut: give it one in **Settings > Keyboard** (see [Keyboard shortcuts](keyboard-shortcuts.md)).
 - **View > Use cordons** switches cordoning on or off for the whole map. The cordon button of the toolbar does the same.
 - The **Cordons** section of the **Visgroups** tab (right dock) lists every cordon of the map.
 - While cordons are in use, a red **Cordon** badge shows in the status bar. Its tooltip gives the number of boxes; a click stops using the cordons.

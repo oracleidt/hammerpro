@@ -6,6 +6,39 @@ use super::*;
 use crate::keys::{conflicts, is_customized};
 
 #[test]
+fn columns_shrink_on_small_screens() {
+    assert_eq!(label_column_for(900.0), LABEL_COLUMN);
+    assert_eq!(label_column_for(300.0), 140.0);
+    assert!((label_column_for(560.0) - 179.2).abs() < 1e-3);
+    assert_eq!(label_column_for(f32::INFINITY), LABEL_COLUMN);
+    assert_eq!(page_list_width(970.0), PAGE_LIST_WIDTH);
+    assert_eq!(page_list_width(700.0), 168.0);
+    assert!(page_list_width(780.0) < PAGE_LIST_WIDTH);
+    assert_eq!(page_list_width(f32::NAN), PAGE_LIST_WIDTH);
+    let mut state = hp_app::testing::test_state();
+    hp_app::testing::run_ui(&mut state, |ui, _| {
+        ui.allocate_ui(egui::vec2(300.0, 30.0), |ui| {
+            assert_eq!(field_width(ui, 320.0, 180.0), FIELD_MIN);
+        });
+        ui.allocate_ui(egui::vec2(1000.0, 30.0), |ui| {
+            assert_eq!(field_width(ui, 320.0, 180.0), 320.0);
+        });
+    });
+}
+
+#[test]
+fn input_page_is_listed_with_its_gestures() {
+    crate::register_translations();
+    let d = SettingsDialog::default();
+    let tabs = d.tabs();
+    assert!(tabs.iter().any(|t| t.id() == "input"), "{tabs:?}");
+    assert_eq!(page_section("input"), PageSection::Application);
+    for (gesture, desc) in TRACKPAD_GESTURES {
+        assert!(hp_app::i18n::has_key(gesture) && hp_app::i18n::has_key(desc), "{gesture} {desc}");
+    }
+}
+
+#[test]
 fn every_page_has_a_section() {
     let d = SettingsDialog::default();
     let tabs = d.tabs();

@@ -1,0 +1,15 @@
+[package]
+name = "hp-shape"
+description = "Exact shapes of models, brushes and displacements for precise placement: sweeps, contacts, overlaps, footprints, slices and drawings."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+glam.workspace = true
+hp-geom.workspace = true
+hp-mdl.workspace = true
+
+[dev-dependencies]
+hp-vpk = { path = "../hp-vpk" }

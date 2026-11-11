@@ -3,21 +3,21 @@ use crate::i18n::TrTable;
 use crate::state::AppState;
 
 action_list! { entities_actions {
-    CopyKeyvalues => "copy_keyvalues", Edit, EditClipboard, None, Ready;
-    PasteKeyvalues => "paste_keyvalues", Edit, EditClipboard, None, Ready;
+    CopyKeyvalues => "copy_keyvalues", Edit, EditProperties, None, Ready;
+    PasteKeyvalues => "paste_keyvalues", Edit, EditProperties, None, Ready;
     FindReplaceText => "find_replace_text", Edit, EditFind, sc(CTRL_ALT, Key::R), Ready;
-    EditColor => "edit_color", Edit, EditProperties, sc(NONE, Key::C), Ready;
-    SetDisplayColor => "set_display_color", Edit, EditProperties, None, Ready;
-    RandomDisplayColors => "random_display_colors", Edit, EditProperties, None, Ready;
-    ResetDisplayColors => "reset_display_colors", Edit, EditProperties, None, Ready;
-    EditSoundscapes => "edit_soundscapes", Map, MapInfo, None, Ready;
+    EditColor => "edit_color", Edit, EditColors, sc(NONE, Key::C), Ready;
+    SetDisplayColor => "set_display_color", Edit, EditColors, None, Ready;
+    RandomDisplayColors => "random_display_colors", Edit, EditColors, None, Ready;
+    ResetDisplayColors => "reset_display_colors", Edit, EditColors, None, Ready;
+    EditSoundscapes => "edit_soundscapes", Map, MapProperties, None, Ready;
     ShowSoundBrowser => "show_sound_browser", View, ViewPanels, None, Ready;
     ShowParticleBrowser => "show_particle_browser", View, ViewPanels, None, Ready;
     EntityHelp => "entity_help", Help, HelpDocs, None, Ready;
     SetMaxDistance => "set_max_distance", Edit, EditProperties, None, Ready;
     ToolPath => "tool_path", Tools, ToolsSwitch, None, Ready;
-    PathInsertPoint => "path_insert_point", Tools, ToolsPlacement, None, Ready;
-    PathRemovePoint => "path_remove_point", Tools, ToolsPlacement, None, Ready;
+    PathInsertPoint => "path_insert_point", Tools, ToolsPaths, None, Ready;
+    PathRemovePoint => "path_remove_point", Tools, ToolsPaths, None, Ready;
 }}
 
 pub(super) const REPEATS: &[Action] = &[];

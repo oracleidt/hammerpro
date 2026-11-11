@@ -4,6 +4,7 @@ mod changes;
 mod clipboard;
 mod collaboration;
 mod display_color;
+mod duplicates;
 mod fixes;
 mod history_patches;
 mod ops;

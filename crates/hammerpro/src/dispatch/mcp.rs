@@ -15,6 +15,10 @@ mod automation;
 mod describe;
 #[cfg(test)]
 mod harness;
+mod place_ops;
+#[cfg(test)]
+mod place_tests;
+mod place_world;
 mod schema;
 mod semantic;
 #[cfg(test)]
@@ -51,6 +55,8 @@ mod tools_overlays;
 mod tools_particles;
 mod tools_paths;
 mod tools_pipe;
+mod tools_place;
+pub(crate) use tools_place::mesh_drop;
 mod tools_road;
 mod tools_roadside;
 mod tools_settings;

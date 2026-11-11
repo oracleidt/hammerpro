@@ -52,18 +52,18 @@ Le champ d'épaisseur a le focus clavier à l'ouverture : tapez la valeur puis `
 
 ## Fusionner les brushes
 
-**Outils > Fusionner les brushes** (`Ctrl+Maj+M`) réunit les brushes sélectionnés en un seul, uniquement si leur union est déjà convexe (le « Merge brushes » de Hammer++). Chaque face garde la texture de la face dont elle vient.
+**Outils > Opérations sur les brushes > Fusionner les brushes** (`Ctrl+Maj+M`) réunit les brushes sélectionnés en un seul, uniquement si leur union est déjà convexe (le « Merge brushes » de Hammer++). Chaque face garde la texture de la face dont elle vient.
 
 - Si l'union n'est pas convexe, rien ne change et un avertissement propose **Fusionner en un solide convexe**. Le contrôle est exact à 0,02 unité près : une marche ou une encoche, même d'une seule unité, n'est jamais comblée.
 - Les brushes doivent tous être des brushes du monde ou appartenir à la même entité, sinon l'avertissement **Les brushes doivent tous être des brushes du monde ou appartenir à la même entité** s'affiche.
 
 ## Fusionner en un solide convexe
 
-**Outils > Fusionner en un solide convexe** enveloppe les brushes sélectionnés dans leur enveloppe convexe, même si cela ajoute du volume. Le résultat remplace le premier brush (même id, même propriétaire, mêmes données d'éditeur) et les autres sont supprimés.
+**Outils > Opérations sur les brushes > Fusionner en un solide convexe** enveloppe les brushes sélectionnés dans leur enveloppe convexe, même si cela ajoute du volume. Le résultat remplace le premier brush (même id, même propriétaire, mêmes données d'éditeur) et les autres sont supprimés.
 
 ## Intersection de brushes
 
-**Outils > Intersection de brushes** (`Ctrl+Maj+K`) ne garde que le volume commun à tous les brushes sélectionnés. Le résultat est un brush convexe qui remplace le premier brush sélectionné (même id, même propriétaire, mêmes données d'éditeur) ; les autres sont supprimés.
+**Outils > Opérations sur les brushes > Intersection de brushes** (`Ctrl+Maj+K`) ne garde que le volume commun à tous les brushes sélectionnés. Le résultat est un brush convexe qui remplace le premier brush sélectionné (même id, même propriétaire, mêmes données d'éditeur) ; les autres sont supprimés.
 
 - Les faces conservées gardent leur texture. Les nouvelles faces de coupe prennent la texture de la face qui les a coupées, comme Carve.
 - Si les brushes ne se chevauchent pas (un simple contact ne suffit pas), rien ne change et l'avertissement **Les brushes ne se chevauchent pas : il n'y a aucun volume commun à conserver** s'affiche.
@@ -71,7 +71,7 @@ Le champ d'épaisseur a le focus clavier à l'ouverture : tapez la valeur puis `
 
 ## Union de brushes
 
-**Outils > Union de brushes** réunit les brushes sélectionnés en le moins possible de brushes convexes qui couvrent exactement leur union, sans ajouter de volume (contrairement à **Fusionner en un solide convexe**).
+**Outils > Opérations sur les brushes > Union de brushes** réunit les brushes sélectionnés en le moins possible de brushes convexes qui couvrent exactement leur union, sans ajouter de volume (contrairement à **Fusionner en un solide convexe**).
 
 1. Les brushes qui se chevauchent sont découpés pour ne plus se recouvrir, et les parties cachées à l'intérieur d'un autre brush sont retirées.
 2. Les voisins en contact sont refusionnés en un seul brush dès que leur union est convexe (exactement, comme pour **Fusionner les brushes** : une marche d'une unité est conservée).
@@ -85,13 +85,13 @@ Deux boîtes qui se chevauchent dans l'axe donnent donc une seule boîte, tandis
 - Avec exactement une entité de brush dans la sélection plus d'autres brushes, ces brushes sont ajoutés à cette entité, qui garde sa classe et ses clés.
 - Avec une seule entité de brush sélectionnée, ses propriétés s'ouvrent.
 - Sinon, la sélection est liée à une nouvelle entité de brush de la classe **Entité de brush par défaut** (réglage `default_brush_entity`, `func_detail` par défaut, dans **Paramètres > Édition > Nouveaux objets**), avec les keyvalues par défaut de cette classe dans le FGD.
-- Quand la classe du FGD a une clé `origin` (`func_tracktrain`, `func_tanktrain`, `func_rotating`, `func_door_rotating`...), la nouvelle entité la reçoit au centre de ses brushes, comme dans Hammer. Le jeu déplace et tourne l'entité autour de ce point : un train le pose sur ses points `path_track` (relevé de sa clé `height`). **Outils > Centrer les origines** la remet au centre plus tard.
+- Quand la classe du FGD a une clé `origin` (`func_tracktrain`, `func_tanktrain`, `func_rotating`, `func_door_rotating`...), la nouvelle entité la reçoit au centre de ses brushes, comme dans Hammer. Le jeu déplace et tourne l'entité autour de ce point : un train le pose sur ses points `path_track` (relevé de sa clé `height`). **Outils > Disposer > Centrer les origines** la remet au centre plus tard.
 
 Les brushes pris à d'autres entités de brush passent dans l'entité, et les entités de brush qui n'ont plus de brush sont supprimées. L'entité est sélectionnée et le panneau **Propriétés de l'entité** s'ouvre (voir [Propriétés des entités](entity-properties.md)).
 
 ## Lier chacun à sa propre entité
 
-**Outils > Lier chacun à sa propre entité** (`Ctrl+Maj+T`, comme Hammer++) place chaque brush du monde sélectionné dans sa propre nouvelle entité, de la classe d'entité de brush par défaut. Les brushes qui appartiennent déjà à une entité ne sont pas touchés. Les nouvelles entités sont sélectionnées et le panneau d'entité s'ouvre.
+**Outils > Opérations sur les brushes > Lier chacun à sa propre entité** (`Ctrl+Maj+T`, comme Hammer++) place chaque brush du monde sélectionné dans sa propre nouvelle entité, de la classe d'entité de brush par défaut. Les brushes qui appartiennent déjà à une entité ne sont pas touchés. Les nouvelles entités sont sélectionnées et le panneau d'entité s'ouvre.
 
 ## Renvoyer au monde
 
@@ -99,11 +99,11 @@ Les brushes pris à d'autres entités de brush passent dans l'entité, et les en
 
 ## Convertir en func_detail
 
-**Outils > Convertir en func_detail** lie la sélection à un nouveau `func_detail`, quelle que soit la classe d'entité de brush par défaut. Si la sélection est déjà un seul `func_detail`, l'avis **La sélection est déjà un func_detail** s'affiche. Pour trouver les brushes à convertir, voyez **Map > Suggestions de func_detail...** dans [Vérifier les problèmes](check-problems.md).
+**Outils > Opérations sur les brushes > Convertir en func_detail** lie la sélection à un nouveau `func_detail`, quelle que soit la classe d'entité de brush par défaut. Si la sélection est déjà un seul `func_detail`, l'avis **La sélection est déjà un func_detail** s'affiche. Pour trouver les brushes à convertir, voyez **Map > Fuites et visibilité > Suggestions de func_detail...** dans [Vérifier les problèmes](check-problems.md).
 
 ## Nodraw sur les faces cachées
 
-**Outils > Nodraw sur les faces cachées...** cherche dans toute la map les faces de brush entièrement couvertes par d'autres brushes, qui ne peuvent jamais être vues.
+**Outils > Opérations sur les brushes > Nodraw sur les faces cachées...** cherche dans toute la map les faces de brush entièrement couvertes par d'autres brushes, qui ne peuvent jamais être vues.
 
 1. La recherche tourne en arrière-plan (**Recherche des faces cachées...** dans la console).
 2. Les faces trouvées sont sélectionnées et l'outil d'[application de texture](texture-tool.md) devient actif pour que vous puissiez les vérifier dans les vues.

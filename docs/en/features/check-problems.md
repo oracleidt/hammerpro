@@ -38,9 +38,10 @@ Messages at the top tell you when the map is being checked, when the leak check 
 | Ids and references | duplicate object id, duplicate face id, ids renumbered when the map was loaded, missing group, missing visgroup |
 | Entities | unknown class, missing target, missing output target, unknown input, entity in a brush, entity out of bounds, entity outside of the map (may leak), empty brush entity, duplicate unique entity, key too long (31 and 1023 characters), bad content path (spaces or special characters), no player spawn, empty map |
 | Content | missing material, missing model, missing sound, missing particle system, bad material name |
-| Displacements and overlays | broken displacement (face without exactly 4 corners), displacement on a brush entity, overlay faces missing, overlay on too many faces (64 at most) |
+| Displacements and overlays | broken displacement (face without exactly 4 corners, or a power outside 1 to 4, or a dispinfo block Hammer Pro cannot read and keeps as it is for Hammer, so the compiled brush stays whole; the fix removes it: the compiler and the game drop the whole brush, so the player view hides it and lets you walk through it too), displacement on a brush entity, overlay faces missing, overlay on too many faces (64 at most) |
 | Lighting and sky | sky without sun (sky faces but no `light_environment`), too many named lights, several sky cameras, bad sky camera scale, skybox switch without sky camera, per player skybox |
 | Areaportals | areaportal brushes (exactly one allowed), areaportal without a door, areaportal and door out of step, areaportal across water, areaportal across an occluder |
+| Redundant objects | duplicate brush, brush inside a brush, stacked duplicate entity (see [Redundant brushwork](#redundant-brushwork)) |
 | Limits and leaks | limit close, limit exceeded (the compile will fail), edict budget, leak, leak check incomplete, func_detail candidate |
 
 ### Automatic fixes
@@ -61,12 +62,31 @@ Messages at the top tell you when the map is being checked, when the leak check 
 | origin brush in the world | Delete the origin brushes of the world |
 | func_detail candidate | Tie them to one func_detail (one undo step) |
 | areaportal and door out of step | Start the areaportal like its door |
+| duplicate brush, brush inside a brush, stacked duplicate entity | Delete the redundant copies and keep the originals |
 
 Every fix is an undo step: `Ctrl+Z` brings the map back.
 
+## Redundant brushwork
+
+The checks also find what you made twice by accident:
+
+| Problem | What is found | Fix |
+| --- | --- | --- |
+| **duplicate brush** (warning) | A brush that is an exact copy of another brush of the same entity: same vertices within 1/16 unit, whatever the order of its faces and its textures. Displacement copies must also have the same surface. The world counts as one entity, and so do all the `func_detail` entities (they are merged when compiling). | Deletes the copies and keeps the oldest brush (lowest id) |
+| **brush inside a brush** (information) | A solid brush fully inside another solid brush of the same entity (both made of opaque materials, nodraw and sky included, or both of the same clip texture). Brushes with displacements, hint, skip, trigger, areaportal or water faces are never reported. | Deletes the inner brushes |
+| **stacked duplicate entity** (warning) | A point entity on another one at the same origin with the same class, model, skin, scale, angles, name, parent and outputs (entities without a model must have all their keyvalues equal, so two lights of different colors are kept), or a brush entity identical to another one with the same brushes. | Deletes the copies and keeps the oldest entity |
+
+**Fix** (or **Fix all**) deletes the copies in one undo step, checking again first that each one is still redundant. **Go to** selects the copies so you can look at them before.
+
+The search hashes the rounded sorted vertices of every brush once (the result is kept until the brush changes) and looks for brushes inside others with a grid, so it stays fast on big maps.
+
+**Live warning**: when a new brush or entity (created, pasted, duplicated, cloned, made by an MCP tool) lies exactly on an identical one, a message says so at once, for example "Brush 812 is an exact copy of brush 640 at the same place". The setting **Warn when a new brush or entity is an exact copy of another** (`health.warn_duplicates`, on by default) turns it off.
+
+MCP: `check_problems` with `category` `redundant` lists only these problems, and `find_duplicate_brushes` lists every copy with the object it duplicates (`kinds`: `brushes`, `contained`, `entities`), with `select` to select the copies or `delete` to delete them in one undo step.
+
 ## func_detail suggestions
 
-**Map > func_detail suggestions...** lists the world brushes that could be `func_detail`: small or complex brushes away from the hull of the map, verified to keep the map sealed. The visibility ignores detail brushes, so the map compiles faster. The suggestions come from the instant leak check, so the map must be sealed (*The map leaks: suggestions need a sealed map*, with **Show the leak**).
+**Map > Leaks and visibility > func_detail suggestions...** lists the world brushes that could be `func_detail`: small or complex brushes away from the hull of the map, verified to keep the map sealed. The visibility ignores detail brushes, so the map compiles faster. The suggestions come from the instant leak check, so the map must be sealed (*The map leaks: suggestions need a sealed map*, with **Show the leak**).
 
 Each row (**Solid N**, its number of faces, *small* or *complex*) selects the brush and centers the views on it. Use **Check all**, **Check none**, **Select checked**, and **Convert N to func_detail** to tie the checked brushes to one `func_detail` in one undo step. The **List** button of the "func_detail candidate" problem opens the same window.
 
@@ -117,6 +137,7 @@ Limits differ between Source builds. **Limits of:** (in the Map information wind
 | **Look for leaks as I edit** | on |
 | **Draw the path of the leak found** | on |
 | **Check for problems lists visible objects only** | off |
+| **Warn when a new brush or entity is an exact copy of another** | on |
 | **Limits of:** | Automatic |
 | Portal options | see [Leaks and pointfiles](leaks-pointfiles.md) |
 

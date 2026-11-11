@@ -3,8 +3,8 @@ use crate::i18n::TrTable;
 use crate::state::AppState;
 
 action_list! { launch_actions {
-    LaunchGame => "launch_game", File, FileRun, None, Ready;
-    ReloadInGame => "reload_in_game", File, FileRun, None, Ready;
+    LaunchGame => "launch_game", File, FileGame, None, Ready;
+    ReloadInGame => "reload_in_game", File, FileGame, None, Ready;
     ImportFromGame => "import_from_game", File, FileImport, None, Ready;
 }}
 

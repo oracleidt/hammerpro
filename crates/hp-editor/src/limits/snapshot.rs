@@ -98,6 +98,7 @@ pub struct SolidRec {
     pub volume: f64,
     pub bevels: u8,
     pub axial: bool,
+    pub shape: u64,
 }
 
 impl SolidRec {
@@ -192,6 +193,9 @@ fn solid_fingerprint(n: &SolidNode) -> u64 {
         }
     }
     h.write_usize(Arc::as_ptr(&n.geom) as usize);
+    for d in n.disp.iter().flatten() {
+        h.write_usize(Arc::as_ptr(d) as usize);
+    }
     h.finish()
 }
 
@@ -280,7 +284,10 @@ fn solid_draft(n: &SolidNode) -> Draft<'_> {
             }
         }
         let face = geom.face_for_side(i);
-        if s.disp.is_some() && face.is_none_or(|f| f.vertices.len() != 4) {
+        let bad_power = s.disp.as_ref().is_some_and(|d| !(1..=4).contains(&d.power));
+        if (s.disp.is_some() && (bad_power || face.is_none_or(|f| f.vertices.len() != 4)))
+            || crate::ops::disp::unreadable_disp(s)
+        {
             disp_bad.push(i as u16);
         }
         let name = normalize_material(&s.material);
@@ -330,6 +337,7 @@ fn solid_draft(n: &SolidNode) -> Draft<'_> {
         volume: if geom.valid { geom.volume() } else { 0.0 },
         bevels: if geom.valid { bevels } else { 0 },
         axial: geom.valid && axial,
+        shape: crate::duplicates::node_shape(n),
     };
     Draft { rec, materials }
 }

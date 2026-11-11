@@ -48,6 +48,8 @@
 | `press POS [button] [mods]` | Press a mouse button only: it stays down across the following commands (`idle`, `move`...). |
 | `release POS [button] [mods]` | Release a mouse button pressed with `press`. |
 | `scroll POS DY [mods]` | Mouse wheel. Positive DY zooms in or moves forward. `scroll @v1:0.5,0.5 1 ctrl` changes the grid size. |
+| `trackpad POS DX DY [mods]` | Two finger trackpad scroll of DX, DY points (pans a 2D view when the trackpad gestures are on, see [Trackpad](../features/trackpad.md)). |
+| `pinch POS FACTOR` | Trackpad pinch: a factor above 1 zooms in, below 1 zooms out. |
 
 ### Keyboard
 
@@ -119,7 +121,7 @@
 | `gizmo_mode` | `move`, `rotate` or `scale`. |
 | `gizmo_local` | on/off: the gizmo of a single point entity follows its angles (saved in the settings). |
 | `stretch_handles` | on/off: stretch arrows on the faces of the selected brushes in the 3D view (saved in the settings). |
-| `box_confirm` | on/off: a box drawn in a 2D view waits for Enter and can be resized and moved first (saved in the settings). |
+| `box_confirm` | on/off (off by default): a box drawn in a 2D view waits for Enter and can be resized and moved first (saved in the settings). |
 | `pending_box` | `none` or the waiting box; `x1 y1 x2 y2` draws one in a 2D view, `confirm`, `add` or `cancel` act on it. |
 
 ### Block tool (`tool block`)

@@ -52,7 +52,7 @@ Une disposition est l'arrangement des vues et des panneaux : la vue de chaque qu
 | --- | --- |
 | **Fenêtre > Disposition > Enregistrer la disposition...** | Demande un nom (*Nom de la disposition :*, `Disposition N` proposé) et enregistre l'arrangement actuel. Une disposition du même nom est remplacée (vous êtes prévenu). 32 dispositions au plus. |
 | **Fenêtre > Disposition > Réinitialiser la disposition** | Revient à l'arrangement par défaut : vues 3D, de dessus, de face et de côté, séparations centrées, aucune vue agrandie, tous les panneaux du dock affichés. |
-| **Fenêtre > Dispositions enregistrées** | Cliquez une disposition pour l'appliquer. **Supprimer** liste les dispositions pour en supprimer une. *Aucune disposition enregistrée* quand la liste est vide. |
+| **Fenêtre > Disposition > Dispositions enregistrées** | Cliquez une disposition pour l'appliquer. **Supprimer** liste les dispositions pour en supprimer une. *Aucune disposition enregistrée* quand la liste est vide. |
 
 Les dispositions sont enregistrées dans settings.toml (`[workflow.layouts]`) : elles sont les mêmes pour toutes les maps.
 

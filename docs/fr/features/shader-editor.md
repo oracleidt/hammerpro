@@ -8,7 +8,7 @@ Tout est calculé sur le processeur, à petite taille pendant que vous travaille
 
 ## L'ouvrir
 
-- **Outils > Éditeur de shaders...** (action `shader_editor`, aussi dans la palette de commandes `Ctrl+P`) : ouvre la fenêtre sur le graphe que vous éditiez, ou sur un graphe vide.
+- **Outils > Contenu et éditeurs > Éditeur de shaders...** (action `shader_editor`, aussi dans la palette de commandes `Ctrl+P`) : ouvre la fenêtre sur le graphe que vous éditiez, ou sur un graphe vide.
 - Fenêtre **Importer des images** > **Éditeur de shaders...** : l'ouvre sur la première image de la liste. Si un graphe portant le nom de l'image existe (`brique.hpshader` à côté de `brique.png`), c'est ce graphe qui s'ouvre.
 - [Navigateur de textures](texture-browser.md) : clic droit sur une vignette > **Modifier dans l'éditeur de shaders**. Un matériau écrit par l'éditeur avec **Enregistrer le graphe à côté des textures** rouvre son propre graphe ; tout autre matériau s'ouvre comme un nœud Texture sur sa texture de base.
 - MCP : `open_shader_editor`.

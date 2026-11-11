@@ -216,10 +216,9 @@ impl HammerProApp {
         let up = matches!(action, Action::MoveToCeiling | Action::MoveToCeilingAligned);
         let align = matches!(action, Action::MoveToFloorAligned | Action::MoveToCeilingAligned);
         let objs = self.selected();
-        let state = &mut self.state;
-        let assets = &state.assets;
         let dir = if up { DVec3::Z } else { DVec3::NEG_Z };
-        let result = state.doc.drop_to_surface(&objs, dir, align, &|e| assets.entity_bounds(e));
+        let label = if up { "Move to ceiling" } else { "Move to floor" };
+        let result = super::mcp::mesh_drop(&mut self.state, &objs, dir, align, label);
         if let Some(0) = self.report(action, result) {
             let text = if up { t!("selpkg.nothing_above") } else { t!("selpkg.nothing_below") };
             self.state.notify(Severity::Info, text);

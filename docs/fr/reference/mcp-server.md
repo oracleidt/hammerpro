@@ -51,7 +51,7 @@ Les programmes des applications (la commande `claude`) ne s'exécutent que lorsq
 ## Installer dans une application d'IA
 
 1. Activez la pastille (**MCP inactif** devient **MCP actif**).
-2. Ouvrez la fenêtre MCP (flèche à côté de la pastille, ou **Outils > MCP...**).
+2. Ouvrez la fenêtre MCP (flèche à côté de la pastille, ou **Outils > Blender et MCP > MCP...**).
 3. Cliquez sur **Installer dans Claude, Codex, Gemini**. Hammer Pro s'ajoute à chaque application trouvée sur cet ordinateur, dans cet ordre : Claude Code, Claude Desktop, Codex, Gemini CLI, puis vérifie chacune. Vous pouvez aussi installer une seule application avec son propre bouton **Installer**.
 4. Redémarrez l'application d'IA (ou ouvrez une nouvelle session) pour qu'elle voie le nouveau serveur.
 
@@ -163,6 +163,7 @@ Chaque modification faite par l'IA est **une étape d'annulation** nommée "MCP 
 | Games | Lister les jeux pris en charge, lire et changer le jeu de la map. |
 | Diagnostics | Les rapports de plantage du dossier crash (liste et lecture de l'un d'eux) et les dernières lignes du journal de Hammer Pro. Voir [Plantages et journaux](../troubleshooting/crashes-and-logs.md). |
 | Tool options | Lire et changer les options des outils d'édition. |
+| Placement | Forme exacte de tout objet ou modèle mesurée sur le vrai maillage (`get_object_shape`), dessins cotés (`render_shape`), pose sur, contre ou à côté de n'importe quoi avec un vrai contact (`place_object`, `drop_to_surface`), vérification de la pose (`check_placement`) et recherche des objets flottants ou enfoncés (`find_floating_objects`). |
 
 Les noms de catégories sont ceux de la référence, en anglais. La liste complète de chaque outil avec sa description et ses arguments se trouve dans [docs/MCP.md](../../MCP.md) (en anglais uniquement).
 

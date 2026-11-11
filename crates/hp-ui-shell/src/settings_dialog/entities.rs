@@ -42,7 +42,7 @@ impl SettingsPage for EntitiesPage {
         changed |= ui.checkbox(&mut e.paste_targetname, t!("shell.entities.paste_name")).changed();
 
         heading(ui, t!("shell.entities.face_edit"));
-        egui::Grid::new("hp_shell_entities_face_edit").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
+        super::form_grid(ui, "hp_shell_entities_face_edit").show(ui, |ui| {
             ui.label(t!("shell.entities.decimals"));
             changed |= ui.add(egui::DragValue::new(&mut e.texture_decimals).range(0..=6)).changed();
             ui.end_row();
@@ -102,7 +102,7 @@ impl SettingsPage for EntitiesPage {
             .checkbox(&mut b.gmod_only, t!("shell.entities.gmod_only"))
             .on_hover_text(t!("shell.entities.gmod_only_tip"))
             .changed();
-        egui::Grid::new("hp_shell_entities_browsers").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
+        super::form_grid(ui, "hp_shell_entities_browsers").show(ui, |ui| {
             ui.label(t!("shell.entities.tile"));
             changed |= ui.add(egui::Slider::new(&mut b.tile_size, 48.0..=256.0).step_by(8.0)).changed();
             ui.end_row();

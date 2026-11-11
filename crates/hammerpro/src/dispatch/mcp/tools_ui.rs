@@ -137,9 +137,18 @@ const SPECS: &[ToolSpec] = &[
         name: "ui_scroll",
         title: "Mouse wheel",
         description: "Turn the mouse wheel at a position: positive dy zooms a view in (or scrolls a list up), \
-            with mods ctrl it changes the grid in a 2D view.",
+            with mods ctrl it changes the grid in a 2D view. trackpad true sends a two finger trackpad scroll of \
+            dx, dy points instead (pans a 2D view when trackpad mode is on, see input.trackpad_mode), pinch sends \
+            a trackpad pinch with that zoom factor (above 1 zooms in).",
         kind: ToolKind::Editor,
-        schema: || pointer_schema(json!({ "dy": number("Wheel lines (positive: forward).", -50.0, 50.0) })),
+        schema: || {
+            pointer_schema(json!({
+                "dy": number("Wheel lines, or trackpad points with trackpad (positive: forward).", -2000.0, 2000.0),
+                "dx": number("Sideways trackpad points (with trackpad).", -2000.0, 2000.0),
+                "trackpad": { "type": "boolean", "description": "Send a two finger trackpad scroll (dx, dy in points) instead of wheel lines." },
+                "pinch": number("Trackpad pinch zoom factor instead of a scroll (1.25 zooms in, 0.8 out).", 0.1, 10.0),
+            }))
+        },
     },
     ToolSpec {
         name: "ui_key",
@@ -190,10 +199,7 @@ fn run(_state: &mut hp_app::AppState, name: &str, v: &Value) -> Option<Outcome> 
             pointer(v, "ui_double_click", |a| Ok(PointerKind::Click { button: button(a)?, double: true }))
         }
         "ui_drag" => drag(v),
-        "ui_scroll" => pointer(v, "ui_scroll", |a| {
-            let dy = a.opt_f64("dy", -50.0, 50.0)?.ok_or("dy is required")?;
-            Ok(PointerKind::Scroll { dy: dy as f32 })
-        }),
+        "ui_scroll" => pointer(v, "ui_scroll", scroll_kind),
         "ui_key" => key(v),
         "ui_type" => type_text(v),
         "wait_frames" => wait(v),
@@ -325,11 +331,36 @@ fn target(a: &Args<'_>, view: Option<ViewSel>) -> R<Target> {
 
 const POSITION_ARGS: &[&str] = &["x", "y", "view", "fx", "fy", "world", "mods"];
 
+fn scroll_kind(a: &Args<'_>) -> R<PointerKind> {
+    use crate::script::WheelKind;
+    let trackpad = a.opt_bool("trackpad")?.unwrap_or(false);
+    let dx = a.opt_f64("dx", -2000.0, 2000.0)?;
+    if let Some(f) = a.opt_f64("pinch", 0.1, 10.0)? {
+        if a.get("dy").is_some() || dx.is_some() || trackpad {
+            return Err("pinch goes alone: no dy, dx or trackpad with it".to_owned());
+        }
+        return Ok(PointerKind::Scroll { dx: 0.0, dy: f as f32, kind: WheelKind::Pinch });
+    }
+    if trackpad {
+        let dy = a.opt_f64("dy", -2000.0, 2000.0)?.unwrap_or(0.0);
+        let dx = dx.unwrap_or(0.0);
+        if dx == 0.0 && dy == 0.0 {
+            return Err("a trackpad scroll needs dx or dy".to_owned());
+        }
+        return Ok(PointerKind::Scroll { dx: dx as f32, dy: dy as f32, kind: WheelKind::Trackpad });
+    }
+    if dx.is_some() {
+        return Err("dx needs trackpad true (a mouse wheel only turns forward and back)".to_owned());
+    }
+    let dy = a.opt_f64("dy", -50.0, 50.0)?.ok_or("dy is required")?;
+    Ok(PointerKind::Scroll { dx: 0.0, dy: dy as f32, kind: WheelKind::Wheel })
+}
+
 fn pointer(v: &Value, tool: &'static str, kind: impl Fn(&Args<'_>) -> R<PointerKind>) -> R<UiOp> {
     let mut allowed = POSITION_ARGS.to_vec();
     match tool {
         "ui_click" | "ui_double_click" => allowed.push("button"),
-        "ui_scroll" => allowed.push("dy"),
+        "ui_scroll" => allowed.extend(["dy", "dx", "trackpad", "pinch"]),
         _ => {}
     }
     let a = args(v, &allowed)?;
@@ -478,6 +509,18 @@ mod tests {
             op("ui_scroll", json!({ "x": 1, "y": 1, "dy": -2 })).unwrap(),
             UiOp::Pointer { kind: PointerKind::Scroll { .. }, .. }
         ));
+        use crate::script::WheelKind;
+        assert!(matches!(
+            op("ui_scroll", json!({ "x": 1, "y": 1, "dx": 30, "dy": -2, "trackpad": true })).unwrap(),
+            UiOp::Pointer { kind: PointerKind::Scroll { dx: 30.0, dy: -2.0, kind: WheelKind::Trackpad }, .. }
+        ));
+        assert!(matches!(
+            op("ui_scroll", json!({ "x": 1, "y": 1, "pinch": 1.25 })).unwrap(),
+            UiOp::Pointer { kind: PointerKind::Scroll { kind: WheelKind::Pinch, .. }, .. }
+        ));
+        assert!(op("ui_scroll", json!({ "x": 1, "y": 1, "dx": 3 })).unwrap_err().contains("trackpad"));
+        assert!(op("ui_scroll", json!({ "x": 1, "y": 1, "trackpad": true })).unwrap_err().contains("dx or dy"));
+        assert!(op("ui_scroll", json!({ "x": 1, "y": 1, "pinch": 2, "dy": 1 })).unwrap_err().contains("alone"));
 
         assert_eq!(parse_combo("Ctrl+Shift+S").unwrap().0, Key::S);
         assert_eq!(

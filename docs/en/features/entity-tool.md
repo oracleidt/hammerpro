@@ -8,7 +8,7 @@ A model fixed by the entity definition, or supplied as an FGD model default, tak
 
 ## Opening it
 
-- **Tools > Entity tool**, the tool palette, or `Shift+E`.
+- **Tools > Active tool > Entity tool**, the tool palette, or `Shift+E`.
 - When no class is chosen yet, the tool uses the **Default point entity** setting (`info_player_start`).
 
 ## Placing an entity

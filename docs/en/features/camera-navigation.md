@@ -79,7 +79,7 @@ With **Zoom the 2D views together** on, zooming one 2D view zooms the others the
 
 ## Camera tool
 
-`Shift+C` or **Tools > Camera tool**. It edits the 3D camera from the 2D views, like Hammer's camera tool.
+`Shift+C` or **Tools > Active tool > Camera tool**. It edits the 3D camera from the 2D views, like Hammer's camera tool.
 
 In a 2D view the camera is drawn as an eye marker with a line to its look target:
 

@@ -6,7 +6,7 @@ The Blender link is a round trip between Hammer Pro and Blender. Its main use is
 
 ## The workflow in short
 
-1. In Hammer Pro, select the displacements (the faces with the [displacement tool](displacement-tool.md), or the brushes that own them) and choose **Tools > Send to Blender**.
+1. In Hammer Pro, select the displacements (the faces with the [displacement tool](displacement-tool.md), or the brushes that own them) and choose **Tools > Blender and MCP > Send to Blender**.
 2. Blender starts with the displacements imported, one object per displacement, textured with the map's materials.
 3. Sculpt or edit the vertices in Blender (sculpt mode, proportional editing, modifiers applied by hand...). Keep each object's vertices and faces: move them, do not add or delete.
 4. Press **Update in Hammer Pro** (top bar **Hammer Pro** menu, or the sidebar tab), or just save the `.blend` file. Hammer Pro picks the file up within a second and rewrites the displacements. One undo step: **Update from Blender**.
@@ -14,9 +14,9 @@ The Blender link is a round trip between Hammer Pro and Blender. Its main use is
 
 ## Opening it
 
-- **Tools > Send to Blender** (greyed out while nothing is selected), and the matching button of the tool palette.
+- **Tools > Blender and MCP > Send to Blender** (greyed out while nothing is selected), and the matching button of the tool palette.
 - **Settings > Blender link**: the program, the file format, the live link and the same actions as buttons.
-- **Tools > Update from Blender** (greyed out without a link): reads the file now. **Tools > Stop the Blender live link** and **Tools > Install the Blender add-on**.
+- **Tools > Blender and MCP > Update from Blender** (greyed out without a link): reads the file now. **Tools > Blender and MCP > Stop the Blender live link** and **Tools > Blender and MCP > Install the Blender add-on**.
 - The command palette has all four. No default shortcut.
 
 ## What is sent
@@ -79,7 +79,7 @@ When Blender is not found, the file is still exported and a window says so, with
 The add-on is a Python file Hammer Pro carries inside its program and writes on demand. It works with Blender 2.8 and later (checked with 5.2).
 
 - **No installation needed**: it is loaded each time Hammer Pro starts Blender.
-- **To have it in every Blender session**: **Tools > Install the Blender add-on** (or **Settings > Blender link > Install the Blender add-on**, or `blender_setup` with `install_addon`). It writes `hammerpro_bridge.py` into the `scripts/addons` folder of every installed Blender version found in your Blender configuration folder (`%APPDATA%\Blender Foundation\Blender\<version>\scripts\addons` on Windows, `~/.config/blender/<version>/scripts/addons` on Linux, `~/Library/Application Support/Blender/<version>/scripts/addons` on macOS). Then in Blender open **Edit > Preferences > Add-ons** and enable **Hammer Pro Bridge** (in Blender 4.2 and later it is listed under the legacy add-ons; use **Install from Disk** with the file if it is not listed).
+- **To have it in every Blender session**: **Tools > Blender and MCP > Install the Blender add-on** (or **Settings > Blender link > Install the Blender add-on**, or `blender_setup` with `install_addon`). It writes `hammerpro_bridge.py` into the `scripts/addons` folder of every installed Blender version found in your Blender configuration folder (`%APPDATA%\Blender Foundation\Blender\<version>\scripts\addons` on Windows, `~/.config/blender/<version>/scripts/addons` on Linux, `~/Library/Application Support/Blender/<version>/scripts/addons` on macOS). Then in Blender open **Edit > Preferences > Add-ons** and enable **Hammer Pro Bridge** (in Blender 4.2 and later it is listed under the legacy add-ons; use **Install from Disk** with the file if it is not listed).
 - If no Blender configuration folder exists yet, the file is written to the working folder and the message tells you where, for **Install from Disk**.
 
 In Blender the add-on gives:

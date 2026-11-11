@@ -103,7 +103,7 @@ Name completion: in target fields, `Tab` completes with the first name, the arro
 |---|---|
 | Entity eyedropper (target keys) | Click an entity in the views: its name is written to the key. If it has no name, a prompt suggests a free one (`class_1`, `class_2`...), names it and sets the key in one step. `Escape` cancels; clicking the button again also cancels. |
 | Face eyedropper (`sidelist` keys) | Click faces in the 3D view (`Ctrl+click` for several, `Enter` to finish). `Ctrl+click` the button to add faces to the list instead of replacing it. |
-| Aim eyedropper (angles) | Click a point in the views: each selected entity turns toward it (roll is kept). Clicking an entity aims at its origin, clicking the sky aims along the view, and in a 2D view the point keeps the depth of the selection. For `light_spot` and `light_environment` the angles and the **Pitch** key are written together in the light convention (-90 is straight down), so the light points exactly where you clicked. |
+| Aim eyedropper (angles) | Click a point in the views: each selected entity turns toward it (roll is kept). Clicking an entity aims at its origin, clicking the sky aims along the view, and in a 2D view the point keeps the depth of the selection. For `light_spot`, `light_environment` and `light_directional` the angles are written the Hammer way (so the spotlight model points at the click) and the **Pitch** key in the light convention (-90 is straight down, positive is up), so the light points exactly where you clicked. |
 | **Mark** | Selects the entities the value names (names, `*` wildcards, class names) and centers the views on them. The tooltip gives their count. |
 
 ## Flags tab
@@ -130,7 +130,7 @@ One check box per visgroup of the map, indented like the visgroup tree, with its
 
 ## Color editor
 
-**Edit > Edit color...** (`C`) opens the **Color: key** window on the first color key of the first selected entity (the first `color255` key of its class, else `_light`, `rendercolor`, `_ambient` or `color`). Without one, a message says **The selection has no color key**.
+**Edit > Display colors > Edit color...** (`C`) opens the **Color: key** window on the first color key of the first selected entity (the first `color255` key of its class, else `_light`, `rendercolor`, `_ambient` or `color`). Without one, a message says **The selection has no color key**.
 
 - A color picker, **R G B** fields (0 to 255) and **H S V** fields.
 - **Brightness** slider (0 to 2000, logarithmic) for light values.

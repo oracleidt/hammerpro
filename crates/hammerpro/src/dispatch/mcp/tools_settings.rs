@@ -18,6 +18,9 @@ const MAX_NUMBER: f64 = 1.0e7;
 
 pub(crate) const RANGES: &[(&str, f64, f64)] = &[
     ("view.fov_deg", 40.0, 120.0),
+    ("input.trackpad_pan_speed", 0.25, 4.0),
+    ("input.trackpad_zoom_speed", 0.25, 4.0),
+    ("input.trackpad_orbit_speed", 0.25, 4.0),
     ("view.camera_speed", 50.0, 20_000.0),
     ("view.camera_fast_multiplier", 1.0, 20.0),
     ("view.mouse_sensitivity", 0.02, 1.0),
@@ -29,6 +32,8 @@ pub(crate) const RANGES: &[(&str, f64, f64)] = &[
     ("edit.autosave_keep", 1.0, 100.0),
     ("edit.default_texture_scale", 0.01, 16.0),
     ("ui.ui_scale", 0.75, 2.0),
+    ("workflow.tool_palette_columns", 1.0, 2.0),
+    ("workflow.toolbar_rows", 1.0, 2.0),
     ("ui.split_x", hp_ui_viewports::layout::SPLIT_MIN as f64, hp_ui_viewports::layout::SPLIT_MAX as f64),
     ("ui.split_y", hp_ui_viewports::layout::SPLIT_MIN as f64, hp_ui_viewports::layout::SPLIT_MAX as f64),
     ("ui.quadrants", 0.0, 4.0),
@@ -90,6 +95,9 @@ const READ_ONLY_WORDS: &[&str] = &[
 ];
 
 pub(crate) fn read_only(path: &str) -> Option<&'static str> {
+    if path == "revision" {
+        return Some("the settings file revision, used to upgrade old settings once");
+    }
     const COMPILE_TOOL: &[&str] = &[
         "compile.launch_game",
         "compile.launch_via_steam",
@@ -212,6 +220,7 @@ pub(crate) fn settings_json(s: &Settings) -> Value {
         tables!(
             selection, brush, workflow, instances, visibility, helpers, mesh, entities, render, lighting, placement,
             physics, startup, launch, content, health, lab, mcp, grid, discord, scan, update, sniffer, blender, vtf,
+            input,
         );
     }
     v
@@ -372,6 +381,7 @@ fn set_setting(state: &AppState, v: &Value) -> R<Outcome> {
     }
     let range = RANGES.iter().find(|(p, _, _)| *p == path).map(|(_, min, max)| (*min, *max));
     check_value(path, value, range, 0)?;
+    check_toolbar_ids(path, value)?;
     *slot = value.clone();
     let mut new: Settings = serde_json::from_value(all).map_err(|e| {
         match serde_json::from_value::<Settings>(settings_json(&state.settings)) {
@@ -390,6 +400,31 @@ fn set_setting(state: &AppState, v: &Value) -> R<Outcome> {
         return Err(format!("{path} cannot hold {value} (it would become {stored})"));
     }
     Ok(Outcome::Ui(UiOp::Settings { settings: Box::new(new), path: path.to_owned(), value: stored }))
+}
+
+fn check_toolbar_ids(path: &str, value: &Value) -> R<()> {
+    use hp_ui_shell::toolbar::{TOOLBAR, group_index, is_known_id};
+    let groups_only = match path {
+        "workflow.toolbar_order" => true,
+        "workflow.toolbar_hidden" => false,
+        _ => return Ok(()),
+    };
+    for id in value.as_array().into_iter().flatten() {
+        let id = id.as_str().ok_or_else(|| format!("{path} takes a list of ids"))?;
+        let known = if groups_only { group_index(id).is_some() } else { is_known_id(id) };
+        if !known {
+            let groups: Vec<&str> = TOOLBAR.iter().map(|g| g.id).collect();
+            let more = if groups_only {
+                String::new()
+            } else {
+                " or a button id (the action id from list_actions, or grid_size, render_mode, props_2d, \
+                 primitive_stats)"
+                    .to_owned()
+            };
+            return Err(format!("{path}: unknown id \"{id}\" (a toolbar group: {}{more})", groups.join(", ")));
+        }
+    }
+    Ok(())
 }
 
 pub(crate) fn script_set(state: &mut AppState, ctx: &egui::Context, path: &str, value: &str) -> Result<(), String> {
@@ -605,6 +640,7 @@ mod tests {
             "compile.compilers",
             "compile.compilers.0.steps",
             "compile.compiler_by_game",
+            "revision",
         ] {
             assert!(read_only(p).is_some(), "{p}");
         }
@@ -751,6 +787,34 @@ mod tests {
         assert_eq!(v["value"], place);
         let e = err(&mut state, "set_setting", json!({ "path": "compile.separate_window", "value": "yes" }));
         assert!(!e.is_empty());
+    }
+
+    #[test]
+    fn toolbar_and_tool_palette_settings_are_reachable() {
+        let _lang = hp_app::testing::lang_lock();
+        let mut state = hp_app::testing::test_state();
+        let v = ok(&mut state, "get_settings", json!({ "path": "workflow" }));
+        assert_eq!(v["value"]["tool_palette_columns"], 1);
+        assert_eq!(v["value"]["toolbar_rows"], 1);
+        set(&mut state, "workflow.tool_palette_columns", json!(2));
+        assert!(state.settings.workflow.tool_palette_two_columns());
+        set(&mut state, "workflow.toolbar_rows", json!(2));
+        assert!(state.settings.workflow.toolbar_two_rows());
+        set(&mut state, "workflow.toolbar_hidden", json!(["cordon", "cut", "compile", "grid_size"]));
+        assert_eq!(state.settings.workflow.toolbar_hidden.len(), 4);
+        set(&mut state, "workflow.toolbar_order", json!(["render", "file"]));
+        assert_eq!(hp_ui_shell::toolbar::group_order(&state.settings.workflow)[..2], [8, 0]);
+        for (path, value) in [
+            ("workflow.tool_palette_columns", json!(3)),
+            ("workflow.toolbar_rows", json!(0)),
+            ("workflow.toolbar_hidden", json!(["nope"])),
+            ("workflow.toolbar_order", json!(["cut"])),
+            ("workflow.toolbar_order", json!([1])),
+        ] {
+            assert!(!err(&mut state, "set_setting", json!({ "path": path, "value": value })).is_empty(), "{path}");
+        }
+        let e = err(&mut state, "set_setting", json!({ "path": "workflow.toolbar_hidden", "value": ["nope"] }));
+        assert!(e.contains("file, edit, grid") && e.contains("list_actions"), "{e}");
     }
 
     #[test]

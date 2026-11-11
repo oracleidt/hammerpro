@@ -1160,6 +1160,9 @@ mod tests {
     #[test]
     fn reflections_reach_the_render_description() {
         use hp_app::runtime::render::{RenderDisplay, publish_render_display, render_display};
+        let original = render_display();
+        let saved = RenderDisplay { cubemaps: true, ..original };
+        publish_render_display(saved);
         let src = r#"LightmappedGeneric { "$basetexture" "metal/floor" "$envmap" "env_cubemap" "$envmapmask" "metal/floor_m"
             "$envmaptint" "[.5 .5 .5]" }"#;
         let a = super::analyze("metal/floor", &mat(src), &|_| flags(false));
@@ -1181,13 +1184,12 @@ mod tests {
         );
         let keys = texture_keys(MatKind::Model, &prop);
         assert_eq!(keys.iter().filter(|k| k.starts_with("car_n")).count(), 1, "{keys:?}");
-        let saved = render_display();
         publish_render_display(RenderDisplay { cubemaps: false, ..saved });
         assert!(!texture_keys(MatKind::World, &a).iter().any(|k| k.ends_with("|mask")));
         assert!(asset_desc(MatKind::World, "metal/floor", AnaLook::Ready(&a), &ready, true).envmap.is_none());
         publish_render_display(RenderDisplay { normal_maps: false, ..saved });
         assert_eq!(texture_keys(MatKind::Model, &prop).iter().filter(|k| k.ends_with("|mask")).count(), 1);
-        publish_render_display(saved);
+        publish_render_display(original);
         let water = super::analyze("w", &mat(r#"Water { "$normalmap" "n" "$envmap" "env_cubemap" }"#), &|_| 0);
         assert!(water.envmap.is_none());
     }

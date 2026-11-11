@@ -12,7 +12,16 @@ const MARGIN_X: i8 = 5;
 const MARGIN_Y: i8 = 6;
 const RADIUS: f32 = 5.0;
 
-pub const STRIP_WIDTH: f32 = BUTTON.x + 2.0 * MARGIN_X as f32 + 1.0;
+pub const STRIP_WIDTH: f32 = strip_width(1);
+
+pub const fn strip_width(columns: u8) -> f32 {
+    let n = if columns >= 2 { 2.0 } else { 1.0 };
+    n * BUTTON.x + (n - 1.0) * GAP + 2.0 * MARGIN_X as f32 + 1.0
+}
+
+pub fn palette_columns(workflow: &hp_app::settings::WorkflowSettings) -> u8 {
+    if workflow.tool_palette_two_columns() { 2 } else { 1 }
+}
 
 pub const PANEL_ID: &str = "hp_tools";
 
@@ -102,6 +111,32 @@ fn shown_items() -> Vec<PaletteItem> {
     out
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum StripRow {
+    Line,
+    Buttons(Vec<PaletteItem>),
+}
+
+pub fn strip_rows(items: &[PaletteItem], columns: u8) -> Vec<StripRow> {
+    let columns = usize::from(columns.max(1));
+    let mut out = Vec::new();
+    let mut group: Vec<PaletteItem> = Vec::new();
+    let flush = |group: &mut Vec<PaletteItem>, out: &mut Vec<StripRow>| {
+        out.extend(group.chunks(columns).map(|c| StripRow::Buttons(c.to_vec())));
+        group.clear();
+    };
+    for item in items {
+        if *item == PaletteItem::Separator {
+            flush(&mut group, &mut out);
+            out.push(StripRow::Line);
+        } else {
+            group.push(*item);
+        }
+    }
+    flush(&mut group, &mut out);
+    out
+}
+
 pub fn button_height(available: f32, buttons: usize, separators: usize) -> f32 {
     if buttons == 0 {
         return BUTTON.y;
@@ -114,11 +149,12 @@ pub fn tool_strip(ui: &mut Ui, state: &mut AppState) -> Option<egui::Rect> {
     if !state.settings.workflow.show_tool_palette {
         return None;
     }
+    let width = strip_width(palette_columns(&state.settings.workflow));
     let frame =
         egui::Frame::new().fill(strip_fill(ui.visuals())).inner_margin(egui::Margin::symmetric(MARGIN_X, MARGIN_Y));
     let r = egui::Panel::left(PANEL_ID)
         .resizable(false)
-        .exact_size(STRIP_WIDTH)
+        .exact_size(width)
         .frame(frame)
         .show(ui, |ui| tool_palette(ui, state));
     Some(r.response.rect)
@@ -128,33 +164,74 @@ pub fn strip_fill(visuals: &egui::Visuals) -> Color32 {
     visuals.faint_bg_color
 }
 
-pub fn tool_palette(ui: &mut Ui, state: &mut AppState) {
-    let items = shown_items();
-    let separators = items.iter().filter(|i| **i == PaletteItem::Separator).count();
-    let buttons = items.len() - separators;
-    let height = button_height(ui.available_height(), buttons, separators);
-    let size = egui::vec2(BUTTON.x.min(ui.available_width()).max(1.0), height);
-    egui::ScrollArea::vertical().id_salt("hp_tool_strip").auto_shrink([false, false]).show(ui, |ui| {
-        ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
-        let mut previous_button = false;
-        for item in items {
-            if item == PaletteItem::Separator {
-                group_line(ui, size.x);
-                previous_button = false;
-                continue;
-            }
-            if previous_button {
-                ui.add_space(GAP);
-            }
-            previous_button = true;
-            match item {
-                PaletteItem::Tool(tool) => tool_button(ui, state, tool, size),
-                PaletteItem::Action(action) => action_button(ui, state, action, size),
-                PaletteItem::Isolate => isolate_button(ui, state, size),
-                PaletteItem::Separator => {}
-            }
+pub fn set_palette_columns(state: &mut AppState, columns: u8) {
+    let columns = columns.clamp(1, 2);
+    let w = &mut state.settings.workflow;
+    if w.tool_palette_columns != columns {
+        w.tool_palette_columns = columns;
+        state.settings_dirty = true;
+    }
+}
+
+fn palette_menu(ui: &mut Ui, state: &mut AppState) {
+    let columns = palette_columns(&state.settings.workflow);
+    for (n, key) in [(1, "shell.strip.one_column"), (2, "shell.strip.two_columns")] {
+        if ui.radio(columns == n, t!(key)).clicked() {
+            set_palette_columns(state, n);
+            ui.close();
         }
-    });
+    }
+    ui.separator();
+    if ui.button(t!("shell.strip.hide")).clicked() {
+        state.settings.workflow.show_tool_palette = false;
+        state.settings_dirty = true;
+        ui.close();
+    }
+    crate::common::close_on_escape(ui);
+}
+
+pub fn tool_palette(ui: &mut Ui, state: &mut AppState) {
+    let columns = palette_columns(&state.settings.workflow);
+    let rows = strip_rows(&shown_items(), columns);
+    let separators = rows.iter().filter(|r| **r == StripRow::Line).count();
+    let button_rows = rows.len() - separators;
+    let height = button_height(ui.available_height(), button_rows, separators);
+    let gaps = GAP * f32::from(columns - 1);
+    let width = ((ui.available_width() - gaps) / f32::from(columns)).clamp(1.0, BUTTON.x);
+    let size = egui::vec2(width, height);
+    let line_width = width * f32::from(columns) + gaps;
+    let background = ui
+        .scope_builder(egui::UiBuilder::new().sense(egui::Sense::click()), |ui| {
+            egui::ScrollArea::vertical().id_salt("hp_tool_strip").auto_shrink([false, false]).show(ui, |ui| {
+                ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
+                let mut previous_button = false;
+                for row in rows {
+                    let StripRow::Buttons(items) = row else {
+                        group_line(ui, line_width);
+                        previous_button = false;
+                        continue;
+                    };
+                    if previous_button {
+                        ui.add_space(GAP);
+                    }
+                    previous_button = true;
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing = egui::vec2(GAP, 0.0);
+                        for item in items {
+                            let r = match item {
+                                PaletteItem::Tool(tool) => tool_button(ui, state, tool, size),
+                                PaletteItem::Action(action) => action_button(ui, state, action, size),
+                                PaletteItem::Isolate => isolate_button(ui, state, size),
+                                PaletteItem::Separator => continue,
+                            };
+                            r.context_menu(|ui| palette_menu(ui, state));
+                        }
+                    });
+                }
+            });
+        })
+        .response;
+    background.context_menu(|ui| palette_menu(ui, state));
 }
 
 fn group_line(ui: &mut Ui, width: f32) {
@@ -220,16 +297,20 @@ fn strip_button(
     .inner
 }
 
+fn icon(icon: crate::icons::Icon) -> impl FnOnce(&egui::Painter, egui::Pos2, Color32, f32) {
+    move |painter, c, color, scale| crate::icons::paint(painter, c, color, icon, scale)
+}
+
 fn glyph(glyph: &'static str) -> impl FnOnce(&egui::Painter, egui::Pos2, Color32, f32) {
     move |painter, c, color, scale| {
         painter.text(c, egui::Align2::CENTER_CENTER, glyph, egui::FontId::proportional(ICON_SIZE * scale), color);
     }
 }
 
-fn tool_button(ui: &mut Ui, state: &mut AppState, tool: ToolId, size: egui::Vec2) {
+fn tool_button(ui: &mut Ui, state: &mut AppState, tool: ToolId, size: egui::Vec2) -> egui::Response {
     let on = state.tool == tool || state.requested_tool == Some(tool);
     let name = t!(tool.label_key());
-    let r = strip_button(ui, size, on, true, name, glyph(crate::common::tool_icon(tool)));
+    let r = strip_button(ui, size, on, true, name, icon(crate::icons::Icon::Tool(tool)));
     let r = r.on_hover_ui(|ui| {
         let tip = tooltip_with_shortcut(name, state.keys.shortcut(tool.action()));
         ui.label(RichText::new(tip).strong());
@@ -238,11 +319,15 @@ fn tool_button(ui: &mut Ui, state: &mut AppState, tool: ToolId, size: egui::Vec2
     if r.clicked() {
         state.set_tool(tool);
     }
+    r
 }
 
-fn action_button(ui: &mut Ui, state: &mut AppState, action: Action, size: egui::Vec2) {
+fn action_button(ui: &mut Ui, state: &mut AppState, action: Action, size: egui::Vec2) -> egui::Response {
     let enabled = action_enabled(state, action);
-    let r = strip_button(ui, size, false, enabled, action.label(), glyph(crate::toolbar::button_glyph(action)));
+    let r = match crate::icons::action_icon(action) {
+        Some(i) => strip_button(ui, size, false, enabled, action.label(), icon(i)),
+        None => strip_button(ui, size, false, enabled, action.label(), glyph(crate::toolbar::button_glyph(action))),
+    };
     let tip = crate::common::action_tooltip(state, action);
     let r = r.on_hover_ui(|ui| {
         ui.label(RichText::new(&tip).strong());
@@ -256,6 +341,7 @@ fn action_button(ui: &mut Ui, state: &mut AppState, action: Action, size: egui::
     if r.clicked() {
         state.request(action);
     }
+    r
 }
 
 fn disabled_hint(action: Action) -> Option<&'static str> {
@@ -268,7 +354,7 @@ fn disabled_hint(action: Action) -> Option<&'static str> {
     }
 }
 
-fn isolate_button(ui: &mut Ui, state: &mut AppState, size: egui::Vec2) {
+fn isolate_button(ui: &mut Ui, state: &mut AppState, size: egui::Vec2) -> egui::Response {
     let id = ui.scope_id().with("hp_shell_isolate");
     let revision = state.doc.revision();
     let cached: Option<(u64, bool)> = ui.data(|d| d.get_temp(id));
@@ -283,9 +369,7 @@ fn isolate_button(ui: &mut Ui, state: &mut AppState, size: egui::Vec2) {
     let action = if isolated { Action::UnhideAll } else { Action::HideUnselected };
     let enabled = isolated || !state.doc.selected_objects().is_empty();
     let tip = if isolated { t!("shell.toolbar.isolate_off") } else { t!("shell.toolbar.isolate_on") };
-    let r = strip_button(ui, size, isolated, enabled, tip, |painter, c, color, scale| {
-        crate::toolbar::paint_eye(painter, c, color, scale);
-    });
+    let r = strip_button(ui, size, isolated, enabled, tip, icon(crate::icons::Icon::Eye));
     let r = r.on_hover_ui(|ui| {
         ui.label(RichText::new(tooltip_with_shortcut(tip, state.keys.shortcut(action))).strong());
     });
@@ -293,7 +377,14 @@ fn isolate_button(ui: &mut Ui, state: &mut AppState, size: egui::Vec2) {
     if r.clicked() {
         state.request(action);
     }
+    r
 }
+
+pub(crate) const TR: hp_app::i18n::TrTable = &[
+    ("shell.strip.one_column", "One column", "Une colonne"),
+    ("shell.strip.two_columns", "Two columns", "Deux colonnes"),
+    ("shell.strip.hide", "Hide the tool palette", "Masquer la palette d'outils"),
+];
 
 #[cfg(test)]
 mod tests {
@@ -419,9 +510,11 @@ mod tests {
         for (what, r) in [("console", l.console), ("map tabs", l.tabs), ("views", l.views)] {
             assert!(r.left() >= strip.right() - 0.5, "{what} {r:?} right of the strip {strip:?}");
         }
+        assert!(!l.shapes.is_empty());
+        let buttons = strip_buttons(&mut state, egui::vec2(1600.0, 960.0));
         for tool in ToolId::ALL {
-            let icon = crate::common::tool_icon(tool);
-            assert!(find_text_in(&l.shapes, icon, strip).is_some(), "{tool:?} in the strip");
+            let name = t!(tool.label_key());
+            assert!(buttons.iter().any(|b| b.0 == name && strip.contains(b.3.center())), "{tool:?} in the strip");
         }
         state.settings.workflow.show_tool_palette = false;
         let l = layout(&mut state, egui::vec2(1600.0, 960.0), &ctx);
@@ -449,7 +542,7 @@ mod tests {
             tree = out.platform_output.accesskit_update;
         }
         let tree = tree.expect("an accessibility tree");
-        let strip_x = 0.0..STRIP_WIDTH as f64;
+        let strip_x = 0.0..f64::from(strip_width(palette_columns(&state.settings.workflow)));
         let mut out: Vec<(String, bool, bool, egui::Rect)> = tree
             .nodes
             .iter()
@@ -521,9 +614,10 @@ mod tests {
             out.textures_delta.clear();
             out.shapes
         };
-        let shapes = frame(&mut state);
-        for glyph in ["🗿", "🔳"] {
-            assert!(find_text_in(&shapes, glyph, egui::Rect::EVERYTHING).is_some(), "{glyph} is in the strip");
+        assert!(!frame(&mut state).is_empty());
+        let buttons = strip_buttons(&mut state, egui::vec2(1600.0, 900.0));
+        for action in [Action::BrushesToProp, Action::PropToBrushes] {
+            assert!(buttons.iter().any(|b| b.0 == action.label()), "{action:?} is in the strip");
         }
         assert!(!action_enabled(&state, Action::BrushesToProp), "nothing selected");
         assert!(!action_enabled(&state, Action::PropToBrushes), "no prop selected");
@@ -535,12 +629,95 @@ mod tests {
         assert!(state.requested_actions.is_empty());
     }
 
-    fn find_text_in(shapes: &[egui::epaint::ClippedShape], text: &str, area: egui::Rect) -> Option<egui::Rect> {
-        shapes.iter().find_map(|s| match &s.shape {
-            egui::Shape::Text(t) if t.galley.job.text == text && area.contains(t.visual_bounding_rect().center()) => {
-                Some(t.visual_bounding_rect())
-            }
-            _ => None,
-        })
+    #[test]
+    fn rows_pair_the_buttons_of_each_group() {
+        use PaletteItem::{Separator as S, Tool as T};
+        let items = [T(ToolId::Select), T(ToolId::Camera), S, T(ToolId::Entity), T(ToolId::Block), T(ToolId::Polygon)];
+        assert_eq!(
+            strip_rows(&items, 2),
+            vec![
+                StripRow::Buttons(vec![T(ToolId::Select), T(ToolId::Camera)]),
+                StripRow::Line,
+                StripRow::Buttons(vec![T(ToolId::Entity), T(ToolId::Block)]),
+                StripRow::Buttons(vec![T(ToolId::Polygon)]),
+            ]
+        );
+        assert_eq!(strip_rows(&items, 1).len(), 6);
+        assert_eq!(strip_rows(&items, 0), strip_rows(&items, 1));
+        assert_eq!(STRIP_WIDTH, strip_width(1));
+        assert_eq!(strip_width(2), STRIP_WIDTH + BUTTON.x + GAP);
+        assert_eq!(strip_width(9), strip_width(2));
+    }
+
+    #[test]
+    fn two_columns_make_a_wider_shorter_strip() {
+        let _lang = hp_app::testing::lang_lock();
+        crate::register_translations();
+        let mut state = hp_app::testing::test_state();
+        set_palette_columns(&mut state, 2);
+        assert!(state.settings_dirty && state.settings.workflow.tool_palette_two_columns());
+        let ctx = egui::Context::default();
+        let l = layout(&mut state, egui::vec2(1600.0, 900.0), &ctx);
+        let strip = l.strip.expect("the strip is shown");
+        assert!((strip.width() - strip_width(2)).abs() < 0.5, "{strip:?}");
+        assert!(l.views.left() >= strip.right() - 0.5);
+        let buttons = strip_buttons(&mut state, egui::vec2(1600.0, 900.0));
+        assert_eq!(buttons.len(), shown_items().iter().filter(|i| **i != PaletteItem::Separator).count());
+        let mut lefts: Vec<f32> = buttons.iter().map(|b| b.3.left()).collect();
+        lefts.sort_by(f32::total_cmp);
+        lefts.dedup();
+        assert_eq!(lefts.len(), 2, "two columns: {lefts:?}");
+        for b in &buttons {
+            assert_eq!(b.3.size(), BUTTON, "{b:?} at full size: two columns leave room");
+            assert!(strip.contains(b.3.center()), "{b:?}");
+        }
+        for tool in ToolId::ALL {
+            assert!(buttons.iter().any(|b| b.0 == t!(tool.label_key())), "{tool:?}");
+        }
+        set_palette_columns(&mut state, 7);
+        assert_eq!(state.settings.workflow.tool_palette_columns, 2);
+        set_palette_columns(&mut state, 1);
+        assert_eq!(strip_buttons(&mut state, egui::vec2(1600.0, 900.0)).len(), buttons.len());
+    }
+
+    #[test]
+    fn right_click_offers_the_columns() {
+        let _lang = hp_app::testing::lang_lock();
+        crate::register_translations();
+        let mut state = hp_app::testing::test_state();
+        let ctx = egui::Context::default();
+        let mut shapes = Vec::new();
+        let pos = egui::pos2(STRIP_WIDTH * 0.5, 30.0);
+        for frame in 0..5 {
+            let events = match frame {
+                2 => [true, false]
+                    .map(|pressed| egui::Event::PointerButton {
+                        pos,
+                        button: egui::PointerButton::Secondary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    })
+                    .into(),
+                0 => vec![],
+                _ => vec![egui::Event::PointerMoved(pos)],
+            };
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 900.0))),
+                events,
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| {
+                tool_strip(ui, &mut state);
+            });
+            out.textures_delta.clear();
+            shapes = out.shapes;
+        }
+        for text in [t!("shell.strip.one_column"), t!("shell.strip.two_columns"), t!("shell.strip.hide")] {
+            assert!(
+                shapes.iter().any(|s| matches!(&s.shape, egui::Shape::Text(x) if x.galley.job.text == text)),
+                "{text} in the menu"
+            );
+        }
+        assert_eq!(state.tool, ToolId::Select, "a right click does not change the tool");
     }
 }

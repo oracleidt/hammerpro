@@ -177,6 +177,9 @@ pub(crate) fn describe(p: &Problem, doc: &Document) -> String {
         "limit_exceeded" => tf!("problems.limit_exceeded", limit_name(a(0)), a(1), a(2), a(3)),
         "limit_close" => tf!("problems.limit_close", limit_name(a(0)), a(1), a(2), a(3)),
         "edict_budget" => tf!("problems.edict_budget", a(0), a(1), a(2)),
+        "duplicate_brush" => tf!(plural(n, "problems.duplicate_brush_one", "problems.duplicate_brush"), n),
+        "contained_brush" => tf!(plural(n, "problems.contained_brush_one", "problems.contained_brush"), n),
+        "duplicate_entity" => tf!(plural(n, "problems.duplicate_entity_one", "problems.duplicate_entity"), n),
         _ => p.message.clone(),
     }
 }
@@ -197,6 +200,7 @@ pub(crate) fn fix_hint(code: &str) -> &'static str {
         "origin_brush_in_world" => t!("problems.fix.origin_brush_in_world"),
         "detail_candidate" => t!("problems.fix.detail_candidate"),
         "areaportal_door_state" => t!("problems.fix.areaportal_door_state"),
+        "duplicate_brush" | "contained_brush" | "duplicate_entity" => t!("problems.fix.redundant"),
         _ => t!("problems.fix.generic"),
     }
 }
@@ -476,6 +480,9 @@ impl ProblemsDialog {
             }
             let row_h = 24.0;
             let doc = &state.doc;
+            let any_fixable =
+                self.rows.iter().filter_map(|&pi| rt.problems.get(pi)).any(|p| p.fixable && !rt.is_ignored(p));
+            let fix_slot = if any_fixable { button_width(ui, t!("problems.fix")) } else { 0.0 };
             egui::ScrollArea::vertical().id_salt("hp_problems_list").auto_shrink([false, false]).show_rows(
                 ui,
                 row_h,
@@ -484,7 +491,8 @@ impl ProblemsDialog {
                     for i in range {
                         let Some(&pi) = self.rows.get(i) else { continue };
                         let Some(p) = rt.problems.get(pi) else { continue };
-                        if let Some(a) = row_ui(ui, row_h, p, pi, doc, rt.is_ignored(p), &self.selected) {
+                        let slots = RowSlots { row_h, fix: fix_slot };
+                        if let Some(a) = row_ui(ui, slots, p, pi, doc, rt.is_ignored(p), &self.selected) {
                             action = Some(a);
                         }
                     }
@@ -532,9 +540,23 @@ enum RowAction {
     Copy(String),
 }
 
+#[derive(Clone, Copy, Debug)]
+struct RowSlots {
+    row_h: f32,
+    fix: f32,
+}
+
+const COUNT_WIDTH: f32 = 84.0;
+
+fn button_width(ui: &Ui, text: &str) -> f32 {
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    let w = ui.fonts_mut(|f| f.layout_no_wrap(text.to_owned(), font, egui::Color32::WHITE).size().x);
+    w + 2.0 * ui.spacing().button_padding.x
+}
+
 fn row_ui(
     ui: &mut Ui,
-    row_h: f32,
+    slots: RowSlots,
     p: &Problem,
     index: usize,
     doc: &Document,
@@ -543,6 +565,7 @@ fn row_ui(
 ) -> Option<RowAction> {
     let mut action = None;
     let sev = severity_of(p);
+    let row_h = slots.row_h;
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), row_h), egui::Sense::click());
     if selected.as_deref() == Some(p.key().as_str()) {
         ui.painter().rect_filled(rect, 3.0, ui.visuals().selection.bg_fill);
@@ -560,8 +583,22 @@ fn row_ui(
     child.label(RichText::new(sev.icon()).color(sev.color()));
     let desc = describe(p, doc);
     child.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-        if p.fixable && !ignored && ui.button(t!("problems.fix")).on_hover_text(fix_hint(p.code)).clicked() {
-            action = Some(RowAction::Fix(index));
+        let slot = |ui: &mut Ui, width: f32, add: &mut dyn FnMut(&mut Ui)| {
+            ui.allocate_ui_with_layout(
+                egui::vec2(width, row_h),
+                egui::Layout::right_to_left(egui::Align::Center),
+                |ui| {
+                    ui.set_min_width(width);
+                    add(ui);
+                },
+            );
+        };
+        if slots.fix > 0.0 {
+            slot(ui, slots.fix, &mut |ui| {
+                if p.fixable && !ignored && ui.button(t!("problems.fix")).on_hover_text(fix_hint(p.code)).clicked() {
+                    action = Some(RowAction::Fix(index));
+                }
+            });
         }
         if p.code == "detail_candidate"
             && ui.button(t!("problems.detail.list")).on_hover_text(t!("problems.detail.list_tip")).clicked()
@@ -572,10 +609,12 @@ fn row_ui(
         if ui.add_enabled(can_go, egui::Button::new(t!("problems.goto"))).clicked() {
             action = Some(RowAction::GoTo(index));
         }
-        if !p.objects.is_empty() || !p.faces.is_empty() {
-            let objs = if p.faces.is_empty() { objects_text(p.objects.len()) } else { faces_text(p.faces.len()) };
-            ui.label(RichText::new(objs).weak().small());
-        }
+        slot(ui, COUNT_WIDTH, &mut |ui| {
+            if !p.objects.is_empty() || !p.faces.is_empty() {
+                let objs = if p.faces.is_empty() { objects_text(p.objects.len()) } else { faces_text(p.faces.len()) };
+                ui.add(egui::Label::new(RichText::new(objs).weak().small()).truncate());
+            }
+        });
         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
             ui.add(egui::Label::new(desc.as_str()).truncate()).on_hover_text(&p.message);
         });

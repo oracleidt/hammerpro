@@ -6,7 +6,7 @@ Scatter by material places props (grass, rocks, bushes...) on the surfaces of br
 
 ## Opening it
 
-**Tools > Scatter by material...**, or the `scatter_by_material` action (command palette, MCP `run_action`). It is a window; it does not change the active tool.
+**Tools > Placement and props > Scatter by material...**, or the `scatter_by_material` action (command palette, MCP `run_action`). It is a window; it does not change the active tool.
 
 ## Using it
 

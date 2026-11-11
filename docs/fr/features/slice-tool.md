@@ -6,7 +6,7 @@ L'outil tranche coupe les brushes sélectionnés en plusieurs blocs avec des pla
 
 ## L'ouvrir
 
-- **Outils > Outil tranche**, la palette d'outils, ou `Maj+Y`.
+- **Outils > Outil actif > Outil tranche**, la palette d'outils, ou `Maj+Y`.
 - Sélectionnez d'abord les brushes. L'outil travaille sur un ou plusieurs brushes sélectionnés à la fois, y compris ceux d'un groupe ou d'une entité brush sélectionnés.
 - Resélectionner l'outil (`Maj+Y` quand il est actif) alterne l'orientation.
 

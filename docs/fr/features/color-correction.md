@@ -25,7 +25,7 @@ Quel que soit le dossier, l'éditeur montre le `Lookup Filename` exact à saisir
 
 ## Ouvrir l'éditeur
 
-- **Outils > Éditeur de correction des couleurs...** (action `color_correction_editor`) ouvre la fenêtre, et la ferme au second appel.
+- **Outils > Contenu et éditeurs > Éditeur de correction des couleurs...** (action `color_correction_editor`) ouvre la fenêtre, et la ferme au second appel.
 - MCP : `open_media_editor` avec `editor` à `color` (et un `path` pour charger un `.raw`).
 
 ## L'éditeur

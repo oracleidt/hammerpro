@@ -8,7 +8,7 @@ Chaque résultat est fait de brushes convexes valides, la map se compile comme n
 
 ## L'ouvrir
 
-- **Outils > Outil biseau**, la barre d'outils (icône de cercle avec un quart plein, dans le groupe d'édition après l'outil extruder / creuser), ou `Maj+J`.
+- **Outils > Outil actif > Outil biseau**, la barre d'outils (icône de cercle avec un quart plein, dans le groupe d'édition après l'outil extruder / creuser), ou `Maj+J`.
 - Depuis l'outil **Sélection** ou **Vertex** : pointez une arête de brush dans la vue 3D et appuyez sur `Ctrl+B`. L'outil biseau s'ouvre et commence tout de suite le biseau de cette arête (voir [Ctrl+B](#ctrlb-et-lalignement-sur-la-grille) plus bas).
 
 ## Biseauter une arête

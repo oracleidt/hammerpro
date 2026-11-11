@@ -10,8 +10,8 @@ Outputs and inputs wire entities together: "when this fires, send that input to 
 |---|---|
 | Outputs and inputs tabs | **Edit > Properties** (`Alt+Enter`), then the **Outputs (N)** and **Inputs (N)** tabs of the **Entity** tab. |
 | Connection lines in the views | **View > Display options > Show connections** cycles the mode; **Settings > Helpers > Input/output connections** sets it. |
-| Logical view window | **View > Logical view** (opens and closes it). |
-| 2D logical view in a quadrant | **View > 2D logical view** sets the view under the mouse (else the last one used), or choose **2D Logical** in the view type menu of a view header. |
+| Logical view window | **View > View type > Logical view** (opens and closes it). |
+| 2D logical view in a quadrant | **View > View type > 2D logical view** sets the view under the mouse (else the last one used), or choose **2D Logical** in the view type menu of a view header. |
 | Entity gallery | **Map > Insert entity gallery**. |
 
 None of these has a default shortcut; you can bind them in **Settings > Keyboard** (see [Keyboard shortcuts](keyboard-shortcuts.md)).
@@ -93,7 +93,7 @@ Special targets (`!activator`, `!player`...) are resolved at run time, so they g
 
 ## Logical view
 
-The logical view shows the entities of the map and their outputs as a schematic. It exists as a floating window (**View > Logical view**, titled **Logical view**) and as a view type of the four views (**2D Logical**, like Hammer). Each quadrant showing it has its own pan, zoom, search and filter. The selection is the map's selection, so it follows the other views both ways.
+The logical view shows the entities of the map and their outputs as a schematic. It exists as a floating window (**View > View type > Logical view**, titled **Logical view**) and as a view type of the four views (**2D Logical**, like Hammer). Each quadrant showing it has its own pan, zoom, search and filter. The selection is the map's selection, so it follows the other views both ways.
 
 ### What is shown
 

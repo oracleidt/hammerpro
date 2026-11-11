@@ -12,7 +12,7 @@ Ce guide crée un morceau de terrain : transformer des faces de brush en displac
 ## Étape 2 : créer les displacements
 
 1. Sélectionnez les brushes (ou seulement les faces voulues avec l'outil texture).
-2. Appuyez sur `Maj+P` (**Outils > Outil displacement**). Le panneau **Outil** du dock de droite affiche les options des displacements.
+2. Appuyez sur `Maj+P` (**Outils > Outil actif > Outil displacement**). Le panneau **Outil** du dock de droite affiche les options des displacements.
 3. Dans la section **Créer**, la ligne en dessous indique ce qui sera utilisé : les faces sélectionnées, ou les faces du dessus des solides sélectionnés. Seules les faces à 4 côtés peuvent devenir des displacements.
 4. Cliquez sur un bouton de **Puissance** : **2** (5 x 5 sommets), **3** (9 x 9) ou **4** (17 x 17). La puissance 3 est un bon départ ; prenez 4 pour un sol détaillé.
 
@@ -59,12 +59,12 @@ Le mode **Modeler** façonne le sol à partir de sa position au début du trait 
 
 Dans la section **Outils** du panneau :
 
-- **Ajouter du bruit** : une hauteur aléatoire entre un minimum et un maximum sur chaque sommet (aussi **Outils > Ajouter du bruit aux displacements...**).
+- **Ajouter du bruit** : une hauteur aléatoire entre un minimum et un maximum sur chaque sommet (aussi **Outils > Displacements > Ajouter du bruit aux displacements...**).
 - **Subdiviser** : lisse les displacements sélectionnés comme une seule surface, puis les coud.
 - **Échelle** : multiplie les hauteurs (un facteur négatif les retourne).
 - **Projeter les ombres**, **Échelle de lightmap** et les drapeaux de collision (**Sans collision des personnages**, **Sans collision physique**, **Sans collision des tirs**) s'appliquent aux displacements sélectionnés.
 
-Vérifiez où les joueurs peuvent marcher avec **Affichage > Options d'affichage > Praticabilité des displacements**, et peignez en mode **Marquages** (praticable, constructible, retiré) là où la pente donne une mauvaise réponse.
+Vérifiez où les joueurs peuvent marcher avec **Affichage > Diagnostics > Praticabilité des displacements**, et peignez en mode **Marquages** (praticable, constructible, retiré) là où la pente donne une mauvaise réponse.
 
 ## FAQ
 

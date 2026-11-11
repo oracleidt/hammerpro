@@ -415,14 +415,14 @@ impl ReplaceDialog {
             ui.end_row();
 
             ui.label(t!("tex.replace.scope"));
-            ui.horizontal(|ui| {
+            hp_app::widgets::choice_row(ui, |ui| {
                 ui.radio_value(&mut self.selection_only, false, t!("tex.replace.scope_all"));
                 ui.radio_value(&mut self.selection_only, true, t!("tex.replace.scope_selection"));
             });
             ui.end_row();
 
             ui.label(t!("tex.replace.mode"));
-            ui.horizontal(|ui| {
+            hp_app::widgets::choice_row(ui, |ui| {
                 ui.radio_value(&mut self.mode, MatchMode::Exact, t!("tex.replace.mode_exact"));
                 ui.radio_value(&mut self.mode, MatchMode::Wildcard, t!("tex.replace.mode_wildcard"))
                     .on_hover_text(t!("tex.replace.mode_wildcard_tip"));

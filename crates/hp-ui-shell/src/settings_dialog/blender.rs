@@ -49,7 +49,7 @@ impl SettingsPage for BlenderPage {
             ui.label(t!("shell.blender.path"));
             let reply = ui.add(
                 egui::TextEdit::singleline(&mut state.settings.blender.path)
-                    .desired_width(320.0)
+                    .desired_width(super::field_width(ui, 320.0, 180.0))
                     .hint_text(t!("shell.blender.path_hint")),
             );
             if reply.changed() {
@@ -74,7 +74,7 @@ impl SettingsPage for BlenderPage {
             }
         }
         ui.add_space(6.0);
-        ui.horizontal(|ui| {
+        hp_app::widgets::choice_row(ui, |ui| {
             ui.label(t!("shell.blender.format"));
             for f in BlenderFormat::ALL {
                 changed |= ui.radio_value(&mut state.settings.blender.format, f, format_label(f)).changed();

@@ -6,7 +6,7 @@ L'outil bloc crée des brushes à partir de primitives (bloc, coin, cylindre, po
 
 ## Ouvrir l'outil
 
-- **Outils > Outil bloc**, la palette d'outils, ou `Maj+B`.
+- **Outils > Outil actif > Outil bloc**, la palette d'outils, ou `Maj+B`.
 - Les options de l'outil s'affichent dans la barre d'options au-dessus des vues.
 
 ## Tracer dans les vues 2D

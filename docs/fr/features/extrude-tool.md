@@ -6,7 +6,7 @@ L'outil extruder / creuser découpe des formes plus facilement que l'outil de d�
 
 ## Ouvrir l'outil
 
-- **Outils > Outil extruder / creuser**, la bande d'outils (icône pioche, dans le groupe d'édition à côté de l'outil de découpe), ou `Maj+I`.
+- **Outils > Outil actif > Outil extruder / creuser**, la bande d'outils (icône pioche, dans le groupe d'édition à côté de l'outil de découpe), ou `Maj+I`.
 - Appuyer de nouveau sur `Maj+I` quand l'outil est actif bascule entre **Creuser** et **Extruder**, comme `Tab`.
 
 ## Tracer le contour
@@ -68,7 +68,7 @@ Textures :
 
 ## Décaler une face
 
-**Outils > Décaler la face...** (aussi le bouton **Décaler la face...** de la barre d'options de cet outil) agit sur les faces sélectionnées, avec l'outil texture ou la sélection de faces de l'outil de sélection. Il fait reculer les arêtes de chaque face vers l'intérieur d'une distance et découpe le brush en morceaux convexes : un cadre de brushes autour de la face plus le bloc intérieur, de sorte que le résultat reste composé de brushes convexes valides. Décaler la face d'une boîte donne 5 brushes (4 pour le cadre, 1 bloc intérieur) dont les volumes s'additionnent au volume du brush d'origine.
+**Outils > Opérations sur les brushes > Décaler la face...** (aussi le bouton **Décaler la face...** de la barre d'options de cet outil) agit sur les faces sélectionnées, avec l'outil texture ou la sélection de faces de l'outil de sélection. Il fait reculer les arêtes de chaque face vers l'intérieur d'une distance et découpe le brush en morceaux convexes : un cadre de brushes autour de la face plus le bloc intérieur, de sorte que le résultat reste composé de brushes convexes valides. Décaler la face d'une boîte donne 5 brushes (4 pour le cadre, 1 bloc intérieur) dont les volumes s'additionnent au volume du brush d'origine.
 
 La fenêtre demande :
 
@@ -87,7 +87,7 @@ Avec plusieurs faces sélectionnées, la fenêtre décale en une seule région l
 Le décalage interactif fonctionne comme l'Inset de Blender (`I`), sur le même code géométrique que **Décaler la face...**.
 
 1. Choisissez les faces. Sélectionnez une ou plusieurs faces avec la sélection de faces (l'élément **Face** de l'outil de sélection, l'outil texture, ou, avec l'outil vertex, tous les coins des faces à décaler). Sans face sélectionnée, la face sous la souris est utilisée : placez le curseur sur une face de brush dans la vue 3D et appuyez sur `I`.
-2. Placez la souris sur la vue 3D et appuyez sur `I`. Tant qu'une face est sélectionnée ou survolée et qu'une vue 3D est sous la souris, `I` lance le décalage. Vous pouvez aussi utiliser **Outils > Décalage interactif (I)**, la palette de commandes, ou le bouton **Décalage interactif (I)** de la barre d'options de cet outil : déplacez ensuite la souris sur une vue pour commencer.
+2. Placez la souris sur la vue 3D et appuyez sur `I`. Tant qu'une face est sélectionnée ou survolée et qu'une vue 3D est sous la souris, `I` lance le décalage. Vous pouvez aussi utiliser **Outils > Opérations sur les brushes > Décalage interactif (I)**, la palette de commandes, ou le bouton **Décalage interactif (I)** de la barre d'options de cet outil : déplacez ensuite la souris sur une vue pour commencer.
 3. Bougez la souris. L'épaisseur est la distance entre le centre de la face et le curseur, relative à la position de la souris au départ : aller vers le centre de la face épaissit le cadre, s'en éloigner le ramène à zéro. Un aperçu en direct montre la nouvelle face intérieure (jaune, remplie) et les lignes de coupe vers les coins du contour (vert) dans les vues 3D et 2D. La valeur s'affiche au curseur et dans la barre d'état, avec la grille utilisée, le nombre de brushes du résultat, ou la raison pour laquelle il ne peut pas être appliqué (en rouge).
 4. L'épaisseur et la profondeur suivent d'elles-mêmes la grille active (voir [Grille](#grille-pour-le-biseau-le-décalage-et-lextrusion)). Maintenez `Ctrl` pour forcer la grille même si l'aimantation est coupée, `Alt` pour une valeur libre.
 5. Tapez un nombre pour fixer une valeur exacte (chiffres, `.` ou `,`, et `-` pour la profondeur). `Retour arrière` la corrige, et la vider rend le contrôle à la souris.
@@ -111,7 +111,7 @@ La touche `I` est le raccourci de l'action `inset_interactive`, et elle ne lance
 
 ## Extrusion interactive (E)
 
-L'extrusion interactive tire une face hors de son brush sous la forme d'un nouveau brush, comme l'Extrude de Blender (`E`) mais en créant un brush convexe séparé, ou l'enfonce dans son brush pour y creuser de la matière (distance négative). Elle est aussi dans **Outils > Extrusion interactive (E)**, l'action `extrude_interactive` et la palette de commandes.
+L'extrusion interactive tire une face hors de son brush sous la forme d'un nouveau brush, comme l'Extrude de Blender (`E`) mais en créant un brush convexe séparé, ou l'enfonce dans son brush pour y creuser de la matière (distance négative). Elle est aussi dans **Outils > Opérations sur les brushes > Extrusion interactive (E)**, l'action `extrude_interactive` et la palette de commandes.
 
 1. Choisissez les faces comme pour le décalage : les faces sélectionnées, ou la face sous la souris quand aucune n'est sélectionnée. Plusieurs faces fonctionnent ensemble : chacune devient son propre nouveau brush, tiré le long de sa propre normale, en une seule étape d'annulation.
 2. Placez la souris sur une vue 3D et appuyez sur `E` (la touche est libre dans les préréglages de clavier ; dans l'outil de sélection `E` lance toujours la mise à l'échelle des objets sélectionnés, mais pas tant que des faces sont sélectionnées). Bougez la souris : aller dans le sens où pointe la normale de la face à l'écran rend le nouveau brush plus haut (aperçu jaune du dessus de chaque nouveau brush) ; aller dans l'autre sens au-delà de zéro donne une distance négative, qui creuse : un aperçu rouge-orange montre la face qui entre dans le brush et l'étiquette affiche une distance négative. Pour creuser une poche au milieu d'une face, utilisez un décalage avec une profondeur négative ou le mode creuser de cet outil.

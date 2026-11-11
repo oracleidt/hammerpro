@@ -13,8 +13,8 @@ Masquer des objets les écarte sans les supprimer : le masquage rapide de Hammer
 | **Tout afficher** | **Affichage > Tout afficher** | `U` |
 | **Créer un visgroup des objets masqués** | **Affichage > Créer un visgroup des objets masqués** | aucun |
 | **Afficher les objets d'éditeur** | **Affichage > Options d'affichage > Afficher les objets d'éditeur** | aucun (`Alt+O` avec le préréglage de touches Hammer++) |
-| **Afficher les textures outils** | **Affichage > Afficher les textures outils** | aucun (`Ctrl+Maj+F2` avec le préréglage de touches Hammer++) |
-| Textures outils masquées | **Affichage > Textures outils masquées** (sous-menu) | aucun |
+| **Afficher les textures outils** | **Affichage > Options d'affichage > Afficher les textures outils** | aucun (`Ctrl+Maj+F2` avec le préréglage de touches Hammer++) |
+| Textures outils masquées | **Affichage > Options d'affichage > Textures outils masquées** (sous-menu) | aucun |
 
 La barre d'outils a les trois boutons de masquage, et la palette d'outils se termine par l'œil d'isolement.
 
@@ -51,7 +51,7 @@ L'œil au bout de la palette d'outils isole la sélection :
 ## Textures outils
 
 - **Afficher les textures outils** (menu Affichage et barre d'outils, activé par défaut, `view.show_tool_textures`) affiche ou masque toutes les faces à texture outil dans la vue 3D.
-- **Affichage > Textures outils masquées** masque des familles de textures outils dans la vue 3D quand les textures outils sont affichées : **Nodraw**, **Clips**, **Déclencheurs**, **Hints et skips**. Les mêmes quatre cases sont dans la page **Rendu** des paramètres (**Textures outils masquées en 3D**), et **Afficher le nodraw** (Affichage > Options d'affichage et barre d'outils) bascule la case **Nodraw**.
+- **Affichage > Options d'affichage > Textures outils masquées** masque des familles de textures outils dans la vue 3D quand les textures outils sont affichées : **Nodraw**, **Clips**, **Déclencheurs**, **Hints et skips**. Les mêmes quatre cases sont dans la page **Rendu** des paramètres (**Textures outils masquées en 3D**), et **Afficher le nodraw** (Affichage > Options d'affichage et barre d'outils) bascule la case **Nodraw**.
 
 | Paramètre (`[render]`) | Ce qu'il masque | Défaut |
 | --- | --- | --- |

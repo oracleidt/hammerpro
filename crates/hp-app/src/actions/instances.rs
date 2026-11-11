@@ -9,9 +9,9 @@ action_list! { instances_actions {
     EditInstance => "edit_instance", Tools, ToolsInstancing, None, Ready;
     CollapseInstances => "collapse_instances", Tools, ToolsInstancing, None, Ready;
     CollapseAllInstances => "collapse_all_instances", Tools, ToolsInstancing, None, Ready;
-    InstancesHidden => "instances_hidden", Tools, ToolsInstancing, None, Ready;
-    InstancesTinted => "instances_tinted", Tools, ToolsInstancing, None, Ready;
-    InstancesNormal => "instances_normal", Tools, ToolsInstancing, None, Ready;
+    InstancesHidden => "instances_hidden", Tools, ToolsInstanceDisplay, None, Ready;
+    InstancesTinted => "instances_tinted", Tools, ToolsInstanceDisplay, None, Ready;
+    InstancesNormal => "instances_normal", Tools, ToolsInstanceDisplay, None, Ready;
 }}
 
 pub(super) const REPEATS: &[Action] = &[];

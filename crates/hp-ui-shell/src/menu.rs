@@ -23,9 +23,9 @@ impl Builtin {
 
     fn slot(self) -> (Category, u16, u16) {
         match self {
-            Builtin::Recent => (Category::File, 80, 0),
+            Builtin::Recent => (Category::File, 10, 5),
             Builtin::Language => (Category::View, 50, 10),
-            Builtin::FirstRun => (Category::Help, 10, 10),
+            Builtin::FirstRun => (Category::Help, 20, 10),
         }
     }
 }
@@ -34,9 +34,23 @@ impl Builtin {
 pub enum MenuItem {
     Separator,
     Action(Action),
-    Submenu { title: &'static str, width: f32, actions: Vec<Action> },
+    Submenu { title: &'static str, width: f32, items: Vec<MenuItem> },
     Builtin(Builtin),
     Extension(usize),
+}
+
+impl MenuItem {
+    pub fn actions(&self) -> Vec<Action> {
+        match self {
+            MenuItem::Action(a) => vec![*a],
+            MenuItem::Submenu { items, .. } => items.iter().flat_map(MenuItem::actions).collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    pub fn is_entry(&self) -> bool {
+        !matches!(self, MenuItem::Separator)
+    }
 }
 
 const PANEL_ORDER: [Action; 6] = [
@@ -51,29 +65,128 @@ const PANEL_ORDER: [Action; 6] = [
 fn hammer_order(group: MenuGroup) -> &'static [Action] {
     use Action as A;
     match group {
-        MenuGroup::ViewPanels => &PANEL_ORDER,
-        MenuGroup::MapGrid => &[A::ToggleSnap, A::ToggleGrid, A::ToggleGrid3d, A::GridSmaller, A::GridLarger],
-        MenuGroup::MapInfo => &[A::GoToBrush, A::EntityReport, A::EntityGallery, A::CheckProblems, A::CompareMaps],
-        MenuGroup::MapProperties => &[A::MapInfo, A::MapProperties],
-        MenuGroup::ToolsBrush => &[
-            A::Carve,
-            A::MakeHollow,
-            A::Group,
-            A::Ungroup,
-            A::TieToEntity,
-            A::MoveToWorld,
-            A::ReplaceTextures,
-            A::ToggleTextureLock,
-            A::ToggleTextureScaleLock,
-            A::TransformDialog,
-            A::SnapToGrid,
-            A::SnapToGridIndividually,
-            A::CenterOrigins,
-            A::RandomRotate,
-            A::RandomRotateDialog,
+        MenuGroup::FileSave => &[A::SaveMap, A::SaveMapAs, A::SaveAsNewVersion],
+        MenuGroup::ViewDisplay => &[
+            A::TogglePointEntities,
+            A::ToggleEditorObjects,
+            A::ToggleHelpersAll,
+            A::ToggleConnections,
+            A::ToggleOverlays,
+            A::ToggleDisplacements,
+            A::ToggleNodraw,
+            A::ToggleBoundsOverlay,
         ],
-        MenuGroup::ToolsPlacement => &[A::CreatePrefab],
+        MenuGroup::ViewDisplayInfo => &[A::ToggleInvalidBrushes, A::ToggleViewInfo, A::BackgroundImages],
+        MenuGroup::ViewEffects => &[
+            A::ToggleRenderEffects,
+            A::ToggleEntityFx,
+            A::ToggleAnimatedMaterials,
+            A::ToggleModelFade,
+            A::ToggleOpaqueMaterials,
+            A::ToggleRadiusCulling,
+        ],
+        MenuGroup::ViewEffectsObjects => {
+            &[A::ToggleParticles, A::ToggleParticlesSelected, A::ToggleRopes, A::SimulateRopes]
+        }
+        MenuGroup::ToolsAlign => &[
+            A::AlignLeft,
+            A::AlignRight,
+            A::AlignTop,
+            A::AlignBottom,
+            A::AlignCenterHorizontal,
+            A::AlignCenterVertical,
+        ],
+        MenuGroup::FileImport => {
+            &[A::ImportMap, A::ImportModel, A::ImportModelsBatch, A::ImportFromGame, A::ImportHeightmap]
+        }
+        MenuGroup::FileImportOpen => &[A::OpenArchive, A::OpenBsp, A::OpenBspSniffer],
+        MenuGroup::FileExport => &[A::ExportSelection, A::ExportCopy, A::ExportAgain, A::ExportObj, A::ExportHeightmap],
+        MenuGroup::FileRun => &[A::RunMap, A::CompileNow, A::CancelCompile, A::BatchCompile],
+        MenuGroup::FileGame => &[A::LaunchGame, A::ReloadInGame],
+        MenuGroup::FilePublish => &[A::BuildContent, A::PublishWorkshop],
+        MenuGroup::EditFind => &[A::FindEntities, A::FindReplaceText],
+        MenuGroup::EditProperties => &[A::Properties, A::CopyKeyvalues, A::PasteKeyvalues, A::SetMaxDistance],
+        MenuGroup::EditColors => &[A::EditColor, A::SetDisplayColor, A::RandomDisplayColors, A::ResetDisplayColors],
+        MenuGroup::EditFaceHistory => &[A::FaceSelectionBack, A::FaceSelectionForward],
+        MenuGroup::ViewPanels => &PANEL_ORDER,
+        MenuGroup::ViewType => &[
+            A::ViewTop,
+            A::ViewSide,
+            A::ViewFront,
+            A::View3dTextured,
+            A::View3dFlat,
+            A::CycleView2d,
+            A::ViewLogical,
+            A::ShowLogicalView,
+        ],
+        MenuGroup::ViewRender => &[
+            A::RenderTextured,
+            A::RenderFlat,
+            A::RenderWireframe,
+            A::RenderTexturedWire,
+            A::RenderLit,
+            A::RenderBaked,
+            A::RenderUnshaded,
+            A::RenderSmoothingGroups,
+            A::RenderLightmapGrid,
+            A::RenderColorCorrected,
+        ],
+        MenuGroup::ViewShow => &[A::ToggleModels, A::ToggleHelpers, A::ToggleToolTextures],
+        MenuGroup::ViewSky => &[A::ToggleSkyPreview, A::ToggleSkybox3d, A::UseSkyCameraInGame],
+        MenuGroup::ViewFog => &[A::ToggleFogPreview, A::ToggleFogVolumes, A::ToggleFogVolumeTexture],
+        MenuGroup::ViewHide => {
+            &[A::HideSelected, A::HideUnselected, A::UnhideAll, A::ToggleCordon, A::MoveToVisgroup, A::HiddenToVisgroup]
+        }
+        MenuGroup::ViewNav => &[A::Center2dOnSelection, A::Center3dOnSelection, A::MaximizeView, A::ToggleFullscreen],
+        MenuGroup::ViewZoom => &[A::Zoom2dIn, A::Zoom2dOut, A::FarPlaneCloser, A::FarPlaneFarther, A::ResetViewSplits],
+        MenuGroup::MapGrid => &[A::ToggleSnap, A::ToggleGrid, A::ToggleGrid3d, A::GridSmaller, A::GridLarger],
+        MenuGroup::MapInfo => {
+            &[A::CheckProblems, A::CheckLeaks, A::GoToBrush, A::EntityReport, A::ShowMapAssets, A::CompareMaps]
+        }
+        MenuGroup::MapProperties => &[A::MapInfo, A::MapProperties, A::EditSoundscapes, A::EntityGallery],
+        MenuGroup::MapPointfile => &[A::LoadPointfile, A::UnloadPointfile],
+        MenuGroup::MapPortals => &[A::ShowPortalViewer, A::BuildPortals, A::LoadPortalFile, A::UnloadPortalFile],
+        MenuGroup::MapOptimize => &[A::ShowDetailSuggestions, A::SealAreaportal],
+        MenuGroup::MapLighting => &[A::BakeLighting, A::BakeAroundCamera, A::StopBake],
+        MenuGroup::MapLights => &[
+            A::SoloSelectedLights,
+            A::MuteSelectedLights,
+            A::UnmuteAllLights,
+            A::MeasureLightCosts,
+            A::SelectTinyLightmapFaces,
+        ],
+        MenuGroup::MapCubemaps => &[A::RebuildCubemaps, A::WriteCubemaps],
+        MenuGroup::ToolsBrush => &[A::TransformDialog, A::SnapToGrid],
+        MenuGroup::ToolsFlip => &[A::FlipHorizontal, A::FlipVertical, A::FlipX, A::FlipY, A::FlipZ],
+        MenuGroup::ToolsArrange => &[A::MoveToFloor, A::MoveToCeiling, A::MoveToFloorAligned, A::MoveToCeilingAligned],
+        MenuGroup::ToolsOrigin => {
+            &[A::SnapToGridIndividually, A::CenterOrigins, A::TogglePivot, A::RandomRotate, A::RandomRotateDialog]
+        }
+        MenuGroup::ToolsGroup => &[A::Group, A::Ungroup, A::TieToEntity, A::MoveToWorld],
+        MenuGroup::ToolsCsg => &[A::Carve, A::MakeHollow],
+        MenuGroup::ToolsBrushOps => &[A::MergeBrushes, A::IntersectBrushes, A::UnionBrushes, A::MergeConvex],
+        MenuGroup::ToolsFaceOps => &[A::ExtrudeInteractive, A::InsetInteractive, A::InsetFace],
+        MenuGroup::ToolsBrushMisc => &[A::ConvertToDetail, A::TieEachToEntity, A::NodrawHiddenFaces],
+        MenuGroup::ToolsDisp => {
+            &[A::DispSubdivide, A::DispSmoothLoop, A::DispLoopHeight, A::DispInvertAlpha, A::DispSelectBySlope]
+        }
+        MenuGroup::ToolsTerrain => {
+            &[A::GenerateTerrain, A::DispTileSelection, A::MeshToDisp, A::DispConformMesh, A::DispToMesh]
+        }
+        MenuGroup::ToolsRoads => &[A::RoadEdit, A::RoadsideEdit, A::RoadSidewalk, A::RoadCurb, A::RoadTerrain],
+        MenuGroup::ToolsTextures => &[A::ReplaceTextures, A::ToggleTextureLock, A::ToggleTextureScaleLock],
+        MenuGroup::ToolsPlacement => &[A::CreatePrefab, A::InsertOriginalPrefab],
+        MenuGroup::ToolsScatter => &[A::PhysicsPlacement, A::ScatterByMaterial],
+        MenuGroup::ToolsProps => &[A::BrushesToProp, A::PropToBrushes, A::PropperOptions],
+        MenuGroup::ToolsPaths => &[A::PathInsertPoint, A::PathRemovePoint, A::GenerateNavMesh],
+        MenuGroup::ToolsContent => {
+            &[A::ShaderEditor, A::VtfEditor, A::OpenSoundEditor, A::OpenColorCorrectionEditor, A::ParticleEditor]
+        }
+        MenuGroup::ToolsBlender => &[A::SendToBlender, A::PullFromBlender, A::StopBlenderLink, A::InstallBlenderAddon],
+        MenuGroup::ToolsMcp => &[A::ToggleMcpServer, A::McpPanel, A::McpInstall],
         MenuGroup::ToolsSwitch => &TOOLS_MENU_ORDER,
+        MenuGroup::HelpDocs => &[A::OpenDocs, A::KeyboardShortcuts, A::EntityHelp],
+        MenuGroup::HelpSupport => &[A::ReportIssue, A::CheckForUpdates],
         _ => &[],
     }
 }
@@ -110,8 +223,55 @@ fn group_actions(cat: Category, group: MenuGroup) -> Vec<Action> {
     actions
 }
 
+struct SubmenuSlot {
+    title: &'static str,
+    width: f32,
+    parts: Vec<((u16, u16), Vec<MenuItem>)>,
+}
+
+impl SubmenuSlot {
+    fn key(&self) -> (u16, u16) {
+        self.parts.iter().map(|(k, _)| *k).min().unwrap_or((u16::MAX, 0))
+    }
+
+    fn part(&mut self, key: (u16, u16)) -> &mut Vec<MenuItem> {
+        let i = match self.parts.iter().position(|(k, _)| *k == key) {
+            Some(i) => i,
+            None => {
+                self.parts.push((key, Vec::new()));
+                self.parts.len() - 1
+            }
+        };
+        &mut self.parts[i].1
+    }
+
+    fn into_item(mut self) -> MenuItem {
+        self.parts.sort_by_key(|(k, _)| *k);
+        let mut items = Vec::new();
+        for (_, part) in self.parts.into_iter().filter(|(_, p)| !p.is_empty()) {
+            if !items.is_empty() {
+                items.push(MenuItem::Separator);
+            }
+            items.extend(part);
+        }
+        MenuItem::Submenu { title: self.title, width: self.width, items }
+    }
+}
+
+fn submenu_slot<'a>(subs: &'a mut Vec<SubmenuSlot>, title: &'static str, width: f32) -> &'a mut SubmenuSlot {
+    let i = match subs.iter().position(|s| s.title == title) {
+        Some(i) => i,
+        None => {
+            subs.push(SubmenuSlot { title, width, parts: Vec::new() });
+            subs.len() - 1
+        }
+    };
+    &mut subs[i]
+}
+
 pub fn menu_layout(cat: Category, extensions: &[MenuExtension]) -> Vec<MenuItem> {
     let mut slots: Vec<(u16, u16, MenuItem)> = Vec::new();
+    let mut subs: Vec<SubmenuSlot> = Vec::new();
     let mut seen: Vec<MenuGroup> = Vec::new();
     for a in Action::ALL.iter().filter(|a| a.category() == cat) {
         let group = a.group();
@@ -122,9 +282,9 @@ pub fn menu_layout(cat: Category, extensions: &[MenuExtension]) -> Vec<MenuItem>
         let Some(info) = group.info() else { continue };
         let actions = group_actions(cat, group);
         match info.submenu {
-            Some(title) => {
-                slots.push((info.section, info.order, MenuItem::Submenu { title, width: info.width, actions }));
-            }
+            Some(title) => submenu_slot(&mut subs, title, info.width)
+                .part((info.section, info.order))
+                .extend(actions.into_iter().map(MenuItem::Action)),
             None => slots.extend(actions.into_iter().map(|a| (info.section, info.order, MenuItem::Action(a)))),
         }
     }
@@ -135,9 +295,19 @@ pub fn menu_layout(cat: Category, extensions: &[MenuExtension]) -> Vec<MenuItem>
         }
     }
     for (i, ext) in extensions.iter().enumerate() {
-        if ext.menu == cat {
-            slots.push((ext.section, ext.order, MenuItem::Extension(i)));
+        if ext.menu != cat {
+            continue;
         }
+        match ext.submenu {
+            Some(title) => submenu_slot(&mut subs, title, MENU_MIN_WIDTH)
+                .part((ext.section, ext.order))
+                .push(MenuItem::Extension(i)),
+            None => slots.push((ext.section, ext.order, MenuItem::Extension(i))),
+        }
+    }
+    for sub in subs {
+        let (section, order) = sub.key();
+        slots.push((section, order, sub.into_item()));
     }
     slots.sort_by_key(|(section, order, _)| (*section, *order));
     let mut out = Vec::with_capacity(slots.len() + 4);
@@ -150,6 +320,46 @@ pub fn menu_layout(cat: Category, extensions: &[MenuExtension]) -> Vec<MenuItem>
         out.push(item);
     }
     out
+}
+
+pub fn menu_has_entries(cat: Category, extensions: &[MenuExtension]) -> bool {
+    Action::ALL.iter().any(|a| a.category() == cat && a.group().is_visible())
+        || Builtin::ALL.iter().any(|b| b.slot().0 == cat)
+        || extensions.iter().any(|e| e.menu == cat)
+}
+
+pub fn menu_path(action: Action) -> Option<&'static [&'static str]> {
+    static PATHS: std::sync::OnceLock<Vec<(Action, Vec<&'static str>)>> = std::sync::OnceLock::new();
+    let paths = PATHS.get_or_init(|| {
+        fn walk(items: &[MenuItem], path: &mut Vec<&'static str>, out: &mut Vec<(Action, Vec<&'static str>)>) {
+            for item in items {
+                match item {
+                    MenuItem::Action(a) => out.push((*a, path.clone())),
+                    MenuItem::Submenu { title, items, .. } => {
+                        path.push(title);
+                        walk(items, path, out);
+                        path.pop();
+                    }
+                    _ => {}
+                }
+            }
+        }
+        let mut out = Vec::new();
+        for cat in Category::ALL {
+            walk(&menu_layout(cat, &[]), &mut vec![cat.label_key()], &mut out);
+        }
+        out
+    });
+    paths.iter().find(|(a, _)| *a == action).map(|(_, p)| p.as_slice())
+}
+
+pub fn menu_path_text(action: Action, lang: Option<Lang>) -> Option<String> {
+    let path = menu_path(action)?;
+    let tr = |key: &str| match lang {
+        Some(lang) => hp_app::i18n::tr_in(key, lang),
+        None => hp_app::i18n::tr(key),
+    };
+    Some(path.iter().map(|k| tr(k)).collect::<Vec<_>>().join(" > "))
 }
 
 fn check_cell<'a>(ui: &Ui, check: Check) -> egui::Atom<'a> {
@@ -245,6 +455,9 @@ fn menus(ui: &mut Ui, state: &mut AppState, extensions: &mut [MenuExtension]) ->
     hp_app::widgets::logo(ui, 18.0).on_hover_text(t!("app.name"));
     ui.add_space(2.0);
     for cat in Category::ALL {
+        if !menu_has_entries(cat, extensions) {
+            continue;
+        }
         ui.menu_button(t!(cat.label_key()), |ui| {
             category_menu(ui, state, cat, extensions);
             close_on_escape(ui);
@@ -448,10 +661,10 @@ fn menu_item(ui: &mut Ui, state: &mut AppState, item: MenuItem, extensions: &mut
                 ui.separator();
             }
             MenuItem::Action(a) => action_item(ui, state, a),
-            MenuItem::Submenu { title, width, actions } => submenu(ui, t!(title), |ui| {
+            MenuItem::Submenu { title, width, items } => submenu(ui, t!(title), |ui| {
                 ui.set_min_width(width);
-                for a in actions {
-                    action_item(ui, state, a);
+                for item in items {
+                    menu_item(ui, state, item, extensions);
                 }
             }),
             MenuItem::Builtin(Builtin::Recent) => recent_menu(ui, state),
@@ -543,11 +756,7 @@ pub fn menu_actions() -> Vec<Action> {
     let mut out = Vec::new();
     for cat in Category::ALL {
         for item in menu_layout(cat, &[]) {
-            match item {
-                MenuItem::Action(a) => out.push(a),
-                MenuItem::Submenu { actions, .. } => out.extend(actions),
-                _ => {}
-            }
+            out.extend(item.actions());
         }
     }
     out
@@ -575,21 +784,26 @@ mod tests {
         for a in &listed {
             assert!(seen.insert(*a), "{} is in the menus twice", a.id());
         }
-        for lang in [Lang::En, Lang::Fr] {
+        fn labels(menu: &str, items: &[MenuItem], out: &mut Vec<(String, Vec<String>)>) {
+            let mut here = Vec::new();
+            for item in items {
+                match item {
+                    MenuItem::Action(a) => here.push(a.label().to_owned()),
+                    MenuItem::Submenu { title, items, .. } => {
+                        here.push(hp_app::i18n::tr(title).to_owned());
+                        labels(title, items, out);
+                    }
+                    _ => {}
+                }
+            }
+            out.push((menu.to_owned(), here));
+        }
+        for lang in Lang::ALL {
             set_lang(lang);
             for cat in Category::ALL {
-                let mut labels: Vec<(String, Vec<String>)> = vec![(cat.label_key().to_owned(), Vec::new())];
-                for item in menu_layout(cat, &[]) {
-                    match item {
-                        MenuItem::Action(a) => labels[0].1.push(a.label().to_owned()),
-                        MenuItem::Submenu { title, actions, .. } => {
-                            labels[0].1.push(hp_app::i18n::tr(title).to_owned());
-                            labels.push((title.to_owned(), actions.iter().map(|a| a.label().to_owned()).collect()));
-                        }
-                        _ => {}
-                    }
-                }
-                for (menu, entries) in labels {
+                let mut all = Vec::new();
+                labels(cat.label_key(), &menu_layout(cat, &[]), &mut all);
+                for (menu, entries) in all {
                     let mut seen = std::collections::HashSet::new();
                     for e in &entries {
                         assert!(seen.insert(e.to_lowercase()), "{lang:?}: \"{e}\" twice in {menu}");
@@ -605,72 +819,129 @@ mod tests {
         let listed = menu_actions();
         for a in Action::ALL.iter().filter(|a| a.group() != MenuGroup::Hidden) {
             assert!(listed.contains(a), "{} is missing from the menus", a.id());
+            assert!(menu_path(*a).is_some_and(|p| !p.is_empty()), "{} has no menu path", a.id());
         }
+    }
+
+    #[test]
+    fn every_entry_of_the_2_0_2_menus_is_still_in_the_menus() {
+        let listed = menu_actions();
+        let old: Vec<&str> =
+            include_str!("menu_ids_2_0_2.txt").lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+        assert_eq!(old.len(), 344);
+        for id in old {
+            let action = Action::from_id(id).unwrap_or_else(|| panic!("{id} was in the 2.0.2 menus and is gone"));
+            assert!(action.is_ready(), "{id}");
+            assert!(listed.contains(&action), "{id} was in the 2.0.2 menus and is not in the menus now");
+        }
+    }
+
+    fn entries(items: &[MenuItem]) -> usize {
+        items.iter().filter(|i| i.is_entry()).count()
+    }
+
+    fn check_heights(title: &str, items: &[MenuItem], out: &mut Vec<(String, usize)>) {
+        out.push((title.to_owned(), entries(items)));
+        assert!(items.first().is_some_and(MenuItem::is_entry), "{title} starts with a separator");
+        assert!(items.last().is_some_and(MenuItem::is_entry), "{title} ends with a separator");
+        assert!(items.windows(2).all(|w| w[0].is_entry() || w[1].is_entry()), "{title}: double separator");
+        for item in items {
+            if let MenuItem::Submenu { title, items, .. } = item {
+                check_heights(title, items, out);
+            }
+        }
+    }
+
+    #[test]
+    fn no_menu_is_taller_than_about_twenty_entries() {
+        let mut all = Vec::new();
+        for cat in Category::ALL {
+            let items = menu_layout(cat, &[]);
+            if items.is_empty() {
+                continue;
+            }
+            check_heights(cat.label_key(), &items, &mut all);
+        }
+        for (title, n) in &all {
+            assert!(*n <= 22, "{title} has {n} entries");
+        }
+        let top = |key: &str| all.iter().find(|(t, _)| t == key).map(|(_, n)| *n).unwrap_or(0);
+        for key in ["menu.file", "menu.edit", "menu.map", "menu.view", "menu.tools", "menu.window", "menu.help"] {
+            assert!(top(key) <= 21, "{key} has {} entries", top(key));
+        }
+        assert!(menu_layout(Category::Other, &[]).is_empty(), "the particle editor moved to Tools");
     }
 
     #[test]
     fn menus_follow_hammer() {
         use Action as A;
         use MenuItem::{Action as I, Builtin as B, Separator as S};
-        let about = Action::DECLARED.iter().position(|a| *a == Action::About).unwrap_or(90);
-        let core: Vec<Action> = Action::DECLARED[..=about].to_vec();
-        assert_eq!(core.last(), Some(&Action::About));
-        let only_core = |items: Vec<MenuItem>| -> Vec<MenuItem> {
-            let mut out: Vec<MenuItem> = Vec::new();
-            for item in items {
-                let item = match item {
-                    MenuItem::Action(a) if !core.contains(&a) => continue,
-                    MenuItem::Submenu { title, width, actions } => {
-                        let actions: Vec<Action> = actions.into_iter().filter(|a| core.contains(a)).collect();
-                        if actions.is_empty() {
-                            continue;
-                        }
-                        MenuItem::Submenu { title, width, actions }
-                    }
-                    other => other,
-                };
-                if item == S && matches!(out.last(), None | Some(S)) {
-                    continue;
-                }
-                out.push(item);
-            }
-            if out.last() == Some(&S) {
-                out.pop();
-            }
-            out
+        let sub = |title: &'static str, items: &[MenuItem]| -> MenuItem {
+            let width = menu_layout(Category::ALL[0], &[])
+                .into_iter()
+                .chain(Category::ALL.iter().flat_map(|c| menu_layout(*c, &[])))
+                .find_map(|i| match i {
+                    MenuItem::Submenu { title: t, width, .. } if t == title => Some(width),
+                    _ => None,
+                })
+                .unwrap_or(0.0);
+            MenuItem::Submenu { title, width, items: items.to_vec() }
         };
-        let sub = |title: &'static str, width: f32, actions: &[Action]| MenuItem::Submenu {
-            title,
-            width,
-            actions: actions.to_vec(),
-        };
-        let layout = |cat| only_core(menu_layout(cat, &[]));
+        let acts = |list: &[Action]| -> Vec<MenuItem> { list.iter().copied().map(I).collect() };
+        let file = menu_layout(Category::File, &[]);
         assert_eq!(
-            layout(Category::File),
+            file,
             vec![
                 I(A::NewMap),
                 I(A::OpenMap),
+                B(Builtin::Recent),
+                I(A::CloseMap),
+                I(A::CloseOtherMaps),
                 S,
                 I(A::SaveMap),
                 I(A::SaveMapAs),
+                I(A::SaveAsNewVersion),
                 S,
-                I(A::ImportMap),
-                I(A::ExportSelection),
+                sub(
+                    "menu.import",
+                    &[
+                        acts(&[
+                            A::ImportMap,
+                            A::ImportModel,
+                            A::ImportModelsBatch,
+                            A::ImportFromGame,
+                            A::ImportHeightmap
+                        ]),
+                        vec![S],
+                        acts(&[A::OpenArchive, A::OpenBsp, A::OpenBspSniffer]),
+                    ]
+                    .concat()
+                ),
+                sub(
+                    "menu.export",
+                    &acts(&[A::ExportSelection, A::ExportCopy, A::ExportAgain, A::ExportObj, A::ExportHeightmap])
+                ),
                 S,
-                I(A::RunMap),
-                S,
-                B(Builtin::Recent),
+                sub(
+                    "menu.compile",
+                    &[
+                        acts(&[A::RunMap, A::CompileNow, A::CancelCompile, A::BatchCompile]),
+                        vec![S],
+                        acts(&[A::LaunchGame, A::ReloadInGame]),
+                    ]
+                    .concat()
+                ),
+                sub("menu.publish", &acts(&[A::BuildContent, A::PublishWorkshop])),
                 S,
                 I(A::Exit),
             ]
         );
+        let edit = menu_layout(Category::Edit, &[]);
         assert_eq!(
-            layout(Category::Edit),
-            vec![
+            edit[..12],
+            [
                 I(A::Undo),
                 I(A::Redo),
-                S,
-                I(A::FindEntities),
                 S,
                 I(A::Cut),
                 I(A::Copy),
@@ -681,123 +952,195 @@ mod tests {
                 I(A::ArrayDuplicate),
                 S,
                 I(A::SelectAll),
+            ]
+        );
+        assert_eq!(
+            edit[12..],
+            [
                 I(A::SelectNone),
                 I(A::InvertSelection),
-                sub("menu.selection_mode", 160.0, &[A::SelectModeGroups, A::SelectModeObjects, A::SelectModeSolids]),
+                sub(
+                    "menu.selection_mode",
+                    &[
+                        acts(&[A::SelectModeGroups, A::SelectModeObjects, A::SelectModeSolids]),
+                        vec![S],
+                        acts(&[A::ToggleIgnoreGroups])
+                    ]
+                    .concat()
+                ),
                 sub(
                     "menu.select_element",
-                    160.0,
-                    &[A::SelectElementObject, A::SelectElementVertex, A::SelectElementEdge, A::SelectElementFace],
+                    &[
+                        acts(&[
+                            A::SelectElementObject,
+                            A::SelectElementVertex,
+                            A::SelectElementEdge,
+                            A::SelectElementFace
+                        ]),
+                        vec![S],
+                        acts(&[
+                            A::EdgeSelectLoop,
+                            A::EdgeSelectRing,
+                            A::EdgeGrow,
+                            A::EdgeShrink,
+                            A::EdgeSelectBoundary
+                        ]),
+                        vec![S],
+                        acts(&[A::FaceSelectionBack, A::FaceSelectionForward]),
+                    ]
+                    .concat()
                 ),
+                S,
+                I(A::FindEntities),
+                I(A::FindReplaceText),
                 S,
                 I(A::Properties),
-            ]
-        );
-        assert_eq!(
-            layout(Category::Map),
-            vec![
-                I(A::ToggleSnap),
-                I(A::ToggleGrid),
-                I(A::GridSmaller),
-                I(A::GridLarger),
-                S,
-                I(A::GoToBrush),
-                I(A::EntityReport),
-                I(A::CheckProblems),
-                S,
-                I(A::LoadPointfile),
-                I(A::UnloadPointfile),
-                S,
-                I(A::MapInfo),
-                I(A::MapProperties),
-            ]
-        );
-        assert_eq!(
-            layout(Category::View),
-            vec![
+                I(A::CopyKeyvalues),
+                I(A::PasteKeyvalues),
+                I(A::SetMaxDistance),
                 sub(
-                    "menu.render_mode",
-                    200.0,
-                    &[A::RenderTextured, A::RenderFlat, A::RenderWireframe, A::RenderTexturedWire, A::RenderLit]
+                    "menu.colors",
+                    &acts(&[A::EditColor, A::SetDisplayColor, A::RandomDisplayColors, A::ResetDisplayColors])
                 ),
-                S,
-                I(A::ToggleModels),
-                I(A::ToggleHelpers),
-                I(A::ToggleToolTextures),
-                S,
-                I(A::HideSelected),
-                I(A::HideUnselected),
-                I(A::UnhideAll),
-                S,
-                I(A::Center2dOnSelection),
-                I(A::Center3dOnSelection),
-                I(A::MaximizeView),
-                I(A::ToggleFullscreen),
-                S,
-                sub(
-                    "menu.panels",
-                    200.0,
-                    &[
-                        A::ShowTextureBrowser,
-                        A::ShowEntityProperties,
-                        A::ShowVisgroups,
-                        A::ShowOutliner,
-                        A::ShowModelBrowser
-                    ]
-                ),
-                B(Builtin::Language),
+            ]
+        );
+        let titles = |items: &[MenuItem]| -> Vec<String> {
+            items
+                .iter()
+                .map(|i| match i {
+                    MenuItem::Separator => "|".to_owned(),
+                    MenuItem::Action(a) => a.id().to_owned(),
+                    MenuItem::Submenu { title, .. } => format!("{title} >"),
+                    MenuItem::Builtin(b) => format!("{b:?}"),
+                    MenuItem::Extension(i) => format!("ext {i}"),
+                })
+                .collect()
+        };
+        assert_eq!(
+            titles(&menu_layout(Category::Map, &[])),
+            [
+                A::ToggleSnap.id(),
+                A::ToggleGrid.id(),
+                A::ToggleGrid3d.id(),
+                A::GridSmaller.id(),
+                A::GridLarger.id(),
+                "menu.grids >",
+                "|",
+                A::CheckProblems.id(),
+                A::CheckLeaks.id(),
+                A::GoToBrush.id(),
+                A::EntityReport.id(),
+                A::ShowMapAssets.id(),
+                A::CompareMaps.id(),
+                "menu.leaks_visibility >",
+                "|",
+                A::MapInfo.id(),
+                A::MapProperties.id(),
+                A::EditSoundscapes.id(),
+                A::EntityGallery.id(),
+                "|",
+                "menu.lighting >",
             ]
         );
         assert_eq!(
-            layout(Category::Tools),
-            vec![
-                I(A::Carve),
-                I(A::MakeHollow),
-                I(A::Group),
-                I(A::Ungroup),
-                I(A::TieToEntity),
-                I(A::MoveToWorld),
-                I(A::ReplaceTextures),
-                I(A::ToggleTextureLock),
-                I(A::ToggleTextureScaleLock),
-                I(A::TransformDialog),
-                I(A::SnapToGrid),
-                I(A::MergeConvex),
-                sub("menu.align", 160.0, &[A::AlignLeft, A::AlignRight, A::AlignTop, A::AlignBottom]),
-                sub("menu.flip", 140.0, &[A::FlipX, A::FlipY, A::FlipZ]),
-                S,
-                I(A::ToolSelect),
-                I(A::ToolCamera),
-                I(A::ToolEntity),
-                I(A::ToolBlock),
-                I(A::ToolTexture),
-                I(A::ApplyCurrentTexture),
-                I(A::ToolDecal),
-                I(A::ToolOverlay),
-                I(A::ToolClip),
-                I(A::ToolVertex),
-                I(A::ToolDisplacement),
-                S,
-                I(A::CommandPalette),
-                I(A::Settings),
+            titles(&menu_layout(Category::View, &[])),
+            [
+                "menu.view_type >",
+                "menu.render_mode >",
+                A::TogglePlayerView.id(),
+                "|",
+                "menu.display >",
+                "menu.environment >",
+                "menu.effects >",
+                "menu.diagnostics >",
+                "|",
+                A::HideSelected.id(),
+                A::HideUnselected.id(),
+                A::UnhideAll.id(),
+                A::ToggleCordon.id(),
+                A::MoveToVisgroup.id(),
+                A::HiddenToVisgroup.id(),
+                "|",
+                A::Center2dOnSelection.id(),
+                A::Center3dOnSelection.id(),
+                A::MaximizeView.id(),
+                A::ToggleFullscreen.id(),
+                "menu.zoom_distance >",
+                "|",
+                "menu.panels >",
+                "Language",
             ]
         );
-        assert_eq!(layout(Category::Window), vec![I(A::ShowConsole)]);
         assert_eq!(
-            layout(Category::Help),
-            vec![I(A::KeyboardShortcuts), I(A::OpenDocs), I(A::ReportIssue), B(Builtin::FirstRun), S, I(A::About)]
+            titles(&menu_layout(Category::Tools, &[])),
+            [
+                "menu.switch_tool >",
+                "|",
+                A::TransformDialog.id(),
+                A::SnapToGrid.id(),
+                "menu.arrange >",
+                "|",
+                A::Group.id(),
+                A::Ungroup.id(),
+                A::TieToEntity.id(),
+                A::MoveToWorld.id(),
+                "|",
+                A::Carve.id(),
+                A::MakeHollow.id(),
+                "menu.brush_ops >",
+                "menu.vertices >",
+                "menu.displacements >",
+                "menu.curves_roads >",
+                "menu.textures >",
+                "|",
+                "menu.placement >",
+                "menu.instancing >",
+                "menu.content >",
+                "menu.integrations >",
+                "|",
+                A::CommandPalette.id(),
+                A::Settings.id(),
+            ]
+        );
+        assert_eq!(
+            titles(&menu_layout(Category::Window, &[])),
+            ["menu.layout >", "|", A::ShowConsole.id(), "|", A::NextMap.id(), A::PreviousMap.id()]
+        );
+        assert_eq!(
+            titles(&menu_layout(Category::Help, &[])),
+            [
+                A::OpenDocs.id(),
+                A::KeyboardShortcuts.id(),
+                A::EntityHelp.id(),
+                "|",
+                A::ReportIssue.id(),
+                A::CheckForUpdates.id(),
+                "FirstRun",
+                "|",
+                A::About.id(),
+            ]
         );
         let tools: Vec<Action> = menu_layout(Category::Tools, &[])
             .into_iter()
-            .filter_map(|i| match i {
-                MenuItem::Action(a) if a.tool().is_some() || a == A::ApplyCurrentTexture => Some(a),
+            .find_map(|i| match i {
+                MenuItem::Submenu { title: "menu.switch_tool", items, .. } => Some(items),
                 _ => None,
             })
+            .unwrap_or_default()
+            .into_iter()
+            .flat_map(|i| i.actions())
             .collect();
         let mut palette: Vec<Action> = hp_app::ToolId::ALL.iter().map(|t| t.action()).collect();
         palette.insert(5, A::ApplyCurrentTexture);
         assert_eq!(palette[4], A::ToolTexture);
         assert_eq!(tools, palette);
+        assert_eq!(menu_path(A::Carve), Some(&["menu.tools"][..]));
+        assert_eq!(menu_path(A::ImportModel), Some(&["menu.file", "menu.import"][..]));
+        assert_eq!(menu_path(A::FlipX), Some(&["menu.tools", "menu.arrange"][..]));
+        let _g = crate::tests::lang_guard();
+        crate::register_translations();
+        assert_eq!(menu_path_text(A::ExportObj, Some(Lang::En)).as_deref(), Some("File > Export"));
+        assert_eq!(menu_path_text(A::ExportObj, Some(Lang::Fr)).as_deref(), Some("Fichier > Exporter"));
     }
 
     #[test]
@@ -813,6 +1156,35 @@ mod tests {
         let actions = menu_actions();
         assert!(Action::DECLARED.iter().filter(|a| !a.is_ready()).all(|a| !actions.contains(a)));
         assert!(actions.contains(&Action::CloseMap), "Close came with the map tabs");
+    }
+
+    #[test]
+    fn extensions_join_submenus() {
+        let exts = [
+            MenuExtension::new(Category::View, 20, 11, |_, _| {}).in_submenu("menu.environment"),
+            MenuExtension::new(Category::View, 20, 0, |_, _| {}).in_submenu("menu.display"),
+            MenuExtension::new(Category::View, 20, 99, |_, _| {}).in_submenu("menu.effects"),
+        ];
+        let layout = menu_layout(Category::View, &exts);
+        let items = |key: &str| -> Vec<MenuItem> {
+            layout
+                .iter()
+                .find_map(|i| match i {
+                    MenuItem::Submenu { title, items, .. } if *title == key => Some(items.clone()),
+                    _ => None,
+                })
+                .unwrap_or_default()
+        };
+        let env = items("menu.environment");
+        let fog = env.iter().position(|i| *i == MenuItem::Action(Action::ToggleFogVolumeTexture)).unwrap();
+        assert_eq!(env[fog + 1], MenuItem::Extension(0), "{env:?}");
+        assert_eq!(env[fog + 2], MenuItem::Separator);
+        let display = items("menu.display");
+        let tools = display.iter().position(|i| *i == MenuItem::Action(Action::ToggleToolTextures)).unwrap();
+        assert_eq!(display[tools + 1], MenuItem::Extension(1));
+        let effects = items("menu.effects");
+        assert_eq!(effects[effects.len() - 2..], [MenuItem::Separator, MenuItem::Extension(2)]);
+        assert!(!layout.contains(&MenuItem::Extension(0)), "not at the top level");
     }
 
     #[test]

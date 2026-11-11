@@ -8,8 +8,8 @@ La fenêtre **Compiler et lancer** règle la façon dont les maps sont compilée
 
 ## L'ouvrir
 
-- **Fichier > Compiler et lancer...** (`Ctrl+F9`) ou le bouton **Compiler** de la barre d'outils.
-- **F9** (**Fichier > Compiler maintenant**) compile avec les réglages actuels sans ouvrir la fenêtre. **Fichier > Annuler la compilation** l'arrête.
+- **Fichier > Compiler > Compiler et lancer...** (`Ctrl+F9`) ou le bouton **Compiler** de la barre d'outils.
+- **F9** (**Fichier > Compiler > Compiler maintenant**) compile avec les réglages actuels sans ouvrir la fenêtre. **Fichier > Compiler > Annuler la compilation** l'arrête.
 - Par défaut c'est une **fenêtre séparée** : vous pouvez la sortir de Hammer Pro ou la mettre sur un autre écran et continuer à travailler pendant la compilation. **Remettre dans la fenêtre principale** la réaffiche dans Hammer Pro, **Fenêtre séparée** l'en sort. Le choix et la position sont retenus (`separate_window`, voir [Cadres de fenêtre](../features/window-frames.md)).
 - Les valeurs par défaut des mêmes réglages sont sur la page **Compilation** de la fenêtre Paramètres (**Outils > Options...**, `Ctrl+,`).
 
@@ -117,7 +117,7 @@ Les jetons sont remplacés dans les arguments et le programme (sans tenir compte
 
 ## Compilation par lots
 
-**Fichier > Compilation par lots...** compile plusieurs maps à la suite, chacune avec son préréglage. **Ajouter des maps...**, **Retirer les terminées**, **Copier dans le dossier maps**, **Tout compiler**, **Annuler**. Chaque VMF est copié dans le dossier `.hammerpro_build` à côté de lui et compilé là, vos fichiers ne sont jamais écrits.
+**Fichier > Compiler > Compilation par lots...** compile plusieurs maps à la suite, chacune avec son préréglage. **Ajouter des maps...**, **Retirer les terminées**, **Copier dans le dossier maps**, **Tout compiler**, **Annuler**. Chaque VMF est copié dans le dossier `.hammerpro_build` à côté de lui et compilé là, vos fichiers ne sont jamais écrits.
 
 ## Astuces
 

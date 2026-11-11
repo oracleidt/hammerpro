@@ -14,7 +14,7 @@ The displacement tool exposes `full_displacement`, `subdivision_shape` (`smooth`
 
 ## Opening it
 
-- **Tools > Displacement tool**, the tool palette, or `Shift+P`.
+- **Tools > Active tool > Displacement tool**, the tool palette, or `Shift+P`.
 - Its options are in the **Displacement** tab of the right panel, which opens by itself when the tool is selected. The panel options are saved in the settings (`mesh.disp_tool`) and come back the next time you use the tool.
 - The first line of the panel shows how many displacements the map has.
 
@@ -42,7 +42,7 @@ Painting, sculpting and tagging happen in the 3D view. A brush circle follows th
 | Gesture | Effect |
 | --- | --- |
 | Hold the left button over displacements (3D view) | Paints. Painting starts once the mouse moves 3 points or the button is held 0.2 s. One stroke is one undo step |
-| Short click (3D view) | Selects the face under the mouse (`Ctrl` adds or removes it) |
+| Short click (3D view) | Selects the face under the mouse (`Ctrl` adds or removes it). A grouped displacement selects every displacement of its group, unless groups are ignored (`Ctrl+W`) |
 | Click (2D views) | Selects the displacements of the solid under the mouse |
 | `Shift` while painting (geometry, alpha, tags) | Inverts the effect: Raise lowers, Lower raises, alpha Add removes, Force on becomes Force off |
 | `Ctrl` while sculpting | Inverts: Push sinks, Carve raises a ridge |
@@ -50,7 +50,7 @@ Painting, sculpting and tagging happen in the 3D view. A brush circle follows th
 | Right drag (3D view, painting modes) | Changes the brush radius: 150 points to the right doubles it, to the left halves it |
 | `Alt` + left drag (3D view, painting modes) | Same radius change (Hammer gesture) |
 | `Alt` + right click on a face (3D view) | Sets the **Custom** axis to the normal of the surface there and switches the axis to **Custom** |
-| `Esc` | Cancels the current stroke (its changes are reverted); otherwise clears the face selection |
+| `Esc` | Cancels the current stroke (its changes are reverted); otherwise clears the face selection and deselects the selected displacement solids |
 
 The brush circle changes color with the effect, and turns gray with the label "Not selected: not painted" over displacements it may not paint (see **Selected only**). The status bar always shows the gestures of the current mode.
 
@@ -93,6 +93,10 @@ Section **Selection**: shows "N displacement(s) among M selected face(s)".
 | **Masks: Select** | Does not tint the selected displacements (Hammer's Select mask). Off by default |
 | **Destroy** | Turns the selected displacements (or those of the selected solids) back into flat faces |
 | **Sew** | Closes the cracks between the selected displacements (at least two): shared edges and corners are made identical, edges between different powers follow the coarser one |
+
+### Groups and the object selection
+
+The displacements to paint and edit are the ones you selected last: the selected displacement faces, or, when you selected objects after them (with the selection tool, a group, **Select all**, an MCP tool), every displacement of the selected solids. Selecting a group of displacements (`Ctrl+G`) therefore makes every displacement of the group a target of the brushes (strokes cross from one to the next), of **Selected only**, of the commands of **Tools** (noise, smooth, subdivide, sew, blend, set height...) and of the MCP displacement tools. In the tool, a click on a grouped displacement selects all the displacements of its group, unless groups are ignored (`Ctrl+W`): `Ctrl`+click adds or removes the whole group, or a single face when groups are ignored, and `Esc` clears the selection.
 
 When displacements are selected, per face options appear:
 
@@ -203,7 +207,7 @@ Section **Paint tags** (mode **Tags**), Hammer's Tag Walkable, Tag Buildable and
 | **Force on** / **Force off** | The tag is on (or off) whatever the slope; `Shift` paints the opposite | Force on |
 | **From slope** | The tag follows the slope again | |
 | **Remove** / **Restore** (with the Remove tag) | Marks the triangles removed, or clears the mark; `Shift` paints the opposite | |
-| **Show walkability** | Colors displacement triangles by walkability (same setting as **View > Display options > Displacement walkability**) | Off |
+| **Show walkability** | Colors displacement triangles by walkability (same setting as **View > Diagnostics > Displacement walkability**) | Off |
 | **Apply to selection** | Gives the chosen tag to every triangle of the selected displacements | |
 
 ## Brush
@@ -243,23 +247,23 @@ Section **Tools**, at the bottom of the panel. These commands work on the select
 
 A checkbox shows a mixed state when the selection disagrees; clicking it turns the flag on for all.
 
-Whole terrains come from the [Terrain](terrain.md) page: **Tools > Import heightmap...**, **Generate terrain...** and **Export heightmap...** build, replace and export grids of sewn displacements.
+Whole terrains come from the [Terrain](terrain.md) page: **File > Import > Import heightmap...**, **Generate terrain...** and **Export heightmap...** build, replace and export grids of sewn displacements.
 
 The same commands are in the **Tools** menu and work whatever the active tool: **Subdivide displacements**, **Invert displacement alpha** and **Add noise to displacements...** (a small **Displacement noise** window with the **Random** or **Fractal** choice, the range, the fractal options and an **Apply** button), plus **Fractal noise on displacements...** (the same window with **Fractal** chosen), **Thermal erosion of displacements...** and **Hydraulic erosion of displacements...** (small windows with the options of that erosion and an **Apply** button). The windows use the same options as the **Tools** section of the panel: a value changed in one is changed in the other. None has a default shortcut, and all are in the command palette and in the MCP tool `run_action` (`disp_noise`, `disp_fractal_noise`, `disp_thermal_erosion`, `disp_hydraulic_erosion`).
 
 ### Displacement to mesh
 
-Saves the selected displacements (or every displacement of the selected solids) as a mesh you can edit in Blender or any 3D tool. Use the **To mesh...** button of the **Tools** section, **Tools > Displacement to mesh...**, or the MCP tool `displacement_to_mesh`. It is available when at least one displacement is selected.
+Saves the selected displacements (or every displacement of the selected solids) as a mesh you can edit in Blender or any 3D tool. Use the **To mesh...** button of the **Tools** section, **Tools > Displacements > Displacement to mesh...**, or the MCP tool `displacement_to_mesh`. It is available when at least one displacement is selected.
 
 - A file dialog asks where to write the `.obj` (the suggested name is `<map>_displacements.obj`, next to the map). The `.mtl` is written beside it.
-- The file holds the displaced vertices, their normals, UVs computed from the texture mapping of each face, and one material per texture. Tool textures are left out. It is written by the same code as **File > Export OBJ**.
+- The file holds the displaced vertices, their normals, UVs computed from the texture mapping of each face, and one material per texture. Tool textures are left out. It is written by the same code as **File > Export > Export OBJ**.
 - **Meters** writes meters (1 unit = 0.01905 m) instead of Source units. **Z up** keeps the editor axes; off, the file is Y up (the Blender OBJ importer default).
-- Nothing is changed in the map and no undo step is made. File > Export OBJ and Export again are not affected.
+- Nothing is changed in the map and no undo step is made. File > Export > Export OBJ and Export again are not affected.
 - MCP: `displacement_to_mesh` takes `faces`, `ids` or `solid_ids` (default: the selected displacements), `path` (full path or relative to the map folder; default `<map>_displacements.obj`), `units` (`source` or `meters`), `up` (`y` or `z`) and `overwrite`.
 
 ### Mesh to displacement
 
-Turns a 3D mesh into displacements: Hammer Pro lays a grid of displacement tiles over the mesh, measures the height of the mesh at every displacement vertex with a ray, and sets the vertices to that height. Use **Tools > Mesh to displacement...**, the **Mesh to displacement...** button of the **Tools** section, the command palette, or the MCP tool `mesh_to_displacement`.
+Turns a 3D mesh into displacements: Hammer Pro lays a grid of displacement tiles over the mesh, measures the height of the mesh at every displacement vertex with a ray, and sets the vertices to that height. Use **Tools > Displacements > Mesh to displacement...**, the **Mesh to displacement...** button of the **Tools** section, the command palette, or the MCP tool `mesh_to_displacement`.
 
 The mesh can be:
 
@@ -297,7 +301,7 @@ How the heights are made:
 
 #### Conform to mesh
 
-**Tools > Conform displacements to mesh...** (or **Conform to mesh...** in the **Tools** section) projects existing displacements onto a mesh. Place flat displacement tiles by hand first (or with **Tile selection**), select them, then choose a file, a prop or a game model. For every vertex, a ray along the axis finds the mesh surface and the displacement distance (or the offset, when the vertex does not move along its normal) is set so that the vertex lies on it. A box in the views shows where the mesh is.
+**Tools > Displacements > Conform displacements to mesh...** (or **Conform to mesh...** in the **Tools** section) projects existing displacements onto a mesh. Place flat displacement tiles by hand first (or with **Tile selection**), select them, then choose a file, a prop or a game model. For every vertex, a ray along the axis finds the mesh surface and the displacement distance (or the offset, when the vertex does not move along its normal) is set so that the vertex lies on it. A box in the views shows where the mesh is.
 
 | Option | What it does | Default |
 | --- | --- | --- |
@@ -311,13 +315,13 @@ Vertices that the mesh does not cover stay as they are, and the toast counts the
 
 #### Tile selection
 
-**Tools > Tile selection with displacements...** (or **Tile selection...** in the **Tools** section) converts the selected brushes, or the selected faces, into flat displacement tiles: draw the area of the terrain with ordinary blocks, convert it, then use **Conform to mesh**. Each face that is flat and square to the axis (the top face for Z) is cut into equal tiles of at most **Tile size** units, so a 512 by 300 face with a tile size of 256 gives 2 by 2 tiles; faces that are slanted or face another way are skipped and counted. **Delete the source brushes** (on by default) removes the brushes that were tiled; Undo brings them back. The options are the axis, tile size, power (**Auto** is 3), texture, texture scale, thickness and grouping. One undo step (**Tile displacements from selection**).
+**Tools > Displacements > Tile selection with displacements...** (or **Tile selection...** in the **Tools** section) converts the selected brushes, or the selected faces, into flat displacement tiles: draw the area of the terrain with ordinary blocks, convert it, then use **Conform to mesh**. Each face that is flat and square to the axis (the top face for Z) is cut into equal tiles of at most **Tile size** units, so a 512 by 300 face with a tile size of 256 gives 2 by 2 tiles; faces that are slanted or face another way are skipped and counted. **Delete the source brushes** (on by default) removes the brushes that were tiled; Undo brings them back. The options are the axis, tile size, power (**Auto** is 3), texture, texture scale, thickness and grouping. One undo step (**Tile displacements from selection**).
 
 MCP: `mesh_to_displacement` (`path`, `prop` or `model`, `up`, `convert_units`, `axis`, `flip`, `tile_size`, `power`, `pick`, `fill`, `margin`, `smooth`, `scale`, `origin`, `position`, `material`, `uv_scale`, `skirt`, `bottom`, `base_height`, `thickness`, `group`, `dry_run`), `conform_displacements_to_mesh` (the same mesh arguments, `faces`, `ids` or `solid_ids`, `axis`, `flip`, `pick`, `scale`, `origin`, `position`, `strength`, `offset`) and `tile_displacements_from_selection` (`ids` or `solid_ids`, `axis`, `flip`, `tile_size`, `power`, `material`, `uv_scale`, `thickness`, `delete_source`, `group`). `dry_run` returns the layout (tiles, power, spacing, plane, warnings) without changing the map. A relative `path` is relative to the map folder.
 
 ### Sculpt in Blender
 
-**Tools > Send to Blender** sends the selected displacements to Blender, one object per displacement, so you can sculpt them with Blender's brushes and modifiers; the result is written back into the same displacements (alpha, flags, tags, lightmap scale and untouched blend data kept, seams sewn, one undo step). See [Blender link](blender.md).
+**Tools > Blender and MCP > Send to Blender** sends the selected displacements to Blender, one object per displacement, so you can sculpt them with Blender's brushes and modifiers; the result is written back into the same displacements (alpha, flags, tags, lightmap scale and untouched blend data kept, seams sewn, one undo step). See [Blender link](blender.md).
 
 ### Noise and erosion
 
@@ -351,7 +355,7 @@ Tips: a few passes of thermal erosion soften sharp noise into believable slopes;
 
 ### Height blending
 
-Merges the heights of two or more sets of displacements across a transition zone, for terrain pieces that overlap or touch: a hill and a plain, two tiles built at different elevations, a road bed and the ground. Use the **Height blending** section of the **Tools** panel, **Tools > Blend displacement heights**, the command palette, or the MCP tool `blend_displacements`. Everything is one undo step (**Blend displacements**) and the displacements are sewn afterwards.
+Merges the heights of two or more sets of displacements across a transition zone, for terrain pieces that overlap or touch: a hill and a plain, two tiles built at different elevations, a road bed and the ground. Use the **Height blending** section of the **Tools** panel, **Tools > Displacements > Blend displacement heights**, the command palette, or the MCP tool `blend_displacements`. Everything is one undo step (**Blend displacements**) and the displacements are sewn afterwards.
 
 Sets:
 

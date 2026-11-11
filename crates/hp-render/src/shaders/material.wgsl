@@ -248,6 +248,15 @@ fn env_slot(surface: u32) -> u32 {
     return select(0u, s, ok);
 }
 
+fn env_fallback(surface: u32) -> bool {
+    return env_slot(surface) == 0u;
+}
+
+fn env_light_scale(surface: u32, light: vec3<f32>) -> vec3<f32> {
+    let amount = select(material.env_sat.w, 1.0, env_fallback(surface));
+    return mix(vec3<f32>(1.0), clamp(light, vec3<f32>(0.0), vec3<f32>(1.0)), amount);
+}
+
 fn env_fresnel_ranges(n: vec3<f32>, v: vec3<f32>) -> f32 {
     var f = clamp(1.0 - dot(n, v), 0.0, 1.0);
     f = f * f;

@@ -8,7 +8,7 @@ La fenêtre **Rechercher et remplacer des textures** remplace un matériau par u
 
 | Comment | Résultat |
 |---|---|
-| **Outils > Rechercher et remplacer des textures...** (`Ctrl+Maj+R`) | Ouvre la fenêtre. Si **Rechercher** est vide, il reçoit le matériau actuel. |
+| **Outils > Textures > Rechercher et remplacer des textures...** (`Ctrl+Maj+R`) | Ouvre la fenêtre. Si **Rechercher** est vide, il reçoit le matériau actuel. |
 | **Remplacer...** dans l'en-tête du [navigateur de textures](texture-browser.md) | L'ouvre avec le matériau actuel dans **Rechercher**. |
 | Clic droit sur une vignette > **Remplacer par celui-ci...** | L'ouvre avec le matériau actuel dans **Rechercher** et celui cliqué dans **Remplacer par**. |
 

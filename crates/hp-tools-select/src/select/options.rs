@@ -11,7 +11,7 @@ use crate::math::HandleMode;
 
 thread_local! {
     static SETTINGS_SNAPSHOT: Cell<(bool, bool, SelectElement, bool)> =
-        const { Cell::new((true, false, SelectElement::Object, true)) };
+        const { Cell::new((true, false, SelectElement::Object, false)) };
 }
 
 pub fn sync_options(state: &AppState) {
@@ -163,8 +163,8 @@ impl SelectTool {
                 "box_confirm",
                 on_off(confirm),
                 "on/off: like Hammer++, a box drawn in a 2D view stays after release with handles to resize it \
-                 and a drag inside to move it, Enter selects (Ctrl+Enter adds), Esc cancels; off selects on release \
-                 (saved with the settings).",
+                 and a drag inside to move it, Enter selects (Ctrl+Enter adds), Esc cancels; off (the default) selects \
+                 on release (saved with the settings).",
             ),
             ToolOption::new(
                 "pending_box",

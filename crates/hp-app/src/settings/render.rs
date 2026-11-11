@@ -131,6 +131,8 @@ pub const MIN_RENDER_SCALE: f32 = 0.25;
 pub const MAX_ANIMATION_FPS: u32 = 240;
 
 pub const MIN_VRAM_BUDGET_MB: u32 = 256;
+
+pub const CUBEMAPS_REVISION: u32 = 1;
 pub const MAX_VRAM_BUDGET_MB: u32 = 262_144;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -170,6 +172,8 @@ pub struct RenderSettings {
     pub normal_maps: bool,
     pub player_compiled_lighting: bool,
     pub cubemaps: bool,
+    #[serde(default)]
+    pub cubemaps_revision: u32,
     pub cubemaps_auto: bool,
     pub light_shadows: u32,
     pub light_preview_hdr: bool,
@@ -262,7 +266,8 @@ impl Default for RenderSettings {
             fish_swim: true,
             normal_maps: true,
             player_compiled_lighting: true,
-            cubemaps: true,
+            cubemaps: false,
+            cubemaps_revision: CUBEMAPS_REVISION,
             cubemaps_auto: true,
             light_shadows: 16,
             light_preview_hdr: true,
@@ -322,6 +327,13 @@ impl Default for RenderSettings {
 }
 
 impl RenderSettings {
+    pub fn migrate(&mut self) {
+        if self.cubemaps_revision < CUBEMAPS_REVISION {
+            self.cubemaps = false;
+            self.cubemaps_revision = CUBEMAPS_REVISION;
+        }
+    }
+
     pub fn animation_interval(&self, focused: bool, idle_secs: f64) -> Option<std::time::Duration> {
         if !focused && !self.animate_in_background {
             return None;
@@ -422,6 +434,26 @@ mod tests {
     }
 
     #[test]
+    fn cubemap_reflections_turn_off_once_for_older_settings() {
+        let mut old: RenderSettings = toml::from_str("cubemaps = true\ncubemaps_auto = false\n").expect("parse");
+        assert_eq!(old.cubemaps_revision, 0);
+        old.migrate();
+        assert!(!old.cubemaps, "older files get the new default");
+        assert!(!old.cubemaps_auto, "other choices are kept");
+        assert_eq!(old.cubemaps_revision, CUBEMAPS_REVISION);
+        old.cubemaps = true;
+        let mut saved: RenderSettings = toml::from_str(&toml::to_string(&old).expect("write")).expect("read");
+        saved.migrate();
+        assert!(saved.cubemaps, "turning them on again is kept after the migration");
+        let mut fresh = RenderSettings::default();
+        fresh.migrate();
+        assert!(!fresh.cubemaps);
+        let mut missing: RenderSettings = toml::from_str("grid_3d = true\n").expect("parse");
+        missing.migrate();
+        assert!(!missing.cubemaps);
+    }
+
+    #[test]
     fn old_files_load_with_defaults() {
         let s: RenderSettings = toml::from_str("grid_3d = true\n").expect("parse");
         assert!(s.grid_3d);
@@ -436,7 +468,7 @@ mod tests {
         assert_eq!(s.disp_walk_mode, DispWalkMode::Source);
         assert_eq!(s.disp_walk_angle, DEFAULT_WALK_ANGLE);
         assert!(s.normal_maps, "normal maps are on by default");
-        assert!(s.cubemaps && s.cubemaps_auto, "reflections are on by default");
+        assert!(!s.cubemaps && s.cubemaps_auto, "reflections are off by default");
         assert!(s.fog_preview && s.fog_volume_preview && s.fog_volume_texture, "fog is previewed by default");
         assert!(s.fish_preview && s.fish_swim, "fish are previewed by default");
         let off: RenderSettings = toml::from_str(

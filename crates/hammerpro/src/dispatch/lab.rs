@@ -290,9 +290,8 @@ impl Package for Lab {
             Action::PhysicsPlacement => {
                 if app.require_selection() {
                     let objs = app.selected();
-                    let state = &mut app.state;
-                    let assets = &state.assets;
-                    let result = state.doc.physics_place(&objs, true, &|e| assets.entity_bounds(e));
+                    let result =
+                        super::mcp::mesh_drop(&mut app.state, &objs, glam::DVec3::NEG_Z, true, "Physics placement");
                     if let Some(0) = app.report(Action::PhysicsPlacement, result) {
                         app.state.notify(Severity::Info, t!("lab.physplace.nothing"));
                     }

@@ -20,7 +20,7 @@ The command palette runs any command of Hammer Pro by typing a few letters of it
 
 A click on an entry runs it too. The footer reminds you of the keys (*navigate, run, close*). When nothing matches, the palette says **Nothing found**. At most 200 results are listed.
 
-Each row shows an icon, the name, where it lives (its menu, **Tool** for the tools, **Recent maps** for a map, **View** for a language) and its shortcut when it has one. Commands that cannot run right now (nothing selected, for example) are greyed out and do nothing.
+Each row shows an icon, the name, where it lives (its menu path, such as **File > Import** or **Tools > Arrange**, **Tool** for the tools, **Recent maps** for a map, **View** for a language) and its shortcut when it has one. Commands that cannot run right now (nothing selected, for example) are greyed out and do nothing.
 
 ## What you can find
 

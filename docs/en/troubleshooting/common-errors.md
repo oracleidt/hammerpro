@@ -12,7 +12,7 @@ The problems mappers meet most often, what they mean and how to fix them. In the
 
 **How to fix it:**
 
-1. Follow the leak path from the entity to the hole. The path is loaded on its own after a leaking compile (**Map > Load leak pointfile...** loads one by hand).
+1. Follow the leak path from the entity to the hole. The path is loaded on its own after a leaking compile (**Map > Leaks and visibility > Load leak pointfile...** loads one by hand).
 2. Seal the hole with a **world** brush. `func_detail` and brush entities do not seal the map.
 3. Check again without compiling: **Map > Check for leaks**. While you edit, the instant leak check (on by default) watches for leaks and shows the same badge.
 
@@ -24,8 +24,8 @@ A checkerboard in game means the game cannot find a material.
 
 | Cause | Fix |
 |---|---|
-| The material does not exist in the game or in your custom folders. | **Map > Check for problems** lists "missing material"; the **Map assets** tab shows what is missing. Replace the material (**Tools > Find and replace textures...**) or add its folder in **Settings > Game**. |
-| A custom material was not packed. By default, custom content is packed into the map for **Final** compiles and releases only; test builds copy it to the development addon `garrysmod/addons/hammerpro_dev` instead. | After the first copy to the development addon, restart the game once. For a map you share, use **File > Build and save as content...** or set **Pack custom content** to **Always** in the compile window. |
+| The material does not exist in the game or in your custom folders. | **Map > Check for problems** lists "missing material"; the **Map assets** tab shows what is missing. Replace the material (**Tools > Textures > Find and replace textures...**) or add its folder in **Settings > Game**. |
+| A custom material was not packed. By default, custom content is packed into the map for **Final** compiles and releases only; test builds copy it to the development addon `garrysmod/addons/hammerpro_dev` instead. | After the first copy to the development addon, restart the game once. For a map you share, use **File > Publish > Build and save as content...** or set **Pack custom content** to **Always** in the compile window. |
 | The material comes from a game mounted through `mount.cfg`, from a Workshop addon or from downloaded server content. | Players without that content see checkerboards too. Ship the files with the map, or replace them with base game content. See [Collect content for a release](../guides/collect-content-for-release.md). |
 
 Entities and models have the same issue: "missing model" (the prop is left out of the map) and "missing sound" are also listed by Check for problems.

@@ -6,7 +6,7 @@ The clipping tool splits the selected solids with a plane. You define the plane 
 
 ## Opening it
 
-- **Tools > Clipping tool**, the tool palette, or `Shift+X`.
+- **Tools > Active tool > Clipping tool**, the tool palette, or `Shift+X`.
 - Select the solids to clip first: only selected solids are cut (**Select the solids to clip first** otherwise).
 
 ## Modes: which pieces to keep

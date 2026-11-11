@@ -8,13 +8,13 @@ The navigation mesh (`.nav`) tells NPCs and bots where they can walk. Hammer Pro
 
 | Action | Menu | Default shortcut |
 | --- | --- | --- |
-| **Generate nav mesh** | **Tools > Generate nav mesh** | none |
-| **Load nav mesh...** | **Map > Load nav mesh...** | none |
-| **Show nav mesh** | **View > Display options > Show nav mesh** | none |
+| **Generate nav mesh** | **Tools > Placement and props > Generate nav mesh** | none |
+| **Load nav mesh...** | **Map > Leaks and visibility > Load nav mesh...** | none |
+| **Show nav mesh** | **View > Diagnostics > Show nav mesh** | none |
 
 ## Generating
 
-**Tools > Generate nav mesh** builds the mesh in the background and writes `<map>.nav` next to the VMF (where the viewer and **Build and save as content** look for it). Save the map first. When it is done, "Nav mesh generated: N areas in N ms" and **Show nav mesh** turns on.
+**Tools > Placement and props > Generate nav mesh** builds the mesh in the background and writes `<map>.nav` next to the VMF (where the viewer and **Build and save as content** look for it). Save the map first. When it is done, "Nav mesh generated: N areas in N ms" and **Show nav mesh** turns on.
 
 How it works, like Valve's `nav_generate`:
 
@@ -28,7 +28,7 @@ Warnings in the console: player starts with no ground under them are skipped, an
 
 ## Showing a nav mesh
 
-**Show nav mesh** draws the mesh in every view. The file is the one chosen with **Map > Load nav mesh...**, else the `.nav` next to the map, else the one in the game's `maps` folder (also next to a decompiled BSP). It is read again when it changes on disk (a background thread looks at the candidate files every 1.5 seconds and wakes the editor only when one changes or appears, so showing the nav mesh costs no redraw while nothing changes). Hammer Pro reads nav versions 1 to 16 (Garry's Mod writes version 16).
+**Show nav mesh** draws the mesh in every view. The file is the one chosen with **Map > Leaks and visibility > Load nav mesh...**, else the `.nav` next to the map, else the one in the game's `maps` folder (also next to a decompiled BSP). It is read again when it changes on disk (a background thread looks at the candidate files every 1.5 seconds and wakes the editor only when one changes or appears, so showing the nav mesh costs no redraw while nothing changes). Hammer Pro reads nav versions 1 to 16 (Garry's Mod writes version 16).
 
 | Drawing | Meaning |
 | --- | --- |

@@ -537,4 +537,52 @@ mod tests {
         let info = canonical(&lump(l::DISPINFO));
         assert_eq!((info.len(), fnv(&info)), (880, 0xd0a4_cdb8_5329_c8e0), "DISPINFO");
     }
+
+    #[test]
+    fn a_displaced_brush_keeps_only_its_displacement_like_vbsp() {
+        let map = hp_vmf::parse(include_str!("disp/testdata/disp_golden.vmf")).expect("vmf");
+        let mut flat = map.clone();
+        flat.world.solids.retain(|s| s.sides.iter().all(|side| side.disp.is_none()));
+        assert!(flat.world.solids.len() < map.world.solids.len(), "the fixture has displaced brushes");
+        let counts = |m: &hp_vmf::Map| {
+            let out = crate::compile(m, &Mats, &crate::props::NoModels, &crate::CompileOptions::default(), &mut |_| {})
+                .expect("compile");
+            let bsp = hp_bsp::Bsp::from_vec(out.bsp).expect("bsp");
+            let faces = bsp.lump(crate::emit::lump::FACES).expect("faces").into_owned();
+            let (mut plain, mut displaced) = (0, 0);
+            for f in faces.chunks_exact(56) {
+                if i16::from_le_bytes([f[12], f[13]]) < 0 { plain += 1 } else { displaced += 1 }
+            }
+            let brushes = bsp.lump(crate::emit::lump::BRUSHES).expect("brushes").len() / 12;
+            (plain, displaced, brushes)
+        };
+        let (plain, displaced, brushes) = counts(&map);
+        let (flat_plain, flat_displaced, flat_brushes) = counts(&flat);
+        assert!(displaced > 0 && flat_displaced == 0);
+        assert_eq!(plain, flat_plain, "the other faces of a displaced brush are removed, never drawn");
+        assert_eq!(brushes, flat_brushes, "a displaced brush is not solid: only its displacement collides");
+    }
+
+    #[test]
+    fn a_displacement_with_a_bad_power_drops_its_brush_without_panicking() {
+        let map = hp_vmf::parse(include_str!("disp/testdata/disp_golden.vmf")).expect("vmf");
+        let at = map.world.solids.iter().position(|s| s.sides.iter().any(|x| x.disp.is_some())).expect("disp");
+        let mut broken = map.clone();
+        for side in &mut broken.world.solids[at].sides {
+            if let Some(d) = side.disp.as_deref_mut() {
+                d.power = 7;
+            }
+        }
+        let mut removed = map.clone();
+        removed.world.solids.remove(at);
+        let counts = |m: &hp_vmf::Map| {
+            let out = crate::compile(m, &Mats, &crate::props::NoModels, &crate::CompileOptions::default(), &mut |_| {})
+                .expect("compile");
+            let bsp = hp_bsp::Bsp::from_vec(out.bsp).expect("bsp");
+            let faces = bsp.lump(crate::emit::lump::FACES).expect("faces").into_owned();
+            let plain = faces.chunks_exact(56).filter(|f| i16::from_le_bytes([f[12], f[13]]) < 0).count();
+            (plain, faces.len() / 56)
+        };
+        assert_eq!(counts(&broken), counts(&removed), "nothing of the broken brush reaches the map");
+    }
 }

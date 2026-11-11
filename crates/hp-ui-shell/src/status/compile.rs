@@ -95,8 +95,8 @@ pub(crate) const TR: TrTable = &[
     ("shell.status.compile_leak", "Leak", "Fuite"),
     (
         "shell.status.compile_leak_tip",
-        "The map leaks: the leak path is loaded (Map > Pointfile). Click to open the compile window.",
-        "La map fuit : le chemin de fuite est chargé (Carte > Pointfile). Cliquez pour ouvrir la fenêtre de compilation.",
+        "The map leaks: the leak path is loaded (Map > Leaks and visibility > Load leak pointfile). Click to open the compile window.",
+        "La map fuit : le chemin de fuite est chargé (Map > Fuites et visibilité > Charger le pointfile de fuite). Cliquez pour ouvrir la fenêtre de compilation.",
     ),
     ("shell.status.compile_failed", "Compile failed", "Échec de la compilation"),
 ];

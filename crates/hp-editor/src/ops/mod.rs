@@ -2,7 +2,7 @@ mod bevel;
 mod boolean;
 mod create;
 mod csg;
-mod disp;
+pub(crate) mod disp;
 mod edge_loops;
 mod entity;
 mod extrude;

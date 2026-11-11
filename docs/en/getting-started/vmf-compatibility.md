@@ -50,11 +50,11 @@ Editor data that does not belong in the VMF is stored apart, in one small TOML f
 
 | Command | What it does |
 |---|---|
-| **File > Import map into current...** | Merges another VMF into the open map, as one undo step. Groups, visgroups and hidden objects are kept. |
-| **File > Export selection as VMF...** | Writes the selected objects to a new VMF (default name `prefab.vmf`), with the groups they belong to and their visgroups. |
-| **File > Export a copy...** | Writes the whole map to another VMF without renaming the open document. The path is remembered with the map. |
-| **File > Export again** (`Alt+B`) | Writes the copy again to the last export path of this map, without asking. |
-| **File > Export OBJ...** | Brush and displacement geometry with texture coordinates, for 3D tools (see [BSP tools](../features/bsp-tools.md)). |
+| **File > Import > Import map into current...** | Merges another VMF into the open map, as one undo step. Groups, visgroups and hidden objects are kept. |
+| **File > Export > Export selection as VMF...** | Writes the selected objects to a new VMF (default name `prefab.vmf`), with the groups they belong to and their visgroups. |
+| **File > Export > Export a copy...** | Writes the whole map to another VMF without renaming the open document. The path is remembered with the map. |
+| **File > Export > Export again** (`Alt+B`) | Writes the copy again to the last export path of this map, without asking. |
+| **File > Export > Export OBJ...** | Brush and displacement geometry with texture coordinates, for 3D tools (see [BSP tools](../features/bsp-tools.md)). |
 
 Exports are written on a worker thread, atomically.
 
@@ -66,7 +66,7 @@ Exports are written on a worker thread, atomically.
 
 **What is the `.vmx` file next to my map?** The previous version of the map, copied at each save like Hammer does. Open it with **File > Open map...** to go back.
 
-**Can Hammer Pro open a compiled `.bsp`?** Yes, with **File > BSP Decompiler...**, which decompiles it into a new map (see [BSP tools](../features/bsp-tools.md)).
+**Can Hammer Pro open a compiled `.bsp`?** Yes, with **File > Import > BSP Decompiler...**, which decompiles it into a new map (see [BSP tools](../features/bsp-tools.md)).
 
 ## Related pages
 

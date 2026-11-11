@@ -237,8 +237,9 @@ pub const EDITOR_TOOLS: &[ToolSpec] = &[
     ToolSpec {
         name: "rotate_objects",
         title: "Rotate objects",
-        description: "Rotate objects around an axis through a pivot (default: the center of their bounds). One undo \
-            step.",
+        description: "Rotate objects around an axis through a pivot (default: the center of their bounds). Entities \
+            turn with their angles; lights (light_spot, light_environment, light_directional) also get the Pitch key \
+            of their new direction (positive is up). One undo step.",
         kind: ToolKind::Edit,
         schema: || {
             object(
@@ -332,10 +333,20 @@ pub const EDITOR_TOOLS: &[ToolSpec] = &[
     ToolSpec {
         name: "check_problems",
         title: "Check for problems",
-        description: "Run the map checks (invalid solids, leaks prone entities, missing targets, unknown classes...) \
-            and list the problems.",
+        description: "Run the map checks (invalid solids, leaks prone entities, missing targets, unknown classes, \
+            redundant brushwork...) and list the problems. category redundant keeps only the duplicate brushes, the \
+            brushes inside identical solid brushes and the stacked duplicate entities (fix_problems or \
+            find_duplicate_brushes delete them).",
         kind: ToolKind::Read,
-        schema: || object(json!({ "limit": limit() }), &[]),
+        schema: || {
+            object(
+                json!({
+                    "limit": limit(),
+                    "category": { "type": "string", "enum": ["all", "redundant"], "description": "Which problems (default all)." },
+                }),
+                &[],
+            )
+        },
     },
     ToolSpec {
         name: "compile_map",

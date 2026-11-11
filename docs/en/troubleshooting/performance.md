@@ -122,9 +122,9 @@ Animated materials, the sway of detail sprites, the particle effects of entities
 
 | Setting | Where | Effect on speed | Default |
 |---|---|---|---|
-| **View distance** | Settings > Viewports | Farthest distance drawn. Shorter is faster. **View > Shorter draw distance** and **Longer draw distance** change it on the fly. | 32768 |
+| **View distance** | Settings > Viewports | Farthest distance drawn. Shorter is faster. **View > Zoom and draw distance > Shorter draw distance** and **Longer draw distance** change it on the fly. | 32768 |
 | **Antialiasing (MSAA)** | Settings > Viewports | Smoother edges, uses more GPU memory. Turn it off on weak GPUs. | On |
-| **Radius culling** and **Culling radius** | Settings > Rendering, also **View > Display options > Radius culling** and the toolbar | Nothing farther than the radius from the camera is drawn (a circle shows it in the 2D views), like Hammer's radius culling. | Off, 4096 |
+| **Radius culling** and **Culling radius** | Settings > Rendering, also **View > Effects > Radius culling** and the toolbar | Nothing farther than the radius from the camera is drawn (a circle shows it in the 2D views), like Hammer's radius culling. | Off, 4096 |
 | **Skip hidden geometry** | Settings > Rendering | Parts of the map whose objects are all hidden are not drawn at all. | On |
 | **Model distance** | Settings > Rendering | Models farther than this are drawn as boxes (0: no limit). A big help on maps with many props. | 0 |
 | **Model levels of detail** | Settings > Rendering | Uses the model's Source levels of detail according to its size on screen. Off: every model uses its finest level. | On |

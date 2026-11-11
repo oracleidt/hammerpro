@@ -24,6 +24,7 @@ mod disp_blend_slope;
 mod disp_brushes;
 mod disp_erode;
 mod disp_feedback;
+mod disp_groups;
 mod disp_live;
 mod disp_options;
 mod disp_subdivision;

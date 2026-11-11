@@ -40,7 +40,7 @@ pub(crate) fn version(state: &AppState, view: &ViewInfo, opts: HighlightOpts) ->
     let mut h = std::hash::DefaultHasher::new();
     0xD159_u64.hash(&mut h);
     DocKey::of(&state.doc).hash(&mut h);
-    for f in &state.doc.selection().faces {
+    for f in selected(state) {
         f.hash(&mut h);
     }
     opts.hash(&mut h);

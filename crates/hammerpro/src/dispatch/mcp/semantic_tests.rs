@@ -84,6 +84,7 @@ const SEMANTIC: &[&Domain] = &[
     &super::tools_meshdisp::DOMAIN,
     &super::tools_instances::DOMAIN,
     &super::tools_entities::DOMAIN,
+    &super::tools_place::DOMAIN,
     &super::tools_assets::DOMAIN,
     &super::tools_compile::DOMAIN,
     &super::tools_compilers::DOMAIN,

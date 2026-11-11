@@ -634,6 +634,7 @@ pub struct UiState {
     pub focused_view: Option<usize>,
     pub focus_texture_search: bool,
     pub quick_input: String,
+    pub trackpad_detected: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -819,10 +820,8 @@ impl AppState {
             show_helpers: self.settings.view.show_helpers,
             show_tool_textures: self.settings.view.show_tool_textures
                 && !(self.runtime.lab.player.active && self.runtime.lab.player.hide_tools),
-            lighting_preview: matches!(
-                self.settings.view.render_mode,
-                RenderModeSetting::Lit | RenderModeSetting::Baked
-            ),
+            lighting_preview: self.runtime.lab.player.active
+                || matches!(self.settings.view.render_mode, RenderModeSetting::Lit | RenderModeSetting::Baked),
             model_lods: self.settings.render.model_lods,
         }
     }

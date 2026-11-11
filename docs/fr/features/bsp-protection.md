@@ -8,7 +8,7 @@ Une map que le client affiche n'est jamais totalement inviolable : un décompila
 
 ## Où la trouver
 
-La protection fait partie de la construction de la publication. Ouvrez **Fichier > Construire et enregistrer en contenu...**, onglet **Construction**, et cochez **Protect your BSP** (sous les options de publication). Ses options s'affichent en retrait dessous. La prochaine **Construire** produit la publication protégée. Voir [Construire et enregistrer en contenu](build-content-release.md) pour le reste de la fenêtre.
+La protection fait partie de la construction de la publication. Ouvrez **Fichier > Publier > Construire et enregistrer en contenu...**, onglet **Construction**, et cochez **Protect your BSP** (sous les options de publication). Ses options s'affichent en retrait dessous. La prochaine **Construire** produit la publication protégée. Voir [Construire et enregistrer en contenu](build-content-release.md) pour le reste de la fenêtre.
 
 ## Options
 
@@ -106,7 +106,7 @@ La protection empêche donc de copier la logique (elle n'est pas chez le client)
 
 **Quelqu'un peut-il reconstruire ma map avec le BSP Sniffer ?** La géométrie et le contenu que le client affiche, oui (voir plus haut) ; la logique, le câblage et les noms d'origine de vos matériaux personnalisés, non.
 
-**Que se passe-t-il si quelqu'un ouvre le BSP protégé dans Hammer Pro ?** **Fichier > Décompilateur de BSP...** signale des brushes sans faces (*elle a été protégée contre la décompilation*) ; la logique et le câblage ont disparu.
+**Que se passe-t-il si quelqu'un ouvre le BSP protégé dans Hammer Pro ?** **Fichier > Importer > Décompilateur de BSP...** signale des brushes sans faces (*elle a été protégée contre la décompilation*) ; la logique et le câblage ont disparu.
 
 ## Pages liées
 

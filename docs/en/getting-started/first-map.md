@@ -58,9 +58,9 @@ Select the light with the **Selection tool** (`Shift+S`) and open the **Entity**
 
 ## 8. Compile and run
 
-Press `F9` (**File > Compile now**). The map compiles with the last compile settings (the **Normal** preset by default): geometry, visibility, lighting, then the `.bsp` is copied to `garrysmod/maps` and Garry's Mod starts on your map. The status bar shows the step and progress; click it to open the compile window.
+Press `F9` (**File > Compile > Compile now**). The map compiles with the last compile settings (the **Normal** preset by default): geometry, visibility, lighting, then the `.bsp` is copied to `garrysmod/maps` and Garry's Mod starts on your map. The status bar shows the step and progress; click it to open the compile window.
 
-To see the options first, use **File > Compile and run...** (`Ctrl+F9`) or the **Compile** button of the toolbar: the **Compile and run** window opens with the presets (**Draft**, **Normal**, **Final**), the steps and **Launch the game**. Click **Compile** there.
+To see the options first, use **File > Compile > Compile and run...** (`Ctrl+F9`) or the **Compile** button of the toolbar: the **Compile and run** window opens with the presets (**Draft**, **Normal**, **Final**), the steps and **Launch the game**. Click **Compile** there.
 
 With the Hammer or Hammer++ shortcut preset, the keys are swapped as in Hammer: `F9` opens the compile window and `Ctrl+F9` compiles at once.
 

@@ -12,7 +12,7 @@ Utilisez **Affichage > Options d’affichage > Afficher le centre des brushes en
 
 ## Ouvrir l'outil
 
-- Raccourci `Maj+S`, ou **Outils > Outil de sélection**, ou son bouton dans la palette d'outils.
+- Raccourci `Maj+S`, ou **Outils > Outil actif > Outil de sélection**, ou son bouton dans la palette d'outils.
 - Quand il est actif, sa barre d'options affiche le mode du cadre, le mode des poignées, les poignées d'étirement 3D, le gizmo, le pivot et le champ de sélection par classe ou matériau.
 
 ## Sélectionner
@@ -40,7 +40,7 @@ Glissez dans le vide d'une vue 2D pour tracer un cadre. Comme dans Hammer++, le 
 - Appuyez sur `Entrée` pour sélectionner ce que prend le cadre, `Ctrl+Entrée` pour l'ajouter à la sélection.
 - Appuyez sur `Échap` pour abandonner le cadre. Un clic en dehors ou un nouveau glisser l'abandonne aussi.
 
-Décochez **Entrée** dans la barre d'options (ou **Entrée valide la sélection par cadre** dans les paramètres) pour sélectionner dès le relâchement, l'ancien comportement.
+Ce cadre ajustable est désactivé par défaut depuis la 2.0.3 : la sélection se fait alors dès le relâchement. Activez **Sélection par cadre ajustable (Entrée pour valider)** dans **Outils > Options > Sélection** (ou la case **Entrée** de la barre d'options) pour retrouver le comportement de Hammer++ décrit ci-dessus. La 2.0.2 l'activait pour tout le monde ; la mise à jour le désactive une fois, réactivez-le si vous l'aimiez.
 
 Ce que prend le cadre :
 
@@ -192,7 +192,7 @@ Sans sélection, les flèches font défiler la vue 2D (voir [Caméra et navigati
 
 ## Boucles d'arêtes
 
-L'outil de sélection choisit des brushes entiers, pas des arêtes : il n'a donc pas de mode arête. Les commandes de boucle et d'anneau d'arêtes sont dans l'[outil vertex](vertex-tool.md#boucles-et-anneaux-darêtes) (`Alt`+clic sur une arête) et dans l'[outil biseau](bevel-tool.md) (`Alt`+clic sur une arête pour choisir sa boucle avant un biseau). Pour travailler sur une boucle depuis ici, sélectionnez les brushes qui la forment, appuyez sur `Maj+V` pour l'outil vertex et faites `Alt`+clic sur une arête. Les commandes de **Édition > Sélection d'arêtes** et **Outils > Faire glisser la boucle d'arêtes...** fonctionnent dans l'outil vertex.
+L'outil de sélection choisit des brushes entiers, pas des arêtes : il n'a donc pas de mode arête. Les commandes de boucle et d'anneau d'arêtes sont dans l'[outil vertex](vertex-tool.md#boucles-et-anneaux-darêtes) (`Alt`+clic sur une arête) et dans l'[outil biseau](bevel-tool.md) (`Alt`+clic sur une arête pour choisir sa boucle avant un biseau). Pour travailler sur une boucle depuis ici, sélectionnez les brushes qui la forment, appuyez sur `Maj+V` pour l'outil vertex et faites `Alt`+clic sur une arête. Les commandes de **Édition > Élément de sélection** et **Outils > Sommets et arêtes > Faire glisser la boucle d'arêtes...** fonctionnent dans l'outil vertex.
 
 ## Menu contextuel des vues
 
@@ -204,7 +204,7 @@ Avec une sélection, un clic droit dans une vue ajoute en haut du menu : **Poser
 |---|---|---|
 | **Choisir :** Objet / Sommet / Arête / Face | Ce qu'un clic dans une vue 3D sélectionne (voir plus haut) | Objet |
 | **Cadre :** Touchés / Contenus / Centres | Ce que prend une sélection par cadre (voir plus haut) | Touchés |
-| **Entrée** | Le cadre attend `Entrée` et peut d'abord être redimensionné et déplacé (enregistré dans les paramètres) | Activé |
+| **Entrée** | Le cadre attend `Entrée` et peut d'abord être redimensionné et déplacé (enregistré dans les paramètres) | Désactivé |
 | **Poignées :** Échelle / Rotation / Inclinaison | Rôle des poignées 2D | Échelle |
 | **Étirement 3D** | Flèches sur les faces des brushes sélectionnés dans la vue 3D (enregistré dans les paramètres) | Activé |
 | **Gizmo :** Afficher | Affiche le gizmo de transformation dans la vue 3D | Activé |
@@ -226,7 +226,7 @@ Dans **Outils > Options...**, page **Sélection** (`[selection]` dans `settings.
 | **Taille des poignées** | Taille des poignées 2D, de 4 à 16 points | 7 |
 | **Garder les groupes de visibilité au clonage** | Les copies faites en glissant ou avec Maj+flèches restent dans les visgroups de leurs originaux | Activé |
 | **Maj+flèches clone** | Maj+flèches copie la sélection à un pas de grille, Alt+flèches décale alors d'une unité | Activé |
-| **Entrée valide la sélection par cadre** | Comme la case **Entrée** de la barre d'options | Activé |
+| **Sélection par cadre ajustable (Entrée pour valider)** | Comme la case **Entrée** de la barre d'options | Désactivé |
 | **Poignées d'étirement 3D** | Comme la case de la barre d'options | Activé |
 | **Gizmo en repère local** | Comme le bouton Local | Désactivé |
 

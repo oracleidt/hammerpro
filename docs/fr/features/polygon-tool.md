@@ -6,7 +6,7 @@ L'outil polygone (comme celui de Hammer++) crée un brush à partir d'un contour
 
 ## Ouvrir l'outil
 
-- **Outils > Outil polygone**, la palette d'outils, ou `Maj+N`.
+- **Outils > Outil actif > Outil polygone**, la palette d'outils, ou `Maj+N`.
 - L'outil ne fonctionne que dans les vues 2D ; les clics dans la vue 3D sont ignorés.
 
 ## Créer un brush

@@ -23,8 +23,8 @@ Quand une compilation trouve une fuite, le compilateur écrit un pointfile (`<ma
 
 | Commande | Effet |
 | --- | --- |
-| **Map > Charger le pointfile de fuite...** | Charge `<map>.lin`, sinon `<map>.pts`, à côté de la map ou dans son dossier de construction (`.hammerpro_build`). S'il n'y en a pas, demande un fichier (filtre **Pointfile de fuite**, `.lin` et `.pts`). |
-| **Map > Décharger le pointfile** | Retire le chemin des vues. |
+| **Map > Fuites et visibilité > Charger le pointfile de fuite...** | Charge `<map>.lin`, sinon `<map>.pts`, à côté de la map ou dans son dossier de construction (`.hammerpro_build`). S'il n'y en a pas, demande un fichier (filtre **Pointfile de fuite**, `.lin` et `.pts`). |
+| **Map > Fuites et visibilité > Décharger le pointfile** | Retire le chemin des vues. |
 | Déposer un fichier `.lin` ou `.pts` sur la fenêtre | Le charge. |
 
 Un pointfile chargé remplace dans les vues le chemin de la vérification instantanée. Si l'entité qui fuit est supprimée, le chemin est déchargé (*L'entité qui fuyait n'est plus là : chemin de fuite déchargé. Recompile pour vérifier que la map est étanche.*).
@@ -49,11 +49,11 @@ Un fichier de portails (`<map>.prt`) contient les portails entre les clusters de
 
 | Commande | Raccourci | Effet |
 | --- | --- | --- |
-| **Map > Charger le fichier de portails...** | | Charge le `.prt` de la map (ou en demande un). Déposer un `.prt` sur la fenêtre marche aussi. |
-| **Map > Décharger le fichier de portails** | | Retire les portails. |
-| **Map > Construire les portails (géométrie seule)** | `Ctrl+Maj+P` | Construit seulement la géométrie de la map actuelle (quelques secondes, dans son dossier de construction) et charge ses portails : l'effet des hints et des `func_detail` se voit tout de suite. |
-| **Map > Portails et visibilité...** | | Ouvre la fenêtre décrite plus bas. |
-| **Affichage > Afficher les clusters visibles** | | Colore les portails des clusters visibles depuis la caméra (nécessite une map compilée avec la visibilité). |
+| **Map > Fuites et visibilité > Charger le fichier de portails...** | | Charge le `.prt` de la map (ou en demande un). Déposer un `.prt` sur la fenêtre marche aussi. |
+| **Map > Fuites et visibilité > Décharger le fichier de portails** | | Retire les portails. |
+| **Map > Fuites et visibilité > Construire les portails (géométrie seule)** | `Ctrl+Maj+P` | Construit seulement la géométrie de la map actuelle (quelques secondes, dans son dossier de construction) et charge ses portails : l'effet des hints et des `func_detail` se voit tout de suite. |
+| **Map > Fuites et visibilité > Portails et visibilité...** | | Ouvre la fenêtre décrite plus bas. |
+| **Affichage > Diagnostics > Afficher les clusters visibles** | | Colore les portails des clusters visibles depuis la caméra (nécessite une map compilée avec la visibilité). |
 
 Après une compilation qui a écrit un nouveau fichier de portails, Hammer Pro vous le propose (*La compilation a écrit un nouveau fichier de portails.* **Le charger** / **Pas maintenant**), sauf si vous avez décoché **Proposer le nouveau fichier de portails après une compilation**. Les portails déjà affichés sont rechargés automatiquement.
 
@@ -74,7 +74,7 @@ Après une compilation qui a écrit un nouveau fichier de portails, Hammer Pro v
 
 ## Fermer une ouverture avec un areaportal
 
-Sélectionnez une porte (`func_door`, `func_door_rotating`, `prop_door_rotating`, `func_movelinear`, ou un brush de l'une d'elles) et lancez **Map > Fermer l'ouverture par un areaportal**. Hammer Pro ajuste un brush `func_areaportal` à l'ouverture, le lie à la porte (la porte prend le nom `door_<id>` si elle n'en a pas), le fait démarrer ouvert ou fermé comme la porte, et le sélectionne. Une seule étape d'annulation. Sans porte sélectionnée, vous obtenez *Sélectionnez une porte (func_door, prop_door_rotating...) pour fermer son ouverture*.
+Sélectionnez une porte (`func_door`, `func_door_rotating`, `prop_door_rotating`, `func_movelinear`, ou un brush de l'une d'elles) et lancez **Map > Fuites et visibilité > Fermer l'ouverture par un areaportal**. Hammer Pro ajuste un brush `func_areaportal` à l'ouverture, le lie à la porte (la porte prend le nom `door_<id>` si elle n'en a pas), le fait démarrer ouvert ou fermé comme la porte, et le sélectionne. Une seule étape d'annulation. Sans porte sélectionnée, vous obtenez *Sélectionnez une porte (func_door, prop_door_rotating...) pour fermer son ouverture*.
 
 Les vérifications d'areaportals de [Vérifier les problèmes](check-problems.md) vous préviennent quand un areaportal et sa porte sont désaccordés, traversent l'eau ou un occluder, ou ont plus d'un brush.
 

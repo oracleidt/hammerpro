@@ -10,9 +10,9 @@ Donnez à n'importe quel brush ou entité sa propre couleur dans les vues 2D, po
 | --- | --- |
 | **Panneau des propriétés** (dock de droite), section **Couleur d'affichage** | Affichée pour toute sélection : brushes du monde (sous **Lier à une entité**), entités de brushes, entités ponctuelles, groupes et sélections mixtes (au-dessus de **Commentaires de l'éditeur**). |
 | Clic droit dans une vue 2D ou 3D > **Définir la couleur d'affichage...** | Une petite fenêtre **Couleur d'affichage** pour la sélection. |
-| **Édition > Définir la couleur d'affichage...** (`set_display_color`) | La même fenêtre. |
-| **Édition > Couleurs d'affichage aléatoires** (`random_display_colors`) | Une couleur différente pour chaque objet sélectionné, d'un coup. |
-| **Édition > Couleurs d'affichage par défaut** (`reset_display_colors`) | Les objets sélectionnés retrouvent leur aspect par défaut. |
+| **Édition > Couleurs d'affichage > Définir la couleur d'affichage...** (`set_display_color`) | La même fenêtre. |
+| **Édition > Couleurs d'affichage > Couleurs d'affichage aléatoires** (`random_display_colors`) | Une couleur différente pour chaque objet sélectionné, d'un coup. |
+| **Édition > Couleurs d'affichage > Couleurs d'affichage par défaut** (`reset_display_colors`) | Les objets sélectionnés retrouvent leur aspect par défaut. |
 | **Affichage > Options d'affichage > Couleurs des objets en 2D** (`toggle_object_colors_2d`) | Montre les couleurs d'affichage dans les vues 2D, ou l'aspect classique. |
 | **Affichage > Options d'affichage > Couleurs des objets en 3D filaire et plat** (`toggle_object_colors_3d`) | Les utilise aussi dans la vue 3D en mode filaire et plat. |
 

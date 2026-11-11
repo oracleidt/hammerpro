@@ -64,7 +64,7 @@ Directly in the **View** menu:
 | **Displacement mesh in 2D views** | Switches the 2D views between the triangle grid of displacements and their outline. | Mesh |
 | **Displacement walkability** | Colors displacement triangles by walkability, or by slope angle with the Limit and Gradient modes (see [Displacement tool](displacement-tool.md#slope-control)). | Off |
 | **Radius culling** | Nothing farther than the culling radius from the camera is drawn (a circle shows it in the 2D views). | Off |
-| **Highlight invalid brushes** | Brushes that are not closed and convex are drawn in red in every view. | On |
+| **Highlight invalid brushes** | Brushes that are not closed and convex, and brushes whose displacement cannot be built (the game drops them), are drawn in red in every view. | On |
 | **Show nodraw faces** | Shows or hides the nodraw faces in the 3D view. | Shown |
 | **Water preview** | Water drawn like in game: refraction, water fog, reflection of the scene and the sky, moving waves. Off: its tool texture. | On |
 | **Bounding boxes** | Yellow bounding boxes of the visible objects. Off by default and without a shortcut (`I` only starts the [interactive inset](extrude-tool.md)); switch it on here or with the action `toggle_bounds_overlay` from the command palette. | Off |
@@ -87,7 +87,7 @@ The toolbar repeats the most used switches: radius culling, displacement mesh, d
 
 ## Map fog
 
-**Fog preview** (on by default, toolbar button, **View > Fog preview**) draws the fog of an `env_fog_controller` in the 3D views and the [player view](player-view.md), like the map fog in game: **Primary Fog Color** (and **Secondary Fog Color** with **Fog Blend**, along **Primary Fog Direction** or the angles with **Use Angles for Fog Dir**), **Fog Start**, **Fog End**, **Fog Max Density** and **Far Z Clip Plane**. Editing a key updates the view at once. It works in the Textured, Lit, Flat and Unshaded modes, on baked lightmaps, water, particles, detail props and models, and in the player view.
+**Fog preview** (on by default, toolbar button, **View > Environment preview > Fog preview**; pick the controller in **View > Environment preview > Previewed fog controller**) draws the fog of an `env_fog_controller` in the 3D views and the [player view](player-view.md), like the map fog in game: **Primary Fog Color** (and **Secondary Fog Color** with **Fog Blend**, along **Primary Fog Direction** or the angles with **Use Angles for Fog Dir**), **Fog Start**, **Fog End**, **Fog Max Density** and **Far Z Clip Plane**. Editing a key updates the view at once. It works in the Textured, Lit, Flat and Unshaded modes, on baked lightmaps, water, particles, detail props and models, and in the player view.
 
 - The fog is computed like the game: it grows linearly with the distance along the view direction, from 0 at **Fog Start** (which may be negative: the fog is already there at the eye) to **Fog Max Density** at **Fog End**, and it is mixed in gamma space with the drawn color. A max density of 0.25 never covers more than a quarter of the color.
 - With **Fog Blend**, the fog color depends on where the camera looks, not on each pixel: looking along **Primary Fog Direction** gives the primary color, looking the other way the secondary one, half of each side on.
@@ -135,7 +135,7 @@ A `func_fish_pool` spawns `fish_count` fish (default 10) of its **World model** 
 
 ## Background images
 
-**View > Background images...** opens the **Background images** window: reference images (a floor plan, a photo) drawn behind the grid of the 2D views.
+**View > Display options > Background images...** opens the **Background images** window: reference images (a floor plan, a photo) drawn behind the grid of the 2D views.
 
 | Field | What it does |
 | --- | --- |
@@ -197,11 +197,11 @@ The images are stored in the map (`bgimages_plus` block of the VMF), so they tra
 
 ## FAQ
 
-**My sky faces show the tool texture.** That is the default. Turn on **See the sky through toolsskybox** to see the sky through them.
+**My sky faces show the tool texture.** That is the default in the textured modes; the Lit mode and the baked preview show the sky through them, like the game. Turn on **See the sky through toolsskybox** to see the sky through them.
 
 **Where did my props go?** Check **Show models**, **Model distance** and **Show model collisions**.
 
-**The fog preview shows nothing.** The map needs an `env_fog_controller` with **Fog Enable** at Yes (a new one has No, like in Hammer); the 3D view says so at the bottom left. Choose another controller in **View > Fog preview**.
+**The fog preview shows nothing.** The map needs an `env_fog_controller` with **Fog Enable** at Yes (a new one has No, like in Hammer); the 3D view says so at the bottom left. Choose another controller in **View > Environment preview > Previewed fog controller**.
 
 **My fog_volume shows the default blue look.** Its **Fog Name** does not name an `env_fog_controller` with **Fog Enable** at Yes: the label above the volume and the entity properties say which. In game such a volume changes nothing (no controller) or clears the fog (controller with its fog disabled).
 
@@ -218,4 +218,4 @@ The images are stored in the map (`bgimages_plus` block of the VMF), so they tra
 
 ## A blue grid instead of the sky
 
-In the lit or textured view, a blue grid on a sky face is the `tools/toolsskybox` editor texture when **See the sky through toolsskybox** is disabled. Enable that option in **Settings > Rendering** (`render.sky_see_through`) to see the sky through those faces. The baked preview shows sky openings automatically.
+In the textured views, a blue grid on a sky face is the `tools/toolsskybox` editor texture when **See the sky through toolsskybox** is disabled. Enable that option in **Settings > Rendering** (`render.sky_see_through`) to see the sky through those faces. The Lit mode (Alt+5) and the baked preview show sky openings automatically, so sky faces are never lit or shadowed like a wall.

@@ -8,7 +8,7 @@ The **Find and replace textures** window swaps a material for another on the fac
 
 | How | Result |
 |---|---|
-| **Tools > Find and replace textures...** (`Ctrl+Shift+R`) | Opens the window. When **Find** is empty, it is filled with the current material. |
+| **Tools > Textures > Find and replace textures...** (`Ctrl+Shift+R`) | Opens the window. When **Find** is empty, it is filled with the current material. |
 | **Replace...** in the [texture browser](texture-browser.md) header | Opens it with the current material in **Find**. |
 | Right click a thumbnail > **Replace with this...** | Opens it with the current material in **Find** and the clicked one in **Replace with**. |
 

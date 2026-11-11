@@ -56,6 +56,10 @@ impl SettingsPage for HealthPage {
             .checkbox(&mut s.visible_only, t!("shell.health.visible_only"))
             .on_hover_text(t!("shell.health.visible_only_tip"))
             .changed();
+        changed |= ui
+            .checkbox(&mut s.warn_duplicates, t!("shell.health.warn_duplicates"))
+            .on_hover_text(t!("shell.health.warn_duplicates_tip"))
+            .changed();
         heading(ui, t!("shell.health.limits"));
         ui.horizontal(|ui| {
             ui.label(t!("shell.health.profile"));
@@ -113,6 +117,16 @@ pub(crate) const TR: TrTable = &[
         "Un remplissage comme celui du compilateur trouve les fuites sans compiler ; la compilation reste la référence",
     ),
     ("shell.health.show_leak_path", "Draw the path of the leak found", "Tracer le chemin de la fuite trouvée"),
+    (
+        "shell.health.warn_duplicates",
+        "Warn when a new brush or entity is an exact copy of another",
+        "Avertir quand un nouveau brush ou une nouvelle entité est une copie exacte d'un autre",
+    ),
+    (
+        "shell.health.warn_duplicates_tip",
+        "After creating, pasting or duplicating, a message tells when the result sits exactly on an identical brush or entity (Check for problems can delete the copies)",
+        "Après une création, un collage ou une duplication, un message signale quand le résultat est exactement sur un brush ou une entité identique (Vérifier les problèmes peut supprimer les copies)",
+    ),
     (
         "shell.health.visible_only",
         "Check for problems lists visible objects only",

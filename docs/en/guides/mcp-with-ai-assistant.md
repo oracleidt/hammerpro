@@ -10,7 +10,7 @@ At the right end of the top bar, click the **MCP off** pill. It becomes **MCP on
 
 ## Step 2: install Hammer Pro in your AI app
 
-1. Click the small arrow next to the pill (or **Tools > MCP...**) to open the MCP window.
+1. Click the small arrow next to the pill (or **Tools > Blender and MCP > MCP...**) to open the MCP window.
 2. Click **Install in Claude, Codex, Gemini**. Hammer Pro adds itself to every supported app it finds, then checks each one. Each app line ends on **Installed and configured** when it worked.
 3. Restart the AI app, or start a new session, so it sees the `hammer-pro` server.
 
@@ -45,6 +45,17 @@ The assistant starts with `get_capabilities` and `get_map_info`, uses the tools 
 ## Several Hammer Pro windows
 
 With several windows, the assistant uses the one with MCP on that you focused last. Ask it to "list the Hammer Pro windows" and "use the one with gm_city" (tools `list_instances` and `use_instance`). Inside one window, it can also switch between the open maps (`list_tabs`, `switch_tab`).
+
+## Placing props and objects precisely
+
+The assistant does not have to guess sizes from bounding boxes. Ask it to place things and it uses the placement tools, which measure the real geometry of everything: the model mesh after its angles and scale, brushes, displacements, overlays, instances and groups.
+
+- "Put a couch against the north wall of the living room, on the floor." The assistant measures the couch (`get_object_shape`: real size, how high the origin sits above the feet), then places it flush against the wall and on the floor (`place_object` with `against`, then `drop`).
+- "Put a barrel on the table." It uses `place_object` with `on`: the barrel's lowest point lands exactly on the table top, no gap, no overlap.
+- "Park the car on the hill." The car settles on the real displaced surface, not on the brush under it.
+- "Find everything that floats or is sunk in this street and fix it." `find_floating_objects` checks every prop on its real mesh, keeps wall lamps and signs that touch a wall, and drops or lifts the others in one undo step.
+
+`render_shape` gives the assistant a drawing of a model or an area from several sides with the sizes written on it, and `check_placement` tells it, for each object, whether it rests, floats, is sunk or goes into another object. The full guide is in [docs/MCP.md](../../MCP.md#place-things-precisely).
 
 ## Tips
 

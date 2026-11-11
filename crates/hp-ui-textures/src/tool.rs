@@ -298,8 +298,9 @@ impl TextureTool {
         let (decimals, shift_step, scale_step) = (prefs.decimals(), prefs.shift_step(), prefs.scale_step());
         egui::Grid::new("hp_face_values").num_columns(3).spacing([8.0, 4.0]).show(ui, |ui| {
             ui.label("");
-            ui.label(RichText::new("X / U").color(theme::text_weak()));
-            ui.label(RichText::new("Y / V").color(theme::text_weak()));
+            let header = [FIELD_WIDTH, ui.spacing().interact_size.y];
+            ui.add_sized(header, egui::Label::new(RichText::new("X / U").color(theme::text_weak())));
+            ui.add_sized(header, egui::Label::new(RichText::new("Y / V").color(theme::text_weak())));
             ui.end_row();
 
             ui.label(t!("tex.face.scale"));
@@ -329,8 +330,10 @@ impl TextureTool {
                 self.edit(state, "rotation", &r, FaceEdit { rotation: Some(v), ..FaceEdit::default() });
             }
             ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = ROTATE_GAP;
+                let size = [(FIELD_WIDTH - ROTATE_GAP) / 2.0, ui.spacing().interact_size.y];
                 for (label, delta) in [("-90", -90.0), ("+90", 90.0)] {
-                    let r = ui.small_button(label).on_hover_text(t!("tex.face.rotate_by"));
+                    let r = ui.add_sized(size, egui::Button::new(label)).on_hover_text(t!("tex.face.rotate_by"));
                     if r.clicked() {
                         let faces = Arc::clone(&self.cache.faces);
                         let res =
@@ -487,13 +490,16 @@ impl TextureTool {
     }
 }
 
+const FIELD_WIDTH: f32 = 96.0;
+const ROTATE_GAP: f32 = 4.0;
+
 fn multi_f64(ui: &mut egui::Ui, m: &Multi<f64>, speed: f64, decimals: usize) -> Option<(f64, egui::Response)> {
     let mut v = m.value()?;
     let mut dv = egui::DragValue::new(&mut v).speed(speed).max_decimals(decimals);
     if m.is_mixed() {
         dv = dv.custom_formatter(|_, _| t!("common.multiple_values").to_owned());
     }
-    let r = ui.add_sized([96.0, ui.spacing().interact_size.y], dv);
+    let r = ui.add_sized([FIELD_WIDTH, ui.spacing().interact_size.y], dv);
     (r.changed() && v.is_finite()).then_some((v, r))
 }
 
@@ -503,7 +509,7 @@ fn multi_i32(ui: &mut egui::Ui, m: &Multi<i32>) -> Option<(i32, egui::Response)>
     if m.is_mixed() {
         dv = dv.custom_formatter(|_, _| t!("common.multiple_values").to_owned());
     }
-    let r = ui.add_sized([96.0, ui.spacing().interact_size.y], dv);
+    let r = ui.add_sized([FIELD_WIDTH, ui.spacing().interact_size.y], dv);
     r.changed().then_some((v, r))
 }
 

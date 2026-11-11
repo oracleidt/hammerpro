@@ -6,7 +6,7 @@ L'outil chemin trace des chaînes d'entités de chemin (`path_track`, `path_corn
 
 ## Ouvrir l'outil
 
-- **Outils > Outil chemin**, ou son bouton dans la palette d'outils. Il n'a pas de raccourci par défaut : donnez-lui en un dans **Paramètres > Clavier** si vous vous en servez souvent (voir [Raccourcis clavier](keyboard-shortcuts.md)).
+- **Outils > Outil actif > Outil chemin**, ou son bouton dans la palette d'outils. Il n'a pas de raccourci par défaut : donnez-lui en un dans **Paramètres > Clavier** si vous vous en servez souvent (voir [Raccourcis clavier](keyboard-shortcuts.md)).
 - Quand l'outil est actif, ses options s'affichent dans la barre d'options de l'outil et la barre d'état montre une courte aide.
 
 ## Tracer un chemin
@@ -80,7 +80,7 @@ Elles marchent depuis n'importe quel outil, sur les points de chemin sélectionn
 
 **Pourquoi les noms de mes autres points ont changé ?** Vous avez inséré un point au milieu d'une suite numérotée. Les points suivants ont été renumérotés et toutes les références vers eux mises à jour, rien n'est cassé.
 
-**Suppr a effacé mes points mais la chaîne est coupée.** **Relier à la suppression** était décoché, ou vous les avez supprimés avec un autre outil. Utilisez plutôt **Outils > Supprimer des points de chemin et relier**.
+**Suppr a effacé mes points mais la chaîne est coupée.** **Relier à la suppression** était décoché, ou vous les avez supprimés avec un autre outil. Utilisez plutôt **Outils > Placement et props > Supprimer des points de chemin et relier**.
 
 **Je peux poser des points sur un mur ?** Oui, dans la vue 3D le point se pose sur la surface sous le curseur, écarté d'elle par la **Hauteur** le long de la normale.
 

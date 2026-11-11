@@ -4,9 +4,9 @@ use crate::state::AppState;
 
 action_list! { content_actions {
     SaveAsNewVersion => "save_as_new_version", File, FileSave, None, Ready;
-    OpenArchive => "open_archive", File, FileImport, None, Ready;
-    BuildContent => "build_content", File, FileRun, None, Ready;
-    PublishWorkshop => "publish_workshop", File, FileRun, None, Ready;
+    OpenArchive => "open_archive", File, FileImportOpen, None, Ready;
+    BuildContent => "build_content", File, FilePublish, None, Ready;
+    PublishWorkshop => "publish_workshop", File, FilePublish, None, Ready;
     ShowMapAssets => "show_map_assets", Map, MapInfo, None, Ready;
     ShaderEditor => "shader_editor", Tools, ToolsContent, None, Ready;
     VtfEditor => "vtf_editor", Tools, ToolsContent, None, Ready;

@@ -4,6 +4,8 @@ use hp_mcp::protocol::ToolResult;
 use serde_json::{Value, json};
 
 use super::semantic::*;
+use hp_mcp::tools::MAX_LIST;
+
 use super::tools::{Args, MAX_NAME, Outcome, R, Worker, bounds_json, edit, obj_json};
 
 domain! { "map health";
@@ -37,6 +39,18 @@ domain! { "map health";
         "Faces entirely covered by other brushes (they could get nodraw with apply_nodraw). Computed on a worker \
         thread.",
         { "limit": integer("Most faces returned (default 1000).", 1, 100_000) }, [];
+    find_duplicate_brushes: Edit, "Find redundant brushwork",
+        "Redundant objects of the map: brushes that are exact copies of another brush of the same entity (same \
+        vertices within 1/16 unit, any face order and texture), brushes fully inside an identical-content solid \
+        brush of the same entity, and point or brush entities stacked on an identical one (same class, model, \
+        angles and origin). Lists each copy with the object it duplicates; select selects the copies, delete \
+        deletes them and keeps the originals (one undo step).",
+        {
+            "kinds": strings("Kinds to look for: brushes, contained, entities (default all three).", 3),
+            "select": boolean("Select the redundant copies (default false)."),
+            "delete": boolean("Delete the redundant copies (default false)."),
+            "limit": limit(),
+        }, [];
     recheck_map: Editor, "Check the map again",
         "Run the background problem and limit checks again now (get_problems shows the result when checking is \
         false).",
@@ -150,6 +164,55 @@ fn fix_problems(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let n = edit(state, "fix_problems", |doc| doc.fix_problems(&fixable))?;
     state.runtime.health.recheck = true;
     Ok(ToolResult::json(json!({ "fixed": n, "asked": fixable.len() })))
+}
+
+const DUPLICATE_KINDS: [(&str, &str); 3] = [
+    ("brushes", hp_editor::duplicates::CODE_BRUSH),
+    ("contained", hp_editor::duplicates::CODE_CONTAINED),
+    ("entities", hp_editor::duplicates::CODE_ENTITY),
+];
+
+fn find_duplicate_brushes(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
+    let kinds = a.strings("kinds", 3)?;
+    if let Some(bad) = kinds.iter().find(|k| !DUPLICATE_KINDS.iter().any(|(name, _)| name == k)) {
+        return Err(format!("unknown kind '{bad}' (brushes, contained, entities)"));
+    }
+    let select = a.opt_bool("select")?.unwrap_or(false);
+    let delete = a.opt_bool("delete")?.unwrap_or(false);
+    if select && delete {
+        return Err("give select or delete, not both".to_owned());
+    }
+    let limit = a.opt_u64("limit", 1, MAX_LIST)?.unwrap_or(100) as usize;
+    let (problems, source) = current_problems(state);
+    let mut items: Vec<Value> = Vec::new();
+    let mut objs: Vec<hp_editor::ObjRef> = Vec::new();
+    let mut counts = serde_json::Map::new();
+    for (name, code) in DUPLICATE_KINDS {
+        if !kinds.is_empty() && !kinds.iter().any(|k| k == name) {
+            continue;
+        }
+        let mut n = 0;
+        for p in problems.iter().filter(|p| p.code == code) {
+            for (i, o) in p.objects.iter().enumerate() {
+                let of = p.arg(i).split_once('=').and_then(|(_, keep)| keep.parse::<u32>().ok());
+                items.push(json!({ "kind": name, "copy": obj_json(*o), "of": of }));
+                objs.push(*o);
+                n += 1;
+            }
+        }
+        counts.insert(name.to_owned(), json!(n));
+    }
+    let total = items.len();
+    let mut out = json!({ "source": source, "total": total, "counts": counts, "items": items.into_iter().take(limit).collect::<Vec<_>>() });
+    if delete && !objs.is_empty() {
+        let n = edit(state, "find_duplicate_brushes", |doc| doc.delete_redundant(&objs))?;
+        state.runtime.health.recheck = true;
+        out["deleted"] = json!(n);
+    } else if select {
+        state.doc.set_selection(&objs);
+        out["selected"] = json!(objs.len());
+    }
+    Ok(ToolResult::json(out))
 }
 
 fn limit_json(u: &hp_editor::limits::LimitUse, top: usize) -> Value {

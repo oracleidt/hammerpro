@@ -2,7 +2,7 @@
 
 # Physics simulator
 
-Select brushes, props or ragdolls, then choose **Tools > Physics simulator** or the scales icon in the tool strip. The controls appear in the right panel.
+Select brushes, props or ragdolls, then choose **Tools > Active tool > Physics simulator** or the scales icon in the tool strip. The controls appear in the right panel.
 
 | Control | Effect |
 | --- | --- |

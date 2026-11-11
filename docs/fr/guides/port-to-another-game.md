@@ -20,13 +20,13 @@ Utilisez **Fichier > Enregistrer comme nouvelle version...** ou enregistrez une 
 
 ## Étape 3 : choisir le jeu cible
 
-1. Ouvrez la copie et appuyez sur `Ctrl+F9` (**Fichier > Compiler et lancer...**).
+1. Ouvrez la copie et appuyez sur `Ctrl+F9` (**Fichier > Compiler > Compiler et lancer...**).
 2. Dans la ligne **Jeu cible** en haut, choisissez le jeu. Hammer Pro monte son contenu et charge ses FGD.
 3. La ligne en dessous indique ce que signifie compiler pour lui : sa version de BSP et de props statiques, **Limites de Valve** (Garry's Mod a des limites relevées), et **Non installé** si le jeu manque (la map se compile alors avec le contenu monté actuellement, et elle n'est ni copiée dans un jeu ni lancée).
 
 ## Étape 4 : corriger ce qui n'existe pas dans le nouveau jeu
 
-- **Contenu** : les textures et modèles de Garry's Mod ou de vos addons n'existent peut-être pas dans le nouveau jeu. Ouvrez **Map > Ressources de la map**, filtrez sur **Manquants**, puis remplacez-les avec **Outils > Rechercher et remplacer des textures...** (`Ctrl+Maj+R`) ou en modifiant les entités.
+- **Contenu** : les textures et modèles de Garry's Mod ou de vos addons n'existent peut-être pas dans le nouveau jeu. Ouvrez **Map > Ressources de la map**, filtrez sur **Manquants**, puis remplacez-les avec **Outils > Textures > Rechercher et remplacer des textures...** (`Ctrl+Maj+R`) ou en modifiant les entités.
 - **Entités** : certaines classes n'existent que dans Garry's Mod. Lancez **Map > Vérifier les problèmes** (`Alt+P`) : les classes inconnues et les cibles manquantes sont listées avec leurs objets.
 - **Fonctions propres à Garry's Mod** : les addons, le Workshop, `mount.cfg`, l'interrupteur de skybox en Lua (`point_hammerpro_skybox`), les tests en jeu avec l'addon pont et la publication sur le Workshop sont désactivés pour les autres jeux. **Construire et enregistrer en contenu** ne concerne que Garry's Mod : compilez les autres jeux depuis la fenêtre de compilation (`F9`).
 - **Limites** : la map a désormais les limites de Valve. Vérifiez **Map > Informations sur la map** et le journal de compilation.

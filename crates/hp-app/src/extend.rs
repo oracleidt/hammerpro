@@ -97,6 +97,7 @@ pub struct MenuExtension {
     pub menu: Category,
     pub section: u16,
     pub order: u16,
+    pub submenu: Option<&'static str>,
     pub ui: MenuUi,
 }
 
@@ -107,7 +108,12 @@ impl MenuExtension {
         order: u16,
         ui: impl FnMut(&mut egui::Ui, &mut AppState) + 'static,
     ) -> Self {
-        Self { menu, section, order, ui: Box::new(ui) }
+        Self { menu, section, order, submenu: None, ui: Box::new(ui) }
+    }
+
+    pub fn in_submenu(mut self, title_key: &'static str) -> Self {
+        self.submenu = Some(title_key);
+        self
     }
 }
 
@@ -117,6 +123,7 @@ impl std::fmt::Debug for MenuExtension {
             .field("menu", &self.menu)
             .field("section", &self.section)
             .field("order", &self.order)
+            .field("submenu", &self.submenu)
             .finish_non_exhaustive()
     }
 }

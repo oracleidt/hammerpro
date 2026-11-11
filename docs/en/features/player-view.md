@@ -6,7 +6,7 @@ The player view lets you walk the map in the 3D view like a Garry's Mod player: 
 
 ## Opening it
 
-- **View > Display options > Player view**, the player button of the toolbar, or `F6`.
+- **View > Player view**, the player button of the toolbar, or `F6`.
 - It takes the 3D view under the mouse (else the focused one, else the first 3D view). The layout needs a 3D view ("The player view needs a 3D view in the layout.").
 - You start at the first `info_player_start` (or `info_player_deathmatch`, `info_player_combine`, `info_player_rebel`, `info_player_terrorist`, `info_player_counterterrorist`), facing its direction; without one, on the ground under the 3D camera.
 - `Escape` or `F6` goes back to the editor, with the camera where it was before.
@@ -39,6 +39,8 @@ The keys line at the top of the view reminds you of them.
 ## Movement
 
 The movement uses the Source values of Garry's Mod: 200 units per second walking, 400 running, gravity 600, jump speed 200, a 32 x 32 x 72 hull (36 crouched), eyes at 64 (28 crouched), steps up to 18 units. Collisions use the brushes (triggers, hints, skips, fog, area portals, occluders, invisible ladders and 2D sky faces are walked through) and the collision models of props (`.phy`, like the game: a tree only blocks at its trunk). The player pushes the physics props it walks into. The player model plays the Garry's Mod animations (idle, walk, run, crouch, jump, noclip).
+
+**Displaced brushes** behave like in game: the compiler (like VBSP) keeps only the displacement surface of a brush that has one, so its other faces are neither drawn nor solid. The player view follows it with the compiled world and with the editor brushes alike: the sides of a displaced block are not drawn, walking and the use key go through them, and a slit between two displaced blocks stays open, exactly as in Garry's Mod. The editor views draw displaced brushes the same way. A brush whose displacement cannot be built (a face without exactly 4 corners after an edit, a power outside 1 to 4) is dropped entirely by the compiler: the player view hides it and walks through it, the editor views draw it in red and **Check problems** reports and fixes it.
 
 ## Compiled world and lighting
 

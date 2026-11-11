@@ -380,6 +380,8 @@ pub(super) fn describe(host: &mut dyn UiHost, ctx: &egui::Context, tree: Option<
         "console": s.ui.show_console,
         "toolbar": s.workflow.show_toolbar,
         "tool_palette": s.workflow.show_tool_palette,
+        "tool_palette_columns": hp_ui_shell::tool_strip::palette_columns(&s.workflow),
+        "toolbar_rows": if s.workflow.toolbar_two_rows() { 2 } else { 1 },
         "status_bar": s.workflow.show_status_bar,
     });
     let tail: Vec<Value> = state

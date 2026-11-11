@@ -5,6 +5,10 @@ use hp_geom::{Aabb, MAX_COORD, PLANE_EPS};
 
 use super::leak::{LeakReport, SEALING_ENTITY_CLASSES};
 use super::snapshot::{MapSnapshot, SolidRec};
+use crate::duplicates::{
+    CODE_BRUSH, CODE_CONTAINED, CODE_ENTITY, ContentClass, OwnerKey, Redundant, SolidInfo, entity_keys, find_redundant,
+    is_detail_class,
+};
 use crate::problems::{MaterialKind, Problem, Severity, parent_name};
 use crate::scene::Owner;
 use crate::selection::{FaceRef, ObjRef};
@@ -401,8 +405,104 @@ pub fn check_snapshot(snap: &MapSnapshot, k: &dyn CheckKnowledge, opts: &CheckOp
     check_assets(snap, k, &mut mats, &mut out);
     check_entity_rules(snap, k, opts, &mut mats, &mut out);
     check_sky_cameras(snap, &mut out);
+    check_redundant(snap, &mut mats, &mut out);
     out.sort_by_key(|p| std::cmp::Reverse(p.severity));
     out
+}
+
+fn content_class(
+    snap: &MapSnapshot,
+    s: &SolidRec,
+    facts: &mut dyn FnMut(u32) -> MaterialFacts,
+) -> Option<ContentClass> {
+    if s.has_disp() || !s.geom.valid {
+        return None;
+    }
+    let all: Vec<MaterialFacts> = s.sides.iter().map(|x| facts(x.material)).collect();
+    if all.iter().all(|f| f.seals() && !f.transparent()) {
+        return Some(ContentClass::Solid);
+    }
+    let first = s.sides.first()?.material;
+    let same = s.sides.iter().all(|x| snap.material_key(x.material) == snap.material_key(first));
+    (same && all.iter().all(|f| f.tool == Some(ToolUse::Clip))).then_some(ContentClass::Tool(first))
+}
+
+pub fn redundant_in(snap: &MapSnapshot, facts: &mut dyn FnMut(u32) -> MaterialFacts) -> Redundant {
+    let details: HashSet<Id> =
+        snap.entities.iter().filter(|r| is_detail_class(&r.entity.classname)).map(|r| r.entity.id).collect();
+    let solids: Vec<SolidInfo<'_>> = snap
+        .solids
+        .iter()
+        .map(|s| SolidInfo {
+            id: s.id,
+            owner: OwnerKey::of(s.owner, |e| details.contains(&e)),
+            shape: s.shape,
+            bounds: s.bounds,
+            geom: &s.geom,
+            class: content_class(snap, s, facts),
+            volume: s.volume,
+        })
+        .collect();
+    let mut shapes: HashMap<Id, Vec<u64>> = HashMap::new();
+    for s in &snap.solids {
+        if let Owner::Entity(e) = s.owner {
+            shapes.entry(e).or_default().push(s.shape);
+        }
+    }
+    let entities = entity_keys(
+        snap.entities.iter().map(|r| (r.entity.id, &r.entity, shapes.get(&r.entity.id).map_or(&[][..], Vec::as_slice))),
+    );
+    find_redundant(&solids, &entities)
+}
+
+fn pairs(groups: &[(Id, Vec<Id>)]) -> Vec<String> {
+    groups.iter().flat_map(|(keep, copies)| copies.iter().map(move |c| format!("{c}={keep}"))).collect()
+}
+
+fn check_redundant(snap: &MapSnapshot, mats: &mut Materials<'_>, out: &mut Vec<Problem>) {
+    let found = redundant_in(snap, &mut |m| mats.facts(m));
+    let brushes = found.objects(CODE_BRUSH);
+    if !brushes.is_empty() {
+        out.push(
+            problem(
+                Severity::Warning,
+                CODE_BRUSH,
+                format!("{} brushes are exact copies of another brush (same shape, same entity)", brushes.len()),
+                brushes,
+                true,
+            )
+            .with_args(pairs(&found.brushes)),
+        );
+    }
+    let inner = found.objects(CODE_CONTAINED);
+    if !inner.is_empty() {
+        out.push(
+            problem(
+                Severity::Info,
+                CODE_CONTAINED,
+                format!("{} brushes are fully inside another solid brush of the same entity", inner.len()),
+                inner,
+                true,
+            )
+            .with_args(found.contained.iter().map(|(outer, inner)| format!("{inner}={outer}")).collect()),
+        );
+    }
+    let ents = found.objects(CODE_ENTITY);
+    if !ents.is_empty() {
+        out.push(
+            problem(
+                Severity::Warning,
+                CODE_ENTITY,
+                format!(
+                    "{} entities are stacked copies of another entity (same class, model, angles and origin)",
+                    ents.len()
+                ),
+                ents,
+                true,
+            )
+            .with_args(pairs(&found.entities)),
+        );
+    }
 }
 
 fn check_sky_cameras(snap: &MapSnapshot, out: &mut Vec<Problem>) {
@@ -508,7 +608,10 @@ fn check_solids(snap: &MapSnapshot, mats: &mut Materials<'_>, out: &mut Vec<Prob
         out.push(face_problem(
             Severity::Error,
             "disp_not_quad",
-            format!("{} displacements are on faces that do not have exactly 4 corners", bad_disp.len()),
+            format!(
+                "{} displacements cannot be built: their face does not have exactly 4 corners or their power is not 1 to 4",
+                bad_disp.len()
+            ),
             bad_disp,
             true,
         ));

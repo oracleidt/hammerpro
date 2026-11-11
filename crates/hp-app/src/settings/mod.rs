@@ -15,6 +15,7 @@ mod entities;
 mod grid;
 mod health;
 mod helpers;
+mod input;
 mod instances;
 mod lab;
 mod launch;
@@ -53,6 +54,7 @@ pub use hp_sniffer::{
     DecompileSettings as SnifferDecompileSettings, GeometrySource as SnifferGeometry,
     InsecureMode as SnifferInsecureMode, SnifferSettings,
 };
+pub use input::{InputSettings, TRACKPAD_SPEED_MAX, TRACKPAD_SPEED_MIN, TrackpadMode, TrackpadScroll3d};
 pub use instances::{InstanceDisplay, InstancesSettings};
 pub use lab::{LabSettings, ModelLodSettings, UnpropShape};
 pub use launch::{LaunchSettings, LaunchTiming};
@@ -62,9 +64,9 @@ pub use mesh::MeshSettings;
 pub use physics::PhysicsSettings;
 pub use placement::{PlacementSettings, SprinkleMode, SprinkleSettings};
 pub use render::{
-    DEFAULT_WALK_ANGLE, Disp2dSetting, Disp2dViewSetting, DispWalkMode, MAX_ANIMATION_FPS, MAX_VRAM_BUDGET_MB,
-    MIN_VRAM_BUDGET_MB, Models2dSetting, PerformanceMode, PropShadowSetting, RenderSettings, ToneModeSetting,
-    WaterDetailSetting,
+    CUBEMAPS_REVISION, DEFAULT_WALK_ANGLE, Disp2dSetting, Disp2dViewSetting, DispWalkMode, MAX_ANIMATION_FPS,
+    MAX_VRAM_BUDGET_MB, MIN_VRAM_BUDGET_MB, Models2dSetting, PerformanceMode, PropShadowSetting, RenderSettings,
+    ToneModeSetting, WaterDetailSetting,
 };
 pub use scan::{ScanModeSetting, ScanSettings};
 pub use selection::{SelectElement, SelectionSettings};
@@ -104,6 +106,8 @@ fn is_default<T: Default + PartialEq>(value: &T) -> bool {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
+    #[serde(default)]
+    pub revision: u32,
     pub language: Lang,
     pub language_chosen: bool,
     pub recent_files: Vec<PathBuf>,
@@ -164,11 +168,14 @@ pub struct Settings {
     pub blender: BlenderSettings,
     #[serde(skip_serializing_if = "is_default")]
     pub vtf: VtfSettings,
+    #[serde(skip_serializing_if = "is_default")]
+    pub input: InputSettings,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            revision: SETTINGS_REVISION,
             language: Lang::En,
             language_chosen: false,
             recent_files: Vec::new(),
@@ -204,11 +211,21 @@ impl Default for Settings {
             sniffer: SnifferSettings::default(),
             blender: BlenderSettings::default(),
             vtf: VtfSettings::default(),
+            input: InputSettings::default(),
         }
     }
 }
 
+pub const SETTINGS_REVISION: u32 = 1;
+
 impl Settings {
+    pub fn migrate(&mut self) {
+        if self.revision < 1 {
+            self.selection.box_confirm = false;
+        }
+        self.revision = self.revision.max(SETTINGS_REVISION);
+    }
+
     pub fn config_dir() -> PathBuf {
         dirs::config_dir().unwrap_or_else(|| PathBuf::from(".")).join("HammerPro")
     }
@@ -244,6 +261,8 @@ impl Settings {
             },
             Err(_) => Settings::default(),
         };
+        s.migrate();
+        s.render.migrate();
         if !s.language_chosen {
             s.language = Lang::from_system();
             s.language_chosen = true;
@@ -358,5 +377,37 @@ undo = "Ctrl+Alt+Z"
         assert_eq!(toml::from_str::<Settings>(&text).unwrap(), s);
         let newer = format!("{text}\n[some_future_package]\nanswer = 42\n");
         assert_eq!(toml::from_str::<Settings>(&newer).unwrap(), s);
+    }
+
+    #[test]
+    fn box_confirm_is_off_after_the_upgrade_and_stays_on_when_chosen_again() {
+        let dir = std::env::temp_dir().join(format!("hp_settings_revision_{}", std::process::id()));
+        let path = dir.join("settings.toml");
+        std::fs::create_dir_all(&dir).unwrap();
+        let from_202 = "language = \"Fr\"
+language_chosen = true
+
+[selection]
+box_confirm = true
+rotation_snap_deg = 5.0
+";
+        std::fs::write(&path, from_202).unwrap();
+        let mut s = Settings::load_or_default(&path);
+        assert!(!s.selection.box_confirm, "2.0.2 turned it on for everyone: the upgrade turns it off");
+        assert_eq!(s.selection.rotation_snap_deg, 5.0, "the other choices stay");
+        assert_eq!(s.revision, SETTINGS_REVISION);
+        s.selection.box_confirm = true;
+        s.save(&path).unwrap();
+        assert!(Settings::load_or_default(&path).selection.box_confirm, "a user who turns it back on keeps it");
+        std::fs::write(
+            &path,
+            "language = \"Fr\"
+",
+        )
+        .unwrap();
+        assert!(!Settings::load_or_default(&path).selection.box_confirm);
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(!Settings::default().selection.box_confirm);
+        assert_eq!(Settings::default().revision, SETTINGS_REVISION);
     }
 }

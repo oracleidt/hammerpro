@@ -19,6 +19,7 @@ mod game;
 mod general;
 mod health;
 mod helpers;
+mod input;
 mod instances;
 mod keyboard;
 mod lab;
@@ -39,6 +40,7 @@ mod workflow;
 
 pub use discord::shown_status as discord_shown_status;
 pub use editing::sync_edit_options;
+pub use input::GESTURES as TRACKPAD_GESTURES;
 pub use keyboard::{
     apply_capture, apply_keymap_preset, key_search_id, preset_label_key, reset_all_bindings, set_binding,
 };
@@ -145,7 +147,7 @@ impl PageSection {
 
 pub fn page_section(id: &str) -> PageSection {
     match id {
-        "general" | "keyboard" | "updates" | "storage" => PageSection::Application,
+        "general" | "keyboard" | "input" | "updates" | "storage" => PageSection::Application,
         "game" | "entities" => PageSection::Game,
         "viewport" | "render" | "lighting" | "helpers" | "lab" => PageSection::Views,
         "editing" | "selection" | "brush" | "mesh" | "instances" | "visibility" | "placement" => PageSection::Editing,
@@ -163,6 +165,7 @@ fn page_tables(id: &str) -> &'static [TrTable] {
         "editing" => &[editing::TR],
         "compile" => &[compile::TR],
         "keyboard" => &[keyboard::TR],
+        "input" => &[input::TR],
         "selection" => &[selection::TR],
         "brush" => &[brush::TR],
         "instances" => &[instances::TR],
@@ -274,6 +277,7 @@ fn package_pages() -> Vec<Box<dyn SettingsPage>> {
     pages.extend(update::pages());
     pages.extend(blender::pages());
     pages.extend(vtf::pages());
+    pages.extend(input::pages());
     pages
 }
 
@@ -285,6 +289,7 @@ pub(crate) const TABLES: &[TrTable] = &[
     editing::TR,
     compile::TR,
     keyboard::TR,
+    input::TR,
     selection::TR,
     brush::TR,
     workflow::TR,
@@ -372,7 +377,35 @@ pub fn default_size(screen: egui::Vec2) -> [f32; 2] {
         (screen.y * 0.85).clamp(DEFAULT_SIZE[1], 900.0).min(screen.y - 40.0),
     ]
 }
-const PAGE_LIST_WIDTH: f32 = 184.0;
+const PAGE_LIST_WIDTH: f32 = 220.0;
+
+pub(crate) const LABEL_COLUMN: f32 = 200.0;
+const LABEL_COLUMN_MIN: f32 = 140.0;
+const LABEL_COLUMN_SHARE: f32 = 0.32;
+const PAGE_LIST_MIN: f32 = 168.0;
+const PAGE_LIST_SHARE: f32 = 0.23;
+
+pub(crate) fn label_column_for(width: f32) -> f32 {
+    if width.is_finite() { (width * LABEL_COLUMN_SHARE).clamp(LABEL_COLUMN_MIN, LABEL_COLUMN) } else { LABEL_COLUMN }
+}
+
+pub(crate) fn label_column(ui: &Ui) -> f32 {
+    label_column_for(ui.available_width())
+}
+
+pub(crate) fn page_list_width(window: f32) -> f32 {
+    if window.is_finite() { (window * PAGE_LIST_SHARE).clamp(PAGE_LIST_MIN, PAGE_LIST_WIDTH) } else { PAGE_LIST_WIDTH }
+}
+
+pub(crate) const FIELD_MIN: f32 = 120.0;
+
+pub(crate) fn field_width(ui: &Ui, wanted: f32, reserve: f32) -> f32 {
+    (ui.available_width() - reserve).clamp(FIELD_MIN, wanted.max(FIELD_MIN))
+}
+
+pub(crate) fn form_grid(ui: &Ui, id: &str) -> egui::Grid {
+    egui::Grid::new(id).num_columns(2).spacing([16.0, 8.0]).min_col_width(label_column(ui))
+}
 
 impl SettingsDialog {
     pub fn capturing(&self) -> bool {
@@ -536,6 +569,17 @@ impl SettingsDialog {
     }
 
     fn page_list(&mut self, ui: &mut Ui) {
+        fn page_button(ui: &mut Ui, selected: bool, title: &str, width: f32) -> egui::Response {
+            let b = egui::Button::selectable(selected, title).truncate().min_size(egui::vec2(width, 24.0));
+            let r = ui.add(b);
+            let fits = {
+                let font = egui::TextStyle::Button.resolve(ui.style());
+                let w = ui.fonts_mut(|f| f.layout_no_wrap(title.to_owned(), font, egui::Color32::WHITE).size().x);
+                w + 2.0 * ui.spacing().button_padding.x <= width
+            };
+            if fits { r } else { r.on_hover_text(title) }
+        }
+
         if hp_app::widgets::search_box(ui, &mut self.page_search, t!("shell.settings.search_hint")) {
             self.page_matches = None;
         }
@@ -568,9 +612,7 @@ impl SettingsDialog {
                             section = Some(s);
                             ui.label(RichText::new(s.label()).small().strong().color(weak));
                         }
-                        let b =
-                            egui::Button::selectable(current == *tab, title.as_str()).min_size(egui::vec2(width, 24.0));
-                        if ui.add(b).clicked() {
+                        if page_button(ui, current == *tab, title, width).clicked() {
                             chosen = Some(*tab);
                         }
                     }
@@ -582,8 +624,7 @@ impl SettingsDialog {
                 }
                 for (tab, text) in matches {
                     let title = titles.iter().find(|(t, _)| t == tab).map_or("", |(_, title)| title.as_str());
-                    let b = egui::Button::selectable(current == *tab, title).min_size(egui::vec2(width, 24.0));
-                    if ui.add(b).on_hover_text(text.as_str()).clicked() {
+                    if page_button(ui, current == *tab, title, width).on_hover_text(text.as_str()).clicked() {
                         chosen = Some(*tab);
                     }
                     ui.add(egui::Label::new(RichText::new(text.as_str()).small().color(weak)).truncate());
@@ -603,7 +644,7 @@ impl SettingsDialog {
             .show(ui, |ui| self.footer(ui, state));
         egui::Panel::left("hp_shell_settings_pages")
             .resizable(false)
-            .exact_size(PAGE_LIST_WIDTH)
+            .exact_size(page_list_width(ui.available_width()))
             .frame(egui::Frame::NONE.inner_margin(egui::Margin { right: 6, top: 2, ..Default::default() }))
             .show(ui, |ui| self.page_list(ui));
         egui::CentralPanel::no_frame().show(ui, |ui| {

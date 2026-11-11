@@ -71,7 +71,7 @@ impl Default for SelectionSettings {
             gizmo_local: false,
             click_to_zoom: false,
             stretch_handles: true,
-            box_confirm: true,
+            box_confirm: false,
             random_yaw_min: 0.0,
             random_yaw_max: 360.0,
             random_yaw_snap: 0.0,
@@ -125,7 +125,7 @@ mod tests {
     fn missing_fields_load_with_their_defaults() {
         let s: SelectionSettings = toml::from_str("rotation_snap_deg = 5.0").expect("parse");
         assert_eq!(s, SelectionSettings { rotation_snap_deg: 5.0, ..SelectionSettings::default() });
-        assert!(s.clone_keeps_visgroups && s.shift_arrow_clones && s.stretch_handles && s.box_confirm);
+        assert!(s.clone_keeps_visgroups && s.shift_arrow_clones && s.stretch_handles && !s.box_confirm);
         let back: SelectionSettings = toml::from_str(&toml::to_string(&s).expect("write")).expect("read");
         assert_eq!(back, s);
         let bad =

@@ -286,7 +286,7 @@ impl StatusSegment for TextureLock {
     }
 
     fn ui(&mut self, ui: &mut Ui, state: &mut AppState, _cx: &mut StatusContext) {
-        if state.settings.workflow.show_toolbar {
+        if crate::toolbar::shows_action(state, Action::ToggleTextureLock) {
             return;
         }
         let texlock = state.settings.edit.texture_lock;
@@ -313,7 +313,7 @@ impl StatusSegment for Snap {
     }
 
     fn ui(&mut self, ui: &mut Ui, state: &mut AppState, _cx: &mut StatusContext) {
-        if state.settings.workflow.show_toolbar {
+        if crate::toolbar::shows_action(state, Action::ToggleSnap) {
             return;
         }
         let snap = state.settings.edit.snap_to_grid;
@@ -340,7 +340,7 @@ impl StatusSegment for Grid {
     }
 
     fn ui(&mut self, ui: &mut Ui, state: &mut AppState, _cx: &mut StatusContext) {
-        if state.settings.workflow.show_toolbar {
+        if crate::toolbar::shows_item(&state.settings.workflow, crate::toolbar::ToolbarItem::GridSize) {
             return;
         }
         let target = state.target_grid();

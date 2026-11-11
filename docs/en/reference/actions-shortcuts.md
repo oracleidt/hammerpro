@@ -49,6 +49,8 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Build and save as content... | `build_content` |  |  |  |
 | Publish on the Workshop... | `publish_workshop` |  |  |  |
 | Exit | `exit` |  |  |  |
+| Import heightmap... | `import_heightmap` |  |  |  |
+| Export heightmap... | `export_heightmap` |  |  |  |
 
 ## Edit menu
 
@@ -231,6 +233,9 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Panels > Toolbar | `show_toolbar` |  |  |  |
 | Panels > Tool palette | `show_tool_palette` |  |  |  |
 | Panels > Status bar | `show_status_bar` |  |  |  |
+| Panels > Tool palette in two columns | `tool_palette_two_columns` |  |  |  |
+| Panels > Toolbar on two rows | `toolbar_two_rows` |  |  |  |
+| Panels > Reset the toolbar | `reset_toolbar` |  |  |  |
 | Panels > Sound browser | `show_sound_browser` |  |  | `Shift+F12` |
 | Panels > Particle browser | `show_particle_browser` |  |  | `Shift+F11` |
 | Panels > Particle preview... | `particle_preview` |  |  |  |
@@ -354,8 +359,6 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Make displacement slope uniform | `disp_uniform_slope` |  |  |  |
 | Select displacements by slope | `disp_select_by_slope` |  |  |  |
 | Displacement to mesh... | `disp_to_mesh` |  |  |  |
-| Import heightmap... | `import_heightmap` |  |  |  |
-| Export heightmap... | `export_heightmap` |  |  |  |
 | Generate terrain... | `generate_terrain` |  |  |  |
 | Mesh to displacement... | `mesh_to_disp` |  |  |  |
 | Conform displacements to mesh... | `disp_conform_mesh` |  |  |  |
@@ -390,7 +393,7 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Entity help | `entity_help` |  |  |  |
 | About Hammer Pro | `about` |  |  |  |
 
-## Other menu
+## Particle editor (Tools > Content and editors)
 
 | Action | Shortcut | What it does |
 |---|---|---|

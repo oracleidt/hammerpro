@@ -12,7 +12,7 @@ This guide takes a map from the editor to Garry's Mod: compile it with Hammer Pr
 
 ## Step 1: compile with F9
 
-1. Press `F9` (**File > Compile now**). The map is compiled at once with the last settings, without opening any window. The status bar shows the progress.
+1. Press `F9` (**File > Compile > Compile now**). The map is compiled at once with the last settings, without opening any window. The status bar shows the progress.
 2. The compile works on a copy of the map written to `.hammerpro_build\` next to it: your `.vmf` is never saved or changed by a compile.
 3. With the default settings, the BSP is copied to `garrysmod\maps` and Garry's Mod starts on the map with `-console -dev`.
 
@@ -20,7 +20,7 @@ If the map was never saved, Hammer Pro asks where to save it first.
 
 ## Step 2: the Compile and run window
 
-Press `Ctrl+F9` (**File > Compile and run...**) to choose the settings. The window opens on its own (**Separate window**).
+Press `Ctrl+F9` (**File > Compile > Compile and run...**) to choose the settings. The window opens on its own (**Separate window**).
 
 1. **Target game**: the game the map is for. Keep Garry's Mod (see [Port a map to another game](port-to-another-game.md) for the others).
 2. **Preset**:
@@ -50,7 +50,7 @@ To start in game where your editor camera is, install the Hammer Pro bridge addo
 
 - Keep **Smart recompile** on (the default): Draft and Normal compiles only run what changed since the last compile (entities only, lighting only, props only, or everything).
 - Use **Draft** while you build, **Normal** to check the look, **Final** for a release.
-- **File > Reload the map in game** loads the map again in the running game.
+- **File > Compile > Reload the map in game** loads the map again in the running game.
 - **Play now, finish the lighting later**: compiles a Draft, starts the game, then compiles the chosen quality in the background. When you leave the map in game, the fully lit BSP replaces the quick one.
 - Custom content (materials, models, sounds, particles): Draft and Normal builds do not pack it into the BSP. With **Development addon** on (the default), it is copied to `garrysmod\addons\hammerpro_dev` so the map looks right in game. Restart the game once after the first copy.
 

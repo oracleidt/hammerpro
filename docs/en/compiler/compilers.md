@@ -10,7 +10,7 @@ Hammer Pro compiles maps with its own compiler by default (see [The built in com
 
 - The **Compiler** row at the top of the settings of the [Compile and run window](compile-window.md) (Ctrl+F9). **Edit compilers...** opens the **Compilers** tab.
 - The **Compilers** tab of that window and **Settings > Compile > Compiler** show the same editor.
-- F9, **File > Compile now**, the batch compile and the MCP tools use the compiler chosen for the game of the map.
+- F9, **File > Compile > Compile now**, the batch compile and the MCP tools use the compiler chosen for the game of the map.
 
 ## The compilers
 

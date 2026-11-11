@@ -6,7 +6,7 @@ L'outil entité place des entités ponctuelles : sur les surfaces dans la vue 3D
 
 ## Ouvrir l'outil
 
-- **Outils > Outil entité**, la palette d'outils, ou `Maj+E`.
+- **Outils > Outil actif > Outil entité**, la palette d'outils, ou `Maj+E`.
 - Tant qu'aucune classe n'est choisie, l'outil utilise le paramètre **Entité ponctuelle par défaut** (`info_player_start`).
 
 ## Placer une entité

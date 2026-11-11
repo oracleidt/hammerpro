@@ -3,20 +3,20 @@ use crate::i18n::TrTable;
 use crate::state::AppState;
 
 action_list! { selection_actions {
-    MoveToFloor => "move_to_floor", Tools, ToolsBrush, sc(ALT, Key::N), Ready;
-    MoveToCeiling => "move_to_ceiling", Tools, ToolsBrush, sc(ALT, Key::U), Ready;
-    SnapToGridIndividually => "snap_to_grid_individually", Tools, ToolsBrush, sc(CTRL_SHIFT, Key::B), Ready;
-    CenterOrigins => "center_origins", Tools, ToolsBrush, None, Ready;
-    TogglePivot => "toggle_pivot", Tools, ToolsBrush, None, Ready;
+    MoveToFloor => "move_to_floor", Tools, ToolsArrange, sc(ALT, Key::N), Ready;
+    MoveToCeiling => "move_to_ceiling", Tools, ToolsArrange, sc(ALT, Key::U), Ready;
+    SnapToGridIndividually => "snap_to_grid_individually", Tools, ToolsOrigin, sc(CTRL_SHIFT, Key::B), Ready;
+    CenterOrigins => "center_origins", Tools, ToolsOrigin, None, Ready;
+    TogglePivot => "toggle_pivot", Tools, ToolsOrigin, None, Ready;
     FlipHorizontal => "flip_horizontal", Tools, ToolsFlip, sc(CTRL, Key::L), Ready;
     FlipVertical => "flip_vertical", Tools, ToolsFlip, None, Ready;
     AlignCenterHorizontal => "align_center_horizontal", Tools, ToolsAlign, None, Ready;
     AlignCenterVertical => "align_center_vertical", Tools, ToolsAlign, None, Ready;
     ToggleGizmoLocal => "toggle_gizmo_local", Edit, Hidden, sc(CTRL, Key::J), Ready;
-    MoveToFloorAligned => "move_to_floor_aligned", Tools, ToolsBrush, sc(CTRL_ALT, Key::N), Ready;
-    MoveToCeilingAligned => "move_to_ceiling_aligned", Tools, ToolsBrush, sc(CTRL_ALT, Key::U), Ready;
-    RandomRotate => "random_rotate", Tools, ToolsBrush, None, Ready;
-    RandomRotateDialog => "random_rotate_dialog", Tools, ToolsBrush, None, Ready;
+    MoveToFloorAligned => "move_to_floor_aligned", Tools, ToolsArrange, sc(CTRL_ALT, Key::N), Ready;
+    MoveToCeilingAligned => "move_to_ceiling_aligned", Tools, ToolsArrange, sc(CTRL_ALT, Key::U), Ready;
+    RandomRotate => "random_rotate", Tools, ToolsOrigin, None, Ready;
+    RandomRotateDialog => "random_rotate_dialog", Tools, ToolsOrigin, None, Ready;
 }}
 
 pub(super) const REPEATS: &[Action] = &[];

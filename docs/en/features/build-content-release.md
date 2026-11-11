@@ -10,8 +10,8 @@ It is a Garry's Mod feature. For a map of another game the window says so: compi
 
 | Command | Opens |
 | --- | --- |
-| **File > Build and save as content...** | The release window on the **Build** tab. |
-| **File > Publish on the Workshop...** | The release window on the **Publish** tab. |
+| **File > Publish > Build and save as content...** | The release window on the **Build** tab. |
+| **File > Publish > Publish on the Workshop...** | The release window on the **Publish** tab. |
 
 The release is built from the saved file: when the map has unsaved changes, the window asks you to save first (**Save the map...**). The window has five tabs: **Build**, **Checklist**, **Addon**, **Publish** and **Report**.
 

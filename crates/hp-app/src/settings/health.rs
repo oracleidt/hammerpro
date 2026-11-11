@@ -15,6 +15,7 @@ pub struct HealthSettings {
     pub offer_portals: bool,
     pub portal_heat: bool,
     pub portal_xray: bool,
+    pub warn_duplicates: bool,
 }
 
 impl Default for HealthSettings {
@@ -31,6 +32,7 @@ impl Default for HealthSettings {
             offer_portals: true,
             portal_heat: false,
             portal_xray: true,
+            warn_duplicates: true,
         }
     }
 }
@@ -65,6 +67,7 @@ mod tests {
             HealthSettings { live_leak_check: false, limit_profile: "plusplus".into(), ..HealthSettings::default() }
         );
         assert!(s.live_checks);
+        assert!(s.warn_duplicates);
         assert_eq!(s.profile(), Some(LimitProfile::PlusPlus));
         let back: HealthSettings = toml::from_str(&toml::to_string(&s).expect("write")).expect("read");
         assert_eq!(back, s);

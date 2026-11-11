@@ -116,6 +116,9 @@ fn descriptions_for_every_code() {
         "limit_exceeded",
         "limit_close",
         "edict_budget",
+        "duplicate_brush",
+        "contained_brush",
+        "duplicate_entity",
         "something_new",
     ];
     for lang in [hp_app::i18n::Lang::En, hp_app::i18n::Lang::Fr] {

@@ -22,7 +22,7 @@ pub enum Command {
     KeyState { key: Option<Key>, mods: Modifiers, down: bool },
     Hold { key: Key, frames: u32 },
     Type(String),
-    Scroll { pos: ScriptPos, dy: f32, mods: Modifiers },
+    Scroll { pos: ScriptPos, dx: f32, dy: f32, mods: Modifiers, kind: WheelKind },
     Action(String),
     Tool(String),
     Open(PathBuf),
@@ -169,8 +169,24 @@ pub fn parse(text: &str) -> Result<Vec<Command>, String> {
             "type" => Command::Type(tail),
             "scroll" => Command::Scroll {
                 pos: arg(0).and_then(parse_pos).ok_or_else(err)?,
+                dx: 0.0,
                 dy: arg(1).and_then(|v| v.parse().ok()).ok_or_else(err)?,
                 mods: arg(2).map(parse_mods).unwrap_or_default(),
+                kind: WheelKind::Wheel,
+            },
+            "trackpad" => Command::Scroll {
+                pos: arg(0).and_then(parse_pos).ok_or_else(err)?,
+                dx: arg(1).and_then(|v| v.parse().ok()).ok_or_else(err)?,
+                dy: arg(2).and_then(|v| v.parse().ok()).ok_or_else(err)?,
+                mods: arg(3).map(parse_mods).unwrap_or_default(),
+                kind: WheelKind::Trackpad,
+            },
+            "pinch" => Command::Scroll {
+                pos: arg(0).and_then(parse_pos).ok_or_else(err)?,
+                dx: 0.0,
+                dy: arg(1).and_then(|v| v.parse().ok()).filter(|f: &f32| f.is_finite() && *f > 0.0).ok_or_else(err)?,
+                mods: Modifiers::NONE,
+                kind: WheelKind::Pinch,
             },
             "action" => Command::Action(arg(0).ok_or_else(err)?.to_owned()),
             "tool" => Command::Tool(arg(0).ok_or_else(err)?.to_owned()),
@@ -283,8 +299,16 @@ pub enum PendingEvent {
     Button { pos: ScriptPos, button: PointerButton, pressed: bool, mods: Modifiers },
     Key { key: Key, pressed: bool, mods: Modifiers },
     Text { text: String, mods: Modifiers },
-    Wheel { pos: ScriptPos, dy: f32, mods: Modifiers },
+    Wheel { pos: ScriptPos, dx: f32, dy: f32, mods: Modifiers, kind: WheelKind },
     Modifiers(Modifiers),
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum WheelKind {
+    #[default]
+    Wheel,
+    Trackpad,
+    Pinch,
 }
 
 pub fn expand(commands: Vec<Command>) -> VecDeque<Step> {
@@ -373,10 +397,10 @@ pub fn expand(commands: Vec<Command>) -> VecDeque<Step> {
                 steps.push_back(Step::Events(vec![PendingEvent::Text { text, mods: held }]));
                 steps.push_back(Step::Idle);
             }
-            Command::Scroll { pos, dy, mods } => {
+            Command::Scroll { pos, dx, dy, mods, kind } => {
                 let mods = mods | held;
                 steps.push_back(Step::Events(vec![PendingEvent::Move { pos: pos.clone(), mods }]));
-                steps.push_back(Step::Events(vec![PendingEvent::Wheel { pos, dy, mods }]));
+                steps.push_back(Step::Events(vec![PendingEvent::Wheel { pos, dx, dy, mods, kind }]));
                 steps.push_back(Step::Idle);
             }
             other => {
@@ -442,13 +466,21 @@ pub fn to_event(ev: &PendingEvent, pos: Option<Pos2>) -> Vec<Event> {
             out
         }
         PendingEvent::Text { text, .. } => vec![Event::Text(text.clone())],
-        PendingEvent::Wheel { dy, mods, .. } => vec![Event::MouseWheel {
+        PendingEvent::Wheel { dy, mods, kind: WheelKind::Wheel, .. } => vec![Event::MouseWheel {
             unit: egui::MouseWheelUnit::Line,
             delta: egui::vec2(0.0, *dy),
             phase: egui::TouchPhase::Move,
             modifiers: *mods,
             source: egui::MouseWheelSource::Wheel,
         }],
+        PendingEvent::Wheel { dx, dy, mods, kind: WheelKind::Trackpad, .. } => vec![Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: egui::vec2(*dx, *dy),
+            phase: egui::TouchPhase::Move,
+            modifiers: *mods,
+            source: egui::MouseWheelSource::Trackpad,
+        }],
+        PendingEvent::Wheel { dy, kind: WheelKind::Pinch, .. } => vec![Event::Zoom(*dy)],
         PendingEvent::Modifiers(_) => Vec::new(),
     }
 }
@@ -652,6 +684,32 @@ setting view.fov_deg 90",
         });
         let events = to_event(&wheel.unwrap(), Some(Pos2::ZERO));
         assert!(matches!(events[0], Event::MouseWheel { modifiers, .. } if modifiers.ctrl));
+    }
+
+    #[test]
+    fn trackpad_scrolls_and_pinches() {
+        let wheel_of = |text: &str| {
+            let steps = expand(parse(text).unwrap());
+            let wheel = steps.iter().find_map(|s| match s {
+                Step::Events(evs) => evs.iter().find(|e| matches!(e, PendingEvent::Wheel { .. })).cloned(),
+                _ => None,
+            });
+            to_event(&wheel.unwrap(), Some(Pos2::ZERO))
+        };
+        let events = wheel_of("trackpad 10,10 3 -4 alt");
+        assert!(matches!(
+            events[0],
+            Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point,
+                source: egui::MouseWheelSource::Trackpad,
+                delta,
+                modifiers,
+                ..
+            } if delta == egui::vec2(3.0, -4.0) && modifiers.alt
+        ));
+        assert!(matches!(wheel_of("pinch 10,10 1.25")[0], Event::Zoom(f) if (f - 1.25).abs() < 1e-6));
+        assert!(parse("pinch 10,10 0").is_err());
+        assert!(parse("pinch 10,10 -2").is_err());
     }
 
     #[test]

@@ -50,11 +50,11 @@ Les données d'édition qui n'ont pas leur place dans le VMF sont rangées à pa
 
 | Commande | Effet |
 |---|---|
-| **Fichier > Importer une map dans la map actuelle...** | Fusionne un autre VMF dans la map ouverte, en une seule étape d'annulation. Les groupes, visgroups et objets masqués sont conservés. |
-| **Fichier > Exporter la sélection en VMF...** | Écrit les objets sélectionnés dans un nouveau VMF (nom proposé `prefab.vmf`), avec les groupes auxquels ils appartiennent et leurs visgroups. |
-| **Fichier > Exporter une copie...** | Écrit toute la map dans un autre VMF sans renommer le document ouvert. Le chemin est mémorisé avec la map. |
-| **Fichier > Exporter à nouveau** (`Alt+B`) | Réécrit la copie au dernier chemin d'export de cette map, sans rien demander. |
-| **Fichier > Exporter en OBJ...** | La géométrie des brushes et des displacements avec les coordonnées de texture, pour les logiciels 3D (voir [Outils BSP](../features/bsp-tools.md)). |
+| **Fichier > Importer > Importer une map dans la map actuelle...** | Fusionne un autre VMF dans la map ouverte, en une seule étape d'annulation. Les groupes, visgroups et objets masqués sont conservés. |
+| **Fichier > Exporter > Exporter la sélection en VMF...** | Écrit les objets sélectionnés dans un nouveau VMF (nom proposé `prefab.vmf`), avec les groupes auxquels ils appartiennent et leurs visgroups. |
+| **Fichier > Exporter > Exporter une copie...** | Écrit toute la map dans un autre VMF sans renommer le document ouvert. Le chemin est mémorisé avec la map. |
+| **Fichier > Exporter > Exporter à nouveau** (`Alt+B`) | Réécrit la copie au dernier chemin d'export de cette map, sans rien demander. |
+| **Fichier > Exporter > Exporter en OBJ...** | La géométrie des brushes et des displacements avec les coordonnées de texture, pour les logiciels 3D (voir [Outils BSP](../features/bsp-tools.md)). |
 
 Les exports sont écrits par une tâche de fond, de façon atomique.
 
@@ -66,7 +66,7 @@ Les exports sont écrits par une tâche de fond, de façon atomique.
 
 **À quoi sert le fichier `.vmx` à côté de ma map ?** C'est la version précédente de la map, copiée à chaque enregistrement comme le fait Hammer. Ouvrez-le avec **Fichier > Ouvrir une map...** pour revenir en arrière.
 
-**Hammer Pro peut-il ouvrir un `.bsp` compilé ?** Oui, avec **Fichier > Décompilateur de BSP...**, qui le décompile en une nouvelle map (voir [Outils BSP](../features/bsp-tools.md)).
+**Hammer Pro peut-il ouvrir un `.bsp` compilé ?** Oui, avec **Fichier > Importer > Décompilateur de BSP...**, qui le décompile en une nouvelle map (voir [Outils BSP](../features/bsp-tools.md)).
 
 ## Pages liées
 

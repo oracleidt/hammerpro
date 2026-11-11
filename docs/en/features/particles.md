@@ -131,7 +131,7 @@ Closing the window while it waits for a choice cancels that choice.
 
 ## Integrated particle editor
 
-Open **Other > Particle editor** (action `particle_editor`). This editor creates and changes the systems inside a PCF file. The particle browser and its smaller preview window remain available for choosing existing game effects.
+Open **Tools > Content and editors > Particle editor** (action `particle_editor`). This editor creates and changes the systems inside a PCF file. The particle browser and its smaller preview window remain available for choosing existing game effects.
 
 ### Files and systems
 

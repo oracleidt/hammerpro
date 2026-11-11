@@ -104,7 +104,7 @@ Select one entity and use **Edit > Copy keyvalues**, then select other entities 
 - To lay out a row of identical pieces with an exact gap, use **Array duplicate** and check one axis.
 - To lay out a row of identical pieces, copy one, open Paste special, click `<` on the axis of the row and set the number of copies.
 - A spiral staircase: one step, **Rotation per copy** of 15 on Z and an **Offset per copy** of 8 on Z, with the pivot on the axis of the stairs.
-- **File > Export selection as VMF...** saves the selection to a file instead of the clipboard (see [VMF compatibility](../getting-started/vmf-compatibility.md)).
+- **File > Export > Export selection as VMF...** saves the selection to a file instead of the clipboard (see [VMF compatibility](../getting-started/vmf-compatibility.md)).
 
 ## FAQ
 

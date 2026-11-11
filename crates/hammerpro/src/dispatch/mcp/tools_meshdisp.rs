@@ -16,7 +16,7 @@ const MAX_LISTED: usize = 500;
 
 domain! { "mesh to displacement";
     mesh_to_displacement: Edit, "Mesh to displacement",
-        "Turn a 3D mesh into a grid of displacement tiles, like Tools > Mesh to displacement. The mesh is an OBJ, FBX, glTF or GLB file (path, full or relative to the map folder), a model prop of the map (prop, an entity id) or a game model (model, like models/props_c17/oildrum001.mdl). It is projected along axis (z top down, x, y or best for the axis it faces most; flip projects from the other side): a ray at every displacement vertex takes the top surface (pick top) or the highest surface facing the ray (pick first), and the vertex is set to that height, so the tiles share their seams. Tiles that the mesh barely touches are skipped; margin keeps extra tiles around and fill (nearest or base) sets the vertices the mesh does not cover. Overhangs keep the top surface and are reported. power is auto (from the mesh detail), 2, 3 or 4. origin places the mesh: center (its middle and lowest point at position), min_corner or keep (default center for files, keep for props and models). skirt closes the border with walls down to base_height (default one thickness under the lowest point) and bottom adds a flat brush there. Files read: up (file, y or z) and convert_units (meters to Source units, default true). dry_run only returns the layout. One undo step.",
+        "Turn a 3D mesh into a grid of displacement tiles, like Tools > Displacements > Mesh to displacement. The mesh is an OBJ, FBX, glTF or GLB file (path, full or relative to the map folder), a model prop of the map (prop, an entity id) or a game model (model, like models/props_c17/oildrum001.mdl). It is projected along axis (z top down, x, y or best for the axis it faces most; flip projects from the other side): a ray at every displacement vertex takes the top surface (pick top) or the highest surface facing the ray (pick first), and the vertex is set to that height, so the tiles share their seams. Tiles that the mesh barely touches are skipped; margin keeps extra tiles around and fill (nearest or base) sets the vertices the mesh does not cover. Overhangs keep the top surface and are reported. power is auto (from the mesh detail), 2, 3 or 4. origin places the mesh: center (its middle and lowest point at position), min_corner or keep (default center for files, keep for props and models). skirt closes the border with walls down to base_height (default one thickness under the lowest point) and bottom adds a flat brush there. Files read: up (file, y or z) and convert_units (meters to Source units, default true). dry_run only returns the layout. One undo step.",
         {
             "path": string("OBJ, FBX, glTF or GLB file: full path, or relative to the map folder."),
             "prop": integer("Id of a prop_static or prop_physics entity to use as the mesh.", 1, i64::from(u32::MAX)),
@@ -256,15 +256,11 @@ fn mesh_to_displacement(state: &mut AppState, a: &Args<'_>) -> R<Outcome> {
 fn conform_targets(state: &AppState, a: &Args<'_>) -> R<Vec<FaceRef>> {
     let given = a.get("faces").is_some() || a.get("ids").is_some() || a.get("solid_ids").is_some();
     let is_disp = |f: &FaceRef| state.doc.face_side(*f).is_some_and(|s| s.disp.is_some());
-    let mut faces: Vec<FaceRef> = if given {
+    let faces: Vec<FaceRef> = if given {
         target_faces(state, a, "faces")?.into_iter().filter(is_disp).collect()
     } else {
-        state.doc.selected_faces().into_iter().filter(is_disp).collect()
+        state.doc.selected_disp_targets()
     };
-    if faces.is_empty() && !given {
-        let solids = state.doc.selected_solid_ids();
-        faces = state.doc.disp_faces().into_iter().filter(|f| solids.contains(&f.solid)).collect();
-    }
     if faces.is_empty() {
         return Err("no displacement among the targets (select some, or give faces, ids or solid_ids)".to_owned());
     }

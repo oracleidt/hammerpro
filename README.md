@@ -8,7 +8,7 @@
 
 Hammer Pro opens and saves standard `.vmf` files, so you can use it side by side with Hammer and Hammer++. It is written in Rust, renders with the GPU through wgpu, stays smooth on huge maps and compiles maps with its own built in compiler: no VBSP, VVIS or VRAD needed.
 
-Version **2.0.2**.
+Version **2.0.3**.
 
 Russian is available for the interface and the [documentation](docs/ru/README.md). Compile settings now expose the selected external compiler's VBSP, VVIS and VRAD options. Static scenery can use physics-capable models by default; missing skies have a reported fallback and black lightmaps have a separate diagnostic.
 
@@ -22,7 +22,7 @@ The [wind preview](docs/en/features/particles.md#wind-from-env_wind) shows env_w
 
 Every feature has its own page in the [documentation](docs/en/README.md).
 
-- **Integrated particle editor.** Create and edit PCF systems in **Other > Particle editor**, with typed parameters, operator libraries, undo, a live preview, addon export and MCP controls. See [Particles](docs/en/features/particles.md).
+- **Integrated particle editor.** Create and edit PCF systems in **Tools > Content and editors > Particle editor**, with typed parameters, operator libraries, undo, a live preview, addon export and MCP controls. See [Particles](docs/en/features/particles.md).
 
 - **Instant loading.** A 100,000 brush VMF parses in about 0.3 s. Game content (VPKs, addons, Workshop) mounts in the background. See [Game setup](docs/en/getting-started/game-setup.md).
 - **Lossless VMF round trip.** Maps written by Hammer come back out unchanged, Hammer++ data (`vertices_plus`, `*_plus` blocks) is kept. See [VMF compatibility](docs/en/getting-started/vmf-compatibility.md).

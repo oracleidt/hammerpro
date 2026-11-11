@@ -8,8 +8,8 @@ The decal tool places `infodecal` entities and the overlay tool places `info_ove
 
 | Tool | Menu | Default shortcut |
 | --- | --- | --- |
-| **Decal tool** | **Tools > Decal tool** | `Shift+D` |
-| **Overlay tool** | **Tools > Overlay tool** | `Shift+O` |
+| **Decal tool** | **Tools > Active tool > Decal tool** | `Shift+D` |
+| **Overlay tool** | **Tools > Active tool > Overlay tool** | `Shift+O` |
 
 Both tools are also in the tool palette. Both work in the 3D view only: clicking in a 2D view shows the message **Click a face in the 3D view** and the cursor shows that the view is not usable.
 

@@ -48,6 +48,8 @@
 | `press POS [bouton] [mods]` | Appuie seulement sur un bouton de souris : il reste enfoncé pendant les commandes suivantes (`idle`, `move`...). |
 | `release POS [bouton] [mods]` | Relâche un bouton enfoncé avec `press`. |
 | `scroll POS DY [mods]` | Molette. Un DY positif zoome ou avance. `scroll @v1:0.5,0.5 1 ctrl` change la taille de la grille. |
+| `trackpad POS DX DY [mods]` | Défilement à deux doigts sur le pavé tactile de DX, DY points (déplace une vue 2D quand les gestes du pavé sont actifs, voir [Pavé tactile](../features/trackpad.md)). |
+| `pinch POS FACTEUR` | Pincement sur le pavé tactile : un facteur au-dessus de 1 zoome, en dessous de 1 dézoome. |
 
 ### Clavier
 
@@ -119,7 +121,7 @@
 | `gizmo_mode` | `move`, `rotate` ou `scale`. |
 | `gizmo_local` | on/off : le gizmo d'une seule entité ponctuelle suit ses angles (enregistré dans les paramètres). |
 | `stretch_handles` | on/off : flèches d'étirement sur les faces des brushes sélectionnés dans la vue 3D (enregistré dans les paramètres). |
-| `box_confirm` | on/off : un cadre tracé dans une vue 2D attend Entrée et peut d'abord être redimensionné et déplacé (enregistré dans les paramètres). |
+| `box_confirm` | on/off (désactivé par défaut) : un cadre tracé dans une vue 2D attend Entrée et peut d'abord être redimensionné et déplacé (enregistré dans les paramètres). |
 | `pending_box` | `none` ou le cadre en attente ; `x1 y1 x2 y2` en trace un dans une vue 2D, `confirm`, `add` ou `cancel` agissent dessus. |
 
 ### Outil bloc (`tool block`)

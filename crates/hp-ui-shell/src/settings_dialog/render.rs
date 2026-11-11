@@ -54,7 +54,7 @@ impl SettingsPage for RenderPage {
         let compiled_range = state.settings.compile.lighting;
         let r = &mut state.settings.render;
         heading(ui, t!("shell.render.view_3d"));
-        egui::Grid::new("hp_shell_render_3d").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
+        super::form_grid(ui, "hp_shell_render_3d").show(ui, |ui| {
             ui.label(t!("shell.render.near_plane"));
             changed |= ui
                 .add(egui::DragValue::new(&mut r.near_plane).range(0.5..=16.0).speed(0.1).fixed_decimals(1))
@@ -98,7 +98,7 @@ impl SettingsPage for RenderPage {
         );
         changed |= check(ui, &mut r.water_preview, t!("shell.render.water"), t!("shell.render.water_tip"));
         changed |= check(ui, &mut r.detail_preview, t!("shell.render.detail"), t!("shell.render.detail_tip"));
-        ui.horizontal(|ui| {
+        super::form_grid(ui, "hp_shell_render_water_detail_row").show(ui, |ui| {
             ui.label(t!("shell.render.water_detail")).on_hover_text(t!("shell.render.water_detail_tip"));
             egui::ComboBox::from_id_salt("hp_shell_render_water_detail")
                 .selected_text(water_detail_label(r.water_detail))
@@ -110,6 +110,7 @@ impl SettingsPage for RenderPage {
                             .changed();
                     }
                 });
+            ui.end_row();
         });
         subheading(ui, t!("shell.render.group_lighting"));
         changed |= check(ui, &mut r.normal_maps, t!("shell.render.normal_maps"), t!("shell.render.normal_maps_tip"));
@@ -142,7 +143,7 @@ impl SettingsPage for RenderPage {
             t!("shell.render.game_pixel_grid"),
             t!("shell.render.game_pixel_grid_tip"),
         );
-        ui.horizontal(|ui| {
+        super::form_grid(ui, "hp_shell_render_tone_mapping_row").show(ui, |ui| {
             ui.label(t!("shell.render.tone_mapping")).on_hover_text(t!("shell.render.tone_mapping_tip"));
             egui::ComboBox::from_id_salt("hp_shell_render_tone_mapping")
                 .selected_text(tone_label(r.tone_mapping))
@@ -154,8 +155,9 @@ impl SettingsPage for RenderPage {
                             .changed();
                     }
                 });
+            ui.end_row();
         });
-        egui::Grid::new("hp_shell_render_tone").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
+        super::form_grid(ui, "hp_shell_render_tone").show(ui, |ui| {
             ui.label(t!("shell.render.exposure"));
             changed |= ui
                 .add_enabled(
@@ -194,7 +196,7 @@ impl SettingsPage for RenderPage {
             ui.end_row();
         });
         changed |= check(ui, &mut r.map_tonemap, t!("shell.render.map_tonemap"), t!("shell.render.map_tonemap_tip"));
-        ui.horizontal(|ui| {
+        super::form_grid(ui, "hp_shell_render_prop_shadows_row").show(ui, |ui| {
             ui.label(t!("shell.render.prop_shadows")).on_hover_text(t!("shell.render.prop_shadows_tip"));
             egui::ComboBox::from_id_salt("hp_shell_render_prop_shadows")
                 .selected_text(prop_shadows_label(r.prop_shadows, compiled))
@@ -206,6 +208,7 @@ impl SettingsPage for RenderPage {
                             .changed();
                     }
                 });
+            ui.end_row();
         });
         changed |= check(ui, &mut r.cubemaps, t!("shell.render.cubemaps"), t!("shell.render.cubemaps_tip"));
         ui.add_enabled_ui(r.cubemaps, |ui| {
@@ -241,7 +244,7 @@ impl SettingsPage for RenderPage {
         changed |= check(ui, &mut r.collision_models, t!("shell.render.collision"), t!("shell.render.collision_tip"));
 
         heading(ui, t!("shell.render.views_2d"));
-        egui::Grid::new("hp_shell_render_2d").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
+        super::form_grid(ui, "hp_shell_render_2d").show(ui, |ui| {
             ui.label(t!("shell.render.models_2d"));
             egui::ComboBox::from_id_salt("hp_shell_render_models_2d")
                 .selected_text(models_2d_label(r.models_in_2d))
@@ -303,7 +306,7 @@ impl SettingsPage for RenderPage {
         changed |= check(ui, &mut r.displacements_in_2d, t!("shell.render.disps_2d"), t!("shell.render.disps_2d_tip"));
         changed |=
             check(ui, &mut r.displacements_only, t!("shell.render.disps_only"), t!("shell.render.disps_only_tip"));
-        egui::Grid::new("hp_shell_render_disps").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
+        super::form_grid(ui, "hp_shell_render_disps").show(ui, |ui| {
             ui.label(t!("shell.render.disps_2d_mode")).on_hover_text(t!("shell.render.disps_2d_mode_tip"));
             egui::ComboBox::from_id_salt("hp_shell_render_disps_2d")
                 .selected_text(disp_2d_label(r.displacements_2d))
@@ -327,7 +330,7 @@ impl SettingsPage for RenderPage {
             check(ui, &mut r.disp_source_2d, t!("shell.render.disp_source_2d"), t!("shell.render.disp_source_2d_tip"));
         changed |=
             check(ui, &mut r.disp_walkable, t!("shell.render.disp_walkable"), t!("shell.render.disp_walkable_tip"));
-        egui::Grid::new("hp_shell_render_walk").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
+        super::form_grid(ui, "hp_shell_render_walk").show(ui, |ui| {
             ui.label(t!("shell.render.walk_mode")).on_hover_text(t!("shell.render.walk_mode_tip"));
             egui::ComboBox::from_id_salt("hp_shell_render_walk_mode")
                 .selected_text(walk_mode_label(r.disp_walk_mode))
@@ -352,7 +355,7 @@ impl SettingsPage for RenderPage {
         });
 
         heading(ui, t!("shell.render.frame_rate"));
-        egui::Grid::new("hp_shell_render_fps").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
+        super::form_grid(ui, "hp_shell_render_fps").show(ui, |ui| {
             ui.label(t!("shell.render.max_fps"));
             changed |= ui
                 .add(egui::DragValue::new(&mut r.max_fps).range(0..=1000))
@@ -387,7 +390,7 @@ impl SettingsPage for RenderPage {
         changed |= check(ui, &mut r.vsync, t!("shell.render.vsync"), t!("shell.render.vsync_tip"));
 
         heading(ui, t!("shell.render.vram"));
-        egui::Grid::new("hp_shell_render_vram").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
+        super::form_grid(ui, "hp_shell_render_vram").show(ui, |ui| {
             ui.label(t!("shell.render.vram_budget"));
             changed |= ui
                 .add(
@@ -430,7 +433,7 @@ impl SettingsPage for RenderPage {
 
         heading(ui, t!("shell.render.perf"));
         let perf = &mut state.runtime.render.perf;
-        egui::Grid::new("hp_shell_render_perf").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
+        super::form_grid(ui, "hp_shell_render_perf").show(ui, |ui| {
             ui.label(t!("shell.render.perf_mode"));
             let before = r.performance_mode;
             egui::ComboBox::from_id_salt("hp_shell_render_perf_mode")
@@ -701,8 +704,10 @@ pub(crate) const TR: TrTable = &[
     ("shell.render.sky_see_through", "See the sky through toolsskybox", "Voir le ciel à travers toolsskybox"),
     (
         "shell.render.sky_see_through_tip",
-        "Hides the toolsskybox faces so the sky previews show through them. Off: they keep their tool texture.",
-        "Masque les faces toolsskybox pour voir le ciel à travers. Désactivé : elles gardent leur texture d'outil.",
+        "Hides the toolsskybox faces so the sky previews show through them. Off: they keep their tool texture in the \
+         textured modes (the Lit mode and the baked preview always show the sky through them).",
+        "Masque les faces toolsskybox pour voir le ciel à travers. Désactivé : elles gardent leur texture d'outil dans \
+         les modes texturés (le mode éclairé et l'aperçu précalculé montrent toujours le ciel à travers).",
     ),
     (
         "shell.render.skybox_3d_tip",
@@ -748,12 +753,16 @@ pub(crate) const TR: TrTable = &[
         "Materials with $envmap reflect their cubemap in the 3D view (textured, lit and baked modes) and the \
          player view: the editor draws a cubemap at every env_cubemap (the sky without any), each face takes the \
          nearest env_cubemap in front of it like the compiler, props the nearest one. The player view uses the \
-         cubemaps built in game when the compiled map has them. Map > Rebuild cubemaps draws them again.",
+         cubemaps built in game when the compiled map has them. Map > Rebuild cubemaps draws them again. Off by \
+         default, so the lighting preview shows what the lights do; a face without a drawn cubemap (no \
+         env_cubemap, or not drawn yet) reflects the sky darkened by its own lighting.",
         "Les matériaux avec $envmap reflètent leur cubemap dans la vue 3D (modes texturé, éclairé et précalculé) \
          et la vue joueur : l'éditeur dessine une cubemap à chaque env_cubemap (le ciel s'il n'y en a aucun), \
          chaque face prend l'env_cubemap le plus proche devant elle comme le compilateur, les props le plus \
          proche. La vue joueur utilise les cubemaps construites en jeu quand la map compilée en a. Carte > \
-         Reconstruire les cubemaps les redessine.",
+         Reconstruire les cubemaps les redessine. Désactivé par défaut, pour que l'aperçu de l'éclairage montre \
+         ce que font les lumières ; une face sans cubemap dessinée (aucun env_cubemap, ou pas encore dessinée) \
+         reflète le ciel assombri par son propre éclairage.",
     ),
     (
         "shell.render.cubemaps_auto",

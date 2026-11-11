@@ -52,7 +52,7 @@ A layout is the arrangement of the views and panels: the view in each quadrant, 
 | --- | --- |
 | **Window > Layout > Save layout...** | Asks for a name (*Name of the layout:*, `Layout N` proposed) and saves the current arrangement. A layout with the same name is replaced (you are warned). 32 layouts at most. |
 | **Window > Layout > Reset layout** | Back to the default arrangement: 3D, top, front and side views, centered splits, no maximized view, every dock panel shown. |
-| **Window > Saved layouts** | Click a layout to apply it. **Delete** lists the layouts to delete one. *No saved layout* when the list is empty. |
+| **Window > Layout > Saved layouts** | Click a layout to apply it. **Delete** lists the layouts to delete one. *No saved layout* when the list is empty. |
 
 Layouts are stored in settings.toml (`[workflow.layouts]`), so they are the same for every map.
 

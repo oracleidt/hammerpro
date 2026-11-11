@@ -6,7 +6,7 @@ The sound editor opens a sound of the game content, the addons, the map or your 
 
 ## Opening it
 
-- **Tools > Sound editor...** (action `sound_editor`) opens the window, and again closes it.
+- **Tools > Content and editors > Sound editor...** (action `sound_editor`) opens the window, and again closes it.
 - MCP: `open_media_editor` with `editor` set to `sound` (and a `path` to load a sound).
 
 ## Picking a sound

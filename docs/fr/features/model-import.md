@@ -6,9 +6,9 @@ L'import de modèles transforme un fichier 3D (FBX, OBJ, glTF ou GLB) en prop Ga
 
 ## Ouvrir l'import
 
-- **Fichier > Importer un modèle (FBX, OBJ, glTF)...** ouvre une boîte de dialogue de fichier (filtre « Modèles 3D » : `.fbx`, `.obj`, `.gltf`, `.glb`).
+- **Fichier > Importer > Importer un modèle (FBX, OBJ, glTF)...** ouvre une boîte de dialogue de fichier (filtre « Modèles 3D » : `.fbx`, `.obj`, `.gltf`, `.glb`).
 - Le bouton **+** du [navigateur de modèles](model-browser.md) fait la même chose. Son bouton **++** ouvre l'[import par lot](#import-par-lot).
-- **Fichier > Importer des modèles (lot)...** convertit beaucoup de fichiers d'un coup.
+- **Fichier > Importer > Importer des modèles (lot)...** convertit beaucoup de fichiers d'un coup.
 - Glissez-déposez un fichier `.fbx`, `.obj`, `.gltf` ou `.glb` sur la fenêtre de Hammer Pro. Un modèle à la fois : un second dépôt pendant un import est refusé avec un message. Déposer plusieurs fichiers de modèle d'un coup ouvre à la place l'[import par lot](#import-par-lot) avec eux.
 - Les fichiers `--script` ont `import_model CHEMIN`, `import_model_now CHEMIN` (importe avec les options par défaut) et `import_model_scaled ÉCHELLE CHEMIN` (voir [Commandes de script](../reference/script-commands.md)).
 
@@ -85,7 +85,7 @@ La console liste, pour chaque matériau, ce qui a été converti et ce qui a ét
 
 ## Import par lot
 
-**Fichier > Importer des modèles (lot)...** (aussi le bouton **++** du [navigateur de modèles](model-browser.md), et `import_models_batch` dans la palette de commandes) convertit beaucoup de fichiers d'un coup, avec le même pipeline et les mêmes options qu'un import seul.
+**Fichier > Importer > Importer des modèles (lot)...** (aussi le bouton **++** du [navigateur de modèles](model-browser.md), et `import_models_batch` dans la palette de commandes) convertit beaucoup de fichiers d'un coup, avec le même pipeline et les mêmes options qu'un import seul.
 
 1. **Ajouter des fichiers...** choisit plusieurs fichiers de modèle, **Ajouter un dossier...** choisit des dossiers. **Inclure les sous-dossiers** les parcourt (24 niveaux au plus), et les cases **Formats** (OBJ, FBX, glTF / GLB) filtrent ce qui est pris dans les dossiers. Les fichiers choisis à la main sont gardés quel que soit leur format coché tant que l'extension est prise en charge. 5000 fichiers au plus sont pris, par ordre alphabétique, sans doublons.
 2. Le **tableau d'aperçu** lit chaque fichier en arrière-plan et liste ses triangles, sa taille en unités, le nom de modèle qu'il recevra et ses avertissements (modèle lourd, trop petit ou trop grand, prop physique sans collision, fichier illisible en rouge). Un nom en orange signifie qu'un modèle de ce nom existe déjà. **Aperçu** relit les fichiers après un changement d'échelle, d'unités ou d'axe.

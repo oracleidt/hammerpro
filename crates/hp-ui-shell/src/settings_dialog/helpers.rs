@@ -44,7 +44,7 @@ impl SettingsPage for HelpersPage {
             .on_hover_text(t!("shell.helpers.show_helpers_tip"))
             .changed();
         let s = &mut state.settings.helpers;
-        ui.horizontal(|ui| {
+        hp_app::widgets::choice_row(ui, |ui| {
             ui.label(t!("shell.helpers.scope"));
             changed |=
                 ui.radio_value(&mut s.helper_scope, HelperScope::Selected, t!("shell.helpers.selected")).changed();
@@ -55,7 +55,7 @@ impl SettingsPage for HelpersPage {
             .on_hover_text(t!("shell.helpers.editor_objects_tip"))
             .changed();
         heading(ui, t!("shell.helpers.connections"));
-        ui.horizontal(|ui| {
+        hp_app::widgets::choice_row(ui, |ui| {
             changed |= ui.radio_value(&mut s.connections, ConnectionsMode::Off, t!("shell.helpers.hidden")).changed();
             changed |=
                 ui.radio_value(&mut s.connections, ConnectionsMode::Selected, t!("shell.helpers.selected")).changed();

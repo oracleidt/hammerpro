@@ -60,7 +60,7 @@ impl Document {
         let mut count = 0;
         for f in faces {
             let Some(n) = self.scene.solids.get(&f.solid) else { continue };
-            if n.solid.sides.get(f.side).is_none_or(|s| s.disp.is_none()) {
+            if n.solid.sides.get(f.side).is_none_or(|s| s.disp.is_none() && !unreadable_disp(s)) {
                 continue;
             }
             let idx = match updates.iter().position(|(id, _)| *id == f.solid) {
@@ -71,7 +71,7 @@ impl Document {
                 }
             };
             if let Some(s) = updates.get_mut(idx).and_then(|(_, s)| s.sides.get_mut(f.side))
-                && s.disp.take().is_some()
+                && (s.disp.take().is_some() | remove_unreadable_disp(s))
             {
                 count += 1;
             }
@@ -286,6 +286,16 @@ impl Document {
             Ok(())
         })
     }
+}
+
+pub(crate) fn unreadable_disp(side: &hp_vmf::Side) -> bool {
+    side.disp.is_none() && side.extra_blocks.iter().any(|b| b.name.eq_ignore_ascii_case("dispinfo"))
+}
+
+fn remove_unreadable_disp(side: &mut hp_vmf::Side) -> bool {
+    let before = side.extra_blocks.len();
+    side.extra_blocks.retain(|b| !b.name.eq_ignore_ascii_case("dispinfo"));
+    side.extra_blocks.len() != before
 }
 
 #[cfg(test)]

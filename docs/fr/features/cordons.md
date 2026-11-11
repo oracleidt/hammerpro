@@ -6,7 +6,7 @@ Un cordon est une boîte nommée qui délimite la partie de la map sur laquelle 
 
 ## Accès
 
-- **Outils > Outil cordon** (ou son bouton dans la palette d'outils) dessine et modifie les boîtes dans les vues 2D. Il n'a pas de raccourci par défaut : donnez-lui en un dans **Paramètres > Clavier** (voir [Raccourcis clavier](keyboard-shortcuts.md)).
+- **Outils > Outil actif > Outil cordon** (ou son bouton dans la palette d'outils) dessine et modifie les boîtes dans les vues 2D. Il n'a pas de raccourci par défaut : donnez-lui en un dans **Paramètres > Clavier** (voir [Raccourcis clavier](keyboard-shortcuts.md)).
 - **Affichage > Utiliser les cordons** active ou désactive les cordons pour toute la map. Le bouton cordon de la barre d'outils fait la même chose.
 - La section **Cordons** de l'onglet **Visgroups** (dock de droite) liste tous les cordons de la map.
 - Quand les cordons sont utilisés, un badge rouge **Cordon** apparaît dans la barre d'état. Son infobulle donne le nombre de boîtes ; un clic arrête d'utiliser les cordons.

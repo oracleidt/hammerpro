@@ -8,7 +8,7 @@ Everything is computed on the CPU, at a small preview size while you work and at
 
 ## Opening it
 
-- **Tools > Shader editor...** (action `shader_editor`, also in the command palette `Ctrl+P`): opens the window on the graph you were editing, or an empty one.
+- **Tools > Content and editors > Shader editor...** (action `shader_editor`, also in the command palette `Ctrl+P`): opens the window on the graph you were editing, or an empty one.
 - **Import images** window > **Shader editor...**: opens it on the first image of the list. If a graph named like the image (`brick.hpshader` next to `brick.png`) exists, that graph is opened instead.
 - [Texture browser](texture-browser.md): right click a thumbnail > **Edit in the shader editor**. A material written by the editor with **Save the graph next to the textures** opens its own graph again; any other material opens as a Texture node on its base texture.
 - MCP: `open_shader_editor`.

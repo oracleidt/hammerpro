@@ -35,11 +35,11 @@ Surtout sur **Paramètres > Vues** ; les clés `show_*` sont aussi dans le menu 
 | `camera_fast_multiplier` | `3.0` | Multiplicateur de vitesse quand `Maj` est enfoncée. |
 | `mouse_sensitivity` | `0.15` | Sensibilité de la souris pour regarder autour. |
 | `invert_mouse_y` | `false` | Inverse l'axe vertical de la souris. |
-| `far_plane` | `32768.0` | Distance d'affichage de la vue 3D. **Affichage > Distance d'affichage plus courte / plus longue** la modifient aussi. |
+| `far_plane` | `32768.0` | Distance d'affichage de la vue 3D. **Affichage > Zoom et distance d'affichage > Distance d'affichage plus courte / plus longue** la modifient aussi. |
 | `msaa` | `true` | Anticrénelage des vues. |
-| `show_models` | `true` | Affiche les props avec leurs modèles. **Affichage > Afficher les modèles**. |
-| `show_helpers` | `true` | Affiche les aides des entités et les sprites. **Affichage > Afficher les aides et sprites**. |
-| `show_tool_textures` | `true` | Affiche les faces en textures outils. **Affichage > Afficher les textures outils**. |
+| `show_models` | `true` | Affiche les props avec leurs modèles. **Affichage > Options d'affichage > Afficher les modèles**. |
+| `show_helpers` | `true` | Affiche les aides des entités et les sprites. **Affichage > Options d'affichage > Afficher les aides et sprites**. |
+| `show_tool_textures` | `true` | Affiche les faces en textures outils. **Affichage > Options d'affichage > Afficher les textures outils**. |
 | `show_fps` | `false` | Affiche les images par seconde. **Paramètres > Général**. |
 | `show_3d_grid` | `false` | Grille dans la vue 3D (page Vues). |
 | `grid_highlight_every` | `8` | Une ligne de grille 2D sur N est mise en valeur. |
@@ -60,8 +60,8 @@ Surtout sur **Paramètres > Vues** ; les clés `show_*` sont aussi dans le menu 
 | `grid_size` | `16.0` | Taille de la grille globale, de 0,01 à 4096. Champ de la barre d'outils, `[` et `]`. |
 | `snap_to_grid` | `true` | Magnétisme de la grille. **Map > Magnétisme de grille** (`Maj+W`). |
 | `show_grid` | `true` | Affiche la grille 2D. **Map > Afficher la grille** (`Maj+G`). |
-| `texture_lock` | `true` | Les textures suivent les brushes déplacés et tournés. **Outils > Verrouillage des textures** (`Maj+L`). |
-| `texture_scale_lock` | `false` | Les textures suivent la mise à l'échelle des brushes. **Outils > Verrouillage de l'échelle des textures** (`Maj+K`). |
+| `texture_lock` | `true` | Les textures suivent les brushes déplacés et tournés. **Outils > Textures > Verrouillage des textures** (`Maj+L`). |
+| `texture_scale_lock` | `false` | Les textures suivent la mise à l'échelle des brushes. **Outils > Textures > Verrouillage de l'échelle des textures** (`Maj+K`). |
 | `select_mode` | `"Groups"` | Ce qu'un clic sélectionne : `Groups`, `Objects`, `Solids`. **Édition > Mode de sélection**. |
 | `default_material` | `"dev/dev_measuregeneric01b"` | Matériau des nouveaux brushes. |
 | `default_texture_scale` | `0.25` | Échelle de texture des nouvelles faces. |
@@ -210,7 +210,7 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `gizmo_local` | `false` | Le gizmo d'une seule entité ponctuelle suit ses angles (`Ctrl+J`). |
 | `click_to_zoom` | `false` | L'outil caméra zoome les vues 2D au clic (`Ctrl` + clic dézoome). |
 | `stretch_handles` | `true` | Des flèches sur les faces de la sélection, dans la vue 3D, l'étirent. |
-| `box_confirm` | `true` | Un cadre tracé dans une vue 2D attend `Entrée` (comme Hammer++) : ses poignées le redimensionnent, un glisser à l'intérieur le déplace, `Échap` l'abandonne. `false` sélectionne au relâchement. |
+| `box_confirm` | `false` | Sélection par cadre ajustable : un cadre tracé dans une vue 2D attend `Entrée` (comme Hammer++), ses poignées le redimensionnent, un glisser à l'intérieur le déplace, `Échap` l'abandonne. `false` (par défaut depuis la 2.0.3) sélectionne au relâchement. Les paramètres enregistrés par la 2.0.2 passent une fois à `false` lors de la mise à jour. |
 | `random_yaw_min` | `0.0` | **Rotation Z aléatoire** : plus petite rotation, en degrés (-360 à 360). |
 | `random_yaw_max` | `360.0` | **Rotation Z aléatoire** : plus grande rotation, en degrés (au plus 360 au-dessus de la plus petite). |
 | `random_yaw_snap` | `0.0` | **Rotation Z aléatoire** : pas de la rotation, en degrés (0 : libre, jusqu'à 180). |
@@ -245,6 +245,10 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `show_view_info` | `false` | Images par seconde, position et angles de la caméra dans la vue 3D (`O`). |
 | `show_bounds` | `false` | Boîtes englobantes jaunes des objets visibles. Pas de raccourci (`I` est le décalage interactif) : activez-les par **Affichage > Options d'affichage > Boîtes englobantes**. |
 | `show_toolbar`, `show_tool_palette`, `show_status_bar` | `true` | **Affichage > Panneaux**. |
+| `tool_palette_columns` | `1` | La palette d'outils sur une ou deux colonnes (`2` : boutons côte à côte). Clic droit sur la palette, **Affichage > Panneaux > Palette d'outils sur deux colonnes** ou **Paramètres > Général > Palette d'outils**. |
+| `toolbar_rows` | `1` | `2` : la barre d'outils passe sur une deuxième ligne quand la fenêtre est trop étroite au lieu de ranger des groupes dans **»**. Clic droit sur la barre d'outils, **Affichage > Panneaux > Barre d'outils sur deux lignes** ou **Paramètres > Général > Barre d'outils**. |
+| `toolbar_order` | `[]` | Ordre des groupes de la barre d'outils (identifiants `file`, `edit`, `grid`, `groups`, `hide`, `cordon`, `display`, `show`, `render`) ; les groupes non cités suivent dans l'ordre par défaut, `compile` reste toujours tout à droite. Vide : l'ordre par défaut. |
+| `toolbar_hidden` | `[]` | Groupes de la barre d'outils masqués (les identifiants ci-dessus et `compile`) et boutons masqués (l'identifiant d'action du bouton, ou `grid_size`, `render_mode`, `props_2d`, `primitive_stats` ; Compiler se masque par son identifiant de groupe `compile`). Clic droit sur la barre d'outils > **Personnaliser la barre d'outils** ; **Réinitialiser la barre d'outils** la vide. |
 | `show_history` | `false` | Onglet de l'historique des modifications. |
 | `layouts` | `{}` | Dispositions enregistrées (**Fenêtre > Disposition > Enregistrer la disposition...**), 32 au plus : `quadrants`, `split_x`, `split_y`, `maximized`, `panels`. |
 | `open_in_new_tab` | `true` | Les maps ouvertes ont leur propre onglet (désactivé : elles remplacent la map actuelle). |
@@ -336,7 +340,7 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `model_distance` | `0.0` | Les modèles plus loin que cette distance sont des boîtes (0 : sans limite). |
 | `lod_distances` | `[0.0, 0.0]` | Distances des LOD 1 et 2 pour les modèles lourds (0 : toujours le modèle complet). Aucun réglage dans la fenêtre. |
 | `models_in_2d` | `"SelectedOnly"` | `Boxes`, `Wireframe`, `SelectedOnly`. |
-| `collision_models` | `false` | Modèles de collision par-dessus les modèles. **Affichage > Options d'affichage > Modèles de collision**. |
+| `collision_models` | `false` | Modèles de collision par-dessus les modèles. **Affichage > Diagnostics > Modèles de collision**. |
 | `collision_only` | `false` | N'affiche que les modèles de collision. |
 | `fill_selected_2d` | `true` | Remplit les faces sélectionnées dans les vues 2D. |
 | `fill_selected_2d_opacity` | `0.2` | Opacité de ce remplissage. |
@@ -524,6 +528,7 @@ La fenêtre **Construire et enregistrer en contenu** et l'onglet Ressources de l
 | `offer_portals` | `true` | Propose de charger le nouveau fichier de portails après une compilation. |
 | `portal_heat` | `false` | Colore les portails selon le coût de rendu. |
 | `portal_xray` | `true` | Montre les portails à travers les murs en 3D. |
+| `warn_duplicates` | `true` | Avertit quand un nouveau brush ou une nouvelle entité est une copie exacte d'un autre au même endroit. |
 
 ## `[lab]`
 
@@ -552,7 +557,7 @@ La fenêtre **Construire et enregistrer en contenu** et l'onglet Ressources de l
 
 ## `[sniffer]`
 
-Le panneau du [BSP Sniffer](../features/bsp-sniffer.md) (Fichier > BSP Sniffer...). Seules les clés qui diffèrent du défaut sont écrites.
+Le panneau du [BSP Sniffer](../features/bsp-sniffer.md) (Fichier > Importer > BSP Sniffer...). Seules les clés qui diffèrent du défaut sont écrites.
 
 | Clé | Défaut | Effet |
 | --- | --- | --- |
@@ -644,6 +649,18 @@ Voir [Mises à jour](../features/updates.md).
 | --- | --- | --- |
 | `vtf.editor_path` | `""` | L'éditeur VTF externe (VTFEdit, VTFEdit++, VTFEdit Reloaded...) ; vide veut dire que Hammer Pro le cherche. Seul l'utilisateur le change. |
 | `vtf.prefer_integrated` | `false` | Ouvre les textures dans l'éditeur VTF intégré même si un éditeur externe est trouvé. |
+
+## `[input]`
+
+**Paramètres > Saisie.** Voir [Pavé tactile](../features/trackpad.md).
+
+| Clé | Défaut | Effet |
+| --- | --- | --- |
+| `input.trackpad_mode` | `"Auto"` | `Auto` active les gestes du pavé tactile quand un geste de pavé est vu et les désactive au premier cran de molette, `On` toujours, `Off` jamais (le comportement souris). |
+| `input.trackpad_scroll_3d` | `"Orbit"` | Défilement à deux doigts dans la vue 3D : `Orbit` autour du point au centre de la vue, ou `Move` pour déplacer la caméra sur les côtés et vers le haut ou le bas. |
+| `input.trackpad_pan_speed` | `1.0` | 0,25 à 4 : multiplie le déplacement au pavé tactile. |
+| `input.trackpad_zoom_speed` | `1.0` | 0,25 à 4 : multiplie le zoom du pincement et de Ctrl + défilement. |
+| `input.trackpad_orbit_speed` | `1.0` | 0,25 à 4 : multiplie l'orbite 3D. |
 
 ## Pages liées
 

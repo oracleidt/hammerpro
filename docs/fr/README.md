@@ -26,6 +26,7 @@ Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.m
 | --- | --- |
 | [Outil de sélection](features/selection-tool.md) | Sélection au clic et au cadre, modes de sélection, poignées 2D, poignées d'étirement 3D, gizmo, transformations modales, décalages. |
 | [Caméra et navigation](features/camera-navigation.md) | Voler avec la caméra 3D, dispositions de clavier, vue souris, outil caméra, défilement et zoom 2D, schémas de contrôle. |
+| [Pavé tactile](features/trackpad.md) | Mode pavé tactile, défilement à deux doigts et pincement, Espace + glisser à la place du bouton du milieu. |
 | [Outil bloc](features/block-tool.md) | Les brushes et chaque primitive avec ses options. |
 | [Outil polygone](features/polygon-tool.md) | Des brushes convexes à partir d'un contour cliqué point par point. |
 | [Outil courbe](features/curve-tool.md) | Murs et rambardes courbes : des brushes en boîte à joints en onglet le long d'un tracé dans une vue 2D. |

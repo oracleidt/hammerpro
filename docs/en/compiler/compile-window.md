@@ -8,8 +8,8 @@ The **Compile and run** window sets how maps are compiled, runs the compile and 
 
 ## Opening it
 
-- **File > Compile and run...** (`Ctrl+F9`) or the **Compile** button of the toolbar.
-- **F9** (**File > Compile now**) compiles with the current settings without opening the window. **File > Cancel compile** stops it.
+- **File > Compile > Compile and run...** (`Ctrl+F9`) or the **Compile** button of the toolbar.
+- **F9** (**File > Compile > Compile now**) compiles with the current settings without opening the window. **File > Compile > Cancel compile** stops it.
 - The window is a **separate window** by default: you can move it out of Hammer Pro or to another screen and keep working while it compiles. **Put back in the main window** shows it inside Hammer Pro again; **Separate window** takes it out. The choice and the place are remembered (`separate_window`, see [Window frames](../features/window-frames.md)).
 - The default values of the same settings are on the **Compile** page of the Settings window (**Tools > Options...**, `Ctrl+,`).
 
@@ -117,7 +117,7 @@ Tokens are replaced in the arguments and the program (case insensitive; unknown 
 
 ## Batch compile
 
-**File > Batch compile...** compiles several maps one after the other, each with its own preset. **Add maps...**, **Remove finished**, **Copy to the maps folder**, **Compile all**, **Cancel**. Each VMF is copied into the `.hammerpro_build` folder next to it and compiled there, so your files are never written.
+**File > Compile > Batch compile...** compiles several maps one after the other, each with its own preset. **Add maps...**, **Remove finished**, **Copy to the maps folder**, **Compile all**, **Cancel**. Each VMF is copied into the `.hammerpro_build` folder next to it and compiled there, so your files are never written.
 
 ## Tips
 

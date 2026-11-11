@@ -221,6 +221,27 @@ impl ShortcutsWindow {
                     }
                 });
         }
+        let gestures: Vec<(&str, &str)> = crate::settings_dialog::TRACKPAD_GESTURES
+            .iter()
+            .map(|(k, d)| (t!(k), t!(d)))
+            .filter(|(k, d)| q.is_empty() || q.best_of([fold(k).as_str(), fold(d).as_str()]).is_some())
+            .collect();
+        if !gestures.is_empty() {
+            any = true;
+            heading(ui, t!("shell.input.gestures"));
+            egui::Grid::new("hp_shell_shortcut_ref_trackpad")
+                .num_columns(2)
+                .striped(true)
+                .spacing([24.0, 3.0])
+                .min_col_width(240.0)
+                .show(ui, |ui| {
+                    for (k, d) in gestures {
+                        ui.label(d);
+                        ui.label(RichText::new(k).monospace().color(accent_text(ui.visuals())));
+                        ui.end_row();
+                    }
+                });
+        }
         if !any {
             ui.add_space(8.0);
             ui.label(RichText::new(t!("shell.palette.no_results")).color(ui.visuals().weak_text_color()));

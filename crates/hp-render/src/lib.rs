@@ -2087,6 +2087,10 @@ impl Renderer {
         (data, refs, groups)
     }
 
+    pub fn dynamic_light_count(&self) -> usize {
+        self.lights_cpu.iter().filter(|light| light.delta_color[3] < 0.5 && lights::is_dlight(light)).count()
+    }
+
     pub fn light_count(&self) -> usize {
         self.lights_cpu.iter().filter(|light| light.delta_color[3] < 0.5).count()
     }
@@ -2718,10 +2722,17 @@ impl Renderer {
         self.prepare_tone(view_id, params.size, params.mode, chain);
         let tone = reflecting.map_or_else(|| self.tone_scale_for(view_id, chain), |r| r.tone);
         let lit = params.mode == RenderMode::Lit && !cam.is_ortho && !self.baked_lit(&cam, params.mode);
+        let dynamic =
+            !cam.is_ortho && self.lights_cpu.iter().any(|l| lights::is_dlight(l) && live_lighting::has_delta(l));
+        let compiled_lit = !cam.is_ortho
+            && opts.compiled_lighting
+            && compiled_light::textured_mode(params.mode)
+            && self.compiled.mode().is_some();
         let local_lighting = lit
             || (self.baked_lit(&cam, params.mode)
-                && self.live_light_baseline().is_some()
-                && self.lights_cpu.iter().any(live_lighting::has_delta));
+                && (dynamic
+                    || (self.live_light_baseline().is_some() && self.lights_cpu.iter().any(live_lighting::has_delta))))
+            || (compiled_lit && dynamic);
         if !cam.is_ortho && opts.cubemaps && reflecting.is_none() {
             self.cubes.note_view(view_id, &params, &opts);
         }
@@ -2937,7 +2948,10 @@ impl Renderer {
                 hooks: &hooks,
                 hook_cx: &hook_cx,
                 bind_group,
-                sky_holes: (opts.sky_see_through || self.baked_view(&cam)) && (sky_bg.is_some() || sky_cam.is_some()),
+                sky_holes: (opts.sky_see_through
+                    || self.baked_view(&cam)
+                    || (params.mode == RenderMode::Lit && !cam.is_ortho))
+                    && (sky_bg.is_some() || sky_cam.is_some()),
                 water: water_frame.as_ref(),
                 packed: packed.as_ref(),
             };

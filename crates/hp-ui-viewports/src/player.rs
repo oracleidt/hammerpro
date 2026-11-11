@@ -366,7 +366,7 @@ impl Collider for DocCollider<'_> {
                             && self.hidden.is_none_or(|h| !h.contains(&e))
                     }
                 };
-                owner_ok && n.solid.sides.iter().any(|s| !non_solid_material(&s.material))
+                owner_ok && !no_surface_left(n) && n.solid.sides.iter().any(|s| !non_solid_material(&s.material))
             }),
             hp_editor::ObjRef::Entity(_) => false,
         };
@@ -615,6 +615,14 @@ pub fn world_groups_drawn(
 ) -> Vec<bool> {
     let v = |a: [f32; 3]| DVec3::new(f64::from(a[0]), f64::from(a[1]), f64::from(a[2]));
     world.groups.iter().map(|g| drawn_by_game(&g.clusters, v(g.min), v(g.max), visible, areas, flow)).collect()
+}
+
+pub fn no_surface_left(n: &hp_editor::SolidNode) -> bool {
+    n.has_disp() && n.disp.iter().all(Option::is_none)
+}
+
+pub fn displacement_without_surface(state: &AppState) -> Vec<ObjRef> {
+    state.doc.scene().solids().iter().filter(|(_, n)| no_surface_left(n)).map(|(id, _)| ObjRef::Solid(*id)).collect()
 }
 
 pub fn game_hidden(state: &AppState, clusters: &ObjClusters) -> Vec<ObjRef> {
@@ -1376,6 +1384,33 @@ pub fn style_lines(r: &LightStyleReport) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_displaced_brush_without_a_buildable_surface_is_gone_like_in_game() {
+        let mut state = hp_app::testing::test_state();
+        let params = hp_geom::PrimitiveParams {
+            bounds: hp_geom::Aabb::new(DVec3::ZERO, DVec3::splat(64.0)),
+            ..Default::default()
+        };
+        let id = state.doc.create_primitive(&params, hp_editor::Owner::World).expect("block")[0];
+        assert!(displacement_without_surface(&state).is_empty());
+        state.doc.create_displacements(&[hp_editor::FaceRef::new(id, 0)], 2).expect("displacement");
+        assert!(displacement_without_surface(&state).is_empty(), "a good displacement keeps its surface");
+        state
+            .doc
+            .edit_solid(id, |s| {
+                if let Some(d) = s.sides[0].disp.as_deref_mut() {
+                    d.power = 7;
+                }
+            })
+            .expect("edit");
+        assert_eq!(
+            displacement_without_surface(&state),
+            vec![ObjRef::Solid(id)],
+            "the compiler drops every face of it"
+        );
+    }
+
     use super::*;
 
     struct Room;

@@ -8,11 +8,11 @@ Hammer Pro tests your map in game quickly: it loads the compiled map in the Garr
 
 | Command | Default key | What it does |
 | --- | --- | --- |
-| **File > Compile and run...** | `Ctrl+F9` | Opens the compile window, where **Launch the game** runs the map after the compile. |
-| **File > Compile now** | `F9` | Compiles with the current settings (and launches the game when **Launch the game** is on). |
-| **File > Run the map in game** | | Loads the compiled map of the open document in the running game, or starts the game on it. |
-| **File > Reload the map in game** | | The same, for a game already running. |
-| **File > Import props from the game** | | Brings the props placed in game into the map (needs the bridge). |
+| **File > Compile > Compile and run...** | `Ctrl+F9` | Opens the compile window, where **Launch the game** runs the map after the compile. |
+| **File > Compile > Compile now** | `F9` | Compiles with the current settings (and launches the game when **Launch the game** is on). |
+| **File > Compile > Run the map in game** | | Loads the compiled map of the open document in the running game, or starts the game on it. |
+| **File > Compile > Reload the map in game** | | The same, for a game already running. |
+| **File > Import > Import props from the game** | | Brings the props placed in game into the map (needs the bridge). |
 
 With the Hammer or Hammer++ shortcut set, `F9` opens the compile window and `Ctrl+F9` compiles at once (see [Keyboard shortcuts](keyboard-shortcuts.md)).
 
@@ -70,7 +70,7 @@ The editor and the game exchange small files in `garrysmod/data/hammerpro/` (`cm
 
 ### Import props from the game
 
-Spawn and arrange props in game (with the bridge installed and the map running), then run **File > Import props from the game**. The props come into the map as one undo step: `prop_physics` stays `prop_physics`, `prop_dynamic` and `prop_physics_multiplayer` become `prop_static`, with their model, skin, position and angles. Without the bridge you get *Install the Hammer Pro bridge first (Settings > Game), then restart the game*; without an answer, *The game did not answer: is a map running with the bridge installed?*
+Spawn and arrange props in game (with the bridge installed and the map running), then run **File > Import > Import props from the game**. The props come into the map as one undo step: `prop_physics` stays `prop_physics`, `prop_dynamic` and `prop_physics_multiplayer` become `prop_static`, with their model, skin, position and angles. Without the bridge you get *Install the Hammer Pro bridge first (Settings > Game), then restart the game*; without an answer, *The game did not answer: is a map running with the bridge installed?*
 
 ## Other games
 

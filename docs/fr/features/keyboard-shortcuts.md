@@ -104,6 +104,24 @@ Seuls les raccourcis que vous avez changés sont écrits dans `[keybindings]`, a
 
 Les raccourcis de la map ne se déclenchent jamais pendant la saisie dans un champ de texte, quand un menu, une fenêtre surgissante ou un dialogue modal est ouvert, pendant que la caméra 3D vole au clavier, ou pendant l'enregistrement d'un raccourci. Après avoir déplacé le focus sur un bouton ou une liste avec `Tab`, les touches simples (lettres, chiffres, Suppr, flèches, Entrée, Espace) appartiennent à l'interface : `Suppr` ou `H` après un champ de propriété ne suppriment ni ne masquent jamais l'objet en cours d'édition. Les raccourcis avec Ctrl ou Alt et les touches de fonction marchent toujours.
 
+Une fenêtre flottante (Transformer, Collage spécial, les fenêtres de textures, d'entités et du labo) prend `Tab` dès son ouverture ou dès que vous cliquez dedans, jusqu'à un clic dans une vue ou sa fermeture : `Tab` et `Maj+Tab` passent alors d'un champ ou d'un bouton à l'autre, en boucle, au lieu de changer la vue 2D ou d'aller à l'outil actif. Les éditeurs de code (texte VMT, texte des entités d'un BSP) et la complétion des noms de propriétés gardent `Tab` pour eux.
+
+## Gestes du pavé tactile
+
+Quand les gestes du pavé tactile sont actifs (**Paramètres > Saisie**, voir [Pavé tactile](trackpad.md)) :
+
+| Geste | Effet |
+|---|---|
+| Défilement à deux doigts | Déplacer une vue 2D ; faire orbiter ou déplacer la caméra 3D |
+| Pincer, ou `Ctrl` + défilement | Zoomer une vue 2D au curseur ; avancer ou reculer la caméra 3D |
+| `Alt` + défilement | La molette (options d'outil comme le nombre de blocs, sinon zoom) |
+| `Maj` + défilement | `Maj` + molette |
+| `Espace` + glisser | Déplacer une vue 2D ; regarder autour en 3D |
+| `Espace` + `Maj` + glisser | Déplacer la caméra 3D |
+| Toucher / toucher à deux doigts | Clic / clic droit (menu contextuel) |
+
+La référence des raccourcis (`F1`) les liste avec les contrôles des vues.
+
 ## MCP
 
 `list_keybindings` et `set_keybinding` lisent et modifient les raccourcis depuis les applications d'IA. Voir la [référence des outils MCP](../../MCP.md) (en anglais).

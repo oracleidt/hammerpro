@@ -1030,11 +1030,15 @@ impl DisplacementTool {
         if shift && let Some(id) = faces.first().map(|f| f.solid) {
             faces = solid_faces(state, id);
         }
+        faces = with_groups(state, faces);
         if faces.is_empty() {
             if !ctrl {
-                state.doc.clear_face_selection();
+                clear_targets(state);
             }
             return;
+        }
+        if op != SelectOp::Replace {
+            adopt_object_targets(state);
         }
         state.doc.select_faces(&faces, op);
     }
@@ -1144,12 +1148,15 @@ impl DisplacementTool {
                 let painting = self.interaction != Interaction::Select && !view.is_2d() && !self.pick_path;
                 if !painting && press.moved > DRAG_START_PX {
                     if let Some(p) = f.pos {
-                        let faces = pick_faces(state, view, p);
+                        let faces = with_groups(state, pick_faces(state, view, p));
                         if !faces.is_empty() {
                             let op =
                                 if press.sweep || ctrl || f.mods.shift { SelectOp::Add } else { SelectOp::Replace };
                             let new = !press.sweep || faces.iter().any(|x| !state.doc.selection().faces.contains(x));
                             if new {
+                                if op != SelectOp::Replace {
+                                    adopt_object_targets(state);
+                                }
                                 state.doc.select_faces(&faces, op);
                             }
                             press.sweep = true;
@@ -1258,7 +1265,8 @@ impl DisplacementTool {
 
         section(ui, t!("disp.selection"));
         let sel_disps = selected_disp_faces(&state.doc);
-        let sel_faces = state.doc.selection().faces.len();
+        let sel_faces =
+            if object_targets_win(&state.doc) { sel_disps.len() } else { state.doc.selection().faces.len() };
         ui.label(RichText::new(tf!("disp.selected_faces", sel_disps.len(), sel_faces)).weak());
         ui.horizontal(|ui| {
             ui.label(t!("disp.selection_opacity"));
@@ -1934,7 +1942,9 @@ impl DisplacementTool {
             PanelAction::SelectAll => {
                 self.select_all(state);
             }
-            PanelAction::ClearFaces => state.doc.clear_face_selection(),
+            PanelAction::ClearFaces => {
+                clear_targets(state);
+            }
             PanelAction::SetPower(p) => {
                 self.set_power_with(state, p, self.keep_shape);
             }
@@ -2086,6 +2096,15 @@ impl Tool for DisplacementTool {
         self.hover_face = None;
     }
 
+    fn update(&mut self, state: &mut AppState, _ctx: &egui::Context) {
+        if self.stroke.is_none() && object_targets_win(&state.doc) {
+            let on = state.doc.records_selection();
+            state.doc.set_record_selection(false);
+            adopt_object_targets(state);
+            state.doc.set_record_selection(on);
+        }
+    }
+
     fn deactivate(&mut self, state: &mut AppState) {
         self.end_stroke(state);
         self.press = None;
@@ -2139,7 +2158,10 @@ impl Tool for DisplacementTool {
         if self.stroke.is_some() && !ctx.input(|i| i.pointer.primary_down()) {
             self.end_stroke(state);
         }
-        let pending = self.stroke.is_some() || self.press.is_some() || !state.doc.selection().faces.is_empty();
+        let pending = self.stroke.is_some()
+            || self.press.is_some()
+            || !state.doc.selection().faces.is_empty()
+            || object_targets_win(&state.doc);
         if pending && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
             return self.cancel(state);
         }
@@ -2152,7 +2174,12 @@ impl Tool for DisplacementTool {
         let accent = rgba(VIEW_ACCENT);
         let mut dim = accent;
         dim[3] = 0.55;
-        for f in &doc.selection().faces {
+        let shown: Vec<FaceRef> = if object_targets_win(doc) {
+            doc.selected_disp_targets()
+        } else {
+            doc.selection().faces.iter().copied().collect()
+        };
+        for f in &shown {
             let Some(node) = doc.scene().solid(f.solid) else { continue };
             if let Some(mesh) = node.disp_mesh(f.side) {
                 mesh_border(mesh, |a, b| line_on_top(out, a, b, accent));
@@ -2165,7 +2192,7 @@ impl Tool for DisplacementTool {
             }
         }
         if let Some((_, f)) = self.hover_face
-            && !doc.selection().faces.contains(&f)
+            && !shown.contains(&f)
             && let Some(mesh) = doc.scene().solid(f.solid).and_then(|n| n.disp_mesh(f.side))
         {
             let c = [1.0, 1.0, 1.0, 0.45];
@@ -2313,11 +2340,7 @@ impl Tool for DisplacementTool {
         if self.loops.sel.take().is_some() {
             return true;
         }
-        if !state.doc.selection().faces.is_empty() {
-            state.doc.clear_face_selection();
-            return true;
-        }
-        false
+        clear_targets(state)
     }
 
     fn set_option(&mut self, state: &mut AppState, key: &str, value: &str) -> bool {
@@ -2371,6 +2394,61 @@ pub(crate) fn center_normal(doc: &hp_editor::Document, face: FaceRef, point: DVe
         .enumerate()
         .min_by(|a, b| a.1.distance_squared(point).total_cmp(&b.1.distance_squared(point)))?;
     mesh.normals.get(k).copied().filter(|n| n.is_finite()).and_then(DVec3::try_normalize)
+}
+
+pub(crate) fn with_groups(state: &AppState, faces: Vec<FaceRef>) -> Vec<FaceRef> {
+    if state.select_mode() != hp_editor::SelectMode::Groups {
+        return faces;
+    }
+    let mut out: Vec<FaceRef> = Vec::with_capacity(faces.len());
+    let mut expanded: HashSet<hp_editor::Id> = HashSet::new();
+    let push = |out: &mut Vec<FaceRef>, f: FaceRef| {
+        if !out.contains(&f) {
+            out.push(f);
+        }
+    };
+    for f in faces {
+        if expanded.contains(&f.solid) {
+            continue;
+        }
+        let is_disp = state.doc.face_side(f).is_some_and(|s| s.disp.is_some());
+        let group = if is_disp { state.doc.group_disp_faces(f.solid) } else { Vec::new() };
+        if group.iter().any(|g| g.solid != f.solid) {
+            expanded.extend(group.iter().map(|g| g.solid));
+            for g in group {
+                push(&mut out, g);
+            }
+        } else {
+            push(&mut out, f);
+        }
+    }
+    out
+}
+
+pub(crate) fn object_targets_win(doc: &hp_editor::Document) -> bool {
+    doc.object_disp_targets_win()
+}
+
+pub(crate) fn adopt_object_targets(state: &mut AppState) {
+    if object_targets_win(&state.doc) {
+        let faces = state.doc.selected_object_disp_faces();
+        state.doc.select_faces(&faces, SelectOp::Replace);
+    }
+}
+
+pub(crate) fn clear_targets(state: &mut AppState) -> bool {
+    let mut changed = false;
+    let objs: Vec<ObjRef> =
+        state.doc.selected_object_disp_faces().iter().map(|f| state.doc.scene().object_of_solid(f.solid)).collect();
+    if !objs.is_empty() {
+        state.doc.deselect(&objs);
+        changed = true;
+    }
+    if !state.doc.selection().faces.is_empty() {
+        state.doc.clear_face_selection();
+        changed = true;
+    }
+    changed
 }
 
 fn solid_faces(state: &AppState, id: hp_editor::Id) -> Vec<FaceRef> {

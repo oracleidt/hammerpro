@@ -6,7 +6,7 @@ L'outil tuyau construit des tuyaux et des conduits en brushes (pas en props) : d
 
 ## L'ouvrir
 
-- **Outils > Outil tuyau**, ou son bouton dans la palette d'outils (groupe création, après l'outil route). Il n'a pas de raccourci par défaut.
+- **Outils > Outil actif > Outil tuyau**, ou son bouton dans la palette d'outils (groupe création, après l'outil route). Il n'a pas de raccourci par défaut.
 - Tout suit la **grille active** : voir [Grilles](grids.md). Le départ se cale sur la grille, les directions sont les axes de la grille (une grille tournée donne donc un tuyau tourné), les longueurs sont arrondies au pas de la grille le long du tuyau, et le rayon et le rayon de coude sont arrondis au plus petit pas de la grille. L'épaisseur de paroi, la taille et la longueur des colliers sont arrondies à un demi pas de grille. Sans magnétisme (le bouton **Magnétisme**), rien n'est arrondi.
 
 ## Dessiner un parcours

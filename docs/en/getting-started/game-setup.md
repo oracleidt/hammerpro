@@ -97,7 +97,7 @@ The **Hammer Pro bridge** is a small addon in `garrysmod/addons/hammerpro_bridge
 ## Reloading content
 
 - **Apply and reload content** (bottom of the settings window) mounts the game content again with the new settings.
-- **Tools > Reload content from disk** reloads the content and the entity definitions without changing settings, for example after adding files to an addon.
+- **Tools > Content and editors > Reload content from disk** reloads the content and the entity definitions without changing settings, for example after adding files to an addon.
 
 ## FAQ
 

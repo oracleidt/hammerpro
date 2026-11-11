@@ -8,9 +8,9 @@ A `sky_camera` sits in a small room (the 3D skybox) that the game draws around t
 
 | Action | Menu | Default shortcut |
 | --- | --- | --- |
-| **3D skybox** (preview) | **View > Display options > 3D skybox** | `Alt+V` |
-| **Sky preview** (2D sky) | **View > Display options > Sky preview** | none |
-| **3D skybox camera** | **View > 3D skybox camera** (shown when the map has two sky cameras or more) | none |
+| **3D skybox** (preview) | **View > Environment preview > 3D skybox** | `Alt+V` |
+| **Sky preview** (2D sky) | **View > Environment preview > Sky preview** | none |
+| **3D skybox camera** | **View > Environment preview > 3D skybox camera** (shown when the map has two sky cameras or more) | none |
 | **Use the previewed sky camera in game** | **View > Display options**, or the **3D skybox camera** submenu | none |
 
 ## Previewing the 3D skybox
@@ -25,7 +25,7 @@ A sky camera without a valid `scale` (a whole number of at least 1) uses 16, the
 
 A map may hold several sky cameras, each in its own room. Garry's Mod and the Source 2013 games show the 3D skybox of **the last sky_camera of the map** (the one spawned last). [Check for problems](check-problems.md) reminds you of it when a map has several.
 
-The **View > 3D skybox camera** submenu lists:
+The **View > Environment preview > 3D skybox camera** submenu lists:
 
 - **Like in game: <camera>**: the preview follows the camera the game uses (default);
 - every sky camera, named "name (#id, scale N)" or "sky_camera #id (scale N)", the one the game uses marked "used in game". Choosing one previews it (and turns the 3D skybox preview on);
@@ -80,7 +80,7 @@ The compile log tells you when a map with switches is compiled without the devel
 
 ## FAQ
 
-**My game shows the wrong 3D skybox.** The game uses the last `sky_camera` of the map. Preview the right one in **View > 3D skybox camera** and choose **Use the previewed sky camera in game**.
+**My game shows the wrong 3D skybox.** The game uses the last `sky_camera` of the map. Preview the right one in **View > Environment preview > 3D skybox camera** and choose **Use the previewed sky camera in game**.
 
 **The switch does nothing in game.** Its Lua is missing: turn on **Development addon** for test compiles, or release with **Build and save as content**. Also check that **Sky camera** matches the camera's **Name**.
 

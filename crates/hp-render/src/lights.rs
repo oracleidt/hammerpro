@@ -17,13 +17,19 @@ pub(crate) const KIND_POINT: f32 = 0.0;
 pub(crate) const KIND_SPOT: f32 = 1.0;
 pub(crate) const KIND_DIRECTIONAL: f32 = 2.0;
 
+pub(crate) const DLIGHT_FLAG: f32 = 2.0;
+
+pub(crate) fn is_dlight(light: &LightGpu) -> bool {
+    light.extra[1] > 1.5
+}
+
 const DEFAULT_ATTEN: [f32; 4] = [0.0, 0.0, 1.0e-4, 1.0e9];
 
 fn gpu_cone(f: Option<&LightFalloff>) -> [f32; 4] {
     match f {
         Some(f) => {
             let e = if f.exponent.is_finite() { f.exponent.clamp(0.0, 64.0) } else { 0.0 };
-            [e, 1.0, 0.0, 0.0]
+            [e, if f.dlight { DLIGHT_FLAG } else { 1.0 }, 0.0, 0.0]
         }
         None => [0.0; 4],
     }
@@ -641,6 +647,7 @@ mod tests {
             cutoff: 900.0,
             fade: [100.0, 600.0],
             exponent: 2.0,
+            dlight: false,
         };
         let mut l = point([0.0; 3], 1000.0);
         l.falloff = Some(f);
@@ -658,6 +665,7 @@ mod tests {
             cutoff: f32::NAN,
             fade: [5.0, 1.0],
             exponent: f32::NAN,
+            dlight: false,
         };
         assert_eq!(gpu_falloff(Some(&hostile)), (DEFAULT_ATTEN, 0.0, [0.0; 2]));
         assert_eq!(gpu_cone(Some(&hostile)), [0.0, 1.0, 0.0, 0.0]);

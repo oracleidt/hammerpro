@@ -8,11 +8,11 @@ action_list! { helpers_actions {
     ToggleConnections => "toggle_connections", View, ViewDisplay, None, Ready;
     ToggleEditorObjects => "toggle_editor_objects", View, ViewDisplay, None, Ready;
     TogglePointEntities => "toggle_point_entities", View, ViewDisplay, None, Ready;
-    ToggleEntityNames => "toggle_entity_names", View, ViewDisplay, None, Ready;
-    ToggleBrushCenters => "toggle_brush_centers", View, ViewDisplay, None, Ready;
+    ToggleEntityNames => "toggle_entity_names", View, ViewDisplay2d, None, Ready;
+    ToggleBrushCenters => "toggle_brush_centers", View, ViewDisplay2d, None, Ready;
     ToggleHelpersAll => "toggle_helpers_all", View, ViewDisplay, None, Ready;
-    ToggleRopes => "toggle_ropes", View, ViewDisplay, None, Ready;
-    SimulateRopes => "simulate_ropes", View, ViewDisplay, None, Ready;
+    ToggleRopes => "toggle_ropes", View, ViewEffectsObjects, None, Ready;
+    SimulateRopes => "simulate_ropes", View, ViewEffectsObjects, None, Ready;
 }}
 
 pub(super) const REPEATS: &[Action] = &[];

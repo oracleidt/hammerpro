@@ -17,6 +17,7 @@ pub(crate) struct State {
     compiling: bool,
     compile_started: Option<std::time::SystemTime>,
     vis_tried: bool,
+    dup_serial: u64,
 }
 
 const HANDLED: &[Action] = &[
@@ -90,6 +91,7 @@ impl Package for Health {
     }
 
     fn tick(&self, app: &mut HammerProApp, ctx: &egui::Context) {
+        watch_duplicates(app);
         let busy = HealthRuntime::tick(&mut app.state);
         if app.pkg.health.leak_report_wanted {
             report_leak(app);
@@ -130,6 +132,7 @@ impl Package for Health {
         HealthRuntime::map_loaded(&mut app.state);
         app.pkg.health.leak_report_wanted = false;
         app.pkg.health.vis_tried = false;
+        app.pkg.health.dup_serial = app.state.doc.last_step_serial().unwrap_or(0);
         app.pkg.health.portals.map_loaded();
     }
 
@@ -214,7 +217,54 @@ fn seal_opening(app: &mut HammerProApp) {
     }
 }
 
+fn watch_duplicates(app: &mut HammerProApp) {
+    let Some(serial) = app.state.doc.last_step_serial() else { return };
+    if serial <= app.pkg.health.dup_serial {
+        if serial < app.pkg.health.dup_serial && !app.state.doc.can_redo() {
+            app.pkg.health.dup_serial = serial;
+        }
+        return;
+    }
+    app.pkg.health.dup_serial = serial;
+    if !app.state.settings.health.warn_duplicates || app.state.doc.in_transaction() {
+        return;
+    }
+    let Some((_, created)) = app.state.doc.last_step_created() else { return };
+    if created.is_empty() {
+        return;
+    }
+    let live = app.state.doc.duplicates_of(&created);
+    if let Some(text) = duplicate_text(&live) {
+        app.state.notify(Severity::Warning, text);
+    }
+}
+
+fn duplicate_text(live: &hp_editor::duplicates::LiveDuplicates) -> Option<String> {
+    let text = match (live.brushes.as_slice(), live.entities.as_slice()) {
+        ([], []) => return None,
+        ([(copy, original)], []) => tf!("app.health.duplicate_brush", copy, original),
+        ([], [(copy, original)]) => tf!("app.health.duplicate_entity", copy, original),
+        _ => tf!("app.health.duplicate_many", live.count()),
+    };
+    Some(text)
+}
+
 const TR: TrTable = &[
+    (
+        "app.health.duplicate_brush",
+        "Brush {0} is an exact copy of brush {1} at the same place (Check for problems can delete it)",
+        "Le brush {0} est une copie exacte du brush {1} au même endroit (Vérifier les problèmes peut le supprimer)",
+    ),
+    (
+        "app.health.duplicate_entity",
+        "Entity {0} is stacked on the identical entity {1} (Check for problems can delete it)",
+        "L'entité {0} est empilée sur l'entité identique {1} (Vérifier les problèmes peut la supprimer)",
+    ),
+    (
+        "app.health.duplicate_many",
+        "{0} new objects are exact copies of objects at the same place (Check for problems can delete them)",
+        "{0} nouveaux objets sont des copies exactes d'objets au même endroit (Vérifier les problèmes peut les supprimer)",
+    ),
     (
         "app.health.seal_select_door",
         "Select a door (func_door, prop_door_rotating...) to seal its doorway",

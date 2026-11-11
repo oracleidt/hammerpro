@@ -25,7 +25,7 @@ Whatever folder you pick, the editor shows the exact `Lookup Filename` to type, 
 
 ## Opening the editor
 
-- **Tools > Color correction editor...** (action `color_correction_editor`) opens the window, and again closes it.
+- **Tools > Content and editors > Color correction editor...** (action `color_correction_editor`) opens the window, and again closes it.
 - MCP: `open_media_editor` with `editor` set to `color` (and a `path` to load a `.raw`).
 
 ## The editor
@@ -61,7 +61,7 @@ Pick the **Game or addon folder** (the root, with **Browse...**), the **Subfolde
 
 The quickest way is the **3D Color Correction** render mode (**View > 3D render mode**, `Alt+9`, the mode list of the toolbar, MCP `set_render_mode` with `color_corrected`): the textured view with the lookup tables of the map entities applied, without turning on the setting below. It is the textured mode plus the preview, so it follows the same rules.
 
-**View > Display options > Preview color_correction entities** (action `toggle_color_correction_preview`, setting `lab.color_correction_preview`, default off) applies the lookup tables of the map entities to the 3D views, from the editor camera or, in the [player view](player-view.md), from the player camera. It follows the game:
+**View > Environment preview > Preview color_correction entities** (action `toggle_color_correction_preview`, setting `lab.color_correction_preview`, default off) applies the lookup tables of the map entities to the 3D views, from the editor camera or, in the [player view](player-view.md), from the player camera. It follows the game:
 
 | Key value | Effect |
 |---|---|

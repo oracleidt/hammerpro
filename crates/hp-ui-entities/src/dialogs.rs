@@ -455,7 +455,7 @@ impl EntityDialogs {
                 go_to(state, &[id]);
             }
         });
-        ui.horizontal(|ui| {
+        hp_app::widgets::choice_row(ui, |ui| {
             ui.checkbox(&mut f.visible_only, t!("entities.visible_only"));
             ui.checkbox(&mut f.exact, t!("entities.exact_match")).on_hover_text(t!("entities.exact_match_tip"));
         });

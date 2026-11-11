@@ -18,7 +18,7 @@ Propper turns brushes (and displacements) into a real `.mdl` model with levels o
 
 ## Step 2: check the options
 
-Open **Tools > Prop options (Propper)...**. The LOD settings are shared with model import (FBX, OBJ, glTF); physics and collision choices apply to **Convert brushes to a prop**:
+Open **Tools > Placement and props > Prop options (Propper)...**. The LOD settings are shared with model import (FBX, OBJ, glTF); physics and collision choices apply to **Convert brushes to a prop**:
 
 | Option | What it does | Default |
 |---|---|---|
@@ -34,7 +34,7 @@ The window also reminds you how the model is built:
 ## Step 3: convert
 
 1. Select the brushes (and displacements) of the object.
-2. Choose **Tools > Convert brushes to a prop**.
+2. Choose **Tools > Placement and props > Convert brushes to a prop**.
 3. In the creation window, choose the model path/name and export folder. Use the Collision, Lighting and bounds, and Materials tabs to configure the collision pieces, `$illumposition`, `$bbox`, `$surfaceprop` and `$cdmaterials`. Adjust their handles in the integrated 3D preview, choose physics/`$staticprop` and LODs, then click **Create prop**.
 4. The console shows the preparation (blend textures, levels of detail, collision), then the `studiomdl` compile.
 5. When compilation and validation finish, the brushes are replaced by the chosen `prop_static`, `prop_dynamic` or `prop_physics`, in one undo step: `Ctrl+Z` brings the brushes back. If the map changed during compilation, the exported files are kept and the brushes remain unchanged.
@@ -48,7 +48,7 @@ The selected export content folder contains `models/<chosen path>.mdl` and conve
 To edit a prop as brushes (yours or any model of the game):
 
 1. Select one `prop_static`, `prop_dynamic` or `prop_physics` with a model.
-2. Choose **Tools > Convert prop to brushes...**. The window shows the model, its number of render triangles and its collision model.
+2. Choose **Tools > Placement and props > Convert prop to brushes...**. The window shows the model, its number of render triangles and its collision model.
 3. Choose the options and click **Convert** (`Enter`):
 
 | Option | Choices | Default |

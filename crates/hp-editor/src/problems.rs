@@ -412,6 +412,10 @@ impl Document {
                     Ok(true)
                 })
             }
+            crate::duplicates::CODE_BRUSH | crate::duplicates::CODE_CONTAINED | crate::duplicates::CODE_ENTITY => {
+                let objs = problem.objects.clone();
+                Ok(self.delete_redundant(&objs)? > 0)
+            }
             other => Err(EditError::Invalid(format!("no fix for problem '{other}'"))),
         }
     }

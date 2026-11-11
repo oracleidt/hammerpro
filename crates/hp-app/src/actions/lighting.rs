@@ -9,12 +9,12 @@ action_list! { lighting_actions {
     BakeLighting => "bake_lighting", Map, MapLighting, None, Ready;
     BakeAroundCamera => "bake_around_camera", Map, MapLighting, None, Ready;
     StopBake => "stop_bake", Map, MapLighting, None, Ready;
-    SelectTinyLightmapFaces => "select_tiny_lightmap_faces", Map, MapLighting, None, Ready;
+    SelectTinyLightmapFaces => "select_tiny_lightmap_faces", Map, MapLights, None, Ready;
     ShowLighting => "show_lighting", View, ViewPanels, None, Ready;
-    SoloSelectedLights => "solo_selected_lights", Map, MapLighting, None, Ready;
-    MuteSelectedLights => "mute_selected_lights", Map, MapLighting, None, Ready;
-    UnmuteAllLights => "unmute_all_lights", Map, MapLighting, None, Ready;
-    MeasureLightCosts => "measure_light_costs", Map, MapLighting, None, Ready;
+    SoloSelectedLights => "solo_selected_lights", Map, MapLights, None, Ready;
+    MuteSelectedLights => "mute_selected_lights", Map, MapLights, None, Ready;
+    UnmuteAllLights => "unmute_all_lights", Map, MapLights, None, Ready;
+    MeasureLightCosts => "measure_light_costs", Map, MapLights, None, Ready;
 }}
 
 pub(super) const REPEATS: &[Action] = &[];

@@ -8,13 +8,13 @@ Le nav mesh (fichier `.nav`) indique aux PNJ et aux bots où ils peuvent marcher
 
 | Action | Menu | Raccourci par défaut |
 | --- | --- | --- |
-| **Générer le nav mesh** | **Outils > Générer le nav mesh** | aucun |
-| **Charger un nav mesh...** | **Map > Charger un nav mesh...** | aucun |
-| **Afficher le nav mesh** | **Affichage > Options d'affichage > Afficher le nav mesh** | aucun |
+| **Générer le nav mesh** | **Outils > Placement et props > Générer le nav mesh** | aucun |
+| **Charger un nav mesh...** | **Map > Fuites et visibilité > Charger un nav mesh...** | aucun |
+| **Afficher le nav mesh** | **Affichage > Diagnostics > Afficher le nav mesh** | aucun |
 
 ## Génération
 
-**Outils > Générer le nav mesh** construit le maillage en arrière-plan et écrit `<map>.nav` à côté du VMF (là où l'affichage et **Construire et enregistrer en contenu** le cherchent). Enregistrez d'abord la map. À la fin, « Nav mesh généré : N zones en N ms » s'affiche et **Afficher le nav mesh** s'active.
+**Outils > Placement et props > Générer le nav mesh** construit le maillage en arrière-plan et écrit `<map>.nav` à côté du VMF (là où l'affichage et **Construire et enregistrer en contenu** le cherchent). Enregistrez d'abord la map. À la fin, « Nav mesh généré : N zones en N ms » s'affiche et **Afficher le nav mesh** s'active.
 
 Le fonctionnement suit celui de `nav_generate` de Valve :
 
@@ -28,7 +28,7 @@ Avertissements dans la console : les points d'apparition sans sol en dessous son
 
 ## Afficher un nav mesh
 
-**Afficher le nav mesh** dessine le maillage dans toutes les vues. Le fichier est celui choisi avec **Map > Charger un nav mesh...**, sinon le `.nav` à côté de la map, sinon celui du dossier `maps` du jeu (aussi à côté d'un BSP décompilé). Il est relu quand il change sur le disque (un fil en arrière-plan regarde les fichiers possibles toutes les 1,5 seconde et ne réveille l'éditeur que quand l'un d'eux change ou apparaît : afficher le nav mesh ne coûte aucun rafraîchissement tant que rien ne change). Hammer Pro lit les versions de nav 1 à 16 (Garry's Mod écrit la version 16).
+**Afficher le nav mesh** dessine le maillage dans toutes les vues. Le fichier est celui choisi avec **Map > Fuites et visibilité > Charger un nav mesh...**, sinon le `.nav` à côté de la map, sinon celui du dossier `maps` du jeu (aussi à côté d'un BSP décompilé). Il est relu quand il change sur le disque (un fil en arrière-plan regarde les fichiers possibles toutes les 1,5 seconde et ne réveille l'éditeur que quand l'un d'eux change ou apparaît : afficher le nav mesh ne coûte aucun rafraîchissement tant que rien ne change). Hammer Pro lit les versions de nav 1 à 16 (Garry's Mod écrit la version 16).
 
 | Dessin | Sens |
 | --- | --- |

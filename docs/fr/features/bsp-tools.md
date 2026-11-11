@@ -6,7 +6,7 @@ Des outils pour travailler avec les maps compilées et les archives : décompile
 
 ## Décompilateur de BSP
 
-**Fichier > Décompilateur de BSP...** demande un `.bsp` et reconstruit une map éditable, dans l'esprit de BSPSource. Le travail tourne en arrière-plan (*Décompilation de map...*) et le résultat s'ouvre dans un nouvel onglet (*map décompilée en N ms (brushes : N, entités : N). Enregistrez-la en VMF pour la garder.*).
+**Fichier > Importer > Décompilateur de BSP...** demande un `.bsp` et reconstruit une map éditable, dans l'esprit de BSPSource. Le travail tourne en arrière-plan (*Décompilation de map...*) et le résultat s'ouvre dans un nouvel onglet (*map décompilée en N ms (brushes : N, entités : N). Enregistrez-la en VMF pour la garder.*).
 
 Ce qui revient :
 
@@ -23,7 +23,7 @@ Le Décompilateur de BSP travaille sur un fichier `.bsp` que vous avez déjà. P
 
 ## Ouvrir une archive (inspecteur d'archives)
 
-**Fichier > Ouvrir une archive...** ouvre la fenêtre **Inspecteur d'archives** sur un `.bsp`, `.gma` ou `.vpk` (**Ouvrir...** dans la fenêtre en choisit un autre). Déposer un de ces fichiers sur la fenêtre de Hammer Pro l'y ouvre aussi.
+**Fichier > Importer > Ouvrir une archive...** ouvre la fenêtre **Inspecteur d'archives** sur un `.bsp`, `.gma` ou `.vpk` (**Ouvrir...** dans la fenêtre en choisit un autre). Déposer un de ces fichiers sur la fenêtre de Hammer Pro l'y ouvre aussi.
 
 L'en-tête décrit l'archive : pour un BSP sa **Version**, sa **Révision**, son nombre d'**Entités**, la taille du **Pakfile** et les **Lumps compressés** ; pour un GMA son **Titre**, son **Type**, ses **Étiquettes** et sa **Version** ; pour un VPK sa **Version**.
 
@@ -42,7 +42,7 @@ Sélectionnez une entrée pour la prévisualiser : fichiers texte (VMT, TXT, Lua
 
 ## Exporter en OBJ
 
-**Fichier > Exporter en OBJ...** écrit la géométrie des brushes et des displacements de la map, avec les coordonnées de texture, dans un fichier `.obj` et sa bibliothèque de matériaux `.mtl` à côté, pour les logiciels 3D (Blender, une visionneuse de modèles...). Les faces avec une texture `tools/` sont exclues. Pour faire l'aller-retour d'une sélection avec Blender et la retrouver dans la map, utilisez plutôt le [lien avec Blender](blender.md). Les coordonnées passent du Z vers le haut de Source au Y vers le haut attendu par la plupart des logiciels 3D. La taille des textures vient du contenu du jeu quand elle est connue (512 sinon). Les fichiers sont écrits de façon atomique.
+**Fichier > Exporter > Exporter en OBJ...** écrit la géométrie des brushes et des displacements de la map, avec les coordonnées de texture, dans un fichier `.obj` et sa bibliothèque de matériaux `.mtl` à côté, pour les logiciels 3D (Blender, une visionneuse de modèles...). Les faces avec une texture `tools/` sont exclues. Pour faire l'aller-retour d'une sélection avec Blender et la retrouver dans la map, utilisez plutôt le [lien avec Blender](blender.md). Les coordonnées passent du Z vers le haut de Source au Y vers le haut attendu par la plupart des logiciels 3D. La taille des textures vient du contenu du jeu quand elle est connue (512 sinon). Les fichiers sont écrits de façon atomique.
 
 ## Comparer deux maps
 

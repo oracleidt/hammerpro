@@ -779,6 +779,7 @@ pub struct LightFalloff {
     pub cutoff: f32,
     pub fade: [f32; 2],
     pub exponent: f32,
+    pub dlight: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

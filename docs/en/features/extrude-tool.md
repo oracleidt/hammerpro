@@ -6,7 +6,7 @@ The extrude / carve tool is an easier way to cut shapes than the clip tool: you 
 
 ## Opening it
 
-- **Tools > Extrude / carve tool**, the tool strip (pick icon, in the editing group next to the clipping tool), or `Shift+I`.
+- **Tools > Active tool > Extrude / carve tool**, the tool strip (pick icon, in the editing group next to the clipping tool), or `Shift+I`.
 - Pressing `Shift+I` again while the tool is active switches between **Carve** and **Extrude**, like `Tab`.
 
 ## Drawing the outline
@@ -68,7 +68,7 @@ Textures:
 
 ## Inset face
 
-**Tools > Inset face...** (also the **Inset face...** button of the options bar of this tool) works on the selected faces, selected with the texture tool or the face selection of the select tool. It moves the edges of each face inward by a distance and splits the brush into convex pieces: a frame of brushes around the face plus the inner block, so the result is still made of valid convex brushes. A box face inset gives 5 brushes (4 for the frame, 1 inner block) whose volumes add up to the original brush.
+**Tools > Brush operations > Inset face...** (also the **Inset face...** button of the options bar of this tool) works on the selected faces, selected with the texture tool or the face selection of the select tool. It moves the edges of each face inward by a distance and splits the brush into convex pieces: a frame of brushes around the face plus the inner block, so the result is still made of valid convex brushes. A box face inset gives 5 brushes (4 for the frame, 1 inner block) whose volumes add up to the original brush.
 
 The window asks for:
 
@@ -87,7 +87,7 @@ With several faces selected the window insets touching coplanar faces as one reg
 The interactive inset works like the Inset of Blender (`I`), on the same geometry code as **Inset face...**.
 
 1. Choose the faces. Select one or several faces with the face selection (the **Face** element of the selection tool, the texture tool, or with the vertex tool all the corners of the faces to inset). With no face selected, the face under the mouse is used: put the cursor over a face of a brush in the 3D view and press `I`.
-2. Put the mouse over the 3D view and press `I`. While a face is selected or hovered and a 3D view has the mouse, `I` starts the inset. You can also use **Tools > Interactive inset (I)**, the command palette, or the **Interactive inset (I)** button of the options bar of this tool: then move the mouse over a view to start.
+2. Put the mouse over the 3D view and press `I`. While a face is selected or hovered and a 3D view has the mouse, `I` starts the inset. You can also use **Tools > Brush operations > Interactive inset (I)**, the command palette, or the **Interactive inset (I)** button of the options bar of this tool: then move the mouse over a view to start.
 3. Move the mouse. The thickness is the distance from the face center to the cursor, relative to where the mouse was when you started: moving toward the center of the face makes the frame thicker, moving away brings it back to zero. A live preview shows the new inner face (yellow, filled) and the cut lines to the corners of the outline (green) in the 3D and the 2D views. The value is shown at the cursor and in the status bar, with the grid in use, the number of brushes the result will have, or the reason it cannot be applied (in red).
 4. The thickness and the depth follow the active grid by themselves (see [Grid](#grid-for-bevel-inset-and-extrude)). Hold `Ctrl` to force the grid even when the snap is off, `Alt` for a free value.
 5. Type a number to set an exact value (digits, `.` or `,`, and `-` for the depth). `Backspace` edits it, and emptying it gives the control back to the mouse.
@@ -111,7 +111,7 @@ The `I` key is the shortcut of the action `inset_interactive`, and it only start
 
 ## Interactive extrude (E)
 
-The interactive extrude pulls a face out of its brush as a new brush, like the Extrude of Blender (`E`) but making a separate convex brush, or pushes it into its brush to carve material out of it (negative distance). It is also on **Tools > Interactive extrude (E)**, the action `extrude_interactive`, and the command palette.
+The interactive extrude pulls a face out of its brush as a new brush, like the Extrude of Blender (`E`) but making a separate convex brush, or pushes it into its brush to carve material out of it (negative distance). It is also on **Tools > Brush operations > Interactive extrude (E)**, the action `extrude_interactive`, and the command palette.
 
 1. Choose the faces as for the inset: the selected faces, or the face under the mouse when none is selected. Several faces work together: each one becomes its own new brush, pulled along its own normal, in one undo step.
 2. Put the mouse over a 3D view and press `E` (the key is free in the keymap presets; in the selection tool `E` still starts the scale of the selected objects, but not while faces are selected). Move the mouse: moving the way the face normal points on screen makes the new brush higher (yellow preview of the top of each new brush); moving the other way past zero gives a negative distance, which carves: a red-orange preview shows the face moving into the brush and the label shows a negative distance. To dig a pocket in the middle of a face, use an inset with a negative depth or the carve mode of this tool.

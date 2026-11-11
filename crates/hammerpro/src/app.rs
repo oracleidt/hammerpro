@@ -43,6 +43,21 @@ pub(crate) struct RecoverPrompt {
 }
 
 const OPTIONS_ROW_HEIGHT: f32 = 30.0;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct OptionsRows {
+    first: f32,
+    pad: i8,
+}
+
+fn options_rows(block: f32, row: f32) -> OptionsRows {
+    let block = if block.is_finite() && block > 0.0 { block } else { row };
+    let first = if block < OPTIONS_ROW_HEIGHT { block } else { row.max(OPTIONS_FIRST_ROW) };
+    let pad = ((OPTIONS_ROW_HEIGHT - first) / 2.0).clamp(0.0, 8.0).round() as i8;
+    OptionsRows { first, pad }
+}
+
+const OPTIONS_FIRST_ROW: f32 = 24.0;
 const MAX_DROPPED_MAPS: usize = 16;
 const IDLE_GAP: f32 = 0.1;
 
@@ -683,16 +698,30 @@ impl HammerProApp {
             self.shell.toolbar(ui, &mut self.state);
             let i = tool_index(self.state.tool);
             ui.separator();
-            ui.horizontal(|ui| {
-                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-                ui.set_min_height(OPTIONS_ROW_HEIGHT);
-                ui.label(egui::RichText::new(t!(self.state.tool.label_key())).strong());
-                ui.separator();
-                if self.tools[i].wants_side_panel() {
-                    ui.label(egui::RichText::new(t!("app.options_in_dock")).weak());
-                } else {
-                    ui.vertical(|ui| self.tools[i].options_ui(ui, &mut self.state));
-                }
+            let memory = ui.scope_id().with("hp_options_block");
+            let block: f32 = ui.data(|d| d.get_temp(memory)).unwrap_or(ui.spacing().interact_size.y);
+            let rows = options_rows(block, ui.spacing().interact_size.y);
+            let margin = egui::Margin { top: rows.pad, bottom: rows.pad, ..Default::default() };
+            egui::Frame::NONE.inner_margin(margin).show(ui, |ui| {
+                ui.horizontal_top(|ui| {
+                    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                    ui.set_min_height(rows.first);
+                    let label = egui::RichText::new(t!(self.state.tool.label_key())).strong();
+                    let centered = egui::Layout::left_to_right(egui::Align::Center);
+                    ui.allocate_ui_with_layout(egui::vec2(0.0, rows.first), centered, |ui| ui.label(label));
+                    ui.separator();
+                    let height = if self.tools[i].wants_side_panel() {
+                        let hint = egui::RichText::new(t!("app.options_in_dock")).weak();
+                        ui.allocate_ui_with_layout(egui::vec2(0.0, rows.first), centered, |ui| ui.label(hint));
+                        rows.first
+                    } else {
+                        ui.vertical(|ui| self.tools[i].options_ui(ui, &mut self.state)).response.rect.height()
+                    };
+                    if (height - block).abs() > 0.5 {
+                        ui.data_mut(|d| d.insert_temp(memory, height));
+                        ui.ctx().request_repaint();
+                    }
+                });
             });
         });
 
@@ -849,7 +878,7 @@ impl HammerProApp {
                         }
                     });
                 }
-                if ui.small_button(t!("dock.detach")).on_hover_text(t!("dock.detach_tip")).clicked() {
+                if ui.button(t!("dock.detach")).on_hover_text(t!("dock.detach_tip")).clicked() {
                     self.state.settings.ui.floating_panels.insert(panel_key(self.state.ui.right_tab));
                     self.state.settings_dirty = true;
                 }
@@ -1919,6 +1948,18 @@ Relancer Hammer Pro maintenant ? Il rouvre vos maps, avec les modifications sauv
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn options_bar_centers_the_tool_name_on_the_first_row() {
+        use super::{OPTIONS_FIRST_ROW, OPTIONS_ROW_HEIGHT, OptionsRows, options_rows};
+        assert_eq!(options_rows(22.0, 22.0), OptionsRows { first: 22.0, pad: 4 });
+        assert_eq!(options_rows(26.0, 22.0), OptionsRows { first: 26.0, pad: 2 });
+        let two = options_rows(50.0, 22.0);
+        assert_eq!(two.first, OPTIONS_FIRST_ROW);
+        assert_eq!(f32::from(two.pad) * 2.0 + two.first, OPTIONS_ROW_HEIGHT);
+        assert_eq!(options_rows(f32::NAN, 22.0), OptionsRows { first: 22.0, pad: 4 });
+        assert_eq!(options_rows(0.0, 22.0).first, 22.0);
+    }
+
     #[test]
     fn binary_table_is_clean() {
         assert!(hp_app::i18n::lint_table(super::TR).is_empty());

@@ -13,13 +13,13 @@ pub(super) fn page(ui: &mut Ui, state: &mut AppState) {
     let current_material = state.current_material.clone();
     let e = &mut state.settings.edit;
     heading(ui, t!("shell.edit.new_objects"));
-    egui::Grid::new("hp_shell_edit_defaults").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
+    super::form_grid(ui, "hp_shell_edit_defaults").show(ui, |ui| {
         ui.label(t!("shell.edit.default_material"));
         ui.horizontal(|ui| {
             changed |= ui
                 .add(
                     egui::TextEdit::singleline(&mut e.default_material)
-                        .desired_width(260.0)
+                        .desired_width(super::field_width(ui, 260.0, 100.0))
                         .font(egui::TextStyle::Monospace),
                 )
                 .changed();
@@ -85,7 +85,7 @@ pub(super) fn page(ui: &mut Ui, state: &mut AppState) {
         ui.end_row();
     });
     heading(ui, t!("shell.edit.behavior"));
-    egui::Grid::new("hp_shell_edit_behavior").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
+    super::form_grid(ui, "hp_shell_edit_behavior").show(ui, |ui| {
         ui.label(t!("shell.edit.undo_levels"));
         if ui.add(egui::DragValue::new(&mut e.undo_levels).range(10..=10000).speed(5.0)).changed() {
             changed = true;

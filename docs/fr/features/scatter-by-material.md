@@ -6,7 +6,7 @@ Le semis par matériau place des props (herbe, rochers, buissons...) sur les sur
 
 ## L'ouvrir
 
-**Outils > Semis par matériau...**, ou l'action `scatter_by_material` (palette de commandes, MCP `run_action`). C'est une fenêtre ; elle ne change pas l'outil actif.
+**Outils > Placement et props > Semis par matériau...**, ou l'action `scatter_by_material` (palette de commandes, MCP `run_action`). C'est une fenêtre ; elle ne change pas l'outil actif.
 
 ## L'utiliser
 

@@ -6,7 +6,7 @@ L'outil courbe construit des murs courbes, des rambardes, des bordures, des tuya
 
 ## L'ouvrir
 
-- **Outils > Outil courbe**, la palette d'outils (groupe création, à côté de l'outil polygone), ou `Maj+U`.
+- **Outils > Outil actif > Outil courbe**, la palette d'outils (groupe création, à côté de l'outil polygone), ou `Maj+U`.
 - L'outil dessine dans les vues 2D seulement ; les clics dans la vue 3D sont ignorés. La vue 3D montre l'aperçu en direct.
 
 ## Dessiner la courbe
@@ -71,7 +71,7 @@ Le roulis fait tourner la section autour du milieu de la route, donc les morceau
 Chaque brush créé par l'outil courbe se souvient de sa courbe : les points, la vue, la profondeur et toutes les options sont stockés dans le bloc `editor` des brushes du VMF, sous forme de clés `hammerpro_curve`. Hammer et Hammer++ ignorent ces clés et les conservent à l'enregistrement, la carte reste donc valide pour eux. Les copies de la courbe entière continuent de fonctionner. Un brush coupé ou déplacé à la main garde les données, mais **Modifier la courbe** remet la forme de la courbe.
 
 1. Sélectionnez un brush de la courbe (ou son entité brush).
-2. **Outils > Modifier la courbe**, ou la palette de commandes. L'outil courbe s'ouvre sur les points enregistrés, à l'étape d'ajustement, avec les options enregistrées.
+2. **Outils > Courbes et routes > Modifier la courbe**, ou la palette de commandes. L'outil courbe s'ouvre sur les points enregistrés, à l'étape d'ajustement, avec les options enregistrées.
 3. Changez ce que vous voulez :
    - **Faites glisser un point** pour le déplacer.
    - **Maj+clic** insère un point sur la courbe, entre les deux points les plus proches.

@@ -72,7 +72,7 @@ impl Default for RenderDisplay {
             collision_only: false,
             hidden_tools: 0,
             normal_maps: true,
-            cubemaps: true,
+            cubemaps: false,
             cubemaps_auto: true,
             light_hdr: true,
             projected_textures: true,
@@ -284,9 +284,10 @@ mod tests {
         assert!(d.normal_maps);
         s.render.normal_maps = false;
         assert!(!RenderDisplay::from_settings(&s, &rt).normal_maps);
-        assert!(d.cubemaps && d.cubemaps_auto);
+        assert!(!d.cubemaps && d.cubemaps_auto);
+        s.render.cubemaps = true;
+        assert!(RenderDisplay::from_settings(&s, &rt).cubemaps);
         s.render.cubemaps = false;
-        assert!(!RenderDisplay::from_settings(&s, &rt).cubemaps);
         assert!(d.fog_volumes && d.fog_volume_texture && d.fish && d.fish_swim);
         s.render.fog_volume_texture = false;
         s.render.fish_swim = false;

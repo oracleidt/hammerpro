@@ -96,6 +96,16 @@ pub fn pan_3d(cam: &mut Camera3d, delta: DVec2, depth: f64, view_height_points: 
     cam.pos += -cam.right() * delta.x * units_per_point + cam.up() * delta.y * units_per_point;
 }
 
+pub fn orbit_3d(cam: &mut Camera3d, pivot: DVec3, yaw: f64, pitch: f64) {
+    if !pivot.is_finite() || !yaw.is_finite() || !pitch.is_finite() {
+        return;
+    }
+    let distance = (cam.pos - pivot).length();
+    cam.yaw_deg = wrap_degrees(cam.yaw_deg + yaw);
+    cam.pitch_deg = (cam.pitch_deg + pitch).clamp(-PITCH_LIMIT, PITCH_LIMIT);
+    cam.pos = pivot - cam.forward() * distance;
+}
+
 pub fn pan_2d(cam: &mut Camera2d, delta: DVec2) {
     if !delta.is_finite() || cam.zoom.is_nan() || cam.zoom <= 0.0 {
         return;
@@ -141,6 +151,24 @@ pub fn dolly_step(camera_speed: f64, fast: bool, fast_multiplier: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn orbit_keeps_the_pivot_in_front() {
+        let mut cam =
+            Camera3d { pos: DVec3::new(0.0, -500.0, 0.0), yaw_deg: 90.0, pitch_deg: 0.0, ..Camera3d::default() };
+        let pivot = DVec3::ZERO;
+        orbit_3d(&mut cam, pivot, 90.0, 30.0);
+        assert!(((cam.pos - pivot).length() - 500.0).abs() < 1e-6);
+        let ahead = cam.pos + cam.forward() * 500.0;
+        assert!(ahead.length() < 1e-6, "{ahead:?}");
+        assert!(cam.pos.z < 0.0, "looking up from below");
+        orbit_3d(&mut cam, pivot, 0.0, 500.0);
+        assert_eq!(cam.pitch_deg, PITCH_LIMIT);
+        let before = cam;
+        orbit_3d(&mut cam, DVec3::NAN, 1.0, 1.0);
+        orbit_3d(&mut cam, pivot, f64::NAN, 1.0);
+        assert_eq!(cam, before);
+    }
 
     #[test]
     fn motion_after_rest_starts_with_one_frame_step() {

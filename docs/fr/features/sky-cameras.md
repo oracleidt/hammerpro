@@ -8,9 +8,9 @@ Une `sky_camera` se trouve dans une petite pièce (la skybox 3D) que le jeu dess
 
 | Action | Menu | Raccourci par défaut |
 | --- | --- | --- |
-| **Skybox 3D** (aperçu) | **Affichage > Options d'affichage > Skybox 3D** | `Alt+V` |
-| **Aperçu du ciel** (ciel 2D) | **Affichage > Options d'affichage > Aperçu du ciel** | aucun |
-| **Caméra de la skybox 3D** | **Affichage > Caméra de la skybox 3D** (visible quand la map a au moins deux sky_camera) | aucun |
+| **Skybox 3D** (aperçu) | **Affichage > Aperçu de l'environnement > Skybox 3D** | `Alt+V` |
+| **Aperçu du ciel** (ciel 2D) | **Affichage > Aperçu de l'environnement > Aperçu du ciel** | aucun |
+| **Caméra de la skybox 3D** | **Affichage > Aperçu de l'environnement > Caméra de la skybox 3D** (visible quand la map a au moins deux sky_camera) | aucun |
 | **Utiliser en jeu la sky_camera affichée** | **Affichage > Options d'affichage**, ou le sous-menu **Caméra de la skybox 3D** | aucun |
 
 ## Aperçu de la skybox 3D
@@ -25,7 +25,7 @@ Une sky_camera sans `scale` valide (un nombre entier d'au moins 1) utilise 16, l
 
 Une map peut contenir plusieurs sky_camera, chacune dans sa pièce. Garry's Mod et les jeux Source 2013 affichent la skybox 3D de **la dernière sky_camera de la map** (celle créée en dernier). [Vérifier les problèmes](check-problems.md) vous le rappelle quand la map en a plusieurs.
 
-Le sous-menu **Affichage > Caméra de la skybox 3D** liste :
+Le sous-menu **Affichage > Aperçu de l'environnement > Caméra de la skybox 3D** liste :
 
 - **Comme en jeu : <caméra>** : l'aperçu suit la caméra que le jeu utilise (par défaut) ;
 - chaque sky_camera, nommée « nom (n°id, échelle N) » ou « sky_camera n°id (échelle N) », celle du jeu marquée « utilisée en jeu ». En choisir une l'affiche (et active l'aperçu de la skybox 3D) ;
@@ -80,7 +80,7 @@ Le journal de compilation vous prévient quand une map avec des changements de s
 
 ## FAQ
 
-**Le jeu affiche la mauvaise skybox 3D.** Le jeu utilise la dernière `sky_camera` de la map. Affichez la bonne dans **Affichage > Caméra de la skybox 3D** et choisissez **Utiliser en jeu la sky_camera affichée**.
+**Le jeu affiche la mauvaise skybox 3D.** Le jeu utilise la dernière `sky_camera` de la map. Affichez la bonne dans **Affichage > Aperçu de l'environnement > Caméra de la skybox 3D** et choisissez **Utiliser en jeu la sky_camera affichée**.
 
 **Le changement de skybox ne fait rien en jeu.** Son Lua manque : activez **Addon de développement** pour les compilations de test, ou publiez avec **Construire et enregistrer en contenu**. Vérifiez aussi que **Sky camera** correspond au **Name** de la caméra.
 

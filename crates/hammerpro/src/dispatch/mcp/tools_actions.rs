@@ -64,7 +64,7 @@ const SPECS: &[ToolSpec] = &[
         name: "list_actions",
         title: "List the editor actions",
         description: "Every command of Hammer Pro (menus, toolbars, shortcuts, command palette): id, English \
-            label, menu, shortcut, whether it is enabled now and checked (toggles), and whether run_action needs \
+            label, menu, menu_path (where it sits in the menu bar, e.g. \"File > Import\"), shortcut, whether it is enabled now and checked (toggles), and whether run_action needs \
             confirm. Filter by menu or text.",
         kind: ToolKind::Read,
         schema: || {
@@ -149,6 +149,7 @@ fn list_actions(state: &AppState, v: &Value) -> R<ToolResult> {
                 "id": act.id(),
                 "label": tr_in(&act.label_key(), Lang::En),
                 "menu": category_name(act.category()),
+                "menu_path": hp_ui_shell::menu::menu_path_text(act, Some(Lang::En)),
                 "shortcut": state.keys.shortcut(act).map(|sc| hp_app::actions::format_shortcut(&sc)),
                 "enabled": act.enabled(state),
                 "checked": check_json(act.check(state)),
@@ -278,6 +279,11 @@ mod tests {
         assert_eq!(save["label"], tr_in("action.save_map", Lang::En));
         assert_eq!(save["menu"], "file");
         assert_eq!(save["shortcut"], "Ctrl+S");
+        assert_eq!(save["menu_path"], "File");
+        let obj = v["actions"].as_array().unwrap().iter().find(|a| a["id"] == "export_obj").unwrap();
+        assert_eq!(obj["menu_path"], "File > Export");
+        let flip = v["actions"].as_array().unwrap().iter().find(|a| a["id"] == "flip_x").unwrap();
+        assert_eq!(flip["menu_path"], "Tools > Arrange");
         let exit = v["actions"].as_array().unwrap().iter().find(|a| a["id"] == "exit").unwrap();
         assert!(exit["needs_confirm"].is_string());
         for (id, _) in NEEDS_CONFIRM {

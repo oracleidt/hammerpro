@@ -20,13 +20,13 @@ Use **File > Save as new version...** or save a copy under a new name (for examp
 
 ## Step 3: choose the target game
 
-1. Open the copy and press `Ctrl+F9` (**File > Compile and run...**).
+1. Open the copy and press `Ctrl+F9` (**File > Compile > Compile and run...**).
 2. In the **Target game** row at the top, pick the game. Hammer Pro mounts its content and loads its FGDs.
 3. The line under the row tells what compiling for it means: its BSP version and static prop version, **Valve's limits** (Garry's Mod has raised limits), and **Not installed** when the game is missing (then the map compiles with the content mounted now, and is neither copied to a game nor played).
 
 ## Step 4: fix what does not exist in the new game
 
-- **Content**: textures and models of Garry's Mod or of your addons may not exist in the new game. Open **Map > Map assets** and filter **Missing**, then replace them with **Tools > Find and replace textures...** (`Ctrl+Shift+R`) or by editing the entities.
+- **Content**: textures and models of Garry's Mod or of your addons may not exist in the new game. Open **Map > Map assets** and filter **Missing**, then replace them with **Tools > Textures > Find and replace textures...** (`Ctrl+Shift+R`) or by editing the entities.
 - **Entities**: some classes are Garry's Mod only. Run **Map > Check for problems** (`Alt+P`): unknown classes and missing targets are listed with their objects.
 - **Garry's Mod features**: addons, the Workshop, `mount.cfg`, the Lua skybox switch (`point_hammerpro_skybox`), testing in game with the bridge addon and Workshop publishing are turned off for other games. **Build and save as content** is Garry's Mod only: compile the other games from the compile window (`F9`).
 - **Limits**: the map now has Valve's limits. Check **Map > Map information** and the compile log.

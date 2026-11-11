@@ -81,13 +81,13 @@ pub const TR: TrTable = &[
     ),
     (
         "problems.disp_not_quad_one",
-        "{0} displacement is on a face without exactly 4 corners",
-        "{0} displacement est sur une face qui n'a pas exactement 4 coins",
+        "{0} displacement cannot be built (its face does not have exactly 4 corners or its power is not 1 to 4): the game drops the whole brush",
+        "{0} displacement ne peut pas être construit (sa face n'a pas exactement 4 coins ou sa puissance n'est pas de 1 à 4) : le jeu supprime toute la brush",
     ),
     (
         "problems.disp_not_quad",
-        "{0} displacements are on faces without exactly 4 corners",
-        "{0} displacements sont sur des faces qui n'ont pas exactement 4 coins",
+        "{0} displacements cannot be built (their face does not have exactly 4 corners or their power is not 1 to 4): the game drops their whole brush",
+        "{0} displacements ne peuvent pas être construits (leur face n'a pas exactement 4 coins ou leur puissance n'est pas de 1 à 4) : le jeu supprime toute leur brush",
     ),
     (
         "problems.no_player_spawn",
@@ -515,8 +515,8 @@ pub const TR: TrTable = &[
     ),
     (
         "problems.sky_camera_multiple",
-        "{0} sky_camera entities: the game shows the 3D skybox of the last one in the map (#{1}). Pick another one in View > 3D skybox camera, or switch in game with point_hammerpro_skybox",
-        "{0} entités sky_camera : le jeu affiche la skybox 3D de la dernière de la carte (n°{1}). Choisissez-en une autre dans Affichage > Caméra de la skybox 3D, ou changez en jeu avec point_hammerpro_skybox",
+        "{0} sky_camera entities: the game shows the 3D skybox of the last one in the map (#{1}). Pick another one in View > Environment preview > 3D skybox camera, or switch in game with point_hammerpro_skybox",
+        "{0} entités sky_camera : le jeu affiche la skybox 3D de la dernière de la carte (n°{1}). Choisissez-en une autre dans Affichage > Aperçu de l'environnement > Caméra de la skybox 3D, ou changez en jeu avec point_hammerpro_skybox",
     ),
     (
         "problems.sky_camera_bad_scale",
@@ -577,4 +577,42 @@ pub const TR: TrTable = &[
     ("problems.detail.converted", "{0} brushes converted to func_detail", "{0} brushes convertis en func_detail"),
     ("problems.detail.list", "List", "Liste"),
     ("problems.detail.list_tip", "Show the suggestions one by one", "Afficher les suggestions une par une"),
+    (
+        "problems.duplicate_brush_one",
+        "{0} brush is an exact copy of another brush (same shape and entity, any texture)",
+        "{0} brush est une copie exacte d'un autre brush (même forme et même entité, texture quelconque)",
+    ),
+    (
+        "problems.duplicate_brush",
+        "{0} brushes are exact copies of other brushes (same shape and entity, any texture)",
+        "{0} brushes sont des copies exactes d'autres brushes (même forme et même entité, texture quelconque)",
+    ),
+    (
+        "problems.contained_brush_one",
+        "{0} brush is fully inside another solid brush of the same entity",
+        "{0} brush est entièrement dans un autre brush plein de la même entité",
+    ),
+    (
+        "problems.contained_brush",
+        "{0} brushes are fully inside other solid brushes of the same entity",
+        "{0} brushes sont entièrement dans d'autres brushes pleins de la même entité",
+    ),
+    (
+        "problems.duplicate_entity_one",
+        "{0} entity is stacked on an identical entity (same class, model, angles and origin)",
+        "{0} entité est empilée sur une entité identique (même classe, modèle, angles et origine)",
+    ),
+    (
+        "problems.duplicate_entity",
+        "{0} entities are stacked on identical entities (same class, model, angles and origin)",
+        "{0} entités sont empilées sur des entités identiques (même classe, modèle, angles et origine)",
+    ),
+    (
+        "problems.fix.redundant",
+        "Delete the redundant copies and keep the originals (one undo step)",
+        "Supprimer les copies redondantes et garder les originaux (une seule étape d'annulation)",
+    ),
+    ("problems.kind.duplicate_brush", "duplicate brush", "brush en double"),
+    ("problems.kind.contained_brush", "brush inside a brush", "brush dans un brush"),
+    ("problems.kind.duplicate_entity", "stacked duplicate entity", "entité empilée en double"),
 ];

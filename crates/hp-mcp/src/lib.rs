@@ -62,4 +62,9 @@ pub const INSTRUCTIONS: &str = "Hammer Pro is a Source engine (Garry's Mod) map 
      open in a Hammer Pro window: coordinates are Source units (Z up), materials are names like \
      \"dev/dev_measuregeneric01b\" (search_materials), every edit is one undo step labelled \"MCP: <tool>\" that the \
      user can undo. Start with get_map_info. Use screenshot_view to look at the result. Object ids are the VMF ids; \
-     when an entity and a solid share an id, ids names the entity: use solid_ids for the solid.";
+     when an entity and a solid share an id, ids names the entity: use solid_ids for the solid. To place things \
+     precisely, never guess from bounding boxes or origins: get_object_shape (or get_model_info) gives the real \
+     size, footprint and how high the origin sits above the lowest point of any object or model, render_shape \
+     draws it with dimensions, place_object and drop_to_surface put the real mesh exactly on, against or next to \
+     brushes, displacements and other props (no gap, no overlap), check_placement and find_floating_objects \
+     verify (floating, sunk, interpenetrating).";

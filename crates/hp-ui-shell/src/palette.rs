@@ -37,7 +37,8 @@ pub fn build_entries(state: &AppState) -> Vec<Entry> {
         let english = tr_in(&key, Lang::En);
         let detail = match action.tool() {
             Some(_) => t!("shell.palette.tool").to_owned(),
-            None => category_label(action.category()).to_owned(),
+            None => crate::menu::menu_path_text(action, None)
+                .unwrap_or_else(|| category_label(action.category()).to_owned()),
         };
         out.push(Entry {
             hay: [fold(&label), fold(english), fold(&action.id().replace('_', " "))],

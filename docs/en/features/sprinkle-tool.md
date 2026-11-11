@@ -6,7 +6,7 @@ The sprinkle tool paints entities (props, plants, rocks, lights...) on the surfa
 
 ## Opening it
 
-- **Tools > Sprinkle tool**, or its button in the tool palette. It has no default shortcut (you can give it one in **Settings > Keyboard**, see [Keyboard shortcuts](keyboard-shortcuts.md)).
+- **Tools > Active tool > Sprinkle tool**, or its button in the tool palette. It has no default shortcut (you can give it one in **Settings > Keyboard**, see [Keyboard shortcuts](keyboard-shortcuts.md)).
 - Choose a sprinkle type in the **Type:** list of the options bar. Without a type, painting shows **Choose a sprinkle type first**. Without any definition, the status bar tells you which folder to put `.txt` files in.
 
 ## Painting

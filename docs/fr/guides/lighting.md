@@ -15,7 +15,7 @@ Placez des entités de lumière avec l'outil entité :
 | `light_environment` | Le soleil et la lumière du ciel, à travers les faces texturées en ciel. Une seule par map. |
 | `light_dynamic` | Une lumière calculée par le jeu en temps réel (non précalculée). |
 
-Les textures lumineuses (matériaux qui émettent de la lumière, listés dans `lights.rad`) éclairent aussi la map à la compilation. La couleur et l'intensité d'une lumière sont dans sa clé `_light` : sélectionnez la lumière et appuyez sur `C` (**Édition > Modifier la couleur...**) pour choisir la couleur.
+Les textures lumineuses (matériaux qui émettent de la lumière, listés dans `lights.rad`) éclairent aussi la map à la compilation. La couleur et l'intensité d'une lumière sont dans sa clé `_light` : sélectionnez la lumière et appuyez sur `C` (**Édition > Couleurs d'affichage > Modifier la couleur...**) pour choisir la couleur.
 
 ## Étape 2 : aperçu en temps réel (mode éclairé)
 
@@ -43,7 +43,7 @@ L'échelle de lightmap d'une face est son nombre d'unités par luxel : plus bas 
 
 ## Étape 5 : compiler en LDR et HDR
 
-Dans **Fichier > Compiler et lancer...** (`Ctrl+F9`), la ligne **Plage dynamique** règle ce que calcule l'éclairage :
+Dans **Fichier > Compiler > Compiler et lancer...** (`Ctrl+F9`), la ligne **Plage dynamique** règle ce que calcule l'éclairage :
 
 | Choix | Effet |
 |---|---|

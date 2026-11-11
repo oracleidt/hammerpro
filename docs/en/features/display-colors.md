@@ -10,9 +10,9 @@ Give any brush or entity its own color in the 2D views, so the parts of a busy m
 | --- | --- |
 | **Properties panel** (right dock), **Display color** section | Shown for every selection: world brushes (under **Tie to entity**), brush entities, point entities, groups and mixed selections (above **Editor comments**). |
 | Right click in a 2D or 3D view > **Set display color...** | A small **Display color** window for the current selection. |
-| **Edit > Set display color...** (`set_display_color`) | The same window. |
-| **Edit > Random display colors** (`random_display_colors`) | A different color for each selected object, at once. |
-| **Edit > Reset display colors** (`reset_display_colors`) | The selected objects get their default look back. |
+| **Edit > Display colors > Set display color...** (`set_display_color`) | The same window. |
+| **Edit > Display colors > Random display colors** (`random_display_colors`) | A different color for each selected object, at once. |
+| **Edit > Display colors > Reset display colors** (`reset_display_colors`) | The selected objects get their default look back. |
 | **View > Display options > Object colors in 2D** (`toggle_object_colors_2d`) | Shows the display colors in the 2D views, or the classic look. |
 | **View > Display options > Object colors in 3D wireframe and flat** (`toggle_object_colors_3d`) | Also uses them in the 3D view in wireframe and flat mode. |
 

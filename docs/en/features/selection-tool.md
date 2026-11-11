@@ -12,7 +12,7 @@ Toggle **View > Display options > Show brush centers in 2D**, or **Settings > He
 
 ## Opening it
 
-- Shortcut `Shift+S`, or **Tools > Selection tool**, or its button in the tool palette.
+- Shortcut `Shift+S`, or **Tools > Active tool > Selection tool**, or its button in the tool palette.
 - While it is active, its options bar shows the box mode, the handle mode, the 3D stretch handles, the gizmo, the pivot and the "select by" field.
 
 ## Selecting
@@ -34,13 +34,13 @@ A plain click on the gizmo or on a stretch arrow does not select (it only starts
 
 ### Box selection (2D views)
 
-Drag on empty space in a 2D view to draw a box. Like Hammer++, the box stays after you release the mouse so you can adjust it before anything is selected:
+Drag on empty space in a 2D view to draw a box. By default the selection happens as soon as you release the mouse. Turn on **Adjustable box selection (Enter to confirm)** in **Tools > Options > Selection** (or the **Enter** checkbox of the options bar) to work like Hammer++: the box stays after you release the mouse so you can adjust it before anything is selected:
 
 - Drag one of its 8 handles to resize it, or drag inside it to move it (both snap to the grid, `Alt`: no snap).
 - Press `Enter` to select what the box takes, `Ctrl+Enter` to add it to the selection.
 - Press `Esc` to drop the box. A click outside it or a new drag also drops it.
 
-Turn off **Enter** in the options bar (or **Enter confirms box selection** in the settings) to select as soon as you release, the old behavior.
+This adjustable box is off by default since 2.0.3 (2.0.2 turned it on for everyone; upgrading turns it off once, turn it back on if you liked it).
 
 What the box takes:
 
@@ -192,7 +192,7 @@ With nothing selected, the arrow keys scroll the 2D view instead (see [Camera an
 
 ## Edge loops
 
-The selection tool picks whole brushes, not edges, so it has no edge mode. The edge loop and edge ring commands live in the [vertex tool](vertex-tool.md#edge-loops-and-rings) (`Alt`+click an edge) and in the [bevel tool](bevel-tool.md) (`Alt`+click an edge to pick its loop for a bevel). To work on a loop from here, select the brushes that form it, press `Shift+V` for the vertex tool and `Alt`+click an edge. The commands of **Edit > Edge selection** and **Tools > Slide edge loop...** work in the vertex tool.
+The selection tool picks whole brushes, not edges, so it has no edge mode. The edge loop and edge ring commands live in the [vertex tool](vertex-tool.md#edge-loops-and-rings) (`Alt`+click an edge) and in the [bevel tool](bevel-tool.md) (`Alt`+click an edge to pick its loop for a bevel). To work on a loop from here, select the brushes that form it, press `Shift+V` for the vertex tool and `Alt`+click an edge. The commands of **Edit > Selection element** and **Tools > Vertices and edges > Slide edge loop...** work in the vertex tool.
 
 ## Viewport context menu
 
@@ -204,7 +204,7 @@ With a selection, a right click in a view adds at the top: **Move to floor**, **
 |---|---|---|
 | **Pick:** Object / Vertex / Edge / Face | What a click in a 3D view selects (see above) | Object |
 | **Box:** Touching / Inside / Centers | What a box selection takes (see above) | Touching |
-| **Enter** | The box waits for `Enter` and can be resized and moved first (saved in the settings) | On |
+| **Enter** | The box waits for `Enter` and can be resized and moved first (saved in the settings) | Off |
 | **Handles:** Scale / Rotate / Skew | What the 2D handles do | Scale |
 | **3D stretch** | Arrows on the faces of the selected brushes in the 3D view (saved in the settings) | On |
 | **Gizmo:** Show | Shows the transform gizmo in the 3D view | On |
@@ -226,7 +226,7 @@ In **Tools > Options...**, page **Selection** (`[selection]` in `settings.toml`)
 | **Handle size** | Size of the 2D handles, 4 to 16 points | 7 |
 | **Keep visgroups when cloning** | Copies made by clone drags and Shift+arrows stay in the visgroups of their originals | On |
 | **Shift+arrows clone** | Shift+arrows copies the selection one grid step away, Alt+arrows then nudges by one unit | On |
-| **Enter confirms box selection** | Same as the **Enter** checkbox of the options bar | On |
+| **Adjustable box selection (Enter to confirm)** | Same as the **Enter** checkbox of the options bar | Off |
 | **3D stretch handles** | Same as the options bar checkbox | On |
 | **Gizmo in local space** | Same as the Local button | Off |
 

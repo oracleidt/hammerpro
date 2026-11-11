@@ -12,7 +12,7 @@ The **Settings** window holds every option of Hammer Pro, sorted in pages. Chang
 
 ## The window
 
-The list of pages is on the left, grouped in sections: **Application** (General, Updates, Storage, Keyboard), **Game and content** (Game, Entities and browsers), **Views and rendering** (Viewports, Helpers, Rendering, Lighting, Nav mesh and particles), **Editing** (Editing, Selection, Brushes, Vertices and displacements, Instances, Cordons and visgroups, Prefabs), **Compile and check** (Compile, Map health) and **Integrations** (Discord, Blender, VTF editor, MCP). The selected page is on the right.
+The list of pages is on the left, grouped in sections: **Application** (General, Updates, Storage, Keyboard, Input), **Game and content** (Game, Entities and browsers), **Views and rendering** (Viewports, Helpers, Rendering, Lighting, Nav mesh and particles), **Editing** (Editing, Selection, Brushes, Vertices and displacements, Instances, Cordons and visgroups, Prefabs), **Compile and check** (Compile, Map health) and **Integrations** (Discord, Blender, VTF editor, MCP). The selected page is on the right.
 
 **Find a setting**, the field above the list, finds an option by its name: type a few letters and the list shows only the pages that contain a matching option, each with the matching text under its name (hover it to read it whole). Case and accents are ignored; the search uses the language of the interface and, in French or Russian, the English names too. The text shown under a page prefers an option name that starts with what you typed. Clear the field to see every page again. The footer holds:
 
@@ -33,7 +33,7 @@ What each page contains:
 
 | Page | What it contains |
 | --- | --- |
-| **General** | **Appearance**: language, theme, accent color, interface scale, show frame rate, native window frames, start maximized. **Background image**: image, opacity, position, zoom, fit, hide it over the 3D view. **Autosave**: save every N minutes, copies kept per map (and the folder). **Maps**: open maps in new tabs. **Recent maps**: how many, **Clear recent maps**. See [Themes and languages](themes-languages.md), [Autosave and crash recovery](autosave-crash.md), [Multiple maps](multiple-maps.md). |
+| **General** | **Appearance**: language, theme, accent color, interface scale, show frame rate, native window frames, start maximized, tool palette in one or two columns, toolbar on one row or up to two rows (with **Reset the toolbar**). **Background image**: image, opacity, position, zoom, fit, hide it over the 3D view. **Autosave**: save every N minutes, copies kept per map (and the folder). **Maps**: open maps in new tabs. **Recent maps**: how many, **Clear recent maps**. See [Themes and languages](themes-languages.md), [Autosave and crash recovery](autosave-crash.md), [Multiple maps](multiple-maps.md). |
 | **Discord** | Discord Rich Presence: show activity, map name, elapsed time, active tool, application ID (empty: Hammer Pro's own), button link, and the **Status:** line (connected, Discord not running...). See [Discord Rich Presence](discord.md). |
 | **Updates** | **Check for updates on startup**, **Check for updates now**, **Show the update**, the status line and the skipped version (**Stop skipping**). See [Updates](updates.md). |
 | **VTF editor** | The external VTF editor (**Browse...**, **Detect**, the editors found), and **Always use the built in editor**. See [VTF editor](vtf-editor.md). |
@@ -56,6 +56,7 @@ What each page contains:
 | **Compile** | **Defaults (F9 and the compile window)**: preset, dynamic range, steps, static props lighting. **Speed**: threads, keep a core for the editor, smart recompile, compile while idle. **Options**: stop when the map leaks, compile hidden objects, cordon only, cordon seal material, pack custom content, development addon, export custom materials, play now, timing history, leak pointfile, launch the game and game arguments. **Extra compiler arguments**, **Compiler options**, **Compiler** (game and maps folder). See [Compile window](../compiler/compile-window.md). |
 | **Map health** | Checks (as I edit, leaks as I edit, leak path, visible objects only), limit profile, portal files options. See [Check for problems](check-problems.md). |
 | **Keyboard** | Shortcut set, search, reset all, every action with its shortcut. See [Keyboard shortcuts](keyboard-shortcuts.md). |
+| **Input** | Trackpad mode (Auto, On, Off) with what was detected, two finger scroll in 3D (orbit or move), scroll, pinch zoom and orbit speeds, and the list of trackpad gestures. See [Trackpad](trackpad.md). |
 | **MCP** | MCP server state and switch, start with Hammer Pro, **Install and setup...**, tools exposed to AI apps. See [MCP server](../reference/mcp-server.md). |
 
 Pages added by extensions take their place in the same list (see [Extending Hammer Pro](../development/extending.md)).

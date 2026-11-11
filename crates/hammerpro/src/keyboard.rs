@@ -118,7 +118,7 @@ impl KeyRouter {
         self.start = FrameStart::capture(ctx);
         self.start_capture = capture;
         self.stashed_tabs.clear();
-        if keep_tabs || self.start.any_focus || self.start.modal {
+        if keep_tabs || self.start.modal || hp_app::dialog_keys::take_tabs(ctx, raw) || self.start.any_focus {
             return;
         }
         let mut kept = Vec::with_capacity(raw.events.len());
@@ -153,6 +153,7 @@ impl KeyRouter {
         tool: &mut dyn Tool,
         capture: AppCapture,
     ) -> Routed {
+        hp_app::dialog_keys::finish_frame(ctx);
         let tabs = std::mem::take(&mut self.stashed_tabs);
         if self.blocked(ctx, capture) {
             return Routed::default();
@@ -257,6 +258,9 @@ mod tests {
         list_hovered: bool,
         button_clicks: usize,
         routed: Vec<Routed>,
+        dialog: bool,
+        dialog_fields: Vec<egui::Id>,
+        values: [f64; 3],
     }
 
     impl Harness {
@@ -278,6 +282,9 @@ mod tests {
                 list_hovered: false,
                 button_clicks: 0,
                 routed: Vec::new(),
+                dialog: false,
+                dialog_fields: Vec::new(),
+                values: [0.0; 3],
             }
         }
 
@@ -321,6 +328,15 @@ mod tests {
                     ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::ArrowRight));
                 }
                 let ctx = ui.ctx().clone();
+                if self.dialog {
+                    let values = &mut self.values;
+                    let shown = hp_app::chrome::Window::new("Transform").open(&mut self.dialog).show(&ctx, |ui| {
+                        values.iter_mut().map(|v| ui.add(egui::DragValue::new(v)).id).collect::<Vec<_>>()
+                    });
+                    if let Some(ids) = shown.and_then(|r| r.inner) {
+                        self.dialog_fields = ids;
+                    }
+                }
                 self.shell.dialogs(&ctx, &mut self.state);
                 let capture = AppCapture { dialog: self.shell.dialog_open(&self.state), ..AppCapture::default() };
                 let routed = self.router.after_ui(&ctx, &mut self.state, &mut self.tool, capture);
@@ -427,6 +443,30 @@ mod tests {
         assert_eq!(h.ctx.memory(|m| m.focused()), None, "no widget took the keyboard focus");
         h.frame(vec![key(Key::Enter, Modifiers::NONE)]);
         assert!(!egui::Popup::is_any_open(&h.ctx));
+    }
+
+    #[test]
+    fn tab_moves_through_an_open_dialog_and_never_turns_the_2d_view() {
+        let mut h = Harness::new();
+        h.frame(vec![]);
+        h.dialog = true;
+        h.frame(vec![]);
+        h.frame(vec![]);
+        let focused = |h: &Harness| h.ctx.memory(|m| m.focused());
+        for (i, shift) in [(0, false), (1, false), (2, false), (1, true)] {
+            let modifiers = if shift { Modifiers::SHIFT } else { Modifiers::NONE };
+            h.frame(vec![key(Key::Tab, modifiers)]);
+            h.frame(vec![release(Key::Tab)]);
+            assert_eq!(focused(&h), Some(h.dialog_fields[i]), "Tab step to field {i}");
+            assert!(h.routed.iter().all(|r| !r.actions.contains(&Action::CycleView2d)));
+        }
+        assert_eq!(h.tool.tabs, 0, "the tool never saw the Tab presses");
+        h.dialog = false;
+        h.frame(vec![]);
+        h.frame(vec![]);
+        h.frame(vec![key(Key::Tab, Modifiers::NONE)]);
+        h.frame(vec![release(Key::Tab)]);
+        assert_eq!(h.tool.tabs, 1, "with the dialog closed Tab works in the views again");
     }
 
     #[test]

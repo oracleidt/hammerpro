@@ -6,7 +6,7 @@ Le lien avec Blender est un aller-retour entre Hammer Pro et Blender. Son usage 
 
 ## Le déroulement en bref
 
-1. Dans Hammer Pro, sélectionnez les displacements (les faces avec l'[outil displacement](displacement-tool.md), ou les brushes qui les portent) et choisissez **Outils > Envoyer vers Blender**.
+1. Dans Hammer Pro, sélectionnez les displacements (les faces avec l'[outil displacement](displacement-tool.md), ou les brushes qui les portent) et choisissez **Outils > Blender et MCP > Envoyer vers Blender**.
 2. Blender démarre avec les displacements importés, un objet par displacement, texturés avec les matériaux de la map.
 3. Sculptez ou modifiez les sommets dans Blender (mode sculpture, édition proportionnelle, modificateurs appliqués à la main...). Gardez les sommets et les faces de chaque objet : déplacez-les, n'en ajoutez pas et n'en supprimez pas.
 4. Cliquez sur **Update in Hammer Pro** (menu **Hammer Pro** de la barre du haut, ou l'onglet de la barre latérale), ou enregistrez simplement le fichier `.blend`. Hammer Pro récupère le fichier en moins d'une seconde et réécrit les displacements. Une seule étape d'annulation : **Mise à jour depuis Blender**.
@@ -14,9 +14,9 @@ Le lien avec Blender est un aller-retour entre Hammer Pro et Blender. Son usage 
 
 ## L'ouvrir
 
-- **Outils > Envoyer vers Blender** (grisé tant que rien n'est sélectionné), et le bouton correspondant de la palette d'outils.
+- **Outils > Blender et MCP > Envoyer vers Blender** (grisé tant que rien n'est sélectionné), et le bouton correspondant de la palette d'outils.
 - **Paramètres > Lien avec Blender** : le programme, le format de fichier, le lien direct et les mêmes actions en boutons.
-- **Outils > Mettre à jour depuis Blender** (grisé sans lien) : lit le fichier tout de suite. **Outils > Arrêter le lien direct avec Blender** et **Outils > Installer l'add-on Blender**.
+- **Outils > Blender et MCP > Mettre à jour depuis Blender** (grisé sans lien) : lit le fichier tout de suite. **Outils > Blender et MCP > Arrêter le lien direct avec Blender** et **Outils > Blender et MCP > Installer l'add-on Blender**.
 - La palette de commandes propose les quatre. Pas de raccourci par défaut.
 
 ## Ce qui est envoyé
@@ -79,7 +79,7 @@ Quand Blender est introuvable, le fichier est quand même exporté et une fenêt
 L'add-on est un fichier Python que Hammer Pro porte dans son programme et écrit à la demande. Il marche avec Blender 2.8 et suivants (vérifié avec la 5.2).
 
 - **Aucune installation nécessaire** : il est chargé à chaque lancement de Blender par Hammer Pro.
-- **Pour l'avoir dans toute session Blender** : **Outils > Installer l'add-on Blender** (ou **Paramètres > Lien avec Blender > Installer l'add-on Blender**, ou `blender_setup` avec `install_addon`). Il écrit `hammerpro_bridge.py` dans le dossier `scripts/addons` de chaque version de Blender installée trouvée dans votre dossier de configuration de Blender (`%APPDATA%\Blender Foundation\Blender\<version>\scripts\addons` sous Windows, `~/.config/blender/<version>/scripts/addons` sous Linux, `~/Library/Application Support/Blender/<version>/scripts/addons` sous macOS). Puis, dans Blender, ouvrez **Edit > Preferences > Add-ons** et activez **Hammer Pro Bridge** (dans Blender 4.2 et suivants il est listé parmi les add-ons historiques ; utilisez **Install from Disk** avec le fichier s'il n'est pas listé).
+- **Pour l'avoir dans toute session Blender** : **Outils > Blender et MCP > Installer l'add-on Blender** (ou **Paramètres > Lien avec Blender > Installer l'add-on Blender**, ou `blender_setup` avec `install_addon`). Il écrit `hammerpro_bridge.py` dans le dossier `scripts/addons` de chaque version de Blender installée trouvée dans votre dossier de configuration de Blender (`%APPDATA%\Blender Foundation\Blender\<version>\scripts\addons` sous Windows, `~/.config/blender/<version>/scripts/addons` sous Linux, `~/Library/Application Support/Blender/<version>/scripts/addons` sous macOS). Puis, dans Blender, ouvrez **Edit > Preferences > Add-ons** et activez **Hammer Pro Bridge** (dans Blender 4.2 et suivants il est listé parmi les add-ons historiques ; utilisez **Install from Disk** avec le fichier s'il n'est pas listé).
 - Si aucun dossier de configuration de Blender n'existe encore, le fichier est écrit dans le dossier de travail et le message indique où, pour **Install from Disk**.
 
 Dans Blender l'add-on donne :

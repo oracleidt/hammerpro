@@ -10,8 +10,8 @@ Les sorties et les entrées relient les entités entre elles : « quand ceci se 
 |---|---|
 | Onglets sorties et entrées | **Édition > Propriétés** (`Alt+Enter`), puis les onglets **Sorties (N)** et **Entrées (N)** de l'onglet **Entité**. |
 | Lignes de connexion dans les vues | **Affichage > Options d'affichage > Afficher les connexions** fait tourner le mode ; **Paramètres > Aides > Connexions entrées/sorties** le règle. |
-| Fenêtre de la vue logique | **Affichage > Vue logique** (l'ouvre et la ferme). |
-| Vue logique 2D dans un quart d'écran | **Affichage > Vue logique 2D** l'applique à la vue sous la souris (sinon la dernière utilisée), ou choisissez **Logique 2D** dans le menu du type de vue, dans l'en-tête d'une vue. |
+| Fenêtre de la vue logique | **Affichage > Type de vue > Vue logique** (l'ouvre et la ferme). |
+| Vue logique 2D dans un quart d'écran | **Affichage > Type de vue > Vue logique 2D** l'applique à la vue sous la souris (sinon la dernière utilisée), ou choisissez **Logique 2D** dans le menu du type de vue, dans l'en-tête d'une vue. |
 | Galerie d'entités | **Map > Insérer la galerie d'entités**. |
 
 Aucune de ces commandes n'a de raccourci par défaut ; vous pouvez en attribuer dans **Paramètres > Clavier** (voir [Raccourcis clavier](keyboard-shortcuts.md)).
@@ -93,7 +93,7 @@ Les cibles spéciales (`!activator`, `!player`...) ne sont résolues qu'en jeu :
 
 ## Vue logique
 
-La vue logique montre les entités de la map et leurs sorties sous forme de schéma. Elle existe en fenêtre flottante (**Affichage > Vue logique**, titre **Vue logique**) et comme type de vue des quatre vues (**Logique 2D**, comme dans Hammer). Chaque quart d'écran qui l'affiche a son propre déplacement, zoom, recherche et filtre. La sélection est celle de la map : elle suit les autres vues dans les deux sens.
+La vue logique montre les entités de la map et leurs sorties sous forme de schéma. Elle existe en fenêtre flottante (**Affichage > Type de vue > Vue logique**, titre **Vue logique**) et comme type de vue des quatre vues (**Logique 2D**, comme dans Hammer). Chaque quart d'écran qui l'affiche a son propre déplacement, zoom, recherche et filtre. La sélection est celle de la map : elle suit les autres vues dans les deux sens.
 
 ### Ce qui est affiché
 

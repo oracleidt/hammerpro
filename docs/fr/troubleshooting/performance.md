@@ -122,9 +122,9 @@ Les matériaux animés, l'ondulation des sprites de détail, les effets de parti
 
 | Réglage | Où | Effet sur la vitesse | Défaut |
 |---|---|---|---|
-| **Distance d'affichage** | Paramètres > Vues | Distance maximale dessinée. Plus courte, c'est plus rapide. **Affichage > Distance d'affichage plus courte** et **Distance d'affichage plus longue** la changent à la volée. | 32768 |
+| **Distance d'affichage** | Paramètres > Vues | Distance maximale dessinée. Plus courte, c'est plus rapide. **Affichage > Zoom et distance d'affichage > Distance d'affichage plus courte** et **Distance d'affichage plus longue** la changent à la volée. | 32768 |
 | **Anticrénelage (MSAA)** | Paramètres > Vues | Bords plus lisses, utilise plus de mémoire GPU. Désactivez-le sur un GPU modeste. | Activé |
-| **Limite de distance circulaire** et **Rayon de limite** | Paramètres > Rendu, aussi **Affichage > Options d'affichage > Limite de distance circulaire** et la barre d'outils | Rien n'est dessiné au-delà du rayon autour de la caméra (un cercle le montre dans les vues 2D), comme le radius culling de Hammer. | Désactivé, 4096 |
+| **Limite de distance circulaire** et **Rayon de limite** | Paramètres > Rendu, aussi **Affichage > Effets > Limite de distance circulaire** et la barre d'outils | Rien n'est dessiné au-delà du rayon autour de la caméra (un cercle le montre dans les vues 2D), comme le radius culling de Hammer. | Désactivé, 4096 |
 | **Ignorer la géométrie cachée** | Paramètres > Rendu | Les parties de la map dont tous les objets sont masqués ne sont pas dessinées du tout. | Activé |
 | **Distance des modèles** | Paramètres > Rendu | Les modèles plus loin que cela sont dessinés en boîtes (0 : aucune limite). Très utile sur les maps chargées en props. | 0 |
 | **Niveaux de détail des modèles** | Paramètres > Rendu | Utilise les niveaux de détail Source du modèle selon sa taille à l'écran. Désactivé : chaque modèle utilise son niveau le plus fin. | Activé |

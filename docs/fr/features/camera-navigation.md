@@ -79,7 +79,7 @@ Avec **Zoomer les vues 2D ensemble** activé, zoomer une vue 2D zoome les autres
 
 ## Outil caméra
 
-`Maj+C` ou **Outils > Outil caméra**. Il règle la caméra 3D depuis les vues 2D, comme l'outil caméra de Hammer.
+`Maj+C` ou **Outils > Outil actif > Outil caméra**. Il règle la caméra 3D depuis les vues 2D, comme l'outil caméra de Hammer.
 
 Dans une vue 2D, la caméra est dessinée comme un œil relié par une ligne à sa cible :
 

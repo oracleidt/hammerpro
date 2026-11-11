@@ -52,7 +52,7 @@ pub(crate) enum PointerKind {
     Move,
     Click { button: PointerButton, double: bool },
     Drag { to: Target, button: PointerButton, steps: u32 },
-    Scroll { dy: f32 },
+    Scroll { dx: f32, dy: f32, kind: crate::script::WheelKind },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -421,8 +421,13 @@ fn pointer_commands(
                 json!({ "dragged_from": at_json, "dragged_to": [q.x, q.y] }),
             )
         }
-        PointerKind::Scroll { dy } => {
-            (vec![Command::Scroll { pos, dy, mods }], json!({ "scrolled_at": at_json, "dy": dy }))
+        PointerKind::Scroll { dx, dy, kind } => {
+            let what = match kind {
+                crate::script::WheelKind::Wheel => json!({ "scrolled_at": at_json, "dy": dy }),
+                crate::script::WheelKind::Trackpad => json!({ "scrolled_at": at_json, "trackpad": [dx, dy] }),
+                crate::script::WheelKind::Pinch => json!({ "pinched_at": at_json, "pinch": dy }),
+            };
+            (vec![Command::Scroll { pos, dx, dy, mods, kind }], what)
         }
     })
 }

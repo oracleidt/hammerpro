@@ -7,22 +7,25 @@ use crate::view::{QuadrantView, ViewKind};
 
 action_list! { workflow_actions {
     CloseMap => "close_map", File, FileClose, sc(CTRL, Key::F4), Ready;
-    ToggleIgnoreGroups => "toggle_ignore_groups", Edit, EditSelectMode, sc(CTRL, Key::W), Ready;
-    Zoom2dIn => "zoom_2d_in", View, ViewNav, sc(NONE, Key::Plus), Ready;
-    Zoom2dOut => "zoom_2d_out", View, ViewNav, sc(NONE, Key::Minus), Ready;
-    ResetViewSplits => "reset_view_splits", View, ViewNav, None, Ready;
+    ToggleIgnoreGroups => "toggle_ignore_groups", Edit, EditSelectGroups, sc(CTRL, Key::W), Ready;
+    Zoom2dIn => "zoom_2d_in", View, ViewZoom, sc(NONE, Key::Plus), Ready;
+    Zoom2dOut => "zoom_2d_out", View, ViewZoom, sc(NONE, Key::Minus), Ready;
+    ResetViewSplits => "reset_view_splits", View, ViewZoom, None, Ready;
     ViewTop => "view_top", View, ViewType, sc(NONE, Key::F2), Ready;
     ViewSide => "view_side", View, ViewType, sc(NONE, Key::F3), Ready;
     ViewFront => "view_front", View, ViewType, sc(NONE, Key::F4), Ready;
     View3dTextured => "view_3d_textured", View, ViewType, sc(NONE, Key::F5), Ready;
     View3dFlat => "view_3d_flat", View, ViewType, sc(SHIFT, Key::F5), Ready;
     CycleView2d => "cycle_view_2d", View, ViewType, sc(NONE, Key::Tab), Ready;
-    ToggleViewInfo => "toggle_view_info", View, ViewDisplay, sc(NONE, Key::O), Ready;
+    ToggleViewInfo => "toggle_view_info", View, ViewDisplayInfo, sc(NONE, Key::O), Ready;
     ToggleBoundsOverlay => "toggle_bounds_overlay", View, ViewDisplay, None, Ready;
     ShowHistory => "show_history", View, ViewPanels, None, Ready;
     ShowToolbar => "show_toolbar", View, ViewPanels, None, Ready;
     ShowToolPalette => "show_tool_palette", View, ViewPanels, None, Ready;
     ShowStatusBar => "show_status_bar", View, ViewPanels, None, Ready;
+    ToolPaletteTwoColumns => "tool_palette_two_columns", View, ViewPanels, None, Ready;
+    ToolbarTwoRows => "toolbar_two_rows", View, ViewPanels, None, Ready;
+    ResetToolbar => "reset_toolbar", View, ViewPanels, None, Ready;
     SaveLayout => "save_layout", Window, WindowLayout, None, Ready;
     ResetLayout => "reset_layout", Window, WindowLayout, None, Ready;
     CloseOtherMaps => "close_other_maps", File, FileClose, None, Ready;
@@ -79,6 +82,8 @@ pub(super) fn check(state: &AppState, action: Action) -> Option<Check> {
         Action::ShowToolbar => Check::Toggle(w.show_toolbar),
         Action::ShowToolPalette => Check::Toggle(w.show_tool_palette),
         Action::ShowStatusBar => Check::Toggle(w.show_status_bar),
+        Action::ToolPaletteTwoColumns => Check::Toggle(w.tool_palette_two_columns()),
+        Action::ToolbarTwoRows => Check::Toggle(w.toolbar_two_rows()),
         Action::GridModeGlobal => Check::Radio(state.settings.grid.mode == GridMode::Global),
         Action::GridModePerView => Check::Radio(state.settings.grid.mode == GridMode::PerView),
         Action::GridModeCustom => Check::Radio(state.settings.grid.mode == GridMode::Custom),
@@ -114,6 +119,9 @@ pub(super) const TR: TrTable = &[
     ("action.show_toolbar", "Toolbar", "Barre d'outils"),
     ("action.show_tool_palette", "Tool palette", "Palette d'outils"),
     ("action.show_status_bar", "Status bar", "Barre d'état"),
+    ("action.tool_palette_two_columns", "Tool palette in two columns", "Palette d'outils sur deux colonnes"),
+    ("action.toolbar_two_rows", "Toolbar on two rows", "Barre d'outils sur deux lignes"),
+    ("action.reset_toolbar", "Reset the toolbar", "Réinitialiser la barre d'outils"),
     ("action.save_layout", "Save layout...", "Enregistrer la disposition..."),
     ("action.reset_layout", "Reset layout", "Réinitialiser la disposition"),
     ("action.close_other_maps", "Close other maps", "Fermer les autres maps"),

@@ -16,8 +16,8 @@ MCP `create_road` and `edit_road` accept `optimize`; `get_road` reports it. The 
 
 ## Opening it
 
-- **Tools > Road tool** or the tool palette (creation group, after the sprinkle tool). It has no default shortcut; you can give it one in **Settings > Keyboard**.
-- **Tools > Edit road** reopens the road of the selected brush (see below). **Tools > Edit curve** does the same when the selected brush belongs to a road.
+- **Tools > Active tool > Road tool** or the tool palette (creation group, after the sprinkle tool). It has no default shortcut; you can give it one in **Settings > Keyboard**.
+- **Tools > Curves and roads > Edit road** reopens the road of the selected brush (see below). **Tools > Curves and roads > Edit curve** does the same when the selected brush belongs to a road.
 - The command palette (`Ctrl+P`) has both commands.
 
 ## Drawing the road
@@ -90,14 +90,14 @@ In **Road settings**, enter a **Preset name** and choose **Save preset**. Save d
 
 A preset includes lane widths and count, materials, markings, segmentation, shape and radius, terrain following, banking, creation mode and keep-active mode. It leaves the current trace points, placement height and map connections unchanged. Loading a preset supports local `Ctrl+Z` and `Ctrl+Y`, including before placing a point. Saving or deleting a preset does not change any map brushes.
 
-To recover settings from a road you already created, select one of its brushes and activate the Road tool, or use **Tools > Edit road**. Its stored points and settings are restored for editing. Save those settings as a named preset to use them for other roads.
+To recover settings from a road you already created, select one of its brushes and activate the Road tool, or use **Tools > Curves and roads > Edit road**. Its stored points and settings are restored for editing. Save those settings as a named preset to use them for other roads.
 
 ## Editing an existing road
 
 Every brush made by the road tool remembers its road in the `hammerpro_curve` keys of the VMF (`r1;...`, points with their heights, every setting, the junction).
 
 1. Select one brush of the road (or its brush entity).
-2. Activate **Road tool** to reopen the selected road directly, or choose **Tools > Edit road** to open it with the settings window.
+2. Activate **Road tool** to reopen the selected road directly, or choose **Tools > Curves and roads > Edit road** to open it with the settings window.
 3. Drag, add, insert, remove points, change heights, any setting, material, line, banking, junction.
 4. `Enter` or **Apply** replaces all the brushes of the road by the new ones in one undo step. They stay in the same brush entity, if any, and are selected. `Escape` cancels without changing anything.
 

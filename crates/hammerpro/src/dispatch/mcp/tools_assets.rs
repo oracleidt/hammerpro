@@ -41,7 +41,9 @@ domain! { "assets";
         { "material": string("Material name.") }, ["material"];
     get_model_info: Read, "Model information",
         "A model's bounds, skins, body groups, sequences, materials, triangles, surface property and whether it can \
-        be a prop_static. Models load in the background: call again while loading is true.",
+        be a prop_static, plus shape: the exact size of its real mesh at angles 0 (bounds, how far the lowest point is \
+        below the origin, footprint rectangle, collision mesh bounds, attachments). get_object_shape and \
+        render_shape tell more. Models load in the background: call again while loading is true.",
         { "model": string("Model path (models/....mdl).") }, ["model"];
     get_material_preview: Read, "Material preview image",
         "A PNG image of a material's base texture (or of a texture), decoded at most size pixels on its longest \
@@ -582,19 +584,23 @@ fn get_model_info(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     match state.assets.model_info(&path) {
         ModelState::Loading => Ok(ToolResult::json(json!({ "model": path, "loading": true }))),
         ModelState::Failed(e) => Err(format!("{path}: {e}")),
-        ModelState::Ready(m) => Ok(ToolResult::json(json!({
-            "model": m.path,
-            "loading": false,
-            "bounds": { "min": v3(m.bounds_min), "max": v3(m.bounds_max) },
-            "skins": m.skins,
-            "body_parts": m.body_parts,
-            "body_groups": m.body_groups.iter().map(|b| json!({ "name": b.name, "choices": b.choices })).collect::<Vec<_>>(),
-            "triangles": m.triangles,
-            "materials": m.materials,
-            "static_prop": m.is_static_prop,
-            "surface_prop": m.surface_prop,
-            "sequences": m.sequences.iter().take(500).collect::<Vec<_>>(),
-        }))),
+        ModelState::Ready(m) => Ok(ToolResult::json(super::tools_place::with_model_shape(
+            state.assets.fs(),
+            &path,
+            json!({
+                "model": m.path,
+                "loading": false,
+                "bounds": { "min": v3(m.bounds_min), "max": v3(m.bounds_max) },
+                "skins": m.skins,
+                "body_parts": m.body_parts,
+                "body_groups": m.body_groups.iter().map(|b| json!({ "name": b.name, "choices": b.choices })).collect::<Vec<_>>(),
+                "triangles": m.triangles,
+                "materials": m.materials,
+                "static_prop": m.is_static_prop,
+                "surface_prop": m.surface_prop,
+                "sequences": m.sequences.iter().take(500).collect::<Vec<_>>(),
+            }),
+        ))),
     }
 }
 

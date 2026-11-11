@@ -23,7 +23,7 @@ Les mêmes fonctions existent comme outils MCP `import_heightmap`, `export_heigh
 
 ## Importer une carte de hauteur
 
-Ouvrez **Outils > Importer une carte de hauteur...**. La fenêtre a ces sections.
+Ouvrez **Fichier > Importer > Importer une carte de hauteur...**. La fenêtre a ces sections.
 
 ### Fichier
 
@@ -91,7 +91,7 @@ Le dessin **Disposition des tuiles** montre la carte de hauteur (après inversio
 
 ## Générer un terrain
 
-Ouvrez **Outils > Générer un terrain...**. Le terrain est construit depuis du bruit fractal, puis éventuellement érodé et texturé. Tant que la fenêtre est ouverte, un **aperçu en direct** (65 x 65 sommets au plus) est dessiné dans la vue 3D : une surface ombrée avec une grille grossière et un contour jaune de l'emprise. L'aperçu suit chaque changement. Désactivez-le avec **Aperçu en direct dans la vue 3D**. Il disparaît à la fermeture de la fenêtre. L'érosion de l'aperçu fait 200 passes au plus et à une résolution plus grossière : elle n'approche donc que le résultat final.
+Ouvrez **Outils > Displacements > Générer un terrain...**. Le terrain est construit depuis du bruit fractal, puis éventuellement érodé et texturé. Tant que la fenêtre est ouverte, un **aperçu en direct** (65 x 65 sommets au plus) est dessiné dans la vue 3D : une surface ombrée avec une grille grossière et un contour jaune de l'emprise. L'aperçu suit chaque changement. Désactivez-le avec **Aperçu en direct dans la vue 3D**. Il disparaît à la fermeture de la fenêtre. L'érosion de l'aperçu fait 200 passes au plus et à une résolution plus grossière : elle n'approche donc que le résultat final.
 
 ### Préréglages
 
@@ -145,7 +145,7 @@ Un préréglage ne charge que les réglages de bruit (la graine, la taille et la
 
 ## Exporter une carte de hauteur
 
-Sélectionnez des displacements (ou des solides qui en ont) et ouvrez **Outils > Exporter une carte de hauteur...**.
+Sélectionnez des displacements (ou des solides qui en ont) et ouvrez **Fichier > Exporter > Exporter une carte de hauteur...**.
 
 | Option | Ce qu'elle fait | Défaut |
 | --- | --- | --- |

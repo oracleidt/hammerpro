@@ -645,6 +645,7 @@ pub(crate) fn autocomplete_popup(
         if st.open && (mode == CompleteMode::Complete || st.highlight.is_some()) {
             let filter = EventFilter { tab: true, horizontal_arrows: true, vertical_arrows: true, escape: false };
             ui.memory_mut(|m| m.set_focus_lock_filter(field.id, filter));
+            hp_app::dialog_keys::keep_tab_for(ui.ctx(), field.id);
         }
     }
     ui.data_mut(|d| d.insert_temp(st_id, st));

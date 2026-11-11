@@ -585,7 +585,7 @@ the status `Planned`:
 |---|---|
 | selection (1) | MoveToFloor (Alt+N), MoveToCeiling (Alt+U), SnapToGridIndividually (Ctrl+Shift+B), CenterOrigins, TogglePivot, FlipHorizontal (Ctrl+L), FlipVertical, AlignCenterHorizontal, AlignCenterVertical, ToggleGizmoLocal (Ctrl+J) |
 | brush (2) | ToolPolygon (Shift+N), MergeBrushes (Ctrl+Shift+M), MakeHintBrush, NodrawHiddenFaces, TieEachToEntity (Ctrl+Shift+T), ConvertToDetail |
-| workflow (2) | CloseMap (Ctrl+F4), ToggleIgnoreGroups (Ctrl+W), Zoom2dIn (+), Zoom2dOut (-), ResetViewSplits, ViewTop (F2), ViewSide (F3), ViewFront (F4), View3dTextured (F5), View3dFlat (Shift+F5), CycleView2d (Tab), ToggleViewInfo (O), ToggleBoundsOverlay, ShowHistory, ShowToolbar, ShowToolPalette, ShowStatusBar, SaveLayout, ResetLayout |
+| workflow (2) | CloseMap (Ctrl+F4), ToggleIgnoreGroups (Ctrl+W), Zoom2dIn (+), Zoom2dOut (-), ResetViewSplits, ViewTop (F2), ViewSide (F3), ViewFront (F4), View3dTextured (F5), View3dFlat (Shift+F5), CycleView2d (Tab), ToggleViewInfo (O), ToggleBoundsOverlay, ShowHistory, ShowToolbar, ShowToolPalette, ShowStatusBar, ToolPaletteTwoColumns, ToolbarTwoRows, ResetToolbar, SaveLayout, ResetLayout |
 | instances (4) | CreateInstance (Alt+S), EditInstance, CollapseInstances, CollapseAllInstances, InstancesHidden, InstancesTinted, InstancesNormal |
 | visibility (5) | ToolCordon, ToggleCordon, MoveToVisgroup, HiddenToVisgroup |
 | helpers (6) | ToggleOverlays, ToggleConnections, ToggleEditorObjects, TogglePointEntities, ToggleEntityNames, SimulateRopes |
@@ -671,6 +671,17 @@ real tool with that id is registered (your crate's `tools()` or
 implemented yet". A tool can also take any requested action while it is
 active with `Tool::action(&mut self, state, action) -> bool` (for example
 the vertex tool taking `SnapToGrid` or `VertexSplitFace`).
+
+The tool palette and a few toolbar buttons (Carve, the hide and group
+buttons, Compile) do not use the glyph: they draw a vector icon from
+`crates/hp-ui-shell/src/icons.rs` (`icons::paint`, one arm per `ToolId` in
+`paint_tool`, sized on an 18 point grid with strokes snapped to pixels so it
+stays sharp at 100, 125 and 150 percent). A new `ToolId` needs its arm there
+(the match is exhaustive); the glyph of `ToolId::icon` stays for the menus.
+The toolbar layout is the `TOOLBAR` table of `crates/hp-ui-shell/src/toolbar.rs`
+(groups with an id, a label and their items); the user's order and hidden
+groups or buttons live in `workflow.toolbar_order` and `workflow.toolbar_hidden`
+by id, so a new button only needs its entry in a group.
 
 Known overlap: F9 belongs to `RunMap` ("Compile and run..."). When
 `CompileNow` ships with F9 (backlog: F9 compiles at once, Ctrl+F9 opens the
@@ -862,26 +873,40 @@ package edits `menu.rs`.
 A group (`crates/hp-app/src/actions/groups.rs`, `MenuGroup::info`) has a
 section, an order and either no submenu (entries inline) or a submenu title
 and width. A menu shows its groups sorted by (section, order) with a
-separator between sections; inside a group, entries keep the registry order
-(core first, then the package files in `PACKAGES` order, then line order).
+separator between sections. Groups of one menu that share a submenu title
+are merged into that one submenu, sorted by (section, order), with a
+separator between them: this is how a submenu gets its own groups (the
+submenu takes the place of its first group). Inside a group, entries follow
+`hammer_order` in `menu.rs` when the group has a list there, then the
+registry order (core first, then the package files in `PACKAGES` order,
+then line order).
 
-| Menu | Groups: section/order |
+| Menu | Entries (submenus in bold) |
 |---|---|
-| File | `FileNew` 10/0, `FileClose` 10/20, `FileSave` 20, `FileImport` 30, `FileRun` 40, recent maps (shell) 80, `FileExit` 90 |
-| Edit | `EditHistory` 10, `EditFind` 20, `EditClipboard` 30, `EditSelect` 40/0, `EditSelectMode` 40/10 (submenu), `EditProperties` 50 |
-| Map | `MapGrid` 10/0, `MapGrids` 10/10 (submenu: grid modes, custom grids), `MapInfo` 20, `MapPointfile` 30, `MapProperties` 40, `MapLighting` 50 (submenu) |
-| View | `ViewType` 10/0, `ViewRender` 10/10 (submenu), `ViewShow` 30/10, `ViewDisplay` 30/20 (submenu), `ViewHide` 35, `ViewNav` 40, `ViewPanels` 50/0 (submenu), language (shell) 50/10 |
-| Tools | `ToolsBrush` 10/0, `ToolsAlign` 10/10, `ToolsFlip` 10/20 (submenus), `ToolsPlacement` 20/0, `ToolsInstancing` 20/10 (submenu), `ToolsSwitch` 30, `ToolsMesh` 40, `ToolsContent` 50, `ToolsApp` 90 |
-| Window | `WindowLayout` 10 (submenu), `WindowMessages` 20, `WindowMaps` 30 |
-| Help | `HelpDocs` 10/0, setup assistant (shell) 10/10, `HelpAbout` 90 |
+| File | `FileNew` 10/0, recent maps (shell) 10/5, `FileClose` 10/20, `FileSave` 20, **Import** (`FileImport` 30/0, `FileImportOpen` 30/1), **Export** (`FileExport` 30/10), **Compile** (`FileRun` 40/0, `FileGame` 40/1), **Publish** (`FilePublish` 40/10), `FileExit` 90 |
+| Edit | `EditHistory` 10, `EditClipboard` 20, `EditSelect` 30/0, **Selection mode** (`EditSelectMode` 30/10, `EditSelectGroups` 30/11), **Selection element** (`EditSelectElement` 30/20, `EditSelectEdges` 30/21, `EditFaceHistory` 30/22), `EditFind` 40, `EditProperties` 50/0, **Display colors** (`EditColors` 50/10) |
+| Map | `MapGrid` 10/0, **Grids** (`MapGrids` 10/10), `MapInfo` 20/0, **Leaks and visibility** (`MapPointfile`, `MapPortals`, `MapOptimize`, `MapNavMesh` 20/10 to 20/13), `MapProperties` 30, **Lighting** (`MapLighting`, `MapLights`, `MapCubemaps` 40/0 to 40/2) |
+| View | **View type** (`ViewType` 10/0), **3D render mode** (`ViewRender` 10/10), `ViewPlayer` 10/20, **Display options** (`ViewShow`, `ViewDisplay`, `ViewDisplay2d`, `ViewDisplayInfo` 20/0 to 20/3), **Environment preview** (`ViewSky`, `ViewFog`, `ViewWater`, `ViewEnvironment` 20/10 to 20/13), **Effects** (`ViewEffects`, `ViewEffectsObjects` 20/20, 20/21), **Diagnostics** (`ViewDiagnostics` 20/30), `ViewHide` 30, `ViewNav` 40/0, **Zoom and draw distance** (`ViewZoom` 40/10), **Panels** (`ViewPanels` 50/0), language (shell) 50/10 |
+| Tools | **Active tool** (`ToolsSwitch` 10), `ToolsBrush` 20/0, **Arrange** (`ToolsAlign`, `ToolsFlip`, `ToolsArrange`, `ToolsOrigin` 20/10 to 20/13), `ToolsGroup` 30, `ToolsCsg` 40/0, **Brush operations** (`ToolsBrushOps`, `ToolsFaceOps`, `ToolsBrushMisc` 40/10 to 40/12), **Vertices and edges** (`ToolsMesh` 40/20), **Displacements** (`ToolsDisp`, `ToolsDispSlope`, `ToolsDispNoise`, `ToolsTerrain` 40/30 to 40/33), **Curves and roads** (`ToolsCurves`, `ToolsRoads` 40/40, 40/41), **Textures** (`ToolsTextures` 40/50), **Placement and props** (`ToolsPlacement`, `ToolsScatter`, `ToolsProps`, `ToolsPaths` 60/0 to 60/3), **Instancing** (`ToolsInstancing`, `ToolsInstanceDisplay` 60/10, 60/11), **Content and editors** (`ToolsContent`, `ToolsContentIndex` 60/20, 60/21), **Blender and MCP** (`ToolsBlender`, `ToolsMcp` 60/30, 60/31), `ToolsApp` 90 |
+| Window | **Layout** (`WindowLayout` 10/0, saved layouts extension 10/1), `WindowMessages` 20, `WindowMaps` 30 |
+| Help | `HelpDocs` 10, `HelpSupport` 20/0, setup assistant (shell) 20/10, `HelpAbout` 90 |
 
 The menus follow Valve Hammer (File, Edit, Map, View, Tools, Window, Help)
 so a mapper coming from Hammer or Hammer++ finds the entries where they
-expect them: the grid in Map, Carve, Group, the texture lock and Options in
-Tools, hiding in View, the messages and layouts in Window. The category of
-an action must be the menu of its group (`MenuGroup::category`, checked by
-a test). Inside a group, the entries Hammer has keep Hammer's order
-(`hammer_order` in `menu.rs`); the others follow in registry order.
+expect them: Undo and Redo then Cut, Copy and Paste at the top of Edit, the
+grid in Map, Carve, Group, Transform and Options in Tools, hiding in View,
+the messages and layouts in Window. Frequent commands stay inline at the top
+of their menu and the rest goes into submenus, so no top level menu is
+taller than about twenty entries (`no_menu_is_taller_than_about_twenty_entries`
+in `menu.rs` checks it, and `every_entry_of_the_2_0_2_menus_is_still_in_the_menus`
+checks against `menu_ids_2_0_2.txt` that a reorganization never drops an
+entry). A menu without any entry is not shown. The category of an action
+must be the menu of its group (`MenuGroup::category`, checked by a test).
+`MenuGroup::title` gives the name of a group on its own (Align and Flip
+keep their names in the viewport context menu while they share **Arrange**
+in the menu bar). `hp_ui_shell::menu::menu_path` returns the menu and
+submenu titles of an action: the command palette and the MCP `list_actions`
+tool (`menu_path`) show it.
 
 Every group the backlog needs exists; adding one is an edit of the shared
 `groups.rs` (a variant, its `info` line and the submenu title in its `TR`):
@@ -889,7 +914,9 @@ coordinate it.
 
 Content that is not an action (a list of saved layouts, fog controllers,
 recent instances) is a `hp_app::extend::MenuExtension`: a closure placed by
-menu, section and order like a group. Register it from your package's
+menu, section and order like a group. `.in_submenu("menu.x")` puts it inside
+the submenu with that title instead: at the end of the group of that
+submenu whose (section, order) is the same, or as its own group otherwise. Register it from your package's
 `init` hook; draw entries with `hp_ui_shell::menu::menu_entry` (same check
 column and shortcut layout as the actions) and `hp_ui_shell::menu::submenu`:
 
@@ -902,7 +929,7 @@ fn init(&self, app: &mut HammerProApp) {
     use hp_ui_shell::common::Check;
     use hp_ui_shell::menu::{menu_entry, submenu};
 
-    app.shell.add_menu_extension(MenuExtension::new(Category::Window, 10, 30, |ui, state| {
+    app.shell.add_menu_extension(MenuExtension::new(Category::Window, 10, 1, |ui, state| {
         submenu(ui, t!("workflow.saved_layouts"), |ui| {
             for name in state.settings.workflow.layouts.keys() {
                 if menu_entry(ui, name, None, true, Check::None).clicked() {
@@ -910,7 +937,7 @@ fn init(&self, app: &mut HammerProApp) {
                 }
             }
         });
-    }));
+    }).in_submenu("menu.layout"));
 }
 ```
 
@@ -1000,7 +1027,7 @@ The status bar (`crates/hp-ui-shell/src/status/`) is a list of
 | File | Segments / owner |
 |---|---|
 | `mod.rs` | `StatusBar`: layout and registration (foundation) |
-| `shell.rs` | tool hint, selection summary, cursor position (left); fps, texture lock, snap, grid (right; the last three only while the toolbar is hidden, the toolbar shows them otherwise); `fmt_size`, `fmt_point` (core, workflow 3 extends it) |
+| `shell.rs` | tool hint, selection summary, cursor position (left); fps, texture lock, snap, grid (right; the last three only while the toolbar, or the toolbar group or button showing them, is hidden); `fmt_size`, `fmt_point` (core, workflow 3 extends it) |
 | `startup.rs` | game content indicator: mounting, not configured, failed (startup 13) |
 | `compile.rs`, `health.rs`, `launch.rs`, `lighting.rs` | empty `segments()` for compile progress, problem and limit badges, game ready, lightmap budget |
 

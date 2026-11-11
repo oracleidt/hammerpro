@@ -6,7 +6,7 @@ L'outil de découpe (le clipping tool de Hammer) coupe les solides sélectionné
 
 ## Ouvrir l'outil
 
-- **Outils > Outil de découpe**, la palette d'outils, ou `Maj+X`.
+- **Outils > Outil actif > Outil de découpe**, la palette d'outils, ou `Maj+X`.
 - Sélectionnez d'abord les solides à découper : seuls les solides sélectionnés sont coupés (sinon **Sélectionnez d'abord les solides à découper**).
 
 ## Modes : les morceaux à conserver

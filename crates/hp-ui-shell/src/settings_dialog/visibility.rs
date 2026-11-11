@@ -34,13 +34,13 @@ impl SettingsPage for VisibilityPage {
         let s = &mut state.settings.visibility;
         let mut changed = false;
         heading(ui, t!("shell.visibility.cordons"));
-        egui::Grid::new("hp_shell_visibility_cordons").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
+        super::form_grid(ui, "hp_shell_visibility_cordons").show(ui, |ui| {
             ui.label(t!("shell.visibility.cordon_material"));
             ui.horizontal(|ui| {
                 changed |= ui
                     .add(
                         egui::TextEdit::singleline(&mut s.cordon_material)
-                            .desired_width(240.0)
+                            .desired_width(super::field_width(ui, 240.0, 200.0))
                             .font(egui::TextStyle::Monospace)
                             .hint_text(VisibilitySettings::default().cordon_material),
                     )

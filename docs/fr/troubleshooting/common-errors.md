@@ -12,7 +12,7 @@ Les problèmes que les mappeurs rencontrent le plus souvent, ce qu'ils signifien
 
 **Comment corriger :**
 
-1. Suivez le chemin de fuite de l'entité jusqu'au trou. Il se charge tout seul après une compilation qui fuit (**Map > Charger le pointfile de fuite...** en charge un à la main).
+1. Suivez le chemin de fuite de l'entité jusqu'au trou. Il se charge tout seul après une compilation qui fuit (**Map > Fuites et visibilité > Charger le pointfile de fuite...** en charge un à la main).
 2. Bouchez le trou avec un brush **du monde**. Les `func_detail` et les entités brush ne ferment pas la map.
 3. Vérifiez à nouveau sans compiler : **Map > Vérifier les fuites**. Pendant l'édition, la vérification instantanée (activée par défaut) surveille les fuites et affiche le même badge.
 
@@ -24,8 +24,8 @@ Un damier en jeu signifie que le jeu ne trouve pas un matériau.
 
 | Cause | Correction |
 |---|---|
-| Le matériau n'existe ni dans le jeu ni dans vos dossiers personnalisés. | **Map > Vérifier les problèmes** liste les « matériau manquant » ; l'onglet **Ressources de la map** montre ce qui manque. Remplacez le matériau (**Outils > Rechercher et remplacer des textures...**) ou ajoutez son dossier dans **Paramètres > Jeu**. |
-| Un matériau personnalisé n'a pas été empaqueté. Par défaut, le contenu personnalisé n'est empaqueté dans la map que pour les compilations **Final** et les publications ; les compilations de test le copient à la place dans l'addon de développement `garrysmod/addons/hammerpro_dev`. | Après la première copie dans l'addon de développement, redémarrez le jeu une fois. Pour une map que vous partagez, utilisez **Fichier > Construire et enregistrer en contenu...** ou réglez **Empaqueter le contenu personnalisé** sur **Toujours** dans la fenêtre de compilation. |
+| Le matériau n'existe ni dans le jeu ni dans vos dossiers personnalisés. | **Map > Vérifier les problèmes** liste les « matériau manquant » ; l'onglet **Ressources de la map** montre ce qui manque. Remplacez le matériau (**Outils > Textures > Rechercher et remplacer des textures...**) ou ajoutez son dossier dans **Paramètres > Jeu**. |
+| Un matériau personnalisé n'a pas été empaqueté. Par défaut, le contenu personnalisé n'est empaqueté dans la map que pour les compilations **Final** et les publications ; les compilations de test le copient à la place dans l'addon de développement `garrysmod/addons/hammerpro_dev`. | Après la première copie dans l'addon de développement, redémarrez le jeu une fois. Pour une map que vous partagez, utilisez **Fichier > Publier > Construire et enregistrer en contenu...** ou réglez **Empaqueter le contenu personnalisé** sur **Toujours** dans la fenêtre de compilation. |
 | Le matériau vient d'un jeu monté par `mount.cfg`, d'un addon du Workshop ou de contenu téléchargé depuis un serveur. | Les joueurs qui n'ont pas ce contenu voient aussi des damiers. Livrez les fichiers avec la map, ou remplacez-les par du contenu du jeu de base. Voir [Rassembler le contenu pour une publication](../guides/collect-content-for-release.md). |
 
 Les entités et les modèles ont le même souci : « modèle manquant » (le prop est retiré de la map) et « son manquant » sont aussi listés par Vérifier les problèmes.

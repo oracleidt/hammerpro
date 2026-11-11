@@ -6,7 +6,7 @@ The path tool draws chains of path entities (`path_track`, `path_corner`, rope k
 
 ## Opening it
 
-- **Tools > Path tool**, or its button in the tool palette. It has no default shortcut: give it one in **Settings > Keyboard** if you use it often (see [Keyboard shortcuts](keyboard-shortcuts.md)).
+- **Tools > Active tool > Path tool**, or its button in the tool palette. It has no default shortcut: give it one in **Settings > Keyboard** if you use it often (see [Keyboard shortcuts](keyboard-shortcuts.md)).
 - While the tool is active, its options appear in the tool options bar and the status bar shows a short hint.
 
 ## Drawing a path
@@ -80,7 +80,7 @@ These work from any tool, on the selected path points:
 
 **Why did the names of my other points change?** You inserted a point inside a numbered sequence. The following points were renumbered and every reference to them updated, so nothing breaks.
 
-**Delete removed my points but the chain is broken.** **Relink on delete** was off, or you deleted them with another tool. Use **Tools > Remove path points and relink** instead.
+**Delete removed my points but the chain is broken.** **Relink on delete** was off, or you deleted them with another tool. Use **Tools > Placement and props > Remove path points and relink** instead.
 
 **Can I place points on a wall?** Yes, in the 3D view the point rests on the surface under the cursor, pushed out of it by **Height** along the surface normal.
 

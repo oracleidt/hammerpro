@@ -235,13 +235,13 @@ impl FindReplace {
             ui.add(egui::TextEdit::singleline(&mut self.replace).desired_width(f32::INFINITY));
             ui.end_row();
         });
-        ui.horizontal_wrapped(|ui| {
+        hp_app::widgets::choice_row_wrapped(ui, |ui| {
             ui.checkbox(&mut self.whole_word, t!("entities.fr_whole_word"));
             ui.checkbox(&mut self.case_sensitive, t!("entities.fr_case"));
             ui.checkbox(&mut self.key_names, t!("entities.fr_key_names"))
                 .on_hover_text(t!("entities.fr_key_names_tip"));
         });
-        ui.horizontal_wrapped(|ui| {
+        hp_app::widgets::choice_row_wrapped(ui, |ui| {
             ui.radio_value(&mut self.selection_only, false, t!("entities.fr_whole_map"));
             ui.radio_value(&mut self.selection_only, true, t!("entities.fr_selection"));
             ui.checkbox(&mut self.visible_only, t!("entities.visible_only"));

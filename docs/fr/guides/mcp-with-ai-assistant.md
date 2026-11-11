@@ -10,7 +10,7 @@ Le serveur MCP intégré de Hammer Pro permet à un assistant IA (Claude Code, C
 
 ## Étape 2 : installer Hammer Pro dans votre application d'IA
 
-1. Cliquez sur la petite flèche à côté de la pastille (ou **Outils > MCP...**) pour ouvrir la fenêtre MCP.
+1. Cliquez sur la petite flèche à côté de la pastille (ou **Outils > Blender et MCP > MCP...**) pour ouvrir la fenêtre MCP.
 2. Cliquez sur **Installer dans Claude, Codex, Gemini**. Hammer Pro s'ajoute à chaque application prise en charge qu'il trouve, puis vérifie chacune. La ligne de chaque application affiche **Installé et configuré** quand tout a marché.
 3. Redémarrez l'application d'IA, ou ouvrez une nouvelle session, pour qu'elle voie le serveur `hammer-pro`.
 
@@ -45,6 +45,17 @@ L'assistant commence par `get_capabilities` et `get_map_info`, utilise les outil
 ## Plusieurs fenêtres Hammer Pro
 
 Avec plusieurs fenêtres, l'assistant utilise celle avec MCP actif qui a eu le focus en dernier. Demandez-lui de "lister les fenêtres Hammer Pro" puis "d'utiliser celle avec gm_city" (outils `list_instances` et `use_instance`). Dans une même fenêtre, il peut aussi passer d'une map ouverte à l'autre (`list_tabs`, `switch_tab`).
+
+## Placer des props et des objets avec précision
+
+L'assistant n'a pas à deviner les tailles d'après des boîtes englobantes. Demandez-lui de placer des choses et il utilise les outils de placement, qui mesurent la vraie géométrie de tout : le maillage du modèle après ses angles et son échelle, les brushes, les déplacements, les overlays, les instances et les groupes.
+
+- « Mets un canapé contre le mur nord du salon, sur le sol. » L'assistant mesure le canapé (`get_object_shape` : vraie taille, hauteur de l'origine au-dessus des pieds), puis le place collé au mur et sur le sol (`place_object` avec `against`, puis `drop`).
+- « Pose un baril sur la table. » Il utilise `place_object` avec `on` : le point le plus bas du baril touche exactement le plateau, sans espace ni chevauchement.
+- « Gare la voiture sur la colline. » La voiture se pose sur la vraie surface déplacée, pas sur le brush en dessous.
+- « Trouve tout ce qui flotte ou est enfoncé dans cette rue et corrige-le. » `find_floating_objects` vérifie chaque prop sur son vrai maillage, garde les lampes murales et les panneaux qui touchent un mur, et descend ou remonte les autres en une seule étape d'annulation.
+
+`render_shape` donne à l'assistant un dessin d'un modèle ou d'une zone vu de plusieurs côtés avec les cotes écrites dessus, et `check_placement` lui dit pour chaque objet s'il repose, flotte, est enfoncé ou entre dans un autre objet. Le guide complet est dans [docs/MCP.md](../../MCP.md#place-things-precisely) (en anglais).
 
 ## Astuces
 

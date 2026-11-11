@@ -434,6 +434,8 @@ fn pending_box_waits_for_enter_and_can_be_resized_and_moved() {
     let mut state = state();
     let mut tool = SelectTool::new();
     let ctx = egui::Context::default();
+    assert!(!state.settings.selection.box_confirm, "off by default since 2.0.3");
+    assert!(tool.set_option(&mut state, "box_confirm", "on"));
     assert!(state.settings.selection.box_confirm);
     let v = view2d(ViewKind::Top);
     let pt = |x: f64, y: f64| scr(&v, DVec3::new(x, y, 0.0));

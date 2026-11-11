@@ -8,7 +8,7 @@ L'outil d'application de texture correspond au mode "Face Edit" de Hammer : vous
 
 | Comment | Raccourci |
 |---|---|
-| **Outils > Application de texture**, ou son bouton dans la barre d'outils | `Maj+A` |
+| **Outils > Outil actif > Application de texture**, ou son bouton dans la barre d'outils | `Maj+A` |
 
 Si des objets sont sélectionnés quand vous prenez l'outil, leurs faces deviennent la sélection de faces ; quand vous le quittez, la sélection de faces est vidée et les objets sélectionnés avant reviennent. Le dock de droite affiche le panneau **Édition des faces** pendant que l'outil est actif, puis l'onglet **Textures**.
 
@@ -29,7 +29,7 @@ La sélection se fait dans la vue 3D. La face sous la souris est soulignée ; le
 | `Alt+clic droit` | Enroule : copie le matériau de la première face sélectionnée sur la face cliquée et prolonge sa texture par-dessus l'arête commune. Sélectionnez d'abord la face source. |
 | `Échap` | Vide la sélection de faces. |
 
-La barre d'état rappelle ces touches. **Édition > Sélection de faces précédente** (`Alt+Z`) et **Édition > Sélection de faces suivante** (`Alt+Y`), ainsi que les boutons **◀ Sélection précédente** et **Sélection suivante ▶** en haut du panneau, naviguent dans vos sélections de faces précédentes.
+La barre d'état rappelle ces touches. **Édition > Élément de sélection > Sélection de faces précédente** (`Alt+Z`) et **Édition > Élément de sélection > Sélection de faces suivante** (`Alt+Y`), ainsi que les boutons **◀ Sélection précédente** et **Sélection suivante ▶** en haut du panneau, naviguent dans vos sélections de faces précédentes.
 
 ## Le panneau Édition des faces
 

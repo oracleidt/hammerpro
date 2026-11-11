@@ -48,6 +48,9 @@ const HANDLED: &[Action] = &[
     Action::ShowToolbar,
     Action::ShowToolPalette,
     Action::ShowStatusBar,
+    Action::ToolPaletteTwoColumns,
+    Action::ToolbarTwoRows,
+    Action::ResetToolbar,
     Action::SaveLayout,
     Action::ResetLayout,
     Action::CloseMap,
@@ -147,6 +150,9 @@ impl Package for Workflow {
                 w.show_status_bar = !w.show_status_bar;
                 state.settings_dirty = true;
             }
+            Action::ToolPaletteTwoColumns | Action::ToolbarTwoRows | Action::ResetToolbar => {
+                toolbar_layout_action(state, action);
+            }
             Action::SaveLayout => {
                 state.runtime.workflow.save_layout_open = true;
                 let pkg = &mut app.pkg.workflow;
@@ -163,7 +169,8 @@ impl Package for Workflow {
         let s = &app.state.settings;
         app.state.keys = KeyBindings::from_preset(s.workflow.keymap_preset, &s.keybindings);
         app.state.runtime.workflow.build_info = Some(build_info());
-        app.shell.add_menu_extension(MenuExtension::new(Category::Window, 10, 30, layouts_menu));
+        app.shell
+            .add_menu_extension(MenuExtension::new(Category::Window, 10, 1, layouts_menu).in_submenu("menu.layout"));
         app.shell.add_menu_extension(MenuExtension::new(Category::Window, 30, 25, open_maps_menu));
     }
 
@@ -422,6 +429,26 @@ pub(crate) fn apply_layout(state: &mut AppState, layout: &SavedLayout) {
     ui.show_model_browser = models;
     ui.show_console = console;
     state.ui.maximized_view = layout.maximized.filter(|&i| i < 4);
+    state.settings_dirty = true;
+}
+
+fn toolbar_layout_action(state: &mut AppState, action: Action) {
+    let w = &mut state.settings.workflow;
+    match action {
+        Action::ToolPaletteTwoColumns => {
+            w.tool_palette_columns = if w.tool_palette_two_columns() { 1 } else { 2 };
+            w.show_tool_palette = true;
+        }
+        Action::ToolbarTwoRows => {
+            w.toolbar_rows = if w.toolbar_two_rows() { 1 } else { 2 };
+            w.show_toolbar = true;
+        }
+        Action::ResetToolbar => {
+            w.reset_toolbar();
+            w.show_toolbar = true;
+        }
+        _ => return,
+    }
     state.settings_dirty = true;
 }
 
@@ -684,6 +711,29 @@ mod tests {
     #[test]
     fn table_is_clean() {
         assert!(hp_app::i18n::lint_table(TR).is_empty(), "{:#?}", hp_app::i18n::lint_table(TR));
+    }
+
+    #[test]
+    fn toolbar_and_palette_layout_actions() {
+        let mut s = state();
+        s.settings.workflow.show_tool_palette = false;
+        toolbar_layout_action(&mut s, Action::ToolPaletteTwoColumns);
+        assert!(s.settings.workflow.tool_palette_two_columns() && s.settings.workflow.show_tool_palette);
+        assert_eq!(Action::ToolPaletteTwoColumns.check(&s), hp_app::actions::Check::Toggle(true));
+        toolbar_layout_action(&mut s, Action::ToolPaletteTwoColumns);
+        assert_eq!(s.settings.workflow.tool_palette_columns, 1);
+        toolbar_layout_action(&mut s, Action::ToolbarTwoRows);
+        assert!(s.settings.workflow.toolbar_two_rows());
+        s.settings.workflow.toolbar_hidden.push("cordon".into());
+        s.settings.workflow.toolbar_order.push("render".into());
+        s.settings_dirty = false;
+        toolbar_layout_action(&mut s, Action::ResetToolbar);
+        let w = &s.settings.workflow;
+        assert!(!w.toolbar_two_rows() && w.toolbar_hidden.is_empty() && w.toolbar_order.is_empty());
+        assert!(s.settings_dirty);
+        for a in [Action::ToolPaletteTwoColumns, Action::ToolbarTwoRows, Action::ResetToolbar] {
+            assert!(HANDLED.contains(&a), "{a:?}");
+        }
     }
 
     #[test]

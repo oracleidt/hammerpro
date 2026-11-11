@@ -154,7 +154,8 @@ impl SingleEditor {
         let Some(mat) = parsed else {
             ui.colored_label(theme::error(), t!("tex.me1.unreadable"));
             egui::ScrollArea::vertical().id_salt("hp_me1_text_only").show(ui, |ui| {
-                ui.add(egui::TextEdit::multiline(&mut self.text).code_editor().desired_width(f32::INFINITY));
+                let r = ui.add(egui::TextEdit::multiline(&mut self.text).code_editor().desired_width(f32::INFINITY));
+                hp_app::dialog_keys::keep_tab_for(ui.ctx(), r.id);
             });
             return action;
         };
@@ -202,12 +203,13 @@ impl SingleEditor {
             ui.add_space(4.0);
             ui.label(RichText::new(t!("tex.me1.text")).strong());
             egui::ScrollArea::vertical().id_salt("hp_me1_text").show(ui, |ui| {
-                ui.add(
+                let r = ui.add(
                     egui::TextEdit::multiline(&mut self.text)
                         .code_editor()
                         .desired_rows(14)
                         .desired_width(f32::INFINITY),
                 );
+                hp_app::dialog_keys::keep_tab_for(ui.ctx(), r.id);
             });
         });
 

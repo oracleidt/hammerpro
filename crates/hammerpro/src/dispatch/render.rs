@@ -161,9 +161,11 @@ impl Package for Render {
 
     fn init(&self, app: &mut HammerProApp) {
         hp_app::i18n::register(bgimages::TR);
-        app.shell.add_menu_extension(MenuExtension::new(Category::View, 30, 25, fog_menu));
-        app.shell.add_menu_extension(MenuExtension::new(Category::View, 30, 24, sky_menu));
-        app.shell.add_menu_extension(MenuExtension::new(Category::View, 30, 26, tools_menu));
+        app.shell
+            .add_menu_extension(MenuExtension::new(Category::View, 20, 11, fog_menu).in_submenu("menu.environment"));
+        app.shell
+            .add_menu_extension(MenuExtension::new(Category::View, 20, 10, sky_menu).in_submenu("menu.environment"));
+        app.shell.add_menu_extension(MenuExtension::new(Category::View, 20, 0, tools_menu).in_submenu("menu.display"));
     }
 
     fn dialogs(&self, app: &mut HammerProApp, ctx: &egui::Context) {
@@ -404,7 +406,7 @@ const TR: TrTable = &[
         "Les cubemaps sont redessinées ({0} env_cubemap et le ciel)",
     ),
     ("render.skybox_3d_off", "3D skybox hidden", "Skybox 3D masquée"),
-    ("render.fog_menu", "Fog preview", "Aperçu du brouillard"),
+    ("render.fog_menu", "Previewed fog controller", "Contrôleur de brouillard prévisualisé"),
     ("render.sky_menu", "3D skybox camera", "Caméra de la skybox 3D"),
     ("render.sky_follow_game", "Like in game: {0}", "Comme en jeu : {0}"),
     ("render.sky_none", "none", "aucune"),

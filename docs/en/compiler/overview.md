@@ -20,9 +20,9 @@ Inside the geometry step the compiler follows the steps of Valve's VBSP: planes,
 
 ## How F9 runs it
 
-- **F9** (**File > Compile now**) compiles at once with the last settings, without opening any window. The status bar shows the progress.
-- **Ctrl+F9** (**File > Compile and run...**) opens the [Compile and run window](compile-window.md), where you choose the preset and every option.
-- **File > Cancel compile** stops a running compile (the whole process tree is killed).
+- **F9** (**File > Compile > Compile now**) compiles at once with the last settings, without opening any window. The status bar shows the progress.
+- **Ctrl+F9** (**File > Compile > Compile and run...**) opens the [Compile and run window](compile-window.md), where you choose the preset and every option.
+- **File > Compile > Cancel compile** stops a running compile (the whole process tree is killed).
 
 The open map is never saved by a compile. Hammer Pro takes a snapshot of the document and writes it to `<map folder>/.hammerpro_build/`: your VMF is not touched (the option **Save the map first** only saves your work at the same time). A map that was never saved asks where to save it first.
 

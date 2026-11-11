@@ -104,6 +104,24 @@ Only the shortcuts you changed are written in `[keybindings]`. The action ids ar
 
 Shortcuts of the map never run while you type in a text field, while a menu, popup or modal dialog is open, while the 3D camera flies with the keyboard, or while a shortcut is being recorded. After you move the focus to a button or a list with `Tab`, plain keys (letters, digits, Delete, arrows, Enter, Space) belong to the interface, so `Delete` or `H` after a property field never deletes or hides the object you edit. Shortcuts with Ctrl or Alt and the function keys still work.
 
+A floating window (Transform, Paste special, the texture, entity and lab windows) owns `Tab` from the moment it opens or you click in it until you click in a view or close it: `Tab` and `Shift+Tab` then move between its fields and buttons, wrapping around, instead of cycling the 2D view or reaching the active tool. Code editors (VMT text, BSP entity text) and the property name completion keep `Tab` for themselves.
+
+## Trackpad gestures
+
+With the trackpad gestures on (**Settings > Input**, see [Trackpad](trackpad.md)):
+
+| Gesture | Effect |
+|---|---|
+| Two finger scroll | Pan a 2D view; orbit or move the 3D camera |
+| Pinch, or `Ctrl` + scroll | Zoom a 2D view at the cursor; move the 3D camera forward or back |
+| `Alt` + scroll | The mouse wheel (tool options such as the block count, otherwise zoom) |
+| `Shift` + scroll | `Shift` + mouse wheel |
+| `Space` + drag | Pan a 2D view; look around in 3D |
+| `Space` + `Shift` + drag | Pan the 3D camera |
+| Tap / two finger tap | Click / right click (context menu) |
+
+The shortcut reference (`F1`) lists them under the viewport controls.
+
 ## MCP
 
 `list_keybindings` and `set_keybinding` read and change the shortcuts from AI apps. See the [MCP tool reference](../../MCP.md).

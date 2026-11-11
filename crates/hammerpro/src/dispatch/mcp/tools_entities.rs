@@ -134,15 +134,19 @@ domain! { "entities and io";
         "Every targetname of the map with its entities and how many outputs aim at it.",
         { "pattern": string("Name pattern."), "limit": limit(), "offset": offset() }, [];
     query_box: Read, "Objects in a box",
-        "The solids and entities touching (or inside) a box, without changing the selection.",
+        "The solids and entities touching (or inside) a box, without changing the selection. exact tests the real \
+        shapes (prop meshes, brush faces, displaced surfaces) instead of bounding boxes: an object whose box reaches \
+        in but whose mesh does not is left out.",
         {
             "min": vec3("Box minimum."), "max": vec3("Box maximum."),
             "inside": boolean("Only objects entirely inside."),
+            "exact": boolean("Test real meshes, not bounding boxes (default false)."),
             "limit": limit(),
         }, ["min", "max"];
     aim_entities: Edit, "Aim entities",
         "Turn entities (spot lights, cameras, props, info_player_start...) to face a point or another entity: \
-        their angles (and the pitch key of light_spot and light_environment, which VRAD reads with up positive).",
+        their angles, written the Hammer way so models point at it, and the pitch key of light_spot, \
+        light_environment and light_directional (VRAD reads it with up positive) and the angle override when set.",
         {
             "ids": ids("Entity ids (default: the selected entities)."),
             "point": vec3("Point to face."),
@@ -787,6 +791,7 @@ fn list_targetnames(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
 fn query_box(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let b = hp_geom::Aabb::new(a.vec3("min")?, a.vec3("max")?);
     let inside = a.opt_bool("inside")?.unwrap_or(false);
+    let exact = a.opt_bool("exact")?.unwrap_or(false);
     let limit = a.opt_u64("limit", 1, hp_mcp::tools::MAX_LIST)?.unwrap_or(100) as usize;
     let f = bounds_fn(state);
     let scene = state.doc.scene();
@@ -809,6 +814,11 @@ fn query_box(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
         })
         .map(|(id, _)| *id)
         .collect();
+    if exact {
+        let keep = |o: Option<super::place_world::Obj>| super::tools_place::obj_in_box(state, o, &b, inside);
+        solids.retain(|id| keep(super::place_world::solid_obj(state, *id, true)));
+        entities.retain(|id| keep(super::place_world::entity_obj(state, *id, true)));
+    }
     solids.sort_unstable();
     entities.sort_unstable();
     let ents: Vec<Value> = entities
@@ -895,26 +905,34 @@ fn aim_entities(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
         }
         let yaw = d.y.atan2(d.x).to_degrees().rem_euclid(360.0);
         let up = if yaw_only { 0.0 } else { (d.z / d.length()).asin().to_degrees() };
-        let class = state.doc.scene().entity(*id).map(|e| e.entity.classname.to_ascii_lowercase()).unwrap_or_default();
-        let vrad = matches!(class.as_str(), "light_spot" | "light_environment");
-        let pitch = if vrad { up } else { -up };
+        let Some(e) = state.doc.scene().entity(*id).map(|n| &n.entity) else { continue };
+        let vrad = hp_ui_entities::is_vrad_light(&e.classname);
+        let has_pitch = e.get("pitch").is_some_and(|v| !v.trim().is_empty());
+        let roll = e.angles().filter(|a| a.is_finite()).map_or(0.0, |a| a.z);
+        let overridden = e.get("angle").and_then(|v| v.trim().parse::<f64>().ok()).is_some_and(|v| v != 0.0);
         let r = |x: f64| (x * 100.0).round() / 100.0 + 0.0;
-        plan.push((*id, format!("{} {} 0", r(pitch), r(yaw)), vrad.then(|| format!("{}", r(up)))));
+        let mut keys = vec![("angles", format!("{} {} {}", r(-up), r(yaw), r(roll)))];
+        if vrad || has_pitch {
+            keys.push(("pitch", format!("{}", r(up))));
+        }
+        if overridden {
+            keys.push(("angle", format!("{}", r(yaw))));
+        }
+        plan.push((*id, keys));
     }
     edit(state, "aim_entities", |doc| {
-        for (id, angles, pitch) in &plan {
+        for (id, keys) in &plan {
             doc.edit_entity(*id, |e| {
-                e.set("angles", angles.clone());
-                if let Some(p) = pitch {
-                    e.set("pitch", p.clone());
+                for (k, v) in keys {
+                    e.set(k, v.clone());
                 }
             })?;
         }
         Ok(())
     })?;
-    Ok(ToolResult::json(
-        json!({ "aimed": plan.iter().map(|(id, angles, _)| json!({ "id": id, "angles": angles })).collect::<Vec<_>>() }),
-    ))
+    Ok(ToolResult::json(json!({
+        "aimed": plan.iter().map(|(id, keys)| json!({ "id": id, "angles": keys[0].1 })).collect::<Vec<_>>()
+    })))
 }
 
 fn set_current_entity_class(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
@@ -977,6 +995,21 @@ mod tests {
             ok(&mut s, "aim_entities", json!({ "ids": [id], "point": [o.x, o.y, o.z - 100.0] }));
         }
         assert_eq!(s.doc.scene().entity(5).unwrap().entity.get("pitch"), Some("-90"), "VRAD lights: down is -90");
+        let spot = s.doc.scene().entity(5).unwrap().entity.clone();
+        assert!(spot.get("angles").unwrap().starts_with("90 "), "the spotlight model points down too: {spot:?}");
+        for class in ["light_spot", "light_environment", "light_directional"] {
+            ok(&mut s, "set_entity_class", json!({ "ids": [5], "classname": class }));
+            let o = super::entity_origin(&s, 5).unwrap();
+            let point = o + glam::DVec3::new(100.0, 100.0, 200.0 * std::f64::consts::FRAC_1_SQRT_2);
+            ok(&mut s, "aim_entities", json!({ "ids": [5], "point": [point.x, point.y, point.z] }));
+            let e = s.doc.scene().entity(5).unwrap().entity.clone();
+            assert_eq!(e.get("pitch"), Some("45"), "{class}: up is positive");
+            assert_eq!(e.get("angles"), Some("-45 45 0"), "{class}: angles the Hammer way");
+            ok(&mut s, "rotate_objects", json!({ "ids": [5], "axis": "z", "degrees": 90, "pivot": [o.x, o.y, o.z] }));
+            let e = s.doc.scene().entity(5).unwrap().entity.clone();
+            assert_eq!(e.get("pitch"), Some("45"), "{class}: {e:?}");
+            assert_eq!(e.get("angles"), Some("-45 135 0"), "{class}: {e:?}");
+        }
         assert!(
             s.doc.scene().entity(4).unwrap().entity.get("angles").unwrap().starts_with("90 "),
             "entities: down is +90"

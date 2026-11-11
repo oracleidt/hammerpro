@@ -14,7 +14,7 @@ Les scripts et réglages de l'outil displacement exposent `full_displacement`, `
 
 ## Ouvrir l'outil
 
-- **Outils > Outil displacement**, la palette d'outils, ou `Maj+P`.
+- **Outils > Outil actif > Outil displacement**, la palette d'outils, ou `Maj+P`.
 - Ses options sont dans l'onglet **Displacement** du panneau de droite, qui s'ouvre tout seul quand l'outil est choisi. Les options du panneau sont enregistrées dans les paramètres (`mesh.disp_tool`) et reviennent à la prochaine utilisation.
 - La première ligne du panneau indique combien de displacements contient la map.
 
@@ -42,7 +42,7 @@ On peint, on modèle et on marque dans la vue 3D. Un cercle de pinceau suit la s
 | Geste | Effet |
 | --- | --- |
 | Maintenir le bouton gauche sur des displacements (vue 3D) | Peint. La peinture démarre dès que la souris bouge de 3 points ou que le bouton est maintenu 0,2 s. Un trait = une étape d'annulation |
-| Clic bref (vue 3D) | Sélectionne la face sous la souris (`Ctrl` l'ajoute ou la retire) |
+| Clic bref (vue 3D) | Sélectionne la face sous la souris (`Ctrl` l'ajoute ou la retire). Un displacement groupé sélectionne tous les displacements de son groupe, sauf si les groupes sont ignorés (`Ctrl+W`) |
 | Clic (vues 2D) | Sélectionne les displacements du solide sous la souris |
 | `Maj` en peignant (sculpter, alpha, marquages) | Inverse l'effet : Élever abaisse, Abaisser élève, Ajouter l'alpha retire, Forcer oui devient Forcer non |
 | `Ctrl` en modelant | Inverse : Pousser enfonce, Creuser élève une crête |
@@ -50,7 +50,7 @@ On peint, on modèle et on marque dans la vue 3D. Un cercle de pinceau suit la s
 | Glisser avec le clic droit (vue 3D, modes de peinture) | Change le rayon du pinceau : 150 points vers la droite le doublent, vers la gauche le divisent par deux |
 | `Alt` + glisser avec le clic gauche (vue 3D, modes de peinture) | Même changement de rayon (geste de Hammer) |
 | `Alt` + clic droit sur une face (vue 3D) | Règle l'axe **Personnalisé** sur la normale de la surface à cet endroit et passe l'axe en **Personnalisé** |
-| `Échap` | Annule le trait en cours (ses changements sont défaits) ; sinon vide la sélection de faces |
+| `Échap` | Annule le trait en cours (ses changements sont défaits) ; sinon vide la sélection de faces et désélectionne les solides à displacements sélectionnés |
 
 La couleur du cercle change selon l'effet, et il devient gris avec la mention « Non sélectionné : pas peint » au-dessus des displacements qu'il n'a pas le droit de peindre (voir **Sélection seulement**). La barre d'état rappelle toujours les gestes du mode actif.
 
@@ -93,6 +93,10 @@ Section **Sélection** : affiche « N displacement(s) parmi M face(s) sélection
 | **Masques : Sélection** | Ne teinte pas les displacements sélectionnés (masque Select de Hammer). Désactivé par défaut |
 | **Détruire** | Retransforme les displacements sélectionnés (ou ceux des solides sélectionnés) en faces planes |
 | **Coudre** | Referme les fissures entre les displacements sélectionnés (au moins deux) : les arêtes et coins partagés deviennent identiques, les arêtes entre puissances différentes suivent la plus grossière |
+
+### Groupes et sélection d'objets
+
+Les displacements peints et modifiés sont ceux sélectionnés en dernier : les faces displacement sélectionnées, ou, quand vous avez sélectionné des objets après elles (avec l'outil de sélection, un groupe, **Tout sélectionner**, un outil MCP), tous les displacements des solides sélectionnés. Sélectionner un groupe de displacements (`Ctrl+G`) fait donc de chaque displacement du groupe une cible des pinceaux (les traits passent de l'un à l'autre), de **Sélection seulement**, des commandes de **Outils** (bruit, lissage, subdivision, couture, fusion, hauteur...) et des outils MCP de displacement. Dans l'outil, un clic sur un displacement groupé sélectionne tous les displacements de son groupe, sauf si les groupes sont ignorés (`Ctrl+W`) : `Ctrl`+clic ajoute ou retire tout le groupe, ou une seule face quand les groupes sont ignorés, et `Échap` vide la sélection.
 
 Quand des displacements sont sélectionnés, des options par face apparaissent :
 
@@ -203,7 +207,7 @@ Section **Peindre les marquages** (mode **Marquages**), l'équivalent de Tag Wal
 | **Forcer oui** / **Forcer non** | Le marquage est actif (ou inactif) quelle que soit la pente ; `Maj` peint l'inverse | Forcer oui |
 | **Selon la pente** | Le marquage suit de nouveau la pente | |
 | **Retirer** / **Restaurer** (avec le marquage Retirer) | Marque les triangles comme retirés, ou efface la marque ; `Maj` peint l'inverse | |
-| **Afficher la praticabilité** | Colore les triangles des displacements selon leur praticabilité (même réglage que **Affichage > Options d'affichage > Praticabilité des displacements**) | Désactivé |
+| **Afficher la praticabilité** | Colore les triangles des displacements selon leur praticabilité (même réglage que **Affichage > Diagnostics > Praticabilité des displacements**) | Désactivé |
 | **Appliquer à la sélection** | Donne le marquage choisi à tous les triangles des displacements sélectionnés | |
 
 ## Pinceau
@@ -243,23 +247,23 @@ Section **Outils**, en bas du panneau. Ces commandes agissent sur les displaceme
 
 Une case affiche un état mixte quand la sélection n'est pas homogène ; un clic l'active pour tous.
 
-Les terrains entiers viennent de la page [Terrain](terrain.md) : **Outils > Importer une carte de hauteur...**, **Générer un terrain...** et **Exporter une carte de hauteur...** construisent, remplacent et exportent des grilles de displacements cousus.
+Les terrains entiers viennent de la page [Terrain](terrain.md) : **Fichier > Importer > Importer une carte de hauteur...**, **Générer un terrain...** et **Exporter une carte de hauteur...** construisent, remplacent et exportent des grilles de displacements cousus.
 
 Les mêmes commandes sont dans le menu **Outils** et marchent quel que soit l'outil actif : **Subdiviser les displacements**, **Inverser l'alpha des displacements** et **Ajouter du bruit aux displacements...** (une petite fenêtre **Bruit sur les displacements** avec le choix **Aléatoire** ou **Fractal**, la plage, les options fractales et un bouton **Appliquer**), ainsi que **Bruit fractal sur les displacements...** (la même fenêtre avec **Fractal** choisi), **Érosion thermique des displacements...** et **Érosion hydraulique des displacements...** (petites fenêtres avec les options de cette érosion et un bouton **Appliquer**). Les fenêtres utilisent les mêmes options que la section **Outils** du panneau : une valeur changée dans l'une l'est dans l'autre. Aucune n'a de raccourci par défaut ; toutes sont dans la palette de commandes et dans l'outil MCP `run_action` (`disp_noise`, `disp_fractal_noise`, `disp_thermal_erosion`, `disp_hydraulic_erosion`).
 
 ### Displacement en maillage
 
-Enregistre les displacements sélectionnés (ou tous ceux des solides sélectionnés) en maillage modifiable dans Blender ou tout outil 3D. Utilisez le bouton **En maillage...** de la section **Outils**, **Outils > Displacement en maillage...**, ou l'outil MCP `displacement_to_mesh`. La commande est disponible quand au moins un displacement est sélectionné.
+Enregistre les displacements sélectionnés (ou tous ceux des solides sélectionnés) en maillage modifiable dans Blender ou tout outil 3D. Utilisez le bouton **En maillage...** de la section **Outils**, **Outils > Displacements > Displacement en maillage...**, ou l'outil MCP `displacement_to_mesh`. La commande est disponible quand au moins un displacement est sélectionné.
 
 - Une boîte de dialogue demande où écrire le `.obj` (nom proposé : `<map>_displacements.obj`, à côté de la map). Le `.mtl` est écrit à côté.
-- Le fichier contient les sommets déplacés, leurs normales, les UV calculés depuis le mappage de texture de chaque face, et un matériau par texture. Les textures d'outil sont ignorées. C'est le même code que **Fichier > Exporter en OBJ**.
+- Le fichier contient les sommets déplacés, leurs normales, les UV calculés depuis le mappage de texture de chaque face, et un matériau par texture. Les textures d'outil sont ignorées. C'est le même code que **Fichier > Exporter > Exporter en OBJ**.
 - **Mètres** écrit des mètres (1 unité = 0,01905 m) au lieu des unités Source. **Z haut** garde les axes de l'éditeur ; désactivé, le fichier est Y vers le haut (réglage par défaut de l'import OBJ de Blender).
 - Rien ne change dans la map et aucune étape d'annulation n'est créée. Exporter en OBJ et Exporter à nouveau ne sont pas modifiés.
 - MCP : `displacement_to_mesh` accepte `faces`, `ids` ou `solid_ids` (par défaut les displacements sélectionnés), `path` (chemin complet ou relatif au dossier de la map ; par défaut `<map>_displacements.obj`), `units` (`source` ou `meters`), `up` (`y` ou `z`) et `overwrite`.
 
 ### Maillage en displacement
 
-Transforme un maillage 3D en displacements : Hammer Pro pose une grille de dalles de displacement sur le maillage, mesure la hauteur du maillage à chaque sommet de displacement avec un rayon, et met les sommets à cette hauteur. Utilisez **Outils > Maillage en displacement...**, le bouton **Maillage en displacement...** de la section **Outils**, la palette de commandes, ou l'outil MCP `mesh_to_displacement`.
+Transforme un maillage 3D en displacements : Hammer Pro pose une grille de dalles de displacement sur le maillage, mesure la hauteur du maillage à chaque sommet de displacement avec un rayon, et met les sommets à cette hauteur. Utilisez **Outils > Displacements > Maillage en displacement...**, le bouton **Maillage en displacement...** de la section **Outils**, la palette de commandes, ou l'outil MCP `mesh_to_displacement`.
 
 Le maillage peut être :
 
@@ -297,7 +301,7 @@ Comment les hauteurs sont faites :
 
 #### Plaquer sur un maillage
 
-**Outils > Plaquer les displacements sur un maillage...** (ou **Plaquer sur un maillage...** dans la section **Outils**) projette des displacements existants sur un maillage. Posez d'abord des dalles de displacement plates à la main (ou avec **Daller la sélection**), sélectionnez-les, puis choisissez un fichier, un prop ou un modèle du jeu. Pour chaque sommet, un rayon le long de l'axe trouve la surface du maillage et la distance du displacement (ou le décalage, quand le sommet ne bouge pas le long de sa normale) est réglée pour que le sommet soit dessus. Une boîte dans les vues montre où se trouve le maillage.
+**Outils > Displacements > Plaquer les displacements sur un maillage...** (ou **Plaquer sur un maillage...** dans la section **Outils**) projette des displacements existants sur un maillage. Posez d'abord des dalles de displacement plates à la main (ou avec **Daller la sélection**), sélectionnez-les, puis choisissez un fichier, un prop ou un modèle du jeu. Pour chaque sommet, un rayon le long de l'axe trouve la surface du maillage et la distance du displacement (ou le décalage, quand le sommet ne bouge pas le long de sa normale) est réglée pour que le sommet soit dessus. Une boîte dans les vues montre où se trouve le maillage.
 
 | Option | Effet | Par défaut |
 | --- | --- | --- |
@@ -311,13 +315,13 @@ Les sommets que le maillage ne couvre pas restent comme ils sont, et la notifica
 
 #### Daller la sélection
 
-**Outils > Daller la sélection avec des displacements...** (ou **Daller la sélection...** dans la section **Outils**) convertit les brushes sélectionnés, ou les faces sélectionnées, en dalles de displacement plates : dessinez la zone du terrain avec des blocs ordinaires, convertissez-la, puis utilisez **Plaquer sur un maillage**. Chaque face plate et perpendiculaire à l'axe (la face du dessus pour Z) est découpée en dalles égales d'au plus **Taille des dalles** unités : une face de 512 sur 300 avec une taille de 256 donne 2 sur 2 dalles ; les faces inclinées ou tournées ailleurs sont ignorées et comptées. **Supprimer les brushes d'origine** (activé par défaut) retire les brushes qui ont été dallés ; Annuler les ramène. Les options sont l'axe, la taille des dalles, la puissance (**Auto** vaut 3), la texture, son échelle, l'épaisseur et le groupement. Une seule étape d'annulation (**Dallage de la sélection en displacements**).
+**Outils > Displacements > Daller la sélection avec des displacements...** (ou **Daller la sélection...** dans la section **Outils**) convertit les brushes sélectionnés, ou les faces sélectionnées, en dalles de displacement plates : dessinez la zone du terrain avec des blocs ordinaires, convertissez-la, puis utilisez **Plaquer sur un maillage**. Chaque face plate et perpendiculaire à l'axe (la face du dessus pour Z) est découpée en dalles égales d'au plus **Taille des dalles** unités : une face de 512 sur 300 avec une taille de 256 donne 2 sur 2 dalles ; les faces inclinées ou tournées ailleurs sont ignorées et comptées. **Supprimer les brushes d'origine** (activé par défaut) retire les brushes qui ont été dallés ; Annuler les ramène. Les options sont l'axe, la taille des dalles, la puissance (**Auto** vaut 3), la texture, son échelle, l'épaisseur et le groupement. Une seule étape d'annulation (**Dallage de la sélection en displacements**).
 
 MCP : `mesh_to_displacement` (`path`, `prop` ou `model`, `up`, `convert_units`, `axis`, `flip`, `tile_size`, `power`, `pick`, `fill`, `margin`, `smooth`, `scale`, `origin`, `position`, `material`, `uv_scale`, `skirt`, `bottom`, `base_height`, `thickness`, `group`, `dry_run`), `conform_displacements_to_mesh` (les mêmes arguments de maillage, `faces`, `ids` ou `solid_ids`, `axis`, `flip`, `pick`, `scale`, `origin`, `position`, `strength`, `offset`) et `tile_displacements_from_selection` (`ids` ou `solid_ids`, `axis`, `flip`, `tile_size`, `power`, `material`, `uv_scale`, `thickness`, `delete_source`, `group`). `dry_run` renvoie la disposition (dalles, puissance, espacement, plan, avertissements) sans modifier la map. Un `path` relatif part du dossier de la map.
 
 ### Sculpter dans Blender
 
-**Outils > Envoyer vers Blender** envoie les displacements sélectionnés vers Blender, un objet par displacement, pour les sculpter avec les pinceaux et modificateurs de Blender ; le résultat est réécrit dans les mêmes displacements (alpha, flags, tags, échelle de lightmap et données de mélange non touchées gardés, raccords recousus, une seule étape d'annulation). Voir [Lien avec Blender](blender.md).
+**Outils > Blender et MCP > Envoyer vers Blender** envoie les displacements sélectionnés vers Blender, un objet par displacement, pour les sculpter avec les pinceaux et modificateurs de Blender ; le résultat est réécrit dans les mêmes displacements (alpha, flags, tags, échelle de lightmap et données de mélange non touchées gardés, raccords recousus, une seule étape d'annulation). Voir [Lien avec Blender](blender.md).
 
 ### Bruit et érosion
 
@@ -351,7 +355,7 @@ Conseils : quelques passes d'érosion thermique adoucissent un bruit anguleux en
 
 ### Fusion des hauteurs
 
-Fusionne les hauteurs de deux ensembles de displacements ou plus sur une zone de transition, pour des morceaux de terrain qui se chevauchent ou se touchent : une colline et une plaine, deux dalles construites à des altitudes différentes, un lit de route et le sol. Utilisez la section **Fusion des hauteurs** du panneau **Outils**, **Outils > Fusionner les hauteurs des displacements**, la palette de commandes ou l'outil MCP `blend_displacements`. Tout se fait en une étape d'annulation (**Fusion des displacements**) et les displacements sont cousus ensuite.
+Fusionne les hauteurs de deux ensembles de displacements ou plus sur une zone de transition, pour des morceaux de terrain qui se chevauchent ou se touchent : une colline et une plaine, deux dalles construites à des altitudes différentes, un lit de route et le sol. Utilisez la section **Fusion des hauteurs** du panneau **Outils**, **Outils > Displacements > Fusionner les hauteurs des displacements**, la palette de commandes ou l'outil MCP `blend_displacements`. Tout se fait en une étape d'annulation (**Fusion des displacements**) et les displacements sont cousus ensuite.
 
 Les ensembles :
 

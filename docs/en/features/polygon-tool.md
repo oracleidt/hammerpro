@@ -6,7 +6,7 @@ The polygon tool (like the one of Hammer++) creates one brush from a convex outl
 
 ## Opening it
 
-- **Tools > Polygon tool**, the tool palette, or `Shift+N`.
+- **Tools > Active tool > Polygon tool**, the tool palette, or `Shift+N`.
 - The tool works in the 2D views only; clicks in the 3D view are ignored.
 
 ## Drawing a brush

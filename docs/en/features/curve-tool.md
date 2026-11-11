@@ -6,7 +6,7 @@ The curve tool builds curved walls, rails, kerbs, pipes seen from above or ramps
 
 ## Opening it
 
-- **Tools > Curve tool**, the tool palette (creation group, next to the polygon tool), or `Shift+U`.
+- **Tools > Active tool > Curve tool**, the tool palette (creation group, next to the polygon tool), or `Shift+U`.
 - The tool draws in the 2D views only; clicks in the 3D view are ignored. The 3D view shows the live preview.
 
 ## Drawing the curve
@@ -71,7 +71,7 @@ The roll turns the cross section around the middle of the road, so the pieces st
 Every brush made by the curve tool remembers its curve: the points, the view, the depth and all the options are stored in the `editor` block of the brushes in the VMF, as `hammerpro_curve` keys. Hammer and Hammer++ ignore these keys and keep them when they save, so the map stays valid for them. Copies of the whole curve keep working. A brush you cut or move by hand keeps the data, but **Edit curve** puts back the shape of the curve.
 
 1. Select one brush of the curve (or its brush entity).
-2. **Tools > Edit curve**, or the command palette. The curve tool opens on the stored points, in the adjusting step, with the stored options.
+2. **Tools > Curves and roads > Edit curve**, or the command palette. The curve tool opens on the stored points, in the adjusting step, with the stored options.
 3. Change what you want:
    - **Drag a point** to move it.
    - **Shift+click** inserts a point on the curve, between the two nearest points.

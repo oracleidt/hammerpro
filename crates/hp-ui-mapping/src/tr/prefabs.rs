@@ -21,8 +21,8 @@ pub const TR: TrTable = &[
     ),
     (
         "prefabs.empty_create_menu",
-        "Select objects and use Tools > Create prefab to save them as a prefab.",
-        "Sélectionnez des objets et utilisez Outils > Créer un prefab pour les enregistrer comme prefab.",
+        "Select objects and use Tools > Placement and props > Create prefab to save them as a prefab.",
+        "Sélectionnez des objets et utilisez Outils > Placement et props > Créer un prefab pour les enregistrer comme prefab.",
     ),
     ("prefabs.count", "{0} of {1} prefabs", "{0} prefabs sur {1}"),
     ("prefabs.truncated", "(only the first {0} files are listed)", "(seuls les {0} premiers fichiers sont listés)"),

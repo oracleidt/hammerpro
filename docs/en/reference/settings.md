@@ -35,11 +35,11 @@ Mostly on **Settings > Viewports**; the `show_*` toggles are also in the **View*
 | `camera_fast_multiplier` | `3.0` | Speed factor while `Shift` is held. |
 | `mouse_sensitivity` | `0.15` | Mouselook sensitivity. |
 | `invert_mouse_y` | `false` | Invert the vertical mouse axis when looking around. |
-| `far_plane` | `32768.0` | View distance of the 3D view. **View > Shorter / Longer draw distance** change it too. |
+| `far_plane` | `32768.0` | View distance of the 3D view. **View > Zoom and draw distance > Shorter / Longer draw distance** change it too. |
 | `msaa` | `true` | Antialiasing of the views. |
-| `show_models` | `true` | Draw props as their models. **View > Show models**. |
-| `show_helpers` | `true` | Draw entity helpers and sprites. **View > Show helpers and sprites**. |
-| `show_tool_textures` | `true` | Draw faces with tool textures. **View > Show tool textures**. |
+| `show_models` | `true` | Draw props as their models. **View > Display options > Show models**. |
+| `show_helpers` | `true` | Draw entity helpers and sprites. **View > Display options > Show helpers and sprites**. |
+| `show_tool_textures` | `true` | Draw faces with tool textures. **View > Display options > Show tool textures**. |
 | `show_fps` | `false` | Show the frame rate. **Settings > General**. |
 | `show_3d_grid` | `false` | Grid in the 3D view (Viewports page). |
 | `grid_highlight_every` | `8` | Every Nth 2D grid line is highlighted. |
@@ -60,8 +60,8 @@ Mostly on **Settings > Viewports**; the `show_*` toggles are also in the **View*
 | `grid_size` | `16.0` | Global grid size, 0.01 to 4096. Toolbar grid field, `[` and `]`. |
 | `snap_to_grid` | `true` | Snap to the grid. **Map > Snap to grid** (`Shift+W`). |
 | `show_grid` | `true` | Draw the 2D grid. **Map > Show grid** (`Shift+G`). |
-| `texture_lock` | `true` | Textures follow moved and rotated brushes. **Tools > Texture lock** (`Shift+L`). |
-| `texture_scale_lock` | `false` | Textures scale with scaled brushes. **Tools > Texture scale lock** (`Shift+K`). |
+| `texture_lock` | `true` | Textures follow moved and rotated brushes. **Tools > Textures > Texture lock** (`Shift+L`). |
+| `texture_scale_lock` | `false` | Textures scale with scaled brushes. **Tools > Textures > Texture scale lock** (`Shift+K`). |
 | `select_mode` | `"Groups"` | What a click selects: `Groups`, `Objects`, `Solids`. **Edit > Selection mode**. |
 | `default_material` | `"dev/dev_measuregeneric01b"` | Material of new brushes. |
 | `default_texture_scale` | `0.25` | Texture scale of new faces. |
@@ -210,7 +210,7 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `gizmo_local` | `false` | The gizmo of a single point entity follows its angles (`Ctrl+J`). |
 | `click_to_zoom` | `false` | The camera tool zooms 2D views on click (`Ctrl` + click zooms out). |
 | `stretch_handles` | `true` | Arrows on the faces of the selection in the 3D view stretch it. |
-| `box_confirm` | `true` | A box drawn in a 2D view waits for `Enter` (Hammer++ style): its handles resize it, a drag inside moves it, `Esc` drops it. `false` selects on release. |
+| `box_confirm` | `false` | Adjustable box selection: a box drawn in a 2D view waits for `Enter` (Hammer++ style), its handles resize it, a drag inside moves it, `Esc` drops it. `false` (the default since 2.0.3) selects on release. Settings saved by 2.0.2 are switched to `false` once on upgrade. |
 | `random_yaw_min` | `0.0` | **Random Z rotation**: smallest turn, degrees (-360 to 360). |
 | `random_yaw_max` | `360.0` | **Random Z rotation**: largest turn, degrees (at most 360 above the smallest). |
 | `random_yaw_snap` | `0.0` | **Random Z rotation**: step of the turn, degrees (0: free, up to 180). |
@@ -245,6 +245,10 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `show_view_info` | `false` | Frame rate, camera position and angles in the 3D view (`O`). |
 | `show_bounds` | `false` | Yellow bounding boxes of visible objects. No shortcut (`I` is the interactive inset): toggle it from **View > Display options > Bounding boxes**. |
 | `show_toolbar`, `show_tool_palette`, `show_status_bar` | `true` | **View > Panels**. |
+| `tool_palette_columns` | `1` | The tool palette in one or two columns (`2`: buttons side by side). Right-click the palette, **View > Panels > Tool palette in two columns** or **Settings > General > Tool palette**. |
+| `toolbar_rows` | `1` | `2`: the toolbar wraps on a second row when the window is too narrow instead of moving groups into **»**. Right-click the toolbar, **View > Panels > Toolbar on two rows** or **Settings > General > Toolbar**. |
+| `toolbar_order` | `[]` | Order of the toolbar groups (ids `file`, `edit`, `grid`, `groups`, `hide`, `cordon`, `display`, `show`, `render`); groups not listed follow in the default order, `compile` always stays at the right end. Empty: the default order. |
+| `toolbar_hidden` | `[]` | Hidden toolbar groups (the ids above and `compile`) and buttons (the action id of the button, or `grid_size`, `render_mode`, `props_2d`, `primitive_stats`; Compile is hidden by its group id `compile`). Right-click the toolbar > **Customize toolbar**; **Reset the toolbar** empties it. |
 | `show_history` | `false` | Undo history tab. |
 | `layouts` | `{}` | Saved layouts (**Window > Layout > Save layout...**), 32 at most: `quadrants`, `split_x`, `split_y`, `maximized`, `panels`. |
 | `open_in_new_tab` | `true` | Opened maps get their own tab (off: they replace the current map). |
@@ -336,7 +340,7 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `model_distance` | `0.0` | Models farther than this are boxes (0: no limit). |
 | `lod_distances` | `[0.0, 0.0]` | Distances of LOD 1 and LOD 2 for heavy models (0: always full). No control in the window. |
 | `models_in_2d` | `"SelectedOnly"` | `Boxes`, `Wireframe`, `SelectedOnly`. |
-| `collision_models` | `false` | Collision models over models. **View > Display options > Collision models**. |
+| `collision_models` | `false` | Collision models over models. **View > Diagnostics > Collision models**. |
 | `collision_only` | `false` | Show only collision models. |
 | `fill_selected_2d` | `true` | Fill selected faces in 2D views. |
 | `fill_selected_2d_opacity` | `0.2` | Opacity of that fill. |
@@ -524,6 +528,7 @@ The **Build and save as content** window and the Map assets tab. See [Build and 
 | `offer_portals` | `true` | Offer to load the new portal file after a compile. |
 | `portal_heat` | `false` | Color portals by render cost. |
 | `portal_xray` | `true` | Show portals through walls in 3D. |
+| `warn_duplicates` | `true` | Warn when a new brush or entity is an exact copy of another at the same place. |
 
 ## `[lab]`
 
@@ -552,7 +557,7 @@ The **Build and save as content** window and the Map assets tab. See [Build and 
 
 ## `[sniffer]`
 
-The [BSP Sniffer](../features/bsp-sniffer.md) panel (File > BSP Sniffer...). Only the keys that differ from the default are written.
+The [BSP Sniffer](../features/bsp-sniffer.md) panel (File > Import > BSP Sniffer...). Only the keys that differ from the default are written.
 
 | Key | Default | What it does |
 | --- | --- | --- |
@@ -644,6 +649,18 @@ See [Updates](../features/updates.md).
 | --- | --- | --- |
 | `vtf.editor_path` | `""` | The external VTF editor (VTFEdit, VTFEdit++, VTFEdit Reloaded...); empty means Hammer Pro searches. Only the user changes it. |
 | `vtf.prefer_integrated` | `false` | Open textures in the built in VTF editor even when an external one is found. |
+
+## `[input]`
+
+**Settings > Input.** See [Trackpad](../features/trackpad.md).
+
+| Key | Default | What it does |
+| --- | --- | --- |
+| `input.trackpad_mode` | `"Auto"` | `Auto` turns the trackpad gestures on when a trackpad gesture is seen and off at the first mouse wheel notch, `On` always, `Off` never (the mouse behaviour). |
+| `input.trackpad_scroll_3d` | `"Orbit"` | Two finger scroll in the 3D view: `Orbit` around the point at the view center, or `Move` the camera sideways and up or down. |
+| `input.trackpad_pan_speed` | `1.0` | 0.25 to 4: multiplies the trackpad pan. |
+| `input.trackpad_zoom_speed` | `1.0` | 0.25 to 4: multiplies the pinch and Ctrl + scroll zoom. |
+| `input.trackpad_orbit_speed` | `1.0` | 0.25 to 4: multiplies the 3D orbit. |
 
 ## Related pages
 

@@ -73,8 +73,8 @@ pub const TR: TrTable = &[
     ("lab.nav.failed", "The nav mesh {0} could not be read: {1}", "Impossible de lire le nav mesh {0} : {1}"),
     (
         "lab.nav.none",
-        "No nav mesh found for this map: use Map > Load nav mesh to choose one",
-        "Aucun nav mesh trouvé pour cette map : utilisez Map > Charger un nav mesh pour en choisir un",
+        "No nav mesh found for this map: use Map > Leaks and visibility > Load nav mesh to choose one",
+        "Aucun nav mesh trouvé pour cette map : utilisez Map > Fuites et visibilité > Charger un nav mesh pour en choisir un",
     ),
     ("lab.nav.files", "Navigation meshes", "Maillages de navigation"),
     ("lab.nav.status", "Nav areas: {0}", "Zones nav : {0}"),

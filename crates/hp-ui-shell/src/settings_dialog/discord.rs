@@ -50,7 +50,7 @@ impl SettingsPage for DiscordPage {
         });
 
         heading(ui, t!("shell.discord.application"));
-        egui::Grid::new("hp_shell_discord").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
+        super::form_grid(ui, "hp_shell_discord").show(ui, |ui| {
             ui.label(t!("shell.discord.app_id"));
             changed |= ui
                 .add(egui::TextEdit::singleline(&mut s.application_id).desired_width(220.0).hint_text(
@@ -65,7 +65,11 @@ impl SettingsPage for DiscordPage {
             ui.end_row();
             ui.label(t!("shell.discord.project_url"));
             changed |= ui
-                .add(egui::TextEdit::singleline(&mut s.project_url).desired_width(320.0).hint_text("https://..."))
+                .add(
+                    egui::TextEdit::singleline(&mut s.project_url)
+                        .desired_width(super::field_width(ui, 320.0, 0.0))
+                        .hint_text("https://..."),
+                )
                 .on_hover_text(t!("shell.discord.project_url_tip"))
                 .changed();
             ui.end_row();

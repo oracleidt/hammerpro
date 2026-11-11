@@ -7,6 +7,7 @@ pub mod game_ui;
 pub mod grid_rotate;
 pub mod grids;
 pub mod help;
+pub mod icons;
 pub mod jobs;
 pub mod keys;
 pub mod loading;

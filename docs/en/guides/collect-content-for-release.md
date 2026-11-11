@@ -14,7 +14,7 @@ Base game files are never needed: every player has them.
 
 ## Step 2 (recommended): Build and save as content
 
-For a Garry's Mod release, **File > Build and save as content...** does everything: Final compile, cubemaps and navigation mesh, packing, addon folder, GMA and Workshop upload.
+For a Garry's Mod release, **File > Publish > Build and save as content...** does everything: Final compile, cubemaps and navigation mesh, packing, addon folder, GMA and Workshop upload.
 
 1. In the **Build** tab, choose what to **Produce**:
    - **Workshop addon**: the BSP, a content folder and a `.gma`.

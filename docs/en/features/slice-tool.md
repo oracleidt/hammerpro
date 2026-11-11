@@ -6,7 +6,7 @@ The slice tool cuts the selected brushes into several blocks with evenly spaced 
 
 ## Opening it
 
-- **Tools > Slice tool**, the tool palette, or `Shift+Y`.
+- **Tools > Active tool > Slice tool**, the tool palette, or `Shift+Y`.
 - Select the brushes first. The tool works on one or several selected brushes at once, and on the brushes inside a selected group or brush entity.
 - Selecting the tool again (`Shift+Y` while it is active) switches the orientation.
 

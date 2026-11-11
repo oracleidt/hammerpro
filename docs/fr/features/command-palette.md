@@ -20,7 +20,7 @@ La palette de commandes lance n'importe quelle commande de Hammer Pro en tapant 
 
 Un clic sur une entrée la lance aussi. Le pied de la palette rappelle les touches (*naviguer, exécuter, fermer*). Quand rien ne correspond, la palette affiche **Aucun résultat**. 200 résultats au plus sont listés.
 
-Chaque ligne affiche une icône, le nom, l'endroit où se trouve la commande (son menu, **Outil** pour les outils, **Maps récentes** pour une map, **Affichage** pour une langue) et son raccourci s'il en a un. Les commandes impossibles à lancer pour l'instant (rien de sélectionné, par exemple) sont grisées et ne font rien.
+Chaque ligne affiche une icône, le nom, l'endroit où se trouve la commande (son chemin de menu, par exemple **Fichier > Importer** ou **Outils > Disposer**, **Outil** pour les outils, **Maps récentes** pour une map, **Affichage** pour une langue) et son raccourci s'il en a un. Les commandes impossibles à lancer pour l'instant (rien de sélectionné, par exemple) sont grisées et ne font rien.
 
 ## Ce qu'on y trouve
 

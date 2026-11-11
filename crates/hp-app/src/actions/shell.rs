@@ -9,7 +9,7 @@ action_list! { shell_actions {
     SaveMap => "save_map", File, FileSave, sc(CTRL, Key::S), Ready;
     SaveMapAs => "save_map_as", File, FileSave, sc(CTRL_SHIFT, Key::S), Ready;
     ImportMap => "import_map", File, FileImport, None, Ready;
-    ExportSelection => "export_selection", File, FileImport, None, Ready;
+    ExportSelection => "export_selection", File, FileExport, None, Ready;
     RunMap => "run_map", File, FileRun, sc(CTRL, Key::F9), Ready;
     Exit => "exit", File, FileExit, None, Ready;
 
@@ -33,21 +33,21 @@ action_list! { shell_actions {
     SelectElementEdge => "select_element_edge", Edit, EditSelectElement, sc(SHIFT, Key::Num2), Ready;
     SelectElementFace => "select_element_face", Edit, EditSelectElement, sc(SHIFT, Key::Num3), Ready;
     FindEntities => "find_entities", Edit, EditFind, sc(CTRL_SHIFT, Key::F), Ready;
-    ReplaceTextures => "replace_textures", Tools, ToolsBrush, sc(CTRL_SHIFT, Key::R), Ready;
+    ReplaceTextures => "replace_textures", Tools, ToolsTextures, sc(CTRL_SHIFT, Key::R), Ready;
     Properties => "properties", Edit, EditProperties, sc(ALT, Key::Enter), Ready;
     CommandPalette => "command_palette", Tools, ToolsApp, sc(CTRL, Key::P), Ready;
     Settings => "settings", Tools, ToolsApp, sc(CTRL, Key::Comma), Ready;
 
-    Group => "group", Tools, ToolsBrush, sc(CTRL, Key::G), Ready;
-    Ungroup => "ungroup", Tools, ToolsBrush, sc(CTRL, Key::U), Ready;
-    TieToEntity => "tie_to_entity", Tools, ToolsBrush, sc(CTRL, Key::T), Ready;
-    MoveToWorld => "move_to_world", Tools, ToolsBrush, sc(CTRL_SHIFT, Key::W), Ready;
+    Group => "group", Tools, ToolsGroup, sc(CTRL, Key::G), Ready;
+    Ungroup => "ungroup", Tools, ToolsGroup, sc(CTRL, Key::U), Ready;
+    TieToEntity => "tie_to_entity", Tools, ToolsGroup, sc(CTRL, Key::T), Ready;
+    MoveToWorld => "move_to_world", Tools, ToolsGroup, sc(CTRL_SHIFT, Key::W), Ready;
     HideSelected => "hide_selected", View, ViewHide, sc(NONE, Key::H), Ready;
     HideUnselected => "hide_unselected", View, ViewHide, sc(CTRL_SHIFT, Key::H), Ready;
     UnhideAll => "unhide_all", View, ViewHide, sc(NONE, Key::U), Ready;
-    Carve => "carve", Tools, ToolsBrush, sc(CTRL_SHIFT, Key::C), Ready;
-    MakeHollow => "make_hollow", Tools, ToolsBrush, sc(CTRL, Key::H), Ready;
-    MergeConvex => "merge_convex", Tools, ToolsBrush, None, Ready;
+    Carve => "carve", Tools, ToolsCsg, sc(CTRL_SHIFT, Key::C), Ready;
+    MakeHollow => "make_hollow", Tools, ToolsCsg, sc(CTRL, Key::H), Ready;
+    MergeConvex => "merge_convex", Tools, ToolsBrushOps, None, Ready;
     SnapToGrid => "snap_to_grid", Tools, ToolsBrush, sc(CTRL, Key::B), Ready;
     TransformDialog => "transform_dialog", Tools, ToolsBrush, sc(CTRL, Key::M), Ready;
     FlipX => "flip_x", Tools, ToolsFlip, None, Ready;
@@ -69,8 +69,8 @@ action_list! { shell_actions {
     GridLarger => "grid_larger", Map, MapGrid, sc(NONE, Key::CloseBracket), Ready;
     ToggleGrid => "toggle_grid", Map, MapGrid, sc(SHIFT, Key::G), Ready;
     ToggleSnap => "toggle_snap", Map, MapGrid, sc(SHIFT, Key::W), Ready;
-    ToggleTextureLock => "toggle_texture_lock", Tools, ToolsBrush, sc(SHIFT, Key::L), Ready;
-    ToggleTextureScaleLock => "toggle_texture_scale_lock", Tools, ToolsBrush, sc(SHIFT, Key::K), Ready;
+    ToggleTextureLock => "toggle_texture_lock", Tools, ToolsTextures, sc(SHIFT, Key::L), Ready;
+    ToggleTextureScaleLock => "toggle_texture_scale_lock", Tools, ToolsTextures, sc(SHIFT, Key::K), Ready;
     Center2dOnSelection => "center_2d", View, ViewNav, sc(CTRL, Key::E), Ready;
     Center3dOnSelection => "center_3d", View, ViewNav, sc(CTRL_SHIFT, Key::E), Ready;
     MaximizeView => "maximize_view", View, ViewNav, sc(SHIFT, Key::Z), Ready;
@@ -104,10 +104,10 @@ action_list! { shell_actions {
 
     KeyboardShortcuts => "keyboard_shortcuts", Help, HelpDocs, sc(NONE, Key::F1), Ready;
     OpenDocs => "open_docs", Help, HelpDocs, None, Ready;
-    ReportIssue => "report_issue", Help, HelpDocs, None, Ready;
+    ReportIssue => "report_issue", Help, HelpSupport, None, Ready;
     About => "about", Help, HelpAbout, None, Ready;
-    FaceSelectionBack => "face_selection_back", Edit, EditSelect, sc(ALT, Key::Z), Ready;
-    FaceSelectionForward => "face_selection_forward", Edit, EditSelect, sc(ALT, Key::Y), Ready;
+    FaceSelectionBack => "face_selection_back", Edit, EditFaceHistory, sc(ALT, Key::Z), Ready;
+    FaceSelectionForward => "face_selection_forward", Edit, EditFaceHistory, sc(ALT, Key::Y), Ready;
 }}
 
 pub(super) const REPEATS: &[Action] = &[Action::Undo, Action::Redo, Action::GridSmaller, Action::GridLarger];

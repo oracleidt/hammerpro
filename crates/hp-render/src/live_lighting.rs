@@ -33,13 +33,25 @@ pub(crate) fn current(lights: &[LightGpu]) -> Vec<LightGpu> {
 }
 
 pub(crate) fn combine(mut packed: Packed, baseline: Option<&[LightGpu]>) -> Packed {
-    let Some(baseline) = baseline else { return packed };
+    let Some(baseline) = baseline else {
+        for light in packed.lights.iter_mut().filter(|light| crate::lights::is_dlight(light)) {
+            light.delta_color = [light.color[0], light.color[1], light.color[2], 0.0];
+        }
+        return packed;
+    };
     let mut previous: HashMap<[u32; 21], VecDeque<LightGpu>> = HashMap::new();
-    for light in baseline.iter().filter(|light| light.color[3] < crate::lights::KIND_DIRECTIONAL) {
+    for light in baseline
+        .iter()
+        .filter(|light| light.color[3] < crate::lights::KIND_DIRECTIONAL && !crate::lights::is_dlight(light))
+    {
         previous.entry(key(light)).or_default().push_back(*light);
     }
     for light in packed.lights.iter_mut().skip(packed.n_dir as usize) {
-        let old = previous.get_mut(&key(light)).and_then(VecDeque::pop_front);
+        let old = if crate::lights::is_dlight(light) {
+            None
+        } else {
+            previous.get_mut(&key(light)).and_then(VecDeque::pop_front)
+        };
         for channel in 0..3 {
             light.delta_color[channel] = light.color[channel] - old.map_or(0.0, |old| old.color[channel]);
         }
@@ -95,5 +107,22 @@ mod tests {
         assert_eq!(rebaked.len(), 2);
         let packed = combine(crate::lights::Packed { lights: rebaked.clone(), n_dir: 0, left_out: 0 }, Some(&rebaked));
         assert!(packed.lights.iter().all(|light| light.delta_color == [0.0; 4]));
+    }
+
+    #[test]
+    fn engine_dynamic_lights_always_light_over_the_bake() {
+        let mut dynamic = light(16.0, 2.0);
+        dynamic.falloff = Some(crate::LightFalloff { quadratic: 1.0, dlight: true, ..Default::default() });
+        let baseline = crate::lights::pack_lights(&[light(0.0, 2.0), dynamic]).lights;
+        let packed = combine(crate::lights::pack_lights(&[light(0.0, 2.0), dynamic]), Some(&baseline));
+        assert_eq!(packed.lights.len(), 2, "the dynamic light of the bake is not taken away");
+        assert_eq!(packed.lights[0].delta_color, [0.0; 4]);
+        assert_eq!(packed.lights[1].delta_color, [2.0, 1.0, 0.5, 0.0], "never in the lightmaps");
+        assert!(crate::lights::is_dlight(&packed.lights[1]));
+        let gone = combine(crate::lights::pack_lights(&[light(0.0, 2.0)]), Some(&baseline));
+        assert_eq!(gone.lights.len(), 1, "removing it subtracts nothing from the bake");
+        let compiled = combine(crate::lights::pack_lights(&[light(0.0, 2.0), dynamic]), None);
+        assert_eq!(compiled.lights[0].delta_color, [0.0; 4]);
+        assert_eq!(compiled.lights[1].delta_color, [2.0, 1.0, 0.5, 0.0], "over compiled lightmaps too");
     }
 }

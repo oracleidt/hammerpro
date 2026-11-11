@@ -15,6 +15,7 @@ pub mod placement;
 pub mod player;
 pub mod render_cache;
 mod tr;
+pub mod trackpad;
 pub mod trains;
 pub mod warp;
 pub mod workflow;
@@ -234,6 +235,8 @@ pub struct Viewports {
     content_clock: ContentClock,
     anim_time: [f32; 4],
     arrow_look_frame: u64,
+    trackpad: trackpad::Detector,
+    scroll: trackpad::FrameScroll,
 }
 
 pub fn next_light_frame(time: f64) -> std::time::Duration {
@@ -308,6 +311,8 @@ impl Viewports {
             content_clock: ContentClock::default(),
             anim_time: [0.0; 4],
             arrow_look_frame: 0,
+            trackpad: trackpad::Detector::default(),
+            scroll: trackpad::FrameScroll::default(),
         }
     }
 
@@ -379,6 +384,9 @@ impl Viewports {
         self.keys.layout = state.settings.view.keyboard_layout;
         let input = FrameInput::gather_for(&ctx, self.keys.layout);
         self.keys.update_from_ctx(&ctx, &input);
+        self.scroll = ctx.input(|i| trackpad::FrameScroll::gather(&i.events));
+        self.trackpad.update(&self.scroll);
+        state.ui.trackpad_detected = self.trackpad.detected;
         let cfg = RenderConfig::from_state(state);
 
         if state.ui.maximized_view.is_some_and(|m| m >= 4) {
@@ -804,6 +812,7 @@ impl Viewports {
                     objs.push(hp_editor::ObjRef::Entity(*id));
                 }
             }
+            objs.extend(player::displacement_without_surface(state));
             if let Some(w) = &world {
                 objs.extend(player::world_solids(state));
                 objs.extend(player::compiled_replaced_entities(state, w));
@@ -892,6 +901,8 @@ impl Viewports {
         let invert_y = state.settings.view.invert_mouse_y;
         let invert_x = state.settings.workflow.invert_mouse_x;
         let scheme = state.settings.workflow.nav_scheme;
+        let pad = self.trackpad.active(state.settings.input.trackpad_mode);
+        let click_travel = trackpad::click_travel(pad, CLICK_TRAVEL);
         let slot_of = |i: usize| slots.iter().find(|s| s.index == i);
         let look = |cam: &mut hp_app::view::Camera3d, d: Vec2| {
             camera::mouselook(cam, DVec2::new(f64::from(d.x), f64::from(d.y)), sens, invert_x, invert_y);
@@ -984,7 +995,7 @@ impl Viewports {
                 {
                     self.gesture = Some(Gesture::Strafe { view });
                 } else if !input.down[button] {
-                    let is_click = !looking && !flew && travel < CLICK_TRAVEL && !self.swallow;
+                    let is_click = !looking && !flew && travel < click_travel && !self.swallow;
                     self.gesture = None;
                     match click {
                         Click::Menu if is_click && tool_takes_right_click(tool.id(), kind, input.modifiers) => {}
@@ -1005,7 +1016,7 @@ impl Viewports {
                             look(&mut state.cameras.cam3d, d);
                         } else {
                             pending += d;
-                            if travel >= CLICK_TRAVEL {
+                            if travel >= click_travel {
                                 looking = true;
                                 look(&mut state.cameras.cam3d, pending);
                                 pending = Vec2::ZERO;
@@ -1041,7 +1052,7 @@ impl Viewports {
                 if !input.down[button] {
                     self.gesture = None;
                     let click = button == MIDDLE
-                        && travel < CLICK_TRAVEL
+                        && travel < click_travel
                         && !self.swallow
                         && slot_of(view).is_some_and(|s| s.response.middle_clicked());
                     if !click {
@@ -1088,7 +1099,18 @@ impl Viewports {
                     {
                         self.gesture = Some(Gesture::Strafe { view: s.index });
                         self.menu = None;
-                    } else if hammer_3d && space && input.pressed[PRIMARY] {
+                    } else if pad
+                        && space
+                        && input.modifiers.shift
+                        && input.pressed[PRIMARY]
+                        && s.kind == ViewKind::Perspective
+                    {
+                        let depth = self.pan_depth(state, s, input.pointer, cfg, ppp);
+                        self.gesture =
+                            Some(Gesture::Pan { view: s.index, kind: s.kind, button: PRIMARY, depth, travel: 0.0 });
+                        self.menu = None;
+                    } else if (hammer_3d || (pad && s.kind == ViewKind::Perspective)) && space && input.pressed[PRIMARY]
+                    {
                         self.gesture = Some(look_with(PRIMARY, Click::Nothing));
                     } else if hammer_3d && space && input.pressed[SECONDARY] {
                         let depth = self.pan_depth(state, s, input.pointer, cfg, ppp);
@@ -1144,6 +1166,14 @@ impl Viewports {
             state.settings_dirty = true;
             let text = tf!("viewport.camera_speed", v.camera_speed.round());
             state.toasts.push_keyed("camera_speed", Severity::Info, text);
+        } else if pad
+            && !flying
+            && !self.scroll.is_empty()
+            && !dnd_active
+            && let Some(s) = hovered.and_then(slot_of)
+        {
+            let offered = self.mouselook.is_none() && self.gesture.is_none() && !self.swallow && self.menu.is_none();
+            self.trackpad_scroll(state, s, input, tool, offered, cfg, ppp);
         } else if input.wheel != 0.0
             && !dnd_active
             && let Some(s) = hovered.and_then(slot_of)
@@ -1159,6 +1189,55 @@ impl Viewports {
         }
 
         self.mouselook.map(|m| m.view).or(self.gesture.map(|g| g.view())).or(ended)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn trackpad_scroll(
+        &mut self,
+        state: &mut AppState,
+        s: &Slot,
+        input: &FrameInput,
+        tool: &mut dyn Tool,
+        offered: bool,
+        cfg: &RenderConfig,
+        ppp: f32,
+    ) {
+        match trackpad::route(&self.scroll, input.modifiers, &state.settings.input) {
+            trackpad::Intent::None => {}
+            trackpad::Intent::Wheel { notches, modifiers } => {
+                let handled = offered && {
+                    let view = view_info(s.index, s.kind, s.rect, &state.cameras, cfg, ppp);
+                    tool.wheel(state, &view, notches, modifiers) == ToolFlow::Handled
+                };
+                if !handled {
+                    let wheel = FrameInput { wheel: notches, modifiers, ..*input };
+                    self.wheel(state, s, &wheel, cfg, ppp);
+                }
+            }
+            trackpad::Intent::Zoom(notches) => {
+                let zoom = FrameInput { wheel: notches, modifiers: egui::Modifiers::NONE, ..*input };
+                self.wheel(state, s, &zoom, cfg, ppp);
+            }
+            trackpad::Intent::Pan(delta) => {
+                let d = DVec2::new(f64::from(delta.x), f64::from(delta.y));
+                if s.kind.is_2d() {
+                    camera::pan_2d(state.cameras.cam2d_mut(s.kind), d);
+                    return;
+                }
+                match trackpad::pan_in_3d(delta, &state.settings.input) {
+                    trackpad::Motion3d::Orbit { yaw, pitch } => {
+                        let depth = self.pan_depth(state, s, Some(s.rect.center()), cfg, ppp);
+                        let cam = &mut state.cameras.cam3d;
+                        let pivot = cam.pos + cam.forward() * depth;
+                        camera::orbit_3d(cam, pivot, yaw, pitch);
+                    }
+                    trackpad::Motion3d::Move(_) => {
+                        let depth = self.pan_depth(state, s, input.pointer, cfg, ppp);
+                        camera::pan_3d(&mut state.cameras.cam3d, d, depth, f64::from(s.rect.height()));
+                    }
+                }
+            }
+        }
     }
 
     fn wheel(&mut self, state: &mut AppState, s: &Slot, input: &FrameInput, cfg: &RenderConfig, ppp: f32) {

@@ -566,24 +566,11 @@ pub(crate) fn create_targets_mode(doc: &Document, full: bool) -> CreateTargets {
 }
 
 pub(crate) fn selected_disp_faces(doc: &Document) -> Vec<FaceRef> {
-    doc.selection().faces.iter().copied().filter(|f| doc.face_side(*f).is_some_and(|s| s.disp.is_some())).collect()
+    doc.selected_disp_targets()
 }
 
 pub(crate) fn destroy_targets(doc: &Document) -> Vec<FaceRef> {
-    let faces = selected_disp_faces(doc);
-    if !faces.is_empty() {
-        return faces;
-    }
-    let mut out = Vec::new();
-    for id in doc.selected_solid_ids() {
-        let Some(node) = doc.scene().solid(id) else { continue };
-        for (i, s) in node.solid.sides.iter().enumerate() {
-            if s.disp.is_some() {
-                out.push(FaceRef::new(id, i));
-            }
-        }
-    }
-    out
+    doc.selected_disp_targets()
 }
 
 pub(crate) fn nearby_disp_faces(doc: &Document, center: DVec3, radius: f64) -> Vec<FaceRef> {

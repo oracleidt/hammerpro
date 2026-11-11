@@ -159,22 +159,13 @@ fn is_disp(state: &AppState, f: FaceRef) -> bool {
 
 pub(super) fn disp_targets(state: &AppState, a: &Args<'_>, all_default: bool) -> R<Vec<FaceRef>> {
     let given = a.get("faces").is_some() || a.get("ids").is_some() || a.get("solid_ids").is_some();
-    let faces = if given || !all_default {
-        match target_faces(state, a, "faces") {
-            Ok(f) => f,
-            Err(_) if !given => Vec::new(),
-            Err(e) => return Err(e),
-        }
+    let mut disp: Vec<FaceRef> = if given {
+        target_faces(state, a, "faces")?.into_iter().filter(|f| is_disp(state, *f)).collect()
     } else {
-        state.doc.selected_faces()
+        state.doc.selected_disp_targets()
     };
-    let mut disp: Vec<FaceRef> = faces.into_iter().filter(|f| is_disp(state, *f)).collect();
-    if disp.is_empty() && !given {
-        let solids = state.doc.selected_solid_ids();
-        disp = state.doc.disp_faces().into_iter().filter(|f| solids.contains(&f.solid)).collect();
-        if disp.is_empty() && all_default {
-            disp = state.doc.disp_faces();
-        }
+    if disp.is_empty() && !given && all_default {
+        disp = state.doc.disp_faces();
     }
     if disp.is_empty() {
         return Err("no displacement among the faces (create_displacements makes some)".to_owned());
@@ -993,6 +984,7 @@ mod tests {
         let r = super::run_stroke(&mut tools, &mut s, &st);
         assert!(r.is_error && r.first_text().contains("no displacement"), "{}", r.first_text());
         let (east, east_side) = two_tiles(&mut s);
+        s.doc.clear_selection();
 
         let r = set_tool_options_on(
             &mut tools,

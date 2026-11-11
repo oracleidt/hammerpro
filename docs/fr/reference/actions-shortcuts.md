@@ -49,6 +49,8 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Construire et enregistrer en contenu... | `build_content` |  |  |  |
 | Publier sur le Workshop... | `publish_workshop` |  |  |  |
 | Quitter | `exit` |  |  |  |
+| Importer une carte de hauteur... | `import_heightmap` |  |  |  |
+| Exporter une carte de hauteur... | `export_heightmap` |  |  |  |
 
 ## Menu Édition
 
@@ -231,6 +233,9 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Panneaux > Barre d'outils | `show_toolbar` |  |  |  |
 | Panneaux > Palette d'outils | `show_tool_palette` |  |  |  |
 | Panneaux > Barre d'état | `show_status_bar` |  |  |  |
+| Panneaux > Palette d'outils sur deux colonnes | `tool_palette_two_columns` |  |  |  |
+| Panneaux > Barre d'outils sur deux lignes | `toolbar_two_rows` |  |  |  |
+| Panneaux > Réinitialiser la barre d'outils | `reset_toolbar` |  |  |  |
 | Panneaux > Navigateur de sons | `show_sound_browser` |  |  | `Maj+F12` |
 | Panneaux > Navigateur de particules | `show_particle_browser` |  |  | `Maj+F11` |
 | Panneaux > Aperçu des particules... | `particle_preview` |  |  |  |
@@ -354,8 +359,6 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Uniformiser la pente des displacements | `disp_uniform_slope` |  |  |  |
 | Sélectionner les displacements par pente | `disp_select_by_slope` |  |  |  |
 | Displacement en maillage... | `disp_to_mesh` |  |  |  |
-| Importer une carte de hauteur... | `import_heightmap` |  |  |  |
-| Exporter une carte de hauteur... | `export_heightmap` |  |  |  |
 | Générer un terrain... | `generate_terrain` |  |  |  |
 | Maillage en displacement... | `mesh_to_disp` |  |  |  |
 | Plaquer les displacements sur un maillage... | `disp_conform_mesh` |  |  |  |
@@ -390,7 +393,7 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Aide de l'entité | `entity_help` |  |  |  |
 | À propos de Hammer Pro | `about` |  |  |  |
 
-## Menu Autres
+## Éditeur de particules (Outils > Contenu et éditeurs)
 
 | Action | Raccourci | Rôle |
 |---|---|---|

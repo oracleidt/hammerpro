@@ -169,7 +169,7 @@ fn solid_flags(doc: &Document, id: Id, d: &RenderDisplay, room: Option<&SkyRoom>
                 f |= ObjectFlags::NO_3D;
             }
         }
-        if d.highlight_invalid && !n.geom.valid {
+        if d.highlight_invalid && (!n.geom.valid || (n.has_disp() && n.disp.iter().all(Option::is_none))) {
             f |= ObjectFlags::INVALID;
         }
         if has_disp {

@@ -190,8 +190,7 @@ pub fn aim_keys(e: &hp_vmf::Entity, key: &str, point: DVec3, negative_pitch: boo
     let vrad = is_vrad_light(&e.classname);
     let angles_key = if negative_pitch { "angles" } else { key };
     let roll = e.get(angles_key).and_then(parse_angles).map_or(0.0, |a| a.z);
-    let angles_pitch = if vrad { up } else { pitch };
-    let mut out = vec![(angles_key.to_owned(), format_angles(DVec3::new(angles_pitch, yaw, roll)))];
+    let mut out = vec![(angles_key.to_owned(), format_angles(DVec3::new(pitch, yaw, roll)))];
     let has_pitch_key = e.get("pitch").is_some_and(|v| !v.trim().is_empty());
     if negative_pitch {
         out.push((key.to_owned(), fmt_num_rounded(up, 2)));
@@ -406,10 +405,10 @@ mod tests {
         spot.set("pitch", "-30");
         let keys = |e: &hp_vmf::Entity, key: &str, neg: bool, p: DVec3| aim_keys(e, key, p, neg).unwrap();
         let down = keys(&spot, "angles", false, DVec3::new(0.0, 0.0, -100.0));
-        assert!(down.contains(&("angles".into(), "-90 0 0".into())), "{down:?}");
+        assert!(down.contains(&("angles".into(), "90 0 0".into())), "{down:?}");
         assert!(down.contains(&("pitch".into(), "-90".into())), "{down:?}");
         let side = keys(&spot, "pitch", true, DVec3::new(0.0, 100.0, 100.0));
-        assert!(side.contains(&("angles".into(), "45 90 0".into())), "{side:?}");
+        assert!(side.contains(&("angles".into(), "-45 90 0".into())), "{side:?}");
         assert!(side.contains(&("pitch".into(), "45".into())), "{side:?}");
         let dir = |kv: &[(String, String)]| {
             let mut e = spot.clone();
@@ -469,6 +468,49 @@ mod tests {
             let got = DVec3::new(cp * cy, cp * sy, -sp);
             if key == "angles" {
                 assert!((got - want).length() < 1e-3, "{point:?}: entity faces {got:?}, wanted {want:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn point_at_then_rotate_keeps_every_light_and_its_model_together() {
+        use hp_app::runtime::helpers::geometry::light_direction;
+        let model = |e: &hp_vmf::Entity| hp_geom::angle_matrix(e.angles().unwrap_or_default()).x_axis;
+        let close = |a: DVec3, b: DVec3| (a - b).length() < 1e-3;
+        for class in ["light_spot", "light_environment", "light_directional"] {
+            for point in [DVec3::new(100.0, 50.0, -80.0), DVec3::new(-40.0, 0.0, 300.0), DVec3::new(0.0, 0.0, -500.0)] {
+                let mut s = state();
+                s.doc.set_entity_class(&[5], class).unwrap();
+                let mut picks = ViewPicks::new("t");
+                picks.start(
+                    &mut s.pick,
+                    Target::Entities(vec![5]),
+                    "angles",
+                    PickPurpose::Aim { negative_pitch: false },
+                );
+                if let Some(p) = s.pick.as_mut() {
+                    p.result = Some(PickResult::Point(point));
+                }
+                let mut ops = Vec::new();
+                picks.poll(&s.doc, &mut s.pick, &mut ops);
+                for op in ops {
+                    apply(&mut s.doc, None, op).unwrap();
+                }
+                let e = s.doc.scene().entity(5).unwrap().entity.clone();
+                let o = e.origin().unwrap();
+                let want = (point - o).normalize();
+                assert!(close(light_direction(&e), want), "{class} {point:?}: {e:?}");
+                assert!(close(model(&e), want), "{class} {point:?}: the model points at the click {e:?}");
+                let pitch: f64 = e.get("pitch").unwrap().parse().unwrap();
+                assert!((pitch - want.z.asin().to_degrees()).abs() < 0.01, "{class}: pitch is up positive");
+                for axis in [DVec3::X, DVec3::Y, DVec3::Z] {
+                    let before = s.doc.scene().entity(5).unwrap().entity.clone();
+                    s.doc.rotate_axis(&[hp_editor::ObjRef::Entity(5)], o, axis, 90.0).unwrap();
+                    let after = s.doc.scene().entity(5).unwrap().entity.clone();
+                    let q = glam::DQuat::from_axis_angle(axis, 90f64.to_radians());
+                    assert!(close(light_direction(&after), q * light_direction(&before)), "{class} {axis}: {after:?}");
+                    assert!(close(model(&after), light_direction(&after)), "{class} {axis}: model and beam {after:?}");
+                }
             }
         }
     }

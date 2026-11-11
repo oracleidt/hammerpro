@@ -3,9 +3,9 @@ use crate::i18n::TrTable;
 use crate::state::AppState;
 
 action_list! { mcp_actions {
-    ToggleMcpServer => "toggle_mcp_server", Tools, ToolsContent, None, Ready;
-    McpInstall => "mcp_install", Tools, ToolsContent, None, Ready;
-    McpPanel => "mcp_panel", Tools, ToolsContent, None, Ready;
+    ToggleMcpServer => "toggle_mcp_server", Tools, ToolsMcp, None, Ready;
+    McpInstall => "mcp_install", Tools, ToolsMcp, None, Ready;
+    McpPanel => "mcp_panel", Tools, ToolsMcp, None, Ready;
 }}
 
 pub(super) const REPEATS: &[Action] = &[];

@@ -104,7 +104,7 @@ Sélectionnez une entité et faites **Édition > Copier les keyvalues**, puis s�
 - Pour aligner une rangée de pièces identiques avec un espace exact, utilisez la **Duplication en série** et cochez un axe.
 - Pour aligner une rangée de pièces identiques, copiez-en une, ouvrez le collage spécial, cliquez sur `<` pour l'axe de la rangée et réglez le nombre de copies.
 - Un escalier en colimaçon : une marche, une **Rotation par copie** de 15 sur Z et un **Décalage par copie** de 8 sur Z, avec le pivot sur l'axe de l'escalier.
-- **Fichier > Exporter la sélection en VMF...** enregistre la sélection dans un fichier plutôt que dans le presse-papiers (voir [Compatibilité VMF](../getting-started/vmf-compatibility.md)).
+- **Fichier > Exporter > Exporter la sélection en VMF...** enregistre la sélection dans un fichier plutôt que dans le presse-papiers (voir [Compatibilité VMF](../getting-started/vmf-compatibility.md)).
 
 ## FAQ
 

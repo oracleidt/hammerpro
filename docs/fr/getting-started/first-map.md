@@ -58,9 +58,9 @@ Sélectionnez la lumière avec l'**Outil de sélection** (`Maj+S`) et ouvrez l'o
 
 ## 8. Compiler et lancer
 
-Appuyez sur `F9` (**Fichier > Compiler maintenant**). La map se compile avec les derniers réglages de compilation (le préréglage **Normal** par défaut) : géométrie, visibilité, éclairage, puis le `.bsp` est copié dans `garrysmod/maps` et Garry's Mod démarre sur votre map. La barre d'état affiche l'étape et la progression ; un clic dessus ouvre la fenêtre de compilation.
+Appuyez sur `F9` (**Fichier > Compiler > Compiler maintenant**). La map se compile avec les derniers réglages de compilation (le préréglage **Normal** par défaut) : géométrie, visibilité, éclairage, puis le `.bsp` est copié dans `garrysmod/maps` et Garry's Mod démarre sur votre map. La barre d'état affiche l'étape et la progression ; un clic dessus ouvre la fenêtre de compilation.
 
-Pour voir les options d'abord, utilisez **Fichier > Compiler et lancer...** (`Ctrl+F9`) ou le bouton **Compiler** de la barre d'outils : la fenêtre **Compiler et lancer** s'ouvre avec les préréglages (**Brouillon**, **Normal**, **Final**), les étapes et **Lancer le jeu**. Cliquez alors sur **Compiler**.
+Pour voir les options d'abord, utilisez **Fichier > Compiler > Compiler et lancer...** (`Ctrl+F9`) ou le bouton **Compiler** de la barre d'outils : la fenêtre **Compiler et lancer** s'ouvre avec les préréglages (**Brouillon**, **Normal**, **Final**), les étapes et **Lancer le jeu**. Cliquez alors sur **Compiler**.
 
 Avec le jeu de raccourcis Hammer ou Hammer++, les touches sont inversées comme dans Hammer : `F9` ouvre la fenêtre de compilation et `Ctrl+F9` compile directement.
 

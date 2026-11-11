@@ -199,7 +199,7 @@ fn fs_baked(in: LmOut) -> @location(0) vec4<f32> {
         light += projected;
     }
     let unlit = (material.flags & M_UNLIT) != 0u;
-    let env = env_raw * mix(vec3<f32>(1.0), clamp(light, vec3<f32>(0.0), vec3<f32>(1.0)), material.env_sat.w);
+    let env = env_raw * env_light_scale(lm_face(in.face).cube, light);
     let lit = select(light, vec3<f32>(1.0), unlit);
     var rgb: vec3<f32>;
     if ldr {

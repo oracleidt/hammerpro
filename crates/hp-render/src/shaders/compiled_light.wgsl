@@ -32,6 +32,60 @@ struct ClOut {
     @location(10) blend: vec4<f32>,
 };
 
+fn cl_dynamic_light(world: vec3<f32>, n: vec3<f32>, frag: vec2<f32>) -> vec3<f32> {
+    var sum = vec3<f32>(0.0);
+    let dims = view.cluster_dims;
+    if dims.x == 0u || dims.y == 0u || dims.z == 0u {
+        return sum;
+    }
+    let tile = vec2<u32>(max(frag, vec2<f32>(0.0)) / f32(max(dims.w, 1u)));
+    let tx = min(tile.x, dims.x - 1u);
+    let ty = min(tile.y, dims.y - 1u);
+    let depth = dot(world - view.eye.xyz, view.forward.xyz);
+    let near = view.cluster_z.x;
+    var slice = 0u;
+    if depth > near {
+        slice = min(u32(log(depth / near) * view.cluster_z.z), dims.z - 1u);
+    }
+    let ci = (slice * dims.y + ty) * dims.x + tx;
+    if ci >= arrayLength(&clusters) {
+        return sum;
+    }
+    let range = clusters[ci];
+    let n_idx = arrayLength(&light_indices);
+    let n_lights = arrayLength(&lights);
+    for (var k = 0u; k < range.y; k++) {
+        let idx = range.x + k;
+        if (idx >> 1u) >= n_idx {
+            break;
+        }
+        let li = (light_indices[idx >> 1u] >> ((idx & 1u) * 16u)) & 0xffffu;
+        if li >= n_lights {
+            continue;
+        }
+        let l = lights[li];
+        if l.extra.y < 1.5 || l.delta_color.w > 0.5 {
+            continue;
+        }
+        let d = l.pos_range.xyz - world;
+        let dist = sqrt(max(dot(d, d), 1e-4));
+        let to_light = d / dist;
+        let ndl = max(dot(n, to_light), 0.0);
+        let x = dist / max(l.pos_range.w, 1e-3);
+        var win = 1.0;
+        if l.cone.w <= l.cone.z {
+            win = clamp(1.0 - x * x * x * x, 0.0, 1.0);
+            win *= win;
+        }
+        var att = light_falloff(l, dist, false) * win;
+        if l.color.w > 0.5 && l.color.w < 1.5 {
+            att *= spot_cone(l, dot(-to_light, l.dir.xyz));
+        }
+        sum += l.color.rgb * (ndl * att);
+    }
+    return sum;
+}
+
 @vertex
 fn vs_compiled(
     @location(0) pos: vec3<f32>,
@@ -192,13 +246,16 @@ fn fs_compiled(in: ClOut) -> @location(0) vec4<f32> {
     } else {
         light = cl_light(in);
     }
-    let projected = projector_light(in.world, select(n, en, bump_diffuse()));
+    let ln = select(n, en, bump_diffuse());
+    let projected = projector_light(in.world, ln);
+    let dynamic = cl_dynamic_light(in.world, ln, in.clip.xy);
     if cl.mode == 1u {
         light += pow(projected, vec3<f32>(1.0 / 2.2));
+        light = pow(pow(max(light, vec3<f32>(0.0)), vec3<f32>(2.2)) + dynamic, vec3<f32>(1.0 / 2.2));
     } else {
-        light += projected;
+        light += projected + dynamic;
     }
-    let env = env_raw * mix(vec3<f32>(1.0), clamp(light, vec3<f32>(0.0), vec3<f32>(1.0)), material.env_sat.w);
+    let env = env_raw * env_light_scale(in.cube, light);
     var rgb = cl_shade_env(albedo.rgb, select(light, vec3<f32>(1.0), unlit), env);
     rgb = mix(rgb, cl_shade(albedo.rgb * material.self_illum.rgb, vec3<f32>(1.0)), glow);
     if material.detail_mode != DETAIL_NONE {

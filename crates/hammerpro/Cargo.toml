@@ -50,6 +50,7 @@ hp-compile.workspace = true
 hp-bsp.workspace = true
 hp-bspc.workspace = true
 hp-mdl.workspace = true
+hp-shape = { path = "../hp-shape" }
 hp-meshio.workspace = true
 hp-render.workspace = true
 eframe.workspace = true

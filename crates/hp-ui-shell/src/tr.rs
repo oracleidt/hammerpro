@@ -4,6 +4,7 @@ pub const TABLES: &[TrTable] = &[
     TR,
     crate::menu::TR,
     crate::toolbar::TR,
+    crate::tool_strip::TR,
     crate::console_view::TR,
     crate::palette::TR,
     crate::help::TR,

@@ -40,7 +40,7 @@ pub use edit::{Applied, ConnField, Op, apply, entities_using};
 pub use keyvalues::{can_paste_keyvalues, copy_keyvalues, paste_keyvalues};
 pub use models::ModelBrowser;
 pub use particles::ParticleBrowser;
-pub use pick::{asset_value, entities_matching_target, finish_asset_pick};
+pub use pick::{asset_value, entities_matching_target, finish_asset_pick, is_vrad_light};
 pub use sound_browser::{SoundBrowser, SoundMode};
 
 pub const SOUND_TAB: &str = sound_browser::TAB_ID;

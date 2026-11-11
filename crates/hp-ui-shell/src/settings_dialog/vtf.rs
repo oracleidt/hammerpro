@@ -80,7 +80,7 @@ impl SettingsPage for VtfPage {
             ui.label(t!("shell.vtf.path"));
             let reply = ui.add(
                 egui::TextEdit::singleline(&mut state.settings.vtf.editor_path)
-                    .desired_width(320.0)
+                    .desired_width(super::field_width(ui, 320.0, 180.0))
                     .hint_text(t!("shell.vtf.path_hint")),
             );
             changed |= reply.changed();

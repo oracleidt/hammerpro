@@ -6,7 +6,7 @@ The vertex tool reshapes the selected solids by moving, merging and splitting th
 
 ## Opening it
 
-- **Tools > Vertex tool**, the tool palette, or `Shift+V`.
+- **Tools > Active tool > Vertex tool**, the tool palette, or `Shift+V`.
 - Press `Shift+V` again while the tool is active to cycle the handle mode (see below). A toast tells you the new mode.
 - The tool edits the solids that are selected when it starts. If nothing is selected, click a solid to edit it. Up to 2048 solids are edited at once (a warning badge appears beyond that).
 
@@ -93,7 +93,7 @@ The last four appear when vertices are selected.
 
 ## Split face
 
-Select two vertices (or two edges) of the same face, then press `Ctrl+F` (**Tools > Split face**). The face is split along the line between them. Selecting two vertices that are already joined by an edge does nothing: pick two vertices across the face.
+Select two vertices (or two edges) of the same face, then press `Ctrl+F` (**Tools > Vertices and edges > Split face**). The face is split along the line between them. Selecting two vertices that are already joined by an edge does nothing: pick two vertices across the face.
 
 The split is kept by the tool until you move a vertex: the two halves become two faces, or merge back into one face if they are still flat. Use it to put a ridge or a fold in a wall, for example. Pending splits are drawn in their own color and counted in the options bar.
 
@@ -115,7 +115,7 @@ MCP: `weld_brush_vertices` (mode `vertices`, `distance` or `cleanup`) does the s
 
 ## Scale vertices
 
-`Alt+E` (**Tools > Scale vertices...**) scales the selected vertices around a center, with a live preview. The options bar shows:
+`Alt+E` (**Tools > Vertices and edges > Scale vertices...**) scales the selected vertices around a center, with a live preview. The options bar shows:
 
 | Option | What it does | Default |
 | --- | --- | --- |
@@ -133,10 +133,10 @@ An *edge loop* is a line of edges that goes on by itself, and an *edge ring* is 
 - **Edge loop.** The loop goes straight through a vertex where four edges meet (the middle of a wall made of several brushes, a grid) and follows the boundary of a face where three edges meet (the corners of a brush, so the loop of a box edge is the ring around one of its faces, and on a prism it follows the ring around the end cap). It stops at a vertex where five or more edges meet and at a dead end. When two faces are possible at a corner, the loop follows the face that looks toward you, then the one with the most sides. Along the border of a surface it follows that border.
 - **Edge ring.** From the edge, it crosses each four sided face to the opposite edge and goes on through the next face, in both directions. On a box it gives the four parallel edges.
 - **Alt+click** an edge to select its loop, **Ctrl+Alt+click** to select its ring, add `Shift` to add to the selection instead of replacing it. Holding `Alt` shows the loop (or the ring with `Ctrl`) that a click would select, in blue, in every view. The selected edges are drawn in yellow with their vertices in all views, and the status bar counts the selected edges and vertices.
-- **Selection commands.** **Edit > Edge selection** (also in the options bar, the right-click menu and the command palette): **Select edge loop** and **Select edge ring** extend the selected edges (or the edges between selected vertices) to their loops or rings; **Grow selection** adds every vertex next to the selected ones; **Shrink selection** removes the vertices that touch an unselected one; **Select boundary** keeps the edges on the border of the selected region (faces whose vertices are all selected) or, when no face is complete, the selected vertices that have an unselected neighbour.
+- **Selection commands.** **Edit > Selection element** (also in the options bar, the right-click menu and the command palette): **Select edge loop** and **Select edge ring** extend the selected edges (or the edges between selected vertices) to their loops or rings; **Grow selection** adds every vertex next to the selected ones; **Shrink selection** removes the vertices that touch an unselected one; **Select boundary** keeps the edges on the border of the selected region (faces whose vertices are all selected) or, when no face is complete, the selected vertices that have an unselected neighbour.
 - **Moving the loop.** The selected loop is a normal vertex selection: drag it with the mouse or the gizmo, type its **Position**, nudge it with the arrow keys, or use **Scale vertices...** (`Alt+E`). Every brush that shares a vertex of the loop follows it. The edge selection stays after the move, and the move is one undo step.
-- **Rotate vertices...** (**Tools > Rotate vertices...**, options bar) rotates the selected vertices around a center with a live preview: the angle (-360 to 360 degrees, `Alt` + mouse wheel changes it by 5 degrees, `Ctrl+Alt` by 1), the axis (**X**, **Y**, **Z** or **Loop normal**, the normal of the plane of the selected vertices, so a loop turns in its own plane) and the center (the middle of the selected vertices, editable). **Apply** (`Enter`) or **Cancel** (`Esc`).
-- **Slide edge loop...** (**Tools > Slide edge loop...**, options bar) slides the selected loops along the neighbouring faces, keeping their shape, with a live preview. Each vertex of the loop moves along its own edge that leaves the loop: positive values go toward one side of the loop, negative values toward the other, by that fraction of the edge (-1 to 1, `Alt` + mouse wheel changes it by 0.05). Where a vertex has no edge on one side (the corner of a brush) the other edge is extended, so the cap of a box slides up or down along its sides. The selected edges must form simple loops or lines, without branches.
+- **Rotate vertices...** (**Tools > Vertices and edges > Rotate vertices...**, options bar) rotates the selected vertices around a center with a live preview: the angle (-360 to 360 degrees, `Alt` + mouse wheel changes it by 5 degrees, `Ctrl+Alt` by 1), the axis (**X**, **Y**, **Z** or **Loop normal**, the normal of the plane of the selected vertices, so a loop turns in its own plane) and the center (the middle of the selected vertices, editable). **Apply** (`Enter`) or **Cancel** (`Esc`).
+- **Slide edge loop...** (**Tools > Vertices and edges > Slide edge loop...**, options bar) slides the selected loops along the neighbouring faces, keeping their shape, with a live preview. Each vertex of the loop moves along its own edge that leaves the loop: positive values go toward one side of the loop, negative values toward the other, by that fraction of the edge (-1 to 1, `Alt` + mouse wheel changes it by 0.05). Where a vertex has no edge on one side (the corner of a brush) the other edge is extended, so the cap of a box slides up or down along its sides. The selected edges must form simple loops or lines, without branches.
 - An invalid result (a concave or flat brush) is shown in red with the reason, like every vertex edit, and cannot be applied.
 
 MCP: `select_edge_loop`, `select_edge_ring` and `grow_edge_selection` (mode `grow`, `shrink` or `boundary`) give the edges and vertices of a loop, a ring or a selection for seed edges, with `toward` to choose the face and `select` to also show the result in the vertex tool; `move_edge_loop` moves, scales, rotates or slides a loop in one undo step (see the [MCP tool reference](../../MCP.md)). The actions are `edge_select_loop`, `edge_select_ring`, `edge_grow`, `edge_shrink`, `edge_select_boundary`, `edge_slide` and `vertex_rotate`.

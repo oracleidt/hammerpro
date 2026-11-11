@@ -61,8 +61,8 @@ pub const TR: hp_app::i18n::TrTable = &[
     ("seltool.box.confirm", "Enter", "Entrée"),
     (
         "seltool.box.confirm_tip",
-        "Like Hammer++: the box stays after release, drag its handles to resize it or drag inside to move it, then Enter selects (Ctrl+Enter adds) and Esc cancels. Off: the selection happens on release.",
-        "Comme Hammer++ : le cadre reste après le relâchement, glissez ses poignées pour le redimensionner ou glissez à l'intérieur pour le déplacer, puis Entrée sélectionne (Ctrl+Entrée ajoute) et Échap annule. Désactivé : la sélection se fait au relâchement.",
+        "Like Hammer++: the box stays after release, drag its handles to resize it or drag inside to move it, then Enter selects (Ctrl+Enter adds) and Esc cancels. Off (the default): the selection happens on release.",
+        "Comme Hammer++ : le cadre reste après le relâchement, glissez ses poignées pour le redimensionner ou glissez à l'intérieur pour le déplacer, puis Entrée sélectionne (Ctrl+Entrée ajoute) et Échap annule. Désactivé (par défaut) : la sélection se fait au relâchement.",
     ),
     ("seltool.box.enter", "Enter: select", "Entrée : sélectionner"),
     (

@@ -9,8 +9,8 @@ A prefab is a piece of map saved as a VMF file (a staircase, a light fixture, a 
 | Action | Menu | Default shortcut |
 | --- | --- | --- |
 | Prefabs tab | **View > Panels > Prefabs** | none |
-| **Create prefab...** | **Tools > Create prefab...** | `Ctrl+R` |
-| **Insert prefab at original size** | **Tools > Insert prefab at original size** | `Alt+Shift+C` |
+| **Create prefab...** | **Tools > Placement and props > Create prefab...** | `Ctrl+R` |
+| **Insert prefab at original size** | **Tools > Placement and props > Insert prefab at original size** | `Alt+Shift+C` |
 
 ## The library
 

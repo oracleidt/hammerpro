@@ -4,13 +4,13 @@ use crate::state::AppState;
 
 action_list! { health_actions {
     CheckLeaks => "check_leaks", Map, MapInfo, None, Ready;
-    SealAreaportal => "seal_areaportal", Map, MapInfo, None, Ready;
-    LoadPortalFile => "load_portal_file", Map, MapPointfile, None, Ready;
-    UnloadPortalFile => "unload_portal_file", Map, MapPointfile, None, Ready;
-    TogglePvs => "toggle_pvs", View, ViewDisplay, None, Ready;
-    ShowPortalViewer => "show_portal_viewer", Map, MapPointfile, None, Ready;
-    BuildPortals => "build_portals", Map, MapPointfile, sc(CTRL_SHIFT, Key::P), Ready;
-    ShowDetailSuggestions => "show_detail_suggestions", Map, MapInfo, None, Ready;
+    SealAreaportal => "seal_areaportal", Map, MapOptimize, None, Ready;
+    LoadPortalFile => "load_portal_file", Map, MapPortals, None, Ready;
+    UnloadPortalFile => "unload_portal_file", Map, MapPortals, None, Ready;
+    TogglePvs => "toggle_pvs", View, ViewDiagnostics, None, Ready;
+    ShowPortalViewer => "show_portal_viewer", Map, MapPortals, None, Ready;
+    BuildPortals => "build_portals", Map, MapPortals, sc(CTRL_SHIFT, Key::P), Ready;
+    ShowDetailSuggestions => "show_detail_suggestions", Map, MapOptimize, None, Ready;
 }}
 
 pub(super) const REPEATS: &[Action] = &[];

@@ -26,6 +26,7 @@ New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game s
 | --- | --- |
 | [Selection tool](features/selection-tool.md) | Click and box selection, selection modes, 2D handles, 3D stretch handles, gizmo, modal transforms, nudging. |
 | [Camera and navigation](features/camera-navigation.md) | Flying the 3D camera, keyboard layouts, mouselook, camera tool, 2D pan and zoom, control schemes. |
+| [Trackpad](features/trackpad.md) | Trackpad mode, two finger scroll and pinch gestures, Space + drag instead of the middle button. |
 | [Block tool](features/block-tool.md) | Brushes and every primitive with its options. |
 | [Polygon tool](features/polygon-tool.md) | Convex brushes from an outline clicked point by point. |
 | [Curve tool](features/curve-tool.md) | Curved walls and rails: box brushes with mitred joints along a stroke drawn in a 2D view. |

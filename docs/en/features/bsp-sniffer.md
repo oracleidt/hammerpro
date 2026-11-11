@@ -16,7 +16,7 @@ On a VAC secured server the game runs with VAC while Hammer Pro reads its memory
 
 ## Opening it
 
-**File > BSP Sniffer...** (action `bsp_sniffer`) opens the panel. **File > BSP Decompiler...** is the other tool: it decompiles a `.bsp` file you already have.
+**File > Import > BSP Sniffer...** (action `bsp_sniffer`) opens the panel. **File > Import > BSP Decompiler...** is the other tool: it decompiles a `.bsp` file you already have.
 
 ## The panel
 
@@ -104,7 +104,7 @@ In the output folder, for a map called `rp_example`:
    - the pakfile of the map, when the rest of it (textures, strip and physics files) is wanted: only the `.mdl` of a model is whole enough in the engine's own memory to be rebuilt without the file (see Limits).
    The report lists, for every category, its source: memory, map file, game content or absent.
 6. **Rebuild.** A valid BSP is assembled from what was decoded and filled in: the brush table, brush sides, planes, nodes, leafs, models, faces, edges, vertexes, texture info and texture data, displacement info, vertices and triangle tags, overlays, cubemaps, area portals, the static props as a game lump and the pakfile. Each brush side takes the texture axes of the rendered face that lies on its plane and inside its brush (the largest overlap wins); a side that no face covers, because it is hidden inside other brushes, gets the axes of the file when there is one, else world aligned axes. When the game memory has no render data and a file exists, the map file is used instead.
-7. **Decompile.** The BSP goes through the same decompiler as **File > BSP Decompiler...**, with your switches.
+7. **Decompile.** The BSP goes through the same decompiler as **File > Import > BSP Decompiler...**, with your switches.
 8. **Content.** The game content (downloaded workshop addons, addons, the server downloads) is searched for the models, materials, sounds and particles the VMF uses. The pakfile of the map exists only in the map file: it is extracted when a map file is allowed, found and matching. Without it, the model files of every model that the game loaded and that is not on this computer are rebuilt from the memory of the game: the `.mdl` (whole in the model cache), the `.vvd` (resident in the model cache in its own file layout), the `.dx90.vtx` (rebuilt from the hardware mesh groups the renderer keeps) and the `.phy` (rebuilt from the collision data of the model cache); the materials the engine loaded and that are not on this computer are rebuilt as `.vmt` text, with their proxies. The textures stay in video memory and are listed with the measured residency (see Limits). The game also holds the directory of the pakfile (every file name with its size and CRC32); it is listed in `pakfile_listing.txt` and every file in the content folder is checked against it, so a rebuilt file is reported identical or different with no map file at all (on the test map: 609 entries, the `.dx90.vtx` and `.phy` of the custom model identical, the `.mdl` and `.vvd` different as described below). Files that exist in the base game are skipped when **Only content that is not in the stock game** is on. The reflectivity of each texture data entry is corrected with `$reflectivity` of the `.vmt` of the game content, or failing that with the header of the base texture (the log gives the number of values replaced).
 9. **Finish.** The game is closed by its own process id (and its helper processes). Nothing else is ever closed.
 

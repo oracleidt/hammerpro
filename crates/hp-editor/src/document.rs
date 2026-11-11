@@ -35,7 +35,7 @@ impl Default for EditOptions {
     }
 }
 
-fn next_revision() -> u64 {
+pub(crate) fn next_revision() -> u64 {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
@@ -64,6 +64,8 @@ pub struct Document {
     opened_from: Option<PathBuf>,
     manifest: Option<ManifestLink>,
     pub(crate) face_history: crate::selection::FaceHistory,
+    pub(crate) objects_selected_at: u64,
+    pub(crate) faces_selected_at: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -126,6 +128,8 @@ impl Document {
             opened_from: None,
             manifest: None,
             face_history: crate::selection::FaceHistory::default(),
+            objects_selected_at: 0,
+            faces_selected_at: 0,
         }
     }
 
@@ -1006,7 +1010,15 @@ impl Document {
         }
         if let Some(s) = &mut snap.selection {
             let current = SelSnap::of(&self.selection);
-            self.selection = std::mem::replace(s, current).into_selection();
+            let restored = std::mem::replace(s, current).into_selection();
+            let stamp = next_revision();
+            if restored.objects != self.selection.objects {
+                self.objects_selected_at = stamp;
+            }
+            if restored.faces != self.selection.faces {
+                self.faces_selected_at = stamp;
+            }
+            self.selection = restored;
             self.changes.selection_changed = true;
         }
         if let Some(m) = &mut snap.misc {

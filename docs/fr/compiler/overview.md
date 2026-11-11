@@ -20,9 +20,9 @@ Dans l'étape de géométrie, le compilateur suit les étapes du VBSP de Valve :
 
 ## Ce que fait F9
 
-- **F9** (**Fichier > Compiler maintenant**) compile tout de suite avec les derniers réglages, sans ouvrir de fenêtre. La barre d'état affiche la progression.
-- **Ctrl+F9** (**Fichier > Compiler et lancer...**) ouvre la [fenêtre Compiler et lancer](compile-window.md), où se règlent le préréglage et toutes les options.
-- **Fichier > Annuler la compilation** arrête une compilation en cours (tous les processus lancés sont tués).
+- **F9** (**Fichier > Compiler > Compiler maintenant**) compile tout de suite avec les derniers réglages, sans ouvrir de fenêtre. La barre d'état affiche la progression.
+- **Ctrl+F9** (**Fichier > Compiler > Compiler et lancer...**) ouvre la [fenêtre Compiler et lancer](compile-window.md), où se règlent le préréglage et toutes les options.
+- **Fichier > Compiler > Annuler la compilation** arrête une compilation en cours (tous les processus lancés sont tués).
 
 Une compilation n'enregistre jamais la map ouverte. Hammer Pro prend une copie du document et l'écrit dans `<dossier de la map>/.hammerpro_build/` : votre VMF n'est pas modifié (l'option **Enregistrer d'abord la map** enregistre seulement votre travail en même temps). Une map jamais enregistrée demande d'abord où l'enregistrer.
 

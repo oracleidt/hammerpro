@@ -6,7 +6,7 @@ L'outil sprinkle peint des entités (props, plantes, rochers, lumières...) sur 
 
 ## Ouvrir l'outil
 
-- **Outils > Outil sprinkle**, ou son bouton dans la palette d'outils. Il n'a pas de raccourci par défaut (vous pouvez lui en donner un dans **Paramètres > Clavier**, voir [Raccourcis clavier](keyboard-shortcuts.md)).
+- **Outils > Outil actif > Outil sprinkle**, ou son bouton dans la palette d'outils. Il n'a pas de raccourci par défaut (vous pouvez lui en donner un dans **Paramètres > Clavier**, voir [Raccourcis clavier](keyboard-shortcuts.md)).
 - Choisissez un type sprinkle dans la liste **Type :** de la barre d'options. Sans type, peindre affiche **Choisissez d'abord un type sprinkle**. Sans aucune définition, la barre d'état indique dans quel dossier mettre des fichiers `.txt`.
 
 ## Peindre

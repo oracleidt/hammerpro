@@ -6,7 +6,7 @@ The pipe tool builds pipes and ducts out of brushes (not props): straight runs c
 
 ## Opening it
 
-- **Tools > Pipe tool**, or its button in the tool palette (creation group, after the road tool). It has no default shortcut.
+- **Tools > Active tool > Pipe tool**, or its button in the tool palette (creation group, after the road tool). It has no default shortcut.
 - Everything follows the **active grid**: see [Grids](grids.md). The start snaps to the grid, the directions are the axes of the grid (so a rotated grid gives a rotated pipe), lengths round to the grid step along the pipe, and the radius and the bend radius round to the smallest step of the grid. Wall thickness, collar size and collar length round to half a grid step. With snapping off (the **Snap to grid** toggle) nothing is rounded.
 
 ## Drawing a route

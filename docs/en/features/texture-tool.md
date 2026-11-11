@@ -8,7 +8,7 @@ The texture application tool is Hammer's "Face Edit" mode: you pick faces in the
 
 | How | Shortcut |
 |---|---|
-| **Tools > Texture application**, or its button in the tool strip | `Shift+A` |
+| **Tools > Active tool > Texture application**, or its button in the tool strip | `Shift+A` |
 
 When you switch to the tool with objects selected, their faces become the face selection; when you leave it, the face selection is cleared and the objects you had selected come back. The right dock shows the **Face edit** panel while the tool is active, and the **Textures** tab after it.
 
@@ -29,7 +29,7 @@ Picking works in the 3D view. The faces under the mouse are outlined; the select
 | `Alt+right click` | Wraps: copies the material of the first selected face onto the clicked face and continues its texture across the shared edge. Select the source face first. |
 | `Escape` | Clears the face selection. |
 
-The status bar reminds these keys. **Edit > Previous face selection** (`Alt+Z`) and **Edit > Next face selection** (`Alt+Y`), also the **◀ Previous selection** and **Next selection ▶** buttons at the top of the panel, go back and forth through your earlier face selections.
+The status bar reminds these keys. **Edit > Selection element > Previous face selection** (`Alt+Z`) and **Edit > Selection element > Next face selection** (`Alt+Y`), also the **◀ Previous selection** and **Next selection ▶** buttons at the top of the panel, go back and forth through your earlier face selections.
 
 ## The Face edit panel
 

@@ -20,9 +20,11 @@ fn units_label_key(units: DisplayUnits) -> &'static str {
 fn workflow_section(ui: &mut Ui, w: &mut WorkflowSettings) -> bool {
     let mut changed = false;
     heading(ui, t!("shell.view.controls"));
-    egui::Grid::new("hp_shell_view_controls").num_columns(2).spacing([16.0, 8.0]).min_col_width(LABEL_COLUMN).show(
-        ui,
-        |ui| {
+    egui::Grid::new("hp_shell_view_controls")
+        .num_columns(2)
+        .spacing([16.0, 8.0])
+        .min_col_width(super::label_column(ui))
+        .show(ui, |ui| {
             ui.label(t!("shell.view.scheme")).on_hover_text(t!("shell.view.scheme_tip"));
             egui::ComboBox::from_id_salt("hp_shell_view_scheme")
                 .selected_text(t!(scheme_label_key(w.nav_scheme)))
@@ -96,8 +98,7 @@ fn workflow_section(ui: &mut Ui, w: &mut WorkflowSettings) -> bool {
                     }
                 });
             ui.end_row();
-        },
-    );
+        });
     changed
 }
 
@@ -109,9 +110,11 @@ fn grid_mode_row(ui: &mut Ui, state: &mut AppState) {
         (hp_app::settings::GridMode::Custom, Action::GridModeCustom),
         (hp_app::settings::GridMode::Selection, Action::GridModeSelection),
     ];
-    egui::Grid::new("hp_shell_view_grid_mode").num_columns(2).spacing([16.0, 8.0]).min_col_width(LABEL_COLUMN).show(
-        ui,
-        |ui| {
+    egui::Grid::new("hp_shell_view_grid_mode")
+        .num_columns(2)
+        .spacing([16.0, 8.0])
+        .min_col_width(super::label_column(ui))
+        .show(ui, |ui| {
             ui.label(t!("shell.view.grid_mode")).on_hover_text(t!("shell.view.grid_mode_tip"));
             ui.horizontal(|ui| {
                 let current = state.settings.grid.mode;
@@ -135,20 +138,19 @@ fn grid_mode_row(ui: &mut Ui, state: &mut AppState) {
                 }
             });
             ui.end_row();
-        },
-    );
+        });
 }
-
-const LABEL_COLUMN: f32 = 200.0;
 
 pub(super) fn page(ui: &mut Ui, state: &mut AppState) {
     let mut changed = workflow_section(ui, &mut state.settings.workflow);
     grid_mode_row(ui, state);
     let v = &mut state.settings.view;
     heading(ui, t!("shell.view.camera"));
-    egui::Grid::new("hp_shell_view_camera").num_columns(2).spacing([16.0, 8.0]).min_col_width(LABEL_COLUMN).show(
-        ui,
-        |ui| {
+    egui::Grid::new("hp_shell_view_camera")
+        .num_columns(2)
+        .spacing([16.0, 8.0])
+        .min_col_width(super::label_column(ui))
+        .show(ui, |ui| {
             ui.label(t!("shell.view.fov"));
             changed |= ui.add(egui::Slider::new(&mut v.fov_deg, 40.0..=120.0).suffix("°").fixed_decimals(0)).changed();
             ui.end_row();
@@ -196,12 +198,13 @@ pub(super) fn page(ui: &mut Ui, state: &mut AppState) {
             changed |=
                 ui.checkbox(&mut v.hover_outline, "").on_hover_text(t!("shell.view.hover_outline_tip")).changed();
             ui.end_row();
-        },
-    );
+        });
     heading(ui, t!("shell.view.rendering"));
-    egui::Grid::new("hp_shell_view_render").num_columns(2).spacing([16.0, 8.0]).min_col_width(LABEL_COLUMN).show(
-        ui,
-        |ui| {
+    egui::Grid::new("hp_shell_view_render")
+        .num_columns(2)
+        .spacing([16.0, 8.0])
+        .min_col_width(super::label_column(ui))
+        .show(ui, |ui| {
             ui.label(t!("shell.view.msaa")).on_hover_text(t!("shell.view.msaa_tip"));
             changed |= ui.checkbox(&mut v.msaa, "").changed();
             ui.end_row();
@@ -214,12 +217,13 @@ pub(super) fn page(ui: &mut Ui, state: &mut AppState) {
             ui.label(t!("shell.view.grid_1024"));
             changed |= ui.checkbox(&mut v.show_1024_grid, "").changed();
             ui.end_row();
-        },
-    );
+        });
     heading(ui, t!("shell.view.colors"));
-    egui::Grid::new("hp_shell_view_colors").num_columns(2).spacing([16.0, 8.0]).min_col_width(LABEL_COLUMN).show(
-        ui,
-        |ui| {
+    egui::Grid::new("hp_shell_view_colors")
+        .num_columns(2)
+        .spacing([16.0, 8.0])
+        .min_col_width(super::label_column(ui))
+        .show(ui, |ui| {
             ui.label(t!("shell.view.background_2d"));
             changed |= ui.color_edit_button_srgb(&mut v.background_2d).changed();
             ui.end_row();
@@ -229,8 +233,7 @@ pub(super) fn page(ui: &mut Ui, state: &mut AppState) {
             ui.label(t!("shell.view.selection_color"));
             changed |= ui.color_edit_button_srgb(&mut v.selection_color).changed();
             ui.end_row();
-        },
-    );
+        });
     if changed {
         state.settings_dirty = true;
     }

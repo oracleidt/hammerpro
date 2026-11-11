@@ -51,7 +51,7 @@ The apps' own programs (the `claude` command) only run when you click **Install*
 ## Install in an AI app
 
 1. Switch the pill on (**MCP off** becomes **MCP on**).
-2. Open the MCP window (arrow next to the pill, or **Tools > MCP...**).
+2. Open the MCP window (arrow next to the pill, or **Tools > Blender and MCP > MCP...**).
 3. Click **Install in Claude, Codex, Gemini**. Hammer Pro adds itself to every app it finds on this computer, in this order: Claude Code, Claude Desktop, Codex, Gemini CLI, then checks each one. You can also install a single app with its own **Install** button.
 4. Restart the AI app (or start a new session) so it sees the new server.
 
@@ -163,6 +163,7 @@ Every change the AI makes is **one undo step** named "MCP:" followed by what was
 | Games | List the supported games, read and change the game of the map. |
 | Diagnostics | The crash reports of the crash folder (list and read one) and the last lines of Hammer Pro's own log. See [Crashes and logs](../troubleshooting/crashes-and-logs.md). |
 | Tool options | Read and change the options of the editing tools. |
+| Placement | Exact shapes of any object or model measured on the real mesh (`get_object_shape`), drawings with dimensions (`render_shape`), placing on, against or next to anything with real contact (`place_object`, `drop_to_surface`), checking how objects sit (`check_placement`) and finding floating or sunk ones (`find_floating_objects`). |
 
 The full list of every tool with its description and arguments is in [docs/MCP.md](../../MCP.md) (English).
 

@@ -6,7 +6,7 @@ The block tool creates brushes from primitives (block, wedge, cylinder, spike, s
 
 ## Opening it
 
-- **Tools > Block tool**, the tool palette, or `Shift+B`.
+- **Tools > Active tool > Block tool**, the tool palette, or `Shift+B`.
 - The options of the tool appear in the options bar above the views.
 
 ## Drawing in the 2D views

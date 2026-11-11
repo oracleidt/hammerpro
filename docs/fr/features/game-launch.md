@@ -8,11 +8,11 @@ Hammer Pro teste votre map en jeu rapidement : il charge la map compilée dans l
 
 | Commande | Raccourci | Effet |
 | --- | --- | --- |
-| **Fichier > Compiler et lancer...** | `Ctrl+F9` | Ouvre la fenêtre de compilation, où **Lancer le jeu** lance la map après la compilation. |
-| **Fichier > Compiler maintenant** | `F9` | Compile avec les réglages actuels (et lance le jeu si **Lancer le jeu** est coché). |
-| **Fichier > Lancer la map dans le jeu** | | Charge la map compilée du document ouvert dans le jeu lancé, ou démarre le jeu dessus. |
-| **Fichier > Recharger la map dans le jeu** | | Pareil, pour un jeu déjà lancé. |
-| **Fichier > Importer les props depuis le jeu** | | Ramène dans la map les props placés en jeu (nécessite le pont). |
+| **Fichier > Compiler > Compiler et lancer...** | `Ctrl+F9` | Ouvre la fenêtre de compilation, où **Lancer le jeu** lance la map après la compilation. |
+| **Fichier > Compiler > Compiler maintenant** | `F9` | Compile avec les réglages actuels (et lance le jeu si **Lancer le jeu** est coché). |
+| **Fichier > Compiler > Lancer la map dans le jeu** | | Charge la map compilée du document ouvert dans le jeu lancé, ou démarre le jeu dessus. |
+| **Fichier > Compiler > Recharger la map dans le jeu** | | Pareil, pour un jeu déjà lancé. |
+| **Fichier > Importer > Importer les props depuis le jeu** | | Ramène dans la map les props placés en jeu (nécessite le pont). |
 
 Avec le jeu de raccourcis Hammer ou Hammer++, `F9` ouvre la fenêtre de compilation et `Ctrl+F9` compile tout de suite (voir [Raccourcis clavier](keyboard-shortcuts.md)).
 
@@ -70,7 +70,7 @@ L'éditeur et le jeu échangent de petits fichiers dans `garrysmod/data/hammerpr
 
 ### Importer les props depuis le jeu
 
-Faites apparaître et disposez des props en jeu (pont installé, map lancée), puis lancez **Fichier > Importer les props depuis le jeu**. Les props arrivent dans la map en une seule étape d'annulation : `prop_physics` reste `prop_physics`, `prop_dynamic` et `prop_physics_multiplayer` deviennent `prop_static`, avec leur modèle, skin, position et angles. Sans le pont, vous obtenez *Installez d'abord le pont Hammer Pro (Paramètres > Jeu), puis redémarrez le jeu* ; sans réponse, *Le jeu n'a pas répondu : une map est-elle lancée avec le pont installé ?*
+Faites apparaître et disposez des props en jeu (pont installé, map lancée), puis lancez **Fichier > Importer > Importer les props depuis le jeu**. Les props arrivent dans la map en une seule étape d'annulation : `prop_physics` reste `prop_physics`, `prop_dynamic` et `prop_physics_multiplayer` deviennent `prop_static`, avec leur modèle, skin, position et angles. Sans le pont, vous obtenez *Installez d'abord le pont Hammer Pro (Paramètres > Jeu), puis redémarrez le jeu* ; sans réponse, *Le jeu n'a pas répondu : une map est-elle lancée avec le pont installé ?*
 
 ## Autres jeux
 

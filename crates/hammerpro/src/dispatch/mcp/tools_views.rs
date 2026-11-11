@@ -107,7 +107,12 @@ const SPECS: &[ToolSpec] = &[
         title: "3D render mode",
         description: "How the 3D view draws the map: textured (with the editor's shading), flat, wireframe, \
             textured_wire, lit (lighting preview: the light entities with VRAD's falloff and spot cones, \
-            light_dynamic, the sun of the first light_environment (angles or pitch key, target, SunSpreadAngle soft \
+            light_dynamic (an engine dynamic light: it also lights the baked preview and the player view over the \
+            lightmaps, like in game), point_spotlight (with Start On: its beam (a soft glow of camera facing sprites/light_glow03 sprites) fading along \
+            SpotlightLength from SpotlightWidth wide and stopped by the world, its sprites/light_glow03 halo, both \
+            in rendercolor times HDRColorScale in HDR, in every 3D mode and the player view; unless No Dynamic \
+            Light, the dynamic light the game puts where the beam ends, in lit, baked and the player view; the player \
+            view plays its LightOn and LightOff inputs; toolsskybox faces show the sky like the baked preview), the sun of the first light_environment (angles or pitch key, target, SunSpreadAngle soft \
             shadows) lighting only what sees a sky face toward it like VRAD, each point shadowed only by what lies \
             between it and the sky it reaches, skies stacked one above the other included (the 3D skybox, what lies beyond the sky \
             and brush entities without vrad_brush_cast_shadows cast no shadow, editor helpers neither), its _ambient \
@@ -151,10 +156,12 @@ const SPECS: &[ToolSpec] = &[
             Every prop is drawn at the level of detail the game picks for it, from the switch distances of \n            its model and the size it takes on the screen (setting render.model_lods, on by default; off, \n            the finest level is always drawn). The env_sun entity draws its sun sprite and its glow like the \n            game (direction, size, overlaysize, rendercolor, overlaycolor, material, overlaymaterial, \n            HDRColorScale, the fade over the 40 degrees around the middle of the view and the fade behind \n            what hides the sun) while the setting render.sun_glow is on (the default). The 3D views sample \n            their pixels on the game's pixel grid (setting render.game_pixel_grid, on by default: half a \n            pixel from the grid Vulkan and Direct3D 12 use, so a screenshot of the preview lines up with a \n            screenshot of the game). \n            The materials with $envmap reflect their cubemap (like the SDK 2013 shaders: along the bumped normal, \
             times $envmapmask or the base or normal map alpha, $envmaptint, $envmapcontrast, $envmapsaturation, \
             $fresnelreflection, $envmapfresnel with $phongfresnelranges on phong props, $envmaplightscale) in \
-            textured, lit and baked and in the player view while the setting render.cubemaps is on (the default; \
-            run_action toggle_cubemaps): the editor draws a cubemap at every env_cubemap (cubemapsize, the sky \
+            textured, lit and baked and in the player view while the setting render.cubemaps is on (off by default \
+            so the lighting preview shows the lights alone, settings of older versions are switched off once; \
+            run_action toggle_cubemaps or set_setting turns it on): the editor draws a cubemap at every env_cubemap (cubemapsize, the sky \
             without any), each brush face reflects the nearest env_cubemap in front of it like the compiler (or \
-            the one whose sides key lists it), props the nearest one. Parallax corrected cubemaps (Mapbase): \
+            the one whose sides key lists it), props the nearest one; a face whose cubemap is missing or not drawn yet reflects the sky darkened by its \
+            own lighting (like $envmaplightscale 1) instead of a bright sky. Parallax corrected cubemaps (Mapbase): \
             an env_cubemap whose parallaxobb key names a parallax_obb brush entity (in the player view, the \
             keys of the materials the compiler patched) makes the LightmappedGeneric and WorldVertexTransition \
             faces reflecting it look the cubemap up corrected to that box. The cubemaps are drawn like the first 3D \
@@ -190,7 +197,7 @@ const SPECS: &[ToolSpec] = &[
             the time, every style the lights use with its string and value now, and the named (switchable) \
             lights with their state. light (a named light) with on (true or false; missing: toggle) switches it \
             in the preview at the next frame of the player view, like the inputs TurnOn, TurnOff and Toggle \
-            (the keys 1 to 9 in the view do the same, the I/O simulation too); the map does not change. The I/O simulation also plays the env_projectedtexture inputs TurnOn, TurnOff, FOV, EnableShadows, SpotlightTexture and LightWorld on the projected light of the preview, and a named infodecal appears when an Activate input reaches it. \
+            (the keys 1 to 9 in the view do the same, the I/O simulation too); the map does not change. The point_spotlight beams and halos are drawn, and their dynamic light (unless No Dynamic Light) and light_dynamic entities light the compiled world and the props over the lightmaps like the engine's dynamic lights; the I/O simulation plays the point_spotlight inputs LightOn and LightOff. A brush with a displacement keeps only its displacement surface, like VBSP and the game: its other faces are neither drawn nor solid (compiled world and editor brushes alike). The I/O simulation also plays the env_projectedtexture inputs TurnOn, TurnOff, FOV, EnableShadows, SpotlightTexture and LightWorld on the projected light of the preview, and a named infodecal appears when an Activate input reaches it. \
             Trains move like in game: func_tracktrain and func_tanktrain follow their path_track chain from \
             their target (speed is the initial speed, startspeed the max speed, height above the track, wheels \
             for turning, orientationtype, velocitytype, bank, the No Pitch, No User Control, Passable and Fixed \

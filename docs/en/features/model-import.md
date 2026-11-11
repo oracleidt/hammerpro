@@ -6,9 +6,9 @@ Model import turns a 3D model file (FBX, OBJ, glTF or GLB) into a Garry's Mod pr
 
 ## Opening it
 
-- **File > Import a model (FBX, OBJ, glTF)...** opens a file dialog (filter "3D models": `.fbx`, `.obj`, `.gltf`, `.glb`).
+- **File > Import > Import a model (FBX, OBJ, glTF)...** opens a file dialog (filter "3D models": `.fbx`, `.obj`, `.gltf`, `.glb`).
 - The **+** button of the [model browser](model-browser.md) does the same. Its **++** button opens the [batch import](#batch-import).
-- **File > Import models (batch)...** converts many files at once.
+- **File > Import > Import models (batch)...** converts many files at once.
 - Drag and drop a `.fbx`, `.obj`, `.gltf` or `.glb` file onto the Hammer Pro window. One model at a time: a second drop while an import runs is refused with a message. Dropping several model files at once opens the [batch import](#batch-import) with them instead.
 - `--script` files have `import_model PATH`, `import_model_now PATH` (imports with the default options) and `import_model_scaled SCALE PATH` (see [Script commands](../reference/script-commands.md)).
 
@@ -85,7 +85,7 @@ The console lists, for every material, what was converted and what was ignored (
 
 ## Batch import
 
-**File > Import models (batch)...** (also the **++** button of the [model browser](model-browser.md), and `import_models_batch` in the command palette) converts many files in one run, with the same pipeline and the same options as a single import.
+**File > Import > Import models (batch)...** (also the **++** button of the [model browser](model-browser.md), and `import_models_batch` in the command palette) converts many files in one run, with the same pipeline and the same options as a single import.
 
 1. **Add files...** picks several model files, **Add a folder...** picks folders. **Include subfolders** walks them (24 levels at most), and the **Formats** boxes (OBJ, FBX, glTF / GLB) filter what is taken from folders. Files picked by hand are kept whatever their format box says as long as the extension is supported. At most 5000 files are taken, in alphabetical order, duplicates removed.
 2. The **preview table** reads every file in the background and lists its triangles, its size in units, the model name it will get and its warnings (heavy model, too small or too large, a physics prop without collision, an unreadable file in red). A name in orange means a model of that name exists already. **Preview** reads the files again after you change the scale, units or axis.

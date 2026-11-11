@@ -8,8 +8,8 @@ L'outil décal pose des entités `infodecal` et l'outil overlay des entités `in
 
 | Outil | Menu | Raccourci par défaut |
 | --- | --- | --- |
-| **Outil décal** | **Outils > Outil décal** | `Maj+D` |
-| **Outil overlay** | **Outils > Outil overlay** | `Maj+O` |
+| **Outil décal** | **Outils > Outil actif > Outil décal** | `Maj+D` |
+| **Outil overlay** | **Outils > Outil actif > Outil overlay** | `Maj+O` |
 
 Les deux outils sont aussi dans la palette d'outils. Ils ne marchent que dans la vue 3D : cliquer dans une vue 2D affiche le message **Cliquez sur une face dans la vue 3D** et le curseur indique que la vue n'est pas utilisable.
 

@@ -16,8 +16,8 @@ Les outils MCP `create_road` et `edit_road` acceptent `optimize`, et `get_road` 
 
 ## L'ouvrir
 
-- **Outils > Outil route** ou la palette d'outils (groupe création, après l'outil sprinkle). Il n'a pas de raccourci par défaut ; vous pouvez lui en donner un dans **Paramètres > Clavier**.
-- **Outils > Modifier la route** rouvre la route du brush sélectionné (voir plus bas). **Outils > Modifier la courbe** fait la même chose quand le brush sélectionné appartient à une route.
+- **Outils > Outil actif > Outil route** ou la palette d'outils (groupe création, après l'outil sprinkle). Il n'a pas de raccourci par défaut ; vous pouvez lui en donner un dans **Paramètres > Clavier**.
+- **Outils > Courbes et routes > Modifier la route** rouvre la route du brush sélectionné (voir plus bas). **Outils > Courbes et routes > Modifier la courbe** fait la même chose quand le brush sélectionné appartient à une route.
 - La palette de commandes (`Ctrl+P`) propose les deux commandes.
 
 ## Dessiner la route
@@ -90,14 +90,14 @@ Dans les **Réglages de la route**, saisissez un **Nom du préréglage**, puis c
 
 Un préréglage inclut largeur et nombre de voies, matériaux, marquages, segmentation, forme et rayon, suivi du terrain, inclinaison, mode de création et maintien de l'outil actif. Il conserve les points du tracé, la hauteur de placement et les connexions de la map. Son chargement peut être annulé avec `Ctrl+Z` et rétabli avec `Ctrl+Y`, même avant de placer un point. Enregistrer ou supprimer un préréglage ne modifie aucun brush de la map.
 
-Pour retrouver les réglages d'une route déjà créée, sélectionnez un de ses brushes et activez l'outil Route, ou utilisez **Outils > Modifier la route**. Ses points et réglages sont restaurés pour l'édition. Enregistrez alors ces réglages sous un nom pour les réutiliser sur d'autres routes.
+Pour retrouver les réglages d'une route déjà créée, sélectionnez un de ses brushes et activez l'outil Route, ou utilisez **Outils > Courbes et routes > Modifier la route**. Ses points et réglages sont restaurés pour l'édition. Enregistrez alors ces réglages sous un nom pour les réutiliser sur d'autres routes.
 
 ## Modifier une route existante
 
 Chaque brush créé par l'outil route se souvient de sa route dans les clés `hammerpro_curve` du VMF (`r1;...`, points avec leurs hauteurs, tous les réglages, la jonction).
 
 1. Sélectionnez un brush de la route (ou son entité brush).
-2. Activez **Outil route** pour rouvrir directement la route sélectionnée, ou choisissez **Outils > Modifier la route** pour l'ouvrir avec sa fenêtre de réglages.
+2. Activez **Outil route** pour rouvrir directement la route sélectionnée, ou choisissez **Outils > Courbes et routes > Modifier la route** pour l'ouvrir avec sa fenêtre de réglages.
 3. Glissez, ajoutez, insérez, retirez des points, changez des hauteurs, n'importe quel réglage, matériau, ligne, dévers, jonction.
 4. `Entrée` ou **Appliquer** remplace tous les brushes de la route par les nouveaux en une seule étape d'annulation. Ils restent dans la même entité brush, s'il y en a une, et sont sélectionnés. `Échap` annule sans rien changer.
 

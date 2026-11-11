@@ -64,7 +64,7 @@ Directement dans le menu **Affichage** :
 | **Maillage des displacements en vue 2D** | Fait passer les vues 2D de la grille de triangles des displacements à leur contour. | Maillage |
 | **Praticabilité des displacements** | Colore les triangles des displacements selon leur praticabilité, ou selon l'angle de pente avec les modes Limite et Dégradé (voir [Outil displacement](displacement-tool.md#contrôle-des-pentes)). | Désactivé |
 | **Limite de distance circulaire** | Rien n'est dessiné au-delà du rayon de limite autour de la caméra (un cercle le montre dans les vues 2D). | Désactivé |
-| **Surligner les brushes invalides** | Les brushes qui ne sont pas fermés et convexes sont dessinés en rouge dans toutes les vues. | Activé |
+| **Surligner les brushes invalides** | Les brushes qui ne sont pas fermés et convexes, et les brushes dont le displacement ne peut pas être construit (le jeu les supprime), sont dessinés en rouge dans toutes les vues. | Activé |
 | **Afficher le nodraw** | Affiche ou masque les faces nodraw dans la vue 3D. | Affiché |
 | **Aperçu de l'eau** | L'eau dessinée comme en jeu : réfraction, brouillard de l'eau, reflet de la scène et du ciel, vagues animées. Désactivé : sa texture d'outil. | Activé |
 | **Boîtes englobantes** | Boîtes englobantes jaunes des objets visibles. Désactivé par défaut et sans raccourci (`I` lance seulement le [décalage interactif](extrude-tool.md)) ; activez-les ici ou avec l'action `toggle_bounds_overlay` depuis la palette de commandes. | Désactivé |
@@ -87,7 +87,7 @@ La barre d'outils reprend les interrupteurs les plus utilisés : limite circulai
 
 ## Brouillard de la map
 
-**Aperçu du brouillard** (activé par défaut, bouton de la barre d'outils, **Affichage > Aperçu du brouillard**) dessine le brouillard d'un `env_fog_controller` dans les vues 3D et la [vue joueur](player-view.md), comme le brouillard de la map en jeu : **Primary Fog Color** (et **Secondary Fog Color** avec **Fog Blend**, selon **Primary Fog Direction** ou les angles avec **Use Angles for Fog Dir**), **Fog Start**, **Fog End**, **Fog Max Density** et **Far Z Clip Plane**. Modifier une clé met la vue à jour tout de suite. Il marche dans les modes texturé, éclairé, plat et sans ombrage, sur les lightmaps précalculés, l'eau, les particules, les detail props et les modèles, et dans la vue joueur.
+**Aperçu du brouillard** (activé par défaut, bouton de la barre d'outils, **Affichage > Aperçu de l'environnement > Aperçu du brouillard** ; le contrôleur se choisit dans **Affichage > Aperçu de l'environnement > Contrôleur de brouillard prévisualisé**) dessine le brouillard d'un `env_fog_controller` dans les vues 3D et la [vue joueur](player-view.md), comme le brouillard de la map en jeu : **Primary Fog Color** (et **Secondary Fog Color** avec **Fog Blend**, selon **Primary Fog Direction** ou les angles avec **Use Angles for Fog Dir**), **Fog Start**, **Fog End**, **Fog Max Density** et **Far Z Clip Plane**. Modifier une clé met la vue à jour tout de suite. Il marche dans les modes texturé, éclairé, plat et sans ombrage, sur les lightmaps précalculés, l'eau, les particules, les detail props et les modèles, et dans la vue joueur.
 
 - Le brouillard est calculé comme le jeu : il croît linéairement avec la distance selon la direction de la vue, de 0 à **Fog Start** (qui peut être négatif : le brouillard est déjà là devant les yeux) à **Fog Max Density** à **Fog End**, et il est mélangé en espace gamma avec la couleur dessinée. Une densité max de 0.25 ne couvre jamais plus d'un quart de la couleur.
 - Avec **Fog Blend**, la couleur du brouillard dépend de l'endroit où regarde la caméra, pas de chaque pixel : regarder selon **Primary Fog Direction** donne la couleur primaire, regarder à l'opposé la secondaire, moitié de chaque de côté.
@@ -135,7 +135,7 @@ Un `func_fish_pool` fait apparaître `fish_count` poissons (10 par défaut) de s
 
 ## Images de fond
 
-**Affichage > Images de fond...** ouvre la fenêtre **Images de fond** : des images de référence (un plan, une photo) dessinées derrière la grille des vues 2D.
+**Affichage > Options d'affichage > Images de fond...** ouvre la fenêtre **Images de fond** : des images de référence (un plan, une photo) dessinées derrière la grille des vues 2D.
 
 | Champ | Effet |
 | --- | --- |
@@ -197,11 +197,11 @@ Les images sont enregistrées dans la map (bloc `bgimages_plus` du VMF) et voyag
 
 ## FAQ
 
-**Mes faces de ciel montrent la texture d'outil.** C'est le comportement par défaut. Activez **Voir le ciel à travers toolsskybox** pour voir le ciel à travers.
+**Mes faces de ciel montrent la texture d'outil.** C'est le comportement par défaut dans les modes texturés ; le mode éclairé et l'aperçu précalculé montrent le ciel à travers elles, comme le jeu. Activez **Voir le ciel à travers toolsskybox** pour voir le ciel à travers.
 
 **Où sont passés mes props ?** Vérifiez **Afficher les modèles**, **Distance des modèles** et **Afficher les collisions des modèles**.
 
-**L'aperçu du brouillard ne montre rien.** La map doit avoir un `env_fog_controller` avec **Fog Enable** à Yes (un nouveau a No, comme dans Hammer) ; la vue 3D le signale en bas à gauche. Choisissez un autre contrôleur dans **Affichage > Aperçu du brouillard**.
+**L'aperçu du brouillard ne montre rien.** La map doit avoir un `env_fog_controller` avec **Fog Enable** à Yes (un nouveau a No, comme dans Hammer) ; la vue 3D le signale en bas à gauche. Choisissez un autre contrôleur dans **Affichage > Aperçu de l'environnement > Contrôleur de brouillard prévisualisé**.
 
 **Mon fog_volume montre l'aspect bleu par défaut.** Son **Fog Name** ne nomme pas un `env_fog_controller` avec **Fog Enable** à Yes : l'étiquette au-dessus du volume et les propriétés de l'entité disent lequel. En jeu un tel volume ne change rien (pas de contrôleur) ou enlève le brouillard (contrôleur au brouillard désactivé).
 
@@ -218,4 +218,4 @@ Les images sont enregistrées dans la map (bloc `bgimages_plus` du VMF) et voyag
 
 ## Une grille bleue à la place du ciel
 
-Dans la vue éclairée ou texturée, une grille bleue sur une face de ciel correspond à la texture d'édition `tools/toolsskybox` lorsque **Voir le ciel à travers toolsskybox** est désactivé. Activez cette option dans **Paramètres > Rendu** (`render.sky_see_through`) pour voir le ciel à travers ces faces. L'aperçu précalculé affiche automatiquement les ouvertures de ciel.
+Dans les vues texturées, une grille bleue sur une face de ciel correspond à la texture d'édition `tools/toolsskybox` lorsque **Voir le ciel à travers toolsskybox** est désactivé. Activez cette option dans **Paramètres > Rendu** (`render.sky_see_through`) pour voir le ciel à travers ces faces. Le mode éclairé (Alt+5) et l'aperçu précalculé affichent automatiquement les ouvertures de ciel, pour que les faces de ciel ne soient jamais éclairées ni ombrées comme un mur.

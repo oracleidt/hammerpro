@@ -34,7 +34,7 @@ const MAX_OPTIONS: usize = 64;
 domain! { "tool options";
     get_tool_options: Read, "Tool options",
         "The options of the editing tools by name with their current values and what each takes: the selection \
-        tool (element: object, face, edge, vertex, what a click in a 3D view selects; handles: scale, rotate, skew; box: touching, inside, centers; box_confirm: a box drawn in a 2D view waits for Enter like Hammer++, saved with the settings; pending_box: the waiting box, set it to \"x1 y1 x2 y2\" to draw one, confirm, add or cancel; gizmo on/off and gizmo_mode: move, \
+        tool (element: object, face, edge, vertex, what a click in a 3D view selects; handles: scale, rotate, skew; box: touching, inside, centers; box_confirm: a box drawn in a 2D view waits for Enter like Hammer++ (off by default), saved with the settings; pending_box: the waiting box, set it to \"x1 y1 x2 y2\" to draw one, confirm, add or cancel; gizmo on/off and gizmo_mode: move, \
         rotate, scale; gizmo_local; stretch_handles: the arrows on the faces of the selected brushes in the 3D \
         view that stretch the selection along an axis, saved with the settings), the block tool (primitive incl. stairs, spiral_stairs, ramp, pillar, doorway, sides, arch wall, arc, start, rise, torus, steps, step_height, open, inner, spiral_angle, spiral_start, slope, direction, base, capital, inset, door_width, door_height, thickness, door_arch, door_arch_radius, door_arch_segments, reorient, the shape preview window, texture scale, \
         create as, keep active; while a shape is drawn the mouse wheel steps sides, steps or door_arch_segments), the polygon tool (tex_scale, create_as, keep_active), the entity tool (class, model, skin, align: the next point entity or prop), the decal and overlay tools (snap), the curve tool (subdivisions 2 to 4096, thickness 1 to 1024, height or auto, \
@@ -318,8 +318,11 @@ mod tests {
         assert_eq!(value(&now, "select", "stretch_handles"), "off");
         assert_eq!(value(&now, "select", "gizmo_mode"), "rotate");
         assert!(set_tool_options_on(&mut tools, &mut state, ToolId::Select, &opts(&[("box", "round")])).is_error);
-        assert_eq!(value(&now, "select", "box_confirm"), "on");
+        assert_eq!(value(&now, "select", "box_confirm"), "off", "off by default");
         assert_eq!(value(&now, "select", "pending_box"), "none");
+        let r = set_tool_options_on(&mut tools, &mut state, ToolId::Select, &opts(&[("box_confirm", "on")]));
+        assert!(!r.is_error, "{}", r.first_text());
+        assert!(state.settings.selection.box_confirm);
         state.doc.clear_selection();
         let r = set_tool_options_on(
             &mut tools,

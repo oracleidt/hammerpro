@@ -8,7 +8,7 @@ Every result is made of valid convex brushes, so the map compiles like any other
 
 ## Opening it
 
-- **Tools > Bevel tool**, the tool strip (quarter circle icon, in the editing group after the extrude / carve tool), or `Shift+J`.
+- **Tools > Active tool > Bevel tool**, the tool strip (quarter circle icon, in the editing group after the extrude / carve tool), or `Shift+J`.
 - From the **Selection** or **Vertex** tool: point at a brush edge in the 3D view and press `Ctrl+B`. The bevel tool opens and starts bevelling that edge at once (see [Ctrl+B](#ctrlb-and-snap-to-grid) below).
 
 ## Bevelling an edge

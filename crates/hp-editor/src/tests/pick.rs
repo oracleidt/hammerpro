@@ -40,6 +40,15 @@ fn swept_particles_use_real_brush_and_displacement_geometry() {
     assert!(
         doc.trace_hull(DVec3::new(90.0, 90.0, 80.0), DVec3::new(90.0, 90.0, -80.0), DVec3::splat(2.0), None).is_none()
     );
+    assert!(
+        doc.trace_hull(DVec3::new(-10.0, 32.0, 32.0), DVec3::new(100.0, 32.0, 32.0), DVec3::splat(2.0), None).is_none(),
+        "the other faces of a displaced brush do not exist in game: walking through its side hits nothing"
+    );
+    let side_ray = Ray::new(DVec3::new(-10.0, 32.0, 32.0), DVec3::X);
+    assert!(
+        doc.pick_ray(&side_ray, &PickOptions::default(), &no_bounds).is_none(),
+        "the player view rays see through it too"
+    );
 }
 
 #[test]

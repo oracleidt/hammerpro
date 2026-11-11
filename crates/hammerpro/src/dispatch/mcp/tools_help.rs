@@ -56,6 +56,12 @@ const CORE: &[(&str, &str)] = &[
 ];
 
 const EXAMPLES: &[(&str, &str)] = &[
+    ("get_object_shape", r#"{"solid_ids":[2]}"#),
+    ("check_placement", r#"{"solid_ids":[3]}"#),
+    ("place_object", r#"{"solid_ids":[3],"mode":"drop","dry_run":true}"#),
+    ("render_shape", r#"{"solid_ids":[2],"width":512,"height":384}"#),
+    ("find_floating_objects", r#"{"include":"all"}"#),
+    ("drop_to_surface", r#"{"ids":[4]}"#),
     ("create_brush", r#"{"min":[0,0,0],"max":[512,512,16],"material":"dev/dev_measuregeneric01b"}"#),
     (
         "create_road",
@@ -122,6 +128,9 @@ const TIPS: &[&str] = &[
     "ui_click, ui_drag, ui_key and ui_type act like the user, at window points, view fractions or world \
      points of a view; wait_frames lets animations and loading settle.",
     "Coordinates are Source units, Z up; 2D views: top looks down Z, front looks along -X, side along +Y.",
+    "Placing props, brushes or anything: measure first with get_object_shape (real size, footprint, origin height \
+     above the lowest point), place with place_object or drop_to_surface (real meshes touch exactly), verify with \
+     check_placement; find_floating_objects scans a whole area; render_shape shows the shape with dimensions.",
 ];
 
 pub(crate) fn catalog() -> Vec<(&'static str, &'static ToolSpec)> {

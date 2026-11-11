@@ -498,8 +498,8 @@ const TR: TrTable = &[
     ("inset.snap", "Snap to grid", "Aligner sur la grille"),
     (
         "inset.hint",
-        "The brush is split into a frame of quads and an inner block, all convex. Live version: press I in the 3D view (Tools > Interactive inset).",
-        "Le brush est découpé en un cadre de quadrilatères et un bloc intérieur, tous convexes. En direct : touche I dans la vue 3D (Outils > Décalage interactif).",
+        "The brush is split into a frame of quads and an inner block, all convex. Live version: press I in the 3D view (Tools > Brush operations > Interactive inset).",
+        "Le brush est découpé en un cadre de quadrilatères et un bloc intérieur, tous convexes. En direct : touche I dans la vue 3D (Outils > Opérations sur les brushes > Décalage interactif).",
     ),
     ("inset.done", "{0} brush(es) after the inset", "{0} brush(es) après le décalage"),
     ("inset.err_face", "The side is not a face of the brush", "Le côté n'est pas une face du brush"),

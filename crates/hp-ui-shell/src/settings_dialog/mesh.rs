@@ -43,7 +43,7 @@ impl SettingsPage for MeshPage {
             .checkbox(&mut s.four_way_blends, t!("shell.mesh.four_way"))
             .on_hover_text(t!("shell.mesh.four_way_tip"))
             .changed();
-        egui::Grid::new("hp_shell_mesh_noise").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
+        super::form_grid(ui, "hp_shell_mesh_noise").show(ui, |ui| {
             ui.label(t!("shell.mesh.noise_min"));
             changed |= ui
                 .add(egui::DragValue::new(&mut s.noise_min).range(-1024.0..=1024.0).speed(0.25))

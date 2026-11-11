@@ -4,7 +4,7 @@
 
 Commands that move, rotate, scale, mirror, line up or drop the selected objects by exact rules instead of dragging handles: the Transform dialog, Align, Flip, Snap to grid, Move to floor/ceiling, Center origins, Random Z rotation, the movable pivot, physics placement and arrays (Paste special).
 
-Every command below works on the current selection and is one undo step. Most of them are in the **Tools** menu (Align and Flip have their own submenus **Tools > Align** and **Tools > Flip**). To drag objects with the mouse, see the [Selection tool](selection-tool.md).
+Every command below works on the current selection and is one undo step. Most of them are in the **Tools** menu (Align, Flip, Move to floor, the origins and the random rotation share the submenu **Tools > Arrange**). To drag objects with the mouse, see the [Selection tool](selection-tool.md).
 
 ## Command summary
 
@@ -22,11 +22,11 @@ Every command below works on the current selection and is one undo step. Most of
 | **Random Z rotation options...** | Tools (opens the Transform window in **Random Z** mode) | none |
 | **Movable pivot** | Tools | none |
 | **Physics placement (drop and settle)** | Tools | none |
-| **Flip X**, **Flip Y**, **Flip Z** | Tools > Flip | none |
-| **Flip horizontally** | Tools > Flip | `Ctrl+L` |
-| **Flip vertically** | Tools > Flip | none (`Ctrl+I` with the Hammer and Hammer++ key presets) |
-| **Align left**, **Align right**, **Align top**, **Align bottom** | Tools > Align | none |
-| **Align centers horizontally**, **Align centers vertically** | Tools > Align | none |
+| **Flip X**, **Flip Y**, **Flip Z** | Tools > Arrange | none |
+| **Flip horizontally** | Tools > Arrange | `Ctrl+L` |
+| **Flip vertically** | Tools > Arrange | none (`Ctrl+I` with the Hammer and Hammer++ key presets) |
+| **Align left**, **Align right**, **Align top**, **Align bottom** | Tools > Arrange | none |
+| **Align centers horizontally**, **Align centers vertically** | Tools > Arrange | none |
 | **Paste special...** | Edit | `Ctrl+Shift+V` |
 | **Texture lock** | Tools | `Shift+L` |
 | **Texture scale lock** | Tools | `Shift+K` |
@@ -51,6 +51,10 @@ Commands without a shortcut can get one in **Settings > Keyboard** (see [Keyboar
 
 The line under the fields counts the selected objects. Errors (nothing selected, invalid values, transform failed) show in red in the window.
 
+The cursor starts in the first field (X) when the window opens and when you change mode, with its text selected so you can type over it. `Tab` and `Shift+Tab` move between the fields and buttons of the window, wrapping around, and never reach the shortcuts of the views (such as `Tab`, which cycles the 2D view).
+
+Rotating a mixed selection turns everything around the same pivot in the same direction, like Hammer: brushes, props, point entities and lights. For `light_spot`, `light_environment` and `light_directional` the light keeps shining the way the rotation turned it: the **Pitch** key gets the new pitch (positive is up, the way VRAD reads it) and the angles are written the Hammer way, so the spotlight model points along the beam. The rotate handles, the gizmo, Paste special and the MCP tools `rotate_objects` and `transform_objects` turn objects the same way.
+
 ## Snap to grid
 
 - **Snap selection to grid** (`Ctrl+B`): moves the selection as a whole so the minimum corner of its bounds lands on the nearest point of the current grid. In the Selection, Vertex and Bevel tools, `Ctrl+B` with the cursor on a brush edge in the 3D view bevels that edge instead (see [Bevel tool](bevel-tool.md)).
@@ -62,20 +66,20 @@ The grid size is the current grid size (see [Grids](grids.md)).
 
 Hammer++ style drop:
 
-- **Move to floor** (`Alt+N`) moves each object straight down until its bounds touch the nearest surface.
+- **Move to floor** (`Alt+N`) moves each object straight down until its real shape touches the real surface below: the lowest point of a prop's model mesh (after its angles and scale) lands exactly on brushes, displacements and other props' meshes, with no gap and no overlap. It is the same engine as the MCP `drop_to_surface` tool.
 - **Move to ceiling** (`Alt+U`) moves it straight up.
 - The **aligned to the surface** variants (`Ctrl+Alt+N`, `Ctrl+Alt+U`) also turn point entities so their up axis follows the normal of the surface they land on, keeping their heading as much as possible.
 
 Details:
 
 - Each group (its outermost group) or ungrouped object moves on its own.
-- Rays start at the middle height of the object, above its four bottom corners and its center, so an object sunk into the floor comes up onto it instead of falling through.
+- An object sunk into the floor is lifted out onto it instead of falling through. Invisible tool brushes (clip, trigger, hint...) are not surfaces.
 - Brushes and props (entities with a `.mdl` model) are surfaces. The moved objects themselves are ignored.
 - An object with nothing below (or above) it stays in place. When nothing moves, a message says **There is no surface below the selection** (or above).
 
 ## Physics placement
 
-**Tools > Physics placement (drop and settle)** drops the selected objects one after another, lowest first, so each one rests on the ground or on the objects already placed instead of passing through them, like objects falling under gravity. A group falls as a whole. Props are tilted onto the surface they land on. When everything already rests on a surface, the notice **Nothing to drop: the selection is already resting on a surface.** shows.
+**Tools > Placement and props > Physics placement (drop and settle)** drops the selected objects one after another, lowest first, so each one rests on the ground or on the objects already placed instead of passing through them, like objects falling under gravity. A group falls as a whole. Props are tilted onto the surface they land on. Contacts use the real meshes of the props and the real brush and displacement shapes. When everything already rests on a surface, the notice **Nothing to drop: the selection is already resting on a surface.** shows.
 
 ## Flip
 
@@ -103,13 +107,13 @@ The axes are those of the 2D view under the pointer (or the last one used). From
 
 ## Center origins
 
-**Tools > Center origins** sets the `origin` key of the selected brush entities (`func_door_rotating`, `func_rotating`...) to the center of their brushes. Only brush entities that have an `origin` key change; selecting one of their brushes is enough. If none changed, the notice **No selected brush entity has an origin to center** shows.
+**Tools > Arrange > Center origins** sets the `origin` key of the selected brush entities (`func_door_rotating`, `func_rotating`...) to the center of their brushes. Only brush entities that have an `origin` key change; selecting one of their brushes is enough. If none changed, the notice **No selected brush entity has an origin to center** shows.
 
 ## Random Z rotation
 
-**Tools > Random Z rotation** turns every selected point entity that has an `angles` key (`prop_static`, `prop_dynamic`, `prop_physics`, lights, any point entity with angles) around Z by its own random amount, around its own origin. It is one undo step (**Random rotation**). Brushes, brush entities and entities without an `angles` key are skipped; the notice says how many turned and how many were skipped, for example **Random Z rotation: 12 turned, 3 skipped (brushes, brush entities or no angles key)**.
+**Tools > Arrange > Random Z rotation** turns every selected point entity that has an `angles` key (`prop_static`, `prop_dynamic`, `prop_physics`, lights, any point entity with angles) around Z by its own random amount, around its own origin. It is one undo step (**Random rotation**). Brushes, brush entities and entities without an `angles` key are skipped; the notice says how many turned and how many were skipped, for example **Random Z rotation: 12 turned, 3 skipped (brushes, brush entities or no angles key)**.
 
-The options are in the **Random Z** mode of the Transform window (**Tools > Random Z rotation options...**), kept in the settings:
+The options are in the **Random Z** mode of the Transform window (**Tools > Arrange > Random Z rotation options...**), kept in the settings:
 
 | Field | What it does | Default |
 |---|---|---|
@@ -123,7 +127,7 @@ The options are the `random_yaw_min`, `random_yaw_max`, `random_yaw_snap`, `rand
 
 ## Movable pivot
 
-**Tools > Movable pivot** shows a pivot cross at the center of the selection (at the origin of a single point entity), or hides it when it is shown.
+**Tools > Arrange > Movable pivot** shows a pivot cross at the center of the selection (at the origin of a single point entity), or hides it when it is shown.
 
 - With the [Selection tool](selection-tool.md), drag the cross in a 2D view to move it (it snaps to the grid when grid snapping is on). In the 3D view the gizmo sits on the pivot: grab it near the center of the gizmo.
 - Rotations and scales of the handles, gizmo and modal transforms turn around it. Flip mirrors through it. The Transform dialog uses it with **Pivot > Movable pivot**, and Paste special with **Rotate around the pivot**.
@@ -154,7 +158,7 @@ The same operations exist for AI assistants: `transform_objects`, `move_objects`
 
 ## FAQ
 
-**Why is Movable pivot greyed out in the Transform dialog?** The pivot is hidden. Use **Tools > Movable pivot** first.
+**Why is Movable pivot greyed out in the Transform dialog?** The pivot is hidden. Use **Tools > Arrange > Movable pivot** first.
 
 **My pivot disappeared.** It is dropped when the selection changes. Show it again after selecting.
 

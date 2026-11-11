@@ -10,7 +10,7 @@ Textures of the Source engine are VTF files. Hammer Pro edits them in two ways: 
 |---|---|
 | [Material editor](material-editor.md), **Linked textures** section and every texture parameter (`$basetexture`, `$bumpmap`...) | The **VTF** button opens that texture. It uses the external editor when one is found and the built in one otherwise. Right click the button to choose: **Open in the built in VTF editor** or **Open in** the external program. |
 | [Texture browser](texture-browser.md): right click a thumbnail > **Edit texture (VTF editor)...** | Opens the base texture of the material in the built in editor, linked to that material. |
-| **Tools > VTF editor...** (action `vtf_editor`, also in the command palette `Ctrl+P`) | Opens the empty window: type a texture name, open a file, or start from an image. |
+| **Tools > Content and editors > VTF editor...** (action `vtf_editor`, also in the command palette `Ctrl+P`) | Opens the empty window: type a texture name, open a file, or start from an image. |
 | Drop a `.vtf` or an image on the window | A `.vtf` is opened; an image replaces the image shown, or starts a new texture when none is open. |
 | MCP: `open_vtf_editor` | Same as above, with `external: true` for the external editor. |
 

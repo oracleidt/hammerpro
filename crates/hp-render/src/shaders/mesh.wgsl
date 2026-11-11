@@ -457,6 +457,7 @@ fn fs_mesh(in: VsOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f
             baked = model_light_px(in.light_rec, in.static_light, in.world, bn);
         }
         baked = max(baked + direct_lighting_from(in.world, n, bn, in.clip.xy, in.state.x, true, true, model_sample_origin(in.light_rec, in.world)) * bitcast<f32>(view.misc.z), vec3<f32>(0.0));
+        lit_by = select(baked / max(bitcast<f32>(view.misc.z), 1e-4), vec3<f32>(1.0), unlit);
         rgb = select(albedo.rgb * baked, albedo.rgb * bitcast<f32>(view.misc.z), unlit);
         rgb = mix(rgb, albedo.rgb * glow_tint * bitcast<f32>(view.misc.z), glow);
     } else if mode == MODE_FLAT && (view.opts.x & OPT_NEUTRAL_FLAT) != 0u {
@@ -475,7 +476,7 @@ fn fs_mesh(in: VsOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f
         rgb = select(albedo.rgb * textured_shade(bn), albedo.rgb, unlit);
     }
     if reflects {
-        let scale = mix(vec3<f32>(1.0), clamp(lit_by, vec3<f32>(0.0), vec3<f32>(1.0)), material.env_sat.w);
+        let scale = env_light_scale(in.cube, lit_by);
         rgb += env * scale * select(1.0, bitcast<f32>(view.misc.z), in.baked.w > 0.5 && !unlit);
     }
     if mode != MODE_FLAT && material.detail_mode != DETAIL_NONE {

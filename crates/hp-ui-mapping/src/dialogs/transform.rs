@@ -42,6 +42,8 @@ pub(crate) fn transform_matrix(mode: TransformMode, v: DVec3, pivot: DVec3) -> R
     }
 }
 
+const FOCUS_TRIES: u8 = 4;
+
 pub(crate) struct TransformDialog {
     pub(crate) mode: TransformMode,
     pub(crate) offset: DVec3,
@@ -50,6 +52,8 @@ pub(crate) struct TransformDialog {
     pub(crate) pivot: Pivot,
     pub(crate) error: Option<String>,
     pub(crate) info: Option<String>,
+    focus_first: u8,
+    was_open: bool,
 }
 
 impl Default for TransformDialog {
@@ -62,6 +66,8 @@ impl Default for TransformDialog {
             pivot: Pivot::SelectionCenter,
             error: None,
             info: None,
+            focus_first: 0,
+            was_open: false,
         }
     }
 }
@@ -144,8 +150,12 @@ impl TransformDialog {
         if !state.ui.show_transform {
             self.error = None;
             self.info = None;
+            self.was_open = false;
             state.ui.transform_random = false;
             return;
+        }
+        if !std::mem::replace(&mut self.was_open, true) {
+            self.focus_first = FOCUS_TRIES;
         }
         if std::mem::take(&mut state.ui.transform_random) {
             self.mode = TransformMode::Random;
@@ -185,6 +195,9 @@ impl TransformDialog {
                 let button =
                     if m == TransformMode::Random { button.on_hover_text(t!("transform.random_tip")) } else { button };
                 if button.clicked() {
+                    if self.mode != m {
+                        self.focus_first = FOCUS_TRIES;
+                    }
                     self.mode = m;
                     self.error = None;
                     self.info = None;
@@ -208,7 +221,16 @@ impl TransformDialog {
                 TransformMode::Rotate | TransformMode::Random => &mut self.angles,
                 TransformMode::Scale => &mut self.scale,
             };
-            hp_app::widgets::vec3_edit(ui, v, speed);
+            let first = vec3_fields(ui, v, speed);
+            if self.focus_first > 0 {
+                let ctx = ui.ctx();
+                if ctx.memory(|m| m.has_focus(first)) {
+                    self.focus_first = 0;
+                } else if !ctx.input(|i| i.pointer.any_down()) {
+                    self.focus_first -= 1;
+                    hp_app::dialog_keys::focus_select_all(ctx, first);
+                }
+            }
             ui.end_row();
             if self.mode != TransformMode::Move {
                 ui.label(t!("transform.pivot"));
@@ -349,6 +371,19 @@ impl TransformDialog {
     }
 }
 
+fn vec3_fields(ui: &mut Ui, v: &mut DVec3, speed: f64) -> egui::Id {
+    ui.horizontal(|ui| {
+        let mut first = None;
+        for (i, label) in ["X", "Y", "Z"].iter().enumerate() {
+            ui.label(RichText::new(*label).color(theme::text_weak()).strong());
+            let r = ui.add(egui::DragValue::new(&mut v[i]).speed(speed).max_decimals(3));
+            first.get_or_insert(r.id);
+        }
+        first.unwrap_or(egui::Id::NULL)
+    })
+    .inner
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -418,6 +453,26 @@ mod tests {
         assert!((after - rotated).length() < 1e-6, "{after:?}");
         state.pivot = None;
         assert!(d.apply(&mut state));
+    }
+
+    #[test]
+    fn the_first_field_takes_the_keyboard_when_the_window_opens() {
+        crate::register_translations();
+        let mut state = hp_app::testing::test_state();
+        state.doc.set_selection(&[ObjRef::Entity(5)]);
+        state.ui.show_transform = true;
+        let mut d = TransformDialog::default();
+        let ctx = egui::Context::default();
+        let raw = || egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1200.0, 800.0))),
+            ..Default::default()
+        };
+        for _ in 0..3 {
+            let _ = ctx.run_ui(raw(), |root| d.show(&root.ctx().clone(), &mut state));
+        }
+        assert!(ctx.memory(|m| m.focused()).is_some(), "the X field has the focus");
+        assert!(ctx.text_edit_focused(), "and is ready to type in");
+        assert_eq!(d.focus_first, 0);
     }
 
     #[test]

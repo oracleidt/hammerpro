@@ -229,7 +229,7 @@ domain! { "compile and play";
         (the HDR tone mapping of the focused 3D view: mode, the exposure scale now, its range, the bloom amount, \
         what the env_tonemap_controller of the map sets and the luminance histogram the auto exposure reads), the \
         lightmap budget, and while the lit mode is on the realtime preview: lights drawn, suns, lights left out, \
-        crowded spots keeping only their strongest lights, HDR or LDR values, sky light occlusion, projectors (the env_projectedtexture entities drawn, setting render.projected_textures), sky_layers (how \
+        crowded spots keeping only their strongest lights, HDR or LDR values, sky light occlusion, projectors (the env_projectedtexture entities drawn, setting render.projected_textures), dynamic_lights (the engine dynamic lights drawn: light_dynamic and the point_spotlight beam ends, also over the baked preview and the player view), sky_layers (how \
         many skies lie one above the other toward the sun and straight up: each point is shadowed only by what lies \
         between it and the sky it reaches, like VRAD), relight (the last lighting update: full or incremental, \
         lights and changed lights, faces relit and faces sent, seconds of the lighting with its direct and bounce \
@@ -1311,6 +1311,7 @@ fn get_lighting_status(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
             "crowded_clusters": r.crowded_clusters, "max_lights_per_cluster": r.max_per_cluster,
             "hdr_values": r.hdr, "sky_occlusion": r.sky_occlusion,
             "projectors": state.gfx.as_ref().map_or(0, |g| g.renderer.projector_count()),
+            "dynamic_lights": state.gfx.as_ref().map_or(0, |g| g.renderer.dynamic_light_count()),
             "sky_layers": { "sun": r.sky_layers[0], "sky_light": r.sky_layers[1] },
             "prop_shadows": prop_shadows_name(hp_app::runtime::render::prop_shadows(&state.settings)),
             "prop_shadows_setting": lower(format!("{:?}", state.settings.render.prop_shadows)),

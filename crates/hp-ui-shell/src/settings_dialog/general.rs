@@ -9,7 +9,7 @@ use crate::common::heading;
 impl SettingsDialog {
     pub(super) fn general_page(&mut self, ui: &mut Ui, state: &mut AppState) {
         heading(ui, t!("shell.settings.appearance"));
-        egui::Grid::new("hp_shell_settings_general").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
+        super::form_grid(ui, "hp_shell_settings_general").show(ui, |ui| {
             ui.label(t!("menu.language"));
             let current = hp_app::i18n::lang();
             let mut chosen = None;
@@ -115,12 +115,47 @@ impl SettingsDialog {
                 state.settings_dirty = true;
             }
             ui.end_row();
+
+            ui.label(t!("shell.settings.tool_palette_columns"));
+            ui.horizontal(|ui| {
+                let columns = crate::tool_strip::palette_columns(&state.settings.workflow);
+                for (n, key) in [(1, "shell.strip.one_column"), (2, "shell.strip.two_columns")] {
+                    if ui.selectable_label(columns == n, t!(key)).clicked() {
+                        crate::tool_strip::set_palette_columns(state, n);
+                    }
+                }
+            });
+            ui.end_row();
+
+            ui.label(t!("shell.settings.toolbar_rows"));
+            ui.horizontal(|ui| {
+                let two = state.settings.workflow.toolbar_two_rows();
+                if ui.selectable_label(!two, t!("shell.settings.toolbar_one_row")).clicked() {
+                    crate::toolbar::set_rows(state, 1);
+                }
+                if ui
+                    .selectable_label(two, t!("shell.settings.toolbar_two_rows"))
+                    .on_hover_text(t!("shell.toolbar.two_rows_tip"))
+                    .clicked()
+                {
+                    crate::toolbar::set_rows(state, 2);
+                }
+                if ui
+                    .button(t!("action.reset_toolbar"))
+                    .on_hover_text(t!("shell.settings.toolbar_layout_tip"))
+                    .clicked()
+                {
+                    state.settings.workflow.reset_toolbar();
+                    state.settings_dirty = true;
+                }
+            });
+            ui.end_row();
         });
 
         self.background_section(ui, state);
 
         heading(ui, t!("shell.settings.autosave"));
-        egui::Grid::new("hp_shell_settings_autosave").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
+        super::form_grid(ui, "hp_shell_settings_autosave").show(ui, |ui| {
             let e = &mut state.settings.edit;
             let mut changed = false;
             ui.label(t!("shell.settings.autosave_every"));
@@ -219,7 +254,7 @@ impl SettingsDialog {
         }
         let b = &mut state.settings.ui;
         let mut changed = false;
-        egui::Grid::new("hp_shell_settings_background").num_columns(2).spacing([16.0, 8.0]).show(ui, |ui| {
+        super::form_grid(ui, "hp_shell_settings_background").show(ui, |ui| {
             ui.label(t!("shell.settings.background_image"));
             ui.horizontal(|ui| {
                 if ui.button(t!("shell.settings.background_browse")).clicked() && self.background_pick.is_none() {
@@ -319,6 +354,15 @@ pub(super) fn reset(state: &mut AppState) {
 }
 
 pub(crate) const TR: TrTable = &[
+    ("shell.settings.tool_palette_columns", "Tool palette", "Palette d'outils"),
+    ("shell.settings.toolbar_rows", "Toolbar", "Barre d'outils"),
+    ("shell.settings.toolbar_one_row", "One row", "Une ligne"),
+    ("shell.settings.toolbar_two_rows", "Up to two rows", "Jusqu'à deux lignes"),
+    (
+        "shell.settings.toolbar_layout_tip",
+        "Right-click the toolbar to show, hide or reorder its groups and buttons",
+        "Clic droit sur la barre d'outils pour afficher, masquer ou réordonner ses groupes et ses boutons",
+    ),
     ("shell.settings.appearance", "Appearance", "Apparence"),
     ("shell.settings.theme", "Theme", "Thème"),
     ("shell.settings.theme_dark", "Dark", "Sombre"),

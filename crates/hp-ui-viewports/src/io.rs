@@ -426,6 +426,13 @@ impl IoSim {
                     _ => o.texture = Some(param.trim().to_owned()).filter(|t| !t.is_empty()).or(o.texture.take()),
                 }
             }
+            "lighton" | "lightoff" if c == "point_spotlight" => {
+                let o = self
+                    .projectors
+                    .entry(id)
+                    .or_insert_with(|| hp_app::state::ProjectorOverride { id, ..Default::default() });
+                o.on = Some(input == "lighton");
+            }
             "kill" | "killhierarchy" | "break" => {
                 self.hidden.insert(id);
                 self.disabled.insert(id);
@@ -683,5 +690,36 @@ mod tests {
         assert_eq!((o.id, o.on, o.fov, o.shadows), (2, Some(false), Some(70.0), Some(false)));
         assert_eq!(o.texture.as_deref(), Some("effects/flashlight002"));
         assert!(!sim.hidden.contains(&2), "TurnOff does not hide the entity, it switches the light");
+    }
+
+    #[test]
+    fn spotlight_inputs_switch_the_beam_and_its_light() {
+        let mut state = hp_app::testing::test_state();
+        let mut spot = Entity { id: 2, classname: "point_spotlight".into(), ..Default::default() };
+        spot.set("targetname", "beam");
+        let mut relay = Entity { id: 3, classname: "logic_relay".into(), ..Default::default() };
+        let c = |input: &str| hp_vmf::Connection {
+            output: "OnTrigger".into(),
+            target: "beam".into(),
+            input: input.into(),
+            param: String::new(),
+            delay: 0.0,
+            times: -1,
+            separator: ',',
+        };
+        relay.connections = vec![c("LightOff")];
+        let map = hp_vmf::Map { entities: vec![spot, relay.clone()], ..Default::default() };
+        state.doc = hp_editor::Document::from_map(map);
+        let mut sim = IoSim::default();
+        let mut doors = Doors::default();
+        sim.fire(&state, 3, "OnTrigger");
+        sim.step(&state, &mut doors, DVec3::ZERO, 72.0, 0.0);
+        assert_eq!(sim.projector_overrides().iter().map(|o| (o.id, o.on)).collect::<Vec<_>>(), [(2, Some(false))]);
+        relay.connections = vec![c("LightOn")];
+        state.doc.edit_entity(3, |e| e.connections = relay.connections.clone()).expect("edit");
+        sim.fire(&state, 3, "OnTrigger");
+        sim.step(&state, &mut doors, DVec3::ZERO, 72.0, 0.0);
+        assert_eq!(sim.projector_overrides()[0].on, Some(true));
+        assert!(!sim.hidden.contains(&2));
     }
 }

@@ -6,7 +6,7 @@ L'éditeur de sons ouvre un son du contenu du jeu, des addons, de la map ou de v
 
 ## L'ouvrir
 
-- **Outils > Éditeur de sons...** (action `sound_editor`) ouvre la fenêtre, et la ferme au second appel.
+- **Outils > Contenu et éditeurs > Éditeur de sons...** (action `sound_editor`) ouvre la fenêtre, et la ferme au second appel.
 - MCP : `open_media_editor` avec `editor` à `sound` (et un `path` pour charger un son).
 
 ## Choisir un son

@@ -97,7 +97,7 @@ Le **Pont Hammer Pro** est un petit addon dans `garrysmod/addons/hammerpro_bridg
 ## Recharger le contenu
 
 - **Appliquer et recharger le contenu** (en bas de la fenêtre des paramètres) remonte le contenu du jeu avec les nouveaux paramètres.
-- **Outils > Recharger le contenu depuis le disque** recharge le contenu et les définitions d'entités sans toucher aux paramètres, par exemple après avoir ajouté des fichiers dans un addon.
+- **Outils > Contenu et éditeurs > Recharger le contenu depuis le disque** recharge le contenu et les définitions d'entités sans toucher aux paramètres, par exemple après avoir ajouté des fichiers dans un addon.
 
 ## FAQ
 

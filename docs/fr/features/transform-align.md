@@ -4,7 +4,7 @@
 
 Les commandes qui déplacent, pivotent, mettent à l'échelle, retournent, alignent ou posent les objets sélectionnés selon des règles précises, sans glisser de poignées : la fenêtre Transformer, l'alignement, le retournement, l'alignement sur la grille, poser au sol / coller au plafond, centrer les origines, la rotation Z aléatoire, le pivot déplaçable, le placement physique et les copies en série (Collage spécial).
 
-Chaque commande ci-dessous agit sur la sélection actuelle et compte pour une seule étape d'annulation. La plupart se trouvent dans le menu **Outils** (l'alignement et le retournement ont leurs sous-menus **Outils > Aligner** et **Outils > Retourner**). Pour déplacer les objets à la souris, voyez l'[outil de sélection](selection-tool.md).
+Chaque commande ci-dessous agit sur la sélection actuelle et compte pour une seule étape d'annulation. La plupart se trouvent dans le menu **Outils** (l'alignement, le retournement, le placement au sol, les origines et la rotation aléatoire partagent le sous-menu **Outils > Disposer**). Pour déplacer les objets à la souris, voyez l'[outil de sélection](selection-tool.md).
 
 ## Résumé des commandes
 
@@ -22,11 +22,11 @@ Chaque commande ci-dessous agit sur la sélection actuelle et compte pour une se
 | **Options de rotation Z aléatoire...** | Outils (ouvre la fenêtre Transformer en mode **Z aléatoire**) | aucun |
 | **Pivot déplaçable** | Outils | aucun |
 | **Placement physique (chute et pose)** | Outils | aucun |
-| **Retourner X**, **Retourner Y**, **Retourner Z** | Outils > Retourner | aucun |
-| **Retourner horizontalement** | Outils > Retourner | `Ctrl+L` |
-| **Retourner verticalement** | Outils > Retourner | aucun (`Ctrl+I` avec les préréglages de touches Hammer et Hammer++) |
-| **Aligner à gauche**, **Aligner à droite**, **Aligner en haut**, **Aligner en bas** | Outils > Aligner | aucun |
-| **Centrer horizontalement**, **Centrer verticalement** | Outils > Aligner | aucun |
+| **Retourner X**, **Retourner Y**, **Retourner Z** | Outils > Disposer | aucun |
+| **Retourner horizontalement** | Outils > Disposer | `Ctrl+L` |
+| **Retourner verticalement** | Outils > Disposer | aucun (`Ctrl+I` avec les préréglages de touches Hammer et Hammer++) |
+| **Aligner à gauche**, **Aligner à droite**, **Aligner en haut**, **Aligner en bas** | Outils > Disposer | aucun |
+| **Centrer horizontalement**, **Centrer verticalement** | Outils > Disposer | aucun |
 | **Collage spécial...** | Édition | `Ctrl+Maj+V` |
 | **Verrouillage des textures** | Outils | `Maj+L` |
 | **Verrouillage de l'échelle des textures** | Outils | `Maj+K` |
@@ -51,6 +51,10 @@ Les commandes sans raccourci peuvent en recevoir un dans **Paramètres > Clavier
 
 La ligne sous les champs compte les objets sélectionnés. Les erreurs (rien de sélectionné, valeurs invalides, échec de la transformation) s'affichent en rouge dans la fenêtre.
 
+Le curseur se place dans le premier champ (X) à l'ouverture de la fenêtre et à chaque changement de mode, avec son texte sélectionné pour le remplacer en tapant. `Tab` et `Maj+Tab` passent d'un champ ou d'un bouton de la fenêtre à l'autre, en boucle, et n'atteignent jamais les raccourcis des vues (comme `Tab`, qui change la vue 2D).
+
+Pivoter une sélection mixte tourne tout autour du même pivot dans le même sens, comme Hammer : brushes, props, entités ponctuelles et lumières. Pour `light_spot`, `light_environment` et `light_directional`, la lumière éclaire là où la rotation l'a tournée : la clé **Pitch** reçoit la nouvelle inclinaison (positive vers le haut, comme la lit VRAD) et les angles sont écrits comme dans Hammer, donc le modèle du spot suit le faisceau. Les poignées de rotation, le gizmo, le Collage spécial et les outils MCP `rotate_objects` et `transform_objects` tournent les objets de la même façon.
+
 ## Aligner sur la grille
 
 - **Aligner la sélection sur la grille** (`Ctrl+B`) : déplace la sélection d'un bloc pour que le coin minimum de sa boîte englobante tombe sur le point le plus proche de la grille actuelle. Dans les outils Sélection, Vertex et Biseau, `Ctrl+B` avec le curseur sur une arête de brush dans la vue 3D biseaute cette arête à la place (voir [Outil biseau](bevel-tool.md)).
@@ -62,20 +66,20 @@ La taille utilisée est la taille de grille actuelle (voir [Grilles](grids.md)).
 
 Le « drop » façon Hammer++ :
 
-- **Poser au sol** (`Alt+N`) descend chaque objet tout droit jusqu'à ce que sa boîte englobante touche la surface la plus proche.
+- **Poser au sol** (`Alt+N`) descend chaque objet tout droit jusqu'à ce que sa vraie forme touche la vraie surface en dessous : le point le plus bas du maillage d'un prop (après ses angles et son échelle) se pose exactement sur les brushes, les déplacements et les maillages des autres props, sans espace ni chevauchement. C'est le même moteur que l'outil MCP `drop_to_surface`.
 - **Coller au plafond** (`Alt+U`) le monte tout droit.
 - Les variantes **aligné sur la surface** (`Ctrl+Alt+N`, `Ctrl+Alt+U`) tournent en plus les entités ponctuelles pour que leur axe vertical suive la normale de la surface touchée, en gardant au mieux leur orientation.
 
 En détail :
 
 - Chaque groupe (son groupe le plus extérieur) ou objet hors groupe bouge séparément.
-- Les rayons partent de la mi-hauteur de l'objet, au-dessus des quatre coins du bas et du centre : un objet enfoncé dans le sol remonte dessus au lieu de passer à travers.
+- Un objet enfoncé dans le sol est remonté dessus au lieu de passer à travers. Les brushes d'outils invisibles (clip, trigger, hint...) ne servent pas de surface.
 - Les brushes et les props (entités avec un modèle `.mdl`) servent de surfaces. Les objets déplacés eux-mêmes sont ignorés.
 - Un objet sans rien en dessous (ou au-dessus) reste en place. Si rien ne bouge, le message **Aucune surface sous la sélection** (ou au-dessus) s'affiche.
 
 ## Placement physique
 
-**Outils > Placement physique (chute et pose)** fait tomber les objets sélectionnés l'un après l'autre, le plus bas en premier : chacun se pose sur le sol ou sur les objets déjà placés au lieu de les traverser, comme sous l'effet de la gravité. Un groupe tombe d'un bloc. Les props sont inclinés sur la surface où ils atterrissent. Quand tout repose déjà sur une surface, l'avis **Rien à faire tomber : la sélection repose déjà sur une surface.** s'affiche.
+**Outils > Placement et props > Placement physique (chute et pose)** fait tomber les objets sélectionnés l'un après l'autre, le plus bas en premier : chacun se pose sur le sol ou sur les objets déjà placés au lieu de les traverser, comme sous l'effet de la gravité. Un groupe tombe d'un bloc. Les props sont inclinés sur la surface où ils atterrissent. Les contacts utilisent les vrais maillages des props et les vraies formes des brushes et des déplacements. Quand tout repose déjà sur une surface, l'avis **Rien à faire tomber : la sélection repose déjà sur une surface.** s'affiche.
 
 ## Retourner
 
@@ -103,13 +107,13 @@ Les axes sont ceux de la vue 2D sous le pointeur (ou de la dernière utilisée).
 
 ## Centrer les origines
 
-**Outils > Centrer les origines** place la clé `origin` des entités de brush sélectionnées (`func_door_rotating`, `func_rotating`...) au centre de leurs brushes. Seules les entités de brush qui ont une clé `origin` changent ; sélectionner un de leurs brushes suffit. Si aucune n'a changé, l'avis **Aucune entité de brosses sélectionnée n'a d'origine à centrer** s'affiche.
+**Outils > Disposer > Centrer les origines** place la clé `origin` des entités de brush sélectionnées (`func_door_rotating`, `func_rotating`...) au centre de leurs brushes. Seules les entités de brush qui ont une clé `origin` changent ; sélectionner un de leurs brushes suffit. Si aucune n'a changé, l'avis **Aucune entité de brosses sélectionnée n'a d'origine à centrer** s'affiche.
 
 ## Rotation Z aléatoire
 
-**Outils > Rotation Z aléatoire** tourne chaque entité ponctuelle sélectionnée qui a une clé `angles` (`prop_static`, `prop_dynamic`, `prop_physics`, lumières, toute entité ponctuelle avec des angles) autour de Z d'une quantité aléatoire qui lui est propre, autour de sa propre origine. C'est une seule étape d'annulation (**Rotation aléatoire**). Les brushes, les entités de brush et les entités sans clé `angles` sont ignorés ; l'avis indique combien ont tourné et combien ont été ignorés, par exemple **Rotation Z aléatoire : 12 tournés, 3 ignorés (brosses, entités de brosses ou sans clé angles)**.
+**Outils > Disposer > Rotation Z aléatoire** tourne chaque entité ponctuelle sélectionnée qui a une clé `angles` (`prop_static`, `prop_dynamic`, `prop_physics`, lumières, toute entité ponctuelle avec des angles) autour de Z d'une quantité aléatoire qui lui est propre, autour de sa propre origine. C'est une seule étape d'annulation (**Rotation aléatoire**). Les brushes, les entités de brush et les entités sans clé `angles` sont ignorés ; l'avis indique combien ont tourné et combien ont été ignorés, par exemple **Rotation Z aléatoire : 12 tournés, 3 ignorés (brosses, entités de brosses ou sans clé angles)**.
 
-Les options sont dans le mode **Z aléatoire** de la fenêtre Transformer (**Outils > Options de rotation Z aléatoire...**), gardées dans les paramètres :
+Les options sont dans le mode **Z aléatoire** de la fenêtre Transformer (**Outils > Disposer > Options de rotation Z aléatoire...**), gardées dans les paramètres :
 
 | Champ | Effet | Par défaut |
 |---|---|---|
@@ -123,7 +127,7 @@ Les options sont les clés `random_yaw_min`, `random_yaw_max`, `random_yaw_snap`
 
 ## Pivot déplaçable
 
-**Outils > Pivot déplaçable** affiche une croix de pivot au centre de la sélection (à l'origine d'une entité ponctuelle seule), ou la masque si elle est déjà affichée.
+**Outils > Disposer > Pivot déplaçable** affiche une croix de pivot au centre de la sélection (à l'origine d'une entité ponctuelle seule), ou la masque si elle est déjà affichée.
 
 - Avec l'[outil de sélection](selection-tool.md), glissez la croix dans une vue 2D pour la déplacer (elle s'aligne sur la grille quand le magnétisme est actif). Dans la vue 3D, le gizmo est posé sur le pivot : attrapez-le près du centre du gizmo.
 - Les rotations et mises à l'échelle des poignées, du gizmo et des transformations modales tournent autour de lui. Le retournement passe par lui. La fenêtre Transformer l'utilise avec **Pivot > Pivot déplaçable**, et le Collage spécial avec **Pivoter autour du pivot**.
@@ -154,7 +158,7 @@ Les mêmes opérations existent pour les assistants IA : `transform_objects`, `m
 
 ## FAQ
 
-**Pourquoi Pivot déplaçable est grisé dans la fenêtre Transformer ?** Le pivot est masqué. Utilisez d'abord **Outils > Pivot déplaçable**.
+**Pourquoi Pivot déplaçable est grisé dans la fenêtre Transformer ?** Le pivot est masqué. Utilisez d'abord **Outils > Disposer > Pivot déplaçable**.
 
 **Mon pivot a disparu.** Il disparaît quand la sélection change. Réaffichez-le après avoir sélectionné.
 

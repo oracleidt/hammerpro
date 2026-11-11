@@ -14,7 +14,7 @@ Les fichiers du jeu de base ne sont jamais nécessaires : tous les joueurs les o
 
 ## Étape 2 (recommandée) : Construire et enregistrer en contenu
 
-Pour publier sur Garry's Mod, **Fichier > Construire et enregistrer en contenu...** fait tout : compilation finale, cubemaps et nav mesh, intégration, dossier d'addon, GMA et envoi sur le Workshop.
+Pour publier sur Garry's Mod, **Fichier > Publier > Construire et enregistrer en contenu...** fait tout : compilation finale, cubemaps et nav mesh, intégration, dossier d'addon, GMA et envoi sur le Workshop.
 
 1. Dans l'onglet **Construction**, choisissez quoi **Produire** :
    - **Addon Workshop** : le BSP, un dossier de contenu et un `.gma`.

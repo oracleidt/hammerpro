@@ -23,7 +23,7 @@ The same features exist as the MCP tools `import_heightmap`, `export_heightmap` 
 
 ## Import heightmap
 
-Open **Tools > Import heightmap...**. The window has these sections.
+Open **File > Import > Import heightmap...**. The window has these sections.
 
 ### File
 
@@ -91,7 +91,7 @@ The **Tile layout** drawing shows the heightmap (after invert, flips and smoothi
 
 ## Generate terrain
 
-Open **Tools > Generate terrain...**. The terrain is built from fractal noise, then optionally eroded and textured. While the window is open, a **live preview** (65 x 65 vertices at most) is drawn in the 3D view: a shaded surface with a coarse grid and a yellow outline of the footprint. The preview follows every change. Switch it off with **Live preview in the 3D view**. It is removed when the window closes. The erosion in the preview runs at most 200 passes and at a coarser resolution, so it only approximates the final result.
+Open **Tools > Displacements > Generate terrain...**. The terrain is built from fractal noise, then optionally eroded and textured. While the window is open, a **live preview** (65 x 65 vertices at most) is drawn in the 3D view: a shaded surface with a coarse grid and a yellow outline of the footprint. The preview follows every change. Switch it off with **Live preview in the 3D view**. It is removed when the window closes. The erosion in the preview runs at most 200 passes and at a coarser resolution, so it only approximates the final result.
 
 ### Presets
 
@@ -145,7 +145,7 @@ A preset loads the noise settings only (the seed, the size and the height range 
 
 ## Export heightmap
 
-Select displacements (or solids that have some) and open **Tools > Export heightmap...**.
+Select displacements (or solids that have some) and open **File > Export > Export heightmap...**.
 
 | Option | What it does | Default |
 | --- | --- | --- |

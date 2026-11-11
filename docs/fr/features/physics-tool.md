@@ -2,7 +2,7 @@
 
 # Simulateur physique
 
-Sélectionnez des brushes, des props ou des ragdolls, puis choisissez **Outils > Simulateur physique** ou l'icône de balance dans la barre des outils. Les commandes apparaissent dans le panneau de droite.
+Sélectionnez des brushes, des props ou des ragdolls, puis choisissez **Outils > Outil actif > Simulateur physique** ou l'icône de balance dans la barre des outils. Les commandes apparaissent dans le panneau de droite.
 
 | Commande | Effet |
 | --- | --- |

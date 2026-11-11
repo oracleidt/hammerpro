@@ -286,7 +286,8 @@ fn new_problem_checks() {
     let basic = doc.check_problems_with(&ctx);
     assert!(find(&basic, "missing_material").is_none() && find(&basic, "missing_model").is_none());
 
-    let fixable: Vec<Problem> = problems.iter().filter(|p| p.fixable).cloned().collect();
+    assert_eq!(find(&problems, "contained_brush").expect("contained").objects, vec![ObjRef::Solid(3)]);
+    let fixable: Vec<Problem> = problems.iter().filter(|p| p.fixable && p.code != "contained_brush").cloned().collect();
     doc.fix_problems(&fixable).expect("fix");
     assert_eq!(doc.scene().solid(3).expect("solid").solid.sides.len(), 6);
     assert!(doc.scene().entity(12).is_none());

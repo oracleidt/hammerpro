@@ -8,7 +8,7 @@ A map a client can draw is never fully theft proof: a decompiler can always reco
 
 ## Opening it
 
-The protection is part of the release build. Open **File > Build and save as content...**, tab **Build**, and tick **Protect your BSP** (below the release options). Its options appear indented under it. The next **Build** produces the protected release. See [Build and save as content](build-content-release.md) for the rest of the window.
+The protection is part of the release build. Open **File > Publish > Build and save as content...**, tab **Build**, and tick **Protect your BSP** (below the release options). Its options appear indented under it. The next **Build** produces the protected release. See [Build and save as content](build-content-release.md) for the rest of the window.
 
 ## Options
 
@@ -106,7 +106,7 @@ So the protection stops the logic from being copied (it is not in the client) an
 
 **Can someone rebuild my map with the BSP Sniffer?** The geometry and the content that the client draws, yes (see above); the logic, the wiring and the original names of your custom materials, no.
 
-**What happens when someone opens the protected BSP in Hammer Pro?** **File > BSP Decompiler...** reports brushes without faces (*it was protected against decompiling*); the logic and the wiring are gone.
+**What happens when someone opens the protected BSP in Hammer Pro?** **File > Import > BSP Decompiler...** reports brushes without faces (*it was protected against decompiling*); the logic and the wiring are gone.
 
 ## Related pages
 

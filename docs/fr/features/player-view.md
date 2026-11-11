@@ -6,7 +6,7 @@ La vue joueur vous fait parcourir la map dans la vue 3D comme un joueur de Garry
 
 ## Accès
 
-- **Affichage > Options d'affichage > Vue joueur**, le bouton vue joueur de la barre d'outils, ou `F6`.
+- **Affichage > Vue joueur**, le bouton vue joueur de la barre d'outils, ou `F6`.
 - Elle prend la vue 3D sous la souris (sinon celle qui a le focus, sinon la première vue 3D). La disposition doit contenir une vue 3D (« La vue joueur a besoin d'une vue 3D dans la disposition. »).
 - Vous démarrez sur le premier `info_player_start` (ou `info_player_deathmatch`, `info_player_combine`, `info_player_rebel`, `info_player_terrorist`, `info_player_counterterrorist`), tourné dans sa direction ; sans point d'apparition, au sol sous la caméra 3D.
 - `Échap` ou `F6` ramène à l'éditeur, avec la caméra là où elle était avant.
@@ -39,6 +39,8 @@ La ligne de touches en haut de la vue les rappelle.
 ## Déplacements
 
 Les déplacements utilisent les valeurs Source de Garry's Mod : 200 unités par seconde en marchant, 400 en courant, gravité 600, vitesse de saut 200, une boîte de 32 x 32 x 72 (36 accroupi), les yeux à 64 (28 accroupi), des marches jusqu'à 18 unités. Les collisions utilisent les brushes (on traverse les triggers, hints, skips, fog, area portals, occluders, échelles invisibles et faces de ciel 2D) et les modèles de collision des props (`.phy`, comme le jeu : un arbre ne bloque qu'à son tronc). Le joueur pousse les props physiques qu'il percute. Le modèle du joueur joue les animations de Garry's Mod (repos, marche, course, accroupi, saut, noclip).
+
+Les **brushes avec displacement** se comportent comme en jeu : le compilateur (comme VBSP) ne garde que la surface de displacement d'une brush qui en a une, ses autres faces ne sont ni dessinées ni solides. La vue joueur fait de même avec le monde compilé comme avec les brushes de l'éditeur : les côtés d'un bloc avec displacement ne sont pas dessinés, on les traverse en marchant et avec la touche d'utilisation, et une fente entre deux blocs avec displacement reste ouverte, exactement comme dans Garry's Mod. Les vues de l'éditeur dessinent ces brushes de la même façon. Une brush dont le displacement ne peut pas être construit (face sans exactement 4 coins après une modification, puissance hors de 1 à 4) est entièrement supprimée par le compilateur : la vue joueur la cache et la traverse, les vues de l'éditeur la dessinent en rouge et **Vérifier les problèmes** la signale et la corrige.
 
 ## Monde compilé et éclairage
 

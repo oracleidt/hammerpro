@@ -36,7 +36,8 @@ domain! { "editing";
         }, [];
     transform_objects: Edit, "Transform objects",
         "Move, rotate (degrees around X, then Y, then Z) and scale objects around a pivot (default: the center of \
-        their bounds), in one step. Entities turn with their angles.",
+        their bounds), in one step. Entities turn with their angles; lights (light_spot, light_environment, \
+        light_directional) also get the Pitch key of their new direction (positive is up).",
         {
             "ids": target_ids(), "solid_ids": target_solid_ids(),
             "translate": vec3("Offset [x, y, z]."),
@@ -70,12 +71,21 @@ domain! { "editing";
             "individually": boolean("Each object on its own (default true)."),
         }, ["axis", "mode"];
     drop_to_surface: Edit, "Drop to surface",
-        "Move objects down (or along a direction) until they touch the surface below them, optionally turned to \
-        the surface normal. Objects with nothing below stay.",
+        "Move objects down (or along a direction: [0, 0, 1] for the ceiling, a horizontal one for a wall) until \
+        their real mesh touches the real surface: the lowest point of a prop's .mdl mesh after its angles and scale \
+        lands exactly on brushes, displacements and other props' meshes, with no gap and no overlap; brushes, brush \
+        entities, displacements, overlays and point entities (their box) work the same. Objects already sunk in are \
+        lifted out first. Objects of a group move with their group. Several objects settle lowest first, so stacks \
+        land on each other. align turns them to the surface normal. Objects with nothing below stay (listed in \
+        stayed). Answers what each one touched.",
         {
             "ids": target_ids(), "solid_ids": target_solid_ids(),
             "direction": vec3("Direction (default [0, 0, -1], [0, 0, 1] for the ceiling)."),
             "align": boolean("Turn objects to the surface normal (default false)."),
+            "gap": number("Space left at the contact (default 0).", 0.0, 256.0),
+            "mesh": choice("render (default) or collision meshes.", &["render", "collision"]),
+            "max_distance": number("Longest travel (default 16384).", 1.0, 65536.0),
+            "include_tools": boolean("Land on invisible tool brushes (clip, trigger...) too (default false)."),
         }, [];
     clip_brushes: Destructive, "Clip brushes",
         "Cut solids with a plane (the clip tool, Shift+X, in 2D or 3D) through three points (clockwise seen from \
@@ -115,7 +125,7 @@ domain! { "editing";
             "material": string("Material of the new faces (instead of new_faces)."),
         }, ["solid", "side", "points"];
  inset_face: Destructive, "Inset faces",
- "Inset brush faces (the Tools > Inset face command and the interactive inset, the I key in the 3D view): the edges of the face move inward by distance units and the brush is split into a frame of convex brushes around the face plus the inner block, so every piece stays a valid convex brush. The frame is made of one quad per edge of the outline (a triangle gives 3, a quad 4, an n-gon n). Several faces make a region inset by default: faces on the same plane that share an edge (the tops of side by side brushes, a floor made of several brushes) are inset together, with one shared outline around their union and one inner block, like Blender's inset without individual; the outline may be concave (an L shape) but must have no hole and no pinch point. individual: true insets every face on its own instead (Blender's individual mode, the I key again in the interactive inset). Faces that are not coplanar and touching (the top and the front of one brush, faces far apart) are always inset on their own. The original textures stay on the visible faces and the new faces get the texture of the inset face (or material). depth raises (positive) or sinks (negative) the inner block in the same step, like Blender I then E. Convex brushes only, displacement faces are refused, and a distance larger than the region allows is refused. faces defaults to the selected faces, else the faces of ids. snap rounds distance and depth to the active grid (size, custom grid and rotation, sizes clamped to 1 to 1024) and puts the new top plane on a grid plane. dry_run answers the number of brushes without changing the map. One undo step; answers the ids of the brushes made or changed.",
+ "Inset brush faces (the Tools > Brush operations > Inset face command and the interactive inset, the I key in the 3D view): the edges of the face move inward by distance units and the brush is split into a frame of convex brushes around the face plus the inner block, so every piece stays a valid convex brush. The frame is made of one quad per edge of the outline (a triangle gives 3, a quad 4, an n-gon n). Several faces make a region inset by default: faces on the same plane that share an edge (the tops of side by side brushes, a floor made of several brushes) are inset together, with one shared outline around their union and one inner block, like Blender's inset without individual; the outline may be concave (an L shape) but must have no hole and no pinch point. individual: true insets every face on its own instead (Blender's individual mode, the I key again in the interactive inset). Faces that are not coplanar and touching (the top and the front of one brush, faces far apart) are always inset on their own. The original textures stay on the visible faces and the new faces get the texture of the inset face (or material). depth raises (positive) or sinks (negative) the inner block in the same step, like Blender I then E. Convex brushes only, displacement faces are refused, and a distance larger than the region allows is refused. faces defaults to the selected faces, else the faces of ids. snap rounds distance and depth to the active grid (size, custom grid and rotation, sizes clamped to 1 to 1024) and puts the new top plane on a grid plane. dry_run answers the number of brushes without changing the map. One undo step; answers the ids of the brushes made or changed.",
         {
             "faces": faces("Faces [{solid, side}] (default: the selected faces)."),
             "ids": target_ids(), "solid_ids": target_solid_ids(),
@@ -757,19 +767,8 @@ fn align_objects(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     Ok(ToolResult::json(json!({ "objects": objs.len() })))
 }
 
-fn drop_to_surface(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
-    let objs = targets(state, a)?;
-    let dir = opt_dir(a, "direction")?.unwrap_or(DVec3::NEG_Z);
-    let align = a.opt_bool("align")?.unwrap_or(false);
-    let AppState { doc, assets, .. } = state;
-    let f = |e: &hp_vmf::Entity| assets.entity_bounds(e);
-    if doc.in_transaction() {
-        return Err("Hammer Pro is in the middle of another edit; try again".to_owned());
-    }
-    let moved = doc
-        .transaction(super::tools::undo_label("drop_to_surface"), |doc| doc.drop_to_surface(&objs, dir, align, &f))
-        .map_err(|e| e.to_string())?;
-    Ok(ToolResult::json(json!({ "moved": moved, "objects": objs.len() })))
+fn drop_to_surface(state: &mut AppState, a: &Args<'_>) -> R<super::tools::Outcome> {
+    super::tools_place::drop_to_surface(state, a)
 }
 
 fn clip_brushes(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
@@ -1832,6 +1831,55 @@ mod tests {
         assert_eq!(y % 90.0, 0.0);
         err(&mut state, "random_rotate_objects", json!({ "ids": [4], "min_yaw": 90, "max_yaw": 10 }));
         err(&mut state, "random_rotate_objects", json!({ "ids": [4], "tilt": 90 }));
+    }
+
+    #[test]
+    fn rotating_a_prop_a_spotlight_and_a_brush_turns_them_together() {
+        use glam::{DQuat, DVec3};
+        let dir = |e: &hp_vmf::Entity| hp_app::runtime::helpers::geometry::light_direction(e);
+        let fwd = |e: &hp_vmf::Entity| hp_geom::angle_matrix(e.angles().unwrap_or_default()).x_axis;
+        for (axis, v) in [("x", DVec3::X), ("y", DVec3::Y), ("z", DVec3::Z)] {
+            for tool in ["rotate_objects", "transform_objects"] {
+                let mut s = hp_app::testing::test_state();
+                let kv = |k: &str, val: &str| (k.to_owned(), val.to_owned());
+                let prop = s
+                    .doc
+                    .create_point_entity(
+                        "prop_static",
+                        DVec3::new(64.0, 0.0, 0.0),
+                        &[kv("model", "models/props_c17/oildrum001.mdl"), kv("angles", "0 0 0")],
+                    )
+                    .unwrap();
+                let spot = s
+                    .doc
+                    .create_point_entity(
+                        "light_spot",
+                        DVec3::new(0.0, 64.0, 0.0),
+                        &[kv("angles", "0 0 0"), kv("pitch", "0"), kv("_light", "255 255 255 200")],
+                    )
+                    .unwrap();
+                let get = |s: &hp_app::AppState, id| s.doc.scene().entity(id).unwrap().entity.clone();
+                let (p0, l0) = (get(&s, prop), get(&s, spot));
+                let b0 = s.doc.scene().solid_bounds(3).unwrap();
+                let args = if tool == "rotate_objects" {
+                    json!({ "ids": [prop, spot], "solid_ids": [3], "axis": axis, "degrees": 90, "pivot": [0, 0, 0] })
+                } else {
+                    let r: Vec<f64> = v.to_array().iter().map(|c| c * 90.0).collect();
+                    json!({ "ids": [prop, spot], "solid_ids": [3], "rotate": r, "pivot": [0, 0, 0] })
+                };
+                ok(&mut s, tool, args);
+                let q = DQuat::from_axis_angle(v, 90f64.to_radians());
+                let (p1, l1) = (get(&s, prop), get(&s, spot));
+                let close = |a: DVec3, b: DVec3| (a - b).length() < 1e-6;
+                let tag = format!("{tool} {axis}");
+                assert!(close(p1.origin().unwrap(), q * p0.origin().unwrap()), "{tag}");
+                assert!(close(l1.origin().unwrap(), q * l0.origin().unwrap()), "{tag}");
+                assert!(close(s.doc.scene().solid_bounds(3).unwrap().center(), q * b0.center()), "{tag}");
+                assert!(close(fwd(&p1), q * fwd(&p0)), "{tag} prop {p1:?}");
+                assert!(close(dir(&l1), q * dir(&l0)), "{tag} light {l1:?}");
+                assert!(close(fwd(&l1), dir(&l1)), "{tag} the spotlight model follows its beam {l1:?}");
+            }
+        }
     }
 
     #[test]

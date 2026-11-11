@@ -137,6 +137,10 @@ pub struct WorkflowSettings {
     pub show_bounds: bool,
     pub show_toolbar: bool,
     pub show_tool_palette: bool,
+    pub tool_palette_columns: u8,
+    pub toolbar_rows: u8,
+    pub toolbar_order: Vec<String>,
+    pub toolbar_hidden: Vec<String>,
     pub show_status_bar: bool,
     pub show_history: bool,
     pub layouts: BTreeMap<String, SavedLayout>,
@@ -161,6 +165,10 @@ impl Default for WorkflowSettings {
             show_bounds: false,
             show_toolbar: true,
             show_tool_palette: true,
+            tool_palette_columns: 1,
+            toolbar_rows: 1,
+            toolbar_order: Vec::new(),
+            toolbar_hidden: Vec::new(),
             show_status_bar: true,
             show_history: false,
             layouts: BTreeMap::new(),
@@ -172,6 +180,21 @@ impl Default for WorkflowSettings {
 }
 
 impl WorkflowSettings {
+    pub fn tool_palette_two_columns(&self) -> bool {
+        self.tool_palette_columns >= 2
+    }
+
+    pub fn toolbar_two_rows(&self) -> bool {
+        self.toolbar_rows >= 2
+    }
+
+    pub fn reset_toolbar(&mut self) {
+        let d = Self::default();
+        self.toolbar_rows = d.toolbar_rows;
+        self.toolbar_order = d.toolbar_order;
+        self.toolbar_hidden = d.toolbar_hidden;
+    }
+
     pub fn fly_response_secs(&self) -> f64 {
         if !self.camera_smoothing {
             return 0.0;
@@ -260,6 +283,12 @@ mod tests {
         let partial: WorkflowSettings = toml::from_str("units = \"Inches\"\n").unwrap();
         assert_eq!(partial.units, DisplayUnits::Inches);
         assert!(partial.show_toolbar);
+        assert_eq!(
+            (partial.tool_palette_columns, partial.toolbar_rows),
+            (1, 1),
+            "older files keep one column and one row"
+        );
+        assert!(partial.toolbar_order.is_empty() && partial.toolbar_hidden.is_empty());
         assert!(partial.open_in_new_tab, "files written before the tabs open maps in tabs");
         s.fly_response = f32::NAN;
         assert_eq!(s.fly_response_secs(), f64::from(FLY_RESPONSE_DEFAULT));
@@ -268,6 +297,23 @@ mod tests {
         assert!(NavScheme::Hammer.hammer_gestures() && !NavScheme::Hammer.middle_looks());
         assert!(NavScheme::HammerPlusPlus.hammer_gestures() && NavScheme::HammerPlusPlus.middle_looks());
         assert!(!NavScheme::HammerPro.hammer_gestures());
+    }
+
+    #[test]
+    fn toolbar_and_palette_layout_round_trip_and_reset() {
+        let mut s = WorkflowSettings {
+            tool_palette_columns: 2,
+            toolbar_rows: 2,
+            toolbar_order: vec!["render".into(), "file".into()],
+            toolbar_hidden: vec!["cordon".into(), "toggle_grid".into()],
+            ..WorkflowSettings::default()
+        };
+        assert!(s.tool_palette_two_columns() && s.toolbar_two_rows());
+        let back: WorkflowSettings = toml::from_str(&toml::to_string_pretty(&s).unwrap()).unwrap();
+        assert_eq!(back, s);
+        s.reset_toolbar();
+        assert!(!s.toolbar_two_rows() && s.toolbar_order.is_empty() && s.toolbar_hidden.is_empty());
+        assert!(s.tool_palette_two_columns(), "the palette is not part of the toolbar");
     }
 
     #[test]

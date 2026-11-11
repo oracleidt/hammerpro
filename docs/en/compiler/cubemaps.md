@@ -35,7 +35,7 @@ A cubemap counts as built when its file differs from the placeholder. Move or re
 
 ## Cubemaps in the editor views
 
-- **View > Display options > Cubemap reflections**: materials with `$envmap` reflect their cubemap in the 3D view (textured, lit and baked modes) and the player view. The editor draws a cubemap at every `env_cubemap` (the sky when there is none); each face takes the nearest `env_cubemap` in front of it like the compiler, props the nearest one. The player view uses the cubemaps built in game when the compiled map has them.
+- **View > Environment preview > Cubemap reflections**: materials with `$envmap` reflect their cubemap in the 3D view (textured, lit and baked modes) and the player view. The editor draws a cubemap at every `env_cubemap` (the sky when there is none); each face takes the nearest `env_cubemap` in front of it like the compiler, props the nearest one. The player view uses the cubemaps built in game when the compiled map has them.
 - **Redraw the cubemaps after edits** (`[render] cubemaps_auto`, on by default) draws them again a moment after the map, its lighting or the view mode changes, a few faces a frame. Off: only **Map > Lighting > Rebuild cubemaps** draws them again (new and moved `env_cubemap` entities still get theirs).
 
 See [Lighting preview](../features/lighting-preview.md) for the preview side.

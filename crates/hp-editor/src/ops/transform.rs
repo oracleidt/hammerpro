@@ -1,3 +1,4 @@
+mod light;
 mod overlay;
 
 use glam::{DMat3, DMat4, DQuat, DVec3};
@@ -54,6 +55,13 @@ fn transform_entity(e: &mut Entity, xf: Xform, is_brush: bool, scale_lock: bool)
         }
     }
     if let Xform::Matrix(m, _) = xf
+        && !is_brush
+        && !is_overlay
+        && light::is_pitched_light(e)
+        && is_conformal(&DMat3::from_mat4(m))
+    {
+        changed |= light::transform_light(e, &DMat3::from_mat4(m));
+    } else if let Xform::Matrix(m, _) = xf
         && !is_brush
         && !is_overlay
         && is_conformal(&DMat3::from_mat4(m))
@@ -602,6 +610,62 @@ mod tests {
         assert!(doc.undo());
         assert_eq!(z(&doc, low), 100.0);
         assert_eq!(doc.physics_place(&[], false, &no_bounds).expect("empty"), 0);
+    }
+
+    fn light_dir(e: &Entity) -> DVec3 {
+        let a = e.angles().unwrap_or_default();
+        let pitch = e.get("pitch").and_then(|v| v.parse::<f64>().ok()).filter(|p| *p != 0.0).unwrap_or(a.x);
+        let (sp, cp) = pitch.to_radians().sin_cos();
+        let (sy, cy) = a.y.to_radians().sin_cos();
+        DVec3::new(cp * cy, cp * sy, sp)
+    }
+
+    #[test]
+    fn mixed_selection_rotates_as_one() {
+        let kv = |k: &str, v: &str| (k.to_owned(), v.to_owned());
+        for axis in [DVec3::X, DVec3::Y, DVec3::Z] {
+            for deg in [90.0, -90.0] {
+                let mut doc = Document::new_empty();
+                let brush = slab(&mut doc, DVec3::new(64.0, -16.0, -16.0), DVec3::new(128.0, 16.0, 16.0));
+                let prop = doc
+                    .create_point_entity(
+                        "prop_static",
+                        DVec3::new(0.0, 96.0, 32.0),
+                        &[kv("model", "models/x.mdl"), kv("angles", "30 20 0")],
+                    )
+                    .expect("prop");
+                let spot = doc
+                    .create_point_entity(
+                        "light_spot",
+                        DVec3::new(-48.0, 0.0, 80.0),
+                        &[kv("angles", "30 20 0"), kv("pitch", "-30")],
+                    )
+                    .expect("spot");
+                let entity = |doc: &Document, id| doc.scene().entity(id).expect("entity").entity.clone();
+                let (p0, s0) = (entity(&doc, prop), entity(&doc, spot));
+                let b0 = doc.scene().solid_bounds(brush).expect("bounds");
+                let pivot = DVec3::new(16.0, 8.0, 4.0);
+                let objs = [ObjRef::Solid(brush), ObjRef::Entity(prop), ObjRef::Entity(spot)];
+                doc.rotate_axis(&objs, pivot, axis, deg).expect("rotate");
+                let q = DQuat::from_axis_angle(axis, f64::to_radians(deg));
+                let orbit = |p: DVec3| pivot + q * (p - pivot);
+                let (p1, s1) = (entity(&doc, prop), entity(&doc, spot));
+                let close = |a: DVec3, b: DVec3| (a - b).length() < 1e-6;
+                let tag = format!("{axis} {deg}");
+                assert!(close(p1.origin().expect("o"), orbit(p0.origin().expect("o"))), "{tag} prop origin");
+                assert!(close(s1.origin().expect("o"), orbit(s0.origin().expect("o"))), "{tag} light origin");
+                let b1 = doc.scene().solid_bounds(brush).expect("bounds");
+                assert!(close(b1.center(), orbit(b0.center())), "{tag} brush");
+                let fwd = |e: &Entity| hp_geom::angle_matrix(e.angles().expect("angles")).x_axis;
+                assert!(close(fwd(&p1), q * fwd(&p0)), "{tag} prop facing {p1:?}");
+                assert!(close(light_dir(&s0), fwd(&s0)), "the light and its model agree before");
+                assert!(close(light_dir(&s1), q * light_dir(&s0)), "{tag} light direction {s1:?}");
+                assert!(close(fwd(&s1), light_dir(&s1)), "{tag} the light model follows the beam {s1:?}");
+                let prop_turn = fwd(&p1).dot(q * fwd(&p0));
+                let light_turn = light_dir(&s1).dot(q * light_dir(&s0));
+                assert!(prop_turn > 0.999 && light_turn > 0.999, "{tag} same direction");
+            }
+        }
     }
 
     #[test]

@@ -18,7 +18,7 @@ Propper transforme des brushes (et des displacements) en modèle `.mdl`, avec ni
 
 ## Étape 2 : vérifier les options
 
-Ouvrez **Outils > Options des props (Propper)...**. Les LOD sont partagés avec l'import de modèles (FBX, OBJ, glTF), les options physiques s'appliquent à **Convertir les brushes en prop** :
+Ouvrez **Outils > Placement et props > Options des props (Propper)...**. Les LOD sont partagés avec l'import de modèles (FBX, OBJ, glTF), les options physiques s'appliquent à **Convertir les brushes en prop** :
 
 | Option | Effet | Par défaut |
 |---|---|---|
@@ -34,7 +34,7 @@ La fenêtre rappelle aussi comment le modèle est construit :
 ## Étape 3 : convertir
 
 1. Sélectionnez les brushes (et displacements) de l'objet.
-2. Choisissez **Outils > Convertir les brushes en prop**.
+2. Choisissez **Outils > Placement et props > Convertir les brushes en prop**.
 3. Dans la fenêtre de création, choisissez le chemin/nom du modèle et le dossier exporté. Les onglets Collision, Éclairage et limites et Matériaux permettent de régler les pièces de collision, `$illumposition`, `$bbox`, `$surfaceprop` et `$cdmaterials`. Ajustez leurs poignées dans l’aperçu 3D intégré, choisissez la physique/`$staticprop` et les LOD, puis cliquez sur **Créer le prop**.
 4. La console affiche la préparation (textures de mélange, niveaux de détail, collision), puis la compilation `studiomdl`.
 5. Après compilation et vérification, les brushes sont remplacés par le `prop_static`, `prop_dynamic` ou `prop_physics` choisi, en une étape d’annulation : `Ctrl+Z` les restaure. Si la map a changé pendant la compilation, les fichiers sont exportés mais les brushes sont conservés.
@@ -48,7 +48,7 @@ Le dossier de contenu exporté contient `models/<chemin choisi>.mdl` et les mat�
 Pour retoucher un prop sous forme de brushes (le vôtre ou n'importe quel modèle du jeu) :
 
 1. Sélectionnez un `prop_static`, `prop_dynamic` ou `prop_physics` avec un modèle.
-2. Choisissez **Outils > Convertir le prop en brushes...**. La fenêtre affiche le modèle, son nombre de triangles de rendu et son modèle de collision.
+2. Choisissez **Outils > Placement et props > Convertir le prop en brushes...**. La fenêtre affiche le modèle, son nombre de triangles de rendu et son modèle de collision.
 3. Choisissez les options et cliquez sur **Convertir** (`Entrée`) :
 
 | Option | Choix | Par défaut |

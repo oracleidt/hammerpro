@@ -2,6 +2,7 @@ pub mod actions;
 pub mod chrome;
 pub mod console;
 pub mod data_colors;
+pub mod dialog_keys;
 pub mod dnd;
 pub mod extend;
 pub mod fonts;

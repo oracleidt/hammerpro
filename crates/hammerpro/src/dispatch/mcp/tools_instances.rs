@@ -133,13 +133,15 @@ domain! { "instances and prefabs";
             "preview": boolean("Only count what would be placed, change nothing (default false)."),
         }, ["items", "count"];
     trace_ray: Read, "Trace a ray",
-        "The first solid (and face) or point entity hit by a ray: object, face, point, normal, distance.",
+        "The first solid (and face) or point entity hit by a ray: object, face, point, normal, distance. Props and \
+        other model entities are hit on their real mesh (exact false: on their bounding box).",
         {
             "origin": vec3("Ray start."),
             "direction": vec3("Ray direction."),
             "max_distance": number("Longest distance (default unlimited).", 1.0, 1_000_000.0),
             "entities": boolean("Hit point entities too (default true)."),
             "hidden": boolean("Hit hidden objects too (default false)."),
+            "exact": boolean("Hit models on their real mesh (default true)."),
         }, ["origin", "direction"];
 }
 
@@ -619,13 +621,16 @@ fn sprinkle(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
 fn trace_ray(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let origin = a.vec3("origin")?;
     let dir = opt_dir(a, "direction")?.ok_or("direction is required")?;
+    let exact = a.opt_bool("exact")?.unwrap_or(true);
+    let mesh_ray = super::tools_place::exact_ray(state);
     let opts = PickOptions {
         include_entities: a.opt_bool("entities")?.unwrap_or(true),
         ignore_hidden: !a.opt_bool("hidden")?.unwrap_or(false),
         max_distance: a.opt_f64("max_distance", 1.0, 1_000_000.0)?.unwrap_or(f64::INFINITY),
+        entity_ray: exact.then_some(&mesh_ray as &dyn Fn(&hp_vmf::Entity, &hp_geom::Ray) -> hp_editor::EntityRay),
         ..Default::default()
     };
-    let f = bounds_fn(state);
+    let f = super::tools_place::exact_bounds_fn(state, exact);
     let ray = hp_geom::Ray::new(origin, dir);
     let hit = state.doc.pick_ray(&ray, &opts, &f);
     Ok(ToolResult::json(match hit {

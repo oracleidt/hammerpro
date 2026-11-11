@@ -174,3 +174,34 @@ fn outputs_aimed_at_instance_contents_are_not_missing() {
     assert!(doc.fix_problem(&bare).expect("fix"));
     assert!(doc.scene().entity(relay).expect("relay").entity.connections.is_empty());
 }
+
+#[test]
+fn a_displacement_power_the_game_cannot_build_is_reported_and_fixed() {
+    let mut doc = Document::new_empty();
+    let id = doc.create_solid(cube(DVec3::ZERO, 64.0), Owner::World).expect("solid");
+    doc.create_displacements(&[FaceRef::new(id, 0)], 2).expect("displacement");
+    assert!(find(&doc.check_problems(None), "disp_not_quad").is_none());
+    doc.edit_solid(id, |s| {
+        if let Some(d) = s.sides[0].disp.as_deref_mut() {
+            d.power = 7;
+        }
+    })
+    .expect("edit");
+    let problems = doc.check_problems(None);
+    let p = find(&problems, "disp_not_quad").expect("reported").clone();
+    assert_eq!(p.faces, vec![FaceRef::new(id, 0)]);
+    assert!(doc.fix_problem(&p).expect("fix"));
+    assert!(!doc.scene().solid(id).expect("solid").has_disp(), "the broken displacement is removed: the brush is back");
+}
+
+#[test]
+fn a_dispinfo_the_editor_cannot_read_is_reported_and_removed() {
+    let mut map = Map::default();
+    map.world.solids = vec![Solid { id: 2, sides: cube(DVec3::ZERO, 64.0), ..Solid::default() }];
+    map.world.solids[0].sides[0].extra_blocks.push(hp_kv::Block::new("dispinfo"));
+    let mut doc = Document::from_map(map);
+    let p = find(&doc.check_problems(None), "disp_not_quad").expect("reported").clone();
+    assert_eq!(p.faces, vec![FaceRef::new(2, 0)]);
+    assert!(doc.fix_problem(&p).expect("fix"));
+    assert!(doc.scene().solid(2).expect("solid").solid.sides[0].extra_blocks.is_empty());
+}

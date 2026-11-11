@@ -131,7 +131,7 @@ Fermer la fenêtre pendant qu'elle attend un choix annule ce choix.
 
 ## Éditeur de particules intégré
 
-Ouvrez **Autres > Éditeur de particules** (action `particle_editor`). Cet éditeur crée et modifie les systèmes contenus dans un PCF. Le navigateur de particules et sa petite fenêtre d'aperçu restent disponibles pour choisir les effets existants du jeu.
+Ouvrez **Outils > Contenu et éditeurs > Éditeur de particules** (action `particle_editor`). Cet éditeur crée et modifie les systèmes contenus dans un PCF. Le navigateur de particules et sa petite fenêtre d'aperçu restent disponibles pour choisir les effets existants du jeu.
 
 ### Fichiers et systèmes
 

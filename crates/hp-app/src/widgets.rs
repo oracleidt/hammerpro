@@ -295,6 +295,24 @@ pub fn logo(ui: &mut Ui, size: f32) -> Response {
     response
 }
 
+pub const CHOICE_GAP: f32 = 14.0;
+
+pub fn choice_row<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = CHOICE_GAP;
+        add(ui)
+    })
+    .inner
+}
+
+pub fn choice_row_wrapped<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing.x = CHOICE_GAP;
+        add(ui)
+    })
+    .inner
+}
+
 pub fn grid_row<R>(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
     ui.label(label);
     let r = add(ui);

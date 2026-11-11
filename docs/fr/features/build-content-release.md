@@ -10,8 +10,8 @@ C'est une fonction propre à Garry's Mod. Pour une map d'un autre jeu, la fenêt
 
 | Commande | Ouvre |
 | --- | --- |
-| **Fichier > Construire et enregistrer en contenu...** | La fenêtre de publication sur l'onglet **Construction**. |
-| **Fichier > Publier sur le Workshop...** | La fenêtre de publication sur l'onglet **Publication**. |
+| **Fichier > Publier > Construire et enregistrer en contenu...** | La fenêtre de publication sur l'onglet **Construction**. |
+| **Fichier > Publier > Publier sur le Workshop...** | La fenêtre de publication sur l'onglet **Publication**. |
 
 La publication est construite à partir du fichier enregistré : si la map a des modifications non enregistrées, la fenêtre vous demande d'abord de l'enregistrer (**Enregistrer la carte...**). La fenêtre a cinq onglets : **Construction**, **Vérifications**, **Addon**, **Publication** et **Rapport**.
 

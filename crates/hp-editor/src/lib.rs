@@ -28,6 +28,7 @@ pub mod describe;
 pub mod diff;
 pub mod disp_resample;
 pub mod display_color;
+pub mod duplicates;
 pub mod edicts;
 pub mod fingerprint;
 pub mod gallery;

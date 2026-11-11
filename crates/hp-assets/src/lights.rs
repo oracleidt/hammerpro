@@ -144,7 +144,7 @@ pub(crate) fn spot_cones(e: &Entity) -> Option<(f64, f64)> {
 }
 
 const MIN_RANGE: f32 = 64.0;
-const MAX_RANGE: f32 = 16384.0;
+pub(crate) const MAX_RANGE: f32 = 16384.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct SunDesc {
@@ -253,6 +253,7 @@ fn local_light(e: &Entity, value: LightValue, spot: bool, origin: [f32; 3], dir:
         cutoff: vrad.cutoff,
         fade: [vrad.fade.0, vrad.fade.1],
         exponent,
+        dlight: false,
     };
     let kind = match (vrad.kind, cones) {
         (hp_light::lights::LightKind::Spot { .. }, Some((inner, outer))) => {
@@ -363,6 +364,7 @@ fn dynamic_light(e: &Entity) -> (Option<PreviewLight>, Option<[f32; 3]>) {
         cap: 1.0e9,
         cutoff: radius,
         exponent: 1.0,
+        dlight: true,
         ..LightFalloff::default()
     };
     let outer = key("_cone").unwrap_or(0.0) as f32;
@@ -676,6 +678,7 @@ fn face_light(vertices: &[DVec3], normal: DVec3, value: glam::Vec3) -> Option<Pr
             cutoff: vrad.cutoff,
             fade: [vrad.fade.0, vrad.fade.1],
             exponent: 0.0,
+            dlight: false,
         }),
     })
 }
