@@ -20,6 +20,8 @@ struct Pending {
     caller: Option<Id>,
 }
 
+type TriggerList = ((u64, usize), Vec<(Id, String)>);
+
 #[derive(Debug, Default)]
 pub struct IoSim {
     time: f64,
@@ -41,6 +43,7 @@ pub struct IoSim {
     train_inputs: Vec<(Id, String, String)>,
     moved: HashMap<Id, glam::DMat4>,
     projectors: HashMap<Id, hp_app::state::ProjectorOverride>,
+    triggers: Option<TriggerList>,
 }
 
 fn flag(e: &Entity, bit: i64) -> bool {
@@ -287,24 +290,32 @@ impl IoSim {
 
     fn touch(&mut self, state: &AppState, feet: DVec3, height: f64) {
         let scene = state.doc.scene();
+        let key = (state.doc.scene_revision(), scene.entities().len());
+        if self.triggers.as_ref().is_none_or(|(k, _)| *k != key) {
+            let list = scene
+                .entities()
+                .values()
+                .map(|n| (n.entity.id, class(&n.entity)))
+                .filter(|(_, c)| c.starts_with("trigger_"))
+                .collect();
+            self.triggers = Some((key, list));
+        }
         let hull = hp_geom::Aabb::new(
             feet - DVec3::new(player::HALF_WIDTH, player::HALF_WIDTH, 0.0),
             feet + DVec3::new(player::HALF_WIDTH, player::HALF_WIDTH, height),
         );
         let mut now: Vec<(Id, String)> = Vec::new();
-        for n in scene.entities().values() {
-            let e = &n.entity;
-            let c = class(e);
-            if !c.starts_with("trigger_") || self.disabled.contains(&e.id) || self.hidden.contains(&e.id) {
+        for (id, c) in self.triggers.as_ref().map_or(&[][..], |(_, list)| list.as_slice()) {
+            if self.disabled.contains(id) || self.hidden.contains(id) {
                 continue;
             }
-            let moved = self.moved.get(&e.id);
-            let touches = scene.solids().values().any(|s| {
+            let moved = self.moved.get(id);
+            let touches = scene.entity_solid_ids(*id).into_iter().filter_map(|s| scene.solid(s)).any(|s| {
                 let b = moved.map_or(s.bounds, |m| moved_bounds(s.bounds, m));
-                s.owner == hp_editor::Owner::Entity(e.id) && b.min.cmple(hull.max).all() && b.max.cmpge(hull.min).all()
+                s.owner == hp_editor::Owner::Entity(*id) && b.min.cmple(hull.max).all() && b.max.cmpge(hull.min).all()
             });
             if touches {
-                now.push((e.id, c));
+                now.push((*id, c.clone()));
             }
         }
         let left: Vec<Id> = self.inside.keys().filter(|id| !now.iter().any(|(n, _)| n == *id)).copied().collect();

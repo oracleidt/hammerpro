@@ -139,6 +139,7 @@ Chaque modification faite par l'IA est **une étape d'annulation** nommée "MCP 
 | Éditeur de shaders | L'éditeur d'images à nœuds : listes de nœuds et de préréglages, création, lecture, modification, vérification, rendu et écriture de graphes `.hpshader` en fichiers VTF et VMT, et ouverture de la fenêtre de l'éditeur. Voir [Éditeur de shaders](../features/shader-editor.md). |
 | Map health | Vérifier les problèmes, les corriger, limites du moteur, statistiques de la map, faces cachées. |
 | Optimisation | `optimize_map`, `analyze_visibility`, `suggest_func_detail`, `suggest_hint_brushes`, `show_visleaves`, `check_areaportals`, `suggest_areaportals`, `audit_lights` : visleaves, PVS, func_detail, hints, areaportals et cohérence des lumières, avec corrections. Voir [Optimiser une map](../guides/optimizing-a-map.md). |
+| func_detail | `make_func_detail`, `select_detail_candidates` : transformer des brushes en func_detail avec la vérification d'étanchéité, sélectionner les candidats. Voir [func_detail](../features/func-detail.md). |
 | Compile | Compiler avec un préréglage et suivre la progression. |
 | Views | Caméra, captures d'une vue, disposition des quadrants, modes de rendu 3D, vue joueur, zoom et déplacement 2D. |
 | Actions | Lister et lancer toutes les commandes des menus et raccourcis. |

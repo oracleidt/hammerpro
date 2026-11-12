@@ -9,6 +9,7 @@ pub mod hints;
 pub mod lights;
 #[doc(hidden)]
 pub mod sample;
+pub mod sealing;
 pub mod vis;
 
 #[cfg(test)]

@@ -21,6 +21,7 @@ use crate::util::{Form, lazy_hover_text, wrap_group};
 pub(crate) enum BrowseTarget {
     GameExe,
     MapsDir,
+    ModelCompiler,
 }
 
 impl BrowseTarget {
@@ -28,6 +29,7 @@ impl BrowseTarget {
         match self {
             BrowseTarget::GameExe => t!("compile.browse_game_exe").to_owned(),
             BrowseTarget::MapsDir => t!("compile.browse_maps_dir").to_owned(),
+            BrowseTarget::ModelCompiler => t!("compile.browse_model_compiler").to_owned(),
         }
     }
 
@@ -39,6 +41,7 @@ impl BrowseTarget {
         match self {
             BrowseTarget::GameExe => s.game_exe_path = Some(p),
             BrowseTarget::MapsDir => s.maps_dir_override = Some(p),
+            BrowseTarget::ModelCompiler => s.model_compiler = Some(p),
         }
     }
 }

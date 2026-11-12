@@ -196,9 +196,41 @@ struct PropBody {
     tris: Vec<[DVec3; 3]>,
 }
 
+#[derive(Clone, Debug)]
+struct PropInfo {
+    id: hp_vmf::Id,
+    origin: DVec3,
+    model: String,
+    angles: DVec3,
+    scale: f64,
+    pushable: bool,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct PropBodies {
     map: std::collections::HashMap<hp_vmf::Id, PropBody>,
+    props: Option<((u64, usize), Vec<PropInfo>)>,
+}
+
+fn prop_infos(state: &AppState) -> Vec<PropInfo> {
+    let mut out = Vec::new();
+    for n in state.doc.scene().entities().values() {
+        let kind = prop_kind(&n.entity);
+        if kind == PropKind::None {
+            continue;
+        }
+        let Some(origin) = n.entity.origin().filter(|o| o.is_finite()) else { continue };
+        let model = n.entity.get("model").unwrap_or_default().trim().replace('\\', "/").to_ascii_lowercase();
+        let angles = n.entity.angles().filter(|a| a.is_finite()).unwrap_or(DVec3::ZERO);
+        let scale = n
+            .entity
+            .get("modelscale")
+            .and_then(|s| s.trim().parse::<f64>().ok())
+            .filter(|s| s.is_finite() && *s > 0.0)
+            .unwrap_or(1.0);
+        out.push(PropInfo { id: n.entity.id, origin, model, angles, scale, pushable: kind == PropKind::Pushable });
+    }
+    out
 }
 
 impl PropBodies {
@@ -210,28 +242,23 @@ impl PropBodies {
         trains: &crate::trains::Trains,
         hidden: &std::collections::HashSet<hp_vmf::Id>,
     ) {
-        let mut wanted: Vec<(hp_vmf::Id, BodyKey, bool)> = Vec::new();
-        for n in state.doc.scene().entities().values() {
-            let kind = prop_kind(&n.entity);
-            if kind == PropKind::None || hidden.contains(&n.entity.id) {
-                continue;
-            }
-            let Some(origin) = n.entity.origin().filter(|o| o.is_finite()) else { continue };
-            let moved = trains.child_transform(n.entity.id).unwrap_or_else(|| doors.transform(n.entity.id));
-            if moved.transform_point3(origin).distance(center) > PROP_RANGE {
-                continue;
-            }
-            let model = n.entity.get("model").unwrap_or_default().trim().replace('\\', "/").to_ascii_lowercase();
-            let angles = n.entity.angles().filter(|a| a.is_finite()).unwrap_or(DVec3::ZERO);
-            let scale = n
-                .entity
-                .get("modelscale")
-                .and_then(|s| s.trim().parse::<f64>().ok())
-                .filter(|s| s.is_finite() && *s > 0.0)
-                .unwrap_or(1.0);
-            wanted.push((n.entity.id, (model, origin, angles, scale, moved), kind == PropKind::Pushable));
+        let key = (state.doc.scene_revision(), state.doc.scene().entities().len());
+        if self.props.as_ref().is_none_or(|(k, _)| *k != key) {
+            self.props = Some((key, prop_infos(state)));
         }
-        self.map.retain(|id, _| wanted.iter().any(|(w, _, _)| w == id));
+        let mut wanted: Vec<(hp_vmf::Id, BodyKey, bool)> = Vec::new();
+        for info in self.props.as_ref().map_or(&[][..], |(_, list)| list.as_slice()) {
+            if hidden.contains(&info.id) {
+                continue;
+            }
+            let moved = trains.child_transform(info.id).unwrap_or_else(|| doors.transform(info.id));
+            if moved.transform_point3(info.origin).distance(center) > PROP_RANGE {
+                continue;
+            }
+            wanted.push((info.id, (info.model.clone(), info.origin, info.angles, info.scale, moved), info.pushable));
+        }
+        let keep: std::collections::HashSet<hp_vmf::Id> = wanted.iter().map(|(id, _, _)| *id).collect();
+        self.map.retain(|id, _| keep.contains(id));
         for (id, key, pushable) in wanted {
             if self.map.get(&id).is_some_and(|b| b.key == key && b.pushable == pushable) {
                 continue;
@@ -1125,6 +1152,7 @@ pub fn world_draw(
     })
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct WorldCounts {
     pub with_portals: hp_editor::limits::world::WorldDraw,
     pub without_portals: hp_editor::limits::world::WorldDraw,

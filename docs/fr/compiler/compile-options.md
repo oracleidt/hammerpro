@@ -114,6 +114,7 @@ Groupe **Qualité** (étape d'éclairage).
 | `-softsun <degrés>` | Traite le soleil comme une source étendue de cette largeur : bords d'ombre plus doux (0 à 5 en général). | 0 |
 | `-centersamples` | Accepté comme par VRAD : les luxels sont toujours échantillonnés en leur milieu quand il est dégagé. | toujours |
 | `-nodispshadows` | Option de Hammer Pro : les displacements ne projettent aucune ombre (ils restent éclairés). Un seul displacement peut aussi ne pas projeter d'ombre avec l'option **Projeter des ombres** de l'[outil displacement](../features/displacement-tool.md). | désactivé |
+| `-nostylebounce` | Option de Hammer Pro : les lumières nommées (commutables) n'éclairent que ce qu'elles voient directement, comme le VRAD de Valve. Sans elle, leur lumière rebondit aussi, dans leur propre style de lumière, et s'allume et s'éteint avec elles. Leur lumière directe garde toujours sa place parmi les 4 styles d'une face : une couche de rebond ne prend qu'une place libre. | désactivé |
 
 ## Props statiques
 

@@ -10,7 +10,11 @@ use super::{Scope, bake, bsp, cache, child, style_maps};
 
 pub(super) const MIN_UPDATE_DELAY: f64 = 0.0;
 pub(super) const GEOMETRY_DELAY: f64 = 0.3;
-pub(super) const MAX_TEXELS_PER_FRAME: usize = 4 << 20;
+pub(super) const TEXELS_PER_MB: usize = 1 << 18;
+
+pub(super) fn upload_budget(state: &AppState) -> usize {
+    state.settings.lighting.sanitized().upload_mb_per_frame as usize * TEXELS_PER_MB
+}
 
 pub(super) struct Running {
     pub id: u64,
@@ -86,6 +90,9 @@ pub(super) struct Preview {
     pub luxels: Option<(u64, u64, f64)>,
     pub hold: bool,
     pub drag_key: Option<u64>,
+    pub drag_seen: Option<(u64, f64)>,
+    pub drag_wait: bool,
+    pub models_again: bool,
 }
 
 pub(super) fn region_of(scope: &Scope) -> Option<[[f64; 3]; 2]> {
@@ -286,6 +293,9 @@ impl Preview {
             luxels: None,
             hold: false,
             drag_key: None,
+            drag_seen: None,
+            drag_wait: false,
+            models_again: false,
         })
     }
 
@@ -336,6 +346,7 @@ impl Preview {
     pub(super) fn foreground(&mut self, state: &mut AppState) {
         if let Some(r) = self.running.as_mut().filter(|r| r.background) {
             r.background = false;
+            self.worker.set_priority(state.settings.lighting.priority);
             state.runtime.lighting.progress = Some(BakeProgress {
                 kind: r.kind,
                 phase: BakePhase::Preparing,
@@ -348,6 +359,50 @@ impl Preview {
             up.held = false;
         }
         state.runtime.lighting.prepared.preparing = false;
+    }
+
+    pub(super) fn hide(&mut self, state: &mut AppState) {
+        if self.models_for.as_ref().is_some_and(|m| !m.2) {
+            self.models_for = None;
+            self.models_again = true;
+            self.worker.stop_models();
+        }
+        if self.cancelling || !self.running.as_ref().is_some_and(|r| !r.background && !r.lit) {
+            return;
+        }
+        self.cancelling = true;
+        self.worker.stop();
+        state.runtime.lighting.progress = None;
+        log::info!("lighting preview: hidden while baking, the bake stops and starts again when it is shown");
+    }
+
+    pub(super) fn models_halted(&mut self) {
+        if self.models_for.as_ref().is_some_and(|m| !m.2) {
+            self.models_for = None;
+        }
+        self.models_again = true;
+    }
+
+    pub(super) fn light_models_again(&mut self, state: &mut AppState) {
+        if !self.models_again || self.running.is_some() || !self.uploads.is_empty() || !self.has_bake {
+            return;
+        }
+        self.models_again = false;
+        if self.layout.is_none() || self.needs_map {
+            return;
+        }
+        let scope = self.last_scope.clone().unwrap_or(Scope::All);
+        self.bake(state, scope, BakeKind::Update, false);
+    }
+
+    pub(super) fn pause(&mut self, state: &mut AppState) {
+        let Some(r) = self.running.as_ref() else { return };
+        if !r.lit && !r.background {
+            self.cancelling = true;
+        }
+        self.worker.stop();
+        state.runtime.lighting.progress = None;
+        log::info!("lighting preview: paused, the running bake stops and starts again later");
     }
 
     fn geometry_of(&mut self, state: &AppState, scope: &Scope) -> u64 {
@@ -374,7 +429,13 @@ impl Preview {
         self.submit(state, scope, kind, lit, relight || lit_relight, Origin::User);
     }
 
-    fn schedule_drag(&mut self, state: &mut AppState, key: u64, moved: &[hp_vmf::Entity]) {
+    fn schedule_drag(&mut self, state: &mut AppState, key: u64, moved: &[hp_vmf::Entity], now: f64) {
+        if self.drag_seen.is_none_or(|(k, _)| k != key) {
+            self.drag_seen = Some((key, now));
+        }
+        let pause = f64::from(state.settings.lighting.sanitized().drag_pause_ms) / 1000.0;
+        let settled = self.drag_seen.is_some_and(|(_, t)| now - t >= pause);
+        self.drag_wait = !settled && self.drag_key != Some(key);
         if let Some(r) = self.running.as_ref() {
             if r.kind == BakeKind::Refine && !r.lit && !self.cancelling {
                 self.cancelling = true;
@@ -382,7 +443,7 @@ impl Preview {
             }
             return;
         }
-        if self.drag_key == Some(key) || !self.uploads.is_empty() {
+        if self.drag_key == Some(key) || !self.uploads.is_empty() || !settled {
             return;
         }
         if self.needs_map || self.layout.is_none() || !self.has_bake {
@@ -407,6 +468,7 @@ impl Preview {
         origin: Origin<'_>,
     ) {
         let background = matches!(origin, Origin::Background);
+        let priority = if background { hp_app::settings::BakePriority::Idle } else { state.settings.lighting.priority };
         let live = match origin {
             Origin::Drag(key, moved) => Some((key, moved)),
             _ => None,
@@ -524,7 +586,7 @@ impl Preview {
             models: !background,
             exact: relight && (!options.keep_bake || kind == BakeKind::Full),
             quiet: background,
-            urgent: !background && !lit,
+            priority,
         });
         log::info!(
             "lighting preview: bake {id} ({kind:?}{}{}{}) started, prepared in {} ms",
@@ -747,7 +809,8 @@ impl Preview {
                         "lighting preview: prepared in the background in {:.2} s, shown when the baked preview is turned on",
                         baked.seconds
                     );
-                } else {
+                }
+                if !r.background {
                     self.models_for = Some((r.id, r.scope.clone(), false, r.serial));
                 }
                 self.uploads.push_back(Upload {
@@ -894,6 +957,7 @@ impl Preview {
     }
 
     fn apply(&mut self, state: &mut AppState, up: &mut Upload) -> bool {
+        let budget = upload_budget(state);
         let AppState { gfx, assets, runtime, frame, .. } = state;
         let Some(gfx) = gfx.as_mut() else { return true };
         let r = &mut gfx.renderer;
@@ -925,7 +989,7 @@ impl Preview {
                 self.shown_geometry = Some(up.geometry);
             }
         }
-        up.written = write_texels(r, &up.baked, up.written, MAX_TEXELS_PER_FRAME);
+        up.written = write_texels(r, &up.baked, up.written, budget);
         let b = &up.baked;
         let rt = &mut runtime.lighting;
         if up.written < b.faces.len() {
@@ -1009,10 +1073,12 @@ impl Preview {
             return;
         }
         if let Some((key, moved)) = dragged_lights(state) {
-            self.schedule_drag(state, key, &moved);
+            self.schedule_drag(state, key, &moved, now);
             return;
         }
         self.drag_key = None;
+        self.drag_seen = None;
+        self.drag_wait = false;
         let options = state.doc.light_plus();
         let scope = self.last_scope.clone().unwrap_or(Scope::All);
         let geometry = self.geometry_of(state, &scope);

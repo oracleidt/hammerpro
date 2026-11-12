@@ -693,9 +693,11 @@ pub fn selection_bar(ui: &mut Ui, state: &mut AppState) {
         ui.label(RichText::new(t!("shell.toolbar.move_selected")).color(ui.visuals().weak_text_color()));
         ui.scope(|ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
-            for (action, key) in
-                [(Action::MoveToWorld, "shell.toolbar.to_world"), (Action::TieToEntity, "shell.toolbar.to_entity")]
-            {
+            for (action, key) in [
+                (Action::MoveToWorld, "shell.toolbar.to_world"),
+                (Action::TieToEntity, "shell.toolbar.to_entity"),
+                (Action::ConvertToDetail, "shell.toolbar.to_detail"),
+            ] {
                 let enabled = action_enabled(state, action);
                 let r = ui.add_enabled(enabled, egui::Button::new(t!(key)).min_size(egui::vec2(0.0, 24.0)));
                 if with_action_tooltip(r, state, action).clicked() {
@@ -1162,6 +1164,7 @@ pub(crate) const TR: hp_app::i18n::TrTable = &[
     ("shell.toolbar.move_selected", "Move selected:", "Déplacer la sélection :"),
     ("shell.toolbar.to_world", "To world", "Vers le monde"),
     ("shell.toolbar.to_entity", "To entity", "Vers une entité"),
+    ("shell.toolbar.to_detail", "To func_detail", "Vers func_detail"),
     (
         "shell.toolbar.propper_needs",
         "Select the brushes to turn into a prop",

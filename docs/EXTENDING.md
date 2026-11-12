@@ -1034,8 +1034,15 @@ The status bar (`crates/hp-ui-shell/src/status/`) is a list of
 Layout: right side segments are drawn from the right edge toward the middle,
 sorted by `order()`; each draws its own separator before its content (when it
 shows anything). Then the bar draws a separator and the left side segments
-left to right, separated by the bar; a left segment returns its fixed
-`width()`, and the one returning `None` (the tool hint) takes the rest. Order
+left to right, separated by the bar, each in its own clipped rectangle so they
+never overlap. A left segment describes its room with `fit()`
+(`hp_app::extend::StatusFit`: `fixed`, `shrinkable(min, preferred)` or
+`flex(min)` and a priority from `status_priority`, or `None` to take no room
+at all); the default `fit()` turns `width()` into a fixed width and `None` into
+a flexible one. `status::fit_widths` gives every segment its minimum, grows the
+fixed ones toward their preferred width, gives the rest to the flexible ones,
+and when even the minimums do not fit leaves out the lowest priority segments
+first (REAL_DIMS 10, HINT 20, SELECTION 30, CURSOR 40). Order
 constants are in `hp_app::extend::status_order` (left: HINT 100, SELECTION
 200, CURSOR 300; right: FPS 100, TEXTURE_LOCK 200, SNAP 300, GRID 400,
 CONTENT 500). `StatusContext` gives the hint of the frame (`tool_hint`: the

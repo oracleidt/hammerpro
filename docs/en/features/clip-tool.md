@@ -104,6 +104,7 @@ The two settings are also on the **Brushes** page of the Settings window (**Show
 - The clip is one undo step, and the console says **Clipped N solid(s)**.
 - Brush entity solids keep their owner entity. Overlays and cubemaps that list clipped faces follow them like in Hammer: a face split in two is replaced by both halves, a face cut away is removed from their list.
 - The cut faces copy the most similar face of the solid, or get the current material when **Current material on cuts** is on.
+- Displacements stay displacements (Hammer turned them back into flat brush faces). Where the cut follows the lines of the displacement grid, every original vertex is kept exactly; elsewhere the surface is resampled onto the new faces at a power that keeps the detail (up to 4). Alphas, 4-way blend data, normals, offsets, elevation, flags and tags follow, and the two halves meet with no crack. A piece whose displaced face would be a triangle gets a one unit chamfer (Source displacements need four corners) and a five sided face is split into two quads. Turn off **Settings > Editing > Keep displacements when cutting** (`edit.keep_displacements_on_cut`) for the old behavior.
 
 ## Tips
 

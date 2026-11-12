@@ -50,6 +50,7 @@ impl DisplacementTool {
             GeoEffect::Smooth => "smooth",
             GeoEffect::Set => "set",
             GeoEffect::Relax => "relax",
+            GeoEffect::Slope => "slope",
         };
         let axis = match b.axis {
             PaintAxis::FaceNormal => "normal",
@@ -130,8 +131,8 @@ impl DisplacementTool {
             ToolOption::new(
                 "effect",
                 effect,
-                "geometry painting: raise, lower, smooth, relax or set (Hammer's Raise to: a target height; raise_to is \
-                 also read)",
+                "geometry painting: raise, lower, smooth, relax, set (Hammer's Raise to: a target height; raise_to is \
+                 also read) or slope (brings the surface toward the line from slope_brush_start to slope_brush_end)",
             ),
             ToolOption::new(
                 "axis",
@@ -142,7 +143,7 @@ impl DisplacementTool {
                  and a right click on a face in the 3D view sets it)",
             ),
             ToolOption::new("custom_axis", nums(&[c.x, c.y, c.z]), "direction of the custom axis: \"x y z\""),
-            ToolOption::new("radius", num(b.radius), "brush radius in units (1 to 8192)"),
+            ToolOption::new("radius", num(b.radius), "brush radius in units (1 to 16384)"),
             ToolOption::new(
                 "strength",
                 num(b.strength),
@@ -150,9 +151,41 @@ impl DisplacementTool {
             ),
             ToolOption::new("smooth", num(b.smooth), "smoothing strength, also of Shift while sculpting (0 to 1)"),
             ToolOption::new(
+                "smooth_boost",
+                num(b.smooth_boost),
+                "smoothing multiplier (1 to 64): up to 16 averaging passes per brush sample; Ctrl while smoothing \
+                 multiplies it by 4 more",
+            ),
+            ToolOption::new(
                 "target_height",
                 num(b.target_height),
-                "height of the set effect along the axis (-16384 to 16384)",
+                "height of the set effect and of the flatten target plane along the axis (-16384 to 16384)",
+            ),
+            ToolOption::new(
+                "height_reference",
+                if b.height_world { "world" } else { "face" },
+                "what target_height is measured from: face (above the base face of each displacement, Hammer) or \
+                 world (a world coordinate along the axis, the same level on every displacement)",
+            ),
+            ToolOption::new(
+                "slope_brush_start",
+                super::level::point_text(b.slope_start),
+                "slope effect: start point \"x y z\" (world) or none; a right click in the 3D view sets it",
+            ),
+            ToolOption::new(
+                "slope_brush_end",
+                super::level::point_text(b.slope_end),
+                "slope effect: end point \"x y z\" (world) or none; its height along the axis is the end of the grade",
+            ),
+            ToolOption::new(
+                "sample_point",
+                super::level::point_text(self.sample_point()),
+                "the last sampled point \"x y z\" (world) or none: shown in the 3D view with the level of target_height (green dot and ring) in Raise to and Flatten target; sample_displacement_height sets it",
+            ),
+            ToolOption::new(
+                "slope_brush_strength",
+                num(b.slope_strength),
+                "slope effect: share of the way to the slope closed per brush sample (0 to 1, 1 sets it at once)",
             ),
             ToolOption::new("falloff", falloff, "constant, linear or smooth"),
             ToolOption::new(
@@ -225,8 +258,15 @@ impl DisplacementTool {
             ),
             ToolOption::new(
                 "flatten_plane",
-                if s.flatten_fixed { "fixed" } else { "average" },
-                "flatten: average (plane of the vertices under the brush at each sample) or fixed (plane taken at the                  stroke start)",
+                if s.flatten_target {
+                    "target"
+                } else if s.flatten_fixed {
+                    "fixed"
+                } else {
+                    "average"
+                },
+                "flatten: average (plane of the vertices under the brush at each sample), fixed (plane taken at the \
+                 stroke start) or target (the level of target_height and height_reference)",
             ),
             ToolOption::new(
                 "flatten_strength",
@@ -307,6 +347,7 @@ impl DisplacementTool {
                 "smooth" => Some(GeoEffect::Smooth),
                 "relax" => Some(GeoEffect::Relax),
                 "set" | "raise_to" => Some(GeoEffect::Set),
+                "slope" => Some(GeoEffect::Slope),
                 _ => None,
             }
             .map(|e| b.geo_effect = e)
@@ -353,10 +394,22 @@ impl DisplacementTool {
             }
             .map(|f| b.falloff = f)
             .is_some(),
-            "radius" => within(1.0, 8192.0).map(|n| b.radius = n).is_some(),
+            "radius" => within(1.0, super::paint::MAX_RADIUS).map(|n| b.radius = n).is_some(),
             "strength" => within(0.0, 8192.0).map(|n| b.strength = n).is_some(),
             "smooth" => within(0.0, 1.0).map(|n| b.smooth = n).is_some(),
             "target_height" => within(-16384.0, 16384.0).map(|n| b.target_height = n).is_some(),
+            "smooth_boost" => within(1.0, super::paint::MAX_SMOOTH_BOOST).map(|n| b.smooth_boost = n).is_some(),
+            "height_reference" => match v.as_str() {
+                "face" => Some(false),
+                "world" => Some(true),
+                _ => None,
+            }
+            .map(|w| b.height_world = w)
+            .is_some(),
+            "slope_brush_start" => super::level::parse_point(&v).map(|p| b.slope_start = p).is_some(),
+            "slope_brush_end" => super::level::parse_point(&v).map(|p| b.slope_end = p).is_some(),
+            "sample_point" => super::level::parse_point(&v).map(|p| self.set_sample_point(p)).is_some(),
+            "slope_brush_strength" => within(0.0, 1.0).map(|n| b.slope_strength = n).is_some(),
             "spatial" => flag.map(|f| b.spatial = f).is_some(),
             "autosew" => flag.map(|f| b.autosew = f).is_some(),
             "line_of_sight" => flag.map(|f| b.line_of_sight = f).is_some(),
@@ -439,11 +492,12 @@ impl DisplacementTool {
             .is_some(),
             "project_range" => within(1.0, 16384.0).map(|n| b.sculpt.project_range = n).is_some(),
             "flatten_plane" => match v.as_str() {
-                "average" => Some(false),
-                "fixed" => Some(true),
+                "average" => Some((false, false)),
+                "fixed" => Some((true, false)),
+                "target" => Some((false, true)),
                 _ => None,
             }
-            .map(|f| b.sculpt.flatten_fixed = f)
+            .map(|(f, t)| (b.sculpt.flatten_fixed, b.sculpt.flatten_target) = (f, t))
             .is_some(),
             "flatten_strength" => within(0.0, 1.0).map(|n| b.sculpt.flatten_strength = n).is_some(),
             "relax_strength" => within(0.0, 1.0).map(|n| b.sculpt.relax_strength = n).is_some(),
@@ -529,8 +583,8 @@ impl DisplacementTool {
         let sculpting = self.interaction == Interaction::Sculpt || self.relaxing();
         let mods = Modifiers {
             shift: if sculpting { s.smooth } else { s.invert },
-            ctrl: sculpting && s.invert,
-            command: sculpting && s.invert,
+            ctrl: (sculpting && s.invert) || s.boost,
+            command: (sculpting && s.invert) || s.boost,
             ..Modifiers::default()
         };
         let saved_eye = self.toward_eye;

@@ -468,7 +468,11 @@ fn fs_mesh(in: VsOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f
         if !unlit {
             lit_by = lighting(in.world, n, bn, in.clip.xy, in.state.x, in.state.z != 0u);
         }
-        rgb = select(albedo.rgb * lit_by, albedo.rgb, unlit);
+        if (view.opts.x & OPT_LIT_LDR) != 0u {
+            rgb = select(ldr_lightmap_shade(albedo.rgb, lit_by), albedo.rgb, unlit);
+        } else {
+            rgb = select(albedo.rgb * lit_by, albedo.rgb, unlit);
+        }
         rgb = mix(rgb, albedo.rgb * glow_tint, glow);
     } else if mode == MODE_UNSHADED {
         rgb = albedo.rgb;

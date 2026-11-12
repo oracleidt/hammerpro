@@ -5,6 +5,7 @@ pub(crate) struct Tuning {
     pub prop_polys: bool,
     pub texture_shadows: bool,
     pub no_disp_shadows: bool,
+    pub no_style_bounce: bool,
     pub fast_ambient: bool,
     pub sun_samples: usize,
     pub ambient_samples: usize,
@@ -22,6 +23,7 @@ impl Default for Tuning {
             prop_polys: false,
             texture_shadows: false,
             no_disp_shadows: false,
+            no_style_bounce: false,
             fast_ambient: false,
         }
     }
@@ -37,6 +39,7 @@ impl Tuning {
             prop_polys: o.prop_polys,
             texture_shadows: o.texture_shadows,
             no_disp_shadows: o.no_disp_shadows,
+            no_style_bounce: o.no_style_bounce,
             fast_ambient: o.fast_ambient,
             sun_samples: (o.samples_sun as usize).clamp(1, MAX_SAMPLES),
             ambient_samples: (o.samples_ambient as usize).clamp(MIN_AMBIENT_SAMPLES, MAX_AMBIENT_SAMPLES),
@@ -51,7 +54,7 @@ impl Tuning {
 
     pub(crate) fn arg(self) -> String {
         format!(
-            "{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{}",
             self.sun_samples,
             self.ambient_samples,
             u8::from(self.supersample),
@@ -59,7 +62,8 @@ impl Tuning {
             u8::from(self.prop_polys),
             u8::from(self.texture_shadows),
             u8::from(self.no_disp_shadows),
-            u8::from(self.fast_ambient)
+            u8::from(self.fast_ambient),
+            u8::from(self.no_style_bounce)
         )
     }
 
@@ -82,6 +86,7 @@ impl Tuning {
             texture_shadows: number(u8::from(d.texture_shadows) as usize, 0, 1) == 1,
             no_disp_shadows: number(u8::from(d.no_disp_shadows) as usize, 0, 1) == 1,
             fast_ambient: number(u8::from(d.fast_ambient) as usize, 0, 1) == 1,
+            no_style_bounce: number(u8::from(d.no_style_bounce) as usize, 0, 1) == 1,
         }
     }
 }
@@ -120,6 +125,7 @@ pub(crate) fn options(
     opts.props.polys = tuning.prop_polys;
     opts.props.texture_shadows = tuning.texture_shadows;
     opts.no_disp_shadows = tuning.no_disp_shadows;
+    opts.no_style_bounce = tuning.no_style_bounce;
     opts.fast_ambient = tuning.fast_ambient;
     opts.min_sun_samples = tuning.sun_samples;
     if tuning.quick {
@@ -177,11 +183,18 @@ mod tests {
         assert_eq!(options(true, RadQuality::Normal, 1, None, true, true, t).min_sun_samples, 12);
         let plus = hp_editor::luxels::LightPlus { samples_ambient: 3, ..Default::default() };
         assert_eq!(Tuning::of(&plus).ambient_samples, MIN_AMBIENT_SAMPLES);
-        let advanced =
-            Tuning { prop_polys: true, texture_shadows: true, no_disp_shadows: true, fast_ambient: true, ..t };
+        let advanced = Tuning {
+            prop_polys: true,
+            texture_shadows: true,
+            no_disp_shadows: true,
+            no_style_bounce: true,
+            fast_ambient: true,
+            ..t
+        };
         assert_eq!(Tuning::parse(&advanced.arg()), advanced);
         let mapped = options(true, RadQuality::Normal, 3, None, true, true, advanced);
         assert!(mapped.props.polys && mapped.props.texture_shadows && mapped.no_disp_shadows && mapped.fast_ambient);
+        assert!(mapped.no_style_bounce && !options(true, RadQuality::Normal, 3, None, true, true, t).no_style_bounce);
         assert_eq!(mapped.bounces, 3);
         assert_eq!(Tuning::parse("12,40,1,0"), t);
     }

@@ -91,6 +91,10 @@ fn plane_samples(
     (samples, up.unwrap_or(DVec3::Z))
 }
 
+fn target_face(doc: &Document, faces: &[FaceRef], center: DVec3) -> Option<FaceRef> {
+    super::seams::nearest_disp_face(doc, center).filter(|f| faces.contains(f)).or_else(|| faces.first().copied())
+}
+
 fn capture_grab(doc: &Document, faces: &[FaceRef], brush: &BrushSettings, center: DVec3) -> Option<Grab> {
     let mut out: HashMap<FaceRef, Grabbed> = HashMap::new();
     for f in faces {
@@ -171,8 +175,13 @@ pub(crate) fn sample(
             }
         }
         SculptOp::Flatten => {
-            let plane = match stroke.plane.filter(|_| sculpt.flatten_fixed) {
+            let target = sculpt.flatten_target.then(|| target_face(doc, faces, center)).flatten();
+            let plane = match stroke.plane.filter(|_| sculpt.flatten_fixed && !sculpt.flatten_target) {
                 Some(p) => p,
+                None if sculpt.flatten_target => {
+                    let Some(p) = target.and_then(|f| super::level::target_plane(doc, f, brush)) else { return Ok(0) };
+                    p
+                }
                 None => {
                     let (samples, up) = plane_samples(doc, faces, brush, center);
                     let Some(p) = fit_plane(&samples, up) else { return Ok(0) };

@@ -186,8 +186,12 @@ impl PerfMonitor {
                 next.gpu_shadows_ms = g.shadows_ms;
                 next.gpu_scene_ms = g.scene_ms;
                 next.gpu_post_ms = g.post_ms;
+                next.gpu_passes = passes_of(&g);
             }
             next.gpu_reflection_ms = t.reflection_gpu_ms;
+            if let Some(g) = t.reflection_gpu {
+                next.gpu_reflection_passes = passes_of(&g);
+            }
         }
         *s = next;
     }
@@ -195,6 +199,7 @@ impl PerfMonitor {
 
 struct Bench {
     frames: u32,
+    trace: Option<Vec<hp_app::runtime::BenchFrame>>,
     done: u32,
     base: hp_app::view::Camera3d,
     frame_ms: Vec<f32>,
@@ -208,6 +213,8 @@ struct Bench {
     scene: f32,
     post: f32,
     reflection: f32,
+    passes: hp_app::runtime::GpuPasses,
+    reflection_passes: hp_app::runtime::GpuPasses,
     gpu_samples: u32,
     started: std::time::Instant,
     ws_start: u64,
@@ -241,6 +248,7 @@ impl BenchDriver {
             let ws = crate::dispatch::lighting::memory::of_self().map_or(0, |u| u.working_set);
             self.run = Some(Bench {
                 frames: req.frames.max(10),
+                trace: req.trace.then(Vec::new),
                 done: 0,
                 base: state.cameras.cam3d,
                 frame_ms: Vec::new(),
@@ -254,6 +262,8 @@ impl BenchDriver {
                 scene: 0.0,
                 post: 0.0,
                 reflection: 0.0,
+                passes: hp_app::runtime::GpuPasses::default(),
+                reflection_passes: hp_app::runtime::GpuPasses::default(),
                 gpu_samples: 0,
                 started: std::time::Instant::now(),
                 ws_start: ws,
@@ -276,6 +286,26 @@ impl BenchDriver {
                 }
                 b.cpu += s.prepare_ms + s.record_ms + s.submit_ms;
                 b.cpu_each.push(s.prepare_ms + s.record_ms + s.submit_ms);
+                if let Some(t) = b.trace.as_mut() {
+                    let phases = &state.runtime.render.perf.frame_phases;
+                    t.push(hp_app::runtime::BenchFrame {
+                        frame_ms: dt * 1000.0,
+                        cpu_ms: s.prepare_ms + s.record_ms + s.submit_ms,
+                        gpu_ms: if s.gpu_supported { s.gpu_total_ms + s.gpu_reflection_ms } else { 0.0 },
+                        views_ms: phases.ms[5],
+                        view_render_ms: state.runtime.render.perf.views.iter().map(|v| v.render_ms).sum(),
+                        view_overlay_ms: state
+                            .runtime
+                            .render
+                            .perf
+                            .views
+                            .iter()
+                            .map(|v| v.overlay_ms + v.paint_ms)
+                            .sum(),
+                        app_ms: phases.total_ms,
+                        gpu_passes: s.gpu_passes,
+                    });
+                }
                 if s.gpu_supported {
                     b.gpu_each.push(s.gpu_total_ms + s.gpu_reflection_ms);
                 }
@@ -298,6 +328,8 @@ impl BenchDriver {
                     b.scene += s.gpu_scene_ms;
                     b.post += s.gpu_post_ms;
                     b.reflection += s.gpu_reflection_ms;
+                    b.passes.add(&s.gpu_passes);
+                    b.reflection_passes.add(&s.gpu_reflection_passes);
                     b.gpu_samples += 1;
                 }
             }
@@ -322,7 +354,13 @@ impl BenchDriver {
                 frame_ms_p95: sorted.get(((sorted.len() as f32) * 0.95) as usize).copied().unwrap_or(0.0),
                 frame_ms_max: sorted.last().copied().unwrap_or(0.0),
                 frame_ms_median: sorted.get(sorted.len() / 2).copied().unwrap_or(0.0),
+                frame_ms_p99: percentile(&b.frame_ms, 0.99),
                 cpu_ms_median: median(&b.cpu_each),
+                cpu_ms_p99: percentile(&b.cpu_each, 0.99),
+                gpu_ms_p99: percentile(&b.gpu_each, 0.99),
+                gpu_passes_ms_avg: b.passes.scaled(1.0 / g),
+                gpu_reflection_passes_ms_avg: b.reflection_passes.scaled(1.0 / g),
+                trace: b.trace.unwrap_or_default(),
                 gpu_ms_median: median(&b.gpu_each),
                 draw_calls_avg: (b.counts[0] / f64::from(n)) as f32,
                 triangles_avg: (b.counts[1] / f64::from(n)) as f32,
@@ -351,8 +389,25 @@ impl BenchDriver {
     }
 }
 
+fn passes_of(g: &hp_render::profile::GpuTimes) -> hp_app::runtime::GpuPasses {
+    hp_app::runtime::GpuPasses {
+        light_cull_ms: g.light_cull_ms,
+        sun_shadows_ms: g.sun_shadows_ms,
+        local_shadows_ms: g.local_shadows_ms,
+        main_ms: g.main_ms,
+        effects_ms: g.effects_ms,
+        present_ms: g.present_ms,
+        outline_ms: g.outline_ms,
+    }
+}
+
 fn median(values: &[f32]) -> f32 {
+    percentile(values, 0.5)
+}
+
+fn percentile(values: &[f32], q: f32) -> f32 {
     let mut v = values.to_vec();
     v.sort_by(f32::total_cmp);
-    v.get(v.len() / 2).copied().unwrap_or(0.0)
+    let i = ((v.len() as f32) * q) as usize;
+    v.get(i.min(v.len().saturating_sub(1))).copied().unwrap_or(0.0)
 }

@@ -359,6 +359,7 @@ pub struct LightPlus {
     pub prop_polys: bool,
     pub texture_shadows: bool,
     pub no_disp_shadows: bool,
+    pub no_style_bounce: bool,
     pub fast_ambient: bool,
     pub keep_bake: bool,
     pub excluded_entities: Vec<u32>,
@@ -387,6 +388,7 @@ impl Default for LightPlus {
             prop_polys: false,
             texture_shadows: false,
             no_disp_shadows: false,
+            no_style_bounce: false,
             fast_ambient: false,
             excluded_entities: Vec::new(),
             keep_bake: true,
@@ -448,6 +450,7 @@ impl LightPlus {
             prop_polys: flag("prop_polys", d.prop_polys),
             texture_shadows: flag("texture_shadows", d.texture_shadows),
             no_disp_shadows: flag("no_disp_shadows", d.no_disp_shadows),
+            no_style_bounce: flag("no_style_bounce", d.no_style_bounce),
             fast_ambient: flag("fast_ambient", d.fast_ambient),
             keep_bake: flag("keep_bake", d.keep_bake),
             bounce_count: int("bounce_count", d.bounce_count, 100),
@@ -481,6 +484,7 @@ impl LightPlus {
         b.set("prop_polys", flag(self.prop_polys));
         b.set("texture_shadows", flag(self.texture_shadows));
         b.set("no_disp_shadows", flag(self.no_disp_shadows));
+        b.set("no_style_bounce", flag(self.no_style_bounce));
         b.set("fast_ambient", flag(self.fast_ambient));
         b.set("keep_bake", flag(self.keep_bake));
         b.set("excluded_entities", self.excluded_entities.iter().map(u32::to_string).collect::<Vec<_>>().join(" "));

@@ -26,8 +26,8 @@ Le compilateur lit les entités de lumière comme VRAD (`light`, `light_spot`, `
 | `style` | toutes | Style de lumière (0 à 255). Les lumières nommées reçoivent un style commutable si la map n'en a pas. |
 | `_constant_attn`, `_linear_attn`, `_quadratic_attn` | `light`, `light_spot` | Atténuation `1 / (c + l d + q d^2)`, l'intensité étant donnée à 100 unités. Toutes à 0 : constante. |
 | `_fifty_percent_distance`, `_zero_percent_distance` | `light`, `light_spot` | Courbe d'atténuation passant par ces distances (utilisée à la place des trois atténuations quand la première est réglée). |
-| `_hardfalloff` | `light`, `light_spot` | Avec la distance à 50 % : la lumière s'arrête à la distance à 0 %. |
-| `_distance` | `light`, `light_spot` | La lumière s'arrête là, en s'estompant sur son dernier quart (Hammer Pro la lit avec les deux types d'atténuation). |
+| `_hardfalloff` | `light`, `light_spot` | Avec la distance à 50 % : la lumière s'arrête à la distance à 0 % (pour les modèles en jeu aussi : elle devient le rayon de la lumière du monde). Les lumières nommées suivent les mêmes courbes. |
+| `_distance` | `light`, `light_spot` | Seulement pour les modèles en jeu : au delà, le jeu ne les éclaire plus avec cette lumière. Les lightmaps gardent la lumière au delà, comme VRAD. |
 | `_inner_cone`, `_cone`, `_exponent` | `light_spot` | Cônes du spot en degrés (l'intérieur vaut 10 par défaut, l'extérieur vaut l'intérieur) et l'exposant de l'atténuation entre les deux. |
 | `angles`, `pitch`, `target` | `light_spot`, `light_environment` | Direction ; une entité `target` la remplace. |
 | `_castentityshadow` | toutes | Marque la lumière du monde pour que le moteur projette les ombres des entités depuis elle. |

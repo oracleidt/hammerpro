@@ -6,7 +6,7 @@ Propper transforme des brushes (et des displacements) en modèle `.mdl`, avec ni
 
 ## Avant de commencer
 
-- Le dossier du jeu est configuré (**Outils > Options...**, page **Jeu**). Propper compile le modèle avec le `studiomdl` du jeu, trouvé dans son dossier `bin`.
+- Le dossier du jeu est configuré (**Outils > Options...**, page **Jeu**). Propper compile le modèle avec le `studiomdl` du jeu, trouvé dans son dossier `bin`, ou avec le compilateur de modèles choisi dans **Paramètres > Compilation** (NekoMDL par exemple).
 - Enregistrer la map donne un nom de modèle par défaut ; vous pouvez le modifier dans la fenêtre de création.
 - Les exécutions automatisées (`--script`) ne compilent jamais de modèle, car `studiomdl` écrit dans le jeu.
 

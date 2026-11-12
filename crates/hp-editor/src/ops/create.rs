@@ -28,7 +28,7 @@ impl Fragment {
     }
 }
 
-fn clean_keyvalues(keyvalues: &[(String, String)], skip_origin: bool) -> Vec<(String, String)> {
+pub(super) fn clean_keyvalues(keyvalues: &[(String, String)], skip_origin: bool) -> Vec<(String, String)> {
     let mut out: Vec<(String, String)> = Vec::with_capacity(keyvalues.len() + 1);
     for (k, v) in keyvalues {
         if k.trim().is_empty() || is_reserved_key(k) || (skip_origin && k.eq_ignore_ascii_case("origin")) {
@@ -690,7 +690,7 @@ impl Document {
         })
     }
 
-    fn tie_impl(&mut self, solids: &[Id], entity: Id) {
+    pub(crate) fn tie_impl(&mut self, solids: &[Id], entity: Id) {
         let moving: IdSet = solids.iter().copied().collect();
         let mut emptied = id_set(0);
         for id in solids {

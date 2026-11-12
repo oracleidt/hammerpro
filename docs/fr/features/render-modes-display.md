@@ -188,6 +188,7 @@ Les images sont enregistrées dans la map (bloc `bgimages_plus` du VMF) et voyag
 | **Couleurs des groupes de visibilité** | Brushes dessinés de la couleur de leur visgroup. | Désactivé |
 | **Couleurs des objets en 2D** (`object_colors_2d`) | Brushes et entités dessinés dans leur couleur d'affichage (voir [Couleurs d'affichage](display-colors.md)) ; désactivé : l'aspect classique. | Activé |
 | **Couleurs des objets en 3D filaire et plat** (`object_colors_3d`) | La vue 3D utilise les couleurs d'affichage en mode filaire et plat. | Désactivé |
+| **Teinter les brushes func_detail** (`brush.detail.tint`, **Affichage > Options d'affichage**) | Les brushes func_detail prennent une teinte bleue en 3D et un contour bleu en 2D (voir [func_detail](func-detail.md)). | Désactivé |
 
 ## Astuces
 

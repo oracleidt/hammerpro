@@ -105,7 +105,7 @@ Tools under it:
 | **Shape preview** | Opens the [shape preview](real-shape-placement.md#shape-preview) window on this model: its real shape from the top, the front, the side and in 3D, with its dimensions, origin, lowest point and collision mesh. |
 | **Extract files...** | Copies the model and its VVD, VTX, PHY and ANI files from the game content (VPK, GMA or folders) to a folder you choose, keeping their folders (`models/props/x.mdl`). |
 | **Decompile with Crowbar** | Extracts the model to a temporary folder (`hammerpro_models` in the system temporary folder) and opens it in Crowbar. Crowbar.exe is asked the first time and remembered (`crowbar_exe` in `[entities]`); right click the button and pick **Choose another Crowbar.exe...** to change it. |
-| **Compile a QC...** | Runs the game's studiomdl (`bin/win64/studiomdl.exe`, else `bin/studiomdl.exe` of the Garry's Mod folder) on a QC file you choose, with `-game <game folder> -nop4 -verbose`. Its output goes to the console; a **Cancel** button stops it. Greyed out when studiomdl is not found. |
+| **Compile a QC...** | Runs the model compiler on a QC file you choose, with `-game <game folder> -nop4 -verbose` and the extra arguments of **Settings > Compile**: the program set in **Settings > Compile > Model compiler** (NekoMDL for example), else the game's studiomdl (`bin/win64/studiomdl.exe`, else `bin/studiomdl.exe` of the Garry's Mod folder). Its output goes to the console; a **Cancel** button stops it. Greyed out when no model compiler is found. |
 
 ## Collision models in the views
 
@@ -140,7 +140,7 @@ Two toggles of **View > Display options** show the collisions of props:
 
 **The grid shows a texture instead of the model, why?** The model could not be rendered (yet); the tile falls back to its first material, or `?` when it has none.
 
-**Why is "Compile a QC..." greyed out?** studiomdl was not found in the `bin` folder of the configured Garry's Mod install.
+**Why is "Compile a QC..." greyed out?** studiomdl was not found in the `bin` folder of the configured Garry's Mod install, or the model compiler set in **Settings > Compile** does not exist.
 
 **Dragging gives a `prop_dynamic`, double click a `prop_physics`: why?** A drop uses `prop_dynamic` for models that are not static props, while **Use for new props** uses `prop_physics`. Change the class in the entity panel if you need another one.
 

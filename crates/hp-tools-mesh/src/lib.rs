@@ -21,6 +21,7 @@ pub fn register_translations() {
     hp_app::i18n::register(disp::loops::TR);
     hp_app::i18n::register(disp::blend::TR);
     hp_app::i18n::register(disp::slope_ui::TR);
+    hp_app::i18n::register(disp::level::TR);
 }
 
 pub fn tools() -> Vec<Box<dyn hp_app::Tool>> {

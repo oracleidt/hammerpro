@@ -1,7 +1,7 @@
 use glam::DVec3;
 use hp_geom::{
-    Aabb, ClipPiece, Plane, carve_many, clip_solid_traced, hollow_traced, merge_convex, merge_exact,
-    rebuild_from_points, unique_vertices, validate_solid,
+    Aabb, ClipPiece, Plane, carve_many, clip_solid_traced, hollow_traced, keep_cut_displacements, merge_convex,
+    merge_exact, rebuild_from_points, unique_vertices, validate_solid,
 };
 use hp_vmf::{Group, Side, Solid};
 
@@ -101,9 +101,22 @@ impl Document {
             }
             let original = &n.solid.sides;
             let Ok((front, back)) = clip_solid_traced(original, &plane, &mut gen_side) else { continue };
-            let (Some(mut front), Some(mut back)) = (front, back) else { continue };
+            let (Some(front), Some(back)) = (front, back) else { continue };
+            let keep_disps = self.options.keep_displacements_on_cut;
+            let restore = |piece: ClipPiece, gen_side: &mut dyn FnMut() -> u32| -> Vec<ClipPiece> {
+                if keep_disps { keep_cut_displacements(original, vec![piece], gen_side) } else { vec![piece] }
+            };
+            let mut kept: Vec<ClipPiece> = match keep {
+                ClipKeep::Front => restore(front, &mut gen_side),
+                ClipKeep::Back => restore(back, &mut gen_side),
+                ClipKeep::Both => {
+                    let mut all = restore(back, &mut gen_side);
+                    all.extend(restore(front, &mut gen_side));
+                    all
+                }
+            };
             if let Some(material) = cap_material {
-                for piece in [&mut front, &mut back] {
+                for piece in &mut kept {
                     for (side, o) in piece.sides.iter_mut().zip(&piece.origins) {
                         if o.is_none() {
                             material.clone_into(&mut side.material);
@@ -111,26 +124,23 @@ impl Document {
                     }
                 }
             }
-            let mut s = n.solid.clone();
-            match keep {
-                ClipKeep::Front => {
-                    for (side, o) in front.sides.iter_mut().zip(&front.origins) {
-                        if let Some(src) = o.and_then(|o| original.get(o)) {
-                            side.id = src.id;
-                        }
+            if keep == ClipKeep::Front
+                && let Some(first) = kept.first_mut()
+            {
+                for (side, o) in first.sides.iter_mut().zip(&first.origins) {
+                    if let Some(src) = o.and_then(|o| original.get(o)) {
+                        side.id = src.id;
                     }
-                    record_side_ids(original, &[&front], &mut side_ids);
-                    s.sides = front.sides;
                 }
-                ClipKeep::Back => {
-                    record_side_ids(original, &[&back], &mut side_ids);
-                    s.sides = back.sides;
-                }
-                ClipKeep::Both => {
-                    record_side_ids(original, &[&back, &front], &mut side_ids);
-                    s.sides = back.sides;
-                    create.push((*id, n.owner, front.sides));
-                }
+            }
+            let refs: Vec<&ClipPiece> = kept.iter().collect();
+            record_side_ids(original, &refs, &mut side_ids);
+            let mut s = n.solid.clone();
+            let mut rest = kept.drain(..);
+            let Some(first) = rest.next() else { continue };
+            s.sides = first.sides;
+            for piece in rest {
+                create.push((*id, n.owner, piece.sides));
             }
             replace.push((*id, s));
         }
@@ -227,8 +237,10 @@ impl Document {
         let target_refs: Vec<(&[Side], Aabb)> = jobs.iter().map(|(_, s, b)| (*s, *b)).collect();
         let cutter_refs: Vec<(&[Side], Aabb)> = cutters.iter().map(|(s, b)| (s.as_slice(), *b)).collect();
         let carved = carve_many(&target_refs, &cutter_refs, &mut gen_side);
+        let keep_disps = self.options.keep_displacements_on_cut;
         for ((t, original, _), pieces) in jobs.iter().zip(carved) {
             if let Some(pieces) = pieces {
+                let pieces = if keep_disps { keep_cut_displacements(original, pieces, &mut gen_side) } else { pieces };
                 let refs: Vec<&ClipPiece> = pieces.iter().collect();
                 record_side_ids(original, &refs, &mut side_ids);
                 results.push((*t, pieces));
@@ -768,5 +780,61 @@ mod tests {
             assert!(doc.undo());
             assert_eq!(vmf(&doc), before);
         }
+    }
+
+    fn disp_terrain(doc: &mut Document) -> u32 {
+        let mut sides = cube(DVec3::new(0.0, 0.0, -64.0), 256.0);
+        let geom = hp_geom::build_solid(&sides);
+        let top = geom.faces.iter().max_by(|a, b| a.plane.normal.z.total_cmp(&b.plane.normal.z)).unwrap();
+        let mut disp = hp_geom::create_disp(&top.vertices, 3).unwrap();
+        for (k, d) in disp.distances.iter_mut().enumerate() {
+            *d = (k % 7) as f64 * 3.0;
+        }
+        sides[top.side_index].disp = Some(Box::new(disp));
+        doc.create_solid(sides, crate::Owner::World).unwrap()
+    }
+
+    fn disp_count(doc: &Document) -> usize {
+        doc.scene().solids().values().filter(|n| n.solid.sides.iter().any(|s| s.disp.is_some())).count()
+    }
+
+    #[test]
+    fn clipping_a_displacement_keeps_it_on_both_pieces_in_one_undo_step() {
+        let mut doc = Document::new_empty();
+        let id = disp_terrain(&mut doc);
+        let before = vmf(&doc);
+        let plane = Plane::new(DVec3::X, 128.0).unwrap();
+        let ids = doc.clip_with(&[id], &plane, super::ClipKeep::Both, Some("tools/toolsnodraw")).unwrap();
+        assert_eq!(ids.len(), 2);
+        assert_eq!(disp_count(&doc), 2);
+        assert!(doc.undo());
+        assert_eq!(vmf(&doc), before);
+        doc.clip_with(&[id], &plane, super::ClipKeep::Front, None).unwrap();
+        assert_eq!(disp_count(&doc), 1);
+        let n = DVec3::new(1.0, 2.0, 0.0).normalize();
+        let ids: Vec<u32> = doc.scene().solids().keys().copied().collect();
+        doc.clip_with(&ids, &Plane::new(n, n.dot(DVec3::new(200.0, 0.0, 0.0))).unwrap(), super::ClipKeep::Both, None)
+            .unwrap();
+        let total = doc.scene().solids().len();
+        assert!(total >= 3);
+        assert_eq!(disp_count(&doc), total, "every piece keeps a displacement");
+    }
+
+    #[test]
+    fn the_old_behaviour_turns_cut_displacements_back_into_brushes() {
+        let mut doc = Document::new_empty();
+        doc.options_mut().keep_displacements_on_cut = false;
+        let id = disp_terrain(&mut doc);
+        doc.clip_with(&[id], &Plane::new(DVec3::X, 128.0).unwrap(), super::ClipKeep::Both, None).unwrap();
+        assert_eq!(disp_count(&doc), 0);
+    }
+
+    #[test]
+    fn intersect_keeps_the_displacement() {
+        let mut doc = Document::new_empty();
+        let id = disp_terrain(&mut doc);
+        let other = doc.create_solid(cube(DVec3::new(64.0, 64.0, -100.0), 400.0), crate::Owner::World).unwrap();
+        doc.intersect_solids(&[id, other]).unwrap();
+        assert_eq!(disp_count(&doc), 1);
     }
 }

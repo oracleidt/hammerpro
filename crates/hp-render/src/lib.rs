@@ -176,6 +176,7 @@ struct ClusterKey {
     size: [u32; 2],
     lights_gen: u64,
     delta_only: bool,
+    cap: u32,
 }
 
 struct ViewState {
@@ -315,7 +316,9 @@ pub struct Renderer {
     light_styles: wgpu::Buffer,
     shadow_epoch: u64,
     sun_fit: Option<shadow::ShadowFit>,
-    sun_cam: Option<(Mat4, u64)>,
+    sun_cams: ahash::AHashMap<u32, (Mat4, u64)>,
+    motion_cams: ahash::AHashMap<u32, Mat4>,
+    pub(crate) last_motion: Option<std::time::Instant>,
     sun_followup: bool,
     render_serial: u64,
     instance_bounds: Option<(Vec3, Vec3)>,
@@ -324,6 +327,9 @@ pub struct Renderer {
     instance_pool: instance_cull::InstancePool,
     instances_dirty: bool,
     content_gen: u64,
+    light_content_gen: u64,
+    view_redraws: ahash::AHashMap<u32, u64>,
+    last_submit: Option<wgpu::SubmissionIndex>,
     game_hidden: ahash::AHashSet<ObjectId>,
     compiled_objects: ahash::AHashSet<ObjectId>,
     play_hidden: ahash::AHashSet<ObjectId>,
@@ -354,6 +360,7 @@ pub struct Renderer {
     fog_volume_gpu: Option<fog_volume::FogVolumeState>,
     sun_glow: Option<SunGlow>,
     world_sprites: Vec<WorldSprite>,
+    world_beams: Vec<WorldBeam>,
     sun_glow_gpu: Option<sun_glow::SunGlowState>,
     game_outlines: Option<gamewire::OutlineCache>,
     detail: detail_sprites::DetailSprites,
@@ -718,6 +725,7 @@ const OPT_SKY_PAINT: u32 = 1 << 26;
 const OPT_HDR_TINT: u32 = 1 << 27;
 const OPT_MODEL_LODS: u32 = 1 << 28;
 pub(crate) const OPT_BAKED_SHADOW_PASS: u32 = 1 << 29;
+const OPT_LIT_LDR: u32 = 1 << 30;
 const VERTEX_DOT_PX: u32 = 3;
 
 struct OptionsUniform {
@@ -1054,7 +1062,9 @@ impl Renderer {
             light_styles,
             shadow_epoch: 1,
             sun_fit: None,
-            sun_cam: None,
+            sun_cams: ahash::AHashMap::default(),
+            motion_cams: ahash::AHashMap::default(),
+            last_motion: None,
             sun_followup: false,
             render_serial: 0,
             instance_bounds: None,
@@ -1063,6 +1073,9 @@ impl Renderer {
             instance_pool: instance_cull::InstancePool::new(&device),
             instances_dirty: false,
             content_gen: 1,
+            light_content_gen: 0,
+            view_redraws: ahash::AHashMap::default(),
+            last_submit: None,
             game_hidden: ahash::AHashSet::default(),
             compiled_objects: ahash::AHashSet::default(),
             play_hidden: ahash::AHashSet::default(),
@@ -1093,6 +1106,7 @@ impl Renderer {
             fog_volume_gpu: None,
             sun_glow: None,
             world_sprites: Vec::new(),
+            world_beams: Vec::new(),
             sun_glow_gpu: None,
             game_outlines: None,
             detail: detail_sprites::DetailSprites::default(),
@@ -1143,6 +1157,14 @@ impl Renderer {
 
     pub fn supports_bc(&self) -> bool {
         self.supports_bc
+    }
+
+    pub fn lighting_generation(&self, view_id: u32) -> u64 {
+        self.light_content_gen.wrapping_add(self.view_redraws.get(&view_id).copied().unwrap_or(0))
+    }
+
+    pub(crate) fn redraw_view(&mut self, view_id: u32) {
+        *self.view_redraws.entry(view_id).or_default() += 1;
     }
 
     pub fn content_generation(&self) -> u64 {
@@ -2315,11 +2337,13 @@ impl Renderer {
 
     fn update_clusters(&mut self, id: u32, cam: &Camera, delta_only: bool) -> ClusterGrid {
         let grid = ClusterGrid::new(cam);
+        let cap = self.view_options(id).light_cap;
         let key = ClusterKey {
             view_proj: cam.view_proj.to_cols_array(),
             size: [cam.width as u32, cam.height as u32],
             lights_gen: self.lights_gen,
             delta_only,
+            cap,
         };
         let Some(view) = self.views.get_mut(&id) else { return grid };
         if let Some(crowded) = view.cull.as_mut().and_then(light_cull::CullView::poll) {
@@ -2330,7 +2354,7 @@ impl Renderer {
             return grid;
         }
         if self.gpu_clusters {
-            let prepared = light_cull::prepare(cam, &grid, &self.lights_cpu, self.dir_lights, delta_only);
+            let prepared = light_cull::prepare(cam, &grid, &self.lights_cpu, self.dir_lights, delta_only, cap);
             let table = grid.count() as u64 * 8;
             let list = light_cull::index_bytes(&grid);
             let g1 = view.clusters.ensure(&self.device, &self.queue, table, self.max_storage, false);
@@ -2525,6 +2549,8 @@ impl Renderer {
         let mut o = options_uniform(cam, &fog_opts, &env, sky_pass, ldr_sky);
         if self.hdr_lit(opts, params.mode, cam.is_ortho) {
             o.opts[0] |= OPT_HDR_TINT;
+        } else if lit && self.tone.lit_ldr_shading && !self.tone.lit_hdr && o.opts[0] & OPT_COMPILED_LIGHT == 0 {
+            o.opts[0] |= OPT_LIT_LDR;
         }
         if !cam.is_ortho
             && params.mode == RenderMode::Flat
@@ -2736,6 +2762,12 @@ impl Renderer {
         if !cam.is_ortho && opts.cubemaps && reflecting.is_none() {
             self.cubes.note_view(view_id, &params, &opts);
         }
+        if !cam.is_ortho && reflecting.is_none() && !self.probing {
+            let moved = self.motion_cams.insert(view_id, cam.view_proj).is_some_and(|vp| vp != cam.view_proj);
+            if moved {
+                self.last_motion = Some(std::time::Instant::now());
+            }
+        }
         let setup_ms = lap.take();
         self.water_reflect = None;
         let reflect = if reflecting.is_none() && !self.probing && water::applies(&params, &opts, cam.is_ortho) {
@@ -2758,7 +2790,10 @@ impl Renderer {
         } else {
             None
         };
-        let shadow = if lit { self.prepare_shadow(&fit_cam) } else { None };
+        let shadow = if lit { self.prepare_shadow(view_id, &fit_cam) } else { None };
+        if shadow.is_some() && self.sun_followup {
+            self.redraw_view(view_id);
+        }
         let sky_map = if lit && self.sun.sky_ambient { self.prepare_sky_map(&fit_cam) } else { None };
         let local_layers = if reflecting.is_some() {
             Vec::new()
@@ -2863,13 +2898,16 @@ impl Renderer {
         }
         let mut enc =
             self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("hp-render view") });
-        let cull_read = self.record_light_cull(view_id, &mut enc);
-        let mut counter = FrameCounter::default();
         let recording = std::time::Instant::now();
         if profiled && let Some(p) = self.profiler.as_mut() {
             p.begin(is_reflection);
             p.mark(&mut enc, 0);
         }
+        let cull_read = self.record_light_cull(view_id, &mut enc);
+        if let Some(p) = self.profiler.as_ref() {
+            p.mark(&mut enc, 1);
+        }
+        let mut counter = FrameCounter::default();
         if let Some((fit, true)) = &shadow {
             let (draws, tris) = self.record_shadow(&mut enc, fit);
             counter.draws += draws;
@@ -2885,6 +2923,9 @@ impl Renderer {
             counter.draws += draws;
             counter.triangles += tris;
         }
+        if let Some(p) = self.profiler.as_ref() {
+            p.mark(&mut enc, 2);
+        }
         if !local_layers.is_empty() {
             let (draws, tris) = self.record_local_shadows(&mut enc, &local_layers);
             counter.draws += draws;
@@ -2896,8 +2937,9 @@ impl Renderer {
             counter.triangles += tris;
         }
         if let Some(p) = self.profiler.as_ref() {
-            p.mark(&mut enc, 1);
+            p.mark(&mut enc, 3);
         }
+        let mut main_marked = false;
         if let (Some(view), Some(ps)) = (self.views.get(&view_id), self.pipelines[pi].as_ref())
             && let Some(bind_group) = view.bind_group.as_ref()
         {
@@ -3080,6 +3122,10 @@ impl Renderer {
                     ctx.record_3d_rest(&mut pass, &lists, Some((&cands[..], args)), &mut counter);
                 }
             }
+            if let Some(p) = self.profiler.as_ref() {
+                p.mark(&mut enc, 4);
+            }
+            main_marked = true;
             if split {
                 let keep = fog_frame.is_some() || sun_frame.is_some() || particle_refraction;
                 ctx.record_water(&mut enc, water_frame.as_ref(), view_id, &lists, keep, &mut counter);
@@ -3095,11 +3141,14 @@ impl Renderer {
             }
         }
         self.hooks = hooks;
+        if !main_marked && let Some(p) = self.profiler.as_ref() {
+            p.mark(&mut enc, 4);
+        }
         if particle_refraction {
             self.record_particle_refraction(&mut enc, view_id, &mut counter);
         }
         if let Some(p) = self.profiler.as_ref() {
-            p.mark(&mut enc, 2);
+            p.mark(&mut enc, 5);
         }
         let present = self.views.get(&view_id).map(|v| (v.color.clone(), v.color_view.clone(), v.display_srgb.clone()));
         if let Some((color, color_view, display)) = present {
@@ -3114,6 +3163,9 @@ impl Renderer {
             };
             self.record_present(&mut enc, view_id, &inputs);
         }
+        if let Some(p) = self.profiler.as_ref() {
+            p.mark(&mut enc, 6);
+        }
         if outline_on
             && let Some(view) = self.views.get(&view_id)
             && let Some(bind_group) = view.bind_group.as_ref()
@@ -3121,13 +3173,13 @@ impl Renderer {
             self.record_outline(&mut enc, view, &cam, &params, bind_group, &mut counter);
         }
         let sample = if let Some(p) = self.profiler.as_mut() {
-            p.mark(&mut enc, 3);
+            p.mark(&mut enc, 7);
             p.end(&mut enc)
         } else {
             None
         };
         let submitting = std::time::Instant::now();
-        self.queue.submit([enc.finish()]);
+        self.last_submit = Some(self.queue.submit([enc.finish()]));
         if let (Some(p), Some(i)) = (self.profiler.as_ref(), sample) {
             p.after_submit(i);
         }
@@ -3333,6 +3385,9 @@ impl Renderer {
         self.forget_fog_volume_view(view_id);
         self.forget_sun_glow_view(view_id);
         self.forget_tone_view(view_id);
+        self.view_redraws.remove(&view_id);
+        self.sun_cams.remove(&view_id);
+        self.motion_cams.remove(&view_id);
     }
 
     pub fn snapshot_view(&self, view_id: u32) -> Option<(wgpu::Texture, wgpu::TextureView)> {
@@ -3538,6 +3593,11 @@ impl Renderer {
                 self.profiler.as_ref().map_or(0.0, |p| p.latest_reflection)
             } else {
                 0.0
+            },
+            reflection_gpu: if self.reflection_active {
+                self.profiler.as_ref().and_then(|p| p.latest_reflection_passes)
+            } else {
+                None
             },
             reflection_cpu_ms: self.reflection_cpu_ms,
             gpu_supported: self.profiler.is_some(),
@@ -4132,12 +4192,26 @@ impl DrawCtx<'_> {
         pass.set_index_buffer(self.r.arenas[ArenaKind::Indices as usize].buffer.slice(..), wgpu::IndexFormat::Uint32);
         if !faded && self.depth_prepass() {
             let mut two: Option<bool> = None;
+            let mut run: Option<(u32, u32)> = None;
             for d in list.iter().filter(|d| d.pass == MeshPass::Opaque) {
                 if two != Some(d.two_sided) {
+                    if let Some((first, end)) = run.take() {
+                        pass.draw_indexed(first..end, 0, 0..1);
+                    }
                     pass.set_pipeline(&self.ps.prepass[usize::from(d.two_sided)]);
                     two = Some(d.two_sided);
                 }
-                pass.draw_indexed(d.first..d.first + d.count, 0, 0..1);
+                run = match run {
+                    Some((first, end)) if end == d.first => Some((first, d.first + d.count)),
+                    Some((first, end)) => {
+                        pass.draw_indexed(first..end, 0, 0..1);
+                        Some((d.first, d.first + d.count))
+                    }
+                    None => Some((d.first, d.first + d.count)),
+                };
+            }
+            if let Some((first, end)) = run {
+                pass.draw_indexed(first..end, 0, 0..1);
             }
         }
         let mut pipe: Option<(MeshPass, bool)> = None;
@@ -4317,6 +4391,39 @@ impl DrawCtx<'_> {
         let mut bound_instances = false;
         let mut pipe: Option<(MeshPass, bool)> = None;
         let (source, groups) = r.instance_source(self.packed);
+        let prepass = !faded && self.depth_prepass() && wanted.contains(&MeshPass::Opaque);
+        if prepass {
+            let mut two_sided: Option<bool> = None;
+            for g in groups {
+                let Some(model) = r.models.get(&g.key) else { continue };
+                let mut bound_model = false;
+                for part in model.parts.iter().chain(&model.lod_parts) {
+                    if g.lod.is_some_and(|lod| lod != part.lod) {
+                        continue;
+                    }
+                    let desc = r.scene.materials.get(part.material as usize).and_then(|m| m.desc);
+                    let Some((MeshPass::Opaque, two)) = classify_with(desc.as_ref(), self.opts.force_opaque, false)
+                    else {
+                        continue;
+                    };
+                    if !bound_instances {
+                        pass.set_vertex_buffer(1, source);
+                        bound_instances = true;
+                    }
+                    if !bound_model {
+                        pass.set_vertex_buffer(0, model.vbuf.slice(..));
+                        pass.set_vertex_buffer(2, model.tbuf.slice(..));
+                        pass.set_index_buffer(model.ibuf.slice(..), wgpu::IndexFormat::Uint32);
+                        bound_model = true;
+                    }
+                    if two_sided != Some(two) {
+                        pass.set_pipeline(&self.ps.model_prepass[usize::from(two)]);
+                        two_sided = Some(two);
+                    }
+                    pass.draw_indexed(part.first..part.first + part.count, 0, g.start..g.start + g.count);
+                }
+            }
+        }
         for g in groups {
             let Some(model) = r.models.get(&g.key) else { continue };
             let mut bound_model = false;
@@ -4342,6 +4449,8 @@ impl DrawCtx<'_> {
                 if pipe != Some((p, two)) {
                     let pipeline = if faded {
                         &self.ps.model_faded[usize::from(p == MeshPass::AlphaTest)][usize::from(two)]
+                    } else if prepass && p == MeshPass::Opaque {
+                        &self.ps.model_equal[usize::from(two)]
                     } else {
                         &self.ps.model[p as usize][usize::from(two)]
                     };
@@ -4591,20 +4700,36 @@ impl DrawCtx<'_> {
         }
         pass.set_vertex_buffer(0, self.r.arenas[ArenaKind::MeshVerts as usize].buffer.slice(..));
         pass.set_index_buffer(self.r.arenas[ArenaKind::Indices as usize].buffer.slice(..), wgpu::IndexFormat::Uint32);
+        let flush = |pass: &mut wgpu::RenderPass<'_>, run: &mut Option<(usize, usize)>| {
+            if let Some((first, end)) = run.take() {
+                pass.multi_draw_indexed_indirect(args, first as u64 * occlusion::ARGS_BYTES, (end - first) as u32);
+            }
+        };
         if self.depth_prepass() {
             let mut two: Option<bool> = None;
+            let mut run: Option<(usize, usize)> = None;
             for (i, d) in list.iter().enumerate().filter(|(_, d)| d.pass == MeshPass::Opaque) {
                 if two != Some(d.two_sided) {
+                    flush(pass, &mut run);
                     pass.set_pipeline(&self.ps.prepass[usize::from(d.two_sided)]);
                     two = Some(d.two_sided);
                 }
-                pass.draw_indexed_indirect(args, i as u64 * occlusion::ARGS_BYTES);
+                match run.as_mut() {
+                    Some((_, end)) if *end == i => *end = i + 1,
+                    _ => {
+                        flush(pass, &mut run);
+                        run = Some((i, i + 1));
+                    }
+                }
             }
+            flush(pass, &mut run);
         }
         let mut pipe: Option<(MeshPass, bool)> = None;
         let mut mat = u32::MAX;
+        let mut run: Option<(usize, usize)> = None;
         for (i, d) in list.iter().enumerate() {
             if pipe != Some((d.pass, d.two_sided)) {
+                flush(pass, &mut run);
                 let pipeline = if d.pass == MeshPass::Opaque && self.depth_prepass() {
                     &self.ps.chunk_equal[usize::from(d.two_sided)]
                 } else {
@@ -4614,15 +4739,23 @@ impl DrawCtx<'_> {
                 pipe = Some((d.pass, d.two_sided));
             }
             if mat != d.material {
+                flush(pass, &mut run);
                 if let Some(g) = self.r.mat_gpu.get(d.material as usize) {
                     pass.set_bind_group(1, &g.bind_group, &[]);
                     n.material();
                 }
                 mat = d.material;
             }
-            pass.draw_indexed_indirect(args, i as u64 * occlusion::ARGS_BYTES);
+            match run.as_mut() {
+                Some((_, end)) if *end == i => *end = i + 1,
+                _ => {
+                    flush(pass, &mut run);
+                    run = Some((i, i + 1));
+                }
+            }
             n.world(u64::from(d.count / 3));
         }
+        flush(pass, &mut run);
     }
 }
 

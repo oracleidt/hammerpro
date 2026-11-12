@@ -2,11 +2,12 @@ use std::collections::HashMap;
 use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use crossbeam_channel::{Receiver, Sender};
 use hp_app::runtime::BakePhase;
+use hp_app::settings::BakePriority;
 use hp_bspc::rad::RadQuality;
 use hp_light::atlas::{Atlas, AtlasRect};
 
@@ -19,6 +20,53 @@ const BAKE_STACK: usize = 64 << 20;
 const REPLY_WAIT: Duration = Duration::from_millis(50);
 const CANCEL_GRACE: Duration = Duration::from_secs(30);
 const MODELS_IDLE: Duration = Duration::from_millis(1000);
+const WAKE_EVERY_MS: u64 = 100;
+
+static PAUSE_MINIMIZED: AtomicBool = AtomicBool::new(true);
+static PAUSE_UNFOCUSED: AtomicBool = AtomicBool::new(false);
+static STOPPED_AWAY: AtomicBool = AtomicBool::new(false);
+static MODELS_HALTED: AtomicBool = AtomicBool::new(false);
+
+pub(super) fn set_pause_rules(minimized: bool, unfocused: bool) {
+    PAUSE_MINIMIZED.store(minimized, Ordering::Relaxed);
+    PAUSE_UNFOCUSED.store(unfocused, Ordering::Relaxed);
+}
+
+pub(super) fn away(rules: (bool, bool), window: Option<(bool, bool)>) -> bool {
+    window.is_some_and(|(minimized, front)| (rules.0 && minimized) || (rules.1 && !front))
+}
+
+fn window_away() -> bool {
+    let rules = (PAUSE_MINIMIZED.load(Ordering::Relaxed), PAUSE_UNFOCUSED.load(Ordering::Relaxed));
+    (rules.0 || rules.1) && away(rules, hp_app::native_window::main_window_state())
+}
+
+pub(super) fn take_stopped_away() -> bool {
+    STOPPED_AWAY.swap(false, Ordering::AcqRel)
+}
+
+pub(super) fn take_models_halted() -> bool {
+    MODELS_HALTED.swap(false, Ordering::AcqRel)
+}
+
+fn halt_models(pipe: &mut Pipeline, due: &mut Option<(Instant, u64)>) {
+    let pending = due.take().is_some();
+    let Some((id, _)) = pipe.models.take() else {
+        if pending {
+            MODELS_HALTED.store(true, Ordering::Release);
+        }
+        return;
+    };
+    if let (Some(link), Some((mounts, threads))) = (pipe.link.as_mut(), pipe.setup.clone()) {
+        link.cancel(id);
+        let never = || false;
+        if link.send(Request::Setup { mounts, threads }, &[], &never).is_err() {
+            pipe.reset();
+        }
+    }
+    MODELS_HALTED.store(true, Ordering::Release);
+    log::info!("lighting preview: the lighting of the props {id} stops until the preview is shown again");
+}
 
 pub(crate) struct Job {
     pub id: u64,
@@ -45,7 +93,7 @@ pub(crate) struct Job {
     pub models: bool,
     pub exact: bool,
     pub quiet: bool,
-    pub urgent: bool,
+    pub priority: BakePriority,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -133,6 +181,7 @@ type Stash = Vec<(Reply, Vec<u8>)>;
 #[derive(Default)]
 pub(crate) struct Pipeline {
     link: Option<Link>,
+    spawned: usize,
     setup: Option<(Mounts, usize)>,
     geometry: Option<GeometryState>,
     points: HashMap<u32, hp_vmf::Entity>,
@@ -158,11 +207,16 @@ impl Pipeline {
             log::warn!("lighting preview: the lighting process stopped, starting it again");
             self.reset();
         }
+        if self.link.as_ref().is_some_and(Link::is_process) && self.spawned != threads {
+            log::info!("lighting preview: {threads} baking threads asked, the lighting process starts again");
+            self.reset();
+        }
         if self.link.is_none() {
             let link = match exe {
                 Some(exe) => Link::spawn(exe, threads).map_err(|e| format!("cannot start the lighting: {e}"))?,
                 None => Link::local(),
             };
+            self.spawned = threads;
             self.link = Some(link);
         }
         self.link.as_mut().ok_or_else(|| "no lighting process".to_owned())
@@ -186,11 +240,13 @@ pub(crate) struct Worker {
     tx: Option<Sender<Command>>,
     rx: Receiver<Msg>,
     wanted: Arc<AtomicU64>,
+    priority: Arc<AtomicU8>,
     info: Arc<std::sync::Mutex<HostInfo>>,
 }
 
 enum Command {
     Bake(Box<Job>),
+    StopModels,
     Costs { id: u64, options: LightOptions },
     Release,
 }
@@ -207,10 +263,12 @@ impl Worker {
         let (out, rx) = crossbeam_channel::unbounded();
         let wanted = Arc::new(AtomicU64::new(0));
         let w = wanted.clone();
+        let priority = Arc::new(AtomicU8::new(priority_code(BakePriority::BelowNormal)));
+        let level = priority.clone();
         let info: Arc<std::sync::Mutex<HostInfo>> = Arc::default();
         let shared = info.clone();
         std::thread::Builder::new().name("hp-light-bake".to_owned()).stack_size(BAKE_STACK).spawn(move || {
-            super::memory::lower_thread_memory_priority();
+            super::memory::lower_thread_priority();
             let mut pipe = Pipeline::default();
             let mut due: Option<(Instant, u64)> = None;
             loop {
@@ -225,6 +283,9 @@ impl Worker {
                     Err(crossbeam_channel::RecvTimeoutError::Disconnected) => break,
                 };
                 pump(&mut pipe, &out, &*wake);
+                if (pipe.models.is_some() || due.is_some()) && window_away() {
+                    halt_models(&mut pipe, &mut due);
+                }
                 let Some(command) = command else {
                     if let Some((at, id)) = due
                         && Instant::now() >= at
@@ -245,6 +306,10 @@ impl Worker {
                         let costs = costs(&mut pipe, id, options);
                         let _ = out.send(Msg::Costs { job: id, costs });
                         wake();
+                        continue;
+                    }
+                    Command::StopModels => {
+                        halt_models(&mut pipe, &mut due);
                         continue;
                     }
                     Command::Release => {
@@ -268,7 +333,17 @@ impl Worker {
                 let models = job.models;
                 let lit_only = job.lit;
                 let quiet = job.quiet;
-                let ctx = Ctx { id, wanted: &w, out: &out, wake: &*wake, start: Instant::now(), faces: 0, quiet };
+                let ctx = Ctx {
+                    id,
+                    wanted: &w,
+                    out: &out,
+                    wake: &*wake,
+                    start: Instant::now(),
+                    faces: 0,
+                    quiet,
+                    priority: &level,
+                    woke: AtomicU64::new(0),
+                };
                 let task = || hp_editor::background::run(|| run(*job, &ctx, &mut pipe));
                 let outcome = match catch_unwind(AssertUnwindSafe(task)) {
                     Ok(o) => o,
@@ -297,10 +372,11 @@ impl Worker {
                 }
             }
         })?;
-        Ok(Self { tx: Some(tx), rx, wanted, info })
+        Ok(Self { tx: Some(tx), rx, wanted, priority, info })
     }
 
     pub fn submit(&self, job: Job) {
+        self.priority.store(priority_code(job.priority), Ordering::Release);
         self.wanted.store(job.id, Ordering::Release);
         if let Some(tx) = &self.tx {
             let _ = tx.send(Command::Bake(Box::new(job)));
@@ -315,6 +391,21 @@ impl Worker {
 
     pub fn stop(&self) {
         self.wanted.store(0, Ordering::Release);
+    }
+
+    pub fn stop_models(&self) {
+        if let Some(tx) = &self.tx {
+            let _ = tx.send(Command::StopModels);
+        }
+    }
+
+    pub fn set_priority(&self, priority: BakePriority) {
+        self.priority.store(priority_code(priority), Ordering::Release);
+    }
+
+    #[cfg(test)]
+    pub fn priority(&self) -> BakePriority {
+        priority_of(self.priority.load(Ordering::Acquire))
     }
 
     pub fn release(&self) {
@@ -348,11 +439,37 @@ struct Ctx<'a> {
     start: Instant,
     faces: usize,
     quiet: bool,
+    priority: &'a AtomicU8,
+    woke: AtomicU64,
+}
+
+pub(super) fn priority_code(p: BakePriority) -> u8 {
+    match p {
+        BakePriority::Idle => 0,
+        BakePriority::BelowNormal => 1,
+        BakePriority::Normal => 2,
+    }
+}
+
+pub(super) fn priority_of(code: u8) -> BakePriority {
+    match code {
+        0 => BakePriority::Idle,
+        2 => BakePriority::Normal,
+        _ => BakePriority::BelowNormal,
+    }
+}
+
+pub(super) fn wake_due(last_ms: u64, now_ms: u64) -> bool {
+    last_ms == 0 || now_ms.saturating_sub(last_ms) >= WAKE_EVERY_MS
 }
 
 impl Ctx<'_> {
     fn cancelled(&self) -> bool {
         self.wanted.load(Ordering::Acquire) != self.id
+    }
+
+    fn priority(&self) -> BakePriority {
+        priority_of(self.priority.load(Ordering::Acquire))
     }
 
     fn progress(&self, phase: BakePhase, fraction: f32) {
@@ -363,7 +480,9 @@ impl Ctx<'_> {
             elapsed: self.start.elapsed().as_secs_f32(),
             faces: self.faces,
         });
-        if !self.quiet {
+        let now = (self.start.elapsed().as_millis() as u64).max(1);
+        if !self.quiet && wake_due(self.woke.load(Ordering::Relaxed), now) {
+            self.woke.store(now, Ordering::Relaxed);
             (self.wake)();
         }
     }
@@ -547,6 +666,15 @@ enum Wait {
 fn wait(link: &mut Link, stash: &mut Stash, job: u64, ctx: &Ctx<'_>, phases: &mut dyn FnMut(&Reply, &[u8])) -> Wait {
     let mut cancel_sent: Option<Instant> = None;
     loop {
+        link.set_priority(ctx.priority());
+        if cancel_sent.is_none()
+            && !ctx.cancelled()
+            && window_away()
+            && ctx.wanted.compare_exchange(ctx.id, 0, Ordering::AcqRel, Ordering::Acquire).is_ok()
+        {
+            STOPPED_AWAY.store(true, Ordering::Release);
+            log::info!("lighting preview: the window is away, the bake stops until it comes back");
+        }
         if cancel_sent.is_none() && ctx.cancelled() {
             if !link.is_process() {
                 return Wait::Cancelled;
@@ -637,7 +765,7 @@ fn run_inner(job: Job, ctx: &Ctx<'_>, pipe: &mut Pipeline, stash: &mut Stash) ->
     }
     let job_exact = job.exact;
     if let Some(link) = pipe.link.as_mut() {
-        link.set_urgent(job.urgent);
+        link.set_priority(ctx.priority());
     }
     let Job {
         id, map, points, solids, hdr, layer_size, max_layers, coarsen: factor, lit, focus, stream, shown, ..
@@ -752,7 +880,7 @@ fn run_inner(job: Job, ctx: &Ctx<'_>, pipe: &mut Pipeline, stash: &mut Stash) ->
         let solids = state.solids.clone();
         need.then(|| {
             std::thread::Builder::new().name("hp-light-geometry".to_owned()).spawn(move || {
-                super::memory::lower_thread_memory_priority();
+                super::memory::lower_thread_priority();
                 bsp.map(|bsp| bsp::geometry(&bsp, &sides, &solids))
             })
         })
@@ -876,7 +1004,7 @@ fn start_models(pipe: &mut Pipeline, id: u64) {
         return;
     }
     let Some(link) = pipe.link.as_mut() else { return };
-    link.set_urgent(false);
+    link.set_priority(BakePriority::Idle);
     let hdr = options.hdr;
     let never = || false;
     if link.send(Request::Models { job: id, options }, &[], &never).is_err() {

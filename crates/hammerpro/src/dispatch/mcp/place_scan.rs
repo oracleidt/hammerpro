@@ -1,3 +1,5 @@
+use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use glam::{DMat4, DVec3};
@@ -21,6 +23,8 @@ pub(crate) const MAX_DROP: f64 = 4096.0;
 const QUICK_AXES: usize = 1;
 const NEAR_DROP: f64 = 256.0;
 const PARALLEL_FROM: usize = 64;
+const DIRTY_PAD: f64 = 16.0;
+const MAX_DIRTY: usize = 4096;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum Class {
@@ -141,7 +145,10 @@ pub(super) fn scan(world: &mut World, cands: &[usize], o: &ScanOpts, cancel: Opt
         let solo = class_move(class, o.max_sink);
         Some(Finding { idx: i, class, settle, solo, chain: solo, deps: Vec::new(), overlaps })
     };
-    let found: Vec<Option<Finding>> = if order.len() >= PARALLEL_FROM {
+    let found: Vec<Option<Finding>> = if order.len() >= PARALLEL_FROM && rayon::current_thread_index().is_some() {
+        use rayon::prelude::*;
+        order.par_iter().map(|&i| one(i)).collect()
+    } else if order.len() >= PARALLEL_FROM {
         use rayon::prelude::*;
         let threads = std::thread::available_parallelism().map_or(2, |n| (n.get() / 2).max(1));
         match rayon::ThreadPoolBuilder::new().num_threads(threads).thread_name(|i| format!("hp-placement-{i}")).build()
@@ -508,10 +515,142 @@ pub(crate) fn prepare_map_scan(state: &AppState) -> MapScan {
     }
 }
 
+pub(crate) struct ScanMemory {
+    prints: HashMap<Key, u64>,
+    bounds: HashMap<Key, Aabb>,
+    problems: Vec<Problem>,
+    skies: Vec<DVec3>,
+    overlaps: bool,
+    pub(crate) scanned: usize,
+}
+
+fn fingerprint_of(o: &Obj) -> u64 {
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    (o.key, o.kind, o.class.as_str(), o.pending, o.scale.to_bits()).hash(&mut h);
+    o.angles.to_array().map(f64::to_bits).hash(&mut h);
+    o.origin.map(|p| p.to_array().map(f64::to_bits)).hash(&mut h);
+    [o.hint.min, o.hint.max].map(|v| v.to_array().map(f64::to_bits)).hash(&mut h);
+    for m in &o.models {
+        (m.path.as_str(), m.body, m.matrix.to_cols_array().map(f64::to_bits)).hash(&mut h);
+        m.fallback.map(|b| [b.min, b.max].map(|v| v.to_array().map(f64::to_bits))).hash(&mut h);
+    }
+    for mesh in &o.meshes {
+        mesh.verts.len().hash(&mut h);
+        mesh.tris.hash(&mut h);
+        for v in &mesh.verts {
+            v.to_array().map(f64::to_bits).hash(&mut h);
+        }
+    }
+    o.solid_ids.hash(&mut h);
+    h.finish()
+}
+
+fn refs_of(o: &Obj) -> Vec<ObjRef> {
+    let mut out = o.refs.clone();
+    match o.key {
+        Key::Entity(id) => out.push(ObjRef::Entity(id)),
+        Key::Solid(id) => out.push(ObjRef::Solid(id)),
+        Key::Group(_) => {}
+    }
+    out
+}
+
+struct Plan {
+    rescan: Vec<usize>,
+    kept: Vec<Problem>,
+}
+
+fn plan(world: &World, idx: &[usize], prints: &HashMap<Key, u64>, old: &ScanMemory) -> Option<Plan> {
+    let changed: HashSet<Key> = prints
+        .iter()
+        .filter(|(k, p)| old.prints.get(k) != Some(p))
+        .map(|(k, _)| *k)
+        .chain(old.prints.keys().filter(|k| !prints.contains_key(k)).copied())
+        .collect();
+    let index: HashMap<Key, usize> = world.objs.iter().enumerate().map(|(i, o)| (o.key, i)).collect();
+    let mut dirty: Vec<Aabb> = Vec::new();
+    for k in &changed {
+        dirty.extend(old.bounds.get(k).copied());
+        dirty.extend(index.get(k).map(|&i| world.bounds_of(i)));
+        if dirty.len() > MAX_DIRTY {
+            return None;
+        }
+    }
+    let dirty: Vec<Aabb> = dirty.into_iter().filter(|b| b.min.is_finite() && b.max.is_finite()).collect();
+    let mut rescan: HashSet<usize> = idx
+        .iter()
+        .copied()
+        .filter(|&i| {
+            changed.contains(&world.objs[i].key) || {
+                let reach = column(&world.bounds_of(i), MAX_DROP).expand(DIRTY_PAD);
+                dirty.iter().any(|d| reach.intersects(d))
+            }
+        })
+        .collect();
+    let owner: HashMap<ObjRef, usize> =
+        world.objs.iter().enumerate().flat_map(|(i, o)| refs_of(o).into_iter().map(move |r| (r, i))).collect();
+    let candidates: HashSet<usize> = idx.iter().copied().collect();
+    let mut kept = Vec::new();
+    for _ in 0..2 {
+        let touched: HashSet<ObjRef> = rescan
+            .iter()
+            .flat_map(|&i| refs_of(&world.objs[i]))
+            .chain(changed.iter().filter_map(|k| index.get(k)).flat_map(|&i| refs_of(&world.objs[i])))
+            .collect();
+        kept.clear();
+        let mut more: Vec<usize> = Vec::new();
+        for p in &old.problems {
+            let gone = p.objects.iter().any(|r| !owner.contains_key(r) || touched.contains(r));
+            if gone {
+                more.extend(p.objects.iter().filter_map(|r| owner.get(r).copied()).filter(|i| candidates.contains(i)));
+            } else {
+                kept.push(p.clone());
+            }
+        }
+        let before = rescan.len();
+        rescan.extend(more);
+        if rescan.len() == before {
+            break;
+        }
+    }
+    let mut rescan: Vec<usize> = rescan.into_iter().collect();
+    rescan.sort_unstable();
+    Some(Plan { rescan, kept })
+}
+
 pub(crate) fn run_map_scan(job: MapScan, fs: Option<&hp_fs::GameFs>, cancel: &AtomicBool) -> Option<Vec<Problem>> {
+    run_map_scan_since(job, fs, cancel, None).map(|(problems, _)| problems)
+}
+
+pub(crate) fn run_map_scan_since(
+    job: MapScan,
+    fs: Option<&hp_fs::GameFs>,
+    cancel: &AtomicBool,
+    old: Option<&ScanMemory>,
+) -> Option<(Vec<Problem>, ScanMemory)> {
     let MapScan { env, cands, skies, overlaps, .. } = job;
+    let prints: HashMap<Key, u64> = env.iter().map(|o| (o.key, fingerprint_of(o))).collect();
+    let empty = |prints| ScanMemory {
+        prints,
+        bounds: HashMap::new(),
+        problems: Vec::new(),
+        skies: skies.clone(),
+        overlaps,
+        scanned: 0,
+    };
     if cands.is_empty() {
-        return Some(Vec::new());
+        return Some((Vec::new(), empty(prints)));
+    }
+    if let Some(m) = old.filter(|m| m.overlaps == overlaps && m.skies == skies && m.prints == prints) {
+        let memory = ScanMemory {
+            prints,
+            bounds: m.bounds.clone(),
+            problems: m.problems.clone(),
+            skies: skies.clone(),
+            overlaps,
+            scanned: 0,
+        };
+        return Some((m.problems.clone(), memory));
     }
     let started = std::time::Instant::now();
     let mut world = World::build_chunked(env, fs, MeshChoice::Render);
@@ -530,16 +669,27 @@ pub(crate) fn run_map_scan(job: MapScan, fs: Option<&hp_fs::GameFs>, cancel: &At
     let rooms = sky_rooms(&world, &skies);
     let idx = outside_sky(&world, idx, &rooms);
     let opts = ScanOpts { overlaps, skip_hanging: true, quick: true, ..ScanOpts::default() };
-    let findings = scan(&mut world, &idx, &opts, Some(cancel));
+    let reuse = old.filter(|m| m.overlaps == overlaps && m.skies == skies).and_then(|m| plan(&world, &idx, &prints, m));
+    let (todo, kept) = match reuse {
+        Some(p) => (p.rescan, p.kept),
+        None => (idx.clone(), Vec::new()),
+    };
+    let findings = scan(&mut world, &todo, &opts, Some(cancel));
     if cancel.load(Ordering::Relaxed) {
         return None;
     }
     log::info!(
-        "placement check: {} props, world built in {built} ms, scanned in {} ms",
+        "placement check: {} of {} props scanned ({} results kept), world built in {built} ms, scanned in {} ms",
+        todo.len(),
         idx.len(),
+        kept.len(),
         started.elapsed().as_millis() - built
     );
-    Some(problems(&world, &findings, &opts))
+    let mut found = kept;
+    found.extend(problems(&world, &findings, &opts));
+    let bounds: HashMap<Key, Aabb> = world.objs.iter().enumerate().map(|(i, o)| (o.key, world.bounds_of(i))).collect();
+    let memory = ScanMemory { prints, bounds, problems: found.clone(), skies, overlaps, scanned: todo.len() };
+    Some((found, memory))
 }
 
 pub(crate) fn scan_now(state: &mut AppState) {

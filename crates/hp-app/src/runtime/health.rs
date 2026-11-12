@@ -122,9 +122,10 @@ impl HealthRuntime {
         let live = state.settings.health.live_checks;
         let leak = state.settings.health.live_leak_check || state.runtime.health.leak_requested;
         let force = std::mem::take(&mut state.runtime.health.recheck);
+        let pace = engine::Pace { force, ..Self::pace(state) };
         let AppState { doc, assets, runtime, .. } = state;
         let rt = &mut runtime.health;
-        let tick = rt.engine.tick(doc, assets.as_mut(), profile, live, leak, force);
+        let tick = rt.engine.tick(doc, assets.as_mut(), profile, live, leak, pace);
         rt.profile = profile;
         let mut changed = false;
         if let Some(c) = tick.checks {
@@ -148,6 +149,15 @@ impl HealthRuntime {
             rt.merge();
         }
         tick.busy
+    }
+
+    pub fn user_busy(state: &AppState) -> bool {
+        state.doc.in_transaction() || state.runtime.selection.drag.is_some() || crate::checks::window_away()
+    }
+
+    fn pace(state: &AppState) -> engine::Pace {
+        crate::checks::set_pause_minimized(state.settings.health.pause_minimized);
+        engine::Pace { delay: state.settings.health.check_delay(), hold: Self::user_busy(state), force: false }
     }
 
     pub fn check_now(state: &mut AppState) {
@@ -268,6 +278,30 @@ impl HealthRuntime {
             rt.leak_requested = true;
             rt.recheck = true;
         }
+    }
+
+    pub fn seal_input(state: &mut AppState) -> hp_editor::limits::leak::LeakInput {
+        let mut cache: std::collections::HashMap<String, hp_editor::limits::checks::MaterialFacts> =
+            std::collections::HashMap::new();
+        for n in state.doc.scene().solids().values() {
+            for side in &n.solid.sides {
+                if cache.contains_key(&side.material) {
+                    continue;
+                }
+                let facts = match state.assets.material_info(&side.material) {
+                    Some(info) => knowledge::material_facts(&info),
+                    None => hp_editor::limits::checks::MaterialFacts::guess(&side.material),
+                };
+                cache.insert(side.material.clone(), facts);
+            }
+        }
+        state.doc.leak_input(&|m: &str| {
+            cache.get(m).copied().unwrap_or_else(|| hp_editor::limits::checks::MaterialFacts::guess(m))
+        })
+    }
+
+    pub fn current_leak_report(state: &AppState) -> Option<&hp_editor::limits::leak::LeakReport> {
+        state.runtime.health.leak.as_ref().filter(|l| l.serial == state.doc.content_serial()).map(|l| &l.report)
     }
 
     pub fn detail_candidates(&self) -> &[ObjRef] {

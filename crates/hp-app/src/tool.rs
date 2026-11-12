@@ -295,6 +295,7 @@ pub struct ScriptedStroke {
     pub points: Vec<glam::DVec3>,
     pub invert: bool,
     pub smooth: bool,
+    pub boost: bool,
     pub seconds_per_sample: f32,
     pub eye: Option<glam::DVec3>,
     pub forward: Option<glam::DVec3>,

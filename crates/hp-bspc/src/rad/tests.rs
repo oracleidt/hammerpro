@@ -1458,6 +1458,148 @@ fn bounced_and_ambient_light_pass_through_water_and_glass() {
         let bsp = pool_room(Some(fill));
         let (c, a) = (ceiling(&bsp), ambient_below(&bsp, above));
         assert!((0.75..1.35).contains(&(c / dry_ceiling)), "{fill}: ceiling {c} dry {dry_ceiling}");
-        assert!((0.75..1.35).contains(&(a / dry_ambient)), "{fill}: ambient {a} dry {dry_ambient}");
+        let most = if fill.contains("WATER") { 1.8 } else { 1.35 };
+        assert!((0.75..most).contains(&(a / dry_ambient)), "{fill}: ambient {a} dry {dry_ambient}");
     }
+}
+
+fn style_luxel_at(bsp: &[u8], p: DVec3, normal: DVec3, style: u8) -> Option<Vec3A> {
+    let src = hp_bsp::Bsp::from_vec(bsp.to_vec()).ok()?;
+    let map = MapData::read(&src).ok()?;
+    let light = src.lump(lump::LIGHTING).ok()?.into_owned();
+    let faces = src.lump(lump::FACES).ok()?.into_owned();
+    for f in lit_faces(&map, 45.0).into_iter().flatten() {
+        if f.normal.dot(normal) < 0.99 || (p.dot(f.normal) - f.poly[0].dot(f.normal)).abs() > 0.5 {
+            continue;
+        }
+        let c = f.luxel_coords(p);
+        if !inside(&f.poly2, c) {
+            continue;
+        }
+        let rec = &faces[f.face * 56..f.face * 56 + 56];
+        let Some(slot) = rec[16..20].iter().take_while(|s| **s != 255).position(|s| *s == style) else {
+            return Some(Vec3A::ZERO);
+        };
+        let ofs = i32_at(&faces, f.face * 56 + 20) as usize;
+        let (s, t) = ((c.x.round() as usize).min(f.w - 1), (c.y.round() as usize).min(f.h - 1));
+        let at = ofs + (slot * f.w * f.h + t * f.w + s) * 4;
+        let b = light.get(at..at + 4)?;
+        return Some(decode([b[0], b[1], b[2], b[3]]));
+    }
+    None
+}
+
+#[test]
+fn switchable_lights_bounce_like_static_ones_and_keep_their_falloff() {
+    let spot = |name: &str| {
+        format!(
+            "entity\n{{\n\t\"id\" \"600\"\n\t\"classname\" \"light_spot\"\n\t\"origin\" \"400 128 240\"\n\t\"_light\" \"255 255 255 900\"\n\t\"_inner_cone\" \"15\"\n\t\"_cone\" \"25\"\n\t\"pitch\" \"-90\"\n\t\"angles\" \"-90 0 0\"\n\t\"_fifty_percent_distance\" \"160\"\n\t\"_zero_percent_distance\" \"400\"\n\t\"_hardfalloff\" \"1\"\n{name}}}\n"
+        )
+    };
+    let opts = RadOptions { ldr: true, hdr: false, ..quick() };
+    let lit = |extra: &str| {
+        let bsp = compile_vmf(&room("DEV/DEV_MEASUREGENERIC01B", &spot(extra)));
+        light_bsp(&bsp, &opts, &mut |_| {}).expect("light")
+    };
+    let fixed = lit("");
+    let named = lit("\t\"targetname\" \"lamp\"\n");
+    let ceiling = DVec3::new(400.0, 128.0, 256.0);
+    let floor = DVec3::new(400.0, 128.0, 0.0);
+    let fixed_ceiling = style_luxel_at(&fixed, ceiling, DVec3::NEG_Z, 0).unwrap().max_element();
+    let named_ceiling = style_luxel_at(&named, ceiling, DVec3::NEG_Z, 32).unwrap().max_element();
+    assert!(fixed_ceiling > 0.5, "the static light bounces onto the ceiling: {fixed_ceiling}");
+    assert!(
+        (named_ceiling - fixed_ceiling).abs() <= fixed_ceiling * 0.35,
+        "the switchable light bounces in its own style like the static one: {named_ceiling} vs {fixed_ceiling}"
+    );
+    assert!(style_luxel_at(&named, ceiling, DVec3::NEG_Z, 0).unwrap().max_element() < 0.05);
+    let fixed_floor = style_luxel_at(&fixed, floor, DVec3::Z, 0).unwrap().max_element();
+    let named_floor = style_luxel_at(&named, floor, DVec3::Z, 32).unwrap().max_element();
+    assert!((named_floor - fixed_floor).abs() <= fixed_floor * 0.05, "direct light: {named_floor} vs {fixed_floor}");
+    let far =
+        |bsp: &[u8], style| style_luxel_at(bsp, DVec3::new(20.0, 20.0, 0.0), DVec3::Z, style).unwrap().max_element();
+    assert!(
+        (far(&named, 32) - far(&fixed, 0)).abs() <= far(&fixed, 0) * 0.35 + 0.2,
+        "past the zero percent distance only bounced light"
+    );
+}
+
+fn disp_block(id: &mut u32, lo: DVec3, hi: DVec3, mat: &str) -> String {
+    let solid = block(id, lo, hi, mat, mat);
+    let n = 9;
+    let row = |v: &str| vec![v; n].join(" ");
+    let mut info = format!(
+        "\t\t\tdispinfo\n\t\t\t{{\n\t\t\t\t\"power\" \"3\"\n\t\t\t\t\"startposition\" \"[{} {} {}]\"\n\t\t\t\t\"flags\" \"0\"\n\t\t\t\t\"elevation\" \"0\"\n\t\t\t\t\"subdiv\" \"0\"\n",
+        lo.x, lo.y, hi.z
+    );
+    for (name, v) in
+        [("normals", "0 0 1"), ("distances", "0"), ("offsets", "0 0 0"), ("offset_normals", "0 0 1"), ("alphas", "0")]
+    {
+        info += &format!("\t\t\t\t{name}\n\t\t\t\t{{\n");
+        for r in 0..n {
+            info += &format!("\t\t\t\t\t\"row{r}\" \"{}\"\n", row(v));
+        }
+        info += "\t\t\t\t}\n";
+    }
+    info += "\t\t\t}\n";
+    let first_side_end = solid.find("\t\t}\n").expect("a side");
+    format!("{}{}{}", &solid[..first_side_end], info, &solid[first_side_end..])
+}
+
+fn shelf_room(disp: bool) -> String {
+    let mut id = 1;
+    let w = "DEV/DEV_MEASUREGENERIC01B";
+    let mut solids = String::new();
+    let t = 16.0;
+    let (lo, hi) = (DVec3::ZERO, DVec3::new(512.0, 512.0, 384.0));
+    solids += &block(&mut id, DVec3::new(lo.x - t, lo.y - t, lo.z - t), DVec3::new(hi.x + t, hi.y + t, lo.z), w, w);
+    solids += &block(&mut id, DVec3::new(lo.x - t, lo.y - t, hi.z), DVec3::new(hi.x + t, hi.y + t, hi.z + t), w, w);
+    solids += &block(&mut id, DVec3::new(lo.x - t, lo.y, lo.z), DVec3::new(lo.x, hi.y, hi.z), w, w);
+    solids += &block(&mut id, DVec3::new(hi.x, lo.y, lo.z), DVec3::new(hi.x + t, hi.y, hi.z), w, w);
+    solids += &block(&mut id, DVec3::new(lo.x - t, lo.y - t, lo.z), DVec3::new(hi.x + t, lo.y, hi.z), w, w);
+    solids += &block(&mut id, DVec3::new(lo.x - t, hi.y, lo.z), DVec3::new(hi.x + t, hi.y + t, hi.z), w, w);
+    let (a, b) = (DVec3::new(128.0, 128.0, 112.0), DVec3::new(384.0, 384.0, 128.0));
+    solids += &if disp { disp_block(&mut id, a, b, w) } else { block(&mut id, a, b, w, w) };
+    let spot = "entity\n{\n\t\"id\" \"600\"\n\t\"classname\" \"light_spot\"\n\t\"origin\" \"256 256 370\"\n\t\"_light\" \"255 255 255 3000\"\n\t\"_inner_cone\" \"40\"\n\t\"_cone\" \"50\"\n\t\"pitch\" \"-90\"\n\t\"angles\" \"-90 0 0\"\n}\n";
+    format!(
+        "versioninfo\n{{\n\t\"editorversion\" \"400\"\n\t\"mapversion\" \"1\"\n}}\nworld\n{{\n\t\"id\" \"1\"\n\t\"mapversion\" \"1\"\n\t\"classname\" \"worldspawn\"\n\t\"skyname\" \"sky_day01_01\"\n{solids}}}\n{spot}entity\n{{\n\t\"id\" \"9000\"\n\t\"classname\" \"info_player_start\"\n\t\"origin\" \"32 32 16\"\n}}\n"
+    )
+}
+
+#[test]
+fn the_back_of_a_displacement_blocks_bounced_light_like_a_brush() {
+    let opts = RadOptions { ldr: true, hdr: false, ..quick() };
+    let under = |disp: bool| {
+        let lit = light_bsp(&compile_vmf(&shelf_room(disp)), &opts, &mut |_| {}).expect("light");
+        style_luxel_at(&lit, DVec3::new(256.0, 256.0, 0.0), DVec3::Z, 0).unwrap().max_element()
+    };
+    let (brush, disp) = (under(false), under(true));
+    assert!(brush > 0.0, "the floor under the shelf gets some bounced light: {brush}");
+    assert!(
+        disp <= brush * 1.3 + 0.5,
+        "the lit top of a displacement does not shine through its back: {disp} under the displacement, {brush} under a brush"
+    );
+}
+
+#[test]
+fn a_water_surface_reflects_bounced_light_back_under_it_like_vrad() {
+    let floor = |bsp: &[u8]| luxel_at(bsp, DVec3::new(64.0, 64.0, 0.0), DVec3::Z, false).expect("floor luxel").x;
+    let (dry, wet) = (floor(&pool_room(None)), floor(&pool_room(Some("NATURE/WATER_TEST"))));
+    assert!(wet > dry * 1.15, "light bounced back down by the water surface: {wet} with water, {dry} without");
+}
+
+#[test]
+fn switchable_bounce_can_follow_vrad() {
+    let spot = "entity\n{\n\t\"id\" \"600\"\n\t\"classname\" \"light_spot\"\n\t\"origin\" \"400 128 240\"\n\t\"_light\" \"255 255 255 900\"\n\t\"_inner_cone\" \"15\"\n\t\"_cone\" \"25\"\n\t\"pitch\" \"-90\"\n\t\"angles\" \"-90 0 0\"\n\t\"targetname\" \"lamp\"\n}\n";
+    let bsp = compile_vmf(&room("DEV/DEV_MEASUREGENERIC01B", spot));
+    let ceiling = DVec3::new(400.0, 128.0, 256.0);
+    let mut lines = Vec::new();
+    let vrad = RadOptions { ldr: true, hdr: false, no_style_bounce: true, ..quick() };
+    let lit = light_bsp(&bsp, &vrad, &mut |l| lines.push(l.to_owned())).expect("light");
+    assert_eq!(style_luxel_at(&lit, ceiling, DVec3::NEG_Z, 32).unwrap(), Vec3A::ZERO, "no bounce layer like VRAD");
+    assert!(lines.iter().any(|l| l.contains("-nostylebounce")), "{lines:?}");
+    let floor = style_luxel_at(&lit, DVec3::new(400.0, 128.0, 0.0), DVec3::Z, 32).unwrap().max_element();
+    assert!(floor > 1.0, "the direct light keeps its style: {floor}");
+    let ours = light_bsp(&bsp, &RadOptions { ldr: true, hdr: false, ..quick() }, &mut |_| {}).expect("light");
+    assert!(style_luxel_at(&ours, ceiling, DVec3::NEG_Z, 32).unwrap().max_element() > 0.1);
 }

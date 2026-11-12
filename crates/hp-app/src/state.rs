@@ -712,6 +712,7 @@ impl AppState {
         let mut doc = hp_editor::Document::new_empty();
         doc.options_mut().texture_lock = settings.edit.texture_lock;
         doc.options_mut().texture_scale_lock = settings.edit.texture_scale_lock;
+        doc.options_mut().keep_displacements_on_cut = settings.edit.keep_displacements_on_cut;
         Self {
             settings,
             settings_dirty: false,
@@ -755,6 +756,7 @@ impl AppState {
     pub fn apply_selection_undo_setting(&mut self) {
         self.doc.set_record_selection(self.settings.edit.undo_restores_selection);
         self.doc.options_mut().new_brush_color = self.settings.edit.new_brush_color;
+        self.doc.options_mut().keep_displacements_on_cut = self.settings.edit.keep_displacements_on_cut;
     }
 
     pub fn notify(&mut self, severity: Severity, text: impl Into<String>) {

@@ -51,6 +51,8 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Quitter | `exit` |  |  |  |
 | Importer une carte de hauteur... | `import_heightmap` |  |  |  |
 | Exporter une carte de hauteur... | `export_heightmap` |  |  |  |
+| Importer des masques de blend... | `import_blend_masks` |  |  |  |
+| Exporter les masques de blend... | `export_blend_masks` |  |  |  |
 
 ## Menu Édition
 
@@ -206,6 +208,7 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Options d'affichage > Reflets des cubemaps | `toggle_cubemaps` |  |  |  |
 | Options d'affichage > Couleurs des objets en 2D | `toggle_object_colors_2d` |  |  |  |
 | Options d'affichage > Couleurs des objets en 3D filaire et plat | `toggle_object_colors_3d` |  |  |  |
+| Options d'affichage > Teinter les brushes func_detail | `toggle_detail_tint` |  |  |  |
 | Options d'affichage > Afficher les clusters visibles | `toggle_pvs` |  |  |  |
 | Options d'affichage > Afficher le nav mesh | `toggle_nav_mesh` |  |  |  |
 | Options d'affichage > Afficher les particules | `toggle_particles` |  |  |  |
@@ -255,6 +258,8 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Dégrouper | `ungroup` | `Ctrl+U` |  |  |
 | Lier à une entité | `tie_to_entity` | `Ctrl+T` |  |  |
 | Renvoyer au monde | `move_to_world` | `Ctrl+Maj+W` |  |  |
+| Transformer en func_detail | `convert_to_detail` | `Ctrl+Alt+D` |  |  |
+| Sélectionner les candidats func_detail... | `select_detail_candidates` |  |  |  |
 | Creuser (carve) | `carve` | `Ctrl+Maj+C` |  |  |
 | Rendre creux | `make_hollow` | `Ctrl+H` |  |  |
 | Fusionner en un solide convexe | `merge_convex` |  |  |  |
@@ -279,7 +284,6 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Extrusion interactive (E) | `extrude_interactive` | `E` |  |  |
 | Nodraw sur les faces cachées... | `nodraw_hidden_faces` |  |  |  |
 | Lier chacun à sa propre entité | `tie_each_to_entity` | `Ctrl+Maj+T` |  |  |
-| Convertir en func_detail | `convert_to_detail` |  |  |  |
 | Modifier la courbe | `curve_edit` |  |  |  |
 | Modifier la route | `road_edit` |  |  |  |
 | Générateur de trottoirs... | `road_sidewalk` |  |  |  |
@@ -313,6 +317,7 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Convertir les brushes en prop | `brushes_to_prop` |  |  |  |
 | Convertir le prop en brushes... | `prop_to_brushes` |  |  |  |
 | Générer le nav mesh | `generate_nav_mesh` |  |  |  |
+| Combiner des props... | `combine_props` |  |  |  |
 | Options des props (Propper)... | `propper_options` |  |  |  |
 | Éditeur de shaders... | `shader_editor` |  |  |  |
 | Éditeur de VTF... | `vtf_editor` |  |  |  |

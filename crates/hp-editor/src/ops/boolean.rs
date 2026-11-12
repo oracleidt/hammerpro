@@ -1,4 +1,4 @@
-use hp_geom::{ClipPiece, Plane, intersect_traced, union_pieces, validate_solid};
+use hp_geom::{ClipPiece, Plane, intersect_traced, keep_cut_displacements, union_pieces, validate_solid};
 use hp_vmf::Side;
 
 use super::csg::{derived_solid, record_side_ids};
@@ -69,16 +69,30 @@ impl Document {
             piece = p.compose(&piece.origins);
         }
         validate_solid(&piece.sides)?;
+        let mut pieces = if self.options.keep_displacements_on_cut {
+            keep_cut_displacements(&lists[0], vec![piece], &mut gen_side)
+        } else {
+            vec![piece]
+        };
         self.next_side_id = next;
         let first = ids[0];
         let mut side_ids: IdMap<Vec<Id>> = id_map(0);
-        record_side_ids(&lists[0], &[&piece], &mut side_ids);
+        let refs: Vec<&ClipPiece> = pieces.iter().collect();
+        record_side_ids(&lists[0], &refs, &mut side_ids);
         let others: Vec<ObjRef> = ids.iter().skip(1).map(|id| ObjRef::Solid(*id)).collect();
-        let mut solid =
-            self.scene.solids.get(&first).map(|n| n.solid.clone()).ok_or(EditError::NotFound(ObjRef::Solid(first)))?;
-        solid.sides = piece.sides;
+        let node = self.scene.solids.get(&first).ok_or(EditError::NotFound(ObjRef::Solid(first)))?;
+        let (mut solid, owner) = (node.solid.clone(), node.owner);
+        let template = solid.clone();
+        let extra: Vec<Vec<Side>> = pieces.drain(1..).map(|p| p.sides).collect();
+        solid.sides = pieces.remove(0).sides;
         self.tx("Intersect", |doc| {
             doc.update_solid(first, solid);
+            let mut created = Vec::with_capacity(extra.len());
+            for sides in extra {
+                let id = doc.alloc_object_id();
+                created.push((derived_solid(&template, id, sides), owner));
+            }
+            doc.add_solids(created);
             doc.remap_side_refs(&side_ids);
             doc.delete(&others)?;
             Ok(first)

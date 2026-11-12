@@ -1,5 +1,5 @@
 use egui::{RichText, Ui};
-use hp_app::extend::{StatusContext, StatusSegment, StatusSide, status_order};
+use hp_app::extend::{StatusContext, StatusFit, StatusSegment, StatusSide, status_order, status_priority};
 use hp_app::i18n::TrTable;
 use hp_app::settings::DisplayUnits;
 use hp_app::widgets::fmt_coord;
@@ -13,7 +13,7 @@ pub(super) fn segments() -> Vec<Box<dyn StatusSegment>> {
     vec![
         Box::new(Hint),
         Box::new(Selection::default()),
-        Box::new(Cursor),
+        Box::new(Cursor::default()),
         Box::new(Fps),
         Box::new(TextureLock),
         Box::new(Snap),
@@ -123,6 +123,10 @@ impl StatusSegment for Hint {
         status_order::HINT
     }
 
+    fn fit(&mut self, _ui: &Ui, _state: &AppState) -> Option<StatusFit> {
+        Some(StatusFit::flex(HINT_MIN_WIDTH).with_priority(status_priority::HINT))
+    }
+
     fn ui(&mut self, ui: &mut Ui, state: &mut AppState, cx: &mut StatusContext) {
         let hint = cx
             .tool_hint
@@ -153,7 +157,11 @@ impl StatusSegment for Selection {
     }
 
     fn width(&self) -> Option<f32> {
-        Some(340.0)
+        Some(SELECTION_WIDTH)
+    }
+
+    fn fit(&mut self, _ui: &Ui, _state: &AppState) -> Option<StatusFit> {
+        Some(StatusFit::shrinkable(SELECTION_MIN_WIDTH, SELECTION_WIDTH).with_priority(status_priority::SELECTION))
     }
 
     fn ui(&mut self, ui: &mut Ui, state: &mut AppState, _cx: &mut StatusContext) {
@@ -211,7 +219,43 @@ impl StatusSegment for Selection {
     }
 }
 
-struct Cursor;
+pub const HINT_MIN_WIDTH: f32 = 60.0;
+pub const SELECTION_WIDTH: f32 = 340.0;
+pub const SELECTION_MIN_WIDTH: f32 = 120.0;
+pub const CURSOR_WIDTH: f32 = 170.0;
+const CURSOR_TEMPLATE: &str = "-0000.00 -0000.00 -0000.00";
+
+pub fn cursor_text(p: Option<glam::DVec3>) -> String {
+    match p {
+        Some(p) => format!("⌖ {}", fmt_point(p)),
+        None => "⌖ -".to_owned(),
+    }
+}
+
+fn mono_width(ui: &Ui, text: &str) -> f32 {
+    egui::WidgetText::from(RichText::new(text).monospace().small())
+        .into_galley(ui, Some(egui::TextWrapMode::Extend), f32::INFINITY, egui::TextStyle::Small)
+        .size()
+        .x
+        .ceil()
+}
+
+#[derive(Default)]
+struct Cursor {
+    reserve: Option<(f32, f32)>,
+}
+
+impl Cursor {
+    fn reserved(&mut self, ui: &Ui, current: f32) -> f32 {
+        let base = mono_width(ui, &format!("⌖ {CURSOR_TEMPLATE}")).max(CURSOR_WIDTH);
+        let widest = match self.reserve {
+            Some((b, w)) if b == base => w.max(current),
+            _ => current,
+        };
+        self.reserve = Some((base, widest));
+        base.max(widest)
+    }
+}
 
 impl StatusSegment for Cursor {
     fn id(&self) -> &'static str {
@@ -227,18 +271,28 @@ impl StatusSegment for Cursor {
     }
 
     fn width(&self) -> Option<f32> {
-        Some(170.0)
+        Some(CURSOR_WIDTH)
+    }
+
+    fn fit(&mut self, ui: &Ui, state: &AppState) -> Option<StatusFit> {
+        let current = mono_width(ui, &cursor_text(state.hover_world));
+        let preferred = self.reserved(ui, current);
+        Some(StatusFit::shrinkable(current, preferred).with_priority(status_priority::CURSOR))
     }
 
     fn ui(&mut self, ui: &mut Ui, state: &mut AppState, _cx: &mut StatusContext) {
+        let text = cursor_text(state.hover_world);
         match state.hover_world {
-            Some(p) => {
-                ui.label(RichText::new(format!("⌖ {}", fmt_point(p))).monospace().small())
+            Some(_) => {
+                ui.add(egui::Label::new(RichText::new(text).monospace().small()).wrap_mode(egui::TextWrapMode::Extend))
                     .on_hover_text(t!("shell.status.cursor_tip"));
             }
             None => {
                 let weak = ui.visuals().weak_text_color();
-                ui.label(RichText::new("⌖ -").monospace().small().color(weak));
+                ui.add(
+                    egui::Label::new(RichText::new(text).monospace().small().color(weak))
+                        .wrap_mode(egui::TextWrapMode::Extend),
+                );
             }
         }
     }

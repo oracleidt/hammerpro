@@ -37,7 +37,7 @@ Through MCP, set defaults with `set_setting`, select the brushes and run `brushe
 
 ### Before you start
 
-- Garry's Mod must be configured (**Settings > Game**) or detected, and its studiomdl must exist (`bin/win64/studiomdl.exe`, else `bin/studiomdl.exe`): Propper compiles with it. Messages tell you when the game folder or studiomdl is missing.
+- Garry's Mod must be configured (**Settings > Game**) or detected, and a model compiler must exist: the one set in **Settings > Compile > Model compiler**, else the game's studiomdl (`bin/win64/studiomdl.exe`, else `bin/studiomdl.exe`). Messages tell you when the game folder or the compiler is missing.
 - Select the brushes and displacements that make the prop. Only their visible faces count; a selection without any gives "The selection has no visible faces to make a prop from".
 
 ### What happens
@@ -65,6 +65,33 @@ This window holds the options of "Convert brushes to a prop". The [model import]
 Each LOD from 1 to 6 has an **Automatic distance** checkbox. Disable it to enter its own switch value, including decimals, or enable it to restore automatic sizing. The last levels can be used when a complex model generates extra LODs. Values are saved in `lab.model_lod.distances` (`0` means automatic), shared with model import, and exported in increasing order. A lower or equal threshold is raised above the previous one. These are Source `$lod` thresholds; the actual camera distance also depends on FOV and screen resolution.
 
 Automatic thresholds double at each level. The simplification keeps texture seams, material borders, holes and the silhouette: flat areas are reduced first. The window also recalls how collision and blend materials are handled. **Close** or `Escape` closes it.
+
+**Model compiler.** Propper, Combine props and **Compile a QC...** of the model browser use the program set in **Settings > Compile > Model compiler** (`compile.model_compiler`, absent: the game's studiomdl) with `-game <folder> -nop4 -verbose`, the extra arguments of `compile.model_compiler_args`, then the QC file. NekoMDL is a drop in studiomdl replacement and works as is (its extras, such as `-maxbones 128`, go in the arguments). The exit code decides success, and the console shows the compiler output. When the program set there no longer exists, the message names it. The [model import](model-import.md) has its own built in compiler and never calls it. Through MCP, `set_model_compiler` reads it and changes it with `confirm: true` (`set_setting` refuses program paths). Automated runs (`--script`) never compile models.
+
+## Combine props
+
+**Tools > Placement and props > Combine props...** (also in the right click menu of the views, enabled when two or more `prop_static` are selected) merges the selected `prop_static` into one new static model, like Propper++: fewer draw calls, because the engine draws one mesh per material of the new model instead of one per prop and material.
+
+The window shows the number of props, the triangles, the draw calls before and after, and the collision pieces, and lets you set:
+
+| Option | What it does |
+|---|---|
+| **Model** | Path under `models/`, default `hammerpro/combined/<map>_<hash>`. |
+| **Destination** | Content folder the model is exported to, default the game folder (same as Propper). |
+| **Origin** | **Center** of the selection or **Bottom** (bottom center, handy for drop to floor). |
+| **Collision** | Merge the collision of the props: the convex pieces of each `.phy`, or a convex hull of the mesh when a model has none. Props with `solid 0` add no collision. |
+| **Collision pieces (max)** | Above this count (default 32, at most 128), the pieces of each prop, then of nearby props, are merged into convex hulls. |
+| **Keep the originals (hidden)** | The original props go to the hidden visgroup `Combined props (originals)` instead of being deleted. With **Compile hidden objects** on they would be compiled too: the window warns. |
+
+What happens:
+
+1. Each prop's mesh is read from its `mdl`, `vvd` and `vtx` with its body group, placed with its origin, angles and scale, and the material of its **skin** is baked in (different skins of one model become different materials).
+2. Triangles are grouped by material, levels of detail are rebuilt with the [model LOD settings](#prop-options-propper), the model is written as SMD and QC (`$staticprop`) and compiled with the **model compiler** of **Settings > Compile** (the game's studiomdl by default, NekoMDL or another drop in replacement if you set one).
+3. The props are replaced by one `prop_static` in one undo step. Their shared lighting keys (`disableshadows`, `disablevertexlighting`, `disableselfshadowing`, `ignorenormals`, `disableflashlight`...) are copied; fade distances are copied when all props agree, otherwise dropped with a warning; `solid` is 6 when one prop was solid.
+
+Refusals, with a clear message: an entity that is not a `prop_static`, a model with bones or animations (more than one bone), props whose lighting flags differ (combine them in separate groups), a missing model, or more than 150000 triangles.
+
+The whole combined model is lit from one lighting origin like any static prop: combine props that stand close together and get the same light. MCP: `combine_props` (with `dry_run` to plan only).
 
 ## Convert prop to brushes (Unpropper)
 
@@ -94,7 +121,7 @@ Limits: at most 20000 render triangles to rebuild from, and at most 1024 brushes
 
 **Are the source materials overwritten?** No. Existing `VertexLitGeneric` materials are reused at their original paths by default; their files are not overwritten or duplicated in the export folder. Keep their game/addon content available when installing the prop. Converted/baked materials use separate VMTs and VTFs under the chosen `$cdmaterials` folder. Uncheck the reuse option for a complete copied material set. Existing Source VTF bytes are preserved, including mipmaps, alpha and animation frames. Brush-lighting shaders are adapted for model lighting; displacement blend materials are baked.
 
-**"studiomdl was not found in the game's bin folder".** Propper compiles with the studiomdl of Garry's Mod: check the game folder in **Settings > Game**. The [model import](model-import.md) does not need it.
+**"studiomdl was not found in the game's bin folder".** Propper compiles with the studiomdl of Garry's Mod unless another model compiler is set in **Settings > Compile**: check the game folder in **Settings > Game**. The [model import](model-import.md) does not need it.
 
 **The prop compiled but the brushes are still there.** The console shows the studiomdl output; "The model compiled but the brushes could not be replaced" gives the reason.
 

@@ -125,6 +125,7 @@ pub fn terrain_for(
         skirt: opts.setup.skirt,
         spacing,
         bilinear: true,
+        grid: super::PixelGrid::Corner,
         source: if opts.auto_texture { Source::Auto(opts.auto) } else { Source::None },
     }
 }

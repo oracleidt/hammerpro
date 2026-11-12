@@ -1005,3 +1005,62 @@ fn deep_open_terrain_cave_blocks_direct_sky_ambient() {
     let center = px(&image, image.0 / 2, image.1 / 2);
     assert!(center.iter().all(|c| *c <= 8), "deep terrain cave receives no direct overhead skylight: {center:?}");
 }
+
+#[test]
+fn overlapping_props_show_the_nearest_one_after_the_lit_depth_pass() {
+    let (device, queue) = gpu_or_skip!();
+    for msaa in [false, true] {
+        let mut r = Renderer::new(&device, &queue);
+        mat(&mut r, PROP, [200, 200, 200, 255], MaterialFlags::empty());
+        let model = square_model(&mut r);
+        let at = |y: f32, tint: [f32; 4], object: ObjectId| ModelInstance {
+            transform: [[0.0, -1.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, y, 0.0, 1.0]],
+            tint,
+            ..facing_eye(model, object)
+        };
+        let far = at(200.0, [0.0, 1.0, 0.0, 1.0], MODEL_OBJ);
+        let near = at(150.0, [1.0, 0.0, 0.0, 1.0], MODEL_OBJ + 1);
+        r.set_lights(&[], [1.0; 3]);
+        let view = ViewParams { msaa, ..front_view() };
+        for (order, list) in [("near last", [far, near]), ("near first", [near, far])] {
+            r.set_model_instances(&list);
+            let img = shot(&mut r, 1, &view, &format!("overlap_{msaa}_{}", order.replace(' ', "_")));
+            let c = px(&img, 100, 100);
+            assert!(c[0] > 100 && c[1] < 20, "msaa {msaa}, {order}: the near red prop shows, got {c:?}");
+            let edge = px(&img, 100, 40);
+            assert!(edge[0] > 100 && edge[1] < 20, "msaa {msaa}, {order}: {edge:?}");
+        }
+        r.set_model_instances(&[far]);
+        let img = shot(&mut r, 1, &view, &format!("overlap_{msaa}_far_only"));
+        let c = px(&img, 100, 100);
+        assert!(c[1] > 100 && c[0] < 20, "msaa {msaa}: the far green prop alone shows, got {c:?}");
+    }
+}
+
+#[test]
+fn lit_ldr_light_values_shade_like_the_game_ldr_lightmaps() {
+    let (device, queue) = gpu_or_skip!();
+    let mut r = Renderer::new(&device, &queue);
+    r.set_tone_settings(ToneSettings { mode: ToneMode::Off, bloom: 0.0, ..Default::default() });
+    mat(&mut r, PROP, [200, 100, 50, 255], MaterialFlags::empty());
+    let model = square_model(&mut r);
+    r.set_model_instances(&[facing_eye(model, MODEL_OBJ)]);
+    let view = front_view();
+    let gamma = |byte: u8, light: f32| (f32::from(byte) / 255.0 * light.powf(1.0 / 2.2)).min(1.0) * 255.0;
+    for light in [0.01f32, 0.2, 4.0] {
+        r.set_lights(&[], [light; 3]);
+        r.set_lit_hdr(false);
+        r.set_lit_ldr_shading(true);
+        let ldr = shot(&mut r, 5, &view, &format!("ldr_{light}"));
+        let p = px(&ldr, 100, 100);
+        for (k, byte) in [200u8, 100, 50].into_iter().enumerate() {
+            close(p[k], gamma(byte, light), 3.0, &format!("LDR channel {k} under {light}"));
+        }
+        r.set_lit_hdr(true);
+        let hdr = shot(&mut r, 5, &view, &format!("hdr_{light}"));
+        let q = px(&hdr, 100, 100);
+        for (k, byte) in [200u8, 100, 50].into_iter().enumerate() {
+            close(q[k], srgb(linear(byte) * light), 3.0, &format!("HDR channel {k} under {light}"));
+        }
+    }
+}

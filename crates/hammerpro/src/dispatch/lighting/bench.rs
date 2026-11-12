@@ -12,7 +12,7 @@ use hp_editor::Document;
 use hp_render::lightmap::LightmapDisplay;
 use hp_render::{Overlay, RenderMode, ViewKind, ViewParams};
 
-use super::preview::{MAX_TEXELS_PER_FRAME, show_geometry, write_texels};
+use super::preview::{TEXELS_PER_MB, show_geometry, write_texels};
 use super::{bake, bsp, child, memory};
 
 const GMOD: &str = r"D:\SteamLibrary\steamapps\common\GarrysMod";
@@ -265,7 +265,7 @@ fn job(doc: &Document, gfx: &Gfx, fs: Option<hp_fs::GameFs>, around: Option<(DVe
         models: true,
         exact: false,
         quiet: false,
-        urgent: false,
+        priority: hp_app::settings::BakePriority::BelowNormal,
     }
 }
 
@@ -491,7 +491,7 @@ fn show(gfx: &mut Gfx, am: &mut AssetManager, baked: &bake::Baked) {
     show_geometry(&mut gfx.renderer, am, baked, (shown.faces.max(baked.faces.len() as u32), shown.blocks));
     let mut written = 0;
     while written < baked.faces.len() {
-        written = write_texels(&mut gfx.renderer, baked, written, MAX_TEXELS_PER_FRAME);
+        written = write_texels(&mut gfx.renderer, baked, written, 4 * TEXELS_PER_MB);
     }
     let _ = gfx.device.poll(wgpu::PollType::wait_indefinitely());
     gfx.renderer.set_lightmap_display(LightmapDisplay::Baked, 1.0);

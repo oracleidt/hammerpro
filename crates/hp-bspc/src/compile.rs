@@ -329,6 +329,12 @@ fn without_hidden(map: &hp_vmf::Map) -> Option<hp_vmf::Map> {
     Some(m)
 }
 
+pub const NO_INSIDE: &str = concat!(
+    "**** No entity in the open: the map has no inside. It is compiled like a leaked map ",
+    "(every face seen from the void is kept, no visibility). ",
+    "Put an info_player_start inside a sealed map for a real compile ****"
+);
+
 pub fn compile(
     map: &hp_vmf::Map,
     materials: &dyn MaterialSource,
@@ -832,10 +838,12 @@ fn compile_once(
             ));
         }
     }
-    let (placed, leaked) = portals1.flood(&mut tree1, &planes, &flood_origins);
+    let (placed, mut leaked) = portals1.flood(&mut tree1, &planes, &flood_origins);
     let mut leak_path = None;
-    if placed.is_empty() {
-        log("**** No entity in the open: the map has no inside (place an info_player_start) ****");
+    let no_inside = placed.is_empty();
+    if no_inside {
+        log(NO_INSIDE);
+        portals1.flood_outside(&mut tree1);
     }
     if leaked {
         let (mut path, end) = portals1.leak_path(&tree1);
@@ -865,6 +873,7 @@ fn compile_once(
         }
         leak_path = Some(path);
     }
+    leaked |= no_inside;
     portals1.mark_visible_sides(&tree1, &planes, &mut brushes);
     stage("flood, visible sides");
     let (mut tree, portals) = if leaked {
@@ -973,6 +982,9 @@ Probably too many areaportals"
     let sky_areas = crate::areas::sky_areas(&tree, &planes, &entities).map_err(CompileError::Failed)?;
     if !opts.no_prune {
         tree.prune();
+    }
+    if tree.ensure_node(&mut planes) {
+        log("The world has no solid brush (only displacements or detail): a single split node is added");
     }
     let forced = crate::areas::forced_clusters(&tree, &planes, &brushes, &viscluster_srcs, &sky_areas, opts.sky_vis);
     let mut clusters = tree.number_clusters_with(&forced);

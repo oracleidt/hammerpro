@@ -116,6 +116,7 @@ Sans contenu de jeu (Garry's Mod introuvable et pas de `-game`), les matériaux 
 | `-StaticPropNormals` | | Débogage : les props montrent leurs normales. | désactivé |
 | `-nostaticpropshadows` | | Hammer Pro : aucune ombre de prop statique. | désactivé |
 | `-nodispshadows` | | Hammer Pro : aucune ombre de displacement. | désactivé |
+| `-nostylebounce` | | Hammer Pro : les lumières nommées (commutables) ne rebondissent pas, comme dans VRAD. | désactivé |
 | `-noaddons`, `-wsaddons`, `-nowsaddons`, `-serveraddons`, `-mount_appid` | | Contenu monté pour les modèles, comme `--bspc`. | addons et objets du Workshop montés |
 | `-radius_override` | unités | Accepté et ignoré (une option de VVIS souvent passée à tous les outils). | |
 

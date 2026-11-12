@@ -105,7 +105,7 @@ Les outils en dessous :
 | **Aperçu de la forme** | Ouvre la fenêtre d'[aperçu de la forme](real-shape-placement.md#aperçu-de-la-forme) sur ce modèle : sa forme réelle de dessus, de face, de côté et en 3D, avec ses dimensions, son origine, son point le plus bas et son maillage de collision. |
 | **Extraire les fichiers...** | Copie le modèle et ses fichiers VVD, VTX, PHY et ANI depuis le contenu du jeu (VPK, GMA ou dossiers) vers le dossier de votre choix, en gardant leurs dossiers (`models/props/x.mdl`). |
 | **Décompiler avec Crowbar** | Extrait le modèle dans un dossier temporaire (`hammerpro_models` dans le dossier temporaire du système) et l'ouvre dans Crowbar. Crowbar.exe est demandé la première fois puis mémorisé (`crowbar_exe` dans `[entities]`) ; clic droit sur le bouton puis **Choisir un autre Crowbar.exe...** pour en changer. |
-| **Compiler un QC...** | Lance le studiomdl du jeu (`bin/win64/studiomdl.exe`, sinon `bin/studiomdl.exe` du dossier de Garry's Mod) sur le fichier QC choisi, avec `-game <dossier du jeu> -nop4 -verbose`. Sa sortie va dans la console ; un bouton **Annuler** l'arrête. Grisé si studiomdl est introuvable. |
+| **Compiler un QC...** | Lance le compilateur de modèles sur le fichier QC choisi, avec `-game <dossier du jeu> -nop4 -verbose` et les arguments de **Paramètres > Compilation** : le programme choisi dans **Paramètres > Compilation > Compilateur de modèles** (NekoMDL par exemple), sinon le studiomdl du jeu (`bin/win64/studiomdl.exe`, sinon `bin/studiomdl.exe` du dossier de Garry's Mod). Sa sortie va dans la console ; un bouton **Annuler** l'arrête. Grisé si aucun compilateur de modèles n'est trouvé. |
 
 ## Modèles de collision dans les vues
 
@@ -140,7 +140,7 @@ Deux options de **Affichage > Options d'affichage** montrent les collisions des 
 
 **La grille montre une texture au lieu du modèle, pourquoi ?** Le modèle n'a pas (encore) pu être rendu ; la vignette se rabat sur son premier matériau, ou sur `?` s'il n'en a pas.
 
-**Pourquoi « Compiler un QC... » est grisé ?** studiomdl est introuvable dans le dossier `bin` de l'installation de Garry's Mod configurée.
+**Pourquoi « Compiler un QC... » est grisé ?** studiomdl est introuvable dans le dossier `bin` de l'installation de Garry's Mod configurée, ou le compilateur de modèles choisi dans **Paramètres > Compilation** n'existe pas.
 
 **Un glisser donne un `prop_dynamic`, un double-clic un `prop_physics` : pourquoi ?** Un dépôt utilise `prop_dynamic` pour les modèles qui ne sont pas des props statiques, alors que **Utiliser pour les nouveaux props** utilise `prop_physics`. Changez la classe dans le panneau d'entité si vous voulez autre chose.
 

@@ -77,6 +77,10 @@ La page des paramètres liste sous la liste déroulante les contrôles du schém
 
 Avec **Zoomer les vues 2D ensemble** activé, zoomer une vue 2D zoome les autres de la même façon. L'en-tête de chaque vue 2D affiche son zoom en pourcentage.
 
+### Défilement en glissant vers le bord
+
+Avec **Faire défiler la vue 2D en glissant vers son bord** activé (page **Vues**, désactivé par défaut ; réglage `workflow.drag_autopan`), les vues 2D défilent comme dans Hammer pendant que vous faites glisser n'importe quoi avec le bouton gauche : déplacer ou redimensionner une sélection, la boîte de l'outil Bloc, la sélection par cadre en attente et ses poignées, les poignées de sommets et de découpe, une sélection par cadre, une entité, une poignée de décalque ou d'overlay. Approchez le curseur à moins de 16 points du bord de la vue, ou dépassez-le (même hors de la fenêtre), et la vue défile dans ce sens, d'autant plus vite que le curseur va loin (d'environ 250 points par seconde au bord jusqu'à 4000). Ce que vous faites glisser reste sous le curseur dans le monde et continue de s'aligner sur la grille, dans les vues Dessus, Face et Côté. Le défilement s'arrête dès que vous relâchez le bouton ou ramenez le curseur à l'intérieur.
+
 ## Outil caméra
 
 `Maj+C` ou **Outils > Outil actif > Outil caméra**. Il règle la caméra 3D depuis les vues 2D, comme l'outil caméra de Hammer.
@@ -141,6 +145,7 @@ Chaque vue a un en-tête : cliquez sur le nom de la vue pour choisir un autre ty
 | **Temps d'accélération de la caméra** | Temps que met la caméra en vol pour atteindre sa vitesse (0 à 0,5 s) | 0,07 s |
 | **Ctrl + molette en 2D** | Change la taille de la grille, ou zoome toutes les vues 2D | Change la taille de la grille |
 | **Zoomer les vues 2D ensemble** | Zoomer une vue 2D zoome les autres | Désactivé |
+| **Faire défiler la vue 2D en glissant vers son bord** | Faire glisser quelque chose au bord d'une vue 2D la fait défiler, comme Hammer | Désactivé |
 | **Champ de vision** | Champ de vision 3D (40° à 120°) | 75° |
 | **Vitesse de la caméra** | Vitesse de vol (50 à 20000 unités/s) | 1000 |
 | **Multiplicateur de vitesse rapide** | Appliqué tant que `Maj` est enfoncée (1 à 20) | 3 |

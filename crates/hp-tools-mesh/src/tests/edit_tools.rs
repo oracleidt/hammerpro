@@ -857,3 +857,19 @@ fn sculpt_shift_smooths_and_panel_renders() {
     run_ui(&mut state, |ui, st| tool.options_ui(ui, st));
     assert_eq!(tool.brush.axis, PaintAxis::FaceNormal);
 }
+
+#[test]
+fn a_rubber_band_keeps_its_corner_while_the_2d_view_scrolls() {
+    let (mut state, mut tool, _) = box_and_tool();
+    tool.mode = VertexMode::Vertices;
+    let top = view2d(ViewKind::Top, DVec2::new(64.0, 64.0), 1.0);
+    let origin = top.world_to_screen(DVec3::new(-32.0, 160.0, 0.0)).expect("screen");
+    let cursor = top.world_to_screen(DVec3::new(40.0, -32.0, 0.0)).expect("screen");
+    tool.handle(&mut state, &top, Gesture::DragStart { origin, pos: origin + vec2(8.0, 8.0) }, Modifiers::NONE);
+    tool.handle(&mut state, &top, Gesture::Drag(cursor), Modifiers::NONE);
+    let mut scrolled = top;
+    scrolled.cam2d.center.x += 100.0;
+    tool.handle(&mut state, &scrolled, Gesture::Drag(cursor), Modifiers::NONE);
+    tool.handle(&mut state, &scrolled, Gesture::DragEnd(cursor), Modifiers::NONE);
+    assert_eq!(tool.selected_vertex_count(&state), 8, "the band covers the whole box from its pressed corner");
+}

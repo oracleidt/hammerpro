@@ -139,6 +139,7 @@ Every change the AI makes is **one undo step** named "MCP:" followed by what was
 | Shader editor | The node based image editor: node and preset lists, creating, reading, editing, checking, rendering and writing `.hpshader` graphs as VTF and VMT files, and opening the editor window. See [Shader editor](../features/shader-editor.md). |
 | Map health | Check for problems, fix them, engine limits, map statistics, hidden faces. |
 | Optimization | `optimize_map`, `analyze_visibility`, `suggest_func_detail`, `suggest_hint_brushes`, `show_visleaves`, `check_areaportals`, `suggest_areaportals`, `audit_lights`: visleaves, PVS, func_detail, hints, areaportals and light coherence, with fixes. See [Optimizing a map](../guides/optimizing-a-map.md). |
+| func_detail | `make_func_detail`, `select_detail_candidates`: turn brushes into func_detail with the sealing check, select the candidates. See [func_detail](../features/func-detail.md). |
 | Compile | Compile with a preset and follow the progress. |
 | Views | Camera, screenshots of a view, layout of the quadrants, 3D render modes, player view, 2D zoom and pan. |
 | Actions | List and run every menu command and shortcut. |

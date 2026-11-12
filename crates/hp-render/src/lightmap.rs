@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::{Mutex, OnceLock, PoisonError};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3, Vec4};
@@ -147,9 +147,46 @@ struct Atlas {
     layers: u32,
 }
 
-struct Pipelines {
-    baked: [[wgpu::RenderPipeline; 2]; 2],
-    grid: [[wgpu::RenderPipeline; 2]; 2],
+type PipelineSet = [[wgpu::RenderPipeline; 2]; 2];
+
+#[derive(Default)]
+struct Kit {
+    layout: OnceLock<wgpu::BindGroupLayout>,
+    pipeline_layout: OnceLock<wgpu::PipelineLayout>,
+    module: OnceLock<wgpu::ShaderModule>,
+    baked: [OnceLock<PipelineSet>; 2],
+    grid: [OnceLock<PipelineSet>; 2],
+}
+
+impl Kit {
+    fn pipelines(
+        &self,
+        device: &wgpu::Device,
+        shared: &crate::pipelines::Shared,
+        samples: u32,
+        grid: bool,
+    ) -> &PipelineSet {
+        let module = self.module.get_or_init(|| {
+            device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("hp-render lightmap"),
+                source: wgpu::ShaderSource::Wgsl(SHADER.into()),
+            })
+        });
+        let bind = self.bind_layout(device);
+        let layout = self.pipeline_layout.get_or_init(|| {
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("hp-render lightmap"),
+                bind_group_layouts: &[Some(&shared.view_bgl), Some(&shared.material_bgl), Some(bind)],
+                immediate_size: 0,
+            })
+        });
+        let si = usize::from(samples > 1);
+        let (slot, fs) = if grid { (&self.grid[si], "fs_grid") } else { (&self.baked[si], "fs_baked") };
+        slot.get_or_init(|| {
+            [false, true]
+                .map(|alpha| [false, true].map(|two| pipeline(device, module, layout, samples, fs, alpha, two)))
+        })
+    }
 }
 
 #[derive(Default)]
@@ -171,11 +208,8 @@ pub(crate) struct Lightmaps {
     params: ParamsGpu,
     atlas: Option<Atlas>,
     bind_group: Option<wgpu::BindGroup>,
-    layout: OnceLock<wgpu::BindGroupLayout>,
     blocks: HashMap<u32, BlockGpu>,
-    pipelines: [OnceLock<Pipelines>; 2],
-    pipeline_layout: OnceLock<wgpu::PipelineLayout>,
-    module: OnceLock<wgpu::ShaderModule>,
+    kit: Arc<Kit>,
 }
 
 pub(crate) const SHADER: &str = concat!(
@@ -202,7 +236,26 @@ const VERTEX_ATTRS: [wgpu::VertexAttribute; 6] = [
 const ATLAS_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rg11b10Ufloat;
 const UPLOAD_CHUNK: u64 = 32 << 20;
 
-impl Lightmaps {
+impl crate::Renderer {
+    pub fn prewarm_lightmap_pipelines(&self) {
+        let kit = self.lightmap.kit.clone();
+        if kit.baked.iter().all(|slot| slot.get().is_some()) {
+            return;
+        }
+        let device = self.device.clone();
+        let shared = self.shared.clone();
+        let spawned = std::thread::Builder::new().name("hp-render-lightmap-pipelines".to_owned()).spawn(move || {
+            for samples in [1, 4] {
+                kit.pipelines(&device, &shared, samples, false);
+            }
+        });
+        if let Err(e) = spawned {
+            log::warn!("hp-render: cannot start the lightmap pipeline thread: {e}");
+        }
+    }
+}
+
+impl Kit {
     fn bind_layout(&self, device: &wgpu::Device) -> &wgpu::BindGroupLayout {
         self.layout.get_or_init(|| {
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -241,6 +294,12 @@ impl Lightmaps {
                 ],
             })
         })
+    }
+}
+
+impl Lightmaps {
+    fn bind_layout(&self, device: &wgpu::Device) -> &wgpu::BindGroupLayout {
+        self.kit.bind_layout(device)
     }
 
     fn mark(&self, i: u32) {
@@ -961,44 +1020,46 @@ fn pipeline(
         step_mode: wgpu::VertexStepMode::Vertex,
         attributes: &VERTEX_ATTRS,
     })];
-    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("hp-render lightmap"),
-        layout: Some(layout),
-        vertex: wgpu::VertexState {
-            module,
-            entry_point: Some("vs_lm"),
-            compilation_options: options.clone(),
-            buffers: &buffers,
-        },
-        primitive: wgpu::PrimitiveState {
-            topology: wgpu::PrimitiveTopology::TriangleList,
-            strip_index_format: None,
-            front_face: wgpu::FrontFace::Ccw,
-            cull_mode: if two_sided { None } else { Some(wgpu::Face::Back) },
-            unclipped_depth: false,
-            polygon_mode: wgpu::PolygonMode::Fill,
-            conservative: false,
-        },
-        depth_stencil: Some(wgpu::DepthStencilState {
-            format: DEPTH_FORMAT,
-            depth_write_enabled: Some(false),
-            depth_compare: Some(wgpu::CompareFunction::GreaterEqual),
-            stencil: wgpu::StencilState::default(),
-            bias: wgpu::DepthBiasState { constant: 4, slope_scale: 0.5, clamp: 0.0 },
-        }),
-        multisample: wgpu::MultisampleState { count: samples, mask: !0, alpha_to_coverage_enabled: false },
-        fragment: Some(wgpu::FragmentState {
-            module,
-            entry_point: Some(fs),
-            compilation_options: options,
-            targets: &[Some(wgpu::ColorTargetState {
-                format: COLOR_FORMAT,
-                blend: None,
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
-        }),
-        multiview_mask: None,
-        cache: None,
+    crate::pipeline_cache::with(device, |cache| {
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("hp-render lightmap"),
+            layout: Some(layout),
+            vertex: wgpu::VertexState {
+                module,
+                entry_point: Some("vs_lm"),
+                compilation_options: options.clone(),
+                buffers: &buffers,
+            },
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: if two_sided { None } else { Some(wgpu::Face::Back) },
+                unclipped_depth: false,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                conservative: false,
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_write_enabled: Some(false),
+                depth_compare: Some(wgpu::CompareFunction::GreaterEqual),
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState { constant: 4, slope_scale: 0.5, clamp: 0.0 },
+            }),
+            multisample: wgpu::MultisampleState { count: samples, mask: !0, alpha_to_coverage_enabled: false },
+            fragment: Some(wgpu::FragmentState {
+                module,
+                entry_point: Some(fs),
+                compilation_options: options,
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: COLOR_FORMAT,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            multiview_mask: None,
+            cache,
+        })
     })
 }
 
@@ -1037,34 +1098,7 @@ impl PassHook for LightmapPass {
             return;
         }
         let Some(bind_group) = &lm.bind_group else { return };
-        let device = cx.device();
-        let module = lm.module.get_or_init(|| {
-            device.create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some("hp-render lightmap"),
-                source: wgpu::ShaderSource::Wgsl(SHADER.into()),
-            })
-        });
-        let layout = lm.pipeline_layout.get_or_init(|| {
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("hp-render lightmap"),
-                bind_group_layouts: &[
-                    Some(&r.shared.view_bgl),
-                    Some(&r.shared.material_bgl),
-                    Some(lm.bind_layout(device)),
-                ],
-                immediate_size: 0,
-            })
-        });
-        let si = usize::from(cx.samples > 1);
-        let pipes = lm.pipelines[si].get_or_init(|| {
-            let mk = |fs: &str| {
-                [false, true].map(|alpha| {
-                    [false, true].map(|two| pipeline(cx.device(), module, layout, cx.samples, fs, alpha, two))
-                })
-            };
-            Pipelines { baked: mk("fs_baked"), grid: mk("fs_grid") }
-        });
-        let set = if lm.display == LightmapDisplay::Grid { &pipes.grid } else { &pipes.baked };
+        let set = lm.kit.pipelines(cx.device(), &r.shared, cx.samples, lm.display == LightmapDisplay::Grid);
         let view_proj = Mat4::from_cols_array_2d(&cx.view_proj);
         pass.set_bind_group(0, cx.view_bind_group, &[]);
         pass.set_bind_group(2, bind_group, &[]);

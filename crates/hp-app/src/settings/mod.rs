@@ -35,7 +35,7 @@ mod vtf;
 mod workflow;
 
 pub use blender::{BlenderFormat, BlenderSettings};
-pub use brush::{BrushSettings, RoadPreset};
+pub use brush::{BrushSettings, DetailSplitSetting, FuncDetailSettings, RoadPreset};
 pub use compile::{
     BspModeSetting, CompilePresetSetting, CompileProfile, CompileSettings, FlagChoiceSetting, LightingSetting,
     PackPolicy, ProfileStep, RadModeSetting, StaticPropShadows, VisModeSetting, WindowPlacement,
@@ -56,17 +56,17 @@ pub use hp_sniffer::{
 };
 pub use input::{InputSettings, TRACKPAD_SPEED_MAX, TRACKPAD_SPEED_MIN, TrackpadMode, TrackpadScroll3d};
 pub use instances::{InstanceDisplay, InstancesSettings};
-pub use lab::{LabSettings, ModelLodSettings, UnpropShape};
+pub use lab::{CombineOrigin, LabSettings, ModelLodSettings, UnpropShape};
 pub use launch::{LaunchSettings, LaunchTiming};
-pub use lighting::{LightingQuality, LightingSettings};
+pub use lighting::{BakePriority, LightingQuality, LightingSettings};
 pub use mcp::McpSettings;
 pub use mesh::MeshSettings;
 pub use physics::PhysicsSettings;
 pub use placement::{PlacementSettings, SprinkleMode, SprinkleSettings};
 pub use render::{
-    CUBEMAPS_REVISION, DEFAULT_WALK_ANGLE, Disp2dSetting, Disp2dViewSetting, DispWalkMode, MAX_ANIMATION_FPS,
-    MAX_VRAM_BUDGET_MB, MIN_VRAM_BUDGET_MB, Models2dSetting, PerformanceMode, PropShadowSetting, RenderSettings,
-    ToneModeSetting, WaterDetailSetting,
+    BALANCED_LIGHTS, CUBEMAPS_REVISION, DEFAULT_WALK_ANGLE, Disp2dSetting, Disp2dViewSetting, DispWalkMode, LitQuality,
+    MAX_ANIMATION_FPS, MAX_VRAM_BUDGET_MB, MIN_VRAM_BUDGET_MB, Models2dSetting, PerformanceMode, PropShadowSetting,
+    RenderSettings, ToneModeSetting, WaterDetailSetting,
 };
 pub use scan::{ScanModeSetting, ScanSettings};
 pub use selection::{SelectElement, SelectionSettings};

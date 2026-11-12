@@ -234,6 +234,8 @@ mod tests {
         "import_models_batch",
         "import_heightmap",
         "export_heightmap",
+        "import_blend_masks",
+        "export_blend_masks",
         "bsp_sniffer",
     ];
 

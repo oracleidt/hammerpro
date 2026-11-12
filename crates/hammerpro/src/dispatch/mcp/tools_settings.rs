@@ -29,6 +29,9 @@ pub(crate) const RANGES: &[(&str, f64, f64)] = &[
     ("edit.grid_size", hp_app::settings::GRID_MIN, hp_app::settings::GRID_MAX),
     ("edit.undo_levels", 10.0, 10_000.0),
     ("edit.autosave_minutes", 0.0, 120.0),
+    ("health.check_delay_ms", 0.0, 10_000.0),
+    ("lighting.drag_pause_ms", 0.0, 2000.0),
+    ("lighting.upload_mb_per_frame", 1.0, 64.0),
     ("edit.autosave_keep", 1.0, 100.0),
     ("edit.default_texture_scale", 0.01, 16.0),
     ("ui.ui_scale", 0.75, 2.0),
@@ -48,6 +51,7 @@ pub(crate) const RANGES: &[(&str, f64, f64)] = &[
     ("render.animation_idle_pause_s", 0.0, 86_400.0),
     ("render.render_scale", 0.25, 1.0),
     ("render.vram_budget_mb", 0.0, hp_app::settings::MAX_VRAM_BUDGET_MB as f64),
+    ("brush.detail.max_size", 16.0, 16_384.0),
     ("selection.rotation_snap_deg", 1.0, 90.0),
     ("selection.random_yaw_min", -360.0, 360.0),
     ("selection.random_yaw_max", -360.0, 720.0),
@@ -68,6 +72,7 @@ pub(crate) const RANGES: &[(&str, f64, f64)] = &[
     ("lab.model_lod.levels", 3.0, 6.0),
     ("lab.model_lod.reduction", 0.2, 0.9),
     ("lab.propper_mass", 0.1, 50_000.0),
+    ("lab.combine_max_pieces", 1.0, 128.0),
     ("physics.gravity", -10_000.0, 10_000.0),
     ("physics.air_density", 0.0, 100.0),
     ("physics.time_scale", 0.01, 4.0),
@@ -118,6 +123,9 @@ pub(crate) fn read_only(path: &str) -> Option<&'static str> {
         return Some(
             "change it with create_compiler, set_compiler, delete_compiler, select_compiler and reset_compilers (programs need confirm there)",
         );
+    }
+    if path == "compile.model_compiler" || path == "compile.model_compiler_args" {
+        return Some("set it with set_model_compiler (path, args), which checks the program and needs confirm");
     }
     if path == "blender.path" {
         return Some("set it with blender_setup (path), which checks that it is a Blender program");
@@ -640,6 +648,8 @@ mod tests {
             "compile.compilers",
             "compile.compilers.0.steps",
             "compile.compiler_by_game",
+            "compile.model_compiler",
+            "compile.model_compiler_args",
             "revision",
         ] {
             assert!(read_only(p).is_some(), "{p}");

@@ -12,6 +12,7 @@ use crate::dialogs::MapDialog;
 use crate::util::{enter_pressed, escape_pressed, icon_title, plural};
 
 pub mod bake;
+pub mod combine;
 mod creation;
 mod export;
 mod viewport;
@@ -21,7 +22,12 @@ pub use export::prepare_creation;
 pub use materials::stage as prepare_material_files;
 
 pub(crate) fn dialogs() -> Vec<Box<dyn MapDialog>> {
-    vec![Box::new(UnpropDialog::default()), Box::new(OptionsDialog), Box::new(CreateDialog::default())]
+    vec![
+        Box::new(UnpropDialog::default()),
+        Box::new(OptionsDialog),
+        Box::new(CreateDialog::default()),
+        Box::new(combine::CombineDialog::default()),
+    ]
 }
 
 pub fn lod_options(s: hp_app::settings::ModelLodSettings) -> hp_meshio::lod::LodOptions {
@@ -280,7 +286,17 @@ pub fn collision_pieces(model: &hp_mdl::CollisionModel, transform: &PropTransfor
     pieces
 }
 
-fn int_key(e: &Entity, key: &str) -> Option<u32> {
+pub(crate) fn model_material(fs: &hp_fs::GameFs, model: &hp_mdl::Model, skin_ref: usize, skin: usize) -> String {
+    let candidates = model.material_candidates(skin_ref, skin);
+    candidates
+        .iter()
+        .find(|c| fs.exists(&format!("materials/{c}.vmt")))
+        .or_else(|| candidates.first())
+        .cloned()
+        .unwrap_or_default()
+}
+
+pub(crate) fn int_key(e: &Entity, key: &str) -> Option<u32> {
     e.get(key).and_then(|s| s.trim().parse::<f64>().ok()).filter(|v| v.is_finite() && *v >= 0.0).map(|v| v as u32)
 }
 
@@ -299,18 +315,8 @@ pub fn read_prop_source(fs: &hp_fs::GameFs, entity: &Entity) -> Result<PropSourc
     let mut materials: HashMap<usize, String> = HashMap::new();
     let mut tris = Vec::new();
     for mesh in &model.meshes {
-        let material = materials
-            .entry(mesh.skin_ref)
-            .or_insert_with(|| {
-                let candidates = model.material_candidates(mesh.skin_ref, skin);
-                candidates
-                    .iter()
-                    .find(|c| fs.exists(&format!("materials/{c}.vmt")))
-                    .or_else(|| candidates.first())
-                    .cloned()
-                    .unwrap_or_default()
-            })
-            .clone();
+        let material =
+            materials.entry(mesh.skin_ref).or_insert_with(|| model_material(fs, &model, mesh.skin_ref, skin)).clone();
         for t in mesh.indices.chunks_exact(3) {
             let Some(v) = t.iter().map(|&i| mesh.vertices.get(i as usize)).collect::<Option<Vec<_>>>() else {
                 continue;

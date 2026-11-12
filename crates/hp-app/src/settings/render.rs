@@ -126,6 +126,28 @@ impl PerformanceMode {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum LitQuality {
+    High,
+    Balanced,
+    #[default]
+    Auto,
+}
+
+impl LitQuality {
+    pub const ALL: [LitQuality; 3] = [LitQuality::Auto, LitQuality::High, LitQuality::Balanced];
+
+    pub const fn id(self) -> &'static str {
+        match self {
+            LitQuality::High => "High",
+            LitQuality::Balanced => "Balanced",
+            LitQuality::Auto => "Auto",
+        }
+    }
+}
+
+pub const BALANCED_LIGHTS: u32 = 32;
+
 pub const MIN_RENDER_SCALE: f32 = 0.25;
 
 pub const MAX_ANIMATION_FPS: u32 = 240;
@@ -225,6 +247,7 @@ pub struct RenderSettings {
     pub keep_background_maps_on_gpu: bool,
     pub texture_streaming: bool,
     pub performance_mode: PerformanceMode,
+    pub lit_quality: LitQuality,
     pub render_scale: f32,
     pub perf_hud: bool,
     pub primitive_stats: bool,
@@ -319,6 +342,7 @@ impl Default for RenderSettings {
             keep_background_maps_on_gpu: true,
             texture_streaming: true,
             performance_mode: PerformanceMode::Auto,
+            lit_quality: LitQuality::Auto,
             render_scale: 1.0,
             perf_hud: false,
             primitive_stats: false,

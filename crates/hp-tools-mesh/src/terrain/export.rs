@@ -1,16 +1,57 @@
 use hp_editor::{Document, FaceRef};
 use hp_vmf::multiblend::MultiBlend;
 
-use super::image_io::{write_heights, write_splat};
+use super::image_io::{OutFormat, write_gray, write_rgba};
 
 pub const MAX_EXPORT_SIDE: usize = 8192;
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ExportValues {
+    #[default]
+    Auto,
+    Normalized,
+    Absolute,
+}
+
+impl ExportValues {
+    pub const NAMES: [&'static str; 3] = ["auto", "normalized", "absolute"];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Normalized => "normalized",
+            Self::Absolute => "absolute",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        [Self::Auto, Self::Normalized, Self::Absolute].into_iter().find(|v| v.name() == name)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct ExportOptions {
     pub path: String,
     pub splat: String,
     pub min_height: Option<f64>,
     pub max_height: Option<f64>,
+    pub float: bool,
+    pub values: ExportValues,
+    pub value_scale: f64,
+}
+
+impl Default for ExportOptions {
+    fn default() -> Self {
+        Self {
+            path: String::new(),
+            splat: String::new(),
+            min_height: None,
+            max_height: None,
+            float: false,
+            values: ExportValues::Auto,
+            value_scale: 1.0,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -23,6 +64,8 @@ pub struct ExportReport {
     pub min: (f64, f64),
     pub faces: usize,
     pub splat: bool,
+    pub absolute: bool,
+    pub format: OutFormat,
 }
 
 pub struct Raster {
@@ -30,6 +73,7 @@ pub struct Raster {
     pub height: usize,
     pub heights: Vec<f64>,
     pub weights: Vec<[f64; 4]>,
+    pub alphas: Vec<f64>,
     pub min: (f64, f64),
     pub size: (f64, f64),
 }
@@ -38,6 +82,7 @@ pub fn rasterize(doc: &Document, faces: &[FaceRef]) -> Option<Raster> {
     struct Part<'a> {
         mesh: &'a hp_geom::DispMesh,
         weights: Vec<[f64; 4]>,
+        alphas: Vec<f64>,
     }
     let mut parts: Vec<Part<'_>> = Vec::new();
     let (mut lo, mut hi) = ((f64::INFINITY, f64::INFINITY), (f64::NEG_INFINITY, f64::NEG_INFINITY));
@@ -61,7 +106,9 @@ pub fn rasterize(doc: &Document, faces: &[FaceRef]) -> Option<Raster> {
             spacing = spacing.min(a.distance(*b) / (n - 1) as f64);
         }
         let weights = MultiBlend::of_or_alphas(disp).map(|m| m.weights).unwrap_or_default();
-        parts.push(Part { mesh, weights });
+        let alphas =
+            disp.alphas.iter().map(|a| if a.is_finite() { (a / 255.0).clamp(0.0, 1.0) } else { 0.0 }).collect();
+        parts.push(Part { mesh, weights, alphas });
     }
     let size = (hi.0 - lo.0, hi.1 - lo.1);
     if parts.is_empty() || !(spacing.is_finite() && spacing > 1e-3) || size.0 < 1e-3 || size.1 < 1e-3 {
@@ -72,6 +119,7 @@ pub fn rasterize(doc: &Document, faces: &[FaceRef]) -> Option<Raster> {
     let (dx, dy) = (size.0 / (width - 1) as f64, size.1 / (height - 1) as f64);
     let mut heights = vec![f64::NAN; width * height];
     let mut weights = vec![[1.0, 0.0, 0.0, 0.0]; width * height];
+    let mut alphas = vec![0.0; width * height];
     for part in &parts {
         let m = part.mesh;
         for tri in m.indices.chunks_exact(3) {
@@ -110,19 +158,25 @@ pub fn rasterize(doc: &Document, faces: &[FaceRef]) -> Option<Raster> {
                         {
                             weights[slot] = std::array::from_fn(|k| l1 * wa[k] + l2 * wb[k] + l3 * wc[k]);
                         }
+                        if let (Some(aa), Some(ab), Some(ac)) =
+                            (part.alphas.get(idx[0]), part.alphas.get(idx[1]), part.alphas.get(idx[2]))
+                        {
+                            alphas[slot] = l1 * aa + l2 * ab + l3 * ac;
+                        }
                     }
                 }
             }
         }
     }
-    fill_holes(&mut heights, &mut weights, width, height);
-    Some(Raster { width, height, heights, weights, min: lo, size })
+    fill_holes(&mut heights, &mut weights, &mut alphas, width, height);
+    Some(Raster { width, height, heights, weights, alphas, min: lo, size })
 }
 
-fn fill_holes(heights: &mut [f64], weights: &mut [[f64; 4]], width: usize, height: usize) {
+fn fill_holes(heights: &mut [f64], weights: &mut [[f64; 4]], alphas: &mut [f64], width: usize, height: usize) {
     for _ in 0..64 {
         let snapshot = heights.to_vec();
         let wsnap = weights.to_vec();
+        let asnap = alphas.to_vec();
         let mut changed = false;
         for j in 0..height {
             for i in 0..width {
@@ -132,6 +186,7 @@ fn fill_holes(heights: &mut [f64], weights: &mut [[f64; 4]], width: usize, heigh
                 }
                 let mut sum = 0.0;
                 let mut w = [0.0; 4];
+                let mut alpha = 0.0;
                 let mut count = 0.0;
                 for (di, dj) in [(-1i64, 0i64), (1, 0), (0, -1), (0, 1)] {
                     let (ni, nj) = (i as i64 + di, j as i64 + dj);
@@ -147,11 +202,15 @@ fn fill_holes(heights: &mut [f64], weights: &mut [[f64; 4]], width: usize, heigh
                                 w[k] += nw[k];
                             }
                         }
+                        alpha += asnap.get(ns).copied().unwrap_or(0.0);
                     }
                 }
                 if count > 0.0 {
                     heights[slot] = sum / count;
                     weights[slot] = w.map(|x| x / count);
+                    if let Some(a) = alphas.get_mut(slot) {
+                        *a = alpha / count;
+                    }
                     changed = true;
                 }
             }
@@ -173,6 +232,18 @@ pub fn export(
 ) -> Result<ExportReport, String> {
     let raster = rasterize(&state.doc, faces).ok_or("the selected displacements have no surface to export")?;
     let path = super::resolve_path(state, &opts.path)?;
+    let format = OutFormat::for_path(&path, opts.float)?;
+    let absolute = match opts.values {
+        ExportValues::Auto => format.is_float(),
+        ExportValues::Normalized => false,
+        ExportValues::Absolute => true,
+    };
+    if absolute && !format.is_float() {
+        return Err("absolute heights need a float format: exr, pfm, r32, or tif with float".to_owned());
+    }
+    if !(opts.value_scale.is_finite() && opts.value_scale > 0.0) {
+        return Err("the value scale must be a positive number".to_owned());
+    }
     let data_lo = raster.heights.iter().copied().fold(f64::INFINITY, f64::min);
     let data_hi = raster.heights.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let lo = opts.min_height.unwrap_or(data_lo);
@@ -181,17 +252,18 @@ pub fn export(
         return Err("the height range must have min at most max".to_owned());
     }
     let span = hi - lo;
-    let values: Vec<u16> = raster
-        .heights
-        .iter()
-        .map(|z| if span > 1e-9 { ((z - lo) / span).clamp(0.0, 1.0) * 65535.0 } else { 0.0 }.round() as u16)
-        .collect();
-    write_heights(&path, raster.width, raster.height, &values)?;
+    let values: Vec<f64> = if absolute {
+        raster.heights.iter().map(|z| z / opts.value_scale).collect()
+    } else {
+        raster.heights.iter().map(|z| if span > 1e-9 { ((z - lo) / span).clamp(0.0, 1.0) } else { 0.0 }).collect()
+    };
+    write_gray(&path, raster.width, raster.height, &values, format)?;
     let splat = !opts.splat.trim().is_empty();
     if splat {
-        let rgba: Vec<u8> =
-            raster.weights.iter().flat_map(|w| w.map(|c| (c.clamp(0.0, 1.0) * 255.0).round() as u8)).collect();
-        write_splat(&super::resolve_path(state, &opts.splat)?, raster.width, raster.height, &rgba)?;
+        let splat_path = super::resolve_path(state, &opts.splat)?;
+        let splat_format = OutFormat::for_path(&splat_path, false)?;
+        let weights: Vec<[f64; 4]> = raster.weights.iter().map(|w| w.map(|c| c.clamp(0.0, 1.0))).collect();
+        write_rgba(&splat_path, raster.width, raster.height, &weights, splat_format)?;
     }
     Ok(ExportReport {
         width: raster.width,
@@ -202,6 +274,8 @@ pub fn export(
         min: raster.min,
         faces: faces.len(),
         splat,
+        absolute,
+        format,
     })
 }
 

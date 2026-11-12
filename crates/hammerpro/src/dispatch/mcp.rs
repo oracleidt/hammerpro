@@ -32,6 +32,7 @@ mod tools;
 mod tools_actions;
 mod tools_assets;
 mod tools_blender;
+mod tools_combine;
 mod tools_compile;
 mod tools_compilers;
 mod tools_content;
@@ -40,11 +41,13 @@ mod tools_curve;
 mod tools_detail;
 mod tools_discord;
 mod tools_disp;
+mod tools_disp_level;
 mod tools_docs;
 mod tools_edit;
 mod tools_entities;
 mod tools_fgd;
 mod tools_fog;
+mod tools_func_detail;
 mod tools_games;
 mod tools_gpu;
 mod tools_grids;
@@ -62,7 +65,9 @@ mod tools_particles;
 mod tools_paths;
 mod tools_pipe;
 mod tools_place;
-pub(crate) use place_scan::{MapScanBuilder, run_map_scan};
+pub(crate) use place_scan::{MapScanBuilder, ScanMemory, run_map_scan_since};
+#[cfg(test)]
+pub(crate) use place_scan::{prepare_map_scan, run_map_scan};
 pub(crate) use place_ui::{
     PlaceReport, Sheet, UiPlace, auto_settle_created, nearest_wall, place as place_objects, real_dims,
     settle as settle_objects, sheet_job_model, sheet_job_selection,

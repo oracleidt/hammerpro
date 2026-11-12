@@ -30,7 +30,7 @@ The row of buttons at the top of the panel chooses what clicks and drags do in t
 | Mode | What it does |
 | --- | --- |
 | **Select** | Click faces to select them (`Ctrl` toggles, `Shift` toggles every displacement of the solid). Hold and sweep to select every face the mouse passes over |
-| **Paint geometry** (default) | Raise, lower, smooth or set the height of the surface with the brush |
+| **Paint geometry** (default) | Raise, lower, smooth, set the height of the surface or bring it onto a slope with the brush |
 | **Paint alpha** | Paint the blend between the textures of a blend material |
 | **Sculpt** | Push the surface to a layer, carve a profile along the stroke, project it onto brushes, or pinch, grab, inflate and flatten it |
 | **Tags** | Paint the triangle tags: forced walkable, forced buildable or removed |
@@ -48,9 +48,12 @@ Painting, sculpting and tagging happen in the 3D view. A brush circle follows th
 | `Ctrl` while sculpting | Inverts: Push sinks, Carve raises a ridge |
 | `Shift` while sculpting | Smooths instead (strength: **Smoothing**) |
 | Right drag (3D view, painting modes) | Changes the brush radius: 150 points to the right doubles it, to the left halves it |
+| Right click without dragging (3D view: Raise to, Flatten with the Target height plane, Alpha set, Slope) | Samples the surface under the cursor: the target height, the alpha value, or a point of the slope (see [Height sampling](#height-sampling)) |
+| `Ctrl` + right click (Slope) | Moves the nearest slope point under the cursor and keeps its height |
+| `Ctrl` while smoothing (Smooth effect, or `Shift` smoothing while sculpting) | Smooths 4 times stronger for as long as it is held |
 | `Alt` + left drag (3D view, painting modes) | Same radius change (Hammer gesture) |
 | `Alt` + right click on a face (3D view) | Sets the **Custom** axis to the normal of the surface there and switches the axis to **Custom** |
-| `Esc` | Cancels the current stroke (its changes are reverted); otherwise clears the face selection and deselects the selected displacement solids |
+| `Esc` | Cancels the current stroke (its changes are reverted); with the Slope effect, clears the slope points; otherwise clears the face selection and deselects the selected displacement solids |
 
 The brush circle changes color with the effect, and turns gray with the label "Not selected: not painted" over displacements it may not paint (see **Selected only**). The status bar always shows the gestures of the current mode.
 
@@ -119,10 +122,14 @@ Section **Paint geometry** (mode **Paint geometry**):
 | **Raise** | Pushes the surface out along the paint axis | Selected |
 | **Lower** | Pulls the surface in along the paint axis | |
 | **Smooth** | Evens out the heights of neighbouring vertices along the paint axis (connected displacements are smoothed together and stay sewn) | |
-| **Raise to** | Brings the surface to a target height above the face | |
+| **Raise to** | Brings the surface to a target height | |
+| **Slope** | Brings the surface onto the slope between two points (see [Slope brush](#slope-brush)) | |
 | **Strength** (Raise, Lower) | Units moved per second at the brush center (1 to 8192) | 64 /s |
 | **Strength** (Smooth) | How fast the surface is smoothed (0 to 1) | 0.5 |
-| **Target height** (Raise to) | Height above the face along the paint axis (-16384 to 16384) | 0 |
+| **Multiplier** (Smooth) | Makes smoothing much stronger: the strength is multiplied (x1 to x64) and run as up to 16 averaging passes per brush sample, up to nearly full averaging. `Ctrl` while smoothing multiplies it by 4 more | x1 |
+| **Target height** (Raise to) | Height along the paint axis (-16384 to 16384). A right click samples it | 0 |
+| **Height from** (Raise to) | **Face**: the target height is measured above the base face of each displacement (Hammer). **World**: it is a world coordinate along the paint axis, so every displacement goes to the same level whatever its base face | Face |
+| **Strength** (Slope) | Share of the way to the slope at each brush sample (0 to 1, 1 puts the surface exactly on the slope at once) | 0.5 |
 | **Axis** | Direction the vertices move in (see below) | Face normal |
 
 ### Paint axis
@@ -136,6 +143,33 @@ Section **Paint geometry** (mode **Paint geometry**):
 | **View (camera), horizontal** | Toward the 3D camera on X and Y only: the view direction at the start of the stroke, flattened onto the ground, so vertices never go up or down. Handy to push a cliff face or a wall back and forth from where you look. Looking straight down, the bottom of the view gives the direction. Inverted: away from the camera |
 | **X**, **Y**, **Z (up)** | A world axis |
 | **Custom** | A direction of your own: type X, Y, Z under the list, or `Alt` + right click a face in the 3D view to take its normal (Hammer's Selected direction). Default 0 0 1 |
+
+## Height sampling
+
+Like the terrain tools of Cities: Skylines, a right click without dragging in the 3D view takes a value from the surface under the cursor, so that you can match a height somewhere else. The brush radius is still changed by a right drag: only a click that does not move samples.
+
+| Mode | What a right click samples |
+| --- | --- |
+| **Paint geometry > Raise to** | The **Target height** at the point under the cursor. On a displacement (or a brush above or below one) it is the height above that displacement's face; with **Height from: World**, or when no displacement is under the point (the top of a brush on its own), it is the world height along the paint axis and **Height from** switches to **World** |
+| **Sculpt > Flatten** with the **Target height** plane | The same target height |
+| **Paint geometry > Slope** | The start point, then the end point (see below) |
+| **Paint alpha > Set** | The **Value**: the alpha of the nearest vertex |
+
+Any surface can be sampled: displacements and brushes. A green dot marks the sampled point, with a green ring at the target level above or below it and a label, and they stay in the 3D view while Raise to or the Flatten target plane is chosen, also when the sample came from MCP or the `sample_point` option, so screenshots show them. The brush under the cursor shows the level it paints to: an orange ring at the target level, a line from the surface up or down to it and a label with the height. Slope points set through MCP or typed in the panel are drawn the same way as clicked ones.
+
+## Slope brush
+
+**Paint geometry > Slope** makes ramps, like the Slope tool of Cities: Skylines: the vertices under the brush move along the paint axis toward the straight line between two points, each at the height of that line where it stands (interpolated between the two heights, held at the start or end height beyond them). Use it for road ramps, or to blend a high area into a low one.
+
+1. Right click the surface where the slope starts: its point and height are sampled there (green **A**).
+2. Right click where it ends (orange **B**). You can also skip this click and just start painting: the end is then taken where the stroke starts.
+3. Hold the left button and paint along the slope.
+
+While you work, the 3D view draws the line from **A** to **B**, both heights, the grade in degrees and percent, and the slope level under the brush (orange ring and label). A third right click starts a new slope. `Ctrl` + right click moves the nearest point under the cursor and keeps its height. The panel shows both points as X, Y, Z (type a height to set it by hand), the grade, and the buttons **Swap**, **Clear**, **Use as path** (copies the two points to the path of [Constant slope along a path](#constant-slope-along-a-path), which grades a whole road width at once) and **From path** (takes the first and last point of that path). `Esc` clears the points.
+
+The radius, falloff, **Strength**, axis, **Spatial**, **Line of sight**, **Selected only** and **Sew while painting** apply as for the other brushes. All displacements use the same world line, so sewn displacements stay together; each stroke is one undo step.
+
+MCP: `sample_displacement_height` (`point`, `direction`, `into`: `target`, `slope_start`, `slope_end`, `alpha` or `none`) samples like a right click and answers the heights; `paint_displacement_slope` (`start`, `end`, `points`, `strength`, `radius`, `faces`) paints a slope in one call; `stroke_displacement` takes `boost` (like `Ctrl` while smoothing). The options are `effect` `slope`, `slope_brush_start`, `slope_brush_end`, `slope_brush_strength`, `height_reference` (`face` or `world`), `sample_point` (the marked sample point, or `none`), `smooth_boost` and `flatten_plane` `target`.
 
 ## Paint alpha
 
@@ -162,6 +196,7 @@ The **Texture** row only shows when **Paint 4-way blends** is on in the settings
 - **No rows yet.** A displacement with a Lightmapped_4WayBlend material and no 4-way rows shows its vertex alpha as texture 2 (the **2-way** painting), and the first stroke on a texture button starts from that alpha. The compiler writes the same thing, so the game matches the editor. Valve's VBSP ignores the alpha of such a displacement (the game then shows texture 1 only).
 - **In the game.** The compiler writes the rows to the displacement multiblend lump of the BSP and flags each displacement that has them, byte for byte like Garry's Mod's VBSP, so the blends show in Garry's Mod and Source 2013 games.
 - **Moving and mirroring** a displacement keeps its 4-way rows in place, like its alpha. Flattening starts over from texture 1; changing the power with **Keep the shape** resamples the rows.
+- **From images.** **File > Import > Import blend masks...** paints the rows (or the alpha) from World Machine, Gaea or any splat map, and **Export blend masks...** writes them back as images (see [Terrain](terrain.md#import-blend-masks)).
 
 ## Sculpt
 
@@ -191,6 +226,7 @@ All four use the brush radius and falloff, count as one undo step per stroke, an
 | **Strength** | Flatten | Share of the distance to the plane closed at each step (0 to 1) | 0.5 |
 | **Plane: Average** | Flatten | The plane is fitted again to the vertices under the brush at every step | Selected |
 | **Plane: Fixed** | Flatten | The plane is taken once, at the stroke start, and the whole stroke flattens to it | |
+| **Plane: Target height** | Flatten | Flattens toward the level of **Target height** and **Height from** (the same values as Raise to; a right click samples them) | |
 | **Range** | Project | Brushes farther than this from the surface are ignored (1 to 16384) | 512 |
 | **Axis** | All | Sculpt direction (same list as painting, without Surface normal) | Face normal |
 | **Smoothing** | All | Strength of the smoothing done while `Shift` is held (0 to 1) | 0.5 |
@@ -216,7 +252,7 @@ Section **Brush**, shown in every mode except **Select**:
 
 | Option | What it does | Default |
 | --- | --- | --- |
-| **Radius** | Brush radius in world units (slider 1 to 2048; right drag or `Alt` drag go up to 8192) | 64 |
+| **Radius** | Brush radius in world units (logarithmic slider, right drag or `Alt` drag: 1 to 16384). Only the displacements the brush reaches are visited, so a huge brush over a big terrain stays responsive | 64 |
 | **Falloff** | **Constant**, **Linear** or **Smooth** | Smooth |
 | **Spatial** | Measures the brush distance in 3D on the surface instead of in the face plane (paints walls and across tiles). Off: only the displacement under the brush and the terrain tiles connected to it are painted | Off |
 | **Line of sight** | Only paints the displacements the camera sees at the brush (not the terrain hidden behind a hill or under a bridge) | Off |
@@ -443,7 +479,7 @@ MCP: `blend_displacements` (`sets` as lists of solid ids, or `faces`, `ids`, `so
 
 ## Scripting and MCP
 
-Every option of the panel has a name for scripts (`tool_option KEY VALUE`, see [Script commands](../reference/script-commands.md)) and for the MCP tools `get_tool_options` and `set_tool_options`: `mode`, `effect`, `axis`, `custom_axis`, `radius`, `strength`, `smooth`, `target_height`, `falloff`, `spatial`, `line_of_sight`, `autosew`, `selected_only`, `continuous`, `alpha_effect`, `alpha_value`, `alpha_strength`, `blend_channel`, `sculpt` (`push`, `carve`, `project`, `pinch`, `grab`, `inflate`, `flatten`, `relax`), `push_mode`, `sculpt_bounds`, `falloff_position`, `falloff_final`, `push_distance`, `push_percent`, `carve_depth`, `carve_profile`, `project_range`, `flatten_plane`, `flatten_strength`, `relax_strength`, `scale_factor`, `noise_type`, `noise_scale`, `noise_octaves`, `noise_persistence`, `terrain_seed`, `thermal_iterations`, `thermal_talus`, `thermal_strength`, `hydraulic_iterations`, `hydraulic_rain`, `hydraulic_evaporation`, `hydraulic_capacity`, `hydraulic_deposition`, `hydraulic_strength`, `blend_width`, `blend_falloff`, `blend_mode`, `blend_match_edges`, `blend_alpha`, `blend_match_powers`, `slope_max_angle`, `slope_terrace`, `slope_terrace_step`, `slope_terrace_strength`, `slope_ramp_angle`, `slope_ramp_direction`, `slope_ramp_pivot`, `slope_ramp_strength`, `slope_ramp_detail`, `slope_uniform_strength`, `slope_uniform_detail`, `slope_path`, `slope_path_width`, `slope_path_falloff`, `slope_path_strength`, `slope_smooth_passes`, `slope_smooth_strength`, `slope_select_angle`, `slope_select_mode`, `slope_select_match`, `slope_select_op`, `tag_kind`, `tag_value`, `mask_grid`, `mask_select`, `keep_shape`. `axis` takes `normal`, `subdiv`, `center`, `view`, `view_flat` (View (camera), horizontal), `x`, `y`, `z` or `custom`. Other MCP tools create, paint, sew, subdivide, tag and inspect displacements (`displacement_to_mesh` writes them to an OBJ, `mesh_to_displacement`, `conform_displacements_to_mesh` and `tile_displacements_from_selection` build or shape them from a 3D mesh, `terrain_displacements` runs fractal noise, thermal erosion or hydraulic erosion with these options, `blend_displacements`, `control_slope` and `select_displacements_by_slope` blend heights and control or select by slope, `create_displacements`, `stroke_displacement`, `paint_displacement`, `sew_displacements`, `resample_displacements`...); `get_displacement` returns the 4-way blend rows (`multiblend`) and `set_displacement_data` writes them (`multiblend_weights`, `alphablend`, `multiblend_colors`, `remove_multiblend`), see the [MCP tool reference](../../MCP.md).
+Every option of the panel has a name for scripts (`tool_option KEY VALUE`, see [Script commands](../reference/script-commands.md)) and for the MCP tools `get_tool_options` and `set_tool_options`: `mode`, `effect`, `axis`, `custom_axis`, `radius`, `strength`, `smooth`, `smooth_boost`, `target_height`, `height_reference`, `slope_brush_start`, `slope_brush_end`, `sample_point`, `slope_brush_strength`, `falloff`, `spatial`, `line_of_sight`, `autosew`, `selected_only`, `continuous`, `alpha_effect`, `alpha_value`, `alpha_strength`, `blend_channel`, `sculpt` (`push`, `carve`, `project`, `pinch`, `grab`, `inflate`, `flatten`, `relax`), `push_mode`, `sculpt_bounds`, `falloff_position`, `falloff_final`, `push_distance`, `push_percent`, `carve_depth`, `carve_profile`, `project_range`, `flatten_plane`, `flatten_strength`, `relax_strength`, `scale_factor`, `noise_type`, `noise_scale`, `noise_octaves`, `noise_persistence`, `terrain_seed`, `thermal_iterations`, `thermal_talus`, `thermal_strength`, `hydraulic_iterations`, `hydraulic_rain`, `hydraulic_evaporation`, `hydraulic_capacity`, `hydraulic_deposition`, `hydraulic_strength`, `blend_width`, `blend_falloff`, `blend_mode`, `blend_match_edges`, `blend_alpha`, `blend_match_powers`, `slope_max_angle`, `slope_terrace`, `slope_terrace_step`, `slope_terrace_strength`, `slope_ramp_angle`, `slope_ramp_direction`, `slope_ramp_pivot`, `slope_ramp_strength`, `slope_ramp_detail`, `slope_uniform_strength`, `slope_uniform_detail`, `slope_path`, `slope_path_width`, `slope_path_falloff`, `slope_path_strength`, `slope_smooth_passes`, `slope_smooth_strength`, `slope_select_angle`, `slope_select_mode`, `slope_select_match`, `slope_select_op`, `tag_kind`, `tag_value`, `mask_grid`, `mask_select`, `keep_shape`. `axis` takes `normal`, `subdiv`, `center`, `view`, `view_flat` (View (camera), horizontal), `x`, `y`, `z` or `custom`. Other MCP tools create, paint, sew, subdivide, tag and inspect displacements (`displacement_to_mesh` writes them to an OBJ, `mesh_to_displacement`, `conform_displacements_to_mesh` and `tile_displacements_from_selection` build or shape them from a 3D mesh, `terrain_displacements` runs fractal noise, thermal erosion or hydraulic erosion with these options, `blend_displacements`, `control_slope` and `select_displacements_by_slope` blend heights and control or select by slope, `create_displacements`, `stroke_displacement`, `paint_displacement`, `sample_displacement_height`, `paint_displacement_slope`, `sew_displacements`, `resample_displacements`...); `get_displacement` returns the 4-way blend rows (`multiblend`) and `set_displacement_data` writes them (`multiblend_weights`, `alphablend`, `multiblend_colors`, `remove_multiblend`), see the [MCP tool reference](../../MCP.md).
 
 ## Tips
 
@@ -451,6 +487,8 @@ Every option of the panel has a name for scripts (`tool_option KEY VALUE`, see [
 - Turn on **Sew while painting** when you paint across several displacements: no crack appears and no Sew is needed afterwards.
 - With displacements selected, only those are painted. Press `Esc` to clear the selection and paint everything under the brush.
 - Use **Carve** with the **U** profile for paths and rivers, then **Smooth** to soften the banks.
+- To make a road ramp, choose **Slope**, right click the bottom and the top, then paint along the road with a radius of half its width and **Constant** falloff.
+- To match a height, choose **Raise to**, right click the place to copy and paint where it should go.
 - Use **Line of sight** to paint the front of a hill without touching the terrain behind it.
 
 ## FAQ

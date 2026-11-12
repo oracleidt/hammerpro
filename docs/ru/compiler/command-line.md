@@ -123,6 +123,7 @@ hammerpro --rad  [options] <map>
 | `-StaticPropNormals` | | Отладка: проп показывает свои нормали. | выкл. |
 | `-nostaticpropshadows` | | Hammer Pro: статической тени вообще нет. | выкл. |
 | `-nodispshadows` | | Hammer Pro: тень дисплейсмента отсутствует. | выкл. |
+| `-nostylebounce` | | Hammer Pro: именованные (переключаемые) источники не дают отражённого света, как в VRAD. | выкл. |
 | `-noaddons`, `-wsaddons`, `-nowsaddons`, `-serveraddons`, `-mount_appid` | | Контент, смонтированный для моделей, например `--bspc`. | установлены аддоны и предметы Мастерской |
 | `-radius_override` | единицы | Принимается и пропускается (опция VVIS часто передается каждому инструменту). | |
 

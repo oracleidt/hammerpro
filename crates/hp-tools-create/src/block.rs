@@ -1303,6 +1303,23 @@ pub(crate) fn create_as_ui(
     if let Some(v) = picker.show(ui, id_salt, &current, t!("create.block.create_as_tip"), &src) {
         *create_as = if v == WORLD_ID { CreateAs::World } else { CreateAs::Entity(v) };
     }
+    let detail = is_detail(create_as);
+    if ui
+        .add(egui::Button::selectable(detail, t!("create.block.detail_toggle")))
+        .on_hover_text(t!("create.block.detail_toggle_tip"))
+        .clicked()
+    {
+        toggle_detail(create_as);
+    }
+}
+
+pub fn is_detail(create_as: &CreateAs) -> bool {
+    matches!(create_as, CreateAs::Entity(c) if hp_editor::is_detail_class(c))
+}
+
+pub fn toggle_detail(create_as: &mut CreateAs) {
+    *create_as =
+        if is_detail(create_as) { CreateAs::World } else { CreateAs::Entity(hp_editor::DETAIL_CLASS.to_owned()) };
 }
 
 fn is_round(kind: Primitive) -> bool {
@@ -1762,6 +1779,23 @@ mod tests {
         assert_eq!(state.doc.scene().entity_solid_count(ents[0]), 1);
         assert!(state.doc.undo());
         assert_eq!(state.doc.stats().entities, entities);
+    }
+
+    #[test]
+    fn detail_toggle_flips_between_world_and_func_detail() {
+        let mut c = CreateAs::World;
+        toggle_detail(&mut c);
+        assert_eq!(c, CreateAs::Entity("func_detail".to_owned()));
+        assert!(is_detail(&c));
+        toggle_detail(&mut c);
+        assert_eq!(c, CreateAs::World);
+        let mut other = CreateAs::Entity("func_brush".to_owned());
+        assert!(!is_detail(&other));
+        toggle_detail(&mut other);
+        assert!(is_detail(&other));
+        let mut state = settle();
+        let mut tool = BlockTool::new();
+        hp_app::testing::run_ui(&mut state, |ui, state| tool.options_ui(ui, state));
     }
 
     #[test]

@@ -35,6 +35,8 @@ mod fuzz_tools;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod tests_autopan;
+#[cfg(test)]
 mod tests_support;
 #[cfg(test)]
 mod tests_wheel;

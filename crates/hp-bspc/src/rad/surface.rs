@@ -760,6 +760,37 @@ pub(crate) fn blocker_scene(map: &MapData) -> Bvh {
     Bvh::from_vec(tris)
 }
 
+pub(crate) fn water_scene(map: &MapData) -> (Bvh, Vec3A) {
+    let mut tris = Vec::new();
+    let (mut sum, mut count) = (Vec3A::ZERO, 0.0f32);
+    if let Some(m) = map.models.first() {
+        for f in m.first_face..m.first_face.saturating_add(m.num_faces).min(map.faces.len()) {
+            let face = &map.faces[f];
+            if map.face_flags(face) & surf::WARP == 0 {
+                continue;
+            }
+            let pts = map.face_points(face);
+            if pts.len() < 3 {
+                continue;
+            }
+            let refl = usize::try_from(face.texinfo)
+                .ok()
+                .and_then(|t| map.texinfo.get(t))
+                .and_then(|t| usize::try_from(t.texdata).ok())
+                .and_then(|t| map.reflectivity.get(t))
+                .copied()
+                .unwrap_or([0.0; 3]);
+            sum += Vec3A::from_array(refl);
+            count += 1.0;
+            for k in 1..pts.len() - 1 {
+                tris.push(Triangle { p: [pts[0], pts[k], pts[k + 1]].map(|v| v.as_vec3a()), payload: f as u32 });
+            }
+        }
+    }
+    let refl = if count > 0.0 { (sum / count).clamp(Vec3A::ZERO, Vec3A::splat(0.99)) } else { Vec3A::ZERO };
+    (Bvh::from_vec(tris), refl)
+}
+
 pub(crate) fn shadow_scene(
     map: &MapData,
     faces: &[Option<LitFace>],
@@ -876,7 +907,12 @@ pub(crate) fn surface_scene(
             && li.is_some()
             && let Some(d) = &lf.disp
         {
-            for (t, uv) in d.triangles() {
+            let up = lf.normal.as_vec3a();
+            for (mut t, mut uv) in d.triangles() {
+                if (t[1] - t[0]).cross(t[2] - t[0]).as_vec3a().dot(up) < 0.0 {
+                    t.swap(1, 2);
+                    uv.swap(1, 2);
+                }
                 tris.push(Triangle { p: t.map(|v| v.as_vec3a()), payload: info.len() as u32 });
                 info.push(SurfTri::Disp(li.unwrap_or(0), uv.map(|c| [c.x as f32, c.y as f32])));
                 classes.push(OPAQUE_SURFACES);

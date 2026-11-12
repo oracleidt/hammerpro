@@ -445,6 +445,13 @@ fn direct_lighting_from(world: vec3<f32>, n: vec3<f32>, ln: vec3<f32>, frag: vec
         if li >= n_lights {
             continue;
         }
+        let reach = lights[li].pos_range;
+        let shape = lights[li].cone;
+        let rd = reach.xyz - world;
+        let rdist = sqrt(max(dot(rd, rd), 1e-4));
+        if select(rdist > shape.w, rdist / max(reach.w, 1e-3) >= 1.0, shape.w <= shape.z) {
+            continue;
+        }
         let l = lights[li];
         if !delta && l.delta_color.w > 0.5 { continue; }
         let color = select(l.color.rgb, l.delta_color.rgb, delta);

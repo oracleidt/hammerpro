@@ -41,6 +41,7 @@ const VISIBLE_FIRST_SOLIDS: usize = 6000;
 const VISIBLE_FIRST_RADIUS: f64 = 2048.0;
 const VISIBLE_FIRST_REACH: f64 = 32768.0;
 const VISIBLE_FIRST_SHARE: f64 = 0.6;
+const SLOW_UPLOAD: std::time::Duration = std::time::Duration::from_millis(12);
 
 #[derive(Default)]
 pub(crate) struct State {
@@ -135,12 +136,29 @@ fn initial_scope(
     }
 }
 
-fn bake_threads(setting: u32) -> (usize, usize) {
+fn threads_for(setting: u32, cores: usize) -> usize {
+    let cap = cores.saturating_sub(2).max(1);
     if setting > 0 {
-        return (setting as usize, setting as usize);
+        return (setting as usize).min(cap);
     }
+    cores.saturating_sub((cores / 4).max(2)).max(1)
+}
+
+fn bake_threads(setting: u32) -> (usize, usize) {
     let cores = std::thread::available_parallelism().map_or(4, std::num::NonZeroUsize::get);
-    (cores.saturating_sub(2).max(1), cores.saturating_sub(1).max(1))
+    let n = threads_for(setting, cores);
+    (n, n)
+}
+
+pub(crate) fn preview_threads(state: &AppState) -> usize {
+    bake_threads(state.settings.lighting.sanitized().threads).1
+}
+
+fn paused(state: &AppState) -> bool {
+    let s = &state.settings.lighting;
+    let r = &state.runtime.render;
+    let window = hp_app::native_window::main_window_state().unwrap_or((r.minimized, r.focused));
+    bake::away((s.pause_minimized, s.pause_unfocused), Some(window))
 }
 
 fn display_of(mode: RenderModeSetting) -> LightmapDisplay {
@@ -397,7 +415,12 @@ impl Lighting {
     fn preview<'a>(app: &'a mut HammerProApp, ctx: &egui::Context) -> Option<&'a mut Preview> {
         if app.pkg.lighting.preview.is_none() && !app.pkg.lighting.failed {
             match Preview::start(ctx) {
-                Some(p) => app.pkg.lighting.preview = Some(p),
+                Some(p) => {
+                    app.pkg.lighting.preview = Some(p);
+                    if let Some(gfx) = app.state.gfx.as_ref() {
+                        gfx.renderer.prewarm_lightmap_pipelines();
+                    }
+                }
                 None => {
                     app.pkg.lighting.failed = true;
                     app.state.notify(Severity::Error, t!("app.lighting.start_failed"));
@@ -523,6 +546,10 @@ impl Lighting {
         }
         let s = app.state.settings.lighting.sanitized();
         if !s.prepare || !s.auto_bake || pkg.failed || app.state.gfx.is_none() {
+            return;
+        }
+        if app.state.runtime.lighting.paused || !app.state.runtime.render.focused || app.state.runtime.render.minimized
+        {
             return;
         }
         if app.state.runtime.startup.resources.is_some() || app.state.doc.scene().solids().is_empty() {
@@ -738,6 +765,31 @@ impl Package for Lighting {
             app.pkg.lighting.note_lightmap_changes(gfx.renderer.take_lightmap_changes());
         }
         let lit_wanted = mode == RenderModeSetting::Lit && app.state.settings.render.lit_indirect;
+        let paused = paused(&app.state);
+        let rules = &app.state.settings.lighting;
+        bake::set_pause_rules(rules.pause_minimized, rules.pause_unfocused);
+        if bake::take_stopped_away()
+            && let Some(p) = app.pkg.lighting.preview.as_mut()
+            && p.running.as_ref().is_some_and(|r| !r.lit && !r.background)
+        {
+            p.cancelling = true;
+        }
+        if bake::take_models_halted()
+            && let Some(p) = app.pkg.lighting.preview.as_mut()
+        {
+            p.models_halted();
+        }
+        if paused != app.state.runtime.lighting.paused {
+            app.state.runtime.lighting.paused = paused;
+            if paused && let Some(mut p) = app.pkg.lighting.preview.take() {
+                p.pause(&mut app.state);
+                app.pkg.lighting.preview = Some(p);
+            }
+        }
+        if !active && let Some(mut p) = app.pkg.lighting.preview.take() {
+            p.hide(&mut app.state);
+            app.pkg.lighting.preview = Some(p);
+        }
         if active || lit_wanted {
             Self::preview(app, ctx);
             if active && let Some(p) = app.pkg.lighting.preview.as_mut() {
@@ -774,19 +826,31 @@ impl Package for Lighting {
             p.request_costs(&app.state);
         }
         if let Some(mut p) = app.pkg.lighting.preview.take() {
-            if active {
+            if active && !paused {
                 p.schedule(&mut app.state, now);
-            } else if lit_wanted {
+                p.light_models_again(&mut app.state);
+            } else if lit_wanted && !paused {
                 let shown = app.state.gfx.as_ref().is_some_and(|g| g.renderer.indirect_volume().is_some());
                 p.schedule_lit(&mut app.state, shown);
             }
+            let polled = std::time::Instant::now();
             p.poll(&mut app.state);
+            if polled.elapsed() > SLOW_UPLOAD {
+                log::info!(
+                    "lighting preview: {} ms to take the lighting results in one frame",
+                    polled.elapsed().as_millis()
+                );
+            }
             if !p.uploads.is_empty()
                 && let Some(gfx) = app.state.gfx.as_mut()
             {
                 app.pkg.lighting.grid.clear(&mut gfx.renderer);
             }
+            let sent = std::time::Instant::now();
             p.upload(&mut app.state);
+            if sent.elapsed() > SLOW_UPLOAD {
+                log::info!("lighting preview: {} ms to send lightmaps in one frame", sent.elapsed().as_millis());
+            }
             if active && p.uploads.is_empty() && !p.animations.is_empty() {
                 let changed: Vec<_> =
                     p.animations.iter_mut().filter_map(|face| face.sample(now).then_some(face)).collect();
@@ -802,10 +866,14 @@ impl Package for Lighting {
                     ctx.request_repaint_after(std::time::Duration::from_millis(100));
                 }
             }
-            if (p.busy() && !p.background_only())
+            if active && p.drag_wait && !paused {
+                let pause = u64::from(app.state.settings.lighting.sanitized().drag_pause_ms);
+                ctx.request_repaint_after(std::time::Duration::from_millis(pause.max(16)));
+            }
+            let waiting = (p.busy() && !p.background_only())
                 || ((active || lit_wanted)
-                    && (p.cache.pending(lit_wanted && !active) || (p.restart.is_some() && options.incremental)))
-            {
+                    && (p.cache.pending(lit_wanted && !active) || (p.restart.is_some() && options.incremental)));
+            if waiting && !paused {
                 ctx.request_repaint_after(std::time::Duration::from_millis(100));
             }
             let prepared = p.holds_prepared() && p.prepared_current(&app.state);
@@ -981,9 +1049,133 @@ mod tests {
         assert_eq!(coarsen_factor(10, 100), 1.0);
         assert_eq!(coarsen_factor(400, 100), 2.0);
         assert_eq!(coarsen_factor(400, 0), 1.0);
-        assert_eq!(bake_threads(3), (3, 3));
         let (compile, light) = bake_threads(0);
         assert!(compile >= 1 && light >= compile);
+    }
+
+    #[test]
+    fn baking_leaves_cores_free() {
+        assert_eq!(threads_for(0, 12), 9);
+        assert_eq!(threads_for(0, 16), 12);
+        assert_eq!(threads_for(0, 8), 6);
+        assert_eq!(threads_for(0, 4), 2);
+        assert_eq!((threads_for(0, 2), threads_for(0, 1)), (1, 1));
+        assert_eq!(threads_for(3, 12), 3);
+        assert_eq!(threads_for(64, 12), 10, "never more than every core but two");
+        assert_eq!(threads_for(5, 4), 2);
+        assert_eq!(threads_for(8, 2), 1);
+    }
+
+    #[test]
+    fn the_preview_pauses_when_the_window_is_away() {
+        let mut state = hp_app::testing::test_state();
+        state.runtime.render.focused = true;
+        assert!(!paused(&state));
+        state.runtime.render.minimized = true;
+        assert!(paused(&state), "minimized windows pause by default");
+        state.settings.lighting.pause_minimized = false;
+        assert!(!paused(&state));
+        state.runtime.render.minimized = false;
+        state.runtime.render.focused = false;
+        assert!(!paused(&state), "another active window does not pause by default");
+        state.settings.lighting.pause_unfocused = true;
+        assert!(paused(&state));
+    }
+
+    #[test]
+    fn bakes_run_below_normal_and_the_preparation_at_idle() {
+        use hp_app::settings::BakePriority;
+        let mut state = hp_app::testing::test_state();
+        let mut preview = Preview::start(&egui::Context::default()).unwrap();
+        preview.prepare(&mut state);
+        assert_eq!(preview.worker.priority(), BakePriority::Idle);
+        preview.running = None;
+        preview.bake(&mut state, Scope::All, BakeKind::Full, false);
+        assert_eq!(preview.worker.priority(), BakePriority::BelowNormal);
+        preview.running = None;
+        state.settings.lighting.priority = BakePriority::Normal;
+        preview.bake(&mut state, Scope::All, BakeKind::Full, false);
+        assert_eq!(preview.worker.priority(), BakePriority::Normal);
+    }
+
+    #[test]
+    fn hiding_the_preview_stops_the_bake_and_bakes_again_when_shown() {
+        use hp_app::settings::BakePriority;
+        let mut state = hp_app::testing::test_state();
+        let mut preview = Preview::start(&egui::Context::default()).unwrap();
+        preview.bake(&mut state, Scope::All, BakeKind::Full, false);
+        preview.hide(&mut state);
+        assert!(preview.cancelling && state.runtime.lighting.progress.is_none());
+        let r = preview.running.take().unwrap();
+        preview.done(&mut state, r, bake::Outcome::Cancelled);
+        assert_eq!(preview.restart, Some(BakeKind::Full), "the bake starts again once the preview is shown");
+        preview.hide(&mut state);
+        assert!(!preview.cancelling, "nothing left to stop");
+        preview.prepare(&mut state);
+        preview.hide(&mut state);
+        assert!(!preview.cancelling, "the background preparation is not the shown bake");
+        assert_eq!(preview.worker.priority(), BakePriority::Idle);
+        preview.foreground(&mut state);
+        assert!(!running(&preview).background);
+        assert_eq!(preview.worker.priority(), BakePriority::BelowNormal, "shown: the preparation is waited for");
+    }
+
+    #[test]
+    fn the_props_are_lit_again_when_the_hidden_preview_comes_back() {
+        let mut state = hp_app::testing::test_state();
+        let mut preview = shown(&state);
+        preview.models_for = Some((7, Scope::All, false, preview.shown_serial.unwrap()));
+        preview.hide(&mut state);
+        assert!(preview.models_for.is_none() && preview.models_again, "hidden: the lighting of the props stops");
+        preview.light_models_again(&mut state);
+        let job = running(&preview);
+        assert!(job.relight && job.kind == BakeKind::Update, "shown again: a relight brings the props back");
+        assert!(!preview.models_again);
+        preview.models_halted();
+        assert!(preview.models_again);
+    }
+
+    #[test]
+    fn pausing_stops_the_bake_and_takes_it_up_again() {
+        let mut state = hp_app::testing::test_state();
+        let mut preview = shown(&state);
+        state.doc.create_point_entity("light", DVec3::new(0.0, 0.0, 128.0), &[]).unwrap();
+        preview.schedule(&mut state, 1.0);
+        assert!(running(&preview).relight);
+        preview.pause(&mut state);
+        assert!(preview.cancelling);
+        let r = preview.running.take().unwrap();
+        preview.done(&mut state, r, bake::Outcome::Cancelled);
+        assert_eq!(preview.restart, Some(BakeKind::Update));
+        preview.schedule(&mut state, 2.0);
+        assert!(running(&preview).relight, "the relight starts again once the window is back");
+    }
+
+    #[test]
+    fn dragged_lights_wait_for_the_mouse_to_rest() {
+        let mut state = hp_app::testing::test_state();
+        let light = state
+            .doc
+            .create_point_entity("light", DVec3::new(0.0, 0.0, 128.0), &[("_light".into(), "255 255 255 400".into())])
+            .unwrap();
+        let mut preview = shown(&state);
+        let at = |x: f64| hp_app::runtime::DragTransform {
+            objs: vec![hp_editor::ObjRef::Entity(light)].into(),
+            matrix: glam::DMat4::from_translation(DVec3::X * x),
+        };
+        state.runtime.selection.drag = Some(at(16.0));
+        preview.schedule(&mut state, 1.0);
+        assert!(preview.running.is_none() && preview.drag_wait, "moving: no relight yet");
+        state.runtime.selection.drag = Some(at(32.0));
+        preview.schedule(&mut state, 1.1);
+        preview.schedule(&mut state, 1.2);
+        assert!(preview.running.is_none(), "the mouse rested only 0.1 s");
+        preview.schedule(&mut state, 1.23);
+        assert!(running(&preview).relight, "the mouse rested 0.13 s");
+        assert!(!preview.drag_wait);
+        state.runtime.selection.drag = None;
+        preview.schedule(&mut state, 1.3);
+        assert!(preview.drag_seen.is_none() && !preview.drag_wait);
     }
 
     #[test]
@@ -1234,6 +1426,7 @@ mod tests {
     #[test]
     fn dragged_lights_relight_live_without_editing_the_map() {
         let mut state = hp_app::testing::test_state();
+        state.settings.lighting.drag_pause_ms = 0;
         let light = state
             .doc
             .create_point_entity("light", DVec3::new(0.0, 0.0, 128.0), &[("_light".into(), "255 255 255 400".into())])

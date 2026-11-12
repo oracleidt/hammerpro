@@ -114,6 +114,7 @@ Menu group **Quality** (lighting step).
 | `-softsun <degrees>` | Treats the sun as an area light this many degrees wide: softer shadow edges (0 to 5 is usual). | 0 |
 | `-centersamples` | Accepted like VRAD: luxels are always sampled at their middle when it is open. | always |
 | `-nodispshadows` | Hammer Pro option: displacements cast no shadow at all (they are still lit). One displacement can also be kept from casting shadows with the **Cast shadows** option of the [displacement tool](../features/displacement-tool.md). | off |
+| `-nostylebounce` | Hammer Pro option: named (switchable) lights light only what they see directly, like Valve's VRAD. Without it their light also bounces, in their own light style, and switches with them. Their direct light always keeps its place among the 4 styles of a face: a bounce layer only takes a free slot. | off |
 
 ## Static props
 

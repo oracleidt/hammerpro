@@ -36,6 +36,8 @@ const HANDLED: &[Action] = &[
     Action::DispHydraulicErosion,
     Action::ImportHeightmap,
     Action::ExportHeightmap,
+    Action::ImportBlendMasks,
+    Action::ExportBlendMasks,
     Action::GenerateTerrain,
     Action::DispBlendHeights,
     Action::DispLimitSlope,
@@ -95,6 +97,8 @@ impl Package for Mesh {
             Action::DispHydraulicErosion => app.state.runtime.mesh.erosion_dialog = Some(ErosionDialog::Hydraulic),
             Action::ImportHeightmap => app.pkg.mesh.terrain.import_open = true,
             Action::ExportHeightmap => app.pkg.mesh.terrain.export_open = true,
+            Action::ImportBlendMasks => app.pkg.mesh.terrain.masks.import_open = true,
+            Action::ExportBlendMasks => app.pkg.mesh.terrain.masks.export_open = true,
             Action::GenerateTerrain => app.pkg.mesh.terrain.generate_open = true,
             Action::DispBlendHeights
             | Action::DispLimitSlope

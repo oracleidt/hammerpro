@@ -1003,6 +1003,7 @@ pub(crate) fn parse_rad_args(args: &[String]) -> Result<RadArgs, String> {
             "-staticpropnormals" => opts.props.show_normals = true,
             "-nostaticpropshadows" => opts.props.shadows = false,
             "-nodispshadows" => opts.no_disp_shadows = true,
+            "-nostylebounce" => opts.no_style_bounce = true,
             "-ao" | "-noao" => {}
             "-aoradius" | "-aostrength" | "-aosamples" => {
                 if args.get(i + 1).is_some_and(|v| v.trim().parse::<f32>().is_ok()) {
@@ -1339,6 +1340,9 @@ mod tests {
         assert!(!parse_rad_args(&args("-ldr map")).expect("parsed").opts.no_disp_shadows);
         let r = parse_rad_args(&args("-ldr -NoDispShadows map")).expect("parsed");
         assert!(r.opts.no_disp_shadows && r.ignored.is_empty());
+        assert!(!r.opts.no_style_bounce);
+        let r = parse_rad_args(&args("-ldr -NoStyleBounce map")).expect("parsed");
+        assert!(r.opts.no_style_bounce && r.ignored.is_empty());
         let r = parse_rad_args(&args("-fast -vproject x -foo -luxeldensity 2 map")).expect("parsed");
         assert_eq!(r.opts.quality, hp_bspc::rad::RadQuality::Draft);
         assert_eq!(r.ignored, ["-vproject", "-foo"]);

@@ -763,8 +763,8 @@ pub const TR: TrTable = &[
     ("entities.mt_compile", "Compile a QC...", "Compiler un QC..."),
     (
         "entities.mt_compile_tip",
-        "Run the game's studiomdl on a QC file; its output goes to the console",
-        "Lancer le studiomdl du jeu sur un fichier QC ; sa sortie va dans la console",
+        "Run the model compiler (the game's studiomdl, or the one set in Settings > Compile) on a QC file; its output goes to the console",
+        "Lancer le compilateur de modèles (le studiomdl du jeu, ou celui choisi dans Paramètres > Compilation) sur un fichier QC ; sa sortie va dans la console",
     ),
     (
         "entities.mt_no_studiomdl",
@@ -784,11 +784,16 @@ pub const TR: TrTable = &[
     ("entities.mt_unreadable", "Could not read {0}", "Impossible de lire {0}"),
     ("entities.mt_crowbar_started", "Crowbar opened {0}", "Crowbar a ouvert {0}"),
     ("entities.mt_crowbar_failed", "Could not start Crowbar: {0}", "Impossible de lancer Crowbar : {0}"),
-    ("entities.mt_compiled", "studiomdl compiled {0}", "studiomdl a compilé {0}"),
+    ("entities.mt_compiled", "The model compiler compiled {0}", "Le compilateur de modèles a compilé {0}"),
     (
         "entities.mt_compile_failed",
-        "studiomdl failed on {0} (see the console)",
-        "studiomdl a échoué sur {0} (voir la console)",
+        "The model compiler failed on {0} (see the console)",
+        "Le compilateur de modèles a échoué sur {0} (voir la console)",
+    ),
+    (
+        "entities.mt_compiler_missing",
+        "The model compiler set in Settings > Compile was not found: {0}",
+        "Le compilateur de modèles choisi dans Paramètres > Compilation est introuvable : {0}",
     ),
     ("entities.mt_cancelled", "Compile of {0} cancelled", "Compilation de {0} annulée"),
     (

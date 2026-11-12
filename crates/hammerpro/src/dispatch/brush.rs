@@ -10,6 +10,8 @@ use hp_geom::{CoverageSolid, HiddenFace, SolidGeom};
 use super::Package;
 use crate::app::HammerProApp;
 
+pub(crate) mod func_detail;
+
 pub(crate) struct Brush;
 
 #[derive(Default)]
@@ -18,6 +20,7 @@ pub(crate) struct State {
     nodraw_prompt: Option<NodrawPrompt>,
     pub(super) inset: super::inset::InsetPrompt,
     pub(crate) inset_modal: Option<hp_tools_create::InsetModal>,
+    pub(crate) detail: func_detail::DetailState,
 }
 
 impl State {
@@ -53,6 +56,8 @@ const HANDLED: &[Action] = &[
     Action::UnionBrushes,
     Action::TieEachToEntity,
     Action::ConvertToDetail,
+    Action::SelectDetailCandidates,
+    Action::ToggleDetailTint,
     Action::CurveEdit,
     Action::RoadEdit,
     Action::MakeHintBrush,
@@ -61,8 +66,6 @@ const HANDLED: &[Action] = &[
     Action::InsetInteractive,
     Action::ExtrudeInteractive,
 ];
-
-const DETAIL_CLASS: &str = "func_detail";
 
 impl Package for Brush {
     fn handled(&self) -> &'static [Action] {
@@ -90,7 +93,13 @@ impl Package for Brush {
                     }
                 }
             }
-            Action::ConvertToDetail => app.convert_to_detail(),
+            Action::ConvertToDetail => app.make_func_detail(),
+            Action::SelectDetailCandidates => app.open_detail_candidates(),
+            Action::ToggleDetailTint => {
+                let d = &mut app.state.settings.brush.detail;
+                d.tint = !d.tint;
+                app.state.settings_dirty = true;
+            }
             Action::RoadEdit => match hp_tools_create::road::apply::selected_road_piece(&app.state.doc) {
                 Some(id) => {
                     app.state.runtime.brush.road_edit = Some(id);
@@ -168,11 +177,13 @@ impl Package for Brush {
 
     fn tick(&self, app: &mut HammerProApp, ctx: &egui::Context) {
         app.poll_nodraw_scan(ctx);
+        app.poll_func_detail(ctx);
     }
 
     fn dialogs(&self, app: &mut HammerProApp, ctx: &egui::Context) {
         app.nodraw_dialog(ctx);
         app.inset_dialog(ctx);
+        app.func_detail_dialogs(ctx);
     }
 
     fn translations(&self) -> TrTable {
@@ -228,30 +239,6 @@ impl HammerProApp {
         if self.report(Action::TieToEntity, result).is_some() {
             self.show_panel(RightTab::Entity);
         }
-    }
-
-    fn convert_to_detail(&mut self) {
-        if !self.require_selection() {
-            return;
-        }
-        let objs = self.selected();
-        let doc = &self.state.doc;
-        let solids = doc.scene().expand_solids(&objs);
-        let already = !solids.is_empty()
-            && single_brush_entity(doc, &objs)
-            && solids.iter().all(|id| match doc.scene().solid(*id).map(|n| n.owner) {
-                Some(Owner::Entity(e)) => {
-                    doc.scene().entity(e).is_some_and(|n| n.entity.classname.eq_ignore_ascii_case(DETAIL_CLASS))
-                }
-                _ => false,
-            });
-        if already {
-            self.state.notify(Severity::Info, t!("brush.already_detail"));
-            return;
-        }
-        let kv = self.brush_entity_defaults(DETAIL_CLASS);
-        let result = self.state.doc.tie_to_entity(&objs, DETAIL_CLASS, &kv);
-        self.report(Action::ConvertToDetail, result);
     }
 
     fn merge_brushes(&mut self) {
@@ -522,6 +509,118 @@ const TR: TrTable = &[
         "Les faces sélectionnées ne forment pas une région simple (trou ou contact en un seul point)",
     ),
     ("brush.already_detail", "The selection is already a func_detail", "La sélection est déjà un func_detail"),
+    (
+        "brush.detail.nothing",
+        "Nothing to turn into func_detail: select world brushes.",
+        "Rien à transformer en func_detail : sélectionnez des brushes du monde.",
+    ),
+    (
+        "brush.detail.skipped_already",
+        "{0} already in a func_detail (left as is).",
+        "{0} déjà dans un func_detail (laissés tels quels).",
+    ),
+    (
+        "brush.detail.skipped_entity",
+        "{0} belong to another brush entity (left as is: Move to world first).",
+        "{0} appartiennent à une autre entité brush (laissés tels quels : Vers le monde d'abord).",
+    ),
+    (
+        "brush.detail.skipped_disp",
+        "{0} displacements skipped (they never cut visleaves).",
+        "{0} displacements ignorés (ils ne découpent jamais les visleaves).",
+    ),
+    (
+        "brush.detail.checking",
+        "Checking which brushes seal the map...",
+        "Vérification des brushes qui scellent la map...",
+    ),
+    ("brush.detail.failed", "Make func_detail failed: {0}", "Échec de la transformation en func_detail : {0}"),
+    (
+        "brush.detail.made",
+        "Made func_detail: {0} brushes in {1} func_detail.",
+        "func_detail créé : {0} brushes dans {1} func_detail.",
+    ),
+    (
+        "brush.detail.kept_sealing",
+        "{0} kept in the world because they seal the map.",
+        "{0} gardés dans le monde car ils scellent la map.",
+    ),
+    (
+        "brush.detail.unverified_leak",
+        "The map leaks, so the sealing could not be checked (Map > Check for leaks).",
+        "La map fuit, l'étanchéité n'a donc pas pu être vérifiée (Map > Vérifier les fuites).",
+    ),
+    (
+        "brush.detail.unverified_complex",
+        "The map is too complex for the sealing check: review the result.",
+        "La map est trop complexe pour la vérification d'étanchéité : contrôlez le résultat.",
+    ),
+    (
+        "brush.detail.changed",
+        "The map changed during the check: try again.",
+        "La map a changé pendant la vérification : réessayez.",
+    ),
+    (
+        "brush.detail.busy",
+        "Another edit is in progress: try again.",
+        "Une autre modification est en cours : réessayez.",
+    ),
+    (
+        "brush.detail.all_sealing",
+        "Nothing converted: the {0} brushes seal the map (they are part of the outer shell).",
+        "Rien de converti : les {0} brushes scellent la map (ils font partie de la coque extérieure).",
+    ),
+    ("brush.detail.seal_title", "Make func_detail", "Transformer en func_detail"),
+    (
+        "brush.detail.seal_count",
+        "{0} of the {1} selected brushes seal the map",
+        "{0} des {1} brushes sélectionnés scellent la map",
+    ),
+    (
+        "brush.detail.seal_why",
+        "They are part of the outer shell between the playable space and the void. A func_detail does not seal, so converting them would make the map leak: no visibility and no lighting in the compile.",
+        "Ils font partie de la coque extérieure entre l'espace jouable et le vide. Un func_detail ne scelle pas : les convertir ferait fuir la map, sans visibilité ni éclairage à la compilation.",
+    ),
+    ("brush.detail.seal_others", "Convert the other {0}", "Convertir les {0} autres"),
+    ("brush.detail.seal_all", "Convert all anyway", "Tout convertir quand même"),
+    (
+        "brush.detail.seal_all_tip",
+        "The map will leak until the hull is closed another way",
+        "La map fuira tant que la coque n'est pas fermée autrement",
+    ),
+    ("brush.detail.seal_select", "Select the sealing brushes", "Sélectionner les brushes qui scellent"),
+    ("brush.detail.cand_title", "func_detail candidates", "Candidats func_detail"),
+    (
+        "brush.detail.cand_intro",
+        "Selects the world brushes that should be func_detail, with the rules of Map > Optimize: small and decorative pieces, steps, trims, pillars, rubble, never part of the sealing hull. Review the selection, then press Make func_detail.",
+        "Sélectionne les brushes du monde qui devraient être des func_detail, avec les règles de Map > Optimiser : petites pièces décoratives, marches, moulures, piliers, gravats, jamais dans la coque étanche. Vérifiez la sélection puis cliquez sur Transformer en func_detail.",
+    ),
+    ("brush.detail.cand_max_size", "Largest size", "Taille maximale"),
+    (
+        "brush.detail.cand_max_size_tip",
+        "Brushes longer than this on any axis are left out",
+        "Les brushes plus longs que cela sur un axe sont exclus",
+    ),
+    ("brush.detail.cand_steps", "Steps and stairs", "Marches et escaliers"),
+    ("brush.detail.cand_trims", "Trims and frames", "Moulures et encadrements"),
+    ("brush.detail.cand_pillars", "Pillars and posts", "Piliers et poteaux"),
+    ("brush.detail.cand_small", "Small pieces and rubble", "Petites pièces et gravats"),
+    ("brush.detail.cand_complex", "Complex shapes (cylinders, arches)", "Formes complexes (cylindres, arches)"),
+    ("brush.detail.cand_in_selection", "Only inside the current selection", "Seulement dans la sélection actuelle"),
+    ("brush.detail.cand_running", "Checking the sealing...", "Vérification de l'étanchéité..."),
+    ("brush.detail.cand_select", "Select candidates", "Sélectionner les candidats"),
+    (
+        "brush.detail.cand_make_tip",
+        "Turn the selected candidates into func_detail",
+        "Transformer les candidats sélectionnés en func_detail",
+    ),
+    ("brush.detail.cand_none", "No func_detail candidate found.", "Aucun candidat func_detail trouvé."),
+    ("brush.detail.cand_selected", "{0} candidates selected.", "{0} candidats sélectionnés."),
+    (
+        "brush.detail.cand_kept",
+        "{0} more kept as world because they seal the map.",
+        "{0} autres gardés dans le monde car ils scellent la map.",
+    ),
     ("brush.nodraw_title", "Nodraw on hidden faces", "Nodraw sur les faces cachées"),
     ("brush.nodraw_searching", "Searching for hidden faces...", "Recherche des faces cachées..."),
     (

@@ -77,6 +77,10 @@ The settings page lists the controls of the chosen scheme under the combo box.
 
 With **Zoom the 2D views together** on, zooming one 2D view zooms the others the same way. The header of each 2D view shows its zoom in percent.
 
+### Scroll while dragging to the edge
+
+With **Scroll the 2D view when dragging to its edge** on (page **Viewports**, off by default; setting `workflow.drag_autopan`), the 2D views scroll like in Hammer while you drag anything with the left button: moving or resizing a selection, the box of the Block tool, the pending box selection and its handles, vertex and clip handles, a box selection, an entity, a decal or overlay handle. Bring the cursor within 16 points of the edge of the view, or past it (even outside the window), and the view scrolls that way, faster the farther the cursor goes (from about 250 points per second at the edge up to 4000). What you drag stays under the cursor in world space and keeps snapping to the grid, in the Top, Front and Side views alike. The scrolling stops as soon as you release the button or bring the cursor back inside.
+
 ## Camera tool
 
 `Shift+C` or **Tools > Active tool > Camera tool**. It edits the 3D camera from the 2D views, like Hammer's camera tool.
@@ -141,6 +145,7 @@ Each view has a header: click the view name to pick another view type (and, in 3
 | **Camera acceleration time** | Time the fly camera takes to reach its speed (0 to 0.5 s) | 0.07 s |
 | **Ctrl + mouse wheel in 2D** | Changes the grid size, or zooms every 2D view | Changes the grid size |
 | **Zoom the 2D views together** | Zooming one 2D view zooms the others | Off |
+| **Scroll the 2D view when dragging to its edge** | Dragging something to the edge of a 2D view scrolls it, like Hammer | Off |
 | **Field of view** | 3D field of view (40° to 120°) | 75° |
 | **Camera speed** | Fly speed (50 to 20000 units/s) | 1000 |
 | **Fast speed multiplier** | Applied while `Shift` is held (1 to 20) | 3 |

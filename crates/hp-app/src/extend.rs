@@ -71,6 +71,47 @@ pub mod status_order {
     pub const CONTENT: i32 = 500;
 }
 
+pub mod status_priority {
+    pub const REAL_DIMS: i32 = 10;
+    pub const HINT: i32 = 20;
+    pub const SELECTION: i32 = 30;
+    pub const CURSOR: i32 = 40;
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct StatusFit {
+    pub min: f32,
+    pub preferred: f32,
+    pub flex: bool,
+    pub priority: i32,
+}
+
+impl StatusFit {
+    pub fn fixed(width: f32) -> Self {
+        let width = finite_width(width);
+        Self { min: width, preferred: width, flex: false, priority: 0 }
+    }
+
+    pub fn shrinkable(min: f32, preferred: f32) -> Self {
+        let min = finite_width(min);
+        Self { min, preferred: finite_width(preferred).max(min), flex: false, priority: 0 }
+    }
+
+    pub fn flex(min: f32) -> Self {
+        let min = finite_width(min);
+        Self { min, preferred: min, flex: true, priority: 0 }
+    }
+
+    pub fn with_priority(mut self, priority: i32) -> Self {
+        self.priority = priority;
+        self
+    }
+}
+
+fn finite_width(w: f32) -> f32 {
+    if w.is_finite() { w.max(0.0) } else { 0.0 }
+}
+
 #[derive(Debug, Default)]
 pub struct StatusContext {
     pub tool_hint: Option<String>,
@@ -86,6 +127,13 @@ pub trait StatusSegment {
 
     fn width(&self) -> Option<f32> {
         None
+    }
+
+    fn fit(&mut self, _ui: &egui::Ui, _state: &AppState) -> Option<StatusFit> {
+        Some(match self.width() {
+            Some(w) => StatusFit::fixed(w),
+            None => StatusFit::flex(80.0),
+        })
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, state: &mut AppState, cx: &mut StatusContext);

@@ -10,6 +10,7 @@ pub struct RenderDisplay {
     pub render_effects: bool,
     pub highlight_invalid: bool,
     pub visgroup_colors: bool,
+    pub detail_tint: bool,
     pub object_colors_3d: bool,
     pub displacements: bool,
     pub displacements_in_2d: bool,
@@ -52,6 +53,7 @@ impl Default for RenderDisplay {
             render_effects: true,
             highlight_invalid: true,
             visgroup_colors: false,
+            detail_tint: false,
             object_colors_3d: false,
             displacements: true,
             displacements_in_2d: true,
@@ -93,6 +95,7 @@ impl RenderDisplay {
             render_effects: r.render_effects,
             highlight_invalid: r.highlight_invalid,
             visgroup_colors: r.use_visgroup_colors,
+            detail_tint: s.brush.detail.tint,
             object_colors_3d: r.object_colors_3d,
             displacements: r.show_displacements,
             displacements_in_2d: r.displacements_in_2d,
@@ -208,6 +211,7 @@ pub struct RenderRuntime {
     pub perf: super::perf::PerfRuntime,
     pub animation: Option<std::time::Duration>,
     pub focused: bool,
+    pub minimized: bool,
     pub last_input: f64,
 }
 

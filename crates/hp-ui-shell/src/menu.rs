@@ -96,11 +96,18 @@ fn hammer_order(group: MenuGroup) -> &'static [Action] {
             A::AlignCenterHorizontal,
             A::AlignCenterVertical,
         ],
-        MenuGroup::FileImport => {
-            &[A::ImportMap, A::ImportModel, A::ImportModelsBatch, A::ImportFromGame, A::ImportHeightmap]
-        }
+        MenuGroup::FileImport => &[
+            A::ImportMap,
+            A::ImportModel,
+            A::ImportModelsBatch,
+            A::ImportFromGame,
+            A::ImportHeightmap,
+            A::ImportBlendMasks,
+        ],
         MenuGroup::FileImportOpen => &[A::OpenArchive, A::OpenBsp, A::OpenBspSniffer],
-        MenuGroup::FileExport => &[A::ExportSelection, A::ExportCopy, A::ExportAgain, A::ExportObj, A::ExportHeightmap],
+        MenuGroup::FileExport => {
+            &[A::ExportSelection, A::ExportCopy, A::ExportAgain, A::ExportObj, A::ExportHeightmap, A::ExportBlendMasks]
+        }
         MenuGroup::FileRun => &[A::RunMap, A::CompileNow, A::CancelCompile, A::BatchCompile],
         MenuGroup::FileGame => &[A::LaunchGame, A::ReloadInGame],
         MenuGroup::FilePublish => &[A::BuildContent, A::PublishWorkshop],
@@ -174,7 +181,9 @@ fn hammer_order(group: MenuGroup) -> &'static [Action] {
         MenuGroup::ToolsCsg => &[A::Carve, A::MakeHollow],
         MenuGroup::ToolsBrushOps => &[A::MergeBrushes, A::IntersectBrushes, A::UnionBrushes, A::MergeConvex],
         MenuGroup::ToolsFaceOps => &[A::ExtrudeInteractive, A::InsetInteractive, A::InsetFace],
-        MenuGroup::ToolsBrushMisc => &[A::ConvertToDetail, A::TieEachToEntity, A::NodrawHiddenFaces],
+        MenuGroup::ToolsBrushMisc => {
+            &[A::ConvertToDetail, A::SelectDetailCandidates, A::TieEachToEntity, A::NodrawHiddenFaces]
+        }
         MenuGroup::ToolsDisp => {
             &[A::DispSubdivide, A::DispSmoothLoop, A::DispLoopHeight, A::DispInvertAlpha, A::DispSelectBySlope]
         }
@@ -185,7 +194,7 @@ fn hammer_order(group: MenuGroup) -> &'static [Action] {
         MenuGroup::ToolsTextures => &[A::ReplaceTextures, A::ToggleTextureLock, A::ToggleTextureScaleLock],
         MenuGroup::ToolsPlacement => &[A::CreatePrefab, A::InsertOriginalPrefab],
         MenuGroup::ToolsScatter => &[A::PhysicsPlacement, A::ScatterByMaterial],
-        MenuGroup::ToolsProps => &[A::BrushesToProp, A::PropToBrushes, A::PropperOptions],
+        MenuGroup::ToolsProps => &[A::BrushesToProp, A::PropToBrushes, A::CombineProps, A::PropperOptions],
         MenuGroup::ToolsPaths => &[A::PathInsertPoint, A::PathRemovePoint, A::GenerateNavMesh],
         MenuGroup::ToolsContent => {
             &[A::ShaderEditor, A::VtfEditor, A::OpenSoundEditor, A::OpenColorCorrectionEditor, A::ParticleEditor]
@@ -918,7 +927,8 @@ mod tests {
                             A::ImportModel,
                             A::ImportModelsBatch,
                             A::ImportFromGame,
-                            A::ImportHeightmap
+                            A::ImportHeightmap,
+                            A::ImportBlendMasks
                         ]),
                         vec![S],
                         acts(&[A::OpenArchive, A::OpenBsp, A::OpenBspSniffer]),
@@ -927,7 +937,14 @@ mod tests {
                 ),
                 sub(
                     "menu.export",
-                    &acts(&[A::ExportSelection, A::ExportCopy, A::ExportAgain, A::ExportObj, A::ExportHeightmap])
+                    &acts(&[
+                        A::ExportSelection,
+                        A::ExportCopy,
+                        A::ExportAgain,
+                        A::ExportObj,
+                        A::ExportHeightmap,
+                        A::ExportBlendMasks
+                    ])
                 ),
                 S,
                 sub(

@@ -18,7 +18,7 @@ Big open areas, long straight corridors and windows lined up with each other mak
 
 ## func_detail
 
-Every world brush cuts visleaves, even a crate, a step, a trim or a pillar. Those small brushes cut the space into many tiny slivers: VVIS gets slow, and the culling gets worse because the slivers see around everything. Tie them to a **func_detail** (Tools > Tie to entity, or **Convert to func_detail**): a detail brush still blocks players, bullets and light, but VBSP does not cut visleaves with it, so it does not block visibility either.
+Every world brush cuts visleaves, even a crate, a step, a trim or a pillar. Those small brushes cut the space into many tiny slivers: VVIS gets slow, and the culling gets worse because the slivers see around everything. Select them and press **Make func_detail** (`Ctrl+Alt+D`, it refuses brushes that seal the map; **Tools > Brush operations > Select func_detail candidates...** finds them for you, see [func_detail](../features/func-detail.md)): a detail brush still blocks players, bullets and light, but VBSP does not cut visleaves with it, so it does not block visibility either.
 
 Rule of thumb: the hull (walls, floors, ceilings, the big shapes that separate rooms) stays world; everything small or decorative becomes func_detail. Never make func_detail a brush that seals the map or that closes a room: the map would leak or the rooms would see each other.
 
@@ -65,6 +65,7 @@ Lights do not change visibility, but incoherent lights show at once and cost com
 - The findings are sorted by impact (high, medium, low). The buttons at the top filter them by topic: visleaves, func_detail, hints, areaportals, lights.
 - Each finding says what is wrong, why it costs performance and the concrete thing to do, for example *Turn these 12 brushes into func_detail: they are small, do not seal the map and cut 40 visleaves*, *Put an areaportal in the frame of door 214: when the door is closed nothing behind it is drawn*, or *Light 88 has no lamp near it: move it to a lamp or add a fixture*.
 - **Go to** selects the objects of the finding and frames them in the 2D and 3D views; for a place without objects (a visleaf, a hint plane, an opening) it moves the cameras there. The box of the finding is drawn in the views while the window is open.
+- The func_detail finding also has **Select these**: it selects the suggested brushes without moving the views, so you can review them and press **Make func_detail**.
 - **Show visleaves and portals** draws the portals of the analysis in the views, coloured per visleaf (also **Map > Leaks and visibility > Show visleaves and portals**). **Heat map** colours them by the triangles drawn from each visleaf. The other display options (line width, X-ray, PVS from the camera) are those of the [Portals and visibility](../features/leaks-pointfiles.md) window.
 
 The checks:

@@ -2,6 +2,8 @@ pub mod export;
 pub mod generate;
 pub mod image_io;
 pub mod import;
+pub mod masks;
+pub mod masks_ui;
 pub mod tr;
 pub mod ui;
 
@@ -180,7 +182,37 @@ impl TileSetup {
 pub enum Source {
     None,
     Auto(AutoTexture),
-    Splat(Box<[HeightField; 4]>),
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PixelGrid {
+    #[default]
+    Corner,
+    Center,
+}
+
+impl PixelGrid {
+    pub const NAMES: [&'static str; 2] = ["corner", "center"];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Corner => "corner",
+            Self::Center => "center",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        [Self::Corner, Self::Center].into_iter().find(|g| g.name() == name)
+    }
+}
+
+pub fn sample_field(field: &HeightField, u: f64, v: f64, grid: PixelGrid, bilinear: bool) -> f64 {
+    let (w, h) = (field.width as f64, field.height as f64);
+    let (x, y) = match grid {
+        PixelGrid::Corner => (u * (w - 1.0), v * (h - 1.0)),
+        PixelGrid::Center => (u * w - 0.5, v * h - 0.5),
+    };
+    if bilinear { field.sample_linear(x, y) } else { field.sample(x, y) }
 }
 
 pub struct Terrain {
@@ -192,6 +224,7 @@ pub struct Terrain {
     pub skirt: f64,
     pub spacing: f64,
     pub bilinear: bool,
+    pub grid: PixelGrid,
     pub source: Source,
 }
 
@@ -202,7 +235,7 @@ impl Terrain {
 
     pub fn norm(&self, x: f64, y: f64) -> f64 {
         let (u, v) = self.uv(x, y);
-        if self.bilinear { self.field.sample_linear_unit(u, v) } else { self.field.sample_unit(u, v) }
+        sample_field(&self.field, u, v, self.grid, self.bilinear)
     }
 
     pub fn world(&self, x: f64, y: f64) -> f64 {
@@ -234,10 +267,6 @@ impl Terrain {
                 let dx = (self.world(x + d, y) - self.world(x - d, y)) / (2.0 * d);
                 let dy = (self.world(x, y + d) - self.world(x, y - d)) / (2.0 * d);
                 auto_weights(slope_degrees(dx, dy), self.norm(x, y).clamp(0.0, 1.0), tex)
-            }
-            Source::Splat(channels) => {
-                let (u, v) = self.uv(x, y);
-                std::array::from_fn(|i| channels.get(i).map_or(0.0, |c| c.sample_linear_unit(u, v)))
             }
         }
     }
@@ -323,5 +352,16 @@ mod tests {
         let many = TileSetup { size: DVec2::new(32768.0, 32768.0), tile_size: 256.0, ..TileSetup::default() };
         assert!(many.validate().is_err());
         assert!(TileSetup { tile_power: 5, ..s }.validate().is_err());
+    }
+
+    #[test]
+    fn pixel_grids_put_samples_on_corners_or_centers() {
+        let f = HeightField::new(4, 1, vec![0.0, 1.0, 2.0, 3.0]).unwrap();
+        assert_eq!(sample_field(&f, 0.0, 0.0, PixelGrid::Corner, true), 0.0);
+        assert_eq!(sample_field(&f, 1.0, 0.0, PixelGrid::Corner, false), 3.0);
+        assert_eq!(sample_field(&f, 0.125, 0.0, PixelGrid::Center, true), 0.0);
+        assert_eq!(sample_field(&f, 0.375, 0.0, PixelGrid::Center, false), 1.0);
+        assert_eq!(sample_field(&f, 0.5, 0.0, PixelGrid::Center, true), 1.5);
+        assert_eq!(PixelGrid::from_name("center"), Some(PixelGrid::Center));
     }
 }

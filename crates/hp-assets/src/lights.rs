@@ -468,7 +468,7 @@ impl crate::AssetManager {
         }
     }
 
-    fn brush_opaque(&self, node: &SolidNode) -> Option<bool> {
+    pub(crate) fn brush_opaque(&self, node: &SolidNode) -> Option<bool> {
         use hp_vmt::ToolKind;
         for side in &node.solid.sides {
             let key = crate::util::material_key(&side.material);
@@ -1034,5 +1034,49 @@ mod tests {
         assert!(face_light(&square, DVec3::NAN, glam::Vec3::ONE).is_none());
         assert!(face_light(&square, DVec3::Z, glam::Vec3::ZERO).is_none());
         assert!(face_light(&square, DVec3::Z, glam::Vec3::splat(f32::NAN)).is_none());
+    }
+
+    #[test]
+    fn water_and_translucent_brushes_let_the_light_through_like_the_compiler() {
+        use crate::registry::AnaEntry;
+        use std::sync::Arc;
+        let mut assets = crate::AssetManager::new(&hp_app::settings::Settings::default());
+        for (name, vmt) in [
+            ("t/wall", "LightmappedGeneric { $basetexture t/wall }"),
+            ("t/water", "Water { $normalmap t/water_n $fogenable 1 }"),
+            ("t/glass", "LightmappedGeneric { $basetexture t/glass $alpha 0.5 }"),
+            ("tools/toolsnodraw", "LightmappedGeneric { $basetexture tools/toolsnodraw }"),
+        ] {
+            let material = hp_vmt::parse(vmt).unwrap();
+            let analysis = Arc::new(crate::material::analyze(name, &material, &|_| 0));
+            assets
+                .mats
+                .analyses
+                .insert(name.to_owned(), AnaEntry { value: Some(Some(analysis)), ..Default::default() });
+        }
+        assets.mats.analyses.insert("t/later".to_owned(), AnaEntry { value: None, loading: true, queued: true });
+        let mut state = hp_app::testing::test_state();
+        fn brush(doc: &mut Document, x: f64, material: &str) -> hp_editor::Id {
+            let params = hp_geom::PrimitiveParams {
+                bounds: hp_geom::Aabb::new(DVec3::new(x, 0.0, 0.0), DVec3::new(x + 64.0, 64.0, 64.0)),
+                material: material.to_owned(),
+                ..Default::default()
+            };
+            doc.create_primitive(&params, hp_editor::Owner::World).expect("brush")[0]
+        }
+        let wall = brush(&mut state.doc, 0.0, "t/wall");
+        let nodraw = brush(&mut state.doc, 100.0, "tools/toolsnodraw");
+        let water = brush(&mut state.doc, 200.0, "t/water");
+        let glass = brush(&mut state.doc, 300.0, "t/glass");
+        let (found, pending) = assets.see_through_solids(&state.doc, None);
+        let ids = |v: &[hp_editor::Id]| v.iter().copied().collect::<AHashSet<_>>();
+        assert!(!pending);
+        assert_eq!(found, ids(&[water, glass]), "walls and nodraw still cast shadows, water and glass do not");
+        assets.scene.see_through = found;
+        let later = brush(&mut state.doc, 400.0, "t/later");
+        let (partial, pending) = assets.see_through_solids(&state.doc, Some(&[later, wall]));
+        assert!(pending, "a material still loading is looked at again");
+        assert_eq!(partial, ids(&[water, glass]));
+        assert!(!partial.contains(&nodraw));
     }
 }

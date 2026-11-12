@@ -164,7 +164,7 @@ mod content;
 mod health;
 #[macro_use]
 mod lab;
-pub use lab::{is_model_prop, selected_prop};
+pub use lab::{is_model_prop, selected_prop, selected_static_props};
 #[macro_use]
 mod mcp;
 mod mcp_tools;

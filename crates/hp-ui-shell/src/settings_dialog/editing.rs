@@ -104,6 +104,12 @@ pub(super) fn page(ui: &mut Ui, state: &mut AppState) {
             sync = true;
         }
         ui.end_row();
+        ui.label(t!("shell.edit.keep_disps")).on_hover_text(t!("shell.edit.keep_disps_tip"));
+        if ui.checkbox(&mut e.keep_displacements_on_cut, "").changed() {
+            changed = true;
+            sync = true;
+        }
+        ui.end_row();
         ui.label(t!("shell.edit.arrow_nudge")).on_hover_text(t!("shell.edit.arrow_nudge_tip"));
         changed |= ui.checkbox(&mut e.arrow_key_nudge, "").changed();
         ui.end_row();
@@ -140,6 +146,7 @@ pub(super) fn reset(state: &mut AppState) {
     e.paste_offset = d.paste_offset;
     e.undo_restores_selection = d.undo_restores_selection;
     e.new_brush_color = d.new_brush_color;
+    e.keep_displacements_on_cut = d.keep_displacements_on_cut;
     sync_edit_options(state);
 }
 
@@ -172,6 +179,12 @@ pub(crate) const TR: TrTable = &[
     ("shell.edit.new_brush_color_custom", "Custom", "Personnalisée"),
     ("shell.edit.behavior", "Behavior", "Comportement"),
     ("shell.edit.undo_levels", "Undo levels", "Niveaux d'annulation"),
+    ("shell.edit.keep_disps", "Keep displacements when cutting", "Garder les déplacements en coupant"),
+    (
+        "shell.edit.keep_disps_tip",
+        "Clip, Slice, Carve and Intersect keep the displacement on every piece: exact where the cut follows the displacement grid, resampled elsewhere, seams sewn. Off: cut faces become flat brush faces again, like Hammer",
+        "Découper, Trancher, Creuser et Intersection gardent le déplacement sur chaque morceau : exact quand la coupe suit la grille du déplacement, rééchantillonné ailleurs, coutures soudées. Décoché : les faces coupées redeviennent des faces de brush plates, comme dans Hammer",
+    ),
     ("shell.edit.arrow_nudge", "Nudge with arrow keys", "Décaler avec les flèches"),
     (
         "shell.edit.arrow_nudge_tip",

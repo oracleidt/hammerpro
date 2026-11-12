@@ -415,10 +415,45 @@ pub fn merge_exact(
         return Ok(None);
     }
     let union = union_volume(solids)?;
-    Ok((hull_volume - union <= tolerance).then_some(merged))
+    if hull_volume - union > tolerance {
+        return Ok(None);
+    }
+    Ok(hull_left_over_is_thin(&merged, solids).then_some(merged))
 }
 
 const COVER_EPS: f64 = PLANE_EPS * 2.0;
+
+fn hull_left_over_is_thin(hull: &[Side], parts: &[Vec<Side>]) -> bool {
+    let mut scratch = 0u32;
+    let mut next = || {
+        scratch = scratch.wrapping_add(1);
+        scratch
+    };
+    let mut left: Vec<Vec<Side>> = vec![hull.to_vec()];
+    for part in parts {
+        let Ok(cg) = validate_solid(part) else { return false };
+        let mut rest = Vec::with_capacity(left.len() + 4);
+        for piece in left {
+            let g = build_solid(&piece);
+            if !g.valid || g.volume() <= 1e-9 {
+                continue;
+            }
+            match carve_with_geom(&piece, part, &cg, false, &mut next) {
+                Ok(pieces) => rest.extend(pieces.into_iter().map(|p| p.sides)),
+                Err(_) => {
+                    if 2.0 * g.volume() > COVER_EPS * g.surface_area() {
+                        return false;
+                    }
+                }
+            }
+        }
+        left = rest;
+    }
+    left.iter().all(|piece| {
+        let g = build_solid(piece);
+        !g.valid || 2.0 * g.volume() <= COVER_EPS * g.surface_area()
+    })
+}
 
 fn outside(geom: &SolidGeom, p: DVec3) -> f64 {
     geom.faces.iter().map(|f| f.plane.distance(p)).fold(f64::NEG_INFINITY, f64::max)
@@ -720,6 +755,33 @@ mod tests {
         assert_eq!(merge_exact(&[a.clone(), r], &mut next).expect("merge"), None, "gap of 64");
         let vol = union_volume(&[a.clone(), a.clone()]).expect("union");
         assert!((vol - 64.0f64.powi(3)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn exact_merge_never_fills_a_small_notch() {
+        let mut next = id_counter(3000);
+        let p = |x, y, z| DVec3::new(x, y, z);
+        let base = hammer_box(p(0.0, 0.0, 0.0), p(128.0, 128.0, 64.0));
+        let s1 = hammer_box(p(0.0, 0.0, 64.0), p(60.0, 128.0, 68.0));
+        let s2 = hammer_box(p(62.0, 0.0, 64.0), p(128.0, 128.0, 68.0));
+        let short = hammer_box(p(60.0, 0.0, 64.0), p(62.0, 120.0, 68.0));
+        let parts = [base.clone(), s1.clone(), s2.clone(), short];
+        assert_eq!(merge_exact(&parts, &mut next).expect("merge"), None, "notch of 2x8x4 inside the top face");
+        let full = hammer_box(p(60.0, 0.0, 64.0), p(62.0, 128.0, 68.0));
+        let m = merge_exact(&[base, s1, s2, full], &mut next).expect("merge").expect("flush pieces merge");
+        assert!((volume(&m) - 128.0 * 128.0 * 68.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn exact_merge_keeps_sub_epsilon_seams() {
+        let mut next = id_counter(4000);
+        let p = |x, y, z| DVec3::new(x, y, z);
+        let a = hammer_box(p(0.0, 0.0, 0.0), p(64.0, 64.0, 64.0));
+        let b = hammer_box(p(64.004, 0.0, 0.0), p(128.0, 64.0, 64.0));
+        assert!(
+            merge_exact(&[a, b], &mut next).expect("merge").is_some(),
+            "a seam below the plane epsilon is not a gap"
+        );
     }
 
     #[test]

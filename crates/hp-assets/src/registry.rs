@@ -53,6 +53,7 @@ pub(crate) struct Materials {
     pub flat: AHashMap<[u8; 4], MaterialId>,
     pub dirty: Vec<MaterialId>,
     pub analyses: AHashMap<String, AnaEntry>,
+    pub loaded: u64,
     pub infos: AHashMap<String, Arc<MaterialInfo>>,
     pub users: AHashMap<String, Vec<MaterialId>>,
     pub tex_users: AHashMap<String, Vec<MaterialId>>,
@@ -669,6 +670,7 @@ impl AssetManager {
         let entry = self.mats.analyses.entry(name.clone()).or_default();
         entry.value = Some(data.analysis.clone());
         entry.loading = false;
+        self.mats.loaded = self.mats.loaded.wrapping_add(1);
         entry.queued = false;
         let ids = self.mats.users.get(&name).cloned().unwrap_or_default();
         for id in ids {
@@ -913,7 +915,7 @@ impl AssetManager {
         self.scene.light_time = ctx.input(|input| input.time);
         let light_frame = (self.scene.light_time.max(0.0) * 10.0) as u64;
         if self.scene.animated_lights && self.scene.light_frame != light_frame {
-            self.scene.lights_dirty = true;
+            self.scene.light_tick = true;
         }
         self.scene.light_frame = light_frame;
         self.shared.frame.fetch_add(1, std::sync::atomic::Ordering::Relaxed);

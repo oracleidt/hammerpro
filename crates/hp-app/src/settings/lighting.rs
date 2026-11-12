@@ -8,6 +8,14 @@ pub enum LightingQuality {
     Final,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BakePriority {
+    Idle,
+    #[default]
+    BelowNormal,
+    Normal,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LightingSettings {
@@ -23,6 +31,11 @@ pub struct LightingSettings {
     pub auto_scope_radius: u32,
     pub visible_first: bool,
     pub prepare: bool,
+    pub priority: BakePriority,
+    pub pause_minimized: bool,
+    pub pause_unfocused: bool,
+    pub drag_pause_ms: u32,
+    pub upload_mb_per_frame: u32,
 }
 
 impl Default for LightingSettings {
@@ -40,6 +53,11 @@ impl Default for LightingSettings {
             auto_scope_radius: 3072,
             visible_first: true,
             prepare: true,
+            priority: BakePriority::BelowNormal,
+            pause_minimized: true,
+            pause_unfocused: false,
+            drag_pause_ms: 120,
+            upload_mb_per_frame: 4,
         }
     }
 }
@@ -48,6 +66,8 @@ impl LightingSettings {
     pub const MAX_THREADS: u32 = 256;
     pub const LUXELS_RANGE: std::ops::RangeInclusive<u32> = 1..=64;
     pub const RADIUS_RANGE: std::ops::RangeInclusive<u32> = 256..=32768;
+    pub const DRAG_PAUSE_RANGE: std::ops::RangeInclusive<u32> = 0..=2000;
+    pub const UPLOAD_RANGE: std::ops::RangeInclusive<u32> = 1..=64;
 
     pub fn sanitized(&self) -> Self {
         Self {
@@ -65,6 +85,11 @@ impl LightingSettings {
             auto_scope_radius: self.auto_scope_radius.clamp(*Self::RADIUS_RANGE.start(), *Self::RADIUS_RANGE.end()),
             visible_first: self.visible_first,
             prepare: self.prepare,
+            priority: self.priority,
+            pause_minimized: self.pause_minimized,
+            pause_unfocused: self.pause_unfocused,
+            drag_pause_ms: self.drag_pause_ms.min(*Self::DRAG_PAUSE_RANGE.end()),
+            upload_mb_per_frame: self.upload_mb_per_frame.clamp(*Self::UPLOAD_RANGE.start(), *Self::UPLOAD_RANGE.end()),
         }
     }
 }
@@ -84,6 +109,19 @@ mod tests {
         assert_eq!((wild.sanitized().auto_scope_luxels_millions, wild.sanitized().auto_scope_radius), (1, 256));
         assert!(!d.auto_scope);
         assert!(d.prepare && d.visible_first);
+        assert!(d.pause_minimized && !d.pause_unfocused);
+        assert_eq!((d.priority, d.drag_pause_ms, d.upload_mb_per_frame), (BakePriority::BelowNormal, 120, 4));
+        let odd = LightingSettings { drag_pause_ms: 99_999, upload_mb_per_frame: 0, ..d };
+        assert_eq!((odd.sanitized().drag_pause_ms, odd.sanitized().upload_mb_per_frame), (2000, 1));
+        let big = LightingSettings { upload_mb_per_frame: 500, ..d };
+        assert_eq!(big.sanitized().upload_mb_per_frame, 64);
+        let old: LightingSettings = toml::from_str("threads = 3\nprepare = false").unwrap();
+        assert_eq!(
+            (old.threads, old.prepare, old.priority, old.pause_minimized),
+            (3, false, BakePriority::BelowNormal, true)
+        );
+        let idle: LightingSettings = toml::from_str("priority = \"Idle\"").unwrap();
+        assert_eq!(idle.priority, BakePriority::Idle);
         let parsed: LightingSettings = toml::from_str("").unwrap();
         assert_eq!(parsed, d);
     }

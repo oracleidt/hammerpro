@@ -27,6 +27,8 @@ action_list! { mesh_actions {
     DispToMesh => "disp_to_mesh", Tools, ToolsTerrain, None, Ready;
     ImportHeightmap => "import_heightmap", File, FileImport, None, Ready;
     ExportHeightmap => "export_heightmap", File, FileExport, None, Ready;
+    ImportBlendMasks => "import_blend_masks", File, FileImport, None, Ready;
+    ExportBlendMasks => "export_blend_masks", File, FileExport, None, Ready;
     GenerateTerrain => "generate_terrain", Tools, ToolsTerrain, None, Ready;
     MeshToDisp => "mesh_to_disp", Tools, ToolsTerrain, None, Ready;
     DispConformMesh => "disp_conform_mesh", Tools, ToolsTerrain, None, Ready;
@@ -74,7 +76,9 @@ pub(super) fn enabled(state: &AppState, action: Action) -> Option<bool> {
         | Action::DispThermalErosion
         | Action::DispHydraulicErosion
         | Action::DispToMesh
-        | Action::ExportHeightmap => Some(has_selected_disps(state)),
+        | Action::ExportHeightmap
+        | Action::ImportBlendMasks
+        | Action::ExportBlendMasks => Some(has_selected_disps(state)),
         Action::DispConformMesh => Some(has_selected_disps(state)),
         Action::DispTileSelection => {
             Some(!state.doc.selected_objects().is_empty() || !state.doc.selected_faces().is_empty())
@@ -118,6 +122,8 @@ pub(super) fn icon(action: Action) -> Option<&'static str> {
         Action::DispToMesh => "⬣",
         Action::ImportHeightmap => "📥",
         Action::ExportHeightmap => "📤",
+        Action::ImportBlendMasks => "🎨",
+        Action::ExportBlendMasks => "🖼",
         Action::GenerateTerrain => "🌄",
         Action::MeshToDisp => "🔺",
         Action::DispConformMesh => "🔻",
@@ -159,6 +165,8 @@ pub(super) const TR: TrTable = &[
     ("action.disp_to_mesh", "Displacement to mesh...", "Displacement en maillage..."),
     ("action.import_heightmap", "Import heightmap...", "Importer une carte de hauteur..."),
     ("action.export_heightmap", "Export heightmap...", "Exporter une carte de hauteur..."),
+    ("action.import_blend_masks", "Import blend masks...", "Importer des masques de blend..."),
+    ("action.export_blend_masks", "Export blend masks...", "Exporter les masques de blend..."),
     ("action.generate_terrain", "Generate terrain...", "Générer un terrain..."),
     ("action.mesh_to_disp", "Mesh to displacement...", "Maillage en displacement..."),
     ("action.disp_conform_mesh", "Conform displacements to mesh...", "Plaquer les displacements sur un maillage..."),
@@ -207,6 +215,7 @@ pub(super) const TR: TrTable = &[
     ("shell.undo.invert_displacement_alpha", "Invert displacement alpha", "Inversion de l'alpha du displacement"),
     ("shell.undo.displacement_noise", "Displacement noise", "Bruit sur le displacement"),
     ("shell.undo.import_heightmap", "Import heightmap", "Import d'une carte de hauteur"),
+    ("shell.undo.import_blend_masks", "Import blend masks", "Import de masques de blend"),
     ("shell.undo.generate_terrain", "Generate terrain", "Génération de terrain"),
     ("shell.undo.scale_displacement", "Scale displacement", "Mise à l'échelle du displacement"),
     ("shell.undo.displacement_collision", "Displacement collision", "Collisions du displacement"),

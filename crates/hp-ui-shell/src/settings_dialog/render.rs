@@ -1,7 +1,7 @@
 use hp_app::extend::{SettingsPage, page_order};
 use hp_app::i18n::TrTable;
 use hp_app::settings::{
-    Disp2dSetting, Disp2dViewSetting, DispWalkMode, Models2dSetting, PerformanceMode, PropShadowSetting,
+    Disp2dSetting, Disp2dViewSetting, DispWalkMode, LitQuality, Models2dSetting, PerformanceMode, PropShadowSetting,
     RenderSettings, StaticPropShadows, ToneModeSetting, WaterDetailSetting,
 };
 use hp_app::{AppState, t, tf};
@@ -446,6 +446,18 @@ impl SettingsPage for RenderPage {
                 });
             changed |= before != r.performance_mode;
             ui.end_row();
+            ui.label(t!("shell.render.lit_quality"));
+            let before = r.lit_quality;
+            egui::ComboBox::from_id_salt("hp_shell_render_lit_quality")
+                .selected_text(lit_quality_label(r.lit_quality))
+                .show_ui(ui, |ui| {
+                    for q in LitQuality::ALL {
+                        ui.selectable_value(&mut r.lit_quality, q, lit_quality_label(q))
+                            .on_hover_text(lit_quality_tip(q));
+                    }
+                });
+            changed |= before != r.lit_quality;
+            ui.end_row();
             ui.label(t!("shell.render.render_scale"));
             changed |= ui
                 .add(
@@ -493,6 +505,22 @@ fn water_detail_label(m: WaterDetailSetting) -> &'static str {
         WaterDetailSetting::Simple => t!("shell.render.water_simple"),
         WaterDetailSetting::ReflectWorld => t!("shell.render.water_reflect_world"),
         WaterDetailSetting::ReflectAll => t!("shell.render.water_reflect_all"),
+    }
+}
+
+fn lit_quality_label(q: LitQuality) -> &'static str {
+    match q {
+        LitQuality::Auto => t!("shell.render.lit_quality_auto"),
+        LitQuality::High => t!("shell.render.lit_quality_high"),
+        LitQuality::Balanced => t!("shell.render.lit_quality_balanced"),
+    }
+}
+
+fn lit_quality_tip(q: LitQuality) -> &'static str {
+    match q {
+        LitQuality::Auto => t!("shell.render.lit_quality_auto_tip"),
+        LitQuality::High => t!("shell.render.lit_quality_high_tip"),
+        LitQuality::Balanced => t!("shell.render.lit_quality_balanced_tip"),
     }
 }
 
@@ -1074,6 +1102,25 @@ pub(crate) const TR: TrTable = &[
     ("shell.render.vram_estimate", "estimated", "estimée"),
     ("shell.render.perf", "Performance", "Performance"),
     ("shell.render.perf_mode", "Performance mode", "Mode de performance"),
+    ("shell.render.lit_quality", "Lighting preview quality", "Qualité de l'aperçu d'éclairage"),
+    ("shell.render.lit_quality_auto", "Auto", "Auto"),
+    ("shell.render.lit_quality_high", "High", "Élevée"),
+    ("shell.render.lit_quality_balanced", "Balanced", "Équilibrée"),
+    (
+        "shell.render.lit_quality_auto_tip",
+        "While the camera moves, each part of the view keeps its 32 strongest lights; at rest every light is drawn again, so a still picture is the full quality one.",
+        "Pendant que la caméra bouge, chaque partie de la vue garde ses 32 lumières les plus fortes ; à l'arrêt toutes les lumières sont de nouveau dessinées, une image immobile est donc en pleine qualité.",
+    ),
+    (
+        "shell.render.lit_quality_high_tip",
+        "Every part of the view draws up to 128 lights, even while the camera moves.",
+        "Chaque partie de la vue dessine jusqu'à 128 lumières, même pendant que la caméra bouge.",
+    ),
+    (
+        "shell.render.lit_quality_balanced_tip",
+        "Each part of the view always keeps only its 32 strongest lights: faster on maps with hundreds of lights, a few faint lights are left out.",
+        "Chaque partie de la vue ne garde toujours que ses 32 lumières les plus fortes : plus rapide sur les maps avec des centaines de lumières, quelques lumières faibles sont omises.",
+    ),
     ("shell.render.perf_auto", "Auto", "Auto"),
     ("shell.render.perf_off", "Off (full quality)", "Désactivé (qualité maximale)"),
     ("shell.render.perf_low", "Low", "Bas"),

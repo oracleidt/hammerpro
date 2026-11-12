@@ -3,7 +3,7 @@ use glam::{Vec3, Vec4};
 
 use crate::camera::Camera;
 use crate::pipelines::{self, Blend, Desc};
-use crate::types::{RenderMode, SunGlow, ViewOptions, ViewParams, WorldSprite};
+use crate::types::{RenderMode, SunGlow, ViewOptions, ViewParams, WorldBeam, WorldSprite};
 use crate::{DrawCtx, FrameCounter, Renderer};
 
 pub(crate) const RANGE: f32 = 0.766_044_4;
@@ -11,6 +11,11 @@ const OVERLAY_DISTANCE: f32 = 100.0;
 const SIZE_AT_RANGE: f32 = 150.0;
 const SIZE_AT_ONE: f32 = 70.0;
 const PROXY_SCREEN: f32 = 0.025;
+const BEAM_FADE_WIDTHS: f32 = 4.0;
+const HALO_PROXY: f32 = 2.0;
+const HALO_PROXY_AHEAD: f32 = 10.0;
+const MODE_GLOW: f32 = 3.0;
+const MODE_ADDITIVE: f32 = 5.0;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
@@ -150,6 +155,96 @@ fn world_uniform(sprite: &WorldSprite, cam: &Camera, hdr: bool) -> Option<(u32, 
     ))
 }
 
+fn remap(v: f32, a: f32, b: f32, c: f32, d: f32) -> f32 {
+    if (b - a).abs() < 1e-6 {
+        return if v >= b { d } else { c };
+    }
+    c + (d - c) * (v - a) / (b - a)
+}
+
+pub(crate) fn distance_to_line(eye: Vec3, start: Vec3, dir: Vec3) -> f32 {
+    let v = eye - start;
+    (v - dir * v.dot(dir)).length()
+}
+
+pub(crate) fn beam_fade(line: f32, width: f32) -> f32 {
+    let threshold = width * BEAM_FADE_WIDTHS;
+    if line < threshold { remap(line, threshold, width, 1.0, 0.0).clamp(0.0, 1.0) } else { 1.0 }
+}
+
+pub(crate) fn halo_look(dir: Vec3, start: Vec3, eye: Vec3, width: f32) -> Option<(f32, f32)> {
+    let to_eye = (eye - start).try_normalize()?;
+    let dot = dir.dot(to_eye);
+    if dot <= 0.0 {
+        return None;
+    }
+    let fade = (dot * 2.0).powi(2).clamp(0.0, 1.0);
+    let line = distance_to_line(eye, start, dir);
+    let scale = remap(line, width * BEAM_FADE_WIDTHS, width * 0.5, 1.0, 2.0).clamp(1.0, 2.0);
+    Some((fade, scale))
+}
+
+fn beam_uniform(beam: &WorldBeam, cam: &Camera, hdr: bool, flags: crate::ObjectFlags) -> Option<(u32, SunGlowUniform)> {
+    let start = Vec3::from(beam.start);
+    let end = Vec3::from(beam.end);
+    if !start.is_finite() || !end.is_finite() || !beam.width.is_finite() || beam.width <= 0.0 {
+        return None;
+    }
+    let dir = (end - start).try_normalize()?;
+    let exposure = if hdr && beam.hdr_scale.is_finite() { beam.hdr_scale.max(0.0) } else { 1.0 };
+    let color = beam.color.map(|v| if v.is_finite() { v.clamp(0.0, 1.0) } else { 0.0 });
+    let srgb = f32::from(beam.srgb_color);
+    let highlight = 1.0
+        + if flags.contains(crate::ObjectFlags::SELECTED) { 2.0 } else { 0.0 }
+        + if flags.contains(crate::ObjectFlags::HOVERED) { 4.0 } else { 0.0 };
+    if beam.halo_scale > 0.0 && beam.halo_scale.is_finite() {
+        let (fade, scale) = halo_look(dir, start, cam.eye, beam.width)?;
+        let probe = start + dir * HALO_PROXY_AHEAD;
+        let clip = cam.view_proj * probe.extend(1.0);
+        if clip.w <= 0.0 {
+            return None;
+        }
+        let distance = (probe - cam.eye).length().max(1e-6);
+        let radius = HALO_PROXY * cam.height / (2.0 * distance * cam.tan_half_fov);
+        let half = scale * beam.halo_scale;
+        let (right, up) = (cam.right * half, cam.up * half);
+        let rgb = color.map(|v| v * fade);
+        let center = screen_of(cam, probe);
+        return Some((
+            beam.material,
+            SunGlowUniform {
+                base: [start.x, start.y, start.z, clip.z / clip.w],
+                right: [right.x, right.y, right.z, 1.0],
+                up: [up.x, up.y, up.z, srgb],
+                color: [rgb[0], rgb[1], rgb[2], radius],
+                proxy: [center[0], center[1], 1.0, MODE_GLOW],
+                params: [exposure, MODE_ADDITIVE, highlight, 0.0],
+            },
+        ));
+    }
+    let fade = beam_fade(distance_to_line(cam.eye, start, dir), beam.width);
+    if fade <= 0.0 {
+        return None;
+    }
+    let side = (start - end).cross(start - cam.eye).try_normalize()?;
+    let mid = (start + end) * 0.5;
+    let right = side * beam.width;
+    let up = (start - end) * 0.5;
+    let rgb = color.map(|v| v * fade);
+    let center = screen_of(cam, mid);
+    Some((
+        beam.material,
+        SunGlowUniform {
+            base: [mid.x, mid.y, mid.z, 0.0],
+            right: [right.x, right.y, right.z, 1.0],
+            up: [up.x, up.y, up.z, srgb],
+            color: [rgb[0], rgb[1], rgb[2], 0.0],
+            proxy: [center[0], center[1], 1.0, MODE_ADDITIVE],
+            params: [exposure, MODE_ADDITIVE, highlight, 1.0],
+        },
+    ))
+}
+
 fn screen_of(cam: &Camera, p: Vec3) -> [f32; 2] {
     let clip = cam.view_proj * Vec4::new(p.x, p.y, p.z, 1.0);
     if clip.w <= 1e-6 {
@@ -283,6 +378,14 @@ impl Renderer {
         }
     }
 
+    pub fn set_world_beams(&mut self, beams: &[WorldBeam]) {
+        if self.world_beams != beams {
+            self.world_beams.clear();
+            self.world_beams.extend_from_slice(beams);
+            self.content_gen += 1;
+        }
+    }
+
     pub fn set_sun_glow(&mut self, glow: Option<SunGlow>) {
         if self.sun_glow != glow {
             self.sun_glow = glow;
@@ -308,22 +411,31 @@ impl Renderer {
         };
         if !cam.is_ortho && params.show_sprites && !matches!(params.mode, RenderMode::Wireframe | RenderMode::Flat) {
             let hdr = self.hdr_lit(opts, params.mode, false);
-            let mut visible: Vec<_> = self
+            let shown = |object: crate::ObjectId| {
+                !self
+                    .scene
+                    .flags(object)
+                    .unwrap_or_default()
+                    .intersects(crate::ObjectFlags::HIDDEN | crate::ObjectFlags::NO_3D)
+            };
+            let far = |p: [f32; 3]| (Vec3::from(p) - cam.eye).length_squared();
+            let mut visible: Vec<(f32, crate::ObjectId, (u32, SunGlowUniform))> = self
                 .world_sprites
                 .iter()
-                .filter(|sprite| {
-                    !self
-                        .scene
-                        .flags(sprite.object)
-                        .unwrap_or_default()
-                        .intersects(crate::ObjectFlags::HIDDEN | crate::ObjectFlags::NO_3D)
-                })
+                .filter(|sprite| shown(sprite.object))
+                .filter_map(|sprite| Some((far(sprite.pos), sprite.object, world_uniform(sprite, cam, hdr)?)))
+                .chain(self.world_beams.iter().filter(|beam| shown(beam.object)).filter_map(|beam| {
+                    let at = if beam.halo_scale > 0.0 {
+                        beam.start
+                    } else {
+                        ((Vec3::from(beam.start) + Vec3::from(beam.end)) * 0.5).to_array()
+                    };
+                    let flags = self.scene.flags(beam.object).unwrap_or_default();
+                    Some((far(at), beam.object, beam_uniform(beam, cam, hdr, flags)?))
+                }))
                 .collect();
-            visible.sort_by(|a, b| {
-                let distance = |sprite: &WorldSprite| (Vec3::from(sprite.pos) - cam.eye).length_squared();
-                distance(b).total_cmp(&distance(a)).then_with(|| a.object.cmp(&b.object))
-            });
-            list.extend(visible.into_iter().filter_map(|sprite| world_uniform(sprite, cam, hdr)));
+            visible.sort_by(|a, b| b.0.total_cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+            list.extend(visible.into_iter().map(|(_, _, u)| u));
         }
         let align = u64::from(self.device.limits().min_uniform_buffer_offset_alignment.max(1));
         let stride = (size_of::<SunGlowUniform>() as u64).div_ceil(align) * align;

@@ -24,6 +24,8 @@ mod tr;
 mod tests;
 #[cfg(test)]
 mod tests_dedup;
+#[cfg(test)]
+mod tests_status;
 
 use hp_app::AppState;
 

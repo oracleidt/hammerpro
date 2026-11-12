@@ -44,7 +44,7 @@
 | `move POS` | Moves the pointer. |
 | `click POS [button] [mods]` | Press and release. |
 | `dclick POS [button] [mods]` | Double click. |
-| `drag POS POS [button] [steps] [mods]` | Press at the first position, move to the second in `steps` moves (default 8), release. The modifiers stay held for the whole drag. |
+| `drag POS POS [button] [steps] [mods] [hold]` | Press at the first position, move to the second in `steps` moves (default 8), keep the button down there for `hold` frames (default 0), release. The modifiers stay held for the whole drag. Use `-` for no modifier when you give `hold`. |
 | `press POS [button] [mods]` | Press a mouse button only: it stays down across the following commands (`idle`, `move`...). |
 | `release POS [button] [mods]` | Release a mouse button pressed with `press`. |
 | `scroll POS DY [mods]` | Mouse wheel. Positive DY zooms in or moves forward. `scroll @v1:0.5,0.5 1 ctrl` changes the grid size. |
@@ -244,13 +244,18 @@ To bevel from a script, point at the edge and send its key: `move @v0:0.5,0.4` t
 | Key | Values |
 |---|---|
 | `mode` | `select`, `geometry` (also `paint`), `alpha`, `sculpt` or `tag`. |
-| `effect` | Geometry painting: `raise`, `lower`, `smooth`, `relax` or `set` (also `raise_to`). |
+| `effect` | Geometry painting: `raise`, `lower`, `smooth`, `relax`, `set` (also `raise_to`) or `slope`. |
 | `axis` | `normal`, `subdiv`, `center` (also `brush_center`), `view`, `x`, `y`, `z` or `custom`. |
 | `custom_axis` | Direction of the custom axis, `x,y,z`. |
-| `radius` | Brush radius in units, 1 to 8192. |
+| `radius` | Brush radius in units, 1 to 16384. |
 | `strength` | Raise and lower speed in units per second, 0 to 8192. |
 | `smooth` | Smoothing strength, 0 to 1. |
-| `target_height` | Height of the set effect, -16384 to 16384. |
+| `smooth_boost` | Smoothing multiplier, 1 to 64 (up to 16 averaging passes per brush sample). |
+| `target_height` | Height of the set effect and of the flatten `target` plane, -16384 to 16384. |
+| `height_reference` | `face` (the target height is above the base face of each displacement) or `world` (a world coordinate along the axis). |
+| `slope_brush_start`, `slope_brush_end` | Points of the slope effect, `x y z` in world units, or `none`. |
+| `sample_point` | The sampled point marked in the 3D view, `x y z`, or `none`. |
+| `slope_brush_strength` | Slope effect: share of the way to the slope per brush sample, 0 to 1. |
 | `falloff` | `constant`, `linear` or `smooth`. |
 | `spatial` | on/off: 3D distance on the surface (paints walls and across tiles). |
 | `line_of_sight` | on/off: only what the camera sees at the brush. |

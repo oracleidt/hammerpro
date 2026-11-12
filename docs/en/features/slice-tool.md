@@ -52,6 +52,7 @@ The preview draws every plane as a yellow quad with its coordinate written on it
 - Every cut gives valid convex brushes. The pieces keep the original textures, alignment and lightmap scale of the brush; the new cut faces copy the most similar face of the brush, or get the current material when **Current material on cuts** is on (the clip tool setting `brush.clip_current_material`).
 - The whole slice, all planes of all brushes, is **one undo step** (**Slice**). The new pieces are selected like the original brushes, so you can slice them again, along the other orientation for example, to cut a wall into bricks.
 - Brush entity solids keep their entity. Brushes the planes do not cross are left alone. When nothing can be cut you get **No cut inside the selection**.
+- Displacements stay displacements (Hammer turned them back into flat brush faces). Where the cut follows the lines of the displacement grid, every original vertex is kept exactly; elsewhere the surface is resampled onto the new faces at a power that keeps the detail (up to 4). Alphas, 4-way blend data, normals, offsets, elevation, flags and tags follow, and the two halves meet with no crack. A piece whose displaced face would be a triangle gets a one unit chamfer (Source displacements need four corners) and a five sided face is split into two quads. Turn off **Settings > Editing > Keep displacements when cutting** (`edit.keep_displacements_on_cut`) for the old behavior.
 
 ## MCP
 

@@ -181,6 +181,12 @@ pub const TR: TrTable = &[
         "Créer comme : brushes du monde, func_detail ou une autre classe d'entité brush",
     ),
     ("create.block.world", "World brush", "Brush du monde"),
+    ("create.block.detail_toggle", "Detail", "Détail"),
+    (
+        "create.block.detail_toggle_tip",
+        "Create the new brushes as func_detail (click again for world brushes): decorative pieces never cut visleaves",
+        "Créer les nouveaux brushes en func_detail (cliquer à nouveau pour des brushes du monde) : les pièces décoratives ne découpent jamais les visleaves",
+    ),
     (
         "create.block.keep_active_tip",
         "Keep the block tool active after creating an object",

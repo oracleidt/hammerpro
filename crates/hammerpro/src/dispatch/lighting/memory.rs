@@ -48,17 +48,36 @@ pub(crate) fn of_child(_child: &std::process::Child) -> Option<Usage> {
 }
 
 #[cfg(windows)]
-pub(crate) fn set_child_urgent(child: &std::process::Child, urgent: bool) {
+pub(crate) fn set_child_priority(child: &std::process::Child, priority: hp_app::settings::BakePriority) {
+    use hp_app::settings::BakePriority;
     use std::os::windows::io::AsRawHandle;
-    use windows_sys::Win32::System::Threading::{BELOW_NORMAL_PRIORITY_CLASS, NORMAL_PRIORITY_CLASS, SetPriorityClass};
-    let class = if urgent { NORMAL_PRIORITY_CLASS } else { BELOW_NORMAL_PRIORITY_CLASS };
+    use windows_sys::Win32::System::Threading::{
+        BELOW_NORMAL_PRIORITY_CLASS, IDLE_PRIORITY_CLASS, NORMAL_PRIORITY_CLASS, SetPriorityClass,
+    };
+    let class = match priority {
+        BakePriority::Idle => IDLE_PRIORITY_CLASS,
+        BakePriority::BelowNormal => BELOW_NORMAL_PRIORITY_CLASS,
+        BakePriority::Normal => NORMAL_PRIORITY_CLASS,
+    };
     unsafe {
         SetPriorityClass(child.as_raw_handle(), class);
     }
 }
 
 #[cfg(not(windows))]
-pub(crate) fn set_child_urgent(_child: &std::process::Child, _urgent: bool) {}
+pub(crate) fn set_child_priority(_child: &std::process::Child, _priority: hp_app::settings::BakePriority) {}
+
+#[cfg(windows)]
+pub(crate) fn lower_thread_priority() {
+    use windows_sys::Win32::System::Threading::{GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_BELOW_NORMAL};
+    unsafe {
+        SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+    }
+    lower_thread_memory_priority();
+}
+
+#[cfg(not(windows))]
+pub(crate) fn lower_thread_priority() {}
 
 #[cfg(windows)]
 pub(crate) fn of_self() -> Option<Usage> {

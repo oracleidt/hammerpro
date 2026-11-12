@@ -16,6 +16,8 @@ pub struct HealthSettings {
     pub portal_heat: bool,
     pub portal_xray: bool,
     pub warn_duplicates: bool,
+    pub check_delay_ms: u32,
+    pub pause_minimized: bool,
 }
 
 impl Default for HealthSettings {
@@ -33,11 +35,19 @@ impl Default for HealthSettings {
             portal_heat: false,
             portal_xray: true,
             warn_duplicates: true,
+            check_delay_ms: 1500,
+            pause_minimized: true,
         }
     }
 }
 
 impl HealthSettings {
+    pub const DELAY_RANGE: std::ops::RangeInclusive<u32> = 0..=10_000;
+
+    pub fn check_delay(&self) -> std::time::Duration {
+        std::time::Duration::from_millis(u64::from(self.check_delay_ms.min(*Self::DELAY_RANGE.end())))
+    }
+
     pub fn profile(&self) -> Option<LimitProfile> {
         LimitProfile::ALL.into_iter().find(|p| p.id().eq_ignore_ascii_case(self.limit_profile.trim()))
     }
@@ -68,6 +78,10 @@ mod tests {
         );
         assert!(s.live_checks);
         assert!(s.warn_duplicates);
+        assert!(s.pause_minimized);
+        assert_eq!(s.check_delay(), std::time::Duration::from_millis(1500));
+        let slow = HealthSettings { check_delay_ms: 99_999, ..HealthSettings::default() };
+        assert_eq!(slow.check_delay(), std::time::Duration::from_secs(10));
         assert_eq!(s.profile(), Some(LimitProfile::PlusPlus));
         let back: HealthSettings = toml::from_str(&toml::to_string(&s).expect("write")).expect("read");
         assert_eq!(back, s);

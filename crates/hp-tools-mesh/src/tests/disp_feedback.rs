@@ -235,7 +235,13 @@ fn every_brush_option_reads_back() {
         ("radius", "300"),
         ("strength", "900"),
         ("smooth", "0.25"),
+        ("smooth_boost", "8"),
         ("target_height", "-40"),
+        ("height_reference", "world"),
+        ("slope_brush_start", "1 2 3"),
+        ("slope_brush_end", "-4 5.5 60"),
+        ("sample_point", "7 8 9"),
+        ("slope_brush_strength", "0.75"),
         ("falloff", "constant"),
         ("spatial", "on"),
         ("line_of_sight", "on"),
@@ -341,6 +347,11 @@ fn every_brush_option_reads_back() {
         ("sculpt_bounds", "far"),
         ("flatten_plane", "tilted"),
         ("flatten_strength", "1.5"),
+        ("smooth_boost", "65"),
+        ("height_reference", "sky"),
+        ("slope_brush_end", "1 2 3 4"),
+        ("slope_brush_strength", "2"),
+        ("radius", "16385"),
     ] {
         assert!(!tool.set_option(&mut state, k, v), "{k} {v}");
     }

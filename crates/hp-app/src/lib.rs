@@ -1,4 +1,5 @@
 pub mod actions;
+pub mod checks;
 pub mod chrome;
 pub mod console;
 pub mod data_colors;
@@ -11,6 +12,7 @@ pub mod grid;
 pub mod grid_rotate;
 pub mod hover;
 pub mod i18n;
+pub mod model_compiler;
 pub mod native_window;
 pub mod os;
 pub mod pick;

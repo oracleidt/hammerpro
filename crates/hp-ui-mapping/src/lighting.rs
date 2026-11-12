@@ -243,6 +243,8 @@ impl LightingTab {
         ui.checkbox(&mut options.prop_polys, t!("lighting.vrad_prop_polys"));
         ui.checkbox(&mut options.texture_shadows, t!("lighting.vrad_texture_shadows"));
         ui.checkbox(&mut options.no_disp_shadows, t!("lighting.vrad_no_disp_shadows"));
+        ui.checkbox(&mut options.no_style_bounce, t!("lighting.vrad_no_style_bounce"))
+            .on_hover_text(t!("lighting.vrad_no_style_bounce_tip"));
         ui.checkbox(&mut options.fast_ambient, t!("lighting.vrad_fast_ambient"));
         ui.separator();
         ui.label(egui::RichText::new(t!("lighting.vrad_entities")).strong());

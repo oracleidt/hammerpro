@@ -16,11 +16,24 @@ pub struct LabRuntime {
     pub propper_create_open: bool,
     pub propper_create_confirmed: bool,
     pub propper_create_request: Option<Box<PropCreationRequest>>,
+    pub combine_open: bool,
+    pub combine_request: Option<Box<CombineRequest>>,
+    pub combine_busy: bool,
     pub particles: ParticleReport,
     pub particle_preview: ParticlePreviewRuntime,
     pub fly_texture: FlyTextureRuntime,
     pub sniffer: SnifferRuntime,
     pub sound_color: super::soundcolor::SoundColorRuntime,
+}
+
+#[derive(Clone, Debug)]
+pub struct CombineRequest {
+    pub props: Vec<hp_editor::Id>,
+    pub creation: PropCreationRequest,
+    pub keys: Vec<(String, String)>,
+    pub keep_originals: bool,
+    pub draw_calls: (usize, usize),
+    pub warnings: Vec<String>,
 }
 
 #[derive(Clone, Debug)]

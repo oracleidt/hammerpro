@@ -20,11 +20,13 @@ use crate::vertex::model::{
 };
 use crate::{AlphaEffect, GeoEffect, Interaction, PaintAxis, VertexTool};
 
+mod blend_masks;
 mod disp_blend_slope;
 mod disp_brushes;
 mod disp_erode;
 mod disp_feedback;
 mod disp_groups;
+mod disp_level;
 mod disp_live;
 mod disp_options;
 mod disp_subdivision;
@@ -149,7 +151,7 @@ fn translation_keys_match_sources() {
     }
     let mut text = String::new();
     sources(&dir, &mut text);
-    let tables: [hp_app::i18n::TrTable; 7] = [
+    let tables: [hp_app::i18n::TrTable; 8] = [
         crate::TR,
         crate::disp::erode::TR,
         crate::terrain::tr::TR,
@@ -157,6 +159,7 @@ fn translation_keys_match_sources() {
         crate::disp::loops::TR,
         crate::disp::blend::TR,
         crate::disp::slope_ui::TR,
+        crate::disp::level::TR,
     ];
     let ours: std::collections::HashSet<&str> = tables.iter().flat_map(|t| t.iter().map(|e| e.0)).collect();
     let core: std::collections::HashSet<&str> = hp_app::strings::TR.iter().map(|e| e.0).collect();
@@ -640,7 +643,7 @@ fn samples_follow_the_settings() {
     assert!((amount + 3.2).abs() < 1e-5);
     s.geo_effect = GeoEffect::Smooth;
     let Some(Sample::Local(b)) = build_sample(&s, Interaction::Geometry, c, false, 1.0) else { panic!() };
-    let LocalOp::Smooth { dir, amount } = b.op else { panic!("smooth expected") };
+    let LocalOp::Smooth { dir, amount, .. } = b.op else { panic!("smooth expected") };
     assert_eq!(dir, PaintDir::Fixed(DVec3::Z), "smoothing follows the paint axis");
     assert!((amount - 0.5 * 0.1 * crate::disp::paint::SMOOTH_RATE).abs() < 1e-6);
     s.axis = PaintAxis::FaceNormal;

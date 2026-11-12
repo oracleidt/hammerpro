@@ -4,6 +4,8 @@ use hp_render::lightmap::face_flags;
 
 use super::*;
 
+static LEVEL: AtomicU8 = AtomicU8::new(1);
+
 pub(in crate::dispatch::lighting) fn solid(id: u32, side0: u32, lo: [f64; 3], hi: [f64; 3]) -> String {
     let ([x0, y0, z0], [x1, y1, z1]) = (lo, hi);
     let sides = [
@@ -83,7 +85,7 @@ fn job(id: u64, map: Option<hp_vmf::Map>, solids: HashMap<u32, SolidInfo>) -> Jo
         models: true,
         exact: false,
         quiet: false,
-        urgent: false,
+        priority: BakePriority::BelowNormal,
     }
 }
 
@@ -112,6 +114,8 @@ impl Harness {
             start: Instant::now(),
             faces: 0,
             quiet: false,
+            priority: &LEVEL,
+            woke: AtomicU64::new(0),
         };
         run(job, &ctx, &mut self.pipe)
     }
@@ -217,7 +221,17 @@ fn a_room_is_compiled_lit_and_bound_to_its_solids() {
     let cancelled = job(8, Some(hp_vmf::parse(&text).expect("parse")), HashMap::new());
     h.wanted.store(0, Ordering::Release);
     let wake = || {};
-    let ctx = Ctx { id: 8, wanted: &h.wanted, out: &h.out, wake: &wake, start: Instant::now(), faces: 0, quiet: false };
+    let ctx = Ctx {
+        id: 8,
+        wanted: &h.wanted,
+        out: &h.out,
+        wake: &wake,
+        start: Instant::now(),
+        faces: 0,
+        quiet: false,
+        priority: &LEVEL,
+        woke: AtomicU64::new(0),
+    };
     let r = catch_unwind(AssertUnwindSafe(|| run(cancelled, &ctx, &mut h.pipe)));
     assert!(matches!(r, Err(_) | Ok(Outcome::Cancelled)));
 }
@@ -567,4 +581,24 @@ fn moving_a_spot_target_relights_from_the_kept_entities() {
         }
     }
     assert!(diff <= peak * 0.03 + 0.01, "the relit spot matches a fresh bake: {diff} of {peak}");
+}
+
+#[test]
+fn priorities_round_trip_and_progress_wakes_are_spaced() {
+    for p in [BakePriority::Idle, BakePriority::BelowNormal, BakePriority::Normal] {
+        assert_eq!(priority_of(priority_code(p)), p);
+    }
+    assert_eq!(priority_of(9), BakePriority::BelowNormal);
+    assert!(wake_due(0, 1));
+    assert!(!wake_due(40, 90));
+    assert!(wake_due(40, 140));
+}
+
+#[test]
+fn bakes_stop_while_the_window_is_away() {
+    assert!(!away((true, false), None), "no window known: never away");
+    assert!(away((true, false), Some((true, true))));
+    assert!(!away((true, false), Some((false, false))), "another active window is fine by default");
+    assert!(away((false, true), Some((false, false))));
+    assert!(!away((false, false), Some((true, false))));
 }

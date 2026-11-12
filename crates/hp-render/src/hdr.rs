@@ -200,6 +200,7 @@ struct Hist {
     readback: wgpu::Buffer,
     params: wgpu::Buffer,
     pending: bool,
+    copied: bool,
     inflight: Option<(Arc<AtomicU8>, wgpu::SubmissionIndex)>,
 }
 
@@ -210,6 +211,13 @@ struct Targets {
     params: wgpu::Buffer,
 }
 
+#[derive(Default)]
+struct Binds {
+    hist: Option<(wgpu::TextureView, wgpu::BindGroup)>,
+    bloom: Option<([wgpu::TextureView; 3], [wgpu::BindGroup; 3])>,
+    present: Option<([wgpu::TextureView; 2], wgpu::BindGroup)>,
+}
+
 struct ViewTone {
     scale: f32,
     mode: crate::RenderMode,
@@ -217,11 +225,20 @@ struct ViewTone {
     bloom: Option<Targets>,
     present: Option<wgpu::Buffer>,
     bins: Option<[u32; BUCKETS]>,
+    binds: Binds,
 }
 
 impl Default for ViewTone {
     fn default() -> Self {
-        Self { scale: 1.0, mode: crate::RenderMode::Textured, hist: None, bloom: None, present: None, bins: None }
+        Self {
+            scale: 1.0,
+            mode: crate::RenderMode::Textured,
+            hist: None,
+            bloom: None,
+            present: None,
+            bins: None,
+            binds: Binds::default(),
+        }
     }
 }
 
@@ -230,6 +247,7 @@ pub(crate) struct Tone {
     pub(crate) settings: ToneSettings,
     pub(crate) env: ToneEnv,
     pub(crate) lit_hdr: bool,
+    pub(crate) lit_ldr_shading: bool,
     pub(crate) lazy_readback: bool,
     gpu: Option<Gpu>,
     views: HashMap<u32, ViewTone>,
@@ -480,6 +498,13 @@ impl Renderer {
         self.tone.env
     }
 
+    pub fn set_lit_ldr_shading(&mut self, on: bool) {
+        if self.tone.lit_ldr_shading != on {
+            self.tone.lit_ldr_shading = on;
+            self.content_gen += 1;
+        }
+    }
+
     pub fn set_lit_hdr(&mut self, hdr: bool) {
         if self.tone.lit_hdr != hdr {
             self.tone.lit_hdr = hdr;
@@ -558,6 +583,7 @@ impl Renderer {
                 ),
                 params: uniform_buffer(device, "hp-render exposure params", size_of::<HdrParams>()),
                 pending: false,
+                copied: false,
                 inflight: None,
             });
         }
@@ -575,16 +601,16 @@ impl Renderer {
     }
 
     pub(crate) fn record_present(&mut self, enc: &mut wgpu::CommandEncoder, view_id: u32, f: &FrameInputs<'_>) {
-        let Some(gpu) = self.tone.gpu.as_ref() else { return };
         let device = &self.device;
         let queue = &self.queue;
-        let amount = if f.chain { self.tone.settings.bloom_amount(&self.tone.env) } else { 0.0 };
-        let auto = f.chain && self.tone.settings.mode == ToneMode::Auto;
-        let tv = self.tone.views.get_mut(&view_id);
+        let Tone { settings, env, gpu, views, .. } = &mut self.tone;
+        let Some(gpu) = gpu.as_ref() else { return };
+        let amount = if f.chain { settings.bloom_amount(env) } else { 0.0 };
+        let auto = f.chain && settings.mode == ToneMode::Auto;
+        let v = views.entry(view_id).or_default();
         let mut bloom_ready = false;
-        let mut present_buffer: Option<wgpu::Buffer> = None;
         let mut bloom_view: Option<wgpu::TextureView> = None;
-        if let (true, Some(v)) = (f.chain, tv) {
+        if f.chain {
             if auto && let Some(h) = v.hist.as_mut() {
                 let inset = [
                     (f.size[0] as f32 * 0.5 * (1.0 - REGION[0])) as u32,
@@ -598,28 +624,38 @@ impl Renderer {
                     blur: [0.0; 4],
                 };
                 queue.write_buffer(&h.params, 0, bytemuck::bytes_of(&params));
-                let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some("hp-render histogram"),
-                    layout: &gpu.hist_bgl,
-                    entries: &[
-                        wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(f.color_view) },
-                        wgpu::BindGroupEntry { binding: 1, resource: h.bins.as_entire_binding() },
-                        wgpu::BindGroupEntry { binding: 2, resource: h.params.as_entire_binding() },
-                    ],
-                });
-                if h.inflight.is_none() {
+                if v.binds.hist.as_ref().is_none_or(|(k, _)| k != f.color_view) {
+                    let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("hp-render histogram"),
+                        layout: &gpu.hist_bgl,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: wgpu::BindingResource::TextureView(f.color_view),
+                            },
+                            wgpu::BindGroupEntry { binding: 1, resource: h.bins.as_entire_binding() },
+                            wgpu::BindGroupEntry { binding: 2, resource: h.params.as_entire_binding() },
+                        ],
+                    });
+                    v.binds.hist = Some((f.color_view.clone(), bg));
+                }
+                if h.inflight.is_none()
+                    && let Some((_, bg)) = v.binds.hist.as_ref()
+                {
                     enc.clear_buffer(&h.bins, 0, None);
                     let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor {
                         label: Some("hp-render histogram"),
                         timestamp_writes: None,
                     });
                     pass.set_pipeline(&gpu.hist);
-                    pass.set_bind_group(0, &bg, &[]);
+                    pass.set_bind_group(0, bg, &[]);
                     let w = f.size[0].saturating_sub(2 * inset[0]).div_ceil(2).div_ceil(16).max(1);
                     let hh = f.size[1].saturating_sub(2 * inset[1]).div_ceil(2).div_ceil(16).max(1);
                     pass.dispatch_workgroups(w, hh, 1);
                     drop(pass);
+                    enc.copy_buffer_to_buffer(&h.bins, 0, &h.readback, 0, (BUCKETS * 4) as u64);
                     h.pending = true;
+                    h.copied = true;
                 }
             }
             if amount > 0.0
@@ -628,24 +664,33 @@ impl Renderer {
                 let lum = [BLOOM_LUMINANCE[0], BLOOM_LUMINANCE[1], BLOOM_LUMINANCE[2], BLOOM_EXPONENT];
                 let blur = [BLOOM_KERNEL, if BLOOM_SQRT_BLUR { 1.0 } else { 0.0 }, 0.0, 0.0];
                 queue.write_buffer(&b.params, 0, bytemuck::bytes_of(&BloomParams { lum, blur }));
-                let bind = |src: &wgpu::TextureView| {
-                    device.create_bind_group(&wgpu::BindGroupDescriptor {
-                        label: Some("hp-render bloom"),
-                        layout: &gpu.bloom_bgl,
-                        entries: &[
-                            wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(src) },
-                            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&gpu.sampler) },
-                            wgpu::BindGroupEntry { binding: 2, resource: b.params.as_entire_binding() },
-                        ],
-                    })
-                };
-                fullscreen_pass(enc, &gpu.down, &bind(f.color_view), &b.a);
-                fullscreen_pass(enc, &gpu.blur_x, &bind(&b.a), &b.b);
-                fullscreen_pass(enc, &gpu.blur_y, &bind(&b.b), &b.a);
-                bloom_ready = true;
-                bloom_view = Some(b.a.clone());
+                let key = [f.color_view.clone(), b.a.clone(), b.b.clone()];
+                if v.binds.bloom.as_ref().is_none_or(|(k, _)| *k != key) {
+                    let bind = |src: &wgpu::TextureView| {
+                        device.create_bind_group(&wgpu::BindGroupDescriptor {
+                            label: Some("hp-render bloom"),
+                            layout: &gpu.bloom_bgl,
+                            entries: &[
+                                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(src) },
+                                wgpu::BindGroupEntry {
+                                    binding: 1,
+                                    resource: wgpu::BindingResource::Sampler(&gpu.sampler),
+                                },
+                                wgpu::BindGroupEntry { binding: 2, resource: b.params.as_entire_binding() },
+                            ],
+                        })
+                    };
+                    let groups = [bind(f.color_view), bind(&b.a), bind(&b.b)];
+                    v.binds.bloom = Some((key, groups));
+                }
+                if let Some((_, [down, blur_x, blur_y])) = v.binds.bloom.as_ref() {
+                    fullscreen_pass(enc, &gpu.down, down, &b.a);
+                    fullscreen_pass(enc, &gpu.blur_x, blur_x, &b.b);
+                    fullscreen_pass(enc, &gpu.blur_y, blur_y, &b.a);
+                    bloom_ready = true;
+                    bloom_view = Some(b.a.clone());
+                }
             }
-            present_buffer = v.present.clone();
         }
         let _ = f.color;
         let params = PresentParams {
@@ -657,20 +702,28 @@ impl Renderer {
             ],
             fade: f.fade,
         };
-        let buffer = present_buffer
-            .unwrap_or_else(|| uniform_buffer(device, "hp-render present params", size_of::<PresentParams>()));
-        queue.write_buffer(&buffer, 0, bytemuck::bytes_of(&params));
+        if v.present.is_none() {
+            v.present = Some(uniform_buffer(device, "hp-render present params", size_of::<PresentParams>()));
+            v.binds.present = None;
+        }
+        let Some(buffer) = v.present.as_ref() else { return };
+        queue.write_buffer(buffer, 0, bytemuck::bytes_of(&params));
         let bloom_view = bloom_view.unwrap_or_else(|| f.color_view.clone());
-        let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("hp-render present"),
-            layout: &gpu.present_bgl,
-            entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(f.color_view) },
-                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&bloom_view) },
-                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&gpu.sampler) },
-                wgpu::BindGroupEntry { binding: 3, resource: buffer.as_entire_binding() },
-            ],
-        });
+        let key = [f.color_view.clone(), bloom_view];
+        if v.binds.present.as_ref().is_none_or(|(k, _)| *k != key) {
+            let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("hp-render present"),
+                layout: &gpu.present_bgl,
+                entries: &[
+                    wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&key[0]) },
+                    wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&key[1]) },
+                    wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(&gpu.sampler) },
+                    wgpu::BindGroupEntry { binding: 3, resource: buffer.as_entire_binding() },
+                ],
+            });
+            v.binds.present = Some((key, bg));
+        }
+        let Some((_, bg)) = v.binds.present.as_ref() else { return };
         let mut rp = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("hp-render present"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -685,7 +738,7 @@ impl Renderer {
             multiview_mask: None,
         });
         rp.set_pipeline(&gpu.present);
-        rp.set_bind_group(0, &bg, &[]);
+        rp.set_bind_group(0, bg, &[]);
         rp.draw(0..3, 0..1);
     }
 
@@ -707,11 +760,17 @@ impl Renderer {
             if !std::mem::take(&mut h.pending) {
                 return v.scale;
             }
-            let mut enc = self
-                .device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("hp-render exposure") });
-            enc.copy_buffer_to_buffer(&h.bins, 0, &h.readback, 0, (BUCKETS * 4) as u64);
-            let index = self.queue.submit([enc.finish()]);
+            let copied = std::mem::take(&mut h.copied);
+            let index = match self.last_submit.clone().filter(|_| copied) {
+                Some(index) => index,
+                None => {
+                    let mut enc = self
+                        .device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("hp-render exposure") });
+                    enc.copy_buffer_to_buffer(&h.bins, 0, &h.readback, 0, (BUCKETS * 4) as u64);
+                    self.queue.submit([enc.finish()])
+                }
+            };
             let state = Arc::new(AtomicU8::new(MAP_WAITING));
             let done = state.clone();
             h.readback.slice(..).map_async(wgpu::MapMode::Read, move |r| {
@@ -746,7 +805,7 @@ impl Renderer {
         let moving = (clamp_range(target, min, max) / next).ln().abs() > 0.004;
         v.scale = next;
         if changed || moving {
-            self.content_gen += 1;
+            self.redraw_view(view_id);
         }
         next
     }

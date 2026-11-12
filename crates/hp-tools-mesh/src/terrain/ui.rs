@@ -5,19 +5,25 @@ use hp_app::state::AppState;
 use hp_app::{Severity, t, tf};
 use hp_geom::{FalloffShape, HeightField, NoiseBasis, NoiseShape, TerrainPreset};
 
+use super::export::ExportValues;
 use super::export::{ExportOptions, export};
 use super::generate::{GenOptions, generate, preview};
-use super::image_io::{is_raw, load_heightmap};
-use super::import::{ImportOptions, import, shape_field};
-use super::{TexMode, TileSetup};
+use super::image_io::{RawFormat, is_raw};
+use super::import::{HeightValues, ImportOptions, import, load_source, thumb_field};
+use super::masks::WeightMode;
+use super::{PixelGrid, TexMode, TileSetup};
 use crate::disp::commands::targets;
 
 const THUMB: usize = 48;
+const IMAGE_EXTENSIONS: &[&str] =
+    &["png", "tif", "tiff", "exr", "pfm", "hdr", "raw", "r8", "r16", "r32", "f32", "jpg", "jpeg", "bmp", "tga"];
 
 struct Thumb {
     key: String,
     result: Result<HeightField, String>,
     dims: (usize, usize),
+    described: String,
+    range: (f64, f64),
 }
 
 #[derive(Default)]
@@ -29,6 +35,8 @@ pub struct TerrainUi {
     pub generate: GenOptions,
     pub export: ExportOptions,
     pub live_preview: Option<bool>,
+    pub masks: super::masks_ui::MasksUi,
+    pub last_import: Option<(glam::DVec2, glam::DVec2)>,
     thumb: Option<Thumb>,
     last_preview: Option<(GenOptions, u64)>,
     version: u64,
@@ -90,14 +98,9 @@ fn browse(kind: Pick, current: &str) -> Option<String> {
         dialog = dialog.set_directory(dir);
     }
     let picked = match kind {
-        Pick::OpenImage => dialog
-            .add_filter(
-                t!("terrain.filter_images"),
-                &["png", "tif", "tiff", "exr", "hdr", "raw", "r16", "jpg", "jpeg", "bmp", "tga"],
-            )
-            .pick_file(),
+        Pick::OpenImage => dialog.add_filter(t!("terrain.filter_images"), IMAGE_EXTENSIONS).pick_file(),
         Pick::SaveHeightmap => dialog
-            .add_filter(t!("terrain.filter_heightmap"), &["png", "tif", "tiff", "raw"])
+            .add_filter(t!("terrain.filter_heightmap"), &["png", "tif", "tiff", "exr", "pfm", "r16", "r32", "raw"])
             .set_file_name("heightmap.png")
             .save_file(),
         Pick::SaveSplat => dialog.add_filter("PNG", &["png"]).set_file_name("splat.png").save_file(),
@@ -191,14 +194,16 @@ fn auto_ui(ui: &mut egui::Ui, id: &str, a: &mut hp_geom::AutoTexture) {
 
 fn refresh_thumb(ui: &mut TerrainUi, state: &AppState) {
     let o = &ui.import;
-    let key = format!("{}|{}|{}|{}", o.path, o.raw.width, o.raw.height, o.raw.big_endian);
+    let key = format!("{}|{:?}|{:?}|{}", o.path, o.raw, o.tiles, o.tile_columns);
     if ui.thumb.as_ref().is_some_and(|t| t.key == key) {
         return;
     }
-    let result = super::resolve_path(state, &o.path).and_then(|p| load_heightmap(&p, &o.raw));
-    let dims = result.as_ref().map_or((0, 0), |f| (f.width, f.height));
-    let result = result.map(|f| f.resampled(THUMB, THUMB));
-    ui.thumb = Some(Thumb { key, result, dims });
+    let result = load_source(state, o);
+    let dims = result.as_ref().map_or((0, 0), |s| (s.field.width, s.field.height));
+    let described = result.as_ref().map(|s| s.described.clone()).unwrap_or_default();
+    let range = result.as_ref().map_or((0.0, 0.0), |s| s.field.min_max());
+    let result = result.map(|s| s.field.resampled(THUMB, THUMB));
+    ui.thumb = Some(Thumb { key, result, dims, described, range });
 }
 
 fn paint_layout(ui: &mut egui::Ui, thumb: Option<&HeightField>, o: &ImportOptions) {
@@ -210,7 +215,7 @@ fn paint_layout(ui: &mut egui::Ui, thumb: Option<&HeightField>, o: &ImportOption
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 0.0, Color32::from_gray(30));
     if let Some(small) = thumb {
-        let shaped = shape_field(small.clone(), o);
+        let shaped = thumb_field(small.clone(), o);
         let (cw, ch) = (rect.width() / THUMB as f32, rect.height() / THUMB as f32);
         for j in 0..THUMB {
             for i in 0..THUMB {
@@ -265,23 +270,129 @@ fn import_window(ctx: &egui::Context, tui: &mut TerrainUi, state: &mut AppState)
                 let o = &mut tui.import;
                 egui::Grid::new("hp_terrain_import_file").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
                     path_row(ui, t!("terrain.file"), t!("terrain.file_tip"), &mut o.path, Pick::OpenImage);
-                    if is_raw(std::path::Path::new(o.path.trim())) {
+                    let raw = is_raw(std::path::Path::new(o.path.trim()))
+                        || o.tiles.iter().any(|t| is_raw(std::path::Path::new(t.trim())));
+                    if raw {
                         whole(ui, t!("terrain.raw_width"), t!("terrain.raw_size_tip"), &mut o.raw.width, 0..=16384);
                         whole(ui, t!("terrain.raw_height"), t!("terrain.raw_size_tip"), &mut o.raw.height, 0..=16384);
                         check(ui, t!("terrain.raw_big"), t!("terrain.raw_big_tip"), &mut o.raw.big_endian);
+                        ui.label(t!("terrain.raw_format"));
+                        choice(
+                            ui,
+                            &mut o.raw.format,
+                            &[
+                                (RawFormat::Auto, t!("terrain.raw_auto")),
+                                (RawFormat::U8, "8 bit"),
+                                (RawFormat::U16, "16 bit"),
+                                (RawFormat::F32, t!("terrain.raw_f32")),
+                            ],
+                        );
+                        ui.end_row();
                     }
                 });
-                match tui.thumb.as_ref().map(|t| (&t.result, t.dims)) {
-                    Some((Ok(_), (w, h))) => {
-                        ui.label(egui::RichText::new(tf!("terrain.image_info", w, h)).weak());
+                egui::CollapsingHeader::new(t!("terrain.tiles_section")).id_salt("hp_terrain_tiles").show(ui, |ui| {
+                    ui.label(egui::RichText::new(t!("terrain.tiles_tip")).weak());
+                    let o = &mut tui.import;
+                    let mut remove = None;
+                    for (i, p) in o.tiles.iter_mut().enumerate() {
+                        ui.horizontal(|ui| {
+                            ui.add(egui::TextEdit::singleline(p).desired_width(260.0));
+                            if ui.small_button(t!("common.browse")).clicked()
+                                && let Some(picked) = browse(Pick::OpenImage, p)
+                            {
+                                *p = picked;
+                            }
+                            if ui.small_button("x").on_hover_text(t!("terrain.tiles_remove")).clicked() {
+                                remove = Some(i);
+                            }
+                        });
                     }
-                    Some((Err(e), _)) if !tui.import.path.trim().is_empty() => {
+                    if let Some(i) = remove {
+                        o.tiles.remove(i);
+                    }
+                    ui.horizontal(|ui| {
+                        if ui.button(t!("terrain.tiles_add")).clicked()
+                            && let Some(files) = rfd::FileDialog::new()
+                                .add_filter(t!("terrain.filter_images"), IMAGE_EXTENSIONS)
+                                .pick_files()
+                        {
+                            let mut names: Vec<String> =
+                                files.iter().map(|p| p.to_string_lossy().into_owned()).collect();
+                            names.sort();
+                            o.tiles.extend(names);
+                        }
+                        ui.label(t!("terrain.tile_columns"));
+                        ui.add(egui::DragValue::new(&mut o.tile_columns).range(0..=64))
+                            .on_hover_text(t!("terrain.tile_columns_tip"));
+                    });
+                });
+                match tui.thumb.as_ref() {
+                    Some(t) if t.result.is_ok() => {
+                        ui.label(egui::RichText::new(tf!("terrain.image_info", t.dims.0, t.dims.1)).weak());
+                        ui.label(
+                            egui::RichText::new(tf!(
+                                "terrain.image_values",
+                                &t.described,
+                                format!("{:.4}", t.range.0),
+                                format!("{:.4}", t.range.1)
+                            ))
+                            .weak(),
+                        );
+                    }
+                    Some(Thumb { result: Err(e), .. }) if tui.import.has_source() => {
                         ui.colored_label(hp_app::theme::error(), e);
                     }
                     _ => {}
                 }
                 ui.separator();
                 let o = &mut tui.import;
+                ui.label(egui::RichText::new(t!("terrain.values")).strong());
+                choice(
+                    ui,
+                    &mut o.values,
+                    &[
+                        (HeightValues::Auto, t!("terrain.values_auto")),
+                        (HeightValues::Unit, t!("terrain.values_unit")),
+                        (HeightValues::Stretch, t!("terrain.values_stretch")),
+                        (HeightValues::Absolute, t!("terrain.values_absolute")),
+                    ],
+                );
+                ui.label(
+                    egui::RichText::new(t!(match o.values {
+                        HeightValues::Auto => "terrain.values_auto_tip",
+                        HeightValues::Unit => "terrain.values_unit_tip",
+                        HeightValues::Stretch => "terrain.values_stretch_tip",
+                        HeightValues::Absolute => "terrain.values_absolute_tip",
+                    }))
+                    .weak(),
+                );
+                egui::Grid::new("hp_terrain_value_scale").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
+                    if o.values == HeightValues::Absolute {
+                        drag(
+                            ui,
+                            t!("terrain.value_scale"),
+                            t!("terrain.value_scale_tip"),
+                            &mut o.value_scale,
+                            0.0001..=10000.0,
+                            0.01,
+                        );
+                    }
+                    check(ui, t!("terrain.match_pixels"), t!("terrain.match_pixels_tip"), &mut o.match_pixels);
+                });
+                if o.match_pixels
+                    && let Some((w, h)) = tui.thumb.as_ref().filter(|t| t.result.is_ok()).map(|t| t.dims)
+                {
+                    let mut probe = o.setup.clone();
+                    match super::import::match_pixels(&mut probe, w, h) {
+                        Ok(()) => {
+                            o.setup.tile_size = probe.tile_size;
+                            o.setup.size.y = probe.size.y;
+                        }
+                        Err(e) => {
+                            ui.colored_label(hp_app::theme::warning(), e);
+                        }
+                    }
+                }
                 setup_ui(ui, "import", &mut o.setup, true);
                 ui.separator();
                 ui.label(egui::RichText::new(t!("terrain.image_section")).strong());
@@ -294,6 +405,16 @@ fn import_window(ctx: &egui::Context, tui: &mut TerrainUi, state: &mut AppState)
                         o.bilinear = !cubic;
                     }
                     whole(ui, t!("terrain.smoothing"), t!("terrain.smoothing_tip"), &mut o.smoothing, 0..=64);
+                    ui.label(t!("terrain.pixel_grid")).on_hover_text(t!("terrain.pixel_grid_tip"));
+                    choice(
+                        ui,
+                        &mut o.grid,
+                        &[
+                            (PixelGrid::Corner, t!("terrain.grid_corner")),
+                            (PixelGrid::Center, t!("terrain.grid_center")),
+                        ],
+                    );
+                    ui.end_row();
                 });
                 ui.separator();
                 ui.label(egui::RichText::new(t!("terrain.texturing")).strong());
@@ -323,6 +444,15 @@ fn import_window(ctx: &egui::Context, tui: &mut TerrainUi, state: &mut AppState)
                                 path_row(ui, &label, t!("terrain.splat_channel_tip"), c, Pick::OpenImage);
                             }
                         });
+                        choice(
+                            ui,
+                            &mut o.splat_weights,
+                            &[
+                                (WeightMode::Coverage, t!("masks.weights_coverage")),
+                                (WeightMode::Direct, t!("masks.weights_direct")),
+                            ],
+                        );
+                        ui.label(egui::RichText::new(t!("terrain.splat_more")).weak());
                     }
                 }
                 ui.separator();
@@ -332,7 +462,7 @@ fn import_window(ctx: &egui::Context, tui: &mut TerrainUi, state: &mut AppState)
             });
             ui.separator();
             ui.horizontal(|ui| {
-                let ready = tui.import.setup.validate().is_ok() && !tui.import.path.trim().is_empty();
+                let ready = tui.import.setup.validate().is_ok() && tui.import.has_source();
                 if ui
                     .add_enabled(ready, egui::Button::new(t!("terrain.import_run")))
                     .on_hover_text(t!("terrain.import_run_tip"))
@@ -347,7 +477,20 @@ fn import_window(ctx: &egui::Context, tui: &mut TerrainUi, state: &mut AppState)
         });
     if apply {
         match import(state, &tui.import) {
-            Ok(r) => state.notify(Severity::Success, tf!("terrain.imported", r.tiles, r.image.0, r.image.1)),
+            Ok(r) => {
+                tui.last_import = Some((r.setup.min(), r.setup.size));
+                state.notify(
+                    Severity::Success,
+                    tf!(
+                        "terrain.imported_range",
+                        r.tiles,
+                        r.image.0,
+                        r.image.1,
+                        format!("{:.3}", r.h_min),
+                        format!("{:.3}", r.h_max)
+                    ),
+                );
+            }
             Err(e) => state.notify(Severity::Warning, tf!("terrain.failed", e)),
         }
     }
@@ -598,6 +741,30 @@ fn export_window(ctx: &egui::Context, tui: &mut TerrainUi, state: &mut AppState)
                     ui.end_row();
                 }
             });
+            let o = &mut tui.export;
+            ui.checkbox(&mut o.float, t!("terrain.export_float")).on_hover_text(t!("terrain.export_float_tip"));
+            ui.horizontal(|ui| {
+                ui.label(t!("terrain.export_values"));
+                choice(
+                    ui,
+                    &mut o.values,
+                    &[
+                        (ExportValues::Auto, t!("terrain.values_auto")),
+                        (ExportValues::Normalized, t!("terrain.export_normalized")),
+                        (ExportValues::Absolute, t!("terrain.values_absolute")),
+                    ],
+                );
+            });
+            ui.label(egui::RichText::new(t!("terrain.export_values_tip")).weak());
+            if o.values != ExportValues::Normalized {
+                ui.horizontal(|ui| {
+                    ui.label(t!("terrain.value_scale"));
+                    ui.add(
+                        egui::DragValue::new(&mut o.value_scale).speed(0.01).range(0.0001..=10000.0).max_decimals(4),
+                    )
+                    .on_hover_text(t!("terrain.value_scale_tip"));
+                });
+            }
             ui.horizontal(|ui| {
                 let ready = !faces.is_empty() && !tui.export.path.trim().is_empty();
                 if ui
@@ -636,4 +803,9 @@ pub fn show(ctx: &egui::Context, tui: &mut TerrainUi, state: &mut AppState) {
     import_window(ctx, tui, state);
     generate_window(ctx, tui, state);
     export_window(ctx, tui, state);
+    let heightmap = tui.last_import.or_else(|| {
+        let s = &tui.import.setup;
+        (tui.import.has_source() && s.validate().is_ok()).then(|| (s.min(), s.size))
+    });
+    super::masks_ui::show(ctx, &mut tui.masks, state, heightmap);
 }

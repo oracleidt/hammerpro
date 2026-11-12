@@ -4,6 +4,7 @@ mod brushes;
 pub mod commands;
 pub mod erode;
 pub(crate) mod highlight;
+pub mod level;
 pub mod loops;
 pub(crate) mod paint;
 mod relax;
@@ -97,6 +98,7 @@ impl StrokeState {
 struct RadiusDrag {
     view: usize,
     right: bool,
+    ctrl: bool,
     start: Pos2,
     radius: f64,
 }
@@ -187,6 +189,7 @@ pub struct DisplacementTool {
     pub mask_select: bool,
     pub keep_shape: bool,
     loops: loops::LoopState,
+    level_source: Option<DVec3>,
     loaded: bool,
 }
 
@@ -220,6 +223,7 @@ impl Default for DisplacementTool {
             mask_select: false,
             keep_shape: true,
             loops: loops::LoopState::default(),
+            level_source: None,
             loaded: false,
         }
     }
@@ -674,6 +678,10 @@ impl DisplacementTool {
         eye: Option<DVec3>,
     ) -> usize {
         self.brush.sanitize();
+        if self.slope_brush() && !self.begin_slope_stroke(state, center) {
+            self.tell_slope_start(state);
+            return 0;
+        }
         let invert = self.inverts(mods);
         let current = (self.toward_eye, self.toward_eye_flat);
         let (toward_eye, toward_eye_flat) = match self.stroke.as_mut() {
@@ -688,6 +696,9 @@ impl DisplacementTool {
         let mut brush = self.brush.resolved_view(toward_eye, toward_eye_flat, center_normal(&state.doc, face, center));
         if self.relaxing() {
             brush.sculpt.op = sculpt::SculptOp::Relax;
+        }
+        if self.smoothing(mods) && (mods.ctrl || mods.command) {
+            brush.smooth_boost *= paint::BOOST_KEY_FACTOR;
         }
         let sample = match self.interaction {
             _ if mods.shift && (self.interaction == Interaction::Sculpt || self.relaxing()) => {
@@ -816,6 +827,21 @@ impl DisplacementTool {
         stroke.told = true;
         let text = tf!("disp.paint_not_selected", stroke.filter.len(), key_label(Key::Escape));
         self.warn(state, text);
+    }
+
+    fn tell_slope_start(&mut self, state: &mut AppState) {
+        if let Some(stroke) = self.stroke.as_mut() {
+            if stroke.told {
+                return;
+            }
+            stroke.told = true;
+        }
+        self.warn(state, t!("disp.slope_need_start").to_owned());
+    }
+
+    pub(crate) fn smoothing(&self, mods: Modifiers) -> bool {
+        (self.interaction == Interaction::Geometry && self.brush.geo_effect == GeoEffect::Smooth)
+            || (mods.shift && (self.interaction == Interaction::Sculpt || self.relaxing()))
     }
 
     fn tell_no_project_target(&mut self, state: &mut AppState) {
@@ -1090,7 +1116,7 @@ impl DisplacementTool {
             if (r.right && f.right_down) || (!r.right && f.down) {
                 if let Some(p) = f.pos {
                     let factor = 2f64.powf(f64::from((p.x - r.start.x) / RADIUS_DRAG_PX));
-                    self.brush.radius = (r.radius * factor).clamp(1.0, 8192.0).round().max(1.0);
+                    self.brush.radius = (r.radius * factor).clamp(1.0, paint::MAX_RADIUS).round().max(1.0);
                     if !view.is_2d() {
                         self.update_cursor(state, view, r.start, f.mods);
                     }
@@ -1101,6 +1127,9 @@ impl DisplacementTool {
                 if !r.right && still && r.radius == self.brush.radius {
                     self.loop_click(state, view, r.start);
                 }
+                if r.right && still && r.radius == self.brush.radius && !view.is_2d() {
+                    self.right_click(state, view, r.start, r.ctrl);
+                }
             }
             return ToolFlow::Handled;
         }
@@ -1110,7 +1139,8 @@ impl DisplacementTool {
             && self.interaction != Interaction::Select
             && let Some(p) = f.pos.filter(|p| view.rect.contains(*p))
         {
-            self.radius_drag = Some(RadiusDrag { view: view.index, right: false, start: p, radius: self.brush.radius });
+            self.radius_drag =
+                Some(RadiusDrag { view: view.index, right: false, ctrl: false, start: p, radius: self.brush.radius });
             return ToolFlow::Handled;
         }
         if f.right_pressed
@@ -1127,7 +1157,8 @@ impl DisplacementTool {
             && self.stroke.is_none()
             && let Some(p) = f.pos.filter(|p| view.rect.contains(*p))
         {
-            self.radius_drag = Some(RadiusDrag { view: view.index, right: true, start: p, radius: self.brush.radius });
+            self.radius_drag =
+                Some(RadiusDrag { view: view.index, right: true, ctrl, start: p, radius: self.brush.radius });
             return ToolFlow::Handled;
         }
         if self.stroke.as_ref().is_some_and(|s| s.view == view.index) {
@@ -1394,7 +1425,7 @@ impl DisplacementTool {
                 section(ui, t!("disp.paint"));
                 ui.label(RichText::new(t!("disp.select_hint")).weak());
             }
-            Interaction::Geometry => self.geometry_ui(ui),
+            Interaction::Geometry => self.geometry_ui(ui, state),
             Interaction::Alpha => self.alpha_ui(ui, state.settings.mesh.four_way_blends),
             Interaction::Sculpt => self.sculpt_ui(ui),
             Interaction::Tag => self.tag_ui(ui, state, &mut actions),
@@ -1409,6 +1440,9 @@ impl DisplacementTool {
                 _ => t!("disp.paint_hint"),
             };
             ui.label(RichText::new(hint).weak());
+            if self.sample_slot().is_some() && !self.slope_brush() {
+                ui.label(RichText::new(t!("disp.sample_hint")).weak());
+            }
         }
         self.tools_ui(ui, state, &mut actions);
         self.loop_ui(ui, state, &mut actions);
@@ -1538,7 +1572,7 @@ impl DisplacementTool {
         });
     }
 
-    fn geometry_ui(&mut self, ui: &mut Ui) {
+    fn geometry_ui(&mut self, ui: &mut Ui, state: &mut AppState) {
         section(ui, t!("disp.paint_geometry"));
         ui.horizontal_wrapped(|ui| {
             let effects = [
@@ -1546,6 +1580,7 @@ impl DisplacementTool {
                 (GeoEffect::Lower, "disp.effect.lower", "disp.effect.lower_tip"),
                 (GeoEffect::Smooth, "disp.effect.smooth", "disp.effect.smooth_tip"),
                 (GeoEffect::Set, "disp.effect.set", "disp.effect.set_tip"),
+                (GeoEffect::Slope, "disp.effect.slope", "disp.effect.slope_tip"),
                 (GeoEffect::Relax, "disp.sculpt.relax", "disp.sculpt.relax_tip"),
             ];
             for (e, label, tip) in effects {
@@ -1567,6 +1602,15 @@ impl DisplacementTool {
                         ui.add(egui::Slider::new(&mut self.brush.smooth, 0.0..=1.0).max_decimals(2))
                             .on_hover_text(t!("disp.smooth_tip"));
                     });
+                    grid_row(ui, t!("disp.smooth_boost"), |ui| {
+                        ui.add(
+                            egui::Slider::new(&mut self.brush.smooth_boost, 1.0..=paint::MAX_SMOOTH_BOOST)
+                                .logarithmic(true)
+                                .max_decimals(1)
+                                .prefix("x"),
+                        )
+                        .on_hover_text(t!("disp.smooth_boost_tip"));
+                    });
                 }
                 GeoEffect::Set => {
                     grid_row(ui, t!("disp.target_height"), |ui| {
@@ -1575,6 +1619,14 @@ impl DisplacementTool {
                         )
                         .on_hover_text(t!("disp.target_height_tip"));
                     });
+                    self.height_reference_ui(ui);
+                }
+                GeoEffect::Slope => {
+                    grid_row(ui, t!("disp.strength"), |ui| {
+                        ui.add(egui::Slider::new(&mut self.brush.slope_strength, 0.0..=1.0).max_decimals(2))
+                            .on_hover_text(t!("disp.slope_brush_strength_tip"));
+                    });
+                    self.slope_brush_ui(ui, state);
                 }
                 GeoEffect::Raise | GeoEffect::Lower => {
                     grid_row(ui, t!("disp.strength"), |ui| {
@@ -1594,6 +1646,9 @@ impl DisplacementTool {
         });
         if self.brush.geo_effect != GeoEffect::Relax && self.brush.axis == PaintAxis::Custom {
             vec3_edit(ui, &mut self.brush.custom_axis, 0.01);
+        }
+        if self.brush.geo_effect == GeoEffect::Slope {
+            self.slope_brush_help(ui);
         }
     }
 
@@ -1745,11 +1800,29 @@ impl DisplacementTool {
                         .on_hover_text(t!("disp.sculpt.flatten_strength_tip"));
                 });
                 grid_row(ui, t!("disp.sculpt.flatten_plane"), |ui| {
-                    ui.selectable_value(&mut s.flatten_fixed, false, t!("disp.sculpt.flatten_average"))
+                    let mut plane = (s.flatten_fixed, s.flatten_target);
+                    ui.selectable_value(&mut plane, (false, false), t!("disp.sculpt.flatten_average"))
                         .on_hover_text(t!("disp.sculpt.flatten_average_tip"));
-                    ui.selectable_value(&mut s.flatten_fixed, true, t!("disp.sculpt.flatten_fixed"))
+                    ui.selectable_value(&mut plane, (true, false), t!("disp.sculpt.flatten_fixed"))
                         .on_hover_text(t!("disp.sculpt.flatten_fixed_tip"));
+                    ui.selectable_value(&mut plane, (false, true), t!("disp.sculpt.flatten_target"))
+                        .on_hover_text(t!("disp.sculpt.flatten_target_tip"));
+                    (s.flatten_fixed, s.flatten_target) = plane;
                 });
+                if s.flatten_target {
+                    grid_row(ui, t!("disp.target_height"), |ui| {
+                        ui.add(
+                            egui::DragValue::new(&mut self.brush.target_height).speed(0.5).range(-16384.0..=16384.0),
+                        )
+                        .on_hover_text(t!("disp.target_height_tip"));
+                    });
+                    grid_row(ui, t!("disp.height_reference"), |ui| {
+                        ui.selectable_value(&mut self.brush.height_world, false, t!("disp.height_face"))
+                            .on_hover_text(t!("disp.height_face_tip"));
+                        ui.selectable_value(&mut self.brush.height_world, true, t!("disp.height_world"))
+                            .on_hover_text(t!("disp.height_world_tip"));
+                    });
+                }
             }
             SculptOp::Project => {
                 grid_row(ui, t!("disp.sculpt.range"), |ui| {
@@ -1844,8 +1917,12 @@ impl DisplacementTool {
         section(ui, t!("disp.brush"));
         egui::Grid::new("hp_disp_brush").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
             grid_row(ui, t!("disp.radius"), |ui| {
-                ui.add(egui::Slider::new(&mut self.brush.radius, 1.0..=2048.0).logarithmic(true).max_decimals(0))
-                    .on_hover_text(t!("disp.radius_tip"));
+                ui.add(
+                    egui::Slider::new(&mut self.brush.radius, 1.0..=paint::MAX_RADIUS)
+                        .logarithmic(true)
+                        .max_decimals(0),
+                )
+                .on_hover_text(t!("disp.radius_tip"));
             });
             grid_row(ui, t!("disp.falloff"), |ui| {
                 let label = |f: Falloff| match f {
@@ -2022,6 +2099,7 @@ impl DisplacementTool {
                 (GeoEffect::Lower, false) | (GeoEffect::Raise, true) => AXIS_Z,
                 (GeoEffect::Smooth, _) => VIEW_SUCCESS,
                 (GeoEffect::Set, _) => VIEW_WARNING,
+                (GeoEffect::Slope, _) => VIEW_WARNING,
                 (GeoEffect::Relax, _) => VIEW_SUCCESS,
             },
             Interaction::Sculpt if mods.shift => VIEW_SUCCESS,
@@ -2045,6 +2123,7 @@ impl DisplacementTool {
                 (GeoEffect::Lower, false) | (GeoEffect::Raise, true) => t!("disp.effect.lower"),
                 (GeoEffect::Smooth, _) => t!("disp.effect.smooth"),
                 (GeoEffect::Set, _) => t!("disp.effect.set"),
+                (GeoEffect::Slope, _) => t!("disp.effect.slope"),
                 (GeoEffect::Relax, _) => t!("disp.sculpt.relax"),
             },
             Interaction::Alpha => match (self.brush.alpha_effect, invert) {
@@ -2161,7 +2240,8 @@ impl Tool for DisplacementTool {
         let pending = self.stroke.is_some()
             || self.press.is_some()
             || !state.doc.selection().faces.is_empty()
-            || object_targets_win(&state.doc);
+            || object_targets_win(&state.doc)
+            || self.slope_points_pending();
         if pending && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
             return self.cancel(state);
         }
@@ -2241,12 +2321,14 @@ impl Tool for DisplacementTool {
             line_on_top(out, c.center, tip, color);
             point(out, c.center, color, 5.0);
         }
+        self.level_overlay(state, out);
     }
 
     fn paint(&self, state: &AppState, view: &ViewInfo, painter: &egui::Painter) {
         if self.interaction == Interaction::Select || self.pick_path {
             return;
         }
+        self.level_paint(state, view, painter);
         let Some(c) = self.cursor_fresh(state) else { return };
         if c.view != view.index {
             return;
@@ -2255,7 +2337,18 @@ impl Tool for DisplacementTool {
             let (text, color) = if c.blocked {
                 (t!("disp.not_selected_label").to_owned(), BLOCKED)
             } else {
-                (format!("{}  r {:.0}", self.effect_label(c.mods), self.brush.radius), self.brush_color(c.mods))
+                let boost = if self.smoothing(c.mods) {
+                    let key = if c.mods.ctrl || c.mods.command { paint::BOOST_KEY_FACTOR } else { 1.0 };
+                    self.brush.smooth_boost * key
+                } else {
+                    1.0
+                };
+                let label = if boost > 1.0 {
+                    format!("{} x{}", self.effect_label(c.mods), (boost * 10.0).round() / 10.0)
+                } else {
+                    self.effect_label(c.mods).to_owned()
+                };
+                (format!("{label}  r {:.0}", self.brush.radius), self.brush_color(c.mods))
             };
             painter.text(p + egui::vec2(14.0, 14.0), Align2::LEFT_TOP, text, FontId::proportional(12.0), color);
         }
@@ -2321,6 +2414,9 @@ impl Tool for DisplacementTool {
         if self.cursor_fresh(state).is_some_and(|c| c.blocked) {
             return Some(tf!("disp.hint_not_selected", key_label(Key::Escape)));
         }
+        if let Some(text) = self.level_hint() {
+            return Some(text);
+        }
         Some(match self.interaction {
             Interaction::Select => t!("disp.hint_select").to_owned(),
             _ if self.relaxing() => t!("disp.hint_relax").to_owned(),
@@ -2338,6 +2434,9 @@ impl Tool for DisplacementTool {
             return true;
         }
         if self.loops.sel.take().is_some() {
+            return true;
+        }
+        if self.clear_slope_points() {
             return true;
         }
         clear_targets(state)

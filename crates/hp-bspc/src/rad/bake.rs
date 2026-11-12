@@ -1,4 +1,5 @@
 pub(super) mod incremental;
+pub(super) mod styles;
 
 use glam::{DVec2, Vec3A};
 use hp_light::bvh::{ALL_CLASSES, Bvh};
@@ -45,6 +46,7 @@ pub(crate) struct Params {
     pub bounce_rays: usize,
     pub leaf_samples: usize,
     pub leaf_dirs: usize,
+    pub style_bounce: bool,
 }
 
 impl Params {
@@ -57,6 +59,7 @@ impl Params {
             bounce_rays: self.bounce_rays.max(floor.bounce_rays),
             leaf_samples: self.leaf_samples,
             leaf_dirs: self.leaf_dirs,
+            style_bounce: self.style_bounce,
         }
     }
 
@@ -70,6 +73,7 @@ impl Params {
                 bounce_rays: 32,
                 leaf_samples: 1,
                 leaf_dirs: 64,
+                style_bounce: true,
             },
             RadQuality::Normal => Params {
                 sky_dirs: 162,
@@ -79,6 +83,7 @@ impl Params {
                 bounce_rays: 64,
                 leaf_samples: 128,
                 leaf_dirs: 162,
+                style_bounce: true,
             },
             RadQuality::Final => Params {
                 sky_dirs: 512,
@@ -88,6 +93,7 @@ impl Params {
                 bounce_rays: 128,
                 leaf_samples: 128,
                 leaf_dirs: 162,
+                style_bounce: true,
             },
         }
     }
@@ -178,6 +184,15 @@ pub(crate) struct Ctx<'a> {
     pub work: &'a super::progress::Work,
     pub bounce_budget: usize,
     pub bounce_tile_budget: usize,
+    pub water: &'a Bvh,
+    pub water_reflectivity: Vec3A,
+}
+
+pub(crate) const WATER_BIT: u32 = 1 << 31;
+const CONTENTS_WATER: i32 = 0x20;
+
+pub(crate) fn split_hit(hi: u32) -> (usize, bool) {
+    if hi == u32::MAX { (usize::MAX, false) } else { ((hi & !WATER_BIT) as usize, hi & WATER_BIT != 0) }
 }
 
 pub(crate) fn sky_cameras(map: &MapData) -> (Vec<(Vec3A, f32)>, Vec<bool>) {
@@ -320,6 +335,9 @@ impl Ctx<'_> {
                 SurfHit::Face(*i, c.x as f32, c.y as f32, h.t)
             }
             Some(SurfTri::Disp(i, uv)) => {
+                if !h.front {
+                    return SurfHit::None;
+                }
                 let Some(f) = self.faces.get(*i as usize) else { return SurfHit::None };
                 let w0 = 1.0 - h.u - h.v;
                 let u = uv[0][0] * w0 + uv[1][0] * h.u + uv[2][0] * h.v;
@@ -1054,13 +1072,40 @@ impl Ctx<'_> {
         for k in 0..rays {
             for (p, (pos, frame, seed, props_block)) in points.iter().enumerate() {
                 let dir = cosine_dir_in(frame, k, rays, *seed);
-                if let SurfHit::Face(i, s, t, _) = self.trace_bounce(*pos, dir, *props_block) {
-                    let q = |v: f32| (v.max(0.0) * Q).min(65535.0) as u16;
+                let q = |v: f32| (v.max(0.0) * Q).min(65535.0) as u16;
+                let hit = self.trace_bounce(*pos, dir, *props_block);
+                if let Some((i, s, t)) = self.water_mirror(*pos, dir, &hit, *props_block) {
+                    hits[p * rays + k] = (i | WATER_BIT, q(s), q(t));
+                } else if let SurfHit::Face(i, s, t, _) = hit {
                     hits[p * rays + k] = (i, q(s), q(t));
                 }
             }
         }
         Ok(Gather { step: step.max(1), gw, gh, xs, ys, normals, hits: store.keep(hits)?, luxels: f.luxels() })
+    }
+
+    fn water_mirror(&self, pos: Vec3A, dir: Vec3A, hit: &SurfHit, props_block: bool) -> Option<(u32, f32, f32)> {
+        if self.water_reflectivity == Vec3A::ZERO {
+            return None;
+        }
+        let far = match hit {
+            SurfHit::Face(_, _, _, t) => *t,
+            _ => MAX_TRACE,
+        };
+        let head = self.map.models.first().map_or(-1, |m| m.head);
+        let leaf = self.map.point_leaf(head, (pos + dir).as_dvec3()).and_then(|l| self.map.leafs.get(l))?;
+        if leaf.contents & CONTENTS_WATER == 0 {
+            return None;
+        }
+        let w = self.water.closest(pos, dir, far, |_| true)?;
+        let face = self.map.faces.get(w.payload as usize)?;
+        let n = self.map.face_plane(face)?.normal.as_vec3a();
+        let at = pos + dir * w.t;
+        let r = dir - n * (2.0 * dir.dot(n));
+        match self.trace_bounce(at + r * DIST_EPSILON, r, props_block) {
+            SurfHit::Face(i, s, t, _) if i & WATER_BIT == 0 => Some((i, s, t)),
+            _ => None,
+        }
     }
 
     pub fn bounce(
@@ -1166,7 +1211,10 @@ impl Ctx<'_> {
                             });
                             for k in 0..rays {
                                 let (hi, s, t) = hits[point * rays + k];
-                                let Some(hf) = targets.get(hi as usize) else { continue };
+                                let (hi, mirrored) = split_hit(hi);
+                                let Some(hf) = targets.get(hi) else { continue };
+                                let refl =
+                                    if mirrored { hf.reflectivity * self.water_reflectivity } else { hf.reflectivity };
                                 let (s, t) = (f32::from(s) / Q, f32::from(t) / Q);
                                 let mut wts = [1.0f32; 4];
                                 if let Some(frame) = &frame {
@@ -1179,7 +1227,7 @@ impl Ctx<'_> {
                                 let cell = hf.cell(s, t);
                                 for p in 0..passes {
                                     let at = hf.emit + p * hf.npts;
-                                    let v = cell.sample(&emit[at..at + hf.npts], hf.gw) * hf.reflectivity;
+                                    let v = cell.sample(&emit[at..at + hf.npts], hf.gw) * refl;
                                     for n in 0..nn {
                                         pts[(p * nn + n) * npts + gp] += v * wts[n];
                                     }
@@ -1261,6 +1309,24 @@ impl Ctx<'_> {
                 }
             }
         });
+        let fields = if self.params.style_bounce {
+            styles::direct_fields(lights, self.faces, passes)
+        } else {
+            Default::default()
+        };
+        if !fields.is_empty() {
+            let touched = styles::bounce_styles(
+                self.faces,
+                &grids,
+                rays,
+                passes,
+                lights,
+                &fields,
+                bounces,
+                self.water_reflectivity,
+            )?;
+            log(&format!("bounced the light of {} switchable styles onto {} faces", fields.len(), touched.len()));
+        }
         Ok((gather_time, clock.elapsed().as_secs_f64()))
     }
 }

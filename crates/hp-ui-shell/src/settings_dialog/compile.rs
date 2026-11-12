@@ -243,6 +243,7 @@ fn compiler_section(ui: &mut Ui, state: &mut AppState) {
     if out.browse {
         state.runtime.compile.browse_request = Some(CompileBrowse::GameExe);
     }
+    model_compiler_section(ui, state);
     let c = &mut state.settings.compile;
     ui.horizontal(|ui| {
         ui.label(t!("shell.compile.maps_dir"));
@@ -252,6 +253,39 @@ fn compiler_section(ui: &mut Ui, state: &mut AppState) {
             state.runtime.compile.browse_request = Some(CompileBrowse::MapsDir);
         }
     });
+}
+
+fn model_compiler_section(ui: &mut Ui, state: &mut AppState) {
+    let c = &mut state.settings.compile;
+    let (out, _) = path_row(
+        ui,
+        t!("shell.compile.model_compiler"),
+        Some(64.0),
+        &mut c.model_compiler,
+        t!("shell.compile.model_compiler_auto"),
+        true,
+    );
+    if out.browse {
+        state.runtime.compile.browse_request = Some(CompileBrowse::ModelCompiler);
+    }
+    let c = &mut state.settings.compile;
+    ui.horizontal(|ui| {
+        let height = ui.spacing().interact_size.y;
+        crate::common::fixed_label(ui, 64.0, height, t!("shell.compile.model_compiler_args"));
+        ui.add(
+            egui::TextEdit::singleline(&mut c.model_compiler_args)
+                .desired_width(ui.available_width().clamp(120.0, 300.0))
+                .hint_text("-maxbones 128")
+                .font(egui::TextStyle::Monospace),
+        )
+        .on_hover_text(t!("shell.compile.model_compiler_args_tip"));
+    });
+    let status = match hp_app::model_compiler::resolve_configured(&state.settings).map(|p| p.display().to_string()) {
+        Ok(path) => RichText::new(tf!("shell.compile.model_compiler_found", path)).small().weak(),
+        Err(e) => RichText::new(e).small().color(ui.visuals().warn_fg_color),
+    };
+    ui.add(egui::Label::new(status).wrap());
+    ui.add(egui::Label::new(RichText::new(t!("shell.compile.model_compiler_tip")).small().weak()).wrap());
 }
 
 pub(super) fn reset(state: &mut AppState) {
@@ -404,4 +438,18 @@ pub(crate) const TR: TrTable = &[
     ("shell.compile.game_exe_auto", "Detected automatically", "Détecté automatiquement"),
     ("shell.compile.maps_dir", "Maps folder", "Dossier des maps"),
     ("shell.compile.maps_dir_hint", "garrysmod/maps of the game", "garrysmod/maps du jeu"),
+    ("shell.compile.model_compiler", "Model compiler", "Compilateur de modèles"),
+    ("shell.compile.model_compiler_auto", "Automatic: studiomdl of the game", "Automatique : le studiomdl du jeu"),
+    ("shell.compile.model_compiler_args", "Arguments", "Arguments"),
+    (
+        "shell.compile.model_compiler_args_tip",
+        "Extra arguments added before the QC file (after -game, -nop4 and -verbose)",
+        "Arguments ajoutés avant le fichier QC (après -game, -nop4 et -verbose)",
+    ),
+    ("shell.compile.model_compiler_found", "Uses {0}", "Utilise {0}"),
+    (
+        "shell.compile.model_compiler_tip",
+        "Propper, Combine props and Compile a QC run this program with -game <game folder> -nop4 -verbose <file.qc>. A drop in studiomdl replacement such as NekoMDL works; the model import has its own compiler and does not need it.",
+        "Propper, Combiner des props et Compiler un QC lancent ce programme avec -game <dossier du jeu> -nop4 -verbose <fichier.qc>. Un remplaçant de studiomdl comme NekoMDL fonctionne ; l'import de modèles a son propre compilateur et n'en a pas besoin.",
+    ),
 ];

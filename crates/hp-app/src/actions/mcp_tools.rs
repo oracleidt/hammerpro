@@ -84,6 +84,11 @@ pub(super) const TR: TrTable = &[
         "MCP: brush stroke on displacements",
         "MCP : coup de pinceau sur les déplacements",
     ),
+    (
+        "shell.undo.mcp_paint_displacement_slope",
+        "MCP: paint a displacement slope",
+        "MCP : peinture d'une pente de déplacement",
+    ),
     ("shell.undo.mcp_edit_uv_layer", "MCP: edit a UV layer", "MCP : modification d'une couche UV"),
     (
         "shell.undo.mcp_align_texture_edge",
@@ -107,6 +112,7 @@ pub(super) const TR: TrTable = &[
     ("shell.undo.uv_rotate", "UV rotate", "UV : rotation"),
     ("shell.undo.mcp_displacement_noise", "MCP: displacement noise", "MCP : bruit de déplacement"),
     ("shell.undo.mcp_import_heightmap", "MCP: import heightmap", "MCP : import d'une carte de hauteur"),
+    ("shell.undo.mcp_import_blend_masks", "MCP: import blend masks", "MCP : import de masques de blend"),
     ("shell.undo.mcp_generate_terrain", "MCP: generate terrain", "MCP : génération de terrain"),
     ("shell.undo.mcp_blend_displacements", "MCP: blend displacements", "MCP : fusion des displacements"),
     ("shell.undo.mcp_control_slope", "MCP: control slope", "MCP : contrôle des pentes"),

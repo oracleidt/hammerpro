@@ -17,7 +17,7 @@ pub enum Command {
     Button { pos: ScriptPos, button: PointerButton, mods: Modifiers, down: bool },
     Move(ScriptPos),
     Click { pos: ScriptPos, button: PointerButton, mods: Modifiers, double: bool },
-    Drag { from: ScriptPos, to: ScriptPos, button: PointerButton, steps: u32, mods: Modifiers },
+    Drag { from: ScriptPos, to: ScriptPos, button: PointerButton, steps: u32, mods: Modifiers, hold: u32 },
     Key { key: Key, mods: Modifiers },
     KeyState { key: Option<Key>, mods: Modifiers, down: bool },
     Hold { key: Key, frames: u32 },
@@ -153,6 +153,7 @@ pub fn parse(text: &str) -> Result<Vec<Command>, String> {
                 button: parse_button(arg(2)),
                 steps: arg(3).and_then(|v| v.parse().ok()).unwrap_or(8).max(1),
                 mods: arg(4).map(parse_mods).unwrap_or_default(),
+                hold: arg(5).and_then(|v| v.parse().ok()).unwrap_or(0),
             },
             "key" => {
                 let (key, mods) = arg(0).and_then(parse_combo).ok_or_else(err)?;
@@ -353,7 +354,7 @@ pub fn expand(commands: Vec<Command>) -> VecDeque<Step> {
                 steps.push_back(Step::Idle);
                 steps.push_back(Step::Idle);
             }
-            Command::Drag { from, to, button, steps: n, mods } => {
+            Command::Drag { from, to, button, steps: n, mods, hold } => {
                 let mods = mods | held;
                 steps.push_back(Step::Events(vec![PendingEvent::Move { pos: from.clone(), mods }]));
                 steps.push_back(Step::Idle);
@@ -367,6 +368,7 @@ pub fn expand(commands: Vec<Command>) -> VecDeque<Step> {
                     let pos = lerp_pos(&from, &to, i as f32 / n as f32);
                     steps.push_back(Step::Events(vec![PendingEvent::Move { pos, mods }]));
                 }
+                (0..hold).for_each(|_| steps.push_back(Step::Idle));
                 steps.push_back(Step::Idle);
                 steps.push_back(Step::Events(vec![PendingEvent::Button { pos: to, button, pressed: false, mods }]));
                 steps.push_back(Step::Idle);
@@ -516,12 +518,18 @@ mod tests {
         assert_eq!(cmds.len(), 7);
         assert!(matches!(cmds[1], Command::Click { button: PointerButton::Secondary, .. }));
         match &cmds[2] {
-            Command::Drag { mods, steps, .. } => {
+            Command::Drag { mods, steps, hold, .. } => {
                 assert!(mods.shift);
                 assert_eq!(*steps, 4);
+                assert_eq!(*hold, 0);
             }
             other => panic!("{other:?}"),
         }
+        let held = parse("drag @top:0,0 @top:900,0 left 4 - 30\n").unwrap();
+        assert!(matches!(held[0], Command::Drag { hold: 30, steps: 4, .. }));
+        let steps = expand(held);
+        let idles = steps.iter().filter(|s| matches!(s, Step::Idle)).count();
+        assert!(idles >= 30, "{idles}");
         match &cmds[3] {
             Command::Key { key, mods } => {
                 assert_eq!(*key, Key::S);

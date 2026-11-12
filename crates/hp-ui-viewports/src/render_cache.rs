@@ -5,6 +5,7 @@ pub struct ViewKey {
     pub params: ViewParams,
     pub options: ViewOptions,
     pub content: u64,
+    pub lighting: u64,
     pub retained: u64,
     pub overlay: u64,
 }
@@ -160,6 +161,7 @@ mod tests {
             params: params(),
             options: ViewOptions::default(),
             content: 7,
+            lighting: 0,
             retained: 0,
             overlay: overlay_hash(&Overlay::default()),
         };
@@ -169,6 +171,7 @@ mod tests {
         assert!(cache.needs_render(0, &key, false), "the image is gone");
         assert!(cache.needs_render(1, &key, true), "another view");
         assert!(cache.needs_render(0, &ViewKey { content: 8, ..key }, true), "content changed");
+        assert!(cache.needs_render(0, &ViewKey { lighting: 1, ..key }, true), "the lights changed");
         let mut moved = params();
         moved.size = [101, 80];
         assert!(cache.needs_render(0, &ViewKey { params: moved, ..key }, true), "resized");

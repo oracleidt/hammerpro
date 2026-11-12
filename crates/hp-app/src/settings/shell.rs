@@ -113,6 +113,7 @@ pub struct EditSettings {
     pub paste_offset: bool,
     pub undo_restores_selection: bool,
     pub new_brush_color: Option<[u8; 3]>,
+    pub keep_displacements_on_cut: bool,
 }
 
 impl Default for EditSettings {
@@ -136,6 +137,7 @@ impl Default for EditSettings {
             paste_offset: true,
             undo_restores_selection: true,
             new_brush_color: None,
+            keep_displacements_on_cut: true,
         }
     }
 }

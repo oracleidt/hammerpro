@@ -2,7 +2,7 @@ use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant};
 
 use glam::DVec3;
-use hp_app::extend::{StatusContext, StatusSegment, StatusSide, status_order};
+use hp_app::extend::{StatusContext, StatusFit, StatusSegment, StatusSide, status_order, status_priority};
 use hp_app::i18n::TrTable;
 use hp_app::runtime::RealDims;
 use hp_app::view::ViewInfo;
@@ -554,37 +554,60 @@ impl StatusSegment for RealDimsStatus {
         status_order::SELECTION + 20
     }
 
+    fn fit(&mut self, ui: &egui::Ui, state: &AppState) -> Option<StatusFit> {
+        let (text, _) = real_dims_text(state)?;
+        let width = egui::WidgetText::from(egui::RichText::new(text).small())
+            .into_galley(ui, Some(egui::TextWrapMode::Extend), f32::INFINITY, egui::TextStyle::Small)
+            .size()
+            .x
+            .ceil()
+            + 2.0 * ui.spacing().button_padding.x;
+        Some(StatusFit::shrinkable(width.min(REAL_DIMS_MIN_WIDTH), width).with_priority(status_priority::REAL_DIMS))
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, state: &mut AppState, _cx: &mut StatusContext) {
-        if !state.settings.placement.show_real_dimensions {
-            return;
-        }
+        let Some((text, warn)) = real_dims_text(state) else { return };
         let Some(d) = state.runtime.placement.real_dims.as_ref() else { return };
-        ui.separator();
-        let n = hp_app::runtime::real_num;
-        let s = d.single().map_or(d.size, |u| u.size);
-        let mut text = format!("📏 {} × {} × {}", n(s.x), n(s.y), n(s.z));
-        let mut warn = false;
-        if let Some(u) = d.single() {
-            match u.gap {
-                Some(g) if g.abs() > 0.05 => {
-                    text.push_str(&format!("  ⬇ {}", n(g)));
-                    warn = g.abs() > 0.5;
-                }
-                _ => {}
-            }
-            if u.overlap > 0.05 {
-                text.push_str(&format!("  ⚠ {}", n(u.overlap)));
-                warn |= u.overlap > 0.5;
-            }
-        }
         let rich = egui::RichText::new(text).small();
         let rich = if warn { rich.color(hp_app::theme::warning()) } else { rich };
-        let details = format!("{}\n{}", d.summary(), details_text(d));
-        let r = ui.add(egui::Button::new(rich).frame(false)).on_hover_text(details);
+        let details = format!(
+            "{}
+{}",
+            d.summary(),
+            details_text(d)
+        );
+        let r = ui.add(egui::Button::new(rich).frame(false).truncate()).on_hover_text(details);
         if r.clicked() {
             state.request(Action::ShowShapePreview);
         }
     }
+}
+
+const REAL_DIMS_MIN_WIDTH: f32 = 90.0;
+
+fn real_dims_text(state: &AppState) -> Option<(String, bool)> {
+    if !state.settings.placement.show_real_dimensions {
+        return None;
+    }
+    let d = state.runtime.placement.real_dims.as_ref()?;
+    let n = hp_app::runtime::real_num;
+    let s = d.single().map_or(d.size, |u| u.size);
+    let mut text = format!("📏 {} × {} × {}", n(s.x), n(s.y), n(s.z));
+    let mut warn = false;
+    if let Some(u) = d.single() {
+        match u.gap {
+            Some(g) if g.abs() > 0.05 => {
+                text.push_str(&format!("  ⬇ {}", n(g)));
+                warn = g.abs() > 0.5;
+            }
+            _ => {}
+        }
+        if u.overlap > 0.05 {
+            text.push_str(&format!("  ⚠ {}", n(u.overlap)));
+            warn |= u.overlap > 0.5;
+        }
+    }
+    Some((text, warn))
 }
 
 fn details_text(d: &RealDims) -> String {

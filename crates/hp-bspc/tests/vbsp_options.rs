@@ -137,6 +137,11 @@ fn a_displacement_on_func_detail_compiles_like_a_world_displacement() {
     assert_eq!(in_detail.raw(DISPINFO), in_world.raw(DISPINFO));
     assert_eq!(in_detail.raw(DISP_VERTS), in_world.raw(DISP_VERTS));
     assert_eq!(in_detail.faces().len(), in_world.faces().len());
+    const ENTITIES: usize = 0;
+    const FACE_IDS: usize = 11;
+    let differing: Vec<usize> =
+        (0..64).filter(|&i| i != ENTITIES && i != FACE_IDS && in_detail.raw(i) != in_world.raw(i)).collect();
+    assert!(differing.is_empty(), "lumps differing between a world and a func_detail displacement: {differing:?}");
 }
 
 fn shoreline(transition_keys: &[(&str, &str)], saved: Option<&str>) -> (Lumps, Vec<String>, Vec<u8>) {

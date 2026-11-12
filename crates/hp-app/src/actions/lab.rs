@@ -35,6 +35,7 @@ action_list! { lab_actions {
     OpenColorCorrectionEditor => "color_correction_editor", Tools, ToolsContent, None, Ready;
     ToggleColorCorrectionPreview => "toggle_color_correction_preview", View, ViewEnvironment, None, Ready;
     PropperOptions => "propper_options", Tools, ToolsProps, None, Ready;
+    CombineProps => "combine_props", Tools, ToolsProps, None, Ready;
 }}
 
 pub(super) const REPEATS: &[Action] = &[];
@@ -46,6 +47,7 @@ pub(super) fn enabled(state: &AppState, action: Action) -> Option<bool> {
             Some(state.runtime.lab.fly_texture.active)
         }
         Action::PropToBrushes => Some(selected_prop(state).is_some()),
+        Action::CombineProps => Some(selected_static_props(state).len() >= 2 && !state.runtime.lab.combine_busy),
         Action::SendToBlender => Some(!state.doc.selection().is_empty()),
         Action::PullFromBlender | Action::StopBlenderLink => Some(state.runtime.blender.link.is_some()),
         Action::BrushesToProp => {
@@ -63,6 +65,23 @@ pub fn selected_prop(state: &AppState) -> Option<hp_editor::Id> {
     })
 }
 
+pub fn selected_static_props(state: &AppState) -> Vec<hp_editor::Id> {
+    let scene = state.doc.scene();
+    state
+        .doc
+        .selection()
+        .objects
+        .iter()
+        .filter_map(|o| match *o {
+            hp_editor::ObjRef::Entity(id) => scene
+                .entity(id)
+                .filter(|n| is_model_prop(&n.entity) && n.entity.classname.eq_ignore_ascii_case("prop_static"))
+                .map(|_| id),
+            hp_editor::ObjRef::Solid(_) => None,
+        })
+        .collect()
+}
+
 pub fn is_model_prop(e: &hp_vmf::Entity) -> bool {
     e.classname.to_ascii_lowercase().starts_with("prop_")
         && e.get("model").is_some_and(|m| m.trim().to_ascii_lowercase().ends_with(".mdl"))
@@ -72,6 +91,7 @@ pub(super) fn check(state: &AppState, action: Action) -> Option<Check> {
     match action {
         Action::ShowLogicalView => Some(Check::Toggle(state.runtime.lab.logic_open)),
         Action::PropperOptions => Some(Check::Toggle(state.runtime.lab.propper_options_open)),
+        Action::CombineProps => Some(Check::Toggle(state.runtime.lab.combine_open)),
         Action::OpenBspSniffer => Some(Check::Toggle(state.runtime.lab.sniffer.open)),
         Action::OpenSoundEditor => Some(Check::Toggle(state.runtime.lab.sound_color.sound_open)),
         Action::OpenColorCorrectionEditor => Some(Check::Toggle(state.runtime.lab.sound_color.color_open)),
@@ -111,6 +131,7 @@ pub(super) const TR: TrTable = &[
     ("action.install_blender_addon", "Install the Blender add-on", "Installer l'add-on Blender"),
     ("shell.undo.update_from_blender", "Update from Blender", "Mise à jour depuis Blender"),
     ("shell.undo.import_models", "Import models", "Import de modèles"),
+    ("shell.undo.combine_props", "Combine props", "Combinaison de props"),
     ("action.compare_maps", "Compare with another map...", "Comparer avec une autre map..."),
     ("action.entity_gallery", "Insert entity gallery", "Insérer la galerie d'entités"),
     ("action.show_logical_view", "Logical view", "Vue logique"),
@@ -154,6 +175,7 @@ pub(super) const TR: TrTable = &[
         "Part des triangles du niveau précédent que garde chaque niveau (les petits modèles sont réduits plus doucement).",
     ),
     ("action.propper_options", "Prop options (Propper)...", "Options des props (Propper)..."),
+    ("action.combine_props", "Combine props...", "Combiner des props..."),
     (
         "lab.prop.sandboxed",
         "Automated runs do not compile models (studiomdl writes into the game).",

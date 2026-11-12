@@ -19,7 +19,7 @@ All of them are in the **Tools** menu (except **Make hint brush**, only in the [
 | **Tie to entity** | `Ctrl+T` | a selection |
 | **Tie each to its own entity** | `Ctrl+Shift+T` | a selection with world brushes |
 | **Move to world** | `Ctrl+Shift+W` | brushes of brush entities |
-| **Convert to func_detail** | none | a selection |
+| **Make func_detail** | `Ctrl+Alt+D` | a selection with world brushes |
 | **Nodraw on hidden faces...** | none | nothing (scans the whole map) |
 | **Make hint brush** | none (command palette) | faces selected with the texture tool |
 | **Texture lock** | `Shift+L` | |
@@ -37,6 +37,7 @@ When a command needs brushes and none are selected, the notice **Select one or m
 - The brushes are cut in parallel on every processor core, so carving through hundreds of brushes at once stays quick.
 
 Carve makes many small brushes. For simple openings, the [extrude / carve tool](extrude-tool.md) (an outline clicked on one face, carved into that brush only, with as few pieces as possible), the [clipping tool](clip-tool.md) or several block brushes often give cleaner geometry.
+- Displacements on the carved brushes are kept on every piece, like with the clip tool (see [Clip tool](clip-tool.md)); **Intersect** keeps them too.
 
 ## Make hollow
 
@@ -97,9 +98,9 @@ Brushes taken from other brush entities move to the entity, and brush entities l
 
 **Tools > Move to world** (`Ctrl+Shift+W`) moves the brushes of the selected brush entities back to the world. Brush entities left without brushes are deleted. The moved brushes are selected.
 
-## Convert to func_detail
+## Make func_detail
 
-**Tools > Brush operations > Convert to func_detail** ties the selection to one new `func_detail`, whatever the default brush entity class is. If the selection is already a single `func_detail`, the notice **The selection is already a func_detail** shows. To find brushes worth converting, see **Map > Leaks and visibility > func_detail suggestions...** in [Check for problems](check-problems.md).
+**Tools > Brush operations > Make func_detail** (`Ctrl+Alt+D`, also the **To func_detail** toolbar button and the right click menu of the views) turns the selected world brushes into `func_detail` in one undo step, whatever the default brush entity class is: one entity per selection (or per cluster of touching brushes), groups, visgroups and textures kept, brushes already in a `func_detail` left alone. It first checks with the leak flood that none of the brushes seals the map and asks before converting those that do. If the selection is already a `func_detail`, the notice **The selection is already a func_detail** shows. **Tools > Brush operations > Select func_detail candidates...** finds the brushes worth converting. Everything is described in [func_detail](func-detail.md).
 
 ## Nodraw on hidden faces
 
@@ -132,7 +133,7 @@ Both are in the **Tools** menu, in **Settings > Editing > Behavior**, and the Tr
 
 ## MCP
 
-For AI assistants: `carve`, `hollow`, `merge_brushes` (`convex_hull` true for Merge into convex solid), `intersect_brushes`, `union_brushes`, `tie_to_entity`, `move_to_world`, `make_hint_brushes`, `find_hidden_faces`, `apply_nodraw` and `run_action` for the other commands. See the [MCP tool reference](../../MCP.md).
+For AI assistants: `carve`, `hollow`, `merge_brushes` (`convex_hull` true for Merge into convex solid), `intersect_brushes`, `union_brushes`, `tie_to_entity`, `move_to_world`, `make_func_detail`, `select_detail_candidates`, `make_hint_brushes`, `find_hidden_faces`, `apply_nodraw` and `run_action` for the other commands. See the [MCP tool reference](../../MCP.md).
 
 ## Tips
 
@@ -162,6 +163,7 @@ For AI assistants: `carve`, `hollow`, `merge_brushes` (`convex_hull` true for Me
 - [Entity properties](entity-properties.md)
 - [Texture application](texture-tool.md)
 - [Check for problems](check-problems.md)
+- [func_detail](func-detail.md)
 - [Actions and shortcuts](../reference/actions-shortcuts.md)
 
 ---

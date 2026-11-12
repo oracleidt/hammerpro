@@ -1,3 +1,4 @@
+pub mod autopan;
 pub mod camera;
 pub mod fly_texture;
 pub mod input;
@@ -147,6 +148,16 @@ struct PickKey {
     revision: u64,
 }
 
+pub fn lit_light_cap(quality: hp_app::settings::LitQuality, moving: bool) -> u32 {
+    use hp_app::settings::{BALANCED_LIGHTS, LitQuality};
+    match quality {
+        LitQuality::High => 0,
+        LitQuality::Balanced => BALANCED_LIGHTS,
+        LitQuality::Auto if moving => BALANCED_LIGHTS,
+        LitQuality::Auto => 0,
+    }
+}
+
 fn cam_key(state: &AppState) -> [f64; 5] {
     let c = &state.cameras.cam3d;
     [c.pos.x, c.pos.y, c.pos.z, c.yaw_deg, c.pitch_deg]
@@ -207,6 +218,7 @@ pub struct Viewports {
     player_io: Option<io::IoSim>,
     player_trains: Option<trains::Trains>,
     player_lights: player::PlayerLights,
+    player_counts: Option<([u64; 14], player::WorldCounts)>,
     player_io_hidden: std::collections::HashSet<hp_vmf::Id>,
     player_world: Option<(std::sync::Arc<hp_editor::limits::world::BspWorld>, bool)>,
     player_hidden_world: usize,
@@ -219,6 +231,7 @@ pub struct Viewports {
     menu: Option<OpenMenu>,
     hover_key: Option<PickKey>,
     hover_hit: Option<DVec3>,
+    hover_motion: hp_app::view::CameraMotion,
     sel_key: Option<(u64, usize)>,
     sel_center: Option<DVec3>,
     preview: DropPreview,
@@ -234,6 +247,7 @@ pub struct Viewports {
     render_cache: RenderCache,
     content_clock: ContentClock,
     anim_time: [f32; 4],
+    last_cams: [Option<[f64; 5]>; 4],
     arrow_look_frame: u64,
     trackpad: trackpad::Detector,
     scroll: trackpad::FrameScroll,
@@ -283,6 +297,7 @@ impl Viewports {
             player_io: None,
             player_trains: None,
             player_lights: player::PlayerLights::default(),
+            player_counts: None,
             player_io_hidden: std::collections::HashSet::new(),
             player_world: None,
             player_hidden_world: 0,
@@ -295,6 +310,7 @@ impl Viewports {
             menu: None,
             hover_key: None,
             hover_hit: None,
+            hover_motion: hp_app::view::CameraMotion::default(),
             sel_key: None,
             sel_center: None,
             preview: DropPreview::default(),
@@ -310,6 +326,7 @@ impl Viewports {
             render_cache: RenderCache::default(),
             content_clock: ContentClock::default(),
             anim_time: [0.0; 4],
+            last_cams: [None; 4],
             arrow_look_frame: 0,
             trackpad: trackpad::Detector::default(),
             scroll: trackpad::FrameScroll::default(),
@@ -845,14 +862,39 @@ impl Viewports {
         Some(v)
     }
 
-    fn paint_player_counters(&self, ui: &egui::Ui, state: &AppState) {
+    fn paint_player_counters(&mut self, ui: &egui::Ui, state: &AppState) {
         let Some(v) = self.player_view else { return };
         let Some((_, rect)) = self.rects.get(v).copied().flatten() else { return };
         let io_log: Vec<String> = self.player_io.as_ref().map(|s| s.log().cloned().collect()).unwrap_or_default();
         let world = self.player_world.as_ref().map(|(w, stale)| {
             let aspect = f64::from(rect.width() / rect.height().max(1.0));
             let drawn = self.player_groups.as_deref().map_or(&[][..], Vec::as_slice);
-            player::world_counts(state, w, aspect, drawn, *stale)
+            let cam = &state.cameras.cam3d;
+            let rt = &state.runtime.health;
+            let key = [
+                cam.pos.x.to_bits(),
+                cam.pos.y.to_bits(),
+                cam.pos.z.to_bits(),
+                cam.yaw_deg.to_bits(),
+                cam.pitch_deg.to_bits(),
+                cam.fov_y_deg.to_bits(),
+                aspect.to_bits(),
+                std::sync::Arc::as_ptr(w) as usize as u64,
+                drawn.as_ptr() as usize as u64,
+                drawn.len() as u64,
+                rt.play_cluster.map_or(u64::MAX, u64::from),
+                rt.vis.as_ref().map_or(0, |v| std::sync::Arc::as_ptr(v) as usize as u64),
+                rt.play_version,
+                u64::from(*stale),
+            ];
+            match self.player_counts {
+                Some((k, counts)) if k == key => counts,
+                _ => {
+                    let counts = player::world_counts(state, w, aspect, drawn, *stale);
+                    self.player_counts = Some((key, counts));
+                    counts
+                }
+            }
         });
         let lines = player::counter_lines(state, state.frame.fps, v, &io_log, world);
         let painter = ui.painter_at(rect);
@@ -1368,8 +1410,12 @@ impl Viewports {
             state.hover_world = Some(placement::point_2d(state, view, pos, depth));
             return true;
         }
-        let key = PickKey { view: view.index, pos, cam: cam_key(state), revision: state.doc.revision() };
-        if self.hover_key != Some(key) {
+        let cam = cam_key(state);
+        let gliding = self.hover_motion.gliding(cam);
+        let key = PickKey { view: view.index, pos, cam, revision: state.doc.revision() };
+        let only_camera =
+            self.hover_key.is_some_and(|k| k.view == key.view && k.pos == key.pos && k.revision == key.revision);
+        if self.hover_key != Some(key) && !(only_camera && gliding) {
             self.hover_key = Some(key);
             self.hover_hit = placement::pick_surface(state, view, pos).map(|h| h.point);
         }
@@ -1393,8 +1439,9 @@ impl Viewports {
         ppp: f32,
     ) -> bool {
         let i = slot.index;
-        let view = view_info(i, slot.kind, slot.rect, &state.cameras, cfg, ppp);
         let nav_here = nav_view == Some(i);
+        self.drag_autopan(ctx, state, slot, input, nav_here);
+        let view = view_info(i, slot.kind, slot.rect, &state.cameras, cfg, ppp);
         let is_hovered = hovered == Some(i);
         let pointer_here = if is_hovered || self.capture_view == Some(i) { input.pointer } else { None };
 
@@ -1515,6 +1562,16 @@ impl Viewports {
             }
             state.assets.note_view(i as u32, &params);
             let mut options = view_options(&view, cfg);
+            if !view.is_2d() {
+                let c = &state.cameras.cam3d;
+                let cam = [c.pos.x, c.pos.y, c.pos.z, c.yaw_deg, c.pitch_deg];
+                let moving = self.last_cams[i].is_some_and(|c| c != cam);
+                self.last_cams[i] = Some(cam);
+                options.light_cap = lit_light_cap(state.settings.render.lit_quality, moving);
+                if moving && options.light_cap > 0 {
+                    ctx.request_repaint();
+                }
+            }
             let animate = state.settings.render.animate_materials && state.tool != ToolId::Texture;
             let shows = gfx.renderer.view_shows_animation(i as u32) || gfx.renderer.view_texture(i as u32).is_none();
             if !view.is_2d()
@@ -1545,6 +1602,7 @@ impl Viewports {
                 params,
                 options,
                 content: self.content_clock.content(&gfx.renderer),
+                lighting: if view.is_2d() { 0 } else { gfx.renderer.lighting_generation(i as u32) },
                 retained: self.content_clock.retained(i),
                 overlay: render_cache::overlay_hash(&self.overlay),
             };
@@ -1606,6 +1664,37 @@ impl Viewports {
             };
         }
         hover_set
+    }
+
+    fn drag_autopan(
+        &self,
+        ctx: &egui::Context,
+        state: &mut AppState,
+        slot: &Slot,
+        input: &FrameInput,
+        nav_here: bool,
+    ) -> bool {
+        if !state.settings.workflow.drag_autopan
+            || !slot.kind.is_2d()
+            || nav_here
+            || self.capture_view != Some(slot.index)
+            || self.swallow
+            || self.menu.is_some()
+            || self.gesture.is_some()
+            || self.mouselook.is_some()
+            || egui::DragAndDrop::has_any_payload(ctx)
+            || pick::pending(state).is_some()
+            || !slot.response.dragged_by(egui::PointerButton::Primary)
+        {
+            return false;
+        }
+        let Some(p) = input.pointer else { return false };
+        if autopan::edge_velocity(slot.rect, p) == Vec2::ZERO {
+            return false;
+        }
+        ctx.request_repaint();
+        let step = autopan::scroll_step(slot.rect, p, state.frame.dt);
+        autopan::apply(state.cameras.cam2d_mut(slot.kind), step)
     }
 
     fn view_info_ui(&mut self, ui: &mut egui::Ui, state: &mut AppState, slot: &Slot, view: &ViewInfo) {
@@ -2474,6 +2563,8 @@ fn collision_legend(ui: &egui::Ui, rect: Rect) {
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_autopan;
 #[cfg(test)]
 mod tests_hooks;
 #[cfg(test)]

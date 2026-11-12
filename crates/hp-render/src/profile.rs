@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-pub const MARKS: usize = 4;
+pub const MARKS: usize = 8;
 const SAMPLES: usize = 6;
 const STRIDE: u64 = 256;
 const IDLE: u32 = 0;
@@ -15,6 +15,13 @@ pub struct GpuTimes {
     pub scene_ms: f32,
     pub post_ms: f32,
     pub total_ms: f32,
+    pub light_cull_ms: f32,
+    pub sun_shadows_ms: f32,
+    pub local_shadows_ms: f32,
+    pub main_ms: f32,
+    pub effects_ms: f32,
+    pub present_ms: f32,
+    pub outline_ms: f32,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -48,6 +55,7 @@ pub struct FrameTimes {
     pub cpu: CpuTimes,
     pub gpu: Option<GpuTimes>,
     pub reflection_gpu_ms: f32,
+    pub reflection_gpu: Option<GpuTimes>,
     pub reflection_cpu_ms: f32,
     pub gpu_supported: bool,
 }
@@ -66,6 +74,7 @@ pub(crate) struct GpuProfiler {
     active: Option<usize>,
     pub latest: Option<GpuTimes>,
     pub latest_reflection: f32,
+    pub latest_reflection_passes: Option<GpuTimes>,
     pub finished: u64,
 }
 
@@ -112,6 +121,7 @@ impl GpuProfiler {
             active: None,
             latest: None,
             latest_reflection: 0.0,
+            latest_reflection_passes: None,
             finished: 0,
         })
     }
@@ -135,16 +145,25 @@ impl GpuProfiler {
                     s.state.store(IDLE, Ordering::Release);
                     let Some(t) = marks else { continue };
                     let ms = |a: usize, b: usize| t[b].saturating_sub(t[a]) as f32 * period / 1.0e6;
+                    let times = GpuTimes {
+                        shadows_ms: ms(1, 3),
+                        scene_ms: ms(3, 5),
+                        post_ms: ms(5, 7),
+                        total_ms: ms(0, MARKS - 1),
+                        light_cull_ms: ms(0, 1),
+                        sun_shadows_ms: ms(1, 2),
+                        local_shadows_ms: ms(2, 3),
+                        main_ms: ms(3, 4),
+                        effects_ms: ms(4, 5),
+                        present_ms: ms(5, 6),
+                        outline_ms: ms(6, 7),
+                    };
                     if s.reflection {
-                        self.latest_reflection = ms(0, MARKS - 1);
+                        self.latest_reflection = times.total_ms;
+                        self.latest_reflection_passes = Some(times);
                     } else {
                         self.finished += 1;
-                        self.latest = Some(GpuTimes {
-                            shadows_ms: ms(0, 1),
-                            scene_ms: ms(1, 2),
-                            post_ms: ms(2, 3),
-                            total_ms: ms(0, MARKS - 1),
-                        });
+                        self.latest = Some(times);
                     }
                 }
                 FAILED => {

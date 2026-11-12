@@ -92,7 +92,7 @@ domain! { "editing";
         the front side gives the outward normal like VMF planes), a point and a normal, or a normal and a \
         distance. The front is the side the normal points to. Keep the front, the back or both pieces. Brush \
         entity solids keep their entity, textures are kept, a cut that would leave a piece thinner than 0.25 unit \
-        leaves the solid alone, and the whole clip is one undo step. Answers the ids of the resulting solids.",
+        leaves the solid alone, and the whole clip is one undo step. Displacements are kept on the pieces (exact where the cut follows the displacement grid, resampled up to power 4 elsewhere, seams sewn) unless the setting edit.keep_displacements_on_cut is false. Answers the ids of the resulting solids.",
         {
             "ids": target_ids(), "solid_ids": target_solid_ids(),
             "points": { "type": "array", "items": vec3("Point."), "minItems": 3, "maxItems": 3, "description": "Three points of the plane." },
@@ -103,7 +103,7 @@ domain! { "editing";
             "cap_material": string("Material of the cut faces (default: the closest face's)."),
         }, [];
     carve: Destructive, "Carve",
-        "Carve (subtract) the carving solids from every solid they touch (Hammer's Carve). The carvers stay.",
+        "Carve (subtract) the carving solids from every solid they touch (Hammer's Carve). The carvers stay. Displacements are kept on the pieces (exact where the cut follows the displacement grid, resampled up to power 4 elsewhere, seams sewn) unless the setting edit.keep_displacements_on_cut is false.",
         { "ids": target_ids(), "solid_ids": target_solid_ids() }, [];
     extrude_face: Destructive, "Carve or extrude a face outline",
         "Outline a shape on a brush face, then dig it into the brush or pull it out of the face (the extrude / carve \
@@ -184,7 +184,7 @@ domain! { "editing";
         texture; true takes their convex hull even when it adds volume.",
         { "ids": target_ids(), "solid_ids": target_solid_ids(), "convex_hull": boolean("Merge into the convex hull.") }, [];
     intersect_brushes: Destructive, "Intersect brushes",
-        "Keep only the volume shared by all the given solids (boolean intersection). The first solid keeps its id, owner and editor data and becomes the shared volume; the others are deleted. Faces keep their textures and the new cut faces take the texture of the face that cut them. The solids must all be world solids or belong to the same entity, and must overlap.",
+        "Keep only the volume shared by all the given solids (boolean intersection). The first solid keeps its id, owner and editor data and becomes the shared volume; the others are deleted. Faces keep their textures and the new cut faces take the texture of the face that cut them. The solids must all be world solids or belong to the same entity, and must overlap. Displacements are kept on the pieces (exact where the cut follows the displacement grid, resampled up to power 4 elsewhere, seams sewn) unless the setting edit.keep_displacements_on_cut is false.",
         { "ids": target_ids(), "solid_ids": target_solid_ids() }, [];
     union_brushes: Destructive, "Union of brushes",
         "Join solids into the fewest convex solids covering exactly their union (boolean union). Overlapping solids are cut so they no longer overlap, then neighbours are merged wherever the result stays convex, so an L shape stays two solids. Each solid keeps its id when it still has a piece; solids fully inside others are deleted. Fails when nothing can be joined. Answers the solid ids left.",

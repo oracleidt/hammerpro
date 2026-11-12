@@ -68,6 +68,7 @@ pub(crate) struct SceneSync {
     pub realize_later: AHashSet<String>,
     pub sprites_dirty: bool,
     pub lights_dirty: bool,
+    pub light_tick: bool,
     pub light_time: f64,
     pub light_frame: u64,
     pub animated_lights: bool,
@@ -91,6 +92,9 @@ pub(crate) struct SceneSync {
     pub cube_assign: Option<Arc<crate::cubemaps::CubeAssign>>,
     pub buried_lights: AHashSet<Id>,
     pub buried_pending: bool,
+    pub see_through: AHashSet<Id>,
+    pub see_through_pending: bool,
+    pub see_through_loaded: u64,
     pub light_targets: AHashSet<String>,
     pub lighting_origin_names: AHashSet<String>,
     pub light_mode: Option<(bool, bool)>,
@@ -137,8 +141,17 @@ impl ParkedSync {
     }
 }
 
-fn solid_flags(doc: &Document, id: Id, d: &RenderDisplay, room: Option<&SkyRoom>) -> ObjectFlags {
+fn solid_flags(
+    doc: &Document,
+    id: Id,
+    d: &RenderDisplay,
+    room: Option<&SkyRoom>,
+    see_through: &AHashSet<Id>,
+) -> ObjectFlags {
     let mut f = ObjectFlags::empty();
+    if see_through.contains(&id) {
+        f |= ObjectFlags::NO_SHADOW;
+    }
     if room.is_some_and(|r| r.solids.contains(&id)) {
         f |= ObjectFlags::SKY_3D;
     }
@@ -272,13 +285,14 @@ fn flags_of(
     rid: u32,
     d: &RenderDisplay,
     room: Option<&SkyRoom>,
+    see_through: &AHashSet<Id>,
 ) -> Option<ObjectFlags> {
     if let Some(flags) = derived.flags_of(doc, rid) {
         return flags;
     }
     match object_entity(rid) {
         Some(id) => doc.scene().entity(id).is_some().then(|| point_entity_flags(doc, id, room, d.prop_shadows)),
-        None => doc.scene().solid(rid).is_some().then(|| solid_flags(doc, rid, d, room)),
+        None => doc.scene().solid(rid).is_some().then(|| solid_flags(doc, rid, d, room, see_through)),
     }
 }
 
@@ -312,6 +326,9 @@ fn visgroup_color(doc: &Document, node: &SolidNode) -> Option<[u8; 3]> {
     own.copied().or_else(from_entity).and_then(|id| doc.visgroup(id)).map(|g| g.color)
 }
 
+pub(crate) const DETAIL_WIRE: [u8; 3] = [60, 200, 255];
+pub(crate) const DETAIL_TINT: [f32; 3] = [0.55, 0.85, 1.0];
+
 fn solid_look(
     doc: &Document,
     node: &SolidNode,
@@ -322,6 +339,10 @@ fn solid_look(
         Owner::World => (WORLD_COLOR, NO_TINT),
         Owner::Entity(e) => doc.scene().entity(e).map_or((DEFAULT_EDITOR_COLOR, NO_TINT), |n| {
             let tint = if d.render_effects { render_tint(&n.entity) } else { NO_TINT };
+            if d.detail_tint && hp_editor::is_detail_class(&n.entity.classname) {
+                let t = DETAIL_TINT;
+                return (DETAIL_WIRE, [tint[0] * t[0], tint[1] * t[1], tint[2] * t[2], tint[3]]);
+            }
             (brush_entity_color(&n.entity, class_of(fgd, &n.entity)), tint)
         }),
     };
@@ -483,7 +504,9 @@ impl AssetManager {
         });
         let (remesh, reflag) = match prev_display {
             Some(p) => (
-                p.smoothing_groups != display.smoothing_groups || p.visgroup_colors != display.visgroup_colors,
+                p.smoothing_groups != display.smoothing_groups
+                    || p.visgroup_colors != display.visgroup_colors
+                    || p.detail_tint != display.detail_tint,
                 p.highlight_invalid != display.highlight_invalid
                     || p.prop_shadows != display.prop_shadows
                     || p.fog_volume_texture != display.fog_volume_texture
@@ -623,7 +646,7 @@ impl AssetManager {
         let room = self.scene.env.room.as_ref();
         for id in sky_solids {
             if doc.scene().solid(id).is_some() {
-                renderer.set_object_flags(id, solid_flags(doc, id, &display, room));
+                renderer.set_object_flags(id, solid_flags(doc, id, &display, room, &self.scene.see_through));
             }
         }
         for id in sky_entities {
@@ -654,6 +677,13 @@ impl AssetManager {
         if opts.lighting_preview && (map_changed || self.scene.buried_pending || self.scene.lights_dirty) {
             self.update_buried_lights(doc);
         }
+        let rescan = self.scene.see_through_pending && self.scene.see_through_loaded != self.mats.loaded;
+        if full || rescan {
+            self.update_see_through(doc, renderer, &display, None);
+        } else if !changes.solids_changed.is_empty() || !changes.solids_removed.is_empty() {
+            let ids: Vec<Id> = changes.solids_changed.iter().chain(changes.solids_removed.iter()).copied().collect();
+            self.update_see_through(doc, renderer, &display, Some(&ids));
+        }
         self.rebuild_lights(doc, renderer, opts, &display);
         self.sync_collision(renderer, &display);
         self.sync_shadow_hulls(renderer, &display);
@@ -662,7 +692,7 @@ impl AssetManager {
         let restore = std::mem::take(&mut self.scene.tool_preview.restore);
         for id in restore.into_iter().chain(self.scene.tool_preview.hidden.iter().copied()) {
             if doc.scene().solid(id).is_some() {
-                let mut flags = solid_flags(doc, id, &display, self.scene.env.room.as_ref());
+                let mut flags = solid_flags(doc, id, &display, self.scene.env.room.as_ref(), &self.scene.see_through);
                 if self.scene.tool_preview.hidden.contains(&id) {
                     flags |= ObjectFlags::NO_3D | ObjectFlags::NO_SHADOW;
                 }
@@ -672,6 +702,9 @@ impl AssetManager {
         renderer.set_cubemap_auto(display.cubemaps_auto);
         if display.cubemaps {
             renderer.step_cubemaps(CUBEMAP_BUDGET);
+            if renderer.cubemaps_waiting() {
+                self.shared.request_repaint();
+            }
         }
     }
 
@@ -1005,7 +1038,7 @@ impl AssetManager {
                 None => solid_look(doc, n, fgd.as_deref(), display),
             };
             let wire = object_color(doc, n, classic);
-            let flags = solid_flags(doc, *id, display, room);
+            let flags = solid_flags(doc, *id, display, room, &self.scene.see_through);
             let mut mesh = solid_mesh_seams(n, &material_of, wire, display.disp_walkable, seams.as_ref(), Some(&cubes));
             if let Some(m) = owner.and_then(|e| play.get(&e)) {
                 transform_mesh(&mut mesh, m);
@@ -1406,17 +1439,65 @@ impl AssetManager {
         let changed: Vec<u32> = self.scene.selected.symmetric_difference(&new).copied().collect();
         let room = self.scene.env.room.as_ref();
         for rid in changed {
-            if let Some(f) = flags_of(doc, &self.scene.derived, rid, display, room) {
+            if let Some(f) = flags_of(doc, &self.scene.derived, rid, display, room, &self.scene.see_through) {
                 renderer.set_object_flags(rid, f);
             }
         }
         self.scene.selected = new;
     }
 
+    pub(crate) fn see_through_solids(&self, doc: &Document, only: Option<&[Id]>) -> (AHashSet<Id>, bool) {
+        let mut found = if only.is_some() { self.scene.see_through.clone() } else { AHashSet::new() };
+        let mut pending = only.is_some() && self.scene.see_through_pending;
+        let mut check = |id: Id, found: &mut AHashSet<Id>| {
+            found.remove(&id);
+            let Some(node) = doc.scene().solid(id) else { return };
+            match self.brush_opaque(node) {
+                Some(false) => {
+                    found.insert(id);
+                }
+                Some(true) => {}
+                None => pending = true,
+            }
+        };
+        match only {
+            Some(ids) => ids.iter().for_each(|id| check(*id, &mut found)),
+            None => doc.scene().solids().keys().for_each(|id| check(*id, &mut found)),
+        }
+        (found, pending)
+    }
+
+    pub(crate) fn update_see_through(
+        &mut self,
+        doc: &Document,
+        renderer: &mut Renderer,
+        display: &RenderDisplay,
+        only: Option<&[Id]>,
+    ) {
+        self.scene.see_through_loaded = self.mats.loaded;
+        let (found, pending) = self.see_through_solids(doc, only);
+        self.scene.see_through_pending = pending;
+        if found == self.scene.see_through {
+            return;
+        }
+        let changed: Vec<Id> = found.symmetric_difference(&self.scene.see_through).copied().collect();
+        self.scene.see_through = found;
+        let room = self.scene.env.room.as_ref();
+        for id in changed {
+            if doc.scene().solid(id).is_some() {
+                renderer.set_object_flags(id, solid_flags(doc, id, display, room, &self.scene.see_through));
+            }
+        }
+    }
+
     fn refresh_all_flags(&mut self, doc: &Document, renderer: &mut Renderer, display: &RenderDisplay) {
         let room = self.scene.env.room.as_ref();
-        let flags: Vec<(Id, ObjectFlags)> =
-            doc.scene().solids().par_iter().map(|(id, _)| (*id, solid_flags(doc, *id, display, room))).collect();
+        let flags: Vec<(Id, ObjectFlags)> = doc
+            .scene()
+            .solids()
+            .par_iter()
+            .map(|(id, _)| (*id, solid_flags(doc, *id, display, room, &self.scene.see_through)))
+            .collect();
         for (id, f) in flags {
             renderer.set_object_flags(id, f);
         }
@@ -1584,6 +1665,21 @@ impl AssetManager {
             })
             .collect();
         renderer.set_world_sprites(&world);
+        let beams: Vec<hp_render::WorldBeam> = self
+            .scene
+            .derived
+            .beams()
+            .map(|b| {
+                let mut b = *b;
+                if let Some(t) = self.scene.derived.owner_of(b.object).and_then(|o| self.play_transforms.get(&o)) {
+                    let m = t.as_mat4();
+                    b.start = m.transform_point3(glam::Vec3::from(b.start)).to_array();
+                    b.end = m.transform_point3(glam::Vec3::from(b.end)).to_array();
+                }
+                b
+            })
+            .collect();
+        renderer.set_world_beams(&beams);
     }
 
     fn rebuild_lights(&mut self, doc: &Document, renderer: &mut Renderer, opts: &SceneOptions, d: &RenderDisplay) {
@@ -1594,12 +1690,17 @@ impl AssetManager {
             self.scene.env.scan = None;
         }
         renderer.set_lit_hdr(d.light_hdr);
+        renderer.set_lit_ldr_shading(!d.light_hdr);
         let mode = (d.light_hdr, d.sky_occlusion);
         if self.scene.light_mode != Some(mode) {
             self.scene.light_mode = Some(mode);
             self.scene.lights_dirty = true;
         }
+        let tick = std::mem::take(&mut self.scene.light_tick);
         if !self.scene.lights_dirty {
+            if tick && opts.lighting_preview && self.scene.animated_lights {
+                renderer.animate_lights(self.scene.light_time);
+            }
             let r = &self.scene.light_report;
             self.scene.light_report = light_report(renderer.light_stats(), r.hdr, r.sun);
             return;
@@ -1764,6 +1865,39 @@ mod tests {
         assert_eq!(look(doc, 2, &vis), ([40, 165, 225], [200, 200, 0]), "a chosen color beats the visgroup");
         doc.set_display_color(&[ObjRef::Solid(2)], DisplayColor::Reset, false).unwrap();
         assert_eq!(look(doc, 2, &plain), (WORLD_COLOR, WORLD_COLOR));
+    }
+
+    #[test]
+    fn func_detail_tint_colors_only_detail_brushes_when_on() {
+        let mut doc = Document::new_empty();
+        let sides = |x: f64| {
+            let v = glam::DVec3::new;
+            let (x0, x1) = (x, x + 32.0);
+            [
+                [v(x0, 32.0, 32.0), v(x1, 32.0, 32.0), v(x1, 0.0, 32.0)],
+                [v(x0, 0.0, 0.0), v(x1, 0.0, 0.0), v(x1, 32.0, 0.0)],
+                [v(x1, 32.0, 32.0), v(x0, 32.0, 32.0), v(x0, 32.0, 0.0)],
+                [v(x1, 0.0, 0.0), v(x0, 0.0, 0.0), v(x0, 0.0, 32.0)],
+                [v(x1, 32.0, 0.0), v(x1, 0.0, 0.0), v(x1, 0.0, 32.0)],
+                [v(x0, 32.0, 32.0), v(x0, 0.0, 32.0), v(x0, 0.0, 0.0)],
+            ]
+            .into_iter()
+            .map(|plane| hp_vmf::Side { plane, material: "BRICK/WALL".to_owned(), ..Default::default() })
+            .collect::<Vec<_>>()
+        };
+        let a = doc.create_solid(sides(0.0), hp_editor::Owner::World).unwrap();
+        let b = doc.create_solid(sides(100.0), hp_editor::Owner::World).unwrap();
+        let c = doc.create_solid(sides(200.0), hp_editor::Owner::World).unwrap();
+        doc.tie_to_entity(&[ObjRef::Solid(a)], "func_detail", &[]).unwrap();
+        doc.tie_to_entity(&[ObjRef::Solid(b)], "func_brush", &[]).unwrap();
+        let look = |id: Id, d: &RenderDisplay| solid_look(&doc, doc.scene().solid(id).unwrap(), None, d);
+        let off = RenderDisplay::default();
+        let on = RenderDisplay { detail_tint: true, ..RenderDisplay::default() };
+        assert_eq!(look(a, &off), ([220, 30, 220], NO_TINT));
+        assert_eq!(look(a, &on).0, DETAIL_WIRE);
+        assert_eq!(look(a, &on).1, [DETAIL_TINT[0], DETAIL_TINT[1], DETAIL_TINT[2], 1.0]);
+        assert_eq!(look(b, &on), look(b, &off));
+        assert_eq!(look(c, &on), (WORLD_COLOR, NO_TINT));
     }
 
     #[test]

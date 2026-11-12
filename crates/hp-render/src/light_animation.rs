@@ -52,6 +52,35 @@ impl Renderer {
         let previous = self.live_light_baseline().map(|b| b.at_time(time));
         self.upload_lights(live_lighting::combine(current, previous.as_deref()), ambient);
     }
+
+    pub fn animate_lights(&mut self, time: f64) -> bool {
+        let Some(base) = self.unanimated_lights.clone() else { return false };
+        self.light_time = time;
+        let current =
+            lights::Packed { lights: base.at_time(time), n_dir: self.dir_lights, left_out: self.lights_left_out };
+        let previous = self.live_light_baseline().map(|b| b.at_time(time));
+        let packed = live_lighting::combine(current, previous.as_deref());
+        if packed.lights == self.lights_cpu {
+            return false;
+        }
+        let same_layout = packed.lights.len() == self.lights_cpu.len() && packed.n_dir == self.dir_lights;
+        let reselect = previous.is_some() || self.crowded_clusters > 0 || !same_layout;
+        if reselect {
+            let ambient = self.ambient;
+            let epoch = self.cubes.epoch;
+            self.upload_lights(packed, ambient);
+            self.cubes.epoch = epoch;
+            return true;
+        }
+        let bytes: &[u8] = bytemuck::cast_slice(&packed.lights);
+        if !bytes.is_empty() && bytes.len() as u64 <= self.lights_buf.size {
+            self.queue.write_buffer(&self.lights_buf.buffer, 0, bytes);
+        }
+        self.lights_cpu = packed.lights;
+        self.local_shadows.colors_changed();
+        self.light_content_gen += 1;
+        true
+    }
 }
 
 #[cfg(test)]

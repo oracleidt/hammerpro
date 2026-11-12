@@ -40,8 +40,9 @@ New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game s
 | [Bevel tool](features/bevel-tool.md) | Round or chamfer brush edges in the 3D view (`Ctrl+B`, mouse for the size, wheel for the segments), or bevel them inward: a cove, or a concave round filling an inner corner (arches). |
 | [Vertex tool](features/vertex-tool.md) | Moving, merging, splitting and scaling vertices. |
 | [Displacement tool](features/displacement-tool.md) | Creating, sculpting, painting alpha, tags, sewing, noise. |
-| [Terrain](features/terrain.md) | Import and export heightmaps, procedural terrain generation, erosion, automatic texturing. |
+| [Terrain](features/terrain.md) | Import and export heightmaps (16 bit and 32 bit float), blend masks for WorldVertexTransition and 4-way blends, procedural terrain generation, erosion, automatic texturing. |
 | [Brush operations](features/brush-operations.md) | Carve, hollow, merge, tie to entity, func_detail, nodraw, hint brushes, texture lock. |
+| [func_detail](features/func-detail.md) | Make func_detail in one key (`Ctrl+Alt+D`) with a sealing check, select the func_detail candidates, create brushes as detail, tint detail in the views. |
 | [Transform and align](features/transform-align.md) | Transform dialog, align, flip, snap, move to floor, physics placement. |
 | [Placement on real shapes](features/real-shape-placement.md) | Place on top, against a wall, next to, settle floating props and fit legs to the ground, measured on the real meshes; real dimensions display, shape preview, floating, sunk and overlapping checks. |
 | [Physics simulator](features/physics-tool.md) | Play, pause, grab, shoot and explode brushes, props and ragdolls; keep their poses with one undo step. |
@@ -85,7 +86,7 @@ New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game s
 | [Model browser](features/model-browser.md) | Model grid, 3D preview, model inspector and tools. |
 | [Model import](features/model-import.md) | FBX, OBJ, glTF and GLB straight into the game. |
 | [Blender link](features/blender.md) | Send brushes, displacements or a prop to Blender and get the edit back by itself. |
-| [Propper](features/propper.md) | Brushes to a static prop (LODs, collision, displacement bake) and props back to brushes. |
+| [Propper](features/propper.md) | Brushes to a static prop (LODs, collision, displacement bake) props back to brushes, and Combine props merges many props into one model. |
 | [Sound browser](features/sound-browser.md) | Game sounds, soundscripts and the sound picker. |
 | [Sound editor](features/sound-editor.md) | Trim, gain, loop markers and WAV output for any game sound. |
 | [Color correction](features/color-correction.md) | Color lookup table editor (.raw) and 3D preview of color_correction entities. |
@@ -179,6 +180,7 @@ New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game s
 | [Compile and test in Garry's Mod](guides/compile-and-test-gmod.md) | The fastest loop from editing to playing. |
 | [Make a prop with Propper](guides/make-a-prop-with-propper.md) | Turn brushes into a static prop with LODs and collision. |
 | [Sculpt displacements](guides/sculpt-displacements.md) | Terrain from a brush to painted blends. |
+| [World Machine and Gaea](guides/world-machine-gaea.md) | Float heightmaps and splat maps in, compile, and back out. |
 | [Lighting](guides/lighting.md) | Lights, previews, LDR and HDR, static prop lighting. |
 | [Optimizing a map](guides/optimizing-a-map.md) | Visleaves, func_detail, hint brushes, areaportals and coherent lights, with the Optimize the map window and the MCP tools. |
 | [Custom grids for stairs](guides/custom-grids-for-stairs.md) | A grid with a step per axis for regular stairs. |

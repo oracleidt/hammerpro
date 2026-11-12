@@ -150,12 +150,62 @@ pub struct PerfSample {
     pub gpu_scene_ms: f32,
     pub gpu_post_ms: f32,
     pub gpu_reflection_ms: f32,
+    pub gpu_passes: GpuPasses,
+    pub gpu_reflection_passes: GpuPasses,
     pub working_set: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct GpuPasses {
+    pub light_cull_ms: f32,
+    pub sun_shadows_ms: f32,
+    pub local_shadows_ms: f32,
+    pub main_ms: f32,
+    pub effects_ms: f32,
+    pub present_ms: f32,
+    pub outline_ms: f32,
+}
+
+impl GpuPasses {
+    pub fn add(&mut self, o: &GpuPasses) {
+        self.light_cull_ms += o.light_cull_ms;
+        self.sun_shadows_ms += o.sun_shadows_ms;
+        self.local_shadows_ms += o.local_shadows_ms;
+        self.main_ms += o.main_ms;
+        self.effects_ms += o.effects_ms;
+        self.present_ms += o.present_ms;
+        self.outline_ms += o.outline_ms;
+    }
+
+    pub fn scaled(&self, k: f32) -> GpuPasses {
+        GpuPasses {
+            light_cull_ms: self.light_cull_ms * k,
+            sun_shadows_ms: self.sun_shadows_ms * k,
+            local_shadows_ms: self.local_shadows_ms * k,
+            main_ms: self.main_ms * k,
+            effects_ms: self.effects_ms * k,
+            present_ms: self.present_ms * k,
+            outline_ms: self.outline_ms * k,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct BenchRequest {
     pub frames: u32,
+    pub trace: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct BenchFrame {
+    pub frame_ms: f32,
+    pub cpu_ms: f32,
+    pub gpu_ms: f32,
+    pub views_ms: f32,
+    pub view_render_ms: f32,
+    pub view_overlay_ms: f32,
+    pub app_ms: f32,
+    pub gpu_passes: GpuPasses,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -165,9 +215,15 @@ pub struct BenchResult {
     pub avg_fps: f32,
     pub frame_ms_avg: f32,
     pub frame_ms_p95: f32,
+    pub frame_ms_p99: f32,
     pub frame_ms_max: f32,
     pub frame_ms_median: f32,
     pub cpu_ms_median: f32,
+    pub cpu_ms_p99: f32,
+    pub gpu_ms_p99: f32,
+    pub gpu_passes_ms_avg: GpuPasses,
+    pub gpu_reflection_passes_ms_avg: GpuPasses,
+    pub trace: Vec<BenchFrame>,
     pub gpu_ms_median: f32,
     pub draw_calls_avg: f32,
     pub triangles_avg: f32,

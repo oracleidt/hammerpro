@@ -236,13 +236,20 @@ impl Surface {
     }
 }
 
-pub(crate) fn smooth_parts(parts: &mut [SmoothPart<'_>], brush: &LocalBrush, dir: PaintDir, amount: f64) -> Vec<usize> {
+pub(crate) fn smooth_parts(
+    parts: &mut [SmoothPart<'_>],
+    brush: &LocalBrush,
+    dir: PaintDir,
+    amount: f64,
+    passes: u32,
+) -> Vec<usize> {
     let mut changed = vec![0usize; parts.len()];
     let brush_ok = brush.radius.is_finite() && brush.radius > 0.0 && brush.center.is_finite();
     if !brush_ok || !amount.is_finite() || amount <= 0.0 {
         return changed;
     }
     let amount = amount.min(1.0);
+    let passes = passes.clamp(1, super::paint::MAX_SMOOTH_PASSES);
     let fixed = match dir {
         PaintDir::Fixed(a) => Some(a.try_normalize().filter(|a| a.is_finite()).unwrap_or(DVec3::Z)),
         PaintDir::FaceNormal | PaintDir::VertexNormal => None,
@@ -256,34 +263,40 @@ pub(crate) fn smooth_parts(parts: &mut [SmoothPart<'_>], brush: &LocalBrush, dir
     let junctions = find_junctions(parts, &surface);
 
     let nodes = &surface.nodes;
-    let mut new_pos: Vec<DVec3> = nodes.iter().map(|n| n.pos).collect();
-    for (ni, node) in nodes.iter().enumerate() {
-        if node.weight <= 0.0 {
-            continue;
-        }
-        let neighbours = surface.neighbours(parts, ni, false);
-        if neighbours.is_empty() {
-            continue;
-        }
-        let target =
-            neighbours.iter().filter_map(|m| nodes.get(*m)).map(|m| m.pos).sum::<DVec3>() / neighbours.len() as f64;
-        let lift = (target - node.pos).dot(node.axis) * amount * node.weight;
-        if let Some(slot) = new_pos.get_mut(ni) {
-            *slot = node.pos + node.axis * lift;
-        }
-    }
-    for j in &junctions {
-        let pinned =
-            nodes.get(j.node).is_some_and(|n| n.members.iter().any(|m| parts.get(m.0).is_some_and(|p| p.pinned)));
-        if pinned {
-            for i in [j.a, j.b] {
-                if let (Some(slot), Some(n)) = (new_pos.get_mut(i), nodes.get(i)) {
-                    *slot = n.pos;
-                }
+    let active: Vec<(usize, Vec<usize>)> = nodes
+        .iter()
+        .enumerate()
+        .filter(|(_, node)| node.weight > 0.0)
+        .map(|(ni, _)| (ni, surface.neighbours(parts, ni, false)))
+        .filter(|(_, list)| !list.is_empty())
+        .collect();
+    let pinned_ends: Vec<usize> = junctions
+        .iter()
+        .filter(|j| {
+            nodes.get(j.node).is_some_and(|n| n.members.iter().any(|m| parts.get(m.0).is_some_and(|p| p.pinned)))
+        })
+        .flat_map(|j| [j.a, j.b])
+        .collect();
+    let mut cur: Vec<DVec3> = nodes.iter().map(|n| n.pos).collect();
+    let mut new_pos = cur.clone();
+    for _ in 0..passes {
+        for (ni, neighbours) in &active {
+            let (Some(node), Some(&here)) = (nodes.get(*ni), cur.get(*ni)) else { continue };
+            let target =
+                neighbours.iter().filter_map(|m| cur.get(*m)).copied().sum::<DVec3>() / neighbours.len() as f64;
+            let lift = (target - here).dot(node.axis) * amount * node.weight;
+            if let Some(slot) = new_pos.get_mut(*ni) {
+                *slot = here + node.axis * lift;
             }
         }
+        for i in &pinned_ends {
+            if let (Some(slot), Some(n)) = (new_pos.get_mut(*i), nodes.get(*i)) {
+                *slot = n.pos;
+            }
+        }
+        follow_junctions(&junctions, nodes, &mut new_pos);
+        cur.clone_from(&new_pos);
     }
-    follow_junctions(&junctions, nodes, &mut new_pos);
     write_back(parts, &surface, &new_pos, &mut changed);
     changed
 }

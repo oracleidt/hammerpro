@@ -50,7 +50,25 @@ pub fn set_lang(lang: Lang) {
     CURRENT.store(lang as u8, Ordering::Relaxed);
 }
 
+thread_local! {
+    static THREAD_LANG: std::cell::Cell<Option<Lang>> = const { std::cell::Cell::new(None) };
+}
+
+pub fn with_lang<R>(lang: Lang, f: impl FnOnce() -> R) -> R {
+    struct Restore(Option<Lang>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            THREAD_LANG.with(|c| c.set(self.0));
+        }
+    }
+    let _restore = Restore(THREAD_LANG.with(|c| c.replace(Some(lang))));
+    f()
+}
+
 pub fn lang() -> Lang {
+    if let Some(l) = THREAD_LANG.with(std::cell::Cell::get) {
+        return l;
+    }
     match CURRENT.load(Ordering::Relaxed) {
         1 => Lang::Fr,
         2 => Lang::Ru,
@@ -301,6 +319,20 @@ mod tests {
         assert_eq!(Lang::Ru.native_name(), "Русский");
         assert_eq!(Lang::Ru.code(), "ru");
         assert_eq!(serde_json::from_str::<Lang>("\"Ru\"").ok(), Some(Lang::Ru));
+    }
+
+    #[test]
+    fn with_lang_overrides_this_thread_only_and_restores() {
+        with_lang(Lang::En, || {
+            let inner = with_lang(Lang::Ru, || {
+                let nested = with_lang(Lang::Fr, lang);
+                assert_eq!(lang(), Lang::Ru);
+                (nested, tr("common.cancel").to_owned())
+            });
+            assert_eq!(inner.0, Lang::Fr);
+            assert_eq!(inner.1, "Отмена");
+            assert_eq!(lang(), Lang::En);
+        });
     }
 
     #[test]

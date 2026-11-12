@@ -69,6 +69,7 @@ domain! { "displacements";
             "points": { "type": "array", "items": vec3("Brush center (world, on the surface)."), "minItems": 1, "maxItems": MAX_STROKES, "description": "Stroke samples in order." },
             "invert": boolean("The inverted effect (Shift while painting: lower instead of raise, remove alpha; Ctrl while sculpting)."),
             "smooth": boolean("Sculpt mode: smooth instead (Shift while sculpting)."),
+            "boost": boolean("Smoothing four times stronger, like holding Ctrl while smoothing (the smooth effect, or smooth with Shift while sculpting)."),
             "seconds_per_sample": number("Time each sample stands for (default 1/60: one frame).", 0.001, 10.0),
             "faces": faces("Only these displacements change (default: the selected ones, else every one)."),
         }, ["points"];
@@ -371,6 +372,7 @@ fn stroke_of(state: &AppState, a: &Args<'_>) -> R<hp_app::tool::ScriptedStroke> 
         points,
         invert: a.opt_bool("invert")?.unwrap_or(false),
         smooth: a.opt_bool("smooth")?.unwrap_or(false),
+        boost: a.opt_bool("boost")?.unwrap_or(false),
         seconds_per_sample: a.opt_f64("seconds_per_sample", 0.001, 10.0)?.unwrap_or(1.0 / 60.0) as f32,
         eye: Some(cam.pos),
         forward: Some(cam.forward()),

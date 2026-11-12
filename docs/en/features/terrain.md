@@ -2,22 +2,27 @@
 
 # Terrain: heightmaps and procedural generation
 
-Three commands build or export whole terrains made of displacements. They are in the **Tools** menu and in the command palette (`Ctrl+P`):
+Five commands build, paint or export whole terrains made of displacements. They are in the **File** and **Tools** menus and in the command palette (`Ctrl+P`):
 
 | Command | Action id | What it does |
 | --- | --- | --- |
-| **Import heightmap...** | `import_heightmap` | Builds a terrain from a heightmap image |
-| **Generate terrain...** | `generate_terrain` | Builds a terrain from fractal noise, with erosion and automatic texturing |
-| **Export heightmap...** | `export_heightmap` | Writes the selected displacements to a 16 bit heightmap (and a splat map) |
+| **File > Import > Import heightmap...** | `import_heightmap` | Builds a terrain from a heightmap image (8, 16 or 32 bit float, tiled exports too) |
+| **Tools > Displacements > Generate terrain...** | `generate_terrain` | Builds a terrain from fractal noise, with erosion and automatic texturing |
+| **File > Export > Export heightmap...** | `export_heightmap` | Writes the selected displacements to a 16 bit or 32 bit float heightmap (and a splat map) |
+| **File > Import > Import blend masks...** | `import_blend_masks` | Paints the blend of displacements (WorldVertexTransition alpha or 4-way blend rows) from splat or mask images |
+| **File > Export > Export blend masks...** | `export_blend_masks` | Writes the blend of displacements as 16 bit or float images |
+
+For a complete World Machine or Gaea round trip, read the [World Machine and Gaea guide](../guides/world-machine-gaea.md).
 
 They create a grid of square tiles. Each tile is a brush with a displacement on its top face. The tiles are sewn: the vertices on a shared edge are identical, so there are no cracks. Everything one command creates is **one undo step**, and the new tiles are selected afterwards, ready for the [displacement tool](displacement-tool.md) (sculpt, paint alpha, erode).
 
-The same features exist as the MCP tools `import_heightmap`, `export_heightmap` and `generate_terrain` (see [MCP tools](#mcp-tools)).
+The same features exist as the MCP tools `import_heightmap`, `export_heightmap`, `generate_terrain`, `import_blend_masks` and `export_blend_masks` (see [MCP tools](#mcp-tools)).
 
 ## Concepts
 
 - **Tile.** One displacement of power 2, 3 or 4 (4 x 4, 8 x 8 or 16 x 16 cells) on a brush of **Brush depth** units. The terrain size is cut into the whole number of equal tiles closest to **Tile size**. The **vertex spacing** is the tile size divided by the number of cells, and the window shows the tile count and the spacing live ("8 x 8 tiles (64 displacements), vertex spacing 64 units").
-- **Heights.** A height field value goes from black (0) to white (1) and becomes a height between **Lowest height** and **Highest height**. **Vertical scale** is the difference of the two. **Origin Z** is the world height where a height of 0 sits.
+- **Heights.** A height field value goes from black (0) to white (1) and becomes a height between **Lowest height** and **Highest height**. **Vertical scale** is the difference of the two. **Origin Z** is the world height where a height of 0 sits. Float heightmaps can also hold real heights (see **Pixel values**).
+- **Precision.** Every image is read at its full precision and kept in double precision until the vertices are written: a 16 bit image gives 65536 steps, a 32 bit float image (R32F, EXR, float TIFF, PFM) keeps every value exactly. Nothing is reduced to 8 bit on the way.
 - **Orientation.** X grows to the right of the image and Y (north) grows toward the image top. **Flip X** and **Flip Y** mirror it.
 - **Limits.** At most 4096 tiles, a size from 16 to 32768 units per side, and the whole terrain inside the map limits (plus or minus 16384 units). The window shows the reason in red when a setting is out of range, and the buttons stay disabled.
 
@@ -29,11 +34,26 @@ Open **File > Import > Import heightmap...**. The window has these sections.
 
 | Option | What it does | Default |
 | --- | --- | --- |
-| **Heightmap** | The image: PNG (8 or 16 bit gray; color images are read as luminance), TIFF, EXR or HDR (floating point, rescaled to 0 to 1 when the values are outside that range), BMP, TGA, JPEG, or a **RAW** file (`.raw`, `.r16`, `.bin`, `.data`). **Browse...** opens a file dialog. A relative path is relative to the map folder | empty |
-| **RAW width**, **RAW height** | Pixels of a RAW file (16 bit unsigned). Both 0 means a square image, deduced from the file size | 0, 0 |
-| **RAW big endian** | The 16 bit values store the most significant byte first | Off |
+| **Heightmap** | The image: PNG (8 or 16 bit gray; color images are read as luminance, a gray image saved as RGB keeps its exact values), TIFF (8, 16 or 32 bit, integer or float), EXR (half or full float, a single `Y`, `R` or any one channel, or RGB), PFM (`Pf` gray or `PF` color float), HDR, BMP, TGA, JPEG, or a headerless **RAW** file (`.raw`, `.r8`, `.r16`, `.r32`, `.f32`, `.bin`, `.data`). **Browse...** opens a file dialog. A relative path is relative to the map folder | empty |
+| **RAW width**, **RAW height** | Pixels of a RAW file. Both 0 means a square image, deduced from the file size; one of them 0 is computed from the other and the file size | 0, 0 |
+| **RAW big endian** | The values store the most significant byte first | Off |
+| **RAW format** | **Auto** (`.r8` is 8 bit, `.r16` 16 bit, `.r32` and `.f32` 32 bit float; other extensions try 16 bit, then 32 bit float, then 8 bit, whichever gives a square image), **8 bit**, **16 bit** or **32 bit float** (World Machine R32) | Auto |
+| **Tiled export** | The tiles of a World Machine or Gaea tiled build instead of one file: **Add tiles...** picks several files (sorted by name), listed row by row from the north west tile, and **Tiles per row** (0: a square grid). Tiles of 2^n+1 pixels (like 513 or 1025) share their edge pixels with their neighbours, as World Machine writes them; the shared pixels are sewn (averaged) so the result has no seam | none |
 
-16 bit images keep their full precision: a 16 bit PNG gives 65536 height steps over the vertical range. An image side is limited to 16384 pixels. The window shows the image size and, if the file cannot be read, the reason.
+An image side is limited to 16384 pixels. The window shows the image size, the format ("1025 x 1025, 32 bit float gray") and the lowest and highest value of the file, and, if the file cannot be read, the reason.
+
+### Pixel values
+
+How the values of the file become heights:
+
+| Mode | What it does |
+| --- | --- |
+| **Auto** (default) | 8 and 16 bit images, and float images whose values are within 0 to 1, use **0 to 1**; other float images use **Stretch**. This is how earlier versions read heightmaps |
+| **0 to 1** | 0 is the **Lowest height** and 1 the **Highest height**. Float values outside 0 to 1 go below or above |
+| **Stretch** | The lowest value of the file becomes the **Lowest height** and the highest value the **Highest height** |
+| **Absolute** | The file holds real heights: the height of a vertex is the value times **Units per value** above **Origin Z**. The lowest and highest heights come from the file (the notification shows them). Use it for R32F maps of World Machine or Gaea: with **Units per value** 1 the values are units, with 52.49 they are meters |
+
+**One vertex per pixel** picks the **Tile size** (and **Size Y**, keeping the image proportions) so every pixel falls on a vertex and nothing is resampled. It needs image sides of a multiple of 2 to the power **Tile power** plus one, like 257, 513, 1025 or 2049 (World Machine's usual sizes). For example a 1025 x 1025 image with power 4 gives 64 x 64 tiles of 16 x 16 cells. The window tells why when the size does not fit. The tile count limit (4096) still applies: 2049 pixels need power 4 and two imports, or a lower resolution.
 
 ### Size and height
 
@@ -61,6 +81,9 @@ The brush under each tile has its top face at the lowest height, and its other f
 | **Flip X**, **Flip Y** | Mirror the image | Off |
 | **Bicubic sampling** | Samples the image smoothly between pixels (Catmull-Rom, never overshooting the neighbouring pixels). Off: bilinear sampling. When the image has exactly one pixel per vertex, both give the pixel values | On |
 | **Smoothing passes** | Blurs the heights (a 3 x 3 filter per pass, 0 to 64) before the terrain is built | 0 |
+| **Pixel grid** | **Corner**: the first and last pixels sit exactly on the terrain edges (pixel is point, the convention of 2^n+1 images such as 1025). **Center**: each pixel covers its own square and the outer pixels are half a pixel inside the edges (pixel is area, for 1024 or 2048 images exported that way) | Corner |
+
+The tiles are always seamless: every vertex takes its height from its world position, so the vertices on a shared tile edge get the same height.
 
 ### Texturing
 
@@ -83,7 +106,7 @@ Thresholds of **Slope and height**:
 | **Sand below** | Share of the height range below which sand appears. 0 turns sand off | 0 |
 | **Sand blend** | Width of the transition | 0.05 |
 
-**Splat map** takes either one **Splat map** image (RGB or RGBA: red, green, blue and alpha are the channels 1 to 4; an RGB image has no channel 4) or, when that field is empty, four grayscale images **Channel 1** to **Channel 4** (an empty field means that channel is 0). The weights are normalized per vertex. The splat images are mirrored by **Flip X** and **Flip Y** like the heightmap, and may have any size.
+**Splat map** takes either one **Splat map** image (RGB or RGBA, 8 or 16 bit or float: red, green, blue and alpha are the coverage of textures 1 to 4; an RGB image has no texture 4) or, when that field is empty, four grayscale images **Channel 1** to **Channel 4** (an empty field means that texture is 0). The coverages are normalized per vertex. The splat images cover the same extent as the heightmap, are mirrored by **Flip X** and **Flip Y** like it, use the same **Pixel grid**, and may have any size. **Coverage** (default) turns the coverages into the blend rows the game reads so each texture shows its share in game; **Raw rows** writes them as they are (see [Blend masks](#import-blend-masks)). For channel choices, levels, or the WorldVertexTransition alpha, use **Import blend masks** after the import.
 
 ### Preview and import
 
@@ -149,25 +172,70 @@ Select displacements (or solids that have some) and open **File > Export > Expor
 
 | Option | What it does | Default |
 | --- | --- | --- |
-| **Heightmap file** | Output file; the extension chooses the format: `.png` (16 bit gray), `.tif` or `.tiff` (16 bit), `.raw` (16 bit little endian) | empty |
-| **Splat map file** | Optional PNG with the 4-way blend weights (the alpha when a displacement has no blend rows): red, green, blue and alpha are channels 1 to 4 | empty |
+| **Heightmap file** | Output file; the extension chooses the format: `.png` (16 bit gray), `.tif` or `.tiff` (16 bit, or 32 bit float), `.exr` (32 bit float), `.pfm` (32 bit float), `.r32` (32 bit float little endian, World Machine R32), `.r16` or `.raw` (16 bit little endian, or 32 bit float for `.raw`) | empty |
+| **Splat map file** | Optional 16 bit PNG or TIFF, or a float EXR, with the raw 4-way blend rows (the alpha when a displacement has no blend rows): red, green, blue and alpha are channels 1 to 4. **Export blend masks** writes coverage masks and the alpha instead | empty |
+| **32 bit float (tif, raw)** | Writes `.tif` and `.raw` as 32 bit float | Off |
+| **Values** | **Auto**: real heights in float files, the lowest to highest range in 16 bit files. **Lowest to highest**: black and white are the lowest and highest heights. **Absolute** (float files only): each pixel is the world height divided by **Units per value**, nothing is lost | Auto |
 | **Lowest height**, **Highest height** | **Fixed** gives the height written as black and as white. Off: the lowest and the highest point | Off |
 
-The image covers the footprint of the selected displacements, with its top at the north (+Y) edge, and one pixel per vertex of the finest displacement. An imported terrain is exported back with exactly one pixel per vertex. Overlapping surfaces keep the highest point, and pixels with no displacement are filled from their neighbours. The notification gives the image size and the heights written as black and white: use them as **Lowest height** and **Highest height** when you import the file again, with the same size, to get the same terrain (the MCP tool also returns the size and the corner).
+The image covers the footprint of the selected displacements, with its top at the north (+Y) edge, and one pixel per vertex of the finest displacement. An imported terrain is exported back with exactly one pixel per vertex. Overlapping surfaces keep the highest point, and pixels with no displacement are filled from their neighbours. The notification gives the image size and the heights written as black and white: use them as **Lowest height** and **Highest height** when you import the file again, with the same size, to get the same terrain (the MCP tool also returns the size and the corner). An absolute float export imported with **Absolute** values and **Units per value** 1 gives back the same heights to the float.
+
+## Import blend masks
+
+Terrain tools give blend (splat) maps as **images**, but Source blends displacement textures **per vertex**. **File > Import > Import blend masks...** converts the images into the vertex data of the selected displacements, in one undo step:
+
+- **WorldVertexTransition** reads the vertex **alpha** of the displacement (the `alphas` rows of the VMF, 0 to 255): 0 shows `$basetexture`, 255 shows `$basetexture2`. The engine passes it to the shader as the alpha of the vertex color (`COLOR0`).
+- **Lightmapped_4WayBlend** reads the **4-way blend rows** of the displacement: the VMF blocks `multiblend` (4 values per vertex), `alphablend` (4 values) and `multiblend_color_0` to `multiblend_color_3` (a color per texture), the format of Hammer++ and of the CS:GO and Portal 2 Hammer. The compiler writes them to the displacement multiblend lump (80 bytes per vertex, like Garry's Mod's VBSP) and the engine passes them to the shader as extra vertex data (the "COLOR1" painting data). The shader starts from texture 1 and blends texture 2, then 3, then 4 over it, using the second, third and fourth `multiblend` values as their blend amounts. The import writes the `multiblend` values and keeps `alphablend` and the colors (white when new).
+
+The window:
+
+| Option | What it does | Default |
+| --- | --- | --- |
+| **File 1** to **File 4** | Up to four images: PNG 8 or 16 bit, TIFF (16 bit or float), EXR, PFM, HDR, TGA, BMP, JPEG or RAW, read at full precision. **Add a file** and **Remove the last file** change the count. Each file shows its size and format | one empty file |
+| **Write to** | **Auto**: faces with a Lightmapped_4WayBlend material, and faces that already have 4-way rows, get the 4-way rows, the others get the alpha. **Alpha (WorldVertexTransition)** or **4-way rows (Lightmapped_4WayBlend)** force one | Auto |
+| **Alpha: Channel** | The image channel that becomes the alpha: red, green, blue, alpha or luminance of a file, **None (0)** or **Full (1)** | File 1 luminance |
+| **Texture 1** to **Texture 4** | The channel that gives the coverage of each 4-way texture, also **The rest (1 minus the others)** | File 1 red, green, blue, alpha (an RGBA splat map) |
+| **Invert**, **Levels** | Per channel: invert, then **Black** and **White** (the input values that become 0 and 1), **Gamma** (above 1 brightens the middle values) and **Contrast** (above 1 sharpens the transitions). **Reset** puts the levels back | off, 0, 1, 1, 1 |
+| **Normalize to a sum of 1** | Scales the four coverages of each vertex so they add up to 1 (all zero gives texture 1) | On |
+| **Coverage** / **Raw rows** | **Coverage**: the images say how much of each texture shows (a World Machine or Gaea splat map). They are converted to the values the shader reads: texture 4 = its coverage, texture 3 = its share of what texture 4 leaves, texture 2 = its share of what textures 3 and 4 leave. The game then shows these shares (before the luminance and blend range settings of the material). **Raw rows**: the values are written as they are, like the 4-way brush of the displacement tool | Coverage |
+| **Fixed extent** | The rectangle the images cover (**Lowest X**, **Lowest Y**, **Size X**, **Size Y**). Off: the bounds of the selected displacements seen from above. **Same extent as the heightmap** copies the extent of the last heightmap import, so masks exported with the heightmap line up exactly | Off |
+| **Flip X**, **Flip Y**, **Bilinear sampling**, **Pixel grid** | Like the heightmap import: the image top is the north (+Y) edge. Off for bilinear uses bicubic sampling | off, off, on, Corner |
+| **Preview in the 3D views** | Applies the masks while you change the settings, so the Lit and Baked views show the blend. **Apply** keeps it, **Close** takes it back | Off |
+
+Each vertex takes the mask value under its position seen from above. A small preview shows the result (textures 1 to 4 in green, brown, gray and white, or the alpha in gray). 4-way faces also get the alpha (1 minus the coverage of texture 1), so the terrain still looks right with a WorldVertexTransition material.
+
+The 3D views (Lit, Baked, Player view) draw WorldVertexTransition and Lightmapped_4WayBlend materials from this data, and the compiled map carries it: the alpha in the displacement vertices, the 4-way rows in the multiblend lump. The VMF rows hold 6 decimals.
+
+## Export blend masks
+
+**File > Export > Export blend masks...** writes the blend of the selected displacements as images, on the pixel grid of **Export heightmap** (one pixel per vertex, north at the top), so they line up with an exported heightmap and go back into World Machine, Gaea or an image editor:
+
+| Option | What it does |
+| --- | --- |
+| **4 textures (RGBA)** | Red, green, blue and alpha are textures 1 to 4: 16 bit PNG or TIFF, float EXR, or float TIFF with **32 bit float** |
+| **Alpha (gray)** | The vertex alpha (WorldVertexTransition) as a gray image: png, tif, exr, pfm, r16, r32 or raw |
+| **Texture 1** to **Texture 4 (gray)** | One gray image per texture |
+| **Coverage** / **Raw rows** | **Coverage** writes how much of each texture shows in game, computed from the rows like the shader does (the reverse of the import), **Raw rows** the `multiblend` values |
+
+Displacements without 4-way rows use their alpha for textures 1 and 2. Importing the exported masks back with the same extent and mode gives the same rows (within the 6 decimals of the VMF, and 1/65535 for 16 bit files).
 
 ## MCP tools
 
-Full parameters are in the [MCP tools reference](../MCP.md); the window options have the same names. In short:
+Full parameters are in the [MCP tools reference](../../MCP.md); the window options have the same names. In short:
 
-- `import_heightmap`: `path`, RAW options, `size_x`, `size_y`, `origin`, `centered`, `min_height`, `max_height` (or `height_scale`), `tile_power`, `tile_size`, `invert`, `flip_x`, `flip_y`, `smoothing`, `sampling`, `skirt`, `thickness`, `material`, `lightmap_scale`, `texturing` (`none`, `auto`, `splat`) with its thresholds, `splat` and `splat_channels`. `preview` true only reports the tile layout.
-- `export_heightmap`: the displacements (`faces`, `ids`, `solid_ids`, or the selection), `path`, `splat_path`, `min_height`, `max_height`, `overwrite`. It returns the heights and the footprint to import it again.
+- `import_heightmap`: `path` (or `tiles` and `tile_columns`), RAW options (`raw_width`, `raw_height`, `raw_big_endian`, `raw_format`), `values` (`auto`, `unit`, `stretch`, `absolute`) and `value_scale`, `match_pixels`, `pixel_grid`, `size_x`, `size_y`, `origin`, `centered`, `min_height`, `max_height` (or `height_scale`), `tile_power`, `tile_size`, `invert`, `flip_x`, `flip_y`, `smoothing`, `sampling`, `skirt`, `thickness`, `material`, `lightmap_scale`, `texturing` (`none`, `auto`, `splat`) with its thresholds, `splat`, `splat_channels` and `splat_weights`. `preview` true only reports the tile layout, the format and the value range. The result gives the heights used and the extent for `import_blend_masks`.
+- `export_heightmap`: the displacements (`faces`, `ids`, `solid_ids`, or the selection), `path`, `splat_path`, `float`, `values` (`auto`, `normalized`, `absolute`), `value_scale`, `min_height`, `max_height`, `overwrite`. It returns the heights and the footprint to import it again.
+- `import_blend_masks`: the displacements, `files` (1 to 4), `target` (`auto`, `alpha`, `four_way`), the sources `alpha` and `texture1` to `texture4` (texts like `"1.r"`, `"2.a"`, `"l"`, `"none"`, `"one"`, `"rest"`), `adjust` (per channel `invert`, `black`, `white`, `gamma`, `contrast`), `normalize`, `weights` (`coverage`, `direct`), the extent (`size_x`, `size_y`, `origin`, `centered`), `flip_x`, `flip_y`, `pixel_grid`, `sampling` and the RAW options.
+- `export_blend_masks`: the displacements, `path` (RGBA), `alpha_path`, `texture_paths`, `weights`, `float`, `overwrite`.
 - `generate_terrain`: `preset`, `seed`, the noise, size, erosion and texturing options, `replace_selected`, and `preview` (`show` or `hide`) for the 3D preview. It returns the seed.
 
-Every call is one undo step labeled "MCP: import heightmap" or "MCP: generate terrain".
+Every call is one undo step labeled "MCP: import heightmap", "MCP: import blend masks" or "MCP: generate terrain".
 
 ## Tips
 
 - For a map-sized terrain, a power 3 tile of 512 units gives a vertex every 64 units. For finer detail, lower **Tile size** or raise **Tile power**.
+- A terrain alone (a new map with only the imported tiles) compiles and bakes like a leaked map, so the Baked view works at once; it stays dark until the map has a light (a `light_environment` for a sky). For the game, add an `info_player_start` and seal the map.
 - Source needs the terrain to be sealed from the void like any other geometry: build walls around it, or use **Border skirt** with a skybox brush ring.
 - After an import, use the [displacement tool](displacement-tool.md) to sculpt, to **Paint alpha**, to sew with other terrain, or to change the power with **Keep the shape**.
-- Exported heightmaps open in any image editor and in terrain tools such as World Machine or Gaea (16 bit PNG).
+- Exported heightmaps open in any image editor and in terrain tools such as World Machine or Gaea (16 bit PNG, or EXR and R32 float for full precision).
+- The [World Machine and Gaea guide](../guides/world-machine-gaea.md) walks through a whole round trip: heights, splat maps, materials and compile.

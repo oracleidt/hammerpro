@@ -1,7 +1,7 @@
 use ahash::AHashMap;
 use hp_app::state::SceneOptions;
 use hp_editor::{Changes, Document, Id};
-use hp_render::{ModelInstance, ObjectFlags, ObjectMesh, Renderer, SpriteInstance};
+use hp_render::{ModelInstance, ObjectFlags, ObjectMesh, Renderer, SpriteInstance, WorldBeam};
 
 use crate::lights::SceneLight;
 
@@ -38,6 +38,7 @@ pub(crate) struct DerivedBuild {
     pub upsert: Vec<DerivedObject>,
     pub remove: Vec<u64>,
     pub sprites: Option<Vec<SpriteInstance>>,
+    pub beams: Option<Vec<WorldBeam>>,
     pub models: Option<Vec<ModelInstance>>,
     pub lights: Option<Vec<SceneLight>>,
 }
@@ -73,6 +74,7 @@ struct Slot {
     producer: Box<dyn DerivedProducer>,
     objects: AHashMap<u64, u32>,
     sprites: Vec<SpriteInstance>,
+    beams: Vec<WorldBeam>,
     models: Vec<ModelInstance>,
     lights: Vec<SceneLight>,
 }
@@ -117,6 +119,7 @@ impl Derived {
                 producer,
                 objects: AHashMap::new(),
                 sprites: Vec::new(),
+                beams: Vec::new(),
                 models: Vec::new(),
                 lights: Vec::new(),
             })
@@ -135,6 +138,7 @@ impl Derived {
         for slot in &mut self.slots {
             slot.objects.clear();
             slot.sprites.clear();
+            slot.beams.clear();
             slot.models.clear();
             slot.lights.clear();
         }
@@ -176,6 +180,10 @@ impl Derived {
 
     pub(crate) fn sprites(&self) -> impl Iterator<Item = &SpriteInstance> {
         self.slots.iter().flat_map(|s| &s.sprites)
+    }
+
+    pub(crate) fn beams(&self) -> impl Iterator<Item = &WorldBeam> {
+        self.slots.iter().flat_map(|s| &s.beams)
     }
 
     pub(crate) fn models(&self) -> impl Iterator<Item = &ModelInstance> {
@@ -227,7 +235,7 @@ impl Derived {
         renderer: &mut Renderer,
         sink: &mut ObjectSink<'_>,
     ) -> ListsDirty {
-        let DerivedBuild { clear, upsert, remove, sprites, models, lights } = build;
+        let DerivedBuild { clear, upsert, remove, sprites, beams, models, lights } = build;
         if clear {
             let rids: Vec<u32> = self.slots[index].objects.drain().map(|(_, rid)| rid).collect();
             for rid in rids {
@@ -292,6 +300,10 @@ impl Derived {
         if let Some(list) = sprites {
             dirty.sprites = !(list.is_empty() && slot.sprites.is_empty());
             slot.sprites = list;
+        }
+        if let Some(list) = beams {
+            dirty.sprites |= !(list.is_empty() && slot.beams.is_empty());
+            slot.beams = list;
         }
         if let Some(list) = models {
             dirty.models = !(list.is_empty() && slot.models.is_empty());

@@ -35,7 +35,7 @@ impl DispMesh {
     }
 }
 
-fn source_corners(face_vertices: &[DVec3], start: DVec3) -> Result<([DVec3; 4], DVec3), GeomError> {
+pub(crate) fn source_corners(face_vertices: &[DVec3], start: DVec3) -> Result<([DVec3; 4], DVec3), GeomError> {
     let [c0, c1, c2, c3] =
         <[DVec3; 4]>::try_from(face_vertices).map_err(|_| GeomError::NotQuad(face_vertices.len()))?;
     if !(c0.is_finite() && c1.is_finite() && c2.is_finite() && c3.is_finite()) {
@@ -60,7 +60,7 @@ fn check_power(power: u32) -> Result<usize, GeomError> {
     if (1..=MAX_POWER).contains(&power) { Ok((1usize << power) + 1) } else { Err(GeomError::BadPower(power)) }
 }
 
-fn flat_grid(p: &[DVec3; 4], n: usize) -> Vec<DVec3> {
+pub(crate) fn flat_grid(p: &[DVec3; 4], n: usize) -> Vec<DVec3> {
     let inv = 1.0 / (n - 1) as f64;
     let mut out = Vec::with_capacity(n * n);
     for i in 0..n {
@@ -74,7 +74,7 @@ fn flat_grid(p: &[DVec3; 4], n: usize) -> Vec<DVec3> {
     out
 }
 
-fn grid_indices(n: usize) -> Vec<u32> {
+pub(crate) fn grid_indices(n: usize) -> Vec<u32> {
     let quads = n.saturating_sub(1);
     let mut idx = Vec::with_capacity(quads * quads * 6);
     for i in 0..quads {

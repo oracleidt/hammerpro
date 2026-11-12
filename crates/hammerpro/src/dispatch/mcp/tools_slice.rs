@@ -21,7 +21,7 @@ domain! { "slicing";
         to cut at the center (an even split into N+1 equal blocks). Cuts that would leave a piece thinner \
         than 0.25 unit are dropped. snap rounds position to the grid step along the axis (default false). The \
         pieces are convex brushes that keep the original textures (the cut faces take the material of the \
-        closest face, or cap_material); brush entity solids keep their entity. One undo step. dry_run \
+        closest face, or cap_material); brush entity solids keep their entity. Displacements are kept on the pieces (exact where the cut follows the displacement grid, resampled up to power 4 elsewhere, seams sewn) unless the setting edit.keep_displacements_on_cut is false. One undo step. dry_run \
         answers the planes without changing the map. Answers the ids of the resulting solids.",
         {
             "ids": target_ids(), "solid_ids": target_solid_ids(),

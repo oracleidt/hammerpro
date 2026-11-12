@@ -56,6 +56,7 @@ pub struct RadOptions {
     pub fast_ambient: bool,
     pub luxel_density: f32,
     pub no_disp_shadows: bool,
+    pub no_style_bounce: bool,
     pub min_sun_samples: usize,
     pub normal_sampling: bool,
     pub probes: Option<ProbeOptions>,
@@ -81,6 +82,7 @@ impl Default for RadOptions {
             fast_ambient: false,
             luxel_density: 1.0,
             no_disp_shadows: false,
+            no_style_bounce: false,
             min_sun_samples: 0,
             normal_sampling: false,
             probes: None,
@@ -271,6 +273,10 @@ fn run_with(
         params.leaf_samples = 1;
     }
     params.sun_samples = params.sun_samples.max(opts.min_sun_samples);
+    params.style_bounce = !opts.no_style_bounce;
+    if opts.no_style_bounce && opts.bounces > 0 {
+        log("switchable light styles do not bounce, like VRAD (-nostylebounce)");
+    }
     if opts.normal_sampling {
         params = params.at_least(&bake::Params::of(RadQuality::Normal));
     }
@@ -321,6 +327,7 @@ fn run_with(
     phases.mark("shadow tree");
     work.add(1);
     let (surf, surf_info) = runner.par(|| surface::surface_scene(&map, &all, &lit_index));
+    let (water, water_reflectivity) = surface::water_scene(&map);
     phases.mark("surface tree");
     work.add(1);
     let blockers = runner.par(|| surface::blocker_scene(&map));
@@ -385,6 +392,8 @@ fn run_with(
         work,
         bounce_budget: opts.bounce_budget,
         bounce_tile_budget,
+        water: &water,
+        water_reflectivity,
     };
     let t = Instant::now();
     work.begin(Stage::Direct, luxels as u64);
@@ -495,7 +504,7 @@ fn run_with(
     let prop_files = if opts.props.lighting && static_props.len() > 0 {
         let bounced = opts.bounces > 0 && map.vis.clusters > 0;
         let (files, n, vertices) =
-            runner.par(|| props::light(&ctx, &light, &static_props, &opts.props, bounced, &passes));
+            runner.par(|| props::light(&ctx, &light, &static_props, &opts.props, bounced, &passes, &|| false));
         log(&format!("static props: {n} with vertex lighting ({vertices} vertices) in {} ms", ms(t)));
         stage(report, "static prop vertex lighting", t);
         phases.mark("static props");

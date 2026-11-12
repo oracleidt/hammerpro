@@ -93,6 +93,7 @@ impl SelectTool {
                     }
                 }
                 let rect = screen_rect(view, &moved);
+                self.paint_moved_centers(state, view, painter, &m, color);
                 size_labels(painter, view, rect, &moved, hsize);
                 let below = rect.center_bottom() + egui::vec2(0.0, HANDLE_GAP + hsize + 2.0);
                 match &d.op {
@@ -190,6 +191,36 @@ impl SelectTool {
             if let Some(s) = view.world_to_screen(*p).filter(|s| clip.contains(*s)) {
                 painter.line_segment([s - egui::vec2(3.0, 3.0), s + egui::vec2(3.0, 3.0)], stroke);
                 painter.line_segment([s - egui::vec2(3.0, -3.0), s + egui::vec2(3.0, -3.0)], stroke);
+            }
+        }
+    }
+
+    fn paint_moved_centers(
+        &self,
+        state: &AppState,
+        view: &ViewInfo,
+        painter: &Painter,
+        m: &glam::DMat4,
+        color: Color32,
+    ) {
+        if !state.settings.helpers.show_brush_centers {
+            return;
+        }
+        let clip = view_clip(view.rect);
+        let doc = &state.doc;
+        let stroke = Stroke::new(1.5, color);
+        let solids = doc.selected_solid_ids();
+        let entities = doc.selected_objects().into_iter().filter_map(|o| match o {
+            hp_editor::ObjRef::Entity(id) if !doc.scene().is_brush_entity(id) => {
+                doc.scene().entities().get(&id).and_then(|n| n.entity.origin())
+            }
+            _ => None,
+        });
+        let centers = solids.iter().filter_map(|id| doc.scene().solid_bounds(*id).map(|b| b.center())).chain(entities);
+        for c in centers.take(MAX_CENTER_MARKS) {
+            if let Some(s) = view.world_to_screen(m.transform_point3(c)).filter(|s| clip.contains(*s)) {
+                painter.line_segment([s - egui::vec2(3.5, 3.5), s + egui::vec2(3.5, 3.5)], stroke);
+                painter.line_segment([s - egui::vec2(3.5, -3.5), s + egui::vec2(3.5, -3.5)], stroke);
             }
         }
     }

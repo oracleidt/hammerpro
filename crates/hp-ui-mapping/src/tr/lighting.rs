@@ -8,6 +8,16 @@ pub const TR: TrTable = &[
     ),
     ("lighting.vrad_texture_shadows", "Texture alpha shadows", "Ombres selon l'alpha des textures"),
     ("lighting.vrad_no_disp_shadows", "Disable displacement shadows", "Désactiver les ombres des displacements"),
+    (
+        "lighting.vrad_no_style_bounce",
+        "No bounce for switchable lights (like VRAD)",
+        "Pas de rebond pour les lumières commutables (comme VRAD)",
+    ),
+    (
+        "lighting.vrad_no_style_bounce_tip",
+        "Named lights light only what they see directly, like Valve's VRAD. Off: their light bounces in their own style and switches with them.",
+        "Les lumières nommées n'éclairent que ce qu'elles voient directement, comme le VRAD de Valve. Désactivé : leur lumière rebondit dans leur propre style et s'allume et s'éteint avec elles.",
+    ),
     ("lighting.vrad_fast_ambient", "Fast ambient sampling", "Échantillonnage ambiant rapide"),
     (
         "lighting.keep_bake",

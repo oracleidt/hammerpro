@@ -30,16 +30,27 @@ struct Bounds {
 @group(0) @binding(3) var<storage, read_write> clusters: array<vec2<u32>>;
 @group(0) @binding(4) var<storage, read_write> indices: array<u32>;
 @group(0) @binding(5) var<storage, read_write> stats: array<atomic<u32>, 4>;
+@group(0) @binding(6) var<storage, read_write> crowded: array<vec2<u32>>;
 
 const BIG: f32 = 3.4028235e38;
 const SHARED_MAX: u32 = 1024u;
 const GROUP_X: u32 = 8u;
 const GROUP_Y: u32 = 8u;
+const COOP: u32 = 64u;
+const PICK_MAX: u32 = 256u;
 
 var<workgroup> shared_list: array<u32, 1024>;
 var<workgroup> mask: array<atomic<u32>, 32>;
 var<workgroup> word_base: array<u32, 32>;
 var<workgroup> found_total: u32;
+var<workgroup> hist: array<atomic<u32>, 256>;
+var<workgroup> picked: array<u32, 256>;
+var<workgroup> take_mask: array<atomic<u32>, 2>;
+var<workgroup> co_total: u32;
+var<workgroup> co_entry: vec2<u32>;
+var<workgroup> co_prefix: u32;
+var<workgroup> co_need: u32;
+var<workgroup> co_count: u32;
 
 fn edge(s: f32) -> f32 {
     return p.eye.w * exp(s / max(p.right.w, 1e-6));
@@ -223,47 +234,147 @@ fn cs_cull(
         clusters[ci] = vec2<u32>(base, count);
         return;
     }
-    atomicAdd(&stats[0], 1u);
-    let center = center_of(x, y, s);
-    var lo = 0u;
-    var hi = 0x7f7fffffu;
-    loop {
-        if lo >= hi {
-            break;
+    clusters[ci] = vec2<u32>(base, 0u);
+    let slot = atomicAdd(&stats[0], 1u);
+    if slot < arrayLength(&crowded) {
+        crowded[slot] = vec2<u32>(ci, u32(use_shared));
+    }
+}
+
+fn member(c: u32, use_group: bool, gb: Bounds, b: Bounds) -> bool {
+    let v = cands[c].view;
+    return (!use_group || hits(gb, v)) && hits(b, v);
+}
+
+@compute @workgroup_size(64, 1, 1)
+fn cs_crowded(
+    @builtin(workgroup_id) wg: vec3<u32>,
+    @builtin(num_workgroups) nwg: vec3<u32>,
+    @builtin(local_invocation_index) li: u32,
+) {
+    if li == 0u {
+        co_total = min(atomicLoad(&stats[0]), arrayLength(&crowded));
+    }
+    let total = workgroupUniformLoad(&co_total);
+    let cap = min(p.misc.x, PICK_MAX);
+    let plane = p.dims.x * p.dims.y;
+    for (var slot = wg.x; slot < total; slot += nwg.x) {
+        if li == 0u {
+            co_entry = crowded[slot];
+            co_prefix = 0u;
+            co_need = cap;
+            co_count = 0u;
         }
-        let mid = lo + (hi - lo + 1u) / 2u;
-        let t = bitcast<f32>(mid);
-        var above = 0u;
-        for (var k = 0u; k < m; k++) {
-            let c = cand_at(k, use_shared, first);
-            if hits(b, cands[c].view) && score(cands[c], center) >= t {
-                above++;
+        let entry = workgroupUniformLoad(&co_entry);
+        let ci = entry.x;
+        let use_group = entry.y != 0u;
+        let s = ci / plane;
+        let rest = ci % plane;
+        let y = rest / p.dims.x;
+        let x = rest % p.dims.x;
+        let gx0 = (x / GROUP_X) * GROUP_X;
+        let gy0 = (y / GROUP_Y) * GROUP_Y;
+        let gx1 = min(gx0 + GROUP_X, p.dims.x) - 1u;
+        let gy1 = min(gy0 + GROUP_Y, p.dims.y) - 1u;
+        let gb = bounds_of(gx0, gx1, gy0, gy1, s);
+        let b = bounds_of(x, x, y, y, s);
+        let center = center_of(x, y, s);
+        let first = slices[s];
+        let n = slices[s + 1u] - first;
+        var prefix = 0u;
+        for (var shift = 24u; ; shift -= 8u) {
+            for (var h = li; h < 256u; h += COOP) {
+                atomicStore(&hist[h], 0u);
+            }
+            workgroupBarrier();
+            let high = select(0xffffffffu << (shift + 8u), 0u, shift == 24u);
+            for (var k = li; k < n; k += COOP) {
+                let c = slices[first + k];
+                if member(c, use_group, gb, b) {
+                    let sc = score(cands[c], center);
+                    let v = select(bitcast<u32>(sc), 0u, sc <= 0.0);
+                    if (v & high) == prefix {
+                        atomicAdd(&hist[(v >> shift) & 255u], 1u);
+                    }
+                }
+            }
+            workgroupBarrier();
+            if li == 0u {
+                var need = co_need;
+                var digit = 0u;
+                for (var d = 255i; d >= 0; d--) {
+                    let count_d = atomicLoad(&hist[u32(d)]);
+                    if count_d >= need {
+                        digit = u32(d);
+                        break;
+                    }
+                    need -= count_d;
+                }
+                co_need = need;
+                co_prefix = co_prefix | (digit << shift);
+            }
+            prefix = workgroupUniformLoad(&co_prefix);
+            if shift == 0u {
+                break;
             }
         }
-        if above >= cap {
-            lo = mid;
-        } else {
-            hi = mid - 1u;
+        let t = bitcast<f32>(prefix);
+        let chunks = (n + COOP - 1u) / COOP;
+        for (var equal = 0u; equal < 2u; equal++) {
+            for (var ch = 0u; ch < chunks; ch++) {
+                if workgroupUniformLoad(&co_count) >= cap {
+                    break;
+                }
+                if li < 2u {
+                    atomicStore(&take_mask[li], 0u);
+                }
+                workgroupBarrier();
+                let k = ch * COOP + li;
+                var take = false;
+                var light = 0u;
+                if k < n {
+                    let c = slices[first + k];
+                    if member(c, use_group, gb, b) {
+                        let sc = score(cands[c], center);
+                        take = select(sc > t, sc == t, equal == 1u);
+                        light = cands[c].info.x;
+                    }
+                }
+                if take {
+                    atomicOr(&take_mask[li >> 5u], 1u << (li & 31u));
+                }
+                workgroupBarrier();
+                let lo = atomicLoad(&take_mask[0]);
+                let hi = atomicLoad(&take_mask[1]);
+                var before = 0u;
+                if li < 32u {
+                    before = countOneBits(lo & ((1u << li) - 1u));
+                } else {
+                    before = countOneBits(lo) + countOneBits(hi & ((1u << (li - 32u)) - 1u));
+                }
+                let at = co_count + before;
+                if take && at < cap {
+                    picked[at] = light;
+                }
+                workgroupBarrier();
+                if li == 0u {
+                    co_count = min(co_count + countOneBits(lo) + countOneBits(hi), cap);
+                }
+                workgroupBarrier();
+            }
         }
+        let w = workgroupUniformLoad(&co_count);
+        let base = ci * p.misc.x;
+        for (var j = li; j * 2u < w; j += COOP) {
+            var word = picked[j * 2u] & 0xffffu;
+            if j * 2u + 1u < w {
+                word = word | ((picked[j * 2u + 1u] & 0xffffu) << 16u);
+            }
+            indices[(base >> 1u) + j] = word;
+        }
+        if li == 0u {
+            clusters[ci] = vec2<u32>(base, w);
+        }
+        workgroupBarrier();
     }
-    let t = bitcast<f32>(lo);
-    var w = 0u;
-    for (var k = 0u; k < m; k++) {
-        let c = cand_at(k, use_shared, first);
-        if hits(b, cands[c].view) && score(cands[c], center) > t {
-            put(base + w, cands[c].info.x);
-            w++;
-        }
-    }
-    for (var k = 0u; k < m; k++) {
-        if w >= cap {
-            break;
-        }
-        let c = cand_at(k, use_shared, first);
-        if hits(b, cands[c].view) && score(cands[c], center) == t {
-            put(base + w, cands[c].info.x);
-            w++;
-        }
-    }
-    clusters[ci] = vec2<u32>(base, w);
 }

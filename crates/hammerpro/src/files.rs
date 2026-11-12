@@ -369,6 +369,7 @@ pub fn apply_doc_options(state: &mut AppState) {
     let opts = state.doc.options_mut();
     opts.texture_lock = lock;
     opts.texture_scale_lock = scale_lock;
+    opts.keep_displacements_on_cut = state.settings.edit.keep_displacements_on_cut;
     let limits = hp_editor::UndoLimits {
         max_steps: state.settings.edit.undo_levels.max(1) as usize,
         ..hp_editor::UndoLimits::default()

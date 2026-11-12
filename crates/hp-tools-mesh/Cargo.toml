@@ -15,7 +15,12 @@ hp-render.workspace = true
 egui.workspace = true
 glam.workspace = true
 image.workspace = true
+tiff.workspace = true
+exr.workspace = true
 rfd.workspace = true
 
 [dev-dependencies]
 eframe.workspace = true
+hp-bsp.workspace = true
+hp-bspc.workspace = true
+hp-decompile = { path = "../hp-decompile" }

@@ -55,6 +55,8 @@
 | Выход | `exit` |  |  |  |
 | Импортировать карту высот... | `import_heightmap` |  |  |  |
 | Экспортировать карту высот... | `export_heightmap` |  |  |  |
+| Импортировать маски смешивания... | `import_blend_masks` |  |  |  |
+| Экспортировать маски смешивания... | `export_blend_masks` |  |  |  |
 
 <a id="edit-menu"></a>
 ## Меню редактирования
@@ -213,6 +215,7 @@
 | Параметры отображения > Отражения кубической карты | `toggle_cubemaps` |  |  |  |
 | Параметры отображения > Цвета объектов в 2D | `toggle_object_colors_2d` |  |  |  |
 | Параметры отображения > Цвета объектов в 3D-каркасе и плоском виде | `toggle_object_colors_3d` |  |  |  |
+| Параметры отображения > Подсвечивать браши func_detail | `toggle_detail_tint` |  |  |  |
 | Параметры отображения > Показать видимые кластеры | `toggle_pvs` |  |  |  |
 | Параметры отображения > Показать навигационную сетку | `toggle_nav_mesh` |  |  |  |
 | Параметры отображения > Показать частицы | `toggle_particles` |  |  |  |
@@ -263,6 +266,8 @@
 | Разгруппировать | `ungroup` | `Ctrl+U` |  |  |
 | Привязать к сущности | `tie_to_entity` | `Ctrl+T` |  |  |
 | Переместиться в мир | `move_to_world` | `Ctrl+Shift+W` |  |  |
+| Сделать func_detail | `convert_to_detail` | `Ctrl+Alt+D` |  |  |
+| Выбрать кандидатов в func_detail... | `select_detail_candidates` |  |  |  |
 | Вырезать | `carve` | `Ctrl+Shift+C` |  |  |
 | Сделать полым | `make_hollow` | `Ctrl+H` |  |  |
 | Слияние с выпуклым телом | `merge_convex` |  |  |  |
@@ -287,7 +292,6 @@
 | Интерактивное вытягивание (E) | `extrude_interactive` | `E` |  |  |
 | Не рисовать на скрытых гранях... | `nodraw_hidden_faces` |  |  |  |
 | Привяжите каждого к своей сущности | `tie_each_to_entity` | `Ctrl+Shift+T` |  |  |
-| Конвертировать в func_detail | `convert_to_detail` |  |  |  |
 | Редактировать кривую | `curve_edit` |  |  |  |
 | Изменить дорогу | `road_edit` |  |  |  |
 | Тротуарный генератор... | `road_sidewalk` |  |  |  |
@@ -321,6 +325,7 @@
 | Превратите браши в проп | `brushes_to_prop` |  |  |  |
 | Преобразовать проп в браши... | `prop_to_brushes` |  |  |  |
 | Создать навигационную сетку | `generate_nav_mesh` |  |  |  |
+| Объединить пропы... | `combine_props` |  |  |  |
 | Варианты пропа (Propper)... | `propper_options` |  |  |  |
 | Редактор шейдеров... | `shader_editor` |  |  |  |
 | VTF редактор... | `vtf_editor` |  |  |  |

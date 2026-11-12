@@ -57,6 +57,7 @@ pub(crate) struct State {
     particles_shown: bool,
     nav_gen: Option<Receiver<NavGenAnswer>>,
     prop_job: Option<PropJob>,
+    combine_job: Option<super::combine::CombineJob>,
     compare_pick: Option<Receiver<Option<PathBuf>>>,
     compare_job: Option<hp_ui_lab::compare::CompareJob>,
     compare: hp_ui_lab::compare::CompareWindow,
@@ -84,6 +85,7 @@ const HANDLED: &[Action] = &[
     Action::BrushesToProp,
     Action::PropToBrushes,
     Action::PropperOptions,
+    Action::CombineProps,
     Action::ToggleParticles,
     Action::ToggleParticlesSelected,
     Action::ToggleEntityFx,
@@ -278,6 +280,10 @@ impl Package for Lab {
                 let open = &mut app.state.runtime.lab.propper_options_open;
                 *open = !*open;
             }
+            Action::CombineProps => {
+                let open = &mut app.state.runtime.lab.combine_open;
+                *open = !*open;
+            }
             Action::ImportModel => app.pkg.lab.model_import.open(ctx),
             Action::TogglePlayerView => {
                 let p = &mut app.state.runtime.lab.player;
@@ -397,6 +403,10 @@ impl Package for Lab {
             start_brushes_to_prop(app, ctx);
         }
         poll_prop_job(app, ctx);
+        let mut combine = app.pkg.lab.combine_job.take();
+        super::combine::start(app, ctx, &mut combine);
+        super::combine::poll(app, &mut combine);
+        app.pkg.lab.combine_job = combine;
         if let Some(path) = poll_pick(&mut app.pkg.lab.compare_pick, ctx) {
             app.state.log(Severity::Info, tf!("lab.compare.working", file_name(&path)));
             app.pkg.lab.compare_job =
@@ -832,12 +842,12 @@ fn start_brushes_to_prop(app: &mut HammerProApp, ctx: &egui::Context) {
         app.state.notify(Severity::Warning, t!("lab.prop.select"));
         return;
     }
-    let Some(root) = app.state.settings.game.gmod_root.clone().or_else(hp_fs::detect_gmod_root) else {
+    if app.state.settings.game.gmod_root.is_none() && hp_fs::detect_gmod_root().is_none() {
         app.state.notify(Severity::Warning, t!("lab.prop.no_game"));
         return;
-    };
-    if hp_ui_entities::model_tools::studiomdl_exe(&root).is_none() {
-        app.state.notify(Severity::Warning, t!("lab.prop.no_studiomdl"));
+    }
+    if let Err(e) = hp_ui_entities::model_tools::model_compiler(&app.state.settings) {
+        app.state.notify(Severity::Warning, e);
         return;
     }
     let Some(fs) = app.state.assets.fs().cloned() else {
@@ -870,14 +880,21 @@ fn poll_prop_job(app: &mut HammerProApp, ctx: &egui::Context) {
             }
             Ok(Err(e)) => app.state.notify(Severity::Error, e),
             Ok(Ok(prepared)) => {
-                let root = app.state.settings.game.gmod_root.clone().or_else(hp_fs::detect_gmod_root);
-                let Some(exe) = root.as_deref().and_then(hp_ui_entities::model_tools::studiomdl_exe) else {
-                    app.state.notify(Severity::Warning, t!("lab.prop.no_studiomdl"));
-                    return;
+                let exe = match hp_ui_entities::model_tools::model_compiler(&app.state.settings) {
+                    Ok(exe) => exe,
+                    Err(e) => {
+                        app.state.notify(Severity::Warning, e);
+                        return;
+                    }
                 };
                 let game_dir = prepared.game_dir.clone();
                 let dir = prepared.qc.parent().map(std::path::Path::to_path_buf).unwrap_or_default();
-                let plan = hp_ui_entities::model_tools::studiomdl_plan(&exe, &game_dir, &prepared.qc);
+                let plan = hp_ui_entities::model_tools::model_compiler_plan(
+                    &exe,
+                    &game_dir,
+                    &prepared.qc,
+                    &app.state.settings.compile.model_compiler_args,
+                );
                 let repaint = ctx.clone();
                 let handle = hp_compile::start_with_waker(plan, &dir, move || repaint.request_repaint());
                 let triangles = prepared.lod_triangles.first().copied().unwrap_or(0);

@@ -75,6 +75,7 @@ Mostly on **Settings > Viewports**; the `show_*` toggles are also in the **View*
 | `paste_offset` | `true` | Pasted objects are offset so they do not sit on the originals. |
 | `new_brush_color` | none | Display color `[r, g, b]` given to new brushes; none: Hammer's random default color. |
 | `undo_restores_selection` | `true` | Selection changes are undo steps: `Ctrl+Z` brings back the previous selection (faces included). They never mark the map as modified. |
+| `keep_displacements_on_cut` | `true` | Clip, Slice, Carve and Intersect keep displacements on the cut pieces (exact on grid lines, resampled elsewhere, seams sewn); off: cut faces become flat brush faces like in Hammer. **Settings > Editing**. |
 
 ## `[ui]`: interface
 
@@ -146,6 +147,8 @@ Mostly on **Settings > Viewports**; the `show_*` toggles are also in the **View*
 | `launch_game` | `true` | Run the game after the compile. |
 | `launch_via_steam` | `false` | Start the game through Steam. |
 | `game_exe_path` | none | Game executable (absent: detected). |
+| `model_compiler` | none | Model compiler program used by Propper, Combine props and Compile a QC (absent: `bin/win64/studiomdl.exe`, else `bin/studiomdl.exe` of the game). A drop in replacement such as NekoMDL works. **Settings > Compile > Model compiler**. A missing program is reported by name. MCP: `set_model_compiler` (with `confirm`). |
+| `model_compiler_args` | `""` | Extra arguments for the model compiler, added after `-game <folder> -nop4 -verbose` and before the QC file. |
 | `game_args` | `"-console -dev"` | Game arguments; the fast start options of the launch popover edit them. |
 | `threads` | none | Compiler threads (absent: automatic, one core kept for the editor with `low_priority`). |
 | `low_priority` | `true` | Keep a core for the editor. |
@@ -226,6 +229,10 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `reorient_primitives` | `true` | Primitives drawn in the Front or Side view stand along that view's depth axis. |
 | `clip_measurements` | `true` | The clipping tool shows the length and angle of the clip line. |
 | `clip_current_material` | `false` | Cut faces get the current material (off: they copy the most similar face). |
+| `detail.split` | `"selection"` | **Make func_detail**: one func_detail per selection (`"selection"`) or per group of touching brushes (`"cluster"`). |
+| `detail.check_sealing` | `true` | **Make func_detail** keeps the brushes that seal the map in the world (asks first). |
+| `detail.tint` | `false` | func_detail brushes get a blue tint in 3D and a blue outline in 2D. |
+| `detail.max_size`, `detail.steps`, `detail.trims`, `detail.pillars`, `detail.small`, `detail.complex`, `detail.in_selection` | `1024`, `true`, `true`, `true`, `true`, `true`, `false` | Filters of **Select func_detail candidates** (see [func_detail](../features/func-detail.md)). |
 
 ## `[workflow]`
 
@@ -241,6 +248,7 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `grid_step_factor` | `2.0` | Factor of `[` and `]`, 1.25 to 10. With 2, the powers of two from 1/8 to 4096. |
 | `ctrl_wheel` | `"GridSize"` | `Ctrl` + wheel in a 2D view: `GridSize` or `ZoomAll2d`. |
 | `link_2d_zoom` | `false` | Zooming one 2D view zooms the others. |
+| `drag_autopan` | `false` | Dragging something with the left button near or past the edge of a 2D view scrolls it, faster the farther the cursor goes, like Hammer. |
 | `units` | `"Units"` | Lengths of the status bar: `Units`, `Inches`, `FeetInches`, `Meters` (one unit = 2.54 cm). |
 | `show_view_info` | `false` | Frame rate, camera position and angles in the 3D view (`O`). |
 | `show_bounds` | `false` | Yellow bounding boxes of visible objects. No shortcut (`I` is the interactive inset): toggle it from **View > Display options > Bounding boxes**. |
@@ -414,6 +422,7 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `keep_background_maps_on_gpu` | `true` | Keep the maps of other tabs on the graphics card while there is room, for instant tab switches. |
 | `texture_streaming` | `true` | Texture detail by distance: textures used only far from every view are kept at a smaller size that looks the same at that distance (whole mip levels, never below 128 pixels), and come back to full size before the camera gets close. The loading screen of a map stays until every texture close to the camera is at full size. Off: every texture stays at full size. See [Editor performance](../troubleshooting/performance.md#texture-detail-by-distance). |
 | `performance_mode` | `Auto` | `Auto` and `Off` draw the preview at full quality. `Auto` lowers the quality one step (with a notice and a Restore full quality button over the 3D view) only when the 3D view stays under 20 FPS for several seconds. Before that, `Auto` also adapts the cost of the lighting previews to a slow graphics card one level at a time and back (see [Editor performance](../troubleshooting/performance.md#fine-adaptation-of-the-lighting-auto)); a card that keeps up always gets the full look. `Low` (75% resolution, no MSAA or bloom, 4 shadowed lights, 2048 sun shadow, textures up to 1024 pixels) and `VeryLow` (50% resolution, no shadows from lights, reflections, normal maps or fog volumes, textures up to 512 pixels) always lower it. **Settings > Rendering > Performance**, `set_setting render.performance_mode`. See [Editor performance](../troubleshooting/performance.md). |
+| `lit_quality` | `Auto` | How many lights each part of the 3D view draws in the Lit mode and the baked preview. `High`: up to 128 (the full look, always). `Balanced`: only the 32 strongest of each part, faster on maps with hundreds of lights, a few faint lights are left out. `Auto`: `Balanced` only while the camera moves, `High` again as soon as it stops, so a still picture is always the full one. **Settings > Rendering > Performance > Lighting preview quality**, `set_setting render.lit_quality`. See [Editor performance](../troubleshooting/performance.md#lighting-previews-at-full-speed). |
 | `render_scale` | `1.0` | Draws the 3D view at this share of its size (0.25 to 1) and stretches it over the window. 1.0 is full quality. |
 | `perf_hud` | `false` | Shows FPS, frame time, CPU and GPU time per stage, memory and the quality level in the 3D view. |
 
@@ -424,13 +433,18 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | Key | Default | What it does |
 | --- | --- | --- |
 | `auto_bake` | `true` | Start a bake when the baked preview is turned on and nothing is baked. Whole map by default; the optional regional mode applies to this automatic start. |
-| `threads` | `0` | Bake threads (0: every core but two), up to 256. |
+| `threads` | `0` | Bake threads (0: every core but a quarter of them). At least two cores always stay free: a larger number is capped to every core but two. |
 | `max_luxels_millions` | `16` | Luxels baked at full resolution, 1 to 64 million. |
 | `auto_scope` | `false` | Opt-in regional mode for automatic preview activation on big maps. Its region follows the camera; explicit **Bake lighting** always calculates the whole map. |
 | `auto_scope_luxels_millions` | `2` | Threshold for the optional automatic regional mode, 1 to 64 million luxels. |
 | `auto_scope_radius` | `3072` | Radius of the optional automatic region, 256 to 32768 units. Separate from the manual camera radius in the Lighting tab. |
 | `visible_first` | `true` | On maps of 6000 solids and more, the area around the camera is baked first, then the whole map is baked in the background and replaces it. |
-| `prepare` | `true` | Once the map is open and edits pause, the whole map is compiled and lit at low priority without drawing it, so the baked preview shows at once when it is turned on. Needs `auto_bake`. |
+| `prepare` | `true` | Once the map is open and edits pause, the whole map is compiled and lit at the lowest priority without drawing it, so the baked preview shows at once when it is turned on. Not while the window is minimized or another window is active. Needs `auto_bake`. |
+| `priority` | `"BelowNormal"` | CPU priority of the bakes you wait for: `Idle`, `BelowNormal` or `Normal`. The background preparation and the lighting of the props always run at `Idle`. |
+| `pause_minimized` | `true` | Stop the running bake and the relights while the window is minimized; they start again when it comes back. |
+| `pause_unfocused` | `false` | The same while another window is active. |
+| `drag_pause_ms` | `120` | While a light is dragged, relight it once the mouse rests this long (0 to 2000 ms; 0: continuously) and when it is dropped. |
+| `upload_mb_per_frame` | `4` | Lightmap data sent to the graphics card per frame, 1 to 64 MB. |
 | `tiny_scale` | `4` | Lightmap scale at or under which a face is tiny, 1 to 64. |
 | `budget_styles` | `1` | Light styles counted by the lightmap budget, 1 to 4. |
 | `show_budget` | `true` | Lightmap budget gauge in the status bar. |
@@ -522,6 +536,8 @@ The **Build and save as content** window and the Map assets tab. See [Build and 
 | Key | Default | What it does |
 | --- | --- | --- |
 | `live_checks` | `true` | Check the map for problems in the background. |
+| `check_delay_ms` | `1500` | Check the map once the edits pause for this long (0 to 10000 ms), never while dragging. The checks run at the lowest priority on a third of the cores; after an edit only the props near it are checked again for placement problems. |
+| `pause_minimized` | `true` | Stop the background checks while the window is minimized; they run again when it comes back. |
 | `live_leak_check` | `true` | Instant leak check in the background. |
 | `show_leak_path` | `true` | Draw the path of that leak. |
 | `limit_profile` | `"auto"` | Limits of the estimates: `auto` (the game of the map) or a profile id. |
@@ -557,6 +573,10 @@ The **Build and save as content** window and the Map assets tab. See [Build and 
 | `propper_static` | `true` | Compile `$staticprop` and create `prop_static`; off creates `prop_dynamic`. Disabled for physics props. |
 | `propper_collision` | `true` | Generate collision; required for physics props. |
 | `propper_mass` | `10.0` | Physics prop mass in kg, 0.1 to 50000. |
+| `combine_origin` | `"center"` | Origin of a model made by **Combine props**: `center` or `bottom` (bottom center) of the selection. |
+| `combine_keep_originals` | `true` | **Combine props** keeps the original props in the hidden visgroup `Combined props (originals)`; off deletes them. |
+| `combine_collision` | `true` | **Combine props** builds collision from the props' .phy pieces. |
+| `combine_max_pieces` | `32` | Most convex collision pieces of a combined model, 1 to 128. |
 | `model_keep_params` | `true` | Model import writes the normal map, shine, self illumination and texture tiling of the file into the VMTs. |
 
 ## `[sniffer]`

@@ -60,6 +60,21 @@ impl SettingsPage for HealthPage {
             .checkbox(&mut s.warn_duplicates, t!("shell.health.warn_duplicates"))
             .on_hover_text(t!("shell.health.warn_duplicates_tip"))
             .changed();
+        changed |= ui
+            .checkbox(&mut s.pause_minimized, t!("shell.health.pause_minimized"))
+            .on_hover_text(t!("shell.health.pause_minimized_tip"))
+            .changed();
+        ui.horizontal(|ui| {
+            ui.label(t!("shell.health.check_delay"));
+            changed |= ui
+                .add(
+                    egui::DragValue::new(&mut s.check_delay_ms)
+                        .range(hp_app::settings::HealthSettings::DELAY_RANGE)
+                        .suffix(" ms"),
+                )
+                .on_hover_text(t!("shell.health.check_delay_tip"))
+                .changed();
+        });
         let p = &mut state.settings.placement;
         changed |= ui
             .checkbox(&mut p.problem_checks, t!("shell.placement.problem_checks"))
@@ -131,6 +146,22 @@ pub(crate) const TR: TrTable = &[
         "Un remplissage comme celui du compilateur trouve les fuites sans compiler ; la compilation reste la référence",
     ),
     ("shell.health.show_leak_path", "Draw the path of the leak found", "Tracer le chemin de la fuite trouvée"),
+    (
+        "shell.health.pause_minimized",
+        "Pause the checks while the window is minimized",
+        "Mettre les vérifications en pause quand la fenêtre est réduite",
+    ),
+    (
+        "shell.health.pause_minimized_tip",
+        "Stops the map checks running in the background while Hammer Pro is minimized; they run again when the window comes back.",
+        "Arrête les vérifications de la map qui tournent en arrière-plan pendant que Hammer Pro est réduit ; elles reprennent au retour de la fenêtre.",
+    ),
+    ("shell.health.check_delay", "Check after the edits pause for", "Vérifier après une pause des modifications de"),
+    (
+        "shell.health.check_delay_tip",
+        "The map is checked again once you stop editing for this long, never while you drag. The checks run at the lowest priority on a third of the cores, and after an edit only the props near it are checked again for floating, sunk and overlapping props.",
+        "La map est vérifiée à nouveau quand vous arrêtez de la modifier pendant ce temps, jamais pendant un déplacement. Les vérifications tournent avec la priorité la plus basse sur un tiers des cœurs, et après une modification seuls les props proches sont vérifiés à nouveau pour les props flottants, enfoncés et qui se chevauchent.",
+    ),
     (
         "shell.health.warn_duplicates",
         "Warn when a new brush or entity is an exact copy of another",

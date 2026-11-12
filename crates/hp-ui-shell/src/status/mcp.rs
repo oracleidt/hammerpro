@@ -87,6 +87,10 @@ mod tests {
 
     #[test]
     fn the_segment_draws_on_and_off() {
+        hp_app::i18n::with_lang(hp_app::i18n::Lang::En, segment_draws_on_and_off);
+    }
+
+    fn segment_draws_on_and_off() {
         let mut state = hp_app::testing::test_state();
         crate::register_translations();
         for running in [false, true] {

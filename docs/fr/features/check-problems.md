@@ -6,7 +6,7 @@ Hammer Pro vérifie la map en arrière-plan pendant que vous travaillez : brushe
 
 ## Vérification en direct et barre d'état
 
-Peu après chaque modification, la map est vérifiée sur un thread de fond (paramètre **Vérifier la map pendant l'édition**, activé par défaut). La barre d'état affiche à droite :
+Dès que vous arrêtez de modifier la map un instant (paramètre **Vérifier après une pause des modifications de**, 1500 ms ; jamais pendant un déplacement), la map est vérifiée sur des threads de fond (paramètre **Vérifier la map pendant l'édition**, activé par défaut). Les vérifications tournent avec la priorité la plus basse du système sur un tiers des cœurs, en laissant toujours au moins deux cœurs libres, pour ne jamais ralentir l'éditeur ni les autres programmes ; après une modification, seuls les props proches sont vérifiés à nouveau pour les props flottants, enfoncés et qui se chevauchent, les autres gardent leur résultat. Avec **Mettre les vérifications en pause quand la fenêtre est réduite** (activé), une fenêtre réduite les arrête et elles reprennent à son retour. La barre d'état affiche à droite :
 
 | Segment | Contenu | Clic |
 | --- | --- | --- |
@@ -138,6 +138,8 @@ Les limites changent selon les versions de Source. **Limites de :** (dans la fen
 | Option | Défaut |
 | --- | --- |
 | **Vérifier la map pendant l'édition** | activé |
+| **Mettre les vérifications en pause quand la fenêtre est réduite** (`pause_minimized`) | activé |
+| **Vérifier après une pause des modifications de** (`check_delay_ms`, de 0 à 10000 ms) | 1500 |
 | **Chercher les fuites pendant l'édition** | activé |
 | **Tracer le chemin de la fuite trouvée** | activé |
 | **Vérifier les problèmes ne liste que les objets visibles** | désactivé |

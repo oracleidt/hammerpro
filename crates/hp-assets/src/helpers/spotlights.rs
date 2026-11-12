@@ -1,16 +1,16 @@
 use ahash::AHashSet;
 use glam::DVec3;
 use hp_editor::{Document, Id, Owner, SolidNode};
-use hp_render::{LightFalloff, LightKind, PreviewLight, SpriteInstance};
+use hp_render::{LightFalloff, LightKind, MaterialId, ObjectId, PreviewLight, WorldBeam};
 use hp_vmf::Entity;
 
 use crate::entities::entity_object;
 use crate::lights::SceneLight;
-use crate::material::MatKind;
+use crate::material::{AnaLook, MatKind};
 use crate::producer::{DerivedBuild, DerivedProducer, ProducerChanges, ProducerCx};
 
 pub(crate) const HALO_MATERIAL: &str = "sprites/light_glow03";
-pub(crate) const BEAM_MATERIAL: &str = "sprites/light_glow03";
+pub(crate) const BEAM_MATERIAL: &str = "sprites/glow_test02";
 const DEFAULT_LENGTH: f64 = 500.0;
 const DEFAULT_WIDTH: f64 = 50.0;
 const MAX_BEAM_WIDTH: f64 = 102.3;
@@ -19,9 +19,6 @@ const BEAM_BRIGHTNESS: f32 = 64.0 / 255.0;
 const LIGHT_SCALE: f64 = 1.8;
 const LIGHT_RADIUS: f64 = 3.0;
 const DLIGHT_MIN_LIGHT: f32 = 20.0 / 256.0;
-const SPACING: f64 = 0.15;
-const BEAM_SPRITE_SCALE: f32 = 2.0;
-const MAX_BEAM_SPRITES: usize = 96;
 const MAX_SPOTLIGHTS: usize = 256;
 const SF_START_ON: i64 = 1;
 const SF_NO_DYNAMIC_LIGHT: i64 = 2;
@@ -68,7 +65,7 @@ pub(crate) fn spotlight(e: &Entity, on_override: Option<bool>) -> Option<Spotlig
         origin,
         dir,
         length: num(e, "SpotlightLength").unwrap_or(DEFAULT_LENGTH).clamp(1.0, 65_536.0),
-        width: num(e, "SpotlightWidth").unwrap_or(DEFAULT_WIDTH).clamp(1.0, 4096.0),
+        width: num(e, "SpotlightWidth").unwrap_or(DEFAULT_WIDTH).clamp(1.0, MAX_BEAM_WIDTH),
         color,
         hdr_scale: num(e, "HDRColorScale").unwrap_or(1.0).clamp(0.0, 64.0) as f32,
         on: on_override.unwrap_or(flags & SF_START_ON != 0),
@@ -148,40 +145,39 @@ pub(crate) fn dynamic_light(s: &Spotlight, end: DVec3) -> Option<PreviewLight> {
     })
 }
 
-pub(crate) struct BeamSprite {
-    pub pos: DVec3,
-    pub size: f32,
-    pub alpha: f32,
-}
-
-pub(crate) fn beam_sprites(s: &Spotlight, end: DVec3) -> Vec<BeamSprite> {
-    let distance = s.origin.distance(end);
-    if !s.on || distance < 1.0 {
+pub(crate) fn beam_parts(
+    s: &Spotlight,
+    end: DVec3,
+    srgb: [bool; 2],
+    materials: [MaterialId; 2],
+    object: ObjectId,
+) -> Vec<WorldBeam> {
+    if !s.on || s.origin.distance(end) < 1.0 {
         return Vec::new();
     }
-    let tail = end_width(s, distance).max(1.0);
-    let mean = (s.width + tail) * 0.5;
-    let count = ((distance / (mean * SPACING)).ceil() as usize).clamp(2, MAX_BEAM_SPRITES);
-    let step = distance / count as f64;
-    let overlap = (mean / step).max(1.0) as f32 * BEAM_SPRITE_SCALE;
-    let per = (BEAM_BRIGHTNESS * 2.0 / overlap).clamp(0.02, 1.0);
-    (0..count)
-        .map(|i| {
-            let t = (i as f64 + 0.5) / count as f64;
-            BeamSprite {
-                pos: s.origin + s.dir * (distance * t),
-                size: (s.width + (tail - s.width) * t) as f32 * BEAM_SPRITE_SCALE,
-                alpha: per * (1.0 - t as f32),
-            }
-        })
-        .collect()
+    let start = s.origin.as_vec3().to_array();
+    let tip = end.as_vec3().to_array();
+    let beam = WorldBeam {
+        object,
+        material: materials[0],
+        start,
+        end: tip,
+        width: s.width as f32,
+        color: s.color.map(|c| c * BEAM_BRIGHTNESS),
+        srgb_color: srgb[0],
+        hdr_scale: s.hdr_scale,
+        halo_scale: 0.0,
+    };
+    let halo =
+        WorldBeam { material: materials[1], color: s.color, srgb_color: srgb[1], halo_scale: HALO_SCALE, ..beam };
+    vec![beam, halo]
 }
 
 #[derive(Default)]
 pub(crate) struct SpotlightProducer {
     ids: AHashSet<Id>,
     overrides: Vec<(Id, bool)>,
-    hdr: Option<bool>,
+    waiting: bool,
     dirty: bool,
 }
 
@@ -207,11 +203,14 @@ impl DerivedProducer for SpotlightProducer {
     }
 
     fn changed(&mut self, changes: &ProducerChanges<'_>, cx: &ProducerCx<'_>) -> bool {
-        let hdr = hp_app::runtime::render::render_display().light_hdr;
-        if self.hdr != Some(hdr) || changes.full || changes.entities || changes.doc.everything {
-            self.hdr = Some(hdr);
+        if changes.full || changes.entities || changes.doc.everything {
             self.dirty = true;
             return true;
+        }
+        if self.waiting
+            && [BEAM_MATERIAL, HALO_MATERIAL].iter().all(|m| !matches!(cx.assets.mats.ana_look(m), AnaLook::Loading))
+        {
+            self.dirty = true;
         }
         let overrides = Self::overrides(cx);
         if overrides != self.overrides {
@@ -235,7 +234,6 @@ impl DerivedProducer for SpotlightProducer {
         self.dirty = false;
         self.ids.clear();
         self.overrides = Self::overrides(cx);
-        let hdr = self.hdr.unwrap_or(true);
         let mut found: Vec<(Id, Spotlight)> = cx
             .doc
             .scene()
@@ -249,40 +247,31 @@ impl DerivedProducer for SpotlightProducer {
             .collect();
         found.sort_unstable_by_key(|(id, _)| *id);
         found.truncate(MAX_SPOTLIGHTS);
-        let mut sprites = Vec::new();
+        let mut beams = Vec::new();
         let mut lights = Vec::new();
+        let materials = [
+            cx.assets.asset_material(BEAM_MATERIAL, MatKind::EntitySprite),
+            cx.assets.asset_material(HALO_MATERIAL, MatKind::EntitySprite),
+        ];
+        let looks = [BEAM_MATERIAL, HALO_MATERIAL].map(|m| match cx.assets.mats.ana_look(m) {
+            AnaLook::Ready(a) => Some(a.sprite_srgb),
+            AnaLook::Missing => Some(true),
+            AnaLook::Loading => None,
+        });
+        self.waiting = looks.iter().any(Option::is_none);
+        let srgb = looks.map(|l| l.unwrap_or(true));
         for (id, s) in found {
             self.ids.insert(id);
             if !s.on {
                 continue;
             }
             let end = beam_end(cx.doc, &s);
-            let boost = if hdr { s.hdr_scale } else { 1.0 };
-            let rgb = s.color.map(|c| c * boost);
-            let object = entity_object(id);
-            let beam = cx.assets.asset_material(BEAM_MATERIAL, MatKind::SpriteAdditive);
-            for b in beam_sprites(&s, end) {
-                sprites.push(SpriteInstance {
-                    pos: b.pos.as_vec3().to_array(),
-                    size: b.size,
-                    material: beam,
-                    color: [rgb[0], rgb[1], rgb[2], b.alpha],
-                    object,
-                });
-            }
-            let halo = cx.assets.asset_material(HALO_MATERIAL, MatKind::SpriteAdditive);
-            sprites.push(SpriteInstance {
-                pos: s.origin.as_vec3().to_array(),
-                size: HALO_SCALE,
-                material: halo,
-                color: [rgb[0], rgb[1], rgb[2], 0.6],
-                object,
-            });
+            beams.extend(beam_parts(&s, end, srgb, materials, entity_object(id)));
             if let Some(l) = dynamic_light(&s, end) {
                 lights.push(SceneLight::same(l));
             }
         }
-        DerivedBuild { sprites: Some(sprites), lights: Some(lights), ..DerivedBuild::default() }
+        DerivedBuild { beams: Some(beams), lights: Some(lights), ..DerivedBuild::default() }
     }
 }
 
@@ -340,19 +329,31 @@ mod tests {
         assert!(dynamic_light(&off, end).is_none());
         let dark = Spotlight { on: false, ..s };
         assert!(dynamic_light(&dark, end).is_none());
-        assert!(beam_sprites(&dark, end).is_empty());
+        assert!(beam_parts(&dark, end, [true; 2], [1, 2], 7).is_empty());
     }
 
     #[test]
-    fn the_beam_fades_out_along_its_length() {
-        let s = spotlight(&ent(&[]), None).expect("spotlight");
-        let end = s.origin + s.dir * s.length;
-        let b = beam_sprites(&s, end);
-        assert!(b.len() >= 2 && b.len() <= MAX_BEAM_SPRITES);
-        assert!(b.windows(2).all(|w| w[1].alpha < w[0].alpha), "shade out");
-        assert!(b.iter().all(|x| x.alpha > 0.0 && x.alpha <= 1.0));
-        assert!((b[0].pos - s.origin).length() < s.length * 0.5);
+    fn the_beam_is_one_engine_beam_and_a_halo() {
+        let s = spotlight(&ent(&[("rendercolor", "255 128 0"), ("HDRColorScale", "2")]), None).expect("spotlight");
+        let end = s.origin + s.dir * 300.0;
+        let parts = beam_parts(&s, end, [true, false], [1, 2], 7);
+        assert_eq!(parts.len(), 2);
+        let (beam, halo) = (parts[0], parts[1]);
+        assert_eq!((beam.material, halo.material, beam.object, halo.object), (1, 2, 7, 7));
+        assert_eq!(beam.start, [0.0, 0.0, 128.0]);
+        assert!((glam::Vec3::from(beam.end) - glam::Vec3::new(300.0, 0.0, 128.0)).length() < 1e-3);
+        assert_eq!(beam.width, 50.0, "the beam keeps SpotlightWidth along its length");
+        assert_eq!(beam.halo_scale, 0.0);
+        assert!((beam.color[0] - 64.0 / 255.0).abs() < 1e-6, "brightness 64 of the engine beam");
+        assert!((beam.color[1] - 128.0 / 255.0 * 64.0 / 255.0).abs() < 1e-6);
+        assert_eq!(halo.halo_scale, HALO_SCALE);
+        assert_eq!(halo.color, s.color, "the halo takes the full color");
+        assert_eq!((beam.srgb_color, halo.srgb_color), (true, false));
+        assert_eq!((beam.hdr_scale, halo.hdr_scale), (2.0, 2.0));
+        let wide = spotlight(&ent(&[("SpotlightWidth", "500")]), None).expect("wide");
+        assert!((wide.width - MAX_BEAM_WIDTH).abs() < 1e-9, "the engine clamps the width to 102.3");
         assert!(end_width(&s, 1.0e9) <= MAX_BEAM_WIDTH);
+        assert!(beam_parts(&s, s.origin, [true; 2], [1, 2], 7).is_empty(), "no beam when blocked at once");
     }
 
     #[test]

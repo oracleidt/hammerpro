@@ -18,7 +18,6 @@ use super::knowledge::{AssetAnswers, ClassFacts, Knowledge, class_facts, materia
 use crate::runtime::instances::{InstanceCache, instance_target_names};
 use crate::state::{AssetStatus, AssetsApi};
 
-pub(crate) const DEBOUNCE: Duration = Duration::from_millis(500);
 const SLICE: Duration = Duration::from_millis(3);
 const MATERIAL_POLL: Duration = Duration::from_millis(1000);
 
@@ -57,6 +56,14 @@ struct Job {
     cancel: Arc<AtomicBool>,
     rx: Receiver<Msg>,
     leak_pending: bool,
+    answered: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Pace {
+    pub delay: Duration,
+    pub hold: bool,
+    pub force: bool,
 }
 
 pub(crate) struct Engine {
@@ -230,19 +237,26 @@ impl Engine {
         profile: LimitProfile,
         live: bool,
         leak: bool,
-        force: bool,
+        pace: Pace,
     ) -> Tick {
+        let force = pace.force;
         let mut out = Tick::default();
         if let Some(job) = &mut self.job {
             loop {
                 match job.rx.try_recv() {
-                    Ok(Msg::Checks(r)) => out.checks = Some(r),
+                    Ok(Msg::Checks(r)) => {
+                        job.answered = true;
+                        out.checks = Some(r);
+                    }
                     Ok(Msg::Leak(r)) => {
                         job.leak_pending = false;
                         out.leak = Some(r);
                     }
                     Err(TryRecvError::Empty) => break,
                     Err(TryRecvError::Disconnected) => {
+                        if !job.answered {
+                            self.sent = None;
+                        }
                         self.job = None;
                         break;
                     }
@@ -264,7 +278,10 @@ impl Engine {
             out.busy = self.job.is_some();
             return out;
         }
-        if !force && self.building.is_none() && self.changed_at.elapsed() < DEBOUNCE {
+        if pace.hold && self.building.is_none() {
+            self.changed_at = Instant::now();
+        }
+        if !force && self.building.is_none() && (pace.hold || self.changed_at.elapsed() < pace.delay) {
             out.busy = true;
             return out;
         }
@@ -289,16 +306,18 @@ impl Engine {
         let cancel = Arc::new(AtomicBool::new(false));
         let (tx, rx) = std::sync::mpsc::channel();
         let flag = Arc::clone(&cancel);
+        crate::checks::watch(&cancel);
         let spawned = std::thread::Builder::new().name("hp-health".into()).spawn(move || {
+            crate::checks::lowest_priority();
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                hp_editor::background::run(|| run_job(&snap, &know, profile, leak, &flag, &tx));
+                crate::checks::run(|| run_job(&snap, &know, profile, leak, &flag, &tx));
             }));
             if result.is_err() {
                 log::error!("the map health checks failed (panic in a check)");
             }
         });
         match spawned {
-            Ok(_) => self.job = Some(Job { cancel, rx, leak_pending: leak }),
+            Ok(_) => self.job = Some(Job { cancel, rx, leak_pending: leak, answered: false }),
             Err(e) => log::error!("cannot start the map health worker: {e}"),
         }
     }

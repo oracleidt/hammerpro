@@ -1301,8 +1301,18 @@ pub const TR: TrTable = &[
         "Option de Hammer Pro : les displacements ne projettent aucune ombre (ils restent éclairés). Un seul displacement peut aussi ne pas projeter d'ombre avec l'option Projeter des ombres de l'outil displacement.",
     ),
     (
+        "compile.flag.nostylebounce",
+        "Hammer Pro option: named (switchable) lights light only what they see directly, like Valve's VRAD. Without it their light also bounces, in their own light style, and switches with them.",
+        "Option de Hammer Pro : les lumières nommées (commutables) n'éclairent que ce qu'elles voient directement, comme le VRAD de Valve. Sans elle, leur lumière rebondit aussi, dans leur propre style de lumière, et s'allume et s'éteint avec elles.",
+    ),
+    (
         "compile.flag.nostaticpropshadows",
         "Hammer Pro option: static props cast no shadow at all (lightmaps, bounced light, detail props, ambient light, prop lighting); their shadow models are not even loaded, much faster on maps with many props.",
         "Option de Hammer Pro : les props statiques ne projettent aucune ombre (lightmaps, lumière rebondie, props de détail, lumière ambiante, éclairage des props) ; leurs modèles d'ombre ne sont même pas chargés, bien plus rapide sur les maps avec beaucoup de props.",
+    ),
+    (
+        "compile.browse_model_compiler",
+        "Model compiler (studiomdl, NekoMDL...)",
+        "Compilateur de modèles (studiomdl, NekoMDL...)",
     ),
 ];

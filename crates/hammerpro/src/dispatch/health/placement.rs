@@ -7,7 +7,6 @@ use hp_app::AppState;
 use hp_app::state::AssetStatus;
 use hp_editor::Problem;
 
-const DEBOUNCE: Duration = Duration::from_millis(700);
 const SLICE: Duration = Duration::from_millis(4);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -22,7 +21,7 @@ struct Job {
     serial: u64,
     started: Instant,
     cancel: Arc<AtomicBool>,
-    rx: Receiver<Option<Vec<Problem>>>,
+    rx: Receiver<Option<(Vec<Problem>, crate::dispatch::mcp::ScanMemory)>>,
 }
 
 #[derive(Default)]
@@ -34,6 +33,7 @@ pub(crate) struct PlacementChecks {
     forced: bool,
     builder: Option<(crate::dispatch::mcp::MapScanBuilder, Want)>,
     pub(crate) last_prepare_ms: u64,
+    memory: Option<(Want, Arc<crate::dispatch::mcp::ScanMemory>)>,
 }
 
 impl Drop for PlacementChecks {
@@ -65,13 +65,15 @@ impl PlacementChecks {
             match job.rx.try_recv() {
                 Ok(result) => {
                     let job = self.job.take();
-                    if let (Some(problems), Some(job)) = (result, job) {
+                    if let (Some((problems, memory)), Some(job)) = (result, job) {
                         let ms = job.started.elapsed().as_millis() as u64;
                         log::info!(
-                            "placement check: {} problems, {ms} ms on a worker after {} ms on the main thread in slices",
+                            "placement check: {} problems ({} props checked again), {ms} ms on a worker after {} ms on the main thread in slices",
                             problems.len(),
+                            memory.scanned,
                             self.last_prepare_ms
                         );
+                        self.memory = Some((job.want, Arc::new(memory)));
                         if state.doc.content_serial() == job.serial {
                             state.runtime.health.set_placement(problems, Some(job.serial), ms);
                             self.done = Some(job.want);
@@ -119,9 +121,13 @@ impl PlacementChecks {
                 self.seen = Some(want);
                 self.changed_at = Some(Instant::now());
             }
-            let waiting = self.changed_at.is_some_and(|t| t.elapsed() < DEBOUNCE);
+            if hp_app::runtime::HealthRuntime::user_busy(state) {
+                self.changed_at = Some(Instant::now());
+            }
+            let delay = state.settings.health.check_delay();
+            let waiting = self.changed_at.is_some_and(|t| t.elapsed() < delay);
             if (waiting && !force)
-                || state.doc.in_transaction()
+                || hp_app::runtime::HealthRuntime::user_busy(state)
                 || matches!(state.assets.status(), AssetStatus::Mounting)
             {
                 if force {
@@ -149,9 +155,18 @@ impl PlacementChecks {
         let flag = Arc::clone(&cancel);
         let (tx, rx) = std::sync::mpsc::channel();
         let serial = scan.serial;
+        let old = self
+            .memory
+            .as_ref()
+            .filter(|(w, _)| w.content == want.content && w.overlaps == want.overlaps)
+            .map(|(_, m)| Arc::clone(m));
+        hp_app::checks::watch(&cancel);
         let spawned = std::thread::Builder::new().name("hp-placement-check".into()).spawn(move || {
+            hp_app::checks::lowest_priority();
             let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                crate::dispatch::mcp::run_map_scan(scan, fs.as_ref(), &flag)
+                hp_app::checks::run(|| {
+                    crate::dispatch::mcp::run_map_scan_since(scan, fs.as_ref(), &flag, old.as_deref())
+                })
             }));
             let _ = tx.send(r.unwrap_or_else(|_| {
                 log::error!("the placement check failed (panic)");
@@ -235,5 +250,71 @@ mod tests {
         state.settings.placement.problem_checks = false;
         checks.tick(&mut state);
         assert!(state.runtime.health.placement_serial.is_none());
+    }
+
+    #[test]
+    fn after_an_edit_only_the_props_near_it_are_checked_again() {
+        let m = "models/hp_test/inc_crate.mdl";
+        let shape = TriMesh::convex_box(DVec3::new(-8.0, -8.0, 0.0), DVec3::new(8.0, 8.0, 16.0), 0);
+        crate::dispatch::mcp::pin_shape(
+            m,
+            0,
+            ModelShape { path: m.to_owned(), render: shape, ..ModelShape::default() },
+        );
+        let mut state = hp_app::testing::test_state();
+        let planes = [
+            "(-1024 1024 0) (1024 1024 0) (1024 -1024 0)",
+            "(-1024 -1024 -16) (1024 -1024 -16) (1024 1024 -16)",
+            "(-1024 1024 0) (-1024 -1024 0) (-1024 -1024 -16)",
+            "(1024 1024 -16) (1024 -1024 -16) (1024 -1024 0)",
+            "(1024 1024 0) (-1024 1024 0) (-1024 1024 -16)",
+            "(1024 -1024 -16) (-1024 -1024 -16) (-1024 -1024 0)",
+        ];
+        let sides: Vec<String> = planes
+            .iter()
+            .enumerate()
+            .map(|(i, p)| {
+                format!(
+                    "side {{ \"id\" \"{}\" \"plane\" \"{p}\" \"material\" \"DEV/DEV_MEASUREGENERIC01B\" \"uaxis\" \"[1 0 0 0] 0.25\" \"vaxis\" \"[0 -1 0 0] 0.25\" }}",
+                    i + 10
+                )
+            })
+            .collect();
+        let text = format!(
+            "world {{ \"id\" \"1\" \"classname\" \"worldspawn\" solid {{ \"id\" \"2\" {} }} }}",
+            sides.join(" ")
+        );
+        state.doc = hp_editor::Document::from_map(hp_vmf::parse(&text).expect("vmf"));
+        let kv = [("model".to_owned(), m.to_owned())];
+        let at = |x: f64| DVec3::new(x, 0.0, 40.0);
+        let left = state.doc.create_point_entity("prop_physics", at(-800.0), &kv).expect("prop");
+        let right = state.doc.create_point_entity("prop_physics", at(800.0), &kv).expect("prop");
+        let cancel = AtomicBool::new(false);
+        let full = |state: &AppState| {
+            crate::dispatch::mcp::run_map_scan(crate::dispatch::mcp::prepare_map_scan(state), None, &cancel)
+                .expect("a full scan")
+        };
+        let job = crate::dispatch::mcp::prepare_map_scan(&state);
+        let (first, memory) =
+            crate::dispatch::mcp::run_map_scan_since(job, None, &cancel, None).expect("the first scan");
+        assert_eq!(memory.scanned, 2);
+        assert_eq!(first.iter().filter(|p| p.code == "floating_object").count(), 2);
+        state.doc.translate(&[hp_editor::ObjRef::Entity(left)], DVec3::new(0.0, 0.0, -40.0)).expect("drop");
+        let job = crate::dispatch::mcp::prepare_map_scan(&state);
+        let (second, memory) =
+            crate::dispatch::mcp::run_map_scan_since(job, None, &cancel, Some(&memory)).expect("the update");
+        assert_eq!(memory.scanned, 1, "the far prop keeps its result");
+        let keys = |ps: &[Problem]| {
+            let mut k: Vec<String> = ps.iter().map(|p| format!("{} {:?}", p.code, p.objects)).collect();
+            k.sort();
+            k
+        };
+        assert_eq!(keys(&second), keys(&full(&state)), "the same result as a full check");
+        assert!(second.iter().all(|p| !p.objects.contains(&hp_editor::ObjRef::Entity(left))));
+        assert!(second.iter().any(|p| p.objects.contains(&hp_editor::ObjRef::Entity(right))));
+        let job = crate::dispatch::mcp::prepare_map_scan(&state);
+        let (_, memory) =
+            crate::dispatch::mcp::run_map_scan_since(job, None, &cancel, Some(&memory)).expect("no change");
+        assert_eq!(memory.scanned, 0, "nothing changed, nothing is checked again");
     }
 }

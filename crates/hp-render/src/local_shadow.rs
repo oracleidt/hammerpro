@@ -70,6 +70,10 @@ pub(crate) struct LocalShadows {
 }
 
 impl LocalShadows {
+    pub fn colors_changed(&mut self) {
+        self.dirty = true;
+    }
+
     pub fn new(device: &wgpu::Device) -> Self {
         let dummy = device
             .create_texture(&wgpu::TextureDescriptor {

@@ -5,7 +5,9 @@ use rayon::prelude::*;
 
 use super::super::surface::LitFace;
 use super::super::tiles::Store;
-use super::{BOUNCE_TAIL, Ctx, FaceLight, Gather, GridPoint, Q, cosine_dir, grid_cell, hash, lookup, lookup_a, span};
+use super::{
+    BOUNCE_TAIL, Ctx, FaceLight, Gather, GridPoint, Q, cosine_dir, grid_cell, hash, lookup, lookup_a, span, split_hit,
+};
 
 pub(crate) struct GatherCache {
     pub step: usize,
@@ -114,8 +116,10 @@ pub(crate) fn bounce_cached(
                         let pn = &g.normals[gp];
                         for k in 0..rays {
                             let (hi, s, t) = hits[point * rays + k];
-                            let hi = hi as usize;
+                            let (hi, mirrored) = split_hit(hi);
                             let Some(hf) = ctx.faces.get(hi) else { continue };
+                            let refl =
+                                if mirrored { hf.reflectivity * ctx.water_reflectivity } else { hf.reflectivity };
                             let (s, t) = (f32::from(s) / Q, f32::from(t) / Q);
                             let mut wts = [1.0f32; 4];
                             if nn > 1 {
@@ -130,7 +134,7 @@ pub(crate) fn bounce_cached(
                                 let v = match cell {
                                     None => lookup(direct[hi][p], hf.w, hf.h, s, t),
                                     Some(c) => c.sample(&emit[hi][p], grids[hi].gw),
-                                } * hf.reflectivity;
+                                } * refl;
                                 for n in 0..nn {
                                     pts[(p * nn + n) * npts + gp] += v * wts[n];
                                 }
@@ -209,7 +213,44 @@ pub(crate) fn bounce_cached(
             }
         }
     });
+    let fields = if ctx.params.style_bounce {
+        super::styles::direct_fields(lights, ctx.faces, passes)
+    } else {
+        Default::default()
+    };
+    if !fields.is_empty() {
+        let touched = super::styles::bounce_styles(
+            ctx.faces,
+            &cache.grids,
+            rays,
+            passes,
+            lights,
+            &fields,
+            bounces,
+            ctx.water_reflectivity,
+        )?;
+        log(&format!("bounced the light of {} switchable styles onto {} faces", fields.len(), touched.len()));
+    }
     Ok(done)
+}
+
+pub(crate) fn bounce_style_delta(
+    ctx: &Ctx<'_>,
+    cache: &GatherCache,
+    fields: &HashMap<u8, Vec<(usize, super::styles::StyleField)>>,
+    lights: &mut [FaceLight],
+    bounces: u32,
+) -> Result<Vec<usize>, String> {
+    super::styles::bounce_styles(
+        ctx.faces,
+        &cache.grids,
+        cache.rays,
+        ctx.passes,
+        lights,
+        fields,
+        bounces,
+        ctx.water_reflectivity,
+    )
 }
 
 pub(crate) struct StitchCells {
@@ -371,8 +412,10 @@ pub(crate) fn bounce_delta(
                     let gp = start / rays + point;
                     for k in 0..rays {
                         let (hi, s, t) = hits[point * rays + k];
-                        let Some(field) = emit_of.get(hi as usize).copied().flatten() else { continue };
-                        let hf = &ctx.faces[hi as usize];
+                        let (hi, mirrored) = split_hit(hi);
+                        let Some(field) = emit_of.get(hi).copied().flatten() else { continue };
+                        let hf = &ctx.faces[hi];
+                        let refl = if mirrored { hf.reflectivity * ctx.water_reflectivity } else { hf.reflectivity };
                         let (s, t) = (f32::from(s) / Q, f32::from(t) / Q);
                         let mut wts = [1.0f32; 4];
                         if nn > 1 {
@@ -385,7 +428,7 @@ pub(crate) fn bounce_delta(
                         }
                         let out = pts.get_or_insert_with(|| vec![Vec3A::ZERO; passes * nn * npts]);
                         for (p, f) in field.iter().enumerate().take(passes) {
-                            let v = lookup_a(f, hf.w, hf.h, s, t) * hf.reflectivity * (tail / rays as f32);
+                            let v = lookup_a(f, hf.w, hf.h, s, t) * refl * (tail / rays as f32);
                             for n in 0..nn {
                                 out[(p * nn + n) * npts + gp] += v * wts[n];
                             }

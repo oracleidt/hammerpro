@@ -16,6 +16,7 @@ const IDLE: u32 = 0;
 const PENDING: u32 = 1;
 const READY: u32 = 2;
 const FAILED: u32 = 3;
+const CROWDED_GROUPS: u32 = 512;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Pod, Zeroable)]
@@ -41,6 +42,7 @@ pub(crate) struct CullParamsGpu {
 pub(crate) struct LightCullPipeline {
     bgl: wgpu::BindGroupLayout,
     pipeline: wgpu::ComputePipeline,
+    crowded: wgpu::ComputePipeline,
 }
 
 fn entry(binding: u32, ty: wgpu::BufferBindingType) -> wgpu::BindGroupLayoutEntry {
@@ -64,6 +66,7 @@ impl LightCullPipeline {
                 entry(3, rw),
                 entry(4, rw),
                 entry(5, rw),
+                entry(6, rw),
             ],
         });
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -75,17 +78,21 @@ impl LightCullPipeline {
             bind_group_layouts: &[Some(&bgl)],
             immediate_size: 0,
         });
-        let pipeline = crate::pipeline_cache::with(device, |cache| {
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("hp-render light cull"),
-                layout: Some(&layout),
-                module: &module,
-                entry_point: Some("cs_cull"),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                cache,
+        let compute = |entry: &str| {
+            crate::pipeline_cache::with(device, |cache| {
+                device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                    label: Some("hp-render light cull"),
+                    layout: Some(&layout),
+                    module: &module,
+                    entry_point: Some(entry),
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                    cache,
+                })
             })
-        });
-        Self { bgl, pipeline }
+        };
+        let pipeline = compute("cs_cull");
+        let crowded = compute("cs_crowded");
+        Self { bgl, pipeline, crowded }
     }
 }
 
@@ -94,7 +101,7 @@ pub(crate) fn supported(device: &wgpu::Device) -> bool {
     l.max_compute_invocations_per_workgroup >= GROUP_X * GROUP_Y
         && l.max_compute_workgroup_size_x >= GROUP_X
         && l.max_compute_workgroup_size_y >= GROUP_Y
-        && l.max_storage_buffers_per_shader_stage >= 5
+        && l.max_storage_buffers_per_shader_stage >= 6
         && l.max_compute_workgroup_storage_size >= 8192
 }
 
@@ -115,6 +122,7 @@ pub(crate) fn prepare(
     lights: &[LightGpu],
     first_local: u32,
     delta_only: bool,
+    cap: u32,
 ) -> Prepared {
     let mut by_slice: Vec<Vec<u32>> = vec![Vec::new(); grid.slices as usize];
     let mut candidates: Vec<CandidateGpu> = Vec::new();
@@ -170,7 +178,7 @@ pub(crate) fn prepare(
         forward: [cam.forward.x, cam.forward.y, cam.forward.z, cam.height],
         tan: [cam.tan_half_fov * aspect, cam.tan_half_fov, TILE_PX as f32, cam.far * 1.001],
         dims: [grid.tiles_x, grid.tiles_y, grid.slices, candidates.len() as u32],
-        misc: [MAX_PER_CLUSTER, 0, 0, 0],
+        misc: [if cap == 0 { MAX_PER_CLUSTER } else { cap.min(MAX_PER_CLUSTER) }, 0, 0, 0],
     };
     Prepared { params, candidates, slices }
 }
@@ -183,6 +191,7 @@ pub(crate) struct CullView {
     params: wgpu::Buffer,
     candidates: GrowBuffer,
     slices: GrowBuffer,
+    crowded_list: GrowBuffer,
     stats: wgpu::Buffer,
     readback: wgpu::Buffer,
     state: Arc<AtomicU32>,
@@ -204,6 +213,7 @@ impl CullView {
             }),
             candidates: GrowBuffer::new(device, "hp-render light cull candidates", storage, 64),
             slices: GrowBuffer::new(device, "hp-render light cull slices", storage, 64),
+            crowded_list: GrowBuffer::new(device, "hp-render light cull crowded clusters", storage, 64),
             stats: device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("hp-render light cull stats"),
                 size: 16,
@@ -225,7 +235,7 @@ impl CullView {
     }
 
     pub fn bytes(&self) -> u64 {
-        self.candidates.size + self.slices.size + 64
+        self.candidates.size + self.slices.size + self.crowded_list.size + 64
     }
 
     pub fn upload(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, prepared: &Prepared, max: u64) -> bool {
@@ -233,10 +243,13 @@ impl CullView {
         let slices: &[u8] = bytemuck::cast_slice(&prepared.slices);
         let a = self.candidates.ensure(device, queue, cand.len() as u64, max, false);
         let b = self.slices.ensure(device, queue, slices.len() as u64, max, false);
-        if a == Grow::TooLarge || b == Grow::TooLarge {
+        let dims = prepared.params.dims;
+        let clusters = u64::from(dims[0]) * u64::from(dims[1]) * u64::from(dims[2]);
+        let c = self.crowded_list.ensure(device, queue, clusters * 8, max, false);
+        if a == Grow::TooLarge || b == Grow::TooLarge || c == Grow::TooLarge {
             return false;
         }
-        if a == Grow::Grown || b == Grow::Grown {
+        if a == Grow::Grown || b == Grow::Grown || c == Grow::Grown {
             self.generation += 1;
         }
         queue.write_buffer(&self.params, 0, bytemuck::bytes_of(&prepared.params));
@@ -309,15 +322,14 @@ impl CullView {
                     wgpu::BindGroupEntry { binding: 3, resource: clusters.as_entire_binding() },
                     wgpu::BindGroupEntry { binding: 4, resource: indices.as_entire_binding() },
                     wgpu::BindGroupEntry { binding: 5, resource: self.stats.as_entire_binding() },
+                    wgpu::BindGroupEntry { binding: 6, resource: self.crowded_list.buffer.as_entire_binding() },
                 ],
             });
             self.bind_group = Some((key, bg));
         }
         let Some((_, bg)) = self.bind_group.as_ref() else { return false };
         let read = self.state.load(Ordering::Acquire) == IDLE;
-        if read {
-            queue.write_buffer(&self.stats, 0, &[0u8; 16]);
-        }
+        queue.write_buffer(&self.stats, 0, &[0u8; 16]);
         {
             let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("hp-render light cull"),
@@ -326,6 +338,16 @@ impl CullView {
             pass.set_pipeline(&pipe.pipeline);
             pass.set_bind_group(0, bg, &[]);
             pass.dispatch_workgroups(groups[0], groups[1], groups[2]);
+        }
+        {
+            let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("hp-render light cull crowded clusters"),
+                timestamp_writes: None,
+            });
+            pass.set_pipeline(&pipe.crowded);
+            pass.set_bind_group(0, bg, &[]);
+            let clusters = groups[0] * GROUP_X * groups[1] * GROUP_Y * groups[2];
+            pass.dispatch_workgroups(clusters.clamp(1, CROWDED_GROUPS), 1, 1);
         }
         if read {
             enc.copy_buffer_to_buffer(&self.stats, 0, &self.readback, 0, 16);
@@ -448,8 +470,19 @@ mod tests {
         packed: &crate::lights::Packed,
         delta: bool,
     ) -> GpuClusters {
+        run_gpu_capped(device, queue, cam, packed, delta, 0)
+    }
+
+    fn run_gpu_capped(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        cam: &Camera,
+        packed: &crate::lights::Packed,
+        delta: bool,
+        cap: u32,
+    ) -> GpuClusters {
         let grid = ClusterGrid::new(cam);
-        let prepared = prepare(cam, &grid, &packed.lights, packed.n_dir, delta);
+        let prepared = prepare(cam, &grid, &packed.lights, packed.n_dir, delta, cap);
         let storage = wgpu::BufferUsages::STORAGE;
         let table = GrowBuffer::new(device, "t", storage, grid.count() as u64 * 8);
         let list = GrowBuffer::new(device, "l", storage, index_bytes(&grid));
@@ -567,6 +600,45 @@ mod tests {
         assert!(compared > 1000 && crowded_seen > 0, "{compared} clusters compared, {crowded_seen} crowded");
         let again = run_gpu(&device, &queue, &c, &packed, false);
         assert_eq!((again.0, again.1), (table, list), "the GPU build is deterministic");
+    }
+
+    #[test]
+    fn a_light_cap_keeps_the_strongest_lights_of_each_cluster() {
+        let _serial = crate::memory::gpu_test_lock();
+        let Some((device, queue)) = gpu() else { return };
+        if !supported(&device) {
+            return;
+        }
+        let c = cam();
+        let grid = ClusterGrid::new(&c);
+        let packed = pack_lights(&lights());
+        let (full_table, full_list, _) = run_gpu(&device, &queue, &c, &packed, false);
+        let (table, list, _) = run_gpu_capped(&device, &queue, &c, &packed, false, 32);
+        let plane = grid.tiles_x * grid.tiles_y;
+        let mut capped = 0;
+        for (ci, (at, full)) in table.iter().zip(&full_table).enumerate() {
+            let kept = unpack(&list, *at);
+            let all = unpack(&full_list, *full);
+            assert!(kept.len() <= 32, "cluster {ci} keeps {} lights", kept.len());
+            if all.len() <= 32 {
+                assert_eq!(kept, all, "cluster {ci} under the cap keeps every light in order");
+                continue;
+            }
+            capped += 1;
+            assert_eq!(kept.len(), 32);
+            let ci = ci as u32;
+            let (s, rest) = (ci / plane, ci % plane);
+            let center = grid.center(&c, rest % grid.tiles_x, rest / grid.tiles_x, s);
+            let weakest_kept =
+                kept.iter().map(|&i| light_score(&packed.lights[i as usize], center)).fold(f32::INFINITY, f32::min);
+            for i in all.iter().filter(|i| !kept.contains(i)) {
+                assert!(
+                    light_score(&packed.lights[*i as usize], center) <= weakest_kept * 1.001 + 1e-12,
+                    "a stronger light was left out of cluster {ci}"
+                );
+            }
+        }
+        assert!(capped > 10, "{capped} clusters reached the cap");
     }
 
     #[test]

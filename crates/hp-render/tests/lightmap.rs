@@ -492,3 +492,45 @@ fn retained_model_light_changes_test_visibility_at_the_lighting_origin() {
         "the moved lighting origin sees the light: {visible:?}"
     );
 }
+
+#[test]
+fn light_style_steps_draw_like_a_full_light_rebuild_without_touching_the_scene() {
+    let Some((device, queue)) = gpu() else { return };
+    let light = PreviewLight {
+        kind: LightKind::Point,
+        pos: [0.0, 0.0, 128.0],
+        color: [1.0; 3],
+        intensity: 0.4,
+        range: 400.0,
+        falloff: None,
+    };
+    let steady = PreviewLight { pos: [120.0, 40.0, 96.0], intensity: 0.1, ..light };
+    let patterns = ["amzm".to_owned(), String::new()];
+    let full = |time: f64| {
+        let mut r = Renderer::new(&device, &queue);
+        r.set_material(MAT, &MaterialDesc { tint: [1.0; 4], ..Default::default() });
+        r.upsert_object(FLOOR, floor_mesh());
+        r.set_animated_lights(&[light, steady], &patterns, [0.0; 3], time);
+        r.render_view(0, &params(RenderMode::Lit), &Overlay::default());
+        (pixel(&r, 64, 64), pixel(&r, 90, 50))
+    };
+    let mut r = Renderer::new(&device, &queue);
+    r.set_material(MAT, &MaterialDesc { tint: [1.0; 4], ..Default::default() });
+    r.upsert_object(FLOOR, floor_mesh());
+    r.set_animated_lights(&[light, steady], &patterns, [0.0; 3], 0.0);
+    r.render_view(0, &params(RenderMode::Lit), &Overlay::default());
+    let mut seen = std::collections::HashSet::new();
+    for time in [0.1, 0.2, 0.3, 0.45, 0.5] {
+        let content = r.content_generation();
+        let lighting = r.lighting_generation(0);
+        let changed = r.animate_lights(time);
+        assert_eq!(r.content_generation(), content, "a style step leaves the scene alone at {time}");
+        assert_eq!(r.lighting_generation(0) > lighting, changed, "the 3D views draw again when the light changed");
+        r.render_view(0, &params(RenderMode::Lit), &Overlay::default());
+        let got = (pixel(&r, 64, 64), pixel(&r, 90, 50));
+        assert_eq!(got, full(time), "style step at {time} draws like a full rebuild");
+        seen.insert(got.0);
+    }
+    assert!(seen.len() >= 3, "the style pattern shows: {seen:?}");
+    assert!(!r.animate_lights(0.5), "the same time changes nothing");
+}

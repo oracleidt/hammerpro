@@ -188,6 +188,7 @@ The images are stored in the map (`bgimages_plus` block of the VMF), so they tra
 | **Visgroup colors** | Brushes drawn in the color of their visgroup. | Off |
 | **Use object colors in 2D** (`object_colors_2d`) | Brushes and entities drawn in their display color (see [Display colors](display-colors.md)); off: the classic look. | On |
 | **Object colors in 3D wireframe and flat** (`object_colors_3d`) | The 3D view uses the display colors in wireframe and flat mode. | Off |
+| **Tint func_detail brushes** (`brush.detail.tint`, **View > Display options**) | func_detail brushes get a blue tint in 3D and a blue outline in 2D (see [func_detail](func-detail.md)). | Off |
 
 ## Tips
 

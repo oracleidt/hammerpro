@@ -278,6 +278,8 @@ pub(crate) struct PipelineSet {
     pub chunk_faded: [[wgpu::RenderPipeline; 2]; 2],
     pub prepass: [wgpu::RenderPipeline; 2],
     pub chunk_equal: [wgpu::RenderPipeline; 2],
+    pub model_prepass: [wgpu::RenderPipeline; 2],
+    pub model_equal: [wgpu::RenderPipeline; 2],
     pub model: [[wgpu::RenderPipeline; 2]; MESH_PASSES],
     pub model_faded: [[wgpu::RenderPipeline; 2]; 2],
     pub edge_depth: wgpu::RenderPipeline,
@@ -856,19 +858,19 @@ impl PipelineSet {
                 0.0,
             ),
         };
-        let prepass_pipe = |two_sided: bool| {
+        let prepass_pipe = |vs: &str, buffers: &Buffers<'_>, two_sided: bool| {
             crate::pipeline_cache::with(device, |cache| {
                 device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                     label: Some("hp-render depth prepass"),
                     layout: Some(&shared.layout_view),
                     vertex: wgpu::VertexState {
                         module: &shared.mesh,
-                        entry_point: Some("vs_chunk"),
+                        entry_point: Some(vs),
                         compilation_options: wgpu::PipelineCompilationOptions {
                             constants: &[("ALPHA_TEST", 0.0), ("BLEND_MODE", 0.0), ("TINT_FILTER", 1.0)],
                             zero_initialize_workgroup_memory: false,
                         },
-                        buffers: &chunk_vb,
+                        buffers,
                     },
                     primitive: wgpu::PrimitiveState {
                         topology: wgpu::PrimitiveTopology::TriangleList,
@@ -902,13 +904,18 @@ impl PipelineSet {
                 })
             })
         };
-        let prepass = [prepass_pipe(false), prepass_pipe(true)];
+        let prepass = [prepass_pipe("vs_chunk", &chunk_vb, false), prepass_pipe("vs_chunk", &chunk_vb, true)];
         let chunk_equal = [false, true].map(|two| mesh("vs_chunk", &chunk_vb, MeshPass::Opaque, two, true));
+        let model_prepass =
+            [prepass_pipe("vs_model", &model_mesh_vb, false), prepass_pipe("vs_model", &model_mesh_vb, true)];
+        let model_equal = [false, true].map(|two| mesh("vs_model", &model_mesh_vb, MeshPass::Opaque, two, true));
         Self {
             chunk,
             chunk_faded,
             prepass,
             chunk_equal,
+            model_prepass,
+            model_equal,
             model,
             model_faded,
             edge_depth: edge(1.0, true),

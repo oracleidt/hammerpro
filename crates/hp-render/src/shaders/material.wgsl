@@ -366,6 +366,11 @@ fn bump_to_world(v: vec3<f32>, f: UvFrame, n: vec3<f32>) -> vec3<f32> {
     return f.t * v.x + f.b * v.y + n * v.z;
 }
 
+fn ldr_lightmap_shade(albedo: vec3<f32>, light: vec3<f32>) -> vec3<f32> {
+    let gamma_light = pow(max(light, vec3<f32>(0.0)), vec3<f32>(1.0 / 2.2));
+    return srgb_to_linear(min(linear_to_srgb(albedo) * gamma_light, vec3<f32>(1.0)));
+}
+
 fn linear_to_srgb(c: vec3<f32>) -> vec3<f32> {
     let x = max(c, vec3<f32>(0.0));
     let hi = 1.055 * pow(x, vec3<f32>(1.0 / 2.4)) - 0.055;

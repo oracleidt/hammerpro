@@ -79,6 +79,29 @@ pub fn go_to(state: &mut AppState, f: &Finding) {
     state.cameras.center_2d(c);
 }
 
+const DETAIL_CODE: &str = "detail_candidates";
+
+pub fn select_detail(state: &mut AppState, f: &Finding) -> usize {
+    let scene = state.doc.scene();
+    let objs: Vec<hp_editor::ObjRef> = f
+        .objects
+        .iter()
+        .copied()
+        .filter(|o| match *o {
+            hp_editor::ObjRef::Solid(id) => scene.solid(id).is_some_and(|n| n.owner == hp_editor::Owner::World),
+            hp_editor::ObjRef::Entity(_) => false,
+        })
+        .collect();
+    let n = objs.len();
+    if n == 0 {
+        state.notify(hp_app::Severity::Info, t!("optimize.select_none"));
+    } else {
+        state.doc.set_selection(&objs);
+        state.notify(hp_app::Severity::Info, tf!("optimize.selected_detail", n));
+    }
+    n
+}
+
 impl MapDialog for OptimizeWindow {
     fn show(&mut self, ctx: &egui::Context, state: &mut AppState) {
         if !state.runtime.optimize.show {
@@ -196,6 +219,15 @@ impl OptimizeWindow {
                                 state.runtime.optimize.selected = Some(i);
                                 go_to(state, f);
                             }
+                            if f.code == DETAIL_CODE
+                                && ui
+                                    .button(t!("optimize.select_these"))
+                                    .on_hover_text(t!("optimize.select_these_tip"))
+                                    .clicked()
+                            {
+                                state.runtime.optimize.selected = Some(i);
+                                select_detail(state, f);
+                            }
                         });
                     });
                     ui.label(finding_text(f));
@@ -260,6 +292,13 @@ mod tests {
         assert!((state.cameras.cam3d.pos - DVec3::new(100.0, 200.0, 300.0)).length() > 10.0);
         go_to(&mut state, &obj);
         assert!(state.doc.selection().objects.iter().eq([hp_editor::ObjRef::Solid(2)].iter()));
+        let detail = Finding::new(Topic::Detail, DETAIL_CODE, Impact::Medium, "m".to_owned())
+            .objects(vec![hp_editor::ObjRef::Solid(2), hp_editor::ObjRef::Solid(999_999)]);
+        let before = state.doc.scene_revision();
+        let n = select_detail(&mut state, &detail);
+        let world_two = state.doc.scene().solid(2).is_some_and(|s| s.owner == hp_editor::Owner::World);
+        assert_eq!(n, usize::from(world_two));
+        assert_eq!(state.doc.scene_revision(), before, "selecting never edits the map");
         state.runtime.optimize.error = Some("x".to_owned());
         run_ctx(&mut state, |ctx, state| w.show(ctx, state));
     }

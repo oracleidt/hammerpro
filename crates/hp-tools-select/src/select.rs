@@ -249,6 +249,7 @@ pub struct SelectTool {
     drag: Option<Drag>,
     pending: Option<PendingBox>,
     hover: Hover,
+    hover_motion: hp_app::view::CameraMotion,
     cycle: Option<ClickCycle>,
     mode_before_click: Option<HandleMode>,
     pick_click: Option<PickClick>,
@@ -282,6 +283,7 @@ impl SelectTool {
             drag: None,
             pending: None,
             hover: Hover::default(),
+            hover_motion: hp_app::view::CameraMotion::default(),
             cycle: None,
             mode_before_click: None,
             pick_click: None,
@@ -656,7 +658,14 @@ impl SelectTool {
             pitch: cam.pitch_deg,
             mode: state.select_mode(),
         };
+        let gliding = self.hover_motion.gliding([cam.pos.x, cam.pos.y, cam.pos.z, cam.yaw_deg, cam.pitch_deg]);
         if self.hover.key == Some(key) {
+            return;
+        }
+        let only_camera = self.hover.key.is_some_and(|k| {
+            k.view == key.view && k.pos == key.pos && k.revision == key.revision && k.mode == key.mode
+        });
+        if only_camera && gliding {
             return;
         }
         self.hover.key = Some(key);

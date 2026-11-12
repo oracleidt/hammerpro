@@ -487,6 +487,7 @@ impl CompileDialog {
                 match b {
                     CompileBrowse::GameExe => settings_ui::BrowseTarget::GameExe,
                     CompileBrowse::MapsDir => settings_ui::BrowseTarget::MapsDir,
+                    CompileBrowse::ModelCompiler => settings_ui::BrowseTarget::ModelCompiler,
                 },
             );
         }

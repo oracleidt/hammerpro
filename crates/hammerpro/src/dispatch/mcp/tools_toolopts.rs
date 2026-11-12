@@ -47,9 +47,9 @@ domain! { "tool options";
         tool (mode: carve, extrude; depth; through; new_faces: face, current), the bevel tool (radius, segments, \
         inverse, new_faces: face, current), the vertex tool (merge_distance 0 to 16, weld_distance 0.001 to 64 and weld_target: center, first, last, for the weld_brush_vertices tool and the weld actions), the physics simulator (simulate: run that many seconds of physics on the selected brushes, props and ragdolls at once, paused afterwards; paused; keep: apply the positions and ragdoll poses in one undo step; reset; simulated and bodies, read only; gravity and the other values are the physics.* settings) and the displacement tool's brush (mode: select, geometry, alpha, sculpt, tag; \
         effect; axis: normal, subdiv, center, view, view_flat (toward the camera on X and Y only), x, y, z, \
-        custom; radius, strength (intensity), smooth, \
-        target height, falloff, spatial, line of sight, autosew (live sewing), selected only, continuous, alpha \
-        effect, value and strength, blend channel, sculpt push, carve, project, pinch, grab, inflate and flatten settings with bounds limit and \
+        custom; radius (1 to 16384), strength (intensity), smooth, smooth_boost (smoothing multiplier 1 to 64), effect slope with \
+        slope_brush_start, slope_brush_end and slope_brush_strength, target height and height_reference (face or world), falloff, spatial, line of sight, autosew (live sewing), selected only, continuous, alpha \
+        effect, value and strength, blend channel, sculpt push, carve, project, pinch, grab, inflate and flatten settings (flatten_plane average, fixed or target) with bounds limit and \
         falloff position and final, tag kind and value, grid and select masks, and the terrain options of the Tools section: noise_type random or fractal, noise_scale, noise_octaves, noise_persistence, terrain_seed, thermal_* and hydraulic_*, run by terrain_displacements, the height blending options blend_*, run by blend_displacements, and the slope options slope_*, run by control_slope and select_displacements_by_slope). The displacement options are \
         saved with the settings. Default: every tool that has options, and which tool is active.",
         { "tool": choice("Only this tool.", TOOL_NAMES) }, [];

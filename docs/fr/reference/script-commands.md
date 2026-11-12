@@ -44,7 +44,7 @@
 | `move POS` | Déplace le pointeur. |
 | `click POS [bouton] [mods]` | Appui et relâchement. |
 | `dclick POS [bouton] [mods]` | Double clic. |
-| `drag POS POS [bouton] [étapes] [mods]` | Appuie à la première position, va à la seconde en `étapes` mouvements (8 par défaut), relâche. Les modificateurs restent maintenus pendant tout le glisser. |
+| `drag POS POS [bouton] [étapes] [mods] [maintien]` | Appuie à la première position, va à la seconde en `étapes` mouvements (8 par défaut), garde le bouton enfoncé là pendant `maintien` images (0 par défaut), relâche. Les modificateurs restent maintenus pendant tout le glisser. Mettez `-` pour aucun modificateur quand vous donnez `maintien`. |
 | `press POS [bouton] [mods]` | Appuie seulement sur un bouton de souris : il reste enfoncé pendant les commandes suivantes (`idle`, `move`...). |
 | `release POS [bouton] [mods]` | Relâche un bouton enfoncé avec `press`. |
 | `scroll POS DY [mods]` | Molette. Un DY positif zoome ou avance. `scroll @v1:0.5,0.5 1 ctrl` change la taille de la grille. |
@@ -244,13 +244,18 @@ Pour biseauter depuis un script, pointez l'arête et envoyez sa touche : `move @
 | Clé | Valeurs |
 |---|---|
 | `mode` | `select`, `geometry` (aussi `paint`), `alpha`, `sculpt` ou `tag`. |
-| `effect` | Peinture de géométrie : `raise`, `lower`, `smooth`, `relax` ou `set` (aussi `raise_to`). |
+| `effect` | Peinture de géométrie : `raise`, `lower`, `smooth`, `relax`, `set` (aussi `raise_to`) ou `slope`. |
 | `axis` | `normal`, `subdiv`, `center` (aussi `brush_center`), `view`, `x`, `y`, `z` ou `custom`. |
 | `custom_axis` | Direction de l'axe personnalisé, `x,y,z`. |
-| `radius` | Rayon du pinceau en unités, 1 à 8192. |
+| `radius` | Rayon du pinceau en unités, 1 à 16384. |
 | `strength` | Vitesse de montée et de descente en unités par seconde, 0 à 8192. |
 | `smooth` | Force du lissage, 0 à 1. |
-| `target_height` | Hauteur de l'effet set, -16384 à 16384. |
+| `smooth_boost` | Multiplicateur du lissage, 1 à 64 (jusqu'à 16 passes de moyenne par échantillon du pinceau). |
+| `target_height` | Hauteur de l'effet set et du plan `target` d'aplanissement, -16384 à 16384. |
+| `height_reference` | `face` (la hauteur cible est au-dessus de la face de base de chaque displacement) ou `world` (une coordonnée du monde le long de l'axe). |
+| `slope_brush_start`, `slope_brush_end` | Points de l'effet pente, `x y z` en unités du monde, ou `none`. |
+| `sample_point` | Le point échantillonné marqué dans la vue 3D, `x y z`, ou `none`. |
+| `slope_brush_strength` | Effet pente : part du chemin vers la pente par échantillon du pinceau, 0 à 1. |
 | `falloff` | `constant`, `linear` ou `smooth`. |
 | `spatial` | on/off : distance 3D sur la surface (peint les murs et à travers les tuiles). |
 | `line_of_sight` | on/off : seulement ce que la caméra voit au niveau du pinceau. |

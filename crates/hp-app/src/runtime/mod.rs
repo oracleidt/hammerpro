@@ -50,8 +50,8 @@ pub use health::{HealthRuntime, LeakResult};
 pub use helpers::HelpersRuntime;
 pub use instances::InstancesRuntime;
 pub use lab::{
-    DEFAULT_CAMERA_DISTANCE, DEFAULT_PLAYER_MODEL, FlyTextureOp, FlyTextureRuntime, LabRuntime, LightStyleReport,
-    ParticlePreviewRuntime, PlayerPlace, PlayerState, PropCreationRequest, TrainReport,
+    CombineRequest, DEFAULT_CAMERA_DISTANCE, DEFAULT_PLAYER_MODEL, FlyTextureOp, FlyTextureRuntime, LabRuntime,
+    LightStyleReport, ParticlePreviewRuntime, PlayerPlace, PlayerState, PropCreationRequest, TrainReport,
 };
 pub use launch::{ContentUse, GameState, LaunchRuntime, MapLoadReport, content_use};
 pub use lighting::{
@@ -63,8 +63,8 @@ pub use mesh::{DispLoopRequest, EdgeRequest, ErosionDialog, MeshRuntime, Terrain
 pub use mesh_disp::MeshDispRuntime;
 pub use optimize::{ANALYSIS_PORTALS, OptimizeRuntime};
 pub use perf::{
-    BenchRequest, BenchResult, FRAME_PHASES, FramePhases, PerfLevel, PerfPlan, PerfRuntime, PerfSample, Reflections,
-    RepaintCount, ViewCost,
+    BenchFrame, BenchRequest, BenchResult, FRAME_PHASES, FramePhases, GpuPasses, PerfLevel, PerfPlan, PerfRuntime,
+    PerfSample, Reflections, RepaintCount, ViewCost,
 };
 pub use placement::{
     CreatePrefabRequest, FileStamp, PlacementRuntime, PrefabCache, PrefabLoad, PrefabTokens, RealDims, UnitDims,

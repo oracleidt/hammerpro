@@ -30,7 +30,7 @@ La rangée de boutons en haut du panneau choisit ce que font les clics et les gl
 | Mode | Effet |
 | --- | --- |
 | **Sélection** | Cliquez sur des faces pour les sélectionner (`Ctrl` inverse, `Maj` inverse tous les displacements du solide). Maintenez et balayez pour sélectionner toutes les faces survolées |
-| **Sculpter** (par défaut) | Élève, abaisse, lisse ou fixe la hauteur de la surface au pinceau |
+| **Sculpter** (par défaut) | Élève, abaisse, lisse, fixe la hauteur de la surface ou l'amène sur une pente au pinceau |
 | **Peindre l'alpha** | Peint le mélange entre les textures d'un matériau de fusion |
 | **Modeler** | Pousse la surface jusqu'à une couche, creuse un profil le long du trait, la projette sur des brushes, ou la pince, la saisit, la gonfle et l'aplatit |
 | **Marquages** | Peint les marquages des triangles : praticable forcé, constructible forcé ou retiré |
@@ -48,9 +48,12 @@ On peint, on modèle et on marque dans la vue 3D. Un cercle de pinceau suit la s
 | `Ctrl` en modelant | Inverse : Pousser enfonce, Creuser élève une crête |
 | `Maj` en modelant | Lisse à la place (intensité : **Lissage**) |
 | Glisser avec le clic droit (vue 3D, modes de peinture) | Change le rayon du pinceau : 150 points vers la droite le doublent, vers la gauche le divisent par deux |
+| Clic droit sans glisser (vue 3D : Élever à, Aplanir avec le plan Hauteur cible, alpha Fixer, Pente) | Échantillonne la surface sous le curseur : la hauteur cible, la valeur alpha ou un point de la pente (voir [Prélever une hauteur](#prélever-une-hauteur)) |
+| `Ctrl` + clic droit (Pente) | Déplace sous le curseur le point de pente le plus proche en gardant sa hauteur |
+| `Ctrl` en lissant (effet Lisser, ou lissage avec `Maj` en modelant) | Lisse 4 fois plus fort tant qu'il est maintenu |
 | `Alt` + glisser avec le clic gauche (vue 3D, modes de peinture) | Même changement de rayon (geste de Hammer) |
 | `Alt` + clic droit sur une face (vue 3D) | Règle l'axe **Personnalisé** sur la normale de la surface à cet endroit et passe l'axe en **Personnalisé** |
-| `Échap` | Annule le trait en cours (ses changements sont défaits) ; sinon vide la sélection de faces et désélectionne les solides à displacements sélectionnés |
+| `Échap` | Annule le trait en cours (ses changements sont défaits) ; avec l'effet Pente, efface les points de la pente ; sinon vide la sélection de faces et désélectionne les solides à displacements sélectionnés |
 
 La couleur du cercle change selon l'effet, et il devient gris avec la mention « Non sélectionné : pas peint » au-dessus des displacements qu'il n'a pas le droit de peindre (voir **Sélection seulement**). La barre d'état rappelle toujours les gestes du mode actif.
 
@@ -119,10 +122,14 @@ Section **Sculpter la géométrie** (mode **Sculpter**) :
 | **Élever** | Pousse la surface le long de l'axe de peinture | Choisi |
 | **Abaisser** | Enfonce la surface le long de l'axe de peinture | |
 | **Lisser** | Égalise les hauteurs des sommets voisins le long de l'axe de peinture (les displacements connectés sont lissés ensemble et restent cousus) | |
-| **Élever à** | Amène la surface à une hauteur cible au-dessus de la face | |
+| **Élever à** | Amène la surface à une hauteur cible | |
+| **Pente** | Amène la surface sur la pente entre deux points (voir [Pinceau Pente](#pinceau-pente)) | |
 | **Intensité** (Élever, Abaisser) | Unités déplacées par seconde au centre du pinceau (1 à 8192) | 64 /s |
 | **Intensité** (Lisser) | Vitesse de lissage (0 à 1) | 0,5 |
-| **Hauteur cible** (Élever à) | Hauteur au-dessus de la face le long de l'axe de peinture (-16384 à 16384) | 0 |
+| **Multiplicateur** (Lisser) | Rend le lissage bien plus fort : l'intensité est multipliée (x1 à x64) et appliquée en jusqu'à 16 passes de moyenne par échantillon du pinceau, jusqu'à une moyenne presque complète. `Ctrl` en lissant la multiplie encore par 4 | x1 |
+| **Hauteur cible** (Élever à) | Hauteur le long de l'axe de peinture (-16384 à 16384). Un clic droit l'échantillonne | 0 |
+| **Hauteur depuis** (Élever à) | **Face** : la hauteur cible est mesurée au-dessus de la face de base de chaque displacement (Hammer). **Monde** : c'est une coordonnée du monde le long de l'axe, donc chaque displacement va au même niveau quelle que soit sa face de base | Face |
+| **Intensité** (Pente) | Part du chemin vers la pente à chaque échantillon du pinceau (0 à 1, 1 met la surface directement sur la pente) | 0,5 |
 | **Axe** | Direction de déplacement des sommets (voir ci-dessous) | Normale de la face |
 
 ### Axe de peinture
@@ -136,6 +143,33 @@ Section **Sculpter la géométrie** (mode **Sculpter**) :
 | **Vue (caméra) horizontale** | Vers la caméra 3D sur X et Y seulement : la direction de vue au début du trait, mise à plat sur le sol, donc les sommets ne montent ni ne descendent jamais. Pratique pour pousser une falaise ou un mur en avant ou en arrière depuis l'endroit où vous regardez. En regardant droit vers le bas, le bas de la vue donne la direction. Inversé : en s'éloignant de la caméra |
 | **X**, **Y**, **Z (haut)** | Un axe du monde |
 | **Personnalisé** | Une direction choisie : saisissez X, Y, Z sous la liste, ou faites `Alt` + clic droit sur une face dans la vue 3D pour prendre sa normale (direction Selected de Hammer). Par défaut 0 0 1 |
+
+## Prélever une hauteur
+
+Comme les outils de terrain de Cities: Skylines, un clic droit sans glisser dans la vue 3D prend une valeur sur la surface sous le curseur, pour reproduire une hauteur ailleurs. Le rayon se change toujours en glissant au clic droit : seul un clic qui ne bouge pas échantillonne.
+
+| Mode | Ce que le clic droit échantillonne |
+| --- | --- |
+| **Sculpter > Élever à** | La **Hauteur cible** au point sous le curseur. Sur un displacement (ou un brush au-dessus ou en dessous d'un displacement) c'est la hauteur au-dessus de la face de ce displacement ; avec **Hauteur depuis : Monde**, ou quand aucun displacement n'est sous le point (le dessus d'un brush seul), c'est la hauteur du monde le long de l'axe et **Hauteur depuis** passe à **Monde** |
+| **Modeler > Aplanir** avec le plan **Hauteur cible** | La même hauteur cible |
+| **Sculpter > Pente** | Le point de départ, puis le point d'arrivée (voir ci-dessous) |
+| **Peindre l'alpha > Fixer** | La **Valeur** : l'alpha du sommet le plus proche |
+
+Toute surface s'échantillonne : displacements et brushes. Un point vert marque le point échantillonné, avec un anneau vert au niveau cible au-dessus ou en dessous et une étiquette, et ils restent dans la vue 3D tant que Élever à ou le plan Hauteur cible d'Aplanir est choisi, aussi quand l'échantillon vient du MCP ou de l'option `sample_point`, pour que les captures les montrent. Le pinceau sous le curseur montre le niveau vers lequel il peint : un anneau orange au niveau cible, un trait depuis la surface jusqu'à lui et une étiquette avec la hauteur. Les points de pente placés par le MCP ou tapés dans le panneau sont dessinés comme ceux placés au clic.
+
+## Pinceau Pente
+
+**Sculpter > Pente** fait des rampes, comme l'outil Pente de Cities: Skylines : les sommets sous le pinceau se déplacent le long de l'axe vers la ligne droite entre deux points, chacun à la hauteur de cette ligne à sa place (interpolée entre les deux hauteurs, gardée à la hauteur de départ ou d'arrivée au-delà). Servez-vous en pour les rampes de route, ou pour raccorder une zone haute à une zone basse.
+
+1. Clic droit sur la surface où commence la pente : son point et sa hauteur y sont échantillonnés (**A** vert).
+2. Clic droit où elle finit (**B** orange). Vous pouvez aussi sauter ce clic et commencer à peindre : l'arrivée est alors prise là où le trait commence.
+3. Maintenez le bouton gauche et peignez le long de la pente.
+
+Pendant le travail, la vue 3D dessine la ligne de **A** à **B**, les deux hauteurs, la pente en degrés et en pourcentage, et le niveau de la pente sous le pinceau (anneau orange et étiquette). Un troisième clic droit commence une nouvelle pente. `Ctrl` + clic droit déplace le point le plus proche sous le curseur en gardant sa hauteur. Le panneau montre les deux points en X, Y, Z (tapez une hauteur pour la régler à la main), la pente, et les boutons **Inverser**, **Effacer**, **Utiliser comme chemin** (copie les deux points dans le chemin de [Pente constante le long d'un chemin](#pente-constante-le-long-dun-chemin), qui règle toute une largeur de route d'un coup) et **Depuis le chemin** (prend le premier et le dernier point de ce chemin). `Échap` efface les points.
+
+Le rayon, l'atténuation, l'**Intensité**, l'axe, **Spatial**, **Ligne de vue**, **Sélection seulement** et **Coudre en peignant** s'appliquent comme pour les autres pinceaux. Tous les displacements suivent la même ligne du monde, les displacements cousus restent donc ensemble ; chaque trait est une étape d'annulation.
+
+MCP : `sample_displacement_height` (`point`, `direction`, `into` : `target`, `slope_start`, `slope_end`, `alpha` ou `none`) échantillonne comme un clic droit et répond les hauteurs ; `paint_displacement_slope` (`start`, `end`, `points`, `strength`, `radius`, `faces`) peint une pente en un appel ; `stroke_displacement` accepte `boost` (comme `Ctrl` en lissant). Les options sont `effect` `slope`, `slope_brush_start`, `slope_brush_end`, `slope_brush_strength`, `height_reference` (`face` ou `world`), `sample_point` (le point échantillonné marqué, ou `none`), `smooth_boost` et `flatten_plane` `target`.
 
 ## Peindre l'alpha
 
@@ -162,6 +196,7 @@ La rangée **Texture** n'apparaît que si **Peindre les mélanges à 4 textures*
 - **Pas encore de rangées.** Un displacement avec un matériau Lightmapped_4WayBlend et sans rangées à 4 textures montre son alpha de sommet comme texture 2 (la peinture **2 textures**), et le premier trait sur un bouton de texture part de cet alpha. Le compilateur écrit la même chose, donc le jeu montre ce que montre l'éditeur. Le VBSP de Valve ignore l'alpha d'un tel displacement (le jeu ne montre alors que la texture 1).
 - **Dans le jeu.** Le compilateur écrit les rangées dans le lump multiblend des displacements du BSP et marque chaque displacement qui en a, octet pour octet comme le VBSP de Garry's Mod : les mélanges s'affichent dans Garry's Mod et les jeux Source 2013.
 - **Déplacer et retourner** un displacement garde ses rangées à 4 textures à leur place, comme son alpha. Aplanir repart de la texture 1 ; changer la puissance avec **Garder la forme** rééchantillonne les rangées.
+- **Depuis des images.** **Fichier > Importer > Importer des masques de blend...** peint les lignes (ou l'alpha) depuis World Machine, Gaea ou toute splat map, et **Exporter les masques de blend...** les réécrit en images (voir [Terrain](terrain.md#importer-des-masques-de-blend)).
 
 ## Modeler
 
@@ -191,6 +226,7 @@ Les quatre utilisent le rayon et l'atténuation du pinceau, comptent pour une se
 | **Intensité** | Aplanir | Part de la distance au plan comblée à chaque pas (0 à 1) | 0,5 |
 | **Plan : Moyen** | Aplanir | Le plan est ajusté de nouveau sur les sommets sous le pinceau à chaque pas | Choisi |
 | **Plan : Fixe** | Aplanir | Le plan est pris une seule fois, au début du trait, et tout le trait aplanit vers lui | |
+| **Plan : Hauteur cible** | Aplanir | Aplanit vers le niveau de **Hauteur cible** et **Hauteur depuis** (les mêmes valeurs que Élever à ; un clic droit les échantillonne) | |
 | **Portée** | Projeter | Les brushes plus éloignés que cette distance de la surface sont ignorés (1 à 16384) | 512 |
 | **Axe** | Tous | Direction du modelage (même liste que pour sculpter, sans Normale de la surface) | Normale de la face |
 | **Lissage** | Tous | Intensité du lissage appliqué en maintenant `Maj` (0 à 1) | 0,5 |
@@ -216,7 +252,7 @@ Section **Pinceau**, présente dans tous les modes sauf **Sélection** :
 
 | Option | Effet | Par défaut |
 | --- | --- | --- |
-| **Rayon** | Rayon du pinceau en unités du monde (curseur de 1 à 2048 ; le glisser au clic droit ou avec `Alt` monte jusqu'à 8192) | 64 |
+| **Rayon** | Rayon du pinceau en unités du monde (curseur logarithmique, glisser au clic droit ou avec `Alt` : 1 à 16384). Seuls les displacements atteints par le pinceau sont parcourus, un très grand pinceau sur un grand terrain reste donc fluide | 64 |
 | **Atténuation** | **Constante**, **Linéaire** ou **Douce** | Douce |
 | **Spatial** | Mesure la distance du pinceau en 3D sur la surface au lieu du plan de la face (peint les murs et d'une dalle à l'autre). Désactivé : seuls le displacement sous le pinceau et les dalles de terrain qui lui sont reliées sont peints | Désactivé |
 | **Ligne de vue** | Ne peint que les displacements visibles par la caméra sous le pinceau (pas le terrain caché derrière une colline ou sous un pont) | Désactivé |
@@ -443,7 +479,7 @@ MCP : `blend_displacements` (`sets` en listes d'ids de solides, ou `faces`, `ids
 
 ## Scripts et MCP
 
-Chaque option du panneau a un nom pour les scripts (`tool_option CLÉ VALEUR`, voir [Commandes de script](../reference/script-commands.md)) et pour les outils MCP `get_tool_options` et `set_tool_options` : `mode`, `effect`, `axis`, `custom_axis`, `radius`, `strength`, `smooth`, `target_height`, `falloff`, `spatial`, `line_of_sight`, `autosew`, `selected_only`, `continuous`, `alpha_effect`, `alpha_value`, `alpha_strength`, `blend_channel`, `sculpt` (`push`, `carve`, `project`, `pinch`, `grab`, `inflate`, `flatten`, `relax`), `push_mode`, `sculpt_bounds`, `falloff_position`, `falloff_final`, `push_distance`, `push_percent`, `carve_depth`, `carve_profile`, `project_range`, `flatten_plane`, `flatten_strength`, `relax_strength`, `scale_factor`, `noise_type`, `noise_scale`, `noise_octaves`, `noise_persistence`, `terrain_seed`, `thermal_iterations`, `thermal_talus`, `thermal_strength`, `hydraulic_iterations`, `hydraulic_rain`, `hydraulic_evaporation`, `hydraulic_capacity`, `hydraulic_deposition`, `hydraulic_strength`, `blend_width`, `blend_falloff`, `blend_mode`, `blend_match_edges`, `blend_alpha`, `blend_match_powers`, `slope_max_angle`, `slope_terrace`, `slope_terrace_step`, `slope_terrace_strength`, `slope_ramp_angle`, `slope_ramp_direction`, `slope_ramp_pivot`, `slope_ramp_strength`, `slope_ramp_detail`, `slope_uniform_strength`, `slope_uniform_detail`, `slope_path`, `slope_path_width`, `slope_path_falloff`, `slope_path_strength`, `slope_smooth_passes`, `slope_smooth_strength`, `slope_select_angle`, `slope_select_mode`, `slope_select_match`, `slope_select_op`, `tag_kind`, `tag_value`, `mask_grid`, `mask_select`, `keep_shape`. `axis` prend `normal`, `subdiv`, `center`, `view`, `view_flat` (Vue (caméra) horizontale), `x`, `y`, `z` ou `custom`. D'autres outils MCP créent, peignent, cousent, subdivisent, marquent et inspectent les displacements (`displacement_to_mesh` les écrit en OBJ, `mesh_to_displacement`, `conform_displacements_to_mesh` et `tile_displacements_from_selection` les créent ou les modèlent à partir d'un maillage 3D, `terrain_displacements` lance le bruit fractal, l'érosion thermique ou hydraulique avec ces options, `blend_displacements`, `control_slope` et `select_displacements_by_slope` fusionnent les hauteurs et contrôlent ou sélectionnent par pente, `create_displacements`, `stroke_displacement`, `paint_displacement`, `sew_displacements`, `resample_displacements`...) ; `get_displacement` renvoie les rangées du mélange à 4 textures (`multiblend`) et `set_displacement_data` les écrit (`multiblend_weights`, `alphablend`, `multiblend_colors`, `remove_multiblend`), voir la [référence des outils MCP](../../MCP.md) (en anglais).
+Chaque option du panneau a un nom pour les scripts (`tool_option CLÉ VALEUR`, voir [Commandes de script](../reference/script-commands.md)) et pour les outils MCP `get_tool_options` et `set_tool_options` : `mode`, `effect`, `axis`, `custom_axis`, `radius`, `strength`, `smooth`, `smooth_boost`, `target_height`, `height_reference`, `slope_brush_start`, `slope_brush_end`, `sample_point`, `slope_brush_strength`, `falloff`, `spatial`, `line_of_sight`, `autosew`, `selected_only`, `continuous`, `alpha_effect`, `alpha_value`, `alpha_strength`, `blend_channel`, `sculpt` (`push`, `carve`, `project`, `pinch`, `grab`, `inflate`, `flatten`, `relax`), `push_mode`, `sculpt_bounds`, `falloff_position`, `falloff_final`, `push_distance`, `push_percent`, `carve_depth`, `carve_profile`, `project_range`, `flatten_plane`, `flatten_strength`, `relax_strength`, `scale_factor`, `noise_type`, `noise_scale`, `noise_octaves`, `noise_persistence`, `terrain_seed`, `thermal_iterations`, `thermal_talus`, `thermal_strength`, `hydraulic_iterations`, `hydraulic_rain`, `hydraulic_evaporation`, `hydraulic_capacity`, `hydraulic_deposition`, `hydraulic_strength`, `blend_width`, `blend_falloff`, `blend_mode`, `blend_match_edges`, `blend_alpha`, `blend_match_powers`, `slope_max_angle`, `slope_terrace`, `slope_terrace_step`, `slope_terrace_strength`, `slope_ramp_angle`, `slope_ramp_direction`, `slope_ramp_pivot`, `slope_ramp_strength`, `slope_ramp_detail`, `slope_uniform_strength`, `slope_uniform_detail`, `slope_path`, `slope_path_width`, `slope_path_falloff`, `slope_path_strength`, `slope_smooth_passes`, `slope_smooth_strength`, `slope_select_angle`, `slope_select_mode`, `slope_select_match`, `slope_select_op`, `tag_kind`, `tag_value`, `mask_grid`, `mask_select`, `keep_shape`. `axis` prend `normal`, `subdiv`, `center`, `view`, `view_flat` (Vue (caméra) horizontale), `x`, `y`, `z` ou `custom`. D'autres outils MCP créent, peignent, cousent, subdivisent, marquent et inspectent les displacements (`displacement_to_mesh` les écrit en OBJ, `mesh_to_displacement`, `conform_displacements_to_mesh` et `tile_displacements_from_selection` les créent ou les modèlent à partir d'un maillage 3D, `terrain_displacements` lance le bruit fractal, l'érosion thermique ou hydraulique avec ces options, `blend_displacements`, `control_slope` et `select_displacements_by_slope` fusionnent les hauteurs et contrôlent ou sélectionnent par pente, `create_displacements`, `stroke_displacement`, `paint_displacement`, `sample_displacement_height`, `paint_displacement_slope`, `sew_displacements`, `resample_displacements`...) ; `get_displacement` renvoie les rangées du mélange à 4 textures (`multiblend`) et `set_displacement_data` les écrit (`multiblend_weights`, `alphablend`, `multiblend_colors`, `remove_multiblend`), voir la [référence des outils MCP](../../MCP.md) (en anglais).
 
 ## Astuces
 
@@ -451,6 +487,8 @@ Chaque option du panneau a un nom pour les scripts (`tool_option CLÉ VALEUR`, v
 - Activez **Coudre en peignant** quand vous peignez sur plusieurs displacements : aucune fissure n'apparaît et pas besoin de **Coudre** ensuite.
 - Avec des displacements sélectionnés, seuls ceux-ci sont peints. Appuyez sur `Échap` pour vider la sélection et peindre tout ce qui est sous le pinceau.
 - Utilisez **Creuser** avec le profil **U** pour les chemins et les rivières, puis **Lisser** pour adoucir les berges.
+- Pour une rampe de route, choisissez **Pente**, faites un clic droit en bas puis en haut, puis peignez le long de la route avec un rayon de la moitié de sa largeur et l'atténuation **Constante**.
+- Pour reproduire une hauteur, choisissez **Élever à**, faites un clic droit sur l'endroit à copier et peignez là où elle doit aller.
 - Utilisez **Ligne de vue** pour peindre le flanc d'une colline sans toucher au terrain derrière.
 
 ## FAQ

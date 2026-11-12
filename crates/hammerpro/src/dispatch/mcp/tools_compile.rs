@@ -193,9 +193,12 @@ domain! { "compile and play";
         light in a fraction of a second without compiling the map again, and brush edits compile the geometry \
         again. On big maps (setting lighting.visible_first, default true) the area around the camera is baked \
         first, then the whole map replaces it. With lighting.prepare (default true) the whole map is compiled and \
-        lit at low priority in the background once the map is open and edits pause, so turning the baked mode on \
+        lit at the lowest priority in the background once the map is open and edits pause, so turning the baked mode on \
         shows it at once (get_lighting_status prepared). A light edit stops a running refined pass, is shown \
-        first and the refined pass starts again after it. get_lighting_status relight tells the last update. Read the progress with get_lighting_status; set_render_mode baked shows the result. The start action always bakes the whole map and keeps the result while navigating or switching render modes. The around_camera action explicitly limits the bake to a region. Automatic entry into baked mode can use a camera-following region only when lighting.auto_scope is enabled (default false), above lighting.auto_scope_luxels_millions million luxels (default 2), within lighting.auto_scope_radius units (default 3072). get_lighting_status preview.scope tells which.",
+        first and the refined pass starts again after it. Bakes run below normal priority (setting \
+        lighting.priority) on every core but a quarter, at least two cores left free (lighting.threads); \
+        lighting.pause_minimized and lighting.pause_unfocused pause them (get_lighting_status paused). \
+        get_lighting_status relight tells the last update. Read the progress with get_lighting_status; set_render_mode baked shows the result. The start action always bakes the whole map and keeps the result while navigating or switching render modes. The around_camera action explicitly limits the bake to a region. Automatic entry into baked mode can use a camera-following region only when lighting.auto_scope is enabled (default false), above lighting.auto_scope_luxels_millions million luxels (default 2), within lighting.auto_scope_radius units (default 3072). get_lighting_status preview.scope tells which.",
         {
             "action": choice("start (default), around_camera or stop.", &["start", "around_camera", "stop"]),
             "quality": choice("Bake quality (default: the saved one).", &["draft", "normal", "final"]),
@@ -206,7 +209,8 @@ domain! { "compile and play";
         stop) and their delay (0 to 60 s), the radius of a bake around the camera (64 to 65536), and the sampling of \
         the quick pass every bake shows first: sun_samples (1 to 256), ambient_samples (sky light directions, 16 to \
         5184) and supersample. The refined pass that follows uses the bake quality. keep_bake chooses incremental \
-        light edits. mute, unmute, solo and unmute_all leave lights out of the preview (saved as the Hammer++ \
+        light edits. switchable_bounce (true by default) bounces the light of named lights in their own style, false \
+        lights them like VRAD (direct light only, like -nostylebounce on the compile). mute, unmute, solo and unmute_all leave lights out of the preview (saved as the Hammer++ \
         excluded entities, one undo step); the preview relights at once. Answers the options.",
         {
             "brightness": number("Brightness of the preview.", 0.0, 4.0),
@@ -218,6 +222,7 @@ domain! { "compile and play";
             "ambient_samples": integer("Sky light directions of the quick pass (Hammer++ Ambient Samples).", 16, 5184),
             "supersample": boolean("Supersample the shadow edges in the quick pass (Hammer++ Supersample)."),
             "keep_bake": boolean("Light edits update the shown bake incrementally (true, default, near instant) or relight every light again (false)."),
+            "switchable_bounce": boolean("Named (switchable) lights bounce in their own style (true, default) or light only what they see directly like VRAD (false)."),
             "mute": ids("Light entity ids left out of the preview (added to the muted list)."),
             "unmute": ids("Light entity ids brought back into the preview."),
             "solo": ids("Keep only these light entities in the preview (every other light is muted)."),
@@ -1208,6 +1213,9 @@ fn set_lighting_options(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     if let Some(v) = a.opt_bool("keep_bake")? {
         o.keep_bake = v;
     }
+    if let Some(v) = a.opt_bool("switchable_bounce")? {
+        o.no_style_bounce = !v;
+    }
     let (mute, unmute, solo) = (a.ids("mute")?, a.ids("unmute")?, a.ids("solo")?);
     if a.opt_bool("unmute_all")? == Some(true) {
         o.excluded_entities.clear();
@@ -1231,7 +1239,7 @@ fn lighting_options(o: &hp_editor::luxels::LightPlus) -> Value {
         "brightness": o.brightness_scale, "bounced": o.bounced, "dynamic_updates": o.incremental,
         "update_delay": o.incremental_delay, "bake_radius": o.bake_dist, "sun_samples": o.samples_sun,
         "ambient_samples": o.samples_ambient, "supersample": o.supersample, "keep_bake": o.keep_bake,
-        "muted": o.excluded_entities,
+        "switchable_bounce": !o.no_style_bounce, "muted": o.excluded_entities,
     })
 }
 
@@ -1274,6 +1282,9 @@ fn get_lighting_status(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
         })),
         "has_bake": l.has_bake,
         "stale": l.stale,
+        "paused": l.paused,
+        "threads": crate::dispatch::lighting::preview_threads(state),
+        "priority": format!("{:?}", state.settings.lighting.priority),
         "visible_first": state.settings.lighting.visible_first,
         "prepared": {
             "setting": state.settings.lighting.prepare, "preparing": l.prepared.preparing, "ready": l.prepared.ready,

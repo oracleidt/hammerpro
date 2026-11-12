@@ -116,6 +116,7 @@ struct StateKey {
     bounces: u32,
     soft_sun: u32,
     bounce_budget: usize,
+    style_bounce: bool,
 }
 
 impl StateKey {
@@ -134,6 +135,7 @@ impl StateKey {
             bounces: opts.bounces,
             soft_sun: opts.soft_sun.to_bits(),
             bounce_budget: opts.bounce_budget,
+            style_bounce: p.style_bounce,
         }
     }
 }
@@ -150,6 +152,7 @@ fn params(opts: &RadOptions) -> bake::Params {
         params.leaf_samples = 1;
     }
     params.sun_samples = params.sun_samples.max(opts.min_sun_samples);
+    params.style_bounce = !opts.no_style_bounce;
     if opts.normal_sampling {
         params = params.at_least(&bake::Params::of(RadQuality::Normal));
     }
@@ -164,6 +167,8 @@ struct Scene {
     surf: Bvh,
     surf_info: Vec<SurfTri>,
     blockers: Bvh,
+    water: Bvh,
+    water_reflectivity: Vec3A,
     static_props: props::StaticProps,
     occluders: props::Occluders,
     sky_clusters: Vec<i32>,
@@ -297,6 +302,7 @@ fn touched_by(l: &Light, f: &LitFace, dirty: &[(glam::DVec3, glam::DVec3)]) -> b
 type FaceDelta = (usize, Option<FaceLight>, Option<FaceLight>);
 
 const CHANGE_ABS: f32 = 0.05;
+const FAINT_BOUNCE: f32 = 0.05;
 const CHANGE_REL: f32 = 0.002;
 
 fn make_ctx<'a>(
@@ -325,6 +331,8 @@ fn make_ctx<'a>(
         work,
         bounce_budget: budget,
         bounce_tile_budget: budget / 4,
+        water: &scene.water,
+        water_reflectivity: scene.water_reflectivity,
     }
 }
 
@@ -439,7 +447,7 @@ fn values_len(f: &FaceLight, passes: usize, lux: usize) -> usize {
     passes * f.styles.len() * f.normals.max(1) * lux
 }
 
-fn add_aligned(dst: &mut FaceLight, src: &FaceLight, sign: f32, passes: usize, lux: usize) {
+fn add_aligned(dst: &mut FaceLight, src: &FaceLight, sign: f32, passes: usize, lux: usize, keep: Option<&[u8]>) {
     if src.values.is_empty() {
         return;
     }
@@ -464,7 +472,16 @@ fn add_aligned(dst: &mut FaceLight, src: &FaceLight, sign: f32, passes: usize, l
                 dst.styles.push(*style);
                 old_slots
             }
-            None => continue,
+            None => {
+                let bounce_only = keep.and_then(|keep| (1..dst.styles.len()).find(|&k| !keep.contains(&dst.styles[k])));
+                let Some(k) = bounce_only.filter(|_| sign > 0.0) else { continue };
+                dst.styles[k] = *style;
+                for p in 0..passes {
+                    let at = dst.index(p, k, 0, lux);
+                    dst.values[at..at + nn * lux].fill(glam::Vec3::ZERO);
+                }
+                k
+            }
         };
         for p in 0..passes {
             for n in 0..nn {
@@ -482,6 +499,10 @@ fn add_aligned(dst: &mut FaceLight, src: &FaceLight, sign: f32, passes: usize, l
 }
 
 fn prune_styles(f: &mut FaceLight, passes: usize, lux: usize) {
+    prune_styles_below(f, passes, lux, 1e-4);
+}
+
+fn prune_styles_below(f: &mut FaceLight, passes: usize, lux: usize, floor: f32) {
     let nn = f.normals.max(1);
     if f.styles.len() <= 1 || values_len(f, passes, lux) != f.values.len() {
         return;
@@ -492,7 +513,7 @@ fn prune_styles(f: &mut FaceLight, passes: usize, lux: usize) {
                 || (0..passes).any(|p| {
                     (0..nn).any(|n| {
                         let at = f.index(p, slot, n, lux);
-                        f.values[at..at + lux].iter().any(|v| v.max_element() > 1e-4)
+                        f.values[at..at + lux].iter().any(|v| v.max_element() > floor)
                     })
                 })
         })
@@ -1072,8 +1093,10 @@ impl Session {
             return Err(Stop::Cancelled);
         }
         let mut emit: Vec<(usize, Vec<Vec<Vec3A>>)> = Vec::new();
+        let mut styled_emit: HashMap<u8, Vec<(usize, bake::styles::StyleField)>> = HashMap::new();
         let mut dirty = vec![false; faces.len()];
         for (fi, old, new) in delta {
+            styled_delta(fi, old.as_ref(), new.as_ref(), passes, faces[fi].luxels(), &mut styled_emit);
             state.touched[fi] = true;
             dirty[fi] = true;
             let lux = faces[fi].luxels();
@@ -1093,12 +1116,14 @@ impl Session {
             if field.iter().flatten().any(|v| v.abs().max_element() > 1e-4) {
                 emit.push((fi, field));
             }
-            for target in [&mut state.direct[fi], &mut state.total[fi]] {
+            for total in [false, true] {
+                let keep = total.then(|| state.direct[fi].styles.clone());
+                let target = if total { &mut state.total[fi] } else { &mut state.direct[fi] };
                 if let Some(old) = &old {
-                    add_aligned(target, old, -1.0, passes, lux);
+                    add_aligned(target, old, -1.0, passes, lux, keep.as_deref());
                 }
                 if let Some(new) = &new {
-                    add_aligned(target, new, 1.0, passes, lux);
+                    add_aligned(target, new, 1.0, passes, lux, keep.as_deref());
                 }
                 for v in &mut target.values {
                     *v = v.max(glam::Vec3::ZERO);
@@ -1116,6 +1141,21 @@ impl Session {
             self.gather
                 .as_ref()
                 .and_then(|cache| incremental::bounce_delta(&ctx, cache, &emit, &mut state.total, &mut dirty))
+        };
+        let quick = match (quick, self.gather.as_ref()) {
+            (Some(n), Some(cache)) if opts.bounces > 0 && !opts.no_style_bounce && !styled_emit.is_empty() => {
+                match incremental::bounce_style_delta(&ctx, cache, &styled_emit, &mut state.total, opts.bounces) {
+                    Ok(touched) => {
+                        for fi in touched {
+                            dirty[fi] = true;
+                            prune_styles_below(&mut state.total[fi], passes, faces[fi].luxels(), FAINT_BOUNCE);
+                        }
+                        Some(n)
+                    }
+                    Err(_) => None,
+                }
+            }
+            (q, _) => q,
         };
         let outs = if quick.is_some() {
             state.bounce_dirty |= opts.bounces > 0;
@@ -1271,7 +1311,8 @@ fn write(
         let t = Instant::now();
         let prop_files = if opts.props.lighting && scene.static_props.len() > 0 {
             let bounced = opts.bounces > 0 && map.vis.clusters > 0;
-            let (files, n, _) = props::light(&ctx, &light, &scene.static_props, &opts.props, bounced, passes);
+            let (files, n, _) =
+                props::light(&ctx, &light, &scene.static_props, &opts.props, bounced, passes, ctl.cancelled);
             log(&format!("static props: {n} with vertex lighting in {} ms", t.elapsed().as_millis()));
             files
         } else {
@@ -1386,6 +1427,38 @@ fn write(
         let out = edit.to_vec().map_err(fail)?;
         (ctl.progress)(Phase::Models, 1.0);
         Ok(out)
+    }
+}
+
+fn styled_delta(
+    fi: usize,
+    old: Option<&FaceLight>,
+    new: Option<&FaceLight>,
+    passes: usize,
+    lux: usize,
+    out: &mut HashMap<u8, Vec<(usize, bake::styles::StyleField)>>,
+) {
+    let mut styles: Vec<u8> =
+        old.into_iter().chain(new).flat_map(|l| l.styles.iter().copied()).filter(|s| *s != 0).collect();
+    styles.sort_unstable();
+    styles.dedup();
+    for style in styles {
+        let mut field: bake::styles::StyleField = vec![vec![glam::Vec3::ZERO; lux]; passes];
+        for (l, sign) in [(old, -1.0f32), (new, 1.0f32)] {
+            let Some(l) = l else { continue };
+            let Some(slot) = l.styles.iter().position(|s| *s == style) else { continue };
+            for (p, row) in field.iter_mut().enumerate() {
+                let at = l.index(p, slot, 0, lux);
+                if let Some(src) = l.values.get(at..at + lux) {
+                    for (a, v) in row.iter_mut().zip(src) {
+                        *a += *v * sign;
+                    }
+                }
+            }
+        }
+        if field.iter().flatten().any(|v| v.abs().max_element() > 1e-4) {
+            out.entry(style).or_default().push((fi, field));
+        }
     }
 }
 
@@ -1588,6 +1661,7 @@ impl Scene {
         (ctl.progress)(Phase::Scene, 0.7);
         let (surf, surf_info) = surface::surface_scene(&map, &all, &lit_index);
         let blockers = surface::blocker_scene(&map);
+        let (water, water_reflectivity) = surface::water_scene(&map);
         let faces: Vec<LitFace> = all.into_iter().flatten().collect();
         let sky_clusters = surface::sky_clusters(&map);
         let luxels: usize = faces.iter().map(LitFace::luxels).sum();
@@ -1613,6 +1687,8 @@ impl Scene {
             surf,
             surf_info,
             blockers,
+            water,
+            water_reflectivity,
             static_props,
             occluders,
             sky_clusters,
@@ -1718,6 +1794,52 @@ mod tests {
         let lit = hp_bsp::Bsp::from_vec(s.lit_bsp(&o, &crate::props::NoModels, &ctl(), &mut |_| {}).unwrap()).unwrap();
         for l in [lump::LIGHTING_HDR, lump::FACES_HDR, lump::LEAF_AMBIENT_LIGHTING_HDR, lump::LEAFS] {
             assert_eq!(lit.lump(l).unwrap(), reference.lump(l).unwrap(), "lump {l}");
+        }
+    }
+
+    #[test]
+    fn a_direct_style_always_wins_over_a_bounce_layer() {
+        let lux = 4;
+        let layer = |styles: Vec<u8>, v: f32| FaceLight {
+            values: vec![glam::Vec3::splat(v); styles.len() * lux],
+            styles,
+            normals: 1,
+            dark: vec![false; lux],
+        };
+        let mut total = layer(vec![0, 32, 33, 40], 1.0);
+        let direct = layer(vec![0, 32, 33], 1.0);
+        let new = layer(vec![34], 5.0);
+        add_aligned(&mut total, &new, 1.0, 1, lux, Some(&direct.styles));
+        assert_eq!(total.styles, [0, 32, 33, 34], "the bounce-only layer of style 40 gives its slot");
+        assert_eq!(total.values[3 * lux], glam::Vec3::splat(5.0));
+        let mut full = layer(vec![0, 32, 33, 35], 1.0);
+        add_aligned(&mut full, &new, 1.0, 1, lux, Some(&[0, 32, 33, 35]));
+        assert_eq!(full.styles, [0, 32, 33, 35], "direct layers are never pushed out");
+    }
+
+    #[test]
+    fn switchable_light_edits_keep_their_bounced_light() {
+        let lights = light_entity(
+            500,
+            "64 128 128",
+            "	\"targetname\" \"lamp\"
+",
+        ) + &light_entity(501, "448 128 96", "");
+        let bsp = compile_vmf(&room("DEV/DEV_MEASUREGENERIC01B", &lights));
+        let o = opts();
+        let mut s = session(&bsp);
+        let mut ents = entities(&bsp);
+        let mut shown = by_face(s.relight(&ents, &o, None, &ctl(), &mut |_| {}).unwrap().faces);
+        for (key, value) in [("_light", "255 80 20 400"), ("origin", "96 100 150")] {
+            set(&mut ents, "500", key, value);
+            let relit = s.relight(&ents, &o, None, &ctl(), &mut |_| {}).unwrap();
+            assert!(!relit.full, "{key}: incremental");
+            for f in relit.faces {
+                shown.insert(f.face, f);
+            }
+            let fresh = by_face(session(&bsp).relight(&ents, &o, None, &ctl(), &mut |_| {}).unwrap().faces);
+            let (diff, peak) = worst(&shown, &fresh);
+            assert!(diff <= peak * QUICK_REL + 0.5, "{key}: the switchable bounce is off by {diff} of {peak}");
         }
     }
 

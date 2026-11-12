@@ -21,7 +21,7 @@ struct Process {
     input: ChildStdin,
     replies: Receiver<(Reply, Vec<u8>)>,
     started: Instant,
-    urgent: bool,
+    priority: hp_app::settings::BakePriority,
 }
 
 impl Drop for Process {
@@ -70,7 +70,8 @@ impl Link {
             }
         })?;
         log::info!("lighting preview: the lighting process {} started", child.id());
-        let process = Process { child, input, replies, started: Instant::now(), urgent: false };
+        let priority = hp_app::settings::BakePriority::BelowNormal;
+        let process = Process { child, input, replies, started: Instant::now(), priority };
         Ok(Link { process: Some(process), local: None })
     }
 
@@ -104,10 +105,10 @@ impl Link {
         }
     }
 
-    pub(crate) fn set_urgent(&mut self, urgent: bool) {
-        if let Some(p) = self.process.as_mut().filter(|p| p.urgent != urgent) {
-            p.urgent = urgent;
-            super::super::memory::set_child_urgent(&p.child, urgent);
+    pub(crate) fn set_priority(&mut self, priority: hp_app::settings::BakePriority) {
+        if let Some(p) = self.process.as_mut().filter(|p| p.priority != priority) {
+            p.priority = priority;
+            super::super::memory::set_child_priority(&p.child, priority);
         }
     }
 

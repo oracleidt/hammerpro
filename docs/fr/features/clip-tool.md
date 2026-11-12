@@ -104,6 +104,7 @@ Ces deux réglages se trouvent aussi sur la page **Brushes** de la fenêtre Para
 - La découpe est une seule étape d'annulation, et la console affiche **N solide(s) découpé(s)**.
 - Les solides d'une entité brush restent dans leur entité. Les overlays et les cubemaps qui listent des faces découpées les suivent comme dans Hammer : une face coupée en deux est remplacée par ses deux moitiés, une face supprimée est retirée de leur liste.
 - Les faces de coupe copient la face la plus proche du solide, ou reçoivent le matériau actuel quand **Matériau actuel sur les coupes** est coché.
+- Les déplacements restent des déplacements (Hammer les retransformait en faces de brush plates). Quand la coupe suit les lignes de la grille du déplacement, chaque sommet d'origine est gardé à l'identique ; ailleurs, la surface est rééchantillonnée sur les nouvelles faces avec une puissance qui garde le détail (jusqu'à 4). Alphas, données de mélange à 4 textures, normales, décalages, élévation, options et tags suivent, et les deux moitiés se rejoignent sans fissure. Un morceau dont la face déplacée serait un triangle reçoit un chanfrein d'une unité (les déplacements de Source demandent quatre coins) et une face à cinq côtés est coupée en deux quadrilatères. Décochez **Paramètres > Édition > Garder les déplacements en coupant** (`edit.keep_displacements_on_cut`) pour retrouver l'ancien comportement.
 
 ## Astuces
 

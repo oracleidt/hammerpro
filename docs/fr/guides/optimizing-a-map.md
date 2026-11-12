@@ -18,7 +18,7 @@ Les grands espaces ouverts, les longs couloirs droits et les fenêtres alignées
 
 ## func_detail
 
-Chaque brush du monde découpe des visleaves, même une caisse, une marche, une moulure ou un pilier. Ces petits brushes découpent l'espace en une foule de minces éclats : VVIS devient lent et le culling empire parce que ces éclats voient autour de tout. Liez-les à un **func_detail** (Outils > Lier à une entité, ou **Convertir en func_detail**) : un brush de détail bloque toujours les joueurs, les balles et la lumière, mais VBSP ne découpe pas de visleaves avec, donc il ne bloque pas non plus la visibilité.
+Chaque brush du monde découpe des visleaves, même une caisse, une marche, une moulure ou un pilier. Ces petits brushes découpent l'espace en une foule de minces éclats : VVIS devient lent et le culling empire parce que ces éclats voient autour de tout. Sélectionnez-les et appuyez sur **Transformer en func_detail** (`Ctrl+Alt+D`, il refuse les brushes qui scellent la map ; **Outils > Opérations sur les brushes > Sélectionner les candidats func_detail...** les trouve pour vous, voir [func_detail](../features/func-detail.md)) : un brush de détail bloque toujours les joueurs, les balles et la lumière, mais VBSP ne découpe pas de visleaves avec, donc il ne bloque pas non plus la visibilité.
 
 Règle simple : la coque (murs, sols, plafonds, les grandes formes qui séparent les pièces) reste dans le monde ; tout ce qui est petit ou décoratif devient func_detail. Ne faites jamais un func_detail d'un brush qui scelle la map ou qui ferme une pièce : la map fuirait ou les pièces se verraient.
 
@@ -65,6 +65,7 @@ Les lumières ne changent pas la visibilité, mais des lumières incohérentes s
 - Les constats sont triés par impact (fort, moyen, faible). Les boutons du haut les filtrent par thème : visleaves, func_detail, hints, areaportals, lumières.
 - Chaque constat dit ce qui ne va pas, pourquoi cela coûte des performances et la chose concrète à faire, par exemple *Transformez ces 12 brushes en func_detail : ils sont petits, ne scellent pas la map et coupent 40 visleaves*, *Mettez un areaportal dans le cadre de la porte 214 : porte fermée, rien derrière n'est dessiné*, ou *La lumière 88 n'a aucune lampe à côté : déplacez-la vers une lampe ou ajoutez une source visible*.
 - **Aller à** sélectionne les objets du constat et les cadre dans les vues 2D et 3D ; pour un endroit sans objet (une visleaf, un plan de hint, une ouverture), il y déplace les caméras. La boîte du constat est dessinée dans les vues tant que la fenêtre est ouverte.
+- Le constat func_detail a aussi **Les sélectionner** : il sélectionne les brushes suggérés sans déplacer les vues, pour les vérifier puis appuyer sur **Transformer en func_detail**.
 - **Afficher les visleaves et les portails** dessine les portails de l'analyse dans les vues, colorés par visleaf (aussi **Map > Fuites et visibilité > Afficher les visleaves et les portails**). **Carte de chaleur** les colore selon les triangles dessinés depuis chaque visleaf. Les autres options d'affichage (épaisseur, rayons X, PVS depuis la caméra) sont celles de la fenêtre [Portails et visibilité](../features/leaks-pointfiles.md).
 
 Les vérifications :

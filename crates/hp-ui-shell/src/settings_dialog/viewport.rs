@@ -77,6 +77,9 @@ fn workflow_section(ui: &mut Ui, w: &mut WorkflowSettings) -> bool {
             ui.label(t!("shell.view.link_zoom"));
             changed |= ui.checkbox(&mut w.link_2d_zoom, "").changed();
             ui.end_row();
+            ui.label(t!("shell.view.drag_autopan")).on_hover_text(t!("shell.view.drag_autopan_tip"));
+            changed |= ui.checkbox(&mut w.drag_autopan, "").on_hover_text(t!("shell.view.drag_autopan_tip")).changed();
+            ui.end_row();
             ui.label(t!("shell.view.grid_step")).on_hover_text(t!("shell.view.grid_step_tip"));
             changed |= ui
                 .add(
@@ -258,6 +261,7 @@ pub(super) fn reset(state: &mut AppState) {
     w.camera_smoothing = d.camera_smoothing;
     w.ctrl_wheel = d.ctrl_wheel;
     w.link_2d_zoom = d.link_2d_zoom;
+    w.drag_autopan = d.drag_autopan;
     w.grid_step_factor = d.grid_step_factor;
     w.units = d.units;
 }
@@ -349,6 +353,16 @@ pub(crate) const TR: TrTable = &[
     ("shell.view.ctrl_wheel_grid", "Changes the grid size", "Change la taille de la grille"),
     ("shell.view.ctrl_wheel_zoom", "Zooms every 2D view", "Zoome toutes les vues 2D"),
     ("shell.view.link_zoom", "Zoom the 2D views together", "Zoomer les vues 2D ensemble"),
+    (
+        "shell.view.drag_autopan",
+        "Scroll the 2D view when dragging to its edge",
+        "Faire défiler la vue 2D en glissant vers son bord",
+    ),
+    (
+        "shell.view.drag_autopan_tip",
+        "Like Hammer: while you drag something in a 2D view (a selection, a handle, a new block, a box selection), bringing the cursor near or past the edge of the view scrolls it that way, faster the farther the cursor goes. What you drag keeps following the cursor.",
+        "Comme Hammer : pendant que vous faites glisser quelque chose dans une vue 2D (une sélection, une poignée, un nouveau bloc, une sélection par cadre), approcher le curseur du bord de la vue ou le dépasser la fait défiler dans ce sens, d'autant plus vite que le curseur va loin. Ce que vous faites glisser suit toujours le curseur.",
+    ),
     ("shell.view.grid_step", "Grid size step", "Pas de la taille de grille"),
     ("shell.view.grid_mode", "Grid", "Grille"),
     (

@@ -6,7 +6,9 @@ use hp_geom::{Aabb, DISP_FLAG_NO_PHYSICS, DispMesh};
 use crate::{Document, Id, ObjRef};
 
 mod collision;
+mod combine;
 pub use collision::EditableCollision;
+pub use combine::{COMBINED_VISGROUP, FADE_KEYS, MergedKeys, SHARED_KEYS, merge_prop_keys};
 
 pub const DISP_THICKNESS: f64 = 8.0;
 const DISP_FLAT_TOLERANCE: f64 = 0.5;

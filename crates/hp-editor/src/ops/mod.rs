@@ -2,6 +2,7 @@ mod bevel;
 mod boolean;
 mod create;
 mod csg;
+mod detail;
 pub(crate) mod disp;
 mod edge_loops;
 mod entity;
@@ -21,6 +22,7 @@ mod visgroup;
 
 pub use bevel::{BevelOutcome, EdgeRef};
 pub use csg::ClipKeep;
+pub use detail::{DETAIL_CLASS, DetailPlan, DetailSplit, MAKE_DETAIL_LABEL, is_detail_class};
 pub use edge_loops::{LoopScope, MAX_LOOP_SOLIDS, RunKind};
 pub use entity::EntityQuery;
 pub use find_replace::{ConnPart, MAX_TEXT_LEN, TextField, TextMatch, TextQuery, find_ranges};

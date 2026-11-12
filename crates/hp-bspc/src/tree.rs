@@ -631,6 +631,38 @@ impl<'a> Builder<'a> {
 }
 
 impl Tree {
+    pub fn ensure_node(&mut self, planes: &mut PlaneSet) -> bool {
+        let head = self.head;
+        let Some(top) = self.nodes.get(head).filter(|n| n.is_leaf()) else { return false };
+        let valid = |lo: DVec3, hi: DVec3| lo.is_finite() && hi.is_finite() && lo.cmple(hi).all();
+        let (mins, maxs) = if valid(top.mins, top.maxs) {
+            (top.mins, top.maxs)
+        } else if valid(self.mins, self.maxs) {
+            (self.mins, self.maxs)
+        } else {
+            (DVec3::ZERO, DVec3::ZERO)
+        };
+        let leaf = Node {
+            contents: top.contents,
+            cluster: top.cluster,
+            area: top.area,
+            mins,
+            maxs,
+            parent: None,
+            ..Node::default()
+        };
+        let plane = planes.find_f32(glam::Vec3::Z, 0.0);
+        let other = self.nodes.len();
+        self.nodes.push(leaf);
+        let node = self.nodes.len();
+        self.nodes.push(Node { plane: Some(plane), children: [head, other], mins, maxs, ..Node::default() });
+        for child in [head, other] {
+            self.nodes[child].parent = Some(node);
+        }
+        self.head = node;
+        true
+    }
+
     pub fn prune(&mut self) {
         let mut order = Vec::new();
         let mut stack = vec![self.head];

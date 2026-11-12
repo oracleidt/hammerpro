@@ -45,6 +45,19 @@ impl ShadowFit {
             && self.depth[1] >= fresh.depth[1]
     }
 
+    pub fn covers(&self, fresh: &ShadowFit) -> bool {
+        self.size == fresh.size
+            && self.dir.dot(fresh.dir) > 0.999_999
+            && self.texel_world >= fresh.texel_world
+            && self.texel_world <= fresh.texel_world * MOTION_TEXEL
+            && self.window[0] <= fresh.need[0]
+            && self.window[1] <= fresh.need[2]
+            && self.window[0] + self.window[2] >= fresh.need[1]
+            && self.window[1] + self.window[3] >= fresh.need[3]
+            && self.depth[0] <= fresh.depth[0]
+            && self.depth[1] >= fresh.depth[1]
+    }
+
     pub fn params(&self) -> [f32; 4] {
         [1.0, 2.0 / self.depth_range.max(1.0), 1.0 / self.size.max(1) as f32, self.texel_world * 1.5]
     }
@@ -110,7 +123,21 @@ pub(crate) fn sky_fit(eye: Vec3, scene_min: Vec3, scene_max: Vec3) -> Option<Sky
     })
 }
 
+pub(crate) const MOTION_GROW: f64 = 1.5;
+const MOTION_TEXEL: f32 = 2.0;
+
 pub(crate) fn fit(cam: &Camera, dir: Vec3, scene_min: Vec3, scene_max: Vec3, map_size: u32) -> Option<ShadowFit> {
+    fit_grown(cam, dir, scene_min, scene_max, map_size, 1.0)
+}
+
+pub(crate) fn fit_grown(
+    cam: &Camera,
+    dir: Vec3,
+    scene_min: Vec3,
+    scene_max: Vec3,
+    map_size: u32,
+    grow: f64,
+) -> Option<ShadowFit> {
     if !(scene_min.is_finite() && scene_max.is_finite() && scene_min.cmple(scene_max).all()) {
         return None;
     }
@@ -158,7 +185,7 @@ pub(crate) fn fit(cam: &Camera, dir: Vec3, scene_min: Vec3, scene_max: Vec3, map
         d1 = d1.max(p.dot(f));
     }
     let step = f64::from(SIZE_STEP);
-    let size = ((x1 - x0).max(y1 - y0) + 64.0).div_euclid(step) * step + step;
+    let size = (((x1 - x0).max(y1 - y0) + 64.0) * grow.max(1.0)).div_euclid(step) * step + step;
     let texel = size / f64::from(map_size.max(1));
     let snap = |v: f64| (v / texel).floor() * texel;
     let (cx, cy) = ((x0 + x1) * 0.5, (y0 + y1) * 0.5);
@@ -571,28 +598,33 @@ impl Renderer {
         Some(dirty)
     }
 
-    pub(crate) fn prepare_shadow(&mut self, cam: &Camera) -> Option<(ShadowFit, bool)> {
+    pub(crate) fn prepare_shadow(&mut self, view_id: u32, cam: &Camera) -> Option<(ShadowFit, bool)> {
         let sun = self.lights_cpu.first().filter(|_| self.dir_lights > 0)?;
         let dir = Vec3::new(sun.dir[0], sun.dir[1], sun.dir[2]).normalize_or(Vec3::NEG_Z);
         let (lo, hi) = self.scene_bounds();
         let layers = self.analyze_sky(Layers::Sun, dir);
-        let fresh = fit(cam, dir, lo, hi, Layers::Sun.sizes_capped(layers, self.applied.sun_shadow_size).0)?;
+        let map_size = Layers::Sun.sizes_capped(layers, self.applied.sun_shadow_size).0;
+        let fresh = fit(cam, dir, lo, hi, map_size)?;
         let serial = self.render_serial;
-        let resting = match self.sun_cam {
-            Some((vp, first)) if vp == cam.view_proj => first != serial,
+        let resting = match self.sun_cams.get(&view_id) {
+            Some((vp, first)) if *vp == cam.view_proj => *first != serial,
             _ => false,
         };
-        if self.sun_cam.is_none_or(|(vp, _)| vp != cam.view_proj) {
-            self.sun_cam = Some((cam.view_proj, serial));
+        let moving = self.sun_cams.get(&view_id).is_some_and(|(vp, _)| *vp != cam.view_proj);
+        if self.sun_cams.get(&view_id).is_none_or(|(vp, _)| *vp != cam.view_proj) {
+            self.sun_cams.insert(view_id, (cam.view_proj, serial));
         }
+        let stable = !resting && !crate::profile::baseline("shadowfit");
+        let motion = moving && stable;
         let fit = match self.sun_fit {
-            Some(kept) if !resting && kept.can_replace(&fresh) && !crate::profile::baseline("shadowfit") => kept,
+            Some(kept) if stable && kept.can_replace(&fresh) => kept,
+            Some(kept) if motion && kept.covers(&fresh) => kept,
+            Some(_) if motion => {
+                fit_grown(cam, dir, lo, hi, map_size, MOTION_GROW).filter(|wide| wide.covers(&fresh)).unwrap_or(fresh)
+            }
             _ => fresh,
         };
         self.sun_followup = fit != fresh;
-        if self.sun_followup {
-            self.content_gen += 1;
-        }
         self.sun_fit = Some(fit);
         let dirty = self.prepare_layers(Layers::Sun, fit.view_proj, dir, fit.depth_range)?;
         Some((fit, dirty))
@@ -774,6 +806,7 @@ impl Renderer {
         pass.set_vertex_buffer(0, self.arenas[ArenaKind::MeshVerts as usize].buffer.slice(..));
         pass.set_index_buffer(self.arenas[ArenaKind::Indices as usize].buffer.slice(..), wgpu::IndexFormat::Uint32);
         let mut current: Option<bool> = None;
+        let mut solid: Vec<(u32, u32)> = Vec::new();
         for (mi, m) in self.scene.materials.iter().enumerate().filter(|_| !models_only) {
             if casts_no_shadow(m.desc.as_ref()) {
                 continue;
@@ -786,6 +819,12 @@ impl Renderer {
                     continue;
                 }
                 if cull.is_some_and(|k| !k.keeps(ch.aabb_min, ch.aabb_max)) {
+                    continue;
+                }
+                if !alpha {
+                    solid.push((ch.idx.offset, ch.idx.offset + ch.used_i));
+                    draws += 1;
+                    tris += u64::from(ch.used_i / 3);
                     continue;
                 }
                 if current != Some(alpha) {
@@ -803,6 +842,20 @@ impl Renderer {
                 draws += 1;
                 tris += u64::from(ch.used_i / 3);
             }
+        }
+        if !solid.is_empty() {
+            solid.sort_unstable();
+            pass.set_pipeline(&pipelines.chunk);
+            let mut run = solid[0];
+            for &(first, end) in &solid[1..] {
+                if first == run.1 {
+                    run.1 = end;
+                } else {
+                    pass.draw_indexed(run.0..run.1, 0, 0..1);
+                    run = (first, end);
+                }
+            }
+            pass.draw_indexed(run.0..run.1, 0, 0..1);
         }
         if self.instance_count == 0 {
             return (draws, tris);
@@ -835,6 +888,7 @@ impl Renderer {
             culled(g.start..g.start + mesh_count, &mut runs);
             if !runs.is_empty() {
                 let mut bound = false;
+                let mut solid: Option<(u32, u32)> = None;
                 for part in &model.parts {
                     let desc = self.scene.materials.get(part.material as usize).and_then(|m| m.desc);
                     if casts_no_shadow(desc.as_ref()) {
@@ -845,6 +899,33 @@ impl Renderer {
                         Some((MeshPass::AlphaTest, _)) => true,
                         _ => continue,
                     };
+                    if !alpha {
+                        for r in &runs {
+                            draws += 1;
+                            tris += u64::from(part.count / 3) * u64::from(r.end - r.start);
+                        }
+                        solid = match solid {
+                            Some((first, end)) if end == part.first => Some((first, part.first + part.count)),
+                            Some((first, end)) => {
+                                if current != Some(0) {
+                                    pass.set_pipeline(&pipelines.model);
+                                    current = Some(0);
+                                }
+                                if !bound {
+                                    pass.set_vertex_buffer(0, model.vbuf.slice(..));
+                                    pass.set_vertex_buffer(2, model.tbuf.slice(..));
+                                    pass.set_index_buffer(model.ibuf.slice(..), wgpu::IndexFormat::Uint32);
+                                    bound = true;
+                                }
+                                for r in &runs {
+                                    pass.draw_indexed(first..end, 0, r.clone());
+                                }
+                                Some((part.first, part.first + part.count))
+                            }
+                            None => Some((part.first, part.first + part.count)),
+                        };
+                        continue;
+                    }
                     if alpha {
                         let Some(mat) = self.mat_gpu.get(part.material as usize) else { continue };
                         pass.set_bind_group(1, &mat.bind_group, &[]);
@@ -864,6 +945,20 @@ impl Renderer {
                         pass.draw_indexed(part.first..part.first + part.count, 0, r.clone());
                         draws += 1;
                         tris += u64::from(part.count / 3) * u64::from(r.end - r.start);
+                    }
+                }
+                if let Some((first, end)) = solid {
+                    if current != Some(0) {
+                        pass.set_pipeline(&pipelines.model);
+                        current = Some(0);
+                    }
+                    if !bound {
+                        pass.set_vertex_buffer(0, model.vbuf.slice(..));
+                        pass.set_vertex_buffer(2, model.tbuf.slice(..));
+                        pass.set_index_buffer(model.ibuf.slice(..), wgpu::IndexFormat::Uint32);
+                    }
+                    for r in &runs {
+                        pass.draw_indexed(first..end, 0, r.clone());
                     }
                 }
             }
@@ -962,5 +1057,26 @@ mod tests {
             fit(&cam([0.0, 0.0, 100.0], [1.0, 0.0, 0.0]), Vec3::new(-0.3, 0.2, -1.0), smin, smax, SHADOW_SIZE)
                 .expect("fit");
         assert!(!kept.can_replace(&other_dir), "a moved sun needs a new fit");
+    }
+
+    #[test]
+    fn a_grown_motion_fit_covers_a_turning_camera_for_several_steps() {
+        let (smin, smax) = (Vec3::new(-20000.0, -20000.0, -500.0), Vec3::new(20000.0, 20000.0, 2000.0));
+        let dir = Vec3::new(0.3, 0.2, -1.0);
+        let at = |deg: f32| {
+            let r = deg.to_radians();
+            fit(&cam([0.0, 0.0, 100.0], [r.cos(), r.sin(), 0.0]), dir, smin, smax, SHADOW_SIZE).expect("fit")
+        };
+        let start = cam([0.0, 0.0, 100.0], [1.0, 0.0, 0.0]);
+        let wide = fit_grown(&start, dir, smin, smax, SHADOW_SIZE, MOTION_GROW).expect("wide fit");
+        let fresh = at(0.0);
+        assert!(wide.covers(&fresh) && !fresh.covers(&wide));
+        assert!(wide.texel_world > fresh.texel_world && wide.texel_world <= fresh.texel_world * 2.0);
+        let reused = (1..=20).take_while(|k| wide.covers(&at(*k as f32))).count();
+        let exact = (1..=20).take_while(|k| fresh.can_replace(&at(*k as f32))).count();
+        assert!(
+            reused >= 3 && reused > exact,
+            "turning keeps the wide fit for {reused} degrees, the exact one {exact}"
+        );
     }
 }

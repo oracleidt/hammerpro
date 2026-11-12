@@ -53,6 +53,7 @@ pub struct SculptSettings {
     pub falloff_position: f64,
     pub falloff_final: f64,
     pub flatten_fixed: bool,
+    pub flatten_target: bool,
     pub flatten_strength: f64,
     pub relax_strength: f64,
 }
@@ -71,6 +72,7 @@ impl Default for SculptSettings {
             falloff_position: 0.0,
             falloff_final: 0.0,
             flatten_fixed: false,
+            flatten_target: false,
             flatten_strength: 0.5,
             relax_strength: 0.5,
         }

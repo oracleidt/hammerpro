@@ -51,7 +51,7 @@ pub(crate) enum Target {
 pub(crate) enum PointerKind {
     Move,
     Click { button: PointerButton, double: bool },
-    Drag { to: Target, button: PointerButton, steps: u32 },
+    Drag { to: Target, button: PointerButton, steps: u32, hold: u32 },
     Scroll { dx: f32, dy: f32, kind: crate::script::WheelKind },
 }
 
@@ -414,10 +414,10 @@ fn pointer_commands(
         PointerKind::Click { button, double } => {
             (vec![Command::Click { pos, button, mods, double }], json!({ "clicked_at": at_json, "double": double }))
         }
-        PointerKind::Drag { to, button, steps } => {
+        PointerKind::Drag { to, button, steps, hold } => {
             let q = resolve(host, ctx, to)?;
             (
-                vec![Command::Drag { from: pos, to: ScriptPos::Window(q), button, steps, mods }],
+                vec![Command::Drag { from: pos, to: ScriptPos::Window(q), button, steps, mods, hold }],
                 json!({ "dragged_from": at_json, "dragged_to": [q.x, q.y] }),
             )
         }

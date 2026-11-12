@@ -6,6 +6,7 @@ use crate::app::HammerProApp;
 
 mod blender;
 mod brush;
+pub(crate) mod combine;
 mod compile;
 mod content;
 mod entities;

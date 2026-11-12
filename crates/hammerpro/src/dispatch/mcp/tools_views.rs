@@ -106,11 +106,14 @@ const SPECS: &[ToolSpec] = &[
         name: "set_render_mode",
         title: "3D render mode",
         description: "How the 3D view draws the map: textured (with the editor's shading), flat, wireframe, \
-            textured_wire, lit (lighting preview: the light entities with VRAD's falloff and spot cones, \
+            textured_wire, lit (lighting preview: the light entities with VRAD's falloff and spot cones, shaded like the game's \
+            LDR lightmaps when the light values are LDR, water and translucent brushes casting no shadow, \
             light_dynamic (an engine dynamic light: it also lights the baked preview and the player view over the \
-            lightmaps, like in game), point_spotlight (with Start On: its beam (a soft glow of camera facing sprites/light_glow03 sprites) fading along \
-            SpotlightLength from SpotlightWidth wide and stopped by the world, its sprites/light_glow03 halo, both \
-            in rendercolor times HDRColorScale in HDR, in every 3D mode and the player view; unless No Dynamic \
+            lightmaps, like in game), point_spotlight (with Start On: the engine beam, one camera facing sprites/glow_test02 strip \
+            SpotlightWidth on each side of its axis, along SpotlightLength and stopped by the world, fading toward \
+            its end and when seen along its axis, and the sprites/light_glow03 halo seen from the front of the \
+            spotlight, in rendercolor (the beam at brightness 64) times HDRColorScale in HDR, in every 3D mode and \
+            the player view; unless No Dynamic \
             Light, the dynamic light the game puts where the beam ends, in lit, baked and the player view; the player \
             view plays its LightOn and LightOff inputs; toolsskybox faces show the sky like the baked preview), the sun of the first light_environment (angles or pitch key, target, SunSpreadAngle soft \
             shadows) lighting only what sees a sky face toward it like VRAD, each point shadowed only by what lies \

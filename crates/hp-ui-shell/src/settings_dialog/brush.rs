@@ -1,6 +1,6 @@
 use hp_app::extend::{SettingsPage, page_order};
 use hp_app::i18n::TrTable;
-use hp_app::settings::BrushSettings;
+use hp_app::settings::{BrushSettings, DetailSplitSetting};
 use hp_app::{AppState, t};
 
 use crate::common::heading;
@@ -45,6 +45,32 @@ impl SettingsPage for BrushPage {
             .checkbox(&mut s.clip_current_material, t!("shell.brush.clip_current_material"))
             .on_hover_text(t!("shell.brush.clip_current_material_tip"))
             .changed();
+        heading(ui, t!("shell.brush.func_detail"));
+        ui.horizontal(|ui| {
+            ui.label(t!("shell.brush.detail_split"));
+            for (mode, key) in [
+                (DetailSplitSetting::Selection, "shell.brush.detail_split_selection"),
+                (DetailSplitSetting::Cluster, "shell.brush.detail_split_cluster"),
+            ] {
+                if ui
+                    .selectable_label(s.detail.split == mode, t!(key))
+                    .on_hover_text(t!("shell.brush.detail_split_tip"))
+                    .clicked()
+                    && s.detail.split != mode
+                {
+                    s.detail.split = mode;
+                    changed = true;
+                }
+            }
+        });
+        changed |= ui
+            .checkbox(&mut s.detail.check_sealing, t!("shell.brush.detail_check_sealing"))
+            .on_hover_text(t!("shell.brush.detail_check_sealing_tip"))
+            .changed();
+        changed |= ui
+            .checkbox(&mut s.detail.tint, t!("shell.brush.detail_tint"))
+            .on_hover_text(t!("shell.brush.detail_tint_tip"))
+            .changed();
         if changed {
             state.settings_dirty = true;
         }
@@ -85,6 +111,35 @@ pub(crate) const TR: TrTable = &[
         "shell.brush.clip_current_material_tip",
         "Otherwise the new faces copy the most similar face of the brush",
         "Sinon, les nouvelles faces copient la face la plus proche du brush",
+    ),
+    ("shell.brush.func_detail", "func_detail", "func_detail"),
+    ("shell.brush.detail_split", "Make func_detail creates", "Transformer en func_detail crée"),
+    ("shell.brush.detail_split_selection", "One per selection", "Un par sélection"),
+    ("shell.brush.detail_split_cluster", "One per cluster", "Un par groupe"),
+    (
+        "shell.brush.detail_split_tip",
+        "One func_detail for the whole selection, or one for each group of touching brushes (brushes of different groups always get their own func_detail)",
+        "Un func_detail pour toute la sélection, ou un par ensemble de brushes qui se touchent (les brushes de groupes différents ont toujours leur propre func_detail)",
+    ),
+    (
+        "shell.brush.detail_check_sealing",
+        "Keep the brushes that seal the map in the world",
+        "Garder dans le monde les brushes qui scellent la map",
+    ),
+    (
+        "shell.brush.detail_check_sealing_tip",
+        "Make func_detail runs the leak check first and asks before converting brushes of the outer shell, because a func_detail does not seal",
+        "Transformer en func_detail lance d'abord la vérification des fuites et demande avant de convertir des brushes de la coque extérieure, car un func_detail ne scelle pas",
+    ),
+    (
+        "shell.brush.detail_tint",
+        "Tint func_detail brushes in the views",
+        "Teinter les brushes func_detail dans les vues",
+    ),
+    (
+        "shell.brush.detail_tint_tip",
+        "func_detail brushes get a blue tint in 3D and a blue outline in 2D, to see at a glance what is detail (View > Tint func_detail brushes)",
+        "Les brushes func_detail prennent une teinte bleue en 3D et un contour bleu en 2D, pour voir d'un coup d'oeil ce qui est du détail (Affichage > Teinter les brushes func_detail)",
     ),
 ];
 

@@ -13,7 +13,9 @@ action_list! { brush_actions {
     MakeHintBrush => "make_hint_brush", Tools, Hidden, None, Ready;
     NodrawHiddenFaces => "nodraw_hidden_faces", Tools, ToolsBrushMisc, None, Ready;
     TieEachToEntity => "tie_each_to_entity", Tools, ToolsBrushMisc, sc(CTRL_SHIFT, Key::T), Ready;
-    ConvertToDetail => "convert_to_detail", Tools, ToolsBrushMisc, None, Ready;
+    ConvertToDetail => "convert_to_detail", Tools, ToolsBrushMisc, sc(CTRL_ALT, Key::D), Ready;
+    SelectDetailCandidates => "select_detail_candidates", Tools, ToolsBrushMisc, None, Ready;
+    ToggleDetailTint => "toggle_detail_tint", View, ViewDisplay, None, Ready;
     CurveEdit => "curve_edit", Tools, ToolsCurves, None, Ready;
     ToolRoad => "tool_road", Tools, ToolsSwitch, None, Ready;
     ToolPipe => "tool_pipe", Tools, ToolsSwitch, None, Ready;
@@ -44,8 +46,11 @@ pub(super) fn enabled(state: &AppState, action: Action) -> Option<bool> {
     })
 }
 
-pub(super) fn check(_state: &AppState, _action: Action) -> Option<Check> {
-    None
+pub(super) fn check(state: &AppState, action: Action) -> Option<Check> {
+    match action {
+        Action::ToggleDetailTint => Some(Check::Toggle(state.settings.brush.detail.tint)),
+        _ => None,
+    }
 }
 
 pub(super) fn icon(_action: Action) -> Option<&'static str> {
@@ -63,7 +68,13 @@ pub(super) const TR: TrTable = &[
     ("action.inset_face", "Inset face...", "Décaler la face..."),
     ("action.inset_interactive", "Interactive inset (I)", "Décalage interactif (I)"),
     ("action.extrude_interactive", "Interactive extrude (E)", "Extrusion interactive (E)"),
-    ("action.convert_to_detail", "Convert to func_detail", "Convertir en func_detail"),
+    ("action.convert_to_detail", "Make func_detail", "Transformer en func_detail"),
+    (
+        "action.select_detail_candidates",
+        "Select func_detail candidates...",
+        "Sélectionner les candidats func_detail...",
+    ),
+    ("action.toggle_detail_tint", "Tint func_detail brushes", "Teinter les brushes func_detail"),
     ("action.road_sidewalk", "Sidewalk generator...", "Générateur de trottoirs..."),
     ("action.road_curb", "Curb and gutter generator...", "Générateur de bordures et caniveaux..."),
     ("action.road_terrain", "Blend terrain to road...", "Fondre le terrain sur la route..."),
@@ -109,6 +120,8 @@ pub(super) const TR: TrTable = &[
     ("shell.undo.mcp_delete_road", "MCP: delete road", "MCP : suppression de route"),
     ("shell.undo.mcp_split_road", "MCP: split road", "MCP : découpe de route"),
     ("shell.undo.mcp_add_road_junction", "MCP: road junction", "MCP : jonction de route"),
+    ("shell.undo.make_func_detail", "Make func_detail", "Transformation en func_detail"),
+    ("shell.undo.mcp_make_func_detail", "MCP: make func_detail", "MCP : transformation en func_detail"),
     ("shell.undo.tie_each_to_entity", "Tie each to entity", "Liaison de chaque brush à une entité"),
     ("shell.undo.make_hint_brush", "Make hint brush", "Création de brush hint"),
     ("shell.undo.carve_face", "Carve face", "Creusement de face"),

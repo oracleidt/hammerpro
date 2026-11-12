@@ -1,6 +1,6 @@
 use hp_app::extend::{SettingsPage, page_order};
 use hp_app::i18n::TrTable;
-use hp_app::settings::LightingSettings;
+use hp_app::settings::{BakePriority, LightingSettings};
 use hp_app::{AppState, t};
 
 use crate::common::heading;
@@ -48,11 +48,50 @@ impl SettingsPage for LightingPage {
             .checkbox(&mut s.prepare, t!("shell.lighting.prepare"))
             .on_hover_text(t!("shell.lighting.prepare_tip"))
             .changed();
+        changed |= ui
+            .checkbox(&mut s.pause_minimized, t!("shell.lighting.pause_minimized"))
+            .on_hover_text(t!("shell.lighting.pause_minimized_tip"))
+            .changed();
+        changed |= ui
+            .checkbox(&mut s.pause_unfocused, t!("shell.lighting.pause_unfocused"))
+            .on_hover_text(t!("shell.lighting.pause_unfocused_tip"))
+            .changed();
         super::form_grid(ui, "hp_shell_lighting").show(ui, |ui| {
             ui.label(t!("shell.lighting.threads"));
             changed |= ui
                 .add(egui::DragValue::new(&mut s.threads).range(0..=LightingSettings::MAX_THREADS))
                 .on_hover_text(t!("shell.lighting.threads_tip"))
+                .changed();
+            ui.end_row();
+            ui.label(t!("shell.lighting.priority"));
+            let label = |p: BakePriority| match p {
+                BakePriority::Idle => t!("shell.lighting.priority_idle"),
+                BakePriority::BelowNormal => t!("shell.lighting.priority_below_normal"),
+                BakePriority::Normal => t!("shell.lighting.priority_normal"),
+            };
+            egui::ComboBox::from_id_salt("hp_shell_lighting_priority").selected_text(label(s.priority)).show_ui(
+                ui,
+                |ui| {
+                    for p in [BakePriority::Idle, BakePriority::BelowNormal, BakePriority::Normal] {
+                        changed |= ui.selectable_value(&mut s.priority, p, label(p)).changed();
+                    }
+                },
+            );
+            ui.end_row();
+            ui.label(t!("shell.lighting.drag_pause"));
+            changed |= ui
+                .add(egui::DragValue::new(&mut s.drag_pause_ms).range(LightingSettings::DRAG_PAUSE_RANGE).suffix(" ms"))
+                .on_hover_text(t!("shell.lighting.drag_pause_tip"))
+                .changed();
+            ui.end_row();
+            ui.label(t!("shell.lighting.upload"));
+            changed |= ui
+                .add(
+                    egui::DragValue::new(&mut s.upload_mb_per_frame)
+                        .range(LightingSettings::UPLOAD_RANGE)
+                        .suffix(" MB"),
+                )
+                .on_hover_text(t!("shell.lighting.upload_tip"))
                 .changed();
             ui.end_row();
             ui.label(t!("shell.lighting.max_luxels"));
@@ -155,8 +194,52 @@ pub(crate) const TR: TrTable = &[
     ("shell.lighting.threads", "Baking threads", "Threads de précalcul"),
     (
         "shell.lighting.threads_tip",
-        "0 uses every core (every core but two to compile the map); the lighting runs at a lower priority so the editor stays fluid. Used by the next bake.",
-        "0 utilise tous les cœurs (tous sauf deux pour compiler la carte) ; l'éclairage tourne avec une priorité plus basse pour que l'éditeur reste fluide. Utilisé par le prochain précalcul.",
+        "0 picks a sensible number: every core but a quarter of them, and at least two cores are always left free for the editor and the other programs. A higher number is capped to every core but two. Used by the next bake.",
+        "0 choisit un nombre raisonnable : tous les cœurs sauf un quart, et au moins deux cœurs restent toujours libres pour l'éditeur et les autres programmes. Un nombre plus grand est limité à tous les cœurs sauf deux. Utilisé par le prochain précalcul.",
+    ),
+    ("shell.lighting.priority", "Baking priority", "Priorité du précalcul"),
+    (
+        "shell.lighting.priority_idle",
+        "Lowest (only when the computer is idle)",
+        "La plus basse (seulement quand l'ordinateur est inactif)",
+    ),
+    ("shell.lighting.priority_below_normal", "Below normal", "Inférieure à la normale"),
+    (
+        "shell.lighting.priority_normal",
+        "Normal (faster, can slow down other programs)",
+        "Normale (plus rapide, peut ralentir les autres programmes)",
+    ),
+    (
+        "shell.lighting.pause_minimized",
+        "Pause the lighting preview while the window is minimized",
+        "Mettre l'aperçu de l'éclairage en pause quand la fenêtre est réduite",
+    ),
+    (
+        "shell.lighting.pause_minimized_tip",
+        "Stops the bakes and relights while Hammer Pro is minimized and takes them up again when the window comes back.",
+        "Arrête les précalculs et les mises à jour pendant que Hammer Pro est réduit et les reprend au retour de la fenêtre.",
+    ),
+    (
+        "shell.lighting.pause_unfocused",
+        "Pause the lighting preview while another window is active",
+        "Mettre l'aperçu de l'éclairage en pause quand une autre fenêtre est active",
+    ),
+    (
+        "shell.lighting.pause_unfocused_tip",
+        "Stops the bakes and relights while you work in another program (the game, for example) and takes them up again when you come back to Hammer Pro.",
+        "Arrête les précalculs et les mises à jour pendant que vous travaillez dans un autre programme (le jeu, par exemple) et les reprend quand vous revenez dans Hammer Pro.",
+    ),
+    ("shell.lighting.drag_pause", "Relight a dragged light after", "Recalculer une lumière déplacée après"),
+    (
+        "shell.lighting.drag_pause_tip",
+        "While you drag a light, its baked lighting is computed again once the mouse rests this long, and when you release it; the real time lights show the change in between. 0 relights continuously while dragging.",
+        "Pendant que vous déplacez une lumière, son éclairage précalculé est recalculé dès que la souris reste immobile ce temps, et quand vous la relâchez ; les lumières en temps réel montrent le changement entre-temps. 0 recalcule en continu pendant le déplacement.",
+    ),
+    ("shell.lighting.upload", "Lightmap upload per frame", "Envoi de lightmaps par image"),
+    (
+        "shell.lighting.upload_tip",
+        "How much lightmap data goes to the graphics card in one frame. Lower keeps the editor smoother while a bake is shown, higher shows a big bake a little sooner.",
+        "Quantité de données de lightmap envoyée à la carte graphique en une image. Plus bas garde l'éditeur plus fluide pendant l'affichage d'un précalcul, plus haut affiche un grand précalcul un peu plus tôt.",
     ),
     ("shell.lighting.max_luxels", "Full resolution luxels (millions)", "Luxels en pleine résolution (millions)"),
     (

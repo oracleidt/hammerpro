@@ -6,7 +6,7 @@ Hammer Pro checks the map in the background while you edit: invalid brushes, bro
 
 ## Live checks and the status bar
 
-A moment after each change, the map is checked on a worker thread (setting **Check the map as I edit**, on by default). The status bar shows two segments on the right:
+Once you stop editing for a moment (setting **Check after the edits pause for**, 1500 ms; never while you drag), the map is checked on worker threads (setting **Check the map as I edit**, on by default). The checks run at the lowest priority of the system on a third of the cores, always leaving at least two cores free, so they never slow down the editor or other programs; after an edit, only the props near it are checked again for floating, sunk and overlapping props, the others keep their result. With **Pause the checks while the window is minimized** (on) a minimized window stops them and they run again when it comes back. The status bar shows two segments on the right:
 
 | Segment | What it shows | Click |
 | --- | --- | --- |
@@ -142,6 +142,8 @@ Limits differ between Source builds. **Limits of:** (in the Map information wind
 | **Draw the path of the leak found** | on |
 | **Check for problems lists visible objects only** | off |
 | **Warn when a new brush or entity is an exact copy of another** | on |
+| **Pause the checks while the window is minimized** (`pause_minimized`) | on |
+| **Check after the edits pause for** (`check_delay_ms`, 0 to 10000 ms) | 1500 |
 | **Check for floating and sunk props** (`placement.problem_checks`) | on |
 | **Also list props that overlap other objects** (`placement.overlap_check`) | off |
 | **Limits of:** | Automatic |

@@ -88,7 +88,7 @@ struct Hover {
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Drag {
     Point { view: usize, index: usize },
-    Depth { view: usize, start: Pos2, from: f64 },
+    Depth { view: usize, start: Pos2, plane: Option<DVec2>, from: f64 },
     Swallow,
 }
 
@@ -472,7 +472,8 @@ impl ExtrudeTool {
                     self.drag = Some(Drag::Point { view: view.index, index });
                 }
             } else if self.is_closed() {
-                self.drag = Some(Drag::Depth { view: view.index, start: origin, from: self.signed() });
+                let plane = view.is_2d().then(|| view.screen_to_2d(origin));
+                self.drag = Some(Drag::Depth { view: view.index, start: origin, plane, from: self.signed() });
             }
         }
         if m.dragging || m.drag_stopped {
@@ -480,7 +481,8 @@ impl ExtrudeTool {
                 Some(Drag::Point { view: vi, index }) if vi == view.index => {
                     self.move_point(view, pos, &snap, index, m.modifiers);
                 }
-                Some(Drag::Depth { view: vi, start, from }) if vi == view.index => {
+                Some(Drag::Depth { view: vi, start, plane, from }) if vi == view.index => {
+                    let start = plane.map_or(start, |p| view.screen_of_2d(p));
                     let depth_snap = DistanceSnap::for_extrude(state, view, m.modifiers);
                     if let Some(d) = self.depth_from(view, start, pos, from, &depth_snap) {
                         self.set_depth(d);
@@ -1209,6 +1211,39 @@ mod tests {
         tool.handle_mouse(&mut state, &view, &Mouse::drag_end(far, down));
         assert_eq!(tool.options.mode, ExtrudeMode::Carve);
         assert!(tool.options.depth > depth, "a long drag down digs deeper: {}", tool.options.depth);
+    }
+
+    #[test]
+    fn a_depth_drag_in_2d_follows_the_world_while_the_view_scrolls() {
+        let closed = || {
+            let mut state = settle();
+            let mut tool = ExtrudeTool::new();
+            let view = wall_view();
+            for p in window_points() {
+                click(&mut tool, &mut state, &view, p);
+            }
+            let first = view.world_to_screen(DVec3::new(-64.0, 256.0, 32.0)).expect("first");
+            tool.handle_mouse(&mut state, &view, &Mouse::double_click(first));
+            assert!(tool.is_closed());
+            (state, tool)
+        };
+        let top = info_2d(ViewKind::Top, 1.0);
+        let start = top.world_to_screen(DVec3::new(300.0, 200.0, 0.0)).expect("start");
+        let mut scrolled = top;
+        scrolled.cam2d.center.y -= 96.0;
+        let (mut state, mut tool) = closed();
+        tool.handle_mouse(&mut state, &top, &Mouse::drag_start(start, start));
+        tool.handle_mouse(&mut state, &top, &Mouse::drag(start, start));
+        tool.handle_mouse(&mut state, &scrolled, &Mouse::drag(start, start));
+        tool.handle_mouse(&mut state, &scrolled, &Mouse::drag_end(start, start));
+        let by_scroll = (tool.options.mode, tool.options.depth);
+        let (mut state, mut tool) = closed();
+        let same_world = top.screen_of_2d(scrolled.screen_to_2d(start));
+        tool.handle_mouse(&mut state, &top, &Mouse::drag_start(start, start));
+        tool.handle_mouse(&mut state, &top, &Mouse::drag(start, same_world));
+        tool.handle_mouse(&mut state, &top, &Mouse::drag_end(start, same_world));
+        assert_eq!(by_scroll, (tool.options.mode, tool.options.depth), "scrolling equals moving the mouse");
+        assert_ne!(by_scroll, (ExtrudeMode::Carve, 16.0), "the scroll changed the depth");
     }
 
     #[test]

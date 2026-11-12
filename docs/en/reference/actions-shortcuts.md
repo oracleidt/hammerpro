@@ -51,6 +51,8 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Exit | `exit` |  |  |  |
 | Import heightmap... | `import_heightmap` |  |  |  |
 | Export heightmap... | `export_heightmap` |  |  |  |
+| Import blend masks... | `import_blend_masks` |  |  |  |
+| Export blend masks... | `export_blend_masks` |  |  |  |
 
 ## Edit menu
 
@@ -206,6 +208,7 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Display options > Cubemap reflections | `toggle_cubemaps` |  |  |  |
 | Display options > Object colors in 2D | `toggle_object_colors_2d` |  |  |  |
 | Display options > Object colors in 3D wireframe and flat | `toggle_object_colors_3d` |  |  |  |
+| Display options > Tint func_detail brushes | `toggle_detail_tint` |  |  |  |
 | Display options > Show visible clusters | `toggle_pvs` |  |  |  |
 | Display options > Show nav mesh | `toggle_nav_mesh` |  |  |  |
 | Display options > Show particles | `toggle_particles` |  |  |  |
@@ -255,6 +258,8 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Ungroup | `ungroup` | `Ctrl+U` |  |  |
 | Tie to entity | `tie_to_entity` | `Ctrl+T` |  |  |
 | Move to world | `move_to_world` | `Ctrl+Shift+W` |  |  |
+| Make func_detail | `convert_to_detail` | `Ctrl+Alt+D` |  |  |
+| Select func_detail candidates... | `select_detail_candidates` |  |  |  |
 | Carve | `carve` | `Ctrl+Shift+C` |  |  |
 | Make hollow | `make_hollow` | `Ctrl+H` |  |  |
 | Merge into convex solid | `merge_convex` |  |  |  |
@@ -279,7 +284,6 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Interactive extrude (E) | `extrude_interactive` | `E` |  |  |
 | Nodraw on hidden faces... | `nodraw_hidden_faces` |  |  |  |
 | Tie each to its own entity | `tie_each_to_entity` | `Ctrl+Shift+T` |  |  |
-| Convert to func_detail | `convert_to_detail` |  |  |  |
 | Edit curve | `curve_edit` |  |  |  |
 | Edit road | `road_edit` |  |  |  |
 | Sidewalk generator... | `road_sidewalk` |  |  |  |
@@ -313,6 +317,7 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Convert brushes to a prop | `brushes_to_prop` |  |  |  |
 | Convert prop to brushes... | `prop_to_brushes` |  |  |  |
 | Generate nav mesh | `generate_nav_mesh` |  |  |  |
+| Combine props... | `combine_props` |  |  |  |
 | Prop options (Propper)... | `propper_options` |  |  |  |
 | Shader editor... | `shader_editor` |  |  |  |
 | VTF editor... | `vtf_editor` |  |  |  |

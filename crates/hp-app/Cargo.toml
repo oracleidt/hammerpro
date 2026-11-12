@@ -28,6 +28,7 @@ toml.workspace = true
 dirs.workspace = true
 log.workspace = true
 parking_lot.workspace = true
+rayon.workspace = true
 sys-locale = "0.3"
 
 [target.'cfg(windows)'.dependencies]

@@ -168,4 +168,5 @@ pub struct LightingRuntime {
     pub budget_wanted: bool,
     pub no_lights: bool,
     pub indirect: IndirectStatus,
+    pub paused: bool,
 }

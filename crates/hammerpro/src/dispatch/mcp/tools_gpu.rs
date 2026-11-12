@@ -19,7 +19,11 @@ domain! { "graphics memory";
     get_performance: Read, "Frame time and quality",
         "Frame time and quality of the 3D view: FPS, frame time, CPU time of the last 3D render (prepare, record, \
         submit), GPU time from timestamp queries when the graphics card supports them (shadows, scene, post \
-        effects, water reflection), working set RAM, the graphics card, whether it is integrated, the performance \
+        effects, water reflection; passes splits it into light_cull (the clustered light lists of the lighting \
+        preview), sun_shadows (sun, sky light and Textured mode shadow maps), local_shadows (the point and spot \
+        light shadow maps and projected textures), main (the 3D view itself), effects (water, fog volumes, sun \
+        glow, refraction), present (tone mapping, bloom, display) and outline (selection outline), and \
+        water_reflection_passes splits the water reflection the same way), working set RAM, the graphics card, whether it is integrated, the performance \
         mode (render.performance_mode: Auto, Off, Low or VeryLow), the quality level in force (full, low, very_low), \
         whether Auto lowered it and at how many FPS, render.render_scale and render.perf_hud (the on-screen readout). \
         Auto only lowers the quality after the 3D view stays under 20 FPS for several seconds while it draws continuously (frames spaced out on purpose while idle do not count). Drive the camera \
@@ -36,8 +40,11 @@ domain! { "graphics memory";
         its last image when nothing changed: rendered false) and painting its labels, with its overlay item count.",
         {}, [];
     run_benchmark: Editor, "Benchmark the 3D view",
-        "Turn the 3D camera through a full circle around its position over a number of frames (the camera is         put back afterwards) and measure the frame time of the real window: average FPS, frame time average,         95th percentile and worst, CPU render time, GPU time per stage when the card supports timestamp         queries, and the working set RAM at the start, end and peak. It starts at once; call wait_frames, then         get_performance: its benchmark field is running while it runs, then holds the result. vsync caps the         FPS at the refresh rate, so compare the CPU and GPU milliseconds as well.",
-        { "frames": integer("Frames to draw (default 300).", 10, 3600) }, [];
+        "Turn the 3D camera through a full circle around its position over a number of frames (the camera is         put back afterwards) and measure the frame time of the real window: average FPS, frame time average,         95th and 99th percentile and worst, CPU render time (average, median and 99th percentile), GPU time per stage when the card supports timestamp         queries (total, median, 99th percentile, and per pass like get_performance gpu_ms.passes and water_reflection_passes), and the working set RAM at the start, end and peak. It starts at once; call wait_frames, then         get_performance: its benchmark field is running while it runs, then holds the result. vsync caps the         FPS at the refresh rate, so compare the CPU and GPU milliseconds as well.",
+        {
+            "frames": integer("Frames to draw (default 300).", 10, 3600),
+            "trace": boolean("Also return every frame (frame time, CPU and GPU render time, GPU time per pass, CPU time of the views phase, of drawing the views, of their overlays and labels, and of the whole frame) in benchmark.trace.")
+        }, [];
     restore_full_quality: Editor, "Restore full quality",
         "Go back to the full quality preview after Auto lowered it, and pause the automatic reduction until         render.performance_mode is changed. Same as the Restore full quality button over the 3D view.",
         {}, [];
@@ -119,17 +126,29 @@ fn bench_json(p: &hp_app::runtime::PerfRuntime) -> serde_json::Value {
             "frames": r.frames,
             "seconds": r.seconds,
             "avg_fps": r.avg_fps,
-            "frame_ms": { "avg": r.frame_ms_avg, "median": r.frame_ms_median, "p95": r.frame_ms_p95, "max": r.frame_ms_max },
+            "frame_ms": { "avg": r.frame_ms_avg, "median": r.frame_ms_median, "p95": r.frame_ms_p95, "p99": r.frame_ms_p99, "max": r.frame_ms_max },
             "cpu_ms_avg": r.cpu_ms_avg,
             "cpu_ms_median": r.cpu_ms_median,
+            "cpu_ms_p99": r.cpu_ms_p99,
+            "gpu_ms_p99": r.gpu_ms_p99,
             "draw_calls_avg": r.draw_calls_avg,
             "triangles_avg": r.triangles_avg,
             "model_instances_drawn_avg": r.model_instances_avg,
             "gpu_ms_median": r.gpu_ms_median,
             "cpu_phases_ms_avg": { "setup": r.cpu_phases_ms_avg[0], "water_reflection": r.cpu_phases_ms_avg[1], "light_clusters": r.cpu_phases_ms_avg[2], "shadow_prep": r.cpu_phases_ms_avg[3], "model_culling": r.cpu_phases_ms_avg[4], "prepare_total": r.cpu_phases_ms_avg[5], "record": r.cpu_phases_ms_avg[6], "submit": r.cpu_phases_ms_avg[7] },
-            "gpu_ms_avg": { "total": r.gpu_ms_avg, "shadows": r.gpu_shadows_ms_avg, "scene": r.gpu_scene_ms_avg, "post": r.gpu_post_ms_avg, "water_reflection": r.gpu_reflection_ms_avg },
+            "gpu_ms_avg": { "total": r.gpu_ms_avg, "shadows": r.gpu_shadows_ms_avg, "scene": r.gpu_scene_ms_avg, "post": r.gpu_post_ms_avg, "water_reflection": r.gpu_reflection_ms_avg, "passes": passes_json(&r.gpu_passes_ms_avg), "water_reflection_passes": passes_json(&r.gpu_reflection_passes_ms_avg) },
             "working_set_mb": { "start": r.working_set_start_mb, "end": r.working_set_end_mb, "peak": r.working_set_peak_mb },
             "views_rendered": r.views_rendered,
+            "trace": (!r.trace.is_empty()).then(|| r.trace.iter().map(|f| json!({
+                "frame_ms": f.frame_ms,
+                "cpu_ms": f.cpu_ms,
+                "gpu_ms": f.gpu_ms,
+                "views_ms": f.views_ms,
+                "view_render_ms": f.view_render_ms,
+                "view_overlay_ms": f.view_overlay_ms,
+                "app_ms": f.app_ms,
+                "gpu_passes": passes_json(&f.gpu_passes),
+            })).collect::<Vec<_>>()),
         }),
         _ => serde_json::Value::Null,
     }
@@ -161,6 +180,8 @@ fn get_performance(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
                 "scene": s.gpu_scene_ms,
                 "post": s.gpu_post_ms,
                 "water_reflection": s.gpu_reflection_ms,
+                "passes": passes_json(&s.gpu_passes),
+                "water_reflection_passes": passes_json(&s.gpu_reflection_passes),
             })
         } else {
             serde_json::Value::Null
@@ -223,6 +244,18 @@ fn get_performance(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
     Ok(ToolResult::json(out))
 }
 
+fn passes_json(p: &hp_app::runtime::GpuPasses) -> serde_json::Value {
+    json!({
+        "light_cull": p.light_cull_ms,
+        "sun_shadows": p.sun_shadows_ms,
+        "local_shadows": p.local_shadows_ms,
+        "main": p.main_ms,
+        "effects": p.effects_ms,
+        "present": p.present_ms,
+        "outline": p.outline_ms,
+    })
+}
+
 fn phases_json(f: &hp_app::runtime::FramePhases) -> serde_json::Value {
     let mut out = serde_json::Map::new();
     out.insert("total".to_owned(), json!(f.total_ms));
@@ -234,7 +267,8 @@ fn phases_json(f: &hp_app::runtime::FramePhases) -> serde_json::Value {
 
 fn run_benchmark(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let frames = a.opt_u64("frames", 10, 3600)?.unwrap_or(300) as u32;
-    state.runtime.render.perf.bench_request = Some(hp_app::runtime::BenchRequest { frames });
+    let trace = a.opt_bool("trace")?.unwrap_or(false);
+    state.runtime.render.perf.bench_request = Some(hp_app::runtime::BenchRequest { frames, trace });
     state.runtime.render.perf.bench_running = true;
     Ok(ToolResult::json(json!({ "started": true, "frames": frames })))
 }

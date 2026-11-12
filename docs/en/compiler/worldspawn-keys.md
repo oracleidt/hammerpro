@@ -26,8 +26,8 @@ The compiler reads the light entities like VRAD (`light`, `light_spot`, `light_e
 | `style` | all | Light style (0 to 255). Named lights get a switchable style when the map has none. |
 | `_constant_attn`, `_linear_attn`, `_quadratic_attn` | `light`, `light_spot` | Attenuation `1 / (c + l d + q d^2)`, the intensity given at 100 units. All 0 means constant. |
 | `_fifty_percent_distance`, `_zero_percent_distance` | `light`, `light_spot` | Falloff curve through these distances (used instead of the three attenuations when the first is set). |
-| `_hardfalloff` | `light`, `light_spot` | With the fifty percent distance: the light ends at the zero percent distance. |
-| `_distance` | `light`, `light_spot` | The light ends there, fading over its last quarter (Hammer Pro reads it with both falloff kinds). |
+| `_hardfalloff` | `light`, `light_spot` | With the fifty percent distance: the light ends at the zero percent distance (for models in game too: it becomes the radius of the world light). Named lights follow the same curves. |
+| `_distance` | `light`, `light_spot` | Only for models in game: past it the game stops lighting them with this light. The lightmaps keep the light past it, like VRAD. |
 | `_inner_cone`, `_cone`, `_exponent` | `light_spot` | Spot cones in degrees (inner defaults to 10, outer to the inner) and the falloff exponent between them. |
 | `angles`, `pitch`, `target` | `light_spot`, `light_environment` | Direction; a `target` entity overrides it. |
 | `_castentityshadow` | all | Flags the world light so the engine casts entity shadows from it. |

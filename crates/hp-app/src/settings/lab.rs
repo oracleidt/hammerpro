@@ -19,6 +19,10 @@ pub struct LabSettings {
     pub propper_mass: f32,
     pub model_keep_params: bool,
     pub color_correction_preview: bool,
+    pub combine_origin: CombineOrigin,
+    pub combine_keep_originals: bool,
+    pub combine_collision: bool,
+    pub combine_max_pieces: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -64,6 +68,14 @@ impl Default for ModelLodSettings {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum CombineOrigin {
+    #[default]
+    Center,
+    Bottom,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum UnpropShape {
     #[default]
     Auto,
@@ -90,11 +102,21 @@ impl Default for LabSettings {
             propper_mass: 10.0,
             model_keep_params: true,
             color_correction_preview: false,
+            combine_origin: CombineOrigin::Center,
+            combine_keep_originals: true,
+            combine_collision: true,
+            combine_max_pieces: 32,
         }
     }
 }
 
 impl LabSettings {
+    pub const MAX_COMBINE_PIECES: u32 = 128;
+
+    pub fn combine_pieces(&self) -> usize {
+        self.combine_max_pieces.clamp(1, Self::MAX_COMBINE_PIECES) as usize
+    }
+
     pub fn propper_options(&self) -> hp_editor::prop_export::PropOptions {
         hp_editor::prop_export::PropOptions {
             physics: self.propper_physics,

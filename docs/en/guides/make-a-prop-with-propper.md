@@ -6,7 +6,7 @@ Propper turns brushes (and displacements) into a real `.mdl` model with levels o
 
 ## Before you start
 
-- The game folder is set (**Tools > Options...**, page **Game**). Propper compiles the model with the game's own `studiomdl`, found in its `bin` folder.
+- The game folder is set (**Tools > Options...**, page **Game**). Propper compiles the model with the game's own `studiomdl`, found in its `bin` folder, or with the model compiler set in **Settings > Compile** (NekoMDL for example).
 - Saving the map gives a useful default model name; you can edit it in the creation window.
 - Automated runs (`--script`) never compile models, because `studiomdl` writes into the game.
 

@@ -488,6 +488,7 @@ impl VertexTool {
         } else if let Some(r) = self.rubber.as_mut()
             && r.view.index == view.index
         {
+            r.origin = view.follow_2d(&r.view, r.origin);
             r.current = pos;
             r.view = *view;
         }

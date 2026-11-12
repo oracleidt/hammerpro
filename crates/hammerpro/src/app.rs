@@ -558,14 +558,15 @@ impl HammerProApp {
         let now = self.state.frame.time;
         self.vram.tick(&mut self.state, now);
         let busy = self.state.assets.busy();
-        let (focused, input) = ctx.input(|i| {
+        let (focused, input, minimized) = ctx.input(|i| {
             let focused =
                 i.viewport().focused.unwrap_or(true) || i.raw.viewports.values().any(|v| v.focused == Some(true));
             let input = i.events.iter().any(|e| !matches!(e, egui::Event::WindowFocused(_)))
                 || i.pointer.any_down()
                 || !i.keys_down.is_empty();
-            (focused, input)
+            (focused, input, i.viewport().minimized.unwrap_or(false))
         });
+        self.state.runtime.render.minimized = minimized;
         self.state.runtime.render.update_animation(&self.state.settings.render, focused, input, now);
         let continuous = self.perf.note_repaints(&mut self.state, ctx, now);
         self.perf.tick(&mut self.state, elapsed, self.avg_frame_time * 1000.0, busy, continuous, now);

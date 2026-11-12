@@ -267,11 +267,7 @@ impl ViewInfo {
 
     pub fn world_to_screen(&self, p: DVec3) -> Option<Pos2> {
         if self.is_2d() {
-            let p2 = self.kind.to_2d(p);
-            let c = self.rect.center();
-            let x = c.x as f64 + (p2.x - self.cam2d.center.x) * self.cam2d.zoom;
-            let y = c.y as f64 - (p2.y - self.cam2d.center.y) * self.cam2d.zoom;
-            return Some(Pos2::new(x as f32, y as f32));
+            return Some(self.screen_of_2d(self.kind.to_2d(p)));
         }
         let clip = self.view_proj() * DVec4::new(p.x, p.y, p.z, 1.0);
         if clip.w <= 1e-6 {
@@ -289,6 +285,20 @@ impl ViewInfo {
             self.cam2d.center.x + (pos.x - c.x) as f64 / self.cam2d.zoom,
             self.cam2d.center.y - (pos.y - c.y) as f64 / self.cam2d.zoom,
         )
+    }
+
+    pub fn screen_of_2d(&self, p: DVec2) -> Pos2 {
+        let c = self.rect.center();
+        let x = c.x as f64 + (p.x - self.cam2d.center.x) * self.cam2d.zoom;
+        let y = c.y as f64 - (p.y - self.cam2d.center.y) * self.cam2d.zoom;
+        Pos2::new(x as f32, y as f32)
+    }
+
+    pub fn follow_2d(&self, before: &ViewInfo, pos: Pos2) -> Pos2 {
+        if !self.is_2d() || before.kind != self.kind {
+            return pos;
+        }
+        self.screen_of_2d(before.screen_to_2d(pos))
     }
 
     pub fn screen_to_world_2d(&self, pos: Pos2, depth: f64) -> DVec3 {
@@ -321,6 +331,21 @@ impl ViewInfo {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct CameraMotion {
+    last: Option<[f64; 5]>,
+    moved: bool,
+}
+
+impl CameraMotion {
+    pub fn gliding(&mut self, cam: [f64; 5]) -> bool {
+        let moved = self.last.is_some_and(|c| c != cam);
+        let was = std::mem::replace(&mut self.moved, moved);
+        self.last = Some(cam);
+        moved && was
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -347,6 +372,21 @@ mod tests {
             let p2 = kind.to_2d(p);
             assert!((back - p2).length() < 1e-3, "{kind:?}");
         }
+    }
+
+    #[test]
+    fn follow_2d_keeps_the_world_point_after_a_pan() {
+        let before = info(ViewKind::Front);
+        let mut after = before;
+        after.cam2d.center += DVec2::new(40.0, -12.0);
+        let press = Pos2::new(300.0, 200.0);
+        let moved = after.follow_2d(&before, press);
+        assert!((after.screen_to_2d(moved) - before.screen_to_2d(press)).length() < 1e-4);
+        assert_eq!(moved, Pos2::new(press.x - 80.0, press.y - 24.0));
+        let persp = info(ViewKind::Perspective);
+        assert_eq!(persp.follow_2d(&before, press), press);
+        let top = info(ViewKind::Top);
+        assert_eq!(top.follow_2d(&before, press), press);
     }
 
     #[test]
@@ -414,5 +454,14 @@ mod tests {
         let anchor = DVec2::new(100.0, 50.0);
         c.zoom_at(2.0, anchor);
         assert!((c.center - DVec2::new(50.0, 25.0)).length() < 1e-9);
+    }
+
+    #[test]
+    fn camera_motion_glides_only_after_two_moving_frames() {
+        let mut m = CameraMotion::default();
+        assert!(!m.gliding([0.0; 5]));
+        assert!(!m.gliding([1.0, 0.0, 0.0, 0.0, 0.0]), "a single jump is not a glide");
+        assert!(m.gliding([2.0, 0.0, 0.0, 0.0, 0.0]));
+        assert!(!m.gliding([2.0, 0.0, 0.0, 0.0, 0.0]), "a still frame ends it");
     }
 }

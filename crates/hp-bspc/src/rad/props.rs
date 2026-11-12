@@ -989,6 +989,7 @@ pub(crate) fn light(
     opts: &PropOptions,
     bounces: bool,
     passes: &[bool],
+    cancelled: &(dyn Fn() -> bool + Sync),
 ) -> (Vec<(String, Vec<u8>)>, usize, usize) {
     let weights: Vec<u64> = (0..sp.props.len()).map(|i| prop_vertices(sp, i)).collect();
     let sphere = sphere_table(opts);
@@ -996,6 +997,9 @@ pub(crate) fn light(
     let per_prop: Vec<Option<Vec<Vec<u8>>>> = (0..sp.props.len())
         .into_par_iter()
         .map(|i| {
+            if cancelled() {
+                return None;
+            }
             let r = light_prop(ctx, light, sp, i, (opts, &sphere), bounces);
             if r.is_none() {
                 ctx.work.add(weights[i]);

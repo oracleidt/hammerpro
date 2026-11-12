@@ -9,6 +9,7 @@ mod brush;
 mod coverage;
 mod csg;
 mod disp;
+mod disp_cut;
 mod edge_net;
 mod extrude;
 mod hull;
@@ -61,6 +62,7 @@ pub use disp::{
     disp_tag_state, disp_tri_states, disp_walk, invert_alpha, ray_disp, scale_disp, slope_walk, update_disp_tags,
     vmf_tags_from_compiled,
 };
+pub use disp_cut::{MIN_CUT_DISP_POWER, displaced_surface_point, keep_cut_displacements};
 pub use edge_net::{EdgeNet, EdgeRun, NET_EPS, NetSolid, SlideVertex};
 pub use extrude::{
     ExtrudeIssue, ExtrudeMode, FaceExtrudeParams, FaceExtrudeResult, FaceFrame, MAX_OUTLINE_POINTS, MIN_EXTRUDE_DEPTH,

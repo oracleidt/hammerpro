@@ -15,6 +15,7 @@ pub enum CompileBadge {
 pub enum CompileBrowse {
     GameExe,
     MapsDir,
+    ModelCompiler,
 }
 
 #[derive(Debug, Default)]

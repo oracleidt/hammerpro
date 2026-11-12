@@ -14,6 +14,18 @@ pub fn set_main_window(handle: isize) {
     MAIN_WINDOW.store(handle, Ordering::Relaxed);
 }
 
+pub fn main_window_state() -> Option<(bool, bool)> {
+    #[cfg(windows)]
+    {
+        let handle = MAIN_WINDOW.load(Ordering::Relaxed);
+        (handle != 0).then(|| win::window_state(handle))
+    }
+    #[cfg(not(windows))]
+    {
+        None
+    }
+}
+
 pub fn prepare_window(handle: isize) {
     #[cfg(windows)]
     {
@@ -379,6 +391,20 @@ mod win {
 
     fn hwnd(handle: isize) -> HWND {
         handle as HWND
+    }
+
+    pub(super) fn window_state(window: isize) -> (bool, bool) {
+        use windows_sys::Win32::System::Threading::GetCurrentProcessId;
+        use windows_sys::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
+        unsafe {
+            let minimized = IsIconic(hwnd(window)) != 0;
+            let mut owner = 0u32;
+            let front = GetForegroundWindow();
+            if !front.is_null() {
+                GetWindowThreadProcessId(front, &raw mut owner);
+            }
+            (minimized, owner != 0 && owner == GetCurrentProcessId())
+        }
     }
 
     pub(super) fn is_window(handle: isize) -> bool {

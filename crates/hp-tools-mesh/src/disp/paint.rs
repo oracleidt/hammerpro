@@ -16,6 +16,11 @@ pub(crate) const DEFAULT_DT: f32 = 1.0 / 60.0;
 pub(crate) const SMOOTH_RATE: f64 = 6.0;
 pub(crate) const RING_SEGMENTS: usize = 48;
 pub(crate) const UP_FACING_Z: f64 = 0.7;
+pub const MAX_RADIUS: f64 = 16384.0;
+pub const MAX_SMOOTH_BOOST: f64 = 64.0;
+pub(crate) const BOOST_KEY_FACTOR: f64 = 4.0;
+pub(crate) const MAX_SMOOTH_PASSES: u32 = 16;
+pub(crate) const SLOPE_RATE: f64 = 12.0;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Interaction {
@@ -35,6 +40,7 @@ pub enum GeoEffect {
     Smooth,
     Set,
     Relax,
+    Slope,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -89,7 +95,12 @@ pub struct BrushSettings {
     pub radius: f64,
     pub strength: f64,
     pub smooth: f64,
+    pub smooth_boost: f64,
     pub target_height: f64,
+    pub height_world: bool,
+    pub slope_strength: f64,
+    pub slope_start: Option<DVec3>,
+    pub slope_end: Option<DVec3>,
     pub falloff: Falloff,
     pub spatial: bool,
     pub axis: PaintAxis,
@@ -113,7 +124,12 @@ impl Default for BrushSettings {
             radius: 64.0,
             strength: 64.0,
             smooth: 0.5,
+            smooth_boost: 1.0,
             target_height: 0.0,
+            height_world: false,
+            slope_strength: 0.5,
+            slope_start: None,
+            slope_end: None,
             falloff: Falloff::Smooth,
             spatial: false,
             axis: PaintAxis::FaceNormal,
@@ -177,10 +193,15 @@ impl BrushSettings {
 
     pub fn sanitize(&mut self) {
         let fix = |v: f64, lo: f64, hi: f64, default: f64| if v.is_finite() { v.clamp(lo, hi) } else { default };
-        self.radius = fix(self.radius, 1.0, 8192.0, 64.0);
+        self.radius = fix(self.radius, 1.0, MAX_RADIUS, 64.0);
         self.strength = fix(self.strength, 0.0, 8192.0, 64.0);
         self.smooth = fix(self.smooth, 0.0, 1.0, 0.5);
+        self.smooth_boost = fix(self.smooth_boost, 1.0, MAX_SMOOTH_BOOST, 1.0);
         self.target_height = fix(self.target_height, -16384.0, 16384.0, 0.0);
+        self.slope_strength = fix(self.slope_strength, 0.0, 1.0, 0.5);
+        let point = |p: Option<DVec3>| p.filter(|p| p.is_finite() && p.abs().max_element() <= 131_072.0);
+        self.slope_start = point(self.slope_start);
+        self.slope_end = point(self.slope_end);
         self.alpha_value = fix(self.alpha_value, 0.0, 255.0, 255.0);
         self.alpha_strength = fix(self.alpha_strength, 0.0, 16384.0, 255.0);
         if !self.custom_axis.is_finite() || self.custom_axis.length_squared() < 1e-12 {
@@ -197,7 +218,8 @@ impl BrushSettings {
 pub(crate) enum LocalOp {
     Move { dir: PaintDir, amount: f64 },
     SetHeight { axis: DVec3, target: f64 },
-    Smooth { dir: PaintDir, amount: f64 },
+    Level { dir: PaintDir, a: DVec3, b: DVec3, height: Option<f64>, rate: f64 },
+    Smooth { dir: PaintDir, amount: f64, passes: u32 },
     AlphaSet { target: f64 },
     AlphaSmooth { amount: f64, blend: bool },
     Blend { channel: usize, amount: f64 },
@@ -250,7 +272,17 @@ pub(crate) fn build_sample(
             Some(match (effect, dir) {
                 (GeoEffect::Relax, _) => return None,
                 (GeoEffect::Smooth, dir) => {
-                    local(LocalOp::Smooth { dir, amount: (s.smooth * dt * SMOOTH_RATE).clamp(0.0, 1.0) })
+                    let (amount, passes) = smooth_passes(s.smooth * dt * SMOOTH_RATE * s.smooth_boost);
+                    local(LocalOp::Smooth { dir, amount, passes })
+                }
+                (GeoEffect::Slope, dir) => {
+                    let (a, b) = s.slope_start.zip(s.slope_end)?;
+                    let dir = if dir == PaintDir::VertexNormal { PaintDir::FaceNormal } else { dir };
+                    local(LocalOp::Level { dir, a, b, height: None, rate: slope_rate(s.slope_strength, dt) })
+                }
+                (GeoEffect::Set, dir) if s.height_world => {
+                    let dir = if dir == PaintDir::VertexNormal { PaintDir::FaceNormal } else { dir };
+                    local(LocalOp::Level { dir, a: center, b: center, height: Some(s.target_height), rate: 1.0 })
                 }
                 (GeoEffect::Set, PaintDir::FaceNormal | PaintDir::VertexNormal) => {
                     stock(PaintMode::Set, s.target_height)
@@ -288,10 +320,37 @@ pub(crate) fn build_sample(
     }
 }
 
+pub(crate) fn smooth_passes(total: f64) -> (f64, u32) {
+    if !total.is_finite() || total <= 0.0 {
+        return (0.0, 1);
+    }
+    let passes = (total.ceil() as u32).clamp(1, MAX_SMOOTH_PASSES);
+    ((total / f64::from(passes)).min(1.0), passes)
+}
+
+pub(crate) fn slope_rate(strength: f64, dt: f64) -> f64 {
+    if !strength.is_finite() || strength <= 0.0 {
+        return 0.0;
+    }
+    if strength >= 1.0 { 1.0 } else { (strength * dt * SLOPE_RATE).clamp(0.0, 1.0) }
+}
+
+pub(crate) fn level_height(a: DVec3, b: DVec3, height: Option<f64>, axis: DVec3, p: DVec3) -> f64 {
+    if let Some(h) = height {
+        return h;
+    }
+    let d = b - a;
+    let flat = d - axis * d.dot(axis);
+    let len2 = flat.length_squared();
+    let t = if len2 > 1e-9 { ((p - a).dot(flat) / len2).clamp(0.0, 1.0) } else { 0.0 };
+    let (ha, hb) = (a.dot(axis), b.dot(axis));
+    ha + (hb - ha) * t
+}
+
 pub(crate) fn paint_disp_local(disp: &mut DispInfo, mesh: &DispMesh, brush: &LocalBrush) -> usize {
-    if let LocalOp::Smooth { dir, amount } = brush.op {
+    if let LocalOp::Smooth { dir, amount, passes } = brush.op {
         let mut parts = [SmoothPart { mesh, disp, pinned: false }];
-        return smooth_parts(&mut parts, brush, dir, amount).first().copied().unwrap_or(0);
+        return smooth_parts(&mut parts, brush, dir, amount, passes).first().copied().unwrap_or(0);
     }
     if let LocalOp::AlphaSmooth { amount, blend } = brush.op {
         let mut parts = [SmoothPart { mesh, disp, pinned: false }];
@@ -340,10 +399,12 @@ pub(crate) fn paint_disp_local(disp: &mut DispInfo, mesh: &DispMesh, brush: &Loc
                     }
                 }
             }
-            LocalOp::Move { .. } | LocalOp::SetHeight { .. } => {
+            LocalOp::Move { .. } | LocalOp::SetHeight { .. } | LocalOp::Level { .. } => {
                 let (axis, amount) = match brush.op {
                     LocalOp::Move { dir: PaintDir::Fixed(axis), amount }
                     | LocalOp::SetHeight { axis, target: amount } => (axis, amount),
+                    LocalOp::Level { dir: PaintDir::Fixed(axis), .. } => (axis, 0.0),
+                    LocalOp::Level { .. } => (face_normal, 0.0),
                     LocalOp::Move { dir: PaintDir::VertexNormal, amount } => {
                         (mesh.normals.get(k).copied().unwrap_or(face_normal), amount)
                     }
@@ -360,6 +421,14 @@ pub(crate) fn paint_disp_local(disp: &mut DispInfo, mesh: &DispMesh, brush: &Loc
                 let vec = if vec.is_finite() { vec } else { DVec3::ZERO };
                 let new_vec = match brush.op {
                     LocalOp::SetHeight { .. } => vec + axis * ((amount - vec.dot(axis)) * w),
+                    LocalOp::Level { a, b, height, rate, .. } => {
+                        let target = level_height(a, b, height, axis, pos);
+                        let delta = (target - pos.dot(axis)) * rate * w;
+                        if !delta.is_finite() {
+                            continue;
+                        }
+                        vec + axis * delta
+                    }
                     _ => vec + axis * (amount * w),
                 };
                 if (new_vec - vec).length_squared() < 1e-18 {
@@ -477,10 +546,10 @@ pub(crate) fn paint_local(
         work.push((f, &**mesh, (**disp).clone(), poly.vertices.as_slice(), pin));
     }
     let counts: Vec<usize> = match brush.op {
-        LocalOp::Smooth { dir, amount } => {
+        LocalOp::Smooth { dir, amount, passes } => {
             let mut parts: Vec<SmoothPart<'_>> =
                 work.iter_mut().map(|(_, mesh, disp, _, pinned)| SmoothPart { mesh, disp, pinned: *pinned }).collect();
-            smooth_parts(&mut parts, brush, dir, amount)
+            smooth_parts(&mut parts, brush, dir, amount, passes)
         }
         LocalOp::AlphaSmooth { amount, blend } => {
             let mut parts: Vec<SmoothPart<'_>> =

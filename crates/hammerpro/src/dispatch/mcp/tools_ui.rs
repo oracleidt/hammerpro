@@ -117,7 +117,9 @@ const SPECS: &[ToolSpec] = &[
         name: "ui_drag",
         title: "Drag",
         description: "Press a mouse button at from, move to to in steps, release (draw a block, move objects, pan \
-            with the right button, drag a slider). from and to take x, y, fx, fy or world; view applies to both.",
+            with the right button, drag a slider). from and to take x, y, fx, fy or world; view applies to both. \
+            hold keeps the button down at to for that many frames before releasing: with the setting \
+            workflow.drag_autopan on, a left drag held near or past the edge of a 2D view scrolls that view.",
         kind: ToolKind::Editor,
         schema: || {
             object(
@@ -127,6 +129,7 @@ const SPECS: &[ToolSpec] = &[
                     "to": point_schema("End point."),
                     "button": one_of("Default left.", BUTTONS),
                     "steps": integer("Pointer moves between the two points (default 12).", 1, 200),
+                    "hold": integer("Frames to keep the button down at to before releasing (default 0).", 0, 600),
                     "mods": mods_prop(),
                 }),
                 &["from", "to"],
@@ -370,7 +373,7 @@ fn pointer(v: &Value, tool: &'static str, kind: impl Fn(&Args<'_>) -> R<PointerK
 }
 
 fn drag(v: &Value) -> R<UiOp> {
-    let a = args(v, &["view", "from", "to", "button", "steps", "mods"])?;
+    let a = args(v, &["view", "from", "to", "button", "steps", "hold", "mods"])?;
     let view = view_sel(&a)?;
     let point = |key: &str| -> R<Target> {
         let p = a.get(key).ok_or_else(|| format!("{key} is required"))?;
@@ -380,9 +383,10 @@ fn drag(v: &Value) -> R<UiOp> {
     let from = point("from")?;
     let to = point("to")?;
     let steps = a.opt_u64("steps", 1, 200)?.unwrap_or(12) as u32;
+    let hold = a.opt_u64("hold", 0, 600)?.unwrap_or(0) as u32;
     Ok(UiOp::Pointer {
         tool: "ui_drag",
-        kind: PointerKind::Drag { to, button: button(&a)?, steps },
+        kind: PointerKind::Drag { to, button: button(&a)?, steps, hold },
         at: from,
         mods: mods(&a)?,
     })
@@ -497,7 +501,10 @@ mod tests {
             json!({ "view": "top", "from": { "world": [0, 0, 0] }, "to": { "fx": 1, "fy": 1 }, "steps": 3 }),
         )
         .unwrap();
-        assert!(matches!(o, UiOp::Pointer { kind: PointerKind::Drag { steps: 3, .. }, .. }));
+        assert!(matches!(o, UiOp::Pointer { kind: PointerKind::Drag { steps: 3, hold: 0, .. }, .. }));
+        let held = op("ui_drag", json!({ "from": { "x": 1, "y": 1 }, "to": { "x": 9, "y": 1 }, "hold": 90 })).unwrap();
+        assert!(matches!(held, UiOp::Pointer { kind: PointerKind::Drag { hold: 90, .. }, .. }));
+        assert!(op("ui_drag", json!({ "from": { "x": 1, "y": 1 }, "to": { "x": 9, "y": 1 }, "hold": 601 })).is_err());
         assert!(op("ui_drag", json!({ "from": { "x": 1, "y": 1 } })).unwrap_err().contains("to is required"));
         assert!(
             op("ui_drag", json!({ "from": { "x": 1, "y": 1, "z": 1 }, "to": { "x": 1, "y": 1 } }))

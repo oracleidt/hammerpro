@@ -21,6 +21,7 @@ ahash.workspace = true
 smallvec.workspace = true
 
 [dev-dependencies]
+hp-editor.workspace = true
 hp-fs = { path = "../hp-fs" }
 hp-decompile = { path = "../hp-decompile" }
 hp-mdl.workspace = true

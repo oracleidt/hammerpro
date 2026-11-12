@@ -19,7 +19,7 @@ Toutes sont dans le menu **Outils** (sauf **Créer un brush hint**, disponible s
 | **Lier à une entité** | `Ctrl+T` | une sélection |
 | **Lier chacun à sa propre entité** | `Ctrl+Maj+T` | une sélection avec des brushes du monde |
 | **Renvoyer au monde** | `Ctrl+Maj+W` | des brushes d'entités de brush |
-| **Convertir en func_detail** | aucun | une sélection |
+| **Transformer en func_detail** | `Ctrl+Alt+D` | une sélection avec des brushes du monde |
 | **Nodraw sur les faces cachées...** | aucun | rien (parcourt toute la map) |
 | **Créer un brush hint** | aucun (palette de commandes) | des faces sélectionnées avec l'outil de texture |
 | **Verrouillage des textures** | `Maj+L` | |
@@ -37,6 +37,7 @@ Quand une commande demande des brushes et qu'aucun n'est sélectionné, l'avis *
 - Les brushes sont découpés en parallèle sur tous les cœurs du processeur : creuser à travers des centaines de brushes d'un coup reste rapide.
 
 Le carve crée beaucoup de petits brushes. Pour une simple ouverture, l'[outil extruder / creuser](extrude-tool.md) (un contour cliqué sur une face, creusé dans ce seul brush, avec le moins de morceaux possible), l'[outil de découpe](clip-tool.md) ou quelques blocs donnent souvent une géométrie plus propre.
+- Les déplacements des brushes creusés sont gardés sur chaque morceau, comme avec l'outil de découpe (voir [Outil de découpe](clip-tool.md)) ; **Intersection** les garde aussi.
 
 ## Rendre creux
 
@@ -97,9 +98,9 @@ Les brushes pris à d'autres entités de brush passent dans l'entité, et les en
 
 **Outils > Renvoyer au monde** (`Ctrl+Maj+W`) renvoie les brushes des entités de brush sélectionnées dans le monde. Les entités de brush qui n'ont plus de brush sont supprimées. Les brushes déplacés sont sélectionnés.
 
-## Convertir en func_detail
+## Transformer en func_detail
 
-**Outils > Opérations sur les brushes > Convertir en func_detail** lie la sélection à un nouveau `func_detail`, quelle que soit la classe d'entité de brush par défaut. Si la sélection est déjà un seul `func_detail`, l'avis **La sélection est déjà un func_detail** s'affiche. Pour trouver les brushes à convertir, voyez **Map > Fuites et visibilité > Suggestions de func_detail...** dans [Vérifier les problèmes](check-problems.md).
+**Outils > Opérations sur les brushes > Transformer en func_detail** (`Ctrl+Alt+D`, aussi le bouton **Vers func_detail** de la barre d'outils et le menu du clic droit des vues) transforme les brushes du monde sélectionnés en `func_detail` en une seule étape d'annulation, quelle que soit la classe d'entité de brush par défaut : une entité par sélection (ou par ensemble de brushes qui se touchent), groupes, visgroups et textures conservés, brushes déjà dans un `func_detail` laissés tels quels. Il vérifie d'abord avec le remplissage de fuite qu'aucun brush ne scelle la map et demande avant de convertir ceux qui la scellent. Si la sélection est déjà un `func_detail`, l'avis **La sélection est déjà un func_detail** s'affiche. **Outils > Opérations sur les brushes > Sélectionner les candidats func_detail...** trouve les brushes à convertir. Tout est décrit dans [func_detail](func-detail.md).
 
 ## Nodraw sur les faces cachées
 
@@ -132,7 +133,7 @@ Les deux sont dans le menu **Outils**, dans **Paramètres > Édition > Comportem
 
 ## MCP
 
-Pour les assistants IA : `carve`, `hollow`, `merge_brushes` (`convex_hull` à true pour Fusionner en un solide convexe), `intersect_brushes`, `union_brushes`, `tie_to_entity`, `move_to_world`, `make_hint_brushes`, `find_hidden_faces`, `apply_nodraw` et `run_action` pour les autres commandes. Voir la [référence des outils MCP](../../MCP.md) (en anglais).
+Pour les assistants IA : `carve`, `hollow`, `merge_brushes` (`convex_hull` à true pour Fusionner en un solide convexe), `intersect_brushes`, `union_brushes`, `tie_to_entity`, `move_to_world`, `make_func_detail`, `select_detail_candidates`, `make_hint_brushes`, `find_hidden_faces`, `apply_nodraw` et `run_action` pour les autres commandes. Voir la [référence des outils MCP](../../MCP.md) (en anglais).
 
 ## Astuces
 
@@ -162,6 +163,7 @@ Pour les assistants IA : `carve`, `hollow`, `merge_brushes` (`convex_hull` à tr
 - [Propriétés des entités](entity-properties.md)
 - [Application de texture](texture-tool.md)
 - [Vérifier les problèmes](check-problems.md)
+- [func_detail](func-detail.md)
 - [Actions et raccourcis](../reference/actions-shortcuts.md)
 
 ---

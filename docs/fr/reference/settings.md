@@ -75,6 +75,7 @@ Surtout sur **Paramètres > Vues** ; les clés `show_*` sont aussi dans le menu 
 | `paste_offset` | `true` | Les objets collés sont décalés pour ne pas recouvrir les originaux. |
 | `new_brush_color` | aucune | Couleur d'affichage `[r, g, b]` donnée aux nouveaux brushes ; aucune : la couleur par défaut aléatoire de Hammer. |
 | `undo_restores_selection` | `true` | Les changements de sélection sont des étapes d'annulation : `Ctrl+Z` rétablit la sélection précédente (faces comprises). Ils ne marquent jamais la map comme modifiée. |
+| `keep_displacements_on_cut` | `true` | Découper, Trancher, Creuser et Intersection gardent les déplacements sur les morceaux (exact sur les lignes de la grille, rééchantillonné ailleurs, coutures soudées) ; désactivé : les faces coupées redeviennent plates comme dans Hammer. **Paramètres > Édition**. |
 
 ## `[ui]` : interface
 
@@ -146,6 +147,8 @@ Surtout sur **Paramètres > Vues** ; les clés `show_*` sont aussi dans le menu 
 | `launch_game` | `true` | Lance le jeu après la compilation. |
 | `launch_via_steam` | `false` | Lance le jeu par Steam. |
 | `game_exe_path` | absente | Exécutable du jeu (absente : détecté). |
+| `model_compiler` | absente | Programme compilateur de modèles utilisé par Propper, Combiner des props et Compiler un QC (absente : `bin/win64/studiomdl.exe`, sinon `bin/studiomdl.exe` du jeu). Un remplaçant comme NekoMDL fonctionne. **Paramètres > Compilation > Compilateur de modèles**. Un programme introuvable est signalé par son nom. MCP : `set_model_compiler` (avec `confirm`). |
+| `model_compiler_args` | `""` | Arguments ajoutés pour le compilateur de modèles, après `-game <dossier> -nop4 -verbose` et avant le fichier QC. |
 | `game_args` | `"-console -dev"` | Arguments du jeu ; les options de démarrage rapide du menu de lancement les modifient. |
 | `threads` | absente | Threads du compilateur (absente : automatique, un cœur gardé pour l'éditeur avec `low_priority`). |
 | `low_priority` | `true` | Garde un cœur pour l'éditeur. |
@@ -226,6 +229,10 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `reorient_primitives` | `true` | Les primitives dessinées dans la vue Face ou Côté suivent l'axe de profondeur de cette vue. |
 | `clip_measurements` | `true` | L'outil de découpe affiche la longueur et l'angle de la ligne de coupe. |
 | `clip_current_material` | `false` | Les faces coupées reçoivent le matériau actuel (désactivé : elles copient la face la plus proche). |
+| `detail.split` | `"selection"` | **Transformer en func_detail** : un func_detail par sélection (`"selection"`) ou par ensemble de brushes qui se touchent (`"cluster"`). |
+| `detail.check_sealing` | `true` | **Transformer en func_detail** garde dans le monde les brushes qui scellent la map (demande d'abord). |
+| `detail.tint` | `false` | Les brushes func_detail prennent une teinte bleue en 3D et un contour bleu en 2D. |
+| `detail.max_size`, `detail.steps`, `detail.trims`, `detail.pillars`, `detail.small`, `detail.complex`, `detail.in_selection` | `1024`, `true`, `true`, `true`, `true`, `true`, `false` | Filtres de **Sélectionner les candidats func_detail** (voir [func_detail](../features/func-detail.md)). |
 
 ## `[workflow]`
 
@@ -241,6 +248,7 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `grid_step_factor` | `2.0` | Facteur de `[` et `]`, de 1,25 à 10. Avec 2, les puissances de deux de 1/8 à 4096. |
 | `ctrl_wheel` | `"GridSize"` | `Ctrl` + molette dans une vue 2D : `GridSize` (taille de grille) ou `ZoomAll2d` (zoom de toutes les vues 2D). |
 | `link_2d_zoom` | `false` | Zoomer une vue 2D zoome les autres. |
+| `drag_autopan` | `false` | Faire glisser quelque chose avec le bouton gauche près du bord d'une vue 2D ou au delà la fait défiler, d'autant plus vite que le curseur va loin, comme Hammer. |
 | `units` | `"Units"` | Longueurs de la barre d'état : `Units`, `Inches`, `FeetInches`, `Meters` (une unité = 2,54 cm). |
 | `show_view_info` | `false` | Images par seconde, position et angles de la caméra dans la vue 3D (`O`). |
 | `show_bounds` | `false` | Boîtes englobantes jaunes des objets visibles. Pas de raccourci (`I` est le décalage interactif) : activez-les par **Affichage > Options d'affichage > Boîtes englobantes**. |
@@ -414,6 +422,7 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `keep_background_maps_on_gpu` | `true` | Garde les maps des autres onglets sur la carte graphique tant qu'il y a de la place, pour un changement d'onglet instantané. |
 | `texture_streaming` | `true` | Détail des textures selon la distance : les textures utilisées seulement loin de toutes les vues sont gardées à une taille réduite qui rend pareil à cette distance (des niveaux de mip entiers, jamais moins de 128 pixels), et reviennent en pleine taille avant que la caméra ne s'approche. L'écran de chargement d'une map reste jusqu'à ce que chaque texture proche de la caméra soit en pleine taille. Désactivé : toutes les textures restent en pleine taille. Voir [Performances de l'éditeur](../troubleshooting/performance.md#détail-des-textures-selon-la-distance). |
 | `performance_mode` | `Auto` | `Auto` et `Off` dessinent l'aperçu en pleine qualité. `Auto` baisse la qualité d'un cran (avec un avis et un bouton Rétablir la qualité maximale sur la vue 3D) seulement quand la vue 3D reste sous 20 images par seconde pendant plusieurs secondes. Avant cela, `Auto` adapte aussi le coût des aperçus d'éclairage à une carte graphique lente, un niveau à la fois et dans les deux sens (voir [Performances de l'éditeur](../troubleshooting/performance.md#adaptation-fine-de-léclairage-auto)) ; une carte qui suit garde toujours le rendu complet. `Low` (résolution à 75 %, sans MSAA ni bloom, 4 lumières avec ombres, ombre du soleil en 2048, textures jusqu'à 1024 pixels) et `VeryLow` (résolution à 50 %, sans ombres des lumières, reflets, normal maps ni volumes de brouillard, textures jusqu'à 512 pixels) la baissent toujours. **Paramètres > Rendu > Performance**, `set_setting render.performance_mode`. Voir [Performance de l'éditeur](../troubleshooting/performance.md). |
+| `lit_quality` | `Auto` | Nombre de lumières que chaque partie de la vue 3D dessine en mode éclairé et dans l'aperçu calculé. `High` : jusqu'à 128 (le rendu complet, toujours). `Balanced` : seulement les 32 plus fortes de chaque partie, plus rapide sur les maps avec des centaines de lumières, quelques lumières faibles sont omises. `Auto` : `Balanced` seulement pendant que la caméra bouge, `High` dès qu'elle s'arrête, une image immobile est donc toujours complète. **Paramètres > Rendu > Performance > Qualité de l'aperçu d'éclairage**, `set_setting render.lit_quality`. Voir [Performances de l'éditeur](../troubleshooting/performance.md#aperçus-déclairage-à-pleine-vitesse). |
 | `render_scale` | `1.0` | Dessine la vue 3D à cette part de sa taille (0,25 à 1) puis l'étire sur la fenêtre. 1.0 est la qualité maximale. |
 | `perf_hud` | `false` | Affiche dans la vue 3D les images par seconde, le temps d'image, le temps CPU et GPU par étape, la mémoire et le niveau de qualité. |
 
@@ -424,13 +433,18 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | Clé | Défaut | Effet |
 | --- | --- | --- |
 | `auto_bake` | `true` | Lance un précalcul quand l'aperçu précalculé est activé et que rien n'est encore calculé. Toute la carte par défaut ; le mode régional optionnel concerne ce démarrage automatique. |
-| `threads` | `0` | Threads du précalcul (0 : tous les cœurs sauf deux), jusqu'à 256. |
+| `threads` | `0` | Threads du précalcul (0 : tous les cœurs sauf un quart). Au moins deux cœurs restent toujours libres : un nombre plus grand est limité à tous les cœurs sauf deux. |
 | `max_luxels_millions` | `16` | Luxels calculés en pleine résolution, de 1 à 64 millions. |
 | `auto_scope` | `false` | Mode régional optionnel au démarrage automatique de l'aperçu sur les grandes cartes. Sa région suit la caméra ; **Précalculer l'éclairage** calcule toujours toute la carte. |
 | `auto_scope_luxels_millions` | `2` | Seuil du mode régional automatique optionnel, de 1 à 64 millions de luxels. |
 | `auto_scope_radius` | `3072` | Rayon de la région automatique optionnelle, de 256 à 32768 unités. Distinct du rayon manuel de l'onglet Éclairage. |
 | `visible_first` | `true` | Sur les maps de 6000 solides ou plus, la zone autour de la caméra est précalculée d'abord, puis toute la map est précalculée en arrière-plan et la remplace. |
-| `prepare` | `true` | Une fois la map ouverte et les modifications en pause, toute la map est compilée et éclairée en priorité basse sans être dessinée, pour que l'aperçu précalculé s'affiche aussitôt à l'activation. Demande `auto_bake`. |
+| `prepare` | `true` | Une fois la map ouverte et les modifications en pause, toute la map est compilée et éclairée avec la priorité la plus basse sans être dessinée, pour que l'aperçu précalculé s'affiche aussitôt à l'activation. Pas pendant que la fenêtre est réduite ou qu'une autre fenêtre est active. Demande `auto_bake`. |
+| `priority` | `"BelowNormal"` | Priorité processeur des précalculs que vous attendez : `Idle`, `BelowNormal` ou `Normal`. La préparation en arrière-plan et l'éclairage des props tournent toujours en `Idle`. |
+| `pause_minimized` | `true` | Arrêter le précalcul en cours et les mises à jour pendant que la fenêtre est réduite ; ils reprennent à son retour. |
+| `pause_unfocused` | `false` | La même chose pendant qu'une autre fenêtre est active. |
+| `drag_pause_ms` | `120` | Pendant le déplacement d'une lumière, la recalculer dès que la souris reste immobile ce temps (0 à 2000 ms ; 0 : en continu) et au relâchement. |
+| `upload_mb_per_frame` | `4` | Données de lightmap envoyées à la carte graphique par image, de 1 à 64 Mo. |
 | `tiny_scale` | `4` | Échelle de lightmap à partir de laquelle (ou en dessous) une face est jugée minuscule, de 1 à 64. |
 | `budget_styles` | `1` | Styles de lumière comptés par le budget de lightmap, de 1 à 4. |
 | `show_budget` | `true` | Jauge du budget de lightmap dans la barre d'état. |
@@ -522,6 +536,8 @@ La fenêtre **Construire et enregistrer en contenu** et l'onglet Ressources de l
 | Clé | Défaut | Effet |
 | --- | --- | --- |
 | `live_checks` | `true` | Vérifie les problèmes de la map en arrière-plan. |
+| `check_delay_ms` | `1500` | Vérifie la map quand les modifications marquent une pause de cette durée (de 0 à 10000 ms), jamais pendant un déplacement. Les vérifications tournent avec la priorité la plus basse sur un tiers des cœurs ; après une modification seuls les props proches sont vérifiés à nouveau pour les problèmes de placement. |
+| `pause_minimized` | `true` | Arrête les vérifications de fond pendant que la fenêtre est réduite ; elles reprennent à son retour. |
 | `live_leak_check` | `true` | Vérification instantanée des fuites en arrière-plan. |
 | `show_leak_path` | `true` | Dessine le chemin de cette fuite. |
 | `limit_profile` | `"auto"` | Limites des estimations : `auto` (le jeu de la map) ou l'id d'un profil. |
@@ -557,6 +573,10 @@ La fenêtre **Construire et enregistrer en contenu** et l'onglet Ressources de l
 | `propper_static` | `true` | Compile `$staticprop` et crée un `prop_static` ; décoché, crée un `prop_dynamic`. Désactivé pour les props physiques. |
 | `propper_collision` | `true` | Génère la collision, obligatoire pour les props physiques. |
 | `propper_mass` | `10.0` | Masse physique en kg, de 0,1 à 50000. |
+| `combine_origin` | `"center"` | Origine d'un modèle fait par **Combiner des props** : `center` (centre) ou `bottom` (centre du bas) de la sélection. |
+| `combine_keep_originals` | `true` | **Combiner des props** garde les props d'origine dans le visgroup caché `Combined props (originals)` ; désactivé : ils sont supprimés. |
+| `combine_collision` | `true` | **Combiner des props** construit la collision à partir des morceaux .phy des props. |
+| `combine_max_pieces` | `32` | Nombre maximal de morceaux de collision convexes d'un modèle combiné, de 1 à 128. |
 | `model_keep_params` | `true` | L'import de modèles écrit la normal map, le brillant, l'auto-illumination et le tiling des textures du fichier dans les VMT. |
 
 ## `[sniffer]`

@@ -64,22 +64,21 @@ pub(crate) fn extract(fs: &hp_fs::GameFs, mdl: &str, dir: &Path) -> Result<Extra
     Ok(Extracted { mdl, files: files.len() })
 }
 
-pub fn studiomdl_exe(gmod_root: &Path) -> Option<PathBuf> {
-    let bin = gmod_root.join("bin");
-    [bin.join("win64").join("studiomdl.exe"), bin.join("studiomdl.exe")].into_iter().find(|p| p.is_file())
-}
+pub use hp_app::model_compiler::studiomdl_exe;
 
 pub fn studiomdl_plan(exe: &Path, game_dir: &Path, qc: &Path) -> CompilePlan {
-    let args = vec![
-        "-game".to_owned(),
-        game_dir.to_string_lossy().into_owned(),
-        "-nop4".to_owned(),
-        "-verbose".to_owned(),
-        qc.to_string_lossy().into_owned(),
-    ];
+    model_compiler_plan(exe, game_dir, qc, "")
+}
+
+pub fn model_compiler_plan(exe: &Path, game_dir: &Path, qc: &Path, extra_args: &str) -> CompilePlan {
+    let args = hp_app::model_compiler::args(game_dir, qc, hp_compile::split_args(extra_args));
     let mut plan = CompilePlan::new(qc);
     plan.steps.push(Step::new(StepKind::Custom, exe, args));
     plan
+}
+
+pub fn model_compiler(settings: &hp_app::settings::Settings) -> Result<PathBuf, String> {
+    hp_app::model_compiler::resolve(settings)
 }
 
 fn severity(s: hp_compile::Severity) -> Severity {
@@ -98,6 +97,8 @@ enum Ask {
     Qc,
 }
 
+type CompilerKey = (Option<PathBuf>, Option<PathBuf>);
+
 type ExtractResult = Result<(Extracted, Option<Result<(), String>>), String>;
 
 enum Job {
@@ -109,7 +110,7 @@ enum Job {
 pub(crate) struct ModelTools {
     dialog: Option<(Ask, Receiver<Option<PathBuf>>)>,
     job: Option<Job>,
-    studiomdl: Option<(Option<PathBuf>, Option<PathBuf>)>,
+    studiomdl: Option<(CompilerKey, Option<PathBuf>)>,
 }
 
 impl ModelTools {
@@ -118,10 +119,10 @@ impl ModelTools {
     }
 
     fn studiomdl(&mut self, state: &AppState) -> Option<PathBuf> {
-        let root = state.settings.game.gmod_root.clone();
-        if self.studiomdl.as_ref().is_none_or(|(r, _)| *r != root) {
-            let exe = root.as_deref().and_then(studiomdl_exe);
-            self.studiomdl = Some((root, exe));
+        let key = (state.settings.game.gmod_root.clone(), state.settings.compile.model_compiler.clone());
+        if self.studiomdl.as_ref().is_none_or(|(k, _)| *k != key) {
+            let exe = model_compiler(&state.settings).ok();
+            self.studiomdl = Some((key, exe));
         }
         self.studiomdl.as_ref().and_then(|(_, exe)| exe.clone())
     }
@@ -309,9 +310,12 @@ impl ModelTools {
             state.notify(Severity::Warning, t!("entities.mt_sandboxed"));
             return;
         }
-        let Some(exe) = self.studiomdl(state) else {
-            state.notify(Severity::Warning, t!("entities.mt_no_studiomdl"));
-            return;
+        let exe = match model_compiler(&state.settings) {
+            Ok(exe) => exe,
+            Err(e) => {
+                state.notify(Severity::Warning, e);
+                return;
+            }
         };
         let root = state.settings.game.gmod_root.clone().unwrap_or_default();
         let game_dir = state
@@ -323,7 +327,7 @@ impl ModelTools {
     }
 
     fn compile_with(&mut self, ctx: &egui::Context, state: &mut AppState, exe: &Path, game_dir: &Path, qc: PathBuf) {
-        let plan = studiomdl_plan(exe, game_dir, &qc);
+        let plan = model_compiler_plan(exe, game_dir, &qc, &state.settings.compile.model_compiler_args);
         let workdir = qc.parent().map_or_else(|| PathBuf::from("."), Path::to_path_buf);
         let repaint = ctx.clone();
         let handle = hp_compile::start_with_waker(plan, &workdir, move || repaint.request_repaint());
@@ -437,6 +441,19 @@ mod tests {
         assert_eq!(plan.steps.len(), 1);
         assert_eq!(plan.steps[0].kind, StepKind::Custom);
         assert_eq!(plan.steps[0].args, ["-game", "G:/garrysmod", "-nop4", "-verbose", "Q:/m/a.qc"]);
+        let neko = model_compiler_plan(
+            Path::new("N:/nekomdl.exe"),
+            Path::new("G:/garrysmod"),
+            Path::new("Q:/m/a.qc"),
+            "-maxbones 128 \"-D name\" x",
+        );
+        assert_eq!(neko.steps[0].exe, Path::new("N:/nekomdl.exe"));
+        assert_eq!(
+            neko.steps[0].args,
+            ["-game", "G:/garrysmod", "-nop4", "-verbose", "-maxbones", "128", "-D name", "x", "Q:/m/a.qc"]
+        );
+        let quiet = model_compiler_plan(Path::new("N:/n.exe"), Path::new("G:/g"), Path::new("a.qc"), "-VERBOSE");
+        assert_eq!(quiet.steps[0].args.iter().filter(|a| a.eq_ignore_ascii_case("-verbose")).count(), 1);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

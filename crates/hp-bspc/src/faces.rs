@@ -387,7 +387,43 @@ impl Faces {
         n
     }
 
-    fn face_from_superverts(&mut self, tree: &mut Tree, n: usize, f: usize, superverts: &[u32], mut base: usize) {
+    fn face_from_superverts(&mut self, tree: &mut Tree, n: usize, f: usize, superverts: &[u32], base: usize) {
+        if superverts.len() > MAXEDGES
+            && let Some(pieces) = self.chord_pieces(superverts)
+        {
+            let mut cur = f;
+            let last = pieces.len() - 1;
+            for (k, verts) in pieces.into_iter().enumerate() {
+                if k == last {
+                    self.list[cur].verts = verts;
+                    break;
+                }
+                let mut piece = self.list[cur].clone();
+                piece.merged = None;
+                piece.split = None;
+                piece.piece = true;
+                piece.verts = verts;
+                piece.prim = None;
+                let a = self.list.len();
+                self.list.push(piece);
+                tree.nodes[n].faces.insert(0, a);
+                let mut rest = self.list[cur].clone();
+                rest.merged = None;
+                rest.split = None;
+                rest.piece = true;
+                rest.prim = None;
+                let b = self.list.len();
+                self.list.push(rest);
+                tree.nodes[n].faces.insert(0, b);
+                self.list[cur].split = Some([a, b]);
+                cur = b;
+            }
+            return;
+        }
+        self.fan_pieces(tree, n, f, superverts, base);
+    }
+
+    fn fan_pieces(&mut self, tree: &mut Tree, n: usize, f: usize, superverts: &[u32], mut base: usize) {
         let num = superverts.len();
         let mut remaining = num;
         let mut cur = f;
@@ -415,6 +451,110 @@ impl Faces {
             base = (base + MAXEDGES - 1) % num;
         }
         self.list[cur].verts = (0..remaining).map(|i| superverts[(i + base) % num]).collect();
+    }
+
+    fn colinear(&self, a: u32, b: u32, c: u32) -> bool {
+        let at = |v: u32| self.vertices.get(v as usize).copied().unwrap_or(DVec3::ZERO);
+        let (pa, pb, pc) = (at(a), at(b), at(c));
+        let ac = pc - pa;
+        let len = ac.length();
+        len < 1e-6 || (pb - pa).cross(ac).length() / len < COLINEAR_EPSILON
+    }
+
+    fn chord_pieces(&self, sv: &[u32]) -> Option<Vec<Vec<u32>>> {
+        let n = sv.len();
+        let corners: Vec<usize> =
+            (0..n).filter(|&k| !self.colinear(sv[(k + n - 1) % n], sv[k], sv[(k + 1) % n])).collect();
+        if corners.len() < 3 {
+            return None;
+        }
+        let m = corners.len();
+        let mut order: Vec<usize> = (0..m).collect();
+        let runs = |ci: usize| {
+            let c = corners[ci];
+            ((corners[(ci + 1) % m] + n - c) % n, (corners[(ci + m - 1) % m] + n - c) % n)
+        };
+        order.sort_by_key(|&ci| {
+            let (a, b) = runs(ci);
+            a.max(n - b)
+        });
+        for ci in order {
+            let c = corners[ci];
+            let (a, b) = runs(ci);
+            if a + 2 > MAXEDGES || n - b + 2 > MAXEDGES || b < a + 2 {
+                continue;
+            }
+            let rel = |i: usize| sv[(c + i) % n];
+            let mut pieces: Vec<Vec<u32>> = Vec::new();
+            let mut s = 1;
+            let ok = loop {
+                if n - s < MAXEDGES {
+                    pieces.push(std::iter::once(rel(0)).chain((s..n).map(rel)).collect());
+                    break true;
+                }
+                let e = (s + MAXEDGES - 2).min(b - 1);
+                if e <= s || e < a + 1 {
+                    break false;
+                }
+                pieces.push(std::iter::once(rel(0)).chain((s..=e).map(rel)).collect());
+                s = e;
+            };
+            if ok {
+                return Some(pieces);
+            }
+        }
+        None
+    }
+
+    fn piece_prims(&mut self, f: usize, world: bool) {
+        let mut pieces = Vec::new();
+        self.final_faces(f, &mut pieces);
+        for p in pieces {
+            let verts = self.list[p].verts.clone();
+            let n = verts.len();
+            if n <= 3 {
+                continue;
+            }
+            let flat = |k: usize| self.colinear(verts[(k + n - 1) % n], verts[k], verts[(k + 1) % n]);
+            if !(0..n).any(flat) {
+                continue;
+            }
+            let clean = (0..n).find(|&k| !flat(k) && !flat((k + 1) % n) && !flat((k + n - 1) % n));
+            if let Some(k) = clean {
+                self.list[p].verts.rotate_left(k);
+                continue;
+            }
+            if !world {
+                continue;
+            }
+            let corners: Vec<usize> = (0..n).filter(|&k| !flat(k)).collect();
+            if corners.len() < 3 {
+                continue;
+            }
+            let mut table = vec![[-1i32; 2]; n];
+            for (r, &c) in corners.iter().enumerate() {
+                let end = corners[(r + 1) % corners.len()];
+                let mut k = c;
+                loop {
+                    let t = &mut table[k];
+                    if t[0] == -1 {
+                        t[0] = r as i32;
+                    } else {
+                        t[1] = r as i32;
+                    }
+                    if k == end {
+                        break;
+                    }
+                    k = (k + 1) % n;
+                }
+            }
+            let indices: Vec<usize> = (0..n).collect();
+            let mut tris = Vec::with_capacity((n - 2) * 3);
+            triangulate(&mut tris, &indices, &table);
+            let tris: Vec<u16> = tris.into_iter().map(|i| i as u16).collect();
+            self.list[p].prim = Some(self.prim_list.len());
+            self.prim_list.push(tris);
+        }
     }
 
     fn edge_points(&self, f: usize) -> Option<EdgePoints> {
@@ -451,6 +591,10 @@ impl Faces {
         let base = clean.map_or(0, |i| start[i]);
         self.face_from_superverts(tree, n, f, &superverts, base);
         self.list[f].prim = None;
+        if self.list[f].split.is_some() {
+            self.piece_prims(f, world);
+            return;
+        }
         if clean.is_none() && world {
             let total = superverts.len();
             let mut table = vec![[-1i32; 2]; total];
@@ -472,6 +616,9 @@ impl Faces {
             triangulate(&mut tris, &indices, &table);
             self.list[f].prim = Some(self.prim_list.len());
             self.prim_list.push(tris.into_iter().map(|i| i as u16).collect());
+        }
+        if self.list[f].prim.is_none() {
+            self.piece_prims(f, world);
         }
     }
 
@@ -569,6 +716,7 @@ pub fn lightmap_extents(points: impl IntoIterator<Item = Vec3>, lightmap: &[[f32
 }
 
 const MAXEDGES: usize = 32;
+const COLINEAR_EPSILON: f64 = 0.25;
 const HASH_SIZE: usize = 256;
 
 fn hash_cell(v: f32) -> usize {
@@ -700,5 +848,121 @@ mod tests {
             DVec3::new(128.0, 64.0, 0.0),
         ]);
         assert!(try_merge(&a, &c, a.normal()).is_none());
+    }
+    fn ring(bottom: usize, top: usize) -> (Faces, Vec<u32>) {
+        let mut faces = Faces::default();
+        let mut pts = vec![DVec3::new(0.0, 0.0, 0.0)];
+        for k in 1..=bottom {
+            pts.push(DVec3::new(512.0 * k as f64 / (bottom + 1) as f64, 0.0, 0.0));
+        }
+        pts.push(DVec3::new(512.0, 0.0, 0.0));
+        pts.push(DVec3::new(512.0, 64.0, 0.0));
+        for k in 1..=top {
+            pts.push(DVec3::new(512.0 - 512.0 * k as f64 / (top + 1) as f64, 64.0, 0.0));
+        }
+        pts.push(DVec3::new(0.0, 64.0, 0.0));
+        faces.vertices = pts;
+        let ids = (0..faces.vertices.len() as u32).collect();
+        (faces, ids)
+    }
+
+    fn area(faces: &Faces, verts: &[u32]) -> f64 {
+        let p: Vec<DVec3> = verts.iter().map(|&v| faces.vertices[v as usize]).collect();
+        (1..p.len() - 1).map(|k| (p[k] - p[0]).cross(p[k + 1] - p[0]).length() * 0.5).sum()
+    }
+
+    #[test]
+    fn long_faces_split_along_chords_that_cross_the_face() {
+        let (faces, sv) = ring(40, 12);
+        let pieces = faces.chord_pieces(&sv).expect("a split along chords");
+        assert!(pieces.len() >= 2);
+        let total: f64 = pieces.iter().map(|p| area(&faces, p)).sum();
+        assert!((total - 512.0 * 64.0).abs() < 1e-6, "the pieces cover the face once: {total}");
+        for p in &pieces {
+            assert!(p.len() <= MAXEDGES && p.len() >= 3, "{}", p.len());
+            assert!(area(&faces, p) > 1.0, "no piece is a sliver: {p:?}");
+        }
+        for p in &pieces {
+            let (a, b) = (faces.vertices[p[0] as usize], faces.vertices[*p.last().unwrap() as usize]);
+            for (k, v) in faces.vertices.iter().enumerate() {
+                if p.contains(&(k as u32)) {
+                    continue;
+                }
+                let t = (*v - a).dot(b - a) / (b - a).length_squared();
+                let off = (*v - (a + (b - a) * t)).length();
+                assert!(!(0.0 < t && t < 1.0 && off < 0.25), "vertex {k} lies on the chord of a piece: a T-junction");
+            }
+        }
+        let mut seen: Vec<u32> = pieces.iter().flatten().copied().collect();
+        seen.sort_unstable();
+        seen.dedup();
+        assert_eq!(seen.len(), sv.len(), "every vertex stays on the face edges");
+    }
+
+    #[test]
+    fn chords_start_from_a_corner_away_from_long_runs() {
+        let (faces, sv) = ring(70, 70);
+        assert!(
+            faces.chord_pieces(&sv).is_none(),
+            "runs longer than a piece next to every corner cannot be cut by chords"
+        );
+        let (faces, sv) = ring(70, 0);
+        let pieces = faces.chord_pieces(&sv).expect("chords from the far corners");
+        assert!(pieces.iter().all(|p| area(&faces, p) > 1.0));
+        let (faces, sv) = ring(20, 20);
+        let pieces = faces.chord_pieces(&sv).expect("split");
+        assert!(pieces.iter().all(|p| area(&faces, p) > 1.0));
+    }
+    fn face_of(verts: Vec<u32>) -> Face {
+        Face {
+            plane: 0,
+            texinfo: 0,
+            winding: Winding::new(Vec::new()),
+            contents: 0,
+            on_node: 0,
+            merged: None,
+            split: None,
+            output: None,
+            source: (0, 0),
+            also: Vec::new(),
+            verts,
+            piece: false,
+            prim: None,
+            smoothing: 0,
+        }
+    }
+
+    #[test]
+    fn faces_with_corners_in_a_row_get_triangles_without_slivers() {
+        let mut faces = Faces::default();
+        let mut pts = Vec::new();
+        for k in 0..24 {
+            pts.push(DVec3::new(0.0, 0.0, 1000.0 + 40.0 * k as f64));
+        }
+        for k in 0..8 {
+            pts.push(DVec3::new(64.0, 0.0, 1920.0 - 40.0 * k as f64));
+        }
+        faces.vertices = pts;
+        faces.list.push(face_of((0..32).collect()));
+        faces.piece_prims(0, true);
+        let prim = faces.list[0].prim.expect("a triangle list");
+        let tris = &faces.prim_list[prim];
+        assert_eq!(tris.len(), 30 * 3);
+        let mut total = 0.0;
+        for t in tris.chunks_exact(3) {
+            let [a, b, c] = [t[0], t[1], t[2]].map(|i| faces.vertices[faces.list[0].verts[i as usize] as usize]);
+            let area = (b - a).cross(c - a).length() * 0.5;
+            assert!(area > 1.0, "no sliver triangle: {t:?}");
+            total += area;
+        }
+        let expected = area(&faces, &faces.list[0].verts.clone());
+        assert!((total - expected).abs() < 1e-6, "{total} vs {expected}");
+        faces.list.push(face_of(vec![0, 23, 24, 31]));
+        faces.piece_prims(1, true);
+        assert!(faces.list[1].prim.is_none(), "a plain quad keeps its fan");
+        let mut entity = Faces { vertices: faces.vertices.clone(), ..Faces::default() };
+        entity.list.push(face_of((0..32).collect()));
+        entity.piece_prims(0, false);
+        assert!(entity.list[0].prim.is_none() && entity.prim_list.is_empty(), "brush entities get no triangle list");
     }
 }

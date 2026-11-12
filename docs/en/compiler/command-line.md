@@ -116,6 +116,7 @@ Lighting. With no range option, `--rad` computes LDR only.
 | `-StaticPropNormals` | | Debug: props show their normals. | off |
 | `-nostaticpropshadows` | | Hammer Pro: no static prop shadow at all. | off |
 | `-nodispshadows` | | Hammer Pro: no displacement shadow. | off |
+| `-nostylebounce` | | Hammer Pro: named (switchable) lights do not bounce, like VRAD. | off |
 | `-noaddons`, `-wsaddons`, `-nowsaddons`, `-serveraddons`, `-mount_appid` | | Content mounted for the models, like `--bspc`. | addons and Workshop items mounted |
 | `-radius_override` | units | Accepted and skipped (a VVIS option often passed to every tool). | |
 

@@ -6,7 +6,7 @@ L'outil de sélection sert à prendre des objets dans les vues 2D et 3D et à le
 
 ## Centre des brushes
 
-Un petit **x** indique le centre de chaque brush visible dans les vues Dessus, Face et Côté. Il est activé par défaut, y compris avec les anciennes configurations. Les brushes World et ceux des entités utilisent le centre de leur boîte englobante alignée sur les axes. Le repère suit les modifications, la visibilité et les cordons. Les brushes sélectionnés utilisent la couleur de sélection. Sa taille à l’écran reste constante pendant le zoom.
+Un petit **x** indique le centre de chaque brush visible dans les vues Dessus, Face et Côté. Il est activé par défaut, y compris avec les anciennes configurations. Les brushes World et ceux des entités utilisent le centre de leur boîte englobante alignée sur les axes. Le repère suit les modifications, la visibilité et les cordons. Les brushes sélectionnés utilisent la couleur de sélection. Sa taille à l’écran reste constante pendant le zoom. Pendant un déplacement, une rotation, une mise à l'échelle ou un cisaillement, l'aperçu montre aussi un **x** au nouveau centre de chaque brush et entité ponctuelle sélectionnés, dans la couleur de l'aperçu.
 
 Utilisez **Affichage > Options d’affichage > Afficher le centre des brushes en 2D**, ou **Paramètres > Aides**. Le réglage sauvegardé est `helpers.show_brush_centers`. Il concerne uniquement l’affichage dans l’éditeur.
 

@@ -113,6 +113,7 @@ struct Ghost {
 #[derive(Clone, Copy, Debug)]
 struct Drag {
     view: usize,
+    press: DVec2,
     start: DVec2,
     end: DVec2,
     depth: f64,
@@ -225,8 +226,8 @@ impl PrefabPlacer {
         if view.is_2d() {
             let p2 = snap.v2(view.screen_to_2d(pos));
             if m.drag_started {
-                let start = snap.v2(view.screen_to_2d(m.origin().unwrap_or(pos)));
-                self.drag = Some(Drag { view: view.index, start, end: p2, depth: depth_2d });
+                let press = view.screen_to_2d(m.origin().unwrap_or(pos));
+                self.drag = Some(Drag { view: view.index, press, start: snap.v2(press), end: p2, depth: depth_2d });
             }
             if let Some(drag) = &mut self.drag
                 && drag.view == view.index
@@ -236,7 +237,7 @@ impl PrefabPlacer {
                 let fit = Self::drag_box(view, drag, &bounds, &snap);
                 let target = match fit {
                     Some(b) => Some(Target::Fit(b)),
-                    None => Self::target(state, view, m.origin().unwrap_or(pos), &bounds, drag.depth, &snap),
+                    None => Self::target(state, view, view.screen_of_2d(drag.press), &bounds, drag.depth, &snap),
                 };
                 self.ghost =
                     target.map(|target| Ghost { view: view.index, frame: state.frame.index, in_3d: false, target });

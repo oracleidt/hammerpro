@@ -323,6 +323,10 @@ fn set_falloff(l: &mut Light, e: &hp_bsp::Entity) {
     }
     let r = key_f(e, "_distance");
     l.radius = if r > 0.0 { r.min(1.0e6) } else { 0.0 };
+    let (start, end) = l.fade;
+    if end > start && end.is_finite() && (l.radius == 0.0 || end < l.radius) {
+        l.radius = end.min(1.0e6);
+    }
 }
 
 fn pass_value(e: &hp_bsp::Entity, ldr_key: &str, hdr_key: &str, hdr: bool) -> Option<Vec3A> {
@@ -626,9 +630,23 @@ mod tests {
         }
         let mut hard = e.clone();
         hard.set("_hardfalloff", "1");
-        let h = &parse(&[hard], &[false], &map).list[0];
+        let h = &parse(std::slice::from_ref(&hard), &[false], &map).list[0];
         assert_eq!(h.falloff(Vec3A::Z, 401.0), 0.0);
         assert!(h.falloff(Vec3A::Z, 300.0) > 0.0);
+        assert_eq!(h.radius, 400.0, "the engine lights models up to the zero percent distance only");
+        let soft = &parse(std::slice::from_ref(&e), &[false], &map).list[0];
+        assert_eq!((soft.fade, soft.radius), ((0.0, -1.0), 0.0), "a rising curve never fades: no radius");
+        let mut capped = hard.clone();
+        capped.set("_distance", "300");
+        assert_eq!(parse(&[capped], &[false], &map).list[0].radius, 300.0, "a shorter _distance wins");
+        let mut styled = hard.clone();
+        styled.set("targetname", "lamp");
+        styled.set("style", "32");
+        let st = &parse(&[styled], &[false], &map).list[0];
+        assert_eq!((st.style, st.radius, st.fade), (32, 400.0, h.fade), "styled lights fall off like the others");
+        assert_eq!(st.falloff(Vec3A::Z, 401.0), 0.0);
+        let wl = worldlights(&parse(&[hard], &[false], &map), 0);
+        assert_eq!(f32::from_le_bytes([wl[60], wl[61], wl[62], wl[63]]), 400.0);
     }
 
     #[test]

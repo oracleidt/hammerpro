@@ -16,7 +16,8 @@ const MIN_RESOLUTION: u32 = 16;
 pub const MEMORY_BUDGET: u64 = 160 << 20;
 pub(crate) const PROBE_VIEW: u32 = 0xffff_fc00;
 const SETTLE: Duration = Duration::from_millis(750);
-const FRAME_SHARE: f32 = 0.3;
+const FRAME_SHARE: f32 = 0.15;
+const MOTION_QUIET: Duration = Duration::from_millis(400);
 const PROBE_CULL_RADIUS: f32 = 16_384.0;
 const PROBE_MODEL_DISTANCE: f32 = 4_096.0;
 const MAX_SLOTS: usize = 1100;
@@ -397,6 +398,7 @@ fn probe_options(o: &ViewOptions, sky: bool) -> ViewOptions {
         cubemaps: false,
         fog_volumes: false,
         fog_volume_inside: false,
+        light_cap: 0,
         ..*o
     }
 }
@@ -572,6 +574,10 @@ impl Renderer {
         self.cubes.material_cube(desc, &width)
     }
 
+    pub fn cubemaps_waiting(&self) -> bool {
+        self.cubes.source.is_some() && self.cubemap_stats().pending_faces > 0
+    }
+
     pub fn step_cubemaps(&mut self, budget: Duration) -> u32 {
         if let Some(n) = self.cubes.noted.take() {
             self.cubes.source = Some(n);
@@ -581,7 +587,8 @@ impl Renderer {
         let Some(source) = self.cubes.source else { return self.cubemap_stats().pending_faces };
         self.check_bake_key(&source);
         let start = Instant::now();
-        if self.cubes.next_face.is_none_or(|t| start >= t) {
+        let quiet = self.last_motion.is_none_or(|t| start.duration_since(t) >= MOTION_QUIET);
+        if quiet && self.cubes.next_face.is_none_or(|t| start >= t) {
             while let Some(cur) = self.next_cube_face() {
                 let face = Instant::now();
                 self.draw_probe_face(cur, &source);

@@ -195,6 +195,12 @@ pub const FLAGS: &[FlagInfo] = &[
         false,
         "Hammer Pro option: displacements cast no shadow at all (they are still lit). One displacement can also be kept from casting shadows with the Cast shadows option of the displacement tool.",
     ),
+    info(
+        StepKind::Rad,
+        "-nostylebounce",
+        false,
+        "Hammer Pro option: named (switchable) lights light only what they see directly, like Valve's VRAD. Without it their light also bounces, in their own light style, and switches with them.",
+    ),
     info(StepKind::Rad, "-threads", true, "Number of processor threads to use."),
     info(
         StepKind::Rad,
@@ -387,9 +393,8 @@ pub fn flag_group(step: StepKind, flag: &str) -> FlagGroup {
             StepKind::Rad,
             "-final" | "-bounce" | "-noextra" | "-extrasky" | "-smooth" | "-softsun" | "-centersamples",
         )
-        | (StepKind::Rad, "-nodispshadows" | "-ao" | "-noao" | "-aoradius" | "-aostrength" | "-aosamples") => {
-            FlagGroup::Quality
-        }
+        | (StepKind::Rad, "-nodispshadows" | "-nostylebounce" | "-ao" | "-noao" | "-aoradius" | "-aostrength")
+        | (StepKind::Rad, "-aosamples") => FlagGroup::Quality,
         (StepKind::Rad, "-fast" | "-fastambient" | "-luxeldensity") => FlagGroup::Speed,
         (StepKind::Rad, "-staticproplighting" | "-staticproppolys" | "-textureshadows" | "-nossprops")
         | (StepKind::Rad, "-staticpropsamplescale") => FlagGroup::Props,

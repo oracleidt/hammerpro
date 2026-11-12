@@ -755,6 +755,19 @@ pub struct WorldSprite {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WorldBeam {
+    pub object: ObjectId,
+    pub material: MaterialId,
+    pub start: [f32; 3],
+    pub end: [f32; 3],
+    pub width: f32,
+    pub color: [f32; 3],
+    pub srgb_color: bool,
+    pub hdr_scale: f32,
+    pub halo_scale: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SpriteInstance {
     pub pos: [f32; 3],
     pub size: f32,
@@ -1064,6 +1077,7 @@ pub struct ViewOptions {
     pub classic_colors: bool,
     pub model_lods: bool,
     pub sun_glow: bool,
+    pub light_cap: u32,
 }
 
 impl Default for ViewOptions {
@@ -1110,6 +1124,7 @@ impl Default for ViewOptions {
             classic_colors: false,
             model_lods: true,
             sun_glow: true,
+            light_cap: 0,
         }
     }
 }

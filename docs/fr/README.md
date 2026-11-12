@@ -40,8 +40,9 @@ Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.m
 | [Outil biseau](features/bevel-tool.md) | Arrondir ou chanfreiner les arêtes des brushes dans la vue 3D (`Ctrl+B`, souris pour la taille, molette pour les segments), ou les biseauter vers l'intérieur : une gorge, ou un arrondi concave qui remplit un coin intérieur (arches). |
 | [Outil vertex](features/vertex-tool.md) | Déplacer, fusionner, scinder et mettre à l'échelle des sommets. |
 | [Outil displacement](features/displacement-tool.md) | Créer, sculpter, peindre l'alpha, tags, couture, bruit. |
-| [Terrain](features/terrain.md) | Importer et exporter des cartes de hauteur, génération procédurale de terrain, érosion, texturage automatique. |
+| [Terrain](features/terrain.md) | Importer et exporter des cartes de hauteur (16 bits et 32 bits flottant), masques de blend pour WorldVertexTransition et le blend 4 textures, génération procédurale de terrain, érosion, texturage automatique. |
 | [Opérations sur les brushes](features/brush-operations.md) | Carve, creuser, fusionner, lier à une entité, func_detail, nodraw, brushes hint, verrouillage des textures. |
+| [func_detail](features/func-detail.md) | Transformer en func_detail d'une touche (`Ctrl+Alt+D`) avec vérification d'étanchéité, sélectionner les candidats func_detail, créer des brushes en détail, teinter le détail dans les vues. |
 | [Transformer et aligner](features/transform-align.md) | Fenêtre Transformer, aligner, retourner, magnétisme, poser au sol, placement physique. |
 | [Placement sur les formes réelles](features/real-shape-placement.md) | Poser dessus, plaquer contre un mur, placer à côté, reposer les props flottants et ajuster les pieds au sol, mesurés sur les vrais maillages ; affichage des dimensions réelles, aperçu de la forme, vérification des objets flottants, enfoncés et qui se chevauchent. |
 | [Simulateur physique](features/physics-tool.md) | Lecture, pause, saisie, tirs et explosions sur les brushes, props et ragdolls ; conservation des poses en une opération annulable. |
@@ -85,7 +86,7 @@ Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.m
 | [Navigateur de modèles](features/model-browser.md) | Grille de modèles, aperçu 3D, inspecteur de modèles et outils. |
 | [Import de modèles](features/model-import.md) | FBX, OBJ, glTF et GLB directement dans le jeu. |
 | [Lien avec Blender](features/blender.md) | Envoyer des brushes, des displacements ou un prop vers Blender et récupérer la modification tout seul. |
-| [Propper](features/propper.md) | Des brushes vers un prop statique (LOD, collision, displacements précalculés) et des props vers des brushes. |
+| [Propper](features/propper.md) | Des brushes vers un prop statique (LOD, collision, displacements précalculés) des props vers des brushes, et Combiner des props fusionne plusieurs props en un modèle. |
 | [Navigateur de sons](features/sound-browser.md) | Sons du jeu, soundscripts et sélecteur de sons. |
 | [Éditeur de sons](features/sound-editor.md) | Coupe, gain, marqueurs de boucle et sortie WAV pour tout son du jeu. |
 | [Correction des couleurs](features/color-correction.md) | Éditeur de tables de couleurs (.raw) et aperçu 3D des entités color_correction. |
@@ -179,6 +180,7 @@ Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.m
 | [Compiler et tester dans Garry's Mod](guides/compile-and-test-gmod.md) | La boucle la plus rapide entre l'édition et le jeu. |
 | [Créer un prop avec Propper](guides/make-a-prop-with-propper.md) | Transformer des brushes en prop statique avec LOD et collision. |
 | [Sculpter des displacements](guides/sculpt-displacements.md) | Du brush au terrain peint avec des mélanges de textures. |
+| [World Machine et Gaea](guides/world-machine-gaea.md) | Cartes de hauteur flottantes et splat maps à l'import, compilation, et retour. |
 | [Éclairage](guides/lighting.md) | Lumières, aperçus, LDR et HDR, éclairage des props statiques. |
 | [Optimiser une map](guides/optimizing-a-map.md) | Visleaves, func_detail, brushes hint, areaportals et lumières cohérentes, avec la fenêtre Optimiser la map et les outils MCP. |
 | [Grilles personnalisées pour les escaliers](guides/custom-grids-for-stairs.md) | Une grille avec un pas par axe pour des marches régulières. |

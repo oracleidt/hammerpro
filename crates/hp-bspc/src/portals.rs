@@ -337,6 +337,11 @@ impl Portals {
         (placed, leaked)
     }
 
+    pub fn flood_outside(&self, tree: &mut Tree) {
+        let outside = tree.outside;
+        self.flood_portals(tree, outside, 1);
+    }
+
     fn flood_portals(&self, tree: &mut Tree, start: usize, dist: u32) {
         let mut stack: Vec<(usize, usize)> = Vec::new();
         tree.nodes[start].occupied = dist;
