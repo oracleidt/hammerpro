@@ -12,6 +12,10 @@ pub struct PlacementSettings {
     pub prefab_tile: f32,
     pub group_prefabs: bool,
     pub sprinkle: SprinkleSettings,
+    pub auto_settle_on_create: bool,
+    pub show_real_dimensions: bool,
+    pub problem_checks: bool,
+    pub overlap_check: bool,
 }
 
 impl Default for PlacementSettings {
@@ -24,6 +28,10 @@ impl Default for PlacementSettings {
             prefab_tile: PlacementSettings::DEFAULT_TILE,
             group_prefabs: true,
             sprinkle: SprinkleSettings::default(),
+            auto_settle_on_create: false,
+            show_real_dimensions: false,
+            problem_checks: true,
+            overlap_check: false,
         }
     }
 }

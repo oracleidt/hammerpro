@@ -93,6 +93,10 @@ The areaportal checks of [Check for problems](check-problems.md) tell you when a
 | Color by render cost (portals window) | `portal_heat` | off |
 | See through the walls (portals window) | `portal_xray` | on |
 
+## Optimize the map
+
+**Map > Optimize the map...** is an advisor that compiles the visibility of the map in the background and lists, sorted by impact, what is not optimized (visleaves, func_detail, hint brushes, areaportals, lights) with what to do and a **Go to** button. It never changes the map itself. See [Optimizing a map](../guides/optimizing-a-map.md).
+
 ## MCP
 
 `check_leaks`, `get_leak`, `load_pointfile` and `portal_file` give AI apps the same tools. See the [MCP tool reference](../../MCP.md).

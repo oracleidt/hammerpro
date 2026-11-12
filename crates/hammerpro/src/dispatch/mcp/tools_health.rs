@@ -72,8 +72,16 @@ fn severity_name(s: hp_editor::Severity) -> &'static str {
 pub(super) fn current_problems(state: &mut AppState) -> (Vec<Problem>, &'static str) {
     let serial = state.doc.content_serial();
     let fresh = state.runtime.health.checks.as_ref().is_some_and(|c| c.serial == serial);
+    let placement_fresh =
+        !state.settings.placement.problem_checks || state.runtime.health.placement_serial == Some(serial);
+    if !placement_fresh {
+        super::place_scan::scan_now(state);
+    }
     if fresh {
-        return (state.runtime.health.problems.clone(), "background check");
+        return (
+            state.runtime.health.problems.clone(),
+            if placement_fresh { "background check" } else { "checked now" },
+        );
     }
     hp_app::runtime::HealthRuntime::check_now(state);
     (state.runtime.health.problems.clone(), "checked now")

@@ -5,6 +5,7 @@ pub mod helpers;
 pub mod instances;
 pub mod labels;
 pub mod mesh_disp;
+pub mod optimize;
 pub mod paste_preview;
 pub mod pointfile;
 pub mod portals;
@@ -41,6 +42,7 @@ pub fn default_layers() -> Vec<Box<dyn OverlayLayer>> {
     let mut list = pointfile::layers();
     list.extend(cordon::layers());
     list.extend(portals::layers());
+    list.extend(optimize::layers());
     list.extend(roadside::layers());
     list.extend(instances::layers());
     list.extend(helpers::layers());

@@ -67,4 +67,8 @@ pub const INSTRUCTIONS: &str = "Hammer Pro is a Source engine (Garry's Mod) map 
      size, footprint and how high the origin sits above the lowest point of any object or model, render_shape \
      draws it with dimensions, place_object and drop_to_surface put the real mesh exactly on, against or next to \
      brushes, displacements and other props (no gap, no overlap), check_placement and find_floating_objects \
-     verify (floating, sunk, interpenetrating).";
+     verify (floating, sunk, interpenetrating). The tools that create or move props and brushes add a placement_note \
+     to their result when one ends floating, sunk or overlapping another object: fix it with drop_to_surface or \
+     place_object before going on. Before you finish a map, run optimize_map (or analyze_visibility) \
+     and act on its report. Use func_detail for small and decorative brushes, hint brushes where they measure \
+     a gain, areaportals in door frames and narrow openings, and give every light a visible lamp.";

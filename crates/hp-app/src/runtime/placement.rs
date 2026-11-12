@@ -194,6 +194,76 @@ pub struct PlacementRuntime {
     pub library_serial: u64,
     pub open_path: Option<PathBuf>,
     pub sprinkle_refresh: bool,
+    pub real_dims: Option<RealDims>,
+    pub shape_preview_open: bool,
+    pub shape_preview_model: Option<String>,
+    pub menu_hit: Option<(glam::DVec3, glam::DVec3)>,
+    pub shape_preview_focus_model: bool,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct RealDims {
+    pub key: (u64, u64),
+    pub units: Vec<UnitDims>,
+    pub size: glam::DVec3,
+    pub objects: usize,
+    pub notes: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct UnitDims {
+    pub label: String,
+    pub size: glam::DVec3,
+    pub yaw: f64,
+    pub min: glam::DVec3,
+    pub max: glam::DVec3,
+    pub footprint: Vec<glam::DVec2>,
+    pub rect: Vec<glam::DVec2>,
+    pub contacts: Vec<glam::DVec3>,
+    pub gap: Option<f64>,
+    pub overlap: f64,
+    pub overlap_with: Option<String>,
+}
+
+impl RealDims {
+    pub fn single(&self) -> Option<&UnitDims> {
+        match self.units.as_slice() {
+            [u] => Some(u),
+            _ => None,
+        }
+    }
+
+    pub fn summary(&self) -> String {
+        match self.single() {
+            Some(u) if self.objects == 1 => placement_unit_text(u),
+            _ => {
+                let s = self.size;
+                crate::tf!("placement.real.many", self.objects, real_num(s.x), real_num(s.y), real_num(s.z))
+            }
+        }
+    }
+}
+
+pub fn real_num(x: f64) -> String {
+    let r = (x * 100.0).round() / 100.0;
+    let r = if r == 0.0 { 0.0 } else { r };
+    if r == r.trunc() { format!("{}", r as i64) } else { format!("{r}") }
+}
+
+pub fn placement_unit_text(u: &UnitDims) -> String {
+    let mut s = crate::tf!("placement.real.size", real_num(u.size.x), real_num(u.size.y), real_num(u.size.z));
+    s.push_str(", ");
+    match u.gap {
+        Some(g) if g > 0.05 => s.push_str(&crate::tf!("placement.real.gap", real_num(g))),
+        Some(g) if g < -0.05 => s.push_str(&crate::tf!("placement.real.sunk", real_num(-g))),
+        Some(_) => s.push_str(crate::t!("placement.real.resting")),
+        None => s.push_str(crate::t!("placement.real.no_floor")),
+    }
+    if u.overlap > 0.05 {
+        s.push_str(", ");
+        s.push_str(&crate::tf!("placement.real.overlap", real_num(u.overlap)));
+    }
+    s
 }
 
 #[cfg(test)]

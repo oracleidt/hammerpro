@@ -275,7 +275,7 @@ fn row(ui: &mut Ui, label: &str, color: Option<Color32>, active: bool, tooltip: 
             }
         }
         let text_color = if active || resp.hovered() { visuals.strong_text_color() } else { visuals.text_color() };
-        painter.with_clip_rect(rect.intersect(painter.clip_rect())).text(
+        painter.with_clip_rect(hp_app::widgets::clip_x(rect, painter.clip_rect())).text(
             Pos2::new(rect.left() + 22.0, rect.center().y),
             Align2::LEFT_CENTER,
             label,

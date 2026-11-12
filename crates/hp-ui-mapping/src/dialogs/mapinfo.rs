@@ -504,7 +504,7 @@ impl MapInfoDialog {
         });
         self.refresh(state);
 
-        let row_h = 18.0;
+        let row_h = ui.spacing().interact_size.y;
         let mut select: Option<String> = None;
         let mut make_current: Option<String> = None;
         let rows = &self.rows;

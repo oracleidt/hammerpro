@@ -21,6 +21,7 @@ pub(crate) mod mcp;
 mod mesh;
 pub(crate) mod mesh_disp;
 mod placement;
+mod placement_ops;
 mod render;
 mod roadside;
 mod selection;
@@ -121,6 +122,7 @@ pub(crate) struct Packages {
 
 pub fn register_translations() {
     hp_app::i18n::register(TR);
+    hp_app::i18n::register(placement_ops::TR);
     for package in PACKAGES {
         hp_app::i18n::register(package.translations());
     }

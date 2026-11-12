@@ -150,6 +150,28 @@ impl SettingsPage for PlacementPage {
             .changed();
         changed |= ui.checkbox(&mut s.show_prefabs, t!("shell.placement.show_tab")).changed();
 
+        heading(ui, t!("shell.placement.real"));
+        changed |= ui
+            .checkbox(&mut s.auto_settle_on_create, t!("shell.placement.auto_settle"))
+            .on_hover_text(t!("shell.placement.auto_settle_tip"))
+            .changed();
+        changed |= ui
+            .checkbox(&mut s.show_real_dimensions, t!("shell.placement.real_dims"))
+            .on_hover_text(t!("shell.placement.real_dims_tip"))
+            .changed();
+        changed |= ui
+            .checkbox(&mut s.problem_checks, t!("shell.placement.problem_checks"))
+            .on_hover_text(t!("shell.placement.problem_checks_tip"))
+            .changed();
+        ui.add_enabled_ui(s.problem_checks, |ui| {
+            ui.indent("hp_overlap_check", |ui| {
+                changed |= ui
+                    .checkbox(&mut s.overlap_check, t!("shell.placement.overlap_check"))
+                    .on_hover_text(t!("shell.placement.overlap_check_tip"))
+                    .changed();
+            });
+        });
+
         heading(ui, t!("shell.placement.sprinkle"));
         ui.label(t!("shell.placement.sprinkle_dirs"));
         ui.weak(Settings::config_dir().join("sprinkle").display().to_string());
@@ -180,6 +202,43 @@ impl SettingsPage for PlacementPage {
 
 pub(crate) const TR: TrTable = &[
     ("shell.placement.page", "Prefabs", "Prefabs"),
+    ("shell.placement.real", "Placement on real shapes", "Placement sur les formes réelles"),
+    (
+        "shell.placement.auto_settle",
+        "Drop new props onto the surface below",
+        "Poser les nouveaux props sur la surface en dessous",
+    ),
+    (
+        "shell.placement.auto_settle_tip",
+        "A prop created with the entity tool, dropped from the model browser or created by an AI through MCP falls onto what is under it, measured on its real mesh (same undo step)",
+        "Un prop créé avec l'outil entité, déposé depuis le navigateur de modèles ou créé par une IA via MCP tombe sur ce qui est en dessous, mesuré sur son maillage réel (même étape d'annulation)",
+    ),
+    (
+        "shell.placement.real_dims",
+        "Show the real dimensions of the selection",
+        "Afficher les dimensions réelles de la sélection",
+    ),
+    (
+        "shell.placement.real_dims_tip",
+        "Size, gap to the floor, overlap, footprint and lowest contact measured on the real mesh (View > Real dimensions)",
+        "Taille, écart au sol, chevauchement, empreinte et point de contact le plus bas mesurés sur le maillage réel (Affichage > Dimensions réelles)",
+    ),
+    ("shell.placement.problem_checks", "Check for floating and sunk props", "Vérifier les props flottants et enfoncés"),
+    (
+        "shell.placement.overlap_check",
+        "Also list props that overlap other objects",
+        "Lister aussi les props qui chevauchent d'autres objets",
+    ),
+    (
+        "shell.placement.overlap_check_tip",
+        "Off by default: props are often clipped into each other on purpose, and this check is slower on big maps",
+        "Désactivé par défaut : les props sont souvent enfoncés les uns dans les autres exprès, et cette vérification est plus lente sur les grandes maps",
+    ),
+    (
+        "shell.placement.problem_checks_tip",
+        "Check for problems lists props that float above the floor or sink into it (measured on the real meshes, in the background; props in the 3D skybox and hanging props are left out)",
+        "Vérifier les problèmes liste les props qui flottent au-dessus du sol ou s'y enfoncent (mesuré sur les maillages réels, en arrière-plan ; les props du skybox 3D et les props suspendus sont exclus)",
+    ),
     ("shell.placement.prefabs", "Prefab library", "Bibliothèque de prefabs"),
     ("shell.placement.library", "Library folder:", "Dossier de la bibliothèque :"),
     (

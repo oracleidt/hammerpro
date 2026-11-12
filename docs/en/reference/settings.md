@@ -462,6 +462,10 @@ A whole-map result is reused while navigating. Geometry, lights, materials and c
 | `sprinkle.z_offset` | `0.0` | Distance along the surface normal. |
 | `sprinkle.align_to_normal` | `false` | Tilt entities to the surface. |
 | `sprinkle.extra_dirs` | `[]` | More folders of sprinkle definitions. |
+| `problem_checks` | `true` | Check for problems lists floating and sunk props (see [Placement on real shapes](../features/real-shape-placement.md)). |
+| `overlap_check` | `false` | Check for problems also lists props that overlap other objects. |
+| `auto_settle_on_create` | `false` | New props created with the entity tool, the model browser or MCP drop onto the surface below (same undo step). |
+| `show_real_dimensions` | `false` | Real dimensions of the selection in the status bar, the properties panel and the views (`Alt+M`). |
 
 ## `[launch]`
 

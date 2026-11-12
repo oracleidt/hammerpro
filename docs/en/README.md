@@ -43,6 +43,7 @@ New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game s
 | [Terrain](features/terrain.md) | Import and export heightmaps, procedural terrain generation, erosion, automatic texturing. |
 | [Brush operations](features/brush-operations.md) | Carve, hollow, merge, tie to entity, func_detail, nodraw, hint brushes, texture lock. |
 | [Transform and align](features/transform-align.md) | Transform dialog, align, flip, snap, move to floor, physics placement. |
+| [Placement on real shapes](features/real-shape-placement.md) | Place on top, against a wall, next to, settle floating props and fit legs to the ground, measured on the real meshes; real dimensions display, shape preview, floating, sunk and overlapping checks. |
 | [Physics simulator](features/physics-tool.md) | Play, pause, grab, shoot and explode brushes, props and ragdolls; keep their poses with one undo step. |
 | [Clipboard](features/clipboard.md) | Cut, copy, paste, paste special, duplicate, between Hammer Pro windows. |
 | [Grids](features/grids.md) | Global grid, one grid per view, custom grids, grids of objects, grid manager, 3D grid. |
@@ -179,6 +180,7 @@ New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game s
 | [Make a prop with Propper](guides/make-a-prop-with-propper.md) | Turn brushes into a static prop with LODs and collision. |
 | [Sculpt displacements](guides/sculpt-displacements.md) | Terrain from a brush to painted blends. |
 | [Lighting](guides/lighting.md) | Lights, previews, LDR and HDR, static prop lighting. |
+| [Optimizing a map](guides/optimizing-a-map.md) | Visleaves, func_detail, hint brushes, areaportals and coherent lights, with the Optimize the map window and the MCP tools. |
 | [Custom grids for stairs](guides/custom-grids-for-stairs.md) | A grid with a step per axis for regular stairs. |
 | [Collect content for a release](guides/collect-content-for-release.md) | Gather every custom file the map needs. |
 | [Port a map to another game](guides/port-to-another-game.md) | Change the target game and fix what differs. |

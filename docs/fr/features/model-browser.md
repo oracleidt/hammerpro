@@ -102,6 +102,7 @@ Les outils en dessous :
 
 | Bouton | Effet |
 |---|---|
+| **Aperçu de la forme** | Ouvre la fenêtre d'[aperçu de la forme](real-shape-placement.md#aperçu-de-la-forme) sur ce modèle : sa forme réelle de dessus, de face, de côté et en 3D, avec ses dimensions, son origine, son point le plus bas et son maillage de collision. |
 | **Extraire les fichiers...** | Copie le modèle et ses fichiers VVD, VTX, PHY et ANI depuis le contenu du jeu (VPK, GMA ou dossiers) vers le dossier de votre choix, en gardant leurs dossiers (`models/props/x.mdl`). |
 | **Décompiler avec Crowbar** | Extrait le modèle dans un dossier temporaire (`hammerpro_models` dans le dossier temporaire du système) et l'ouvre dans Crowbar. Crowbar.exe est demandé la première fois puis mémorisé (`crowbar_exe` dans `[entities]`) ; clic droit sur le bouton puis **Choisir un autre Crowbar.exe...** pour en changer. |
 | **Compiler un QC...** | Lance le studiomdl du jeu (`bin/win64/studiomdl.exe`, sinon `bin/studiomdl.exe` du dossier de Garry's Mod) sur le fichier QC choisi, avec `-game <dossier du jeu> -nop4 -verbose`. Sa sortie va dans la console ; un bouton **Annuler** l'arrête. Grisé si studiomdl est introuvable. |

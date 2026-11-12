@@ -39,14 +39,23 @@ pub(super) struct Env<'a> {
 }
 
 pub(super) fn env_near<'a>(world: &'a World, region: &Aabb, skip: &[usize]) -> Env<'a> {
-    let (all, owner) = world.meshes();
     let mut out = Env { meshes: Vec::new(), owner: Vec::new() };
-    for (m, o) in all.into_iter().zip(owner) {
+    for (m, o) in world.near(region) {
         if skip.contains(&o) {
             continue;
         }
+        out.meshes.push(m);
+        out.owner.push(o);
+    }
+    out
+}
+
+fn ahead_only(env: Env<'_>, d: DVec3, lo: f64) -> Env<'_> {
+    let mut out = Env { meshes: Vec::new(), owner: Vec::new() };
+    for (m, o) in env.meshes.into_iter().zip(env.owner) {
         let b = m.bounds();
-        if !b.is_empty() && b.intersects(region) {
+        let far = b.corners().iter().map(|c| c.dot(d)).fold(f64::NEG_INFINITY, f64::max);
+        if far > lo + 1e-6 {
             out.meshes.push(m);
             out.owner.push(o);
         }
@@ -64,7 +73,7 @@ pub(super) fn settle(moving: &TriMesh, world: &World, dir: DVec3, max: f64, skip
     let (lo, hi) = extent_along(moving, d);
     let extent = (hi - lo).max(0.0);
     let region = swept_box(&b, d, max, extent);
-    let env = env_near(world, &region, skip);
+    let env = ahead_only(env_near(world, &region, skip), d, lo);
     if env.meshes.is_empty() {
         return out;
     }
@@ -107,7 +116,19 @@ pub(super) struct OverlapInfo {
     pub(super) point: DVec3,
 }
 
+const AXES: [DVec3; 6] = [DVec3::Z, DVec3::X, DVec3::NEG_X, DVec3::Y, DVec3::NEG_Y, DVec3::NEG_Z];
+
 pub(super) fn overlaps(moving: &TriMesh, world: &World, skip: &[usize], tol: f64) -> Vec<OverlapInfo> {
+    overlaps_on(moving, world, skip, tol, AXES.len())
+}
+
+fn box_push(a: &Aabb, b: &Aabb, d: DVec3) -> f64 {
+    let hi = b.corners().iter().map(|c| c.dot(d)).fold(f64::NEG_INFINITY, f64::max);
+    let lo = a.corners().iter().map(|c| c.dot(d)).fold(f64::INFINITY, f64::min);
+    hi - lo
+}
+
+pub(super) fn overlaps_on(moving: &TriMesh, world: &World, skip: &[usize], tol: f64, axes: usize) -> Vec<OverlapInfo> {
     let b = moving.bounds();
     if b.is_empty() {
         return Vec::new();
@@ -117,7 +138,13 @@ pub(super) fn overlaps(moving: &TriMesh, world: &World, skip: &[usize], tol: f64
     for (m, o) in env.meshes.iter().zip(&env.owner) {
         let Some(ov) = hp_shape::overlap(moving, m, tol) else { continue };
         let mut best = (f64::INFINITY, DVec3::ZERO);
-        for axis in [DVec3::Z, DVec3::X, DVec3::NEG_X, DVec3::Y, DVec3::NEG_Y, DVec3::NEG_Z] {
+        let mb = m.bounds();
+        let mut order: Vec<DVec3> = AXES.to_vec();
+        if axes < AXES.len() {
+            order.sort_by(|x, y| box_push(&b, &mb, *x).total_cmp(&box_push(&b, &mb, *y)));
+            order.truncate(axes.max(1));
+        }
+        for axis in order {
             let s = hp_shape::separation(moving, m, axis);
             if s < best.0 - 1e-9 {
                 best = (s, axis);
@@ -150,7 +177,7 @@ pub(super) fn clearance(moving: &TriMesh, world: &World, dir: DVec3, max: f64, s
     let d = dir.try_normalize()?;
     let b = moving.bounds();
     let region = swept_box(&b, d, max, 0.0);
-    let env = env_near(world, &region, skip);
+    let env = ahead_only(env_near(world, &region, skip), d, extent_along(moving, d).0);
     let c = hp_shape::sweep(moving, DVec3::ZERO, &env.meshes, d, 0.0, max)?;
     Some((c.t, env.owner[c.env]))
 }

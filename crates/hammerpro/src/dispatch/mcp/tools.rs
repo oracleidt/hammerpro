@@ -42,7 +42,10 @@ pub(crate) enum Outcome {
 
 pub(crate) type ApplyFn = Box<dyn FnOnce(&mut AppState) -> Option<ToolResult> + Send>;
 
-pub(crate) struct Worker(std::sync::mpsc::Receiver<(ToolResult, Option<ApplyFn>)>);
+pub(crate) struct Worker {
+    rx: std::sync::mpsc::Receiver<(ToolResult, Option<ApplyFn>)>,
+    pub(super) feedback: Option<&'static str>,
+}
 
 static WORKER_WAKER: std::sync::Mutex<Option<egui::Context>> = std::sync::Mutex::new(None);
 
@@ -84,17 +87,22 @@ impl Worker {
             wake_after_worker();
         });
         match spawned {
-            Ok(_) => Outcome::Worker(Worker(rx)),
+            Ok(_) => Outcome::Worker(Worker { rx, feedback: None }),
             Err(e) => Outcome::Done(ToolResult::error(format!("{tool}: cannot start a worker thread: {e}"))),
         }
     }
 
+    fn finish(&self, state: &mut AppState, result: ToolResult, apply: Option<ApplyFn>) -> ToolResult {
+        let Some(f) = apply else { return result };
+        let watch = self.feedback.and_then(|t| super::place_feedback::begin(state, t));
+        let mut r = f(state).unwrap_or(result);
+        super::place_feedback::finish(state, watch, &mut r);
+        r
+    }
+
     pub(crate) fn poll(&self, state: &mut AppState) -> Option<ToolResult> {
-        match self.0.try_recv() {
-            Ok((result, apply)) => Some(match apply {
-                Some(f) => f(state).unwrap_or(result),
-                None => result,
-            }),
+        match self.rx.try_recv() {
+            Ok((result, apply)) => Some(self.finish(state, result, apply)),
             Err(std::sync::mpsc::TryRecvError::Empty) => None,
             Err(std::sync::mpsc::TryRecvError::Disconnected) => Some(ToolResult::error("the worker stopped")),
         }
@@ -102,11 +110,8 @@ impl Worker {
 
     #[cfg(test)]
     pub(crate) fn wait(self, state: &mut AppState, timeout: std::time::Duration) -> ToolResult {
-        match self.0.recv_timeout(timeout) {
-            Ok((result, apply)) => match apply {
-                Some(f) => f(state).unwrap_or(result),
-                None => result,
-            },
+        match self.rx.recv_timeout(timeout) {
+            Ok((result, apply)) => self.finish(state, result, apply),
             Err(_) => ToolResult::error("the worker did not answer"),
         }
     }
@@ -139,6 +144,7 @@ pub(crate) const DOMAINS: &[&Domain] = &[
     &super::tools_compile::DOMAIN,
     &super::tools_compilers::DOMAIN,
     &super::tools_health::DOMAIN,
+    &super::tools_optimize::DOMAIN,
     &super::tools_content::DOMAIN,
     &super::tools_docs::DOMAIN,
     &super::tools_history::DOMAIN,
@@ -192,7 +198,9 @@ pub(crate) fn undo_label(tool: &str) -> String {
 
 pub(crate) fn run(state: &mut AppState, name: &str, args: &Value) -> Outcome {
     state.doc.end_selection_burst();
+    let watch = super::place_feedback::begin(state, name);
     let outcome = run_tool(state, name, args);
+    let outcome = super::place_feedback::finish_outcome(state, watch, outcome);
     state.doc.end_selection_burst();
     outcome
 }
@@ -1231,6 +1239,7 @@ fn screenshot_view(state: &mut AppState, v: &Value) -> R<ToolResult> {
     let cfg = RenderConfig::from_state(state);
     let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(w as f32, h as f32));
     let view = view_info(0, kind, rect, &state.cameras, &cfg, 1.0);
+    let overlay = hp_ui_viewports::layers::optimize::screenshot_overlay(state);
     let AppState { assets, doc, gfx, .. } = state;
     let gfx = gfx.as_mut().ok_or("the 3D renderer is not ready yet")?;
     assets.sync_scene(doc, gfx, &opts);
@@ -1247,7 +1256,7 @@ fn screenshot_view(state: &mut AppState, v: &Value) -> R<ToolResult> {
     }
     gfx.renderer.set_tone_settings(state.settings.render.tone());
     gfx.renderer.set_view_options(SCREENSHOT_VIEW, options);
-    gfx.renderer.render_view(SCREENSHOT_VIEW, &params, &hp_render::Overlay::default());
+    gfx.renderer.render_view(SCREENSHOT_VIEW, &params, &overlay);
     let pixels = gfx.renderer.read_view_rgba8(SCREENSHOT_VIEW);
     gfx.renderer.remove_view(SCREENSHOT_VIEW);
     let (pw, ph, mut px) = pixels.map_err(|e| format!("reading the image back failed: {e}"))?;

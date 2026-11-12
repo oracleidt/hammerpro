@@ -76,6 +76,7 @@ Details:
 - An object sunk into the floor is lifted out onto it instead of falling through. Invisible tool brushes (clip, trigger, hint...) are not surfaces.
 - Brushes and props (entities with a `.mdl` model) are surfaces. The moved objects themselves are ignored.
 - An object with nothing below (or above) it stays in place. When nothing moves, a message says **There is no surface below the selection** (or above).
+- More commands on the real shapes (place on top of another object, against a wall, next to it, settle floating props, fit legs to the ground) are in **Tools > Placement and props**: see [Placement on real shapes](real-shape-placement.md).
 
 ## Physics placement
 

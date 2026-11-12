@@ -6,7 +6,7 @@ Hammer Pro a un thème sombre et un thème clair, une couleur d'accent facultati
 
 ## Icônes de l'interface
 
-Hammer Pro intègre un ensemble homogène d'icônes pour ses barres d'outils, outils, fenêtres et indicateurs. Leurs proportions et leur espacement restent identiques à chaque échelle de l'interface, indépendamment des polices de symboles installées sous Windows. Le texte conserve sa police habituelle. Le sous-ensemble intégré provient des [Microsoft Fluent UI System Icons](https://github.com/microsoft/fluentui-system-icons) ; sa licence MIT est incluse dans la police et dans `assets/fonts/LICENSE.txt`.
+Hammer Pro intègre un ensemble homogène d'icônes pour ses barres d'outils, outils, fenêtres et indicateurs. Leurs proportions et leur espacement restent identiques à chaque échelle de l'interface, indépendamment des polices de symboles installées sous Windows. Le texte conserve sa police habituelle. Chaque ligne de texte reçoit toute la hauteur de cette police : les jambages des lettres comme g, j, p, y ou р, у, д ne sont jamais coupés, dans les menus, les listes, la console, le journal de compilation et tous les autres panneaux, à chaque échelle de l'interface. Le sous-ensemble intégré provient des [Microsoft Fluent UI System Icons](https://github.com/microsoft/fluentui-system-icons) ; sa licence MIT est incluse dans la police et dans `assets/fonts/LICENSE.txt`.
 
 ## Où le régler
 

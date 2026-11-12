@@ -119,7 +119,7 @@ impl ConsoleView {
         self.refresh(&state.console);
         self.header(ui, state);
         ui.add_space(2.0);
-        let row_height = ui.text_style_height(&TextStyle::Monospace).max(ui.text_style_height(&TextStyle::Body));
+        let row_height = ui.text_style_height(&TextStyle::Monospace).max(ui.text_style_height(&TextStyle::Small));
         let total = self.filtered.len();
         if total == 0 {
             ui.add_space(8.0);
@@ -215,7 +215,7 @@ fn line_row(ui: &mut Ui, line: &ConsoleLine, row_height: f32) -> Option<String> 
     let mut text_clipped = false;
     if ui.is_rect_visible(rect) {
         let visuals = ui.visuals();
-        let painter = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
+        let painter = ui.painter().with_clip_rect(hp_app::widgets::clip_x(rect, ui.clip_rect()));
         if response.hovered() {
             painter.rect_filled(rect, 2.0, visuals.widgets.hovered.weak_bg_fill.gamma_multiply(0.35));
         }

@@ -43,6 +43,7 @@ Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.m
 | [Terrain](features/terrain.md) | Importer et exporter des cartes de hauteur, génération procédurale de terrain, érosion, texturage automatique. |
 | [Opérations sur les brushes](features/brush-operations.md) | Carve, creuser, fusionner, lier à une entité, func_detail, nodraw, brushes hint, verrouillage des textures. |
 | [Transformer et aligner](features/transform-align.md) | Fenêtre Transformer, aligner, retourner, magnétisme, poser au sol, placement physique. |
+| [Placement sur les formes réelles](features/real-shape-placement.md) | Poser dessus, plaquer contre un mur, placer à côté, reposer les props flottants et ajuster les pieds au sol, mesurés sur les vrais maillages ; affichage des dimensions réelles, aperçu de la forme, vérification des objets flottants, enfoncés et qui se chevauchent. |
 | [Simulateur physique](features/physics-tool.md) | Lecture, pause, saisie, tirs et explosions sur les brushes, props et ragdolls ; conservation des poses en une opération annulable. |
 | [Presse-papiers](features/clipboard.md) | Couper, copier, coller, collage spécial, dupliquer, entre fenêtres Hammer Pro. |
 | [Grilles](features/grids.md) | Grille globale, une grille par vue, grilles personnalisées, grilles des objets, gestionnaire de grilles, grille 3D. |
@@ -179,6 +180,7 @@ Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.m
 | [Créer un prop avec Propper](guides/make-a-prop-with-propper.md) | Transformer des brushes en prop statique avec LOD et collision. |
 | [Sculpter des displacements](guides/sculpt-displacements.md) | Du brush au terrain peint avec des mélanges de textures. |
 | [Éclairage](guides/lighting.md) | Lumières, aperçus, LDR et HDR, éclairage des props statiques. |
+| [Optimiser une map](guides/optimizing-a-map.md) | Visleaves, func_detail, brushes hint, areaportals et lumières cohérentes, avec la fenêtre Optimiser la map et les outils MCP. |
 | [Grilles personnalisées pour les escaliers](guides/custom-grids-for-stairs.md) | Une grille avec un pas par axe pour des marches régulières. |
 | [Rassembler le contenu pour une publication](guides/collect-content-for-release.md) | Réunir chaque fichier personnalisé dont la map a besoin. |
 | [Porter une map vers un autre jeu](guides/port-to-another-game.md) | Changer de jeu cible et corriger ce qui diffère. |

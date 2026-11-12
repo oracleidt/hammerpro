@@ -57,6 +57,10 @@ L'assistant n'a pas à deviner les tailles d'après des boîtes englobantes. Dem
 
 `render_shape` donne à l'assistant un dessin d'un modèle ou d'une zone vu de plusieurs côtés avec les cotes écrites dessus, et `check_placement` lui dit pour chaque objet s'il repose, flotte, est enfoncé ou entre dans un autre objet. Le guide complet est dans [docs/MCP.md](../../MCP.md#place-things-precisely) (en anglais).
 
+## Optimiser ce que l'assistant a construit
+
+Demandez à l'assistant de finir par `optimize_map` : il compile la visibilité en arrière-plan, liste ce qui n'est pas optimisé (visleaves, func_detail, hints, areaportals, lumières) et, avec `apply: "safe"`, corrige la partie sûre en une étape d'annulation et donne les visleaves et le PVS avant et après. Voir [Optimiser une map](optimizing-a-map.md).
+
 ## Astuces
 
 - Soyez concret : tailles en unités, noms de matériaux, classes d'entités. L'assistant peut aussi les chercher (`search_materials`, `search_models`, `list_entity_classes`).

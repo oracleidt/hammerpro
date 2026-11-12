@@ -39,7 +39,7 @@ The toolbar row under the menus reads from left to right like most editors: file
 7. Displacement mesh in 2D views, Displacement walkability, Show nodraw faces, Show model collisions, Texture lock, Texture scale lock.
 8. Show helpers and sprites, Show models, Show tool textures, Show editor objects, 3D skybox, Show particles, Simulate ropes.
 9. The 3D render mode list, Player view, Check for problems.
-10. **Compile** (with its hammer icon), alone at the right end of the first row: it opens the Compile and run window (Hammer's Run Map).
+10. **Compile** (with its hammer icon), alone at the right end of the first row: it opens the Compile and run window (Hammer's Run Map). While a compile runs, the button keeps its size and shows a progress ring with the percentage (click it to open the Compile and run window) and a stop square on its right end that cancels the compile.
 
 By default the toolbar stays on one row. When the window is too narrow for every group (a small screen, a large interface scale, the longer French or Russian labels), the least used groups go into the **»** button at the end of the row, in this order: the view toggles (8), the displacement and texture lock toggles (7), the cordon group (6), the hide and group buttons (5 and 4), the render mode group (9), then Undo, Redo, Cut, Copy, Paste (2). The groups that remain keep their order, and the **»** menu shows the hidden ones with the same buttons, tooltips and shortcuts; it stays open while you click its buttons. **Compile** is always the last to go.
 

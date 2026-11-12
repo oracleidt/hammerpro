@@ -14,6 +14,7 @@ pub mod launch;
 pub mod lighting;
 pub mod mapassets;
 pub mod mapinfo;
+pub mod optimize;
 pub mod outliner;
 pub mod paste;
 pub mod pointfile;
@@ -41,6 +42,7 @@ pub const TABLES: &[(&str, TrTable)] = &[
     ("paste", paste::TR),
     ("goto", goto::TR),
     ("mapinfo", mapinfo::TR),
+    ("optimize", optimize::TR),
     ("pointfile", pointfile::TR),
     ("cordons", cordons::TR),
     ("portals", portals::TR),

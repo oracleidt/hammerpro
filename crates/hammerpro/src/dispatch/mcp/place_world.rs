@@ -460,76 +460,82 @@ pub(super) struct EnvOptions {
     pub(super) region: Option<Aabb>,
 }
 
-pub(super) fn environment(state: &AppState, skip_solids: &IdSet, skip_entities: &IdSet, opts: &EnvOptions) -> Vec<Obj> {
+pub(super) fn env_solid(state: &AppState, id: u32, skip_solids: &IdSet, opts: &EnvOptions) -> Option<Obj> {
+    let node = state.doc.scene().solid(id)?;
+    let near = opts.region.is_none_or(|r| !node.bounds.is_empty() && node.bounds.intersects(&r));
+    if node.owner != Owner::World || skip_solids.contains(&id) || !near {
+        return None;
+    }
+    solid_obj(state, id, opts.include_tools).filter(|o| !o.meshes.is_empty())
+}
+
+pub(super) fn env_entity(
+    state: &AppState,
+    id: u32,
+    skip_solids: &IdSet,
+    skip_entities: &IdSet,
+    opts: &EnvOptions,
+) -> Option<Obj> {
     let scene = state.doc.scene();
     let near = |b: &Aabb| opts.region.is_none_or(|r| !b.is_empty() && b.intersects(&r));
-    let mut out = Vec::new();
-    for (id, node) in scene.solids() {
-        if node.owner != Owner::World || skip_solids.contains(id) || !near(&node.bounds) {
-            continue;
-        }
-        if let Some(o) = solid_obj(state, *id, opts.include_tools)
-            && !o.meshes.is_empty()
-        {
-            out.push(o);
-        }
+    if skip_entities.contains(&id) {
+        return None;
     }
-    for (id, node) in scene.entities() {
-        if skip_entities.contains(id) {
-            continue;
+    let e = &scene.entity(id)?.entity;
+    if !opts.include_tools && non_solid_class(&e.classname) {
+        return None;
+    }
+    if scene.is_brush_entity(id) {
+        let sids: Vec<u32> = scene.entity_solid_ids(id).into_iter().filter(|s| !skip_solids.contains(s)).collect();
+        if sids.is_empty() {
+            return None;
         }
-        let e = &node.entity;
-        if !opts.include_tools && non_solid_class(&e.classname) {
-            continue;
-        }
-        if scene.is_brush_entity(*id) {
-            let sids: Vec<u32> = scene.entity_solid_ids(*id).into_iter().filter(|s| !skip_solids.contains(s)).collect();
-            if sids.is_empty() {
+        let mut o = Obj {
+            key: Key::Entity(id),
+            kind: "brush_entity",
+            class: e.classname.clone(),
+            meshes: Vec::new(),
+            models: Vec::new(),
+            origin: e.origin(),
+            angles: DVec3::ZERO,
+            scale: 1.0,
+            hint: Aabb::EMPTY,
+            refs: vec![ObjRef::Entity(id)],
+            pending: false,
+            solid_ids: Vec::new(),
+        };
+        for sid in sids {
+            let Some(sn) = scene.solid(sid) else { continue };
+            if !near(&sn.bounds) {
                 continue;
             }
-            let mut o = Obj {
-                key: Key::Entity(*id),
-                kind: "brush_entity",
-                class: e.classname.clone(),
-                meshes: Vec::new(),
-                models: Vec::new(),
-                origin: e.origin(),
-                angles: DVec3::ZERO,
-                scale: 1.0,
-                hint: Aabb::EMPTY,
-                refs: vec![ObjRef::Entity(*id)],
-                pending: false,
-                solid_ids: Vec::new(),
-            };
-            for sid in sids {
-                let Some(sn) = scene.solid(sid) else { continue };
-                if !near(&sn.bounds) {
-                    continue;
-                }
-                let (ms, d) = brush_meshes(&sn.solid.sides, &sn.geom, &sn.disp, None, opts.include_tools);
-                if d {
-                    o.kind = "displacement";
-                }
-                o.meshes.extend(ms);
-                o.solid_ids.push(sid);
-                o.hint = o.hint.union(&sn.bounds);
+            let (ms, d) = brush_meshes(&sn.solid.sides, &sn.geom, &sn.disp, None, opts.include_tools);
+            if d {
+                o.kind = "displacement";
             }
-            if !o.meshes.is_empty() {
-                out.push(o);
-            }
-            continue;
+            o.meshes.extend(ms);
+            o.solid_ids.push(sid);
+            o.hint = o.hint.union(&sn.bounds);
         }
-        let model = model_of(state, e).is_some();
-        let instance = hp_editor::instances::is_instance(e);
-        let overlay = OVERLAY_CLASSES.iter().any(|c| e.classname.eq_ignore_ascii_case(c));
-        if !(model || instance || (opts.include_points && !overlay)) {
-            continue;
-        }
-        if let Some(o) = entity_obj(state, *id, opts.include_tools)
-            && near(&o.hint)
-        {
-            out.push(o);
-        }
+        return (!o.meshes.is_empty()).then_some(o);
+    }
+    let model = model_of(state, e).is_some();
+    let instance = hp_editor::instances::is_instance(e);
+    let overlay = OVERLAY_CLASSES.iter().any(|c| e.classname.eq_ignore_ascii_case(c));
+    if !(model || instance || (opts.include_points && !overlay)) {
+        return None;
+    }
+    entity_obj(state, id, opts.include_tools).filter(|o| near(&o.hint))
+}
+
+pub(super) fn environment(state: &AppState, skip_solids: &IdSet, skip_entities: &IdSet, opts: &EnvOptions) -> Vec<Obj> {
+    let scene = state.doc.scene();
+    let mut out = Vec::new();
+    for id in scene.solids().keys().copied() {
+        out.extend(env_solid(state, id, skip_solids, opts));
+    }
+    for id in scene.entities().keys().copied() {
+        out.extend(env_entity(state, id, skip_solids, skip_entities, opts));
     }
     out
 }
@@ -547,7 +553,7 @@ static PINNED: Mutex<Option<HashMap<CacheKey, Arc<ModelShape>>>> = Mutex::new(No
 const MAX_SHAPES: usize = 768;
 
 #[cfg(test)]
-pub(super) fn pin_shape(path: &str, body: u32, shape: ModelShape) {
+pub(crate) fn pin_shape(path: &str, body: u32, shape: ModelShape) {
     let mut p = PINNED.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     p.get_or_insert_with(HashMap::new).insert((path.to_owned(), body), Arc::new(shape));
 }
@@ -650,14 +656,130 @@ pub(super) fn resolve(obj: &Obj, fs: Option<&hp_fs::GameFs>, choice: MeshChoice)
 pub(super) struct World {
     pub(super) objs: Vec<Obj>,
     pub(super) resolved: Vec<Resolved>,
+    index: PieceIndex,
+    boxes: Vec<Aabb>,
+}
+
+const CELL: f64 = 512.0;
+const MAX_CELLS: i64 = 64;
+
+#[derive(Default)]
+struct PieceIndex {
+    slots: Vec<(usize, usize)>,
+    bounds: Vec<Aabb>,
+    cells: HashMap<(i64, i64), Vec<u32>>,
+    big: Vec<u32>,
+}
+
+fn cell_range(b: &Aabb) -> Option<(i64, i64, i64, i64)> {
+    if b.is_empty() || !b.min.is_finite() || !b.max.is_finite() {
+        return None;
+    }
+    let c = |v: f64| (v / CELL).floor().clamp(-1.0e6, 1.0e6) as i64;
+    Some((c(b.min.x), c(b.min.y), c(b.max.x), c(b.max.y)))
+}
+
+impl PieceIndex {
+    fn insert(&mut self, k: u32) {
+        let Some((x0, y0, x1, y1)) = cell_range(&self.bounds[k as usize]) else { return };
+        if (x1 - x0 + 1) * (y1 - y0 + 1) > MAX_CELLS {
+            if !self.big.contains(&k) {
+                self.big.push(k);
+            }
+            return;
+        }
+        for x in x0..=x1 {
+            for y in y0..=y1 {
+                let list = self.cells.entry((x, y)).or_default();
+                if list.last() != Some(&k) {
+                    list.push(k);
+                }
+            }
+        }
+    }
+
+    fn query(&self, region: &Aabb) -> Vec<usize> {
+        let mut out: Vec<usize> = Vec::new();
+        match cell_range(region) {
+            Some((x0, y0, x1, y1)) if (x1 - x0 + 1) * (y1 - y0 + 1) <= 4096 => {
+                for x in x0..=x1 {
+                    for y in y0..=y1 {
+                        if let Some(list) = self.cells.get(&(x, y)) {
+                            out.extend(list.iter().map(|k| *k as usize));
+                        }
+                    }
+                }
+                out.extend(self.big.iter().map(|k| *k as usize));
+                out.sort_unstable();
+                out.dedup();
+            }
+            Some(_) => out.extend(0..self.bounds.len()),
+            None => return out,
+        }
+        out.retain(|k| {
+            let b = &self.bounds[*k];
+            !b.is_empty() && b.intersects(region)
+        });
+        out
+    }
+}
+
+const CHUNK_FROM: usize = 4096;
+const CHUNK_TRIS: f64 = 1024.0;
+
+fn chunked(m: TriMesh) -> Vec<TriMesh> {
+    if m.tris.len() <= CHUNK_FROM {
+        return vec![m];
+    }
+    let b = m.bounds();
+    let cells = (m.tris.len() as f64 / CHUNK_TRIS).cbrt().ceil().max(2.0);
+    let size = (b.size() / cells).max(DVec3::splat(1.0));
+    let mut groups: HashMap<(i64, i64, i64), Vec<usize>> = HashMap::new();
+    for (i, t) in m.tris.iter().enumerate() {
+        let c = (m.verts[t[0] as usize] + m.verts[t[1] as usize] + m.verts[t[2] as usize]) / 3.0;
+        let k = ((c - b.min) / size).floor();
+        groups.entry((k.x as i64, k.y as i64, k.z as i64)).or_default().push(i);
+    }
+    let mut keys: Vec<(i64, i64, i64)> = groups.keys().copied().collect();
+    keys.sort_unstable();
+    keys.into_iter()
+        .map(|k| {
+            let mut out = TriMesh::new();
+            let mut remap: HashMap<u32, u32> = HashMap::new();
+            for &i in &groups[&k] {
+                let t = m.tris[i].map(|v| *remap.entry(v).or_insert_with(|| out.add_vertex(m.verts[v as usize])));
+                out.tris.push(t);
+                out.normals.push(m.normals[i]);
+                out.tags.push(m.tags[i]);
+            }
+            out
+        })
+        .collect()
 }
 
 impl World {
+    pub(super) fn build_chunked(objs: Vec<Obj>, fs: Option<&hp_fs::GameFs>, choice: MeshChoice) -> World {
+        Self::build_with(objs, fs, choice, None, true)
+    }
+
     pub(super) fn build(objs: Vec<Obj>, fs: Option<&hp_fs::GameFs>, choice: MeshChoice, region: Option<Aabb>) -> World {
+        Self::build_with(objs, fs, choice, region, false)
+    }
+
+    fn build_with(
+        objs: Vec<Obj>,
+        fs: Option<&hp_fs::GameFs>,
+        choice: MeshChoice,
+        region: Option<Aabb>,
+        chunk: bool,
+    ) -> World {
         let mut keep = Vec::new();
         let mut resolved = Vec::new();
         for o in objs {
-            let r = resolve(&o, fs, choice);
+            let mut r = resolve(&o, fs, choice);
+            if chunk && r.pieces.iter().any(|p| p.tris.len() > CHUNK_FROM) {
+                r.pieces = std::mem::take(&mut r.pieces).into_iter().flat_map(chunked).collect();
+            }
             let b = r.bounds();
             if b.is_empty() || region.is_some_and(|reg| !b.intersects(&reg)) {
                 continue;
@@ -665,18 +787,78 @@ impl World {
             keep.push(o);
             resolved.push(r);
         }
-        World { objs: keep, resolved }
-    }
-
-    pub(super) fn meshes(&self) -> (Vec<&TriMesh>, Vec<usize>) {
-        let mut out = Vec::new();
-        let mut owner = Vec::new();
-        for (i, r) in self.resolved.iter().enumerate() {
-            for p in &r.pieces {
-                out.push(p);
-                owner.push(i);
+        let mut index = PieceIndex::default();
+        for (i, r) in resolved.iter().enumerate() {
+            for (j, p) in r.pieces.iter().enumerate() {
+                index.slots.push((i, j));
+                index.bounds.push(p.bounds());
             }
         }
-        (out, owner)
+        for k in 0..index.slots.len() {
+            index.insert(k as u32);
+        }
+        let mut boxes = vec![Aabb::EMPTY; resolved.len()];
+        for (k, &(o, _)) in index.slots.iter().enumerate() {
+            boxes[o] = boxes[o].union(&index.bounds[k]);
+        }
+        World { objs: keep, resolved, index, boxes }
+    }
+
+    pub(super) fn near(&self, region: &Aabb) -> Vec<(&TriMesh, usize)> {
+        self.index
+            .query(region)
+            .into_iter()
+            .filter_map(|k| {
+                let (o, j) = self.index.slots[k];
+                self.resolved.get(o).and_then(|r| r.pieces.get(j)).map(|m| (m, o))
+            })
+            .collect()
+    }
+
+    pub(super) fn move_obj(&mut self, i: usize, xf: &DMat4) {
+        let Some(r) = self.resolved.get_mut(i) else { return };
+        for p in &mut r.pieces {
+            *p = p.transformed(xf);
+        }
+        let ks: Vec<u32> =
+            self.index.slots.iter().enumerate().filter(|(_, s)| s.0 == i).map(|(k, _)| k as u32).collect();
+        let mut total = Aabb::EMPTY;
+        for k in ks {
+            let (o, j) = self.index.slots[k as usize];
+            self.index.bounds[k as usize] = self.resolved[o].pieces[j].bounds();
+            total = total.union(&self.index.bounds[k as usize]);
+            self.index.insert(k);
+        }
+        if let Some(b) = self.boxes.get_mut(i) {
+            *b = total;
+        }
+    }
+
+    pub(super) fn bounds_of(&self, i: usize) -> Aabb {
+        self.boxes.get(i).copied().unwrap_or(Aabb::EMPTY)
+    }
+}
+
+#[cfg(test)]
+mod chunk_tests {
+    use super::*;
+
+    #[test]
+    fn big_meshes_split_into_chunks_that_keep_every_triangle() {
+        let mut m = TriMesh::new();
+        for i in 0..3000 {
+            let x = f64::from(i % 60) * 4.0;
+            let y = f64::from(i / 60) * 4.0;
+            m.append(&TriMesh::convex_box(DVec3::new(x, y, 0.0), DVec3::new(x + 2.0, y + 2.0, 2.0), 0));
+        }
+        let tris = m.tris.len();
+        let b = m.bounds();
+        let parts = chunked(m.clone());
+        assert!(parts.len() > 4, "{}", parts.len());
+        assert_eq!(parts.iter().map(|p| p.tris.len()).sum::<usize>(), tris);
+        let u = parts.iter().fold(Aabb::EMPTY, |a, p| a.union(&p.bounds()));
+        assert_eq!((u.min, u.max), (b.min, b.max));
+        let small = TriMesh::convex_box(DVec3::ZERO, DVec3::ONE, 0);
+        assert_eq!(chunked(small.clone()), vec![small]);
     }
 }

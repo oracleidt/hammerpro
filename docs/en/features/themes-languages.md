@@ -6,7 +6,7 @@ Hammer Pro has a dark theme and a light one, an optional accent color, an interf
 
 ## Interface icons
 
-Hammer Pro embeds a uniform set of outline icons for its toolbars, tools, dialogs and status indicators. The icons keep their proportions and spacing at every interface scale, independently of the installed Windows symbol fonts. Text continues to use the normal interface font. The bundled icon subset derives from [Microsoft Fluent UI System Icons](https://github.com/microsoft/fluentui-system-icons); its MIT license is included in the font and in `assets/fonts/LICENSE.txt`.
+Hammer Pro embeds a uniform set of outline icons for its toolbars, tools, dialogs and status indicators. The icons keep their proportions and spacing at every interface scale, independently of the installed Windows symbol fonts. Text continues to use the normal interface font. Every line of text gets the full height of that font, so the tails of letters such as g, j, p, y or р, у, д are never cut, in menus, lists, the console, the compile log and every other panel, at every interface scale. The bundled icon subset derives from [Microsoft Fluent UI System Icons](https://github.com/microsoft/fluentui-system-icons); its MIT license is included in the font and in `assets/fonts/LICENSE.txt`.
 
 ## Opening it
 

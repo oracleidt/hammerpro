@@ -288,7 +288,7 @@ pub fn apply(ctx: &egui::Context, theme: ThemeChoice, ui_scale: f32) {
     ctx.set_visuals(visuals);
     ctx.all_styles_mut(|style| {
         style.spacing.item_spacing = egui::vec2(6.0, 4.0);
-        style.spacing.button_padding = egui::vec2(7.0, 3.0);
+        style.spacing.button_padding = egui::vec2(7.0, 1.0);
         style.spacing.menu_margin = egui::Margin::same(6);
         style.spacing.interact_size.y = 22.0;
         style.spacing.scroll.floating = true;

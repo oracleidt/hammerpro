@@ -2,7 +2,7 @@
 
 # Actions et raccourcis clavier
 
-Chaque commande de Hammer Pro 1.1.5 est une *action* : une seule entrée partagée par les menus, la barre d'outils, les raccourcis clavier, la palette de commandes (`Ctrl+P`), les fichiers `--script` et le serveur MCP (`run_action`, `list_actions`). Cette page liste les 345 actions, menu par menu, dans l'ordre où les menus les affichent.
+Chaque commande de Hammer Pro 1.1.5 est une *action* : une seule entrée partagée par les menus, la barre d'outils, les raccourcis clavier, la palette de commandes (`Ctrl+P`), les fichiers `--script` et le serveur MCP (`run_action`, `list_actions`). Cette page liste les 355 actions, menu par menu, dans l'ordre où les menus les affichent.
 
 Colonnes :
 
@@ -122,6 +122,9 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Vérifier les fuites | `check_leaks` |  |  |  |
 | Fermer l'ouverture par un areaportal | `seal_areaportal` |  |  |  |
 | Suggestions de func_detail... | `show_detail_suggestions` |  |  |  |
+| Optimiser la map... | `show_optimize` |  |  |  |
+| Analyser l'optimisation | `analyze_optimization` |  |  |  |
+| Afficher les visleaves et les portails | `toggle_visleaves` |  |  |  |
 | Comparer avec une autre map... | `compare_maps` |  |  |  |
 | Insérer la galerie d'entités | `entity_gallery` |  |  |  |
 | Charger le pointfile de fuite... | `load_pointfile` |  |  |  |
@@ -168,6 +171,7 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Images de fond... | `background_images` |  |  |  |
 | Options d'affichage > Informations de la vue 3D | `toggle_view_info` | `O` |  |  |
 | Options d'affichage > Boîtes englobantes | `toggle_bounds_overlay` |  |  |  |
+| Options d'affichage > Dimensions réelles | `toggle_real_dimensions` | `Alt+M` |  |  |
 | Options d'affichage > Afficher les overlays | `toggle_overlays` |  |  |  |
 | Options d'affichage > Afficher les connexions | `toggle_connections` |  |  |  |
 | Options d'affichage > Afficher les objets d'éditeur | `toggle_editor_objects` |  |  | `Alt+O` |
@@ -295,6 +299,13 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Retourner > Retourner verticalement | `flip_vertical` |  | `Ctrl+I` | `Ctrl+I` |
 | Insérer un point de chemin après la sélection | `path_insert_point` |  |  |  |
 | Supprimer des points de chemin et relier | `path_remove_point` |  |  |  |
+| Poser sur la cible | `place_on_top` | `Alt+T` |  |  |
+| Plaquer contre le mur | `place_against_wall` | `Alt+L` |  |  |
+| Plaquer contre le mur, dos au mur | `place_against_wall_away` | `Alt+Maj+L` |  |  |
+| Placer à côté de la cible | `place_next_to` | `Alt+X` |  |  |
+| Reposer les objets flottants | `settle_floating` | `Alt+Maj+N` |  |  |
+| Ajuster au sol (appuis) | `fit_to_ground` | `Alt+G` |  |  |
+| Aperçu de la forme | `show_shape_preview` | `Alt+Maj+M` |  |  |
 | Créer un prefab... | `create_prefab` | `Ctrl+R` |  |  |
 | Insérer le prefab à sa taille d'origine | `insert_original_prefab` | `Alt+Maj+C` |  |  |
 | Semis par matériau... | `scatter_by_material` |  |  |  |

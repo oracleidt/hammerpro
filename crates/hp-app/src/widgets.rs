@@ -5,6 +5,10 @@ use crate::t;
 
 pub const HOVER_SECONDS: f32 = 0.12;
 
+pub fn clip_x(rect: egui::Rect, outer: egui::Rect) -> egui::Rect {
+    egui::Rect::from_x_y_ranges(rect.x_range(), outer.y_range()).intersect(outer)
+}
+
 pub fn crisp_width(ppp: f32, width: f32) -> f32 {
     let ppp = if ppp.is_finite() && ppp > 0.0 { ppp } else { 1.0 };
     (width * ppp).round().max(1.0) / ppp

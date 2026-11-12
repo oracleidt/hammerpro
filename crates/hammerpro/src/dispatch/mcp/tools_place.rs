@@ -7,6 +7,7 @@ use hp_shape::TriMesh;
 use serde_json::{Value, json};
 
 use super::place_ops::{self, OverlapInfo, Settle};
+use super::place_scan::{self, Class, SIDE_DIRS};
 use super::place_world::{self as pw, EnvOptions, Key, MeshChoice, Obj, Resolved, World};
 use super::semantic::*;
 use super::tools::{Args, MAX_NAME, Outcome, R, Worker, check_class, encode_png};
@@ -97,7 +98,8 @@ domain! { "placement";
         measured on real meshes (props by default; entities or all for brush entities and world brushes too). \
         Objects touching a wall or ceiling (wall lamps, hanging signs) are attached, not floating. fix moves the \
         floating ones down until they touch, fix_sunk lifts the sunk ones out (up to max_sink), lowest first so \
-        stacks settle together, in one undo step.",
+        stacks settle together, in one undo step. check_problems lists the same props (codes floating_object, \
+        sunk_object and overlapping_objects, fixable with fix_problems).",
         {
             "min": vec3("Box minimum (default: whole map)."), "max": vec3("Box maximum."),
             "ids": ids("Only these objects."),
@@ -205,7 +207,7 @@ fn angles_arg(a: &Args<'_>, key: &str) -> R<Option<DVec3>> {
     }
 }
 
-fn model_obj(path: &str, origin: DVec3, angles: DVec3, scale: f64, body: u32, class: &str) -> Obj {
+pub(super) fn model_obj(path: &str, origin: DVec3, angles: DVec3, scale: f64, body: u32, class: &str) -> Obj {
     Obj {
         key: Key::Entity(0),
         kind: if class.starts_with("prop_") { "prop" } else { "model_entity" },
@@ -461,9 +463,9 @@ fn get_object_shape(state: &mut AppState, a: &Args<'_>) -> R<Outcome> {
     }))
 }
 
-struct Unit {
-    obj: Obj,
-    refs: Vec<ObjRef>,
+pub(super) struct Unit {
+    pub(super) obj: Obj,
+    pub(super) refs: Vec<ObjRef>,
 }
 
 fn units_of(state: &AppState, a: &Args<'_>, include_tools: bool, group_roots: bool) -> R<Vec<Unit>> {
@@ -472,7 +474,7 @@ fn units_of(state: &AppState, a: &Args<'_>, include_tools: bool, group_roots: bo
     Ok(units_from(state, groups, refs, include_tools, group_roots))
 }
 
-fn units_from(
+pub(super) fn units_from(
     state: &AppState,
     groups: Vec<u32>,
     refs: Vec<ObjRef>,
@@ -503,7 +505,13 @@ fn units_from(
     out
 }
 
-fn env_for(state: &AppState, refs: &[ObjRef], region: Option<Aabb>, include_tools: bool, ignore: &[u32]) -> Vec<Obj> {
+pub(super) fn env_for(
+    state: &AppState,
+    refs: &[ObjRef],
+    region: Option<Aabb>,
+    include_tools: bool,
+    ignore: &[u32],
+) -> Vec<Obj> {
     let (mut ss, mut se) = pw::moving_sets(state, refs);
     for id in ignore {
         if state.doc.scene().entity(*id).is_some() {
@@ -516,7 +524,7 @@ fn env_for(state: &AppState, refs: &[ObjRef], region: Option<Aabb>, include_tool
     pw::environment(state, &ss, &se, &EnvOptions { include_tools, include_points: false, region })
 }
 
-fn region_around(hint: &Aabb, dir: DVec3, dist: f64) -> Aabb {
+pub(super) fn region_around(hint: &Aabb, dir: DVec3, dist: f64) -> Aabb {
     let back = Aabb::new(hint.min - dir * hint.size().length(), hint.max - dir * hint.size().length());
     let ahead = Aabb::new(hint.min + dir * dist, hint.max + dir * dist);
     hint.union(&back).union(&ahead).expand(64.0)
@@ -548,9 +556,6 @@ fn contact_json(world: &World, s: &Settle) -> Value {
         None => Value::Null,
     }
 }
-
-const SIDE_DIRS: [(&str, DVec3); 5] =
-    [("+x", DVec3::X), ("-x", DVec3::NEG_X), ("+y", DVec3::Y), ("-y", DVec3::NEG_Y), ("+z", DVec3::Z)];
 
 fn check_unit(moving: &TriMesh, world: &World, skip: &[usize], tol: f64, reach: f64) -> Value {
     let below = place_ops::settle(moving, world, DVec3::NEG_Z, 4096.0, skip, tol);
@@ -643,26 +648,26 @@ fn check_placement(state: &mut AppState, a: &Args<'_>) -> R<Outcome> {
 }
 
 #[derive(Clone, Debug)]
-struct PlaceSpec {
-    mode: String,
-    position: Option<DVec3>,
-    anchor: Option<String>,
-    rotate_yaw: f64,
-    side: String,
-    align: String,
-    direction: Option<DVec3>,
-    facing: String,
-    align_to_surface: bool,
-    then_drop: Option<bool>,
-    gap: f64,
-    max: f64,
-    choice: MeshChoice,
-    pre: DMat4,
-    fit: Fit,
+pub(super) struct PlaceSpec {
+    pub(super) mode: String,
+    pub(super) position: Option<DVec3>,
+    pub(super) anchor: Option<String>,
+    pub(super) rotate_yaw: f64,
+    pub(super) side: String,
+    pub(super) align: String,
+    pub(super) direction: Option<DVec3>,
+    pub(super) facing: String,
+    pub(super) align_to_surface: bool,
+    pub(super) then_drop: Option<bool>,
+    pub(super) gap: f64,
+    pub(super) max: f64,
+    pub(super) choice: MeshChoice,
+    pub(super) pre: DMat4,
+    pub(super) fit: Fit,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Fit {
+pub(super) enum Fit {
     Normal,
     Supports,
 }
@@ -671,9 +676,9 @@ fn about(pivot: DVec3, rot: DQuat) -> DMat4 {
     DMat4::from_translation(pivot) * DMat4::from_quat(rot) * DMat4::from_translation(-pivot)
 }
 
-struct Placed {
-    xf: DMat4,
-    report: Value,
+pub(super) struct Placed {
+    pub(super) xf: DMat4,
+    pub(super) report: Value,
 }
 
 struct Scene<'a> {
@@ -712,7 +717,9 @@ fn settle_into(
     Ok(s)
 }
 
-fn side_dir(side: &str) -> DVec3 {
+const GRAZE_LIFT: f64 = 0.05;
+
+pub(super) fn side_dir(side: &str) -> DVec3 {
     match side {
         "-x" => DVec3::NEG_X,
         "+y" => DVec3::Y,
@@ -723,7 +730,7 @@ fn side_dir(side: &str) -> DVec3 {
     }
 }
 
-fn compute_place(
+pub(super) fn compute_place(
     obj: &Obj,
     moving: &TriMesh,
     world: &World,
@@ -755,7 +762,7 @@ fn compute_place(
         }
         xf = DMat4::from_translation(d) * xf;
     }
-    let tb = target.map(|t| world.resolved[t].bounds());
+    let tb = target.map(|t| world.bounds_of(t));
     match spec.mode.as_str() {
         "at" => {}
         "drop" => {
@@ -821,7 +828,11 @@ fn compute_place(
                     obj.origin.map_or_else(|| moving.transformed(&xf).bounds().center(), |o| xf.transform_point3(o));
                 xf = about(pivot, DQuat::from_rotation_z(goal - yaw)) * xf;
             }
-            settle_into(moving, &mut xf, &Scene { world, spec, skip }, dir, &mut rep, "against")?;
+            let lift = if dir.z.abs() < 0.5 { DVec3::Z * GRAZE_LIFT } else { DVec3::ZERO };
+            xf = DMat4::from_translation(lift) * xf;
+            let slid = settle_into(moving, &mut xf, &Scene { world, spec, skip }, dir, &mut rep, "against");
+            xf = DMat4::from_translation(-lift) * xf;
+            slid?;
             if spec.then_drop.unwrap_or(false) {
                 settle_into(moving, &mut xf, &Scene { world, spec, skip }, DVec3::NEG_Z, &mut rep, "drop")?;
             }
@@ -870,7 +881,7 @@ fn compute_place(
     Ok(Placed { xf, report: Value::Object(rep) })
 }
 
-fn verify(moving: &TriMesh, world: &World) -> Value {
+pub(super) fn verify(moving: &TriMesh, world: &World) -> Value {
     let below = place_ops::settle(moving, world, DVec3::NEG_Z, 4096.0, &[], 0.01);
     let ov = place_ops::overlaps(moving, world, &[], 0.02);
     json!({
@@ -1140,58 +1151,50 @@ fn find_floating_objects(state: &mut AppState, a: &Args<'_>) -> R<Outcome> {
     Ok(Worker::spawn_then("find_floating_objects", move || {
         let fs = fs.as_ref();
         let mut world = World::build(all, fs, choice, None);
+        let at: std::collections::HashMap<Key, usize> =
+            world.objs.iter().enumerate().map(|(i, o)| (o.key, i)).collect();
         let mut cands: Vec<usize> = cand_keys
             .iter()
-            .filter_map(|k| world.objs.iter().position(|o| o.key == *k))
-            .filter(|i| region.is_none_or(|r| world.resolved[*i].bounds().intersects(&r)))
+            .filter_map(|k| at.get(k).copied())
+            .filter(|i| region.is_none_or(|r| world.bounds_of(*i).intersects(&r)))
             .collect();
-        cands.sort_by(|x, y| world.resolved[*x].bounds().min.z.total_cmp(&world.resolved[*y].bounds().min.z));
+        cands.sort_by(|x, y| world.bounds_of(*x).min.z.total_cmp(&world.bounds_of(*y).min.z));
         let (mut floating, mut sunk, mut nothing, mut fixed) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
         let mut attached = 0usize;
         let mut moves: Vec<(Vec<ObjRef>, DVec3)> = Vec::new();
         for i in &cands {
             let moving = world.resolved[*i].compound();
-            let s = place_ops::settle(&moving, &world, DVec3::NEG_Z, max_drop, &[*i], tol.max(0.01));
-            let touching = || {
-                SIDE_DIRS.iter().any(|(_, d)| place_ops::clearance(&moving, &world, *d, tol + 0.05, &[*i]).is_some())
-            };
+            let (s, class) = place_scan::classify(&moving, &world, *i, tol, max_drop);
             let mut item = who(&world.objs[*i]);
-            let fix_by = match s.delta {
-                Some(g) if g > tol => {
-                    if touching() {
-                        attached += 1;
-                        None
-                    } else {
-                        item["gap"] = json!(r2(g));
-                        item["below"] = contact_json(&world, &s);
-                        floating.push(item);
-                        fix.then_some(g)
-                    }
+            let fix_by = match class {
+                Class::Attached => {
+                    attached += 1;
+                    None
                 }
-                Some(g) if g < -tol => {
-                    item["depth"] = json!(r2(-g));
+                Class::Floating(g) => {
+                    item["gap"] = json!(r2(g));
+                    item["below"] = contact_json(&world, &s);
+                    floating.push(item);
+                    fix.then_some(g)
+                }
+                Class::Sunk(d) => {
+                    item["depth"] = json!(r2(d));
                     if let Some(k) = s.lifted_by {
                         item["into"] = who(&world.objs[k]);
                     }
                     sunk.push(item);
-                    (fix_sunk && -g <= max_sink).then_some(g)
+                    (fix_sunk && d <= max_sink).then_some(-d)
                 }
-                Some(_) => None,
-                None => {
-                    if touching() {
-                        attached += 1;
-                    } else {
-                        nothing.push(item);
-                    }
+                Class::Resting => None,
+                Class::NoSurface => {
+                    nothing.push(item);
                     None
                 }
             };
             if let Some(g) = fix_by {
                 let t = place_ops::round_back(g);
                 let d = DVec3::new(0.0, 0.0, -t);
-                for p in &mut world.resolved[*i].pieces {
-                    *p = p.translated(d);
-                }
+                world.move_obj(*i, &DMat4::from_translation(d));
                 moves.push((world.objs[*i].refs.clone(), d));
                 let mut f = who(&world.objs[*i]);
                 f["moved_z"] = json!(r2(-t));
@@ -1321,90 +1324,102 @@ fn render_shape(state: &mut AppState, a: &Args<'_>) -> R<Outcome> {
         }
     };
     let fs = state.assets.fs().cloned();
-    let clip = region;
-    Ok(Worker::spawn("render_shape", move || {
-        let fs = fs.as_ref();
-        let mut layers = Vec::new();
-        let mut marks = Vec::new();
-        let mut total = Aabb::EMPTY;
-        let mut tris = 0usize;
-        let mut notes: Vec<String> = Vec::new();
-        for o in &objs {
-            let main = if mesh == "collision" { MeshChoice::Collision } else { MeshChoice::Render };
-            let r = pw::resolve(o, fs, main);
-            notes.extend(r.notes.iter().cloned());
-            let m = r.compound();
-            let b = m.bounds();
-            if b.is_empty() {
-                continue;
+    let req = SheetReq { objs, mesh, views, width, height, markers, dims, grid, label, clip: region };
+    Ok(Worker::spawn("render_shape", move || match draw_sheet(req, fs.as_ref()) {
+        Ok((img, caption)) => match encode_png(img.width, img.height, img.rgba) {
+            Ok(png) => ToolResult::png(&png, caption),
+            Err(e) => ToolResult::error(format!("render_shape: {e}")),
+        },
+        Err(e) => ToolResult::error(format!("render_shape: {e}")),
+    }))
+}
+
+pub(super) struct SheetReq {
+    pub(super) objs: Vec<Obj>,
+    pub(super) mesh: String,
+    pub(super) views: Vec<hp_shape::ViewKind>,
+    pub(super) width: u32,
+    pub(super) height: u32,
+    pub(super) markers: bool,
+    pub(super) dims: bool,
+    pub(super) grid: bool,
+    pub(super) label: String,
+    pub(super) clip: Option<Aabb>,
+}
+
+pub(super) fn draw_sheet(req: SheetReq, fs: Option<&hp_fs::GameFs>) -> Result<(hp_shape::Image, String), String> {
+    let SheetReq { objs, mesh, views, width, height, markers, dims, grid, label, clip } = req;
+    let mut layers = Vec::new();
+    let mut marks = Vec::new();
+    let mut total = Aabb::EMPTY;
+    let mut tris = 0usize;
+    let mut notes: Vec<String> = Vec::new();
+    for o in &objs {
+        let main = if mesh == "collision" { MeshChoice::Collision } else { MeshChoice::Render };
+        let r = pw::resolve(o, fs, main);
+        notes.extend(r.notes.iter().cloned());
+        let m = r.compound();
+        let b = m.bounds();
+        if b.is_empty() {
+            continue;
+        }
+        tris += m.tris.len();
+        if tris > 3_000_000 {
+            notes.push("too many triangles: some objects are not drawn".to_owned());
+            break;
+        }
+        total = total.union(&b);
+        if mesh == "both" && !o.models.is_empty() {
+            let c = pw::resolve(o, fs, MeshChoice::Collision);
+            if c.shapes.iter().any(|(s, _)| !s.collision.is_empty()) {
+                layers.push(hp_shape::Layer { mesh: c.compound(), color: [80, 230, 240], wire: true });
             }
-            tris += m.tris.len();
-            if tris > 3_000_000 {
-                notes.push("too many triangles: some objects are not drawn".to_owned());
-                break;
+        }
+        layers.push(hp_shape::Layer { mesh: m, color: color_of(o.kind), wire: false });
+        if markers && clip.is_none() && objs.len() <= 8 {
+            if let Some(origin) = o.origin {
+                marks.push(hp_shape::Marker { pos: origin, color: [255, 70, 70], label: "ORIGIN".to_owned() });
             }
-            total = total.union(&b);
-            if mesh == "both" && !o.models.is_empty() {
-                let c = pw::resolve(o, fs, MeshChoice::Collision);
-                if c.shapes.iter().any(|(s, _)| !s.collision.is_empty()) {
-                    layers.push(hp_shape::Layer { mesh: c.compound(), color: [80, 230, 240], wire: true });
-                }
+            let low = layers
+                .last()
+                .map(|l| &l.mesh)
+                .and_then(|m| m.used_vertices().into_iter().min_by(|x, y| x.z.total_cmp(&y.z)));
+            if let Some(p) = low {
+                marks.push(hp_shape::Marker { pos: p, color: [90, 230, 110], label: format!("LOW Z {}", fmt_n(p.z)) });
             }
-            layers.push(hp_shape::Layer { mesh: m, color: color_of(o.kind), wire: false });
-            if markers && clip.is_none() && objs.len() <= 8 {
-                if let Some(origin) = o.origin {
-                    marks.push(hp_shape::Marker { pos: origin, color: [255, 70, 70], label: "ORIGIN".to_owned() });
-                }
-                let low = layers
-                    .last()
-                    .map(|l| &l.mesh)
-                    .and_then(|m| m.used_vertices().into_iter().min_by(|x, y| x.z.total_cmp(&y.z)));
-                if let Some(p) = low {
+            for (s, mx) in &r.shapes {
+                for att in s.attachments.iter().take(8) {
                     marks.push(hp_shape::Marker {
-                        pos: p,
-                        color: [90, 230, 110],
-                        label: format!("LOW Z {}", fmt_n(p.z)),
+                        pos: mx.transform_point3(att.pos),
+                        color: [90, 210, 255],
+                        label: att.name.to_ascii_uppercase(),
                     });
                 }
-                for (s, mx) in &r.shapes {
-                    for att in s.attachments.iter().take(8) {
-                        marks.push(hp_shape::Marker {
-                            pos: mx.transform_point3(att.pos),
-                            color: [90, 210, 255],
-                            label: att.name.to_ascii_uppercase(),
-                        });
-                    }
-                }
             }
         }
-        if layers.is_empty() {
-            return ToolResult::error(format!("render_shape: nothing to draw ({})", notes.join("; ")));
-        }
-        let size = total.size();
-        let title = format!("{label}   SIZE X {} Y {} Z {} UNITS", fmt_n(size.x), fmt_n(size.y), fmt_n(size.z));
-        let img = hp_shape::render_sheet(
-            &layers,
-            &marks,
-            &hp_shape::SheetOptions { width, height, views, dimensions: dims, grid, title, ground: Some(total.min.z) },
-        );
-        match encode_png(img.width, img.height, img.rgba) {
-            Ok(png) => {
-                let mut caption = format!(
-                    "{label}: bounds min {} max {}, size {} x {} x {} units (Z up)",
-                    fmt_v(total.min),
-                    fmt_v(total.max),
-                    fmt_n(size.x),
-                    fmt_n(size.y),
-                    fmt_n(size.z)
-                );
-                if !notes.is_empty() {
-                    caption.push_str(&format!(". Notes: {}", notes.join("; ")));
-                }
-                ToolResult::png(&png, caption)
-            }
-            Err(e) => ToolResult::error(format!("render_shape: {e}")),
-        }
-    }))
+    }
+    if layers.is_empty() {
+        return Err(format!("nothing to draw ({})", notes.join("; ")));
+    }
+    let size = total.size();
+    let title = format!("{label}   SIZE X {} Y {} Z {} UNITS", fmt_n(size.x), fmt_n(size.y), fmt_n(size.z));
+    let img = hp_shape::render_sheet(
+        &layers,
+        &marks,
+        &hp_shape::SheetOptions { width, height, views, dimensions: dims, grid, title, ground: Some(total.min.z) },
+    );
+    let mut caption = format!(
+        "{label}: bounds min {} max {}, size {} x {} x {} units (Z up)",
+        fmt_v(total.min),
+        fmt_v(total.max),
+        fmt_n(size.x),
+        fmt_n(size.y),
+        fmt_n(size.z)
+    );
+    if !notes.is_empty() {
+        caption.push_str(&format!(". Notes: {}", notes.join("; ")));
+    }
+    Ok((img, caption))
 }
 
 fn fmt_n(x: f64) -> String {
@@ -1447,7 +1462,7 @@ pub(super) fn exact_bounds_fn(state: &AppState, exact: bool) -> impl Fn(&hp_vmf:
     }
 }
 
-fn env_keys(state: &AppState, refs: &[ObjRef]) -> Vec<Key> {
+pub(super) fn env_keys(state: &AppState, refs: &[ObjRef]) -> Vec<Key> {
     let scene = state.doc.scene();
     let mut out = Vec::new();
     for r in refs {
@@ -1465,14 +1480,15 @@ fn env_keys(state: &AppState, refs: &[ObjRef]) -> Vec<Key> {
     out
 }
 
-struct DropPrep {
+pub(super) struct DropPrep {
     env: Vec<Obj>,
     jobs: Vec<(Obj, Vec<ObjRef>, Vec<Key>)>,
     spec: PlaceSpec,
     dir: DVec3,
+    pub(super) verify: bool,
 }
 
-fn drop_spec(dir: DVec3, align: bool, gap: f64, max: f64, choice: MeshChoice) -> PlaceSpec {
+pub(super) fn drop_spec(dir: DVec3, align: bool, gap: f64, max: f64, choice: MeshChoice) -> PlaceSpec {
     PlaceSpec {
         mode: "drop".to_owned(),
         position: None,
@@ -1492,7 +1508,7 @@ fn drop_spec(dir: DVec3, align: bool, gap: f64, max: f64, choice: MeshChoice) ->
     }
 }
 
-fn drop_prepare(state: &AppState, units: Vec<Unit>, include_tools: bool, spec: PlaceSpec) -> DropPrep {
+pub(super) fn drop_prepare(state: &AppState, units: Vec<Unit>, include_tools: bool, spec: PlaceSpec) -> DropPrep {
     let dir = spec.direction.unwrap_or(DVec3::NEG_Z);
     let mut region = Aabb::EMPTY;
     for u in &units {
@@ -1507,13 +1523,13 @@ fn drop_prepare(state: &AppState, units: Vec<Unit>, include_tools: bool, spec: P
             (u.obj, u.refs, keys)
         })
         .collect();
-    DropPrep { env, jobs, spec, dir }
+    DropPrep { env, jobs, spec, dir, verify: false }
 }
 
-type Moves = Vec<(Vec<ObjRef>, DMat4)>;
+pub(super) type Moves = Vec<(Vec<ObjRef>, DMat4)>;
 
-fn drop_run(prep: DropPrep, fs: Option<&hp_fs::GameFs>) -> (Moves, Value) {
-    let DropPrep { env, jobs, spec, dir } = prep;
+pub(super) fn drop_run(prep: DropPrep, fs: Option<&hp_fs::GameFs>) -> (Moves, Value) {
+    let DropPrep { env, jobs, spec, dir, verify } = prep;
     let mut world = World::build(env, fs, spec.choice, None);
     let mut order: Vec<(usize, f64)> = jobs
         .iter()
@@ -1547,9 +1563,13 @@ fn drop_run(prep: DropPrep, fs: Option<&hp_fs::GameFs>) -> (Moves, Value) {
                     }
                 }
                 for k in &skip {
-                    for piece in &mut world.resolved[*k].pieces {
-                        *piece = piece.transformed(&p.xf);
-                    }
+                    world.move_obj(*k, &p.xf);
+                }
+                if verify {
+                    let fin = moving.transformed(&p.xf);
+                    let below = place_ops::settle(&fin, &world, DVec3::NEG_Z, 4096.0, &skip, 0.01);
+                    v["gap_after"] = json!(below.delta.map(r2));
+                    v["overlaps_after"] = json!(place_ops::overlaps(&fin, &world, &skip, 0.05).len());
                 }
                 if p.xf != DMat4::IDENTITY {
                     moves.push((refs.clone(), p.xf));
@@ -1573,11 +1593,19 @@ fn drop_run(prep: DropPrep, fs: Option<&hp_fs::GameFs>) -> (Moves, Value) {
     (moves, report)
 }
 
-fn apply_moves(doc: &mut hp_editor::Document, moves: &Moves) -> hp_editor::EditResult<()> {
+pub(super) fn apply_moves(doc: &mut hp_editor::Document, moves: &Moves) -> hp_editor::EditResult<()> {
     for (refs, xf) in moves {
         if DMat3::from_mat4(*xf).abs_diff_eq(DMat3::IDENTITY, 1e-12) {
             doc.translate(refs, xf.w_axis.truncate())?;
         } else {
+            for r in refs {
+                let ObjRef::Entity(id) = *r else { continue };
+                let bare = doc.scene().entity(id).is_some_and(|e| e.entity.get("angles").is_none())
+                    && !doc.scene().is_brush_entity(id);
+                if bare {
+                    doc.edit_entity(id, |e| e.set("angles", "0 0 0"))?;
+                }
+            }
             doc.transform(refs, *xf)?;
         }
         for r in refs {

@@ -169,7 +169,7 @@ impl CordonList {
             let galley =
                 painter.layout_no_wrap(shown_name(&c.name).to_owned(), egui::FontId::proportional(13.0), color);
             let pos = egui::pos2(name_rect.left(), rect.center().y - galley.size().y * 0.5);
-            ui.painter().with_clip_rect(name_rect).galley(pos, galley, color);
+            ui.painter().with_clip_rect(hp_app::widgets::clip_x(name_rect, ui.clip_rect())).galley(pos, galley, color);
         }
         let bounds = cordon_box(c);
         let resp = resp.on_hover_ui(|ui| {

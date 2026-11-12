@@ -404,7 +404,7 @@ pub(crate) fn side_button(ui: &mut Ui, text: impl Into<egui::WidgetText>, select
             text.into().into_galley(ui, Some(egui::TextWrapMode::Truncate), rect.width(), egui::TextStyle::Button);
         let color = if ui.is_enabled() { visuals.text_color() } else { ui.visuals().weak_text_color() };
         let pos = rect.center() - galley.size() * 0.5;
-        ui.painter().with_clip_rect(rect).galley(pos, galley, color);
+        ui.painter().with_clip_rect(hp_app::widgets::clip_x(rect, ui.clip_rect())).galley(pos, galley, color);
     }
     resp
 }
@@ -791,7 +791,7 @@ pub(crate) fn table_header(ui: &mut Ui, labels: &[&str], widths: &[f32], sort: O
         let cell = Rect::from_min_size(pos2(x, rect.top()), vec2(*w, rect.height()));
         let resp = ui.interact(cell, ui.scope_id().with(("table_header", i)), CLICK);
         let color = if resp.hovered() { ui.visuals().strong_text_color() } else { ui.visuals().text_color() };
-        let painter = ui.painter().with_clip_rect(cell.shrink(1.0));
+        let painter = ui.painter().with_clip_rect(hp_app::widgets::clip_x(cell.shrink(1.0), ui.clip_rect()));
         painter.text(
             pos2(cell.left() + 4.0, cell.center().y),
             Align2::LEFT_CENTER,
@@ -849,7 +849,7 @@ pub(crate) fn table_row(
     let mut x = rect.left();
     for ((text, color), w) in cells.iter().zip(widths) {
         let cell = Rect::from_min_size(pos2(x, rect.top()), vec2(*w, rect.height()));
-        ui.painter().with_clip_rect(cell.shrink2(vec2(1.0, 0.0))).text(
+        ui.painter().with_clip_rect(hp_app::widgets::clip_x(cell.shrink2(vec2(1.0, 0.0)), ui.clip_rect())).text(
             pos2(cell.left() + 4.0, cell.center().y),
             Align2::LEFT_CENTER,
             *text,

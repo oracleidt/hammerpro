@@ -452,8 +452,7 @@ impl VisgroupPanel {
                 _ => text,
             };
             let galley = painter.layout_no_wrap(row.name.clone(), FontId::proportional(13.0), text_color);
-            let clip = name_rect;
-            ui.painter().with_clip_rect(clip).galley(
+            ui.painter().with_clip_rect(hp_app::widgets::clip_x(name_rect, ui.clip_rect())).galley(
                 egui::pos2(name_rect.left(), cy - galley.size().y * 0.5),
                 galley,
                 text_color,

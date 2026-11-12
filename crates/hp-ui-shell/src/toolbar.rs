@@ -941,46 +941,72 @@ fn props_2d_submenu(ui: &mut Ui, state: &mut AppState) {
 }
 
 fn run_button(ui: &mut Ui, state: &mut AppState, nested: bool) {
-    let r = with_action_tooltip(compile_button(ui), state, Action::RunMap);
-    if r.clicked() {
+    let r = compile_button(ui, state);
+    let main = with_action_tooltip(r.main, state, Action::RunMap);
+    if main.clicked() {
         state.request(Action::RunMap);
     }
+    if let Some(stop) = r.stop
+        && stop.clicked()
+    {
+        state.request(Action::CancelCompile);
+    }
     if !nested {
-        customize_popup(&r, state);
+        customize_popup(&main, state);
     }
 }
 
-const HAMMER_ICON: f32 = 14.0;
+const HAMMER_ICON: f32 = 16.0;
+const COMPILE_PAD: f32 = 8.0;
+const COMPILE_GAP: f32 = 6.0;
+const COMPILE_STOP: f32 = 22.0;
 
-fn compile_button(ui: &mut Ui) -> egui::Response {
-    use egui::emath::GuiRounding as _;
-    let text = t!("shell.toolbar.compile");
-    let on_accent = hp_app::theme::on_accent();
-    let galley = egui::WidgetText::from(RichText::new(text).strong().color(on_accent)).into_galley(
+struct CompileResponse {
+    main: egui::Response,
+    stop: Option<egui::Response>,
+}
+
+fn percent_text(fraction: f32) -> String {
+    let pct = (fraction.clamp(0.0, 1.0) * 100.0).floor() as u32;
+    if hp_app::i18n::lang() == hp_app::i18n::Lang::Fr { format!("{pct} %") } else { format!("{pct}%") }
+}
+
+fn compile_galley(ui: &Ui, text: &str, color: Color32) -> std::sync::Arc<egui::Galley> {
+    egui::WidgetText::from(RichText::new(text).strong().color(color)).into_galley(
         ui,
         Some(egui::TextWrapMode::Extend),
         f32::INFINITY,
         egui::TextStyle::Button,
-    );
-    let pad = 7.0;
-    let gap = 5.0;
-    let size = egui::vec2(pad + HAMMER_ICON + gap + galley.size().x + pad, BUTTON_SIZE.y);
-    let (rect, r) = ui.allocate_exact_size(size, egui::Sense::click());
-    r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, ui.is_enabled(), text));
+    )
+}
+
+fn compile_button_width(ui: &Ui) -> f32 {
+    let label = compile_galley(ui, t!("shell.toolbar.compile"), Color32::WHITE).size().x;
+    let pct = compile_galley(ui, &percent_text(1.0), Color32::WHITE).size().x;
+    let idle = COMPILE_PAD + HAMMER_ICON + COMPILE_GAP + label + COMPILE_PAD;
+    let busy = COMPILE_PAD + HAMMER_ICON + COMPILE_GAP + pct + COMPILE_PAD + COMPILE_STOP;
+    idle.max(busy).ceil()
+}
+
+fn compile_button(ui: &mut Ui, state: &AppState) -> CompileResponse {
+    let size = egui::vec2(compile_button_width(ui), BUTTON_SIZE.y);
+    let (rect, main) = ui.allocate_exact_size(size, egui::Sense::click());
+    let progress = state.runtime.compile.progress.clone();
+    let stop_rect = egui::Rect::from_min_max(egui::pos2(rect.right() - COMPILE_STOP, rect.top()), rect.max);
+    let stop = progress.as_ref().map(|_| ui.interact(stop_rect, main.id.with("stop"), egui::Sense::click()));
+    let text = t!("shell.toolbar.compile");
+    main.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, ui.is_enabled(), text));
+    if let Some(stop) = &stop {
+        stop.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, t!("action.cancel_compile")));
+    }
     if ui.is_rect_visible(rect) {
-        let (hover, press) = hp_app::widgets::hover_amounts(ui, &r);
-        let accent = hp_app::theme::accent();
-        let fill = accent.lerp_to_gamma(on_accent, (hover * 0.14 + press * 0.12).min(0.3));
-        let painter = ui.painter();
-        painter.rect_filled(rect, hp_app::theme::RADIUS, fill);
-        painter.rect_stroke(rect, hp_app::theme::RADIUS, egui::Stroke::new(1.0, accent), egui::StrokeKind::Inside);
-        let icon = egui::pos2(rect.left() + pad + HAMMER_ICON * 0.5, rect.center().y);
-        crate::icons::paint(painter, icon, on_accent, Icon::Hammer, 0.95);
-        let origin = egui::pos2(rect.left() + pad + HAMMER_ICON + gap, rect.center().y - galley.size().y * 0.5)
-            .round_to_pixels(ui.ctx().pixels_per_point());
-        painter.galley(origin, galley, on_accent);
-        if r.has_focus() {
-            painter.rect_stroke(
+        let rect = hp_app::widgets::crisp_rect(ui.painter(), rect);
+        match (&progress, &stop) {
+            (Some(p), Some(stop)) => paint_compile_busy(ui, &main, stop, rect, p.fraction),
+            _ => paint_compile_idle(ui, &main, rect),
+        }
+        if main.has_focus() {
+            ui.painter().rect_stroke(
                 rect.expand(1.0),
                 f32::from(hp_app::theme::RADIUS) + 1.0,
                 ui.visuals().selection.stroke,
@@ -988,7 +1014,103 @@ fn compile_button(ui: &mut Ui) -> egui::Response {
             );
         }
     }
-    r
+    let Some(p) = progress else {
+        return CompileResponse { main, stop: None };
+    };
+    ui.ctx().request_repaint_after(std::time::Duration::from_millis(250));
+    let tip = format!("{}  {}\n{}", p.step, percent_text(p.fraction), t!("shell.status.compile_open"));
+    CompileResponse {
+        main: main.on_hover_text(tip),
+        stop: stop.map(|s| s.on_hover_text(t!("shell.status.compile_cancel"))),
+    }
+}
+
+fn paint_compile_idle(ui: &Ui, r: &egui::Response, rect: egui::Rect) {
+    use egui::emath::GuiRounding as _;
+    let painter = ui.painter();
+    let accent = hp_app::theme::accent();
+    let on_accent = hp_app::theme::on_accent();
+    let (hover, press) = hp_app::widgets::hover_amounts(ui, r);
+    let mut fill = accent.lerp_to_gamma(on_accent, hover * 0.12 + press * 0.12);
+    let mut ink = on_accent;
+    if !ui.is_enabled() {
+        let bg = ui.visuals().panel_fill;
+        fill = fill.lerp_to_gamma(bg, 0.6);
+        ink = ink.lerp_to_gamma(bg, 0.45);
+    }
+    painter.rect_filled(rect, hp_app::theme::RADIUS, fill);
+    let galley = compile_galley(ui, t!("shell.toolbar.compile"), ink);
+    let content = HAMMER_ICON + COMPILE_GAP + galley.size().x;
+    let left = rect.center().x - content * 0.5;
+    let icon_center = egui::pos2(left + HAMMER_ICON * 0.5, rect.center().y);
+    crate::icons::paint(painter, icon_center, ink, Icon::Hammer, HAMMER_ICON / 16.0);
+    let origin = egui::pos2(left + HAMMER_ICON + COMPILE_GAP, rect.center().y - galley.size().y * 0.5)
+        .round_to_pixels(ui.ctx().pixels_per_point());
+    painter.galley(origin, galley, ink);
+}
+
+fn paint_compile_busy(ui: &Ui, main: &egui::Response, stop: &egui::Response, rect: egui::Rect, fraction: f32) {
+    use egui::emath::GuiRounding as _;
+    let painter = ui.painter();
+    let ppp = ui.ctx().pixels_per_point();
+    let accent = hp_app::theme::accent();
+    let bg = ui.visuals().panel_fill;
+    let ink = ui.visuals().strong_text_color();
+    let fraction = fraction.clamp(0.0, 1.0);
+    let radius = hp_app::theme::RADIUS;
+    let (hover, _) = hp_app::widgets::hover_amounts(ui, main);
+    let base = bg.lerp_to_gamma(accent, 0.10 + hover * 0.06);
+    painter.rect_filled(rect, radius, base);
+    let main_width = rect.width() - COMPILE_STOP;
+    let filled = ((main_width * fraction) * ppp).round() / ppp;
+    if filled > 0.0 {
+        let done = egui::Rect::from_min_size(rect.min, egui::vec2(filled, rect.height()));
+        let corners = egui::CornerRadius { nw: radius, sw: radius, ne: 0, se: 0 };
+        painter.rect_filled(done, corners, bg.lerp_to_gamma(accent, 0.28 + hover * 0.06));
+    }
+    let (stop_hover, stop_press) = hp_app::widgets::hover_amounts(ui, stop);
+    if stop_hover > 0.0 {
+        let corners = egui::CornerRadius { nw: 0, sw: 0, ne: radius, se: radius };
+        let tint = bg.lerp_to_gamma(accent, 0.24 + stop_press * 0.12);
+        let stop_rect = egui::Rect::from_min_max(egui::pos2(rect.right() - COMPILE_STOP, rect.top()), rect.max);
+        painter.rect_filled(stop_rect, corners, base.lerp_to_gamma(tint, stop_hover));
+    }
+    painter.rect_stroke(
+        rect,
+        radius,
+        hp_app::widgets::crisp_stroke(painter, 1.0, bg.lerp_to_gamma(accent, 0.55)),
+        egui::StrokeKind::Inside,
+    );
+    let divider_x = painter.round_to_pixel_center(rect.right() - COMPILE_STOP);
+    painter.line_segment(
+        [egui::pos2(divider_x, rect.top() + 5.0), egui::pos2(divider_x, rect.bottom() - 5.0)],
+        hp_app::widgets::crisp_stroke(painter, 1.0, bg.lerp_to_gamma(accent, 0.45)),
+    );
+    let ring_c = hp_app::widgets::crisp_center(
+        painter,
+        egui::pos2(rect.left() + COMPILE_PAD + HAMMER_ICON * 0.5, rect.center().y),
+    );
+    let ring_r = HAMMER_ICON * 0.5 - 1.5;
+    let ring = hp_app::widgets::crisp_stroke(painter, 2.0, ink);
+    painter.circle_stroke(ring_c, ring_r, egui::Stroke::new(ring.width, ink.gamma_multiply(0.3)));
+    if fraction > 0.0 {
+        let n = (fraction * 48.0).ceil().max(2.0) as usize;
+        let pts: Vec<egui::Pos2> = (0..=n)
+            .map(|i| {
+                let a = -std::f32::consts::FRAC_PI_2 + std::f32::consts::TAU * fraction * i as f32 / n as f32;
+                ring_c + egui::vec2(a.cos(), a.sin()) * ring_r
+            })
+            .collect();
+        painter.add(egui::Shape::line(pts, ring));
+    }
+    let galley = compile_galley(ui, &percent_text(fraction), ink);
+    let origin =
+        egui::pos2(rect.left() + COMPILE_PAD + HAMMER_ICON + COMPILE_GAP, rect.center().y - galley.size().y * 0.5)
+            .round_to_pixels(ppp);
+    painter.galley(origin, galley, ink);
+    let stop_center = egui::pos2(rect.right() - COMPILE_STOP * 0.5, rect.center().y);
+    let square = hp_app::widgets::crisp_rect(painter, egui::Rect::from_center_size(stop_center, egui::vec2(8.0, 8.0)));
+    painter.rect_filled(square, 1.0, ink);
 }
 
 pub use crate::tool_strip::{PaletteItem, palette_items, tool_palette};
@@ -1653,6 +1775,76 @@ mod tests {
         for text in ["Groups", "Objects", "Solids", "To world", "To entity"] {
             assert!(find_text(&shapes, text).is_some(), "{text}");
         }
+    }
+
+    fn compile_frame(
+        ctx: &egui::Context,
+        state: &mut AppState,
+        click: Option<egui::Pos2>,
+    ) -> (egui::Rect, Vec<egui::epaint::ClippedShape>) {
+        let mut rect = egui::Rect::NOTHING;
+        let mut shapes = Vec::new();
+        let presses: Vec<bool> = if click.is_some() { vec![true, false] } else { vec![false] };
+        for pressed in presses {
+            let events = click.map_or_else(Vec::new, |pos| {
+                vec![
+                    egui::Event::PointerMoved(pos),
+                    egui::Event::PointerButton {
+                        pos,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ]
+            });
+            let mut out = ctx.run_ui(egui::RawInput { events, ..Default::default() }, |ui| {
+                ui.horizontal(|ui| {
+                    run_button(ui, state, false);
+                    rect = ui.min_rect();
+                });
+            });
+            out.textures_delta.clear();
+            shapes = out.shapes;
+        }
+        (rect, shapes)
+    }
+
+    #[test]
+    fn compile_button_shows_progress_and_cancels_while_compiling() {
+        let _lang = hp_app::testing::lang_lock();
+        crate::register_translations();
+        let mut state = hp_app::testing::test_state();
+        let ctx = egui::Context::default();
+        compile_frame(&ctx, &mut state, None);
+        let (idle, shapes) = compile_frame(&ctx, &mut state, None);
+        assert!(find_text(&shapes, t!("shell.toolbar.compile")).is_some(), "idle shows the label");
+        assert!((idle.height() - BUTTON_SIZE.y).abs() < 0.01, "same height as the toolbar buttons: {idle:?}");
+        compile_frame(&ctx, &mut state, Some(idle.center()));
+        assert_eq!(state.requested_actions, vec![Action::RunMap]);
+        state.requested_actions.clear();
+        state.runtime.compile.progress =
+            Some(hp_app::runtime::CompileProgress { step: "Lighting".into(), fraction: 0.42, elapsed_s: 3.0 });
+        let (busy, shapes) = compile_frame(&ctx, &mut state, None);
+        assert!((busy.width() - idle.width()).abs() < 0.01, "no layout jump: {idle:?} {busy:?}");
+        assert!(find_text(&shapes, "42%").is_some(), "busy shows the progress");
+        assert!(find_text(&shapes, t!("shell.toolbar.compile")).is_none());
+        let stop = egui::pos2(busy.right() - COMPILE_STOP * 0.5, busy.center().y);
+        compile_frame(&ctx, &mut state, Some(stop));
+        assert_eq!(state.requested_actions, vec![Action::CancelCompile]);
+        state.requested_actions.clear();
+        compile_frame(&ctx, &mut state, Some(egui::pos2(busy.left() + 10.0, busy.center().y)));
+        assert_eq!(state.requested_actions, vec![Action::RunMap], "the main part opens the compile window");
+    }
+
+    #[test]
+    fn compile_percent_follows_the_language() {
+        let _lang = hp_app::testing::lang_lock();
+        assert_eq!(percent_text(0.426), "42%");
+        assert_eq!(percent_text(2.0), "100%");
+        assert_eq!(percent_text(-1.0), "0%");
+        hp_app::i18n::set_lang(hp_app::i18n::Lang::Fr);
+        assert_eq!(percent_text(0.5), "50 %");
+        hp_app::i18n::set_lang(hp_app::i18n::Lang::En);
     }
 
     fn find_text(shapes: &[egui::epaint::ClippedShape], text: &str) -> Option<egui::Rect> {

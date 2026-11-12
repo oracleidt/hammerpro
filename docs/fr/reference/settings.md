@@ -462,6 +462,10 @@ Le résultat global est réutilisé pendant la navigation. La géométrie, les l
 | `sprinkle.z_offset` | `0.0` | Distance le long de la normale de la surface. |
 | `sprinkle.align_to_normal` | `false` | Incline les entités selon la surface. |
 | `sprinkle.extra_dirs` | `[]` | Autres dossiers de définitions de sprinkle. |
+| `overlap_check` | `false` | Vérifier les problèmes liste aussi les props qui chevauchent d'autres objets. |
+| `problem_checks` | `true` | Vérifier les problèmes liste les props flottants et enfoncés (voir [Placement sur les formes réelles](../features/real-shape-placement.md)). |
+| `auto_settle_on_create` | `false` | Les nouveaux props créés avec l'outil entité, le navigateur de modèles ou MCP descendent sur la surface en dessous (même étape d'annulation). |
+| `show_real_dimensions` | `false` | Dimensions réelles de la sélection dans la barre d'état, le panneau des propriétés et les vues (`Alt+M`). |
 
 ## `[launch]`
 

@@ -93,6 +93,10 @@ Les vérifications d'areaportals de [Vérifier les problèmes](check-problems.md
 | Colorer selon le coût de rendu (fenêtre des portails) | `portal_heat` | désactivé |
 | Voir à travers les murs (fenêtre des portails) | `portal_xray` | activé |
 
+## Optimiser la map
+
+**Map > Optimiser la map...** est un conseiller qui compile la visibilité de la map en arrière-plan et liste, par impact, ce qui n'est pas optimisé (visleaves, func_detail, brushes hint, areaportals, lumières) avec quoi faire et un bouton **Aller à**. Il ne modifie jamais la map lui-même. Voir [Optimiser une map](../guides/optimizing-a-map.md).
+
 ## MCP
 
 `check_leaks`, `get_leak`, `load_pointfile` et `portal_file` donnent les mêmes outils aux applications d'IA. Voir la [référence des outils MCP](../../MCP.md) (en anglais).

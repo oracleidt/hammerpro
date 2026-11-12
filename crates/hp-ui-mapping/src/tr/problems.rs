@@ -615,4 +615,31 @@ pub const TR: TrTable = &[
     ("problems.kind.duplicate_brush", "duplicate brush", "brush en double"),
     ("problems.kind.contained_brush", "brush inside a brush", "brush dans un brush"),
     ("problems.kind.duplicate_entity", "stacked duplicate entity", "entité empilée en double"),
+    ("problems.kind.floating_object", "floating object", "objet flottant"),
+    ("problems.kind.sunk_object", "sunk object", "objet enfoncé"),
+    ("problems.kind.overlapping_objects", "overlapping objects", "objets qui se chevauchent"),
+    ("problems.floating_object", "{0} floats {1} units above {2}", "{0} flotte à {1} unités au-dessus de {2}"),
+    ("problems.floating_object_nothing", "{0} floats {1} units above the floor", "{0} flotte à {1} unités du sol"),
+    ("problems.sunk_object", "{0} is sunk {1} units into {2}", "{0} est enfoncé de {1} unités dans {2}"),
+    (
+        "problems.sunk_object_nothing",
+        "{0} is sunk {1} units into the floor",
+        "{0} est enfoncé de {1} unités dans le sol",
+    ),
+    ("problems.overlapping_objects", "{0} overlaps {1} by {2} units", "{0} chevauche {1} de {2} unités"),
+    (
+        "problems.fix.floating_object",
+        "Drop it onto the surface below, measured on the real mesh",
+        "Le descendre sur la surface en dessous, mesurée sur le maillage réel",
+    ),
+    (
+        "problems.fix.sunk_object",
+        "Lift it so it rests on the surface instead of sinking into it",
+        "Le remonter pour qu'il repose sur la surface au lieu de s'y enfoncer",
+    ),
+    (
+        "problems.fix.overlapping_objects",
+        "Push it out of the other object by the shortest way",
+        "Le sortir de l'autre objet par le chemin le plus court",
+    ),
 ];

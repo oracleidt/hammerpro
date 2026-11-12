@@ -19,6 +19,7 @@ mod lighting;
 mod mcp;
 mod mesh;
 mod mesh_disp;
+mod optimize;
 pub mod perf;
 mod placement;
 pub mod primitive_scene;
@@ -60,12 +61,14 @@ pub use lighting::{
 pub use mcp::{McpClientRow, McpRuntime};
 pub use mesh::{DispLoopRequest, EdgeRequest, ErosionDialog, MeshRuntime, TerrainPreview};
 pub use mesh_disp::MeshDispRuntime;
+pub use optimize::{ANALYSIS_PORTALS, OptimizeRuntime};
 pub use perf::{
     BenchRequest, BenchResult, FRAME_PHASES, FramePhases, PerfLevel, PerfPlan, PerfRuntime, PerfSample, Reflections,
     RepaintCount, ViewCost,
 };
 pub use placement::{
-    CreatePrefabRequest, FileStamp, PlacementRuntime, PrefabCache, PrefabLoad, PrefabTokens, file_stamp,
+    CreatePrefabRequest, FileStamp, PlacementRuntime, PrefabCache, PrefabLoad, PrefabTokens, RealDims, UnitDims,
+    file_stamp, placement_unit_text, real_num,
 };
 pub use render::RenderRuntime;
 pub use roadside::{PreviewLine, PreviewTri, RoadPreview, RoadsideRuntime};
@@ -100,6 +103,7 @@ pub struct Runtime {
     pub launch: LaunchRuntime,
     pub content: ContentRuntime,
     pub health: HealthRuntime,
+    pub optimize: OptimizeRuntime,
     pub lab: LabRuntime,
     pub mcp: McpRuntime,
     pub discord: DiscordRuntime,

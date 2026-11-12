@@ -103,6 +103,10 @@ pub struct HealthRuntime {
     pub play_cost: Option<RenderCost>,
     pub play_version: u64,
     play_key: Option<PlayKey>,
+    pub placement: Vec<Problem>,
+    pub placement_serial: Option<u64>,
+    pub placement_checking: bool,
+    pub placement_ms: u64,
 
     engine: engine::Engine,
 }
@@ -172,9 +176,21 @@ impl HealthRuntime {
         if let Some(l) = &self.leak {
             all.extend(l.problems.iter().cloned());
         }
+        all.extend(self.placement.iter().cloned());
         all.sort_by_key(|p| std::cmp::Reverse(p.severity));
         self.problems = all;
         self.recount();
+    }
+
+    pub fn set_placement(&mut self, problems: Vec<Problem>, serial: Option<u64>, ms: u64) {
+        self.placement = problems;
+        self.placement_serial = serial;
+        self.placement_ms = ms;
+        self.merge();
+    }
+
+    pub fn busy(&self) -> bool {
+        self.checking || self.placement_checking
     }
 
     fn recount(&mut self) {

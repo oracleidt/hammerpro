@@ -76,6 +76,7 @@ En détail :
 - Un objet enfoncé dans le sol est remonté dessus au lieu de passer à travers. Les brushes d'outils invisibles (clip, trigger, hint...) ne servent pas de surface.
 - Les brushes et les props (entités avec un modèle `.mdl`) servent de surfaces. Les objets déplacés eux-mêmes sont ignorés.
 - Un objet sans rien en dessous (ou au-dessus) reste en place. Si rien ne bouge, le message **Aucune surface sous la sélection** (ou au-dessus) s'affiche.
+- D'autres commandes sur les formes réelles (poser sur un autre objet, plaquer contre un mur, placer à côté, reposer les props flottants, ajuster les pieds au sol) sont dans **Outils > Placement et props** : voir [Placement sur les formes réelles](real-shape-placement.md).
 
 ## Placement physique
 

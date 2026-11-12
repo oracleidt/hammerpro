@@ -70,6 +70,7 @@ pub enum MenuGroup {
     ToolsCurves,
     ToolsRoads,
     ToolsTextures,
+    ToolsPlaceObjects,
     ToolsPlacement,
     ToolsScatter,
     ToolsProps,
@@ -180,10 +181,11 @@ impl MenuGroup {
             MenuGroup::ToolsCurves => sub(40, 40, "menu.curves_roads", 220.0),
             MenuGroup::ToolsRoads => sub(40, 41, "menu.curves_roads", 220.0),
             MenuGroup::ToolsTextures => sub(40, 50, "menu.textures", 220.0),
-            MenuGroup::ToolsPlacement => sub(60, 0, "menu.placement", 240.0),
-            MenuGroup::ToolsScatter => sub(60, 1, "menu.placement", 240.0),
-            MenuGroup::ToolsProps => sub(60, 2, "menu.placement", 240.0),
-            MenuGroup::ToolsPaths => sub(60, 3, "menu.placement", 240.0),
+            MenuGroup::ToolsPlaceObjects => sub(60, 0, "menu.placement", 260.0),
+            MenuGroup::ToolsPlacement => sub(60, 1, "menu.placement", 260.0),
+            MenuGroup::ToolsScatter => sub(60, 2, "menu.placement", 260.0),
+            MenuGroup::ToolsProps => sub(60, 3, "menu.placement", 260.0),
+            MenuGroup::ToolsPaths => sub(60, 4, "menu.placement", 260.0),
             MenuGroup::ToolsInstancing => sub(60, 10, "menu.instancing", 220.0),
             MenuGroup::ToolsInstanceDisplay => sub(60, 11, "menu.instancing", 220.0),
             MenuGroup::ToolsContent => sub(60, 20, "menu.content", 220.0),
@@ -274,6 +276,7 @@ impl MenuGroup {
             | MenuGroup::ToolsCurves
             | MenuGroup::ToolsRoads
             | MenuGroup::ToolsTextures
+            | MenuGroup::ToolsPlaceObjects
             | MenuGroup::ToolsPlacement
             | MenuGroup::ToolsScatter
             | MenuGroup::ToolsProps
@@ -296,6 +299,7 @@ impl MenuGroup {
         match self {
             MenuGroup::ToolsAlign => Some("menu.align"),
             MenuGroup::ToolsFlip => Some("menu.flip"),
+            MenuGroup::ToolsPlaceObjects => Some("menu.place_objects"),
             _ => match self.info() {
                 Some(GroupInfo { submenu: Some(key), .. }) => Some(key),
                 _ => None,
@@ -328,6 +332,7 @@ pub const TR: TrTable = &[
     ("menu.zoom_distance", "Zoom and draw distance", "Zoom et distance d'affichage"),
     ("menu.switch_tool", "Active tool", "Outil actif"),
     ("menu.arrange", "Arrange", "Disposer"),
+    ("menu.place_objects", "Place on real shapes", "Placer sur les formes réelles"),
     ("menu.brush_ops", "Brush operations", "Opérations sur les brushes"),
     ("menu.vertices", "Vertices and edges", "Sommets et arêtes"),
     ("menu.displacements", "Displacements", "Displacements"),

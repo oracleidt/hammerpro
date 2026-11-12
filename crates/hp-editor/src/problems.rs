@@ -197,6 +197,7 @@ impl Document {
             return Ok(false);
         }
         match problem.code {
+            "floating_object" | "sunk_object" | "overlapping_objects" => self.fix_placement(problem, None),
             "invalid_solid" => {
                 let objs: Vec<ObjRef> = problem
                     .objects
@@ -421,10 +422,16 @@ impl Document {
     }
 
     pub fn fix_problems(&mut self, problems: &[Problem]) -> EditResult<usize> {
+        let batch = Document::placement_batch(problems);
         self.tx("Fix problems", |doc| {
             let mut n = 0;
             for p in problems {
-                if doc.fix_problem(p)? {
+                let fixed = if p.fixable && crate::placement_fix::is_placement_code(p.code) {
+                    doc.fix_placement(p, Some(&batch))?
+                } else {
+                    doc.fix_problem(p)?
+                };
+                if fixed {
                     n += 1;
                 }
             }

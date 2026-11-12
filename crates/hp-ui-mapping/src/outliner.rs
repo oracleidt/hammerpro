@@ -677,7 +677,8 @@ impl Outliner {
                     painter.galley(pos, g, visuals.weak_text_color());
                 }
                 let clip = egui::Rect::from_min_max(egui::pos2(x, rect.top()), egui::pos2(text_right, rect.bottom()));
-                let clipped = painter.with_clip_rect(clip.intersect(rect));
+                let clipped =
+                    painter.with_clip_rect(hp_app::widgets::clip_x(clip.intersect(rect), painter.clip_rect()));
                 let g = clipped.layout_no_wrap(label, FontId::proportional(13.0), text_color);
                 let label_w = g.size().x;
                 clipped.galley(egui::pos2(x, cy - g.size().y * 0.5), g, text_color);

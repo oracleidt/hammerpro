@@ -42,6 +42,7 @@ Messages at the top tell you when the map is being checked, when the leak check 
 | Lighting and sky | sky without sun (sky faces but no `light_environment`), too many named lights, several sky cameras, bad sky camera scale, skybox switch without sky camera, per player skybox |
 | Areaportals | areaportal brushes (exactly one allowed), areaportal without a door, areaportal and door out of step, areaportal across water, areaportal across an occluder |
 | Redundant objects | duplicate brush, brush inside a brush, stacked duplicate entity (see [Redundant brushwork](#redundant-brushwork)) |
+| Placement | floating object, sunk object, overlapping objects (opt in), measured on the real meshes of the props (see [Placement on real shapes](real-shape-placement.md#check-for-problems)) |
 | Limits and leaks | limit close, limit exceeded (the compile will fail), edict budget, leak, leak check incomplete, func_detail candidate |
 
 ### Automatic fixes
@@ -63,6 +64,9 @@ Messages at the top tell you when the map is being checked, when the leak check 
 | func_detail candidate | Tie them to one func_detail (one undo step) |
 | areaportal and door out of step | Start the areaportal like its door |
 | duplicate brush, brush inside a brush, stacked duplicate entity | Delete the redundant copies and keep the originals |
+| floating object | Drop the prop onto the surface below (stacked props move together with **Fix all**) |
+| sunk object | Lift the prop so it rests on the surface (16 units at most) |
+| overlapping objects | Push the prop out of the other object by the shortest way (16 units at most) |
 
 Every fix is an undo step: `Ctrl+Z` brings the map back.
 
@@ -138,12 +142,20 @@ Limits differ between Source builds. **Limits of:** (in the Map information wind
 | **Draw the path of the leak found** | on |
 | **Check for problems lists visible objects only** | off |
 | **Warn when a new brush or entity is an exact copy of another** | on |
+| **Check for floating and sunk props** (`placement.problem_checks`) | on |
+| **Also list props that overlap other objects** (`placement.overlap_check`) | off |
 | **Limits of:** | Automatic |
 | Portal options | see [Leaks and pointfiles](leaks-pointfiles.md) |
+
+## Optimize the map
+
+**Map > Optimize the map...** is an advisor that compiles the visibility of the map in the background and lists, sorted by impact, what is not optimized (visleaves, func_detail, hint brushes, areaportals, lights) with what to do and a **Go to** button. It never changes the map itself. See [Optimizing a map](../guides/optimizing-a-map.md).
 
 ## MCP
 
 `check_problems`, `get_problems`, `fix_problems`, `recheck_map`, `get_map_limits`, `get_map_stats` and `find_hidden_faces` give AI apps the same checks. See the [MCP tool reference](../../MCP.md).
+
+`analyze_visibility`, `suggest_func_detail`, `suggest_hint_brushes`, `show_visleaves`, `check_areaportals`, `suggest_areaportals`, `audit_lights` and `optimize_map` analyze and optimize the map (see [Optimizing a map](../guides/optimizing-a-map.md)).
 
 ## Tips
 
@@ -162,6 +174,7 @@ Limits differ between Source builds. **Limits of:** (in the Map information wind
 ## Related pages
 
 - [Leaks and pointfiles](leaks-pointfiles.md)
+- [Placement on real shapes](real-shape-placement.md)
 - [Limits and logs](../compiler/limits-and-logs.md)
 - [Common errors](../troubleshooting/common-errors.md)
 - [Settings reference](../reference/settings.md)

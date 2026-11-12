@@ -639,6 +639,16 @@ pub const TR: TrTable = &[
     ("entities.tip_refires", "Fires {0} times", "Se déclenche {0} fois"),
     ("entities.panel_menu", "More", "Plus"),
     (
+        "entities.real_dims_tip",
+        "Measured on the real mesh: footprint size, height, gap to the floor and overlap (View > Real dimensions)",
+        "Mesuré sur le maillage réel : taille au sol, hauteur, écart au sol et chevauchement (Affichage > Dimensions réelles)",
+    ),
+    (
+        "entities.mt_shape_tip",
+        "Draw the real shape of this model from the top, the front, the side and in 3D, with its dimensions",
+        "Dessiner la forme réelle de ce modèle de dessus, de face, de côté et en 3D, avec ses dimensions",
+    ),
+    (
         "entities.kv_nothing_to_copy",
         "Select an entity to copy its keyvalues",
         "Sélectionnez une entité pour copier ses keyvalues",

@@ -2,7 +2,7 @@
 
 # Actions and keyboard shortcuts
 
-Every command of Hammer Pro 1.1.5 is an *action*: one entry shared by the menus, the toolbar, the keyboard shortcuts, the command palette (`Ctrl+P`), the `--script` files and the MCP server (`run_action`, `list_actions`). This page lists all 345 actions, menu by menu, in the order the menus show them.
+Every command of Hammer Pro 1.1.5 is an *action*: one entry shared by the menus, the toolbar, the keyboard shortcuts, the command palette (`Ctrl+P`), the `--script` files and the MCP server (`run_action`, `list_actions`). This page lists all 355 actions, menu by menu, in the order the menus show them.
 
 Columns:
 
@@ -122,6 +122,9 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Check for leaks | `check_leaks` |  |  |  |
 | Seal the opening with an areaportal | `seal_areaportal` |  |  |  |
 | func_detail suggestions... | `show_detail_suggestions` |  |  |  |
+| Optimize the map... | `show_optimize` |  |  |  |
+| Analyze the optimization | `analyze_optimization` |  |  |  |
+| Show visleaves and portals | `toggle_visleaves` |  |  |  |
 | Compare with another map... | `compare_maps` |  |  |  |
 | Insert entity gallery | `entity_gallery` |  |  |  |
 | Load leak pointfile... | `load_pointfile` |  |  |  |
@@ -168,6 +171,7 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Background images... | `background_images` |  |  |  |
 | Display options > 3D view information | `toggle_view_info` | `O` |  |  |
 | Display options > Bounding boxes | `toggle_bounds_overlay` |  |  |  |
+| Display options > Real dimensions | `toggle_real_dimensions` | `Alt+M` |  |  |
 | Display options > Show overlays | `toggle_overlays` |  |  |  |
 | Display options > Show connections | `toggle_connections` |  |  |  |
 | Display options > Show editor objects | `toggle_editor_objects` |  |  | `Alt+O` |
@@ -295,6 +299,13 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Flip > Flip vertically | `flip_vertical` |  | `Ctrl+I` | `Ctrl+I` |
 | Insert path point after selection | `path_insert_point` |  |  |  |
 | Remove path points and relink | `path_remove_point` |  |  |  |
+| Place on top of target | `place_on_top` | `Alt+T` |  |  |
+| Place against wall | `place_against_wall` | `Alt+L` |  |  |
+| Place against wall, facing away | `place_against_wall_away` | `Alt+Shift+L` |  |  |
+| Place next to target | `place_next_to` | `Alt+X` |  |  |
+| Settle floating objects | `settle_floating` | `Alt+Shift+N` |  |  |
+| Fit to ground (supports) | `fit_to_ground` | `Alt+G` |  |  |
+| Shape preview | `show_shape_preview` | `Alt+Shift+M` |  |  |
 | Create prefab... | `create_prefab` | `Ctrl+R` |  |  |
 | Insert prefab at original size | `insert_original_prefab` | `Alt+Shift+C` |  |  |
 | Scatter by material... | `scatter_by_material` |  |  |  |

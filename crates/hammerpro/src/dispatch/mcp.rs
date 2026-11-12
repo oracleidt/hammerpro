@@ -15,9 +15,14 @@ mod automation;
 mod describe;
 #[cfg(test)]
 mod harness;
+mod place_feedback;
 mod place_ops;
+mod place_scan;
 #[cfg(test)]
 mod place_tests;
+mod place_ui;
+#[cfg(test)]
+mod place_ui_tests;
 mod place_world;
 mod schema;
 mod semantic;
@@ -51,11 +56,19 @@ mod tools_instances;
 mod tools_loops;
 mod tools_media;
 mod tools_meshdisp;
+mod tools_optimize;
 mod tools_overlays;
 mod tools_particles;
 mod tools_paths;
 mod tools_pipe;
 mod tools_place;
+pub(crate) use place_scan::{MapScanBuilder, run_map_scan};
+pub(crate) use place_ui::{
+    PlaceReport, Sheet, UiPlace, auto_settle_created, nearest_wall, place as place_objects, real_dims,
+    settle as settle_objects, sheet_job_model, sheet_job_selection,
+};
+#[cfg(test)]
+pub(crate) use place_world::pin_shape;
 pub(crate) use tools_place::mesh_drop;
 mod tools_road;
 mod tools_roadside;

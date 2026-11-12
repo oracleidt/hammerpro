@@ -12,6 +12,7 @@ pub mod cordons;
 pub mod inspector;
 pub mod lighting;
 pub mod mapassets;
+pub mod optimize;
 pub mod portals;
 pub mod prefabs;
 pub mod propper;
@@ -39,6 +40,7 @@ fn package_dialogs() -> Vec<Box<dyn dialogs::MapDialog>> {
     list.extend(cordons::dialogs());
     list.extend(portals::dialogs());
     list.extend(areaportals::dialogs());
+    list.extend(optimize::dialogs());
     list.extend(release::dialogs());
     list.extend(inspector::dialogs());
     list.extend(lighting::dialogs());

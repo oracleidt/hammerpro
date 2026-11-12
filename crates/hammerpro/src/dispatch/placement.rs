@@ -24,6 +24,7 @@ pub(crate) struct State {
     prefabs: hp_ui_mapping::prefabs::PrefabTab,
     pending_insert: Option<PendingInsert>,
     writes: Vec<Write>,
+    pub(crate) ops: super::placement_ops::State,
 }
 
 #[derive(Clone, Debug)]
@@ -38,8 +39,20 @@ struct PendingInsert {
     at: InsertAt,
 }
 
-const HANDLED: &[Action] =
-    &[Action::ShowPrefabs, Action::CreatePrefab, Action::InsertOriginalPrefab, Action::ScatterByMaterial];
+const HANDLED: &[Action] = &[
+    Action::ShowPrefabs,
+    Action::CreatePrefab,
+    Action::InsertOriginalPrefab,
+    Action::ScatterByMaterial,
+    Action::PlaceOnTop,
+    Action::PlaceAgainstWall,
+    Action::PlaceAgainstWallAway,
+    Action::PlaceNextTo,
+    Action::SettleFloating,
+    Action::FitToGround,
+    Action::ShowShapePreview,
+    Action::ToggleRealDimensions,
+];
 
 impl Package for Placement {
     fn handled(&self) -> &'static [Action] {
@@ -66,12 +79,23 @@ impl Package for Placement {
                     None => app.state.notify(Severity::Info, t!("placement.no_prefab")),
                 }
             }
+            a if super::placement_ops::HANDLED.contains(&a) => return super::placement_ops::handle(app, a),
             _ => return false,
         }
         true
     }
 
+    fn map_loaded(&self, app: &mut HammerProApp) {
+        super::placement_ops::map_loaded(app);
+    }
+
+    fn dialogs(&self, app: &mut HammerProApp, ctx: &egui::Context) {
+        super::placement_ops::dialogs(app, ctx);
+    }
+
     fn init(&self, app: &mut HammerProApp) {
+        app.viewports.add_layer(Box::new(super::placement_ops::RealDimsLayer));
+        app.shell.add_status_segment(Box::new(super::placement_ops::RealDimsStatus));
         if hp_compile::sandbox::is_sandboxed() && app.state.settings.placement.prefab_library.is_none() {
             let dir = std::env::temp_dir().join(format!("hammerpro_sandbox_{}", std::process::id())).join("prefabs");
             app.state.settings.placement.prefab_library = Some(dir);
@@ -91,6 +115,7 @@ impl Package for Placement {
         if let Some(path) = app.state.runtime.placement.open_path.take() {
             open_path(&path);
         }
+        super::placement_ops::tick(app, ctx);
     }
 
     fn dock_tabs(&self, app: &HammerProApp, tabs: &mut Vec<DockTab>) {

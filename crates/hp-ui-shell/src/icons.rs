@@ -201,13 +201,35 @@ pub fn paint(painter: &Painter, center: Pos2, color: Color32, icon: Icon, scale:
             pen.closed(&[(-8.0, -2.0), (-1.0, -2.0), (-1.0, 2.0), (4.0, 2.0), (4.0, 8.0), (-8.0, 8.0)]);
             pen.dashed(&[(-1.0, -2.0), (-1.0, -8.0), (8.0, -8.0), (8.0, 2.0), (4.0, 2.0)], pen.thin);
         }
-        Icon::Hammer => {
-            let head = [(-1.5, -7.0), (2.0, -3.5), (-3.5, 2.0), (-7.0, -1.5)];
-            let head: Vec<P> = head.iter().map(|(x, y)| (x + 3.5, y + 0.5)).collect();
-            pen.fill(&head, color);
-            pen.seg((1.0, -0.5), (7.5, 6.0), pen.heavy);
-        }
+        Icon::Hammer => hammer(&pen),
     }
+}
+
+fn hammer(pen: &Pen) {
+    let color = pen.color;
+    let r = std::f32::consts::FRAC_1_SQRT_2 * 0.84;
+    let at = |(x, y): P| -> P { (x * r - y * r - 1.6, x * r + y * r + 1.35) };
+    let poly = |v: &[P]| {
+        let mut pts: Vec<P> = v.iter().map(|q| at(*q)).collect();
+        pts.dedup_by(|a, b| (a.0 - b.0).abs() < 1e-3 && (a.1 - b.1).abs() < 1e-3);
+        pen.fill(&pts, color);
+    };
+    let quad = |x0: f32, y0: f32, x1: f32, y1: f32| poly(&[(x0, y0), (x1, y0), (x1, y1), (x0, y1)]);
+    let ahead = |v: &[P], i: usize| -> P {
+        match v.get(i + 1) {
+            Some(n) => (v[i].0 + 0.35 * (n.0 - v[i].0), v[i].1 + 0.35 * (n.1 - v[i].1)),
+            None => v[i],
+        }
+    };
+    quad(-7.4, -8.6, -3.6, -1.6);
+    quad(-4.0, -7.8, 2.0, -2.4);
+    let upper = [(1.6, -7.8), (4.5, -7.6), (6.8, -6.4), (8.2, -4.2), (8.7, -1.4)];
+    let lower = [(1.6, -4.4), (4.2, -4.8), (5.8, -3.9), (6.8, -2.5), (8.7, -1.4)];
+    for i in 0..upper.len() - 1 {
+        poly(&[upper[i], ahead(&upper, i + 1), ahead(&lower, i + 1), lower[i]]);
+    }
+    poly(&[(-1.4, -3.0), (1.4, -3.0), (1.8, 8.0), (-1.8, 8.0)]);
+    pen.painter.circle_filled(pen.p(at((0.0, 8.0))), 1.8 * 0.84 * pen.k, color);
 }
 
 fn barrel(pen: &Pen, top: P) {

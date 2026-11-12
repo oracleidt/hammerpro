@@ -42,6 +42,7 @@ Des messages en haut indiquent quand la map est en cours de vérification, quand
 | Éclairage et ciel | ciel sans soleil (faces de ciel mais pas de `light_environment`), trop de lumières nommées, plusieurs sky_camera, mauvaise échelle de sky_camera, changement de skybox sans sky_camera, skybox par joueur |
 | Areaportals | brushes d'areaportal (un seul permis), areaportal sans porte, areaportal et porte désaccordés, areaportal à travers l'eau, areaportal à travers un occluder |
 | Objets redondants | brush en double, brush dans un brush, entité empilée en double (voir [Objets redondants](#objets-redondants)) |
+| Placement | objet flottant, objet enfoncé, objets qui se chevauchent (sur demande), mesurés sur les vrais maillages des props (voir [Placement sur les formes réelles](real-shape-placement.md#vérifier-les-problèmes)) |
 | Limites et fuites | limite proche, limite dépassée (la compilation échouera), budget d'edicts, fuite, vérification des fuites incomplète, candidat func_detail |
 
 ### Corrections automatiques
@@ -63,6 +64,9 @@ Des messages en haut indiquent quand la map est en cours de vérification, quand
 | candidat func_detail | Les lier à un func_detail (une seule étape d'annulation) |
 | areaportal et porte désaccordés | Faire démarrer l'areaportal comme sa porte |
 | brush en double, brush dans un brush, entité empilée en double | Supprimer les copies redondantes et garder les originaux |
+| objet flottant | Descendre le prop sur la surface en dessous (les props empilés bougent ensemble avec **Tout corriger**) |
+| objet enfoncé | Remonter le prop pour qu'il repose sur la surface (16 unités au plus) |
+| objets qui se chevauchent | Sortir le prop de l'autre objet par le chemin le plus court (16 unités au plus) |
 
 Chaque correction est une étape d'annulation : `Ctrl+Z` remet la map comme avant.
 
@@ -138,12 +142,20 @@ Les limites changent selon les versions de Source. **Limites de :** (dans la fen
 | **Tracer le chemin de la fuite trouvée** | activé |
 | **Vérifier les problèmes ne liste que les objets visibles** | désactivé |
 | **Avertir quand un nouveau brush ou une nouvelle entité est une copie exacte d'un autre** | activé |
+| **Vérifier les props flottants et enfoncés** (`placement.problem_checks`) | activé |
+| **Lister aussi les props qui chevauchent d'autres objets** (`placement.overlap_check`) | désactivé |
 | **Limites de :** | Automatique |
 | Options des portails | voir [Fuites et pointfiles](leaks-pointfiles.md) |
+
+## Optimiser la map
+
+**Map > Optimiser la map...** est un conseiller qui compile la visibilité de la map en arrière-plan et liste, par impact, ce qui n'est pas optimisé (visleaves, func_detail, brushes hint, areaportals, lumières) avec quoi faire et un bouton **Aller à**. Il ne modifie jamais la map lui-même. Voir [Optimiser une map](../guides/optimizing-a-map.md).
 
 ## MCP
 
 `check_problems`, `get_problems`, `fix_problems`, `recheck_map`, `get_map_limits`, `get_map_stats` et `find_hidden_faces` donnent les mêmes vérifications aux applications d'IA. Voir la [référence des outils MCP](../../MCP.md) (en anglais).
+
+`analyze_visibility`, `suggest_func_detail`, `suggest_hint_brushes`, `show_visleaves`, `check_areaportals`, `suggest_areaportals`, `audit_lights` et `optimize_map` analysent et optimisent la map (voir [Optimiser une map](../guides/optimizing-a-map.md)).
 
 ## Astuces
 
@@ -162,6 +174,7 @@ Les limites changent selon les versions de Source. **Limites de :** (dans la fen
 ## Pages liées
 
 - [Fuites et pointfiles](leaks-pointfiles.md)
+- [Placement sur les formes réelles](real-shape-placement.md)
 - [Limites et journaux](../compiler/limits-and-logs.md)
 - [Erreurs courantes](../troubleshooting/common-errors.md)
 - [Référence des paramètres](../reference/settings.md)

@@ -1935,7 +1935,15 @@ impl Viewports {
     fn run_menu_choice(&mut self, state: &mut AppState, menu: &OpenMenu, choice: MenuChoice) {
         match choice {
             MenuChoice::Tool(_) => {}
-            MenuChoice::Action(a) => state.request(a),
+            MenuChoice::Action(a) => {
+                if matches!(a, Action::PlaceAgainstWall | Action::PlaceAgainstWallAway) {
+                    state.runtime.placement.menu_hit = menu
+                        .point
+                        .zip(menu.normal)
+                        .filter(|(p, n)| !menu.view.is_2d() && p.is_finite() && n.is_finite());
+                }
+                state.request(a);
+            }
             MenuChoice::PingHere => {
                 if let Some(point) = menu.point.filter(|point| point.is_finite()) {
                     state.runtime.collaboration.requests.push(

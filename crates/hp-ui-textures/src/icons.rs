@@ -180,7 +180,7 @@ pub fn icon_toggle(ui: &mut Ui, icon: Icon, selected: bool, tooltip: &str) -> Re
 
 pub fn icon_text_button(ui: &mut Ui, icon: Icon, text: &str, enabled: bool) -> Response {
     let padding = ui.spacing().button_padding;
-    let icon_size = ui.text_style_height(&egui::TextStyle::Button);
+    let icon_size = egui::TextStyle::Button.resolve(ui.style()).size;
     let galley = egui::WidgetText::from(text).into_galley(
         ui,
         Some(egui::TextWrapMode::Extend),

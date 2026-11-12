@@ -204,8 +204,10 @@ impl EntityPanel {
 
         if summary.entities.is_empty() && !summary.world_solids.is_empty() {
             world_brushes_ui(ui, &mut cx, summary, tie_class, tie_shortcut.as_deref(), &mut ops);
+            real_dims_row(ui, &mut cx);
         } else {
             header(ui, &mut cx, view, move_shortcut.as_deref(), &mut ops);
+            real_dims_row(ui, &mut cx);
             let world = view.target.is_world();
             if !world && !matches!(tab, EntityTab::Properties | EntityTab::Raw) && view.count() == 0 {
                 *tab = EntityTab::Properties;
@@ -376,6 +378,34 @@ fn panel_menu(ui: &mut Ui, cx: &mut Cx, view: &EntityView) {
     entry(ui, cx, Action::FindReplaceText, true);
     entry(ui, cx, Action::SetMaxDistance, entities);
     entry(ui, cx, Action::EntityHelp, view.single_class().is_some());
+    ui.separator();
+    let mut real = cx.settings.placement.show_real_dimensions;
+    if ui.checkbox(&mut real, Action::ToggleRealDimensions.label()).changed() {
+        cx.request(Action::ToggleRealDimensions);
+        ui.close();
+    }
+    entry(ui, cx, Action::ShowShapePreview, true);
+}
+
+fn real_dims_row(ui: &mut Ui, cx: &mut Cx) {
+    if !cx.settings.placement.show_real_dimensions {
+        return;
+    }
+    let Some(d) = cx.runtime.placement.real_dims.as_ref() else { return };
+    let text = d.summary();
+    let warn = d.units.iter().any(|u| u.gap.is_some_and(|g| g.abs() > 0.5) || u.overlap > 0.5);
+    let mut preview = false;
+    ui.horizontal_wrapped(|ui| {
+        let rich = RichText::new(format!("📏 {text}")).small();
+        let rich = if warn { rich.color(theme::warning()) } else { rich.weak() };
+        ui.label(rich).on_hover_text(t!("entities.real_dims_tip"));
+        if ui.small_button(t!("action.show_shape_preview")).clicked() {
+            preview = true;
+        }
+    });
+    if preview {
+        cx.request(Action::ShowShapePreview);
+    }
 }
 
 fn header(ui: &mut Ui, cx: &mut Cx, view: &EntityView, move_shortcut: Option<&str>, ops: &mut Vec<Op>) {

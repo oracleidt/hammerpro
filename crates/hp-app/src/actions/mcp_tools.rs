@@ -158,6 +158,12 @@ pub(super) const TR: TrTable = &[
     ("shell.undo.mcp_edit_shader_graph", "MCP: edit a shader graph", "MCP : modification d'un graphe de shader"),
     ("shell.undo.mcp_bake_shader_graph", "MCP: write a shader graph", "MCP : écriture d'un graphe de shader"),
     ("shell.undo.mcp_fix_problems", "MCP: fix problems", "MCP : correction de problèmes"),
+    ("shell.undo.mcp_optimize_map", "MCP: optimize the map", "MCP : optimisation de la map"),
+    ("shell.undo.mcp_suggest_func_detail", "MCP: convert to func_detail", "MCP : conversion en func_detail"),
+    ("shell.undo.mcp_suggest_hint_brushes", "MCP: add hint brushes", "MCP : ajout de brushes hint"),
+    ("shell.undo.mcp_check_areaportals", "MCP: repair areaportals", "MCP : réparation d'areaportals"),
+    ("shell.undo.mcp_suggest_areaportals", "MCP: place areaportals", "MCP : placement d'areaportals"),
+    ("shell.undo.mcp_audit_lights", "MCP: fix lights", "MCP : correction des lumières"),
     (
         "shell.undo.mcp_find_duplicate_brushes",
         "MCP: delete redundant brushwork",

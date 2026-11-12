@@ -325,13 +325,12 @@ fn palette_row(ui: &mut egui::Ui, entry: &Entry, selected: bool, enabled: bool) 
             right = r.left() - 12.0;
         }
         if right > label_rect.right() + 40.0 {
-            painter.with_clip_rect(egui::Rect::from_x_y_ranges(label_rect.right() + 8.0..=right, rect.y_range())).text(
-                egui::pos2(right, y),
-                egui::Align2::RIGHT_CENTER,
-                &entry.detail,
-                small,
-                weak,
-            );
+            painter
+                .with_clip_rect(hp_app::widgets::clip_x(
+                    egui::Rect::from_x_y_ranges(label_rect.right() + 8.0..=right, rect.y_range()),
+                    painter.clip_rect(),
+                ))
+                .text(egui::pos2(right, y), egui::Align2::RIGHT_CENTER, &entry.detail, small, weak);
         }
     }
     response

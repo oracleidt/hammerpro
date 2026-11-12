@@ -102,6 +102,7 @@ Tools under it:
 
 | Button | What it does |
 |---|---|
+| **Shape preview** | Opens the [shape preview](real-shape-placement.md#shape-preview) window on this model: its real shape from the top, the front, the side and in 3D, with its dimensions, origin, lowest point and collision mesh. |
 | **Extract files...** | Copies the model and its VVD, VTX, PHY and ANI files from the game content (VPK, GMA or folders) to a folder you choose, keeping their folders (`models/props/x.mdl`). |
 | **Decompile with Crowbar** | Extracts the model to a temporary folder (`hammerpro_models` in the system temporary folder) and opens it in Crowbar. Crowbar.exe is asked the first time and remembered (`crowbar_exe` in `[entities]`); right click the button and pick **Choose another Crowbar.exe...** to change it. |
 | **Compile a QC...** | Runs the game's studiomdl (`bin/win64/studiomdl.exe`, else `bin/studiomdl.exe` of the Garry's Mod folder) on a QC file you choose, with `-game <game folder> -nop4 -verbose`. Its output goes to the console; a **Cancel** button stops it. Greyed out when studiomdl is not found. |

@@ -694,7 +694,7 @@ impl MaterialEditor {
         let name_w = 240.0;
         let loc_w = 96.0;
         let col_w = 120.0;
-        let row_h = 20.0;
+        let row_h = ui.spacing().interact_size.y;
         let mut remove: Option<usize> = None;
         egui::ScrollArea::horizontal().id_salt("hp_me_table_h").show(ui, |ui| {
             ui.vertical(|ui| {

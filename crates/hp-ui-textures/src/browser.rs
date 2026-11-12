@@ -1505,7 +1505,7 @@ impl TextureBrowser {
                     };
                     let galley = painter.layout_job(job);
                     let text_x = label_rect.center().x - galley.size().x * 0.5;
-                    painter.galley(pos2(text_x, label_rect.top() + 1.0), galley, color);
+                    painter.galley(pos2(text_x, label_rect.center().y - galley.size().y * 0.5), galley, color);
                     if !self.infos.contains_key(&entry.name) {
                         visible_names.push(entry.name.clone());
                     }

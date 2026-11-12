@@ -133,6 +133,14 @@ impl ModelTools {
         let studiomdl = self.studiomdl(state);
         ui.separator();
         ui.horizontal_wrapped(|ui| {
+            if ui.button(t!("action.show_shape_preview")).on_hover_text(t!("entities.mt_shape_tip")).clicked() {
+                let rt = &mut state.runtime.placement;
+                rt.shape_preview_model = Some(model.to_owned());
+                rt.shape_preview_focus_model = true;
+                if !rt.shape_preview_open {
+                    state.request(hp_app::Action::ShowShapePreview);
+                }
+            }
             let extract = ui.add_enabled(!busy, egui::Button::new(t!("entities.mt_extract")));
             if extract.on_hover_text(t!("entities.mt_extract_tip")).clicked() {
                 let title = t!("entities.mt_pick_folder").to_owned();

@@ -38,6 +38,7 @@ pub const ENTRIES: &[MenuEntry] = &[
     MenuEntry::Submenu(MenuGroup::ToolsAlign),
     MenuEntry::Submenu(MenuGroup::ToolsFlip),
     MenuEntry::Action(Action::MoveToFloor),
+    MenuEntry::Submenu(MenuGroup::ToolsPlaceObjects),
     MenuEntry::Action(Action::CenterOrigins),
     MenuEntry::Action(Action::RandomRotate),
     MenuEntry::Separator,

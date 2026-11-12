@@ -1,3 +1,5 @@
+pub(crate) mod optimize;
+mod placement;
 pub(super) mod portals;
 
 use hp_app::i18n::TrTable;
@@ -18,6 +20,8 @@ pub(crate) struct State {
     compile_started: Option<std::time::SystemTime>,
     vis_tried: bool,
     dup_serial: u64,
+    optimize: Option<optimize::Job>,
+    placement: placement::PlacementChecks,
 }
 
 const HANDLED: &[Action] = &[
@@ -31,6 +35,9 @@ const HANDLED: &[Action] = &[
     Action::BuildPortals,
     Action::SealAreaportal,
     Action::ShowDetailSuggestions,
+    Action::ShowOptimize,
+    Action::AnalyzeOptimization,
+    Action::ToggleVisleaves,
 ];
 
 impl Package for Health {
@@ -71,6 +78,28 @@ impl Package for Health {
                 ctx.request_repaint();
             }
             Action::SealAreaportal => seal_opening(app),
+            Action::ShowOptimize => {
+                let rt = &mut app.state.runtime.optimize;
+                rt.show = true;
+                if rt.report.is_none() && !rt.running {
+                    rt.request = true;
+                }
+                ctx.request_repaint();
+            }
+            Action::AnalyzeOptimization => {
+                app.state.runtime.optimize.request = true;
+                ctx.request_repaint();
+            }
+            Action::ToggleVisleaves => {
+                let on = !app.state.runtime.optimize.view;
+                if on && app.state.runtime.optimize.portals.is_none() {
+                    app.state.runtime.optimize.view = true;
+                    app.state.runtime.optimize.request = true;
+                } else {
+                    optimize::set_view(&mut app.state, on);
+                }
+                ctx.request_repaint();
+            }
             Action::BuildPortals => {
                 app.state.runtime.health.portal_build_request = true;
                 app.state.runtime.health.show_portal_window = true;
@@ -92,7 +121,11 @@ impl Package for Health {
 
     fn tick(&self, app: &mut HammerProApp, ctx: &egui::Context) {
         watch_duplicates(app);
+        if app.state.runtime.health.recheck {
+            app.pkg.health.placement.force();
+        }
         let busy = HealthRuntime::tick(&mut app.state);
+        let placing = app.pkg.health.placement.tick(&mut app.state);
         if app.pkg.health.leak_report_wanted {
             report_leak(app);
         }
@@ -121,9 +154,10 @@ impl Package for Health {
             app.pkg.health.portals.ensure_vis(state, quiet);
         }
         let working = app.pkg.health.portals.tick(&mut app.state);
+        let analyzing = tick_optimize(app);
         HealthRuntime::update_pvs(&mut app.state);
         HealthRuntime::update_play(&mut app.state);
-        if busy || working || app.pkg.health.leak_report_wanted {
+        if busy || working || analyzing || placing || app.pkg.health.leak_report_wanted {
             ctx.request_repaint_after(std::time::Duration::from_millis(60));
         }
     }
@@ -134,6 +168,12 @@ impl Package for Health {
         app.pkg.health.vis_tried = false;
         app.pkg.health.dup_serial = app.state.doc.last_step_serial().unwrap_or(0);
         app.pkg.health.portals.map_loaded();
+        if let Some(job) = app.pkg.health.optimize.take() {
+            job.cancel();
+        }
+        let rt = &mut app.state.runtime.optimize;
+        *rt = hp_app::runtime::OptimizeRuntime { show: rt.show, ..Default::default() };
+        app.pkg.health.placement.map_loaded();
     }
 
     fn translations(&self) -> TrTable {
@@ -180,6 +220,19 @@ fn report_leak(app: &mut HammerProApp) {
 fn is_door(class: &str) -> bool {
     let c = class.to_ascii_lowercase();
     c.starts_with("func_door") || c == "prop_door_rotating" || c == "func_movelinear"
+}
+
+fn tick_optimize(app: &mut HammerProApp) -> bool {
+    if let Some(job) = &app.pkg.health.optimize
+        && job.poll(&mut app.state)
+    {
+        app.pkg.health.optimize = None;
+    }
+    if app.state.runtime.optimize.request && app.pkg.health.optimize.is_none() {
+        app.state.runtime.optimize.request = false;
+        app.pkg.health.optimize = optimize::Job::start(&mut app.state);
+    }
+    app.pkg.health.optimize.is_some()
 }
 
 fn seal_opening(app: &mut HammerProApp) {

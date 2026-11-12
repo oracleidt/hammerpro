@@ -180,6 +180,11 @@ pub(crate) fn describe(p: &Problem, doc: &Document) -> String {
         "duplicate_brush" => tf!(plural(n, "problems.duplicate_brush_one", "problems.duplicate_brush"), n),
         "contained_brush" => tf!(plural(n, "problems.contained_brush_one", "problems.contained_brush"), n),
         "duplicate_entity" => tf!(plural(n, "problems.duplicate_entity_one", "problems.duplicate_entity"), n),
+        "floating_object" if a(2).is_empty() => tf!("problems.floating_object_nothing", a(0), a(1)),
+        "floating_object" => tf!("problems.floating_object", a(0), a(1), a(2)),
+        "sunk_object" if a(2).is_empty() => tf!("problems.sunk_object_nothing", a(0), a(1)),
+        "sunk_object" => tf!("problems.sunk_object", a(0), a(1), a(2)),
+        "overlapping_objects" => tf!("problems.overlapping_objects", a(0), a(2), a(1)),
         _ => p.message.clone(),
     }
 }
@@ -201,6 +206,9 @@ pub(crate) fn fix_hint(code: &str) -> &'static str {
         "detail_candidate" => t!("problems.fix.detail_candidate"),
         "areaportal_door_state" => t!("problems.fix.areaportal_door_state"),
         "duplicate_brush" | "contained_brush" | "duplicate_entity" => t!("problems.fix.redundant"),
+        "floating_object" => t!("problems.fix.floating_object"),
+        "sunk_object" => t!("problems.fix.sunk_object"),
+        "overlapping_objects" => t!("problems.fix.overlapping_objects"),
         _ => t!("problems.fix.generic"),
     }
 }
@@ -368,7 +376,7 @@ impl ProblemsDialog {
         if !open {
             state.ui.show_problems = false;
         }
-        if state.runtime.health.checking {
+        if state.runtime.health.busy() {
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
         }
     }
@@ -419,7 +427,7 @@ impl ProblemsDialog {
             });
         });
         let rt = &state.runtime.health;
-        if rt.checking {
+        if rt.busy() {
             ui.horizontal(|ui| {
                 ui.spinner();
                 ui.label(RichText::new(t!("problems.checking")).weak().italics());

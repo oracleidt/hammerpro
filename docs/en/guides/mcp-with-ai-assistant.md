@@ -57,6 +57,10 @@ The assistant does not have to guess sizes from bounding boxes. Ask it to place 
 
 `render_shape` gives the assistant a drawing of a model or an area from several sides with the sizes written on it, and `check_placement` tells it, for each object, whether it rests, floats, is sunk or goes into another object. The full guide is in [docs/MCP.md](../../MCP.md#place-things-precisely).
 
+## Optimizing what the assistant built
+
+Ask the assistant to finish with `optimize_map`: it compiles the visibility in the background, lists what is not optimized (visleaves, func_detail, hints, areaportals, lights) and, with `apply: "safe"`, fixes the safe part in one undo step and reports the visleaves and the PVS before and after. See [Optimizing a map](optimizing-a-map.md).
+
 ## Tips
 
 - Be concrete: sizes in units, material names, entity classes. The assistant can also search them (`search_materials`, `search_models`, `list_entity_classes`).

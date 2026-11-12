@@ -438,7 +438,8 @@ pub const EDITOR_TOOLS: &[ToolSpec] = &[
         title: "Screenshot of a view",
         description: "Render the 3D view or a 2D view (top, front, side) with the current cameras and return it as a \
             PNG image. The 2D logical view (the I/O schematic a quadrant can show) is not a render: look at it \
-            with screenshot_window.",
+            with screenshot_window. While show_visleaves is on, the visleaves and portals of the last analysis \
+            are drawn too (and the selected finding of the Optimize the map window).",
         kind: ToolKind::Read,
         schema: || {
             object(

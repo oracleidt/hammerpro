@@ -556,6 +556,33 @@ impl BspVis {
         BspVis { clusters, vis, ..BspVis::default() }
     }
 
+    pub fn area_portal_pairs(&self) -> Vec<(u16, u16, u16)> {
+        let mut out: Vec<(u16, u16, u16)> = Vec::new();
+        for (area, list) in self.area_portals.iter().enumerate() {
+            let Ok(area) = u16::try_from(area) else { break };
+            for &(key, other) in list {
+                let pair = (key, area.min(other), area.max(other));
+                if !out.contains(&pair) {
+                    out.push(pair);
+                }
+            }
+        }
+        out.sort_unstable();
+        out
+    }
+
+    pub fn leaf_count(&self) -> usize {
+        self.leaves.len()
+    }
+
+    pub fn leaves(&self) -> impl Iterator<Item = (i16, u16, Aabb)> + '_ {
+        self.leaves.iter().map(|l| {
+            let min = DVec3::new(f64::from(l.min[0]), f64::from(l.min[1]), f64::from(l.min[2]));
+            let max = DVec3::new(f64::from(l.max[0]), f64::from(l.max[1]), f64::from(l.max[2]));
+            (l.cluster, l.area, Aabb::new(min, max))
+        })
+    }
+
     pub fn cluster_count(&self) -> u32 {
         self.clusters
     }

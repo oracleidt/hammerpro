@@ -60,6 +60,20 @@ impl SettingsPage for HealthPage {
             .checkbox(&mut s.warn_duplicates, t!("shell.health.warn_duplicates"))
             .on_hover_text(t!("shell.health.warn_duplicates_tip"))
             .changed();
+        let p = &mut state.settings.placement;
+        changed |= ui
+            .checkbox(&mut p.problem_checks, t!("shell.placement.problem_checks"))
+            .on_hover_text(t!("shell.placement.problem_checks_tip"))
+            .changed();
+        ui.add_enabled_ui(p.problem_checks, |ui| {
+            ui.indent("hp_overlap_check", |ui| {
+                changed |= ui
+                    .checkbox(&mut p.overlap_check, t!("shell.placement.overlap_check"))
+                    .on_hover_text(t!("shell.placement.overlap_check_tip"))
+                    .changed();
+            });
+        });
+        let s = &mut state.settings.health;
         heading(ui, t!("shell.health.limits"));
         ui.horizontal(|ui| {
             ui.label(t!("shell.health.profile"));

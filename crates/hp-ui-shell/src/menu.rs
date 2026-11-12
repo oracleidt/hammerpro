@@ -140,13 +140,21 @@ fn hammer_order(group: MenuGroup) -> &'static [Action] {
         MenuGroup::ViewNav => &[A::Center2dOnSelection, A::Center3dOnSelection, A::MaximizeView, A::ToggleFullscreen],
         MenuGroup::ViewZoom => &[A::Zoom2dIn, A::Zoom2dOut, A::FarPlaneCloser, A::FarPlaneFarther, A::ResetViewSplits],
         MenuGroup::MapGrid => &[A::ToggleSnap, A::ToggleGrid, A::ToggleGrid3d, A::GridSmaller, A::GridLarger],
-        MenuGroup::MapInfo => {
-            &[A::CheckProblems, A::CheckLeaks, A::GoToBrush, A::EntityReport, A::ShowMapAssets, A::CompareMaps]
-        }
+        MenuGroup::MapInfo => &[
+            A::CheckProblems,
+            A::ShowOptimize,
+            A::CheckLeaks,
+            A::GoToBrush,
+            A::EntityReport,
+            A::ShowMapAssets,
+            A::CompareMaps,
+        ],
         MenuGroup::MapProperties => &[A::MapInfo, A::MapProperties, A::EditSoundscapes, A::EntityGallery],
         MenuGroup::MapPointfile => &[A::LoadPointfile, A::UnloadPointfile],
         MenuGroup::MapPortals => &[A::ShowPortalViewer, A::BuildPortals, A::LoadPortalFile, A::UnloadPortalFile],
-        MenuGroup::MapOptimize => &[A::ShowDetailSuggestions, A::SealAreaportal],
+        MenuGroup::MapOptimize => {
+            &[A::AnalyzeOptimization, A::ToggleVisleaves, A::ShowDetailSuggestions, A::SealAreaportal]
+        }
         MenuGroup::MapLighting => &[A::BakeLighting, A::BakeAroundCamera, A::StopBake],
         MenuGroup::MapLights => &[
             A::SoloSelectedLights,
@@ -363,7 +371,7 @@ pub fn menu_path_text(action: Action, lang: Option<Lang>) -> Option<String> {
 }
 
 fn check_cell<'a>(ui: &Ui, check: Check) -> egui::Atom<'a> {
-    let side = ui.text_style_height(&egui::TextStyle::Button);
+    let side = egui::TextStyle::Button.resolve(ui.style()).size;
     let glyph = match check {
         Check::Toggle(true) => "\u{2714}",
         Check::Radio(true) => "\u{23FA}",
@@ -1027,6 +1035,7 @@ mod tests {
                 "menu.grids >",
                 "|",
                 A::CheckProblems.id(),
+                A::ShowOptimize.id(),
                 A::CheckLeaks.id(),
                 A::GoToBrush.id(),
                 A::EntityReport.id(),

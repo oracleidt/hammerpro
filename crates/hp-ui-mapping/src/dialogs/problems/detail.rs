@@ -215,7 +215,7 @@ impl DetailWindow {
             });
         });
         ui.separator();
-        let row_h = 20.0;
+        let row_h = ui.spacing().interact_size.y;
         let mut go: Option<u32> = None;
         let rows = &self.rows;
         let unchecked = &mut self.unchecked;

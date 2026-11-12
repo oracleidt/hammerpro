@@ -63,10 +63,10 @@ impl StatusSegment for ProblemBadge {
         if text.is_empty() {
             text.push('✔');
         }
-        if rt.checking {
+        if rt.busy() {
             text.push_str(" ...");
         }
-        let checking = rt.checking;
+        let checking = rt.busy();
         let r = ui.add(egui::Button::new(RichText::new(text).small().color(color)).frame(false));
         let r = crate::common::lazy_hover_text(r, || {
             format!(

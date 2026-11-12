@@ -138,6 +138,7 @@ Every change the AI makes is **one undo step** named "MCP:" followed by what was
 | Assets | Search materials, models, sounds and particles, material and model information and previews, VMT editing, image import, UV layers and texture alignment. |
 | Shader editor | The node based image editor: node and preset lists, creating, reading, editing, checking, rendering and writing `.hpshader` graphs as VTF and VMT files, and opening the editor window. See [Shader editor](../features/shader-editor.md). |
 | Map health | Check for problems, fix them, engine limits, map statistics, hidden faces. |
+| Optimization | `optimize_map`, `analyze_visibility`, `suggest_func_detail`, `suggest_hint_brushes`, `show_visleaves`, `check_areaportals`, `suggest_areaportals`, `audit_lights`: visleaves, PVS, func_detail, hints, areaportals and light coherence, with fixes. See [Optimizing a map](../guides/optimizing-a-map.md). |
 | Compile | Compile with a preset and follow the progress. |
 | Views | Camera, screenshots of a view, layout of the quadrants, 3D render modes, player view, 2D zoom and pan. |
 | Actions | List and run every menu command and shortcut. |
@@ -163,7 +164,7 @@ Every change the AI makes is **one undo step** named "MCP:" followed by what was
 | Games | List the supported games, read and change the game of the map. |
 | Diagnostics | The crash reports of the crash folder (list and read one) and the last lines of Hammer Pro's own log. See [Crashes and logs](../troubleshooting/crashes-and-logs.md). |
 | Tool options | Read and change the options of the editing tools. |
-| Placement | Exact shapes of any object or model measured on the real mesh (`get_object_shape`), drawings with dimensions (`render_shape`), placing on, against or next to anything with real contact (`place_object`, `drop_to_surface`), checking how objects sit (`check_placement`) and finding floating or sunk ones (`find_floating_objects`). |
+| Placement | Exact shapes of any object or model measured on the real mesh (`get_object_shape`), drawings with dimensions (`render_shape`), placing on, against or next to anything with real contact (`place_object`, `drop_to_surface`), checking how objects sit (`check_placement`) and finding floating or sunk ones (`find_floating_objects`). The tools that create or move props and brushes add a `placement_note` to their result when one ends floating, sunk or overlapping, naming the fix (see [Placement on real shapes](../features/real-shape-placement.md#for-the-ai-mcp)). |
 
 The full list of every tool with its description and arguments is in [docs/MCP.md](../../MCP.md) (English).
 

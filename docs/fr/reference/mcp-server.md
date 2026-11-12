@@ -138,6 +138,7 @@ Chaque modification faite par l'IA est **une étape d'annulation** nommée "MCP 
 | Assets | Chercher matériaux, modèles, sons et particules, infos et aperçus de matériaux et de modèles, édition de VMT, import d'images, calques UV et alignement de textures. |
 | Éditeur de shaders | L'éditeur d'images à nœuds : listes de nœuds et de préréglages, création, lecture, modification, vérification, rendu et écriture de graphes `.hpshader` en fichiers VTF et VMT, et ouverture de la fenêtre de l'éditeur. Voir [Éditeur de shaders](../features/shader-editor.md). |
 | Map health | Vérifier les problèmes, les corriger, limites du moteur, statistiques de la map, faces cachées. |
+| Optimisation | `optimize_map`, `analyze_visibility`, `suggest_func_detail`, `suggest_hint_brushes`, `show_visleaves`, `check_areaportals`, `suggest_areaportals`, `audit_lights` : visleaves, PVS, func_detail, hints, areaportals et cohérence des lumières, avec corrections. Voir [Optimiser une map](../guides/optimizing-a-map.md). |
 | Compile | Compiler avec un préréglage et suivre la progression. |
 | Views | Caméra, captures d'une vue, disposition des quadrants, modes de rendu 3D, vue joueur, zoom et déplacement 2D. |
 | Actions | Lister et lancer toutes les commandes des menus et raccourcis. |
@@ -163,7 +164,7 @@ Chaque modification faite par l'IA est **une étape d'annulation** nommée "MCP 
 | Games | Lister les jeux pris en charge, lire et changer le jeu de la map. |
 | Diagnostics | Les rapports de plantage du dossier crash (liste et lecture de l'un d'eux) et les dernières lignes du journal de Hammer Pro. Voir [Plantages et journaux](../troubleshooting/crashes-and-logs.md). |
 | Tool options | Lire et changer les options des outils d'édition. |
-| Placement | Forme exacte de tout objet ou modèle mesurée sur le vrai maillage (`get_object_shape`), dessins cotés (`render_shape`), pose sur, contre ou à côté de n'importe quoi avec un vrai contact (`place_object`, `drop_to_surface`), vérification de la pose (`check_placement`) et recherche des objets flottants ou enfoncés (`find_floating_objects`). |
+| Placement | Forme exacte de tout objet ou modèle mesurée sur le vrai maillage (`get_object_shape`), dessins cotés (`render_shape`), pose sur, contre ou à côté de n'importe quoi avec un vrai contact (`place_object`, `drop_to_surface`), vérification de la pose (`check_placement`) et recherche des objets flottants ou enfoncés (`find_floating_objects`). Les outils qui créent ou déplacent des props et des brushes ajoutent un `placement_note` à leur résultat quand l'un d'eux finit flottant, enfoncé ou en chevauchement, en nommant la correction (voir [Placement sur les formes réelles](../features/real-shape-placement.md#pour-lia-mcp)). |
 
 Les noms de catégories sont ceux de la référence, en anglais. La liste complète de chaque outil avec sa description et ses arguments se trouve dans [docs/MCP.md](../../MCP.md) (en anglais uniquement).
 
