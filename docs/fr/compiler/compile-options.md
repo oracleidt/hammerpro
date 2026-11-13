@@ -116,6 +116,33 @@ Groupe **Qualité** (étape d'éclairage).
 | `-nodispshadows` | Option de Hammer Pro : les displacements ne projettent aucune ombre (ils restent éclairés). Un seul displacement peut aussi ne pas projeter d'ombre avec l'option **Projeter des ombres** de l'[outil displacement](../features/displacement-tool.md). | désactivé |
 | `-nostylebounce` | Option de Hammer Pro : les lumières nommées (commutables) n'éclairent que ce qu'elles voient directement, comme le VRAD de Valve. Sans elle, leur lumière rebondit aussi, dans leur propre style de lumière, et s'allume et s'éteint avec elles. Leur lumière directe garde toujours sa place parmi les 4 styles d'une face : une couche de rebond ne prend qu'une place libre. | désactivé |
 
+<a id="ambient-occlusion"></a>
+## Occlusion ambiante
+
+Groupe de menu **Occlusion ambiante** (étape d'éclairage). Occlusion ambiante précalculée comme dans VRAD++ : les coins, les recoins, le pied des murs et le sol sous les caisses s'assombrissent dans les lightmaps. Elle est désactivée par défaut, dans tous les préréglages (Final compris) : activez-la avec `-ao` (ou `-ambientocclusion`, comme dans VRAD++). Les aperçus de l'éditeur (Éclairé, Précalculé) ne la montrent jamais ; la map compilée oui, en jeu et dans la [vue joueur](../features/player-view.md).
+
+| Option | Effet | Par défaut |
+|---|---|---|
+| `-ao` | Calcule l'occlusion ambiante. `-ambientocclusion` fait la même chose ; `-ao 0` et `-noao` la désactivent. | désactivé |
+| `-aoradius <unités>` | Distance jusqu'à laquelle la géométrie assombrit une surface. Dans la skybox 3D elle est divisée par l'échelle du `sky_camera`, pour que la skybox ait la même occlusion que le monde en taille réelle. | 32 |
+| `-aoscale <0 à 1>` | Force : 0 ne change rien, 1 laisse les luxels entièrement enfermés devenir noirs. Les valeurs hors limites sont ramenées dans l'intervalle avec un avertissement. | 0,5 |
+| `-aofacesamples <rayons>` | Rayons par luxel. | 32, 16 avec `-fast`, 64 avec `-final` |
+| `-aopropsamples <rayons>` | Rayons par sommet de prop statique, avec `-StaticPropLighting`. | 32, 16 avec `-fast`, 64 avec `-final` |
+| `-aodebug` | Les lightmaps ne montrent que le terme d'occlusion (blanc là où c'est dégagé, sombre dans les coins) au lieu de la lumière, les sommets des props précalculés aussi. Active `-ao`. | désactivé |
+
+Les options de rayon, d'échelle et de rayons ne font rien sans `-ao` (le journal le dit). Un nombre de rayons donné avec `-aofacesamples` ou `-aopropsamples` est utilisé tel quel (1 à 1024) ; seules les valeurs par défaut suivent `-fast` et `-final`. Les anciennes `-aostrength` et `-aosamples` sont lues comme `-aoscale` et `-aofacesamples`.
+
+### Le calcul
+
+1. Pour chaque luxel, depuis le point qu'utilise la lumière directe (1 unité au-dessus de la surface), N rayons (`-aofacesamples`) partent dans un hémisphère pondéré par le cosinus autour de la normale (la normale lissée sur les displacements) et s'arrêtent au rayon R. Ils touchent les brushes du monde, les displacements et les props statiques ; les faces de ciel, l'eau, le verre et les feuillages à alpha testé n'occultent pas.
+2. Chaque rayon qui touche à la distance t occulte avec une atténuation douce : `AO = 1 - (1/N) x somme de (1 - (t / R)^2)` sur les rayons qui touchent. AO vaut 1 dans un endroit dégagé et baisse près de la géométrie.
+3. L'AO de chaque luxel est moyennée avec les luxels voisins (à moins d'un luxel et demi, tournés du même côté, à travers les faces et les displacements) : pas de bruit, pas de raccord visible entre faces, pages de lightmap ou displacements.
+4. Comme dans le VRAD de CS:GO et VRAD++, l'occlusion multiplie la lightmap finale, ramenée vers 1 par l'échelle : `lightmap = (directe + rebonds) x (1 - échelle x (1 - AO))`. Elle s'applique à chaque style de lumière, au LDR et au HDR et aux directions du bump map, après les rebonds (l'occlusion n'assombrit pas la lumière qui rebondit), avant la mise en accord des luxels partagés par des faces voisines.
+5. La lumière ambiante des props et des joueurs (cubes ambiants des leafs) et les props de détail prennent leur lumière dans les lightmaps occultées. Avec `-StaticPropLighting`, chaque sommet de prop reçoit le même facteur avec `-aopropsamples` rayons (les props qui ne s'ombrent pas eux-mêmes, `-nossprops`, ne sont pas occultés par leur propre modèle).
+6. Avec `-aodebug`, les lightmaps contiennent `128 x AO^2.2` dans leur premier style de lumière (les autres sont noirs) : le gris vu en jeu suit AO, les sols dégagés sont blancs, les coins gris.
+
+Le coût : l'étape AO (`ambient occlusion` dans la liste des étapes et dans `Light phase times`) trace des rayons courts dans le BVH que l'éclairage a déjà construit. Sur les maps de test elle ajoute environ 10 % au temps d'éclairage : 2 secondes pour les 790 000 luxels de gm_construct sur 4 threads (32 rayons par luxel, 22 secondes d'éclairage sans elle), 30 à 200 ms sur les petites maps.
+
 ## Props statiques
 
 Groupe **Props statiques** (étape d'éclairage).
@@ -168,6 +195,7 @@ Groupe **Débogage**.
 | `-trace <cluster> <cluster>` | géométrie | Écrit la ligne de vue entre deux clusters dans `<map>.lin`. |
 | `-verbose` | géométrie | Affiche les options de la compilation. |
 | `-StaticPropNormals` | éclairage | Les props statiques affichent les normales de leurs sommets au lieu de leur éclairage. |
+| `-aodebug` | éclairage | Les lightmaps ne montrent que le terme d'occlusion ambiante (groupe de menu **Occlusion ambiante**, voir [plus haut](#ambient-occlusion)). |
 
 ## FAQ
 

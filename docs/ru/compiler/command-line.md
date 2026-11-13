@@ -124,10 +124,16 @@ hammerpro --rad  [options] <map>
 | `-nostaticpropshadows` | | Hammer Pro: статической тени вообще нет. | выкл. |
 | `-nodispshadows` | | Hammer Pro: тень дисплейсмента отсутствует. | выкл. |
 | `-nostylebounce` | | Hammer Pro: именованные (переключаемые) источники не дают отражённого света, как в VRAD. | выкл. |
+| `-ao` / `-ambientocclusion` | | Запечённое фоновое затенение, как в VRAD++ (`-ao 0`, `-noao`: выкл.). См. [Фоновое затенение](compile-options.md#ambient-occlusion). | выкл. |
+| `-aoradius` | юниты | Радиус фонового затенения (делится на масштаб `sky_camera` в 3D-скайбоксе). | 32 |
+| `-aoscale` | 0..1 | Сила фонового затенения (`-aostrength` читается так же). | 0.5 |
+| `-aofacesamples` | лучи | Лучей фонового затенения на люксель (`-aosamples` читается так же). | 32, 16 с `-fast`, 64 с `-final` |
+| `-aopropsamples` | лучи | Лучей фонового затенения на вершину статического пропа (с `-StaticPropLighting`). | 32, 16 с `-fast`, 64 с `-final` |
+| `-aodebug` | | Карты освещения показывают только член фонового затенения. Включает `-ao`. | выкл. |
 | `-noaddons`, `-wsaddons`, `-nowsaddons`, `-serveraddons`, `-mount_appid` | | Контент, смонтированный для моделей, например `--bspc`. | установлены аддоны и предметы Мастерской |
 | `-radius_override` | единицы | Принимается и пропускается (опция VVIS часто передается каждому инструменту). | |
 
-Любой другой вариант получает `Warning: option ... is not supported by this lighting compiler: ignored`; известные параметры VRAD, принимающие значения (`-vproject`, `-aoscale`, `-aofacesamples`, `-aopropsamples`, `-ambientocclusion`, `-sunsamplesarealight`, `-leafambientsamplereduction`, `-maxdispsamplesize`, `-disppatchradius`, `-mpi_workercount`, `-dumptrace`) также пропустите их значение.
+Любой другой вариант получает `Warning: option ... is not supported by this lighting compiler: ignored`; известные параметры VRAD, принимающие значения (`-vproject`, `-sunsamplesarealight`, `-leafambientsamplereduction`, `-maxdispsamplesize`, `-disppatchradius`, `-mpi_workercount`, `-dumptrace`) также пропустите их значение.
 
 Файлы текстурного освещения считываются в следующем порядке: `lights.rad` игры (папка игры, затем папки установки Garry's Mod, в последнюю очередь ее папки `bin`), файл `-lights`, файл, названный ключом Worldspawn `_lightsrad`, затем `<map>.rad` рядом с картой.
 
@@ -143,7 +149,7 @@ Lighting 41%: direct lighting 60% (stage 2 of 7), 27 s elapsed, about 17 s left
 Light phase times: setup 0.15 s, faces 0.63 s, static prop models 0.41 s, shadow tree 1.56 s, surface tree 0.19 s, blocker tree 0.04 s, direct light 13.50 s, displacement blend 1.24 s, displacement bounce blend 1.00 s, bounce rays 3.23 s, bounce passes 3.02 s, seams 0.31 s, leaf ambient 0.45 s, write 0.77 s
 ```
 
-`direct light` включает источники света, солнце и небо, `static prop models` : чтение моделей пропов (читаются только модели пропов, которые отбрасывают тень или получают повершинное освещение), `seams` : согласование люкселей, общих для соседних граней; `light probes` и `detail props` появляются, когда выполняются. Проблемы, обнаруженные при окончательной проверке, которые уже были в BSP до освещения (карта, составленная другими инструментами), являются предупреждениями; только новые останавливают запись.
+`direct light` включает источники света, солнце и небо, `ambient occlusion` : запечённое фоновое затенение (с `-ao`), `static prop models` : чтение моделей пропов (читаются только модели пропов, которые отбрасывают тень или получают повершинное освещение), `seams` : согласование люкселей, общих для соседних граней; `light probes` и `detail props` появляются, когда выполняются. Проблемы, обнаруженные при окончательной проверке, которые уже были в BSP до освещения (карта, составленная другими инструментами), являются предупреждениями; только новые останавливают запись.
 
 <a id="examples"></a>
 ## Примеры

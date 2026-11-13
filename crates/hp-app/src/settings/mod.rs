@@ -36,7 +36,9 @@ mod vtf;
 mod workflow;
 
 pub use blender::{BlenderFormat, BlenderSettings};
-pub use brush::{BrushSettings, DetailSplitSetting, FuncDetailSettings, RoadPreset};
+pub use brush::{
+    BrushSettings, DetailSplitSetting, ExtrudeAxisSetting, ExtrudeDirectionSetting, FuncDetailSettings, RoadPreset,
+};
 pub use compile::{
     BspModeSetting, CompilePresetSetting, CompileProfile, CompileSettings, FlagChoiceSetting, LightingSetting,
     PackPolicy, ProfileStep, RadModeSetting, StaticPropShadows, VisModeSetting, WindowPlacement,

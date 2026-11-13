@@ -1315,4 +1315,36 @@ pub const TR: TrTable = &[
         "Model compiler (studiomdl, NekoMDL...)",
         "Compilateur de modèles (studiomdl, NekoMDL...)",
     ),
+    (
+        "compile.flag.ao",
+        "Hammer Pro option: bake ambient occlusion like VRAD++ (-ambientocclusion works too): corners, crevices and the ground under objects get darker. The lightmaps are multiplied by 1 - scale x (1 - AO). Off by default, even in the Final preset.",
+        "Option de Hammer Pro : calcule l'occlusion ambiante comme VRAD++ (-ambientocclusion marche aussi) : les coins, les recoins et le sol sous les objets s'assombrissent. Les lightmaps sont multipliées par 1 - échelle x (1 - AO). Désactivée par défaut, même dans le préréglage Final.",
+    ),
+    (
+        "compile.flag.aoradius",
+        "With -ao: how far in units geometry darkens a surface (default 32). Scaled down in the 3D skybox by the sky_camera scale.",
+        "Avec -ao : jusqu'à quelle distance en unités la géométrie assombrit une surface (32 par défaut). Réduite dans la skybox 3D selon l'échelle du sky_camera.",
+    ),
+    (
+        "compile.flag.aoscale",
+        "With -ao: strength of the ambient occlusion, 0 (none) to 1 (full), default 0.5.",
+        "Avec -ao : force de l'occlusion ambiante, de 0 (aucune) à 1 (totale), 0,5 par défaut.",
+    ),
+    (
+        "compile.flag.aofacesamples",
+        "With -ao: rays per luxel. Default 32, 16 with -fast, 64 with -final; a number given here is used as is.",
+        "Avec -ao : rayons par luxel. 32 par défaut, 16 avec -fast, 64 avec -final ; un nombre donné ici est utilisé tel quel.",
+    ),
+    (
+        "compile.flag.aopropsamples",
+        "With -ao and -StaticPropLighting: rays per static prop vertex. Default 32, 16 with -fast, 64 with -final.",
+        "Avec -ao et -StaticPropLighting : rayons par sommet de prop statique. 32 par défaut, 16 avec -fast, 64 avec -final.",
+    ),
+    (
+        "compile.flag.aodebug",
+        "Debug: the lightmaps (and baked prop vertex colors) show only the ambient occlusion term, white where open, dark in corners. Turns -ao on.",
+        "Débogage : les lightmaps (et les couleurs de sommets des props) ne montrent que le terme d'occlusion ambiante, blanc là où c'est dégagé, sombre dans les coins. Active -ao.",
+    ),
+    ("compile.flag_group.occlusion", "Ambient occlusion", "Occlusion ambiante"),
+    ("compile.light_stage.ambient_occlusion", "Ambient occlusion", "Occlusion ambiante"),
 ];

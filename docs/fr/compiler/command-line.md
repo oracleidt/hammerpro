@@ -117,10 +117,16 @@ Sans contenu de jeu (Garry's Mod introuvable et pas de `-game`), les matériaux 
 | `-nostaticpropshadows` | | Hammer Pro : aucune ombre de prop statique. | désactivé |
 | `-nodispshadows` | | Hammer Pro : aucune ombre de displacement. | désactivé |
 | `-nostylebounce` | | Hammer Pro : les lumières nommées (commutables) ne rebondissent pas, comme dans VRAD. | désactivé |
+| `-ao` / `-ambientocclusion` | | Occlusion ambiante précalculée, comme dans VRAD++ (`-ao 0`, `-noao` : désactivée). Voir [Occlusion ambiante](compile-options.md#ambient-occlusion). | désactivé |
+| `-aoradius` | unités | Rayon de l'occlusion ambiante (divisé par l'échelle du `sky_camera` dans la skybox 3D). | 32 |
+| `-aoscale` | 0 à 1 | Force de l'occlusion ambiante (`-aostrength` est lue pareil). | 0,5 |
+| `-aofacesamples` | rayons | Rayons d'occlusion ambiante par luxel (`-aosamples` est lue pareil). | 32, 16 avec `-fast`, 64 avec `-final` |
+| `-aopropsamples` | rayons | Rayons d'occlusion ambiante par sommet de prop statique (avec `-StaticPropLighting`). | 32, 16 avec `-fast`, 64 avec `-final` |
+| `-aodebug` | | Les lightmaps ne montrent que le terme d'occlusion ambiante. Active `-ao`. | désactivé |
 | `-noaddons`, `-wsaddons`, `-nowsaddons`, `-serveraddons`, `-mount_appid` | | Contenu monté pour les modèles, comme `--bspc`. | addons et objets du Workshop montés |
 | `-radius_override` | unités | Accepté et ignoré (une option de VVIS souvent passée à tous les outils). | |
 
-Toute autre option donne `Warning: option ... is not supported by this lighting compiler: ignored` ; les options connues de VRAD qui prennent une valeur (`-vproject`, `-aoscale`, `-aofacesamples`, `-aopropsamples`, `-ambientocclusion`, `-sunsamplesarealight`, `-leafambientsamplereduction`, `-maxdispsamplesize`, `-disppatchradius`, `-mpi_workercount`, `-dumptrace`) sautent aussi leur valeur.
+Toute autre option donne `Warning: option ... is not supported by this lighting compiler: ignored` ; les options connues de VRAD qui prennent une valeur (`-vproject`, `-sunsamplesarealight`, `-leafambientsamplereduction`, `-maxdispsamplesize`, `-disppatchradius`, `-mpi_workercount`, `-dumptrace`) sautent aussi leur valeur.
 
 Les fichiers de lumières de texture sont lus dans cet ordre : `lights.rad` du jeu (le dossier du jeu, puis les dossiers de l'installation de Garry's Mod, ses dossiers `bin` en dernier), le fichier de `-lights`, le fichier désigné par la clé worldspawn `_lightsrad`, puis `<map>.rad` à côté de la map.
 
@@ -136,7 +142,7 @@ Le premier pourcentage est celui de tout l'éclairage, le second celui de l'éta
 Light phase times: setup 0.15 s, faces 0.63 s, static prop models 0.41 s, shadow tree 1.56 s, surface tree 0.19 s, blocker tree 0.04 s, direct light 13.50 s, displacement blend 1.24 s, displacement bounce blend 1.00 s, bounce rays 3.23 s, bounce passes 3.02 s, seams 0.31 s, leaf ambient 0.45 s, write 0.77 s
 ```
 
-`direct light` comprend les lumières, le soleil et le ciel, `static prop models` la lecture des modèles des props (seuls les modèles des props qui projettent une ombre ou reçoivent l'éclairage par sommet sont lus), `seams` le raccord des luxels partagés par des faces voisines ; `light probes` et `detail props` apparaissent quand ils tournent. Les problèmes trouvés par la vérification finale qui étaient déjà dans le BSP avant l'éclairage (une map compilée par d'autres outils) sont des avertissements ; seuls les nouveaux empêchent l'écriture.
+`direct light` comprend les lumières, le soleil et le ciel, `ambient occlusion` l'occlusion ambiante précalculée (avec `-ao`), `static prop models` la lecture des modèles des props (seuls les modèles des props qui projettent une ombre ou reçoivent l'éclairage par sommet sont lus), `seams` le raccord des luxels partagés par des faces voisines ; `light probes` et `detail props` apparaissent quand ils tournent. Les problèmes trouvés par la vérification finale qui étaient déjà dans le BSP avant l'éclairage (une map compilée par d'autres outils) sont des avertissements ; seuls les nouveaux empêchent l'écriture.
 
 ## Exemples
 

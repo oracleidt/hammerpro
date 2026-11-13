@@ -113,13 +113,42 @@ The `I` key is the shortcut of the action `inset_interactive`, and it only start
 
 The interactive extrude pulls a face out of its brush as a new brush, like the Extrude of Blender (`E`) but making a separate convex brush, or pushes it into its brush to carve material out of it (negative distance). It is also on **Tools > Brush operations > Interactive extrude (E)**, the action `extrude_interactive`, and the command palette.
 
-1. Choose the faces as for the inset: the selected faces, or the face under the mouse when none is selected. Several faces work together: each one becomes its own new brush, pulled along its own normal, in one undo step.
+1. Choose the faces as for the inset: the selected faces, or the face under the mouse when none is selected. Several faces work together, in one undo step: by default each one is pulled along its own normal (see [the direction](#extrude-along-normal-altshifte-and-the-direction)).
 2. Put the mouse over a 3D view and press `E` (the key is free in the keymap presets; in the selection tool `E` still starts the scale of the selected objects, but not while faces are selected). Move the mouse: moving the way the face normal points on screen makes the new brush higher (yellow preview of the top of each new brush); moving the other way past zero gives a negative distance, which carves: a red-orange preview shows the face moving into the brush and the label shows a negative distance. To dig a pocket in the middle of a face, use an inset with a negative depth or the carve mode of this tool.
 3. The distance follows the active grid (see below), also when negative. Type a number for an exact value, which is not snapped; type `-` first for a negative one (`-16`). Left click or `Enter` applies (**Extrude face** for new brushes, **Carve face** when every distance is negative), `Escape` or right click cancels. A distance whose size is under 0.125 is refused.
 
-The new brush is a separate convex brush that starts on the face and reuses its texture and alignment: it is never merged into the original brush, so it is a new object you can move or delete on its own. It belongs to the same entity as the brush it comes from.
+The new brush starts on the face and reuses its texture: the top takes the alignment of the face, the side faces continue the face texture over its edges. It belongs to the same entity as the brush it comes from. With **New brush** (the default) it is never merged into the original brush, so it is a new object you can move or delete on its own; see **Grow the brush** below.
 
-A negative distance does not add a brush: it cuts the slab of material of that depth under the face out of its own brush, so the face moves into the brush and the brush stays one valid convex brush with its id (the new face reuses the texture of the old one). Several faces can be carved together, also on the same brush, and mixed with extruded faces in the same single undo step. A carve that would go through the whole brush is refused with a message, nothing changes.
+A negative distance does not add a brush: the face moves into its own brush by that distance, the brush shrinks and stays one valid convex brush with its id (the moved face keeps its texture). Several faces can be carved together, also on the same brush, in a single undo step. Pulling some faces out and carving others in at the same time is refused. A carve that would go through the whole brush is refused with a message, nothing changes.
+
+### Extrude along normal (Alt+Shift+E) and the direction
+
+**Extrude along normal** (`Alt+Shift+E`, the action `extrude_along_normal`, **Tools > Brush operations**, the right click menu of selected faces in the 3D view, the command palette, or the button of the options bar of this tool) starts the same interactive extrude with the direction set to **Along each face normal**. It works on faces of any orientation: the slanted faces of rotated or vertex edited brushes, the base faces of displacements, and faces of several brushes at once. Drag in a 3D or a 2D view, or type the distance.
+
+While the extrude runs, the label shows the direction and the result, and these keys change them (they are kept for the next time):
+
+| Key | What it does |
+|---|---|
+| `Tab` | Next direction: **each face normal**, **average normal**, **axis**. |
+| `X`, `Y`, `Z` | Direction **axis** along that world axis. |
+| `G` | Switch between **new brush** and **grow the brush**. |
+
+| Direction | Result |
+|---|---|
+| **Along each face normal** | Every face moves along its own normal. Where two selected faces share an edge (on one brush or on two brushes side by side) and their normals open a gap, a wall is built between them: a wedge brush that closes the gap, textured like the first face. |
+| **Along the average normal** | Every face moves along the average of the normals, so neighbor faces stay joined without walls. Every face must face that direction, otherwise the reason is shown. |
+| **Along an axis** | Every face moves along a world axis, outward: **nearest** (the axis closest to the average normal), X, Y or Z. A face parallel to the axis is refused. The side faces are then vertical (or along the axis), which keeps a slanted roof grown upward convex. |
+
+| Result | What happens |
+|---|---|
+| **New brush** (default) | The pushed volume becomes new convex brushes (merged together when they stay convex), the original brush is untouched. |
+| **Grow the brush** | The brush itself grows when it stays convex: the moved face keeps its id, texture and displacement (moved with it), and the walls between faces join it. When the bump would not be convex (a face whose neighbors lean inward, a slanted face pushed along its normal next to vertical sides), that part becomes a new brush instead. |
+
+With the grid on, **Along each face normal** puts every new face on a grid plane; with **average** or **axis** the distance is snapped along that direction for all the faces at once. `Alt` uses the alternate grid, typing a value is never snapped.
+
+On a displacement, **New brush** leaves the displacement where it is and builds the new brush on its base face; **Grow the brush** moves the displacement with the face when the base face keeps its shape (a face whose growth would stretch a displacement makes a new brush instead), and a negative distance moves it into the brush. A carve that would change the shape of a displacement is refused.
+
+The options bar of the extrude / carve tool has the same choices under **Face extrude**: **Along each face normal**, **Along the average normal**, **Along an axis** (with **Nearest**, X, Y, Z), **New brush** or **Grow the brush**, and the **Extrude along normal** button. They are the settings `brush.extrude_mode` (`normal`, `average`, `axis`), `brush.extrude_axis` (`auto`, `x`, `y`, `z`) and `brush.extrude_grow`. **Tools > Brush operations** also has **Extrude direction: next** and **Extrude grows the brush** (both in the command palette).
 
 ## Grid for bevel, inset and extrude
 
@@ -133,7 +162,7 @@ The mouse distances of the [bevel](bevel-tool.md) radius, the inset thickness an
 
 ## MCP
 
-The MCP tool `extrude_face` does the carve and extrude tool from an AI app: `solid`, `side` (the side index of the face, from `get_faces`), the outline `points` as world positions on the face, `mode` (`carve` or `extrude`), `depth`, `through`, and the texture of the new faces (`new_faces`: `face` or `current`, or a `material`). `get_tool_options` and `set_tool_options` read and change the options of the tool itself (tool `extrude`: `mode`, `depth`, `through`, `new_faces`). The MCP tool `extrude_faces` is the interactive extrude: `faces` (default the selected faces), `distance` (negative carves the brush instead of adding one, magnitude at least 0.125), `snap` (align the top planes to the active grid), `alt_grid` (the Alt grid), `material` and `dry_run`. The MCP tool `inset_face` does the inset: `faces` (`[{solid, side}]`, default the selected faces, else the faces of `ids`), `distance`, `depth` (positive raises, negative sinks the inner block), `individual` (every face on its own instead of the shared region outline), `snap` (the active grid, clamped to 1 to 1024), `material` and `dry_run` (answers the number of brushes, or why it fails, without changing the map). The actions `inset_interactive` and `extrude_interactive` (script command `action extrude_interactive`) start the interactive tools. See the [MCP tool reference](../../MCP.md).
+The MCP tool `extrude_face` does the carve and extrude tool from an AI app: `solid`, `side` (the side index of the face, from `get_faces`), the outline `points` as world positions on the face, `mode` (`carve` or `extrude`), `depth`, `through`, and the texture of the new faces (`new_faces`: `face` or `current`, or a `material`). `get_tool_options` and `set_tool_options` read and change the options of the tool itself (tool `extrude`: `mode`, `depth`, `through`, `new_faces`). The MCP tool `extrude_faces` is the interactive extrude: `faces` (default the selected faces), `distance` (negative carves the brush instead of adding one, magnitude at least 0.125), `mode` (`normal`: each face along its own normal with walls between neighbors, `average`, or `axis` with `axis`: `auto`, `x`, `y`, `z`), `new_brush` (`false` grows the brush when it stays convex), `snap` (align the top planes to the active grid), `alt_grid` (the Alt grid), `material` and `dry_run`. The settings `brush.extrude_mode`, `brush.extrude_axis` and `brush.extrude_grow` (`set_setting`) are the choices of the interactive extrude, and the actions `extrude_along_normal`, `extrude_cycle_direction` and `toggle_extrude_grow` start it along the normals or change them. The MCP tool `inset_face` does the inset: `faces` (`[{solid, side}]`, default the selected faces, else the faces of `ids`), `distance`, `depth` (positive raises, negative sinks the inner block), `individual` (every face on its own instead of the shared region outline), `snap` (the active grid, clamped to 1 to 1024), `material` and `dry_run` (answers the number of brushes, or why it fails, without changing the map). The actions `inset_interactive` and `extrude_interactive` (script command `action extrude_interactive`) start the interactive tools. See the [MCP tool reference](../../MCP.md).
 
 ## FAQ
 
@@ -145,7 +174,9 @@ The MCP tool `extrude_face` does the carve and extrude tool from an AI app: `sol
 
 **Can the result have invalid brushes?** No. The outline is split into convex pieces, every resulting brush is checked, and brushes that can be merged back are merged. The compiler sees ordinary convex brushes.
 
-**Can I carve a displacement?** No, displacement faces are refused. Carve the brush before turning the face into a displacement.
+**Can I carve a displacement?** Not with an outline: displacement faces are refused by the outline tool. Carve the brush before turning the face into a displacement. The interactive extrude and **Extrude along normal** do work on the base face of a displacement (see above).
+
+**Why did Grow the brush make a new brush?** The brush with the bump would not be convex. Use **Along an axis** for a slanted face next to vertical sides, or keep the new brush.
 
 ## Related pages
 

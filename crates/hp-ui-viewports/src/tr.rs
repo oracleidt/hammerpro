@@ -2,6 +2,11 @@ use hp_app::i18n::TrTable;
 
 pub const TR: TrTable = &[
     ("viewport.camera_speed", "Camera speed: {0} units/s", "Vitesse de la caméra : {0} unités/s"),
+    (
+        "viewport.camera_smoothing_tip",
+        "Off: the camera starts and stops the frame you press or release a movement key",
+        "Désactivé : la caméra démarre et s'arrête à l'image où vous appuyez sur une touche de déplacement ou la relâchez",
+    ),
     ("viewport.starting", "Starting renderer...", "Démarrage du rendu..."),
     (
         "viewport.collision_legend",

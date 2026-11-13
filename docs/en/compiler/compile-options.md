@@ -116,6 +116,32 @@ Menu group **Quality** (lighting step).
 | `-nodispshadows` | Hammer Pro option: displacements cast no shadow at all (they are still lit). One displacement can also be kept from casting shadows with the **Cast shadows** option of the [displacement tool](../features/displacement-tool.md). | off |
 | `-nostylebounce` | Hammer Pro option: named (switchable) lights light only what they see directly, like Valve's VRAD. Without it their light also bounces, in their own light style, and switches with them. Their direct light always keeps its place among the 4 styles of a face: a bounce layer only takes a free slot. | off |
 
+## Ambient occlusion
+
+Menu group **Ambient occlusion** (lighting step). Baked ambient occlusion like VRAD++: corners, crevices, the foot of walls and the ground under crates get darker in the lightmaps. It is off by default, in every preset (Final too): turn it on with `-ao` (or `-ambientocclusion`, like VRAD++). The editor previews (Lit, Baked) never show it; the compiled map does, in game and in the [player view](../features/player-view.md).
+
+| Flag | Effect | Default |
+|---|---|---|
+| `-ao` | Bakes ambient occlusion. `-ambientocclusion` is the same; `-ao 0` and `-noao` turn it off again. | off |
+| `-aoradius <units>` | How far geometry darkens a surface. In the 3D skybox it is divided by the `sky_camera` scale, so the skybox gets the same occlusion as the full size world. | 32 |
+| `-aoscale <0 to 1>` | Strength: 0 changes nothing, 1 lets fully enclosed luxels go black. Values out of range are clamped with a warning. | 0.5 |
+| `-aofacesamples <rays>` | Rays per luxel. | 32, 16 with `-fast`, 64 with `-final` |
+| `-aopropsamples <rays>` | Rays per static prop vertex, with `-StaticPropLighting`. | 32, 16 with `-fast`, 64 with `-final` |
+| `-aodebug` | The lightmaps show only the occlusion term (white where open, dark in corners) instead of the light, and baked prop vertices too. Turns `-ao` on. | off |
+
+The radius, scale and sample options do nothing without `-ao` (the log says so). A number of rays given with `-aofacesamples` or `-aopropsamples` is used as is (1 to 1024); only the defaults follow `-fast` and `-final`. The older `-aostrength` and `-aosamples` are read as `-aoscale` and `-aofacesamples`.
+
+### How it is computed
+
+1. For each luxel, from the same point the direct light uses (1 unit above the surface), N rays (`-aofacesamples`) leave in a cosine weighted hemisphere around the surface normal (the smoothed normal on displacements) and stop at the radius R. They hit world brushes, displacements and static props; sky faces, water, glass and alpha tested leaves do not occlude.
+2. Each ray that hits at distance t occludes with a smooth falloff: `AO = 1 - (1/N) x sum of (1 - (t / R)^2)` over the rays that hit. AO is 1 in the open and goes down near geometry.
+3. The AO of each luxel is averaged with the luxels around it (within one and a half luxels, facing the same way, across faces and displacements): no noise, no seam between faces, lightmap pages or displacements.
+4. Like CS:GO's VRAD and VRAD++, the occlusion multiplies the final lightmap, blended toward 1 by the scale: `lightmap = (direct + bounced) x (1 - scale x (1 - AO))`. It applies to every light style, to LDR and HDR and to the bump map directions, after the bounces (the occlusion does not darken the light that bounces), before the luxels shared by neighbor faces are matched.
+5. The ambient light of props and players (leaf ambient cubes) and the detail props take their light from the occluded lightmaps. With `-StaticPropLighting`, each prop vertex gets the same factor with `-aopropsamples` rays (props that do not shadow themselves, `-nossprops`, are not occluded by their own model).
+6. With `-aodebug` the lightmaps hold `128 x AO^2.2` in their first light style (the others are black): the gray you see in game follows AO, open floors are white and corners gray.
+
+The cost: the AO stage (`ambient occlusion` in the stage list and in `Light phase times`) traces short rays on the BVH the lighting already built. On the test maps it adds about 10% to the lighting time: 2 seconds for the 790,000 luxels of gm_construct on 4 threads (32 rays per luxel, 22 seconds of lighting without it), 30 to 200 ms on small maps.
+
 ## Static props
 
 Menu group **Static props** (lighting step).
@@ -168,6 +194,7 @@ Menu group **Debugging**.
 | `-trace <cluster> <cluster>` | geometry | Writes the line of sight between two clusters to `<map>.lin`. |
 | `-verbose` | geometry | Prints the options of the compile. |
 | `-StaticPropNormals` | lighting | Static props show their vertex normals instead of their lighting. |
+| `-aodebug` | lighting | The lightmaps show only the ambient occlusion term (menu group **Ambient occlusion**, see [above](#ambient-occlusion)). |
 
 ## FAQ
 

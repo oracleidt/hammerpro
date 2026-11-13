@@ -25,6 +25,7 @@ pub use csg::ClipKeep;
 pub use detail::{DETAIL_CLASS, DetailPlan, DetailSplit, MAKE_DETAIL_LABEL, is_detail_class};
 pub use edge_loops::{LoopScope, MAX_LOOP_SOLIDS, RunKind};
 pub use entity::EntityQuery;
+pub use extrude::ExtrudePreview;
 pub use find_replace::{ConnPart, MAX_TEXT_LEN, TextField, TextMatch, TextQuery, find_ranges};
 pub use material::{FaceEdit, ReplaceScope};
 pub use random_rotate::{MAX_JITTER_DEG, RandomRotate, RandomRotateReport};

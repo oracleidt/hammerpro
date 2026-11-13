@@ -233,6 +233,7 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Reset view splits | `reset_view_splits` |  | `Ctrl+A` | `Ctrl+A` |
 | Shorter draw distance | `far_plane_closer` |  |  |  |
 | Longer draw distance | `far_plane_farther` |  |  |  |
+| Smooth 3D camera | `toggle_camera_smoothing` |  |  |  |
 | Panels > Texture browser | `show_texture_browser` |  |  |  |
 | Panels > Model browser | `show_model_browser` |  |  | `Shift+F10` |
 | Panels > Entity properties | `show_entity_properties` |  |  |  |
@@ -284,6 +285,9 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Inset face... | `inset_face` |  |  |  |
 | Interactive inset (I) | `inset_interactive` | `I` |  |  |
 | Interactive extrude (E) | `extrude_interactive` | `E` |  |  |
+| Extrude along normal | `extrude_along_normal` | `Alt+Shift+E` |  |  |
+| Extrude direction: next (each normal, average, axis) | `extrude_cycle_direction` |  |  |  |
+| Extrude grows the brush | `toggle_extrude_grow` |  |  |  |
 | Nodraw on hidden faces... | `nodraw_hidden_faces` |  |  |  |
 | Tie each to its own entity | `tie_each_to_entity` | `Ctrl+Shift+T` |  |  |
 | Edit curve | `curve_edit` |  |  |  |

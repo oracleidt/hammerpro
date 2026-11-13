@@ -334,6 +334,7 @@ fn make_ctx<'a>(
         water: &scene.water,
         water_reflectivity: scene.water_reflectivity,
         dispchop: disp::chop_or_default(scene.key.texlights.dispchop),
+        ao: None,
     }
 }
 

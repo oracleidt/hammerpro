@@ -338,11 +338,11 @@ pub(crate) const TR: TrTable = &[
     ("shell.view.ctl_digits_desc", "Zoom presets of the 2D view", "Zooms prédéfinis de la vue 2D"),
     ("shell.view.invert_x", "Invert mouse X", "Inverser l'axe X de la souris"),
     ("shell.view.fly_response", "Camera acceleration time", "Temps d'accélération de la caméra"),
-    ("shell.view.camera_smoothing", "Smooth camera movement", "Déplacements fluides de la caméra"),
+    ("shell.view.camera_smoothing", "Smooth 3D camera", "Caméra 3D fluide"),
     (
         "shell.view.camera_smoothing_tip",
-        "Disable for precise movement: the 3D camera starts and stops immediately with the movement keys. The acceleration time is kept for when smoothing is enabled again.",
-        "Désactivez pour des déplacements précis : la caméra 3D démarre et s'arrête immédiatement avec les touches de déplacement. Le temps d'accélération est conservé pour la réactivation.",
+        "On: the 3D camera speeds up and slows down smoothly when you fly, and glides toward a teammate you follow. Off: it starts and stops the frame you press or release a movement key, and jumps straight to a followed teammate. Mouse look, the wheel, orbit and trackpad gestures always follow the input directly. The acceleration time is kept for when smoothing is turned on again.",
+        "Activé : la caméra 3D accélère et ralentit en douceur en vol, et glisse vers le coéquipier suivi. Désactivé : elle démarre et s'arrête à l'image où vous appuyez sur une touche de déplacement ou la relâchez, et saute directement sur le coéquipier suivi. La vue à la souris, la molette, l'orbite et les gestes du pavé tactile suivent toujours directement l'entrée. Le temps d'accélération est conservé pour la réactivation.",
     ),
     (
         "shell.view.fly_response_tip",

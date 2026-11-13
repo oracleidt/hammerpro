@@ -14,6 +14,7 @@ mod edge_net;
 mod extrude;
 mod hull;
 mod inset;
+mod normal_extrude;
 mod pick;
 mod plane;
 mod plane_points;
@@ -75,6 +76,10 @@ pub use hull::{
 pub use inset::{
     InsetIssue, InsetParams, MAX_INSET, MIN_INSET, RegionRing, clean_polygon, face_inset, faces_inset, inset_corners,
     inset_polygon, inset_ring, offset_region, region_rings, solids_inset,
+};
+pub use normal_extrude::{
+    ExtrudeAxis, ExtrudeDirection, MIN_DIRECTION_DOT, NormalExtrudeFace, NormalExtrudeParams, NormalExtrudeResult,
+    extrude_directions, normal_extrude,
 };
 pub use pick::{ViewAxis, point_segment_distance, point_segment_distance_2d, ray_aabb, ray_solid, ray_triangle};
 pub use plane::{Plane, PlaneSide};

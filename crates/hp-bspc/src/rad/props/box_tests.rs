@@ -335,3 +335,30 @@ fn slow_stages_print_progress() {
     let plan = lines.iter().find(|l| l.starts_with("Lighting stages: ")).expect("plan");
     assert!(plan.ends_with("leaf ambient, static props, writing"), "{plan}");
 }
+
+#[test]
+fn ambient_occlusion_never_brightens_prop_vertices() {
+    let models = BoxModel { files: box_files() };
+    let bsp = room_with_box("");
+    let colors = |ao: Option<crate::rad::AoOptions>| {
+        let o = RadOptions { ao, ..opts(true) };
+        let lit = light_bsp_with(&bsp, &o, &models, &mut |_| {}).expect("light");
+        ["sp_0.vhv", "sp_hdr_0.vhv"]
+            .map(|name| {
+                let f = pak_file(&lit, name).unwrap_or_else(|| panic!("{name}"));
+                (0..24).map(|v| [f[512 + v * 4], f[512 + v * 4 + 1], f[512 + v * 4 + 2]]).collect::<Vec<_>>()
+            })
+            .to_vec()
+    };
+    let plain = colors(None);
+    let strong = crate::rad::AoOptions { radius: 64.0, scale: 1.0, ..crate::rad::AoOptions::default() };
+    let occluded = colors(Some(strong));
+    let mut darker = 0;
+    for (p, o) in plain.iter().flatten().zip(occluded.iter().flatten()) {
+        for k in 0..3 {
+            assert!(o[k] <= p[k], "a vertex got brighter with ambient occlusion: {o:?} over {p:?}");
+        }
+        darker += usize::from(o[0] < p[0] || o[1] < p[1] || o[2] < p[2]);
+    }
+    assert!(darker >= 8, "the vertices near the floor get darker: {darker}");
+}

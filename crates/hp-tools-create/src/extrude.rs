@@ -3,6 +3,7 @@ use std::cell::RefCell;
 use egui::{Align2, CursorIcon, Key, Modifiers, Pos2, Ui, Vec2};
 use glam::{DVec2, DVec3};
 use hp_app::actions::{Action, key_label, shortcut_label};
+use hp_app::settings::{ExtrudeAxisSetting, ExtrudeDirectionSetting};
 use hp_app::state::AppState;
 use hp_app::tool::ToolOption;
 use hp_app::{Severity, Tool, ToolFlow, ToolId, ViewInfo, ViewInput, t, tf};
@@ -214,9 +215,78 @@ fn issue_text(e: &GeomError) -> String {
         Some(ExtrudeIssue::PastLimits) => "create.extrude.err_limits",
         Some(ExtrudeIssue::NoCut) => "create.extrude.err_no_cut",
         Some(ExtrudeIssue::ThroughBrush) => "create.extrude.err_through",
+        Some(ExtrudeIssue::MixedDistances) => "create.extrude.err_mixed",
+        Some(ExtrudeIssue::AwayFromDirection) => "create.extrude.err_away",
+        Some(ExtrudeIssue::DisplacementShape) => "create.extrude.err_disp_shape",
         None => return e.to_string(),
     };
     t!(key).to_owned()
+}
+
+pub(crate) fn edit_issue_text(e: &EditError) -> String {
+    match e {
+        EditError::Geom(g) => issue_text(g),
+        other => other.to_string(),
+    }
+}
+
+pub(crate) fn face_extrude_ui(ui: &mut Ui, state: &mut AppState) {
+    let tip = tf!(
+        "create.extrude.face_extrude_tip",
+        state.keys.shortcut(Action::ExtrudeInteractive).map(|s| shortcut_label(&s)).unwrap_or_default(),
+        state.keys.shortcut(Action::ExtrudeAlongNormal).map(|s| shortcut_label(&s)).unwrap_or_default()
+    );
+    ui.label(t!("create.extrude.face_extrude")).on_hover_text(&tip);
+    let mut changed = false;
+    let brush = &mut state.settings.brush;
+    for (dir, key) in [
+        (ExtrudeDirectionSetting::Normal, "create.extrude.dir_normal"),
+        (ExtrudeDirectionSetting::Average, "create.extrude.dir_average"),
+        (ExtrudeDirectionSetting::Axis, "create.extrude.dir_axis"),
+    ] {
+        if ui
+            .add(egui::Button::selectable(brush.extrude_mode == dir, t!(key)))
+            .on_hover_text(t!("create.extrude.dir_tip"))
+            .clicked()
+        {
+            brush.extrude_mode = dir;
+            changed = true;
+        }
+    }
+    if brush.extrude_mode == ExtrudeDirectionSetting::Axis {
+        for axis in ExtrudeAxisSetting::ALL {
+            let label = match axis {
+                ExtrudeAxisSetting::Auto => t!("create.extrude.axis_auto").to_owned(),
+                other => other.id().to_ascii_uppercase(),
+            };
+            if ui
+                .add(egui::Button::selectable(brush.extrude_axis == axis, label))
+                .on_hover_text(t!("create.extrude.axis_tip"))
+                .clicked()
+            {
+                brush.extrude_axis = axis;
+                changed = true;
+            }
+        }
+    }
+    ui.separator();
+    for (grow, key) in [(false, "create.extrude.result_new"), (true, "create.extrude.result_grow")] {
+        if ui
+            .add(egui::Button::selectable(brush.extrude_grow == grow, t!(key)))
+            .on_hover_text(t!("create.extrude.result_tip"))
+            .clicked()
+        {
+            brush.extrude_grow = grow;
+            changed = true;
+        }
+    }
+    if changed {
+        state.settings_dirty = true;
+    }
+    let has_faces = !state.doc.selected_faces().is_empty();
+    if ui.add_enabled(has_faces, egui::Button::new(Action::ExtrudeAlongNormal.label())).on_hover_text(&tip).clicked() {
+        state.request(Action::ExtrudeAlongNormal);
+    }
 }
 
 fn hash_f64s(values: impl IntoIterator<Item = f64>) -> u64 {
@@ -921,8 +991,13 @@ impl Tool for ExtrudeTool {
             {
                 state.request(Action::ExtrudeInteractive);
             }
+        });
+        ui.horizontal_wrapped(|ui| {
+            face_extrude_ui(ui, state);
+        });
+        ui.horizontal_wrapped(|ui| {
+            let count = self.points().len();
             if count > 0 {
-                ui.separator();
                 ui.label(tf!("create.extrude.count", count));
                 if self.is_ready() {
                     match self.preview_error(state) {

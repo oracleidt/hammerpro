@@ -245,7 +245,7 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `keymap_preset` | `"HammerPro"` | Jeu de raccourcis : `HammerPro`, `Hammer`, `HammerPlusPlus`. Vos propres raccourcis restent prioritaires. |
 | `nav_scheme` | `"HammerPro"` | Contrôles de la caméra : `HammerPro` (clic droit glissé pour regarder, ZQSD/WASD pour voler, clic molette glissé pour faire défiler), `Hammer` (en plus : Espace + clic gauche glissé regarde, Espace + clic droit glissé fait défiler, clics gauche et droit glissés déplacent, les flèches regardent), `HammerPlusPlus` (les contrôles de Hammer, le clic molette regarde en 3D). |
 | `invert_mouse_x` | `false` | Inverse l'axe horizontal de la souris. |
-| `camera_smoothing` | `true` | Activer l'accélération fluide de la caméra 3D ; false rend les démarrages et arrêts immédiats. |
+| `camera_smoothing` | `true` | Caméra 3D fluide : accélération et décélération en vol, glissement lors du suivi d'un coéquipier. false : la caméra démarre et s'arrête à l'image où une touche de déplacement est enfoncée ou relâchée. Action `toggle_camera_smoothing`. |
 | `fly_response` | `0.07` | Secondes que met la caméra pour atteindre sa vitesse, de 0 à 0,5 (0 : immédiat). |
 | `grid_step_factor` | `2.0` | Facteur de `[` et `]`, de 1,25 à 10. Avec 2, les puissances de deux de 1/8 à 4096. |
 | `ctrl_wheel` | `"GridSize"` | `Ctrl` + molette dans une vue 2D : `GridSize` (taille de grille) ou `ZoomAll2d` (zoom de toutes les vues 2D). |

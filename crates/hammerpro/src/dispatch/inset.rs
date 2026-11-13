@@ -89,6 +89,26 @@ impl HammerProApp {
         }
     }
 
+    pub(crate) fn cycle_extrude_mode(&mut self) {
+        let b = &mut self.state.settings.brush;
+        b.extrude_mode = b.extrude_mode.next();
+        let text = match b.extrude_mode {
+            hp_app::settings::ExtrudeDirectionSetting::Normal => t!("create.extrude.dir_normal"),
+            hp_app::settings::ExtrudeDirectionSetting::Average => t!("create.extrude.dir_average"),
+            hp_app::settings::ExtrudeDirectionSetting::Axis => t!("create.extrude.dir_axis"),
+        };
+        self.state.settings_dirty = true;
+        self.state.notify(Severity::Info, text);
+    }
+
+    pub(crate) fn toggle_extrude_grow(&mut self) {
+        let b = &mut self.state.settings.brush;
+        b.extrude_grow = !b.extrude_grow;
+        let text = if b.extrude_grow { t!("create.extrude.result_grow") } else { t!("create.extrude.result_new") };
+        self.state.settings_dirty = true;
+        self.state.notify(Severity::Info, text);
+    }
+
     pub(crate) fn inset_shortcut(&mut self, ctx: &egui::Context) -> bool {
         use hp_app::ToolId;
         if !matches!(self.state.tool, ToolId::Select | ToolId::Texture | ToolId::Extrude | ToolId::Vertex) {

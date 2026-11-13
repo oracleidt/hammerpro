@@ -273,6 +273,42 @@ pub const FLAGS: &[FlagInfo] = &[
         false,
         "Debug: static props show their vertex normals instead of their lighting.",
     ),
+    info(
+        StepKind::Rad,
+        "-ao",
+        false,
+        "Hammer Pro option: bake ambient occlusion like VRAD++ (-ambientocclusion works too): corners, crevices and the ground under objects get darker. The lightmaps are multiplied by 1 - scale x (1 - AO). Off by default, even in the Final preset.",
+    ),
+    info(
+        StepKind::Rad,
+        "-aoradius",
+        true,
+        "With -ao: how far in units geometry darkens a surface (default 32). Scaled down in the 3D skybox by the sky_camera scale.",
+    ),
+    info(
+        StepKind::Rad,
+        "-aoscale",
+        true,
+        "With -ao: strength of the ambient occlusion, 0 (none) to 1 (full), default 0.5.",
+    ),
+    info(
+        StepKind::Rad,
+        "-aofacesamples",
+        true,
+        "With -ao: rays per luxel. Default 32, 16 with -fast, 64 with -final; a number given here is used as is.",
+    ),
+    info(
+        StepKind::Rad,
+        "-aopropsamples",
+        true,
+        "With -ao and -StaticPropLighting: rays per static prop vertex. Default 32, 16 with -fast, 64 with -final.",
+    ),
+    info(
+        StepKind::Rad,
+        "-aodebug",
+        false,
+        "Debug: the lightmaps (and baked prop vertex colors) show only the ambient occlusion term, white where open, dark in corners. Turns -ao on.",
+    ),
 ];
 
 pub fn flag_info(step: StepKind, flag: &str) -> Option<&'static FlagInfo> {
@@ -291,11 +327,13 @@ pub enum FlagGroup {
     Lights,
     Content,
     Debug,
+    Occlusion,
 }
 
 impl FlagGroup {
-    pub const ALL: [FlagGroup; 10] = [
+    pub const ALL: [FlagGroup; 11] = [
         FlagGroup::Quality,
+        FlagGroup::Occlusion,
         FlagGroup::Speed,
         FlagGroup::Geometry,
         FlagGroup::Visibility,
@@ -319,6 +357,7 @@ impl FlagGroup {
             FlagGroup::Lights => "lights",
             FlagGroup::Content => "content",
             FlagGroup::Debug => "debug",
+            FlagGroup::Occlusion => "occlusion",
         }
     }
 }
@@ -398,8 +437,9 @@ pub fn flag_group(step: StepKind, flag: &str) -> FlagGroup {
             StepKind::Rad,
             "-final" | "-bounce" | "-noextra" | "-extrasky" | "-smooth" | "-softsun" | "-centersamples",
         )
-        | (StepKind::Rad, "-nodispshadows" | "-nostylebounce" | "-ao" | "-noao" | "-aoradius" | "-aostrength")
-        | (StepKind::Rad, "-aosamples") => FlagGroup::Quality,
+        | (StepKind::Rad, "-nodispshadows" | "-nostylebounce") => FlagGroup::Quality,
+        (StepKind::Rad, "-ao" | "-ambientocclusion" | "-noao" | "-aoradius" | "-aoscale" | "-aostrength")
+        | (StepKind::Rad, "-aofacesamples" | "-aopropsamples" | "-aosamples" | "-aodebug") => FlagGroup::Occlusion,
         (StepKind::Rad, "-fast" | "-fastambient" | "-luxeldensity") => FlagGroup::Speed,
         (StepKind::Rad, "-staticproplighting" | "-staticproppolys" | "-textureshadows" | "-nossprops")
         | (StepKind::Rad, "-staticpropsamplescale") => FlagGroup::Props,
@@ -616,6 +656,13 @@ mod tests {
         }
         assert_eq!(flag_group(StepKind::Rad, "-bounce"), FlagGroup::Quality);
         assert_eq!(flag_group(StepKind::Rad, "-StaticPropLighting"), FlagGroup::Props);
+        for f in ["-ao", "-AORadius", "-aoscale", "-aofacesamples", "-aopropsamples", "-aodebug"] {
+            assert_eq!(flag_group(StepKind::Rad, f), FlagGroup::Occlusion, "{f}");
+            assert!(flag_info(StepKind::Rad, f).is_some(), "{f}");
+        }
+        for mode in [RadMode::Draft, RadMode::Normal, RadMode::Final] {
+            assert!(!rad_flags(mode).iter().any(|f| f.to_ascii_lowercase().starts_with("-ao")), "{mode:?}");
+        }
         assert_eq!(flag_group(StepKind::Bsp, "-radius_override"), FlagGroup::Visibility);
         assert_eq!(flag_group(StepKind::Bsp, "-nomerge"), FlagGroup::Debug);
         assert_eq!(managed_by(StepKind::Rad, "-NoStaticPropShadows"), Some(ManagedBy::StaticPropShadows));

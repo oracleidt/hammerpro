@@ -31,6 +31,9 @@ action_list! { brush_actions {
     ToolSpline => "tool_spline", Tools, ToolsCurves, None, Ready;
     SplineEdit => "spline_edit", Tools, ToolsCurves, None, Ready;
     SplineBake => "spline_bake", Tools, ToolsCurves, None, Ready;
+    ExtrudeAlongNormal => "extrude_along_normal", Tools, ToolsFaceOps, sc(ALT_SHIFT, Key::E), Ready;
+    ExtrudeCycleDirection => "extrude_cycle_direction", Tools, ToolsFaceOps, None, Ready;
+    ToggleExtrudeGrow => "toggle_extrude_grow", Tools, ToolsFaceOps, None, Ready;
 }}
 
 pub(super) const REPEATS: &[Action] = &[];
@@ -53,6 +56,7 @@ pub(super) fn enabled(state: &AppState, action: Action) -> Option<bool> {
 pub(super) fn check(state: &AppState, action: Action) -> Option<Check> {
     match action {
         Action::ToggleDetailTint => Some(Check::Toggle(state.settings.brush.detail.tint)),
+        Action::ToggleExtrudeGrow => Some(Check::Toggle(state.settings.brush.extrude_grow)),
         _ => None,
     }
 }
@@ -72,6 +76,13 @@ pub(super) const TR: TrTable = &[
     ("action.inset_face", "Inset face...", "Décaler la face..."),
     ("action.inset_interactive", "Interactive inset (I)", "Décalage interactif (I)"),
     ("action.extrude_interactive", "Interactive extrude (E)", "Extrusion interactive (E)"),
+    ("action.extrude_along_normal", "Extrude along normal", "Extruder selon la normale"),
+    (
+        "action.extrude_cycle_direction",
+        "Extrude direction: next (each normal, average, axis)",
+        "Direction d'extrusion : suivante (chaque normale, moyenne, axe)",
+    ),
+    ("action.toggle_extrude_grow", "Extrude grows the brush", "L'extrusion agrandit le brush"),
     ("action.convert_to_detail", "Make func_detail", "Transformer en func_detail"),
     (
         "action.select_detail_candidates",

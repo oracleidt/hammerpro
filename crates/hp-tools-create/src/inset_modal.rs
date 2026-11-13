@@ -3,10 +3,14 @@ use std::cell::RefCell;
 use egui::{Align2, CursorIcon, Event, Key, PointerButton, Pos2, Vec2};
 use glam::DVec3;
 use hp_app::actions::key_label;
+use hp_app::settings::{ExtrudeAxisSetting, ExtrudeDirectionSetting};
 use hp_app::tool::ToolOption;
 use hp_app::{AppState, Severity, Tool, ToolFlow, ToolId, ToolMenuEntry, ViewInfo, ViewInput, t, tf};
 use hp_editor::{EditError, FaceRef};
-use hp_geom::{InsetIssue, InsetParams, MAX_INSET, MIN_EXTRUDE_DEPTH, MIN_INSET, Plane, region_rings};
+use hp_geom::{
+    InsetIssue, InsetParams, MAX_INSET, MIN_EXTRUDE_DEPTH, MIN_INSET, NormalExtrudeParams, Plane, extrude_directions,
+    region_rings,
+};
 use hp_render::Overlay;
 
 use crate::common::{COLOR_FRONT, COLOR_GHOST, COLOR_PENDING, DistanceSnap, Ov, fmt_len, paint_label, rgba};
@@ -16,6 +20,10 @@ const COLOR_CARVE: egui::Color32 = hp_app::data_colors::CARVE;
 pub const DEPTH_KEY: Key = Key::E;
 
 pub const INDIVIDUAL_KEY: Key = Key::I;
+
+pub const DIRECTION_KEY: Key = Key::Tab;
+
+pub const GROW_KEY: Key = Key::G;
 
 const MAX_TYPED: usize = 12;
 
@@ -134,6 +142,7 @@ struct Anchor {
 struct Preview {
     key: Option<(u64, u64, u64, u64)>,
     outcome: Option<Result<usize, String>>,
+    outlines: Vec<Vec<DVec3>>,
 }
 
 pub struct InsetModal {
@@ -156,6 +165,9 @@ pub struct InsetModal {
     rebase: bool,
     preview: RefCell<Preview>,
     finished: bool,
+    direction: ExtrudeDirectionSetting,
+    axis: ExtrudeAxisSetting,
+    grow: bool,
 }
 
 impl InsetModal {
@@ -204,6 +216,9 @@ impl InsetModal {
             rebase: false,
             preview: RefCell::new(Preview::default()),
             finished: false,
+            direction: state.settings.brush.extrude_mode,
+            axis: state.settings.brush.extrude_axis,
+            grow: state.settings.brush.extrude_grow,
         })
     }
 
@@ -253,22 +268,89 @@ impl InsetModal {
         &self.faces[0]
     }
 
+    pub fn direction(&self) -> ExtrudeDirectionSetting {
+        self.direction
+    }
+
+    pub fn axis(&self) -> ExtrudeAxisSetting {
+        self.axis
+    }
+
+    pub fn grows(&self) -> bool {
+        self.grow
+    }
+
+    fn save_modes(&self, state: &mut AppState) {
+        let b = &mut state.settings.brush;
+        b.extrude_mode = self.direction;
+        b.extrude_axis = self.axis;
+        b.extrude_grow = self.grow;
+        state.settings_dirty = true;
+    }
+
+    pub fn cycle_direction(&mut self, state: &mut AppState) {
+        if self.kind != ModalKind::Extrude {
+            return;
+        }
+        self.direction = self.direction.next();
+        self.save_modes(state);
+    }
+
+    pub fn set_axis(&mut self, state: &mut AppState, axis: ExtrudeAxisSetting) {
+        if self.kind != ModalKind::Extrude {
+            return;
+        }
+        self.direction = ExtrudeDirectionSetting::Axis;
+        self.axis = axis;
+        self.save_modes(state);
+    }
+
+    pub fn toggle_grow(&mut self, state: &mut AppState) {
+        if self.kind != ModalKind::Extrude {
+            return;
+        }
+        self.grow = !self.grow;
+        self.save_modes(state);
+    }
+
+    pub fn extrude_params(&self) -> NormalExtrudeParams {
+        let brush = hp_app::settings::BrushSettings {
+            extrude_mode: self.direction,
+            extrude_axis: self.axis,
+            ..Default::default()
+        };
+        NormalExtrudeParams { direction: brush.extrude_mode(), grow: self.grow, material: None }
+    }
+
+    fn directions(&self) -> Vec<DVec3> {
+        let normals: Vec<DVec3> = self.faces.iter().map(|f| f.plane.normal).collect();
+        extrude_directions(&normals, self.extrude_params().direction).unwrap_or(normals)
+    }
+
+    fn drag_direction(&self) -> DVec3 {
+        match self.direction {
+            ExtrudeDirectionSetting::Normal => self.normal,
+            _ => self.directions().first().copied().unwrap_or(self.normal),
+        }
+    }
+
     fn aligned_depth(&self, raw: f64) -> f64 {
         let f = self.primary();
-        self.snap.distance(f.vertices[0], f.plane.normal, raw)
+        let dir = match self.direction {
+            ExtrudeDirectionSetting::Normal => f.plane.normal,
+            _ => self.drag_direction(),
+        };
+        self.snap.distance(f.vertices[0], dir, raw)
     }
 
     fn depths(&self) -> Vec<f64> {
-        self.faces
-            .iter()
-            .map(|f| {
-                if self.snap.is_on() && self.typed.is_empty() {
-                    self.snap.distance(f.vertices[0], f.plane.normal, self.raw_depth)
-                } else {
-                    self.depth
-                }
-            })
-            .collect()
+        if !(self.snap.is_on() && self.typed.is_empty()) {
+            return vec![self.depth; self.faces.len()];
+        }
+        if self.kind == ModalKind::Extrude && self.direction != ExtrudeDirectionSetting::Normal {
+            return vec![self.aligned_depth(self.raw_depth); self.faces.len()];
+        }
+        self.faces.iter().map(|f| self.snap.distance(f.vertices[0], f.plane.normal, self.raw_depth)).collect()
     }
 
     fn extrusions(&self) -> Vec<(FaceRef, f64)> {
@@ -388,7 +470,7 @@ impl InsetModal {
             }
             InsetTarget::Depth => {
                 let from = self.depth_anchor.unwrap_or(pos);
-                let n = normal_pixels(view, self.center, self.normal);
+                let n = normal_pixels(view, self.center, self.drag_direction());
                 let v = depth_from_drag(self.depth_base, pos - from, n, ppu);
                 self.raw_depth = v;
                 self.depth = if snap.is_on() { self.aligned_depth(v) } else { v };
@@ -428,14 +510,17 @@ impl InsetModal {
             state.notify(Severity::Info, t!("extrude_modal.too_small"));
             return false;
         }
-        match state.doc.extrude_faces(&list, None) {
+        match state.doc.extrude_faces_with(&list, &self.extrude_params()) {
             Ok(ids) => {
                 state.log(Severity::Info, tf!("extrude_modal.done", ids.len()));
                 self.finished = true;
                 true
             }
             Err(e) => {
-                state.notify(Severity::Warning, tf!("app.op_failed", t!("action.extrude_interactive"), error_text(&e)));
+                state.notify(
+                    Severity::Warning,
+                    tf!("app.op_failed", t!("action.extrude_interactive"), crate::extrude::edit_issue_text(&e)),
+                );
                 false
             }
         }
@@ -443,7 +528,9 @@ impl InsetModal {
 
     fn preview_key(&self, state: &AppState) -> (u64, u64, u64, u64) {
         let depths = self.depths().iter().fold(0u64, |h, d| h.rotate_left(7) ^ d.to_bits());
-        (state.doc.revision(), self.thickness.to_bits(), self.depth.to_bits(), depths ^ u64::from(self.individual))
+        let modes = ((self.direction as u64) << 8) | ((self.axis as u64) << 4) | (u64::from(self.grow) << 2);
+        let flags = u64::from(self.individual) ^ modes;
+        (state.doc.revision(), self.thickness.to_bits(), self.depth.to_bits(), depths ^ flags)
     }
 
     fn refresh_preview(&self, state: &AppState) {
@@ -453,6 +540,7 @@ impl InsetModal {
             return;
         }
         pv.key = Some(key);
+        pv.outlines.clear();
         pv.outcome = match self.kind {
             ModalKind::Inset => (self.thickness >= MIN_INSET).then(|| {
                 let faces: Vec<FaceRef> = self.faces.iter().map(|f| f.face).collect();
@@ -463,7 +551,13 @@ impl InsetModal {
             }),
             ModalKind::Extrude => {
                 let list = self.extrusions();
-                (!list.is_empty()).then(|| state.doc.extrude_faces_preview(&list, None).map_err(|e| error_text(&e)))
+                (!list.is_empty()).then(|| match state.doc.extrude_faces_plan(&list, &self.extrude_params()) {
+                    Ok(plan) => {
+                        pv.outlines = plan.outlines;
+                        Ok(plan.brushes)
+                    }
+                    Err(e) => Err(crate::extrude::edit_issue_text(&e)),
+                })
             }
         };
     }
@@ -503,7 +597,13 @@ impl InsetModal {
                 s
             }
             ModalKind::Extrude => {
-                format!("{}: {}", t!("extrude_modal.distance"), self.value_text(InsetTarget::Depth, self.depth))
+                format!(
+                    "{}: {}   [{}]   [{}]",
+                    t!("extrude_modal.distance"),
+                    self.value_text(InsetTarget::Depth, self.depth),
+                    self.direction_text(),
+                    if self.grow { t!("extrude_modal.grow") } else { t!("extrude_modal.new_brush") }
+                )
             }
         };
         s.push_str(&format!("   {}", self.snap_note()));
@@ -513,6 +613,20 @@ impl InsetModal {
             s.push_str(&format!("   {}", tf!("inset_modal.brushes", n)));
         }
         s
+    }
+
+    pub fn direction_text(&self) -> String {
+        match self.direction {
+            ExtrudeDirectionSetting::Normal => t!("extrude_modal.dir_normal").to_owned(),
+            ExtrudeDirectionSetting::Average => t!("extrude_modal.dir_average").to_owned(),
+            ExtrudeDirectionSetting::Axis => {
+                let axis = match self.axis {
+                    ExtrudeAxisSetting::Auto => t!("extrude_modal.axis_auto").to_owned(),
+                    other => other.id().to_ascii_uppercase(),
+                };
+                tf!("extrude_modal.dir_axis", axis)
+            }
+        }
     }
 
     pub fn hint(&self, state: &AppState) -> String {
@@ -528,7 +642,12 @@ impl InsetModal {
                 let i = key_label(INDIVIDUAL_KEY);
                 format!("{}   {}", self.label(state), tf!("inset_modal.hint", e, enter, esc, i))
             }
-            ModalKind::Extrude => format!("{}   {}", self.label(state), tf!("extrude_modal.hint", enter, esc)),
+            ModalKind::Extrude => format!(
+                "{}   {}   {}",
+                self.label(state),
+                tf!("extrude_modal.hint", enter, esc),
+                tf!("extrude_modal.hint_modes", key_label(DIRECTION_KEY), key_label(GROW_KEY))
+            ),
         }
     }
 
@@ -541,9 +660,18 @@ impl InsetModal {
 
     fn overlay_extrude(&self, state: &AppState, view: &ViewInfo, out: &mut Overlay) {
         let failed = self.error(state).is_some();
+        let outlines = self.preview.try_borrow().map(|p| p.outlines.clone()).unwrap_or_default();
         let mut ov = Ov::new(out, view);
         let ghost = rgba(COLOR_GHOST, 0.8);
-        for (f, d) in self.faces.iter().zip(self.depths()) {
+        if !failed {
+            let tone = if self.depth < 0.0 { COLOR_CARVE } else { COLOR_PENDING };
+            let shape = rgba(tone, 0.55);
+            for poly in &outlines {
+                ov.polygon_outline(poly, shape, true);
+            }
+        }
+        let dirs = self.directions();
+        for ((f, d), dir) in self.faces.iter().zip(self.depths()).zip(dirs) {
             if d.abs() < MIN_EXTRUDE_DEPTH {
                 continue;
             }
@@ -551,7 +679,7 @@ impl InsetModal {
             let tone = if carving { COLOR_CARVE } else { COLOR_PENDING };
             let edge = rgba(if failed { hp_app::theme::VIEW_ERROR } else { tone }, 1.0);
             let fill = rgba(tone, 0.28);
-            let lift = f.plane.normal * d;
+            let lift = dir * d;
             let top: Vec<DVec3> = f.vertices.iter().map(|v| *v + lift).collect();
             for v in &f.vertices {
                 ov.xray_line(*v, *v + lift, ghost);
@@ -692,6 +820,11 @@ impl InsetModal {
                 }
                 k if k == DEPTH_KEY && self.kind == ModalKind::Inset => self.toggle_target(),
                 k if k == INDIVIDUAL_KEY => self.toggle_individual(),
+                k if k == DIRECTION_KEY => self.cycle_direction(state),
+                k if k == GROW_KEY => self.toggle_grow(state),
+                Key::X => self.set_axis(state, ExtrudeAxisSetting::X),
+                Key::Y => self.set_axis(state, ExtrudeAxisSetting::Y),
+                Key::Z => self.set_axis(state, ExtrudeAxisSetting::Z),
                 _ => {}
             }
             if self.finished {
@@ -892,6 +1025,17 @@ pub const INSET_MODAL_TR: hp_app::i18n::TrTable = &[
         "Souris : distance le long de la normale de la face (vers l'intérieur = creuser le brush), Alt : grille alternative, Ctrl : forcer la grille, chiffres : valeur exacte, {0} ou clic : appliquer, {1} ou clic droit : annuler",
     ),
     ("extrude_modal.done", "Extruded or carved {0} brush(es)", "{0} brush(es) extrudé(s) ou creusé(s)"),
+    ("extrude_modal.dir_normal", "each face normal", "normale de chaque face"),
+    ("extrude_modal.dir_average", "average normal", "normale moyenne"),
+    ("extrude_modal.dir_axis", "axis {0}", "axe {0}"),
+    ("extrude_modal.axis_auto", "nearest", "le plus proche"),
+    ("extrude_modal.grow", "grow the brush", "agrandir le brush"),
+    ("extrude_modal.new_brush", "new brush", "nouveau brush"),
+    (
+        "extrude_modal.hint_modes",
+        "{0}: direction (each normal, average, axis), X / Y / Z: along that axis, {1}: new brush or grow the brush",
+        "{0} : direction (chaque normale, moyenne, axe), X / Y / Z : selon cet axe, {1} : nouveau brush ou agrandir le brush",
+    ),
     (
         "extrude_modal.need_face",
         "Select faces or put the mouse over a face in a 3D view to extrude",
@@ -1080,6 +1224,51 @@ mod tests {
         assert_eq!(m.depths(), vec![13.0, 13.0]);
         assert!(m.confirm(&mut state));
         assert_eq!(state.doc.scene().solids().len(), before + 2);
+    }
+
+    #[test]
+    fn the_extrude_modal_switches_direction_and_grows_the_brush() {
+        let mut state = crate::tests_support::settle();
+        let view = crate::tests_support::info_3d_looking_down(DVec3::new(0.0, 0.0, 600.0));
+        let before = state.doc.scene().solids().len();
+        let volume = state.doc.scene().solid(3).expect("solid").geom.volume();
+        let mut m = InsetModal::start_extrude(&state, &[FaceRef::new(3, 5)]).expect("modal");
+        assert_eq!(m.direction(), ExtrudeDirectionSetting::Normal);
+        assert!(!m.grows());
+        m.cycle_direction(&mut state);
+        assert_eq!(m.direction(), ExtrudeDirectionSetting::Average);
+        assert_eq!(state.settings.brush.extrude_mode, ExtrudeDirectionSetting::Average);
+        m.set_axis(&mut state, ExtrudeAxisSetting::Z);
+        assert_eq!((m.direction(), m.axis()), (ExtrudeDirectionSetting::Axis, ExtrudeAxisSetting::Z));
+        m.toggle_grow(&mut state);
+        assert!(m.grows() && state.settings.brush.extrude_grow && state.settings_dirty);
+        assert!(m.label(&state).contains(t!("extrude_modal.grow")));
+        assert!(m.direction_text().contains('Z'));
+        let n = m.faces[0].plane.normal.abs();
+        let along = if n.x > 0.5 {
+            ExtrudeAxisSetting::X
+        } else if n.y > 0.5 {
+            ExtrudeAxisSetting::Y
+        } else {
+            ExtrudeAxisSetting::Z
+        };
+        m.set_axis(&mut state, along);
+        for ch in "16".chars() {
+            m.type_char(ch);
+        }
+        assert_eq!(m.brushes(&state), Some(1), "{:?}", m.error(&state));
+        let mut out = Overlay::default();
+        m.overlay(&state, &view, &mut out);
+        assert!(!out.lines.is_empty() || !out.lines_on_top.is_empty());
+        assert!(m.confirm(&mut state));
+        assert_eq!(state.doc.scene().solids().len(), before, "the brush grew instead of a new one");
+        assert!(state.doc.scene().solid(3).expect("solid").geom.volume() > volume);
+        let again = InsetModal::start_extrude(&state, &[FaceRef::new(3, 5)]).expect("modal");
+        assert_eq!(again.direction(), ExtrudeDirectionSetting::Axis);
+        assert!(again.grows());
+        let mut inset = InsetModal::start(&state, &[FaceRef::new(3, 5)]).expect("inset");
+        inset.cycle_direction(&mut state);
+        assert_eq!(inset.direction(), ExtrudeDirectionSetting::Axis, "the inset ignores the extrude keys");
     }
 
     #[test]

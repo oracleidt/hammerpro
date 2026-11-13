@@ -332,7 +332,7 @@ pub const TR: TrTable = &[
     ("menu.environment", "Environment preview", "Aperçu de l'environnement"),
     ("menu.effects", "Effects", "Effets"),
     ("menu.diagnostics", "Diagnostics", "Diagnostics"),
-    ("menu.zoom_distance", "Zoom and draw distance", "Zoom et distance d'affichage"),
+    ("menu.zoom_distance", "Zoom, draw distance and camera", "Zoom, distance d'affichage et caméra"),
     ("menu.switch_tool", "Active tool", "Outil actif"),
     ("menu.arrange", "Arrange", "Disposer"),
     ("menu.place_objects", "Place on real shapes", "Placer sur les formes réelles"),

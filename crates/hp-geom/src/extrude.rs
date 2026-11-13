@@ -52,10 +52,13 @@ pub enum ExtrudeIssue {
     PastLimits,
     NoCut,
     ThroughBrush,
+    MixedDistances,
+    AwayFromDirection,
+    DisplacementShape,
 }
 
 impl ExtrudeIssue {
-    pub const ALL: [ExtrudeIssue; 11] = [
+    pub const ALL: [ExtrudeIssue; 14] = [
         ExtrudeIssue::TooManyPoints,
         ExtrudeIssue::TooFewPoints,
         ExtrudeIssue::Crossing,
@@ -67,6 +70,9 @@ impl ExtrudeIssue {
         ExtrudeIssue::PastLimits,
         ExtrudeIssue::NoCut,
         ExtrudeIssue::ThroughBrush,
+        ExtrudeIssue::MixedDistances,
+        ExtrudeIssue::AwayFromDirection,
+        ExtrudeIssue::DisplacementShape,
     ];
 
     pub fn message(self) -> &'static str {
@@ -82,6 +88,9 @@ impl ExtrudeIssue {
             ExtrudeIssue::PastLimits => "the result goes past the map limits",
             ExtrudeIssue::NoCut => "the outline does not cut into the brush",
             ExtrudeIssue::ThroughBrush => "the carve goes through the whole brush",
+            ExtrudeIssue::MixedDistances => "faces cannot be pulled out and carved in at the same time",
+            ExtrudeIssue::AwayFromDirection => "a face does not face the extrude direction",
+            ExtrudeIssue::DisplacementShape => "a displacement would change shape",
         }
     }
 
@@ -438,7 +447,7 @@ pub(crate) fn oriented(points: [DVec3; 3], normal: DVec3) -> [DVec3; 3] {
     }
 }
 
-fn cap_points(ring: &[DVec3], normal: DVec3) -> Option<[DVec3; 3]> {
+pub(crate) fn cap_points(ring: &[DVec3], normal: DVec3) -> Option<[DVec3; 3]> {
     let a = *ring.first()?;
     let mut best: Option<(f64, usize, usize)> = None;
     for i in 1..ring.len() {

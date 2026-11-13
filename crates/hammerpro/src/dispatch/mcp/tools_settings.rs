@@ -37,6 +37,7 @@ pub(crate) const RANGES: &[(&str, f64, f64)] = &[
     ("ui.ui_scale", 0.75, 2.0),
     ("workflow.tool_palette_columns", 1.0, 2.0),
     ("workflow.toolbar_rows", 1.0, 2.0),
+    ("workflow.fly_response", 0.0, hp_app::settings::FLY_RESPONSE_MAX as f64),
     ("ui.split_x", hp_ui_viewports::layout::SPLIT_MIN as f64, hp_ui_viewports::layout::SPLIT_MAX as f64),
     ("ui.split_y", hp_ui_viewports::layout::SPLIT_MIN as f64, hp_ui_viewports::layout::SPLIT_MAX as f64),
     ("ui.quadrants", 0.0, 4.0),
@@ -760,6 +761,12 @@ mod tests {
         let restored: hp_app::settings::Settings = serde_json::from_str(&saved).unwrap();
         assert_eq!(restored.ui.floating_panels, state.settings.ui.floating_panels);
         assert!(!restored.workflow.camera_smoothing && restored.compile.bsp_beside_vmf);
+        set(&mut state, "workflow.fly_response", json!(0.25));
+        assert_eq!(state.settings.workflow.fly_response_secs(), 0.0, "kept while smoothing is off");
+        set(&mut state, "workflow.camera_smoothing", json!(true));
+        assert!((state.settings.workflow.fly_response_secs() - 0.25).abs() < 1e-6);
+        let refused = err(&mut state, "set_setting", json!({ "path": "workflow.fly_response", "value": 3.0 }));
+        assert!(refused.contains("workflow.fly_response"), "{refused}");
     }
 
     #[test]

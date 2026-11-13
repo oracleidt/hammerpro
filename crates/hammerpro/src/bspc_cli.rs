@@ -933,6 +933,8 @@ pub(crate) fn parse_rad_args(args: &[String]) -> Result<RadArgs, String> {
         ..RadArgs::default()
     };
     let opts = &mut r.opts;
+    let mut ao_on: Option<bool> = None;
+    let mut ao_options = hp_bspc::rad::AoOptions::default();
     let mut i = 0;
     while i < args.len() {
         let a = args[i].as_str();
@@ -1004,11 +1006,38 @@ pub(crate) fn parse_rad_args(args: &[String]) -> Result<RadArgs, String> {
             "-nostaticpropshadows" => opts.props.shadows = false,
             "-nodispshadows" => opts.no_disp_shadows = true,
             "-nostylebounce" => opts.no_style_bounce = true,
-            "-ao" | "-noao" => {}
-            "-aoradius" | "-aostrength" | "-aosamples" => {
-                if args.get(i + 1).is_some_and(|v| v.trim().parse::<f32>().is_ok()) {
+            "-ao" | "-ambientocclusion" | "-aodebug" => {
+                let switch = args.get(i + 1).and_then(|v| v.trim().parse::<f32>().ok());
+                if switch.is_some() {
                     i += 1;
                 }
+                if switch == Some(0.0) {
+                    ao_on = Some(false);
+                } else {
+                    ao_on = Some(true);
+                    if a.eq_ignore_ascii_case("-aodebug") {
+                        ao_options.debug = true;
+                    }
+                }
+            }
+            "-noao" => ao_on = Some(false),
+            "-aoradius" | "-aoscale" | "-aostrength" | "-aofacesamples" | "-aopropsamples" | "-aosamples" => {
+                let low = a.to_ascii_lowercase();
+                let v = args.get(i + 1).and_then(|v| v.trim().parse::<f32>().ok()).filter(|v| v.is_finite());
+                let Some(v) = v else { return Err(format!("expected a value after '{a}'")) };
+                let o = &mut ao_options;
+                match low.as_str() {
+                    "-aoradius" if v > 0.0 => o.radius = v,
+                    "-aoscale" | "-aostrength" if (0.0..=1.0).contains(&v) => o.scale = v,
+                    "-aoscale" | "-aostrength" => {
+                        o.scale = v.clamp(0.0, 1.0);
+                        r.notes.push(format!("Warning: {a} {v} clamped to {} (0 to 1)", o.scale));
+                    }
+                    "-aofacesamples" | "-aosamples" if v >= 1.0 => o.face_samples = Some(v.round() as u32),
+                    "-aopropsamples" if v >= 1.0 => o.prop_samples = Some(v.round() as u32),
+                    _ => return Err(format!("expected a positive value after '{a}'")),
+                }
+                i += 1;
             }
             "-bounce" => {
                 if let Some(n) = next() {
@@ -1054,10 +1083,6 @@ pub(crate) fn parse_rad_args(args: &[String]) -> Result<RadArgs, String> {
                 let low = a.to_ascii_lowercase();
                 let takes_value = [
                     "-vproject",
-                    "-aoscale",
-                    "-aofacesamples",
-                    "-aopropsamples",
-                    "-ambientocclusion",
                     "-sunsamplesarealight",
                     "-leafambientsamplereduction",
                     "-maxdispsamplesize",
@@ -1073,6 +1098,11 @@ pub(crate) fn parse_rad_args(args: &[String]) -> Result<RadArgs, String> {
             _ => r.map = Some(PathBuf::from(a)),
         }
         i += 1;
+    }
+    if ao_on == Some(true) {
+        r.opts.ao = Some(ao_options);
+    } else if ao_options != hp_bspc::rad::AoOptions::default() {
+        r.notes.push("Note: the ambient occlusion options are ignored without -ao".to_owned());
     }
     Ok(r)
 }
@@ -1369,19 +1399,42 @@ mod tests {
     }
 
     #[test]
-    fn old_ambient_occlusion_options_are_accepted_and_ignored() {
-        use hp_bspc::rad::RadQuality;
+    fn ambient_occlusion_options() {
+        use hp_bspc::rad::{AoOptions, RadQuality};
         let plain = parse_rad_args(&args("-both -final map")).expect("parsed");
-        let r =
-            parse_rad_args(&args("-both -final -ao -aoradius 128 -AOStrength 0.5 -aosamples 40 map")).expect("parsed");
-        assert_eq!(r.opts, plain.opts);
+        assert!(plain.opts.ao.is_none(), "off by default, even with -final");
+        let r = parse_rad_args(&args("-both -final -ao map")).expect("parsed");
+        assert_eq!(r.opts.ao, Some(AoOptions::default()));
         assert_eq!(r.opts.quality, RadQuality::Final);
-        assert!(r.ignored.is_empty());
+        assert_eq!(r.map.as_deref(), Some(Path::new("map")));
+        let r = parse_rad_args(&args(
+            "-AmbientOcclusion -aoradius 48 -AOScale 0.75 -aofacesamples 24 -aopropsamples 12 map",
+        ))
+        .expect("parsed");
+        let o = r.opts.ao.expect("on");
         assert_eq!(
-            parse_rad_args(&args("-noao map")).expect("parsed").opts,
-            parse_rad_args(&args("map")).expect("parsed").opts
+            (o.radius, o.scale, o.face_samples, o.prop_samples, o.debug),
+            (48.0, 0.75, Some(24), Some(12), false)
         );
-        assert!(parse_rad_args(&args("-aoradius map")).is_ok());
+        assert!(r.ignored.is_empty());
+        let r = parse_rad_args(&args("-aodebug map")).expect("parsed");
+        assert!(r.opts.ao.is_some_and(|o| o.debug));
+        let r = parse_rad_args(&args("-ao -aostrength 0.3 -aosamples 40 map")).expect("parsed");
+        let o = r.opts.ao.expect("on");
+        assert_eq!((o.scale, o.face_samples), (0.3, Some(40)));
+        assert!(parse_rad_args(&args("-ao -noao map")).expect("parsed").opts.ao.is_none());
+        assert!(parse_rad_args(&args("-ao 0 map")).expect("parsed").opts.ao.is_none());
+        let r = parse_rad_args(&args("-ao 1 map")).expect("parsed");
+        assert!(r.opts.ao.is_some() && r.map.as_deref() == Some(Path::new("map")));
+        let r = parse_rad_args(&args("-aoradius 64 map")).expect("parsed");
+        assert!(r.opts.ao.is_none());
+        assert!(r.notes.iter().any(|n| n.contains("without -ao")), "{:?}", r.notes);
+        let r = parse_rad_args(&args("-ao -aoscale 4 map")).expect("parsed");
+        assert_eq!(r.opts.ao.map(|o| o.scale), Some(1.0));
+        assert!(r.notes.iter().any(|n| n.contains("clamped")));
+        assert!(parse_rad_args(&args("-ao -aoradius map")).is_err());
+        assert!(parse_rad_args(&args("-ao -aoradius -5 map")).is_err());
+        assert!(parse_rad_args(&args("-ao -aofacesamples 0 map")).is_err());
     }
 
     #[test]

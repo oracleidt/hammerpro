@@ -43,6 +43,7 @@ action_list! { workflow_actions {
     GridManager => "grid_manager", Map, MapGrids, None, Ready;
     RotateGrid45 => "rotate_grid_45", Map, MapGrids, None, Ready;
     AlignGridToSelection => "align_grid_to_selection", Map, MapGrids, None, Ready;
+    ToggleCameraSmoothing => "toggle_camera_smoothing", View, ViewZoom, None, Ready;
 }}
 
 pub(super) const REPEATS: &[Action] = &[Action::Zoom2dIn, Action::Zoom2dOut];
@@ -89,6 +90,7 @@ pub(super) fn check(state: &AppState, action: Action) -> Option<Check> {
         Action::GridModeCustom => Check::Radio(state.settings.grid.mode == GridMode::Custom),
         Action::GridModeSelection => Check::Radio(state.settings.grid.mode == GridMode::Selection),
         Action::GridManager => Check::Toggle(state.ui.show_grid_manager),
+        Action::ToggleCameraSmoothing => Check::Toggle(w.camera_smoothing),
         _ => return None,
     })
 }
@@ -143,6 +145,7 @@ pub(super) const TR: TrTable = &[
         "Align grid to the selected edge or face",
         "Aligner la grille sur l'arête ou la face sélectionnée",
     ),
+    ("action.toggle_camera_smoothing", "Smooth 3D camera", "Caméra 3D fluide"),
     ("shell.undo.attach_grid", "Attach grid", "Attachement de grille"),
     ("shell.undo.detach_grid", "Detach grid", "Détachement de grille"),
     ("shell.undo.edit_grid", "Edit grid", "Modification de grille"),

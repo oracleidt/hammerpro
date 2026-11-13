@@ -270,6 +270,9 @@ fn default_value(info: &FlagInfo) -> String {
         "-radius_override" => "4096",
         "-dxlevel" => "90",
         "-trace" => "0 1",
+        "-aoradius" => "32",
+        "-aoscale" => "0.5",
+        "-aofacesamples" | "-aopropsamples" => "32",
         _ => "",
     }
     .to_owned()

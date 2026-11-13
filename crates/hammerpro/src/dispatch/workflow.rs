@@ -68,6 +68,7 @@ const HANDLED: &[Action] = &[
     Action::GridManager,
     Action::RotateGrid45,
     Action::AlignGridToSelection,
+    Action::ToggleCameraSmoothing,
 ];
 
 impl Package for Workflow {
@@ -127,6 +128,7 @@ impl Package for Workflow {
                 w.show_bounds = !w.show_bounds;
                 state.settings_dirty = true;
             }
+            Action::ToggleCameraSmoothing => toggle_camera_smoothing(state),
             Action::ShowHistory => {
                 let w = &mut state.settings.workflow;
                 w.show_history = !w.show_history;
@@ -279,6 +281,12 @@ fn restore_map_grid(state: &mut AppState) {
             state.settings.edit.grid_size = grid;
         }
     }
+}
+
+fn toggle_camera_smoothing(state: &mut AppState) {
+    let w = &mut state.settings.workflow;
+    w.camera_smoothing = !w.camera_smoothing;
+    state.settings_dirty = true;
 }
 
 fn sync_grid_memory(app: &mut HammerProApp) {
@@ -741,6 +749,23 @@ mod tests {
         for a in [Action::ToolPaletteTwoColumns, Action::ToolbarTwoRows, Action::ResetToolbar] {
             assert!(HANDLED.contains(&a), "{a:?}");
         }
+    }
+
+    #[test]
+    fn camera_smoothing_toggles_and_keeps_the_acceleration_time() {
+        let mut s = state();
+        s.settings.workflow.fly_response = 0.3;
+        assert!(s.settings.workflow.camera_smoothing, "on by default");
+        assert_eq!(Action::ToggleCameraSmoothing.check(&s), hp_app::actions::Check::Toggle(true));
+        assert_eq!(Action::from_id("toggle_camera_smoothing"), Some(Action::ToggleCameraSmoothing));
+        assert!(HANDLED.contains(&Action::ToggleCameraSmoothing));
+        toggle_camera_smoothing(&mut s);
+        assert!(!s.settings.workflow.camera_smoothing && s.settings_dirty);
+        assert_eq!(Action::ToggleCameraSmoothing.check(&s), hp_app::actions::Check::Toggle(false));
+        assert_eq!(s.settings.workflow.fly_response_secs(), 0.0);
+        toggle_camera_smoothing(&mut s);
+        assert!(s.settings.workflow.camera_smoothing);
+        assert!((s.settings.workflow.fly_response_secs() - 0.3).abs() < 1e-6);
     }
 
     #[test]

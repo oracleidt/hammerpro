@@ -458,6 +458,14 @@ fn context_menu_offers_floor_ceiling_and_pivot() {
     assert!(!entries.iter().any(|e| e.label == Action::CenterOrigins.label()));
     state.doc.set_selection(&[ObjRef::Entity(6)]);
     assert!(tool.context_entries(&state).iter().any(|e| e.label == Action::CenterOrigins.label()));
+    state.doc.set_selection(&[]);
+    let solid = *state.doc.scene().solids().keys().next().expect("a solid");
+    state.doc.select_faces(&[hp_editor::FaceRef::new(solid, 0)], hp_editor::SelectOp::Replace);
+    let entries = tool.context_entries(&state);
+    let along = entries.iter().find(|e| e.label == Action::ExtrudeAlongNormal.label()).expect("extrude entry");
+    assert!(entries.iter().any(|e| e.label == Action::ExtrudeInteractive.label()));
+    tool.context_command(&mut state, along.id);
+    assert!(state.requested_actions.contains(&Action::ExtrudeAlongNormal));
 }
 
 #[test]

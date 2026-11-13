@@ -813,6 +813,7 @@ fn light_prop(
             (lo, hi) = (lo.min(pos), hi.max(pos));
         }
         let near = candidate_lights(ctx, (lo.is_finite() && hi.is_finite()).then_some((lo, hi)));
+        let ao_radius = ctx.ao.as_ref().map_or(0.0, |a| a.radius_at(ctx.map, prop.origin));
         let all = std::sync::OnceLock::new();
         for (mi, sub) in studio.models.iter().enumerate() {
             let mut verts: Vec<(Vec3A, Vec3A)> = Vec::with_capacity(sub.num_vertices.max(0) as usize);
@@ -877,6 +878,9 @@ fn light_prop(
                     let (sky, ind) = &soft[g];
                     for ((o, s), v) in c.iter_mut().zip(sky).zip(ind) {
                         *o += *s + *v;
+                    }
+                    if let (Some(ao), Some(term)) = (&ctx.ao, ctx.ao_vertex(pos, normal, ao_radius, skip)) {
+                        ao.shade(term, &mut c);
                     }
                 }
                 Some(c)

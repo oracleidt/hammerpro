@@ -240,6 +240,7 @@
 | Сбросить разделение вида | `reset_view_splits` |  | `Ctrl+A` | `Ctrl+A` |
 | Меньшая дистанция прорисовки | `far_plane_closer` |  |  |  |
 | Увеличенное расстояние прорисовки | `far_plane_farther` |  |  |  |
+| Плавная 3D-камера | `toggle_camera_smoothing` |  |  |  |
 | Панели > Браузер текстур | `show_texture_browser` |  |  |  |
 | Панели > Браузер модели | `show_model_browser` |  |  | `Shift+F10` |
 | Панели > Свойства объекта | `show_entity_properties` |  |  |  |
@@ -292,6 +293,9 @@
 | Вставленное грань... | `inset_face` |  |  |  |
 | Интерактивная вставка (I) | `inset_interactive` | `I` |  |  |
 | Интерактивное вытягивание (E) | `extrude_interactive` | `E` |  |  |
+| Вытянуть по нормали | `extrude_along_normal` | `Alt+Shift+E` |  |  |
+| Направление вытягивания: следующее (нормаль каждой грани, средняя, ось) | `extrude_cycle_direction` |  |  |  |
+| Вытягивание увеличивает браш | `toggle_extrude_grow` |  |  |  |
 | Не рисовать на скрытых гранях... | `nodraw_hidden_faces` |  |  |  |
 | Привяжите каждого к своей сущности | `tie_each_to_entity` | `Ctrl+Shift+T` |  |  |
 | Редактировать кривую | `curve_edit` |  |  |  |

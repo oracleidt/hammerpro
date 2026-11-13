@@ -20,7 +20,8 @@ These controls work with every tool and every control scheme:
 | Mouse wheel | Move forward or back, toward the cursor when **Zoom toward the cursor** is on. `Shift`: faster |
 | Right click without moving | Opens the viewport context menu |
 
-- Disable **Settings > Viewports > Smooth camera movement** for precise movement with immediate starts and stops. When enabled, fly speed ramps up in **Camera acceleration time** seconds (0 also means immediate). The acceleration setting is preserved when smoothing is disabled.
+- **Smooth 3D camera** (on by default) gives the fly camera a short acceleration and deceleration: it ramps up to its speed in **Camera acceleration time** seconds and glides a moment after you release the key, and following a teammate in [Team Mapping](team-mapping.md) glides toward their camera. Turn it off for instant response: the camera starts at full speed the frame you press a movement key, stops the frame you release it, and jumps straight to a followed teammate. Toggle it in **Settings > Viewports**, in **View > Zoom, draw distance and camera > Smooth 3D camera**, in the menu of the 3D view header (click the view name), or with the action `toggle_camera_smoothing`. The acceleration time is kept while smoothing is off (0 also means immediate).
+- Mouse look, the mouse wheel, panning, orbiting and [trackpad](trackpad.md) gestures are never smoothed: the camera follows the raw input in both modes. Hover picking and the Lit quality **Auto** see the camera as moving only while it really moves, so with smoothing off they return to full quality the frame the camera stops.
 - `Ctrl` never flies: while flying or in mouselook, a left click selects the object at the crosshair (the center of the view), and `Ctrl+click` adds it to or removes it from the selection, like Hammer. The displacement brush keeps painting instead.
 - Shortcuts do not fire while the keyboard flies the camera.
 
@@ -131,7 +132,7 @@ Options bar of the tool:
 
 They are in the **View** menu. The right click context menu of a view also has **Center views here**, and during a [Team Mapping](team-mapping.md) session **Ping here for the team**.
 
-Each view has a header: click the view name to pick another view type (and, in 3D, the render mode), double click it to maximize the view, or use the maximize button at its right. Drag the splitters between the views to resize them, double click a splitter to reset it.
+Each view has a header: click the view name to pick another view type (and, in 3D, the render mode and **Smooth 3D camera**), double click it to maximize the view, or use the maximize button at its right. Drag the splitters between the views to resize them, double click a splitter to reset it.
 
 ## Settings
 
@@ -141,7 +142,7 @@ Each view has a header: click the view name to pick another view type (and, in 3
 |---|---|---|
 | **Camera controls** | Hammer Pro, Hammer or Hammer++ (middle mouse) | Hammer Pro |
 | **Invert mouse X** | Inverts the horizontal axis when looking around | Off |
-| **Smooth camera movement** | Enable acceleration and deceleration; disable for immediate starts and stops | On |
+| **Smooth 3D camera** | Acceleration and deceleration of the fly camera, glide when following a teammate; off: instant starts and stops | On |
 | **Camera acceleration time** | Time the fly camera takes to reach its speed (0 to 0.5 s) | 0.07 s |
 | **Ctrl + mouse wheel in 2D** | Changes the grid size, or zooms every 2D view | Changes the grid size |
 | **Zoom the 2D views together** | Zooming one 2D view zooms the others | Off |

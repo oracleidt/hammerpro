@@ -117,10 +117,16 @@ Lighting. With no range option, `--rad` computes LDR only.
 | `-nostaticpropshadows` | | Hammer Pro: no static prop shadow at all. | off |
 | `-nodispshadows` | | Hammer Pro: no displacement shadow. | off |
 | `-nostylebounce` | | Hammer Pro: named (switchable) lights do not bounce, like VRAD. | off |
+| `-ao` / `-ambientocclusion` | | Baked ambient occlusion, like VRAD++ (`-ao 0`, `-noao`: off). See [Ambient occlusion](compile-options.md#ambient-occlusion). | off |
+| `-aoradius` | units | Ambient occlusion radius (divided by the `sky_camera` scale in the 3D skybox). | 32 |
+| `-aoscale` | 0 to 1 | Ambient occlusion strength (`-aostrength` is read the same). | 0.5 |
+| `-aofacesamples` | rays | Ambient occlusion rays per luxel (`-aosamples` is read the same). | 32, 16 with `-fast`, 64 with `-final` |
+| `-aopropsamples` | rays | Ambient occlusion rays per static prop vertex (with `-StaticPropLighting`). | 32, 16 with `-fast`, 64 with `-final` |
+| `-aodebug` | | Lightmaps show only the ambient occlusion term. Turns `-ao` on. | off |
 | `-noaddons`, `-wsaddons`, `-nowsaddons`, `-serveraddons`, `-mount_appid` | | Content mounted for the models, like `--bspc`. | addons and Workshop items mounted |
 | `-radius_override` | units | Accepted and skipped (a VVIS option often passed to every tool). | |
 
-Every other option gets `Warning: option ... is not supported by this lighting compiler: ignored`; the known VRAD options that take a value (`-vproject`, `-aoscale`, `-aofacesamples`, `-aopropsamples`, `-ambientocclusion`, `-sunsamplesarealight`, `-leafambientsamplereduction`, `-maxdispsamplesize`, `-disppatchradius`, `-mpi_workercount`, `-dumptrace`) skip their value too.
+Every other option gets `Warning: option ... is not supported by this lighting compiler: ignored`; the known VRAD options that take a value (`-vproject`, `-sunsamplesarealight`, `-leafambientsamplereduction`, `-maxdispsamplesize`, `-disppatchradius`, `-mpi_workercount`, `-dumptrace`) skip their value too.
 
 Texture light files are read in this order: `lights.rad` of the game (the game folder, then the folders of the Garry's Mod install, its `bin` folders last), the `-lights` file, the file named by the worldspawn key `_lightsrad`, then `<map>.rad` next to the map.
 
@@ -136,7 +142,7 @@ The first percentage is the whole lighting, the second the stage. A line comes e
 Light phase times: setup 0.15 s, faces 0.63 s, static prop models 0.41 s, shadow tree 1.56 s, surface tree 0.19 s, blocker tree 0.04 s, direct light 13.50 s, displacement blend 1.24 s, displacement bounce blend 1.00 s, bounce rays 3.23 s, bounce passes 3.02 s, seams 0.31 s, leaf ambient 0.45 s, write 0.77 s
 ```
 
-`direct light` holds the lights, the sun and the sky, `static prop models` the reading of the prop models (only the models of props that cast shadows or get vertex lighting are read), `seams` the matching of the luxels shared by neighbor faces; `light probes` and `detail props` appear when they run. Problems found by the final check that were already in the BSP before the lighting (a map compiled by other tools) are warnings; only new ones stop the write.
+`direct light` holds the lights, the sun and the sky, `ambient occlusion` the baked ambient occlusion (with `-ao`), `static prop models` the reading of the prop models (only the models of props that cast shadows or get vertex lighting are read), `seams` the matching of the luxels shared by neighbor faces; `light probes` and `detail props` appear when they run. Problems found by the final check that were already in the BSP before the lighting (a map compiled by other tools) are warnings; only new ones stop the write.
 
 ## Examples
 

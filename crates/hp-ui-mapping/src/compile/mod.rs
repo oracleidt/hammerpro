@@ -162,6 +162,7 @@ pub(crate) fn light_stage_name(stage: &str) -> String {
         "direct lighting" => t!("compile.light_stage.direct").to_owned(),
         "bounce rays" => t!("compile.light_stage.bounce_rays").to_owned(),
         "bounced light" => t!("compile.light_stage.bounces").to_owned(),
+        "ambient occlusion" => t!("compile.light_stage.ambient_occlusion").to_owned(),
         "leaf ambient" => t!("compile.light_stage.leaf_ambient").to_owned(),
         "detail props" => t!("compile.light_stage.detail_props").to_owned(),
         "static props" => t!("compile.light_stage.static_props").to_owned(),

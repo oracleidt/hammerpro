@@ -45,10 +45,12 @@ impl PlanCache {
     pub fn restore(&self, stage: &str, key: u64, bsp: &Path, prt: &Path) -> Option<PathBuf> {
         let (from_bsp, from_prt) = self.lookup(stage, key)?;
         copy_atomic(&from_bsp, bsp).ok()?;
+        touch(bsp);
         if let Some(p) = from_prt {
             copy_atomic(&p, prt).ok()?;
+            touch(prt);
         }
-        let _ = std::fs::File::options().write(true).open(&from_bsp).and_then(|f| f.set_modified(SystemTime::now()));
+        touch(&from_bsp);
         Some(from_bsp)
     }
 
@@ -98,6 +100,10 @@ fn is_safe_name(s: &str) -> bool {
         && s.len() <= 128
         && s.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.'))
         && !s.bytes().all(|b| b == b'.')
+}
+
+fn touch(path: &Path) {
+    let _ = std::fs::File::options().write(true).open(path).and_then(|f| f.set_modified(SystemTime::now()));
 }
 
 fn copy_atomic(from: &Path, to: &Path) -> std::io::Result<()> {
@@ -199,7 +205,16 @@ mod tests {
         assert!(cache.lookup("bsp", 42).is_some_and(|(_, p)| p.is_some()));
         std::fs::write(&bsp, b"changed").unwrap();
         std::fs::remove_file(&prt).unwrap();
+        let old = SystemTime::now() - std::time::Duration::from_secs(3600);
+        for e in cache.lookup("bsp", 42).map(|(b, p)| [Some(b), p]).into_iter().flatten().flatten() {
+            std::fs::File::options().write(true).open(&e).unwrap().set_modified(old).unwrap();
+        }
+        let before = SystemTime::now() - std::time::Duration::from_secs(2);
         assert!(cache.restore("bsp", 42, &bsp, &prt).is_some());
+        for p in [&bsp, &prt] {
+            let m = std::fs::metadata(p).unwrap().modified().unwrap();
+            assert!(m >= before, "a restored file counts as written now, so the views reload it: {p:?}");
+        }
         assert!(cache.stats("bsp", 42).is_empty());
         cache.store_stats("bsp", 42, &["---- Map statistics ----".to_owned(), "#1  x".to_owned()]);
         assert_eq!(cache.stats("bsp", 42), ["---- Map statistics ----", "#1  x"]);

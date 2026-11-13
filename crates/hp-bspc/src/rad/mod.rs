@@ -1,4 +1,5 @@
 mod ambient;
+mod ao;
 mod bake;
 mod data;
 mod detail;
@@ -24,6 +25,7 @@ use glam::Vec3A;
 use crate::emit::lump;
 use crate::materials::{contents, surf};
 pub use ambient::ProbeOptions;
+pub use ao::AoOptions;
 pub use output::check_lighting;
 pub use props::PropOptions;
 pub use texlights::{LightFile, LightFileData, TexLight, TexLightOptions};
@@ -60,6 +62,7 @@ pub struct RadOptions {
     pub min_sun_samples: usize,
     pub normal_sampling: bool,
     pub probes: Option<ProbeOptions>,
+    pub ao: Option<AoOptions>,
     pub limits: hp_bsp::limits::LimitSet,
 }
 
@@ -86,6 +89,7 @@ impl Default for RadOptions {
             min_sun_samples: 0,
             normal_sampling: false,
             probes: None,
+            ao: None,
             limits: hp_bsp::limits::LimitSet::Gmod,
         }
     }
@@ -363,6 +367,9 @@ fn run_with(
     if opts.bounces > 0 {
         plan.extend([Stage::BounceRays, Stage::Bounces]);
     }
+    if opts.ao.is_some() {
+        plan.push(Stage::AmbientOcclusion);
+    }
     plan.push(Stage::LeafAmbient);
     if detail_objects > 0 {
         plan.push(Stage::DetailProps);
@@ -395,6 +402,7 @@ fn run_with(
         water: &water,
         water_reflectivity,
         dispchop: disp::chop_or_default(opts.texlights.dispchop),
+        ao: opts.ao.as_ref().map(|o| ao::Ao::new(o, opts.quality, &map)),
     };
     let t = Instant::now();
     work.begin(Stage::Direct, luxels as u64);
@@ -437,6 +445,15 @@ fn run_with(
         stage(report, "bounced light", t);
     }
 
+    if let Some(occlusion) = &ctx.ao {
+        let t = Instant::now();
+        work.begin(Stage::AmbientOcclusion, luxels as u64);
+        let terms = runner.par(|| ao::face_terms(&ctx, occlusion, &faces));
+        runner.par(|| ao::apply(&faces, &mut light, &terms, occlusion));
+        phases.mark("ambient occlusion");
+        log(&ao::summary(occlusion, ms(t)));
+        stage(report, "ambient occlusion", t);
+    }
     runner.par(|| bake::fill_dark(&faces, &mut light));
     runner.par(|| bake::stitch(&faces, &mut light));
     phases.mark("seams");

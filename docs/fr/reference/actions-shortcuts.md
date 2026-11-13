@@ -233,6 +233,7 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Réinitialiser le partage des vues | `reset_view_splits` |  | `Ctrl+A` | `Ctrl+A` |
 | Distance d'affichage plus courte | `far_plane_closer` |  |  |  |
 | Distance d'affichage plus longue | `far_plane_farther` |  |  |  |
+| Caméra 3D fluide | `toggle_camera_smoothing` |  |  |  |
 | Panneaux > Navigateur de textures | `show_texture_browser` |  |  |  |
 | Panneaux > Navigateur de modèles | `show_model_browser` |  |  | `Maj+F10` |
 | Panneaux > Propriétés de l'entité | `show_entity_properties` |  |  |  |
@@ -284,6 +285,9 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Décaler la face... | `inset_face` |  |  |  |
 | Décalage interactif (I) | `inset_interactive` | `I` |  |  |
 | Extrusion interactive (E) | `extrude_interactive` | `E` |  |  |
+| Extruder selon la normale | `extrude_along_normal` | `Alt+Maj+E` |  |  |
+| Direction d'extrusion : suivante (chaque normale, moyenne, axe) | `extrude_cycle_direction` |  |  |  |
+| L'extrusion agrandit le brush | `toggle_extrude_grow` |  |  |  |
 | Nodraw sur les faces cachées... | `nodraw_hidden_faces` |  |  |  |
 | Lier chacun à sa propre entité | `tie_each_to_entity` | `Ctrl+Maj+T` |  |  |
 | Modifier la courbe | `curve_edit` |  |  |  |

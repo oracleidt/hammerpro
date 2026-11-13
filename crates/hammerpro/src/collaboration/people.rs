@@ -596,7 +596,7 @@ impl Controller {
         let now = Instant::now();
         let elapsed = now.duration_since(follow.frame).as_secs_f64().clamp(0.0, 0.1);
         follow.frame = now;
-        let blend = 1.0 - (-elapsed * FOLLOW_SPEED).exp();
+        let blend = follow_blend(elapsed, state.settings.workflow.camera_smoothing);
         let camera = &mut state.cameras.cam3d;
         let forward = camera.forward();
         let close = camera.pos.distance(target) < 0.5 && forward.dot(direction) > 0.99999;
@@ -623,9 +623,21 @@ impl Controller {
     }
 }
 
+fn follow_blend(elapsed: f64, smoothing: bool) -> f64 {
+    if smoothing { 1.0 - (-elapsed * FOLLOW_SPEED).exp() } else { 1.0 }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn following_glides_only_with_camera_smoothing() {
+        let smooth = follow_blend(0.016, true);
+        assert!(smooth > 0.0 && smooth < 0.5, "{smooth}");
+        assert_eq!(follow_blend(0.016, false), 1.0);
+        assert_eq!(follow_blend(0.0, false), 1.0, "jumps even on a zero length frame");
+    }
 
     #[test]
     fn rates_are_rounded_so_idle_presence_does_not_churn() {

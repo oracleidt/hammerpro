@@ -115,7 +115,7 @@ pub(super) fn compile_vmf(text: &str) -> Vec<u8> {
     out.bsp
 }
 
-fn quick() -> RadOptions {
+pub(super) fn quick() -> RadOptions {
     RadOptions {
         hdr: true,
         ldr: true,
@@ -673,6 +673,10 @@ fn detail_props_take_high_styles() {
 
 #[test]
 fn split_floor_has_no_seams() {
+    split_floor_without_seams(None);
+}
+
+pub(super) fn split_floor_without_seams(ao: Option<AoOptions>) {
     let bsp = compile_vmf(&room("DEV/DEV_MEASUREGENERIC01B", &light_entity(500, "64 128 128", "")));
     let opts = RadOptions {
         hdr: false,
@@ -680,6 +684,7 @@ fn split_floor_has_no_seams() {
         bounces: 0,
         quality: RadQuality::Normal,
         threads: Some(2),
+        ao,
         ..RadOptions::default()
     };
     let lit = light_bsp(&bsp, &opts, &mut |_| {}).expect("light");
@@ -1169,7 +1174,7 @@ fn lightmaps_only_fail_past_the_face_offset() {
     assert!(e.contains("cannot load"), "{e}");
 }
 
-fn sealed_rooms(lights: &[(&str, &str)]) -> String {
+pub(super) fn sealed_rooms(lights: &[(&str, &str)]) -> String {
     let w = "DEV/DEV_MEASUREGENERIC01B";
     let mut id = 1;
     let mut solids = String::new();
@@ -1463,7 +1468,7 @@ fn bounced_and_ambient_light_pass_through_water_and_glass() {
     }
 }
 
-fn style_luxel_at(bsp: &[u8], p: DVec3, normal: DVec3, style: u8) -> Option<Vec3A> {
+pub(super) fn style_luxel_at(bsp: &[u8], p: DVec3, normal: DVec3, style: u8) -> Option<Vec3A> {
     let src = hp_bsp::Bsp::from_vec(bsp.to_vec()).ok()?;
     let map = MapData::read(&src).ok()?;
     let light = src.lump(lump::LIGHTING).ok()?.into_owned();

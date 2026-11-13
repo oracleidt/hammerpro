@@ -421,3 +421,108 @@ fn bounds_layer_is_retained_and_3d_only() {
     h.state.settings.workflow.show_bounds = true;
     h.frame(vec![]);
 }
+
+fn fly_forward(h: &mut Harness, frames: usize) -> (f64, Vec<f64>) {
+    let p = h.rect(0).center();
+    h.move_to(p);
+    h.button(p, PointerButton::Secondary, true);
+    let start = h.state.cameras.cam3d.pos;
+    h.key(Key::W, Some(Key::W), true);
+    let first = (h.state.cameras.cam3d.pos - start).length();
+    for _ in 1..frames {
+        h.frame(vec![]);
+    }
+    let mut after = Vec::new();
+    let mut last = h.state.cameras.cam3d.pos;
+    h.key(Key::W, Some(Key::W), false);
+    for _ in 0..4 {
+        after.push((h.state.cameras.cam3d.pos - last).length());
+        last = h.state.cameras.cam3d.pos;
+        h.frame(vec![]);
+    }
+    h.button(p, PointerButton::Secondary, false);
+    (first, after)
+}
+
+#[test]
+fn without_smoothing_the_camera_stops_the_frame_the_key_is_released() {
+    let mut h = Harness::new(NavScheme::HammerPro);
+    h.state.settings.workflow.camera_smoothing = false;
+    h.state.settings.workflow.fly_response = 0.3;
+    let speed = f64::from(h.state.settings.view.camera_speed);
+    let (first, after) = fly_forward(&mut h, 10);
+    assert!((first - speed / 60.0).abs() < 1e-3, "full speed on the first frame: {first}");
+    assert!(after.iter().all(|d| *d == 0.0), "no glide after the release: {after:?}");
+    assert_eq!(h.vp.velocity, DVec3::ZERO);
+}
+
+#[test]
+fn with_smoothing_the_camera_eases_in_and_glides_after_the_release() {
+    let mut h = Harness::new(NavScheme::HammerPro);
+    assert!(h.state.settings.workflow.camera_smoothing, "smoothing stays on by default");
+    let speed = f64::from(h.state.settings.view.camera_speed);
+    let (first, after) = fly_forward(&mut h, 10);
+    assert!(first > 0.0 && first < speed / 60.0 * 0.5, "eases in: {first}");
+    assert!(after[0] > 0.0, "keeps gliding the frame the key is released: {after:?}");
+    assert!(after[1] < after[0], "and slows down: {after:?}");
+    for _ in 0..60 {
+        h.frame(vec![]);
+    }
+    assert_eq!(h.vp.velocity, DVec3::ZERO, "comes to rest");
+}
+
+fn raw_look_turn(smoothing: bool) {
+    let mut h = Harness::new(NavScheme::HammerPro);
+    h.state.settings.workflow.camera_smoothing = smoothing;
+    let sens = f64::from(h.state.settings.view.mouse_sensitivity);
+    let p = h.rect(0).center();
+    h.move_to(p);
+    h.button(p, PointerButton::Secondary, true);
+    h.frame(vec![Event::PointerMoved(p + vec2(30.0, 0.0)), Event::MouseMoved(vec2(30.0, 0.0))]);
+    let yaw = h.yaw();
+    let pitch = h.state.cameras.cam3d.pitch_deg;
+    h.frame(vec![Event::PointerMoved(p + vec2(50.0, 10.0)), Event::MouseMoved(vec2(20.0, 10.0))]);
+    let turned = camera::wrap_degrees(h.yaw() - yaw);
+    assert!((turned + 20.0 * sens).abs() < 1e-9, "smoothing {smoothing}: yaw {turned}");
+    assert!((h.state.cameras.cam3d.pitch_deg - (pitch - 10.0 * sens)).abs() < 1e-9, "smoothing {smoothing}");
+    let after = h.state.cameras.cam3d;
+    h.frame(vec![]);
+    h.frame(vec![]);
+    assert_eq!(h.state.cameras.cam3d, after, "smoothing {smoothing}: nothing keeps turning");
+    h.button(p + vec2(50.0, 10.0), PointerButton::Secondary, false);
+}
+
+#[test]
+fn mouse_look_applies_the_raw_delta_in_both_modes() {
+    raw_look_turn(true);
+    raw_look_turn(false);
+}
+
+#[test]
+fn hover_glide_and_lit_auto_motion_follow_the_camera_without_smoothing() {
+    let mut h = Harness::new(NavScheme::HammerPro);
+    h.state.settings.workflow.camera_smoothing = false;
+    let mut motion = hp_app::view::CameraMotion::default();
+    let key = |h: &Harness| {
+        let c = &h.state.cameras.cam3d;
+        [c.pos.x, c.pos.y, c.pos.z, c.yaw_deg, c.pitch_deg]
+    };
+    let p = h.rect(0).center();
+    h.move_to(p);
+    h.button(p, PointerButton::Secondary, true);
+    assert!(!motion.gliding(key(&h)));
+    h.key(Key::W, Some(Key::W), true);
+    let moving = key(&h);
+    assert!(!motion.gliding(moving), "one moved frame is not a glide yet");
+    h.frame(vec![]);
+    assert!(motion.gliding(key(&h)), "two moved frames in a row are");
+    assert_ne!(key(&h), moving, "Lit Auto sees the camera move each frame");
+    assert_eq!(lit_light_cap(hp_app::settings::LitQuality::Auto, true), hp_app::settings::BALANCED_LIGHTS);
+    h.key(Key::W, Some(Key::W), false);
+    let stopped = key(&h);
+    assert!(!motion.gliding(stopped), "the release frame already reads as still");
+    h.frame(vec![]);
+    assert_eq!(key(&h), stopped, "Lit Auto returns to full quality the next frame");
+    assert!(!motion.gliding(key(&h)));
+    h.button(p, PointerButton::Secondary, false);
+}

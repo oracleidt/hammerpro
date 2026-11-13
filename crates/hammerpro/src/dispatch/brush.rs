@@ -65,6 +65,9 @@ const HANDLED: &[Action] = &[
     Action::InsetFace,
     Action::InsetInteractive,
     Action::ExtrudeInteractive,
+    Action::ExtrudeAlongNormal,
+    Action::ExtrudeCycleDirection,
+    Action::ToggleExtrudeGrow,
 ];
 
 impl Package for Brush {
@@ -170,6 +173,13 @@ impl Package for Brush {
             Action::InsetFace => app.start_inset(),
             Action::InsetInteractive => app.start_inset_modal(ctx),
             Action::ExtrudeInteractive => app.start_extrude_modal(ctx),
+            Action::ExtrudeAlongNormal => {
+                app.state.settings.brush.extrude_mode = hp_app::settings::ExtrudeDirectionSetting::Normal;
+                app.state.settings_dirty = true;
+                app.start_extrude_modal(ctx);
+            }
+            Action::ExtrudeCycleDirection => app.cycle_extrude_mode(),
+            Action::ToggleExtrudeGrow => app.toggle_extrude_grow(),
             _ => return false,
         }
         true

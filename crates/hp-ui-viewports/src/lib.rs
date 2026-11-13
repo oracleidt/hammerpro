@@ -1893,6 +1893,14 @@ impl Viewports {
                                 state.request(action);
                             }
                         }
+                        ui.separator();
+                        let mut smooth = state.settings.workflow.camera_smoothing;
+                        let toggle = ui
+                            .checkbox(&mut smooth, Action::ToggleCameraSmoothing.label())
+                            .on_hover_text(t!("viewport.camera_smoothing_tip"));
+                        if toggle.changed() {
+                            state.request(Action::ToggleCameraSmoothing);
+                        }
                     }
                 });
                 if view.is_2d() {

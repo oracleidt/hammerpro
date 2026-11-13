@@ -7,6 +7,7 @@ pub enum Stage {
     Direct,
     BounceRays,
     Bounces,
+    AmbientOcclusion,
     LeafAmbient,
     DetailProps,
     StaticProps,
@@ -14,11 +15,12 @@ pub enum Stage {
 }
 
 impl Stage {
-    pub const ALL: [Stage; 8] = [
+    pub const ALL: [Stage; 9] = [
         Stage::Scene,
         Stage::Direct,
         Stage::BounceRays,
         Stage::Bounces,
+        Stage::AmbientOcclusion,
         Stage::LeafAmbient,
         Stage::DetailProps,
         Stage::StaticProps,
@@ -31,6 +33,7 @@ impl Stage {
             Stage::Direct => "direct lighting",
             Stage::BounceRays => "bounce rays",
             Stage::Bounces => "bounced light",
+            Stage::AmbientOcclusion => "ambient occlusion",
             Stage::LeafAmbient => "leaf ambient",
             Stage::DetailProps => "detail props",
             Stage::StaticProps => "static props",
@@ -48,6 +51,7 @@ impl Stage {
             Stage::Direct => 0.55,
             Stage::BounceRays => 0.08,
             Stage::Bounces => 0.08,
+            Stage::AmbientOcclusion => 0.1,
             Stage::LeafAmbient => 0.08,
             Stage::DetailProps => 0.03,
             Stage::StaticProps => 0.25,
@@ -64,6 +68,9 @@ impl Stage {
             }
             Stage::BounceRays => "its time grows with the luxels; -fast or -bounce 0 cut it",
             Stage::Bounces => "-bounce sets the number of passes",
+            Stage::AmbientOcclusion => {
+                "its time grows with the luxels and -aofacesamples; -fast halves the rays, a smaller -aoradius shortens them"
+            }
             Stage::LeafAmbient => "maps with very many leaves take long here; -fastambient cuts it",
             Stage::DetailProps => "its time grows with the number of detail props and of lights",
             Stage::StaticProps => {

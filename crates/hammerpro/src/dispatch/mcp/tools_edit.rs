@@ -137,7 +137,7 @@ domain! { "editing";
             "material": string("Material of the new faces (default: the inset face's)."),
         }, [];
     extrude_faces: Destructive, "Extrude faces into new brushes or carve them inward",
-        "Extrude brush faces outward into new brushes (the interactive extrude, the E key in the 3D view): each face becomes the base of a new convex brush distance units high along the face normal, textured like the face (or material), never merged into the original brush. Several faces make several brushes in one undo step, each pulled along its own normal. faces defaults to the selected faces, else the faces of ids. snap puts the new top plane of every brush on a plane of the active grid (grid size, custom grid and rotation honored, size clamped to 1 to 1024); alt_grid does the same on the alternate grid, which is the Alt key of the interactive extrude: an axis aligned grid at the origin of half the grid size (double when the grid size is 1), ignoring rotation and custom grids. dry_run answers the number of brushes without changing the map. A negative distance carves instead: the slab of material of that depth under each face is cut out of its own brush (the face moves inward, the brush stays one valid convex brush, the answer lists that brush id), in the same single undo step, with the same snap, alt_grid and material behavior; it fails when the carve would go through the whole brush. To carve a pocket or extrude only part of a face use extrude_face. Answers the ids of the new or carved brushes and the distance used for each face.",
+        "Extrude brush faces along their normals (the interactive extrude, the E key in the 3D view, or Extrude along normal, Alt+Shift+E). Faces of any orientation work: slanted faces of rotated or vertex edited brushes and the base faces of displacements, on one or several brushes. mode picks the direction: normal (default) moves every face along its own normal and fills the gaps between neighbor faces (a shared edge, also between two brushes) with walls; average moves every face along the average of their normals (each face must face it); axis moves along a world axis (axis x, y, z, or auto: the axis nearest the average normal), each face outward along it (a face parallel to the axis fails). new_brush true (default) makes the pushed volume new convex brushes (merged together when the result stays convex), textured like the face (or material), the original brush untouched; new_brush false grows the brush itself when the brush stays convex, the moved face keeps its id, texture and displacement (moved with it), otherwise that part becomes a new brush. The side faces continue the face texture over the edge. Everything is one undo step. faces defaults to the selected faces, else the faces of ids. snap puts the new top plane of every face on a plane of the active grid (grid size, custom grid and rotation honored, size clamped to 1 to 1024); alt_grid does the same on the alternate grid, which is the Alt key of the interactive extrude: an axis aligned grid at the origin of half the grid size (double when the grid size is 1), ignoring rotation and custom grids. With average or axis the distance is snapped along that direction for all faces at once. dry_run answers the number of brushes without changing the map. A negative distance carves instead: each face moves inward by that distance (along the chosen direction) and its own brush shrinks, staying one valid convex brush (the answer lists that brush id), in the same single undo step, with the same snap and alt_grid behavior; it fails when the carve would go through the whole brush or change the shape of a displacement. Positive and negative distances cannot be mixed. To carve a pocket or extrude only part of a face use extrude_face. Answers the ids of the new, grown or carved brushes and the distance used for each face.",
         {
             "faces": faces("Faces [{solid, side}] (default: the selected faces)."),
             "ids": target_ids(), "solid_ids": target_solid_ids(),
@@ -146,6 +146,9 @@ domain! { "editing";
             "alt_grid": boolean("Align them to the alternate grid instead (the Alt key, default false)."),
             "material": string("Material of the new faces (default: the face's)."),
             "dry_run": boolean("Only answer how many brushes would be made, or why it fails (default false)."),
+            "mode": choice("Direction: normal (default, each face along its own normal, walls between neighbors), average (the average normal) or axis.", &["normal", "average", "axis"]),
+            "axis": choice("Axis of mode axis: auto (default, the world axis nearest the average normal), x, y or z.", &["auto", "x", "y", "z"]),
+            "new_brush": boolean("true (default): the pushed volume becomes new brushes; false: grow the brush itself when it stays convex, else make a new brush."),
         }, [];
     get_brush_edges: Read, "Brush edges",
         "The edges of a solid as numbered [a, b] point pairs (the edge indices bevel_edges takes), with their length.",
@@ -927,12 +930,28 @@ fn extrude_faces(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let snap = a.opt_bool("snap")?.unwrap_or(false);
     let alt = a.opt_bool("alt_grid")?.unwrap_or(false);
     let material = a.opt_str("material", MAX_NAME)?.map(material_name).transpose()?;
+    let axis = match a.opt_enum("axis", &["auto", "x", "y", "z"])? {
+        Some(id) => hp_geom::ExtrudeAxis::from_id(&id).unwrap_or_default(),
+        None => hp_geom::ExtrudeAxis::Auto,
+    };
+    let mode = a.opt_enum("mode", &["normal", "average", "axis"])?.unwrap_or_else(|| "normal".to_owned());
+    let direction = hp_geom::ExtrudeDirection::from_ids(&mode, axis).unwrap_or_default();
+    let grow = !a.opt_bool("new_brush")?.unwrap_or(true);
+    let params = hp_geom::NormalExtrudeParams { direction, grow, material: material.clone() };
     let base = state.target_grid().frame;
     let frame = if alt { base.alternate() } else { base };
+    let refs: Vec<Option<(DVec3, DVec3)>> = faces.iter().map(|f| face_reference(state, f)).collect();
+    let normals: Vec<DVec3> = refs.iter().flatten().map(|(_, n)| *n).collect();
+    let shared = match direction {
+        hp_geom::ExtrudeDirection::EachNormal => None,
+        _ => hp_geom::extrude_directions(&normals, direction).ok().and_then(|d| d.first().copied()),
+    };
     let mut list: Vec<(FaceRef, f64)> = Vec::with_capacity(faces.len());
-    for f in &faces {
-        let d = match face_reference(state, f) {
-            Some((from, normal)) if snap || alt => frame.snap_distance(from, normal, distance),
+    let first = refs.iter().flatten().next().map(|(from, _)| *from);
+    for (f, r) in faces.iter().zip(&refs) {
+        let d = match (r, shared, first) {
+            (_, Some(dir), Some(from)) if snap || alt => frame.snap_distance(from, dir, distance),
+            (Some((from, normal)), None, _) if snap || alt => frame.snap_distance(*from, *normal, distance),
             _ => distance,
         };
         list.push((*f, d));
@@ -944,16 +963,20 @@ fn extrude_faces(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let depths: Vec<Value> =
         list.iter().map(|(f, d)| json!({ "solid": f.solid, "side": f.side, "distance": d })).collect();
     if a.opt_bool("dry_run")?.unwrap_or(false) {
-        let n = state.doc.extrude_faces_preview(&list, material.as_deref()).map_err(|e| e.to_string())?;
-        return Ok(ToolResult::json(json!({ "dry_run": true, "brushes": n, "faces": depths })));
+        let n = state.doc.extrude_faces_plan(&list, &params).map_err(|e| e.to_string())?.brushes;
+        return Ok(ToolResult::json(
+            json!({ "dry_run": true, "brushes": n, "faces": depths, "mode": mode, "new_brush": !grow }),
+        ));
     }
-    let ids = edit(state, "extrude_faces", |doc| doc.extrude_faces(&list, material.as_deref()))?;
+    let ids = edit(state, "extrude_faces", |doc| doc.extrude_faces_with(&list, &params))?;
     let bounds =
         state.doc.scene().objects_bounds(&ids.iter().map(|id| ObjRef::Solid(*id)).collect::<Vec<_>>(), &|_| None);
     Ok(ToolResult::json(json!({
         "solid_ids": ids,
         "brushes": ids.len(),
         "faces": depths,
+        "mode": mode,
+        "new_brush": !grow,
         "bounds": bounds_json(bounds),
     })))
 }
@@ -2169,6 +2192,91 @@ mod tests {
         assert_eq!(r["brushes"], 2);
         err(&mut s, "extrude_faces", json!({ "faces": [{ "solid": 3, "side": 99 }], "distance": 8 }));
         err(&mut s, "extrude_faces", json!({ "faces": [{ "solid": 3, "side": 5 }], "distance": 0 }));
+    }
+
+    #[test]
+    fn extrude_faces_along_normals_average_axis_and_grow() {
+        let mut s = hp_app::testing::test_state();
+        let pts = [
+            glam::DVec3::new(1000.0, 0.0, 0.0),
+            glam::DVec3::new(1064.0, 0.0, 0.0),
+            glam::DVec3::new(1064.0, 64.0, 0.0),
+            glam::DVec3::new(1000.0, 64.0, 0.0),
+            glam::DVec3::new(1000.0, 0.0, 32.0),
+            glam::DVec3::new(1064.0, 0.0, 32.0),
+            glam::DVec3::new(1064.0, 64.0, 64.0),
+            glam::DVec3::new(1000.0, 64.0, 64.0),
+        ];
+        let mut next = 90_000u32;
+        let sides = hp_geom::hull_solid(&pts, "dev/dev_measuregeneric01b", 0.25, 16, &mut || {
+            next += 1;
+            next
+        })
+        .unwrap();
+        let id = s.doc.create_solid(sides, hp_editor::Owner::World).unwrap();
+        let n = glam::DVec3::new(0.0, -1.0, 2.0).normalize();
+        let side = |s: &hp_app::AppState| {
+            s.doc
+                .scene()
+                .solid(id)
+                .unwrap()
+                .solid
+                .sides
+                .iter()
+                .position(|x| hp_geom::Plane::from_side(x).is_some_and(|p| p.normal.distance(n) < 1e-6))
+                .unwrap()
+        };
+        let before = s.doc.scene().solids().len();
+        let slope = side(&s);
+        let r = ok(&mut s, "extrude_faces", json!({ "faces": [{ "solid": id, "side": slope }], "distance": 16 }));
+        assert_eq!(r["brushes"], 1);
+        assert_eq!(r["mode"], "normal");
+        let new_id = u32::try_from(r["solid_ids"][0].as_u64().unwrap()).unwrap();
+        let g = &s.doc.scene().solid(new_id).unwrap().geom;
+        let tip = glam::DVec3::new(1064.0, 64.0, 64.0) + n * 16.0;
+        assert!(g.vertices().any(|v| v.distance(tip) < 1e-3), "the top follows the slanted normal");
+        assert!(s.doc.undo());
+        let r = ok(
+            &mut s,
+            "extrude_faces",
+            json!({ "faces": [{ "solid": id, "side": slope }], "distance": 16, "mode": "axis", "new_brush": false }),
+        );
+        assert_eq!(r["solid_ids"], json!([id]));
+        assert_eq!(r["new_brush"], false);
+        assert_eq!(s.doc.scene().solids().len(), before);
+        assert_eq!(s.doc.scene().solid(id).unwrap().bounds.max.z, 80.0);
+        assert!(s.doc.undo());
+        let r = ok(
+            &mut s,
+            "extrude_faces",
+            json!({ "faces": [{ "solid": id, "side": slope }], "distance": 16, "new_brush": false, "dry_run": true }),
+        );
+        assert_eq!(r["brushes"], 1);
+        let r = ok(
+            &mut s,
+            "extrude_faces",
+            json!({ "faces": [{ "solid": id, "side": slope }], "distance": 21, "mode": "axis", "axis": "z", "snap": true }),
+        );
+        assert_eq!(r["faces"][0]["distance"], 16.0);
+        assert!(s.doc.undo());
+        let r = ok(
+            &mut s,
+            "extrude_faces",
+            json!({ "faces": [{ "solid": id, "side": slope }], "distance": 8, "mode": "average" }),
+        );
+        assert_eq!((r["brushes"].as_u64(), r["mode"].as_str()), (Some(1), Some("average")));
+        assert!(s.doc.undo());
+        err(
+            &mut s,
+            "extrude_faces",
+            json!({ "faces": [{ "solid": 3, "side": 5 }, { "solid": 3, "side": 4 }], "distance": 8, "mode": "average" }),
+        );
+        err(
+            &mut s,
+            "extrude_faces",
+            json!({ "faces": [{ "solid": 3, "side": 5 }], "distance": 8, "mode": "sideways" }),
+        );
+        err(&mut s, "extrude_faces", json!({ "faces": [{ "solid": 3, "side": 5 }], "distance": 8, "axis": "w" }));
     }
 
     #[test]

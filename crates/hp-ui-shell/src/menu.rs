@@ -180,7 +180,14 @@ fn hammer_order(group: MenuGroup) -> &'static [Action] {
         MenuGroup::ToolsGroup => &[A::Group, A::Ungroup, A::TieToEntity, A::MoveToWorld],
         MenuGroup::ToolsCsg => &[A::Carve, A::MakeHollow],
         MenuGroup::ToolsBrushOps => &[A::MergeBrushes, A::IntersectBrushes, A::UnionBrushes, A::MergeConvex],
-        MenuGroup::ToolsFaceOps => &[A::ExtrudeInteractive, A::InsetInteractive, A::InsetFace],
+        MenuGroup::ToolsFaceOps => &[
+            A::ExtrudeInteractive,
+            A::InsetInteractive,
+            A::InsetFace,
+            A::ExtrudeAlongNormal,
+            A::ExtrudeCycleDirection,
+            A::ToggleExtrudeGrow,
+        ],
         MenuGroup::ToolsBrushMisc => {
             &[A::ConvertToDetail, A::SelectDetailCandidates, A::TieEachToEntity, A::NodrawHiddenFaces]
         }

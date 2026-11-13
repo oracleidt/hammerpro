@@ -62,6 +62,18 @@ Dans la section **Props statiques** de la fenêtre de compilation :
 
 Vous pouvez aussi forcer `-StaticPropLighting` avec une compilation Normal via le menu des options d'éclairage. Chaque option est décrite dans [Options de compilation](../compiler/compile-options.md).
 
+<a id="step-7-ambient-occlusion-optional"></a>
+## Étape 7 : occlusion ambiante (facultatif)
+
+L'occlusion ambiante assombrit les coins, le pied des murs et le sol sous les caisses et les meubles, ce qui donne plus de relief aux pièces. C'est une option de compilation, désactivée par défaut (même dans le préréglage Final), et les aperçus de l'éditeur ne la montrent jamais :
+
+1. Ouvrez le menu des options d'éclairage de la fenêtre de compilation, groupe **Occlusion ambiante**, et activez `-ao` (ou tapez `-ao` dans les arguments supplémentaires de l'étape d'éclairage).
+2. Gardez d'abord les valeurs par défaut : rayon 32 unités, échelle 0,5. Un `-aoradius` plus grand donne des ombres plus larges et plus douces dans les coins ; `-aoscale 1` les coins les plus sombres.
+3. Compilez, puis regardez le résultat dans la [vue joueur](../features/player-view.md) (`L` pour les lightmaps compilées) ou en jeu.
+4. Pour voir l'occlusion seule, ajoutez `-aodebug` : les lightmaps sont blanches là où c'est dégagé et grises dans les coins. Retirez-la avant la compilation de sortie.
+
+La skybox 3D a le même rendu que le monde en taille réelle : le rayon y est divisé par l'échelle du `sky_camera`. La formule et toutes les options sont dans [Options de compilation](../compiler/compile-options.md#ambient-occlusion).
+
 ## Comparaison avec VRAD
 
 Le compilateur d'éclairage suit les règles de VRAD : une map éclairée par Hammer Pro ressemble à la même map éclairée par le VRAD de Valve dans Garry's Mod. Il est vérifié fonction par fonction face au VRAD de Garry's Mod sur des maps de test (lightmaps, styles de lumière, bump maps, lumière ambiante, couleurs par sommet des props statiques, props de détail, lumières du monde) et en jeu :
@@ -87,6 +99,8 @@ Détails et différences voulues :
 ## FAQ
 
 **L'aperçu précalculé et le jeu ne se ressemblent pas.** Vérifiez que l'aperçu et la compilation utilisent la même plage dynamique, et que le jeu n'affiche du HDR que si vous avez compilé en HDR.
+
+**L'occlusion ambiante ne se voit pas dans l'aperçu précalculé.** C'est seulement une option de compilation : compilez la map et regardez dans la vue joueur ou en jeu.
 
 **Les props sont noirs ou plats.** Compilez en **Final** (ou forcez `-StaticPropLighting`) pour que les sommets des props reçoivent un éclairage précalculé, et gardez **Ombres des props statiques** activé.
 

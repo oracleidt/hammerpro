@@ -20,7 +20,8 @@ Ces contrôles marchent avec tous les outils et tous les schémas :
 | Molette | Avancer ou reculer, vers le curseur si **Zoomer vers le curseur** est activé. `Maj` : plus vite |
 | Clic droit sans bouger | Ouvre le menu contextuel de la vue |
 
-- Désactivez **Paramètres > Vues > Déplacements fluides de la caméra** pour des mouvements précis avec démarrage et arrêt immédiats. Avec l'option activée, la vitesse monte en **Temps d'accélération de la caméra** secondes (0 est également immédiat). Ce temps est conservé lorsque les déplacements fluides sont désactivés.
+- **Caméra 3D fluide** (activée par défaut) donne à la caméra volante une courte accélération et décélération : elle atteint sa vitesse en **Temps d'accélération de la caméra** secondes et glisse un instant après le relâchement de la touche, et le suivi d'un coéquipier en [Team Mapping](team-mapping.md) glisse vers sa caméra. Désactivez-la pour une réponse instantanée : la caméra part à pleine vitesse à l'image où vous appuyez sur une touche de déplacement, s'arrête à l'image où vous la relâchez, et saute directement sur le coéquipier suivi. Elle se règle dans **Paramètres > Vues**, dans **Affichage > Zoom, distance d'affichage et caméra > Caméra 3D fluide**, dans le menu de l'en-tête de la vue 3D (clic sur le nom de la vue), ou avec l'action `toggle_camera_smoothing`. Le temps d'accélération est conservé pendant la désactivation (0 est également immédiat).
+- La vue à la souris, la molette, le défilement, l'orbite et les gestes du [pavé tactile](trackpad.md) ne sont jamais lissés : la caméra suit l'entrée brute dans les deux modes. Le survol des objets et la qualité Lit **Auto** ne voient la caméra en mouvement que lorsqu'elle bouge réellement : sans lissage, ils reviennent à la pleine qualité à l'image où elle s'arrête.
 - `Ctrl` ne fait jamais voler : en vol ou en vue souris, un clic gauche sélectionne l'objet sous le viseur (le centre de la vue), et `Ctrl+clic` l'ajoute ou le retire de la sélection, comme dans Hammer. Le pinceau des displacements, lui, continue de peindre.
 - Les raccourcis ne se déclenchent pas pendant que le clavier pilote la caméra.
 
@@ -131,7 +132,7 @@ Barre d'options de l'outil :
 
 Elles se trouvent dans le menu **Affichage**. Le menu du clic droit d'une vue propose aussi **Centrer les vues ici**, et pendant une session [Team Mapping](team-mapping.md) **Signaler ici à l'équipe**.
 
-Chaque vue a un en-tête : cliquez sur le nom de la vue pour choisir un autre type de vue (et, en 3D, le mode de rendu), double-cliquez dessus pour agrandir la vue, ou utilisez le bouton d'agrandissement à sa droite. Glissez les séparateurs entre les vues pour les redimensionner, double-cliquez sur un séparateur pour le remettre en place.
+Chaque vue a un en-tête : cliquez sur le nom de la vue pour choisir un autre type de vue (et, en 3D, le mode de rendu et **Caméra 3D fluide**), double-cliquez dessus pour agrandir la vue, ou utilisez le bouton d'agrandissement à sa droite. Glissez les séparateurs entre les vues pour les redimensionner, double-cliquez sur un séparateur pour le remettre en place.
 
 ## Paramètres
 
@@ -141,7 +142,7 @@ Chaque vue a un en-tête : cliquez sur le nom de la vue pour choisir un autre ty
 |---|---|---|
 | **Contrôles de la caméra** | Hammer Pro, Hammer ou Hammer++ (bouton du milieu) | Hammer Pro |
 | **Inverser l'axe X de la souris** | Inverse l'axe horizontal pour regarder autour | Désactivé |
-| **Déplacements fluides de la caméra** | Accélération et décélération ; désactiver pour démarrer et s'arrêter immédiatement | Activé |
+| **Caméra 3D fluide** | Accélération et décélération de la caméra volante, glissement lors du suivi d'un coéquipier ; désactivée : démarrages et arrêts instantanés | Activé |
 | **Temps d'accélération de la caméra** | Temps que met la caméra en vol pour atteindre sa vitesse (0 à 0,5 s) | 0,07 s |
 | **Ctrl + molette en 2D** | Change la taille de la grille, ou zoome toutes les vues 2D | Change la taille de la grille |
 | **Zoomer les vues 2D ensemble** | Zoomer une vue 2D zoome les autres | Désactivé |

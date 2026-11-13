@@ -61,8 +61,8 @@ pub use ids::{IdBuildHasher, IdHasher, IdMap, IdSet};
 pub use ops::{AlignMode, BevelOutcome, ClipKeep, EdgeRef, EntityQuery, FaceEdit, ReplaceScope};
 pub use ops::{ConnPart, MAX_TEXT_LEN, TextField, TextMatch, TextQuery, find_ranges};
 pub use ops::{DETAIL_CLASS, DetailPlan, DetailSplit, MAKE_DETAIL_LABEL, is_detail_class};
+pub use ops::{ExtrudePreview, MAX_JITTER_DEG, RandomRotate, RandomRotateReport};
 pub use ops::{LoopScope, MAX_LOOP_SOLIDS, MAX_SLICE_PLANES, RunKind};
-pub use ops::{MAX_JITTER_DEG, RandomRotate, RandomRotateReport};
 pub use pick::{EntityRay, Hit, PickOptions, RectMode};
 pub use problems::{
     BrushClassFn, MaterialKind, MaterialKindFn, Problem, ProblemAssets, ProblemContext, Severity, TargetKeyFn,

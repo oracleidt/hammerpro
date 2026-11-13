@@ -124,7 +124,7 @@ pub(crate) fn sphere_dirs(n: usize) -> Vec<Vec3A> {
         .collect()
 }
 
-fn basis(n: Vec3A) -> (Vec3A, Vec3A) {
+pub(crate) fn basis(n: Vec3A) -> (Vec3A, Vec3A) {
     let a = if n.x.abs() > 0.9 { Vec3A::Y } else { Vec3A::X };
     let t = n.cross(a).normalize_or(Vec3A::Y);
     (t, n.cross(t))
@@ -135,6 +135,13 @@ pub(crate) struct Sample {
     pub pos: Vec3A,
     pub normals: [Vec3A; 4],
     pub cluster: i32,
+}
+
+pub(crate) struct LuxelSamples {
+    pub centers: Vec<DVec2>,
+    pub pieces: Vec<Vec<DVec2>>,
+    pub dark: Vec<bool>,
+    pub samples: Vec<Option<Sample>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -187,6 +194,7 @@ pub(crate) struct Ctx<'a> {
     pub water: &'a Bvh,
     pub water_reflectivity: Vec3A,
     pub dispchop: f64,
+    pub ao: Option<super::ao::Ao>,
 }
 
 pub(crate) const WATER_BIT: u32 = 1 << 31;
@@ -584,8 +592,7 @@ impl Ctx<'_> {
         }
     }
 
-    pub fn direct(&self, f: &LitFace) -> FaceLight {
-        let nn = if f.bump { 4 } else { 1 };
+    pub(crate) fn luxel_samples(&self, f: &LitFace) -> LuxelSamples {
         let lux = f.luxels();
         let mut pieces: Vec<Vec<DVec2>> = Vec::new();
         let mut centers: Vec<DVec2> = Vec::with_capacity(lux);
@@ -628,6 +635,13 @@ impl Ctx<'_> {
         }
         let samples: Vec<Option<Sample>> =
             (0..lux).map(|i| if dark[i] { None } else { Some(self.sample(f, centers[i].x, centers[i].y)) }).collect();
+        LuxelSamples { centers, pieces, dark, samples }
+    }
+
+    pub fn direct(&self, f: &LitFace) -> FaceLight {
+        let nn = if f.bump { 4 } else { 1 };
+        let lux = f.luxels();
+        let LuxelSamples { centers, pieces, dark, samples } = self.luxel_samples(f);
         let mut clusters: Vec<i32> = samples.iter().flatten().map(|sp| sp.cluster).collect();
         clusters.extend(f.poly.iter().map(|v| self.map.vis_cluster_at(*v + f.normal)));
         clusters.sort_unstable();
@@ -1086,7 +1100,7 @@ fn cosine_dir(n: Vec3A, k: usize, count: usize, seed: u32) -> Vec3A {
     cosine_dir_in(&[t, b, n], k, count, seed)
 }
 
-fn cosine_dir_in(&[t, b, n]: &[Vec3A; 3], k: usize, count: usize, seed: u32) -> Vec3A {
+pub(crate) fn cosine_dir_in(&[t, b, n]: &[Vec3A; 3], k: usize, count: usize, seed: u32) -> Vec3A {
     let side = (count as f32).sqrt().ceil().max(1.0) as usize;
     let (gx, gy) = (k % side, k / side);
     let r1 = unit(hash(seed, k as u32, 1));

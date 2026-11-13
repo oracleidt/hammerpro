@@ -62,6 +62,17 @@ In the **Static props** section of the compile window:
 
 You can also force `-StaticPropLighting` with a Normal compile through the lighting options menu. Each flag is described in [Compile options](../compiler/compile-options.md).
 
+## Step 7: ambient occlusion (optional)
+
+Ambient occlusion darkens corners, the foot of walls and the ground under crates and furniture, which gives rooms more depth. It is a compile option, off by default (even in the Final preset), and the editor previews never show it:
+
+1. Open the lighting options menu of the compile window, group **Ambient occlusion**, and turn on `-ao` (or type `-ao` in the extra arguments of the lighting step).
+2. Keep the defaults first: radius 32 units, scale 0.5. A larger `-aoradius` gives wider, softer shadows in corners; `-aoscale 1` the darkest corners.
+3. Compile, then look at the result in the [player view](../features/player-view.md) (`L` for the compiled lightmaps) or in game.
+4. To see the occlusion alone, add `-aodebug`: the lightmaps show white where it is open and gray in corners. Remove it before the release compile.
+
+The 3D skybox gets the same look as the full size world: the radius is divided by the `sky_camera` scale there. The formula and every option are in [Compile options](../compiler/compile-options.md#ambient-occlusion).
+
 ## How the lighting compares with VRAD
 
 The lighting compiler follows the VRAD rules, so a map lit by Hammer Pro looks like the same map lit by Valve's VRAD in Garry's Mod. It is checked feature by feature against the VRAD of Garry's Mod on test maps (lightmaps, light styles, bump maps, ambient light, static prop vertex colors, detail props, world lights) and in game:
@@ -87,6 +98,8 @@ Details and deliberate differences:
 ## FAQ
 
 **The baked preview and the game do not look the same.** Check that the preview and the compile use the same dynamic range, and that the game shows HDR only if you compiled HDR.
+
+**Ambient occlusion does not show in the Baked preview.** It is a compile option only: compile the map and look in the player view or in game.
 
 **Props are black or flat.** Compile with **Final** (or force `-StaticPropLighting`) so prop vertices get baked lighting, and keep **Static prop shadows** on.
 

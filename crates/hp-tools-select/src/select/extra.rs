@@ -16,21 +16,39 @@ const CONTEXT_ACTIONS: [Action; 6] = [
     Action::TogglePivot,
 ];
 
+const FACE_ACTIONS: [Action; 3] = [Action::ExtrudeAlongNormal, Action::ExtrudeInteractive, Action::InsetInteractive];
+
+const FACE_ENTRY_BASE: u32 = 100;
+
 pub(super) fn context_entries(state: &AppState) -> Vec<ToolMenuEntry> {
-    if state.doc.selection().objects.is_empty() {
-        return Vec::new();
+    let mut out: Vec<ToolMenuEntry> = Vec::new();
+    if !state.doc.selection().faces.is_empty() {
+        out.extend(FACE_ACTIONS.iter().enumerate().filter(|(_, a)| a.is_ready()).map(|(i, a)| ToolMenuEntry {
+            label: a.label().to_owned(),
+            id: FACE_ENTRY_BASE + i as u32,
+            enabled: a.enabled(state),
+        }));
     }
-    CONTEXT_ACTIONS
-        .iter()
-        .enumerate()
-        .filter(|(_, a)| a.is_ready())
-        .filter(|(_, a)| **a != Action::CenterOrigins || a.enabled(state))
-        .map(|(i, a)| ToolMenuEntry { label: a.label().to_owned(), id: i as u32, enabled: a.enabled(state) })
-        .collect()
+    if state.doc.selection().objects.is_empty() {
+        return out;
+    }
+    out.extend(
+        CONTEXT_ACTIONS
+            .iter()
+            .enumerate()
+            .filter(|(_, a)| a.is_ready())
+            .filter(|(_, a)| **a != Action::CenterOrigins || a.enabled(state))
+            .map(|(i, a)| ToolMenuEntry { label: a.label().to_owned(), id: i as u32, enabled: a.enabled(state) }),
+    );
+    out
 }
 
 pub(super) fn context_command(state: &mut AppState, id: u32) {
-    if let Some(a) = CONTEXT_ACTIONS.get(id as usize) {
+    let action = match id.checked_sub(FACE_ENTRY_BASE) {
+        Some(i) => FACE_ACTIONS.get(i as usize),
+        None => CONTEXT_ACTIONS.get(id as usize),
+    };
+    if let Some(a) = action {
         state.request(*a);
     }
 }

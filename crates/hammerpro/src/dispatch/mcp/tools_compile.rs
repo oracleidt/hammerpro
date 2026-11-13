@@ -55,7 +55,9 @@ domain! { "compile and play";
                 {\"nodetail\": true, \"luxelscale\": 2, \"radius_override\": 4096}."),
             "rad_options": flag_options("Options of the lighting step for this compile, like bsp_options: \
                 {\"final\": true, \"bounce\": 8, \"fast\": false, \"softsun\": 2, \"extrasky\": 4, \"lights\": \
-                \"mylights.rad\"} (lights: a file of the map folder)."),
+                \"mylights.rad\"} (lights: a file of the map folder). Baked ambient occlusion (off by default, \
+                even in the final preset): {\"ao\": true, \"aoradius\": 32, \"aoscale\": 0.5, \"aofacesamples\": 32, \
+                \"aopropsamples\": 32, \"aodebug\": false}."),
             "copy_to_maps": boolean("Copy the BSP to the game's maps folder after this compile."),
             "bsp_beside_vmf": boolean("Save the final BSP beside the source VMF and keep intermediate files in Hammer Pro's cache. The source VMF is preserved."),
             "compiler": string("Compiler for this compile only: an id or name of list_compilers (builtin: Hammer Pro's own)."),
@@ -70,7 +72,8 @@ domain! { "compile and play";
         AllowDynamicPropsAsStatic, wsaddons, serveraddons, propdebug, blocksize (0: no blocks)...) and of the \
         lighting step \
         (rad_options: final, fast, bounce, \
-        StaticPropLighting, StaticPropPolys, textureshadows, lights, chop, smooth, softsun, extrasky...): each \
+        StaticPropLighting, StaticPropPolys, textureshadows, lights, chop, smooth, softsun, extrasky, the baked \
+        ambient occlusion ao, aoradius, aoscale, aofacesamples, aopropsamples, aodebug...): each \
         flag forced on (true or a value), forced off (false) or following the preset (null). Starting the game \
         after compiles and the maps folder need confirm: true (only when the user asked). Answers the settings \
         like get_compile_options.",
@@ -117,7 +120,9 @@ domain! { "compile and play";
                 force it on; false forces it off (even when the preset adds it); null follows the preset again. The \
                 named flags leave the extra arguments; the other extra arguments are kept."),
             "rad_options": flag_options("Options menu of the lighting step, like bsp_options (lights: a .rad file of \
-                the map folder). nostaticpropshadows is static_prop_shadows."),
+                the map folder). nostaticpropshadows is static_prop_shadows. Baked ambient occlusion: ao true \
+                (off by default, even in the final preset), aoradius (units, default 32), aoscale (0 to 1, default \
+                0.5), aofacesamples, aopropsamples (rays, default 32, 16 with fast, 64 with final), aodebug."),
             "confirm": boolean("The user asked for this (needed to start the game after compiles or to set the maps folder)."),
         }, [];
     cancel_compile: Editor, "Cancel the compile",
@@ -1546,6 +1551,16 @@ mod tests {
         r.static_prop_shadows = false;
         let o = options_json(&r, Rad);
         assert_eq!(o["command_flags"], "-bounce 8 -chop 2 -extrasky 4 -softsun 2.5 -nostaticpropshadows");
+        let mut a = CompileSettings { preset: CompilePresetSetting::Final, ..CompileSettings::default() };
+        assert!(!options_json(&a, Rad)["command_flags"].as_str().unwrap().contains("-ao"), "off even in final");
+        assert!(!options_json(&a, Rad)["preset_flags"].as_str().unwrap().contains("-ao"));
+        let ao = json!({ "ao": true, "aoradius": 48, "aoscale": 0.25, "aofacesamples": 24 });
+        apply(&mut a, Rad, &ao, None, "rad_options").unwrap();
+        let line = options_json(&a, Rad)["command_flags"].as_str().unwrap().to_owned();
+        assert_eq!(line, "-final -StaticPropLighting -ao -aofacesamples 24 -aoradius 48 -aoscale 0.25");
+        apply(&mut a, Rad, &json!({ "aodebug": true, "ao": null }), None, "rad_options").unwrap();
+        let line = options_json(&a, Rad)["command_flags"].as_str().unwrap().to_owned();
+        assert_eq!(line, "-final -StaticPropLighting -aodebug -aofacesamples 24 -aoradius 48 -aoscale 0.25");
         let dir = scratch("rad_lights").join("my maps");
         std::fs::create_dir_all(dir.join("content")).unwrap();
         std::fs::write(dir.join("extra.rad"), "lights/white 255 255 255 200\n").unwrap();

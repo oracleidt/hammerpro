@@ -245,7 +245,7 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `keymap_preset` | `"HammerPro"` | Shortcut set: `HammerPro`, `Hammer`, `HammerPlusPlus`. Your own shortcuts stay on top. |
 | `nav_scheme` | `"HammerPro"` | Camera controls: `HammerPro` (right drag looks, WASD flies, middle drag pans), `Hammer` (plus Space + left drag looks, Space + right drag pans, left + right drag moves, arrow keys look), `HammerPlusPlus` (the Hammer controls, middle button looks in 3D). |
 | `invert_mouse_x` | `false` | Invert the horizontal mouse axis when looking around. |
-| `camera_smoothing` | `true` | Enable smooth 3D camera acceleration; false makes movement start and stop immediately. |
+| `camera_smoothing` | `true` | Smooth 3D camera: fly acceleration and deceleration, glide when following a teammate. false: the camera starts and stops the frame a movement key is pressed or released. Action `toggle_camera_smoothing`. |
 | `fly_response` | `0.07` | Seconds the fly camera takes to reach its speed, 0 to 0.5 (0: at once). |
 | `grid_step_factor` | `2.0` | Factor of `[` and `]`, 1.25 to 10. With 2, the powers of two from 1/8 to 4096. |
 | `ctrl_wheel` | `"GridSize"` | `Ctrl` + wheel in a 2D view: `GridSize` or `ZoomAll2d`. |
