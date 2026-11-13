@@ -51,6 +51,46 @@ use crate::util::{
     center_views_on, enter_pressed, escape_pressed, fmt_duration_ms, icon_title, plural, select_and_center,
 };
 
+pub fn bsp_compile_args(s: &hp_app::settings::CompileSettings) -> Vec<String> {
+    let expert_step = expert::active_profile(s)
+        .and_then(|p| p.steps.iter().find(|st| st.enabled && expert::canonical_action(&st.action) == "bsp"));
+    let mut out = match expert_step {
+        Some(st) => {
+            let words = hp_compile::split_args(&st.args);
+            let mut kept = Vec::with_capacity(words.len());
+            let mut skip = false;
+            for w in words {
+                if skip {
+                    skip = false;
+                    continue;
+                }
+                if w.eq_ignore_ascii_case("-game") || w.eq_ignore_ascii_case("-vproject") {
+                    skip = true;
+                    continue;
+                }
+                if !w.contains('$') {
+                    kept.push(w);
+                }
+            }
+            kept.retain(|w| w.starts_with('-') || w.parse::<f64>().is_ok());
+            kept
+        }
+        None => options_ui::effective_step_flags(s, StepKind::Bsp).1,
+    };
+    if let Some(t) =
+        s.target.as_deref().map(str::trim).filter(|t| !t.is_empty() && !t.eq_ignore_ascii_case(hp_fs::GMOD_ID))
+        && !out.iter().any(|a| a.eq_ignore_ascii_case("-target"))
+    {
+        out.push("-target".to_owned());
+        out.push(t.to_owned());
+    }
+    out
+}
+
+pub fn compile_export_of(settings: &Settings) -> CompileExport {
+    CompileDialog::export_of(&settings.compile, &settings.visibility)
+}
+
 pub fn viewport_id() -> egui::ViewportId {
     egui::ViewportId::from_hash_of("hp_compile_viewport")
 }

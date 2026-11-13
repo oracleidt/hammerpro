@@ -108,7 +108,7 @@ impl MapAssetsPanel {
     }
 
     fn header(&mut self, ui: &mut Ui) {
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             let busy = self.resolve.is_some();
             if ui.add_enabled(!busy, egui::Button::new(format!("🔄 {}", t!("mapassets.refresh")))).clicked() {
                 self.refresh();
@@ -132,7 +132,7 @@ impl MapAssetsPanel {
                 ui.checkbox(&mut self.filter.groups[g.index()], group_name(g));
             }
         });
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             let width = (ui.available_width() - 28.0).max(80.0);
             filter_box(ui, &mut self.filter.text, t!("mapassets.search"), width);
         });
@@ -154,7 +154,7 @@ impl MapAssetsPanel {
                 ui.colored_label(theme::warning(), RichText::new(self.warnings.join("\n")).small());
             }
         }
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             if ui.small_button(t!("mapassets.select_all")).clicked() {
                 self.unchecked.clear();
                 self.rows_dirty = true;
@@ -306,9 +306,9 @@ impl MapAssetsPanel {
 
     fn collect_section(&mut self, ui: &mut Ui, state: &mut AppState) {
         ui.label(RichText::new(t!("mapassets.collect_title")).strong());
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label(t!("mapassets.output"));
-            let width = (ui.available_width() - 36.0).max(80.0);
+            let width = (ui.available_width() - 44.0).max(40.0);
             ui.add(
                 egui::TextEdit::singleline(&mut self.output)
                     .hint_text(t!("mapassets.output_hint"))
@@ -332,7 +332,7 @@ impl MapAssetsPanel {
         if let Some(c) = &self.collect {
             let done = c.done.load(std::sync::atomic::Ordering::Relaxed);
             let fraction = if c.total == 0 { 1.0 } else { done as f32 / c.total as f32 };
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 if ui.button(t!("mapassets.cancel")).clicked() {
                     c.job.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
                 }
@@ -377,79 +377,84 @@ impl MapAssetsPanel {
     }
 
     fn unused_section(&mut self, ui: &mut Ui) {
-        egui::CollapsingHeader::new(RichText::new(t!("mapassets.unused_title")).strong())
-            .id_salt("hp_map_assets_unused")
-            .default_open(false)
-            .show(ui, |ui| {
-                ui.label(RichText::new(t!("mapassets.unused_hint")).small().weak());
-                ui.horizontal(|ui| {
-                    let width = (ui.available_width() - 36.0).max(80.0);
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.unused_folder)
-                            .hint_text(t!("mapassets.unused_folder_hint"))
-                            .desired_width(width),
-                    );
-                    if ui.button("🗁").on_hover_text(t!("mapassets.browse")).clicked() {
-                        let start = self.unused_folder.clone();
-                        self.open_picker(PickFor::Unused, &start);
-                    }
-                });
-                let ready = self.tree.is_some() && self.unused_job.is_none() && !self.unused_folder.trim().is_empty();
-                ui.horizontal(|ui| {
-                    if ui.add_enabled(ready, egui::Button::new(t!("mapassets.unused_check"))).clicked() {
-                        self.check_unused();
-                    }
-                    if let Some(job) = &self.unused_job {
-                        ui.spinner();
-                        if ui.small_button(t!("mapassets.cancel")).clicked() {
-                            job.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
-                        }
-                    }
-                });
-                match &self.unused {
-                    None => {}
-                    Some(Err(e)) => {
-                        ui.colored_label(theme::error(), RichText::new(e).small());
-                    }
-                    Some(Ok(r)) => {
-                        let text = tf!("mapassets.unused_result", r.unused.len(), r.scanned, fmt_size(r.unused_bytes));
-                        ui.label(RichText::new(text).small());
-                        if r.cancelled {
-                            ui.colored_label(theme::warning(), RichText::new(t!("mapassets.unused_partial")).small());
-                        }
-                        if !r.unused.is_empty() {
-                            ui.horizontal(|ui| {
-                                filter_box(ui, &mut self.unused_filter, t!("mapassets.search"), 160.0);
-                                if ui.small_button(t!("mapassets.copy_list")).clicked() {
-                                    let list: Vec<&str> = r.unused.iter().map(|u| u.path.as_str()).collect();
-                                    ui.ctx().copy_text(list.join("\n"));
-                                }
-                                if ui.small_button(t!("mapassets.open_folder")).clicked() {
-                                    hp_app::os::open_folder(&r.root, false);
-                                }
-                            });
-                            let needle = self.unused_filter.trim().to_ascii_lowercase();
-                            let shown: Vec<&hp_fs::collect::UnusedFile> = r
-                                .unused
-                                .iter()
-                                .filter(|u| needle.is_empty() || u.path.to_ascii_lowercase().contains(&needle))
-                                .collect();
-                            let row_h = ui.text_style_height(&egui::TextStyle::Small) + 4.0;
-                            egui::ScrollArea::vertical()
-                                .id_salt("hp_map_assets_unused_list")
-                                .max_height(160.0)
-                                .show_rows(ui, row_h, shown.len(), |ui, range| {
-                                    for u in &shown[range] {
-                                        ui.horizontal(|ui| {
-                                            ui.label(RichText::new(&u.path).small().monospace());
-                                            ui.label(RichText::new(fmt_size(u.bytes)).small().weak());
-                                        });
-                                    }
-                                });
-                        }
+        egui::CollapsingHeader::new(hp_app::widgets::header_text(
+            ui,
+            RichText::new(t!("mapassets.unused_title")).strong(),
+        ))
+        .id_salt("hp_map_assets_unused")
+        .default_open(false)
+        .show(ui, |ui| {
+            ui.label(RichText::new(t!("mapassets.unused_hint")).small().weak());
+            ui.horizontal_wrapped(|ui| {
+                let width = (ui.available_width() - 44.0).max(40.0);
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.unused_folder)
+                        .hint_text(t!("mapassets.unused_folder_hint"))
+                        .desired_width(width),
+                );
+                if ui.button("🗁").on_hover_text(t!("mapassets.browse")).clicked() {
+                    let start = self.unused_folder.clone();
+                    self.open_picker(PickFor::Unused, &start);
+                }
+            });
+            let ready = self.tree.is_some() && self.unused_job.is_none() && !self.unused_folder.trim().is_empty();
+            ui.horizontal_wrapped(|ui| {
+                if ui.add_enabled(ready, egui::Button::new(t!("mapassets.unused_check"))).clicked() {
+                    self.check_unused();
+                }
+                if let Some(job) = &self.unused_job {
+                    ui.spinner();
+                    if ui.small_button(t!("mapassets.cancel")).clicked() {
+                        job.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
                     }
                 }
             });
+            match &self.unused {
+                None => {}
+                Some(Err(e)) => {
+                    ui.colored_label(theme::error(), RichText::new(e).small());
+                }
+                Some(Ok(r)) => {
+                    let text = tf!("mapassets.unused_result", r.unused.len(), r.scanned, fmt_size(r.unused_bytes));
+                    ui.label(RichText::new(text).small());
+                    if r.cancelled {
+                        ui.colored_label(theme::warning(), RichText::new(t!("mapassets.unused_partial")).small());
+                    }
+                    if !r.unused.is_empty() {
+                        ui.horizontal(|ui| {
+                            filter_box(ui, &mut self.unused_filter, t!("mapassets.search"), 160.0);
+                            if ui.small_button(t!("mapassets.copy_list")).clicked() {
+                                let list: Vec<&str> = r.unused.iter().map(|u| u.path.as_str()).collect();
+                                ui.ctx().copy_text(list.join("\n"));
+                            }
+                            if ui.small_button(t!("mapassets.open_folder")).clicked() {
+                                hp_app::os::open_folder(&r.root, false);
+                            }
+                        });
+                        let needle = self.unused_filter.trim().to_ascii_lowercase();
+                        let shown: Vec<&hp_fs::collect::UnusedFile> = r
+                            .unused
+                            .iter()
+                            .filter(|u| needle.is_empty() || u.path.to_ascii_lowercase().contains(&needle))
+                            .collect();
+                        let row_h = ui.text_style_height(&egui::TextStyle::Small) + 4.0;
+                        egui::ScrollArea::vertical().id_salt("hp_map_assets_unused_list").max_height(160.0).show_rows(
+                            ui,
+                            row_h,
+                            shown.len(),
+                            |ui, range| {
+                                for u in &shown[range] {
+                                    ui.horizontal(|ui| {
+                                        ui.label(RichText::new(&u.path).small().monospace());
+                                        ui.label(RichText::new(fmt_size(u.bytes)).small().weak());
+                                    });
+                                }
+                            },
+                        );
+                    }
+                }
+            }
+        });
     }
 
     fn confirm_replace(&mut self, ctx: &egui::Context, state: &mut AppState) {
@@ -460,7 +465,7 @@ impl MapAssetsPanel {
             ui.heading(t!("mapassets.confirm_title"));
             ui.label(tf!("mapassets.confirm_text", pending.existing, pending.input.output.display()));
             ui.add_space(8.0);
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 if ui.button(t!("mapassets.confirm_replace")).clicked() {
                     answer = Some(true);
                 }

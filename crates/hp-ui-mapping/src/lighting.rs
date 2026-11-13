@@ -68,7 +68,7 @@ impl LightingTab {
         egui::ScrollArea::vertical().id_salt("hp_lighting_scroll").auto_shrink([false, false]).show(ui, |ui| {
             self.bake_section(ui, state);
             ui.add_space(6.0);
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.selectable_value(&mut self.vrad, false, t!("lighting.preview"));
                 ui.selectable_value(&mut self.vrad, true, "VRAD");
             });
@@ -89,7 +89,7 @@ impl LightingTab {
     fn bake_section(&mut self, ui: &mut Ui, state: &mut AppState) {
         ui.label(RichText::new(t!("lighting.preview")).strong());
         let mode = state.settings.view.render_mode;
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             for (m, action) in [
                 (RenderModeSetting::Baked, Action::RenderBaked),
                 (RenderModeSetting::LightmapGrid, Action::RenderLightmapGrid),
@@ -99,7 +99,7 @@ impl LightingTab {
                 }
             }
         });
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             let baking = state.runtime.lighting.progress.is_some();
             if ui.button(format!("☀ {}", Action::BakeLighting.label())).clicked() {
                 state.request(Action::BakeLighting);
@@ -154,7 +154,7 @@ impl LightingTab {
             ui.label(RichText::new(format!("⚠ {}", t!("lighting.no_lights"))).color(theme::warning()));
         }
         if state.runtime.lighting.stale && state.runtime.lighting.progress.is_none() {
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label(RichText::new(format!("⚠ {}", t!("lighting.stale"))).color(theme::warning()));
                 if ui.small_button(t!("lighting.rebake")).clicked() {
                     state.request(Action::BakeLighting);
@@ -179,45 +179,49 @@ impl LightingTab {
         let current = state.doc.light_plus();
         let mut o = current.clone();
         ui.label(RichText::new(t!("lighting.options")).strong());
+        let label_w = ((ui.available_width() - 8.0) * 0.5).max(40.0);
+        ui.spacing_mut().slider_width = (label_w - 56.0).clamp(40.0, 100.0);
         egui::Grid::new("hp_lighting_options").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
-            ui.label(t!("lighting.brightness"));
+            grid_label(ui, t!("lighting.brightness"), label_w);
             ui.add(egui::Slider::new(&mut o.brightness_scale, 0.0..=4.0).step_by(0.05));
             ui.end_row();
-            ui.label(t!("lighting.bounced"));
+            grid_label(ui, t!("lighting.bounced"), label_w);
             ui.checkbox(&mut o.bounced, "").on_hover_text(t!("lighting.bounced_tip"));
             ui.end_row();
-            ui.label(t!("lighting.dynamic"));
+            grid_label(ui, t!("lighting.dynamic"), label_w);
             ui.checkbox(&mut o.incremental, "").on_hover_text(t!("lighting.dynamic_tip"));
             ui.end_row();
-            ui.label(t!("lighting.delay"));
+            grid_label(ui, t!("lighting.delay"), label_w);
             ui.add_enabled(
                 o.incremental,
                 egui::DragValue::new(&mut o.incremental_delay).range(0.0..=60.0).speed(0.05).suffix(" s"),
             );
             ui.end_row();
-            ui.label(t!("lighting.bake_dist"));
+            grid_label(ui, t!("lighting.bake_dist"), label_w);
             ui.add(egui::DragValue::new(&mut o.bake_dist).range(64.0..=65536.0).speed(8.0));
             ui.end_row();
         });
-        egui::CollapsingHeader::new(t!("lighting.advanced")).id_salt("hp_lighting_advanced").show(ui, |ui| {
-            egui::Grid::new("hp_lighting_advanced_grid").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
-                ui.label(t!("lighting.sun_samples")).on_hover_text(t!("lighting.quick_tip"));
-                ui.add(egui::DragValue::new(&mut o.samples_sun).range(1..=256).speed(0.2));
-                ui.end_row();
-                ui.label(t!("lighting.ambient_samples")).on_hover_text(t!("lighting.quick_tip"));
-                ui.add(egui::DragValue::new(&mut o.samples_ambient).range(16..=5184).speed(1.0));
-                ui.end_row();
-                ui.label(t!("lighting.supersample")).on_hover_text(t!("lighting.quick_tip"));
-                ui.checkbox(&mut o.supersample, "");
-                ui.end_row();
-                ui.label(t!("lighting.debug"));
-                ui.checkbox(&mut o.debug, "").on_hover_text(t!("lighting.debug_tip"));
-                ui.end_row();
+        egui::CollapsingHeader::new(hp_app::widgets::header_text(ui, t!("lighting.advanced")))
+            .id_salt("hp_lighting_advanced")
+            .show(ui, |ui| {
+                egui::Grid::new("hp_lighting_advanced_grid").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
+                    grid_label(ui, t!("lighting.sun_samples"), label_w).on_hover_text(t!("lighting.quick_tip"));
+                    ui.add(egui::DragValue::new(&mut o.samples_sun).range(1..=256).speed(0.2));
+                    ui.end_row();
+                    grid_label(ui, t!("lighting.ambient_samples"), label_w).on_hover_text(t!("lighting.quick_tip"));
+                    ui.add(egui::DragValue::new(&mut o.samples_ambient).range(16..=5184).speed(1.0));
+                    ui.end_row();
+                    grid_label(ui, t!("lighting.supersample"), label_w).on_hover_text(t!("lighting.quick_tip"));
+                    ui.checkbox(&mut o.supersample, "");
+                    ui.end_row();
+                    grid_label(ui, t!("lighting.debug"), label_w);
+                    ui.checkbox(&mut o.debug, "").on_hover_text(t!("lighting.debug_tip"));
+                    ui.end_row();
+                });
+                if ui.button(t!("lighting.reset")).clicked() {
+                    o = LightPlus::default();
+                }
             });
-            if ui.button(t!("lighting.reset")).clicked() {
-                o = LightPlus::default();
-            }
-        });
         if o != current
             && let Err(e) = state.doc.set_light_plus(&o)
         {
@@ -230,7 +234,7 @@ impl LightingTab {
         let mut options = current.clone();
         ui.label(egui::RichText::new(t!("lighting.vrad_parameters")).strong());
         ui.checkbox(&mut options.keep_bake, t!("lighting.keep_bake")).on_hover_text(t!("lighting.keep_bake_tip"));
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label(t!("lighting.vrad_bounces"));
             ui.add_enabled(options.bounced, egui::DragValue::new(&mut options.bounce_count).range(0..=100));
         });
@@ -287,51 +291,59 @@ impl LightingTab {
     }
 }
 
+fn grid_label(ui: &mut Ui, text: &str, width: f32) -> egui::Response {
+    let size = egui::vec2(width, ui.spacing().interact_size.y);
+    let layout = egui::Layout::left_to_right(egui::Align::Center);
+    ui.allocate_ui_with_layout(size, layout, |ui| ui.add(egui::Label::new(text).truncate())).inner
+}
+
 fn lights_section(ui: &mut Ui, state: &mut AppState) {
-    egui::CollapsingHeader::new(t!("lighting.lights_heading")).id_salt("hp_lighting_lights").show(ui, |ui| {
-        ui.horizontal_wrapped(|ui| {
-            for action in [Action::SoloSelectedLights, Action::MuteSelectedLights, Action::UnmuteAllLights] {
-                if ui.add_enabled(action.enabled(state), egui::Button::new(action.label())).clicked() {
-                    state.request(action);
+    egui::CollapsingHeader::new(hp_app::widgets::header_text(ui, t!("lighting.lights_heading")))
+        .id_salt("hp_lighting_lights")
+        .show(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                for action in [Action::SoloSelectedLights, Action::MuteSelectedLights, Action::UnmuteAllLights] {
+                    if ui.add_enabled(action.enabled(state), egui::Button::new(action.label())).clicked() {
+                        state.request(action);
+                    }
                 }
+            });
+            let muted = state.doc.light_plus().excluded_entities.len();
+            if muted > 0 {
+                ui.label(RichText::new(tf!("lighting.muted_count", muted)).color(theme::warning()).small());
+            }
+            if ui.button(Action::MeasureLightCosts.label()).clicked() {
+                state.runtime.lighting.costs = None;
+                state.request(Action::MeasureLightCosts);
+            }
+            if state.runtime.lighting.costs_wanted && state.runtime.lighting.costs.is_none() {
+                ui.label(RichText::new(t!("lighting.costs_pending")).weak().small());
+            }
+            let Some(mut sorted) = state.runtime.lighting.costs.clone() else { return };
+            sorted.sort_by_key(|c| std::cmp::Reverse(c.luxels));
+            let mut pick = None;
+            egui::Grid::new("hp_lighting_costs").num_columns(3).spacing([8.0, 2.0]).show(ui, |ui| {
+                for c in sorted.iter().take(12) {
+                    let name = match c.entity {
+                        Some(id) => format!("{} #{id}", c.classname),
+                        None => c.classname.clone(),
+                    };
+                    if ui.small_button(name).clicked() {
+                        pick = c.entity;
+                    }
+                    ui.label(RichText::new(tf!("lighting.cost_luxels", fmt_count(c.luxels))).small());
+                    ui.label(RichText::new(tf!("lighting.cost_faces", fmt_count(c.faces as u64))).weak().small());
+                    ui.end_row();
+                }
+            });
+            if let Some(id) = pick {
+                state.doc.select(&[hp_editor::ObjRef::Entity(id)], SelectOp::Replace);
             }
         });
-        let muted = state.doc.light_plus().excluded_entities.len();
-        if muted > 0 {
-            ui.label(RichText::new(tf!("lighting.muted_count", muted)).color(theme::warning()).small());
-        }
-        if ui.button(Action::MeasureLightCosts.label()).clicked() {
-            state.runtime.lighting.costs = None;
-            state.request(Action::MeasureLightCosts);
-        }
-        if state.runtime.lighting.costs_wanted && state.runtime.lighting.costs.is_none() {
-            ui.label(RichText::new(t!("lighting.costs_pending")).weak().small());
-        }
-        let Some(mut sorted) = state.runtime.lighting.costs.clone() else { return };
-        sorted.sort_by_key(|c| std::cmp::Reverse(c.luxels));
-        let mut pick = None;
-        egui::Grid::new("hp_lighting_costs").num_columns(3).spacing([8.0, 2.0]).show(ui, |ui| {
-            for c in sorted.iter().take(12) {
-                let name = match c.entity {
-                    Some(id) => format!("{} #{id}", c.classname),
-                    None => c.classname.clone(),
-                };
-                if ui.small_button(name).clicked() {
-                    pick = c.entity;
-                }
-                ui.label(RichText::new(tf!("lighting.cost_luxels", fmt_count(c.luxels))).small());
-                ui.label(RichText::new(tf!("lighting.cost_faces", fmt_count(c.faces as u64))).weak().small());
-                ui.end_row();
-            }
-        });
-        if let Some(id) = pick {
-            state.doc.select(&[hp_editor::ObjRef::Entity(id)], SelectOp::Replace);
-        }
-    });
 }
 
 fn quality_row(ui: &mut Ui, state: &mut AppState) {
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label(t!("lighting.quality")).on_hover_text(t!("lighting.quality_tip"));
         let q = &mut state.settings.lighting.quality;
         let name = |q: LightingQuality| match q {
@@ -380,9 +392,10 @@ fn entity_lookups(state: &AppState) -> ColorCorrectionPlus {
 fn color_correction_section(ui: &mut Ui, state: &mut AppState, edits: &mut [Option<String>; 4]) {
     let current = state.doc.color_correction_plus();
     let mut cc = current.clone();
-    egui::CollapsingHeader::new(t!("lighting.cc")).id_salt("hp_lighting_cc").default_open(current.is_active()).show(
-        ui,
-        |ui| {
+    egui::CollapsingHeader::new(hp_app::widgets::header_text(ui, t!("lighting.cc")))
+        .id_salt("hp_lighting_cc")
+        .default_open(current.is_active())
+        .show(ui, |ui| {
             ui.label(RichText::new(t!("lighting.cc_help")).weak().small());
             for (slot, edit) in cc.slots.iter_mut().zip(edits.iter_mut()) {
                 let row = egui::vec2(ui.available_width(), ui.spacing().interact_size.y);
@@ -402,7 +415,7 @@ fn color_correction_section(ui: &mut Ui, state: &mut AppState, edits: &mut [Opti
                     }
                 });
             }
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 if ui.button(t!("lighting.cc_from_map")).on_hover_text(t!("lighting.cc_from_map_tip")).clicked() {
                     cc = entity_lookups(state);
                 }
@@ -410,8 +423,7 @@ fn color_correction_section(ui: &mut Ui, state: &mut AppState, edits: &mut [Opti
                     cc = ColorCorrectionPlus::default();
                 }
             });
-        },
-    );
+        });
     if cc != current
         && let Err(e) = state.doc.set_color_correction_plus(&cc)
     {
@@ -425,13 +437,13 @@ fn budget_section(ui: &mut Ui, state: &mut AppState) {
         ui.label(RichText::new(t!("lighting.budget_computing")).weak());
         return;
     };
-    budget_gauge(ui, &b, 260.0);
+    budget_gauge(ui, &b, ui.available_width().min(260.0));
     ui.label(
         RichText::new(tf!("lighting.budget_detail", fmt_count(b.faces as u64), fmt_count(b.luxels))).weak().small(),
     );
     let tiny = state.settings.lighting.tiny_scale;
     if b.tiny_faces > 0 {
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label(
                 RichText::new(tf!(plural(b.tiny_faces, "lighting.tiny_one", "lighting.tiny"), b.tiny_faces, tiny))
                     .color(theme::warning()),
@@ -452,29 +464,31 @@ fn budget_section(ui: &mut Ui, state: &mut AppState) {
     if b.top.is_empty() {
         return;
     }
-    egui::CollapsingHeader::new(t!("lighting.top_faces")).id_salt("hp_lighting_top").show(ui, |ui| {
-        egui::Grid::new("hp_lighting_top_grid").num_columns(4).striped(true).show(ui, |ui| {
-            ui.label(RichText::new(t!("lighting.col_face")).small().weak());
-            ui.label(RichText::new(t!("lighting.col_scale")).small().weak());
-            ui.label(RichText::new(t!("lighting.col_luxels")).small().weak());
-            ui.label(RichText::new(t!("lighting.col_size")).small().weak());
-            ui.end_row();
-            for e in b.top.iter().take(TOP_ROWS) {
-                let label = if e.displacement {
-                    tf!("lighting.face_disp", e.solid, e.side)
-                } else {
-                    tf!("lighting.face", e.solid, e.side)
-                };
-                if ui.link(label).on_hover_text(t!("lighting.face_tip")).clicked() {
-                    select_face(state, e.solid, e.side);
-                }
-                ui.label(fmt_decimal(e.scale, 0));
-                ui.label(format!("{} x {}", e.dims[0], e.dims[1]));
-                ui.label(fmt_megabytes(e.bytes));
+    egui::CollapsingHeader::new(hp_app::widgets::header_text(ui, t!("lighting.top_faces")))
+        .id_salt("hp_lighting_top")
+        .show(ui, |ui| {
+            egui::Grid::new("hp_lighting_top_grid").num_columns(4).striped(true).show(ui, |ui| {
+                ui.label(RichText::new(t!("lighting.col_face")).small().weak());
+                ui.label(RichText::new(t!("lighting.col_scale")).small().weak());
+                ui.label(RichText::new(t!("lighting.col_luxels")).small().weak());
+                ui.label(RichText::new(t!("lighting.col_size")).small().weak());
                 ui.end_row();
-            }
+                for e in b.top.iter().take(TOP_ROWS) {
+                    let label = if e.displacement {
+                        tf!("lighting.face_disp", e.solid, e.side)
+                    } else {
+                        tf!("lighting.face", e.solid, e.side)
+                    };
+                    if ui.link(label).on_hover_text(t!("lighting.face_tip")).clicked() {
+                        select_face(state, e.solid, e.side);
+                    }
+                    ui.label(fmt_decimal(e.scale, 0));
+                    ui.label(format!("{} x {}", e.dims[0], e.dims[1]));
+                    ui.label(fmt_megabytes(e.bytes));
+                    ui.end_row();
+                }
+            });
         });
-    });
 }
 
 fn select_face(state: &mut AppState, solid: u32, side: usize) {
@@ -595,5 +609,55 @@ mod tests {
         assert!(cc.slots[1].name.is_empty());
         select_face(&mut state, 999_999, 0);
         assert!(state.doc.selection().faces.is_empty());
+    }
+
+    #[test]
+    fn the_tab_fits_a_narrow_dock() {
+        let _lock = crate::lang_lock();
+        hp_app::register_translations();
+        crate::register_translations();
+        let mut state = hp_app::testing::test_state();
+        state.runtime.lighting.last = Some(BakeSummary { faces: 3, seconds: 1.0, density: 0.5, ..Default::default() });
+        state.runtime.lighting.stale = true;
+        state.runtime.lighting.no_lights = true;
+        state.runtime.lighting.budget = Some(BudgetSummary {
+            faces: 9028,
+            luxels: 1_205_847,
+            bytes: 4_800_000,
+            limit: 1 << 31,
+            tiny_faces: 21,
+            wide_faces: 750,
+            oversized_displacements: 1,
+            top: vec![BudgetEntry { solid: 1, side: 0, bytes: 400, scale: 2.0, dims: [4, 4], displacement: false }],
+            revision: 1,
+        });
+        let mut tab = LightingTab::default();
+        for lang in hp_app::i18n::Lang::ALL {
+            hp_app::i18n::set_lang(lang);
+            for vrad in [false, true] {
+                tab.vrad = vrad;
+                let ctx = egui::Context::default();
+                let mut width = 0.0f32;
+                for _ in 0..4 {
+                    let input = egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0))),
+                        ..Default::default()
+                    };
+                    let mut out = ctx.run_ui(input, |ui| {
+                        let r = egui::Panel::right("hp_test_dock")
+                            .resizable(true)
+                            .default_size(220.0)
+                            .min_size(220.0)
+                            .show(ui, |ui| tab.ui(ui, &mut state));
+                        width = r.response.rect.width();
+                    });
+                    out.textures_delta.clear();
+                }
+                hp_app::i18n::set_lang(hp_app::i18n::Lang::En);
+                assert!(width <= 220.5, "{lang:?} vrad {vrad}: {width}");
+                hp_app::i18n::set_lang(lang);
+            }
+        }
+        hp_app::i18n::set_lang(hp_app::i18n::Lang::En);
     }
 }

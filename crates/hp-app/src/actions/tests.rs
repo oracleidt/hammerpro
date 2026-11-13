@@ -323,7 +323,12 @@ fn groups_belong_to_one_menu() {
 fn tool_switches_follow_the_tools() {
     for tool in crate::tool::ToolId::ALL {
         assert_eq!(tool.action().tool(), Some(tool));
-        assert_eq!(tool.action().group(), MenuGroup::ToolsSwitch, "{tool:?}");
+        let group = match tool {
+            crate::tool::ToolId::Spline => MenuGroup::ToolsCurves,
+            crate::tool::ToolId::Foliage => MenuGroup::ToolsScatter,
+            _ => MenuGroup::ToolsSwitch,
+        };
+        assert_eq!(tool.action().group(), group, "{tool:?}");
     }
     assert_eq!(Action::ApplyCurrentTexture.tool(), None);
     assert_eq!(Action::ToolBlock.icon(), Some(crate::tool::ToolId::Block.icon()));
@@ -356,6 +361,8 @@ fn tools_follow_the_hammer_order_and_keys() {
             T::Road,
             T::Pipe,
             T::Physics,
+            T::Spline,
+            T::Foliage,
         ]
     );
     let hammer_keys = [

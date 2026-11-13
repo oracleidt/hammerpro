@@ -186,6 +186,7 @@ pub(crate) struct Ctx<'a> {
     pub bounce_tile_budget: usize,
     pub water: &'a Bvh,
     pub water_reflectivity: Vec3A,
+    pub dispchop: f64,
 }
 
 pub(crate) const WATER_BIT: u32 = 1 << 31;
@@ -351,9 +352,7 @@ impl Ctx<'_> {
     pub fn sample(&self, f: &LitFace, s: f64, t: f64) -> Sample {
         let (pos, normal) = match &f.disp {
             Some(d) => {
-                let u = if f.w > 1 { s / (f.w - 1) as f64 } else { 0.5 };
-                let v = if f.h > 1 { t / (f.h - 1) as f64 } else { 0.5 };
-                let (p, n) = d.sample(DVec2::new(u, v), 1.0, f.normal);
+                let (p, n) = d.sample(disp_uv(f, s, t), 1.0, f.normal);
                 (p + f.normal, n)
             }
             None => {
@@ -971,6 +970,15 @@ fn blur_grid(plane: &mut [Vec3A], keep: &[bool], (wx, wy): (&[BlurRow], &[BlurRo
 }
 
 fn patch_light(src: &[glam::Vec3], w: usize, h: usize, g: &Gather, out: &mut [Vec3A]) {
+    if let Some(groups) = &g.patches {
+        let field = grouped_light(src, groups);
+        kernel_light(&field, w, h, g, out);
+        return;
+    }
+    kernel_light(src, w, h, g, out);
+}
+
+fn kernel_light(src: &[glam::Vec3], w: usize, h: usize, g: &Gather, out: &mut [Vec3A]) {
     for (gy, &y) in g.ys.iter().enumerate() {
         for (gx, &x) in g.xs.iter().enumerate() {
             let (mut sum, mut total) = (Vec3A::ZERO, 0.0f32);
@@ -1014,6 +1022,55 @@ struct Gather {
     normals: Vec<[Vec3A; 4]>,
     hits: super::tiles::Hits,
     luxels: usize,
+    patches: Option<PatchGroups>,
+    buried: Vec<bool>,
+}
+
+impl Gather {
+    fn keep(&self, f: &LitFace, fl: &FaceLight) -> Vec<bool> {
+        let mut k = 0usize;
+        let mut out = Vec::with_capacity(self.gw * self.gh);
+        for &y in &self.ys {
+            for &x in &self.xs {
+                let dark = fl.dark.get(y * f.w + x).copied().unwrap_or(false);
+                out.push(!dark && !self.buried.get(k).copied().unwrap_or(false));
+                k += 1;
+            }
+        }
+        out
+    }
+}
+
+struct PatchGroups {
+    of_luxel: Vec<u32>,
+    scale: Vec<f32>,
+    members: Vec<Vec<u32>>,
+}
+
+const DARK_SAMPLE: f32 = 1.0;
+const BURIED_SHARE: usize = 4;
+
+fn grouped_light(src: &[glam::Vec3], groups: &PatchGroups) -> Vec<glam::Vec3> {
+    let avg: Vec<Vec3A> = groups
+        .members
+        .iter()
+        .map(|m| {
+            let (sum, n) = m
+                .iter()
+                .filter_map(|&k| src.get(k as usize).map(|v| Vec3A::from(*v)))
+                .filter(|v| v.element_sum() / 3.0 >= DARK_SAMPLE)
+                .fold((Vec3A::ZERO, 0usize), |(s, n), v| (s + v, n + 1));
+            if n > 0 { sum / n as f32 } else { Vec3A::ZERO }
+        })
+        .collect();
+    groups
+        .of_luxel
+        .iter()
+        .map(|&p| {
+            let p = p as usize;
+            (avg.get(p).copied().unwrap_or(Vec3A::ZERO) * groups.scale.get(p).copied().unwrap_or(1.0)).into()
+        })
+        .collect()
 }
 
 fn axis_points(n: usize, step: usize) -> Vec<usize> {
@@ -1043,6 +1100,13 @@ fn cosine_dir_in(&[t, b, n]: &[Vec3A; 3], k: usize, count: usize, seed: u32) -> 
 }
 
 const Q: f32 = 32.0;
+const PLANE_TEST_EPSILON: f64 = 0.01;
+
+fn disp_uv(f: &LitFace, s: f64, t: f64) -> DVec2 {
+    let u = if f.w > 1 { s / (f.w - 1) as f64 } else { 0.5 };
+    let v = if f.h > 1 { t / (f.h - 1) as f64 } else { 0.5 };
+    DVec2::new(u, v)
+}
 
 impl Ctx<'_> {
     fn gather_grid(&self, fi: usize, step: usize, rays: usize, store: &super::tiles::Store) -> Result<Gather, String> {
@@ -1052,6 +1116,7 @@ impl Ctx<'_> {
         let (gw, gh) = (xs.len(), ys.len());
         let mut normals = Vec::with_capacity(gw * gh);
         let mut points = Vec::with_capacity(gw * gh);
+        let patches = super::disp::patches(f, self.dispchop);
         for (gy, &t) in ys.iter().enumerate() {
             for (gx, &s) in xs.iter().enumerate() {
                 let c = if f.disp.is_some() {
@@ -1060,20 +1125,38 @@ impl Ctx<'_> {
                     let (c, piece) = f.flat_sample(s, t);
                     if piece.is_empty() { c } else { self.open_point(f, c, &piece).unwrap_or(c) }
                 };
-                let sp = self.sample(f, c.x, c.y);
+                let mut sp = self.sample(f, c.x, c.y);
+                let at = super::disp::patch_index(&patches, disp_uv(f, c.x, c.y));
+                let (pos, origin) = match at.and_then(|i| patches.get(i)) {
+                    Some(patch) => {
+                        sp.normals[0] = patch.normal.as_vec3a();
+                        ((patch.origin + patch.normal).as_vec3a(), patch.origin)
+                    }
+                    None => (sp.pos, sp.pos.as_dvec3() - f.normal),
+                };
                 normals.push(sp.normals);
                 let seed = hash(fi as u32, (gy * gw + gx) as u32, 0x5eed);
-                let props_block = !self.props.inside_prop(self.shadow, sp.pos, sp.normals[0]);
+                let props_block = f.disp.is_some() || !self.props.inside_prop(self.shadow, pos, sp.normals[0]);
                 let (t, b) = basis(sp.normals[0]);
-                points.push((sp.pos, [t, b, sp.normals[0]], seed, props_block));
+                points.push((pos, origin, [t, b, sp.normals[0]], seed, props_block));
             }
         }
         let mut hits = vec![(u32::MAX, 0, 0); points.len() * rays];
+        let own_disp = f.disp.is_some();
+        let mut lost = vec![0usize; points.len()];
         for k in 0..rays {
-            for (p, (pos, frame, seed, props_block)) in points.iter().enumerate() {
+            for (p, (pos, origin, frame, seed, props_block)) in points.iter().enumerate() {
                 let dir = cosine_dir_in(frame, k, rays, *seed);
                 let q = |v: f32| (v.max(0.0) * Q).min(65535.0) as u16;
-                let hit = self.trace_bounce(*pos, dir, *props_block);
+                let mut hit = self.trace_bounce(*pos, dir, *props_block);
+                if !own_disp && matches!(hit, SurfHit::None) && self.lost_ray(*pos, dir) {
+                    lost[p] += 1;
+                }
+                if let SurfHit::Face(i, ..) = hit
+                    && !self.patch_sees(fi, own_disp, i as usize, *origin)
+                {
+                    hit = SurfHit::None;
+                }
                 if let Some((i, s, t)) = self.water_mirror(*pos, dir, &hit, *props_block) {
                     hits[p * rays + k] = (i | WATER_BIT, q(s), q(t));
                 } else if let SurfHit::Face(i, s, t, _) = hit {
@@ -1081,7 +1164,39 @@ impl Ctx<'_> {
                 }
             }
         }
-        Ok(Gather { step: step.max(1), gw, gh, xs, ys, normals, hits: store.keep(hits)?, luxels: f.luxels() })
+        let groups = (!patches.is_empty()).then(|| {
+            let (of_luxel, scale) = super::disp::luxel_patches(f, &patches);
+            PatchGroups { of_luxel, scale, members: super::disp::patch_members(f, &patches) }
+        });
+        Ok(Gather {
+            step: step.max(1),
+            gw,
+            gh,
+            xs,
+            ys,
+            normals,
+            hits: store.keep(hits)?,
+            luxels: f.luxels(),
+            patches: groups,
+            buried: lost.iter().map(|&n| n * BURIED_SHARE > rays).collect(),
+        })
+    }
+
+    fn lost_ray(&self, from: Vec3A, dir: Vec3A) -> bool {
+        match self.surf.closest_in(OPAQUE_SURFACES, from, dir, MAX_TRACE, |_| true) {
+            None => true,
+            Some(h) => matches!(self.surf_info.get(h.payload as usize), Some(SurfTri::Disp(..))) && !h.front,
+        }
+    }
+
+    fn patch_sees(&self, fi: usize, own_disp: bool, hit: usize, origin: glam::DVec3) -> bool {
+        if hit == fi {
+            return !own_disp;
+        }
+        match self.faces.get(hit).and_then(super::disp::root_plane) {
+            Some((normal, dist)) => origin.dot(normal) > dist + PLANE_TEST_EPSILON,
+            None => true,
+        }
     }
 
     fn water_mirror(&self, pos: Vec3A, dir: Vec3A, hit: &SurfHit, props_block: bool) -> Option<(u32, f32, f32)> {
@@ -1277,10 +1392,7 @@ impl Ctx<'_> {
         let radius = blur_radius(rays, step);
         total.par_iter_mut().zip(&grids).zip(lights.par_iter()).zip(self.faces).for_each(|(((planes, g), fl), f)| {
             let (wx, wy) = (blur_weights(&g.xs, radius), blur_weights(&g.ys, radius));
-            let keep: Vec<bool> =
-                g.ys.iter()
-                    .flat_map(|&y| g.xs.iter().map(move |&x| !fl.dark.get(y * f.w + x).copied().unwrap_or(false)))
-                    .collect();
+            let keep = g.keep(f, fl);
             let mut tmp = Vec::new();
             for plane in planes.chunks_exact_mut(g.gw * g.gh) {
                 blur_grid(plane, &keep, (&wx, &wy), &mut tmp);
@@ -1865,6 +1977,8 @@ mod tests {
                 normals: Vec::new(),
                 hits: super::super::tiles::Store::new(1 << 20).keep(Vec::new()).expect("empty hits"),
                 luxels: w * h,
+                patches: None,
+                buried: Vec::new(),
             }
         };
         let flat = vec![glam::Vec3::splat(7.0); w * h];

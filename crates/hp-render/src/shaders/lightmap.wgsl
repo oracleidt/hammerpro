@@ -211,6 +211,9 @@ fn fs_baked(in: LmOut) -> @location(0) vec4<f32> {
     if material.detail_mode != DETAIL_NONE {
         rgb = detail_post_lighting(rgb, detail);
     }
+    if (view.opts.x & OPT_GRID_3D) != 0u {
+        rgb = grid_3d_mix(rgb, grid_coverage(in.world, pn), in.world);
+    }
     return finish(rgb, in);
 }
 

@@ -30,6 +30,8 @@ hp-bsp       BSP reader and writer: lumps, pakfile, cubemaps, game lumps, LZMA
 hp-decompile BSP to VMF decompiler (brushes, displacements, entities, pakfile content)
 hp-nav       Navigation mesh (.nav) reader
 hp-pcf       Particle system (.pcf) reader and preview simulation
+hp-audio     Sound decoding, editing and WAV output, playback, the multi voice soundscape mixer
+hp-soundscape Soundscape scripts, library, nesting, active soundscape rules, sound levels, random scheduling
 hp-fs        Game filesystem: gameinfo, VPKs, mount.cfg, addons, workshop, custom folders
 hp-compile   Compile pipeline (the built in compiler, in process packing), log parsing, leak pointfiles
 hp-render    wgpu renderer: 3D and 2D views, batching, overlays

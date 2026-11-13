@@ -422,12 +422,13 @@ mod tests {
         "hammerpro",
     ];
 
-    const CONTENT_FILES: [&str; 10] = [
+    const CONTENT_FILES: [&str; 11] = [
         "hp-app/src/theme.rs",
         "hp-tools-create/src/common.rs",
         "hp-tools-create/src/cordon.rs",
         "hp-tools-create/src/overlay_tool.rs",
         "hp-tools-create/src/sprinkle.rs",
+        "hp-tools-create/src/foliage.rs",
         "hp-tools-mesh/src/disp/",
         "hp-tools-mesh/src/vertex/",
         "hp-tools-select/src/select/",

@@ -337,7 +337,7 @@ fn prop_kind(e: &hp_vmf::Entity) -> PropKind {
     if class.starts_with("prop_physics") && flags & 8 == 0 { PropKind::Pushable } else { PropKind::Solid }
 }
 
-pub(crate) fn non_solid_class(class: &str) -> bool {
+pub fn non_solid_class(class: &str) -> bool {
     let c = class.to_ascii_lowercase();
     c.starts_with("trigger_")
         || c.starts_with("func_areaportal")
@@ -358,7 +358,7 @@ pub(crate) fn non_solid_class(class: &str) -> bool {
         )
 }
 
-pub(crate) fn non_solid_material(m: &str) -> bool {
+pub fn non_solid_material(m: &str) -> bool {
     let m = m.to_ascii_lowercase().replace('\\', "/");
     matches!(
         m.as_str(),
@@ -1325,8 +1325,22 @@ pub fn counter_lines(
         lines.push(t!("viewport.player.io_title").to_owned());
         lines.extend(io_log.iter().cloned());
     }
+    lines.push(hearing_line(state));
     lines.push(t!("viewport.player.keys").to_owned());
     lines
+}
+
+pub fn hearing_line(state: &AppState) -> String {
+    let s = &state.settings.lab.soundscape;
+    if !s.hearing {
+        return t!("viewport.player.hearing_off").to_owned();
+    }
+    let rt = &state.runtime.lab.soundscape;
+    let volume = format!("{:.0}%", s.output_volume() * 100.0);
+    match &rt.active {
+        Some(a) => tf!("viewport.player.hearing_on", a.name, rt.hearing_voices, rt.hearing_ambient, volume),
+        None => tf!("viewport.player.hearing_none", rt.hearing_ambient, volume),
+    }
 }
 
 pub const LISTED_LIGHTS: usize = 9;

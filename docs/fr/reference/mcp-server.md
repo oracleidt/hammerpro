@@ -51,7 +51,7 @@ Les programmes des applications (la commande `claude`) ne s'exécutent que lorsq
 ## Installer dans une application d'IA
 
 1. Activez la pastille (**MCP inactif** devient **MCP actif**).
-2. Ouvrez la fenêtre MCP (flèche à côté de la pastille, ou **Outils > Blender et MCP > MCP...**).
+2. Ouvrez la fenêtre MCP (flèche à côté de la pastille, ou **Outils > Intégrations > MCP...**).
 3. Cliquez sur **Installer dans Claude, Codex, Gemini**. Hammer Pro s'ajoute à chaque application trouvée sur cet ordinateur, dans cet ordre : Claude Code, Claude Desktop, Codex, Gemini CLI, puis vérifie chacune. Vous pouvez aussi installer une seule application avec son propre bouton **Installer**.
 4. Redémarrez l'application d'IA (ou ouvrez une nouvelle session) pour qu'elle voie le nouveau serveur.
 

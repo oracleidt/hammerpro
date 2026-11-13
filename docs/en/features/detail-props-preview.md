@@ -22,4 +22,18 @@ Materials with the `%detailtype` key (the grass textures of Garry's Mod and the 
 
 The MCP tool `detail_preview` returns the file read and its number of types, the sprite material, how many surfaces use a `%detailtype`, how many are in range, the sprite and model counts, whether the limits cut some, and per material the detail type it names (`known` is false when the file has no such group).
 
+## Same as the compile
+
+The preview and the Hammer Pro compiler run the same placement code, prop for prop. Like Valve VBSP, the compile emits detail props per compiled face: brush faces cut by other brushes and by the BSP become several pieces, each seeded with the side id, in the order of the compiled faces, and the random scale of sprites carries on from face to face. So a moment after each edit the preview splits the faces exactly like the compile does (with the compile options you will compile with: the BSP options and extra arguments of the Compile window, the active expert profile, the target game, compile hidden objects and cordon settings; on a background thread, again whenever they change) and places the props on the same pieces in the same order. Until that split is ready, brush faces show the whole face; the MCP tools report `exact` true once the preview equals the compile. With an external compiler (Valve VBSP or another one chosen in the Compilers settings) that compiler cuts the faces itself, so the preview stays close but `exact` is false.
+
+## Choosing where grass grows
+
+- Paint the displacement alpha: on blend materials the alpha chooses the detail group by its `alpha`, like VBSP. The [Foliage tool](foliage-tool.md) in the **Detail alpha** mode does it with the preview updating live, as does the displacement tool's alpha brush.
+- Give faces their own type: the Foliage tool in the **Detail per face** mode, or the MCP tool `set_face_detail_type`, sets a group of `detail.vbsp` or `none` (no detail props on that face) instead of the material's `%detailtype`. It is saved as the side key `hp_detailtype`, honoured by the compiler and this preview, ignored by Hammer.
+
+## Checking without drawing
+
+- `preview_detail_props` computes what the compile will emit (objects, sprites, models, per type and per surface, over the 65535 limit or not, sample positions), for the whole map, some solids or an area.
+- `list_detail_types` lists the groups of `detail.vbsp` with their entries, the materials using each type and the faces with their own type.
+
 See also [Render modes and display options](render-modes-display.md), [Scatter by material](scatter-by-material.md).

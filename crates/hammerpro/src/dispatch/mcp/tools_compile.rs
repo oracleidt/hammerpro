@@ -167,11 +167,14 @@ domain! { "compile and play";
         profiles) are listed by list_compilers and chosen with select_compiler.",
         {}, [];
     check_leaks: Editor, "Check for leaks",
-        "Run the instant leak check (no compile): the result comes in the background, read it with get_leak.",
+        "Run the instant leak check (no compile): the result comes in the background, read it with get_leak. A leak \
+        the instant check finds is confirmed by the compiler flood (the same flood as a real compile) before it is \
+        reported, and its path is the compiler's path.",
         {}, [];
     get_leak: Read, "Leak",
         "The result of the instant leak check (leak path from an entity to the void, leaking entities, entities in \
-        solids) and the pointfile of the last compile (load_pointfile).",
+        solids, compiler_checked: true when the compiler flood decided the answer) and the pointfile of the last \
+        compile (load_pointfile).",
         { "points": integer("Most path points returned (default 200).", 1, 10_000) }, [];
     load_pointfile: Editor, "Load the pointfile",
         "Load (or with unload: true, remove) the leak pointfile of the last compile, drawn in the views.",
@@ -1074,8 +1077,9 @@ fn get_leak(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
             "leaking_entities": r.leaking.iter().take(500).collect::<Vec<_>>(),
             "entities_in_solids": r.in_solid.iter().take(500).collect::<Vec<_>>(),
             "incomplete": r.incomplete,
+            "compiler_checked": r.compiler,
             "ms": l.ms,
-            "up_to_date": l.serial == state.doc.revision(),
+            "up_to_date": l.serial == state.doc.content_serial(),
         })
     });
     let pointfile = state.pointfile.as_ref().map(|p| {

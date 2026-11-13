@@ -94,6 +94,10 @@ For a game other than Garry's Mod, **Run the map in game** starts its executable
 
 **Does the bridge go into my released addon?** No, it is never packed into a map or a release.
 
+## Live link
+
+To see entity edits in the running game without recompiling, turn on the [live link with Garry's Mod](live-link.md) (**Tools > Integrations > Start the live link with Garry's Mod**).
+
 ## Related pages
 
 - [Compile window](../compiler/compile-window.md)

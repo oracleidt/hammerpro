@@ -142,7 +142,7 @@ pub fn parameter_rows(ui: &mut Ui, entity: &Entity, parms: Option<&[InstanceParm
     ui.label(RichText::new(t!("entities.instance.other")).weak());
     Grid::new(base.with("raw")).num_columns(2).striped(true).spacing([8.0, 4.0]).show(ui, |ui| {
         for (key, value) in others {
-            let label = ui.label(key);
+            let label = grid_label(ui, key);
             label.context_menu(|ui| {
                 if ui.button(t!("entities.instance.remove")).clicked() {
                     ops.push(Op::RemoveKey { target: target.clone(), key: key.to_owned() });
@@ -212,6 +212,12 @@ fn buttons(ui: &mut Ui, readable: bool) -> Option<Action> {
     action
 }
 
+fn grid_label(ui: &mut Ui, text: impl Into<egui::WidgetText>) -> egui::Response {
+    let size = egui::vec2((ui.available_width() * 0.4).max(40.0), ui.spacing().interact_size.y);
+    let layout = egui::Layout::left_to_right(egui::Align::Center);
+    ui.allocate_ui_with_layout(size, layout, |ui| ui.add(egui::Label::new(text).truncate())).inner
+}
+
 fn parm_row(
     ui: &mut Ui,
     base: egui::Id,
@@ -227,7 +233,7 @@ fn parm_row(
     if current.is_none() {
         label = label.italics().weak();
     }
-    let resp = ui.label(label).on_hover_ui(|ui| {
+    let resp = grid_label(ui, label).on_hover_ui(|ui| {
         ui.label(tf!("entities.instance.type", &p.kind));
         if let Some(d) = &p.default {
             ui.label(tf!("entities.instance.default", d));
@@ -322,7 +328,8 @@ impl InstancePanel {
             let req = LoadRequest { file: &spec.file, containing: None, depth: 0 };
             match cache.load(&req, state.doc.path()) {
                 Loaded::Ready { path, .. } => {
-                    ui.label(tf!("entities.instance.file", path.display())).on_hover_text(spec.file.as_str());
+                    ui.add(egui::Label::new(tf!("entities.instance.file", path.display())).truncate())
+                        .on_hover_text(spec.file.as_str());
                     if let Some(f) = cache.file(&path) {
                         if f.is_content() {
                             ui.label(RichText::new(t!("entities.instance.in_content")).weak());

@@ -968,4 +968,34 @@ pub const TR: TrTable = &[
         "Nothing painted: only the {0} selected displacement(s) are painted and the brush is over none of them. Click this one to select it (Ctrl adds it), or press {1} to clear the selection and paint every displacement.",
         "Rien n'a été peint : seuls les {0} displacement(s) sélectionnés sont peints et le pinceau n'en touche aucun. Cliquez sur celui-ci pour le sélectionner (Ctrl l'ajoute), ou appuyez sur {1} pour vider la sélection et peindre tous les displacements.",
     ),
+    ("vertex.merge_title", "Merge vertices", "Fusionner les sommets"),
+    (
+        "vertex.merge_question",
+        "These vertices are on top of each other. Merge them?",
+        "Ces sommets sont les uns sur les autres. Les fusionner ?",
+    ),
+    (
+        "vertex.merge_count",
+        "{0} vertices will be merged. No puts them back where they were before the move.",
+        "{0} sommets seront fusionnés. Non les remet où ils étaient avant le déplacement.",
+    ),
+    ("vertex.merge_always", "Don't ask again, always merge", "Ne plus demander, toujours fusionner"),
+    (
+        "vertex.merge_always_tip",
+        "Saved in the setting vertex.merge_prompt (Settings > Vertices and displacements), where you can ask again",
+        "Enregistré dans le paramètre vertex.merge_prompt (Paramètres > Sommets et displacements), où vous pouvez redemander",
+    ),
+    ("vertex.merge_yes", "Yes", "Oui"),
+    ("vertex.merge_no", "No", "Non"),
+    (
+        "vertex.merge_reverted",
+        "Move undone: {0} vertices would have been on top of others.",
+        "Déplacement annulé : {0} sommets auraient été sur d'autres.",
+    ),
+    ("vertex.merge_done", "{0} vertices merged.", "{0} sommets fusionnés."),
+    (
+        "vertex.merge_stale",
+        "The map changed while the question was open: nothing was merged.",
+        "La carte a changé pendant la question : rien n'a été fusionné.",
+    ),
 ];

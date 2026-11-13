@@ -55,6 +55,7 @@ mod files;
 mod gpu_guard;
 mod icon;
 mod keyboard;
+mod livelink;
 mod logger;
 mod native_crash;
 mod opening;

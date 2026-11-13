@@ -1156,6 +1156,7 @@ mod tests {
             ("mesh", MESH_WGSL),
             ("particles", crate::particles::PARTICLE_WGSL),
             ("lightmap", crate::lightmap::SHADER),
+            ("compiled_light", crate::compiled_light::SHADER),
             ("lines", LINES_WGSL),
             ("sprite", SPRITE_WGSL),
             ("grid", GRID_WGSL),

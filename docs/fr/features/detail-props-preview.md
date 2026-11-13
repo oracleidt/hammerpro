@@ -22,4 +22,18 @@ Les matériaux qui ont la clé `%detailtype` (les textures d'herbe de Garry's Mo
 
 L'outil MCP `detail_preview` renvoie le fichier lu et son nombre de types, le matériau des sprites, combien de surfaces utilisent un `%detailtype`, combien sont à portée, les nombres de sprites et de modèles, si les limites en ont coupé, et pour chaque matériau le type de détail qu'il nomme (`known` est false quand le fichier n'a pas ce groupe).
 
+## Identique à la compilation
+
+L'aperçu et le compilateur de Hammer Pro utilisent le même code de placement, prop par prop. Comme Valve VBSP, la compilation émet les detail props par face compilée : les faces de brush coupées par d'autres brushes et par le BSP deviennent plusieurs morceaux, chacun avec la graine de l'id de la face, dans l'ordre des faces compilées, et l'échelle aléatoire des sprites continue d'une face à l'autre. Un instant après chaque modification, l'aperçu découpe donc les faces exactement comme la compilation (avec les options de compilation que vous utiliserez : options BSP et arguments supplémentaires de la fenêtre Compiler, profil expert actif, jeu cible, compilation des objets cachés et cordons ; sur un fil en arrière plan, à nouveau dès qu'elles changent) et place les props sur les mêmes morceaux dans le même ordre. Tant que ce découpage n'est pas prêt, les faces de brush montrent la face entière ; les outils MCP indiquent `exact` true quand l'aperçu égale la compilation. Avec un compilateur externe (Valve VBSP ou un autre choisi dans les réglages Compilateurs), c'est lui qui découpe les faces : l'aperçu reste proche mais `exact` vaut false.
+
+## Choisir où pousse l'herbe
+
+- Peindre l'alpha du déplacement : sur les matériaux de mélange l'alpha choisit le groupe de détails par son `alpha`, comme VBSP. L'[outil de végétation](foliage-tool.md) en mode **Alpha des détails** le fait avec l'aperçu mis à jour en direct, comme le pinceau alpha de l'outil déplacement.
+- Donner aux faces leur propre type : l'outil de végétation en mode **Détails par face**, ou l'outil MCP `set_face_detail_type`, règle un groupe de `detail.vbsp` ou `none` (aucun detail prop sur cette face) à la place du `%detailtype` du matériau. Il est enregistré comme clé de face `hp_detailtype`, respecté par le compilateur et cet aperçu, ignoré par Hammer.
+
+## Vérifier sans dessiner
+
+- `preview_detail_props` calcule ce que la compilation émettra (objets, sprites, modèles, par type et par surface, au delà de la limite de 65535 ou non, positions d'exemple), pour toute la carte, des solides ou une zone.
+- `list_detail_types` liste les groupes de `detail.vbsp` avec leurs entrées, les matériaux qui utilisent chaque type et les faces qui ont leur propre type.
+
 Voir aussi [Modes de rendu et options d'affichage](render-modes-display.md), [Semis par matériau](scatter-by-material.md).

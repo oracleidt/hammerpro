@@ -24,6 +24,7 @@ pub struct LabRuntime {
     pub fly_texture: FlyTextureRuntime,
     pub sniffer: SnifferRuntime,
     pub sound_color: super::soundcolor::SoundColorRuntime,
+    pub soundscape: super::soundscape::SoundscapeRuntime,
 }
 
 #[derive(Clone, Debug)]

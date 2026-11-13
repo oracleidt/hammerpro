@@ -94,6 +94,10 @@ Pour un autre jeu que Garry's Mod, **Lancer la map dans le jeu** démarre son ex
 
 **Le pont part-il dans mon addon publié ?** Non, il n'est jamais inclus dans une map ni dans une publication.
 
+## Lien direct
+
+Pour voir les modifications d'entités dans le jeu lancé sans recompiler, activez le [lien direct avec Garry's Mod](live-link.md) (**Outils > Intégrations > Démarrer le lien direct avec Garry's Mod**).
+
 ## Pages liées
 
 - [Fenêtre de compilation](../compiler/compile-window.md)

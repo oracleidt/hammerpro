@@ -645,6 +645,11 @@ impl Viewports {
             r.player_compiled_lighting = !r.player_compiled_lighting;
             state.settings_dirty = true;
         }
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::K)) {
+            let s = &mut state.settings.lab.soundscape;
+            s.hearing = !s.hearing;
+            state.settings_dirty = true;
+        }
         let next = next_model.then(|| player::next_player_model(state, &state.runtime.lab.player.model)).flatten();
         {
             let p = &mut state.runtime.lab.player;
@@ -700,6 +705,7 @@ impl Viewports {
         for (id, input, param) in sim.take_train_inputs() {
             trains.input(id, &input, &param);
         }
+        state.runtime.lab.soundscape.io.extend(sim.take_sound_inputs());
         if let Some((to, yaw)) = sim.teleport.take() {
             p.feet = to;
             p.velocity = DVec3::ZERO;

@@ -534,3 +534,36 @@ fn light_style_steps_draw_like_a_full_light_rebuild_without_touching_the_scene()
     assert!(seen.len() >= 3, "the style pattern shows: {seen:?}");
     assert!(!r.animate_lights(0.5), "the same time changes nothing");
 }
+
+#[test]
+fn the_baked_view_draws_the_3d_grid() {
+    let Some((device, queue)) = gpu() else {
+        eprintln!("no GPU adapter: test skipped");
+        return;
+    };
+    let mut r = Renderer::new(&device, &queue);
+    r.set_material(MAT, &MaterialDesc { texture: None, tint: [1.0; 4], ..Default::default() });
+    r.upsert_object(FLOOR, floor_mesh());
+    r.add_lightmap_faces(&[(
+        0,
+        LightmapFace { object: FLOOR, generation: r.lightmap_generation(FLOOR), scale: 16.0, flags: 0 },
+    )]);
+    let verts = floor_lm(0);
+    r.add_lightmap_block(1, &[LightmapBatch { material: MAT, vertices: &verts, indices: &[0, 1, 2, 0, 2, 3] }]);
+    assert!(r.ensure_lightmap_layers(64, 1));
+    let texels = vec![texel(0.1, 0.1, 0.1); 33 * 33];
+    r.write_lightmap(0, LightmapRect { layer: 0, x: 0, y: 0, w: 33, h: 33, density: 1.0, bumped: false }, &texels);
+    r.set_lightmap_display(LightmapDisplay::Baked, 1.0);
+    let frame = |r: &mut Renderer| {
+        r.render_view(0, &params(RenderMode::Lit), &Overlay::default());
+        r.read_view_rgba8(0).expect("readback").2
+    };
+    let plain = frame(&mut r);
+    r.set_view_options(0, ViewOptions { grid_3d: Some(Grid3d::default()), ..Default::default() });
+    let grid = frame(&mut r);
+    let lifted =
+        plain.chunks_exact(4).zip(grid.chunks_exact(4)).filter(|(a, b)| b[0] > a[0].saturating_add(30)).count();
+    assert!(lifted > 300, "grid lines on the baked faces: {lifted}");
+    r.set_view_options(0, ViewOptions::default());
+    assert_eq!(frame(&mut r), plain);
+}

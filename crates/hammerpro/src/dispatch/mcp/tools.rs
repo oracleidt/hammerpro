@@ -128,6 +128,7 @@ pub(crate) const DOMAINS: &[&Domain] = &[
     &super::tools_weld::DOMAIN,
     &super::tools_loops::DOMAIN,
     &super::tools_pipe::DOMAIN,
+    &super::tools_spline::DOMAIN,
     &super::tools_slice::DOMAIN,
     &super::tools_road::DOMAIN,
     &super::tools_roadside::DOMAIN,
@@ -146,6 +147,7 @@ pub(crate) const DOMAINS: &[&Domain] = &[
     &super::tools_compilers::DOMAIN,
     &super::tools_health::DOMAIN,
     &super::tools_optimize::DOMAIN,
+    &super::tools_cubemaps::DOMAIN,
     &super::tools_content::DOMAIN,
     &super::tools_docs::DOMAIN,
     &super::tools_history::DOMAIN,
@@ -155,6 +157,7 @@ pub(crate) const DOMAINS: &[&Domain] = &[
     &super::tools_sky::DOMAIN,
     &super::tools_fog::DOMAIN,
     &super::tools_detail::DOMAIN,
+    &super::tools_foliage::DOMAIN,
     &super::tools_func_detail::DOMAIN,
     &super::tools_fgd::DOMAIN,
     &super::tools_games::DOMAIN,
@@ -163,6 +166,7 @@ pub(crate) const DOMAINS: &[&Domain] = &[
     &super::tools_team::DOMAIN,
     &super::tools_crash::DOMAIN,
     &super::tools_blender::DOMAIN,
+    &super::tools_livelink::DOMAIN,
     &super::tools_combine::DOMAIN,
     &super::tools_toolopts::DOMAIN,
     &super::tools_actions::DOMAIN,
@@ -176,6 +180,7 @@ pub(crate) const DOMAINS: &[&Domain] = &[
     &super::tools_shader::DOMAIN,
     &super::tools_vtf::DOMAIN,
     &super::tools_media::DOMAIN,
+    &super::tools_soundscape::DOMAIN,
     &super::tools_help::DOMAIN,
 ];
 
@@ -1242,7 +1247,8 @@ fn screenshot_view(state: &mut AppState, v: &Value) -> R<ToolResult> {
     let cfg = RenderConfig::from_state(state);
     let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(w as f32, h as f32));
     let view = view_info(0, kind, rect, &state.cameras, &cfg, 1.0);
-    let overlay = hp_ui_viewports::layers::optimize::screenshot_overlay(state);
+    let mut overlay = hp_ui_viewports::layers::optimize::screenshot_overlay(state);
+    hp_ui_viewports::layers::cubemaps::screenshot_overlay(state, kind != ViewKind::Perspective, &mut overlay);
     let AppState { assets, doc, gfx, .. } = state;
     let gfx = gfx.as_mut().ok_or("the 3D renderer is not ready yet")?;
     assets.sync_scene(doc, gfx, &opts);

@@ -201,6 +201,18 @@ fn hammer_order(group: MenuGroup) -> &'static [Action] {
         }
         MenuGroup::ToolsBlender => &[A::SendToBlender, A::PullFromBlender, A::StopBlenderLink, A::InstallBlenderAddon],
         MenuGroup::ToolsMcp => &[A::ToggleMcpServer, A::McpPanel, A::McpInstall],
+        MenuGroup::ToolsLiveLink => &[
+            A::LiveLinkStart,
+            A::LiveLinkStop,
+            A::LiveLinkPanel,
+            A::LiveLinkFireInput,
+            A::LiveLinkTeleport,
+            A::LiveLinkTeleportBack,
+            A::LiveLinkCameraToGame,
+            A::LiveLinkCameraFromGame,
+            A::LiveLinkResync,
+            A::LiveLinkRemoveAddon,
+        ],
         MenuGroup::ToolsSwitch => &TOOLS_MENU_ORDER,
         MenuGroup::HelpDocs => &[A::OpenDocs, A::KeyboardShortcuts, A::EntityHelp],
         MenuGroup::HelpSupport => &[A::ReportIssue, A::CheckForUpdates],
@@ -1156,10 +1168,14 @@ mod tests {
             .into_iter()
             .flat_map(|i| i.actions())
             .collect();
-        let mut palette: Vec<Action> = hp_app::ToolId::ALL.iter().map(|t| t.action()).collect();
+        let mut palette: Vec<Action> =
+            hp_app::ToolId::ALL.iter().filter(|t| **t != hp_app::ToolId::Spline).map(|t| t.action()).collect();
+        assert_eq!(menu_path(A::ToolSpline), Some(&["menu.tools", "menu.curves_roads"][..]));
         palette.insert(5, A::ApplyCurrentTexture);
+        palette.retain(|a| *a != A::ToolFoliage);
         assert_eq!(palette[4], A::ToolTexture);
         assert_eq!(tools, palette);
+        assert_eq!(menu_path(A::ToolFoliage), Some(&["menu.tools", "menu.placement"][..]));
         assert_eq!(menu_path(A::Carve), Some(&["menu.tools"][..]));
         assert_eq!(menu_path(A::ImportModel), Some(&["menu.file", "menu.import"][..]));
         assert_eq!(menu_path(A::FlipX), Some(&["menu.tools", "menu.arrange"][..]));

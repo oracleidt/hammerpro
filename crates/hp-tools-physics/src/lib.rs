@@ -499,6 +499,7 @@ impl Tool for PhysicsTool {
         ui.label(t!("physics.hint"));
         let settings = &mut state.settings.physics;
         let before = *settings;
+        let label_w = (ui.available_width() * 0.6).max(40.0);
         egui::Grid::new("physics_settings").num_columns(2).show(ui, |ui| {
             for (key, value, min, max, speed) in [
                 ("physics.gravity", &mut settings.gravity, -10000.0, 10000.0, 10.0),
@@ -508,7 +509,11 @@ impl Tool for PhysicsTool {
                 ("physics.explosion", &mut settings.explosion_speed, 1.0, 10000.0, 10.0),
                 ("physics.radius", &mut settings.explosion_radius, 1.0, 16384.0, 8.0),
             ] {
-                ui.label(hp_app::i18n::tr(key));
+                let size = egui::vec2(label_w, ui.spacing().interact_size.y);
+                let layout = egui::Layout::left_to_right(egui::Align::Center);
+                ui.allocate_ui_with_layout(size, layout, |ui| {
+                    ui.add(egui::Label::new(hp_app::i18n::tr(key)).truncate()).on_hover_text(hp_app::i18n::tr(key))
+                });
                 ui.add(egui::DragValue::new(value).range(min..=max).speed(speed));
                 ui.end_row();
             }
@@ -568,6 +573,16 @@ impl Tool for PhysicsTool {
                 None => false,
             },
             _ => false,
+        }
+    }
+
+    fn option_order(&self, key: &str) -> i32 {
+        match key {
+            "reset" => -3,
+            "simulate" => -2,
+            "paused" => -1,
+            "keep" => 1,
+            _ => 0,
         }
     }
 

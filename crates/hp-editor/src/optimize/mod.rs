@@ -4,6 +4,7 @@ use hp_geom::Aabb;
 use crate::selection::ObjRef;
 
 pub mod areaportals;
+pub mod cubemaps;
 pub mod detail;
 pub mod hints;
 pub mod lights;
@@ -39,6 +40,7 @@ pub enum Topic {
     Hints,
     Areaportals,
     Lights,
+    Cubemaps,
 }
 
 impl Topic {
@@ -49,6 +51,7 @@ impl Topic {
             Topic::Hints => "hints",
             Topic::Areaportals => "areaportals",
             Topic::Lights => "lights",
+            Topic::Cubemaps => "cubemaps",
         }
     }
 }
@@ -223,4 +226,87 @@ impl SolidIndex {
             (b.contains_point(p) && planes.iter().all(|pl| pl.distance(p) < -0.01)).then_some(*id)
         })
     }
+
+    fn along(&self, a: DVec3, b: DVec3) -> Vec<u32> {
+        let d = b - a;
+        let steps = ((d.length() / (CELL * 0.25)).ceil() as usize).clamp(1, 8192);
+        let mut out: Vec<u32> = Vec::new();
+        let mut last = None;
+        for i in 0..=steps {
+            let c = cell_of(a + d * (i as f64 / steps as f64));
+            if last == Some(c) {
+                continue;
+            }
+            last = Some(c);
+            if let Some(list) = self.cells.get(&c) {
+                out.extend_from_slice(list);
+            }
+        }
+        out.extend_from_slice(&self.big);
+        out.sort_unstable();
+        out.dedup();
+        out
+    }
+
+    pub fn ray_hit(&self, origin: DVec3, dir: DVec3, max: f64) -> Option<f64> {
+        let len = dir.length();
+        if !origin.is_finite() || !len.is_finite() || len < 1e-9 || max <= 0.0 {
+            return None;
+        }
+        let d = dir / len;
+        let end = origin + d * max;
+        self.along(origin, end)
+            .into_iter()
+            .filter_map(|i| {
+                let (b, planes, _) = &self.solids[i as usize];
+                if b.expand(0.1).ray_intersect(&hp_geom::Ray::new(origin, d)).is_none_or(|t| t > max) {
+                    return None;
+                }
+                clip_entry(planes, origin, d, max)
+            })
+            .min_by(f64::total_cmp)
+    }
+
+    pub fn clear_line(&self, a: DVec3, b: DVec3) -> bool {
+        let d = b - a;
+        let len = d.length();
+        if !a.is_finite() || !b.is_finite() {
+            return false;
+        }
+        if len < 1e-6 {
+            return self.contains(a).is_none();
+        }
+        let u = d / len;
+        let seg = Aabb::from_points([a, b]).expand(0.1);
+        !self.along(a, b).into_iter().any(|i| {
+            let (bx, planes, _) = &self.solids[i as usize];
+            bx.intersects(&seg) && clip_entry(planes, a, u, len).is_some()
+        })
+    }
+}
+
+const CLIP_EPS: f64 = 0.05;
+
+fn clip_entry(planes: &[hp_geom::Plane], a: DVec3, u: DVec3, len: f64) -> Option<f64> {
+    let (mut t0, mut t1) = (0.0f64, len);
+    for pl in planes {
+        let da = pl.distance(a);
+        let dn = pl.normal.dot(u);
+        if dn.abs() < 1e-12 {
+            if da >= -CLIP_EPS {
+                return None;
+            }
+            continue;
+        }
+        let t = -da / dn;
+        if dn < 0.0 {
+            t0 = t0.max(t);
+        } else {
+            t1 = t1.min(t);
+        }
+        if t0 >= t1 - CLIP_EPS {
+            return None;
+        }
+    }
+    Some(t0)
 }

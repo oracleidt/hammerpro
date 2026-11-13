@@ -24,10 +24,12 @@ pub enum ToolId {
     Pipe,
     Slice,
     Physics,
+    Spline,
+    Foliage,
 }
 
 impl ToolId {
-    pub const ALL: [ToolId; 21] = [
+    pub const ALL: [ToolId; 23] = [
         ToolId::Select,
         ToolId::Camera,
         ToolId::Entity,
@@ -49,6 +51,8 @@ impl ToolId {
         ToolId::Road,
         ToolId::Pipe,
         ToolId::Physics,
+        ToolId::Spline,
+        ToolId::Foliage,
     ];
 
     pub fn label_key(self) -> &'static str {
@@ -74,6 +78,8 @@ impl ToolId {
             ToolId::Pipe => "tool.pipe",
             ToolId::Slice => "tool.slice",
             ToolId::Physics => "tool.physics",
+            ToolId::Spline => "tool.spline",
+            ToolId::Foliage => "tool.foliage",
         }
     }
 
@@ -105,6 +111,8 @@ impl ToolId {
             ToolId::Pipe => Action::ToolPipe,
             ToolId::Slice => Action::ToolSlice,
             ToolId::Physics => Action::ToolPhysics,
+            ToolId::Spline => Action::ToolSpline,
+            ToolId::Foliage => Action::ToolFoliage,
         }
     }
 
@@ -131,6 +139,8 @@ impl ToolId {
             ToolId::Pipe => "⊟",
             ToolId::Slice => "⊞",
             ToolId::Physics => "⚖",
+            ToolId::Spline => "〽",
+            ToolId::Foliage => "🌳",
         }
     }
 }
@@ -264,6 +274,10 @@ pub trait Tool {
 
     fn option_values(&self) -> Vec<ToolOption> {
         Vec::new()
+    }
+
+    fn option_order(&self, _key: &str) -> i32 {
+        0
     }
 
     fn refresh_options(&mut self, _state: &crate::state::AppState) {}

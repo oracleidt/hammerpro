@@ -14,6 +14,8 @@ action_list! { health_actions {
     ShowOptimize => "show_optimize", Map, MapInfo, None, Ready;
     AnalyzeOptimization => "analyze_optimization", Map, MapOptimize, None, Ready;
     ToggleVisleaves => "toggle_visleaves", Map, MapOptimize, None, Ready;
+    ShowCubemaps => "show_cubemaps", Tools, ToolsPlacement, None, Ready;
+    ToggleCubemapAssignment => "toggle_cubemap_assignment", View, ViewDiagnostics, None, Ready;
 }}
 
 pub(super) const REPEATS: &[Action] = &[];
@@ -33,6 +35,7 @@ pub(super) fn check(state: &AppState, action: Action) -> Option<Check> {
     match action {
         Action::TogglePvs => Some(Check::Toggle(state.runtime.health.pvs)),
         Action::ToggleVisleaves => Some(Check::Toggle(state.runtime.optimize.view)),
+        Action::ToggleCubemapAssignment => Some(Check::Toggle(state.runtime.cubemaps.view)),
         _ => None,
     }
 }
@@ -67,4 +70,7 @@ pub(super) const TR: TrTable = &[
     ("shell.undo.fix_areaportal", "Fix areaportal", "Correction d'areaportal"),
     ("shell.undo.add_hint_brushes", "Add hint brushes", "Ajout de brushes hint"),
     ("shell.undo.fix_lights", "Fix lights", "Correction des lumières"),
+    ("action.show_cubemaps", "Cubemaps...", "Cubemaps..."),
+    ("action.toggle_cubemap_assignment", "Show cubemap assignment", "Afficher l'attribution des cubemaps"),
+    ("shell.undo.place_cubemaps", "Place cubemaps", "Placement de cubemaps"),
 ];

@@ -15,7 +15,8 @@ pub(crate) struct OptimizeWindow {
     topic: Option<Topic>,
 }
 
-const TOPICS: [Topic; 5] = [Topic::Visleaves, Topic::Detail, Topic::Hints, Topic::Areaportals, Topic::Lights];
+const TOPICS: [Topic; 6] =
+    [Topic::Visleaves, Topic::Detail, Topic::Hints, Topic::Areaportals, Topic::Lights, Topic::Cubemaps];
 
 fn topic_label(t: Topic) -> &'static str {
     match t {
@@ -24,6 +25,7 @@ fn topic_label(t: Topic) -> &'static str {
         Topic::Hints => t!("optimize.topic.hints"),
         Topic::Areaportals => t!("optimize.topic.areaportals"),
         Topic::Lights => t!("optimize.topic.lights"),
+        Topic::Cubemaps => t!("optimize.topic.cubemaps"),
     }
 }
 
@@ -34,6 +36,7 @@ fn why(t: Topic) -> &'static str {
         Topic::Hints => t!("optimize.why.hints"),
         Topic::Areaportals => t!("optimize.why.areaportals"),
         Topic::Lights => t!("optimize.why.lights"),
+        Topic::Cubemaps => t!("optimize.why.cubemaps"),
     }
 }
 
@@ -228,6 +231,14 @@ impl OptimizeWindow {
                                 state.runtime.optimize.selected = Some(i);
                                 select_detail(state, f);
                             }
+                            if f.topic == Topic::Cubemaps
+                                && ui
+                                    .button(t!("optimize.open_cubemaps"))
+                                    .on_hover_text(t!("optimize.open_cubemaps_tip"))
+                                    .clicked()
+                            {
+                                state.request(Action::ShowCubemaps);
+                            }
                         });
                     });
                     ui.label(finding_text(f));
@@ -268,7 +279,13 @@ mod tests {
             .args(vec!["2".to_owned(), "0 0 0".to_owned()]);
         let unknown = Finding::new(Topic::Visleaves, "no_such_code", Impact::High, "raw message".to_owned());
         state.runtime.optimize.report = Some(Arc::new(OptimizeReport {
-            findings: vec![unknown.clone(), point.clone(), obj.clone()],
+            findings: vec![
+                unknown.clone(),
+                point.clone(),
+                obj.clone(),
+                Finding::new(Topic::Cubemaps, "cubemap_far", Impact::Low, "m".to_owned())
+                    .args(vec!["2".to_owned(), "1024".to_owned()]),
+            ],
             vis: Some(hp_editor::optimize::vis::VisReport {
                 clusters: 12,
                 portals: 20,

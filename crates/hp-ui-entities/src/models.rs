@@ -54,6 +54,8 @@ const MAX_TILE_MDL_BYTES: usize = 32 << 20;
 const DETAILS_MIN_HEIGHT: f32 = 430.0;
 const TAB_CONTENT_MIN_HEIGHT: f32 = 150.0;
 
+const FOLDER_COMBO_MIN: f32 = 90.0;
+
 #[derive(Default)]
 struct ModelTiles {
     generation: u64,
@@ -413,6 +415,7 @@ impl ModelBrowser {
         }
         let row_h = ui.spacing().interact_size.y;
         let layout = egui::Layout::right_to_left(egui::Align::Center);
+        let mut folder_below = false;
         ui.allocate_ui_with_layout(vec2(ui.available_width(), row_h), layout, |ui| {
             if ui.small_button("+").on_hover_text(Action::ImportModel.label()).clicked() {
                 state.request(Action::ImportModel);
@@ -432,28 +435,16 @@ impl ModelBrowser {
                 self.count_text = (count, lang, tf!("entities.models_count", count));
             }
             ui.label(RichText::new(self.count_text.2.as_str()).weak().small());
-            let folder_text = self.folder.clone().unwrap_or_else(|| t!("entities.all_folders").to_owned());
-            let width = (ui.available_width() - 2.0).max(40.0);
-            egui::ComboBox::from_id_salt("hp_ui_entities.model_folder")
-                .width(width)
-                .selected_text(folder_text)
-                .truncate()
-                .height(400.0)
-                .show_ui(ui, |ui| {
-                    if ui.selectable_label(self.folder.is_none(), t!("entities.all_folders")).clicked() {
-                        self.folder = None;
-                        self.rows_dirty = true;
-                    }
-                    if let Some(index) = &self.index {
-                        for f in &index.top_folders {
-                            if ui.selectable_label(self.folder.as_deref() == Some(f), f).clicked() {
-                                self.folder = Some(f.clone());
-                                self.rows_dirty = true;
-                            }
-                        }
-                    }
-                });
+            let width = ui.available_width() - 2.0;
+            if width >= FOLDER_COMBO_MIN {
+                self.folder_combo(ui, width);
+            } else {
+                folder_below = true;
+            }
         });
+        if folder_below {
+            self.folder_combo(ui, ui.available_width() - 8.0);
+        }
         if self.rows_dirty
             && let Some(index) = &self.index
         {
@@ -553,7 +544,7 @@ impl ModelBrowser {
                     .show(ui, |ui| self.details(ui, state, &path, pick.as_ref(), height));
             }
             None => {
-                ui.label(RichText::new(t!("entities.select_model_hint")).weak());
+                ui.add(egui::Label::new(RichText::new(t!("entities.select_model_hint")).weak()).wrap());
             }
         }
     }
@@ -600,12 +591,35 @@ impl ModelBrowser {
         }
     }
 
+    fn folder_combo(&mut self, ui: &mut Ui, width: f32) {
+        let folder_text = self.folder.clone().unwrap_or_else(|| t!("entities.all_folders").to_owned());
+        egui::ComboBox::from_id_salt("hp_ui_entities.model_folder")
+            .width(width)
+            .selected_text(folder_text)
+            .truncate()
+            .height(400.0)
+            .show_ui(ui, |ui| {
+                if ui.selectable_label(self.folder.is_none(), t!("entities.all_folders")).clicked() {
+                    self.folder = None;
+                    self.rows_dirty = true;
+                }
+                if let Some(index) = &self.index {
+                    for f in &index.top_folders {
+                        if ui.selectable_label(self.folder.as_deref() == Some(f), f).clicked() {
+                            self.folder = Some(f.clone());
+                            self.rows_dirty = true;
+                        }
+                    }
+                }
+            });
+    }
+
     fn grid(&mut self, ui: &mut Ui, state: &mut AppState, height: f32, pick: Option<&crate::cx::ModelPick>) -> bool {
         self.tiles.sync(state.assets.as_ref());
         let models = std::mem::take(&mut self.grid_rows);
         let tile = state.settings.browser.tile();
         let (gap, label_h) = (4.0, 15.0);
-        let width = ui.available_width().max(tile);
+        let width = (ui.available_width() - ui.spacing().scroll.allocated_width()).max(tile);
         let cols = (((width + gap) / (tile + gap)).floor() as usize).max(1);
         let rows = models.len().div_ceil(cols);
         let row_h = tile + label_h + gap;
@@ -622,7 +636,7 @@ impl ModelBrowser {
         let (mut clicked, mut activated) = (None, None);
         let out = area.show_rows(ui, row_h, rows, |ui, range| {
             for r in range {
-                let (rect, _) = ui.allocate_exact_size(vec2(width, row_h), Sense::hover());
+                let (rect, _) = ui.allocate_exact_size(vec2(width.min(ui.available_width()), row_h), Sense::hover());
                 for c in 0..cols {
                     let Some(&m) = models.get(r * cols + c) else { break };
                     let Some(entry) = all.get(m as usize) else { continue };

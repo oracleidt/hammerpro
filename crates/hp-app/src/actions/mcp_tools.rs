@@ -170,6 +170,7 @@ pub(super) const TR: TrTable = &[
     ("shell.undo.mcp_check_areaportals", "MCP: repair areaportals", "MCP : réparation d'areaportals"),
     ("shell.undo.mcp_suggest_areaportals", "MCP: place areaportals", "MCP : placement d'areaportals"),
     ("shell.undo.mcp_audit_lights", "MCP: fix lights", "MCP : correction des lumières"),
+    ("shell.undo.mcp_suggest_cubemaps", "MCP: place cubemaps", "MCP : placement de cubemaps"),
     (
         "shell.undo.mcp_find_duplicate_brushes",
         "MCP: delete redundant brushwork",

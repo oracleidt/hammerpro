@@ -159,7 +159,7 @@ impl Package for Workflow {
                 pkg.layout_name = next_layout_name(&app.state.settings.workflow.layouts);
                 pkg.focus_name = true;
             }
-            Action::ResetLayout => apply_layout(state, &SavedLayout::default()),
+            Action::ResetLayout => reset_layout(state),
             _ => return false,
         }
         true
@@ -430,6 +430,13 @@ pub(crate) fn apply_layout(state: &mut AppState, layout: &SavedLayout) {
     ui.show_console = console;
     state.ui.maximized_view = layout.maximized.filter(|&i| i < 4);
     state.settings_dirty = true;
+}
+
+fn reset_layout(state: &mut AppState) {
+    apply_layout(state, &SavedLayout::default());
+    let defaults = hp_app::settings::UiSettings::default();
+    state.settings.ui.dock_width = defaults.dock_width;
+    state.settings.ui.console_height = defaults.console_height;
 }
 
 fn toolbar_layout_action(state: &mut AppState, action: Action) {
@@ -796,6 +803,20 @@ mod tests {
         s.sidecar.set(&WorkflowMapMemory { grid: Some(f64::NAN) });
         restore_map_grid(&mut s);
         assert_eq!(s.settings.edit.grid_size, 16.0);
+    }
+
+    #[test]
+    fn reset_layout_restores_the_panel_sizes() {
+        let mut s = state();
+        s.settings.ui.dock_width = 231.0;
+        s.settings.ui.console_height = 400.0;
+        s.settings.ui.split_x = 0.3;
+        reset_layout(&mut s);
+        let defaults = hp_app::settings::UiSettings::default();
+        assert_eq!(s.settings.ui.dock_width, defaults.dock_width);
+        assert_eq!(s.settings.ui.console_height, defaults.console_height);
+        assert_eq!(s.settings.ui.split_x, 0.5);
+        assert!(s.settings_dirty);
     }
 
     #[test]

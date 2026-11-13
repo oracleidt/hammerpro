@@ -107,7 +107,7 @@ Lighting. With no range option, `--rad` computes LDR only.
 | `-fastambient` | | Quicker prop ambient light. | off |
 | `-centersamples` | | Accepted (always done). | |
 | `-lights` | file | Extra texture light file. | none |
-| `-chop` / `-maxchop` / `-dispchop` | luxels | Texture light patch sizes, at least 1. | 4 / 4 / 8 |
+| `-chop` / `-maxchop` / `-dispchop` | luxels | Texture light patch sizes, at least 1. `-dispchop` also sets the size of the bounce patches of displacements. | 4 / 4 / 8 |
 | `-StaticPropLighting` | | Per vertex static prop lighting. | off |
 | `-StaticPropPolys` | | Props shadow with their drawn triangles. | off |
 | `-textureshadows` | | Alpha tested prop shadows (with `-StaticPropPolys`). | off |

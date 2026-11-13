@@ -138,7 +138,7 @@ Menu group **Texture lights and sky** (lighting step).
 | `-lights <file>` | Extra texture light file, read after `lights.rad` and before the map's own light files. | not used |
 | `-chop <luxels>` | Smallest texture light patch (at least 1). | 4 |
 | `-maxchop <luxels>` | Largest texture light patch (at least 1). | 4 |
-| `-dispchop <luxels>` | Texture light patch size on displacements (at least 1). | 8 |
+| `-dispchop <luxels>` | Patch size on displacements for texture lights and bounced light (at least 1). | 8 |
 | `-noskyboxrecurse` | The 3D skybox casts no shadow on the map and gets no light from it. | off |
 
 ## Speed

@@ -138,7 +138,7 @@ Groupe **Lumières de texture et ciel** (étape d'éclairage).
 | `-lights <fichier>` | Fichier de lumières de texture en plus, lu après `lights.rad` et avant les fichiers propres à la map. | non utilisé |
 | `-chop <luxels>` | Plus petit morceau de lumière de texture (au moins 1). | 4 |
 | `-maxchop <luxels>` | Plus grand morceau de lumière de texture (au moins 1). | 4 |
-| `-dispchop <luxels>` | Taille des morceaux de lumière de texture sur les displacements (au moins 1). | 8 |
+| `-dispchop <luxels>` | Taille des patchs sur les displacements pour les lumières de texture et la lumière rebondie (au moins 1). | 8 |
 | `-noskyboxrecurse` | La skybox 3D ne projette aucune ombre sur la map et n'en reçoit pas de lumière. | désactivé |
 
 ## Vitesse

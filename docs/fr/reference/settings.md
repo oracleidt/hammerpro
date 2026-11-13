@@ -92,6 +92,8 @@ Surtout sur **Paramètres > Vues** ; les clés `show_*` sont aussi dans le menu 
 | `show_outliner` | `false` | Onglet Arborescence. |
 | `show_model_browser` | `false` | Onglet Modèles. |
 | `show_console` | `true` | Panneau de la console. |
+| `dock_width` | `380.0` | Largeur du panneau de droite en points (tirez son bord gauche ; au moins 220). |
+| `console_height` | `150.0` | Hauteur de la console en points (tirez son bord supérieur ; au moins 60). |
 | `floating_panels` | `[]` | Panneaux latéraux ouverts dans des fenêtres séparées à l'intérieur de l'éditeur. Utilisez **Détacher le panneau** ou **Rattacher le panneau**. |
 | `thumbnail_size` | `96.0` | Taille des vignettes du navigateur de textures. |
 | `split_x`, `split_y` | `0.5`, `0.5` | Position des séparateurs de la grille 2x2 des vues (0 à 1). |
@@ -316,6 +318,14 @@ Navigateurs de textures, de modèles, de sons et de particules, et **Paramètres
 | `mesh_export_meters` | `false` | **Displacement en maillage** écrit des mètres au lieu des unités Source. |
 | `mesh_export_z_up` | `false` | **Displacement en maillage** écrit Z vers le haut au lieu de Y vers le haut. |
 | `disp_tool` | `{}` | Toutes les options du panneau de l'outil displacement, par nom (écrites par l'outil). |
+
+## `[vertex]`
+
+**Paramètres > Sommets et displacements**, section **Outil sommets**.
+
+| Clé | Défaut | Effet |
+| --- | --- | --- |
+| `merge_prompt` | `"off"` | Un déplacement de sommets qui se termine avec des sommets d'un solide les uns sur les autres : `"off"` les fusionne sans question comme dans les versions précédentes, `"ask"` pose la question **Ces sommets sont les uns sur les autres. Les fusionner ?**, `"always"` les fusionne, `"never"` annule le déplacement. |
 
 ## `[entities]`
 
@@ -562,6 +572,12 @@ La fenêtre **Construire et enregistrer en contenu** et l'onglet Ressources de l
 | `show_particles` | `true` | Joue les effets des `info_particle_system`. |
 | `particles_selected_only` | `false` | Seulement les systèmes sélectionnés. |
 | `show_entity_fx` | `true` | Aperçu de `func_smokevolume`, `env_embers`, `func_dustcloud` et `func_dustmotes`. |
+| `soundscape.view` | `false` | Dessine les entités soundscape, leur rayon et leurs cibles et les rayons des `ambient_generic`. Voir [Soundscapes](../features/soundscapes.md). |
+| `soundscape.areas` | `true` | Avec la vue des soundscapes, colore le sol avec le soundscape entendu à cet endroit. |
+| `soundscape.hearing` | `false` | Joue le soundscape actif et les sons `ambient_generic` dans la vue joueur (`K` dans la vue). |
+| `soundscape.volume` | `0.8` | Volume de l'écoute et de l'aperçu des soundscapes, de 0 à 1. |
+| `soundscape.mute` | `false` | Coupe l'écoute et l'aperçu des soundscapes. |
+| `soundscape.ambient_generic` | `true` | L'écoute joue aussi les sons en boucle des `ambient_generic`. |
 | `color_correction_preview` | `false` | Applique aux vues 3D les tables des entités `color_correction` et `color_correction_volume` selon la distance de la caméra. Voir [Correction des couleurs](../features/color-correction.md). |
 | `unprop_detail` | `true` | **Convertir le prop en brushes...** range les brushes dans un `func_detail`. |
 | `unprop_keep_prop` | `false` | Garde le prop. |
@@ -664,6 +680,19 @@ Voir [Mises à jour](../features/updates.md).
 | `blender.path` | `""` | Le programme Blender (`blender.exe`) ; vide veut dire que Hammer Pro le cherche. MCP le change avec `blender_setup`, qui le vérifie. |
 | `blender.format` | `"gltf"` | Format de fichier d'un envoi : `gltf`, `obj` ou `fbx`. |
 | `blender.live_link` | `true` | Surveille le fichier exporté et met la map à jour quand Blender l'écrit. |
+
+## `[livelink]`
+
+**Outils > Intégrations > État du lien direct...** (les réglages sous les boutons). Voir [Lien direct avec Garry's Mod](../features/live-link.md). Ils n'agissent que tant que le lien est actif.
+
+| Clé | Par défaut | Effet |
+| --- | --- | --- |
+| `livelink.camera_to_game` | `false` | Le joueur du jeu lancé suit la caméra 3D. L'activer désactive `camera_from_game`. |
+| `livelink.camera_from_game` | `false` | La caméra 3D suit l'œil du joueur. L'activer désactive `camera_to_game`. |
+| `livelink.highlight_selection` | `true` | Surligne la sélection de l'éditeur dans le jeu (halo et boîte englobante). |
+| `livelink.light_previews` | `true` | Montre les changements de light et light_spot dans le jeu comme lumière dynamique ou texture projetée marquée comme aperçu. |
+| `livelink.load_into_running_game` | `true` | Charge l'addon du lien dans un Garry's Mod déjà lancé (commande console `lua_run`), sans redémarrer le jeu. |
+| `livelink.remove_addon_on_stop` | `false` | Supprime l'addon du dossier de Garry's Mod à chaque arrêt du lien. |
 
 ## `[vtf]`
 

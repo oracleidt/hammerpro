@@ -82,6 +82,7 @@ pub enum MenuGroup {
     ToolsContentIndex,
     ToolsBlender,
     ToolsMcp,
+    ToolsLiveLink,
     ToolsApp,
     WindowLayout,
     WindowMessages,
@@ -192,6 +193,7 @@ impl MenuGroup {
             MenuGroup::ToolsContentIndex => sub(60, 21, "menu.content", 220.0),
             MenuGroup::ToolsBlender => sub(60, 30, "menu.integrations", 260.0),
             MenuGroup::ToolsMcp => sub(60, 31, "menu.integrations", 260.0),
+            MenuGroup::ToolsLiveLink => sub(60, 32, "menu.integrations", 260.0),
             MenuGroup::ToolsApp => inline(90, 0),
             MenuGroup::WindowLayout => sub(10, 0, "menu.layout", 200.0),
             MenuGroup::WindowMessages => inline(20, 0),
@@ -288,6 +290,7 @@ impl MenuGroup {
             | MenuGroup::ToolsContentIndex
             | MenuGroup::ToolsBlender
             | MenuGroup::ToolsMcp
+            | MenuGroup::ToolsLiveLink
             | MenuGroup::ToolsApp => C::Tools,
             MenuGroup::WindowLayout | MenuGroup::WindowMessages | MenuGroup::WindowMaps => C::Window,
             MenuGroup::HelpDocs | MenuGroup::HelpSupport | MenuGroup::HelpAbout => C::Help,
@@ -340,5 +343,5 @@ pub const TR: TrTable = &[
     ("menu.textures", "Textures", "Textures"),
     ("menu.placement", "Placement and props", "Placement et props"),
     ("menu.content", "Content and editors", "Contenu et éditeurs"),
-    ("menu.integrations", "Blender and MCP", "Blender et MCP"),
+    ("menu.integrations", "Integrations", "Intégrations"),
 ];

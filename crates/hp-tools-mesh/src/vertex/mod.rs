@@ -1,4 +1,5 @@
 pub mod loops;
+pub mod merge;
 pub(crate) mod model;
 pub mod weld;
 pub mod xform;
@@ -110,6 +111,7 @@ pub struct VertexTool {
     last_view: Option<ViewInfo>,
     last_warning: Option<(String, u64)>,
     align_armed: Option<(f64, u64, u64, usize)>,
+    merge_prompt: Option<merge::PendingMerge>,
 }
 
 impl Default for VertexTool {
@@ -132,6 +134,7 @@ impl Default for VertexTool {
             last_view: None,
             last_warning: None,
             align_armed: None,
+            merge_prompt: None,
         }
     }
 }
@@ -541,7 +544,8 @@ impl VertexTool {
         let valid = drag.has_motion() && error.is_none();
         if self.live {
             let (edits, reselect) = drag.edits();
-            if valid {
+            let asks = state.settings.vertex.merge_prompt != hp_app::settings::MergePrompt::Off;
+            if valid && (!asks || merge::find_stacked(&edits).is_none()) {
                 let cache = self.cache.get_mut();
                 for e in &edits {
                     cache.follow_splits(e);
@@ -563,7 +567,7 @@ impl VertexTool {
             return;
         }
         let (edits, reselect) = drag.edits();
-        self.apply(state, &edits, reselect, UNDO_EDIT, None);
+        self.apply_move(state, &edits, reselect, UNDO_EDIT, None);
     }
 
     fn report_lost_disps(&mut self, state: &mut AppState, solids: &[model::DragSolid]) {
@@ -638,7 +642,7 @@ impl VertexTool {
         &mut self,
         state: &mut AppState,
         delta: DVec3,
-        label: &str,
+        label: &'static str,
         tag: Option<&str>,
     ) -> bool {
         let cache = self.cache.get_mut();
@@ -647,7 +651,7 @@ impl VertexTool {
             return false;
         }
         let (edits, reselect) = cache.moved_selection(delta);
-        self.apply(state, &edits, reselect, label, tag)
+        self.apply_move(state, &edits, reselect, label, tag)
     }
 
     pub(crate) fn snap_selection(&mut self, state: &mut AppState) -> bool {
@@ -658,7 +662,7 @@ impl VertexTool {
         if edits.is_empty() {
             return false;
         }
-        self.apply(state, &edits, reselect, UNDO_SNAP, None)
+        self.apply_move(state, &edits, reselect, UNDO_SNAP, None)
     }
 
     pub(crate) fn align_selection(&mut self, state: &mut AppState, axis: usize) -> bool {
@@ -690,7 +694,7 @@ impl VertexTool {
                 (id, p)
             })
             .collect();
-        !edits.is_empty() && self.apply(state, &edits, reselect, "Align vertices", None)
+        !edits.is_empty() && self.apply_move(state, &edits, reselect, "Align vertices", None)
     }
 
     fn align_keys(&mut self, state: &mut AppState, ctx: &egui::Context) -> bool {
@@ -824,7 +828,7 @@ impl VertexTool {
         }
         let (edits, reselect) = scale.edits();
         self.scale = None;
-        self.apply(state, &edits, reselect, UNDO_SCALE, None)
+        self.apply_move(state, &edits, reselect, UNDO_SCALE, None)
     }
 
     pub(crate) fn set_scale_factor(&mut self, factor: f64) {
@@ -1107,6 +1111,11 @@ impl Tool for VertexTool {
         self.loop_hover = None;
         self.hover = None;
         self.align_armed = None;
+        self.merge_prompt = None;
+    }
+
+    fn update(&mut self, state: &mut AppState, ctx: &egui::Context) {
+        self.merge_prompt_ui(state, ctx);
     }
 
     fn reactivate(&mut self, state: &mut AppState) {
@@ -1116,6 +1125,7 @@ impl Tool for VertexTool {
     }
 
     fn deactivate(&mut self, state: &mut AppState) {
+        self.merge_prompt = None;
         self.end_live(state, false);
         self.drag = None;
         self.rubber = None;
@@ -1128,6 +1138,9 @@ impl Tool for VertexTool {
     }
 
     fn action(&mut self, state: &mut AppState, action: Action) -> bool {
+        if self.merge_prompt.is_some() {
+            return true;
+        }
         self.cache.get_mut().refresh(&state.doc);
         self.drop_stale(state);
         let ours = matches!(
@@ -1196,6 +1209,9 @@ impl Tool for VertexTool {
     }
 
     fn view_input(&mut self, state: &mut AppState, input: &ViewInput<'_>) -> ToolFlow {
+        if self.merge_prompt.is_some() {
+            return ToolFlow::Handled;
+        }
         if input.navigating {
             self.hover = None;
             return ToolFlow::Ignored;
@@ -1272,6 +1288,9 @@ impl Tool for VertexTool {
     }
 
     fn key_input(&mut self, state: &mut AppState, ctx: &egui::Context) -> bool {
+        if self.merge_prompt.is_some() {
+            return false;
+        }
         self.cache.get_mut().refresh(&state.doc);
         self.drop_stale(state);
         let mut handled = self.align_keys(state, ctx);
@@ -1300,6 +1319,15 @@ impl Tool for VertexTool {
     }
 
     fn overlay(&self, state: &AppState, view: &ViewInfo, out: &mut hp_render::Overlay) {
+        if let Some(p) = &self.merge_prompt {
+            for [a, b] in &p.edges {
+                line_on_top(out, *a, *b, rgba(PREVIEW));
+            }
+            for spot in &p.spots {
+                point(out, *spot, rgba(SELECTED), 11.0);
+            }
+            return;
+        }
         self.cache.borrow_mut().refresh(&state.doc);
         let cache = self.cache.borrow();
         let accent = rgba(SELECTED);
@@ -1728,6 +1756,9 @@ impl Tool for VertexTool {
     }
 
     fn cancel(&mut self, state: &mut AppState) -> bool {
+        if self.merge_prompt.is_some() {
+            return self.answer_merge_prompt(state, false, false);
+        }
         if self.drag.take().is_some() {
             self.end_live(state, false);
             return true;

@@ -564,7 +564,7 @@ pub(crate) fn parse_bspc_args(args: &[String]) -> Result<BspcArgs, String> {
     Ok(a)
 }
 
-fn material_substitutions(game: Option<&Path>, map_name: &str) -> Option<Vec<(String, String)>> {
+pub(crate) fn material_substitutions(game: Option<&Path>, map_name: &str) -> Option<Vec<(String, String)>> {
     let path = game?.join("cfg").join("materialsub.cfg");
     say("Loading Replacement Keys");
     let Some(text) = std::fs::read(&path).ok().map(|b| String::from_utf8_lossy(&b).into_owned()) else {
@@ -581,7 +581,7 @@ fn material_substitutions(game: Option<&Path>, map_name: &str) -> Option<Vec<(St
     Some(out)
 }
 
-fn replace_materials(map: &mut hp_vmf::Map, subs: &[(String, String)]) -> usize {
+pub(crate) fn replace_materials(map: &mut hp_vmf::Map, subs: &[(String, String)]) -> usize {
     let find = |name: &str| {
         let key = name.trim().replace('\\', "/").to_ascii_lowercase();
         subs.iter().find(|(k, _)| *k == key).map(|(_, v)| v.clone())
@@ -604,7 +604,7 @@ fn replace_materials(map: &mut hp_vmf::Map, subs: &[(String, String)]) -> usize 
     n
 }
 
-fn apply_dx_level(map: &mut hp_vmf::Map, level: i32) -> usize {
+pub(crate) fn apply_dx_level(map: &mut hp_vmf::Map, level: i32) -> usize {
     let before = map.entities.len();
     map.entities.retain(|e| {
         let read = |k: &str| e.get(k).map_or(0, c_atoi);

@@ -702,3 +702,35 @@ fn the_nearest_compiled_face_wins_whatever_the_draw_order() {
     let stats = r.compiled_lighting().expect("compiled");
     assert!(stats.atlas_size <= 16 && stats.atlas_height <= 16, "a tiny atlas: {stats:?}");
 }
+
+#[test]
+fn the_player_view_draws_the_3d_grid() {
+    let Some((device, queue)) = gpu() else {
+        eprintln!("no GPU adapter available: test skipped");
+        return;
+    };
+    let mut r = Renderer::new(&device, &queue);
+    mat(&mut r, WORLD, [128, 128, 128, 255], MaterialFlags::empty());
+    let wall = face(-100.0, 100.0, -100.0, 100.0, 100.0, 0, [0.5, 0.5]);
+    r.upsert_object(1, mesh(&wall, WORLD));
+    r.set_object_flags(1, ObjectFlags::COMPILED_LIGHT);
+    let blocks = vec![CompiledBlock {
+        object: 1,
+        batches: vec![CompiledBatch { material: WORLD, vertices: wall.clone(), indices: vec![0, 1, 2, 0, 2, 3] }],
+    }];
+    let dim = [[0.2f32; 3]];
+    let maps = [CompiledLightmap { width: 1, height: 1, texels: &dim, styles: &[], bumped: false }];
+    r.set_tone_settings(ToneSettings { bloom: 0.0, ..ToneSettings::default() });
+    r.set_compiled_lighting(CompiledLightMode::Hdr, &maps, &blocks);
+    let render = |r: &mut Renderer, grid: Option<Grid3d>, name: &str| {
+        r.set_view_options(1, ViewOptions { compiled_lighting: true, grid_3d: grid, ..ViewOptions::default() });
+        r.render_view(1, &view(RenderMode::Textured), &Overlay::default());
+        save(r, name)
+    };
+    let plain = render(&mut r, None, "grid3d_off");
+    let grid = render(&mut r, Some(Grid3d::default()), "grid3d_on");
+    let lifted =
+        plain.2.chunks_exact(4).zip(grid.2.chunks_exact(4)).filter(|(a, b)| b[0] > a[0].saturating_add(30)).count();
+    assert!(lifted > 1000, "grid lines on the compiled faces: {lifted}");
+    assert_eq!(render(&mut r, None, "grid3d_off_again").2, plain.2);
+}

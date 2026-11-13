@@ -1249,7 +1249,7 @@ impl DisplacementTool {
         });
         ui.add_space(2.0);
 
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             let modes = [
                 (Interaction::Select, "disp.mode.select", "disp.mode.select_tip"),
                 (Interaction::Geometry, "disp.mode.geometry", "disp.mode.geometry_tip"),
@@ -1280,7 +1280,7 @@ impl DisplacementTool {
         if targets.skipped > 0 {
             ui.colored_label(hp_app::theme::warning(), tf!("disp.skipped", targets.skipped));
         }
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label(t!("disp.power"));
             for p in 2..=4u32 {
                 let size = (1u32 << p) + 1;
@@ -1299,18 +1299,19 @@ impl DisplacementTool {
         let sel_faces =
             if object_targets_win(&state.doc) { sel_disps.len() } else { state.doc.selection().faces.len() };
         ui.label(RichText::new(tf!("disp.selected_faces", sel_disps.len(), sel_faces)).weak());
-        ui.horizontal(|ui| {
-            ui.label(t!("disp.selection_opacity"));
+        let (label, opacity_changed) = hp_app::widgets::slider_row(ui, t!("disp.selection_opacity"), |ui| {
             let mut opacity = state.settings.mesh.displacement_selection_opacity() * 100.0;
-            if ui
+            let changed = ui
                 .add(egui::Slider::new(&mut opacity, 0.0..=100.0).suffix(" %").max_decimals(1).step_by(0.1))
                 .on_hover_text(t!("disp.selection_opacity_tip"))
-                .changed()
-            {
-                state.settings.mesh.disp_selection_opacity = opacity / 100.0;
-                state.settings_dirty = true;
-            }
+                .changed();
+            (changed, opacity)
         });
+        label.on_hover_text(t!("disp.selection_opacity_tip"));
+        if opacity_changed.0 {
+            state.settings.mesh.disp_selection_opacity = opacity_changed.1 / 100.0;
+            state.settings_dirty = true;
+        }
         ui.horizontal_wrapped(|ui| {
             if ui
                 .add_enabled(total > 0, Button::new(t!("disp.select_all")))
@@ -1342,7 +1343,7 @@ impl DisplacementTool {
                 actions.push(PanelAction::SelectOfSolids);
             }
         });
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label(t!("disp.masks")).on_hover_text(t!("disp.masks_tip"));
             ui.checkbox(&mut self.mask_grid, t!("disp.mask_grid")).on_hover_text(t!("disp.mask_grid_tip"));
             ui.checkbox(&mut self.mask_select, t!("disp.mask_select")).on_hover_text(t!("disp.mask_select_tip"));
@@ -1379,7 +1380,7 @@ impl DisplacementTool {
             let power = infos.first().map(|i| i.0).filter(|p| infos.iter().all(|i| i.0 == *p));
             let elevation = infos.first().map(|i| i.1).filter(|e| infos.iter().all(|i| i.1 == *e));
             let lightmap = infos.first().map(|i| i.2).filter(|l| infos.iter().all(|i| i.2 == *l));
-            egui::Grid::new("hp_disp_face_props").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
+            hp_app::widgets::form(ui, "hp_disp_face_props", |ui| {
                 grid_row(ui, t!("disp.power"), |ui| {
                     let text = power.map_or_else(|| t!("common.multiple_values").to_owned(), |p| p.to_string());
                     egui::ComboBox::from_id_salt("hp_disp_power")
@@ -1474,7 +1475,7 @@ impl DisplacementTool {
                 actions.push(PanelAction::Shadows(current != Some(true)));
             }
         });
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label(t!("disp.scale"));
             ui.add(egui::DragValue::new(&mut self.scale_factor).speed(0.05).range(-16.0..=16.0).max_decimals(3))
                 .on_hover_text(t!("disp.scale_tip"));
@@ -1515,8 +1516,14 @@ impl DisplacementTool {
                 })
                 .response
                 .on_hover_text(t!("disp.subdivision_shape_tip"));
-            ui.add(egui::Slider::new(&mut self.subdivision_amount, 0.0..=1.0).text(t!("disp.subdivision_amount")))
-                .on_hover_text(t!("disp.subdivision_amount_tip"));
+        });
+        hp_app::widgets::slider_row(ui, t!("disp.subdivision_amount"), |ui| {
+            ui.add(egui::Slider::new(&mut self.subdivision_amount, 0.0..=1.0))
+                .on_hover_text(t!("disp.subdivision_amount_tip"))
+        })
+        .0
+        .on_hover_text(t!("disp.subdivision_amount_tip"));
+        ui.horizontal_wrapped(|ui| {
             if ui
                 .add_enabled(any && self.subdivision_amount > 0.0, Button::new(t!("disp.subdivide")))
                 .on_hover_text(t!("disp.subdivide_tip"))
@@ -1589,7 +1596,7 @@ impl DisplacementTool {
                 }
             }
         });
-        egui::Grid::new("hp_disp_geo").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
+        hp_app::widgets::form(ui, "hp_disp_geo", |ui| {
             match self.brush.geo_effect {
                 GeoEffect::Relax => {
                     grid_row(ui, t!("disp.strength"), |ui| {
@@ -1722,7 +1729,7 @@ impl DisplacementTool {
             }
         });
         let s = &mut self.brush.sculpt;
-        egui::Grid::new("hp_disp_sculpt").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| match s.op {
+        hp_app::widgets::form(ui, "hp_disp_sculpt", |ui| match s.op {
             SculptOp::Push => {
                 bounds_row(ui, s);
                 grid_row(ui, t!("disp.sculpt.falloff_position"), |ui| {
@@ -1758,13 +1765,13 @@ impl DisplacementTool {
                 });
                 grid_row(ui, t!("disp.sculpt.profile"), |ui| {
                     ui.vertical(|ui| {
-                        ui.horizontal(|ui| {
+                        ui.horizontal_wrapped(|ui| {
                             for (i, v) in s.profile.iter_mut().enumerate() {
                                 ui.add(egui::Slider::new(v, 0.0..=1.0).vertical().show_value(false))
                                     .on_hover_text(tf!("disp.sculpt.profile_point", i * 25));
                             }
                         });
-                        ui.horizontal(|ui| {
+                        ui.horizontal_wrapped(|ui| {
                             for (preset, label) in [(PROFILE_V, "V"), (PROFILE_U, "U"), (PROFILE_FLAT, "|_|")] {
                                 if ui.small_button(label).on_hover_text(t!("disp.sculpt.preset_tip")).clicked() {
                                     s.profile = preset;
@@ -1831,7 +1838,7 @@ impl DisplacementTool {
                 });
             }
         });
-        egui::Grid::new("hp_disp_sculpt_axis").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
+        hp_app::widgets::form(ui, "hp_disp_sculpt_axis", |ui| {
             if self.brush.sculpt.op != SculptOp::Relax {
                 self.axis_row(ui, false);
             }
@@ -1888,7 +1895,7 @@ impl DisplacementTool {
                 }
             }
         });
-        egui::Grid::new("hp_disp_alpha").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
+        hp_app::widgets::form(ui, "hp_disp_alpha", |ui| {
             if self.brush.alpha_effect == AlphaEffect::Set {
                 grid_row(ui, t!("disp.alpha_value"), |ui| {
                     ui.add(egui::Slider::new(&mut self.brush.alpha_value, 0.0..=255.0).max_decimals(0))
@@ -1915,7 +1922,7 @@ impl DisplacementTool {
 
     fn brush_ui(&mut self, ui: &mut Ui) {
         section(ui, t!("disp.brush"));
-        egui::Grid::new("hp_disp_brush").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
+        hp_app::widgets::form(ui, "hp_disp_brush", |ui| {
             grid_row(ui, t!("disp.radius"), |ui| {
                 ui.add(
                     egui::Slider::new(&mut self.brush.radius, 1.0..=paint::MAX_RADIUS)
@@ -2452,6 +2459,13 @@ impl Tool for DisplacementTool {
         let done = self.script_set_option(state, key, value);
         self.save_settings(state);
         done
+    }
+
+    fn option_order(&self, key: &str) -> i32 {
+        match key {
+            "tag_selection" | "cast_shadows" | "lightmap_scale" => 1,
+            _ => 0,
+        }
     }
 
     fn option_values(&self) -> Vec<hp_app::tool::ToolOption> {

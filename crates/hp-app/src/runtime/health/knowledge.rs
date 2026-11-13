@@ -61,7 +61,7 @@ pub(crate) fn material_facts(info: &MaterialInfo) -> MaterialFacts {
         missing: info.missing,
         tool,
         water: info.is_water && tool.is_none(),
-        translucent: info.translucent && tool.is_none(),
+        translucent: (info.translucent || info.non_solid) && tool.is_none(),
     }
 }
 
@@ -219,6 +219,8 @@ mod tests {
         assert!(!material_facts(&info(Some(hp_vmt::ToolKind::PlayerClip))).seals());
         let glass = MaterialInfo { translucent: true, ..MaterialInfo::default() };
         assert!(!material_facts(&glass).seals());
+        let grate = MaterialInfo { alpha_test: true, non_solid: true, ..MaterialInfo::default() };
+        assert!(!material_facts(&grate).seals(), "alpha tested brushes do not seal, like in the compiler");
         let water = MaterialInfo { is_water: true, ..MaterialInfo::default() };
         assert!(material_facts(&water).water);
         assert_eq!(normalize("Materials\\Brick/Wall.VMT"), "brick/wall");

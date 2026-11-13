@@ -2,7 +2,7 @@ mod bump;
 mod cubemaps;
 mod decals;
 mod detail;
-mod detail_preview;
+pub mod detail_preview;
 mod entities;
 mod env_scan;
 mod envmap;

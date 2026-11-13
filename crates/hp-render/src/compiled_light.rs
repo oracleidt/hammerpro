@@ -252,7 +252,7 @@ pub(crate) struct CompiledLight {
     style_values: Vec<f32>,
 }
 
-const SHADER: &str = concat!(
+pub(crate) const SHADER: &str = concat!(
     include_str!("shaders/common.wgsl"),
     "\n",
     include_str!("shaders/material.wgsl"),

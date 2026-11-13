@@ -13,6 +13,7 @@ pub mod particle_world;
 pub mod particles;
 pub mod sniffer;
 pub mod sound_edit;
+pub mod soundscape;
 mod tr;
 mod tr_sniffer;
 
@@ -21,6 +22,7 @@ pub const SNIFFER_TR: hp_app::i18n::TrTable = tr_sniffer::TR;
 pub const PARTICLE_PREVIEW_TR: hp_app::i18n::TrTable = particle_preview::TR;
 pub const SOUND_TR: hp_app::i18n::TrTable = sound_edit::TR;
 pub const COLOR_TR: hp_app::i18n::TrTable = color_edit::TR;
+pub const SOUNDSCAPE_TR: hp_app::i18n::TrTable = soundscape::TR;
 
 pub fn register_translations() {
     hp_app::register_translations();
@@ -28,6 +30,7 @@ pub fn register_translations() {
     hp_app::i18n::register(tr_sniffer::TR);
     hp_app::i18n::register(SOUND_TR);
     hp_app::i18n::register(COLOR_TR);
+    hp_app::i18n::register(SOUNDSCAPE_TR);
     hp_app::i18n::register(particle_preview::TR);
     hp_app::i18n::register(particle_editor::TR);
 }

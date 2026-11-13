@@ -385,6 +385,7 @@ pub(crate) fn make_info(
         tool: analysis.and_then(|a| a.tool).or_else(|| mat.tool_kind(name)),
         translucent: mat.translucent(),
         alpha_test: mat.alpha_test(),
+        non_solid: mat.compiles_non_solid(),
         shows_alpha: analysis.is_some_and(|a| a.shows_alpha),
         additive: mat.additive(),
         is_water: mat.is_water(),

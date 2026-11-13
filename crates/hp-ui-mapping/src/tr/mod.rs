@@ -7,6 +7,7 @@ pub mod compile;
 pub mod compile_stats;
 pub mod compilers;
 pub mod cordons;
+pub mod cubemaps;
 pub mod goto;
 pub mod inspector;
 pub mod instancing;
@@ -43,6 +44,7 @@ pub const TABLES: &[(&str, TrTable)] = &[
     ("goto", goto::TR),
     ("mapinfo", mapinfo::TR),
     ("optimize", optimize::TR),
+    ("cubemaps", cubemaps::TR),
     ("pointfile", pointfile::TR),
     ("cordons", cordons::TR),
     ("portals", portals::TR),

@@ -125,6 +125,9 @@ fn side_detail(h: &mut H, s: &Side) {
     axis(h, &s.vaxis);
     h.word(u64::from(s.lightmap_scale.unsigned_abs()));
     h.word(u64::from(s.smoothing_groups));
+    if let Some((_, v)) = s.extra_props.iter().find(|(k, _)| k.eq_ignore_ascii_case("hp_detailtype")) {
+        h.s_ci(v);
+    }
     if let Some(d) = &s.disp {
         disp(h, d);
     }

@@ -31,6 +31,7 @@ hp-ui-entities = { path = "../hp-ui-entities" }
 hp-ui-mapping = { path = "../hp-ui-mapping" }
 hp-light = { path = "../hp-light" }
 hp-ui-lab = { path = "../hp-ui-lab" }
+hp-soundscape = { path = "../hp-soundscape" }
 hp-audio = { path = "../hp-audio" }
 hp-colorgrade = { path = "../hp-colorgrade" }
 hp-sniffer = { path = "../hp-sniffer" }
@@ -39,6 +40,7 @@ hp-mcp = { path = "../hp-mcp" }
 hp-pcf = { path = "../hp-pcf" }
 hp-discord = { path = "../hp-discord" }
 hp-update = { path = "../hp-update" }
+hp-livelink = { path = "../hp-livelink" }
 hp-editor.workspace = true
 hp-vmf.workspace = true
 hp-kv.workspace = true

@@ -121,11 +121,12 @@ impl HealthRuntime {
         let profile = Self::profile_for(state);
         let live = state.settings.health.live_checks;
         let leak = state.settings.health.live_leak_check || state.runtime.health.leak_requested;
+        let mode = Self::leak_mode(state, leak);
         let force = std::mem::take(&mut state.runtime.health.recheck);
         let pace = engine::Pace { force, ..Self::pace(state) };
         let AppState { doc, assets, runtime, .. } = state;
         let rt = &mut runtime.health;
-        let tick = rt.engine.tick(doc, assets.as_mut(), profile, live, leak, pace);
+        let tick = rt.engine.tick(doc, assets.as_mut(), profile, live, mode, pace);
         rt.profile = profile;
         let mut changed = false;
         if let Some(c) = tick.checks {
@@ -151,6 +152,10 @@ impl HealthRuntime {
         tick.busy
     }
 
+    fn leak_mode(state: &AppState, on: bool) -> engine::LeakMode {
+        engine::LeakMode { on, cordons: state.settings.compile.compile_cordon_only && state.doc.cordons_in_use() }
+    }
+
     pub fn user_busy(state: &AppState) -> bool {
         state.doc.in_transaction() || state.runtime.selection.drag.is_some() || crate::checks::window_away()
     }
@@ -162,10 +167,10 @@ impl HealthRuntime {
 
     pub fn check_now(state: &mut AppState) {
         let profile = Self::profile_for(state);
-        let leak = state.settings.health.live_leak_check;
+        let mode = Self::leak_mode(state, state.settings.health.live_leak_check);
         let AppState { doc, assets, runtime, .. } = state;
         let rt = &mut runtime.health;
-        let (checks, leak_result) = rt.engine.check_now(doc, assets.as_mut(), profile, leak);
+        let (checks, leak_result) = rt.engine.check_now(doc, assets.as_mut(), profile, mode);
         rt.profile = profile;
         rt.checks = Some(Arc::new(checks));
         rt.leak = leak_result.map(Arc::new);

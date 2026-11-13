@@ -67,6 +67,7 @@ The right-click menu of the views also offers **Split face**, **Scale vertices..
 - A drag shows its result live and becomes one undo step when you release the button. Keyboard nudges in a row merge into one undo step.
 - A solid must stay convex. If a move would make a vertex end up inside the solid or on one of its faces or edges, or would make it flat, the status bar explains why and the edit is cancelled on release.
 - **Merging**: a moved vertex dropped closer than the **Merge distance** to a vertex that did not move snaps onto it, and the two become one vertex.
+- **Vertices on top of each other**: by default stacked vertices simply merge, as in earlier versions. Turn on **Stacked vertices** > **Ask before merging stacked vertices** in the settings (`vertex.merge_prompt` = `ask`) to get Hammer's question when a move (a drag in a 2D or 3D view, arrow keys, **Snap to grid**, align, scale, edge loop rotate or slide) ends with vertices of a solid on top of each other: **These vertices are on top of each other. Merge them?** **Yes** (`Enter`) merges them into one vertex, in the same undo step as the move. **No** (`Esc`) puts the vertices back where they were before the move. The merged shape is drawn in the views while the question is open. **Don't ask again, always merge** in the question switches the setting to **Always merge stacked vertices**.
 - **Displacements**: a face keeps its displacement as long as it stays the same four sided face. Otherwise the displacement is removed and a toast tells you how many were lost. A warning badge in the options bar reminds you when the edited solids have displacements.
 
 ## Options bar
@@ -149,6 +150,7 @@ MCP: `select_edge_loop`, `select_edge_ring` and `grow_edge_selection` (mode `gro
 | --- | --- | --- |
 | **Live preview while dragging** (`mesh.live_preview`) | Dragged solids show their new shape with their textures while the mouse button is held (up to 64 solids at once; larger drags only show the edges) | On |
 | **UV lock** (`mesh.uv_lock`) | Same as the option of the options bar | Off |
+| **Stacked vertices** (`vertex.merge_prompt`) | What happens when a move ends with vertices of a solid on top of each other: **Off** (`off`) merges them silently as in earlier versions, **Ask before merging stacked vertices** (`ask`) shows the question, **Always merge stacked vertices** (`always`), **Never merge stacked vertices** (`never`, the move is undone) | Off |
 
 ## Tips
 
@@ -163,9 +165,11 @@ MCP: `select_edge_loop`, `select_edge_ring` and `grow_edge_selection` (mode `gro
 
 **How do I merge two vertices?** Drag one onto the other. Any vertex dropped closer than the **Merge distance** (1 unit by default) to a vertex that did not move is welded to it. To merge several at once, select them and use **Weld selected vertices**, or use **Weld vertices by distance** to merge every close pair.
 
+**Why does a question pop up after I drag a vertex onto another one?** **Stacked vertices** is set to **Ask before merging stacked vertices** and the move left two vertices of the solid on top of each other. **Yes** merges them, **No** undoes the move. To stop the question, tick **Don't ask again, always merge** or set **Stacked vertices** back to **Off** in the settings.
+
 **My textures stretch when I move vertices.** **UV lock** is on: textures follow the vertices. Turn it off to keep textures fixed in the world.
 
-**Can I edit vertices with an AI assistant?** Yes, the MCP tools `get_brush_vertices`, `set_brush_vertices`, `move_brush_vertices` and `snap_brush_vertices` do the same edits (see the [MCP tool reference](../../MCP.md)).
+**Can I edit vertices with an AI assistant?** Yes, the MCP tools `get_brush_vertices`, `set_brush_vertices`, `move_brush_vertices` and `snap_brush_vertices` do the same edits (see the [MCP tool reference](../../MCP.md)). `move_brush_vertices` never shows the merge question: its `merge` argument answers it (`off` by default, the behaviour of earlier versions; `yes`, `no` or `ask`), and `set_setting` `vertex.merge_prompt` changes the setting.
 
 **How do I select the whole line of edges around a brush face or along a wall?** `Alt`+click one of its edges. `Ctrl+Alt`+click selects the parallel edges instead.
 

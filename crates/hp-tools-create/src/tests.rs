@@ -101,7 +101,8 @@ fn tool_list() {
             ToolId::Overlay,
             ToolId::Path,
             ToolId::Road,
-            ToolId::Pipe
+            ToolId::Pipe,
+            ToolId::Spline
         ]
     );
 }

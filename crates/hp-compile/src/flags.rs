@@ -217,7 +217,12 @@ pub const FLAGS: &[FlagInfo] = &[
     ),
     info(StepKind::Rad, "-chop", true, "Smallest texture light patch in luxels (default 4)."),
     info(StepKind::Rad, "-maxchop", true, "Largest texture light patch in luxels (default 4)."),
-    info(StepKind::Rad, "-dispchop", true, "Texture light patch size on displacements in luxels (default 8)."),
+    info(
+        StepKind::Rad,
+        "-dispchop",
+        true,
+        "Patch size on displacements for texture lights and bounced light, in luxels (default 8).",
+    ),
     info(StepKind::Rad, "-low", false, "Run at idle priority: the computer stays responsive."),
     info(
         StepKind::Rad,

@@ -437,6 +437,7 @@ pub(crate) fn compose(state: &AppState, a: &Analysis, include_open: bool) -> Com
     findings.extend(portal_suggestions.iter().map(PortalSuggestion::finding));
     let lights = light_audit(state);
     findings.extend(lights.findings.iter().cloned());
+    findings.extend(super::cubemaps::analyze_with(state, a.bsp().map(|b| &b.vis)).findings);
     sort_findings(&mut findings);
     let report = OptimizeReport {
         vis: a.report().cloned(),

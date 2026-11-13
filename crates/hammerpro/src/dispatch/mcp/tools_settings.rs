@@ -41,6 +41,8 @@ pub(crate) const RANGES: &[(&str, f64, f64)] = &[
     ("ui.split_y", hp_ui_viewports::layout::SPLIT_MIN as f64, hp_ui_viewports::layout::SPLIT_MAX as f64),
     ("ui.quadrants", 0.0, 4.0),
     ("ui.thumbnail_size", 32.0, 512.0),
+    ("ui.dock_width", crate::panel_layout::DOCK_MIN as f64, 4096.0),
+    ("ui.console_height", crate::panel_layout::CONSOLE_MIN as f64, 4096.0),
     ("render.near_plane", 0.5, 16.0),
     ("render.model_distance", 0.0, 65_536.0),
     ("render.cull_radius", 256.0, 65_536.0),
@@ -73,6 +75,7 @@ pub(crate) const RANGES: &[(&str, f64, f64)] = &[
     ("lab.model_lod.reduction", 0.2, 0.9),
     ("lab.propper_mass", 0.1, 50_000.0),
     ("lab.combine_max_pieces", 1.0, 128.0),
+    ("lab.soundscape.volume", 0.0, 1.0),
     ("physics.gravity", -10_000.0, 10_000.0),
     ("physics.air_density", 0.0, 100.0),
     ("physics.time_scale", 0.01, 4.0),
@@ -228,7 +231,7 @@ pub(crate) fn settings_json(s: &Settings) -> Value {
         tables!(
             selection, brush, workflow, instances, visibility, helpers, mesh, entities, render, lighting, placement,
             physics, startup, launch, content, health, lab, mcp, grid, discord, scan, update, sniffer, blender, vtf,
-            input,
+            input, livelink, vertex,
         );
     }
     v

@@ -103,7 +103,7 @@ The 2D view draws the minor and major lines along the rotated axes, clipped to t
 | **Highlight grid lines every** (`view.grid_highlight_every`) | Settings > Viewports | Major line interval of the 2D grid (2 to 64). | 8 |
 | **Show 1024 unit lines** (`view.show_1024_grid`) | Settings > Viewports | Lines every 1024 units. | On |
 | **Grid in the 3D view** (`view.show_3d_grid`) | Settings > Viewports | A grid on the z = 0 plane around the camera, the X axis red and the Y axis green. | Off |
-| **3D grid on faces (P)** (`render.grid_3d`) | Map menu, `P`, Settings > Rendering | Draws the grid on the faces of brushes, every grid step, brighter every major step. | Off |
+| **3D grid on faces (P)** (`render.grid_3d`) | Map menu, `P`, Settings > Rendering | Draws the grid on the faces of brushes, every grid step, brighter every major step, in every 3D render mode including the Baked lighting preview and the Player view. | Off |
 | **3D grid opacity** (`render.grid_3d_opacity`) | Settings > Rendering | 0.05 to 1. | 0.45 |
 | `render.grid_3d_fade_cells` | `settings.toml` | The 3D grid fades out beyond this many cells from the camera. | 64 |
 | **Dotted grid** (`render.grid_dotted`) | Settings > Rendering | Draws the 2D grid as dots where its lines cross. | Off |

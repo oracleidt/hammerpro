@@ -60,6 +60,7 @@ pub struct MaterialInfo {
     pub tool: Option<hp_vmt::ToolKind>,
     pub translucent: bool,
     pub alpha_test: bool,
+    pub non_solid: bool,
     pub shows_alpha: bool,
     pub additive: bool,
     pub is_water: bool,
@@ -635,6 +636,8 @@ pub struct UiState {
     pub focus_texture_search: bool,
     pub quick_input: String,
     pub trackpad_detected: bool,
+    pub dock_size: f32,
+    pub console_size: f32,
 }
 
 #[derive(Clone, Copy, Debug, Default)]

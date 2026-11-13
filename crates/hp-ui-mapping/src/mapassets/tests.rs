@@ -453,3 +453,37 @@ fn draws_in_both_languages() {
     run_ui(&mut s, |ui, s| panel.ui(ui, s));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn fits_a_narrow_dock() {
+    let _lang = crate::lang_lock();
+    crate::register_translations();
+    let dir = crate::test_scratch("mapassets_narrow");
+    let mut s = state(&dir);
+    let mut panel = MapAssetsPanel::new();
+    run_ui(&mut s, |ui, s| panel.ui(ui, s));
+    wait(&mut panel, &mut s, |p, _| p.tree.is_some());
+    for lang in hp_app::i18n::Lang::ALL {
+        hp_app::i18n::set_lang(lang);
+        let ctx = egui::Context::default();
+        let mut width = 0.0f32;
+        for _ in 0..4 {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0))),
+                ..Default::default()
+            };
+            let mut out = ctx.run_ui(input, |ui| {
+                let r = egui::Panel::right("hp_test_dock")
+                    .resizable(true)
+                    .default_size(220.0)
+                    .min_size(220.0)
+                    .show(ui, |ui| panel.ui(ui, &mut s));
+                width = r.response.rect.width();
+            });
+            out.textures_delta.clear();
+        }
+        hp_app::i18n::set_lang(hp_app::i18n::Lang::En);
+        assert!(width <= 220.5, "{lang:?}: {width}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}

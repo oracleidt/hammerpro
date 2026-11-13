@@ -238,7 +238,7 @@ fn get_map_limits(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
     let h = &state.runtime.health;
     let estimated = h.checks.as_ref().map(|c| {
         json!({
-            "up_to_date": c.serial == state.doc.revision(),
+            "up_to_date": c.serial == state.doc.content_serial(),
             "limits": c.limits.iter().map(|u| limit_json(u, top)).collect::<Vec<_>>(),
             "edicts": {
                 "used": c.edicts.used,

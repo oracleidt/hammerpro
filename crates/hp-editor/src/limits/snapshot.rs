@@ -80,6 +80,8 @@ pub struct SideRec {
     pub texinfo: u64,
     pub plane: u64,
     pub luxels: u32,
+    pub points: [DVec3; 3],
+    pub contents: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -131,6 +133,7 @@ pub struct MapSnapshot {
     pub visgroups: IdSet,
     pub renumbered: (Vec<ObjRef>, usize),
     pub materials: Arc<Vec<MaterialName>>,
+    pub cordons: Arc<Vec<Aabb>>,
 }
 
 impl MapSnapshot {
@@ -303,6 +306,8 @@ fn solid_draft(n: &SolidNode) -> Draft<'_> {
             texinfo: th.finish(),
             plane: p.as_ref().map_or(0, plane_key),
             luxels: face.map_or(0, |f| face_luxels(&f.vertices, s)),
+            points: s.plane,
+            contents: s.compile_contents(),
         });
         materials.push(name);
     }
@@ -556,6 +561,7 @@ impl SnapshotBuilder {
             visgroups,
             renumbered: (renumbered, doc.renumbered.len()),
             materials: Arc::clone(&self.materials.names),
+            cordons: Arc::new(doc.cordon_boxes()),
         })
     }
 }

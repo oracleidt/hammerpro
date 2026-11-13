@@ -394,6 +394,7 @@ fn run_with(
         bounce_tile_budget,
         water: &water,
         water_reflectivity,
+        dispchop: disp::chop_or_default(opts.texlights.dispchop),
     };
     let t = Instant::now();
     work.begin(Stage::Direct, luxels as u64);

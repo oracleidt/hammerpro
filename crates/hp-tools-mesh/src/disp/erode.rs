@@ -319,7 +319,7 @@ impl super::DisplacementTool {
         ui.add_space(4.0);
         ui.label(egui::RichText::new(t!("disp.erosion")).strong());
         ui.label(egui::RichText::new(t!("disp.erosion_hint")).weak());
-        egui::CollapsingHeader::new(t!("disp.thermal")).id_salt("hp_disp_thermal").show(ui, |ui| {
+        hp_app::widgets::collapsing(ui, t!("disp.thermal")).id_salt("hp_disp_thermal").show(ui, |ui| {
             thermal_grid(ui, o);
         });
         if ui
@@ -329,7 +329,7 @@ impl super::DisplacementTool {
         {
             actions.push(super::PanelAction::Terrain(TerrainOp::Thermal));
         }
-        egui::CollapsingHeader::new(t!("disp.hydraulic")).id_salt("hp_disp_hydraulic").show(ui, |ui| {
+        hp_app::widgets::collapsing(ui, t!("disp.hydraulic")).id_salt("hp_disp_hydraulic").show(ui, |ui| {
             hydraulic_grid(ui, o);
         });
         if ui
@@ -343,7 +343,7 @@ impl super::DisplacementTool {
 }
 
 pub fn noise_ui(ui: &mut egui::Ui, o: &mut TerrainOptions) {
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         for (kind, label, tip) in [
             (NoiseKind::Random, "disp.noise_random", "disp.noise_random_tip"),
             (NoiseKind::Fractal, "disp.noise_fractal", "disp.noise_fractal_tip"),
@@ -356,7 +356,7 @@ pub fn noise_ui(ui: &mut egui::Ui, o: &mut TerrainOptions) {
     if o.noise_kind != NoiseKind::Fractal {
         return;
     }
-    egui::Grid::new("hp_disp_fractal").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
+    hp_app::widgets::form(ui, "hp_disp_fractal", |ui| {
         ui.label(t!("disp.noise_scale"));
         ui.add(egui::DragValue::new(&mut o.noise_scale).speed(2.0).range(1.0..=65536.0).max_decimals(1))
             .on_hover_text(t!("disp.noise_scale_tip"));
@@ -374,7 +374,7 @@ pub fn noise_ui(ui: &mut egui::Ui, o: &mut TerrainOptions) {
 }
 
 pub fn thermal_grid(ui: &mut egui::Ui, o: &mut TerrainOptions) {
-    egui::Grid::new("hp_disp_thermal_grid").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
+    hp_app::widgets::form(ui, "hp_disp_thermal_grid", |ui| {
         ui.label(t!("disp.erosion_iterations"));
         ui.add(egui::DragValue::new(&mut o.thermal_iterations).range(1..=1000))
             .on_hover_text(t!("disp.erosion_iterations_tip"));
@@ -391,7 +391,7 @@ pub fn thermal_grid(ui: &mut egui::Ui, o: &mut TerrainOptions) {
 }
 
 pub fn hydraulic_grid(ui: &mut egui::Ui, o: &mut TerrainOptions) {
-    egui::Grid::new("hp_disp_hydraulic_grid").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
+    hp_app::widgets::form(ui, "hp_disp_hydraulic_grid", |ui| {
         ui.label(t!("disp.erosion_iterations"));
         ui.add(egui::DragValue::new(&mut o.hydraulic_iterations).range(1..=hp_geom::MAX_ITERATIONS))
             .on_hover_text(t!("disp.erosion_iterations_tip"));

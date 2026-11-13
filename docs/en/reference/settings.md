@@ -92,6 +92,8 @@ Mostly on **Settings > Viewports**; the `show_*` toggles are also in the **View*
 | `show_outliner` | `false` | Outliner tab. |
 | `show_model_browser` | `false` | Models tab. |
 | `show_console` | `true` | Console panel. |
+| `dock_width` | `380.0` | Width of the right dock in points (drag its left edge; at least 220). |
+| `console_height` | `150.0` | Height of the console in points (drag its top edge; at least 60). |
 | `floating_panels` | `[]` | Side panels shown in separate movable windows inside the editor. Use **Float panel** or **Dock panel** to manage them. |
 | `thumbnail_size` | `96.0` | Size of the texture browser thumbnails. |
 | `split_x`, `split_y` | `0.5`, `0.5` | Position of the splitters of the 2x2 views (0 to 1). |
@@ -316,6 +318,14 @@ Texture, model, sound and particle browsers, and **Settings > Entities and brows
 | `mesh_export_meters` | `false` | **Displacement to mesh** writes meters instead of Source units. |
 | `mesh_export_z_up` | `false` | **Displacement to mesh** writes Z up instead of Y up. |
 | `disp_tool` | `{}` | Every option of the displacement tool panel by name (written by the tool). |
+
+## `[vertex]`
+
+**Settings > Vertices and displacements**, section **Vertex tool**.
+
+| Key | Default | What it does |
+| --- | --- | --- |
+| `merge_prompt` | `"off"` | A vertex move that ends with vertices of a solid on top of each other: `"off"` merges them silently as in earlier versions, `"ask"` shows the question **These vertices are on top of each other. Merge them?**, `"always"` merges them, `"never"` undoes the move. |
 
 ## `[entities]`
 
@@ -562,6 +572,12 @@ The **Build and save as content** window and the Map assets tab. See [Build and 
 | `show_particles` | `true` | Play `info_particle_system` effects. |
 | `particles_selected_only` | `false` | Only the selected systems. |
 | `show_entity_fx` | `true` | Preview `func_smokevolume`, `env_embers`, `func_dustcloud` and `func_dustmotes`. |
+| `soundscape.view` | `false` | Draw the soundscape entities, their radius and targets and the `ambient_generic` radii. See [Soundscapes](../features/soundscapes.md). |
+| `soundscape.areas` | `true` | With the soundscape view, color the floor with the soundscape heard there. |
+| `soundscape.hearing` | `false` | Play the active soundscape and the `ambient_generic` sounds in the player view (`K` there). |
+| `soundscape.volume` | `0.8` | Volume of the soundscape hearing and preview, 0 to 1. |
+| `soundscape.mute` | `false` | Mute the soundscape hearing and preview. |
+| `soundscape.ambient_generic` | `true` | Hearing also plays the looping `ambient_generic` sounds. |
 | `color_correction_preview` | `false` | Apply the lookup tables of the `color_correction` and `color_correction_volume` entities to the 3D views by camera distance. See [Color correction](../features/color-correction.md). |
 | `unprop_detail` | `true` | **Convert prop to brushes** puts the brushes in a `func_detail`. |
 | `unprop_keep_prop` | `false` | Keep the prop. |
@@ -664,6 +680,19 @@ See [Updates](../features/updates.md).
 | `blender.path` | `""` | The Blender program (`blender.exe`); empty means Hammer Pro searches. MCP changes it with `blender_setup`, which checks it. |
 | `blender.format` | `"gltf"` | File format of a send: `gltf`, `obj` or `fbx`. |
 | `blender.live_link` | `true` | Watch the exported file and update the map when Blender writes it. |
+
+## `[livelink]`
+
+**Tools > Integrations > Live link status...** (the settings under the buttons). See [Live link with Garry's Mod](../features/live-link.md). They only act while the link is on.
+
+| Key | Default | What it does |
+| --- | --- | --- |
+| `livelink.camera_to_game` | `false` | The player of the running game follows the 3D camera. Turning it on turns `camera_from_game` off. |
+| `livelink.camera_from_game` | `false` | The 3D camera follows the player's eye. Turning it on turns `camera_to_game` off. |
+| `livelink.highlight_selection` | `true` | Highlight the editor selection in game (halo and bounding box). |
+| `livelink.light_previews` | `true` | Show light and light_spot changes in game as a dynamic light or projected texture marked as a preview. |
+| `livelink.load_into_running_game` | `true` | Load the link addon into a Garry's Mod already running (console command `lua_run`), so the game needs no restart. |
+| `livelink.remove_addon_on_stop` | `false` | Delete the addon from the Garry's Mod folder each time the link stops. |
 
 ## `[vtf]`
 

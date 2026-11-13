@@ -237,10 +237,11 @@ impl TextureTool {
                         ui.label(RichText::new(t!("common.multiple_values")).italics()).on_hover_text(list.join("\n"));
                         ui.weak(tf!("tex.face.materials_count", materials.len()));
                     } else {
-                        ui.label(RichText::new(crate::util::leaf_name(&name)).strong()).on_hover_text(&name);
-                        ui.weak(crate::util::folder_of(&name));
+                        let leaf = RichText::new(crate::util::leaf_name(&name)).strong();
+                        ui.add(egui::Label::new(leaf).truncate()).on_hover_text(&name);
+                        ui.add(egui::Label::new(RichText::new(crate::util::folder_of(&name)).weak()).truncate());
                     }
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         if ui.button(t!("tex.face.browse")).on_hover_text(t!("tex.face.browse_tip")).clicked() {
                             crate::shared::set_browse_for_faces(ui.ctx(), true);
                             state.ui.right_tab = RightTab::Textures;
@@ -296,42 +297,59 @@ impl TextureTool {
         let s = Arc::clone(&self.cache.summary);
         let prefs = &state.settings.entities;
         let (decimals, shift_step, scale_step) = (prefs.decimals(), prefs.shift_step(), prefs.scale_step());
-        egui::Grid::new("hp_face_values").num_columns(3).spacing([8.0, 4.0]).show(ui, |ui| {
+        let keys = ["tex.face.scale", "tex.face.shift", "tex.face.rotation", "tex.face.lightmap"];
+        let widest = keys
+            .iter()
+            .map(|k| {
+                egui::WidgetText::from(t!(k))
+                    .into_galley(ui, Some(egui::TextWrapMode::Extend), f32::INFINITY, egui::TextStyle::Body)
+                    .size()
+                    .x
+            })
+            .fold(0.0f32, f32::max);
+        let (fw, label_w) = value_widths(ui.available_width(), widest, GRID_GAP);
+        let label = |ui: &mut egui::Ui, key: &str| {
+            let size = egui::vec2(label_w, ui.spacing().interact_size.y);
+            let layout = egui::Layout::left_to_right(egui::Align::Center);
+            ui.allocate_ui_with_layout(size, layout, |ui| ui.add(egui::Label::new(t!(key)).truncate()));
+        };
+        egui::Grid::new("hp_face_values").num_columns(3).spacing([GRID_GAP, 4.0]).show(ui, |ui| {
             ui.label("");
-            let header = [FIELD_WIDTH, ui.spacing().interact_size.y];
+            let header = [fw, ui.spacing().interact_size.y];
             ui.add_sized(header, egui::Label::new(RichText::new("X / U").color(theme::text_weak())));
             ui.add_sized(header, egui::Label::new(RichText::new("Y / V").color(theme::text_weak())));
             ui.end_row();
 
-            ui.label(t!("tex.face.scale"));
-            if let Some((v, r)) = multi_f64(ui, &s.u_scale, scale_step, decimals)
+            label(ui, "tex.face.scale");
+            if let Some((v, r)) = multi_f64(ui, fw, &s.u_scale, scale_step, decimals)
                 && v.abs() > 1e-4
             {
                 self.edit(state, "u_scale", &r, FaceEdit { u_scale: Some(v), ..FaceEdit::default() });
             }
-            if let Some((v, r)) = multi_f64(ui, &s.v_scale, scale_step, decimals)
+            if let Some((v, r)) = multi_f64(ui, fw, &s.v_scale, scale_step, decimals)
                 && v.abs() > 1e-4
             {
                 self.edit(state, "v_scale", &r, FaceEdit { v_scale: Some(v), ..FaceEdit::default() });
             }
             ui.end_row();
 
-            ui.label(t!("tex.face.shift"));
-            if let Some((v, r)) = multi_f64(ui, &s.u_shift, shift_step, decimals) {
+            label(ui, "tex.face.shift");
+            if let Some((v, r)) = multi_f64(ui, fw, &s.u_shift, shift_step, decimals) {
                 self.edit(state, "u_shift", &r, FaceEdit { u_shift: Some(v), ..FaceEdit::default() });
             }
-            if let Some((v, r)) = multi_f64(ui, &s.v_shift, shift_step, decimals) {
+            if let Some((v, r)) = multi_f64(ui, fw, &s.v_shift, shift_step, decimals) {
                 self.edit(state, "v_shift", &r, FaceEdit { v_shift: Some(v), ..FaceEdit::default() });
             }
             ui.end_row();
 
-            ui.label(t!("tex.face.rotation"));
-            if let Some((v, r)) = multi_f64(ui, &s.rotation, 1.0, decimals) {
+            label(ui, "tex.face.rotation");
+            if let Some((v, r)) = multi_f64(ui, fw, &s.rotation, 1.0, decimals) {
                 self.edit(state, "rotation", &r, FaceEdit { rotation: Some(v), ..FaceEdit::default() });
             }
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = ROTATE_GAP;
-                let size = [(FIELD_WIDTH - ROTATE_GAP) / 2.0, ui.spacing().interact_size.y];
+                ui.spacing_mut().button_padding.x = 2.0;
+                let size = [(fw - ROTATE_GAP) / 2.0, ui.spacing().interact_size.y];
                 for (label, delta) in [("-90", -90.0), ("+90", 90.0)] {
                     let r = ui.add_sized(size, egui::Button::new(label)).on_hover_text(t!("tex.face.rotate_by"));
                     if r.clicked() {
@@ -344,8 +362,8 @@ impl TextureTool {
             });
             ui.end_row();
 
-            ui.label(t!("tex.face.lightmap"));
-            if let Some((v, r)) = multi_i32(ui, &s.lightmap_scale) {
+            label(ui, "tex.face.lightmap");
+            if let Some((v, r)) = multi_i32(ui, fw, &s.lightmap_scale) {
                 self.edit(state, "lightmap", &r, FaceEdit { lightmap_scale: Some(v.max(1)), ..FaceEdit::default() });
             }
             ui.label("");
@@ -395,7 +413,7 @@ impl TextureTool {
                 Self::report(state, r);
             }
         });
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label(t!("tex.face.fit_repeats"));
             ui.add(egui::DragValue::new(&mut self.fit_u).speed(0.05).range(0.01..=256.0).max_decimals(2).prefix("U "));
             ui.add(egui::DragValue::new(&mut self.fit_v).speed(0.05).range(0.01..=256.0).max_decimals(2).prefix("V "));
@@ -415,9 +433,11 @@ impl TextureTool {
         let all = self.cache.summary.smoothing_all;
         let any = self.cache.summary.smoothing_any;
         let mut toggle: Option<(u32, bool)> = None;
+        let bw = ((ui.available_width() - 7.0 * 2.0) / 8.0).clamp(16.0, 26.0);
         for row in 0..3u32 {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
+                ui.spacing_mut().button_padding.x = 1.0;
                 for col in 0..8u32 {
                     let bit = row * 8 + col;
                     let mask = 1u32 << bit;
@@ -427,10 +447,9 @@ impl TextureTool {
                     if partial {
                         text = text.color(theme::warning());
                     }
-                    let b =
-                        egui::Button::selectable(on, text).frame_when_inactive(true).min_size(egui::vec2(26.0, 20.0));
+                    let b = egui::Button::selectable(on, text).frame_when_inactive(true);
                     let tip = if partial { t!("tex.face.smoothing_partial") } else { t!("tex.face.smoothing_tip") };
-                    if ui.add(b).on_hover_text(tip).clicked() {
+                    if ui.add_sized([bw, 20.0], b).on_hover_text(tip).clicked() {
                         toggle = Some((bit, !on));
                     }
                 }
@@ -491,25 +510,52 @@ impl TextureTool {
 }
 
 const FIELD_WIDTH: f32 = 96.0;
+const FIELD_MIN_WIDTH: f32 = 64.0;
 const ROTATE_GAP: f32 = 4.0;
+const GRID_GAP: f32 = 8.0;
 
-fn multi_f64(ui: &mut egui::Ui, m: &Multi<f64>, speed: f64, decimals: usize) -> Option<(f64, egui::Response)> {
+pub(crate) fn value_widths(available: f32, widest_label: f32, gap: f32) -> (f32, f32) {
+    let field = ((available - widest_label - 2.0 * gap) / 2.0).clamp(FIELD_MIN_WIDTH, FIELD_WIDTH);
+    let label = (available - 2.0 * (field + gap)).clamp(24.0, widest_label.max(24.0));
+    (field, label)
+}
+
+fn multi_f64(
+    ui: &mut egui::Ui,
+    width: f32,
+    m: &Multi<f64>,
+    speed: f64,
+    decimals: usize,
+) -> Option<(f64, egui::Response)> {
     let mut v = m.value()?;
     let mut dv = egui::DragValue::new(&mut v).speed(speed).max_decimals(decimals);
     if m.is_mixed() {
-        dv = dv.custom_formatter(|_, _| t!("common.multiple_values").to_owned());
+        let text = mixed_text(ui, width);
+        dv = dv.custom_formatter(move |_, _| text.clone());
     }
-    let r = ui.add_sized([FIELD_WIDTH, ui.spacing().interact_size.y], dv);
+    let r = ui.add_sized([width, ui.spacing().interact_size.y], dv);
+    let r = if m.is_mixed() { r.on_hover_text(t!("common.multiple_values")) } else { r };
     (r.changed() && v.is_finite()).then_some((v, r))
 }
 
-fn multi_i32(ui: &mut egui::Ui, m: &Multi<i32>) -> Option<(i32, egui::Response)> {
+fn mixed_text(ui: &egui::Ui, width: f32) -> String {
+    let full = t!("common.multiple_values");
+    let text_w = egui::WidgetText::from(full)
+        .into_galley(ui, Some(egui::TextWrapMode::Extend), f32::INFINITY, egui::TextStyle::Button)
+        .size()
+        .x;
+    if text_w + 2.0 * ui.spacing().button_padding.x <= width { full.to_owned() } else { "...".to_owned() }
+}
+
+fn multi_i32(ui: &mut egui::Ui, width: f32, m: &Multi<i32>) -> Option<(i32, egui::Response)> {
     let mut v = m.value()?;
     let mut dv = egui::DragValue::new(&mut v).speed(0.25).range(1..=1024);
     if m.is_mixed() {
-        dv = dv.custom_formatter(|_, _| t!("common.multiple_values").to_owned());
+        let text = mixed_text(ui, width);
+        dv = dv.custom_formatter(move |_, _| text.clone());
     }
-    let r = ui.add_sized([FIELD_WIDTH, ui.spacing().interact_size.y], dv);
+    let r = ui.add_sized([width, ui.spacing().interact_size.y], dv);
+    let r = if m.is_mixed() { r.on_hover_text(t!("common.multiple_values")) } else { r };
     r.changed().then_some((v, r))
 }
 
@@ -679,7 +725,7 @@ impl hp_app::Tool for TextureTool {
                 ui.weak(text);
             });
         });
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             for (action, text, enabled) in [
                 (Action::FaceSelectionBack, t!("tex.face.prev_selection"), state.doc.can_face_selection_back()),
                 (Action::FaceSelectionForward, t!("tex.face.next_selection"), state.doc.can_face_selection_forward()),
@@ -707,7 +753,7 @@ impl hp_app::Tool for TextureTool {
             self.material_row(ui, state);
             ui.add_space(4.0);
             self.values_ui(ui, state);
-            egui::CollapsingHeader::new(RichText::new(t!("tex.uv.title")).strong())
+            egui::CollapsingHeader::new(hp_app::widgets::header_text(ui, RichText::new(t!("tex.uv.title")).strong()))
                 .id_salt("hp_face_uv_editor")
                 .default_open(true)
                 .show(ui, |ui| {

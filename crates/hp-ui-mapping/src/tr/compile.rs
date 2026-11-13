@@ -920,8 +920,8 @@ pub const TR: TrTable = &[
     ),
     (
         "compile.flag.dispchop",
-        "Texture light patch size on displacements in luxels (default 8).",
-        "Taille des morceaux de lumière de texture sur les déplacements en luxels (8 par défaut).",
+        "Patch size on displacements for texture lights and bounced light, in luxels (default 8).",
+        "Taille des patchs sur les déplacements pour les lumières de texture et la lumière rebondie, en luxels (8 par défaut).",
     ),
     (
         "compile.flag.smooth",

@@ -219,7 +219,7 @@ impl ParticleBrowser {
         let tile = state.settings.browser.tile();
         let gap = 4.0;
         let label_h = 15.0;
-        let width = ui.available_width().max(tile);
+        let width = (ui.available_width() - ui.spacing().scroll.allocated_width()).max(tile);
         let cols = (((width + gap) / (tile + gap)).floor() as usize).max(1);
         let rows = self.rows.len().div_ceil(cols);
         let row_h = tile + label_h + gap;
@@ -238,7 +238,7 @@ impl ParticleBrowser {
         let ctx = ui.ctx().clone();
         let out = area.show_rows(ui, row_h, rows, |ui, range| {
             for r in range {
-                let (rect, _) = ui.allocate_exact_size(vec2(width, row_h), Sense::hover());
+                let (rect, _) = ui.allocate_exact_size(vec2(width.min(ui.available_width()), row_h), Sense::hover());
                 for c in 0..cols {
                     let i = r * cols + c;
                     let Some(sys) = self.system(i) else { break };

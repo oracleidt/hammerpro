@@ -32,6 +32,7 @@ New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game s
 | [Curve tool](features/curve-tool.md) | Curved walls and rails: box brushes with mitred joints along a stroke drawn in a 2D view. |
 | [Road tool](features/road-tool.md) | Roads along a spline: lanes, shoulders, lines, banking, heights, terrain following, junctions with flares. |
 | [Pipe tool](features/pipe-tool.md) | Pipes and ducts made of brushes: hollow or solid, square or round, 90 degree elbows, collars, routes on the grid. |
+| [Spline tool](features/spline-tool.md) | Editable 3D paths that generate fences, rails, cables, brush pipes, curbs, trims and prop lines, kept in the map and regenerated on edit. |
 | [Scatter by material](features/scatter-by-material.md) | Props placed only where a texture shows on blend materials and displacements, with count, spacing, rotation, scale and seed. |
 | [Road details](features/road-details.md) | Sidewalks, curbs, V and U gutters with drain slots, rounded junction corners, and terrain blending to a road with texture fade. |
 | [Clip tool](features/clip-tool.md) | Cutting brushes with a plane. |
@@ -59,10 +60,11 @@ New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game s
 | [Path tool](features/path-tool.md) | Chains of path_corner, path_track and other path entities. |
 | [Decals and overlays](features/decals-overlays.md) | Decal tool and overlay tool. |
 | [Sprinkle tool](features/sprinkle-tool.md) | Painting entities on surfaces. |
+| [Foliage tool](features/foliage-tool.md) | Painting trees, rocks and grass props with palettes, and choosing where detail grass grows. |
 | [Instances](features/instances.md) | func_instance: create, edit, collapse, parameters. |
 | [Prefabs](features/prefabs.md) | The prefab library. |
 | [Sky cameras](features/sky-cameras.md) | Several 3D skyboxes and the skybox switch entity. |
-| [Soundscapes](features/soundscapes.md) | The soundscape editor. |
+| [Soundscapes](features/soundscapes.md) | The soundscape editor, the soundscape view and hearing them in the player view. |
 | [Navigation mesh](features/nav-mesh.md) | Generating and showing the `.nav` of the map. |
 
 ### Textures and materials
@@ -119,6 +121,7 @@ New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game s
 | --- | --- |
 | [Check for problems](features/check-problems.md) | Problems and fixes, live checks, limits, map information, func_detail suggestions. |
 | [Leaks and pointfiles](features/leaks-pointfiles.md) | Leak checks, leak path, portal files, visibility, areaportals. |
+| [Cubemaps](features/cubemaps.md) | Cubemap placement assistant: reflective rooms, which face takes which env_cubemap, missing, misplaced and wasteful cubemaps, suggestions at eye height and sides fixes you accept, and a cubemap assignment view. |
 | [BSP tools](features/bsp-tools.md) | The BSP Decompiler, archives (BSP, GMA, VPK), OBJ export, comparing maps. |
 | [BSP Sniffer](features/bsp-sniffer.md) | Joining a Garry's Mod server and recovering the map as the game loaded it, as a VMF, a BSP and its content (Garry's Mod only, authorized use only). |
 
@@ -127,6 +130,7 @@ New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game s
 | Page | What you will find |
 | --- | --- |
 | [Game launch](features/game-launch.md) | Running and reloading the map in game, fast start options, the bridge addon. |
+| [Live link with Garry's Mod](features/live-link.md) | Entity edits shown in the running game without a recompile, light previews, fire inputs, teleport and camera sync. |
 | [Map assets](features/map-assets.md) | Every file the map uses, where it comes from, collecting it. |
 | [Build and save as content](features/build-content-release.md) | Release window, checklist, addon, Workshop publishing. |
 | [Protect your BSP](features/bsp-protection.md) | Shipping a protected copy of the map, server lock. |
@@ -199,6 +203,7 @@ New to Hammer Pro? Read [Installation](getting-started/installation.md), [Game s
 | [Graphics device lost](troubleshooting/graphics-device-lost.md) | Driver resets, what is saved, restarting with your tabs. |
 | [Editor performance](troubleshooting/performance.md) | Keeping the editor smooth on huge maps. |
 | [Discord presence not showing](troubleshooting/discord-presence.md) | Fixing Rich Presence. |
+| [Live link](troubleshooting/live-link.md) | The game does not connect, an edit does not show, removing the addon. |
 | [Reporting bugs](troubleshooting/reporting-bugs.md) | What to send so a bug can be fixed. |
 
 ## Development

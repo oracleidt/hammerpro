@@ -23,6 +23,7 @@ pub struct LabSettings {
     pub combine_keep_originals: bool,
     pub combine_collision: bool,
     pub combine_max_pieces: u32,
+    pub soundscape: SoundscapeSettings,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -106,6 +107,7 @@ impl Default for LabSettings {
             combine_keep_originals: true,
             combine_collision: true,
             combine_max_pieces: 32,
+            soundscape: SoundscapeSettings::default(),
         }
     }
 }
@@ -125,6 +127,29 @@ impl LabSettings {
             mass: f64::from(self.propper_mass),
         }
         .clamped()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SoundscapeSettings {
+    pub view: bool,
+    pub areas: bool,
+    pub hearing: bool,
+    pub volume: f32,
+    pub mute: bool,
+    pub ambient_generic: bool,
+}
+
+impl Default for SoundscapeSettings {
+    fn default() -> Self {
+        Self { view: false, areas: true, hearing: false, volume: 0.8, mute: false, ambient_generic: true }
+    }
+}
+
+impl SoundscapeSettings {
+    pub fn output_volume(&self) -> f32 {
+        if self.mute || !self.volume.is_finite() { 0.0 } else { self.volume.clamp(0.0, 1.0) }
     }
 }
 
@@ -148,5 +173,23 @@ mod tests {
         }
         .clamped();
         assert_eq!(bad.distances, [None, None, None, None, Some(20.5), Some(1_000_000.0)]);
+    }
+
+    #[test]
+    fn soundscape_tools_are_off_until_turned_on() {
+        let s = LabSettings::default().soundscape;
+        assert!(!s.view && !s.hearing && !s.mute);
+        assert!(s.areas && s.ambient_generic);
+        assert!((s.output_volume() - 0.8).abs() < 1e-6);
+        assert_eq!(SoundscapeSettings { mute: true, ..s }.output_volume(), 0.0);
+        assert_eq!(SoundscapeSettings { volume: f32::NAN, ..s }.output_volume(), 0.0);
+        let old: LabSettings = toml::from_str("show_nav_mesh = true").unwrap();
+        assert_eq!(old.soundscape, SoundscapeSettings::default(), "older settings files load the defaults");
+        let text = toml::to_string(&LabSettings {
+            soundscape: SoundscapeSettings { view: true, ..s },
+            ..LabSettings::default()
+        })
+        .unwrap();
+        assert!(toml::from_str::<LabSettings>(&text).unwrap().soundscape.view);
     }
 }

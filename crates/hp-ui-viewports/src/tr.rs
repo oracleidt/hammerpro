@@ -140,8 +140,23 @@ pub const TR: TrTable = &[
     ),
     (
         "viewport.player.keys",
-        "X wireframe - C camera - V noclip - M model - N nodraw - B compiled world - L lighting - wheel distance - E use - T trains - H hide - Esc quit",
-        "X filaire - C caméra - V noclip - M modèle - N nodraw - B monde compilé - L éclairage - molette distance - E utiliser - T trains - H masquer - Échap quitter",
+        "X wireframe - C camera - V noclip - M model - N nodraw - B compiled world - L lighting - K hearing - wheel distance - E use - T trains - H hide - Esc quit",
+        "X filaire - C caméra - V noclip - M modèle - N nodraw - B monde compilé - L éclairage - K écoute - molette distance - E utiliser - T trains - H masquer - Échap quitter",
+    ),
+    (
+        "viewport.player.hearing_off",
+        "Hearing: off (K plays the soundscapes and ambient_generic sounds)",
+        "Écoute : coupée (K joue les soundscapes et les sons ambient_generic)",
+    ),
+    (
+        "viewport.player.hearing_on",
+        "Hearing: soundscape {0} ({1} looping sounds, {2} ambient_generic), volume {3}",
+        "Écoute : soundscape {0} ({1} sons en boucle, {2} ambient_generic), volume {3}",
+    ),
+    (
+        "viewport.player.hearing_none",
+        "Hearing: no soundscape in range yet ({0} ambient_generic), volume {1}",
+        "Écoute : aucun soundscape à portée pour l'instant ({0} ambient_generic), volume {1}",
     ),
     (
         "viewport.player.light_on",

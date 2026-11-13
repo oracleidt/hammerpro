@@ -386,7 +386,7 @@ impl SoundBrowser {
             let text = sel.clone().unwrap_or_else(|| t!("entities.sb_select_hint").to_owned());
             ui.add(egui::Label::new(RichText::new(text).strong()).truncate());
         });
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             let playing = sel.as_deref().is_some_and(sounds::is_playing);
             let label = if playing {
                 format!("■ {}", t!("entities.stop_sound"))
@@ -403,6 +403,8 @@ impl SoundBrowser {
                 }
             }
             let mut volume = state.settings.browser.volume() * 100.0;
+            let value_w = 48.0 + 2.0 * ui.spacing().item_spacing.x;
+            ui.spacing_mut().slider_width = (ui.max_rect().right() - ui.cursor().left() - value_w).clamp(40.0, 100.0);
             let slider = egui::Slider::new(&mut volume, 0.0..=100.0).suffix("%").show_value(true).max_decimals(0);
             if ui.add(slider).on_hover_text(t!("entities.sb_volume")).changed() {
                 state.settings.browser.sound_volume = (volume / 100.0).clamp(0.0, 1.0);

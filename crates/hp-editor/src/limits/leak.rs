@@ -19,7 +19,8 @@ const LEAF_BRUSHES: usize = 6;
 const MAX_PIECES: usize = 192;
 pub const MAX_LEAVES: usize = 3_000_000;
 const EPS: f64 = 0.001;
-pub const THIN: f64 = 0.02;
+pub const THIN: f64 = 0.1;
+const PORTAL_EDGE: f64 = THIN;
 const AREA_EPS: f64 = 1e-3;
 const TOUCH: f64 = 1e-9;
 const MAX_REPORTED: usize = 256;
@@ -59,6 +60,7 @@ pub struct LeakReport {
     pub cells: usize,
     pub incomplete: bool,
     pub no_world: bool,
+    pub compiler: bool,
 }
 
 impl LeakReport {
@@ -378,6 +380,11 @@ enum SidePoly {
     Poly(Vec<DVec2>),
 }
 
+fn wide_enough(poly: &[DVec2]) -> bool {
+    let n = poly.len();
+    (0..n).filter(|&i| poly[i].distance(poly[(i + 1) % n]) > PORTAL_EDGE).take(3).count() == 3
+}
+
 fn rect_poly(min: DVec2, max: DVec2) -> [DVec2; 4] {
     [min, DVec2::new(max.x, min.y), max, DVec2::new(min.x, max.y)]
 }
@@ -385,7 +392,7 @@ fn rect_poly(min: DVec2, max: DVec2) -> [DVec2; 4] {
 fn poly_overlap(a: &SidePoly, b: &SidePoly) -> Option<(f64, DVec2)> {
     let clipped = |pa: &[DVec2], pb: &[DVec2]| {
         let o = clip_2d(pa, pb);
-        if o.len() < 3 {
+        if o.len() < 3 || !wide_enough(&o) {
             return None;
         }
         let area = signed_area(&o).abs();
@@ -395,7 +402,8 @@ fn poly_overlap(a: &SidePoly, b: &SidePoly) -> Option<(f64, DVec2)> {
         (SidePoly::Rect(a0, a1), SidePoly::Rect(b0, b1)) => {
             let (lo, hi) = (a0.max(*b0), a1.min(*b1));
             let size = hi - lo;
-            (size.x > 0.0 && size.y > 0.0 && size.x * size.y > AREA_EPS).then(|| (size.x * size.y, (lo + hi) * 0.5))
+            (size.x > PORTAL_EDGE && size.y > PORTAL_EDGE && size.x * size.y > AREA_EPS)
+                .then(|| (size.x * size.y, (lo + hi) * 0.5))
         }
         (SidePoly::Rect(r0, r1), SidePoly::Poly(p)) | (SidePoly::Poly(p), SidePoly::Rect(r0, r1)) => {
             clipped(p, &rect_poly(*r0, *r1))
@@ -717,7 +725,7 @@ fn box_components(brushes: &[Brush], key: CellKey, list: &[u32]) -> Result<Vec<C
                 let lo = DVec2::new(a.min[u].max(b.min[u]), a.min[v].max(b.min[v]));
                 let hi = DVec2::new(a.max[u].min(b.max[u]), a.max[v].min(b.max[v]));
                 let size = hi - lo;
-                if size.x > 0.0 && size.y > 0.0 && size.x * size.y > AREA_EPS {
+                if size.x > PORTAL_EDGE && size.y > PORTAL_EDGE && size.x * size.y > AREA_EPS {
                     let c = (lo + hi) * 0.5;
                     let mut p = DVec3::ZERO;
                     p[k] = at;
@@ -827,7 +835,7 @@ fn faces_overlap(a: &Face, b: &Face) -> Option<DVec3> {
     let proj = |pts: &[DVec3]| ccw(pts.iter().map(|p| DVec2::new(p[i], p[j])).collect());
     let (pa, pb) = (proj(&a.pts), proj(&b.pts));
     let o = clip_2d(&pa, &pb);
-    if o.len() < 3 || signed_area(&o).abs() <= AREA_EPS {
+    if o.len() < 3 || signed_area(&o).abs() <= AREA_EPS || !wide_enough(&o) {
         return None;
     }
     let c = o.iter().copied().sum::<DVec2>() / o.len() as f64;
@@ -1374,6 +1382,110 @@ pub fn leak_input_from(snap: &super::snapshot::MapSnapshot, facts: &mut dyn FnMu
     LeakInput { brushes, seeds }
 }
 
+pub fn apply_cordons(input: &mut LeakInput, boxes: &[Aabb]) {
+    if boxes.is_empty() {
+        return;
+    }
+    input.brushes.retain(|b| boxes.iter().any(|c| c.intersects(&b.aabb)));
+    input.seeds.retain(|s| boxes.iter().any(|c| c.contains_point(s.origin)));
+    for b in boxes {
+        for wall in crate::compile_export::seal_boxes(b, crate::compile_export::CORDON_SEAL_THICKNESS) {
+            input.brushes.push(SealBrush { id: 0, planes: box_planes(wall.min, wall.max).to_vec(), aabb: wall });
+        }
+    }
+}
+
+pub fn flood_map(snap: &super::snapshot::MapSnapshot, cordons: &[Aabb]) -> hp_vmf::Map {
+    let mut world = (*snap.world).clone();
+    world.solids.clear();
+    world.groups.clear();
+    world.hidden = false;
+    let mut entities: Vec<hp_vmf::Entity> = Vec::new();
+    let mut slot: HashMap<Id, usize> = HashMap::new();
+    let mut point: Vec<bool> = Vec::new();
+    for (k, r) in snap.entities.iter().enumerate() {
+        let e = &r.entity;
+        if !snap.is_visible(ObjRef::Entity(e.id)) {
+            continue;
+        }
+        point.push(snap.entity_solids.get(k).is_none_or(|n| *n == 0));
+        let mut copy = e.clone();
+        copy.solids.clear();
+        copy.groups.clear();
+        copy.hidden = false;
+        slot.insert(e.id, entities.len());
+        entities.push(copy);
+    }
+    for s in &snap.solids {
+        if !s.geom.valid || s.has_disp() || !snap.is_visible(ObjRef::Solid(s.id)) {
+            continue;
+        }
+        if !cordons.is_empty() && !cordons.iter().any(|c| c.intersects(&s.geom.aabb)) {
+            continue;
+        }
+        let sides = s
+            .sides
+            .iter()
+            .map(|x| {
+                let mut side = hp_vmf::Side {
+                    id: x.id,
+                    plane: x.points,
+                    material: snap.material_display(x.material).to_owned(),
+                    ..hp_vmf::Side::default()
+                };
+                if x.contents != 0 {
+                    side.add_compile_contents(x.contents);
+                }
+                side
+            })
+            .collect();
+        let solid = hp_vmf::Solid { id: s.id, sides, ..hp_vmf::Solid::default() };
+        match s.owner {
+            Owner::World => world.solids.push(solid),
+            Owner::Entity(e) => {
+                if let Some(&i) = slot.get(&e) {
+                    entities[i].solids.push(solid);
+                }
+            }
+        }
+    }
+    if !cordons.is_empty() {
+        let mut k = 0;
+        entities.retain(|e| {
+            let keep = if point[k] {
+                e.classname.eq_ignore_ascii_case("light_environment")
+                    || e.origin().is_none_or(|o| cordons.iter().any(|c| c.contains_point(o)))
+            } else {
+                !e.solids.is_empty()
+            };
+            k += 1;
+            keep
+        });
+        let mut next = snap.solids.iter().map(|s| s.id).max().unwrap_or(0).saturating_add(1);
+        let mut side_id = snap.solids.iter().flat_map(|s| s.sides.iter().map(|x| x.id)).max().unwrap_or(0);
+        for b in cordons {
+            for wall in crate::compile_export::seal_boxes(b, crate::compile_export::CORDON_SEAL_THICKNESS) {
+                let mut ids = || {
+                    side_id = side_id.saturating_add(1);
+                    side_id
+                };
+                let Ok(sides) = hp_geom::hull_solid(
+                    &wall.corners(),
+                    crate::compile_export::DEFAULT_SEAL_MATERIAL,
+                    0.25,
+                    16,
+                    &mut ids,
+                ) else {
+                    continue;
+                };
+                world.solids.push(hp_vmf::Solid { id: next, sides, ..hp_vmf::Solid::default() });
+                next = next.saturating_add(1);
+            }
+        }
+    }
+    hp_vmf::Map { world, entities, ..hp_vmf::Map::default() }
+}
+
 impl Document {
     pub fn leak_input(&self, facts: &dyn Fn(&str) -> MaterialFacts) -> LeakInput {
         let scene = &self.scene;
@@ -1487,6 +1599,84 @@ mod tests {
         tight.push(cube_brush(101, DVec3::new(s, 0.005, -s - t), DVec3::new(s + t, s + t, s + t)));
         let r = run(tight, vec![seed(1, DVec3::new(0.0, 100.0, 0.0))]);
         assert!(!r.leaks(), "a crack under the plane tolerance of VBSP does not leak");
+
+        let mut hairline = room(256.0, &[1]);
+        hairline.push(cube_brush(100, DVec3::new(s, -s - t, -s - t), DVec3::new(s + t, 0.0, s + t)));
+        hairline.push(cube_brush(101, DVec3::new(s, 0.06, -s - t), DVec3::new(s + t, s + t, s + t)));
+        let r = run(hairline, vec![seed(1, DVec3::new(0.0, 100.0, 0.0))]);
+        assert!(!r.leaks(), "a crack narrower than the smallest portal VBSP keeps does not leak");
+    }
+
+    #[test]
+    fn a_diagonal_crack_between_two_wall_pieces_seals_under_the_compiler_tolerance() {
+        let s = 256.0;
+        let t = 16.0;
+        let slab = Aabb::new(DVec3::new(s, -s - t, -s - t), DVec3::new(s + t, s + t, s + t));
+        let n = DVec3::new(-1.0, 1.0, 0.0).normalize();
+        let d = n.dot(DVec3::new(s, 0.0, 0.0));
+        let piece = |id: Id, plane: Plane| {
+            let mut planes = box_planes(slab.min, slab.max).to_vec();
+            planes.push(plane);
+            SealBrush { id, planes, aabb: slab }
+        };
+        let with_gap = |gap: f64| {
+            let mut brushes = room(s, &[1]);
+            brushes.push(piece(100, Plane { normal: n, dist: d }));
+            brushes.push(piece(101, Plane { normal: -n, dist: -d - gap }));
+            run(brushes, vec![seed(1, DVec3::new(0.0, 100.0, 0.0))])
+        };
+        assert!(with_gap(0.5).leaks(), "a half unit diagonal crack leaks");
+        let r = with_gap(0.05);
+        assert!(!r.leaks(), "a 0.05 unit diagonal crack is sealed for VBSP: {:?}", r.leak);
+    }
+
+    #[test]
+    fn cordons_seal_the_box_and_drop_what_is_outside() {
+        let mut input = LeakInput {
+            brushes: room(256.0, &[1]),
+            seeds: vec![seed(1, DVec3::new(0.0, 100.0, 0.0)), seed(2, DVec3::new(5000.0, 0.0, 0.0))],
+        };
+        let r = run(input.brushes.clone(), input.seeds[..1].to_vec());
+        assert!(r.leaks(), "the open room leaks");
+        let boxes = [Aabb::new(DVec3::splat(-200.0), DVec3::splat(200.0))];
+        apply_cordons(&mut input, &boxes);
+        assert_eq!(input.seeds.len(), 1, "the entity outside the cordon is not compiled");
+        assert!(input.brushes.iter().filter(|b| b.id == 0).count() == 6, "six sealing walls");
+        let r = run(input.brushes, input.seeds);
+        assert!(!r.leaks(), "the cordon walls seal the box like the compile does");
+        let mut none = LeakInput { brushes: room(256.0, &[]), seeds: vec![seed(1, DVec3::new(0.0, 100.0, 0.0))] };
+        apply_cordons(&mut none, &[]);
+        assert_eq!(none.brushes.len(), 6, "no cordon, no change");
+    }
+
+    #[test]
+    fn flood_map_keeps_what_the_compiler_needs() {
+        use crate::tests::box_sides;
+        let mut doc = Document::new_empty();
+        let wall =
+            doc.create_solid(box_sides(DVec3::ZERO, DVec3::splat(64.0), "BRICK/WALL"), Owner::World).expect("wall");
+        let hidden = doc
+            .create_solid(box_sides(DVec3::splat(100.0), DVec3::splat(164.0), "BRICK/WALL"), Owner::World)
+            .expect("hidden");
+        doc.set_hidden(&[ObjRef::Solid(hidden)], true);
+        let detail = doc
+            .create_solid(box_sides(DVec3::splat(200.0), DVec3::splat(264.0), "BRICK/WALL"), Owner::World)
+            .expect("detail");
+        doc.tie_to_entity(&[ObjRef::Solid(detail)], "func_detail", &[]).expect("tie");
+        let start = doc.create_point_entity("info_player_start", DVec3::splat(32.0), &[]).expect("start");
+        let far = doc.create_point_entity("light", DVec3::splat(3000.0), &[]).expect("far");
+        let snap = super::super::snapshot::MapSnapshot::capture(&doc);
+        let map = flood_map(&snap, &[]);
+        assert_eq!(map.world.solids.iter().map(|s| s.id).collect::<Vec<_>>(), vec![wall]);
+        assert_eq!(map.world.solids[0].sides.len(), 6);
+        assert_eq!(map.world.solids[0].sides[0].material, "BRICK/WALL");
+        let detail_entity = map.entities.iter().find(|e| e.classname == "func_detail").expect("func_detail");
+        assert_eq!(detail_entity.solids.iter().map(|s| s.id).collect::<Vec<_>>(), vec![detail]);
+        assert!(map.entities.iter().any(|e| e.id == start));
+        let boxed = flood_map(&snap, &[Aabb::new(DVec3::splat(-500.0), DVec3::splat(500.0))]);
+        assert!(!boxed.entities.iter().any(|e| e.id == far), "outside the cordon");
+        assert!(boxed.entities.iter().any(|e| e.id == start));
+        assert_eq!(boxed.world.solids.len(), 7, "the wall and six cordon walls");
     }
 
     #[test]

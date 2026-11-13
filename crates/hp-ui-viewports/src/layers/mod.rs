@@ -1,5 +1,6 @@
 pub mod brush_centers;
 pub mod cordon;
+pub mod cubemaps;
 pub mod fog;
 pub mod helpers;
 pub mod instances;
@@ -43,6 +44,7 @@ pub fn default_layers() -> Vec<Box<dyn OverlayLayer>> {
     list.extend(cordon::layers());
     list.extend(portals::layers());
     list.extend(optimize::layers());
+    list.extend(cubemaps::layers());
     list.extend(roadside::layers());
     list.extend(instances::layers());
     list.extend(helpers::layers());

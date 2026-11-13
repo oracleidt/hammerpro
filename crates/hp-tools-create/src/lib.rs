@@ -12,6 +12,7 @@ pub mod curve;
 mod decal;
 mod entity;
 mod extrude;
+pub mod foliage;
 mod inset_modal;
 mod overlay_tool;
 pub mod path;
@@ -25,6 +26,7 @@ pub mod model_bvh;
 pub mod prefab_place;
 pub mod roadside;
 mod slice;
+pub mod spline;
 mod sprinkle;
 pub mod sprinkle_def;
 
@@ -52,6 +54,7 @@ pub use curve::{CURVE_TR, CurveTool};
 pub use decal::{DECAL_SURFACE_OFFSET, DecalTool, decal_basis, decal_origin};
 pub use entity::{EntityTool, align_to_normal, is_prop_class, rest_on_surface};
 pub use extrude::{ExtrudeOptions, ExtrudeTool, MAX_EXTRUDE_DEPTH};
+pub use foliage::{FOLIAGE_TR, FoliageTool};
 pub use inset_modal::{
     INSET_MODAL_TR, InsetModal, InsetTarget, ModalKind, WithInset, error_text as inset_error_text, hovered_face,
     issue_key as inset_issue_key,
@@ -65,6 +68,7 @@ pub use road::{ROAD_TR, RoadTool};
 pub use slice::{
     MAX_SEGMENTS, Orientation, SLICE_TR, SliceLayout, SliceTool, orientation_axis, snap_position, view_basis,
 };
+pub use spline::{SPLINE_TR, SplineTool};
 pub use sprinkle::{SPRINKLE_TR, SprinkleTool, user_sprinkle_dir};
 pub use tr::TR;
 
@@ -72,6 +76,7 @@ pub fn register_translations() {
     hp_app::i18n::register(TR);
     hp_app::i18n::register(CORDON_TR);
     hp_app::i18n::register(SPRINKLE_TR);
+    hp_app::i18n::register(FOLIAGE_TR);
     hp_app::i18n::register(PREFAB_TR);
     hp_app::i18n::register(PATH_TR);
     hp_app::i18n::register(CURVE_TR);
@@ -80,6 +85,7 @@ pub fn register_translations() {
     hp_app::i18n::register(BEVEL_TR);
     hp_app::i18n::register(SLICE_TR);
     hp_app::i18n::register(INSET_MODAL_TR);
+    hp_app::i18n::register(SPLINE_TR);
 }
 
 pub fn tools() -> Vec<Box<dyn hp_app::Tool>> {
@@ -97,5 +103,6 @@ pub fn tools() -> Vec<Box<dyn hp_app::Tool>> {
         Box::new(PathTool::new()),
         Box::new(RoadTool::new()),
         Box::new(PipeTool::new()),
+        Box::new(SplineTool::new()),
     ]
 }

@@ -153,6 +153,54 @@ pub fn pill(ui: &mut Ui, text: &str, inverted: bool) -> Response {
     ui.add(label)
 }
 
+pub fn header_text(ui: &Ui, text: impl Into<egui::WidgetText>) -> std::sync::Arc<egui::Galley> {
+    let width = ui.available_width() - ui.spacing().indent - ui.spacing().button_padding.x;
+    text.into().into_galley(ui, Some(egui::TextWrapMode::Truncate), width.max(16.0), egui::TextStyle::Button)
+}
+
+pub const FORM_STACK_WIDTH: f32 = 280.0;
+
+pub fn form<R>(ui: &mut Ui, id_salt: impl egui::AsIdSalt, add: impl FnOnce(&mut Ui) -> R) -> R {
+    if ui.available_width() < FORM_STACK_WIDTH {
+        ui.vertical(add).inner
+    } else {
+        egui::Grid::new(id_salt).num_columns(2).spacing([8.0, 4.0]).show(ui, add).inner
+    }
+}
+
+pub fn slider_row<R>(
+    ui: &mut Ui,
+    label: impl Into<egui::WidgetText>,
+    add: impl FnOnce(&mut Ui) -> R,
+) -> (egui::Response, R) {
+    let galley = label.into().into_galley(ui, Some(egui::TextWrapMode::Extend), f32::INFINITY, egui::TextStyle::Body);
+    let needed = galley.size().x + 2.0 * ui.spacing().item_spacing.x + ui.spacing().slider_width + 64.0;
+    let text = galley.text().to_owned();
+    let layout = if needed > ui.available_width() {
+        egui::Layout::top_down(egui::Align::Min)
+    } else {
+        egui::Layout::left_to_right(egui::Align::Center)
+    };
+    ui.with_layout(layout, |ui| {
+        let r = ui.label(text);
+        (r, add(ui))
+    })
+    .inner
+}
+
+pub fn open_all_sections_id() -> egui::Id {
+    egui::Id::unique("hp_open_all_sections")
+}
+
+pub fn collapsing(ui: &Ui, title: impl Into<egui::WidgetText>) -> egui::CollapsingHeader {
+    let header = egui::CollapsingHeader::new(header_text(ui, title));
+    if ui.ctx().data(|d| d.get_temp::<bool>(open_all_sections_id())).unwrap_or(false) {
+        header.open(Some(true))
+    } else {
+        header
+    }
+}
+
 pub fn section(ui: &mut Ui, title: &str) {
     ui.add_space(4.0);
     ui.label(RichText::new(title).strong());

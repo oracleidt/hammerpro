@@ -9,6 +9,7 @@ mod brush;
 pub(crate) mod combine;
 mod compile;
 mod content;
+pub(crate) mod detail_split;
 mod entities;
 mod file_watch;
 mod health;
@@ -18,6 +19,7 @@ mod instances;
 pub(crate) mod lab;
 mod launch;
 pub(crate) mod lighting;
+mod livelink;
 pub(crate) mod mcp;
 mod mesh;
 pub(crate) mod mesh_disp;
@@ -27,6 +29,8 @@ mod render;
 mod roadside;
 mod selection;
 mod shell;
+mod soundscape;
+mod spline;
 mod startup;
 mod visibility;
 mod workflow;
@@ -90,8 +94,11 @@ const PACKAGES: &[&dyn Package] = &[
     &content::Content,
     &health::Health,
     &lab::Lab,
+    &soundscape::Soundscape,
     &blender::Bridge,
     &mcp::Mcp,
+    &livelink::LiveLink,
+    &spline::Spline,
 ];
 
 #[allow(dead_code)]
@@ -117,8 +124,10 @@ pub(crate) struct Packages {
     pub content: content::State,
     pub health: health::State,
     pub lab: lab::State,
+    pub soundscape: soundscape::State,
     pub blender: blender::State,
     pub mcp: mcp::State,
+    pub livelink: livelink::State,
 }
 
 pub fn register_translations() {

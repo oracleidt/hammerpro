@@ -14,6 +14,43 @@ pub const SPRITE_SIZE: usize = 32;
 pub const NAME_LENGTH: usize = 128;
 pub const STYLE_SIZE: usize = 5;
 pub const MAX_OBJECTS: usize = 65535;
+pub const OVERRIDE_KEY: &str = "hp_detailtype";
+pub const OVERRIDE_NONE: &str = "none";
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DetailOverride {
+    Off,
+    Type(String),
+}
+
+pub fn override_value(props: &[(String, String)]) -> Option<DetailOverride> {
+    let v = props.iter().find(|(k, _)| k.eq_ignore_ascii_case(OVERRIDE_KEY))?.1.trim();
+    if v.is_empty() {
+        None
+    } else if v.eq_ignore_ascii_case(OVERRIDE_NONE) {
+        Some(DetailOverride::Off)
+    } else {
+        Some(DetailOverride::Type(v.to_owned()))
+    }
+}
+
+pub fn side_override(side: &hp_vmf::Side) -> Option<DetailOverride> {
+    override_value(&side.extra_props)
+}
+
+pub fn overrides_of(entities: &[&hp_vmf::Entity]) -> std::collections::HashMap<u16, DetailOverride> {
+    let mut out = std::collections::HashMap::new();
+    for e in entities {
+        for solid in &e.solids {
+            for side in &solid.sides {
+                if let Some(o) = side_override(side) {
+                    out.insert(side.id as u16, o);
+                }
+            }
+        }
+    }
+    out
+}
 
 pub mod kind {
     pub const MODEL: u8 = 0;
@@ -90,6 +127,22 @@ impl Uniform {
         let fl = ((1.0 / 2_147_483_647.0f64) * f64::from(self.generate())) as f32;
         if f64::from(fl) > RNMX { RNMX as f32 } else { fl }
     }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct GaussState {
+    pub have: bool,
+    pub value: f32,
+}
+
+impl GaussState {
+    pub fn bits(&self) -> u64 {
+        (u64::from(self.have) << 32) | u64::from(if self.have { self.value.to_bits() } else { 0 })
+    }
+}
+
+pub fn uses_gaussian(t: &DetailType) -> bool {
+    t.groups.iter().flat_map(|g| &g.models).any(|m| m.model.is_none() && m.scale_std_dev > 0.0)
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -1070,7 +1123,7 @@ pub struct PlaceReport {
 pub fn place(
     lumps: &BspLumps,
     dict: &DetailDict,
-    type_of: &dyn Fn(usize) -> Option<(String, String)>,
+    type_of: &dyn Fn(usize, u16) -> Option<(String, String)>,
     entities: &[EntityDetail],
     model_ok: &dyn Fn(&str) -> bool,
     blockers: &[DetailBlocker],
@@ -1087,7 +1140,8 @@ pub fn place(
     let origins = lumps.face_origins();
     for (j, &origin) in origins.iter().enumerate() {
         let Ok(ti) = usize::try_from(lumps.face_texinfo(j)) else { continue };
-        let Some((material, name)) = type_of(ti) else { continue };
+        let seed = u16_at(&lumps.faceids, j * 2);
+        let Some((material, name)) = type_of(ti, seed) else { continue };
         let Some(t) = dict.find(&name) else {
             if !report.unknown.iter().any(|(m, _)| m.eq_ignore_ascii_case(&material)) {
                 report.unknown.push((material, name));
@@ -1101,7 +1155,6 @@ pub fn place(
         if points.len() < 3 {
             continue;
         }
-        let seed = u16_at(&lumps.faceids, j * 2);
         p.rand = CrtRand::new(u32::from(seed));
         p.uniform = Uniform::new(i32::from(seed));
         let disp = u16_at(&lumps.faces, j * 56 + 12) as i16;
@@ -1156,6 +1209,54 @@ pub fn place(
 pub enum ScatterSurface {
     Face { points: Vec<Vec3>, normal: Vec3 },
     Disp { power: u32, base: Vec<Vec3>, verts: Vec<Vec3>, alphas: Vec<f32> },
+    Fragment { points: Vec<Vec3>, origin: Vec3 },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct FaceFragment {
+    pub face: usize,
+    pub side: u16,
+    pub material: String,
+    pub points: Vec<Vec3>,
+    pub origin: Vec3,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct BspSplit {
+    pub fragments: Vec<FaceFragment>,
+    pub disp_faces: Vec<(usize, u16)>,
+}
+
+pub fn brush_fragments(bsp: &hp_bsp::Bsp) -> BspSplit {
+    use crate::emit::lump;
+    let lumps = BspLumps::of_bsp(bsp);
+    let get = |i: usize| bsp.lump(i).map(|c| c.into_owned()).unwrap_or_default();
+    let (texdata, table, strings) =
+        (get(lump::TEXDATA), get(lump::TEXDATA_STRING_TABLE), get(lump::TEXDATA_STRING_DATA));
+    let name_of = |ti: usize| -> Option<String> {
+        let td = usize::try_from(lumps.texinfo_texdata(ti)).ok()?;
+        let id = usize::try_from(i32_at(&texdata, td * 32 + 12)).ok()?;
+        let at = usize::try_from(i32_at(&table, id * 4)).ok()?;
+        let raw = strings.get(at..)?;
+        let end = raw.iter().position(|b| *b == 0).unwrap_or(raw.len());
+        Some(original_material(&String::from_utf8_lossy(&raw[..end])))
+    };
+    let origins = lumps.face_origins();
+    let mut out = BspSplit::default();
+    for (j, &origin) in origins.iter().enumerate() {
+        let Ok(ti) = usize::try_from(lumps.face_texinfo(j)) else { continue };
+        if (u16_at(&lumps.faces, j * 56 + 12) as i16) >= 0 {
+            out.disp_faces.push((j, u16_at(&lumps.faceids, j * 2)));
+            continue;
+        }
+        let points = lumps.face_points(j);
+        if points.len() < 3 {
+            continue;
+        }
+        let Some(material) = name_of(ti) else { continue };
+        out.fragments.push(FaceFragment { face: j, side: u16_at(&lumps.faceids, j * 2), material, points, origin });
+    }
+    out
 }
 
 pub fn scatter(
@@ -1165,21 +1266,36 @@ pub fn scatter(
     cap: usize,
     model_ok: &dyn Fn(&str) -> bool,
 ) -> DetailLump {
+    scatter_chained(surface, t, seed, cap, model_ok, GaussState::default()).0
+}
+
+pub fn scatter_chained(
+    surface: &ScatterSurface,
+    t: &DetailType,
+    seed: u32,
+    cap: usize,
+    model_ok: &dyn Fn(&str) -> bool,
+    gauss: GaussState,
+) -> (DetailLump, GaussState) {
+    let lump = |p: Placer<'_>| {
+        let g = GaussState { have: p.gauss.have, value: p.gauss.value };
+        (p.out.lump, g)
+    };
     let mut p = Placer {
         rand: CrtRand::new(seed),
         uniform: Uniform::new(seed as i32),
-        gauss: Gaussian::default(),
+        gauss: Gaussian { have: gauss.have, value: gauss.value },
         out: Builder { cap: cap.min(MAX_OBJECTS), ..Builder::default() },
         model_ok,
         blockers: &[],
     };
     if t.groups.is_empty() {
-        return p.out.lump;
+        return lump(p);
     }
     match surface {
         ScatterSurface::Face { points, normal } => {
             if points.len() < 3 {
-                return p.out.lump;
+                return lump(p);
             }
             let mut pts = points.clone();
             let cross = (pts[1] - pts[0]).cross(pts[2] - pts[0]);
@@ -1188,10 +1304,16 @@ pub fn scatter(
             }
             p.on_face(&pts, t, Vec3::ZERO);
         }
+        ScatterSurface::Fragment { points, origin } => {
+            if points.len() < 3 {
+                return lump(p);
+            }
+            p.on_face(points, t, *origin);
+        }
         ScatterSurface::Disp { power, base, verts, alphas } => {
             let w = (1usize << (*power).clamp(1, 4)) + 1;
             if !(1..=4).contains(power) || base.len() != w * w || verts.len() != w * w || alphas.len() != w * w {
-                return p.out.lump;
+                return lump(p);
             }
             let points = [base[0], base[(w - 1) * w], base[w * w - 1], base[w - 1]];
             let core = CoreDisp {
@@ -1204,7 +1326,7 @@ pub fn scatter(
             p.on_disp(&points, &core, t, Vec3::ZERO);
         }
     }
-    p.out.lump
+    lump(p)
 }
 
 pub fn compile_lump(
@@ -1292,7 +1414,9 @@ fn lump_for(
             (name, t)
         });
     }
-    let used = types.values().any(|t| t.1.is_some());
+    let overrides = overrides_of(entities);
+    let used =
+        types.values().any(|t| t.1.is_some()) || overrides.values().any(|o| matches!(o, DetailOverride::Type(_)));
     let explicit: Vec<EntityDetail> = entities.iter().filter_map(|e| EntityDetail::from_entity(e)).collect();
     let mut dict = DetailDict::default();
     if used {
@@ -1307,10 +1431,14 @@ fn lump_for(
             None => log(&format!("Warning: {name} not found: no detail props on the %detailtype materials")),
         }
     }
-    let type_of = |ti: usize| -> Option<(String, String)> {
+    let type_of = |ti: usize, face: u16| -> Option<(String, String)> {
         let (td, _) = name_of(ti)?;
         let (name, t) = types.get(&td)?;
-        Some((name.clone(), t.clone()?))
+        match overrides.get(&face) {
+            Some(DetailOverride::Off) => None,
+            Some(DetailOverride::Type(o)) => Some((name.clone(), o.clone())),
+            None => Some((name.clone(), t.clone()?)),
+        }
     };
     let warned = std::sync::Mutex::new(Vec::<String>::new());
     let model_ok = |m: &str| -> bool {
@@ -1487,7 +1615,7 @@ detail
     #[test]
     fn places_on_faces_and_displacements() {
         let dict = parse_detail_vbsp(VBSP).unwrap();
-        let type_of = |_: usize| Some(("grass/floor".to_owned(), "grass".to_owned()));
+        let type_of = |_: usize, _: u16| Some(("grass/floor".to_owned(), "grass".to_owned()));
         let all = |_: &str| true;
         let (lump, report) = place(&floor_bsp(false), &dict, &type_of, &[], &all, &[]);
         assert_eq!(report.faces, 1);
@@ -1560,7 +1688,7 @@ detail
         let d = EntityDetail::from_entity(&e).unwrap();
         assert_eq!(d.tex, [[0.5 / 512.0, 0.5 / 512.0], [63.5 / 512.0, 63.5 / 512.0]]);
         let l = floor_bsp(false);
-        let (lump, _) = place(&l, &DetailDict::default(), &|_| None, &[d.clone(), d], &|_| true, &[]);
+        let (lump, _) = place(&l, &DetailDict::default(), &|_, _| None, &[d.clone(), d], &|_| true, &[]);
         assert_eq!((lump.objects.len(), lump.sprites.len()), (2, 1));
         assert_eq!(lump.objects[0].origin, Vec3::new(1.0, 2.0, 3.0));
         assert_eq!(DetailLump::default().to_bytes(), vec![0u8; 12]);

@@ -18,6 +18,9 @@ hp-kv.workspace = true
 hp-pcf = { path = "../hp-pcf" }
 hp-sniffer = { path = "../hp-sniffer" }
 hp-colorgrade = { path = "../hp-colorgrade" }
+hp-livelink = { path = "../hp-livelink" }
+hp-shape = { path = "../hp-shape" }
+hp-mdl.workspace = true
 egui.workspace = true
 egui-wgpu.workspace = true
 wgpu.workspace = true

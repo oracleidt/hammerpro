@@ -10,7 +10,7 @@ Le serveur MCP intégré de Hammer Pro permet à un assistant IA (Claude Code, C
 
 ## Étape 2 : installer Hammer Pro dans votre application d'IA
 
-1. Cliquez sur la petite flèche à côté de la pastille (ou **Outils > Blender et MCP > MCP...**) pour ouvrir la fenêtre MCP.
+1. Cliquez sur la petite flèche à côté de la pastille (ou **Outils > Intégrations > MCP...**) pour ouvrir la fenêtre MCP.
 2. Cliquez sur **Installer dans Claude, Codex, Gemini**. Hammer Pro s'ajoute à chaque application prise en charge qu'il trouve, puis vérifie chacune. La ligne de chaque application affiche **Installé et configuré** quand tout a marché.
 3. Redémarrez l'application d'IA, ou ouvrez une nouvelle session, pour qu'elle voie le serveur `hammer-pro`.
 

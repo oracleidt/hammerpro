@@ -32,6 +32,7 @@ Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.m
 | [Outil courbe](features/curve-tool.md) | Murs et rambardes courbes : des brushes en boîte à joints en onglet le long d'un tracé dans une vue 2D. |
 | [Outil route](features/road-tool.md) | Routes le long d'une spline : voies, accotements, lignes, dévers, hauteurs, suivi du terrain, jonctions avec évasements. |
 | [Outil tuyau](features/pipe-tool.md) | Tuyaux et conduits en brushes : creux ou pleins, carrés ou ronds, coudes à 90 degrés, colliers, parcours sur la grille. |
+| [Outil spline](features/spline-tool.md) | Chemins 3D modifiables qui génèrent clôtures, rambardes, câbles, tuyaux, bordures et moulures en brushes et lignes de props, gardés dans la carte et régénérés à la modification. |
 | [Semis par matériau](features/scatter-by-material.md) | Des props placés seulement là où une texture apparaît sur les matériaux de mélange et les displacements, avec nombre, écart, rotation, échelle et graine. |
 | [Détails de route](features/road-details.md) | Trottoirs, bordures, caniveaux en V et en U avec fentes d'évacuation, angles de jonction arrondis, et fondu du terrain sur une route avec fondu de texture. |
 | [Outil de découpe](features/clip-tool.md) | Couper des brushes avec un plan. |
@@ -59,10 +60,11 @@ Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.m
 | [Outil chemin](features/path-tool.md) | Chaînes de path_corner, path_track et autres entités de chemin. |
 | [Décals et overlays](features/decals-overlays.md) | Outil décal et outil overlay. |
 | [Outil sprinkle](features/sprinkle-tool.md) | Peindre des entités sur les surfaces. |
+| [Outil de végétation](features/foliage-tool.md) | Peindre arbres, rochers et herbe avec des palettes, et choisir où pousse l'herbe des détails. |
 | [Instances](features/instances.md) | func_instance : créer, modifier, fusionner, paramètres. |
 | [Prefabs](features/prefabs.md) | La bibliothèque de prefabs. |
 | [Caméras de skybox](features/sky-cameras.md) | Plusieurs skybox 3D et l'entité qui change de skybox. |
-| [Soundscapes](features/soundscapes.md) | L'éditeur de soundscapes. |
+| [Soundscapes](features/soundscapes.md) | L'éditeur de soundscapes, la vue des soundscapes et leur écoute dans la vue joueur. |
 | [Nav mesh](features/nav-mesh.md) | Générer et afficher le `.nav` de la map. |
 
 ### Textures et matériaux
@@ -119,6 +121,7 @@ Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.m
 | --- | --- |
 | [Vérifier les problèmes](features/check-problems.md) | Problèmes et corrections, vérifications en direct, limites, informations sur la map, suggestions de func_detail. |
 | [Fuites et pointfiles](features/leaks-pointfiles.md) | Vérification des fuites, chemin de fuite, fichiers de portails, visibilité, areaportals. |
+| [Cubemaps](features/cubemaps.md) | Assistant de placement des cubemaps : pièces réfléchissantes, quelle face prend quel env_cubemap, cubemaps manquants, mal placés ou superflus, suggestions à hauteur des yeux et corrections de sides à accepter, et un affichage de l'attribution des cubemaps. |
 | [Outils BSP](features/bsp-tools.md) | Le Décompilateur de BSP, les archives (BSP, GMA, VPK), export OBJ, comparer des maps. |
 | [BSP Sniffer](features/bsp-sniffer.md) | Rejoindre un serveur Garry's Mod et récupérer la map telle que le jeu l'a chargée, en VMF, en BSP et avec son contenu (Garry's Mod uniquement, usage autorisé uniquement). |
 
@@ -127,6 +130,7 @@ Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.m
 | Page | Ce que vous y trouverez |
 | --- | --- |
 | [Lancement du jeu](features/game-launch.md) | Lancer et recharger la map en jeu, options de démarrage rapide, l'addon passerelle. |
+| [Lien direct avec Garry's Mod](features/live-link.md) | Les modifications d'entités affichées dans le jeu lancé sans recompiler, aperçus de lumières, entrées, téléportation et synchronisation de caméra. |
 | [Ressources de la map](features/map-assets.md) | Chaque fichier utilisé par la map, sa provenance, sa collecte. |
 | [Construire et enregistrer en contenu](features/build-content-release.md) | Fenêtre de publication, liste de contrôle, addon, publication sur le Workshop. |
 | [Protect your BSP](features/bsp-protection.md) | Livrer une copie protégée de la map, verrou serveur. |
@@ -199,6 +203,7 @@ Vous découvrez Hammer Pro ? Lisez [Installation](getting-started/installation.m
 | [Périphérique graphique perdu](troubleshooting/graphics-device-lost.md) | Réinitialisations du pilote, ce qui est sauvegardé, redémarrage avec vos onglets. |
 | [Performances de l'éditeur](troubleshooting/performance.md) | Garder l'éditeur fluide sur les très grandes maps. |
 | [Le statut Discord ne s'affiche pas](troubleshooting/discord-presence.md) | Réparer le Rich Presence. |
+| [Lien direct](troubleshooting/live-link.md) | Le jeu ne se connecte pas, une modification ne s'affiche pas, retirer l'addon. |
 | [Signaler un bug](troubleshooting/reporting-bugs.md) | Ce qu'il faut envoyer pour qu'un bug soit corrigé. |
 
 ## Développement

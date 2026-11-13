@@ -33,6 +33,7 @@ mod disp_subdivision;
 mod edge_loops;
 mod edit_tools;
 mod fuzz;
+mod merge_prompt;
 mod roadblend;
 mod weld;
 

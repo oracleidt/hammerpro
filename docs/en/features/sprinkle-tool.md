@@ -117,3 +117,5 @@ Only `.txt` files are read, without subfolders, up to 1 MB per file and 512 file
 
 ---
 [Back to the documentation index](../README.md)
+
+See also [Foliage tool](foliage-tool.md).

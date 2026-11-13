@@ -6,6 +6,7 @@ pub mod data_colors;
 pub mod dialog_keys;
 pub mod dnd;
 pub mod extend;
+pub mod foliage;
 pub mod fonts;
 pub mod games;
 pub mod grid;

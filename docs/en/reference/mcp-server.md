@@ -51,7 +51,7 @@ The apps' own programs (the `claude` command) only run when you click **Install*
 ## Install in an AI app
 
 1. Switch the pill on (**MCP off** becomes **MCP on**).
-2. Open the MCP window (arrow next to the pill, or **Tools > Blender and MCP > MCP...**).
+2. Open the MCP window (arrow next to the pill, or **Tools > Integrations > MCP...**).
 3. Click **Install in Claude, Codex, Gemini**. Hammer Pro adds itself to every app it finds on this computer, in this order: Claude Code, Claude Desktop, Codex, Gemini CLI, then checks each one. You can also install a single app with its own **Install** button.
 4. Restart the AI app (or start a new session) so it sees the new server.
 

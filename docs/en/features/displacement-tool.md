@@ -357,7 +357,7 @@ MCP: `mesh_to_displacement` (`path`, `prop` or `model`, `up`, `convert_units`, `
 
 ### Sculpt in Blender
 
-**Tools > Blender and MCP > Send to Blender** sends the selected displacements to Blender, one object per displacement, so you can sculpt them with Blender's brushes and modifiers; the result is written back into the same displacements (alpha, flags, tags, lightmap scale and untouched blend data kept, seams sewn, one undo step). See [Blender link](blender.md).
+**Tools > Integrations > Send to Blender** sends the selected displacements to Blender, one object per displacement, so you can sculpt them with Blender's brushes and modifiers; the result is written back into the same displacements (alpha, flags, tags, lightmap scale and untouched blend data kept, seams sewn, one undo step). See [Blender link](blender.md).
 
 ### Noise and erosion
 

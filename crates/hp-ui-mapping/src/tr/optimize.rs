@@ -257,4 +257,76 @@ pub const TR: TrTable = &[
         "The map has sky but no light_environment: outdoor areas get no sun and no sky light. Add one.",
         "La map a du ciel mais pas de light_environment : l'extérieur n'a ni soleil ni lumière du ciel. Ajoutez-en un.",
     ),
+    ("optimize.topic.cubemaps", "Cubemaps", "Cubemaps"),
+    (
+        "optimize.why.cubemaps",
+        "Why: every reflective face takes the nearest env_cubemap in front of it. Without a cubemap in its room it reflects another room or the sky, and shines in the dark.",
+        "Pourquoi : chaque face réfléchissante prend l'env_cubemap le plus proche devant elle. Sans cubemap dans sa pièce elle reflète une autre pièce ou le ciel, et brille dans le noir.",
+    ),
+    ("optimize.open_cubemaps", "Cubemaps tool", "Outil Cubemaps"),
+    (
+        "optimize.open_cubemaps_tip",
+        "Open the Cubemaps tool: suggestions you can accept, and the cubemap of each face in the views",
+        "Ouvrir l'outil Cubemaps : des suggestions à accepter, et le cubemap de chaque face dans les vues",
+    ),
+    (
+        "optimize.f.cubemap_none",
+        "The map has no env_cubemap but {0} faces use reflective env_cubemap materials in {1} rooms: they reflect the default sky cubemap and shine in the dark. Place cubemaps with the Cubemaps tool.",
+        "La map n'a aucun env_cubemap mais {0} faces utilisent des matériaux réfléchissants env_cubemap dans {1} pièces : elles reflètent le cubemap du ciel par défaut et brillent dans le noir. Placez des cubemaps avec l'outil Cubemaps.",
+    ),
+    (
+        "optimize.f.cubemap_room_missing",
+        "The room around {0} has {1} reflective faces ({2}) and no env_cubemap that can see it: they reflect a cubemap from another room. Place one at eye height in this room.",
+        "La pièce autour de {0} a {1} faces réfléchissantes ({2}) et aucun env_cubemap qui la voit : elles reflètent le cubemap d'une autre pièce. Placez-en un à hauteur des yeux dans cette pièce.",
+    ),
+    (
+        "optimize.f.cubemap_through_wall",
+        "{0} reflective faces of the room around {1} take the cubemap of another room or one behind a wall (env_cubemap {2}): add them to the sides of a cubemap of the room or move the cubemap.",
+        "{0} faces réfléchissantes de la pièce autour de {1} prennent le cubemap d'une autre pièce ou derrière un mur (env_cubemap {2}) : ajoutez-les aux sides d'un cubemap de la pièce ou déplacez le cubemap.",
+    ),
+    (
+        "optimize.f.cubemap_far",
+        "{0} reflective faces are more than {1} units from their cubemap: their reflections do not match what is around them. Add a cubemap closer to them.",
+        "{0} faces réfléchissantes sont à plus de {1} unités de leur cubemap : leurs reflets ne correspondent pas à ce qui les entoure. Ajoutez un cubemap plus proche.",
+    ),
+    (
+        "optimize.f.cubemap_inside",
+        "env_cubemap {0} at {1} is inside a brush: it is built black and every face using it reflects black. Move it out into the room.",
+        "L'env_cubemap {0} en {1} est dans un brush : il est construit noir et chaque face qui l'utilise reflète du noir. Sortez-le dans la pièce.",
+    ),
+    (
+        "optimize.f.cubemap_outside",
+        "env_cubemap {0} at {1} is outside the playable space (in the void): it captures nothing useful. Move it into a room.",
+        "L'env_cubemap {0} en {1} est hors de l'espace jouable (dans le vide) : il ne capture rien d'utile. Déplacez-le dans une pièce.",
+    ),
+    (
+        "optimize.f.cubemap_floor",
+        "env_cubemap {0} at {1} is only {2} units above the floor: reflections look as seen from the ground. Raise it to eye height (64 to 72 units above the floor).",
+        "L'env_cubemap {0} en {1} n'est qu'à {2} unités du sol : les reflets semblent vus depuis le sol. Montez-le à hauteur des yeux (64 à 72 unités au-dessus du sol).",
+    ),
+    (
+        "optimize.f.cubemap_large_size",
+        "env_cubemap {0} at {1} is {2}x{2} ({3} KB of memory): keep that size for mirrors and big shiny floors, 0 (default) is enough elsewhere.",
+        "L'env_cubemap {0} en {1} fait {2}x{2} ({3} Ko de mémoire) : gardez cette taille pour les miroirs et les grands sols brillants, 0 (par défaut) suffit ailleurs.",
+    ),
+    (
+        "optimize.f.cubemap_small_size",
+        "env_cubemap {0} at {1} is only {2}x{2} but lights large reflective surfaces: reflections look blurry. Use 0 (default).",
+        "L'env_cubemap {0} en {1} ne fait que {2}x{2} mais sert de grandes surfaces réfléchissantes : les reflets sont flous. Utilisez 0 (par défaut).",
+    ),
+    (
+        "optimize.f.cubemap_deleted_side",
+        "env_cubemap {0} lists faces that no longer exist in its sides ({1}): VBSP warns about it. Remove them from the sides keyvalue.",
+        "L'env_cubemap {0} liste dans ses sides des faces qui n'existent plus ({1}) : VBSP le signale. Retirez-les de la keyvalue sides.",
+    ),
+    (
+        "optimize.f.cubemap_close",
+        "env_cubemap {0} and {1} are only {2} units apart in the same room: they capture nearly the same picture and cost memory twice. Delete one or move it to another room.",
+        "Les env_cubemap {0} et {1} ne sont qu'à {2} unités l'un de l'autre dans la même pièce : ils capturent presque la même image et coûtent deux fois la mémoire. Supprimez-en un ou déplacez-le dans une autre pièce.",
+    ),
+    (
+        "optimize.f.cubemap_many",
+        "The map has {0} cubemaps (about {1} MB of textures, {2} max): more cubemaps load slower and bloat the BSP. One per room with reflective surfaces is usually enough.",
+        "La map a {0} cubemaps (environ {1} Mo de textures, {2} au maximum) : plus de cubemaps chargent plus lentement et alourdissent le BSP. Un par pièce avec des surfaces réfléchissantes suffit en général.",
+    ),
 ];

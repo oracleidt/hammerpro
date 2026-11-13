@@ -259,7 +259,7 @@ pub fn scale(state: &mut AppState, factor: f64) -> usize {
 pub(crate) fn noise_range_ui(ui: &mut egui::Ui, state: &mut AppState) -> bool {
     let s = &mut state.settings.mesh;
     let mut changed = false;
-    egui::Grid::new("hp_disp_noise_range").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
+    hp_app::widgets::form(ui, "hp_disp_noise_range", |ui| {
         ui.label(t!("disp.noise_min"));
         changed |= ui
             .add(egui::DragValue::new(&mut s.noise_min).speed(0.25).range(-1024.0..=1024.0).max_decimals(2))

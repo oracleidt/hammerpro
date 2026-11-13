@@ -684,27 +684,25 @@ fn props_2d_button(ui: &mut Ui, state: &mut AppState) -> egui::Response {
 }
 
 pub fn selection_bar(ui: &mut Ui, state: &mut AppState) {
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 4.0;
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing.x = 0.0;
         select_mode_control(ui, state);
     });
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 4.0;
+    ui.horizontal_wrapped(|ui| {
+        ui.spacing_mut().item_spacing.x = 2.0;
         ui.label(RichText::new(t!("shell.toolbar.move_selected")).color(ui.visuals().weak_text_color()));
-        ui.scope(|ui| {
-            ui.spacing_mut().item_spacing.x = 2.0;
-            for (action, key) in [
-                (Action::MoveToWorld, "shell.toolbar.to_world"),
-                (Action::TieToEntity, "shell.toolbar.to_entity"),
-                (Action::ConvertToDetail, "shell.toolbar.to_detail"),
-            ] {
-                let enabled = action_enabled(state, action);
-                let r = ui.add_enabled(enabled, egui::Button::new(t!(key)).min_size(egui::vec2(0.0, 24.0)));
-                if with_action_tooltip(r, state, action).clicked() {
-                    state.request(action);
-                }
+        ui.add_space(2.0);
+        for (action, key) in [
+            (Action::MoveToWorld, "shell.toolbar.to_world"),
+            (Action::TieToEntity, "shell.toolbar.to_entity"),
+            (Action::ConvertToDetail, "shell.toolbar.to_detail"),
+        ] {
+            let enabled = action_enabled(state, action);
+            let r = ui.add_enabled(enabled, egui::Button::new(t!(key)).min_size(egui::vec2(0.0, 24.0)));
+            if with_action_tooltip(r, state, action).clicked() {
+                state.request(action);
             }
-        });
+        }
     });
 }
 
@@ -839,23 +837,21 @@ fn grid_controls(ui: &mut Ui, state: &mut AppState, nested: bool) {
 
 fn select_mode_control(ui: &mut Ui, state: &mut AppState) {
     ui.label(RichText::new(t!("select_mode.label")).color(ui.visuals().weak_text_color()));
+    ui.add_space(4.0);
     let current = state.settings.edit.select_mode;
-    ui.scope(|ui| {
-        ui.spacing_mut().item_spacing.x = 0.0;
-        for (mode, action) in SELECT_MODES {
-            let on = current == mode;
-            let b = egui::Button::selectable(on, action.label()).min_size(egui::vec2(0.0, 24.0));
-            let tip = match mode {
-                SelectModeSetting::Groups => t!("shell.toolbar.mode_groups_tip"),
-                SelectModeSetting::Objects => t!("shell.toolbar.mode_objects_tip"),
-                SelectModeSetting::Solids => t!("shell.toolbar.mode_solids_tip"),
-            };
-            if ui.add(b).on_hover_text(tip).clicked() && !on {
-                state.settings.edit.select_mode = mode;
-                state.settings_dirty = true;
-            }
+    for (mode, action) in SELECT_MODES {
+        let on = current == mode;
+        let b = egui::Button::selectable(on, action.label()).min_size(egui::vec2(0.0, 24.0));
+        let tip = match mode {
+            SelectModeSetting::Groups => t!("shell.toolbar.mode_groups_tip"),
+            SelectModeSetting::Objects => t!("shell.toolbar.mode_objects_tip"),
+            SelectModeSetting::Solids => t!("shell.toolbar.mode_solids_tip"),
+        };
+        if ui.add(b).on_hover_text(tip).clicked() && !on {
+            state.settings.edit.select_mode = mode;
+            state.settings_dirty = true;
         }
-    });
+    }
 }
 
 fn render_mode_dropdown(ui: &mut Ui, state: &mut AppState) {
@@ -1777,6 +1773,35 @@ mod tests {
         }
         for text in ["Groups", "Objects", "Solids", "To world", "To entity"] {
             assert!(find_text(&shapes, text).is_some(), "{text}");
+        }
+    }
+
+    #[test]
+    fn selection_bar_lets_a_narrow_dock_shrink() {
+        let _lang = hp_app::testing::lang_lock();
+        crate::register_translations();
+        let mut state = hp_app::testing::test_state();
+        for lang in hp_app::i18n::Lang::ALL {
+            hp_app::i18n::set_lang(lang);
+            let ctx = egui::Context::default();
+            let mut widths = Vec::new();
+            for _ in 0..4 {
+                let input = egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 900.0))),
+                    ..Default::default()
+                };
+                let _ = ctx.run_ui(input, |ui| {
+                    let r = egui::Panel::right("hp_test_dock")
+                        .resizable(true)
+                        .default_size(220.0)
+                        .min_size(220.0)
+                        .show(ui, |ui| selection_bar(ui, &mut state));
+                    widths.push(r.response.rect.width());
+                });
+            }
+            let last = *widths.last().expect("frames");
+            hp_app::i18n::set_lang(hp_app::i18n::Lang::En);
+            assert!(last <= 220.5, "{lang:?}: the dock grew to {widths:?}");
         }
     }
 

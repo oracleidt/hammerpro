@@ -298,7 +298,6 @@ pub struct EntityDialogs {
     color: crate::color::ColorWindow,
     display_color: crate::display_color::DisplayColorWindow,
     max_distance: crate::max_distance::MaxDistanceWindow,
-    soundscapes: crate::soundscapes::SoundscapeEditor,
     sounds: crate::sound_browser::SoundBrowser,
     particles: crate::particles::ParticleBrowser,
     text_focus_before: bool,
@@ -395,7 +394,6 @@ impl EntityDialogs {
         self.color.show(ctx, state, fgd);
         self.display_color.show(ctx, state);
         self.max_distance.show(ctx, state, fgd, self.text_focus_before);
-        self.soundscapes.show(ctx, state);
         if state.runtime.entities.sound_window {
             let mut open = true;
             hp_app::chrome::Window::new(t!("action.show_sound_browser"))

@@ -8,6 +8,8 @@ A leak is a way from an entity to the void outside the map: the compiler cannot 
 
 While you edit, a flood fill like the compiler's looks for leaks in the background, without compiling (setting **Look for leaks as I edit**, on by default). When it finds one, the status bar shows a red **Leak** badge and the path is drawn in the views (setting **Draw the path of the leak found**, on by default). The compile stays the reference.
 
+The instant check is fast but works on an approximation of the map, so it never draws a leak on its own word: when it finds one, the same flood fill as a real compile (the portals of the compiler) checks the map before the badge and the path appear. If the compiler finds the map sealed, there is no leak (cracks thinner than the compiler keeps, like the tiny gaps a mitred corner off the grid leaves, do not leak). If the map really leaks, the path drawn is the compiler's path and its label reads **Leak (compiler flood)**. A new edit stops a compiler check that is still running, so big maps never spend time on an outdated check. Like the compiler, brushes with an alpha tested, translucent or non solid material (grates, ladders, glass) do not seal the map. When cordons are active and the compile setting `compile_cordon_only` is on (the default), the check looks only inside the cordon boxes, sealed like the compile seals them. The `get_leak` MCP tool answers `compiler_checked` when the compiler decided.
+
 **Map > Check for leaks** runs the check now, then:
 
 - *The map leaks: entity N (class) reaches the void (M entities in all). Its path is drawn in the views.* The leaking entity is selected and the views are centered on it.

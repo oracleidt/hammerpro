@@ -25,6 +25,8 @@ hp-mdl.workspace = true
 hp-sniffer = { path = "../hp-sniffer" }
 hp-audio = { path = "../hp-audio" }
 hp-colorgrade = { path = "../hp-colorgrade" }
+hp-soundscape = { path = "../hp-soundscape" }
+hp-kv.workspace = true
 image.workspace = true
 rfd.workspace = true
 egui.workspace = true

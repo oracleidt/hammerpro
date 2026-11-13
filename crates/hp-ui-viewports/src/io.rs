@@ -41,6 +41,7 @@ pub struct IoSim {
     touching: HashSet<Id>,
     light_inputs: Vec<(String, LightCmd)>,
     train_inputs: Vec<(Id, String, String)>,
+    sound_inputs: Vec<(Id, String, String)>,
     moved: HashMap<Id, glam::DMat4>,
     projectors: HashMap<Id, hp_app::state::ProjectorOverride>,
     triggers: Option<TriggerList>,
@@ -391,6 +392,10 @@ impl IoSim {
         out
     }
 
+    pub fn take_sound_inputs(&mut self) -> Vec<(Id, String, String)> {
+        std::mem::take(&mut self.sound_inputs)
+    }
+
     pub fn take_train_inputs(&mut self) -> Vec<(Id, String, String)> {
         std::mem::take(&mut self.train_inputs)
     }
@@ -416,6 +421,14 @@ impl IoSim {
         match input.as_str() {
             x if crate::trains::accepts(&c, x) => {
                 self.train_inputs.push((id, input.clone(), param.to_owned()));
+            }
+            "playsound" | "stopsound" | "togglesound" | "volume" | "pitch" | "fadein" | "fadeout"
+                if c == "ambient_generic" =>
+            {
+                self.sound_inputs.push((id, input.clone(), param.to_owned()));
+            }
+            "enable" | "disable" | "toggleenabled" if c.starts_with("env_soundscape") => {
+                self.sound_inputs.push((id, input.clone(), param.to_owned()));
             }
             "activate" if c == "infodecal" => {
                 self.hidden.remove(&id);

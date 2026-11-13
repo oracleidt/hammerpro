@@ -103,7 +103,7 @@ La vue 2D dessine les lignes mineures et principales selon les axes tournés, co
 | **Accentuer les lignes de grille toutes les** (`view.grid_highlight_every`) | Paramètres > Vues | Intervalle des lignes principales de la grille 2D (2 à 64). | 8 |
 | **Afficher les lignes de 1024 unités** (`view.show_1024_grid`) | Paramètres > Vues | Lignes toutes les 1024 unités. | Activé |
 | **Grille dans la vue 3D** (`view.show_3d_grid`) | Paramètres > Vues | Une grille sur le plan z = 0 autour de la caméra, l'axe X en rouge et l'axe Y en vert. | Désactivé |
-| **Grille 3D sur les faces (P)** (`render.grid_3d`) | Menu Map, `P`, Paramètres > Rendu | Dessine la grille sur les faces des brushes, à chaque pas de grille, plus claire à chaque pas majeur. | Désactivé |
+| **Grille 3D sur les faces (P)** (`render.grid_3d`) | Menu Map, `P`, Paramètres > Rendu | Dessine la grille sur les faces des brushes, à chaque pas de grille, plus claire à chaque pas majeur, dans tous les modes de rendu 3D, y compris l'aperçu de lumière Baked et la vue joueur. | Désactivé |
 | **Opacité de la grille 3D** (`render.grid_3d_opacity`) | Paramètres > Rendu | 0,05 à 1. | 0,45 |
 | `render.grid_3d_fade_cells` | `settings.toml` | La grille 3D s'estompe au-delà de ce nombre de cases depuis la caméra. | 64 |
 | **Grille en points** (`render.grid_dotted`) | Paramètres > Rendu | Dessine la grille 2D en points aux croisements de ses lignes. | Désactivé |

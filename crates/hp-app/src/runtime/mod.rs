@@ -3,6 +3,7 @@ mod brush;
 pub mod collaboration;
 mod compile;
 mod content;
+mod cubemaps;
 mod discord;
 mod entities;
 pub mod fade;
@@ -14,8 +15,11 @@ pub mod instances;
 mod lab;
 mod soundcolor;
 pub use soundcolor::SoundColorRuntime;
+pub mod soundscape;
+pub use soundscape::SoundscapeRuntime;
 mod launch;
 mod lighting;
+mod livelink;
 mod mcp;
 mod mesh;
 mod mesh_disp;
@@ -43,6 +47,7 @@ pub use content::{
     AssetCollectRequest, AssetCollectSummary, CaptureState, CapturedImage, ChecklistRow, ContentRuntime,
     MapAssetsRuntime, ReleaseReport,
 };
+pub use cubemaps::CubemapRuntime;
 pub use discord::{DiscordRuntime, DiscordStatus};
 pub use entities::{AssetKind, AssetPick, EntitiesRuntime, KeyvalueClip};
 pub use gpu::{GpuRelease, GpuReleased, GpuRuntime, TextureStreaming, VramBreakdown, VramPressure, VramSource};
@@ -58,6 +63,7 @@ pub use lighting::{
     BakeKind, BakePhase, BakeProgress, BakeSummary, BudgetEntry, BudgetSummary, IndirectPhase, IndirectStatus,
     LightCostEntry, LightingRuntime, PreparedStatus, PreviewStats, RelightStats,
 };
+pub use livelink::{FireForm, LiveLinkRuntime};
 pub use mcp::{McpClientRow, McpRuntime};
 pub use mesh::{DispLoopRequest, EdgeRequest, ErosionDialog, MeshRuntime, TerrainPreview};
 pub use mesh_disp::MeshDispRuntime;
@@ -104,6 +110,7 @@ pub struct Runtime {
     pub content: ContentRuntime,
     pub health: HealthRuntime,
     pub optimize: OptimizeRuntime,
+    pub cubemaps: CubemapRuntime,
     pub lab: LabRuntime,
     pub mcp: McpRuntime,
     pub discord: DiscordRuntime,
@@ -113,4 +120,5 @@ pub struct Runtime {
     pub storage: crate::storage::StorageRuntime,
     pub shader: ShaderRuntime,
     pub vtf: VtfRuntime,
+    pub livelink: LiveLinkRuntime,
 }

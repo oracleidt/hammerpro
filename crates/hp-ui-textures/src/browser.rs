@@ -1027,7 +1027,7 @@ impl TextureBrowser {
         } else {
             RichText::new(tf!("tex.browser.filters_active", active)).strong().color(theme::accent())
         };
-        egui::CollapsingHeader::new(title)
+        egui::CollapsingHeader::new(hp_app::widgets::header_text(ui, title))
             .id_salt("hp_tex_filters")
             .default_open(false)
             .show(ui, |ui| {
@@ -1122,150 +1122,150 @@ impl TextureBrowser {
     fn folders_ui(&mut self, ui: &mut egui::Ui, state: &mut AppState) {
         let n = state.settings.game.custom_texture_dirs.len();
         let mut action: Option<FolderAction> = None;
-        egui::CollapsingHeader::new(RichText::new(tf!("tex.folders.title", n)).strong())
-            .id_salt("hp_tex_custom_folders_closed")
-            .default_open(false)
-            .show(ui, |ui| {
-                if n == 0 {
-                    ui.label(RichText::new(t!("tex.folders.empty")).small().weak());
-                }
-                for i in 0..n {
-                    let Some(dir) = state.settings.game.custom_texture_dirs.get(i) else { continue };
-                    let mounted = self.sources.customs.iter().find(|c| same_path(&c.path, &dir.path)).cloned();
-                    let count = mounted.as_ref().map(|m| self.mounted_count(m.id));
-                    ui.push_id(("hp_custom_dir", i), |ui| {
-                        ui.horizontal(|ui| {
-                            let mut enabled = dir.enabled;
-                            if ui.checkbox(&mut enabled, "").on_hover_text(t!("tex.folders.enable_tip")).changed() {
-                                action = Some(FolderAction::Enable(i, enabled));
+        egui::CollapsingHeader::new(hp_app::widgets::header_text(
+            ui,
+            RichText::new(tf!("tex.folders.title", n)).strong(),
+        ))
+        .id_salt("hp_tex_custom_folders_closed")
+        .default_open(false)
+        .show(ui, |ui| {
+            if n == 0 {
+                ui.label(RichText::new(t!("tex.folders.empty")).small().weak());
+            }
+            for i in 0..n {
+                let Some(dir) = state.settings.game.custom_texture_dirs.get(i) else { continue };
+                let mounted = self.sources.customs.iter().find(|c| same_path(&c.path, &dir.path)).cloned();
+                let count = mounted.as_ref().map(|m| self.mounted_count(m.id));
+                ui.push_id(("hp_custom_dir", i), |ui| {
+                    ui.horizontal(|ui| {
+                        let mut enabled = dir.enabled;
+                        if ui.checkbox(&mut enabled, "").on_hover_text(t!("tex.folders.enable_tip")).changed() {
+                            action = Some(FolderAction::Enable(i, enabled));
+                        }
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if icon_button(ui, Icon::Trash, t!("tex.folders.remove")).clicked() {
+                                action = Some(FolderAction::Remove(i));
                             }
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if icon_button(ui, Icon::Trash, t!("tex.folders.remove")).clicked() {
-                                    action = Some(FolderAction::Remove(i));
+                            if icon_button(ui, Icon::Folder, t!("tex.folders.open")).clicked() {
+                                action = Some(FolderAction::Reveal(dir.path.clone()));
+                            }
+                            if let Some(m) = &mounted {
+                                let selected = self.source == SourceFilter::Source(m.id);
+                                if icon_toggle(ui, Icon::Filter, selected, t!("tex.folders.show_only")).clicked() {
+                                    action = Some(FolderAction::ShowOnly(m.id));
                                 }
-                                if icon_button(ui, Icon::Folder, t!("tex.folders.open")).clicked() {
-                                    action = Some(FolderAction::Reveal(dir.path.clone()));
-                                }
-                                if let Some(m) = &mounted {
-                                    let selected = self.source == SourceFilter::Source(m.id);
-                                    if icon_toggle(ui, Icon::Filter, selected, t!("tex.folders.show_only")).clicked() {
-                                        action = Some(FolderAction::ShowOnly(m.id));
-                                    }
-                                }
-                                let count_text = folder_count_text(dir.enabled, count);
-                                ui.label(RichText::new(count_text).small().weak());
-                                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                                    let name = RichText::new(folder_label(&dir.path)).strong();
-                                    let name = if dir.enabled { name } else { name.weak() };
-                                    ui.add(egui::Label::new(name).truncate())
-                                        .on_hover_text(dir.path.display().to_string());
-                                });
+                            }
+                            let count_text = folder_count_text(dir.enabled, count);
+                            ui.label(RichText::new(count_text).small().weak());
+                            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                                let name = RichText::new(folder_label(&dir.path)).strong();
+                                let name = if dir.enabled { name } else { name.weak() };
+                                ui.add(egui::Label::new(name).truncate()).on_hover_text(dir.path.display().to_string());
                             });
                         });
-                        ui.horizontal(|ui| {
-                            ui.add_space(24.0);
-                            let mut include_models = dir.include_models;
-                            if ui
-                                .checkbox(&mut include_models, t!("common.load_models"))
-                                .on_hover_text(t!("common.load_models_tip"))
-                                .changed()
-                            {
-                                action = Some(FolderAction::Models(i, include_models));
-                            }
-                            if let Some(source) = &mounted {
-                                ui.label(RichText::new(tf!("tex.folders.models", source.models)).small().weak());
-                            }
-                        });
-                        ui.horizontal(|ui| {
-                            ui.add_space(24.0);
-                            let layout = mounted.as_ref().and_then(|m| m.layout.clone());
-                            let fixed = layout
-                                .clone()
-                                .filter(|l| matches!(l.mode, CustomMode::GameFolder | CustomMode::InsideMaterials));
-                            let detected = layout.filter(|l| l.mode == CustomMode::Detected).map(|l| l.prefix);
-                            let shown_prefix = detected.clone().unwrap_or_else(|| dir.prefix.clone());
-                            ui.label(RichText::new(t!("tex.folders.prefix")).small());
-                            match fixed {
-                                Some(layout) => {
-                                    let shown = if layout.prefix.is_empty() {
-                                        "materials/".to_owned()
-                                    } else {
-                                        layout.prefix.clone()
-                                    };
-                                    let tip = match layout.mode {
-                                        CustomMode::GameFolder => t!("tex.folders.mode_game"),
-                                        _ => t!("tex.folders.mode_inside"),
-                                    };
-                                    ui.label(RichText::new(shown).small().monospace()).on_hover_text(tip);
-                                }
-                                None => {
-                                    let buf =
-                                        self.prefix_buf.entry(dir.path.clone()).or_insert_with(|| shown_prefix.clone());
-                                    let id = ui.make_persistent_id("prefix");
-                                    let focused = ui.memory(|m| m.has_focus(id));
-                                    if !focused && *buf != shown_prefix {
-                                        buf.clone_from(&shown_prefix);
-                                    }
-                                    let width = if detected.is_some() { 160.0 } else { 220.0 };
-                                    let r = ui.add(
-                                        egui::TextEdit::singleline(buf)
-                                            .id(id)
-                                            .font(egui::TextStyle::Monospace)
-                                            .desired_width(ui.available_width().min(width)),
-                                    );
-                                    let enter = hp_app::actions::key_label(egui::Key::Enter);
-                                    let r = r.on_hover_text(tf!("tex.folders.prefix_tip", enter));
-                                    if r.lost_focus() && *buf != shown_prefix {
-                                        action = Some(FolderAction::Prefix(i, buf.clone()));
-                                    }
-                                    if detected.is_some() {
-                                        ui.label(
-                                            RichText::new(t!("tex.folders.detected")).small().color(theme::accent()),
-                                        )
-                                        .on_hover_text(t!("tex.folders.detected_tip"));
-                                    }
-                                }
-                            }
-                        });
-                        if let Some(report) = mounted.as_ref().and_then(|m| self.reports.done.get(&m.id)) {
-                            folder_report_ui(ui, report);
+                    });
+                    ui.horizontal(|ui| {
+                        ui.add_space(24.0);
+                        let mut include_models = dir.include_models;
+                        if ui
+                            .checkbox(&mut include_models, t!("common.load_models"))
+                            .on_hover_text(t!("common.load_models_tip"))
+                            .changed()
+                        {
+                            action = Some(FolderAction::Models(i, include_models));
+                        }
+                        if let Some(source) = &mounted {
+                            ui.label(RichText::new(tf!("tex.folders.models", source.models)).small().weak());
                         }
                     });
-                }
-                ui.horizontal_wrapped(|ui| {
-                    let picking = self.pending_folder.is_some();
-                    if icon_text_button(ui, Icon::Plus, t!("tex.folders.add"), !picking)
-                        .on_hover_text(t!("tex.folders.add_tip"))
-                        .clicked()
-                    {
-                        let title = t!("tex.folders.pick_title").to_owned();
-                        self.pending_folder = Some(PendingPick::spawn(ui.ctx(), move || {
-                            rfd::FileDialog::new().set_title(title).pick_folder()
-                        }));
-                    }
-                    if icon_text_button(ui, Icon::Refresh, t!("tex.folders.rescan"), true)
-                        .on_hover_text(t!("tex.folders.rescan_tip"))
-                        .clicked()
-                    {
-                        state.assets.remount(&state.settings);
-                        state.notify(Severity::Info, t!("tex.folders.rescanning"));
-                    }
-                    let picking = self.pending_images.is_some();
-                    if icon_text_button(ui, Icon::Import, t!("tex.import.button"), !picking)
-                        .on_hover_text(t!("tex.import.button_tip"))
-                        .clicked()
-                    {
-                        let title = t!("tex.import.pick_title").to_owned();
-                        let filter = t!("tex.import.filter").to_owned();
-                        self.pending_images = Some(PendingPick::spawn(ui.ctx(), move || {
-                            rfd::FileDialog::new()
-                                .set_title(title)
-                                .add_filter(filter, crate::util::IMPORT_EXTENSIONS)
-                                .pick_files()
-                        }));
+                    ui.horizontal(|ui| {
+                        ui.add_space(24.0);
+                        let layout = mounted.as_ref().and_then(|m| m.layout.clone());
+                        let fixed = layout
+                            .clone()
+                            .filter(|l| matches!(l.mode, CustomMode::GameFolder | CustomMode::InsideMaterials));
+                        let detected = layout.filter(|l| l.mode == CustomMode::Detected).map(|l| l.prefix);
+                        let shown_prefix = detected.clone().unwrap_or_else(|| dir.prefix.clone());
+                        ui.label(RichText::new(t!("tex.folders.prefix")).small());
+                        match fixed {
+                            Some(layout) => {
+                                let shown = if layout.prefix.is_empty() {
+                                    "materials/".to_owned()
+                                } else {
+                                    layout.prefix.clone()
+                                };
+                                let tip = match layout.mode {
+                                    CustomMode::GameFolder => t!("tex.folders.mode_game"),
+                                    _ => t!("tex.folders.mode_inside"),
+                                };
+                                ui.label(RichText::new(shown).small().monospace()).on_hover_text(tip);
+                            }
+                            None => {
+                                let buf =
+                                    self.prefix_buf.entry(dir.path.clone()).or_insert_with(|| shown_prefix.clone());
+                                let id = ui.make_persistent_id("prefix");
+                                let focused = ui.memory(|m| m.has_focus(id));
+                                if !focused && *buf != shown_prefix {
+                                    buf.clone_from(&shown_prefix);
+                                }
+                                let width = if detected.is_some() { 160.0 } else { 220.0 };
+                                let r = ui.add(
+                                    egui::TextEdit::singleline(buf)
+                                        .id(id)
+                                        .font(egui::TextStyle::Monospace)
+                                        .desired_width(ui.available_width().min(width)),
+                                );
+                                let enter = hp_app::actions::key_label(egui::Key::Enter);
+                                let r = r.on_hover_text(tf!("tex.folders.prefix_tip", enter));
+                                if r.lost_focus() && *buf != shown_prefix {
+                                    action = Some(FolderAction::Prefix(i, buf.clone()));
+                                }
+                                if detected.is_some() {
+                                    ui.label(RichText::new(t!("tex.folders.detected")).small().color(theme::accent()))
+                                        .on_hover_text(t!("tex.folders.detected_tip"));
+                                }
+                            }
+                        }
+                    });
+                    if let Some(report) = mounted.as_ref().and_then(|m| self.reports.done.get(&m.id)) {
+                        folder_report_ui(ui, report);
                     }
                 });
+            }
+            ui.horizontal_wrapped(|ui| {
+                let picking = self.pending_folder.is_some();
+                if icon_text_button(ui, Icon::Plus, t!("tex.folders.add"), !picking)
+                    .on_hover_text(t!("tex.folders.add_tip"))
+                    .clicked()
+                {
+                    let title = t!("tex.folders.pick_title").to_owned();
+                    self.pending_folder = Some(PendingPick::spawn(ui.ctx(), move || {
+                        rfd::FileDialog::new().set_title(title).pick_folder()
+                    }));
+                }
+                if icon_text_button(ui, Icon::Refresh, t!("tex.folders.rescan"), true)
+                    .on_hover_text(t!("tex.folders.rescan_tip"))
+                    .clicked()
+                {
+                    state.assets.remount(&state.settings);
+                    state.notify(Severity::Info, t!("tex.folders.rescanning"));
+                }
+                let picking = self.pending_images.is_some();
+                if icon_text_button(ui, Icon::Import, t!("tex.import.button"), !picking)
+                    .on_hover_text(t!("tex.import.button_tip"))
+                    .clicked()
+                {
+                    let title = t!("tex.import.pick_title").to_owned();
+                    let filter = t!("tex.import.filter").to_owned();
+                    self.pending_images = Some(PendingPick::spawn(ui.ctx(), move || {
+                        rfd::FileDialog::new()
+                            .set_title(title)
+                            .add_filter(filter, crate::util::IMPORT_EXTENSIONS)
+                            .pick_files()
+                    }));
+                }
             });
+        });
         if let Some(a) = action {
             self.apply_folder_action(state, a);
         }
@@ -1936,7 +1936,7 @@ mod tests {
         b.set_search("is:translucent");
         for lang in hp_app::i18n::Lang::ALL {
             hp_app::i18n::set_lang(lang);
-            for width in [260.0f32, 380.0] {
+            for width in [220.0f32, 380.0] {
                 let mut used = 0.0f32;
                 hp_app::testing::run_ui(&mut state, |ui, s| {
                     let r = ui.allocate_ui(egui::vec2(width, 800.0), |ui| {
@@ -1960,7 +1960,7 @@ mod tests {
         let mut state = hp_app::testing::test_state();
         let _lang = hp_app::testing::lang_lock();
         let mut b = TextureBrowser::new();
-        for lang in [hp_app::i18n::Lang::En, hp_app::i18n::Lang::Fr] {
+        for lang in hp_app::i18n::Lang::ALL {
             hp_app::i18n::set_lang(lang);
             for search in ["", "is:translucent concrete"] {
                 b.set_search(search);
@@ -1976,15 +1976,15 @@ mod tests {
                     let mut out = ctx.run_ui(input, |ui| {
                         let r = egui::Panel::right("hp_test_dock")
                             .resizable(true)
-                            .default_size(260.0)
-                            .min_size(260.0)
+                            .default_size(220.0)
+                            .min_size(220.0)
                             .show(ui, |ui| b.ui(ui, &mut state));
                         widths.push(r.response.rect.width());
                     });
                     out.textures_delta.clear();
                 }
                 let last = *widths.last().expect("frames");
-                if last > 261.0 {
+                if last > 221.0 {
                     hp_app::i18n::set_lang(hp_app::i18n::Lang::En);
                     panic!("{lang:?} {search:?}: the panel grew: {widths:?}");
                 }

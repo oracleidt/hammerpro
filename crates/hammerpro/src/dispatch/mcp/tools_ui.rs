@@ -78,7 +78,9 @@ const SPECS: &[ToolSpec] = &[
     ToolSpec {
         name: "describe_ui",
         title: "Describe the interface",
-        description: "What is on screen: open maps, views and their rectangles, panels, open windows and dialogs \
+        description: "What is on screen: open maps, views and their rectangles, panels (panes gives the dock and \
+            console rectangles; panels gives the saved dock_width and console_height, settings ui.dock_width and \
+            ui.console_height, and the shown dock_shown_width and console_shown_height), open windows and dialogs \
             with their visible texts, open menus, tooltips, the focused widget, the status bar, toasts, the end of \
             the console, the dialogs open as separate windows of the system (separate_windows: the Compile and \
             run window by default, the UV editor and the portals window when taken out) and the buttons of Hammer \

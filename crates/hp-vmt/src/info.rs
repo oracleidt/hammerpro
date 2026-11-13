@@ -503,6 +503,23 @@ impl Material {
         self.flag("$translucent")
     }
 
+    pub fn compiles_non_solid(&self) -> bool {
+        let alpha = self.get("$alpha").and_then(|a| a.trim().parse::<f32>().ok()).is_some_and(|a| a < 1.0);
+        self.translucent()
+            || self.alpha_test()
+            || alpha
+            || [
+                "%compilepassbullets",
+                "%compileinvisible",
+                "%compilenonsolid",
+                "%compileblocklos",
+                "%compilewater",
+                "%compileslime",
+            ]
+            .iter()
+            .any(|k| self.flag(k))
+    }
+
     pub fn alpha_test(&self) -> bool {
         self.flag("$alphatest")
     }

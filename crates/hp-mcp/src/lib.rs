@@ -71,4 +71,5 @@ pub const INSTRUCTIONS: &str = "Hammer Pro is a Source engine (Garry's Mod) map 
      to their result when one ends floating, sunk or overlapping another object: fix it with drop_to_surface or \
      place_object before going on. Before you finish a map, run optimize_map (or analyze_visibility) \
      and act on its report. Use func_detail for small and decorative brushes, hint brushes where they measure \
-     a gain, areaportals in door frames and narrow openings, and give every light a visible lamp.";
+     a gain, areaportals in door frames and narrow openings, give every light a visible lamp, and give every \
+     room with reflective materials its env_cubemap (suggest_cubemaps).";

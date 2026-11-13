@@ -54,6 +54,24 @@ pub fn compilers_ui() -> Option<CompilersUi> {
     COMPILERS_UI.get().copied()
 }
 
+pub type FloodVerdict = Option<(Option<hp_editor::Id>, Vec<glam::DVec3>)>;
+
+pub type LeakConfirm = fn(
+    &hp_vmf::Map,
+    Option<&hp_fs::GameFs>,
+    &std::sync::Arc<std::sync::atomic::AtomicBool>,
+) -> Result<Option<FloodVerdict>, String>;
+
+static LEAK_CONFIRM: std::sync::OnceLock<LeakConfirm> = std::sync::OnceLock::new();
+
+pub fn set_leak_confirm(confirm: LeakConfirm) {
+    let _ = LEAK_CONFIRM.set(confirm);
+}
+
+pub fn leak_confirm() -> Option<LeakConfirm> {
+    LEAK_CONFIRM.get().copied()
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StatusSide {
     Left,

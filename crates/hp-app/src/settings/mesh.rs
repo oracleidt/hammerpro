@@ -44,6 +44,39 @@ impl MeshSettings {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MergePrompt {
+    #[default]
+    Off,
+    Ask,
+    Always,
+    Never,
+}
+
+impl MergePrompt {
+    pub const ALL: [MergePrompt; 4] = [MergePrompt::Off, MergePrompt::Ask, MergePrompt::Always, MergePrompt::Never];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            MergePrompt::Off => "off",
+            MergePrompt::Ask => "ask",
+            MergePrompt::Always => "always",
+            MergePrompt::Never => "never",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|m| m.name().eq_ignore_ascii_case(text.trim()))
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct VertexSettings {
+    pub merge_prompt: MergePrompt,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -60,5 +93,19 @@ mod tests {
             settings.disp_selection_opacity = value;
             assert_eq!(settings.displacement_selection_opacity(), expected);
         }
+    }
+
+    #[test]
+    fn vertex_merge_prompt_defaults_to_off_and_roundtrips() {
+        let old: VertexSettings = serde_json::from_str("{}").unwrap();
+        assert_eq!(old.merge_prompt, MergePrompt::Off);
+        assert_eq!(VertexSettings::default().merge_prompt, MergePrompt::Off);
+        for m in MergePrompt::ALL {
+            let saved = serde_json::to_string(&VertexSettings { merge_prompt: m }).unwrap();
+            assert!(saved.contains(m.name()), "{saved}");
+            assert_eq!(serde_json::from_str::<VertexSettings>(&saved).unwrap().merge_prompt, m);
+            assert_eq!(MergePrompt::parse(&m.name().to_uppercase()), Some(m));
+        }
+        assert_eq!(MergePrompt::parse("maybe"), None);
     }
 }

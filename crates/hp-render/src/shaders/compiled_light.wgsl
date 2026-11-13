@@ -268,6 +268,9 @@ fn fs_compiled(in: ClOut) -> @location(0) vec4<f32> {
     if material.detail_mode != DETAIL_NONE {
         rgb = detail_post_lighting(rgb, detail);
     }
+    if BLEND_MODE != 2u && (view.opts.x & OPT_GRID_3D) != 0u {
+        rgb = grid_3d_mix(rgb, grid_coverage(in.world, in.normal), in.world);
+    }
     let flags = in.state.x;
     if (flags & F_INSTANCE) != 0u {
         rgb = mix(rgb, INSTANCE_RGB * (0.4 + dot(rgb, vec3<f32>(0.3, 0.59, 0.11))), 0.45);

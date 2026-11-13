@@ -357,7 +357,7 @@ MCP : `mesh_to_displacement` (`path`, `prop` ou `model`, `up`, `convert_units`, 
 
 ### Sculpter dans Blender
 
-**Outils > Blender et MCP > Envoyer vers Blender** envoie les displacements sélectionnés vers Blender, un objet par displacement, pour les sculpter avec les pinceaux et modificateurs de Blender ; le résultat est réécrit dans les mêmes displacements (alpha, flags, tags, échelle de lightmap et données de mélange non touchées gardés, raccords recousus, une seule étape d'annulation). Voir [Lien avec Blender](blender.md).
+**Outils > Intégrations > Envoyer vers Blender** envoie les displacements sélectionnés vers Blender, un objet par displacement, pour les sculpter avec les pinceaux et modificateurs de Blender ; le résultat est réécrit dans les mêmes displacements (alpha, flags, tags, échelle de lightmap et données de mélange non touchées gardés, raccords recousus, une seule étape d'annulation). Voir [Lien avec Blender](blender.md).
 
 ### Bruit et érosion
 

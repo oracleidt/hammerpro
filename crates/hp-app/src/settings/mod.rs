@@ -20,6 +20,7 @@ mod instances;
 mod lab;
 mod launch;
 mod lighting;
+mod livelink;
 mod mcp;
 mod mesh;
 mod physics;
@@ -56,11 +57,12 @@ pub use hp_sniffer::{
 };
 pub use input::{InputSettings, TRACKPAD_SPEED_MAX, TRACKPAD_SPEED_MIN, TrackpadMode, TrackpadScroll3d};
 pub use instances::{InstanceDisplay, InstancesSettings};
-pub use lab::{CombineOrigin, LabSettings, ModelLodSettings, UnpropShape};
+pub use lab::{CombineOrigin, LabSettings, ModelLodSettings, SoundscapeSettings, UnpropShape};
 pub use launch::{LaunchSettings, LaunchTiming};
 pub use lighting::{BakePriority, LightingQuality, LightingSettings};
+pub use livelink::LiveLinkSettings;
 pub use mcp::McpSettings;
-pub use mesh::MeshSettings;
+pub use mesh::{MergePrompt, MeshSettings, VertexSettings};
 pub use physics::PhysicsSettings;
 pub use placement::{PlacementSettings, SprinkleMode, SprinkleSettings};
 pub use render::{
@@ -170,6 +172,10 @@ pub struct Settings {
     pub vtf: VtfSettings,
     #[serde(skip_serializing_if = "is_default")]
     pub input: InputSettings,
+    #[serde(skip_serializing_if = "is_default")]
+    pub livelink: LiveLinkSettings,
+    #[serde(skip_serializing_if = "is_default")]
+    pub vertex: VertexSettings,
 }
 
 impl Default for Settings {
@@ -212,6 +218,8 @@ impl Default for Settings {
             blender: BlenderSettings::default(),
             vtf: VtfSettings::default(),
             input: InputSettings::default(),
+            livelink: LiveLinkSettings::default(),
+            vertex: VertexSettings::default(),
         }
     }
 }

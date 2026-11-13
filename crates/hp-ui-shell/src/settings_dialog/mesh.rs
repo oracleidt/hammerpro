@@ -1,6 +1,6 @@
 use hp_app::extend::{SettingsPage, page_order};
 use hp_app::i18n::TrTable;
-use hp_app::settings::MeshSettings;
+use hp_app::settings::{MergePrompt, MeshSettings, VertexSettings};
 use hp_app::{AppState, t};
 
 use crate::common::heading;
@@ -38,6 +38,20 @@ impl SettingsPage for MeshPage {
             .changed();
         changed |=
             ui.checkbox(&mut s.uv_lock, t!("shell.mesh.uv_lock")).on_hover_text(t!("shell.mesh.uv_lock_tip")).changed();
+        let prompt = &mut state.settings.vertex.merge_prompt;
+        ui.horizontal(|ui| {
+            ui.label(t!("shell.mesh.merge_prompt")).on_hover_text(t!("shell.mesh.merge_prompt_tip"));
+            egui::ComboBox::from_id_salt("hp_shell_mesh_merge_prompt")
+                .selected_text(merge_prompt_label(*prompt))
+                .show_ui(ui, |ui| {
+                    for m in MergePrompt::ALL {
+                        changed |= ui.selectable_value(prompt, m, merge_prompt_label(m)).changed();
+                    }
+                })
+                .response
+                .on_hover_text(t!("shell.mesh.merge_prompt_tip"));
+        });
+        let s = &mut state.settings.mesh;
         heading(ui, t!("shell.mesh.displacement"));
         changed |= ui
             .checkbox(&mut s.four_way_blends, t!("shell.mesh.four_way"))
@@ -64,7 +78,17 @@ impl SettingsPage for MeshPage {
 
     fn reset(&mut self, state: &mut AppState) {
         state.settings.mesh = MeshSettings::default();
+        state.settings.vertex = VertexSettings::default();
         state.settings_dirty = true;
+    }
+}
+
+fn merge_prompt_label(m: MergePrompt) -> &'static str {
+    match m {
+        MergePrompt::Off => t!("shell.mesh.merge_prompt.off"),
+        MergePrompt::Ask => t!("shell.mesh.merge_prompt.ask"),
+        MergePrompt::Always => t!("shell.mesh.merge_prompt.always"),
+        MergePrompt::Never => t!("shell.mesh.merge_prompt.never"),
     }
 }
 
@@ -96,5 +120,27 @@ pub(crate) const TR: TrTable = &[
         "shell.mesh.noise_tip",
         "Range of the random heights added by Add noise to displacements",
         "Plage des hauteurs aléatoires ajoutées par Ajouter du bruit aux displacements",
+    ),
+    ("shell.mesh.merge_prompt", "Stacked vertices", "Sommets superposés"),
+    (
+        "shell.mesh.merge_prompt_tip",
+        "What happens when a vertex move (drag, arrow keys, snap, align, scale) ends with vertices of a solid on top of each other: off (they merge silently, as in earlier versions), ask like Hammer, always merge them, or never merge (the move is undone)",
+        "Ce qui se passe quand un déplacement de sommets (glisser, flèches, aimanter, aligner, mise à l'échelle) se termine avec des sommets d'un solide les uns sur les autres : désactivé (ils fusionnent sans question, comme dans les versions précédentes), demander comme Hammer, toujours les fusionner, ou ne jamais fusionner (le déplacement est annulé)",
+    ),
+    (
+        "shell.mesh.merge_prompt.off",
+        "Off: stacked vertices merge silently, as before",
+        "Désactivé : les sommets superposés fusionnent sans question, comme avant",
+    ),
+    (
+        "shell.mesh.merge_prompt.ask",
+        "Ask before merging stacked vertices",
+        "Demander avant de fusionner les sommets superposés",
+    ),
+    ("shell.mesh.merge_prompt.always", "Always merge stacked vertices", "Toujours fusionner les sommets superposés"),
+    (
+        "shell.mesh.merge_prompt.never",
+        "Never merge stacked vertices (undo the move)",
+        "Ne jamais fusionner les sommets superposés (annuler le déplacement)",
     ),
 ];

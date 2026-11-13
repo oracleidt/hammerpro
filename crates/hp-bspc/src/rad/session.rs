@@ -333,6 +333,7 @@ fn make_ctx<'a>(
         bounce_tile_budget: budget / 4,
         water: &scene.water,
         water_reflectivity: scene.water_reflectivity,
+        dispchop: disp::chop_or_default(scene.key.texlights.dispchop),
     }
 }
 

@@ -315,28 +315,6 @@ fn editor_relief(v: vec3<f32>) -> vec3<f32> {
     return select(v, s * (l / sl), sl > 1e-6);
 }
 
-fn grid_coverage(world: vec3<f32>, n: vec3<f32>) -> vec2<f32> {
-    let a = abs(n);
-    var p = world.xy;
-    if a.x > a.z && a.x >= a.y {
-        p = world.yz;
-    } else if a.y > a.z && a.y > a.x {
-        p = world.xz;
-    }
-    let step = max(view.grid3d.x, 1e-3);
-    let major_step = step * max(view.grid3d.y, 1.0);
-    let g = p / step;
-    let w = max(fwidth(g), vec2<f32>(1e-5));
-    let d = abs(fract(g - 0.5) - 0.5) / w;
-    let minor = 1.0 - min(min(d.x, d.y), 1.0);
-    let gm = p / major_step;
-    let wm = max(fwidth(gm), vec2<f32>(1e-5));
-    let dm = abs(fract(gm - 0.5) - 0.5) / wm;
-    let major = 1.0 - min(min(dm.x, dm.y), 1.0);
-    let dense = clamp((1.0 / max(w.x, w.y) - 3.0) / 3.0, 0.0, 1.0);
-    return vec2<f32>(minor * dense, major);
-}
-
 fn controlled_shadow(world: vec3<f32>) -> vec3<f32> {
     if view.control_params.x < 0.5 { return vec3<f32>(1.0); }
     let clip = view.control_vp * vec4<f32>(world, 1.0);
@@ -495,10 +473,7 @@ fn fs_mesh(in: VsOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f
         rgb = mix(rgb, vec3<f32>(1.0, 0.25, 0.05), 0.45);
     }
     if !is_model && (view.opts.x & OPT_GRID_3D) != 0u {
-        let fade = 1.0 - smoothstep(view.grid3d.z * 0.6, view.grid3d.z, distance(in.world, view.eye.xyz));
-        let minor = grid.x * view.grid3d.w * fade;
-        let major = grid.y * min(view.grid3d.w * 1.6, 1.0) * fade;
-        rgb = mix(rgb, vec3<f32>(1.0), max(minor * 0.55, major * 0.8));
+        rgb = grid_3d_mix(rgb, grid, in.world);
     }
     rgb *= controlled_shadow(in.world);
     if (flags & F_INSTANCE) != 0u {

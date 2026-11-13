@@ -111,7 +111,7 @@ impl DisplacementTool {
         };
         ui.label(RichText::new(info).weak());
         let o = &mut self.blend;
-        egui::Grid::new("hp_disp_blend_grid").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
+        hp_app::widgets::form(ui, "hp_disp_blend_grid", |ui| {
             row(ui, t!("disp.blend_width"), t!("disp.blend_width_tip"), |ui| {
                 drag(ui, &mut o.width, 1.0, hp_geom::MIN_BLEND_WIDTH..=hp_geom::MAX_BLEND_WIDTH, 1)
             });
@@ -154,7 +154,7 @@ impl DisplacementTool {
         section(ui, t!("disp.slope"));
         ui.label(RichText::new(t!("disp.slope_hint")).weak());
         self.slope_view_ui(ui, state);
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             if ui
                 .add_enabled(any, Button::new(t!("disp.slope_measure")))
                 .on_hover_text(t!("disp.slope_measure_tip"))
@@ -180,8 +180,8 @@ impl DisplacementTool {
             );
         }
         let o = &mut self.slope;
-        egui::CollapsingHeader::new(t!("disp.slope_limit")).id_salt("hp_disp_slope_limit").show(ui, |ui| {
-            egui::Grid::new("hp_disp_slope_limit_grid").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
+        hp_app::widgets::collapsing(ui, t!("disp.slope_limit")).id_salt("hp_disp_slope_limit").show(ui, |ui| {
+            hp_app::widgets::form(ui, "hp_disp_slope_limit_grid", |ui| {
                 row(ui, t!("disp.slope_max_angle"), t!("disp.slope_max_angle_tip"), |ui| {
                     drag(ui, &mut o.max_angle, 0.25, 1.0..=89.0, 2)
                 });
@@ -201,8 +201,8 @@ impl DisplacementTool {
         {
             actions.push(PanelAction::Slope(SlopeOp::Limit));
         }
-        egui::CollapsingHeader::new(t!("disp.slope_ramp")).id_salt("hp_disp_slope_ramp").show(ui, |ui| {
-            egui::Grid::new("hp_disp_slope_ramp_grid").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
+        hp_app::widgets::collapsing(ui, t!("disp.slope_ramp")).id_salt("hp_disp_slope_ramp").show(ui, |ui| {
+            hp_app::widgets::form(ui, "hp_disp_slope_ramp_grid", |ui| {
                 row(ui, t!("disp.slope_ramp_angle"), t!("disp.slope_ramp_angle_tip"), |ui| {
                     drag(ui, &mut o.ramp_angle, 0.25, 0.0..=89.0, 2)
                 });
@@ -245,8 +245,8 @@ impl DisplacementTool {
             }
         });
         let o = &mut self.slope;
-        egui::CollapsingHeader::new(t!("disp.slope_uniform")).id_salt("hp_disp_slope_uniform").show(ui, |ui| {
-            egui::Grid::new("hp_disp_slope_uniform_grid").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
+        hp_app::widgets::collapsing(ui, t!("disp.slope_uniform")).id_salt("hp_disp_slope_uniform").show(ui, |ui| {
+            hp_app::widgets::form(ui, "hp_disp_slope_uniform_grid", |ui| {
                 row(ui, t!("disp.slope_strength"), t!("disp.slope_strength_tip"), |ui| {
                     drag(ui, &mut o.uniform_strength, 0.01, 0.0..=1.0, 2)
                 });
@@ -263,9 +263,9 @@ impl DisplacementTool {
             actions.push(PanelAction::Slope(SlopeOp::Uniform));
         }
         let o = &mut self.slope;
-        egui::CollapsingHeader::new(t!("disp.slope_path")).id_salt("hp_disp_slope_path").show(ui, |ui| {
+        hp_app::widgets::collapsing(ui, t!("disp.slope_path")).id_salt("hp_disp_slope_path").show(ui, |ui| {
             ui.label(RichText::new(tf!("disp.slope_path_points", o.path.len())).weak());
-            egui::Grid::new("hp_disp_slope_path_grid").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
+            hp_app::widgets::form(ui, "hp_disp_slope_path_grid", |ui| {
                 row(ui, t!("disp.slope_path_width"), t!("disp.slope_path_width_tip"), |ui| {
                     drag(ui, &mut o.path_width, 1.0, 0.001..=65536.0, 1)
                 });
@@ -304,8 +304,8 @@ impl DisplacementTool {
             actions.push(PanelAction::Slope(SlopeOp::Path));
         }
         let o = &mut self.slope;
-        egui::CollapsingHeader::new(t!("disp.slope_smooth")).id_salt("hp_disp_slope_smooth").show(ui, |ui| {
-            egui::Grid::new("hp_disp_slope_smooth_grid").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
+        hp_app::widgets::collapsing(ui, t!("disp.slope_smooth")).id_salt("hp_disp_slope_smooth").show(ui, |ui| {
+            hp_app::widgets::form(ui, "hp_disp_slope_smooth_grid", |ui| {
                 row(ui, t!("disp.erosion_iterations"), t!("disp.slope_smooth_passes_tip"), |ui| {
                     ui.add(egui::DragValue::new(&mut o.smooth_passes).range(1..=1000))
                 });
@@ -322,20 +322,20 @@ impl DisplacementTool {
             actions.push(PanelAction::Slope(SlopeOp::Smooth));
         }
         let o = &mut self.slope;
-        egui::CollapsingHeader::new(t!("disp.slope_select")).id_salt("hp_disp_slope_select").show(ui, |ui| {
-            egui::Grid::new("hp_disp_slope_select_grid").num_columns(2).spacing([8.0, 4.0]).show(ui, |ui| {
+        hp_app::widgets::collapsing(ui, t!("disp.slope_select")).id_salt("hp_disp_slope_select").show(ui, |ui| {
+            hp_app::widgets::form(ui, "hp_disp_slope_select_grid", |ui| {
                 row(ui, t!("disp.slope_max_angle"), t!("disp.slope_select_angle_tip"), |ui| {
                     drag(ui, &mut o.select_angle, 0.25, 0.0..=90.0, 2)
                 });
                 row(ui, t!("disp.slope_select_which"), t!("disp.slope_select_which_tip"), |ui| {
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         ui.selectable_value(&mut o.select_above, true, t!("disp.slope_select_above"));
                         ui.selectable_value(&mut o.select_above, false, t!("disp.slope_select_below"));
                     })
                     .response
                 });
                 row(ui, t!("disp.slope_select_match"), t!("disp.slope_select_match_tip"), |ui| {
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         ui.selectable_value(&mut o.select_match, SelectMatch::Any, t!("disp.slope_select_any"));
                         ui.selectable_value(&mut o.select_match, SelectMatch::All, t!("disp.slope_select_all"));
                     })
@@ -372,7 +372,7 @@ impl DisplacementTool {
                     .is_some();
             }
         });
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label(t!("disp.walk_angle"));
             changed |= ui
                 .add(

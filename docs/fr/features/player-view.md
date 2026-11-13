@@ -30,6 +30,7 @@ La vue joueur vous fait parcourir la map dans la vue 3D comme un joueur de Garry
 | `N` | Affiche les textures outils (nodraw, clips, triggers), masquées par défaut comme en jeu. |
 | `B` | Monde compilé ou brushes de l'éditeur. |
 | `L` | Lightmaps de la map compilée, ou ombrage de l'éditeur. |
+| `K` | Écoute : joue le soundscape actif et les sons `ambient_generic` avec la distance, comme le moteur (désactivée par défaut, voir [Soundscapes](soundscapes.md)). |
 | `H` | Masque ou affiche les compteurs. |
 | `1` à `9` | Allumer ou éteindre une lumière nommée. |
 | `Échap`, `F6` | Quitter. |
@@ -61,7 +62,8 @@ Un coin de la vue affiche (masquez-le avec `H`) :
 - **En jeu** : le cluster où vous êtes, sa zone, le nombre de clusters que le jeu dessine depuis là (PVS et area portals), et les faces, triangles, displacements, props et overlays que le jeu dessinerait. Sans données de visibilité : « compilez la map avec VVIS » ;
 - **Area portals** : combien sont ouverts, traversés par le regard, et les zones dessinées. Les mêmes chiffres sans area portals sont donnés pour comparer ;
 - l'éclairage et les cubemaps utilisés, les styles de lumière utilisés ;
-- la vitesse et la hauteur des pieds, les images par seconde et le mode de caméra (1re personne, 3e personne, noclip).
+- la vitesse et la hauteur des pieds, les images par seconde et le mode de caméra (1re personne, 3e personne, noclip) ;
+- **Écoute** : coupée, ou le soundscape joué avec ses sons en boucle, les sons `ambient_generic` et le volume (`K`, voir [Soundscapes](soundscapes.md)).
 
 ## Filaire (X)
 

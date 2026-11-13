@@ -48,7 +48,9 @@ pub fn tool_group(tool: ToolId) -> PaletteGroup {
         | ToolId::Curve
         | ToolId::Road
         | ToolId::Pipe
-        | ToolId::Sprinkle => PaletteGroup::Create,
+        | ToolId::Spline
+        | ToolId::Sprinkle
+        | ToolId::Foliage => PaletteGroup::Create,
         ToolId::Texture
         | ToolId::Decal
         | ToolId::Overlay
@@ -157,7 +159,25 @@ pub fn tool_strip(ui: &mut Ui, state: &mut AppState) -> Option<egui::Rect> {
         .exact_size(width)
         .frame(frame)
         .show(ui, |ui| tool_palette(ui, state));
-    Some(r.response.rect)
+    let rect = r.response.rect;
+    let edge = egui::Rect::from_x_y_ranges((rect.right() - EDGE_GRAB)..=rect.right(), rect.y_range());
+    let edge = ui.interact(edge, egui::Id::unique(RESIZE_ID), egui::Sense::drag());
+    if edge.hovered() || edge.dragged() {
+        ui.set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+    }
+    if edge.dragged()
+        && let Some(pos) = edge.interact_pointer_pos()
+    {
+        set_palette_columns(state, columns_for_width(pos.x - rect.left()));
+    }
+    Some(rect)
+}
+
+pub const RESIZE_ID: &str = "hp_tools_resize";
+const EDGE_GRAB: f32 = 4.0;
+
+pub fn columns_for_width(width: f32) -> u8 {
+    if width > (strip_width(1) + strip_width(2)) / 2.0 { 2 } else { 1 }
 }
 
 pub fn strip_fill(visuals: &egui::Visuals) -> Color32 {
@@ -406,6 +426,8 @@ mod tests {
                 T(ToolId::Sprinkle),
                 T(ToolId::Road),
                 T(ToolId::Pipe),
+                T(ToolId::Spline),
+                T(ToolId::Foliage),
                 S,
                 T(ToolId::Texture),
                 A(Action::ApplyCurrentTexture),
@@ -678,6 +700,50 @@ mod tests {
         assert_eq!(state.settings.workflow.tool_palette_columns, 2);
         set_palette_columns(&mut state, 1);
         assert_eq!(strip_buttons(&mut state, egui::vec2(1600.0, 900.0)).len(), buttons.len());
+    }
+
+    #[test]
+    fn dragging_the_strip_edge_switches_the_columns() {
+        let _lang = hp_app::testing::lang_lock();
+        crate::register_translations();
+        let mut state = hp_app::testing::test_state();
+        set_palette_columns(&mut state, 1);
+        let ctx = egui::Context::default();
+        let drag = |state: &mut AppState, from: f32, to: f32| {
+            let (a, b) = (egui::pos2(from, 400.0), egui::pos2(to, 400.0));
+            let button = |pos, pressed| egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            };
+            let steps = [
+                vec![egui::Event::PointerMoved(a)],
+                vec![button(a, true)],
+                vec![egui::Event::PointerMoved(a.lerp(b, 0.5))],
+                vec![egui::Event::PointerMoved(b)],
+                vec![button(b, false)],
+                vec![],
+            ];
+            for events in steps {
+                let input = egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 900.0))),
+                    events,
+                    ..Default::default()
+                };
+                let mut out = ctx.run_ui(input, |ui| {
+                    tool_strip(ui, state);
+                    egui::CentralPanel::no_frame().show(ui, |_| {});
+                });
+                out.textures_delta.clear();
+            }
+        };
+        drag(&mut state, strip_width(1) - 1.5, strip_width(2) + 10.0);
+        assert_eq!(palette_columns(&state.settings.workflow), 2);
+        drag(&mut state, strip_width(2) - 1.5, strip_width(1) - 10.0);
+        assert_eq!(palette_columns(&state.settings.workflow), 1);
+        assert_eq!(columns_for_width(strip_width(1)), 1);
+        assert_eq!(columns_for_width(strip_width(2)), 2);
     }
 
     #[test]

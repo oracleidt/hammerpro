@@ -167,10 +167,29 @@ pub fn previewed_sky_camera(state: &crate::AppState) -> Option<Id> {
     hp_editor::sky::is_sky_camera(&node.entity).then_some(id)
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DetailPreviewRequest {
     pub enabled: bool,
     pub eye: [f32; 3],
+    pub split: Option<std::sync::Arc<DetailSplit>>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SplitFragment {
+    pub face: usize,
+    pub side: u16,
+    pub material: String,
+    pub points: Vec<[f32; 3]>,
+    pub origin: [f32; 3],
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DetailSplit {
+    pub signature: u64,
+    pub options: u64,
+    pub external: bool,
+    pub fragments: Vec<SplitFragment>,
+    pub disp_faces: Vec<(usize, u16)>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -199,11 +218,15 @@ pub struct DetailPreviewReport {
     pub view_distance: f32,
     pub fade_distance: f32,
     pub types: Vec<DetailTypeReport>,
+    pub type_names: Vec<String>,
+    pub disabled_faces: usize,
+    pub exact: bool,
 }
 
 #[derive(Debug, Default)]
 pub struct RenderRuntime {
     pub detail_preview: DetailPreviewReport,
+    pub detail_split: Option<std::sync::Arc<DetailSplit>>,
     pub fog_controller: Option<Id>,
     pub sky_camera: Option<Id>,
     pub views_rendered: u64,

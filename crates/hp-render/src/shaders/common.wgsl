@@ -340,3 +340,32 @@ fn apply_fog_black(rgb: vec3<f32>, world: vec3<f32>) -> vec3<f32> {
     fog_far_clip(world);
     return fog_blend(rgb, vec3<f32>(0.0), fog_amount(world));
 }
+
+fn grid_coverage(world: vec3<f32>, n: vec3<f32>) -> vec2<f32> {
+    let a = abs(n);
+    var p = world.xy;
+    if a.x > a.z && a.x >= a.y {
+        p = world.yz;
+    } else if a.y > a.z && a.y > a.x {
+        p = world.xz;
+    }
+    let step = max(view.grid3d.x, 1e-3);
+    let major_step = step * max(view.grid3d.y, 1.0);
+    let g = p / step;
+    let w = max(fwidth(g), vec2<f32>(1e-5));
+    let d = abs(fract(g - 0.5) - 0.5) / w;
+    let minor = 1.0 - min(min(d.x, d.y), 1.0);
+    let gm = p / major_step;
+    let wm = max(fwidth(gm), vec2<f32>(1e-5));
+    let dm = abs(fract(gm - 0.5) - 0.5) / wm;
+    let major = 1.0 - min(min(dm.x, dm.y), 1.0);
+    let dense = clamp((1.0 / max(w.x, w.y) - 3.0) / 3.0, 0.0, 1.0);
+    return vec2<f32>(minor * dense, major);
+}
+
+fn grid_3d_mix(rgb: vec3<f32>, grid: vec2<f32>, world: vec3<f32>) -> vec3<f32> {
+    let fade = 1.0 - smoothstep(view.grid3d.z * 0.6, view.grid3d.z, distance(world, view.eye.xyz));
+    let minor = grid.x * view.grid3d.w * fade;
+    let major = grid.y * min(view.grid3d.w * 1.6, 1.0) * fade;
+    return mix(rgb, vec3<f32>(1.0), max(minor * 0.55, major * 0.8));
+}

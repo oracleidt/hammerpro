@@ -16,6 +16,7 @@ action_list! { placement_actions {
     FitToGround => "fit_to_ground", Tools, ToolsPlaceObjects, sc(ALT, Key::G), Ready;
     ShowShapePreview => "show_shape_preview", Tools, ToolsPlaceObjects, sc(ALT_SHIFT, Key::M), Ready;
     ToggleRealDimensions => "toggle_real_dimensions", View, ViewDisplayInfo, sc(ALT, Key::M), Ready;
+    ToolFoliage => "tool_foliage", Tools, ToolsScatter, None, Ready;
 }}
 
 pub(super) const REPEATS: &[Action] = &[];
@@ -88,4 +89,12 @@ pub(super) const TR: TrTable = &[
     ("placement.real.resting", "rests on the floor", "posé au sol"),
     ("placement.real.no_floor", "nothing below", "rien en dessous"),
     ("placement.real.overlap", "overlaps by {0}", "chevauche de {0}"),
+    ("action.tool_foliage", "Foliage paint tool", "Outil de peinture de végétation"),
+    ("tool.foliage", "Foliage", "Végétation"),
+    ("shell.undo.foliage_paint", "Foliage paint", "Peinture de végétation"),
+    ("shell.undo.foliage_erase", "Foliage erase", "Effacement de végétation"),
+    ("shell.undo.detail_paint", "Detail paint", "Peinture des détails"),
+    ("shell.undo.mcp_paint_foliage", "MCP: paint foliage", "MCP : peinture de végétation"),
+    ("shell.undo.mcp_erase_foliage", "MCP: erase foliage", "MCP : effacement de végétation"),
+    ("shell.undo.mcp_set_face_detail_type", "MCP: face detail type", "MCP : type de détail des faces"),
 ];

@@ -184,6 +184,15 @@ fn make_tools() -> (Vec<Box<dyn Tool>>, Vec<ToolId>) {
     (tools, ids)
 }
 
+fn tool_panel(ui: &mut egui::Ui, tool: &mut dyn Tool, state: &mut AppState) -> egui::scroll_area::ScrollAreaOutput<()> {
+    let width = ui.available_width() - ui.spacing().scroll.allocated_width();
+    egui::ScrollArea::both().id_salt("hp_tool_panel").auto_shrink([false, true]).show(ui, |ui| {
+        ui.set_max_width(width);
+        ui.spacing_mut().slider_width = (width * 0.45).clamp(48.0, 100.0);
+        tool.options_ui(ui, state);
+    })
+}
+
 fn tool_index(id: ToolId) -> usize {
     ToolId::ALL.iter().position(|&t| t == id).unwrap_or(0)
 }
@@ -746,15 +755,16 @@ impl HammerProApp {
         self.dock(ui);
 
         if self.state.settings.ui.show_console {
-            let max = crate::panel_layout::console_max(ui.available_height());
-            egui::Panel::bottom("hp_console")
-                .resizable(true)
-                .default_size(crate::panel_layout::CONSOLE_DEFAULT.min(max))
-                .min_size(crate::panel_layout::CONSOLE_MIN)
-                .max_size(max)
-                .show(ui, |ui| {
-                    self.shell.console(ui, &mut self.state);
-                });
+            use crate::panel_layout as pl;
+            let max = pl::console_max(ui.available_height());
+            let wanted = self.state.settings.ui.console_height;
+            let r = pl::sized_panel(ui, pl::Side::Bottom, "hp_console", wanted, (pl::CONSOLE_MIN, max), |ui| {
+                self.shell.console(ui, &mut self.state);
+            });
+            self.state.ui.console_size = r.size;
+            if let Some(height) = r.committed {
+                self.commit_panel_size(height, |s| &mut s.console_height);
+            }
         }
 
         egui::Panel::top("hp_map_tabs").exact_size(crate::tabs::TAB_BAR_HEIGHT).show(ui, |ui| {
@@ -780,9 +790,11 @@ impl HammerProApp {
         }
         self.phases.mark(Phase::Sync);
         {
+            crate::dispatch::detail_split::tick(&mut self.state, ui.ctx());
             let request = hp_app::runtime::render::DetailPreviewRequest {
                 enabled: self.state.settings.render.detail_preview,
                 eye: self.state.cameras.cam3d.pos.as_vec3().to_array(),
+                split: self.state.runtime.render.detail_split.clone(),
             };
             let AppState { assets, doc, gfx, runtime, .. } = &mut self.state;
             if let Some(gfx) = gfx.as_mut() {
@@ -855,13 +867,10 @@ impl HammerProApp {
         if !tabs.iter().any(|(t, _)| *t == self.state.ui.right_tab) {
             self.state.ui.right_tab = tabs[0].0;
         }
-        let max = crate::panel_layout::dock_max(ui.available_width());
-        let panel = egui::Panel::right("hp_dock")
-            .resizable(true)
-            .default_size(crate::panel_layout::DOCK_DEFAULT.min(max))
-            .min_size(crate::panel_layout::DOCK_MIN)
-            .max_size(max);
-        panel.show(ui, |ui| {
+        use crate::panel_layout as pl;
+        let max = pl::dock_max(ui.available_width());
+        let wanted = self.state.settings.ui.dock_width;
+        let r = pl::sized_panel(ui, pl::Side::Right, "hp_dock", wanted, (pl::DOCK_MIN, max), |ui| {
             self.shell.selection_bar(ui, &mut self.state);
             ui.separator();
             ui.horizontal_wrapped(|ui| {
@@ -887,15 +896,25 @@ impl HammerProApp {
             ui.separator();
             self.dock_panel_ui(ui, self.state.ui.right_tab);
         });
+        self.state.ui.dock_size = r.size;
+        if let Some(width) = r.committed {
+            self.commit_panel_size(width, |s| &mut s.dock_width);
+        }
+    }
+
+    fn commit_panel_size(&mut self, size: f32, field: impl FnOnce(&mut hp_app::settings::UiSettings) -> &mut f32) {
+        let slot = field(&mut self.state.settings.ui);
+        if (*slot - size).abs() > 0.5 {
+            *slot = size;
+            self.state.settings_dirty = true;
+        }
     }
 
     fn dock_panel_ui(&mut self, ui: &mut egui::Ui, tab: RightTab) {
         match tab {
             RightTab::Tool => {
                 let i = tool_index(self.state.tool);
-                egui::ScrollArea::vertical().id_salt("hp_tool_panel").show(ui, |ui| {
-                    self.tools[i].options_ui(ui, &mut self.state);
-                });
+                tool_panel(ui, self.tools[i].as_mut(), &mut self.state);
             }
             RightTab::Textures => self.textures.ui(ui, &mut self.state),
             RightTab::Entity => self.entity_panel.ui(ui, &mut self.state),
@@ -2050,6 +2069,116 @@ mod tests {
         tools[super::tool_index(state.tool)].deactivate(state);
         state.tool = id;
         tools[super::tool_index(id)].activate(state);
+    }
+
+    fn tool_panel_variants(id: hp_app::ToolId) -> Vec<Vec<(&'static str, &'static str)>> {
+        use hp_app::ToolId;
+        match id {
+            ToolId::Displacement => {
+                let mut v = vec![vec![("mode", "select")], vec![("mode", "alpha")], vec![("mode", "tag")]];
+                for effect in ["raise", "lower", "smooth", "set", "relax", "slope"] {
+                    v.push(vec![("mode", "geometry"), ("effect", effect)]);
+                }
+                v.push(vec![("mode", "geometry"), ("axis", "custom")]);
+                for op in ["push", "carve", "project", "pinch", "grab", "inflate", "flatten", "relax"] {
+                    v.push(vec![("mode", "sculpt"), ("sculpt", op)]);
+                }
+                v
+            }
+            ToolId::Foliage => ["paint", "erase", "detail_alpha", "detail_face"].map(|m| vec![("mode", m)]).to_vec(),
+            _ => vec![Vec::new()],
+        }
+    }
+
+    fn overflowing_texts(shapes: &[egui::epaint::ClippedShape], right: f32) -> Vec<String> {
+        let mut out: Vec<String> = shapes
+            .iter()
+            .filter_map(|s| {
+                let r = s.shape.visual_bounding_rect();
+                if !(r.max.x > right + 0.5 && r.max.x < 4000.0) {
+                    return None;
+                }
+                let what = match &s.shape {
+                    egui::Shape::Text(t) => t.galley.text().to_owned(),
+                    other => format!("{:?}", std::mem::discriminant(other)),
+                };
+                Some((r.min.y, format!("{what} [{:.0}..{:.0} y{:.0}]", r.min.x, r.max.x, r.min.y)))
+            })
+            .filter(|(y, _)| *y > 1.0)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(|(y, t)| (y as i64, t))
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .map(|(_, t)| t)
+            .collect();
+        out.truncate(6);
+        out
+    }
+
+    #[test]
+    fn every_tool_panel_fits_a_narrow_dock() {
+        use hp_editor::{ObjRef, SelectOp};
+        super::register_all_translations();
+        let _lang = hp_app::testing::lang_lock();
+        let (mut tools, ids) = super::make_tools();
+        let mut state = hp_app::testing::test_state();
+        state.doc.select(&[ObjRef::Solid(2)], SelectOp::Replace);
+        let palette = state.settings.placement.foliage.palette_mut();
+        palette.add_model("models/props_foliage/a_rather_long_tree_model_name_01.mdl");
+        palette.add_model("models/props/de_inferno/bush01.mdl");
+        let mut grew = Vec::new();
+        for lang in hp_app::i18n::Lang::ALL {
+            hp_app::i18n::set_lang(lang);
+            for &id in &ids {
+                switch(&mut tools, &mut state, id);
+                let i = super::tool_index(id);
+                if id == hp_app::ToolId::Displacement {
+                    state.doc.select(&[ObjRef::Solid(2)], SelectOp::Replace);
+                    tools[i].set_option(&mut state, "create", "3");
+                }
+                for variant in tool_panel_variants(id) {
+                    for (key, value) in &variant {
+                        tools[i].set_option(&mut state, key, value);
+                    }
+                    if !tools[i].wants_side_panel() {
+                        continue;
+                    }
+                    let ctx = egui::Context::default();
+                    hp_app::theme::apply(&ctx, hp_app::settings::ThemeChoice::Dark, 1.0);
+                    ctx.data_mut(|d| d.insert_temp(hp_app::widgets::open_all_sections_id(), true));
+                    let (mut width, mut content, mut right) = (0.0f32, 0.0f32, 0.0f32);
+                    let mut shapes = Vec::new();
+                    for _ in 0..8 {
+                        state.frame.index += 1;
+                        let input = egui::RawInput {
+                            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 1600.0))),
+                            ..Default::default()
+                        };
+                        let mut out = ctx.run_ui(input, |ui| {
+                            let r = egui::Panel::right("hp_test_dock")
+                                .resizable(true)
+                                .default_size(crate::panel_layout::DOCK_MIN)
+                                .min_size(crate::panel_layout::DOCK_MIN)
+                                .show(ui, |ui| super::tool_panel(ui, tools[i].as_mut(), &mut state));
+                            width = r.response.rect.width();
+                            content = r.inner.content_size.x - r.inner.inner_rect.width();
+                            right = r.inner.inner_rect.max.x;
+                        });
+                        out.textures_delta.clear();
+                        shapes = out.shapes;
+                    }
+                    if width > crate::panel_layout::DOCK_MIN + 0.5 || content > 0.5 {
+                        grew.push(format!(
+                            "{lang:?} {id:?} {variant:?}: panel {width}, content wider by {content}: {:?}",
+                            overflowing_texts(&shapes, right)
+                        ));
+                    }
+                }
+            }
+        }
+        hp_app::i18n::set_lang(hp_app::i18n::Lang::En);
+        assert!(grew.is_empty(), "tool panels wider than the narrow dock: {grew:#?}");
     }
 
     #[test]

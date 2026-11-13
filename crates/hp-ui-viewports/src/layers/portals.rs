@@ -16,6 +16,7 @@ pub(crate) fn layers() -> Vec<Box<dyn OverlayLayer>> {
 pub(crate) const TR: TrTable = &[
     ("viewport.instant_leak", "Leak (instant check): entity", "Fuite (vérification instantanée) : entité"),
     ("viewport.instant_void", "Leak: void", "Fuite : vide"),
+    ("viewport.compiler_leak", "Leak (compiler flood): entity", "Fuite (remplissage du compilateur) : entité"),
     ("viewport.pvs_from", "Visibility from cluster {0}", "Visibilité depuis le cluster {0}"),
     ("viewport.pvs_from_cost", "Visibility from cluster {0}: {1}", "Visibilité depuis le cluster {0} : {1}"),
     (
@@ -309,7 +310,9 @@ impl OverlayLayer for LeakLayer {
 
     fn paint(&self, state: &AppState, view: &ViewInfo, painter: &egui::Painter) {
         let Some(points) = Self::points(state) else { return };
-        let mut labels = vec![(*points.last().unwrap_or(&DVec3::ZERO), "viewport.instant_leak", INSTANT_LEAK_START)];
+        let by_compiler = state.runtime.health.leak.as_ref().is_some_and(|l| l.report.compiler);
+        let key = if by_compiler { "viewport.compiler_leak" } else { "viewport.instant_leak" };
+        let mut labels = vec![(*points.last().unwrap_or(&DVec3::ZERO), key, INSTANT_LEAK_START)];
         if points.len() > 1 {
             labels.push((points[0], "viewport.instant_void", INSTANT_LEAK_END));
         }

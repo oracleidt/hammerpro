@@ -67,6 +67,7 @@ Le menu du clic droit des vues propose aussi **Scinder la face**, **Mettre les s
 - Un glissement montre son résultat en direct et devient une seule étape d'annulation au relâchement. Plusieurs décalages au clavier à la suite se fusionnent en une seule étape.
 - Un solide doit rester convexe. Si un déplacement mettait un sommet à l'intérieur du solide, sur une de ses faces ou une de ses arêtes, ou rendait le solide plat, la barre d'état explique pourquoi et la modification est annulée au relâchement.
 - **Fusion** : un sommet déplacé lâché à moins de la **Distance de fusion** d'un sommet resté immobile se colle à lui, et les deux ne forment plus qu'un.
+- **Sommets les uns sur les autres** : par défaut, les sommets superposés fusionnent simplement, comme dans les versions précédentes. Activez **Sommets superposés** > **Demander avant de fusionner les sommets superposés** dans les paramètres (`vertex.merge_prompt` = `ask`) pour obtenir la question de Hammer quand un déplacement (glisser dans une vue 2D ou 3D, flèches, **Aimanter à la grille**, aligner, mise à l'échelle, rotation ou glissement d'une boucle d'arêtes) se termine avec des sommets d'un solide les uns sur les autres : **Ces sommets sont les uns sur les autres. Les fusionner ?** **Oui** (`Entrée`) les fusionne en un seul sommet, dans la même étape d'annulation que le déplacement. **Non** (`Échap`) remet les sommets où ils étaient avant le déplacement. La forme fusionnée est dessinée dans les vues tant que la question est ouverte. **Ne plus demander, toujours fusionner** dans la question passe le paramètre à **Toujours fusionner les sommets superposés**.
 - **Displacements** : une face garde son displacement tant qu'elle reste la même face à 4 côtés. Sinon le displacement est supprimé et un message indique combien ont été perdus. Un badge d'avertissement dans la barre d'options le rappelle quand les solides édités ont des displacements.
 
 ## Barre d'options
@@ -149,6 +150,7 @@ MCP : `select_edge_loop`, `select_edge_ring` et `grow_edge_selection` (mode `gro
 | --- | --- | --- |
 | **Aperçu en direct pendant le glissement** (`mesh.live_preview`) | Les solides glissés montrent leur nouvelle forme avec leurs textures tant que le bouton est maintenu (jusqu'à 64 solides à la fois ; au-delà, seules les arêtes sont montrées) | Activé |
 | **Verrouillage UV** (`mesh.uv_lock`) | Comme l'option de la barre d'options | Désactivé |
+| **Sommets superposés** (`vertex.merge_prompt`) | Ce qui se passe quand un déplacement se termine avec des sommets d'un solide les uns sur les autres : **Désactivé** (`off`) les fusionne sans question comme dans les versions précédentes, **Demander avant de fusionner les sommets superposés** (`ask`) pose la question, **Toujours fusionner les sommets superposés** (`always`), **Ne jamais fusionner les sommets superposés** (`never`, le déplacement est annulé) | Désactivé |
 
 ## Astuces
 
@@ -163,9 +165,11 @@ MCP : `select_edge_loop`, `select_edge_ring` et `grow_edge_selection` (mode `gro
 
 **Comment fusionner deux sommets ?** Glissez l'un sur l'autre. Tout sommet lâché à moins de la **Distance de fusion** (1 unité par défaut) d'un sommet immobile est soudé à lui. Pour en fusionner plusieurs d'un coup, sélectionnez-les et utilisez **Souder les sommets sélectionnés**, ou **Souder les sommets par distance** pour fusionner chaque paire proche.
 
+**Pourquoi une question apparaît-elle quand je glisse un sommet sur un autre ?** **Sommets superposés** est réglé sur **Demander avant de fusionner les sommets superposés** et le déplacement a laissé deux sommets du solide l'un sur l'autre. **Oui** les fusionne, **Non** annule le déplacement. Pour ne plus avoir la question, cochez **Ne plus demander, toujours fusionner** ou remettez **Sommets superposés** sur **Désactivé** dans les paramètres.
+
 **Mes textures s'étirent quand je bouge les sommets.** Le **Verrouillage UV** est activé : les textures suivent les sommets. Désactivez-le pour garder les textures fixes dans le monde.
 
-**Peut-on éditer les sommets avec un assistant IA ?** Oui, les outils MCP `get_brush_vertices`, `set_brush_vertices`, `move_brush_vertices` et `snap_brush_vertices` font les mêmes modifications (voir la [référence des outils MCP](../../MCP.md), en anglais).
+**Peut-on éditer les sommets avec un assistant IA ?** Oui, les outils MCP `get_brush_vertices`, `set_brush_vertices`, `move_brush_vertices` et `snap_brush_vertices` font les mêmes modifications (voir la [référence des outils MCP](../../MCP.md), en anglais). `move_brush_vertices` ne pose jamais la question de fusion : son argument `merge` y répond (`off` par défaut, le comportement des versions précédentes ; `yes`, `no` ou `ask`), et `set_setting` `vertex.merge_prompt` change le paramètre.
 
 **Comment sélectionner toute la ligne d'arêtes autour d'une face de brush ou le long d'un mur ?** `Alt`+clic sur l'une de ses arêtes. `Ctrl+Alt`+clic sélectionne plutôt les arêtes parallèles.
 

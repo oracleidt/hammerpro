@@ -39,6 +39,8 @@ pub struct CompileOptions {
     pub prop_debug: bool,
     pub format: hp_bsp::BspFormat,
     pub vis_cache: Option<crate::vis::VisCache>,
+    pub flood_only: bool,
+    pub cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
 }
 
 pub const RELAXED_NOTE: &str = "the game would refuse this map; this compile goes on";
@@ -83,6 +85,8 @@ impl Default for CompileOptions {
             prop_debug: false,
             format: hp_bsp::BspFormat::default(),
             vis_cache: None,
+            flood_only: false,
+            cancel: None,
         }
     }
 }
@@ -129,6 +133,7 @@ pub struct CompileOutput {
     pub vis_portals: Vec<ClusterPortal>,
     pub prt: String,
     pub trace: Option<String>,
+    pub leak_entity: Option<u32>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -143,6 +148,14 @@ pub enum CompileError {
     Leaked { path: Vec<DVec3> },
     #[error("{0}")]
     Failed(String),
+    #[error("the compile was cancelled")]
+    Cancelled,
+}
+
+impl CompileOptions {
+    fn cancelled(&self) -> bool {
+        self.cancel.as_ref().is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed))
+    }
 }
 
 struct ModelSrc {
@@ -353,6 +366,24 @@ pub fn compile(
     compile_once(map, materials, model_files, &lean, log, &mut None)
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct FloodLeak {
+    pub entity: Option<u32>,
+    pub path: Vec<DVec3>,
+}
+
+pub fn flood_check(
+    map: &hp_vmf::Map,
+    materials: &dyn MaterialSource,
+    cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    log: &mut dyn FnMut(&str),
+) -> Result<Option<FloodLeak>, CompileError> {
+    let opts =
+        CompileOptions { flood_only: true, relaxed_limits: true, preview: true, cancel, ..CompileOptions::default() };
+    let out = compile_once(map, materials, &crate::props::NoModels, &opts, log, &mut None)?;
+    Ok(out.leak.map(|path| FloodLeak { entity: out.leak_entity, path }))
+}
+
 fn compile_once(
     map: &hp_vmf::Map,
     materials: &dyn MaterialSource,
@@ -404,8 +435,19 @@ fn compile_once(
             .filter(|m| seen.insert(m.to_ascii_lowercase()))
             .collect();
         log(&format!("Resolving {} unique materials", names.len()));
-        names.par_iter().map(|m| (m.to_ascii_lowercase(), materials.facts(m))).collect::<Vec<_>>().into_iter().collect()
+        names
+            .par_iter()
+            .map(|m| {
+                let f = if opts.cancelled() { crate::materials::MaterialFacts::default() } else { materials.facts(m) };
+                (m.to_ascii_lowercase(), f)
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+            .collect()
     };
+    if opts.cancelled() {
+        return Err(CompileError::Cancelled);
+    }
     let mut missing: Vec<String> = Vec::new();
     let mut facts_of = |name: &str| -> crate::materials::MaterialFacts {
         let k = name.to_ascii_lowercase();
@@ -443,6 +485,9 @@ fn compile_once(
     let load = BrushLoad::of(opts);
     log("Loading brush geometry...");
     for (ei, ent) in entities.iter().enumerate() {
+        if opts.cancelled() {
+            return Err(CompileError::Cancelled);
+        }
         let class = ent.classname.clone();
         let into_world = ei == 0 || merges_into_world(&class);
         let areaportal = ei != 0 && crate::areas::is_areaportal_class(&class);
@@ -821,8 +866,14 @@ fn compile_once(
     }
     let contents_list = world_contents;
     stage("first tree");
+    if opts.cancelled() {
+        return Err(CompileError::Cancelled);
+    }
     let mut portals1 = Portals::make(&mut tree1, &planes);
     stage("first portals");
+    if opts.cancelled() {
+        return Err(CompileError::Cancelled);
+    }
     if let Ok(v) = std::env::var("HP_BSPC_DEBUG_POINT") {
         let n: Vec<f64> = v.split(',').filter_map(|x| x.trim().parse().ok()).collect();
         if n.len() == 3 {
@@ -840,6 +891,7 @@ fn compile_once(
     }
     let (placed, mut leaked) = portals1.flood(&mut tree1, &planes, &flood_origins);
     let mut leak_path = None;
+    let mut leak_entity = None;
     let no_inside = placed.is_empty();
     if no_inside {
         log(NO_INSIDE);
@@ -849,6 +901,7 @@ fn compile_once(
         let (mut path, end) = portals1.leak_path(&tree1);
         let occupant = tree1.nodes[end].occupant;
         if let Some(e) = occupant.and_then(|i| entities.get(i)) {
+            leak_entity = Some(e.id);
             let o = key(e, "origin").and_then(parse_vec).unwrap_or(DVec3::ZERO);
             path.push(o);
             log("**** leaked ****");
@@ -872,6 +925,10 @@ fn compile_once(
             return Err(CompileError::Leaked { path });
         }
         leak_path = Some(path);
+    }
+    if opts.flood_only {
+        stage("flood");
+        return Ok(CompileOutput { leak: leak_path, leak_entity, ..CompileOutput::default() });
     }
     leaked |= no_inside;
     portals1.mark_visible_sides(&tree1, &planes, &mut brushes);
@@ -1656,6 +1713,7 @@ Probably too many areaportals"
         vis_portals,
         prt,
         trace: trace_text,
+        leak_entity,
     })
 }
 

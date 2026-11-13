@@ -218,10 +218,7 @@ fn bounce_one(
         let (g, f, fl) = (&grids[*fi], &faces[*fi], &lights[*fi]);
         let radius = blur_radius(rays, g.step);
         let (wx, wy) = (blur_weights(&g.xs, radius), blur_weights(&g.ys, radius));
-        let keep: Vec<bool> =
-            g.ys.iter()
-                .flat_map(|&y| g.xs.iter().map(move |&x| !fl.dark.get(y * f.w + x).copied().unwrap_or(false)))
-                .collect();
+        let keep = g.keep(f, fl);
         let mut tmp = Vec::new();
         for plane in planes.chunks_exact_mut(g.gw * g.gh) {
             blur_grid(plane, &keep, (&wx, &wy), &mut tmp);

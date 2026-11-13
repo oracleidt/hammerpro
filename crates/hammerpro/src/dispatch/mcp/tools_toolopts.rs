@@ -27,6 +27,8 @@ const TOOL_NAMES: &[&str] = &[
     "road",
     "pipe",
     "physics",
+    "spline",
+    "foliage",
 ];
 
 const MAX_OPTIONS: usize = 64;
@@ -41,11 +43,14 @@ domain! { "tool options";
         tex_scale, create_as, keep_active), the road tool (lanes, lane_width, shoulder, thickness, step, \
         tex_scale, material, shoulder_material, line_material, center_material, center_line, edge_line, \
         divider_line (none, solid, dashed, double), line_width, dash, gap, roll_start, roll_end, auto_bank, \
-        auto_bank_limit, follow_terrain, lift, base_height, create_as, keep_active, selected_point (numbered from 1), point_x, point_y, point_z and fit_width), the pipe tool (shape, sides, radius, hollow, wall, segments, segment_length, bend_radius, bend_slices, collar_every, collar_size, collar_length, collar_ends, collar_bends, tex_scale, path, heading, depth, keep_active; create_pipe builds a pipe without the tool), the clip tool (keep: front, back, both; three_point; axis of the \
+        auto_bank_limit, follow_terrain, lift, base_height, create_as, keep_active, selected_point (numbered from 1), point_x, point_y, point_z and fit_width), the pipe tool (shape, sides, radius, hollow, wall, segments, segment_length, bend_radius, bend_slices, collar_every, collar_size, collar_length, collar_ends, collar_bends, tex_scale, path, heading, depth, keep_active; create_pipe builds a pipe without the tool), the spline tool (every option of create_spline: mode, interp, closed, follow_terrain, \
+        terrain_offset, profile, model, spacing, slack, models and the others; auto_regenerate, keep_active, selected_point \
+        (numbered from 1), point_x, point_y, point_z, point_roll, point_width, point_auto_handles; points and editing read \
+        only), the clip tool (keep: front, back, both; three_point; axis of the \
         Shift+click cut in the 3D view: auto, x, y, z; the cut face material follows the \
         brush.clip_current_material setting), the slice tool (orientation: left_right or top_bottom; segments 1 to 64, the number of cuts; slice_brushes slices without the tool), the path tool (class, base_name, loop, relink, offset; saved with the settings), the extrude / carve \
         tool (mode: carve, extrude; depth; through; new_faces: face, current), the bevel tool (radius, segments, \
-        inverse, new_faces: face, current), the vertex tool (merge_distance 0 to 16, weld_distance 0.001 to 64 and weld_target: center, first, last, for the weld_brush_vertices tool and the weld actions), the physics simulator (simulate: run that many seconds of physics on the selected brushes, props and ragdolls at once, paused afterwards; paused; keep: apply the positions and ragdoll poses in one undo step; reset; simulated and bodies, read only; gravity and the other values are the physics.* settings) and the displacement tool's brush (mode: select, geometry, alpha, sculpt, tag; \
+        inverse, new_faces: face, current), the vertex tool (merge_distance 0 to 16, weld_distance 0.001 to 64 and weld_target: center, first, last, for the weld_brush_vertices tool and the weld actions), the physics simulator (simulate: run that many seconds of physics on the selected brushes, props and ragdolls at once, paused afterwards; paused; keep: apply the positions and ragdoll poses in one undo step; reset; simulated and bodies, read only; gravity and the other values are the physics.* settings), the foliage tool (mode: paint, erase, detail_alpha, detail_face; palette (by name), radius, density, spacing, scale_min, scale_max, random_yaw, align, slope_min, slope_max, height_limit, height_min, height_max, avoid_overlap, drop_to_surface, random_skin, on_props, sink, strength and detail_type; saved with the settings as placement.foliage, paint_foliage and erase_foliage paint without the tool) and the displacement tool's brush (mode: select, geometry, alpha, sculpt, tag; \
         effect; axis: normal, subdiv, center, view, view_flat (toward the camera on X and Y only), x, y, z, \
         custom; radius (1 to 16384), strength (intensity), smooth, smooth_boost (smoothing multiplier 1 to 64), effect slope with \
         slope_brush_start, slope_brush_end and slope_brush_strength, target height and height_reference (face or world), falloff, spatial, line of sight, autosew (live sewing), selected only, continuous, alpha \
@@ -57,8 +62,11 @@ domain! { "tool options";
         "Change options of an editing tool like its panel does (names and values from get_tool_options), e.g. \
         tool select, options {\"stretch_handles\": false}, or tool displacement, options {\"axis\": \"view\", \"strength\": 200, \"autosew\": true}, or tool block, \
         options {\"kind\": \"arch\", \"arc\": 180, \"preview\": true}. Values are text, numbers, booleans or \
-        lists of numbers (custom_axis, carve_profile). With activate the tool becomes the active one. Answers \
-        the tool's options.",
+        lists of numbers (custom_axis, carve_profile). With activate the tool becomes the active one first. The options of one call are applied \
+        in a dependency order whatever their order in the object: the selected point first (road, spline), \
+        then the settings, then the actions that use them (physics: reset, simulate, paused, then keep; \
+        displacement: tag_selection, cast_shadows, lightmap_scale; selection: pending_box). Answers the tool's \
+        options.",
         {
             "tool": choice("The tool (default: the active one).", TOOL_NAMES),
             "options": { "type": "object", "description": "Option names to values." },
@@ -122,7 +130,7 @@ pub(crate) fn set_tool_options_on(
     let known = tool.option_values();
     if known.is_empty() {
         return ToolResult::error(format!(
-            "set_tool_options: the {} tool has no options to set (the selection, block, polygon, entity, decal, overlay, curve, road, pipe, clip, slice, extrude, bevel, vertex, path, physics and displacement tools have)",
+            "set_tool_options: the {} tool has no options to set (the selection, block, polygon, entity, decal, overlay, curve, road, pipe, clip, slice, extrude, bevel, vertex, path, physics, foliage and displacement tools have)",
             tool_name(id)
         ));
     }
@@ -135,9 +143,7 @@ pub(crate) fn set_tool_options_on(
         ));
     }
     let mut ordered: Vec<_> = options.iter().collect();
-    if id == ToolId::Road {
-        ordered.sort_by_key(|(key, _)| key != "selected_point");
-    }
+    ordered.sort_by_key(|(key, _)| tool.option_order(key));
     let mut set = Vec::new();
     for (k, v) in ordered {
         if !tool.set_option(state, k, v) {
@@ -182,11 +188,10 @@ fn set_tool_options(state: &mut AppState, a: &Args<'_>) -> R<Outcome> {
         return Err(format!("the {} tool is not available", tool_name(id)));
     }
     Ok(Outcome::AppFn(AppFn(Box::new(move |app, _ctx| {
-        let r = set_tool_options_on(&mut app.tools, &mut app.state, id, &options);
-        if activate && !r.is_error && app.state.tool != id {
-            app.state.request(id.action());
+        if activate && app.state.tool != id {
+            app.switch_tool(id);
         }
-        r
+        set_tool_options_on(&mut app.tools, &mut app.state, id, &options)
     }))))
 }
 
@@ -239,6 +244,45 @@ mod tests {
         assert!(!result.is_error);
         let now = tool_options_json(&tools, ToolId::Road, Some(ToolId::Road));
         assert_eq!(value(&now, "road", "point_z"), "0");
+    }
+
+    #[test]
+    fn spline_point_options_apply_after_the_point_selection_in_one_call() {
+        let mut state = hp_app::testing::test_state();
+        let mut spline = hp_tools_create::SplineTool::new();
+        spline.insert_point(0, glam::DVec3::new(0.0, 0.0, 0.0));
+        spline.insert_point(1, glam::DVec3::new(256.0, 0.0, 0.0));
+        spline.insert_point(2, glam::DVec3::new(512.0, 64.0, 0.0));
+        let mut tools: Vec<Box<dyn hp_app::Tool>> = vec![Box::new(spline)];
+        let options: Vec<(String, String)> = [("point_roll", "20"), ("point_width", "1.5"), ("selected_point", "2")]
+            .iter()
+            .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+            .collect();
+        let r = set_tool_options_on(&mut tools, &mut state, ToolId::Spline, &options);
+        assert!(!r.is_error, "{}", r.first_text());
+        let now = tool_options_json(&tools, ToolId::Spline, Some(ToolId::Spline));
+        assert_eq!(value(&now, "spline", "selected_point"), "2");
+        assert_eq!(value(&now, "spline", "point_roll"), "20");
+        assert_eq!(value(&now, "spline", "point_width"), "1.5");
+    }
+
+    #[test]
+    fn options_that_act_run_after_the_settings_they_use() {
+        let mut all = tools();
+        all.extend(hp_tools_physics::tools());
+        let order = |id: ToolId, key: &str| all.iter().find(|t| t.id() == id).expect("tool").option_order(key);
+        assert!(order(ToolId::Physics, "reset") < order(ToolId::Physics, "simulate"));
+        assert!(order(ToolId::Physics, "simulate") < order(ToolId::Physics, "paused"));
+        assert!(order(ToolId::Physics, "paused") < order(ToolId::Physics, "keep"));
+        for key in ["tag_kind", "tag_value", "mode", "radius"] {
+            assert!(order(ToolId::Displacement, key) < order(ToolId::Displacement, "tag_selection"), "{key}");
+        }
+        for key in ["box", "box_confirm", "element"] {
+            assert!(order(ToolId::Select, key) < order(ToolId::Select, "pending_box"), "{key}");
+        }
+        for id in [ToolId::Road, ToolId::Spline] {
+            assert!(order(id, "selected_point") < order(id, "point_x"), "{id:?}");
+        }
     }
 
     #[test]

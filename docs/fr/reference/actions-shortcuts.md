@@ -216,6 +216,8 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Options d'affichage > Aperçu des effets de volume | `toggle_entity_fx` |  |  |  |
 | Options d'affichage > Vue joueur | `toggle_player_view` | `F6` |  |  |
 | Options d'affichage > Prévisualiser les entités color_correction | `toggle_color_correction_preview` |  |  |  |
+| Aperçu de l'environnement > Afficher les soundscapes | `toggle_soundscape_view` |  |  |  |
+| Aperçu de l'environnement > Entendre les soundscapes dans la vue joueur | `toggle_soundscape_hearing` |  |  |  |
 | Masquer la sélection | `hide_selected` | `H` |  |  |
 | Masquer le reste | `hide_unselected` | `Ctrl+Maj+H` |  |  |
 | Tout afficher | `unhide_all` | `U` |  |  |
@@ -325,6 +327,16 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Mettre à jour depuis Blender | `pull_from_blender` |  |  |  |
 | Arrêter le lien direct avec Blender | `stop_blender_link` |  |  |  |
 | Installer l'add-on Blender | `install_blender_addon` |  |  |  |
+| Démarrer le lien direct avec Garry's Mod | `live_link_start` |  |  |  |
+| Arrêter le lien direct | `live_link_stop` |  |  |  |
+| État du lien direct... | `live_link_panel` |  |  |  |
+| Déclencher une entrée dans le jeu... | `live_link_fire_input` |  |  |  |
+| Téléporter le joueur à la caméra 3D | `live_link_teleport` |  |  |  |
+| Ramener le joueur | `live_link_teleport_back` |  |  |  |
+| Le joueur suit la caméra 3D | `live_link_camera_to_game` |  |  |  |
+| La caméra 3D suit le joueur | `live_link_camera_from_game` |  |  |  |
+| Renvoyer toutes les modifications au jeu | `live_link_resync` |  |  |  |
+| Retirer l'addon du lien direct de Garry's Mod | `live_link_remove_addon` |  |  |  |
 | Éditeur de sons... | `sound_editor` |  |  |  |
 | Éditeur de correction des couleurs... | `color_correction_editor` |  |  |  |
 | Instances > Créer une instance depuis la sélection... | `create_instance` | `Alt+S` |  |  |
@@ -352,6 +364,7 @@ Les touches qui ne sont pas des actions (voler dans la vue 3D avec `Z Q S D`, le
 | Outil courbe | `tool_curve` | `Maj+U` |  |  |
 | Outil route | `tool_road` |  |  |  |
 | Outil tuyau | `tool_pipe` |  |  |  |
+| Outil spline | `tool_spline` |  |  |  |
 | Outil cordon | `tool_cordon` |  |  |  |
 | Outil chemin | `tool_path` |  |  |  |
 | Outil sprinkle | `tool_sprinkle` |  |  |  |
@@ -488,6 +501,21 @@ Pendant le placement du tracé d'un tuyau :
 | `Échap` | Annuler le tracé. |
 
 Voir [Outil tuyau](../features/pipe-tool.md).
+
+## Touches dans l'outil spline
+
+| Touche | Effet |
+|---|---|
+| Clic | Ajouter un point après le point sélectionné (sur la surface dans la vue 3D). |
+| Glisser un point | Le déplacer (sur les surfaces dans la vue 3D). |
+| `Ctrl` + clic sur la courbe | Y insérer un point. |
+| `Maj` + molette, `Alt` + molette | Roulis (5 degrés par cran) et largeur (0,1 par cran) du point sélectionné. |
+| `Entrée`, double clic | Générer, ou appliquer les changements d'une spline modifiée. |
+| `Suppr` | Supprimer le point sélectionné. |
+| `Retour arrière` | Retirer le dernier point d'une nouvelle spline. |
+| `Échap` | Désélectionner le point, puis annuler. |
+
+Les actions `spline_edit` (Modifier la spline) et `spline_bake` (Figer la spline en objets ordinaires) sont dans Outils > Courbes et routes. Voir [Outil spline](../features/spline-tool.md).
 
 ## Touches dans l'outil courbe
 

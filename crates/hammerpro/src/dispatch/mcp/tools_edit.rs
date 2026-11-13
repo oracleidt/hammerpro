@@ -194,12 +194,17 @@ domain! { "editing";
         { "solid": integer("Solid id.", 1, i64::from(u32::MAX)) }, ["solid"];
     move_brush_vertices: Edit, "Move brush vertices",
         "Move some vertices of a solid by an offset (vertex tool). The solid must stay convex; textures follow \
-        with uv_lock.",
+        with uv_lock. When the move puts vertices of the solid on top of each other (within 0.01 units), merge \
+        decides: off (default) moves them as earlier versions did (exactly coincident vertices become one), yes \
+        also welds vertices closer than 0.01 into one, no leaves the solid as it was, ask changes nothing and \
+        reports the stacked vertices so you can call again with yes or no. Answers the new vertices, merged (how \
+        many vertices the solid lost) and applied.",
         {
             "solid": integer("Solid id.", 1, i64::from(u32::MAX)),
             "vertices": { "type": "array", "items": { "type": "integer", "minimum": 0 }, "maxItems": 4096, "description": "Vertex indices (get_brush_vertices)." },
             "offset": vec3("Offset [x, y, z]."),
             "uv_lock": boolean("Textures follow the vertices (default true)."),
+            "merge": choice("Vertices left on top of each other: off (default) moves them as before, yes welds them, no keeps the solid unchanged, ask only reports them.", &["off", "yes", "no", "ask"]),
         }, ["solid", "vertices", "offset"];
     set_brush_vertices: Edit, "Set brush vertices",
         "Rebuild a solid as the convex hull of new vertex positions (textures from the closest original faces).",
@@ -1172,11 +1177,38 @@ fn move_brush_vertices(state: &mut AppState, a: &Args<'_>) -> R<ToolResult> {
         let i = i.ok_or_else(|| format!("vertices must be indices from 0 to {}", base.len().saturating_sub(1)))?;
         points[i] = base[i] + offset;
     }
+    let merge = a.opt_enum("merge", &["off", "yes", "no", "ask"])?.unwrap_or_else(|| "off".to_owned());
+    let groups = hp_tools_mesh::vertex::merge::stacked_groups(&points, &base);
+    let merged = hp_tools_mesh::vertex::merge::merged_count(&groups);
+    if merged > 0 && (merge == "no" || merge == "ask") {
+        let stacked: Vec<Value> =
+            groups.iter().map(|g| json!({ "vertices": g, "position": v3(points[g[0]]) })).collect();
+        let note = if merge == "ask" {
+            "vertices would be on top of each other: call again with merge yes to merge them or no to leave the solid as it is"
+        } else {
+            "vertices would be on top of each other: the solid is left as it was"
+        };
+        return Ok(ToolResult::json(json!({
+            "solid": id,
+            "applied": false,
+            "merged": 0,
+            "stacked": stacked,
+            "note": note,
+            "vertices": base.iter().map(|p| v3(*p)).collect::<Vec<_>>(),
+        })));
+    }
+    let points =
+        if merge == "yes" { hp_tools_mesh::vertex::merge::weld_stacked(&points, &base, &groups) } else { points };
     let vertex_edit = hp_geom::VertexEdit { points: &points, base: Some(&base), topology: None };
     let opts = hp_geom::VertexEditOptions { uv_lock };
     edit(state, "move_brush_vertices", |doc| doc.edit_solid_vertices(id, &vertex_edit, opts))?;
     let (after, _) = state.doc.solid_vertices(id).unwrap_or_default();
-    Ok(ToolResult::json(json!({ "solid": id, "vertices": after.iter().map(|p| v3(*p)).collect::<Vec<_>>() })))
+    Ok(ToolResult::json(json!({
+        "solid": id,
+        "applied": true,
+        "merged": base.len().saturating_sub(after.len()),
+        "vertices": after.iter().map(|p| v3(*p)).collect::<Vec<_>>(),
+    })))
 }
 
 fn points_arg(a: &Args<'_>, key: &str) -> R<Vec<DVec3>> {
@@ -2265,6 +2297,35 @@ mod tests {
         let b = s.doc.scene().objects_bounds(&[ObjRef::Solid(3)], &|_| None).unwrap();
         assert_eq!(b.max.z, 192.0);
         err(&mut s, "move_brush_vertices", json!({ "solid": 3, "vertices": [99], "offset": [0, 0, 1] }));
+        let (before, _) = s.doc.solid_vertices(3).unwrap();
+        let low = before[0];
+        let high = before.iter().position(|p| p.x == low.x && p.y == low.y && p.z != low.z).unwrap();
+        let drop = low - before[high];
+        let down = json!([drop.x, drop.y, drop.z]);
+        let r = ok(
+            &mut s,
+            "move_brush_vertices",
+            json!({ "solid": 3, "vertices": [high], "offset": down, "merge": "ask" }),
+        );
+        assert_eq!((r["applied"].as_bool(), r["merged"].as_u64()), (Some(false), Some(0)), "{r}");
+        assert_eq!(r["stacked"].as_array().map(Vec::len), Some(1), "{r}");
+        assert_eq!(s.doc.solid_vertices(3).unwrap().0, before, "ask changes nothing");
+        let r =
+            ok(&mut s, "move_brush_vertices", json!({ "solid": 3, "vertices": [high], "offset": down, "merge": "no" }));
+        assert_eq!(r["applied"].as_bool(), Some(false), "{r}");
+        assert_eq!(s.doc.solid_vertices(3).unwrap().0, before, "no changes nothing");
+        let r = ok(&mut s, "move_brush_vertices", json!({ "solid": 3, "vertices": [high], "offset": down }));
+        assert_eq!((r["applied"].as_bool(), r["merged"].as_u64()), (Some(true), Some(1)), "{r}");
+        assert_eq!(s.doc.solid_vertices(3).unwrap().0.len(), before.len() - 1, "the default keeps the old merge");
+        s.doc.undo();
+        assert_eq!(s.doc.solid_vertices(3).unwrap().0.len(), before.len(), "one undo step");
+        let r = ok(
+            &mut s,
+            "move_brush_vertices",
+            json!({ "solid": 3, "vertices": [high], "offset": down, "merge": "yes" }),
+        );
+        assert_eq!((r["applied"].as_bool(), r["merged"].as_u64()), (Some(true), Some(1)), "{r}");
+        s.doc.undo();
         let cube = json!([[0, 0, 0], [64, 0, 0], [0, 64, 0], [64, 64, 0], [32, 32, 64]]);
         let r = ok(
             &mut s,

@@ -206,7 +206,7 @@ impl VertexTool {
         let label = if x.is_rotate() { UNDO_ROTATE } else { UNDO_SLIDE };
         let (edits, reselect) = x.edits();
         self.xform = None;
-        self.apply(state, &edits, reselect, label, None)
+        self.apply_move(state, &edits, reselect, label, None)
     }
 
     pub(super) fn xform_wheel(&mut self, notches: f32, mods: Modifiers) -> bool {

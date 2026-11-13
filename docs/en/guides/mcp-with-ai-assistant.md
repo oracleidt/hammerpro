@@ -10,7 +10,7 @@ At the right end of the top bar, click the **MCP off** pill. It becomes **MCP on
 
 ## Step 2: install Hammer Pro in your AI app
 
-1. Click the small arrow next to the pill (or **Tools > Blender and MCP > MCP...**) to open the MCP window.
+1. Click the small arrow next to the pill (or **Tools > Integrations > MCP...**) to open the MCP window.
 2. Click **Install in Claude, Codex, Gemini**. Hammer Pro adds itself to every supported app it finds, then checks each one. Each app line ends on **Installed and configured** when it worked.
 3. Restart the AI app, or start a new session, so it sees the `hammer-pro` server.
 

@@ -408,6 +408,8 @@ fn real_dims_row(ui: &mut Ui, cx: &mut Cx) {
     }
 }
 
+const TIE_PICKER_MIN: f32 = 80.0;
+
 fn header(ui: &mut Ui, cx: &mut Cx, view: &EntityView, move_shortcut: Option<&str>, ops: &mut Vec<Op>) {
     ui.horizontal(|ui| {
         let glyph = match view.kind {
@@ -423,7 +425,7 @@ fn header(ui: &mut Ui, cx: &mut Cx, view: &EntityView, move_shortcut: Option<&st
         ui.label(icon(glyph).size(16.0).color(color)).on_hover_text(kind_label(view.kind));
         if view.target.is_world() {
             ui.label(RichText::new("worldspawn").strong());
-            ui.label(RichText::new(t!("entities.map_properties_hint")).weak());
+            ui.add(egui::Label::new(RichText::new(t!("entities.map_properties_hint")).weak()).truncate());
             return;
         }
         let class_text = match view.single_class() {
@@ -592,18 +594,25 @@ fn world_brushes_ui(
         ui.label(RichText::new(t!("entities.world_brushes_hint")).weak());
     });
     ui.add_space(8.0);
-    let row = vec2(ui.available_width(), ui.spacing().interact_size.y);
-    ui.allocate_ui_with_layout(row, egui::Layout::right_to_left(egui::Align::Center), |ui| {
-        let mut tip = t!("entities.tie_tip").to_owned();
-        if let Some(s) = shortcut {
-            tip.push_str(&format!(" ({s})"));
+    let mut tip = t!("entities.tie_tip").to_owned();
+    if let Some(s) = shortcut {
+        tip.push_str(&format!(" ({s})"));
+    }
+    let label = t!("action.tie_to_entity");
+    let label_w = egui::WidgetText::from(label)
+        .into_galley(ui, Some(egui::TextWrapMode::Extend), f32::INFINITY, egui::TextStyle::Button)
+        .size()
+        .x;
+    let button_w = label_w + 2.0 * ui.spacing().button_padding.x;
+    let stacked = ui.available_width() - button_w - ui.spacing().item_spacing.x < TIE_PICKER_MIN;
+    let mut tie_button = |ui: &mut Ui, class: &str| {
+        let tie = ui.button(label);
+        if tie.on_hover_text(tip.as_str()).clicked() && !class.trim().is_empty() {
+            ops.push(Op::Tie { objs: objs.clone(), class: class.trim().to_owned() });
         }
-        let tie = ui.button(t!("action.tie_to_entity"));
-        if tie.on_hover_text(tip).clicked() && !tie_class.trim().is_empty() {
-            ops.push(Op::Tie { objs: objs.clone(), class: tie_class.trim().to_owned() });
-        }
-        let picker_w = ui.available_width().max(40.0);
-        let btn = picker_button(ui, tie_class.as_str(), picker_w).on_hover_text(t!("entities.tie_class_tip"));
+    };
+    let class_picker = |ui: &mut Ui, tie_class: &mut String, width: f32| {
+        let btn = picker_button(ui, tie_class.as_str(), width).on_hover_text(t!("entities.tie_class_tip"));
         if picker_is_open(&btn) {
             let classes = tie_classes(cx.fgd);
             let fgd = cx.fgd;
@@ -615,7 +624,19 @@ fn world_brushes_ui(
                 *tie_class = c;
             }
         }
-    });
+    };
+    let row = vec2(ui.available_width(), ui.spacing().interact_size.y);
+    if stacked {
+        class_picker(ui, tie_class, ui.available_width() - 8.0);
+        ui.allocate_ui_with_layout(row, egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            tie_button(ui, tie_class)
+        });
+    } else {
+        ui.allocate_ui_with_layout(row, egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            tie_button(ui, tie_class);
+            class_picker(ui, tie_class, ui.available_width().max(TIE_PICKER_MIN));
+        });
+    }
     ui.add_space(4.0);
     ui.label(RichText::new(t!("entities.quick_tie")).small().weak());
     ui.horizontal_wrapped(|ui| {

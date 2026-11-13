@@ -392,7 +392,7 @@ impl SmartEdit {
 
         match kind {
             PropertyType::Choices | PropertyType::String if row.key.eq_ignore_ascii_case("soundscape") => {
-                let text_w = (w - BUTTON_W - spacing).max(40.0);
+                let text_w = (w - BUTTON_W - spacing).max(24.0);
                 self.buffers.field(ui, id, display, FieldOpts { hint, width: text_w, ..FieldOpts::default() }, set_key);
                 let btn = side_button(ui, icon("▾"), false).on_hover_text(t!("entities.pick_soundscape"));
                 if picker_is_open(&btn) {
@@ -520,7 +520,7 @@ impl SmartEdit {
                     let warn = Label::new(icon("⚠").color(theme::warning()));
                     ui.add_sized(vec2(MISSING_ICON_W, ui.spacing().interact_size.y), warn).on_hover_text(tip);
                 }
-                let text_w = (w - 2.0 * (BUTTON_W + spacing) - warn_w).max(40.0);
+                let text_w = (w - 2.0 * (BUTTON_W + spacing) - warn_w).max(24.0);
                 let color = missing.map(|_| theme::warning());
                 let opts = FieldOpts { hint, width: text_w, color, ..FieldOpts::default() };
                 let resp = self.buffers.field(ui, id, display, opts, set_key);
@@ -567,7 +567,7 @@ impl SmartEdit {
                     });
                 }
                 let used = if name.is_empty() { 0.0 } else { row_h + spacing };
-                let text_w = (w - used - 2.0 * (BUTTON_W + spacing)).max(40.0);
+                let text_w = (w - used - 2.0 * (BUTTON_W + spacing)).max(24.0);
                 self.buffers.field(ui, id, display, FieldOpts { hint, width: text_w, ..FieldOpts::default() }, set_key);
                 let tip = tf!("entities.use_current_material", cx.current_material);
                 let enabled = !cx.current_material.is_empty();
@@ -590,7 +590,7 @@ impl SmartEdit {
             PropertyType::Sound => {
                 let game = sounds::game_sounds(ui.ctx(), cx.assets);
                 let game: &[GameSound] = game.as_deref().map_or(&[], Vec::as_slice);
-                let text_w = (w - 3.0 * (BUTTON_W + spacing)).max(40.0);
+                let text_w = (w - 3.0 * (BUTTON_W + spacing)).max(24.0);
                 self.buffers.field(ui, id, display, FieldOpts { hint, width: text_w, ..FieldOpts::default() }, set_key);
                 let btn = side_button(ui, icon("♪"), false).on_hover_text(t!("entities.browse_sounds"));
                 if picker_is_open(&btn) {
@@ -642,7 +642,7 @@ impl SmartEdit {
                 self.browse_button(ui, cx, view, row, AssetKind::Sound, t!("entities.browse_sound_browser"));
             }
             PropertyType::ParticleSystem => {
-                let text_w = (w - 3.0 * (BUTTON_W + spacing)).max(40.0);
+                let text_w = (w - 3.0 * (BUTTON_W + spacing)).max(24.0);
                 self.buffers.field(ui, id, display, FieldOpts { hint, width: text_w, ..FieldOpts::default() }, set_key);
                 let btn = side_button(ui, icon("▾"), false).on_hover_text(t!("entities.pick_particle"));
                 if picker_is_open(&btn) {
@@ -665,7 +665,7 @@ impl SmartEdit {
                 self.preview_particle_button(ui, cx, view, row);
             }
             PropertyType::Scene | PropertyType::Script => {
-                let text_w = (w - BUTTON_W - spacing).max(40.0);
+                let text_w = (w - BUTTON_W - spacing).max(24.0);
                 self.buffers.field(ui, id, display, FieldOpts { hint, width: text_w, ..FieldOpts::default() }, set_key);
                 let scene = kind == PropertyType::Scene;
                 let tip = if scene { t!("entities.pick_scene") } else { t!("entities.pick_script") };
@@ -687,7 +687,7 @@ impl SmartEdit {
                 }
             }
             PropertyType::ScriptList => {
-                let text_w = (w - BUTTON_W - spacing).max(40.0);
+                let text_w = (w - BUTTON_W - spacing).max(24.0);
                 self.buffers.field(ui, id, display, FieldOpts { hint, width: text_w, ..FieldOpts::default() }, set_key);
                 let btn = side_button(ui, icon("+"), false).on_hover_text(t!("entities.add_script"));
                 if picker_is_open(&btn) {
@@ -704,7 +704,7 @@ impl SmartEdit {
                 }
             }
             PropertyType::SideList => {
-                let text_w = (w - BUTTON_W - spacing).max(40.0);
+                let text_w = (w - BUTTON_W - spacing).max(24.0);
                 let count = effective.map_or(0, |v| hp_editor::side_index::parse_side_list(v).len());
                 let opts = FieldOpts { hint, width: text_w, ..FieldOpts::default() };
                 self.buffers.field(ui, id, display, opts, set_key).on_hover_text(tf!("entities.sides_count", count));
@@ -719,7 +719,8 @@ impl SmartEdit {
             PropertyType::TargetDestination | PropertyType::TargetNameOrClass | PropertyType::FilterClass => {
                 let filter = kind == PropertyType::FilterClass;
                 let opts = TargetOpts { validate: true, dropdown: filter, mode: CompleteMode::Complete };
-                let field_w = (w - 2.0 * (BUTTON_W + spacing)).max(40.0);
+                let field_w =
+                    (w - 2.0 * (BUTTON_W + spacing)).max(if filter { 24.0 + BUTTON_W + spacing } else { 24.0 });
                 let list = if filter { names.filters() } else { names.names() };
                 self.target_field(ui, id, display, hint, field_w, names, list, opts, set_key);
                 self.pick_button(ui, cx, target, &row.key, PickPurpose::Target, t!("entities.pick_entity"));
@@ -739,7 +740,7 @@ impl SmartEdit {
             }
             PropertyType::AngleNegativePitch => {
                 let aim = !target.is_world();
-                let w = if aim { (w - BUTTON_W - spacing).max(40.0) } else { w };
+                let w = if aim { (w - BUTTON_W - spacing).max(24.0) } else { w };
                 match effective.and_then(parse_pitch) {
                     Some(mut p) => {
                         let h = ui.spacing().interact_size.y;
@@ -812,7 +813,7 @@ impl SmartEdit {
                     }
                     None => {
                         let dial = ui.spacing().interact_size.y + 2.0;
-                        let opts = FieldOpts { hint, width: (w - dial - spacing).max(40.0), ..FieldOpts::default() };
+                        let opts = FieldOpts { hint, width: (w - dial - spacing).max(24.0), ..FieldOpts::default() };
                         self.buffers.field(ui, id, display, opts, set_key);
                         let (_, yaw) = yaw_dial(ui, None, true);
                         if let Some(y) = yaw {
@@ -892,7 +893,7 @@ impl SmartEdit {
                 }
             }
             PropertyType::NpcClass | PropertyType::PointEntityClass => {
-                let text_w = (w - BUTTON_W - spacing).max(40.0);
+                let text_w = (w - BUTTON_W - spacing).max(24.0);
                 self.buffers.field(ui, id, display, FieldOpts { hint, width: text_w, ..FieldOpts::default() }, set_key);
                 let btn = side_button(ui, icon("▾"), false);
                 if picker_is_open(&btn)
@@ -913,7 +914,7 @@ impl SmartEdit {
                 }
             }
             PropertyType::InstanceFile => {
-                let text_w = (w - BUTTON_W - spacing).max(40.0);
+                let text_w = (w - BUTTON_W - spacing).max(24.0);
                 self.buffers.field(ui, id, display, FieldOpts { hint, width: text_w, ..FieldOpts::default() }, set_key);
                 let busy = self.browse.is_some();
                 let btn = ui.add_enabled_ui(!busy, |ui| side_button(ui, BROWSE_GLYPH, false)).inner;
@@ -923,7 +924,7 @@ impl SmartEdit {
                 }
             }
             _ if target.is_world() && row.key.eq_ignore_ascii_case("skyname") => {
-                let text_w = (w - BUTTON_W - spacing).max(40.0);
+                let text_w = (w - BUTTON_W - spacing).max(24.0);
                 let opts = FieldOpts { hint, width: text_w, ..FieldOpts::default() };
                 let resp = self.buffers.field(ui, id, display, opts, set_key);
                 let sky = effective.unwrap_or("").trim().to_ascii_lowercase();
@@ -967,7 +968,7 @@ impl SmartEdit {
         let exists = !opts.validate || live.trim().is_empty() || names.target_exists(&live);
         let color = (!exists).then_some(theme::error());
         let spacing = ui.spacing().item_spacing.x;
-        let text_w = if opts.dropdown { (width - BUTTON_W - spacing).max(40.0) } else { width };
+        let text_w = if opts.dropdown { (width - BUTTON_W - spacing).max(24.0) } else { width };
         let field_opts = FieldOpts { hint, width: text_w, color, ..FieldOpts::default() };
         let resp = self.buffers.field(ui, id, display, field_opts, action.clone());
         let resp = if exists { resp } else { resp.on_hover_text(t!("entities.target_missing")) };

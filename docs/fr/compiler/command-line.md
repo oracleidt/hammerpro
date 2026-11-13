@@ -107,7 +107,7 @@ Sans contenu de jeu (Garry's Mod introuvable et pas de `-game`), les matériaux 
 | `-fastambient` | | Ambiance des props plus rapide. | désactivé |
 | `-centersamples` | | Accepté (toujours fait). | |
 | `-lights` | fichier | Fichier de lumières de texture en plus. | aucun |
-| `-chop` / `-maxchop` / `-dispchop` | luxels | Tailles des morceaux de lumière de texture, au moins 1. | 4 / 4 / 8 |
+| `-chop` / `-maxchop` / `-dispchop` | luxels | Tailles des morceaux de lumière de texture, au moins 1. `-dispchop` règle aussi la taille des patchs de rebond des displacements. | 4 / 4 / 8 |
 | `-StaticPropLighting` | | Éclairage par sommet des props statiques. | désactivé |
 | `-StaticPropPolys` | | Ombres des props avec leurs triangles affichés. | désactivé |
 | `-textureshadows` | | Ombres des props à transparence (avec `-StaticPropPolys`). | désactivé |

@@ -1546,6 +1546,10 @@ impl Tool for RoadTool {
         done
     }
 
+    fn option_order(&self, key: &str) -> i32 {
+        if key == "selected_point" { -1 } else { 0 }
+    }
+
     fn option_values(&self) -> Vec<hp_app::tool::ToolOption> {
         use hp_app::tool::ToolOption;
         let m = &self.options.meta;

@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use egui::{Align2, Color32, CursorIcon, Modifiers, Pos2, RichText, Ui};
 use glam::DVec3;
+use hp_app::foliage::is_paint_surface as is_surface;
 use hp_app::i18n::TrTable;
 use hp_app::settings::{Settings, SprinkleMode, SprinkleSettings};
 use hp_app::state::AppState;
@@ -229,24 +230,6 @@ impl Brush {
             (Ray::new(origin, dir), self.depth() * 2.0)
         }
     }
-}
-
-const SURFACE_CLASSES: [&str; 4] = ["func_detail", "func_brush", "func_wall", "func_lod"];
-
-fn is_tool_material(m: &str) -> bool {
-    m.trim().get(..6).is_some_and(|p| p.eq_ignore_ascii_case("tools/"))
-}
-
-fn is_surface(scene: &hp_editor::Scene, obj: ObjRef) -> bool {
-    let ObjRef::Solid(id) = obj else { return false };
-    let Some(n) = scene.solid(id) else { return false };
-    let owner_ok = match n.owner {
-        hp_editor::Owner::World => true,
-        hp_editor::Owner::Entity(e) => scene
-            .entity(e)
-            .is_some_and(|e| SURFACE_CLASSES.iter().any(|c| e.entity.classname.trim().eq_ignore_ascii_case(c))),
-    };
-    owner_ok && n.solid.sides.iter().any(|s| !is_tool_material(&s.material))
 }
 
 fn cell_of(x: f64, step: f64) -> i64 {

@@ -30,6 +30,7 @@ The player view lets you walk the map in the 3D view like a Garry's Mod player: 
 | `N` | Shows the tool textures (nodraw, clips, triggers), hidden by default like in game. |
 | `B` | Compiled world or editor brushes. |
 | `L` | Lightmaps of the compiled map, or the editor shading. |
+| `K` | Hearing: plays the active soundscape and the `ambient_generic` sounds with distance, like the engine (off by default, see [Soundscapes](soundscapes.md)). |
 | `H` | Hides or shows the counters. |
 | `1` to `9` | Turn a named light on or off. |
 | `Escape`, `F6` | Leave. |
@@ -61,7 +62,8 @@ A corner of the view shows (hide with `H`):
 - **In game**: the cluster you stand in, its area, how many clusters the game draws from there (PVS and area portals), and faces, triangles, displacements, props and overlays the game would draw. Without visibility data: "compile the map with VVIS";
 - **Area portals**: how many are open, looked through, and the areas drawn. The same numbers without area portals are given for comparison;
 - the lighting and cubemaps in use, the light styles in use;
-- speed and height of the feet, frame rate and the camera mode (first person, third person, noclip).
+- speed and height of the feet, frame rate and the camera mode (first person, third person, noclip);
+- **Hearing**: off, or the soundscape playing with its looping sounds, the `ambient_generic` sounds and the volume (`K`, see [Soundscapes](soundscapes.md)).
 
 ## Wireframe (X)
 

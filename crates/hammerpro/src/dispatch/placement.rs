@@ -134,6 +134,7 @@ impl Package for Placement {
 
     fn tools(&self, out: &mut Vec<Box<dyn Tool>>) {
         out.push(Box::new(hp_tools_create::SprinkleTool::new()));
+        out.push(Box::new(hp_tools_create::FoliageTool::new()));
     }
 
     fn translations(&self) -> TrTable {

@@ -216,6 +216,8 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Display options > Preview volume effects | `toggle_entity_fx` |  |  |  |
 | Display options > Player view | `toggle_player_view` | `F6` |  |  |
 | Display options > Preview color_correction entities | `toggle_color_correction_preview` |  |  |  |
+| Environment preview > Show soundscapes | `toggle_soundscape_view` |  |  |  |
+| Environment preview > Hear soundscapes in the player view | `toggle_soundscape_hearing` |  |  |  |
 | Hide selected | `hide_selected` | `H` |  |  |
 | Hide unselected | `hide_unselected` | `Ctrl+Shift+H` |  |  |
 | Unhide all | `unhide_all` | `U` |  |  |
@@ -325,6 +327,16 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Update from Blender | `pull_from_blender` |  |  |  |
 | Stop the Blender live link | `stop_blender_link` |  |  |  |
 | Install the Blender add-on | `install_blender_addon` |  |  |  |
+| Start the live link with Garry's Mod | `live_link_start` |  |  |  |
+| Stop the live link | `live_link_stop` |  |  |  |
+| Live link status... | `live_link_panel` |  |  |  |
+| Fire input in game... | `live_link_fire_input` |  |  |  |
+| Teleport the player to the 3D camera | `live_link_teleport` |  |  |  |
+| Send the player back | `live_link_teleport_back` |  |  |  |
+| Player follows the 3D camera | `live_link_camera_to_game` |  |  |  |
+| 3D camera follows the player | `live_link_camera_from_game` |  |  |  |
+| Send all changes to the game again | `live_link_resync` |  |  |  |
+| Remove the live link addon from Garry's Mod | `live_link_remove_addon` |  |  |  |
 | Sound editor... | `sound_editor` |  |  |  |
 | Color correction editor... | `color_correction_editor` |  |  |  |
 | Instancing > Create instance from selection... | `create_instance` | `Alt+S` |  |  |
@@ -352,6 +364,7 @@ Keys that are not actions (flying the 3D camera with `W A S D`, mouse gestures, 
 | Curve tool | `tool_curve` | `Shift+U` |  |  |
 | Road tool | `tool_road` |  |  |  |
 | Pipe tool | `tool_pipe` |  |  |  |
+| Spline tool | `tool_spline` |  |  |  |
 | Cordon tool | `tool_cordon` |  |  |  |
 | Path tool | `tool_path` |  |  |  |
 | Sprinkle tool | `tool_sprinkle` |  |  |  |
@@ -488,6 +501,21 @@ While a pipe path is being placed:
 | `Escape` | Cancel the path. |
 
 See [Pipe tool](../features/pipe-tool.md).
+
+## Keys inside the spline tool
+
+| Key | What it does |
+|---|---|
+| Click | Add a point after the selected one (on the surface in the 3D view). |
+| Drag a point | Move it (on the surfaces in the 3D view). |
+| `Ctrl` + click on the curve | Insert a point there. |
+| `Shift` + wheel, `Alt` + wheel | Roll (5 degrees per notch) and width (0.1 per notch) of the selected point. |
+| `Enter`, double click | Generate, or apply the changes of an edited spline. |
+| `Delete` | Delete the selected point. |
+| `Backspace` | Remove the last point of a new spline. |
+| `Escape` | Deselect the point, then cancel. |
+
+The actions `spline_edit` (Edit spline) and `spline_bake` (Bake spline to plain objects) are in Tools > Curves and roads. See [Spline tool](../features/spline-tool.md).
 
 ## Keys inside the curve tool
 

@@ -28,6 +28,9 @@ action_list! { brush_actions {
     RoadCurb => "road_curb", Tools, ToolsRoads, None, Ready;
     RoadTerrain => "road_terrain", Tools, ToolsRoads, None, Ready;
     RoadsideEdit => "roadside_edit", Tools, ToolsRoads, None, Ready;
+    ToolSpline => "tool_spline", Tools, ToolsCurves, None, Ready;
+    SplineEdit => "spline_edit", Tools, ToolsCurves, None, Ready;
+    SplineBake => "spline_bake", Tools, ToolsCurves, None, Ready;
 }}
 
 pub(super) const REPEATS: &[Action] = &[];
@@ -42,6 +45,7 @@ pub(super) fn enabled(state: &AppState, action: Action) -> Option<bool> {
         | Action::ConvertToDetail => !sel.objects.is_empty(),
         Action::MakeHintBrush | Action::InsetFace => !sel.faces.is_empty(),
         Action::RoadsideEdit => state.doc.selected_roadside_piece().is_some(),
+        Action::SplineEdit | Action::SplineBake => !sel.objects.is_empty(),
         _ => return None,
     })
 }
@@ -109,6 +113,17 @@ pub(super) const TR: TrTable = &[
     ("tool.road", "Road", "Route"),
     ("action.tool_pipe", "Pipe tool", "Outil tuyau"),
     ("tool.pipe", "Pipe", "Tuyau"),
+    ("action.tool_spline", "Spline tool", "Outil spline"),
+    ("tool.spline", "Spline", "Spline"),
+    ("action.spline_edit", "Edit spline", "Modifier la spline"),
+    ("action.spline_bake", "Bake spline to plain objects", "Figer la spline en objets ordinaires"),
+    ("shell.undo.create_spline", "Create spline", "Création de spline"),
+    ("shell.undo.edit_spline", "Edit spline", "Modification de spline"),
+    ("shell.undo.bake_spline", "Bake spline", "Figeage de spline"),
+    ("shell.undo.mcp_create_spline", "MCP: create spline", "MCP : création de spline"),
+    ("shell.undo.mcp_edit_spline", "MCP: edit spline", "MCP : modification de spline"),
+    ("shell.undo.mcp_generate_along_spline", "MCP: generate along spline", "MCP : génération le long de la spline"),
+    ("shell.undo.mcp_bake_spline", "MCP: bake spline", "MCP : figeage de spline"),
     ("shell.undo.create_pipe", "Create pipe", "Création de tuyau"),
     ("shell.undo.mcp_create_pipe", "MCP: create pipe", "MCP : création de tuyau"),
     ("shell.undo.create_road", "Create road", "Création de route"),

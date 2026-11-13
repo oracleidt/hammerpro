@@ -406,6 +406,16 @@ fn paint_tool(pen: &Pen, tool: ToolId) {
             pen.dot((-6.0, 6.0), 1.2);
             pen.dot((1.5, 7.0), 1.0);
         }
+        ToolId::Foliage => {
+            pen.seg((-7.0, 8.0), (8.0, 8.0), pen.line);
+            let crown = pen.arc((-1.0, -2.0), 6.0, 6.5, 0.0, 360.0);
+            pen.fill(&crown, pen.faint);
+            pen.closed(&crown);
+            pen.seg((-1.0, 4.5), (-1.0, 8.0), pen.heavy);
+            pen.seg((5.0, 8.0), (6.0, 4.0), pen.thin);
+            pen.seg((6.5, 8.0), (8.0, 5.0), pen.thin);
+            pen.seg((-5.0, 8.0), (-6.5, 5.0), pen.thin);
+        }
         ToolId::Road => {
             pen.seg((-8.0, 8.0), (-2.5, -8.0), pen.line);
             pen.seg((8.0, 8.0), (2.5, -8.0), pen.line);
@@ -433,6 +443,20 @@ fn paint_tool(pen: &Pen, tool: ToolId) {
             pen.path(&[(x1, y1 - l), (x1, y1), (x1 - l, y1)]);
             pen.path(&[(x0 + l, y1), (x0, y1), (x0, y1 - l)]);
             pen.rect_fill((-2.0, -2.0), (2.0, 2.0), pen.color);
+        }
+        ToolId::Spline => {
+            let pts: Vec<P> = (0..=16)
+                .map(|i| {
+                    let x = -8.0 + i as f32;
+                    (x, 3.5 * (x * 0.42).sin() + 0.5)
+                })
+                .collect();
+            pen.path(&pts);
+            for x in [-6.0f32, 0.0, 6.0] {
+                pen.seg((x, 7.5), (x, 3.5 * (x * 0.42).sin() + 0.5), pen.thin);
+            }
+            pen.handle((-8.0, 3.5 * (-8.0f32 * 0.42).sin() + 0.5));
+            pen.handle((8.0, 3.5 * (8.0f32 * 0.42).sin() + 0.5));
         }
         ToolId::Physics => {
             pen.seg((-8.0, 7.5), (8.0, 7.5), pen.line);

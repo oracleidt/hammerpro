@@ -1718,12 +1718,12 @@ fn instance_parameters_in_the_properties_tab() {
         },
         |ui, state| panel.ui_with_fgd(ui, state, Some(&fgd)),
     );
-    for lang in [hp_app::i18n::Lang::En, hp_app::i18n::Lang::Fr] {
+    for lang in hp_app::i18n::Lang::ALL {
         hp_app::i18n::set_lang(lang);
         let widths = panel_widths(&mut state, 8, |ui, s| panel.ui_with_fgd(ui, s, Some(&fgd)));
         let last = *widths.last().expect("frames");
         hp_app::i18n::set_lang(hp_app::i18n::Lang::En);
-        assert!(last <= 261.0, "{lang:?}: the dock grew: {widths:?}");
+        assert!(last <= 221.0, "{lang:?}: the dock grew: {widths:?}");
     }
     let _ = std::fs::remove_dir_all(&dir);
     assert!(heading.is_some(), "the parameters are shown");
@@ -1749,8 +1749,8 @@ fn panel_widths(
         let mut out = ctx.run_ui(input, |ui| {
             let r = egui::Panel::right("hp_test_dock")
                 .resizable(true)
-                .default_size(260.0)
-                .min_size(260.0)
+                .default_size(220.0)
+                .min_size(220.0)
                 .show(ui, |ui| f(ui, state));
             widths.push(r.response.rect.width());
         });
@@ -1770,9 +1770,9 @@ fn dock_tabs_never_grow_a_resizable_panel() {
     let mut models = ModelBrowser::new();
     let check = |name: &str, widths: &[f32]| {
         let (first, last) = (widths[0], *widths.last().expect("frames"));
-        assert!(last <= first + 0.5 && last <= 261.0, "{name}: the panel grew from {first} to {last}");
+        assert!(last <= first + 0.5 && last <= 221.0, "{name}: the panel grew from {first} to {last}");
     };
-    for lang in [hp_app::i18n::Lang::En, hp_app::i18n::Lang::Fr] {
+    for lang in hp_app::i18n::Lang::ALL {
         hp_app::i18n::set_lang(lang);
         for id in [5, 6] {
             state.doc.set_selection(&[ObjRef::Entity(id)]);

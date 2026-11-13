@@ -1581,6 +1581,284 @@ fn the_back_of_a_displacement_blocks_bounced_light_like_a_brush() {
     );
 }
 
+fn all_sides_disp(solid: &str) -> String {
+    let n = 9;
+    let row = |v: &str| vec![v; n].join(" ");
+    let mut out = String::new();
+    let mut rest = solid;
+    while let Some(at) = rest.find("\"plane\" \"(") {
+        let start = at + "\"plane\" \"(".len();
+        let corner = &rest[start..start + rest[start..].find(')').expect("a point")];
+        let end = start
+            + rest[start..]
+                .find(
+                    "		}
+",
+                )
+                .expect("a side");
+        let mut info = format!(
+            "			dispinfo
+			{{
+				\"power\" \"3\"
+				\"startposition\" \"[{corner}]\"
+				\"flags\" \"0\"
+				\"elevation\" \"0\"
+				\"subdiv\" \"0\"
+"
+        );
+        for (name, v) in [
+            ("normals", "0 0 1"),
+            ("distances", "0"),
+            ("offsets", "0 0 0"),
+            ("offset_normals", "0 0 1"),
+            ("alphas", "0"),
+        ] {
+            info += &format!(
+                "				{name}
+				{{
+"
+            );
+            for r in 0..n {
+                info += &format!(
+                    "					\"row{r}\" \"{}\"
+",
+                    row(v)
+                );
+            }
+            info += "				}
+";
+        }
+        info += "			}
+";
+        out += &rest[..end];
+        out += &info;
+        rest = &rest[end..];
+    }
+    out + rest
+}
+
+fn bowl_top(solid: &str) -> String {
+    let n = 9;
+    let at = solid
+        .find(
+            "		}
+",
+        )
+        .expect("a side");
+    let mut info = String::from(
+        "			dispinfo
+			{
+				\"power\" \"3\"
+				\"startposition\" \"[-128 -128 128]\"
+				\"flags\" \"0\"
+				\"elevation\" \"0\"
+				\"subdiv\" \"0\"
+",
+    );
+    let depth = |r: usize, c: usize| {
+        let s = |k: usize| (std::f64::consts::PI * k as f64 / (n - 1) as f64).sin();
+        -100.0 * s(r) * s(c)
+    };
+    for name in ["normals", "distances", "offsets", "offset_normals", "alphas"] {
+        info += &format!(
+            "				{name}
+				{{
+"
+        );
+        for r in 0..n {
+            let row: Vec<String> = (0..n)
+                .map(|c| match name {
+                    "normals" | "offset_normals" => "0 0 1".to_owned(),
+                    "offsets" => "0 0 0".to_owned(),
+                    "distances" => format!("{}", depth(r, c)),
+                    _ => "0".to_owned(),
+                })
+                .collect();
+            info += &format!(
+                "					\"row{r}\" \"{}\"
+",
+                row.join(" ")
+            );
+        }
+        info += "				}
+";
+    }
+    info += "			}
+";
+    format!("{}{}{}", &solid[..at], info, &solid[at..])
+}
+
+fn sunny_box(disp: bool) -> String {
+    sunny_house(if disp { 1 } else { 0 })
+}
+
+fn sunny_house(kind: u8) -> String {
+    let mut id = 1;
+    let (w, sky) = ("DEV/DEV_MEASUREGENERIC01B", "TOOLS/TOOLSSKYBOX");
+    let b = |id: &mut u32, lo: [f64; 3], hi: [f64; 3], m: &str| {
+        block(id, DVec3::from_array(lo), DVec3::from_array(hi), m, m)
+    };
+    let mut s = String::new();
+    s += &b(&mut id, [-528.0, -528.0, -16.0], [528.0, 528.0, 0.0], w);
+    s += &b(&mut id, [-528.0, -528.0, 512.0], [528.0, 528.0, 528.0], sky);
+    s += &b(&mut id, [-528.0, -528.0, 0.0], [-512.0, 528.0, 512.0], sky);
+    s += &b(&mut id, [512.0, -528.0, 0.0], [528.0, 528.0, 512.0], sky);
+    s += &b(&mut id, [-512.0, -528.0, 0.0], [512.0, -512.0, 512.0], sky);
+    s += &b(&mut id, [-512.0, 512.0, 0.0], [512.0, 528.0, 512.0], sky);
+    let house = b(&mut id, [-128.0, -128.0, 0.0], [128.0, 128.0, 128.0], w);
+    s += &match kind {
+        1 => all_sides_disp(&house),
+        2 => bowl_top(&house),
+        _ => house,
+    };
+    format!(
+        "versioninfo
+{{
+	\"editorversion\" \"400\"
+}}
+world
+{{
+	\"id\" \"1\"
+	\"classname\" \"worldspawn\"
+	\"skyname\" \"sky_day01_01\"
+{s}}}
+         entity
+{{
+	\"id\" \"600\"
+	\"classname\" \"light_environment\"
+	\"origin\" \"300 300 200\"
+	\"_light\" \"255 255 255 300\"
+	\"_ambient\" \"0 0 0 0\"
+	\"angles\" \"0 30 0\"
+	\"pitch\" \"-50\"
+}}
+         entity
+{{
+	\"id\" \"601\"
+	\"classname\" \"info_player_start\"
+	\"origin\" \"300 300 16\"
+}}
+"
+    )
+}
+
+#[test]
+fn a_flat_displacement_roof_sees_only_the_sky_above_it_like_a_brush_roof() {
+    let roof_bounce = |disp: bool| {
+        let bsp = compile_vmf(&sunny_box(disp));
+        let opts = RadOptions { ldr: true, hdr: false, ..quick() };
+        let lit = light_bsp(&bsp, &opts, &mut |_| {}).expect("light");
+        let dark = light_bsp(&bsp, &RadOptions { bounces: 0, ..opts }, &mut |_| {}).expect("light");
+        let mut sum = 0.0;
+        let mut direct = 0.0;
+        for i in 0..5 {
+            for j in 0..5 {
+                let p = DVec3::new(-80.0 + 40.0 * i as f64, -80.0 + 40.0 * j as f64, 128.0);
+                let a = style_luxel_at(&lit, p, DVec3::Z, 0).expect("roof").max_element();
+                let b = style_luxel_at(&dark, p, DVec3::Z, 0).expect("roof").max_element();
+                sum += a - b;
+                direct += b;
+            }
+        }
+        (sum / 25.0, direct / 25.0)
+    };
+    let (brush, lit_brush) = roof_bounce(false);
+    let (disp, lit_disp) = roof_bounce(true);
+    assert!(lit_brush > 10.0 && lit_disp > lit_brush * 0.9, "the sun lights both roofs: {lit_brush} {lit_disp}");
+    assert!(
+        disp <= brush + lit_disp * 0.01 + 0.05,
+        "a displacement roof gathers no light from below its own plane: {disp} on the displacement, {brush} on the brush"
+    );
+}
+
+#[test]
+fn a_displacement_gets_no_bounced_light_from_its_own_surface_like_vrad() {
+    let opts = RadOptions { ldr: true, hdr: false, ..quick() };
+    let bounce_and_direct = |kind: u8, z: f64| {
+        let bsp = compile_vmf(&sunny_house(kind));
+        let lit = light_bsp(&bsp, &opts, &mut |_| {}).expect("light");
+        let dark = light_bsp(&bsp, &RadOptions { bounces: 0, ..opts.clone() }, &mut |_| {}).expect("light");
+        let p = DVec3::new(-40.0, 0.0, z);
+        let a = style_luxel_at(&lit, p, DVec3::Z, 0).expect("top").max_element();
+        let b = style_luxel_at(&dark, p, DVec3::Z, 0).expect("top").max_element();
+        (a - b, b)
+    };
+    let (flat, _) = bounce_and_direct(0, 128.0);
+    let (bowl, direct) = bounce_and_direct(2, 128.0);
+    assert!(direct > 1.0, "the sun lights the bowl: {direct}");
+    assert!(
+        bowl <= flat + direct * 0.02 + 0.1,
+        "the sunlit side of the bowl does not light its other side: {bowl} in the bowl, {flat} on a flat roof, direct {direct}"
+    );
+}
+
+fn spot_room(disp: bool) -> String {
+    let mut id = 1;
+    let w = "DEV/DEV_MEASUREGENERIC01B";
+    let mut s = String::new();
+    let zb = if disp { -16.0 } else { 0.0 };
+    if disp {
+        s += &block(&mut id, DVec3::new(-16.0, -16.0, -32.0), DVec3::new(528.0, 528.0, -16.0), w, w);
+        s += &disp_block(&mut id, DVec3::new(0.0, 0.0, -16.0), DVec3::new(512.0, 512.0, 0.0), w);
+    } else {
+        s += &block(&mut id, DVec3::new(-16.0, -16.0, -16.0), DVec3::new(528.0, 528.0, 0.0), w, w);
+    }
+    s += &block(&mut id, DVec3::new(-16.0, -16.0, 256.0), DVec3::new(528.0, 528.0, 272.0), w, w);
+    s += &block(&mut id, DVec3::new(-16.0, 0.0, zb), DVec3::new(0.0, 512.0, 256.0), w, w);
+    s += &block(&mut id, DVec3::new(512.0, 0.0, zb), DVec3::new(528.0, 512.0, 256.0), w, w);
+    s += &block(&mut id, DVec3::new(-16.0, -16.0, zb), DVec3::new(528.0, 0.0, 256.0), w, w);
+    s += &block(&mut id, DVec3::new(-16.0, 512.0, zb), DVec3::new(528.0, 528.0, 256.0), w, w);
+    let spot = "entity
+{
+	\"id\" \"600\"
+	\"classname\" \"light_spot\"
+	\"origin\" \"256 256 240\"
+	\"_light\" \"255 255 255 1500\"
+	\"_inner_cone\" \"30\"
+	\"_cone\" \"40\"
+	\"pitch\" \"-90\"
+	\"angles\" \"-90 0 0\"
+}
+";
+    format!(
+        "versioninfo
+{{
+	\"editorversion\" \"400\"
+}}
+world
+{{
+	\"id\" \"1\"
+	\"classname\" \"worldspawn\"
+	\"skyname\" \"sky_day01_01\"
+{s}}}
+{spot}entity
+{{
+	\"id\" \"9000\"
+	\"classname\" \"info_player_start\"
+	\"origin\" \"64 64 16\"
+}}
+"
+    )
+}
+
+#[test]
+fn a_wall_going_through_a_displacement_floor_keeps_its_bounced_light_near_the_floor() {
+    let opts = RadOptions { ldr: true, hdr: false, ..quick() };
+    let wall = |disp: bool| {
+        let lit = light_bsp(&compile_vmf(&spot_room(disp)), &opts, &mut |_| {}).expect("light");
+        [16.0, 32.0, 48.0]
+            .iter()
+            .map(|&z| style_luxel_at(&lit, DVec3::new(0.0, 256.0, z), DVec3::X, 0).expect("wall").max_element())
+            .sum::<f32>()
+    };
+    let (brush, disp) = (wall(false), wall(true));
+    assert!(brush > 1.0, "the wall gets bounced light from the lit floor: {brush}");
+    assert!(
+        disp >= brush * 0.9,
+        "the bottom of a wall that goes under a displacement floor is not darkened by its buried part: {disp} with a displacement floor, {brush} with a brush floor"
+    );
+}
+
 #[test]
 fn a_water_surface_reflects_bounced_light_back_under_it_like_vrad() {
     let floor = |bsp: &[u8]| luxel_at(bsp, DVec3::new(64.0, 64.0, 0.0), DVec3::Z, false).expect("floor luxel").x;

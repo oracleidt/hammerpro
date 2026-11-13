@@ -327,7 +327,8 @@ impl VisgroupPanel {
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let n = visgroup_total(&state.doc);
-                ui.label(RichText::new(tf!(plural(n, "visgroups.count_one", "visgroups.count"), n)).weak());
+                let text = RichText::new(tf!(plural(n, "visgroups.count_one", "visgroups.count"), n)).weak();
+                ui.add(egui::Label::new(text).truncate());
             });
         });
     }
@@ -866,10 +867,21 @@ pub(crate) fn visgroup_total(doc: &Document) -> usize {
 fn auto_checkbox(ui: &mut Ui, label: &str, tooltip: &str, count: GroupCount) -> Option<bool> {
     let state = count.state();
     let mut checked = state != Some(false);
+    let count_text = RichText::new(count.total.to_string()).weak().small();
+    let count_w = egui::WidgetText::from(count_text.clone())
+        .into_galley(ui, Some(egui::TextWrapMode::Extend), f32::INFINITY, egui::TextStyle::Small)
+        .size()
+        .x;
+    let max_w = (ui.available_width() - count_w - ui.spacing().item_spacing.x).max(ui.spacing().icon_width);
+    let size = egui::vec2(max_w, ui.spacing().interact_size.y);
     let resp = ui
-        .add_enabled(count.total > 0, egui::Checkbox::new(&mut checked, label).indeterminate(state.is_none()))
+        .allocate_ui_with_layout(size, egui::Layout::left_to_right(egui::Align::Center), |ui| {
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
+            ui.add_enabled(count.total > 0, egui::Checkbox::new(&mut checked, label).indeterminate(state.is_none()))
+        })
+        .inner
         .on_hover_text(tooltip);
-    ui.label(RichText::new(count.total.to_string()).weak().small());
+    ui.label(count_text);
     (resp.clicked() || resp.changed()).then_some(state != Some(true))
 }
 
@@ -878,7 +890,7 @@ fn auto_row(ui: &mut Ui, label: &str, tooltip: &str, count: GroupCount) -> Optio
 }
 
 fn hidden_row(ui: &mut Ui, state: &mut AppState, count: GroupCount) -> bool {
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.add_space(ui.spacing().icon_width + ui.spacing().item_spacing.x);
         let label = t!(AutoKind::Hidden.label_key());
         let color = if count.total > 0 { theme::warning() } else { ui.visuals().weak_text_color() };
@@ -1021,6 +1033,45 @@ mod tests {
         let before = state.console.len();
         panel.apply(&mut state, vec![VisAction::MoveSelectionHere(walls)]);
         assert!(state.console.len() > before);
+    }
+
+    #[test]
+    fn the_panel_fits_a_narrow_dock() {
+        let _lang = crate::lang_lock();
+        crate::register_translations();
+        let mut state = doc_with_tree();
+        let mut panel = VisgroupPanel::new();
+        for lang in hp_app::i18n::Lang::ALL {
+            hp_app::i18n::set_lang(lang);
+            for selected in [false, true] {
+                if selected {
+                    state.doc.set_selection(&[ObjRef::Solid(2)]);
+                } else {
+                    state.doc.clear_selection();
+                }
+                let ctx = egui::Context::default();
+                let mut width = 0.0f32;
+                for _ in 0..4 {
+                    let input = egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, vec2(1400.0, 900.0))),
+                        ..Default::default()
+                    };
+                    let mut out = ctx.run_ui(input, |ui| {
+                        let r = egui::Panel::right("hp_test_dock")
+                            .resizable(true)
+                            .default_size(220.0)
+                            .min_size(220.0)
+                            .show(ui, |ui| panel.ui(ui, &mut state));
+                        width = r.response.rect.width();
+                    });
+                    out.textures_delta.clear();
+                }
+                hp_app::i18n::set_lang(hp_app::i18n::Lang::En);
+                assert!(width <= 220.5, "{lang:?} selected {selected}: {width}");
+                hp_app::i18n::set_lang(lang);
+            }
+        }
+        hp_app::i18n::set_lang(hp_app::i18n::Lang::En);
     }
 
     #[test]

@@ -34,6 +34,7 @@ pub(super) fn icon(action: Action) -> Option<&'static str> {
 }
 
 pub(super) const TR: TrTable = &[
+    ("shell.undo.mcp_edit_soundscape", "MCP: soundscape", "MCP : soundscape"),
     ("action.toggle_mcp_server", "MCP server", "Serveur MCP"),
     ("action.mcp_install", "Install MCP in Claude, Codex and Gemini", "Installer MCP dans Claude, Codex et Gemini"),
     ("action.mcp_panel", "MCP...", "MCP..."),

@@ -76,6 +76,7 @@ const SEMANTIC: &[&Domain] = &[
     &super::tools_loops::DOMAIN,
     &super::tools_roadside::DOMAIN,
     &super::tools_pipe::DOMAIN,
+    &super::tools_spline::DOMAIN,
     &super::tools_slice::DOMAIN,
     &super::tools_groups::DOMAIN,
     &super::tools_disp::DOMAIN,

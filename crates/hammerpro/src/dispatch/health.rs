@@ -1,3 +1,5 @@
+pub(crate) mod cubemaps;
+mod leak_confirm;
 pub(crate) mod optimize;
 mod placement;
 pub(super) mod portals;
@@ -22,6 +24,8 @@ pub(crate) struct State {
     dup_serial: u64,
     optimize: Option<optimize::Job>,
     placement: placement::PlacementChecks,
+    cube_revision: u64,
+    cube_changed: Option<std::time::Instant>,
 }
 
 const HANDLED: &[Action] = &[
@@ -38,11 +42,17 @@ const HANDLED: &[Action] = &[
     Action::ShowOptimize,
     Action::AnalyzeOptimization,
     Action::ToggleVisleaves,
+    Action::ShowCubemaps,
+    Action::ToggleCubemapAssignment,
 ];
 
 impl Package for Health {
     fn handled(&self) -> &'static [Action] {
         HANDLED
+    }
+
+    fn init(&self, _app: &mut HammerProApp) {
+        hp_app::extend::set_leak_confirm(leak_confirm::confirm);
     }
 
     fn handle(&self, app: &mut HammerProApp, ctx: &egui::Context, action: Action) -> bool {
@@ -97,6 +107,22 @@ impl Package for Health {
                     app.state.runtime.optimize.request = true;
                 } else {
                     optimize::set_view(&mut app.state, on);
+                }
+                ctx.request_repaint();
+            }
+            Action::ShowCubemaps => {
+                let rt = &mut app.state.runtime.cubemaps;
+                rt.show = true;
+                if rt.report.is_none() {
+                    rt.request = true;
+                }
+                ctx.request_repaint();
+            }
+            Action::ToggleCubemapAssignment => {
+                let rt = &mut app.state.runtime.cubemaps;
+                rt.view = !rt.view;
+                if rt.view && rt.report.is_none() {
+                    rt.request = true;
                 }
                 ctx.request_repaint();
             }
@@ -155,9 +181,10 @@ impl Package for Health {
         }
         let working = app.pkg.health.portals.tick(&mut app.state);
         let analyzing = tick_optimize(app);
+        let cubes = tick_cubemaps(app);
         HealthRuntime::update_pvs(&mut app.state);
         HealthRuntime::update_play(&mut app.state);
-        if busy || working || analyzing || placing || app.pkg.health.leak_report_wanted {
+        if busy || working || analyzing || cubes || placing || app.pkg.health.leak_report_wanted {
             ctx.request_repaint_after(std::time::Duration::from_millis(60));
         }
     }
@@ -173,6 +200,14 @@ impl Package for Health {
         }
         let rt = &mut app.state.runtime.optimize;
         *rt = hp_app::runtime::OptimizeRuntime { show: rt.show, ..Default::default() };
+        let cm = &mut app.state.runtime.cubemaps;
+        *cm = hp_app::runtime::CubemapRuntime {
+            show: cm.show,
+            view: cm.view,
+            size: cm.size,
+            request: cm.show || cm.view,
+            ..Default::default()
+        };
         app.pkg.health.placement.map_loaded();
     }
 
@@ -233,6 +268,17 @@ fn tick_optimize(app: &mut HammerProApp) -> bool {
         app.pkg.health.optimize = optimize::Job::start(&mut app.state);
     }
     app.pkg.health.optimize.is_some()
+}
+
+fn tick_cubemaps(app: &mut HammerProApp) -> bool {
+    let revision = app.state.doc.scene_revision();
+    let pkg = &mut app.pkg.health;
+    if revision != pkg.cube_revision {
+        pkg.cube_revision = revision;
+        pkg.cube_changed = Some(std::time::Instant::now());
+    }
+    let changed = pkg.cube_changed;
+    cubemaps::tick(&mut app.state, changed)
 }
 
 fn seal_opening(app: &mut HammerProApp) {

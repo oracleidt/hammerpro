@@ -56,13 +56,24 @@ Les lumières ne changent pas la visibilité, mais des lumières incohérentes s
 - chaque lumière nommée est commutable : elle ajoute une page de lightmap sur chaque face qu'elle touche (4 au plus par face) et le moteur en accepte 32 ;
 - une map avec du ciel a besoin d'un `light_environment`.
 
+## Cubemaps
+
+Les cubemaps ne coûtent rien en visibilité, mais un sol réfléchissant dans une pièce sans son propre `env_cubemap` reflète une autre pièce ou le ciel et brille dans le noir, et trop de grands cubemaps coûtent de la mémoire et du temps de chargement :
+
+- chaque pièce avec des matériaux réfléchissants (`$envmap env_cubemap` : sols brillants, verre, métal, eau) a besoin d'un cubemap qui la voit, à hauteur des yeux (64 à 72 unités au-dessus du sol), près du milieu de ses surfaces réfléchissantes ;
+- une face prend le cubemap le plus proche devant elle, même à travers un mur : listez ces faces dans les `sides` du cubemap de leur pièce ;
+- un cubemap dans un brush est rendu noir, un cubemap au ras du sol reflète comme vu depuis le sol ;
+- deux cubemaps à quelques unités l'un de l'autre capturent la même image ; 256x256 coûte 2 Mo chacun, gardez-le pour les miroirs.
+
+Le conseiller les signale dans le sujet **Cubemaps** (il ne les modifie jamais). L'[outil Cubemaps](../features/cubemaps.md) (**Outils > Placement et props > Cubemaps...**, ou **Outil Cubemaps** sur un constat) montre quelle face prend quel cubemap, dessine les cubemaps suggérés en fantômes dans les vues et place ceux que vous **acceptez** en une étape d'annulation ; son affichage **Afficher l'attribution des cubemaps** colore les faces selon leur cubemap.
+
 ## La fenêtre Optimiser la map
 
 **Map > Optimiser la map...** ouvre un conseiller : il vous dit ce qui n'est pas optimisé et quoi faire, en langage simple. Il ne modifie jamais la map de lui-même.
 
 - **Actualiser** compile le BSP, les portails et la visibilité de la map actuelle en arrière-plan (rien n'est écrit à côté de la map ; l'éditeur reste utilisable) et la vérifie. La première ouverture le lance une fois. Quand la map change, une ligne indique que l'analyse n'est plus à jour.
 - Le résumé donne les visleaves, les portails, les zones, et combien de visleaves une visleaf voit en moyenne et au plus.
-- Les constats sont triés par impact (fort, moyen, faible). Les boutons du haut les filtrent par thème : visleaves, func_detail, hints, areaportals, lumières.
+- Les constats sont triés par impact (fort, moyen, faible). Les boutons du haut les filtrent par thème : visleaves, func_detail, hints, areaportals, lumières, cubemaps.
 - Chaque constat dit ce qui ne va pas, pourquoi cela coûte des performances et la chose concrète à faire, par exemple *Transformez ces 12 brushes en func_detail : ils sont petits, ne scellent pas la map et coupent 40 visleaves*, *Mettez un areaportal dans le cadre de la porte 214 : porte fermée, rien derrière n'est dessiné*, ou *La lumière 88 n'a aucune lampe à côté : déplacez-la vers une lampe ou ajoutez une source visible*.
 - **Aller à** sélectionne les objets du constat et les cadre dans les vues 2D et 3D ; pour un endroit sans objet (une visleaf, un plan de hint, une ouverture), il y déplace les caméras. La boîte du constat est dessinée dans les vues tant que la fenêtre est ouverte.
 - Le constat func_detail a aussi **Les sélectionner** : il sélectionne les brushes suggérés sans déplacer les vues, pour les vérifier puis appuyer sur **Transformer en func_detail**.
@@ -77,6 +88,7 @@ Les vérifications :
 | Hints | Des plans de hint trouvés à partir des portails (haut des portes, bords des ouvertures dans les angles), chacun mesuré en compilant la map avec : seuls ceux qui réduisent le PVS sont listés, avec le gain. |
 | Areaportals | Chaque areaportal : un seul brush, fin, ouverture étroite, scellé sur les quatre côtés, ne touchant pas un autre, lien et état de départ de la porte, séparant vraiment deux zones. Les portes sans areaportal et les ouvertures sans porte qui sont le seul passage entre deux groupes de visleaves reçoivent un areaportal suggéré, ajusté à l'ouverture. |
 | Lumières | Lumières flottantes, lampes sans lumière, lumières bloquées, lampes du même modèle avec des lumières différentes, lumières redondantes, spots dirigés dans les murs, trop de lumières commutables, light_environment manquant, valeurs d'atténuation incorrectes. |
+| Cubemaps | Pièces avec des matériaux réfléchissants et aucun cubemap qui les voit, faces qui prennent le cubemap d'une autre pièce ou derrière un mur, faces loin de leur cubemap, cubemaps dans des brushes, dans le vide, au ras du sol, trop proches, trop grands ou trop petits, trop de cubemaps. Les corrections se placent avec l'[outil Cubemaps](../features/cubemaps.md). |
 
 ## Avec un assistant IA (MCP)
 
@@ -92,6 +104,9 @@ Les mêmes vérifications sont des outils MCP, et là elles peuvent appliquer le
 | `check_areaportals` | Valide chaque areaportal ; `fix` répare l'état de départ, le lien de porte, l'ajustement et supprime les inutiles. |
 | `suggest_areaportals` | Les ouvertures qui devraient recevoir un areaportal, ajusté à l'ouverture ; `apply` les place. |
 | `audit_lights` | L'audit de cohérence des lumières ; `fix` applique les corrections (toutes ou certains types). |
+| `analyze_cubemaps` | L'analyse des cubemaps : pièces, quelle face prend quel cubemap, constats et suggestions. |
+| `suggest_cubemaps` | Cubemaps suggérés à hauteur des yeux et corrections de sides ; `apply` les place. |
+| `show_cubemap_assignment` | Affiche les faces colorées selon leur cubemap dans les vues. |
 
 Sur une grande map l'analyse peut durer plus longtemps qu'un appel : l'outil répond alors `running: true` et l'analyse continue en arrière-plan ; rappeler l'outil avec les mêmes arguments (sans modifier la map) renvoie le résultat. `vis: "auto"` (par défaut) utilise la visibilité exacte jusqu'à 4000 brushes et la rapide au-delà.
 

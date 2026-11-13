@@ -16,6 +16,7 @@ pub struct PlacementSettings {
     pub show_real_dimensions: bool,
     pub problem_checks: bool,
     pub overlap_check: bool,
+    pub foliage: crate::foliage::FoliageSettings,
 }
 
 impl Default for PlacementSettings {
@@ -32,6 +33,7 @@ impl Default for PlacementSettings {
             show_real_dimensions: false,
             problem_checks: true,
             overlap_check: false,
+            foliage: crate::foliage::FoliageSettings::default(),
         }
     }
 }

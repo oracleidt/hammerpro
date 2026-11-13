@@ -36,6 +36,8 @@ action_list! { lab_actions {
     ToggleColorCorrectionPreview => "toggle_color_correction_preview", View, ViewEnvironment, None, Ready;
     PropperOptions => "propper_options", Tools, ToolsProps, None, Ready;
     CombineProps => "combine_props", Tools, ToolsProps, None, Ready;
+    ToggleSoundscapeView => "toggle_soundscape_view", View, ViewEnvironment, None, Ready;
+    ToggleSoundscapeHearing => "toggle_soundscape_hearing", View, ViewEnvironment, None, Ready;
 }}
 
 pub(super) const REPEATS: &[Action] = &[];
@@ -102,6 +104,8 @@ pub(super) fn check(state: &AppState, action: Action) -> Option<Check> {
         Action::ToggleEntityFx => Some(Check::Toggle(state.settings.lab.show_entity_fx)),
         Action::ParticlePreview => Some(Check::Toggle(state.runtime.lab.particle_preview.open)),
         Action::TogglePlayerView => Some(Check::Toggle(state.runtime.lab.player.active)),
+        Action::ToggleSoundscapeView => Some(Check::Toggle(state.settings.lab.soundscape.view)),
+        Action::ToggleSoundscapeHearing => Some(Check::Toggle(state.settings.lab.soundscape.hearing)),
         _ => None,
     }
 }
@@ -118,6 +122,13 @@ pub(super) fn icon(action: Action) -> Option<&'static str> {
 }
 
 pub(super) const TR: TrTable = &[
+    ("action.toggle_soundscape_view", "Show soundscapes", "Afficher les soundscapes"),
+    ("shell.undo.assign_soundscape", "Assign soundscape", "Attribution de soundscape"),
+    (
+        "action.toggle_soundscape_hearing",
+        "Hear soundscapes in the player view",
+        "Entendre les soundscapes dans la vue joueur",
+    ),
     ("action.tool_physics", "Physics simulator", "Simulateur physique"),
     ("tool.physics", "Physics", "Physique"),
     ("shell.undo.physics", "Simulate physics", "Simulation physique"),

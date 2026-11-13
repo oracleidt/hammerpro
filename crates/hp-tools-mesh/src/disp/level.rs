@@ -567,7 +567,7 @@ impl DisplacementTool {
     pub(crate) fn slope_brush_ui(&mut self, ui: &mut Ui, state: &mut AppState) {
         let point_row = |ui: &mut Ui, label: &str, p: &mut Option<DVec3>, color: Color32| {
             grid_row(ui, label, |ui| {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.colored_label(color, "\u{25cf}");
                     match p {
                         Some(v) => {

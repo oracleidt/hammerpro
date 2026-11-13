@@ -117,3 +117,5 @@ Seuls les fichiers `.txt` sont lus, sans les sous-dossiers, jusqu'à 1 Mo par fi
 
 ---
 [Retour à l'index de la documentation](../README.md)
+
+Voir aussi [Outil de végétation](foliage-tool.md).

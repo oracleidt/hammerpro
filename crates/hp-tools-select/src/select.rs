@@ -1932,6 +1932,10 @@ impl Tool for SelectTool {
         self.set_named_option(state, key, value)
     }
 
+    fn option_order(&self, key: &str) -> i32 {
+        if key == "pending_box" { 1 } else { 0 }
+    }
+
     fn option_values(&self) -> Vec<hp_app::tool::ToolOption> {
         self.named_option_values()
     }

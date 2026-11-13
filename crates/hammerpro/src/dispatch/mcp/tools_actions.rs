@@ -40,6 +40,13 @@ pub(crate) const NEEDS_CONFIRM: &[(&str, &str)] = &[
     ("load_nav_mesh", "shows a file dialog the user must answer"),
     ("send_to_blender", "starts Blender (use the send_to_blender tool)"),
     ("install_blender_addon", "writes into Blender's folders (use blender_setup with install_addon)"),
+    ("live_link_start", "writes the live link addon into the game folder (use live_link_start)"),
+    (
+        "live_link_remove_addon",
+        "deletes the live link addon from the game folder (use live_link_stop with remove_addon)",
+    ),
+    ("live_link_teleport", "moves the player of the running game (use live_link_teleport)"),
+    ("live_link_teleport_back", "moves the player of the running game (use live_link_teleport with back)"),
 ];
 
 const STARTS_GAME: &[&str] = &["launch_game", "reload_in_game", "compile_now", "batch_compile"];
@@ -237,6 +244,8 @@ mod tests {
         "import_blend_masks",
         "export_blend_masks",
         "bsp_sniffer",
+        "live_link_camera_to_game",
+        "live_link_camera_from_game",
     ];
 
     #[test]

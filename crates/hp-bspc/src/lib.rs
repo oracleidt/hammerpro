@@ -68,5 +68,5 @@ pub mod winding;
 #[cfg(test)]
 mod parity_tests;
 
-pub use compile::{CompileError, CompileOptions, CompileOutput, VisLevel, compile};
+pub use compile::{CompileError, CompileOptions, CompileOutput, FloodLeak, VisLevel, compile, flood_check};
 pub use materials::{MaterialFacts, MaterialSource};
