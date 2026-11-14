@@ -618,6 +618,7 @@ fn plan(world: &World, idx: &[usize], prints: &HashMap<Key, u64>, old: &ScanMemo
     Some(Plan { rescan, kept })
 }
 
+#[cfg(test)]
 pub(crate) fn run_map_scan(job: MapScan, fs: Option<&hp_fs::GameFs>, cancel: &AtomicBool) -> Option<Vec<Problem>> {
     run_map_scan_since(job, fs, cancel, None).map(|(problems, _)| problems)
 }
@@ -692,17 +693,51 @@ pub(crate) fn run_map_scan_since(
     Some((found, memory))
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct MemoryKey {
+    pub map: Option<std::path::PathBuf>,
+    pub content: u64,
+}
+
+impl MemoryKey {
+    pub(crate) fn of(state: &AppState) -> Self {
+        Self { map: state.doc.path().map(std::path::Path::to_path_buf), content: content_generation(state) }
+    }
+}
+
+static LAST_MEMORY: std::sync::Mutex<Option<(MemoryKey, std::sync::Arc<ScanMemory>)>> = std::sync::Mutex::new(None);
+
+pub(crate) fn content_generation(state: &AppState) -> u64 {
+    state.assets.fs().map_or(0, |f| f.generation())
+}
+
+pub(crate) fn remember_scan(key: MemoryKey, memory: std::sync::Arc<ScanMemory>) {
+    if key.map.is_none() {
+        return;
+    }
+    *LAST_MEMORY.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some((key, memory));
+}
+
+pub(crate) fn remembered_scan(key: &MemoryKey) -> Option<std::sync::Arc<ScanMemory>> {
+    key.map.as_ref()?;
+    let last = LAST_MEMORY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    last.as_ref().filter(|(k, _)| k == key).map(|(_, m)| std::sync::Arc::clone(m))
+}
+
 pub(crate) fn scan_now(state: &mut AppState) {
     let start = std::time::Instant::now();
     if !state.settings.placement.problem_checks {
         state.runtime.health.set_placement(Vec::new(), None, 0);
         return;
     }
+    let key = MemoryKey::of(state);
+    let old = remembered_scan(&key);
     let job = prepare_map_scan(state);
     let serial = job.serial;
     let fs = state.assets.fs().cloned();
     let cancel = AtomicBool::new(false);
-    if let Some(p) = run_map_scan(job, fs.as_ref(), &cancel) {
+    if let Some((p, memory)) = run_map_scan_since(job, fs.as_ref(), &cancel, old.as_deref()) {
+        remember_scan(key, std::sync::Arc::new(memory));
         let ms = start.elapsed().as_millis() as u64;
         state.runtime.health.set_placement(p, Some(serial), ms);
     }

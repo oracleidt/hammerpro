@@ -531,13 +531,107 @@ pub(super) fn env_entity(
 pub(super) fn environment(state: &AppState, skip_solids: &IdSet, skip_entities: &IdSet, opts: &EnvOptions) -> Vec<Obj> {
     let scene = state.doc.scene();
     let mut out = Vec::new();
-    for id in scene.solids().keys().copied() {
+    let mut near_owners: std::collections::HashSet<u32> = std::collections::HashSet::new();
+    let ids: Vec<u32> = match opts.region {
+        Some(r) => state.doc.solids_in_box(&r),
+        None => scene.solids().keys().copied().collect(),
+    };
+    for id in ids {
+        let Some(node) = scene.solid(id) else { continue };
+        if opts.region.is_some_and(|r| node.bounds.is_empty() || !node.bounds.intersects(&r)) {
+            continue;
+        }
+        if let Owner::Entity(e) = node.owner {
+            near_owners.insert(e);
+            continue;
+        }
         out.extend(env_solid(state, id, skip_solids, opts));
     }
-    for id in scene.entities().keys().copied() {
-        out.extend(env_entity(state, id, skip_solids, skip_entities, opts));
+    let Some(region) = opts.region else {
+        for id in scene.entities().keys().copied() {
+            out.extend(env_entity(state, id, skip_solids, skip_entities, opts));
+        }
+        return out;
+    };
+    let generation = state.assets.fs().map_or(0, |f| f.generation()) ^ state.assets.generation().rotate_left(32);
+    let mut guard = HINTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let cache = guard.get_or_insert_with(HintCache::default);
+    let loading = state.assets.pending_work() > 0;
+    let stale = loading && cache.built.is_none_or(|t| t.elapsed() >= LOADING_HINTS_FOR);
+    if cache.generation != generation || cache.map.len() > MAX_HINTS || stale {
+        cache.generation = generation;
+        cache.map.clear();
+        cache.built = Some(std::time::Instant::now());
+    }
+    let whole = EnvOptions { region: None, ..*opts };
+    for (id, node) in scene.entities() {
+        let id = *id;
+        if scene.is_brush_entity(id) {
+            if near_owners.contains(&id) {
+                out.extend(env_entity(state, id, skip_solids, skip_entities, opts));
+            }
+            continue;
+        }
+        if skip_entities.contains(&id)
+            || hp_editor::instances::is_instance(&node.entity)
+            || node.entity.classname.eq_ignore_ascii_case("prop_ragdoll")
+        {
+            out.extend(env_entity(state, id, skip_solids, skip_entities, opts));
+            continue;
+        }
+        let key = (id, hint_fingerprint(&node.entity, opts));
+        let hint = match cache.map.get(&key) {
+            Some(h) => *h,
+            None => {
+                let obj = env_entity(state, id, skip_solids, skip_entities, &whole);
+                let h = obj.as_ref().map(|o| o.hint);
+                cache.map.insert(key, h);
+                if let Some(o) = obj.filter(|o| !o.hint.is_empty() && o.hint.intersects(&region)) {
+                    out.push(o);
+                }
+                continue;
+            }
+        };
+        if hint.is_some_and(|h| !h.is_empty() && h.intersects(&region)) {
+            out.extend(env_entity(state, id, skip_solids, skip_entities, opts));
+        }
     }
     out
+}
+
+#[derive(Default)]
+struct HintCache {
+    generation: u64,
+    built: Option<std::time::Instant>,
+    map: HashMap<(u32, u64), Option<Aabb>>,
+}
+
+static HINTS: Mutex<Option<HintCache>> = Mutex::new(None);
+
+const MAX_HINTS: usize = 400_000;
+
+const LOADING_HINTS_FOR: std::time::Duration = std::time::Duration::from_secs(5);
+
+const HINT_KEYS: [&str; 10] =
+    ["origin", "angles", "angle", "pitch", "model", "modelscale", "uniformscale", "body", "setbodygroup", "skin"];
+
+pub(super) fn hint_fingerprint(e: &hp_vmf::Entity, opts: &EnvOptions) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    e.classname.hash(&mut h);
+    if opts.include_points {
+        e.props.hash(&mut h);
+    } else {
+        for (k, v) in &e.props {
+            if HINT_KEYS.iter().any(|key| k.len() == key.len() && k.eq_ignore_ascii_case(key)) {
+                k.len().hash(&mut h);
+                v.hash(&mut h);
+            }
+        }
+    }
+    opts.include_tools.hash(&mut h);
+    opts.include_points.hash(&mut h);
+    h.finish()
 }
 
 type CacheKey = (String, u32);

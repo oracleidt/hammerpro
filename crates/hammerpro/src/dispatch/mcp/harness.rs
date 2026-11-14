@@ -87,9 +87,10 @@ pub(crate) fn frame(ctx: &egui::Context, host: &mut TestHost, ui: &mut UiAutomat
         });
     });
     out.textures_delta.clear();
-    for (_, vo) in std::mem::take(&mut out.viewport_output) {
+    for (id, vo) in std::mem::take(&mut out.viewport_output) {
         for cmd in vo.commands {
             if let ViewportCommand::Screenshot(cb) = cmd {
+                assert_eq!(id, egui::ViewportId::ROOT, "screenshot_window always captures the main window");
                 let size = [(WINDOW.x / 4.0) as usize, (WINDOW.y / 4.0) as usize];
                 cb.complete(Arc::new(egui::ColorImage::filled(size, egui::Color32::from_gray(40))));
             }
@@ -531,4 +532,14 @@ fn title_bar_buttons_are_described_and_clickable() {
     sent.clear();
     let described = call(&mut host, &mut ui, &mut sent, "describe_ui", json!({})).structured.unwrap();
     assert!(described["title_bar"].is_null(), "{}", described["title_bar"]);
+}
+
+#[test]
+fn screenshot_window_rejects_a_child_window_image() {
+    use super::automation::shot_covers_window;
+    assert!(shot_covers_window([1936, 1096], Some([1936, 1096])));
+    assert!(!shot_covers_window([160, 28], Some([1936, 1096])), "the title bar buttons are not the window");
+    assert!(shot_covers_window([968, 548], Some([1936, 1096])));
+    assert!(shot_covers_window([160, 28], None));
+    assert!(!shot_covers_window([0, 0], None));
 }

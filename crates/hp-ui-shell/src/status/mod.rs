@@ -11,7 +11,9 @@ pub(crate) mod mcp;
 mod shell;
 mod startup;
 
-pub use shell::{CURSOR_WIDTH, SIZE_LIMIT, StatusCache, cursor_text, fmt_len, fmt_point, fmt_size};
+#[cfg(test)]
+pub(crate) use shell::wheel_steps;
+pub use shell::{CURSOR_WIDTH, SIZE_LIMIT, StatusCache, cursor_text, fmt_len, fmt_point, fmt_size, shows_status_grid};
 #[cfg(test)]
 pub(crate) use startup::late_text;
 

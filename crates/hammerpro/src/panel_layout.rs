@@ -63,6 +63,38 @@ pub fn sized_panel(
     SizedPanel { size, committed }
 }
 
+pub fn fitted_panel_height(content: f32, overhead: f32) -> f32 {
+    let content = if content.is_finite() { content.max(0.0) } else { 0.0 };
+    (content + overhead.max(0.0)).ceil()
+}
+
+pub fn fitted_top<R>(
+    ui: &mut egui::Ui,
+    id_salt: &'static str,
+    add: impl FnOnce(&mut egui::Ui) -> R,
+) -> egui::InnerResponse<R> {
+    let memory = ui.scope_id().with(id_salt).with("__content_height");
+    let frame = egui::Frame::side_top_panel(ui.style());
+    let line = ui.style().visuals.widgets.noninteractive.bg_stroke.width.round();
+    let overhead = frame.total_margin().sum().y + line;
+    let known: Option<f32> = ui.data(|d| d.get_temp(memory));
+    let mut panel = egui::Panel::top(id_salt).frame(frame).resizable(false);
+    if let Some(content) = known {
+        panel = panel.exact_size(fitted_panel_height(content, overhead));
+    }
+    panel.show(ui, |ui| {
+        let start = egui::Rect::from_min_size(ui.cursor().min, egui::vec2(ui.available_width(), 0.0));
+        let builder = egui::UiBuilder::new().max_rect(start).layout(egui::Layout::top_down(egui::Align::Min));
+        let r = ui.scope_builder(builder, add);
+        let content = r.response.rect.height();
+        if known.is_none_or(|k| (k - content).abs() > 0.5) {
+            ui.data_mut(|d| d.insert_temp(memory, content));
+            ui.ctx().request_repaint();
+        }
+        r.inner
+    })
+}
+
 pub fn bounded<R>(ui: &mut egui::Ui, add: impl FnOnce(&mut egui::Ui) -> R) -> R {
     let rect = ui.available_rect_before_wrap();
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect).layout(*ui.layout()));
@@ -224,5 +256,47 @@ mod tests {
         assert!(console_max(100.0) >= CONSOLE_MIN);
         assert!(dock_max(1000.0) >= DOCK_MIN);
         assert!(console_max(1000.0) <= 500.0);
+    }
+
+    fn top_height(ctx: &egui::Context, rows: usize) -> (f32, f32) {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1920.0, 1080.0))),
+            ..Default::default()
+        };
+        let mut out = (0.0, 0.0);
+        let _ = ctx.run_ui(input, |ui| {
+            let r = fitted_top(ui, "hp_top_test", |ui| {
+                ui.horizontal_top(|ui| ui.separator());
+                for _ in 0..rows {
+                    ui.allocate_exact_size(egui::vec2(200.0, 24.0), egui::Sense::hover());
+                }
+                ui.min_rect().height()
+            });
+            out = (r.response.rect.height(), r.inner);
+        });
+        out
+    }
+
+    fn settled(ctx: &egui::Context, rows: usize) -> (f32, f32) {
+        let mut last = top_height(ctx, rows);
+        for _ in 0..3 {
+            last = top_height(ctx, rows);
+        }
+        last
+    }
+
+    #[test]
+    fn top_bar_fits_its_rows_and_shrinks_back() {
+        let ctx = egui::Context::default();
+        let (one, content_one) = settled(&ctx, 1);
+        let (two, content_two) = settled(&ctx, 2);
+        let (again, _) = settled(&ctx, 1);
+        let overhead = one - content_one;
+        assert!((0.0..20.0).contains(&overhead), "overhead {overhead}");
+        assert!((two - content_two - overhead).abs() <= 1.0, "two rows {two} content {content_two}");
+        assert!(two - one >= 24.0, "a second row adds its height: {one} -> {two}");
+        assert!((again - one).abs() <= 0.5, "shrinks back to one row: {one} vs {again}");
+        assert_eq!(fitted_panel_height(24.0, 9.0), 33.0);
+        assert_eq!(fitted_panel_height(f32::NAN, 9.0), 9.0);
     }
 }

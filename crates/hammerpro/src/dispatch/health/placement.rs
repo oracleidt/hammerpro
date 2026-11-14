@@ -7,6 +7,8 @@ use hp_app::AppState;
 use hp_app::state::AssetStatus;
 use hp_editor::Problem;
 
+use crate::dispatch::mcp::ScanMemory;
+
 const SLICE: Duration = Duration::from_millis(4);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -18,10 +20,11 @@ struct Want {
 
 struct Job {
     want: Want,
+    key: crate::dispatch::mcp::MemoryKey,
     serial: u64,
     started: Instant,
     cancel: Arc<AtomicBool>,
-    rx: Receiver<Option<(Vec<Problem>, crate::dispatch::mcp::ScanMemory)>>,
+    rx: Receiver<Option<(Vec<Problem>, ScanMemory)>>,
 }
 
 #[derive(Default)]
@@ -33,7 +36,7 @@ pub(crate) struct PlacementChecks {
     forced: bool,
     builder: Option<(crate::dispatch::mcp::MapScanBuilder, Want)>,
     pub(crate) last_prepare_ms: u64,
-    memory: Option<(Want, Arc<crate::dispatch::mcp::ScanMemory>)>,
+    memory: Option<(Want, Arc<ScanMemory>)>,
 }
 
 impl Drop for PlacementChecks {
@@ -45,7 +48,7 @@ impl Drop for PlacementChecks {
 }
 
 fn content_generation(state: &AppState) -> u64 {
-    state.assets.fs().map_or(0, |f| f.generation())
+    crate::dispatch::mcp::content_generation(state)
 }
 
 impl PlacementChecks {
@@ -56,39 +59,56 @@ impl PlacementChecks {
         *self = PlacementChecks::default();
     }
 
+    pub(crate) fn on_worker(&self) -> bool {
+        self.job.is_some()
+    }
+
     pub(crate) fn force(&mut self) {
         self.forced = true;
     }
 
+    fn finish(&mut self, state: &mut AppState, job: Job, problems: Vec<Problem>, memory: ScanMemory) {
+        let ms = job.started.elapsed().as_millis() as u64;
+        let same_map = crate::dispatch::mcp::MemoryKey::of(state).map == job.key.map;
+        let current = same_map && state.doc.content_serial() == job.serial;
+        log::info!(
+            "placement check: {} problems ({} props checked again), {ms} ms on a worker after {} ms on the main thread in slices{}",
+            problems.len(),
+            memory.scanned,
+            self.last_prepare_ms,
+            if current { "" } else { ", the map changed meanwhile: kept to check only the changes again" }
+        );
+        let memory = Arc::new(memory);
+        crate::dispatch::mcp::remember_scan(job.key.clone(), Arc::clone(&memory));
+        if !same_map {
+            return;
+        }
+        self.memory = Some((job.want, memory));
+        if current {
+            state.runtime.health.set_placement(problems, Some(job.serial), ms);
+            self.done = Some(job.want);
+        }
+    }
+
     pub(crate) fn tick(&mut self, state: &mut AppState) -> bool {
         if let Some(job) = &self.job {
-            match job.rx.try_recv() {
-                Ok(result) => {
-                    let job = self.job.take();
-                    if let (Some((problems, memory)), Some(job)) = (result, job) {
-                        let ms = job.started.elapsed().as_millis() as u64;
-                        log::info!(
-                            "placement check: {} problems ({} props checked again), {ms} ms on a worker after {} ms on the main thread in slices",
-                            problems.len(),
-                            memory.scanned,
-                            self.last_prepare_ms
-                        );
-                        self.memory = Some((job.want, Arc::new(memory)));
-                        if state.doc.content_serial() == job.serial {
-                            state.runtime.health.set_placement(problems, Some(job.serial), ms);
-                            self.done = Some(job.want);
+            if !state.settings.placement.problem_checks {
+                job.cancel.store(true, Ordering::Relaxed);
+                self.job = None;
+            } else {
+                match job.rx.try_recv() {
+                    Ok(result) => {
+                        let job = self.job.take();
+                        if let (Some((problems, memory)), Some(job)) = (result, job) {
+                            self.finish(state, job, problems, memory);
                         }
                     }
-                }
-                Err(TryRecvError::Empty) => {
-                    if state.doc.content_serial() == job.serial {
+                    Err(TryRecvError::Empty) => {
                         state.runtime.health.placement_checking = true;
                         return true;
                     }
-                    job.cancel.store(true, Ordering::Relaxed);
-                    self.job = None;
+                    Err(TryRecvError::Disconnected) => self.job = None,
                 }
-                Err(TryRecvError::Disconnected) => self.job = None,
             }
         }
         state.runtime.health.placement_checking = false;
@@ -155,11 +175,13 @@ impl PlacementChecks {
         let flag = Arc::clone(&cancel);
         let (tx, rx) = std::sync::mpsc::channel();
         let serial = scan.serial;
+        let key = crate::dispatch::mcp::MemoryKey::of(state);
         let old = self
             .memory
             .as_ref()
             .filter(|(w, _)| w.content == want.content && w.overlaps == want.overlaps)
-            .map(|(_, m)| Arc::clone(m));
+            .map(|(_, m)| Arc::clone(m))
+            .or_else(|| crate::dispatch::mcp::remembered_scan(&key));
         hp_app::checks::watch(&cancel);
         let spawned = std::thread::Builder::new().name("hp-placement-check".into()).spawn(move || {
             hp_app::checks::lowest_priority();
@@ -175,7 +197,7 @@ impl PlacementChecks {
         });
         match spawned {
             Ok(_) => {
-                self.job = Some(Job { want, serial, started, cancel, rx });
+                self.job = Some(Job { want, key, serial, started, cancel, rx });
                 state.runtime.health.placement_checking = true;
                 true
             }
@@ -316,5 +338,65 @@ mod tests {
         let (_, memory) =
             crate::dispatch::mcp::run_map_scan_since(job, None, &cancel, Some(&memory)).expect("no change");
         assert_eq!(memory.scanned, 0, "nothing changed, nothing is checked again");
+    }
+    #[test]
+    fn an_edit_during_a_check_keeps_its_work_and_only_the_change_is_checked_again() {
+        let m = "models/hp_test/keep_crate.mdl";
+        let shape = TriMesh::convex_box(DVec3::new(-8.0, -8.0, 0.0), DVec3::new(8.0, 8.0, 16.0), 0);
+        crate::dispatch::mcp::pin_shape(
+            m,
+            0,
+            ModelShape { path: m.to_owned(), render: shape, ..ModelShape::default() },
+        );
+        let mut state = hp_app::testing::test_state();
+        state.settings.health.check_delay_ms = 0;
+        let planes = [
+            "(-1024 1024 0) (1024 1024 0) (1024 -1024 0)",
+            "(-1024 -1024 -16) (1024 -1024 -16) (1024 1024 -16)",
+            "(-1024 1024 0) (-1024 -1024 0) (-1024 -1024 -16)",
+            "(1024 1024 -16) (1024 -1024 -16) (1024 -1024 0)",
+            "(1024 1024 0) (-1024 1024 0) (-1024 1024 -16)",
+            "(1024 -1024 -16) (-1024 -1024 -16) (-1024 -1024 0)",
+        ];
+        let sides: Vec<String> = planes
+            .iter()
+            .enumerate()
+            .map(|(i, p)| {
+                format!(
+                    "side {{ \"id\" \"{}\" \"plane\" \"{p}\" \"material\" \"DEV/DEV_MEASUREGENERIC01B\" \"uaxis\" \"[1 0 0 0] 0.25\" \"vaxis\" \"[0 -1 0 0] 0.25\" }}",
+                    i + 10
+                )
+            })
+            .collect();
+        let text = format!(
+            "world {{ \"id\" \"1\" \"classname\" \"worldspawn\" solid {{ \"id\" \"2\" {} }} }}",
+            sides.join(" ")
+        );
+        state.doc = hp_editor::Document::from_map(hp_vmf::parse(&text).expect("vmf"));
+        let kv = [("model".to_owned(), m.to_owned())];
+        let at = |x: f64| DVec3::new(x, 0.0, 40.0);
+        let left = state.doc.create_point_entity("prop_physics", at(-800.0), &kv).expect("prop");
+        state.doc.create_point_entity("prop_physics", at(800.0), &kv).expect("prop");
+        let mut checks = PlacementChecks::default();
+        checks.force();
+        let start = Instant::now();
+        while !checks.on_worker() && checks.memory.is_none() {
+            checks.tick(&mut state);
+            assert!(start.elapsed() < Duration::from_secs(20), "the check did not start");
+        }
+        state.doc.translate(&[hp_editor::ObjRef::Entity(left)], DVec3::new(0.0, 0.0, -40.0)).expect("drop");
+        checks.tick(&mut state);
+        assert!(checks.on_worker() || checks.memory.is_some(), "the edit does not throw the running check away");
+        let start = Instant::now();
+        while state.runtime.health.placement_serial != Some(state.doc.content_serial()) {
+            checks.tick(&mut state);
+            assert!(start.elapsed() < Duration::from_secs(20), "the result did not follow the edit");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let scanned = checks.memory.as_ref().map(|(_, m)| m.scanned);
+        assert_eq!(scanned, Some(1), "only the moved prop is checked again");
+        let floating: Vec<_> = state.runtime.health.placement.iter().filter(|p| p.code == "floating_object").collect();
+        assert_eq!(floating.len(), 1, "the far prop still floats, the dropped one rests");
+        assert!(!floating[0].objects.contains(&hp_editor::ObjRef::Entity(left)));
     }
 }

@@ -394,7 +394,7 @@ impl StatusSegment for Grid {
     }
 
     fn ui(&mut self, ui: &mut Ui, state: &mut AppState, _cx: &mut StatusContext) {
-        if crate::toolbar::shows_item(&state.settings.workflow, crate::toolbar::ToolbarItem::GridSize) {
+        if !shows_status_grid(state) {
             return;
         }
         let target = state.target_grid();
@@ -402,13 +402,101 @@ impl StatusSegment for Grid {
             Some(name) => format!("{name} {}", crate::grids::steps_text(target.frame.step.to_array())),
             None => fmt_grid(target.frame.nominal()),
         };
-        ui.label(RichText::new(tf!("status.grid", size)).monospace().small())
-            .on_hover_text(crate::grids::source_tip(state, &target));
+        let button = egui::Button::new(RichText::new(tf!("status.grid", size)).monospace().small())
+            .frame_when_inactive(false)
+            .small();
+        let r = ui.add(button);
+        if let Some(step) = grid_wheel_step(ui, &r) {
+            state.request(if step > 0 { Action::GridLarger } else { Action::GridSmaller });
+        }
+        egui::Popup::menu(&r).show(|ui| grid_size_menu(ui, state));
+        egui::Popup::context_menu(&r).id(r.id.with("hide_menu")).show(|ui| {
+            let mut on = state.settings.workflow.show_status_grid;
+            if ui.checkbox(&mut on, t!("shell.view.status_grid")).changed() {
+                state.settings.workflow.show_status_grid = on;
+                state.settings_dirty = true;
+                ui.close();
+            }
+        });
+        crate::common::lazy_hover_text(r, || {
+            format!(
+                "{}
+{}",
+                crate::grids::source_tip(state, &target),
+                t!("shell.status.grid_tip")
+            )
+        });
     }
+}
+
+pub fn shows_status_grid(state: &AppState) -> bool {
+    state.settings.workflow.show_status_grid
+        || !crate::toolbar::shows_item(&state.settings.workflow, crate::toolbar::ToolbarItem::GridSize)
+}
+
+const WHEEL_NOTCH: f32 = 1.0;
+const POINTS_PER_NOTCH: f32 = 40.0;
+
+fn wheel_notches(unit: egui::MouseWheelUnit, dy: f32) -> f32 {
+    let dy = if dy.is_finite() { dy } else { 0.0 };
+    match unit {
+        egui::MouseWheelUnit::Line => dy,
+        egui::MouseWheelUnit::Point => dy / POINTS_PER_NOTCH,
+        egui::MouseWheelUnit::Page => dy * 3.0,
+    }
+}
+
+fn grid_wheel_step(ui: &Ui, r: &egui::Response) -> Option<i32> {
+    let memory = r.id.with("wheel");
+    if !r.hovered() {
+        ui.data_mut(|d| d.remove::<f32>(memory));
+        return None;
+    }
+    let delta: f32 = ui.input(|i| {
+        i.events
+            .iter()
+            .map(|e| match e {
+                egui::Event::MouseWheel { unit, delta, .. } => wheel_notches(*unit, delta.y),
+                _ => 0.0,
+            })
+            .sum()
+    });
+    if delta == 0.0 {
+        return None;
+    }
+    let total = ui.data(|d| d.get_temp::<f32>(memory)).unwrap_or(0.0) + delta;
+    let step = wheel_steps(total, WHEEL_NOTCH);
+    let rest = if step == 0 { total } else { 0.0 };
+    ui.data_mut(|d| d.insert_temp(memory, rest));
+    (step != 0).then_some(step)
+}
+
+pub(crate) fn wheel_steps(total: f32, notch: f32) -> i32 {
+    if !total.is_finite() || notch <= 0.0 || total.abs() < notch { 0 } else { total.signum() as i32 }
+}
+
+fn grid_size_menu(ui: &mut Ui, state: &mut AppState) {
+    let current = state.grid_size();
+    ui.horizontal_wrapped(|ui| {
+        ui.set_max_width(240.0);
+        for g in crate::common::GRID_SIZES {
+            if ui.selectable_label((g - current).abs() < 1e-9, RichText::new(fmt_grid(g)).monospace()).clicked() {
+                crate::toolbar::set_grid_size(state, g);
+                ui.close();
+            }
+        }
+    });
+    ui.separator();
+    crate::grids::grid_menu(ui, state);
 }
 
 pub(crate) const TR: TrTable = &[
     ("shell.status.faces", "{0} faces", "{0} face(s)"),
+    (
+        "shell.status.grid_tip",
+        "Click: grid menu. Wheel: change the size. Right click: hide.",
+        "Clic : menu de grille. Molette : changer la taille. Clic droit : masquer.",
+    ),
     ("shell.status.nothing_selected", "No selection", "Aucune sélection"),
     ("shell.status.bounds_tip", "From {0}\nto {1}", "De {0}\nà {1}"),
     ("shell.status.size_out_of_range", "size out of range", "taille hors limites"),

@@ -365,6 +365,36 @@ pub fn choice_row_wrapped<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
     .inner
 }
 
+pub fn keep_together<R>(ui: &mut Ui, id_salt: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
+    let memory = ui.scope_id().with(("hp_keep_together", id_salt));
+    let known: Option<f32> = ui.data(|d| d.get_temp(memory));
+    let at_row_start = ui.cursor().left() <= ui.max_rect().left() + 0.5;
+    if let Some(width) = known
+        && !at_row_start
+        && ui.layout().main_wrap()
+        && width > ui.available_size_before_wrap().x
+    {
+        ui.end_row();
+    }
+    let r = ui.horizontal(add);
+    let width = r.response.rect.width();
+    if known.is_none_or(|k| (k - width).abs() > 0.5) {
+        ui.data_mut(|d| d.insert_temp(memory, width));
+        ui.ctx().request_repaint();
+    }
+    r.inner
+}
+
+pub fn label_if_fits(ui: &mut Ui, text: impl Into<egui::WidgetText>) -> bool {
+    let galley = text.into().into_galley(ui, Some(egui::TextWrapMode::Extend), f32::INFINITY, egui::TextStyle::Body);
+    let at_row_start = ui.cursor().left() <= ui.max_rect().left() + 0.5;
+    if !at_row_start && galley.size().x > ui.available_size_before_wrap().x {
+        return false;
+    }
+    ui.label(galley);
+    true
+}
+
 pub fn grid_row<R>(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
     ui.label(label);
     let r = add(ui);

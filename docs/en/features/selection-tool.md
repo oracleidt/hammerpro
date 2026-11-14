@@ -103,7 +103,7 @@ The right end of the options bar has a **Class** / **Material** switch, a text f
 - **Class** selects every visible entity of that class, **Material** every object using that material.
 - Wildcards `*` and `?` work. Without a wildcard, an exact match is tried first, then any name containing the text.
 - Hold `Ctrl` while applying to add to the selection.
-- The bar then shows **{n} found** or **No match**. A query that finds nothing keeps the current selection.
+- The bar then shows **{n} found** or **No match**. When the bar has no room left for it, the count shows in the tooltip of **Select** instead. A query that finds nothing keeps the current selection.
 
 ## Transforming in the 2D views
 

@@ -34,7 +34,7 @@ Keyboard, while the pointer is over the list or grid: `Up` / `Down` move the sel
 
 ## Using a model
 
-- **Drag** a model from the list or grid into a view to place a prop there: a box shows where it lands (on the surface under the pointer in 3D). The prop is a `prop_static` when the model is a static prop, else a `prop_dynamic`. The skin chosen in the preview goes with it, and the model becomes the model of new props.
+- **Drag** a model from the list or grid into a view to place a prop there: a box shows where it lands (on the surface under the pointer in 3D). The prop is placed by its bounding box, not its origin: the bottom of the box sits on the floor under the pointer (against a wall or a ceiling, the box is flush with it along the surface), centred on the hit point, which still snaps to the grid. In the 2D views the box is centred on the drop point with its bottom at the drop height. Models whose origin is not at their base no longer sink or float. The prop is a `prop_static` when the model is a static prop, else a `prop_dynamic`. The skin chosen in the preview goes with it, and the model becomes the model of new props.
 - **Double click** (or `Enter`) uses the model for new props, or writes it into the key you are picking for.
 - The buttons under the model name:
 

@@ -568,7 +568,10 @@ impl HammerProApp {
         }
         self.report_gpu_errors();
         let now = self.state.frame.time;
-        self.vram.tick(&mut self.state, now);
+        {
+            let _span = hp_app::runtime::Span::new("vram");
+            self.vram.tick(&mut self.state, now);
+        }
         let busy = self.state.assets.busy();
         let (focused, input, minimized) = ctx.input(|i| {
             let focused =
@@ -591,11 +594,15 @@ impl HammerProApp {
         }
 
         let AppState { assets, gfx, .. } = &mut self.state;
-        assets.begin_frame(ctx, gfx.as_mut());
+        {
+            let _span = hp_app::runtime::Span::new("assets");
+            assets.begin_frame(ctx, gfx.as_mut());
+        }
         self.report_assets();
         self.poll_open(ctx);
         let shared = self.collaboration.bound_tab();
         if self.collaboration.active() {
+            let _span = hp_app::runtime::Span::new("team_mapping");
             let controller = &mut self.collaboration;
             if !self.tabs.with_document(&mut self.state, shared, |state| controller.tick(state, ctx, shared)) {
                 self.collaboration.stop(&mut self.state);
@@ -704,7 +711,7 @@ impl HammerProApp {
     }
 
     fn layout(&mut self, ui: &mut egui::Ui, menu_bar: bool) {
-        egui::Panel::top("hp_top").show(ui, |ui| {
+        crate::panel_layout::fitted_top(ui, "hp_top", |ui| {
             if menu_bar {
                 self.shell.menu_bar(ui, &mut self.state);
             }
@@ -716,13 +723,16 @@ impl HammerProApp {
             let rows = options_rows(block, ui.spacing().interact_size.y);
             let margin = egui::Margin { top: rows.pad, bottom: rows.pad, ..Default::default() };
             egui::Frame::NONE.inner_margin(margin).show(ui, |ui| {
-                ui.horizontal_top(|ui| {
+                let row = egui::vec2(ui.available_width(), rows.first);
+                let top = egui::Layout::left_to_right(egui::Align::Center).with_cross_align(egui::Align::Min);
+                ui.allocate_ui_with_layout(row, top, |ui| {
                     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                     ui.set_min_height(rows.first);
                     let label = egui::RichText::new(t!(self.state.tool.label_key())).strong();
                     let centered = egui::Layout::left_to_right(egui::Align::Center);
                     ui.allocate_ui_with_layout(egui::vec2(0.0, rows.first), centered, |ui| ui.label(label));
-                    ui.separator();
+                    let gap = ui.spacing().item_spacing.x;
+                    let (line, _) = ui.allocate_exact_size(egui::vec2(gap, rows.first), egui::Sense::hover());
                     let height = if self.tools[i].wants_side_panel() {
                         let hint = egui::RichText::new(t!("app.options_in_dock")).weak();
                         ui.allocate_ui_with_layout(egui::vec2(0.0, rows.first), centered, |ui| ui.label(hint));
@@ -730,6 +740,9 @@ impl HammerProApp {
                     } else {
                         ui.vertical(|ui| self.tools[i].options_ui(ui, &mut self.state)).response.rect.height()
                     };
+                    let stroke = ui.visuals().widgets.noninteractive.bg_stroke;
+                    let x = ui.painter().round_to_pixel_center(line.center().x);
+                    ui.painter().vline(x, line.top()..=line.top() + height.max(rows.first), stroke);
                     if (height - block).abs() > 0.5 {
                         ui.data_mut(|d| d.insert_temp(memory, height));
                         ui.ctx().request_repaint();
@@ -785,6 +798,7 @@ impl HammerProApp {
             let opts = self.state.scene_options();
             let AppState { assets, doc, gfx, .. } = &mut self.state;
             if let Some(gfx) = gfx.as_mut() {
+                let _span = hp_app::runtime::Span::new("scene_sync");
                 let start = Instant::now();
                 assets.sync_scene(doc, gfx, &opts);
                 self.last_sync = start.elapsed();
@@ -793,6 +807,7 @@ impl HammerProApp {
         }
         self.phases.mark(Phase::Sync);
         {
+            let _span = hp_app::runtime::Span::new("detail_preview");
             crate::dispatch::detail_split::tick(&mut self.state, ui.ctx());
             let request = hp_app::runtime::render::DetailPreviewRequest {
                 enabled: self.state.settings.render.detail_preview,
@@ -804,7 +819,10 @@ impl HammerProApp {
                 runtime.render.detail_preview = assets.sync_detail_preview(doc, gfx, &request);
             }
         }
-        crate::dispatch::lighting::scene_synced(self);
+        {
+            let _span = hp_app::runtime::Span::new("lighting");
+            crate::dispatch::lighting::scene_synced(self);
+        }
         self.phases.mark(Phase::Lighting);
 
         egui::CentralPanel::no_frame().show(ui, |ui| {
@@ -1159,7 +1177,10 @@ impl HammerProApp {
             self.title = title;
         }
 
-        self.autosaver.tick(&mut self.state, &self.tabs, ctx);
+        {
+            let _span = hp_app::runtime::Span::new("autosave");
+            self.autosaver.tick(&mut self.state, &self.tabs, ctx);
+        }
         self.apply_finished_saves(false);
         self.discord.tick(&mut self.state);
         self.update.tick(&mut self.state, ctx);
@@ -1357,7 +1378,7 @@ impl HammerProApp {
             let path = job.path.clone();
             let done = job.done.clone();
             let ctx2 = ctx.clone();
-            ctx.request_screenshot(move |image| {
+            crate::dispatch::mcp::automation::request_root_screenshot(ctx, move |image| {
                 let [w, h] = image.size;
                 let mut rgba = Vec::with_capacity(w * h * 4);
                 for c in &image.pixels {
@@ -1517,7 +1538,7 @@ impl HammerProApp {
                 None => eprintln!("script: {name} is not open as a window of its own"),
             },
             Command::Screenshot(path) => {
-                ctx.request_screenshot(move |image| {
+                crate::dispatch::mcp::automation::request_root_screenshot(ctx, move |image| {
                     let [w, h] = image.size;
                     let mut rgba = Vec::with_capacity(w * h * 4);
                     for c in &image.pixels {

@@ -6,7 +6,7 @@ Hammer Pro checks the map in the background while you edit: invalid brushes, bro
 
 ## Live checks and the status bar
 
-Once you stop editing for a moment (setting **Check after the edits pause for**, 1500 ms; never while you drag), the map is checked on worker threads (setting **Check the map as I edit**, on by default). The checks run at the lowest priority of the system on a third of the cores, always leaving at least two cores free, so they never slow down the editor or other programs; after an edit, only the props near it are checked again for floating, sunk and overlapping props, the others keep their result. With **Pause the checks while the window is minimized** (on) a minimized window stops them and they run again when it comes back. The status bar shows two segments on the right:
+Once you stop editing for a moment (setting **Check after the edits pause for**, 1500 ms; never while you drag), the map is checked on worker threads (setting **Check the map as I edit**, on by default). The checks run at the lowest priority of the system on a third of the cores, always leaving at least two cores free, so they never slow down the editor or other programs; after an edit, only the props near it are checked again for floating, sunk and overlapping props, the others keep their result. The first check of a big map is never thrown away by your edits: it finishes, then only what you changed meanwhile is checked again, so the cores are not kept busy check after check while you map. With **Pause the checks while the window is minimized** (on) a minimized window stops them and they run again when it comes back. The status bar shows two segments on the right:
 
 | Segment | What it shows | Click |
 | --- | --- | --- |

@@ -236,6 +236,7 @@ pub(crate) fn nearest_wall(state: &AppState, movers: &[ObjRef]) -> Option<DVec3>
 }
 
 fn settle_world(state: &AppState, units: Vec<Unit>) -> (World, Vec<usize>) {
+    let span = hp_app::runtime::Span::new("placement_env");
     let refs: Vec<ObjRef> = units.iter().flat_map(|u| u.refs.clone()).collect();
     let region = units
         .iter()
@@ -245,6 +246,8 @@ fn settle_world(state: &AppState, units: Vec<Unit>) -> (World, Vec<usize>) {
     let keys: Vec<Key> = units.iter().map(|u| u.obj.key).collect();
     env.retain(|o| !keys.contains(&o.key));
     env.extend(units.into_iter().map(|u| u.obj));
+    drop(span);
+    let _span = hp_app::runtime::Span::new("placement_world");
     let fs = state.assets.fs().cloned();
     let world = World::build(env, fs.as_ref(), MeshChoice::Render, None);
     let cands: Vec<usize> = (0..world.objs.len()).filter(|i| keys.contains(&world.objs[*i].key)).collect();
@@ -457,6 +460,7 @@ pub(crate) fn sheet_job_model(state: &AppState, path: &str, width: u32, height: 
 }
 
 pub(crate) fn placement_note(state: &AppState, touched: &[ObjRef]) -> Option<String> {
+    let span = hp_app::runtime::Span::new("placement_units");
     let units =
         tp::units_from(state, Vec::new(), touched.iter().copied().take(MAX_NOTE_OBJECTS).collect(), false, false);
     let units: Vec<Unit> = units
@@ -473,7 +477,9 @@ pub(crate) fn placement_note(state: &AppState, touched: &[ObjRef]) -> Option<Str
     let keys: Vec<Key> = units.iter().map(|u| u.obj.key).collect();
     let props: Vec<bool> =
         units.iter().map(|u| matches!(u.obj.key, Key::Entity(id) if place_scan::prop_entity(state, id))).collect();
+    drop(span);
     let (world, cands) = settle_world(state, units);
+    let _span = hp_app::runtime::Span::new("placement_classify");
     let mut lines: Vec<String> = Vec::new();
     let mut floating_ids: Vec<u32> = Vec::new();
     let mut sunk_ids: Vec<u32> = Vec::new();

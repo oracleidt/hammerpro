@@ -481,11 +481,15 @@ impl Document {
                 ObjRef::Solid(_) => None,
             })
             .collect();
-        let classes: std::collections::HashSet<String> = created_entities
+        let classes: Vec<&str> =
+            created_entities.iter().filter_map(|e| scene.entities.get(e)).map(|n| n.entity.classname.trim()).collect();
+        let spots: std::collections::HashSet<[i64; 3]> = created_entities
             .iter()
-            .filter_map(|e| scene.entities.get(e))
-            .map(|n| n.entity.classname.trim().to_ascii_lowercase())
+            .filter(|e| !scene.is_brush_entity(**e))
+            .filter_map(|e| scene.entities.get(e)?.entity.origin())
+            .map(quant3)
             .collect();
+        let brush_classes = created_entities.iter().any(|e| scene.is_brush_entity(*e));
         let mut keys: Option<HashMap<u64, Vec<Id>>> = None;
         for e in created_entities {
             let Some(n) = scene.entities.get(&e) else { continue };
@@ -497,7 +501,15 @@ impl Document {
             let map = keys.get_or_insert_with(|| {
                 let mut m: HashMap<u64, Vec<Id>> = HashMap::new();
                 for (id, node) in &scene.entities {
-                    if !classes.contains(&node.entity.classname.trim().to_ascii_lowercase()) {
+                    let class = node.entity.classname.trim();
+                    if !classes.iter().any(|c| c.eq_ignore_ascii_case(class)) {
+                        continue;
+                    }
+                    let brush = scene.is_brush_entity(*id);
+                    if brush && !brush_classes {
+                        continue;
+                    }
+                    if !brush && !node.entity.origin().is_some_and(|o| spots.contains(&quant3(o))) {
                         continue;
                     }
                     if let Some(k) = entity_key(&node.entity, &entity_shapes(scene, *id)) {

@@ -173,6 +173,31 @@ fn live_check_of_pasted_copies() {
 }
 
 #[test]
+fn live_check_only_compares_props_on_the_same_spot_and_still_finds_brush_entity_copies() {
+    let mut doc = Document::new_empty();
+    let kv = [("model".to_owned(), "models/x.mdl".to_owned())];
+    let mut props = Vec::new();
+    for i in 0..200 {
+        props.push(
+            doc.create_point_entity("prop_static", DVec3::new(f64::from(i) * 64.0, 0.0, 0.0), &kv).expect("prop"),
+        );
+    }
+    let stacked = doc.create_point_entity("prop_static", DVec3::new(640.0, 0.0, 0.0), &kv).expect("stacked");
+    let live = doc.duplicates_of(&[ObjRef::Entity(stacked)]);
+    assert_eq!(live.entities, vec![(stacked, props[10])], "{live:?}");
+    let apart = doc.create_point_entity("prop_static", DVec3::new(32.0, 0.0, 0.0), &kv).expect("apart");
+    assert!(doc.duplicates_of(&[ObjRef::Entity(apart)]).is_empty());
+    let door = doc.create_point_entity("func_door", DVec3::ZERO, &[]).expect("door");
+    let s = doc.create_solid(cube(DVec3::new(0.0, 512.0, 0.0), 64.0), Owner::Entity(door)).expect("solid");
+    let _ = s;
+    let copies = doc.duplicate(&[ObjRef::Entity(door)], DVec3::ZERO).expect("copy in place");
+    let (_, created) = doc.last_step_created().expect("step");
+    assert!(!copies.is_empty());
+    let live = doc.duplicates_of(&created);
+    assert!(live.count() >= 1, "the brush entity copy is still found: {live:?}");
+}
+
+#[test]
 fn grouped_displacements_are_all_targets() {
     let mut doc = Document::new_empty();
     let ids: Vec<_> = (0..3)

@@ -103,7 +103,7 @@ Au bout de la barre d'options se trouvent un choix **Classe** / **Matériau**, u
 - **Classe** sélectionne toutes les entités visibles de cette classe, **Matériau** tous les objets qui utilisent ce matériau.
 - Les jokers `*` et `?` marchent. Sans joker, Hammer Pro cherche d'abord le nom exact, puis tout nom qui contient le texte.
 - Maintenez `Ctrl` en validant pour ajouter à la sélection.
-- La barre affiche ensuite **{n} trouvé(s)** ou **Aucun résultat**. Une recherche sans résultat garde la sélection actuelle.
+- La barre affiche ensuite **{n} trouvé(s)** ou **Aucun résultat**. Quand la barre n'a plus de place, le compte s'affiche dans l'infobulle de **Sélectionner**. Une recherche sans résultat garde la sélection actuelle.
 
 ## Transformer dans les vues 2D
 

@@ -439,97 +439,111 @@ impl SelectTool {
 
     pub(super) fn options(&mut self, ui: &mut egui::Ui, state: &mut AppState) {
         ui.horizontal_wrapped(|ui| {
-            ui.label(t!("seltool.element")).on_hover_text(t!("seltool.element_tip"));
-            for (element, action) in [
-                (SelectElement::Object, hp_app::Action::SelectElementObject),
-                (SelectElement::Vertex, hp_app::Action::SelectElementVertex),
-                (SelectElement::Edge, hp_app::Action::SelectElementEdge),
-                (SelectElement::Face, hp_app::Action::SelectElementFace),
-            ] {
-                let on = state.settings.selection.element == element;
-                if ui
-                    .add(egui::Button::selectable(on, t!(element.label_key())))
-                    .on_hover_text(t!("seltool.element_tip"))
-                    .clicked()
-                {
-                    state.request(action);
-                }
-            }
-            hp_app::widgets::vsep(ui);
-            ui.label(t!("seltool.box")).on_hover_text(t!("seltool.box_tip"));
-            for (inside, key) in [(false, "seltool.box.touching"), (true, "seltool.box.inside")] {
-                if ui
-                    .add(egui::Button::selectable(!self.centers_only && self.box_inside == inside, t!(key)))
-                    .on_hover_text(t!("seltool.box_tip"))
-                    .clicked()
-                {
-                    self.box_inside = inside;
-                    self.centers_only = false;
-                }
-            }
-            if ui
-                .add(egui::Button::selectable(self.centers_only, t!("seltool.box.centers")))
-                .on_hover_text(t!("seltool.box.centers_tip"))
-                .clicked()
-            {
-                self.centers_only = !self.centers_only;
-            }
-            let mut confirm = state.settings.selection.box_confirm;
-            if ui
-                .checkbox(&mut confirm, t!("seltool.box.confirm"))
-                .on_hover_text(t!("seltool.box.confirm_tip"))
-                .changed()
-            {
-                state.settings.selection.box_confirm = confirm;
-                state.settings_dirty = true;
-                if !confirm {
-                    self.pending = None;
-                }
-            }
-            hp_app::widgets::vsep(ui);
-            ui.label(t!("seltool.handles")).on_hover_text(t!("seltool.handles_tip"));
-            for mode in HandleMode::ALL {
-                if ui
-                    .add(egui::Button::selectable(self.handle_mode == mode, t!(mode.label_key())))
-                    .on_hover_text(t!("seltool.handles_tip"))
-                    .clicked()
-                {
-                    self.handle_mode = mode;
-                }
-            }
-            let mut stretch = state.settings.selection.stretch_handles;
-            if ui.checkbox(&mut stretch, t!("seltool.stretch")).on_hover_text(t!("seltool.stretch_tip")).changed() {
-                state.settings.selection.stretch_handles = stretch;
-                state.settings_dirty = true;
-                self.hover.stretch = None;
-            }
-            hp_app::widgets::vsep(ui);
-            ui.label(t!("seltool.gizmo")).on_hover_text(t!("seltool.gizmo_tip"));
-            ui.checkbox(&mut self.gizmo_visible, t!("seltool.gizmo.show")).on_hover_text(t!("seltool.gizmo.show_tip"));
-            let gizmo_on = self.gizmo_visible;
-            {
-                for mode in GizmoMode::ALL {
+            hp_app::widgets::keep_together(ui, "pick", |ui| {
+                ui.label(t!("seltool.element")).on_hover_text(t!("seltool.element_tip"));
+                for (element, action) in [
+                    (SelectElement::Object, hp_app::Action::SelectElementObject),
+                    (SelectElement::Vertex, hp_app::Action::SelectElementVertex),
+                    (SelectElement::Edge, hp_app::Action::SelectElementEdge),
+                    (SelectElement::Face, hp_app::Action::SelectElementFace),
+                ] {
+                    let on = state.settings.selection.element == element;
                     if ui
-                        .add_enabled(gizmo_on, egui::Button::selectable(self.gizmo_mode == mode, t!(mode.label_key())))
-                        .on_hover_text(t!("seltool.gizmo_tip"))
+                        .add(egui::Button::selectable(on, t!(element.label_key())))
+                        .on_hover_text(t!("seltool.element_tip"))
                         .clicked()
                     {
-                        self.gizmo_mode = mode;
+                        state.request(action);
                     }
                 }
-                let local = state.settings.selection.gizmo_local;
-                let tip = match state.keys.shortcut(hp_app::Action::ToggleGizmoLocal) {
-                    Some(sc) => format!("{} ({})", t!("seltool.gizmo.local_tip"), hp_app::actions::shortcut_label(&sc)),
-                    None => t!("seltool.gizmo.local_tip").to_owned(),
-                };
+            });
+            hp_app::widgets::vsep(ui);
+            hp_app::widgets::keep_together(ui, "box", |ui| {
+                ui.label(t!("seltool.box")).on_hover_text(t!("seltool.box_tip"));
+                for (inside, key) in [(false, "seltool.box.touching"), (true, "seltool.box.inside")] {
+                    if ui
+                        .add(egui::Button::selectable(!self.centers_only && self.box_inside == inside, t!(key)))
+                        .on_hover_text(t!("seltool.box_tip"))
+                        .clicked()
+                    {
+                        self.box_inside = inside;
+                        self.centers_only = false;
+                    }
+                }
                 if ui
-                    .add_enabled(gizmo_on, egui::Button::selectable(local, t!("seltool.gizmo.local")))
-                    .on_hover_text(tip)
+                    .add(egui::Button::selectable(self.centers_only, t!("seltool.box.centers")))
+                    .on_hover_text(t!("seltool.box.centers_tip"))
                     .clicked()
                 {
-                    state.request(hp_app::Action::ToggleGizmoLocal);
+                    self.centers_only = !self.centers_only;
                 }
-            }
+                let mut confirm = state.settings.selection.box_confirm;
+                if ui
+                    .checkbox(&mut confirm, t!("seltool.box.confirm"))
+                    .on_hover_text(t!("seltool.box.confirm_tip"))
+                    .changed()
+                {
+                    state.settings.selection.box_confirm = confirm;
+                    state.settings_dirty = true;
+                    if !confirm {
+                        self.pending = None;
+                    }
+                }
+            });
+            hp_app::widgets::vsep(ui);
+            hp_app::widgets::keep_together(ui, "handles", |ui| {
+                ui.label(t!("seltool.handles")).on_hover_text(t!("seltool.handles_tip"));
+                for mode in HandleMode::ALL {
+                    if ui
+                        .add(egui::Button::selectable(self.handle_mode == mode, t!(mode.label_key())))
+                        .on_hover_text(t!("seltool.handles_tip"))
+                        .clicked()
+                    {
+                        self.handle_mode = mode;
+                    }
+                }
+                let mut stretch = state.settings.selection.stretch_handles;
+                if ui.checkbox(&mut stretch, t!("seltool.stretch")).on_hover_text(t!("seltool.stretch_tip")).changed() {
+                    state.settings.selection.stretch_handles = stretch;
+                    state.settings_dirty = true;
+                    self.hover.stretch = None;
+                }
+            });
+            hp_app::widgets::vsep(ui);
+            hp_app::widgets::keep_together(ui, "gizmo", |ui| {
+                ui.label(t!("seltool.gizmo")).on_hover_text(t!("seltool.gizmo_tip"));
+                ui.checkbox(&mut self.gizmo_visible, t!("seltool.gizmo.show"))
+                    .on_hover_text(t!("seltool.gizmo.show_tip"));
+                let gizmo_on = self.gizmo_visible;
+                {
+                    for mode in GizmoMode::ALL {
+                        if ui
+                            .add_enabled(
+                                gizmo_on,
+                                egui::Button::selectable(self.gizmo_mode == mode, t!(mode.label_key())),
+                            )
+                            .on_hover_text(t!("seltool.gizmo_tip"))
+                            .clicked()
+                        {
+                            self.gizmo_mode = mode;
+                        }
+                    }
+                    let local = state.settings.selection.gizmo_local;
+                    let tip = match state.keys.shortcut(hp_app::Action::ToggleGizmoLocal) {
+                        Some(sc) => {
+                            format!("{} ({})", t!("seltool.gizmo.local_tip"), hp_app::actions::shortcut_label(&sc))
+                        }
+                        None => t!("seltool.gizmo.local_tip").to_owned(),
+                    };
+                    if ui
+                        .add_enabled(gizmo_on, egui::Button::selectable(local, t!("seltool.gizmo.local")))
+                        .on_hover_text(tip)
+                        .clicked()
+                    {
+                        state.request(hp_app::Action::ToggleGizmoLocal);
+                    }
+                }
+            });
             hp_app::widgets::vsep(ui);
             let pivot = state.pivot.is_some();
             if ui
@@ -540,47 +554,58 @@ impl SelectTool {
                 state.request(hp_app::Action::TogglePivot);
             }
             hp_app::widgets::vsep(ui);
-            for (kind, key) in
-                [(QueryKind::Class, "seltool.query.class"), (QueryKind::Material, "seltool.query.material")]
-            {
-                if ui
-                    .add(egui::Button::selectable(self.query_kind == kind, t!(key)))
-                    .on_hover_text(t!("seltool.query.tip"))
-                    .clicked()
+            let found = self.query_result.filter(|(_, time)| state.frame.time - time < 5.0).map(|(n, _)| {
+                if n == 0 {
+                    (hp_app::theme::warning(), t!("seltool.query.none").to_owned())
+                } else {
+                    (hp_app::theme::success(), tf!("seltool.query.found", n))
+                }
+            });
+            hp_app::widgets::keep_together(ui, "query", |ui| {
+                for (kind, key) in
+                    [(QueryKind::Class, "seltool.query.class"), (QueryKind::Material, "seltool.query.material")]
                 {
-                    self.query_kind = kind;
+                    if ui
+                        .add(egui::Button::selectable(self.query_kind == kind, t!(key)))
+                        .on_hover_text(t!("seltool.query.tip"))
+                        .clicked()
+                    {
+                        self.query_kind = kind;
+                        self.query_result = None;
+                    }
+                }
+                let hint = match self.query_kind {
+                    QueryKind::Class => t!("seltool.query.hint_class"),
+                    QueryKind::Material => t!("seltool.query.hint_material"),
+                };
+                let resp = ui.add(egui::TextEdit::singleline(&mut self.query).hint_text(hint).desired_width(140.0));
+                if resp.changed() {
                     self.query_result = None;
                 }
-            }
-            let hint = match self.query_kind {
-                QueryKind::Class => t!("seltool.query.hint_class"),
-                QueryKind::Material => t!("seltool.query.hint_material"),
-            };
-            let resp = ui.add(egui::TextEdit::singleline(&mut self.query).hint_text(hint).desired_width(140.0));
-            if resp.changed() {
-                self.query_result = None;
-            }
-            let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
-            let has_text = !self.query.trim().is_empty();
-            let clicked = ui
-                .add_enabled(has_text, egui::Button::new(t!("seltool.query.select")))
-                .on_hover_text(t!("seltool.query.tip"))
-                .clicked();
-            if (enter || clicked) && has_text {
-                let add = ui.input(|i| ctrl(i.modifiers));
-                self.run_query(state, add);
-                if enter {
-                    resp.request_focus();
+                let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
+                let has_text = !self.query.trim().is_empty();
+                let tip = match &found {
+                    Some((_, text)) => format!(
+                        "{}
+{text}",
+                        t!("seltool.query.tip")
+                    ),
+                    None => t!("seltool.query.tip").to_owned(),
+                };
+                let clicked = ui
+                    .add_enabled(has_text, egui::Button::new(t!("seltool.query.select")))
+                    .on_hover_text(tip)
+                    .clicked();
+                if (enter || clicked) && has_text {
+                    let add = ui.input(|i| ctrl(i.modifiers));
+                    self.run_query(state, add);
+                    if enter {
+                        resp.request_focus();
+                    }
                 }
-            }
-            if let Some((n, time)) = self.query_result
-                && state.frame.time - time < 5.0
-            {
-                if n == 0 {
-                    ui.colored_label(hp_app::theme::warning(), t!("seltool.query.none"));
-                } else {
-                    ui.colored_label(hp_app::theme::success(), tf!("seltool.query.found", n));
-                }
+            });
+            if let Some((color, text)) = found {
+                hp_app::widgets::label_if_fits(ui, egui::RichText::new(text).color(color));
             }
         });
     }

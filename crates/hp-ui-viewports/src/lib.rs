@@ -157,6 +157,20 @@ struct PickKey {
     revision: u64,
 }
 
+pub const CHEAP_HOVER_PICK: std::time::Duration = std::time::Duration::from_millis(3);
+
+pub fn hover_pick_wait(
+    last: Option<(std::time::Instant, std::time::Duration)>,
+    now: std::time::Instant,
+) -> Option<std::time::Duration> {
+    let (at, cost) = last?;
+    if cost <= CHEAP_HOVER_PICK {
+        return None;
+    }
+    let gap = (cost * 4).min(std::time::Duration::from_millis(120));
+    gap.checked_sub(now.saturating_duration_since(at)).filter(|w| !w.is_zero())
+}
+
 pub fn lit_light_cap(quality: hp_app::settings::LitQuality, moving: bool) -> u32 {
     use hp_app::settings::{BALANCED_LIGHTS, LitQuality};
     match quality {
@@ -240,6 +254,7 @@ pub struct Viewports {
     menu: Option<OpenMenu>,
     hover_key: Option<PickKey>,
     hover_hit: Option<DVec3>,
+    hover_cost: Option<(std::time::Instant, std::time::Duration)>,
     hover_motion: hp_app::view::CameraMotion,
     sel_key: Option<(u64, usize)>,
     sel_center: Option<DVec3>,
@@ -319,6 +334,7 @@ impl Viewports {
             menu: None,
             hover_key: None,
             hover_hit: None,
+            hover_cost: None,
             hover_motion: hp_app::view::CameraMotion::default(),
             sel_key: None,
             sel_center: None,
@@ -995,7 +1011,9 @@ impl Viewports {
                 if self.warp.request(input.focused, input.pointer, input.motion.is_some(), ml.anchor) {
                     ctx.send_viewport_cmd(egui::ViewportCommand::CursorPosition(ml.anchor));
                 }
+                let span = hp_app::runtime::Span::new("fly_target");
                 fly_texture::frame(ctx, state, input, ml.view);
+                drop(span);
                 if input.pressed[PRIMARY]
                     && hovered == Some(ml.view)
                     && !self.swallow
@@ -1458,7 +1476,7 @@ impl Viewports {
         }
     }
 
-    fn update_hover(&mut self, state: &mut AppState, view: &ViewInfo, pos: Pos2) -> bool {
+    fn update_hover(&mut self, ctx: &egui::Context, state: &mut AppState, view: &ViewInfo, pos: Pos2) -> bool {
         if view.is_2d() {
             let depth = self.depth_2d(state, view.kind);
             state.hover_world = Some(placement::point_2d(state, view, pos, depth));
@@ -1469,9 +1487,16 @@ impl Viewports {
         let key = PickKey { view: view.index, pos, cam, revision: state.doc.revision() };
         let only_camera =
             self.hover_key.is_some_and(|k| k.view == key.view && k.pos == key.pos && k.revision == key.revision);
-        if self.hover_key != Some(key) && !(only_camera && gliding) {
+        let only_pointer =
+            self.hover_key.is_some_and(|k| k.view == key.view && k.cam == key.cam && k.revision == key.revision);
+        let wait = if only_pointer { hover_pick_wait(self.hover_cost, std::time::Instant::now()) } else { None };
+        if let Some(wait) = wait {
+            ctx.request_repaint_after(wait);
+        } else if self.hover_key != Some(key) && !(only_camera && gliding) {
             self.hover_key = Some(key);
+            let started = std::time::Instant::now();
             self.hover_hit = placement::pick_surface(state, view, pos).map(|h| h.point);
+            self.hover_cost = Some((started, started.elapsed()));
         }
         state.hover_world = self.hover_hit;
         self.hover_hit.is_some()
@@ -1504,7 +1529,8 @@ impl Viewports {
             && !nav_here
             && let Some(p) = input.pointer
         {
-            hover_set = self.update_hover(state, &view, p);
+            let _span = hp_app::runtime::Span::new("hover_pick");
+            hover_set = self.update_hover(ctx, state, &view, p);
         }
 
         let mut drop_label: Option<String> = None;
@@ -1565,6 +1591,7 @@ impl Viewports {
         }
 
         let costs = std::time::Instant::now();
+        let overlay_span = hp_app::runtime::Span::new(if view.is_2d() { "overlay_2d" } else { "overlay_3d" });
         self.overlay.clear();
         for layer in &self.layers {
             layer.add(state, &view, &mut self.overlay);
@@ -1594,6 +1621,7 @@ impl Viewports {
             self.trim_retained_scratch();
         }
 
+        drop(overlay_span);
         let overlay_ms = costs.elapsed().as_secs_f32() * 1000.0;
         let overlay_items = (self.overlay.lines.len()
             + self.overlay.lines_on_top.len()
@@ -1667,6 +1695,7 @@ impl Viewports {
                 preparing = true;
                 ctx.request_repaint_after(std::time::Duration::from_millis(100));
             } else if self.render_cache.needs_render(i, &key, has_image) {
+                let _span = hp_app::runtime::Span::new(if view.is_2d() { "render_2d" } else { "render_3d" });
                 gfx.renderer.render_view(i as u32, &params, &self.overlay);
                 rendered = true;
                 self.render_cache.rendered(i, key);
@@ -2179,7 +2208,11 @@ impl Viewports {
                 DragPayload::Prefab(_) => PreviewShape::Marker,
             };
             let (lo, hi) = self.preview.local_bounds;
-            self.preview.origin = placement::origin_for(state, &target, lo, hi);
+            self.preview.origin = if matches!(payload, DragPayload::Model { .. }) {
+                placement::model_origin_for(state, &target, lo, hi)
+            } else {
+                placement::origin_for(state, &target, lo, hi)
+            };
             self.preview.target = Some(target);
         }
         let file_name =
@@ -2243,7 +2276,7 @@ impl Viewports {
                 let skin = if *dragged_skin > 0 { *dragged_skin } else { drop_skin(state, path) };
                 let keys = placement::model_keys(path, skin);
                 let extra: Vec<(&str, &str)> = keys.iter().map(|(k, v)| (*k, v.as_str())).collect();
-                match placement::create_entity(state, class, &target, bounds, &extra) {
+                match placement::create_model_entity(state, class, &target, bounds, &extra) {
                     Ok(_) => {
                         state.current_model = Some(path.clone());
                         state.current_model_skin = skin;

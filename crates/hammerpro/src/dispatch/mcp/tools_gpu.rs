@@ -34,7 +34,7 @@ domain! { "graphics memory";
         a request for an immediate repaint) and repaint_causes (source locations that asked for a repaint, with \
         their counts since the start, most frequent first): an idle window draws no frame, so they stay still. frame_phases_ms splits the CPU time of the last \
         frame of the window (begin, panels, tool, sync, lighting, views, chrome, dialogs, end) and worst_frame_ms \
-        holds the slowest frame since the previous get_performance call, average_frame_ms the average of the \
+        holds the slowest frame since the previous get_performance call, long_frames the frames of 30 ms or more since that call (the last 32: frame index, time, phases_ms and slowest, the subsystems that took the most time in that frame, such as a package tick, an action, scene_sync, render_3d, hover_pick or placement_checks), long_frame_count all of them since the start, average_frame_ms the average of the \
         frames_since_last_read frames drawn since that call. views_ms gives, for each of the four \
         views in the last frame, the CPU time spent building its overlay (layers, grid, tool), drawing it (or reusing \
         its last image when nothing changed: rendered false) and painting its labels, with its overlay item count.         Startup and shaders: graphics_api (Vulkan or Dx12 in use), graphics_api_setting (render.graphics_backend:         Auto, Vulkan or Dx12, applied at the next start), dx12_shader_compiler (fxc or dxc on DirectX 12),         startup_ms (first_frame: the first frame of the window, views_ready: when the views could draw), and         pipelines: building_in_background, ready (msaa, no_msaa), sets (each set of render pipelines with its         sample count, build milliseconds and whether it was built on the background thread), main_thread_wait_ms,         created and create_ms_total (every render pipeline created so far), dx12_shaders (DirectX 12 only:         compiler, shaders compiled and their total milliseconds, disk_cache_hits and disk_cache_misses of the         shader cache kept between starts, disk_cache_dir).",
@@ -277,6 +277,13 @@ fn get_performance(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
         "worst_frame_ms": phases_json(&p.worst_frame),
         "average_frame_ms": phases_json(&p.phase_sum.divided(p.phase_frames)),
         "frames_since_last_read": p.phase_frames,
+        "long_frames": p.long_frames.iter().map(|f| json!({
+            "frame": f.frame,
+            "at_s": f.at_s,
+            "phases_ms": phases_json(&f.phases),
+            "slowest": f.spans.iter().map(|(name, ms)| json!({ "what": name, "ms": ms })).collect::<Vec<_>>(),
+        })).collect::<Vec<_>>(),
+        "long_frame_count": p.long_frame_count,
         "adaptive_lighting": state.gfx.as_ref().map(|g| {
             let a = g.renderer.adaptive_stats();
             json!({
@@ -292,6 +299,7 @@ fn get_performance(state: &mut AppState, _a: &Args<'_>) -> R<ToolResult> {
     });
     let p = &mut state.runtime.render.perf;
     p.worst_frame = hp_app::runtime::FramePhases::default();
+    p.long_frames.clear();
     p.phase_sum = hp_app::runtime::FramePhases::default();
     p.phase_frames = 0;
     Ok(ToolResult::json(out))

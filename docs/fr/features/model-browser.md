@@ -34,7 +34,7 @@ Au clavier, pointeur sur la liste ou la grille : `Haut` / `Bas` déplacent la s�
 
 ## Utiliser un modèle
 
-- **Faites glisser** un modèle de la liste ou de la grille dans une vue pour y poser un prop : une boîte montre où il atterrit (sur la surface sous le pointeur en 3D). Le prop est un `prop_static` si le modèle est un prop statique, sinon un `prop_dynamic`. Le skin choisi dans l'aperçu suit, et le modèle devient le modèle des nouveaux props.
+- **Faites glisser** un modèle de la liste ou de la grille dans une vue pour y poser un prop : une boîte montre où il atterrit (sur la surface sous le pointeur en 3D). Le prop est posé d'après sa boîte englobante et non son origine : le bas de la boîte repose sur le sol sous le pointeur (contre un mur ou un plafond, la boîte est collée à la surface), centrée sur le point visé, qui reste aligné sur la grille. Dans les vues 2D, la boîte est centrée sur le point de dépôt, son bas à la hauteur du dépôt. Les modèles dont l'origine n'est pas à la base ne s'enfoncent plus et ne flottent plus. Le prop est un `prop_static` si le modèle est un prop statique, sinon un `prop_dynamic`. Le skin choisi dans l'aperçu suit, et le modèle devient le modèle des nouveaux props.
 - Le **double-clic** (ou `Entrée`) prend le modèle pour les nouveaux props, ou l'écrit dans la clé pour laquelle vous choisissez.
 - Les boutons sous le nom du modèle :
 

@@ -41,16 +41,36 @@ pub(crate) enum Phase {
     End,
 }
 
+const SPANS_KEPT: usize = 6;
+const SPIKE_FACTOR: f32 = 2.0;
+
+pub(crate) fn long_frame_text(frame: &hp_app::runtime::LongFrame) -> String {
+    let mut text = format!("long frame {:.0} ms (frame {}):", frame.phases.total_ms, frame.frame);
+    for (name, ms) in hp_app::runtime::FRAME_PHASES.iter().zip(frame.phases.ms) {
+        if ms >= 1.0 {
+            text.push_str(&format!(" {name} {ms:.0}"));
+        }
+    }
+    if !frame.spans.is_empty() {
+        text.push_str(", slowest:");
+        for (name, ms) in &frame.spans {
+            text.push_str(&format!(" {name} {ms:.0}"));
+        }
+    }
+    text
+}
+
 pub(crate) struct PhaseClock {
     started: std::time::Instant,
     last: std::time::Instant,
     ms: [f32; 9],
+    usual_ms: f32,
 }
 
 impl Default for PhaseClock {
     fn default() -> Self {
         let now = std::time::Instant::now();
-        Self { started: now, last: now, ms: [0.0; 9] }
+        Self { started: now, last: now, ms: [0.0; 9], usual_ms: 0.0 }
     }
 }
 
@@ -59,6 +79,7 @@ impl PhaseClock {
         self.started = now;
         self.last = now;
         self.ms = [0.0; 9];
+        hp_app::runtime::take_spans();
     }
 
     pub(crate) fn mark(&mut self, phase: Phase) {
@@ -67,7 +88,7 @@ impl PhaseClock {
         self.last = now;
     }
 
-    pub(crate) fn publish(&self, state: &mut AppState) {
+    pub(crate) fn publish(&mut self, state: &mut AppState) {
         let frame = FramePhases { total_ms: self.started.elapsed().as_secs_f32() * 1000.0, ms: self.ms };
         let p = &mut state.runtime.render.perf;
         if frame.total_ms >= p.worst_frame.total_ms {
@@ -76,6 +97,26 @@ impl PhaseClock {
         p.phase_sum.add(&frame);
         p.phase_frames = p.phase_frames.saturating_add(1);
         p.frame_phases = frame;
+        let mut spans = hp_app::runtime::take_spans();
+        let usual = self.usual_ms;
+        self.usual_ms =
+            if usual == 0.0 { frame.total_ms } else { usual * 0.95 + frame.total_ms.min(usual * 4.0) * 0.05 };
+        if frame.total_ms < hp_app::runtime::LONG_FRAME_MS || state.runtime.startup.resources.is_some() {
+            return;
+        }
+        spans.sort_by(|a, b| b.1.total_cmp(&a.1));
+        spans.truncate(SPANS_KEPT);
+        let long =
+            hp_app::runtime::LongFrame { frame: state.frame.index, at_s: state.frame.time, phases: frame, spans };
+        if frame.total_ms >= usual * SPIKE_FACTOR {
+            log::info!("{} (usual {usual:.0} ms)", long_frame_text(&long));
+        }
+        let p = &mut state.runtime.render.perf;
+        p.long_frame_count += 1;
+        if p.long_frames.len() >= hp_app::runtime::LONG_FRAMES_KEPT {
+            p.long_frames.pop_front();
+        }
+        p.long_frames.push_back(long);
     }
 }
 

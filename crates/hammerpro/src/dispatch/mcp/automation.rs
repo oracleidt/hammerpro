@@ -74,7 +74,7 @@ enum Wait {
     Frames { until: u64, result: Value },
     Input { until_step: u64, result: Value },
     ShotLater { at: Instant, frame: u64, max_size: u32, region: Option<Rect>, window: Option<&'static str> },
-    Screenshot { image: ImageSlot, max_size: u32, region: Option<Rect>, pixels_per_point: f32 },
+    Screenshot { image: ImageSlot, max_size: u32, region: Option<Rect>, pixels_per_point: f32, retries: u8 },
     Describe { console: usize },
 }
 
@@ -205,11 +205,22 @@ impl UiAutomation {
                     let ready = now >= *at && self.frame >= *frame;
                     let (separate, max_size, region) = (window.is_some(), *max_size, *region);
                     if ready && !separate {
-                        w.wait = request_screenshot(ctx, max_size, region);
+                        w.wait = request_screenshot(ctx, max_size, region, SHOT_RETRIES);
                     }
                     ready && separate
                 }
-                Wait::Screenshot { image, .. } => image.lock().unwrap_or_else(PoisonError::into_inner).is_some(),
+                Wait::Screenshot { image, max_size, region, retries, .. } => {
+                    let shot = image.lock().unwrap_or_else(PoisonError::into_inner).as_ref().map(|s| s.size);
+                    match shot {
+                        Some(size) if *retries > 0 && !shot_covers_window(size, root_window_pixels(ctx)) => {
+                            log::info!("MCP screenshot_window: got {size:?}, not the main window; taking it again");
+                            w.wait = request_screenshot(ctx, *max_size, *region, *retries - 1);
+                            false
+                        }
+                        Some(_) => true,
+                        None => false,
+                    }
+                }
                 Wait::Describe { .. } => describe::tree_ready(ctx),
             };
             if done {
@@ -235,15 +246,39 @@ impl UiAutomation {
     }
 }
 
-fn request_screenshot(ctx: &egui::Context, max_size: u32, region: Option<Rect>) -> Wait {
+const SHOT_RETRIES: u8 = 2;
+
+pub(crate) fn request_root_screenshot(ctx: &egui::Context, done: impl FnOnce(Arc<egui::ColorImage>) + Send + 'static) {
+    let callback = egui::ScreenshotCallback::new(done);
+    ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Screenshot(callback));
+    ctx.request_repaint_of(egui::ViewportId::ROOT);
+}
+
+fn root_window_pixels(ctx: &egui::Context) -> Option<[usize; 2]> {
+    ctx.input_for(egui::ViewportId::ROOT, |i| {
+        let rect = i.viewport().inner_rect?;
+        let ppp = i.pixels_per_point;
+        Some([(rect.width() * ppp).round() as usize, (rect.height() * ppp).round() as usize])
+    })
+}
+
+pub(crate) fn shot_covers_window(shot: [usize; 2], window: Option<[usize; 2]>) -> bool {
+    match window {
+        Some([w, h]) if w > 0 && h > 0 => shot[0] * 2 >= w && shot[1] * 2 >= h,
+        _ => shot[0] > 0 && shot[1] > 0,
+    }
+}
+
+fn request_screenshot(ctx: &egui::Context, max_size: u32, region: Option<Rect>, retries: u8) -> Wait {
     let image: ImageSlot = Arc::default();
     let slot = image.clone();
     let waker = ctx.clone();
-    ctx.request_screenshot(move |shot| {
+    request_root_screenshot(ctx, move |shot| {
         *slot.lock().unwrap_or_else(PoisonError::into_inner) = Some(shot);
-        waker.request_repaint();
+        waker.request_repaint_of(egui::ViewportId::ROOT);
     });
-    Wait::Screenshot { image, max_size, region, pixels_per_point: ctx.pixels_per_point() }
+    let pixels_per_point = ctx.input_for(egui::ViewportId::ROOT, |i| i.pixels_per_point);
+    Wait::Screenshot { image, max_size, region, pixels_per_point, retries }
 }
 
 fn finish(host: &mut dyn UiHost, ctx: &egui::Context, w: Waiting) {
@@ -254,7 +289,7 @@ fn finish(host: &mut dyn UiHost, ctx: &egui::Context, w: Waiting) {
             }
             (w.reply)(ToolResult::json(result));
         }
-        Wait::Screenshot { image, max_size, region, pixels_per_point } => {
+        Wait::Screenshot { image, max_size, region, pixels_per_point, .. } => {
             let Some(shot) = image.lock().unwrap_or_else(PoisonError::into_inner).take() else {
                 (w.reply)(ToolResult::error("screenshot_window: no image"));
                 return;

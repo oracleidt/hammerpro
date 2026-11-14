@@ -85,7 +85,7 @@ pub mod status_order {
     pub const FPS: i32 = 100;
     pub const TEXTURE_LOCK: i32 = 200;
     pub const SNAP: i32 = 300;
-    pub const GRID: i32 = 400;
+    pub const GRID: i32 = 50;
     pub const CONTENT: i32 = 500;
 }
 

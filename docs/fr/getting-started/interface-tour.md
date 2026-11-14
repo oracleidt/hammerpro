@@ -109,7 +109,7 @@ La barre du bas (masquable avec **Affichage > Panneaux > Barre d'état**) est co
 | Jeu | « Jeu prêt » quand Garry's Mod tourne et peut recevoir une map, « Jeu en démarrage » pendant son lancement. |
 | Éclairage | La progression du précalcul avec un bouton Arrêter, ou le budget de lightmaps quand il est activé. Un clic ouvre l'onglet Éclairage. |
 | MCP | Affiché quand le serveur MCP de cette fenêtre est actif. |
-| Côté droit | Images par seconde (quand **Afficher les images par seconde** est activé), et le verrou de texture, le magnétisme et la taille de grille quand la barre d'outils, ou cette partie de la barre, est masquée. |
+| Côté droit | **Grille : 16** tout à droite, comme dans Hammer : un clic ouvre les tailles de grille et le menu de grille, la molette au-dessus change la taille (`[` et `]` marchent toujours), un clic droit la masque (réglage **Taille de grille dans la barre d'état**, Réglages > Vues, `workflow.show_status_grid`, activé par défaut ; quand il est désactivé et que le groupe de grille de la barre d'outils est masqué, elle reste affichée). Puis les images par seconde (quand **Afficher les images par seconde** est activé), et le verrou de texture et le magnétisme quand la barre d'outils, ou cette partie de la barre, est masquée. Quand la barre est étroite, ces éléments restent visibles et l'aide et la sélection cèdent la place. |
 
 ## Console
 

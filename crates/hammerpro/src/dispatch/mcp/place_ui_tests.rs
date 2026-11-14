@@ -368,3 +368,32 @@ fn skybox_props_and_hanging_props_are_left_to_mcp() {
     assert_eq!(origin(&s, sky).z, 100.0, "skybox props stay");
     assert_eq!(origin(&s, lamp).z, 200.0, "hanging props stay");
 }
+
+#[test]
+fn nearby_environment_follows_moved_props_with_the_cached_hints() {
+    pin();
+    let mut s = room();
+    let near_id = prop(&mut s, CRATE, [0.0, 0.0, 0.0]);
+    let far_id = prop(&mut s, CRATE, [3000.0, 3000.0, 0.0]);
+    let region = hp_geom::Aabb::new(DVec3::new(-100.0, -100.0, -100.0), DVec3::new(100.0, 100.0, 100.0));
+    let opts = super::place_world::EnvOptions { include_tools: false, include_points: false, region: Some(region) };
+    let ids = |s: &AppState| -> Vec<u32> {
+        let mut v: Vec<u32> = super::place_world::environment(s, &Default::default(), &Default::default(), &opts)
+            .iter()
+            .filter_map(|o| match o.key {
+                super::place_world::Key::Entity(id) => Some(id),
+                _ => None,
+            })
+            .collect();
+        v.sort_unstable();
+        v
+    };
+    assert_eq!(ids(&s), vec![near_id], "only the prop near the region, far away props are left out");
+    assert_eq!(ids(&s), vec![near_id], "the same with the cached hints");
+    s.doc.translate(&[ObjRef::Entity(far_id)], DVec3::new(-3000.0, -3000.0, 0.0)).expect("move");
+    let mut both = vec![near_id, far_id];
+    both.sort_unstable();
+    assert_eq!(ids(&s), both, "a moved prop is found at its new place");
+    s.doc.translate(&[ObjRef::Entity(near_id)], DVec3::new(5000.0, 0.0, 0.0)).expect("move");
+    assert_eq!(ids(&s), vec![far_id], "and left out once it moved away");
+}

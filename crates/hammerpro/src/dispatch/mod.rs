@@ -54,6 +54,11 @@ pub(crate) trait Package: Sync {
 
     fn tick(&self, _app: &mut HammerProApp, _ctx: &egui::Context) {}
 
+    fn name(&self) -> &'static str {
+        let full = std::any::type_name::<Self>();
+        full.rsplit("::").next().unwrap_or(full)
+    }
+
     fn init(&self, _app: &mut HammerProApp) {}
 
     fn map_loaded(&self, _app: &mut HammerProApp) {}
@@ -152,6 +157,7 @@ pub(crate) fn init(app: &mut HammerProApp) {
 
 pub(crate) fn tick(app: &mut HammerProApp, ctx: &egui::Context) {
     for package in PACKAGES {
+        let _span = hp_app::runtime::Span::new(package.name());
         package.tick(app, ctx);
     }
 }
@@ -204,6 +210,7 @@ impl HammerProApp {
         if self.active_tool_action(action) {
             return;
         }
+        let _span = hp_app::runtime::Span::new(action.id());
         for package in PACKAGES {
             let done = package.handle(self, ctx, action);
             debug_assert_eq!(done, package.handled().contains(&action), "handled() is out of date for {}", action.id());

@@ -648,3 +648,17 @@ fn hover_glide_and_lit_auto_motion_follow_the_camera_without_smoothing() {
     assert!(!motion.gliding(key(&h)));
     h.button(p, PointerButton::Secondary, false);
 }
+
+#[test]
+fn slow_hover_picks_are_spaced_out_and_cheap_ones_are_not() {
+    use std::time::{Duration, Instant};
+    let now = Instant::now();
+    assert_eq!(hover_pick_wait(None, now), None, "the first pick runs at once");
+    assert_eq!(hover_pick_wait(Some((now, Duration::from_millis(1))), now), None, "cheap picks follow every move");
+    let slow = Some((now, Duration::from_millis(12)));
+    assert_eq!(hover_pick_wait(slow, now), Some(Duration::from_millis(48)), "a 12 ms pick waits 48 ms");
+    assert_eq!(hover_pick_wait(slow, now + Duration::from_millis(30)), Some(Duration::from_millis(18)));
+    assert_eq!(hover_pick_wait(slow, now + Duration::from_millis(48)), None, "then the pointer is picked again");
+    let huge = Some((now, Duration::from_millis(500)));
+    assert_eq!(hover_pick_wait(huge, now), Some(Duration::from_millis(120)), "never more than 120 ms behind");
+}

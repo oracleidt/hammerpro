@@ -109,7 +109,7 @@ The bar at the bottom (hide it with **View > Panels > Status bar**) is made of s
 | Game | "Game ready" while Garry's Mod runs and can take a map, "Game starting" while it boots. |
 | Lighting | Bake progress with a Stop button, or the lightmap budget when enabled. Click to open the Lighting tab. |
 | MCP | Shown while the MCP server of this window is on. |
-| Right side | Frame rate (when **Show frame rate** is on), and the texture lock, snap and grid size when the toolbar, or that part of it, is hidden. |
+| Right side | **Grid: 16** at the right end, like Hammer: click it for the grid sizes and the grid menu, turn the mouse wheel over it to change the size (`[` and `]` still work), right click it to hide it (setting **Grid size in the status bar**, Settings > Viewports, `workflow.show_status_grid`, on by default; when it is off and the grid group of the toolbar is hidden, it still shows). Then the frame rate (when **Show frame rate** is on), and the texture lock and snap when the toolbar, or that part of it, is hidden. When the bar is narrow, these stay visible and the hint and the selection give way. |
 
 ## Console
 

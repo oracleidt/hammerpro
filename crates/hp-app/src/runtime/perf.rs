@@ -272,6 +272,54 @@ pub struct BenchResult {
     pub views_rendered: u64,
 }
 
+thread_local! {
+    static SPANS: std::cell::RefCell<Vec<(&'static str, f32)>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+const SPAN_MIN_MS: f32 = 0.5;
+
+pub struct Span {
+    name: &'static str,
+    started: std::time::Instant,
+}
+
+impl Span {
+    pub fn new(name: &'static str) -> Self {
+        Self { name, started: std::time::Instant::now() }
+    }
+}
+
+impl Drop for Span {
+    fn drop(&mut self) {
+        let ms = self.started.elapsed().as_secs_f32() * 1000.0;
+        if ms < SPAN_MIN_MS {
+            return;
+        }
+        SPANS.with(|s| {
+            let mut s = s.borrow_mut();
+            match s.iter_mut().find(|(n, _)| *n == self.name) {
+                Some((_, total)) => *total += ms,
+                None => s.push((self.name, ms)),
+            }
+        });
+    }
+}
+
+pub fn take_spans() -> Vec<(&'static str, f32)> {
+    SPANS.with(|s| std::mem::take(&mut *s.borrow_mut()))
+}
+
+pub const LONG_FRAME_MS: f32 = 30.0;
+pub const LONG_FRAMES_KEPT: usize = 32;
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct LongFrame {
+    pub frame: u64,
+    pub at_s: f64,
+    pub phases: FramePhases,
+    pub spans: Vec<(&'static str, f32)>,
+}
+
 pub const FRAME_PHASES: [&str; 9] =
     ["begin", "panels", "tool", "sync", "lighting", "views", "chrome", "dialogs", "end"];
 
@@ -315,6 +363,8 @@ pub struct PerfRuntime {
     pub views: [ViewCost; 4],
     pub frame_phases: FramePhases,
     pub worst_frame: FramePhases,
+    pub long_frames: std::collections::VecDeque<LongFrame>,
+    pub long_frame_count: u64,
     pub phase_sum: FramePhases,
     pub phase_frames: u32,
     pub repaint_causes: Vec<RepaintCount>,

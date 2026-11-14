@@ -72,8 +72,8 @@ pub use mesh::{DispLoopRequest, EdgeRequest, ErosionDialog, MeshRuntime, Terrain
 pub use mesh_disp::MeshDispRuntime;
 pub use optimize::{ANALYSIS_PORTALS, OptimizeRuntime};
 pub use perf::{
-    BenchFrame, BenchRequest, BenchResult, FRAME_PHASES, FramePhases, GpuPasses, PerfLevel, PerfPlan, PerfRuntime,
-    PerfSample, Reflections, RepaintCount, ViewCost,
+    BenchFrame, BenchRequest, BenchResult, FRAME_PHASES, FramePhases, GpuPasses, LONG_FRAME_MS, LONG_FRAMES_KEPT,
+    LongFrame, PerfLevel, PerfPlan, PerfRuntime, PerfSample, Reflections, RepaintCount, Span, ViewCost, take_spans,
 };
 pub use placement::{
     CreatePrefabRequest, FileStamp, PlacementRuntime, PrefabCache, PrefabLoad, PrefabTokens, RealDims, UnitDims,

@@ -146,12 +146,18 @@ impl Package for Health {
     }
 
     fn tick(&self, app: &mut HammerProApp, ctx: &egui::Context) {
+        let span = hp_app::runtime::Span::new("duplicate_warning");
         watch_duplicates(app);
+        drop(span);
         if app.state.runtime.health.recheck {
             app.pkg.health.placement.force();
         }
+        let span = hp_app::runtime::Span::new("live_checks");
         let busy = HealthRuntime::tick(&mut app.state);
+        drop(span);
+        let span = hp_app::runtime::Span::new("placement_checks");
         let placing = app.pkg.health.placement.tick(&mut app.state);
+        drop(span);
         if app.pkg.health.leak_report_wanted {
             report_leak(app);
         }
@@ -181,11 +187,16 @@ impl Package for Health {
         }
         let working = app.pkg.health.portals.tick(&mut app.state);
         let analyzing = tick_optimize(app);
+        let span = hp_app::runtime::Span::new("cubemaps");
         let cubes = tick_cubemaps(app);
+        drop(span);
         HealthRuntime::update_pvs(&mut app.state);
         HealthRuntime::update_play(&mut app.state);
-        if busy || working || analyzing || cubes || placing || app.pkg.health.leak_report_wanted {
+        let on_worker = placing && app.pkg.health.placement.on_worker();
+        if busy || working || analyzing || cubes || (placing && !on_worker) || app.pkg.health.leak_report_wanted {
             ctx.request_repaint_after(std::time::Duration::from_millis(60));
+        } else if on_worker {
+            ctx.request_repaint_after(BACKGROUND_POLL);
         }
     }
 
@@ -347,6 +358,8 @@ fn duplicate_text(live: &hp_editor::duplicates::LiveDuplicates) -> Option<String
     };
     Some(text)
 }
+
+const BACKGROUND_POLL: std::time::Duration = std::time::Duration::from_millis(250);
 
 const TR: TrTable = &[
     (

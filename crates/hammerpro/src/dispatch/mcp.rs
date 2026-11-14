@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use super::Package;
 use crate::app::HammerProApp;
 
-mod automation;
+pub(crate) mod automation;
 mod describe;
 #[cfg(test)]
 mod harness;
@@ -68,7 +68,9 @@ mod tools_particles;
 mod tools_paths;
 mod tools_pipe;
 mod tools_place;
-pub(crate) use place_scan::{MapScanBuilder, ScanMemory, run_map_scan_since};
+pub(crate) use place_scan::{
+    MapScanBuilder, MemoryKey, ScanMemory, content_generation, remember_scan, remembered_scan, run_map_scan_since,
+};
 #[cfg(test)]
 pub(crate) use place_scan::{prepare_map_scan, run_map_scan};
 pub(crate) use place_ui::{

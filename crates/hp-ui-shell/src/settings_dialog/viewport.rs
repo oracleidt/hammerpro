@@ -220,6 +220,9 @@ pub(super) fn page(ui: &mut Ui, state: &mut AppState) {
             ui.label(t!("shell.view.grid_1024"));
             changed |= ui.checkbox(&mut v.show_1024_grid, "").changed();
             ui.end_row();
+            ui.label(t!("shell.view.status_grid")).on_hover_text(t!("shell.view.status_grid_tip"));
+            changed |= ui.checkbox(&mut state.settings.workflow.show_status_grid, "").changed();
+            ui.end_row();
         });
     heading(ui, t!("shell.view.colors"));
     egui::Grid::new("hp_shell_view_colors")
@@ -264,6 +267,7 @@ pub(super) fn reset(state: &mut AppState) {
     w.drag_autopan = d.drag_autopan;
     w.grid_step_factor = d.grid_step_factor;
     w.units = d.units;
+    w.show_status_grid = d.show_status_grid;
 }
 
 pub(crate) const TR: TrTable = &[
@@ -295,6 +299,12 @@ pub(crate) const TR: TrTable = &[
     ("shell.view.show_3d_grid", "Grid in the 3D view", "Grille dans la vue 3D"),
     ("shell.view.grid_highlight", "Highlight grid lines every", "Accentuer les lignes de grille toutes les"),
     ("shell.view.grid_1024", "Show 1024 unit lines", "Afficher les lignes de 1024 unités"),
+    ("shell.view.status_grid", "Grid size in the status bar", "Taille de grille dans la barre d'état"),
+    (
+        "shell.view.status_grid_tip",
+        "Shows Grid: 16 at the right end of the status bar, like Hammer. Click it for the grid menu, use the wheel over it to change the size.",
+        "Affiche Grille : 16 au bout droit de la barre d'état, comme Hammer. Cliquez dessus pour le menu de grille, la molette au-dessus change la taille.",
+    ),
     ("shell.view.colors", "Colors", "Couleurs"),
     ("shell.view.background_2d", "2D background", "Fond 2D"),
     ("shell.view.background_3d", "3D background", "Fond 3D"),

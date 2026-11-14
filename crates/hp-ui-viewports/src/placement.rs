@@ -271,6 +271,39 @@ pub fn origin_for(state: &AppState, target: &Target, local_min: DVec3, local_max
     rest_origin_on(target.point, target.normal, local_min, local_max, grid.as_ref())
 }
 
+pub fn model_origin_for(state: &AppState, target: &Target, local_min: DVec3, local_max: DVec3) -> DVec3 {
+    if !local_min.is_finite() || !local_max.is_finite() || !target.point.is_finite() {
+        return target.point;
+    }
+    let center = (local_min + local_max) * 0.5;
+    let o = if target.is_2d || !target.on_surface {
+        let p = target.point;
+        DVec3::new(p.x - center.x, p.y - center.y, p.z - local_min.z)
+    } else {
+        let n = target.normal.try_normalize().unwrap_or(DVec3::Z);
+        let surface = target.face.map(|f| hp_editor::ObjRef::Solid(f.solid));
+        let grid = state.snap_enabled().then(|| state.surface_grid_frame(hp_app::ViewKind::Perspective, surface));
+        let p = rest_origin_on(target.point, n, DVec3::ZERO, DVec3::ZERO, grid.as_ref());
+        let push = (-n.x * local_min.x).max(-n.x * local_max.x)
+            + (-n.y * local_min.y).max(-n.y * local_max.y)
+            + (-n.z * local_min.z).max(-n.z * local_max.z);
+        p + n * push - (center - n * n.dot(center))
+    };
+    DVec3::new(round_to(o.x, ORIGIN_STEP), round_to(o.y, ORIGIN_STEP), round_to(o.z, ORIGIN_STEP))
+}
+
+pub fn create_model_entity(
+    state: &mut AppState,
+    class: &str,
+    target: &Target,
+    local_bounds: (DVec3, DVec3),
+    extra: &[(&str, &str)],
+) -> hp_editor::EditResult<hp_editor::Id> {
+    let origin = model_origin_for(state, target, local_bounds.0, local_bounds.1);
+    let kv = entity_keyvalues(state, class, extra);
+    state.doc.create_point_entity(class, origin, &kv)
+}
+
 pub fn create_entity(
     state: &mut AppState,
     class: &str,
@@ -297,6 +330,27 @@ pub fn prop_for_model(state: &mut AppState, path: &str) -> (&'static str, Option
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dropped_models_sit_by_their_box_not_their_origin() {
+        let state = hp_app::testing::test_state();
+        let (lo, hi) = (DVec3::new(-6.8, -21.0, 10.0), DVec3::new(6.8, 5.25, 80.0));
+        let at = |point: DVec3, normal: DVec3, on_surface: bool, is_2d: bool| Target {
+            point,
+            normal,
+            face: None,
+            on_surface,
+            is_2d,
+        };
+        let floor = model_origin_for(&state, &at(DVec3::new(64.0, 64.0, 0.0), DVec3::Z, true, false), lo, hi);
+        assert_eq!(floor, DVec3::new(64.0, 71.875, -10.0), "bottom on the floor, centred on the hit");
+        let wall = model_origin_for(&state, &at(DVec3::new(96.0, 0.0, 32.0), DVec3::X, true, false), lo, hi);
+        assert_eq!(wall, DVec3::new(102.8, 7.875, -13.0), "flush against the wall, centred on the hit");
+        let ceiling = model_origin_for(&state, &at(DVec3::new(0.0, 0.0, 128.0), -DVec3::Z, true, false), lo, hi);
+        assert_eq!(ceiling.z + hi.z, 128.0, "top against the ceiling");
+        let top = model_origin_for(&state, &at(DVec3::new(64.0, 64.0, 32.0), DVec3::Z, false, true), lo, hi);
+        assert_eq!(top, DVec3::new(64.0, 71.875, 22.0), "2D drop: box bottom at the drop height");
+    }
 
     #[test]
     fn resting_on_surfaces() {

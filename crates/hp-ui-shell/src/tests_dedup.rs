@@ -105,7 +105,10 @@ fn grid_snap_and_texture_lock_are_shown_once() {
         let snap = hp_app::t!("status.snap_on");
         let texlock = hp_app::t!("status.texlock_on");
         assert_eq!(bars.count(|t| t == "16"), 1, "{lang:?}: the grid size field: {:?}", bars.texts);
-        assert_eq!(bars.count(|t| t == grid_status), 0, "{lang:?}");
+        assert_eq!(bars.count(|t| t == grid_status), 1, "{lang:?}: status bar grid like Hammer");
+        state.settings.workflow.show_status_grid = false;
+        bars.frames(&mut state, &mut shell);
+        assert_eq!(bars.count(|t| t == grid_status), 0, "{lang:?}: hidden by the setting");
         assert_eq!(bars.count(|t| t == snap), 0, "{lang:?}: snap pill");
         assert_eq!(bars.count(|t| t == texlock), 0, "{lang:?}: texture lock pill");
         state.settings.workflow.show_toolbar = false;
@@ -203,4 +206,24 @@ fn the_grid_manager_edits_custom_grids() {
     bars.click(&mut state, &mut shell, "Delete");
     assert_eq!(state.settings.grid.presets.len(), 0, "the preset was the one edited");
     assert_eq!(state.map_grids().len(), 1);
+}
+
+#[test]
+fn status_grid_sits_at_the_right_end_and_survives_a_narrow_bar() {
+    let _g = lang_guard();
+    hp_app::i18n::set_lang(Lang::En);
+    let mut state = state();
+    let mut shell = Shell::new();
+    let mut bars = Bars::new();
+    bars.frames(&mut state, &mut shell);
+    let grid = hp_app::tf!("status.grid", "16");
+    let r = bars.find(&grid).expect("status grid");
+    let rightmost = bars.texts.iter().filter(|(_, q)| q.center().y > 1000.0).map(|(_, q)| q.max.x).fold(0.0, f32::max);
+    assert!((r.max.x - rightmost).abs() < 0.5, "grid is the last item: {r:?} vs {rightmost}");
+    bars.click(&mut state, &mut shell, &grid);
+    bars.frames(&mut state, &mut shell);
+    assert!(bars.count(|t| t == "64") >= 1, "the click opens the grid size menu: {:?}", bars.texts);
+    assert_eq!(crate::status::wheel_steps(0.25, 1.0), 0);
+    assert_eq!(crate::status::wheel_steps(1.0, 1.0), 1);
+    assert_eq!(crate::status::wheel_steps(-3.0, 1.0), -1);
 }
